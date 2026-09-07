@@ -35,7 +35,7 @@
 # ==============================================================================
 # CONFIG
 # ==============================================================================
-IMAGE_CHECKPOINT_PATH    <- file.path(tempdir(), "tutorial_camtrap_taxamatch_image_match_obj.rds")
+IMAGE_CHECKPOINT_PATH <- file.path(tempdir(), "tutorial_camtrap_taxamatch_image_match_obj.rds")
 ACOUSTIC_CHECKPOINT_PATH <- file.path(tempdir(), "tutorial_sandpiper_taxamatch_acoustic_match_obj.rds")
 
 # ==============================================================================
@@ -45,16 +45,20 @@ ACOUSTIC_CHECKPOINT_PATH <- file.path(tempdir(), "tutorial_sandpiper_taxamatch_a
 message("\n=== SECTION 1: IMAGE (iNaturalist CV) ===")
 
 if (!file.exists(IMAGE_CHECKPOINT_PATH)) {
-  stop("Checkpoint not found at ", IMAGE_CHECKPOINT_PATH, ". Run TaxaMatch's ",
-       "score_image_workflow.R first (in the SAME R session if tempdir() ",
-       "has not been reused -- tempdir() is scoped to one R session, exactly ",
-       "as documented for the five-package Gadus chain).")
+  stop(
+    "Checkpoint not found at ", IMAGE_CHECKPOINT_PATH, ". Run TaxaMatch's ",
+    "score_image_workflow.R first (in the SAME R session if tempdir() ",
+    "has not been reused -- tempdir() is scoped to one R session, exactly ",
+    "as documented for the five-package Gadus chain)."
+  )
 }
 
 taxamatch_image_match_obj <- readRDS(IMAGE_CHECKPOINT_PATH)
-message("Loaded TaxaMatch's checkpoint: ", IMAGE_CHECKPOINT_PATH,
-        " (", nrow(taxamatch_image_match_obj), " row(s), ",
-        length(unique(taxamatch_image_match_obj$observation_id)), " photo(s)).")
+message(
+  "Loaded TaxaMatch's checkpoint: ", IMAGE_CHECKPOINT_PATH,
+  " (", nrow(taxamatch_image_match_obj), " row(s), ",
+  length(unique(taxamatch_image_match_obj$observation_id)), " photo(s))."
+)
 
 # ==============================================================================
 # 1a. correct_training_bias() -- FIRST TIME WIRED AGAINST REAL DATA (Session 128)
@@ -70,7 +74,8 @@ message("Loaded TaxaMatch's checkpoint: ", IMAGE_CHECKPOINT_PATH,
 message("\n--- Step 1a: correct_training_bias() (tau = 1.0) ---")
 
 taxamatch_image_match_obj <- TaxaLikely::correct_training_bias(
-  taxamatch_image_match_obj, count_col = "n_observations"
+  taxamatch_image_match_obj,
+  count_col = "n_observations"
 )
 
 message(sprintf(
@@ -175,16 +180,20 @@ message(sprintf(
 .flipped <- .winner_compare[
   .winner_compare$taxon_name_corrected != .winner_compare$taxon_name_uncorrected,
 ]
-message(sprintf("  Photos where correction changed the winning candidate: %d/%d.",
-                nrow(.flipped), nrow(.winner_compare)))
+message(sprintf(
+  "  Photos where correction changed the winning candidate: %d/%d.",
+  nrow(.flipped), nrow(.winner_compare)
+))
 if (nrow(.flipped) > 0L) print(.flipped)
 
 # ---- Explicit checkpoint (not automatic) ------------------------------------
 IMAGE_LIKELIHOODS_PATH <- file.path(tempdir(), "tutorial_camtrap_taxalikely_image_likelihoods.rds")
 saveRDS(taxalikely_image_likelihoods, IMAGE_LIKELIHOODS_PATH)
 message(sprintf("\n  Saved: %s", IMAGE_LIKELIHOODS_PATH))
-message(sprintf("  To reuse without re-running this section, paste:\n    taxalikely_image_likelihoods <- readRDS(\"%s\")",
-                IMAGE_LIKELIHOODS_PATH))
+message(sprintf(
+  "  To reuse without re-running this section, paste:\n    taxalikely_image_likelihoods <- readRDS(\"%s\")",
+  IMAGE_LIKELIHOODS_PATH
+))
 
 message("\nSection 1 (IMAGE) complete.")
 
@@ -247,15 +256,19 @@ message("\nSection 1 (IMAGE) complete.")
 message("\n=== SECTION 2: ACOUSTIC (BirdNET) ===")
 
 if (!file.exists(ACOUSTIC_CHECKPOINT_PATH)) {
-  stop("Checkpoint not found at ", ACOUSTIC_CHECKPOINT_PATH, ". Run TaxaMatch's ",
-       "score_acoustic_workflow.R first (in the SAME R session -- tempdir() ",
-       "is scoped to one R session).")
+  stop(
+    "Checkpoint not found at ", ACOUSTIC_CHECKPOINT_PATH, ". Run TaxaMatch's ",
+    "score_acoustic_workflow.R first (in the SAME R session -- tempdir() ",
+    "is scoped to one R session)."
+  )
 }
 
 taxamatch_acoustic_match_obj <- readRDS(ACOUSTIC_CHECKPOINT_PATH)
-message("Loaded TaxaMatch's checkpoint: ", ACOUSTIC_CHECKPOINT_PATH,
-        " (", nrow(taxamatch_acoustic_match_obj), " row(s), ",
-        length(unique(taxamatch_acoustic_match_obj$observation_id)), " detection window(s)).")
+message(
+  "Loaded TaxaMatch's checkpoint: ", ACOUSTIC_CHECKPOINT_PATH,
+  " (", nrow(taxamatch_acoustic_match_obj), " row(s), ",
+  length(unique(taxamatch_acoustic_match_obj$observation_id)), " detection window(s))."
+)
 
 # ==============================================================================
 # 2a. JOIN n_recordings + correct_training_bias() (Session 128)
@@ -287,7 +300,8 @@ taxamatch_acoustic_match_obj <- dplyr::left_join(
 )
 
 taxamatch_acoustic_match_obj <- TaxaLikely::correct_training_bias(
-  taxamatch_acoustic_match_obj, count_col = "n_recordings"
+  taxamatch_acoustic_match_obj,
+  count_col = "n_recordings"
 )
 
 message(sprintf(
@@ -394,16 +408,20 @@ message(sprintf(
 .flipped <- .winner_compare[
   .winner_compare$taxon_name_corrected != .winner_compare$taxon_name_uncorrected,
 ]
-message(sprintf("  Detection windows where correction changed the winning candidate: %d/%d.",
-                nrow(.flipped), nrow(.winner_compare)))
+message(sprintf(
+  "  Detection windows where correction changed the winning candidate: %d/%d.",
+  nrow(.flipped), nrow(.winner_compare)
+))
 if (nrow(.flipped) > 0L) print(.flipped)
 
 # ---- Explicit checkpoint (not automatic) ------------------------------------
 ACOUSTIC_LIKELIHOODS_PATH <- file.path(tempdir(), "tutorial_sandpiper_taxalikely_acoustic_likelihoods.rds")
 saveRDS(taxalikely_acoustic_likelihoods, ACOUSTIC_LIKELIHOODS_PATH)
 message(sprintf("\n  Saved: %s", ACOUSTIC_LIKELIHOODS_PATH))
-message(sprintf("  To reuse without re-running this section, paste:\n    taxalikely_acoustic_likelihoods <- readRDS(\"%s\")",
-                ACOUSTIC_LIKELIHOODS_PATH))
+message(sprintf(
+  "  To reuse without re-running this section, paste:\n    taxalikely_acoustic_likelihoods <- readRDS(\"%s\")",
+  ACOUSTIC_LIKELIHOODS_PATH
+))
 
 message("\nSection 2 (ACOUSTIC) complete.")
 

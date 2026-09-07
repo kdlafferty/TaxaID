@@ -94,98 +94,115 @@
 #' @importFrom utils head
 #' @export
 detect_suppressed_candidates <- function(match_obj,
-                                          score_col           = "score_original",
-                                          observation_id_col  = "observation_id",
-                                          perfect_threshold   = 100,
-                                          purity_threshold    = 0.99,
-                                          singleton_threshold = 0.98) {
-
-  if (!is.data.frame(match_obj))
+                                         score_col = "score_original",
+                                         observation_id_col = "observation_id",
+                                         perfect_threshold = 100,
+                                         purity_threshold = 0.99,
+                                         singleton_threshold = 0.98) {
+  if (!is.data.frame(match_obj)) {
     stop("detect_suppressed_candidates: 'match_obj' must be a data frame.",
-         call. = FALSE)
-  if (!observation_id_col %in% names(match_obj))
-    stop(sprintf("detect_suppressed_candidates: column '%s' not found.",
-                 observation_id_col), call. = FALSE)
+      call. = FALSE
+    )
+  }
+  if (!observation_id_col %in% names(match_obj)) {
+    stop(sprintf(
+      "detect_suppressed_candidates: column '%s' not found.",
+      observation_id_col
+    ), call. = FALSE)
+  }
 
   has_score <- score_col %in% names(match_obj)
-  obs_ids   <- match_obj[[observation_id_col]]
+  obs_ids <- match_obj[[observation_id_col]]
 
   per_obs <- tapply(seq_len(nrow(match_obj)), obs_ids, function(idx) {
-    n  <- length(idx)
+    n <- length(idx)
     if (has_score) {
-      s  <- match_obj[[score_col]][idx]
-      s  <- s[!is.na(s)]
+      s <- match_obj[[score_col]][idx]
+      s <- s[!is.na(s)]
       mx <- if (length(s) > 0L) max(s) else NA_real_
       list(
-        n             = n,
-        max_score     = mx,
-        has_perfect   = !is.na(mx) && mx >= perfect_threshold,
+        n = n,
+        max_score = mx,
+        has_perfect = !is.na(mx) && mx >= perfect_threshold,
         is_pure_perfect = !is.na(mx) && mx >= perfect_threshold &&
-                          (length(s) == 0L || min(s) >= perfect_threshold),
-        all_same      = (n > 1L) && length(s) > 1L &&
-                        length(unique(round(s, 8))) == 1L
+          (length(s) == 0L || min(s) >= perfect_threshold),
+        all_same = (n > 1L) && length(s) > 1L &&
+          length(unique(round(s, 8))) == 1L
       )
     } else {
-      list(n = n, max_score = NA_real_, has_perfect = FALSE,
-           is_pure_perfect = FALSE, all_same = FALSE)
+      list(
+        n = n, max_score = NA_real_, has_perfect = FALSE,
+        is_pure_perfect = FALSE, all_same = FALSE
+      )
     }
   }, simplify = FALSE)
 
   n_total <- length(per_obs)
 
   # ---- Rule 1: perfect_only ---------------------------------------------------
-  n_perfect_obs  <- sum(vapply(per_obs, function(x) x$has_perfect, logical(1L)))
+  n_perfect_obs <- sum(vapply(per_obs, function(x) x$has_perfect, logical(1L)))
   n_pure_perfect <- sum(vapply(per_obs, function(x) x$is_pure_perfect, logical(1L)))
   purity_perfect <- if (n_perfect_obs > 0L) n_pure_perfect / n_perfect_obs else 0
-  perfect_only   <- has_score && n_perfect_obs > 0L &&
-                    purity_perfect >= purity_threshold
+  perfect_only <- has_score && n_perfect_obs > 0L &&
+    purity_perfect >= purity_threshold
 
   # ---- Rule 2: max_score_ties -------------------------------------------------
-  n_multi    <- sum(vapply(per_obs, function(x) x$n > 1L, logical(1L)))
-  n_ties     <- sum(vapply(per_obs, function(x) x$all_same, logical(1L)))
+  n_multi <- sum(vapply(per_obs, function(x) x$n > 1L, logical(1L)))
+  n_ties <- sum(vapply(per_obs, function(x) x$all_same, logical(1L)))
   purity_ties <- if (n_multi > 0L) n_ties / n_multi else 0
   max_score_ties <- has_score && n_multi > 0L && purity_ties >= purity_threshold
 
   # ---- Rule 3: best_only ------------------------------------------------------
-  n_singletons   <- sum(vapply(per_obs, function(x) x$n == 1L, logical(1L)))
+  n_singletons <- sum(vapply(per_obs, function(x) x$n == 1L, logical(1L)))
   # n_total == 0 (a zero-row match_obj) otherwise gives 0/0 = NaN here, and
   # `if (best_only)` below then fails with "missing value where TRUE/FALSE
   # needed" instead of reporting that no rule was detected.
   frac_singleton <- if (n_total > 0L) n_singletons / n_total else 0
-  best_only      <- n_total > 0L && frac_singleton >= singleton_threshold
+  best_only <- n_total > 0L && frac_singleton >= singleton_threshold
 
   # ---- collect examples -------------------------------------------------------
   affected_ids <- character(0L)
-  if (perfect_only)
-    affected_ids <- c(affected_ids,
-                      names(which(vapply(per_obs,
-                                         function(x) x$is_pure_perfect, logical(1L)))))
-  if (max_score_ties)
-    affected_ids <- c(affected_ids,
-                      names(which(vapply(per_obs,
-                                         function(x) x$all_same, logical(1L)))))
-  if (best_only)
+  if (perfect_only) {
+    affected_ids <- c(
+      affected_ids,
+      names(which(vapply(
+        per_obs,
+        function(x) x$is_pure_perfect, logical(1L)
+      )))
+    )
+  }
+  if (max_score_ties) {
+    affected_ids <- c(
+      affected_ids,
+      names(which(vapply(
+        per_obs,
+        function(x) x$all_same, logical(1L)
+      )))
+    )
+  }
+  if (best_only) {
     affected_ids <- c(affected_ids, names(per_obs))
+  }
   affected_ids <- unique(affected_ids)
 
   rules <- character(0L)
-  if (perfect_only)    rules <- c(rules, "perfect_only")
-  if (max_score_ties)  rules <- c(rules, "max_score_ties")
-  if (best_only)       rules <- c(rules, "best_only")
+  if (perfect_only) rules <- c(rules, "perfect_only")
+  if (max_score_ties) rules <- c(rules, "max_score_ties")
+  if (best_only) rules <- c(rules, "best_only")
 
   list(
-    rule_detected   = length(rules) > 0L,
-    rules           = rules,
-    perfect_only    = perfect_only,
-    max_score_ties  = max_score_ties,
-    best_only       = best_only,
-    has_score_col   = has_score,
-    n_total         = n_total,
-    n_perfect_obs   = n_perfect_obs,
-    purity_perfect  = round(purity_perfect,  4),
-    n_multi_obs     = n_multi,
-    purity_ties     = round(purity_ties, 4),
-    frac_singleton  = round(frac_singleton, 4),
+    rule_detected = length(rules) > 0L,
+    rules = rules,
+    perfect_only = perfect_only,
+    max_score_ties = max_score_ties,
+    best_only = best_only,
+    has_score_col = has_score,
+    n_total = n_total,
+    n_perfect_obs = n_perfect_obs,
+    purity_perfect = round(purity_perfect, 4),
+    n_multi_obs = n_multi,
+    purity_ties = round(purity_ties, 4),
+    frac_singleton = round(frac_singleton, 4),
     example_observations = head(affected_ids, 5L)
   )
 }
@@ -518,8 +535,9 @@ detect_suppressed_candidates <- function(match_obj,
 #' @examples
 #' \dontrun{
 #' match_obj <- restore_suppressed_candidates(match_obj, reference_df,
-#'                                             seq_matrix = seq_matrix,
-#'                                             model_params = model_params)
+#'   seq_matrix = seq_matrix,
+#'   model_params = model_params
+#' )
 #' # With scores: continue to evaluate_likelihoods()
 #' # No-score:    continue to assign_scores(score_type = "direct")
 #' }
@@ -532,85 +550,106 @@ detect_suppressed_candidates <- function(match_obj,
 #' @importFrom TaxaTools create_taxon_names extended_ranks
 #' @export
 restore_suppressed_candidates <- function(match_obj,
-                                           reference_df,
-                                           rank_system         = NULL,
-                                           score_col           = "score_original",
-                                           observation_id_col  = "observation_id",
-                                           delta               = 0.5,
-                                           max_per_obs         = 10L,
-                                           model_params        = NULL,
-                                           alpha               = 0.001,
-                                           max_dist            = 0.25,
-                                           check_regional_overlap = FALSE,
-                                           seq_matrix          = NULL,
-                                           min_regional_coverage = 0.5,
-                                           accession_col       = "accession",
-                                           sequence_col        = NULL,
-                                           candidate_species_filter = NULL,
-                                           taxaexpect_priors   = NULL,
-                                           grid_id_col         = "grid_id",
-                                           taxon_col           = "taxon_name",
-                                           grid_col            = "grid_id",
-                                           theta_col           = "theta_mean",
-                                           budget_ratio_cap    = 19,
-                                           max_level4_per_anchor = 10L,
-                                           verbose             = TRUE) {
-
+                                          reference_df,
+                                          rank_system = NULL,
+                                          score_col = "score_original",
+                                          observation_id_col = "observation_id",
+                                          delta = 0.5,
+                                          max_per_obs = 10L,
+                                          model_params = NULL,
+                                          alpha = 0.001,
+                                          max_dist = 0.25,
+                                          check_regional_overlap = FALSE,
+                                          seq_matrix = NULL,
+                                          min_regional_coverage = 0.5,
+                                          accession_col = "accession",
+                                          sequence_col = NULL,
+                                          candidate_species_filter = NULL,
+                                          taxaexpect_priors = NULL,
+                                          grid_id_col = "grid_id",
+                                          taxon_col = "taxon_name",
+                                          grid_col = "grid_id",
+                                          theta_col = "theta_mean",
+                                          budget_ratio_cap = 19,
+                                          max_level4_per_anchor = 10L,
+                                          verbose = TRUE) {
   # ---- validate ---------------------------------------------------------------
-  if (!is.data.frame(match_obj))
+  if (!is.data.frame(match_obj)) {
     stop("restore_suppressed_candidates: 'match_obj' must be a data frame.",
-         call. = FALSE)
-  if (!is.data.frame(reference_df))
+      call. = FALSE
+    )
+  }
+  if (!is.data.frame(reference_df)) {
     stop("restore_suppressed_candidates: 'reference_df' must be a data frame.",
-         call. = FALSE)
-  if (!observation_id_col %in% names(match_obj))
-    stop(sprintf("restore_suppressed_candidates: column '%s' not found.",
-                 observation_id_col), call. = FALSE)
+      call. = FALSE
+    )
+  }
+  if (!observation_id_col %in% names(match_obj)) {
+    stop(sprintf(
+      "restore_suppressed_candidates: column '%s' not found.",
+      observation_id_col
+    ), call. = FALSE)
+  }
 
   if (!is.logical(check_regional_overlap) || length(check_regional_overlap) != 1L ||
-      is.na(check_regional_overlap))
+    is.na(check_regional_overlap)) {
     stop("restore_suppressed_candidates: 'check_regional_overlap' must be TRUE or FALSE.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   if (check_regional_overlap) {
-    if (!accession_col %in% names(match_obj))
+    if (!accession_col %in% names(match_obj)) {
       stop(sprintf(
         "restore_suppressed_candidates: check_regional_overlap = TRUE requires column '%s' in match_obj.",
-        accession_col), call. = FALSE)
-    if (!"composite_id" %in% names(reference_df) || !"sequence" %in% names(reference_df))
+        accession_col
+      ), call. = FALSE)
+    }
+    if (!"composite_id" %in% names(reference_df) || !"sequence" %in% names(reference_df)) {
       stop("restore_suppressed_candidates: check_regional_overlap = TRUE requires ",
-           "'composite_id' and 'sequence' columns in reference_df.", call. = FALSE)
+        "'composite_id' and 'sequence' columns in reference_df.",
+        call. = FALSE
+      )
+    }
   }
 
   max_per_obs <- as.integer(max_per_obs)
 
   # ---- auto-detect rank_system ------------------------------------------------
   if (is.null(rank_system)) {
-    canonical   <- TaxaTools::extended_ranks
-    df_lower    <- tolower(names(match_obj))
+    canonical <- TaxaTools::extended_ranks
+    df_lower <- tolower(names(match_obj))
     found_lower <- intersect(canonical, df_lower)
     rank_system <- names(match_obj)[match(found_lower, df_lower)]
-    if (length(rank_system) < 2L)
+    if (length(rank_system) < 2L) {
       stop("restore_suppressed_candidates: could not auto-detect rank_system. ",
-           "Supply it explicitly, e.g. rank_system = c(\"family\",\"genus\",\"species\").",
-           call. = FALSE)
-    message(sprintf("restore_suppressed_candidates: detected rank_system: %s",
-                    paste(rank_system, collapse = ", ")))
+        "Supply it explicitly, e.g. rank_system = c(\"family\",\"genus\",\"species\").",
+        call. = FALSE
+      )
+    }
+    message(sprintf(
+      "restore_suppressed_candidates: detected rank_system: %s",
+      paste(rank_system, collapse = ", ")
+    ))
   }
 
-  genus_col   <- rank_system[length(rank_system) - 1L]
+  genus_col <- rank_system[length(rank_system) - 1L]
   species_col <- rank_system[length(rank_system)]
 
   for (col in c(genus_col, species_col)) {
-    if (!col %in% names(match_obj))
+    if (!col %in% names(match_obj)) {
       stop(sprintf("restore_suppressed_candidates: column '%s' not found in match_obj.", col),
-           call. = FALSE)
-    if (!col %in% names(reference_df))
+        call. = FALSE
+      )
+    }
+    if (!col %in% names(reference_df)) {
       stop(sprintf("restore_suppressed_candidates: column '%s' not found in reference_df.", col),
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
   }
 
   # ---- score column handling --------------------------------------------------
-  has_score  <- score_col %in% names(match_obj)
+  has_score <- score_col %in% names(match_obj)
   no_score_path <- FALSE
 
   if (!has_score || all(is.na(match_obj[[score_col]]))) {
@@ -620,7 +659,7 @@ restore_suppressed_candidates <- function(match_obj,
     # (filtered by candidate_species_filter, if supplied) with a flat
     # synthetic gap, exactly as before this redesign.
     no_score_path <- TRUE
-    delta_01 <- delta / 100   # e.g. 0.5 -> 0.005
+    delta_01 <- delta / 100 # e.g. 0.5 -> 0.005
     if (!has_score) match_obj[[score_col]] <- NA_real_
     # Mark original rows with synthetic H1 score = 1.0
     match_obj[[score_col]] <- 1.0
@@ -632,8 +671,10 @@ restore_suppressed_candidates <- function(match_obj,
       # clause and emitted an "arguments not used by format" warning on
       # every verbose=TRUE call through this path.
       message(sprintf(
-        paste0("restore_suppressed_candidates: no score column -- creating synthetic scores ",
-               "(H1 = 1.0, restored = %.4f). Use assign_scores(score_type = \"direct\") downstream."),
+        paste0(
+          "restore_suppressed_candidates: no score column -- creating synthetic scores ",
+          "(H1 = 1.0, restored = %.4f). Use assign_scores(score_type = \"direct\") downstream."
+        ),
         1.0 - delta_01
       ))
     }
@@ -646,13 +687,14 @@ restore_suppressed_candidates <- function(match_obj,
 
   # ---- every observation is checked (Purpose A is prior-agnostic and does --
   # not depend on a globally detected suppression rule -- see @details).
-  obs_ids    <- match_obj[[observation_id_col]]
-  all_obs    <- unique(obs_ids)
+  obs_ids <- match_obj[[observation_id_col]]
+  all_obs <- unique(obs_ids)
   target_obs <- all_obs
 
   # ---- mark hypothesis_type for original rows ---------------------------------
-  if (!"hypothesis_type" %in% names(match_obj))
+  if (!"hypothesis_type" %in% names(match_obj)) {
     match_obj$hypothesis_type <- "specific_candidate"
+  }
 
   # ---- reference lookup: genus -> unique species rows -------------------------
   ref_by_genus <- split(reference_df, reference_df[[genus_col]])
@@ -667,8 +709,8 @@ restore_suppressed_candidates <- function(match_obj,
   score_transform <- (model_params$Score_Transform %||% "logit")
 
   # ---- build restored rows ----------------------------------------------------
-  restored_list   <- vector("list", length(target_obs))
-  n_restored_obs  <- 0L
+  restored_list <- vector("list", length(target_obs))
+  n_restored_obs <- 0L
   n_restored_rows <- 0L
   # A candidate that is neither restored as a real hypothesis row nor
   # confirmed to genuinely not-overlap is still recorded here (one row per
@@ -680,46 +722,54 @@ restore_suppressed_candidates <- function(match_obj,
   # unreferenced_df expects (Session 159), with an additive `basis` column.
   regional_unreferenced_list <- list()
 
-  no_score_target_species <- if (no_score_path && !is.null(candidate_species_filter))
-    candidate_species_filter else NULL
+  no_score_target_species <- if (no_score_path && !is.null(candidate_species_filter)) {
+    candidate_species_filter
+  } else {
+    NULL
+  }
 
   for (i in seq_along(target_obs)) {
-    obs_id   <- target_obs[i]
+    obs_id <- target_obs[i]
     obs_mask <- obs_ids == obs_id
     obs_rows <- match_obj[obs_mask, , drop = FALSE]
 
     # Genus of anchor (best-scoring or first row)
-    sc_vec    <- obs_rows[[score_col]]
+    sc_vec <- obs_rows[[score_col]]
     anchor_idx <- if (any(!is.na(sc_vec))) which.max(sc_vec) else 1L
     anchor_row <- obs_rows[anchor_idx, , drop = FALSE]
-    h1_genus   <- anchor_row[[genus_col]]
-    h1_score   <- anchor_row[[score_col]]
+    h1_genus <- anchor_row[[genus_col]]
+    h1_score <- anchor_row[[score_col]]
     anchor_species <- anchor_row[[species_col]]
 
     if (is.na(h1_genus) || !h1_genus %in% names(ref_by_genus)) next
 
-    max_obs_score <- if (!is.na(h1_score)) h1_score else
+    max_obs_score <- if (!is.na(h1_score)) {
+      h1_score
+    } else {
       suppressWarnings(max(sc_vec, na.rm = TRUE))
+    }
 
     # Species in genus, excluding those already in this observation. Not
     # pre-filtered by candidate_species_filter here -- Purpose A sweeps
     # every genus congener regardless of that filter (Section 2); the filter
     # is applied later, only when testing Purpose B admission.
-    ref_genus_rows  <- ref_by_genus[[h1_genus]]
+    ref_genus_rows <- ref_by_genus[[h1_genus]]
     present_species <- unique(obs_rows[[species_col]])
-    other_species   <- unique(ref_genus_rows[[species_col]])
-    other_species   <- other_species[!is.na(other_species) &
-                                       !other_species %in% present_species]
+    other_species <- unique(ref_genus_rows[[species_col]])
+    other_species <- other_species[!is.na(other_species) &
+      !other_species %in% present_species]
 
     if (no_score_path) {
       # No real evidence exists to source Purpose A/B from -- restore every
       # (optionally filtered) congener with the flat synthetic gap, exactly
       # as this pathway behaved before this redesign.
-      if (!is.null(no_score_target_species))
+      if (!is.null(no_score_target_species)) {
         other_species <- other_species[other_species %in% no_score_target_species]
+      }
       if (length(other_species) == 0L) next
-      if (length(other_species) > max_per_obs)
+      if (length(other_species) > max_per_obs) {
         other_species <- other_species[seq_len(max_per_obs)]
+      }
 
       rows_for_obs <- vector("list", length(other_species))
       for (j in seq_along(other_species)) {
@@ -730,7 +780,7 @@ restore_suppressed_candidates <- function(match_obj,
         )
       }
       restored_list[[i]] <- dplyr::bind_rows(rows_for_obs)
-      n_restored_obs  <- n_restored_obs  + 1L
+      n_restored_obs <- n_restored_obs + 1L
       n_restored_rows <- n_restored_rows + length(other_species)
       next
     }
@@ -742,7 +792,7 @@ restore_suppressed_candidates <- function(match_obj,
     # global sigma alone; unavailable (Purpose A never admits anything) when
     # model_params itself wasn't supplied.
     anchor_transform <- NA_real_
-    sigma_to_use     <- NA_real_
+    sigma_to_use <- NA_real_
     if (!is.null(model_params) && !is.null(model_params$H1_Sigma)) {
       global_sigma_11 <- model_params$H1_Sigma[1L, 1L]
       sigma_to_use <- global_sigma_11
@@ -750,11 +800,12 @@ restore_suppressed_candidates <- function(match_obj,
         aidx <- match(anchor_species, model_params$H1_Lookup$lookup_key)
         if (!is.na(aidx)) {
           sp_var <- model_params$H1_Lookup$sigma_score[aidx]
-          if (!is.na(sp_var) && sp_var > 0)
+          if (!is.na(sp_var) && sp_var > 0) {
             sigma_to_use <- max(sp_var, global_sigma_11)
+          }
         }
       }
-      anchor_score_p   <- if (scale_100) max_obs_score / 100 else max_obs_score
+      anchor_score_p <- if (scale_100) max_obs_score / 100 else max_obs_score
       anchor_transform <- .transform_p(anchor_score_p, score_transform)
     }
 
@@ -762,10 +813,13 @@ restore_suppressed_candidates <- function(match_obj,
     # Level 4 (check_regional_overlap = TRUE), computed once per observation
     # (not per candidate -- these depend only on the anchor/query, not on
     # which congener is being checked).
-    anchor_accession <- if (accession_col %in% names(anchor_row))
-      anchor_row[[accession_col]] else NA_character_
+    anchor_accession <- if (accession_col %in% names(anchor_row)) {
+      anchor_row[[accession_col]]
+    } else {
+      NA_character_
+    }
     anchor_subject_range <- NULL
-    query_sequence       <- NULL
+    query_sequence <- NULL
     if (check_regional_overlap) {
       anchor_subject_range <- if (all(c("subject_start", "subject_end") %in% names(anchor_row))) {
         rng <- c(anchor_row[["subject_start"]], anchor_row[["subject_end"]])
@@ -784,7 +838,6 @@ restore_suppressed_candidates <- function(match_obj,
 
     rows_for_obs <- list()
     for (sp in other_species) {
-
       res <- .resolve_hierarchy_score(
         anchor_accession = anchor_accession, anchor_species = anchor_species,
         candidate_species = sp, genus = h1_genus, ref_genus_rows = ref_genus_rows,
@@ -792,7 +845,7 @@ restore_suppressed_candidates <- function(match_obj,
         score_transform = score_transform, align_cache = align_cache
       )
 
-      basis_note <- NULL  # set only when this candidate ends up unresolved/rejected
+      basis_note <- NULL # set only when this candidate ends up unresolved/rejected
 
       if (is.na(res$level)) {
         # Levels 1-3 didn't resolve this candidate (or Level 0 precheck
@@ -802,11 +855,12 @@ restore_suppressed_candidates <- function(match_obj,
         # backstop) -- see .worth_level4_check()/.level4_attempt_allowed()'s
         # own headers for the real-data cost story behind both.
         if (check_regional_overlap &&
-            .worth_level4_check(anchor_species, sp, grid_id, taxaexpect_priors,
-                                 candidate_species_filter = candidate_species_filter,
-                                 taxon_col = taxon_col, grid_col = grid_col,
-                                 theta_col = theta_col, budget_ratio_cap = budget_ratio_cap) &&
-            .level4_attempt_allowed(anchor_accession, max_level4_per_anchor, align_cache)) {
+          .worth_level4_check(anchor_species, sp, grid_id, taxaexpect_priors,
+            candidate_species_filter = candidate_species_filter,
+            taxon_col = taxon_col, grid_col = grid_col,
+            theta_col = theta_col, budget_ratio_cap = budget_ratio_cap
+          ) &&
+          .level4_attempt_allowed(anchor_accession, max_level4_per_anchor, align_cache)) {
           cand_acc <- ref_genus_rows$composite_id[ref_genus_rows[[species_col]] == sp]
           detail <- .check_regional_overlap(
             anchor_accession      = anchor_accession,
@@ -820,15 +874,17 @@ restore_suppressed_candidates <- function(match_obj,
             return_detail         = TRUE
           )
           if (isTRUE(detail$overlap) && !is.na(detail$pid)) {
-            res <- list(p_match = detail$pid / 100, level = 4L, source = "tier2_alignment",
-                        source_accession = NA_character_)
+            res <- list(
+              p_match = detail$pid / 100, level = 4L, source = "tier2_alignment",
+              source_accession = NA_character_
+            )
           } else if (isFALSE(detail$overlap)) {
             basis_note <- "regional_reject"
           } else {
             basis_note <- "no_reference_data"
           }
         } else if (check_regional_overlap) {
-          basis_note <- "no_reference_data"  # budget-skipped
+          basis_note <- "no_reference_data" # budget-skipped
         }
       }
 
@@ -856,7 +912,7 @@ restore_suppressed_candidates <- function(match_obj,
       purpose_a_pass <- FALSE
       if (!is.na(anchor_transform) && !is.na(sigma_to_use) && sigma_to_use > 0) {
         cand_transform <- .transform_p(res$p_match, score_transform)
-        d_sq  <- (cand_transform - anchor_transform)^2 / sigma_to_use
+        d_sq <- (cand_transform - anchor_transform)^2 / sigma_to_use
         p_val <- stats::pchisq(d_sq, df = 1L, lower.tail = FALSE)
         purpose_a_pass <- !is.na(p_val) && p_val >= alpha
       }
@@ -868,8 +924,13 @@ restore_suppressed_candidates <- function(match_obj,
 
       if (!purpose_a_pass && !purpose_b_pass) next
 
-      basis <- if (purpose_a_pass && purpose_b_pass) "both" else
-        if (purpose_a_pass) "competitive_score" else "plausible_prior"
+      basis <- if (purpose_a_pass && purpose_b_pass) {
+        "both"
+      } else if (purpose_a_pass) {
+        "competitive_score"
+      } else {
+        "plausible_prior"
+      }
 
       imputed_score <- if (scale_100) res$p_match * 100 else res$p_match
 
@@ -881,31 +942,41 @@ restore_suppressed_candidates <- function(match_obj,
     }
 
     if (length(rows_for_obs) == 0L) next
-    if (length(rows_for_obs) > max_per_obs)
+    if (length(rows_for_obs) > max_per_obs) {
       rows_for_obs <- rows_for_obs[seq_len(max_per_obs)]
+    }
 
     restored_list[[i]] <- dplyr::bind_rows(rows_for_obs)
-    n_restored_obs  <- n_restored_obs  + 1L
+    n_restored_obs <- n_restored_obs + 1L
     n_restored_rows <- n_restored_rows + length(rows_for_obs)
   }
 
   restored_df <- dplyr::bind_rows(restored_list)
 
-  regional_unreferenced_df <- if (length(regional_unreferenced_list) > 0L)
-    dplyr::bind_rows(regional_unreferenced_list) else NULL
-  if (!is.null(regional_unreferenced_df) && verbose)
+  regional_unreferenced_df <- if (length(regional_unreferenced_list) > 0L) {
+    dplyr::bind_rows(regional_unreferenced_list)
+  } else {
+    NULL
+  }
+  if (!is.null(regional_unreferenced_df) && verbose) {
     message(sprintf(
-      paste0("restore_suppressed_candidates: %d congener(s) recorded in ",
-             "attr(result, \"regional_unreferenced\") across %d observation(s) -- ",
-             "pass to expand_unreferenced_hypotheses() to let them compete as named ",
-             "unreferenced_species hypotheses."),
+      paste0(
+        "restore_suppressed_candidates: %d congener(s) recorded in ",
+        "attr(result, \"regional_unreferenced\") across %d observation(s) -- ",
+        "pass to expand_unreferenced_hypotheses() to let them compete as named ",
+        "unreferenced_species hypotheses."
+      ),
       nrow(regional_unreferenced_df), length(unique(regional_unreferenced_df$observation_id))
     ))
+  }
 
   if (is.null(restored_df) || nrow(restored_df) == 0L) {
-    if (verbose)
-      message("restore_suppressed_candidates: no candidate cleared Purpose A or ",
-              "Purpose B admission for any observation.")
+    if (verbose) {
+      message(
+        "restore_suppressed_candidates: no candidate cleared Purpose A or ",
+        "Purpose B admission for any observation."
+      )
+    }
     match_obj$is_restored <- FALSE
     match_obj$restoration_basis <- NA_character_
     match_obj$restoration_level <- NA_integer_
@@ -914,22 +985,26 @@ restore_suppressed_candidates <- function(match_obj,
     return(match_obj)
   }
 
-  match_obj$is_restored   <- FALSE
-  if (!"restoration_basis" %in% names(match_obj))
+  match_obj$is_restored <- FALSE
+  if (!"restoration_basis" %in% names(match_obj)) {
     match_obj$restoration_basis <- NA_character_
-  if (!"restoration_level" %in% names(match_obj))
+  }
+  if (!"restoration_level" %in% names(match_obj)) {
     match_obj$restoration_level <- NA_integer_
-  if (!"restoration_source_accession" %in% names(match_obj))
+  }
+  if (!"restoration_source_accession" %in% names(match_obj)) {
     match_obj$restoration_source_accession <- NA_character_
+  }
   restored_df$is_restored <- TRUE
 
   result <- dplyr::bind_rows(match_obj, restored_df)
 
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "restore_suppressed_candidates: added %d candidate rows across %d observations.",
       n_restored_rows, n_restored_obs
     ))
+  }
 
   attr(result, "regional_unreferenced") <- regional_unreferenced_df
   result
@@ -949,9 +1024,9 @@ restore_suppressed_candidates <- function(match_obj,
 #'   that's actually possible, added 2026-08-08.
 #' @noRd
 .build_restored_row <- function(anchor_row, ref_genus_rows, sp, rank_system, species_col,
-                                 score_col, imputed_score, restoration_basis,
-                                 restoration_level = NA_integer_,
-                                 restoration_source_accession = NA_character_) {
+                                score_col, imputed_score, restoration_basis,
+                                restoration_level = NA_integer_,
+                                restoration_source_accession = NA_character_) {
   # which(), not a bare logical index: a reference_df row whose species is NA
   # makes `x == sp` NA, and `df[NA, ]` INSERTS an all-NA row in positional
   # order -- so an NA-species accession sitting before the real match made
@@ -960,13 +1035,14 @@ restore_suppressed_candidates <- function(match_obj,
   # references (environmental/unclassified accessions), and the calling code
   # already filters them out of the candidate list for exactly that reason.
   match_i <- which(!is.na(ref_genus_rows[[species_col]]) &
-                     ref_genus_rows[[species_col]] == sp)[1L]
+    ref_genus_rows[[species_col]] == sp)[1L]
   ref_row <- ref_genus_rows[match_i, , drop = FALSE]
   new_row <- anchor_row
 
   for (rc in rank_system) {
-    if (rc %in% names(ref_row) && rc %in% names(new_row))
+    if (rc %in% names(ref_row) && rc %in% names(new_row)) {
       new_row[[rc]] <- ref_row[[rc]]
+    }
   }
 
   if ("taxon_name" %in% names(new_row)) {
@@ -990,11 +1066,13 @@ restore_suppressed_candidates <- function(match_obj,
     # @return promises ("an arbitrary representative accession of the
     # candidate species for display/provenance"). The existing test only
     # asserted the "RESTORED_" prefix, so it passed on "RESTORED_NA".
-    ref_acc <- if ("accession" %in% names(ref_row))
+    ref_acc <- if ("accession" %in% names(ref_row)) {
       ref_row[["accession"]]
-    else if ("composite_id" %in% names(ref_row))
+    } else if ("composite_id" %in% names(ref_row)) {
       ref_row[["composite_id"]]
-    else NA_character_
+    } else {
+      NA_character_
+    }
     new_row[["accession"]] <- paste0("RESTORED_", ref_acc)
   }
 

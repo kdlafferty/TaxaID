@@ -42,20 +42,24 @@ utils::globalVariables(c(
 #' @examples
 #' \dontrun{
 #' model <- train_likelihood_model(ref_matrix,
-#'                                 rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' summary_df <- interpret_model(model)
 #' }
 #'
 #' @importFrom dplyr arrange case_when group_by mutate n select summarise
 #' @export
 interpret_model <- function(model_params, print_report = TRUE) {
-  if (!inherits(model_params, "taxa_model_params"))
+  if (!inherits(model_params, "taxa_model_params")) {
     stop("model_params must be a 'taxa_model_params' object from train_likelihood_model()")
-  if (!is.logical(print_report) || length(print_report) != 1L || is.na(print_report))
+  }
+  if (!is.logical(print_report) || length(print_report) != 1L || is.na(print_report)) {
     stop("print_report must be TRUE or FALSE")
+  }
   if (is.null(names(model_params$H1_Global_Mu)) ||
-      !all(c("score_logit", "gap_logit") %in% names(model_params$H1_Global_Mu)))
+    !all(c("score_logit", "gap_logit") %in% names(model_params$H1_Global_Mu))) {
     stop("model_params$H1_Global_Mu must be a named vector with 'score_logit' and 'gap_logit'")
+  }
 
   # train_likelihood_model() names its slots score_logit/gap_logit REGARDLESS
   # of score_transform and records the real transform separately, so a
@@ -69,41 +73,44 @@ interpret_model <- function(model_params, print_report = TRUE) {
   # Clamped: "sqrt_mismatch"'s inverse (1 - x^2) is unbounded below zero, and
   # mu_score - H3$delta can push far enough into the negative tail to produce
   # a negative "proportion" -- and hence a negative percentage.
-  .inv_transform <- function(x)
+  .inv_transform <- function(x) {
     pmin(pmax(.untransform_p(x, score_transform), 0), 1)
+  }
   # The 0.1 / 2.0 status cutoffs below were chosen as round numbers in LOGIT
   # units; rescale them for another transform via the same single conversion
   # factor train_likelihood_model() already uses for every other logit-unit
   # constant (see .transform_unit_ratio()), rather than inventing new ones.
-  unit_ratio    <- .transform_unit_ratio(score_transform)
+  unit_ratio <- .transform_unit_ratio(score_transform)
   gap_indistinct <- 0.1 * unit_ratio
-  gap_complex    <- 2.0 * unit_ratio
+  gap_complex <- 2.0 * unit_ratio
 
   global_mu_score <- model_params$H1_Global_Mu[["score_logit"]]
-  global_mu_gap   <- model_params$H1_Global_Mu[["gap_logit"]]
-  sd_score <- if (!is.null(model_params$H1_Sigma))
+  global_mu_gap <- model_params$H1_Global_Mu[["gap_logit"]]
+  sd_score <- if (!is.null(model_params$H1_Sigma)) {
     sqrt(model_params$H1_Sigma["score_logit", "score_logit"])
-  else NA_real_
+  } else {
+    NA_real_
+  }
 
   # ---- H1 global profile ----------------------------------------------------
-  mean_score_pct    <- round(.inv_transform(global_mu_score) * 100, 2)
-  runner_up_pct     <- round(.inv_transform(global_mu_score - global_mu_gap) * 100, 2)
+  mean_score_pct <- round(.inv_transform(global_mu_score) * 100, 2)
+  runner_up_pct <- round(.inv_transform(global_mu_score - global_mu_gap) * 100, 2)
   effective_gap_pct <- round(mean_score_pct - runner_up_pct, 2)
 
   # ---- H2 / H3 expected scores ----------------------------------------------
   h2_logit <- global_mu_score - model_params$H2$delta
   h3_logit <- global_mu_score - model_params$H3$delta
-  h2_pct   <- round(.inv_transform(h2_logit) * 100, 2)
-  h3_pct   <- round(.inv_transform(h3_logit) * 100, 2)
+  h2_pct <- round(.inv_transform(h2_logit) * 100, 2)
+  h3_pct <- round(.inv_transform(h3_logit) * 100, 2)
 
   # ---- H2 / H3 expected gaps ------------------------------------------------
   # H2 and H3 distributions have expected gap = 0 (logit scale): when the
   # true species/genus is absent, no candidate has a clear advantage.
   # H1 gap comes from the global mean gap.
-  h2_runner_pct <- round(.inv_transform(h2_logit - 0) * 100, 2)  # gap_logit = 0
+  h2_runner_pct <- round(.inv_transform(h2_logit - 0) * 100, 2) # gap_logit = 0
   h3_runner_pct <- round(.inv_transform(h3_logit - 0) * 100, 2)
-  h2_gap_pct    <- round(h2_pct - h2_runner_pct, 2)
-  h3_gap_pct    <- round(h3_pct - h3_runner_pct, 2)
+  h2_gap_pct <- round(h2_pct - h2_runner_pct, 2)
+  h3_gap_pct <- round(h3_pct - h3_runner_pct, 2)
 
   # ---- Summary tables -------------------------------------------------------
   # Built one row at a time (hypothesis label alongside its own values)
@@ -111,54 +118,65 @@ interpret_model <- function(model_params, print_report = TRUE) {
   # each hypothesis's label and statistics from being able to silently
   # drift out of alignment if the vectors are ever edited independently.
   hyp_rows <- list(
-    list(hypothesis = "H1: known species",
-         expected_match_pct = mean_score_pct, expected_gap_pct = effective_gap_pct),
-    list(hypothesis = "H2: unreferenced species",
-         expected_match_pct = h2_pct,         expected_gap_pct = h2_gap_pct),
-    list(hypothesis = "H3: unreferenced genus",
-         expected_match_pct = h3_pct,         expected_gap_pct = h3_gap_pct)
+    list(
+      hypothesis = "H1: known species",
+      expected_match_pct = mean_score_pct, expected_gap_pct = effective_gap_pct
+    ),
+    list(
+      hypothesis = "H2: unreferenced species",
+      expected_match_pct = h2_pct, expected_gap_pct = h2_gap_pct
+    ),
+    list(
+      hypothesis = "H3: unreferenced genus",
+      expected_match_pct = h3_pct, expected_gap_pct = h3_gap_pct
+    )
   )
   hyp_baselines <- do.call(rbind, lapply(hyp_rows, as.data.frame,
-                                          stringsAsFactors = FALSE))
+    stringsAsFactors = FALSE
+  ))
   row.names(hyp_baselines) <- NULL
 
   global_h1 <- data.frame(
-    metric         = c("mean match score", "mean runner-up gap", "score tolerance (SD)"),
-    value_logit    = round(c(global_mu_score, global_mu_gap, sd_score), 2),
-    value_pct      = c(mean_score_pct, effective_gap_pct, NA_real_),
+    metric = c("mean match score", "mean runner-up gap", "score tolerance (SD)"),
+    value_logit = round(c(global_mu_score, global_mu_gap, sd_score), 2),
+    value_pct = c(mean_score_pct, effective_gap_pct, NA_real_),
     stringsAsFactors = FALSE
   )
 
   # ---- Per-species thresholds -----------------------------------------------
-  sigma_gap_sd <- if (!is.null(model_params$H1_Sigma))
+  sigma_gap_sd <- if (!is.null(model_params$H1_Sigma)) {
     sqrt(model_params$H1_Sigma["gap_logit", "gap_logit"])
-  else 0
+  } else {
+    0
+  }
 
   if (nrow(model_params$H1_Lookup) > 0L) {
     species_thr <- model_params$H1_Lookup |>
       dplyr::mutate(
-        expected_match_pct   = round(.inv_transform(mu_score) * 100, 2),
+        expected_match_pct = round(.inv_transform(mu_score) * 100, 2),
         expected_runner_up_pct = round(.inv_transform(mu_score - mu_gap) * 100, 2),
-        expected_gap_pct     = round(expected_match_pct - expected_runner_up_pct, 2),
-        danger_gap           = mu_gap - sigma_gap_sd,
-        danger_zone_pct      = round(.inv_transform(mu_score - danger_gap) * 100, 2),
-        status               = dplyr::case_when(
+        expected_gap_pct = round(expected_match_pct - expected_runner_up_pct, 2),
+        danger_gap = mu_gap - sigma_gap_sd,
+        danger_zone_pct = round(.inv_transform(mu_score - danger_gap) * 100, 2),
+        status = dplyr::case_when(
           mu_gap < gap_indistinct ~ "INDISTINGUISHABLE",
-          mu_gap < gap_complex    ~ "complex/cluster",
-          .default                = "distinct"
+          mu_gap < gap_complex ~ "complex/cluster",
+          .default = "distinct"
         )
       ) |>
-      dplyr::select(lookup_key, rank, status,
-                    expected_match_pct, expected_gap_pct, danger_zone_pct) |>
+      dplyr::select(
+        lookup_key, rank, status,
+        expected_match_pct, expected_gap_pct, danger_zone_pct
+      ) |>
       dplyr::arrange(lookup_key)
 
     hierarchy <- species_thr |>
       dplyr::group_by(rank) |>
       dplyr::summarise(
-        count        = dplyr::n(),
+        count = dplyr::n(),
         avg_match_pct = round(mean(expected_match_pct, na.rm = TRUE), 2),
-        avg_gap_pct   = round(mean(expected_gap_pct,   na.rm = TRUE), 2),
-        .groups       = "drop"
+        avg_gap_pct = round(mean(expected_gap_pct, na.rm = TRUE), 2),
+        .groups = "drop"
       )
   } else {
     species_thr <- data.frame(

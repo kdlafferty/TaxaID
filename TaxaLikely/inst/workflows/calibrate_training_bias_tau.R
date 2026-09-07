@@ -58,8 +58,8 @@
 # calibrate against. Image: taxamatch_image_match_obj (from TaxaMatch::
 # score_image_workflow.R). Acoustic: swap in the acoustic match object and
 # change COUNT_COL to "n_recordings".
-MATCH_OBJ  <- taxamatch_image_match_obj
-COUNT_COL  <- "n_observations"
+MATCH_OBJ <- taxamatch_image_match_obj
+COUNT_COL <- "n_observations"
 RANK_SYSTEM <- c("family", "genus", "species")
 
 # assign_scores()'s score_type -- must match the pathway this data type
@@ -82,11 +82,11 @@ SCORE_TYPE <- "similarity_softmax"
 # so linear spacing over-samples large values and under-samples small ones).
 # Ignored entirely (collapsed to a single dummy value) when SCORE_TYPE is
 # "probability" -- see SCORE_TYPE's own comment above.
-TAU_GRID        <- seq(0, 2, by = 0.25)
-SHARPNESS_GRID  <- if (SCORE_TYPE %in% c("similarity_softmax", "similarity")) {
+TAU_GRID <- seq(0, 2, by = 0.25)
+SHARPNESS_GRID <- if (SCORE_TYPE %in% c("similarity_softmax", "similarity")) {
   c(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10)
 } else {
-  0.1  # unused by "probability"/"none"/"direct"; kept as a single valid placeholder
+  0.1 # unused by "probability"/"none"/"direct"; kept as a single valid placeholder
 }
 
 # ==============================================================================
@@ -94,16 +94,22 @@ SHARPNESS_GRID  <- if (SCORE_TYPE %in% c("similarity_softmax", "similarity")) {
 # ==============================================================================
 
 if (!is.data.frame(MATCH_OBJ)) {
-  stop("calibrate_training_bias_tau: MATCH_OBJ must be a data frame -- ",
-       "point CONFIG's MATCH_OBJ at a real, already-scored match object.")
+  stop(
+    "calibrate_training_bias_tau: MATCH_OBJ must be a data frame -- ",
+    "point CONFIG's MATCH_OBJ at a real, already-scored match object."
+  )
 }
 if (!"true_species" %in% names(MATCH_OBJ)) {
-  stop("calibrate_training_bias_tau: MATCH_OBJ has no true_species column -- ",
-       "this sweep needs real ground truth to evaluate against.")
+  stop(
+    "calibrate_training_bias_tau: MATCH_OBJ has no true_species column -- ",
+    "this sweep needs real ground truth to evaluate against."
+  )
 }
 if (!COUNT_COL %in% names(MATCH_OBJ)) {
-  stop(sprintf("calibrate_training_bias_tau: COUNT_COL \"%s\" not found in MATCH_OBJ.",
-              COUNT_COL))
+  stop(sprintf(
+    "calibrate_training_bias_tau: COUNT_COL \"%s\" not found in MATCH_OBJ.",
+    COUNT_COL
+  ))
 }
 
 message(sprintf(
@@ -119,11 +125,13 @@ message(sprintf(
 .evaluate_params <- function(match_obj, tau, score_sharpness, count_col, rank_system,
                              score_type = SCORE_TYPE) {
   corrected <- TaxaLikely::correct_training_bias(
-    match_obj, count_col = count_col, tau = tau
+    match_obj,
+    count_col = count_col, tau = tau
   )
   hyp <- TaxaLikely::unreferenced_candidates(corrected, rank_system = rank_system)
   lik <- TaxaLikely::assign_scores(
-    hyp, score_type = score_type, score_sharpness = score_sharpness
+    hyp,
+    score_type = score_type, score_sharpness = score_sharpness
   )
 
   # Renormalize score_likelihood to a genuine per-observation probability
@@ -153,7 +161,7 @@ message(sprintf(
     dplyr::left_join(true_match, by = "observation_id") |>
     dplyr::mutate(
       complete_miss = is.na(p_true),
-      p_true   = pmax(ifelse(is.na(p_true), 0, p_true), 1e-6),
+      p_true = pmax(ifelse(is.na(p_true), 0, p_true), 1e-6),
       log_loss = -log(p_true)
     )
 
@@ -237,12 +245,16 @@ message("\n--- Continuous 2D refinement ---")
   upper  = c(max(TAU_GRID), max(SHARPNESS_GRID) * 2)
 ))
 
-message(sprintf("Continuous optimum: tau = %.3f, score_sharpness = %.3f (log-loss = %.4f)",
-                .opt$par[1], .opt$par[2], .opt$value))
+message(sprintf(
+  "Continuous optimum: tau = %.3f, score_sharpness = %.3f (log-loss = %.4f)",
+  .opt$par[1], .opt$par[2], .opt$value
+))
 
 .final <- .evaluate_params(MATCH_OBJ, .opt$par[1], .opt$par[2], COUNT_COL, RANK_SYSTEM)
-message(sprintf("At this optimum: accuracy = %d/%d (%.0f%%)",
-                .final$n_correct, .final$n_photos, 100 * .final$accuracy))
+message(sprintf(
+  "At this optimum: accuracy = %d/%d (%.0f%%)",
+  .final$n_correct, .final$n_photos, 100 * .final$accuracy
+))
 
 message(sprintf(
   "\nFor reference -- tau=0, score_sharpness=0.1 (no correction, old default): log-loss = %.4f, accuracy = %.0f%%",

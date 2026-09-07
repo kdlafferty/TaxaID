@@ -21,10 +21,13 @@
 #' @noRd
 .normalize_scores <- function(x, bounds = NULL, epsilon = 1e-6) {
   if (!is.numeric(x)) stop("x must be numeric")
-  if (all(is.na(x))) return(x)
+  if (all(is.na(x))) {
+    return(x)
+  }
   if (!is.null(bounds)) {
-    if (!is.numeric(bounds) || length(bounds) != 2L)
+    if (!is.numeric(bounds) || length(bounds) != 2L) {
       stop("bounds must be a length-2 numeric vector")
+    }
     lo <- bounds[1]
     hi <- bounds[2]
   } else {

@@ -53,16 +53,18 @@ library(TaxaLikely)
 # fetch_ncbi_reference_sequences() searches NCBI by taxon name + barcode marker.
 # It does a count-first estimation before committing to any download, so
 # you can see how large the search is before proceeding.
-match_obj <- readRDS(file.choose())  # select your match data file (.rds)
-match_obj$family|>unique()
+match_obj <- readRDS(file.choose()) # select your match data file (.rds)
+match_obj$family |> unique()
 # ---- A1. Define your search -------------------------------------------------
 # taxa: character vector of taxon names at any rank.
 #   Can be genera, families, orders, or even a class.
 #   Each is searched separately; results are combined.
-taxa <- match_obj$family|>unique()
-taxa <- c("Cyprinidae","Percidae","Salmonidae","Centrarchidae","Catostomidae",
-"Coregonidae","Ictaluridae","Cottidae","Esocidae","Gasterosteidae",
-"Clupeidae","Petromyzontidae","Atherinopsidae","Umbridae","Lepisosteidae")
+taxa <- match_obj$family |> unique()
+taxa <- c(
+  "Cyprinidae", "Percidae", "Salmonidae", "Centrarchidae", "Catostomidae",
+  "Coregonidae", "Ictaluridae", "Cottidae", "Esocidae", "Gasterosteidae",
+  "Clupeidae", "Petromyzontidae", "Atherinopsidae", "Umbridae", "Lepisosteidae"
+)
 
 # barcode_term: the marker(s) to search for.
 #   Use a vector for synonyms: c("COI", "Co1", "Coxi", "Cox1")
@@ -112,8 +114,9 @@ cat("Unique genera:", length(unique(reference_df$genus)), "\n")
 # tighten or loosen length filters. Short or very long sequences may
 # indicate quality issues.
 hist(nchar(reference_df$sequence),
-     main = "Sequence length distribution",
-     xlab = "Length (bp)", breaks = 30)
+  main = "Sequence length distribution",
+  xlab = "Length (bp)", breaks = 30
+)
 
 # ---- A5. Save for later use -------------------------------------------------
 saveRDS(reference_df, "reference_df.rds")

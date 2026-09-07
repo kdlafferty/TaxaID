@@ -31,21 +31,23 @@ rank_system <- c("family", "genus", "species")
 
 # --- Option A: Parse FASTA with semicolon-delimited headers ------------------
 # Update this path to your FASTA file
-fasta_path <- file.choose()  # e.g., "MiFishU_taxDB_20240129.fasta"
+fasta_path <- file.choose() # e.g., "MiFishU_taxDB_20240129.fasta"
 
 dna_sequences <- Biostrings::readDNAStringSet(fasta_path)
 
 # Parse semicolon-delimited headers: accession;kingdom;phylum;...;species
 header_parts <- strsplit(names(dna_sequences), split = ";")
 header_df <- do.call(rbind, header_parts) |> as.data.frame()
-colnames(header_df) <- c("accession", "kingdom", "phylum", "class",
-                          "order", "family", "genus", "species")
+colnames(header_df) <- c(
+  "accession", "kingdom", "phylum", "class",
+  "order", "family", "genus", "species"
+)
 
 # Build reference_df in TaxaLikely format
 reference_df <- header_df |>
   mutate(
     composite_id = accession,
-    sequence     = as.character(dna_sequences),
+    sequence = as.character(dna_sequences),
     # Clean species names: drop abbreviations, require binomial
     species = ifelse(grepl("\\s", species), species, NA_character_)
   )
@@ -59,12 +61,12 @@ reference_df <- reference_df |> filter(class == "Actinopteri")
 
 # Clean species names using TaxaTools
 reference_df$species <- TaxaTools::clean_taxon_names(reference_df$species)
-reference_df<-reference_df|>filter(!is.na(species) & species != "")
-reference_df<-reference_df[grepl(" ", reference_df$species), ]# Drop rows with missing species (needed for species-level accuracy)
-reference_df <- reference_df %>%
-  group_by(genus) %>%
-  filter(n_distinct(species) != 1) %>%
-  ungroup() #exclude cases where there is just one species per genus.
+reference_df <- reference_df |> filter(!is.na(species) & species != "")
+reference_df <- reference_df[grepl(" ", reference_df$species), ] # Drop rows with missing species (needed for species-level accuracy)
+reference_df <- reference_df |>
+  group_by(genus) |>
+  filter(n_distinct(species) != 1) |>
+  ungroup() # exclude cases where there is just one species per genus.
 message(sprintf(
   "Reference: %d sequences, %d species, %d genera, %d families",
   nrow(reference_df),
@@ -82,7 +84,7 @@ message(sprintf(
 ref_matrix <- TaxaLikely::build_sequence_matrix(
   reference_df = reference_df,
   rank_system  = rank_system,
-  max_dist     = 0.50   # keep pairs up to 50% divergence for the accuracy demo
+  max_dist     = 0.50 # keep pairs up to 50% divergence for the accuracy demo
 )
 
 message(sprintf("Pairwise comparisons: %d", nrow(ref_matrix)))
@@ -149,18 +151,18 @@ message(sprintf("Species-vs-species pairs: %d", nrow(match_summary)))
 # is this assignment correct?" TaxaLikely instead asks "how likely are these
 # features under each hypothesis?"
 
-#logit_species <- glm(
-  #species_correct ~ log_count_ge + match_diff + p_match + p_match:match_diff,
-  #data = match_summary, family = binomial()
-#)
-#logit_genus <- glm(
-  #genus_correct ~ log_count_ge + match_diff + p_match + p_match:match_diff,
-  #data = match_summary, family = binomial()
-#)
-#logit_family <- glm(
-  #family_correct ~ log_count_ge + match_diff + p_match + p_match:match_diff,
-  #data = match_summary, family = binomial()
-#)
+# logit_species <- glm(
+# species_correct ~ log_count_ge + match_diff + p_match + p_match:match_diff,
+# data = match_summary, family = binomial()
+# )
+# logit_genus <- glm(
+# genus_correct ~ log_count_ge + match_diff + p_match + p_match:match_diff,
+# data = match_summary, family = binomial()
+# )
+# logit_family <- glm(
+# family_correct ~ log_count_ge + match_diff + p_match + p_match:match_diff,
+# data = match_summary, family = binomial()
+# )
 
 logit_species <- glm(
   species_correct ~ p_match,
@@ -183,7 +185,7 @@ logit_family <- glm(
 # of what score alone can tell you — and it's still not great at species level.
 
 new_data <- data.frame(
-  p_match    = seq(0.50, 1.00, by = 0.005),
+  p_match = seq(0.50, 1.00, by = 0.005),
   match_diff = 0,
   log_count_ge = 0
 )
@@ -191,35 +193,42 @@ new_data <- data.frame(
 plot_data <- new_data |>
   mutate(
     species = predict(logit_species, newdata = new_data, type = "response"),
-    genus   = predict(logit_genus,   newdata = new_data, type = "response"),
-    family   = predict(logit_family,   newdata = new_data, type = "response")
+    genus = predict(logit_genus, newdata = new_data, type = "response"),
+    family = predict(logit_family, newdata = new_data, type = "response")
   )
 
 # --- Base R figure (no ggplot2 dependency) ------------------------------------
 par(mar = c(5, 5, 3, 1), family = "sans")
 
-plot(NULL, xlim = c(0.70, 1.00), ylim = c(0, 1),
-     xlab = "Match Score (Proportion Identity)",
-     ylab = "Predicted P(Correct Assignment)",
-     main = "Score alone is a poor predictor of species-level accuracy for Palmyra fishes",
-     axes = FALSE)
-axis(1, at = seq(0.70, 1.00, by = 0.05),
-     labels = paste0(seq(70, 100, by = 5), "%"))
+plot(NULL,
+  xlim = c(0.70, 1.00), ylim = c(0, 1),
+  xlab = "Match Score (Proportion Identity)",
+  ylab = "Predicted P(Correct Assignment)",
+  main = "Score alone is a poor predictor of species-level accuracy for Palmyra fishes",
+  axes = FALSE
+)
+axis(1,
+  at = seq(0.70, 1.00, by = 0.05),
+  labels = paste0(seq(70, 100, by = 5), "%")
+)
 axis(2, at = seq(0, 1, by = 0.25))
 
 polygon(c(plot_data$p_match, rev(plot_data$p_match)),
-        c(plot_data$family, rep(0, nrow(plot_data))),
-        col = adjustcolor("green", 0.10), border = NA)
+  c(plot_data$family, rep(0, nrow(plot_data))),
+  col = adjustcolor("green", 0.10), border = NA
+)
 polygon(c(plot_data$p_match, rev(plot_data$p_match)),
-        c(plot_data$genus, rep(0, nrow(plot_data))),
-        col = adjustcolor("#2166AC", 0.10), border = NA)
+  c(plot_data$genus, rep(0, nrow(plot_data))),
+  col = adjustcolor("#2166AC", 0.10), border = NA
+)
 polygon(c(plot_data$p_match, rev(plot_data$p_match)),
-        c(plot_data$species, rep(0, nrow(plot_data))),
-        col = adjustcolor("#B2182B", 0.10), border = NA)
+  c(plot_data$species, rep(0, nrow(plot_data))),
+  col = adjustcolor("#B2182B", 0.10), border = NA
+)
 
 # Lines
 lines(plot_data$p_match, plot_data$family, lwd = 3, col = "green")
-lines(plot_data$p_match, plot_data$genus,   lwd = 3, col = "#2166AC")
+lines(plot_data$p_match, plot_data$genus, lwd = 3, col = "#2166AC")
 lines(plot_data$p_match, plot_data$species, lwd = 3, col = "#B2182B")
 
 # Reference lines
@@ -229,9 +238,10 @@ abline(v = 0.97, lty = 2, col = "grey40", lwd = 1.5)
 text(0.972, 0.15, "97% match", adj = 0, cex = 0.8, col = "grey40", font = 3)
 
 legend("topleft",
-       legend = c("Family","Genus", "Species"),
-       col    = c( "green","#2166AC", "#B2182B"),
-       lwd    = 3, bty = "n", cex = 0.9)
+  legend = c("Family", "Genus", "Species"),
+  col = c("green", "#2166AC", "#B2182B"),
+  lwd = 3, bty = "n", cex = 0.9
+)
 
 box()
 

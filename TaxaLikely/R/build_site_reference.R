@@ -96,15 +96,15 @@
 #' site_genera <- c("Fundulus", "Gambusia", "Lepomis", "Micropterus")
 #'
 #' lib <- build_site_reference(
-#'   taxa        = site_genera,
+#'   taxa = site_genera,
 #'   barcode_term = "MiFishU",
-#'   output_dir  = "site_reference/",
-#'   max_date    = "2024/12/31"
+#'   output_dir = "site_reference/",
+#'   max_date = "2024/12/31"
 #' )
 #'
 #' # Inspect coverage gaps
 #' lib$census
-#' lib$unreferenced   # species with NO barcode in NCBI
+#' lib$unreferenced # species with NO barcode in NCBI
 #'
 #' # Pass unreferenced species to TaxaAssign
 #' unreferenced_result <- TaxaAssign::suggest_unreferenced_species(
@@ -114,33 +114,36 @@
 #'
 #' # Train model on the downloaded reference
 #' ref_matrix <- build_sequence_matrix(lib$reference_df,
-#'                                      rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' model <- train_likelihood_model(ref_matrix)
 #' }
 #'
 #' @export
 build_site_reference <- function(taxa,
-                                  barcode_term,
-                                  rank_system    = c("family", "genus", "species"),
-                                  output_dir     = NULL,
-                                  flag_errors    = FALSE,
-                                  audit_coverage = TRUE,
-                                  max_sequences  = 5000L,
-                                  max_per_species = 5L,
-                                  species_list   = NULL,
-                                  max_date       = NULL,
-                                  ncbi_api_key   = NULL,
-                                  cache_dir      = tempdir()) {
-
+                                 barcode_term,
+                                 rank_system = c("family", "genus", "species"),
+                                 output_dir = NULL,
+                                 flag_errors = FALSE,
+                                 audit_coverage = TRUE,
+                                 max_sequences = 5000L,
+                                 max_per_species = 5L,
+                                 species_list = NULL,
+                                 max_date = NULL,
+                                 ncbi_api_key = NULL,
+                                 cache_dir = tempdir()) {
   # ---- Input validation -------------------------------------------------------
 
-  if (!is.character(taxa) || length(taxa) == 0L)
+  if (!is.character(taxa) || length(taxa) == 0L) {
     stop("taxa must be a non-empty character vector.", call. = FALSE)
-  if (!is.character(barcode_term) || length(barcode_term) == 0L)
+  }
+  if (!is.character(barcode_term) || length(barcode_term) == 0L) {
     stop("barcode_term must be a non-empty character vector.", call. = FALSE)
+  }
   if (!is.null(output_dir)) {
-    if (!is.character(output_dir) || length(output_dir) != 1L || !nzchar(output_dir))
+    if (!is.character(output_dir) || length(output_dir) != 1L || !nzchar(output_dir)) {
       stop("output_dir must be a single non-empty character path.", call. = FALSE)
+    }
     if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
   }
 
@@ -163,31 +166,35 @@ build_site_reference <- function(taxa,
     cache_dir       = cache_dir
   )
 
-  if (nrow(reference_df) == 0L)
+  if (nrow(reference_df) == 0L) {
     stop(
       "No sequences downloaded. Check taxon names, barcode_term, and NCBI connectivity.",
       call. = FALSE
     )
+  }
 
-  message(sprintf("  Downloaded %d sequences for %d unique species.",
-                  nrow(reference_df),
-                  length(unique(stats::na.omit(reference_df$species)))))
+  message(sprintf(
+    "  Downloaded %d sequences for %d unique species.",
+    nrow(reference_df),
+    length(unique(stats::na.omit(reference_df$species)))
+  ))
 
   # ---- Step 2: Flag errors (optional) ----------------------------------------
 
   errors <- NULL
   if (isTRUE(flag_errors)) {
     if (!requireNamespace("DECIPHER", quietly = TRUE) ||
-        !requireNamespace("Biostrings", quietly = TRUE))
+      !requireNamespace("Biostrings", quietly = TRUE)) {
       stop(
         "flag_errors = TRUE requires DECIPHER and Biostrings. ",
         "Install via: BiocManager::install(c('DECIPHER', 'Biostrings'))",
         call. = FALSE
       )
+    }
     message("Step 2/3: Building sequence matrix and flagging errors (may be slow)...")
-    ref_matrix  <- build_sequence_matrix(reference_df, rank_system = rank_system)
-    errors      <- flag_reference_errors(ref_matrix)
-    n_flagged   <- sum(errors$error_type == "likely_mislabeled", na.rm = TRUE)
+    ref_matrix <- build_sequence_matrix(reference_df, rank_system = rank_system)
+    errors <- flag_reference_errors(ref_matrix)
+    n_flagged <- sum(errors$error_type == "likely_mislabeled", na.rm = TRUE)
     message(sprintf("  Flagged %d likely mislabeled sequence(s).", n_flagged))
     if (n_flagged > 0L) {
       reference_df$accession <- reference_df$composite_id
@@ -201,23 +208,24 @@ build_site_reference <- function(taxa,
 
   # ---- Step 3: Audit coverage ------------------------------------------------
 
-  census       <- data.frame(stringsAsFactors = FALSE)
+  census <- data.frame(stringsAsFactors = FALSE)
   unreferenced <- character(0L)
 
   if (isTRUE(audit_coverage)) {
     message("Step 3/3: Auditing barcode coverage in NCBI...")
     if (!"genus" %in% names(reference_df)) {
       warning("Column 'genus' not found in reference_df; coverage audit skipped.",
-              call. = FALSE)
+        call. = FALSE
+      )
     } else {
-      cov_result   <- audit_barcode_coverage(
+      cov_result <- audit_barcode_coverage(
         match_df     = reference_df,
         barcode_term = barcode_term,
         species_list = species_list,
         max_date     = max_date,
         ncbi_api_key = ncbi_api_key
       )
-      census       <- cov_result$census
+      census <- cov_result$census
       unreferenced <- cov_result$unreferenced
       message(sprintf(
         "  %d species unreferenced (no barcode in NCBI) across %d genus(es).",
@@ -233,10 +241,12 @@ build_site_reference <- function(taxa,
 
   if (!is.null(output_dir)) {
     fasta_path <- file.path(output_dir, "reference.fasta")
-    tsv_path   <- file.path(output_dir, "reference_taxonomy.tsv")
-    write_reference_fasta(reference_df, file = fasta_path,
-                           taxonomy_file = tsv_path,
-                           rank_system   = rank_system)
+    tsv_path <- file.path(output_dir, "reference_taxonomy.tsv")
+    write_reference_fasta(reference_df,
+      file = fasta_path,
+      taxonomy_file = tsv_path,
+      rank_system = rank_system
+    )
     message(sprintf("Saved reference library to: %s", output_dir))
   }
 

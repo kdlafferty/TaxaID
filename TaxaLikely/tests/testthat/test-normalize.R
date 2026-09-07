@@ -1,15 +1,15 @@
 test_that(".normalize_scores: 0-100 scale auto-detected", {
   out <- TaxaLikely:::.normalize_scores(c(50, 75, 100))
   expect_true(all(out > 0 & out < 1))
-  expect_equal(out[3], 1 - 1e-6)        # 100 -> clipped to 1 - epsilon
-  expect_true(out[2] > out[1])           # monotone
+  expect_equal(out[3], 1 - 1e-6) # 100 -> clipped to 1 - epsilon
+  expect_true(out[2] > out[1]) # monotone
 })
 
 test_that(".normalize_scores: 0-1 scale auto-detected", {
   out <- TaxaLikely:::.normalize_scores(c(0, 0.5, 1))
   expect_true(all(out > 0 & out < 1))
-  expect_equal(out[1], 1e-6)            # 0 -> clipped to epsilon
-  expect_equal(out[3], 1 - 1e-6)        # 1 -> clipped to 1 - epsilon
+  expect_equal(out[1], 1e-6) # 0 -> clipped to epsilon
+  expect_equal(out[3], 1 - 1e-6) # 1 -> clipped to 1 - epsilon
 })
 
 test_that(".normalize_scores: explicit bounds override auto-detection", {
@@ -32,8 +32,8 @@ test_that(".normalize_scores: flatline input (all same value) returns consistent
   # c(80, 80, 80) is on 0-100 scale -> normalises to 0.8, not 1-epsilon
   # flatline check only triggers when explicit bounds are c(x, x)
   out <- TaxaLikely:::.normalize_scores(c(80, 80, 80))
-  expect_true(all(out > 0 & out < 1))    # still in valid range
-  expect_equal(length(unique(out)), 1L)  # all identical
+  expect_true(all(out > 0 & out < 1)) # still in valid range
+  expect_equal(length(unique(out)), 1L) # all identical
 })
 
 test_that(".normalize_scores: explicit identical bounds returns 1 - epsilon", {

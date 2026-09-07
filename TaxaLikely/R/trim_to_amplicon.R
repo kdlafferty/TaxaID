@@ -132,44 +132,54 @@ utils::globalVariables(c("sequence"))
 #'
 #' @export
 trim_to_amplicon <- function(reference_df,
-                              primer_fwd = NULL,
-                              primer_rev = NULL,
-                              barcode_term = NULL,
-                              min_len = NULL,
-                              max_len = NULL,
-                              max_mismatch_rate = 0.15,
-                              verbose = TRUE) {
-
-  if (!is.data.frame(reference_df))
+                             primer_fwd = NULL,
+                             primer_rev = NULL,
+                             barcode_term = NULL,
+                             min_len = NULL,
+                             max_len = NULL,
+                             max_mismatch_rate = 0.15,
+                             verbose = TRUE) {
+  if (!is.data.frame(reference_df)) {
     stop("reference_df must be a data frame")
+  }
 
   needed <- c("composite_id", "sequence")
   missing_cols <- setdiff(needed, names(reference_df))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("reference_df is missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")))
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "reference_df is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
 
-  if (xor(is.null(primer_fwd), is.null(primer_rev)))
+  if (xor(is.null(primer_fwd), is.null(primer_rev))) {
     stop("trim_to_amplicon: supply both primer_fwd and primer_rev, or neither (to resolve them from barcode_term)")
+  }
 
   primer_amplicon_range <- NULL
   if (is.null(primer_fwd)) {
-    if (is.null(barcode_term))
-      stop(paste0("trim_to_amplicon: supply barcode_term (to look up a registered primer pair ",
-                  "via TaxaTools::resolve_barcode_primers()), or supply primer_fwd/primer_rev ",
-                  "directly."))
+    if (is.null(barcode_term)) {
+      stop(paste0(
+        "trim_to_amplicon: supply barcode_term (to look up a registered primer pair ",
+        "via TaxaTools::resolve_barcode_primers()), or supply primer_fwd/primer_rev ",
+        "directly."
+      ))
+    }
     primer_info <- TaxaTools::resolve_barcode_primers(barcode_term)
-    primer_fwd  <- primer_info$fwd
-    primer_rev  <- primer_info$rev
+    primer_fwd <- primer_info$fwd
+    primer_rev <- primer_info$rev
     primer_amplicon_range <- primer_info$amplicon_range
   }
 
   if (is.null(min_len) || is.null(max_len)) {
-    if (is.null(barcode_term))
-      stop(paste0("trim_to_amplicon: supply min_len and max_len directly, or barcode_term to ",
-                  "auto-resolve them -- these determine which sequences are already ",
-                  "barcode-length (left untouched) versus over-length (checked for the ",
-                  "amplicon region)."))
+    if (is.null(barcode_term)) {
+      stop(paste0(
+        "trim_to_amplicon: supply min_len and max_len directly, or barcode_term to ",
+        "auto-resolve them -- these determine which sequences are already ",
+        "barcode-length (left untouched) versus over-length (checked for the ",
+        "amplicon region)."
+      ))
+    }
   }
   # Captured BEFORE resolve_barcode_lengths() overwrites min_len/max_len below --
   # needed so the plausible-span derivation further down can tell "the caller
@@ -179,31 +189,34 @@ trim_to_amplicon <- function(reference_df,
   # for a primer-inclusive matched span -- see below).
   len_user_supplied <- !is.null(min_len) && !is.null(max_len)
 
-  lens    <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len = min_len, max_len = max_len)
+  lens <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len = min_len, max_len = max_len)
   min_len <- lens[["min_bp"]]
   max_len <- lens[["max_bp"]]
 
   if (!is.numeric(max_mismatch_rate) || length(max_mismatch_rate) != 1L ||
-      is.na(max_mismatch_rate) || max_mismatch_rate < 0 || max_mismatch_rate >= 1)
+    is.na(max_mismatch_rate) || max_mismatch_rate < 0 || max_mismatch_rate >= 1) {
     stop("max_mismatch_rate must be a single number in [0, 1)")
+  }
 
-  if (!requireNamespace("Biostrings", quietly = TRUE))
+  if (!requireNamespace("Biostrings", quietly = TRUE)) {
     stop("Package 'Biostrings' is required. Install it with: BiocManager::install('Biostrings')")
+  }
 
   seq_df <- reference_df
   widths <- nchar(seq_df$sequence)
 
   needs_trim <- !is.na(widths) & widths > max_len
 
-  amplicon_trimmed   <- rep(FALSE, nrow(seq_df))
+  amplicon_trimmed <- rep(FALSE, nrow(seq_df))
   amplicon_trim_note <- rep("within_length_range_no_trim_needed", nrow(seq_df))
   amplicon_trim_note[is.na(widths)] <- "missing_sequence"
 
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "trim_to_amplicon: %d of %d sequence(s) exceed max_len (%d bp) and will be checked for the amplicon region.",
       sum(needs_trim, na.rm = TRUE), nrow(seq_df), max_len
     ))
+  }
 
   primer_rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(primer_rev)))
   fwd_max_mm <- floor(nchar(primer_fwd) * max_mismatch_rate)
@@ -243,7 +256,7 @@ trim_to_amplicon <- function(reference_df,
   }
 
   idx_to_check <- which(needs_trim)
-  n_trimmed    <- 0L
+  n_trimmed <- 0L
 
   for (i in idx_to_check) {
     result <- .extract_amplicon_one(
@@ -257,7 +270,7 @@ trim_to_amplicon <- function(reference_df,
     )
     amplicon_trim_note[i] <- result$note
     if (result$trimmed) {
-      seq_df$sequence[i]    <- result$sequence
+      seq_df$sequence[i] <- result$sequence
       amplicon_trimmed[i] <- TRUE
       n_trimmed <- n_trimmed + 1L
     }
@@ -273,17 +286,20 @@ trim_to_amplicon <- function(reference_df,
     # nonzero -- printing it unconditionally (even reporting "0 could not be
     # trimmed") added noise to the common case where every over-length
     # sequence was successfully trimmed.
-    if (n_not_trimmed > 0L)
+    if (n_not_trimmed > 0L) {
       msg <- paste0(msg, sprintf(
-        paste0(" %d could not be trimmed (primer site(s) not found, or found an ",
-               "implausible span) and remain over-length -- these will still be excluded ",
-               "downstream by build_sequence_matrix()'s own min_seq_len/max_seq_len filter."),
+        paste0(
+          " %d could not be trimmed (primer site(s) not found, or found an ",
+          "implausible span) and remain over-length -- these will still be excluded ",
+          "downstream by build_sequence_matrix()'s own min_seq_len/max_seq_len filter."
+        ),
         n_not_trimmed
       ))
+    }
     message(msg)
   }
 
-  seq_df$amplicon_trimmed   <- amplicon_trimmed
+  seq_df$amplicon_trimmed <- amplicon_trimmed
   seq_df$amplicon_trim_note <- amplicon_trim_note
   seq_df
 }
@@ -301,18 +317,20 @@ trim_to_amplicon <- function(reference_df,
 #'   `note` (character).
 #' @noRd
 .extract_amplicon_one <- function(seq_char, fwd_pattern, rev_pattern_rc,
-                                   fwd_max_mm, rev_max_mm, min_len, max_len) {
-
-  if (is.na(seq_char) || !nzchar(seq_char))
+                                  fwd_max_mm, rev_max_mm, min_len, max_len) {
+  if (is.na(seq_char) || !nzchar(seq_char)) {
     return(list(sequence = NA_character_, trimmed = FALSE, note = "missing_sequence"))
+  }
 
   seq_upper <- toupper(seq_char)
-  if (!grepl("^[ACGTRYSWKMBDHVN]+$", seq_upper))
+  if (!grepl("^[ACGTRYSWKMBDHVN]+$", seq_upper)) {
     return(list(sequence = NA_character_, trimmed = FALSE, note = "non_iupac_dna_skipped"))
+  }
 
   dna_plus <- tryCatch(Biostrings::DNAString(seq_upper), error = function(e) NULL)
-  if (is.null(dna_plus))
+  if (is.null(dna_plus)) {
     return(list(sequence = NA_character_, trimmed = FALSE, note = "invalid_dna_string"))
+  }
   dna_minus <- Biostrings::reverseComplement(dna_plus)
 
   for (strand in c("sense", "antisense")) {
@@ -326,15 +344,17 @@ trim_to_amplicon <- function(reference_df,
     # fixed = FALSE (both interpreted) produces spurious matches across long
     # N-runs, which fixed = "subject" avoids.
     fwd_hits <- Biostrings::matchPattern(fwd_pattern, subj,
-                                          max.mismatch = fwd_max_mm, fixed = "subject")
+      max.mismatch = fwd_max_mm, fixed = "subject"
+    )
     if (length(fwd_hits) == 0L) next
 
     rev_hits <- Biostrings::matchPattern(rev_pattern_rc, subj,
-                                          max.mismatch = rev_max_mm, fixed = "subject")
+      max.mismatch = rev_max_mm, fixed = "subject"
+    )
     if (length(rev_hits) == 0L) next
 
     fwd_start <- min(Biostrings::start(fwd_hits))
-    fwd_end   <- min(Biostrings::end(fwd_hits)[Biostrings::start(fwd_hits) == fwd_start])
+    fwd_end <- min(Biostrings::end(fwd_hits)[Biostrings::start(fwd_hits) == fwd_start])
 
     rev_starts <- Biostrings::start(rev_hits)
     downstream <- rev_starts[rev_starts > fwd_end]

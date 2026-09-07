@@ -19,9 +19,12 @@ test_that("taxalikely_clear_cache dry_run reports the matching files without del
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  f1 <- file.path(d, "Gadus_MiFishU_l130_210_d_meta.rds"); saveRDS(list(), f1)
-  f2 <- file.path(d, "coverage_genus_12S_dX_n412_s4714_l100_600_v2_ckpt.rds"); saveRDS(list(), f2)
-  f3 <- file.path(d, "not_a_cache_file.txt"); writeLines("y", f3)
+  f1 <- file.path(d, "Gadus_MiFishU_l130_210_d_meta.rds")
+  saveRDS(list(), f1)
+  f2 <- file.path(d, "coverage_genus_12S_dX_n412_s4714_l100_600_v2_ckpt.rds")
+  saveRDS(list(), f2)
+  f3 <- file.path(d, "not_a_cache_file.txt")
+  writeLines("y", f3)
 
   out <- taxalikely_clear_cache(cache_dir = d, dry_run = TRUE)
   expect_setequal(basename(out$path), c(basename(f1), basename(f2)))
@@ -34,8 +37,10 @@ test_that("taxalikely_clear_cache(dry_run = FALSE) actually deletes matching fil
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  f1 <- file.path(d, "Gadus_MiFishU_l130_210_d_meta.rds"); saveRDS(list(), f1)
-  f2 <- file.path(d, "coverage_genus_12S_dX_n412_s4714_l100_600_v2_ckpt.rds"); saveRDS(list(), f2)
+  f1 <- file.path(d, "Gadus_MiFishU_l130_210_d_meta.rds")
+  saveRDS(list(), f1)
+  f2 <- file.path(d, "coverage_genus_12S_dX_n412_s4714_l100_600_v2_ckpt.rds")
+  saveRDS(list(), f2)
 
   out <- taxalikely_clear_cache(cache_dir = d, dry_run = FALSE)
   expect_equal(nrow(out), 2L)
@@ -47,9 +52,11 @@ test_that("taxalikely_clear_cache(older_than_days=) only targets stale files", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  old_f <- file.path(d, "Old_taxon_12S_l100_600_d_meta.rds"); saveRDS(list(), old_f)
+  old_f <- file.path(d, "Old_taxon_12S_l100_600_d_meta.rds")
+  saveRDS(list(), old_f)
   Sys.setFileTime(old_f, Sys.time() - 200 * 86400)
-  new_f <- file.path(d, "New_taxon_12S_l100_600_d_meta.rds"); saveRDS(list(), new_f)
+  new_f <- file.path(d, "New_taxon_12S_l100_600_d_meta.rds")
+  saveRDS(list(), new_f)
 
   out <- taxalikely_clear_cache(cache_dir = d, older_than_days = 90, dry_run = FALSE)
   expect_equal(basename(out$path), basename(old_f))
@@ -72,7 +79,9 @@ test_that(".taxalikely_cache_patterns recognizes every real TaxaLikely cache fil
   inv <- TaxaTools::list_cache_files(d, TaxaLikely:::.taxalikely_cache_patterns)
   expect_setequal(
     basename(inv$path),
-    c("Gadus_MiFishU_l130_210_d_meta.rds",
-      "coverage_genus_12S_dX_n412_s4714_l100_600_v2_ckpt.rds")
+    c(
+      "Gadus_MiFishU_l130_210_d_meta.rds",
+      "coverage_genus_12S_dX_n412_s4714_l100_600_v2_ckpt.rds"
+    )
   )
 })

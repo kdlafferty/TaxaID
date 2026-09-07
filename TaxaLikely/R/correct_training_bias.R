@@ -221,62 +221,81 @@
 #'   n_observations = c(500000, 20, 300)
 #' )
 #' corrected <- correct_training_bias(scored, count_col = "n_observations")
-#' corrected[, c("taxon_name", "score_uncorrected", "score_original",
-#'               "n_used", "tau_used")]
+#' corrected[, c(
+#'   "taxon_name", "score_uncorrected", "score_original",
+#'   "n_used", "tau_used"
+#' )]
 #'
 #' @export
 correct_training_bias <- function(scored_df,
-                                   count_col,
-                                   score_col = "score_original",
-                                   tau       = 0) {
-
-  if (!is.data.frame(scored_df))
+                                  count_col,
+                                  score_col = "score_original",
+                                  tau = 0) {
+  if (!is.data.frame(scored_df)) {
     stop("correct_training_bias: 'scored_df' must be a data frame.", call. = FALSE)
-  if (!is.character(score_col) || length(score_col) != 1L || is.na(score_col))
+  }
+  if (!is.character(score_col) || length(score_col) != 1L || is.na(score_col)) {
     stop("correct_training_bias: 'score_col' must be a single character string.",
-         call. = FALSE)
-  if (!score_col %in% names(scored_df))
-    stop(sprintf("correct_training_bias: column '%s' not found in 'scored_df'.",
-                 score_col), call. = FALSE)
-  if (!is.numeric(scored_df[[score_col]]))
+      call. = FALSE
+    )
+  }
+  if (!score_col %in% names(scored_df)) {
+    stop(sprintf(
+      "correct_training_bias: column '%s' not found in 'scored_df'.",
+      score_col
+    ), call. = FALSE)
+  }
+  if (!is.numeric(scored_df[[score_col]])) {
     stop(sprintf("correct_training_bias: column '%s' must be numeric.", score_col),
-         call. = FALSE)
-  if (!is.character(count_col) || length(count_col) != 1L || is.na(count_col))
+      call. = FALSE
+    )
+  }
+  if (!is.character(count_col) || length(count_col) != 1L || is.na(count_col)) {
     stop("correct_training_bias: 'count_col' must be a single character string.",
-         call. = FALSE)
-  if (!is.numeric(tau) || length(tau) != 1L || is.na(tau) || tau < 0)
+      call. = FALSE
+    )
+  }
+  if (!is.numeric(tau) || length(tau) != 1L || is.na(tau) || tau < 0) {
     stop("correct_training_bias: 'tau' must be a single non-negative numeric value.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   score <- scored_df[[score_col]]
 
   if (!count_col %in% names(scored_df)) {
-    warning(sprintf(
-      "correct_training_bias: column '%s' not found in 'scored_df' -- ",
-      count_col),
+    warning(
+      sprintf(
+        "correct_training_bias: column '%s' not found in 'scored_df' -- ",
+        count_col
+      ),
       "no bias correction applied; every row falls through unchanged.",
-      call. = FALSE)
+      call. = FALSE
+    )
     n <- rep(NA_real_, nrow(scored_df))
   } else {
     n <- as.numeric(scored_df[[count_col]])
   }
 
-  if (any(n < 0, na.rm = TRUE))
-    stop(sprintf("correct_training_bias: '%s' contains negative values -- must be a non-negative count or NA.",
-                 count_col), call. = FALSE)
+  if (any(n < 0, na.rm = TRUE)) {
+    stop(sprintf(
+      "correct_training_bias: '%s' contains negative values -- must be a non-negative count or NA.",
+      count_col
+    ), call. = FALSE)
+  }
 
   # Rows with NA or non-positive counts fall through to the uncorrected
   # score (tau_used = 0 for that row only) -- see @details "Missing or zero
   # counts". n_for_power = 0 in this case too so 0^0 = 1 regardless (R's
   # power operator treats x^0 = 1 for any x, including NA).
-  .bad         <- is.na(n) | n <= 0
-  n_for_power  <- ifelse(.bad, 0, n)
-  tau_used     <- ifelse(.bad, 0, tau)
+  .bad <- is.na(n) | n <= 0
+  n_for_power <- ifelse(.bad, 0, n)
+  tau_used <- ifelse(.bad, 0, tau)
 
   scored_df$score_uncorrected <- score
-  scored_df[[score_col]]      <- score / (n_for_power ^ tau_used)
-  scored_df$n_used            <- n
-  scored_df$tau_used          <- tau_used
+  scored_df[[score_col]] <- score / (n_for_power^tau_used)
+  scored_df$n_used <- n
+  scored_df$tau_used <- tau_used
 
   scored_df
 }

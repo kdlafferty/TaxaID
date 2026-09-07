@@ -118,32 +118,41 @@ utils::globalVariables(c("hypothesis_type"))
 #' @importFrom dplyr bind_rows filter
 #' @export
 expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
-
   # ---- validate ---------------------------------------------------------------
-  if (!is.data.frame(likelihood_df))
+  if (!is.data.frame(likelihood_df)) {
     stop("likelihood_df must be a data frame")
-  needed_lik <- c("observation_id", "taxon_name", "taxon_name_rank",
-                  "hypothesis_type", "score_likelihood",
-                  "score_likelihood_mean", "score_likelihood_sd")
+  }
+  needed_lik <- c(
+    "observation_id", "taxon_name", "taxon_name_rank",
+    "hypothesis_type", "score_likelihood",
+    "score_likelihood_mean", "score_likelihood_sd"
+  )
   miss_lik <- setdiff(needed_lik, names(likelihood_df))
-  if (length(miss_lik) > 0L)
-    stop(sprintf("likelihood_df is missing required columns: %s",
-                 paste(miss_lik, collapse = ", ")))
+  if (length(miss_lik) > 0L) {
+    stop(sprintf(
+      "likelihood_df is missing required columns: %s",
+      paste(miss_lik, collapse = ", ")
+    ))
+  }
 
-  if (!is.data.frame(unreferenced_df))
+  if (!is.data.frame(unreferenced_df)) {
     stop("unreferenced_df must be a data frame")
+  }
   # Unreferenced species expansion is inherently genus/family-level:
   # species names are matched to genera, and family is used for family-level
   # unreferenced taxon insertion. These three columns are always required.
   needed_unref <- c("species", "genus", "family")
   miss_unref <- setdiff(needed_unref, tolower(names(unreferenced_df)))
-  if (length(miss_unref) > 0L)
+  if (length(miss_unref) > 0L) {
     stop(sprintf(
-      paste0("unreferenced_df is missing required columns: %s. These are needed because ",
-             "unreferenced species expansion matches species to genera and uses family for ",
-             "higher-rank insertion."),
+      paste0(
+        "unreferenced_df is missing required columns: %s. These are needed because ",
+        "unreferenced species expansion matches species to genera and uses family for ",
+        "higher-rank insertion."
+      ),
       paste(miss_unref, collapse = ", ")
     ))
+  }
 
   if (nrow(unreferenced_df) == 0L) {
     message(paste0(
@@ -157,8 +166,8 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   }
 
   # ---- normalise case for matching --------------------------------------------
-  unref           <- unreferenced_df
-  unref$genus_lc  <- tolower(trimws(unref$genus))
+  unref <- unreferenced_df
+  unref$genus_lc <- tolower(trimws(unref$genus))
   unref$family_lc <- tolower(trimws(unref$family))
   # Session 159: observation_id is optional. A row with NA (or an absent
   # column entirely) applies to every observation sharing its genus/family --
@@ -177,19 +186,19 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   h2_rows <- dplyr::filter(likelihood_df, hypothesis_type == "unreferenced_species")
   h3_rows <- dplyr::filter(likelihood_df, hypothesis_type == "unreferenced_genus")
 
-  observation_ids   <- unique(likelihood_df$observation_id)
+  observation_ids <- unique(likelihood_df$observation_id)
   n_h2_species <- 0L
   n_h3_species <- 0L
-  result_list  <- vector("list", length(observation_ids))
+  result_list <- vector("list", length(observation_ids))
 
-  n_h2_covered     <- 0L   # individual species suppressed at H2 (already H1 or genus-rank H1)
-  n_h2_obs_covered <- 0L   # H2 observations suppressed entirely (genus-rank H1, or all species already H1)
-  n_h3_covered     <- 0L   # individual species suppressed at H3
+  n_h2_covered <- 0L # individual species suppressed at H2 (already H1 or genus-rank H1)
+  n_h2_obs_covered <- 0L # H2 observations suppressed entirely (genus-rank H1, or all species already H1)
+  n_h3_covered <- 0L # individual species suppressed at H3
 
   for (i in seq_along(observation_ids)) {
     sid <- observation_ids[i]
-    h2  <- h2_rows[h2_rows$observation_id == sid, , drop = FALSE]
-    h3  <- h3_rows[h3_rows$observation_id == sid, , drop = FALSE]
+    h2 <- h2_rows[h2_rows$observation_id == sid, , drop = FALSE]
+    h3 <- h3_rows[h3_rows$observation_id == sid, , drop = FALSE]
 
     new_rows <- vector("list", 2L)
 
@@ -213,15 +222,19 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
 
       if (h2_genus_lc %in% h1_genus_rank_lc) {
         # Genus already covered by a genus-rank specific_candidate -- drop all.
-        genus_sp_all <- unref[unref$genus_lc == h2_genus_lc &
-                              (is.na(unref$observation_id) | unref$observation_id == sid),
-                              , drop = FALSE]
-        n_h2_covered     <- n_h2_covered     + max(nrow(genus_sp_all), 1L)
+        genus_sp_all <- unref[
+          unref$genus_lc == h2_genus_lc &
+            (is.na(unref$observation_id) | unref$observation_id == sid), ,
+          drop = FALSE
+        ]
+        n_h2_covered <- n_h2_covered + max(nrow(genus_sp_all), 1L)
         n_h2_obs_covered <- n_h2_obs_covered + 1L
       } else {
-        genus_sp <- unref[unref$genus_lc == h2_genus_lc &
-                          (is.na(unref$observation_id) | unref$observation_id == sid),
-                          , drop = FALSE]
+        genus_sp <- unref[
+          unref$genus_lc == h2_genus_lc &
+            (is.na(unref$observation_id) | unref$observation_id == sid), ,
+          drop = FALSE
+        ]
         if (nrow(genus_sp) > 0L) {
           # Species-level suppression: only drop species already H1 for this observation.
           already_h1 <- tolower(trimws(genus_sp$species)) %in% h1_species_lc
@@ -258,25 +271,25 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
     # ---- H3: unreferenced species in the best-match family, other genera ----
     if (nrow(h3) > 0L) {
       h3_family_lc <- tolower(trimws(h3$taxon_name[1L]))
-      h2_genus_lc  <- if (nrow(h2) > 0L) tolower(trimws(h2$taxon_name[1L])) else character(0L)
+      h2_genus_lc <- if (nrow(h2) > 0L) tolower(trimws(h2$taxon_name[1L])) else character(0L)
 
       # Exclude: H2 genus (handled above), species already H1, genera covered
       # by genus-rank H1 rows.
       family_sp <- unref[
         unref$family_lc == h3_family_lc &
-        !unref$genus_lc %in% h2_genus_lc &
-        !tolower(trimws(unref$species)) %in% h1_species_lc &
-        !unref$genus_lc %in% h1_genus_rank_lc &
-        (is.na(unref$observation_id) | unref$observation_id == sid),
-        , drop = FALSE
+          !unref$genus_lc %in% h2_genus_lc &
+          !tolower(trimws(unref$species)) %in% h1_species_lc &
+          !unref$genus_lc %in% h1_genus_rank_lc &
+          (is.na(unref$observation_id) | unref$observation_id == sid), ,
+        drop = FALSE
       ]
 
       n_h3_covered <- n_h3_covered + sum(
         unref$family_lc == h3_family_lc &
-        !unref$genus_lc %in% h2_genus_lc &
-        (tolower(trimws(unref$species)) %in% h1_species_lc |
-         unref$genus_lc %in% h1_genus_rank_lc) &
-        (is.na(unref$observation_id) | unref$observation_id == sid),
+          !unref$genus_lc %in% h2_genus_lc &
+          (tolower(trimws(unref$species)) %in% h1_species_lc |
+            unref$genus_lc %in% h1_genus_rank_lc) &
+          (is.na(unref$observation_id) | unref$observation_id == sid),
         na.rm = TRUE
       )
 
@@ -315,9 +328,11 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
     sum(vapply(result_list, .any_hyp_type, logical(1L), hyp_type = "unreferenced_genus"))
 
   message(sprintf(
-    paste0("expand_unreferenced_hypotheses: H2 -> %d named species rows ",
-           "(%d generic dropped; %d suppressed -- already H1 or genus-rank H1 covered); ",
-           "H3 -> %d named species rows (%d generic dropped; %d suppressed -- already H1 or genus-rank H1 covered)."),
+    paste0(
+      "expand_unreferenced_hypotheses: H2 -> %d named species rows ",
+      "(%d generic dropped; %d suppressed -- already H1 or genus-rank H1 covered); ",
+      "H3 -> %d named species rows (%d generic dropped; %d suppressed -- already H1 or genus-rank H1 covered)."
+    ),
     n_h2_species, n_h2_generic_dropped, n_h2_covered,
     n_h3_species, n_h3_generic_dropped, n_h3_covered
   ))

@@ -2,9 +2,11 @@
 # assign_scores()
 # ==============================================================================
 
-utils::globalVariables(c("score_norm", "score_softmax",
-                          "score_likelihood", "score_likelihood_mean",
-                          "score_likelihood_sd", "score_method"))
+utils::globalVariables(c(
+  "score_norm", "score_softmax",
+  "score_likelihood", "score_likelihood_mean",
+  "score_likelihood_sd", "score_method"
+))
 
 # Fixed likelihood weight for unreferenced_family rows.
 # Not fit from data -- a deliberately conservative, low-but-nonzero nominal
@@ -98,12 +100,12 @@ utils::globalVariables(c("score_norm", "score_softmax",
 #' \dontrun{
 #' # No-score pathway (morphology IDs)
 #' hyp_df <- unreferenced_candidates(match_df)
-#' liks   <- assign_scores(hyp_df, score_type = "none")
+#' liks <- assign_scores(hyp_df, score_type = "none")
 #' # head(liks[, c("observation_id", "taxon_name", "score_likelihood")])
 #'
 #' # Probability pathway (BirdNET multi-candidate)
 #' hyp_df <- unreferenced_candidates(match_df)
-#' liks   <- assign_scores(hyp_df, score_type = "probability")
+#' liks <- assign_scores(hyp_df, score_type = "probability")
 #' }
 #'
 #' @importFrom dplyr bind_rows
@@ -111,28 +113,35 @@ utils::globalVariables(c("score_norm", "score_softmax",
 #' @export
 assign_scores <- function(hypotheses_df,
                           score_type,
-                          score_col      = "score_original",
+                          score_col = "score_original",
                           score_sharpness = 0.1) {
-
   # ---- validate ---------------------------------------------------------------
-  if (!is.data.frame(hypotheses_df))
+  if (!is.data.frame(hypotheses_df)) {
     stop("`hypotheses_df` must be a data frame.", call. = FALSE)
+  }
   valid_types <- c("none", "direct", "probability", "similarity_softmax", "similarity")
   if (!is.character(score_type) || length(score_type) != 1L ||
-      !score_type %in% valid_types)
-    stop(sprintf("`score_type` must be one of: %s.",
-                 paste(valid_types, collapse = ", ")), call. = FALSE)
+    !score_type %in% valid_types) {
+    stop(sprintf(
+      "`score_type` must be one of: %s.",
+      paste(valid_types, collapse = ", ")
+    ), call. = FALSE)
+  }
   if (!is.numeric(score_sharpness) || length(score_sharpness) != 1L ||
-      is.na(score_sharpness) || score_sharpness <= 0)
+    is.na(score_sharpness) || score_sharpness <= 0) {
     stop("`score_sharpness` must be a single positive number.", call. = FALSE)
+  }
 
   names(hypotheses_df) <- tolower(names(hypotheses_df))
 
   required <- c("observation_id", "hypothesis_type")
   missing_cols <- setdiff(required, names(hypotheses_df))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("`hypotheses_df` is missing required column(s): %s",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "`hypotheses_df` is missing required column(s): %s",
+      paste(missing_cols, collapse = ", ")
+    ), call. = FALSE)
+  }
 
   # ---- "none" pathway ---------------------------------------------------------
   if (score_type == "none") {
@@ -142,17 +151,20 @@ assign_scores <- function(hypotheses_df,
       h1_scores <- hypotheses_df[[score_col]][
         hypotheses_df$hypothesis_type == "specific_candidate"
       ]
-      if (any(!is.na(h1_scores)))
+      if (any(!is.na(h1_scores))) {
         warning(sprintf(
-          paste0("assign_scores: score_type = 'none' but column '%s' contains non-NA values. ",
-                 "Scores will be ignored. If this is unintentional, change score_type."),
+          paste0(
+            "assign_scores: score_type = 'none' but column '%s' contains non-NA values. ",
+            "Scores will be ignored. If this is unintentional, change score_type."
+          ),
           score_col
         ), call. = FALSE)
+      }
     }
-    hypotheses_df$score_likelihood      <- 1.0
+    hypotheses_df$score_likelihood <- 1.0
     hypotheses_df$score_likelihood_mean <- 1.0
-    hypotheses_df$score_likelihood_sd   <- 0.0
-    hypotheses_df$score_method          <- "none"
+    hypotheses_df$score_likelihood_sd <- 0.0
+    hypotheses_df$score_method <- "none"
     return(hypotheses_df)
   }
 
@@ -162,21 +174,25 @@ assign_scores <- function(hypotheses_df,
   # Intended for use after restore_suppressed_candidates(), where original rows
   # carry their real scores and restored rows carry pre-imputed scores.
   if (score_type == "direct") {
-    if (!score_col %in% names(hypotheses_df))
+    if (!score_col %in% names(hypotheses_df)) {
       stop(sprintf("`score_col` '%s' not found in `hypotheses_df`.", score_col),
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
     sc <- hypotheses_df[[score_col]]
-    hypotheses_df$score_likelihood      <- ifelse(is.na(sc), 1.0, sc)
+    hypotheses_df$score_likelihood <- ifelse(is.na(sc), 1.0, sc)
     hypotheses_df$score_likelihood_mean <- hypotheses_df$score_likelihood
-    hypotheses_df$score_likelihood_sd   <- 0.0
-    hypotheses_df$score_method          <- "direct"
+    hypotheses_df$score_likelihood_sd <- 0.0
+    hypotheses_df$score_method <- "direct"
     return(hypotheses_df)
   }
 
   # ---- score column required for all other types -----------------------------
-  if (!score_col %in% names(hypotheses_df))
+  if (!score_col %in% names(hypotheses_df)) {
     stop(sprintf("`score_col` '%s' not found in `hypotheses_df`.", score_col),
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # ---- score column validations ----------------------------------------------
   is_h1 <- hypotheses_df$hypothesis_type == "specific_candidate"
@@ -202,40 +218,45 @@ assign_scores <- function(hypotheses_df,
   .unbounded_scale <- is.finite(.max_h1) && .max_h1 > 100
   if (.unbounded_scale && score_type %in% c("similarity", "similarity_softmax")) {
     message(sprintf(
-      paste0("assign_scores: max %s value (%.1f) exceeds 100 -- treating as an unbounded score ",
-             "scale and normalizing each observation against its own candidate range, not a ",
-             "fixed 0-100 divisor."),
+      paste0(
+        "assign_scores: max %s value (%.1f) exceeds 100 -- treating as an unbounded score ",
+        "scale and normalizing each observation against its own candidate range, not a ",
+        "fixed 0-100 divisor."
+      ),
       score_col, .max_h1
     ))
   }
 
   if (score_type %in% c("similarity", "similarity_softmax")) {
-    if (all(is.na(h1_scores)))
+    if (all(is.na(h1_scores))) {
       stop(sprintf(
         "score_type = '%s' but all `score_original` values for specific_candidate rows are NA.",
         score_type
       ), call. = FALSE)
+    }
     if (score_type == "similarity" && !all(is.na(h1_scores)) &&
-        max(h1_scores, na.rm = TRUE) <= 1)
+      max(h1_scores, na.rm = TRUE) <= 1) {
       message(
         "assign_scores: score_type = 'similarity' and all scores appear to be on the 0-1 ",
         "scale. .normalize_scores() will treat max value as 1.0. ",
         "If scores are percent identity (0-100), this may affect normalization."
       )
+    }
   }
 
   if (score_type == "probability") {
-    if (any(h1_scores > 1, na.rm = TRUE))
+    if (any(h1_scores > 1, na.rm = TRUE)) {
       warning(
         "assign_scores: score_type = 'probability' but some scores > 1. ",
         "Probability scores should be in [0, 1]. Check scale.",
         call. = FALSE
       )
+    }
   }
 
   # ---- "similarity" pathway: add score_norm only, no score_likelihood --------
   if (score_type == "similarity") {
-    hypotheses_df$score_norm   <- NA_real_
+    hypotheses_df$score_norm <- NA_real_
     hypotheses_df$score_norm[is_h1] <- .normalize_scores(
       h1_scores,
       bounds = if (.unbounded_scale) range(h1_scores, na.rm = TRUE) else NULL
@@ -249,10 +270,10 @@ assign_scores <- function(hypotheses_df,
   result_list <- vector("list", length(obs_ids))
 
   for (oi in seq_along(obs_ids)) {
-    sid      <- obs_ids[oi]
+    sid <- obs_ids[oi]
     obs_rows <- hypotheses_df[
       !is.na(hypotheses_df$observation_id) &
-      hypotheses_df$observation_id == sid, ,
+        hypotheses_df$observation_id == sid, ,
       drop = FALSE
     ]
 
@@ -278,10 +299,10 @@ assign_scores <- function(hypotheses_df,
       # No H1 -- pass through unchanged (will have NA score_likelihood).
       # sd is NA here too, not 0: 0 would claim "a known point estimate with
       # zero uncertainty," but there is no estimate at all in this branch.
-      obs_rows$score_likelihood      <- NA_real_
+      obs_rows$score_likelihood <- NA_real_
       obs_rows$score_likelihood_mean <- NA_real_
-      obs_rows$score_likelihood_sd   <- NA_real_
-      obs_rows$score_method          <- score_type
+      obs_rows$score_likelihood_sd <- NA_real_
+      obs_rows$score_method <- score_type
       result_list[[oi]] <- obs_rows
       next
     }
@@ -295,7 +316,7 @@ assign_scores <- function(hypotheses_df,
       # all-NA aggregate row AND silently dropped that row's real score from
       # every aggregate (`NA == "Sp A"` is NA, so the row joins no group).
       tx_rows <- h1_rows[h1_rows$taxon_name %in% taxa[ti], , drop = FALSE]
-      agg_row  <- tx_rows[1L, , drop = FALSE]
+      agg_row <- tx_rows[1L, , drop = FALSE]
       agg_row[[score_col]] <- stats::median(tx_rows[[score_col]], na.rm = TRUE)
       h1_agg_list[[ti]] <- agg_row
     }
@@ -308,90 +329,91 @@ assign_scores <- function(hypotheses_df,
       max_sc <- max(sc, na.rm = TRUE)
       if (is.na(max_sc) || max_sc == 0) max_sc <- 1
       h1_agg$score_likelihood <- sc / max_sc
-
-    } else {  # "similarity_softmax"
-      sc_norm    <- .normalize_scores(
+    } else { # "similarity_softmax"
+      sc_norm <- .normalize_scores(
         sc,
         bounds = if (.unbounded_scale) range(sc, na.rm = TRUE) else NULL
       )
       sc_softmax <- exp(score_sharpness * sc_norm)
-      max_ss     <- max(sc_softmax, na.rm = TRUE)
+      max_ss <- max(sc_softmax, na.rm = TRUE)
       if (is.na(max_ss) || max_ss == 0) max_ss <- 1
-      h1_agg$score_norm    <- sc_norm
+      h1_agg$score_norm <- sc_norm
       h1_agg$score_softmax <- sc_softmax
       h1_agg$score_likelihood <- sc_softmax / max_ss
     }
 
     h1_agg$score_likelihood_mean <- h1_agg$score_likelihood
-    h1_agg$score_likelihood_sd   <- 0.0
-    h1_agg$score_method          <- score_type
+    h1_agg$score_likelihood_sd <- 0.0
+    h1_agg$score_method <- score_type
 
-    h1_lik_vec  <- h1_agg$score_likelihood
-    genus_col   <- if ("genus"  %in% names(h1_agg)) "genus"  else NULL
-    family_col  <- if ("family" %in% names(h1_agg)) "family" else NULL
+    h1_lik_vec <- h1_agg$score_likelihood
+    genus_col <- if ("genus" %in% names(h1_agg)) "genus" else NULL
+    family_col <- if ("family" %in% names(h1_agg)) "family" else NULL
 
     # ---- H2: median of congener (same genus) H1 likelihoods -------------------
     if (nrow(h2_rows) > 0L) {
-      h2_rows$score_likelihood      <- NA_real_
+      h2_rows$score_likelihood <- NA_real_
       h2_rows$score_likelihood_mean <- NA_real_
-      h2_rows$score_likelihood_sd   <- 0.0
-      h2_rows$score_method          <- score_type
+      h2_rows$score_likelihood_sd <- 0.0
+      h2_rows$score_method <- score_type
       for (ri in seq_len(nrow(h2_rows))) {
         h2_genus <- if (!is.null(genus_col)) h2_rows[[genus_col]][ri] else NA_character_
         if (!is.na(h2_genus) && !is.null(genus_col)) {
           congener_idx <- !is.na(h1_agg[[genus_col]]) &
             tolower(h1_agg[[genus_col]]) == tolower(h2_genus)
-          anchor <- if (any(congener_idx))
+          anchor <- if (any(congener_idx)) {
             stats::median(h1_lik_vec[congener_idx], na.rm = TRUE)
-          else
+          } else {
             stats::median(h1_lik_vec, na.rm = TRUE)
+          }
         } else {
           anchor <- stats::median(h1_lik_vec, na.rm = TRUE)
         }
-        h2_rows$score_likelihood[ri]      <- anchor
+        h2_rows$score_likelihood[ri] <- anchor
         h2_rows$score_likelihood_mean[ri] <- anchor
       }
       if (score_type == "similarity_softmax") {
-        h2_rows$score_norm    <- NA_real_
+        h2_rows$score_norm <- NA_real_
         h2_rows$score_softmax <- NA_real_
       }
     }
 
     # ---- H3: median of same-family H1 likelihoods ----------------------------
     if (nrow(h3_rows) > 0L) {
-      h3_rows$score_likelihood      <- NA_real_
+      h3_rows$score_likelihood <- NA_real_
       h3_rows$score_likelihood_mean <- NA_real_
-      h3_rows$score_likelihood_sd   <- 0.0
-      h3_rows$score_method          <- score_type
+      h3_rows$score_likelihood_sd <- 0.0
+      h3_rows$score_method <- score_type
       for (ri in seq_len(nrow(h3_rows))) {
         h3_family <- if (!is.null(family_col)) h3_rows[[family_col]][ri] else NA_character_
         if (!is.na(h3_family) && !is.null(family_col)) {
           fam_idx <- !is.na(h1_agg[[family_col]]) &
             tolower(h1_agg[[family_col]]) == tolower(h3_family)
-          anchor <- if (any(fam_idx))
+          anchor <- if (any(fam_idx)) {
             stats::median(h1_lik_vec[fam_idx], na.rm = TRUE)
-          else
+          } else {
             stats::median(h1_lik_vec, na.rm = TRUE)
+          }
         } else {
           anchor <- stats::median(h1_lik_vec, na.rm = TRUE)
         }
-        h3_rows$score_likelihood[ri]      <- anchor
+        h3_rows$score_likelihood[ri] <- anchor
         h3_rows$score_likelihood_mean[ri] <- anchor
       }
       if (score_type == "similarity_softmax") {
-        h3_rows$score_norm    <- NA_real_
+        h3_rows$score_norm <- NA_real_
         h3_rows$score_softmax <- NA_real_
       }
     }
 
     # ---- H4: fixed small weight (unreferenced_family) ------------------------
     if (nrow(h4_rows) > 0L) {
-      h4_rows$score_likelihood      <- .unreferenced_family_weight
+      h4_rows$score_likelihood <- .unreferenced_family_weight
       h4_rows$score_likelihood_mean <- .unreferenced_family_weight
-      h4_rows$score_likelihood_sd   <- 0.0
-      h4_rows$score_method          <- score_type
+      h4_rows$score_likelihood_sd <- 0.0
+      h4_rows$score_method <- score_type
       if (score_type == "similarity_softmax") {
-        h4_rows$score_norm    <- NA_real_
+        h4_rows$score_norm <- NA_real_
         h4_rows$score_softmax <- NA_real_
       }
     }

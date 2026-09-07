@@ -10,16 +10,18 @@
 # order | family | genus | species | sequence
 
 make_crabs_row <- function(acc,
-                           kingdom  = "Eukaryota",
-                           phylum   = "Chordata",
-                           class    = "Actinopteri",
-                           order    = "Cyprinodontiformes",
-                           family   = "Fundulidae",
-                           genus    = "Fundulus",
-                           species  = "Fundulus heteroclitus",
-                           seq      = "ATCGATCGATCGATCG") {
-  paste(c(acc, "12345", "9999", kingdom, phylum, class, order,
-          family, genus, species, seq), collapse = "\t")
+                           kingdom = "Eukaryota",
+                           phylum = "Chordata",
+                           class = "Actinopteri",
+                           order = "Cyprinodontiformes",
+                           family = "Fundulidae",
+                           genus = "Fundulus",
+                           species = "Fundulus heteroclitus",
+                           seq = "ATCGATCGATCGATCG") {
+  paste(c(
+    acc, "12345", "9999", kingdom, phylum, class, order,
+    family, genus, species, seq
+  ), collapse = "\t")
 }
 
 make_crabs_file <- function(...) {
@@ -35,8 +37,10 @@ make_crabs_file <- function(...) {
 test_that("read_crabs_output: basic reading and column structure", {
   f <- make_crabs_file(
     make_crabs_row("ACC001.1"),
-    make_crabs_row("ACC002.1", species = "Fundulus parvipinnis",
-                   seq = "GCTAGCTAGCTAGCTA")
+    make_crabs_row("ACC002.1",
+      species = "Fundulus parvipinnis",
+      seq = "GCTAGCTAGCTAGCTA"
+    )
   )
   ref <- read_crabs_output(f, rank_system = c("family", "genus", "species"))
   expect_s3_class(ref, "data.frame")
@@ -55,18 +59,24 @@ test_that("read_crabs_output: auto-detect rank_system includes populated columns
   expect_message(ref <- read_crabs_output(f), "Auto-detected rank_system")
   expect_true(all(c("family", "genus", "species") %in% names(ref)))
   # All 7 CRABS tax ranks should be present (all populated in our test row)
-  expect_true(all(c("kingdom", "phylum", "class", "order",
-                    "family", "genus", "species") %in% names(ref)))
+  expect_true(all(c(
+    "kingdom", "phylum", "class", "order",
+    "family", "genus", "species"
+  ) %in% names(ref)))
 })
 
 test_that("read_crabs_output: literal 'NA' converted to NA", {
   # Species column contains literal string "NA"
-  row1 <- paste(c("ACC001", "12345", "9999", "Eukaryota", "Chordata",
-                   "Actinopteri", "Cyprinodontiformes", "Fundulidae",
-                   "Fundulus", "NA", "ATCG"), collapse = "\t")
+  row1 <- paste(c(
+    "ACC001", "12345", "9999", "Eukaryota", "Chordata",
+    "Actinopteri", "Cyprinodontiformes", "Fundulidae",
+    "Fundulus", "NA", "ATCG"
+  ), collapse = "\t")
   f <- make_crabs_file(row1)
-  ref <- read_crabs_output(f, rank_system = c("family", "genus", "species"),
-                            require_species = FALSE)
+  ref <- read_crabs_output(f,
+    rank_system = c("family", "genus", "species"),
+    require_species = FALSE
+  )
   expect_true(is.na(ref$species[1L]))
 })
 
@@ -76,8 +86,10 @@ test_that("read_crabs_output: require_species drops sp. and NA species", {
     make_crabs_row("ACC002", species = "Fundulus sp."),
     make_crabs_row("ACC003", species = "cf. Fundulus heteroclitus")
   )
-  ref <- read_crabs_output(f, rank_system = c("family", "genus", "species"),
-                            require_species = TRUE)
+  ref <- read_crabs_output(f,
+    rank_system = c("family", "genus", "species"),
+    require_species = TRUE
+  )
   expect_equal(nrow(ref), 1L)
   expect_equal(ref$composite_id, "ACC001")
 })
@@ -87,19 +99,25 @@ test_that("read_crabs_output: require_species = FALSE retains invalid names", {
     make_crabs_row("ACC001", species = "Fundulus sp."),
     make_crabs_row("ACC002", species = "Fundulus heteroclitus")
   )
-  ref <- read_crabs_output(f, rank_system = c("genus", "species"),
-                            require_species = FALSE)
+  ref <- read_crabs_output(f,
+    rank_system = c("genus", "species"),
+    require_species = FALSE
+  )
   expect_equal(nrow(ref), 2L)
 })
 
 test_that("read_crabs_output: max_n_bases drops long sequences", {
   f <- make_crabs_file(
-    make_crabs_row("ACC001", seq = "ATCG"),                       # 4 bp
-    make_crabs_row("ACC002", species = "Fundulus parvipinnis",
-                   seq = paste(rep("A", 300L), collapse = ""))    # 300 bp
+    make_crabs_row("ACC001", seq = "ATCG"), # 4 bp
+    make_crabs_row("ACC002",
+      species = "Fundulus parvipinnis",
+      seq = paste(rep("A", 300L), collapse = "")
+    ) # 300 bp
   )
-  ref <- read_crabs_output(f, rank_system = c("genus", "species"),
-                            max_n_bases = 100L)
+  ref <- read_crabs_output(f,
+    rank_system = c("genus", "species"),
+    max_n_bases = 100L
+  )
   expect_equal(nrow(ref), 1L)
   expect_equal(ref$composite_id, "ACC001")
 })
@@ -108,20 +126,26 @@ test_that("read_crabs_output: max_n_bases = NULL retains all lengths", {
   f <- make_crabs_file(
     make_crabs_row("ACC001", seq = paste(rep("A", 500L), collapse = ""))
   )
-  ref <- read_crabs_output(f, rank_system = c("genus", "species"),
-                            max_n_bases = NULL)
+  ref <- read_crabs_output(f,
+    rank_system = c("genus", "species"),
+    max_n_bases = NULL
+  )
   expect_equal(nrow(ref), 1L)
 })
 
 test_that("read_crabs_output: dereplicate removes same-species exact duplicates", {
   f <- make_crabs_file(
-    make_crabs_row("ACC001", seq = "ATCGATCG"),              # same species, same seq
-    make_crabs_row("ACC002", seq = "ATCGATCG"),              # duplicate -> dropped
-    make_crabs_row("ACC003", species = "Fundulus parvipinnis",
-                   seq = "ATCGATCG")                         # different species -> kept
+    make_crabs_row("ACC001", seq = "ATCGATCG"), # same species, same seq
+    make_crabs_row("ACC002", seq = "ATCGATCG"), # duplicate -> dropped
+    make_crabs_row("ACC003",
+      species = "Fundulus parvipinnis",
+      seq = "ATCGATCG"
+    ) # different species -> kept
   )
-  ref <- read_crabs_output(f, rank_system = c("genus", "species"),
-                            dereplicate = TRUE)
+  ref <- read_crabs_output(f,
+    rank_system = c("genus", "species"),
+    dereplicate = TRUE
+  )
   expect_equal(nrow(ref), 2L)
   expect_true("ACC001" %in% ref$composite_id)
   expect_true("ACC003" %in% ref$composite_id)
@@ -133,18 +157,22 @@ test_that("read_crabs_output: dereplicate = FALSE keeps all rows", {
     make_crabs_row("ACC001", seq = "ATCGATCG"),
     make_crabs_row("ACC002", seq = "ATCGATCG")
   )
-  ref <- read_crabs_output(f, rank_system = c("genus", "species"),
-                            dereplicate = FALSE)
+  ref <- read_crabs_output(f,
+    rank_system = c("genus", "species"),
+    dereplicate = FALSE
+  )
   expect_equal(nrow(ref), 2L)
 })
 
 test_that("read_crabs_output: dereplicate keeps same sequence in different species", {
   f <- make_crabs_file(
     make_crabs_row("ACC001", species = "Fundulus heteroclitus", seq = "AAAA"),
-    make_crabs_row("ACC002", species = "Fundulus parvipinnis",  seq = "AAAA")
+    make_crabs_row("ACC002", species = "Fundulus parvipinnis", seq = "AAAA")
   )
-  ref <- read_crabs_output(f, rank_system = c("genus", "species"),
-                            dereplicate = TRUE)
+  ref <- read_crabs_output(f,
+    rank_system = c("genus", "species"),
+    dereplicate = TRUE
+  )
   expect_equal(nrow(ref), 2L)
 })
 
@@ -161,8 +189,10 @@ test_that("read_crabs_output: empty file (0 bytes) stops", {
 
 test_that("read_crabs_output: invalid rank_system errors with informative message", {
   f <- make_crabs_file(make_crabs_row("ACC001"))
-  expect_error(read_crabs_output(f, rank_system = c("family", "superfamily")),
-               "ranks not in CRABS format")
+  expect_error(
+    read_crabs_output(f, rank_system = c("family", "superfamily")),
+    "ranks not in CRABS format"
+  )
 })
 
 test_that("read_crabs_output: explicit rank_system subset selects correct columns", {
@@ -178,8 +208,10 @@ test_that("read_crabs_output: all rows filtered returns empty df with warning", 
     make_crabs_row("ACC002", species = "uncultured organism")
   )
   expect_warning(
-    ref <- read_crabs_output(f, rank_system = c("genus", "species"),
-                              require_species = TRUE),
+    ref <- read_crabs_output(f,
+      rank_system = c("genus", "species"),
+      require_species = TRUE
+    ),
     "No sequences remained"
   )
   expect_equal(nrow(ref), 0L)
@@ -215,52 +247,59 @@ make_tax_tsv <- function(rows) {
 
 test_that("read_reference_fasta: taxonomy_file (prefix-style) is parsed correctly", {
   fasta <- make_fasta_file(c(">ACC001", "ATCGATCG"))
-  tsv   <- make_tax_tsv(
+  tsv <- make_tax_tsv(
     "ACC001\tk__Eukaryota;p__Chordata;c__Actinopteri;o__Cyprinodontiformes;f__Fundulidae;g__Fundulus;s__Fundulus heteroclitus"
   )
   ref <- read_reference_fasta(fasta,
-                              rank_system   = c("family", "genus", "species"),
-                              taxonomy_file = tsv)
+    rank_system   = c("family", "genus", "species"),
+    taxonomy_file = tsv
+  )
   expect_equal(nrow(ref), 1L)
-  expect_equal(ref$family,  "Fundulidae")
-  expect_equal(ref$genus,   "Fundulus")
+  expect_equal(ref$family, "Fundulidae")
+  expect_equal(ref$genus, "Fundulus")
   expect_equal(ref$species, "Fundulus heteroclitus")
 })
 
 test_that("read_reference_fasta: taxonomy_file (positional, no prefix) is parsed", {
   fasta <- make_fasta_file(c(">ACC001", "GCTAGCTA"))
-  tsv   <- make_tax_tsv(
+  tsv <- make_tax_tsv(
     "ACC001\tEukaryota;Chordata;Actinopteri;Cyprinodontiformes;Fundulidae;Fundulus;Fundulus heteroclitus"
   )
   ref <- read_reference_fasta(fasta,
-                              rank_system   = c("family", "genus", "species"),
-                              taxonomy_file = tsv)
+    rank_system   = c("family", "genus", "species"),
+    taxonomy_file = tsv
+  )
   expect_equal(nrow(ref), 1L)
   expect_equal(ref$family, "Fundulidae")
 })
 
 test_that("read_reference_fasta: taxonomy_file with QIIME2 header row skipped", {
   fasta <- make_fasta_file(c(">ACC001", "ATCG"))
-  tsv   <- make_tax_tsv(c(
+  tsv <- make_tax_tsv(c(
     "Feature ID\tTaxon",
     "ACC001\tf__Fundulidae;g__Fundulus;s__Fundulus heteroclitus"
   ))
   ref <- read_reference_fasta(fasta,
-                              rank_system   = c("family", "genus", "species"),
-                              taxonomy_file = tsv)
+    rank_system   = c("family", "genus", "species"),
+    taxonomy_file = tsv
+  )
   expect_equal(nrow(ref), 1L)
   expect_equal(ref$family, "Fundulidae")
 })
 
 test_that("read_reference_fasta: both taxonomy and taxonomy_file stops", {
   fasta <- make_fasta_file(c(">ACC001", "ATCG"))
-  tsv   <- make_tax_tsv("ACC001\tf__Fundulidae;g__Fundulus;s__Fundulus sp.")
-  tax   <- data.frame(composite_id = "ACC001", family = "Fundulidae",
-                      genus = "Fundulus", species = "Fundulus sp.",
-                      stringsAsFactors = FALSE)
+  tsv <- make_tax_tsv("ACC001\tf__Fundulidae;g__Fundulus;s__Fundulus sp.")
+  tax <- data.frame(
+    composite_id = "ACC001", family = "Fundulidae",
+    genus = "Fundulus", species = "Fundulus sp.",
+    stringsAsFactors = FALSE
+  )
   expect_error(
-    read_reference_fasta(fasta, taxonomy = tax, rank_system = c("family"),
-                         taxonomy_file = tsv),
+    read_reference_fasta(fasta,
+      taxonomy = tax, rank_system = c("family"),
+      taxonomy_file = tsv
+    ),
     "not both"
   )
 })
@@ -275,11 +314,15 @@ test_that("read_reference_fasta: neither taxonomy nor taxonomy_file stops", {
 
 test_that("read_reference_fasta: existing data frame path still works", {
   fasta <- make_fasta_file(c(">ACC001", "ATCG"))
-  tax   <- data.frame(composite_id = "ACC001", family = "Fundulidae",
-                      genus = "Fundulus", species = "Fundulus heteroclitus",
-                      stringsAsFactors = FALSE)
-  ref <- read_reference_fasta(fasta, taxonomy = tax,
-                              rank_system = c("family", "genus", "species"))
+  tax <- data.frame(
+    composite_id = "ACC001", family = "Fundulidae",
+    genus = "Fundulus", species = "Fundulus heteroclitus",
+    stringsAsFactors = FALSE
+  )
+  ref <- read_reference_fasta(fasta,
+    taxonomy = tax,
+    rank_system = c("family", "genus", "species")
+  )
   expect_equal(nrow(ref), 1L)
   expect_equal(ref$family, "Fundulidae")
 })

@@ -41,9 +41,11 @@ test_that("report_likelihood returns valid report_section", {
 })
 
 test_that("report_likelihood extracts correct statistics", {
-  sec <- report_likelihood(.mock_model(n_species = 40, aic = 150.3,
-                                        n_singletons = 7, n_anchors = 15,
-                                        n_errors = 3))
+  sec <- report_likelihood(.mock_model(
+    n_species = 40, aic = 150.3,
+    n_singletons = 7, n_anchors = 15,
+    n_errors = 3
+  ))
   expect_equal(sec$statistics$n_species, 47L)
   expect_equal(sec$statistics$n_singletons, 7L)
   expect_equal(sec$statistics$n_anchors, 15L)

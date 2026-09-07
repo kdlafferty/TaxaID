@@ -53,14 +53,14 @@ library(dplyr)
 
 # ---- 1a. Load consensus assignments ------------------------------------------
 # One row per observation; no score column required.
-consensus_df <- readRDS(file.choose())   # select your consensus .rds or .csv
+consensus_df <- readRDS(file.choose()) # select your consensus .rds or .csv
 
 # If loading from CSV:
 # consensus_df <- read.csv("my_morphology_ids.csv")
 
 # If input is posterior_consensus() output, rename columns to match interface:
 if ("consensus_taxon" %in% names(consensus_df) && !"taxon_name" %in% names(consensus_df)) {
-  consensus_df$taxon_name      <- consensus_df$consensus_taxon
+  consensus_df$taxon_name <- consensus_df$consensus_taxon
   consensus_df$taxon_name_rank <- consensus_df$consensus_rank
 }
 
@@ -78,7 +78,7 @@ print(table(consensus_df$taxon_name_rank, useNA = "ifany"))
 
 if (!all(c("family", "genus", "species") %in% names(consensus_df))) {
   message("Joining taxonomy columns from match_df (family, genus, species not found in consensus_df)")
-  match_df <- readRDS(file.choose())   # select the match_obj.rds used to generate the consensus
+  match_df <- readRDS(file.choose()) # select the match_obj.rds used to generate the consensus
 
   # Normalize legacy column names if needed (pre-Session 79/99 files)
   if (!"observation_id" %in% names(match_df)) {
@@ -93,9 +93,12 @@ if (!all(c("family", "genus", "species") %in% names(consensus_df))) {
     dplyr::left_join(tax_cols, by = "taxon_name")
 
   n_missing <- sum(is.na(consensus_df$family))
-  if (n_missing > 0L)
-    warning(n_missing, " observation(s) could not be matched to taxonomy in match_df. ",
-            "These will produce only 1 hypothesis row (no H2/H3).")
+  if (n_missing > 0L) {
+    warning(
+      n_missing, " observation(s) could not be matched to taxonomy in match_df. ",
+      "These will produce only 1 hypothesis row (no H2/H3)."
+    )
+  }
 }
 
 # ---- 2. Add H2/H3 placeholder rows -------------------------------------------
@@ -109,8 +112,8 @@ if (!all(c("family", "genus", "species") %in% names(consensus_df))) {
 # LLM shortcut pathway) to add an additional catch-all row.
 
 hyp_df <- unreferenced_candidates(
-  match_df    = consensus_df,
-  rank_system = c("family", "genus", "species"),   # adjust to match your data
+  match_df = consensus_df,
+  rank_system = c("family", "genus", "species"), # adjust to match your data
   include_unreferenced_family = FALSE
 )
 

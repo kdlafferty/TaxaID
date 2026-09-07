@@ -1,23 +1,31 @@
 # Reuse helper from test-evaluate.R (or redefine minimally here)
 .make_model_params_interp <- function() {
-  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0), nrow = 2L,
-                  dimnames = list(c("score_logit","gap_logit"),
-                                  c("score_logit","gap_logit")))
-  h2s <- diag(2); rownames(h2s) <- colnames(h2s) <- c("score_logit","gap_logit")
-  h3s <- diag(2); rownames(h3s) <- colnames(h3s) <- c("score_logit","gap_logit")
+  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0),
+    nrow = 2L,
+    dimnames = list(
+      c("score_logit", "gap_logit"),
+      c("score_logit", "gap_logit")
+    )
+  )
+  h2s <- diag(2)
+  rownames(h2s) <- colnames(h2s) <- c("score_logit", "gap_logit")
+  h3s <- diag(2)
+  rownames(h3s) <- colnames(h3s) <- c("score_logit", "gap_logit")
   structure(
     list(
-      H1_Lookup    = data.frame(lookup_key  = c("Hybognathus nuchalis", "Rhinichthys obtusus"),
-                                rank        = "species",
-                                mu_score    = c(4.5, 3.8),
-                                mu_gap      = c(2.0, 0.05),
-                                sigma_score = c(2.0, 1.5),
-                                stringsAsFactors = FALSE),
+      H1_Lookup = data.frame(
+        lookup_key = c("Hybognathus nuchalis", "Rhinichthys obtusus"),
+        rank = "species",
+        mu_score = c(4.5, 3.8),
+        mu_gap = c(2.0, 0.05),
+        sigma_score = c(2.0, 1.5),
+        stringsAsFactors = FALSE
+      ),
       H1_Global_Mu = c(score_logit = 3.5, gap_logit = 1.5),
-      H1_Sigma     = sigma,
-      H2           = list(delta = 3.0, sigma = h2s),
-      H3           = list(delta = 5.0, sigma = h3s),
-      Stats        = list(n_species = 2L, n_singletons = 0L)
+      H1_Sigma = sigma,
+      H2 = list(delta = 3.0, sigma = h2s),
+      H3 = list(delta = 5.0, sigma = h3s),
+      Stats = list(n_species = 2L, n_singletons = 0L)
     ),
     class = "taxa_model_params"
   )
@@ -26,8 +34,10 @@
 test_that("interpret_model: returns list with required elements", {
   out <- interpret_model(.make_model_params_interp(), print_report = FALSE)
   expect_type(out, "list")
-  expect_true(all(c("hypothesis_baselines", "global_h1", "hierarchy",
-                     "species_thresholds", "raw_sigma") %in% names(out)))
+  expect_true(all(c(
+    "hypothesis_baselines", "global_h1", "hierarchy",
+    "species_thresholds", "raw_sigma"
+  ) %in% names(out)))
 })
 
 test_that("interpret_model: hypothesis_baselines has 3 rows", {
@@ -54,7 +64,7 @@ test_that("interpret_model: low gap species flagged as INDISTINGUISHABLE", {
 
 test_that("interpret_model: raw_sigma matches input", {
   params <- .make_model_params_interp()
-  out    <- interpret_model(params, print_report = FALSE)
+  out <- interpret_model(params, print_report = FALSE)
   expect_equal(out$raw_sigma, params$H1_Sigma)
 })
 
@@ -83,13 +93,13 @@ test_that("interpret_model: honours Score_Transform instead of assuming logit", 
   # sqrt_mismatch scale: -sqrt(1 - p). p = 0.99 -> -0.1
   mp$H1_Global_Mu <- c(score_logit = -0.1, gap_logit = 0.05)
   mp$H1_Lookup$mu_score <- c(-0.1, -0.2)
-  mp$H1_Lookup$mu_gap   <- c(0.30, 0.01)
+  mp$H1_Lookup$mu_gap <- c(0.30, 0.01)
   mp$H2$delta <- 3.0 * TaxaLikely:::.transform_unit_ratio("sqrt_mismatch")
   mp$H3$delta <- 5.0 * TaxaLikely:::.transform_unit_ratio("sqrt_mismatch")
 
   out <- interpret_model(mp, print_report = FALSE)
   h1 <- out$hypothesis_baselines[out$hypothesis_baselines$hypothesis ==
-                                   "H1: known species", ]
+    "H1: known species", ]
   expect_equal(h1$expected_match_pct, 99, tolerance = 1e-6)
 
   # Percentages must stay in [0, 100]: sqrt_mismatch's inverse (1 - x^2) is
@@ -101,13 +111,15 @@ test_that("interpret_model: honours Score_Transform instead of assuming logit", 
   # "INDISTINGUISHABLE".
   st <- out$species_thresholds
   expect_identical(st$status[st$lookup_key == "Hybognathus nuchalis"], "distinct")
-  expect_identical(st$status[st$lookup_key == "Rhinichthys obtusus"],
-                   "INDISTINGUISHABLE")
+  expect_identical(
+    st$status[st$lookup_key == "Rhinichthys obtusus"],
+    "INDISTINGUISHABLE"
+  )
 })
 
 test_that("interpret_model: a logit model is unchanged by the transform dispatch", {
   out <- interpret_model(.make_model_params_interp(), print_report = FALSE)
   h1 <- out$hypothesis_baselines[out$hypothesis_baselines$hypothesis ==
-                                   "H1: known species", ]
+    "H1: known species", ]
   expect_equal(h1$expected_match_pct, round(stats::plogis(3.5) * 100, 2))
 })

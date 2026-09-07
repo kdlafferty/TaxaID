@@ -50,30 +50,44 @@ utils::globalVariables(c(
 #' @importFrom dplyr filter mutate group_by summarise pull slice_max ungroup n
 #' @export
 identify_confident_observations <- function(match_df,
-                                             priors,
-                                             plausibility_threshold = 1e-3) {
-  if (!is.data.frame(match_df))
+                                            priors,
+                                            plausibility_threshold = 1e-3) {
+  if (!is.data.frame(match_df)) {
     stop("identify_confident_observations: 'match_df' must be a data frame.", call. = FALSE)
-  if (!is.data.frame(priors))
+  }
+  if (!is.data.frame(priors)) {
     stop("identify_confident_observations: 'priors' must be a data frame.", call. = FALSE)
+  }
 
   needed_match <- c("observation_id", "genus")
   missing_match <- setdiff(needed_match, names(match_df))
-  if (length(missing_match) > 0L)
-    stop(sprintf("identify_confident_observations: 'match_df' is missing column(s): %s",
-                 paste(missing_match, collapse = ", ")), call. = FALSE)
+  if (length(missing_match) > 0L) {
+    stop(sprintf(
+      "identify_confident_observations: 'match_df' is missing column(s): %s",
+      paste(missing_match, collapse = ", ")
+    ), call. = FALSE)
+  }
 
   needed_priors <- c("taxon_name", "taxon_name_rank", "theta_mean")
   missing_priors <- setdiff(needed_priors, names(priors))
-  if (length(missing_priors) > 0L)
-    stop(sprintf("identify_confident_observations: 'priors' is missing column(s): %s",
-                 paste(missing_priors, collapse = ", ")), call. = FALSE)
+  if (length(missing_priors) > 0L) {
+    stop(sprintf(
+      "identify_confident_observations: 'priors' is missing column(s): %s",
+      paste(missing_priors, collapse = ", ")
+    ), call. = FALSE)
+  }
 
-  score_col <- if ("score_original" %in% names(match_df)) "score_original" else
-    if ("score"    %in% names(match_df)) "score" else
-    if ("p_match"  %in% names(match_df)) "p_match" else
-      stop("identify_confident_observations: 'match_df' must have a 'score_original', 'score', or 'p_match' column.",
-           call. = FALSE)
+  score_col <- if ("score_original" %in% names(match_df)) {
+    "score_original"
+  } else if ("score" %in% names(match_df)) {
+    "score"
+  } else if ("p_match" %in% names(match_df)) {
+    "p_match"
+  } else {
+    stop("identify_confident_observations: 'match_df' must have a 'score_original', 'score', or 'p_match' column.",
+      call. = FALSE
+    )
+  }
 
   sp_priors <- priors |>
     dplyr::filter(taxon_name_rank == "species") |>
@@ -82,7 +96,7 @@ identify_confident_observations <- function(match_df,
   genus_summary <- sp_priors |>
     dplyr::group_by(genus) |>
     dplyr::summarise(
-      n_plausible       = sum(theta_mean > plausibility_threshold),
+      n_plausible = sum(theta_mean > plausibility_threshold),
       confident_species = taxon_name[theta_mean > plausibility_threshold][1L],
       .groups = "drop"
     ) |>
@@ -90,7 +104,8 @@ identify_confident_observations <- function(match_df,
 
   if (nrow(genus_summary) == 0L) {
     warning("identify_confident_observations: no genus had exactly one locally-plausible species at this threshold.",
-            call. = FALSE)
+      call. = FALSE
+    )
     return(match_df[integer(0L), , drop = FALSE])
   }
 
@@ -328,26 +343,29 @@ identify_confident_observations <- function(match_df,
 #' model <- train_likelihood_model(seq_matrix, rank_system = c("family", "genus", "species"))
 #' model_calibrated <- calibrate_query_noise(model, match_obj_restored, taxaexpect_priors)
 #' lik_result <- evaluate_likelihoods(match_obj_restored, model_calibrated,
-#'                                     rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' }
 #'
 #' @importFrom stats median mad plogis
 #' @export
 calibrate_query_noise <- function(model_params,
-                                   match_df,
-                                   priors,
-                                   plausibility_threshold = 1e-3,
-                                   min_confident_obs      = 30L,
-                                   offset_form             = c("linear", "constant"),
-                                   min_calib_species      = 8L,
-                                   calibrate_sigma         = FALSE,
-                                   evidence_col            = NULL,
-                                   logit_epsilon           = 1e-4,
-                                   verbose                 = TRUE) {
+                                  match_df,
+                                  priors,
+                                  plausibility_threshold = 1e-3,
+                                  min_confident_obs = 30L,
+                                  offset_form = c("linear", "constant"),
+                                  min_calib_species = 8L,
+                                  calibrate_sigma = FALSE,
+                                  evidence_col = NULL,
+                                  logit_epsilon = 1e-4,
+                                  verbose = TRUE) {
   offset_form <- match.arg(offset_form)
-  if (!inherits(model_params, "taxa_model_params"))
+  if (!inherits(model_params, "taxa_model_params")) {
     stop("calibrate_query_noise: 'model_params' must be a 'taxa_model_params' object from train_likelihood_model().",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # Session 158: reads model_params$Score_Transform and applies the matching
   # transform via .transform_p() (see below) -- the offset/residual/sigma-
@@ -360,11 +378,17 @@ calibrate_query_noise <- function(model_params,
   model_score_transform <- model_params$Score_Transform %||% "logit"
 
   confident <- identify_confident_observations(
-    match_df, priors, plausibility_threshold = plausibility_threshold
+    match_df, priors,
+    plausibility_threshold = plausibility_threshold
   )
 
-  score_col <- if ("score_original" %in% names(confident)) "score_original" else
-    if ("score"    %in% names(confident)) "score" else "p_match"
+  score_col <- if ("score_original" %in% names(confident)) {
+    "score_original"
+  } else if ("score" %in% names(confident)) {
+    "score"
+  } else {
+    "p_match"
+  }
 
   n_confident_genera <- length(unique(confident$confident_genus))
 
@@ -374,15 +398,15 @@ calibrate_query_noise <- function(model_params,
       nrow(confident), min_confident_obs
     ), call. = FALSE)
     model_params$Query_Calibration <- list(
-      offset_logit            = 0,
-      offset_form             = "constant",
-      slope                   = 1,
-      intercept               = 0,
-      sigma_ratio              = 1,
-      reference_evidence       = NA_real_,
-      n_confident_obs         = nrow(confident),
-      n_confident_genera      = n_confident_genera,
-      plausibility_threshold  = plausibility_threshold
+      offset_logit = 0,
+      offset_form = "constant",
+      slope = 1,
+      intercept = 0,
+      sigma_ratio = 1,
+      reference_evidence = NA_real_,
+      n_confident_obs = nrow(confident),
+      n_confident_genera = n_confident_genera,
+      plausibility_threshold = plausibility_threshold
     )
     return(model_params)
   }
@@ -423,39 +447,44 @@ calibrate_query_noise <- function(model_params,
   # deltas (relative to the H1 mean) and gap structure that actually
   # discriminate between candidates are untouched.
   recal_form <- offset_form
-  slope     <- 1
+  slope <- 1
   intercept <- offset
   if (recal_form == "linear") {
     sp_df <- data.frame(
-      sp  = confident$confident_species,
+      sp = confident$confident_species,
       obs = observed_logit,
       exp = expected_logit,
       stringsAsFactors = FALSE
     )
-    sp_df <- sp_df[is.finite(sp_df$obs) & is.finite(sp_df$exp) & !is.na(sp_df$sp),
-                   , drop = FALSE]
-    sp_agg <- stats::aggregate(cbind(obs, exp) ~ sp, data = sp_df,
-                               FUN = stats::median)
+    sp_df <- sp_df[is.finite(sp_df$obs) & is.finite(sp_df$exp) & !is.na(sp_df$sp), ,
+      drop = FALSE
+    ]
+    sp_agg <- stats::aggregate(cbind(obs, exp) ~ sp,
+      data = sp_df,
+      FUN = stats::median
+    )
     sp_n <- as.numeric(table(sp_df$sp)[sp_agg$sp])
     enough_species <- nrow(sp_agg) >= min_calib_species
     # isTRUE() guards the single-species case, where sd() of one value is NA
     # (otherwise `if (!exp_varies)` below would error on a missing logical).
-    exp_varies     <- isTRUE(stats::sd(sp_agg$exp) > 1e-8)
+    exp_varies <- isTRUE(stats::sd(sp_agg$exp) > 1e-8)
     if (enough_species && exp_varies) {
-      fit_lin   <- stats::lm(obs ~ exp, data = sp_agg, weights = sp_n)
+      fit_lin <- stats::lm(obs ~ exp, data = sp_agg, weights = sp_n)
       intercept <- unname(stats::coef(fit_lin)[1L])
-      slope     <- unname(stats::coef(fit_lin)[2L])
+      slope <- unname(stats::coef(fit_lin)[2L])
     } else {
       warning(sprintf(
-        paste0("calibrate_query_noise: offset_form = 'linear' needs >= %d confident species ",
-               "spanning a range of trained means; only %d usable%s. Falling back to constant ",
-               "offset."),
+        paste0(
+          "calibrate_query_noise: offset_form = 'linear' needs >= %d confident species ",
+          "spanning a range of trained means; only %d usable%s. Falling back to constant ",
+          "offset."
+        ),
         min_calib_species, nrow(sp_agg),
         if (!exp_varies) " (trained means don't vary across them)" else ""
       ), call. = FALSE)
       recal_form <- "constant"
-      slope      <- 1
-      intercept  <- offset
+      slope <- 1
+      intercept <- offset
     }
   }
 
@@ -464,9 +493,9 @@ calibrate_query_noise <- function(model_params,
   # species whose trained mean lies far outside the confident set's range;
   # the constant form is a rigid shift and never needs it, so its behavior is
   # left byte-identical to before this parameter existed).
-  obs_iqr   <- stats::IQR(observed_logit, na.rm = TRUE)
-  clamp_lo  <- min(observed_logit, na.rm = TRUE) - obs_iqr
-  clamp_hi  <- max(observed_logit, na.rm = TRUE) + obs_iqr
+  obs_iqr <- stats::IQR(observed_logit, na.rm = TRUE)
+  clamp_lo <- min(observed_logit, na.rm = TRUE) - obs_iqr
+  clamp_hi <- max(observed_logit, na.rm = TRUE) + obs_iqr
   recal_mean <- if (recal_form == "linear") {
     function(m) pmin(pmax(intercept + slope * m, clamp_lo), clamp_hi)
   } else {
@@ -492,8 +521,10 @@ calibrate_query_noise <- function(model_params,
       reference_evidence <- stats::median(evidence_vals, na.rm = TRUE)
       if (is.na(reference_evidence) || reference_evidence <= 0) {
         warning(sprintf(
-          paste0("calibrate_query_noise: median '%s' among confident observations is NA or ",
-                 "<= 0. No evidence-ratio baseline computed."),
+          paste0(
+            "calibrate_query_noise: median '%s' among confident observations is NA or ",
+            "<= 0. No evidence-ratio baseline computed."
+          ),
           evidence_col
         ), call. = FALSE)
         reference_evidence <- NA_real_
@@ -509,14 +540,14 @@ calibrate_query_noise <- function(model_params,
   model_params$H1_Lookup$sigma_score <- model_params$H1_Lookup$sigma_score * sigma_ratio
 
   model_params$Query_Calibration <- list(
-    offset_logit           = offset,
-    offset_form            = recal_form,
-    slope                  = slope,
-    intercept              = intercept,
-    sigma_ratio             = sigma_ratio,
-    reference_evidence      = reference_evidence,
-    n_confident_obs        = nrow(confident),
-    n_confident_genera     = n_confident_genera,
+    offset_logit = offset,
+    offset_form = recal_form,
+    slope = slope,
+    intercept = intercept,
+    sigma_ratio = sigma_ratio,
+    reference_evidence = reference_evidence,
+    n_confident_obs = nrow(confident),
+    n_confident_genera = n_confident_genera,
     plausibility_threshold = plausibility_threshold
   )
 
@@ -527,9 +558,11 @@ calibrate_query_noise <- function(model_params,
     ))
     if (recal_form == "linear") {
       message(sprintf(
-        paste0("  offset_form = 'linear': trained_mean -> %.4f + %.4f * trained_mean ",
-               "(slope ~ 0 => per-species trained means don't transfer to the inference scale; ",
-               "~ 1 => equivalent to a constant offset)."),
+        paste0(
+          "  offset_form = 'linear': trained_mean -> %.4f + %.4f * trained_mean ",
+          "(slope ~ 0 => per-species trained means don't transfer to the inference scale; ",
+          "~ 1 => equivalent to a constant offset)."
+        ),
         intercept, slope
       ))
     }

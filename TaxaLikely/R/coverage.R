@@ -18,18 +18,18 @@ utils::globalVariables(c(
 # without collisions.
 #' @noRd
 .coverage_checkpoint_path <- function(genera, barcode_term, len_range,
-                                       max_date, target_rank, cache_dir,
-                                       exclude_predicted = TRUE) {
+                                      max_date, target_rank, cache_dir,
+                                      exclude_predicted = TRUE) {
   # len_range is always TaxaTools::resolve_barcode_lengths()'s c(min_bp, max_bp)
   # output by construction at this internal helper's one call site, but
   # guard explicitly anyway -- a malformed len_range would otherwise silently
   # build a checkpoint filename missing its length component (len_range[2L]
   # recycling to NA) rather than failing clearly.
   stopifnot(is.numeric(len_range), length(len_range) == 2L, !anyNA(len_range))
-  safe_bc  <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
+  safe_bc <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
   date_sfx <- gsub("[^0-9A-Za-z]", "", if (is.null(max_date)) "X" else max_date)
-  n_gen    <- length(genera)
-  gen_sum  <- sum(nchar(genera))
+  n_gen <- length(genera)
+  gen_sum <- sum(nchar(genera))
   # exclude_predicted must be part of the key: .audit_one_genus_reverse()
   # computes DIFFERENT unreferenced_names / has_seqs_not_in_ref values under
   # each setting, and it is the finished record -- not the raw NCBI response --
@@ -41,11 +41,15 @@ utils::globalVariables(c(
   # _v3: exclude_predicted added to the key (v2 records now include
   # has_predicted_only / predicted_only_names fields); older checkpoints are
   # incompatible and will be ignored automatically.
-  file.path(cache_dir,
-            sprintf("coverage_%s_%s_d%s_n%d_s%d_l%d_%d_%s_v3_ckpt.rds",
-                    target_rank, safe_bc, date_sfx,
-                    n_gen, gen_sum,
-                    len_range[1L], len_range[2L], pred_sfx))
+  file.path(
+    cache_dir,
+    sprintf(
+      "coverage_%s_%s_d%s_n%d_s%d_l%d_%d_%s_v3_ckpt.rds",
+      target_rank, safe_bc, date_sfx,
+      n_gen, gen_sum,
+      len_range[1L], len_range[2L], pred_sfx
+    )
+  )
 }
 
 
@@ -111,108 +115,124 @@ utils::globalVariables(c(
 #' @importFrom dplyr bind_rows filter pull
 #' @export
 audit_reference_coverage <- function(reference_df,
-                                     target_rank  = "genus",
+                                     target_rank = "genus",
                                      ncbi_api_key = NULL) {
-  if (!is.data.frame(reference_df))
+  if (!is.data.frame(reference_df)) {
     stop("reference_df must be a data frame")
+  }
   names(reference_df) <- tolower(names(reference_df))
   target_rank <- tolower(target_rank)
 
-  if (!target_rank %in% names(reference_df))
+  if (!target_rank %in% names(reference_df)) {
     stop(sprintf("Column '%s' not found in reference_df", target_rank))
-  if (!"species" %in% names(reference_df))
+  }
+  if (!"species" %in% names(reference_df)) {
     stop("Column 'species' not found in reference_df")
+  }
 
   groups <- unique(stats::na.omit(reference_df[[target_rank]]))
   groups <- groups[nchar(trimws(groups)) > 0L]
 
   if (length(groups) == 0L) {
-    warning(sprintf("No valid groups found in column '%s'. Census skipped.",
-                    target_rank))
+    warning(sprintf(
+      "No valid groups found in column '%s'. Census skipped.",
+      target_rank
+    ))
     return(list(
-      census = data.frame(group = character(), total = integer(),
-                          have = integer(), missing_count = integer(),
-                          is_complete = logical(), stringsAsFactors = FALSE),
+      census = data.frame(
+        group = character(), total = integer(),
+        have = integer(), missing_count = integer(),
+        is_complete = logical(), stringsAsFactors = FALSE
+      ),
       unreferenced = character(0L)
     ))
   }
 
-  if (!requireNamespace("rentrez", quietly = TRUE))
+  if (!requireNamespace("rentrez", quietly = TRUE)) {
     stop("Package 'rentrez' is required for audit_reference_coverage(). Install with: install.packages('rentrez')")
+  }
 
-  if (!is.null(ncbi_api_key))
+  if (!is.null(ncbi_api_key)) {
     rentrez::set_entrez_key(ncbi_api_key)
+  }
 
-  message(sprintf("Auditing %d %s group(s) against NCBI taxonomy...",
-                  length(groups), target_rank))
+  message(sprintf(
+    "Auditing %d %s group(s) against NCBI taxonomy...",
+    length(groups), target_rank
+  ))
 
   full_census <- vector("list", length(groups))
   names(full_census) <- groups
 
   for (i in seq_along(groups)) {
     grp <- groups[i]
-    rec <- list(group = grp, total = NA_integer_, have = NA_integer_,
-                missing_count = NA_integer_, missing_names = character(0L))
+    rec <- list(
+      group = grp, total = NA_integer_, have = NA_integer_,
+      missing_count = NA_integer_, missing_names = character(0L)
+    )
 
-    tryCatch({
-      # Step 1: resolve genus name to NCBI taxonomy UID
-      # Normalise hyphens: "Pseudo-nitzschia"[Genus] returns 0 hits; space-separated works.
-      uid_res <- rentrez::entrez_search(
-        db   = "taxonomy",
-        term = sprintf('"%s"[Genus]', gsub("-", " ", grp))
-      )
-
-      if (length(uid_res$ids) > 0L) {
-        genus_uid <- uid_res$ids[1L]
-
-        # Step 2: find all species-rank taxa in this genus's NCBI subtree
-        sp_res <- rentrez::entrez_search(
-          db     = "taxonomy",
-          term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
-          retmax = 10000L
+    tryCatch(
+      {
+        # Step 1: resolve genus name to NCBI taxonomy UID
+        # Normalise hyphens: "Pseudo-nitzschia"[Genus] returns 0 hits; space-separated works.
+        uid_res <- rentrez::entrez_search(
+          db   = "taxonomy",
+          term = sprintf('"%s"[Genus]', gsub("-", " ", grp))
         )
 
-        true_sp <- character(0L)
-        if (length(sp_res$ids) > 0L) {
-          sp_summ <- rentrez::entrez_summary(db = "taxonomy", id = sp_res$ids)
-          # entrez_summary returns a single esummary or a list of them
-          if (inherits(sp_summ, "esummary")) {
-            true_sp <- sp_summ$scientificname
-          } else {
-            true_sp <- vapply(sp_summ, `[[`, character(1L), "scientificname")
+        if (length(uid_res$ids) > 0L) {
+          genus_uid <- uid_res$ids[1L]
+
+          # Step 2: find all species-rank taxa in this genus's NCBI subtree
+          sp_res <- rentrez::entrez_search(
+            db     = "taxonomy",
+            term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
+            retmax = 10000L
+          )
+
+          true_sp <- character(0L)
+          if (length(sp_res$ids) > 0L) {
+            sp_summ <- rentrez::entrez_summary(db = "taxonomy", id = sp_res$ids)
+            # entrez_summary returns a single esummary or a list of them
+            if (inherits(sp_summ, "esummary")) {
+              true_sp <- sp_summ$scientificname
+            } else {
+              true_sp <- vapply(sp_summ, `[[`, character(1L), "scientificname")
+            }
           }
+
+          we_have <- reference_df |>
+            dplyr::filter(.data[[target_rank]] == grp) |>
+            dplyr::pull(species) |>
+            unique()
+
+          # Normalise to "Genus species" (first two words) before comparing
+          clean_true <- .first_two_words(true_sp)
+          clean_have <- .first_two_words(we_have)
+          missing <- setdiff(clean_true, clean_have)
+
+          rec <- list(
+            group         = grp,
+            total         = length(clean_true),
+            have          = length(clean_have),
+            missing_count = length(missing),
+            missing_names = missing
+          )
         }
-
-        we_have <- reference_df |>
-          dplyr::filter(.data[[target_rank]] == grp) |>
-          dplyr::pull(species) |>
-          unique()
-
-        # Normalise to "Genus species" (first two words) before comparing
-        clean_true <- .first_two_words(true_sp)
-        clean_have <- .first_two_words(we_have)
-        missing     <- setdiff(clean_true, clean_have)
-
-        rec <- list(
-          group         = grp,
-          total         = length(clean_true),
-          have          = length(clean_have),
-          missing_count = length(missing),
-          missing_names = missing
-        )
-      }
-    }, error = function(e) NULL)
+      },
+      error = function(e) NULL
+    )
 
     full_census[[i]] <- rec
   }
 
   census_df <- dplyr::bind_rows(lapply(full_census, function(x) {
     data.frame(
-      group         = x$group,
-      total         = x$total,
-      have          = x$have,
+      group = x$group,
+      total = x$total,
+      have = x$have,
       missing_count = x$missing_count,
-      is_complete   = !is.na(x$missing_count) && x$missing_count == 0L,
+      is_complete = !is.na(x$missing_count) && x$missing_count == 0L,
       stringsAsFactors = FALSE
     )
   }))
@@ -412,16 +432,15 @@ audit_reference_coverage <- function(reference_df,
 #' @export
 audit_barcode_coverage <- function(match_df,
                                    barcode_term,
-                                   species_list      = NULL,
-                                   min_len           = NULL,
-                                   max_len           = NULL,
-                                   max_date          = NULL,
-                                   target_rank       = "genus",
-                                   cache_dir         = tools::R_user_dir("TaxaLikely", "cache"),
-                                   ncbi_api_key      = NULL,
-                                   max_nuccore       = 5000L,
+                                   species_list = NULL,
+                                   min_len = NULL,
+                                   max_len = NULL,
+                                   max_date = NULL,
+                                   target_rank = "genus",
+                                   cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
+                                   ncbi_api_key = NULL,
+                                   max_nuccore = 5000L,
                                    exclude_predicted = TRUE) {
-
   .audit_barcode_coverage_impl(
     match_df = match_df, barcode_term = barcode_term, species_list = species_list,
     min_len = min_len, max_len = max_len, max_date = max_date,
@@ -439,12 +458,17 @@ audit_barcode_coverage <- function(match_df,
 # Resolve NCBI taxonomy UID for a genus name. Returns NA_character_ on failure.
 #' @noRd
 .genus_taxid <- function(grp) {
-  search_grp <- gsub("-", " ", grp)   # handle hyphenated genera (e.g. Pseudo-nitzschia)
-  tryCatch({
-    res <- rentrez::entrez_search(db = "taxonomy",
-                                  term = sprintf('"%s"[Genus]', search_grp))
-    if (length(res$ids) == 0L) NA_character_ else res$ids[1L]
-  }, error = function(e) NA_character_)
+  search_grp <- gsub("-", " ", grp) # handle hyphenated genera (e.g. Pseudo-nitzschia)
+  tryCatch(
+    {
+      res <- rentrez::entrez_search(
+        db = "taxonomy",
+        term = sprintf('"%s"[Genus]', search_grp)
+      )
+      if (length(res$ids) == 0L) NA_character_ else res$ids[1L]
+    },
+    error = function(e) NA_character_
+  )
 }
 
 # "Reverse" barcode check: reverse in the sense of which direction the
@@ -465,48 +489,65 @@ audit_barcode_coverage <- function(match_df,
 # drawn from `candidates`.
 #' @noRd
 .reverse_barcode_check <- function(genus_uid, candidates,
-                                    barcode_clause, len_range, date_clause,
-                                    max_nuccore = 5000L) {
-  empty <- list(sp_with_seqs      = character(0L),
-                sp_predicted_only = character(0L),
-                sp_unreferenced   = candidates)
-  if (is.na(genus_uid) || length(candidates) == 0L) return(empty)
+                                   barcode_clause, len_range, date_clause,
+                                   max_nuccore = 5000L) {
+  empty <- list(
+    sp_with_seqs = character(0L),
+    sp_predicted_only = character(0L),
+    sp_unreferenced = candidates
+  )
+  if (is.na(genus_uid) || length(candidates) == 0L) {
+    return(empty)
+  }
 
   # Step 1: one nuccore search for the entire genus -- no predicted filter.
   # We classify experimental vs. predicted from the Title field in Step 2,
   # so a single search covers both categories without an extra API call.
   nuc_res <- tryCatch(
     rentrez::entrez_search(
-      db     = "nuccore",
-      term   = sprintf("txid%s[Organism:exp] AND %s AND %d:%d[SLEN]%s",
-                       genus_uid, barcode_clause,
-                       len_range[1L], len_range[2L], date_clause),
+      db = "nuccore",
+      term = sprintf(
+        "txid%s[Organism:exp] AND %s AND %d:%d[SLEN]%s",
+        genus_uid, barcode_clause,
+        len_range[1L], len_range[2L], date_clause
+      ),
       retmax = max_nuccore
     ),
     error = function(e) NULL
   )
-  if (is.null(nuc_res) || length(nuc_res$ids) == 0L) return(empty)
+  if (is.null(nuc_res) || length(nuc_res$ids) == 0L) {
+    return(empty)
+  }
   Sys.sleep(.ncbi_delay())
 
   # Step 2: nuccore summaries -> {title, taxid} per record.
   # title prefix "PREDICTED:" identifies computationally-annotated sequences
   # (XR_/XM_ RefSeq accessions) that are absent from curated barcode databases.
   # taxid links each sequence record to a species without a separate elink call.
-  nuc_batches  <- split(nuc_res$ids, ceiling(seq_along(nuc_res$ids) / 200L))
+  nuc_batches <- split(nuc_res$ids, ceiling(seq_along(nuc_res$ids) / 200L))
   nuc_summ_flat <- unlist(lapply(nuc_batches, function(batch) {
     Sys.sleep(.ncbi_delay())
     s <- tryCatch(rentrez::entrez_summary(db = "nuccore", id = batch),
-                  error = function(e) NULL)
-    if (is.null(s)) return(list())
+      error = function(e) NULL
+    )
+    if (is.null(s)) {
+      return(list())
+    }
     if (inherits(s, "esummary")) list(s) else as.list(s)
   }), recursive = FALSE)
-  if (length(nuc_summ_flat) == 0L) return(empty)
+  if (length(nuc_summ_flat) == 0L) {
+    return(empty)
+  }
 
-  titles <- vapply(nuc_summ_flat,
-                   function(s) s[["title"]] %||% NA_character_, character(1L))
-  taxids <- vapply(nuc_summ_flat,
-                   function(s) as.character(s[["taxid"]] %||% NA_character_),
-                   character(1L))
+  titles <- vapply(
+    nuc_summ_flat,
+    function(s) s[["title"]] %||% NA_character_, character(1L)
+  )
+  taxids <- vapply(
+    nuc_summ_flat,
+    function(s) as.character(s[["taxid"]] %||% NA_character_),
+    character(1L)
+  )
   # !is.na(titles) guard: startsWith(NA, ...) returns NA, and `taxids[NA]`
   # yields a literal NA_character_ ELEMENT rather than dropping the row -- so
   # a single NCBI esummary record with no title (real, for suppressed/stub
@@ -516,37 +557,47 @@ audit_barcode_coverage <- function(match_df,
   # warning. A record with no title is not evidence of a PREDICTED sequence.
   is_pred <- !is.na(titles) & startsWith(toupper(trimws(titles)), "PREDICTED")
 
-  taxids_exp       <- unique(taxids[!is_pred & !is.na(taxids)])
-  taxids_pred      <- unique(taxids[is_pred & !is.na(taxids)])
+  taxids_exp <- unique(taxids[!is_pred & !is.na(taxids)])
+  taxids_pred <- unique(taxids[is_pred & !is.na(taxids)])
   taxids_pred_only <- setdiff(taxids_pred, taxids_exp)
 
   all_taxids <- unique(c(taxids_exp, taxids_pred_only))
-  if (length(all_taxids) == 0L) return(empty)
+  if (length(all_taxids) == 0L) {
+    return(empty)
+  }
   Sys.sleep(.ncbi_delay())
 
   # Step 3: taxonomy names for relevant taxids (batched to avoid 414)
-  tax_batches  <- split(all_taxids, ceiling(seq_along(all_taxids) / 200L))
+  tax_batches <- split(all_taxids, ceiling(seq_along(all_taxids) / 200L))
   tax_summ_flat <- unlist(lapply(tax_batches, function(batch) {
     Sys.sleep(.ncbi_delay())
     s <- tryCatch(rentrez::entrez_summary(db = "taxonomy", id = batch),
-                  error = function(e) NULL)
-    if (is.null(s)) return(list())
+      error = function(e) NULL
+    )
+    if (is.null(s)) {
+      return(list())
+    }
     if (inherits(s, "esummary")) list(s) else as.list(s)
   }), recursive = FALSE)
 
   .sp_names <- function(taxid_vec, summ_list) {
-    uid_map <- vapply(summ_list, function(s) as.character(s[["uid"]] %||% NA),
-                      character(1L))
+    uid_map <- vapply(
+      summ_list, function(s) as.character(s[["uid"]] %||% NA),
+      character(1L)
+    )
     nms <- vapply(summ_list, function(s) {
-      if (!is.null(s[["rank"]]) && s[["rank"]] == "species")
-        s[["scientificname"]] else NA_character_
+      if (!is.null(s[["rank"]]) && s[["rank"]] == "species") {
+        s[["scientificname"]]
+      } else {
+        NA_character_
+      }
     }, character(1L))
     matched <- nms[uid_map %in% taxid_vec]
     raw <- .first_two_words(unique(matched[!is.na(matched)]))
     raw[TaxaTools::is_plausible_binomial(raw)]
   }
 
-  sp_exp       <- .sp_names(taxids_exp,       tax_summ_flat)
+  sp_exp <- .sp_names(taxids_exp, tax_summ_flat)
   sp_pred_only <- setdiff(.sp_names(taxids_pred_only, tax_summ_flat), sp_exp)
 
   list(
@@ -559,35 +610,46 @@ audit_barcode_coverage <- function(match_df,
 # Enumerate species under a genus via NCBI taxonomy subtree.
 #' @noRd
 .ncbi_species_enumerate <- function(genus_uid, grp = NA_character_, warn_on_error = TRUE) {
-  if (is.na(genus_uid)) return(character(0L))
-  tryCatch({
-    sp_res <- rentrez::entrez_search(
-      db     = "taxonomy",
-      term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
-      retmax = 10000L
-    )
-    if (length(sp_res$ids) == 0L) {
-      character(0L)
-    } else {
-      Sys.sleep(.ncbi_delay())
-      batches <- split(sp_res$ids, ceiling(seq_along(sp_res$ids) / 200L))
-      sp_flat <- unlist(lapply(batches, function(b) {
+  if (is.na(genus_uid)) {
+    return(character(0L))
+  }
+  tryCatch(
+    {
+      sp_res <- rentrez::entrez_search(
+        db     = "taxonomy",
+        term   = sprintf("txid%s[Subtree] AND species[Rank]", genus_uid),
+        retmax = 10000L
+      )
+      if (length(sp_res$ids) == 0L) {
+        character(0L)
+      } else {
         Sys.sleep(.ncbi_delay())
-        s <- tryCatch(rentrez::entrez_summary(db = "taxonomy", id = b),
-                      error = function(e) NULL)
-        if (is.null(s)) return(list())
-        if (inherits(s, "esummary")) list(s) else as.list(s)
-      }), recursive = FALSE)
-      raw <- vapply(sp_flat, `[[`, character(1L), "scientificname")
-      raw <- .first_two_words(unique(raw[!is.na(raw)]))
-      raw[TaxaTools::is_plausible_binomial(raw)]
+        batches <- split(sp_res$ids, ceiling(seq_along(sp_res$ids) / 200L))
+        sp_flat <- unlist(lapply(batches, function(b) {
+          Sys.sleep(.ncbi_delay())
+          s <- tryCatch(rentrez::entrez_summary(db = "taxonomy", id = b),
+            error = function(e) NULL
+          )
+          if (is.null(s)) {
+            return(list())
+          }
+          if (inherits(s, "esummary")) list(s) else as.list(s)
+        }), recursive = FALSE)
+        raw <- vapply(sp_flat, `[[`, character(1L), "scientificname")
+        raw <- .first_two_words(unique(raw[!is.na(raw)]))
+        raw[TaxaTools::is_plausible_binomial(raw)]
+      }
+    },
+    error = function(e) {
+      if (warn_on_error) {
+        warning(sprintf(
+          "NCBI taxonomy query failed for '%s': %s",
+          grp, conditionMessage(e)
+        ))
+      }
+      character(0L)
     }
-  }, error = function(e) {
-    if (warn_on_error)
-      warning(sprintf("NCBI taxonomy query failed for '%s': %s",
-                      grp, conditionMessage(e)))
-    character(0L)
-  })
+  )
 }
 
 # Per-genus inner loop body for audit_barcode_coverage(): species enumeration
@@ -595,21 +657,26 @@ audit_barcode_coverage <- function(match_df,
 # a census record list.
 #' @noRd
 .audit_one_genus_reverse <- function(grp, match_df, target_rank,
-                                      species_list,
-                                      barcode_clause, len_range, date_clause,
-                                      max_nuccore, exclude_predicted = TRUE) {
-  rec <- list(group = grp, total = NA_integer_, in_reference = NA_integer_,
-              has_seqs_not_in_ref = NA_integer_, unreferenced_count = NA_integer_,
-              unreferenced_names = character(0L))
+                                     species_list,
+                                     barcode_clause, len_range, date_clause,
+                                     max_nuccore, exclude_predicted = TRUE) {
+  rec <- list(
+    group = grp, total = NA_integer_, in_reference = NA_integer_,
+    has_seqs_not_in_ref = NA_integer_, unreferenced_count = NA_integer_,
+    unreferenced_names = character(0L)
+  )
 
   # Reference skip-list
-  ref_sp <- tryCatch({
-    x <- match_df |>
-      dplyr::filter(.data[[target_rank]] == grp) |>
-      dplyr::pull(species) |>
-      unique()
-    .first_two_words(x[TaxaTools::is_plausible_binomial(x)])
-  }, error = function(e) character(0L))
+  ref_sp <- tryCatch(
+    {
+      x <- match_df |>
+        dplyr::filter(.data[[target_rank]] == grp) |>
+        dplyr::pull(species) |>
+        unique()
+      .first_two_words(x[TaxaTools::is_plausible_binomial(x)])
+    },
+    error = function(e) character(0L)
+  )
 
   # Get NCBI genus UID (needed for reverse barcode check in all paths)
   genus_uid <- .genus_taxid(grp)
@@ -619,24 +686,32 @@ audit_barcode_coverage <- function(match_df,
   all_sp <- character(0L)
 
   # 1. User-supplied list takes priority
-  if (!is.null(species_list))
+  if (!is.null(species_list)) {
     all_sp <- species_list[startsWith(species_list, paste0(grp, " "))]
+  }
 
   # 2. Primary source: NCBI taxonomy subtree. Warns on failure -- this is the
   # only species-enumeration source, so a query failure here is worth
   # surfacing to the caller.
-  if (length(all_sp) == 0L)
+  if (length(all_sp) == 0L) {
     all_sp <- .ncbi_species_enumerate(genus_uid, grp = grp, warn_on_error = TRUE)
+  }
 
-  if (length(all_sp) == 0L) return(rec)  # NA record; caller will not checkpoint
+  if (length(all_sp) == 0L) {
+    return(rec)
+  } # NA record; caller will not checkpoint
 
   candidates <- setdiff(all_sp, ref_sp)
-  message(sprintf("  '%s': %d described, %d in ref, %d candidates",
-                  grp, length(all_sp), length(ref_sp), length(candidates)))
+  message(sprintf(
+    "  '%s': %d described, %d in ref, %d candidates",
+    grp, length(all_sp), length(ref_sp), length(candidates)
+  ))
 
   # Reverse barcode check
-  bc <- .reverse_barcode_check(genus_uid, candidates, barcode_clause,
-                                len_range, date_clause, max_nuccore)
+  bc <- .reverse_barcode_check(
+    genus_uid, candidates, barcode_clause,
+    len_range, date_clause, max_nuccore
+  )
 
   # When exclude_predicted = TRUE (default), predicted-only species have no
   # experimentally-validated barcode and are treated as unreferenced for the
@@ -650,15 +725,15 @@ audit_barcode_coverage <- function(match_df,
   }
 
   list(
-    group                = grp,
-    total                = length(all_sp),
-    in_reference         = length(ref_sp),
-    has_seqs_not_in_ref  = length(bc$sp_with_seqs) +
-                             if (!exclude_predicted) length(bc$sp_predicted_only) else 0L,
-    has_predicted_only   = length(bc$sp_predicted_only),
+    group = grp,
+    total = length(all_sp),
+    in_reference = length(ref_sp),
+    has_seqs_not_in_ref = length(bc$sp_with_seqs) +
+      if (!exclude_predicted) length(bc$sp_predicted_only) else 0L,
+    has_predicted_only = length(bc$sp_predicted_only),
     predicted_only_names = bc$sp_predicted_only,
-    unreferenced_count   = length(unreferenced_names),
-    unreferenced_names   = unreferenced_names
+    unreferenced_count = length(unreferenced_names),
+    unreferenced_names = unreferenced_names
   )
 }
 
@@ -669,25 +744,30 @@ audit_barcode_coverage <- function(match_df,
 # stays a thin, readable pass-through of its own documented arguments.
 #' @noRd
 .audit_barcode_coverage_impl <- function(match_df, barcode_term, species_list,
-                                          min_len, max_len, max_date,
-                                          target_rank, cache_dir, ncbi_api_key,
-                                          max_nuccore,
-                                          exclude_predicted = TRUE) {
+                                         min_len, max_len, max_date,
+                                         target_rank, cache_dir, ncbi_api_key,
+                                         max_nuccore,
+                                         exclude_predicted = TRUE) {
   # ---- Input validation ------------------------------------------------------
-  if (!is.data.frame(match_df))
+  if (!is.data.frame(match_df)) {
     stop("match_df must be a data frame")
+  }
   if (!is.character(barcode_term) || length(barcode_term) == 0L ||
-      any(is.na(barcode_term)) || any(!nzchar(trimws(barcode_term))))
+    any(is.na(barcode_term)) || any(!nzchar(trimws(barcode_term)))) {
     stop("barcode_term must be a non-empty character vector with no NA values")
+  }
   if (!is.null(max_date)) {
-    if (!is.character(max_date) || length(max_date) != 1L || is.na(max_date))
+    if (!is.character(max_date) || length(max_date) != 1L || is.na(max_date)) {
       stop("max_date must be a single character string or NULL")
-    if (!grepl("^\\d{4}(/\\d{2}(/\\d{2})?)?$", trimws(max_date)))
+    }
+    if (!grepl("^\\d{4}(/\\d{2}(/\\d{2})?)?$", trimws(max_date))) {
       stop("max_date must be in YYYY, YYYY/MM, or YYYY/MM/DD format")
+    }
   }
   if (!is.null(species_list)) {
-    if (!is.character(species_list) || length(species_list) == 0L)
+    if (!is.character(species_list) || length(species_list) == 0L) {
       stop("species_list must be a character vector or NULL")
+    }
     # Truncate to "Genus species" first, then check plausibility on the
     # truncated result -- matches every other is_plausible_binomial() call
     # site in this file (.reverse_barcode_check()'s .sp_names(),
@@ -697,65 +777,77 @@ audit_barcode_coverage <- function(match_df,
     species_list <- .first_two_words(trimws(species_list))
     species_list <- unique(species_list[TaxaTools::is_plausible_binomial(species_list)])
   }
-  if (!requireNamespace("rentrez", quietly = TRUE))
+  if (!requireNamespace("rentrez", quietly = TRUE)) {
     stop("Package 'rentrez' is required. Install with: install.packages('rentrez')")
+  }
 
   names(match_df) <- tolower(names(match_df))
-  target_rank     <- tolower(target_rank)
-  if (!target_rank %in% names(match_df))
+  target_rank <- tolower(target_rank)
+  if (!target_rank %in% names(match_df)) {
     stop(sprintf("Column '%s' not found in match_df", target_rank))
-  if (!"species" %in% names(match_df))
+  }
+  if (!"species" %in% names(match_df)) {
     stop("Column 'species' not found in match_df")
+  }
 
   if (!is.null(ncbi_api_key)) rentrez::set_entrez_key(ncbi_api_key)
 
-  len_range      <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len, max_len)
-  term_label     <- paste(barcode_term, collapse = "/")
+  len_range <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len, max_len)
+  term_label <- paste(barcode_term, collapse = "/")
   # Lengths resolve from the caller's own term (a primer variant carries the
   # tighter, correct window), but the SEARCH must target the marker: a query
   # for "COI-Folmer[All Fields]" matches no GenBank record at all, and this
   # function would then report every species as having no barcode -- silently,
   # since "no sequences" is a legitimate result here, not an error. That
   # inflates `unreferenced` and feeds apply_coverage_constraints() a fiction.
-  search_term    <- TaxaTools::resolve_barcode_marker(barcode_term)
-  barcode_clause <- if (length(search_term) == 1L)
+  search_term <- TaxaTools::resolve_barcode_marker(barcode_term)
+  barcode_clause <- if (length(search_term) == 1L) {
     sprintf("%s[All Fields]", search_term)
-  else
+  } else {
     sprintf("(%s)", paste(sprintf("%s[All Fields]", search_term), collapse = " OR "))
+  }
   # 1900 as the lower bound is a "no meaningful floor" sentinel (predates
   # GenBank's own 1982 founding), matching fetch.R's .build_search_term()
   # min_date default of "1900/01/01" -- this function has no min_date
   # argument of its own, so it always uses the same sentinel rather than an
   # arbitrary literal that could silently exclude a genuinely early record.
-  date_clause <- if (!is.null(max_date))
-    sprintf(" AND (1900/01/01[PDAT] : %s[PDAT])", trimws(max_date)) else ""
+  date_clause <- if (!is.null(max_date)) {
+    sprintf(" AND (1900/01/01[PDAT] : %s[PDAT])", trimws(max_date))
+  } else {
+    ""
+  }
 
   genera <- unique(stats::na.omit(match_df[[target_rank]]))
   genera <- genera[nchar(trimws(genera)) > 0L]
   if (length(genera) == 0L) {
     warning(sprintf("No valid groups in column '%s'. Census skipped.", target_rank))
     return(list(
-      census = data.frame(group = character(), total = integer(),
-                          in_reference = integer(), has_seqs_not_in_ref = integer(),
-                          unreferenced = integer(), is_complete = logical(),
-                          stringsAsFactors = FALSE),
+      census = data.frame(
+        group = character(), total = integer(),
+        in_reference = integer(), has_seqs_not_in_ref = integer(),
+        unreferenced = integer(), is_complete = logical(),
+        stringsAsFactors = FALSE
+      ),
       unreferenced = character(0L)
     ))
   }
 
   # ---- Checkpoint --------------------------------------------------------------
   checkpoint_path <- NULL
-  prior_census    <- list()
+  prior_census <- list()
   if (!is.null(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     checkpoint_path <- .coverage_checkpoint_path(genera, barcode_term, len_range,
-                                                  max_date, target_rank, cache_dir,
-                                                  exclude_predicted = exclude_predicted)
+      max_date, target_rank, cache_dir,
+      exclude_predicted = exclude_predicted
+    )
     if (file.exists(checkpoint_path)) {
       prior_census <- readRDS(checkpoint_path)
       n_done <- sum(genera %in% names(prior_census))
-      message(sprintf("  Resuming: %d/%d %s(s) done.",
-                      n_done, length(genera), target_rank))
+      message(sprintf(
+        "  Resuming: %d/%d %s(s) done.",
+        n_done, length(genera), target_rank
+      ))
     }
   }
 
@@ -763,7 +855,8 @@ audit_barcode_coverage <- function(match_df,
   message(sprintf(
     "Auditing %d %s(s) (barcode: '%s', length: %d-%d bp)...",
     length(genera), target_rank, term_label,
-    len_range[1L], len_range[2L]))
+    len_range[1L], len_range[2L]
+  ))
 
   # ---- Per-genus loop --------------------------------------------------------
   full_census <- vector("list", length(genera))
@@ -803,29 +896,30 @@ audit_barcode_coverage <- function(match_df,
   elapsed <- proc.time()[["elapsed"]] - t_start
   message(sprintf("Completed in %.1f min.", elapsed / 60))
 
-  if (!is.null(checkpoint_path) && file.exists(checkpoint_path))
+  if (!is.null(checkpoint_path) && file.exists(checkpoint_path)) {
     file.remove(checkpoint_path)
+  }
 
   # ---- Assemble output -------------------------------------------------------
   census_df <- dplyr::bind_rows(lapply(full_census, function(x) {
     data.frame(
-      group               = x$group,
-      total               = x$total,
-      in_reference        = x$in_reference,
+      group = x$group,
+      total = x$total,
+      in_reference = x$in_reference,
       has_seqs_not_in_ref = x$has_seqs_not_in_ref,
-      has_predicted_only  = x$has_predicted_only  %||% NA_integer_,
-      unreferenced        = x$unreferenced_count,
-      is_complete         = !is.na(x$has_seqs_not_in_ref) &&
-                            !is.na(x$unreferenced_count) &&
-                            x$has_seqs_not_in_ref == 0L &&
-                            x$unreferenced_count == 0L,
-      stringsAsFactors    = FALSE
+      has_predicted_only = x$has_predicted_only %||% NA_integer_,
+      unreferenced = x$unreferenced_count,
+      is_complete = !is.na(x$has_seqs_not_in_ref) &&
+        !is.na(x$unreferenced_count) &&
+        x$has_seqs_not_in_ref == 0L &&
+        x$unreferenced_count == 0L,
+      stringsAsFactors = FALSE
     )
   }))
 
   all_unreferenced <- unlist(lapply(full_census, `[[`, "unreferenced_names"))
   all_unreferenced <- all_unreferenced[!is.na(all_unreferenced) &
-                                       nchar(all_unreferenced) > 0L]
+    nchar(all_unreferenced) > 0L]
   names(all_unreferenced) <- NULL
   list(census = census_df, unreferenced = all_unreferenced)
 }
@@ -898,48 +992,65 @@ audit_barcode_coverage <- function(match_df,
 #' @seealso [audit_barcode_coverage()], [apply_coverage_constraints()]
 #'
 #' @examples
-#' plausible <- c("Turdus migratorius", "Setophaga petechia",
-#'                "Limosa fedoa", "Selasphorus calliope")
-#' birdnet_list <- c("Turdus migratorius", "Setophaga petechia",
-#'                   "Turdus merula", "Corvus brachyrhynchos")
+#' plausible <- c(
+#'   "Turdus migratorius", "Setophaga petechia",
+#'   "Limosa fedoa", "Selasphorus calliope"
+#' )
+#' birdnet_list <- c(
+#'   "Turdus migratorius", "Setophaga petechia",
+#'   "Turdus merula", "Corvus brachyrhynchos"
+#' )
 #'
 #' result <- audit_acoustic_coverage(plausible, birdnet_list)
 #' result$census
-#' result$unreferenced  # c("Limosa fedoa", "Selasphorus calliope")
+#' result$unreferenced # c("Limosa fedoa", "Selasphorus calliope")
 #'
 #' @export
 audit_acoustic_coverage <- function(plausible_species,
                                     reference_species,
-                                    match_df      = NULL,
+                                    match_df = NULL,
                                     xc_recordings = FALSE) {
-
   # ---- validate inputs -------------------------------------------------------
-  if (!is.character(plausible_species) || length(plausible_species) == 0L)
+  if (!is.character(plausible_species) || length(plausible_species) == 0L) {
     stop("audit_acoustic_coverage: 'plausible_species' must be a non-empty character vector.",
-         call. = FALSE)
-  if (!is.character(reference_species) || length(reference_species) == 0L)
+      call. = FALSE
+    )
+  }
+  if (!is.character(reference_species) || length(reference_species) == 0L) {
     stop("audit_acoustic_coverage: 'reference_species' must be a non-empty character vector.",
-         call. = FALSE)
-  if (!is.logical(xc_recordings) || length(xc_recordings) != 1L || is.na(xc_recordings))
+      call. = FALSE
+    )
+  }
+  if (!is.logical(xc_recordings) || length(xc_recordings) != 1L || is.na(xc_recordings)) {
     stop("audit_acoustic_coverage: 'xc_recordings' must be TRUE or FALSE.", call. = FALSE)
+  }
 
   # ---- normalise for matching (trim + lowercase) -----------------------------
-  plausible_norm  <- trimws(plausible_species)
-  reference_norm  <- trimws(tolower(reference_species))
+  plausible_norm <- trimws(plausible_species)
+  reference_norm <- trimws(tolower(reference_species))
 
   in_ref <- tolower(plausible_norm) %in% reference_norm
 
   # ---- match_df annotation ---------------------------------------------------
   in_match <- rep(NA, length(plausible_norm))
   if (!is.null(match_df)) {
-    if (!is.data.frame(match_df))
+    if (!is.data.frame(match_df)) {
       stop("audit_acoustic_coverage: 'match_df' must be a data frame or NULL.",
-           call. = FALSE)
-    sp_col <- if ("taxon_name" %in% names(match_df)) "taxon_name" else
-              if ("species"    %in% names(match_df)) "species"    else NULL
+        call. = FALSE
+      )
+    }
+    sp_col <- if ("taxon_name" %in% names(match_df)) {
+      "taxon_name"
+    } else if ("species" %in% names(match_df)) {
+      "species"
+    } else {
+      NULL
+    }
     if (is.null(sp_col)) {
       warning("audit_acoustic_coverage: 'match_df' has no 'taxon_name' or 'species' ",
-              "column -- 'in_match_data' will be NA.", call. = FALSE)
+        "column -- 'in_match_data' will be NA.",
+        call. = FALSE
+      )
     } else {
       match_sp <- trimws(tolower(unique(match_df[[sp_col]])))
       in_match <- as.logical(tolower(plausible_norm) %in% match_sp)
@@ -961,18 +1072,18 @@ audit_acoustic_coverage <- function(plausible_species,
 
   # ---- build census data frame -----------------------------------------------
   census_df <- data.frame(
-    species       = plausible_norm,
-    in_reference  = in_ref,
-    unreferenced  = !in_ref,
+    species = plausible_norm,
+    in_reference = in_ref,
+    unreferenced = !in_ref,
     in_match_data = in_match,
-    n_recordings  = n_rec,
+    n_recordings = n_rec,
     stringsAsFactors = FALSE
   )
 
   unreferenced_sp <- plausible_norm[!in_ref]
 
-  n_plausible    <- length(plausible_norm)
-  n_in_ref       <- sum(in_ref)
+  n_plausible <- length(plausible_norm)
+  n_in_ref <- sum(in_ref)
   n_unreferenced <- sum(!in_ref)
 
   message(sprintf(
@@ -1091,29 +1202,40 @@ audit_acoustic_coverage <- function(plausible_species,
 #' @export
 apply_coverage_constraints <- function(likelihood_df,
                                        census_result,
-                                       penalty_factor      = 0.0,
+                                       penalty_factor = 0.0,
                                        constraint_behavior = c("relabel", "zero")) {
   constraint_behavior <- match.arg(constraint_behavior)
 
-  if (!is.data.frame(likelihood_df))
+  if (!is.data.frame(likelihood_df)) {
     stop("likelihood_df must be a data frame")
-  if (!is.data.frame(census_result))
+  }
+  if (!is.data.frame(census_result)) {
     stop("census_result must be a data frame -- see ?apply_coverage_constraints for format")
+  }
   needed <- c("taxon_name", "rank", "status")
   missing_cols <- setdiff(needed, names(census_result))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("census_result is missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")))
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "census_result is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
   if (!is.numeric(penalty_factor) || length(penalty_factor) != 1L ||
-      is.na(penalty_factor) || penalty_factor < 0 || penalty_factor > 1)
+    is.na(penalty_factor) || penalty_factor < 0 || penalty_factor > 1) {
     stop("penalty_factor must be a single numeric value in [0, 1]")
+  }
 
-  needed_lik <- c("hypothesis_type", "taxon_name", "taxon_name_rank",
-                  "score_likelihood", "score_likelihood_mean")
+  needed_lik <- c(
+    "hypothesis_type", "taxon_name", "taxon_name_rank",
+    "score_likelihood", "score_likelihood_mean"
+  )
   missing_lik <- setdiff(needed_lik, names(likelihood_df))
-  if (length(missing_lik) > 0L)
-    stop(sprintf("likelihood_df is missing required columns: %s",
-                 paste(missing_lik, collapse = ", ")))
+  if (length(missing_lik) > 0L) {
+    stop(sprintf(
+      "likelihood_df is missing required columns: %s",
+      paste(missing_lik, collapse = ", ")
+    ))
+  }
 
   cen_clean <- census_result |>
     dplyr::mutate(
@@ -1130,31 +1252,36 @@ apply_coverage_constraints <- function(likelihood_df,
     )
 
   merged <- dplyr::left_join(inf_clean, cen_clean,
-                             by = c("join_name", "join_rank"))
+    by = c("join_name", "join_rank")
+  )
 
   if (constraint_behavior == "relabel") {
     result <- merged |>
       dplyr::mutate(
-        is_forbidden     = hypothesis_type == "unreferenced_species" &
+        is_forbidden = hypothesis_type == "unreferenced_species" &
           !is.na(join_status) & join_status %in% c("complete", "closed"),
-        hypothesis_type  = ifelse(is_forbidden, "unresolved_species", hypothesis_type),
+        hypothesis_type = ifelse(is_forbidden, "unresolved_species", hypothesis_type),
         constraint_applied = ifelse(is_forbidden,
-                                    "census_closed_genus_relabeled", NA_character_)
+          "census_closed_genus_relabeled", NA_character_
+        )
       ) |>
       dplyr::select(-join_name, -join_rank, -join_status, -is_forbidden)
   } else {
     result <- merged |>
       dplyr::mutate(
-        is_forbidden         = hypothesis_type == "unreferenced_species" &
+        is_forbidden = hypothesis_type == "unreferenced_species" &
           !is.na(join_status) & join_status %in% c("complete", "closed"),
         score_likelihood = ifelse(is_forbidden,
-                                      score_likelihood * penalty_factor,
-                                      score_likelihood),
-        score_likelihood_mean      = ifelse(is_forbidden,
-                                      score_likelihood_mean * penalty_factor,
-                                      score_likelihood_mean),
-        constraint_applied   = ifelse(is_forbidden,
-                                      "census_closed_genus", NA_character_)
+          score_likelihood * penalty_factor,
+          score_likelihood
+        ),
+        score_likelihood_mean = ifelse(is_forbidden,
+          score_likelihood_mean * penalty_factor,
+          score_likelihood_mean
+        ),
+        constraint_applied = ifelse(is_forbidden,
+          "census_closed_genus", NA_character_
+        )
       ) |>
       dplyr::select(-join_name, -join_rank, -join_status, -is_forbidden)
   }
@@ -1205,8 +1332,8 @@ apply_coverage_constraints <- function(likelihood_df,
     return(NULL)
   }
 
-  parts   <- strsplit(trimws(species_name), "\\s+")[[1L]]
-  genus   <- parts[1L]
+  parts <- strsplit(trimws(species_name), "\\s+")[[1L]]
+  genus <- parts[1L]
   species <- if (length(parts) >= 2L) parts[2L] else ""
 
   req <- httr2::request("https://xeno-canto.org/api/3/recordings") |>
@@ -1217,7 +1344,9 @@ apply_coverage_constraints <- function(likelihood_df,
     httr2::req_error(is_error = function(resp) FALSE)
 
   resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NULL)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(NULL)
+  }
 
   tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
 }
@@ -1229,7 +1358,9 @@ apply_coverage_constraints <- function(likelihood_df,
 #' @noRd
 .xc_recording_count <- function(species_name) {
   body <- .xc_recordings_raw(species_name)
-  if (is.null(body) || is.null(body[["numRecordings"]])) return(NA_integer_)
+  if (is.null(body) || is.null(body[["numRecordings"]])) {
+    return(NA_integer_)
+  }
   suppressWarnings(as.integer(body[["numRecordings"]]))
 }
 
@@ -1247,21 +1378,25 @@ apply_coverage_constraints <- function(likelihood_df,
 #' data frame on any failure or when the species has no recordings.
 #' @noRd
 .xc_recording_locations <- function(species_name) {
-  empty <- data.frame(species = character(0L), xc_id = character(0L),
-                      lat = numeric(0L), lon = numeric(0L),
-                      country = character(0L), stringsAsFactors = FALSE)
+  empty <- data.frame(
+    species = character(0L), xc_id = character(0L),
+    lat = numeric(0L), lon = numeric(0L),
+    country = character(0L), stringsAsFactors = FALSE
+  )
 
   body <- .xc_recordings_raw(species_name)
   if (is.null(body) || is.null(body[["recordings"]]) ||
-      length(body[["recordings"]]) == 0L) return(empty)
+    length(body[["recordings"]]) == 0L) {
+    return(empty)
+  }
 
   recs <- body[["recordings"]]
   do.call(rbind, lapply(recs, function(r) {
     data.frame(
       species = species_name,
-      xc_id   = as.character(r[["id"]] %||% NA_character_),
-      lat     = suppressWarnings(as.numeric(r[["lat"]] %||% NA_character_)),
-      lon     = suppressWarnings(as.numeric(r[["lng"]] %||% NA_character_)),
+      xc_id = as.character(r[["id"]] %||% NA_character_),
+      lat = suppressWarnings(as.numeric(r[["lat"]] %||% NA_character_)),
+      lon = suppressWarnings(as.numeric(r[["lng"]] %||% NA_character_)),
       country = as.character(r[["cnt"]] %||% NA_character_),
       stringsAsFactors = FALSE
     )
@@ -1304,15 +1439,18 @@ apply_coverage_constraints <- function(likelihood_df,
 #'
 #' @export
 fetch_xc_recording_locations <- function(species_names, verbose = TRUE) {
-  if (!is.character(species_names) || length(species_names) == 0L)
+  if (!is.character(species_names) || length(species_names) == 0L) {
     stop("fetch_xc_recording_locations: 'species_names' must be a non-empty character vector.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
-  if (verbose)
+  if (verbose) {
     message(sprintf(
       "fetch_xc_recording_locations: querying Xeno-canto for %d species (1s per query)...",
       length(species_names)
     ))
+  }
 
   res <- vector("list", length(species_names))
   for (i in seq_along(species_names)) {
@@ -1322,9 +1460,11 @@ fetch_xc_recording_locations <- function(species_names, verbose = TRUE) {
 
   out <- do.call(rbind, res)
   if (is.null(out)) {
-    out <- data.frame(species = character(0L), xc_id = character(0L),
-                      lat = numeric(0L), lon = numeric(0L),
-                      country = character(0L), stringsAsFactors = FALSE)
+    out <- data.frame(
+      species = character(0L), xc_id = character(0L),
+      lat = numeric(0L), lon = numeric(0L),
+      country = character(0L), stringsAsFactors = FALSE
+    )
   }
   out
 }
@@ -1351,14 +1491,18 @@ fetch_xc_recording_locations <- function(species_names, verbose = TRUE) {
       "Install with: install.packages('httr2')",
       call. = FALSE
     )
-    return(list(taxon_id = NA_integer_, matched_name = NA_character_,
-                rank = NA_character_, n_observations = NA_integer_,
-                found = FALSE))
+    return(list(
+      taxon_id = NA_integer_, matched_name = NA_character_,
+      rank = NA_character_, n_observations = NA_integer_,
+      found = FALSE
+    ))
   }
 
-  empty <- list(taxon_id = NA_integer_, matched_name = NA_character_,
-                rank = NA_character_, n_observations = NA_integer_,
-                found = FALSE)
+  empty <- list(
+    taxon_id = NA_integer_, matched_name = NA_character_,
+    rank = NA_character_, n_observations = NA_integer_,
+    found = FALSE
+  )
 
   req <- httr2::request("https://api.inaturalist.org/v1/taxa") |>
     httr2::req_url_query(
@@ -1368,30 +1512,38 @@ fetch_xc_recording_locations <- function(species_names, verbose = TRUE) {
     ) |>
     httr2::req_error(is_error = function(resp) FALSE)
 
-  if (nzchar(api_token))
+  if (nzchar(api_token)) {
     req <- req |> httr2::req_headers(Authorization = paste("Bearer", api_token))
+  }
 
   resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
-  if (is.null(resp)) return(empty)
+  if (is.null(resp)) {
+    return(empty)
+  }
 
   status <- httr2::resp_status(resp)
-  if (status == 401L)
+  if (status == 401L) {
     stop(
       "audit_inat_coverage: iNaturalist API returned 401 Unauthorized. ",
       "Check your INAT_API_TOKEN or omit api_token to query without authentication."
     )
-  if (status != 200L) return(empty)
+  }
+  if (status != 200L) {
+    return(empty)
+  }
 
   body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
-  if (is.null(body) || length(body[["results"]]) == 0L) return(empty)
+  if (is.null(body) || length(body[["results"]]) == 0L) {
+    return(empty)
+  }
 
   r <- body[["results"]][[1L]]
   list(
-    taxon_id      = as.integer(r[["id"]] %||% NA_integer_),
-    matched_name  = as.character(r[["name"]] %||% NA_character_),
-    rank          = as.character(r[["rank"]] %||% NA_character_),
+    taxon_id = as.integer(r[["id"]] %||% NA_integer_),
+    matched_name = as.character(r[["name"]] %||% NA_character_),
+    rank = as.character(r[["rank"]] %||% NA_character_),
     n_observations = as.integer(r[["observations_count"]] %||% NA_integer_),
-    found         = TRUE
+    found = TRUE
   )
 }
 
@@ -1474,25 +1626,29 @@ fetch_xc_recording_locations <- function(species_names, verbose = TRUE) {
 #' }
 #' @export
 audit_inat_coverage <- function(species_list,
-                                match_df      = NULL,
-                                cv_threshold  = 100L,
-                                api_token     = Sys.getenv("INAT_API_TOKEN"),
-                                verbose       = FALSE) {
-
+                                match_df = NULL,
+                                cv_threshold = 100L,
+                                api_token = Sys.getenv("INAT_API_TOKEN"),
+                                verbose = FALSE) {
   # ---- validate ---------------------------------------------------------------
-  if (!is.character(species_list) || length(species_list) == 0L)
+  if (!is.character(species_list) || length(species_list) == 0L) {
     stop("audit_inat_coverage: 'species_list' must be a non-empty character vector.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
   cv_threshold <- as.integer(cv_threshold)
-  if (is.na(cv_threshold) || cv_threshold < 0L)
+  if (is.na(cv_threshold) || cv_threshold < 0L) {
     stop("audit_inat_coverage: 'cv_threshold' must be a non-negative integer.",
-         call. = FALSE)
-  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose))
+      call. = FALSE
+    )
+  }
+  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("audit_inat_coverage: 'verbose' must be TRUE or FALSE.", call. = FALSE)
+  }
 
   species_list <- unique(trimws(species_list))
   species_list <- species_list[nzchar(species_list)]
-  n            <- length(species_list)
+  n <- length(species_list)
 
   if (n == 0L) {
     message("audit_inat_coverage: no valid species names supplied.")
@@ -1511,13 +1667,21 @@ audit_inat_coverage <- function(species_list,
   # ---- match_df annotation ---------------------------------------------------
   match_sp_set <- NULL
   if (!is.null(match_df)) {
-    if (!is.data.frame(match_df))
+    if (!is.data.frame(match_df)) {
       stop("audit_inat_coverage: 'match_df' must be a data frame or NULL.",
-           call. = FALSE)
-    sp_col <- if ("taxon_name" %in% names(match_df)) "taxon_name" else
-              if ("species"    %in% names(match_df)) "species"    else NULL
-    if (!is.null(sp_col))
+        call. = FALSE
+      )
+    }
+    sp_col <- if ("taxon_name" %in% names(match_df)) {
+      "taxon_name"
+    } else if ("species" %in% names(match_df)) {
+      "species"
+    } else {
+      NULL
+    }
+    if (!is.null(sp_col)) {
       match_sp_set <- trimws(tolower(unique(match_df[[sp_col]])))
+    }
   }
 
   # ---- query iNat taxa API per species ---------------------------------------
@@ -1534,12 +1698,15 @@ audit_inat_coverage <- function(species_list,
     info <- .inat_species_info(nm, api_token = api_token)
     Sys.sleep(0.3)
 
-    in_inat      <- info$found
-    n_obs        <- info$n_observations
-    cv_included  <- in_inat && !is.na(n_obs) && n_obs >= cv_threshold
-    unref        <- !cv_included
-    in_match     <- if (is.null(match_sp_set)) NA else
-                    tolower(nm) %in% match_sp_set
+    in_inat <- info$found
+    n_obs <- info$n_observations
+    cv_included <- in_inat && !is.na(n_obs) && n_obs >= cv_threshold
+    unref <- !cv_included
+    in_match <- if (is.null(match_sp_set)) {
+      NA
+    } else {
+      tolower(nm) %in% match_sp_set
+    }
 
     rows[[i]] <- data.frame(
       species           = nm,
@@ -1556,11 +1723,13 @@ audit_inat_coverage <- function(species_list,
 
   census_df <- do.call(rbind, rows)
 
-  n_in        <- sum(census_df$cv_model_included, na.rm = TRUE)
-  n_unref     <- sum(census_df$unreferenced,      na.rm = TRUE)
+  n_in <- sum(census_df$cv_model_included, na.rm = TRUE)
+  n_unref <- sum(census_df$unreferenced, na.rm = TRUE)
   message(sprintf(
-    paste0("audit_inat_coverage: %d species checked; ",
-           "%d likely in CV model (%.0f%%), %d unreferenced."),
+    paste0(
+      "audit_inat_coverage: %d species checked; ",
+      "%d likely in CV model (%.0f%%), %d unreferenced."
+    ),
     n, n_in, 100 * n_in / n, n_unref
   ))
 

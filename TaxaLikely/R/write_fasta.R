@@ -45,41 +45,48 @@
 #'   barcode_term = "MiFishU"
 #' )
 #' write_reference_fasta(ref, "fundulus_mifish.fasta",
-#'                       taxonomy_file = "fundulus_mifish_taxonomy.tsv")
+#'   taxonomy_file = "fundulus_mifish_taxonomy.tsv"
+#' )
 #'
 #' # Round-trip: reload the same reference
 #' ref2 <- read_reference_fasta("fundulus_mifish.fasta",
-#'                               taxonomy_file = "fundulus_mifish_taxonomy.tsv",
-#'                               rank_system   = c("family", "genus", "species"))
+#'   taxonomy_file = "fundulus_mifish_taxonomy.tsv",
+#'   rank_system   = c("family", "genus", "species")
+#' )
 #' }
 #'
 #' @export
 write_reference_fasta <- function(reference_df,
-                                   file,
-                                   taxonomy_file = NULL,
-                                   rank_system   = NULL) {
-
-  if (!is.data.frame(reference_df))
+                                  file,
+                                  taxonomy_file = NULL,
+                                  rank_system = NULL) {
+  if (!is.data.frame(reference_df)) {
     stop("reference_df must be a data frame.", call. = FALSE)
-  if (!all(c("composite_id", "sequence") %in% names(reference_df)))
+  }
+  if (!all(c("composite_id", "sequence") %in% names(reference_df))) {
     stop("reference_df must have 'composite_id' and 'sequence' columns.",
-         call. = FALSE)
-  if (!is.character(file) || length(file) != 1L || !nzchar(file))
+      call. = FALSE
+    )
+  }
+  if (!is.character(file) || length(file) != 1L || !nzchar(file)) {
     stop("file must be a single non-empty character path.", call. = FALSE)
+  }
 
   # Determine taxonomy columns
   non_tax_cols <- c("composite_id", "sequence")
   if (is.null(rank_system)) {
     rank_system <- setdiff(names(reference_df), non_tax_cols)
-    if (length(rank_system) == 0L)
+    if (length(rank_system) == 0L) {
       stop("No taxonomy columns found in reference_df.", call. = FALSE)
+    }
   } else {
     missing <- setdiff(rank_system, names(reference_df))
-    if (length(missing) > 0L)
+    if (length(missing) > 0L) {
       stop(sprintf(
         "rank_system column(s) not found in reference_df: %s",
         paste(missing, collapse = ", ")
       ), call. = FALSE)
+    }
   }
 
   # Build FASTA lines
@@ -117,19 +124,25 @@ write_reference_fasta <- function(reference_df,
   # correctly for any rank_system.
   if (!is.null(taxonomy_file)) {
     if (!is.character(taxonomy_file) || length(taxonomy_file) != 1L ||
-        !nzchar(taxonomy_file))
+      !nzchar(taxonomy_file)) {
       stop("taxonomy_file must be a single non-empty character path.",
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
 
     # Single-letter prefixes that .parse_tax_string() recognises
-    rank_to_prefix <- c(kingdom = "k", phylum = "p", class = "c",
-                        order   = "o", family = "f", genus  = "g",
-                        species = "s")
+    rank_to_prefix <- c(
+      kingdom = "k", phylum = "p", class = "c",
+      order = "o", family = "f", genus = "g",
+      species = "s"
+    )
 
     tax_strings <- vapply(seq_len(n), function(i) {
       parts <- vapply(rank_system, function(col) {
         v <- reference_df[[col]][i]
-        if (is.na(v) || !nzchar(trimws(v))) return("")
+        if (is.na(v) || !nzchar(trimws(v))) {
+          return("")
+        }
         prefix <- rank_to_prefix[col]
         # For standard ranks, write "x__value"; for unrecognised ranks,
         # fall back to bare value (readable only if rank is in rank_system order)

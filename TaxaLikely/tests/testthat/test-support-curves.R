@@ -8,11 +8,13 @@
 
 .curve_fixture <- function() {
   mk <- function(sx, sy, gx, gy, fx, fy, p) {
-    data.frame(id_x = paste0(sx, "_1"), id_y = paste0(sy, "_1"),
-               species.x = sx, species.y = sy,
-               genus.x = gx, genus.y = gy,
-               family.x = fx, family.y = fy,
-               p_match = p, stringsAsFactors = FALSE)
+    data.frame(
+      id_x = paste0(sx, "_1"), id_y = paste0(sy, "_1"),
+      species.x = sx, species.y = sy,
+      genus.x = gx, genus.y = gy,
+      family.x = fx, family.y = fy,
+      p_match = p, stringsAsFactors = FALSE
+    )
   }
   rbind(
     # within-species (high)
@@ -74,9 +76,9 @@ test_that("rate_smooth is exactly the Jeffreys posterior mean (k + 1/2)/(n + 1)"
 test_that("the smoothed rate is never exactly 0 or 1, but the raw rate still can be", {
   cur <- .compute_rank_score_curves(.curve_fixture(), .rs)
   s <- cur$species$fpr_by_genus_shrunk
-  expect_true(any(s$rate == 0))              # raw keeps the empirical extremes
+  expect_true(any(s$rate == 0)) # raw keeps the empirical extremes
   expect_true(any(s$rate == 1))
-  expect_false(any(s$rate_smooth == 0))      # smoothed never claims certainty
+  expect_false(any(s$rate_smooth == 0)) # smoothed never claims certainty
   expect_false(any(s$rate_smooth == 1))
   expect_false(any(cur$species$fpr_pooled$pooled_rate_smooth == 0))
 })
@@ -88,7 +90,8 @@ test_that("smoothing preserves monotonicity in threshold", {
     v <- s[s$group == g, ]
     v <- v[order(v$threshold), ]
     expect_true(all(diff(v$rate_smooth) <= 1e-12),
-                info = paste("non-monotonic rate_smooth for group", g))
+      info = paste("non-monotonic rate_smooth for group", g)
+    )
   }
 })
 
@@ -98,17 +101,23 @@ test_that("EB shrinkage blends the SMOOTHED rate toward the SMOOTHED pooled targ
   row <- s[s$group == "Aa" & s$threshold == 92, ]
   w <- row$n / (row$n + 10)
   expect_equal(row$w, w)
-  expect_equal(row$shrunk_rate,
-               w * row$rate_smooth + (1 - w) * row$pooled_rate_smooth)
+  expect_equal(
+    row$shrunk_rate,
+    w * row$rate_smooth + (1 - w) * row$pooled_rate_smooth
+  )
   # and specifically NOT the raw-rate version
-  expect_false(isTRUE(all.equal(row$shrunk_rate,
-                                w * row$rate + (1 - w) * row$pooled_rate)))
+  expect_false(isTRUE(all.equal(
+    row$shrunk_rate,
+    w * row$rate + (1 - w) * row$pooled_rate
+  )))
 })
 
 test_that(".lookup_confusion_risk_value() interpolates rather than snapping to a grid point", {
-  pooled <- data.frame(threshold          = c(98, 99, 100),
-                       pooled_rate        = c(0.40, 0.20, 0.00),
-                       pooled_rate_smooth = c(0.40, 0.20, 0.00))
+  pooled <- data.frame(
+    threshold = c(98, 99, 100),
+    pooled_rate = c(0.40, 0.20, 0.00),
+    pooled_rate_smooth = c(0.40, 0.20, 0.00)
+  )
   # Exactly on a grid point -> that point's value.
   expect_equal(.lookup_confusion_risk_value(99, NULL, NULL, pooled), 0.20)
   # Halfway between -> halfway value, NOT either endpoint.
@@ -118,26 +127,32 @@ test_that(".lookup_confusion_risk_value() interpolates rather than snapping to a
   expect_equal(.lookup_confusion_risk_value(99.25, NULL, NULL, pooled), 0.15)
   expect_equal(.lookup_confusion_risk_value(99.75, NULL, NULL, pooled), 0.05)
   expect_true(.lookup_confusion_risk_value(99.6, NULL, NULL, pooled) >
-              .lookup_confusion_risk_value(99.9, NULL, NULL, pooled))
+    .lookup_confusion_risk_value(99.9, NULL, NULL, pooled))
 })
 
 test_that(".lookup_confusion_risk_value() clamps outside the grid instead of returning NA", {
-  pooled <- data.frame(threshold          = c(98, 99, 100),
-                       pooled_rate        = c(0.40, 0.20, 0.00),
-                       pooled_rate_smooth = c(0.40, 0.20, 0.05))
+  pooled <- data.frame(
+    threshold = c(98, 99, 100),
+    pooled_rate = c(0.40, 0.20, 0.00),
+    pooled_rate_smooth = c(0.40, 0.20, 0.05)
+  )
   expect_equal(.lookup_confusion_risk_value(101, NULL, NULL, pooled), 0.05)
-  expect_equal(.lookup_confusion_risk_value(50,  NULL, NULL, pooled), 0.40)
+  expect_equal(.lookup_confusion_risk_value(50, NULL, NULL, pooled), 0.40)
   expect_true(is.na(.lookup_confusion_risk_value(NA_real_, NULL, NULL, pooled)))
   expect_true(is.na(.lookup_confusion_risk_value(99, NULL, NULL, NULL)))
 })
 
 test_that(".lookup_confusion_risk_value() prefers the group-specific shrunk curve", {
-  pooled <- data.frame(threshold          = c(98, 99, 100),
-                       pooled_rate        = c(0.40, 0.20, 0.00),
-                       pooled_rate_smooth = c(0.40, 0.20, 0.00))
-  shrunk <- data.frame(group       = rep("Aa", 3),
-                       threshold   = c(98, 99, 100),
-                       shrunk_rate = c(0.80, 0.60, 0.40))
+  pooled <- data.frame(
+    threshold = c(98, 99, 100),
+    pooled_rate = c(0.40, 0.20, 0.00),
+    pooled_rate_smooth = c(0.40, 0.20, 0.00)
+  )
+  shrunk <- data.frame(
+    group = rep("Aa", 3),
+    threshold = c(98, 99, 100),
+    shrunk_rate = c(0.80, 0.60, 0.40)
+  )
   expect_equal(.lookup_confusion_risk_value(99, "Aa", shrunk, pooled), 0.60)
   expect_equal(.lookup_confusion_risk_value(99.5, "Aa", shrunk, pooled), 0.50)
   # A group with no row of its own falls back to the pooled curve.
@@ -161,7 +176,8 @@ test_that("compute_rank_thresholds() reads the RAW rate, so smoothing does not m
   # exported function agrees -- this is what pins it to `rate`, not `rate_smooth`.
   cur <- .compute_rank_score_curves(fx, .rs)
   m <- merge(cur$species$tpr_pooled, cur$species$fpr_pooled,
-             by = "threshold", suffixes = c("_tpr", "_fpr"))
+    by = "threshold", suffixes = c("_tpr", "_fpr")
+  )
   j <- m$pooled_rate_tpr - m$pooled_rate_fpr
   expect_equal(unname(rt[["species"]]), m$threshold[which.max(j)])
 })

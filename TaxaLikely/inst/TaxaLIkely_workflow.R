@@ -21,28 +21,32 @@ library(DECIPHER)
 # Full symmetric 4x4 matrix (all pairs, including self-matches).
 # Built as expand.grid to avoid index misalignment errors.
 .seqs <- c("Lc1", "Lc2", "Lc3", "Cc1")
-.sp   <- c("Leuciscus cephalus", "Leuciscus cephalus",
-           "Leuciscus cephalus", "Cyprinus carpio")
-.gen  <- c("Leuciscus", "Leuciscus", "Leuciscus", "Cyprinus")
+.sp <- c(
+  "Leuciscus cephalus", "Leuciscus cephalus",
+  "Leuciscus cephalus", "Cyprinus carpio"
+)
+.gen <- c("Leuciscus", "Leuciscus", "Leuciscus", "Cyprinus")
 
 # Pairwise p_match (0-1 scale); symmetric
 .pm <- matrix(
-  c(1.00, 0.97, 0.96, 0.72,
+  c(
+    1.00, 0.97, 0.96, 0.72,
     0.97, 1.00, 0.98, 0.71,
     0.96, 0.98, 1.00, 0.72,
-    0.72, 0.71, 0.72, 1.00),
+    0.72, 0.71, 0.72, 1.00
+  ),
   nrow = 4, dimnames = list(.seqs, .seqs)
 )
 
 idx <- expand.grid(i = seq_along(.seqs), j = seq_along(.seqs))
 toy_matrix <- data.frame(
-  id_x      = .seqs[idx$i],
-  id_y      = .seqs[idx$j],
+  id_x = .seqs[idx$i],
+  id_y = .seqs[idx$j],
   species.x = .sp[idx$i],
   species.y = .sp[idx$j],
-  genus.x   = .gen[idx$i],
-  genus.y   = .gen[idx$j],
-  p_match   = .pm[cbind(idx$i, idx$j)],
+  genus.x = .gen[idx$i],
+  genus.y = .gen[idx$j],
+  p_match = .pm[cbind(idx$i, idx$j)],
   stringsAsFactors = FALSE
 )
 rm(.seqs, .sp, .gen, .pm, idx)
@@ -58,7 +62,7 @@ message("\n--- A2. train_likelihood_model ---")
 model <- train_likelihood_model(
   raw_df         = toy_matrix,
   rank_system    = c("genus", "species"),
-  use_hierarchy  = FALSE          # too few ranks for lme4 with 2 levels
+  use_hierarchy  = FALSE # too few ranks for lme4 with 2 levels
 )
 str(model, max.level = 1)
 
@@ -70,28 +74,34 @@ interp <- interpret_model(model)
 # ---- A4. Build a toy match object --------------------------------------------
 # One ESV with hits to three taxa
 toy_match <- data.frame(
-  observation_id       = "ESV_001",
-  score           = c(96.5, 83.2, 72.1, 96.3, 95.8),
-  taxon_name      = c("Leuciscus cephalus", "Alburnus alburnus",
-                      "Rutilus rutilus", "Leuciscus cephalus",
-                      "Leuciscus cephalus"),
+  observation_id = "ESV_001",
+  score = c(96.5, 83.2, 72.1, 96.3, 95.8),
+  taxon_name = c(
+    "Leuciscus cephalus", "Alburnus alburnus",
+    "Rutilus rutilus", "Leuciscus cephalus",
+    "Leuciscus cephalus"
+  ),
   taxon_name_rank = "species",
-  genus           = c("Leuciscus", "Alburnus", "Rutilus",
-                      "Leuciscus", "Leuciscus"),
-  species         = c("Leuciscus cephalus", "Alburnus alburnus",
-                      "Rutilus rutilus", "Leuciscus cephalus",
-                      "Leuciscus cephalus"),
-  accession       = c("NC_001","NC_002","NC_003","NC_004","NC_005"),
+  genus = c(
+    "Leuciscus", "Alburnus", "Rutilus",
+    "Leuciscus", "Leuciscus"
+  ),
+  species = c(
+    "Leuciscus cephalus", "Alburnus alburnus",
+    "Rutilus rutilus", "Leuciscus cephalus",
+    "Leuciscus cephalus"
+  ),
+  accession = c("NC_001", "NC_002", "NC_003", "NC_004", "NC_005"),
   stringsAsFactors = FALSE
 )
 
 # ---- A5. Evaluate likelihoods ------------------------------------------------
 message("\n--- A5. evaluate_likelihoods ---")
 lik_result <- evaluate_likelihoods(
-  match_df    = toy_match,
+  match_df = toy_match,
   model_params = model,
-  rank_system  = c("genus", "species"),
-  n_sims       = 100L    # Monte Carlo for credible intervals
+  rank_system = c("genus", "species"),
+  n_sims = 100L # Monte Carlo for credible intervals
 )
 print(lik_result$likelihoods)
 # Expect: Leuciscus cephalus with high score_likelihood
@@ -118,10 +128,14 @@ match_obj <- readRDS("~/My Drive/Rscripts/projects/TaxaID/TaxaMatch/inst/match_o
 # Normalize legacy column names (pre-Session 79/99 saved files)
 if (!"observation_id" %in% names(match_obj)) {
   old <- intersect(c("sample_id", "esvid", "esv_id", "asvid", "asv_id"), names(match_obj))[1]
-  if (!is.na(old)) { message("Renaming '", old, "' -> 'observation_id'"); names(match_obj)[names(match_obj) == old] <- "observation_id" }
+  if (!is.na(old)) {
+    message("Renaming '", old, "' -> 'observation_id'")
+    names(match_obj)[names(match_obj) == old] <- "observation_id"
+  }
 }
 if (!"score_original" %in% names(match_obj) && "score" %in% names(match_obj)) {
-  message("Renaming 'score' -> 'score_original'"); names(match_obj)[names(match_obj) == "score"] <- "score_original"
+  message("Renaming 'score' -> 'score_original'")
+  names(match_obj)[names(match_obj) == "score"] <- "score_original"
 }
 
 # Confirm columns
@@ -136,10 +150,10 @@ real_matrix_path <- file.path(
 if (file.exists(real_matrix_path)) {
   message("Loading cached real_matrix from ", real_matrix_path)
   real_matrix <- readRDS(real_matrix_path)
-
 } else {
-  if (!requireNamespace("rentrez", quietly = TRUE))
+  if (!requireNamespace("rentrez", quietly = TRUE)) {
     stop("Package 'rentrez' is required to fetch sequences. Install with: install.packages('rentrez')")
+  }
 
   # Extract unique NCBI accessions (exclude local vouchers: JV_voucher_*)
   ncbi_rows <- match_obj[!grepl("^JV_voucher", match_obj$accession, ignore.case = TRUE), ]
@@ -152,35 +166,35 @@ if (file.exists(real_matrix_path)) {
   fasta_chunks <- vector("list", ceiling(length(acc_unique) / batch_size))
   for (i in seq_along(fasta_chunks)) {
     idx_start <- (i - 1L) * batch_size + 1L
-    idx_end   <- min(i * batch_size, length(acc_unique))
-    batch     <- acc_unique[idx_start:idx_end]
+    idx_end <- min(i * batch_size, length(acc_unique))
+    batch <- acc_unique[idx_start:idx_end]
     fasta_chunks[[i]] <- rentrez::entrez_fetch(
       db      = "nuccore",
       id      = batch,
       rettype = "fasta",
       retmode = "text"
     )
-    Sys.sleep(0.4)   # stay within 3 requests/second
+    Sys.sleep(0.4) # stay within 3 requests/second
   }
   fasta_text <- paste(fasta_chunks, collapse = "")
 
   # Parse FASTA into data frame: header + sequence
-  lines       <- strsplit(fasta_text, "\n")[[1L]]
-  header_idx  <- which(startsWith(lines, ">"))
+  lines <- strsplit(fasta_text, "\n")[[1L]]
+  header_idx <- which(startsWith(lines, ">"))
   seq_end_idx <- c(header_idx[-1L] - 1L, length(lines))
 
   composite_ids <- character(length(header_idx))
-  sequences     <- character(length(header_idx))
+  sequences <- character(length(header_idx))
   for (k in seq_along(header_idx)) {
     hdr <- sub("^>", "", lines[header_idx[k]])
     # accession = first whitespace-delimited token; strip version suffix (.1 etc.)
     composite_ids[k] <- sub("\\.[0-9]+$", "", strsplit(trimws(hdr), "\\s+")[[1L]][1L])
-    sequences[k]     <- paste(lines[(header_idx[k] + 1L):seq_end_idx[k]], collapse = "")
+    sequences[k] <- paste(lines[(header_idx[k] + 1L):seq_end_idx[k]], collapse = "")
   }
 
   fasta_df <- data.frame(
     composite_id = composite_ids,
-    sequence     = sequences,
+    sequence = sequences,
     stringsAsFactors = FALSE
   )
   # Remove any empty sequences
@@ -193,7 +207,8 @@ if (file.exists(real_matrix_path)) {
 
   # Join sequences to taxonomy
   reference_df <- merge(fasta_df, tax_lookup[, c("composite_id", "family", "genus", "species")],
-                        by = "composite_id", all.x = TRUE)
+    by = "composite_id", all.x = TRUE
+  )
   reference_df <- reference_df[!is.na(reference_df$species), ]
   cat("reference_df rows after taxonomy join:", nrow(reference_df), "\n")
 
@@ -281,13 +296,14 @@ message("Saved real_likelihoods to ", real_likelihoods_path)
 
 coverage <- audit_barcode_coverage(
   reference_df[!duplicated(reference_df$species), c("genus", "species")],
-  barcode_term = "12S",   # adjust to your marker: "COI", "ITS2", etc.
+  barcode_term = "12S", # adjust to your marker: "COI", "ITS2", etc.
   target_rank  = "genus"
   # max_date    = "2024/12/31",  # restrict to sequences available by this date
   # species_list = my_fishbase_spp,  # optional: more complete than NCBI taxonomy
 )
 print(coverage$census)
-cat("Unreferenced species:\n"); print(coverage$unreferenced)
+cat("Unreferenced species:\n")
+print(coverage$unreferenced)
 
 # Reshape census for apply_coverage_constraints():
 census_result <- dplyr::mutate(
@@ -302,7 +318,8 @@ census_result <- dplyr::mutate(
 # (constraint_behavior = "zero" requested explicitly; package default is now
 # "relabel" -- see ?apply_coverage_constraints's "Census confidence" section)
 constrained <- apply_coverage_constraints(real_likelihoods$likelihoods, census_result,
-                                          constraint_behavior = "zero")
+  constraint_behavior = "zero"
+)
 message("\nWorkflow complete.")
 # Next step: obtain data for priors using TaxaFetch.
 # see inst/TaxaAssign_bayesian_workflow.R in TaxaAssign for the full

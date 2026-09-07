@@ -35,10 +35,14 @@ library(TaxaLikely)
 reference_df <- readRDS("reference_df.rds")
 
 # Deduplicate to one row per species
-ref_species <- reference_df[!duplicated(reference_df$species),
-                            c("genus", "species")]
-cat("Reference species:", nrow(ref_species), "across",
-    length(unique(ref_species$genus)), "genera\n")
+ref_species <- reference_df[
+  !duplicated(reference_df$species),
+  c("genus", "species")
+]
+cat(
+  "Reference species:", nrow(ref_species), "across",
+  length(unique(ref_species$genus)), "genera\n"
+)
 
 # ==============================================================================
 # PATH A: BARCODE COVERAGE (eDNA / DNA barcoding)
@@ -61,7 +65,7 @@ exclude_pred <- infer_exclude_predicted(reference_df)
 
 coverage <- audit_barcode_coverage(
   match_df          = ref_species,
-  barcode_term      = "12S",          # your marker: "COI", "ITS2", etc.
+  barcode_term      = "12S", # your marker: "COI", "ITS2", etc.
   target_rank       = "genus",
   exclude_predicted = !isFALSE(exclude_pred)
   # max_date    = "2024/12/31",  # match GenBank state when reference was built
@@ -113,18 +117,19 @@ likelihoods <- readRDS("likelihoods.rds")
 # Reshape census for apply_coverage_constraints()
 census_result <- data.frame(
   taxon_name = coverage$census$group,
-  rank       = "genus",
-  status     = ifelse(coverage$census$is_complete, "complete", "incomplete"),
+  rank = "genus",
+  status = ifelse(coverage$census$is_complete, "complete", "incomplete"),
   stringsAsFactors = FALSE
 )
 
 constrained <- apply_coverage_constraints(likelihoods, census_result,
-                                          constraint_behavior = "zero")
+  constraint_behavior = "zero"
+)
 
 # How many H2 rows were suppressed?
 n_suppressed <- sum(
   constrained$hypothesis_type == "unreferenced_species" &
-  constrained$score_likelihood == 0,
+    constrained$score_likelihood == 0,
   na.rm = TRUE
 )
 cat("\nH2 rows suppressed (complete genera):", n_suppressed, "\n")

@@ -80,73 +80,88 @@
 #'
 #' # Standard TaxaLikely workflow continues here
 #' ref_matrix <- build_sequence_matrix(ref)
-#' errors     <- flag_reference_errors(ref_matrix)
-#' clean_mat  <- remove_flagged_references(ref_matrix, errors)
-#' model      <- train_likelihood_model(clean_mat)
+#' errors <- flag_reference_errors(ref_matrix)
+#' clean_mat <- remove_flagged_references(ref_matrix, errors)
+#' model <- train_likelihood_model(clean_mat)
 #' }
 #'
 #' @export
 read_crabs_output <- function(crabs_file,
-                              rank_system     = NULL,
-                              max_n_bases     = NULL,
+                              rank_system = NULL,
+                              max_n_bases = NULL,
                               require_species = TRUE,
-                              dereplicate     = FALSE) {
-
+                              dereplicate = FALSE) {
   # --- Validate inputs --------------------------------------------------------
   # `crabs_file` (not `file`, which shadows base::file()) and `crabs_df`
   # (not `df`, which shadows stats::df()) throughout this function.
-  if (!is.character(crabs_file) || length(crabs_file) != 1L)
+  if (!is.character(crabs_file) || length(crabs_file) != 1L) {
     stop("crabs_file must be a single file path")
-  if (!file.exists(crabs_file))
+  }
+  if (!file.exists(crabs_file)) {
     stop(sprintf("File not found: %s", crabs_file))
-  if (file.info(crabs_file)$size == 0L)
+  }
+  if (file.info(crabs_file)$size == 0L) {
     stop(sprintf("CRABS file is empty (0 bytes): %s", crabs_file))
+  }
   if (!is.null(max_n_bases) &&
-      (!is.numeric(max_n_bases) || length(max_n_bases) != 1L || max_n_bases < 1L))
+    (!is.numeric(max_n_bases) || length(max_n_bases) != 1L || max_n_bases < 1L)) {
     stop("max_n_bases must be a positive integer or NULL")
+  }
   if (!is.logical(require_species) || length(require_species) != 1L ||
-      is.na(require_species))
+    is.na(require_species)) {
     stop("require_species must be TRUE or FALSE")
-  if (!is.logical(dereplicate) || length(dereplicate) != 1L || is.na(dereplicate))
+  }
+  if (!is.logical(dereplicate) || length(dereplicate) != 1L || is.na(dereplicate)) {
     stop("dereplicate must be TRUE or FALSE")
+  }
 
-  crabs_tax_ranks <- c("kingdom", "phylum", "class", "order",
-                       "family", "genus", "species")
+  crabs_tax_ranks <- c(
+    "kingdom", "phylum", "class", "order",
+    "family", "genus", "species"
+  )
 
   if (!is.null(rank_system)) {
     rank_system <- tolower(trimws(rank_system))
     bad <- setdiff(rank_system, crabs_tax_ranks)
-    if (length(bad) > 0L)
+    if (length(bad) > 0L) {
       stop(sprintf(
         "rank_system contains ranks not in CRABS format: %s\nValid ranks: %s",
         paste(bad, collapse = ", "),
         paste(crabs_tax_ranks, collapse = ", ")
       ))
+    }
   }
 
   # --- Read file --------------------------------------------------------------
-  crabs_col_names <- c("accession", "taxid_string", "ncbi_tax_number",
-                       "kingdom", "phylum", "class", "order",
-                       "family", "genus", "species", "sequence")
+  crabs_col_names <- c(
+    "accession", "taxid_string", "ncbi_tax_number",
+    "kingdom", "phylum", "class", "order",
+    "family", "genus", "species", "sequence"
+  )
 
   # na.strings = character(0L): do not auto-convert; we handle literal "NA" below
   # so that we can distinguish missing taxonomy from genuinely empty fields
   crabs_df <- tryCatch(
     utils::read.table(
-      crabs_file, sep = "\t", header = FALSE, col.names = crabs_col_names,
+      crabs_file,
+      sep = "\t", header = FALSE, col.names = crabs_col_names,
       quote = "", comment.char = "", stringsAsFactors = FALSE,
       fill = TRUE, na.strings = character(0L)
     ),
     error = function(e) {
-      stop(sprintf("Failed to read CRABS file '%s': %s",
-                   basename(crabs_file), conditionMessage(e)))
+      stop(sprintf(
+        "Failed to read CRABS file '%s': %s",
+        basename(crabs_file), conditionMessage(e)
+      ))
     }
   )
 
   if (nrow(crabs_df) == 0L) {
     warning(sprintf("CRABS file contained no rows: %s", basename(crabs_file)))
-    return(data.frame(composite_id = character(0L), sequence = character(0L),
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      composite_id = character(0L), sequence = character(0L),
+      stringsAsFactors = FALSE
+    ))
   }
 
   message(sprintf("Read %d rows from %s", nrow(crabs_df), basename(crabs_file)))
@@ -158,20 +173,25 @@ read_crabs_output <- function(crabs_file,
 
   # --- Auto-detect rank_system ------------------------------------------------
   if (is.null(rank_system)) {
-    has_data    <- vapply(crabs_tax_ranks,
-                          function(r) any(!is.na(crabs_df[[r]])), logical(1L))
+    has_data <- vapply(
+      crabs_tax_ranks,
+      function(r) any(!is.na(crabs_df[[r]])), logical(1L)
+    )
     rank_system <- crabs_tax_ranks[has_data]
-    if (length(rank_system) == 0L)
+    if (length(rank_system) == 0L) {
       stop("No taxonomy columns have non-NA values. Is this a valid CRABS file?")
-    message(sprintf("Auto-detected rank_system: %s",
-                    paste(rank_system, collapse = ", ")))
+    }
+    message(sprintf(
+      "Auto-detected rank_system: %s",
+      paste(rank_system, collapse = ", ")
+    ))
   }
 
   # --- Build composite_id (accession with version suffix stripped) ------------
   crabs_df$composite_id <- sub("\\.[0-9]+$", "", trimws(crabs_df$accession))
 
   # --- Drop rows with missing or empty sequence --------------------------------
-  has_seq  <- !is.na(crabs_df$sequence) & nzchar(trimws(crabs_df$sequence))
+  has_seq <- !is.na(crabs_df$sequence) & nzchar(trimws(crabs_df$sequence))
   n_no_seq <- sum(!has_seq)
   if (n_no_seq > 0L) {
     message(sprintf("%d row(s) dropped: missing sequence", n_no_seq))
@@ -180,55 +200,66 @@ read_crabs_output <- function(crabs_file,
 
   if (nrow(crabs_df) == 0L) {
     warning("No rows with a valid sequence remain")
-    return(data.frame(composite_id = character(0L), sequence = character(0L),
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      composite_id = character(0L), sequence = character(0L),
+      stringsAsFactors = FALSE
+    ))
   }
 
   # --- max_n_bases filter -----------------------------------------------------
   if (!is.null(max_n_bases)) {
     n_before <- nrow(crabs_df)
     crabs_df <- crabs_df[nchar(crabs_df$sequence) <= as.integer(max_n_bases), , drop = FALSE]
-    n_drop   <- n_before - nrow(crabs_df)
-    if (n_drop > 0L)
+    n_drop <- n_before - nrow(crabs_df)
+    if (n_drop > 0L) {
       message(sprintf("%d sequence(s) dropped: > %d bases", n_drop, max_n_bases))
+    }
   }
 
   # --- require_species filter -------------------------------------------------
   if (require_species) {
     n_before <- nrow(crabs_df)
-    keep     <- !is.na(crabs_df$species) & TaxaTools::is_plausible_binomial(crabs_df$species)
+    keep <- !is.na(crabs_df$species) & TaxaTools::is_plausible_binomial(crabs_df$species)
     crabs_df <- crabs_df[keep, , drop = FALSE]
-    n_drop   <- n_before - nrow(crabs_df)
-    if (n_drop > 0L)
+    n_drop <- n_before - nrow(crabs_df)
+    if (n_drop > 0L) {
       message(sprintf("%d row(s) dropped: invalid or missing species name", n_drop))
+    }
   }
 
   # --- dereplicate: collapse exact-duplicate sequences within species ----------
   if (dereplicate && nrow(crabs_df) > 0L) {
     n_before <- nrow(crabs_df)
     # Use a separator that cannot appear in a species name or DNA sequence
-    dup_key  <- paste(crabs_df$species, crabs_df$sequence, sep = "|||")
+    dup_key <- paste(crabs_df$species, crabs_df$sequence, sep = "|||")
     crabs_df <- crabs_df[!duplicated(dup_key), , drop = FALSE]
-    n_drop   <- n_before - nrow(crabs_df)
-    if (n_drop > 0L)
-      message(sprintf("%d exact duplicate sequence(s) removed within species",
-                      n_drop))
+    n_drop <- n_before - nrow(crabs_df)
+    if (n_drop > 0L) {
+      message(sprintf(
+        "%d exact duplicate sequence(s) removed within species",
+        n_drop
+      ))
+    }
   }
 
   if (nrow(crabs_df) == 0L) {
     warning("No sequences remained after all filters")
-    return(data.frame(composite_id = character(0L), sequence = character(0L),
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      composite_id = character(0L), sequence = character(0L),
+      stringsAsFactors = FALSE
+    ))
   }
 
   # --- Assemble reference_df --------------------------------------------------
-  keep_cols    <- c("composite_id", rank_system, "sequence")
+  keep_cols <- c("composite_id", rank_system, "sequence")
   reference_df <- crabs_df[, keep_cols, drop = FALSE]
   row.names(reference_df) <- NULL
 
   finest_rank <- rank_system[length(rank_system)]
-  n_unique    <- length(unique(stats::na.omit(reference_df[[finest_rank]])))
-  message(sprintf("read_crabs_output: %d sequences, %d unique %s",
-                  nrow(reference_df), n_unique, finest_rank))
+  n_unique <- length(unique(stats::na.omit(reference_df[[finest_rank]])))
+  message(sprintf(
+    "read_crabs_output: %d sequences, %d unique %s",
+    nrow(reference_df), n_unique, finest_rank
+  ))
   reference_df
 }

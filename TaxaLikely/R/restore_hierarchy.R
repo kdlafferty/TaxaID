@@ -24,8 +24,9 @@
 #' @noRd
 .stripped_seq_matrix_ids <- function(seq_matrix, align_cache) {
   use_cache <- !is.null(align_cache) && is.environment(align_cache)
-  if (use_cache && exists("seq_matrix_ids", envir = align_cache, inherits = FALSE))
+  if (use_cache && exists("seq_matrix_ids", envir = align_cache, inherits = FALSE)) {
     return(get("seq_matrix_ids", envir = align_cache, inherits = FALSE))
+  }
   ids <- list(
     id_x = sub("\\.[0-9]+$", "", seq_matrix$id_x),
     id_y = sub("\\.[0-9]+$", "", seq_matrix$id_y)
@@ -62,13 +63,14 @@
 .seq_matrix_partner_index <- function(seq_matrix, align_cache) {
   use_cache <- !is.null(align_cache) && is.environment(align_cache)
   key <- "seq_matrix_partner_index"
-  if (use_cache && exists(key, envir = align_cache, inherits = FALSE))
+  if (use_cache && exists(key, envir = align_cache, inherits = FALSE)) {
     return(get(key, envir = align_cache, inherits = FALSE))
+  }
 
   ids <- .stripped_seq_matrix_ids(seq_matrix, align_cache)
-  combined_acc     <- c(ids$id_x, ids$id_y)
+  combined_acc <- c(ids$id_x, ids$id_y)
   combined_partner <- c(ids$id_y, ids$id_x)
-  combined_pmatch  <- rep(seq_matrix$p_match, 2L)
+  combined_pmatch <- rep(seq_matrix$p_match, 2L)
 
   index <- list(
     partners = split(combined_partner, combined_acc),
@@ -86,8 +88,11 @@
 .seq_matrix_lookup <- function(acc, index) {
   p <- index$partners[[acc]]
   m <- index$pmatch[[acc]]
-  if (is.null(p)) list(partner = character(0L), p_match = numeric(0L))
-  else list(partner = p, p_match = m)
+  if (is.null(p)) {
+    list(partner = character(0L), p_match = numeric(0L))
+  } else {
+    list(partner = p, p_match = m)
+  }
 }
 
 #' Level 0 precheck: does this SPECIES (any of its own reference accessions)
@@ -110,13 +115,15 @@
 .has_seq_matrix_presence <- function(accessions, seq_matrix, align_cache) {
   accessions <- accessions[!is.na(accessions)]
   if (is.null(seq_matrix) || !is.data.frame(seq_matrix) || nrow(seq_matrix) == 0L ||
-      !all(c("id_x", "id_y") %in% names(seq_matrix)) || length(accessions) == 0L)
+    !all(c("id_x", "id_y") %in% names(seq_matrix)) || length(accessions) == 0L) {
     return(FALSE)
+  }
 
   use_cache <- !is.null(align_cache) && is.environment(align_cache)
   key <- paste0("l0_presence::", paste(sort(accessions), collapse = ","))
-  if (use_cache && exists(key, envir = align_cache, inherits = FALSE))
+  if (use_cache && exists(key, envir = align_cache, inherits = FALSE)) {
     return(get(key, envir = align_cache, inherits = FALSE))
+  }
 
   index <- .seq_matrix_partner_index(seq_matrix, align_cache)
   present <- any(accessions %in% names(index$partners))
@@ -150,12 +157,13 @@
 #'   `TaxaMatch::evaluate_reference_accessions()`) of restored rows.
 #' @noRd
 .resolve_hierarchy_score <- function(anchor_accession, anchor_species, candidate_species,
-                                      genus, ref_genus_rows, species_col,
-                                      seq_matrix, model_params, score_transform,
-                                      align_cache) {
-
-  unresolved <- list(p_match = NA_real_, level = NA_integer_, source = NA_character_,
-                     source_accession = NA_character_)
+                                     genus, ref_genus_rows, species_col,
+                                     seq_matrix, model_params, score_transform,
+                                     align_cache) {
+  unresolved <- list(
+    p_match = NA_real_, level = NA_integer_, source = NA_character_,
+    source_accession = NA_character_
+  )
 
   anchor_accession <- sub("\\.[0-9]+$", "", anchor_accession)
   has_sm <- !is.null(seq_matrix) && is.data.frame(seq_matrix) && nrow(seq_matrix) > 0L &&
@@ -167,8 +175,9 @@
   ))
   anchor_accessions <- anchor_accessions[!is.na(anchor_accessions)]
 
-  if (!has_sm || !.has_seq_matrix_presence(anchor_accessions, seq_matrix, align_cache))
-    return(unresolved)  # Level 0 precheck failed (or no seq_matrix at all) -- route to Level 4
+  if (!has_sm || !.has_seq_matrix_presence(anchor_accessions, seq_matrix, align_cache)) {
+    return(unresolved)
+  } # Level 0 precheck failed (or no seq_matrix at all) -- route to Level 4
 
   index <- .seq_matrix_partner_index(seq_matrix, align_cache)
 
@@ -194,8 +203,10 @@
     if (length(vals) > 0L) {
       distinct_contributors <- unique(contributing)
       src_acc <- if (length(distinct_contributors) == 1L) distinct_contributors else NA_character_
-      return(list(p_match = stats::median(vals), level = 1L, source = "direct_accession",
-                  source_accession = src_acc))
+      return(list(
+        p_match = stats::median(vals), level = 1L, source = "direct_accession",
+        source_accession = src_acc
+      ))
     }
   }
 
@@ -203,18 +214,21 @@
   if (length(cand_accessions) > 0L && length(anchor_accessions) > 0L) {
     lks <- lapply(anchor_accessions, .seq_matrix_lookup, index = index)
     all_partner <- unlist(lapply(lks, `[[`, "partner"), use.names = FALSE)
-    all_pmatch  <- unlist(lapply(lks, `[[`, "p_match"), use.names = FALSE)
+    all_pmatch <- unlist(lapply(lks, `[[`, "p_match"), use.names = FALSE)
     vals <- all_pmatch[all_partner %in% cand_accessions]
     vals <- vals[!is.na(vals)]
-    if (length(vals) > 0L)
-      return(list(p_match = stats::median(vals), level = 2L, source = "species_pair",
-                  source_accession = NA_character_))
+    if (length(vals) > 0L) {
+      return(list(
+        p_match = stats::median(vals), level = 2L, source = "species_pair",
+        source_accession = NA_character_
+      ))
+    }
   }
 
   # ---- Level 3: genus-level typical divergence --------------------------------
   # 3 (preferred): model-based, Empirical-Bayes-shrunk genus delta.
   if (!is.null(model_params) && !is.null(model_params$H2_Lookup) &&
-      nrow(model_params$H2_Lookup) > 0L) {
+    nrow(model_params$H2_Lookup) > 0L) {
     gidx <- match(genus, model_params$H2_Lookup$genus)
     if (!is.na(gidx)) {
       anchor_mu <- NA_real_
@@ -222,14 +236,17 @@
         aidx <- match(anchor_species, model_params$H1_Lookup$lookup_key)
         if (!is.na(aidx)) anchor_mu <- model_params$H1_Lookup$mu_score[aidx]
       }
-      if ((is.na(anchor_mu)) && !is.null(model_params$H1_Global_Mu))
+      if ((is.na(anchor_mu)) && !is.null(model_params$H1_Global_Mu)) {
         anchor_mu <- unname(model_params$H1_Global_Mu[["score_logit"]] %||%
-                               model_params$H1_Global_Mu[1L])
+          model_params$H1_Global_Mu[1L])
+      }
       if (!is.na(anchor_mu)) {
         cand_transform <- anchor_mu - model_params$H2_Lookup$delta_shrunk[gidx]
         p <- .untransform_p(cand_transform, method = score_transform)
-        return(list(p_match = p, level = 3L, source = "genus_model",
-                    source_accession = NA_character_))
+        return(list(
+          p_match = p, level = 3L, source = "genus_model",
+          source_accession = NA_character_
+        ))
       }
     }
   }
@@ -249,10 +266,10 @@
       sub("\\.[0-9]+$", "", ref_genus_rows$composite_id)
     )
     lks <- lapply(genus_accessions, .seq_matrix_lookup, index = index)
-    n_partners  <- lengths(lapply(lks, `[[`, "partner"))
-    all_acc     <- rep(genus_accessions, n_partners)
+    n_partners <- lengths(lapply(lks, `[[`, "partner"))
+    all_acc <- rep(genus_accessions, n_partners)
     all_partner <- unlist(lapply(lks, `[[`, "partner"), use.names = FALSE)
-    all_pmatch  <- unlist(lapply(lks, `[[`, "p_match"), use.names = FALSE)
+    all_pmatch <- unlist(lapply(lks, `[[`, "p_match"), use.names = FALSE)
     within_genus <- all_partner %in% genus_accessions
     if (any(within_genus)) {
       sp_x <- unname(acc_sp_map[all_acc[within_genus]])
@@ -260,9 +277,12 @@
       cross <- !is.na(sp_x) & !is.na(sp_y) & sp_x != sp_y
       vals <- all_pmatch[within_genus][cross]
       vals <- vals[!is.na(vals)]
-      if (length(vals) > 0L)
-        return(list(p_match = stats::median(vals), level = 3L, source = "genus_raw_median",
-                    source_accession = NA_character_))
+      if (length(vals) > 0L) {
+        return(list(
+          p_match = stats::median(vals), level = 3L, source = "genus_raw_median",
+          source_accession = NA_character_
+        ))
+      }
     }
   }
 
@@ -307,26 +327,31 @@
 #' }
 #' @noRd
 .worth_level4_check <- function(anchor_species, candidate_species, grid_id,
-                                 taxaexpect_priors, candidate_species_filter = NULL,
-                                 taxon_col = "taxon_name",
-                                 grid_col = "grid_id", theta_col = "theta_mean",
-                                 budget_ratio_cap = 19) {
-  if (is.null(candidate_species_filter) || candidate_species %in% candidate_species_filter)
+                                taxaexpect_priors, candidate_species_filter = NULL,
+                                taxon_col = "taxon_name",
+                                grid_col = "grid_id", theta_col = "theta_mean",
+                                budget_ratio_cap = 19) {
+  if (is.null(candidate_species_filter) || candidate_species %in% candidate_species_filter) {
     return(TRUE)
+  }
 
-  if (is.null(taxaexpect_priors)) return(FALSE)  # not on the filter, no ratio possible
+  if (is.null(taxaexpect_priors)) {
+    return(FALSE)
+  } # not on the filter, no ratio possible
   if (is.na(grid_id) ||
-      !all(c(taxon_col, grid_col, theta_col) %in% names(taxaexpect_priors)))
-    return(FALSE)  # not computable -- treated the same as R > budget_ratio_cap
+    !all(c(taxon_col, grid_col, theta_col) %in% names(taxaexpect_priors))) {
+    return(FALSE)
+  } # not computable -- treated the same as R > budget_ratio_cap
 
   rows <- taxaexpect_priors[!is.na(taxaexpect_priors[[grid_col]]) &
-                               taxaexpect_priors[[grid_col]] == grid_id, , drop = FALSE]
+    taxaexpect_priors[[grid_col]] == grid_id, , drop = FALSE]
   a_theta <- rows[[theta_col]][match(anchor_species, rows[[taxon_col]])]
   c_theta <- rows[[theta_col]][match(candidate_species, rows[[taxon_col]])]
 
   if (length(a_theta) == 0L || length(c_theta) == 0L ||
-      is.na(a_theta) || is.na(c_theta) || c_theta <= 0)
-    return(FALSE)  # absent from taxaexpect_priors entirely -- not computable
+    is.na(a_theta) || is.na(c_theta) || c_theta <= 0) {
+    return(FALSE)
+  } # absent from taxaexpect_priors entirely -- not computable
 
   ratio <- a_theta / c_theta
   isTRUE(ratio <= budget_ratio_cap)
@@ -346,14 +371,23 @@
 #' call sharing that anchor, not per observation.
 #' @noRd
 .level4_attempt_allowed <- function(anchor_accession, max_per_anchor, align_cache) {
-  if (is.infinite(max_per_anchor)) return(TRUE)
+  if (is.infinite(max_per_anchor)) {
+    return(TRUE)
+  }
   use_cache <- !is.null(align_cache) && is.environment(align_cache)
-  if (!use_cache) return(TRUE)  # cannot track without a cache -- fail open
+  if (!use_cache) {
+    return(TRUE)
+  } # cannot track without a cache -- fail open
 
   key <- paste0("l4_attempts::", anchor_accession)
-  n <- if (exists(key, envir = align_cache, inherits = FALSE))
-    get(key, envir = align_cache, inherits = FALSE) else 0L
-  if (n >= max_per_anchor) return(FALSE)
+  n <- if (exists(key, envir = align_cache, inherits = FALSE)) {
+    get(key, envir = align_cache, inherits = FALSE)
+  } else {
+    0L
+  }
+  if (n >= max_per_anchor) {
+    return(FALSE)
+  }
   assign(key, n + 1L, envir = align_cache)
   TRUE
 }

@@ -106,10 +106,12 @@ utils::globalVariables(c(
     dplyr::group_by(id_x, species.x) |>
     dplyr::summarise(
       median_self_match = stats::median(
-        p_match[species.x == species.y & id_x != id_y], na.rm = TRUE
+        p_match[species.x == species.y & id_x != id_y],
+        na.rm = TRUE
       ),
       median_self_coverage = suppressWarnings(stats::median(
-        coverage[species.x == species.y & id_x != id_y], na.rm = TRUE
+        coverage[species.x == species.y & id_x != id_y],
+        na.rm = TRUE
       )),
       max_foreign_match = suppressWarnings(
         max(p_match[species.x != species.y], na.rm = TRUE)
@@ -235,7 +237,8 @@ utils::globalVariables(c(
 #' @examples
 #' \dontrun{
 #' ref_matrix <- build_sequence_matrix(reference_df,
-#'                                      rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' flagged <- flag_reference_errors(ref_matrix, mislabel_threshold = 0.02)
 #' table(flagged$error_type)
 #' }
@@ -247,27 +250,36 @@ flag_reference_errors <- function(raw_df,
                                   min_coverage = NULL,
                                   singleton_match_threshold = 0.98,
                                   verified_clean = NULL) {
-  if (!is.data.frame(raw_df))
+  if (!is.data.frame(raw_df)) {
     stop("raw_df must be a data frame")
+  }
   needed <- c("id_x", "id_y", "species.x", "species.y", "p_match")
   missing_cols <- setdiff(needed, names(raw_df))
-  if (length(missing_cols) > 0)
-    stop(sprintf("raw_df is missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")))
+  if (length(missing_cols) > 0) {
+    stop(sprintf(
+      "raw_df is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
   if (!is.numeric(mislabel_threshold) || length(mislabel_threshold) != 1L ||
-      is.na(mislabel_threshold))
+    is.na(mislabel_threshold)) {
     stop("mislabel_threshold must be a single non-NA numeric value")
-  if (!is.logical(return_all) || length(return_all) != 1L || is.na(return_all))
+  }
+  if (!is.logical(return_all) || length(return_all) != 1L || is.na(return_all)) {
     stop("return_all must be TRUE or FALSE")
+  }
   if (!is.null(min_coverage) && (!is.numeric(min_coverage) || length(min_coverage) != 1L ||
-      is.na(min_coverage)))
+    is.na(min_coverage))) {
     stop("min_coverage must be NULL or a single non-NA numeric value")
+  }
   if (!is.numeric(singleton_match_threshold) || length(singleton_match_threshold) != 1L ||
-      is.na(singleton_match_threshold) || singleton_match_threshold <= 0 ||
-      singleton_match_threshold > 1)
+    is.na(singleton_match_threshold) || singleton_match_threshold <= 0 ||
+    singleton_match_threshold > 1) {
     stop("singleton_match_threshold must be a single numeric value in (0, 1]")
-  if (!is.null(verified_clean) && !is.character(verified_clean))
+  }
+  if (!is.null(verified_clean) && !is.character(verified_clean)) {
     stop("verified_clean must be NULL or a character vector of id_x accessions")
+  }
 
   # .compute_reference_qc_stats() gained median_foreign_match/n_foreign_pairs/
   # n_foreign_taxa (audit_reference_database() consumes all three); this
@@ -374,27 +386,31 @@ flag_reference_errors <- function(raw_df,
 #' @noRd
 .prep_training_data <- function(raw_df,
                                 rank_system,
-                                score_bounds    = NULL,
-                                logit_epsilon   = 1e-4,
+                                score_bounds = NULL,
+                                logit_epsilon = 1e-4,
                                 max_gap_ceiling = NULL,
                                 score_transform = "logit") {
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
-  if (!is.data.frame(raw_df))
+  if (!is.data.frame(raw_df)) {
     stop("raw_df must be a data frame")
-  if (!is.character(rank_system) || length(rank_system) == 0L)
+  }
+  if (!is.character(rank_system) || length(rank_system) == 0L) {
     stop("rank_system must be a non-empty character vector")
+  }
 
   names(raw_df) <- tolower(names(raw_df))
-  rank_system   <- tolower(rank_system)
+  rank_system <- tolower(rank_system)
 
   # Validate rank columns exist (with .x/.y suffixes from build_sequence_matrix)
   x_cols <- paste0(rank_system, ".x")
   missing_x <- setdiff(x_cols, names(raw_df))
   if (length(missing_x) > 0L) {
     stop(sprintf(
-      paste0("rank_system columns not found in raw_df: %s. Expected columns with '.x'/'.y' ",
-             "suffixes (e.g., '%s'). Check that rank_system matches the taxonomy columns in ",
-             "your reference matrix."),
+      paste0(
+        "rank_system columns not found in raw_df: %s. Expected columns with '.x'/'.y' ",
+        "suffixes (e.g., '%s'). Check that rank_system matches the taxonomy columns in ",
+        "your reference matrix."
+      ),
       paste(missing_x, collapse = ", "), x_cols[1]
     ))
   }
@@ -406,10 +422,12 @@ flag_reference_errors <- function(raw_df,
   # Rename rank columns to rank_code_a/b/c... (finest rank -> code_a).
   # Applied separately to .x and .y suffix sets, then recombined.
   .generalize_ranks <- function(df_sub, ranks) {
-    present   <- intersect(ranks, names(df_sub))
-    if (length(present) == 0L) return(df_sub)
+    present <- intersect(ranks, names(df_sub))
+    if (length(present) == 0L) {
+      return(df_sub)
+    }
     # rev(present): last element of ranks (finest) -> code_a
-    codes     <- paste0("rank_code_", letters[seq_along(present)])
+    codes <- paste0("rank_code_", letters[seq_along(present)])
     rename_map <- stats::setNames(rev(present), codes)
     dplyr::rename(df_sub, !!rename_map)
   }
@@ -426,8 +444,9 @@ flag_reference_errors <- function(raw_df,
     .generalize_ranks(rank_system) |>
     dplyr::rename_with(~ paste0(., ".y"))
 
-  if (!"rank_code_a.x" %in% names(df_x))
+  if (!"rank_code_a.x" %in% names(df_x)) {
     stop("Taxonomy generalisation failed -- ensure input columns match rank_system")
+  }
 
   df_combined <- dplyr::bind_cols(
     dplyr::select(raw_df, id_x, id_y, p_norm),
@@ -457,8 +476,10 @@ flag_reference_errors <- function(raw_df,
     dplyr::group_by(id_x) |>
     dplyr::summarise(
       max_foreign_score = suppressWarnings(
-        max(score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]]],
-            -Inf)
+        max(
+          score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]]],
+          -Inf
+        )
       ),
       .groups = "drop"
     ) |>
@@ -515,7 +536,8 @@ flag_reference_errors <- function(raw_df,
       ) |>
       dplyr::mutate(
         max_congener_score = ifelse(is.infinite(max_congener_score),
-                                    NA_real_, max_congener_score)
+          NA_real_, max_congener_score
+        )
       )
   } else {
     NULL
@@ -556,7 +578,7 @@ flag_reference_errors <- function(raw_df,
 
   # ---- STEP 5: SINGLETONS ---------------------------------------------------
   trained_ids <- unique(h1_pairs$id_x)
-  all_ids     <- unique(df_logit$id_x)
+  all_ids <- unique(df_logit$id_x)
   missing_ids <- setdiff(all_ids, trained_ids)
 
   # Singletons are identified as sequences absent from h1_pairs (no within-species
@@ -565,8 +587,10 @@ flag_reference_errors <- function(raw_df,
   has_self_match <- any(df_logit$id_x == df_logit$id_y)
   if (length(missing_ids) > 0L && !has_self_match) {
     warning(sprintf(
-      paste0("%d singleton reference(s) found but distance matrix lacks self-matches. ",
-             "Singleton score estimates will use global mean instead of self-match scores."),
+      paste0(
+        "%d singleton reference(s) found but distance matrix lacks self-matches. ",
+        "Singleton score estimates will use global mean instead of self-match scores."
+      ),
       length(missing_ids)
     ))
   }
@@ -937,89 +961,109 @@ flag_reference_errors <- function(raw_df,
 #' @examples
 #' \dontrun{
 #' ref_matrix <- build_sequence_matrix(reference_df,
-#'                                      rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' model <- train_likelihood_model(ref_matrix,
-#'                                 rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' interpret_model(model)
 #' }
 #'
-#' @importFrom dplyr bind_rows distinct ends_with filter group_by left_join mutate n rename_with select slice_max summarise ungroup case_when
+#' @importFrom dplyr bind_rows distinct ends_with filter group_by left_join mutate n
+#' @importFrom dplyr rename_with select slice_max summarise ungroup case_when
 #' @importFrom stats median setNames var lm coef
 #' @export
 train_likelihood_model <- function(raw_df,
-                                   rank_system        = NULL,
-                                   score_bounds       = NULL,
+                                   rank_system = NULL,
+                                   score_bounds = NULL,
                                    min_observed_sigma = NULL,
-                                   prior_weight       = 10.0,
-                                   use_hierarchy      = TRUE,
-                                   anchor_perfect     = TRUE,
-                                   mislabel_threshold  = 0.02,
+                                   prior_weight = 10.0,
+                                   use_hierarchy = TRUE,
+                                   anchor_perfect = TRUE,
+                                   mislabel_threshold = 0.02,
                                    singleton_match_threshold = 0.98,
-                                   verified_clean     = NULL,
-                                   mislabel_behavior  = "flag",
-                                   logit_epsilon      = 1e-4,
-                                   max_gap_ceiling    = NULL,
-                                   score_transform    = "logit") {
+                                   verified_clean = NULL,
+                                   mislabel_behavior = "flag",
+                                   logit_epsilon = 1e-4,
+                                   max_gap_ceiling = NULL,
+                                   score_transform = "logit") {
   score_transform <- match.arg(score_transform, c("logit", "sqrt_mismatch"))
   mislabel_behavior <- match.arg(mislabel_behavior, c("flag", "remove"))
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
-  if (is.null(min_observed_sigma))
+  if (is.null(min_observed_sigma)) {
     min_observed_sigma <- 1.0 * .transform_unit_ratio(score_transform)^2
-  if (!is.data.frame(raw_df))
+  }
+  if (!is.data.frame(raw_df)) {
     stop("raw_df must be a data frame")
+  }
 
   # Auto-detect rank_system from .x-suffixed columns in raw_df
   if (is.null(rank_system)) {
     x_cols <- grep("\\.x$", tolower(names(raw_df)), value = TRUE)
     x_cols <- sub("\\.x$", "", x_cols)
     # Keep only recognised taxonomy ranks, in canonical coarse-to-fine order
-    canonical <- c("kingdom", "phylum", "subphylum", "superclass", "class",
-                   "subclass", "infraclass", "cohort", "order", "suborder",
-                   "infraorder", "family", "genus", "species")
+    canonical <- c(
+      "kingdom", "phylum", "subphylum", "superclass", "class",
+      "subclass", "infraclass", "cohort", "order", "suborder",
+      "infraorder", "family", "genus", "species"
+    )
     rank_system <- canonical[canonical %in% x_cols]
-    if (length(rank_system) < 2L)
+    if (length(rank_system) < 2L) {
       stop(
         "Could not auto-detect rank_system from raw_df columns. ",
         "Found .x columns: ", paste(x_cols, collapse = ", "),
         ". Supply rank_system explicitly.",
         call. = FALSE
       )
-    message(sprintf("Auto-detected rank_system: %s",
-                    paste(rank_system, collapse = ", ")))
+    }
+    message(sprintf(
+      "Auto-detected rank_system: %s",
+      paste(rank_system, collapse = ", ")
+    ))
   }
 
-  if (!is.character(rank_system) || length(rank_system) == 0L)
+  if (!is.character(rank_system) || length(rank_system) == 0L) {
     stop("rank_system must be a non-empty character vector (coarse to fine)")
-  if (!is.numeric(prior_weight) || length(prior_weight) != 1L || prior_weight <= 0)
+  }
+  if (!is.numeric(prior_weight) || length(prior_weight) != 1L || prior_weight <= 0) {
     stop("prior_weight must be a positive numeric scalar")
-  if (!is.logical(use_hierarchy) || length(use_hierarchy) != 1L || is.na(use_hierarchy))
+  }
+  if (!is.logical(use_hierarchy) || length(use_hierarchy) != 1L || is.na(use_hierarchy)) {
     stop("use_hierarchy must be TRUE or FALSE")
-  if (!is.logical(anchor_perfect) || length(anchor_perfect) != 1L || is.na(anchor_perfect))
+  }
+  if (!is.logical(anchor_perfect) || length(anchor_perfect) != 1L || is.na(anchor_perfect)) {
     stop("anchor_perfect must be TRUE or FALSE")
+  }
 
   message("Screening for mislabeled references...")
   errors <- flag_reference_errors(raw_df,
-                                  mislabel_threshold = mislabel_threshold,
-                                  return_all        = FALSE,
-                                  singleton_match_threshold = singleton_match_threshold,
-                                  verified_clean    = verified_clean)
+    mislabel_threshold = mislabel_threshold,
+    return_all = FALSE,
+    singleton_match_threshold = singleton_match_threshold,
+    verified_clean = verified_clean
+  )
   bad_ids <- errors$id_x[errors$error_type == "likely_mislabeled"]
   n_flagged <- length(bad_ids)
 
   if (mislabel_behavior == "remove") {
-    if (n_flagged > 0)
+    if (n_flagged > 0) {
       message(sprintf("Removed %d likely-mislabeled sequence(s) before training", n_flagged))
+    }
     raw_clean <- dplyr::filter(raw_df, !id_x %in% bad_ids, !id_y %in% bad_ids)
   } else {
     # mislabel_behavior = "flag" (default): this heuristic is high-recall/
     # low-precision (2026-08-08 audit, 0/40 real flags confirmed genuine) --
     # report, don't remove. See @param mislabel_behavior.
-    if (n_flagged > 0)
+    if (n_flagged > 0) {
       message(sprintf(
-        paste("%d sequence(s) flagged 'likely_mislabeled' (kept in training --",
-              "see reference_errors, or pass mislabel_behavior = \"remove\"",
-              "with a verified_clean list to act on this)"),
-        n_flagged))
+        paste(
+          "%d sequence(s) flagged 'likely_mislabeled' (kept in training --",
+          "see reference_errors, or pass mislabel_behavior = \"remove\"",
+          "with a verified_clean list to act on this)"
+        ),
+        n_flagged
+      ))
+    }
     raw_clean <- raw_df
   }
 
@@ -1036,8 +1080,10 @@ train_likelihood_model <- function(raw_df,
     .compute_rank_score_curves(raw_clean, rank_system, prior_weight = prior_weight),
     error = function(e) {
       warning(sprintf(
-        paste0("Failed to compute confusion-risk curves (%s); species_confusion_risk/",
-               "genus_confusion_risk/family_confusion_risk will be unavailable."),
+        paste0(
+          "Failed to compute confusion-risk curves (%s); species_confusion_risk/",
+          "genus_confusion_risk/family_confusion_risk will be unavailable."
+        ),
         conditionMessage(e)
       ))
       NULL
@@ -1054,17 +1100,23 @@ train_likelihood_model <- function(raw_df,
     score_transform = score_transform
   )
 
-  if (nrow(train_df) == 0L)
-    stop(paste0("Training data is empty after preprocessing. Check that raw_df contains valid ",
-                "pairwise match scores and that rank_system columns are present."))
+  if (nrow(train_df) == 0L) {
+    stop(paste0(
+      "Training data is empty after preprocessing. Check that raw_df contains valid ",
+      "pairwise match scores and that rank_system columns are present."
+    ))
+  }
 
   h1_data <- dplyr::filter(train_df, rank_category == "1_Known_Species")
-  n_species    <- dplyr::n_distinct(h1_data$rank_code_a)
+  n_species <- dplyr::n_distinct(h1_data$rank_code_a)
   n_singletons <- sum(train_df$rank_category == "Singleton")
 
-  if (nrow(h1_data) == 0L)
-    stop(paste0("No H1 (within-species) pairs found -- cannot train model. All sequences may ",
-                "be singletons (only one per species in the reference database)."))
+  if (nrow(h1_data) == 0L) {
+    stop(paste0(
+      "No H1 (within-species) pairs found -- cannot train model. All sequences may ",
+      "be singletons (only one per species in the reference database)."
+    ))
+  }
 
   # ---- PSEUDO-DATA ANCHORING ------------------------------------------------
   # Anchoring is a form of informative pseudo-data, analogous to Bayesian
@@ -1081,8 +1133,9 @@ train_likelihood_model <- function(raw_df,
     real_pos_gaps <- h1_data$gap_logit[h1_data$gap_logit > 0]
     if (length(real_pos_gaps) == 0L || all(is.na(real_pos_gaps))) {
       anchor_gap <- max_gap_ceiling
-      if (all(is.na(real_pos_gaps)))
+      if (all(is.na(real_pos_gaps))) {
         warning("All positive gaps are NA; using max_gap_ceiling for anchor gap.")
+      }
     } else {
       # 95th percentile of positive within-species gaps: represents "typical
       # good separation" for anchor pseudo-data.
@@ -1103,36 +1156,44 @@ train_likelihood_model <- function(raw_df,
     for (cc in code_cols_pre) anchor_rows[[cc]] <- "ANCHOR_PERFECT"
 
     h1_data <- dplyr::bind_rows(h1_data, anchor_rows)
-    message(sprintf("Anchoring: injected %d perfect-match pseudo-observations",
-                    n_anchors))
+    message(sprintf(
+      "Anchoring: injected %d perfect-match pseudo-observations",
+      n_anchors
+    ))
   }
 
   # ---- GLOBAL PRIOR ---------------------------------------------------------
   global_mu_score <- mean(h1_data$score_logit, na.rm = TRUE)
-  global_mu_gap   <- mean(h1_data$gap_logit,   na.rm = TRUE)
-  global_var_score <- max(stats::var(h1_data$score_logit, na.rm = TRUE),
-                          min_observed_sigma)
-  global_var_gap   <- max(stats::var(h1_data$gap_logit,   na.rm = TRUE),
-                          min_observed_sigma)
+  global_mu_gap <- mean(h1_data$gap_logit, na.rm = TRUE)
+  global_var_score <- max(
+    stats::var(h1_data$score_logit, na.rm = TRUE),
+    min_observed_sigma
+  )
+  global_var_gap <- max(
+    stats::var(h1_data$gap_logit, na.rm = TRUE),
+    min_observed_sigma
+  )
   global_cov <- tryCatch(
     stats::cov(cbind(score_logit = h1_data$score_logit, gap_logit = h1_data$gap_logit)),
     error = function(e) {
       warning("Covariance estimation failed (likely too few observations). Using diagonal fallback.")
       matrix(c(global_var_score, 0, 0, global_var_gap), 2, 2,
-             dimnames = list(c("score_logit", "gap_logit"), c("score_logit", "gap_logit")))
+        dimnames = list(c("score_logit", "gap_logit"), c("score_logit", "gap_logit"))
+      )
     }
   )
   if (any(!is.finite(global_cov))) {
     warning("Non-finite values in covariance matrix. Using diagonal fallback.")
     global_cov <- matrix(c(global_var_score, 0, 0, global_var_gap), 2, 2,
-                         dimnames = list(c("score_logit", "gap_logit"), c("score_logit", "gap_logit")))
+      dimnames = list(c("score_logit", "gap_logit"), c("score_logit", "gap_logit"))
+    )
   }
   diag(global_cov) <- pmax(diag(global_cov), min_observed_sigma)
 
   # ---- OPTIONAL lme4 HIERARCHY ----------------------------------------------
   lmer_mu_score <- NULL
-  lmer_mu_gap   <- NULL
-  aic_score     <- NA_real_
+  lmer_mu_gap <- NULL
+  aic_score <- NA_real_
 
   # sort(): .generalize_ranks() renames rank columns IN PLACE, so `train_df`'s
   # own column order is rank_system's own coarse-to-fine order -- i.e.
@@ -1151,13 +1212,15 @@ train_likelihood_model <- function(raw_df,
 
   # Early exit: lme4 hierarchy is uninformative with too few species
   if (use_hierarchy && n_species < 10L) {
-    message(sprintf("Skipping lme4 hierarchy: only %d species (need >= 10).",
-                    n_species))
+    message(sprintf(
+      "Skipping lme4 hierarchy: only %d species (need >= 10).",
+      n_species
+    ))
     use_hierarchy <- FALSE
   }
 
   if (use_hierarchy && length(code_cols) >= 2L &&
-      requireNamespace("lme4", quietly = TRUE)) {
+    requireNamespace("lme4", quietly = TRUE)) {
     # Random intercepts for each rank level above species (code_b, code_c, ...)
     random_terms <- paste0("(1 | ", code_cols[-1L], ")", collapse = " + ")
     formula_score <- stats::as.formula(
@@ -1166,33 +1229,44 @@ train_likelihood_model <- function(raw_df,
     formula_gap <- stats::as.formula(
       sprintf("gap_logit ~ 1 + %s", random_terms)
     )
-    tryCatch({
-      fit_score <- lme4::lmer(formula_score, data = h1_data,
-                              control = lme4::lmerControl(optimizer = "bobyqa"))
-      fit_gap   <- lme4::lmer(formula_gap,   data = h1_data,
-                              control = lme4::lmerControl(optimizer = "bobyqa"))
-      lmer_mu_score <- lme4::fixef(fit_score)[["(Intercept)"]]
-      lmer_mu_gap   <- lme4::fixef(fit_gap)[["(Intercept)"]]
-      aic_score <- stats::AIC(fit_score)
-    }, error = function(e) {
-      message(sprintf("lme4 fit failed (%s) -- falling back to global mean",
-                      conditionMessage(e)))
-    })
+    tryCatch(
+      {
+        fit_score <- lme4::lmer(formula_score,
+          data = h1_data,
+          control = lme4::lmerControl(optimizer = "bobyqa")
+        )
+        fit_gap <- lme4::lmer(formula_gap,
+          data = h1_data,
+          control = lme4::lmerControl(optimizer = "bobyqa")
+        )
+        lmer_mu_score <- lme4::fixef(fit_score)[["(Intercept)"]]
+        lmer_mu_gap <- lme4::fixef(fit_gap)[["(Intercept)"]]
+        aic_score <- stats::AIC(fit_score)
+      },
+      error = function(e) {
+        message(sprintf(
+          "lme4 fit failed (%s) -- falling back to global mean",
+          conditionMessage(e)
+        ))
+      }
+    )
   }
 
   mu_score_global <- if (!is.null(lmer_mu_score)) lmer_mu_score else global_mu_score
-  mu_gap_global   <- if (!is.null(lmer_mu_gap))   lmer_mu_gap   else global_mu_gap
+  mu_gap_global <- if (!is.null(lmer_mu_gap)) lmer_mu_gap else global_mu_gap
 
   # ---- PER-SPECIES LOOKUP WITH SHRINKAGE ------------------------------------
   message("Fitting per-species parameters with Empirical Bayes shrinkage...")
   species_params <- h1_data |>
     dplyr::group_by(rank_code_a) |>
     dplyr::summarise(
-      n_obs_species  = dplyr::n(),
+      n_obs_species = dplyr::n(),
       score_logit_mean = mean(score_logit, na.rm = TRUE),
-      gap_logit_mean   = mean(gap_logit,   na.rm = TRUE),
-      score_logit_var  = max(stats::var(score_logit, na.rm = TRUE),
-                             min_observed_sigma, na.rm = TRUE),
+      gap_logit_mean = mean(gap_logit, na.rm = TRUE),
+      score_logit_var = max(stats::var(score_logit, na.rm = TRUE),
+        min_observed_sigma,
+        na.rm = TRUE
+      ),
       .groups = "drop"
     ) |>
     dplyr::mutate(
@@ -1200,9 +1274,9 @@ train_likelihood_model <- function(raw_df,
       # James-Stein / Efron-Morris (1973) shrinkage estimator for Normal means.
       # prior_weight is the "equivalent sample size" of the prior: with
       # N = prior_weight observations, species and global means get equal weight.
-      w             = n_obs_species / (n_obs_species + prior_weight),
+      w = n_obs_species / (n_obs_species + prior_weight),
       shrunk_mu_score = w * score_logit_mean + (1 - w) * mu_score_global,
-      shrunk_mu_gap   = w * gap_logit_mean   + (1 - w) * mu_gap_global,
+      shrunk_mu_gap = w * gap_logit_mean + (1 - w) * mu_gap_global,
       # Variance shrinkage via linear combination is an approximation to the
       # inverse-chi-squared posterior. Adequate for typical barcode reference
       # sizes (3-20 sequences per species).
@@ -1229,12 +1303,14 @@ train_likelihood_model <- function(raw_df,
       # variance itself, with no extra sqrt -- consistent with
       # `global_var_score`/`H1_Sigma` (always true variances) and with every
       # downstream consumer's own expectation.
-      shrunk_sigma    = w * score_logit_var + (1 - w) * global_var_score
+      shrunk_sigma = w * score_logit_var + (1 - w) * global_var_score
     )
 
   # Remove anchor pseudo-species from lookup
-  species_params <- dplyr::filter(species_params,
-                                  rank_code_a != "ANCHOR_PERFECT")
+  species_params <- dplyr::filter(
+    species_params,
+    rank_code_a != "ANCHOR_PERFECT"
+  )
 
   H1_Lookup <- tibble::tibble(
     lookup_key     = species_params$rank_code_a,
@@ -1270,9 +1346,9 @@ train_likelihood_model <- function(raw_df,
   # Marker-specific tuning is handled automatically when sufficient congener
   # data exists (see empirical override below).
   h2_delta_val <- 3.0 * unit_ratio
-  h2_var       <- 1.0 * unit_ratio^2   # default before empirical override
-  H2_Lookup    <- NULL
-  n_h2_pooled  <- NA_integer_  # sample size behind h2_delta_val, for SE-of-delta use at inference
+  h2_var <- 1.0 * unit_ratio^2 # default before empirical override
+  H2_Lookup <- NULL
+  n_h2_pooled <- NA_integer_ # sample size behind h2_delta_val, for SE-of-delta use at inference
   noise_floor_congener <- .transform_p(0.007, score_transform, logit_epsilon)
 
   if (nrow(h1_data) > 5L && "max_congener_score" %in% names(train_df)) {
@@ -1284,7 +1360,7 @@ train_likelihood_model <- function(raw_df,
     # spirit to the previous default.
     congener_keep <- !is.na(h2_source_all$max_congener_score) &
       h2_source_all$max_congener_score > noise_floor_congener
-    congener_df   <- h2_source_all[congener_keep, , drop = FALSE]
+    congener_df <- h2_source_all[congener_keep, , drop = FALSE]
     congener_pool <- congener_df$max_congener_score
 
     if (length(congener_pool) > 2L) {
@@ -1311,24 +1387,29 @@ train_likelihood_model <- function(raw_df,
       # contract as H1, never a hard requirement.
       lmer_h2_mean <- NULL
       if (use_hierarchy && length(code_cols) >= 2L &&
-          requireNamespace("lme4", quietly = TRUE)) {
+        requireNamespace("lme4", quietly = TRUE)) {
         genus_col_h2 <- code_cols[-1L][1]
-        n_genera_h2  <- length(unique(congener_df[[genus_col_h2]]))
+        n_genera_h2 <- length(unique(congener_df[[genus_col_h2]]))
         if (n_genera_h2 >= 10L) {
           random_terms_h2 <- paste0("(1 | ", code_cols[-1L], ")", collapse = " + ")
           formula_h2 <- stats::as.formula(
             sprintf("max_congener_score ~ 1 + %s", random_terms_h2)
           )
-          tryCatch({
-            fit_h2 <- lme4::lmer(formula_h2, data = congener_df,
-                                 control = lme4::lmerControl(optimizer = "bobyqa"))
-            lmer_h2_mean <- lme4::fixef(fit_h2)[["(Intercept)"]]
-          }, error = function(e) {
-            message(sprintf(
-              "lme4 fit failed for pooled H2 delta (%s) -- falling back to row-weighted mean",
-              conditionMessage(e)
-            ))
-          })
+          tryCatch(
+            {
+              fit_h2 <- lme4::lmer(formula_h2,
+                data = congener_df,
+                control = lme4::lmerControl(optimizer = "bobyqa")
+              )
+              lmer_h2_mean <- lme4::fixef(fit_h2)[["(Intercept)"]]
+            },
+            error = function(e) {
+              message(sprintf(
+                "lme4 fit failed for pooled H2 delta (%s) -- falling back to row-weighted mean",
+                conditionMessage(e)
+              ))
+            }
+          )
         } else {
           message(sprintf(
             "Skipping lme4 hierarchy for pooled H2 delta: only %d genera with congener data (need >= 10).",
@@ -1397,14 +1478,14 @@ train_likelihood_model <- function(raw_df,
             .groups    = "drop"
           ) |>
           dplyr::mutate(
-            delta_emp    = mu_score_global - mean_cong,
-            w            = n_pairs / (n_pairs + prior_weight),
+            delta_emp = mu_score_global - mean_cong,
+            w = n_pairs / (n_pairs + prior_weight),
             delta_shrunk = pmax(0.5 * unit_ratio, w * delta_emp + (1 - w) * h2_delta_val),
             # var_cong is NA for genera with exactly 1 congener pair (no
             # within-genus variance to estimate) -- shrinkage then reduces to
             # the pooled value entirely (w * NA would propagate NA, so treat
             # the local term as absent rather than undefined).
-            var_shrunk   = ifelse(
+            var_shrunk = ifelse(
               is.na(var_cong),
               h2_var,
               w * var_cong + (1 - w) * h2_var
@@ -1427,7 +1508,7 @@ train_likelihood_model <- function(raw_df,
   h3_sigma_mat <- diag(2) * unit_ratio^2
   rownames(h3_sigma_mat) <- colnames(h3_sigma_mat) <- c("score_logit", "gap_logit")
 
-  H2 <- list(delta = h2_delta_val,                          sigma = h2_sigma_mat)
+  H2 <- list(delta = h2_delta_val, sigma = h2_sigma_mat)
   # H3 delta = H2 delta + 2.0 (logit units) / rescaled equivalent: heuristic
   # representing one additional taxonomic rank step (genus-level mismatch vs
   # species-level mismatch). Applied on top of whichever H2 delta -- pooled
@@ -1435,7 +1516,7 @@ train_likelihood_model <- function(raw_df,
   # see .evaluate_one_query(). H3 itself has no genus-specific estimate
   # (would need family-level congener data); low priority, noted as a
   # possible future extension.
-  H3 <- list(delta = h2_delta_val + 2.0 * unit_ratio,        sigma = h3_sigma_mat)
+  H3 <- list(delta = h2_delta_val + 2.0 * unit_ratio, sigma = h3_sigma_mat)
 
   # ---- NON-MONOTONICITY / MONOTONE-LIKELIHOOD-RATIO DIAGNOSTIC --------------
   # Added following a statistical-critique session prompted by a user
@@ -1453,8 +1534,11 @@ train_likelihood_model <- function(raw_df,
   # unfloored sigma_score overstates how severe any violation would actually
   # be at inference time (this exact mistake was caught and corrected during
   # the critique session that motivated this check).
-  species_genus <- if ("rank_code_b" %in% names(h1_data))
-    stats::setNames(h1_data$rank_code_b, h1_data$rank_code_a) else NULL
+  species_genus <- if ("rank_code_b" %in% names(h1_data)) {
+    stats::setNames(h1_data$rank_code_b, h1_data$rank_code_a)
+  } else {
+    NULL
+  }
   mlr_check <- .check_score_ratio_monotonicity(
     H1_Lookup       = H1_Lookup,
     global_sigma1   = global_cov[1L, 1L],
@@ -1496,24 +1580,24 @@ train_likelihood_model <- function(raw_df,
 
   structure(
     list(
-      H1_Lookup    = H1_Lookup,
+      H1_Lookup = H1_Lookup,
       H1_Global_Mu = c(score_logit = mu_score_global, gap_logit = mu_gap_global),
-      H1_Sigma     = global_cov,
-      H2           = H2,
-      H3           = H3,
-      H2_Lookup    = H2_Lookup,
+      H1_Sigma = global_cov,
+      H2 = H2,
+      H3 = H3,
+      H2_Lookup = H2_Lookup,
       Confusion_Risk_Curves = confusion_risk_curves,
       Score_Transform = score_transform,
-      Stats        = list(
-        AIC_Score       = aic_score,
-        n_species       = n_species,
-        n_singletons    = n_singletons,
-        n_anchors       = n_anchors,
-        n_h1_pooled     = sum(species_params$n_obs_species),
-        n_h2_pooled     = n_h2_pooled,
-        prior_weight    = prior_weight,
-        mlr_violations  = mlr_check$violations,
-        max_ceiling_z   = mlr_check$max_z,
+      Stats = list(
+        AIC_Score = aic_score,
+        n_species = n_species,
+        n_singletons = n_singletons,
+        n_anchors = n_anchors,
+        n_h1_pooled = sum(species_params$n_obs_species),
+        n_h2_pooled = n_h2_pooled,
+        prior_weight = prior_weight,
+        mlr_violations = mlr_check$violations,
+        max_ceiling_z = mlr_check$max_z,
         max_ceiling_z_species = mlr_check$max_z_species
       ),
       reference_errors = errors
@@ -1554,33 +1638,37 @@ train_likelihood_model <- function(raw_df,
 #'   and `max_z_species` (the species attaining it).
 #' @noRd
 .check_score_ratio_monotonicity <- function(H1_Lookup, global_sigma1, H2, H2_Lookup,
-                                             species_genus, score_transform,
-                                             logit_epsilon) {
-  if (nrow(H1_Lookup) == 0L)
+                                            species_genus, score_transform,
+                                            logit_epsilon) {
+  if (nrow(H1_Lookup) == 0L) {
     return(list(violations = character(0), max_z = NA_real_, max_z_species = NA_character_))
+  }
 
   perfect_x <- .transform_p(1, score_transform, logit_epsilon)
 
-  mu1    <- H1_Lookup$mu_score
+  mu1 <- H1_Lookup$mu_score
   sigma1 <- pmax(H1_Lookup$sigma_score, global_sigma1)
-  genus  <- if (!is.null(species_genus))
-    unname(species_genus[H1_Lookup$lookup_key]) else rep(NA_character_, nrow(H1_Lookup))
+  genus <- if (!is.null(species_genus)) {
+    unname(species_genus[H1_Lookup$lookup_key])
+  } else {
+    rep(NA_character_, nrow(H1_Lookup))
+  }
 
   h2_delta <- rep(H2$delta, nrow(H1_Lookup))
-  h2_var   <- rep(H2$sigma[1L, 1L], nrow(H1_Lookup))
+  h2_var <- rep(H2$sigma[1L, 1L], nrow(H1_Lookup))
   if (!is.null(H2_Lookup) && nrow(H2_Lookup) > 0L) {
-    m         <- match(genus, H2_Lookup$genus)
+    m <- match(genus, H2_Lookup$genus)
     has_local <- !is.na(m)
     h2_delta[has_local] <- H2_Lookup$delta_shrunk[m[has_local]]
-    h2_var[has_local]   <- H2_Lookup$var_shrunk[m[has_local]]
+    h2_var[has_local] <- H2_Lookup$var_shrunk[m[has_local]]
   }
   mu2 <- mu1 - h2_delta
 
   slope_at_ceiling <- (mu1 - perfect_x) / sigma1 + (perfect_x - mu2) / h2_var
-  z_at_ceiling      <- (perfect_x - mu1) / sqrt(sigma1)
+  z_at_ceiling <- (perfect_x - mu1) / sqrt(sigma1)
 
-  violated  <- !is.na(slope_at_ceiling) & slope_at_ceiling < 0
-  best_i    <- if (all(is.na(z_at_ceiling))) NA_integer_ else which.max(z_at_ceiling)
+  violated <- !is.na(slope_at_ceiling) & slope_at_ceiling < 0
+  best_i <- if (all(is.na(z_at_ceiling))) NA_integer_ else which.max(z_at_ceiling)
 
   list(
     violations    = H1_Lookup$lookup_key[violated],

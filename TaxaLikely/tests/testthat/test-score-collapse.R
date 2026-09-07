@@ -8,7 +8,7 @@ test_that("detect_suppressed_candidates detects perfect_only rule (0-100 scale)"
   m <- data.frame(
     observation_id = c("obs1", "obs2", "obs3", "obs3"),
     score_original = c(100, 100, 98, 97),
-    taxon_name     = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
+    taxon_name = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
     stringsAsFactors = FALSE
   )
   res <- detect_suppressed_candidates(m)
@@ -23,7 +23,7 @@ test_that("detect_suppressed_candidates detects perfect_only rule (0-1 scale)", 
   m <- data.frame(
     observation_id = c("obs1", "obs2", "obs3", "obs3"),
     score_original = c(1.0, 1.0, 0.97, 0.95),
-    taxon_name     = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
+    taxon_name = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
     stringsAsFactors = FALSE
   )
   res <- detect_suppressed_candidates(m, perfect_threshold = 1.0)
@@ -35,7 +35,7 @@ test_that("detect_suppressed_candidates detects max_score_ties rule", {
   m <- data.frame(
     observation_id = c("obs1", "obs1", "obs2"),
     score_original = c(98, 98, 97),
-    taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
+    taxon_name = c("Sp_A", "Sp_B", "Sp_C"),
     stringsAsFactors = FALSE
   )
   res <- detect_suppressed_candidates(m)
@@ -51,7 +51,7 @@ test_that("detect_suppressed_candidates detects best_only rule", {
   m <- data.frame(
     observation_id = c("obs1", "obs2", "obs3"),
     score_original = c(98, 97, 95),
-    taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
+    taxon_name = c("Sp_A", "Sp_B", "Sp_C"),
     stringsAsFactors = FALSE
   )
   res <- detect_suppressed_candidates(m)
@@ -64,8 +64,8 @@ test_that("detect_suppressed_candidates detects both perfect_only and max_score_
   # obs2, obs3: two candidates at tied scores -> max_score_ties (purity = 2/2 = 1.0)
   m <- data.frame(
     observation_id = c("obs1", "obs2", "obs2", "obs3", "obs3"),
-    score_original = c(100,    98,    98,    97,    97),
-    taxon_name     = c("A",    "B",   "C",   "D",   "E"),
+    score_original = c(100, 98, 98, 97, 97),
+    taxon_name = c("A", "B", "C", "D", "E"),
     stringsAsFactors = FALSE
   )
   res <- detect_suppressed_candidates(m)
@@ -79,7 +79,7 @@ test_that("detect_suppressed_candidates returns no rules for normal multi-candid
   m <- data.frame(
     observation_id = c("obs1", "obs1", "obs2", "obs2"),
     score_original = c(98, 95, 97, 93),
-    taxon_name     = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
+    taxon_name = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
     stringsAsFactors = FALSE
   )
   res <- detect_suppressed_candidates(m)
@@ -94,8 +94,8 @@ test_that("detect_suppressed_candidates respects purity_threshold for Rule 1", {
   # obs1: singleton at 100 (pure); obs2: 100 + 97 (impure -- has sub-threshold row)
   m <- data.frame(
     observation_id = c("obs1", "obs2", "obs2"),
-    score_original = c(100,    100,   97),
-    taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
+    score_original = c(100, 100, 97),
+    taxon_name = c("Sp_A", "Sp_B", "Sp_C"),
     stringsAsFactors = FALSE
   )
   # purity_perfect = 1/2 = 0.50; threshold 0.50 -> detect
@@ -110,8 +110,8 @@ test_that("detect_suppressed_candidates respects purity_threshold for Rule 2", {
   # obs1: tied; obs2: not tied (different scores)
   m <- data.frame(
     observation_id = c("obs1", "obs1", "obs2", "obs2"),
-    score_original = c(98,     98,    97,    93),
-    taxon_name     = c("A",    "B",   "C",   "D"),
+    score_original = c(98, 98, 97, 93),
+    taxon_name = c("A", "B", "C", "D"),
     stringsAsFactors = FALSE
   )
   # purity_ties = 1/2 = 0.50; threshold 0.50 -> detect
@@ -127,7 +127,7 @@ test_that("detect_suppressed_candidates respects user-supplied perfect_threshold
   m <- data.frame(
     observation_id = c("obs1", "obs2"),
     score_original = c(97, 96),
-    taxon_name     = c("Sp_A", "Sp_B"),
+    taxon_name = c("Sp_A", "Sp_B"),
     stringsAsFactors = FALSE
   )
   # default threshold 100: no perfect obs -> perfect_only = FALSE
@@ -139,9 +139,11 @@ test_that("detect_suppressed_candidates respects user-supplied perfect_threshold
 })
 
 test_that("detect_suppressed_candidates handles absent score column (best_only only)", {
-  m <- data.frame(observation_id = c("obs1", "obs2", "obs3"),
-                  taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
-                  stringsAsFactors = FALSE)
+  m <- data.frame(
+    observation_id = c("obs1", "obs2", "obs3"),
+    taxon_name = c("Sp_A", "Sp_B", "Sp_C"),
+    stringsAsFactors = FALSE
+  )
   res <- detect_suppressed_candidates(m)
   expect_false(res$has_score_col)
   expect_false(res$perfect_only)
@@ -159,7 +161,7 @@ test_that("detect_suppressed_candidates example_observations contains affected I
   m <- data.frame(
     observation_id = c("ESV001", "ESV002", "ESV003", "ESV003"),
     score_original = c(100, 100, 98, 95),
-    taxon_name     = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
+    taxon_name = c("Sp_A", "Sp_B", "Sp_C", "Sp_D"),
     stringsAsFactors = FALSE
   )
   res <- detect_suppressed_candidates(m)
@@ -173,13 +175,13 @@ test_that("detect_suppressed_candidates example_observations contains affected I
 make_match <- function(obs_id = "obs1", score = 100, genus = "Girella",
                        species = "simplicidens") {
   data.frame(
-    observation_id  = obs_id,
-    score_original  = score,
-    taxon_name      = species,
+    observation_id = obs_id,
+    score_original = score,
+    taxon_name = species,
     taxon_name_rank = "species",
-    family          = "Kyphosidae",
-    genus           = genus,
-    species         = species,
+    family = "Kyphosidae",
+    genus = genus,
+    species = species,
     stringsAsFactors = FALSE
   )
 }
@@ -187,9 +189,9 @@ make_match <- function(obs_id = "obs1", score = 100, genus = "Girella",
 make_ref <- function(genus = "Girella",
                      species = c("simplicidens", "nigricans", "laevifrons")) {
   data.frame(
-    family       = "Kyphosidae",
-    genus        = genus,
-    species      = species,
+    family = "Kyphosidae",
+    genus = genus,
+    species = species,
     composite_id = paste0("ACC_", species),
     stringsAsFactors = FALSE
   )
@@ -203,15 +205,18 @@ make_ref <- function(genus = "Girella",
 # would have from build_sequence_matrix().
 make_seq_matrix_for_ref <- function(ref, p_match = 0.95) {
   ids <- unique(ref$composite_id)
-  if (length(ids) < 2L)
-    return(data.frame(id_x = character(0), id_y = character(0),
-                      p_match = numeric(0), coverage = numeric(0),
-                      stringsAsFactors = FALSE))
+  if (length(ids) < 2L) {
+    return(data.frame(
+      id_x = character(0), id_y = character(0),
+      p_match = numeric(0), coverage = numeric(0),
+      stringsAsFactors = FALSE
+    ))
+  }
   combos <- utils::combn(ids, 2L)
   data.frame(
-    id_x     = combos[1L, ],
-    id_y     = combos[2L, ],
-    p_match  = p_match,
+    id_x = combos[1L, ],
+    id_y = combos[2L, ],
+    p_match = p_match,
     coverage = 1.0,
     stringsAsFactors = FALSE
   )
@@ -222,13 +227,15 @@ test_that("restore_suppressed_candidates adds congeners from reference via Purpo
   result <- restore_suppressed_candidates(
     make_match(), ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
-  expect_equal(nrow(result), 3L)  # 1 original + 2 restored
+  expect_equal(nrow(result), 3L) # 1 original + 2 restored
   expect_true(any(result$is_restored))
-  expect_setequal(result$species,
-                  c("simplicidens", "nigricans", "laevifrons"))
+  expect_setequal(
+    result$species,
+    c("simplicidens", "nigricans", "laevifrons")
+  )
 })
 
 test_that("restore_suppressed_candidates is a no-op without any evidence source (seq_matrix/model_params/check_regional_overlap all absent)", {
@@ -251,7 +258,7 @@ test_that("restore_suppressed_candidates adds is_restored column", {
   result <- restore_suppressed_candidates(
     make_match(), ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
   expect_true("is_restored" %in% names(result))
@@ -264,7 +271,7 @@ test_that("restore_suppressed_candidates marks hypothesis_type = suppressed_cand
   result <- restore_suppressed_candidates(
     make_match(), ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
   restored <- result[result$is_restored, ]
@@ -279,7 +286,7 @@ test_that("restore_suppressed_candidates marks restoration_basis = plausible_pri
   result <- restore_suppressed_candidates(
     make_match(), ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
   restored <- result[result$is_restored, ]
@@ -292,7 +299,7 @@ test_that("restore_suppressed_candidates imputes score from the seq_matrix hiera
   result <- restore_suppressed_candidates(
     make_match(score = 100), ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref, p_match = 0.9),
+    seq_matrix = make_seq_matrix_for_ref(ref, p_match = 0.9),
     verbose = FALSE
   )
   restored <- result[result$is_restored, ]
@@ -307,7 +314,7 @@ test_that("restore_suppressed_candidates imputes score from the seq_matrix hiera
   result <- restore_suppressed_candidates(
     m, ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref, p_match = 0.9),
+    seq_matrix = make_seq_matrix_for_ref(ref, p_match = 0.9),
     verbose = FALSE
   )
   restored <- result[result$is_restored, ]
@@ -332,11 +339,11 @@ test_that("restore_suppressed_candidates aggregates multiple seq_matrix pairs vi
     stringsAsFactors = FALSE
   )
   m <- make_match(species = "simplicidens")
-  m$accession <- "ACC_ANCHOR_NOT_IN_MATRIX"  # forces Level 2, not Level 1
+  m$accession <- "ACC_ANCHOR_NOT_IN_MATRIX" # forces Level 2, not Level 1
   result <- restore_suppressed_candidates(
     m, ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = seq_matrix,
+    seq_matrix = seq_matrix,
     accession_col = "accession",
     verbose = FALSE
   )
@@ -350,7 +357,7 @@ test_that("restore_suppressed_candidates respects max_per_obs (applied to the ad
   result <- restore_suppressed_candidates(
     make_match(species = "Sp_A"), ref_big,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref_big),
+    seq_matrix = make_seq_matrix_for_ref(ref_big),
     max_per_obs = 4L, verbose = FALSE
   )
   expect_equal(sum(result$is_restored), 4L)
@@ -365,7 +372,7 @@ test_that("restore_suppressed_candidates skips when no congeners in reference", 
   result <- restore_suppressed_candidates(
     make_match(), ref_other,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref_other),
+    seq_matrix = make_seq_matrix_for_ref(ref_other),
     verbose = FALSE
   )
   expect_equal(nrow(result), 1L)
@@ -378,13 +385,15 @@ test_that("restore_suppressed_candidates checks every observation regardless of 
   # (Purpose A/B are evaluated per observation, unconditionally) -- the
   # missing congener (laevifrons) is still evaluated for restoration.
   ref <- make_ref()
-  m <- rbind(make_match("obs1", 100, "Girella", "simplicidens"),
-             make_match("obs1", 98,  "Girella", "nigricans"))
+  m <- rbind(
+    make_match("obs1", 100, "Girella", "simplicidens"),
+    make_match("obs1", 98, "Girella", "nigricans")
+  )
   expect_false(detect_suppressed_candidates(m)$rule_detected)
   result <- restore_suppressed_candidates(
     m, ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
   expect_true("laevifrons" %in% result$species[result$is_restored])
@@ -400,7 +409,7 @@ test_that("restore_suppressed_candidates targets every observation, not just one
   result <- restore_suppressed_candidates(
     m, ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
   # Each obs gains congeners that were not its own species; laevifrons for obs1/obs2,
@@ -419,7 +428,7 @@ test_that("restore_suppressed_candidates handles accession column", {
   result <- restore_suppressed_candidates(
     m, ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
   restored <- result[result$is_restored, ]
@@ -434,7 +443,7 @@ test_that("restore_suppressed_candidates clears coverage for restored rows", {
   result <- restore_suppressed_candidates(
     m, ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
   restored <- result[result$is_restored, ]
@@ -445,7 +454,7 @@ test_that("restore_suppressed_candidates clears coverage for restored rows", {
 
 test_that("restore_suppressed_candidates no-score path creates synthetic scores", {
   m <- make_match()
-  m$score_original <- NULL  # remove score column
+  m$score_original <- NULL # remove score column
   result <- restore_suppressed_candidates(
     m, make_ref(),
     rank_system = c("family", "genus", "species"),
@@ -488,7 +497,7 @@ test_that("restore_suppressed_candidates no-score path verbose message has no sp
 
 region_A <- "ACGTTGCAATCGGATCCGTAGCTTAACGGTTCCAAGGTTCAGGCTTAACCGGATCGGTA"
 region_B <- "TTGGCCAATTCCGGAACCTTGGAACCTTAAGGCCTTAAGGCCAATTGGCCTTAAGGCCA"
-spacer   <- "GATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGA"
+spacer <- "GATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGATTACAGA"
 anchor_full <- paste0(region_A, spacer, region_B)
 # region_A occupies 1-60; region_B occupies (60 + nchar(spacer) + 1)-(that + 60)
 region_A_range <- c(1L, 60L)
@@ -507,9 +516,9 @@ candidate_seq <- .mutate_seq(region_A, c(5, 20, 40), c("T", "A", "G"))
 make_overlap_ref_df <- function() {
   data.frame(
     composite_id = c("ANCHOR_ACC", "CANDIDATE_ACC"),
-    sequence      = c(anchor_full, candidate_seq),
-    genus         = c("Testgenus", "Testgenus"),
-    species       = c("Testgenus anchorus", "Testgenus candidatus"),
+    sequence = c(anchor_full, candidate_seq),
+    genus = c("Testgenus", "Testgenus"),
+    species = c("Testgenus anchorus", "Testgenus candidatus"),
     stringsAsFactors = FALSE
   )
 }
@@ -518,12 +527,12 @@ test_that(".check_regional_overlap Tier 2 accepts a candidate overlapping the qu
   skip_if_not_installed("Biostrings")
   skip_if_not_installed("pwalign")
   result <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = NULL,
-    anchor_subject_range   = region_A_range,
-    min_coverage           = 0.5
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = NULL,
+    anchor_subject_range = region_A_range,
+    min_coverage = 0.5
   )
   expect_true(isTRUE(result))
 })
@@ -536,12 +545,12 @@ test_that(".check_regional_overlap Tier 2 rejects a candidate that does NOT over
   skip_if_not_installed("Biostrings")
   skip_if_not_installed("pwalign")
   result <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = NULL,
-    anchor_subject_range   = region_B_range,
-    min_coverage           = 0.5
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = NULL,
+    anchor_subject_range = region_B_range,
+    min_coverage = 0.5
   )
   expect_false(isTRUE(result))
   expect_identical(result, FALSE)
@@ -549,24 +558,24 @@ test_that(".check_regional_overlap Tier 2 rejects a candidate that does NOT over
 
 test_that(".check_regional_overlap returns NA when anchor_subject_range is missing (Tier 2 unreachable)", {
   result <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = NULL,
-    anchor_subject_range   = NULL,
-    min_coverage           = 0.5
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = NULL,
+    anchor_subject_range = NULL,
+    min_coverage = 0.5
   )
   expect_true(is.na(result))
 })
 
 test_that(".check_regional_overlap returns NA when the anchor's own sequence isn't in reference_df", {
   result <- .check_regional_overlap(
-    anchor_accession      = "UNKNOWN_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = NULL,
-    anchor_subject_range   = region_A_range,
-    min_coverage           = 0.5
+    anchor_accession = "UNKNOWN_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = NULL,
+    anchor_subject_range = region_A_range,
+    min_coverage = 0.5
   )
   expect_true(is.na(result))
 })
@@ -579,12 +588,12 @@ test_that(".check_regional_overlap Tier 1 (seq_matrix) short-circuits before Tie
     stringsAsFactors = FALSE
   )
   result <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = sm,
-    anchor_subject_range   = NULL,  # Tier 2 unreachable, but Tier 1 doesn't need it
-    min_coverage           = 0.5
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = sm,
+    anchor_subject_range = NULL, # Tier 2 unreachable, but Tier 1 doesn't need it
+    min_coverage = 0.5
   )
   expect_true(isTRUE(result))
 })
@@ -598,13 +607,13 @@ test_that(".check_regional_overlap Tier 2b derives anchor position on the fly fr
   skip_if_not_installed("Biostrings")
   skip_if_not_installed("pwalign")
   result <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = NULL,
-    anchor_subject_range   = NULL,
-    query_sequence         = region_A,
-    min_coverage           = 0.5
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = NULL,
+    anchor_subject_range = NULL,
+    query_sequence = region_A,
+    min_coverage = 0.5
   )
   expect_true(isTRUE(result))
 })
@@ -616,13 +625,13 @@ test_that(".check_regional_overlap Tier 2b correctly rejects when the query's de
   skip_if_not_installed("Biostrings")
   skip_if_not_installed("pwalign")
   result <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = NULL,
-    anchor_subject_range   = NULL,
-    query_sequence         = region_B,
-    min_coverage           = 0.5
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = NULL,
+    anchor_subject_range = NULL,
+    query_sequence = region_B,
+    min_coverage = 0.5
   )
   expect_false(isTRUE(result))
   expect_identical(result, FALSE)
@@ -635,13 +644,13 @@ test_that(".check_regional_overlap prefers Tier 2a (anchor_subject_range) over T
   skip_if_not_installed("Biostrings")
   skip_if_not_installed("pwalign")
   result <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = NULL,
-    anchor_subject_range   = region_A_range,  # correct, overlapping range
-    query_sequence         = region_B,        # would derive a non-overlapping range
-    min_coverage           = 0.5
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = NULL,
+    anchor_subject_range = region_A_range, # correct, overlapping range
+    query_sequence = region_B, # would derive a non-overlapping range
+    min_coverage = 0.5
   )
   expect_true(isTRUE(result))
 })
@@ -661,12 +670,12 @@ test_that(".check_regional_overlap memoizes the (anchor, candidate) alignment vi
 
   # First call: real overlap (region_A_range) -- computes and caches the alignment.
   result1 <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = ref,
-    anchor_subject_range   = region_A_range,
-    min_coverage           = 0.5,
-    align_cache             = cache
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = ref,
+    anchor_subject_range = region_A_range,
+    min_coverage = 0.5,
+    align_cache = cache
   )
   expect_true(isTRUE(result1))
   expect_true(exists("pair::ANCHOR_ACC::CANDIDATE_ACC", envir = cache, inherits = FALSE))
@@ -686,12 +695,12 @@ test_that(".check_regional_overlap memoizes the (anchor, candidate) alignment vi
   ref_corrupted <- ref
   ref_corrupted$sequence[ref_corrupted$composite_id == "CANDIDATE_ACC"] <- "N"
   result2 <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = ref_corrupted,
-    anchor_subject_range   = region_B_range,
-    min_coverage           = 0.5,
-    align_cache             = cache
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = ref_corrupted,
+    anchor_subject_range = region_B_range,
+    min_coverage = 0.5,
+    align_cache = cache
   )
   expect_identical(result2, FALSE)
 })
@@ -712,13 +721,13 @@ test_that(".check_regional_overlap memoizes seq_matrix's stripped id_x/id_y via 
     stringsAsFactors = FALSE
   )
   result1 <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = sm,
-    anchor_subject_range   = NULL,
-    min_coverage           = 0.5,
-    align_cache             = cache
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = sm,
+    anchor_subject_range = NULL,
+    min_coverage = 0.5,
+    align_cache = cache
   )
   expect_true(isTRUE(result1))
   expect_true(exists("seq_matrix_ids", envir = cache, inherits = FALSE))
@@ -730,13 +739,13 @@ test_that(".check_regional_overlap memoizes seq_matrix's stripped id_x/id_y via 
   # supplied here) proves the corrupted CACHED ids were used, not fresh ones.
   assign("seq_matrix_ids", list(id_x = "OTHER1", id_y = "OTHER2"), envir = cache)
   result2 <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = make_overlap_ref_df(),
-    seq_matrix             = sm,
-    anchor_subject_range   = NULL,
-    min_coverage           = 0.5,
-    align_cache             = cache
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = make_overlap_ref_df(),
+    seq_matrix = sm,
+    anchor_subject_range = NULL,
+    min_coverage = 0.5,
+    align_cache = cache
   )
   expect_true(is.na(result2))
 })
@@ -763,13 +772,13 @@ test_that(".check_regional_overlap memoizes Tier 2b's query-vs-anchor alignment 
   # overlapping CANDIDATE_ACC (built from region_A) -- derives and caches
   # anchor_subject_range under a key scoped to (anchor_accession, query_sequence).
   result1 <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = ref,
-    anchor_subject_range   = NULL,
-    query_sequence         = region_A,
-    min_coverage           = 0.5,
-    align_cache             = cache
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = ref,
+    anchor_subject_range = NULL,
+    query_sequence = region_A,
+    min_coverage = 0.5,
+    align_cache = cache
   )
   expect_true(isTRUE(result1))
   query_key <- paste0("query::ANCHOR_ACC::", region_A)
@@ -783,13 +792,13 @@ test_that(".check_regional_overlap memoizes Tier 2b's query-vs-anchor alignment 
   # CACHED value was consulted and used, not a fresh alignment.
   assign(query_key, region_B_range, envir = cache)
   result2 <- .check_regional_overlap(
-    anchor_accession      = "ANCHOR_ACC",
-    candidate_accessions  = "CANDIDATE_ACC",
-    reference_df          = ref,
-    anchor_subject_range   = NULL,
-    query_sequence         = region_A,
-    min_coverage           = 0.5,
-    align_cache             = cache
+    anchor_accession = "ANCHOR_ACC",
+    candidate_accessions = "CANDIDATE_ACC",
+    reference_df = ref,
+    anchor_subject_range = NULL,
+    query_sequence = region_A,
+    min_coverage = 0.5,
+    align_cache = cache
   )
   expect_identical(result2, FALSE)
 })
@@ -826,21 +835,21 @@ test_that("restore_suppressed_candidates(check_regional_overlap = TRUE) skips a 
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession       <- "ANCHOR_ACC"
-  m$subject_start   <- region_B_range[1]
-  m$subject_end     <- region_B_range[2]
+  m$accession <- "ANCHOR_ACC"
+  m$subject_start <- region_B_range[1]
+  m$subject_end <- region_B_range[2]
 
   ref <- make_overlap_ref_df()
   names(ref)[names(ref) == "species"] <- "species_full"
-  ref$species <- c("anchorus", "candidatus")  # match make_match()'s bare species convention
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$species <- c("anchorus", "candidatus") # match make_match()'s bare species convention
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    verbose                 = FALSE
+    verbose = FALSE
   )
   # No congener restored -- the only candidate (candidatus) fails the
   # regional-overlap check against the anchor's real hit position (region_B)
@@ -852,20 +861,20 @@ test_that("restore_suppressed_candidates(check_regional_overlap = TRUE) restores
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession       <- "ANCHOR_ACC"
-  m$subject_start   <- region_A_range[1]
-  m$subject_end     <- region_A_range[2]
+  m$accession <- "ANCHOR_ACC"
+  m$subject_start <- region_A_range[1]
+  m$subject_end <- region_A_range[2]
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    verbose                 = FALSE
+    verbose = FALSE
   )
   expect_true(any(result$is_restored))
   expect_true("candidatus" %in% result$species[result$is_restored])
@@ -882,21 +891,25 @@ test_that("restore_suppressed_candidates(check_regional_overlap = TRUE): two obs
   skip_if_not_installed("pwalign")
 
   m1 <- make_match(obs_id = "obs_overlap", genus = "Testgenus", species = "anchorus")
-  m1$accession <- "ANCHOR_ACC"; m1$subject_start <- region_A_range[1]; m1$subject_end <- region_A_range[2]
+  m1$accession <- "ANCHOR_ACC"
+  m1$subject_start <- region_A_range[1]
+  m1$subject_end <- region_A_range[2]
   m2 <- make_match(obs_id = "obs_no_overlap", genus = "Testgenus", species = "anchorus")
-  m2$accession <- "ANCHOR_ACC"; m2$subject_start <- region_B_range[1]; m2$subject_end <- region_B_range[2]
+  m2$accession <- "ANCHOR_ACC"
+  m2$subject_start <- region_B_range[1]
+  m2$subject_end <- region_B_range[2]
   m <- dplyr::bind_rows(m1, m2)
   m$family <- "Kyphosidae"
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    verbose                 = FALSE
+    verbose = FALSE
   )
   restored_obs <- unique(result$observation_id[result$is_restored])
   expect_equal(restored_obs, "obs_overlap")
@@ -915,19 +928,19 @@ test_that("restore_suppressed_candidates(check_regional_overlap = TRUE, sequence
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
   m$accession <- "ANCHOR_ACC"
-  m$my_sequence <- region_B  # query "hit" region_B's real position
+  m$my_sequence <- region_B # query "hit" region_B's real position
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    sequence_col            = "my_sequence",
-    verbose                 = FALSE
+    sequence_col = "my_sequence",
+    verbose = FALSE
   )
   # candidatus (built from region_A) does not overlap region_B -- must be
   # skipped, not restored, exactly as the accession-coordinate (Tier 2a)
@@ -948,21 +961,21 @@ test_that("restore_suppressed_candidates(candidate_species_filter = ...) exclude
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession       <- "ANCHOR_ACC"
-  m$subject_start   <- region_A_range[1]
-  m$subject_end     <- region_A_range[2]
+  m$accession <- "ANCHOR_ACC"
+  m$subject_start <- region_A_range[1]
+  m$subject_end <- region_A_range[2]
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system              = c("family", "genus", "species"),
-    check_regional_overlap   = TRUE,
-    candidate_species_filter = "some_other_species",  # candidatus not on the list
-    verbose                   = FALSE
+    rank_system = c("family", "genus", "species"),
+    check_regional_overlap = TRUE,
+    candidate_species_filter = "some_other_species", # candidatus not on the list
+    verbose = FALSE
   )
   expect_false(any(result$is_restored))
   reg <- attr(result, "regional_unreferenced")
@@ -976,20 +989,20 @@ test_that("restore_suppressed_candidates(candidate_species_filter = NULL) is una
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession       <- "ANCHOR_ACC"
-  m$subject_start   <- region_A_range[1]
-  m$subject_end     <- region_A_range[2]
+  m$accession <- "ANCHOR_ACC"
+  m$subject_start <- region_A_range[1]
+  m$subject_end <- region_A_range[2]
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    verbose                 = FALSE
+    verbose = FALSE
   )
   expect_true(any(result$is_restored))
   expect_true("candidatus" %in% result$species[result$is_restored])
@@ -1004,7 +1017,7 @@ test_that("restore_suppressed_candidates(check_regional_overlap = FALSE) restore
   result <- restore_suppressed_candidates(
     make_match(), ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
+    seq_matrix = make_seq_matrix_for_ref(ref),
     verbose = FALSE
   )
   expect_equal(nrow(result), 3L)
@@ -1028,8 +1041,8 @@ test_that("restore_suppressed_candidates: Level 1 with one contributing accessio
   result <- restore_suppressed_candidates(
     m, ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
-    verbose     = FALSE
+    seq_matrix = make_seq_matrix_for_ref(ref),
+    verbose = FALSE
   )
   restored <- result[result$is_restored, , drop = FALSE]
   expect_equal(nrow(restored), 1L)
@@ -1054,8 +1067,8 @@ test_that("restore_suppressed_candidates: Level 1 with >1 contributing accession
   result <- restore_suppressed_candidates(
     m, ref,
     rank_system = c("family", "genus", "species"),
-    seq_matrix  = make_seq_matrix_for_ref(ref),
-    verbose     = FALSE
+    seq_matrix = make_seq_matrix_for_ref(ref),
+    verbose = FALSE
   )
   restored <- result[result$is_restored, , drop = FALSE]
   expect_equal(nrow(restored), 1L)
@@ -1073,20 +1086,20 @@ test_that("restore_suppressed_candidates records a rejected congener in attr(res
   skip_if_not_installed("pwalign")
 
   m <- make_match(obs_id = "ASV_300", genus = "Testgenus", species = "anchorus")
-  m$accession       <- "ANCHOR_ACC"
-  m$subject_start   <- region_B_range[1]
-  m$subject_end     <- region_B_range[2]
+  m$accession <- "ANCHOR_ACC"
+  m$subject_start <- region_B_range[1]
+  m$subject_end <- region_B_range[2]
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    verbose                 = FALSE
+    verbose = FALSE
   )
   reg <- attr(result, "regional_unreferenced")
   expect_false(is.null(reg))
@@ -1103,20 +1116,20 @@ test_that("restore_suppressed_candidates: regional_unreferenced is NULL when not
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession       <- "ANCHOR_ACC"
-  m$subject_start   <- region_A_range[1]
-  m$subject_end     <- region_A_range[2]
+  m$accession <- "ANCHOR_ACC"
+  m$subject_start <- region_A_range[1]
+  m$subject_end <- region_A_range[2]
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    verbose                 = FALSE
+    verbose = FALSE
   )
   expect_true(any(result$is_restored))
   expect_null(attr(result, "regional_unreferenced"))
@@ -1136,22 +1149,30 @@ test_that("restore_suppressed_candidates(check_regional_overlap = TRUE) still ch
   skip_if_not_installed("pwalign")
 
   m <- dplyr::bind_rows(
-    data.frame(observation_id = "obs1", score_original = 90, family = "Kyphosidae",
-               genus = "Testgenus", species = "anchorus", accession = "ANCHOR_ACC",
-               subject_start = region_B_range[1], subject_end = region_B_range[2],
-               stringsAsFactors = FALSE),
-    data.frame(observation_id = "obs2", score_original = c(85, 80), family = "Kyphosidae",
-               genus = "Girella", species = c("simplicidens", "nigricans"),
-               accession = NA_character_, subject_start = NA_real_, subject_end = NA_real_,
-               stringsAsFactors = FALSE),
-    data.frame(observation_id = "obs3", score_original = 70, family = "Kyphosidae",
-               genus = "Girella", species = "laevifrons",
-               accession = NA_character_, subject_start = NA_real_, subject_end = NA_real_,
-               stringsAsFactors = FALSE),
-    data.frame(observation_id = "obs4", score_original = c(60, 55, 50), family = "Kyphosidae",
-               genus = "Girella", species = c("simplicidens", "nigricans", "laevifrons"),
-               accession = NA_character_, subject_start = NA_real_, subject_end = NA_real_,
-               stringsAsFactors = FALSE)
+    data.frame(
+      observation_id = "obs1", score_original = 90, family = "Kyphosidae",
+      genus = "Testgenus", species = "anchorus", accession = "ANCHOR_ACC",
+      subject_start = region_B_range[1], subject_end = region_B_range[2],
+      stringsAsFactors = FALSE
+    ),
+    data.frame(
+      observation_id = "obs2", score_original = c(85, 80), family = "Kyphosidae",
+      genus = "Girella", species = c("simplicidens", "nigricans"),
+      accession = NA_character_, subject_start = NA_real_, subject_end = NA_real_,
+      stringsAsFactors = FALSE
+    ),
+    data.frame(
+      observation_id = "obs3", score_original = 70, family = "Kyphosidae",
+      genus = "Girella", species = "laevifrons",
+      accession = NA_character_, subject_start = NA_real_, subject_end = NA_real_,
+      stringsAsFactors = FALSE
+    ),
+    data.frame(
+      observation_id = "obs4", score_original = c(60, 55, 50), family = "Kyphosidae",
+      genus = "Girella", species = c("simplicidens", "nigricans", "laevifrons"),
+      accession = NA_character_, subject_start = NA_real_, subject_end = NA_real_,
+      stringsAsFactors = FALSE
+    )
   )
   # Self-checking precondition: confirms this fixture really does reproduce
   # the real-data "no global rule detected" scenario, not just a guess.
@@ -1159,13 +1180,13 @@ test_that("restore_suppressed_candidates(check_regional_overlap = TRUE) still ch
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    verbose                 = FALSE
+    verbose = FALSE
   )
   reg <- attr(result, "regional_unreferenced")
   expect_false(is.null(reg))
@@ -1181,21 +1202,25 @@ test_that("restore_suppressed_candidates: regional_unreferenced feeds expand_unr
   # hit region_B (non-overlapping with candidatus's real reference at
   # region_A), so only ASV_300 should get candidatus recorded as rejected.
   m1 <- make_match(obs_id = "ASV_300", genus = "Testgenus", species = "anchorus")
-  m1$accession <- "ANCHOR_ACC"; m1$subject_start <- region_B_range[1]; m1$subject_end <- region_B_range[2]
+  m1$accession <- "ANCHOR_ACC"
+  m1$subject_start <- region_B_range[1]
+  m1$subject_end <- region_B_range[2]
   m2 <- make_match(obs_id = "ASV_099", genus = "Testgenus", species = "anchorus")
-  m2$accession <- "ANCHOR_ACC"; m2$subject_start <- region_A_range[1]; m2$subject_end <- region_A_range[2]
+  m2$accession <- "ANCHOR_ACC"
+  m2$subject_start <- region_A_range[1]
+  m2$subject_end <- region_A_range[2]
   m <- dplyr::bind_rows(m1, m2)
   m$family <- "Kyphosidae"
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
     m, ref,
-    rank_system            = c("family", "genus", "species"),
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE,
-    verbose                 = FALSE
+    verbose = FALSE
   )
   reg <- attr(result, "regional_unreferenced")
   expect_equal(nrow(reg), 1L)
@@ -1218,16 +1243,20 @@ test_that("restore_suppressed_candidates: regional_unreferenced feeds expand_unr
   h2_300 <- expanded[expanded$observation_id == "ASV_300", ]
   h2_099 <- expanded[expanded$observation_id == "ASV_099", ]
   expect_true("candidatus" %in% h2_300$taxon_name)
-  expect_equal(nrow(h2_099), 0L)  # no match in reg for ASV_099 -- generic row dropped
+  expect_equal(nrow(h2_099), 0L) # no match in reg for ASV_099 -- generic row dropped
 })
 
 # ---- Purpose A / Purpose B admission (design spec Section 2) -----------------
 
 .simple_model_params <- function(sigma11 = 0.05) {
   list(
-    H1_Sigma = matrix(c(sigma11, 0, 0, 1), nrow = 2,
-                      dimnames = list(c("score_logit", "gap_logit"),
-                                      c("score_logit", "gap_logit"))),
+    H1_Sigma = matrix(c(sigma11, 0, 0, 1),
+      nrow = 2,
+      dimnames = list(
+        c("score_logit", "gap_logit"),
+        c("score_logit", "gap_logit")
+      )
+    ),
     H1_Lookup = NULL,
     Score_Transform = "logit"
   )
@@ -1249,7 +1278,8 @@ test_that("restore_suppressed_candidates: Purpose A (competitive_score) admits a
   m <- make_match(score = 95)
 
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     seq_matrix = seq_matrix, model_params = .simple_model_params(), verbose = FALSE
   )
   restored <- result[result$is_restored, ]
@@ -1272,7 +1302,8 @@ test_that("restore_suppressed_candidates: Purpose A is never gated by candidate_
   m <- make_match(score = 95)
 
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     seq_matrix = seq_matrix, model_params = .simple_model_params(),
     candidate_species_filter = "some_other_species_not_nigricans",
     verbose = FALSE
@@ -1296,7 +1327,8 @@ test_that("restore_suppressed_candidates: without model_params, Purpose A never 
   )
   m <- make_match(score = 95)
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     seq_matrix = seq_matrix, verbose = FALSE
   )
   restored <- result[result$is_restored, ]
@@ -1310,14 +1342,14 @@ test_that("restore_suppressed_candidates routes straight to Level 4 when the anc
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession     <- "ANCHOR_ACC"
+  m$accession <- "ANCHOR_ACC"
   m$subject_start <- region_A_range[1]
-  m$subject_end   <- region_A_range[2]
+  m$subject_end <- region_A_range[2]
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   # seq_matrix exists but has nothing to do with ANCHOR_ACC/CANDIDATE_ACC --
   # the Level 0 precheck must find zero presence and route straight to
@@ -1328,7 +1360,8 @@ test_that("restore_suppressed_candidates routes straight to Level 4 when the anc
   )
 
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     seq_matrix = seq_matrix, check_regional_overlap = TRUE, verbose = FALSE
   )
   expect_true(any(result$is_restored))
@@ -1342,20 +1375,20 @@ test_that("restore_suppressed_candidates: compute-budget mechanism skips Level 4
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession     <- "ANCHOR_ACC"
+  m$accession <- "ANCHOR_ACC"
   m$subject_start <- region_A_range[1]
-  m$subject_end   <- region_A_range[2]
-  m$grid_id       <- "grid1"
+  m$subject_end <- region_A_range[2]
+  m$grid_id <- "grid1"
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   # anchor's own prior is 100x the candidate's -- ratio 100 > budget_ratio_cap (19)
   taxaexpect_priors <- data.frame(
     taxon_name = c("anchorus", "candidatus"),
-    grid_id    = c("grid1", "grid1"),
+    grid_id = c("grid1", "grid1"),
     theta_mean = c(0.50, 0.005),
     stringsAsFactors = FALSE
   )
@@ -1364,7 +1397,8 @@ test_that("restore_suppressed_candidates: compute-budget mechanism skips Level 4
   # what this test exercises (Option A, 2026-07-18): a candidate ON the
   # filter would always be checked regardless of the ratio.
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE, taxaexpect_priors = taxaexpect_priors,
     candidate_species_filter = "some_other_species",
     verbose = FALSE
@@ -1381,20 +1415,20 @@ test_that("restore_suppressed_candidates: compute-budget mechanism allows Level 
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession     <- "ANCHOR_ACC"
+  m$accession <- "ANCHOR_ACC"
   m$subject_start <- region_A_range[1]
-  m$subject_end   <- region_A_range[2]
-  m$grid_id       <- "grid1"
+  m$subject_end <- region_A_range[2]
+  m$grid_id <- "grid1"
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   taxaexpect_priors <- data.frame(
     taxon_name = c("anchorus", "candidatus"),
-    grid_id    = c("grid1", "grid1"),
-    theta_mean = c(0.50, 0.05),  # ratio 10 <= 19
+    grid_id = c("grid1", "grid1"),
+    theta_mean = c(0.50, 0.05), # ratio 10 <= 19
     stringsAsFactors = FALSE
   )
 
@@ -1403,14 +1437,19 @@ test_that("restore_suppressed_candidates: compute-budget mechanism allows Level 
   # model_params lets Purpose A admit it on score evidence once Level 4
   # resolves a real (high, since only 3/60bp mutated) score for it.
   model_params <- list(
-    H1_Sigma = matrix(c(10, 0, 0, 1), nrow = 2,
-                      dimnames = list(c("score_logit", "gap_logit"),
-                                      c("score_logit", "gap_logit"))),
+    H1_Sigma = matrix(c(10, 0, 0, 1),
+      nrow = 2,
+      dimnames = list(
+        c("score_logit", "gap_logit"),
+        c("score_logit", "gap_logit")
+      )
+    ),
     H1_Lookup = NULL, Score_Transform = "logit"
   )
 
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE, taxaexpect_priors = taxaexpect_priors,
     candidate_species_filter = "some_other_species", model_params = model_params,
     verbose = FALSE
@@ -1426,27 +1465,28 @@ test_that("restore_suppressed_candidates: a candidate ON candidate_species_filte
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession     <- "ANCHOR_ACC"
+  m$accession <- "ANCHOR_ACC"
   m$subject_start <- region_A_range[1]
-  m$subject_end   <- region_A_range[2]
-  m$grid_id       <- "grid1"
+  m$subject_end <- region_A_range[2]
+  m$grid_id <- "grid1"
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   # Ratio of 100 would fail the budget test on its own, but candidatus IS on
   # the filter, so the ratio is never even consulted.
   taxaexpect_priors <- data.frame(
     taxon_name = c("anchorus", "candidatus"),
-    grid_id    = c("grid1", "grid1"),
+    grid_id = c("grid1", "grid1"),
     theta_mean = c(0.50, 0.005),
     stringsAsFactors = FALSE
   )
 
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE, taxaexpect_priors = taxaexpect_priors,
     candidate_species_filter = "candidatus",
     verbose = FALSE
@@ -1460,15 +1500,15 @@ test_that("restore_suppressed_candidates: compute-budget treats a candidate abse
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession     <- "ANCHOR_ACC"
+  m$accession <- "ANCHOR_ACC"
   m$subject_start <- region_A_range[1]
-  m$subject_end   <- region_A_range[2]
-  m$grid_id       <- "grid1"
+  m$subject_end <- region_A_range[2]
+  m$grid_id <- "grid1"
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   # candidatus never appears in taxaexpect_priors at all
   taxaexpect_priors <- data.frame(
@@ -1477,7 +1517,8 @@ test_that("restore_suppressed_candidates: compute-budget treats a candidate abse
   )
 
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE, taxaexpect_priors = taxaexpect_priors,
     candidate_species_filter = "some_other_species",
     verbose = FALSE
@@ -1492,17 +1533,18 @@ test_that("restore_suppressed_candidates: taxaexpect_priors = NULL (default) nev
   skip_if_not_installed("pwalign")
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession     <- "ANCHOR_ACC"
+  m$accession <- "ANCHOR_ACC"
   m$subject_start <- region_A_range[1]
-  m$subject_end   <- region_A_range[2]
+  m$subject_end <- region_A_range[2]
 
   ref <- make_overlap_ref_df()
   ref$species <- c("anchorus", "candidatus")
-  ref$family  <- "Kyphosidae"
-  m$family    <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
+  m$family <- "Kyphosidae"
 
   result <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE, verbose = FALSE
   )
   expect_true(any(result$is_restored))
@@ -1515,11 +1557,11 @@ test_that(".check_regional_overlap(return_detail = TRUE) returns overlap + a rea
   skip_if_not_installed("pwalign")
 
   detail <- .check_regional_overlap(
-    anchor_accession     = "ANCHOR_ACC",
+    anchor_accession = "ANCHOR_ACC",
     candidate_accessions = "CANDIDATE_ACC",
-    reference_df         = make_overlap_ref_df(),
+    reference_df = make_overlap_ref_df(),
     anchor_subject_range = region_A_range,
-    return_detail         = TRUE
+    return_detail = TRUE
   )
   expect_true(isTRUE(detail$overlap))
   # candidate_seq is region_A with 3 point mutations out of 60bp -> ~95% identity
@@ -1531,11 +1573,11 @@ test_that(".check_regional_overlap(return_detail = TRUE) returns overlap = FALSE
   skip_if_not_installed("pwalign")
 
   detail <- .check_regional_overlap(
-    anchor_accession     = "ANCHOR_ACC",
+    anchor_accession = "ANCHOR_ACC",
     candidate_accessions = "CANDIDATE_ACC",
-    reference_df         = make_overlap_ref_df(),
+    reference_df = make_overlap_ref_df(),
     anchor_subject_range = region_B_range,
-    return_detail         = TRUE
+    return_detail = TRUE
   )
   expect_false(isTRUE(detail$overlap))
   expect_true(is.na(detail$pid))
@@ -1543,10 +1585,10 @@ test_that(".check_regional_overlap(return_detail = TRUE) returns overlap = FALSE
 
 test_that(".check_regional_overlap(return_detail = TRUE) returns overlap = NA, pid = NA when there is no evidence at all", {
   detail <- .check_regional_overlap(
-    anchor_accession     = NA_character_,
+    anchor_accession = NA_character_,
     candidate_accessions = "CANDIDATE_ACC",
-    reference_df         = make_overlap_ref_df(),
-    return_detail         = TRUE
+    reference_df = make_overlap_ref_df(),
+    return_detail = TRUE
   )
   expect_true(is.na(detail$overlap))
   expect_true(is.na(detail$pid))
@@ -1556,9 +1598,9 @@ test_that(".check_regional_overlap(return_detail = TRUE) returns overlap = NA, p
 
 test_that(".level4_attempt_allowed enforces a per-anchor cap and Inf disables it", {
   env <- new.env(parent = emptyenv())
-  expect_true(.level4_attempt_allowed("ACC1", 2L, env))   # 1st: allowed
-  expect_true(.level4_attempt_allowed("ACC1", 2L, env))   # 2nd: allowed
-  expect_false(.level4_attempt_allowed("ACC1", 2L, env))  # 3rd: capped
+  expect_true(.level4_attempt_allowed("ACC1", 2L, env)) # 1st: allowed
+  expect_true(.level4_attempt_allowed("ACC1", 2L, env)) # 2nd: allowed
+  expect_false(.level4_attempt_allowed("ACC1", 2L, env)) # 3rd: capped
   # a different anchor has its own independent counter
   expect_true(.level4_attempt_allowed("ACC2", 2L, env))
   # Inf disables the cap entirely, even after many prior calls
@@ -1581,23 +1623,26 @@ test_that("restore_suppressed_candidates: max_level4_per_anchor caps the number 
 
   ref <- data.frame(
     composite_id = c("ANCHOR_ACC", "CAND1_ACC", "CAND2_ACC", "CAND3_ACC"),
-    sequence      = c(anchor_full, cand1, cand2, cand3),
-    genus         = "Testgenus",
-    species       = c("Testgenus anchorus", "Testgenus cand1",
-                      "Testgenus cand2", "Testgenus cand3"),
+    sequence = c(anchor_full, cand1, cand2, cand3),
+    genus = "Testgenus",
+    species = c(
+      "Testgenus anchorus", "Testgenus cand1",
+      "Testgenus cand2", "Testgenus cand3"
+    ),
     stringsAsFactors = FALSE
   )
   ref$species <- c("anchorus", "cand1", "cand2", "cand3")
-  ref$family  <- "Kyphosidae"
+  ref$family <- "Kyphosidae"
 
   m <- make_match(genus = "Testgenus", species = "anchorus")
-  m$accession     <- "ANCHOR_ACC"
+  m$accession <- "ANCHOR_ACC"
   m$subject_start <- region_A_range[1]
-  m$subject_end   <- region_A_range[2]
-  m$family        <- "Kyphosidae"
+  m$subject_end <- region_A_range[2]
+  m$family <- "Kyphosidae"
 
   result_capped <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE, max_level4_per_anchor = 1L, verbose = FALSE
   )
   reg_capped <- attr(result_capped, "regional_unreferenced")
@@ -1609,7 +1654,8 @@ test_that("restore_suppressed_candidates: max_level4_per_anchor caps the number 
   expect_true(sum(reg_capped$basis == "no_reference_data") >= 2L)
 
   result_uncapped <- restore_suppressed_candidates(
-    m, ref, rank_system = c("family", "genus", "species"),
+    m, ref,
+    rank_system = c("family", "genus", "species"),
     check_regional_overlap = TRUE, max_level4_per_anchor = Inf, verbose = FALSE
   )
   # Uncapped: all three independently pass regional overlap and get restored.
@@ -1621,9 +1667,11 @@ test_that("restore_suppressed_candidates: max_level4_per_anchor caps the number 
 test_that("detect_suppressed_candidates: a zero-row match_obj reports no rule instead of erroring", {
   # n_total = 0 previously made frac_singleton NaN, and `if (best_only)` then
   # failed with "missing value where TRUE/FALSE needed".
-  empty <- data.frame(observation_id = character(0L),
-                      score_original = numeric(0L),
-                      stringsAsFactors = FALSE)
+  empty <- data.frame(
+    observation_id = character(0L),
+    score_original = numeric(0L),
+    stringsAsFactors = FALSE
+  )
   out <- detect_suppressed_candidates(empty)
   expect_false(out$rule_detected)
   expect_length(out$rules, 0L)
@@ -1638,8 +1686,8 @@ test_that(".build_restored_row: an NA-species reference row is skipped, not sele
   ref <- data.frame(
     composite_id = c("ACC_na", "ACC_nigricans"),
     species = c(NA_character_, "Girella nigricans"),
-    genus   = c(NA_character_, "Girella"),
-    family  = c(NA_character_, "Kyphosidae"),
+    genus = c(NA_character_, "Girella"),
+    family = c(NA_character_, "Kyphosidae"),
     stringsAsFactors = FALSE
   )
   anchor <- data.frame(

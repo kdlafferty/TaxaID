@@ -6,12 +6,12 @@
 
 .make_ref_pairs <- function() {
   data.frame(
-    id_x        = c("A1", "A1", "A1", "A2", "A2", "A2", "B1", "B1", "B1"),
-    id_y        = c("A1", "A2", "B1", "A1", "A2", "B1", "A1", "A2", "B1"),
-    species.x   = c("Aa", "Aa", "Aa", "Aa", "Aa", "Aa", "Bb", "Bb", "Bb"),
-    species.y   = c("Aa", "Aa", "Bb", "Aa", "Aa", "Bb", "Aa", "Aa", "Bb"),
-    p_match     = c(1.00, 0.95, 0.70, 0.95, 1.00, 0.68, 0.70, 0.68, 1.00),
-    coverage    = c(1.00, 0.90, 0.40, 0.90, 1.00, 0.35, 0.40, 0.35, 1.00),
+    id_x = c("A1", "A1", "A1", "A2", "A2", "A2", "B1", "B1", "B1"),
+    id_y = c("A1", "A2", "B1", "A1", "A2", "B1", "A1", "A2", "B1"),
+    species.x = c("Aa", "Aa", "Aa", "Aa", "Aa", "Aa", "Bb", "Bb", "Bb"),
+    species.y = c("Aa", "Aa", "Bb", "Aa", "Aa", "Bb", "Aa", "Aa", "Bb"),
+    p_match = c(1.00, 0.95, 0.70, 0.95, 1.00, 0.68, 0.70, 0.68, 1.00),
+    coverage = c(1.00, 0.90, 0.40, 0.90, 1.00, 0.35, 0.40, 0.35, 1.00),
     stringsAsFactors = FALSE
   )
 }
@@ -19,23 +19,31 @@
 # ---- calibrate_coverage_filter() --------------------------------------------
 
 test_that("calibrate_coverage_filter: returns one row per threshold with expected columns", {
-  out <- calibrate_coverage_filter(.make_ref_pairs(), rank_system = "species",
-                                    thresholds = c(0, 0.5, 0.9))
+  out <- calibrate_coverage_filter(.make_ref_pairs(),
+    rank_system = "species",
+    thresholds = c(0, 0.5, 0.9)
+  )
   expect_equal(nrow(out), 3L)
-  expect_true(all(c("threshold", "n_queries", "breadth", "h1_pairs", "h2_pairs",
-                     "h1_retention", "h2_retention", "youden_j",
-                     "discrimination", "mean_h1_score") %in% names(out)))
+  expect_true(all(c(
+    "threshold", "n_queries", "breadth", "h1_pairs", "h2_pairs",
+    "h1_retention", "h2_retention", "youden_j",
+    "discrimination", "mean_h1_score"
+  ) %in% names(out)))
 })
 
 test_that("calibrate_coverage_filter: breadth decreases as threshold rises", {
-  out <- calibrate_coverage_filter(.make_ref_pairs(), rank_system = "species",
-                                    thresholds = c(0, 0.5, 0.99))
+  out <- calibrate_coverage_filter(.make_ref_pairs(),
+    rank_system = "species",
+    thresholds = c(0, 0.5, 0.99)
+  )
   expect_true(all(diff(out$breadth) <= 0))
 })
 
 test_that("calibrate_coverage_filter: youden_j is 0 at the no-filter baseline", {
-  out <- calibrate_coverage_filter(.make_ref_pairs(), rank_system = "species",
-                                    thresholds = 0)
+  out <- calibrate_coverage_filter(.make_ref_pairs(),
+    rank_system = "species",
+    thresholds = 0
+  )
   expect_equal(out$youden_j, 0, tolerance = 1e-9)
 })
 
@@ -43,8 +51,10 @@ test_that("calibrate_coverage_filter: high threshold retains only high-coverage 
   # At threshold 0.9, the five coverage>=0.9 rows survive (A1-A1, A1-A2,
   # A2-A1, A2-A2, B1-B1) -- all same-species (H1) pairs; every H2/H3
   # (cross-species) pair has coverage <= 0.40 and is filtered out.
-  out <- calibrate_coverage_filter(.make_ref_pairs(), rank_system = "species",
-                                    thresholds = 0.9)
+  out <- calibrate_coverage_filter(.make_ref_pairs(),
+    rank_system = "species",
+    thresholds = 0.9
+  )
   expect_equal(out$h1_pairs, 5L)
   expect_equal(out$h2_pairs, 0L)
   expect_equal(out$youden_j, 1.0, tolerance = 1e-9)
@@ -68,8 +78,10 @@ test_that("calibrate_coverage_filter: missing rank columns gives NA H1/H2 metric
 
 test_that("calibrate_coverage_filter: categorical coverage message fires for few unique values", {
   expect_message(
-    calibrate_coverage_filter(.make_ref_pairs(), rank_system = "species",
-                               thresholds = c(0, 0.5)),
+    calibrate_coverage_filter(.make_ref_pairs(),
+      rank_system = "species",
+      thresholds = c(0, 0.5)
+    ),
     "categorical"
   )
 })
@@ -93,7 +105,8 @@ test_that("coverage_threshold: returns the expected quantile for continuous cove
   df <- data.frame(coverage = seq(0, 1, by = 0.01))
   out <- coverage_threshold(df, keep_frac = 0.90)
   expect_equal(out, stats::quantile(df$coverage, probs = 0.10, names = FALSE),
-               tolerance = 1e-9)
+    tolerance = 1e-9
+  )
 })
 
 test_that("coverage_threshold: snaps to the nearest grade for categorical coverage", {
@@ -120,8 +133,12 @@ test_that("coverage_threshold: NA coverage values are ignored", {
 test_that("coverage_threshold: validates inputs", {
   expect_error(coverage_threshold(list()), "must be a data frame")
   expect_error(coverage_threshold(data.frame(x = 1)), "coverage.*column")
-  expect_error(coverage_threshold(data.frame(coverage = 1), keep_frac = 1.5),
-               "\\(0, 1\\)")
-  expect_error(coverage_threshold(data.frame(coverage = NA_real_)),
-               "no non-NA coverage")
+  expect_error(
+    coverage_threshold(data.frame(coverage = 1), keep_frac = 1.5),
+    "\\(0, 1\\)"
+  )
+  expect_error(
+    coverage_threshold(data.frame(coverage = NA_real_)),
+    "no non-NA coverage"
+  )
 })

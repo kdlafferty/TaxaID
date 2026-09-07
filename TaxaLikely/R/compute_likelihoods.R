@@ -53,44 +53,47 @@
 #'
 #' @examples
 #' \dontrun{
-#' hyp_df  <- unreferenced_candidates(match_df)
-#' sc_df   <- assign_scores(hyp_df, score_type = "similarity")
-#' result  <- model_likelihoods(sc_df, model_params = model,
-#'                              rank_system = c("family", "genus", "species"))
+#' hyp_df <- unreferenced_candidates(match_df)
+#' sc_df <- assign_scores(hyp_df, score_type = "similarity")
+#' result <- model_likelihoods(sc_df,
+#'   model_params = model,
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' head(result$likelihoods)
 #' }
 #'
 #' @export
 model_likelihoods <- function(scored_df,
                               model_params,
-                              rank_system         = NULL,
-                              ratio_threshold     = 0.01,
+                              rank_system = NULL,
+                              ratio_threshold = 0.01,
                               min_match_threshold = 0.50,
-                              n_sims              = 0L,
-                              min_coverage        = NULL,
-                              verbose             = FALSE) {
-
-  if (!is.data.frame(scored_df))
+                              n_sims = 0L,
+                              min_coverage = NULL,
+                              verbose = FALSE) {
+  if (!is.data.frame(scored_df)) {
     stop("`scored_df` must be a data frame.", call. = FALSE)
+  }
 
   names(scored_df) <- tolower(names(scored_df))
 
   # Validate score_method if present
   if ("score_method" %in% names(scored_df)) {
     sm <- unique(scored_df$score_method[!is.na(scored_df$score_method)])
-    if (length(sm) > 0L && !all(sm == "similarity"))
+    if (length(sm) > 0L && !all(sm == "similarity")) {
       warning(
         "model_likelihoods: scored_df contains score_method != 'similarity'. ",
         "Only 'similarity' rows (H1) are processed; others are passed through.",
         call. = FALSE
       )
+    }
   }
 
   # Extract H1 rows for the bivariate-normal model
   if ("hypothesis_type" %in% names(scored_df)) {
     h1_df <- scored_df[
       is.na(scored_df$hypothesis_type) |
-      scored_df$hypothesis_type == "specific_candidate", ,
+        scored_df$hypothesis_type == "specific_candidate", ,
       drop = FALSE
     ]
   } else {
@@ -108,8 +111,9 @@ model_likelihoods <- function(scored_df,
     verbose             = verbose
   )
 
-  if (!is.null(result$likelihoods) && nrow(result$likelihoods) > 0L)
+  if (!is.null(result$likelihoods) && nrow(result$likelihoods) > 0L) {
     result$likelihoods$score_method <- "bivariate_normal"
+  }
 
   result
 }
@@ -194,33 +198,34 @@ model_likelihoods <- function(scored_df,
 #'
 #' # Similarity pathway (eDNA BLAST + trained model)
 #' result <- compute_likelihoods(
-#'   match_df, score_type = "similarity",
+#'   match_df,
+#'   score_type = "similarity",
 #'   model_params = model,
-#'   rank_system  = c("family", "genus", "species"),
-#'   n_sims       = 200L
+#'   rank_system = c("family", "genus", "species"),
+#'   n_sims = 200L
 #' )
 #' }
 #'
 #' @export
 compute_likelihoods <- function(match_df,
                                 score_type,
-                                model_params               = NULL,
-                                rank_system                = NULL,
+                                model_params = NULL,
+                                rank_system = NULL,
                                 include_unreferenced_family = FALSE,
-                                score_col                  = "score_original",
-                                score_sharpness            = 0.1,
-                                ratio_threshold            = 0.01,
-                                min_match_threshold        = 0.50,
-                                n_sims                     = 0L,
-                                min_coverage               = NULL,
-                                verbose                    = FALSE) {
-
-  if (score_type == "similarity" && is.null(model_params))
+                                score_col = "score_original",
+                                score_sharpness = 0.1,
+                                ratio_threshold = 0.01,
+                                min_match_threshold = 0.50,
+                                n_sims = 0L,
+                                min_coverage = NULL,
+                                verbose = FALSE) {
+  if (score_type == "similarity" && is.null(model_params)) {
     stop(
       "score_type = 'similarity' requires `model_params`. ",
       "Train a model with train_likelihood_model() or use a different score_type.",
       call. = FALSE
     )
+  }
 
   # Step 1: expand with unreferenced hypotheses
   hyp_df <- unreferenced_candidates(

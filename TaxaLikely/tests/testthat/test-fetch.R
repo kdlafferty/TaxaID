@@ -77,18 +77,22 @@ test_that(".parse_bold_coord returns NA on NA/empty/malformed input", {
 test_that("fetch_bold_reference_sequences combines taxa with different columns (bind_rows, not rbind)", {
   # Real bug found via live testing (Session 136): different taxa can return
   # different column sets from BOLD's TSV export; a plain rbind() errors.
-  docs_a <- data.frame(processid = "A1", nuc = "ACGT", marker_code = "COI-5P",
-                       family = "Fam1", genus = "G1", species = "G1 s1",
-                       coord = "[1.0, 2.0]", `country/ocean` = "USA",
-                       check.names = FALSE, stringsAsFactors = FALSE)
-  docs_b <- data.frame(processid = "B1", nuc = "TTTT", marker_code = "COI-5P",
-                       family = "Fam2", genus = "G2", species = "G2 s2",
-                       extra_col_only_here = "x",
-                       stringsAsFactors = FALSE)
+  docs_a <- data.frame(
+    processid = "A1", nuc = "ACGT", marker_code = "COI-5P",
+    family = "Fam1", genus = "G1", species = "G1 s1",
+    coord = "[1.0, 2.0]", `country/ocean` = "USA",
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  docs_b <- data.frame(
+    processid = "B1", nuc = "TTTT", marker_code = "COI-5P",
+    family = "Fam2", genus = "G2", species = "G2 s2",
+    extra_col_only_here = "x",
+    stringsAsFactors = FALSE
+  )
 
   local_mocked_bindings(
-    .bold_resolve_taxon  = function(taxon) paste0("tax:genus:", taxon),
-    .bold_submit_query   = function(triplet, extent = "full") paste0("qid_", triplet),
+    .bold_resolve_taxon = function(taxon) paste0("tax:genus:", taxon),
+    .bold_submit_query = function(triplet, extent = "full") paste0("qid_", triplet),
     .bold_fetch_documents = function(query_id) {
       if (grepl("G1", query_id)) docs_a else docs_b
     },
@@ -102,15 +106,15 @@ test_that("fetch_bold_reference_sequences combines taxa with different columns (
 
 test_that("fetch_bold_reference_sequences applies client-side barcode_term filter on marker_code", {
   docs <- data.frame(
-    processid   = c("A1", "A2"),
-    nuc         = c("ACGT", "TTTT"),
+    processid = c("A1", "A2"),
+    nuc = c("ACGT", "TTTT"),
     marker_code = c("COI-5P", "COI-3P"),
     family = "Fam1", genus = "G1", species = c("G1 s1", "G1 s2"),
     stringsAsFactors = FALSE
   )
   local_mocked_bindings(
-    .bold_resolve_taxon  = function(taxon) "tax:genus:G1",
-    .bold_submit_query   = function(triplet, extent = "full") "qid1",
+    .bold_resolve_taxon = function(taxon) "tax:genus:G1",
+    .bold_submit_query = function(triplet, extent = "full") "qid1",
     .bold_fetch_documents = function(query_id) docs,
     .package = "TaxaLikely"
   )
@@ -128,8 +132,8 @@ test_that("fetch_bold_reference_sequences parses coord into lat/lon and keeps co
     check.names = FALSE, stringsAsFactors = FALSE
   )
   local_mocked_bindings(
-    .bold_resolve_taxon  = function(taxon) "tax:genus:G1",
-    .bold_submit_query   = function(triplet, extent = "full") "qid1",
+    .bold_resolve_taxon = function(taxon) "tax:genus:G1",
+    .bold_submit_query = function(triplet, extent = "full") "qid1",
     .bold_fetch_documents = function(query_id) docs,
     .package = "TaxaLikely"
   )
@@ -148,8 +152,8 @@ test_that("fetch_bold_reference_sequences omits location columns when include_lo
     check.names = FALSE, stringsAsFactors = FALSE
   )
   local_mocked_bindings(
-    .bold_resolve_taxon  = function(taxon) "tax:genus:G1",
-    .bold_submit_query   = function(triplet, extent = "full") "qid1",
+    .bold_resolve_taxon = function(taxon) "tax:genus:G1",
+    .bold_submit_query = function(triplet, extent = "full") "qid1",
     .bold_fetch_documents = function(query_id) docs,
     .package = "TaxaLikely"
   )
@@ -173,8 +177,10 @@ test_that("fetch_bold_reference_sequences returns empty typed data frame when a 
   # composite_id/sequence frame made a caller's ordinary next step
   # (clean_taxon_names(reference_df$species)) fail on NULL. See
   # .empty_reference_df().
-  expect_equal(names(ref), c("composite_id", "sequence", "family", "genus",
-                             "species", "lat", "lon", "country"))
+  expect_equal(names(ref), c(
+    "composite_id", "sequence", "family", "genus",
+    "species", "lat", "lon", "country"
+  ))
 })
 
 # ---- read_reference_fasta validation -----------------------------------------
@@ -182,8 +188,9 @@ test_that("fetch_bold_reference_sequences returns empty typed data frame when a 
 test_that("read_reference_fasta errors on non-existent file", {
   expect_error(
     read_reference_fasta("/nonexistent/path.fasta",
-                         taxonomy = data.frame(composite_id = "x"),
-                         rank_system = "species"),
+      taxonomy = data.frame(composite_id = "x"),
+      rank_system = "species"
+    ),
     "not found"
   )
 })
@@ -207,8 +214,9 @@ test_that("read_reference_fasta errors on empty FASTA", {
 
   expect_error(
     read_reference_fasta(tmp,
-                         taxonomy = data.frame(composite_id = "x", species = "A"),
-                         rank_system = "species"),
+      taxonomy = data.frame(composite_id = "x", species = "A"),
+      rank_system = "species"
+    ),
     "empty"
   )
 })
@@ -334,8 +342,8 @@ test_that(".parse_lat_lon rejects out-of-range (implausible) coordinates", {
   # any other unparseable input, not propagate an impossible coordinate.
   pll <- TaxaLikely:::.parse_lat_lon
   expect_true(all(is.na(pll("999.0 N 999.0 E"))))
-  expect_true(all(is.na(pll("91.0 N 10.0 E"))))    # lat just over 90
-  expect_true(all(is.na(pll("10.0 N 181.0 E"))))   # lon just over 180
+  expect_true(all(is.na(pll("91.0 N 10.0 E")))) # lat just over 90
+  expect_true(all(is.na(pll("10.0 N 181.0 E")))) # lon just over 180
 })
 
 test_that(".parse_lat_lon does not match a longitude-first string as if it were latitude-first", {
@@ -368,19 +376,22 @@ test_that(".build_search_term resolves a primer-variant name to the marker it am
   bst <- TaxaLikely:::.build_search_term
 
   # Each variant must produce EXACTLY the query its base marker produces.
-  expect_identical(bst("Gadus", "COI-Folmer"),    bst("Gadus", "COI"))
-  expect_identical(bst("Gadus", "COI-Leray"),     bst("Gadus", "COI"))
-  expect_identical(bst("Gadus", "16S-Palumbi"),   bst("Gadus", "16S"))
-  expect_identical(bst("Gadus", "cytb-Kocher"),   bst("Gadus", "cytb"))
-  expect_identical(bst("Quercus", "rbcla"),       bst("Quercus", "rbcL"))
-  expect_identical(bst("Quercus", "matk-kim"),    bst("Quercus", "matK"))
+  expect_identical(bst("Gadus", "COI-Folmer"), bst("Gadus", "COI"))
+  expect_identical(bst("Gadus", "COI-Leray"), bst("Gadus", "COI"))
+  expect_identical(bst("Gadus", "16S-Palumbi"), bst("Gadus", "16S"))
+  expect_identical(bst("Gadus", "cytb-Kocher"), bst("Gadus", "cytb"))
+  expect_identical(bst("Quercus", "rbcla"), bst("Quercus", "rbcL"))
+  expect_identical(bst("Quercus", "matk-kim"), bst("Quercus", "matK"))
   expect_identical(bst("Quercus", "trnl-taberlet"), bst("Quercus", "trnL"))
 
   # And no variant name may survive into the query as a search clause.
-  for (v in c("COI-Folmer", "COI-Leray", "16S-Palumbi", "cytb-Kocher",
-              "rbcla", "matk-kim", "trnl-taberlet")) {
+  for (v in c(
+    "COI-Folmer", "COI-Leray", "16S-Palumbi", "cytb-Kocher",
+    "rbcla", "matk-kim", "trnl-taberlet"
+  )) {
     expect_false(grepl(v, bst("Gadus", v), fixed = TRUE),
-                 info = paste("variant leaked into query:", v))
+      info = paste("variant leaked into query:", v)
+    )
   }
 })
 
@@ -415,13 +426,17 @@ test_that(".empty_reference_df carries the rank columns a caller will index", {
 
   # Location columns appear only when the caller asked for them.
   loc <- erd(c("family", "genus", "species"), include_location = TRUE)
-  expect_equal(names(loc), c("composite_id", "sequence", "family", "genus",
-                             "species", "lat", "lon", "country"))
+  expect_equal(names(loc), c(
+    "composite_id", "sequence", "family", "genus",
+    "species", "lat", "lon", "country"
+  ))
   expect_type(loc$lat, "double")
 
   # Rank names are lowercased to match the successful return's own columns.
-  expect_equal(names(erd(c("Family", "Genus", "Species")))[3:5],
-               c("family", "genus", "species"))
+  expect_equal(
+    names(erd(c("Family", "Genus", "Species")))[3:5],
+    c("family", "genus", "species")
+  )
 })
 
 test_that(".parse_fasta_text: a trailing header with no sequence yields an empty sequence", {
@@ -441,13 +456,16 @@ test_that("fetch_bold_reference_sequences: the no-records early return carries t
   # function's own message about why the result was empty.
   testthat::local_mocked_bindings(
     .bold_resolve_taxon = function(taxon) "tax:genus:Nothing",
-    .bold_submit_query  = function(triplet, extent = "full") "qid",
+    .bold_submit_query = function(triplet, extent = "full") "qid",
     .bold_fetch_documents = function(query_id) NULL
   )
   out <- fetch_bold_reference_sequences(
     taxa = "Nothing", rank_system = c("family", "genus", "species"),
-    include_location = TRUE)
+    include_location = TRUE
+  )
   expect_identical(nrow(out), 0L)
-  expect_true(all(c("composite_id", "sequence", "family", "genus", "species",
-                    "lat", "lon", "country") %in% names(out)))
+  expect_true(all(c(
+    "composite_id", "sequence", "family", "genus", "species",
+    "lat", "lon", "country"
+  ) %in% names(out)))
 })

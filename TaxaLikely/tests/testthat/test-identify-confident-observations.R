@@ -3,10 +3,12 @@
 
 .make_priors <- function() {
   data.frame(
-    taxon_name      = c("Genusone speciesa", "Genustwo speciesb", "Genustwo speciesc",
-                       "Genusthree speciesd"),
+    taxon_name = c(
+      "Genusone speciesa", "Genustwo speciesb", "Genustwo speciesc",
+      "Genusthree speciesd"
+    ),
     taxon_name_rank = "species",
-    theta_mean      = c(0.5, 0.5, 0.4, 1e-6),
+    theta_mean = c(0.5, 0.5, 0.4, 1e-6),
     stringsAsFactors = FALSE
   )
 }
@@ -14,7 +16,7 @@
 test_that("identify_confident_observations: genus with exactly one plausible species is confident", {
   match_df <- data.frame(
     observation_id = c("Q1", "Q2"),
-    genus          = "Genusone",
+    genus = "Genusone",
     score_original = c(95, 96),
     stringsAsFactors = FALSE
   )
@@ -50,7 +52,7 @@ test_that("identify_confident_observations: genus with zero plausible species (b
 test_that("identify_confident_observations: keeps only the best-scoring row per observation_id", {
   match_df <- data.frame(
     observation_id = c("Q1", "Q1", "Q2"),
-    genus          = "Genusone",
+    genus = "Genusone",
     score_original = c(80, 95, 90),
     stringsAsFactors = FALSE
   )
@@ -75,10 +77,12 @@ test_that("identify_confident_observations: no genus qualifies warns; result kee
   # takes its early-return path (no confident_genus/confident_species
   # columns added, since the main pipeline never runs).
   priors_none_confident <- data.frame(
-    taxon_name      = c("Genusfive speciese", "Genusfive speciesf",
-                       "Genussix speciesg"),
+    taxon_name = c(
+      "Genusfive speciese", "Genusfive speciesf",
+      "Genussix speciesg"
+    ),
     taxon_name_rank = "species",
-    theta_mean      = c(0.5, 0.5, 1e-6),
+    theta_mean = c(0.5, 0.5, 1e-6),
     stringsAsFactors = FALSE
   )
   match_df <- data.frame(
@@ -101,16 +105,21 @@ test_that("identify_confident_observations: plausibility_threshold is user-adjus
     stringsAsFactors = FALSE
   )
   out <- identify_confident_observations(match_df, .make_priors(),
-                                          plausibility_threshold = 1e-9)
+    plausibility_threshold = 1e-9
+  )
   expect_equal(nrow(out), 1L)
   expect_equal(out$confident_species, "Genusthree speciesd")
 })
 
 test_that("identify_confident_observations: validates inputs", {
-  expect_error(identify_confident_observations(list(), .make_priors()),
-               "must be a data frame")
-  expect_error(identify_confident_observations(data.frame(x = 1), .make_priors()),
-               "missing column")
+  expect_error(
+    identify_confident_observations(list(), .make_priors()),
+    "must be a data frame"
+  )
+  expect_error(
+    identify_confident_observations(data.frame(x = 1), .make_priors()),
+    "missing column"
+  )
   expect_error(
     identify_confident_observations(
       data.frame(observation_id = "Q1", genus = "G", score_original = 1),

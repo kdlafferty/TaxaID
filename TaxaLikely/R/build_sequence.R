@@ -193,9 +193,9 @@ utils::globalVariables(c(
 #' # Requires DECIPHER + Biostrings (Bioconductor)
 #' ref_matrix <- build_sequence_matrix(
 #'   reference_df,
-#'   rank_system       = c("family", "genus", "species"),
-#'   filter_unnamed    = TRUE,   # drop blank/NA species (default)
-#'   max_seqs_per_taxon = 20L    # cap per-species sequences before alignment
+#'   rank_system = c("family", "genus", "species"),
+#'   filter_unnamed = TRUE, # drop blank/NA species (default)
+#'   max_seqs_per_taxon = 20L # cap per-species sequences before alignment
 #' )
 #' head(ref_matrix)
 #' }
@@ -203,71 +203,86 @@ utils::globalVariables(c(
 #' @importFrom dplyr all_of distinct filter left_join mutate rename_with select
 #' @export
 build_sequence_matrix <- function(reference_df,
-                                   rank_system        = NULL,
-                                   max_dist           = 0.25,
-                                   min_seq_len        = 100L,
-                                   max_seq_len        = 2000L,
-                                   filter_unnamed     = TRUE,
-                                   max_seqs_per_taxon = NULL,
-                                   barcode_term       = NULL,
-                                   verbose            = TRUE,
-                                   by_genus           = FALSE,
-                                   max_foreign_reps_per_genus = 20L) {
-  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose))
+                                  rank_system = NULL,
+                                  max_dist = 0.25,
+                                  min_seq_len = 100L,
+                                  max_seq_len = 2000L,
+                                  filter_unnamed = TRUE,
+                                  max_seqs_per_taxon = NULL,
+                                  barcode_term = NULL,
+                                  verbose = TRUE,
+                                  by_genus = FALSE,
+                                  max_foreign_reps_per_genus = 20L) {
+  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("verbose must be TRUE or FALSE")
-  if (!is.logical(by_genus) || length(by_genus) != 1L || is.na(by_genus))
+  }
+  if (!is.logical(by_genus) || length(by_genus) != 1L || is.na(by_genus)) {
     stop("by_genus must be TRUE or FALSE")
+  }
   if (!is.null(max_foreign_reps_per_genus)) {
     if (!is.numeric(max_foreign_reps_per_genus) || length(max_foreign_reps_per_genus) != 1L ||
-        is.na(max_foreign_reps_per_genus) || max_foreign_reps_per_genus < 0L)
+      is.na(max_foreign_reps_per_genus) || max_foreign_reps_per_genus < 0L) {
       stop("max_foreign_reps_per_genus must be NULL or a single non-negative integer")
+    }
     max_foreign_reps_per_genus <- as.integer(max_foreign_reps_per_genus)
   }
   if (!is.null(barcode_term)) {
     if (missing(min_seq_len) && missing(max_seq_len)) {
-      len_bounds  <- TaxaTools::resolve_barcode_lengths(barcode_term)
+      len_bounds <- TaxaTools::resolve_barcode_lengths(barcode_term)
       min_seq_len <- len_bounds[["min_bp"]]
       max_seq_len <- len_bounds[["max_bp"]]
       message(sprintf(
-        paste0("build_sequence_matrix: barcode_term '%s' resolved to length range [%d, %d] bp ",
-               "(TaxaTools::resolve_barcode_lengths()); pass min_seq_len/max_seq_len explicitly ",
-               "to override."),
+        paste0(
+          "build_sequence_matrix: barcode_term '%s' resolved to length range [%d, %d] bp ",
+          "(TaxaTools::resolve_barcode_lengths()); pass min_seq_len/max_seq_len explicitly ",
+          "to override."
+        ),
         paste(barcode_term, collapse = "/"), min_seq_len, max_seq_len
       ))
     } else {
       message(sprintf(
-        paste0("build_sequence_matrix: barcode_term supplied but min_seq_len/max_seq_len were ",
-               "also set explicitly -- using [%d, %d] as given, NOT barcode_term's resolved ",
-               "range. This does not guarantee every retained sequence covers the same amplicon ",
-               "window."),
+        paste0(
+          "build_sequence_matrix: barcode_term supplied but min_seq_len/max_seq_len were ",
+          "also set explicitly -- using [%d, %d] as given, NOT barcode_term's resolved ",
+          "range. This does not guarantee every retained sequence covers the same amplicon ",
+          "window."
+        ),
         min_seq_len, max_seq_len
       ))
     }
   }
 
-  if (!is.data.frame(reference_df))
+  if (!is.data.frame(reference_df)) {
     stop("reference_df must be a data frame")
+  }
 
   needed <- c("composite_id", "sequence")
   missing_cols <- setdiff(needed, names(reference_df))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("reference_df is missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")))
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "reference_df is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
 
-  if (!is.logical(filter_unnamed) || length(filter_unnamed) != 1L || is.na(filter_unnamed))
+  if (!is.logical(filter_unnamed) || length(filter_unnamed) != 1L || is.na(filter_unnamed)) {
     stop("filter_unnamed must be TRUE or FALSE")
+  }
 
   if (!is.null(max_seqs_per_taxon)) {
     if (!is.numeric(max_seqs_per_taxon) || length(max_seqs_per_taxon) != 1L ||
-        is.na(max_seqs_per_taxon) || max_seqs_per_taxon < 2L)
+      is.na(max_seqs_per_taxon) || max_seqs_per_taxon < 2L) {
       stop("max_seqs_per_taxon must be NULL or an integer >= 2")
+    }
     max_seqs_per_taxon <- as.integer(max_seqs_per_taxon)
   }
 
-  if (!requireNamespace("DECIPHER",   quietly = TRUE))
+  if (!requireNamespace("DECIPHER", quietly = TRUE)) {
     stop("Package 'DECIPHER' is required. Install it with: BiocManager::install('DECIPHER')")
-  if (!requireNamespace("Biostrings", quietly = TRUE))
+  }
+  if (!requireNamespace("Biostrings", quietly = TRUE)) {
     stop("Package 'Biostrings' is required. Install it with: BiocManager::install('Biostrings')")
+  }
 
   names(reference_df) <- tolower(names(reference_df))
 
@@ -279,25 +294,32 @@ build_sequence_matrix <- function(reference_df,
       fallback <- c("family", "genus", "species")
       rank_system <- fallback[fallback %in% names(reference_df)]
     }
-    if (length(rank_system) == 0L)
+    if (length(rank_system) == 0L) {
       stop("rank_system could not be auto-detected. reference_df has no recognized taxonomy columns.")
-    message("build_sequence_matrix: auto-detected rank_system: ",
-            paste(rank_system, collapse = ", "))
+    }
+    message(
+      "build_sequence_matrix: auto-detected rank_system: ",
+      paste(rank_system, collapse = ", ")
+    )
   }
 
   rank_cols <- tolower(rank_system)
   missing_ranks <- setdiff(rank_cols, names(reference_df))
-  if (length(missing_ranks) > 0L)
-    stop(sprintf("rank_system columns not found in reference_df (after lowercasing): %s",
-                 paste(missing_ranks, collapse = ", ")))
+  if (length(missing_ranks) > 0L) {
+    stop(sprintf(
+      "rank_system columns not found in reference_df (after lowercasing): %s",
+      paste(missing_ranks, collapse = ", ")
+    ))
+  }
 
   # ---- 1. CLEAN & DEDUPLICATE -----------------------------------------------
   ref_seqs <- reference_df |>
     dplyr::filter(!is.na(sequence), nchar(sequence) > 0L) |>
     dplyr::distinct(composite_id, .keep_all = TRUE)
 
-  if (nrow(ref_seqs) < 2L)
+  if (nrow(ref_seqs) < 2L) {
     stop("Fewer than 2 valid sequences in reference_df after deduplication")
+  }
 
   # ---- 1b. IUPAC DNA FILTER --------------------------------------------------
   # Biostrings::DNAStringSet() throws a cryptic lookup-table error if a sequence
@@ -305,21 +327,24 @@ build_sequence_matrix <- function(reference_df,
   # codes returned when an accession resolves to a protein record or a corrupt
   # NCBI entry).  Filter these out with a clear message before hitting Biostrings.
   valid_iupac <- "^[ACGTRYSWKMBDHVNacgtryswkmbdhvn-]+$"
-  is_valid    <- grepl(valid_iupac, ref_seqs$sequence)
-  n_invalid   <- sum(!is_valid)
+  is_valid <- grepl(valid_iupac, ref_seqs$sequence)
+  n_invalid <- sum(!is_valid)
   if (n_invalid > 0L) {
     bad_ids <- head(ref_seqs$composite_id[!is_valid], 5L)
     warning(sprintf(
-      paste0("build_sequence_matrix: removed %d sequence(s) with non-IUPAC DNA characters %s",
-             "(likely protein accessions or corrupt records)."),
+      paste0(
+        "build_sequence_matrix: removed %d sequence(s) with non-IUPAC DNA characters %s",
+        "(likely protein accessions or corrupt records)."
+      ),
       n_invalid,
       sprintf("(e.g. %s) ", paste(bad_ids, collapse = ", "))
     ), call. = FALSE)
     ref_seqs <- ref_seqs[is_valid, , drop = FALSE]
   }
 
-  if (nrow(ref_seqs) < 2L)
+  if (nrow(ref_seqs) < 2L) {
     stop("Fewer than 2 valid DNA sequences in reference_df after IUPAC filter")
+  }
 
   # ---- 1c. FILTER UNNAMED FINEST-RANK TAXA ------------------------------------
   # Pairs where the finest-rank label is blank or NA are not valid within-species
@@ -328,8 +353,8 @@ build_sequence_matrix <- function(reference_df,
   finest_rank <- rank_cols[length(rank_cols)]
   if (filter_unnamed && finest_rank %in% names(ref_seqs)) {
     finest_vals <- ref_seqs[[finest_rank]]
-    is_named    <- !is.na(finest_vals) & nchar(trimws(finest_vals)) > 0L
-    n_unnamed   <- sum(!is_named)
+    is_named <- !is.na(finest_vals) & nchar(trimws(finest_vals)) > 0L
+    n_unnamed <- sum(!is_named)
     if (n_unnamed > 0L) {
       message(sprintf(
         "build_sequence_matrix: removed %d sequence(s) with blank/NA '%s' (filter_unnamed = TRUE).",
@@ -337,8 +362,9 @@ build_sequence_matrix <- function(reference_df,
       ))
       ref_seqs <- ref_seqs[is_named, , drop = FALSE]
     }
-    if (nrow(ref_seqs) < 2L)
+    if (nrow(ref_seqs) < 2L) {
       stop("Fewer than 2 sequences remained after filtering unnamed sequences")
+    }
   }
 
   # ---- 1d. THIN TO max_seqs_per_taxon -----------------------------------------
@@ -357,12 +383,14 @@ build_sequence_matrix <- function(reference_df,
     # A sequence with no finest-rank label belongs to no taxon and so cannot be
     # capped by a per-taxon limit -- it is retained unchanged, which is what
     # filter_unnamed = FALSE asked for.
-    na_rows     <- which(is.na(finest_vals))
+    na_rows <- which(is.na(finest_vals))
     unique_taxa <- unique(finest_vals[!is.na(finest_vals)])
-    taxon_counts <- vapply(unique_taxa,
-                           function(tx) sum(finest_vals == tx, na.rm = TRUE),
-                           integer(1L))
-    over_cap    <- unique_taxa[taxon_counts > max_seqs_per_taxon]
+    taxon_counts <- vapply(
+      unique_taxa,
+      function(tx) sum(finest_vals == tx, na.rm = TRUE),
+      integer(1L)
+    )
+    over_cap <- unique_taxa[taxon_counts > max_seqs_per_taxon]
     if (length(over_cap) > 0L) {
       keep_rows <- c(na_rows, unlist(lapply(unique_taxa, function(tx) {
         rows <- which(finest_vals == tx)
@@ -374,30 +402,35 @@ build_sequence_matrix <- function(reference_df,
         length(over_cap), max_seqs_per_taxon, finest_rank
       ))
     }
-    if (nrow(ref_seqs) < 2L)
+    if (nrow(ref_seqs) < 2L) {
       stop("Fewer than 2 sequences remained after thinning to max_seqs_per_taxon")
+    }
   }
 
   # ---- 2. LENGTH FILTER -------------------------------------------------------
   dna <- Biostrings::DNAStringSet(ref_seqs$sequence)
   names(dna) <- ref_seqs$composite_id
 
-  widths    <- Biostrings::width(dna)
+  widths <- Biostrings::width(dna)
   valid_idx <- widths >= min_seq_len & widths <= max_seq_len
   n_dropped <- sum(!valid_idx)
 
-  if (n_dropped > 0L)
-    message(sprintf("Dropped %d sequence(s) outside length range [%d, %d]",
-                    n_dropped, min_seq_len, max_seq_len))
+  if (n_dropped > 0L) {
+    message(sprintf(
+      "Dropped %d sequence(s) outside length range [%d, %d]",
+      n_dropped, min_seq_len, max_seq_len
+    ))
+  }
 
-  dna      <- dna[valid_idx]
+  dna <- dna[valid_idx]
   ref_seqs <- ref_seqs[valid_idx, , drop = FALSE]
 
-  if (length(dna) < 2L)
+  if (length(dna) < 2L) {
     stop(sprintf(
       "Fewer than 2 sequences remained after length filtering [%d, %d]",
       min_seq_len, max_seq_len
     ))
+  }
 
   # ---- 3. ALIGNMENT & DISTANCE MATRIX ----------------------------------------
   if (isTRUE(by_genus)) {
@@ -421,8 +454,10 @@ build_sequence_matrix <- function(reference_df,
     dplyr::left_join(lookup, by = c("id_y" = "composite_id")) |>
     dplyr::rename_with(~ paste0(., ".y"), dplyr::all_of(present_rank_cols))
 
-  message(sprintf("Matrix built: %d pairs within distance < %.2f",
-                  nrow(out), max_dist))
+  message(sprintf(
+    "Matrix built: %d pairs within distance < %.2f",
+    nrow(out), max_dist
+  ))
   out
 }
 
@@ -435,7 +470,7 @@ build_sequence_matrix <- function(reference_df,
 #' @noRd
 .decipher_align_pairs <- function(dna, max_dist, verbose) {
   aligned <- DECIPHER::AlignSeqs(dna, processors = NULL, verbose = verbose)
-  dist_m  <- DECIPHER::DistanceMatrix(
+  dist_m <- DECIPHER::DistanceMatrix(
     aligned,
     type                 = "matrix",
     includeTerminalGaps  = FALSE,
@@ -445,33 +480,36 @@ build_sequence_matrix <- function(reference_df,
 
   # Sparse extraction: only materialise pairs within max_dist (avoids an N^2 intermediate)
   idx <- which(dist_m < max_dist & row(dist_m) != col(dist_m), arr.ind = TRUE)
-  if (nrow(idx) == 0L)
-    return(data.frame(id_x = character(0L), id_y = character(0L),
-                      p_match = numeric(0L), coverage = numeric(0L),
-                      stringsAsFactors = FALSE))
+  if (nrow(idx) == 0L) {
+    return(data.frame(
+      id_x = character(0L), id_y = character(0L),
+      p_match = numeric(0L), coverage = numeric(0L),
+      stringsAsFactors = FALSE
+    ))
+  }
 
   # Coverage = number of positions where both sequences contribute a non-gap
   # character, divided by the shorter unaligned sequence length. Pre-computing
   # per-sequence gap masks (O(n * aln_width)) and looking up per sparse pair
   # (O(pairs * aln_width)) is cheaper than re-parsing the alignment string for
   # every pair individually.
-  aln_str     <- as.character(aligned)
-  gap_masks   <- lapply(aln_str, function(s) strsplit(s, "", fixed = TRUE)[[1L]] != "-")
+  aln_str <- as.character(aligned)
+  gap_masks <- lapply(aln_str, function(s) strsplit(s, "", fixed = TRUE)[[1L]] != "-")
   orig_widths <- vapply(aln_str, function(s) nchar(gsub("-", "", s, fixed = TRUE)), integer(1L))
-  seq_names   <- names(aligned)
+  seq_names <- names(aligned)
 
   coverage_vals <- vapply(seq_len(nrow(idx)), function(k) {
-    nm_i    <- seq_names[idx[k, 1L]]
-    nm_j    <- seq_names[idx[k, 2L]]
+    nm_i <- seq_names[idx[k, 1L]]
+    nm_j <- seq_names[idx[k, 2L]]
     overlap <- sum(gap_masks[[nm_i]] & gap_masks[[nm_j]])
     min_len <- min(orig_widths[[nm_i]], orig_widths[[nm_j]])
     if (min_len == 0L) NA_real_ else as.double(overlap) / min_len
   }, numeric(1L))
 
   data.frame(
-    id_x     = rownames(dist_m)[idx[, 1L]],
-    id_y     = colnames(dist_m)[idx[, 2L]],
-    p_match  = 1 - dist_m[idx],
+    id_x = rownames(dist_m)[idx[, 1L]],
+    id_y = colnames(dist_m)[idx[, 2L]],
+    p_match = 1 - dist_m[idx],
     coverage = coverage_vals,
     stringsAsFactors = FALSE
   )
@@ -596,10 +634,13 @@ build_sequence_matrix <- function(reference_df,
 #' since that call's cost is not negligible on a marker with many genera.
 #' @noRd
 .align_pairs_by_genus <- function(dna, ref_seqs, rank_cols, max_dist, verbose,
-                                   max_foreign_reps_per_genus = NULL) {
-  if (!"genus" %in% rank_cols)
+                                  max_foreign_reps_per_genus = NULL) {
+  if (!"genus" %in% rank_cols) {
     stop("by_genus = TRUE requires 'genus' in rank_system (found: ",
-         paste(rank_cols, collapse = ", "), ").", call. = FALSE)
+      paste(rank_cols, collapse = ", "), ").",
+      call. = FALSE
+    )
+  }
 
   # A sequence with a blank/NA genus cannot be grouped by genus at all -- on a
   # real, broad fetch (e.g. 18S spanning many eukaryotic lineages) this is
@@ -611,26 +652,34 @@ build_sequence_matrix <- function(reference_df,
   # a real production run against a real 1,412-genus/21,896-sequence 18S
   # fetch, which legitimately has some genus-unresolved accessions.)
   genus_vals <- ref_seqs[["genus"]]
-  has_genus  <- !is.na(genus_vals) & nzchar(trimws(genus_vals))
+  has_genus <- !is.na(genus_vals) & nzchar(trimws(genus_vals))
   n_no_genus <- sum(!has_genus)
   if (n_no_genus > 0L) {
     message(sprintf(
-      "build_sequence_matrix: by_genus = TRUE -- dropped %d sequence(s) with blank/NA 'genus' (cannot be grouped by genus).",
+      paste0(
+        "build_sequence_matrix: by_genus = TRUE -- dropped %d sequence(s) with ",
+        "blank/NA 'genus' (cannot be grouped by genus)."
+      ),
       n_no_genus
     ))
-    dna        <- dna[has_genus]
-    ref_seqs   <- ref_seqs[has_genus, , drop = FALSE]
+    dna <- dna[has_genus]
+    ref_seqs <- ref_seqs[has_genus, , drop = FALSE]
     genus_vals <- genus_vals[has_genus]
   }
-  if (length(dna) < 2L)
+  if (length(dna) < 2L) {
     stop("Fewer than 2 sequences remained after dropping blank/NA 'genus' values for by_genus = TRUE.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   genus_groups <- split(seq_along(genus_vals), genus_vals)
   n_genera <- length(genus_groups)
-  if (verbose)
-    message(sprintf("build_sequence_matrix: aligning %d genus group(s) (mean %.1f sequence(s)/genus)...",
-                    n_genera, length(genus_vals) / n_genera))
+  if (verbose) {
+    message(sprintf(
+      "build_sequence_matrix: aligning %d genus group(s) (mean %.1f sequence(s)/genus)...",
+      n_genera, length(genus_vals) / n_genera
+    ))
+  }
 
   # Phase 1: pick one representative per genus, BEFORE any alignment runs --
   # every genus's own augmented alignment (Phase 2) needs to know every OTHER
@@ -653,13 +702,16 @@ build_sequence_matrix <- function(reference_df,
   report_every <- max(1L, round(n_genera / 10))
   augmented <- vector("list", n_genera)
   for (i in seq_len(n_genera)) {
-    own_rows        <- genus_groups[[i]]
-    own_ids         <- names(dna)[own_rows]
-    other_reps_all  <- rep_idx[-i]
-    other_rep_rows  <- if (!is.null(max_foreign_reps_per_genus) &&
-                          length(other_reps_all) > max_foreign_reps_per_genus) {
-      if (max_foreign_reps_per_genus == 0L) integer(0)
-      else sample(other_reps_all, max_foreign_reps_per_genus)
+    own_rows <- genus_groups[[i]]
+    own_ids <- names(dna)[own_rows]
+    other_reps_all <- rep_idx[-i]
+    other_rep_rows <- if (!is.null(max_foreign_reps_per_genus) &&
+      length(other_reps_all) > max_foreign_reps_per_genus) {
+      if (max_foreign_reps_per_genus == 0L) {
+        integer(0)
+      } else {
+        sample(other_reps_all, max_foreign_reps_per_genus)
+      }
     } else {
       other_reps_all
     }
@@ -684,9 +736,12 @@ build_sequence_matrix <- function(reference_df,
         augmented[[i]] <- combo_pairs[keep, , drop = FALSE]
       }
     }
-    if (verbose && (i %% report_every == 0L || i == n_genera))
-      message(sprintf("  ...%d/%d genus group(s) aligned (%.0fs elapsed)",
-                      i, n_genera, proc.time()[["elapsed"]] - t0))
+    if (verbose && (i %% report_every == 0L || i == n_genera)) {
+      message(sprintf(
+        "  ...%d/%d genus group(s) aligned (%.0fs elapsed)",
+        i, n_genera, proc.time()[["elapsed"]] - t0
+      ))
+    }
   }
   augmented_tbl <- dplyr::bind_rows(augmented)
 
@@ -701,17 +756,24 @@ build_sequence_matrix <- function(reference_df,
   # a legitimate call (auditing one genus). The augmented step above has
   # already produced every within-genus pair in that case, so simply skip.
   cross_genus_tbl <- if (n_genera >= 2L) {
-    if (verbose)
-      message(sprintf("build_sequence_matrix: aligning %d cross-genus representative(s)...",
-                      n_genera))
+    if (verbose) {
+      message(sprintf(
+        "build_sequence_matrix: aligning %d cross-genus representative(s)...",
+        n_genera
+      ))
+    }
     .decipher_align_pairs(dna[rep_idx], max_dist, verbose)
   } else {
-    message(paste0("build_sequence_matrix: only 1 genus present -- no cross-genus ",
-                   "representative sample is possible (H3/H2's pooled fallback will ",
-                   "have no local cross-genus pairs to learn from)."))
-    data.frame(id_x = character(0L), id_y = character(0L),
-               p_match = numeric(0L), coverage = numeric(0L),
-               stringsAsFactors = FALSE)
+    message(paste0(
+      "build_sequence_matrix: only 1 genus present -- no cross-genus ",
+      "representative sample is possible (H3/H2's pooled fallback will ",
+      "have no local cross-genus pairs to learn from)."
+    ))
+    data.frame(
+      id_x = character(0L), id_y = character(0L),
+      p_match = numeric(0L), coverage = numeric(0L),
+      stringsAsFactors = FALSE
+    )
   }
 
   dplyr::bind_rows(augmented_tbl, cross_genus_tbl)
@@ -766,18 +828,19 @@ build_sequence_matrix <- function(reference_df,
 #' @seealso [build_sequence_matrix()], `TaxaExpect::kernel_budget_sensitivity()`
 #' @export
 check_cross_genus_sampling_noise <- function(reference_df,
-                                             rank_system        = NULL,
-                                             max_dist           = 0.25,
-                                             min_seq_len        = 100L,
-                                             max_seq_len        = 2000L,
-                                             filter_unnamed     = TRUE,
+                                             rank_system = NULL,
+                                             max_dist = 0.25,
+                                             min_seq_len = 100L,
+                                             max_seq_len = 2000L,
+                                             filter_unnamed = TRUE,
                                              max_seqs_per_taxon = NULL,
-                                             barcode_term       = NULL,
+                                             barcode_term = NULL,
                                              max_foreign_reps_per_genus = 20L,
-                                             n_replicates       = 5L) {
+                                             n_replicates = 5L) {
   if (!is.numeric(n_replicates) || length(n_replicates) != 1L ||
-      is.na(n_replicates) || n_replicates < 2L)
+    is.na(n_replicates) || n_replicates < 2L) {
     stop("n_replicates must be a single integer >= 2.", call. = FALSE)
+  }
   n_replicates <- as.integer(n_replicates)
 
   # build_sequence_matrix() only resolves barcode_term into a length window
@@ -790,7 +853,8 @@ check_cross_genus_sampling_noise <- function(reference_df,
   # length arguments only when the caller actually supplied them.
   len_supplied <- !missing(min_seq_len) || !missing(max_seq_len)
   bs_args <- list(
-    reference_df, rank_system = rank_system, max_dist = max_dist,
+    reference_df,
+    rank_system = rank_system, max_dist = max_dist,
     filter_unnamed = filter_unnamed, max_seqs_per_taxon = max_seqs_per_taxon,
     barcode_term = barcode_term, by_genus = TRUE, verbose = FALSE,
     max_foreign_reps_per_genus = max_foreign_reps_per_genus
@@ -804,16 +868,19 @@ check_cross_genus_sampling_noise <- function(reference_df,
   for (i in seq_len(n_replicates)) {
     message(sprintf("check_cross_genus_sampling_noise: replicate %d/%d...", i, n_replicates))
     mat <- suppressMessages(do.call(build_sequence_matrix, bs_args))
-    if (!all(c("genus.x", "genus.y") %in% names(mat)))
+    if (!all(c("genus.x", "genus.y") %in% names(mat))) {
       stop("check_cross_genus_sampling_noise: rank_system must include 'genus' ",
-           "(build_sequence_matrix(by_genus = TRUE) requires it).", call. = FALSE)
+        "(build_sequence_matrix(by_genus = TRUE) requires it).",
+        call. = FALSE
+      )
+    }
     cross <- mat[mat$genus.x != mat$genus.y, , drop = FALSE]
     reps[[i]] <- data.frame(
-      replicate           = i,
+      replicate = i,
       n_cross_genus_pairs = nrow(cross),
-      mean_p_match         = mean(cross$p_match),
-      median_p_match       = stats::median(cross$p_match),
-      sd_p_match           = stats::sd(cross$p_match)
+      mean_p_match = mean(cross$p_match),
+      median_p_match = stats::median(cross$p_match),
+      sd_p_match = stats::sd(cross$p_match)
     )
   }
   replicates <- do.call(rbind, reps)
@@ -821,10 +888,14 @@ check_cross_genus_sampling_noise <- function(reference_df,
   mean_range <- range(replicates$mean_p_match)
   summary_list <- list(
     mean_p_match_range = mean_range,
-    mean_p_match_cv     = stats::sd(replicates$mean_p_match) / mean(replicates$mean_p_match)
+    mean_p_match_cv = stats::sd(replicates$mean_p_match) / mean(replicates$mean_p_match)
   )
   message(sprintf(
-    "check_cross_genus_sampling_noise: mean_p_match ranged %.4f-%.4f across %d replicates (CV = %.4f). No pass/fail threshold -- judge this against what H3 actually does (a coarse, pooled fallback), not against an invented cutoff.",
+    paste0(
+      "check_cross_genus_sampling_noise: mean_p_match ranged %.4f-%.4f across %d ",
+      "replicates (CV = %.4f). No pass/fail threshold -- judge this against what H3 ",
+      "actually does (a coarse, pooled fallback), not against an invented cutoff."
+    ),
     mean_range[1L], mean_range[2L], n_replicates, summary_list$mean_p_match_cv
   ))
 

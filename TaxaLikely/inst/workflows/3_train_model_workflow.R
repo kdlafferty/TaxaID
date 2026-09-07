@@ -170,12 +170,16 @@ print(summary(ref_matrix$coverage))
 
 cat("\nCoverage by hypothesis type:\n")
 h1 <- ref_matrix[ref_matrix$species.x == ref_matrix$species.y &
-                   ref_matrix$id_x != ref_matrix$id_y, ]
+  ref_matrix$id_x != ref_matrix$id_y, ]
 h2 <- ref_matrix[ref_matrix$species.x != ref_matrix$species.y, ]
-cat(sprintf("  H1 (within-species): mean = %.3f, var = %.5f, n = %d\n",
-            mean(h1$coverage), var(h1$coverage), nrow(h1)))
-cat(sprintf("  H2 (cross-species):  mean = %.3f, var = %.5f, n = %d\n",
-            mean(h2$coverage), var(h2$coverage), nrow(h2)))
+cat(sprintf(
+  "  H1 (within-species): mean = %.3f, var = %.5f, n = %d\n",
+  mean(h1$coverage), var(h1$coverage), nrow(h1)
+))
+cat(sprintf(
+  "  H2 (cross-species):  mean = %.3f, var = %.5f, n = %d\n",
+  mean(h2$coverage), var(h2$coverage), nrow(h2)
+))
 
 cal <- calibrate_coverage_filter(ref_matrix)
 best_thresh <- cal$threshold[which.max(cal$youden_j)]
@@ -188,9 +192,11 @@ cat(sprintf(
 # Pass the same threshold as min_coverage in evaluate_likelihoods() (Workflow 4)
 # to keep inference within the same range as training.
 ref_matrix_filtered <- ref_matrix[ref_matrix$coverage >= best_thresh, ]
-cat(sprintf("Pairs retained after coverage filter: %d of %d (%.1f%%)\n",
-            nrow(ref_matrix_filtered), nrow(ref_matrix),
-            100 * nrow(ref_matrix_filtered) / nrow(ref_matrix)))
+cat(sprintf(
+  "Pairs retained after coverage filter: %d of %d (%.1f%%)\n",
+  nrow(ref_matrix_filtered), nrow(ref_matrix),
+  100 * nrow(ref_matrix_filtered) / nrow(ref_matrix)
+))
 
 
 # ---- 4. Train the model -----------------------------------------------------
@@ -214,7 +220,7 @@ model <- train_likelihood_model(
   raw_df        = ref_matrix_filtered,
   rank_system   = rank_system,
   prior_weight  = 10.0,
-  use_hierarchy = TRUE           # default; explicit here for clarity
+  use_hierarchy = TRUE # default; explicit here for clarity
   # mislabel_threshold = 0.02   # passed to flag_reference_errors()
 )
 
@@ -306,15 +312,17 @@ if (length(h1_low_cov_ids) > 0) {
       species        = species.x
     ) |>
     TaxaTools::create_taxon_names(rank_system) |>
-    dplyr::select(observation_id, score_original, coverage,
-                  taxon_name, taxon_name_rank,
-                  dplyr::any_of(rank_system))
+    dplyr::select(
+      observation_id, score_original, coverage,
+      taxon_name, taxon_name_rank,
+      dplyr::any_of(rank_system)
+    )
 
   preview <- evaluate_likelihoods(
     match_df     = test_match,
     model_params = model,
     rank_system  = rank_system,
-    min_coverage = NULL    # no hard filter -- show full coverage range
+    min_coverage = NULL # no hard filter -- show full coverage range
   )
 
   cat("\n--- score_likelihood vs score_likelihood_cov (within-species, H1 only) ---\n")
@@ -325,8 +333,10 @@ if (length(h1_low_cov_ids) > 0) {
       by = "observation_id"
     ) |>
     dplyr::mutate(delta = round(score_likelihood_cov - score_likelihood, 4)) |>
-    dplyr::select(observation_id, taxon_name, coverage,
-                  score_likelihood, score_likelihood_cov, delta) |>
+    dplyr::select(
+      observation_id, taxon_name, coverage,
+      score_likelihood, score_likelihood_cov, delta
+    ) |>
     dplyr::arrange(coverage) |>
     print(n = 20)
 
@@ -343,7 +353,7 @@ if (length(h1_low_cov_ids) > 0) {
 
 # ---- 8. Save model and threshold for Workflow 4 -----------------------------
 saveRDS(model, "trained_model.rds")
-saveRDS(best_thresh, "coverage_threshold.rds")   # min_coverage filter for Workflow 4
+saveRDS(best_thresh, "coverage_threshold.rds") # min_coverage filter for Workflow 4
 message("Saved trained_model.rds and coverage_threshold.rds")
 
 message("\nWorkflow 3 complete.")

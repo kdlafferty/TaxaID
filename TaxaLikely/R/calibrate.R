@@ -22,9 +22,11 @@
   # the finest (last in TaxaTools::standard_ranks, which runs coarse-to-fine).
   x_ranks <- sub("\\.x$", "", grep("\\.x$", names(input_df), value = TRUE))
   y_ranks <- sub("\\.y$", "", grep("\\.y$", names(input_df), value = TRUE))
-  paired  <- intersect(x_ranks, y_ranks)
-  if (length(paired) == 0L) return(NULL)
-  std     <- TaxaTools::standard_ranks   # coarse-to-fine: kingdom ... species
+  paired <- intersect(x_ranks, y_ranks)
+  if (length(paired) == 0L) {
+    return(NULL)
+  }
+  std <- TaxaTools::standard_ranks # coarse-to-fine: kingdom ... species
   ordered <- std[std %in% paired]
   # If none of the paired rank names are recognized standard ranks (e.g. a
   # non-standard scheme like "clade"/"strain"), there is no ordering
@@ -34,8 +36,10 @@
   # silently pick an arbitrary column rather than the true finest rank.
   # Decline to guess; the caller already has a documented fallback (its own
   # warning + NA H1/H2 metrics) for this case.
-  if (length(ordered) == 0L) return(NULL)
-  ordered[length(ordered)]   # last element = finest rank
+  if (length(ordered) == 0L) {
+    return(NULL)
+  }
+  ordered[length(ordered)] # last element = finest rank
 }
 
 
@@ -147,15 +151,19 @@
 #'
 #' # Select the Pareto-optimal threshold (maximises Youden's J)
 #' best <- cal[which.max(cal$youden_j), ]
-#' cat("Optimal threshold:", best$threshold,
-#'     "| J =", round(best$youden_j, 3),
-#'     "| breadth =", round(best$breadth, 3), "\n")
+#' cat(
+#'   "Optimal threshold:", best$threshold,
+#'   "| J =", round(best$youden_j, 3),
+#'   "| breadth =", round(best$breadth, 3), "\n"
+#' )
 #'
 #' # Visualise the breadth vs discrimination trade-off
-#' plot(cal$breadth, cal$youden_j, type = "b",
-#'      xlab = "Breadth (fraction of queries retained)",
-#'      ylab = "Youden's J (H1 retention - H2 retention)",
-#'      main = "Coverage filter calibration")
+#' plot(cal$breadth, cal$youden_j,
+#'   type = "b",
+#'   xlab = "Breadth (fraction of queries retained)",
+#'   ylab = "Youden's J (H1 retention - H2 retention)",
+#'   main = "Coverage filter calibration"
+#' )
 #' abline(v = best$breadth, lty = 2, col = "red")
 #'
 #' # Apply the chosen threshold before training
@@ -165,23 +173,27 @@
 #'
 #' @export
 calibrate_coverage_filter <- function(ref_pairs,
-                                       rank_system = NULL,
-                                       thresholds  = seq(0, 0.99, by = 0.05)) {
-
+                                      rank_system = NULL,
+                                      thresholds = seq(0, 0.99, by = 0.05)) {
   # ---- input validation -------------------------------------------------------
-  if (!is.data.frame(ref_pairs))
+  if (!is.data.frame(ref_pairs)) {
     stop("calibrate_coverage_filter: 'ref_pairs' must be a data frame.")
-  if (!"coverage" %in% names(ref_pairs))
+  }
+  if (!"coverage" %in% names(ref_pairs)) {
     stop(paste0(
       "calibrate_coverage_filter: 'ref_pairs' must contain a 'coverage' column. ",
       "Build ref_pairs with build_sequence_matrix()."
     ))
-  if (!"p_match" %in% names(ref_pairs))
+  }
+  if (!"p_match" %in% names(ref_pairs)) {
     stop("calibrate_coverage_filter: 'ref_pairs' must contain a 'p_match' column.")
-  if (!"id_x" %in% names(ref_pairs))
+  }
+  if (!"id_x" %in% names(ref_pairs)) {
     stop("calibrate_coverage_filter: 'ref_pairs' must contain an 'id_x' column.")
-  if (!is.numeric(thresholds) || length(thresholds) == 0L || any(is.na(thresholds)))
+  }
+  if (!is.numeric(thresholds) || length(thresholds) == 0L || any(is.na(thresholds))) {
     stop("calibrate_coverage_filter: 'thresholds' must be a non-empty numeric vector without NAs.")
+  }
   thresholds <- sort(unique(thresholds))
 
   # ---- detect finest rank for H1 vs H2/H3 classification ---------------------
@@ -192,20 +204,22 @@ calibrate_coverage_filter <- function(ref_pairs,
   }
 
   h1_available <- FALSE
-  is_h1        <- NULL
+  is_h1 <- NULL
 
   if (!is.null(finest)) {
     x_col <- paste0(finest, ".x")
     y_col <- paste0(finest, ".y")
     if (all(c(x_col, y_col) %in% names(ref_pairs))) {
-      is_h1        <- !is.na(ref_pairs[[x_col]]) &
-                       !is.na(ref_pairs[[y_col]]) &
-                       ref_pairs[[x_col]] == ref_pairs[[y_col]]
+      is_h1 <- !is.na(ref_pairs[[x_col]]) &
+        !is.na(ref_pairs[[y_col]]) &
+        ref_pairs[[x_col]] == ref_pairs[[y_col]]
       h1_available <- TRUE
     } else {
       warning(sprintf(
-        paste0("calibrate_coverage_filter: rank columns '%s' and/or '%s' not found. ",
-               "H1/H2 metrics will be NA."),
+        paste0(
+          "calibrate_coverage_filter: rank columns '%s' and/or '%s' not found. ",
+          "H1/H2 metrics will be NA."
+        ),
         x_col, y_col
       ), call. = FALSE)
     }
@@ -218,7 +232,7 @@ calibrate_coverage_filter <- function(ref_pairs,
 
   # ---- baseline counts (exclude NA-coverage rows) ----------------------------
   n_queries_total <- length(unique(ref_pairs$id_x))
-  cov_known       <- !is.na(ref_pairs$coverage)
+  cov_known <- !is.na(ref_pairs$coverage)
 
   total_h1 <- if (h1_available) sum(is_h1 & cov_known) else NA_integer_
   total_h2 <- if (h1_available) sum(!is_h1 & cov_known) else NA_integer_
@@ -232,27 +246,33 @@ calibrate_coverage_filter <- function(ref_pairs,
   # categorical scheme with a few more levels without needing a per-data-type
   # parameter, while remaining nowhere near large enough to misclassify real
   # continuous coverage as categorical.
-  n_uniq_cov     <- length(unique(ref_pairs$coverage[cov_known]))
-  is_categorical  <- n_uniq_cov <= 10L
+  n_uniq_cov <- length(unique(ref_pairs$coverage[cov_known]))
+  is_categorical <- n_uniq_cov <= 10L
 
   # ---- sweep thresholds -------------------------------------------------------
   results <- lapply(thresholds, function(t) {
-    keep_idx   <- cov_known & ref_pairs$coverage >= t
-    n_queries  <- length(unique(ref_pairs$id_x[keep_idx]))
-    breadth    <- if (n_queries_total > 0L) n_queries / n_queries_total else NA_real_
+    keep_idx <- cov_known & ref_pairs$coverage >= t
+    n_queries <- length(unique(ref_pairs$id_x[keep_idx]))
+    breadth <- if (n_queries_total > 0L) n_queries / n_queries_total else NA_real_
 
     if (h1_available) {
-      sub_is_h1      <- is_h1[keep_idx]
-      sub_pmatch     <- ref_pairs$p_match[keep_idx]
-      n_h1_ret       <- sum(sub_is_h1)
-      n_h2_ret       <- sum(!sub_is_h1)
-      h1_retention   <- if (!is.na(total_h1) && total_h1 > 0L) n_h1_ret / total_h1  else NA_real_
-      h2_retention   <- if (!is.na(total_h2) && total_h2 > 0L) n_h2_ret / total_h2  else NA_real_
-      youden_j       <- if (!is.na(h1_retention) && !is.na(h2_retention))
-                          h1_retention - h2_retention else NA_real_
-      discrimination <- if (!is.na(h1_retention) && !is.na(h2_retention))
-                          h1_retention / max(h2_retention, 1e-9) else NA_real_
-      mean_h1_score  <- if (n_h1_ret > 0L) mean(sub_pmatch[sub_is_h1]) else NA_real_
+      sub_is_h1 <- is_h1[keep_idx]
+      sub_pmatch <- ref_pairs$p_match[keep_idx]
+      n_h1_ret <- sum(sub_is_h1)
+      n_h2_ret <- sum(!sub_is_h1)
+      h1_retention <- if (!is.na(total_h1) && total_h1 > 0L) n_h1_ret / total_h1 else NA_real_
+      h2_retention <- if (!is.na(total_h2) && total_h2 > 0L) n_h2_ret / total_h2 else NA_real_
+      youden_j <- if (!is.na(h1_retention) && !is.na(h2_retention)) {
+        h1_retention - h2_retention
+      } else {
+        NA_real_
+      }
+      discrimination <- if (!is.na(h1_retention) && !is.na(h2_retention)) {
+        h1_retention / max(h2_retention, 1e-9)
+      } else {
+        NA_real_
+      }
+      mean_h1_score <- if (n_h1_ret > 0L) mean(sub_pmatch[sub_is_h1]) else NA_real_
     } else {
       n_h1_ret <- n_h2_ret <- NA_integer_
       h1_retention <- h2_retention <- youden_j <-
@@ -260,16 +280,16 @@ calibrate_coverage_filter <- function(ref_pairs,
     }
 
     data.frame(
-      threshold      = t,
-      n_queries      = n_queries,
-      breadth        = breadth,
-      h1_pairs       = n_h1_ret,
-      h2_pairs       = n_h2_ret,
-      h1_retention   = h1_retention,
-      h2_retention   = h2_retention,
-      youden_j       = youden_j,
+      threshold = t,
+      n_queries = n_queries,
+      breadth = breadth,
+      h1_pairs = n_h1_ret,
+      h2_pairs = n_h2_ret,
+      h1_retention = h1_retention,
+      h2_retention = h2_retention,
+      youden_j = youden_j,
       discrimination = discrimination,
-      mean_h1_score  = mean_h1_score,
+      mean_h1_score = mean_h1_score,
       stringsAsFactors = FALSE
     )
   })
@@ -347,9 +367,9 @@ calibrate_coverage_filter <- function(ref_pairs,
 #' ref_matrix <- build_sequence_matrix(reference_df)
 #'
 #' # Retain the best 90% of reference pairs by alignment coverage
-#' thresh       <- coverage_threshold(ref_matrix, keep_frac = 0.90)
+#' thresh <- coverage_threshold(ref_matrix, keep_frac = 0.90)
 #' ref_filtered <- ref_matrix[ref_matrix$coverage >= thresh, ]
-#' model        <- train_likelihood_model(ref_filtered)
+#' model <- train_likelihood_model(ref_filtered)
 #'
 #' # Acoustic: snaps to nearest Xeno-canto quality grade boundary
 #' thresh <- coverage_threshold(ref_acoustic, keep_frac = 0.80)
@@ -359,21 +379,24 @@ calibrate_coverage_filter <- function(ref_pairs,
 #' @importFrom stats quantile
 #' @export
 coverage_threshold <- function(ref_pairs, keep_frac = 0.95) {
-
-  if (!is.data.frame(ref_pairs))
+  if (!is.data.frame(ref_pairs)) {
     stop("coverage_threshold: 'ref_pairs' must be a data frame.")
-  if (!"coverage" %in% names(ref_pairs))
+  }
+  if (!"coverage" %in% names(ref_pairs)) {
     stop(paste0(
       "coverage_threshold: 'ref_pairs' must contain a 'coverage' column. ",
       "Build ref_pairs with build_sequence_matrix()."
     ))
+  }
   if (!is.numeric(keep_frac) || length(keep_frac) != 1L || is.na(keep_frac) ||
-      keep_frac <= 0 || keep_frac >= 1)
+    keep_frac <= 0 || keep_frac >= 1) {
     stop("coverage_threshold: 'keep_frac' must be a single numeric value in (0, 1).")
+  }
 
   cov <- ref_pairs$coverage[!is.na(ref_pairs$coverage)]
-  if (length(cov) == 0L)
+  if (length(cov) == 0L) {
     stop("coverage_threshold: no non-NA coverage values found in 'ref_pairs$coverage'.")
+  }
 
   # Threshold at the (1 - keep_frac) quantile retains the top keep_frac fraction.
   raw_thresh <- stats::quantile(cov, probs = 1 - keep_frac, names = FALSE)
@@ -384,15 +407,17 @@ coverage_threshold <- function(ref_pairs, keep_frac = 0.95) {
   if (length(uniq_cov) <= 10L) {
     # Categorical coverage (e.g. Xeno-canto quality grades A-E mapped to 5 values).
     # Snap to the nearest unique value so the threshold falls on a grade boundary.
-    nearest     <- uniq_cov[which.min(abs(uniq_cov - raw_thresh))]
-    n_kept      <- sum(cov >= nearest)
+    nearest <- uniq_cov[which.min(abs(uniq_cov - raw_thresh))]
+    n_kept <- sum(cov >= nearest)
     actual_frac <- n_kept / length(cov)
-    message(sprintf(paste0(
-      "coverage_threshold: %d unique coverage values (categorical). ",
-      "Snapping threshold %.2f -> %.2f ",
-      "(retains %.1f%% of pairs, requested %.1f%%)."
-    ), length(uniq_cov), raw_thresh, nearest,
-       100 * actual_frac, 100 * keep_frac))
+    message(sprintf(
+      paste0(
+        "coverage_threshold: %d unique coverage values (categorical). ",
+        "Snapping threshold %.2f -> %.2f ",
+        "(retains %.1f%% of pairs, requested %.1f%%)."
+      ), length(uniq_cov), raw_thresh, nearest,
+      100 * actual_frac, 100 * keep_frac
+    ))
     return(nearest)
   }
 

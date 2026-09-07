@@ -113,13 +113,12 @@
 # compute a real median, so all of `cand_idx` is walked regardless.
 #' @noRd
 .check_regional_overlap <- function(anchor_accession, candidate_accessions,
-                                     reference_df, seq_matrix = NULL,
-                                     anchor_subject_range = NULL,
-                                     query_sequence = NULL,
-                                     min_coverage = 0.5,
-                                     align_cache = NULL,
-                                     return_detail = FALSE) {
-
+                                    reference_df, seq_matrix = NULL,
+                                    anchor_subject_range = NULL,
+                                    query_sequence = NULL,
+                                    min_coverage = 0.5,
+                                    align_cache = NULL,
+                                    return_detail = FALSE) {
   .no_evidence <- if (return_detail) list(overlap = NA, pid = NA_real_) else NA
 
   # align_cache (when supplied) is one environment per restore_suppressed_
@@ -129,12 +128,13 @@
   # accidental reuse of stale data from a different reference_df/seq_matrix.
   use_cache <- !is.null(align_cache) && is.environment(align_cache)
 
-  anchor_accession     <- sub("\\.[0-9]+$", "", anchor_accession)
+  anchor_accession <- sub("\\.[0-9]+$", "", anchor_accession)
   candidate_accessions <- sub("\\.[0-9]+$", "", candidate_accessions)
   candidate_accessions <- unique(candidate_accessions[!is.na(candidate_accessions)])
 
-  if (is.na(anchor_accession) || length(candidate_accessions) == 0L)
+  if (is.na(anchor_accession) || length(candidate_accessions) == 0L) {
     return(.no_evidence)
+  }
 
   # ---- Tier 1: seq_matrix lookup (free, already computed) --------------------
   # Performance (Session 159, PtConception rollout): stripping id_x/id_y's
@@ -148,7 +148,7 @@
   # caching fixes target). Cached the same way anchor_seq/(anchor, candidate)
   # pairs already are, under a fixed key (safe -- see note above).
   if (!is.null(seq_matrix) && is.data.frame(seq_matrix) && nrow(seq_matrix) > 0L &&
-      all(c("id_x", "id_y", "coverage") %in% names(seq_matrix))) {
+    all(c("id_x", "id_y", "coverage") %in% names(seq_matrix))) {
     if (use_cache && exists("seq_matrix_ids", envir = align_cache, inherits = FALSE)) {
       sm_ids <- get("seq_matrix_ids", envir = align_cache, inherits = FALSE)
       id_x <- sm_ids$id_x
@@ -159,7 +159,7 @@
       if (use_cache) assign("seq_matrix_ids", list(id_x = id_x, id_y = id_y), envir = align_cache)
     }
     hit_mask <- (id_x == anchor_accession & id_y %in% candidate_accessions) |
-                (id_y == anchor_accession & id_x %in% candidate_accessions)
+      (id_y == anchor_accession & id_x %in% candidate_accessions)
     if (any(hit_mask)) {
       cov <- seq_matrix$coverage[hit_mask]
       cov <- cov[!is.na(cov)]
@@ -179,11 +179,11 @@
 
   # ---- Tiers 2a/2b need Biostrings/pwalign + reference_df's own sequences ----
   if (!requireNamespace("Biostrings", quietly = TRUE) ||
-      !requireNamespace("pwalign", quietly = TRUE)) {
-    return(.no_evidence)  # can't run either Tier 2 without these; conservative fallback
+    !requireNamespace("pwalign", quietly = TRUE)) {
+    return(.no_evidence) # can't run either Tier 2 without these; conservative fallback
   }
   if (!is.data.frame(reference_df) ||
-      !all(c("composite_id", "sequence") %in% names(reference_df))) {
+    !all(c("composite_id", "sequence") %in% names(reference_df))) {
     return(.no_evidence)
   }
 
@@ -200,22 +200,26 @@
   anchor_key <- paste0("anchor::", anchor_accession)
   if (use_cache && exists(anchor_key, envir = align_cache, inherits = FALSE)) {
     anchor_seq <- get(anchor_key, envir = align_cache, inherits = FALSE)
-    if (is.null(anchor_seq)) return(.no_evidence)  # cached failure -- anchor unusable
+    if (is.null(anchor_seq)) {
+      return(.no_evidence)
+    } # cached failure -- anchor unusable
   } else {
     anchor_seq_chr <- reference_df$sequence[ref_ids == anchor_accession]
     anchor_seq_chr <- anchor_seq_chr[!is.na(anchor_seq_chr) & nzchar(anchor_seq_chr)]
     anchor_seq <- if (length(anchor_seq_chr) == 0L) {
-      NULL  # anchor's own sequence unavailable
+      NULL # anchor's own sequence unavailable
     } else {
       tryCatch(Biostrings::DNAString(anchor_seq_chr[1L]), error = function(e) NULL)
     }
     if (use_cache) assign(anchor_key, anchor_seq, envir = align_cache)
-    if (is.null(anchor_seq)) return(.no_evidence)
+    if (is.null(anchor_seq)) {
+      return(.no_evidence)
+    }
   }
 
   # ---- Resolve anchor_subject_range: Tier 2a (supplied) or Tier 2b (derived) -
   has_range <- !is.null(anchor_subject_range) && length(anchor_subject_range) == 2L &&
-               !anyNA(anchor_subject_range)
+    !anyNA(anchor_subject_range)
 
   # Tier 2b's query-vs-anchor alignment depends only on (anchor_accession,
   # query_sequence) -- NOT on which candidate is being checked -- but the
@@ -227,7 +231,7 @@
   # (anchor_accession, query_sequence) -- confirmed a real, not just
   # theoretical, cost on real PtConception data (Session 159 continuation).
   if (!has_range && !is.null(query_sequence) && !is.na(query_sequence) &&
-      nzchar(query_sequence)) {
+    nzchar(query_sequence)) {
     query_key <- if (use_cache) paste0("query::", anchor_accession, "::", query_sequence) else NULL
     if (use_cache && exists(query_key, envir = align_cache, inherits = FALSE)) {
       derived_range <- get(query_key, envir = align_cache, inherits = FALSE)
@@ -240,8 +244,10 @@
           error = function(e) NULL
         )
         if (!is.null(q_aln)) {
-          derived_range <- c(Biostrings::start(pwalign::subject(q_aln)),
-                              Biostrings::end(pwalign::subject(q_aln)))
+          derived_range <- c(
+            Biostrings::start(pwalign::subject(q_aln)),
+            Biostrings::end(pwalign::subject(q_aln))
+          )
         }
       }
       if (use_cache) assign(query_key, derived_range, envir = align_cache)
@@ -252,15 +258,19 @@
     }
   }
 
-  if (!has_range) return(.no_evidence)  # Tier 1 already tried; nothing else available
+  if (!has_range) {
+    return(.no_evidence)
+  } # Tier 1 already tried; nothing else available
 
   q_lo <- min(anchor_subject_range)
   q_hi <- max(anchor_subject_range)
 
   cand_idx <- which(ref_ids %in% candidate_accessions)
-  if (length(cand_idx) == 0L) return(.no_evidence)  # no candidate sequence available to check at all
+  if (length(cand_idx) == 0L) {
+    return(.no_evidence)
+  } # no candidate sequence available to check at all
 
-  accepted_pids <- numeric(0L)  # only accumulated when return_detail = TRUE
+  accepted_pids <- numeric(0L) # only accumulated when return_detail = TRUE
 
   for (k in cand_idx) {
     cand_accession <- ref_ids[k]
@@ -286,7 +296,7 @@
             # any one observation's own anchor_subject_range -- see the
             # Performance note above for why it's cached across the loop.
             overlap_width <- Biostrings::nchar(aln)
-            min_len       <- min(length(cand_seq), length(anchor_seq))
+            min_len <- min(length(cand_seq), length(anchor_seq))
             cached <- list(
               subj_start = Biostrings::start(pwalign::subject(aln)),
               subj_end   = Biostrings::end(pwalign::subject(aln)),
@@ -307,13 +317,15 @@
       if (use_cache) assign(pair_key, cached, envir = align_cache)
     }
 
-    if (is.null(cached)) next  # alignment unavailable/failed for this pair
+    if (is.null(cached)) next # alignment unavailable/failed for this pair
 
     position_overlaps <- cached$subj_start <= q_hi && cached$subj_end >= q_lo
     if (!position_overlaps) next
 
     if (!is.na(cached$coverage) && cached$coverage >= min_coverage) {
-      if (!return_detail) return(TRUE)  # short-circuit -- caller only wants a verdict
+      if (!return_detail) {
+        return(TRUE)
+      } # short-circuit -- caller only wants a verdict
       # return_detail = TRUE needs every accepted candidate's pid to compute
       # a real median (Section 4), so no short-circuit here.
       pid_val <- cached$pid %||% NA_real_
@@ -322,8 +334,9 @@
   }
 
   if (return_detail) {
-    if (length(accepted_pids) > 0L)
+    if (length(accepted_pids) > 0L) {
       return(list(overlap = TRUE, pid = stats::median(accepted_pids)))
+    }
     return(list(overlap = FALSE, pid = NA_real_))
   }
 

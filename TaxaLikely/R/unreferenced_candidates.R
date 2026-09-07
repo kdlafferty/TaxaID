@@ -73,43 +73,52 @@
 #' @importFrom stats median
 #' @export
 unreferenced_candidates <- function(match_df,
-                                    rank_system                 = NULL,
+                                    rank_system = NULL,
                                     include_unreferenced_family = FALSE) {
-
   # ---- validate ---------------------------------------------------------------
-  if (!is.data.frame(match_df))
+  if (!is.data.frame(match_df)) {
     stop("`match_df` must be a data frame.", call. = FALSE)
+  }
   if (!is.logical(include_unreferenced_family) ||
-      length(include_unreferenced_family) != 1L ||
-      is.na(include_unreferenced_family))
+    length(include_unreferenced_family) != 1L ||
+    is.na(include_unreferenced_family)) {
     stop("`include_unreferenced_family` must be TRUE or FALSE.", call. = FALSE)
+  }
 
   names(match_df) <- tolower(names(match_df))
 
   required <- c("observation_id", "taxon_name", "taxon_name_rank")
   missing_cols <- setdiff(required, names(match_df))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("`match_df` is missing required column(s): %s",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "`match_df` is missing required column(s): %s",
+      paste(missing_cols, collapse = ", ")
+    ), call. = FALSE)
+  }
 
   # ---- auto-detect rank_system ------------------------------------------------
   if (is.null(rank_system)) {
-    canonical   <- TaxaTools::extended_ranks
-    df_lower    <- tolower(names(match_df))
+    canonical <- TaxaTools::extended_ranks
+    df_lower <- tolower(names(match_df))
     found_lower <- intersect(canonical, df_lower)
     rank_system <- names(match_df)[match(found_lower, df_lower)]
-    if (length(rank_system) < 2L)
+    if (length(rank_system) < 2L) {
       stop(
         "Could not auto-detect `rank_system` (need >= 2 rank columns). ",
         "Supply it explicitly, e.g. rank_system = c(\"family\", \"genus\", \"species\").",
         call. = FALSE
       )
-    message(sprintf("unreferenced_candidates: detected rank_system: %s",
-                    paste(rank_system, collapse = ", ")))
+    }
+    message(sprintf(
+      "unreferenced_candidates: detected rank_system: %s",
+      paste(rank_system, collapse = ", ")
+    ))
   } else {
-    if (!is.character(rank_system) || length(rank_system) < 2L)
+    if (!is.character(rank_system) || length(rank_system) < 2L) {
       stop("`rank_system` must be a character vector with at least 2 ranks.",
-           call. = FALSE)
+        call. = FALSE
+      )
+    }
   }
   rank_cols <- tolower(rank_system)
 
@@ -118,12 +127,13 @@ unreferenced_candidates <- function(match_df,
     match_df$hypothesis_type <- "specific_candidate"
   } else {
     is_na_ht <- is.na(match_df$hypothesis_type)
-    if (any(is_na_ht))
+    if (any(is_na_ht)) {
       match_df$hypothesis_type[is_na_ht] <- "specific_candidate"
+    }
   }
 
   finest <- rank_cols[length(rank_cols)]
-  second  <- if (length(rank_cols) >= 2L) rank_cols[length(rank_cols) - 1L] else NULL
+  second <- if (length(rank_cols) >= 2L) rank_cols[length(rank_cols) - 1L] else NULL
   has_score <- "score_original" %in% names(match_df)
 
   # ---- per-observation: build H2, H3, (H4) rows ------------------------------
@@ -135,16 +145,18 @@ unreferenced_candidates <- function(match_df,
   for (sid in obs_ids) {
     h1_rows <- match_df[
       !is.na(match_df$observation_id) &
-      match_df$observation_id == sid &
-      match_df$hypothesis_type == "specific_candidate", ,
+        match_df$observation_id == sid &
+        match_df$hypothesis_type == "specific_candidate", ,
       drop = FALSE
     ]
     if (nrow(h1_rows) == 0L) next
 
     # Anchor: taxon with highest median score_original (or first row)
     if (has_score && !all(is.na(h1_rows$score_original))) {
-      by_taxon <- tapply(h1_rows$score_original, h1_rows$taxon_name,
-                         function(x) stats::median(x, na.rm = TRUE))
+      by_taxon <- tapply(
+        h1_rows$score_original, h1_rows$taxon_name,
+        function(x) stats::median(x, na.rm = TRUE)
+      )
       best_taxon <- names(which.max(by_taxon))
       anchor_row <- h1_rows[h1_rows$taxon_name == best_taxon, , drop = FALSE][1L, ]
     } else {
@@ -166,7 +178,7 @@ unreferenced_candidates <- function(match_df,
     # H3: unreferenced_genus -- two finest ranks -> NA
     if (!is.null(second) && second %in% names(anchor_row)) {
       row_h3 <- anchor_row
-      if (finest %in% names(row_h3))  row_h3[[finest]]  <- NA_character_
+      if (finest %in% names(row_h3)) row_h3[[finest]] <- NA_character_
       row_h3[[second]] <- NA_character_
       ec <- intersect(rank_cols, names(row_h3))
       row_h3 <- TaxaTools::create_taxon_names(row_h3, ec)
@@ -182,7 +194,7 @@ unreferenced_candidates <- function(match_df,
       for (rc in rank_cols) {
         if (rc %in% names(row_h4)) row_h4[[rc]] <- NA_character_
       }
-      row_h4$taxon_name      <- NA_character_
+      row_h4$taxon_name <- NA_character_
       row_h4$taxon_name_rank <- NA_character_
       row_h4$hypothesis_type <- "unreferenced_family"
       if (has_score) row_h4$score_original <- NA_real_

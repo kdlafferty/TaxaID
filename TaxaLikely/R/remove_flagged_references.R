@@ -58,7 +58,8 @@
 #' @examples
 #' \dontrun{
 #' ref_matrix <- build_sequence_matrix(reference_df,
-#'                                      rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #' errors <- flag_reference_errors(ref_matrix)
 #' match_obj <- remove_flagged_references(match_obj, errors)
 #' saveRDS(match_obj, "match_obj.rds")
@@ -68,19 +69,21 @@
 remove_flagged_references <- function(match_df,
                                       reference_errors,
                                       remove_unverified_singletons = FALSE) {
-
-  if (!is.data.frame(match_df))
+  if (!is.data.frame(match_df)) {
     stop("match_df must be a data frame.", call. = FALSE)
-  if (!is.data.frame(reference_errors))
+  }
+  if (!is.data.frame(reference_errors)) {
     stop("reference_errors must be a data frame.", call. = FALSE)
+  }
 
   needed <- c("id_x", "error_type")
   missing_cols <- setdiff(needed, names(reference_errors))
-  if (length(missing_cols) > 0L)
+  if (length(missing_cols) > 0L) {
     stop(sprintf(
       "reference_errors is missing required columns: %s",
       paste(missing_cols, collapse = ", ")
     ), call. = FALSE)
+  }
 
   if (!"accession" %in% names(match_df)) {
     warning(
@@ -94,8 +97,9 @@ remove_flagged_references <- function(match_df,
   # Determine which error types to remove
 
   types_to_remove <- "likely_mislabeled"
-  if (isTRUE(remove_unverified_singletons))
+  if (isTRUE(remove_unverified_singletons)) {
     types_to_remove <- c(types_to_remove, "unverified_singleton_high_match")
+  }
 
   bad_ids <- reference_errors$id_x[reference_errors$error_type %in% types_to_remove]
 

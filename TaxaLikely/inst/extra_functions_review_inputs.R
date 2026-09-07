@@ -53,7 +53,7 @@
 # arguments would resolve to.
 # ==============================================================================
 
-#devtools::load_all()   # or: library(TaxaLikely)
+# devtools::load_all()   # or: library(TaxaLikely)
 library(TaxaLikely)
 
 
@@ -71,7 +71,7 @@ library(TaxaLikely)
 
 ## ---- .audit_barcode_coverage_impl() ---- NETWORK, real small genus ---------
 ref_species_extra <- data.frame(
-  genus   = "Fundulus",
+  genus = "Fundulus",
   species = c("Fundulus heteroclitus", "Fundulus parvipinnis"),
   stringsAsFactors = FALSE
 )
@@ -111,20 +111,22 @@ length(coverage_impl$unreferenced)
 ## ---- .compute_reference_qc_stats() ---- OFFLINE -----------------------------
 make_raw_df_extra <- function() {
   data.frame(
-    id_x      = c("A1", "A1", "A1", "A2", "A2", "A2", "B1", "B1", "B1"),
-    id_y      = c("A1", "A2", "B1", "A1", "A2", "B1", "A1", "A2", "B1"),
+    id_x = c("A1", "A1", "A1", "A2", "A2", "A2", "B1", "B1", "B1"),
+    id_y = c("A1", "A2", "B1", "A1", "A2", "B1", "A1", "A2", "B1"),
     species.x = c("Aa", "Aa", "Aa", "Aa", "Aa", "Aa", "Bb", "Bb", "Bb"),
     species.y = c("Aa", "Aa", "Bb", "Aa", "Aa", "Bb", "Aa", "Aa", "Bb"),
-    genus.x   = c("A", "A", "A", "A", "A", "A", "B", "B", "B"),
-    genus.y   = c("A", "A", "B", "A", "A", "B", "A", "A", "B"),
-    p_match   = c(1.00, 0.95, 0.70, 0.95, 1.00, 0.68, 0.70, 0.68, 1.00),
+    genus.x = c("A", "A", "A", "A", "A", "A", "B", "B", "B"),
+    genus.y = c("A", "A", "B", "A", "A", "B", "A", "A", "B"),
+    p_match = c(1.00, 0.95, 0.70, 0.95, 1.00, 0.68, 0.70, 0.68, 1.00),
     stringsAsFactors = FALSE
   )
 }
 qc_stats_no_floor <- TaxaLikely:::.compute_reference_qc_stats(make_raw_df_extra())
-qc_stats_no_floor[, c("id_x", "species_x", "median_self_match", "max_foreign_match",
-                       "n_self_neighbors", "n_foreign_pairs", "n_foreign_taxa",
-                       "integrity_gap")]
+qc_stats_no_floor[, c(
+  "id_x", "species_x", "median_self_match", "max_foreign_match",
+  "n_self_neighbors", "n_foreign_pairs", "n_foreign_taxa",
+  "integrity_gap"
+)]
 
 # min_coverage: a permissive pairwise-overlap floor (NOT the same as the
 # calibrated trust threshold flag_reference_errors()/classify_reference_
@@ -135,12 +137,15 @@ qc_stats_no_floor[, c("id_x", "species_x", "median_self_match", "max_foreign_mat
 raw_df_with_coverage <- make_raw_df_extra()
 raw_df_with_coverage$coverage <- 1.0
 raw_df_with_coverage$coverage[raw_df_with_coverage$id_x == "A1" &
-                                 raw_df_with_coverage$id_y == "B1"] <- 0.1
+  raw_df_with_coverage$id_y == "B1"] <- 0.1
 qc_stats_floored <- TaxaLikely:::.compute_reference_qc_stats(
-  raw_df_with_coverage, min_coverage = 0.5
+  raw_df_with_coverage,
+  min_coverage = 0.5
 )
-qc_stats_floored[qc_stats_floored$id_x == "A1",
-                  c("id_x", "max_foreign_match", "n_foreign_pairs")]
+qc_stats_floored[
+  qc_stats_floored$id_x == "A1",
+  c("id_x", "max_foreign_match", "n_foreign_pairs")
+]
 # max_foreign_match falls back to 0 (not 0.70) -- A1's only foreign pair was
 # excluded by the coverage floor, leaving zero foreign comparisons.
 
@@ -168,35 +173,51 @@ qc_stats_floored[qc_stats_floored$id_x == "A1",
 # remains comparatively substantial there. A tighter H1 than its H2
 # alternative is exactly the condition that can make the ratio turn over
 # before the ceiling.
-h1_tight <- data.frame(lookup_key = "Sp1", rank = "species",
-                        mu_score = -0.05, mu_gap = 0, sigma_score = 0.001,
-                        stringsAsFactors = FALSE)
-h2_pooled <- list(delta = 0.05,
-                   sigma = matrix(c(0.05, 0, 0, 1), nrow = 2,
-                                  dimnames = list(c("score_logit", "gap_logit"),
-                                                  c("score_logit", "gap_logit"))))
+h1_tight <- data.frame(
+  lookup_key = "Sp1", rank = "species",
+  mu_score = -0.05, mu_gap = 0, sigma_score = 0.001,
+  stringsAsFactors = FALSE
+)
+h2_pooled <- list(
+  delta = 0.05,
+  sigma = matrix(c(0.05, 0, 0, 1),
+    nrow = 2,
+    dimnames = list(
+      c("score_logit", "gap_logit"),
+      c("score_logit", "gap_logit")
+    )
+  )
+)
 mlr_violation <- TaxaLikely:::.check_score_ratio_monotonicity(
   H1_Lookup = h1_tight, global_sigma1 = 0.0005, H2 = h2_pooled, H2_Lookup = NULL,
   species_genus = NULL, score_transform = "sqrt_mismatch", logit_epsilon = 1e-4
 )
-mlr_violation$violations   # "Sp1" -- H1 tighter than H2, ratio turns over
+mlr_violation$violations # "Sp1" -- H1 tighter than H2, ratio turns over
 
 ## ---- .check_score_ratio_monotonicity() ---- OFFLINE, no violation ----------
 # Same shape, but H1 is now at least as wide as H2 -- the typical current-
 # production case (see train_likelihood_model()'s own @section) -- so the
 # ratio keeps strengthening all the way to the ceiling and nothing is flagged.
-h1_wide <- data.frame(lookup_key = "Sp1", rank = "species",
-                       mu_score = -0.05, mu_gap = 0, sigma_score = 0.05,
-                       stringsAsFactors = FALSE)
-h2_pooled_2 <- list(delta = 0.03,
-                     sigma = matrix(c(0.02, 0, 0, 1), nrow = 2,
-                                    dimnames = list(c("score_logit", "gap_logit"),
-                                                    c("score_logit", "gap_logit"))))
+h1_wide <- data.frame(
+  lookup_key = "Sp1", rank = "species",
+  mu_score = -0.05, mu_gap = 0, sigma_score = 0.05,
+  stringsAsFactors = FALSE
+)
+h2_pooled_2 <- list(
+  delta = 0.03,
+  sigma = matrix(c(0.02, 0, 0, 1),
+    nrow = 2,
+    dimnames = list(
+      c("score_logit", "gap_logit"),
+      c("score_logit", "gap_logit")
+    )
+  )
+)
 mlr_clean <- TaxaLikely:::.check_score_ratio_monotonicity(
   H1_Lookup = h1_wide, global_sigma1 = 0.01, H2 = h2_pooled_2, H2_Lookup = NULL,
   species_genus = NULL, score_transform = "sqrt_mismatch", logit_epsilon = 1e-4
 )
-mlr_clean$violations       # character(0) -- no violation
+mlr_clean$violations # character(0) -- no violation
 
 ## ---- .check_score_ratio_monotonicity() ---- OFFLINE, genus-specific H2 -----
 # H2_Lookup (a real per-genus shrunk delta/variance, see train_likelihood_
@@ -205,18 +226,26 @@ mlr_clean$violations       # character(0) -- no violation
 # a SAFE (non-violating) shape, so a flagged violation confirms the
 # genus-specific row is what actually drove the result, not an unused pooled
 # fallback.
-h2_lookup_extra <- data.frame(genus = "G1", n_pairs = 5L,
-                               delta_shrunk = 0.05, var_shrunk = 0.05,
-                               stringsAsFactors = FALSE)
+h2_lookup_extra <- data.frame(
+  genus = "G1", n_pairs = 5L,
+  delta_shrunk = 0.05, var_shrunk = 0.05,
+  stringsAsFactors = FALSE
+)
 mlr_genus_specific <- TaxaLikely:::.check_score_ratio_monotonicity(
   H1_Lookup = h1_tight,
   global_sigma1 = 0.0005,
-  H2 = list(delta = 0.01,
-            sigma = matrix(c(0.0005, 0, 0, 1), nrow = 2,
-                           dimnames = list(c("score_logit", "gap_logit"),
-                                           c("score_logit", "gap_logit")))),
+  H2 = list(
+    delta = 0.01,
+    sigma = matrix(c(0.0005, 0, 0, 1),
+      nrow = 2,
+      dimnames = list(
+        c("score_logit", "gap_logit"),
+        c("score_logit", "gap_logit")
+      )
+    )
+  ),
   H2_Lookup = h2_lookup_extra,
   species_genus = c(Sp1 = "G1"),
   score_transform = "sqrt_mismatch", logit_epsilon = 1e-4
 )
-mlr_genus_specific$violations   # "Sp1" -- driven by H2_Lookup's G1 row, not the (safe) pooled H2
+mlr_genus_specific$violations # "Sp1" -- driven by H2_Lookup's G1 row, not the (safe) pooled H2

@@ -37,8 +37,10 @@ library(TaxaLikely)
 # ---- 1. Load reference_df ---------------------------------------------------
 # From Workflow 1 (fetch_reference_sequences or read_reference_fasta)
 reference_df <- readRDS("reference_df.rds")
-cat("reference_df:", nrow(reference_df), "sequences,",
-    length(unique(reference_df$species)), "species\n")
+cat(
+  "reference_df:", nrow(reference_df), "sequences,",
+  length(unique(reference_df$species)), "species\n"
+)
 
 # ---- 2. Build pairwise distance matrix --------------------------------------
 # This aligns all sequences and computes pairwise distances.
@@ -66,9 +68,9 @@ saveRDS(ref_matrix, "ref_matrix.rds")
 # better than its own conspecifics, it is flagged.
 
 errors <- flag_reference_errors(
-  raw_df            = ref_matrix,
-  mislabel_threshold = 0.02,    # margin (in p_match units) required
-  return_all        = FALSE    # TRUE to also see "clean" sequences
+  raw_df = ref_matrix,
+  mislabel_threshold = 0.02, # margin (in p_match units) required
+  return_all = FALSE # TRUE to also see "clean" sequences
 )
 
 cat("\nFlagged sequences:", nrow(errors), "\n")
@@ -102,9 +104,10 @@ print(table(all_qc$error_type))
 
 # Histogram of integrity gaps across all sequences
 hist(all_qc$integrity_gap,
-     main = "Integrity gap distribution (all sequences)",
-     xlab = "Integrity gap (self - foreign match score)",
-     breaks = 30)
+  main = "Integrity gap distribution (all sequences)",
+  xlab = "Integrity gap (self - foreign match score)",
+  breaks = 30
+)
 abline(v = 0, col = "red", lty = 2)
 
 # 4e. Singleton analysis

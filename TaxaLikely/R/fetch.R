@@ -13,7 +13,7 @@ utils::globalVariables(c(
 #' @noRd
 .ncbi_delay <- function() {
   has_key <- nzchar(Sys.getenv("ENTREZ_KEY", "")) ||
-             nzchar(Sys.getenv("NCBI_API_KEY", ""))
+    nzchar(Sys.getenv("NCBI_API_KEY", ""))
   if (has_key) 0.11 else 0.34
 }
 
@@ -21,7 +21,6 @@ utils::globalVariables(c(
 #' @noRd
 .build_search_term <- function(taxon, barcode_term, min_date = NULL,
                                max_date = NULL) {
-
   # Barcode clause: OR multiple synonyms
 
   # Map common barcode terms to NCBI [GENE] field tags for precision.
@@ -92,14 +91,17 @@ utils::globalVariables(c(
   bc_parts <- vapply(barcode_term, function(bt) {
     key <- tolower(trimws(bt))
     resolved <- TaxaTools::resolve_barcode_marker(bt)
-    base_key <- if (!identical(tolower(trimws(resolved)), key))
-      tolower(trimws(resolved)) else NA_character_
+    base_key <- if (!identical(tolower(trimws(resolved)), key)) {
+      tolower(trimws(resolved))
+    } else {
+      NA_character_
+    }
     if (!is.na(base_key)) {
       # Search as the base marker in every clause, so a remapped term produces
       # exactly the query the bare marker name would have produced -- never a
       # dead "<variant>[All Fields]" clause.
       key <- base_key
-      bt  <- toupper(base_key)
+      bt <- toupper(base_key)
     }
     gene <- gene_map[key]
     if (!is.na(gene)) {
@@ -109,11 +111,11 @@ utils::globalVariables(c(
       # Primer name or unrecognised term: search [All Fields]
       primer_clause <- paste0(bt, "[All Fields]")
       # Also OR in the underlying locus if known
-      locus     <- primer_to_locus[key]
-      synonyms  <- marker_synonyms[[key]]
-      clauses   <- primer_clause
-      if (!is.na(locus))       clauses <- c(clauses, paste0(locus, "[All Fields]"))
-      if (!is.null(synonyms))  clauses <- c(clauses, paste0(synonyms, "[All Fields]"))
+      locus <- primer_to_locus[key]
+      synonyms <- marker_synonyms[[key]]
+      clauses <- primer_clause
+      if (!is.na(locus)) clauses <- c(clauses, paste0(locus, "[All Fields]"))
+      if (!is.null(synonyms)) clauses <- c(clauses, paste0(synonyms, "[All Fields]"))
       if (length(clauses) > 1L) {
         paste0("(", paste(clauses, collapse = " OR "), ")")
       } else {
@@ -135,8 +137,8 @@ utils::globalVariables(c(
 
   if (!is.null(min_date) || !is.null(max_date)) {
     d_start <- if (!is.null(min_date)) min_date else "1900/01/01"
-    d_end   <- if (!is.null(max_date)) max_date else "3000/12/31"
-    term    <- paste0(term, " AND (", d_start, "[PDAT] : ", d_end, "[PDAT])")
+    d_end <- if (!is.null(max_date)) max_date else "3000/12/31"
+    term <- paste0(term, " AND (", d_start, "[PDAT] : ", d_end, "[PDAT])")
   }
 
   term
@@ -166,15 +168,18 @@ utils::globalVariables(c(
 .retry_fetch <- function(fn, max_attempts = 3L) {
   attempt <- 0L
   success <- FALSE
-  value   <- NULL
+  value <- NULL
   while (attempt < max_attempts && !success) {
     attempt <- attempt + 1L
-    tryCatch({
-      value   <- fn()
-      success <- TRUE
-    }, error = function(e) {
-      if (attempt < max_attempts) Sys.sleep(attempt)
-    })
+    tryCatch(
+      {
+        value <- fn()
+        success <- TRUE
+      },
+      error = function(e) {
+        if (attempt < max_attempts) Sys.sleep(attempt)
+      }
+    )
   }
   list(value = value, success = success)
 }
@@ -183,9 +188,9 @@ utils::globalVariables(c(
 #' Fetch NCBI summaries in batches (lightweight: accession, taxid, length)
 #' @noRd
 .fetch_summaries_batched <- function(search_obj, batch_size = 200L) {
-  total  <- as.integer(search_obj$count)
+  total <- as.integer(search_obj$count)
   starts <- seq(0L, total - 1L, by = batch_size)
-  res    <- vector("list", length(starts))
+  res <- vector("list", length(starts))
 
   for (i in seq_along(starts)) {
     result <- .retry_fetch(function() {
@@ -208,10 +213,10 @@ utils::globalVariables(c(
       # reference_sequences() below for the identical reasoning).
       dplyr::bind_rows(lapply(summ, function(x) {
         data.frame(
-          acc      = as.character(if (is.null(x$caption))  NA else x$caption),
-          title    = as.character(if (is.null(x$title))    NA else x$title),
-          taxid    = as.character(if (is.null(x$taxid))    NA else x$taxid),
-          slen     = as.numeric(if (is.null(x$slen))       NA else x$slen),
+          acc = as.character(if (is.null(x$caption)) NA else x$caption),
+          title = as.character(if (is.null(x$title)) NA else x$title),
+          taxid = as.character(if (is.null(x$taxid)) NA else x$taxid),
+          slen = as.numeric(if (is.null(x$slen)) NA else x$slen),
           organism = as.character(if (is.null(x$organism)) NA else x$organism),
           # create_date: live-verified (rentrez::entrez_summary(db =
           # "nucleotide", ...)) that NCBI's own ESummary DocSum for this
@@ -236,7 +241,7 @@ utils::globalVariables(c(
 #' @noRd
 .fetch_taxonomy_map <- function(taxids, desired_ranks, batch_size = 100L) {
   batches <- split(taxids, ceiling(seq_along(taxids) / batch_size))
-  res     <- vector("list", length(batches))
+  res <- vector("list", length(batches))
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
@@ -244,11 +249,11 @@ utils::globalVariables(c(
         db = "taxonomy", id = batches[[i]], rettype = "xml"
       )
       xml_doc <- xml2::read_xml(xml_raw)
-      nodes   <- xml2::xml_find_all(xml_doc, "//TaxaSet/Taxon")
+      nodes <- xml2::xml_find_all(xml_doc, "//TaxaSet/Taxon")
 
       parsed <- lapply(nodes, function(node) {
-        this_id   <- xml2::xml_text(xml2::xml_find_first(node, "./TaxId"))
-        this_sci  <- xml2::xml_text(xml2::xml_find_first(node, "./ScientificName"))
+        this_id <- xml2::xml_text(xml2::xml_find_first(node, "./TaxId"))
+        this_sci <- xml2::xml_text(xml2::xml_find_first(node, "./ScientificName"))
         this_rank <- xml2::xml_text(xml2::xml_find_first(node, "./Rank"))
 
         row <- stats::setNames(
@@ -294,7 +299,7 @@ utils::globalVariables(c(
 #' @noRd
 .fetch_fasta_batched <- function(accessions, batch_size = 200L) {
   batches <- split(accessions, ceiling(seq_along(accessions) / batch_size))
-  chunks  <- vector("character", length(batches))
+  chunks <- vector("character", length(batches))
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
@@ -321,7 +326,9 @@ utils::globalVariables(c(
 #' @noRd
 .parse_lat_lon <- function(x) {
   empty <- c(lat = NA_real_, lon = NA_real_)
-  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) return(empty)
+  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) {
+    return(empty)
+  }
 
   # Extraction is validated BY REFERENCE, not by blind position: the regex
   # itself requires the first number's hemisphere letter to be N/S and the
@@ -336,11 +343,15 @@ utils::globalVariables(c(
   m <- regmatches(x, regexec(
     "^\\s*([0-9.]+)\\s*([NSns])\\s+([0-9.]+)\\s*([EWew])\\s*$", x
   ))[[1L]]
-  if (length(m) != 5L) return(empty)
+  if (length(m) != 5L) {
+    return(empty)
+  }
 
   lat_val <- suppressWarnings(as.numeric(m[2L]))
   lon_val <- suppressWarnings(as.numeric(m[4L]))
-  if (is.na(lat_val) || is.na(lon_val)) return(empty)
+  if (is.na(lat_val) || is.na(lon_val)) {
+    return(empty)
+  }
 
   lat <- if (toupper(m[3L]) == "S") -lat_val else lat_val
   lon <- if (toupper(m[5L]) == "W") -lon_val else lon_val
@@ -348,7 +359,9 @@ utils::globalVariables(c(
   # Plausibility guard: a regex-matching but out-of-range value (malformed
   # GenBank free-text metadata) should degrade to NA/NA like any other
   # unparseable input, not propagate an impossible coordinate downstream.
-  if (is.na(lat) || is.na(lon) || abs(lat) > 90 || abs(lon) > 180) return(empty)
+  if (is.na(lat) || is.na(lon) || abs(lat) > 90 || abs(lon) > 180) {
+    return(empty)
+  }
 
   c(lat = lat, lon = lon)
 }
@@ -365,15 +378,19 @@ utils::globalVariables(c(
 #' successfully), so no separate search/summary round trip is needed.
 #' @noRd
 .fetch_locations_batched <- function(accessions, batch_size = 100L) {
-  empty <- data.frame(composite_id = character(0L), lat = numeric(0L),
-                      lon = numeric(0L), country = character(0L),
-                      stringsAsFactors = FALSE)
+  empty <- data.frame(
+    composite_id = character(0L), lat = numeric(0L),
+    lon = numeric(0L), country = character(0L),
+    stringsAsFactors = FALSE
+  )
 
   accessions <- unique(accessions[!is.na(accessions) & nzchar(accessions)])
-  if (length(accessions) == 0L) return(empty)
+  if (length(accessions) == 0L) {
+    return(empty)
+  }
 
   batches <- split(accessions, ceiling(seq_along(accessions) / batch_size))
-  res     <- vector("list", length(batches))
+  res <- vector("list", length(batches))
 
   for (i in seq_along(batches)) {
     result <- .retry_fetch(function() {
@@ -381,15 +398,15 @@ utils::globalVariables(c(
         db = "nucleotide", id = batches[[i]], rettype = "gb", retmode = "xml"
       )
       xml_doc <- xml2::read_xml(xml_raw)
-      nodes   <- xml2::xml_find_all(xml_doc, "//GBSeq")
+      nodes <- xml2::xml_find_all(xml_doc, "//GBSeq")
 
       rows <- lapply(nodes, function(node) {
-        acc   <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
+        acc <- xml2::xml_text(xml2::xml_find_first(node, "./GBSeq_primary-accession"))
         quals <- xml2::xml_find_all(
           node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
         )
         qnames <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_name"))
-        qvals  <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_value"))
+        qvals <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_value"))
 
         lat_lon_raw <- qvals[qnames == "lat_lon"]
         country_raw <- qvals[qnames == "country"]
@@ -397,9 +414,9 @@ utils::globalVariables(c(
 
         data.frame(
           composite_id = acc,
-          lat          = ll[["lat"]],
-          lon          = ll[["lon"]],
-          country      = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
+          lat = ll[["lat"]],
+          lon = ll[["lon"]],
+          country = if (length(country_raw) > 0L) country_raw[1L] else NA_character_,
           stringsAsFactors = FALSE
         )
       })
@@ -438,8 +455,8 @@ utils::globalVariables(c(
   )
   for (rc in tolower(rank_system)) out[[rc]] <- character(0L)
   if (isTRUE(include_location)) {
-    out$lat     <- numeric(0L)
-    out$lon     <- numeric(0L)
+    out$lat <- numeric(0L)
+    out$lon <- numeric(0L)
     out$country <- character(0L)
   }
   out
@@ -449,21 +466,23 @@ utils::globalVariables(c(
 #' Parse FASTA text into a data frame of composite_id + sequence
 #' @noRd
 .parse_fasta_text <- function(fasta_text) {
-  lines      <- strsplit(fasta_text, "\n")[[1L]]
+  lines <- strsplit(fasta_text, "\n")[[1L]]
   header_idx <- which(startsWith(lines, ">"))
 
-  if (length(header_idx) == 0L) return(data.frame(
-    composite_id = character(0L), sequence = character(0L),
-    stringsAsFactors = FALSE
-  ))
+  if (length(header_idx) == 0L) {
+    return(data.frame(
+      composite_id = character(0L), sequence = character(0L),
+      stringsAsFactors = FALSE
+    ))
+  }
 
   seq_end_idx <- c(header_idx[-1L] - 1L, length(lines))
 
-  ids  <- character(length(header_idx))
+  ids <- character(length(header_idx))
   seqs <- character(length(header_idx))
 
   for (k in seq_along(header_idx)) {
-    hdr    <- sub("^>", "", lines[header_idx[k]])
+    hdr <- sub("^>", "", lines[header_idx[k]])
     # Accession = first token; strip version suffix (.1, .2, etc.)
     ids[k] <- sub("\\.[0-9]+$", "", strsplit(trimws(hdr), "\\s+")[[1L]][1L])
     # A header with no sequence lines after it (a truncated FASTA -- reachable,
@@ -657,43 +676,51 @@ utils::globalVariables(c(
 #' @importFrom dplyr filter mutate group_by slice_sample ungroup n select all_of left_join distinct
 #' @export
 fetch_ncbi_reference_sequences <- function(taxa,
-                                      barcode_term,
-                                      rank_system     = c("family", "genus", "species"),
-                                      min_len         = NULL,
-                                      max_len         = NULL,
-                                      max_per_species = NULL,
-                                      max_per_genus   = NULL,
-                                      priority_taxa   = NULL,
-                                      max_sequences   = 10000L,
-                                      min_per_taxon   = 50L,
-                                      blacklist_regex = paste0("uncultured|environmental|predicted|",
-                                                               "vector|synthetic|unverified"),
-                                      min_date        = NULL,
-                                      max_date        = NULL,
-                                      cache_dir       = tools::R_user_dir("TaxaLikely", "cache"),
-                                      ncbi_api_key    = NULL,
-                                      include_location = FALSE,
-                                      keep_out_of_range = FALSE,
-                                      max_out_of_range_per_species = 2L,
-                                      max_out_of_range_len = 200000L) {
-
+                                           barcode_term,
+                                           rank_system = c("family", "genus", "species"),
+                                           min_len = NULL,
+                                           max_len = NULL,
+                                           max_per_species = NULL,
+                                           max_per_genus = NULL,
+                                           priority_taxa = NULL,
+                                           max_sequences = 10000L,
+                                           min_per_taxon = 50L,
+                                           blacklist_regex = paste0(
+                                             "uncultured|environmental|predicted|",
+                                             "vector|synthetic|unverified"
+                                           ),
+                                           min_date = NULL,
+                                           max_date = NULL,
+                                           cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
+                                           ncbi_api_key = NULL,
+                                           include_location = FALSE,
+                                           keep_out_of_range = FALSE,
+                                           max_out_of_range_per_species = 2L,
+                                           max_out_of_range_len = 200000L) {
   # --- Validate inputs --------------------------------------------------------
-  if (!requireNamespace("rentrez", quietly = TRUE))
+  if (!requireNamespace("rentrez", quietly = TRUE)) {
     stop("fetch_ncbi_reference_sequences requires the 'rentrez' package. Install with: install.packages('rentrez')")
-  if (!requireNamespace("xml2", quietly = TRUE))
+  }
+  if (!requireNamespace("xml2", quietly = TRUE)) {
     stop("fetch_ncbi_reference_sequences requires the 'xml2' package. Install with: install.packages('xml2')")
-  if (!is.character(taxa) || length(taxa) == 0L)
+  }
+  if (!is.character(taxa) || length(taxa) == 0L) {
     stop("taxa must be a non-empty character vector")
-  if (!is.character(barcode_term) || length(barcode_term) == 0L)
+  }
+  if (!is.character(barcode_term) || length(barcode_term) == 0L) {
     stop("barcode_term must be a non-empty character vector")
-  if (!is.character(rank_system) || length(rank_system) == 0L)
+  }
+  if (!is.character(rank_system) || length(rank_system) == 0L) {
     stop("rank_system must be a non-empty character vector (coarse to fine)")
+  }
   if (!is.null(max_per_species) && (!is.numeric(max_per_species) ||
-      max_per_species < 1L))
+    max_per_species < 1L)) {
     stop("max_per_species must be a positive integer or NULL")
+  }
   if (!is.null(max_per_genus) && (!is.numeric(max_per_genus) ||
-      max_per_genus < 1L))
+    max_per_genus < 1L)) {
     stop("max_per_genus must be a positive integer or NULL")
+  }
 
   # Set NCBI API key if provided
   if (!is.null(ncbi_api_key)) {
@@ -719,14 +746,19 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   for (i in seq_along(taxa)) {
     term <- .build_search_term(taxa[i], barcode_term, min_date, max_date)
-    tryCatch({
-      res <- rentrez::entrez_search(db = "nucleotide", term = term, retmax = 0L)
-      counts[i] <- as.integer(res$count)
-    }, error = function(e) {
-      warning(sprintf("Count query failed for '%s': %s", taxa[i],
-                      conditionMessage(e)))
-      counts[i] <<- NA_integer_
-    })
+    tryCatch(
+      {
+        res <- rentrez::entrez_search(db = "nucleotide", term = term, retmax = 0L)
+        counts[i] <- as.integer(res$count)
+      },
+      error = function(e) {
+        warning(sprintf(
+          "Count query failed for '%s': %s", taxa[i],
+          conditionMessage(e)
+        ))
+        counts[i] <<- NA_integer_
+      }
+    )
     Sys.sleep(delay)
   }
 
@@ -734,9 +766,14 @@ fetch_ncbi_reference_sequences <- function(taxa,
   total <- sum(counts, na.rm = TRUE)
   message(sprintf("NCBI hit counts by taxon (%d total):", total))
   for (i in seq_along(taxa)) {
-    message(sprintf("  %s: %s", taxa[i],
-                    if (is.na(counts[i])) "error" else
-                      format(counts[i], big.mark = ",")))
+    message(sprintf(
+      "  %s: %s", taxa[i],
+      if (is.na(counts[i])) {
+        "error"
+      } else {
+        format(counts[i], big.mark = ",")
+      }
+    ))
   }
 
   if (total == 0L && n_failed_counts == length(taxa)) {
@@ -755,7 +792,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
   priority_budget <- 0L
 
   if (total > max_sequences && !is.null(priority_taxa) &&
-      length(priority_taxa) > 0L) {
+    length(priority_taxa) > 0L) {
     # Clean priority list: unique, non-empty species names
     priority_taxa <- unique(trimws(priority_taxa))
     priority_taxa <- priority_taxa[!is.na(priority_taxa) & nzchar(priority_taxa)]
@@ -764,27 +801,36 @@ fetch_ncbi_reference_sequences <- function(taxa,
       message(sprintf(
         "\nTotal NCBI hits (%s) exceed max_sequences (%s).\n",
         format(total, big.mark = ","),
-        format(max_sequences, big.mark = ",")))
+        format(max_sequences, big.mark = ",")
+      ))
       message(sprintf(
         "Counting %d priority species from match data...",
-        length(priority_taxa)))
+        length(priority_taxa)
+      ))
 
       # Count hits for each priority species
       priority_counts <- integer(length(priority_taxa))
       names(priority_counts) <- priority_taxa
 
-      p_batches <- split(priority_taxa,
-                         ceiling(seq_along(priority_taxa) / 40L))
+      p_batches <- split(
+        priority_taxa,
+        ceiling(seq_along(priority_taxa) / 40L)
+      )
       for (pb in p_batches) {
         for (sp in pb) {
-          tryCatch({
-            sp_term <- .build_search_term(sp, barcode_term, min_date, max_date)
-            res <- rentrez::entrez_search(db = "nucleotide", term = sp_term,
-                                          retmax = 0L)
-            priority_counts[[sp]] <- as.integer(res$count)
-          }, error = function(e) {
-            priority_counts[[sp]] <<- 0L
-          })
+          tryCatch(
+            {
+              sp_term <- .build_search_term(sp, barcode_term, min_date, max_date)
+              res <- rentrez::entrez_search(
+                db = "nucleotide", term = sp_term,
+                retmax = 0L
+              )
+              priority_counts[[sp]] <- as.integer(res$count)
+            },
+            error = function(e) {
+              priority_counts[[sp]] <<- 0L
+            }
+          )
           Sys.sleep(delay)
         }
       }
@@ -794,12 +840,13 @@ fetch_ncbi_reference_sequences <- function(taxa,
       message(sprintf(
         "  Priority species: %d of %d have sequences (%s total hits)",
         n_priority_spp, length(priority_taxa),
-        format(priority_budget, big.mark = ",")))
+        format(priority_budget, big.mark = ",")
+      ))
     }
   }
 
   # Compute per-taxon caps for the broad (family/genus) searches
-  retmax_cap <- stats::setNames(counts, taxa)  # default: fetch everything
+  retmax_cap <- stats::setNames(counts, taxa) # default: fetch everything
 
   if (total > max_sequences) {
     family_budget <- max(0L, max_sequences - priority_budget)
@@ -810,7 +857,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
       remaining <- family_budget - sum(guarantee)
 
       if (remaining > 0L) {
-        excess     <- pmax(counts[valid] - guarantee, 0L)
+        excess <- pmax(counts[valid] - guarantee, 0L)
         total_excess <- sum(excess)
         if (total_excess > 0L) {
           bonus <- floor(excess / total_excess * remaining)
@@ -820,8 +867,10 @@ fetch_ncbi_reference_sequences <- function(taxa,
         retmax_cap[valid] <- guarantee + bonus
       } else {
         # Budget exhausted by guarantees; give each the minimum possible
-        retmax_cap[valid] <- pmin(counts[valid],
-                                  pmax(1L, floor(family_budget / sum(valid))))
+        retmax_cap[valid] <- pmin(
+          counts[valid],
+          pmax(1L, floor(family_budget / sum(valid)))
+        )
       }
     } else {
       # Priority species used entire budget; still give families a minimum
@@ -834,7 +883,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
       "Fetching up to %s sequences (%s priority + %s family-level).",
       format(total_plan, big.mark = ","),
       format(priority_budget, big.mark = ","),
-      format(sum(retmax_cap, na.rm = TRUE), big.mark = ",")))
+      format(sum(retmax_cap, na.rm = TRUE), big.mark = ",")
+    ))
   }
 
   # --- Step 2a: Fetch priority species first ---------------------------------
@@ -849,26 +899,34 @@ fetch_ncbi_reference_sequences <- function(taxa,
       p_cache_file <- NULL
       if (!is.null(cache_dir)) {
         safe_name <- gsub("[^A-Za-z0-9]", "_", sp)
-        safe_bc   <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
-        date_sfx     <- gsub("[^0-9]", "", paste0(
-                               if (is.null(min_date)) "X" else min_date, "_",
-                               if (is.null(max_date)) "X" else max_date))
+        safe_bc <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
+        date_sfx <- gsub("[^0-9]", "", paste0(
+          if (is.null(min_date)) "X" else min_date, "_",
+          if (is.null(max_date)) "X" else max_date
+        ))
         # oor_sfx (keep_out_of_range) included since the cached object is the
         # FULLY post-filter/post-downsample result, not raw summaries -- a
         # stale cache built with keep_out_of_range = FALSE genuinely lacks
         # out-of-range rows, so a later TRUE call must not silently reuse it.
-        oor_sfx <- if (keep_out_of_range)
-          sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len) else ""
+        oor_sfx <- if (keep_out_of_range) {
+          sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len)
+        } else {
+          ""
+        }
         # rank_sfx: the cached object is post-taxonomy-merge (see the
         # non-priority cache_file's identical comment below for the full
         # reasoning) -- must be part of the key or a stale cache built under a
         # narrower rank_system hard-crashes a later, wider rank_system call
         # ("undefined columns selected" at the keep_cols subset below).
         rank_sfx <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
-        p_cache_file <- file.path(cache_dir,
-                                  paste0("priority_", safe_name, "_", safe_bc,
-                                         "_l", eff_min_len, "_", eff_max_len,
-                                         "_d", date_sfx, oor_sfx, rank_sfx, "_meta.rds"))
+        p_cache_file <- file.path(
+          cache_dir,
+          paste0(
+            "priority_", safe_name, "_", safe_bc,
+            "_l", eff_min_len, "_", eff_max_len,
+            "_d", date_sfx, oor_sfx, rank_sfx, "_meta.rds"
+          )
+        )
         if (file.exists(p_cache_file)) {
           message(sprintf("  %s: loading from cache", sp))
           priority_meta[[sp]] <- readRDS(p_cache_file)
@@ -876,23 +934,30 @@ fetch_ncbi_reference_sequences <- function(taxa,
         }
       }
 
-      message(sprintf("  %s: fetching %s summaries...",
-                      sp, format(priority_counts[[sp]], big.mark = ",")))
-      tryCatch({
-        sp_term <- .build_search_term(sp, barcode_term, min_date, max_date)
-        search_obj <- rentrez::entrez_search(
-          db = "nucleotide", term = sp_term,
-          retmax = min(priority_counts[[sp]], 9999L), use_history = TRUE
-        )
-        meta <- .fetch_summaries_batched(search_obj)
-        if (!is.null(meta) && nrow(meta) > 0L) {
-          priority_meta[[sp]] <- meta
-          if (!is.null(p_cache_file)) saveRDS(meta, p_cache_file)
+      message(sprintf(
+        "  %s: fetching %s summaries...",
+        sp, format(priority_counts[[sp]], big.mark = ",")
+      ))
+      tryCatch(
+        {
+          sp_term <- .build_search_term(sp, barcode_term, min_date, max_date)
+          search_obj <- rentrez::entrez_search(
+            db = "nucleotide", term = sp_term,
+            retmax = min(priority_counts[[sp]], 9999L), use_history = TRUE
+          )
+          meta <- .fetch_summaries_batched(search_obj)
+          if (!is.null(meta) && nrow(meta) > 0L) {
+            priority_meta[[sp]] <- meta
+            if (!is.null(p_cache_file)) saveRDS(meta, p_cache_file)
+          }
+        },
+        error = function(e) {
+          warning(sprintf(
+            "Priority fetch failed for '%s': %s", sp,
+            conditionMessage(e)
+          ), call. = FALSE)
         }
-      }, error = function(e) {
-        warning(sprintf("Priority fetch failed for '%s': %s", sp,
-                        conditionMessage(e)), call. = FALSE)
-      })
+      )
       Sys.sleep(delay)
     }
   }
@@ -907,15 +972,19 @@ fetch_ncbi_reference_sequences <- function(taxa,
     # Check cache
     cache_file <- NULL
     if (!is.null(cache_dir)) {
-      safe_name  <- gsub("[^A-Za-z0-9]", "_", taxa[i])
-      safe_bc    <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
-      date_sfx2  <- gsub("[^0-9]", "", paste0(
-                              if (is.null(min_date)) "X" else min_date, "_",
-                              if (is.null(max_date)) "X" else max_date))
+      safe_name <- gsub("[^A-Za-z0-9]", "_", taxa[i])
+      safe_bc <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
+      date_sfx2 <- gsub("[^0-9]", "", paste0(
+        if (is.null(min_date)) "X" else min_date, "_",
+        if (is.null(max_date)) "X" else max_date
+      ))
       # See the priority-path's identical p_cache_file comment above for why
       # keep_out_of_range must be part of this key.
-      oor_sfx2   <- if (keep_out_of_range)
-        sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len) else ""
+      oor_sfx2 <- if (keep_out_of_range) {
+        sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len)
+      } else {
+        ""
+      }
       # rank_sfx2: `meta` is cached AFTER the taxonomy merge (line ~919 below:
       # `meta <- merge(meta, tax_map, ...)` runs before `saveRDS(meta,
       # cache_file)`), so the cached object's own columns are exactly whatever
@@ -930,11 +999,15 @@ fetch_ncbi_reference_sequences <- function(taxa,
       # never fetched into the cached object -- "undefined columns selected".
       # Same failure class already documented for Session 159's barcode_term
       # cache-staleness issue.
-      rank_sfx2  <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
-      cache_file <- file.path(cache_dir,
-                              paste0(safe_name, "_", safe_bc,
-                                     "_l", eff_min_len, "_", eff_max_len,
-                                     "_d", date_sfx2, oor_sfx2, rank_sfx2, "_meta.rds"))
+      rank_sfx2 <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
+      cache_file <- file.path(
+        cache_dir,
+        paste0(
+          safe_name, "_", safe_bc,
+          "_l", eff_min_len, "_", eff_max_len,
+          "_d", date_sfx2, oor_sfx2, rank_sfx2, "_meta.rds"
+        )
+      )
       if (file.exists(cache_file)) {
         message(sprintf("  %s: loading from cache", taxa[i]))
         all_meta[[i]] <- readRDS(cache_file)
@@ -947,146 +1020,166 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
     # Wrap entire per-taxon fetch in tryCatch so NCBI rate-limit or parse
     # errors skip one taxon instead of crashing the whole run.
-    tryCatch({
-      capped_msg <- if (fetch_n < counts[i])
-        sprintf(" (capped from %s)", format(counts[i], big.mark = ",")) else ""
-      message(sprintf("  %s: fetching %s summaries%s...",
-                      taxa[i], format(fetch_n, big.mark = ","), capped_msg))
+    tryCatch(
+      {
+        capped_msg <- if (fetch_n < counts[i]) {
+          sprintf(" (capped from %s)", format(counts[i], big.mark = ","))
+        } else {
+          ""
+        }
+        message(sprintf(
+          "  %s: fetching %s summaries%s...",
+          taxa[i], format(fetch_n, big.mark = ","), capped_msg
+        ))
 
-      term <- .build_search_term(taxa[i], barcode_term, min_date, max_date)
-      search_obj <- rentrez::entrez_search(
-        db = "nucleotide", term = term,
-        retmax = min(fetch_n, 9999L), use_history = TRUE
-      )
+        term <- .build_search_term(taxa[i], barcode_term, min_date, max_date)
+        search_obj <- rentrez::entrez_search(
+          db = "nucleotide", term = term,
+          retmax = min(fetch_n, 9999L), use_history = TRUE
+        )
 
-      # Summaries (lightweight: accession, taxid, length, title)
-      meta <- .fetch_summaries_batched(search_obj)
+        # Summaries (lightweight: accession, taxid, length, title)
+        meta <- .fetch_summaries_batched(search_obj)
 
-      if (is.null(meta) || nrow(meta) == 0L) {
-        warning(sprintf("No summaries retrieved for '%s'", taxa[i]),
-                call. = FALSE)
-        next
+        if (is.null(meta) || nrow(meta) == 0L) {
+          warning(sprintf("No summaries retrieved for '%s'", taxa[i]),
+            call. = FALSE
+          )
+          next
+        }
+
+        # Length filter (on summary metadata, before downloading sequences).
+        # keep_out_of_range = TRUE retains out-of-range (e.g. mitogenome-length)
+        # sequences too, tagged via in_barcode_range, instead of dropping them --
+        # needed so a regional-overlap check (e.g. restore_suppressed_
+        # candidates()'s coverage check) has real reference sequence content to
+        # compare against for species whose only NCBI submission is over-length,
+        # without a separate on-demand fetch. Capped separately below
+        # (max_out_of_range_per_species) so out-of-range sequences never compete
+        # with in-range ones for the max_per_species training-set budget.
+        meta$in_barcode_range <- !is.na(meta$slen) &
+          meta$slen >= eff_min_len &
+          meta$slen <= eff_max_len
+        meta <- if (keep_out_of_range) {
+          # max_out_of_range_len bounds what "out-of-range but still worth
+          # keeping" means -- without this, a well-sequenced species' whole-
+          # genome scaffold (real case found in production use: 111 million bp,
+          # not a mitogenome) gets retained just as readily as a real ~16-20kb
+          # mitogenome, making any later alignment against it pathologically
+          # slow for no benefit (a scaffold that large was never a candidate
+          # for "the rescuable region is embedded in this over-length
+          # submission" the way a mitogenome or chloroplast genome is).
+          # Default 200,000bp comfortably covers any real animal mitogenome
+          # (~15-20kb) or plant chloroplast genome (~120-160kb) with margin,
+          # while excluding genome/scaffold-scale sequences (typically
+          # millions+ bp) by orders of magnitude.
+          meta[!is.na(meta$slen) & meta$slen <= max_out_of_range_len, , drop = FALSE]
+        } else {
+          meta[meta$in_barcode_range, , drop = FALSE]
+        }
+
+        # Blacklist filter
+        if (!is.null(blacklist_regex) && nchar(blacklist_regex) > 0L) {
+          meta <- meta[!grepl(blacklist_regex, meta$title, ignore.case = TRUE), ,
+            drop = FALSE
+          ]
+        }
+
+        if (nrow(meta) == 0L) {
+          message(sprintf("  %s: no sequences passed filters", taxa[i]))
+          next
+        }
+
+        # Taxonomy bridge: taxid -> full lineage
+        unique_taxids <- unique(meta$taxid)
+        unique_taxids <- unique_taxids[!is.na(unique_taxids) &
+          nchar(unique_taxids) > 0L]
+
+        message(sprintf(
+          "  %s: resolving taxonomy for %d unique taxids...",
+          taxa[i], length(unique_taxids)
+        ))
+        tax_map <- .fetch_taxonomy_map(unique_taxids, tolower(rank_system))
+
+        if (is.null(tax_map) || nrow(tax_map) == 0L) {
+          warning(sprintf("Taxonomy resolution failed for '%s'", taxa[i]),
+            call. = FALSE
+          )
+          next
+        }
+
+        meta <- merge(meta, tax_map, by = "taxid", all.x = TRUE)
+
+        # Drop rows with missing finest-rank taxonomy
+        finest_rank <- tolower(rank_system[length(rank_system)])
+        meta <- meta[!is.na(meta[[finest_rank]]), , drop = FALSE]
+
+        # Filter to valid species names (reuse coverage.R helper pattern)
+        if (finest_rank == "species") {
+          meta <- meta[TaxaTools::is_plausible_binomial(meta$species), ,
+            drop = FALSE
+          ]
+        }
+
+        if (nrow(meta) == 0L) {
+          message(sprintf("  %s: no sequences with valid taxonomy", taxa[i]))
+          next
+        }
+
+        # Stratified downsampling. in-range and out-of-range rows are sampled
+        # SEPARATELY so out-of-range sequences (capped by
+        # max_out_of_range_per_species below) never displace in-range
+        # training-set candidates within the max_per_species/max_per_genus
+        # budgets -- those budgets keep their existing pre-keep_out_of_range
+        # meaning entirely.
+        in_range_meta <- meta[meta$in_barcode_range, , drop = FALSE]
+        out_range_meta <- meta[!meta$in_barcode_range, , drop = FALSE]
+
+        if (!is.null(max_per_species) && finest_rank == "species") {
+          in_range_meta <- dplyr::group_by(in_range_meta, species)
+          in_range_meta <- dplyr::slice_sample(in_range_meta, n = max_per_species)
+          in_range_meta <- dplyr::ungroup(in_range_meta)
+        }
+        if (!is.null(max_per_genus) && "genus" %in% tolower(rank_system)) {
+          in_range_meta <- dplyr::group_by(in_range_meta, genus)
+          in_range_meta <- dplyr::slice_sample(in_range_meta, n = max_per_genus)
+          in_range_meta <- dplyr::ungroup(in_range_meta)
+        }
+        if (nrow(out_range_meta) > 0L && finest_rank == "species") {
+          out_range_meta <- dplyr::group_by(out_range_meta, species)
+          out_range_meta <- dplyr::slice_sample(out_range_meta, n = max_out_of_range_per_species)
+          out_range_meta <- dplyr::ungroup(out_range_meta)
+        }
+
+        meta <- dplyr::bind_rows(in_range_meta, out_range_meta)
+
+        message(sprintf(
+          "  %s: %d sequences after filtering/downsampling%s",
+          taxa[i], nrow(meta),
+          if (keep_out_of_range) {
+            sprintf(
+              " (%d in-range, %d out-of-range)",
+              sum(meta$in_barcode_range), sum(!meta$in_barcode_range)
+            )
+          } else {
+            ""
+          }
+        ))
+
+        all_meta[[i]] <- meta
+
+        # Cache intermediate result
+        if (!is.null(cache_file)) {
+          saveRDS(meta, cache_file)
+        }
+      },
+      error = function(e) {
+        warning(sprintf(
+          "fetch_ncbi_reference_sequences: '%s' failed (%s). Skipping this taxon.",
+          taxa[i], conditionMessage(e)
+        ), call. = FALSE)
       }
-
-      # Length filter (on summary metadata, before downloading sequences).
-      # keep_out_of_range = TRUE retains out-of-range (e.g. mitogenome-length)
-      # sequences too, tagged via in_barcode_range, instead of dropping them --
-      # needed so a regional-overlap check (e.g. restore_suppressed_
-      # candidates()'s coverage check) has real reference sequence content to
-      # compare against for species whose only NCBI submission is over-length,
-      # without a separate on-demand fetch. Capped separately below
-      # (max_out_of_range_per_species) so out-of-range sequences never compete
-      # with in-range ones for the max_per_species training-set budget.
-      meta$in_barcode_range <- !is.na(meta$slen) &
-                               meta$slen >= eff_min_len &
-                               meta$slen <= eff_max_len
-      meta <- if (keep_out_of_range) {
-        # max_out_of_range_len bounds what "out-of-range but still worth
-        # keeping" means -- without this, a well-sequenced species' whole-
-        # genome scaffold (real case found in production use: 111 million bp,
-        # not a mitogenome) gets retained just as readily as a real ~16-20kb
-        # mitogenome, making any later alignment against it pathologically
-        # slow for no benefit (a scaffold that large was never a candidate
-        # for "the rescuable region is embedded in this over-length
-        # submission" the way a mitogenome or chloroplast genome is).
-        # Default 200,000bp comfortably covers any real animal mitogenome
-        # (~15-20kb) or plant chloroplast genome (~120-160kb) with margin,
-        # while excluding genome/scaffold-scale sequences (typically
-        # millions+ bp) by orders of magnitude.
-        meta[!is.na(meta$slen) & meta$slen <= max_out_of_range_len, , drop = FALSE]
-      } else {
-        meta[meta$in_barcode_range, , drop = FALSE]
-      }
-
-      # Blacklist filter
-      if (!is.null(blacklist_regex) && nchar(blacklist_regex) > 0L) {
-        meta <- meta[!grepl(blacklist_regex, meta$title, ignore.case = TRUE),
-                     , drop = FALSE]
-      }
-
-      if (nrow(meta) == 0L) {
-        message(sprintf("  %s: no sequences passed filters", taxa[i]))
-        next
-      }
-
-      # Taxonomy bridge: taxid -> full lineage
-      unique_taxids <- unique(meta$taxid)
-      unique_taxids <- unique_taxids[!is.na(unique_taxids) &
-                                      nchar(unique_taxids) > 0L]
-
-      message(sprintf("  %s: resolving taxonomy for %d unique taxids...",
-                      taxa[i], length(unique_taxids)))
-      tax_map <- .fetch_taxonomy_map(unique_taxids, tolower(rank_system))
-
-      if (is.null(tax_map) || nrow(tax_map) == 0L) {
-        warning(sprintf("Taxonomy resolution failed for '%s'", taxa[i]),
-                call. = FALSE)
-        next
-      }
-
-      meta <- merge(meta, tax_map, by = "taxid", all.x = TRUE)
-
-      # Drop rows with missing finest-rank taxonomy
-      finest_rank <- tolower(rank_system[length(rank_system)])
-      meta <- meta[!is.na(meta[[finest_rank]]), , drop = FALSE]
-
-      # Filter to valid species names (reuse coverage.R helper pattern)
-      if (finest_rank == "species") {
-        meta <- meta[TaxaTools::is_plausible_binomial(meta$species),
-                     , drop = FALSE]
-      }
-
-      if (nrow(meta) == 0L) {
-        message(sprintf("  %s: no sequences with valid taxonomy", taxa[i]))
-        next
-      }
-
-      # Stratified downsampling. in-range and out-of-range rows are sampled
-      # SEPARATELY so out-of-range sequences (capped by
-      # max_out_of_range_per_species below) never displace in-range
-      # training-set candidates within the max_per_species/max_per_genus
-      # budgets -- those budgets keep their existing pre-keep_out_of_range
-      # meaning entirely.
-      in_range_meta  <- meta[meta$in_barcode_range, , drop = FALSE]
-      out_range_meta <- meta[!meta$in_barcode_range, , drop = FALSE]
-
-      if (!is.null(max_per_species) && finest_rank == "species") {
-        in_range_meta <- dplyr::group_by(in_range_meta, species)
-        in_range_meta <- dplyr::slice_sample(in_range_meta, n = max_per_species)
-        in_range_meta <- dplyr::ungroup(in_range_meta)
-      }
-      if (!is.null(max_per_genus) && "genus" %in% tolower(rank_system)) {
-        in_range_meta <- dplyr::group_by(in_range_meta, genus)
-        in_range_meta <- dplyr::slice_sample(in_range_meta, n = max_per_genus)
-        in_range_meta <- dplyr::ungroup(in_range_meta)
-      }
-      if (nrow(out_range_meta) > 0L && finest_rank == "species") {
-        out_range_meta <- dplyr::group_by(out_range_meta, species)
-        out_range_meta <- dplyr::slice_sample(out_range_meta, n = max_out_of_range_per_species)
-        out_range_meta <- dplyr::ungroup(out_range_meta)
-      }
-
-      meta <- dplyr::bind_rows(in_range_meta, out_range_meta)
-
-      message(sprintf("  %s: %d sequences after filtering/downsampling%s",
-                      taxa[i], nrow(meta),
-                      if (keep_out_of_range)
-                        sprintf(" (%d in-range, %d out-of-range)",
-                                sum(meta$in_barcode_range), sum(!meta$in_barcode_range))
-                      else ""))
-
-      all_meta[[i]] <- meta
-
-      # Cache intermediate result
-      if (!is.null(cache_file)) {
-        saveRDS(meta, cache_file)
-      }
-    }, error = function(e) {
-      warning(sprintf(
-        "fetch_ncbi_reference_sequences: '%s' failed (%s). Skipping this taxon.",
-        taxa[i], conditionMessage(e)
-      ), call. = FALSE)
-    })
+    )
   }
 
   # --- Combine priority + family metadata -------------------------------------
@@ -1107,34 +1200,41 @@ fetch_ncbi_reference_sequences <- function(taxa,
         # max_out_of_range_len bound -- see the family/genus path's identical
         # comment above for why this is needed.
         priority_combined[!is.na(priority_combined$slen) &
-                            priority_combined$slen <= max_out_of_range_len, , drop = FALSE]
+          priority_combined$slen <= max_out_of_range_len, , drop = FALSE]
       } else {
         priority_combined[priority_combined$in_barcode_range, , drop = FALSE]
       }
       # Blacklist filter
       if (!is.null(blacklist_regex) && nchar(blacklist_regex) > 0L) {
         priority_combined <- priority_combined[
-          !grepl(blacklist_regex, priority_combined$title, ignore.case = TRUE),
-          , drop = FALSE]
+          !grepl(blacklist_regex, priority_combined$title, ignore.case = TRUE), ,
+          drop = FALSE
+        ]
       }
       if (nrow(priority_combined) > 0L) {
         # Taxonomy resolution
         p_taxids <- unique(priority_combined$taxid)
         p_taxids <- p_taxids[!is.na(p_taxids) & nchar(p_taxids) > 0L]
         if (length(p_taxids) > 0L) {
-          message(sprintf("Resolving taxonomy for %d priority taxids...",
-                          length(p_taxids)))
+          message(sprintf(
+            "Resolving taxonomy for %d priority taxids...",
+            length(p_taxids)
+          ))
           p_tax_map <- .fetch_taxonomy_map(p_taxids, tolower(rank_system))
           if (!is.null(p_tax_map) && nrow(p_tax_map) > 0L) {
             priority_combined <- merge(priority_combined, p_tax_map,
-                                       by = "taxid", all.x = TRUE)
+              by = "taxid", all.x = TRUE
+            )
             finest_rank <- tolower(rank_system[length(rank_system)])
             priority_combined <- priority_combined[
-              !is.na(priority_combined[[finest_rank]]), , drop = FALSE]
+              !is.na(priority_combined[[finest_rank]]), ,
+              drop = FALSE
+            ]
             if (finest_rank == "species") {
               priority_combined <- priority_combined[
-                TaxaTools::is_plausible_binomial(priority_combined$species),
-                , drop = FALSE]
+                TaxaTools::is_plausible_binomial(priority_combined$species), ,
+                drop = FALSE
+              ]
             }
             # Cap out-of-range rows per species (priority species otherwise
             # get their full allocation, uncapped, by design -- but an
@@ -1142,8 +1242,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
             # is still worth bounding for the same reason as the family/
             # genus path above).
             if (keep_out_of_range && finest_rank == "species" &&
-                nrow(priority_combined) > 0L) {
-              p_in_range  <- priority_combined[priority_combined$in_barcode_range, , drop = FALSE]
+              nrow(priority_combined) > 0L) {
+              p_in_range <- priority_combined[priority_combined$in_barcode_range, , drop = FALSE]
               p_out_range <- priority_combined[!priority_combined$in_barcode_range, , drop = FALSE]
               if (nrow(p_out_range) > 0L) {
                 p_out_range <- dplyr::group_by(p_out_range, species)
@@ -1161,7 +1261,9 @@ fetch_ncbi_reference_sequences <- function(taxa,
             "Priority species: %d sequences after filtering (%d species)",
             nrow(priority_combined),
             dplyr::n_distinct(priority_combined[[
-              tolower(rank_system[length(rank_system)])]])))
+              tolower(rank_system[length(rank_system)])
+            ]])
+          ))
         }
       }
     } else {
@@ -1187,8 +1289,10 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # separately-written code paths that aren't guaranteed to produce
   # byte-identical column sets even when both are conceptually "the same
   # shape."
-  meta_parts <- Filter(Negate(is.null),
-                       list(priority_combined, family_meta))
+  meta_parts <- Filter(
+    Negate(is.null),
+    list(priority_combined, family_meta)
+  )
   combined_meta <- if (length(meta_parts) > 0L) dplyr::bind_rows(meta_parts) else NULL
 
   if (is.null(combined_meta) || nrow(combined_meta) == 0L) {
@@ -1202,7 +1306,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   # --- Step 3: Fetch FASTA sequences ------------------------------------------
   fasta_text <- .fetch_fasta_batched(combined_meta$acc)
-  fasta_df   <- .parse_fasta_text(fasta_text)
+  fasta_df <- .parse_fasta_text(fasta_text)
 
   if (nrow(fasta_df) == 0L) {
     warning("FASTA download returned no sequences")
@@ -1223,32 +1327,37 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # unchanged) would lack it, and this keeps that stale-cache case a graceful
   # NA-column omission rather than a hard "undefined columns selected" crash.
   if ("create_date" %in% names(combined_meta)) keep_cols <- c(keep_cols, "create_date")
-  lookup    <- combined_meta[!duplicated(combined_meta$composite_id), keep_cols,
-                             drop = FALSE]
+  lookup <- combined_meta[!duplicated(combined_meta$composite_id), keep_cols,
+    drop = FALSE
+  ]
 
   reference_df <- merge(fasta_df, lookup, by = "composite_id", all.x = FALSE)
   reference_df <- reference_df[!is.na(reference_df$sequence) &
-                                nchar(reference_df$sequence) > 0L, , drop = FALSE]
+    nchar(reference_df$sequence) > 0L, , drop = FALSE]
 
   # --- Optional: collection location (lat/lon/country) -----------------------
   if (include_location) {
-    message(sprintf("Fetching location metadata for %d accessions...",
-                    length(unique(combined_meta$acc))))
+    message(sprintf(
+      "Fetching location metadata for %d accessions...",
+      length(unique(combined_meta$acc))
+    ))
     loc_df <- .fetch_locations_batched(combined_meta$acc)
     if (nrow(loc_df) > 0L) {
       reference_df <- merge(reference_df, loc_df, by = "composite_id", all.x = TRUE)
     } else {
-      reference_df$lat     <- NA_real_
-      reference_df$lon     <- NA_real_
+      reference_df$lat <- NA_real_
+      reference_df$lon <- NA_real_
       reference_df$country <- NA_character_
     }
   }
 
   finest_rank <- tolower(rank_system[length(rank_system)])
-  message(sprintf("Done. reference_df: %d sequences, %d unique %s",
-                  nrow(reference_df),
-                  dplyr::n_distinct(reference_df[[finest_rank]]),
-                  finest_rank))
+  message(sprintf(
+    "Done. reference_df: %d sequences, %d unique %s",
+    nrow(reference_df),
+    dplyr::n_distinct(reference_df[[finest_rank]]),
+    finest_rank
+  ))
   reference_df
 }
 
@@ -1282,18 +1391,24 @@ fetch_ncbi_reference_sequences <- function(taxa,
     httr2::req_error(is_error = function(resp) FALSE)
 
   resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NA_character_)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(NA_character_)
+  }
 
   body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
   terms <- body[["successful_terms"]]
-  if (is.null(terms) || length(terms) == 0L) return(NA_character_)
+  if (is.null(terms) || length(terms) == 0L) {
+    return(NA_character_)
+  }
 
   matched <- vapply(terms, function(x) {
     v <- x[["matched"]]
     if (is.null(v)) NA_character_ else v
   }, character(1L))
   matched <- matched[!is.na(matched) & nzchar(matched)]
-  if (length(matched) == 0L) return(NA_character_)
+  if (length(matched) == 0L) {
+    return(NA_character_)
+  }
 
   paste(matched, collapse = ";")
 }
@@ -1307,7 +1422,9 @@ fetch_ncbi_reference_sequences <- function(taxa,
     httr2::req_error(is_error = function(resp) FALSE)
 
   resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NA_character_)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(NA_character_)
+  }
 
   body <- tryCatch(httr2::resp_body_json(resp), error = function(e) NULL)
   qid <- body[["query_id"]]
@@ -1330,14 +1447,20 @@ fetch_ncbi_reference_sequences <- function(taxa,
     httr2::req_error(is_error = function(resp) FALSE)
 
   resp <- tryCatch(httr2::req_perform(req), error = function(e) NULL)
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(NULL)
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(NULL)
+  }
 
   txt <- tryCatch(httr2::resp_body_string(resp), error = function(e) NULL)
-  if (is.null(txt) || !nzchar(trimws(txt))) return(NULL)
+  if (is.null(txt) || !nzchar(trimws(txt))) {
+    return(NULL)
+  }
 
   tryCatch(
-    utils::read.delim(text = txt, sep = "\t", quote = "", na.strings = "",
-                      stringsAsFactors = FALSE, check.names = FALSE),
+    utils::read.delim(
+      text = txt, sep = "\t", quote = "", na.strings = "",
+      stringsAsFactors = FALSE, check.names = FALSE
+    ),
     error = function(e) NULL
   )
 }
@@ -1352,12 +1475,18 @@ fetch_ncbi_reference_sequences <- function(taxa,
 #' @noRd
 .parse_bold_coord <- function(x) {
   empty <- c(lat = NA_real_, lon = NA_real_)
-  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) return(empty)
+  if (is.null(x) || length(x) != 1L || is.na(x) || !nzchar(trimws(x))) {
+    return(empty)
+  }
   x <- gsub("[][]", "", x)
   parts <- trimws(strsplit(x, ",", fixed = TRUE)[[1L]])
-  if (length(parts) != 2L) return(empty)
+  if (length(parts) != 2L) {
+    return(empty)
+  }
   vals <- suppressWarnings(as.numeric(parts))
-  if (anyNA(vals)) return(empty)
+  if (anyNA(vals)) {
+    return(empty)
+  }
   c(lat = vals[1L], lon = vals[2L])
 }
 
@@ -1440,21 +1569,25 @@ fetch_ncbi_reference_sequences <- function(taxa,
 #' @importFrom dplyr group_by slice_sample ungroup n_distinct bind_rows
 #' @export
 fetch_bold_reference_sequences <- function(taxa,
-                                           barcode_term    = NULL,
-                                           rank_system     = c("family", "genus", "species"),
+                                           barcode_term = NULL,
+                                           rank_system = c("family", "genus", "species"),
                                            max_per_species = NULL,
                                            include_location = TRUE) {
-
-  if (!requireNamespace("httr2", quietly = TRUE))
+  if (!requireNamespace("httr2", quietly = TRUE)) {
     stop("fetch_bold_reference_sequences requires the 'httr2' package. Install with: install.packages('httr2')")
-  if (!is.character(taxa) || length(taxa) == 0L)
+  }
+  if (!is.character(taxa) || length(taxa) == 0L) {
     stop("taxa must be a non-empty character vector")
-  if (!is.character(rank_system) || length(rank_system) == 0L)
+  }
+  if (!is.character(rank_system) || length(rank_system) == 0L) {
     stop("rank_system must be a non-empty character vector (coarse to fine)")
-  if (!is.null(barcode_term) && !is.character(barcode_term))
+  }
+  if (!is.null(barcode_term) && !is.character(barcode_term)) {
     stop("barcode_term must be a character vector or NULL")
-  if (!is.null(max_per_species) && (!is.numeric(max_per_species) || max_per_species < 1L))
+  }
+  if (!is.null(max_per_species) && (!is.numeric(max_per_species) || max_per_species < 1L)) {
     stop("max_per_species must be a positive integer or NULL")
+  }
 
   message("Querying BOLD Systems v5 Data Portal API...")
   all_records <- vector("list", length(taxa))
@@ -1516,7 +1649,7 @@ fetch_bold_reference_sequences <- function(taxa,
 
   if (!is.null(barcode_term)) {
     combined <- combined[!is.na(combined$marker_code) &
-                        combined$marker_code %in% barcode_term, , drop = FALSE]
+      combined$marker_code %in% barcode_term, , drop = FALSE]
     if (nrow(combined) == 0L) {
       message("No records matched the requested barcode_term after filtering.")
       return(empty_out)
@@ -1530,7 +1663,7 @@ fetch_bold_reference_sequences <- function(taxa,
   }
 
   if (!is.null(max_per_species) && "species" %in% rank_system &&
-      "species" %in% names(combined)) {
+    "species" %in% names(combined)) {
     combined <- dplyr::group_by(combined, species)
     combined <- dplyr::slice_sample(combined, n = max_per_species)
     combined <- dplyr::ungroup(combined)
@@ -1538,7 +1671,7 @@ fetch_bold_reference_sequences <- function(taxa,
 
   out <- data.frame(
     composite_id = combined$processid,
-    sequence     = combined$nuc,
+    sequence = combined$nuc,
     stringsAsFactors = FALSE
   )
 
@@ -1560,8 +1693,10 @@ fetch_bold_reference_sequences <- function(taxa,
 
   rownames(out) <- NULL
   finest_rank <- tolower(rank_system[length(rank_system)])
-  message(sprintf("Done. reference_df: %d sequences, %d unique %s",
-                  nrow(out), dplyr::n_distinct(out[[finest_rank]]), finest_rank))
+  message(sprintf(
+    "Done. reference_df: %d sequences, %d unique %s",
+    nrow(out), dplyr::n_distinct(out[[finest_rank]]), finest_rank
+  ))
   out
 }
 
@@ -1602,8 +1737,10 @@ fetch_bold_reference_sequences <- function(taxa,
 #' callers wanting a clean binomial should post-process, this parser does not
 #' guess which underscore-joined values are real names.
 #' @noRd
-.pr2_hierarchy <- c("domain", "supergroup", "division", "subdivision",
-                    "class", "order", "family", "genus", "species")
+.pr2_hierarchy <- c(
+  "domain", "supergroup", "division", "subdivision",
+  "class", "order", "family", "genus", "species"
+)
 
 #' Parse one semicolon-delimited taxonomy string into named rank values
 #'
@@ -1626,28 +1763,31 @@ fetch_bold_reference_sequences <- function(taxa,
   parts <- trimws(parts)
   # Treat empty, bare "NA", and unclassified entries as missing
   parts[parts == "" | parts == "NA" |
-        grepl("^unclassified$|^uncultured$", parts, ignore.case = TRUE)] <-
+    grepl("^unclassified$|^uncultured$", parts, ignore.case = TRUE)] <-
     NA_character_
 
   result <- stats::setNames(rep(NA_character_, length(rank_system)), rank_system)
 
   # Detect prefix-style by looking for pattern like "k__" or "d__" in any part
-  non_na    <- parts[!is.na(parts)]
+  non_na <- parts[!is.na(parts)]
   has_prefix <- length(non_na) > 0L && any(grepl("^[a-z]__", non_na))
 
   if (has_prefix) {
     # Map single-letter prefix to canonical rank name
-    prefix_map <- c(k = "kingdom", d = "kingdom", p = "phylum", c = "class",
-                    o = "order",   f = "family",   g = "genus", s = "species")
+    prefix_map <- c(
+      k = "kingdom", d = "kingdom", p = "phylum", c = "class",
+      o = "order", f = "family", g = "genus", s = "species"
+    )
     for (p in non_na) {
       m <- regmatches(p, regexpr("^([a-z])__(.+)$", p, perl = TRUE))
       if (length(m) == 0L || !nzchar(m)) next
       prefix <- substr(p, 1L, 1L)
-      val    <- sub("^[a-z]__", "", p)
+      val <- sub("^[a-z]__", "", p)
       if (!nzchar(val)) next
       rank <- prefix_map[prefix]
-      if (!is.na(rank) && rank %in% rank_system)
+      if (!is.na(rank) && rank %in% rank_system) {
         result[[rank]] <- val
+      }
     }
   } else {
     # Positional mapping. PR2's fixed 9-level shape is distinguished from the
@@ -1662,8 +1802,9 @@ fetch_bold_reference_sequences <- function(taxa,
     for (k in seq_along(parts)) {
       if (k > length(hierarchy)) break
       rank <- hierarchy[k]
-      if (rank %in% rank_system && !is.na(parts[k]))
+      if (rank %in% rank_system && !is.na(parts[k])) {
         result[[rank]] <- parts[k]
+      }
     }
   }
   result
@@ -1678,33 +1819,40 @@ fetch_bold_reference_sequences <- function(taxa,
 .parse_taxonomy_tsv <- function(taxonomy_file, rank_system) {
   raw <- tryCatch(
     utils::read.table(
-      taxonomy_file, sep = "\t", header = FALSE,
-      col.names      = c("seq_id", "tax_string"),
-      quote          = "",  comment.char = "",
+      taxonomy_file,
+      sep = "\t", header = FALSE,
+      col.names = c("seq_id", "tax_string"),
+      quote = "", comment.char = "",
       stringsAsFactors = FALSE, fill = TRUE
     ),
     error = function(e) {
-      stop(sprintf("Failed to read taxonomy file '%s': %s",
-                   basename(taxonomy_file), conditionMessage(e)))
+      stop(sprintf(
+        "Failed to read taxonomy file '%s': %s",
+        basename(taxonomy_file), conditionMessage(e)
+      ))
     }
   )
 
-  if (nrow(raw) == 0L)
+  if (nrow(raw) == 0L) {
     stop(sprintf("Taxonomy file is empty: %s", basename(taxonomy_file)))
+  }
 
   # Skip header rows: first field starts with "Feature", "feature", or "seq_id"
   if (grepl("^[Ff]eature|^seq.?id|^#", raw[1L, 1L])) raw <- raw[-1L, , drop = FALSE]
 
-  if (nrow(raw) == 0L)
-    stop(sprintf("Taxonomy file contained only a header row: %s",
-                 basename(taxonomy_file)))
+  if (nrow(raw) == 0L) {
+    stop(sprintf(
+      "Taxonomy file contained only a header row: %s",
+      basename(taxonomy_file)
+    ))
+  }
 
   # Strip version suffixes from IDs for consistent matching with FASTA headers
   raw$seq_id <- sub("\\.[0-9]+$", "", trimws(raw$seq_id))
 
   # Parse unique taxonomy strings (many rows share the same string -- parse once)
   unique_strings <- unique(raw$tax_string)
-  parsed_map     <- lapply(unique_strings, .parse_tax_string, rank_system = rank_system)
+  parsed_map <- lapply(unique_strings, .parse_tax_string, rank_system = rank_system)
   names(parsed_map) <- unique_strings
 
   # Build result data frame
@@ -1791,11 +1939,12 @@ fetch_bold_reference_sequences <- function(taxa,
 #' tax <- data.frame(
 #'   composite_id = c("ACC001", "ACC002"),
 #'   family = c("Fundulidae", "Atherinopsidae"),
-#'   genus  = c("Fundulus", "Atherinops"),
+#'   genus = c("Fundulus", "Atherinops"),
 #'   species = c("Fundulus parvipinnis", "Atherinops affinis")
 #' )
 #' ref <- read_reference_fasta("my_references.fasta", tax,
-#'                             rank_system = c("family", "genus", "species"))
+#'   rank_system = c("family", "genus", "species")
+#' )
 #'
 #' # Option B: QIIME2/RESCRIPt taxonomy file (prefix-style)
 #' ref <- read_reference_fasta(
@@ -1808,51 +1957,64 @@ fetch_bold_reference_sequences <- function(taxa,
 #' @export
 read_reference_fasta <- function(fasta_path, taxonomy = NULL, rank_system,
                                  taxonomy_file = NULL) {
-  if (!is.character(fasta_path) || length(fasta_path) != 1L)
+  if (!is.character(fasta_path) || length(fasta_path) != 1L) {
     stop("fasta_path must be a single file path")
-  if (!file.exists(fasta_path))
+  }
+  if (!file.exists(fasta_path)) {
     stop(sprintf("File not found: %s", fasta_path))
-  if (file.info(fasta_path)$size == 0L)
+  }
+  if (file.info(fasta_path)$size == 0L) {
     stop(sprintf("FASTA file is empty (0 bytes): %s", fasta_path))
-  if (!is.null(taxonomy) && !is.null(taxonomy_file))
+  }
+  if (!is.null(taxonomy) && !is.null(taxonomy_file)) {
     stop("Supply either 'taxonomy' or 'taxonomy_file', not both")
-  if (is.null(taxonomy) && is.null(taxonomy_file))
+  }
+  if (is.null(taxonomy) && is.null(taxonomy_file)) {
     stop("One of 'taxonomy' or 'taxonomy_file' must be supplied")
+  }
 
   rank_cols <- tolower(rank_system)
 
   # --- Resolve taxonomy -------------------------------------------------------
   if (!is.null(taxonomy_file)) {
     # Parse taxonomy from a TSV file (QIIME2 / RESCRIPt / SILVA / MIDORI2)
-    if (!is.character(taxonomy_file) || length(taxonomy_file) != 1L)
+    if (!is.character(taxonomy_file) || length(taxonomy_file) != 1L) {
       stop("taxonomy_file must be a single file path")
-    if (!file.exists(taxonomy_file))
+    }
+    if (!file.exists(taxonomy_file)) {
       stop(sprintf("taxonomy_file not found: %s", taxonomy_file))
+    }
     taxonomy <- .parse_taxonomy_tsv(taxonomy_file, rank_cols)
   }
 
-  if (!is.data.frame(taxonomy))
+  if (!is.data.frame(taxonomy)) {
     stop("taxonomy must be a data frame")
+  }
 
   names(taxonomy) <- tolower(names(taxonomy))
 
   needed <- c("composite_id", rank_cols)
   missing_cols <- setdiff(needed, names(taxonomy))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("taxonomy is missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")))
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "taxonomy is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
 
   # Read and parse FASTA
   fasta_text <- paste(readLines(fasta_path, warn = FALSE), collapse = "\n")
-  fasta_df   <- .parse_fasta_text(fasta_text)
+  fasta_df <- .parse_fasta_text(fasta_text)
 
-  if (nrow(fasta_df) == 0L)
+  if (nrow(fasta_df) == 0L) {
     stop("No sequences found in FASTA file (no headers detected)")
+  }
 
   # Check for headers-only (no actual sequence data)
   has_seq <- nchar(fasta_df$sequence) > 0L
-  if (!any(has_seq))
+  if (!any(has_seq)) {
     stop("FASTA file contains headers but no sequence data")
+  }
   if (any(!has_seq)) {
     n_empty <- sum(!has_seq)
     message(sprintf("Warning: %d header(s) with no sequence data will be dropped", n_empty))
@@ -1865,17 +2027,21 @@ read_reference_fasta <- function(fasta_path, taxonomy = NULL, rank_system,
   taxonomy$composite_id <- sub("\\.[0-9]+$", "", taxonomy$composite_id)
 
   # Join
-  keep_cols    <- c("composite_id", rank_cols)
-  lookup       <- taxonomy[!duplicated(taxonomy$composite_id), keep_cols,
-                           drop = FALSE]
+  keep_cols <- c("composite_id", rank_cols)
+  lookup <- taxonomy[!duplicated(taxonomy$composite_id), keep_cols,
+    drop = FALSE
+  ]
   reference_df <- merge(fasta_df, lookup, by = "composite_id", all.x = FALSE)
   reference_df <- reference_df[!is.na(reference_df$sequence) &
-                                nchar(reference_df$sequence) > 0L, , drop = FALSE]
+    nchar(reference_df$sequence) > 0L, , drop = FALSE]
 
   n_unmatched <- nrow(fasta_df) - nrow(reference_df)
-  if (n_unmatched > 0L)
-    message(sprintf("%d sequence(s) had no taxonomy match and were dropped",
-                    n_unmatched))
+  if (n_unmatched > 0L) {
+    message(sprintf(
+      "%d sequence(s) had no taxonomy match and were dropped",
+      n_unmatched
+    ))
+  }
 
   message(sprintf("reference_df: %d sequences", nrow(reference_df)))
   reference_df

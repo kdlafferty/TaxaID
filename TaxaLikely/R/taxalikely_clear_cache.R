@@ -46,16 +46,17 @@
 #' @export
 #' @examples
 #' \dontrun{
-#' taxalikely_clear_cache(dry_run = TRUE)         # see what's there first
-#' taxalikely_clear_cache()                       # actually clear it
-#' taxalikely_clear_cache(older_than_days = 180)  # only stale entries
+#' taxalikely_clear_cache(dry_run = TRUE) # see what's there first
+#' taxalikely_clear_cache() # actually clear it
+#' taxalikely_clear_cache(older_than_days = 180) # only stale entries
 #' }
 taxalikely_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
-                                    older_than_days = NULL,
-                                    dry_run = FALSE) {
+                                   older_than_days = NULL,
+                                   dry_run = FALSE) {
   inv <- TaxaTools::list_cache_files(cache_dir, .taxalikely_cache_patterns)
   TaxaTools::report_and_clear_cache(
-    inv, label = "taxalikely_clear_cache", cache_dir = cache_dir,
+    inv,
+    label = "taxalikely_clear_cache", cache_dir = cache_dir,
     older_than_days = older_than_days, dry_run = dry_run
   )
 }

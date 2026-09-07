@@ -8,10 +8,12 @@
 .make_match_ncbi <- function() {
   data.frame(
     observation_id = paste0("ESV_", 1:6),
-    accession      = c("AB123456.1", "KP891234.2", "NR_036856.1",
-                       "MH213045.1", "NR_024642.1", "AB987654.1"),
-    genus          = "Sebastes",
-    species        = "Sebastes mystinus",
+    accession = c(
+      "AB123456.1", "KP891234.2", "NR_036856.1",
+      "MH213045.1", "NR_024642.1", "AB987654.1"
+    ),
+    genus = "Sebastes",
+    species = "Sebastes mystinus",
     score_original = 99,
     stringsAsFactors = FALSE
   )
@@ -20,11 +22,13 @@
 .make_match_mixed <- function() {
   data.frame(
     observation_id = paste0("ESV_", 1:8),
-    accession      = c("AB123456.1", "NR_036856.1", "KP891234.2",
-                       "JV_voucher_00001", "JV_voucher_00002", "JV_voucher_00003",
-                       "MH213045.1", "NR_024642.1"),
-    genus          = "Haliotis",
-    species        = c(rep("Haliotis rufescens", 4), rep("Haliotis fulgens", 4)),
+    accession = c(
+      "AB123456.1", "NR_036856.1", "KP891234.2",
+      "JV_voucher_00001", "JV_voucher_00002", "JV_voucher_00003",
+      "MH213045.1", "NR_024642.1"
+    ),
+    genus = "Haliotis",
+    species = c(rep("Haliotis rufescens", 4), rep("Haliotis fulgens", 4)),
     score_original = 98,
     stringsAsFactors = FALSE
   )
@@ -33,10 +37,12 @@
 .make_match_predicted <- function() {
   data.frame(
     observation_id = paste0("ESV_", 1:6),
-    accession      = c("AB123456.1", "NR_036856.1", "XR_003654321.1",
-                       "XM_012345678.2", "KP891234.2", "NM_001234567.1"),
-    genus          = "Gadus",
-    species        = "Gadus morhua",
+    accession = c(
+      "AB123456.1", "NR_036856.1", "XR_003654321.1",
+      "XM_012345678.2", "KP891234.2", "NM_001234567.1"
+    ),
+    genus = "Gadus",
+    species = "Gadus morhua",
     score_original = 97,
     stringsAsFactors = FALSE
   )
@@ -44,12 +50,12 @@
 
 .make_match_wilderlab <- function() {
   data.frame(
-    observation_id  = paste0("ESV_", 1:4),
-    taxon_name      = "Sebastes mystinus",
+    observation_id = paste0("ESV_", 1:4),
+    taxon_name = "Sebastes mystinus",
     taxon_name_rank = "species",
-    genus           = "Sebastes",
-    species         = "Sebastes mystinus",
-    score_original  = 100,
+    genus = "Sebastes",
+    species = "Sebastes mystinus",
+    score_original = 100,
     stringsAsFactors = FALSE
   )
 }
@@ -74,9 +80,9 @@ test_that("infer_exclude_predicted: no accession column returns NA", {
 
 test_that("infer_exclude_predicted: !isFALSE() coalesces NA and TRUE to TRUE, FALSE stays FALSE", {
   # Documented usage pattern feeding audit_barcode_coverage(exclude_predicted=)
-  ep_ncbi      <- suppressMessages(infer_exclude_predicted(.make_match_ncbi()))
+  ep_ncbi <- suppressMessages(infer_exclude_predicted(.make_match_ncbi()))
   ep_predicted <- suppressMessages(infer_exclude_predicted(.make_match_predicted()))
-  ep_na        <- suppressMessages(infer_exclude_predicted(.make_match_wilderlab()))
+  ep_na <- suppressMessages(infer_exclude_predicted(.make_match_wilderlab()))
   expect_true(!isFALSE(ep_ncbi))
   expect_false(!isFALSE(ep_predicted))
   expect_true(!isFALSE(ep_na))

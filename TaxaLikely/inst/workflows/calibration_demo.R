@@ -28,37 +28,43 @@ library(TaxaLikely)
   set.seed(seed)
 
   # H1: within-species pairs
-  h1_coverage <- if (coverage_type == "continuous")
-    runif(n_h1, min = 0.6, max = 1.0) else
+  h1_coverage <- if (coverage_type == "continuous") {
+    runif(n_h1, min = 0.6, max = 1.0)
+  } else {
     sample(c(1.0, 0.8, 0.5), n_h1, replace = TRUE, prob = c(0.5, 0.35, 0.15))
+  }
 
   h1 <- data.frame(
-    id_x       = paste0("obs", sample(1:20, n_h1, replace = TRUE)),
-    id_y       = paste0("ref", sample(1:10, n_h1, replace = TRUE)),
-    p_match    = runif(n_h1, min = 0.92, max = 1.00),
-    coverage   = h1_coverage,
-    genus.x    = "Fundulus",
-    genus.y    = "Fundulus",
-    species.x  = sample(c("Fundulus heteroclitus", "Fundulus parvipinnis"),
-                         n_h1, replace = TRUE),
+    id_x = paste0("obs", sample(1:20, n_h1, replace = TRUE)),
+    id_y = paste0("ref", sample(1:10, n_h1, replace = TRUE)),
+    p_match = runif(n_h1, min = 0.92, max = 1.00),
+    coverage = h1_coverage,
+    genus.x = "Fundulus",
+    genus.y = "Fundulus",
+    species.x = sample(c("Fundulus heteroclitus", "Fundulus parvipinnis"),
+      n_h1,
+      replace = TRUE
+    ),
     stringsAsFactors = FALSE
   )
-  h1$species.y <- h1$species.x   # same species = H1
+  h1$species.y <- h1$species.x # same species = H1
 
   # H2: cross-species pairs (same genus)
-  h2_coverage <- if (coverage_type == "continuous")
-    runif(n_h2, min = 0.20, max = 0.75) else    # lower coverage on average
+  h2_coverage <- if (coverage_type == "continuous") {
+    runif(n_h2, min = 0.20, max = 0.75)
+  } else { # lower coverage on average
     sample(c(1.0, 0.8, 0.5, 0.3), n_h2, replace = TRUE, prob = c(0.2, 0.3, 0.3, 0.2))
+  }
 
   h2 <- data.frame(
-    id_x       = paste0("obs", sample(1:20, n_h2, replace = TRUE)),
-    id_y       = paste0("ref", sample(11:20, n_h2, replace = TRUE)),
-    p_match    = runif(n_h2, min = 0.70, max = 0.93),
-    coverage   = h2_coverage,
-    genus.x    = "Fundulus",
-    genus.y    = "Fundulus",
-    species.x  = "Fundulus heteroclitus",
-    species.y  = "Fundulus parvipinnis",   # different species = H2
+    id_x = paste0("obs", sample(1:20, n_h2, replace = TRUE)),
+    id_y = paste0("ref", sample(11:20, n_h2, replace = TRUE)),
+    p_match = runif(n_h2, min = 0.70, max = 0.93),
+    coverage = h2_coverage,
+    genus.x = "Fundulus",
+    genus.y = "Fundulus",
+    species.x = "Fundulus heteroclitus",
+    species.y = "Fundulus parvipinnis", # different species = H2
     stringsAsFactors = FALSE
   )
 
@@ -72,11 +78,15 @@ library(TaxaLikely)
 cat("\n===== PART 1: calibrate_coverage_filter() [continuous coverage] =====\n")
 
 pairs_dna <- .make_pairs(n_h1 = 60, n_h2 = 40, coverage_type = "continuous")
-cat(sprintf("Synthetic pair data: %d H1 pairs, %d H2 pairs\n",
-            sum(pairs_dna$species.x == pairs_dna$species.y),
-            sum(pairs_dna$species.x != pairs_dna$species.y)))
-cat(sprintf("Coverage range: %.2f -- %.2f\n",
-            min(pairs_dna$coverage), max(pairs_dna$coverage)))
+cat(sprintf(
+  "Synthetic pair data: %d H1 pairs, %d H2 pairs\n",
+  sum(pairs_dna$species.x == pairs_dna$species.y),
+  sum(pairs_dna$species.x != pairs_dna$species.y)
+))
+cat(sprintf(
+  "Coverage range: %.2f -- %.2f\n",
+  min(pairs_dna$coverage), max(pairs_dna$coverage)
+))
 
 # ---- 1a. Basic sweep ----------------------------------------------------------
 cal <- calibrate_coverage_filter(pairs_dna)
@@ -86,17 +96,19 @@ print(head(cal, 5))
 cat("...\n")
 
 stopifnot(is.data.frame(cal))
-stopifnot(all(c("threshold", "breadth", "youden_j", "discrimination",
-                "h1_retention", "h2_retention", "mean_h1_score") %in% names(cal)))
+stopifnot(all(c(
+  "threshold", "breadth", "youden_j", "discrimination",
+  "h1_retention", "h2_retention", "mean_h1_score"
+) %in% names(cal)))
 stopifnot(nrow(cal) == length(seq(0, 0.99, by = 0.05)))
 cat("  PASS: table has correct structure\n")
 
 # ---- 1b. Baseline (threshold = 0) --------------------------------------------
 baseline <- cal[cal$threshold == 0, ]
-stopifnot(abs(baseline$breadth       - 1.0) < 1e-9)
-stopifnot(abs(baseline$h1_retention  - 1.0) < 1e-9)
-stopifnot(abs(baseline$h2_retention  - 1.0) < 1e-9)
-stopifnot(abs(baseline$youden_j      - 0.0) < 1e-9)
+stopifnot(abs(baseline$breadth - 1.0) < 1e-9)
+stopifnot(abs(baseline$h1_retention - 1.0) < 1e-9)
+stopifnot(abs(baseline$h2_retention - 1.0) < 1e-9)
+stopifnot(abs(baseline$youden_j - 0.0) < 1e-9)
 stopifnot(abs(baseline$discrimination - 1.0) < 1e-9)
 cat("  PASS: baseline (threshold = 0) has breadth = 1, J = 0, discrimination = 1\n")
 
@@ -105,8 +117,10 @@ cat("  PASS: baseline (threshold = 0) has breadth = 1, J = 0, discrimination = 1
 # H2 pairs (by construction), so J should rise above 0 and be maximised
 # somewhere in the middle of the threshold range.
 best_j <- max(cal$youden_j, na.rm = TRUE)
-cat(sprintf("\nBest Youden J: %.3f at threshold = %.2f\n",
-            best_j, cal$threshold[which.max(cal$youden_j)]))
+cat(sprintf(
+  "\nBest Youden J: %.3f at threshold = %.2f\n",
+  best_j, cal$threshold[which.max(cal$youden_j)]
+))
 stopifnot(best_j > 0)
 cat("  PASS: optimal Youden J > 0 (coverage discriminates H1 vs H2)\n")
 
@@ -117,15 +131,19 @@ cat("  PASS: breadth is non-increasing with threshold\n")
 # ---- 1e. Plot (visual check, not a stopifnot) --------------------------------
 cat("\nPlotting calibration curves...\n")
 par(mfrow = c(1, 2))
-plot(cal$threshold, cal$youden_j, type = "b", pch = 16,
-     xlab = "Coverage threshold", ylab = "Youden's J",
-     main = "Part 1: DNA-analog calibration")
+plot(cal$threshold, cal$youden_j,
+  type = "b", pch = 16,
+  xlab = "Coverage threshold", ylab = "Youden's J",
+  main = "Part 1: DNA-analog calibration"
+)
 abline(v = cal$threshold[which.max(cal$youden_j)], lty = 2, col = "red")
 legend("topright", "optimal J", lty = 2, col = "red", bty = "n")
 
-plot(cal$threshold, cal$breadth, type = "b", pch = 16, col = "steelblue",
-     xlab = "Coverage threshold", ylab = "Breadth (fraction of queries retained)",
-     main = "Breadth vs threshold")
+plot(cal$threshold, cal$breadth,
+  type = "b", pch = 16, col = "steelblue",
+  xlab = "Coverage threshold", ylab = "Breadth (fraction of queries retained)",
+  main = "Breadth vs threshold"
+)
 
 cat("\n===== PART 1 complete =====\n")
 
@@ -137,8 +155,10 @@ cat("\n===== PART 2: calibrate_coverage_filter() [categorical coverage] =====\n"
 
 # Acoustic-style coverage: only 5 distinct values (Xeno-canto A→1.0 … E→0.1)
 pairs_acoustic <- .make_pairs(n_h1 = 50, n_h2 = 50, coverage_type = "categorical")
-cat(sprintf("Unique coverage values: %s\n",
-            paste(sort(unique(pairs_acoustic$coverage)), collapse = ", ")))
+cat(sprintf(
+  "Unique coverage values: %s\n",
+  paste(sort(unique(pairs_acoustic$coverage)), collapse = ", ")
+))
 
 # Expect the categorical message to be printed
 cat("\n[Expecting a 'categorical' message below]\n")
@@ -156,10 +176,12 @@ cat(sprintf("  Youden J range for acoustic data: %.3f (expect near-flat)\n", j_r
 # because the synthetic data doesn't perfectly match acoustic structure.
 
 par(mfrow = c(1, 1))
-plot(cal_ac$threshold, cal_ac$youden_j, type = "b", pch = 16, col = "darkorange",
-     xlab = "Coverage threshold (Xeno-canto grade proxy)",
-     ylab = "Youden's J",
-     main = "Part 2: Acoustic-analog calibration (near-flat J expected)")
+plot(cal_ac$threshold, cal_ac$youden_j,
+  type = "b", pch = 16, col = "darkorange",
+  xlab = "Coverage threshold (Xeno-canto grade proxy)",
+  ylab = "Youden's J",
+  main = "Part 2: Acoustic-analog calibration (near-flat J expected)"
+)
 
 cat("\n===== PART 2 complete =====\n")
 
@@ -172,22 +194,28 @@ cat("\n===== PART 3: coverage_threshold() =====\n")
 # ---- 3a. Continuous coverage: 95% retention default --------------------------
 thresh_95 <- coverage_threshold(pairs_dna, keep_frac = 0.95)
 actual_frac <- mean(pairs_dna$coverage >= thresh_95, na.rm = TRUE)
-cat(sprintf("keep_frac = 0.95 -> threshold = %.3f, actual retention = %.1f%%\n",
-            thresh_95, 100 * actual_frac))
-stopifnot(actual_frac >= 0.94)   # at least 94% retained (quantile rounding ok)
+cat(sprintf(
+  "keep_frac = 0.95 -> threshold = %.3f, actual retention = %.1f%%\n",
+  thresh_95, 100 * actual_frac
+))
+stopifnot(actual_frac >= 0.94) # at least 94% retained (quantile rounding ok)
 cat("  PASS: 95% target yields >= 94% actual retention\n")
 
 # ---- 3b. Stricter filter (90%) -----------------------------------------------
 thresh_90 <- coverage_threshold(pairs_dna, keep_frac = 0.90)
-stopifnot(thresh_90 >= thresh_95)   # stricter = higher threshold
-cat(sprintf("  keep_frac = 0.90 -> threshold = %.3f (>= %.3f)  PASS\n",
-            thresh_90, thresh_95))
+stopifnot(thresh_90 >= thresh_95) # stricter = higher threshold
+cat(sprintf(
+  "  keep_frac = 0.90 -> threshold = %.3f (>= %.3f)  PASS\n",
+  thresh_90, thresh_95
+))
 
 # ---- 3c. Strict filter (50%) -- keeps only half the pairs, needs higher threshold
 thresh_50 <- coverage_threshold(pairs_dna, keep_frac = 0.50)
 stopifnot(thresh_50 >= thresh_90)
-cat(sprintf("  keep_frac = 0.50 -> threshold = %.3f (>= 0.90 threshold)  PASS\n",
-            thresh_50))
+cat(sprintf(
+  "  keep_frac = 0.50 -> threshold = %.3f (>= 0.90 threshold)  PASS\n",
+  thresh_50
+))
 
 # ---- 3d. Categorical coverage: snapping with message -------------------------
 cat("\n[Expecting a 'categorical snapping' message below]\n")
@@ -200,9 +228,11 @@ cat("  PASS: snapped to an actual coverage level\n")
 # Demonstrate the typical pattern: threshold -> filter -> count
 thresh <- coverage_threshold(pairs_dna, keep_frac = 0.95)
 pairs_filtered <- pairs_dna[pairs_dna$coverage >= thresh, ]
-cat(sprintf("\nFiltered from %d to %d pairs (%.0f%% retained)\n",
-            nrow(pairs_dna), nrow(pairs_filtered),
-            100 * nrow(pairs_filtered) / nrow(pairs_dna)))
+cat(sprintf(
+  "\nFiltered from %d to %d pairs (%.0f%% retained)\n",
+  nrow(pairs_dna), nrow(pairs_filtered),
+  100 * nrow(pairs_filtered) / nrow(pairs_dna)
+))
 stopifnot(nrow(pairs_filtered) < nrow(pairs_dna))
 cat("  PASS: filtering reduces pair count\n")
 

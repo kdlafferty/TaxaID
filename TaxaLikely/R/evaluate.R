@@ -79,20 +79,19 @@ utils::globalVariables(c(
 .evaluate_one_query <- function(candidate_df,
                                 model_params,
                                 rank_system,
-                                ratio_threshold        = 0.01,
-                                min_match_threshold    = 0.50,
-                                alpha                  = 0.001,
-                                n_sims                 = 0,
-                                score_bounds           = NULL,
-                                logit_epsilon          = 1e-4,
-                                max_gap_ceiling        = NULL,
-                                min_coverage           = NULL,
-                                evidence_col           = NULL,
-                                evidence_max_ratio     = 1,
-                                verbose                = FALSE) {
-
+                                ratio_threshold = 0.01,
+                                min_match_threshold = 0.50,
+                                alpha = 0.001,
+                                n_sims = 0,
+                                score_bounds = NULL,
+                                logit_epsilon = 1e-4,
+                                max_gap_ceiling = NULL,
+                                min_coverage = NULL,
+                                evidence_col = NULL,
+                                evidence_max_ratio = 1,
+                                verbose = FALSE) {
   names(candidate_df) <- tolower(names(candidate_df))
-  rank_cols <- tolower(rank_system)    # coarse to fine
+  rank_cols <- tolower(rank_system) # coarse to fine
   # Rank immediately coarser than the finest (species) -- genus, by this
   # package's rank_system convention. Used to look up a genus-specific H2
   # delta in model_params$H2_Lookup when available.
@@ -102,10 +101,15 @@ utils::globalVariables(c(
   # model_params$Confusion_Risk_Curves and .lookup_confusion_risk_value()).
   family_rank_col <- if (length(rank_cols) >= 3L) rank_cols[length(rank_cols) - 2L] else NA_character_
 
-  score_col <- if ("p_match"        %in% names(candidate_df)) "p_match" else
-    if ("score_original" %in% names(candidate_df)) "score_original" else
-    if ("score"          %in% names(candidate_df)) "score" else
-      stop("candidate_df must have a 'score_original', 'score', or 'p_match' column")
+  score_col <- if ("p_match" %in% names(candidate_df)) {
+    "p_match"
+  } else if ("score_original" %in% names(candidate_df)) {
+    "score_original"
+  } else if ("score" %in% names(candidate_df)) {
+    "score"
+  } else {
+    stop("candidate_df must have a 'score_original', 'score', or 'p_match' column")
+  }
 
   # ---- 0. COVERAGE FILTER (optional) ----------------------------------------
   # Drop candidates whose alignment/detection coverage is below min_coverage.
@@ -119,8 +123,10 @@ utils::globalVariables(c(
     if (n_dropped > 0L) {
       candidate_df <- candidate_df[keep, , drop = FALSE]
       if (verbose) {
-        message(sprintf("  Coverage filter (>= %.2f): dropped %d candidate row(s)",
-                        min_coverage, n_dropped))
+        message(sprintf(
+          "  Coverage filter (>= %.2f): dropped %d candidate row(s)",
+          min_coverage, n_dropped
+        ))
       }
     }
   }
@@ -154,7 +160,7 @@ utils::globalVariables(c(
   score_transform <- model_params$Score_Transform %||% "logit"
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
 
-  global_mu    <- as.numeric(model_params$H1_Global_Mu)
+  global_mu <- as.numeric(model_params$H1_Global_Mu)
   global_sigma <- as.matrix(model_params$H1_Sigma)
   dimnames(global_sigma) <- list(c("score_logit", "gap_logit"), c("score_logit", "gap_logit"))
   model_sd_score <- sqrt(global_sigma[1L, 1L])
@@ -171,14 +177,19 @@ utils::globalVariables(c(
 
   cand <- candidate_df |>
     dplyr::mutate(p_norm = .normalize_scores(.data[[score_col]],
-                                             bounds = score_bounds)) |>
+      bounds = score_bounds
+    )) |>
     dplyr::group_by(taxon_name) |>
     dplyr::summarise(
       p_med = stats::median(p_norm, na.rm = TRUE),
-      dplyr::across(dplyr::any_of("coverage"),
-                    ~ stats::median(.x, na.rm = TRUE)),
-      dplyr::across(dplyr::any_of(evidence_col),
-                    ~ stats::median(.x, na.rm = TRUE)),
+      dplyr::across(
+        dplyr::any_of("coverage"),
+        ~ stats::median(.x, na.rm = TRUE)
+      ),
+      dplyr::across(
+        dplyr::any_of(evidence_col),
+        ~ stats::median(.x, na.rm = TRUE)
+      ),
       dplyr::across(dplyr::any_of(existing_rank_cols), dplyr::first),
       .groups = "drop"
     ) |>
@@ -188,22 +199,22 @@ utils::globalVariables(c(
 
   if (nrow(cand) == 0L) {
     return(data.frame(
-      hypothesis_type          = character(0),
-      taxon_name               = character(0),
-      taxon_name_rank          = character(0),
-      raw_likelihood           = numeric(0),
-      raw_likelihood_cov       = numeric(0),
-      raw_likelihood_evidence  = numeric(0),
-      score_likelihood         = numeric(0),
-      score_likelihood_mean    = numeric(0),
-      score_likelihood_sd      = numeric(0),
-      score_likelihood_cov     = numeric(0),
+      hypothesis_type = character(0),
+      taxon_name = character(0),
+      taxon_name_rank = character(0),
+      raw_likelihood = numeric(0),
+      raw_likelihood_cov = numeric(0),
+      raw_likelihood_evidence = numeric(0),
+      score_likelihood = numeric(0),
+      score_likelihood_mean = numeric(0),
+      score_likelihood_sd = numeric(0),
+      score_likelihood_cov = numeric(0),
       score_likelihood_evidence = numeric(0),
-      species_confusion_risk          = numeric(0),
-      genus_confusion_risk            = numeric(0),
-      family_confusion_risk           = numeric(0),
-      own_rank_confusion_risk         = numeric(0),
-      stringsAsFactors         = FALSE
+      species_confusion_risk = numeric(0),
+      genus_confusion_risk = numeric(0),
+      family_confusion_risk = numeric(0),
+      own_rank_confusion_risk = numeric(0),
+      stringsAsFactors = FALSE
     ))
   }
 
@@ -226,18 +237,20 @@ utils::globalVariables(c(
     # max(others) = sorted[1] unless this candidate IS sorted[1], then sorted[2].
     cand$gap_logit <- pmin(
       ifelse(all_scores >= sorted[1L] - .Machine$double.eps * 100,
-             all_scores - sorted[2L],
-             all_scores - sorted[1L]),
+        all_scores - sorted[2L],
+        all_scores - sorted[1L]
+      ),
       max_gap_ceiling
     )
   }
 
   # ---- 3. LINEAGE MATRIX for hierarchical lookup fallback -------------------
   # finest rank -> column 1, coarser ranks -> subsequent columns
-  lineage_mat <- if (length(existing_rank_cols) > 0L)
+  lineage_mat <- if (length(existing_rank_cols) > 0L) {
     as.data.frame(cand[, rev(existing_rank_cols), drop = FALSE])
-  else
+  } else {
     data.frame(matrix(NA_character_, nrow = nrow(cand), ncol = 1L))
+  }
 
   # ---- 4. LIKELIHOOD CALCULATOR (shared by point-estimate and MC sims) ------
   # mu_override/delta_override (Session 157): when supplied, replace the
@@ -276,22 +289,25 @@ utils::globalVariables(c(
   .calc_likelihoods <- function(s_vec, g_vec, p_raw, taxa_names, use_1d,
                                 cov_vec = NULL, genus_vec = NULL, evidence_vec = NULL,
                                 mu_override = NULL, delta_override = NULL) {
-    h1_vals      <- numeric(length(s_vec))
-    used_mu1     <- rep(NA_real_, length(s_vec))
-    used_sigma1  <- rep(NA_real_, length(s_vec))
+    h1_vals <- numeric(length(s_vec))
+    used_mu1 <- rep(NA_real_, length(s_vec))
+    used_sigma1 <- rep(NA_real_, length(s_vec))
     used_tau_sq1 <- rep(NA_real_, length(s_vec))
     has_lookup <- !is.null(model_params$H1_Lookup) &&
       nrow(model_params$H1_Lookup) > 0L
     has_n_info <- has_lookup && "n_obs_species" %in% names(model_params$H1_Lookup)
-    prior_weight_val <- if (has_n_info)
-      (model_params$Stats$prior_weight %||% 10) else NA_real_
+    prior_weight_val <- if (has_n_info) {
+      (model_params$Stats$prior_weight %||% 10)
+    } else {
+      NA_real_
+    }
 
     for (i in seq_along(s_vec)) {
-      if (p_raw[i] < min_match_threshold) next   # leave h1_vals[i] = 0
+      if (p_raw[i] < min_match_threshold) next # leave h1_vals[i] = 0
 
-      use_mu       <- global_mu
-      use_sigma    <- global_sigma
-      n_i          <- NA_real_   # species-specific n_obs_species, if matched
+      use_mu <- global_mu
+      use_sigma <- global_sigma
+      n_i <- NA_real_ # species-specific n_obs_species, if matched
       matched_local <- FALSE
 
       if (has_lookup) {
@@ -306,8 +322,8 @@ utils::globalVariables(c(
         }
         if (!is.na(idx)) {
           sp_score <- model_params$H1_Lookup$mu_score[idx]
-          sp_gap   <- model_params$H1_Lookup$mu_gap[idx]
-          sp_var   <- model_params$H1_Lookup$sigma_score[idx]
+          sp_gap <- model_params$H1_Lookup$mu_gap[idx]
+          sp_var <- model_params$H1_Lookup$sigma_score[idx]
           use_mu <- c(sp_score, sp_gap)
           # Floor at global sigma: species-specific sigma is estimated from
           # reference-vs-reference pairs and can be artificially tight for
@@ -316,15 +332,18 @@ utils::globalVariables(c(
           # per-species sigma tighter than the global sigma so that legitimate
           # eDNA queries at slightly sub-perfect scores still receive non-zero
           # H1 likelihoods.
-          if (!is.na(sp_var) && sp_var > 0)
+          if (!is.na(sp_var) && sp_var > 0) {
             use_sigma[1L, 1L] <- max(sp_var, global_sigma[1L, 1L])
+          }
           if (has_n_info) {
             n_i <- model_params$H1_Lookup$n_obs_species[idx]
             matched_local <- TRUE
           }
         } else if (verbose) {
-          message(sprintf("  Taxon '%s': no species-specific params; using global mean",
-                          taxa_names[i]))
+          message(sprintf(
+            "  Taxon '%s': no species-specific params; using global mean",
+            taxa_names[i]
+          ))
         }
       }
 
@@ -333,7 +352,7 @@ utils::globalVariables(c(
       # and N_aligned = coverage * N_total, so sigma_eff = sigma / sqrt(coverage).
       # Only activates when coverage < 1; does not affect H2/H3 sigmas.
       if (!is.null(cov_vec) && !is.na(cov_vec[i]) &&
-          cov_vec[i] > 0 && cov_vec[i] < 1) {
+        cov_vec[i] > 0 && cov_vec[i] < 1) {
         use_sigma[1L, 1L] <- use_sigma[1L, 1L] / sqrt(cov_vec[i])
       }
 
@@ -397,11 +416,12 @@ utils::globalVariables(c(
         widen_ratio <- min(evidence_vec[i], evidence_max_ratio)
         if (!isTRUE(all.equal(widen_ratio, 1))) {
           var_scale <- 1 / sqrt(widen_ratio)
-          z_sq  <- (s_vec[i] - use_mu[1L])^2 / use_sigma[1L, 1L]
+          z_sq <- (s_vec[i] - use_mu[1L])^2 / use_sigma[1L, 1L]
           delta_logdensity <- -0.5 * log(var_scale) +
             0.5 * z_sq * (1 - 1 / var_scale)
-          if (delta_logdensity > 0)
+          if (delta_logdensity > 0) {
             use_sigma[1L, 1L] <- use_sigma[1L, 1L] * var_scale
+          }
         }
       }
 
@@ -409,7 +429,7 @@ utils::globalVariables(c(
       # whichever applied) BEFORE any mu_override -- this is what the point-
       # estimate pass reports back to the Monte Carlo section below so it
       # knows what mean/variance to build a resampling distribution around.
-      used_mu1[i]    <- use_mu[1L]
+      used_mu1[i] <- use_mu[1L]
       used_sigma1[i] <- use_sigma[1L, 1L]
       if (has_n_info) {
         used_tau_sq1[i] <- if (matched_local) {
@@ -423,13 +443,15 @@ utils::globalVariables(c(
       # Mean-uncertainty override (Session 157): substitutes a simulated draw
       # of the trained mean for this candidate, used only by the Monte Carlo
       # section's resampling loop -- NULL (default) for the point estimate.
-      if (!is.null(mu_override) && !is.na(mu_override[i]))
+      if (!is.null(mu_override) && !is.na(mu_override[i])) {
         use_mu[1L] <- mu_override[i]
+      }
 
       if (use_1d) {
         h1_vals[i] <- stats::dnorm(s_vec[i],
-                                   mean = use_mu[1L],
-                                   sd   = sqrt(use_sigma[1L, 1L]))
+          mean = use_mu[1L],
+          sd   = sqrt(use_sigma[1L, 1L])
+        )
       } else {
         x_pt <- c(s_vec[i], g_vec[i])
         # Outlier filter: ONE-SIDED (low side only) score-only normal test,
@@ -461,20 +483,24 @@ utils::globalVariables(c(
         # species in a speciose family). The score alone determines whether
         # the query is consistent with this species' identity; the gap
         # informs the relative weight.
-        z_score        <- (s_vec[i] - use_mu[1L]) / sqrt(use_sigma[1L, 1L])
+        z_score <- (s_vec[i] - use_mu[1L]) / sqrt(use_sigma[1L, 1L])
         p_val_low_side <- stats::pnorm(z_score)
-        if (p_val_low_side >= alpha)
+        if (p_val_low_side >= alpha) {
           h1_vals[i] <- mvtnorm::dmvnorm(x_pt,
-                                         mean  = as.numeric(use_mu),
-                                         sigma = use_sigma)
+            mean  = as.numeric(use_mu),
+            sigma = use_sigma
+          )
+        }
       }
     }
 
     best_i <- which.max(s_vec)
     if (length(best_i) == 0L || all(s_vec == 0)) {
-      return(list(h1 = h1_vals, h2 = 0, h3 = 0, h2_delta_source = "global_fallback",
-                  used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
-                  used_h2_delta = h2_delta, used_h2_tau_sq = NA_real_))
+      return(list(
+        h1 = h1_vals, h2 = 0, h3 = 0, h2_delta_source = "global_fallback",
+        used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
+        used_h2_delta = h2_delta, used_h2_tau_sq = NA_real_
+      ))
     }
 
     best_pt <- c(s_vec[best_i], g_vec[best_i])
@@ -489,10 +515,10 @@ utils::globalVariables(c(
     use_h2_delta <- h2_delta
     use_h2_sigma <- h2_sigma
     delta_source <- "global_fallback"
-    h2_n_used     <- NA_real_
+    h2_n_used <- NA_real_
     h2_matched_local <- FALSE
     if (!is.null(genus_vec) && !is.null(model_params$H2_Lookup) &&
-        nrow(model_params$H2_Lookup) > 0L) {
+      nrow(model_params$H2_Lookup) > 0L) {
       anchor_genus <- genus_vec[best_i]
       if (!is.na(anchor_genus)) {
         gidx <- match(anchor_genus, model_params$H2_Lookup$genus)
@@ -547,40 +573,51 @@ utils::globalVariables(c(
     # specific entry at all (used_mu1[best_i] is then already global_mu,
     # since that is what use_mu starts as before any lookup).
     h2_anchor_mu <- if (!is.na(used_mu1[best_i])) used_mu1[best_i] else global_mu[1L]
-    h2_mu   <- c(h2_anchor_mu - use_h2_delta, 0)
-    h3_mu   <- c(h2_anchor_mu - use_h3_delta, 0)
+    h2_mu <- c(h2_anchor_mu - use_h2_delta, 0)
+    h3_mu <- c(h2_anchor_mu - use_h3_delta, 0)
     if (use_1d) {
-      h2_val <- stats::dnorm(best_pt[1L], mean = h2_mu[1L],
-                             sd = sqrt(use_h2_sigma[1L, 1L]))
-      h3_val <- stats::dnorm(best_pt[1L], mean = h3_mu[1L],
-                             sd = sqrt(h3_sigma[1L, 1L]))
+      h2_val <- stats::dnorm(best_pt[1L],
+        mean = h2_mu[1L],
+        sd = sqrt(use_h2_sigma[1L, 1L])
+      )
+      h3_val <- stats::dnorm(best_pt[1L],
+        mean = h3_mu[1L],
+        sd = sqrt(h3_sigma[1L, 1L])
+      )
     } else {
       h2_val <- mvtnorm::dmvnorm(best_pt, mean = h2_mu, sigma = use_h2_sigma)
       h3_val <- mvtnorm::dmvnorm(best_pt, mean = h3_mu, sigma = h3_sigma)
     }
 
-    list(h1 = h1_vals, h2 = h2_val, h3 = h3_val, h2_delta_source = delta_source,
-         used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
-         used_h2_delta = resolved_h2_delta, used_h2_tau_sq = resolved_h2_tau_sq)
+    list(
+      h1 = h1_vals, h2 = h2_val, h3 = h3_val, h2_delta_source = delta_source,
+      used_mu1 = used_mu1, used_sigma1 = used_sigma1, used_tau_sq1 = used_tau_sq1,
+      used_h2_delta = resolved_h2_delta, used_h2_tau_sq = resolved_h2_tau_sq
+    )
   }
 
   # ---- 5. POINT ESTIMATE ----------------------------------------------------
-  genus_vec <- if (!is.na(genus_rank_col) && genus_rank_col %in% names(cand))
-    cand[[genus_rank_col]] else NULL
+  genus_vec <- if (!is.na(genus_rank_col) && genus_rank_col %in% names(cand)) {
+    cand[[genus_rank_col]]
+  } else {
+    NULL
+  }
 
   primary <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
-                               cand$p_med, cand$taxon_name,
-                               use_1d = is_singleton, genus_vec = genus_vec)
+    cand$p_med, cand$taxon_name,
+    use_1d = is_singleton, genus_vec = genus_vec
+  )
 
   # Coverage-adjusted point estimate: inflate sigma_score by 1/coverage for
   # each candidate taxon. When coverage is absent or all = 1, identical to
   # primary. H2/H3 sigmas are global fixed parameters and are not inflated.
   has_coverage <- "coverage" %in% names(cand)
-  primary_cov  <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
-                                    cand$p_med, cand$taxon_name,
-                                    use_1d = is_singleton,
-                                    cov_vec = if (has_coverage) cand$coverage else NULL,
-                                    genus_vec = genus_vec)
+  primary_cov <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
+    cand$p_med, cand$taxon_name,
+    use_1d = is_singleton,
+    cov_vec = if (has_coverage) cand$coverage else NULL,
+    genus_vec = genus_vec
+  )
 
   # Evidence-adjusted point estimate: scale sigma_score by 1/sqrt(evidence_ratio)
   # for each candidate taxon, where evidence_ratio = the candidate's own raw
@@ -603,41 +640,46 @@ utils::globalVariables(c(
 
   # Build result rows for H1
   df_h1 <- cand |>
-    dplyr::mutate(hypothesis_type          = "specific_candidate",
-                  raw_likelihood           = primary$h1,
-                  raw_likelihood_cov       = primary_cov$h1,
-                  raw_likelihood_evidence  = primary_evidence$h1)
+    dplyr::mutate(
+      hypothesis_type = "specific_candidate",
+      raw_likelihood = primary$h1,
+      raw_likelihood_cov = primary_cov$h1,
+      raw_likelihood_evidence = primary_evidence$h1
+    )
 
   # Build H2/H3 rows from the best candidate
-  best_i   <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
+  best_i <- if (any(primary$h1 > 0)) which.max(primary$h1) else which.max(cand$score_logit)
   best_row <- cand[best_i, , drop = FALSE]
 
   # Derive H2 taxon_name: finest rank NA -> create_taxon_names picks genus
   # Derive H3 taxon_name: two finest ranks NA -> create_taxon_names picks family
-  finest <- if (length(rank_cols) >= 1L) rank_cols[length(rank_cols)]       else NULL
-  second  <- if (length(rank_cols) >= 2L) rank_cols[length(rank_cols) - 1L] else NULL
+  finest <- if (length(rank_cols) >= 1L) rank_cols[length(rank_cols)] else NULL
+  second <- if (length(rank_cols) >= 2L) rank_cols[length(rank_cols) - 1L] else NULL
 
   row_h2 <- best_row
-  if (!is.null(finest) && finest %in% names(row_h2))
+  if (!is.null(finest) && finest %in% names(row_h2)) {
     row_h2[[finest]] <- NA_character_
+  }
   row_h2 <- TaxaTools::create_taxon_names(row_h2, rank_cols)
-  row_h2$hypothesis_type         <- "unreferenced_species"
-  row_h2$raw_likelihood          <- primary$h2
-  row_h2$raw_likelihood_cov      <- primary$h2   # H2 sigma is global fixed; no inflation
-  row_h2$raw_likelihood_evidence <- primary$h2   # H2 sigma is global fixed; no inflation
-  row_h2$h2_delta_source    <- primary$h2_delta_source
+  row_h2$hypothesis_type <- "unreferenced_species"
+  row_h2$raw_likelihood <- primary$h2
+  row_h2$raw_likelihood_cov <- primary$h2 # H2 sigma is global fixed; no inflation
+  row_h2$raw_likelihood_evidence <- primary$h2 # H2 sigma is global fixed; no inflation
+  row_h2$h2_delta_source <- primary$h2_delta_source
 
   row_h3 <- best_row
-  if (!is.null(finest) && finest %in% names(row_h3))
+  if (!is.null(finest) && finest %in% names(row_h3)) {
     row_h3[[finest]] <- NA_character_
-  if (!is.null(second) && second %in% names(row_h3))
+  }
+  if (!is.null(second) && second %in% names(row_h3)) {
     row_h3[[second]] <- NA_character_
+  }
   row_h3 <- TaxaTools::create_taxon_names(row_h3, rank_cols)
-  row_h3$hypothesis_type         <- "unreferenced_genus"
-  row_h3$raw_likelihood          <- primary$h3
-  row_h3$raw_likelihood_cov      <- primary$h3   # H3 sigma is global fixed; no inflation
-  row_h3$raw_likelihood_evidence <- primary$h3   # H3 sigma is global fixed; no inflation
-  row_h3$h2_delta_source    <- primary$h2_delta_source
+  row_h3$hypothesis_type <- "unreferenced_genus"
+  row_h3$raw_likelihood <- primary$h3
+  row_h3$raw_likelihood_cov <- primary$h3 # H3 sigma is global fixed; no inflation
+  row_h3$raw_likelihood_evidence <- primary$h3 # H3 sigma is global fixed; no inflation
+  row_h3$h2_delta_source <- primary$h2_delta_source
 
   res <- dplyr::bind_rows(df_h1, row_h2, row_h3)
 
@@ -665,18 +707,28 @@ utils::globalVariables(c(
   # types when rank_system carries one at all).
   confusion_risk_curves <- model_params$Confusion_Risk_Curves
   n_res <- nrow(res)
-  genus_vals_res  <- if (!is.na(genus_rank_col)  && genus_rank_col  %in% names(res))
-    res[[genus_rank_col]]  else rep(NA_character_, n_res)
-  family_vals_res <- if (!is.na(family_rank_col) && family_rank_col %in% names(res))
-    res[[family_rank_col]] else rep(NA_character_, n_res)
+  genus_vals_res <- if (!is.na(genus_rank_col) && genus_rank_col %in% names(res)) {
+    res[[genus_rank_col]]
+  } else {
+    rep(NA_character_, n_res)
+  }
+  family_vals_res <- if (!is.na(family_rank_col) && family_rank_col %in% names(res)) {
+    res[[family_rank_col]]
+  } else {
+    rep(NA_character_, n_res)
+  }
   obs_pct_res <- res$p_med * 100
 
   res$species_confusion_risk <- if (!is.null(confusion_risk_curves) && !is.null(confusion_risk_curves$species)) {
     vapply(seq_len(n_res), function(i) {
-      if (is.na(genus_vals_res[i])) return(NA_real_)
-      .lookup_confusion_risk_value(obs_pct_res[i], genus_vals_res[i],
-                           confusion_risk_curves$species$fpr_by_genus_shrunk,
-                           confusion_risk_curves$species$fpr_pooled)
+      if (is.na(genus_vals_res[i])) {
+        return(NA_real_)
+      }
+      .lookup_confusion_risk_value(
+        obs_pct_res[i], genus_vals_res[i],
+        confusion_risk_curves$species$fpr_by_genus_shrunk,
+        confusion_risk_curves$species$fpr_pooled
+      )
     }, numeric(1))
   } else {
     rep(NA_real_, n_res)
@@ -684,10 +736,14 @@ utils::globalVariables(c(
 
   res$genus_confusion_risk <- if (!is.null(confusion_risk_curves) && !is.null(confusion_risk_curves$genus)) {
     vapply(seq_len(n_res), function(i) {
-      if (is.na(family_vals_res[i])) return(NA_real_)
-      .lookup_confusion_risk_value(obs_pct_res[i], family_vals_res[i],
-                           confusion_risk_curves$genus$fpr_by_family_shrunk,
-                           confusion_risk_curves$genus$fpr_pooled)
+      if (is.na(family_vals_res[i])) {
+        return(NA_real_)
+      }
+      .lookup_confusion_risk_value(
+        obs_pct_res[i], family_vals_res[i],
+        confusion_risk_curves$genus$fpr_by_family_shrunk,
+        confusion_risk_curves$genus$fpr_pooled
+      )
     }, numeric(1))
   } else {
     rep(NA_real_, n_res)
@@ -703,17 +759,19 @@ utils::globalVariables(c(
 
   res_agg <- res |>
     dplyr::group_by(hypothesis_type, taxon_name, taxon_name_rank) |>
-    dplyr::summarise(raw_likelihood          = max(raw_likelihood,          na.rm = TRUE),
-                     raw_likelihood_cov      = max(raw_likelihood_cov,      na.rm = TRUE),
-                     raw_likelihood_evidence = max(raw_likelihood_evidence, na.rm = TRUE),
-                     species_confusion_risk = dplyr::first(species_confusion_risk),
-                     genus_confusion_risk   = dplyr::first(genus_confusion_risk),
-                     family_confusion_risk  = dplyr::first(family_confusion_risk),
-                     # NA for specific_candidate rows (only H2/H3 rows carry this);
-                     # each unreferenced_species/unreferenced_genus group has a
-                     # single row, so first() is unambiguous.
-                     h2_delta_source    = dplyr::first(h2_delta_source),
-                     .groups = "drop")
+    dplyr::summarise(
+      raw_likelihood = max(raw_likelihood, na.rm = TRUE),
+      raw_likelihood_cov = max(raw_likelihood_cov, na.rm = TRUE),
+      raw_likelihood_evidence = max(raw_likelihood_evidence, na.rm = TRUE),
+      species_confusion_risk = dplyr::first(species_confusion_risk),
+      genus_confusion_risk = dplyr::first(genus_confusion_risk),
+      family_confusion_risk = dplyr::first(family_confusion_risk),
+      # NA for specific_candidate rows (only H2/H3 rows carry this);
+      # each unreferenced_species/unreferenced_genus group has a
+      # single row, so first() is unambiguous.
+      h2_delta_source = dplyr::first(h2_delta_source),
+      .groups = "drop"
+    )
 
   # own_rank_confusion_risk: convenience column pointing at whichever of the
   # three *_confusion_risk values matches this row's OWN resolved rank
@@ -724,24 +782,24 @@ utils::globalVariables(c(
   # regardless of hypothesis_type, so a reviewer can also see e.g. "resolved
   # to species, but genus_confusion_risk is also high."
   res_agg$own_rank_confusion_risk <- dplyr::case_when(
-    res_agg$hypothesis_type == "specific_candidate"   ~ res_agg$species_confusion_risk,
+    res_agg$hypothesis_type == "specific_candidate" ~ res_agg$species_confusion_risk,
     res_agg$hypothesis_type == "unreferenced_species" ~ res_agg$genus_confusion_risk,
-    res_agg$hypothesis_type == "unreferenced_genus"   ~ res_agg$family_confusion_risk,
+    res_agg$hypothesis_type == "unreferenced_genus" ~ res_agg$family_confusion_risk,
     TRUE ~ NA_real_
   )
 
   # ---- 6. NORMALISE TO LIKELIHOOD RATIOS ------------------------------------
-  max_lik          <- max(res_agg$raw_likelihood,          na.rm = TRUE)
-  max_lik_cov      <- max(res_agg$raw_likelihood_cov,      na.rm = TRUE)
+  max_lik <- max(res_agg$raw_likelihood, na.rm = TRUE)
+  max_lik_cov <- max(res_agg$raw_likelihood_cov, na.rm = TRUE)
   max_lik_evidence <- max(res_agg$raw_likelihood_evidence, na.rm = TRUE)
-  if (max_lik          == 0 || is.na(max_lik))          max_lik          <- 1
-  if (max_lik_cov      == 0 || is.na(max_lik_cov))      max_lik_cov      <- 1
+  if (max_lik == 0 || is.na(max_lik)) max_lik <- 1
+  if (max_lik_cov == 0 || is.na(max_lik_cov)) max_lik_cov <- 1
   if (max_lik_evidence == 0 || is.na(max_lik_evidence)) max_lik_evidence <- 1
 
   res_agg <- res_agg |>
     dplyr::mutate(
-      score_likelihood          = raw_likelihood          / max_lik,
-      score_likelihood_cov      = raw_likelihood_cov      / max_lik_cov,
+      score_likelihood          = raw_likelihood / max_lik,
+      score_likelihood_cov      = raw_likelihood_cov / max_lik_cov,
       score_likelihood_evidence = raw_likelihood_evidence / max_lik_evidence
     ) |>
     dplyr::filter(
@@ -807,13 +865,14 @@ utils::globalVariables(c(
       h2_delta_sd <- if (!is.na(primary$used_h2_tau_sq)) sqrt(primary$used_h2_tau_sq) else 0
 
       for (sim_i in seq_len(n_sims)) {
-        mu_sim    <- stats::rnorm(nc, mean = primary_evidence$used_mu1, sd = mean_sd1)
+        mu_sim <- stats::rnorm(nc, mean = primary_evidence$used_mu1, sd = mean_sd1)
         delta_sim <- stats::rnorm(1L, mean = primary$used_h2_delta, sd = h2_delta_sd)
 
         sim_res <- .calc_likelihoods(cand$score_logit, cand$gap_logit,
-                                     cand$p_med, cand$taxon_name,
-                                     use_1d = is_singleton, genus_vec = genus_vec,
-                                     mu_override = mu_sim, delta_override = delta_sim)
+          cand$p_med, cand$taxon_name,
+          use_1d = is_singleton, genus_vec = genus_vec,
+          mu_override = mu_sim, delta_override = delta_sim
+        )
 
         iter_liks <- numeric(nrow(res_agg))
         for (r in seq_len(nrow(res_agg))) {
@@ -840,15 +899,17 @@ utils::globalVariables(c(
           ss <- sort(sim_scores, decreasing = TRUE)
           sim_gaps <- pmin(
             ifelse(sim_scores >= ss[1L] - .Machine$double.eps * 100,
-                   sim_scores - ss[2L],
-                   sim_scores - ss[1L]),
+              sim_scores - ss[2L],
+              sim_scores - ss[1L]
+            ),
             max_gap_ceiling
           )
         }
 
         sim_res <- .calc_likelihoods(sim_scores, sim_gaps,
-                                     cand$p_med, cand$taxon_name,
-                                     use_1d = is_singleton, genus_vec = genus_vec)
+          cand$p_med, cand$taxon_name,
+          use_1d = is_singleton, genus_vec = genus_vec
+        )
 
         iter_liks <- numeric(nrow(res_agg))
         for (r in seq_len(nrow(res_agg))) {
@@ -867,22 +928,24 @@ utils::globalVariables(c(
     }
 
     res_agg$score_likelihood_mean <- rowMeans(sim_mat, na.rm = TRUE)
-    res_agg$score_likelihood_sd   <- apply(sim_mat, 1L, stats::sd, na.rm = TRUE)
+    res_agg$score_likelihood_sd <- apply(sim_mat, 1L, stats::sd, na.rm = TRUE)
   } else {
     res_agg$score_likelihood_mean <- res_agg$score_likelihood
-    res_agg$score_likelihood_sd   <- 0
+    res_agg$score_likelihood_sd <- 0
   }
 
   # Final filter on mean (after simulation)
   res_agg <- dplyr::filter(res_agg, score_likelihood_mean >= ratio_threshold)
 
   res_agg |>
-    dplyr::select(hypothesis_type, taxon_name, taxon_name_rank,
-                  raw_likelihood, raw_likelihood_cov, raw_likelihood_evidence,
-                  score_likelihood, score_likelihood_mean, score_likelihood_sd,
-                  score_likelihood_cov, score_likelihood_evidence, h2_delta_source,
-                  species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-                  own_rank_confusion_risk) |>
+    dplyr::select(
+      hypothesis_type, taxon_name, taxon_name_rank,
+      raw_likelihood, raw_likelihood_cov, raw_likelihood_evidence,
+      score_likelihood, score_likelihood_mean, score_likelihood_sd,
+      score_likelihood_cov, score_likelihood_evidence, h2_delta_source,
+      species_confusion_risk, genus_confusion_risk, family_confusion_risk,
+      own_rank_confusion_risk
+    ) |>
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
 
@@ -1278,28 +1341,31 @@ utils::globalVariables(c(
 #' }
 #'
 #' @importFrom cli cli_progress_bar cli_progress_update cli_progress_done
-#' @importFrom dplyr any_of arrange bind_rows desc filter group_by group_split mutate n_distinct n_groups select summarise ungroup across first
+#' @importFrom dplyr any_of arrange bind_rows desc filter group_by group_split mutate
+#' @importFrom dplyr n_distinct n_groups select summarise ungroup across first
 #' @importFrom mvtnorm dmvnorm
 #' @importFrom stats dnorm mahalanobis pchisq rnorm sd
 #' @export
 evaluate_likelihoods <- function(match_df,
                                  model_params,
-                                 rank_system            = NULL,
-                                 ratio_threshold        = 0.01,
-                                 min_match_threshold    = 0.50,
-                                 alpha                  = 0.001,
-                                 n_sims                 = 0L,
-                                 score_bounds           = NULL,
-                                 logit_epsilon          = 1e-4,
-                                 max_gap_ceiling        = NULL,
-                                 min_coverage           = NULL,
-                                 evidence_col           = NULL,
-                                 evidence_max_ratio     = 1,
-                                 verbose                = FALSE) {
-  if (!is.data.frame(match_df))
+                                 rank_system = NULL,
+                                 ratio_threshold = 0.01,
+                                 min_match_threshold = 0.50,
+                                 alpha = 0.001,
+                                 n_sims = 0L,
+                                 score_bounds = NULL,
+                                 logit_epsilon = 1e-4,
+                                 max_gap_ceiling = NULL,
+                                 min_coverage = NULL,
+                                 evidence_col = NULL,
+                                 evidence_max_ratio = 1,
+                                 verbose = FALSE) {
+  if (!is.data.frame(match_df)) {
     stop("match_df must be a data frame")
-  if (!inherits(model_params, "taxa_model_params"))
+  }
+  if (!inherits(model_params, "taxa_model_params")) {
     stop("model_params must be a 'taxa_model_params' object from train_likelihood_model()")
+  }
 
   # Session 158, revised: evidence_col/min_coverage's sigma-modulation
   # mechanisms (the crossover gate and the coverage inflation) were initially
@@ -1336,29 +1402,35 @@ evaluate_likelihoods <- function(match_df,
   # every downstream consumer's auto-detection behavior for a change --
   # flagged for a future dedicated cross-package session, not attempted here.
   if (is.null(rank_system)) {
-    canonical <- c("kingdom", "phylum", "subphylum", "superclass", "class",
-                   "subclass", "infraclass", "cohort", "order", "suborder",
-                   "infraorder", "family", "genus", "species")
+    canonical <- c(
+      "kingdom", "phylum", "subphylum", "superclass", "class",
+      "subclass", "infraclass", "cohort", "order", "suborder",
+      "infraorder", "family", "genus", "species"
+    )
     rank_system <- canonical[canonical %in% tolower(names(match_df))]
-    if (length(rank_system) < 2L)
+    if (length(rank_system) < 2L) {
       stop(
         "Could not auto-detect rank_system from match_df columns. ",
         "Found: ", paste(names(match_df), collapse = ", "),
         ". Supply rank_system explicitly.",
         call. = FALSE
       )
+    }
   }
 
-  if (!is.character(rank_system) || length(rank_system) == 0L)
+  if (!is.character(rank_system) || length(rank_system) == 0L) {
     stop("rank_system must be a non-empty character vector (coarse to fine)")
+  }
 
   names(match_df) <- tolower(names(match_df))
   if (!is.null(evidence_col)) evidence_col <- tolower(evidence_col)
 
-  if (!"observation_id" %in% names(match_df))
+  if (!"observation_id" %in% names(match_df)) {
     stop("match_df must have an 'observation_id' column")
-  if (anyNA(match_df$observation_id))
+  }
+  if (anyNA(match_df$observation_id)) {
     stop("match_df$observation_id contains NA values; all rows must have a valid observation_id")
+  }
 
   n_queries <- dplyr::n_distinct(match_df$observation_id)
   message(sprintf("Evaluating likelihoods for %d unique queries...", n_queries))
@@ -1366,30 +1438,30 @@ evaluate_likelihoods <- function(match_df,
   query_groups <- dplyr::group_split(dplyr::group_by(match_df, observation_id))
 
   start_time <- proc.time()[["elapsed"]]
-  results  <- vector("list", length(query_groups))
+  results <- vector("list", length(query_groups))
   n_failed <- 0L
 
   pb <- cli::cli_progress_bar("Evaluating queries", total = length(query_groups))
   for (i in seq_along(query_groups)) {
     cli::cli_progress_update(id = pb)
-    chunk  <- query_groups[[i]]
-    sid    <- chunk$observation_id[1L]
+    chunk <- query_groups[[i]]
+    sid <- chunk$observation_id[1L]
     result <- tryCatch(
       .evaluate_one_query(
-        candidate_df        = chunk,
-        model_params           = model_params,
-        rank_system            = rank_system,
-        ratio_threshold        = ratio_threshold,
-        min_match_threshold    = min_match_threshold,
-        alpha                  = alpha,
-        n_sims                 = n_sims,
-        score_bounds           = score_bounds,
-        logit_epsilon          = logit_epsilon,
-        max_gap_ceiling        = max_gap_ceiling,
-        min_coverage           = min_coverage,
-        evidence_col           = evidence_col,
-        evidence_max_ratio     = evidence_max_ratio,
-        verbose                = verbose
+        candidate_df = chunk,
+        model_params = model_params,
+        rank_system = rank_system,
+        ratio_threshold = ratio_threshold,
+        min_match_threshold = min_match_threshold,
+        alpha = alpha,
+        n_sims = n_sims,
+        score_bounds = score_bounds,
+        logit_epsilon = logit_epsilon,
+        max_gap_ceiling = max_gap_ceiling,
+        min_coverage = min_coverage,
+        evidence_col = evidence_col,
+        evidence_max_ratio = evidence_max_ratio,
+        verbose = verbose
       ),
       error = function(e) {
         warning(sprintf("Query '%s' failed: %s", sid, conditionMessage(e)))
@@ -1415,8 +1487,8 @@ evaluate_likelihoods <- function(match_df,
     ))
   }
 
-  out        <- dplyr::bind_rows(results)
-  unresolved <- match_df[integer(0L), ]   # zero-row copy; populated below if needed
+  out <- dplyr::bind_rows(results)
+  unresolved <- match_df[integer(0L), ] # zero-row copy; populated below if needed
 
   # Identify rows where taxon_name resolved to NA (occurs when all taxonomy
   # columns are NA, e.g. reference identified only at a rank coarser than
@@ -1424,17 +1496,19 @@ evaluate_likelihoods <- function(match_df,
   # observation_ids with NO surviving rows are returned in $unresolved with a warning.
   na_name <- is.na(out$taxon_name)
   if (any(na_name)) {
-    sids_with_na   <- unique(out$observation_id[na_name])
+    sids_with_na <- unique(out$observation_id[na_name])
     sids_with_good <- unique(out$observation_id[!na_name])
-    all_na_sids    <- setdiff(sids_with_na, sids_with_good)
+    all_na_sids <- setdiff(sids_with_na, sids_with_good)
 
     if (length(all_na_sids) > 0L) {
       unresolved <- match_df[match_df$observation_id %in% all_na_sids, ]
       show_ids <- if (length(all_na_sids) <= 5L) {
         paste(all_na_sids, collapse = ", ")
       } else {
-        paste0(paste(all_na_sids[1:5], collapse = ", "),
-               sprintf(", ... (%d more)", length(all_na_sids) - 5L))
+        paste0(
+          paste(all_na_sids[1:5], collapse = ", "),
+          sprintf(", ... (%d more)", length(all_na_sids) - 5L)
+        )
       }
       warning(sprintf(
         paste0(
@@ -1452,15 +1526,17 @@ evaluate_likelihoods <- function(match_df,
     out <- out[!na_name, ]
   }
 
-  likelihoods <- dplyr::select(out, observation_id, taxon_name, taxon_name_rank,
-                               hypothesis_type,
-                               raw_likelihood, raw_likelihood_cov, raw_likelihood_evidence,
-                               score_likelihood,
-                               score_likelihood_mean, score_likelihood_sd,
-                               score_likelihood_cov, score_likelihood_evidence,
-                               h2_delta_source,
-                               species_confusion_risk, genus_confusion_risk, family_confusion_risk,
-                               own_rank_confusion_risk)
+  likelihoods <- dplyr::select(
+    out, observation_id, taxon_name, taxon_name_rank,
+    hypothesis_type,
+    raw_likelihood, raw_likelihood_cov, raw_likelihood_evidence,
+    score_likelihood,
+    score_likelihood_mean, score_likelihood_sd,
+    score_likelihood_cov, score_likelihood_evidence,
+    h2_delta_source,
+    species_confusion_risk, genus_confusion_risk, family_confusion_risk,
+    own_rank_confusion_risk
+  )
 
   # Propagate is_restored from match_df when present.
   # For each (observation_id, taxon_name), is_restored = TRUE only when ALL
@@ -1473,7 +1549,8 @@ evaluate_likelihoods <- function(match_df,
       dplyr::group_by(observation_id, taxon_name) |>
       dplyr::summarise(is_restored = all(is_restored == TRUE), .groups = "drop")
     likelihoods <- dplyr::left_join(likelihoods, restored_per_taxon,
-                                     by = c("observation_id", "taxon_name"))
+      by = c("observation_id", "taxon_name")
+    )
     likelihoods$is_restored[is.na(likelihoods$is_restored)] <- FALSE
   }
 
@@ -1523,24 +1600,31 @@ evaluate_likelihoods <- function(match_df,
 #' @importFrom dplyr filter group_by mutate select ungroup
 #' @export
 filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
-  if (!is.data.frame(likelihood_df))
+  if (!is.data.frame(likelihood_df)) {
     stop("likelihood_df must be a data frame")
+  }
   needed <- c("observation_id", "taxon_name_rank", "hypothesis_type")
   missing_cols <- setdiff(needed, names(likelihood_df))
-  if (length(missing_cols) > 0L)
-    stop(sprintf("likelihood_df is missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")))
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "likelihood_df is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ))
+  }
 
   # Auto-detect rank_system from taxon_name_rank values
   if (is.null(rank_system)) {
     canonical <- TaxaTools::standard_ranks
-    observed  <- unique(tolower(likelihood_df$taxon_name_rank))
-    observed  <- observed[!is.na(observed)]
+    observed <- unique(tolower(likelihood_df$taxon_name_rank))
+    observed <- observed[!is.na(observed)]
     rank_system <- canonical[canonical %in% observed]
-    if (length(rank_system) == 0L)
+    if (length(rank_system) == 0L) {
       rank_system <- c("family", "genus", "species")
-    message("filter_top_hypotheses: auto-detected rank_system: ",
-            paste(rank_system, collapse = ", "))
+    }
+    message(
+      "filter_top_hypotheses: auto-detected rank_system: ",
+      paste(rank_system, collapse = ", ")
+    )
   }
 
   # Numeric rank score: finest rank = highest number
@@ -1549,10 +1633,14 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
     tolower(rank_system)
   )
 
-  non_specific <- dplyr::filter(likelihood_df,
-                                hypothesis_type != "specific_candidate")
-  specific     <- dplyr::filter(likelihood_df,
-                                hypothesis_type == "specific_candidate")
+  non_specific <- dplyr::filter(
+    likelihood_df,
+    hypothesis_type != "specific_candidate"
+  )
+  specific <- dplyr::filter(
+    likelihood_df,
+    hypothesis_type == "specific_candidate"
+  )
 
   if (nrow(specific) == 0L) {
     warning("filter_top_hypotheses: no specific_candidate rows found. Returning only unreferenced hypotheses.")
@@ -1563,8 +1651,10 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
   unknown_ranks <- setdiff(tolower(unique(specific$taxon_name_rank)), names(rank_scores))
   if (length(unknown_ranks) > 0L) {
     warning(sprintf(
-      paste0("filter_top_hypotheses: taxon_name_rank value(s) not in rank_system: %s. These ",
-             "rows will be dropped. Ensure rank_system includes all ranks present in your data."),
+      paste0(
+        "filter_top_hypotheses: taxon_name_rank value(s) not in rank_system: %s. These ",
+        "rows will be dropped. Ensure rank_system includes all ranks present in your data."
+      ),
       paste(unknown_ranks, collapse = ", ")
     ))
   }
@@ -1577,8 +1667,8 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
     dplyr::mutate(best_rank_score = max(rank_score, na.rm = TRUE)) |>
     dplyr::ungroup()
 
-  finest_rows  <- dplyr::filter(specific_scored, rank_score == best_rank_score)
-  coarser_rows <- dplyr::filter(specific_scored, rank_score <  best_rank_score)
+  finest_rows <- dplyr::filter(specific_scored, rank_score == best_rank_score)
+  coarser_rows <- dplyr::filter(specific_scored, rank_score < best_rank_score)
 
   # When is_restored is present: preserve coarser (e.g. genus) rows whose
   # entire set of finest-rank (e.g. species) rows in the same observation are
@@ -1590,7 +1680,6 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
   # hits and restored candidates are unaffected (some is_restored = FALSE ->
   # genus row still dropped, species rows kept -- existing behaviour).
   if ("is_restored" %in% names(specific_scored) && nrow(coarser_rows) > 0L) {
-
     # sub(" .*$", "", taxon_name) below takes the first whitespace-delimited
     # token of finest_rows$taxon_name as its genus, on the assumption that
     # taxon_name at the finest observed rank always begins with the genus
@@ -1614,10 +1703,13 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
     # Join status onto coarser rows (match genus taxon_name against .genus key)
     coarser_checked <- coarser_rows |>
       dplyr::left_join(genus_all_restored,
-                       by = c("observation_id", "taxon_name" = ".genus"))
+        by = c("observation_id", "taxon_name" = ".genus")
+      )
 
-    preserved_coarser <- dplyr::filter(coarser_checked,
-                                        !is.na(.all_restored) & .all_restored) |>
+    preserved_coarser <- dplyr::filter(
+      coarser_checked,
+      !is.na(.all_restored) & .all_restored
+    ) |>
       dplyr::select(-rank_score, -best_rank_score, -.all_restored)
 
     if (nrow(preserved_coarser) > 0L) {
@@ -1635,7 +1727,6 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
       preserved_coarser <- NULL
       finest_rows <- dplyr::select(finest_rows, -rank_score, -best_rank_score)
     }
-
   } else {
     preserved_coarser <- NULL
     finest_rows <- dplyr::select(finest_rows, -rank_score, -best_rank_score)

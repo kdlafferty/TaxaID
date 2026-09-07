@@ -43,22 +43,23 @@
 #' @export
 report_likelihood <- function(model,
                               verbose = FALSE) {
-
-  if (!inherits(model, "taxa_model_params"))
+  if (!inherits(model, "taxa_model_params")) {
     stop("report_likelihood: 'model' must be a 'taxa_model_params' object.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # --- Extract statistics from model ------------------------------------------
   stats_slot <- model$Stats
-  n_species    <- if (!is.null(stats_slot$n_species)) stats_slot$n_species else NA_integer_
+  n_species <- if (!is.null(stats_slot$n_species)) stats_slot$n_species else NA_integer_
   n_singletons <- if (!is.null(stats_slot$n_singletons)) stats_slot$n_singletons else 0L
-  n_anchors    <- if (!is.null(stats_slot$n_anchors)) stats_slot$n_anchors else 0L
-  aic_score    <- stats_slot$AIC_Score
+  n_anchors <- if (!is.null(stats_slot$n_anchors)) stats_slot$n_anchors else 0L
+  aic_score <- stats_slot$AIC_Score
 
   # Reference errors
 
   n_errors <- if (!is.null(model$reference_errors) &&
-                  is.data.frame(model$reference_errors)) {
+    is.data.frame(model$reference_errors)) {
     sum(model$reference_errors$error_type == "likely_mislabeled", na.rm = TRUE)
   } else {
     0L
@@ -66,7 +67,7 @@ report_likelihood <- function(model,
 
   # H1 lookup info
   n_profiled <- if (!is.null(model$H1_Lookup) &&
-                    is.data.frame(model$H1_Lookup)) {
+    is.data.frame(model$H1_Lookup)) {
     nrow(model$H1_Lookup)
   } else {
     NA_integer_
@@ -80,7 +81,7 @@ report_likelihood <- function(model,
     n_errors     = n_errors
   )
   if (!is.null(aic_score)) statistics$aic_score <- round(aic_score, 1)
-  if (!is.na(n_profiled))  statistics$n_profiled <- n_profiled
+  if (!is.na(n_profiled)) statistics$n_profiled <- n_profiled
 
   # --- Params -----------------------------------------------------------------
   params <- list(
@@ -95,38 +96,52 @@ report_likelihood <- function(model,
   )
 
   if (n_singletons > 0L) {
-    methods_parts <- paste0(methods_parts,
-                            sprintf(" (%d represented by a single sequence)", n_singletons))
+    methods_parts <- paste0(
+      methods_parts,
+      sprintf(" (%d represented by a single sequence)", n_singletons)
+    )
   }
   methods_parts <- paste0(methods_parts, ".")
 
-  methods_parts <- paste0(methods_parts,
+  methods_parts <- paste0(
+    methods_parts,
     " Match scores were logit-transformed and modelled as bivariate normal",
     " distributions (score + gap features) with empirical Bayes shrinkage",
-    " toward a global mean.")
+    " toward a global mean."
+  )
 
   if (n_anchors > 0L) {
-    methods_parts <- paste0(methods_parts,
-      sprintf(" Perfect-match pseudo-data anchoring was applied (n = %d).", n_anchors))
+    methods_parts <- paste0(
+      methods_parts,
+      sprintf(" Perfect-match pseudo-data anchoring was applied (n = %d).", n_anchors)
+    )
   }
 
   if (n_errors > 0L) {
-    methods_parts <- paste0(methods_parts,
-      sprintf(" %d likely mislabeled reference sequences were detected and removed.", n_errors))
+    methods_parts <- paste0(
+      methods_parts,
+      sprintf(" %d likely mislabeled reference sequences were detected and removed.", n_errors)
+    )
   }
 
   # --- Results text -----------------------------------------------------------
   results_parts <- character(0L)
 
   if (!is.null(aic_score)) {
-    results_parts <- c(results_parts,
-                       sprintf("Model AIC = %.1f.", aic_score))
+    results_parts <- c(
+      results_parts,
+      sprintf("Model AIC = %.1f.", aic_score)
+    )
   }
 
   if (!is.na(n_profiled)) {
-    results_parts <- c(results_parts,
-      sprintf("Species-specific parameters were estimated for %d taxa; %d singleton species used global parameters.",
-              n_profiled, n_singletons))
+    results_parts <- c(
+      results_parts,
+      sprintf(
+        "Species-specific parameters were estimated for %d taxa; %d singleton species used global parameters.",
+        n_profiled, n_singletons
+      )
+    )
   }
 
   results_text <- if (length(results_parts) > 0L) {

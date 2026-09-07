@@ -34,7 +34,7 @@ library(dplyr)
 # DNA (Workflow 3):   build from BLAST output via standardize_match_data()
 # Acoustic (Wf 3b):  build from birdnet_song via standardize_match_data()
 #   (see end of Workflow 3b for the standardize_match_data() call)
-match_df <- readRDS(file.choose())  # select your match data file (.rds)
+match_df <- readRDS(file.choose()) # select your match data file (.rds)
 
 # Trained model
 # DNA:      readRDS(file.path(.taxa_root, "TaxaLikely/model_dna.rds"))
@@ -48,9 +48,11 @@ rank_system <- c("genus", "species")
 
 # Confirm required columns exist
 stopifnot(all(c("observation_id", "score_original", "taxon_name", "taxon_name_rank")
-              %in% names(match_df)))
-cat("Match object:", nrow(match_df), "rows,",
-    length(unique(match_df$observation_id)), "unique queries\n")
+%in% names(match_df)))
+cat(
+  "Match object:", nrow(match_df), "rows,",
+  length(unique(match_df$observation_id)), "unique queries\n"
+)
 
 # ---- 2. Remove flagged reference errors (DNA only) --------------------------
 # SKIP THIS SECTION FOR ACOUSTIC DATA.
@@ -86,7 +88,7 @@ if (file.exists("coverage_threshold.rds")) {
   min_cov <- readRDS("coverage_threshold.rds")
   cat(sprintf("Coverage threshold (from Workflow 3): %.3f\n", min_cov))
 } else {
-  min_cov <- NULL   # no filter
+  min_cov <- NULL # no filter
 }
 
 # ---- 3. Evaluate likelihoods ------------------------------------------------
@@ -118,8 +120,8 @@ lik_result <- evaluate_likelihoods(
   match_df     = match_df,
   model_params = model,
   rank_system  = rank_system,
-  n_sims       = 200L,             # Monte Carlo iterations (0 = point estimate only)
-  min_coverage = min_cov           # NULL (no filter) or threshold from Workflow 3
+  n_sims       = 200L, # Monte Carlo iterations (0 = point estimate only)
+  min_coverage = min_cov # NULL (no filter) or threshold from Workflow 3
   # ratio_threshold = 0.001        # drop hypotheses with ratio below this (default)
   # verbose = TRUE                 # prints message when trivariate fallback is used
 )
@@ -129,7 +131,6 @@ lik_result <- evaluate_likelihoods(
 # uses the trivariate normal for H1/H2/H3 calculation. If coverage is absent
 # or categorical (<=10 unique values), it falls back to bivariate silently
 # (or with a message when verbose = TRUE).
-
 
 
 likelihoods <- lik_result$likelihoods
@@ -185,8 +186,10 @@ top_per_query <- filtered |>
   dplyr::ungroup()
 
 cat("\nTop candidate per query (first 10):\n")
-print(head(top_per_query[, c("observation_id", "taxon_name", "hypothesis_type",
-                              "score_likelihood", "score_likelihood_sd")], 10))
+print(head(top_per_query[, c(
+  "observation_id", "taxon_name", "hypothesis_type",
+  "score_likelihood", "score_likelihood_sd"
+)], 10))
 
 # How confident are the assignments?
 cat("\nLikelihood point estimate distribution (top candidates):\n")
@@ -195,8 +198,9 @@ print(summary(top_per_query$score_likelihood))
 # Which queries have high uncertainty?
 if (any(top_per_query$score_likelihood_sd > 0)) {
   uncertain <- top_per_query[top_per_query$score_likelihood_sd >
-                             stats::quantile(top_per_query$score_likelihood_sd, 0.9,
-                                             na.rm = TRUE), ]
+    stats::quantile(top_per_query$score_likelihood_sd, 0.9,
+      na.rm = TRUE
+    ), ]
   cat("\nHigh-uncertainty queries (top 10% by SD):", nrow(uncertain), "\n")
 }
 

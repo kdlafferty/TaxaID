@@ -9,16 +9,20 @@ test_that(".first_two_words: truncates to Genus + epithet", {
 
 test_that(".coverage_checkpoint_path: errors on malformed len_range instead of silently recycling to NA", {
   expect_error(
-    .coverage_checkpoint_path("Cottus", "12S", len_range = 150L,
-                              max_date = NULL, target_rank = "genus",
-                              cache_dir = tempdir())
+    .coverage_checkpoint_path("Cottus", "12S",
+      len_range = 150L,
+      max_date = NULL, target_rank = "genus",
+      cache_dir = tempdir()
+    )
   )
 })
 
 test_that(".coverage_checkpoint_path: builds a deterministic path from valid inputs", {
-  p <- .coverage_checkpoint_path("Cottus", "12S", len_range = c(100L, 200L),
-                                  max_date = "2024/01/01", target_rank = "genus",
-                                  cache_dir = tempdir())
+  p <- .coverage_checkpoint_path("Cottus", "12S",
+    len_range = c(100L, 200L),
+    max_date = "2024/01/01", target_rank = "genus",
+    cache_dir = tempdir()
+  )
   expect_true(is.character(p))
   expect_true(grepl("^coverage_genus_12S_", basename(p)))
   expect_true(grepl("100_200", p))
@@ -33,8 +37,10 @@ test_that("audit_reference_coverage: non-data-frame input errors", {
 
 test_that("audit_reference_coverage: missing target_rank column errors", {
   df <- data.frame(species = "Aa bb", genus = "Aa", stringsAsFactors = FALSE)
-  expect_error(audit_reference_coverage(df, target_rank = "family"),
-               "not found in reference_df")
+  expect_error(
+    audit_reference_coverage(df, target_rank = "family"),
+    "not found in reference_df"
+  )
 })
 
 test_that("audit_reference_coverage: missing species column errors", {
@@ -43,8 +49,10 @@ test_that("audit_reference_coverage: missing species column errors", {
 })
 
 test_that("audit_reference_coverage: empty groups returns empty census + unreferenced", {
-  df <- data.frame(genus = NA_character_, species = "Aa bb",
-                   stringsAsFactors = FALSE)
+  df <- data.frame(
+    genus = NA_character_, species = "Aa bb",
+    stringsAsFactors = FALSE
+  )
   expect_warning(audit_reference_coverage(df), "No valid groups")
   out <- suppressWarnings(audit_reference_coverage(df))
   expect_equal(nrow(out$census), 0L)
@@ -55,28 +63,29 @@ test_that("audit_reference_coverage: empty groups returns empty census + unrefer
 
 .make_likelihood_df <- function() {
   tibble::tibble(
-    observation_id            = "ESV_001",
-    taxon_name           = c("Hybognathus nuchalis", "Hybognathus", "Leuciscidae"),
-    taxon_name_rank      = c("species", "genus", "family"),
-    hypothesis_type      = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
+    observation_id = "ESV_001",
+    taxon_name = c("Hybognathus nuchalis", "Hybognathus", "Leuciscidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
     score_likelihood = c(1.0, 0.5, 0.1),
-    score_likelihood_mean      = c(1.0, 0.5, 0.1),
-    score_likelihood_sd        = c(0, 0, 0)
+    score_likelihood_mean = c(1.0, 0.5, 0.1),
+    score_likelihood_sd = c(0, 0, 0)
   )
 }
 
 .make_census_result <- function() {
   data.frame(
     taxon_name = "Hybognathus",
-    rank       = "genus",
-    status     = "complete",
+    rank = "genus",
+    status = "complete",
     stringsAsFactors = FALSE
   )
 }
 
 test_that("apply_coverage_constraints: suppresses unreferenced_species for complete genus (zero mode)", {
   out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result(),
-                                    constraint_behavior = "zero")
+    constraint_behavior = "zero"
+  )
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
   expect_equal(h2_row$score_likelihood, 0)
   expect_equal(h2_row$score_likelihood_mean, 0)
@@ -92,7 +101,8 @@ test_that("apply_coverage_constraints: leaves other hypotheses unchanged", {
 
 test_that("apply_coverage_constraints: soft penalty factor applied (zero mode)", {
   out <- apply_coverage_constraints(.make_likelihood_df(), .make_census_result(),
-                                    penalty_factor = 0.5, constraint_behavior = "zero")
+    penalty_factor = 0.5, constraint_behavior = "zero"
+  )
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
   expect_equal(h2_row$score_likelihood, 0.25)
 })
@@ -106,9 +116,11 @@ test_that("apply_coverage_constraints: default is relabel, not zero -- non-destr
 })
 
 test_that("apply_coverage_constraints: incomplete genus not constrained", {
-  census_incomplete <- data.frame(taxon_name = "Hybognathus", rank = "genus",
-                                  status = "incomplete",
-                                  stringsAsFactors = FALSE)
+  census_incomplete <- data.frame(
+    taxon_name = "Hybognathus", rank = "genus",
+    status = "incomplete",
+    stringsAsFactors = FALSE
+  )
   out <- apply_coverage_constraints(.make_likelihood_df(), census_incomplete)
   h2_row <- out[out$hypothesis_type == "unreferenced_species", ]
   expect_true(is.na(h2_row$constraint_applied))
@@ -125,7 +137,8 @@ test_that("apply_coverage_constraints: missing census columns errors", {
 test_that("apply_coverage_constraints: invalid penalty_factor errors", {
   expect_error(
     apply_coverage_constraints(.make_likelihood_df(), .make_census_result(),
-                               penalty_factor = 1.5),
+      penalty_factor = 1.5
+    ),
     "\\[0, 1\\]"
   )
 })
@@ -143,8 +156,8 @@ test_that("apply_coverage_constraints: non-data-frame likelihood_df errors", {
 # ==============================================================================
 
 test_that("audit_acoustic_coverage: identifies in-reference and unreferenced species", {
-  plausible  <- c("Turdus migratorius", "Setophaga petechia", "Limosa fedoa")
-  reference  <- c("Turdus migratorius", "Setophaga petechia", "Corvus brachyrhynchos")
+  plausible <- c("Turdus migratorius", "Setophaga petechia", "Limosa fedoa")
+  reference <- c("Turdus migratorius", "Setophaga petechia", "Corvus brachyrhynchos")
 
   result <- suppressMessages(audit_acoustic_coverage(plausible, reference))
 
@@ -166,8 +179,8 @@ test_that("audit_acoustic_coverage: case-insensitive matching", {
 })
 
 test_that("audit_acoustic_coverage: all in reference returns empty unreferenced", {
-  sp        <- c("Turdus migratorius", "Setophaga petechia")
-  result    <- suppressMessages(audit_acoustic_coverage(sp, sp))
+  sp <- c("Turdus migratorius", "Setophaga petechia")
+  result <- suppressMessages(audit_acoustic_coverage(sp, sp))
   expect_length(result$unreferenced, 0L)
   expect_true(all(result$census$in_reference))
 })
@@ -211,13 +224,17 @@ test_that("audit_acoustic_coverage: match_df = NULL gives NA in_match_data", {
 })
 
 test_that("audit_acoustic_coverage: errors on empty plausible_species", {
-  expect_error(audit_acoustic_coverage(character(0), "Turdus migratorius"),
-               "non-empty character vector")
+  expect_error(
+    audit_acoustic_coverage(character(0), "Turdus migratorius"),
+    "non-empty character vector"
+  )
 })
 
 test_that("audit_acoustic_coverage: errors on non-character reference_species", {
-  expect_error(audit_acoustic_coverage("Turdus migratorius", 1:3),
-               "non-empty character vector")
+  expect_error(
+    audit_acoustic_coverage("Turdus migratorius", 1:3),
+    "non-empty character vector"
+  )
 })
 
 test_that("audit_acoustic_coverage: match_df without species or taxon_name warns", {
@@ -296,13 +313,16 @@ test_that(".xc_recording_locations returns empty typed data frame when raw fetch
 test_that("fetch_xc_recording_locations combines results across species", {
   local_mocked_bindings(
     .xc_recording_locations = function(species_name) {
-      data.frame(species = species_name, xc_id = "1", lat = 1, lon = 2,
-                country = "X", stringsAsFactors = FALSE)
+      data.frame(
+        species = species_name, xc_id = "1", lat = 1, lon = 2,
+        country = "X", stringsAsFactors = FALSE
+      )
     },
     .package = "TaxaLikely"
   )
   out <- fetch_xc_recording_locations(c("Turdus migratorius", "Setophaga petechia"),
-                                      verbose = FALSE)
+    verbose = FALSE
+  )
   expect_equal(nrow(out), 2L)
   expect_equal(out$species, c("Turdus migratorius", "Setophaga petechia"))
 })
@@ -316,10 +336,12 @@ test_that("fetch_xc_recording_locations errors on non-character species_names", 
 })
 
 test_that(".coverage_checkpoint_path: exclude_predicted changes the checkpoint key", {
-  args <- list("Cottus", "12S", len_range = c(100L, 200L),
-               max_date = "2024/01/01", target_rank = "genus",
-               cache_dir = tempdir())
-  p_true  <- do.call(.coverage_checkpoint_path, c(args, list(exclude_predicted = TRUE)))
+  args <- list("Cottus", "12S",
+    len_range = c(100L, 200L),
+    max_date = "2024/01/01", target_rank = "genus",
+    cache_dir = tempdir()
+  )
+  p_true <- do.call(.coverage_checkpoint_path, c(args, list(exclude_predicted = TRUE)))
   p_false <- do.call(.coverage_checkpoint_path, c(args, list(exclude_predicted = FALSE)))
   # .audit_one_genus_reverse() computes different unreferenced_names /
   # has_seqs_not_in_ref under each setting and it is that finished record that
@@ -337,7 +359,7 @@ test_that(".reverse_barcode_check: an NCBI record with no title does not poison 
   # species in that batch as unreferenced.
   nuc_summ <- list(
     list(uid = "1", taxid = "101", title = "Cottus asper 12S ribosomal RNA gene"),
-    list(uid = "2", taxid = "102")  # real NCBI stub record: no title field
+    list(uid = "2", taxid = "102") # real NCBI stub record: no title field
   )
   tax_summ <- list(
     list(uid = "101", rank = "species", scientificname = "Cottus asper"),

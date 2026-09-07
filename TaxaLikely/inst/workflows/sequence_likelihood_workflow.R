@@ -58,31 +58,36 @@ RANK_SYSTEM <- c("family", "genus", "species")
 # (Phanerodon vacca) within Embiotoca's family. Multiple genera across 3
 # families gives the model real within-genus (H2) and cross-genus (H3)
 # training pairs, not just within-species (H1) ones.
-REFERENCE_TAXA <- c("Clinocottus", "Rhacochilus", "Gibbonsia", "Oligocottus",
-                    "Embiotoca", "Phanerodon")
-BARCODE_TERM      <- "12S"
-MAX_PER_SPECIES   <- 5L   # stratified downsampling -- keeps this tutorial fast
+REFERENCE_TAXA <- c(
+  "Clinocottus", "Rhacochilus", "Gibbonsia", "Oligocottus",
+  "Embiotoca", "Phanerodon"
+)
+BARCODE_TERM <- "12S"
+MAX_PER_SPECIES <- 5L # stratified downsampling -- keeps this tutorial fast
 
 if (!file.exists(CHECKPOINT_PATH)) {
-  stop("Checkpoint not found at ", CHECKPOINT_PATH, ". Run TaxaMatch's ",
-       "blast_sequences_workflow.R first (in the SAME R session if ",
-       "tempdir() has not been reused -- tempdir() is scoped to one R ",
-       "session, exactly as documented for the five-package Gadus chain).")
+  stop(
+    "Checkpoint not found at ", CHECKPOINT_PATH, ". Run TaxaMatch's ",
+    "blast_sequences_workflow.R first (in the SAME R session if ",
+    "tempdir() has not been reused -- tempdir() is scoped to one R ",
+    "session, exactly as documented for the five-package Gadus chain)."
+  )
 }
 
 taxamatch_blast_match_obj <- readRDS(CHECKPOINT_PATH)
-message("Loaded TaxaMatch's checkpoint: ", CHECKPOINT_PATH,
-        " (", nrow(taxamatch_blast_match_obj), " row(s), ",
-        length(unique(taxamatch_blast_match_obj$observation_id)), " quer(ies)).")
+message(
+  "Loaded TaxaMatch's checkpoint: ", CHECKPOINT_PATH,
+  " (", nrow(taxamatch_blast_match_obj), " row(s), ",
+  length(unique(taxamatch_blast_match_obj$observation_id)), " quer(ies))."
+)
 
 if (DEBUG_MODE) {
-
-  message("\nDEBUG_MODE = TRUE -- fetching a real reference sequence ",
-          "database from NCBI for ", length(REFERENCE_TAXA), " genera: ",
-          paste(REFERENCE_TAXA, collapse = ", "), ".")
-
+  message(
+    "\nDEBUG_MODE = TRUE -- fetching a real reference sequence ",
+    "database from NCBI for ", length(REFERENCE_TAXA), " genera: ",
+    paste(REFERENCE_TAXA, collapse = ", "), "."
+  )
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -101,12 +106,14 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the values here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real reference data has been supplied. ",
-       "Edit the 'SWAP IN YOUR OWN DATA' block in this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real reference data has been supplied. ",
+    "Edit the 'SWAP IN YOUR OWN DATA' block in this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_ptconception_seqmodel"
 
 # ==============================================================================
@@ -146,10 +153,10 @@ message("\n--- Step 2: Building pairwise sequence matrix (DECIPHER) ---")
 
 ref_matrix <- TaxaLikely::build_sequence_matrix(
   reference_df = reference_df,
-  rank_system  = RANK_SYSTEM,
-  barcode_term = BARCODE_TERM   # same term used at fetch time; guards against
-                                # off-target same-length, wrong-window sequences
-                                # slipping past the generic default length filter
+  rank_system = RANK_SYSTEM,
+  barcode_term = BARCODE_TERM # same term used at fetch time; guards against
+  # off-target same-length, wrong-window sequences
+  # slipping past the generic default length filter
 )
 
 message(sprintf("  %d pairwise comparison(s) built.", nrow(ref_matrix)))
@@ -172,8 +179,10 @@ message("\n--- Step 3: Calibrating coverage filter ---")
 .best_thresh <- .cal$threshold[which.max(.cal$youden_j)]
 
 if (length(unique(.cal$youden_j)) <= 1L) {
-  message("  Youden's J is flat (categorical/near-constant coverage) -- ",
-          "falling back to coverage_threshold()'s quantile shortcut.")
+  message(
+    "  Youden's J is flat (categorical/near-constant coverage) -- ",
+    "falling back to coverage_threshold()'s quantile shortcut."
+  )
   .best_thresh <- TaxaLikely::coverage_threshold(ref_matrix)
 }
 
@@ -220,8 +229,10 @@ print(.interp$hypothesis_baselines)
 taxalikely_sequence_model_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxalikely_sequence_model.rds"))
 saveRDS(taxalikely_sequence_model, taxalikely_sequence_model_path)
 message(sprintf("\n  Saved: %s", taxalikely_sequence_model_path))
-message(sprintf("  To reuse without re-fetching/re-training, paste:\n    taxalikely_sequence_model <- readRDS(\"%s\")",
-                taxalikely_sequence_model_path))
+message(sprintf(
+  "  To reuse without re-fetching/re-training, paste:\n    taxalikely_sequence_model <- readRDS(\"%s\")",
+  taxalikely_sequence_model_path
+))
 
 # ==============================================================================
 # 5.  REMOVE FLAGGED REFERENCE ERRORS FROM THE QUERY MATCH OBJECT
@@ -266,9 +277,11 @@ taxalikely_sequence_lik_result <- TaxaLikely::evaluate_likelihoods(
 
 taxalikely_sequence_likelihoods <- taxalikely_sequence_lik_result$likelihoods
 
-message(sprintf("  %d likelihood row(s) across %d quer(ies).",
-                nrow(taxalikely_sequence_likelihoods),
-                length(unique(taxalikely_sequence_likelihoods$observation_id))))
+message(sprintf(
+  "  %d likelihood row(s) across %d quer(ies).",
+  nrow(taxalikely_sequence_likelihoods),
+  length(unique(taxalikely_sequence_likelihoods$observation_id))
+))
 message("  hypothesis_type distribution:")
 print(table(taxalikely_sequence_likelihoods$hypothesis_type))
 
@@ -282,7 +295,8 @@ if (nrow(taxalikely_sequence_lik_result$unresolved) > 0L) {
 
 # ---- Filter to finest-rank candidates per query -----------------------------
 taxalikely_sequence_likelihoods <- TaxaLikely::filter_top_hypotheses(
-  taxalikely_sequence_likelihoods, rank_system = RANK_SYSTEM
+  taxalikely_sequence_likelihoods,
+  rank_system = RANK_SYSTEM
 )
 
 # ---- Honesty check: does the winning specific_candidate match ground truth? -
@@ -309,12 +323,16 @@ message(sprintf(
 taxalikely_sequence_likelihoods_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxalikely_sequence_likelihoods.rds"))
 saveRDS(taxalikely_sequence_likelihoods, taxalikely_sequence_likelihoods_path)
 message(sprintf("\n  Saved: %s", taxalikely_sequence_likelihoods_path))
-message(sprintf("  To reuse without re-running this script, paste:\n    taxalikely_sequence_likelihoods <- readRDS(\"%s\")",
-                taxalikely_sequence_likelihoods_path))
+message(sprintf(
+  "  To reuse without re-running this script, paste:\n    taxalikely_sequence_likelihoods <- readRDS(\"%s\")",
+  taxalikely_sequence_likelihoods_path
+))
 
-message("\nWorkflow complete. This mini-chain stops here -- see TaxaMatch's ",
-        "blast_sequences_workflow.R header comment for why it does not ",
-        "continue to TaxaAssign/TaxaFlag.")
+message(
+  "\nWorkflow complete. This mini-chain stops here -- see TaxaMatch's ",
+  "blast_sequences_workflow.R header comment for why it does not ",
+  "continue to TaxaAssign/TaxaFlag."
+)
 
 # ==============================================================================
 # Output

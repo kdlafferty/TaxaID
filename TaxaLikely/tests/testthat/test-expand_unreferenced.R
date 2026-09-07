@@ -5,32 +5,36 @@
 # so H2 expansion fires normally. Tests that verify suppression use separate fixtures.
 .make_expand_lik <- function() {
   data.frame(
-    observation_id        = "ESV_001",
-    taxon_name            = c("Atherinops affinis", "Fundulus", "Fundulidae"),
-    taxon_name_rank       = c("species", "genus", "family"),
-    hypothesis_type       = c("specific_candidate",
-                               "unreferenced_species", "unreferenced_genus"),
-    score_likelihood      = c(0.95, 0.31, 0.04),
+    observation_id = "ESV_001",
+    taxon_name = c("Atherinops affinis", "Fundulus", "Fundulidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c(
+      "specific_candidate",
+      "unreferenced_species", "unreferenced_genus"
+    ),
+    score_likelihood = c(0.95, 0.31, 0.04),
     score_likelihood_mean = c(0.95, 0.31, 0.04),
-    score_likelihood_sd   = c(0,    0,    0),
-    stringsAsFactors      = FALSE
+    score_likelihood_sd = c(0, 0, 0),
+    stringsAsFactors = FALSE
   )
 }
 
 .make_unref_df <- function() {
   data.frame(
     species = c("Fundulus parvipinnis", "Fundulus zebrinus", "Lucania parva"),
-    genus   = c("Fundulus",             "Fundulus",          "Lucania"),
-    family  = c("Fundulidae",           "Fundulidae",        "Fundulidae"),
+    genus = c("Fundulus", "Fundulus", "Lucania"),
+    family = c("Fundulidae", "Fundulidae", "Fundulidae"),
     stringsAsFactors = FALSE
   )
 }
 
 test_that("expand_unreferenced_hypotheses: H2 generic row replaced with named species", {
   out <- expand_unreferenced_hypotheses(.make_expand_lik(), .make_unref_df())
-  h2  <- out[out$hypothesis_type == "unreferenced_species", ]
-  expect_equal(sort(h2$taxon_name),
-               sort(c("Fundulus parvipinnis", "Fundulus zebrinus")))
+  h2 <- out[out$hypothesis_type == "unreferenced_species", ]
+  expect_equal(
+    sort(h2$taxon_name),
+    sort(c("Fundulus parvipinnis", "Fundulus zebrinus"))
+  )
   expect_true(all(h2$taxon_name_rank == "species"))
   expect_true(all(h2$score_likelihood == 0.31))
   expect_false("Fundulus" %in% out$taxon_name)
@@ -38,7 +42,7 @@ test_that("expand_unreferenced_hypotheses: H2 generic row replaced with named sp
 
 test_that("expand_unreferenced_hypotheses: H3 generic row replaced with named species from other genus", {
   out <- expand_unreferenced_hypotheses(.make_expand_lik(), .make_unref_df())
-  h3  <- out[out$hypothesis_type == "unreferenced_genus", ]
+  h3 <- out[out$hypothesis_type == "unreferenced_genus", ]
   expect_equal(h3$taxon_name, "Lucania parva")
   expect_equal(h3$taxon_name_rank, "species")
   expect_equal(h3$score_likelihood, 0.04)
@@ -48,19 +52,21 @@ test_that("expand_unreferenced_hypotheses: H3 generic row replaced with named sp
 test_that("expand_unreferenced_hypotheses: H3 excludes species from H2 genus", {
   unref_extra <- rbind(
     .make_unref_df(),
-    data.frame(species = "Fundulus nottatus", genus = "Fundulus",
-               family = "Fundulidae", stringsAsFactors = FALSE)
+    data.frame(
+      species = "Fundulus nottatus", genus = "Fundulus",
+      family = "Fundulidae", stringsAsFactors = FALSE
+    )
   )
   out <- expand_unreferenced_hypotheses(.make_expand_lik(), unref_extra)
-  h3  <- out[out$hypothesis_type == "unreferenced_genus", ]
+  h3 <- out[out$hypothesis_type == "unreferenced_genus", ]
   expect_false("Fundulus nottatus" %in% h3$taxon_name)
   expect_true("Fundulus nottatus" %in%
-                out$taxon_name[out$hypothesis_type == "unreferenced_species"])
+    out$taxon_name[out$hypothesis_type == "unreferenced_species"])
 })
 
 test_that("expand_unreferenced_hypotheses: H1 rows passed through unchanged", {
   out <- expand_unreferenced_hypotheses(.make_expand_lik(), .make_unref_df())
-  h1  <- out[out$hypothesis_type == "specific_candidate", ]
+  h1 <- out[out$hypothesis_type == "specific_candidate", ]
   expect_equal(h1$taxon_name, "Atherinops affinis")
   expect_equal(h1$score_likelihood, 0.95)
 })
@@ -71,7 +77,7 @@ test_that("expand_unreferenced_hypotheses: generic H2 dropped when no genus matc
     stringsAsFactors = FALSE
   )
   out <- expand_unreferenced_hypotheses(.make_expand_lik(), unref_no_fundulus)
-  h2  <- out[out$hypothesis_type == "unreferenced_species", ]
+  h2 <- out[out$hypothesis_type == "unreferenced_species", ]
   expect_equal(nrow(h2), 0L)
 })
 
@@ -81,23 +87,29 @@ test_that("expand_unreferenced_hypotheses: generic H3 dropped when no family mat
     stringsAsFactors = FALSE
   )
   out <- expand_unreferenced_hypotheses(.make_expand_lik(), unref_other_family)
-  h3  <- out[out$hypothesis_type == "unreferenced_genus", ]
+  h3 <- out[out$hypothesis_type == "unreferenced_genus", ]
   expect_equal(nrow(h3), 0L)
 })
 
 test_that("expand_unreferenced_hypotheses: empty unreferenced_df drops H2/H3 rows", {
-  empty <- data.frame(species = character(), genus = character(),
-                      family = character(), stringsAsFactors = FALSE)
+  empty <- data.frame(
+    species = character(), genus = character(),
+    family = character(), stringsAsFactors = FALSE
+  )
   out <- suppressMessages(expand_unreferenced_hypotheses(.make_expand_lik(), empty))
-  expect_equal(nrow(out), 1L)  # only H1 row retained
+  expect_equal(nrow(out), 1L) # only H1 row retained
   expect_true(all(out$hypothesis_type == "specific_candidate"))
 })
 
 test_that("expand_unreferenced_hypotheses: non-data-frame inputs error", {
-  expect_error(expand_unreferenced_hypotheses(list(), .make_unref_df()),
-               "must be a data frame")
-  expect_error(expand_unreferenced_hypotheses(.make_expand_lik(), list()),
-               "must be a data frame")
+  expect_error(
+    expand_unreferenced_hypotheses(list(), .make_unref_df()),
+    "must be a data frame"
+  )
+  expect_error(
+    expand_unreferenced_hypotheses(.make_expand_lik(), list()),
+    "must be a data frame"
+  )
 })
 
 test_that("expand_unreferenced_hypotheses: missing required columns error", {
@@ -130,18 +142,20 @@ test_that("expand_unreferenced_hypotheses: H2 suppresses only exact H1 species, 
   # H1 = Fundulus heteroclitus; parvipinnis and zebrinus are different species --
   # species-level suppression allows them to expand as H2 candidates.
   lik_fundulus_h1 <- data.frame(
-    observation_id        = "ESV_001",
-    taxon_name            = c("Fundulus heteroclitus", "Fundulus", "Fundulidae"),
-    taxon_name_rank       = c("species", "genus", "family"),
-    hypothesis_type       = c("specific_candidate",
-                               "unreferenced_species", "unreferenced_genus"),
-    score_likelihood      = c(0.95, 0.31, 0.04),
+    observation_id = "ESV_001",
+    taxon_name = c("Fundulus heteroclitus", "Fundulus", "Fundulidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c(
+      "specific_candidate",
+      "unreferenced_species", "unreferenced_genus"
+    ),
+    score_likelihood = c(0.95, 0.31, 0.04),
     score_likelihood_mean = c(0.95, 0.31, 0.04),
-    score_likelihood_sd   = c(0,    0,    0),
-    stringsAsFactors      = FALSE
+    score_likelihood_sd = c(0, 0, 0),
+    stringsAsFactors = FALSE
   )
   out <- expand_unreferenced_hypotheses(lik_fundulus_h1, .make_unref_df())
-  h2  <- out[out$hypothesis_type == "unreferenced_species", ]
+  h2 <- out[out$hypothesis_type == "unreferenced_species", ]
   # parvipinnis and zebrinus are NOT heteroclitus -- they should expand as H2
   expect_equal(sort(h2$taxon_name), sort(c("Fundulus parvipinnis", "Fundulus zebrinus")))
   # H1 must still be present
@@ -154,18 +168,20 @@ test_that("expand_unreferenced_hypotheses: H3 suppresses only exact H1 species, 
   # H1 is Lucania goodei (species-rank). Lucania parva is a DIFFERENT species --
   # species-level suppression allows it to appear in H3.
   lik_lucania_h1 <- data.frame(
-    observation_id        = "ESV_001",
-    taxon_name            = c("Lucania goodei", "Atherinops", "Fundulidae"),
-    taxon_name_rank       = c("species", "genus", "family"),
-    hypothesis_type       = c("specific_candidate",
-                               "unreferenced_species", "unreferenced_genus"),
-    score_likelihood      = c(0.95, 0.31, 0.04),
+    observation_id = "ESV_001",
+    taxon_name = c("Lucania goodei", "Atherinops", "Fundulidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c(
+      "specific_candidate",
+      "unreferenced_species", "unreferenced_genus"
+    ),
+    score_likelihood = c(0.95, 0.31, 0.04),
     score_likelihood_mean = c(0.95, 0.31, 0.04),
-    score_likelihood_sd   = c(0,    0,    0),
-    stringsAsFactors      = FALSE
+    score_likelihood_sd = c(0, 0, 0),
+    stringsAsFactors = FALSE
   )
   out <- expand_unreferenced_hypotheses(lik_lucania_h1, .make_unref_df())
-  h3  <- out[out$hypothesis_type == "unreferenced_genus", ]
+  h3 <- out[out$hypothesis_type == "unreferenced_genus", ]
   # Lucania parva is a different species from H1 Lucania goodei -- should appear in H3
   expect_true("Lucania parva" %in% h3$taxon_name)
   # Fundulus species should still expand into H3 (their genus is not covered by H1)
@@ -175,19 +191,21 @@ test_that("expand_unreferenced_hypotheses: H3 suppresses only exact H1 species, 
 test_that("expand_unreferenced_hypotheses: H2 expands congeners even when one species is H1", {
   # H1 covers Fundulus heteroclitus but not parvipinnis/zebrinus -- H2 should expand both.
   lik_fundulus_h1 <- data.frame(
-    observation_id        = "ESV_001",
-    taxon_name            = c("Fundulus heteroclitus", "Fundulus", "Fundulidae"),
-    taxon_name_rank       = c("species", "genus", "family"),
-    hypothesis_type       = c("specific_candidate",
-                               "unreferenced_species", "unreferenced_genus"),
-    score_likelihood      = c(0.95, 0.31, 0.04),
+    observation_id = "ESV_001",
+    taxon_name = c("Fundulus heteroclitus", "Fundulus", "Fundulidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c(
+      "specific_candidate",
+      "unreferenced_species", "unreferenced_genus"
+    ),
+    score_likelihood = c(0.95, 0.31, 0.04),
     score_likelihood_mean = c(0.95, 0.31, 0.04),
-    score_likelihood_sd   = c(0,    0,    0),
-    stringsAsFactors      = FALSE
+    score_likelihood_sd = c(0, 0, 0),
+    stringsAsFactors = FALSE
   )
   out <- expand_unreferenced_hypotheses(lik_fundulus_h1, .make_unref_df())
-  h2  <- out[out$hypothesis_type == "unreferenced_species", ]
-  h3  <- out[out$hypothesis_type == "unreferenced_genus", ]
+  h2 <- out[out$hypothesis_type == "unreferenced_species", ]
+  h3 <- out[out$hypothesis_type == "unreferenced_genus", ]
   # H2 expands parvipinnis and zebrinus (not heteroclitus)
   expect_equal(sort(h2$taxon_name), sort(c("Fundulus parvipinnis", "Fundulus zebrinus")))
   # H3 Lucania parva not covered by H1 -- should appear
@@ -201,24 +219,26 @@ test_that("expand_unreferenced_hypotheses: species-level suppression -- H1 lima 
   # F. parvipinnis is unreferenced (no short 12S barcodes in NCBI). Old genus-level
   # suppression blocked parvipinnis; species-level suppression allows it through as H2.
   lik_lima_h1 <- data.frame(
-    observation_id        = "ASV_354",
-    taxon_name            = c("Fundulus lima", "Fundulus", "Fundulidae"),
-    taxon_name_rank       = c("species", "genus", "family"),
-    hypothesis_type       = c("specific_candidate",
-                               "unreferenced_species", "unreferenced_genus"),
-    score_likelihood      = c(0.02, 0.31, 0.04),
+    observation_id = "ASV_354",
+    taxon_name = c("Fundulus lima", "Fundulus", "Fundulidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c(
+      "specific_candidate",
+      "unreferenced_species", "unreferenced_genus"
+    ),
+    score_likelihood = c(0.02, 0.31, 0.04),
     score_likelihood_mean = c(0.02, 0.31, 0.04),
-    score_likelihood_sd   = c(0,    0,    0),
-    stringsAsFactors      = FALSE
+    score_likelihood_sd = c(0, 0, 0),
+    stringsAsFactors = FALSE
   )
   unref_parv <- data.frame(
     species = "Fundulus parvipinnis",
-    genus   = "Fundulus",
-    family  = "Fundulidae",
+    genus = "Fundulus",
+    family = "Fundulidae",
     stringsAsFactors = FALSE
   )
   out <- expand_unreferenced_hypotheses(lik_lima_h1, unref_parv)
-  h2  <- out[out$hypothesis_type == "unreferenced_species", ]
+  h2 <- out[out$hypothesis_type == "unreferenced_species", ]
   # parvipinnis is NOT lima -- should appear as H2
   expect_true("Fundulus parvipinnis" %in% h2$taxon_name)
   # lima should not appear in H2 (it's already H1)
@@ -227,9 +247,9 @@ test_that("expand_unreferenced_hypotheses: species-level suppression -- H1 lima 
 
 test_that("expand_unreferenced_hypotheses: score_likelihood_cov/evidence/h2_delta_source copied through to expanded H2/H3 rows", {
   lik <- .make_expand_lik()
-  lik$score_likelihood_cov      <- c(0.95, 0.28, 0.03)
+  lik$score_likelihood_cov <- c(0.95, 0.28, 0.03)
   lik$score_likelihood_evidence <- c(0.95, 0.30, 0.04)
-  lik$h2_delta_source           <- c(NA, "genus_specific", "global_fallback")
+  lik$h2_delta_source <- c(NA, "genus_specific", "global_fallback")
   out <- expand_unreferenced_hypotheses(lik, .make_unref_df())
 
   h2 <- out[out$hypothesis_type == "unreferenced_species", ]
@@ -250,25 +270,27 @@ test_that("expand_unreferenced_hypotheses: constraint_applied (a genuinely row-s
   lik <- .make_expand_lik()
   lik$constraint_applied <- c("none", "none", "none")
   out <- expand_unreferenced_hypotheses(lik, .make_unref_df())
-  h2  <- out[out$hypothesis_type == "unreferenced_species", ]
+  h2 <- out[out$hypothesis_type == "unreferenced_species", ]
   expect_true(all(is.na(h2$constraint_applied)))
 })
 
 test_that("expand_unreferenced_hypotheses: genus-rank H1 still suppresses all H2 in that genus", {
   # When H1 is genus-rank (species couldn't be resolved), the entire genus is suppressed.
   lik_genus_h1 <- data.frame(
-    observation_id        = "ESV_001",
-    taxon_name            = c("Fundulus", "Fundulus", "Fundulidae"),
-    taxon_name_rank       = c("genus", "genus", "family"),
-    hypothesis_type       = c("specific_candidate",
-                               "unreferenced_species", "unreferenced_genus"),
-    score_likelihood      = c(0.95, 0.31, 0.04),
+    observation_id = "ESV_001",
+    taxon_name = c("Fundulus", "Fundulus", "Fundulidae"),
+    taxon_name_rank = c("genus", "genus", "family"),
+    hypothesis_type = c(
+      "specific_candidate",
+      "unreferenced_species", "unreferenced_genus"
+    ),
+    score_likelihood = c(0.95, 0.31, 0.04),
     score_likelihood_mean = c(0.95, 0.31, 0.04),
-    score_likelihood_sd   = c(0,    0,    0),
-    stringsAsFactors      = FALSE
+    score_likelihood_sd = c(0, 0, 0),
+    stringsAsFactors = FALSE
   )
   out <- expand_unreferenced_hypotheses(lik_genus_h1, .make_unref_df())
-  h2  <- out[out$hypothesis_type == "unreferenced_species", ]
+  h2 <- out[out$hypothesis_type == "unreferenced_species", ]
   # Genus-rank H1 suppresses all Fundulus H2 expansion
   expect_equal(nrow(h2), 0L)
 })
@@ -286,8 +308,10 @@ test_that("expand_unreferenced_hypotheses: observation_id-scoped row expands onl
   )
   unref_scoped <- rbind(
     .make_unref_df(),
-    data.frame(species = "Fundulus parvipinnis_REGIONAL", genus = "Fundulus",
-               family = "Fundulidae", stringsAsFactors = FALSE)
+    data.frame(
+      species = "Fundulus parvipinnis_REGIONAL", genus = "Fundulus",
+      family = "Fundulidae", stringsAsFactors = FALSE
+    )
   )
   unref_scoped$observation_id <- NA_character_
   unref_scoped$observation_id[unref_scoped$species == "Fundulus parvipinnis_REGIONAL"] <- "ESV_001"
@@ -310,7 +334,7 @@ test_that("expand_unreferenced_hypotheses: absent observation_id column behaves 
   out_na <- expand_unreferenced_hypotheses(.make_expand_lik(), unref_na)
 
   h2_absent <- out_absent[out_absent$hypothesis_type == "unreferenced_species", ]
-  h2_na     <- out_na[out_na$hypothesis_type == "unreferenced_species", ]
+  h2_na <- out_na[out_na$hypothesis_type == "unreferenced_species", ]
   expect_equal(sort(h2_absent$taxon_name), sort(h2_na$taxon_name))
 })
 
@@ -319,18 +343,26 @@ test_that("expand_unreferenced_hypotheses: observation_id-scoped row for a speci
   # rejected species is scoped to ESV_001 only -- it must not appear at all
   # for ESV_002, regardless of ESV_002's own H1 species-level suppression.
   lik_lima <- data.frame(
-    observation_id        = c("ESV_001", "ESV_001", "ESV_001",
-                               "ESV_002", "ESV_002", "ESV_002"),
-    taxon_name            = c("Fundulus lima", "Fundulus", "Fundulidae",
-                               "Fundulus lima", "Fundulus", "Fundulidae"),
-    taxon_name_rank       = c("species", "genus", "family",
-                               "species", "genus", "family"),
-    hypothesis_type       = c("specific_candidate", "unreferenced_species", "unreferenced_genus",
-                               "specific_candidate", "unreferenced_species", "unreferenced_genus"),
-    score_likelihood      = c(0.02, 0.31, 0.04, 0.02, 0.31, 0.04),
+    observation_id = c(
+      "ESV_001", "ESV_001", "ESV_001",
+      "ESV_002", "ESV_002", "ESV_002"
+    ),
+    taxon_name = c(
+      "Fundulus lima", "Fundulus", "Fundulidae",
+      "Fundulus lima", "Fundulus", "Fundulidae"
+    ),
+    taxon_name_rank = c(
+      "species", "genus", "family",
+      "species", "genus", "family"
+    ),
+    hypothesis_type = c(
+      "specific_candidate", "unreferenced_species", "unreferenced_genus",
+      "specific_candidate", "unreferenced_species", "unreferenced_genus"
+    ),
+    score_likelihood = c(0.02, 0.31, 0.04, 0.02, 0.31, 0.04),
     score_likelihood_mean = c(0.02, 0.31, 0.04, 0.02, 0.31, 0.04),
-    score_likelihood_sd   = c(0, 0, 0, 0, 0, 0),
-    stringsAsFactors      = FALSE
+    score_likelihood_sd = c(0, 0, 0, 0, 0, 0),
+    stringsAsFactors = FALSE
   )
   unref_scoped <- data.frame(
     species = "Fundulus parvipinnis", genus = "Fundulus", family = "Fundulidae",

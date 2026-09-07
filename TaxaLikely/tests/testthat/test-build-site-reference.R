@@ -13,11 +13,13 @@
 make_ref_df <- function() {
   data.frame(
     composite_id = c("ACC001", "ACC002", "ACC003"),
-    family       = c("Fundulidae", "Fundulidae", "Gobiidae"),
-    genus        = c("Fundulus",   "Fundulus",   "Gillichthys"),
-    species      = c("Fundulus heteroclitus", "Fundulus parvipinnis",
-                     "Gillichthys mirabilis"),
-    sequence     = c("ATCG", "GCTA", "TTTT"),
+    family = c("Fundulidae", "Fundulidae", "Gobiidae"),
+    genus = c("Fundulus", "Fundulus", "Gillichthys"),
+    species = c(
+      "Fundulus heteroclitus", "Fundulus parvipinnis",
+      "Gillichthys mirabilis"
+    ),
+    sequence = c("ATCG", "GCTA", "TTTT"),
     stringsAsFactors = FALSE
   )
 }
@@ -64,8 +66,10 @@ test_that("build_site_reference: error on non-character taxa", {
 
 test_that("build_site_reference: error on invalid output_dir type", {
   expect_error(
-    build_site_reference(taxa = "Fundulus", barcode_term = "MiFishU",
-                         output_dir = 123),
+    build_site_reference(
+      taxa = "Fundulus", barcode_term = "MiFishU",
+      output_dir = 123
+    ),
     "output_dir"
   )
 })
@@ -77,7 +81,7 @@ test_that("build_site_reference: error on invalid output_dir type", {
 test_that("build_site_reference: returns named list with correct components", {
   local_mocked_bindings(
     fetch_ncbi_reference_sequences = function(...) make_ref_df(),
-    audit_barcode_coverage    = function(...) make_coverage(),
+    audit_barcode_coverage = function(...) make_coverage(),
     .package = "TaxaLikely"
   )
   result <- suppressMessages(
@@ -90,26 +94,30 @@ test_that("build_site_reference: returns named list with correct components", {
 test_that("build_site_reference: reference_df matches fetched data", {
   local_mocked_bindings(
     fetch_ncbi_reference_sequences = function(...) make_ref_df(),
-    audit_barcode_coverage    = function(...) make_coverage(),
+    audit_barcode_coverage = function(...) make_coverage(),
     .package = "TaxaLikely"
   )
   result <- suppressMessages(
     build_site_reference(taxa = "Fundulus", barcode_term = "MiFishU")
   )
   expect_equal(nrow(result$reference_df), 3L)
-  expect_equal(result$reference_df$composite_id,
-               c("ACC001", "ACC002", "ACC003"))
+  expect_equal(
+    result$reference_df$composite_id,
+    c("ACC001", "ACC002", "ACC003")
+  )
 })
 
 test_that("build_site_reference: errors is NULL when flag_errors = FALSE", {
   local_mocked_bindings(
     fetch_ncbi_reference_sequences = function(...) make_ref_df(),
-    audit_barcode_coverage    = function(...) make_coverage(),
+    audit_barcode_coverage = function(...) make_coverage(),
     .package = "TaxaLikely"
   )
   result <- suppressMessages(
-    build_site_reference(taxa = "Fundulus", barcode_term = "MiFishU",
-                         flag_errors = FALSE)
+    build_site_reference(
+      taxa = "Fundulus", barcode_term = "MiFishU",
+      flag_errors = FALSE
+    )
   )
   expect_null(result$errors)
 })
@@ -117,16 +125,20 @@ test_that("build_site_reference: errors is NULL when flag_errors = FALSE", {
 test_that("build_site_reference: census populated when audit_coverage = TRUE", {
   local_mocked_bindings(
     fetch_ncbi_reference_sequences = function(...) make_ref_df(),
-    audit_barcode_coverage    = function(...) make_coverage(),
+    audit_barcode_coverage = function(...) make_coverage(),
     .package = "TaxaLikely"
   )
   result <- suppressMessages(
-    build_site_reference(taxa = "Fundulus", barcode_term = "MiFishU",
-                         audit_coverage = TRUE)
+    build_site_reference(
+      taxa = "Fundulus", barcode_term = "MiFishU",
+      audit_coverage = TRUE
+    )
   )
   expect_equal(nrow(result$census), 2L)
-  expect_equal(result$unreferenced,
-               c("Fundulus majalis", "Gillichthys seta"))
+  expect_equal(
+    result$unreferenced,
+    c("Fundulus majalis", "Gillichthys seta")
+  )
 })
 
 test_that("build_site_reference: census is empty df when audit_coverage = FALSE", {
@@ -135,10 +147,12 @@ test_that("build_site_reference: census is empty df when audit_coverage = FALSE"
     .package = "TaxaLikely"
   )
   result <- suppressMessages(
-    build_site_reference(taxa = "Fundulus", barcode_term = "MiFishU",
-                         audit_coverage = FALSE)
+    build_site_reference(
+      taxa = "Fundulus", barcode_term = "MiFishU",
+      audit_coverage = FALSE
+    )
   )
-  expect_equal(nrow(result$census),        0L)
+  expect_equal(nrow(result$census), 0L)
   expect_equal(length(result$unreferenced), 0L)
 })
 
@@ -150,16 +164,18 @@ test_that("build_site_reference: creates output_dir and writes fasta + tsv", {
   out_dir <- tempfile()
   local_mocked_bindings(
     fetch_ncbi_reference_sequences = function(...) make_ref_df(),
-    audit_barcode_coverage    = function(...) make_coverage(),
-    write_reference_fasta     = function(reference_df, file, taxonomy_file, ...) {
+    audit_barcode_coverage = function(...) make_coverage(),
+    write_reference_fasta = function(reference_df, file, taxonomy_file, ...) {
       writeLines("", file)
       writeLines("", taxonomy_file)
     },
     .package = "TaxaLikely"
   )
   suppressMessages(
-    build_site_reference(taxa = "Fundulus", barcode_term = "MiFishU",
-                         output_dir = out_dir)
+    build_site_reference(
+      taxa = "Fundulus", barcode_term = "MiFishU",
+      output_dir = out_dir
+    )
   )
   expect_true(dir.exists(out_dir))
   expect_true(file.exists(file.path(out_dir, "reference.fasta")))
@@ -173,7 +189,7 @@ test_that("build_site_reference: creates output_dir and writes fasta + tsv", {
 test_that("build_site_reference: flag_errors = TRUE errors when DECIPHER absent", {
   skip_if(
     requireNamespace("DECIPHER", quietly = TRUE) &&
-    requireNamespace("Biostrings", quietly = TRUE),
+      requireNamespace("Biostrings", quietly = TRUE),
     "DECIPHER + Biostrings installed -- skipping absent-package test"
   )
   local_mocked_bindings(
@@ -182,8 +198,10 @@ test_that("build_site_reference: flag_errors = TRUE errors when DECIPHER absent"
   )
   expect_error(
     suppressMessages(
-      build_site_reference(taxa = "Fundulus", barcode_term = "MiFishU",
-                           flag_errors = TRUE, audit_coverage = FALSE)
+      build_site_reference(
+        taxa = "Fundulus", barcode_term = "MiFishU",
+        flag_errors = TRUE, audit_coverage = FALSE
+      )
     ),
     "DECIPHER"
   )
@@ -201,8 +219,10 @@ test_that("build_site_reference: error when fetch returns 0 sequences", {
   )
   expect_error(
     suppressMessages(
-      build_site_reference(taxa = "Notafish", barcode_term = "MiFishU",
-                           audit_coverage = FALSE)
+      build_site_reference(
+        taxa = "Notafish", barcode_term = "MiFishU",
+        audit_coverage = FALSE
+      )
     ),
     "No sequences downloaded"
   )

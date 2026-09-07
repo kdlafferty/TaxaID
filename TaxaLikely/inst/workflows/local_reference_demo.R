@@ -29,16 +29,18 @@ cat("\n===== PART 1: write_reference_fasta() =====\n")
 # A minimal reference_df -- the same structure as fetch_ncbi_reference_sequences() output
 ref_df <- data.frame(
   composite_id = c("NC_001606", "NC_012361", "NC_004388", "KR014477"),
-  sequence     = c(
+  sequence = c(
     "ACGTACGTACGTACGT",
     "ACGCACGTACGTACTT",
     "TTTACGTACGTACGAA",
     "ACGTACGTTTTACGTT"
   ),
-  family  = c("Fundulidae", "Fundulidae", "Poeciliidae", "Poeciliidae"),
-  genus   = c("Fundulus", "Fundulus", "Gambusia", "Gambusia"),
-  species = c("Fundulus heteroclitus", "Fundulus parvipinnis",
-              "Gambusia affinis", "Gambusia holbrooki"),
+  family = c("Fundulidae", "Fundulidae", "Poeciliidae", "Poeciliidae"),
+  genus = c("Fundulus", "Fundulus", "Gambusia", "Gambusia"),
+  species = c(
+    "Fundulus heteroclitus", "Fundulus parvipinnis",
+    "Gambusia affinis", "Gambusia holbrooki"
+  ),
   stringsAsFactors = FALSE
 )
 
@@ -73,14 +75,14 @@ print(ref_reload[, c("composite_id", "family", "genus", "species")])
 stopifnot(nrow(ref_reload) == nrow(ref_df))
 # Sort both by composite_id before comparing (read_reference_fasta may reorder rows)
 ref_reload_sorted <- ref_reload[order(ref_reload$composite_id), ]
-ref_df_sorted     <- ref_df[order(ref_df$composite_id), ]
+ref_df_sorted <- ref_df[order(ref_df$composite_id), ]
 stopifnot(all(ref_reload_sorted$species == ref_df_sorted$species))
 cat("  PASS: round-trip write → read produces identical species column\n")
 
 # ---- 1c. auto-detect rank_system from columns --------------------------------
 # When rank_system = NULL (default), all non-id columns are used
 ref_sub <- ref_df[, c("composite_id", "sequence", "genus", "species")]
-fasta2   <- file.path(tempdir(), "test_no_family.fasta")
+fasta2 <- file.path(tempdir(), "test_no_family.fasta")
 write_reference_fasta(ref_sub, file = fasta2)
 cat("  PASS: rank_system auto-detected (genus + species only)\n")
 
@@ -90,7 +92,7 @@ ref_na$family[2] <- NA
 fasta3 <- file.path(tempdir(), "test_na_rank.fasta")
 write_reference_fasta(ref_na, file = fasta3)
 na_lines <- readLines(fasta3)
-stopifnot(!grepl("\\bNA\\b", na_lines[3]))  # header for row 2 has no "NA"
+stopifnot(!grepl("\\bNA\\b", na_lines[3])) # header for row 2 has no "NA"
 cat("  PASS: NA rank values omitted from FASTA header\n")
 
 cat("\n===== PART 1 complete =====\n")
@@ -116,15 +118,15 @@ taxa <- c("Fundulus heteroclitus", "Gambusia affinis", "Lepomis macrochirus")
 output_dir <- file.path(tempdir(), "site_reference_test")
 
 lib <- build_site_reference(
-  taxa          = taxa,
-  barcode_term  = "MiFishU",
-  rank_system   = c("family", "genus", "species"),
-  output_dir    = output_dir,     # saves reference.fasta + taxonomy TSV
-  flag_errors   = FALSE,          # skip DECIPHER step (fast)
-  audit_coverage = TRUE,          # check NCBI for species with no barcodes
-  max_sequences  = 60L,           # safety limit (each species gets ~max/3)
+  taxa = taxa,
+  barcode_term = "MiFishU",
+  rank_system = c("family", "genus", "species"),
+  output_dir = output_dir, # saves reference.fasta + taxonomy TSV
+  flag_errors = FALSE, # skip DECIPHER step (fast)
+  audit_coverage = TRUE, # check NCBI for species with no barcodes
+  max_sequences = 60L, # safety limit (each species gets ~max/3)
   max_per_species = 5L,
-  max_date       = "2024/12/31"   # reproducible: fix GenBank state
+  max_date = "2024/12/31" # reproducible: fix GenBank state
 )
 
 # ---- Inspect results ---------------------------------------------------------
@@ -134,8 +136,9 @@ cat(sprintf("Total sequences: %d\n", nrow(lib$reference_df)))
 cat(sprintf("Unique species:  %d\n", length(unique(lib$reference_df$species))))
 
 cat("\n--- Coverage census (per genus) ---\n")
-if (nrow(lib$census) > 0)
+if (nrow(lib$census) > 0) {
   print(lib$census)
+}
 
 cat("\n--- Unreferenced species (no barcode in NCBI) ---\n")
 if (length(lib$unreferenced) > 0) {
@@ -146,7 +149,7 @@ if (length(lib$unreferenced) > 0) {
 
 # ---- Verify FASTA was written ------------------------------------------------
 fasta_out <- file.path(output_dir, "reference.fasta")
-tsv_out   <- file.path(output_dir, "reference_taxonomy.tsv")
+tsv_out <- file.path(output_dir, "reference_taxonomy.tsv")
 stopifnot(file.exists(fasta_out))
 stopifnot(file.exists(tsv_out))
 cat(sprintf("\nFASTA written to: %s\n", fasta_out))
@@ -166,8 +169,10 @@ cat(sprintf("  PASS: reloaded %d sequences from FASTA\n", nrow(ref2)))
 
 # ---- Sequence length distribution -------------------------------------------
 lens <- nchar(lib$reference_df$sequence)
-cat(sprintf("\nSequence lengths: min=%d, median=%d, max=%d bp\n",
-            min(lens), as.integer(median(lens)), max(lens)))
+cat(sprintf(
+  "\nSequence lengths: min=%d, median=%d, max=%d bp\n",
+  min(lens), as.integer(median(lens)), max(lens)
+))
 hist(lens, main = "Sequence lengths (test reference)", xlab = "bp", col = "steelblue")
 
 # ---- (Optional) train a model on the small reference -------------------------

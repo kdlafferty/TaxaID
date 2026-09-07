@@ -85,35 +85,42 @@
 #' }
 infer_exclude_predicted <- function(match_obj,
                                     accession_col = NULL,
-                                    verbose       = TRUE) {
-
+                                    verbose = TRUE) {
   # ---- resolve accession column -----------------------------------------------
-  if (!is.data.frame(match_obj))
+  if (!is.data.frame(match_obj)) {
     stop("match_obj must be a data frame.")
+  }
 
   if (is.null(accession_col)) {
     candidates <- c("accession", "Accession", "acc", "accno", "AccessionNumber")
-    found      <- intersect(candidates, names(match_obj))
+    found <- intersect(candidates, names(match_obj))
     if (length(found) == 0L) {
-      if (verbose)
-        message("infer_exclude_predicted: no accession column found ",
-                "(tried: ", paste(candidates, collapse = ", "), "). ",
-                "Returning NA -- set exclude_predicted explicitly.")
+      if (verbose) {
+        message(
+          "infer_exclude_predicted: no accession column found ",
+          "(tried: ", paste(candidates, collapse = ", "), "). ",
+          "Returning NA -- set exclude_predicted explicitly."
+        )
+      }
       return(NA)
     }
     accession_col <- found[1L]
   } else {
-    if (!accession_col %in% names(match_obj))
+    if (!accession_col %in% names(match_obj)) {
       stop(sprintf("Column '%s' not found in match_obj.", accession_col))
+    }
   }
 
   acc <- as.character(match_obj[[accession_col]])
   acc <- acc[!is.na(acc) & nzchar(trimws(acc))]
 
   if (length(acc) == 0L) {
-    if (verbose)
-      message("infer_exclude_predicted: accession column is empty. ",
-              "Returning NA.")
+    if (verbose) {
+      message(
+        "infer_exclude_predicted: accession column is empty. ",
+        "Returning NA."
+      )
+    }
     return(NA)
   }
 
@@ -124,45 +131,61 @@ infer_exclude_predicted <- function(match_obj,
   #   RefSeq:  ^[A-Z]{1,2}_[0-9]  (NR_, XR_, NM_, XM_, NC_, NW_, ...)
   #   GenBank: ^[A-Z]{2,4}[0-9]   (AB123456, KP891234, AAAA01000001, ...)
   ncbi_mask <- grepl("^([A-Z]{1,2}_[0-9]|[A-Z]{2,4}[0-9])", acc_base)
-  n_ncbi    <- sum(ncbi_mask)
-  n_total   <- length(acc_base)
-  n_custom  <- n_total - n_ncbi
+  n_ncbi <- sum(ncbi_mask)
+  n_total <- length(acc_base)
+  n_custom <- n_total - n_ncbi
 
   if (n_ncbi == 0L) {
-    if (verbose)
-      message(sprintf(
-        "infer_exclude_predicted: all %d accession(s) appear to be custom ",
-        n_total),
+    if (verbose) {
+      message(
+        sprintf(
+          "infer_exclude_predicted: all %d accession(s) appear to be custom ",
+          n_total
+        ),
         "(non-NCBI format, e.g. lab vouchers). ",
-        "Cannot infer exclude_predicted. Returning NA -- set it explicitly.")
+        "Cannot infer exclude_predicted. Returning NA -- set it explicitly."
+      )
+    }
     return(NA)
   }
 
-  ncbi_acc    <- acc_base[ncbi_mask]
+  ncbi_acc <- acc_base[ncbi_mask]
   n_predicted <- sum(grepl("^X[RM]_", ncbi_acc))
 
   if (n_predicted > 0L) {
-    if (verbose)
-      message(sprintf(
-        "infer_exclude_predicted: %d predicted (XR_/XM_) accession(s) found ",
-        n_predicted),
-        sprintf("among %d NCBI accession(s). Reference includes predicted ",
-                n_ncbi),
-        "sequences -- exclude_predicted = FALSE.")
+    if (verbose) {
+      message(
+        sprintf(
+          "infer_exclude_predicted: %d predicted (XR_/XM_) accession(s) found ",
+          n_predicted
+        ),
+        sprintf(
+          "among %d NCBI accession(s). Reference includes predicted ",
+          n_ncbi
+        ),
+        "sequences -- exclude_predicted = FALSE."
+      )
+    }
     return(FALSE)
   }
 
   if (verbose) {
-    custom_note <- if (n_custom > 0L)
+    custom_note <- if (n_custom > 0L) {
       sprintf(" (%d custom/non-NCBI accession(s) not examined)", n_custom)
-    else
+    } else {
       ""
-    message(sprintf(
-      "infer_exclude_predicted: no XR_/XM_ accessions found among %d NCBI ",
-      n_ncbi),
-      sprintf("accession(s)%s. Reference excludes predicted sequences -- ",
-              custom_note),
-      "exclude_predicted = TRUE.")
+    }
+    message(
+      sprintf(
+        "infer_exclude_predicted: no XR_/XM_ accessions found among %d NCBI ",
+        n_ncbi
+      ),
+      sprintf(
+        "accession(s)%s. Reference excludes predicted sequences -- ",
+        custom_note
+      ),
+      "exclude_predicted = TRUE."
+    )
   }
   TRUE
 }

@@ -72,7 +72,7 @@
 # it, same as TaxaFetch's own review_function_inputs.R documents.
 # ==============================================================================
 
-#devtools::load_all()   # or: library(TaxaLikely)
+# devtools::load_all()   # or: library(TaxaLikely)
 library(TaxaLikely)
 library(tibble)
 
@@ -101,7 +101,7 @@ str(ref_ncbi)
 
 ## ---- fetch_bold_reference_sequences() ---- NETWORK, real BOLD v5 API -------
 ref_bold <- fetch_bold_reference_sequences(
-  taxa         = "Fundulus",
+  taxa = "Fundulus",
   barcode_term = "COI-5P",
   max_per_species = 2L
 )
@@ -112,15 +112,25 @@ str(ref_bold)
 # phylum|class|order|family|genus|species|sequence (no header, tab-delimited).
 # Pattern reused verbatim from tests/testthat/test-read-crabs.R.
 crabs_row <- function(acc, species = "Fundulus heteroclitus", seq = "ATCGATCGATCGATCG") {
-  paste(c(acc, "12345", "9999", "Eukaryota", "Chordata", "Actinopteri",
-          "Cyprinodontiformes", "Fundulidae", "Fundulus", species, seq),
-        collapse = "\t")
+  paste(
+    c(
+      acc, "12345", "9999", "Eukaryota", "Chordata", "Actinopteri",
+      "Cyprinodontiformes", "Fundulidae", "Fundulus", species, seq
+    ),
+    collapse = "\t"
+  )
 }
 crabs_file <- tempfile(fileext = ".tsv")
-writeLines(c(crabs_row("ACC001.1"),
-             crabs_row("ACC002.1", species = "Fundulus parvipinnis",
-                       seq = "GCTAGCTAGCTAGCTA")),
-           crabs_file)
+writeLines(
+  c(
+    crabs_row("ACC001.1"),
+    crabs_row("ACC002.1",
+      species = "Fundulus parvipinnis",
+      seq = "GCTAGCTAGCTAGCTA"
+    )
+  ),
+  crabs_file
+)
 ref_crabs <- read_crabs_output(crabs_file, rank_system = c("family", "genus", "species"))
 ref_crabs
 
@@ -130,13 +140,15 @@ fasta_file <- tempfile(fileext = ".fasta")
 writeLines(c(">ACC001", "ATCGATCG", ">ACC002", "GCTAGCTA"), fasta_file)
 tax_df <- data.frame(
   composite_id = c("ACC001", "ACC002"),
-  family       = c("Fundulidae", "Atherinopsidae"),
-  genus        = c("Fundulus", "Atherinops"),
-  species      = c("Fundulus parvipinnis", "Atherinops affinis"),
+  family = c("Fundulidae", "Atherinopsidae"),
+  genus = c("Fundulus", "Atherinops"),
+  species = c("Fundulus parvipinnis", "Atherinops affinis"),
   stringsAsFactors = FALSE
 )
-ref_fasta_a <- read_reference_fasta(fasta_file, taxonomy = tax_df,
-                                     rank_system = c("family", "genus", "species"))
+ref_fasta_a <- read_reference_fasta(fasta_file,
+  taxonomy = tax_df,
+  rank_system = c("family", "genus", "species")
+)
 ref_fasta_a
 
 # Option B: QIIME2/RESCRIPt-style prefix taxonomy file instead of a data frame.
@@ -145,8 +157,9 @@ writeLines("ACC001\tf__Fundulidae;g__Fundulus;s__Fundulus heteroclitus", tax_tsv
 fasta_file_b <- tempfile(fileext = ".fasta")
 writeLines(c(">ACC001", "ATCGATCG"), fasta_file_b)
 ref_fasta_b <- read_reference_fasta(fasta_file_b,
-                                     rank_system   = c("family", "genus", "species"),
-                                     taxonomy_file = tax_tsv)
+  rank_system   = c("family", "genus", "species"),
+  taxonomy_file = tax_tsv
+)
 ref_fasta_b
 
 ## ---- subset_local_database() ---- OFFLINE -----------------------------------
@@ -154,10 +167,14 @@ ref_fasta_b
 # tests/testthat/test-subset-local-database.R's fixture shape (a real SILVA/
 # PR2/MIDORI2/CRUX download is multi-GB and not something to bundle here).
 local_fasta <- tempfile(fileext = ".fasta")
-writeLines(c(">ACC001 extra header text", "ATCGATCGATCG",
-             ">ACC002 extra header text", "GCTAGCTAGCTA",
-             ">ACC003 extra header text", "TTTTCCCCAAAA"),
-           local_fasta)
+writeLines(
+  c(
+    ">ACC001 extra header text", "ATCGATCGATCG",
+    ">ACC002 extra header text", "GCTAGCTAGCTA",
+    ">ACC003 extra header text", "TTTTCCCCAAAA"
+  ),
+  local_fasta
+)
 local_tax <- tempfile(fileext = ".tsv")
 writeLines(c(
   "ACC001\tEukaryota;Chordata;Actinopteri;Cyprinodontiformes;Fundulidae;Fundulus;Fundulus heteroclitus",
@@ -165,8 +182,9 @@ writeLines(c(
   "ACC003\tEukaryota;Chordata;Actinopteri;Gobiiformes;Gobiidae;Gillichthys;Gillichthys mirabilis"
 ), local_tax)
 ref_subset <- subset_local_database(
-  local_fasta, taxa = "Fundulidae", rank = "family",
-  rank_system   = c("family", "genus", "species"),
+  local_fasta,
+  taxa = "Fundulidae", rank = "family",
+  rank_system = c("family", "genus", "species"),
   taxonomy_file = local_tax
 )
 ref_subset
@@ -182,12 +200,16 @@ mf_rev <- "CATAGTGGGGTATCTAATCCCAGTTTG"
 mf_rev_rc <- as.character(Biostrings::reverseComplement(Biostrings::DNAString(mf_rev)))
 mf_amplicon <- paste0(mf_fwd, paste(rep("AAACCCGGGTTT", 3), collapse = ""), mf_rev_rc)
 mf_genome <- paste0(strrep("N", 300L), mf_amplicon, strrep("A", 300L))
-ref_overlength <- data.frame(composite_id = "MITO1", sequence = mf_genome,
-                             stringsAsFactors = FALSE)
-ref_trimmed <- trim_to_amplicon(ref_overlength, barcode_term = "MiFishU",
-                                 min_len = 50L, max_len = 100L)
+ref_overlength <- data.frame(
+  composite_id = "MITO1", sequence = mf_genome,
+  stringsAsFactors = FALSE
+)
+ref_trimmed <- trim_to_amplicon(ref_overlength,
+  barcode_term = "MiFishU",
+  min_len = 50L, max_len = 100L
+)
 ref_trimmed[, c("composite_id", "amplicon_trimmed", "amplicon_trim_note")]
-nchar(ref_trimmed$sequence)   # matches mf_amplicon's own length exactly
+nchar(ref_trimmed$sequence) # matches mf_amplicon's own length exactly
 
 
 # ==============================================================================
@@ -201,31 +223,32 @@ nchar(ref_trimmed$sequence)   # matches mf_amplicon's own length exactly
 # varying `coverage` values -- deliberately NOT hand-set, so Section 8's
 # calibrate_coverage_filter()/coverage_threshold() have real signal to work
 # with, not a single constant.
-seq_a       <- paste(rep("ATGCATGCATGC", 10), collapse = "")   # 120bp, species Aa
-seq_b       <- paste(rep("ATGCATGCATGG", 10), collapse = "")   # 120bp, species Aa
-seq_c_short <- substr(seq_a, 1, 60)                            # 60bp,  species Aa (truncated)
-seq_d       <- paste(rep("GCTAGCTAGCTA", 10), collapse = "")   # 120bp, species Bb
-seq_e       <- paste(rep("GCTAGCTAGCTG", 10), collapse = "")   # 120bp, species Bb
+seq_a <- paste(rep("ATGCATGCATGC", 10), collapse = "") # 120bp, species Aa
+seq_b <- paste(rep("ATGCATGCATGG", 10), collapse = "") # 120bp, species Aa
+seq_c_short <- substr(seq_a, 1, 60) # 60bp,  species Aa (truncated)
+seq_d <- paste(rep("GCTAGCTAGCTA", 10), collapse = "") # 120bp, species Bb
+seq_e <- paste(rep("GCTAGCTAGCTG", 10), collapse = "") # 120bp, species Bb
 
 reference_df_train <- data.frame(
   composite_id = c("S1", "S2", "S3", "S4", "S5"),
-  sequence     = c(seq_a, seq_b, seq_c_short, seq_d, seq_e),
-  genus        = c("A", "A", "A", "B", "B"),
-  species      = c("Aa", "Aa", "Aa", "Bb", "Bb"),
+  sequence = c(seq_a, seq_b, seq_c_short, seq_d, seq_e),
+  genus = c("A", "A", "A", "B", "B"),
+  species = c("Aa", "Aa", "Aa", "Bb", "Bb"),
   stringsAsFactors = FALSE
 )
 ref_matrix <- build_sequence_matrix(reference_df_train,
-                                     rank_system = c("genus", "species"),
-                                     max_dist    = 1.0)
+  rank_system = c("genus", "species"),
+  max_dist    = 1.0
+)
 str(ref_matrix)
-range(ref_matrix$coverage)   # non-degenerate: truncated S3 pulls some pairs down
+range(ref_matrix$coverage) # non-degenerate: truncated S3 pulls some pairs down
 
 ## ---- flag_reference_errors() ---- OFFLINE -----------------------------------
 # Clean fixture -- expect zero flagged rows by default; return_all = TRUE
 # shows the full per-sequence QC table instead (all "clean").
 errors_none <- flag_reference_errors(ref_matrix)
-nrow(errors_none)                                    # 0
-errors_all  <- flag_reference_errors(ref_matrix, return_all = TRUE)
+nrow(errors_none) # 0
+errors_all <- flag_reference_errors(ref_matrix, return_all = TRUE)
 table(errors_all$error_type)
 
 ## ---- train_likelihood_model() ---- OFFLINE ----------------------------------
@@ -233,8 +256,10 @@ table(errors_all$error_type)
 # sequences) for lme4's hierarchy fit to be meaningful; the function would
 # fall back gracefully anyway (documented in Known Footguns), disabled here
 # to keep this section's message output focused on the training step itself.
-trained_model <- train_likelihood_model(ref_matrix, rank_system = c("genus", "species"),
-                                         use_hierarchy = FALSE)
+trained_model <- train_likelihood_model(ref_matrix,
+  rank_system = c("genus", "species"),
+  use_hierarchy = FALSE
+)
 trained_model$H1_Lookup
 trained_model$Stats
 
@@ -249,30 +274,43 @@ trained_model$Stats
 # and must NOT contaminate the pooled H2 delta (Session 158 fix).
 make_genus_raw_df <- function() {
   ids <- c("L1", "L2", "M1", "M2", "A1", "A2", "B1", "B2", "D1", "D2")
-  species_map <- c(L1 = "lima", L2 = "lima", M1 = "heteroclitus", M2 = "heteroclitus",
-                   A1 = "aa", A2 = "aa", B1 = "bb", B2 = "bb",
-                   D1 = "distantus", D2 = "distantus")
-  genus_map <- c(L1 = "Fundulus", L2 = "Fundulus", M1 = "Fundulus", M2 = "Fundulus",
-                A1 = "Loose", A2 = "Loose", B1 = "Loose", B2 = "Loose",
-                D1 = "Distant", D2 = "Distant")
+  species_map <- c(
+    L1 = "lima", L2 = "lima", M1 = "heteroclitus", M2 = "heteroclitus",
+    A1 = "aa", A2 = "aa", B1 = "bb", B2 = "bb",
+    D1 = "distantus", D2 = "distantus"
+  )
+  genus_map <- c(
+    L1 = "Fundulus", L2 = "Fundulus", M1 = "Fundulus", M2 = "Fundulus",
+    A1 = "Loose", A2 = "Loose", B1 = "Loose", B2 = "Loose",
+    D1 = "Distant", D2 = "Distant"
+  )
   grid <- expand.grid(id_x = ids, id_y = ids, stringsAsFactors = FALSE)
   grid$species.x <- species_map[grid$id_x]
   grid$species.y <- species_map[grid$id_y]
-  grid$genus.x   <- genus_map[grid$id_x]
-  grid$genus.y   <- genus_map[grid$id_y]
+  grid$genus.x <- genus_map[grid$id_x]
+  grid$genus.y <- genus_map[grid$id_y]
   grid$p_match <- mapply(function(x, y, sx, sy, gx, gy) {
-    if (x == y) return(1.00)
-    if (sx == sy) return(0.97)
-    if (gx == gy && gx == "Fundulus") return(0.90)
-    if (gx == gy && gx == "Loose")    return(0.75)
+    if (x == y) {
+      return(1.00)
+    }
+    if (sx == sy) {
+      return(0.97)
+    }
+    if (gx == gy && gx == "Fundulus") {
+      return(0.90)
+    }
+    if (gx == gy && gx == "Loose") {
+      return(0.75)
+    }
     0.70
   }, grid$id_x, grid$id_y, grid$species.x, grid$species.y, grid$genus.x, grid$genus.y)
   grid
 }
 trained_model_sqrt <- train_likelihood_model(make_genus_raw_df(), c("genus", "species"),
-                                              use_hierarchy = FALSE, anchor_perfect = FALSE,
-                                              score_transform = "sqrt_mismatch")
-trained_model_sqrt$H2_Lookup   # Fundulus's tighter delta vs. Loose's looser one
+  use_hierarchy = FALSE, anchor_perfect = FALSE,
+  score_transform = "sqrt_mismatch"
+)
+trained_model_sqrt$H2_Lookup # Fundulus's tighter delta vs. Loose's looser one
 
 
 # ==============================================================================
@@ -285,15 +323,19 @@ trained_model_sqrt$H2_Lookup   # Fundulus's tighter delta vs. Loose's looser one
 # Fixture reused verbatim from tests/testthat/test-unreferenced-candidates.R.
 make_uc_match <- function() {
   data.frame(
-    observation_id  = c("ESV_001", "ESV_001", "ESV_001", "ESV_002"),
-    score_original  = c(95.0, 80.0, 60.0, 70.0),
-    taxon_name      = c("Hybognathus nuchalis", "Rhinichthys obtusus",
-                        "Campostoma anomalum", "Cottus carolinae"),
+    observation_id = c("ESV_001", "ESV_001", "ESV_001", "ESV_002"),
+    score_original = c(95.0, 80.0, 60.0, 70.0),
+    taxon_name = c(
+      "Hybognathus nuchalis", "Rhinichthys obtusus",
+      "Campostoma anomalum", "Cottus carolinae"
+    ),
     taxon_name_rank = "species",
-    family          = c("Leuciscidae", "Leuciscidae", "Leuciscidae", "Cottidae"),
-    genus           = c("Hybognathus", "Rhinichthys", "Campostoma", "Cottus"),
-    species         = c("Hybognathus nuchalis", "Rhinichthys obtusus",
-                        "Campostoma anomalum", "Cottus carolinae"),
+    family = c("Leuciscidae", "Leuciscidae", "Leuciscidae", "Cottidae"),
+    genus = c("Hybognathus", "Rhinichthys", "Campostoma", "Cottus"),
+    species = c(
+      "Hybognathus nuchalis", "Rhinichthys obtusus",
+      "Campostoma anomalum", "Cottus carolinae"
+    ),
     stringsAsFactors = FALSE
   )
 }
@@ -316,8 +358,10 @@ match_01 <- make_uc_match()
 match_01$score_original <- match_01$score_original / 100
 hyp_df_01 <- unreferenced_candidates(match_01, rank_system = c("family", "genus", "species"))
 liks_prob <- assign_scores(hyp_df_01, score_type = "probability")
-liks_prob[liks_prob$observation_id == "ESV_001",
-          c("taxon_name", "hypothesis_type", "score_likelihood")]
+liks_prob[
+  liks_prob$observation_id == "ESV_001",
+  c("taxon_name", "hypothesis_type", "score_likelihood")
+]
 
 # score_type = "similarity": adds score_norm only, feeds model_likelihoods().
 sc_df <- assign_scores(hyp_df, score_type = "similarity")
@@ -328,28 +372,38 @@ sc_df[, c("taxon_name", "hypothesis_type", "score_norm")]
 # tests/testthat/test-compute-likelihoods.R) -- deterministic, avoids
 # depending on Section 2's live-trained model matching these taxon names.
 make_model_params_small <- function() {
-  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0), nrow = 2L,
-                  dimnames = list(c("score_logit", "gap_logit"),
-                                  c("score_logit", "gap_logit")))
-  h2s <- diag(2); rownames(h2s) <- colnames(h2s) <- c("score_logit", "gap_logit")
-  h3s <- diag(2); rownames(h3s) <- colnames(h3s) <- c("score_logit", "gap_logit")
+  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0),
+    nrow = 2L,
+    dimnames = list(
+      c("score_logit", "gap_logit"),
+      c("score_logit", "gap_logit")
+    )
+  )
+  h2s <- diag(2)
+  rownames(h2s) <- colnames(h2s) <- c("score_logit", "gap_logit")
+  h3s <- diag(2)
+  rownames(h3s) <- colnames(h3s) <- c("score_logit", "gap_logit")
   structure(
     list(
-      H1_Lookup    = data.frame(lookup_key  = "Hybognathus nuchalis", rank = "species",
-                                mu_score = 4.5, mu_gap = 2.0, sigma_score = 2.0,
-                                stringsAsFactors = FALSE),
+      H1_Lookup = data.frame(
+        lookup_key = "Hybognathus nuchalis", rank = "species",
+        mu_score = 4.5, mu_gap = 2.0, sigma_score = 2.0,
+        stringsAsFactors = FALSE
+      ),
       H1_Global_Mu = c(score_logit = 3.5, gap_logit = 1.5),
-      H1_Sigma     = sigma,
-      H2           = list(delta = 3.0, sigma = h2s),
-      H3           = list(delta = 5.0, sigma = h3s),
-      Stats        = list(n_species = 1L, n_singletons = 0L)
+      H1_Sigma = sigma,
+      H2 = list(delta = 3.0, sigma = h2s),
+      H3 = list(delta = 5.0, sigma = h3s),
+      Stats = list(n_species = 1L, n_singletons = 0L)
     ),
     class = "taxa_model_params"
   )
 }
 model_small <- make_model_params_small()
-model_lik_result <- model_likelihoods(sc_df, model_params = model_small,
-                                       rank_system = c("family", "genus", "species"))
+model_lik_result <- model_likelihoods(sc_df,
+  model_params = model_small,
+  rank_system = c("family", "genus", "species")
+)
 head(model_lik_result$likelihoods)
 
 ## ---- compute_likelihoods() ---- OFFLINE -------------------------------------
@@ -360,7 +414,8 @@ compute_none <- suppressWarnings(compute_likelihoods(make_uc_match(), score_type
 head(compute_none$likelihoods)
 
 compute_similarity <- compute_likelihoods(
-  make_uc_match(), score_type = "similarity",
+  make_uc_match(),
+  score_type = "similarity",
   model_params = model_small, rank_system = c("family", "genus", "species"),
   n_sims = 50L
 )
@@ -388,8 +443,10 @@ corrected[, c("taxon_name", "score_uncorrected", "score_original", "n_used", "ta
 # Default tau = 0 (Session 151): every real calibration run so far (image,
 # acoustic) found tau ~= 0 optimal, so a caller who does nothing gets no
 # correction -- confirm this leaves scores unchanged:
-identical(correct_training_bias(scored, count_col = "n_observations")$score_original,
-          scored$score_original)
+identical(
+  correct_training_bias(scored, count_col = "n_observations")$score_original,
+  scored$score_original
+)
 
 
 # ==============================================================================
@@ -402,31 +459,41 @@ identical(correct_training_bias(scored, count_col = "n_observations")$score_orig
 # locally-plausible species (the non-circular calibration set) -- fixture
 # reused verbatim from tests/testthat/test-calibrate_query_noise.R.
 make_calib_match_df <- function() {
-  data.frame(observation_id = paste0("Q", 1:40), genus = "Genusone",
-             score_original = 95.0, stringsAsFactors = FALSE)
+  data.frame(
+    observation_id = paste0("Q", 1:40), genus = "Genusone",
+    score_original = 95.0, stringsAsFactors = FALSE
+  )
 }
 make_calib_priors <- function() {
-  data.frame(taxon_name = "Genusone speciesa", taxon_name_rank = "species",
-             theta_mean = 0.5, stringsAsFactors = FALSE)
+  data.frame(
+    taxon_name = "Genusone speciesa", taxon_name_rank = "species",
+    theta_mean = 0.5, stringsAsFactors = FALSE
+  )
 }
 confident_obs <- identify_confident_observations(make_calib_match_df(), make_calib_priors())
 nrow(confident_obs)
 
 ## ---- calibrate_query_noise() ---- OFFLINE -----------------------------------
 make_calib_model_params <- function(score_transform = "logit") {
-  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0), nrow = 2L,
-                  dimnames = list(c("score_logit", "gap_logit"),
-                                  c("score_logit", "gap_logit")))
+  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0),
+    nrow = 2L,
+    dimnames = list(
+      c("score_logit", "gap_logit"),
+      c("score_logit", "gap_logit")
+    )
+  )
   structure(
     list(
-      H1_Lookup    = data.frame(lookup_key = "Genusone speciesa", rank = "species",
-                                mu_score = 4.5, mu_gap = 2.0, sigma_score = 2.0,
-                                stringsAsFactors = FALSE),
+      H1_Lookup = data.frame(
+        lookup_key = "Genusone speciesa", rank = "species",
+        mu_score = 4.5, mu_gap = 2.0, sigma_score = 2.0,
+        stringsAsFactors = FALSE
+      ),
       H1_Global_Mu = c(score_logit = 3.5, gap_logit = 1.5),
-      H1_Sigma     = sigma,
-      H2           = list(delta = 3.0, sigma = diag(2)),
-      H3           = list(delta = 5.0, sigma = diag(2)),
-      Stats        = list(n_species = 1L, n_singletons = 0L),
+      H1_Sigma = sigma,
+      H2 = list(delta = 3.0, sigma = diag(2)),
+      H3 = list(delta = 5.0, sigma = diag(2)),
+      Stats = list(n_species = 1L, n_singletons = 0L),
       Score_Transform = score_transform
     ),
     class = "taxa_model_params"
@@ -449,32 +516,45 @@ model_calibrated$Query_Calibration
 # .make_multi_species_fixture(), 10 species/4 obs each, constant real gap
 # (slope should recover ~1, i.e. degrade gracefully to the constant case).
 make_multi_species_fixture <- function(n_species = 10L, n_obs_each = 4L,
-                                        mu_range = c(3.0, 5.0), score_fn) {
+                                       mu_range = c(3.0, 5.0), score_fn) {
   mu <- seq(mu_range[1L], mu_range[2L], length.out = n_species)
   keys <- sprintf("Genus%02d species%02d", seq_len(n_species), seq_len(n_species))
-  h1 <- data.frame(lookup_key = keys, rank = "species", mu_score = mu, mu_gap = 2.0,
-                   sigma_score = 2.0, stringsAsFactors = FALSE)
+  h1 <- data.frame(
+    lookup_key = keys, rank = "species", mu_score = mu, mu_gap = 2.0,
+    sigma_score = 2.0, stringsAsFactors = FALSE
+  )
   params <- structure(
-    list(H1_Lookup = h1, H1_Global_Mu = c(score_logit = mean(mu), gap_logit = 1.5),
-         H1_Sigma = matrix(c(2.0, 0.2, 0.2, 1.0), 2L,
-                           dimnames = list(c("score_logit", "gap_logit"),
-                                           c("score_logit", "gap_logit"))),
-         H2 = list(delta = 3.0, sigma = diag(2)), H3 = list(delta = 5.0, sigma = diag(2)),
-         Stats = list(n_species = n_species), Score_Transform = "logit"),
-    class = "taxa_model_params")
+    list(
+      H1_Lookup = h1, H1_Global_Mu = c(score_logit = mean(mu), gap_logit = 1.5),
+      H1_Sigma = matrix(c(2.0, 0.2, 0.2, 1.0), 2L,
+        dimnames = list(
+          c("score_logit", "gap_logit"),
+          c("score_logit", "gap_logit")
+        )
+      ),
+      H2 = list(delta = 3.0, sigma = diag(2)), H3 = list(delta = 5.0, sigma = diag(2)),
+      Stats = list(n_species = n_species), Score_Transform = "logit"
+    ),
+    class = "taxa_model_params"
+  )
   rows <- do.call(rbind, lapply(seq_len(n_species), function(i) {
-    data.frame(observation_id = sprintf("Q%02d_%d", i, seq_len(n_obs_each)),
-               genus = sprintf("Genus%02d", i), score_original = score_fn(mu[i]),
-               stringsAsFactors = FALSE)
+    data.frame(
+      observation_id = sprintf("Q%02d_%d", i, seq_len(n_obs_each)),
+      genus = sprintf("Genus%02d", i), score_original = score_fn(mu[i]),
+      stringsAsFactors = FALSE
+    )
   }))
-  priors <- data.frame(taxon_name = keys, taxon_name_rank = "species",
-                       theta_mean = 0.5, stringsAsFactors = FALSE)
+  priors <- data.frame(
+    taxon_name = keys, taxon_name_rank = "species",
+    theta_mean = 0.5, stringsAsFactors = FALSE
+  )
   list(params = params, match_df = rows, priors = priors, mu = mu)
 }
 fx <- make_multi_species_fixture(score_fn = function(mu) rep(100 * stats::plogis(mu - 0.8), 4L))
 model_calibrated_linear <- calibrate_query_noise(fx$params, fx$match_df, fx$priors,
-                                                  offset_form = "linear",
-                                                  min_confident_obs = 30L)
+  offset_form = "linear",
+  min_confident_obs = 30L
+)
 model_calibrated_linear$Query_Calibration[c("offset_form", "slope", "intercept")]
 
 
@@ -486,47 +566,57 @@ model_calibrated_linear$Query_Calibration[c("offset_form", "slope", "intercept")
 ## ---- evaluate_likelihoods() ---- OFFLINE ------------------------------------
 # Fixture reused verbatim from tests/testthat/test-evaluate.R.
 make_model_params_eval <- function() {
-  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0), nrow = 2L,
-                  dimnames = list(c("score_logit", "gap_logit"),
-                                  c("score_logit", "gap_logit")))
-  h2s <- diag(2); rownames(h2s) <- colnames(h2s) <- c("score_logit", "gap_logit")
-  h3s <- diag(2); rownames(h3s) <- colnames(h3s) <- c("score_logit", "gap_logit")
+  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0),
+    nrow = 2L,
+    dimnames = list(
+      c("score_logit", "gap_logit"),
+      c("score_logit", "gap_logit")
+    )
+  )
+  h2s <- diag(2)
+  rownames(h2s) <- colnames(h2s) <- c("score_logit", "gap_logit")
+  h3s <- diag(2)
+  rownames(h3s) <- colnames(h3s) <- c("score_logit", "gap_logit")
   structure(
     list(
-      H1_Lookup    = data.frame(lookup_key  = "Hybognathus nuchalis", rank = "species",
-                                mu_score = 4.5, mu_gap = 2.0, sigma_score = 2.0,
-                                stringsAsFactors = FALSE),
+      H1_Lookup = data.frame(
+        lookup_key = "Hybognathus nuchalis", rank = "species",
+        mu_score = 4.5, mu_gap = 2.0, sigma_score = 2.0,
+        stringsAsFactors = FALSE
+      ),
       H1_Global_Mu = c(score_logit = 3.5, gap_logit = 1.5),
-      H1_Sigma     = sigma,
-      H2           = list(delta = 3.0, sigma = h2s),
-      H3           = list(delta = 5.0, sigma = h3s),
-      Stats        = list(n_species = 1L, n_singletons = 0L)
+      H1_Sigma = sigma,
+      H2 = list(delta = 3.0, sigma = h2s),
+      H3 = list(delta = 5.0, sigma = h3s),
+      Stats = list(n_species = 1L, n_singletons = 0L)
     ),
     class = "taxa_model_params"
   )
 }
 make_match_df_eval <- function() {
   data.frame(
-    observation_id  = "ESV_001",
-    score           = c(95.0, 80.0, 60.0),
-    taxon_name      = c("Hybognathus nuchalis", "Rhinichthys obtusus", "Campostoma anomalum"),
+    observation_id = "ESV_001",
+    score = c(95.0, 80.0, 60.0),
+    taxon_name = c("Hybognathus nuchalis", "Rhinichthys obtusus", "Campostoma anomalum"),
     taxon_name_rank = "species",
-    family          = "Leuciscidae",
-    genus           = c("Hybognathus", "Rhinichthys", "Campostoma"),
-    species         = c("Hybognathus nuchalis", "Rhinichthys obtusus", "Campostoma anomalum"),
+    family = "Leuciscidae",
+    genus = c("Hybognathus", "Rhinichthys", "Campostoma"),
+    species = c("Hybognathus nuchalis", "Rhinichthys obtusus", "Campostoma anomalum"),
     stringsAsFactors = FALSE
   )
 }
 eval_result <- evaluate_likelihoods(make_match_df_eval(), make_model_params_eval(),
-                                     rank_system = c("family", "genus", "species"),
-                                     n_sims = 100L)
+  rank_system = c("family", "genus", "species"),
+  n_sims = 100L
+)
 eval_result$likelihoods
 nrow(eval_result$unresolved)
 
 
 ## ---- filter_top_hypotheses() ---- OFFLINE -----------------------------------
 filtered <- filter_top_hypotheses(eval_result$likelihoods,
-                                   rank_system = c("family", "genus", "species"))
+  rank_system = c("family", "genus", "species")
+)
 filtered[, c("taxon_name", "taxon_name_rank", "hypothesis_type")]
 
 
@@ -546,14 +636,16 @@ filtered[, c("taxon_name", "taxon_name_rank", "hypothesis_type")]
 # tests/testthat/test-infer-exclude-predicted.R this session.
 match_ncbi <- data.frame(
   observation_id = paste0("ESV_", 1:6),
-  accession      = c("AB123456.1", "KP891234.2", "NR_036856.1",
-                     "MH213045.1", "NR_024642.1", "AB987654.1"),
-  genus          = "Sebastes", species = "Sebastes mystinus", score_original = 99,
+  accession = c(
+    "AB123456.1", "KP891234.2", "NR_036856.1",
+    "MH213045.1", "NR_024642.1", "AB987654.1"
+  ),
+  genus = "Sebastes", species = "Sebastes mystinus", score_original = 99,
   stringsAsFactors = FALSE
 )
 exclude_pred <- infer_exclude_predicted(match_ncbi)
-exclude_pred            # TRUE
-!isFALSE(exclude_pred)  # documented usage pattern feeding exclude_predicted=
+exclude_pred # TRUE
+!isFALSE(exclude_pred) # documented usage pattern feeding exclude_predicted=
 
 ## ---- audit_barcode_coverage() ---- NETWORK, real small genus ---------------
 ref_species <- data.frame(
@@ -576,10 +668,14 @@ coverage_reference$census
 
 ## ---- audit_acoustic_coverage() ---- OFFLINE (pure set membership) -----------
 # Real example from this function's own roxygen.
-plausible_birds <- c("Turdus migratorius", "Setophaga petechia",
-                     "Limosa fedoa", "Selasphorus calliope")
-birdnet_list <- c("Turdus migratorius", "Setophaga petechia",
-                  "Turdus merula", "Corvus brachyrhynchos")
+plausible_birds <- c(
+  "Turdus migratorius", "Setophaga petechia",
+  "Limosa fedoa", "Selasphorus calliope"
+)
+birdnet_list <- c(
+  "Turdus migratorius", "Setophaga petechia",
+  "Turdus merula", "Corvus brachyrhynchos"
+)
 coverage_acoustic <- audit_acoustic_coverage(plausible_birds, birdnet_list)
 coverage_acoustic$census
 coverage_acoustic$unreferenced
@@ -597,22 +693,25 @@ if (RUN_XC_FETCH) {
 ## ---- apply_coverage_constraints() ---- OFFLINE ------------------------------
 # Fixture reused verbatim from tests/testthat/test-coverage.R.
 likelihood_df <- tibble::tibble(
-  observation_id       = "ESV_001",
-  taxon_name           = c("Hybognathus nuchalis", "Hybognathus", "Leuciscidae"),
-  taxon_name_rank      = c("species", "genus", "family"),
-  hypothesis_type      = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
-  score_likelihood      = c(1.0, 0.5, 0.1),
+  observation_id = "ESV_001",
+  taxon_name = c("Hybognathus nuchalis", "Hybognathus", "Leuciscidae"),
+  taxon_name_rank = c("species", "genus", "family"),
+  hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
+  score_likelihood = c(1.0, 0.5, 0.1),
   score_likelihood_mean = c(1.0, 0.5, 0.1),
-  score_likelihood_sd   = c(0, 0, 0)
+  score_likelihood_sd = c(0, 0, 0)
 )
-census_result <- data.frame(taxon_name = "Hybognathus", rank = "genus",
-                            status = "complete", stringsAsFactors = FALSE)
+census_result <- data.frame(
+  taxon_name = "Hybognathus", rank = "genus",
+  status = "complete", stringsAsFactors = FALSE
+)
 # Default is "relabel" (non-destructive, Session 151) -- shown alongside the
 # opt-in "zero" mode used in the package's own demo workflow.
 constrained_relabel <- apply_coverage_constraints(likelihood_df, census_result)
 constrained_relabel[, c("taxon_name", "hypothesis_type", "score_likelihood", "constraint_applied")]
 constrained_zero <- apply_coverage_constraints(likelihood_df, census_result,
-                                                constraint_behavior = "zero")
+  constraint_behavior = "zero"
+)
 constrained_zero[, c("taxon_name", "hypothesis_type", "score_likelihood")]
 
 ## ---- expand_unreferenced_hypotheses() ---- OFFLINE --------------------------
@@ -632,8 +731,8 @@ make_expand_lik <- function() {
 make_unref_df <- function() {
   data.frame(
     species = c("Fundulus parvipinnis", "Fundulus zebrinus", "Lucania parva"),
-    genus   = c("Fundulus", "Fundulus", "Lucania"),
-    family  = c("Fundulidae", "Fundulidae", "Fundulidae"),
+    genus = c("Fundulus", "Fundulus", "Lucania"),
+    family = c("Fundulidae", "Fundulidae", "Fundulidae"),
     stringsAsFactors = FALSE
   )
 }
@@ -668,7 +767,7 @@ thresh_90
 suppressed_match <- data.frame(
   observation_id = c("obs1", "obs1", "obs2"),
   score_original = c(100, 100, 99),
-  taxon_name     = c("Sp_A", "Sp_B", "Sp_C"),
+  taxon_name = c("Sp_A", "Sp_B", "Sp_C"),
   stringsAsFactors = FALSE
 )
 detected <- detect_suppressed_candidates(suppressed_match)
@@ -686,26 +785,27 @@ detected$rules
 # restored every congener unconditionally). Fixture reused verbatim from
 # tests/testthat/test-score-collapse.R, including .simple_model_params().
 girella_match <- data.frame(
-  observation_id  = "obs1",
-  score_original  = 95,
-  taxon_name      = "simplicidens",
+  observation_id = "obs1",
+  score_original = 95,
+  taxon_name = "simplicidens",
   taxon_name_rank = "species",
-  family          = "Kyphosidae",
-  genus           = "Girella",
-  species         = "simplicidens",
+  family = "Kyphosidae",
+  genus = "Girella",
+  species = "simplicidens",
   stringsAsFactors = FALSE
 )
 girella_ref <- data.frame(
-  family       = "Kyphosidae", genus = "Girella",
-  species      = c("simplicidens", "nigricans", "laevifrons"),
+  family = "Kyphosidae", genus = "Girella",
+  species = c("simplicidens", "nigricans", "laevifrons"),
   composite_id = c("ACC_simplicidens", "ACC_nigricans", "ACC_laevifrons"),
   stringsAsFactors = FALSE
 )
 
 # Bare call, no evidence supplied -- confirms the new no-op default.
 restored_noop <- restore_suppressed_candidates(girella_match, girella_ref,
-                                                rank_system = c("family", "genus", "species"))
-nrow(restored_noop)   # 1 -- nothing restored without evidence
+  rank_system = c("family", "genus", "species")
+)
+nrow(restored_noop) # 1 -- nothing restored without evidence
 
 # seq_matrix (build_sequence_matrix()-shaped reference-vs-reference pairs)
 # powers the free Levels 1-3 score-sourcing hierarchy. nigricans' p_match
@@ -713,21 +813,26 @@ nrow(restored_noop)   # 1 -- nothing restored without evidence
 # tight outlier test (needs model_params); laevifrons (0.80) only clears
 # Purpose B's wider plausibility floor.
 seq_matrix_girella <- data.frame(
-  id_x     = c("ACC_simplicidens", "ACC_simplicidens"),
-  id_y     = c("ACC_nigricans", "ACC_laevifrons"),
-  p_match  = c(0.945, 0.80),
+  id_x = c("ACC_simplicidens", "ACC_simplicidens"),
+  id_y = c("ACC_nigricans", "ACC_laevifrons"),
+  p_match = c(0.945, 0.80),
   coverage = 1.0,
   stringsAsFactors = FALSE
 )
 simple_model_params <- list(
-  H1_Sigma = matrix(c(0.05, 0, 0, 1), nrow = 2,
-                    dimnames = list(c("score_logit", "gap_logit"),
-                                    c("score_logit", "gap_logit"))),
+  H1_Sigma = matrix(c(0.05, 0, 0, 1),
+    nrow = 2,
+    dimnames = list(
+      c("score_logit", "gap_logit"),
+      c("score_logit", "gap_logit")
+    )
+  ),
   H1_Lookup = NULL,
   Score_Transform = "logit"
 )
 restored <- restore_suppressed_candidates(
-  girella_match, girella_ref, rank_system = c("family", "genus", "species"),
+  girella_match, girella_ref,
+  rank_system = c("family", "genus", "species"),
   seq_matrix = seq_matrix_girella, model_params = simple_model_params
 )
 restored[, c("species", "is_restored", "hypothesis_type", "restoration_basis", "score_original")]
@@ -753,13 +858,13 @@ restored[, c("species", "is_restored", "hypothesis_type", "restoration_basis", "
 # Fixture reused verbatim from tests/testthat/test-clean.R.
 match_df_clean <- data.frame(
   observation_id = c("S1", "S1", "S2", "S2"),
-  accession      = c("AB123.1", "CD456.2", "AB123.1", "EF789"),
-  score          = c(99, 95, 98, 97),
-  taxon_name     = c("Sp A", "Sp B", "Sp A", "Sp C"),
+  accession = c("AB123.1", "CD456.2", "AB123.1", "EF789"),
+  score = c(99, 95, 98, 97),
+  taxon_name = c("Sp A", "Sp B", "Sp A", "Sp C"),
   stringsAsFactors = FALSE
 )
 reference_errors <- data.frame(
-  id_x       = c("AB123", "GH999"),
+  id_x = c("AB123", "GH999"),
   error_type = c("likely_mislabeled", "likely_mislabeled"),
   stringsAsFactors = FALSE
 )
@@ -769,13 +874,13 @@ cleaned_match
 ## ---- write_reference_fasta() ---- OFFLINE -----------------------------------
 ref_for_export <- data.frame(
   composite_id = c("acc1", "acc2"),
-  sequence     = c("ACGTACGT", "TTTTCCCC"),
-  genus        = c("Fundulus", "Gambusia"),
-  species      = c("Fundulus parvipinnis", "Gambusia affinis"),
+  sequence = c("ACGTACGT", "TTTTCCCC"),
+  genus = c("Fundulus", "Gambusia"),
+  species = c("Fundulus parvipinnis", "Gambusia affinis"),
   stringsAsFactors = FALSE
 )
 export_fasta <- tempfile(fileext = ".fasta")
-export_tsv   <- tempfile(fileext = ".tsv")
+export_tsv <- tempfile(fileext = ".tsv")
 write_reference_fasta(ref_for_export, export_fasta, taxonomy_file = export_tsv)
 readLines(export_fasta)
 readLines(export_tsv)
@@ -786,12 +891,12 @@ readLines(export_tsv)
 # additionally needs build_sequence_matrix(), already exercised in Section 2).
 site_ref_dir <- file.path(tempdir(), "review_site_reference")
 site_ref <- build_site_reference(
-  taxa           = "Fundulus",
-  barcode_term   = "MiFishU",
-  output_dir     = site_ref_dir,
-  flag_errors    = FALSE,
+  taxa = "Fundulus",
+  barcode_term = "MiFishU",
+  output_dir = site_ref_dir,
+  flag_errors = FALSE,
   audit_coverage = TRUE,
-  max_sequences  = 20L,
+  max_sequences = 20L,
   max_per_species = 2L
 )
 names(site_ref)

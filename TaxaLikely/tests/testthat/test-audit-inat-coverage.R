@@ -5,13 +5,19 @@
 
 fake_inat_info <- function(species_name, api_token = "") {
   info <- list(
-    "Turdus migratorius"  = list(taxon_id = 1L, matched_name = "Turdus migratorius",
-                                 rank = "species", n_observations = 500000L, found = TRUE),
-    "Limosa fedoa"        = list(taxon_id = 2L, matched_name = "Limosa fedoa",
-                                 rank = "species", n_observations = 50L, found = TRUE),
-    "Nonexistent species" = list(taxon_id = NA_integer_, matched_name = NA_character_,
-                                 rank = NA_character_, n_observations = NA_integer_,
-                                 found = FALSE)
+    "Turdus migratorius" = list(
+      taxon_id = 1L, matched_name = "Turdus migratorius",
+      rank = "species", n_observations = 500000L, found = TRUE
+    ),
+    "Limosa fedoa" = list(
+      taxon_id = 2L, matched_name = "Limosa fedoa",
+      rank = "species", n_observations = 50L, found = TRUE
+    ),
+    "Nonexistent species" = list(
+      taxon_id = NA_integer_, matched_name = NA_character_,
+      rank = NA_character_, n_observations = NA_integer_,
+      found = FALSE
+    )
   )
   info[[species_name]]
 }
@@ -69,8 +75,10 @@ test_that("audit_inat_coverage: errors on empty species_list", {
 })
 
 test_that("audit_inat_coverage: errors on invalid cv_threshold", {
-  expect_error(audit_inat_coverage("Turdus migratorius", cv_threshold = -1),
-               "non-negative integer")
+  expect_error(
+    audit_inat_coverage("Turdus migratorius", cv_threshold = -1),
+    "non-negative integer"
+  )
 })
 
 test_that("audit_inat_coverage: no valid species names gives a message and empty result", {

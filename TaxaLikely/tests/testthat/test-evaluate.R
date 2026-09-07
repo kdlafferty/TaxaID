@@ -1,23 +1,31 @@
 # Minimal model_params for testing (bypasses training)
 .make_model_params <- function() {
-  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0), nrow = 2L,
-                  dimnames = list(c("score_logit","gap_logit"),
-                                  c("score_logit","gap_logit")))
-  h2s <- diag(2); rownames(h2s) <- colnames(h2s) <- c("score_logit","gap_logit")
-  h3s <- diag(2); rownames(h3s) <- colnames(h3s) <- c("score_logit","gap_logit")
+  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0),
+    nrow = 2L,
+    dimnames = list(
+      c("score_logit", "gap_logit"),
+      c("score_logit", "gap_logit")
+    )
+  )
+  h2s <- diag(2)
+  rownames(h2s) <- colnames(h2s) <- c("score_logit", "gap_logit")
+  h3s <- diag(2)
+  rownames(h3s) <- colnames(h3s) <- c("score_logit", "gap_logit")
   structure(
     list(
-      H1_Lookup    = data.frame(lookup_key  = "Hybognathus nuchalis",
-                                rank        = "species",
-                                mu_score    = 4.5,
-                                mu_gap      = 2.0,
-                                sigma_score = 2.0,
-                                stringsAsFactors = FALSE),
+      H1_Lookup = data.frame(
+        lookup_key = "Hybognathus nuchalis",
+        rank = "species",
+        mu_score = 4.5,
+        mu_gap = 2.0,
+        sigma_score = 2.0,
+        stringsAsFactors = FALSE
+      ),
       H1_Global_Mu = c(score_logit = 3.5, gap_logit = 1.5),
-      H1_Sigma     = sigma,
-      H2           = list(delta = 3.0, sigma = h2s),
-      H3           = list(delta = 5.0, sigma = h3s),
-      Stats        = list(n_species = 1L, n_singletons = 0L)
+      H1_Sigma = sigma,
+      H2 = list(delta = 3.0, sigma = h2s),
+      H3 = list(delta = 5.0, sigma = h3s),
+      Stats = list(n_species = 1L, n_singletons = 0L)
     ),
     class = "taxa_model_params"
   )
@@ -26,13 +34,13 @@
 # Minimal match object for one query
 .make_match_df <- function() {
   data.frame(
-    observation_id       = "ESV_001",
-    score           = c(95.0, 80.0, 60.0),
-    taxon_name      = c("Hybognathus nuchalis", "Rhinichthys obtusus", "Campostoma anomalum"),
+    observation_id = "ESV_001",
+    score = c(95.0, 80.0, 60.0),
+    taxon_name = c("Hybognathus nuchalis", "Rhinichthys obtusus", "Campostoma anomalum"),
     taxon_name_rank = "species",
-    family          = "Leuciscidae",
-    genus           = c("Hybognathus", "Rhinichthys", "Campostoma"),
-    species         = c("Hybognathus nuchalis", "Rhinichthys obtusus", "Campostoma anomalum"),
+    family = "Leuciscidae",
+    genus = c("Hybognathus", "Rhinichthys", "Campostoma"),
+    species = c("Hybognathus nuchalis", "Rhinichthys obtusus", "Campostoma anomalum"),
     stringsAsFactors = FALSE
   )
 }
@@ -45,10 +53,12 @@ test_that(".evaluate_one_query: returns required columns", {
   out <- TaxaLikely:::.evaluate_one_query(
     .make_match_df(), params, c("family", "genus", "species")
   )
-  expect_true(all(c("hypothesis_type", "taxon_name", "taxon_name_rank",
-                     "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
-                     "score_likelihood_cov")
-                  %in% names(out)))
+  expect_true(all(c(
+    "hypothesis_type", "taxon_name", "taxon_name_rank",
+    "score_likelihood", "score_likelihood_mean", "score_likelihood_sd",
+    "score_likelihood_cov"
+  )
+  %in% names(out)))
 })
 
 test_that(".evaluate_one_query: includes all three hypothesis types when ratio_threshold = 0", {
@@ -60,8 +70,8 @@ test_that(".evaluate_one_query: includes all three hypothesis types when ratio_t
     ratio_threshold = 0
   )
   expect_true("specific_candidate" %in% out$hypothesis_type)
-  expect_true("unreferenced_species"    %in% out$hypothesis_type)
-  expect_true("unreferenced_genus"      %in% out$hypothesis_type)
+  expect_true("unreferenced_species" %in% out$hypothesis_type)
+  expect_true("unreferenced_genus" %in% out$hypothesis_type)
 })
 
 test_that(".evaluate_one_query: score_likelihood in [0, 1]", {
@@ -78,8 +88,10 @@ test_that(".evaluate_one_query: singleton uses 1D (no error)", {
   params <- .make_model_params()
   single_row <- .make_match_df()[1L, ]
   expect_no_error(
-    TaxaLikely:::.evaluate_one_query(single_row, params,
-                                      c("family", "genus", "species"))
+    TaxaLikely:::.evaluate_one_query(
+      single_row, params,
+      c("family", "genus", "species")
+    )
   )
 })
 
@@ -116,8 +128,8 @@ test_that(".evaluate_one_query: n_sims sd reflects reference sample size (n_obs_
   close_match_df <- .make_match_df()
   close_match_df$score <- c(90.0, 88.0, 60.0)
 
-  params_low_n  <- .make_model_params()
-  params_low_n$H1_Lookup$n_obs_species  <- 3
+  params_low_n <- .make_model_params()
+  params_low_n$H1_Lookup$n_obs_species <- 3
   params_low_n$Stats <- list(n_h1_pooled = 3, n_h2_pooled = NA_real_)
 
   params_high_n <- .make_model_params()
@@ -135,7 +147,7 @@ test_that(".evaluate_one_query: n_sims sd reflects reference sample size (n_obs_
     n_sims = 1000L, ratio_threshold = 0, min_match_threshold = 0
   )
 
-  sd_low_n  <- out_low_n[out_low_n$taxon_name == "Hybognathus nuchalis", "score_likelihood_sd"]
+  sd_low_n <- out_low_n[out_low_n$taxon_name == "Hybognathus nuchalis", "score_likelihood_sd"]
   sd_high_n <- out_high_n[out_high_n$taxon_name == "Hybognathus nuchalis", "score_likelihood_sd"]
   expect_true(sd_low_n > sd_high_n)
 })
@@ -158,12 +170,13 @@ test_that(".evaluate_one_query: n_sims sd falls back to legacy (score-resampling
 
 test_that(".evaluate_one_query: min_match_threshold filters low scores", {
   skip_if_not_installed("TaxaTools")
-  params  <- .make_model_params()
-  df_low  <- .make_match_df()
-  df_low$score <- c(10, 5, 3)   # all below 0.5 after normalisation
+  params <- .make_model_params()
+  df_low <- .make_match_df()
+  df_low$score <- c(10, 5, 3) # all below 0.5 after normalisation
   out <- TaxaLikely:::.evaluate_one_query(df_low, params,
-                                           c("family", "genus", "species"),
-                                           min_match_threshold = 0.5)
+    c("family", "genus", "species"),
+    min_match_threshold = 0.5
+  )
   spec <- out[out$hypothesis_type == "specific_candidate", ]
   # All H1 likelihoods should be 0, so they are filtered out
   expect_equal(nrow(spec), 0L)
@@ -180,10 +193,11 @@ test_that(".evaluate_one_query: score-only alpha filter rejects extreme outlier,
 
   # Near-mean score: should survive alpha filter
   df_near <- .make_match_df()
-  df_near$score <- c(95, 80, 60)   # top score logit(0.95)=2.94, close to mu=4.5
+  df_near$score <- c(95, 80, 60) # top score logit(0.95)=2.94, close to mu=4.5
   out_near <- TaxaLikely:::.evaluate_one_query(df_near, params,
-                                                c("family", "genus", "species"),
-                                                ratio_threshold = 0, alpha = 0.001)
+    c("family", "genus", "species"),
+    ratio_threshold = 0, alpha = 0.001
+  )
   spec_near <- out_near[out_near$hypothesis_type == "specific_candidate", ]
   expect_true(nrow(spec_near) > 0L)
   expect_true(any(spec_near$score_likelihood > 0))
@@ -193,11 +207,12 @@ test_that(".evaluate_one_query: score-only alpha filter rejects extreme outlier,
   # score=5 on 0-100 scale -> normalized 0.05 -> logit(0.05)=-2.94 ->
   # d_sq=(4.5-(-2.94))^2/2.0=27.7 -> p~=0 << 0.001 -> alpha rejects.
   df_far <- .make_match_df()
-  df_far$score <- c(5, 3, 1)   # 0-100 scale; ~5% identity -- extreme outlier
+  df_far$score <- c(5, 3, 1) # 0-100 scale; ~5% identity -- extreme outlier
   out_far <- TaxaLikely:::.evaluate_one_query(df_far, params,
-                                               c("family", "genus", "species"),
-                                               ratio_threshold = 0, alpha = 0.001,
-                                               min_match_threshold = 0)
+    c("family", "genus", "species"),
+    ratio_threshold = 0, alpha = 0.001,
+    min_match_threshold = 0
+  )
   spec_far <- out_far[out_far$hypothesis_type == "specific_candidate", ]
   # All H1 candidates should have likelihood 0 (alpha filter rejects them)
   expect_true(all(spec_far$score_likelihood == 0))
@@ -220,10 +235,11 @@ test_that(".evaluate_one_query: alpha filter is one-sided -- an anomalously HIGH
   df_high <- .make_match_df()
   df_high$score <- c(99.999, 80.0, 60.0)
   out_high <- TaxaLikely:::.evaluate_one_query(df_high, params,
-                                                c("family", "genus", "species"),
-                                                ratio_threshold = 0, alpha = 0.001)
+    c("family", "genus", "species"),
+    ratio_threshold = 0, alpha = 0.001
+  )
   spec_high <- out_high[out_high$hypothesis_type == "specific_candidate" &
-                           out_high$taxon_name == "Hybognathus nuchalis", ]
+    out_high$taxon_name == "Hybognathus nuchalis", ]
   expect_true(nrow(spec_high) > 0L)
   expect_true(any(spec_high$score_likelihood > 0))
 })
@@ -243,10 +259,11 @@ test_that(".evaluate_one_query: alpha filter uses score only, not gap (small-gap
   # Scores 95.0 and 94.9 give a tiny gap in logit space (~0.02 logit units)
   df_tinygap$score <- c(95.0, 94.9, 60.0)
   out <- TaxaLikely:::.evaluate_one_query(df_tinygap, params,
-                                           c("family", "genus", "species"),
-                                           ratio_threshold = 0, alpha = 0.001)
+    c("family", "genus", "species"),
+    ratio_threshold = 0, alpha = 0.001
+  )
   spec <- out[out$hypothesis_type == "specific_candidate" &
-                out$taxon_name == "Hybognathus nuchalis", ]
+    out$taxon_name == "Hybognathus nuchalis", ]
   # Despite the tiny gap, the H1 candidate should survive the outlier filter
   expect_true(nrow(spec) > 0L)
   expect_true(any(spec$score_likelihood > 0))
@@ -257,8 +274,10 @@ test_that(".evaluate_one_query: alpha filter uses score only, not gap (small-gap
 test_that("evaluate_likelihoods: returns list with $likelihoods and $unresolved", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
-  out    <- evaluate_likelihoods(.make_match_df(), params,
-                                 c("family", "genus", "species"))
+  out <- evaluate_likelihoods(
+    .make_match_df(), params,
+    c("family", "genus", "species")
+  )
   expect_true(is.list(out))
   expect_named(out, c("likelihoods", "unresolved"))
   expect_true(is.data.frame(out$likelihoods))
@@ -268,26 +287,34 @@ test_that("evaluate_likelihoods: returns list with $likelihoods and $unresolved"
 test_that("evaluate_likelihoods: $likelihoods has required columns", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
-  liks   <- evaluate_likelihoods(.make_match_df(), params,
-                                 c("family", "genus", "species"))$likelihoods
-  expect_true(all(c("observation_id","taxon_name","taxon_name_rank",
-                     "hypothesis_type","score_likelihood",
-                     "score_likelihood_mean","score_likelihood_sd",
-                     "score_likelihood_cov") %in% names(liks)))
+  liks <- evaluate_likelihoods(
+    .make_match_df(), params,
+    c("family", "genus", "species")
+  )$likelihoods
+  expect_true(all(c(
+    "observation_id", "taxon_name", "taxon_name_rank",
+    "hypothesis_type", "score_likelihood",
+    "score_likelihood_mean", "score_likelihood_sd",
+    "score_likelihood_cov"
+  ) %in% names(liks)))
 })
 
 test_that("evaluate_likelihoods: processes multiple observation_ids", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
-  df2 <- rbind(.make_match_df(),
-               dplyr::mutate(.make_match_df(), observation_id = "ESV_002"))
+  df2 <- rbind(
+    .make_match_df(),
+    dplyr::mutate(.make_match_df(), observation_id = "ESV_002")
+  )
   liks <- evaluate_likelihoods(df2, params, c("family", "genus", "species"))$likelihoods
   expect_true(all(c("ESV_001", "ESV_002") %in% liks$observation_id))
 })
 
 test_that("evaluate_likelihoods: non-taxa_model_params errors", {
-  expect_error(evaluate_likelihoods(.make_match_df(), list(), "species"),
-               "taxa_model_params")
+  expect_error(
+    evaluate_likelihoods(.make_match_df(), list(), "species"),
+    "taxa_model_params"
+  )
 })
 
 test_that("evaluate_likelihoods: evidence_col works (no error) on a sqrt_mismatch model too (Session 158, corrected)", {
@@ -318,7 +345,7 @@ test_that("evaluate_likelihoods: warns (not silent) when Score_Transform is abse
   # (no Score_Transform field at all, from before Session 158) stay dangerous
   # with no signal to the caller. Now warns instead.
   skip_if_not_installed("TaxaTools")
-  params <- .make_model_params()  # Score_Transform absent
+  params <- .make_model_params() # Score_Transform absent
   df <- .make_match_df()
   expect_warning(
     evaluate_likelihoods(df, params, c("family", "genus", "species")),
@@ -342,7 +369,7 @@ test_that("evaluate_likelihoods: no Score_Transform warning when it is explicitl
 
 test_that("evaluate_likelihoods: evidence_col/min_coverage guards do not fire for a logit model", {
   skip_if_not_installed("TaxaTools")
-  params <- .make_model_params()  # Score_Transform absent -> defaults to logit
+  params <- .make_model_params() # Score_Transform absent -> defaults to logit
   df <- .make_match_df()
   df$depth <- 10
   expect_no_error(
@@ -353,8 +380,10 @@ test_that("evaluate_likelihoods: evidence_col/min_coverage guards do not fire fo
 test_that("evaluate_likelihoods: $likelihoods has no NA taxon_name", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
-  liks   <- evaluate_likelihoods(.make_match_df(), params,
-                                 c("family", "genus", "species"))$likelihoods
+  liks <- evaluate_likelihoods(
+    .make_match_df(), params,
+    c("family", "genus", "species")
+  )$likelihoods
   expect_false(any(is.na(liks$taxon_name)))
 })
 
@@ -363,9 +392,9 @@ test_that("evaluate_likelihoods: all-NA observation_id warns and appears in $unr
   params <- .make_model_params()
   bad_df <- .make_match_df()
   bad_df$taxon_name <- NA_character_
-  bad_df$genus      <- NA_character_
-  bad_df$species    <- NA_character_
-  bad_df$family     <- NA_character_
+  bad_df$genus <- NA_character_
+  bad_df$species <- NA_character_
+  bad_df$family <- NA_character_
   expect_warning(
     evaluate_likelihoods(bad_df, params, c("family", "genus", "species")),
     "no usable likelihoods"
@@ -384,8 +413,10 @@ test_that("evaluate_likelihoods: all-NA observation_id warns and appears in $unr
 test_that("score_likelihood_cov equals score_likelihood when no coverage column", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
-  out    <- evaluate_likelihoods(.make_match_df(), params,
-                                 c("family", "genus", "species"))$likelihoods
+  out <- evaluate_likelihoods(
+    .make_match_df(), params,
+    c("family", "genus", "species")
+  )$likelihoods
   # No coverage column in match_df -> no inflation -> columns must be identical
   expect_equal(out$score_likelihood_cov, out$score_likelihood)
 })
@@ -396,12 +427,16 @@ test_that("score_likelihood_cov differs from score_likelihood for low-coverage H
   df_cov <- .make_match_df()
   # First candidate (best H1) gets very low coverage; others at full coverage
   df_cov$coverage <- c(0.3, 1.0, 1.0)
-  out <- evaluate_likelihoods(df_cov, params,
-                              c("family", "genus", "species"))$likelihoods
+  out <- evaluate_likelihoods(
+    df_cov, params,
+    c("family", "genus", "species")
+  )$likelihoods
   h1_rows <- out[out$hypothesis_type == "specific_candidate", ]
   # At least the best H1 candidate should be penalised (cov value differs from 1)
-  expect_false(isTRUE(all.equal(h1_rows$score_likelihood_cov,
-                                h1_rows$score_likelihood)))
+  expect_false(isTRUE(all.equal(
+    h1_rows$score_likelihood_cov,
+    h1_rows$score_likelihood
+  )))
   # score_likelihood_cov in [0, 1]
   expect_true(all(out$score_likelihood_cov >= 0 & out$score_likelihood_cov <= 1))
 })
@@ -423,16 +458,17 @@ test_that("score_likelihood_cov differs from score_likelihood for low-coverage H
 
 test_that("score_likelihood_evidence: gate blocks the rescale for a near-mean low-evidence candidate", {
   skip_if_not_installed("TaxaTools")
-  params  <- .add_query_calibration(.make_model_params(), reference_evidence = 10)
+  params <- .add_query_calibration(.make_model_params(), reference_evidence = 10)
   df_near <- .make_match_df()
-  df_near$depth <- c(1, 10, 10)   # top candidate: evidence_ratio = 1/10 = 0.1
+  df_near$depth <- c(1, 10, 10) # top candidate: evidence_ratio = 1/10 = 0.1
   # Top candidate score 95 -> logit(0.95)=2.94, z^2 = (4.5-2.94)^2/2.0 = 1.21,
   # below z*^2 = 1.68 -- the gate must leave sigma (and thus the likelihood)
   # unchanged even though evidence_ratio < 1.
   out <- evaluate_likelihoods(df_near, params, c("family", "genus", "species"),
-                              ratio_threshold = 0, evidence_col = "depth")$likelihoods
+    ratio_threshold = 0, evidence_col = "depth"
+  )$likelihoods
   h1 <- out[out$hypothesis_type == "specific_candidate" &
-              out$taxon_name == "Hybognathus nuchalis", ]
+    out$taxon_name == "Hybognathus nuchalis", ]
   expect_equal(h1$score_likelihood_evidence, h1$score_likelihood)
 })
 
@@ -440,23 +476,26 @@ test_that("score_likelihood_evidence: gate allows the rescale for a far low-evid
   skip_if_not_installed("TaxaTools")
   params <- .add_query_calibration(.make_model_params(), reference_evidence = 10)
   df_far <- .make_match_df()
-  df_far$score <- c(75, 50, 30)   # top candidate score logit(0.75)=1.10
-  df_far$depth <- c(1, 10, 10)    # top candidate: evidence_ratio = 0.1
+  df_far$score <- c(75, 50, 30) # top candidate score logit(0.75)=1.10
+  df_far$depth <- c(1, 10, 10) # top candidate: evidence_ratio = 0.1
   # z^2 = (4.5-1.10)^2/2.0 = 5.79, above z*^2 = 1.68 -- the gate must apply
   # the widened sigma, so the two columns differ for this candidate.
   out <- evaluate_likelihoods(df_far, params, c("family", "genus", "species"),
-                              ratio_threshold = 0, min_match_threshold = 0,
-                              evidence_col = "depth")$likelihoods
+    ratio_threshold = 0, min_match_threshold = 0,
+    evidence_col = "depth"
+  )$likelihoods
   h1 <- out[out$hypothesis_type == "specific_candidate" &
-              out$taxon_name == "Hybognathus nuchalis", ]
+    out$taxon_name == "Hybognathus nuchalis", ]
   expect_false(isTRUE(all.equal(h1$score_likelihood_evidence, h1$score_likelihood)))
 })
 
 test_that("score_likelihood_evidence equals score_likelihood when evidence_col is absent", {
   skip_if_not_installed("TaxaTools")
   params <- .add_query_calibration(.make_model_params(), reference_evidence = 10)
-  out <- evaluate_likelihoods(.make_match_df(), params,
-                              c("family", "genus", "species"))$likelihoods
+  out <- evaluate_likelihoods(
+    .make_match_df(), params,
+    c("family", "genus", "species")
+  )$likelihoods
   expect_equal(out$score_likelihood_evidence, out$score_likelihood)
 })
 
@@ -464,13 +503,13 @@ test_that("score_likelihood_evidence equals score_likelihood when evidence_col i
 
 test_that("filter_top_hypotheses: removes coarser specific candidates", {
   df <- tibble::tibble(
-    observation_id            = "ESV_001",
-    taxon_name           = c("Hybognathus nuchalis", "Hybognathus", "NA"),
-    taxon_name_rank      = c("species", "genus", NA_character_),
-    hypothesis_type      = c("specific_candidate", "specific_candidate", "unreferenced_species"),
+    observation_id = "ESV_001",
+    taxon_name = c("Hybognathus nuchalis", "Hybognathus", "NA"),
+    taxon_name_rank = c("species", "genus", NA_character_),
+    hypothesis_type = c("specific_candidate", "specific_candidate", "unreferenced_species"),
     score_likelihood = c(1.0, 0.9, 0.5),
-    score_likelihood_mean      = c(1.0, 0.9, 0.5),
-    score_likelihood_sd        = 0
+    score_likelihood_mean = c(1.0, 0.9, 0.5),
+    score_likelihood_sd = 0
   )
   out <- filter_top_hypotheses(df, c("family", "genus", "species"))
   spec <- out[out$hypothesis_type == "specific_candidate", ]
@@ -481,17 +520,17 @@ test_that("filter_top_hypotheses: removes coarser specific candidates", {
 
 test_that("filter_top_hypotheses: unreferenced_species/genus rows always kept", {
   df <- tibble::tibble(
-    observation_id            = "ESV_001",
-    taxon_name           = c("Hybognathus nuchalis", "Hybognathus", "Leuciscidae"),
-    taxon_name_rank      = c("species", "genus", "family"),
-    hypothesis_type      = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
+    observation_id = "ESV_001",
+    taxon_name = c("Hybognathus nuchalis", "Hybognathus", "Leuciscidae"),
+    taxon_name_rank = c("species", "genus", "family"),
+    hypothesis_type = c("specific_candidate", "unreferenced_species", "unreferenced_genus"),
     score_likelihood = c(1.0, 0.5, 0.1),
-    score_likelihood_mean      = c(1.0, 0.5, 0.1),
-    score_likelihood_sd        = 0
+    score_likelihood_mean = c(1.0, 0.5, 0.1),
+    score_likelihood_sd = 0
   )
   out <- filter_top_hypotheses(df, c("family", "genus", "species"))
   expect_true("unreferenced_species" %in% out$hypothesis_type)
-  expect_true("unreferenced_genus"   %in% out$hypothesis_type)
+  expect_true("unreferenced_genus" %in% out$hypothesis_type)
 })
 
 test_that("filter_top_hypotheses: invalid input errors", {
@@ -507,16 +546,16 @@ test_that("filter_top_hypotheses: invalid input errors", {
 test_that("filter_top_hypotheses: preserves genus row when all species rows are restored", {
   # Simulates a post-LCA observation: genus-level BLAST hit + restored species rows
   df <- tibble::tibble(
-    observation_id   = "ESV_001",
-    taxon_name       = c("Girella", "Girella simplicidens", "Girella japonica"),
-    taxon_name_rank  = c("genus", "species", "species"),
-    hypothesis_type  = "specific_candidate",
+    observation_id = "ESV_001",
+    taxon_name = c("Girella", "Girella simplicidens", "Girella japonica"),
+    taxon_name_rank = c("genus", "species", "species"),
+    hypothesis_type = "specific_candidate",
     score_likelihood = c(0.9, 0.8, 0.7),
     score_likelihood_mean = c(0.9, 0.8, 0.7),
-    score_likelihood_sd   = 0,
-    is_restored      = c(FALSE, TRUE, TRUE)   # genus original; species restored
+    score_likelihood_sd = 0,
+    is_restored = c(FALSE, TRUE, TRUE) # genus original; species restored
   )
-  out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
+  out <- filter_top_hypotheses(df, c("family", "genus", "species"))
   spec <- out[out$hypothesis_type == "specific_candidate", ]
 
   # Genus row should be kept (all species rows were restored)
@@ -526,62 +565,62 @@ test_that("filter_top_hypotheses: preserves genus row when all species rows are 
 
 test_that("filter_top_hypotheses: drops all-restored species rows when genus row is preserved", {
   df <- tibble::tibble(
-    observation_id   = "ESV_001",
-    taxon_name       = c("Girella", "Girella simplicidens", "Girella japonica"),
-    taxon_name_rank  = c("genus", "species", "species"),
-    hypothesis_type  = "specific_candidate",
+    observation_id = "ESV_001",
+    taxon_name = c("Girella", "Girella simplicidens", "Girella japonica"),
+    taxon_name_rank = c("genus", "species", "species"),
+    hypothesis_type = "specific_candidate",
     score_likelihood = c(0.9, 0.8, 0.7),
     score_likelihood_mean = c(0.9, 0.8, 0.7),
-    score_likelihood_sd   = 0,
-    is_restored      = c(FALSE, TRUE, TRUE)
+    score_likelihood_sd = 0,
+    is_restored = c(FALSE, TRUE, TRUE)
   )
-  out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
+  out <- filter_top_hypotheses(df, c("family", "genus", "species"))
   spec <- out[out$hypothesis_type == "specific_candidate", ]
 
   # All-restored species rows should be gone (covered by genus expansion)
   expect_false("Girella simplicidens" %in% spec$taxon_name)
-  expect_false("Girella japonica"     %in% spec$taxon_name)
+  expect_false("Girella japonica" %in% spec$taxon_name)
 })
 
 test_that("filter_top_hypotheses: does not preserve genus row when any species row is original", {
   # One species row is an original BLAST hit (is_restored = FALSE)
   df <- tibble::tibble(
-    observation_id   = "ESV_001",
-    taxon_name       = c("Girella", "Girella nigricans", "Girella simplicidens"),
-    taxon_name_rank  = c("genus", "species", "species"),
-    hypothesis_type  = "specific_candidate",
+    observation_id = "ESV_001",
+    taxon_name = c("Girella", "Girella nigricans", "Girella simplicidens"),
+    taxon_name_rank = c("genus", "species", "species"),
+    hypothesis_type = "specific_candidate",
     score_likelihood = c(0.9, 1.0, 0.8),
     score_likelihood_mean = c(0.9, 1.0, 0.8),
-    score_likelihood_sd   = 0,
-    is_restored      = c(FALSE, FALSE, TRUE)   # G. nigricans is original
+    score_likelihood_sd = 0,
+    is_restored = c(FALSE, FALSE, TRUE) # G. nigricans is original
   )
-  out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
+  out <- filter_top_hypotheses(df, c("family", "genus", "species"))
   spec <- out[out$hypothesis_type == "specific_candidate", ]
 
   # Genus row should be dropped (G. nigricans is not restored -> existing behaviour)
   expect_false("genus" %in% spec$taxon_name_rank)
   # Both species rows should be kept
-  expect_true("Girella nigricans"    %in% spec$taxon_name)
+  expect_true("Girella nigricans" %in% spec$taxon_name)
   expect_true("Girella simplicidens" %in% spec$taxon_name)
 })
 
 test_that("filter_top_hypotheses: is_restored absent -> existing behaviour unchanged", {
   # No is_restored column: genus row should be dropped as before
   df <- tibble::tibble(
-    observation_id   = "ESV_001",
-    taxon_name       = c("Girella", "Girella simplicidens"),
-    taxon_name_rank  = c("genus", "species"),
-    hypothesis_type  = "specific_candidate",
+    observation_id = "ESV_001",
+    taxon_name = c("Girella", "Girella simplicidens"),
+    taxon_name_rank = c("genus", "species"),
+    hypothesis_type = "specific_candidate",
     score_likelihood = c(0.9, 0.8),
     score_likelihood_mean = c(0.9, 0.8),
-    score_likelihood_sd   = 0
+    score_likelihood_sd = 0
     # no is_restored column
   )
-  out  <- filter_top_hypotheses(df, c("family", "genus", "species"))
+  out <- filter_top_hypotheses(df, c("family", "genus", "species"))
   spec <- out[out$hypothesis_type == "specific_candidate", ]
 
-  expect_false("genus"   %in% spec$taxon_name_rank)
-  expect_true("species"  %in% spec$taxon_name_rank)
+  expect_false("genus" %in% spec$taxon_name_rank)
+  expect_true("species" %in% spec$taxon_name_rank)
 })
 
 # ---- H2_Lookup: per-genus delta at inference time ----------------------------
@@ -625,7 +664,7 @@ test_that(".evaluate_one_query: falls back to global delta when anchor's genus i
 
 test_that(".evaluate_one_query: model_params without H2_Lookup slot falls back cleanly (backward compatibility)", {
   skip_if_not_installed("TaxaTools")
-  params <- .make_model_params()   # no $H2_Lookup element at all
+  params <- .make_model_params() # no $H2_Lookup element at all
   expect_null(params$H2_Lookup)
   out <- TaxaLikely:::.evaluate_one_query(
     .make_match_df(), params, c("family", "genus", "species"),
@@ -644,7 +683,7 @@ test_that(".evaluate_one_query: H2 sd reflects n_pairs behind its genus-specific
   base$H1_Lookup$n_obs_species <- 50
   base$Stats <- list(n_h1_pooled = 50, n_h2_pooled = NA_real_)
 
-  params_low_pairs  <- .add_h2_lookup(base, "Hybognathus", delta_shrunk = 2.0, n_pairs = 2L)
+  params_low_pairs <- .add_h2_lookup(base, "Hybognathus", delta_shrunk = 2.0, n_pairs = 2L)
   params_high_pairs <- .add_h2_lookup(base, "Hybognathus", delta_shrunk = 2.0, n_pairs = 500L)
 
   set.seed(7)
@@ -658,7 +697,7 @@ test_that(".evaluate_one_query: H2 sd reflects n_pairs behind its genus-specific
     n_sims = 500L, ratio_threshold = 0
   )
 
-  sd_low  <- out_low[out_low$hypothesis_type == "unreferenced_species", "score_likelihood_sd"]
+  sd_low <- out_low[out_low$hypothesis_type == "unreferenced_species", "score_likelihood_sd"]
   sd_high <- out_high[out_high$hypothesis_type == "unreferenced_species", "score_likelihood_sd"]
   expect_true(sd_low > sd_high)
 })
@@ -681,7 +720,7 @@ test_that(".evaluate_one_query: a smaller genus-specific delta raises H2 likelih
   # so the H2 density -- and hence score_likelihood -- should be higher than
   # under the pooled global delta alone.
   params_global <- .make_model_params()
-  params_local  <- .add_h2_lookup(.make_model_params(), "Hybognathus", delta_shrunk = 1.0)
+  params_local <- .add_h2_lookup(.make_model_params(), "Hybognathus", delta_shrunk = 1.0)
 
   out_global <- TaxaLikely:::.evaluate_one_query(
     .make_match_df(), params_global, c("family", "genus", "species"),
@@ -693,7 +732,7 @@ test_that(".evaluate_one_query: a smaller genus-specific delta raises H2 likelih
   )
 
   h2_global <- out_global$score_likelihood[out_global$hypothesis_type == "unreferenced_species"]
-  h2_local  <- out_local$score_likelihood[out_local$hypothesis_type == "unreferenced_species"]
+  h2_local <- out_local$score_likelihood[out_local$hypothesis_type == "unreferenced_species"]
   expect_gt(h2_local, h2_global)
 })
 
@@ -708,19 +747,21 @@ test_that(".evaluate_one_query: H2 mean anchors on the ANCHOR SPECIES' own resol
   # would be identical, since nothing about the global mean changed.
   skip_if_not_installed("TaxaTools")
   params_near <- .make_model_params()
-  params_near$H1_Lookup$mu_score <- 4.5   # observed query logit ~2.94; anchor at 4.5-3.0=1.5
-  params_far  <- .make_model_params()
-  params_far$H1_Lookup$mu_score  <- 8.0   # same delta shifts anchor to 8.0-3.0=5.0, farther from 2.94
+  params_near$H1_Lookup$mu_score <- 4.5 # observed query logit ~2.94; anchor at 4.5-3.0=1.5
+  params_far <- .make_model_params()
+  params_far$H1_Lookup$mu_score <- 8.0 # same delta shifts anchor to 8.0-3.0=5.0, farther from 2.94
 
   out_near <- TaxaLikely:::.evaluate_one_query(
-    .make_match_df(), params_near, c("family", "genus", "species"), ratio_threshold = 0
+    .make_match_df(), params_near, c("family", "genus", "species"),
+    ratio_threshold = 0
   )
   out_far <- TaxaLikely:::.evaluate_one_query(
-    .make_match_df(), params_far, c("family", "genus", "species"), ratio_threshold = 0
+    .make_match_df(), params_far, c("family", "genus", "species"),
+    ratio_threshold = 0
   )
 
   h2_near <- out_near$score_likelihood[out_near$hypothesis_type == "unreferenced_species"]
-  h2_far  <- out_far$score_likelihood[out_far$hypothesis_type == "unreferenced_species"]
+  h2_far <- out_far$score_likelihood[out_far$hypothesis_type == "unreferenced_species"]
   # Both scenarios share the identical H1_Global_Mu -- a difference here can
   # only come from anchoring on the (deliberately varied) species mean.
   expect_false(isTRUE(all.equal(h2_near, h2_far)))

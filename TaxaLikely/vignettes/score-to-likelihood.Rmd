@@ -60,17 +60,17 @@ TaxaLikely provides two ways to build a `reference_df`:
 ```{r fetch-refs}
 # Option A: Fetch from NCBI by taxon + barcode marker
 reference_df <- fetch_ncbi_reference_sequences(
- taxa         = c("Fundulidae", "Atherinopsidae", "Gobiidae"),
- barcode_term = "12S",
- max_per_species = 5,
- cache_dir       = "ncbi_cache"
+  taxa = c("Fundulidae", "Atherinopsidae", "Gobiidae"),
+  barcode_term = "12S",
+  max_per_species = 5,
+  cache_dir = "ncbi_cache"
 )
 
 # Option B: Read from a local FASTA + taxonomy table
 reference_df <- read_reference_fasta(
- fasta_path  = "my_references.fasta",
- taxonomy    = taxonomy_table,
- rank_system = c("family", "genus", "species")
+  fasta_path  = "my_references.fasta",
+  taxonomy    = taxonomy_table,
+  rank_system = c("family", "genus", "species")
 )
 ```
 
@@ -101,7 +101,7 @@ match_df_clean <- match_df[!match_df$accession %in% errors$accession, ]
 
 ```{r train}
 model <- train_likelihood_model(ref_matrix)
-print(model)  # Summary: n_species, AIC, global parameters
+print(model) # Summary: n_species, AIC, global parameters
 ```
 
 The model learns three hypothesis distributions:
@@ -120,11 +120,11 @@ result <- evaluate_likelihoods(
   model_params    = model,
   rank_system     = c("family", "genus", "species"),
   n_sims          = 1000,
-  ratio_threshold = 0    # recommended: rely on score-only outlier filter (alpha = 0.001)
+  ratio_threshold = 0 # recommended: rely on score-only outlier filter (alpha = 0.001)
 )
 
 likelihoods <- result$likelihoods
-unresolved  <- result$unresolved
+unresolved <- result$unresolved
 # unresolved: observations with no usable likelihoods (retry with coarser rank_system)
 ```
 
@@ -136,9 +136,9 @@ top <- filter_top_hypotheses(likelihoods, rank_system = c("family", "genus", "sp
 
 # Audit reference completeness
 coverage <- audit_barcode_coverage(
- match_df     = match_df,
- barcode_term = "12S",
- target_rank  = "genus"
+  match_df     = match_df,
+  barcode_term = "12S",
+  target_rank  = "genus"
 )
 
 # Suppress unreferenced species for fully-sampled genera
