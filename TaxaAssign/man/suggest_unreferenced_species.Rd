@@ -38,7 +38,8 @@ Default \code{"COI"}.}
 \item{llm_fn}{Function or NULL.  Provider function following the TaxaTools
 \code{llm_fn} pattern: accepts a single character string prompt and returns a
 single character string response.  Default NULL resolves to
-\code{TaxaTools::call_anthropic_api} (requires TaxaTools).}
+\code{getOption("TaxaID.llm_fn")} when set, otherwise \code{TaxaTools::call_api}
+(requires TaxaTools).}
 
 \item{data_type}{Character. One of \code{"eDNA"} (default), \code{"acoustic"}, or
 \code{"image"}. Controls how "unreferenced" is defined: \cr

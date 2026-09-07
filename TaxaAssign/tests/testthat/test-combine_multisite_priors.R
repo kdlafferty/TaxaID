@@ -154,3 +154,21 @@ test_that("a mixed batch (some multi-site, some single-site) handles both correc
   expect_equal(obs2_row$n_sites_combined, 1L)
   expect_equal(obs2_row$grid_id, "site1")
 })
+
+test_that("prior_mean is required, not silently NA-filled", {
+  # Regression: prior_mean was used (arrange + recomputed on combined rows)
+  # but not validated. With mixed multi-/single-site input and no prior_mean
+  # column, combined rows got a real value while single-site rows were
+  # NA-filled by bind_rows -- an NA prior flowing into compute_posterior().
+  df <- data.frame(
+    observation_id  = c("obs1", "obs1", "obs1"),
+    taxon_name      = c("Species_a", "Species_a", "Species_b"),
+    taxon_name_rank = "species",
+    grid_id         = c("site1", "site2", "site1"),
+    main_habitat    = "Marine",
+    prior_alpha     = c(80, 3, 10),
+    prior_beta      = c(20, 2, 90),
+    stringsAsFactors = FALSE
+  )
+  expect_error(combine_multisite_priors(df), "prior_mean")
+})

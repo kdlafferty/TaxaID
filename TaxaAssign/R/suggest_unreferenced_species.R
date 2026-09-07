@@ -458,7 +458,8 @@ print.unreferenced_species_result <- function(x, ...) {
 #' @param llm_fn Function or NULL.  Provider function following the TaxaTools
 #'   `llm_fn` pattern: accepts a single character string prompt and returns a
 #'   single character string response.  Default NULL resolves to
-#'   `TaxaTools::call_anthropic_api` (requires TaxaTools).
+#'   `getOption("TaxaID.llm_fn")` when set, otherwise `TaxaTools::call_api`
+#'   (requires TaxaTools).
 #' @param expand_to_family Logical.  If `TRUE`, genera for which the LLM
 #'   returned zero plausible species trigger a second LLM call asking for
 #'   plausible species in OTHER genera of the same family.  These

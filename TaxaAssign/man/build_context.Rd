@@ -31,7 +31,8 @@ When non-NULL, the LLM also returns an \code{ecoregion_best_guess} column.}
 
 \item{llm_fn}{Function or NULL. LLM provider following the TaxaTools
 \code{llm_fn} pattern. Default NULL resolves to
-\code{TaxaTools::call_anthropic_api} (requires TaxaTools).}
+\code{getOption("TaxaID.llm_fn")} when set, otherwise
+\code{TaxaTools::call_api} (requires TaxaTools).}
 
 \item{chunk_size}{Integer. Maximum taxa per prompt chunk. Default 60.}
 }

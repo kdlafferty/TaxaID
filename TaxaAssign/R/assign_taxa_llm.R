@@ -86,7 +86,8 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #' @param llm_fn Function or NULL. Provider function following the TaxaTools
 #'   `llm_fn` pattern: accepts a single character string prompt and returns a
 #'   single character string response. Default NULL resolves to
-#'   `TaxaTools::call_anthropic_api` (requires TaxaTools installed).
+#'   `getOption("TaxaID.llm_fn")` when set, otherwise `TaxaTools::call_api`
+#'   (requires TaxaTools installed).
 #' @param score_threshold Numeric. Minimum score to include a candidate (0-100).
 #'   Default 80.
 #' @param top_n Integer. Maximum candidates per observation included in the unique
@@ -1069,6 +1070,25 @@ assign_taxa_llm <- function(match_df,
     prior_source        = rep("llm", nrow(parsed)),
     stringsAsFactors    = FALSE
   )
+
+  # Drop repeated taxon_name entries (keep the first). The LLM is asked for
+  # one object per taxon, but nothing guarantees it: a repeated name makes
+  # .merge_llm_priors()'s left_join(lik_df, prior_df, by = "taxon_name") fan
+  # out, so that taxon arrives as TWO identical competing hypothesis rows for
+  # the observation and takes roughly double its share of the normalized
+  # posterior mass -- silently, since a duplicated row looks like an ordinary
+  # candidate downstream. Deduplicating here (rather than in the join) keeps
+  # the fix at the point where untrusted LLM output enters the pipeline.
+  dup <- duplicated(result$taxon_name)
+  if (any(dup)) {
+    cli::cli_warn(
+      "LLM response for group {.val {group_label}} repeated \\
+      {sum(dup)} taxon name{?s}: {.val {unique(result$taxon_name[dup])}}. \\
+      Keeping the first entry for each."
+    )
+    result <- result[!dup, , drop = FALSE]
+    rownames(result) <- NULL
+  }
 
   # Warn about omitted taxa (fallback handled in main loop)
   omitted <- setdiff(expected, result$taxon_name)

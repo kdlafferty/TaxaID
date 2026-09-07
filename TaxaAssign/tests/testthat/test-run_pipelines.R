@@ -176,3 +176,36 @@ test_that(".resolve_llm_fn: NULL resolves to TaxaTools provider when available",
   result <- TaxaAssign:::.resolve_llm_fn(NULL, "test")
   expect_true(is.function(result))
 })
+
+# =============================================================================
+# D. run_llm_pipeline() — auto-context regression
+# =============================================================================
+
+test_that("run_llm_pipeline: auto_context filters on score_original, not the removed `score` column", {
+  # Regression: this call read match_df$score, a column renamed to
+  # score_original ecosystem-wide in Session 99. `NULL >= score_threshold` is
+  # logical(0), so build_context() always received character(0) and aborted --
+  # i.e. the default auto_context path could never run on a real match_df.
+  captured <- NULL
+  local_mocked_bindings(
+    build_context = function(taxon_names, ...) {
+      captured <<- taxon_names
+      stop("stop_after_build_context")
+    },
+    .env = asNamespace("TaxaAssign")
+  )
+
+  expect_error(
+    run_llm_pipeline(
+      match_df        = mock_match_df,
+      llm_fn          = function(prompt) "[]",
+      score_threshold = 90,
+      backbone_id     = 11L,
+      verbose         = FALSE
+    ),
+    "stop_after_build_context"
+  )
+
+  # Rows at/above score_original 90: s1/"Sp A" (99) and s2/"Sp A" (92).
+  expect_equal(captured, "Sp A")
+})

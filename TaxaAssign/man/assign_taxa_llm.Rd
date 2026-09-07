@@ -49,7 +49,8 @@ taxon list. Requires \code{context} to have an \code{observation_id} column.
 \item{llm_fn}{Function or NULL. Provider function following the TaxaTools
 \code{llm_fn} pattern: accepts a single character string prompt and returns a
 single character string response. Default NULL resolves to
-\code{TaxaTools::call_anthropic_api} (requires TaxaTools installed).}
+\code{getOption("TaxaID.llm_fn")} when set, otherwise \code{TaxaTools::call_api}
+(requires TaxaTools installed).}
 
 \item{score_threshold}{Numeric. Minimum score to include a candidate (0-100).
 Default 80.}

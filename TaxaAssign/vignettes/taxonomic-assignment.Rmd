@@ -137,7 +137,7 @@ consensus_final <- posterior_consensus(result_updated, cumulative_threshold = 0.
 ```{r llm-detail}
 # Auto-build context from taxon names
 ctx <- build_context(
-  taxon_names     = unique(match_df$taxon_name[match_df$score >= 95]),
+  taxon_names     = unique(match_df$taxon_name[match_df$score_original >= 95]),
   geographic_hint = "Southern California",
   date            = "2025"
 )

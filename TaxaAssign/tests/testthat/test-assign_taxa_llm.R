@@ -505,3 +505,37 @@ test_that("known_absent data frame without taxon_name column raises error", {
     regexp = "taxon_name"
   )
 })
+
+# ---- LLM response robustness ------------------------------------------------
+
+test_that("a repeated taxon_name in the LLM response does not duplicate hypothesis rows", {
+  # Regression: .parse_taxa_response() passed duplicates straight through, so
+  # .merge_llm_priors()'s left_join(by = "taxon_name") fanned out and that
+  # taxon competed as two identical rows, taking roughly double its share of
+  # the normalized posterior mass.
+  dup_llm <- function(prompt_str) {
+    taxa <- regmatches(prompt_str,
+                       gregexpr("(?m)(?<=^- )[^\n(]+(?= \\()", prompt_str,
+                                 perl = TRUE))[[1]]
+    taxa <- trimws(taxa)
+    if (length(taxa) == 0) taxa <- "Eucyclogobius newberryi"
+    taxa <- c(taxa, taxa[[1L]])          # repeat the first taxon
+    rows <- paste0(
+      vapply(taxa, function(t)
+        sprintf('{"taxon_name":"%s","range_status":"native","prior_weight":1}', t),
+        character(1)),
+      collapse = ",\n  "
+    )
+    paste0("[\n  ", rows, "\n]")
+  }
+
+  expect_warning(
+    result <- assign_taxa_llm(make_match_df(), llm_fn = dup_llm,
+                              pause_seconds = 0),
+    "repeated"
+  )
+
+  named  <- result[!is.na(result$taxon_name), ]
+  counts <- table(named$observation_id, named$taxon_name)
+  expect_true(all(counts <= 1L))
+})

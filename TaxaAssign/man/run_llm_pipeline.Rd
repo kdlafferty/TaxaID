@@ -70,7 +70,8 @@ assignment. Default \code{NULL} (3-category).}
 
 \item{llm_fn}{Function or NULL. LLM provider following the TaxaTools
 \code{llm_fn} pattern. Default NULL resolves to
-\code{TaxaTools::call_anthropic_api} (requires TaxaTools).}
+\code{getOption("TaxaID.llm_fn")} when set, otherwise
+\code{TaxaTools::call_api} (requires TaxaTools).}
 
 \item{detect_unreferenced}{Logical. When \code{TRUE} (default), run
 \code{\link{suggest_unreferenced_species}} to detect taxa absent from the

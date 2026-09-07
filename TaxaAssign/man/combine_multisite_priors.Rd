@@ -9,7 +9,7 @@ combine_multisite_priors(joined)
 \arguments{
 \item{joined}{Data frame, typically \code{\link[=join_priors]{join_priors()}} output. Must contain
 \code{observation_id}, \code{taxon_name}, \code{taxon_name_rank}, \code{grid_id},
-\code{main_habitat}, \code{prior_alpha}, \code{prior_beta} (all present in
+\code{main_habitat}, \code{prior_alpha}, \code{prior_beta}, \code{prior_mean} (all present in
 \code{join_priors()}'s output). Observations detected at only one site (the
 common case) pass through unchanged.}
 }
@@ -100,6 +100,7 @@ joined <- data.frame(
   main_habitat    = c("Neritic", "Neritic", "Neritic"),
   prior_alpha     = c(80, 3, 10),
   prior_beta      = c(20, 2, 90),
+  prior_mean      = c(0.80, 0.60, 0.10),
   stringsAsFactors = FALSE
 )
 combined <- combine_multisite_priors(joined)

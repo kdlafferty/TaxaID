@@ -112,7 +112,7 @@ utils::globalVariables(c(
 #'
 #' @param joined Data frame, typically [join_priors()] output. Must contain
 #'   `observation_id`, `taxon_name`, `taxon_name_rank`, `grid_id`,
-#'   `main_habitat`, `prior_alpha`, `prior_beta` (all present in
+#'   `main_habitat`, `prior_alpha`, `prior_beta`, `prior_mean` (all present in
 #'   `join_priors()`'s output). Observations detected at only one site (the
 #'   common case) pass through unchanged.
 #'
@@ -146,6 +146,7 @@ utils::globalVariables(c(
 #'   main_habitat    = c("Neritic", "Neritic", "Neritic"),
 #'   prior_alpha     = c(80, 3, 10),
 #'   prior_beta      = c(20, 2, 90),
+#'   prior_mean      = c(0.80, 0.60, 0.10),
 #'   stringsAsFactors = FALSE
 #' )
 #' combined <- combine_multisite_priors(joined)
@@ -166,8 +167,15 @@ combine_multisite_priors <- function(joined) {
     cli::cli_abort("{.arg joined} must be a data frame.")
   }
 
+  # prior_mean is required, not optional: a single-site row passes through
+  # untouched (it keeps whatever prior_mean it arrived with) while a combined
+  # row has prior_mean recomputed, so an input lacking the column produced a
+  # result where combined rows had a real prior_mean and single-site rows had
+  # NA (filled in by bind_rows) -- an NA prior that compute_posterior() then
+  # carries straight into the posterior. Fail loudly instead.
   required_cols <- c("observation_id", "taxon_name", "taxon_name_rank",
-                     "grid_id", "main_habitat", "prior_alpha", "prior_beta")
+                     "grid_id", "main_habitat", "prior_alpha", "prior_beta",
+                     "prior_mean")
   missing_cols <- setdiff(required_cols, names(joined))
   if (length(missing_cols) > 0L) {
     cli::cli_abort(c(

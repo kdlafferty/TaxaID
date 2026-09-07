@@ -29,7 +29,8 @@
 #'   assignment. Default \code{NULL} (3-category).
 #' @param llm_fn Function or NULL. LLM provider following the TaxaTools
 #'   \code{llm_fn} pattern. Default NULL resolves to
-#'   \code{TaxaTools::call_anthropic_api} (requires TaxaTools).
+#'   \code{getOption("TaxaID.llm_fn")} when set, otherwise
+#'   \code{TaxaTools::call_api} (requires TaxaTools).
 #' @param detect_unreferenced Logical. When \code{TRUE} (default), run
 #'   \code{\link{suggest_unreferenced_species}} to detect taxa absent from the
 #'   reference database. Set to \code{FALSE} to skip.
@@ -203,8 +204,17 @@ run_llm_pipeline <- function(
   if (is.null(context) && auto_context) {
     .msg("run_llm_pipeline [1/4]: Auto-building context via build_context()...")
 
+    # score_original, NOT score: the score column was renamed
+    # score -> score_original ecosystem-wide (Session 99), and
+    # assign_taxa_llm() below already requires score_original. Reading the
+    # removed name gave match_df$score = NULL, so `NULL >= score_threshold`
+    # is logical(0), the subset is character(0), and build_context() aborted
+    # with "taxon_names must be a non-empty character vector" -- i.e. the
+    # default auto_context path failed on every real match_df.
     context <- build_context(
-      taxon_names     = unique(match_df$taxon_name[match_df$score >= score_threshold]),
+      taxon_names     = unique(
+        match_df$taxon_name[match_df$score_original >= score_threshold]
+      ),
       geographic_hint = geographic_hint,
       date            = date,
       habitat_scheme  = habitat_scheme,
