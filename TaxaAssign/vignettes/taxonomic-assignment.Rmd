@@ -44,11 +44,11 @@ optional empirical Bayes refinement.
 library(TaxaAssign)
 
 out <- run_bayesian_pipeline(
-  match_df          = match_obj,
-  model_params      = trained_model,
+  match_df = match_obj,
+  model_params = trained_model,
   taxaexpect_priors = priors,
   site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
-  backbone_id       = 11L  # GBIF; match whichever backbone your input taxonomy used
+  backbone_id = 11L # GBIF; match whichever backbone your input taxonomy used
 )
 
 head(out$consensus)
@@ -61,7 +61,7 @@ out <- run_llm_pipeline(
   match_df        = match_obj,
   geographic_hint = "Southern California",
   barcode_term    = "12S",
-  backbone_id     = 11L  # GBIF; match whichever backbone your input taxonomy used
+  backbone_id     = 11L # GBIF; match whichever backbone your input taxonomy used
 )
 
 head(out$consensus)
@@ -75,7 +75,7 @@ head(out$consensus)
 library(TaxaLikely)
 
 lik_result <- evaluate_likelihoods(match_df, model_params = trained_model)
-top_lik    <- filter_top_hypotheses(lik_result$likelihoods)
+top_lik <- filter_top_hypotheses(lik_result$likelihoods)
 ```
 
 ### Step 2: Handle unreferenced species
@@ -86,7 +86,8 @@ appear as named matches. Expand generic H2/H3 rows into named species.
 ```{r step2}
 # Detect unreferenced species from coverage audit
 coverage <- TaxaLikely::audit_barcode_coverage(
-  match_df, barcode_term = "12S", target_rank = "genus"
+  match_df,
+  barcode_term = "12S", target_rank = "genus"
 )
 
 # Build unreferenced data frame from TaxaExpect priors
@@ -105,11 +106,13 @@ constrained <- TaxaLikely::apply_coverage_constraints(expanded, coverage$census)
 
 ```{r step3}
 ready <- join_priors(
-  likelihoods       = constrained,
+  likelihoods = constrained,
   taxaexpect_priors = taxaexpect_priors,
-  site              = list(grid_id = "Grid_34p1_m119p1",
-                           main_habitat = "Estuarine Bay"),
-  backbone_id       = 11L  # GBIF; match whichever backbone your input taxonomy used
+  site = list(
+    grid_id = "Grid_34p1_m119p1",
+    main_habitat = "Estuarine Bay"
+  ),
+  backbone_id = 11L # GBIF; match whichever backbone your input taxonomy used
 )
 ```
 
@@ -144,13 +147,15 @@ ctx <- build_context(
 
 # Detect unreferenced species via LLM
 unreferenced <- suggest_unreferenced_species(
-  match_df, context = ctx, barcode_term = "12S",
+  match_df,
+  context = ctx, barcode_term = "12S",
   expand_to_family = TRUE
 )
 
 # Run LLM assignment
 result <- assign_taxa_llm(
-  match_df, context = ctx,
+  match_df,
+  context = ctx,
   unreferenced_taxa = unreferenced,
   score_threshold = 80, n_sims = 1000
 )
@@ -179,7 +184,8 @@ Use `score_consensus()` for a conventional (non-Bayesian) comparison:
 
 ```{r compare}
 score_con <- score_consensus(
-  match_df, min_score = 80, max_gap = 2,
+  match_df,
+  min_score = 80, max_gap = 2,
   rank_thresholds = c(species = 98, genus = 95, family = 90)
 )
 

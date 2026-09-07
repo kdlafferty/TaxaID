@@ -12,12 +12,14 @@ library(TaxaAssign)
 
 make_spg_match_df <- function() {
   data.frame(
-    observation_id       = c("S1", "S1", "S2", "S2"),
+    observation_id = c("S1", "S1", "S2", "S2"),
     score_original = c(99, 88, 97, 85),
-    taxon_name      = c("Fundulus lima", "Fundulus zebrinus",
-                        "Gambusia affinis", "Gambusia holbrooki"),
+    taxon_name = c(
+      "Fundulus lima", "Fundulus zebrinus",
+      "Gambusia affinis", "Gambusia holbrooki"
+    ),
     taxon_name_rank = rep("species", 4L),
-    genus           = c("Fundulus", "Fundulus", "Gambusia", "Gambusia"),
+    genus = c("Fundulus", "Fundulus", "Gambusia", "Gambusia"),
     stringsAsFactors = FALSE
   )
 }
@@ -34,7 +36,7 @@ stub_plausible_llm <- function(prompt) {
 
 broken_plausible_llm <- function(prompt) "not valid json at all!!!"
 
-error_plausible_llm  <- function(prompt) stop("API unavailable")
+error_plausible_llm <- function(prompt) stop("API unavailable")
 
 
 # ============================================================================
@@ -49,8 +51,10 @@ test_that("is_plausible_binomial() accepts clean binomials", {
 
 test_that("is_plausible_binomial() rejects non-binomials and placeholders", {
   skip_if_not_installed("TaxaTools")
-  bad <- c("Fundulus", "sp.", "Fundulus sp.", "Fundulus cf. lima",
-           "uncultured Gambusia sp.", "environmental sample")
+  bad <- c(
+    "Fundulus", "sp.", "Fundulus sp.", "Fundulus cf. lima",
+    "uncultured Gambusia sp.", "environmental sample"
+  )
   expect_false(any(TaxaTools::is_plausible_binomial(bad)))
 })
 
@@ -110,7 +114,8 @@ test_that(".parse_plausible_response() warns when a genus has no species returne
   json <- '[{"genus":"Fundulus","plausible_species":["Fundulus parvipinnis"]}]'
   expect_warning(
     result <- TaxaAssign:::.parse_plausible_response(
-      json, c("Fundulus", "Gambusia"), group_label = "test batch"
+      json, c("Fundulus", "Gambusia"),
+      group_label = "test batch"
     ),
     regexp = "no valid plausible species"
   )
@@ -131,7 +136,7 @@ test_that("suggest_unreferenced_species() excludes skip-list species from NCBI q
   local_mocked_bindings(
     .count_barcode_seqs = function(sp, ...) {
       queried_species <<- c(queried_species, sp)
-      0L   # all queried species are unreferenced
+      0L # all queried species are unreferenced
     },
     .env = asNamespace("TaxaAssign")
   )
@@ -162,7 +167,7 @@ test_that("suggest_unreferenced_species() returns character vector of unreferenc
   match_df <- make_spg_match_df()
 
   local_mocked_bindings(
-    .count_barcode_seqs = function(sp, ...) 0L,  # all are unreferenced
+    .count_barcode_seqs = function(sp, ...) 0L, # all are unreferenced
     .env = asNamespace("TaxaAssign")
   )
 
@@ -171,7 +176,8 @@ test_that("suggest_unreferenced_species() returns character vector of unreferenc
   }
 
   result <- suggest_unreferenced_species(
-    match_df, llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
+    match_df,
+    llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
 
   expect_s3_class(result, "character")
@@ -186,8 +192,11 @@ test_that("suggest_unreferenced_species() excludes species with NCBI barcode seq
 
   local_mocked_bindings(
     .count_barcode_seqs = function(sp, ...) {
-      if (sp == "Fundulus parvipinnis") 0L   # unreferenced
-      else 5L                                # has sequences -> referenced
+      if (sp == "Fundulus parvipinnis") {
+        0L # unreferenced
+      } else {
+        5L # has sequences -> referenced
+      }
     },
     .env = asNamespace("TaxaAssign")
   )
@@ -197,7 +206,8 @@ test_that("suggest_unreferenced_species() excludes species with NCBI barcode seq
   }
 
   result <- suggest_unreferenced_species(
-    match_df, llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
+    match_df,
+    llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
 
   expect_true("Fundulus parvipinnis" %in% result)
@@ -218,7 +228,8 @@ test_that("suggest_unreferenced_species() treats NA NCBI count as unreferenced (
 
   expect_warning(
     result <- suggest_unreferenced_species(
-      match_df, llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
+      match_df,
+      llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
     ),
     regexp = "failed after 3 attempts"
   )
@@ -237,14 +248,15 @@ test_that("suggest_unreferenced_species() attaches census attribute", {
     '[{"genus":"Fundulus","plausible_species":["Fundulus parvipinnis"]},{"genus":"Gambusia","plausible_species":["Gambusia mexicana"]}]'
   }
 
-  result  <- suggest_unreferenced_species(
-    match_df, llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
+  result <- suggest_unreferenced_species(
+    match_df,
+    llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
-  census  <- attr(result, "census")
+  census <- attr(result, "census")
 
   expect_s3_class(census, "data.frame")
   expect_true(all(c("genus", "plausible_count", "ncbi_count", "unreferenced_count") %in%
-                    names(census)))
+    names(census)))
   expect_equal(nrow(census), 2L)
 
   fund_row <- census[census$genus == "Fundulus", ]
@@ -264,8 +276,9 @@ test_that("suggest_unreferenced_species() attaches plausible attribute", {
     '[{"genus":"Fundulus","plausible_species":["Fundulus parvipinnis","Fundulus lima"]},{"genus":"Gambusia","plausible_species":["Gambusia mexicana"]}]'
   }
 
-  result    <- suggest_unreferenced_species(
-    match_df, llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
+  result <- suggest_unreferenced_species(
+    match_df,
+    llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
   plausible <- attr(result, "plausible")
 
@@ -288,7 +301,8 @@ test_that("suggest_unreferenced_species() returns empty result when LLM suggests
   }
 
   result <- suggest_unreferenced_species(
-    match_df, llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
+    match_df,
+    llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
   expect_equal(length(result), 0L)
 })
@@ -309,7 +323,8 @@ test_that("suggest_unreferenced_species() batches genera per taxa_per_call", {
 
   # 2 genera, taxa_per_call = 1 -> 2 LLM calls
   suggest_unreferenced_species(
-    match_df, llm_fn = counting_llm, barcode_term = "12S",
+    match_df,
+    llm_fn = counting_llm, barcode_term = "12S",
     taxa_per_call = 1L, pause_seconds = 0
   )
   expect_equal(call_count, 2L)
@@ -321,7 +336,8 @@ test_that("suggest_unreferenced_species() handles erroring llm_fn with warning",
   # LLM errors -> falls back to empty species lists -> no unreferenced species
   expect_warning(
     result <- suggest_unreferenced_species(
-      match_df, llm_fn = error_plausible_llm,
+      match_df,
+      llm_fn = error_plausible_llm,
       barcode_term = "12S", pause_seconds = 0
     ),
     regexp = "LLM call failed"
@@ -331,9 +347,9 @@ test_that("suggest_unreferenced_species() handles erroring llm_fn with warning",
 
 test_that("suggest_unreferenced_species() derives genus from taxon_name when genus col absent", {
   match_df <- data.frame(
-    observation_id       = "S1",
+    observation_id = "S1",
     score_original = 99,
-    taxon_name      = "Fundulus lima",
+    taxon_name = "Fundulus lima",
     taxon_name_rank = "species",
     stringsAsFactors = FALSE
   )
@@ -348,7 +364,8 @@ test_that("suggest_unreferenced_species() derives genus from taxon_name when gen
   }
 
   result <- suggest_unreferenced_species(
-    match_df, llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
+    match_df,
+    llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
   expect_equal(as.character(result), "Fundulus parvipinnis")
 })
@@ -371,8 +388,10 @@ test_that("suggest_unreferenced_species() errors when taxon_name column is absen
 
 test_that("suggest_unreferenced_species() errors on invalid max_date format", {
   expect_error(
-    suggest_unreferenced_species(make_spg_match_df(), llm_fn = stub_plausible_llm,
-                              max_date = "24/12/31"),
+    suggest_unreferenced_species(make_spg_match_df(),
+      llm_fn = stub_plausible_llm,
+      max_date = "24/12/31"
+    ),
     regexp = "YYYY"
   )
 })
@@ -383,8 +402,10 @@ test_that("print.unreferenced_species_result outputs invisibly and shows count",
   obj <- TaxaAssign:::.new_unreferenced_species_result(
     c("Fundulus parvipinnis", "Gambusia mexicana"),
     c("Fundulus parvipinnis", "Gambusia mexicana"),
-    data.frame(genus = c("Fundulus", "Gambusia"), plausible_count = 1L,
-               ncbi_count = 0L, unreferenced_count = 1L, stringsAsFactors = FALSE)
+    data.frame(
+      genus = c("Fundulus", "Gambusia"), plausible_count = 1L,
+      ncbi_count = 0L, unreferenced_count = 1L, stringsAsFactors = FALSE
+    )
   )
   out <- capture.output(print(obj))
   expect_true(any(grepl("2", out)))
@@ -396,8 +417,10 @@ test_that("print.unreferenced_species_result truncates at 10 species", {
   obj <- TaxaAssign:::.new_unreferenced_species_result(
     many_unref,
     many_unref,
-    data.frame(genus = "Genus", plausible_count = 12L,
-               ncbi_count = 0L, unreferenced_count = 12L, stringsAsFactors = FALSE)
+    data.frame(
+      genus = "Genus", plausible_count = 12L,
+      ncbi_count = 0L, unreferenced_count = 12L, stringsAsFactors = FALSE
+    )
   )
   out <- capture.output(print(obj))
   expect_true(any(grepl("more", out)))
@@ -440,7 +463,8 @@ test_that(".parse_family_response removes excluded_genera even if range_status i
     {"species": "Lucania parva",        "range_status": "native"}
   ]'
   result <- TaxaAssign:::.parse_family_response(response, "Fundulidae",
-                                                 exclude_genera = "Fundulus")
+    exclude_genera = "Fundulus"
+  )
   expect_false("Fundulus parvipinnis" %in% result)
   expect_true("Lucania parva" %in% result)
 })

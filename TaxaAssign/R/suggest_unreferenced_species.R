@@ -64,7 +64,7 @@
   }
 
   ref_filter_note <- switch(data_type,
-    eDNA     = paste0(
+    eDNA = paste0(
       "A separate NCBI sequence-availability check will filter species that have no\n",
       "barcode sequences -- do not pre-filter based on sequence availability.\n\n"
     ),
@@ -72,7 +72,7 @@
       "A reference species list check will filter species absent from the acoustic\n",
       "reference model training set -- do not pre-filter based on detection ability.\n\n"
     ),
-    image    = paste0(
+    image = paste0(
       "A reference species list check will filter species absent from the image\n",
       "classifier training set -- do not pre-filter based on visual detectability.\n\n"
     ),
@@ -139,9 +139,10 @@
 
   for (item in parsed) {
     if (!is.list(item) ||
-        !"genus" %in% names(item) ||
-        !"plausible_species" %in% names(item))
+      !"genus" %in% names(item) ||
+      !"plausible_species" %in% names(item)) {
       next
+    }
 
     g_vec <- as.character(item$genus)
     if (length(g_vec) != 1L) {
@@ -157,20 +158,22 @@
       )
       next
     }
-    g   <- g_vec
+    g <- g_vec
     sps <- as.character(item$plausible_species)
     valid <- unique(sps[TaxaTools::is_plausible_binomial(sps)])
 
-    if (g %in% genera)
+    if (g %in% genera) {
       result[[g]] <- valid
+    }
   }
 
   empty_genera <- genera[vapply(result, length, integer(1L)) == 0L]
-  if (length(empty_genera) > 0L)
+  if (length(empty_genera) > 0L) {
     cli::cli_warn(
       "{length(empty_genera)} genus/genera had no valid plausible species \\
       in LLM response for {.val {group_label}}: {.val {empty_genera}}"
     )
+  }
 
   result
 }
@@ -229,7 +232,7 @@
 #' any NCBI queries.
 #' @noRd
 .parse_family_response <- function(response, family, exclude_genera,
-                                    group_label = "all") {
+                                   group_label = "all") {
   plausible_statuses <- c("native", "introduced_established", "documented_nearby")
 
   if (is.null(response) || !nzchar(trimws(response))) {
@@ -257,15 +260,19 @@
   }
 
   # Handle empty array []
-  if (is.list(parsed) && length(parsed) == 0L) return(character(0L))
-  if (is.data.frame(parsed) && nrow(parsed) == 0L) return(character(0L))
+  if (is.list(parsed) && length(parsed) == 0L) {
+    return(character(0L))
+  }
+  if (is.data.frame(parsed) && nrow(parsed) == 0L) {
+    return(character(0L))
+  }
 
   # Accept new format: data frame with "species" + "range_status" columns
   # Also accept fallback: plain character vector (old format / LLM non-compliance)
   if (is.data.frame(parsed) && "species" %in% names(parsed)) {
     spp <- as.character(parsed$species)
     if ("range_status" %in% names(parsed)) {
-      rs  <- as.character(parsed$range_status)
+      rs <- as.character(parsed$range_status)
       spp <- spp[rs %in% plausible_statuses]
     }
   } else if (is.character(parsed)) {
@@ -284,7 +291,7 @@
   }
 
   # Validate binomials and remove excluded genera
-  valid        <- spp[TaxaTools::is_plausible_binomial(spp)]
+  valid <- spp[TaxaTools::is_plausible_binomial(spp)]
   valid_genera <- sub(" .*", "", valid)
   unique(valid[!valid_genera %in% exclude_genera])
 }
@@ -303,16 +310,19 @@
   # Normalise hyphens: "Pseudo-nitzschia"[Organism] can return 0 hits;
   # space-separated form resolves correctly via NCBI's organism index.
   sp_norm <- gsub("-", " ", sp)
-  term <- sprintf('"%s"[Organism] AND %s AND %d:%d[SLEN]%s',
-                  sp_norm, barcode_clause, len_range[1L], len_range[2L], date_clause)
+  term <- sprintf(
+    '"%s"[Organism] AND %s AND %d:%d[SLEN]%s',
+    sp_norm, barcode_clause, len_range[1L], len_range[2L], date_clause
+  )
   for (attempt in seq_len(3L)) {
     res <- tryCatch(
       rentrez::entrez_search(db = "nuccore", term = term, retmax = 0L),
       error = function(e) NULL
     )
-    if (!is.null(res) && !is.null(res$count))
+    if (!is.null(res) && !is.null(res$count)) {
       return(as.integer(res$count))
-    Sys.sleep(attempt)   # exponential backoff: 1 s, 2 s, 3 s
+    }
+    Sys.sleep(attempt) # exponential backoff: 1 s, 2 s, 3 s
   }
   NA_integer_
 }
@@ -325,14 +335,14 @@
 #' Construct an unreferenced_species_result S3 object (character vector + attributes)
 #' @noRd
 .new_unreferenced_species_result <- function(unreferenced, plausible, census,
-                              unreferenced_family = NULL, family_census = NULL) {
+                                             unreferenced_family = NULL, family_census = NULL) {
   structure(
     unreferenced,
-    plausible     = plausible,
-    census        = census,
-    unreferenced_family  = unreferenced_family,
+    plausible = plausible,
+    census = census,
+    unreferenced_family = unreferenced_family,
     family_census = family_census,
-    class         = c("unreferenced_species_result", "character")
+    class = c("unreferenced_species_result", "character")
   )
 }
 
@@ -357,8 +367,10 @@
 #' unref <- structure(
 #'   c("Gadus ogac", "Gadus macrocephalus"),
 #'   plausible = list(Gadus = c("Gadus ogac", "Gadus macrocephalus", "Gadus morhua")),
-#'   census    = data.frame(genus = "Gadus", plausible_count = 3L,
-#'                          ncbi_count = 1L, unreferenced_count = 2L),
+#'   census = data.frame(
+#'     genus = "Gadus", plausible_count = 3L,
+#'     ncbi_count = 1L, unreferenced_count = 2L
+#'   ),
 #'   class = c("unreferenced_species_result", "character")
 #' )
 #' print(unref)
@@ -375,20 +387,25 @@ print.unreferenced_species_result <- function(x, ...) {
   } else {
     cat(sprintf("Unreferenced species detected (%d):\n", n))
     show_n <- min(n, 10L)
-    for (i in seq_len(show_n))
+    for (i in seq_len(show_n)) {
       cat(sprintf("  %s\n", x[[i]]))
-    if (n > 10L)
+    }
+    if (n > 10L) {
       cat(sprintf("  ... and %d more\n", n - 10L))
+    }
   }
   fam_census <- attr(x, "family_census")
   if (!is.null(fam_census) && nrow(fam_census) > 0L) {
     n_fam <- sum(fam_census$unreferenced_count, na.rm = TRUE)
-    cat(sprintf("  (%d are family-level unreferenced species from %d family/families)\n",
-                n_fam, nrow(fam_census)))
+    cat(sprintf(
+      "  (%d are family-level unreferenced species from %d family/families)\n",
+      n_fam, nrow(fam_census)
+    ))
   }
   cat("Access full details: attr(x, \"census\") | attr(x, \"plausible\")")
-  if (!is.null(fam_census))
+  if (!is.null(fam_census)) {
     cat(" | attr(x, \"unreferenced_family\") | attr(x, \"family_census\") (family-level details)")
+  }
   cat("\n")
   invisible(x)
 }
@@ -517,12 +534,14 @@ print.unreferenced_species_result <- function(x, ...) {
 #' # network calls; match_df is typically real TaxaMatch output, but any
 #' # data frame with these columns works.
 #' match_df <- data.frame(
-#'   observation_id   = c("S1", "S1", "S2", "S2"),
-#'   score_original   = c(99, 88, 97, 85),
-#'   taxon_name       = c("Fundulus lima", "Fundulus zebrinus",
-#'                        "Gambusia affinis", "Gambusia holbrooki"),
-#'   taxon_name_rank  = "species",
-#'   genus            = c("Fundulus", "Fundulus", "Gambusia", "Gambusia"),
+#'   observation_id = c("S1", "S1", "S2", "S2"),
+#'   score_original = c(99, 88, 97, 85),
+#'   taxon_name = c(
+#'     "Fundulus lima", "Fundulus zebrinus",
+#'     "Gambusia affinis", "Gambusia holbrooki"
+#'   ),
+#'   taxon_name_rank = "species",
+#'   genus = c("Fundulus", "Fundulus", "Gambusia", "Gambusia"),
 #'   stringsAsFactors = FALSE
 #' )
 #'
@@ -533,14 +552,16 @@ print.unreferenced_species_result <- function(x, ...) {
 #'
 #' # Genus-level unreferenced species only
 #' unref_names <- suggest_unreferenced_species(
-#'   match_df, context = ctx, barcode_term = "12S",
+#'   match_df,
+#'   context = ctx, barcode_term = "12S",
 #'   llm_fn = TaxaTools::call_api, max_date = "2024/12/31"
 #' )
 #' cat("Unreferenced taxa found:", length(unref_names), "\n")
 #'
 #' # With family-level expansion for genera with no local species
 #' unref_names <- suggest_unreferenced_species(
-#'   match_df, context = ctx, barcode_term = "12S",
+#'   match_df,
+#'   context = ctx, barcode_term = "12S",
 #'   expand_to_family = TRUE, max_date = "2024/12/31"
 #' )
 #' attr(unref_names, "family_census")
@@ -549,78 +570,90 @@ print.unreferenced_species_result <- function(x, ...) {
 #' result <- assign_taxa_llm(match_df, context = ctx, unreferenced_taxa = unref_names)
 #' }
 suggest_unreferenced_species <- function(match_df,
-                                      context           = NULL,
-                                      barcode_term      = "COI",
-                                      llm_fn            = NULL,
-                                      data_type         = "eDNA",
-                                      reference_species = NULL,
-                                      expand_to_family  = FALSE,
-                                      max_date          = NULL,
-                                      min_len           = NULL,
-                                      max_len           = NULL,
-                                      taxa_per_call     = 30L,
-                                      pause_seconds     = 1,
-                                      ncbi_api_key      = NULL,
-                                      verbose           = FALSE) {
-
+                                         context = NULL,
+                                         barcode_term = "COI",
+                                         llm_fn = NULL,
+                                         data_type = "eDNA",
+                                         reference_species = NULL,
+                                         expand_to_family = FALSE,
+                                         max_date = NULL,
+                                         min_len = NULL,
+                                         max_len = NULL,
+                                         taxa_per_call = 30L,
+                                         pause_seconds = 1,
+                                         ncbi_api_key = NULL,
+                                         verbose = FALSE) {
   # ---- Resolve llm_fn default --------------------------------------------------
   llm_fn <- .resolve_llm_fn(llm_fn, "suggest_unreferenced_species")
 
   # ---- Input validation -------------------------------------------------------
-  if (!is.data.frame(match_df))
+  if (!is.data.frame(match_df)) {
     cli::cli_abort("{.arg match_df} must be a data frame.")
-  if (!"taxon_name" %in% names(match_df))
+  }
+  if (!"taxon_name" %in% names(match_df)) {
     cli::cli_abort("{.arg match_df} must have a {.field taxon_name} column.")
-  if (!is.function(llm_fn))
+  }
+  if (!is.function(llm_fn)) {
     cli::cli_abort("{.arg llm_fn} must be a function.")
+  }
 
   valid_types <- c("eDNA", "acoustic", "image")
   if (!is.character(data_type) || length(data_type) != 1L ||
-      !data_type %in% valid_types)
+    !data_type %in% valid_types) {
     cli::cli_abort(
       "{.arg data_type} must be one of {.val {valid_types}}. Got: {.val {data_type}}"
     )
+  }
   if (data_type != "eDNA" && !is.null(reference_species) &&
-      !is.character(reference_species))
+    !is.character(reference_species)) {
     cli::cli_abort("{.arg reference_species} must be a character vector or NULL.")
+  }
 
   if (data_type == "eDNA") {
     if (!is.character(barcode_term) || length(barcode_term) == 0L ||
-        any(is.na(barcode_term)) || any(!nzchar(trimws(barcode_term))))
+      any(is.na(barcode_term)) || any(!nzchar(trimws(barcode_term)))) {
       cli::cli_abort(
         "{.arg barcode_term} must be a non-empty character vector with no NA values."
       )
+    }
   }
 
   if (data_type == "eDNA") {
     if (!is.null(max_date)) {
-      if (!is.character(max_date) || length(max_date) != 1L || is.na(max_date))
+      if (!is.character(max_date) || length(max_date) != 1L || is.na(max_date)) {
         cli::cli_abort("{.arg max_date} must be a single character string or NULL.")
-      if (!grepl("^\\d{4}(/\\d{2}(/\\d{2})?)?$", trimws(max_date)))
+      }
+      if (!grepl("^\\d{4}(/\\d{2}(/\\d{2})?)?$", trimws(max_date))) {
         cli::cli_abort(
           "{.arg max_date} must be in YYYY, YYYY/MM, or YYYY/MM/DD format."
         )
+      }
     }
   }
 
   if (!is.logical(expand_to_family) || length(expand_to_family) != 1L ||
-      is.na(expand_to_family))
+    is.na(expand_to_family)) {
     cli::cli_abort("{.arg expand_to_family} must be TRUE or FALSE.")
-  if (isTRUE(expand_to_family) && !"family" %in% names(match_df))
+  }
+  if (isTRUE(expand_to_family) && !"family" %in% names(match_df)) {
     cli::cli_abort(
       "{.arg expand_to_family} = TRUE requires a {.field family} column in {.arg match_df}."
     )
-  if (!is.numeric(taxa_per_call) || taxa_per_call < 1L)
+  }
+  if (!is.numeric(taxa_per_call) || taxa_per_call < 1L) {
     cli::cli_abort("{.arg taxa_per_call} must be a positive number.")
-  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose))
+  }
+  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     cli::cli_abort("{.arg verbose} must be TRUE or FALSE.")
+  }
 
   if (data_type == "eDNA") {
-    if (!requireNamespace("rentrez", quietly = TRUE))
+    if (!requireNamespace("rentrez", quietly = TRUE)) {
       cli::cli_abort(
         "Package {.pkg rentrez} is required. \\
         Install with: {.code install.packages('rentrez')}"
       )
+    }
   }
 
   # ---- Extract genera and build skip-list ------------------------------------
@@ -629,15 +662,17 @@ suggest_unreferenced_species <- function(match_df,
     genera <- genera[nchar(trimws(genera)) > 0L]
   } else {
     sp_names <- match_df$taxon_name[TaxaTools::is_plausible_binomial(match_df$taxon_name)]
-    genera   <- unique(sub(" .*", "", sp_names))
+    genera <- unique(sub(" .*", "", sp_names))
   }
   genera <- sort(genera[nchar(trimws(genera)) > 0L])
 
   if (length(genera) == 0L) {
     cli::cli_warn("No valid genera found in {.arg match_df}. Returning empty result.")
-    empty_census <- data.frame(genus = character(0L), plausible_count = integer(0L),
-                               ncbi_count = integer(0L), unreferenced_count = integer(0L),
-                               stringsAsFactors = FALSE)
+    empty_census <- data.frame(
+      genus = character(0L), plausible_count = integer(0L),
+      ncbi_count = integer(0L), unreferenced_count = integer(0L),
+      stringsAsFactors = FALSE
+    )
     return(.new_unreferenced_species_result(character(0L), character(0L), empty_census))
   }
 
@@ -656,8 +691,8 @@ suggest_unreferenced_species <- function(match_df,
   }
 
   # ---- Step 2: LLM calls to get plausible species per genus ------------------
-  n_genera  <- length(genera)
-  tpc       <- as.integer(taxa_per_call)
+  n_genera <- length(genera)
+  tpc <- as.integer(taxa_per_call)
   n_batches <- ceiling(n_genera / tpc)
 
   cli::cli_inform(
@@ -676,13 +711,14 @@ suggest_unreferenced_species <- function(match_df,
   )
 
   for (b in seq_len(n_batches)) {
-    idx_start    <- (b - 1L) * tpc + 1L
-    idx_end      <- min(b * tpc, n_genera)
+    idx_start <- (b - 1L) * tpc + 1L
+    idx_end <- min(b * tpc, n_genera)
     batch_genera <- genera[idx_start:idx_end]
-    batch_label  <- if (n_batches > 1L)
+    batch_label <- if (n_batches > 1L) {
       sprintf("batch %d/%d", b, n_batches)
-    else
+    } else {
       "all"
+    }
 
     prompt <- .build_plausible_prompt(batch_genera, ctx, data_type)
 
@@ -714,8 +750,9 @@ suggest_unreferenced_species <- function(match_df,
     } else {
       .parse_plausible_response(raw, batch_genera, batch_label)
     }
-    for (g in batch_genera)
+    for (g in batch_genera) {
       all_plausible_list[[g]] <- batch_parsed[[g]]
+    }
 
     cli::cli_progress_update(id = pb_llm)
     if (b < n_batches) Sys.sleep(pause_seconds)
@@ -730,16 +767,18 @@ suggest_unreferenced_species <- function(match_df,
   candidates <- all_plausible_flat[!all_plausible_flat %in% skip_list]
 
   # ---- Step 4: Reference-check setup (shared by genus and family loops) ------
-  empty_genera_for_family <- if (isTRUE(expand_to_family))
+  empty_genera_for_family <- if (isTRUE(expand_to_family)) {
     genera[vapply(all_plausible_list, length, integer(1L)) == 0L]
-  else
+  } else {
     character(0L)
+  }
 
   if (data_type == "eDNA") {
     needs_ncbi <- length(candidates) > 0L || length(empty_genera_for_family) > 0L
     if (needs_ncbi) {
-      if (!is.null(ncbi_api_key))
+      if (!is.null(ncbi_api_key)) {
         rentrez::set_entrez_key(ncbi_api_key)
+      }
       len_range <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len, max_len)
       # Search on the marker, not on a primer-variant name: no GenBank record
       # is tagged "Folmer", so a variant-named query silently matches nothing
@@ -749,12 +788,16 @@ suggest_unreferenced_species <- function(match_df,
       barcode_clause <- if (length(search_term) == 1L) {
         sprintf("%s[All Fields]", search_term)
       } else {
-        sprintf("(%s)",
-                paste(sprintf("%s[All Fields]", search_term), collapse = " OR "))
+        sprintf(
+          "(%s)",
+          paste(sprintf("%s[All Fields]", search_term), collapse = " OR ")
+        )
       }
       date_clause <- if (!is.null(max_date)) {
         sprintf(" AND (1985[PDAT] : %s[PDAT])", trimws(max_date))
-      } else ""
+      } else {
+        ""
+      }
     }
   } else {
     # acoustic / image: reference check is a simple set membership test
@@ -762,13 +805,13 @@ suggest_unreferenced_species <- function(match_df,
   }
 
   # ---- Step 5: Reference check (genus-level) ---------------------------------
-  unref_vec    <- character(0L)
+  unref_vec <- character(0L)
   has_seqs_vec <- character(0L)
-  n_failed     <- 0L
+  n_failed <- 0L
 
   if (data_type == "eDNA") {
     if (length(candidates) > 0L) {
-      n_cands  <- length(candidates)
+      n_cands <- length(candidates)
       term_str <- paste(barcode_term, collapse = "/")
       cli::cli_inform(
         "Checking NCBI barcode counts for {n_cands} plausible species \\
@@ -779,10 +822,10 @@ suggest_unreferenced_species <- function(match_df,
         format = "  {cli::pb_bar} {cli::pb_current}/{cli::pb_total} NCBI queries"
       )
       for (k in seq_len(n_cands)) {
-        sp    <- candidates[k]
+        sp <- candidates[k]
         count <- .count_barcode_seqs(sp, barcode_clause, len_range, date_clause)
         if (is.na(count)) {
-          n_failed  <- n_failed + 1L
+          n_failed <- n_failed + 1L
           unref_vec <- c(unref_vec, sp)
         } else if (count == 0L) {
           unref_vec <- c(unref_vec, sp)
@@ -793,11 +836,12 @@ suggest_unreferenced_species <- function(match_df,
         if (k %% 3L == 0L) Sys.sleep(0.35)
       }
       cli::cli_progress_done(id = pb_ncbi)
-      if (n_failed > 0L)
+      if (n_failed > 0L) {
         cli::cli_warn(
           "{n_failed} NCBI barcode {?query/queries} failed after 3 attempts \\
           (treated conservatively as unreferenced{?/})."
         )
+      }
     } else if (!isTRUE(expand_to_family)) {
       cli::cli_inform(
         "All LLM-suggested species are already in the reference. No genus-level unreferenced species."
@@ -806,7 +850,11 @@ suggest_unreferenced_species <- function(match_df,
   } else {
     # acoustic / image: reference check via set membership
     if (length(candidates) > 0L) {
-      type_label <- switch(data_type, acoustic = "acoustic model", image = "image classifier", "reference model")
+      type_label <- switch(data_type,
+        acoustic = "acoustic model",
+        image = "image classifier",
+        "reference model"
+      )
       cli::cli_inform(
         "Checking {length(candidates)} plausible species against {type_label} training set \\
         ({length(ref_set)} known species)..."
@@ -827,13 +875,13 @@ suggest_unreferenced_species <- function(match_df,
 
   # ---- Step 6: Build genus census --------------------------------------------
   census_df <- do.call(rbind, lapply(genera, function(g) {
-    p       <- all_plausible_list[[g]]
+    p <- all_plausible_list[[g]]
     cands_g <- p[!p %in% skip_list]
     data.frame(
-      genus           = g,
+      genus = g,
       plausible_count = length(p),
-      ncbi_count      = sum(cands_g %in% has_seqs_vec),
-      unreferenced_count     = sum(cands_g %in% unref_vec),
+      ncbi_count = sum(cands_g %in% has_seqs_vec),
+      unreferenced_count = sum(cands_g %in% unref_vec),
       stringsAsFactors = FALSE
     )
   }))
@@ -843,7 +891,6 @@ suggest_unreferenced_species <- function(match_df,
   family_census_df <- NULL
 
   if (isTRUE(expand_to_family) && length(empty_genera_for_family) > 0L) {
-
     # Look up family for each empty genus from match_df. A genus should map
     # to exactly one family; if match_df disagrees (a real data-quality
     # issue this loop would otherwise mask by silently keeping the first
@@ -851,23 +898,27 @@ suggest_unreferenced_species <- function(match_df,
     inconsistent_genera <- character(0L)
     genus_to_family_lookup <- vapply(empty_genera_for_family, function(g) {
       fam <- match_df$family[!is.na(match_df$genus) & match_df$genus == g &
-                               !is.na(match_df$family)]
-      if (length(fam) == 0L) return(NA_character_)
+        !is.na(match_df$family)]
+      if (length(fam) == 0L) {
+        return(NA_character_)
+      }
       fam_counts <- table(fam)
-      if (length(fam_counts) > 1L)
+      if (length(fam_counts) > 1L) {
         inconsistent_genera <<- c(inconsistent_genera, g)
+      }
       names(fam_counts)[[which.max(fam_counts)]]
     }, character(1L))
-    if (length(inconsistent_genera) > 0L)
+    if (length(inconsistent_genera) > 0L) {
       cli::cli_warn(
         "{length(inconsistent_genera)} genus/genera map to more than one \\
         distinct {.field family} value in {.arg match_df}: \\
         {.val {inconsistent_genera}}. Using the most frequent value for \\
         each; consider {.fn TaxaTools::find_taxonomy_conflicts} to inspect."
       )
+    }
 
-    has_fam            <- !is.na(genus_to_family_lookup)
-    empty_with_fam     <- empty_genera_for_family[has_fam]
+    has_fam <- !is.na(genus_to_family_lookup)
+    empty_with_fam <- empty_genera_for_family[has_fam]
     families_to_expand <- unique(genus_to_family_lookup[has_fam])
 
     if (length(families_to_expand) > 0L) {
@@ -877,9 +928,9 @@ suggest_unreferenced_species <- function(match_df,
         {.val {families_to_expand}}"
       )
 
-      all_fam_unref_vec    <- character(0L)
+      all_fam_unref_vec <- character(0L)
       all_fam_has_seqs_vec <- character(0L)
-      fam_plausible_list   <- stats::setNames(
+      fam_plausible_list <- stats::setNames(
         lapply(families_to_expand, function(f) character(0L)),
         families_to_expand
       )
@@ -895,7 +946,7 @@ suggest_unreferenced_species <- function(match_df,
         # Exclude ALL genera in match_df belonging to this family
         exclude_genera <- unique(
           match_df$genus[!is.na(match_df$family) & match_df$family == fam &
-                           !is.na(match_df$genus)]
+            !is.na(match_df$genus)]
         )
 
         prompt_fam <- .build_family_prompt(fam, exclude_genera, ctx, data_type)
@@ -928,7 +979,7 @@ suggest_unreferenced_species <- function(match_df,
           .parse_family_response(raw_fam, fam, exclude_genera, fam)
         }
 
-        fam_candidates         <- fam_species[!fam_species %in% skip_list]
+        fam_candidates <- fam_species[!fam_species %in% skip_list]
         fam_plausible_list[[fam]] <- fam_species
 
         n_fam_cands <- length(fam_candidates)
@@ -939,23 +990,24 @@ suggest_unreferenced_species <- function(match_df,
           if (data_type == "eDNA") {
             n_fam_failed <- 0L
             for (k in seq_len(n_fam_cands)) {
-              sp    <- fam_candidates[k]
+              sp <- fam_candidates[k]
               count <- .count_barcode_seqs(sp, barcode_clause, len_range, date_clause)
               if (is.na(count)) {
-                n_fam_failed         <- n_fam_failed + 1L
-                all_fam_unref_vec    <- c(all_fam_unref_vec, sp)
+                n_fam_failed <- n_fam_failed + 1L
+                all_fam_unref_vec <- c(all_fam_unref_vec, sp)
               } else if (count == 0L) {
-                all_fam_unref_vec    <- c(all_fam_unref_vec, sp)
+                all_fam_unref_vec <- c(all_fam_unref_vec, sp)
               } else {
                 all_fam_has_seqs_vec <- c(all_fam_has_seqs_vec, sp)
               }
               if (k %% 3L == 0L) Sys.sleep(0.35)
             }
-            if (n_fam_failed > 0L)
+            if (n_fam_failed > 0L) {
               cli::cli_warn(
                 "{n_fam_failed} NCBI {?query/queries} failed for family \\
                 {.val {fam}} (treated as unreferenced{?/})."
               )
+            }
           } else {
             for (sp in fam_candidates) {
               if (sp %in% ref_set) {
@@ -975,12 +1027,13 @@ suggest_unreferenced_species <- function(match_df,
 
       # Build unreferenced_family_map: named vector species -> family
       gfm_parts <- lapply(families_to_expand, function(f) {
-        cands   <- fam_plausible_list[[f]][!fam_plausible_list[[f]] %in% skip_list]
+        cands <- fam_plausible_list[[f]][!fam_plausible_list[[f]] %in% skip_list]
         unref_f <- cands[cands %in% all_fam_unref_vec]
-        if (length(unref_f) > 0L)
+        if (length(unref_f) > 0L) {
           stats::setNames(rep(f, length(unref_f)), unref_f)
-        else
+        } else {
           character(0L)
+        }
       })
       unreferenced_family_map <- unlist(gfm_parts)
       if (length(unreferenced_family_map) == 0L) unreferenced_family_map <- NULL
@@ -989,13 +1042,13 @@ suggest_unreferenced_species <- function(match_df,
 
       # Build family census
       family_census_df <- do.call(rbind, lapply(families_to_expand, function(f) {
-        p       <- fam_plausible_list[[f]]
+        p <- fam_plausible_list[[f]]
         cands_f <- p[!p %in% skip_list]
         data.frame(
-          family          = f,
+          family = f,
           plausible_count = length(p),
-          ncbi_count      = sum(cands_f %in% all_fam_has_seqs_vec),
-          unreferenced_count     = sum(cands_f %in% all_fam_unref_vec),
+          ncbi_count = sum(cands_f %in% all_fam_has_seqs_vec),
+          unreferenced_count = sum(cands_f %in% all_fam_unref_vec),
           stringsAsFactors = FALSE
         )
       }))
@@ -1010,10 +1063,12 @@ suggest_unreferenced_species <- function(match_df,
 
   # ---- Step 8: Report and return ---------------------------------------------
   n_genus_unref <- sum(census_df$unreferenced_count, na.rm = TRUE)
-  n_seqgap       <- length(has_seqs_vec)
-  n_fam_unref   <- if (!is.null(family_census_df))
+  n_seqgap <- length(has_seqs_vec)
+  n_fam_unref <- if (!is.null(family_census_df)) {
     sum(family_census_df$unreferenced_count, na.rm = TRUE)
-  else 0L
+  } else {
+    0L
+  }
 
   in_ref_label <- switch(data_type,
     eDNA     = "with barcode sequences but absent from user reference",
@@ -1028,6 +1083,7 @@ suggest_unreferenced_species <- function(match_df,
   )
 
   .new_unreferenced_species_result(unref_vec, all_plausible_flat, census_df,
-                  unreferenced_family  = unreferenced_family_map,
-                  family_census = family_census_df)
+    unreferenced_family = unreferenced_family_map,
+    family_census = family_census_df
+  )
 }

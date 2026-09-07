@@ -24,31 +24,31 @@
 # SECTION 1: LOAD INPUTS
 # =============================================================================
 library(TaxaHabitat)
-library(TaxaAssign)   # assign_taxa_llm(), compute_posterior(), posterior_consensus()
-library(TaxaLikely)   # audit_reference_coverage()
-library(TaxaTools)    # call_anthropic_api() and other llm_fn providers
+library(TaxaAssign) # assign_taxa_llm(), compute_posterior(), posterior_consensus()
+library(TaxaLikely) # audit_reference_coverage()
+library(TaxaTools) # call_anthropic_api() and other llm_fn providers
 library(dplyr)
 
 # ---- 1a. Load match object --------------------------------------------------
-#match_df <- readRDS(file.choose())  # select your match data file (.rds)
+# match_df <- readRDS(file.choose())  # select your match data file (.rds)
 # Assumes match_df has been cleaned and is not redundant (see TaxaMatch workflow)
 
 
-#from TaxaMatch
-#estuarine fishes 12S: JVB1846-MiFishU-esv-data.csv (173 seconds)
-#California intertidal fishes 12S: JVB2844-MiFishU-esv-data (381.12 seconds)
-#Palmyra fishes (big) 12S: JVB1950-MiFishU-esv-data
-#Palmyra COI: Palmyra2019-UniCOI-esv-data
+# from TaxaMatch
+# estuarine fishes 12S: JVB1846-MiFishU-esv-data.csv (173 seconds)
+# California intertidal fishes 12S: JVB2844-MiFishU-esv-data (381.12 seconds)
+# Palmyra fishes (big) 12S: JVB1950-MiFishU-esv-data
+# Palmyra COI: Palmyra2019-UniCOI-esv-data
 library(TaxaMatch)
 match_df <- standardize_match_data(
-  data            = NULL,        # opens file.choose()
-  observation_id_col   = "ESVId",
-  score_col       = "PercMatch",
+  data = NULL, # opens file.choose()
+  observation_id_col = "ESVId",
+  score_col = "PercMatch",
   # taxonomy_ranks = NULL        # auto-detected from Kingdom...Species columns
-  lowercase_names = TRUE         # default: all col names → lowercase
-)|>
-  dplyr::mutate(taxon_name = TaxaTools::clean_taxon_names(taxon_name))|>#get rid of subspecies, authors, etc.
-filter_redundant_hypotheses()
+  lowercase_names = TRUE # default: all col names → lowercase
+) |>
+  dplyr::mutate(taxon_name = TaxaTools::clean_taxon_names(taxon_name)) |> # get rid of subspecies, authors, etc.
+  filter_redundant_hypotheses()
 
 cat("Match object:", nrow(match_df), "rows x", ncol(match_df), "cols\n")
 cat("Samples:", n_distinct(match_df$observation_id), "\n")
@@ -85,10 +85,10 @@ llm_fn <- TaxaTools::call_anthropic_api
 
 # Option A: Auto-populate context from taxon names (requires TaxaHabitat)
 ctx <- build_context(
-  taxon_names     = unique(match_df$taxon_name[match_df$score_original == 100]),# short list of the best matches
+  taxon_names     = unique(match_df$taxon_name[match_df$score_original == 100]), # short list of the best matches
   geographic_hint = "Southern California NOT Gulf of California Estuary and Coastal Lagoon",
   date            = "2025",
-  habitat_scheme  = "IUCN_L1",# better to enter a custom list.
+  habitat_scheme  = "IUCN_L1", # better to enter a custom list.
   llm_fn          = llm_fn
 )
 # Inspect per-species habitat weights: attr(ctx, "habitats_df")
@@ -106,7 +106,6 @@ known_present <- c()
 # Known absent: species confirmed NOT at the site
 # Math suppression: prior × (1 - absent_detection_prob), then renormalize
 known_absent <- c()
-
 
 
 # =============================================================================
@@ -142,17 +141,19 @@ known_absent <- c()
 unreferenced_species <- suggest_unreferenced_species(
   match_df,
   context          = ctx,
-  barcode_term     = "12S",            # adjust to your marker: "COI", "ITS2", etc.
+  barcode_term     = "12S", # adjust to your marker: "COI", "ITS2", etc.
   # barcode_term   = c("12S", "MiFish"),  # OR-ed; catches variant annotations
   llm_fn           = llm_fn,
-  max_date         = "2024/12/31",     # set to your reference library build date
+  max_date         = "2024/12/31", # set to your reference library build date
   expand_to_family = TRUE,
   # ncbi_api_key   = Sys.getenv("ENTREZ_KEY")  # faster with key (10 req/s vs 3)
 )
 cat("Unreferenced taxa found:", length(unreferenced_species), "\n")
-cat("Census:\n"); print(attr(unreferenced_species, "census"))
+cat("Census:\n")
+print(attr(unreferenced_species, "census"))
 if (!is.null(attr(unreferenced_species, "family_census"))) {
-  cat("Family census:\n"); print(attr(unreferenced_species, "family_census"))
+  cat("Family census:\n")
+  print(attr(unreferenced_species, "family_census"))
 }
 
 # -- ALTERNATIVE: exhaustive approach (slower but does not require an LLM) ----
@@ -186,28 +187,28 @@ if (!is.null(attr(unreferenced_species, "family_census"))) {
 
 result <- assign_taxa_llm(
   match_df,
-  context              = ctx,
-  known_present        = known_present,
-  known_absent         = known_absent,
+  context = ctx,
+  known_present = known_present,
+  known_absent = known_absent,
   absent_detection_prob = 0.9,
-  context_group        = NULL,    # all samples share one context -> one LLM call
-  llm_fn               = llm_fn,
-  score_threshold      = 80,      # drop candidates below this score
-  top_n                = 10,      # max candidates per sample in the taxon list
-  score_sharpness      = 0.1,     # exponential weight sharpness (0 = uniform lik)
-  unknown_lik_weight   = 0.05,    # likelihood and prior weight for the unreferenced_family catch-all row
-  unreferenced_taxa    = unreferenced_species,
-  taxa_per_call        = 15,      # taxa per LLM call (batches large taxon lists);
-                                   # 30 truncated 4/5 real batches at call_api()'s default
-                                   # max_tokens=3000 (Session 145) -- see assign_taxa_llm()'s docs
-  pause_seconds        = 1,       # delay between calls (rate limit buffer)
-  prior_phi            = c(high = 50, moderate = 10, low = 3),
-                                   # Beta concentration by information_quality:
-                                   # phi = effective sample size of LLM judgment
-                                   # high=50 (well-studied), moderate=10, low=3 (data-deficient)
-                                   # scalar = uniform phi; NULL = fixed priors (no MC on priors)
-  n_sims               = 1000,    # MC simulations; propagates Beta prior + likelihood uncertainty
-  verbose              = FALSE
+  context_group = NULL, # all samples share one context -> one LLM call
+  llm_fn = llm_fn,
+  score_threshold = 80, # drop candidates below this score
+  top_n = 10, # max candidates per sample in the taxon list
+  score_sharpness = 0.1, # exponential weight sharpness (0 = uniform lik)
+  unknown_lik_weight = 0.05, # likelihood and prior weight for the unreferenced_family catch-all row
+  unreferenced_taxa = unreferenced_species,
+  taxa_per_call = 15, # taxa per LLM call (batches large taxon lists);
+  # 30 truncated 4/5 real batches at call_api()'s default
+  # max_tokens=3000 (Session 145) -- see assign_taxa_llm()'s docs
+  pause_seconds = 1, # delay between calls (rate limit buffer)
+  prior_phi = c(high = 50, moderate = 10, low = 3),
+  # Beta concentration by information_quality:
+  # phi = effective sample size of LLM judgment
+  # high=50 (well-studied), moderate=10, low=3 (data-deficient)
+  # scalar = uniform phi; NULL = fixed priors (no MC on priors)
+  n_sims = 1000, # MC simulations; propagates Beta prior + likelihood uncertainty
+  verbose = FALSE
 )
 
 cat("Posteriors computed for", n_distinct(result$observation_id), "samples\n")
@@ -221,8 +222,10 @@ ambiguous <- result |>
   filter(hypothesis_type == "unreferenced_family") |>
   ungroup()
 
-cat("Samples where unreferenced_family has the highest posterior:",
-    nrow(ambiguous), "\n")
+cat(
+  "Samples where unreferenced_family has the highest posterior:",
+  nrow(ambiguous), "\n"
+)
 
 # saveRDS(result, file.choose(new = TRUE))  # choose where to save llm_posteriors.rds
 
@@ -239,49 +242,53 @@ cat("Samples where unreferenced_family has the highest posterior:",
 
 consensus <- posterior_consensus(
   result,
-  cumulative_threshold    = 0.90,
-  min_posterior            = 0.05,
-  posterior_col            = "posterior_point_est",
-  lookup_missing_taxonomy  = TRUE,
-  backbone_id              = 4,
-  rank_system              = c("family", "genus", "species"),
-  species_reference        = unreferenced_species
+  cumulative_threshold = 0.90,
+  min_posterior = 0.05,
+  posterior_col = "posterior_point_est",
+  lookup_missing_taxonomy = TRUE,
+  backbone_id = 4,
+  rank_system = c("family", "genus", "species"),
+  species_reference = unreferenced_species
 )
 
 result_updated <- update_prior_from_consensus(
   result, consensus,
-  confirmation_quantile       = 0.9,
+  confirmation_quantile = 0.9,
   confirmation_discount = 0.25,
-  n_sims                      = 1000
+  n_sims = 1000
 )
 
 consensus_final <- posterior_consensus(
   result_updated,
-  cumulative_threshold    = 0.90,
-  min_posterior            = 0.05,
-  posterior_col            = "posterior_point_est",
-  lookup_missing_taxonomy  = TRUE,
-  backbone_id              = 4,
-  rank_system              = c("order","family", "genus", "species"),
-  species_reference        = unreferenced_species
+  cumulative_threshold = 0.90,
+  min_posterior = 0.05,
+  posterior_col = "posterior_point_est",
+  lookup_missing_taxonomy = TRUE,
+  backbone_id = 4,
+  rank_system = c("order", "family", "genus", "species"),
+  species_reference = unreferenced_species
 )
 
 cat("\nConsensus taxonomy summary:\n")
 print(table(consensus_final$consensus_rank, useNA = "always"))
-cat("\nResolved to species-level:",
-    sum(consensus_final$is_resolved, na.rm = TRUE), "/",
-    nrow(consensus_final), "samples\n")
+cat(
+  "\nResolved to species-level:",
+  sum(consensus_final$is_resolved, na.rm = TRUE), "/",
+  nrow(consensus_final), "samples\n"
+)
 
 # Inspect unresolved samples
 unresolved <- consensus_final |>
   filter(is.na(consensus_taxon) | !is_resolved)
 if (nrow(unresolved) > 0L) {
   cat("\nUnresolved samples:\n")
-  print(unresolved[, c("observation_id", "consensus_taxon", "consensus_rank",
-                        "n_plausible")])
+  print(unresolved[, c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "n_plausible"
+  )])
 }
 
-splist<-consensus_final$consensus_taxon%>%unique()
+splist <- consensus_final$consensus_taxon |> unique()
 splist[order(splist)]
 cat("Elapsed:", round(difftime(Sys.time(), t0, units = "secs"), 2), "sec\n")
 
@@ -307,39 +314,41 @@ cat("Elapsed:", round(difftime(Sys.time(), t0, units = "secs"), 2), "sec\n")
 
 score_con_wilder <- score_consensus(
   match_df,
-  min_score       = 100,       # drop hits below 80% (same as score_threshold above)
-  max_gap         = 0,        # include all hits within 1% of best score for LCA
+  min_score       = 100, # drop hits below 80% (same as score_threshold above)
+  max_gap         = 0, # include all hits within 1% of best score for LCA
   rank_thresholds = NULL,
-  whitelist       = NULL,     # set to a plausible taxon list if available
+  whitelist       = NULL, # set to a plausible taxon list if available
   score_col       = "score_original",
   rank_system     = c("family", "genus", "species")
 )
 
 score_con_thresholds <- score_consensus(
   match_df,
-  min_score       = 100,       # drop hits below 80% (same as score_threshold above)
-  max_gap         = 0,        # include all hits within 1% of best score for LCA
+  min_score       = 100, # drop hits below 80% (same as score_threshold above)
+  max_gap         = 0, # include all hits within 1% of best score for LCA
   rank_thresholds = c(species = 98, genus = 95, family = 90, phylum = 85),
-  whitelist       = NULL,     # set to a plausible taxon list if available
+  whitelist       = NULL, # set to a plausible taxon list if available
   score_col       = "score_original",
   rank_system     = c("family", "genus", "species")
 )
 
 score_con_JV <- score_consensus(
   match_df,
-  min_score       = 90,       # drop hits below 80% (same as score_threshold above)
-  max_gap         = 1,        # include all hits within 1% of best score for LCA
+  min_score       = 90, # drop hits below 80% (same as score_threshold above)
+  max_gap         = 1, # include all hits within 1% of best score for LCA
   rank_thresholds = NULL,
-  whitelist       = NULL,     # set to a plausible taxon list if available
+  whitelist       = NULL, # set to a plausible taxon list if available
   score_col       = "score_original",
-  rank_system     = c("order","family", "genus", "species")
+  rank_system     = c("order", "family", "genus", "species")
 )
 
 cat("\nScore-based consensus summary:\n")
 print(table(score_con_JV$consensus_rank, useNA = "always"))
-cat("Resolved to species-level:",
-    sum(score_con_JV$is_resolved, na.rm = TRUE), "/",
-    nrow(score_con_JV), "samples\n")
+cat(
+  "Resolved to species-level:",
+  sum(score_con_JV$is_resolved, na.rm = TRUE), "/",
+  nrow(score_con_JV), "samples\n"
+)
 
 
 # =============================================================================
@@ -351,48 +360,62 @@ cat("Resolved to species-level:",
 # approach.
 
 comparison <- merge(
-  consensus_final[, c("observation_id", "consensus_taxon", "consensus_rank",
-                       "is_resolved", "consensus_posterior", "n_plausible","plausible_taxa")],
-  score_con_JV[, c("observation_id", "consensus_taxon", "consensus_rank",
-                 "is_resolved", "top_score", "n_taxa")],
+  consensus_final[, c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "is_resolved", "consensus_posterior", "n_plausible", "plausible_taxa"
+  )],
+  score_con_JV[, c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "is_resolved", "top_score", "n_taxa"
+  )],
   by = "observation_id", suffixes = c("_posterior", "_score")
 )
 
 
 comparison <- merge(
-  consensus_final[, c("observation_id", "consensus_taxon", "consensus_rank",
-                      "is_resolved", "consensus_posterior", "n_plausible","plausible_taxa")],
-  score_con_wilder[, c("observation_id", "consensus_taxon", "consensus_rank",
-                   "is_resolved", "top_score", "n_taxa")],
+  consensus_final[, c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "is_resolved", "consensus_posterior", "n_plausible", "plausible_taxa"
+  )],
+  score_con_wilder[, c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "is_resolved", "top_score", "n_taxa"
+  )],
   by = "observation_id", suffixes = c("_posterior", "_score")
 )
 
 
 # Flag agreement/disagreement
 comparison$taxon_agree <- comparison$consensus_taxon_posterior ==
-                          comparison$consensus_taxon_score
-comparison$rank_agree  <- comparison$consensus_rank_posterior ==
-                          comparison$consensus_rank_score
+  comparison$consensus_taxon_score
+comparison$rank_agree <- comparison$consensus_rank_posterior ==
+  comparison$consensus_rank_score
 # Handle NAs in comparison
 comparison$taxon_agree[is.na(comparison$consensus_taxon_posterior) |
-                       is.na(comparison$consensus_taxon_score)] <- FALSE
+  is.na(comparison$consensus_taxon_score)] <- FALSE
 comparison$rank_agree[is.na(comparison$consensus_rank_posterior) |
-                      is.na(comparison$consensus_rank_score)] <- FALSE
+  is.na(comparison$consensus_rank_score)] <- FALSE
 
 cat("\n--- Posterior vs Score Consensus Comparison ---\n")
 cat("Total samples:", nrow(comparison), "\n")
-cat("Taxon agreement:", sum(comparison$taxon_agree), "/", nrow(comparison),
-    sprintf("(%.0f%%)\n", 100 * mean(comparison$taxon_agree)))
-cat("Rank agreement: ", sum(comparison$rank_agree), "/", nrow(comparison),
-    sprintf("(%.0f%%)\n", 100 * mean(comparison$rank_agree)))
+cat(
+  "Taxon agreement:", sum(comparison$taxon_agree), "/", nrow(comparison),
+  sprintf("(%.0f%%)\n", 100 * mean(comparison$taxon_agree))
+)
+cat(
+  "Rank agreement: ", sum(comparison$rank_agree), "/", nrow(comparison),
+  sprintf("(%.0f%%)\n", 100 * mean(comparison$rank_agree))
+)
 
 # Summary table: resolution level by method
 cat("\nResolution comparison:\n")
 res_table <- table(
   posterior = ifelse(is.na(comparison$consensus_rank_posterior), "unresolvable",
-                     comparison$consensus_rank_posterior),
-  score    = ifelse(is.na(comparison$consensus_rank_score), "unresolvable",
-                     comparison$consensus_rank_score)
+    comparison$consensus_rank_posterior
+  ),
+  score = ifelse(is.na(comparison$consensus_rank_score), "unresolvable",
+    comparison$consensus_rank_score
+  )
 )
 print(res_table)
 
@@ -400,35 +423,49 @@ print(res_table)
 disagree <- comparison[!comparison$taxon_agree, ]
 if (nrow(disagree) > 0L) {
   cat("\nDisagreements (", nrow(disagree), " samples):\n")
-  print(disagree[, c("observation_id",
-                      "consensus_taxon_posterior", "consensus_rank_posterior",
-                      "consensus_taxon_score", "consensus_rank_score",
-                      "consensus_posterior", "top_score","plausible_taxa")])
+  print(disagree[, c(
+    "observation_id",
+    "consensus_taxon_posterior", "consensus_rank_posterior",
+    "consensus_taxon_score", "consensus_rank_score",
+    "consensus_posterior", "top_score", "plausible_taxa"
+  )])
 }
 
-compare_workflows<-disagree%>%dplyr::select(plausible_taxa,consensus_taxon_posterior,consensus_taxon_score)%>%unique()
+compare_workflows <- disagree |>
+  dplyr::select(plausible_taxa, consensus_taxon_posterior, consensus_taxon_score) |>
+  unique()
 
 write.csv(compare_workflows$plausible_taxa, "Wilder_TAXAID_plausible.csv", row.names = FALSE)
-write.csv(compare_workflows[,2:3], "Wilder_TAXAID.csv", row.names = FALSE)
+write.csv(compare_workflows[, 2:3], "Wilder_TAXAID.csv", row.names = FALSE)
 
 # Cases where posterior resolves further than score (value of priors)
 posterior_finer <- comparison[
   !is.na(comparison$consensus_rank_posterior) &
-  !is.na(comparison$consensus_rank_score) &
-  match(comparison$consensus_rank_posterior,
-        c("family", "genus", "species")) >
-  match(comparison$consensus_rank_score,
-        c("family", "genus", "species")), ]
+    !is.na(comparison$consensus_rank_score) &
+    match(
+      comparison$consensus_rank_posterior,
+      c("family", "genus", "species")
+    ) >
+      match(
+        comparison$consensus_rank_score,
+        c("family", "genus", "species")
+      ),
+]
 cat("\nPosterior resolved finer than score:", nrow(posterior_finer), "samples\n")
 
 # Cases where score resolves further (prior may be pulling toward caution)
 score_finer <- comparison[
   !is.na(comparison$consensus_rank_posterior) &
-  !is.na(comparison$consensus_rank_score) &
-  match(comparison$consensus_rank_score,
-        c("family", "genus", "species")) >
-  match(comparison$consensus_rank_posterior,
-        c("family", "genus", "species")), ]
+    !is.na(comparison$consensus_rank_score) &
+    match(
+      comparison$consensus_rank_score,
+      c("family", "genus", "species")
+    ) >
+      match(
+        comparison$consensus_rank_posterior,
+        c("family", "genus", "species")
+      ),
+]
 cat("Score resolved finer than posterior:", nrow(score_finer), "samples\n")
 
 
@@ -437,7 +474,7 @@ cat("Score resolved finer than posterior:", nrow(score_finer), "samples\n")
 # =============================================================================
 # Option A: Report for posterior consensus (requires result + posterior_consensus output)
 report_posterior <- generate_report(
-  result    = result_updated,
+  result = result_updated,
   consensus = consensus_final,
   unreferenced_result = unreferenced_species,
   data_type = "eDNA", marker = "12S MiFish",
@@ -447,7 +484,7 @@ report_posterior <- generate_report(
 
 # Option B: Report for score-based consensus (result = NULL, no posteriors)
 report_score <- generate_report(
-  result    = NULL,
+  result = NULL,
   consensus = score_con_JV,
   data_type = "eDNA", marker = "12S MiFish",
   study_description = "eDNA survey of a southern California estuary",
@@ -463,9 +500,9 @@ report_score <- generate_report(
 # This is complementary to generate_report() above -- use one or both.
 
 # Build per-package sections from the objects already in memory:
-library(TaxaFetch)    # report_fetch()
-library(TaxaMatch)    # report_match()
-library(TaxaHabitat)  # report_habitat()
+library(TaxaFetch) # report_fetch()
+library(TaxaMatch) # report_match()
+library(TaxaHabitat) # report_habitat()
 
 # match_obj should have report_params from blast_sequences()
 match_sec <- TaxaMatch::report_match(match_df, data_type = "eDNA")
@@ -497,11 +534,11 @@ cat(assembled)
 # The step-by-step workflow above gives full control over each stage;
 # the wrapper is for the common case where defaults suffice.
 #
-#from TaxaMatch
+# from TaxaMatch
 # estuarine fishes 12S: JVB1846-MiFishU-esv-data.csv (173 seconds)
-#California intertidal fishes 12S: JVB2844-MiFishU-esv-data (381.12 seconds)
-#Palmyra fishes (big) 12S: JVB1950-MiFishU-esv-data
-#Palmyra COI: Palmyra2019-UniCOI-esv-data
+# California intertidal fishes 12S: JVB2844-MiFishU-esv-data (381.12 seconds)
+# Palmyra fishes (big) 12S: JVB1950-MiFishU-esv-data
+# Palmyra COI: Palmyra2019-UniCOI-esv-data
 # library(TaxaMatch)
 # library(TaxaAssign)
 # match_df <- standardize_match_data(
@@ -548,5 +585,5 @@ cat(assembled)
 # ctx                   <- llm_result$context
 # unreferenced_species  <- llm_result$unreferenced
 # report                <- llm_result$report
-llm_workflow_consensus<-consensus_final
-saveRDS(llm_workflow_consensus,"llm_workflow_consensus.rds")
+llm_workflow_consensus <- consensus_final
+saveRDS(llm_workflow_consensus, "llm_workflow_consensus.rds")

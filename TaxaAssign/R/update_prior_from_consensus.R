@@ -218,8 +218,8 @@
 #' \dontrun{
 #' result_updated <- update_prior_from_consensus(
 #'   result, consensus,
-#'   confirmation_quantile  = 0.9,
-#'   confirmation_discount  = 0.25
+#'   confirmation_quantile = 0.9,
+#'   confirmation_discount = 0.25
 #' )
 #' }
 #'
@@ -230,33 +230,40 @@
 #'
 #' @export
 update_prior_from_consensus <- function(result,
-                                         consensus,
-                                         confirmation_quantile       = 0.9,
-                                         confirmation_discount       = 0.25,
-                                         n_sims              = 0,
-                                         spatial_group_map    = NULL) {
-
+                                        consensus,
+                                        confirmation_quantile = 0.9,
+                                        confirmation_discount = 0.25,
+                                        n_sims = 0,
+                                        spatial_group_map = NULL) {
   # --- Input validation -------------------------------------------------------
-  required_result <- c("observation_id", "taxon_name", "score_likelihood",
-                        "score_likelihood_mean", "score_likelihood_sd", "prior_mean")
+  required_result <- c(
+    "observation_id", "taxon_name", "score_likelihood",
+    "score_likelihood_mean", "score_likelihood_sd", "prior_mean"
+  )
   missing_result <- setdiff(required_result, names(result))
-  if (length(missing_result) > 0)
+  if (length(missing_result) > 0) {
     cli::cli_abort("result missing required column(s): {.field {missing_result}}")
+  }
 
-  required_consensus <- c("observation_id", "consensus_taxon", "is_resolved",
-                           "consensus_posterior")
+  required_consensus <- c(
+    "observation_id", "consensus_taxon", "is_resolved",
+    "consensus_posterior"
+  )
   missing_consensus <- setdiff(required_consensus, names(consensus))
-  if (length(missing_consensus) > 0)
+  if (length(missing_consensus) > 0) {
     cli::cli_abort("consensus missing required column(s): {.field {missing_consensus}}")
+  }
 
   if (!is.numeric(confirmation_quantile) || length(confirmation_quantile) != 1L ||
-      is.na(confirmation_quantile) || confirmation_quantile <= 0 || confirmation_quantile > 1)
+    is.na(confirmation_quantile) || confirmation_quantile <= 0 || confirmation_quantile > 1) {
     cli::cli_abort("{.arg confirmation_quantile} must be a single number in (0, 1].")
+  }
 
   if (!is.numeric(confirmation_discount) || length(confirmation_discount) != 1L ||
-      is.na(confirmation_discount) ||
-      confirmation_discount < 0 || confirmation_discount > 1)
+    is.na(confirmation_discount) ||
+    confirmation_discount < 0 || confirmation_discount > 1) {
     cli::cli_abort("{.arg confirmation_discount} must be a single number in [0, 1].")
+  }
 
   # --- Resolve multi-member spatial groups from spatial_group_map, if supplied ----
   # Only observations that share a spatial_group_id with >=1 other observation
@@ -266,13 +273,14 @@ update_prior_from_consensus <- function(result,
   grouped_ids <- NULL
   if (!is.null(spatial_group_map)) {
     required_group <- c("observation_id", "spatial_group_id")
-    missing_group  <- setdiff(required_group, names(spatial_group_map))
-    if (length(missing_group) > 0)
+    missing_group <- setdiff(required_group, names(spatial_group_map))
+    if (length(missing_group) > 0) {
       cli::cli_abort("spatial_group_map missing required column(s): {.field {missing_group}}")
+    }
 
-    group_sizes    <- table(spatial_group_map$spatial_group_id)
-    shared_groups  <- names(group_sizes)[group_sizes >= 2L]
-    grouped_ids    <- unique(spatial_group_map$observation_id[spatial_group_map$spatial_group_id %in% shared_groups])
+    group_sizes <- table(spatial_group_map$spatial_group_id)
+    shared_groups <- names(group_sizes)[group_sizes >= 2L]
+    grouped_ids <- unique(spatial_group_map$observation_id[spatial_group_map$spatial_group_id %in% shared_groups])
 
     n_singleton <- dplyr::n_distinct(spatial_group_map$observation_id) - length(grouped_ids)
     cli::cli_inform(
@@ -312,11 +320,11 @@ update_prior_from_consensus <- function(result,
 
   # Per (observation, species) support: the best posterior that observation
   # gives the species (multi-site/duplicate candidate rows collapse to one).
-  sup_key     <- paste(support_pool$observation_id, support_pool$taxon_name, sep = "\r")
+  sup_key <- paste(support_pool$observation_id, support_pool$taxon_name, sep = "\r")
   obs_support <- tapply(support_pool[[post_col]], sup_key, max)
-  key_split   <- strsplit(names(obs_support), "\r", fixed = TRUE)
-  sup_taxon   <- vapply(key_split, function(k) k[[2L]], character(1))
-  sup_p       <- as.numeric(obs_support)
+  key_split <- strsplit(names(obs_support), "\r", fixed = TRUE)
+  sup_taxon <- vapply(key_split, function(k) k[[2L]], character(1))
+  sup_p <- as.numeric(obs_support)
 
   species_mass <- tapply(sup_p, sup_taxon, sum)
 
@@ -325,7 +333,9 @@ update_prior_from_consensus <- function(result,
   # itself keeps a handful of genuine detections from being drowned by a sea
   # of near-zero candidacies of the same species.
   .weighted_quantile <- function(x, w, prob) {
-    o <- order(x); x <- x[o]; w <- w[o]
+    o <- order(x)
+    x <- x[o]
+    w <- w[o]
     cw <- cumsum(w) / sum(w)
     x[which(cw >= prob)[1L]]
   }
@@ -342,10 +352,11 @@ update_prior_from_consensus <- function(result,
   }
   if (length(unresolved_ids) == 0L) {
     cli::cli_inform(
-      if (!is.null(grouped_ids))
+      if (!is.null(grouped_ids)) {
         "No unresolved observations in a multi-member spatial group; returning result unchanged."
-      else
+      } else {
         "All observations already resolved; returning result unchanged."
+      }
     )
     return(result)
   }
@@ -358,29 +369,29 @@ update_prior_from_consensus <- function(result,
   ))
 
   # --- Split result -----------------------------------------------------------
-  resolved_rows   <- result[!result$observation_id %in% unresolved_ids, ]
-  unresolved_rows <- result[ result$observation_id %in% unresolved_ids, ]
+  resolved_rows <- result[!result$observation_id %in% unresolved_ids, ]
+  unresolved_rows <- result[result$observation_id %in% unresolved_ids, ]
 
   v1 <- consensus[, c("observation_id", "consensus_taxon", "consensus_rank")]
   names(v1)[2:3] <- c("consensus_taxon_v1", "consensus_rank_v1")
-  resolved_rows   <- merge(resolved_rows,   v1, by = "observation_id", all.x = TRUE)
+  resolved_rows <- merge(resolved_rows, v1, by = "observation_id", all.x = TRUE)
   unresolved_rows <- merge(unresolved_rows, v1, by = "observation_id", all.x = TRUE)
   # rep() guards the all-unresolved case: a scalar assignment onto a 0-row
   # base data frame errors ("replacement has 1 row, data has 0")
-  resolved_rows$prior_updated   <- rep(FALSE, nrow(resolved_rows))
-  unresolved_rows$prior_updated <- rep(TRUE,  nrow(unresolved_rows))
-  resolved_rows$confirmed_without_occurrence_record   <- rep(FALSE, nrow(resolved_rows))
+  resolved_rows$prior_updated <- rep(FALSE, nrow(resolved_rows))
+  unresolved_rows$prior_updated <- rep(TRUE, nrow(unresolved_rows))
+  resolved_rows$confirmed_without_occurrence_record <- rep(FALSE, nrow(resolved_rows))
   unresolved_rows$confirmed_without_occurrence_record <- rep(FALSE, nrow(unresolved_rows))
 
   # --- Leave-one-out, discounted, saturating evidence per row ------------------
   boost_mask <- unresolved_rows$taxon_name %in% names(species_mass)
-  row_key    <- paste(unresolved_rows$observation_id, unresolved_rows$taxon_name, sep = "\r")
-  own_p      <- as.numeric(obs_support[row_key])
+  row_key <- paste(unresolved_rows$observation_id, unresolved_rows$taxon_name, sep = "\r")
+  own_p <- as.numeric(obs_support[row_key])
   own_p[is.na(own_p)] <- 0
-  mass_row   <- unname(species_mass[unresolved_rows$taxon_name]) - own_p
+  mass_row <- unname(species_mass[unresolved_rows$taxon_name]) - own_p
   mass_row[is.na(mass_row) | mass_row < 0] <- 0
-  m_disc     <- confirmation_discount * mass_row
-  s_sat      <- m_disc / (1 + m_disc)   # smooth saturation in [0, 1): no cliffs
+  m_disc <- confirmation_discount * mass_row
+  s_sat <- m_disc / (1 + m_disc) # smooth saturation in [0, 1): no cliffs
 
   if (!any(boost_mask & m_disc > 0)) {
     cli::cli_inform(
@@ -413,16 +424,17 @@ update_prior_from_consensus <- function(result,
   soft_gain <- pmax(candidate_prior - old_prior, 0) * s_sat
   soft_gain[!boost_mask | is_mix_row | is.na(soft_gain)] <- 0
   raise_mask <- soft_gain > 0
-  new_prior  <- old_prior + soft_gain
+  new_prior <- old_prior + soft_gain
 
   cli::cli_inform(c(
     "{sum(boost_mask)} hypothesis row(s) carry cross-observation support; \\
     {sum(raise_mask)} raised above their existing prior (smoothly, by the \\
     saturating discounted mass -- others already met their support-weighted target).",
-    if (has_theta)
+    if (has_theta) {
       "Substitution rescaled onto the occurrence scale (ceiling = {signif(theta_ceiling, 3)})."
-    else
+    } else {
       "No theta_mean column on result -- using the support-weighted quantile directly."
+    }
   ))
 
   if (has_theta && any(raise_mask)) {
@@ -441,10 +453,10 @@ update_prior_from_consensus <- function(result,
     if (all(c("prior_alpha", "prior_beta") %in% names(unresolved_rows))) {
       # keep alpha/beta consistent with the new mean, preserving concentration;
       # clamp away from [0,1] so compute_posterior() never sees beta = 0
-      phi     <- unresolved_rows$prior_alpha[raise_mask] + unresolved_rows$prior_beta[raise_mask]
+      phi <- unresolved_rows$prior_alpha[raise_mask] + unresolved_rows$prior_beta[raise_mask]
       clamped <- pmin(pmax(new_prior[raise_mask], 1e-9), 1 - 1e-9)
       unresolved_rows$prior_alpha[raise_mask] <- clamped * phi
-      unresolved_rows$prior_beta[raise_mask]  <- (1 - clamped) * phi
+      unresolved_rows$prior_beta[raise_mask] <- (1 - clamped) * phi
     }
   }
 
@@ -457,11 +469,11 @@ update_prior_from_consensus <- function(result,
   # thresholded confirmation.
   mixable <- boost_mask & is_mix_row & m_disc > 0
   if (any(mixable)) {
-    pc  <- unresolved_rows$prior_mix_p_conc[mixable]
+    pc <- unresolved_rows$prior_mix_p_conc[mixable]
     pc[is.na(pc)] <- 1
-    w0  <- unresolved_rows$prior_mix_w[mixable]
-    md  <- m_disc[mixable]
-    w1  <- (pc * w0 + md) / (pc + md)
+    w0 <- unresolved_rows$prior_mix_w[mixable]
+    md <- m_disc[mixable]
+    w1 <- (pc * w0 + md) / (pc + md)
     # Cap at the construction-time veto bound (2026-09-05 critical-fix-review
     # finding B2): the update above is level-blind and can be pushed past the
     # bound by a wide, low-grade blocker's correlated cross-observation
@@ -484,9 +496,9 @@ update_prior_from_consensus <- function(result,
     thp <- unresolved_rows$prior_mix_theta_present[mixable]
     tha <- unresolved_rows$prior_mix_theta_absent[mixable]
     th1 <- tha + (thp - tha) * w1
-    unresolved_rows$prior_mix_w[mixable]      <- w1
+    unresolved_rows$prior_mix_w[mixable] <- w1
     unresolved_rows$prior_mix_p_conc[mixable] <- pc + md
-    unresolved_rows$prior_mean[mixable]       <- th1
+    unresolved_rows$prior_mean[mixable] <- th1
     if (all(c("prior_alpha", "prior_beta") %in% names(unresolved_rows))) {
       # Reproduce TaxaExpect::apply_undetected_evidence()'s own v_mix formula,
       # not just its (thp-tha) term -- 2026-09-05 critical-fix-review finding
@@ -497,18 +509,26 @@ update_prior_from_consensus <- function(result,
       # 0 and this reduces to the original formula). Default 0 for a
       # prior_mix_* table built before these two columns existed.
       var_p <- if ("prior_mix_var_present" %in% names(unresolved_rows)) {
-        v <- unresolved_rows$prior_mix_var_present[mixable]; v[is.na(v)] <- 0; v
-      } else rep(0, sum(mixable))
+        v <- unresolved_rows$prior_mix_var_present[mixable]
+        v[is.na(v)] <- 0
+        v
+      } else {
+        rep(0, sum(mixable))
+      }
       var_a <- if ("prior_mix_var_absent" %in% names(unresolved_rows)) {
-        v <- unresolved_rows$prior_mix_var_absent[mixable]; v[is.na(v)] <- 0; v
-      } else rep(0, sum(mixable))
+        v <- unresolved_rows$prior_mix_var_absent[mixable]
+        v[is.na(v)] <- 0
+        v
+      } else {
+        rep(0, sum(mixable))
+      }
       v_mix <- w1 * (1 - w1) * (thp - tha)^2 + w1 * var_p + (1 - w1) * var_a
-      ok    <- is.finite(v_mix) & v_mix > 0
+      ok <- is.finite(v_mix) & v_mix > 0
       if (any(ok)) {
-        ne  <- pmax(th1[ok] * (1 - th1[ok]) / v_mix[ok] - 1, 1e-3)
+        ne <- pmax(th1[ok] * (1 - th1[ok]) / v_mix[ok] - 1, 1e-3)
         idx <- which(mixable)[ok]
         unresolved_rows$prior_alpha[idx] <- th1[ok] * ne
-        unresolved_rows$prior_beta[idx]  <- (1 - th1[ok]) * ne
+        unresolved_rows$prior_beta[idx] <- (1 - th1[ok]) * ne
       }
     }
     cli::cli_inform(c(
@@ -519,24 +539,26 @@ update_prior_from_consensus <- function(result,
       (sum(w) vs. chao_missing) describes the priors AS BUILT, not as the \\
       posterior actually used -- this is the post-refinement counterpart \\
       (2026-09-05 critical-fix-review finding A3), purely informational.",
-      if (n_capped > 0L)
-        "!" = "{n_capped} row(s) would have updated PAST their own veto bound \\
+      if (n_capped > 0L) {
+        "!" <- "{n_capped} row(s) would have updated PAST their own veto bound \\
         (finding B2) -- capped there instead. This is a floor against runaway \\
         correlated-confirmation accumulation, not a fix to the update rule \\
         itself; see that finding for the deeper level-aware redesign this \\
         stands in for."
+      }
     ))
   }
 
 
   # --- Recompute posteriors for unresolved observations ------------------------
   # Drop existing posterior columns so compute_posterior() produces fresh values
-  post_cols       <- intersect(
+  post_cols <- intersect(
     c("posterior_point_est", "posterior_mean", "posterior_sd", "confidence_score"),
     names(unresolved_rows)
   )
   unresolved_rows <- unresolved_rows[,
-    setdiff(names(unresolved_rows), post_cols), drop = FALSE
+    setdiff(names(unresolved_rows), post_cols),
+    drop = FALSE
   ]
 
   updated_rows <- compute_posterior(unresolved_rows, n_sims = n_sims)

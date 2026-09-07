@@ -147,14 +147,14 @@
 #'
 #' @examples
 #' likelihood_w_prior <- data.frame(
-#'   observation_id       = c("S1", "S1", "S1"),
-#'   taxon_name           = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
-#'   score_likelihood      = c(0.85, 0.30, 0.10),
+#'   observation_id = c("S1", "S1", "S1"),
+#'   taxon_name = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+#'   score_likelihood = c(0.85, 0.30, 0.10),
 #'   score_likelihood_mean = c(0.83, 0.31, 0.10),
-#'   score_likelihood_sd   = c(0.05, 0.04, 0.02),
-#'   prior_mean            = c(0.60, 0.30, 0.10),
-#'   prior_alpha           = c(30, 15, 5),
-#'   prior_beta            = c(20, 35, 45)
+#'   score_likelihood_sd = c(0.05, 0.04, 0.02),
+#'   prior_mean = c(0.60, 0.30, 0.10),
+#'   prior_alpha = c(30, 15, 5),
+#'   prior_beta = c(20, 35, 45)
 #' )
 #' result <- compute_posterior(likelihood_w_prior, n_sims = 200)
 #' result[, c("observation_id", "taxon_name", "posterior_mean")]
@@ -164,10 +164,11 @@
 #'
 #' @export
 compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
-
   # --- Input validation ---
-  required_cols <- c("observation_id", "score_likelihood", "score_likelihood_mean",
-                     "score_likelihood_sd", "prior_mean")
+  required_cols <- c(
+    "observation_id", "score_likelihood", "score_likelihood_mean",
+    "score_likelihood_sd", "prior_mean"
+  )
   missing_cols <- setdiff(required_cols, names(likelihood_w_prior))
   if (length(missing_cols) > 0) {
     cli::cli_abort(
@@ -177,7 +178,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
 
   # --- Detect prior uncertainty mode ---
   has_alpha <- "prior_alpha" %in% names(likelihood_w_prior)
-  has_beta  <- "prior_beta" %in% names(likelihood_w_prior)
+  has_beta <- "prior_beta" %in% names(likelihood_w_prior)
 
   if (has_alpha != has_beta) {
     cli::cli_abort(
@@ -191,7 +192,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
     # Validate alpha/beta values
     bad_alpha <- !is.finite(likelihood_w_prior$prior_alpha) |
       likelihood_w_prior$prior_alpha <= 0
-    bad_beta  <- !is.finite(likelihood_w_prior$prior_beta) |
+    bad_beta <- !is.finite(likelihood_w_prior$prior_beta) |
       likelihood_w_prior$prior_beta <= 0
     n_bad <- sum(bad_alpha | bad_beta)
     if (n_bad > 0) {
@@ -244,7 +245,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   any_mix <- any(is_mix_row)
 
   # Decide whether MC simulation will add any information
-  any_lik_uncertainty   <- any(likelihood_w_prior$score_likelihood_sd > 0)
+  any_lik_uncertainty <- any(likelihood_w_prior$score_likelihood_sd > 0)
   any_prior_uncertainty <- use_beta_prior || any_mix
   run_sims <- n_sims > 0 && (any_lik_uncertainty || any_prior_uncertainty)
 
@@ -258,7 +259,9 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   # If all values are 0, return uniform distribution (avoids division by zero)
   normalize_vec <- function(x) {
     s <- sum(x, na.rm = TRUE)
-    if (s == 0) return(rep(1 / length(x), length(x)))
+    if (s == 0) {
+      return(rep(1 / length(x), length(x)))
+    }
     x / s
   }
 
@@ -275,16 +278,16 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   # here since the body never calls the generic, but avoiding the collision
   # entirely removes any chance of confusion for a future reader/editor.
   rtruncnorm_at_zero <- function(n, mu, stdev) {
-    mu     <- rep_len(mu, n)
-    stdev  <- rep_len(stdev, n)
-    out    <- mu
+    mu <- rep_len(mu, n)
+    stdev <- rep_len(stdev, n)
+    out <- mu
     pos_sd <- stdev > 0
     if (any(pos_sd)) {
       # Clamp away from exactly 1 to avoid qnorm(1) = Inf for extreme
       # negative-mean/small-sd combinations (probability mass below 0
       # effectively 1 in double precision).
       lower_p <- pmin(stats::pnorm(0, mu[pos_sd], stdev[pos_sd]), 1 - 1e-12)
-      u       <- stats::runif(sum(pos_sd), min = lower_p, max = 1)
+      u <- stats::runif(sum(pos_sd), min = lower_p, max = 1)
       out[pos_sd] <- stats::qnorm(u, mu[pos_sd], stdev[pos_sd])
     }
     out
@@ -296,19 +299,19 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   results_list <- likelihood_w_prior |>
     dplyr::group_split(.data$observation_id) |>
     lapply(function(chunk) {
-
       n_rows <- nrow(chunk)
-      if (n_rows == 0) return(chunk)
+      if (n_rows == 0) {
+        return(chunk)
+      }
 
       # --- Point estimate path ---
       # Normalize likelihoods first, then multiply by prior, then normalize again
-      norm_lik  <- normalize_vec(chunk$score_likelihood)
-      raw_post  <- norm_lik * chunk$prior_mean
+      norm_lik <- normalize_vec(chunk$score_likelihood)
+      raw_post <- norm_lik * chunk$prior_mean
       chunk$posterior_point_est <- normalize_vec(raw_post)
 
       # --- Monte Carlo path ---
       if (run_sims) {
-
         # Sample likelihoods: Normal(mean, sd) truncated at 0 (Session 149 —
         # exact inverse-CDF sampling, not a post-hoc clamp; see
         # rtruncnorm_at_zero() above for why the clamp was a real bug).
@@ -333,8 +336,9 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
         if (use_beta_prior) {
           sim_prior <- matrix(
             rbeta(n_rows * n_sims,
-                  shape1 = chunk$prior_alpha,
-                  shape2 = chunk$prior_beta),
+              shape1 = chunk$prior_alpha,
+              shape2 = chunk$prior_beta
+            ),
             nrow = n_rows
           )
           j_shaped <- chunk$prior_alpha <= 1
@@ -365,7 +369,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
               chunk$prior_mix_w[chunk_mix]
             sim_prior[chunk_mix, ] <- chunk$prior_mix_theta_absent[chunk_mix] +
               z * (chunk$prior_mix_theta_present[chunk_mix] -
-                     chunk$prior_mix_theta_absent[chunk_mix])
+                chunk$prior_mix_theta_absent[chunk_mix])
           }
         }
 
@@ -373,9 +377,9 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
         # When all likelihoods in a simulation are 0, assign uniform weights so
         # the posterior falls back to the prior -- matching normalize_vec() in the
         # point-estimate path.
-        col_sums_lik  <- colSums(sim_lik)
+        col_sums_lik <- colSums(sim_lik)
         all_zero_cols <- col_sums_lik == 0
-        n_zero_cols   <- sum(all_zero_cols)
+        n_zero_cols <- sum(all_zero_cols)
         if (n_zero_cols > 0L) {
           cli::cli_warn(
             "{n_zero_cols} of {n_sims} simulation(s) for observation_id \\
@@ -383,8 +387,10 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
             uniform fallback for those simulations."
           )
         }
-        sim_lik_norm  <- sweep(sim_lik, 2,
-                               ifelse(all_zero_cols, 1, col_sums_lik), "/")
+        sim_lik_norm <- sweep(
+          sim_lik, 2,
+          ifelse(all_zero_cols, 1, col_sums_lik), "/"
+        )
         sim_lik_norm[, all_zero_cols] <- 1 / n_rows
 
         # Bayesian update: normalized likelihood * prior
@@ -393,33 +399,32 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
         # Normalize posterior within each simulation.
         # When a simulation draws zero prior for every hypothesis,
         # assign uniform weight so the failed simulation is uninformative.
-        col_sums_post   <- colSums(sim_raw)
-        zero_post_cols  <- col_sums_post == 0
+        col_sums_post <- colSums(sim_raw)
+        zero_post_cols <- col_sums_post == 0
         col_sums_post[zero_post_cols] <- 1
         sim_probs <- sweep(sim_raw, 2, col_sums_post, "/")
         sim_probs[, zero_post_cols] <- 1 / n_rows
 
         # Summarize across simulations
-        chunk$posterior_mean    <- rowMeans(sim_probs)
-        chunk$posterior_sd      <- apply(sim_probs, 1, sd)
+        chunk$posterior_mean <- rowMeans(sim_probs)
+        chunk$posterior_sd <- apply(sim_probs, 1, sd)
 
         # Confidence score: fraction of MC simulations in which this hypothesis
         # had the highest posterior. Complements posterior_mean: a hypothesis can
         # have a high mean posterior but low confidence_score if another hypothesis
         # frequently wins. Analogous to the "posterior probability of being the
         # best hypothesis" in decision theory.
-        winners    <- apply(sim_probs, 2, which.max)
+        winners <- apply(sim_probs, 2, which.max)
         win_counts <- table(factor(winners, levels = 1:n_rows))
-        chunk$confidence_score  <- as.numeric(win_counts) / n_sims
-
+        chunk$confidence_score <- as.numeric(win_counts) / n_sims
       } else {
         # No simulation: MC outputs mirror point estimate
-        chunk$posterior_mean   <- chunk$posterior_point_est
-        chunk$posterior_sd     <- 0
+        chunk$posterior_mean <- chunk$posterior_point_est
+        chunk$posterior_sd <- 0
         chunk$confidence_score <- as.numeric(chunk$posterior_point_est == max(chunk$posterior_point_est))
       }
 
-      return(chunk)
+      chunk
     })
 
   # Return full dataframe sorted by observation_id, then best hypothesis first

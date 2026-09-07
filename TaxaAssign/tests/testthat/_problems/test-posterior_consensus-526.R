@@ -7,23 +7,25 @@ attach(test_env, warn.conflicts = FALSE)
 
 # prequel ----------------------------------------------------------------------
 make_posterior <- function(observation_id, taxon_name, taxon_name_rank,
-                            hypothesis_type, posterior_mean,
-                            genus = NULL, family = NULL, species = NULL) {
+                           hypothesis_type, posterior_mean,
+                           genus = NULL, family = NULL, species = NULL) {
   df <- data.frame(
-    observation_id       = observation_id,
-    taxon_name      = taxon_name,
+    observation_id = observation_id,
+    taxon_name = taxon_name,
     taxon_name_rank = taxon_name_rank,
     hypothesis_type = hypothesis_type,
-    posterior_mean  = posterior_mean,
+    posterior_mean = posterior_mean,
     stringsAsFactors = FALSE
   )
-  if (!is.null(genus))   df$genus   <- genus
-  if (!is.null(family))  df$family  <- family
+  if (!is.null(genus)) df$genus <- genus
+  if (!is.null(family)) df$family <- family
   if (!is.null(species)) df$species <- species
   df
 }
 
 # test -------------------------------------------------------------------------
 df <- make_posterior("s1", "Foo", "species", "specific_candidate", 0.9)
-expect_error(posterior_consensus(df, min_posterior = -0.1),
-               "min_posterior")
+expect_error(
+  posterior_consensus(df, min_posterior = -0.1),
+  "min_posterior"
+)

@@ -5,21 +5,21 @@
 # ==============================================================================
 
 make_posterior <- function(observation_id, taxon_name, taxon_name_rank,
-                            hypothesis_type, posterior_mean,
-                            genus = NULL, family = NULL, species = NULL) {
+                           hypothesis_type, posterior_mean,
+                           genus = NULL, family = NULL, species = NULL) {
   df <- data.frame(
-    observation_id       = observation_id,
-    taxon_name      = taxon_name,
+    observation_id = observation_id,
+    taxon_name = taxon_name,
     taxon_name_rank = taxon_name_rank,
     hypothesis_type = hypothesis_type,
-    posterior_mean  = posterior_mean,
+    posterior_mean = posterior_mean,
     # mirrored so fixtures exercise the (2026-08-28) default
     # posterior_col = "posterior_point_est" without each test opting in
     posterior_point_est = posterior_mean,
     stringsAsFactors = FALSE
   )
-  if (!is.null(genus))   df$genus   <- genus
-  if (!is.null(family))  df$family  <- family
+  if (!is.null(genus)) df$genus <- genus
+  if (!is.null(family)) df$family <- family
   if (!is.null(species)) df$species <- species
   df
 }
@@ -31,11 +31,11 @@ make_posterior <- function(observation_id, taxon_name, taxon_name_rank,
 
 test_that("returns one row per observation_id", {
   df <- make_posterior(
-    observation_id       = c("s1", "s1", "s2"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus", "Gobiosoma bosc"),
+    observation_id = c("s1", "s1", "s2"),
+    taxon_name = c("Fundulus parvipinnis", "Fundulus catus", "Gobiosoma bosc"),
     taxon_name_rank = c("species", "species", "species"),
     hypothesis_type = rep("specific_candidate", 3),
-    posterior_mean  = c(0.6, 0.4, 1.0)
+    posterior_mean = c(0.6, 0.4, 1.0)
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_equal(nrow(out), 2L)
@@ -43,12 +43,16 @@ test_that("returns one row per observation_id", {
 })
 
 test_that("output has required columns", {
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 1.0)
+  df <- make_posterior(
+    "s1", "Fundulus parvipinnis", "species",
+    "specific_candidate", 1.0
+  )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
-  expect_true(all(c("observation_id", "consensus_taxon", "consensus_rank",
-                    "is_resolved", "n_plausible",
-                    "plausible_taxa", "plausible_posteriors") %in% names(out)))
+  expect_true(all(c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "is_resolved", "n_plausible",
+    "plausible_taxa", "plausible_posteriors"
+  ) %in% names(out)))
 })
 
 
@@ -57,22 +61,26 @@ test_that("output has required columns", {
 # ==============================================================================
 
 test_that("single unambiguous species resolves to species", {
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 0.95)
+  df <- make_posterior(
+    "s1", "Fundulus parvipinnis", "species",
+    "specific_candidate", 0.95
+  )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
-  expect_equal(out$consensus_rank,  "species")
+  expect_equal(out$consensus_rank, "species")
   expect_true(out$is_resolved)
   expect_equal(out$n_plausible, 1L)
 })
 
 test_that("single genus-rank hypothesis resolves at genus", {
-  df <- make_posterior("s1", "Fundulus", "genus",
-                        "specific_candidate", 0.9)
+  df <- make_posterior(
+    "s1", "Fundulus", "genus",
+    "specific_candidate", 0.9
+  )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_equal(out$consensus_taxon, "Fundulus")
-  expect_equal(out$consensus_rank,  "genus")
-  expect_false(out$is_resolved)  # genus is not the finest rank (species is)
+  expect_equal(out$consensus_rank, "genus")
+  expect_false(out$is_resolved) # genus is not the finest rank (species is)
 })
 
 
@@ -128,29 +136,29 @@ test_that("consensus_posterior sums only the winning LCA taxon's mass across all
 
 test_that("two species in same genus → LCA at genus (derived from binomial)", {
   df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    observation_id = c("s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
     taxon_name_rank = c("species", "species"),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.55, 0.45)
+    posterior_mean = c(0.55, 0.45)
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_equal(out$consensus_taxon, "Fundulus")
-  expect_equal(out$consensus_rank,  "genus")
+  expect_equal(out$consensus_rank, "genus")
   expect_false(out$is_resolved)
 })
 
 test_that("two species in different genera → LCA at family (explicit column)", {
   df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Gobiosoma bosc"),
+    observation_id = c("s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Gobiosoma bosc"),
     taxon_name_rank = c("species", "species"),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.55, 0.45),
-    family          = c("Fundulidae", "Gobiidae")
+    posterior_mean = c(0.55, 0.45),
+    family = c("Fundulidae", "Gobiidae")
   )
   # Same family → LCA = family
-  df$family <- c("Gobiidae", "Gobiidae")  # force same family
+  df$family <- c("Gobiidae", "Gobiidae") # force same family
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_rank, "family")
   expect_false(out$is_resolved)
@@ -158,12 +166,12 @@ test_that("two species in different genera → LCA at family (explicit column)",
 
 test_that("species in different families with no shared rank → NA", {
   df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Gobiosoma bosc"),
+    observation_id = c("s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Gobiosoma bosc"),
     taxon_name_rank = c("species", "species"),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.55, 0.45),
-    family          = c("Fundulidae", "Gobiidae")
+    posterior_mean = c(0.55, 0.45),
+    family = c("Fundulidae", "Gobiidae")
   )
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_true(is.na(out$consensus_taxon))
@@ -178,14 +186,16 @@ test_that("species in different families with no shared rank → NA", {
 test_that("cumulative_threshold limits included hypotheses", {
   # First species alone accounts for 0.91 of named mass → only 1 included
   df <- make_posterior(
-    observation_id       = c("s1", "s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus", "Fundulus nottii"),
+    observation_id = c("s1", "s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Fundulus catus", "Fundulus nottii"),
     taxon_name_rank = rep("species", 3),
     hypothesis_type = rep("specific_candidate", 3),
-    posterior_mean  = c(0.91, 0.05, 0.04)
+    posterior_mean = c(0.91, 0.05, 0.04)
   )
-  out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                              cumulative_threshold = 0.9)
+  out <- posterior_consensus(df,
+    rank_system = c("genus", "species"),
+    cumulative_threshold = 0.9
+  )
   expect_equal(out$n_plausible, 1L)
   expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
   expect_true(out$is_resolved)
@@ -193,15 +203,17 @@ test_that("cumulative_threshold limits included hypotheses", {
 
 test_that("lower cumulative_threshold can resolve to species from two-way tie", {
   df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    observation_id = c("s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
     taxon_name_rank = rep("species", 2),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.8, 0.2)
+    posterior_mean = c(0.8, 0.2)
   )
   # With threshold 0.75, only the top species (0.8/1.0 = 80% ≥ 75%) is included
-  out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                              cumulative_threshold = 0.75)
+  out <- posterior_consensus(df,
+    rank_system = c("genus", "species"),
+    cumulative_threshold = 0.75
+  )
   expect_equal(out$n_plausible, 1L)
   expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
 })
@@ -214,28 +226,32 @@ test_that("lower cumulative_threshold can resolve to species from two-way tie", 
 test_that("hypotheses below min_posterior are excluded before LCA", {
   # Second species is 0.03 < 0.05 → excluded → single species resolves
   df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    observation_id = c("s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
     taxon_name_rank = rep("species", 2),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.97, 0.03)
+    posterior_mean = c(0.97, 0.03)
   )
-  out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                              min_posterior = 0.05)
+  out <- posterior_consensus(df,
+    rank_system = c("genus", "species"),
+    min_posterior = 0.05
+  )
   expect_equal(out$n_plausible, 1L)
   expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
 })
 
 test_that("all hypotheses below min_posterior → empty row", {
   df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    observation_id = c("s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
     taxon_name_rank = rep("species", 2),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.04, 0.03)
+    posterior_mean = c(0.04, 0.03)
   )
-  out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                              min_posterior = 0.05)
+  out <- posterior_consensus(df,
+    rank_system = c("genus", "species"),
+    min_posterior = 0.05
+  )
   expect_equal(out$n_plausible, 0L)
   expect_true(is.na(out$consensus_taxon))
   expect_false(out$is_resolved)
@@ -248,10 +264,14 @@ test_that("all hypotheses below min_posterior → empty row", {
 
 test_that("unreferenced_family rows are excluded from LCA", {
   df <- rbind(
-    make_posterior("s1", "Fundulus parvipinnis", "species",
-                    "specific_candidate", 0.6),
-    make_posterior("s1", NA_character_, NA_character_,
-                    "unreferenced_family", 0.4)
+    make_posterior(
+      "s1", "Fundulus parvipinnis", "species",
+      "specific_candidate", 0.6
+    ),
+    make_posterior(
+      "s1", NA_character_, NA_character_,
+      "unreferenced_family", 0.4
+    )
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   # Only Fundulus parvipinnis contributes → single species resolved
@@ -264,10 +284,14 @@ test_that("unreferenced_genus named species are included in LCA", {
   # Family-level unreferenced taxon: species from a genus absent in the reference.
   # Should widen LCA just like unreferenced_species.
   df <- rbind(
-    make_posterior("s1", "Fundulus parvipinnis", "species",
-                    "specific_candidate", 0.7),
-    make_posterior("s1", "Hesperoleucus symmetricus", "species",
-                    "unreferenced_genus", 0.3)
+    make_posterior(
+      "s1", "Fundulus parvipinnis", "species",
+      "specific_candidate", 0.7
+    ),
+    make_posterior(
+      "s1", "Hesperoleucus symmetricus", "species",
+      "unreferenced_genus", 0.3
+    )
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   # Different genera → LCA cannot resolve at genus → NA (no shared family column)
@@ -277,11 +301,13 @@ test_that("unreferenced_genus named species are included in LCA", {
 test_that("unreferenced_genus family-level unreferenced taxa resolve at family when column present", {
   df <- rbind(
     make_posterior("s1", "Fundulus parvipinnis", "species",
-                    "specific_candidate", 0.7,
-                    family = "Leuciscidae"),
+      "specific_candidate", 0.7,
+      family = "Leuciscidae"
+    ),
     make_posterior("s1", "Hesperoleucus symmetricus", "species",
-                    "unreferenced_genus", 0.3,
-                    family = "Leuciscidae")
+      "unreferenced_genus", 0.3,
+      family = "Leuciscidae"
+    )
   )
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_rank, "family")
@@ -291,10 +317,14 @@ test_that("unreferenced_genus family-level unreferenced taxa resolve at family w
 
 test_that("unreferenced_species rows are included in LCA", {
   df <- rbind(
-    make_posterior("s1", "Fundulus parvipinnis", "species",
-                    "specific_candidate", 0.55),
-    make_posterior("s1", "Fundulus sp_unref", "species",
-                    "unreferenced_species", 0.45)
+    make_posterior(
+      "s1", "Fundulus parvipinnis", "species",
+      "specific_candidate", 0.55
+    ),
+    make_posterior(
+      "s1", "Fundulus sp_unref", "species",
+      "unreferenced_species", 0.45
+    )
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   # Both are Fundulus → LCA at genus
@@ -309,8 +339,10 @@ test_that("unreferenced_species rows are included in LCA", {
 # ==============================================================================
 
 test_that("sample with only unreferenced_family → empty row", {
-  df <- make_posterior("s1", NA_character_, NA_character_,
-                        "unreferenced_family", 1.0)
+  df <- make_posterior(
+    "s1", NA_character_, NA_character_,
+    "unreferenced_family", 1.0
+  )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_equal(out$n_plausible, 0L)
   expect_true(is.na(out$consensus_taxon))
@@ -325,17 +357,19 @@ test_that("sample with only unreferenced_family → empty row", {
 
 test_that("plausible_taxa and plausible_posteriors have correct content", {
   df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    observation_id = c("s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
     taxon_name_rank = rep("species", 2),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.7, 0.3)
+    posterior_mean = c(0.7, 0.3)
   )
-  out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                              cumulative_threshold = 1.0)
+  out <- posterior_consensus(df,
+    rank_system = c("genus", "species"),
+    cumulative_threshold = 1.0
+  )
   taxa <- out$plausible_taxa[[1]]
   posts <- out$plausible_posteriors[[1]]
-  expect_equal(taxa[1], "Fundulus parvipinnis")   # sorted descending
+  expect_equal(taxa[1], "Fundulus parvipinnis") # sorted descending
   expect_equal(taxa[2], "Fundulus catus")
   expect_named(posts)
   expect_equal(posts[["Fundulus parvipinnis"]], 0.7)
@@ -349,12 +383,12 @@ test_that("plausible_taxa and plausible_posteriors have correct content", {
 
 test_that("explicit genus column takes precedence over binomial derivation", {
   df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
+    observation_id = c("s1", "s1"),
+    taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
     taxon_name_rank = rep("species", 2),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.55, 0.45),
-    genus           = c("Fundulus", "Fundulus")
+    posterior_mean = c(0.55, 0.45),
+    genus = c("Fundulus", "Fundulus")
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_equal(out$consensus_taxon, "Fundulus")
@@ -371,11 +405,15 @@ test_that("explicit genus column takes precedence over binomial derivation", {
 # ==============================================================================
 
 test_that("winner columns present and NA when source columns absent", {
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 0.9)
+  df <- make_posterior(
+    "s1", "Fundulus parvipinnis", "species",
+    "specific_candidate", 0.9
+  )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
-  expect_true(all(c("winner_prior", "winner_likelihood",
-                    "winner_likelihood_cov") %in% names(out)))
+  expect_true(all(c(
+    "winner_prior", "winner_likelihood",
+    "winner_likelihood_cov"
+  ) %in% names(out)))
   expect_true(is.na(out$winner_prior))
   expect_true(is.na(out$winner_likelihood))
   expect_true(is.na(out$winner_likelihood_cov))
@@ -389,14 +427,14 @@ test_that("winner columns carry values from highest-posterior row", {
     hypothesis_type = rep("specific_candidate", 2),
     posterior_mean  = c(0.7, 0.3)
   )
-  df$prior_mean           <- c(0.12, 0.05)
-  df$score_likelihood     <- c(0.88, 0.60)
+  df$prior_mean <- c(0.12, 0.05)
+  df$score_likelihood <- c(0.88, 0.60)
   df$score_likelihood_cov <- c(0.80, 0.55)
 
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   # Winner is Fundulus parvipinnis (posterior_mean = 0.7)
-  expect_equal(out$winner_prior,          0.12)
-  expect_equal(out$winner_likelihood,     0.88)
+  expect_equal(out$winner_prior, 0.12)
+  expect_equal(out$winner_likelihood, 0.88)
   expect_equal(out$winner_likelihood_cov, 0.80)
 })
 
@@ -407,29 +445,33 @@ test_that("winner columns reflect actual winner, not highest likelihood", {
     taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
     taxon_name_rank = rep("species", 2),
     hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.3, 0.7)   # Fundulus catus wins
+    posterior_mean  = c(0.3, 0.7) # Fundulus catus wins
   )
-  df$prior_mean           <- c(0.12, 0.05)
-  df$score_likelihood     <- c(0.88, 0.60)
+  df$prior_mean <- c(0.12, 0.05)
+  df$score_likelihood <- c(0.88, 0.60)
   df$score_likelihood_cov <- c(0.80, 0.55)
 
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   # Fundulus catus has higher posterior despite lower prior/likelihood
-  expect_equal(out$winner_prior,          0.05)
-  expect_equal(out$winner_likelihood,     0.60)
+  expect_equal(out$winner_prior, 0.05)
+  expect_equal(out$winner_likelihood, 0.60)
   expect_equal(out$winner_likelihood_cov, 0.55)
 })
 
 test_that("winner columns are NA_real_ in empty consensus rows", {
   # All hypotheses below min_posterior -> empty row
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 0.01)
-  df$prior_mean           <- 0.10
-  df$score_likelihood     <- 0.80
+  df <- make_posterior(
+    "s1", "Fundulus parvipinnis", "species",
+    "specific_candidate", 0.01
+  )
+  df$prior_mean <- 0.10
+  df$score_likelihood <- 0.80
   df$score_likelihood_cov <- 0.75
   expect_warning(
-    out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                               min_posterior = 0.05),
+    out <- posterior_consensus(df,
+      rank_system = c("genus", "species"),
+      min_posterior = 0.05
+    ),
     "no hypotheses above min_posterior"
   )
   expect_true(is.na(out$winner_prior))
@@ -438,13 +480,16 @@ test_that("winner columns are NA_real_ in empty consensus rows", {
 })
 
 
-
 test_that("posterior_consensus() no longer accepts uprank_trust_pvalue", {
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 0.9)
+  df <- make_posterior(
+    "s1", "Fundulus parvipinnis", "species",
+    "specific_candidate", 0.9
+  )
   expect_error(
-    posterior_consensus(df, rank_system = c("genus", "species"),
-                         uprank_trust_pvalue = 0.001),
+    posterior_consensus(df,
+      rank_system = c("genus", "species"),
+      uprank_trust_pvalue = 0.001
+    ),
     "unused argument"
   )
 })
@@ -454,8 +499,10 @@ test_that("posterior_consensus() no longer accepts uprank_trust_pvalue", {
 # ==============================================================================
 
 test_that("winner_hypothesis_type/winner_rank_expanded columns are present", {
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 0.9)
+  df <- make_posterior(
+    "s1", "Fundulus parvipinnis", "species",
+    "specific_candidate", 0.9
+  )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_true(all(c("winner_hypothesis_type", "winner_rank_expanded") %in% names(out)))
 })
@@ -488,21 +535,27 @@ test_that("winner_rank_expanded is TRUE when the winner came from coarse-rank ex
     taxon_name      = c("Lynx rufus", "Puma concolor"),
     taxon_name_rank = rep("species", 2),
     hypothesis_type = rep("rank_expanded", 2),
-    posterior_mean  = c(0.65, 0.35)   # tie-broken by prior alone
+    posterior_mean  = c(0.65, 0.35) # tie-broken by prior alone
   )
-  out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                             cumulative_threshold = 0.5)
+  out <- posterior_consensus(df,
+    rank_system = c("genus", "species"),
+    cumulative_threshold = 0.5
+  )
   expect_equal(out$consensus_taxon, "Lynx rufus")
   expect_equal(out$winner_hypothesis_type, "rank_expanded")
   expect_true(out$winner_rank_expanded)
 })
 
 test_that("winner_hypothesis_type/winner_rank_expanded are NA in empty consensus rows", {
-  df <- make_posterior("s1", "Fundulus parvipinnis", "species",
-                        "specific_candidate", 0.01)
+  df <- make_posterior(
+    "s1", "Fundulus parvipinnis", "species",
+    "specific_candidate", 0.01
+  )
   expect_warning(
-    out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                               min_posterior = 0.05),
+    out <- posterior_consensus(df,
+      rank_system = c("genus", "species"),
+      min_posterior = 0.05
+    ),
     "no hypotheses above min_posterior"
   )
   expect_true(is.na(out$winner_hypothesis_type))
@@ -510,25 +563,35 @@ test_that("winner_hypothesis_type/winner_rank_expanded are NA in empty consensus
 })
 
 test_that("missing required columns raises error", {
-  df <- data.frame(observation_id = "s1", taxon_name = "Foo",
-                    stringsAsFactors = FALSE)
+  df <- data.frame(
+    observation_id = "s1", taxon_name = "Foo",
+    stringsAsFactors = FALSE
+  )
   expect_error(posterior_consensus(df), "missing required column")
 })
 
 test_that("invalid cumulative_threshold raises error", {
   df <- make_posterior("s1", "Foo", "species", "specific_candidate", 0.9)
-  expect_error(posterior_consensus(df, cumulative_threshold = 1.5),
-               "cumulative_threshold")
-  expect_error(posterior_consensus(df, cumulative_threshold = 0),
-               "cumulative_threshold")
+  expect_error(
+    posterior_consensus(df, cumulative_threshold = 1.5),
+    "cumulative_threshold"
+  )
+  expect_error(
+    posterior_consensus(df, cumulative_threshold = 0),
+    "cumulative_threshold"
+  )
 })
 
 test_that("invalid min_posterior raises error", {
   df <- make_posterior("s1", "Foo", "species", "specific_candidate", 0.9)
-  expect_error(posterior_consensus(df, min_posterior = -0.1),
-               "min_posterior")
-  expect_error(posterior_consensus(df, min_posterior = 1.0),
-               "min_posterior")
+  expect_error(
+    posterior_consensus(df, min_posterior = -0.1),
+    "min_posterior"
+  )
+  expect_error(
+    posterior_consensus(df, min_posterior = 1.0),
+    "min_posterior"
+  )
 })
 
 
@@ -543,21 +606,21 @@ test_that("invalid min_posterior raises error", {
 # record -- NA means "never reported here", which is what makes a candidate
 # implausible for these counts.
 make_competitor_df <- function(model_tier = c("tier1", "tier2", NA, NA),
-                                posterior_mean = c(0.55, 0.20, 0.15, 0.10)) {
+                               posterior_mean = c(0.55, 0.20, 0.15, 0.10)) {
   df <- data.frame(
-    observation_id  = rep("obs1", 4),
-    taxon_name      = c("Aa one", "Aa two", "Bb one", "Bb two"),
+    observation_id = rep("obs1", 4),
+    taxon_name = c("Aa one", "Aa two", "Bb one", "Bb two"),
     taxon_name_rank = rep("species", 4),
     hypothesis_type = rep("specific_candidate", 4),
-    posterior_mean  = posterior_mean,
+    posterior_mean = posterior_mean,
     posterior_point_est = posterior_mean,
-    genus           = c("Aa", "Aa", "Bb", "Bb"),
-    family          = rep("Fam1", 4),
-    species         = c("Aa one", "Aa two", "Bb one", "Bb two"),
-    model_tier      = model_tier,
+    genus = c("Aa", "Aa", "Bb", "Bb"),
+    family = rep("Fam1", 4),
+    species = c("Aa one", "Aa two", "Bb one", "Bb two"),
+    model_tier = model_tier,
     species_confusion_risk = rep(0.10, 4),
-    genus_confusion_risk   = rep(0.30, 4),
-    family_confusion_risk  = rep(0.60, 4),
+    genus_confusion_risk = rep(0.30, 4),
+    family_confusion_risk = rep(0.60, 4),
     stringsAsFactors = FALSE
   )
   df
@@ -565,26 +628,31 @@ make_competitor_df <- function(model_tier = c("tier1", "tier2", NA, NA),
 
 test_that("the three new diagnostic columns are always present", {
   out <- posterior_consensus(make_competitor_df(),
-                             rank_system = c("family", "genus", "species"),
-                             min_posterior = 0, cumulative_threshold = 1)
-  expect_true(all(c("consensus_confusion_risk",
-                    "primary_n_plausible_competitors",
-                    "consensus_n_plausible_competitors") %in% names(out)))
+    rank_system = c("family", "genus", "species"),
+    min_posterior = 0, cumulative_threshold = 1
+  )
+  expect_true(all(c(
+    "consensus_confusion_risk",
+    "primary_n_plausible_competitors",
+    "consensus_n_plausible_competitors"
+  ) %in% names(out)))
 })
 
 test_that("primary_n_plausible_competitors counts plausible RIVALS, excluding the winner", {
   # Winner is "Aa one" (tier1). The only other plausible candidate is "Aa two".
   out <- posterior_consensus(make_competitor_df(),
-                             rank_system = c("family", "genus", "species"),
-                             min_posterior = 0, cumulative_threshold = 1)
+    rank_system = c("family", "genus", "species"),
+    min_posterior = 0, cumulative_threshold = 1
+  )
   expect_equal(out$primary_n_plausible_competitors, 1L)
 })
 
 test_that("a win with no plausible rival at all reports 0, not 1", {
   # Only the winner itself is plausible -> nothing to lose to.
   out <- posterior_consensus(make_competitor_df(model_tier = c("tier1", NA, NA, NA)),
-                             rank_system = c("family", "genus", "species"),
-                             min_posterior = 0, cumulative_threshold = 1)
+    rank_system = c("family", "genus", "species"),
+    min_posterior = 0, cumulative_threshold = 1
+  )
   expect_equal(out$primary_n_plausible_competitors, 0L)
 })
 
@@ -592,8 +660,9 @@ test_that("an implausible winner still reports its plausible rivals (axes stay i
   # Winner "Aa one" is NOT plausible, but two rivals are. The count describes
   # the rivals, not the winner -- winner plausibility is winner_prior's job.
   out <- posterior_consensus(make_competitor_df(model_tier = c(NA, "tier1", "tier2", NA)),
-                             rank_system = c("family", "genus", "species"),
-                             min_posterior = 0, cumulative_threshold = 1)
+    rank_system = c("family", "genus", "species"),
+    min_posterior = 0, cumulative_threshold = 1
+  )
   expect_equal(out$primary_n_plausible_competitors, 2L)
 })
 
@@ -601,8 +670,9 @@ test_that("counts use every named hypothesis, not just the post-filter plausible
   # min_posterior = 0.5 keeps only the winner in `plausible`, but the rival
   # still competed and must still be counted.
   out <- posterior_consensus(make_competitor_df(),
-                             rank_system = c("family", "genus", "species"),
-                             min_posterior = 0.5, cumulative_threshold = 0.9)
+    rank_system = c("family", "genus", "species"),
+    min_posterior = 0.5, cumulative_threshold = 0.9
+  )
   expect_equal(out$n_plausible, 1L)
   expect_equal(out$primary_n_plausible_competitors, 1L)
 })
@@ -610,11 +680,15 @@ test_that("counts use every named hypothesis, not just the post-filter plausible
 test_that("consensus_n_plausible_competitors counts rival GROUPS at the consensus rank", {
   # Force a genus-level LCA by making the two genera tie, and make one
   # candidate in each genus plausible -> exactly 1 rival genus.
-  df <- make_competitor_df(model_tier = c("tier1", NA, "tier1", NA),
-                           posterior_mean = c(0.30, 0.20, 0.30, 0.20))
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
-                             min_posterior = 0, cumulative_threshold = 1)
-  expect_equal(out$consensus_rank, "family")   # LCA climbs past genus
+  df <- make_competitor_df(
+    model_tier = c("tier1", NA, "tier1", NA),
+    posterior_mean = c(0.30, 0.20, 0.30, 0.20)
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    min_posterior = 0, cumulative_threshold = 1
+  )
+  expect_equal(out$consensus_rank, "family") # LCA climbs past genus
   # At family rank both candidates are in Fam1, so there is no rival family.
   expect_equal(out$consensus_n_plausible_competitors, 0L)
 })
@@ -624,17 +698,20 @@ test_that("consensus_confusion_risk is matched to consensus_rank, not the winner
   # threshold admits only it and the LCA stays at species.
   out_sp <- posterior_consensus(
     make_competitor_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01)),
-    rank_system = c("family", "genus", "species"))
+    rank_system = c("family", "genus", "species")
+  )
   expect_equal(out_sp$consensus_rank, "species")
   expect_equal(out_sp$consensus_confusion_risk, 0.10)
 
   # Family-level consensus -> family value, NOT the species one.
   df <- make_competitor_df(posterior_mean = c(0.30, 0.20, 0.30, 0.20))
-  out_fam <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
-                                 min_posterior = 0, cumulative_threshold = 1)
+  out_fam <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    min_posterior = 0, cumulative_threshold = 1
+  )
   expect_equal(out_fam$consensus_rank, "family")
   expect_equal(out_fam$consensus_confusion_risk, 0.60)
-  expect_equal(out_fam$winner_species_confusion_risk, 0.10)  # unchanged
+  expect_equal(out_fam$winner_species_confusion_risk, 0.10) # unchanged
 })
 
 test_that("counts are NA (not 0) when posterior_df carries no model_tier column", {
@@ -657,23 +734,23 @@ test_that("counts are NA (not 0) when posterior_df carries no model_tier column"
 # but a modest true occurrence share (theta_mean = 0.02), so any test that
 # reads winner_prior/consensus_prior interchangeably would fail loudly.
 
-make_theta_df <- function(model_tier      = c("tier1", "tier2", NA, NA),
-                           posterior_mean  = c(0.55, 0.20, 0.15, 0.10),
-                           prior_mean      = c(0.99, 0.05, NA, NA),
-                           theta_mean      = c(0.02, 0.05, NA, NA)) {
+make_theta_df <- function(model_tier = c("tier1", "tier2", NA, NA),
+                          posterior_mean = c(0.55, 0.20, 0.15, 0.10),
+                          prior_mean = c(0.99, 0.05, NA, NA),
+                          theta_mean = c(0.02, 0.05, NA, NA)) {
   df <- data.frame(
-    observation_id  = rep("obs1", 4),
-    taxon_name      = c("Aa one", "Aa two", "Bb one", "Bb two"),
+    observation_id = rep("obs1", 4),
+    taxon_name = c("Aa one", "Aa two", "Bb one", "Bb two"),
     taxon_name_rank = rep("species", 4),
     hypothesis_type = rep("specific_candidate", 4),
-    posterior_mean  = posterior_mean,
+    posterior_mean = posterior_mean,
     posterior_point_est = posterior_mean,
-    prior_mean      = prior_mean,
-    theta_mean      = theta_mean,
-    genus           = c("Aa", "Aa", "Bb", "Bb"),
-    family          = rep("Fam1", 4),
-    species         = c("Aa one", "Aa two", "Bb one", "Bb two"),
-    model_tier      = model_tier,
+    prior_mean = prior_mean,
+    theta_mean = theta_mean,
+    genus = c("Aa", "Aa", "Bb", "Bb"),
+    family = rep("Fam1", 4),
+    species = c("Aa one", "Aa two", "Bb one", "Bb two"),
+    model_tier = model_tier,
     stringsAsFactors = FALSE
   )
   df
@@ -682,9 +759,9 @@ make_theta_df <- function(model_tier      = c("tier1", "tier2", NA, NA),
 test_that("winner_theta_mean reads theta_mean, not the (possibly boosted) prior_mean", {
   df <- make_theta_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01))
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
-  expect_equal(out$consensus_taxon, "Aa one")   # Aa one wins on posterior_mean
-  expect_equal(out$winner_prior, 0.99)          # the boosted value, unchanged
-  expect_equal(out$winner_theta_mean, 0.02)     # the TRUE occurrence share
+  expect_equal(out$consensus_taxon, "Aa one") # Aa one wins on posterior_mean
+  expect_equal(out$winner_prior, 0.99) # the boosted value, unchanged
+  expect_equal(out$winner_theta_mean, 0.02) # the TRUE occurrence share
 })
 
 test_that("winner_theta_mean is NA when theta_mean is absent from posterior_df", {
@@ -701,8 +778,10 @@ test_that("winner_has_occurrence_record is FALSE when no candidate has an occurr
 })
 
 test_that("winner_has_occurrence_record is unaffected by a boosted prior_mean", {
-  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03),
-                      prior_mean     = c(0.9999, 0.05, NA, NA))
+  df <- make_theta_df(
+    posterior_mean = c(0.47, 0.47, 0.03, 0.03),
+    prior_mean = c(0.9999, 0.05, NA, NA)
+  )
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_rank, "genus")
   expect_true(out$winner_has_occurrence_record)
@@ -720,17 +799,21 @@ test_that("winner_has_occurrence_record is unaffected by a boosted prior_mean", 
 test_that("winner_has_occurrence_record reads prior_branch when present (kernel schema)", {
   # The kernel inversion in miniature: the resident winner carries legacy
   # model_tier = NA; a losing evidence-blend row carries a non-NA legacy tier.
-  df <- make_theta_df(model_tier     = c(NA, "tier_undetected_evidence", NA, NA),
-                      posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  df <- make_theta_df(
+    model_tier = c(NA, "tier_undetected_evidence", NA, NA),
+    posterior_mean = c(0.97, 0.01, 0.01, 0.01)
+  )
   df$prior_branch <- c("resident_observed", "resident_undetected", NA, NA)
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Aa one")
-  expect_true(out$winner_has_occurrence_record)   # legacy reading gave FALSE
+  expect_true(out$winner_has_occurrence_record) # legacy reading gave FALSE
 
   # An evidence-elevated winner (zero local records) reads FALSE, even though
   # its legacy model_tier is non-NA (legacy reading gave TRUE).
-  df2 <- make_theta_df(model_tier     = c("tier_undetected_evidence", NA, NA, NA),
-                       posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  df2 <- make_theta_df(
+    model_tier = c("tier_undetected_evidence", NA, NA, NA),
+    posterior_mean = c(0.97, 0.01, 0.01, 0.01)
+  )
   df2$prior_branch <- c("resident_undetected", "resident_observed", NA, NA)
   out2 <- posterior_consensus(df2, rank_system = c("family", "genus", "species"))
   expect_equal(out2$consensus_taxon, "Aa one")
@@ -738,8 +821,10 @@ test_that("winner_has_occurrence_record reads prior_branch when present (kernel 
 })
 
 test_that("transport (domestic/food) winners read FALSE under the kernel schema", {
-  df <- make_theta_df(model_tier     = c("tier_domestic_food", NA, NA, NA),
-                      posterior_mean = c(0.97, 0.01, 0.01, 0.01))
+  df <- make_theta_df(
+    model_tier = c("tier_domestic_food", NA, NA, NA),
+    posterior_mean = c(0.97, 0.01, 0.01, 0.01)
+  )
   df$prior_branch <- c("transport", NA, NA, NA)
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_false(out$winner_has_occurrence_record)
@@ -769,10 +854,12 @@ test_that("legacy tables without prior_branch keep the model_tier reading", {
 # ==============================================================================
 
 test_that("consensus_prior is NA without group_priors, at any rank", {
-  sp  <- posterior_consensus(make_theta_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01)),
-                             rank_system = c("family", "genus", "species"))
+  sp <- posterior_consensus(make_theta_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01)),
+    rank_system = c("family", "genus", "species")
+  )
   gen <- posterior_consensus(make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03)),
-                             rank_system = c("family", "genus", "species"))
+    rank_system = c("family", "genus", "species")
+  )
   expect_equal(sp$consensus_rank, "species")
   expect_true(is.na(sp$consensus_prior))
   expect_equal(gen$consensus_rank, "genus")
@@ -785,39 +872,57 @@ test_that("group_priors drives consensus_prior when a matching (rank, taxon) row
   # appears as a candidate here -- group_priors knows about it, the
   # observation's own candidates don't.
   df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
-  gp <- data.frame(rank = "genus", taxon = "Aa", theta_sum = 0.02 + 0.05 + 0.03,
-                   n_members = 3L, stringsAsFactors = FALSE)
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
-                             group_priors = gp)
+  gp <- data.frame(
+    rank = "genus", taxon = "Aa", theta_sum = 0.02 + 0.05 + 0.03,
+    n_members = 3L, stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
   expect_equal(out$consensus_rank, "genus")
   expect_equal(out$consensus_prior, 0.10)
 })
 
 test_that("consensus_prior at genus rank is unaffected by a boosted prior_mean", {
-  df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03),
-                      prior_mean     = c(0.9999, 0.05, NA, NA))
-  gp <- data.frame(rank = "genus", taxon = "Aa", theta_sum = 0.02 + 0.05,
-                   n_members = 2L, stringsAsFactors = FALSE)
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
-                             group_priors = gp)
-  expect_equal(out$consensus_prior, 0.07)   # unaffected by winner_prior = 0.9999
+  df <- make_theta_df(
+    posterior_mean = c(0.47, 0.47, 0.03, 0.03),
+    prior_mean = c(0.9999, 0.05, NA, NA)
+  )
+  gp <- data.frame(
+    rank = "genus", taxon = "Aa", theta_sum = 0.02 + 0.05,
+    n_members = 2L, stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
+  expect_equal(out$consensus_prior, 0.07) # unaffected by winner_prior = 0.9999
 })
 
 test_that("consensus_prior is NA when group_priors has no matching row", {
   df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
-  gp <- data.frame(rank = "genus", taxon = "SomeOtherGenus", theta_sum = 0.5,
-                   n_members = 4L, stringsAsFactors = FALSE)
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
-                             group_priors = gp)
+  gp <- data.frame(
+    rank = "genus", taxon = "SomeOtherGenus", theta_sum = 0.5,
+    n_members = 4L, stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
   expect_true(is.na(out$consensus_prior))
 })
 
 test_that("group_priors can supply a species-rank entry too", {
   df <- make_theta_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01))
-  gp <- data.frame(rank = "species", taxon = "Aa one", theta_sum = 0.02,
-                   n_members = 1L, stringsAsFactors = FALSE)
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
-                             group_priors = gp)
+  gp <- data.frame(
+    rank = "species", taxon = "Aa one", theta_sum = 0.02,
+    n_members = 1L, stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
   expect_equal(out$consensus_rank, "species")
   expect_equal(out$consensus_prior, 0.02)
 })
@@ -828,7 +933,7 @@ test_that("stops on invalid group_priors", {
     posterior_consensus(df, rank_system = c("family", "genus", "species"), group_priors = "x"),
     "group_priors"
   )
-  gp_bad <- data.frame(rank = "genus", taxon = "Aa")   # missing theta_sum
+  gp_bad <- data.frame(rank = "genus", taxon = "Aa") # missing theta_sum
   expect_error(
     posterior_consensus(df, rank_system = c("family", "genus", "species"), group_priors = gp_bad),
     "theta_sum"
@@ -852,19 +957,27 @@ test_that("consensus_has_occurrence_record is NA when group_priors is NULL (not 
 
 test_that("consensus_has_occurrence_record is TRUE when group_priors has a matching row", {
   df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
-  gp <- data.frame(rank = "genus", taxon = "Aa", theta_sum = 0.07,
-                   n_members = 2L, stringsAsFactors = FALSE)
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
-                             group_priors = gp)
+  gp <- data.frame(
+    rank = "genus", taxon = "Aa", theta_sum = 0.07,
+    n_members = 2L, stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
   expect_true(out$consensus_has_occurrence_record)
 })
 
 test_that("consensus_has_occurrence_record is FALSE (confirmed absent) when group_priors has no match", {
   df <- make_theta_df(posterior_mean = c(0.47, 0.47, 0.03, 0.03))
-  gp <- data.frame(rank = "genus", taxon = "SomeOtherGenus", theta_sum = 0.5,
-                   n_members = 4L, stringsAsFactors = FALSE)
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"),
-                             group_priors = gp)
+  gp <- data.frame(
+    rank = "genus", taxon = "SomeOtherGenus", theta_sum = 0.5,
+    n_members = 4L, stringsAsFactors = FALSE
+  )
+  out <- posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    group_priors = gp
+  )
   expect_false(out$consensus_has_occurrence_record)
   expect_true(is.na(out$consensus_prior))
 })

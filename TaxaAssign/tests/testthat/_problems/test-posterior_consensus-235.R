@@ -7,29 +7,31 @@ attach(test_env, warn.conflicts = FALSE)
 
 # prequel ----------------------------------------------------------------------
 make_posterior <- function(observation_id, taxon_name, taxon_name_rank,
-                            hypothesis_type, posterior_mean,
-                            genus = NULL, family = NULL, species = NULL) {
+                           hypothesis_type, posterior_mean,
+                           genus = NULL, family = NULL, species = NULL) {
   df <- data.frame(
-    observation_id       = observation_id,
-    taxon_name      = taxon_name,
+    observation_id = observation_id,
+    taxon_name = taxon_name,
     taxon_name_rank = taxon_name_rank,
     hypothesis_type = hypothesis_type,
-    posterior_mean  = posterior_mean,
+    posterior_mean = posterior_mean,
     stringsAsFactors = FALSE
   )
-  if (!is.null(genus))   df$genus   <- genus
-  if (!is.null(family))  df$family  <- family
+  if (!is.null(genus)) df$genus <- genus
+  if (!is.null(family)) df$family <- family
   if (!is.null(species)) df$species <- species
   df
 }
 
 # test -------------------------------------------------------------------------
 df <- make_posterior(
-    observation_id       = c("s1", "s1"),
-    taxon_name      = c("Fundulus parvipinnis", "Fundulus catus"),
-    taxon_name_rank = rep("species", 2),
-    hypothesis_type = rep("specific_candidate", 2),
-    posterior_mean  = c(0.04, 0.03)
-  )
-out <- posterior_consensus(df, rank_system = c("genus", "species"),
-                              min_posterior = 0.05)
+  observation_id = c("s1", "s1"),
+  taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
+  taxon_name_rank = rep("species", 2),
+  hypothesis_type = rep("specific_candidate", 2),
+  posterior_mean = c(0.04, 0.03)
+)
+out <- posterior_consensus(df,
+  rank_system = c("genus", "species"),
+  min_posterior = 0.05
+)

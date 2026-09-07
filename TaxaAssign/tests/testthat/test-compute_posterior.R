@@ -10,48 +10,55 @@ library(dplyr)
 
 make_test_df <- function() {
   dplyr::bind_rows(
-
     # Sample A: clear winner (high phi = tight priors)
     dplyr::tibble(
-      observation_id            = "Sample_A",
-      taxon_name           = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
-      hypothesis_type      = c("specific_candidate", "specific_candidate",
-                               "unreferenced_species"),
+      observation_id = "Sample_A",
+      taxon_name = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+      hypothesis_type = c(
+        "specific_candidate", "specific_candidate",
+        "unreferenced_species"
+      ),
       score_likelihood = c(0.85, 0.30, 0.10),
-      score_likelihood_mean      = c(0.83, 0.31, 0.10),
-      score_likelihood_sd        = c(0.05, 0.04, 0.02),
-      prior_mean           = c(0.60, 0.30, 0.10),
-      prior_alpha          = c(30.0, 15.0, 5.0),
-      prior_beta           = c(20.0, 35.0, 45.0)
+      score_likelihood_mean = c(0.83, 0.31, 0.10),
+      score_likelihood_sd = c(0.05, 0.04, 0.02),
+      prior_mean = c(0.60, 0.30, 0.10),
+      prior_alpha = c(30.0, 15.0, 5.0),
+      prior_beta = c(20.0, 35.0, 45.0)
     ),
 
     # Sample B: two strong candidates (ambiguous, moderate phi)
     dplyr::tibble(
-      observation_id            = "Sample_B",
-      taxon_name           = c("Salmo salar", "Salmo trutta", "Salmo"),
-      hypothesis_type      = c("specific_candidate", "specific_candidate",
-                               "unreferenced_species"),
+      observation_id = "Sample_B",
+      taxon_name = c("Salmo salar", "Salmo trutta", "Salmo"),
+      hypothesis_type = c(
+        "specific_candidate", "specific_candidate",
+        "unreferenced_species"
+      ),
       score_likelihood = c(0.70, 0.65, 0.10),
-      score_likelihood_mean      = c(0.68, 0.64, 0.10),
-      score_likelihood_sd        = c(0.08, 0.08, 0.02),
-      prior_mean           = c(0.50, 0.40, 0.10),
-      prior_alpha          = c(5.0, 4.0, 1.0),
-      prior_beta           = c(5.0, 6.0, 9.0)
+      score_likelihood_mean = c(0.68, 0.64, 0.10),
+      score_likelihood_sd = c(0.08, 0.08, 0.02),
+      prior_mean = c(0.50, 0.40, 0.10),
+      prior_alpha = c(5.0, 4.0, 1.0),
+      prior_beta = c(5.0, 6.0, 9.0)
     ),
 
     # Sample C: 5 hypotheses (mixed phi)
     dplyr::tibble(
-      observation_id            = "Sample_C",
-      taxon_name           = c("Thunnus thynnus", "Thunnus albacares",
-                               "Thunnus obesus", "Thunnus", "Scombridae"),
-      hypothesis_type      = c(rep("specific_candidate", 3),
-                               "unreferenced_species", "unreferenced_genus"),
+      observation_id = "Sample_C",
+      taxon_name = c(
+        "Thunnus thynnus", "Thunnus albacares",
+        "Thunnus obesus", "Thunnus", "Scombridae"
+      ),
+      hypothesis_type = c(
+        rep("specific_candidate", 3),
+        "unreferenced_species", "unreferenced_genus"
+      ),
       score_likelihood = c(0.90, 0.40, 0.20, 0.05, 0.02),
-      score_likelihood_mean      = c(0.88, 0.41, 0.21, 0.05, 0.02),
-      score_likelihood_sd        = c(0.06, 0.05, 0.04, 0.01, 0.01),
-      prior_mean           = c(0.50, 0.25, 0.15, 0.07, 0.03),
-      prior_alpha          = c(25.0, 12.5, 7.5, 3.5, 1.5),
-      prior_beta           = c(25.0, 37.5, 42.5, 46.5, 48.5)
+      score_likelihood_mean = c(0.88, 0.41, 0.21, 0.05, 0.02),
+      score_likelihood_sd = c(0.06, 0.05, 0.04, 0.01, 0.01),
+      prior_mean = c(0.50, 0.25, 0.15, 0.07, 0.03),
+      prior_alpha = c(25.0, 12.5, 7.5, 3.5, 1.5),
+      prior_beta = c(25.0, 37.5, 42.5, 46.5, 48.5)
     )
   )
 }
@@ -61,12 +68,14 @@ make_test_df <- function() {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior returns correct structure with Beta priors", {
-  df     <- make_test_df()
+  df <- make_test_df()
   result <- compute_posterior(df, n_sims = 500L)
 
   # Output columns present
-  expect_true(all(c("posterior_point_est", "posterior_mean",
-                    "posterior_sd", "confidence_score") %in% names(result)))
+  expect_true(all(c(
+    "posterior_point_est", "posterior_mean",
+    "posterior_sd", "confidence_score"
+  ) %in% names(result)))
 
   # Pass-through columns unchanged
   expect_true(all(c("taxon_name", "hypothesis_type") %in% names(result)))
@@ -88,7 +97,7 @@ test_that("compute_posterior returns correct structure with Beta priors", {
 
   # Posteriors are non-negative
   expect_true(all(result$posterior_point_est >= 0))
-  expect_true(all(result$posterior_mean      >= 0))
+  expect_true(all(result$posterior_mean >= 0))
 
   # confidence_score in [0, 1]
   expect_true(all(result$confidence_score >= 0 & result$confidence_score <= 1))
@@ -99,7 +108,7 @@ test_that("compute_posterior returns correct structure with Beta priors", {
 # ---------------------------------------------------------------------------
 
 test_that("Beta priors propagate uncertainty into posterior_sd", {
-  df     <- make_test_df()
+  df <- make_test_df()
   result <- compute_posterior(df, n_sims = 1000L)
 
   # With Beta priors + likelihood SD, posterior_sd should be > 0
@@ -111,7 +120,7 @@ test_that("Beta priors propagate uncertainty into posterior_sd", {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior with no alpha/beta treats priors as fixed", {
-  df     <- make_test_df() |> dplyr::select(-prior_alpha, -prior_beta)
+  df <- make_test_df() |> dplyr::select(-prior_alpha, -prior_beta)
 
   # Also set score_likelihood_sd to 0 so there's no uncertainty at all
   df$score_likelihood_sd <- 0
@@ -138,7 +147,7 @@ test_that("MC runs for likelihood uncertainty even without Beta priors", {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior with n_sims = 0 uses point estimate path only", {
-  df     <- make_test_df()
+  df <- make_test_df()
   result <- compute_posterior(df, n_sims = 0L)
 
   expect_true(all(abs(result$posterior_mean - result$posterior_point_est) < 1e-10))
@@ -149,7 +158,7 @@ test_that("compute_posterior with n_sims = 0 uses point estimate path only", {
     dplyr::group_by(observation_id) |>
     dplyr::mutate(is_top = posterior_mean == max(posterior_mean)) |>
     dplyr::ungroup()
-  expect_true(all(top_flags$confidence_score[top_flags$is_top]  == 1))
+  expect_true(all(top_flags$confidence_score[top_flags$is_top] == 1))
   expect_true(all(top_flags$confidence_score[!top_flags$is_top] == 0))
 })
 
@@ -168,7 +177,7 @@ test_that("compute_posterior errors informatively on missing required columns", 
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior replaces NA score_likelihood_sd with 0 and warns", {
-  df        <- make_test_df()
+  df <- make_test_df()
   df$score_likelihood_sd[c(1L, 4L)] <- NA
 
   expect_warning(
@@ -184,18 +193,18 @@ test_that("compute_posterior replaces NA score_likelihood_sd with 0 and warns", 
 
 test_that("compute_posterior assigns posterior = 1 when only one hypothesis", {
   df <- dplyr::tibble(
-    observation_id            = "Solo",
-    taxon_name           = "Gadus morhua",
-    hypothesis_type      = "specific_candidate",
+    observation_id = "Solo",
+    taxon_name = "Gadus morhua",
+    hypothesis_type = "specific_candidate",
     score_likelihood = 0.75,
-    score_likelihood_mean      = 0.75,
-    score_likelihood_sd        = 0.0,
-    prior_mean           = 0.5
+    score_likelihood_mean = 0.75,
+    score_likelihood_sd = 0.0,
+    prior_mean = 0.5
   )
   result <- suppressMessages(compute_posterior(df, n_sims = 0L))
 
   expect_equal(result$posterior_point_est, 1)
-  expect_equal(result$posterior_mean,      1)
+  expect_equal(result$posterior_mean, 1)
 })
 
 # ---------------------------------------------------------------------------
@@ -274,12 +283,12 @@ test_that("higher phi produces lower posterior_sd than lower phi", {
   )
 
   set.seed(42)
-  res_tight   <- compute_posterior(df_tight,   n_sims = 2000L)
+  res_tight <- compute_posterior(df_tight, n_sims = 2000L)
   set.seed(42)
   res_diffuse <- compute_posterior(df_diffuse, n_sims = 2000L)
 
   # Tight priors should give smaller posterior SD
-  mean_sd_tight   <- mean(res_tight$posterior_sd)
+  mean_sd_tight <- mean(res_tight$posterior_sd)
   mean_sd_diffuse <- mean(res_diffuse$posterior_sd)
   expect_true(mean_sd_tight < mean_sd_diffuse)
 })
@@ -304,16 +313,16 @@ test_that("J-shaped prior (alpha < 1) simulation is consistent with point estima
     score_likelihood      = c(1.0, 1.0),
     score_likelihood_mean = c(1.0, 1.0),
     score_likelihood_sd   = c(0.0, 0.0),
-    prior_mean            = c(3e-4,  6e-6),
-    prior_alpha           = c(6e-4,  1.0),
+    prior_mean            = c(3e-4, 6e-6),
+    prior_alpha           = c(6e-4, 1.0),
     prior_beta            = c(1.9994, 161361)
   )
 
   set.seed(123)
   result <- compute_posterior(df, n_sims = 1000L)
 
-  local_row  <- result[result$taxon_name == "Local_sp",  ]
-  unmod_row  <- result[result$taxon_name == "Unmod_sp", ]
+  local_row <- result[result$taxon_name == "Local_sp", ]
+  unmod_row <- result[result$taxon_name == "Unmod_sp", ]
 
   # Point estimate: Local_sp should win (3e-4 >> 6e-6)
   expect_gt(local_row$posterior_point_est, unmod_row$posterior_point_est)
@@ -394,24 +403,25 @@ test_that("truncated-normal sampling avoids the spurious all-zero-likelihood war
 # unchanged: prior_mean is the mixture's exact expectation.
 
 .make_mix_df <- function(w = 0.5) {
-  th_p <- 0.02; th_f <- 1e-4
+  th_p <- 0.02
+  th_f <- 1e-4
   m <- th_f + (th_p - th_f) * w
   dplyr::tibble(
-    observation_id        = "Mix_A",
-    taxon_name            = c("Perca flavescens", "Sander lucioperca"),
-    hypothesis_type       = "specific_candidate",
-    score_likelihood      = c(1.0, 0.4),
+    observation_id = "Mix_A",
+    taxon_name = c("Perca flavescens", "Sander lucioperca"),
+    hypothesis_type = "specific_candidate",
+    score_likelihood = c(1.0, 0.4),
     score_likelihood_mean = c(1.0, 0.4),
-    score_likelihood_sd   = c(0, 0),
+    score_likelihood_sd = c(0, 0),
     # competitor alpha <= 1 so the J-guard pins it at prior_mean -- makes the
     # mixture row's expected shares exactly computable (no Beta-draw coupling
     # through the per-simulation normalization)
-    prior_mean            = c(0.04, m),
-    prior_alpha           = c(0.5, m * 2),
-    prior_beta            = c(12, (1 - m) * 2),
-    prior_mix_w             = c(NA_real_, w),
+    prior_mean = c(0.04, m),
+    prior_alpha = c(0.5, m * 2),
+    prior_beta = c(12, (1 - m) * 2),
+    prior_mix_w = c(NA_real_, w),
     prior_mix_theta_present = c(NA_real_, th_p),
-    prior_mix_theta_absent  = c(NA_real_, th_f)
+    prior_mix_theta_absent = c(NA_real_, th_f)
   )
 }
 
@@ -423,7 +433,7 @@ test_that("mixture row's posterior_mean integrates over presence states (below t
   #   z = 1 (w): share = th_p*0.4 / (0.04*1 + th_p*0.4)   ~= 0.1667
   #   z = 0    : share = th_f*0.4 / (0.04*1 + th_f*0.4)   ~= 0.000999
   exp_share_present <- (0.02 * 0.4 / 1.4) / (0.04 * 1 / 1.4 + 0.02 * 0.4 / 1.4)
-  exp_share_absent  <- (1e-4 * 0.4 / 1.4) / (0.04 * 1 / 1.4 + 1e-4 * 0.4 / 1.4)
+  exp_share_absent <- (1e-4 * 0.4 / 1.4) / (0.04 * 1 / 1.4 + 1e-4 * 0.4 / 1.4)
   expected <- 0.5 * exp_share_present + 0.5 * exp_share_absent
   expect_equal(mix_row$posterior_mean, expected, tolerance = 0.03)
   # The J-guard point value (what the old MC path returned) is share at the
@@ -436,7 +446,7 @@ test_that("mixture confidence_score reads as fraction of presence states won", {
   set.seed(7)
   # Make the mixture candidate WIN whenever present: strong likelihood edge.
   df <- .make_mix_df(w = 0.3)
-  df$score_likelihood      <- c(0.2, 1.0)
+  df$score_likelihood <- c(0.2, 1.0)
   df$score_likelihood_mean <- c(0.2, 1.0)
   out <- suppressMessages(compute_posterior(df, n_sims = 4000))
   mix_row <- out[out$taxon_name == "Sander lucioperca", ]
@@ -458,8 +468,10 @@ test_that("non-mixture rows are unaffected by the presence of mixture columns", 
   set.seed(5)
   df <- .make_mix_df(w = 0.5)
   base <- df |> dplyr::select(-prior_mix_w, -prior_mix_theta_present, -prior_mix_theta_absent)
-  set.seed(99); out_with  <- suppressMessages(compute_posterior(df, n_sims = 300))
-  set.seed(99); out_bare  <- suppressMessages(compute_posterior(base, n_sims = 300))
+  set.seed(99)
+  out_with <- suppressMessages(compute_posterior(df, n_sims = 300))
+  set.seed(99)
+  out_bare <- suppressMessages(compute_posterior(base, n_sims = 300))
   # The NON-mixture row's point estimate is identical either way
   expect_equal(
     out_with$posterior_point_est[out_with$taxon_name == "Perca flavescens"],

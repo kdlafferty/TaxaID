@@ -67,7 +67,7 @@ utils::globalVariables(c(
 #' @examples
 #' likelihoods_ready <- data.frame(
 #'   taxon_name      = c("Species alpha", "Species beta"),
-#'   alpha           = c(NA, 5),          # NA = unmodelled
+#'   alpha           = c(NA, 5), # NA = unmodelled
 #'   prior_alpha     = c(1, 5),
 #'   prior_beta      = c(99, 15),
 #'   prior_mean      = c(0.01, 0.25),
@@ -75,25 +75,27 @@ utils::globalVariables(c(
 #'   singleton_beta  = c(18, 18)
 #' )
 #' inat_range <- data.frame(
-#'   taxon_name    = c("Species alpha", "Species beta"),
-#'   in_range      = c(TRUE, FALSE),
+#'   taxon_name = c("Species alpha", "Species beta"),
+#'   in_range = c(TRUE, FALSE),
 #'   n_observations = c(800, 5)
 #' )
 #' adjust_inat_range_priors(likelihoods_ready, inat_range, n_obs_threshold = 500L)
 #' @export
 adjust_inat_range_priors <- function(
-    likelihoods_ready,
-    inat_range,
-    n_obs_threshold = 500L,
-    require_name_match = TRUE,
-    verbose         = FALSE
+  likelihoods_ready,
+  inat_range,
+  n_obs_threshold = 500L,
+  require_name_match = TRUE,
+  verbose = FALSE
 ) {
   # --- Input validation -------------------------------------------------------
   if (!is.data.frame(likelihoods_ready)) {
     cli::cli_abort("{.arg likelihoods_ready} must be a data frame.")
   }
-  needed_lr <- c("taxon_name", "alpha", "prior_alpha", "prior_beta",
-                 "prior_mean", "singleton_alpha", "singleton_beta")
+  needed_lr <- c(
+    "taxon_name", "alpha", "prior_alpha", "prior_beta",
+    "prior_mean", "singleton_alpha", "singleton_beta"
+  )
   missing_lr <- setdiff(needed_lr, names(likelihoods_ready))
   if (length(missing_lr) > 0L) {
     cli::cli_abort(c(
@@ -118,7 +120,7 @@ adjust_inat_range_priors <- function(
     ))
   }
   if (!is.numeric(n_obs_threshold) || length(n_obs_threshold) != 1L ||
-      is.na(n_obs_threshold) || n_obs_threshold < 0) {
+    is.na(n_obs_threshold) || n_obs_threshold < 0) {
     cli::cli_abort("{.arg n_obs_threshold} must be a single non-negative number.")
   }
 
@@ -134,8 +136,8 @@ adjust_inat_range_priors <- function(
   }
 
   # --- Qualifying taxa: in_range = TRUE, n_observations >= threshold ----------
-  qualifies <- !is.na(inat_range$in_range)       & inat_range$in_range == TRUE &
-               !is.na(inat_range$n_observations) & inat_range$n_observations >= n_obs_threshold
+  qualifies <- !is.na(inat_range$in_range) & inat_range$in_range == TRUE &
+    !is.na(inat_range$n_observations) & inat_range$n_observations >= n_obs_threshold
 
   # Fuzzy-match gate (2026-08-28): check_inat_range() resolves a query by best
   # TEXT match, so in_range = TRUE can describe a DIFFERENT species (real case:
@@ -172,8 +174,10 @@ adjust_inat_range_priors <- function(
   # --- Rows to elevate --------------------------------------------------------
   # Conditions: unmodelled, taxon in qualifying set, singleton floor available,
   # and the floor actually exceeds the current prior (guard for high-singleton clades).
-  singleton_floor <- .beta_mean(likelihoods_ready$singleton_alpha,
-                                 likelihoods_ready$singleton_beta)
+  singleton_floor <- .beta_mean(
+    likelihoods_ready$singleton_alpha,
+    likelihoods_ready$singleton_beta
+  )
 
   elevate_mask <- is_unmod &
     likelihoods_ready$taxon_name %in% qualifying_names &
@@ -182,8 +186,8 @@ adjust_inat_range_priors <- function(
     !is.na(likelihoods_ready$prior_mean) &
     singleton_floor > likelihoods_ready$prior_mean
 
-  n_rows     <- sum(elevate_mask, na.rm = TRUE)
-  n_taxa     <- length(unique(likelihoods_ready$taxon_name[
+  n_rows <- sum(elevate_mask, na.rm = TRUE)
+  n_taxa <- length(unique(likelihoods_ready$taxon_name[
     elevate_mask & !is.na(likelihoods_ready$taxon_name)
   ]))
 
@@ -196,10 +200,12 @@ adjust_inat_range_priors <- function(
 
   # --- Apply elevation --------------------------------------------------------
   likelihoods_ready$prior_alpha[elevate_mask] <- likelihoods_ready$singleton_alpha[elevate_mask]
-  likelihoods_ready$prior_beta[elevate_mask]  <- likelihoods_ready$singleton_beta[elevate_mask]
-  likelihoods_ready$prior_mean[elevate_mask]  <-
-    .beta_mean(likelihoods_ready$prior_alpha[elevate_mask],
-               likelihoods_ready$prior_beta[elevate_mask])
+  likelihoods_ready$prior_beta[elevate_mask] <- likelihoods_ready$singleton_beta[elevate_mask]
+  likelihoods_ready$prior_mean[elevate_mask] <-
+    .beta_mean(
+      likelihoods_ready$prior_alpha[elevate_mask],
+      likelihoods_ready$prior_beta[elevate_mask]
+    )
   likelihoods_ready$inat_range_elevated[elevate_mask] <- TRUE
 
   cli::cli_inform(

@@ -1,0 +1,64 @@
+linters: linters_with_defaults(
+    line_length_linter(120L),
+    # Disabled package-wide, not per-file: near-100% false positives here.
+    # - indentation_linter: a hanging-indent house style choice.
+    # - commented_code_linter: this ecosystem's "# function_name()"
+    #   section-header convention, rename-history comments containing "->",
+    #   and deliberate commented-out usage examples in workflow scripts --
+    #   not dead code.
+    # - object_name_linter / object_length_linter: SCREAMING_SNAKE_CASE
+    #   config constants in workflow/demo scripts and long, deliberately
+    #   descriptive internal/exported names -- established conventions.
+    indentation_linter = NULL,
+    commented_code_linter = NULL,
+    object_name_linter = NULL,
+    object_length_linter = NULL
+  )
+encoding: "UTF-8"
+exclusions: list(
+    # Every one of these "unused variable" hits is read inside a
+    # cli::cli_inform()/cli_warn()/cli_abort() glue-style "{var}" string
+    # interpolation -- a real, systematic false-positive class for this
+    # package's messaging convention (lint_package()'s static analysis
+    # doesn't trace {var} references inside string literals), confirmed by
+    # tracing each one to its actual usage before excluding.
+    "R/adjust_inat_range_priors.R" = list(object_usage_linter = c(190L), line_length_linter = Inf),
+    "R/assign_taxa_llm.R" = list(object_usage_linter = c(503L)),
+    "R/combine_multisite_priors.R" = list(object_usage_linter = c(209L), line_length_linter = Inf),
+    "R/join_priors.R" = list(
+      object_usage_linter = c(1254L, 1358L),
+      assignment_linter = c(348L, 349L, 350L, 351L, 352L),
+      line_length_linter = Inf
+    ),
+    "R/site_utils.R" = list(object_usage_linter = c(326L, 359L)),
+    "R/suggest_unreferenced_species.R" = list(
+      object_usage_linter = c(815L, 853L, 921L, 1056L, 1065L, 1066L, 1073L),
+      line_length_linter = Inf
+    ),
+    "R/update_prior_from_consensus.R" = list(object_usage_linter = c(285L)),
+    # .synth_taxa/.synth_genus/.synth_family are top-level constants in this
+    # demo/workflow script, referenced from inside a nested tibble::tibble()
+    # call -- lint_package()'s per-function scoping doesn't see them, not a
+    # real missing-definition.
+    "inst/workflows/compute_posteriors_workflow.R" = list(object_usage_linter = Inf),
+    # .tic()/.toc() closures mutate their own enclosing .timings accumulator
+    # -- the standard, documented use of <<- (a closure updating enclosing-
+    # scope state), not the "reaching into an unrelated/global environment"
+    # pattern this linter targets.
+    "inst/TaxaAssign_bayesian_workflow.R" = list(assignment_linter = c(36L, 40L)),
+    # Remaining line-length hits: long cli-message/sprintf diagnostic
+    # strings and test-assertion strings spread thinly across several
+    # files -- zero security- or correctness-relevant value; the real
+    # findings in this package (2 genuinely-orphaned computations --
+    # report_assign()'s discarded rank_table, posterior_consensus()'s dead
+    # named_total_all -- plus brace/return/pipe-consistency fixes) were
+    # fixed directly instead of suppressed.
+    "R/generate_report.R" = list(line_length_linter = Inf),
+    "R/compute_posterior.R" = list(line_length_linter = Inf),
+    "R/build_context.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-suggest_unreferenced_species.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-update_prior.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-posterior_consensus.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-join_priors.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-assign_taxa_llm.R" = list(line_length_linter = Inf)
+  )

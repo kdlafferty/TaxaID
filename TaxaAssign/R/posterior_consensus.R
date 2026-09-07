@@ -368,19 +368,19 @@
 #'
 #' @examples
 #' posterior_df <- data.frame(
-#'   observation_id   = c("S1", "S1", "S1"),
-#'   taxon_name       = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
-#'   taxon_name_rank  = c("species", "species", "genus"),
-#'   hypothesis_type  = "specific_candidate",
-#'   genus            = "Gadus",
-#'   family           = "Gadidae",
-#'   posterior_mean   = c(0.75, 0.20, 0.05),
+#'   observation_id = c("S1", "S1", "S1"),
+#'   taxon_name = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+#'   taxon_name_rank = c("species", "species", "genus"),
+#'   hypothesis_type = "specific_candidate",
+#'   genus = "Gadus",
+#'   family = "Gadidae",
+#'   posterior_mean = c(0.75, 0.20, 0.05),
 #'   posterior_point_est = c(0.75, 0.20, 0.05)
 #' )
 #' consensus <- posterior_consensus(
 #'   posterior_df,
 #'   cumulative_threshold = 0.9,
-#'   min_posterior         = 0.05
+#'   min_posterior = 0.05
 #' )
 #' consensus[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
 #'
@@ -390,41 +390,48 @@
 #'
 #' @export
 posterior_consensus <- function(posterior_df,
-                                rank_system             = NULL,
-                                cumulative_threshold    = 0.9,
-                                min_posterior           = 0.05,
-                                posterior_col           = "posterior_point_est",
+                                rank_system = NULL,
+                                cumulative_threshold = 0.9,
+                                min_posterior = 0.05,
+                                posterior_col = "posterior_point_est",
                                 lookup_missing_taxonomy = FALSE,
-                                backbone_id             = NULL,
-                                species_reference       = NULL,
-                                group_priors            = NULL) {
-
+                                backbone_id = NULL,
+                                species_reference = NULL,
+                                group_priors = NULL) {
   # --- Input validation -------------------------------------------------------
-  required <- c("observation_id", "taxon_name", "taxon_name_rank",
-                 "hypothesis_type", posterior_col)
+  required <- c(
+    "observation_id", "taxon_name", "taxon_name_rank",
+    "hypothesis_type", posterior_col
+  )
   missing_cols <- setdiff(required, names(posterior_df))
-  if (length(missing_cols) > 0)
+  if (length(missing_cols) > 0) {
     cli::cli_abort("posterior_df missing required column(s): {.field {missing_cols}}")
+  }
   if (!is.null(group_priors)) {
-    if (!is.data.frame(group_priors))
+    if (!is.data.frame(group_priors)) {
       cli::cli_abort("{.arg group_priors} must be a data.frame (see {.fn compute_group_priors}) or NULL.")
+    }
     missing_gp <- setdiff(c("rank", "taxon", "theta_sum"), names(group_priors))
-    if (length(missing_gp) > 0)
+    if (length(missing_gp) > 0) {
       cli::cli_abort("{.arg group_priors} missing required column(s): {.field {missing_gp}}")
+    }
   }
   if (!is.numeric(cumulative_threshold) || length(cumulative_threshold) != 1L ||
-      cumulative_threshold <= 0 || cumulative_threshold > 1)
+    cumulative_threshold <= 0 || cumulative_threshold > 1) {
     cli::cli_abort("{.arg cumulative_threshold} must be a single number in (0, 1].")
+  }
   if (!is.numeric(min_posterior) || length(min_posterior) != 1L ||
-      min_posterior < 0 || min_posterior >= 1)
+    min_posterior < 0 || min_posterior >= 1) {
     cli::cli_abort("{.arg min_posterior} must be a single number in [0, 1).")
+  }
   if (!is.null(species_reference) &&
-      !is.data.frame(species_reference) &&
-      !inherits(species_reference, "unreferenced_species_result"))
+    !is.data.frame(species_reference) &&
+    !inherits(species_reference, "unreferenced_species_result")) {
     cli::cli_abort(
       "{.arg species_reference} must be a data.frame, an \\
       {.cls unreferenced_species_result} object, or NULL."
     )
+  }
 
   # --- Resolve rank system ----------------------------------------------------
   if (is.null(rank_system)) {
@@ -476,7 +483,7 @@ posterior_consensus <- function(posterior_df,
       if (length(tax_cols_present) > 0) {
         unref_mask <- posterior_df$hypothesis_type %in%
           c("unreferenced_species", "unreferenced_genus")
-        needs_tax  <- unref_mask &
+        needs_tax <- unref_mask &
           rowSums(is.na(posterior_df[, tax_cols_present, drop = FALSE])) > 0
         unref_names <- unique(posterior_df$taxon_name[needs_tax])
         if (length(unref_names) > 0) {
@@ -524,9 +531,11 @@ posterior_consensus <- function(posterior_df,
 
   results <- lapply(observation_ids, function(sid) {
     chunk <- posterior_df[posterior_df$observation_id == sid, ]
-    .consensus_one_observation(chunk, sid, rank_system_eff,
-                           cumulative_threshold, min_posterior, posterior_col,
-                           group_priors)
+    .consensus_one_observation(
+      chunk, sid, rank_system_eff,
+      cumulative_threshold, min_posterior, posterior_col,
+      group_priors
+    )
   })
 
   result <- dplyr::bind_rows(results)
@@ -534,8 +543,9 @@ posterior_consensus <- function(posterior_df,
   # --- Optional downranking via species_reference -----------------------------
   if (!is.null(species_reference)) {
     species_ref <- .build_species_ref(species_reference, rank_system_eff)
-    if (!is.null(species_ref))
+    if (!is.null(species_ref)) {
       result <- .downrank_consensus(result, species_ref, rank_system_eff)
+    }
   }
 
   attr(result, "report_params") <- list(
@@ -564,28 +574,30 @@ posterior_consensus <- function(posterior_df,
 #' Compute consensus for one observation
 #' @noRd
 .consensus_one_observation <- function(chunk, sid, rank_system,
-                                   cumulative_threshold, min_posterior,
-                                   posterior_col, group_priors = NULL) {
-
+                                       cumulative_threshold, min_posterior,
+                                       posterior_col, group_priors = NULL) {
   # All named hypotheses contribute to LCA; only the unreferenced_family catch-all
   # is excluded (taxon_name = NA; represents uncharacterised diversity with no name).
   # named_all is kept before any filtering for consensus_posterior computation.
-  named_all       <- chunk[!is.na(chunk$taxon_name), ]
-  named_total_all <- sum(named_all[[posterior_col]], na.rm = TRUE)
+  named_all <- chunk[!is.na(chunk$taxon_name), ]
 
-  prior_updated_flag <- if ("prior_updated" %in% names(chunk))
-    any(chunk$prior_updated, na.rm = TRUE) else NULL
+  prior_updated_flag <- if ("prior_updated" %in% names(chunk)) {
+    any(chunk$prior_updated, na.rm = TRUE)
+  } else {
+    NULL
+  }
 
   .empty_flagged <- function() {
     row <- .empty_consensus_row(sid)
     if (!is.null(prior_updated_flag)) row$prior_updated <- prior_updated_flag
     for (v1_col in c("consensus_taxon_v1", "consensus_rank_v1")) {
-      if (v1_col %in% names(chunk))
+      if (v1_col %in% names(chunk)) {
         row[[v1_col]] <- chunk[[v1_col]][[1L]]
+      }
     }
     if ("consensus_taxon_v1" %in% names(row)) {
       v1 <- row$consensus_taxon_v1
-      row$taxon_changed <- !is.na(v1)   # was assigned before, now unresolvable
+      row$taxon_changed <- !is.na(v1) # was assigned before, now unresolvable
     }
     row
   }
@@ -615,10 +627,11 @@ posterior_consensus <- function(posterior_df,
 
   # Cumulative threshold within named-taxon posterior mass (post-filter)
   named_total <- sum(named[[posterior_col]], na.rm = TRUE)
-  if (named_total == 0)
+  if (named_total == 0) {
     return(.empty_consensus_row(sid))
+  }
 
-  cum_prop  <- cumsum(named[[posterior_col]]) / named_total
+  cum_prop <- cumsum(named[[posterior_col]]) / named_total
   n_include <- which(cum_prop >= cumulative_threshold)[1L]
   if (is.na(n_include)) n_include <- nrow(named)
 
@@ -627,9 +640,9 @@ posterior_consensus <- function(posterior_df,
   # Winner diagnostics: first row of plausible = highest-posterior hypothesis.
   # Extract prior and likelihood values; NA when the source column is absent
   # (e.g. when posterior_df comes from assign_taxa_llm() rather than compute_posterior()).
-  winner_row            <- plausible[1L, ]
-  winner_prior          <- .row_col_or(winner_row, "prior_mean")
-  winner_likelihood     <- .row_col_or(winner_row, "score_likelihood")
+  winner_row <- plausible[1L, ]
+  winner_prior <- .row_col_or(winner_row, "prior_mean")
+  winner_likelihood <- .row_col_or(winner_row, "score_likelihood")
   winner_likelihood_cov <- .row_col_or(winner_row, "score_likelihood_cov")
   # winner_theta_mean (2026-07-30): the winner's raw occurrence-model share
   # (TaxaExpect::prepare_model_dataframe()'s theta_mean = n_species /
@@ -640,7 +653,7 @@ posterior_consensus <- function(posterior_df,
   # "Rescaling onto the occurrence scale" section). Occurrence-plausibility
   # diagnostics below use this, not winner_prior, so a boost elsewhere in the
   # dataset cannot make an occurrence-implausible taxon read as "expected".
-  winner_theta_mean     <- .row_col_or(winner_row, "theta_mean")
+  winner_theta_mean <- .row_col_or(winner_row, "theta_mean")
 
   # Confusion-risk pass-through (TaxaLikely::evaluate_likelihoods()'s
   # species_confusion_risk/genus_confusion_risk/family_confusion_risk/
@@ -651,10 +664,10 @@ posterior_consensus <- function(posterior_df,
   # input). Purely informational -- never changes consensus_taxon/
   # consensus_rank. See TaxaFlag::add_posthoc_assessment()'s confusion-risk
   # wiring for how a downstream consumer reads these.
-  winner_species_confusion_risk   <- .row_col_or(winner_row, "species_confusion_risk")
-  winner_genus_confusion_risk     <- .row_col_or(winner_row, "genus_confusion_risk")
-  winner_family_confusion_risk    <- .row_col_or(winner_row, "family_confusion_risk")
-  winner_own_rank_confusion_risk  <- .row_col_or(winner_row, "own_rank_confusion_risk")
+  winner_species_confusion_risk <- .row_col_or(winner_row, "species_confusion_risk")
+  winner_genus_confusion_risk <- .row_col_or(winner_row, "genus_confusion_risk")
+  winner_family_confusion_risk <- .row_col_or(winner_row, "family_confusion_risk")
+  winner_own_rank_confusion_risk <- .row_col_or(winner_row, "own_rank_confusion_risk")
 
   # winner_rank_expanded (Session 149): TRUE when the winning hypothesis came
   # from join_priors()'s coarse-rank expansion (.expand_coarse_rank_rows()),
@@ -667,8 +680,11 @@ posterior_consensus <- function(posterior_df,
   # as equally evidence-supported would be wrong to do so for these rows --
   # see ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md.
   winner_hypothesis_type <- as.character(.row_col_or(winner_row, "hypothesis_type", NA_character_))
-  winner_rank_expanded <- if (is.na(winner_hypothesis_type)) NA
-    else identical(winner_hypothesis_type, "rank_expanded")
+  winner_rank_expanded <- if (is.na(winner_hypothesis_type)) {
+    NA
+  } else {
+    identical(winner_hypothesis_type, "rank_expanded")
+  }
 
   # LCA among plausible hypotheses
   lca <- .find_lca(plausible, rank_system)
@@ -708,7 +724,7 @@ posterior_consensus <- function(posterior_df,
   # beat" is deliberate, so the two read as independent signals. A count of 0
   # therefore means "nothing plausible to lose to", never "the winner is
   # implausible".
-  has_tier   <- "model_tier" %in% names(named_all)
+  has_tier <- "model_tier" %in% names(named_all)
   # Kernel-priors schema (2026-08-31): `prior_branch` supersedes `model_tier`
   # when present. "Plausible" here means "joined to a NAMED prior row" (any
   # branch -- resident, undetected-evidence, or transport); a row that fell
@@ -718,19 +734,29 @@ posterior_consensus <- function(posterior_df,
   # model_tier there is exactly inverted -- confirmed on real GreatLakes
   # kernel output (86 locally-evidenced resident rows all NA-tier).
   has_branch <- "prior_branch" %in% names(named_all)
-  has_plaus  <- has_branch || has_tier
-  plaus_mask <- if (has_branch) !is.na(named_all$prior_branch)
-    else if (has_tier) !is.na(named_all$model_tier) else NULL
+  has_plaus <- has_branch || has_tier
+  plaus_mask <- if (has_branch) {
+    !is.na(named_all$prior_branch)
+  } else if (has_tier) {
+    !is.na(named_all$model_tier)
+  } else {
+    NULL
+  }
 
   # taxon_name is a required column (checked at input validation), unlike the
   # winner_* pass-throughs above, so no presence check is needed here.
   winner_taxon <- as.character(winner_row$taxon_name[[1L]])
 
   primary_n_plausible_competitors <- if (has_plaus) {
-    others <- if (is.na(winner_taxon)) rep(TRUE, nrow(named_all)) else
+    others <- if (is.na(winner_taxon)) {
+      rep(TRUE, nrow(named_all))
+    } else {
       is.na(named_all$taxon_name) | named_all$taxon_name != winner_taxon
+    }
     as.integer(sum(plaus_mask & others, na.rm = TRUE))
-  } else NA_integer_
+  } else {
+    NA_integer_
+  }
 
   # Consensus-scoped version: distinct plausible groups at the LCA's own rank,
   # excluding the consensus taxon itself. At species rank this reduces to the
@@ -738,11 +764,15 @@ posterior_consensus <- function(posterior_df,
   # the rank-appropriate reading of "did it compete".
   consensus_n_plausible_competitors <- if (has_plaus && !is.na(lca$rank) && !is.na(lca$taxon)) {
     grp <- .extract_rank_values(named_all, lca$rank)
-    if (is.null(grp)) NA_integer_ else {
+    if (is.null(grp)) {
+      NA_integer_
+    } else {
       ok <- plaus_mask & !is.na(grp) & grp != lca$taxon
       as.integer(length(unique(grp[which(ok)])))
     }
-  } else NA_integer_
+  } else {
+    NA_integer_
+  }
 
   # --- Occurrence-plausibility support (2026-07-28) -----------------------
   # Two columns supporting the prior/occurrence-plausibility axis, which asks
@@ -770,10 +800,13 @@ posterior_consensus <- function(posterior_df,
   # GreatLakes B8 run: 873/885 "unprecedented"). A transport winner's
   # interpretation is carried separately by add_posthoc_assessment()'s
   # domestic_prior_caveat, which is the designed pairing.
-  winner_has_occurrence_record <- if (has_branch)
+  winner_has_occurrence_record <- if (has_branch) {
     isTRUE(winner_row$prior_branch[[1L]] == "resident_observed")
-  else if (has_tier)
-    !is.na(winner_row$model_tier[[1L]]) else NA
+  } else if (has_tier) {
+    !is.na(winner_row$model_tier[[1L]])
+  } else {
+    NA
+  }
   # `consensus_prior`: the occurrence-model share for the consensus GROUP,
   # not just its candidates. NA when nothing qualifies -- so NA doubles as
   # the consensus-scope "never reported" signal, needing no separate logical.
@@ -831,12 +864,16 @@ posterior_consensus <- function(posterior_df,
   # value is answering the wrong question.
   consensus_confusion_risk <- {
     cr_col <- switch(as.character(lca$rank),
-                     species = "species_confusion_risk",
-                     genus   = "genus_confusion_risk",
-                     family  = "family_confusion_risk",
-                     NA_character_)
-    if (!is.na(cr_col) && cr_col %in% names(winner_row))
-      winner_row[[cr_col]][[1L]] else NA_real_
+      species = "species_confusion_risk",
+      genus   = "genus_confusion_risk",
+      family  = "family_confusion_risk",
+      NA_character_
+    )
+    if (!is.na(cr_col) && cr_col %in% names(winner_row)) {
+      winner_row[[cr_col]][[1L]]
+    } else {
+      NA_real_
+    }
   }
 
   finest_rank <- rank_system[length(rank_system)]
@@ -875,58 +912,60 @@ posterior_consensus <- function(posterior_df,
   # hypotheses gives the fraction of simulations where the consensus taxon won.
   # Only available when posterior_df contains a confidence_score column.
   consensus_confidence_score <- if (!is.null(in_lca) &&
-                                    "confidence_score" %in% names(named_all)) {
+    "confidence_score" %in% names(named_all)) {
     sum(named_all$confidence_score[in_lca], na.rm = TRUE)
   } else {
     NA_real_
   }
 
   out <- data.frame(
-    observation_id             = sid,
-    consensus_taxon            = lca$taxon,
-    consensus_rank             = lca$rank,
-    consensus_reason           = consensus_reason,
-    is_resolved                = is_resolved,
-    consensus_posterior        = consensus_posterior,
+    observation_id = sid,
+    consensus_taxon = lca$taxon,
+    consensus_rank = lca$rank,
+    consensus_reason = consensus_reason,
+    is_resolved = is_resolved,
+    consensus_posterior = consensus_posterior,
     consensus_confidence_score = consensus_confidence_score,
-    n_plausible                = n_include,
-    winner_prior               = winner_prior,
-    winner_theta_mean           = winner_theta_mean,
-    winner_likelihood          = winner_likelihood,
-    winner_likelihood_cov      = winner_likelihood_cov,
-    winner_hypothesis_type     = winner_hypothesis_type,
-    winner_rank_expanded       = winner_rank_expanded,
-    winner_species_confusion_risk     = winner_species_confusion_risk,
-    winner_genus_confusion_risk       = winner_genus_confusion_risk,
-    winner_family_confusion_risk      = winner_family_confusion_risk,
-    winner_own_rank_confusion_risk    = winner_own_rank_confusion_risk,
-    consensus_confusion_risk          = consensus_confusion_risk,
-    primary_n_plausible_competitors   = primary_n_plausible_competitors,
+    n_plausible = n_include,
+    winner_prior = winner_prior,
+    winner_theta_mean = winner_theta_mean,
+    winner_likelihood = winner_likelihood,
+    winner_likelihood_cov = winner_likelihood_cov,
+    winner_hypothesis_type = winner_hypothesis_type,
+    winner_rank_expanded = winner_rank_expanded,
+    winner_species_confusion_risk = winner_species_confusion_risk,
+    winner_genus_confusion_risk = winner_genus_confusion_risk,
+    winner_family_confusion_risk = winner_family_confusion_risk,
+    winner_own_rank_confusion_risk = winner_own_rank_confusion_risk,
+    consensus_confusion_risk = consensus_confusion_risk,
+    primary_n_plausible_competitors = primary_n_plausible_competitors,
     consensus_n_plausible_competitors = consensus_n_plausible_competitors,
-    winner_has_occurrence_record      = winner_has_occurrence_record,
-    consensus_prior                   = consensus_prior,
-    consensus_has_occurrence_record   = consensus_has_occurrence_record,
-    plausible_taxa       = I(list(plausible$taxon_name)),
+    winner_has_occurrence_record = winner_has_occurrence_record,
+    consensus_prior = consensus_prior,
+    consensus_has_occurrence_record = consensus_has_occurrence_record,
+    plausible_taxa = I(list(plausible$taxon_name)),
     plausible_posteriors = I(list(stats::setNames(
       plausible[[posterior_col]], plausible$taxon_name
     ))),
-    stringsAsFactors     = FALSE
+    stringsAsFactors = FALSE
   )
 
   # Propagate pass-through columns added by update_prior_from_consensus().
   # prior_updated: any row TRUE means the observation was updated.
   # consensus_taxon_v1 / consensus_rank_v1: constant within observation — take first value.
-  if ("prior_updated" %in% names(chunk))
+  if ("prior_updated" %in% names(chunk)) {
     out$prior_updated <- any(chunk$prior_updated, na.rm = TRUE)
+  }
 
   for (v1_col in c("consensus_taxon_v1", "consensus_rank_v1")) {
-    if (v1_col %in% names(chunk))
+    if (v1_col %in% names(chunk)) {
       out[[v1_col]] <- chunk[[v1_col]][[1L]]
+    }
   }
 
   # Derive taxon_changed when v1 columns are present
   if (all(c("consensus_taxon_v1") %in% names(out))) {
-    v1  <- out$consensus_taxon_v1
+    v1 <- out$consensus_taxon_v1
     cur <- out$consensus_taxon
     out$taxon_changed <- !is.na(v1) & (is.na(cur) | cur != v1)
   }
@@ -943,13 +982,19 @@ posterior_consensus <- function(posterior_df,
 #' `"single"` (only one hypothesis in the plausible set).
 #' @noRd
 .find_lca <- function(plausible, rank_system) {
-  if (nrow(plausible) == 0L)
-    return(list(taxon = NA_character_, rank = NA_character_,
-                consensus_reason = NA_character_))
-  if (nrow(plausible) == 1L)
-    return(list(taxon = plausible$taxon_name[[1L]],
-                rank  = plausible$taxon_name_rank[[1L]],
-                consensus_reason = "single"))
+  if (nrow(plausible) == 0L) {
+    return(list(
+      taxon = NA_character_, rank = NA_character_,
+      consensus_reason = NA_character_
+    ))
+  }
+  if (nrow(plausible) == 1L) {
+    return(list(
+      taxon = plausible$taxon_name[[1L]],
+      rank = plausible$taxon_name_rank[[1L]],
+      consensus_reason = "single"
+    ))
+  }
 
   finest_rank <- rev(rank_system)[[1L]]
 
@@ -958,13 +1003,17 @@ posterior_consensus <- function(posterior_df,
     vals <- .extract_rank_values(plausible, rk)
     if (all(!is.na(vals)) && length(unique(vals)) == 1L) {
       reason <- if (rk == finest_rank) "unanimous" else "lca"
-      return(list(taxon = vals[[1L]], rank = rk,
-                  consensus_reason = reason))
+      return(list(
+        taxon = vals[[1L]], rank = rk,
+        consensus_reason = reason
+      ))
     }
   }
 
-  list(taxon = NA_character_, rank = NA_character_,
-       consensus_reason = NA_character_)
+  list(
+    taxon = NA_character_, rank = NA_character_,
+    consensus_reason = NA_character_
+  )
 }
 
 
@@ -1023,8 +1072,9 @@ posterior_consensus <- function(posterior_df,
     return(derived)
   }
 
-  if (rank %in% names(input_df))
+  if (rank %in% names(input_df)) {
     return(as.character(input_df[[rank]]))
+  }
 
   # All other ranks require an explicit column
   rep(NA_character_, nrow(input_df))
@@ -1035,33 +1085,33 @@ posterior_consensus <- function(posterior_df,
 #' @noRd
 .empty_consensus_row <- function(sid) {
   data.frame(
-    observation_id             = sid,
-    consensus_taxon            = NA_character_,
-    consensus_rank             = NA_character_,
-    consensus_reason           = NA_character_,
-    is_resolved                = FALSE,
-    consensus_posterior        = NA_real_,
+    observation_id = sid,
+    consensus_taxon = NA_character_,
+    consensus_rank = NA_character_,
+    consensus_reason = NA_character_,
+    is_resolved = FALSE,
+    consensus_posterior = NA_real_,
     consensus_confidence_score = NA_real_,
-    n_plausible                = 0L,
-    winner_prior               = NA_real_,
-    winner_theta_mean           = NA_real_,
-    winner_likelihood          = NA_real_,
-    winner_likelihood_cov      = NA_real_,
-    winner_hypothesis_type     = NA_character_,
-    winner_rank_expanded       = NA,
-    winner_species_confusion_risk     = NA_real_,
-    winner_genus_confusion_risk       = NA_real_,
-    winner_family_confusion_risk      = NA_real_,
-    winner_own_rank_confusion_risk    = NA_real_,
-    consensus_confusion_risk          = NA_real_,
-    primary_n_plausible_competitors   = NA_integer_,
+    n_plausible = 0L,
+    winner_prior = NA_real_,
+    winner_theta_mean = NA_real_,
+    winner_likelihood = NA_real_,
+    winner_likelihood_cov = NA_real_,
+    winner_hypothesis_type = NA_character_,
+    winner_rank_expanded = NA,
+    winner_species_confusion_risk = NA_real_,
+    winner_genus_confusion_risk = NA_real_,
+    winner_family_confusion_risk = NA_real_,
+    winner_own_rank_confusion_risk = NA_real_,
+    consensus_confusion_risk = NA_real_,
+    primary_n_plausible_competitors = NA_integer_,
     consensus_n_plausible_competitors = NA_integer_,
-    winner_has_occurrence_record      = NA,
-    consensus_prior                   = NA_real_,
-    consensus_has_occurrence_record   = NA,
-    plausible_taxa       = I(list(character(0))),
+    winner_has_occurrence_record = NA,
+    consensus_prior = NA_real_,
+    consensus_has_occurrence_record = NA,
+    plausible_taxa = I(list(character(0))),
     plausible_posteriors = I(list(stats::setNames(numeric(0), character(0)))),
-    stringsAsFactors     = FALSE
+    stringsAsFactors = FALSE
   )
 }
 
@@ -1087,7 +1137,7 @@ posterior_consensus <- function(posterior_df,
     # Derive genus from binomial (first word); sufficient for genus -> species step.
     return(data.frame(
       taxon_name = plausible,
-      genus      = sub(" .*", "", plausible),
+      genus = sub(" .*", "", plausible),
       stringsAsFactors = FALSE
     ))
   }
@@ -1125,11 +1175,17 @@ posterior_consensus <- function(posterior_df,
   # then fall back to the rank name itself.
   .ref_col <- function(rk) {
     if (rk == finest_rank) {
-      if ("taxon_name" %in% names(species_ref)) return("taxon_name")
-      if (rk %in% names(species_ref))           return(rk)
+      if ("taxon_name" %in% names(species_ref)) {
+        return("taxon_name")
+      }
+      if (rk %in% names(species_ref)) {
+        return(rk)
+      }
       return(NA_character_)
     }
-    if (rk %in% names(species_ref)) return(rk)
+    if (rk %in% names(species_ref)) {
+      return(rk)
+    }
     NA_character_
   }
 
@@ -1137,7 +1193,7 @@ posterior_consensus <- function(posterior_df,
 
   for (i in seq_len(nrow(consensus_df))) {
     if (isTRUE(consensus_df$is_resolved[i])) next
-    cur_rank  <- consensus_df$consensus_rank[i]
+    cur_rank <- consensus_df$consensus_rank[i]
     cur_taxon <- consensus_df$consensus_taxon[i]
     if (is.na(cur_rank) || is.na(cur_taxon)) next
     if (cur_rank == finest_rank) next
@@ -1150,29 +1206,31 @@ posterior_consensus <- function(posterior_df,
     for (j in seq(rank_idx + 1L, length(rank_system))) {
       finer_rank <- rank_system[j]
       coarse_col <- .ref_col(cur_rank)
-      finer_col  <- .ref_col(finer_rank)
+      finer_col <- .ref_col(finer_rank)
 
       if (is.na(coarse_col) || is.na(finer_col)) break
 
       candidates <- species_ref[
         !is.na(species_ref[[coarse_col]]) &
-        species_ref[[coarse_col]] == cur_taxon, , drop = FALSE]
+          species_ref[[coarse_col]] == cur_taxon, ,
+        drop = FALSE
+      ]
 
       finer_vals <- unique(candidates[[finer_col]])
       finer_vals <- finer_vals[!is.na(finer_vals)]
 
-      if (length(finer_vals) != 1L) break  # 0 or >1 options — stop
+      if (length(finer_vals) != 1L) break # 0 or >1 options — stop
 
-      cur_rank  <- finer_rank
+      cur_rank <- finer_rank
       cur_taxon <- finer_vals[[1L]]
-      changed   <- TRUE
+      changed <- TRUE
     }
 
     if (changed) {
       consensus_df$consensus_taxon[i] <- cur_taxon
-      consensus_df$consensus_rank[i]  <- cur_rank
-      consensus_df$is_resolved[i]     <- (cur_rank == finest_rank)
-      consensus_df$downranked[i]      <- TRUE
+      consensus_df$consensus_rank[i] <- cur_rank
+      consensus_df$is_resolved[i] <- (cur_rank == finest_rank)
+      consensus_df$downranked[i] <- TRUE
     }
   }
 

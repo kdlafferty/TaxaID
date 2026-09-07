@@ -80,14 +80,12 @@
 #' # Feed the result into assign_taxa_llm()'s context argument
 #' result <- assign_taxa_llm(match_df, context = ctx, llm_fn = TaxaTools::call_api)
 #' }
-
 build_context <- function(taxon_names,
                           geographic_hint = NULL,
-                          date            = NULL,
-                          habitat_scheme  = NULL,
-                          llm_fn          = NULL,
-                          chunk_size      = 60L) {
-
+                          date = NULL,
+                          habitat_scheme = NULL,
+                          llm_fn = NULL,
+                          chunk_size = 60L) {
   # --- Resolve llm_fn default ---
   llm_fn <- .resolve_llm_fn(llm_fn, "build_context")
 
@@ -140,7 +138,7 @@ build_context <- function(taxon_names,
 
   # --- Step 4: compute consensus proportions ---
   consensus <- TaxaHabitat::consensus_habitat(habitats_df)
-  props     <- attr(consensus, "habitat_proportions")
+  props <- attr(consensus, "habitat_proportions")
 
   # --- Step 5: LLM synthesis of habitat description ---
   # The argmax habitat can be misleading for transitional environments
@@ -155,21 +153,21 @@ build_context <- function(taxon_names,
     ecoregion          = consensus$ecoregion
   )
   cli::cli_inform("build_context: synthesising habitat description...")
-  synthesis_raw    <- llm_fn(synthesis_prompt)
-  synthesis        <- .parse_synthesis_response(synthesis_raw)
-  main_habitat     <- synthesis$main_habitat
-  ecoregion        <- synthesis$ecoregion
+  synthesis_raw <- llm_fn(synthesis_prompt)
+  synthesis <- .parse_synthesis_response(synthesis_raw)
+  main_habitat <- synthesis$main_habitat
+  ecoregion <- synthesis$ecoregion
 
   # Fall back to mechanical consensus if synthesis fails
 
   if (is.na(main_habitat)) main_habitat <- consensus$main_habitat
-  if (is.na(ecoregion))    ecoregion    <- consensus$ecoregion
+  if (is.na(ecoregion)) ecoregion <- consensus$ecoregion
 
   # --- Step 6: assemble ctx data frame ---
   ctx <- data.frame(
-    ecoregion    = ecoregion,
+    ecoregion = ecoregion,
     main_habitat = main_habitat,
-    date         = if (is.null(date)) NA_character_ else date,
+    date = if (is.null(date)) NA_character_ else date,
     stringsAsFactors = FALSE
   )
   attr(ctx, "habitats_df") <- habitats_df
@@ -193,25 +191,29 @@ build_context <- function(taxon_names,
                                     ecoregion) {
   # Format proportions as a readable string (only habitats > 1%)
   props_above <- props[props > 0.01]
-  props_str   <- paste(
+  props_str <- paste(
     sprintf("%s: %.0f%%", names(props_above), props_above * 100),
     collapse = ", "
   )
 
   # Representative species (up to 10)
   sp_sample <- utils::head(taxon_names, 10)
-  sp_str    <- paste(sp_sample, collapse = ", ")
+  sp_str <- paste(sp_sample, collapse = ", ")
   if (length(taxon_names) > 10) {
     sp_str <- paste0(sp_str, sprintf(" (and %d more)", length(taxon_names) - 10))
   }
 
   geo_line <- if (!is.null(geographic_hint)) {
     sprintf("Geographic region: %s\n", geographic_hint)
-  } else ""
+  } else {
+    ""
+  }
 
   eco_line <- if (!is.na(ecoregion)) {
     sprintf("Ecoregion from per-species consensus: %s\n", ecoregion)
-  } else ""
+  } else {
+    ""
+  }
 
   paste0(
     "You are an expert ecologist. Based on the species assemblage and habitat ",
@@ -234,7 +236,7 @@ build_context <- function(taxon_names,
   lines <- lines[nzchar(lines)]
 
   main_habitat <- NA_character_
-  ecoregion    <- NA_character_
+  ecoregion <- NA_character_
 
   for (ln in lines) {
     if (grepl("^main_habitat:", ln, ignore.case = TRUE)) {

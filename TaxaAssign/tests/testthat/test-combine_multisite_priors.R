@@ -54,7 +54,7 @@ test_that("combine_multisite_priors errors on non-positive prior_alpha/prior_bet
 # ---- Single-site passthrough ---------------------------------------------------
 
 test_that("single-site observations pass through unchanged", {
-  df  <- .make_single_site_joined()
+  df <- .make_single_site_joined()
   out <- suppressMessages(combine_multisite_priors(df))
 
   expect_equal(nrow(out), nrow(df))
@@ -68,7 +68,7 @@ test_that("single-site observations pass through unchanged", {
 # ---- Multi-site combination -----------------------------------------------------
 
 test_that("multi-site candidates are combined to one row each", {
-  df  <- .make_multisite_joined()
+  df <- .make_multisite_joined()
   out <- suppressMessages(combine_multisite_priors(df))
 
   expect_equal(nrow(out), 2L)
@@ -76,20 +76,22 @@ test_that("multi-site candidates are combined to one row each", {
   expect_true(all(out$n_sites_combined == 2L))
   expect_true(all(is.na(out$grid_id)))
   expect_true(all(is.na(out$main_habitat)))
-  expect_equal(sort(strsplit(out$combined_sites[1], "|", fixed = TRUE)[[1]]),
-               c("site1", "site2"))
+  expect_equal(
+    sort(strsplit(out$combined_sites[1], "|", fixed = TRUE)[[1]]),
+    c("site1", "site2")
+  )
 })
 
 test_that("combination is symmetric and gives the confidently-supported candidate more than half", {
   # Species_a is confidently favored at site1 (phi=10) and only weakly
   # disfavored at site2 (also phi=10) -- symmetric setup, so Species_a's
   # combined mean should exceed 0.5 and exceed Species_b's.
-  df  <- .make_multisite_joined()
+  df <- .make_multisite_joined()
   out <- suppressMessages(combine_multisite_priors(df))
 
   a_mean <- out$prior_mean[out$taxon_name == "Species_a"]
   b_mean <- out$prior_mean[out$taxon_name == "Species_b"]
-  expect_equal(a_mean, b_mean)  # fully symmetric fixture -> tie is correct here
+  expect_equal(a_mean, b_mean) # fully symmetric fixture -> tie is correct here
   expect_true(a_mean > 0 && a_mean < 1)
 })
 
@@ -119,12 +121,12 @@ test_that("a low-confidence (low-phi) site is discounted relative to a high-conf
   y_mean <- out$prior_mean[out$taxon_name == "Y"]
   combined_x_share <- x_mean / (x_mean + y_mean)
 
-  expect_gt(combined_x_share, 0.75)  # precision-weighted combination gives ~0.785
+  expect_gt(combined_x_share, 0.75) # precision-weighted combination gives ~0.785
   expect_lt(combined_x_share, 0.80)
 })
 
 test_that("other columns are inherited from the per-site rows on combined rows", {
-  df  <- .make_multisite_joined()
+  df <- .make_multisite_joined()
   out <- suppressMessages(combine_multisite_priors(df))
 
   expect_true(all(out$hypothesis_type == "specific_candidate"))
@@ -133,7 +135,7 @@ test_that("other columns are inherited from the per-site rows on combined rows",
 })
 
 test_that("a mixed batch (some multi-site, some single-site) handles both correctly", {
-  multi  <- .make_multisite_joined()
+  multi <- .make_multisite_joined()
   single <- tibble(
     observation_id   = "obs2",
     taxon_name       = "Species_c",
@@ -146,10 +148,10 @@ test_that("a mixed batch (some multi-site, some single-site) handles both correc
     prior_beta       = 5,
     prior_mean       = 0.5
   )
-  df  <- bind_rows(multi, single)
+  df <- bind_rows(multi, single)
   out <- suppressMessages(combine_multisite_priors(df))
 
-  expect_equal(nrow(out), 3L)  # 2 combined (obs1) + 1 passthrough (obs2)
+  expect_equal(nrow(out), 3L) # 2 combined (obs1) + 1 passthrough (obs2)
   obs2_row <- out |> filter(observation_id == "obs2")
   expect_equal(obs2_row$n_sites_combined, 1L)
   expect_equal(obs2_row$grid_id, "site1")
@@ -161,13 +163,13 @@ test_that("prior_mean is required, not silently NA-filled", {
   # column, combined rows got a real value while single-site rows were
   # NA-filled by bind_rows -- an NA prior flowing into compute_posterior().
   df <- data.frame(
-    observation_id  = c("obs1", "obs1", "obs1"),
-    taxon_name      = c("Species_a", "Species_a", "Species_b"),
+    observation_id = c("obs1", "obs1", "obs1"),
+    taxon_name = c("Species_a", "Species_a", "Species_b"),
     taxon_name_rank = "species",
-    grid_id         = c("site1", "site2", "site1"),
-    main_habitat    = "Marine",
-    prior_alpha     = c(80, 3, 10),
-    prior_beta      = c(20, 2, 90),
+    grid_id = c("site1", "site2", "site1"),
+    main_habitat = "Marine",
+    prior_alpha = c(80, 3, 10),
+    prior_beta = c(20, 2, 90),
     stringsAsFactors = FALSE
   )
   expect_error(combine_multisite_priors(df), "prior_mean")

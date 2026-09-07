@@ -4,13 +4,13 @@
 # --- Shared test data --------------------------------------------------------
 
 mock_match_df <- data.frame(
-  observation_id       = c("s1", "s1", "s2"),
-  score_original           = c(99, 85, 92),
-  taxon_name      = c("Sp A", "Sp B", "Sp A"),
+  observation_id = c("s1", "s1", "s2"),
+  score_original = c(99, 85, 92),
+  taxon_name = c("Sp A", "Sp B", "Sp A"),
   taxon_name_rank = c("species", "species", "species"),
-  family          = c("Fam1", "Fam1", "Fam1"),
-  genus           = c("Gen1", "Gen1", "Gen1"),
-  species         = c("Sp A", "Sp B", "Sp A"),
+  family = c("Fam1", "Fam1", "Fam1"),
+  genus = c("Gen1", "Gen1", "Gen1"),
+  species = c("Sp A", "Sp B", "Sp A"),
   stringsAsFactors = FALSE
 )
 
@@ -22,12 +22,12 @@ test_that("run_bayesian_pipeline: rejects invalid constraint_behavior", {
   skip_if_not_installed("TaxaLikely")
   expect_error(
     run_bayesian_pipeline(
-      match_df          = mock_match_df,
-      model_params      = list(),
+      match_df = mock_match_df,
+      model_params = list(),
       taxaexpect_priors = data.frame(),
-      site              = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine"),
+      site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Marine"),
       constraint_behavior = "invalid_value",
-      backbone_id       = 11L
+      backbone_id = 11L
     ),
     "should be one of"
   )
@@ -37,11 +37,11 @@ test_that("run_bayesian_pipeline: rejects match_df with too few rank columns", {
   skip_if_not_installed("TaxaLikely")
   # Only one rank column (species) — needs at least 2
   narrow_df <- data.frame(
-    observation_id       = "s1",
+    observation_id = "s1",
     score_original = 99,
-    taxon_name      = "Sp A",
+    taxon_name = "Sp A",
     taxon_name_rank = "species",
-    species         = "Sp A",
+    species = "Sp A",
     stringsAsFactors = FALSE
   )
   expect_error(
@@ -60,10 +60,10 @@ test_that("run_bayesian_pipeline: accepts build_priors list and extracts $priors
   skip_if_not_installed("TaxaLikely")
   # Wrapping a data frame in a list with $priors should be accepted
   priors_df <- data.frame(
-    grid_id      = "Grid_34p1_m119p1",
+    grid_id = "Grid_34p1_m119p1",
     main_habitat = "Marine",
-    taxon_name   = "Sp A",
-    theta        = 0.5,
+    taxon_name = "Sp A",
+    theta = 0.5,
     stringsAsFactors = FALSE
   )
   # Should get past the $priors extraction and fail later on model_params
@@ -153,8 +153,10 @@ test_that("run_llm_pipeline: rejects non-function non-NULL llm_fn", {
 })
 
 test_that("run_llm_pipeline: NULL llm_fn without TaxaTools gives clear error", {
-  skip_if(requireNamespace("TaxaTools", quietly = TRUE),
-          "TaxaTools is installed -- cannot test missing-package path")
+  skip_if(
+    requireNamespace("TaxaTools", quietly = TRUE),
+    "TaxaTools is installed -- cannot test missing-package path"
+  )
   expect_error(
     run_llm_pipeline(match_df = mock_match_df, llm_fn = NULL, backbone_id = 11L),
     "TaxaTools"

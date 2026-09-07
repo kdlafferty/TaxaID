@@ -47,13 +47,13 @@
 #'
 #' @examples
 #' result <- data.frame(
-#'   observation_id  = c("S1", "S1"),
-#'   taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+#'   observation_id = c("S1", "S1"),
+#'   taxon_name = c("Gadus morhua", "Gadus chalcogrammus"),
 #'   taxon_name_rank = "species",
 #'   hypothesis_type = "specific_candidate",
-#'   genus           = "Gadus",
-#'   family          = "Gadidae",
-#'   posterior_mean  = c(0.8, 0.2),
+#'   genus = "Gadus",
+#'   family = "Gadidae",
+#'   posterior_mean = c(0.8, 0.2),
 #'   posterior_point_est = c(0.8, 0.2)
 #' )
 #' consensus <- posterior_consensus(result)
@@ -61,16 +61,17 @@
 #' print(sec)
 #'
 #' @export
-report_assign <- function(result    = NULL,
+report_assign <- function(result = NULL,
                           consensus,
                           data_type = NULL,
-                          workflow  = NULL,
-                          verbose   = FALSE) {
-
-  if (!is.data.frame(consensus) || nrow(consensus) == 0L)
+                          workflow = NULL,
+                          verbose = FALSE) {
+  if (!is.data.frame(consensus) || nrow(consensus) == 0L) {
     cli::cli_abort("{.arg consensus} must be a non-empty data frame.")
-  if (!is.null(workflow))
+  }
+  if (!is.null(workflow)) {
     workflow <- match.arg(workflow, c("bayesian", "llm"))
+  }
 
   # --- Detect consensus type --------------------------------------------------
   consensus_type <- if ("top_score" %in% names(consensus)) "score" else "posterior"
@@ -111,10 +112,11 @@ report_assign <- function(result    = NULL,
     resolution_rate = resolution_rate,
     n_unique_taxa   = n_unique_taxa
   )
+  if (!is.null(rank_table)) statistics$rank_breakdown <- rank_table
 
   # Posterior stats
   if (!is.null(result) && is.data.frame(result) &&
-      "posterior_mean" %in% names(result)) {
+    "posterior_mean" %in% names(result)) {
     top <- result[order(result$observation_id, -result$posterior_mean), ]
     top <- top[!duplicated(top$observation_id), ]
     statistics$median_posterior <- round(stats::median(top$posterior_mean, na.rm = TRUE), 3)
@@ -123,7 +125,8 @@ report_assign <- function(result    = NULL,
   # Score stats
   if ("top_score" %in% names(consensus)) {
     statistics$median_top_score <- round(
-      stats::median(consensus$top_score, na.rm = TRUE), 2)
+      stats::median(consensus$top_score, na.rm = TRUE), 2
+    )
   }
 
   # --- Params -----------------------------------------------------------------
@@ -131,12 +134,15 @@ report_assign <- function(result    = NULL,
   if (!is.null(data_type)) params$data_type <- data_type
 
   # Pull key params from report_params
-  if (!is.null(all_params$cumulative_threshold))
+  if (!is.null(all_params$cumulative_threshold)) {
     params$cumulative_threshold <- all_params$cumulative_threshold
-  if (!is.null(all_params$n_sims))
+  }
+  if (!is.null(all_params$n_sims)) {
     params$n_sims <- all_params$n_sims
-  if (!is.null(all_params$min_score))
+  }
+  if (!is.null(all_params$min_score)) {
     params$min_score <- all_params$min_score
+  }
 
   # --- Methods text -----------------------------------------------------------
   workflow_desc <- switch(workflow,
@@ -147,7 +153,8 @@ report_assign <- function(result    = NULL,
   )
 
   methods_text <- sprintf(
-    "Taxonomic assignments were determined using %s", workflow_desc)
+    "Taxonomic assignments were determined using %s", workflow_desc
+  )
 
   if (!is.null(data_type)) {
     methods_text <- paste0(methods_text, sprintf(" applied to %s data", data_type))
@@ -159,13 +166,15 @@ report_assign <- function(result    = NULL,
     if (!is.null(threshold)) {
       methods_text <- paste0(methods_text, sprintf(
         " Consensus was determined at a cumulative posterior threshold of %g%%.",
-        threshold * 100))
+        threshold * 100
+      ))
     }
   }
 
   if (workflow == "score" && !is.null(all_params$min_score)) {
     methods_text <- paste0(methods_text, sprintf(
-      " Minimum score threshold: %g%%.", all_params$min_score))
+      " Minimum score threshold: %g%%.", all_params$min_score
+    ))
   }
 
   # --- Results text -----------------------------------------------------------
@@ -173,29 +182,34 @@ report_assign <- function(result    = NULL,
 
   results_parts <- c(results_parts, sprintf(
     "Of %d observations, %d (%.1f%%) were resolved to species level.",
-    n_samples, n_resolved, resolution_rate))
+    n_samples, n_resolved, resolution_rate
+  ))
 
   results_parts <- c(results_parts, sprintf(
-    "%d unique taxa were identified.", n_unique_taxa))
+    "%d unique taxa were identified.", n_unique_taxa
+  ))
 
   if (!is.null(statistics$median_posterior) && !is.na(statistics$median_posterior)) {
     results_parts <- c(results_parts, sprintf(
-      "Median top posterior probability was %.3f.", statistics$median_posterior))
+      "Median top posterior probability was %.3f.", statistics$median_posterior
+    ))
   }
 
   if (!is.null(statistics$median_top_score) && !is.na(statistics$median_top_score)) {
     results_parts <- c(results_parts, sprintf(
-      "Median top match score was %.1f%%.", statistics$median_top_score))
+      "Median top match score was %.1f%%.", statistics$median_top_score
+    ))
   }
 
   results_text <- paste(results_parts, collapse = " ")
 
   # --- Construct report_section -----------------------------------------------
-  if (!requireNamespace("TaxaTools", quietly = TRUE))
+  if (!requireNamespace("TaxaTools", quietly = TRUE)) {
     cli::cli_abort(c(
       "{.pkg TaxaTools} is required for {.cls report_section} objects.",
       "i" = "Install with: {.code devtools::install('path/to/TaxaTools')}"
     ))
+  }
 
   TaxaTools::new_report_section(
     package    = "TaxaAssign",

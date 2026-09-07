@@ -91,8 +91,8 @@ test_that(".beta_mean computes alpha / (alpha + beta)", {
 
 .make_taxaexpect_priors_for_site <- function() {
   data.frame(
-    taxon_name   = "Gadus morhua",
-    grid_id      = "Grid_34p1_m119p1",
+    taxon_name = "Gadus morhua",
+    grid_id = "Grid_34p1_m119p1",
     main_habitat = "Estuarine Bay",
     stringsAsFactors = FALSE
   )
@@ -119,8 +119,8 @@ test_that(".resolve_site handles list(lat, lon, main_habitat)", {
 test_that(".resolve_site handles a multi-site data frame with grid_id/main_habitat", {
   site_df <- data.frame(
     observation_id = c("S1", "S2"),
-    grid_id         = c("Grid_34p1_m119p1", "Grid_34p1_m119p1"),
-    main_habitat    = c("Estuarine Bay", "Estuarine Bay"),
+    grid_id = c("Grid_34p1_m119p1", "Grid_34p1_m119p1"),
+    main_habitat = c("Estuarine Bay", "Estuarine Bay"),
     stringsAsFactors = FALSE
   )
   out <- .resolve_site(site_df, c("S1", "S2"), .make_taxaexpect_priors_for_site())
@@ -165,8 +165,8 @@ test_that(".latlon_to_grid errors when main_habitat isn't available at the resol
 
 test_that(".latlon_to_grid gives a clear error when the nearest grid has no non-NA main_habitat rows at all", {
   priors <- data.frame(
-    taxon_name   = "Gadus morhua",
-    grid_id      = "Grid_34p1_m119p1",
+    taxon_name = "Gadus morhua",
+    grid_id = "Grid_34p1_m119p1",
     main_habitat = NA_character_,
     stringsAsFactors = FALSE
   )

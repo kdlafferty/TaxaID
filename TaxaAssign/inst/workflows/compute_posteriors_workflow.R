@@ -70,14 +70,13 @@ DEBUG_MODE <- TRUE
 # a benchmark. See Section 1 for the graceful-degradation guard when fewer
 # than N_SYNTH_TAXA species are actually available.
 N_SYNTH_TAXA <- 4L
-N_SYNTH_OBS  <- 3L
+N_SYNTH_OBS <- 3L
 
 # rank_system for join_priors()/posterior_consensus(): matches the taxonomy
 # columns present on the synthetic likelihood object (family/genus/species).
 RANK_SYSTEM <- c("family", "genus", "species")
 
 if (DEBUG_MODE) {
-
   # ---- Tutorial example: continue from TaxaExpect's Gadus checkpoint --------
   # This is the exact readRDS() line documented in generate_priors_workflow.R's
   # Output block (its Step 9 saves taxaexpect_priors to
@@ -88,15 +87,19 @@ if (DEBUG_MODE) {
   .priors_checkpoint <- file.path(tempdir(), "tutorial_gadus_taxaexpect_priors.rds")
 
   if (!file.exists(.priors_checkpoint)) {
-    stop("DEBUG_MODE = TRUE but TaxaExpect's checkpoint was not found at ",
-         .priors_checkpoint, ". Run TaxaExpect's generate_priors_workflow.R ",
-         "first -- this script has nothing meaningful to demonstrate without ",
-         "real taxaexpect_priors output.")
+    stop(
+      "DEBUG_MODE = TRUE but TaxaExpect's checkpoint was not found at ",
+      .priors_checkpoint, ". Run TaxaExpect's generate_priors_workflow.R ",
+      "first -- this script has nothing meaningful to demonstrate without ",
+      "real taxaexpect_priors output."
+    )
   }
 
   taxaexpect_priors <- readRDS(.priors_checkpoint)
-  message("DEBUG_MODE = TRUE -- loaded TaxaExpect's checkpoint: ", .priors_checkpoint,
-          " (", nrow(taxaexpect_priors), " prior row(s)).")
+  message(
+    "DEBUG_MODE = TRUE -- loaded TaxaExpect's checkpoint: ", .priors_checkpoint,
+    " (", nrow(taxaexpect_priors), " prior row(s))."
+  )
 
   # CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: TaxaExpect::generate_full_priors()'s
   # own roxygen docs (R/generate_full_priors.R, @note) state its output has
@@ -122,19 +125,25 @@ if (DEBUG_MODE) {
   SITE_HABITAT <- unique(stats::na.omit(taxaexpect_priors$main_habitat))
 
   if (length(SITE_GRID_ID) != 1L) {
-    stop("Expected exactly one grid_id in taxaexpect_priors (single-site by ",
-         "construction from generate_priors_workflow.R), but found ",
-         length(SITE_GRID_ID), ": ", paste(SITE_GRID_ID, collapse = ", "),
-         ". Check the upstream TaxaExpect checkpoint.")
+    stop(
+      "Expected exactly one grid_id in taxaexpect_priors (single-site by ",
+      "construction from generate_priors_workflow.R), but found ",
+      length(SITE_GRID_ID), ": ", paste(SITE_GRID_ID, collapse = ", "),
+      ". Check the upstream TaxaExpect checkpoint."
+    )
   }
   if (length(SITE_HABITAT) != 1L) {
-    stop("Expected exactly one main_habitat in taxaexpect_priors (single-site ",
-         "by construction from generate_priors_workflow.R), but found ",
-         length(SITE_HABITAT), ": ", paste(SITE_HABITAT, collapse = ", "),
-         ". Check the upstream TaxaExpect checkpoint.")
+    stop(
+      "Expected exactly one main_habitat in taxaexpect_priors (single-site ",
+      "by construction from generate_priors_workflow.R), but found ",
+      length(SITE_HABITAT), ": ", paste(SITE_HABITAT, collapse = ", "),
+      ". Check the upstream TaxaExpect checkpoint."
+    )
   }
-  message(sprintf("  SITE_GRID_ID = \"%s\", SITE_HABITAT = \"%s\" (derived from taxaexpect_priors).",
-                  SITE_GRID_ID, SITE_HABITAT))
+  message(sprintf(
+    "  SITE_GRID_ID = \"%s\", SITE_HABITAT = \"%s\" (derived from taxaexpect_priors).",
+    SITE_GRID_ID, SITE_HABITAT
+  ))
 
   # ---- Build the synthetic likelihood object -- TUTORIAL-ONLY SHORTCUT ------
   # THIS IS NOT REAL TaxaMatch/TaxaLikely OUTPUT. A real likelihood object
@@ -151,24 +160,30 @@ if (DEBUG_MODE) {
   .real_species <- unique(stats::na.omit(taxaexpect_priors$taxon_name))
   .real_species <- .real_species[grepl("^[A-Z][a-z]+ [a-z]+$", .real_species)]
 
-  message(sprintf("  %d species-level taxon name(s) available in taxaexpect_priors.",
-                  length(.real_species)))
+  message(sprintf(
+    "  %d species-level taxon name(s) available in taxaexpect_priors.",
+    length(.real_species)
+  ))
 
   .n_synth_taxa <- min(N_SYNTH_TAXA, length(.real_species))
   if (.n_synth_taxa < 2L) {
-    stop("Fewer than 2 species-level taxon names are available in ",
-         "taxaexpect_priors -- cannot build even a minimal synthetic ",
-         "likelihood object with competing hypotheses. Re-run TaxaExpect's ",
-         "generate_priors_workflow.R with a wider fetch (more species breadth) ",
-         "before continuing.")
+    stop(
+      "Fewer than 2 species-level taxon names are available in ",
+      "taxaexpect_priors -- cannot build even a minimal synthetic ",
+      "likelihood object with competing hypotheses. Re-run TaxaExpect's ",
+      "generate_priors_workflow.R with a wider fetch (more species breadth) ",
+      "before continuing."
+    )
   }
   if (.n_synth_taxa < N_SYNTH_TAXA) {
-    message(sprintf(
-      "  Only %d species-level taxa available (< N_SYNTH_TAXA = %d) -- using ",
-      .n_synth_taxa, N_SYNTH_TAXA
-    ), "all of them. Competing-hypothesis rows below will draw from this ",
-    "smaller pool; some synthetic observations may repeat the same congener ",
-    "pairing as a result.")
+    message(
+      sprintf(
+        "  Only %d species-level taxa available (< N_SYNTH_TAXA = %d) -- using ",
+        .n_synth_taxa, N_SYNTH_TAXA
+      ), "all of them. Competing-hypothesis rows below will draw from this ",
+      "smaller pool; some synthetic observations may repeat the same congener ",
+      "pairing as a result."
+    )
   }
 
   .synth_taxa <- head(.real_species, .n_synth_taxa)
@@ -180,8 +195,10 @@ if (DEBUG_MODE) {
   # guess. If you swap in a different upstream taxon, update this to match.
   .synth_family <- "Gadidae"
 
-  message(sprintf("  Synthetic likelihood object will draw from %d real taxon name(s): %s",
-                  length(.synth_taxa), paste(.synth_taxa, collapse = ", ")))
+  message(sprintf(
+    "  Synthetic likelihood object will draw from %d real taxon name(s): %s",
+    length(.synth_taxa), paste(.synth_taxa, collapse = ", ")
+  ))
 
   # One "observation" = one synthetic ASV with 2-3 competing candidate-taxon
   # rows. Top candidate gets a score_likelihood near 0.9-1.0; congener(s) get
@@ -219,14 +236,14 @@ if (DEBUG_MODE) {
     )
   }
 
-  set.seed(42)  # reproducible tutorial output -- remove for real stochastic use
+  set.seed(42) # reproducible tutorial output -- remove for real stochastic use
   .obs_ids <- paste0("ASV_", seq_len(N_SYNTH_OBS))
   .likelihoods_list <- lapply(seq_along(.obs_ids), function(i) {
     # Each observation gets 2-3 competing candidates (or fewer if the taxa
     # pool is very small), cycling through the available synthetic taxa so
     # every observation's top candidate differs where possible.
-    n_cand   <- min(sample(2:3, 1L), .n_synth_taxa)
-    top_idx  <- ((i - 1L) %% .n_synth_taxa) + 1L
+    n_cand <- min(sample(2:3, 1L), .n_synth_taxa)
+    top_idx <- ((i - 1L) %% .n_synth_taxa) + 1L
     other_idx <- setdiff(seq_len(.n_synth_taxa), top_idx)
     cand_idx <- c(top_idx, head(other_idx, n_cand - 1L))
     .build_obs(.obs_ids[i], cand_idx)
@@ -234,20 +251,22 @@ if (DEBUG_MODE) {
 
   likelihoods <- dplyr::bind_rows(.likelihoods_list)
 
-  message(sprintf("  Synthetic likelihoods: %d observation(s), %d hypothesis row(s) total.",
-                  length(.obs_ids), nrow(likelihoods)))
-  message("  *** SYNTHETIC DATA NOTICE *** -- score_likelihood* columns above are ",
-          "illustrative placeholders, NOT real BLAST/classifier output. Replace ",
-          "with a real TaxaMatch/TaxaLikely likelihoods object for any real analysis.")
+  message(sprintf(
+    "  Synthetic likelihoods: %d observation(s), %d hypothesis row(s) total.",
+    length(.obs_ids), nrow(likelihoods)
+  ))
+  message(
+    "  *** SYNTHETIC DATA NOTICE *** -- score_likelihood* columns above are ",
+    "illustrative placeholders, NOT real BLAST/classifier output. Replace ",
+    "with a real TaxaMatch/TaxaLikely likelihoods object for any real analysis."
+  )
 
   # taxonomy_lookup for join_priors(): deduplicated taxon_name + rank columns
   # from this same synthetic object (per the CONFIG spec -- built from the
   # synthetic likelihood object itself, not a separate query).
   taxonomy_lookup <- likelihoods |>
     dplyr::distinct(taxon_name, taxon_name_rank, genus, family)
-
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -289,12 +308,14 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the values here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real likelihoods/taxaexpect_priors objects ",
-       "have been supplied. Edit the 'SWAP IN YOUR OWN DATA' block in this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real likelihoods/taxaexpect_priors objects ",
+    "have been supplied. Edit the 'SWAP IN YOUR OWN DATA' block in this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_gadus"
 
 # ==============================================================================
@@ -329,7 +350,7 @@ likelihoods_w_prior <- TaxaAssign::join_priors(
   site              = list(grid_id = SITE_GRID_ID, main_habitat = SITE_HABITAT),
   taxonomy_lookup   = taxonomy_lookup,
   rank_system       = RANK_SYSTEM,
-  backbone_id       = 11L  # GBIF; match whichever backbone your input taxonomy used
+  backbone_id       = 11L # GBIF; match whichever backbone your input taxonomy used
 )
 
 message(sprintf("  %d row(s) ready for compute_posterior().", nrow(likelihoods_w_prior)))
@@ -340,8 +361,10 @@ message(sprintf("  %d row(s) ready for compute_posterior().", nrow(likelihoods_w
 likelihoods_w_prior_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_likelihoods_w_prior.rds"))
 saveRDS(likelihoods_w_prior, likelihoods_w_prior_path)
 message(sprintf("  Saved: %s", likelihoods_w_prior_path))
-message(sprintf("  To reuse without re-joining, paste:\n    likelihoods_w_prior <- readRDS(\"%s\")",
-                likelihoods_w_prior_path))
+message(sprintf(
+  "  To reuse without re-joining, paste:\n    likelihoods_w_prior <- readRDS(\"%s\")",
+  likelihoods_w_prior_path
+))
 
 # ==============================================================================
 # 2.  COMPUTE POSTERIOR
@@ -357,15 +380,19 @@ posterior_df <- TaxaAssign::compute_posterior(
   n_sims             = 1000
 )
 
-message(sprintf("  %d posterior row(s) computed across %d observation(s).",
-                nrow(posterior_df), dplyr::n_distinct(posterior_df$observation_id)))
+message(sprintf(
+  "  %d posterior row(s) computed across %d observation(s).",
+  nrow(posterior_df), dplyr::n_distinct(posterior_df$observation_id)
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 posterior_df_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_posterior_df.rds"))
 saveRDS(posterior_df, posterior_df_path)
 message(sprintf("  Saved: %s", posterior_df_path))
-message(sprintf("  To reuse without re-computing, paste:\n    posterior_df <- readRDS(\"%s\")",
-                posterior_df_path))
+message(sprintf(
+  "  To reuse without re-computing, paste:\n    posterior_df <- readRDS(\"%s\")",
+  posterior_df_path
+))
 
 # ==============================================================================
 # 3.  POSTERIOR CONSENSUS (LCA-based, one row per observation_id)
@@ -378,15 +405,19 @@ consensus_df <- TaxaAssign::posterior_consensus(
   rank_system  = RANK_SYSTEM
 )
 
-message(sprintf("  %d consensus row(s) (one per observation_id); %d resolved.",
-                nrow(consensus_df), sum(consensus_df$is_resolved, na.rm = TRUE)))
+message(sprintf(
+  "  %d consensus row(s) (one per observation_id); %d resolved.",
+  nrow(consensus_df), sum(consensus_df$is_resolved, na.rm = TRUE)
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 consensus_df_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_consensus_df.rds"))
 saveRDS(consensus_df, consensus_df_path)
 message(sprintf("  Saved: %s", consensus_df_path))
-message(sprintf("  To reuse without re-computing, paste:\n    consensus_df <- readRDS(\"%s\")",
-                consensus_df_path))
+message(sprintf(
+  "  To reuse without re-computing, paste:\n    consensus_df <- readRDS(\"%s\")",
+  consensus_df_path
+))
 
 # ==============================================================================
 # 4.  ADD SLASH TAXON (compact reporting label + irreducibility flag)
@@ -399,16 +430,20 @@ message("\n--- Step 4: Adding slash taxon notation ---")
 
 taxaassign_consensus <- TaxaAssign::add_slash_taxon(consensus_df)
 
-message(sprintf("  %d row(s); %d irreducible consensus call(s).",
-                nrow(taxaassign_consensus),
-                sum(taxaassign_consensus$irreducible_consensus, na.rm = TRUE)))
+message(sprintf(
+  "  %d row(s); %d irreducible consensus call(s).",
+  nrow(taxaassign_consensus),
+  sum(taxaassign_consensus$irreducible_consensus, na.rm = TRUE)
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 taxaassign_consensus_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxaassign_consensus.rds"))
 saveRDS(taxaassign_consensus, taxaassign_consensus_path)
 message(sprintf("  Saved: %s", taxaassign_consensus_path))
-message(sprintf("  To reuse without re-running this workflow, paste:\n    taxaassign_consensus <- readRDS(\"%s\")",
-                taxaassign_consensus_path))
+message(sprintf(
+  "  To reuse without re-running this workflow, paste:\n    taxaassign_consensus <- readRDS(\"%s\")",
+  taxaassign_consensus_path
+))
 
 # ==============================================================================
 # 5.  VARIANT B (DOCUMENTED, NOT RUN) -- THE LLM/NO-SCORE PATHWAY
@@ -466,18 +501,22 @@ message("\n--- Step 5: VARIANT B -- THE LLM/NO-SCORE PATHWAY (assign_taxa_llm) -
 }
 
 .match_list <- lapply(seq_along(.obs_ids), function(i) {
-  n_cand    <- min(sample(2:3, 1L), .n_synth_taxa)
-  top_idx   <- ((i - 1L) %% .n_synth_taxa) + 1L
+  n_cand <- min(sample(2:3, 1L), .n_synth_taxa)
+  top_idx <- ((i - 1L) %% .n_synth_taxa) + 1L
   other_idx <- setdiff(seq_len(.n_synth_taxa), top_idx)
-  cand_idx  <- c(top_idx, head(other_idx, n_cand - 1L))
+  cand_idx <- c(top_idx, head(other_idx, n_cand - 1L))
   .build_match_row(.obs_ids[i], cand_idx)
 })
 match_df <- dplyr::bind_rows(.match_list)
 
-message(sprintf("  Synthetic match_df: %d observation(s), %d candidate row(s), score_original in [80,100].",
-                length(.obs_ids), nrow(match_df)))
-message("  *** SYNTHETIC DATA NOTICE *** -- score_original values are illustrative ",
-        "placeholders, NOT real BLAST/classifier output.")
+message(sprintf(
+  "  Synthetic match_df: %d observation(s), %d candidate row(s), score_original in [80,100].",
+  length(.obs_ids), nrow(match_df)
+))
+message(
+  "  *** SYNTHETIC DATA NOTICE *** -- score_original values are illustrative ",
+  "placeholders, NOT real BLAST/classifier output."
+)
 
 # context: one row with main_habitat, applied uniformly to every observation
 # (context_group is left NULL, so .build_group_map()/.get_group_context()
@@ -515,15 +554,19 @@ posterior_llm <- TaxaAssign::assign_taxa_llm(
   n_sims      = 1000L
 )
 
-message(sprintf("  %d posterior row(s) computed across %d observation(s) (LLM-derived priors).",
-                nrow(posterior_llm), dplyr::n_distinct(posterior_llm$observation_id)))
+message(sprintf(
+  "  %d posterior row(s) computed across %d observation(s) (LLM-derived priors).",
+  nrow(posterior_llm), dplyr::n_distinct(posterior_llm$observation_id)
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 posterior_llm_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_posterior_llm.rds"))
 saveRDS(posterior_llm, posterior_llm_path)
 message(sprintf("  Saved: %s", posterior_llm_path))
-message(sprintf("  To reuse without re-querying the LLM, paste:\n    posterior_llm <- readRDS(\"%s\")",
-                posterior_llm_path))
+message(sprintf(
+  "  To reuse without re-querying the LLM, paste:\n    posterior_llm <- readRDS(\"%s\")",
+  posterior_llm_path
+))
 
 taxaassign_consensus_llm <- TaxaAssign::posterior_consensus(
   posterior_df = posterior_llm,
@@ -531,16 +574,20 @@ taxaassign_consensus_llm <- TaxaAssign::posterior_consensus(
 ) |>
   TaxaAssign::add_slash_taxon()
 
-message(sprintf("  %d consensus row(s) (LLM pathway); %d resolved.",
-                nrow(taxaassign_consensus_llm),
-                sum(taxaassign_consensus_llm$is_resolved, na.rm = TRUE)))
+message(sprintf(
+  "  %d consensus row(s) (LLM pathway); %d resolved.",
+  nrow(taxaassign_consensus_llm),
+  sum(taxaassign_consensus_llm$is_resolved, na.rm = TRUE)
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 taxaassign_consensus_llm_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxaassign_consensus_llm.rds"))
 saveRDS(taxaassign_consensus_llm, taxaassign_consensus_llm_path)
 message(sprintf("  Saved: %s", taxaassign_consensus_llm_path))
-message(sprintf("  To reuse without re-running this variant, paste:\n    taxaassign_consensus_llm <- readRDS(\"%s\")",
-                taxaassign_consensus_llm_path))
+message(sprintf(
+  "  To reuse without re-running this variant, paste:\n    taxaassign_consensus_llm <- readRDS(\"%s\")",
+  taxaassign_consensus_llm_path
+))
 
 # Equivalently, the high-level wrapper collapses Step 5's assign_taxa_llm() +
 # posterior_consensus() + add_slash_taxon() into one call (~7 calls -> 1):
@@ -552,8 +599,10 @@ message(sprintf("  To reuse without re-running this variant, paste:\n    taxaass
 #   )
 
 message("\nWorkflow complete.")
-message("Next: pass taxaassign_consensus (Bayesian pathway) or taxaassign_consensus_llm ",
-        "(LLM pathway) to TaxaFlag for anomalous-detection flagging.")
+message(
+  "Next: pass taxaassign_consensus (Bayesian pathway) or taxaassign_consensus_llm ",
+  "(LLM pathway) to TaxaFlag for anomalous-detection flagging."
+)
 
 # ==============================================================================
 # Output

@@ -48,7 +48,7 @@
 #
 # ==============================================================================
 
-#devtools::load_all()   # or: library(TaxaAssign)
+# devtools::load_all()   # or: library(TaxaAssign)
 library(TaxaAssign)
 
 
@@ -64,8 +64,8 @@ library(TaxaAssign)
 # on TaxaExpect and this is a one-line formula used in only one caller
 # (adjust_inat_range_priors()) -- see this function's own roxygen for the full
 # "why duplicated, not shared" reasoning.
-TaxaAssign:::.beta_mean(3, 7)               # 0.3
-TaxaAssign:::.beta_mean(c(1, 9), c(1, 1))   # c(0.5, 0.9) -- vectorized over a/b
+TaxaAssign:::.beta_mean(3, 7) # 0.3
+TaxaAssign:::.beta_mean(c(1, 9), c(1, 1)) # c(0.5, 0.9) -- vectorized over a/b
 
 
 # ==============================================================================

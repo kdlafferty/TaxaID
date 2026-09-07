@@ -7,29 +7,31 @@ attach(test_env, warn.conflicts = FALSE)
 
 # prequel ----------------------------------------------------------------------
 make_posterior <- function(observation_id, taxon_name, taxon_name_rank,
-                            hypothesis_type, posterior_mean,
-                            genus = NULL, family = NULL, species = NULL) {
+                           hypothesis_type, posterior_mean,
+                           genus = NULL, family = NULL, species = NULL) {
   df <- data.frame(
-    observation_id       = observation_id,
-    taxon_name      = taxon_name,
+    observation_id = observation_id,
+    taxon_name = taxon_name,
     taxon_name_rank = taxon_name_rank,
     hypothesis_type = hypothesis_type,
-    posterior_mean  = posterior_mean,
+    posterior_mean = posterior_mean,
     stringsAsFactors = FALSE
   )
-  if (!is.null(genus))   df$genus   <- genus
-  if (!is.null(family))  df$family  <- family
+  if (!is.null(genus)) df$genus <- genus
+  if (!is.null(family)) df$family <- family
   if (!is.null(species)) df$species <- species
   df
 }
 
 # test -------------------------------------------------------------------------
 df <- rbind(
-    make_posterior("s1", "Fundulus parvipinnis", "species",
-                    "specific_candidate", 0.7,
-                    family = "Leuciscidae"),
-    make_posterior("s1", "Hesperoleucus symmetricus", "species",
-                    "unreferenced_genus", 0.3,
-                    family = "Leuciscidae")
+  make_posterior("s1", "Fundulus parvipinnis", "species",
+    "specific_candidate", 0.7,
+    family = "Leuciscidae"
+  ),
+  make_posterior("s1", "Hesperoleucus symmetricus", "species",
+    "unreferenced_genus", 0.3,
+    family = "Leuciscidae"
   )
+)
 out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))

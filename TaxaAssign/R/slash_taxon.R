@@ -28,12 +28,13 @@
 # @noRd
 .make_slash_name <- function(taxa_vec) {
   first_space <- regexpr(" ", taxa_vec, fixed = TRUE)
-  has_space   <- first_space > 0L
+  has_space <- first_space > 0L
 
-  genera   <- ifelse(has_space, substr(taxa_vec, 1L, first_space - 1L), taxa_vec)
+  genera <- ifelse(has_space, substr(taxa_vec, 1L, first_space - 1L), taxa_vec)
   epithets <- ifelse(has_space,
-                     substr(taxa_vec, first_space + 1L, nchar(taxa_vec)),
-                     taxa_vec)
+    substr(taxa_vec, first_space + 1L, nchar(taxa_vec)),
+    taxa_vec
+  )
 
   unique_genera <- unique(genera)
 
@@ -137,13 +138,13 @@
 #'
 #' @examples
 #' posterior_df <- data.frame(
-#'   observation_id  = c("S1", "S1", "S2"),
-#'   taxon_name      = c("Homo sapiens", "Homo heidelbergensis", "Bos taurus"),
+#'   observation_id = c("S1", "S1", "S2"),
+#'   taxon_name = c("Homo sapiens", "Homo heidelbergensis", "Bos taurus"),
 #'   taxon_name_rank = "species",
 #'   hypothesis_type = "specific_candidate",
-#'   genus           = c("Homo", "Homo", "Bos"),
-#'   family          = c("Hominidae", "Hominidae", "Bovidae"),
-#'   posterior_mean  = c(0.55, 0.45, 1.0),
+#'   genus = c("Homo", "Homo", "Bos"),
+#'   family = c("Hominidae", "Hominidae", "Bovidae"),
+#'   posterior_mean = c(0.55, 0.45, 1.0),
 #'   posterior_point_est = c(0.55, 0.45, 1.0)
 #' )
 #' consensus <- posterior_consensus(posterior_df, min_posterior = 0)
@@ -155,11 +156,11 @@
 #'
 #' @export
 add_slash_taxon <- function(consensus_df,
-                           taxa_col       = "plausible_taxa",
-                           posteriors_col = "plausible_posteriors") {
-
-  if (!taxa_col %in% names(consensus_df))
+                            taxa_col = "plausible_taxa",
+                            posteriors_col = "plausible_posteriors") {
+  if (!taxa_col %in% names(consensus_df)) {
     cli::cli_abort("Column {.field {taxa_col}} not found in {.arg consensus_df}.")
+  }
 
   raw_sets <- consensus_df[[taxa_col]]
 
@@ -189,7 +190,7 @@ add_slash_taxon <- function(consensus_df,
 
   # Posterior vectors for ordering (NULL when unavailable)
   use_posteriors <- !is.null(posteriors_col) &&
-                    posteriors_col %in% names(consensus_df)
+    posteriors_col %in% names(consensus_df)
   raw_posts <- if (use_posteriors) consensus_df[[posteriors_col]] else NULL
 
   # Normalise: deduplicate each candidate set; order by descending posterior
@@ -198,7 +199,9 @@ add_slash_taxon <- function(consensus_df,
     x <- raw_sets[[i]]
     keep <- !is.na(x) & nzchar(x) & !duplicated(x)
     x <- x[keep]
-    if (length(x) == 0L) return(character(0L))
+    if (length(x) == 0L) {
+      return(character(0L))
+    }
     if (use_posteriors) {
       post_vec <- raw_posts[[i]]
       # posterior_consensus()'s plausible_posteriors is a NAMED vector keyed
@@ -215,11 +218,13 @@ add_slash_taxon <- function(consensus_df,
       sort(x)
     }
   })
-  n_taxa    <- lengths(taxa_sets)
+  n_taxa <- lengths(taxa_sets)
 
   # --- slash_taxon_name (per-row, no dataset context needed) ----------------
   slash_names <- vapply(seq_along(taxa_sets), function(i) {
-    if (n_taxa[i] <= 1L) return(NA_character_)
+    if (n_taxa[i] <= 1L) {
+      return(NA_character_)
+    }
     .make_slash_name(taxa_sets[[i]])
   }, character(1L))
 
@@ -233,16 +238,17 @@ add_slash_taxon <- function(consensus_df,
   # all candidates are Oncorhynchus and consensus is Oncorhynchus), the slash
   # name is informative and is kept.
   if ("downranked" %in% names(consensus_df) &&
-      "consensus_taxon" %in% names(consensus_df)) {
+    "consensus_taxon" %in% names(consensus_df)) {
     is_downranked <- !is.na(consensus_df[["downranked"]]) &
-                     consensus_df[["downranked"]]
+      consensus_df[["downranked"]]
     ctaxa <- consensus_df[["consensus_taxon"]]
     for (i in which(is_downranked & !is.na(slash_names))) {
       slash_genera <- sub(" .*", "", trimws(
         strsplit(slash_names[[i]], "\\s*[+/]\\s*")[[1L]]
       ))
-      if (!ctaxa[[i]] %in% slash_genera)
+      if (!ctaxa[[i]] %in% slash_genera) {
         slash_names[[i]] <- NA_character_
+      }
     }
   }
 
@@ -254,7 +260,7 @@ add_slash_taxon <- function(consensus_df,
   # Separator is ASCII SOH (char 1) — never present in taxon names.
   SEP <- rawToChar(as.raw(1L))
 
-  nonempty_sets  <- taxa_sets[!is_empty]
+  nonempty_sets <- taxa_sets[!is_empty]
   # SORT before hashing. Candidate sets arrive ordered by POSTERIOR (the
   # ecosystem's deliberate convention -- it is what primary_taxon reads), so
   # one biological unit can arrive as {A,B} on one observation and {B,A} on
@@ -269,19 +275,23 @@ add_slash_taxon <- function(consensus_df,
   # set question and leaves the posterior order untouched everywhere else.
   # This is monotone: merging spurious duplicate signatures can only move rows
   # FALSE -> TRUE, never the reverse, so it cannot retract an existing call.
-  nonempty_sigs  <- vapply(lapply(nonempty_sets, sort), paste,
-                           character(1L), collapse = SEP)
+  nonempty_sigs <- vapply(lapply(nonempty_sets, sort), paste,
+    character(1L),
+    collapse = SEP
+  )
 
   unique_sigs <- unique(nonempty_sigs)
   unique_sets <- strsplit(unique_sigs, SEP, fixed = TRUE)
-  unique_n    <- lengths(unique_sets)
+  unique_n <- lengths(unique_sets)
 
   irreducible_unique <- vapply(seq_along(unique_sets), function(i) {
-    this_n    <- unique_n[i]
+    this_n <- unique_n[i]
     this_taxa <- unique_sets[[i]]
 
     others <- seq_along(unique_sets)[-i]
-    if (length(others) == 0L) return(TRUE)
+    if (length(others) == 0L) {
+      return(TRUE)
+    }
 
     !any(vapply(others, function(j) {
       unique_n[j] <= this_n && any(this_taxa %in% unique_sets[[j]])
@@ -291,10 +301,10 @@ add_slash_taxon <- function(consensus_df,
   names(irreducible_unique) <- unique_sigs
 
   # Map back to all rows: empty sets → FALSE, others via lookup
-  irreducible_vec           <- rep(FALSE, nrow(consensus_df))
+  irreducible_vec <- rep(FALSE, nrow(consensus_df))
   irreducible_vec[!is_empty] <- unname(irreducible_unique[nonempty_sigs])
 
-  consensus_df[["slash_taxon_name"]]      <- slash_names
+  consensus_df[["slash_taxon_name"]] <- slash_names
   consensus_df[["irreducible_consensus"]] <- irreducible_vec
 
   # --- consensus_OTU / primary_taxon (require consensus_taxon) --------------
@@ -308,8 +318,8 @@ add_slash_taxon <- function(consensus_df,
       consensus_df[["consensus_taxon"]],
       consensus_df[["slash_taxon_name"]]
     )
-    consensus_df[["consensus_OTU"]]   <- otu
-    consensus_df[["primary_taxon"]]   <- sub("(\\s*\\+\\s*|/).*", "", otu)
+    consensus_df[["consensus_OTU"]] <- otu
+    consensus_df[["primary_taxon"]] <- sub("(\\s*\\+\\s*|/).*", "", otu)
   }
 
   consensus_df

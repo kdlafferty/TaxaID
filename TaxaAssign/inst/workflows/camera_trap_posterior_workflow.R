@@ -75,13 +75,19 @@ SITE_HABITAT <- "Terrestrial"
 # photos per species to move past a small-n result -- see that script's own
 # header for the per-species photo counts).
 CAMERA_SPECIES <- tibble::tibble(
-  species = c("Lynx rufus", "Canis latrans", "Sylvilagus bachmani",
-              "Spilogale gracilis", "Mephitis mephitis",
-              "Procyon lotor", "Otospermophilus beecheyi", "Didelphis virginiana"),
-  genus   = c("Lynx", "Canis", "Sylvilagus", "Spilogale", "Mephitis",
-              "Procyon", "Otospermophilus", "Didelphis"),
-  family  = c("Felidae", "Canidae", "Leporidae", "Mephitidae", "Mephitidae",
-              "Procyonidae", "Sciuridae", "Didelphidae")
+  species = c(
+    "Lynx rufus", "Canis latrans", "Sylvilagus bachmani",
+    "Spilogale gracilis", "Mephitis mephitis",
+    "Procyon lotor", "Otospermophilus beecheyi", "Didelphis virginiana"
+  ),
+  genus = c(
+    "Lynx", "Canis", "Sylvilagus", "Spilogale", "Mephitis",
+    "Procyon", "Otospermophilus", "Didelphis"
+  ),
+  family = c(
+    "Felidae", "Canidae", "Leporidae", "Mephitidae", "Mephitidae",
+    "Procyonidae", "Sciuridae", "Didelphidae"
+  )
 )
 
 RANK_SYSTEM <- c("family", "genus", "species")
@@ -98,7 +104,7 @@ RANK_SYSTEM <- c("family", "genus", "species")
 # the more interpretable, still near-optimal choice. Re-calibrate if this
 # photo set changes meaningfully (more photos, new species) -- these are
 # NOT assumed to transfer to other data types (acoustic needs its own run).
-CALIBRATED_TAU             <- 0
+CALIBRATED_TAU <- 0
 CALIBRATED_SCORE_SHARPNESS <- 10
 
 # GBIF fetch box for real occurrence-based priors. 3-degree radius matches the
@@ -109,9 +115,9 @@ CALIBRATED_SCORE_SHARPNESS <- 10
 # multi-thousand-key bulk download.
 FETCH_RADIUS_DEG <- 3.0
 FETCH_YEAR_RANGE <- "2000,2024"
-FETCH_LIMIT      <- 5000L
+FETCH_LIMIT <- 5000L
 
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "camtrap"
 
 # ==============================================================================
@@ -129,22 +135,29 @@ message("\n--- Step 1: Loading (or regenerating) TaxaMatch's raw image checkpoin
 RAW_CHECKPOINT_PATH <- file.path(tempdir(), "tutorial_camtrap_taxamatch_image_match_obj.rds")
 
 if (!file.exists(RAW_CHECKPOINT_PATH)) {
-  message("  Raw checkpoint not found -- sourcing TaxaMatch::score_image_workflow.R ",
-          "to regenerate it (LIVE iNaturalist CV API call; requires INAT_API_TOKEN).")
+  message(
+    "  Raw checkpoint not found -- sourcing TaxaMatch::score_image_workflow.R ",
+    "to regenerate it (LIVE iNaturalist CV API call; requires INAT_API_TOKEN)."
+  )
   .score_image_script <- system.file(
-    "workflows", "score_image_workflow.R", package = "TaxaMatch"
+    "workflows", "score_image_workflow.R",
+    package = "TaxaMatch"
   )
   if (!nzchar(.score_image_script)) {
-    stop("Could not locate score_image_workflow.R in the installed TaxaMatch ",
-         "package. Run devtools::install() on TaxaMatch first.")
+    stop(
+      "Could not locate score_image_workflow.R in the installed TaxaMatch ",
+      "package. Run devtools::install() on TaxaMatch first."
+    )
   }
   source(.score_image_script)
 }
 
 taxamatch_image_match_obj <- readRDS(RAW_CHECKPOINT_PATH)
-message(sprintf("  Loaded: %s (%d row(s), %d photo(s)).",
-                RAW_CHECKPOINT_PATH, nrow(taxamatch_image_match_obj),
-                length(unique(taxamatch_image_match_obj$observation_id))))
+message(sprintf(
+  "  Loaded: %s (%d row(s), %d photo(s)).",
+  RAW_CHECKPOINT_PATH, nrow(taxamatch_image_match_obj),
+  length(unique(taxamatch_image_match_obj$observation_id))
+))
 
 # ==============================================================================
 # 2.  REAL HABITAT CLASSIFICATION (TaxaHabitat) -- NOT the "Marine" tutorial
@@ -161,7 +174,7 @@ message("\n--- Step 2: Classifying species habitat via TaxaHabitat (real LLM cal
 
 habitat_prompt <- TaxaHabitat::build_habitat_prompt(
   taxon_list     = CAMERA_SPECIES$species,
-  habitat_scheme = NULL   # package default: Marine / Freshwater / Terrestrial
+  habitat_scheme = NULL # package default: Marine / Freshwater / Terrestrial
 )
 
 llm_response <- TaxaTools::prompt_api(
@@ -195,11 +208,15 @@ bbox <- TaxaFetch::make_bbox_wkt(
 keys <- TaxaFetch::get_keys_from_context(CAMERA_SPECIES)
 valid_keys <- keys$usageKey[!is.na(keys$usageKey)]
 if (length(valid_keys) == 0) {
-  stop("No valid GBIF usageKey resolved for any of the 8 camera-trap species -- ",
-       "check network access / rgbif availability.")
+  stop(
+    "No valid GBIF usageKey resolved for any of the 8 camera-trap species -- ",
+    "check network access / rgbif availability."
+  )
 }
-message(sprintf("  Resolved %d/%d species to a valid GBIF usageKey.",
-                length(valid_keys), nrow(CAMERA_SPECIES)))
+message(sprintf(
+  "  Resolved %d/%d species to a valid GBIF usageKey.",
+  length(valid_keys), nrow(CAMERA_SPECIES)
+))
 
 raw_occ <- TaxaFetch::fetch_gbif_occurrences(
   keys       = valid_keys,
@@ -215,8 +232,10 @@ filtered_occ <- TaxaFetch::filter_gbif_quality(
   require_species          = TRUE
 )
 if (nrow(filtered_occ) == 0) {
-  stop("No GBIF records survived quality filtering -- widen FETCH_RADIUS_DEG ",
-       "or FETCH_YEAR_RANGE.")
+  stop(
+    "No GBIF records survived quality filtering -- widen FETCH_RADIUS_DEG ",
+    "or FETCH_YEAR_RANGE."
+  )
 }
 
 all_occurrences <- TaxaFetch::stack_occurrences(filtered_occ)
@@ -225,10 +244,12 @@ if (!"taxon_name" %in% names(all_occurrences)) {
   all_occurrences <- TaxaTools::create_taxon_names(all_occurrences)
 }
 
-n_locs    <- dplyr::n_distinct(all_occurrences$decimalLatitude, all_occurrences$decimalLongitude)
+n_locs <- dplyr::n_distinct(all_occurrences$decimalLatitude, all_occurrences$decimalLongitude)
 n_species <- dplyr::n_distinct(all_occurrences$taxon_name)
-message(sprintf("  %d occurrence record(s), %d distinct location(s), %d distinct species.",
-                nrow(all_occurrences), n_locs, n_species))
+message(sprintf(
+  "  %d occurrence record(s), %d distinct location(s), %d distinct species.",
+  nrow(all_occurrences), n_locs, n_species
+))
 
 all_occurrences_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_all_occurrences.rds"))
 saveRDS(all_occurrences, all_occurrences_path)
@@ -239,10 +260,10 @@ message(sprintf("  Saved: %s", all_occurrences_path))
 
 occurrences_with_habitat <- TaxaHabitat::assign_habitat_biological(
   occurrence_data = all_occurrences,
-  habitats_df  = habitat_weights,
+  habitats_df = habitat_weights,
   point_id_col = "point_id",
-  taxon_col    = "taxon_name",
-  threshold    = 0.5
+  taxon_col = "taxon_name",
+  threshold = 0.5
 )
 
 occurrences_flagged <- TaxaHabitat::flag_habitat_inconsistencies(
@@ -251,10 +272,14 @@ occurrences_flagged <- TaxaHabitat::flag_habitat_inconsistencies(
 )
 
 occurrences_clean <- dplyr::filter(occurrences_flagged, spatial_flag == "likely")
-message(sprintf("  %d of %d occurrence row(s) retained (spatial_flag == \"likely\").",
-                nrow(occurrences_clean), nrow(occurrences_flagged)))
-message("  For a real analysis, review \"questionable\" points interactively via ",
-        "TaxaHabitat::review_spatial_flags() instead of dropping them here.")
+message(sprintf(
+  "  %d of %d occurrence row(s) retained (spatial_flag == \"likely\").",
+  nrow(occurrences_clean), nrow(occurrences_flagged)
+))
+message(
+  "  For a real analysis, review \"questionable\" points interactively via ",
+  "TaxaHabitat::review_spatial_flags() instead of dropping them here."
+)
 
 occurrences_clean_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_occurrences_clean.rds"))
 saveRDS(occurrences_clean, occurrences_clean_path)
@@ -275,36 +300,48 @@ grid_opt <- TaxaExpect::optimize_grid_size(
   observation_data = occurrences_clean,
   n_covariates     = 2L
 )
-message(sprintf("  best_grid = %.2f degrees (fallback_level = \"%s\")",
-                grid_opt$best_grid, grid_opt$fallback_level))
+message(sprintf(
+  "  best_grid = %.2f degrees (fallback_level = \"%s\")",
+  grid_opt$best_grid, grid_opt$fallback_level
+))
 
 sites <- TaxaExpect::create_sites_from_grid(
   data      = occurrences_clean,
   grid_size = grid_opt$best_grid
 )
-message(sprintf("  %d row(s) assigned to %d distinct grid cell(s).",
-                nrow(sites), length(unique(sites$grid_id))))
+message(sprintf(
+  "  %d row(s) assigned to %d distinct grid cell(s).",
+  nrow(sites), length(unique(sites$grid_id))
+))
 
 .n_grid_cells <- dplyr::n_distinct(sites$grid_id)
-.moran_k      <- min(10L, .n_grid_cells - 1L)
-.moran_basis  <- if (.moran_k >= 1L) {
+.moran_k <- min(10L, .n_grid_cells - 1L)
+.moran_basis <- if (.moran_k >= 1L) {
   tryCatch(
     TaxaExpect::compute_moran_basis(grid_ids = unique(sites$grid_id), k = .moran_k),
     error = function(e) {
-      message(sprintf("  compute_moran_basis() failed (%s) -- skipping.",
-                      conditionMessage(e)))
+      message(sprintf(
+        "  compute_moran_basis() failed (%s) -- skipping.",
+        conditionMessage(e)
+      ))
       NULL
     }
   )
-} else NULL
+} else {
+  NULL
+}
 
 if (!is.null(.moran_basis)) {
   sites <- dplyr::left_join(sites, .moran_basis, by = "grid_id")
-  message(sprintf("  Moran basis joined: %d MEM column(s) (k = %d).",
-                  sum(grepl("^B[0-9]+$", names(.moran_basis))), .moran_k))
+  message(sprintf(
+    "  Moran basis joined: %d MEM column(s) (k = %d).",
+    sum(grepl("^B[0-9]+$", names(.moran_basis))), .moran_k
+  ))
 } else {
-  message("  No Moran eigenvector basis available -- omitting spatial-",
-          "autocorrelation terms from the formula below.")
+  message(
+    "  No Moran eigenvector basis available -- omitting spatial-",
+    "autocorrelation terms from the formula below."
+  )
 }
 
 model_data <- TaxaExpect::prepare_model_dataframe(
@@ -315,14 +352,20 @@ model_data <- TaxaExpect::prepare_model_dataframe(
 message(sprintf("  model_data: %d row(s) (taxon x site x habitat).", nrow(model_data)))
 
 .n_moran_cols <- sum(grepl("^B[0-9]+$", names(model_data)))
-.moran_terms  <- if (.n_moran_cols > 0L) {
+.moran_terms <- if (.n_moran_cols > 0L) {
   sprintf("(0 + B%d | taxon_name)", seq_len(min(10L, .n_moran_cols)))
-} else character(0)
+} else {
+  character(0)
+}
 
 .n_habitat_levels <- dplyr::n_distinct(model_data$main_habitat)
-.habitat_term <- if (.n_habitat_levels >= 2L) "main_habitat" else {
-  message(sprintf("  Only %d distinct main_habitat value(s) -- omitting the ",
-                  .n_habitat_levels), "main_habitat fixed effect.")
+.habitat_term <- if (.n_habitat_levels >= 2L) {
+  "main_habitat"
+} else {
+  message(sprintf(
+    "  Only %d distinct main_habitat value(s) -- omitting the ",
+    .n_habitat_levels
+  ), "main_habitat fixed effect.")
   character(0)
 }
 
@@ -354,8 +397,10 @@ priors_undetected <- TaxaExpect::generate_undetected_diversity(
   model_obj = mod,
   taxonomy  = occurrences_clean
 )
-message(sprintf("  %d proxy prior row(s) (singleton mirrors + global floor).",
-                nrow(priors_undetected)))
+message(sprintf(
+  "  %d proxy prior row(s) (singleton mirrors + global floor).",
+  nrow(priors_undetected)
+))
 
 # ---- Derive focal SITE_GRID_ID dynamically (NEVER hardcode -- grid_id format
 # depends on grid_opt$best_grid, which varies run to run). Derived from the
@@ -366,34 +411,42 @@ message(sprintf("  %d proxy prior row(s) (singleton mirrors + global floor).",
 SITE_GRID_ID <- sites |>
   dplyr::filter(main_habitat == SITE_HABITAT) |>
   dplyr::group_by(grid_id) |>
-  dplyr::summarise(.lat = mean(decimalLatitude), .lon = mean(decimalLongitude),
-                   .groups = "drop") |>
+  dplyr::summarise(
+    .lat = mean(decimalLatitude), .lon = mean(decimalLongitude),
+    .groups = "drop"
+  ) |>
   dplyr::mutate(.dist2 = (.lat - SITE_LAT)^2 +
-                         ((.lon - SITE_LNG) * cos(SITE_LAT * pi / 180))^2) |>
+    ((.lon - SITE_LNG) * cos(SITE_LAT * pi / 180))^2) |>
   dplyr::slice_min(.dist2, n = 1, with_ties = FALSE) |>
   dplyr::pull(grid_id)
 
 if (length(SITE_GRID_ID) == 0) {
-  stop("No grid_id found for SITE_HABITAT = \"", SITE_HABITAT, "\" in sites. ",
-       "Check Step 2's habitat_weights -- did the LLM classify these species ",
-       "as something other than \"Terrestrial\"? If so, update SITE_HABITAT ",
-       "in CONFIG to match.")
+  stop(
+    "No grid_id found for SITE_HABITAT = \"", SITE_HABITAT, "\" in sites. ",
+    "Check Step 2's habitat_weights -- did the LLM classify these species ",
+    "as something other than \"Terrestrial\"? If so, update SITE_HABITAT ",
+    "in CONFIG to match."
+  )
 }
 message(sprintf("  SITE_GRID_ID = \"%s\".", SITE_GRID_ID))
 
 .moran_cols <- grep("^B[0-9]+$", names(sites), value = TRUE)
 new_sites_focal <- sites |>
   dplyr::filter(grid_id == SITE_GRID_ID) |>
-  dplyr::distinct(grid_id, lat_r, lon_r, main_habitat,
-                  dplyr::across(dplyr::all_of(.moran_cols)))
+  dplyr::distinct(
+    grid_id, lat_r, lon_r, main_habitat,
+    dplyr::across(dplyr::all_of(.moran_cols))
+  )
 
 taxaexpect_priors <- TaxaExpect::generate_full_priors(
   model_obj  = mod,
   new_sites  = new_sites_focal,
   undetected = priors_undetected
 )
-message(sprintf("  %d prior row(s) generated for SITE_GRID_ID = \"%s\".",
-                nrow(taxaexpect_priors), SITE_GRID_ID))
+message(sprintf(
+  "  %d prior row(s) generated for SITE_GRID_ID = \"%s\".",
+  nrow(taxaexpect_priors), SITE_GRID_ID
+))
 
 # REQUIRED: generate_full_priors() does not add taxon_name_rank, but
 # join_priors() requires it (see TaxaExpect/TaxaAssign CLAUDE.md, and the
@@ -423,24 +476,30 @@ message(sprintf("  Saved: %s", taxaexpect_priors_path))
 message("\n--- Step 5: Building calibrated and old-default likelihood objects ---")
 
 calibrated_match_obj <- TaxaLikely::correct_training_bias(
-  taxamatch_image_match_obj, count_col = "n_observations", tau = CALIBRATED_TAU
+  taxamatch_image_match_obj,
+  count_col = "n_observations", tau = CALIBRATED_TAU
 )
 calibrated_hyp <- TaxaLikely::unreferenced_candidates(
-  calibrated_match_obj, rank_system = RANK_SYSTEM
+  calibrated_match_obj,
+  rank_system = RANK_SYSTEM
 )
 likelihoods_calibrated <- TaxaLikely::assign_scores(
-  calibrated_hyp, score_type = "similarity_softmax",
+  calibrated_hyp,
+  score_type = "similarity_softmax",
   score_sharpness = CALIBRATED_SCORE_SHARPNESS
 )
 
 old_default_match_obj <- TaxaLikely::correct_training_bias(
-  taxamatch_image_match_obj, count_col = "n_observations", tau = 1.0
+  taxamatch_image_match_obj,
+  count_col = "n_observations", tau = 1.0
 )
 old_default_hyp <- TaxaLikely::unreferenced_candidates(
-  old_default_match_obj, rank_system = RANK_SYSTEM
+  old_default_match_obj,
+  rank_system = RANK_SYSTEM
 )
 likelihoods_old_default <- TaxaLikely::assign_scores(
-  old_default_hyp, score_type = "similarity_softmax", score_sharpness = 0.1
+  old_default_hyp,
+  score_type = "similarity_softmax", score_sharpness = 0.1
 )
 
 # compute_posterior() requires score_likelihood_mean/score_likelihood_sd --
@@ -449,22 +508,30 @@ likelihoods_old_default <- TaxaLikely::assign_scores(
 # (NOT NA -- compute_posterior() replaces NA sd with 0 anyway but also warns;
 # setting it explicitly here documents the choice instead of relying on that
 # fallback).
-likelihoods_calibrated$score_likelihood_mean  <- likelihoods_calibrated$score_likelihood
-likelihoods_calibrated$score_likelihood_sd    <- 0
+likelihoods_calibrated$score_likelihood_mean <- likelihoods_calibrated$score_likelihood
+likelihoods_calibrated$score_likelihood_sd <- 0
 likelihoods_old_default$score_likelihood_mean <- likelihoods_old_default$score_likelihood
-likelihoods_old_default$score_likelihood_sd   <- 0
+likelihoods_old_default$score_likelihood_sd <- 0
 
-message(sprintf("  likelihoods_calibrated:  %d row(s), %d photo(s).",
-                nrow(likelihoods_calibrated),
-                dplyr::n_distinct(likelihoods_calibrated$observation_id)))
-message(sprintf("  likelihoods_old_default: %d row(s), %d photo(s).",
-                nrow(likelihoods_old_default),
-                dplyr::n_distinct(likelihoods_old_default$observation_id)))
+message(sprintf(
+  "  likelihoods_calibrated:  %d row(s), %d photo(s).",
+  nrow(likelihoods_calibrated),
+  dplyr::n_distinct(likelihoods_calibrated$observation_id)
+))
+message(sprintf(
+  "  likelihoods_old_default: %d row(s), %d photo(s).",
+  nrow(likelihoods_old_default),
+  dplyr::n_distinct(likelihoods_old_default$observation_id)
+))
 
-saveRDS(likelihoods_calibrated,
-        file.path(OUT_DIR, paste0(OUT_PREFIX, "_likelihoods_calibrated.rds")))
-saveRDS(likelihoods_old_default,
-        file.path(OUT_DIR, paste0(OUT_PREFIX, "_likelihoods_old_default.rds")))
+saveRDS(
+  likelihoods_calibrated,
+  file.path(OUT_DIR, paste0(OUT_PREFIX, "_likelihoods_calibrated.rds"))
+)
+saveRDS(
+  likelihoods_old_default,
+  file.path(OUT_DIR, paste0(OUT_PREFIX, "_likelihoods_old_default.rds"))
+)
 
 # ==============================================================================
 # 6.  JOIN PRIORS -> COMPUTE POSTERIOR -> CONSENSUS -> SLASH TAXON, TWICE
@@ -482,7 +549,7 @@ saveRDS(likelihoods_old_default,
     site              = list(grid_id = SITE_GRID_ID, main_habitat = SITE_HABITAT),
     taxonomy_lookup   = taxonomy_lookup,
     rank_system       = RANK_SYSTEM,
-    backbone_id       = 11L  # GBIF; match whichever backbone your input taxonomy used
+    backbone_id       = 11L # GBIF; match whichever backbone your input taxonomy used
   )
 
   posterior_df <- TaxaAssign::compute_posterior(
@@ -497,20 +564,26 @@ saveRDS(likelihoods_old_default,
 
   taxaassign_consensus <- TaxaAssign::add_slash_taxon(consensus_df)
 
-  message(sprintf("  [%s] %d consensus row(s); %d resolved.",
-                  label, nrow(taxaassign_consensus),
-                  sum(taxaassign_consensus$is_resolved, na.rm = TRUE)))
+  message(sprintf(
+    "  [%s] %d consensus row(s); %d resolved.",
+    label, nrow(taxaassign_consensus),
+    sum(taxaassign_consensus$is_resolved, na.rm = TRUE)
+  ))
 
   taxaassign_consensus
 }
 
-consensus_calibrated  <- .run_bayesian_chain(likelihoods_calibrated,  "CALIBRATED")
+consensus_calibrated <- .run_bayesian_chain(likelihoods_calibrated, "CALIBRATED")
 consensus_old_default <- .run_bayesian_chain(likelihoods_old_default, "OLD_DEFAULT")
 
-saveRDS(consensus_calibrated,
-        file.path(OUT_DIR, paste0(OUT_PREFIX, "_consensus_calibrated.rds")))
-saveRDS(consensus_old_default,
-        file.path(OUT_DIR, paste0(OUT_PREFIX, "_consensus_old_default.rds")))
+saveRDS(
+  consensus_calibrated,
+  file.path(OUT_DIR, paste0(OUT_PREFIX, "_consensus_calibrated.rds"))
+)
+saveRDS(
+  consensus_old_default,
+  file.path(OUT_DIR, paste0(OUT_PREFIX, "_consensus_old_default.rds"))
+)
 
 # ==============================================================================
 # 7.  COMPARE -- HOW MUCH DID CALIBRATION ACTUALLY CHANGE THE FINAL POSTERIOR?
@@ -539,19 +612,21 @@ TRUE_SPECIES <- taxamatch_image_match_obj |>
   tibble::deframe()
 
 comparison <- dplyr::full_join(
-  consensus_calibrated  |> dplyr::select(observation_id,
-                                          consensus_taxon_calibrated   = consensus_taxon,
-                                          primary_taxon_calibrated     = primary_taxon,
-                                          consensus_posterior_calibrated = consensus_posterior),
+  consensus_calibrated |> dplyr::select(observation_id,
+    consensus_taxon_calibrated = consensus_taxon,
+    primary_taxon_calibrated = primary_taxon,
+    consensus_posterior_calibrated = consensus_posterior
+  ),
   consensus_old_default |> dplyr::select(observation_id,
-                                          consensus_taxon_old_default   = consensus_taxon,
-                                          primary_taxon_old_default   = primary_taxon,
-                                          consensus_posterior_old_default = consensus_posterior),
+    consensus_taxon_old_default = consensus_taxon,
+    primary_taxon_old_default = primary_taxon,
+    consensus_posterior_old_default = consensus_posterior
+  ),
   by = "observation_id"
 ) |>
   dplyr::mutate(
     true_species = TRUE_SPECIES[observation_id],
-    calibrated_correct  = primary_taxon_calibrated  == true_species,
+    calibrated_correct = primary_taxon_calibrated == true_species,
     old_default_correct = primary_taxon_old_default == true_species,
     calibration_changed_it = calibrated_correct != old_default_correct
   )
@@ -570,8 +645,10 @@ if (nrow(.rabbit_row) > 0) {
   print(.rabbit_row)
 }
 
-message("\nWorkflow complete -- consensus_calibrated is the recommended result;",
-        " consensus_old_default is kept only for comparison.")
+message(
+  "\nWorkflow complete -- consensus_calibrated is the recommended result;",
+  " consensus_old_default is kept only for comparison."
+)
 
 # ==============================================================================
 # Output

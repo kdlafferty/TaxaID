@@ -20,13 +20,19 @@
 #' "coarsest" and "finest" throughout.
 #' @noRd
 .check_rank_system_order <- function(rank_system, caller = "this function") {
-  if (is.null(rank_system) || length(rank_system) < 2L) return(invisible(NULL))
-  if (!requireNamespace("TaxaTools", quietly = TRUE)) return(invisible(NULL))
+  if (is.null(rank_system) || length(rank_system) < 2L) {
+    return(invisible(NULL))
+  }
+  if (!requireNamespace("TaxaTools", quietly = TRUE)) {
+    return(invisible(NULL))
+  }
   known <- intersect(rank_system, TaxaTools::standard_ranks)
-  if (length(known) < 2L) return(invisible(NULL))
+  if (length(known) < 2L) {
+    return(invisible(NULL))
+  }
 
   pos_in_rank_system <- match(known, rank_system)
-  pos_in_standard     <- match(known, TaxaTools::standard_ranks)
+  pos_in_standard <- match(known, TaxaTools::standard_ranks)
   if (is.unsorted(pos_in_rank_system[order(pos_in_standard)])) {
     cli::cli_warn(c(
       "{caller}: {.arg rank_system} = {.val {rank_system}} disagrees in \\
@@ -71,11 +77,15 @@
 #' suspiciously-uniform LLM result with no explanation.
 #' @noRd
 .resolve_llm_fn <- function(llm_fn, caller = "this function") {
-  if (!is.null(llm_fn)) return(llm_fn)
+  if (!is.null(llm_fn)) {
+    return(llm_fn)
+  }
 
   # Check TaxaTools auto-detected provider (set by TaxaTools .onAttach)
   opt <- getOption("TaxaID.llm_fn")
-  if (!is.null(opt) && is.function(opt)) return(opt)
+  if (!is.null(opt) && is.function(opt)) {
+    return(opt)
+  }
 
   # Fall back to Anthropic if TaxaTools is available
   if (!requireNamespace("TaxaTools", quietly = TRUE)) {
@@ -111,22 +121,30 @@
 #' value (`"main_habitat"` vs `"habitat"`).
 #' @noRd
 .build_context_block <- function(ctx, habitat_field = "main_habitat") {
-  ctx_fields   <- c("ecoregion", "lat", "lon", "date", habitat_field)
+  ctx_fields <- c("ecoregion", "lat", "lon", "date", habitat_field)
   header_parts <- character(0L)
   for (fld in ctx_fields) {
     v <- ctx[[fld]]
     if (is.null(v) || length(v) != 1L || is.na(v) ||
-        !nzchar(trimws(as.character(v))))
+      !nzchar(trimws(as.character(v)))) {
       next
+    }
     label <- if (fld == habitat_field) {
       "Habitat"
     } else {
-      switch(fld, ecoregion = "Ecoregion", lat = "Latitude", lon = "Longitude",
-             date = "Date/season", fld)
+      switch(fld,
+        ecoregion = "Ecoregion",
+        lat = "Latitude",
+        lon = "Longitude",
+        date = "Date/season",
+        fld
+      )
     }
     header_parts <- c(header_parts, paste0(label, ": ", as.character(v)))
   }
-  if (length(header_parts) == 0L) return("")
+  if (length(header_parts) == 0L) {
+    return("")
+  }
   paste0("Context:\n", paste0("  ", header_parts, collapse = "\n"), "\n\n")
 }
 
@@ -145,7 +163,7 @@
   }
 
   data.frame(
-    grid_id  = grid_ids,
+    grid_id = grid_ids,
     grid_lat = parse_coord(lat_str),
     grid_lon = parse_coord(lon_str),
     stringsAsFactors = FALSE
@@ -193,16 +211,14 @@
 #' @return data.frame with observation_id, grid_id, main_habitat
 #' @noRd
 .resolve_site <- function(site, observation_ids, taxaexpect_priors) {
-
   # --- Case: list (single-site) ---
 
   if (is.list(site) && !is.data.frame(site)) {
-
     # Existing format: grid_id + main_habitat
     if (all(c("grid_id", "main_habitat") %in% names(site))) {
       return(data.frame(
-        observation_id    = observation_ids,
-        grid_id      = site$grid_id,
+        observation_id = observation_ids,
+        grid_id = site$grid_id,
         main_habitat = site$main_habitat,
         stringsAsFactors = FALSE
       ))
@@ -211,14 +227,14 @@
     # lat + lon + main_habitat (main_habitat required by .latlon_to_grid)
     if (all(c("lat", "lon") %in% names(site))) {
       resolved <- .latlon_to_grid(
-        lat              = site$lat,
-        lon              = site$lon,
-        main_habitat     = site$main_habitat,  # errors if NULL
+        lat = site$lat,
+        lon = site$lon,
+        main_habitat = site$main_habitat, # errors if NULL
         taxaexpect_priors = taxaexpect_priors
       )
       return(data.frame(
-        observation_id    = observation_ids,
-        grid_id      = resolved$grid_id,
+        observation_id = observation_ids,
+        grid_id = resolved$grid_id,
         main_habitat = resolved$main_habitat,
         stringsAsFactors = FALSE
       ))
@@ -232,9 +248,9 @@
 
   # --- Case: data.frame (multi-site) ---
   if (is.data.frame(site)) {
-
-    if (!"observation_id" %in% names(site))
+    if (!"observation_id" %in% names(site)) {
       cli::cli_abort("{.arg site} data frame must have an {.field observation_id} column.")
+    }
 
     # Existing format: already has grid_id + main_habitat
     if (all(c("grid_id", "main_habitat") %in% names(site))) {
@@ -255,16 +271,18 @@
       unique_locs <- unique(site[, loc_cols, drop = FALSE])
       resolved_list <- lapply(seq_len(nrow(unique_locs)), function(i) {
         .latlon_to_grid(
-          lat              = unique_locs$lat[i],
-          lon              = unique_locs$lon[i],
-          main_habitat     = if (has_habitat) unique_locs$main_habitat[i] else NULL,
+          lat = unique_locs$lat[i],
+          lon = unique_locs$lon[i],
+          main_habitat = if (has_habitat) unique_locs$main_habitat[i] else NULL,
           taxaexpect_priors = taxaexpect_priors
         )
       })
       coord_lookup <- unique_locs
       coord_lookup$grid_id <- vapply(resolved_list, `[[`, character(1L), "grid_id")
-      coord_lookup$resolved_habitat <- vapply(resolved_list, `[[`, character(1L),
-                                              "main_habitat")
+      coord_lookup$resolved_habitat <- vapply(
+        resolved_list, `[[`, character(1L),
+        "main_habitat"
+      )
       merge_cols <- loc_cols
       site_merge <- site[, c("observation_id", loc_cols), drop = FALSE]
       result <- merge(site_merge, coord_lookup, by = merge_cols)
@@ -291,7 +309,6 @@
 #' available habitats and row counts.
 #' @noRd
 .latlon_to_grid <- function(lat, lon, main_habitat = NULL, taxaexpect_priors) {
-
   # Parse all unique grid_ids to coordinates
   all_grids <- unique(taxaexpect_priors$grid_id)
   all_grids <- all_grids[!is.na(all_grids)]
@@ -300,9 +317,9 @@
   # .find_nearest_grid() already computes the nearest cell's distance
   # internally (to pick the minimum) -- reuse it here instead of
   # recomputing the same calculation a second time.
-  nearest      <- .find_nearest_grid(lat, lon, grid_coords)
+  nearest <- .find_nearest_grid(lat, lon, grid_coords)
   nearest_grid <- nearest$grid_id
-  dist_deg     <- nearest$dist_deg
+  dist_deg <- nearest$dist_deg
 
   # Distance check: warn if nearest grid is far (> 1 degree)
   if (dist_deg > 1.0) {
@@ -318,7 +335,7 @@
   # Resolve habitat: require user to specify main_habitat
 
   grid_rows <- taxaexpect_priors[taxaexpect_priors$grid_id == nearest_grid &
-                                   !is.na(taxaexpect_priors$main_habitat), ]
+    !is.na(taxaexpect_priors$main_habitat), ]
   if (nrow(grid_rows) == 0L) {
     cli::cli_abort(c(
       "No prior rows with a non-NA {.field main_habitat} exist at the \\
@@ -332,8 +349,10 @@
 
   # Format row counts for messaging: "Marine (847), Freshwater (356)"
   counts_str <- paste(
-    sprintf("  \"%s\" (%d prior rows)", names(habitat_counts),
-            as.integer(habitat_counts)),
+    sprintf(
+      "  \"%s\" (%d prior rows)", names(habitat_counts),
+      as.integer(habitat_counts)
+    ),
     collapse = "\n"
   )
 

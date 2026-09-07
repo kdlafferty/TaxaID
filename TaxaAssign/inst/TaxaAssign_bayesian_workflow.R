@@ -27,12 +27,14 @@
 
 library(TaxaLikely)
 library(TaxaAssign)
-library(TaxaMatch)   # filter_redundant_hypotheses()
+library(TaxaMatch) # filter_redundant_hypotheses()
 library(dplyr)
 
 # ---- Runtime tracking --------------------------------------------------------
 .timings <- list()
-.tic <- function(label) { .timings[[label]] <<- proc.time() }
+.tic <- function(label) {
+  .timings[[label]] <<- proc.time()
+}
 .toc <- function(label) {
   elapsed <- (proc.time() - .timings[[label]])[["elapsed"]]
   .timings[[label]] <<- elapsed
@@ -49,12 +51,12 @@ library(dplyr)
 #   taxaexpect_priors — from TaxaExpect::generate_full_priors()
 
 
-match_obj  <- readRDS(file.choose())  # select match_obj.rds from TaxaMatch/inst/
-lik_result <- readRDS(file.choose())  # select real_likelihoods.rds from TaxaLikely/inst/
-taxaexpect_priors <- readRDS(file.choose())  # select taxaexpect_priors.rds from TaxaExpect/inst/
+match_obj <- readRDS(file.choose()) # select match_obj.rds from TaxaMatch/inst/
+lik_result <- readRDS(file.choose()) # select real_likelihoods.rds from TaxaLikely/inst/
+taxaexpect_priors <- readRDS(file.choose()) # select taxaexpect_priors.rds from TaxaExpect/inst/
 
-#if TaxaAssign_llm_workflow.R has been run, AND this matches lik_result and taxaexpect_priors.
-match_obj  <-match_df[1:20,]
+# if TaxaAssign_llm_workflow.R has been run, AND this matches lik_result and taxaexpect_priors.
+match_obj <- match_df[1:20, ]
 
 cat("Likelihood rows:", nrow(lik_result$likelihoods), "\n")
 if (nrow(lik_result$unresolved) > 0L) {
@@ -95,8 +97,10 @@ cat("TaxaExpect plausible species:", nrow(taxaexpect_species_df), "\n")
 # Order matters: expand BEFORE apply_coverage_constraints().
 
 # ---- 2a. Identify unreferenced species via NCBI barcode audit ---------------
-reference_species_df <- match_obj[!duplicated(match_obj$species),
-                                   c("genus", "species")]
+reference_species_df <- match_obj[
+  !duplicated(match_obj$species),
+  c("genus", "species")
+]
 
 .tic("S2a_audit_coverage")
 coverage <- TaxaLikely::audit_barcode_coverage(
@@ -107,8 +111,10 @@ coverage <- TaxaLikely::audit_barcode_coverage(
   # max_date   = "2024/12/31"
 )
 .toc("S2a_audit_coverage")
-cat("\nCoverage census:\n"); print(coverage$census)
-cat("\nUnreferenced species:\n"); print(coverage$unreferenced)
+cat("\nCoverage census:\n")
+print(coverage$census)
+cat("\nUnreferenced species:\n")
+print(coverage$unreferenced)
 
 # ---- 2b. Expand generic H2/H3 rows into named species -----------------------
 unreferenced_df <- taxaexpect_species_df |>
@@ -134,11 +140,14 @@ census_result <- mutate(
 
 .tic("S2c_constraints")
 final_likelihoods <- TaxaLikely::apply_coverage_constraints(
-  expanded_likelihoods, census_result, constraint_behavior = "relabel"
+  expanded_likelihoods, census_result,
+  constraint_behavior = "relabel"
 )
 .toc("S2c_constraints")
-cat("Rows with coverage constraints applied:",
-    sum(!is.na(final_likelihoods$constraint_applied)), "\n")
+cat(
+  "Rows with coverage constraints applied:",
+  sum(!is.na(final_likelihoods$constraint_applied)), "\n"
+)
 
 
 # =============================================================================
@@ -172,7 +181,7 @@ likelihoods_ready <- join_priors(
   site              = site,
   taxonomy_lookup   = taxonomy_lookup,
   rank_system       = c("order", "family", "genus", "species"),
-  backbone_id       = 4  # NCBI; matches backbone_id used below in posterior_consensus()
+  backbone_id       = 4 # NCBI; matches backbone_id used below in posterior_consensus()
 )
 .toc("S3_join_priors")
 cat("Rows ready for posterior:", nrow(likelihoods_ready), "\n")
@@ -195,39 +204,41 @@ cat("Unique observation_ids:", n_distinct(posteriors$observation_id), "\n")
 .tic("S5_consensus")
 consensus <- posterior_consensus(
   posteriors,
-  cumulative_threshold    = 0.90,
-  min_posterior            = 0.05,
-  posterior_col            = "posterior_point_est",
-  lookup_missing_taxonomy  = TRUE,
-  backbone_id              = 4,
-  rank_system              = c("order", "family", "genus", "species"),
-  species_reference        = taxaexpect_species_df
+  cumulative_threshold = 0.90,
+  min_posterior = 0.05,
+  posterior_col = "posterior_point_est",
+  lookup_missing_taxonomy = TRUE,
+  backbone_id = 4,
+  rank_system = c("order", "family", "genus", "species"),
+  species_reference = taxaexpect_species_df
 )
 
 posteriors_updated <- update_prior_from_consensus(
   posteriors, consensus,
-  confirmation_quantile       = 0.9,
+  confirmation_quantile = 0.9,
   confirmation_discount = 0.25,
-  n_sims                      = 1000
+  n_sims = 1000
 )
 
 consensus_final <- posterior_consensus(
   posteriors_updated,
-  cumulative_threshold    = 0.90,
-  min_posterior            = 0.05,
-  posterior_col            = "posterior_point_est",
-  lookup_missing_taxonomy  = TRUE,
-  backbone_id              = 4,
-  rank_system              = c("order", "family", "genus", "species"),
-  species_reference        = taxaexpect_species_df
+  cumulative_threshold = 0.90,
+  min_posterior = 0.05,
+  posterior_col = "posterior_point_est",
+  lookup_missing_taxonomy = TRUE,
+  backbone_id = 4,
+  rank_system = c("order", "family", "genus", "species"),
+  species_reference = taxaexpect_species_df
 )
 .toc("S5_consensus")
 
 cat("\nConsensus taxonomy summary:\n")
 print(table(consensus_final$consensus_rank, useNA = "always"))
-cat("\nResolved to species-level:",
-    sum(consensus_final$is_resolved, na.rm = TRUE), "/",
-    nrow(consensus_final), "samples\n")
+cat(
+  "\nResolved to species-level:",
+  sum(consensus_final$is_resolved, na.rm = TRUE), "/",
+  nrow(consensus_final), "samples\n"
+)
 
 consensus_final
 
@@ -262,72 +273,96 @@ score_con <- score_consensus(
 
 cat("\nScore-based consensus summary:\n")
 print(table(score_con$consensus_rank, useNA = "always"))
-cat("Resolved to species-level:",
-    sum(score_con$is_resolved, na.rm = TRUE), "/",
-    nrow(score_con), "samples\n")
+cat(
+  "Resolved to species-level:",
+  sum(score_con$is_resolved, na.rm = TRUE), "/",
+  nrow(score_con), "samples\n"
+)
 
 
 # =============================================================================
 # SECTION 7: COMPARE POSTERIOR vs SCORE-BASED CONSENSUS
 # =============================================================================
 comparison <- merge(
-  consensus_final[, c("observation_id", "consensus_taxon", "consensus_rank",
-                       "is_resolved", "consensus_posterior", "n_plausible")],
-  score_con[, c("observation_id", "consensus_taxon", "consensus_rank",
-                 "is_resolved", "top_score", "n_taxa")],
+  consensus_final[, c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "is_resolved", "consensus_posterior", "n_plausible"
+  )],
+  score_con[, c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "is_resolved", "top_score", "n_taxa"
+  )],
   by = "observation_id", suffixes = c("_posterior", "_score")
 )
 
 comparison$taxon_agree <- comparison$consensus_taxon_posterior ==
-                          comparison$consensus_taxon_score
-comparison$rank_agree  <- comparison$consensus_rank_posterior ==
-                          comparison$consensus_rank_score
+  comparison$consensus_taxon_score
+comparison$rank_agree <- comparison$consensus_rank_posterior ==
+  comparison$consensus_rank_score
 comparison$taxon_agree[is.na(comparison$consensus_taxon_posterior) |
-                       is.na(comparison$consensus_taxon_score)] <- FALSE
+  is.na(comparison$consensus_taxon_score)] <- FALSE
 comparison$rank_agree[is.na(comparison$consensus_rank_posterior) |
-                      is.na(comparison$consensus_rank_score)] <- FALSE
+  is.na(comparison$consensus_rank_score)] <- FALSE
 
 cat("\n--- Posterior vs Score Consensus Comparison ---\n")
 cat("Total samples:", nrow(comparison), "\n")
-cat("Taxon agreement:", sum(comparison$taxon_agree), "/", nrow(comparison),
-    sprintf("(%.0f%%)\n", 100 * mean(comparison$taxon_agree)))
-cat("Rank agreement: ", sum(comparison$rank_agree), "/", nrow(comparison),
-    sprintf("(%.0f%%)\n", 100 * mean(comparison$rank_agree)))
+cat(
+  "Taxon agreement:", sum(comparison$taxon_agree), "/", nrow(comparison),
+  sprintf("(%.0f%%)\n", 100 * mean(comparison$taxon_agree))
+)
+cat(
+  "Rank agreement: ", sum(comparison$rank_agree), "/", nrow(comparison),
+  sprintf("(%.0f%%)\n", 100 * mean(comparison$rank_agree))
+)
 
 cat("\nResolution comparison (rows = posterior, cols = score):\n")
 res_table <- table(
   posterior = ifelse(is.na(comparison$consensus_rank_posterior), "unresolvable",
-                     comparison$consensus_rank_posterior),
-  score    = ifelse(is.na(comparison$consensus_rank_score), "unresolvable",
-                     comparison$consensus_rank_score)
+    comparison$consensus_rank_posterior
+  ),
+  score = ifelse(is.na(comparison$consensus_rank_score), "unresolvable",
+    comparison$consensus_rank_score
+  )
 )
 print(res_table)
 
 disagree <- comparison[!comparison$taxon_agree, ]
 if (nrow(disagree) > 0L) {
   cat("\nDisagreements (", nrow(disagree), " samples):\n")
-  print(disagree[, c("observation_id",
-                      "consensus_taxon_posterior", "consensus_rank_posterior",
-                      "consensus_taxon_score", "consensus_rank_score",
-                      "consensus_posterior", "top_score")])
+  print(disagree[, c(
+    "observation_id",
+    "consensus_taxon_posterior", "consensus_rank_posterior",
+    "consensus_taxon_score", "consensus_rank_score",
+    "consensus_posterior", "top_score"
+  )])
 }
 
 posterior_finer <- comparison[
   !is.na(comparison$consensus_rank_posterior) &
-  !is.na(comparison$consensus_rank_score) &
-  match(comparison$consensus_rank_posterior,
-        c("family", "genus", "species")) >
-  match(comparison$consensus_rank_score,
-        c("family", "genus", "species")), ]
+    !is.na(comparison$consensus_rank_score) &
+    match(
+      comparison$consensus_rank_posterior,
+      c("family", "genus", "species")
+    ) >
+      match(
+        comparison$consensus_rank_score,
+        c("family", "genus", "species")
+      ),
+]
 cat("\nPosterior resolved finer than score:", nrow(posterior_finer), "samples\n")
 
 score_finer <- comparison[
   !is.na(comparison$consensus_rank_posterior) &
-  !is.na(comparison$consensus_rank_score) &
-  match(comparison$consensus_rank_score,
-        c("family", "genus", "species")) >
-  match(comparison$consensus_rank_posterior,
-        c("family", "genus", "species")), ]
+    !is.na(comparison$consensus_rank_score) &
+    match(
+      comparison$consensus_rank_score,
+      c("family", "genus", "species")
+    ) >
+      match(
+        comparison$consensus_rank_posterior,
+        c("family", "genus", "species")
+      ),
+]
 cat("Score resolved finer than posterior:", nrow(score_finer), "samples\n")
 
 
@@ -335,7 +370,7 @@ cat("Score resolved finer than posterior:", nrow(score_finer), "samples\n")
 # TIMING SUMMARY
 # =============================================================================
 .timing_df <- data.frame(
-  step    = names(.timings),
+  step = names(.timings),
   seconds = unlist(.timings),
   stringsAsFactors = FALSE
 )

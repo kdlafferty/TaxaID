@@ -46,9 +46,12 @@ utils::globalVariables(c(
                                      rank_system,
                                      expansion_min_prior,
                                      expansion_cumulative_prior) {
-
-  if (is.null(expansion_taxonomy) || !is.data.frame(expansion_taxonomy)) return(result)
-  if (!"taxon_name" %in% names(expansion_taxonomy)) return(result)
+  if (is.null(expansion_taxonomy) || !is.data.frame(expansion_taxonomy)) {
+    return(result)
+  }
+  if (!"taxon_name" %in% names(expansion_taxonomy)) {
+    return(result)
+  }
 
   finest_rank <- rank_system[length(rank_system)]
 
@@ -74,20 +77,26 @@ utils::globalVariables(c(
     result$taxon_name_rank %in% coarser_ranks &
     !is.na(result$taxon_name) &
     (!("hypothesis_type" %in% names(result)) |
-     !result$hypothesis_type %in% c("unreferenced_species", "unreferenced_genus",
-                                     "unreferenced_family", "unresolved_species"))
+      !result$hypothesis_type %in% c(
+        "unreferenced_species", "unreferenced_genus",
+        "unreferenced_family", "unresolved_species"
+      ))
 
-  if (!any(is_coarse)) return(result)
+  if (!any(is_coarse)) {
+    return(result)
+  }
 
   # Species-level rows from taxaexpect_priors: modelled (non-NA alpha), site-resolved.
   sp_bare <- taxaexpect_priors[
     !is.na(taxaexpect_priors$taxon_name) &
-    !is.na(taxaexpect_priors$alpha) &
-    !is.na(taxaexpect_priors$grid_id) &
-    !is.na(taxaexpect_priors$main_habitat),
-    , drop = FALSE
+      !is.na(taxaexpect_priors$alpha) &
+      !is.na(taxaexpect_priors$grid_id) &
+      !is.na(taxaexpect_priors$main_habitat), ,
+    drop = FALSE
   ]
-  if (nrow(sp_bare) == 0L) return(result)
+  if (nrow(sp_bare) == 0L) {
+    return(result)
+  }
 
   # Join coarser-rank columns from expansion_taxonomy onto sp_bare.
   # We merge only the taxonomy columns to avoid importing redundant priors columns.
@@ -110,7 +119,8 @@ utils::globalVariables(c(
     # evidence_blend/tier_domestic_food row must never be promoted; a
     # modelled row is promotable only on a real habitat mismatch) instead of
     # the template coarse row's NA values.
-    c("taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type",
+    c(
+      "taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type",
       "model_tier", "observed_in_habitat",
       # kernel-priors redesign (2026-08-31): branch label + effective evidence
       # travel with expanded rows; prior_branch also gates the promotion below.
@@ -118,27 +128,30 @@ utils::globalVariables(c(
       # presence-mixture columns (2026-08-26 D8): expanded evidence rows keep
       # their own mixture so compute_posterior()'s presence-draw sampler sees it
       "prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent",
-      "prior_mix_p_conc", tax_extra)
+      "prior_mix_p_conc", tax_extra
+    )
   )
 
   # Build expansion map: unique (crank | cvalue | grid | hab) -> filtered species df
   .sep <- "|||"
-  coarse_rows  <- result[is_coarse, , drop = FALSE]
-  combo_keys   <- paste(coarse_rows$taxon_name_rank, coarse_rows$taxon_name,
-                        coarse_rows$grid_id, coarse_rows$main_habitat, sep = .sep)
-  unique_keys  <- unique(combo_keys)
+  coarse_rows <- result[is_coarse, , drop = FALSE]
+  combo_keys <- paste(coarse_rows$taxon_name_rank, coarse_rows$taxon_name,
+    coarse_rows$grid_id, coarse_rows$main_habitat,
+    sep = .sep
+  )
+  unique_keys <- unique(combo_keys)
 
-  expansion_map      <- vector("list", length(unique_keys))
+  expansion_map <- vector("list", length(unique_keys))
   names(expansion_map) <- unique_keys
-  n_expanded_combos  <- 0L
-  n_fallback_combos  <- 0L
+  n_expanded_combos <- 0L
+  n_fallback_combos <- 0L
 
   for (key in unique_keys) {
-    parts  <- strsplit(key, .sep, fixed = TRUE)[[1L]]
-    crank  <- parts[1L]
+    parts <- strsplit(key, .sep, fixed = TRUE)[[1L]]
+    crank <- parts[1L]
     cvalue <- parts[2L]
-    cgrid  <- parts[3L]
-    chab   <- parts[4L]
+    cgrid <- parts[3L]
+    chab <- parts[4L]
 
     if (!crank %in% names(sp_priors)) {
       n_fallback_combos <- n_fallback_combos + 1L
@@ -147,10 +160,10 @@ utils::globalVariables(c(
 
     cands <- sp_priors[
       !is.na(sp_priors[[crank]]) &
-      sp_priors[[crank]] == cvalue &
-      sp_priors$grid_id == cgrid &
-      sp_priors$main_habitat == chab,
-      , drop = FALSE
+        sp_priors[[crank]] == cvalue &
+        sp_priors$grid_id == cgrid &
+        sp_priors$main_habitat == chab, ,
+      drop = FALSE
     ]
 
     if (nrow(cands) == 0L) {
@@ -159,8 +172,8 @@ utils::globalVariables(c(
     }
 
     # Compute normalized prior within candidate set
-    sp_pm  <- cands$alpha / (cands$alpha + cands$beta)
-    total  <- sum(sp_pm, na.rm = TRUE)
+    sp_pm <- cands$alpha / (cands$alpha + cands$beta)
+    total <- sum(sp_pm, na.rm = TRUE)
     if (!is.finite(total) || total == 0) {
       n_fallback_combos <- n_fallback_combos + 1L
       next
@@ -173,31 +186,33 @@ utils::globalVariables(c(
       n_fallback_combos <- n_fallback_combos + 1L
       next
     }
-    cands   <- cands[keep, , drop = FALSE]
+    cands <- cands[keep, , drop = FALSE]
     norm_pm <- norm_pm[keep]
 
     # Cumulative threshold (expansion_cumulative_prior): fewest top species
-    ord     <- order(norm_pm, decreasing = TRUE)
-    cands   <- cands[ord, , drop = FALSE]
+    ord <- order(norm_pm, decreasing = TRUE)
+    cands <- cands[ord, , drop = FALSE]
     norm_pm <- norm_pm[ord]
-    keep_n  <- which(cumsum(norm_pm) >= expansion_cumulative_prior)[1L]
+    keep_n <- which(cumsum(norm_pm) >= expansion_cumulative_prior)[1L]
     if (is.na(keep_n)) keep_n <- nrow(cands)
-    cands   <- cands[seq_len(keep_n), , drop = FALSE]
+    cands <- cands[seq_len(keep_n), , drop = FALSE]
 
     expansion_map[[key]] <- cands
-    n_expanded_combos    <- n_expanded_combos + 1L
+    n_expanded_combos <- n_expanded_combos + 1L
   }
 
-  if (n_expanded_combos == 0L) return(result)
+  if (n_expanded_combos == 0L) {
+    return(result)
+  }
 
   # Replace coarse-rank rows with species-level rows
   coarse_idx <- which(is_coarse)
-  drop_idx   <- integer(0)
+  drop_idx <- integer(0)
   new_rows_l <- vector("list", length(coarse_idx) * 15L)
-  nr_k       <- 0L
+  nr_k <- 0L
 
   for (ii in seq_along(coarse_idx)) {
-    i   <- coarse_idx[ii]
+    i <- coarse_idx[ii]
     key <- combo_keys[ii]
 
     cands_sp <- expansion_map[[key]]
@@ -220,21 +235,24 @@ utils::globalVariables(c(
       # Ensure finest rank regardless of whether taxon_name_rank was in override_cols
       nr$taxon_name_rank <- finest_rank
       nr$hypothesis_type <- "rank_expanded"
-      nr_k              <- nr_k + 1L
+      nr_k <- nr_k + 1L
       new_rows_l[[nr_k]] <- nr
     }
     drop_idx <- c(drop_idx, i)
   }
 
-  if (length(drop_idx) == 0L || nr_k == 0L) return(result)
+  if (length(drop_idx) == 0L || nr_k == 0L) {
+    return(result)
+  }
 
   new_rows <- dplyr::bind_rows(new_rows_l[seq_len(nr_k)])
-  result   <- dplyr::bind_rows(result[-drop_idx, , drop = FALSE], new_rows)
+  result <- dplyr::bind_rows(result[-drop_idx, , drop = FALSE], new_rows)
 
   cli::cli_inform(c(
     "join_priors: expanded {length(unique(drop_idx))} coarse-rank row(s) into {nrow(new_rows)} species-level hypothesis row(s).",
-    if (n_fallback_combos > 0L)
-      "i" = "{n_fallback_combos} coarse-rank constraint(s) had no matching species in taxaexpect_priors; dark diversity floor applied."
+    if (n_fallback_combos > 0L) {
+      "i" <- "{n_fallback_combos} coarse-rank constraint(s) had no matching species in taxaexpect_priors; dark diversity floor applied."
+    }
   ))
 
   result
@@ -275,27 +293,26 @@ utils::globalVariables(c(
 #   dark_diversity_group, n_singletons_group, n_undetected_group.
 #' @noRd
 .compute_dark_diversity_groups <- function(unref_df,
-                                            singleton_df,
-                                            global_singleton_mean,
-                                            singleton_ess = 2L) {
-
+                                           singleton_df,
+                                           global_singleton_mean,
+                                           singleton_ess = 2L) {
   tax_ranks <- c("phylum", "class", "order", "family", "genus")
-  n         <- nrow(unref_df)
+  n <- nrow(unref_df)
 
   # Pre-allocate output vectors
-  g_alpha <- rep(NA_real_,      n)
-  g_beta  <- rep(NA_real_,      n)
+  g_alpha <- rep(NA_real_, n)
+  g_beta <- rep(NA_real_, n)
   g_label <- rep(NA_character_, n)
-  g_ns    <- rep(0L,            n)
-  g_nu    <- rep(0L,            n)
+  g_ns <- rep(0L, n)
+  g_nu <- rep(0L, n)
 
   # Degenerate cases: no candidates, no singletons, or bad fallback
   if (n == 0L) {
-    unref_df$group_prior_alpha    <- g_alpha
-    unref_df$group_prior_beta     <- g_beta
+    unref_df$group_prior_alpha <- g_alpha
+    unref_df$group_prior_beta <- g_beta
     unref_df$dark_diversity_group <- g_label
-    unref_df$n_singletons_group   <- g_ns
-    unref_df$n_undetected_group   <- g_nu
+    unref_df$n_singletons_group <- g_ns
+    unref_df$n_undetected_group <- g_nu
     return(unref_df)
   }
   gsm <- global_singleton_mean
@@ -303,7 +320,7 @@ utils::globalVariables(c(
 
   # Normalize empty strings to NA in taxonomy columns
   for (col in tax_ranks) {
-    if (col %in% names(unref_df))    unref_df[[col]]    <- dplyr::na_if(unref_df[[col]],    "")
+    if (col %in% names(unref_df)) unref_df[[col]] <- dplyr::na_if(unref_df[[col]], "")
     if (col %in% names(singleton_df)) singleton_df[[col]] <- dplyr::na_if(singleton_df[[col]], "")
   }
 
@@ -320,19 +337,19 @@ utils::globalVariables(c(
 
   .make_ab <- function(n_s, pm, ess) {
     eff_s <- max(1L, as.integer(n_s))
-    phi   <- eff_s * ess
+    phi <- eff_s * ess
     list(a = min(pm, 1 - 1e-9) * phi, b = (1 - min(pm, 1 - 1e-9)) * phi)
   }
 
   # Helper: record group assignment for candidate positions
   .record <- function(pos, n_s, pm, label) {
-    n_c         <- length(pos)
-    ab          <- .make_ab(n_s, pm, singleton_ess)
+    n_c <- length(pos)
+    ab <- .make_ab(n_s, pm, singleton_ess)
     g_alpha[pos] <<- ab$a
-    g_beta[pos]  <<- ab$b
+    g_beta[pos] <<- ab$b
     g_label[pos] <<- label
-    g_ns[pos]    <<- as.integer(n_s)
-    g_nu[pos]    <<- as.integer(n_c)
+    g_ns[pos] <<- as.integer(n_s)
+    g_nu[pos] <<- as.integer(n_c)
   }
 
   # Recursive descent.
@@ -341,7 +358,9 @@ utils::globalVariables(c(
   # parent_mean: mean theta of singletons in the current (parent) clade.
   # depth: rank depth (1 = phylum, 5 = genus).
   .descend <- function(cpos, spos, parent_mean, depth) {
-    if (length(cpos) == 0L) return(invisible(NULL))
+    if (length(cpos) == 0L) {
+      return(invisible(NULL))
+    }
 
     if (depth > length(tax_ranks)) {
       # Exhausted all ranks -- group everything together
@@ -377,15 +396,17 @@ utils::globalVariables(c(
 
     # --- Candidates with a known value at this rank --------------------------
     non_na_pos <- cpos[!is.na(cvals)]
-    if (length(non_na_pos) == 0L) return(invisible(NULL))
+    if (length(non_na_pos) == 0L) {
+      return(invisible(NULL))
+    }
 
     for (val in unique(cvals[!is.na(cvals)])) {
       val_cpos <- cpos[!is.na(cvals) & cvals == val]
-      n_c      <- length(val_cpos)
+      n_c <- length(val_cpos)
 
       # Singletons sharing this rank value
       if (rank %in% names(singleton_df) && length(spos) > 0L) {
-        svals    <- singleton_df[[rank]][spos]
+        svals <- singleton_df[[rank]][spos]
         val_spos <- spos[!is.na(svals) & svals == val]
       } else {
         val_spos <- integer(0L)
@@ -408,14 +429,12 @@ utils::globalVariables(c(
           lbl <- paste0("zero_", rank, "s")
         }
         .record(val_cpos, 0L, pm, lbl)
-
       } else if (depth == length(tax_ranks)) {
         # Genus is terminal -- group all candidates in this genus
         val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
         if (!is.finite(val_mean)) val_mean <- parent_mean
         pm <- .split_mean_cap(n_s * val_mean, n_c)
         .record(val_cpos, n_s, pm, paste0(rank, ":", val))
-
       } else {
         # Has singletons at this rank and not yet at terminal -- recurse
         val_mean <- mean(singleton_df$theta_s[val_spos], na.rm = TRUE)
@@ -438,20 +457,20 @@ utils::globalVariables(c(
   still_na <- is.na(g_alpha) & is.na(g_label)
   if (any(still_na)) {
     n_c <- sum(still_na)
-    pm  <- .split_mean_cap(gsm, n_c)
-    ab  <- .make_ab(0L, pm, singleton_ess)
+    pm <- .split_mean_cap(gsm, n_c)
+    ab <- .make_ab(0L, pm, singleton_ess)
     g_alpha[still_na] <- ab$a
-    g_beta[still_na]  <- ab$b
+    g_beta[still_na] <- ab$b
     g_label[still_na] <- "zero_phyla"
-    g_ns[still_na]    <- 0L
-    g_nu[still_na]    <- n_c
+    g_ns[still_na] <- 0L
+    g_nu[still_na] <- n_c
   }
 
-  unref_df$group_prior_alpha    <- g_alpha
-  unref_df$group_prior_beta     <- g_beta
+  unref_df$group_prior_alpha <- g_alpha
+  unref_df$group_prior_beta <- g_beta
   unref_df$dark_diversity_group <- g_label
-  unref_df$n_singletons_group   <- g_ns
-  unref_df$n_undetected_group   <- g_nu
+  unref_df$n_singletons_group <- g_ns
+  unref_df$n_undetected_group <- g_nu
 
   unref_df
 }
@@ -669,11 +688,11 @@ utils::globalVariables(c(
 #'
 #' @examples
 #' likelihoods <- data.frame(
-#'   observation_id  = c("ASV_1", "ASV_1"),
-#'   taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+#'   observation_id = c("ASV_1", "ASV_1"),
+#'   taxon_name = c("Gadus morhua", "Gadus chalcogrammus"),
 #'   taxon_name_rank = "species",
-#'   genus           = "Gadus",
-#'   family          = "Gadidae",
+#'   genus = "Gadus",
+#'   family = "Gadidae",
 #'   stringsAsFactors = FALSE
 #' )
 #' taxaexpect_priors <- data.frame(
@@ -707,8 +726,6 @@ join_priors <- function(likelihoods,
                         expansion_cumulative_prior = 0.90,
                         singleton_taxonomy = NULL,
                         backbone_id) {
-
-
   # ---- Input validation -----------------------------------------------------
   if (!is.data.frame(likelihoods)) {
     cli::cli_abort("{.arg likelihoods} must be a data frame.")
@@ -737,8 +754,10 @@ join_priors <- function(likelihoods,
     cli::cli_abort("{.arg taxaexpect_priors} must be a data frame.")
   }
 
-  needed_priors <- c("taxon_name", "taxon_name_rank",
-                     "grid_id", "main_habitat", "alpha", "beta")
+  needed_priors <- c(
+    "taxon_name", "taxon_name_rank",
+    "grid_id", "main_habitat", "alpha", "beta"
+  )
   missing_priors <- setdiff(needed_priors, names(taxaexpect_priors))
   if (length(missing_priors) > 0L) {
     cli::cli_abort(
@@ -749,8 +768,9 @@ join_priors <- function(likelihoods,
   # Auto-detect rank_system from likelihoods columns
   if (is.null(rank_system)) {
     rank_system <- TaxaTools::detect_ranks(likelihoods, warn = FALSE)
-    if (length(rank_system) == 0L)
+    if (length(rank_system) == 0L) {
       rank_system <- c("family", "genus", "species")
+    }
     cli::cli_inform(
       "join_priors: auto-detected rank_system: {paste(rank_system, collapse = ', ')}"
     )
@@ -765,11 +785,11 @@ join_priors <- function(likelihoods,
   .check_rank_system_order(rank_system, "join_priors")
 
   if (!is.numeric(expansion_min_prior) || length(expansion_min_prior) != 1L ||
-      expansion_min_prior < 0 || expansion_min_prior >= 1) {
+    expansion_min_prior < 0 || expansion_min_prior >= 1) {
     cli::cli_abort("{.arg expansion_min_prior} must be a single number in [0, 1).")
   }
   if (!is.numeric(expansion_cumulative_prior) || length(expansion_cumulative_prior) != 1L ||
-      expansion_cumulative_prior <= 0 || expansion_cumulative_prior > 1) {
+    expansion_cumulative_prior <= 0 || expansion_cumulative_prior > 1) {
     cli::cli_abort("{.arg expansion_cumulative_prior} must be a single number in (0, 1].")
   }
   if (!is.null(expansion_taxonomy) && !is.data.frame(expansion_taxonomy)) {
@@ -779,8 +799,10 @@ join_priors <- function(likelihoods,
     if (!is.data.frame(singleton_taxonomy) || !"taxon_name" %in% names(singleton_taxonomy)) {
       cli::cli_abort("{.arg singleton_taxonomy} must be a data frame with a 'taxon_name' column, or NULL.")
     }
-    st_rank_cols <- intersect(c("genus", "family", "order", "class", "phylum"),
-                              names(singleton_taxonomy))
+    st_rank_cols <- intersect(
+      c("genus", "family", "order", "class", "phylum"),
+      names(singleton_taxonomy)
+    )
     if (length(st_rank_cols) == 0L) {
       cli::cli_warn(
         "{.arg singleton_taxonomy} has none of genus/family/order/class/phylum -- ignored for group priors."
@@ -795,7 +817,7 @@ join_priors <- function(likelihoods,
   if (is.null(site)) {
     search_center <- attr(taxaexpect_priors, "search_center")
     if (!is.null(search_center) &&
-        !is.null(search_center$lat) && !is.null(search_center$lon)) {
+      !is.null(search_center$lat) && !is.null(search_center$lon)) {
       cli::cli_abort(c(
         "{.arg site} is required, including {.arg main_habitat}.",
         "i" = "Coordinates from build_priors() are available: ({search_center$lat}, {search_center$lon}).",
@@ -814,7 +836,7 @@ join_priors <- function(likelihoods,
 
   if (is.character(site) && length(site) == 1L) {
     grid_rows <- taxaexpect_priors[taxaexpect_priors$grid_id == site &
-                                     !is.na(taxaexpect_priors$main_habitat), ]
+      !is.na(taxaexpect_priors$main_habitat), ]
     if (nrow(grid_rows) == 0L) {
       cli::cli_abort(
         "grid_id {.val {site}} not found in {.arg taxaexpect_priors}."
@@ -822,8 +844,10 @@ join_priors <- function(likelihoods,
     }
     hab_counts <- table(grid_rows$main_habitat)
     counts_str <- paste(
-      sprintf("  \"%s\" (%d prior rows)", names(hab_counts),
-              as.integer(hab_counts)),
+      sprintf(
+        "  \"%s\" (%d prior rows)", names(hab_counts),
+        as.integer(hab_counts)
+      ),
       collapse = "\n"
     )
     cli::cli_abort(c(
@@ -835,7 +859,6 @@ join_priors <- function(likelihoods,
   }
 
   if (is.list(site) && !is.data.frame(site)) {
-
     # Auto-fill lat/lon from taxaexpect_priors' own search_center attribute
     # (set by build_priors()) when the caller supplied main_habitat but no
     # location at all -- the coordinates are already known, so there is no
@@ -844,7 +867,7 @@ join_priors <- function(likelihoods,
     if (!any(c("lat", "lon", "grid_id") %in% names(site))) {
       search_center <- attr(taxaexpect_priors, "search_center")
       if (!is.null(search_center) &&
-          !is.null(search_center$lat) && !is.null(search_center$lon)) {
+        !is.null(search_center$lat) && !is.null(search_center$lon)) {
         site$lat <- search_center$lat
         site$lon <- search_center$lon
         cli::cli_inform(
@@ -861,7 +884,7 @@ join_priors <- function(likelihoods,
         main_habitat      = site$main_habitat,
         taxaexpect_priors = taxaexpect_priors
       )
-      site$grid_id      <- resolved$grid_id
+      site$grid_id <- resolved$grid_id
       site$main_habitat <- resolved$main_habitat
     }
 
@@ -874,8 +897,8 @@ join_priors <- function(likelihoods,
       )
     }
     event_meta <- data.frame(
-      observation_id    = unique(likelihoods$observation_id),
-      grid_id      = site$grid_id,
+      observation_id = unique(likelihoods$observation_id),
+      grid_id = site$grid_id,
       main_habitat = site$main_habitat,
       stringsAsFactors = FALSE
     )
@@ -894,7 +917,7 @@ join_priors <- function(likelihoods,
     event_meta <- site
 
     # Warn about likelihood observation_ids not in site
-    lik_ids  <- unique(likelihoods$observation_id)
+    lik_ids <- unique(likelihoods$observation_id)
     site_ids <- unique(event_meta$observation_id)
     unmapped <- setdiff(lik_ids, site_ids)
     if (length(unmapped) > 0L) {
@@ -926,15 +949,19 @@ join_priors <- function(likelihoods,
       parsed <- tryCatch(.parse_grid_ids(gid), error = function(e) NULL)
       nearest_msg <- ""
       if (!is.null(parsed) && nrow(parsed) == 1L) {
-        nearest <- .find_nearest_grid(parsed$grid_lat, parsed$grid_lon,
-                                       grid_coords)
+        nearest <- .find_nearest_grid(
+          parsed$grid_lat, parsed$grid_lon,
+          grid_coords
+        )
         nearest_msg <- sprintf(
           " Nearest grid with priors: '%s'. Consider passing site = list(lat, lon) instead of a hardcoded grid_id.",
           nearest$grid_id
         )
       }
-      sprintf("'%s' / '%s' has 0 prior rows -- ALL species will get fallback priors.%s",
-              gid, hab, nearest_msg)
+      sprintf(
+        "'%s' / '%s' has 0 prior rows -- ALL species will get fallback priors.%s",
+        gid, hab, nearest_msg
+      )
     }, character(1L))
 
     cli::cli_warn(c(
@@ -951,8 +978,10 @@ join_priors <- function(likelihoods,
   # explicitly silences dplyr's precautionary warning, which would otherwise
   # fire on every genuinely multi-site, multi-candidate observation.
   result <- likelihoods |>
-    dplyr::left_join(event_meta, by = "observation_id",
-                      relationship = "many-to-many") |>
+    dplyr::left_join(event_meta,
+      by = "observation_id",
+      relationship = "many-to-many"
+    ) |>
     dplyr::left_join(
       taxaexpect_priors,
       by = c("taxon_name", "taxon_name_rank", "grid_id", "main_habitat")
@@ -991,20 +1020,24 @@ join_priors <- function(likelihoods,
     dplyr::arrange(dplyr::desc(.ha_theta_mean)) |>
     dplyr::distinct(taxon_name, taxon_name_rank, grid_id, .keep_all = TRUE) |>
     dplyr::select(taxon_name, taxon_name_rank, grid_id,
-                  .ha_alpha = alpha, .ha_beta = beta,
-                  # provenance carried so the modelled-species floor promotion
-                  # downstream can recognize a rescued row's origin (e.g. a
-                  # tier_domestic_food row must never be promoted to singleton
-                  # parity -- its tiny theta IS the design, not an artifact).
-                  dplyr::any_of(c(.ha_model_tier      = "model_tier",
-                                  .ha_prior_branch    = "prior_branch",
-                                  .ha_undetected_type = "undetected_type")))
+      .ha_alpha = alpha, .ha_beta = beta,
+      # provenance carried so the modelled-species floor promotion
+      # downstream can recognize a rescued row's origin (e.g. a
+      # tier_domestic_food row must never be promoted to singleton
+      # parity -- its tiny theta IS the design, not an artifact).
+      dplyr::any_of(c(
+        .ha_model_tier = "model_tier",
+        .ha_prior_branch = "prior_branch",
+        .ha_undetected_type = "undetected_type"
+      ))
+    )
 
   needs_ha_fallback <- is.na(result$alpha) & !is.na(result$taxon_name)
   if (any(needs_ha_fallback) && nrow(habitat_agnostic_priors) > 0L) {
     ha_match <- result[needs_ha_fallback, c("taxon_name", "taxon_name_rank", "grid_id")] |>
       dplyr::left_join(habitat_agnostic_priors,
-                        by = c("taxon_name", "taxon_name_rank", "grid_id"))
+        by = c("taxon_name", "taxon_name_rank", "grid_id")
+      )
     n_ha_applied <- sum(!is.na(ha_match$.ha_alpha))
     result$alpha[needs_ha_fallback] <- dplyr::coalesce(
       result$alpha[needs_ha_fallback], ha_match$.ha_alpha
@@ -1038,9 +1071,9 @@ join_priors <- function(likelihoods,
   coarser_than_finest <- rank_system[-length(rank_system)]
   n_coarse_unmatched <- sum(
     is.na(result$alpha) &
-    !is.na(result$taxon_name_rank) &
-    result$taxon_name_rank %in% coarser_than_finest &
-    !is.na(result$taxon_name),
+      !is.na(result$taxon_name_rank) &
+      result$taxon_name_rank %in% coarser_than_finest &
+      !is.na(result$taxon_name),
     na.rm = TRUE
   )
   if (n_coarse_unmatched > 0L && is.null(expansion_taxonomy)) {
@@ -1056,11 +1089,11 @@ join_priors <- function(likelihoods,
 
   if (n_coarse_unmatched > 0L && !is.null(expansion_taxonomy)) {
     result <- .expand_coarse_rank_rows(
-      result                    = result,
-      taxaexpect_priors         = taxaexpect_priors,
-      expansion_taxonomy        = expansion_taxonomy,
-      rank_system               = rank_system,
-      expansion_min_prior       = expansion_min_prior,
+      result = result,
+      taxaexpect_priors = taxaexpect_priors,
+      expansion_taxonomy = expansion_taxonomy,
+      rank_system = rank_system,
+      expansion_min_prior = expansion_min_prior,
       expansion_cumulative_prior = expansion_cumulative_prior
     )
   }
@@ -1072,7 +1105,7 @@ join_priors <- function(likelihoods,
     dplyr::group_by(grid_id, main_habitat) |>
     dplyr::summarise(
       dark_alpha = mean(alpha, na.rm = TRUE),
-      dark_beta  = mean(beta, na.rm = TRUE),
+      dark_beta = mean(beta, na.rm = TRUE),
       .groups = "drop"
     )
 
@@ -1100,7 +1133,7 @@ join_priors <- function(likelihoods,
     dplyr::group_by(grid_id, main_habitat) |>
     dplyr::summarise(
       singleton_alpha = mean(alpha, na.rm = TRUE),
-      singleton_beta  = mean(beta,  na.rm = TRUE),
+      singleton_beta = mean(beta, na.rm = TRUE),
       .groups = "drop"
     )
 
@@ -1108,7 +1141,7 @@ join_priors <- function(likelihoods,
     dplyr::filter(undetected_type == "singleton_mirror") |>
     dplyr::summarise(
       singleton_alpha = mean(alpha, na.rm = TRUE),
-      singleton_beta  = mean(beta,  na.rm = TRUE)
+      singleton_beta  = mean(beta, na.rm = TRUE)
     )
 
   # Global floor prior: used specifically as the fallback for UNMODELLED species
@@ -1123,13 +1156,13 @@ join_priors <- function(likelihoods,
     dplyr::filter(undetected_type == "global_floor")
   if (nrow(gf_rows) > 0 && !is.na(mean(gf_rows$alpha, na.rm = TRUE))) {
     gf_alpha <- mean(gf_rows$alpha, na.rm = TRUE)
-    gf_beta  <- mean(gf_rows$beta,  na.rm = TRUE)
+    gf_beta <- mean(gf_rows$beta, na.rm = TRUE)
   } else {
     # No global floor row present -- fall back to global dark mean.
     # This preserves prior behaviour when generate_undetected_diversity() output
     # was filtered to exclude the global floor (habitat = NA) row.
     gf_alpha <- global_dark$dark_alpha
-    gf_beta  <- global_dark$dark_beta
+    gf_beta <- global_dark$dark_beta
     cli::cli_warn(paste0(
       "join_priors: no global_floor row found in taxaexpect_priors. ",
       "Unmodelled species will use site-level dark diversity as fallback. ",
@@ -1139,19 +1172,19 @@ join_priors <- function(likelihoods,
   }
 
   result <- result |>
-    dplyr::left_join(dark_by_site,      by = c("grid_id", "main_habitat")) |>
+    dplyr::left_join(dark_by_site, by = c("grid_id", "main_habitat")) |>
     dplyr::left_join(singleton_by_site, by = c("grid_id", "main_habitat")) |>
     dplyr::mutate(
-      dark_alpha      = dplyr::coalesce(dark_alpha,      global_dark$dark_alpha),
-      dark_beta       = dplyr::coalesce(dark_beta,       global_dark$dark_beta),
+      dark_alpha = dplyr::coalesce(dark_alpha, global_dark$dark_alpha),
+      dark_beta = dplyr::coalesce(dark_beta, global_dark$dark_beta),
       singleton_alpha = dplyr::coalesce(singleton_alpha, global_singleton$singleton_alpha),
-      singleton_beta  = dplyr::coalesce(singleton_beta,  global_singleton$singleton_beta),
+      singleton_beta = dplyr::coalesce(singleton_beta, global_singleton$singleton_beta),
       # Unmodelled species (alpha = NA) fall back to global floor, NOT dark_alpha.
       # Modelled species retain their model-derived alpha/beta here; the floor
       # promotion below handles modelled species that fall below singleton_mean.
       prior_alpha = dplyr::coalesce(alpha, gf_alpha),
-      prior_beta  = dplyr::coalesce(beta,  gf_beta),
-      prior_mean  = prior_alpha / (prior_alpha + prior_beta)
+      prior_beta = dplyr::coalesce(beta, gf_beta),
+      prior_mean = prior_alpha / (prior_alpha + prior_beta)
     )
 
   # ---- Modelled-species floor: never worse than singleton-mirror mean --------
@@ -1186,7 +1219,7 @@ join_priors <- function(likelihoods,
   #     observed_in_habitat column at all (priors not from
   #     generate_full_priors()), the pre-redesign behavior is retained for
   #     modelled rows so older callers are unaffected.
-  has_model      <- !is.na(result$alpha)
+  has_model <- !is.na(result$alpha)
   singleton_mean <- result$singleton_alpha / (result$singleton_alpha + result$singleton_beta)
 
   not_evidence_row <- rep(TRUE, nrow(result))
@@ -1197,7 +1230,7 @@ join_priors <- function(likelihoods,
   if ("model_tier" %in% names(result)) {
     not_evidence_row <- not_evidence_row &
       (is.na(result$model_tier) |
-         !result$model_tier %in% c("tier_undetected_evidence", "tier_domestic_food"))
+        !result$model_tier %in% c("tier_undetected_evidence", "tier_domestic_food"))
   }
   # Kernel-priors schema (2026-08-31): when prior_branch is present, only
   # "resident_observed" rows are promotion-eligible -- every other branch's
@@ -1220,8 +1253,8 @@ join_priors <- function(likelihoods,
   if (any(below_singleton, na.rm = TRUE)) {
     n_promoted <- sum(below_singleton, na.rm = TRUE)
     result$prior_alpha[below_singleton] <- result$singleton_alpha[below_singleton]
-    result$prior_beta[below_singleton]  <- result$singleton_beta[below_singleton]
-    result$prior_mean[below_singleton]  <- singleton_mean[below_singleton]
+    result$prior_beta[below_singleton] <- result$singleton_beta[below_singleton]
+    result$prior_mean[below_singleton] <- singleton_mean[below_singleton]
     cli::cli_inform(
       "join_priors: promoted {n_promoted} habitat-mismatch modelled row(s) with priors below the singleton-mirror floor."
     )
@@ -1235,7 +1268,7 @@ join_priors <- function(likelihoods,
   # n_undetected_group (NA for modelled rows and when singleton_taxonomy = NULL).
   if (!is.null(singleton_taxonomy)) {
     tax_rank_cols <- c("genus", "family", "order", "class", "phylum")
-    st_rank_cols  <- intersect(tax_rank_cols, names(singleton_taxonomy))
+    st_rank_cols <- intersect(tax_rank_cols, names(singleton_taxonomy))
 
     # Normalize empty strings to NA and deduplicate
     sing_tax_norm <- singleton_taxonomy
@@ -1243,7 +1276,8 @@ join_priors <- function(likelihoods,
       sing_tax_norm[[.col]] <- dplyr::na_if(sing_tax_norm[[.col]], "")
     }
     sing_tax_norm <- sing_tax_norm[!duplicated(sing_tax_norm$taxon_name), ,
-                                    drop = FALSE]
+      drop = FALSE
+    ]
 
     # Identify unmodelled rows (got gf_alpha as fallback above)
     is_unmod <- is.na(result$alpha)
@@ -1256,8 +1290,8 @@ join_priors <- function(likelihoods,
       sing_rows <- taxaexpect_priors[
         !is.na(taxaexpect_priors$undetected_type) &
           taxaexpect_priors$undetected_type == "singleton_mirror" &
-          !is.na(taxaexpect_priors$source_taxon_name),
-        , drop = FALSE
+          !is.na(taxaexpect_priors$source_taxon_name), ,
+        drop = FALSE
       ]
       if (nrow(sing_rows) > 0L) {
         sing_rows <- merge(
@@ -1309,17 +1343,17 @@ join_priors <- function(likelihoods,
         # preserves row order and avoids duplicates from merge)
         idx <- match(result$taxon_name, unmod_groups$taxon_name)
         result$dark_diversity_group <- unmod_groups$dark_diversity_group[idx]
-        result$n_singletons_group   <- unmod_groups$n_singletons_group[idx]
-        result$n_undetected_group   <- unmod_groups$n_undetected_group[idx]
-        result$group_prior_alpha    <- unmod_groups$group_prior_alpha[idx]
-        result$group_prior_beta     <- unmod_groups$group_prior_beta[idx]
+        result$n_singletons_group <- unmod_groups$n_singletons_group[idx]
+        result$n_undetected_group <- unmod_groups$n_undetected_group[idx]
+        result$group_prior_alpha <- unmod_groups$group_prior_alpha[idx]
+        result$group_prior_beta <- unmod_groups$group_prior_beta[idx]
 
         # Apply group priors to unmodelled rows (replace flat gf_alpha/gf_beta)
         apply_mask <- is_unmod & !is.na(result$group_prior_alpha)
         if (any(apply_mask)) {
           result$prior_alpha[apply_mask] <- result$group_prior_alpha[apply_mask]
-          result$prior_beta[apply_mask]  <- result$group_prior_beta[apply_mask]
-          result$prior_mean[apply_mask]  <- result$prior_alpha[apply_mask] /
+          result$prior_beta[apply_mask] <- result$group_prior_beta[apply_mask]
+          result$prior_mean[apply_mask] <- result$prior_alpha[apply_mask] /
             (result$prior_alpha[apply_mask] + result$prior_beta[apply_mask])
           n_groups_used <- length(unique(stats::na.omit(
             result$dark_diversity_group[apply_mask]
@@ -1334,11 +1368,11 @@ join_priors <- function(likelihoods,
     # Ensure diagnostic columns exist (NA for modelled rows and rows with no
     # taxonomy match) so the output schema is consistent for downstream use.
     if (!"dark_diversity_group" %in% names(result)) result$dark_diversity_group <- NA_character_
-    if (!"n_singletons_group"   %in% names(result)) result$n_singletons_group   <- NA_integer_
-    if (!"n_undetected_group"   %in% names(result)) result$n_undetected_group   <- NA_integer_
+    if (!"n_singletons_group" %in% names(result)) result$n_singletons_group <- NA_integer_
+    if (!"n_undetected_group" %in% names(result)) result$n_undetected_group <- NA_integer_
     # Clean up intermediate columns not needed downstream
     result$group_prior_alpha <- NULL
-    result$group_prior_beta  <- NULL
+    result$group_prior_beta <- NULL
   }
 
   zero_ab <- which((result$prior_alpha + result$prior_beta) == 0)
@@ -1371,11 +1405,13 @@ join_priors <- function(likelihoods,
   result <- result |>
     dplyr::arrange(dplyr::desc(prior_mean)) |>
     dplyr::distinct(observation_id, taxon_name, taxon_name_rank, grid_id,
-                     main_habitat, .keep_all = TRUE)
+      main_habitat,
+      .keep_all = TRUE
+    )
 
   # Fill taxonomy from taxonomy_lookup (e.g. from match_df reference taxonomy)
   if (!is.null(taxonomy_lookup) && is.data.frame(taxonomy_lookup) &&
-      "taxon_name" %in% names(taxonomy_lookup)) {
+    "taxon_name" %in% names(taxonomy_lookup)) {
     tax_cols <- intersect(rank_system, names(taxonomy_lookup))
     if (length(tax_cols) > 0L) {
       lookup_slim <- taxonomy_lookup |>
@@ -1401,7 +1437,8 @@ join_priors <- function(likelihoods,
     dplyr::mutate(genus = dplyr::coalesce(
       genus,
       dplyr::if_else(taxon_name_rank == "species",
-                     sub(" .*", "", taxon_name), NA_character_),
+        sub(" .*", "", taxon_name), NA_character_
+      ),
       dplyr::if_else(taxon_name_rank == "genus", taxon_name, NA_character_)
     ))
 
@@ -1411,7 +1448,7 @@ join_priors <- function(likelihoods,
   rank_cols_in_df <- intersect(rank_system, names(result))
   for (rc in rank_cols_in_df) {
     is_this_rank <- !is.na(result$taxon_name_rank) & result$taxon_name_rank == rc
-    needs_val    <- is_this_rank & is.na(result[[rc]]) & !is.na(result$taxon_name)
+    needs_val <- is_this_rank & is.na(result[[rc]]) & !is.na(result$taxon_name)
     if (any(needs_val)) {
       result[[rc]][needs_val] <- result$taxon_name[needs_val]
     }
@@ -1441,7 +1478,7 @@ join_priors <- function(likelihoods,
       coarser_cols <- rank_cols_in_df[seq_len(rc_idx - 1L)]
       needs_fill <- which(
         !is.na(result[[anchor_col]]) &
-        rowSums(is.na(result[, coarser_cols, drop = FALSE])) > 0L
+          rowSums(is.na(result[, coarser_cols, drop = FALSE])) > 0L
       )
       if (length(needs_fill) == 0L) next
       donor_lookup <- result[!is.na(result[[anchor_col]]), , drop = FALSE] |>
@@ -1453,7 +1490,7 @@ join_priors <- function(likelihoods,
       donor_idx <- match(result[[anchor_col]][needs_fill], donor_lookup[[anchor_col]])
       for (cc in coarser_cols) {
         donor_vals <- donor_lookup[[cc]][donor_idx]
-        fillable   <- is.na(result[[cc]][needs_fill]) & !is.na(donor_vals)
+        fillable <- is.na(result[[cc]][needs_fill]) & !is.na(donor_vals)
         result[[cc]][needs_fill[fillable]] <- donor_vals[fillable]
       }
     }
@@ -1463,24 +1500,29 @@ join_priors <- function(likelihoods,
   # Only fires when sibling propagation left gaps (e.g. no species-level
   # row existed for a genus). Queries are batched on unique taxon_names.
   if (length(rank_cols_in_df) >= 2L &&
-      requireNamespace("TaxaTools", quietly = TRUE)) {
+    requireNamespace("TaxaTools", quietly = TRUE)) {
     still_missing <- which(
       rowSums(is.na(result[, rank_cols_in_df, drop = FALSE])) > 0L &
-      !is.na(result$taxon_name)
+        !is.na(result$taxon_name)
     )
     if (length(still_missing) > 0L) {
       names_to_query <- unique(result$taxon_name[still_missing])
-      backbone_fill <- tryCatch({
-        verified <- TaxaTools::verify_taxon_names(names_to_query,
-                                                  backbone_id = backbone_id)
-        TaxaTools::change_backbone(verified,
-                                   input_col = "user_supplied_name")
-      }, error = function(e) {
-        cli::cli_warn(
-          "Taxonomy fallback via TaxaTools failed: {conditionMessage(e)}"
-        )
-        NULL
-      })
+      backbone_fill <- tryCatch(
+        {
+          verified <- TaxaTools::verify_taxon_names(names_to_query,
+            backbone_id = backbone_id
+          )
+          TaxaTools::change_backbone(verified,
+            input_col = "user_supplied_name"
+          )
+        },
+        error = function(e) {
+          cli::cli_warn(
+            "Taxonomy fallback via TaxaTools failed: {conditionMessage(e)}"
+          )
+          NULL
+        }
+      )
       if (!is.null(backbone_fill) && nrow(backbone_fill) > 0L) {
         fill_cols <- intersect(rank_cols_in_df, names(backbone_fill))
         # change_backbone() returns user_supplied_name, not taxon_name
@@ -1493,8 +1535,10 @@ join_priors <- function(likelihoods,
           bb_lookup <- backbone_fill |>
             dplyr::select(dplyr::all_of(c(join_col, fill_cols))) |>
             dplyr::distinct(.data[[join_col]], .keep_all = TRUE)
-          idx <- match(result$taxon_name[still_missing],
-                       bb_lookup[[join_col]])
+          idx <- match(
+            result$taxon_name[still_missing],
+            bb_lookup[[join_col]]
+          )
           for (fc in fill_cols) {
             na_mask <- is.na(result[[fc]][still_missing]) & !is.na(idx)
             if (any(na_mask)) {
@@ -1520,7 +1564,8 @@ join_priors <- function(likelihoods,
     )
   } else {
     result <- TaxaMatch::filter_redundant_hypotheses(
-      result, rank_system = rank_system
+      result,
+      rank_system = rank_system
     )
   }
 

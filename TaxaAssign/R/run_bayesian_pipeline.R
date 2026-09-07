@@ -124,42 +124,41 @@ utils::globalVariables(c("taxon_name", "group", "is_complete"))
 #' # See vignette("taxonomic-assignment", package = "TaxaAssign") for a
 #' # complete, step-by-step runnable version of this pipeline.
 #' out <- run_bayesian_pipeline(
-#'   match_df          = match_obj,
-#'   model_params      = trained_model,
+#'   match_df = match_obj,
+#'   model_params = trained_model,
 #'   taxaexpect_priors = priors,
 #'   site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
-#'   backbone_id       = 11L
+#'   backbone_id = 11L
 #' )
 #' head(out$consensus)
 #' }
 #'
 #' @export
 run_bayesian_pipeline <- function(
-    match_df,
-    model_params,
-    taxaexpect_priors,
-    site,
-    rank_system          = c("order", "family", "genus", "species"),
-    model_rank_system    = NULL,
-    n_sims               = 1000L,
-    ratio_threshold      = 0.01,
-    barcode_term         = "12S",
-    unreferenced_df      = NULL,
-    constraint_behavior  = c("relabel", "zero"),
-    cumulative_threshold = 0.90,
-    min_posterior         = 0.05,
-    posterior_col         = "posterior_point_est",
-    backbone_id,
-    lookup_missing_taxonomy = TRUE,
-    confirmation_quantile       = 0.9,
-    confirmation_discount       = 0.25,
-    species_reference    = NULL,
-    generate_report      = FALSE,
-    report_params        = list(),
-    llm_fn               = NULL,
-    verbose              = TRUE
+  match_df,
+  model_params,
+  taxaexpect_priors,
+  site,
+  rank_system = c("order", "family", "genus", "species"),
+  model_rank_system = NULL,
+  n_sims = 1000L,
+  ratio_threshold = 0.01,
+  barcode_term = "12S",
+  unreferenced_df = NULL,
+  constraint_behavior = c("relabel", "zero"),
+  cumulative_threshold = 0.90,
+  min_posterior = 0.05,
+  posterior_col = "posterior_point_est",
+  backbone_id,
+  lookup_missing_taxonomy = TRUE,
+  confirmation_quantile = 0.9,
+  confirmation_discount = 0.25,
+  species_reference = NULL,
+  generate_report = FALSE,
+  report_params = list(),
+  llm_fn = NULL,
+  verbose = TRUE
 ) {
-
   constraint_behavior <- match.arg(constraint_behavior)
 
   if (missing(backbone_id)) {
@@ -197,14 +196,16 @@ run_bayesian_pipeline <- function(
       ))
     }
     model_rank_system <- match_ranks
-    .msg(sprintf("  Auto-detected model_rank_system from match_df: %s",
-                 paste(model_rank_system, collapse = ", ")))
+    .msg(sprintf(
+      "  Auto-detected model_rank_system from match_df: %s",
+      paste(model_rank_system, collapse = ", ")
+    ))
   }
 
   # --- Accept build_priors() output ---
   # If taxaexpect_priors is a list with $priors, extract the data frame
   if (is.list(taxaexpect_priors) && !is.data.frame(taxaexpect_priors) &&
-      "priors" %in% names(taxaexpect_priors)) {
+    "priors" %in% names(taxaexpect_priors)) {
     .msg("Detected build_priors() output; extracting $priors.")
     taxaexpect_priors <- taxaexpect_priors$priors
   }
@@ -255,8 +256,10 @@ run_bayesian_pipeline <- function(
       taxaexpect_priors$main_habitat %in% site_habitats &
       !is.na(theta_vals) & theta_vals > 0
     habitat_priors <- taxaexpect_priors[keep, , drop = FALSE]
-    taxa_with_prior <- intersect(match_taxa,
-                                 unique(habitat_priors$taxon_name))
+    taxa_with_prior <- intersect(
+      match_taxa,
+      unique(habitat_priors$taxon_name)
+    )
   } else {
     taxa_with_prior <- character(0)
   }
@@ -271,9 +274,11 @@ run_bayesian_pipeline <- function(
         scheme ({.code habitat_scheme = 'IUCN_L1'}) or check site coordinates."
       )
     } else {
-      .msg(sprintf("  %d of %d candidate taxa (%.0f%%) have non-zero priors at habitat '%s'.",
-                   length(taxa_with_prior), length(match_taxa), taxa_pct * 100,
-                   paste(site_habitats, collapse = " / ")))
+      .msg(sprintf(
+        "  %d of %d candidate taxa (%.0f%%) have non-zero priors at habitat '%s'.",
+        length(taxa_with_prior), length(match_taxa), taxa_pct * 100,
+        paste(site_habitats, collapse = " / ")
+      ))
     }
   }
 
@@ -281,10 +286,12 @@ run_bayesian_pipeline <- function(
   # Stage 0: Remove flagged reference errors from match_df
   # =========================================================================
   if (!is.null(model_params$reference_errors) &&
-      nrow(model_params$reference_errors) > 0L &&
-      "accession" %in% names(match_df)) {
-    match_df <- TaxaLikely::remove_flagged_references(match_df,
-                                                       model_params$reference_errors)
+    nrow(model_params$reference_errors) > 0L &&
+    "accession" %in% names(match_df)) {
+    match_df <- TaxaLikely::remove_flagged_references(
+      match_df,
+      model_params$reference_errors
+    )
   }
 
   # =========================================================================
@@ -293,20 +300,23 @@ run_bayesian_pipeline <- function(
   .msg("run_bayesian_pipeline [1/6]: Evaluating likelihoods...")
 
   lik_result <- TaxaLikely::evaluate_likelihoods(
-    match_df     = match_df,
+    match_df = match_df,
     model_params = model_params,
-    rank_system  = model_rank_system,
-    n_sims       = n_sims,
+    rank_system = model_rank_system,
+    n_sims = n_sims,
     ratio_threshold = ratio_threshold
   )
 
   if (nrow(lik_result$unresolved) > 0L) {
-    .msg(sprintf("  %d unresolved observation_ids (no usable likelihoods).",
-                 dplyr::n_distinct(lik_result$unresolved$observation_id)))
+    .msg(sprintf(
+      "  %d unresolved observation_ids (no usable likelihoods).",
+      dplyr::n_distinct(lik_result$unresolved$observation_id)
+    ))
   }
 
   top_likelihoods <- TaxaLikely::filter_top_hypotheses(
-    lik_result$likelihoods, rank_system = model_rank_system
+    lik_result$likelihoods,
+    rank_system = model_rank_system
   )
   .msg(sprintf("  %d top-hypothesis rows.", nrow(top_likelihoods)))
 
@@ -318,14 +328,14 @@ run_bayesian_pipeline <- function(
   if (!is.null(gbif_census)) {
     # Compare census against match_df reference species (no additional API calls)
     match_species <- unique(match_df$species[!is.na(match_df$species) &
-                                               nzchar(match_df$species)])
+      nzchar(match_df$species)])
 
     # Compute per-genus completeness from existing census data
     for (ci in seq_len(nrow(gbif_census))) {
       described <- gbif_census$described_species[[ci]]
-      missing   <- setdiff(described, match_species)
+      missing <- setdiff(described, match_species)
       gbif_census$in_reference[ci] <- length(described) - length(missing)
-      gbif_census$n_missing[ci]    <- length(missing)
+      gbif_census$n_missing[ci] <- length(missing)
       gbif_census$missing_species[[ci]] <- missing
       gbif_census$status[ci] <- if (length(missing) == 0L) {
         "complete"
@@ -341,7 +351,7 @@ run_bayesian_pipeline <- function(
     singleton_genera <- gbif_census$group[gbif_census$status == "singleton_missing"]
 
     n_suppressed <- 0L
-    n_renamed    <- 0L
+    n_renamed <- 0L
 
     if (length(complete_genera) > 0L) {
       # Suppress H2 rows for complete genera
@@ -361,7 +371,7 @@ run_bayesian_pipeline <- function(
         named_sp <- singleton_map$missing_species[[j]]
         if (length(named_sp) != 1L) next
         idx <- which(top_likelihoods$hypothesis_type == "unreferenced_species" &
-                       top_likelihoods$taxon_name == g)
+          top_likelihoods$taxon_name == g)
         if (length(idx) > 0L) {
           top_likelihoods$taxon_name[idx] <- named_sp
           top_likelihoods$taxon_name_rank[idx] <- "species"
@@ -406,7 +416,9 @@ run_bayesian_pipeline <- function(
       trimws()
 
     reference_species_df <- match_df[!duplicated(match_df$species),
-                                      c("genus", "species"), drop = FALSE]
+      c("genus", "species"),
+      drop = FALSE
+    ]
     # Filter to genera that appear in likelihoods (reduces NCBI API calls)
     if (length(h2_genera) > 0L || length(h3_families) > 0L) {
       reference_species_df <- reference_species_df |>
@@ -427,14 +439,16 @@ run_bayesian_pipeline <- function(
       taxaexpect_species <- taxaexpect_species_df |>
         dplyr::filter(
           tolower(trimws(genus)) %in% h2_genera |
-          tolower(trimws(family)) %in% h3_families
+            tolower(trimws(family)) %in% h3_families
         ) |>
         dplyr::pull(taxon_name)
       if (length(taxaexpect_species) == 0L) taxaexpect_species <- NULL
     }
 
-    .msg(sprintf("  Auditing %d reference species across %d genera.",
-                 nrow(reference_species_df), length(h2_genera)))
+    .msg(sprintf(
+      "  Auditing %d reference species across %d genera.",
+      nrow(reference_species_df), length(h2_genera)
+    ))
 
     if (nrow(reference_species_df) > 0L) {
       coverage <- TaxaLikely::audit_barcode_coverage(
@@ -445,9 +459,11 @@ run_bayesian_pipeline <- function(
       )
     } else {
       coverage <- list(
-        census       = data.frame(group = character(), total = integer(),
-                                  in_reference = integer(), unreferenced = integer(),
-                                  is_complete = logical(), stringsAsFactors = FALSE),
+        census = data.frame(
+          group = character(), total = integer(),
+          in_reference = integer(), unreferenced = integer(),
+          is_complete = logical(), stringsAsFactors = FALSE
+        ),
         unreferenced = character()
       )
       .msg("  No genera need auditing -- skipping NCBI queries.")
@@ -461,7 +477,7 @@ run_bayesian_pipeline <- function(
       unreferenced_df <- unreferenced_df |>
         dplyr::filter(
           tolower(trimws(genus)) %in% h2_genera |
-          tolower(trimws(family)) %in% h3_families
+            tolower(trimws(family)) %in% h3_families
         )
     }
 
@@ -489,7 +505,8 @@ run_bayesian_pipeline <- function(
       status = ifelse(is_complete, "complete", "incomplete")
     )
     final_likelihoods <- TaxaLikely::apply_coverage_constraints(
-      expanded, census_result, constraint_behavior = constraint_behavior
+      expanded, census_result,
+      constraint_behavior = constraint_behavior
     )
   } else {
     final_likelihoods <- expanded
@@ -515,15 +532,17 @@ run_bayesian_pipeline <- function(
   # --- Optimization C: Pre-filter priors to target site + Tier 3 rows ---
   # Keeps site-matching rows for the join AND all undetected-type rows
   # for the dark diversity fallback (which needs global Tier 3 data).
-  site_grid_ids  <- unique(event_meta$grid_id)
-  site_habitats  <- unique(event_meta$main_habitat)
+  site_grid_ids <- unique(event_meta$grid_id)
+  site_habitats <- unique(event_meta$main_habitat)
   priors_filtered <- taxaexpect_priors |>
     dplyr::filter(
       (grid_id %in% site_grid_ids & main_habitat %in% site_habitats) |
-      !is.na(undetected_type)
+        !is.na(undetected_type)
     )
-  .msg(sprintf("  Priors pre-filtered: %d -> %d rows.",
-               nrow(taxaexpect_priors), nrow(priors_filtered)))
+  .msg(sprintf(
+    "  Priors pre-filtered: %d -> %d rows.",
+    nrow(taxaexpect_priors), nrow(priors_filtered)
+  ))
 
   likelihoods_ready <- join_priors(
     likelihoods       = final_likelihoods,
@@ -542,8 +561,10 @@ run_bayesian_pipeline <- function(
   .msg("run_bayesian_pipeline [5/6]: Computing posteriors...")
 
   result <- compute_posterior(likelihoods_ready, n_sims = n_sims)
-  .msg(sprintf("  %d posterior rows, %d observations.",
-               nrow(result), dplyr::n_distinct(result$observation_id)))
+  .msg(sprintf(
+    "  %d posterior rows, %d observations.",
+    nrow(result), dplyr::n_distinct(result$observation_id)
+  ))
 
   # =========================================================================
   # Stages 6-8: Consensus + Empirical Bayes + Report (shared helper)
@@ -569,25 +590,25 @@ run_bayesian_pipeline <- function(
   )
 
   refined <- .run_consensus_and_report(
-    result                = result,
-    species_reference     = species_reference,
-    cumulative_threshold  = cumulative_threshold,
-    min_posterior         = min_posterior,
-    posterior_col         = posterior_col,
+    result = result,
+    species_reference = species_reference,
+    cumulative_threshold = cumulative_threshold,
+    min_posterior = min_posterior,
+    posterior_col = posterior_col,
     lookup_missing_taxonomy = lookup_missing_taxonomy,
-    backbone_id           = backbone_id,
-    rank_system           = rank_system,
-    confirmation_quantile       = confirmation_quantile,
-    confirmation_discount       = confirmation_discount,
-    n_sims                = n_sims,
-    generate_report_flag  = generate_report,
-    report_params         = report_params,
-    unreferenced_result   = unreferenced_df,
-    llm_fn                = llm_fn,
-    verbose               = verbose,
-    .msg                  = .msg,
-    stage_prefix          = "run_bayesian_pipeline [6/6]",
-    workflow              = "bayesian"
+    backbone_id = backbone_id,
+    rank_system = rank_system,
+    confirmation_quantile = confirmation_quantile,
+    confirmation_discount = confirmation_discount,
+    n_sims = n_sims,
+    generate_report_flag = generate_report,
+    report_params = report_params,
+    unreferenced_result = unreferenced_df,
+    llm_fn = llm_fn,
+    verbose = verbose,
+    .msg = .msg,
+    stage_prefix = "run_bayesian_pipeline [6/6]",
+    workflow = "bayesian"
   )
 
   .msg("run_bayesian_pipeline: done.")

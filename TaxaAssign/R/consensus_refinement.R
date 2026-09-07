@@ -20,25 +20,24 @@
 # reason to let generate_report() guess from column presence here.
 #' @noRd
 .run_consensus_and_report <- function(result,
-                                       species_reference,
-                                       cumulative_threshold,
-                                       min_posterior,
-                                       posterior_col,
-                                       lookup_missing_taxonomy,
-                                       backbone_id,
-                                       rank_system,
-                                       confirmation_quantile,
-                                       confirmation_discount,
-                                       n_sims,
-                                       generate_report_flag,
-                                       report_params,
-                                       unreferenced_result,
-                                       llm_fn,
-                                       verbose,
-                                       .msg,
-                                       stage_prefix,
-                                       workflow) {
-
+                                      species_reference,
+                                      cumulative_threshold,
+                                      min_posterior,
+                                      posterior_col,
+                                      lookup_missing_taxonomy,
+                                      backbone_id,
+                                      rank_system,
+                                      confirmation_quantile,
+                                      confirmation_discount,
+                                      n_sims,
+                                      generate_report_flag,
+                                      report_params,
+                                      unreferenced_result,
+                                      llm_fn,
+                                      verbose,
+                                      .msg,
+                                      stage_prefix,
+                                      workflow) {
   # --- First consensus ---
   .msg(sprintf("%s: Deriving consensus taxonomy...", stage_prefix))
 
@@ -58,9 +57,9 @@
 
   result_updated <- update_prior_from_consensus(
     result, consensus,
-    confirmation_quantile       = confirmation_quantile,
-    confirmation_discount       = confirmation_discount,
-    n_sims                      = n_sims
+    confirmation_quantile = confirmation_quantile,
+    confirmation_discount = confirmation_discount,
+    n_sims = n_sims
   )
 
   consensus_final <- posterior_consensus(
@@ -75,8 +74,10 @@
   )
 
   n_resolved <- sum(consensus_final$is_resolved, na.rm = TRUE)
-  .msg(sprintf("  %d / %d samples resolved to species level.",
-               n_resolved, nrow(consensus_final)))
+  .msg(sprintf(
+    "  %d / %d samples resolved to species level.",
+    n_resolved, nrow(consensus_final)
+  ))
 
   # --- Optional report ---
   report <- NULL

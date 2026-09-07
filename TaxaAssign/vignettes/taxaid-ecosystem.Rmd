@@ -211,13 +211,16 @@ likelihoods_expanded <- TaxaLikely::expand_unreferenced_hypotheses(
 
 # Apply coverage constraints (suppress unreferenced for complete genera)
 coverage <- audit_barcode_coverage(
-  match_df, barcode_term = "MiFish"
+  match_df,
+  barcode_term = "MiFish"
 )
 likelihoods_final <- apply_coverage_constraints(likelihoods_expanded, coverage)
 
 # Join priors
-joined <- join_priors(likelihoods_final, priors, site = list(main_habitat = "Marine"),
-                      backbone_id = 11L)  # GBIF; match whichever backbone your input taxonomy used
+joined <- join_priors(likelihoods_final, priors,
+  site = list(main_habitat = "Marine"),
+  backbone_id = 11L
+) # GBIF; match whichever backbone your input taxonomy used
 
 # Compute posterior
 result <- compute_posterior(joined, n_sims = 1000)
@@ -240,7 +243,7 @@ pipeline <- run_bayesian_pipeline(
   taxaexpect_priors = priors,
   site = list(main_habitat = "Marine"),
   barcode_term = "MiFish",
-  backbone_id = 11L,  # GBIF; match whichever backbone your input taxonomy used
+  backbone_id = 11L, # GBIF; match whichever backbone your input taxonomy used
   verbose = TRUE
 )
 consensus_final <- pipeline$consensus
@@ -288,7 +291,7 @@ pipeline <- run_llm_pipeline(
   geographic_hint = "Southern California estuaries",
   detect_unreferenced = TRUE,
   barcode_term = "MiFish",
-  backbone_id = 11L,  # GBIF; match whichever backbone your input taxonomy used
+  backbone_id = 11L, # GBIF; match whichever backbone your input taxonomy used
   generate_report = TRUE,
   verbose = TRUE
 )
@@ -378,14 +381,16 @@ library(TaxaFlag)
 
 # Flag potential contaminants from lab blanks
 flagged <- flag_contaminant(
-  consensus_final, control_samples = c("blank_1", "blank_2"),
+  consensus_final,
+  control_samples = c("blank_1", "blank_2"),
   taxon_col = "consensus_taxon", reads_col = "n_reads",
   event_col = "event_id", contaminant_type = "lab"
 )
 
 # LLM expert review of assignment plausibility
 reviewed <- review_assignments(
-  flagged, taxon_col = "consensus_taxon",
+  flagged,
+  taxon_col = "consensus_taxon",
   site_col = "site_name", llm_fn = call_anthropic_api
 )
 ```
@@ -460,7 +465,8 @@ for (pkg in pkg_paths) {
 }
 
 # Bioconductor dependencies (for TaxaLikely reference matrix building)
-if (!requireNamespace("BiocManager", quietly = TRUE))
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
   install.packages("BiocManager")
+}
 BiocManager::install(c("DECIPHER", "Biostrings"))
 ```

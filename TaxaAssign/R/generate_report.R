@@ -1,6 +1,8 @@
-utils::globalVariables(c("posterior_mean", "posterior_point_est", "posterior_sd",
-                          "confidence_score", "hypothesis_type", "is_resolved",
-                          "consensus_taxon", "consensus_rank", "prior_updated"))
+utils::globalVariables(c(
+  "posterior_mean", "posterior_point_est", "posterior_sd",
+  "confidence_score", "hypothesis_type", "is_resolved",
+  "consensus_taxon", "consensus_rank", "prior_updated"
+))
 
 # generate_report.R
 # TaxaAssign package
@@ -81,18 +83,18 @@ utils::globalVariables(c("posterior_mean", "posterior_point_est", "posterior_sd"
 #'
 #' @examples
 #' result <- data.frame(
-#'   observation_id       = c("S1", "S1"),
-#'   taxon_name           = c("Gadus morhua", "Gadus chalcogrammus"),
-#'   taxon_name_rank       = "species",
-#'   hypothesis_type       = "specific_candidate",
-#'   genus                 = "Gadus",
-#'   family                = "Gadidae",
-#'   score_likelihood      = c(0.8, 0.2),
+#'   observation_id = c("S1", "S1"),
+#'   taxon_name = c("Gadus morhua", "Gadus chalcogrammus"),
+#'   taxon_name_rank = "species",
+#'   hypothesis_type = "specific_candidate",
+#'   genus = "Gadus",
+#'   family = "Gadidae",
+#'   score_likelihood = c(0.8, 0.2),
 #'   score_likelihood_mean = c(0.8, 0.2),
-#'   score_likelihood_sd   = c(0.05, 0.05),
-#'   prior_mean            = c(0.6, 0.4),
-#'   prior_alpha           = c(30, 20),
-#'   prior_beta            = c(20, 30)
+#'   score_likelihood_sd = c(0.05, 0.05),
+#'   prior_mean = c(0.6, 0.4),
+#'   prior_alpha = c(30, 20),
+#'   prior_beta = c(20, 30)
 #' )
 #' result <- compute_posterior(result, n_sims = 0)
 #' consensus <- posterior_consensus(result)
@@ -111,51 +113,60 @@ utils::globalVariables(c("posterior_mean", "posterior_point_est", "posterior_sd"
 generate_report <- function(result,
                             consensus,
                             unreferenced_result = NULL,
-                            workflow            = NULL,
-                            data_type           = NULL,
-                            marker              = NULL,
-                            context_source      = "user",
-                            study_description   = NULL,
-                            llm_fn              = NULL,
-                            verbose             = FALSE) {
-
+                            workflow = NULL,
+                            data_type = NULL,
+                            marker = NULL,
+                            context_source = "user",
+                            study_description = NULL,
+                            llm_fn = NULL,
+                            verbose = FALSE) {
   # --- Input validation -------------------------------------------------------
-  if (!is.data.frame(consensus))
+  if (!is.data.frame(consensus)) {
     cli::cli_abort("{.arg consensus} must be a data frame.")
-  if (!is.null(workflow))
+  }
+  if (!is.null(workflow)) {
     workflow <- match.arg(workflow, c("bayesian", "llm"))
+  }
 
-  required_consensus <- c("observation_id", "consensus_taxon", "consensus_rank",
-                          "is_resolved")
+  required_consensus <- c(
+    "observation_id", "consensus_taxon", "consensus_rank",
+    "is_resolved"
+  )
   missing_c <- setdiff(required_consensus, names(consensus))
-  if (length(missing_c) > 0)
+  if (length(missing_c) > 0) {
     cli::cli_abort("{.arg consensus} is missing column(s): {.field {missing_c}}")
+  }
 
   # Detect consensus type: score-based (has top_score) vs posterior-based
   consensus_type <- if ("top_score" %in% names(consensus)) "score" else "posterior"
 
   if (consensus_type == "posterior") {
-    if (is.null(result) || !is.data.frame(result))
+    if (is.null(result) || !is.data.frame(result)) {
       cli::cli_abort("{.arg result} must be a data frame when consensus is from posterior_consensus().")
+    }
     required_result <- c("observation_id", "taxon_name", "posterior_mean")
     missing_r <- setdiff(required_result, names(result))
-    if (length(missing_r) > 0)
+    if (length(missing_r) > 0) {
       cli::cli_abort("{.arg result} is missing column(s): {.field {missing_r}}")
+    }
   }
 
   if (!is.null(unreferenced_result) &&
-      !inherits(unreferenced_result, "unreferenced_species_result"))
+    !inherits(unreferenced_result, "unreferenced_species_result")) {
     cli::cli_abort(
       "{.arg unreferenced_result} must be an {.cls unreferenced_species_result} object."
     )
+  }
 
-  if (!is.null(data_type))
+  if (!is.null(data_type)) {
     data_type <- match.arg(data_type, c("eDNA", "image", "acoustic"))
+  }
 
   context_source <- match.arg(context_source, c("user", "llm"))
 
-  if (!is.null(llm_fn) && !is.function(llm_fn))
+  if (!is.null(llm_fn) && !is.function(llm_fn)) {
     cli::cli_abort("{.arg llm_fn} must be a function or NULL.")
+  }
 
   # --- Detect workflow and gather parameters ----------------------------------
   if (consensus_type == "posterior") {
@@ -178,25 +189,31 @@ generate_report <- function(result,
   stats <- .extract_report_stats(result, consensus, consensus_type)
 
   unref_stats <- NULL
-  if (!is.null(unreferenced_result))
-    unref_stats <- .extract_unreferenced_stats(unreferenced_result, result,
-                                                consensus)
+  if (!is.null(unreferenced_result)) {
+    unref_stats <- .extract_unreferenced_stats(
+      unreferenced_result, result,
+      consensus
+    )
+  }
 
   # --- Build Methods ----------------------------------------------------------
   methods_text <- .build_methods_text(workflow, params, data_type, marker,
-                                      context_source,
-                                      !is.null(unreferenced_result),
-                                      !is.null(unref_stats) &&
-                                        unref_stats$has_family_expansion,
-                                      stats$has_empirical_bayes,
-                                      llm_model_name,
-                                      kernel_priors = "prior_branch" %in% names(result))
+    context_source,
+    !is.null(unreferenced_result),
+    !is.null(unref_stats) &&
+      unref_stats$has_family_expansion,
+    stats$has_empirical_bayes,
+    llm_model_name,
+    kernel_priors = "prior_branch" %in% names(result)
+  )
 
   # --- Build Results ----------------------------------------------------------
   if (!is.null(llm_fn)) {
     if (verbose) cli::cli_inform("Generating results narrative via LLM...")
-    results_text <- .build_results_llm(stats, unref_stats,
-                                        study_description, llm_fn)
+    results_text <- .build_results_llm(
+      stats, unref_stats,
+      study_description, llm_fn
+    )
   } else {
     results_text <- .build_results_template(stats, unref_stats)
   }
@@ -229,16 +246,20 @@ generate_report <- function(result,
   rp <- if (!is.null(result)) attr(result, "report_params") else NULL
   cp <- attr(consensus, "report_params")
   # result params take precedence for shared keys
-  params <- c(cp, rp)  # later entries override
+  params <- c(cp, rp) # later entries override
   params
 }
 
 
 #' @noRd
 .detect_llm_model <- function(llm_fn) {
-  if (is.null(llm_fn) || !is.function(llm_fn)) return(NULL)
+  if (is.null(llm_fn) || !is.function(llm_fn)) {
+    return(NULL)
+  }
   default_model <- tryCatch(formals(llm_fn)$model, error = function(e) NULL)
-  if (is.null(default_model)) return(NULL)
+  if (is.null(default_model)) {
+    return(NULL)
+  }
   # formals() returns an unevaluated expression; eval to get the string
   tryCatch(eval(default_model), error = function(e) as.character(default_model))
 }
@@ -254,13 +275,16 @@ generate_report <- function(result,
   # itself being broken by a future edit (e.g. malformed bibentry() syntax,
   # or reduced to a single entry), which would otherwise hard-error every
   # generate_report() call instead of degrading to the fallback string below.
-  cite_str <- tryCatch({
-    cite <- utils::citation("TaxaAssign")
-    if (length(cite) < 2L) stop("inst/CITATION has fewer than 2 entries")
-    paste(format(cite[[2L]], style = "text"), collapse = " ")
-  }, error = function(e) {
-    "Lafferty, K. (2026). TaxaID: A Modular R Ecosystem for Bayesian Taxonomic Assignment. In preparation."
-  })
+  cite_str <- tryCatch(
+    {
+      cite <- utils::citation("TaxaAssign")
+      if (length(cite) < 2L) stop("inst/CITATION has fewer than 2 entries")
+      paste(format(cite[[2L]], style = "text"), collapse = " ")
+    },
+    error = function(e) {
+      "Lafferty, K. (2026). TaxaID: A Modular R Ecosystem for Bayesian Taxonomic Assignment. In preparation."
+    }
+  )
 
   software_text <- sprintf(
     "All analyses were performed using the TaxaID R ecosystem (%s).",
@@ -301,37 +325,42 @@ generate_report <- function(result,
 
   # Upranked (consensus coarser than species) and downranked counts
   n_upranked <- sum(!consensus$is_resolved, na.rm = TRUE)
-  n_downranked <- if ("downranked" %in% names(consensus))
-    sum(consensus$downranked, na.rm = TRUE) else 0L
+  n_downranked <- if ("downranked" %in% names(consensus)) {
+    sum(consensus$downranked, na.rm = TRUE)
+  } else {
+    0L
+  }
 
   # Score-based stats (only when consensus_type == "score")
   median_top_score <- NA_real_
-  mean_top_score   <- NA_real_
-  n_rank_capped    <- 0L
+  mean_top_score <- NA_real_
+  n_rank_capped <- 0L
   n_whitelist_capped <- 0L
   if (consensus_type == "score" && "top_score" %in% names(consensus)) {
     scores <- consensus$top_score[!is.na(consensus$top_score)]
     if (length(scores) > 0) {
       median_top_score <- round(stats::median(scores, na.rm = TRUE), 2)
-      mean_top_score   <- round(mean(scores, na.rm = TRUE), 2)
+      mean_top_score <- round(mean(scores, na.rm = TRUE), 2)
     }
-    if ("rank_capped" %in% names(consensus))
+    if ("rank_capped" %in% names(consensus)) {
       n_rank_capped <- sum(consensus$rank_capped, na.rm = TRUE)
-    if ("whitelist_capped" %in% names(consensus))
+    }
+    if ("whitelist_capped" %in% names(consensus)) {
       n_whitelist_capped <- sum(consensus$whitelist_capped, na.rm = TRUE)
+    }
   }
 
   # Posterior-based stats (only when result is available)
-  median_posterior   <- NA_real_
-  mean_posterior     <- NA_real_
-  median_confidence  <- NA_real_
-  mean_confidence    <- NA_real_
-  has_mc             <- FALSE
-  has_confidence     <- FALSE
-  hyp_breakdown      <- NULL
+  median_posterior <- NA_real_
+  mean_posterior <- NA_real_
+  median_confidence <- NA_real_
+  mean_confidence <- NA_real_
+  has_mc <- FALSE
+  has_confidence <- FALSE
+  hyp_breakdown <- NULL
   n_unreferenced_wins <- 0L
   has_empirical_bayes <- FALSE
-  n_prior_updated     <- 0L
+  n_prior_updated <- 0L
   n_consensus_unreferenced <- 0L
 
   if (!is.null(result) && is.data.frame(result)) {
@@ -342,13 +371,13 @@ generate_report <- function(result,
       dplyr::ungroup()
 
     median_posterior <- round(stats::median(top$posterior_mean, na.rm = TRUE), 3)
-    mean_posterior   <- round(mean(top$posterior_mean, na.rm = TRUE), 3)
+    mean_posterior <- round(mean(top$posterior_mean, na.rm = TRUE), 3)
 
     has_confidence <- "confidence_score" %in% names(top) &&
       any(top$confidence_score > 0, na.rm = TRUE)
     if (has_confidence) {
       median_confidence <- round(stats::median(top$confidence_score, na.rm = TRUE), 3)
-      mean_confidence   <- round(mean(top$confidence_score, na.rm = TRUE), 3)
+      mean_confidence <- round(mean(top$confidence_score, na.rm = TRUE), 3)
     }
 
     has_mc <- "posterior_sd" %in% names(result) &&
@@ -364,8 +393,11 @@ generate_report <- function(result,
     }
 
     has_empirical_bayes <- "prior_updated" %in% names(result)
-    n_prior_updated <- if (has_empirical_bayes)
-      sum(result$prior_updated, na.rm = TRUE) else 0L
+    n_prior_updated <- if (has_empirical_bayes) {
+      sum(result$prior_updated, na.rm = TRUE)
+    } else {
+      0L
+    }
 
     if ("hypothesis_type" %in% names(consensus)) {
       n_consensus_unreferenced <- sum(
@@ -376,36 +408,36 @@ generate_report <- function(result,
   }
 
   list(
-    consensus_type           = consensus_type,
-    n_samples                = n_samples,
-    n_resolved               = n_resolved,
-    resolution_rate          = resolution_rate,
-    rank_table               = rank_table,
-    median_posterior          = median_posterior,
-    mean_posterior            = mean_posterior,
-    median_confidence         = median_confidence,
-    mean_confidence           = mean_confidence,
-    has_mc                    = has_mc,
-    has_confidence            = has_confidence,
-    n_unique_taxa             = n_unique_taxa,
-    hyp_breakdown             = hyp_breakdown,
-    n_unreferenced_wins       = n_unreferenced_wins,
-    has_empirical_bayes       = has_empirical_bayes,
-    n_prior_updated           = n_prior_updated,
-    n_consensus_unreferenced  = n_consensus_unreferenced,
-    n_upranked                = n_upranked,
-    n_downranked              = n_downranked,
-    median_top_score          = median_top_score,
-    mean_top_score            = mean_top_score,
-    n_rank_capped             = n_rank_capped,
-    n_whitelist_capped        = n_whitelist_capped
+    consensus_type = consensus_type,
+    n_samples = n_samples,
+    n_resolved = n_resolved,
+    resolution_rate = resolution_rate,
+    rank_table = rank_table,
+    median_posterior = median_posterior,
+    mean_posterior = mean_posterior,
+    median_confidence = median_confidence,
+    mean_confidence = mean_confidence,
+    has_mc = has_mc,
+    has_confidence = has_confidence,
+    n_unique_taxa = n_unique_taxa,
+    hyp_breakdown = hyp_breakdown,
+    n_unreferenced_wins = n_unreferenced_wins,
+    has_empirical_bayes = has_empirical_bayes,
+    n_prior_updated = n_prior_updated,
+    n_consensus_unreferenced = n_consensus_unreferenced,
+    n_upranked = n_upranked,
+    n_downranked = n_downranked,
+    median_top_score = median_top_score,
+    mean_top_score = mean_top_score,
+    n_rank_capped = n_rank_capped,
+    n_whitelist_capped = n_whitelist_capped
   )
 }
 
 
 #' @noRd
 .extract_unreferenced_stats <- function(unreferenced_result, result, consensus) {
-  census   <- attr(unreferenced_result, "census")
+  census <- attr(unreferenced_result, "census")
   plausible <- attr(unreferenced_result, "plausible")
   unref_family <- attr(unreferenced_result, "unreferenced_family")
 
@@ -421,8 +453,11 @@ generate_report <- function(result,
       total_per_genus <- census$in_reference + census$unreferenced
       # Also count has_seqs_not_in_ref if available (species with sequences
       # but not in the user's reference library)
-      has_seqs <- if ("has_seqs_not_in_ref" %in% names(census))
-        census$has_seqs_not_in_ref else rep(0L, nrow(census))
+      has_seqs <- if ("has_seqs_not_in_ref" %in% names(census)) {
+        census$has_seqs_not_in_ref
+      } else {
+        rep(0L, nrow(census))
+      }
       total_described <- total_per_genus + has_seqs
       total_with_seqs <- census$in_reference + has_seqs
 
@@ -446,8 +481,11 @@ generate_report <- function(result,
 
   # --- Plausible species fraction ---
   n_plausible <- if (!is.null(plausible)) length(plausible) else NA_integer_
-  frac_unreferenced <- if (!is.na(n_plausible) && n_plausible > 0)
-    round(n_unreferenced / n_plausible, 3) else NA_real_
+  frac_unreferenced <- if (!is.na(n_plausible) && n_plausible > 0) {
+    round(n_unreferenced / n_plausible, 3)
+  } else {
+    NA_real_
+  }
 
   # --- Family expansion ---
   n_family_unreferenced <- if (has_family_expansion) length(unref_family) else 0L
@@ -455,7 +493,8 @@ generate_report <- function(result,
   # --- Consensus outcomes for unreferenced taxa ---
   unreferenced_names <- as.character(unreferenced_result)
   n_consensus_to_unreferenced <- sum(
-    consensus$consensus_taxon %in% unreferenced_names, na.rm = TRUE
+    consensus$consensus_taxon %in% unreferenced_names,
+    na.rm = TRUE
   )
 
   list(
@@ -476,24 +515,23 @@ generate_report <- function(result,
 
 #' @noRd
 .build_methods_text <- function(workflow, params, data_type, marker,
-                                 context_source,
-                                 has_unreferenced, has_family_expansion,
-                                 has_empirical_bayes,
-                                 llm_model_name = NULL,
-                                 kernel_priors = FALSE) {
+                                context_source,
+                                has_unreferenced, has_family_expansion,
+                                has_empirical_bayes,
+                                llm_model_name = NULL,
+                                kernel_priors = FALSE) {
   sections <- character(0)
 
   # --- Data type preamble ---
-  data_desc <- switch(
-    if (!is.null(data_type)) data_type else "generic",
+  data_desc <- switch(if (!is.null(data_type)) data_type else "generic",
     eDNA = if (!is.null(marker)) {
       sprintf("Taxonomic assignments were made from %s metabarcoding sequence data.", marker)
     } else {
       "Taxonomic assignments were made from environmental DNA (eDNA) metabarcoding sequence data."
     },
-    image    = "Taxonomic assignments were made from image-based species identification data.",
+    image = "Taxonomic assignments were made from image-based species identification data.",
     acoustic = "Taxonomic assignments were made from acoustic species identification data.",
-    generic  = "Taxonomic assignments were made from species identification data."
+    generic = "Taxonomic assignments were made from species identification data."
   )
 
   # --- Workflow introductory sentence ---
@@ -531,10 +569,10 @@ generate_report <- function(result,
 
   # --- Score-based consensus Methods (workflow == "score") ---
   if (workflow == "score") {
-    min_sc  <- if (!is.null(params$min_score)) params$min_score else 0
-    max_gp  <- if (!is.null(params$max_gap)) params$max_gap else Inf
-    rt      <- params$rank_thresholds
-    has_wl  <- isTRUE(params$has_whitelist)
+    min_sc <- if (!is.null(params$min_score)) params$min_score else 0
+    max_gp <- if (!is.null(params$max_gap)) params$max_gap else Inf
+    rt <- params$rank_thresholds
+    has_wl <- isTRUE(params$has_whitelist)
 
     score_text <- sprintf(
       paste0(
@@ -586,9 +624,9 @@ generate_report <- function(result,
   # --- Likelihood estimation (posterior workflows only) ---
   if (workflow == "llm") {
     sharpness <- if (!is.null(params$score_sharpness)) params$score_sharpness else 0.1
-    unk_wt    <- if (!is.null(params$unknown_lik_weight)) params$unknown_lik_weight else 0.05
+    unk_wt <- if (!is.null(params$unknown_lik_weight)) params$unknown_lik_weight else 0.05
     threshold <- if (!is.null(params$score_threshold)) params$score_threshold else 80
-    top_n     <- if (!is.null(params$top_n)) params$top_n else 10L
+    top_n <- if (!is.null(params$top_n)) params$top_n else 10L
 
     lik_text <- sprintf(
       paste0(
@@ -610,8 +648,7 @@ generate_report <- function(result,
     # "logit" default rather than erroring, since that was this package's own
     # unconditional assumption until 2026-09-06).
     score_transform <- if (!is.null(params$score_transform)) params$score_transform else "logit"
-    transform_desc <- switch(
-      score_transform,
+    transform_desc <- switch(score_transform,
       "sqrt_mismatch" = "a square-root-mismatch-transformed (Anscombe-stabilized fraction of mismatched bases)",
       "logit-transformed"
     )
@@ -644,7 +681,9 @@ generate_report <- function(result,
         ),
         phi["high"], phi["moderate"], phi["low"]
       )
-    } else ""
+    } else {
+      ""
+    }
 
     absent_prob <- if (!is.null(params$absent_detection_prob)) params$absent_detection_prob else 0.80
 
@@ -670,14 +709,18 @@ generate_report <- function(result,
       "relative weight reflecting the plausibility of encountering that taxon at ",
       "the study site. Weights were normalized to produce prior probabilities. ",
       phi_text,
-      if (absent_prob < 1) sprintf(
-        paste0(
-          " Taxa presumed to be absent from the study area had their ",
-          "priors reduced by a factor of %s (the estimated probability of non-detection), ",
-          "accounting for the possibility of rare or transient occurrences."
-        ),
-        1 - absent_prob
-      ) else ""
+      if (absent_prob < 1) {
+        sprintf(
+          paste0(
+            " Taxa presumed to be absent from the study area had their ",
+            "priors reduced by a factor of %s (the estimated probability of non-detection), ",
+            "accounting for the possibility of rare or transient occurrences."
+          ),
+          1 - absent_prob
+        )
+      } else {
+        ""
+      }
     )
   } else if (kernel_priors) {
     # Kernel-priors + curve-pricing architecture (2026-08-31 redesign),
@@ -791,13 +834,13 @@ generate_report <- function(result,
 
   # --- Consensus taxonomy ---
   cum_thresh <- if (!is.null(params$cumulative_threshold)) params$cumulative_threshold else 0.9
-  min_post   <- if (!is.null(params$min_posterior)) params$min_posterior else 0.05
+  min_post <- if (!is.null(params$min_posterior)) params$min_posterior else 0.05
 
-  confirm_q  <- params$confirmation_quantile
+  confirm_q <- params$confirmation_quantile
   confirm_a0 <- params$confirmation_discount
   has_eb <- !is.null(confirm_q) || has_empirical_bayes
-  if (is.null(confirm_q))  confirm_q  <- 0.9   # default
-  if (is.null(confirm_a0)) confirm_a0 <- 0.25  # default
+  if (is.null(confirm_q)) confirm_q <- 0.9 # default
+  if (is.null(confirm_a0)) confirm_a0 <- 0.25 # default
 
   cons_text <- sprintf(
     paste0(
@@ -854,8 +897,10 @@ generate_report <- function(result,
   lines <- c(
     "ASSIGNMENT SUMMARY:",
     sprintf("- Total observations: %d", stats$n_samples),
-    sprintf("- Resolved to species: %d (%.1f%%)",
-            stats$n_resolved, stats$resolution_rate),
+    sprintf(
+      "- Resolved to species: %d (%.1f%%)",
+      stats$n_resolved, stats$resolution_rate
+    ),
     sprintf("- Unique taxa assigned: %d", stats$n_unique_taxa),
     "",
     "RANK BREAKDOWN:"
@@ -865,26 +910,35 @@ generate_report <- function(result,
   }
 
   if (stats$consensus_type == "score") {
-    lines <- c(lines, "",
+    lines <- c(
+      lines, "",
       "TOP MATCH SCORE (per observation):",
       sprintf("- Median: %s", stats$median_top_score),
       sprintf("- Mean: %s", stats$mean_top_score)
     )
-    if (stats$n_rank_capped > 0)
-      lines <- c(lines,
-        sprintf("- Assignments capped by rank thresholds: %d", stats$n_rank_capped))
-    if (stats$n_whitelist_capped > 0)
-      lines <- c(lines,
-        sprintf("- Assignments upranked by whitelist: %d", stats$n_whitelist_capped))
+    if (stats$n_rank_capped > 0) {
+      lines <- c(
+        lines,
+        sprintf("- Assignments capped by rank thresholds: %d", stats$n_rank_capped)
+      )
+    }
+    if (stats$n_whitelist_capped > 0) {
+      lines <- c(
+        lines,
+        sprintf("- Assignments upranked by whitelist: %d", stats$n_whitelist_capped)
+      )
+    }
   } else {
-    lines <- c(lines, "",
+    lines <- c(
+      lines, "",
       "POSTERIOR PROBABILITY (top hypothesis per observation):",
       sprintf("- Median: %s", stats$median_posterior),
       sprintf("- Mean: %s", stats$mean_posterior)
     )
 
     if (stats$has_confidence) {
-      lines <- c(lines, "",
+      lines <- c(
+        lines, "",
         "CONFIDENCE SCORE (fraction of MC simulations won by top hypothesis):",
         sprintf("- Median: %s", stats$median_confidence),
         sprintf("- Mean: %s", stats$mean_confidence)
@@ -894,31 +948,43 @@ generate_report <- function(result,
 
   # Upranked / downranked
   if (stats$n_upranked > 0 || stats$n_downranked > 0) {
-    lines <- c(lines, "",
+    lines <- c(
+      lines, "",
       "CONSENSUS RANK ADJUSTMENTS:",
       sprintf("- Upranked to coarser rank due to ambiguity (these were tabulated): %d", stats$n_upranked)
     )
     if (stats$n_downranked > 0) {
-      lines <- c(lines,
-        sprintf("- Downranked to finer rank via species reference: %d",
-                stats$n_downranked)
+      lines <- c(
+        lines,
+        sprintf(
+          "- Downranked to finer rank via species reference: %d",
+          stats$n_downranked
+        )
       )
     }
   }
 
   if (stats$n_unreferenced_wins > 0) {
-    lines <- c(lines, "",
-      sprintf("UNREFERENCED SPECIES: %d observation(s) had an unreferenced species as top hypothesis.",
-              stats$n_unreferenced_wins),
-      sprintf("- Consensus assignments to unreferenced taxa: %d",
-              stats$n_consensus_unreferenced)
+    lines <- c(
+      lines, "",
+      sprintf(
+        "UNREFERENCED SPECIES: %d observation(s) had an unreferenced species as top hypothesis.",
+        stats$n_unreferenced_wins
+      ),
+      sprintf(
+        "- Consensus assignments to unreferenced taxa: %d",
+        stats$n_consensus_unreferenced
+      )
     )
   }
 
   if (stats$has_empirical_bayes) {
-    lines <- c(lines, "",
-      sprintf("EMPIRICAL BAYES: %d row(s) had priors updated based on cross-observation evidence.",
-              stats$n_prior_updated)
+    lines <- c(
+      lines, "",
+      sprintf(
+        "EMPIRICAL BAYES: %d row(s) had priors updated based on cross-observation evidence.",
+        stats$n_prior_updated
+      )
     )
   }
 
@@ -927,31 +993,47 @@ generate_report <- function(result,
     lines <- c(lines, "", "REFERENCE DATABASE COMPLETENESS:")
     rc <- unref_stats$ref_completeness
     if (!is.null(rc)) {
-      lines <- c(lines,
+      lines <- c(
+        lines,
         sprintf("- Genera investigated: %d", rc$n_genera),
         sprintf("- Total described species across these genera: %d", rc$total_described),
         sprintf("- Species with barcode sequences in NCBI: %d", rc$total_with_seqs),
         sprintf("- Species in the user's reference database: %d", rc$total_in_reference),
         sprintf("- Genera with complete reference coverage: %d", rc$n_complete_genera),
         sprintf("- Genera with incomplete coverage: %d", rc$n_incomplete_genera),
-        sprintf("- Per-genus %% of species in reference: median %.1f%%, range %.1f%%--%.1f%%",
-                rc$median_pct_ref, rc$min_pct_ref, rc$max_pct_ref)
+        sprintf(
+          "- Per-genus %% of species in reference: median %.1f%%, range %.1f%%--%.1f%%",
+          rc$median_pct_ref, rc$min_pct_ref, rc$max_pct_ref
+        )
       )
     }
-    lines <- c(lines,
-      sprintf("- Plausible species from the observation location: %s",
-              if (!is.na(unref_stats$n_plausible)) unref_stats$n_plausible else "unknown"),
-      sprintf("- Of those, unreferenced (no barcode sequence): %d (%.1f%%)",
-              unref_stats$n_unreferenced,
-              if (!is.na(unref_stats$frac_unreferenced))
-                unref_stats$frac_unreferenced * 100 else 0),
-      sprintf("- Consensus assignments to unreferenced taxa (by process of elimination): %d",
-              unref_stats$n_consensus_to_unreferenced)
+    lines <- c(
+      lines,
+      sprintf(
+        "- Plausible species from the observation location: %s",
+        if (!is.na(unref_stats$n_plausible)) unref_stats$n_plausible else "unknown"
+      ),
+      sprintf(
+        "- Of those, unreferenced (no barcode sequence): %d (%.1f%%)",
+        unref_stats$n_unreferenced,
+        if (!is.na(unref_stats$frac_unreferenced)) {
+          unref_stats$frac_unreferenced * 100
+        } else {
+          0
+        }
+      ),
+      sprintf(
+        "- Consensus assignments to unreferenced taxa (by process of elimination): %d",
+        unref_stats$n_consensus_to_unreferenced
+      )
     )
     if (unref_stats$has_family_expansion) {
-      lines <- c(lines,
-        sprintf("- Family-level unreferenced taxa: %d",
-                unref_stats$n_family_unreferenced)
+      lines <- c(
+        lines,
+        sprintf(
+          "- Family-level unreferenced taxa: %d",
+          unref_stats$n_family_unreferenced
+        )
       )
     }
   }
@@ -962,12 +1044,14 @@ generate_report <- function(result,
 
 #' @noRd
 .build_results_llm <- function(stats, unref_stats,
-                                study_description, llm_fn) {
+                               study_description, llm_fn) {
   data_block <- .build_results_prompt(stats, unref_stats, study_description)
 
   study_ctx <- if (!is.null(study_description)) {
     sprintf("\nSTUDY CONTEXT: %s\n", study_description)
-  } else ""
+  } else {
+    ""
+  }
 
   if (stats$consensus_type == "score") {
     para_instructions <- paste0(
@@ -983,7 +1067,9 @@ generate_report <- function(result,
           "- Third paragraph: Reference database completeness and unreferenced ",
           "species findings (what unreferenced means, how many, outcomes).\n"
         )
-      } else ""
+      } else {
+        ""
+      }
     )
   } else {
     para_instructions <- paste0(
@@ -997,10 +1083,14 @@ generate_report <- function(result,
           "- Third paragraph: Reference database completeness and unreferenced ",
           "species findings (what unreferenced means, how many, outcomes).\n"
         )
-      } else "",
+      } else {
+        ""
+      },
       if (stats$has_empirical_bayes) {
         "- A paragraph on the effect of empirical Bayes refinement.\n"
-      } else ""
+      } else {
+        ""
+      }
     )
   }
 

@@ -86,21 +86,24 @@
 #' @importFrom dplyr bind_rows
 #' @export
 compute_group_priors <- function(taxaexpect_priors,
-                                  taxonomy_map,
-                                  taxon_col = "taxon_name",
-                                  theta_col = "theta_mean",
-                                  rank_cols = c("species", "genus", "family")) {
-
-  if (!is.data.frame(taxaexpect_priors))
+                                 taxonomy_map,
+                                 taxon_col = "taxon_name",
+                                 theta_col = "theta_mean",
+                                 rank_cols = c("species", "genus", "family")) {
+  if (!is.data.frame(taxaexpect_priors)) {
     cli::cli_abort("{.arg taxaexpect_priors} must be a data frame.")
-  if (!is.data.frame(taxonomy_map))
-    cli::cli_abort("{.arg taxonomy_map} must be a data frame.")
-  for (col in c(taxon_col, theta_col)) {
-    if (!col %in% names(taxaexpect_priors))
-      cli::cli_abort("Column {.field {col}} not found in {.arg taxaexpect_priors}.")
   }
-  if (!taxon_col %in% names(taxonomy_map))
+  if (!is.data.frame(taxonomy_map)) {
+    cli::cli_abort("{.arg taxonomy_map} must be a data frame.")
+  }
+  for (col in c(taxon_col, theta_col)) {
+    if (!col %in% names(taxaexpect_priors)) {
+      cli::cli_abort("Column {.field {col}} not found in {.arg taxaexpect_priors}.")
+    }
+  }
+  if (!taxon_col %in% names(taxonomy_map)) {
     cli::cli_abort("Column {.field {taxon_col}} not found in {.arg taxonomy_map}.")
+  }
 
   # "species" is a group of one: auto-derive it as taxon_col's own identity
   # when taxonomy_map has no explicit "species" column, rather than requiring
@@ -110,10 +113,11 @@ compute_group_priors <- function(taxaexpect_priors,
   }
 
   missing_rank_cols <- setdiff(rank_cols, names(taxonomy_map))
-  if (length(missing_rank_cols) > 0)
+  if (length(missing_rank_cols) > 0) {
     cli::cli_abort(
       "{.arg rank_cols} not found in {.arg taxonomy_map}: {.field {missing_rank_cols}}."
     )
+  }
 
   priors_slim <- taxaexpect_priors[, c(taxon_col, theta_col), drop = FALSE]
   names(priors_slim) <- c("taxon_name_", "theta_")
@@ -127,19 +131,21 @@ compute_group_priors <- function(taxaexpect_priors,
 
   out_list <- lapply(rank_cols, function(rc) {
     vals <- merged[[rc]]
-    ok   <- !is.na(vals) & nzchar(as.character(vals))
+    ok <- !is.na(vals) & nzchar(as.character(vals))
     if (!any(ok)) {
-      return(data.frame(rank = character(0), taxon = character(0),
-                        theta_sum = numeric(0), n_members = integer(0)))
+      return(data.frame(
+        rank = character(0), taxon = character(0),
+        theta_sum = numeric(0), n_members = integer(0)
+      ))
     }
     theta_ok <- merged$theta_[ok]
     taxon_ok <- vals[ok]
     theta_sum <- stats::aggregate(theta_ok, by = list(taxon = taxon_ok), FUN = sum)
     n_members <- stats::aggregate(theta_ok, by = list(taxon = taxon_ok), FUN = length)
     data.frame(
-      rank      = rc,
-      taxon     = theta_sum$taxon,
-      theta_sum = pmin(theta_sum$x, 1),   # defensive cap; see @return
+      rank = rc,
+      taxon = theta_sum$taxon,
+      theta_sum = pmin(theta_sum$x, 1), # defensive cap; see @return
       n_members = n_members$x,
       stringsAsFactors = FALSE
     )

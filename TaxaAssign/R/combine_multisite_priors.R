@@ -32,28 +32,28 @@ utils::globalVariables(c(
   n <- nrow(rows)
   if (n == 1L) {
     rows$n_sites_combined <- 1L
-    rows$combined_sites   <- NA_character_
+    rows$combined_sites <- NA_character_
     return(rows)
   }
 
   logit_mean <- digamma(rows$prior_alpha) - digamma(rows$prior_beta)
-  logit_var  <- trigamma(rows$prior_alpha) + trigamma(rows$prior_beta)
-  w          <- 1 / logit_var
+  logit_var <- trigamma(rows$prior_alpha) + trigamma(rows$prior_beta)
+  w <- 1 / logit_var
 
   logit_combined <- sum(logit_mean * w) / sum(w)
-  var_combined   <- 1 / sum(w)
-  mean_combined  <- stats::plogis(logit_combined)
+  var_combined <- 1 / sum(w)
+  mean_combined <- stats::plogis(logit_combined)
 
   phi_combined <- 1 / (var_combined * mean_combined * (1 - mean_combined))
 
   template <- rows[1L, , drop = FALSE]
-  template$prior_alpha     <- mean_combined * phi_combined
-  template$prior_beta      <- (1 - mean_combined) * phi_combined
-  template$prior_mean      <- mean_combined
-  template$grid_id         <- NA_character_
-  template$main_habitat    <- NA_character_
+  template$prior_alpha <- mean_combined * phi_combined
+  template$prior_beta <- (1 - mean_combined) * phi_combined
+  template$prior_mean <- mean_combined
+  template$grid_id <- NA_character_
+  template$main_habitat <- NA_character_
   template$n_sites_combined <- n
-  template$combined_sites   <- paste(sort(unique(rows$grid_id)), collapse = "|")
+  template$combined_sites <- paste(sort(unique(rows$grid_id)), collapse = "|")
 
   template
 }
@@ -139,22 +139,22 @@ utils::globalVariables(c(
 #' # A candidate ("Gadus morhua") detected at two sites, plus a single-site
 #' # candidate ("Gadus chalcogrammus") for the same observation.
 #' joined <- data.frame(
-#'   observation_id  = c("ASV_1", "ASV_1", "ASV_1"),
-#'   taxon_name      = c("Gadus morhua", "Gadus morhua", "Gadus chalcogrammus"),
+#'   observation_id = c("ASV_1", "ASV_1", "ASV_1"),
+#'   taxon_name = c("Gadus morhua", "Gadus morhua", "Gadus chalcogrammus"),
 #'   taxon_name_rank = "species",
-#'   grid_id         = c("Grid_A", "Grid_B", "Grid_A"),
-#'   main_habitat    = c("Neritic", "Neritic", "Neritic"),
-#'   prior_alpha     = c(80, 3, 10),
-#'   prior_beta      = c(20, 2, 90),
-#'   prior_mean      = c(0.80, 0.60, 0.10),
+#'   grid_id = c("Grid_A", "Grid_B", "Grid_A"),
+#'   main_habitat = c("Neritic", "Neritic", "Neritic"),
+#'   prior_alpha = c(80, 3, 10),
+#'   prior_beta = c(20, 2, 90),
+#'   prior_mean = c(0.80, 0.60, 0.10),
 #'   stringsAsFactors = FALSE
 #' )
 #' combined <- combine_multisite_priors(joined)
 #' combined
 #'
 #' \dontrun{
-#' joined    <- join_priors(likelihoods, taxaexpect_priors, site = site_df)
-#' combined  <- combine_multisite_priors(joined)
+#' joined <- join_priors(likelihoods, taxaexpect_priors, site = site_df)
+#' combined <- combine_multisite_priors(joined)
 #' posterior <- compute_posterior(combined)
 #' }
 #'
@@ -162,7 +162,6 @@ utils::globalVariables(c(
 #' @importFrom dplyr group_split bind_rows arrange desc
 #' @export
 combine_multisite_priors <- function(joined) {
-
   if (!is.data.frame(joined)) {
     cli::cli_abort("{.arg joined} must be a data frame.")
   }
@@ -173,9 +172,11 @@ combine_multisite_priors <- function(joined) {
   # result where combined rows had a real prior_mean and single-site rows had
   # NA (filled in by bind_rows) -- an NA prior that compute_posterior() then
   # carries straight into the posterior. Fail loudly instead.
-  required_cols <- c("observation_id", "taxon_name", "taxon_name_rank",
-                     "grid_id", "main_habitat", "prior_alpha", "prior_beta",
-                     "prior_mean")
+  required_cols <- c(
+    "observation_id", "taxon_name", "taxon_name_rank",
+    "grid_id", "main_habitat", "prior_alpha", "prior_beta",
+    "prior_mean"
+  )
   missing_cols <- setdiff(required_cols, names(joined))
   if (length(missing_cols) > 0L) {
     cli::cli_abort(c(
@@ -185,7 +186,7 @@ combine_multisite_priors <- function(joined) {
   }
 
   bad_ab <- !is.finite(joined$prior_alpha) | joined$prior_alpha <= 0 |
-    !is.finite(joined$prior_beta)  | joined$prior_beta  <= 0
+    !is.finite(joined$prior_beta) | joined$prior_beta <= 0
   if (any(bad_ab)) {
     cli::cli_abort(
       "{sum(bad_ab)} row(s) have non-positive or non-finite {.field prior_alpha}/{.field prior_beta}."
@@ -197,7 +198,7 @@ combine_multisite_priors <- function(joined) {
 
   if (all(group_sizes == 1L)) {
     joined$n_sites_combined <- 1L
-    joined$combined_sites   <- NA_character_
+    joined$combined_sites <- NA_character_
     return(joined)
   }
 

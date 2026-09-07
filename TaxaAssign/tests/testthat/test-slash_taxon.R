@@ -36,10 +36,10 @@ test_that("add_slash_taxon: downranked=TRUE, genera inconsistent with consensus 
   # BLAST returned Salmo + Salvelinus; species_reference downranked to Oncorhynchus.
   # slash_taxon_name should be NA so consensus_OTU falls back to consensus_taxon.
   df <- data.frame(
-    observation_id  = "obs1",
+    observation_id = "obs1",
     consensus_taxon = "Oncorhynchus",
-    consensus_rank  = "genus",
-    downranked      = TRUE,
+    consensus_rank = "genus",
+    downranked = TRUE,
     stringsAsFactors = FALSE
   )
   df$plausible_taxa <- list(c("Salmo salar", "Salvelinus leucomaenis"))
@@ -50,10 +50,10 @@ test_that("add_slash_taxon: downranked=TRUE, genera inconsistent with consensus 
 test_that("add_slash_taxon: downranked=TRUE, genera consistent with consensus -> slash name kept", {
   # downranked fired but plausible_taxa are already the correct genus.
   df <- data.frame(
-    observation_id  = "obs1",
+    observation_id = "obs1",
     consensus_taxon = "Oncorhynchus",
-    consensus_rank  = "genus",
-    downranked      = TRUE,
+    consensus_rank = "genus",
+    downranked = TRUE,
     stringsAsFactors = FALSE
   )
   df$plausible_taxa <- list(c("Oncorhynchus tshawytscha", "Oncorhynchus kisutch"))
@@ -63,10 +63,10 @@ test_that("add_slash_taxon: downranked=TRUE, genera consistent with consensus ->
 
 test_that("add_slash_taxon: downranked=FALSE, mixed-genus slash name kept regardless", {
   df <- data.frame(
-    observation_id  = "obs1",
+    observation_id = "obs1",
     consensus_taxon = "Salmonidae",
-    consensus_rank  = "family",
-    downranked      = FALSE,
+    consensus_rank = "family",
+    downranked = FALSE,
     stringsAsFactors = FALSE
   )
   df$plausible_taxa <- list(c("Salmo salar", "Salvelinus leucomaenis"))
@@ -80,8 +80,8 @@ test_that("add_slash_taxon: posterior ordering — same-genus, highest posterior
     consensus_taxon = "Oncorhynchus",
     stringsAsFactors = FALSE
   )
-  df$plausible_taxa      <- list(c("Oncorhynchus tshawytscha", "Oncorhynchus kisutch"))
-  df$plausible_posteriors <- list(c(0.7, 0.3))  # tshawytscha higher
+  df$plausible_taxa <- list(c("Oncorhynchus tshawytscha", "Oncorhynchus kisutch"))
+  df$plausible_posteriors <- list(c(0.7, 0.3)) # tshawytscha higher
   result <- add_slash_taxon(df)
   expect_equal(result$slash_taxon_name, "Oncorhynchus tshawytscha/kisutch")
 })
@@ -92,8 +92,8 @@ test_that("add_slash_taxon: posterior ordering — mixed-genus, highest posterio
     consensus_taxon = "Salmonidae",
     stringsAsFactors = FALSE
   )
-  df$plausible_taxa       <- list(c("Salmo salar", "Salvelinus leucomaenis"))
-  df$plausible_posteriors <- list(c(0.2, 0.8))  # Salvelinus higher
+  df$plausible_taxa <- list(c("Salmo salar", "Salvelinus leucomaenis"))
+  df$plausible_posteriors <- list(c(0.2, 0.8)) # Salvelinus higher
   result <- add_slash_taxon(df)
   expect_equal(result$slash_taxon_name, "Salvelinus leucomaenis + Salmo salar")
 })
@@ -168,39 +168,52 @@ test_that("add_slash_taxon: irreducible_consensus FALSE when another obs resolve
 # ------------------------------------------------------------------------------
 
 test_that("irreducible_consensus ignores the ORDER of taxa within a candidate set", {
-  mk <- function(sets) data.frame(
-    observation_id = paste0("o", seq_along(sets)),
-    consensus_taxon = "Ctenopharyngodon",
-    plausible_taxa = I(sets), stringsAsFactors = FALSE)
+  mk <- function(sets) {
+    data.frame(
+      observation_id = paste0("o", seq_along(sets)),
+      consensus_taxon = "Ctenopharyngodon",
+      plausible_taxa = I(sets), stringsAsFactors = FALSE
+    )
+  }
 
-  same  <- replicate(4, c("Ctenopharyngodon idella", "Ctenopharyngodon idellus"), simplify = FALSE)
+  same <- replicate(4, c("Ctenopharyngodon idella", "Ctenopharyngodon idellus"), simplify = FALSE)
   mixed <- c(same[1:3], list(c("Ctenopharyngodon idellus", "Ctenopharyngodon idella")))
 
   a <- add_slash_taxon(mk(same))$irreducible_consensus
   b <- add_slash_taxon(mk(mixed))$irreducible_consensus
 
-  expect_true(all(a))          # one order: irreducible, as before
-  expect_true(all(b))          # reversed row must not change the verdict
+  expect_true(all(a)) # one order: irreducible, as before
+  expect_true(all(b)) # reversed row must not change the verdict
   expect_equal(a, b)
 })
 
 test_that("a genuinely reducible set is still FALSE regardless of order", {
-  sets <- list(c("Genus alpha", "Genus beta"),
-               c("Genus beta", "Genus alpha"),
-               "Genus alpha")                       # smaller set sharing a taxon
-  d <- data.frame(observation_id = c("o1","o2","o3"), consensus_taxon = "Genus",
-                  plausible_taxa = I(sets), stringsAsFactors = FALSE)
+  sets <- list(
+    c("Genus alpha", "Genus beta"),
+    c("Genus beta", "Genus alpha"),
+    "Genus alpha"
+  ) # smaller set sharing a taxon
+  d <- data.frame(
+    observation_id = c("o1", "o2", "o3"), consensus_taxon = "Genus",
+    plausible_taxa = I(sets), stringsAsFactors = FALSE
+  )
   r <- add_slash_taxon(d)$irreducible_consensus
-  expect_false(r[1]); expect_false(r[2])   # both orderings reduce to the singleton
-  expect_true(r[3])                        # the singleton itself is irreducible
+  expect_false(r[1])
+  expect_false(r[2]) # both orderings reduce to the singleton
+  expect_true(r[3]) # the singleton itself is irreducible
 })
 
 test_that("shuffling every set leaves irreducible_consensus unchanged (invariant)", {
   set.seed(42)
-  base <- list(c("A a","A b"), c("A a","A b","A c"), "B x", c("B x","B y"), c("A c","A a"))
-  d1 <- data.frame(observation_id = paste0("o", 1:5), consensus_taxon = "X",
-                   plausible_taxa = I(base), stringsAsFactors = FALSE)
-  d2 <- d1; d2$plausible_taxa <- I(lapply(base, sample))
-  expect_equal(add_slash_taxon(d1)$irreducible_consensus,
-               add_slash_taxon(d2)$irreducible_consensus)
+  base <- list(c("A a", "A b"), c("A a", "A b", "A c"), "B x", c("B x", "B y"), c("A c", "A a"))
+  d1 <- data.frame(
+    observation_id = paste0("o", 1:5), consensus_taxon = "X",
+    plausible_taxa = I(base), stringsAsFactors = FALSE
+  )
+  d2 <- d1
+  d2$plausible_taxa <- I(lapply(base, sample))
+  expect_equal(
+    add_slash_taxon(d1)$irreducible_consensus,
+    add_slash_taxon(d2)$irreducible_consensus
+  )
 })

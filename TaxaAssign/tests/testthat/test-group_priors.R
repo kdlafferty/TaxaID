@@ -3,7 +3,7 @@
 .priors <- function() {
   data.frame(
     taxon_name = c("Aa one", "Aa two", "Bb one", "Cc one", "Dd one"),
-    theta_mean = c(0.02,     0.05,     0.10,     NA_real_,  0.01),
+    theta_mean = c(0.02, 0.05, 0.10, NA_real_, 0.01),
     stringsAsFactors = FALSE
   )
 }
@@ -11,8 +11,8 @@
 .taxonomy <- function() {
   data.frame(
     taxon_name = c("Aa one", "Aa two", "Bb one", "Cc one", "Dd one"),
-    genus      = c("Aa",     "Aa",     "Bb",     "Cc",      NA_character_),
-    family     = c("Fam1",   "Fam1",   "Fam2",   "Fam3",    "Fam1"),
+    genus = c("Aa", "Aa", "Bb", "Cc", NA_character_),
+    family = c("Fam1", "Fam1", "Fam2", "Fam3", "Fam1"),
     stringsAsFactors = FALSE
   )
 }
@@ -88,8 +88,10 @@ test_that("omitting species from rank_cols disables it (no auto-derivation force
 test_that("stops on missing required columns", {
   expect_error(compute_group_priors("x", .taxonomy()), "must be a data frame")
   expect_error(compute_group_priors(.priors(), "x"), "must be a data frame")
-  p <- .priors(); p$theta_mean <- NULL
+  p <- .priors()
+  p$theta_mean <- NULL
   expect_error(compute_group_priors(p, .taxonomy()), "theta_mean")
-  t <- .taxonomy(); t$genus <- NULL
+  t <- .taxonomy()
+  t$genus <- NULL
   expect_error(compute_group_priors(.priors(), t), "genus")
 })

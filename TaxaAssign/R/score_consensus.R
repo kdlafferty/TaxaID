@@ -206,13 +206,12 @@ utils::globalVariables(c("score_val"))
 #'
 #' @export
 score_consensus <- function(match_df,
-                            min_score       = 0,
-                            max_gap         = Inf,
-                            whitelist       = NULL,
-                            score_col       = "score_original",
-                            rank_system     = NULL,
+                            min_score = 0,
+                            max_gap = Inf,
+                            whitelist = NULL,
+                            score_col = "score_original",
+                            rank_system = NULL,
                             rank_thresholds) {
-
   # --- Input validation -------------------------------------------------------
   if (missing(rank_thresholds)) {
     cli::cli_abort(c(
@@ -229,21 +228,27 @@ score_consensus <- function(match_df,
   }
   required <- c("observation_id", "taxon_name", "taxon_name_rank", score_col)
   missing_cols <- setdiff(required, names(match_df))
-  if (length(missing_cols) > 0)
+  if (length(missing_cols) > 0) {
     cli::cli_abort("match_df missing required column(s): {.field {missing_cols}}")
-  if (!is.numeric(match_df[[score_col]]))
+  }
+  if (!is.numeric(match_df[[score_col]])) {
     cli::cli_abort("Column {.field {score_col}} must be numeric.")
-  if (!is.numeric(min_score) || length(min_score) != 1L)
+  }
+  if (!is.numeric(min_score) || length(min_score) != 1L) {
     cli::cli_abort("{.arg min_score} must be a single numeric value.")
-  if (!is.numeric(max_gap) || length(max_gap) != 1L || max_gap < 0)
+  }
+  if (!is.numeric(max_gap) || length(max_gap) != 1L || max_gap < 0) {
     cli::cli_abort("{.arg max_gap} must be a single non-negative numeric value.")
+  }
   if (!is.null(rank_thresholds)) {
-    if (!is.numeric(rank_thresholds) || is.null(names(rank_thresholds)))
+    if (!is.numeric(rank_thresholds) || is.null(names(rank_thresholds))) {
       cli::cli_abort("{.arg rank_thresholds} must be a named numeric vector.")
+    }
   }
   if (!is.null(whitelist)) {
-    if (!is.character(whitelist))
+    if (!is.character(whitelist)) {
       cli::cli_abort("{.arg whitelist} must be a character vector.")
+    }
   }
 
   # --- Auto-scale rank_thresholds if score_col looks like a 0-1 proportion --
@@ -289,8 +294,10 @@ score_consensus <- function(match_df,
 
   results <- lapply(observation_ids, function(sid) {
     chunk <- match_df[match_df$observation_id == sid, ]
-    .score_consensus_one(chunk, sid, score_col, min_score, max_gap,
-                         rank_thresholds, whitelist, rank_system)
+    .score_consensus_one(
+      chunk, sid, score_col, min_score, max_gap,
+      rank_thresholds, whitelist, rank_system
+    )
   })
 
   out <- dplyr::bind_rows(results)
@@ -314,38 +321,41 @@ score_consensus <- function(match_df,
 #' @noRd
 .score_consensus_one <- function(chunk, sid, score_col, min_score, max_gap,
                                  rank_thresholds, whitelist, rank_system) {
-
   finest_rank <- rank_system[length(rank_system)]
 
   .empty_score_row <- function() {
     out <- data.frame(
-      observation_id        = sid,
-      consensus_taxon  = NA_character_,
-      consensus_rank   = NA_character_,
+      observation_id = sid,
+      consensus_taxon = NA_character_,
+      consensus_rank = NA_character_,
       consensus_reason = NA_character_,
-      is_resolved      = FALSE,
-      top_score        = NA_real_,
-      n_retained       = 0L,
-      n_taxa           = 0L,
-      retained_taxa    = I(list(character(0))),
+      is_resolved = FALSE,
+      top_score = NA_real_,
+      n_retained = 0L,
+      n_taxa = 0L,
+      retained_taxa = I(list(character(0))),
       stringsAsFactors = FALSE
     )
-    if (!is.null(rank_thresholds)) out$rank_capped      <- FALSE
-    if (!is.null(whitelist))       out$whitelist_capped  <- FALSE
+    if (!is.null(rank_thresholds)) out$rank_capped <- FALSE
+    if (!is.null(whitelist)) out$whitelist_capped <- FALSE
     out
   }
 
   # Step 1: minimum score filter
   scores <- chunk[[score_col]]
-  keep1  <- !is.na(scores) & scores >= min_score
-  if (!any(keep1)) return(.empty_score_row())
+  keep1 <- !is.na(scores) & scores >= min_score
+  if (!any(keep1)) {
+    return(.empty_score_row())
+  }
 
   # Step 2: gap filter (within max_gap of top score among step-1-retained
   # scores). Combined with keep1 into one mask so chunk is only ever
   # subsetted once, at the end, instead of being reassigned mid-filter.
   top_score <- max(scores[keep1], na.rm = TRUE)
-  keep2     <- keep1 & scores >= (top_score - max_gap)
-  if (!any(keep2)) return(.empty_score_row())
+  keep2 <- keep1 & scores >= (top_score - max_gap)
+  if (!any(keep2)) {
+    return(.empty_score_row())
+  }
 
   chunk <- chunk[keep2, ]
 
@@ -355,36 +365,40 @@ score_consensus <- function(match_df,
   # Deduplicate to unique taxon names (keep best score per taxon)
   taxa_unique <- chunk[!duplicated(chunk$taxon_name), ]
 
-  n_retained  <- nrow(chunk)
-  n_taxa      <- nrow(taxa_unique)
+  n_retained <- nrow(chunk)
+  n_taxa <- nrow(taxa_unique)
 
   # Step 3: LCA among retained hits
   # Reuse the .find_lca() and .extract_rank_values() helpers from
 
   # posterior_consensus.R (they are internal to TaxaAssign, so accessible here).
-  lca         <- .find_lca(taxa_unique, rank_system)
+  lca <- .find_lca(taxa_unique, rank_system)
   is_resolved <- !is.na(lca$rank) && lca$rank == finest_rank
   consensus_reason <- lca$consensus_reason
 
-  rank_capped     <- FALSE
+  rank_capped <- FALSE
   whitelist_capped <- FALSE
 
   # Step 4: rank threshold capping
   if (!is.null(rank_thresholds) && !is.na(lca$rank)) {
-    cap_result  <- .cap_rank_by_threshold(lca, top_score, rank_thresholds,
-                                          rank_system, taxa_unique)
+    cap_result <- .cap_rank_by_threshold(
+      lca, top_score, rank_thresholds,
+      rank_system, taxa_unique
+    )
     if (!is.na(cap_result$rank) && cap_result$rank != lca$rank) {
       rank_capped <- TRUE
       consensus_reason <- "threshold"
     }
-    lca         <- cap_result
+    lca <- cap_result
     is_resolved <- !is.na(lca$rank) && lca$rank == finest_rank
   }
 
   # Step 5: whitelist upranking
   if (!is.null(whitelist) && !is.na(lca$taxon)) {
-    uprank_result <- .uprank_to_whitelist(lca, whitelist, taxa_unique,
-                                           rank_system)
+    uprank_result <- .uprank_to_whitelist(
+      lca, whitelist, taxa_unique,
+      rank_system
+    )
     if (!is.na(uprank_result$rank) && uprank_result$rank != lca$rank) {
       whitelist_capped <- TRUE
     }
@@ -393,24 +407,24 @@ score_consensus <- function(match_df,
     if (is.na(uprank_result$taxon)) {
       whitelist_capped <- TRUE
     }
-    lca         <- uprank_result
+    lca <- uprank_result
     is_resolved <- !is.na(lca$rank) && lca$rank == finest_rank
   }
 
   out <- data.frame(
-    observation_id        = sid,
-    consensus_taxon  = lca$taxon,
-    consensus_rank   = lca$rank,
+    observation_id = sid,
+    consensus_taxon = lca$taxon,
+    consensus_rank = lca$rank,
     consensus_reason = consensus_reason,
-    is_resolved      = is_resolved,
-    top_score        = top_score,
-    n_retained       = n_retained,
-    n_taxa           = n_taxa,
-    retained_taxa    = I(list(taxa_unique$taxon_name)),
+    is_resolved = is_resolved,
+    top_score = top_score,
+    n_retained = n_retained,
+    n_taxa = n_taxa,
+    retained_taxa = I(list(taxa_unique$taxon_name)),
     stringsAsFactors = FALSE
   )
-  if (!is.null(rank_thresholds)) out$rank_capped      <- rank_capped
-  if (!is.null(whitelist))       out$whitelist_capped  <- whitelist_capped
+  if (!is.null(rank_thresholds)) out$rank_capped <- rank_capped
+  if (!is.null(whitelist)) out$whitelist_capped <- whitelist_capped
   out
 }
 
@@ -431,38 +445,44 @@ score_consensus <- function(match_df,
   # is the answer).
   threshold_ranks <- intersect(rev(rank_system), names(rank_thresholds))
   meets_threshold <- top_score >= unlist(rank_thresholds[threshold_ranks], use.names = FALSE)
-  first_met       <- which(meets_threshold)[1L]
-  allowed_rank    <- if (is.na(first_met)) NA_character_ else threshold_ranks[[first_met]]
+  first_met <- which(meets_threshold)[1L]
+  allowed_rank <- if (is.na(first_met)) NA_character_ else threshold_ranks[[first_met]]
 
-  if (is.na(allowed_rank))
+  if (is.na(allowed_rank)) {
     return(list(taxon = NA_character_, rank = NA_character_))
+  }
 
   # If current LCA rank is already at or coarser than allowed_rank, no change
-  lca_idx     <- match(lca$rank, rank_system)
+  lca_idx <- match(lca$rank, rank_system)
   allowed_idx <- match(allowed_rank, rank_system)
-  if (!is.na(lca_idx) && lca_idx <= allowed_idx)
+  if (!is.na(lca_idx) && lca_idx <= allowed_idx) {
     return(lca)
+  }
 
   # Demote: find the LCA at the allowed rank
   vals <- .extract_rank_values(taxa_df, allowed_rank)
   vals <- vals[!is.na(vals)]
-  if (length(vals) == 0L)
+  if (length(vals) == 0L) {
     return(list(taxon = NA_character_, rank = NA_character_))
+  }
 
-  if (length(unique(vals)) == 1L)
+  if (length(unique(vals)) == 1L) {
     return(list(taxon = vals[[1L]], rank = allowed_rank))
+  }
 
   # Multiple values at allowed_rank — walk coarser to find agreement
   allowed_idx_in_sys <- match(allowed_rank, rank_system)
-  if (is.na(allowed_idx_in_sys) || allowed_idx_in_sys <= 1L)
+  if (is.na(allowed_idx_in_sys) || allowed_idx_in_sys <= 1L) {
     return(list(taxon = NA_character_, rank = NA_character_))
+  }
 
   for (i in seq(allowed_idx_in_sys - 1L, 1L)) {
-    rk   <- rank_system[i]
+    rk <- rank_system[i]
     vals <- .extract_rank_values(taxa_df, rk)
     vals <- vals[!is.na(vals)]
-    if (length(vals) > 0 && length(unique(vals)) == 1L)
+    if (length(vals) > 0 && length(unique(vals)) == 1L) {
       return(list(taxon = vals[[1L]], rank = rk))
+    }
   }
 
   list(taxon = NA_character_, rank = NA_character_)
@@ -477,29 +497,34 @@ score_consensus <- function(match_df,
 #' in the whitelist.
 #' @noRd
 .uprank_to_whitelist <- function(lca, whitelist, taxa_df, rank_system) {
-  if (is.na(lca$taxon))
+  if (is.na(lca$taxon)) {
     return(lca)
+  }
 
   # Check if current consensus is in whitelist
 
-  if (lca$taxon %in% whitelist)
+  if (lca$taxon %in% whitelist) {
     return(lca)
+  }
 
   # Walk coarser from the current rank
   cur_idx <- match(lca$rank, rank_system)
-  if (is.na(cur_idx))
+  if (is.na(cur_idx)) {
     return(list(taxon = NA_character_, rank = NA_character_))
+  }
 
-  if (cur_idx <= 1L)
+  if (cur_idx <= 1L) {
     return(list(taxon = NA_character_, rank = NA_character_))
+  }
 
   for (i in seq(cur_idx - 1L, 1L)) {
-    rk   <- rank_system[i]
+    rk <- rank_system[i]
     vals <- .extract_rank_values(taxa_df, rk)
     vals <- vals[!is.na(vals)]
     if (length(vals) == 0L) next
-    if (length(unique(vals)) == 1L && vals[[1L]] %in% whitelist)
+    if (length(unique(vals)) == 1L && vals[[1L]] %in% whitelist) {
       return(list(taxon = vals[[1L]], rank = rk))
+    }
   }
 
   list(taxon = NA_character_, rank = NA_character_)

@@ -1,8 +1,10 @@
-utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxon_name_rank",
-                          "prior_mean", "prior_alpha", "prior_beta",
-                          "range_status", "habitat_fit", "information_quality",
-                          "hypothesis_type", "score_likelihood", "score_likelihood_mean",
-                          "score_likelihood_sd"))
+utils::globalVariables(c(
+  "observation_id", "score_original", "taxon_name", "taxon_name_rank",
+  "prior_mean", "prior_alpha", "prior_beta",
+  "range_status", "habitat_fit", "information_quality",
+  "hypothesis_type", "score_likelihood", "score_likelihood_mean",
+  "score_likelihood_sd"
+))
 
 # assign_taxa_llm.R
 # TaxaAssign package
@@ -254,24 +256,31 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #'
 #' @examples
 #' match_df <- data.frame(
-#'   observation_id   = c("S1", "S1", "S1", "S2", "S2"),
-#'   score_original   = c(99, 93, 85, 100, 88),
-#'   taxon_name       = c("Eucyclogobius newberryi", "Quietula y-cauda",
-#'                        "Gillichthys mirabilis",
-#'                        "Eucyclogobius newberryi", "Gillichthys mirabilis"),
-#'   taxon_name_rank  = rep("species", 5),
+#'   observation_id = c("S1", "S1", "S1", "S2", "S2"),
+#'   score_original = c(99, 93, 85, 100, 88),
+#'   taxon_name = c(
+#'     "Eucyclogobius newberryi", "Quietula y-cauda",
+#'     "Gillichthys mirabilis",
+#'     "Eucyclogobius newberryi", "Gillichthys mirabilis"
+#'   ),
+#'   taxon_name_rank = rep("species", 5),
 #'   stringsAsFactors = FALSE
 #' )
 #'
 #' # A stub llm_fn stands in for a real API call so this example is runnable
 #' # offline; a real call would use llm_fn = TaxaTools::call_api instead.
 #' stub_llm_fn <- function(prompt_str) {
-#'   taxa <- regmatches(prompt_str,
-#'     gregexpr("(?m)(?<=^- )[^\n(]+(?= \\()", prompt_str, perl = TRUE))[[1]]
+#'   taxa <- regmatches(
+#'     prompt_str,
+#'     gregexpr("(?m)(?<=^- )[^\n(]+(?= \\()", prompt_str, perl = TRUE)
+#'   )[[1]]
 #'   rows <- paste0(
-#'     sprintf('{"taxon_name":"%s","range_status":"native","prior_weight":1}',
-#'             trimws(taxa)),
-#'     collapse = ",\n  ")
+#'     sprintf(
+#'       '{"taxon_name":"%s","range_status":"native","prior_weight":1}',
+#'       trimws(taxa)
+#'     ),
+#'     collapse = ",\n  "
+#'   )
 #'   paste0("[\n  ", rows, "\n]")
 #' }
 #'
@@ -281,72 +290,86 @@ utils::globalVariables(c("observation_id", "score_original", "taxon_name", "taxo
 #'
 #' # With shared context (all observations share one site)
 #' ctx <- data.frame(ecoregion = "California Coast", main_habitat = "estuarine")
-#' result <- assign_taxa_llm(match_df, context = ctx, llm_fn = stub_llm_fn,
-#'                            pause_seconds = 0)
+#' result <- assign_taxa_llm(match_df,
+#'   context = ctx, llm_fn = stub_llm_fn,
+#'   pause_seconds = 0
+#' )
 #'
 #' \dontrun{
 #' # With per-observation context grouped by ecoregion (one LLM call per region)
-#' ctx <- data.frame(observation_id = c("S1", "S2"),
-#'                    ecoregion      = c("California Coast", "Oregon Coast"),
-#'                    stringsAsFactors = FALSE)
-#' result <- assign_taxa_llm(match_df, context = ctx,
-#'                            context_group = "ecoregion",
-#'                            llm_fn = TaxaTools::call_api)
+#' ctx <- data.frame(
+#'   observation_id = c("S1", "S2"),
+#'   ecoregion = c("California Coast", "Oregon Coast"),
+#'   stringsAsFactors = FALSE
+#' )
+#' result <- assign_taxa_llm(match_df,
+#'   context = ctx,
+#'   context_group = "ecoregion",
+#'   llm_fn = TaxaTools::call_api
+#' )
 #' }
 assign_taxa_llm <- function(match_df,
-                             context               = NULL,
-                             context_group         = NULL,
-                             llm_fn                = NULL,
-                             score_threshold       = 80,
-                             top_n                 = 10L,
-                             rank_system           = NULL,
-                             score_sharpness       = 0.1,
-                             unknown_lik_weight    = 0.05,
-                             unreferenced_taxa            = NULL,
-                             known_present         = NULL,
-                             known_absent          = NULL,
-                             absent_detection_prob = 0.80,
-                             taxa_per_call         = 15L,
-                             pause_seconds         = 1,
-                             prior_phi             = c(high = 50, moderate = 10, low = 3),
-                             prior_weight_guide    = list(
-                               native_expected           = c(0.5, 1.0),
-                               native_occasional         = c(0.03, 0.15),
-                               native_unlikely           = c(0.003, 0.03),
-                               nearby_expected           = c(0.05, 0.3),
-                               nearby_occasional_unlikely = c(0.002, 0.05),
-                               not_documented            = c(0.001, 0.02),
-                               taxonomically_impossible  = c(0.0001, 0.002)
-                             ),
-                             n_sims                = 1000L,
-                             verbose               = FALSE) {
-
+                            context = NULL,
+                            context_group = NULL,
+                            llm_fn = NULL,
+                            score_threshold = 80,
+                            top_n = 10L,
+                            rank_system = NULL,
+                            score_sharpness = 0.1,
+                            unknown_lik_weight = 0.05,
+                            unreferenced_taxa = NULL,
+                            known_present = NULL,
+                            known_absent = NULL,
+                            absent_detection_prob = 0.80,
+                            taxa_per_call = 15L,
+                            pause_seconds = 1,
+                            prior_phi = c(high = 50, moderate = 10, low = 3),
+                            prior_weight_guide = list(
+                              native_expected = c(0.5, 1.0),
+                              native_occasional = c(0.03, 0.15),
+                              native_unlikely = c(0.003, 0.03),
+                              nearby_expected = c(0.05, 0.3),
+                              nearby_occasional_unlikely = c(0.002, 0.05),
+                              not_documented = c(0.001, 0.02),
+                              taxonomically_impossible = c(0.0001, 0.002)
+                            ),
+                            n_sims = 1000L,
+                            verbose = FALSE) {
   # --- Resolve llm_fn default --------------------------------------------------
   llm_fn <- .resolve_llm_fn(llm_fn, "assign_taxa_llm")
 
   # --- Input validation -------------------------------------------------------
   required_cols <- c("observation_id", "score_original", "taxon_name", "taxon_name_rank")
-  missing_cols  <- setdiff(required_cols, names(match_df))
-  if (length(missing_cols) > 0)
+  missing_cols <- setdiff(required_cols, names(match_df))
+  if (length(missing_cols) > 0) {
     cli::cli_abort("match_df is missing required column(s): {.field {missing_cols}}")
-  if (!is.numeric(score_threshold) || score_threshold < 0 || score_threshold > 100)
+  }
+  if (!is.numeric(score_threshold) || score_threshold < 0 || score_threshold > 100) {
     cli::cli_abort("{.arg score_threshold} must be a number between 0 and 100.")
-  if (!is.numeric(score_sharpness) || score_sharpness < 0)
+  }
+  if (!is.numeric(score_sharpness) || score_sharpness < 0) {
     cli::cli_abort("{.arg score_sharpness} must be a non-negative number.")
-  if (!is.numeric(unknown_lik_weight) || unknown_lik_weight <= 0 || unknown_lik_weight >= 1)
+  }
+  if (!is.numeric(unknown_lik_weight) || unknown_lik_weight <= 0 || unknown_lik_weight >= 1) {
     cli::cli_abort("{.arg unknown_lik_weight} must be strictly between 0 and 1.")
-  if (!is.function(llm_fn))
+  }
+  if (!is.function(llm_fn)) {
     cli::cli_abort("{.arg llm_fn} must be a function.")
-  if (!is.null(context_group) && !is.character(context_group))
+  }
+  if (!is.null(context_group) && !is.character(context_group)) {
     cli::cli_abort("{.arg context_group} must be a character vector or NULL.")
-  if (!is.numeric(taxa_per_call) || taxa_per_call < 1)
+  }
+  if (!is.numeric(taxa_per_call) || taxa_per_call < 1) {
     cli::cli_abort("{.arg taxa_per_call} must be a positive number.")
-  if (!is.null(known_present) && !is.character(known_present))
+  }
+  if (!is.null(known_present) && !is.character(known_present)) {
     cli::cli_abort("{.arg known_present} must be a character vector or NULL.")
+  }
   if (!is.numeric(absent_detection_prob) || length(absent_detection_prob) != 1L ||
-      absent_detection_prob <= 0 || absent_detection_prob >= 1)
+    absent_detection_prob <= 0 || absent_detection_prob >= 1) {
     cli::cli_abort("{.arg absent_detection_prob} must be a single number strictly between 0 and 1.")
-  if (is.null(context))
+  }
+  if (is.null(context)) {
     cli::cli_warn(c(
       "{.arg context} is NULL -- the LLM will assign {.field range_status} \\
       from general knowledge of each taxon's typical range, not any \\
@@ -354,36 +377,44 @@ assign_taxa_llm <- function(match_df,
       "i" = "Supply {.arg context} (e.g. {.code data.frame(ecoregion = ..., \\
       main_habitat = ...)}) when a real site is known."
     ))
+  }
 
   # Validate prior_weight_guide
-  if (!is.list(prior_weight_guide) || length(prior_weight_guide) == 0L)
+  if (!is.list(prior_weight_guide) || length(prior_weight_guide) == 0L) {
     cli::cli_abort("{.arg prior_weight_guide} must be a non-empty named list.")
-  expected_pwg <- c("native_expected", "native_occasional", "native_unlikely",
-                     "nearby_expected", "nearby_occasional_unlikely",
-                     "not_documented", "taxonomically_impossible")
+  }
+  expected_pwg <- c(
+    "native_expected", "native_occasional", "native_unlikely",
+    "nearby_expected", "nearby_occasional_unlikely",
+    "not_documented", "taxonomically_impossible"
+  )
   missing_pwg <- setdiff(expected_pwg, names(prior_weight_guide))
-  if (length(missing_pwg) > 0)
+  if (length(missing_pwg) > 0) {
     cli::cli_abort("{.arg prior_weight_guide} missing required element(s): {.field {missing_pwg}}")
+  }
   for (nm in expected_pwg) {
     v <- prior_weight_guide[[nm]]
-    if (!is.numeric(v) || length(v) != 2L || any(is.na(v)) || v[1] > v[2])
+    if (!is.numeric(v) || length(v) != 2L || any(is.na(v)) || v[1] > v[2]) {
       cli::cli_abort("{.arg prior_weight_guide${nm}} must be a length-2 numeric vector c(min, max) with min <= max.")
+    }
   }
 
   # Validate prior_phi
   use_beta_prior <- !is.null(prior_phi)
   if (use_beta_prior) {
-    if (!is.numeric(prior_phi) || any(prior_phi <= 0))
+    if (!is.numeric(prior_phi) || any(prior_phi <= 0)) {
       cli::cli_abort("{.arg prior_phi} must be a positive numeric vector (or NULL to disable).")
+    }
     if (length(prior_phi) == 1L && is.null(names(prior_phi))) {
       # Scalar: apply uniformly (override LLM quality levels)
       phi_scalar <- prior_phi
-      prior_phi  <- NULL
+      prior_phi <- NULL
     } else {
       phi_scalar <- NULL
       valid_levels <- c("high", "moderate", "low")
-      if (!all(names(prior_phi) %in% valid_levels))
+      if (!all(names(prior_phi) %in% valid_levels)) {
         cli::cli_abort("{.arg prior_phi} names must be a subset of {.val {valid_levels}}.")
+      }
       # Fill any missing levels with the median of supplied values
       for (lev in setdiff(valid_levels, names(prior_phi))) {
         prior_phi[[lev]] <- stats::median(prior_phi)
@@ -396,24 +427,31 @@ assign_taxa_llm <- function(match_df,
 
   # Normalise known_absent -> data frame with taxon_name + detection_prob
   if (is.null(known_absent)) {
-    known_absent_df <- data.frame(taxon_name     = character(0),
-                                  detection_prob = numeric(0),
-                                  stringsAsFactors = FALSE)
+    known_absent_df <- data.frame(
+      taxon_name = character(0),
+      detection_prob = numeric(0),
+      stringsAsFactors = FALSE
+    )
   } else if (is.character(known_absent)) {
-    known_absent_df <- data.frame(taxon_name     = known_absent,
-                                  detection_prob = absent_detection_prob,
-                                  stringsAsFactors = FALSE)
+    known_absent_df <- data.frame(
+      taxon_name = known_absent,
+      detection_prob = absent_detection_prob,
+      stringsAsFactors = FALSE
+    )
   } else if (is.data.frame(known_absent)) {
-    if (!"taxon_name" %in% names(known_absent))
+    if (!"taxon_name" %in% names(known_absent)) {
       cli::cli_abort("{.arg known_absent} data frame must have a {.field taxon_name} column.")
+    }
     known_absent_df <- known_absent
-    if (!"detection_prob" %in% names(known_absent_df))
+    if (!"detection_prob" %in% names(known_absent_df)) {
       known_absent_df$detection_prob <- absent_detection_prob
+    }
     dp <- suppressWarnings(as.numeric(known_absent_df$detection_prob))
-    if (any(is.na(dp)) || any(dp <= 0) || any(dp >= 1))
+    if (any(is.na(dp)) || any(dp <= 0) || any(dp >= 1)) {
       cli::cli_abort(
         "{.field detection_prob} in {.arg known_absent} must be numeric values strictly in (0, 1)."
       )
+    }
     known_absent_df$detection_prob <- dp
   } else {
     cli::cli_abort("{.arg known_absent} must be a character vector, data frame, or NULL.")
@@ -429,15 +467,17 @@ assign_taxa_llm <- function(match_df,
 
   n_dropped <- dplyr::n_distinct(match_df$observation_id) -
     dplyr::n_distinct(candidates$observation_id)
-  if (n_dropped > 0)
+  if (n_dropped > 0) {
     cli::cli_warn("{n_dropped} observation_id(s) had no candidates above score_threshold = \\
                   {score_threshold} and will be absent from results.")
-  if (nrow(candidates) == 0)
+  }
+  if (nrow(candidates) == 0) {
     cli::cli_abort("No candidates remain after applying score_threshold = {score_threshold}.")
+  }
 
-  unref_vec        <- if (is.null(unreferenced_taxa)) character(0) else as.character(unreferenced_taxa)
+  unref_vec <- if (is.null(unreferenced_taxa)) character(0) else as.character(unreferenced_taxa)
   unreferenced_family_map <- if (is.null(unreferenced_taxa)) NULL else attr(unreferenced_taxa, "unreferenced_family")
-  observation_ids       <- unique(candidates$observation_id)
+  observation_ids <- unique(candidates$observation_id)
 
   # Detect taxonomy columns to carry through to the posterior dataframe
   tax_cols <- intersect(
@@ -447,23 +487,25 @@ assign_taxa_llm <- function(match_df,
 
   lik_list <- stats::setNames(
     lapply(observation_ids, function(sid) {
-      .score_to_likelihood(candidates[candidates$observation_id == sid, ],
-                           score_sharpness, unknown_lik_weight, unref_vec,
-                           unreferenced_family_map, tax_cols)
+      .score_to_likelihood(
+        candidates[candidates$observation_id == sid, ],
+        score_sharpness, unknown_lik_weight, unref_vec,
+        unreferenced_family_map, tax_cols
+      )
     }),
     observation_ids
   )
 
   # --- Build group map --------------------------------------------------------
-  group_map     <- .build_group_map(context, observation_ids, context_group)
+  group_map <- .build_group_map(context, observation_ids, context_group)
   unique_groups <- unique(group_map$group_label)
-  n_groups      <- length(unique_groups)
-  n_total       <- length(observation_ids)
+  n_groups <- length(unique_groups)
+  n_total <- length(observation_ids)
 
   # Total API calls = sum of taxon batches across all groups
   n_calls_total <- sum(vapply(unique_groups, function(grp) {
     grp_sids <- group_map$observation_id[group_map$group_label == grp]
-    n_taxa   <- nrow(.collect_unique_taxa(lik_list[grp_sids]))
+    n_taxa <- nrow(.collect_unique_taxa(lik_list[grp_sids]))
     ceiling(n_taxa / taxa_per_call)
   }, numeric(1)))
 
@@ -484,26 +526,30 @@ assign_taxa_llm <- function(match_df,
   call_idx <- 0L
 
   for (g_idx in seq_along(unique_groups)) {
-    grp      <- unique_groups[[g_idx]]
+    grp <- unique_groups[[g_idx]]
     grp_sids <- group_map$observation_id[group_map$group_label == grp]
-    taxa_df  <- .collect_unique_taxa(lik_list[grp_sids])
-    grp_ctx  <- .get_group_context(context, grp_sids[[1]])
+    taxa_df <- .collect_unique_taxa(lik_list[grp_sids])
+    grp_ctx <- .get_group_context(context, grp_sids[[1]])
 
     # Split taxon list into batches
-    n_taxa     <- nrow(taxa_df)
-    tpc        <- min(taxa_per_call, n_taxa)
-    batch_idx  <- split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc))
+    n_taxa <- nrow(taxa_df)
+    tpc <- min(taxa_per_call, n_taxa)
+    batch_idx <- split(seq_len(n_taxa), ceiling(seq_len(n_taxa) / tpc))
     batch_results <- vector("list", length(batch_idx))
 
     for (b in seq_along(batch_idx)) {
-      call_idx     <- call_idx + 1L
-      taxa_batch   <- taxa_df[batch_idx[[b]], , drop = FALSE]
-      batch_label  <- if (length(batch_idx) > 1)
+      call_idx <- call_idx + 1L
+      taxa_batch <- taxa_df[batch_idx[[b]], , drop = FALSE]
+      batch_label <- if (length(batch_idx) > 1) {
         paste0(grp, " [batch ", b, "/", length(batch_idx), "]")
-      else grp
-      prompt <- .build_taxa_prompt(taxa_batch, grp_ctx,
-                                   known_present, known_absent_df,
-                                   prior_weight_guide)
+      } else {
+        grp
+      }
+      prompt <- .build_taxa_prompt(
+        taxa_batch, grp_ctx,
+        known_present, known_absent_df,
+        prior_weight_guide
+      )
 
       if (verbose) {
         cli::cli_inform(
@@ -577,16 +623,18 @@ assign_taxa_llm <- function(match_df,
 #' Exponential-weight scores to likelihood proxy, with optional unreferenced species insertion
 #' @noRd
 .score_to_likelihood <- function(chunk, sharpness, unknown_lik_weight,
-                                  unreferenced_taxa = character(0),
-                                  unreferenced_family_map = NULL,
-                                  tax_cols = character(0)) {
+                                 unreferenced_taxa = character(0),
+                                 unreferenced_family_map = NULL,
+                                 tax_cols = character(0)) {
   sid <- chunk$observation_id[[1]]
 
   # Build taxonomy lookup before aggregation (one row per taxon_name)
   present_tax_cols <- intersect(tax_cols, names(chunk))
   if (length(present_tax_cols) > 0) {
     tax_lookup <- chunk[!duplicated(chunk$taxon_name),
-                        c("taxon_name", present_tax_cols), drop = FALSE]
+      c("taxon_name", present_tax_cols),
+      drop = FALSE
+    ]
     rownames(tax_lookup) <- NULL
   }
 
@@ -599,16 +647,16 @@ assign_taxa_llm <- function(match_df,
 
   # Unreferenced taxa: congeners not already in candidates
   if (length(unreferenced_taxa) > 0) {
-    unref_genera   <- sub(" .*", "", unreferenced_taxa)
+    unref_genera <- sub(" .*", "", unreferenced_taxa)
     unref_eligible <- unreferenced_taxa[unref_genera %in% ref_genera &
-                                   !unreferenced_taxa %in% agg$taxon_name]
+      !unreferenced_taxa %in% agg$taxon_name]
   } else {
     unref_eligible <- character(0)
   }
 
   if (length(unref_eligible) > 0) {
     unref_exp <- vapply(unref_eligible, function(g) {
-      g_genus      <- sub(" .*", "", g)
+      g_genus <- sub(" .*", "", g)
       congener_exp <- exp_scores[ref_genera == g_genus]
       if (length(congener_exp) > 0) stats::median(congener_exp) else stats::median(exp_scores)
     }, numeric(1))
@@ -619,34 +667,36 @@ assign_taxa_llm <- function(match_df,
   # Family-level unreferenced taxa: genera NOT in candidates but family IS represented
   # Build genus -> family lookup from the chunk's taxonomy columns
   if (!is.null(unreferenced_family_map) && length(unreferenced_family_map) > 0L &&
-      "family" %in% names(chunk) && "genus" %in% names(chunk)) {
+    "family" %in% names(chunk) && "genus" %in% names(chunk)) {
     gf_df <- chunk[!is.na(chunk$genus) & !is.na(chunk$family),
-                   c("genus", "family"), drop = FALSE]
+      c("genus", "family"),
+      drop = FALSE
+    ]
     gf_df <- gf_df[!duplicated(gf_df$genus), ]
     genus_to_family <- stats::setNames(gf_df$family, gf_df$genus)
 
-    ref_families      <- unique(unname(genus_to_family[ref_genera]))
-    ref_families      <- ref_families[!is.na(ref_families)]
-    fam_unref_names   <- names(unreferenced_family_map)
-    fam_unref_genera  <- sub(" .*", "", fam_unref_names)
+    ref_families <- unique(unname(genus_to_family[ref_genera]))
+    ref_families <- ref_families[!is.na(ref_families)]
+    fam_unref_names <- names(unreferenced_family_map)
+    fam_unref_genera <- sub(" .*", "", fam_unref_names)
     fam_unref_families <- as.character(unreferenced_family_map)
 
     fam_eligible <- fam_unref_names[
       !fam_unref_names %in% agg$taxon_name &
-      !fam_unref_genera %in% ref_genera &
-      fam_unref_families %in% ref_families
+        !fam_unref_genera %in% ref_genera &
+        fam_unref_families %in% ref_families
     ]
   } else {
     genus_to_family <- character(0L)
-    fam_eligible    <- character(0L)
+    fam_eligible <- character(0L)
   }
 
   if (length(fam_eligible) > 0L) {
     fam_exp <- vapply(fam_eligible, function(g) {
-      g_fam      <- unreferenced_family_map[[g]]
+      g_fam <- unreferenced_family_map[[g]]
       fam_genera <- names(genus_to_family)[genus_to_family == g_fam]
-      fam_idx    <- ref_genera %in% fam_genera
-      fam_vals   <- exp_scores[fam_idx]
+      fam_idx <- ref_genera %in% fam_genera
+      fam_vals <- exp_scores[fam_idx]
       if (length(fam_vals) > 0L) stats::median(fam_vals) else stats::median(exp_scores)
     }, numeric(1))
   } else {
@@ -654,43 +704,47 @@ assign_taxa_llm <- function(match_df,
   }
 
   if (length(unref_eligible) > 0 || length(fam_eligible) > 0L) {
-    all_names     <- c(agg$taxon_name, unref_eligible, fam_eligible)
-    all_ranks     <- c(agg$taxon_name_rank,
-                       rep("species", length(unref_eligible)),
-                       rep("species", length(fam_eligible)))
-    all_exp       <- c(exp_scores, unref_exp, fam_exp)
-    all_hyp_type  <- c(rep("specific_candidate", nrow(agg)),
-                       rep("unreferenced_species",    length(unref_eligible)),
-                       rep("unreferenced_genus",      length(fam_eligible)))
+    all_names <- c(agg$taxon_name, unref_eligible, fam_eligible)
+    all_ranks <- c(
+      agg$taxon_name_rank,
+      rep("species", length(unref_eligible)),
+      rep("species", length(fam_eligible))
+    )
+    all_exp <- c(exp_scores, unref_exp, fam_exp)
+    all_hyp_type <- c(
+      rep("specific_candidate", nrow(agg)),
+      rep("unreferenced_species", length(unref_eligible)),
+      rep("unreferenced_genus", length(fam_eligible))
+    )
   } else {
-    all_names     <- agg$taxon_name
-    all_ranks     <- agg$taxon_name_rank
-    all_exp       <- exp_scores
-    all_hyp_type  <- rep("specific_candidate", nrow(agg))
+    all_names <- agg$taxon_name
+    all_ranks <- agg$taxon_name_rank
+    all_exp <- exp_scores
+    all_hyp_type <- rep("specific_candidate", nrow(agg))
   }
 
   lik <- (1 - unknown_lik_weight) * all_exp / sum(all_exp)
 
   out <- rbind(
     data.frame(
-      observation_id            = sid,
-      taxon_name           = all_names,
-      taxon_name_rank      = all_ranks,
-      hypothesis_type      = all_hyp_type,
+      observation_id = sid,
+      taxon_name = all_names,
+      taxon_name_rank = all_ranks,
+      hypothesis_type = all_hyp_type,
       score_likelihood = lik,
-      score_likelihood_mean      = lik,
-      score_likelihood_sd        = 0,
-      stringsAsFactors     = FALSE
+      score_likelihood_mean = lik,
+      score_likelihood_sd = 0,
+      stringsAsFactors = FALSE
     ),
     data.frame(
-      observation_id            = sid,
-      taxon_name           = NA_character_,
-      taxon_name_rank      = NA_character_,
-      hypothesis_type      = "unreferenced_family",
+      observation_id = sid,
+      taxon_name = NA_character_,
+      taxon_name_rank = NA_character_,
+      hypothesis_type = "unreferenced_family",
       score_likelihood = unknown_lik_weight,
-      score_likelihood_mean      = unknown_lik_weight,
-      score_likelihood_sd        = 0,
-      stringsAsFactors     = FALSE
+      score_likelihood_mean = unknown_lik_weight,
+      score_likelihood_sd = 0,
+      stringsAsFactors = FALSE
     )
   )
 
@@ -717,14 +771,14 @@ assign_taxa_llm <- function(match_df,
 #' diagnostics/llm_prior_shape_sweep.R).
 #' @noRd
 .merge_llm_priors <- function(observation_ids, group_map, lik_list, prior_tables,
-                               known_absent_df, unknown_lik_weight,
-                               use_beta_prior, phi_scalar, prior_phi) {
+                              known_absent_df, unknown_lik_weight,
+                              use_beta_prior, phi_scalar, prior_phi) {
   merged_list <- vector("list", length(observation_ids))
   names(merged_list) <- observation_ids
 
   for (sid in observation_ids) {
-    grp      <- group_map$group_label[group_map$observation_id == sid]
-    lik_df   <- lik_list[[sid]]
+    grp <- group_map$group_label[group_map$observation_id == sid]
+    lik_df <- lik_list[[sid]]
     # .parse_taxa_response() always returns a fixed column set (taxon_name,
     # range_status, habitat_fit, information_quality, prior_mean,
     # prior_source) -- it never passes through hypothesis_type/taxon_name_rank
@@ -736,10 +790,10 @@ assign_taxa_llm <- function(match_df,
 
     # unreferenced_family prior: identified by NA taxon_name (fixed weight, not LLM-assigned)
     unk_idx <- is.na(merged$taxon_name)
-    merged$prior_mean[unk_idx]            <- 0   # placeholder; set after rescaling
-    merged$range_status[unk_idx]          <- "unknown"
-    merged$habitat_fit[unk_idx]           <- NA_character_
-    merged$information_quality[unk_idx]   <- NA_character_
+    merged$prior_mean[unk_idx] <- 0 # placeholder; set after rescaling
+    merged$range_status[unk_idx] <- "unknown"
+    merged$habitat_fit[unk_idx] <- NA_character_
+    merged$information_quality[unk_idx] <- NA_character_
 
     # Fill NA priors for taxa the LLM omitted:
     # - unreferenced taxa: median prior of their referenced congeners in this response
@@ -750,20 +804,25 @@ assign_taxa_llm <- function(match_df,
       if (!is.finite(global_min)) global_min <- 0.01
       for (i in which(is.na(merged$prior_mean))) {
         if (merged$hypothesis_type[[i]] == "unreferenced_species") {
-          g_genus   <- sub(" .*", "", merged$taxon_name[[i]])
+          g_genus <- sub(" .*", "", merged$taxon_name[[i]])
           congeners <- merged[!is.na(merged$prior_mean) &
-                                merged$hypothesis_type == "specific_candidate" &
-                                sub(" .*", "", merged$taxon_name) == g_genus, ]
-          merged$prior_mean[[i]] <- if (nrow(congeners) > 0)
-            stats::median(congeners$prior_mean) else global_min
+            merged$hypothesis_type == "specific_candidate" &
+            sub(" .*", "", merged$taxon_name) == g_genus, ]
+          merged$prior_mean[[i]] <- if (nrow(congeners) > 0) {
+            stats::median(congeners$prior_mean)
+          } else {
+            global_min
+          }
         } else {
           merged$prior_mean[[i]] <- global_min
         }
         # Omitted taxa get "low" information_quality (LLM couldn't assess them)
-        if (is.na(merged$information_quality[[i]]))
+        if (is.na(merged$information_quality[[i]])) {
           merged$information_quality[[i]] <- "low"
-        if (is.na(merged$prior_source[[i]]))
+        }
+        if (is.na(merged$prior_source[[i]])) {
           merged$prior_source[[i]] <- "na_fill_fallback"
+        }
       }
     }
 
@@ -772,11 +831,12 @@ assign_taxa_llm <- function(match_df,
     # Skips unreferenced_family row (prior is set as a fixed weight, not LLM-assigned).
     if (nrow(known_absent_df) > 0) {
       for (ka_i in seq_len(nrow(known_absent_df))) {
-        sp  <- known_absent_df$taxon_name[[ka_i]]
-        pd  <- known_absent_df$detection_prob[[ka_i]]
+        sp <- known_absent_df$taxon_name[[ka_i]]
+        pd <- known_absent_df$detection_prob[[ka_i]]
         idx <- !unk_idx & merged$taxon_name == sp
-        if (any(idx))
+        if (any(idx)) {
           merged$prior_mean[idx] <- merged$prior_mean[idx] * (1 - pd)
+        }
       }
     }
 
@@ -799,7 +859,7 @@ assign_taxa_llm <- function(match_df,
         unname(prior_phi[iq])
       }
       merged$prior_alpha <- merged$prior_mean * phi_vec
-      merged$prior_beta  <- (1 - merged$prior_mean) * phi_vec
+      merged$prior_beta <- (1 - merged$prior_mean) * phi_vec
     }
 
     merged_list[[sid]] <- merged
@@ -813,19 +873,24 @@ assign_taxa_llm <- function(match_df,
 #' @noRd
 .build_group_map <- function(context, observation_ids, context_group) {
   if (is.null(context_group) || is.null(context) ||
-      !"observation_id" %in% names(context)) {
-    return(data.frame(observation_id   = observation_ids,
-                      group_label = "all",
-                      stringsAsFactors = FALSE))
+    !"observation_id" %in% names(context)) {
+    return(data.frame(
+      observation_id = observation_ids,
+      group_label = "all",
+      stringsAsFactors = FALSE
+    ))
   }
   missing_cols <- setdiff(context_group, names(context))
-  if (length(missing_cols) > 0)
+  if (length(missing_cols) > 0) {
     cli::cli_abort(
       "context_group column(s) not found in context: {.field {missing_cols}}"
     )
+  }
 
   ctx_sub <- context[context$observation_id %in% observation_ids,
-                     c("observation_id", context_group), drop = FALSE]
+    c("observation_id", context_group),
+    drop = FALSE
+  ]
 
   ctx_sub$group_label <- if (length(context_group) == 1L) {
     as.character(ctx_sub[[context_group]])
@@ -837,8 +902,10 @@ assign_taxa_llm <- function(match_df,
   if (length(missing_sids) > 0) {
     ctx_sub <- rbind(
       ctx_sub[, c("observation_id", "group_label"), drop = FALSE],
-      data.frame(observation_id = missing_sids, group_label = "all",
-                 stringsAsFactors = FALSE)
+      data.frame(
+        observation_id = missing_sids, group_label = "all",
+        stringsAsFactors = FALSE
+      )
     )
   }
   ctx_sub[, c("observation_id", "group_label"), drop = FALSE]
@@ -850,9 +917,10 @@ assign_taxa_llm <- function(match_df,
 .collect_unique_taxa <- function(lik_list) {
   all_rows <- dplyr::bind_rows(lik_list)
   all_rows <- all_rows[!is.na(all_rows$taxon_name), ]
-  dedup    <- !duplicated(all_rows$taxon_name)
-  out      <- all_rows[dedup, c("taxon_name", "taxon_name_rank", "hypothesis_type"),
-                       drop = FALSE]
+  dedup <- !duplicated(all_rows$taxon_name)
+  out <- all_rows[dedup, c("taxon_name", "taxon_name_rank", "hypothesis_type"),
+    drop = FALSE
+  ]
   out[order(out$taxon_name), ]
 }
 
@@ -860,11 +928,16 @@ assign_taxa_llm <- function(match_df,
 #' Get context list for a representative observation in a group
 #' @noRd
 .get_group_context <- function(context, observation_id) {
-  if (is.null(context)) return(list())
-  if (!"observation_id" %in% names(context))
+  if (is.null(context)) {
+    return(list())
+  }
+  if (!"observation_id" %in% names(context)) {
     return(as.list(context[1, , drop = FALSE]))
+  }
   idx <- which(context$observation_id == observation_id)
-  if (length(idx) == 0) return(list())
+  if (length(idx) == 0) {
+    return(list())
+  }
   as.list(context[idx[[1]], setdiff(names(context), "observation_id"), drop = FALSE])
 }
 
@@ -872,31 +945,36 @@ assign_taxa_llm <- function(match_df,
 #' Build a flat taxon-list prompt for one group
 #' @noRd
 .build_taxa_prompt <- function(taxa_df, ctx,
-                                known_present      = NULL,
-                                known_absent_df    = NULL,
-                                prior_weight_guide = NULL) {
+                               known_present = NULL,
+                               known_absent_df = NULL,
+                               prior_weight_guide = NULL) {
   # Context block
   ctx_block <- .build_context_block(ctx, habitat_field = "main_habitat")
 
   # Survey context block (independent species observations at the site)
   survey_parts <- character(0)
-  if (!is.null(known_present) && length(known_present) > 0)
+  if (!is.null(known_present) && length(known_present) > 0) {
     survey_parts <- c(survey_parts, paste0(
       "  Confirmed present (use to infer habitat type and co-occurrence patterns):\n",
       "    ", paste(known_present, collapse = ", ")
     ))
-  if (!is.null(known_absent_df) && nrow(known_absent_df) > 0)
+  }
+  if (!is.null(known_absent_df) && nrow(known_absent_df) > 0) {
     survey_parts <- c(survey_parts, paste0(
       "  Confirmed absent (not detected despite adequate survey effort):\n",
       "    ", paste(known_absent_df$taxon_name, collapse = ", "), "\n",
       "  Note: assign prior_weight based on ecology; detection-probability\n",
       "  correction for absent species is applied separately in post-processing."
     ))
-  survey_block <- if (length(survey_parts) > 0)
-    paste0("Survey context (independent of DNA):\n",
-           paste(survey_parts, collapse = "\n"), "\n\n")
-  else
+  }
+  survey_block <- if (length(survey_parts) > 0) {
+    paste0(
+      "Survey context (independent of DNA):\n",
+      paste(survey_parts, collapse = "\n"), "\n\n"
+    )
+  } else {
     ""
+  }
 
   # Format example
   ex1 <- taxa_df$taxon_name[[1]]
@@ -924,10 +1002,12 @@ assign_taxa_llm <- function(match_df,
   }
 
   # Taxa list
-  taxa_lines <- sprintf("- %s (%s)%s",
+  taxa_lines <- sprintf(
+    "- %s (%s)%s",
     taxa_df$taxon_name,
     taxa_df$taxon_name_rank,
-    ifelse(taxa_df$hypothesis_type != "specific_candidate", " [no reference sequence]", ""))
+    ifelse(taxa_df$hypothesis_type != "specific_candidate", " [no reference sequence]", "")
+  )
 
   paste0(
     "OUTPUT REQUIREMENT: Your ENTIRE response must be ONE valid JSON array.\n",
@@ -951,20 +1031,34 @@ assign_taxa_llm <- function(match_df,
     "   \"occasional\" -- taxon uses this habitat type peripherally or occasionally\n",
     "   \"unlikely\"   -- taxon is native to region but this habitat type is unsuitable\n",
     "4. Assign prior_weight integrating BOTH range and habitat:\n",
-    sprintf("   native + expected habitat:               %g - %g\n",
-            prior_weight_guide$native_expected[1], prior_weight_guide$native_expected[2]),
-    sprintf("   native + occasional habitat:             %g - %g\n",
-            prior_weight_guide$native_occasional[1], prior_weight_guide$native_occasional[2]),
-    sprintf("   native + unlikely habitat:               %g - %g\n",
-            prior_weight_guide$native_unlikely[1], prior_weight_guide$native_unlikely[2]),
-    sprintf("   documented_nearby + expected habitat:    %g - %g\n",
-            prior_weight_guide$nearby_expected[1], prior_weight_guide$nearby_expected[2]),
-    sprintf("   documented_nearby + occasional/unlikely: %g - %g\n",
-            prior_weight_guide$nearby_occasional_unlikely[1], prior_weight_guide$nearby_occasional_unlikely[2]),
-    sprintf("   not_documented:                          %g - %g\n",
-            prior_weight_guide$not_documented[1], prior_weight_guide$not_documented[2]),
-    sprintf("   taxonomically_impossible:                %g - %g\n",
-            prior_weight_guide$taxonomically_impossible[1], prior_weight_guide$taxonomically_impossible[2]),
+    sprintf(
+      "   native + expected habitat:               %g - %g\n",
+      prior_weight_guide$native_expected[1], prior_weight_guide$native_expected[2]
+    ),
+    sprintf(
+      "   native + occasional habitat:             %g - %g\n",
+      prior_weight_guide$native_occasional[1], prior_weight_guide$native_occasional[2]
+    ),
+    sprintf(
+      "   native + unlikely habitat:               %g - %g\n",
+      prior_weight_guide$native_unlikely[1], prior_weight_guide$native_unlikely[2]
+    ),
+    sprintf(
+      "   documented_nearby + expected habitat:    %g - %g\n",
+      prior_weight_guide$nearby_expected[1], prior_weight_guide$nearby_expected[2]
+    ),
+    sprintf(
+      "   documented_nearby + occasional/unlikely: %g - %g\n",
+      prior_weight_guide$nearby_occasional_unlikely[1], prior_weight_guide$nearby_occasional_unlikely[2]
+    ),
+    sprintf(
+      "   not_documented:                          %g - %g\n",
+      prior_weight_guide$not_documented[1], prior_weight_guide$not_documented[2]
+    ),
+    sprintf(
+      "   taxonomically_impossible:                %g - %g\n",
+      prior_weight_guide$taxonomically_impossible[1], prior_weight_guide$taxonomically_impossible[2]
+    ),
     "5. If no habitat is given in context, base prior_weight on range only.\n",
     "6. If uncertain, reason from genus or family.\n",
     "7. Commit to information_quality -- how much published data exists about\n",
@@ -987,16 +1081,18 @@ assign_taxa_llm <- function(match_df,
 #' @noRd
 .parse_taxa_response <- function(response, taxa_df, group_label = "all") {
   expected <- taxa_df$taxon_name
-  n        <- length(expected)
+  n <- length(expected)
 
   make_uniform <- function() {
-    data.frame(taxon_name          = expected,
-               range_status        = NA_character_,
-               habitat_fit         = NA_character_,
-               information_quality = NA_character_,
-               prior_mean          = rep(1 / n, n),
-               prior_source        = rep("uniform_fallback", n),
-               stringsAsFactors    = FALSE)
+    data.frame(
+      taxon_name = expected,
+      range_status = NA_character_,
+      habitat_fit = NA_character_,
+      information_quality = NA_character_,
+      prior_mean = rep(1 / n, n),
+      prior_source = rep("uniform_fallback", n),
+      stringsAsFactors = FALSE
+    )
   }
 
   if (is.null(response) || !nzchar(trimws(response))) {
@@ -1009,13 +1105,13 @@ assign_taxa_llm <- function(match_df,
   # Extract JSON array -- handles markdown fences and leading/trailing text
   # (?s) enables PCRE dotall mode so .* matches across newlines
   arr_str <- sub("(?s).*?(\\[[\\s\\S]*\\]).*", "\\1", response, perl = TRUE)
-  parsed  <- tryCatch(
+  parsed <- tryCatch(
     jsonlite::fromJSON(arr_str, simplifyDataFrame = TRUE),
     error = function(e) NULL
   )
 
   if (is.null(parsed) || !is.data.frame(parsed) ||
-      !all(c("taxon_name", "prior_weight") %in% names(parsed))) {
+    !all(c("taxon_name", "prior_weight") %in% names(parsed))) {
     # A response with no "]" at all almost always means the LLM's JSON array
     # was cut off mid-response by the token limit, not that it returned
     # malformed JSON -- confirmed empirically (Session 145): 4/5 real
@@ -1049,14 +1145,23 @@ assign_taxa_llm <- function(match_df,
     return(make_uniform())
   }
 
-  rs <- if ("range_status" %in% names(parsed)) as.character(parsed$range_status)
-        else rep(NA_character_, nrow(parsed))
+  rs <- if ("range_status" %in% names(parsed)) {
+    as.character(parsed$range_status)
+  } else {
+    rep(NA_character_, nrow(parsed))
+  }
 
-  hf <- if ("habitat_fit" %in% names(parsed)) as.character(parsed$habitat_fit)
-        else rep(NA_character_, nrow(parsed))
+  hf <- if ("habitat_fit" %in% names(parsed)) {
+    as.character(parsed$habitat_fit)
+  } else {
+    rep(NA_character_, nrow(parsed))
+  }
 
-  iq <- if ("information_quality" %in% names(parsed)) as.character(parsed$information_quality)
-        else rep(NA_character_, nrow(parsed))
+  iq <- if ("information_quality" %in% names(parsed)) {
+    as.character(parsed$information_quality)
+  } else {
+    rep(NA_character_, nrow(parsed))
+  }
 
   total <- sum(parsed$prior_weight)
   if (total == 0) total <- 1
@@ -1092,11 +1197,12 @@ assign_taxa_llm <- function(match_df,
 
   # Warn about omitted taxa (fallback handled in main loop)
   omitted <- setdiff(expected, result$taxon_name)
-  if (length(omitted) > 0)
+  if (length(omitted) > 0) {
     cli::cli_warn(
       "{length(omitted)} taxon/taxa omitted from LLM response for group \\
       {.val {group_label}}: {.val {omitted}}"
     )
+  }
 
   result
 }

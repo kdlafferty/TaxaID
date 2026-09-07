@@ -138,44 +138,43 @@
 #'
 #' @export
 run_llm_pipeline <- function(
-    match_df,
-    context              = NULL,
-    auto_context         = TRUE,
-    geographic_hint      = NULL,
-    date                 = NULL,
-    habitat_scheme       = NULL,
-    llm_fn               = NULL,
-    detect_unreferenced  = TRUE,
-    barcode_term         = "12S",
-    expand_to_family     = TRUE,
-    max_date             = NULL,
-    unreferenced_taxa    = NULL,
-    score_threshold      = 80,
-    top_n                = 10L,
-    score_sharpness      = 0.1,
-    unknown_lik_weight   = 0.05,
-    known_present        = NULL,
-    known_absent         = NULL,
-    absent_detection_prob = 0.80,
-    taxa_per_call        = 15L,
-    pause_seconds        = 1,
-    prior_phi            = c(high = 50, moderate = 10, low = 3),
-    n_sims               = 1000L,
-    context_group        = NULL,
-    rank_system          = c("family", "genus", "species"),
-    cumulative_threshold = 0.90,
-    min_posterior        = 0.05,
-    posterior_col        = "posterior_point_est",
-    backbone_id,
-    lookup_missing_taxonomy = TRUE,
-    confirmation_quantile       = 0.9,
-    confirmation_discount       = 0.25,
-    generate_report      = FALSE,
-    report_params        = list(),
-    reference_errors     = NULL,
-    verbose              = TRUE
+  match_df,
+  context = NULL,
+  auto_context = TRUE,
+  geographic_hint = NULL,
+  date = NULL,
+  habitat_scheme = NULL,
+  llm_fn = NULL,
+  detect_unreferenced = TRUE,
+  barcode_term = "12S",
+  expand_to_family = TRUE,
+  max_date = NULL,
+  unreferenced_taxa = NULL,
+  score_threshold = 80,
+  top_n = 10L,
+  score_sharpness = 0.1,
+  unknown_lik_weight = 0.05,
+  known_present = NULL,
+  known_absent = NULL,
+  absent_detection_prob = 0.80,
+  taxa_per_call = 15L,
+  pause_seconds = 1,
+  prior_phi = c(high = 50, moderate = 10, low = 3),
+  n_sims = 1000L,
+  context_group = NULL,
+  rank_system = c("family", "genus", "species"),
+  cumulative_threshold = 0.90,
+  min_posterior = 0.05,
+  posterior_col = "posterior_point_est",
+  backbone_id,
+  lookup_missing_taxonomy = TRUE,
+  confirmation_quantile = 0.9,
+  confirmation_discount = 0.25,
+  generate_report = FALSE,
+  report_params = list(),
+  reference_errors = NULL,
+  verbose = TRUE
 ) {
-
   if (missing(backbone_id)) {
     cli::cli_abort(c(
       "{.arg backbone_id} must be specified explicitly.",
@@ -194,7 +193,7 @@ run_llm_pipeline <- function(
   # Stage 0: Remove flagged reference errors from match_df
   # =========================================================================
   if (!is.null(reference_errors) && is.data.frame(reference_errors) &&
-      nrow(reference_errors) > 0L && "accession" %in% names(match_df)) {
+    nrow(reference_errors) > 0L && "accession" %in% names(match_df)) {
     match_df <- TaxaLikely::remove_flagged_references(match_df, reference_errors)
   }
 
@@ -212,16 +211,18 @@ run_llm_pipeline <- function(
     # with "taxon_names must be a non-empty character vector" -- i.e. the
     # default auto_context path failed on every real match_df.
     context <- build_context(
-      taxon_names     = unique(
+      taxon_names = unique(
         match_df$taxon_name[match_df$score_original >= score_threshold]
       ),
       geographic_hint = geographic_hint,
-      date            = date,
-      habitat_scheme  = habitat_scheme,
-      llm_fn          = llm_fn
+      date = date,
+      habitat_scheme = habitat_scheme,
+      llm_fn = llm_fn
     )
-    .msg(sprintf("  Context: ecoregion = %s, main_habitat = %s",
-                 context$ecoregion %||% "NA", context$main_habitat %||% "NA"))
+    .msg(sprintf(
+      "  Context: ecoregion = %s, main_habitat = %s",
+      context$ecoregion %||% "NA", context$main_habitat %||% "NA"
+    ))
   } else if (is.null(context)) {
     .msg("run_llm_pipeline [1/4]: No context provided (auto_context = FALSE). Proceeding without.")
   } else {
@@ -281,8 +282,10 @@ run_llm_pipeline <- function(
     verbose               = verbose
   )
 
-  .msg(sprintf("  %d posterior rows, %d observations.",
-               nrow(result), dplyr::n_distinct(result$observation_id)))
+  .msg(sprintf(
+    "  %d posterior rows, %d observations.",
+    nrow(result), dplyr::n_distinct(result$observation_id)
+  ))
 
   # =========================================================================
   # Stages 4-6: Consensus + Empirical Bayes + Report (shared helper)
@@ -296,25 +299,25 @@ run_llm_pipeline <- function(
   }
 
   refined <- .run_consensus_and_report(
-    result                = result,
-    species_reference     = species_reference,
-    cumulative_threshold  = cumulative_threshold,
-    min_posterior         = min_posterior,
-    posterior_col         = posterior_col,
+    result = result,
+    species_reference = species_reference,
+    cumulative_threshold = cumulative_threshold,
+    min_posterior = min_posterior,
+    posterior_col = posterior_col,
     lookup_missing_taxonomy = lookup_missing_taxonomy,
-    backbone_id           = backbone_id,
-    rank_system           = rank_system,
-    confirmation_quantile       = confirmation_quantile,
-    confirmation_discount       = confirmation_discount,
-    n_sims                = n_sims,
-    generate_report_flag  = generate_report,
-    report_params         = report_params,
-    unreferenced_result   = unreferenced_result,
-    llm_fn                = llm_fn,
-    verbose               = verbose,
-    .msg                  = .msg,
-    stage_prefix          = "run_llm_pipeline [4/4]",
-    workflow              = "llm"
+    backbone_id = backbone_id,
+    rank_system = rank_system,
+    confirmation_quantile = confirmation_quantile,
+    confirmation_discount = confirmation_discount,
+    n_sims = n_sims,
+    generate_report_flag = generate_report,
+    report_params = report_params,
+    unreferenced_result = unreferenced_result,
+    llm_fn = llm_fn,
+    verbose = verbose,
+    .msg = .msg,
+    stage_prefix = "run_llm_pipeline [4/4]",
+    workflow = "llm"
   )
 
   .msg("run_llm_pipeline: done.")
