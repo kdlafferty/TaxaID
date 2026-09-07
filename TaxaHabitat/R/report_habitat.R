@@ -93,7 +93,18 @@ report_habitat <- function(habitat_data,
     # whenever any column's mean is NA -- yielding a valid dominant_habitat
     # paired with an NA pct, which is what actually crashed the %d sprintf
     # below on the first real kernel-path GL report run (2026-09-01).
-    dominant_pct <- round(col_means[[dominant_habitat]] * 100, 0)
+    #
+    # Guarded on dominant_habitat itself, not just habitat_cols: when EVERY
+    # habitat column is entirely NA (a degraded-LLM-output case, not yet hit
+    # in production but structurally possible), which.max() on an all-NA
+    # col_means returns integer(0), so dominant_habitat is NULL here --
+    # col_means[[NULL]] then errors ("attempt to select less than one
+    # element") instead of falling through to the no-dominant-habitat path
+    # the `if (!is.null(dominant_habitat))` check below already exists to
+    # handle. Found in this session's code-review pass, 2026-09-07.
+    if (!is.null(dominant_habitat)) {
+      dominant_pct <- round(col_means[[dominant_habitat]] * 100, 0)
+    }
   }
 
   statistics <- list(

@@ -99,3 +99,16 @@ test_that("dominant pct survives an all-NA habitat column (2026-09-01 real crash
   expect_equal(sec$statistics$dominant_pct, 95)
   expect_true(grepl("mean weight 95%", sec$results, fixed = TRUE))
 })
+
+test_that("no crash when EVERY habitat column is entirely NA (2026-09-07 code review)", {
+  df <- data.frame(
+    scientificName = c("Sp A", "Sp B"),
+    Marine = c(NA_real_, NA_real_),
+    Freshwater = c(NA_real_, NA_real_),
+    stringsAsFactors = FALSE
+  )
+  sec <- report_habitat(df)
+  expect_null(sec$statistics$dominant_habitat)
+  expect_null(sec$statistics$dominant_pct)
+  expect_false(grepl("Dominant habitat", sec$results, fixed = TRUE))
+})
