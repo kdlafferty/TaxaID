@@ -201,13 +201,16 @@ utils::globalVariables(c(
 #'   batch artifacts or tight-congener false positives this function's
 #'   narrow same-reference-set comparison cannot distinguish from a real
 #'   error). `train_likelihood_model()` calls this function unconditionally
-#'   on every training run and silently drops every `"likely_mislabeled"`
-#'   accession before fitting -- without a way to override a specific
-#'   false-positive verdict, an accession independently confirmed clean by a
-#'   stronger check would be re-flagged and re-removed on every retrain.
-#'   Supply the accessions `TaxaMatch::evaluate_reference_accessions()`
+#'   on every training run; by default (`mislabel_behavior = "flag"`, see
+#'   that function's own docs) it no longer removes anything on this
+#'   heuristic's say-so, but if a caller explicitly opts into
+#'   `mislabel_behavior = "remove"`, an accession independently confirmed
+#'   clean by a stronger check would otherwise be re-flagged and re-removed
+#'   on every retrain without this parameter. Supply the accessions
+#'   `TaxaMatch::evaluate_reference_accessions()`
 #'   verdicts `"congruent"` (or `"insufficient_independent_evidence"`, if
-#'   you choose to trust that too) here to keep them in training. Does not
+#'   you choose to trust that too) here to keep them in training under
+#'   `"remove"` mode. Does not
 #'   change `"clean"`-when-return_all rows, and does not force the OPPOSITE
 #'   direction (an accession this heuristic calls `"clean"` is never forced
 #'   to `"likely_mislabeled"` -- this parameter only rescues, never removes).
@@ -790,6 +793,27 @@ flag_reference_errors <- function(raw_df,
 #'   clean by a stronger, independent check (e.g.
 #'   `TaxaMatch::evaluate_reference_accessions()`/
 #'   `TaxaMatch::verify_flagged_references()`).
+#' @param mislabel_behavior Character, `"flag"` (default) or `"remove"`.
+#'   `flag_reference_errors()`'s `"likely_mislabeled"` heuristic was measured
+#'   (2026-08-08 screening-comparison audit, a real 40-accession live-BLAST
+#'   pilot) at roughly 6.7% precision against
+#'   `TaxaMatch::evaluate_reference_accessions()`'s BLAST-based screen --
+#'   0 of 40 randomly-sampled real flags confirmed as genuine mislabels. That
+#'   audit's own recommendation was to treat this heuristic as high-recall/
+#'   low-precision, "worth a review pass, not an auto-blacklist." `"flag"`
+#'   (default) honors that: every flagged accession is still reported (a
+#'   console message, and the returned `reference_errors` slot) but none are
+#'   removed from the training data. `"remove"` restores the
+#'   original, silently-destructive default (drops every
+#'   `"likely_mislabeled"` accession from both sides of the pair table before
+#'   fitting) -- use it only alongside `verified_clean` (populated from
+#'   `TaxaMatch::verify_flagged_references()`) so a confirmed false positive
+#'   isn't lost. This mirrors the same default flip already made elsewhere in
+#'   this ecosystem for an unreviewed heuristic acting as a silent, automatic
+#'   remover (`TaxaLikely::apply_coverage_constraints()`'s
+#'   `constraint_behavior`, `TaxaFetch::filter_gbif_quality()`'s institution
+#'   check) -- training was the last place this pattern still acted
+#'   destructively by default.
 #' @param logit_epsilon Numeric.  Logit-clipping value (default `1e-4`).
 #'   Used only when `score_transform = "logit"`.
 #' @param max_gap_ceiling Numeric or `NULL` (default).  Gap cap.  `NULL`
@@ -932,10 +956,12 @@ train_likelihood_model <- function(raw_df,
                                    mislabel_threshold  = 0.02,
                                    singleton_match_threshold = 0.98,
                                    verified_clean     = NULL,
+                                   mislabel_behavior  = "flag",
                                    logit_epsilon      = 1e-4,
                                    max_gap_ceiling    = NULL,
                                    score_transform    = "logit") {
   score_transform <- match.arg(score_transform, c("logit", "sqrt_mismatch"))
+  mislabel_behavior <- match.arg(mislabel_behavior, c("flag", "remove"))
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
   if (is.null(min_observed_sigma))
     min_observed_sigma <- 1.0 * .transform_unit_ratio(score_transform)^2
@@ -971,18 +997,31 @@ train_likelihood_model <- function(raw_df,
   if (!is.logical(anchor_perfect) || length(anchor_perfect) != 1L || is.na(anchor_perfect))
     stop("anchor_perfect must be TRUE or FALSE")
 
-  message("Removing mislabeled references...")
+  message("Screening for mislabeled references...")
   errors <- flag_reference_errors(raw_df,
                                   mislabel_threshold = mislabel_threshold,
                                   return_all        = FALSE,
                                   singleton_match_threshold = singleton_match_threshold,
                                   verified_clean    = verified_clean)
-  n_removed <- sum(errors$error_type == "likely_mislabeled")
-  if (n_removed > 0)
-    message(sprintf("Removed %d likely-mislabeled sequence(s) before training", n_removed))
-
   bad_ids <- errors$id_x[errors$error_type == "likely_mislabeled"]
-  raw_clean <- dplyr::filter(raw_df, !id_x %in% bad_ids, !id_y %in% bad_ids)
+  n_flagged <- length(bad_ids)
+
+  if (mislabel_behavior == "remove") {
+    if (n_flagged > 0)
+      message(sprintf("Removed %d likely-mislabeled sequence(s) before training", n_flagged))
+    raw_clean <- dplyr::filter(raw_df, !id_x %in% bad_ids, !id_y %in% bad_ids)
+  } else {
+    # mislabel_behavior = "flag" (default): this heuristic is high-recall/
+    # low-precision (2026-08-08 audit, 0/40 real flags confirmed genuine) --
+    # report, don't remove. See @param mislabel_behavior.
+    if (n_flagged > 0)
+      message(sprintf(
+        paste("%d sequence(s) flagged 'likely_mislabeled' (kept in training --",
+              "see reference_errors, or pass mislabel_behavior = \"remove\"",
+              "with a verified_clean list to act on this)"),
+        n_flagged))
+    raw_clean <- raw_df
+  }
 
   # ---- CONFUSION-RISK CURVES (2026-07-23) ------------------------------------
   # Genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank score curves

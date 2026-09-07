@@ -1,5 +1,211 @@
 # CLAUDE.md -- TaxaLikely
-# Last updated: 2026-09-04 (Sonnet 5, branch cache-management -- NEW taxalikely_clear_cache().
+# Last updated: 2026-09-06, later (Sonnet 5 -- REAL BUG, found on the very first live
+# production run of `by_genus = TRUE` against the actual 18S dataset that motivated the
+# whole redesign: `PtConceptionWorkflow_18S_2_single_site.R`'s real live fetch returned
+# 21,896 reference sequences across 1,412 genera / 7,236 species (three transient NCBI
+# 500 count-query failures along the way, unrelated -- see below), and
+# `build_sequence_matrix(by_genus = TRUE)` immediately hard-errored: "requires every
+# remaining sequence to have a non-blank 'genus' value." Root cause: a real, broad
+# eukaryotic-marker fetch legitimately includes accessions NCBI never resolved to genus
+# level (environmental samples, incompletely-classified lineages) -- this is NORMAL
+# attrition for an 18S-scale fetch, not a data error, and the original `by_genus = TRUE`
+# validation (`.align_pairs_by_genus()`, written and tested only against small synthetic
+# fixtures and two real 12S datasets that happened to have zero genus-blank accessions)
+# never anticipated it. FIXED the same way `filter_unnamed` already handles a blank
+# finest-rank (species) value: a sequence with blank/NA `genus` is now DROPPED with a
+# message (`"...dropped %d sequence(s) with blank/NA 'genus' (cannot be grouped by
+# genus)."`), not a hard stop for the whole run -- only erroring if fewer than 2
+# sequences remain afterward. `@param by_genus`'s roxygen corrected to match. 3 new
+# tests (`test-build.R`): the drop-with-message behavior on both `NA` and `""` genus
+# values (confirming the affected sequence is genuinely absent from output, not just
+# silently miscounted), and the still-errors-when-nothing-left-to-align case.
+# `devtools::test()` 1078/0 (60 pre-existing/expected warnings, 1 pre-existing skip),
+# `devtools::check()` 0/0/0, reinstalled (Built 2026-09-06 09:43:17 UTC). The three
+# transient `HTTP 500` count-query warnings in the same log (`Rhodophysema`,
+# `Devaleraea`, `Rhodachlya`) are an unrelated, already-documented NCBI-server
+# flakiness class this package already tolerates per-taxon (skips that one taxon with a
+# warning rather than aborting the fetch) -- not investigated further, not the cause of
+# this bug. Real numbers (timing, H1/H2/H3 fidelity) for this marker's own scale are
+# still not known -- this was the user's very first attempt to actually run it, and it
+# needs to be re-run against the reinstalled package to find out.
+#
+# Previous update, 2026-09-06 (Sonnet 5 -- `by_genus = TRUE, max_foreign_reps_per_genus = 20L`
+# also wired into `PtConceptionWorkflow_18S_2_single_site.R` (backed up first as
+# `*.bak_pre_bygenus`, parses cleanly), the same day the user personally stopped that
+# workflow's own live, 5+-hour whole-set `train_likelihood_model()` run (via RStudio, not
+# touched by me -- see this file's prior top note for why that PID was never mine to kill).
+# This is the REAL dataset that motivated the whole per-genus redesign below (1,412 candidate
+# genera per the current cached `match_obj`, far beyond either of the two datasets (88, 221
+# genera) this mechanism was actually timed/fidelity-checked against) -- wired on the strength
+# of that validation, per the user's own explicit choice ("just wire the fix in, skip separate
+# validation") after a live NCBI fetch across all 1,412 genera (needed for any real
+# measurement here) was flagged as itself a potentially long, historically-throttled operation
+# not worth blocking on. Real numbers for this marker specifically are therefore NOT yet
+# known -- the workflow file's own new comment points back to this file's full record and to
+# `check_cross_genus_sampling_noise()` if the eventual real run looks off. No TaxaLikely
+# package code changed this update -- workflow-file wiring only.
+#
+# Previous update, 2026-09-05/06 (Sonnet 5, branch kernel-priors -- E1's per-genus alignment
+# redesign CLOSED OUT after real-data validation on two independent production datasets,
+# including one full false-start-and-recovery cycle. Full arc, in order:
+#
+# (1) FIRST VERSION (representative-only): `build_sequence_matrix(by_genus=)` aligned each
+# genus's own sequences together plus one randomly-drawn representative per genus aligned
+# against every other genus's representative -- cheap, but real-data validation against two
+# independently-cached real reference_df/lik_model pairs (Mugu WilderFish 12S: 88 genera,
+# 273 species; PtConception 12S: 221 genera, 691 species -- both with an existing
+# whole-set-trained model to compare against, same seed, no subsampling confound) found H2/H3
+# pooled deltas transfer well (within ~1-2.5% of whole-set on both datasets -- the actual
+# stated target of this whole redesign) BUT H1's `gap_logit` feature -- documented elsewhere
+# in this file as H1's "key discriminator" dimension -- was measurably INFLATED (median
+# per-species diff 0.096-0.144, i.e. real, not cosmetic) for any sequence that wasn't its own
+# genus's chosen representative. Root cause, precisely: `gap_logit = score_logit -
+# max_foreign_score`, and `max_foreign_score` is read straight off whichever "different
+# species" pairs actually exist in `seq_matrix` -- under the representative-only design, a
+# non-representative sequence never gets ANY cross-genus comparison at all, so its
+# `max_foreign_score` falls back to a weaker same-genus congener match (if one exists) or the
+# noise floor (if its genus is monotypic, confirmed ~2x worse there on both datasets:
+# Mugu 0.19 vs 0.09 median, PtCon 0.23 vs 0.14). Direction of the effect is toward CAUTION,
+# not false confidence (an inflated trained gap makes a genuinely ambiguous real query read as
+# more atypical than it should, biasing against confusable-congener false positives) -- not
+# correctness-destroying, but real and general, confirmed on both datasets, not a Mugu-only
+# quirk.
+#
+# (2) SECOND VERSION (uncapped fix, same day): `.align_pairs_by_genus()` redesigned so every
+# genus's own alignment ALSO includes a copy of literally every OTHER genus's chosen
+# representative -- giving every sequence, not just the chosen representative, a genuine
+# cross-genus comparison (rep-vs-rep pairs deliberately excluded from this augmented step to
+# avoid computing them twice, since the small dedicated all-representatives alignment already
+# covers those). This DID fix the statistics (Mugu median gap diff 0.096 -> 0.011) but a
+# REAL, SEVERE cost regression was found on real-data timing: Mugu 14.1s (v1) -> 131.9s (v2),
+# now SLOWER than whole-set's 82.1s; PtConception 48.3s (v1) -> 2370.1s (v2, ~40 min), far
+# slower than whole-set's 602.9s, and WORSE (not better) relative to whole-set as genus count
+# grows (221 genera vs 88) -- exactly backwards from what this whole feature exists to fix.
+# Root cause: padding every genus's own alignment with `n_genera - 1` extra sequences means
+# the total extra work grows as `n_genera * (n_genera - 1)`, quadratic in genus count, which
+# swamps the savings once a marker has hundreds of genera.
+#
+# (3) THIRD VERSION (capped, shipped): new `max_foreign_reps_per_genus` param (default
+# `20L`) bounds how many other genera's representatives get added to each genus's own
+# augmented alignment -- when `n_genera - 1` exceeds the cap, each genus draws an INDEPENDENT
+# random subset of size `cap` (not one subset shared across every genus, which would leave
+# whichever genera never land in it with zero foreign context, recreating the very problem
+# being fixed at the level of whole genera instead of individual sequences). This bounds the
+# added cost to `n_genera * cap` (linear in genus count) instead of quadratic.
+# `max_foreign_reps_per_genus = 0L` degenerates cleanly to the pre-fix representative-only
+# design (verified exactly, see tests below); `NULL` keeps the fully uncapped version for
+# anyone who wants full fidelity and accepts the cost.
+#
+# VALIDATED RESULT (default cap=20, both real datasets, same seed):
+#   Mugu (88 genera):   whole-set 82.1s | v1 14.1s | v2-uncapped 131.9s | CAPPED=20  41.4s
+#   PtCon (221 genera): whole-set 602.9s| v1 48.3s | v2-uncapped 2370.1s| CAPPED=20 221.5s
+# Capped=20 is consistently ~2-2.7x FASTER than whole-set on both datasets, and unlike the
+# uncapped version, this margin holds (slightly improves) as genus count grows -- the actual
+# goal. Gap-inflation: median per-species `mu_gap` diff vs whole-set drops from v1's
+# 0.096/0.144 (Mugu/PtCon) to 0.040/0.074 with the cap -- roughly halved, not eliminated (the
+# uncapped fix got Mugu to 0.011, but at unacceptable cost). H2/H3 pooled deltas remain close
+# to whole-set throughout (within ~2-5% relative on every variant, both datasets) -- this was
+# never the problem. A real edge-case bug was found and fixed while implementing capping: a
+# monotypic (single-sequence) genus with `max_foreign_reps_per_genus = 0` has nothing to
+# align (`DECIPHER::AlignSeqs()` requires >= 2 sequences) -- fixed with a length-2 guard that
+# skips that genus's augmented step entirely (it already gets full cross-genus visibility via
+# the dedicated representative-only alignment, unaffected by this parameter).
+#
+# PACKAGE DEFAULT DECISION: `by_genus`'s own default stays `FALSE` (NOT flipped to `TRUE`).
+# Real reason, found by grep before touching it: `by_genus = TRUE` hard-requires `"genus"` in
+# `rank_system` (errors otherwise) -- ~15 existing tests, and presumably some real callers,
+# use `rank_system = "species"` alone with no genus at all. Unlike a pure performance/
+# statistical tuning knob, this is a structural requirement a "default TRUE" would silently
+# violate for any genus-less caller, so a blanket default flip was rejected as unsafe rather
+# than attempted. Instead, `by_genus = TRUE, max_foreign_reps_per_genus = 20L` was wired
+# EXPLICITLY into the two real production workflows this was actually validated against:
+# `MuguWilderFishWorkflow.R` (all three markers share one call site; only 12S was
+# independently timed/fidelity-checked, but 16S/COI were confirmed to have non-blank genus
+# for every sequence and have FEWER genera than either validated dataset, so no worse outcome
+# is expected) and `PtConceptionWorkflow_12S_single_site.R` (12S only -- 18S is a much larger,
+# separately-scoped 1,412-genus dataset not touched this session, per E1's original note
+# below). Both files backed up first (`*.bak_pre_bygenus`), both parse cleanly. PtConception's
+# call site has no seq_matrix cache gate at all (removed by an earlier session specifically to
+# prevent stale-cache silent failures -- always rebuilds fresh); Mugu's DOES cache
+# (`file.exists(sm_cache)`) -- **any existing `*_seq_matrix_<marker>.rds` checkpoint there was
+# built under the OLD whole-set alignment and must be deleted before the next run to pick up
+# this change** (the cache gate has no staleness check for this parameter).
+#
+# 12 more tests added on top of the first version's 31 (43 total for the by_genus/
+# check_cross_genus_sampling_noise feature): `max_foreign_reps_per_genus` input validation
+# (non-numeric/negative/NA), `= 0` reducing exactly to the representative-only design (exact
+# exact hand-derived pair count on a 3-genus fixture, `14L`), a 4-genus uniform-size fixture
+# proving the capped/uncapped/zero counts are each exactly hand-derivable (`20L`/`28L`/`44L`,
+# all confirmed against the real implementation before being locked in as assertions -- not
+# guessed), and confirming the default (`20L`) behaves identically to explicit `NULL` when it
+# exceeds genus count. `devtools::test()` 1075/0 (60 pre-existing/expected warnings, 1
+# pre-existing skip), `devtools::check()` 0/0/0, reinstalled (Built 2026-09-06 00:04:11 UTC).
+#
+# Previous update, 2026-09-05, later (Sonnet 5 -- first version of the per-genus alignment
+# redesign, IMPLEMENTED and TESTED but not yet real-data validated at the time this note was
+# written; see the arc above for what was found and changed since. `build_sequence_matrix()`
+# gains `by_genus = FALSE` -- when `TRUE`, replaces the single whole-set
+# `DECIPHER::AlignSeqs()` call with many small per-genus alignments (giving every H1/H2 pair
+# unchanged) plus ONE small alignment of one RANDOMLY-drawn representative sequence per genus
+# (giving H3/H2's pooled fallback a real cross-genus sample at a fraction of whole-set cost)
+# -- implemented via two new internal helpers, `.decipher_align_pairs()` (the refactored-out
+# whole-set alignment+distance+coverage logic, now callable on any subset) and
+# `.align_pairs_by_genus()`. Requires `"genus"` in `rank_system`, non-blank for every retained
+# sequence (errors otherwise). Random-over-first representative selection was the user's own
+# explicit design choice ("random selection would seem less biased but less reproducible...
+# happy for your thoughts"), matching this same file's own `max_seqs_per_taxon` precedent
+# exactly (`set.seed()` beforehand for reproducibility). New exported diagnostic
+# `check_cross_genus_sampling_noise()` (per the user's stated cost/threshold-vagueness
+# worries about gauging estimator error directly) re-runs the whole `by_genus=TRUE`
+# pipeline `n_replicates` times and reports the spread (range, CV) of cross-genus
+# `mean_p_match` across replicates -- a transparency report with NO pass/fail threshold,
+# matching `TaxaExpect::kernel_budget_sensitivity()`'s own template exactly (re-run an
+# estimator, report the spread, no invented cutoff); cost is bounded since `by_genus=TRUE`
+# is already cheap, so `n_replicates` repeats can still cost less than one whole-set run.
+# 31 new tests (`test-build.R`): input validation (non-logical/NA `by_genus`, missing/
+# blank genus), within-genus + cross-genus pair counts on a real 2-genus/4-sequence
+# fixture (genus with 3 sequences -> 6 within-genus directed pairs; genus with exactly 1
+# sequence -> 0 within-genus pairs but still contributes its one sequence as a forced,
+# unsampled representative), reproducibility via `set.seed()`, `by_genus=TRUE`'s
+# within-genus alignment reproducing `by_genus=FALSE`'s output on the identical
+# genus-restricted input, and `check_cross_genus_sampling_noise()`'s documented
+# `list(replicates=, summary=)` shape/validation. `devtools::test()` 1063/0 (60
+# pre-existing/expected warnings, 1 pre-existing skip), `devtools::check()` 0/0/0,
+# reinstalled (Built 2026-09-05 22:33:04 UTC).
+#
+# Previous update, 2026-09-05 (Sonnet 5, branch kernel-priors -- `build_sequence_matrix()`
+# gains `verbose = TRUE`, the fable_ecosystem_review_2026-09-05.md E1 progress-indicator
+# request. Root cause: this function hardcoded `DECIPHER::AlignSeqs(..., verbose = FALSE)`
+# and `DECIPHER::DistanceMatrix(..., verbose = FALSE)` -- both have REAL, NATIVE
+# percent-complete/ETA progress reporting (confirmed via DECIPHER's own help pages before
+# touching anything), simply silenced. The user asked for this specifically while a real,
+# live PtConception 18S `train_likelihood_model()` run had been computing for 5+ hours with
+# zero visible signal of progress (21,899 sequences, 1,412 genera -- see E1's own "whole-set
+# MSA does not scale" finding, still open, not this fix). `verbose` now passes straight
+# through to both DECIPHER calls; every one of this function's OWN `message()` calls
+# (length-filter counts, rank-system auto-detection, timing summaries) is unaffected either
+# way -- deliberately narrow, not a general logging redesign. `train_likelihood_model()`
+# does NOT call `build_sequence_matrix()` internally (confirmed by grep -- it's always a
+# separate, caller-orchestrated step), so no other function needed a forwarding change.
+# Live-verified: a real small alignment now visibly prints DECIPHER's own "Aligning
+# Sequences:"/"====...====" progress bars instead of nothing. `devtools::test()` 1037/0 (60
+# pre-existing/expected warnings, 1 pre-existing skip, unchanged), `devtools::check()`
+# 0/0/0, reinstalled (Built 2026-09-05 21:34:04 UTC). NOTE for whoever revisits this: the
+# CURRENTLY-RUNNING PtConception 18S job was launched before this fix and cannot retroactively
+# start reporting -- this only helps runs started after the reinstall. The user is deferring
+# the decision to interrupt that run (via RStudio's own Stop button/Escape, NOT a terminal
+# `kill` -- that PID is the whole rsession, not just the alignment call) until this fix-in-
+# order pass wraps up.
+#
+# Same session: E1's other sub-item (the reference-quality screen's scoping doctrine) is a
+# TaxaMatch-side doc addition, not a TaxaLikely change -- see that package's own CLAUDE.md.
+# E1's remaining, larger sub-item (train_likelihood_model()'s whole-set MSA redesign to
+# per-genus alignment + sampled cross-genus pairs) is APPROVED by the user but deliberately
+# NOT started -- needs real scoping first, given its validation implications (score scale is
+# trained-scale sensitive, per [[project_train_inference_scale_validity]]). D3 (finish the
+# PtCon/Mugu kernel-priors migration) is also approved/closed as a DECISION ("we have
+# committed to the kernel approach") but is real future execution work (porting two live
+# production workflows), not something this session did.
 #
 # Cross-package follow-on to a TaxaFetch cache investigation (23GB GBIF-zip cache,
 # orphan-cleanup bug fixed there -- see TaxaFetch/CLAUDE.md). A full ecosystem audit for

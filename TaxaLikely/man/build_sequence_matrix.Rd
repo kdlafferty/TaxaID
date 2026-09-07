@@ -12,7 +12,10 @@ build_sequence_matrix(
   max_seq_len = 2000L,
   filter_unnamed = TRUE,
   max_seqs_per_taxon = NULL,
-  barcode_term = NULL
+  barcode_term = NULL,
+  verbose = TRUE,
+  by_genus = FALSE,
+  max_foreign_reps_per_genus = 20L
 )
 }
 \arguments{
@@ -88,6 +91,49 @@ comparability, and does not by itself close this gap. See
 \code{diagnostics/sebastes_chromis_confirmation.R} for the case this was
 found in and the (now-superseded, use this parameter instead) manual
 pre-filter pattern it used.}
+
+\item{verbose}{Logical (default \code{TRUE}).  Passed straight through to
+\code{DECIPHER::AlignSeqs()}/\code{DECIPHER::DistanceMatrix()}'s own native
+progress reporting (percent-complete, ETA) -- this function used to
+hardcode both to \code{FALSE}, silencing DECIPHER's own display for the two
+steps that dominate wall time on a large reference set (alignment cost
+grows worse than linearly in sequence count, so a large reference
+database can run for hours with no visible signal of progress). This
+function's OWN \code{message()} calls
+(length-filter counts, rank-system auto-detection, timing summaries) are
+unaffected either way -- only DECIPHER's own in-progress display is
+controlled by this parameter. \code{FALSE} restores the old fully-silent
+behavior (e.g. for a non-interactive/logged batch run where a live
+progress bar is meaningless).}
+
+\item{by_genus}{Logical (default \code{FALSE}; see \verb{@section Per-genus alignment} below). \code{TRUE} replaces the single whole-set
+\code{DECIPHER::AlignSeqs()} call with many small per-genus alignments (each
+augmented with up to \code{max_foreign_reps_per_genus} other genera's chosen
+representatives) plus one small cross-genus-representative alignment --
+same output shape, much better scaling on a reference set with many
+genera. Requires \code{"genus"} in \code{rank_system} (errors if absent); a
+sequence with a blank/NA \code{genus} value is dropped with a message rather
+than aborting the run (a real broad fetch legitimately has some
+genus-unresolved accessions -- e.g. environmental samples).}
+
+\item{max_foreign_reps_per_genus}{Integer or \code{NULL} (default \code{20L}). Only
+relevant when \code{by_genus = TRUE} -- caps how many OTHER genera's
+representative sequences get added to each genus's own augmented
+alignment (see \verb{@section Per-genus alignment} below). \code{NULL} means no
+cap (every other genus's representative is added, regardless of how
+many genera exist) -- real-data validation found this costs MORE than
+whole-set alignment, and gets worse as genus count grows (a real
+221-genus reference set took ~40 minutes uncapped vs ~10 minutes for
+whole-set), since the added cost scales with the SQUARE of genus count.
+A finite cap keeps the added cost linear in genus count instead
+(\verb{genera x cap}, not \verb{genera x (genera - 1)}) -- each genus draws an
+INDEPENDENT random subset of \code{cap} other genera's representatives (not
+one subset shared across every genus, which would starve whichever
+genera never happen to fall inside it), so coverage stays roughly even
+across genera even though it is no longer exhaustive. \code{0L} disables the
+augmentation entirely (equivalent to the original representative-only
+design this fixes -- see the \verb{@section} below for why that understates
+\code{gap_logit}).}
 }
 \value{
 A data frame with one row per sequence pair within \code{max_dist}:
@@ -116,6 +162,53 @@ resulting data frame is the input to \code{\link[=flag_reference_errors]{flag_re
 Packages \code{DECIPHER} and \code{Biostrings} must be installed
 (\code{BiocManager::install("DECIPHER")}).  They are listed in \code{Suggests} because
 they are only needed for this one function.
+}
+
+\section{Per-genus alignment (\code{by_genus = TRUE}, 2026-09-05, revised same day)}{
+
+Implements \verb{fable_ecosystem_review_2026-09-05.md} finding E1: whole-set
+alignment cost grows worse than linearly in sequence count, but
+\code{train_likelihood_model()} only ever consumes within-species pairs (H1),
+same-genus cross-species pairs (H2), and a pooled cross-genus sample (H3,
+already coarse/pooled, never species-specific) -- none of which strictly
+need one shared whole-set alignment, only same-scale genomic coordinates
+\emph{within} whatever comparison they're drawn from.
+
+\code{by_genus = TRUE} does many smaller alignments instead of one huge one:
+each genus's own sequences are aligned together (giving every H1/H2 pair
+unchanged), but that alignment ALSO includes a copy of up to
+\code{max_foreign_reps_per_genus} OTHER genera's chosen representative
+sequences -- so every sequence, not just the genus's own representative,
+gets a real comparison against a real member of some (or, uncapped, every)
+other genus. A separate, small dedicated alignment of just the
+representatives (one per genus) supplies the representative-vs-
+representative pairs (excluded from the per-genus step to avoid computing
+them twice). Together these give H3 (and H2's pooled fallback for a genus
+with no real congener) a real cross-genus sample, at a fraction of the
+whole-set cost -- see \code{.align_pairs_by_genus()}'s own \verb{@section Why every sequence, not just the representative} for the real-data finding that
+motivated this design (a representative-only version measurably inflated
+the \code{gap_logit} feature for every non-representative sequence), and its
+\verb{@section Capping the foreign-representative count} for why the fix's
+first, uncapped version was itself found to cost more than whole-set
+alignment on real data. Both pieces are combined into one table with the
+identical column shape this function always returns --
+\code{train_likelihood_model()} needs no changes either way.
+
+Each genus's own representative is chosen at RANDOM, not "first" -- see
+\code{.align_pairs_by_genus()}'s own header for why (nothing guarantees
+\code{reference_df}'s row order is itself unbiased). Use
+\code{\link[=check_cross_genus_sampling_noise]{check_cross_genus_sampling_noise()}} to see how much that one random draw
+actually moves the cross-genus pair distribution before trusting a single
+run's H3 estimate on a new marker.
+
+A pair between two NON-representative sequences from two DIFFERENT genera
+is still never compared (recovering that would mean going back to
+whole-set cost) -- this design fixes "some sequences get zero cross-genus
+visibility at all," not the coarser representative-sampling approximation
+itself. Validate against a marker with an existing, already-trusted
+whole-set-trained model before relying on this for a new one; do not
+assume the two approaches give numerically identical H1/H2/H3 parameters
+just because they consume conceptually the same pairs.
 }
 
 \examples{

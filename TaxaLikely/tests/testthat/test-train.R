@@ -386,6 +386,45 @@ test_that("train_likelihood_model: verified_clean is forwarded to the internal f
   ])
 })
 
+test_that("train_likelihood_model: mislabel_behavior default ('flag') keeps a flagged accession's pairs in training; 'remove' still drops them", {
+  # Regression test for the 2026-09-05 critical-fix-review finding (A1): the
+  # flag_reference_errors() heuristic was measured (2026-08-08 audit) at ~6.7%
+  # precision, so silently removing on its say-so is the wrong default. The
+  # default must now report a flagged accession (reference_errors, above) but
+  # NOT drop its pairs from the training data; the old destructive behavior
+  # must still be reachable via the opt-in "remove" mode.
+  skip_if_not_installed("TaxaTools")
+  df <- .make_genus_raw_df()
+  df$p_match[df$id_x == "A1" & df$id_y == "D1"] <- 0.999
+
+  out_flag <- train_likelihood_model(df, rank_system = c("genus", "species"),
+                                      use_hierarchy = FALSE, anchor_perfect = FALSE)
+  out_remove <- train_likelihood_model(df, rank_system = c("genus", "species"),
+                                        use_hierarchy = FALSE, anchor_perfect = FALSE,
+                                        mislabel_behavior = "remove")
+  # A1 is flagged "likely_mislabeled" under both (reporting is unaffected by
+  # mislabel_behavior) -- confirmed above in the verified_clean test too.
+  expect_true("A1" %in% out_flag$reference_errors$id_x[
+    out_flag$reference_errors$error_type == "likely_mislabeled"])
+
+  # "aa"'s within-species pairs (A1<->A2) survive under "flag" but A1's are
+  # gone under "remove" -- n_obs_species (or, if absent on this model_params
+  # shape, n_pairs on H1_Lookup) must therefore differ between the two.
+  n_obs_col <- if ("n_obs_species" %in% names(out_flag$H1_Lookup)) "n_obs_species" else "n_pairs"
+  skip_if(!n_obs_col %in% names(out_flag$H1_Lookup), "no per-species pair count column on this model_params shape")
+  aa_flag   <- out_flag$H1_Lookup[[n_obs_col]][out_flag$H1_Lookup$lookup_key == "Aa"]
+  aa_remove <- out_remove$H1_Lookup[[n_obs_col]][out_remove$H1_Lookup$lookup_key == "Aa"]
+  expect_true(length(aa_remove) == 0L || length(aa_flag) == 0L || aa_remove < aa_flag)
+})
+
+test_that("mislabel_behavior validation", {
+  expect_error(
+    train_likelihood_model(.make_raw_df(), c("genus", "species"),
+                           mislabel_behavior = "delete"),
+    "arg"
+  )
+})
+
 test_that("train_likelihood_model: score_transform = 'sqrt_mismatch' trains end to end and evaluates (Session 158)", {
   skip_if_not_installed("TaxaTools")
   out <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),

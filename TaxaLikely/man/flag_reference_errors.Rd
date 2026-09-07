@@ -57,13 +57,16 @@ dataset were confirmed as genuine mislabels; most were same-submission-
 batch artifacts or tight-congener false positives this function's
 narrow same-reference-set comparison cannot distinguish from a real
 error). \code{train_likelihood_model()} calls this function unconditionally
-on every training run and silently drops every \code{"likely_mislabeled"}
-accession before fitting -- without a way to override a specific
-false-positive verdict, an accession independently confirmed clean by a
-stronger check would be re-flagged and re-removed on every retrain.
-Supply the accessions \code{TaxaMatch::evaluate_reference_accessions()}
+on every training run; by default (\code{mislabel_behavior = "flag"}, see
+that function's own docs) it no longer removes anything on this
+heuristic's say-so, but if a caller explicitly opts into
+\code{mislabel_behavior = "remove"}, an accession independently confirmed
+clean by a stronger check would otherwise be re-flagged and re-removed
+on every retrain without this parameter. Supply the accessions
+\code{TaxaMatch::evaluate_reference_accessions()}
 verdicts \code{"congruent"} (or \code{"insufficient_independent_evidence"}, if
-you choose to trust that too) here to keep them in training. Does not
+you choose to trust that too) here to keep them in training under
+\code{"remove"} mode. Does not
 change \code{"clean"}-when-return_all rows, and does not force the OPPOSITE
 direction (an accession this heuristic calls \code{"clean"} is never forced
 to \code{"likely_mislabeled"} -- this parameter only rescues, never removes).}

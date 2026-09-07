@@ -15,6 +15,7 @@ train_likelihood_model(
   mislabel_threshold = 0.02,
   singleton_match_threshold = 0.98,
   verified_clean = NULL,
+  mislabel_behavior = "flag",
   logit_epsilon = 1e-04,
   max_gap_ceiling = NULL,
   score_transform = "logit"
@@ -74,6 +75,28 @@ heuristic computes for them, because they have already been verified
 clean by a stronger, independent check (e.g.
 \code{TaxaMatch::evaluate_reference_accessions()}/
 \code{TaxaMatch::verify_flagged_references()}).}
+
+\item{mislabel_behavior}{Character, \code{"flag"} (default) or \code{"remove"}.
+\code{flag_reference_errors()}'s \code{"likely_mislabeled"} heuristic was measured
+(2026-08-08 screening-comparison audit, a real 40-accession live-BLAST
+pilot) at roughly 6.7\% precision against
+\code{TaxaMatch::evaluate_reference_accessions()}'s BLAST-based screen --
+0 of 40 randomly-sampled real flags confirmed as genuine mislabels. That
+audit's own recommendation was to treat this heuristic as high-recall/
+low-precision, "worth a review pass, not an auto-blacklist." \code{"flag"}
+(default) honors that: every flagged accession is still reported (a
+console message, and the returned \code{reference_errors} slot) but none are
+removed from the training data. \code{"remove"} restores the
+original, silently-destructive default (drops every
+\code{"likely_mislabeled"} accession from both sides of the pair table before
+fitting) -- use it only alongside \code{verified_clean} (populated from
+\code{TaxaMatch::verify_flagged_references()}) so a confirmed false positive
+isn't lost. This mirrors the same default flip already made elsewhere in
+this ecosystem for an unreviewed heuristic acting as a silent, automatic
+remover (\code{TaxaLikely::apply_coverage_constraints()}'s
+\code{constraint_behavior}, \code{TaxaFetch::filter_gbif_quality()}'s institution
+check) -- training was the last place this pattern still acted
+destructively by default.}
 
 \item{logit_epsilon}{Numeric.  Logit-clipping value (default \code{1e-4}).
 Used only when \code{score_transform = "logit"}.}
