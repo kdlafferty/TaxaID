@@ -179,7 +179,10 @@ test_that("unrecognised habitat columns fold into Other_weight with a warning", 
     list(habitat_cols = c("Marine", "Freshwater"), scheme = NULL),
     class = "habitat_prompt"
   )
-  raw_text <- "taxon_name,Marine,Freshwater,Unexpected,Other_weight,habitat_best_guess\nGadus morhua,0.50,0.00,0.30,0.20,x"
+  raw_text <- paste0(
+    "taxon_name,Marine,Freshwater,Unexpected,Other_weight,habitat_best_guess\n",
+    "Gadus morhua,0.50,0.00,0.30,0.20,x"
+  )
   expect_warning(
     out <- parse_hierarchical_habitat_response(
       raw_text,
@@ -189,7 +192,7 @@ test_that("unrecognised habitat columns fold into Other_weight with a warning", 
     "unrecognised"
   )
   expect_false("Unexpected" %in% names(out))
-  expect_equal(out$Other_weight, 0.50)  # 0.20 original + 0.30 folded in
+  expect_equal(out$Other_weight, 0.50) # 0.20 original + 0.30 folded in
 })
 
 test_that("missing expected habitat columns are added with weight 0 and a warning", {

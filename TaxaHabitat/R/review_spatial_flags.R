@@ -107,19 +107,17 @@
 #'
 #' occurrences_clean <- dplyr::filter(reviewed, spatial_flag == "likely")
 #' }
-
 review_spatial_flags <- function(
-    occurrence_data,
-    habitat_col  = "main_habitat",
-    lat_col      = "decimalLatitude",
-    lon_col      = "decimalLongitude",
-    taxon_col    = "taxon_name",
-    colors       = NULL,
-    tile         = "Esri.OceanBasemap",
-    point_radius = 6,
-    viewer       = shiny::paneViewer(minHeight = 450)
+  occurrence_data,
+  habitat_col = "main_habitat",
+  lat_col = "decimalLatitude",
+  lon_col = "decimalLongitude",
+  taxon_col = "taxon_name",
+  colors = NULL,
+  tile = "Esri.OceanBasemap",
+  point_radius = 6,
+  viewer = shiny::paneViewer(minHeight = 450)
 ) {
-
   # --------------------------------------------------------------------------
   # 0. Checks
   # --------------------------------------------------------------------------
@@ -139,8 +137,10 @@ review_spatial_flags <- function(
   if (!is.data.frame(occurrence_data)) {
     stop("review_spatial_flags: 'occurrence_data' must be a dataframe.")
   }
-  for (col in c(habitat_col, lat_col, lon_col, "spatial_flag",
-                "spatial_flag_reason", "point_id")) {
+  for (col in c(
+    habitat_col, lat_col, lon_col, "spatial_flag",
+    "spatial_flag_reason", "point_id"
+  )) {
     if (!col %in% names(occurrence_data)) {
       stop(sprintf(
         "review_spatial_flags: column '%s' not found. Run flag_habitat_inconsistencies() first.",
@@ -150,20 +150,23 @@ review_spatial_flags <- function(
   }
   if (!is.null(taxon_col) && !taxon_col %in% names(occurrence_data)) {
     warning("review_spatial_flags: taxon_col not found -- species list suppressed.",
-            call. = FALSE)
+      call. = FALSE
+    )
     taxon_col <- NULL
   }
 
   valid_flags <- c("likely", "questionable", "unlikely")
-  bad_flags   <- setdiff(unique(occurrence_data$spatial_flag), valid_flags)
+  bad_flags <- setdiff(unique(occurrence_data$spatial_flag), valid_flags)
   if (length(bad_flags) > 0L) {
     na_count <- sum(is.na(occurrence_data$spatial_flag))
     if (na_count > 0L && identical(bad_flags, NA_character_)) {
       stop(sprintf(
-        paste0("review_spatial_flags: %d row(s) have NA spatial_flag.\n",
-               "  This usually means flag_habitat_inconsistencies() did not\n",
-               "  complete successfully, or the output was modified before review.\n",
-               "  Re-run flag_habitat_inconsistencies() and pass its output directly."),
+        paste0(
+          "review_spatial_flags: %d row(s) have NA spatial_flag.\n",
+          "  This usually means flag_habitat_inconsistencies() did not\n",
+          "  complete successfully, or the output was modified before review.\n",
+          "  Re-run flag_habitat_inconsistencies() and pass its output directly."
+        ),
         na_count
       ))
     }
@@ -184,9 +187,9 @@ review_spatial_flags <- function(
 
   pts <- merge(pts, flag_tbl, by = "point_id", all.x = TRUE)
 
-  hab_levels  <- sort(unique(pts$habitat))
-  pal         <- .habitat_palette(hab_levels, colors)
-  pts$color   <- pal[pts$habitat]
+  hab_levels <- sort(unique(pts$habitat))
+  pal <- .habitat_palette(hab_levels, colors)
+  pts$color <- pal[pts$habitat]
 
   # Fixed geographic frame for every render, computed ONCE from the FULL point
   # set (not the subset shown in whichever view is currently on screen).
@@ -252,7 +255,7 @@ review_spatial_flags <- function(
       out <- sprintf("<b>%s</b>", .he(pid))
       out <- paste0(out, "<br/><b>Habitat:</b> ", .he(hab))
       if (!is.null(spp_by_point)) {
-        spp   <- spp_by_point[[pid]]
+        spp <- spp_by_point[[pid]]
         n_spp <- length(spp)
         if (n_spp > 0L) {
           out <- paste0(
@@ -284,7 +287,7 @@ review_spatial_flags <- function(
         '<span style="display:inline-block;width:10px;height:10px;',
         'border-radius:50%%;background:%s;flex-shrink:0;"></span>',
         '<span style="font-size:11px;">%s</span>',
-        '</span>'
+        "</span>"
       ),
       pal[[h]], .he(h)
     ))
@@ -297,7 +300,7 @@ review_spatial_flags <- function(
   ui <- miniUI::miniPage(
     miniUI::gadgetTitleBar(
       "Review Spatial Flags",
-      right = miniUI::miniTitleBarButton("done",   "Done",   primary = TRUE),
+      right = miniUI::miniTitleBarButton("done", "Done", primary = TRUE),
       left  = miniUI::miniTitleBarButton("cancel", "Cancel", primary = FALSE)
     ),
     miniUI::miniContentPanel(
@@ -317,7 +320,6 @@ review_spatial_flags <- function(
 
           # ---- View --------------------------------------------------------
           shiny::h4("View", style = "margin-top:6px;margin-bottom:6px;font-size:14px;"),
-
           shiny::radioButtons(
             inputId  = "view_mode",
             label    = NULL,
@@ -325,12 +327,10 @@ review_spatial_flags <- function(
             selected = "Likely",
             inline   = FALSE
           ),
-
           shiny::hr(style = "margin:8px 0;"),
 
           # ---- Habitat filter ----------------------------------------------
           shiny::h4("Habitats", style = "margin-top:0;margin-bottom:4px;font-size:14px;"),
-
           shiny::div(
             style = "display:flex;gap:4px;margin-bottom:6px;",
             shiny::actionButton(
@@ -348,7 +348,6 @@ review_spatial_flags <- function(
               )
             )
           ),
-
           shiny::checkboxGroupInput(
             inputId      = "visible_habitats",
             label        = NULL,
@@ -356,7 +355,6 @@ review_spatial_flags <- function(
             choiceValues = hab_levels,
             selected     = hab_levels
           ),
-
           shiny::hr(style = "margin:8px 0;"),
 
           # ---- Point Info --------------------------------------------------
@@ -364,26 +362,24 @@ review_spatial_flags <- function(
           shiny::div(
             style = "display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px;",
             shiny::h4("Point Info",
-                      style = "margin:0;font-size:14px;"),
+              style = "margin:0;font-size:14px;"
+            ),
             shiny::div(
               style = "font-size:10px;color:#555;",
               shiny::checkboxInput(
                 inputId = "show_all_spp",
-                label   = shiny::HTML(
+                label = shiny::HTML(
                   '<span style="font-size:10px;color:#555;">Full species list</span>'
                 ),
-                value   = FALSE
+                value = FALSE
               )
             )
           ),
-
           shiny::uiOutput("point_info_panel"),
-
           shiny::hr(style = "margin:8px 0;"),
 
           # ---- Action ------------------------------------------------------
           shiny::h4("Action", style = "margin-top:0;margin-bottom:6px;font-size:14px;"),
-
           shiny::radioButtons(
             inputId  = "action_mode",
             label    = NULL,
@@ -391,9 +387,7 @@ review_spatial_flags <- function(
             selected = "Flag",
             inline   = FALSE
           ),
-
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::conditionalPanel(
             condition = "input.action_mode == 'Flag'",
             shiny::div(
@@ -410,7 +404,6 @@ review_spatial_flags <- function(
               )
             )
           ),
-
           shiny::conditionalPanel(
             condition = "input.action_mode == 'Reassign Habitat'",
             shiny::div(
@@ -424,20 +417,16 @@ review_spatial_flags <- function(
             ),
             shiny::uiOutput("habitat_reassign_panel")
           ),
-
           shiny::hr(style = "margin:8px 0;"),
 
           # ---- Session overrides -------------------------------------------
           shiny::h4("Session overrides",
-                    style = "margin-top:0;margin-bottom:4px;font-size:13px;"),
+            style = "margin-top:0;margin-bottom:4px;font-size:13px;"
+          ),
           shiny::uiOutput("override_summary"),
-
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::uiOutput("point_count"),
-
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::actionButton(
             "undo_last", "Undo Last",
             style = "width:100%;font-size:12px;padding:4px 8px;margin-bottom:4px;"
@@ -457,12 +446,12 @@ review_spatial_flags <- function(
   .add_draw_toolbar <- function(target) {
     leaflet.extras::addDrawToolbar(
       target,
-      targetGroup      = "drawn",
+      targetGroup = "drawn",
       rectangleOptions = leaflet.extras::drawRectangleOptions(
         shapeOptions = leaflet.extras::drawShapeOptions(fillOpacity = 0.1, color = "#333", weight = 1)
       ),
       polylineOptions = FALSE, polygonOptions = FALSE,
-      circleOptions   = FALSE, markerOptions  = FALSE,
+      circleOptions = FALSE, markerOptions = FALSE,
       circleMarkerOptions = FALSE, editOptions = FALSE
     )
   }
@@ -475,22 +464,22 @@ review_spatial_flags <- function(
   .add_habitat_marker <- function(target, row, color, group) {
     leaflet::addCircleMarkers(
       target,
-      lng          = row$lon,
-      lat          = row$lat,
-      layerId      = row$point_id,
-      radius       = point_radius,
-      color        = color,
-      fillColor    = color,
-      fillOpacity  = 0.8,
-      opacity      = 0.9,
-      weight       = 1,
-      label        = shiny::HTML(row$tooltip),
+      lng = row$lon,
+      lat = row$lat,
+      layerId = row$point_id,
+      radius = point_radius,
+      color = color,
+      fillColor = color,
+      fillOpacity = 0.8,
+      opacity = 0.9,
+      weight = 1,
+      label = shiny::HTML(row$tooltip),
       labelOptions = leaflet::labelOptions(
         style     = list("font-size" = "12px", "padding" = "4px 6px"),
         direction = "auto",
         delay     = 600L
       ),
-      group        = group
+      group = group
     )
   }
 
@@ -499,18 +488,17 @@ review_spatial_flags <- function(
   # --------------------------------------------------------------------------
 
   server <- function(input, output, session) {
-
-    cur_flags    <- shiny::reactiveVal(stats::setNames(flag_tbl$spatial_flag,        flag_tbl$point_id))
-    cur_reasons  <- shiny::reactiveVal(stats::setNames(flag_tbl$spatial_flag_reason, flag_tbl$point_id))
+    cur_flags <- shiny::reactiveVal(stats::setNames(flag_tbl$spatial_flag, flag_tbl$point_id))
+    cur_reasons <- shiny::reactiveVal(stats::setNames(flag_tbl$spatial_flag_reason, flag_tbl$point_id))
 
     pts_hab_init <- stats::setNames(pts$habitat, pts$point_id)
     pts_hab_init <- pts_hab_init[!duplicated(names(pts_hab_init))]
     cur_habitats <- shiny::reactiveVal(pts_hab_init)
 
-    selected_point   <- shiny::reactiveVal(NULL)
-    selected_points  <- shiny::reactiveVal(NULL)
+    selected_point <- shiny::reactiveVal(NULL)
+    selected_points <- shiny::reactiveVal(NULL)
     hovered_point_id <- shiny::reactiveVal(NULL)
-    history          <- shiny::reactiveVal(list())
+    history <- shiny::reactiveVal(list())
 
     # hab_levels/pal start as the STATIC sets computed above (from the
     # dataset's original habitat values) but must grow during the session:
@@ -524,7 +512,7 @@ review_spatial_flags <- function(
     # that broke train_biodiversity_model()'s fixed effect for the same
     # dataset.
     hab_levels_rv <- shiny::reactiveVal(hab_levels)
-    pal_rv        <- shiny::reactiveVal(pal)
+    pal_rv <- shiny::reactiveVal(pal)
 
     # Authoritative record of which habitats are currently checked visible,
     # kept in sync with input$visible_habitats via the observer below.
@@ -544,10 +532,12 @@ review_spatial_flags <- function(
     # selectable entry immediately. No-op if new_hab is already known.
     .register_new_habitat <- function(new_hab) {
       cur_levels <- hab_levels_rv()
-      if (new_hab %in% cur_levels) return(invisible(NULL))
+      if (new_hab %in% cur_levels) {
+        return(invisible(NULL))
+      }
 
       new_levels <- sort(c(cur_levels, new_hab))
-      new_pal    <- .extend_habitat_palette(pal_rv(), new_hab)
+      new_pal <- .extend_habitat_palette(pal_rv(), new_hab)
       hab_levels_rv(new_levels)
       pal_rv(new_pal)
 
@@ -558,7 +548,7 @@ review_spatial_flags <- function(
             '<span style="display:inline-block;width:10px;height:10px;',
             'border-radius:50%%;background:%s;flex-shrink:0;"></span>',
             '<span style="font-size:11px;">%s</span>',
-            '</span>'
+            "</span>"
           ),
           new_pal[[h]], .he(h)
         ))
@@ -568,9 +558,9 @@ review_spatial_flags <- function(
 
       shiny::updateCheckboxGroupInput(
         session, "visible_habitats",
-        choiceNames  = choice_names,
+        choiceNames = choice_names,
         choiceValues = new_levels,
-        selected     = new_visible
+        selected = new_visible
       )
       invisible(NULL)
     }
@@ -599,17 +589,20 @@ review_spatial_flags <- function(
     # to update our authoritative copy.
     # --------------------------------------------------------------------------
 
-    shiny::observeEvent(input$visible_habitats, {
-      visible_habitats_rv(input$visible_habitats %||% character(0L))
-      proxy <- leaflet::leafletProxy("map")
-      for (h in hab_levels_rv()) {
-        if (h %in% input$visible_habitats) {
-          proxy <- leaflet::showGroup(proxy, h)
-        } else {
-          proxy <- leaflet::hideGroup(proxy, h)
+    shiny::observeEvent(input$visible_habitats,
+      {
+        visible_habitats_rv(input$visible_habitats %||% character(0L))
+        proxy <- leaflet::leafletProxy("map")
+        for (h in hab_levels_rv()) {
+          if (h %in% input$visible_habitats) {
+            proxy <- leaflet::showGroup(proxy, h)
+          } else {
+            proxy <- leaflet::hideGroup(proxy, h)
+          }
         }
-      }
-    }, ignoreNULL = FALSE)
+      },
+      ignoreNULL = FALSE
+    )
 
     # --------------------------------------------------------------------------
     # renderLeaflet -- reacts to view_mode only; cur_flags/cur_habitats/
@@ -619,16 +612,18 @@ review_spatial_flags <- function(
     # if the user switches views away and back.
     # --------------------------------------------------------------------------
 
-    view_trigger <- shiny::reactive({ input$view_mode })
+    view_trigger <- shiny::reactive({
+      input$view_mode
+    })
 
     output$map <- leaflet::renderLeaflet({
-      view_lc    <- tolower(view_trigger())
-      fl         <- shiny::isolate(cur_flags())
-      habs_now   <- shiny::isolate(cur_habitats())
+      view_lc <- tolower(view_trigger())
+      fl <- shiny::isolate(cur_flags())
+      habs_now <- shiny::isolate(cur_habitats())
       levels_now <- shiny::isolate(hab_levels_rv())
-      pal_now    <- shiny::isolate(pal_rv())
-      show_ids   <- names(fl)[fl == view_lc]
-      sub_pts    <- pts[pts$point_id %in% show_ids, ]
+      pal_now <- shiny::isolate(pal_rv())
+      show_ids <- names(fl)[fl == view_lc]
+      sub_pts <- pts[pts$point_id %in% show_ids, ]
       sub_pts$habitat <- habs_now[sub_pts$point_id]
 
       m <- leaflet::leaflet() |>
@@ -638,29 +633,31 @@ review_spatial_flags <- function(
           full_bounds$lng2, full_bounds$lat2
         )
 
-      if (nrow(sub_pts) == 0L) return(m)
+      if (nrow(sub_pts) == 0L) {
+        return(m)
+      }
 
       for (hab in intersect(levels_now, unique(sub_pts$habitat))) {
         hab_sub <- sub_pts[sub_pts$habitat == hab, ]
         m <- leaflet::addCircleMarkers(
-          map          = m,
-          data         = hab_sub,
-          lng          = ~lon,
-          lat          = ~lat,
-          layerId      = ~point_id,
-          radius       = point_radius,
-          color        = pal_now[[hab]],
-          fillColor    = pal_now[[hab]],
-          fillOpacity  = 0.8,
-          opacity      = 0.9,
-          weight       = 1,
-          label        = lapply(hab_sub$tooltip, shiny::HTML),
+          map = m,
+          data = hab_sub,
+          lng = ~lon,
+          lat = ~lat,
+          layerId = ~point_id,
+          radius = point_radius,
+          color = pal_now[[hab]],
+          fillColor = pal_now[[hab]],
+          fillOpacity = 0.8,
+          opacity = 0.9,
+          weight = 1,
+          label = lapply(hab_sub$tooltip, shiny::HTML),
           labelOptions = leaflet::labelOptions(
             style     = list("font-size" = "12px", "padding" = "4px 6px"),
             direction = "auto",
             delay     = 600L
           ),
-          group        = hab
+          group = hab
         )
       }
 
@@ -696,35 +693,37 @@ review_spatial_flags <- function(
 
       if (is.null(pid)) {
         return(shiny::p("(hover over a point)",
-                        style = "font-size:11px;color:#999;margin:0;"))
+          style = "font-size:11px;color:#999;margin:0;"
+        ))
       }
 
-      cur_hab     <- cur_habitats()[[pid]]
-      cur_hab     <- if (is.null(cur_hab) || is.na(cur_hab)) "unknown" else cur_hab
+      cur_hab <- cur_habitats()[[pid]]
+      cur_hab <- if (is.null(cur_hab) || is.na(cur_hab)) "unknown" else cur_hab
       hab_dot_col <- if (cur_hab %in% names(pal_rv())) pal_rv()[[cur_hab]] else "#aaaaaa"
 
       # Build species block: compact or full depending on toggle
       spp_block <- if (!is.null(spp_by_point)) {
-        spp   <- spp_by_point[[pid]]
+        spp <- spp_by_point[[pid]]
         n_spp <- length(spp)
 
         if (n_spp == 0L) {
           shiny::p("No taxa recorded.",
-                   style = "font-size:11px;color:#888;margin:2px 0 0 0;")
-
+            style = "font-size:11px;color:#888;margin:2px 0 0 0;"
+          )
         } else if (!isTRUE(input$show_all_spp) || n_spp == 1L) {
           # Compact view (toggle off, or only one species anyway)
           shiny::p(
             shiny::HTML(sprintf(
               "<i>%s</i>%s",
               .he(spp[1L]),
-              if (n_spp > 1L)
+              if (n_spp > 1L) {
                 sprintf(" <span style='color:#888;'>(+%d more)</span>", n_spp - 1L)
-              else ""
+              } else {
+                ""
+              }
             )),
             style = "font-size:11px;margin:2px 0 0 0;"
           )
-
         } else {
           # Full list view (toggle on, n_spp > 1)
           list_items <- paste(
@@ -743,10 +742,10 @@ review_spatial_flags <- function(
             shiny::HTML(sprintf(
               paste0(
                 '<ol style="margin:0;padding-left:16px;',
-                'max-height:200px;overflow-y:auto;',
-                'border:1px solid #dce3ea;border-radius:3px;',
+                "max-height:200px;overflow-y:auto;",
+                "border:1px solid #dce3ea;border-radius:3px;",
                 'background:white;padding:4px 4px 4px 20px;">',
-                '%s</ol>'
+                "%s</ol>"
               ),
               list_items
             ))
@@ -763,13 +762,14 @@ review_spatial_flags <- function(
         ),
         # Point ID
         shiny::p(shiny::strong(pid),
-                 style = "margin:0 0 3px 0;font-size:11px;word-break:break-all;"),
+          style = "margin:0 0 3px 0;font-size:11px;word-break:break-all;"
+        ),
         # Habitat with colour dot
         shiny::p(
           shiny::HTML(sprintf(
             paste0(
               '<span style="display:inline-block;width:9px;height:9px;',
-              'border-radius:50%%;background:%s;margin-right:4px;',
+              "border-radius:50%%;background:%s;margin-right:4px;",
               'vertical-align:middle;"></span>%s'
             ),
             hab_dot_col, .he(cur_hab)
@@ -800,7 +800,9 @@ review_spatial_flags <- function(
           NULL
         }
       )
-      if (is.null(coords)) return()
+      if (is.null(coords)) {
+        return()
+      }
 
       lons <- tryCatch(vapply(coords, `[[`, numeric(1L), 1L), error = function(e) {
         message("[review_spatial_flags DEBUG] error extracting lons: ", conditionMessage(e))
@@ -810,14 +812,16 @@ review_spatial_flags <- function(
         message("[review_spatial_flags DEBUG] error extracting lats: ", conditionMessage(e))
         NA_real_
       })
-      xmin   <- min(lons); xmax <- max(lons)
-      ymin   <- min(lats); ymax <- max(lats)
+      xmin <- min(lons)
+      xmax <- max(lons)
+      ymin <- min(lats)
+      ymax <- max(lats)
       message(sprintf(
         "[review_spatial_flags DEBUG] box = lon[%.6f, %.6f] lat[%.6f, %.6f], n_coord_pts=%d",
         xmin, xmax, ymin, ymax, length(coords)
       ))
 
-      fl      <- cur_flags()
+      fl <- cur_flags()
       view_lc <- tolower(input$view_mode)
       vis_hab <- visible_habitats()
       message(sprintf(
@@ -828,9 +832,9 @@ review_spatial_flags <- function(
 
       in_box_ids <- pts$point_id[
         pts$point_id %in% names(fl)[fl == view_lc] &
-        pts$habitat  %in% vis_hab &
-        pts$lon >= xmin & pts$lon <= xmax &
-        pts$lat >= ymin & pts$lat <= ymax
+          pts$habitat %in% vis_hab &
+          pts$lon >= xmin & pts$lon <= xmax &
+          pts$lat >= ymin & pts$lat <= ymax
       ]
       message(sprintf(
         "[review_spatial_flags DEBUG] in_box_ids length = %d", length(in_box_ids)
@@ -842,10 +846,10 @@ review_spatial_flags <- function(
           return()
         }
 
-        rs       <- cur_reasons()
+        rs <- cur_reasons()
         new_flag <- if (view_lc %in% c("likely", "unlikely")) "questionable" else "likely"
-        ts       <- format(Sys.time(), "%Y-%m-%d %H:%M")
-        flag_hist     <- history()
+        ts <- format(Sys.time(), "%Y-%m-%d %H:%M")
+        flag_hist <- history()
 
         for (pid in in_box_ids) {
           flag_hist <- c(flag_hist, list(list(
@@ -854,8 +858,10 @@ review_spatial_flags <- function(
             old_reason  = rs[[pid]],
             old_habitat = NA_character_
           )))
-          rs[[pid]] <- paste0(rs[[pid]],
-                              sprintf(" [%s \u2192 %s, %s]", fl[[pid]], new_flag, ts))
+          rs[[pid]] <- paste0(
+            rs[[pid]],
+            sprintf(" [%s \u2192 %s, %s]", fl[[pid]], new_flag, ts)
+          )
           fl[[pid]] <- new_flag
         }
         history(flag_hist)
@@ -866,7 +872,6 @@ review_spatial_flags <- function(
         for (pid in in_box_ids) proxy <- leaflet::removeMarker(proxy, layerId = pid)
 
         .reset_draw_toolbar(leaflet::leafletProxy("map"))
-
       } else {
         selected_point(NULL)
         selected_points(if (length(in_box_ids) > 0L) in_box_ids else NULL)
@@ -881,24 +886,32 @@ review_spatial_flags <- function(
 
     shiny::observeEvent(input$map_marker_click, {
       pid <- input$map_marker_click$id
-      if (is.null(pid) || !nzchar(pid)) return()
+      if (is.null(pid) || !nzchar(pid)) {
+        return()
+      }
 
       pt_hab <- pts$habitat[pts$point_id == pid][1L]
-      if (!isTRUE(pt_hab %in% visible_habitats())) return()
+      if (!isTRUE(pt_hab %in% visible_habitats())) {
+        return()
+      }
 
       hovered_point_id(pid)
 
       if (input$action_mode == "Flag") {
-        fl  <- cur_flags()
-        rs  <- cur_reasons()
-        old_flag   <- fl[[pid]]
+        fl <- cur_flags()
+        rs <- cur_reasons()
+        old_flag <- fl[[pid]]
         old_reason <- rs[[pid]]
-        if (is.null(old_flag) || is.na(old_flag)) return()
+        if (is.null(old_flag) || is.na(old_flag)) {
+          return()
+        }
 
-        new_flag   <- if (old_flag %in% c("likely", "unlikely")) "questionable" else "likely"
-        ts         <- format(Sys.time(), "%Y-%m-%d %H:%M")
-        new_reason <- paste0(old_reason,
-                             sprintf(" [%s \u2192 %s, %s]", old_flag, new_flag, ts))
+        new_flag <- if (old_flag %in% c("likely", "unlikely")) "questionable" else "likely"
+        ts <- format(Sys.time(), "%Y-%m-%d %H:%M")
+        new_reason <- paste0(
+          old_reason,
+          sprintf(" [%s \u2192 %s, %s]", old_flag, new_flag, ts)
+        )
 
         flag_hist <- history()
         history(c(flag_hist, list(list(
@@ -913,7 +926,6 @@ review_spatial_flags <- function(
         cur_flags(fl)
         cur_reasons(rs)
         leaflet::leafletProxy("map") |> leaflet::removeMarker(layerId = pid)
-
       } else {
         selected_point(pid)
       }
@@ -924,21 +936,24 @@ review_spatial_flags <- function(
     # --------------------------------------------------------------------------
 
     output$habitat_reassign_panel <- shiny::renderUI({
-      pid  <- selected_point()
+      pid <- selected_point()
       pids <- selected_points()
 
       if (is.null(pid) && is.null(pids)) {
         return(shiny::p("(click a point or draw a rectangle)",
-                        style = "font-size:11px;color:#999;margin:4px 0;"))
+          style = "font-size:11px;color:#999;margin:4px 0;"
+        ))
       }
 
       if (!is.null(pids)) {
         header_html <- sprintf("<b>%d points selected</b>", length(pids))
-        cur_hab     <- NA_character_
+        cur_hab <- NA_character_
       } else {
-        cur_hab     <- cur_habitats()[[pid]]
-        header_html <- sprintf("<b>Point:</b> %s<br/><b>Current:</b> %s",
-                               .he(pid), .he(cur_hab))
+        cur_hab <- cur_habitats()[[pid]]
+        header_html <- sprintf(
+          "<b>Point:</b> %s<br/><b>Current:</b> %s",
+          .he(pid), .he(cur_hab)
+        )
       }
 
       hab_choices <- c(sort(hab_levels_rv()), "Other")
@@ -946,7 +961,8 @@ review_spatial_flags <- function(
       shiny::div(
         style = "margin-top:6px;",
         shiny::p(shiny::HTML(header_html),
-                 style = "font-size:11px;margin:0 0 6px 0;"),
+          style = "font-size:11px;margin:0 0 6px 0;"
+        ),
         shiny::selectInput(
           inputId  = "new_habitat_choice",
           label    = NULL,
@@ -976,11 +992,15 @@ review_spatial_flags <- function(
 
     shiny::observeEvent(input$confirm_habitat, {
       new_hab <- input$new_habitat_choice
-      if (is.null(new_hab)) return()
+      if (is.null(new_hab)) {
+        return()
+      }
 
       if (new_hab == "Other") {
         new_hab <- trimws(input$other_habitat_text)
-        if (is.null(new_hab) || !nzchar(new_hab)) return()
+        if (is.null(new_hab) || !nzchar(new_hab)) {
+          return()
+        }
       }
 
       # Register BEFORE computing new_col: a value typed via "Other" has no
@@ -989,23 +1009,23 @@ review_spatial_flags <- function(
       # grey and stay invisible to the sidebar's visibility filter).
       .register_new_habitat(new_hab)
 
-      pid        <- selected_point()
-      pids       <- selected_points()
+      pid <- selected_point()
+      pids <- selected_points()
       target_ids <- if (!is.null(pids)) pids else if (!is.null(pid)) pid else return()
 
-      habs     <- cur_habitats()
-      fl       <- cur_flags()
-      rs       <- cur_reasons()
-      ts       <- format(Sys.time(), "%Y-%m-%d %H:%M")
-      flag_hist     <- history()
-      pal_now  <- pal_rv()
-      new_col  <- if (new_hab %in% names(pal_now)) pal_now[[new_hab]] else "#aaaaaa"
-      view_lc  <- tolower(input$view_mode)
-      proxy    <- leaflet::leafletProxy("map")
+      habs <- cur_habitats()
+      fl <- cur_flags()
+      rs <- cur_reasons()
+      ts <- format(Sys.time(), "%Y-%m-%d %H:%M")
+      flag_hist <- history()
+      pal_now <- pal_rv()
+      new_col <- if (new_hab %in% names(pal_now)) pal_now[[new_hab]] else "#aaaaaa"
+      view_lc <- tolower(input$view_mode)
+      proxy <- leaflet::leafletProxy("map")
 
       for (pid_i in target_ids) {
-        old_hab    <- habs[[pid_i]]
-        old_flag   <- fl[[pid_i]]
+        old_hab <- habs[[pid_i]]
+        old_flag <- fl[[pid_i]]
         old_reason <- rs[[pid_i]]
 
         if (identical(old_hab, new_hab)) next
@@ -1035,12 +1055,16 @@ review_spatial_flags <- function(
         new_flag <- if (identical(old_flag, "questionable")) "likely" else old_flag
 
         habs[[pid_i]] <- new_hab
-        fl[[pid_i]]   <- new_flag
-        rs[[pid_i]]   <- paste0(old_reason,
-                                sprintf(" [habitat: %s \u2192 %s, %s]",
-                                        old_hab, new_hab, ts))
+        fl[[pid_i]] <- new_flag
+        rs[[pid_i]] <- paste0(
+          old_reason,
+          sprintf(
+            " [habitat: %s \u2192 %s, %s]",
+            old_hab, new_hab, ts
+          )
+        )
 
-        row   <- pts[pts$point_id == pid_i, ][1L, ]
+        row <- pts[pts$point_id == pid_i, ][1L, ]
         proxy <- leaflet::removeMarker(proxy, layerId = pid_i)
         if (identical(new_flag, view_lc)) {
           # Still belongs in the view currently on screen -- recolour in place.
@@ -1071,17 +1095,19 @@ review_spatial_flags <- function(
 
     shiny::observeEvent(input$undo_last, {
       flag_hist <- history()
-      if (length(flag_hist) == 0L) return()
+      if (length(flag_hist) == 0L) {
+        return()
+      }
 
-      last    <- flag_hist[[length(flag_hist)]]
+      last <- flag_hist[[length(flag_hist)]]
       history(flag_hist[-length(flag_hist)])
 
-      fl   <- cur_flags()
-      rs   <- cur_reasons()
+      fl <- cur_flags()
+      rs <- cur_reasons()
       habs <- cur_habitats()
 
-      fl[[last$point_id]]   <- last$old_flag
-      rs[[last$point_id]]   <- last$old_reason
+      fl[[last$point_id]] <- last$old_flag
+      rs[[last$point_id]] <- last$old_reason
       cur_flags(fl)
       cur_reasons(rs)
 
@@ -1092,9 +1118,9 @@ review_spatial_flags <- function(
       # check. Previously this always re-added the marker regardless of view,
       # a latent bug this fix's questionable->likely transition made more
       # reachable (more undos now cross views than before).
-      view_lc         <- tolower(input$view_mode)
+      view_lc <- tolower(input$view_mode)
       belongs_in_view <- identical(last$old_flag, view_lc)
-      pal_now         <- pal_rv()
+      pal_now <- pal_rv()
 
       if (!is.na(last$old_habitat)) {
         habs[[last$point_id]] <- last$old_habitat
@@ -1103,13 +1129,13 @@ review_spatial_flags <- function(
         proxy <- leaflet::removeMarker(leaflet::leafletProxy("map"), layerId = last$point_id)
         if (belongs_in_view) {
           old_col <- if (last$old_habitat %in% names(pal_now)) pal_now[[last$old_habitat]] else "#aaaaaa"
-          row     <- pts[pts$point_id == last$point_id, ][1L, ]
+          row <- pts[pts$point_id == last$point_id, ][1L, ]
           .add_habitat_marker(proxy, row, old_col, last$old_habitat)
         }
       } else if (belongs_in_view) {
-        row         <- pts[pts$point_id == last$point_id, ][1L, ]
+        row <- pts[pts$point_id == last$point_id, ][1L, ]
         cur_hab_val <- habs[[last$point_id]] %||% row$habitat
-        cur_col     <- if (cur_hab_val %in% names(pal_now)) pal_now[[cur_hab_val]] else "#aaaaaa"
+        cur_col <- if (cur_hab_val %in% names(pal_now)) pal_now[[cur_hab_val]] else "#aaaaaa"
         .add_habitat_marker(leaflet::leafletProxy("map"), row, cur_col, cur_hab_val)
       }
     })
@@ -1127,7 +1153,8 @@ review_spatial_flags <- function(
       shiny::div(
         style = "font-size:11px;color:#444;",
         shiny::p(sprintf("%d override(s) this session", n_total),
-                 style = "margin:0 0 4px 0;font-weight:bold;"),
+          style = "margin:0 0 4px 0;font-weight:bold;"
+        ),
         shiny::p(shiny::HTML(sprintf(
           "<span style='color:%s'>\u25cf</span> Likely: %d &nbsp;
            <span style='color:%s'>\u25cf</span> Quest.: %d &nbsp;
@@ -1140,18 +1167,21 @@ review_spatial_flags <- function(
     })
 
     output$point_count <- shiny::renderUI({
-      fl      <- cur_flags()
+      fl <- cur_flags()
       view_lc <- tolower(input$view_mode)
-      n_view  <- sum(fl == view_lc)
-      n_vis   <- sum(fl == view_lc &
-                       pts$habitat[match(names(fl), pts$point_id)] %in% visible_habitats())
+      n_view <- sum(fl == view_lc)
+      n_vis <- sum(fl == view_lc &
+        pts$habitat[match(names(fl), pts$point_id)] %in% visible_habitats())
       if (n_vis == n_view) {
         shiny::p(sprintf("%d point(s) in %s view", n_view, input$view_mode),
-                 style = "font-size:11px;color:#555;margin:0;")
+          style = "font-size:11px;color:#555;margin:0;"
+        )
       } else {
         shiny::p(
-          shiny::HTML(sprintf("%d of %d point(s) visible in %s view",
-                              n_vis, n_view, input$view_mode)),
+          shiny::HTML(sprintf(
+            "%d of %d point(s) visible in %s view",
+            n_vis, n_view, input$view_mode
+          )),
           style = "font-size:11px;color:#555;margin:0;"
         )
       }
@@ -1162,11 +1192,11 @@ review_spatial_flags <- function(
     # --------------------------------------------------------------------------
 
     shiny::observeEvent(input$done, {
-      fl   <- cur_flags()
-      rs   <- cur_reasons()
+      fl <- cur_flags()
+      rs <- cur_reasons()
       habs <- cur_habitats()
 
-      result              <- occurrence_data
+      result <- occurrence_data
       result$spatial_flag <- fl[result$point_id]
 
       overridden_ids <- unique(vapply(history(), `[[`, character(1L), "point_id"))

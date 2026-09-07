@@ -23,7 +23,7 @@
 # Minimal occurrence dataframe
 make_occ <- function(point_ids, taxon_names) {
   data.frame(
-    point_id  = point_ids,
+    point_id = point_ids,
     taxon_name = taxon_names,
     stringsAsFactors = FALSE
   )
@@ -32,40 +32,40 @@ make_occ <- function(point_ids, taxon_names) {
 # Minimal habitat weight table (specialist: 1.0 in one column)
 make_weights_specialist <- function() {
   data.frame(
-    taxon_name        = c("Gadus morhua", "Sebastes mystinus", "Engraulis mordax"),
-    Rocky_Subtidal    = c(1.0, 0.0, 0.0),
-    Kelp_Forest       = c(0.0, 1.0, 0.0),
-    Pelagic           = c(0.0, 0.0, 1.0),
-    Other_weight      = c(0.0, 0.0, 0.0),
+    taxon_name = c("Gadus morhua", "Sebastes mystinus", "Engraulis mordax"),
+    Rocky_Subtidal = c(1.0, 0.0, 0.0),
+    Kelp_Forest = c(0.0, 1.0, 0.0),
+    Pelagic = c(0.0, 0.0, 1.0),
+    Other_weight = c(0.0, 0.0, 0.0),
     habitat_best_guess = c("", "", ""),
-    Habitat           = c("Rocky_Subtidal", "Kelp_Forest", "Pelagic"),
-    stringsAsFactors  = FALSE
+    Habitat = c("Rocky_Subtidal", "Kelp_Forest", "Pelagic"),
+    stringsAsFactors = FALSE
   )
 }
 
 # Generalist: weight split across two habitats
 make_weights_generalist <- function() {
   data.frame(
-    taxon_name        = c("Oncorhynchus mykiss", "Gadus morhua"),
-    Ocean             = c(0.5, 1.0),
-    Freshwater        = c(0.5, 0.0),
-    Other_weight      = c(0.0, 0.0),
+    taxon_name = c("Oncorhynchus mykiss", "Gadus morhua"),
+    Ocean = c(0.5, 1.0),
+    Freshwater = c(0.5, 0.0),
+    Other_weight = c(0.0, 0.0),
     habitat_best_guess = c("", ""),
-    Habitat           = c("Ocean", "Gadus morhua"),
-    stringsAsFactors  = FALSE
+    Habitat = c("Ocean", "Gadus morhua"),
+    stringsAsFactors = FALSE
   )
 }
 
 # Other-dominant: species doesn't fit the scheme
 make_weights_other <- function() {
   data.frame(
-    taxon_name        = c("Mystery sp.", "Gadus morhua"),
-    Rocky_Subtidal    = c(0.0, 1.0),
-    Pelagic           = c(0.0, 0.0),
-    Other_weight      = c(1.0, 0.0),
+    taxon_name = c("Mystery sp.", "Gadus morhua"),
+    Rocky_Subtidal = c(0.0, 1.0),
+    Pelagic = c(0.0, 0.0),
+    Other_weight = c(1.0, 0.0),
     habitat_best_guess = c("alpine meadow", ""),
-    Habitat           = c("Other", "Rocky_Subtidal"),
-    stringsAsFactors  = FALSE
+    Habitat = c("Other", "Rocky_Subtidal"),
+    stringsAsFactors = FALSE
   )
 }
 
@@ -106,8 +106,10 @@ test_that("stops when taxon_col is missing from data", {
 
 test_that("stops when taxon_col is missing from habitats_df", {
   occ <- make_occ("pt1", "Gadus morhua")
-  bad_hab <- data.frame(species = "Gadus morhua", Rocky_Subtidal = 1.0,
-                        stringsAsFactors = FALSE)
+  bad_hab <- data.frame(
+    species = "Gadus morhua", Rocky_Subtidal = 1.0,
+    stringsAsFactors = FALSE
+  )
   expect_error(
     assign_habitat_biological(occurrence_data = occ, habitats_df = bad_hab),
     "taxon column.*not found in 'habitats_df'"
@@ -134,7 +136,8 @@ test_that("stops when weight_by_abundance is NA", {
   occ <- make_occ("pt1", "Gadus morhua")
   expect_error(
     assign_habitat_biological(occ, make_weights_specialist(),
-                              weight_by_abundance = NA),
+      weight_by_abundance = NA
+    ),
     "weight_by_abundance.*must be TRUE or FALSE"
   )
 })
@@ -143,7 +146,8 @@ test_that("stops when weight_by_abundance is not logical", {
   occ <- make_occ("pt1", "Gadus morhua")
   expect_error(
     assign_habitat_biological(occ, make_weights_specialist(),
-                              weight_by_abundance = 1),
+      weight_by_abundance = 1
+    ),
     "weight_by_abundance.*must be TRUE or FALSE"
   )
 })
@@ -152,15 +156,18 @@ test_that("stops when habitat_cols names are not in habitats_df", {
   occ <- make_occ("pt1", "Gadus morhua")
   expect_error(
     assign_habitat_biological(occ, make_weights_specialist(),
-                              habitat_cols = c("Rocky_Subtidal", "Nonexistent")),
+      habitat_cols = c("Rocky_Subtidal", "Nonexistent")
+    ),
     "habitat_cols not found"
   )
 })
 
 test_that("stops when no numeric weight columns can be auto-detected", {
   occ <- make_occ("pt1", "Gadus morhua")
-  bad_hab <- data.frame(taxon_name = "Gadus morhua", note = "text",
-                        stringsAsFactors = FALSE)
+  bad_hab <- data.frame(
+    taxon_name = "Gadus morhua", note = "text",
+    stringsAsFactors = FALSE
+  )
   expect_error(
     assign_habitat_biological(occ, bad_hab),
     "no numeric habitat weight columns found"
@@ -168,8 +175,8 @@ test_that("stops when no numeric weight columns can be auto-detected", {
 })
 
 test_that("threshold = 1 is accepted (boundary)", {
-  occ   <- make_occ("pt1", "Gadus morhua")
-  wts   <- make_weights_specialist()
+  occ <- make_occ("pt1", "Gadus morhua")
+  wts <- make_weights_specialist()
   result <- assign_habitat_biological(occ, wts, threshold = 1.0)
   # Rocky_Subtidal weight = 1.0, exactly meets threshold
   expect_equal(result$main_habitat[result$point_id == "pt1"], "Rocky_Subtidal")
@@ -180,8 +187,10 @@ test_that("threshold = 1 is accepted (boundary)", {
 # ==============================================================================
 
 test_that("specialist species: point assigned to dominant habitat", {
-  occ <- make_occ(c("pt1", "pt2", "pt3"),
-                  c("Gadus morhua", "Sebastes mystinus", "Engraulis mordax"))
+  occ <- make_occ(
+    c("pt1", "pt2", "pt3"),
+    c("Gadus morhua", "Sebastes mystinus", "Engraulis mordax")
+  )
   result <- assign_habitat_biological(occ, make_weights_specialist())
   expect_equal(result$main_habitat[result$point_id == "pt1"], "Rocky_Subtidal")
   expect_equal(result$main_habitat[result$point_id == "pt2"], "Kelp_Forest")
@@ -190,9 +199,9 @@ test_that("specialist species: point assigned to dominant habitat", {
 
 test_that("all original columns are preserved", {
   occ <- data.frame(
-    point_id   = "pt1",
+    point_id = "pt1",
     taxon_name = "Gadus morhua",
-    extra_col  = 42L,
+    extra_col = 42L,
     stringsAsFactors = FALSE
   )
   result <- assign_habitat_biological(occ, make_weights_specialist())
@@ -201,14 +210,16 @@ test_that("all original columns are preserved", {
 })
 
 test_that("output has exactly the same number of rows as input", {
-  occ <- make_occ(rep(c("pt1", "pt2"), each = 3),
-                  rep(c("Gadus morhua", "Sebastes mystinus", "Engraulis mordax"), 2))
+  occ <- make_occ(
+    rep(c("pt1", "pt2"), each = 3),
+    rep(c("Gadus morhua", "Sebastes mystinus", "Engraulis mordax"), 2)
+  )
   result <- assign_habitat_biological(occ, make_weights_specialist())
   expect_equal(nrow(result), nrow(occ))
 })
 
 test_that("main_habitat and habitat_best_guess columns are always present", {
-  occ    <- make_occ("pt1", "Gadus morhua")
+  occ <- make_occ("pt1", "Gadus morhua")
   result <- assign_habitat_biological(occ, make_weights_specialist())
   expect_true("main_habitat" %in% names(result))
   expect_true("habitat_best_guess" %in% names(result))
@@ -216,13 +227,15 @@ test_that("main_habitat and habitat_best_guess columns are always present", {
 
 test_that("multiple species at one point: majority habitat wins", {
   # pt1 has 2 Rocky + 1 Kelp -> Rocky wins
-  occ <- make_occ(c("pt1", "pt1", "pt1"),
-                  c("Gadus morhua", "Gadus morhua", "Sebastes mystinus"))
+  occ <- make_occ(
+    c("pt1", "pt1", "pt1"),
+    c("Gadus morhua", "Gadus morhua", "Sebastes mystinus")
+  )
   wts <- data.frame(
-    taxon_name     = c("Gadus morhua", "Sebastes mystinus"),
+    taxon_name = c("Gadus morhua", "Sebastes mystinus"),
     Rocky_Subtidal = c(1.0, 0.0),
-    Kelp_Forest    = c(0.0, 1.0),
-    Other_weight   = c(0.0, 0.0),
+    Kelp_Forest = c(0.0, 1.0),
+    Other_weight = c(0.0, 0.0),
     habitat_best_guess = c("", ""),
     stringsAsFactors = FALSE
   )
@@ -247,14 +260,14 @@ test_that("threshold above winning proportion -> NA assigned", {
 })
 
 test_that("point with no matched species gets NA and empty best_guess", {
-  occ    <- make_occ("pt1", "Unknown taxon XYZ")
+  occ <- make_occ("pt1", "Unknown taxon XYZ")
   result <- suppressWarnings(
     assign_habitat_biological(occ, make_weights_specialist())
   )
   expect_true(is.na(result$main_habitat[1]))
   # habitat_best_guess should be NA or "" (not populated since no Other match)
   expect_true(is.na(result$habitat_best_guess[1]) ||
-                result$habitat_best_guess[1] == "")
+    result$habitat_best_guess[1] == "")
 })
 
 test_that("warns when no species match lookup", {
@@ -282,7 +295,7 @@ test_that("habitat_best_guess populated when Other wins", {
 })
 
 test_that("habitat_best_guess is empty string when Other_weight = 0", {
-  occ    <- make_occ("pt1", "Gadus morhua")
+  occ <- make_occ("pt1", "Gadus morhua")
   result <- assign_habitat_biological(occ, make_weights_specialist())
   expect_equal(result$habitat_best_guess[1], "")
 })
@@ -295,7 +308,7 @@ test_that("multiple Other species: guesses concatenated with '; '", {
     habitat_best_guess = c("alpine meadow", "tundra"),
     stringsAsFactors   = FALSE
   )
-  occ    <- make_occ(c("pt1", "pt1"), c("Sp A", "Sp B"))
+  occ <- make_occ(c("pt1", "pt1"), c("Sp A", "Sp B"))
   result <- assign_habitat_biological(occ, wts, threshold = 0.3)
   expect_equal(result$main_habitat[1], "Other")
   expect_true(grepl("alpine meadow", result$habitat_best_guess[1]))
@@ -310,7 +323,7 @@ test_that("duplicate habitat_best_guess values are collapsed to unique", {
     habitat_best_guess = c("alpine meadow", "alpine meadow"),
     stringsAsFactors   = FALSE
   )
-  occ    <- make_occ(c("pt1", "pt1"), c("Sp A", "Sp B"))
+  occ <- make_occ(c("pt1", "pt1"), c("Sp A", "Sp B"))
   result <- assign_habitat_biological(occ, wts, threshold = 0.3)
   # Should not appear twice
   expect_false(grepl("alpine meadow.*alpine meadow", result$habitat_best_guess[1]))
@@ -333,8 +346,10 @@ test_that("generalist species splits weight correctly across two points", {
   # Oncorhynchus: 0.5 Ocean, 0.5 Freshwater
   # pt1: only Onco -> 0.5/0.5 tie -> first col wins (Ocean)
   # pt2: only Gadus -> 1.0 Ocean
-  occ <- make_occ(c("pt1", "pt2"),
-                  c("Oncorhynchus mykiss", "Gadus morhua"))
+  occ <- make_occ(
+    c("pt1", "pt2"),
+    c("Oncorhynchus mykiss", "Gadus morhua")
+  )
   result <- assign_habitat_biological(occ, make_weights_generalist(), threshold = 0.3)
   expect_equal(result$main_habitat[result$point_id == "pt2"], "Ocean")
   # pt1: tie -> first col wins; at threshold 0.3, 0.5 >= 0.3 -> assigned
@@ -353,7 +368,7 @@ test_that("mixed community: habitat with highest total weight wins", {
     habitat_best_guess = c("", ""),
     stringsAsFactors   = FALSE
   )
-  occ    <- make_occ(c("pt1", "pt1"), c("Gadus morhua", "Oncorhynchus mykiss"))
+  occ <- make_occ(c("pt1", "pt1"), c("Gadus morhua", "Oncorhynchus mykiss"))
   result <- assign_habitat_biological(occ, wts, threshold = 0.3)
   expect_equal(result$main_habitat[result$point_id == "pt1"][1], "Rocky_Subtidal")
 })
@@ -367,24 +382,28 @@ test_that("weight_by_abundance = FALSE: duplicate records do not increase influe
   # equal weight: Rocky = 1 species, Kelp = 1 species -> tie -> Rocky (first)
   # abundance weight: Rocky = 5 records, Kelp = 1 record -> Rocky wins clearly
   wts <- data.frame(
-    taxon_name     = c("Gadus morhua", "Sebastes mystinus"),
+    taxon_name = c("Gadus morhua", "Sebastes mystinus"),
     Rocky_Subtidal = c(1.0, 0.0),
-    Kelp_Forest    = c(0.0, 1.0),
-    Other_weight   = c(0.0, 0.0),
+    Kelp_Forest = c(0.0, 1.0),
+    Other_weight = c(0.0, 0.0),
     habitat_best_guess = c("", ""),
     stringsAsFactors = FALSE
   )
   occ_many_gadus <- make_occ(
     c("pt1", "pt1", "pt1", "pt1", "pt1", "pt1"),
-    c("Gadus morhua", "Gadus morhua", "Gadus morhua",
-      "Gadus morhua", "Gadus morhua", "Sebastes mystinus")
+    c(
+      "Gadus morhua", "Gadus morhua", "Gadus morhua",
+      "Gadus morhua", "Gadus morhua", "Sebastes mystinus"
+    )
   )
   result_equal <- assign_habitat_biological(occ_many_gadus, wts,
-                                            weight_by_abundance = FALSE,
-                                            threshold = 0.3)
+    weight_by_abundance = FALSE,
+    threshold = 0.3
+  )
   result_abund <- assign_habitat_biological(occ_many_gadus, wts,
-                                            weight_by_abundance = TRUE,
-                                            threshold = 0.3)
+    weight_by_abundance = TRUE,
+    threshold = 0.3
+  )
   # Both should assign Rocky (Gadus dominates either way in this case)
   expect_equal(result_equal$main_habitat[1], "Rocky_Subtidal")
   expect_equal(result_abund$main_habitat[1], "Rocky_Subtidal")
@@ -395,21 +414,24 @@ test_that("weight_by_abundance = TRUE: abundant species has more influence", {
   # equal weight: 1 Kelp species vs 1 Rocky species -> tie -> first col wins
   # abundance weight: Kelp = 4, Rocky = 1 -> Kelp wins clearly
   wts <- data.frame(
-    taxon_name     = c("Gadus morhua", "Sebastes mystinus"),
+    taxon_name = c("Gadus morhua", "Sebastes mystinus"),
     Rocky_Subtidal = c(1.0, 0.0),
-    Kelp_Forest    = c(0.0, 1.0),
-    Other_weight   = c(0.0, 0.0),
+    Kelp_Forest = c(0.0, 1.0),
+    Other_weight = c(0.0, 0.0),
     habitat_best_guess = c("", ""),
-    stringsAsFactors   = FALSE
+    stringsAsFactors = FALSE
   )
   occ_many_seb <- make_occ(
     c("pt1", "pt1", "pt1", "pt1", "pt1"),
-    c("Gadus morhua", "Sebastes mystinus", "Sebastes mystinus",
-      "Sebastes mystinus", "Sebastes mystinus")
+    c(
+      "Gadus morhua", "Sebastes mystinus", "Sebastes mystinus",
+      "Sebastes mystinus", "Sebastes mystinus"
+    )
   )
   result_abund <- assign_habitat_biological(occ_many_seb, wts,
-                                            weight_by_abundance = TRUE,
-                                            threshold = 0.3)
+    weight_by_abundance = TRUE,
+    threshold = 0.3
+  )
   expect_equal(result_abund$main_habitat[1], "Kelp_Forest")
 })
 
@@ -429,17 +451,23 @@ test_that("each point is assigned independently", {
 })
 
 test_that("main_habitat value is repeated for all rows at same point_id", {
-  occ <- make_occ(c("pt1", "pt1", "pt1"),
-                  c("Gadus morhua", "Gadus morhua", "Gadus morhua"))
+  occ <- make_occ(
+    c("pt1", "pt1", "pt1"),
+    c("Gadus morhua", "Gadus morhua", "Gadus morhua")
+  )
   result <- assign_habitat_biological(occ, make_weights_specialist(), threshold = 0.3)
   expect_true(length(unique(result$main_habitat)) == 1L)
   expect_equal(unique(result$main_habitat), "Rocky_Subtidal")
 })
 
 test_that("result has correct number of distinct point_ids", {
-  occ <- make_occ(c("pt1", "pt1", "pt2", "pt3"),
-                  c("Gadus morhua", "Sebastes mystinus",
-                    "Gadus morhua", "Engraulis mordax"))
+  occ <- make_occ(
+    c("pt1", "pt1", "pt2", "pt3"),
+    c(
+      "Gadus morhua", "Sebastes mystinus",
+      "Gadus morhua", "Engraulis mordax"
+    )
+  )
   result <- assign_habitat_biological(occ, make_weights_specialist(), threshold = 0.3)
   expect_equal(length(unique(result$point_id)), 3L)
 })
@@ -453,8 +481,9 @@ test_that("explicit habitat_cols restricts which columns are used", {
   wts <- make_weights_specialist()
   occ <- make_occ("pt2", "Sebastes mystinus")
   result <- assign_habitat_biological(occ, wts,
-                                      habitat_cols = c("Rocky_Subtidal"),
-                                      threshold = 0.3)
+    habitat_cols = c("Rocky_Subtidal"),
+    threshold = 0.3
+  )
   # Sebastes has 0 weight in Rocky -> no consensus
   expect_true(is.na(result$main_habitat[1]))
 })
@@ -464,10 +493,13 @@ test_that("explicit habitat_cols with Other_weight translated from Other_weight"
   occ <- make_occ("pt1", "Mystery sp.")
   # Supply "Other_weight" explicitly -- function translates to "Other" internally
   result <- assign_habitat_biological(occ, wts,
-                                      habitat_cols = c("Rocky_Subtidal",
-                                                       "Pelagic",
-                                                       "Other_weight"),
-                                      threshold = 0.3)
+    habitat_cols = c(
+      "Rocky_Subtidal",
+      "Pelagic",
+      "Other_weight"
+    ),
+    threshold = 0.3
+  )
   expect_equal(result$main_habitat[1], "Other")
 })
 
@@ -477,21 +509,22 @@ test_that("explicit habitat_cols with Other_weight translated from Other_weight"
 
 test_that("custom point_id_col and taxon_col are respected", {
   occ <- data.frame(
-    site       = "s1",
-    species    = "Gadus morhua",
+    site = "s1",
+    species = "Gadus morhua",
     stringsAsFactors = FALSE
   )
   wts <- data.frame(
-    species        = "Gadus morhua",
+    species = "Gadus morhua",
     Rocky_Subtidal = 1.0,
-    Other_weight   = 0.0,
+    Other_weight = 0.0,
     habitat_best_guess = "",
     stringsAsFactors = FALSE
   )
   result <- assign_habitat_biological(occ, wts,
-                                      point_id_col = "site",
-                                      taxon_col    = "species",
-                                      threshold    = 0.3)
+    point_id_col = "site",
+    taxon_col    = "species",
+    threshold    = 0.3
+  )
   expect_equal(result$main_habitat[1], "Rocky_Subtidal")
 })
 
@@ -501,7 +534,7 @@ test_that("custom point_id_col and taxon_col are respected", {
 
 test_that("pre-existing main_habitat column in data is silently replaced", {
   occ <- data.frame(
-    point_id   = "pt1",
+    point_id = "pt1",
     taxon_name = "Gadus morhua",
     main_habitat = "OldValue",
     stringsAsFactors = FALSE
@@ -523,15 +556,15 @@ test_that("zero-match path returns data with NA main_habitat and NA habitat_best
   expect_true(is.na(result$main_habitat[1]))
   # NA or empty string -- both acceptable on the zero-match path
   expect_true(is.na(result$habitat_best_guess[1]) ||
-                result$habitat_best_guess[1] == "")
+    result$habitat_best_guess[1] == "")
 })
 
 test_that("zero-match path preserves all original columns", {
   occ <- data.frame(
-    point_id   = "pt1",
+    point_id = "pt1",
     taxon_name = "Unknown sp.",
-    lat        = 34.5,
-    lon        = -120.1,
+    lat = 34.5,
+    lon = -120.1,
     stringsAsFactors = FALSE
   )
   result <- suppressWarnings(

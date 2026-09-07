@@ -92,37 +92,37 @@
   ),
   l2_code = c(
     # Forest
-    "1.1","1.2","1.3","1.4","1.5","1.6","1.7","1.8","1.9",
+    "1.1", "1.2", "1.3", "1.4", "1.5", "1.6", "1.7", "1.8", "1.9",
     # Savanna
-    "2.1","2.2",
+    "2.1", "2.2",
     # Shrubland
-    "3.1","3.2","3.3","3.4","3.5","3.6","3.7","3.8",
+    "3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7", "3.8",
     # Grassland
-    "4.1","4.2","4.3","4.4","4.5","4.6","4.7",
+    "4.1", "4.2", "4.3", "4.4", "4.5", "4.6", "4.7",
     # Wetlands (inland)
-    "5.1","5.2","5.3","5.4","5.5","5.6","5.7","5.8","5.9",
-    "5.10","5.11","5.12","5.13","5.14","5.15","5.16","5.17","5.18",
+    "5.1", "5.2", "5.3", "5.4", "5.5", "5.6", "5.7", "5.8", "5.9",
+    "5.10", "5.11", "5.12", "5.13", "5.14", "5.15", "5.16", "5.17", "5.18",
     # Rocky Areas (inland) -- no L2 code in the real scheme
     NA_character_,
     # Caves
-    "7.1","7.2",
+    "7.1", "7.2",
     # Desert
-    "8.1","8.2","8.3",
+    "8.1", "8.2", "8.3",
     # Marine Neritic
-    "9.1","9.2","9.3","9.4","9.5","9.6","9.7","9.8","9.9","9.10",
+    "9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7", "9.8", "9.9", "9.10",
     # Marine Oceanic
-    "10.1","10.2","10.3","10.4",
+    "10.1", "10.2", "10.3", "10.4",
     # Marine Deep Ocean Floor
-    "11.1","11.2","11.3","11.4","11.5","11.6",
+    "11.1", "11.2", "11.3", "11.4", "11.5", "11.6",
     # Marine Intertidal
-    "12.1","12.2","12.3","12.4","12.5","12.6","12.7",
+    "12.1", "12.2", "12.3", "12.4", "12.5", "12.6", "12.7",
     # Marine Coastal/Supratidal
-    "13.1","13.2","13.3","13.4","13.5",
+    "13.1", "13.2", "13.3", "13.4", "13.5",
     # Artificial - Terrestrial
-    "14.1","14.2","14.3","14.4","14.5","14.6",
+    "14.1", "14.2", "14.3", "14.4", "14.5", "14.6",
     # Artificial - Aquatic
-    "15.1","15.2","15.3","15.4","15.5","15.6",
-    "15.7","15.8","15.9","15.10","15.11","15.12","15.13",
+    "15.1", "15.2", "15.3", "15.4", "15.5", "15.6",
+    "15.7", "15.8", "15.9", "15.10", "15.11", "15.12", "15.13",
     # Introduced Vegetation -- no L2 code in the real scheme
     NA_character_,
     # Other -- no L2 code in the real scheme
@@ -380,15 +380,13 @@
 #' # View the raw prompt text for the first chunk
 #' cat(prompt$prompts[[1]])
 #' }
-
 build_habitat_prompt <- function(
-    taxon_list,
-    extra_covariates    = character(0),
-    chunk_size          = 60L,
-    habitat_scheme      = NULL,
-    geographic_context  = NULL
+  taxon_list,
+  extra_covariates = character(0),
+  chunk_size = 60L,
+  habitat_scheme = NULL,
+  geographic_context = NULL
 ) {
-
   if (!is.character(taxon_list) || length(taxon_list) == 0) {
     stop("build_habitat_prompt: 'taxon_list' must be a non-empty character vector.")
   }
@@ -400,7 +398,7 @@ build_habitat_prompt <- function(
   }
   if (!is.null(geographic_context)) {
     if (!is.character(geographic_context) || length(geographic_context) != 1L ||
-        is.na(geographic_context) || !nzchar(trimws(geographic_context))) {
+      is.na(geographic_context) || !nzchar(trimws(geographic_context))) {
       stop("build_habitat_prompt: 'geographic_context' must be NULL or a non-empty string.")
     }
   }
@@ -413,7 +411,7 @@ build_habitat_prompt <- function(
       l1_name = c("Marine", "Freshwater", "Terrestrial"),
       l2_name = NA_character_,
       l2_code = NA_character_,
-      realm   = c("marine", "freshwater", "terrestrial"),
+      realm = c("marine", "freshwater", "terrestrial"),
       stringsAsFactors = FALSE
     )
   } else if (identical(habitat_scheme, "IUCN_L1")) {
@@ -422,7 +420,7 @@ build_habitat_prompt <- function(
       l1_name = unique(.iucn_habitat_lookup$l1_name),
       l2_name = NA_character_,
       l2_code = NA_character_,
-      realm   = .l1_to_realm(unique(.iucn_habitat_lookup$l1_name)),
+      realm = .l1_to_realm(unique(.iucn_habitat_lookup$l1_name)),
       stringsAsFactors = FALSE
     )
   }
@@ -436,9 +434,9 @@ build_habitat_prompt <- function(
 
   taxon_list <- trimws(taxon_list)
   taxon_list <- taxon_list[nzchar(taxon_list)]
-  n_input    <- length(taxon_list)
+  n_input <- length(taxon_list)
   taxon_list <- unique(taxon_list)
-  n_deduped  <- n_input - length(taxon_list)
+  n_deduped <- n_input - length(taxon_list)
   if (n_deduped > 0L) {
     message(sprintf(
       "build_habitat_prompt: removed %d duplicate taxon name(s) (%d unique of %d input).",
@@ -455,28 +453,30 @@ build_habitat_prompt <- function(
   # Two-level custom schemes: l2_name only (all rows have an l2_name).
   # Single-level schemes: l1_name only (all l2_name are NA).
   has_l1_only_rows <- any(is.na(scheme$l2_name))
-  has_l2_rows      <- any(!is.na(scheme$l2_name) & nzchar(trimws(scheme$l2_name)))
+  has_l2_rows <- any(!is.na(scheme$l2_name) & nzchar(trimws(scheme$l2_name)))
 
   if (has_l2_rows && has_l1_only_rows) {
     # Mixed scheme: L2 names + L1 fallback names
-    l2_cols      <- scheme$l2_name[!is.na(scheme$l2_name) & nzchar(trimws(scheme$l2_name))]
-    l1_cols      <- scheme$l1_name[is.na(scheme$l2_name)]
+    l2_cols <- scheme$l2_name[!is.na(scheme$l2_name) & nzchar(trimws(scheme$l2_name))]
+    l1_cols <- scheme$l1_name[is.na(scheme$l2_name)]
     habitat_cols <- unique(c(l2_cols, l1_cols))
   } else if (has_l2_rows) {
     # Pure two-level custom scheme
     habitat_cols <- unique(scheme$l2_name[!is.na(scheme$l2_name) &
-                                            nzchar(trimws(scheme$l2_name))])
+      nzchar(trimws(scheme$l2_name))])
   } else {
     # Single-level scheme (all l2_name NA)
     habitat_cols <- unique(scheme$l1_name)
   }
 
-  chunks   <- split(taxon_list, ceiling(seq_along(taxon_list) / chunk_size))
+  chunks <- split(taxon_list, ceiling(seq_along(taxon_list) / chunk_size))
   n_chunks <- length(chunks)
 
   prompts <- lapply(chunks, function(chunk_taxa) {
-    .build_single_prompt(chunk_taxa, extra_covariates, scheme, habitat_cols,
-                         geographic_context)
+    .build_single_prompt(
+      chunk_taxa, extra_covariates, scheme, habitat_cols,
+      geographic_context
+    )
   })
 
   structure(
@@ -510,9 +510,11 @@ print.habitat_prompt <- function(x, ...) {
     cat(sprintf("  Chunks:      1 (chunk_size = %d)\n", x$chunk_size))
   } else {
     chunk_sizes <- vapply(x$chunks, length, integer(1))
-    cat(sprintf("  Chunks:      %d (chunk_size = %d, sizes: %s)\n",
-                x$n_chunks, x$chunk_size,
-                paste(chunk_sizes, collapse = ", ")))
+    cat(sprintf(
+      "  Chunks:      %d (chunk_size = %d, sizes: %s)\n",
+      x$n_chunks, x$chunk_size,
+      paste(chunk_sizes, collapse = ", ")
+    ))
   }
   cat(sprintf("  Habitats:    %d columns (+ Other_weight)\n", length(x$habitat_cols)))
   if (!is.null(x$geographic_context)) {
@@ -523,8 +525,10 @@ print.habitat_prompt <- function(x, ...) {
   } else {
     cat("  Covariates:  (none)\n")
   }
-  cat(sprintf("  Prompt tokens (approx): ~%d per chunk\n",
-              nchar(x$prompts[[1]]) %/% 4L))
+  cat(sprintf(
+    "  Prompt tokens (approx): ~%d per chunk\n",
+    nchar(x$prompts[[1]]) %/% 4L
+  ))
   invisible(x)
 }
 
@@ -536,8 +540,7 @@ print.habitat_prompt <- function(x, ...) {
 #' Build one prompt string for a chunk of taxa
 #' @noRd
 .build_single_prompt <- function(taxon_chunk, extra_covariates, scheme, habitat_cols,
-                                geographic_context = NULL) {
-
+                                 geographic_context = NULL) {
   species_block <- paste(paste0('"', trimws(taxon_chunk), '"'), collapse = ", ")
 
   # ---- Shared weight-column instructions -------------------------------------
@@ -586,7 +589,9 @@ print.habitat_prompt <- function(x, ...) {
         "'Chesapeake Bay'). Use the same ecoregion for co-occurring species. ",
         "Leave blank if the species is not associated with the geographic context.\n"
       )
-    } else "",
+    } else {
+      ""
+    },
     "\n"
   )
 
@@ -604,9 +609,11 @@ print.habitat_prompt <- function(x, ...) {
   # ---- Build required columns string ----------------------------------------
   # taxon_name | [habitat cols...] | Other_weight | habitat_best_guess | [extra covariates]
   required_cols <- paste(
-    c("taxon_name", habitat_cols, "Other_weight", "habitat_best_guess",
+    c(
+      "taxon_name", habitat_cols, "Other_weight", "habitat_best_guess",
       if (!is.null(geographic_context)) "ecoregion_best_guess",
-      extra_covariates),
+      extra_covariates
+    ),
     collapse = ", "
   )
 
@@ -626,10 +633,12 @@ print.habitat_prompt <- function(x, ...) {
     # every L1 fallback row).
     display_name <- ifelse(is.na(scheme$l2_name), scheme$l1_name, scheme$l2_name)
     hab_block <- paste(
-      sprintf("  %-20s %s  [%s]",
-              ifelse(is.na(scheme$l2_code), "", scheme$l2_code),
-              display_name,
-              scheme$l1_name),
+      sprintf(
+        "  %-20s %s  [%s]",
+        ifelse(is.na(scheme$l2_code), "", scheme$l2_code),
+        display_name,
+        scheme$l1_name
+      ),
       collapse = "\n"
     )
     class_header <- "HABITAT CLASSES:\n(format: code  name  [group])\n"
@@ -638,7 +647,7 @@ print.habitat_prompt <- function(x, ...) {
       "(e.g. '", habitat_cols[1], "').\n\n"
     )
   } else {
-    hab_block    <- paste(sprintf("  %s", scheme$l1_name), collapse = "\n")
+    hab_block <- paste(sprintf("  %s", scheme$l1_name), collapse = "\n")
     class_header <- "HABITAT CLASSES:\n"
     col_note <- paste0(
       "The column name for each habitat is its exact name as listed above ",
@@ -666,7 +675,9 @@ print.habitat_prompt <- function(x, ...) {
         "These species were observed in or near: ", geographic_context, "\n",
         "Use this to resolve habitat ambiguities for widely-distributed taxa.\n\n"
       )
-    } else "",
+    } else {
+      ""
+    },
     "SPECIES LIST:\n",
     species_block
   )
@@ -683,7 +694,6 @@ print.habitat_prompt <- function(x, ...) {
 #' Ensures required column exists; pads optional columns with NA if absent.
 #' @noRd
 .validate_habitat_scheme <- function(scheme) {
-
   if (is.null(scheme)) {
     stop(
       ".validate_habitat_scheme: received NULL scheme. ",
@@ -706,11 +716,11 @@ print.habitat_prompt <- function(x, ...) {
   # Pad optional columns with NA if absent
   if (!"l2_code" %in% names(scheme)) scheme$l2_code <- NA_character_
   if (!"l2_name" %in% names(scheme)) scheme$l2_name <- NA_character_
-  if (!"realm"   %in% names(scheme)) scheme$realm   <- NA_character_
+  if (!"realm" %in% names(scheme)) scheme$realm <- NA_character_
 
   # Validate realm values where supplied
   valid_realms <- c("marine", "freshwater", "terrestrial", NA)
-  bad_realms   <- !scheme$realm %in% valid_realms
+  bad_realms <- !scheme$realm %in% valid_realms
   if (any(bad_realms)) {
     stop(sprintf(
       "habitat_scheme: 'realm' column contains invalid values: %s. Use 'marine', 'freshwater', or 'terrestrial'.",
@@ -842,7 +852,6 @@ example_habitat_scheme <- data.frame(
 )
 
 
-
 #' Map IUCN L1 group names to realm values for flag_habitat_inconsistencies
 #'
 #' Only "marine", "freshwater", and "terrestrial" are valid values for the
@@ -857,18 +866,25 @@ example_habitat_scheme <- data.frame(
 #' NA does not silently misclassify anything downstream.
 #' @noRd
 .l1_to_realm <- function(l1_names) {
-  marine_groups <- c("Marine Neritic", "Marine Oceanic",
-                     "Marine Deep Ocean Floor", "Marine Intertidal",
-                     "Marine Coastal/Supratidal")
+  marine_groups <- c(
+    "Marine Neritic", "Marine Oceanic",
+    "Marine Deep Ocean Floor", "Marine Intertidal",
+    "Marine Coastal/Supratidal"
+  )
   freshwater_groups <- c("Wetlands (inland)")
-  terrestrial_groups <- c("Forest", "Savanna", "Shrubland", "Grassland",
-                          "Rocky Areas (inland)",
-                          "Caves and Subterranean Habitats", "Desert",
-                          "Introduced Vegetation", "Artificial - Terrestrial")
+  terrestrial_groups <- c(
+    "Forest", "Savanna", "Shrubland", "Grassland",
+    "Rocky Areas (inland)",
+    "Caves and Subterranean Habitats", "Desert",
+    "Introduced Vegetation", "Artificial - Terrestrial"
+  )
   ifelse(l1_names %in% marine_groups, "marine",
-         ifelse(l1_names %in% freshwater_groups, "freshwater",
-                ifelse(l1_names %in% terrestrial_groups, "terrestrial",
-                       NA_character_)))
+    ifelse(l1_names %in% freshwater_groups, "freshwater",
+      ifelse(l1_names %in% terrestrial_groups, "terrestrial",
+        NA_character_
+      )
+    )
+  )
 }
 
 
@@ -972,27 +988,32 @@ example_habitat_scheme <- data.frame(
 #' # Build a specific marine scheme with selected L2 subcategories
 #' scheme <- build_iucn_scheme(
 #'   realm = "marine",
-#'   l2    = c("Subtidal Rock and Rocky Reefs", "Estuaries", "Macroalgal/Kelp",
-#'             "Subtidal Sandy", "Rocky Shoreline")
+#'   l2 = c(
+#'     "Subtidal Rock and Rocky Reefs", "Estuaries", "Macroalgal/Kelp",
+#'     "Subtidal Sandy", "Rocky Shoreline"
+#'   )
 #' )
 #' print(scheme)
-#' taxa   <- c("Gadus morhua", "Oncorhynchus mykiss")
+#' taxa <- c("Gadus morhua", "Oncorhynchus mykiss")
 #' prompt <- build_habitat_prompt(taxa, habitat_scheme = scheme)
 build_iucn_scheme <- function(realm = NULL,
-                              l1    = "all",
-                              l2    = "none") {
-
+                              l1 = "all",
+                              l2 = "none") {
   # ---------------------------------------------------------------------------
   # Realm groupings
   # ---------------------------------------------------------------------------
   .realm_to_l1 <- list(
-    marine      = c("Marine Neritic", "Marine Oceanic", "Marine Deep Ocean Floor",
-                    "Marine Intertidal", "Marine Coastal/Supratidal"),
-    freshwater  = c("Wetlands (inland)"),
-    terrestrial = c("Forest", "Savanna", "Shrubland", "Grassland",
-                    "Rocky Areas (inland)", "Caves and Subterranean Habitats",
-                    "Desert", "Introduced Vegetation"),
-    artificial  = c("Artificial - Terrestrial", "Artificial - Aquatic")
+    marine = c(
+      "Marine Neritic", "Marine Oceanic", "Marine Deep Ocean Floor",
+      "Marine Intertidal", "Marine Coastal/Supratidal"
+    ),
+    freshwater = c("Wetlands (inland)"),
+    terrestrial = c(
+      "Forest", "Savanna", "Shrubland", "Grassland",
+      "Rocky Areas (inland)", "Caves and Subterranean Habitats",
+      "Desert", "Introduced Vegetation"
+    ),
+    artificial = c("Artificial - Terrestrial", "Artificial - Aquatic")
   )
   # "Other" and "Unknown" excluded from realm filters; must be requested via l1
 
@@ -1003,7 +1024,7 @@ build_iucn_scheme <- function(realm = NULL,
   # ---------------------------------------------------------------------------
   if (!is.null(realm)) {
     if (!is.character(realm) || length(realm) != 1L ||
-        !realm %in% valid_realms) {
+      !realm %in% valid_realms) {
       stop(sprintf(
         "build_iucn_scheme: 'realm' must be one of: %s, or NULL.\nGot: %s",
         paste(valid_realms, collapse = ", "),
@@ -1030,7 +1051,7 @@ build_iucn_scheme <- function(realm = NULL,
 
   if (!is.null(realm)) {
     realm_l1 <- .realm_to_l1[[realm]]
-    lookup   <- lookup[lookup$l1_name %in% realm_l1, , drop = FALSE]
+    lookup <- lookup[lookup$l1_name %in% realm_l1, , drop = FALSE]
   } else {
     # Exclude Other/Unknown unless explicitly requested
     lookup <- lookup[!lookup$l1_name %in% c("Other", "Unknown"), , drop = FALSE]
@@ -1057,8 +1078,10 @@ build_iucn_scheme <- function(realm = NULL,
     if (length(bad_l1) > 0L) {
       # Helpful error: show valid options in the current realm scope
       stop(sprintf(
-        paste0("build_iucn_scheme: unrecognised L1 name(s)%s: %s\n",
-               "Available L1 groups%s:\n  %s"),
+        paste0(
+          "build_iucn_scheme: unrecognised L1 name(s)%s: %s\n",
+          "Available L1 groups%s:\n  %s"
+        ),
         if (!is.null(realm)) sprintf(" in realm '%s'", realm) else "",
         paste(bad_l1, collapse = ", "),
         if (!is.null(realm)) sprintf(" (realm = '%s')", realm) else "",
@@ -1081,7 +1104,7 @@ build_iucn_scheme <- function(realm = NULL,
       # Check if they exist in a different realm/l1 to give a useful hint
       all_lookup_l2 <- unique(.iucn_habitat_lookup$l2_name)
       exists_elsewhere <- intersect(bad_l2, all_lookup_l2)
-      not_in_iucn      <- setdiff(bad_l2, all_lookup_l2)
+      not_in_iucn <- setdiff(bad_l2, all_lookup_l2)
 
       msg <- sprintf(
         "build_iucn_scheme: unrecognised L2 name(s)%s: %s",
@@ -1094,16 +1117,23 @@ build_iucn_scheme <- function(realm = NULL,
           rows <- .iucn_habitat_lookup[.iucn_habitat_lookup$l2_name == nm, ]
           paste(unique(rows$l1_name), collapse = " / ")
         }, character(1))
-        msg <- paste0(msg, "\nThese exist under a different L1 group:\n",
-                      paste(sprintf("  '%s' -> parent: %s", exists_elsewhere, parents),
-                            collapse = "\n"))
+        msg <- paste0(
+          msg, "\nThese exist under a different L1 group:\n",
+          paste(sprintf("  '%s' -> parent: %s", exists_elsewhere, parents),
+            collapse = "\n"
+          )
+        )
       }
       if (length(not_in_iucn) > 0L) {
-        msg <- paste0(msg, "\nThese are not in the IUCN classification at all: ",
-                      paste(not_in_iucn, collapse = ", "))
+        msg <- paste0(
+          msg, "\nThese are not in the IUCN classification at all: ",
+          paste(not_in_iucn, collapse = ", ")
+        )
       }
-      msg <- paste0(msg, "\nAvailable L2 names in current scope:\n  ",
-                    paste(all_l2_in_scope, collapse = "\n  "))
+      msg <- paste0(
+        msg, "\nAvailable L2 names in current scope:\n  ",
+        paste(all_l2_in_scope, collapse = "\n  ")
+      )
       stop(msg)
     }
     selected_l2 <- l2
@@ -1131,21 +1161,25 @@ build_iucn_scheme <- function(realm = NULL,
   # Step 4: handle duplicate L2 names (disambiguate with L1 parent)
   # ---------------------------------------------------------------------------
   if (length(selected_l2) > 0L) {
-    l2_rows    <- lookup[lookup$l2_name %in% selected_l2, , drop = FALSE]
-    dup_l2     <- l2_rows$l2_name[duplicated(l2_rows$l2_name)]
+    l2_rows <- lookup[lookup$l2_name %in% selected_l2, , drop = FALSE]
+    dup_l2 <- l2_rows$l2_name[duplicated(l2_rows$l2_name)]
     if (length(dup_l2) > 0L) {
       message(sprintf(
-        paste0("build_iucn_scheme: %d L2 name(s) appear under multiple L1 groups ",
-               "and have been disambiguated with '(L1 parent)': %s"),
+        paste0(
+          "build_iucn_scheme: %d L2 name(s) appear under multiple L1 groups ",
+          "and have been disambiguated with '(L1 parent)': %s"
+        ),
         length(unique(dup_l2)),
         paste(unique(dup_l2), collapse = ", ")
       ))
       # Rename duplicates in the lookup subset
       for (i in seq_len(nrow(l2_rows))) {
         if (l2_rows$l2_name[i] %in% dup_l2) {
-          l2_rows$l2_name[i] <- sprintf("%s (%s)",
-                                         l2_rows$l2_name[i],
-                                         l2_rows$l1_name[i])
+          l2_rows$l2_name[i] <- sprintf(
+            "%s (%s)",
+            l2_rows$l2_name[i],
+            l2_rows$l1_name[i]
+          )
         }
       }
     }
@@ -1175,7 +1209,7 @@ build_iucn_scheme <- function(realm = NULL,
       l1_name = selected_l1,
       l2_name = NA_character_,
       l2_code = NA_character_,
-      realm   = if (!is.null(realm)) realm else .l1_to_realm(selected_l1),
+      realm = if (!is.null(realm)) realm else .l1_to_realm(selected_l1),
       stringsAsFactors = FALSE
     )
   } else {
@@ -1187,7 +1221,7 @@ build_iucn_scheme <- function(realm = NULL,
       l1_name = l2_rows$l1_name,
       l2_name = l2_rows$l2_name,
       l2_code = l2_rows$l2_code,
-      realm   = if (!is.null(realm)) realm else .l1_to_realm(l2_rows$l1_name),
+      realm = if (!is.null(realm)) realm else .l1_to_realm(l2_rows$l1_name),
       stringsAsFactors = FALSE
     )
   } else {
@@ -1217,10 +1251,14 @@ build_iucn_scheme <- function(realm = NULL,
     for (grp in unique(rows_l2$l1_name)) {
       sub <- rows_l2[rows_l2$l1_name == grp, , drop = FALSE]
       cat(sprintf("  [%s]\n", grp))
-      cat(paste(sprintf("    %s  %s",
-                        ifelse(is.na(sub$l2_code), "    ", sub$l2_code),
-                        sub$l2_name),
-                collapse = "\n"), "\n")
+      cat(paste(
+        sprintf(
+          "    %s  %s",
+          ifelse(is.na(sub$l2_code), "    ", sub$l2_code),
+          sub$l2_name
+        ),
+        collapse = "\n"
+      ), "\n")
     }
   }
   cat("\nPass to build_habitat_prompt(taxa, habitat_scheme = scheme)\n")
@@ -1300,17 +1338,16 @@ build_iucn_scheme <- function(realm = NULL,
 #' @examples
 #' \dontrun{
 #' taxa <- unique(occurrence_data$taxon_name)
-#' sp   <- build_scheme_prompt(taxa, realm = "marine")
+#' sp <- build_scheme_prompt(taxa, realm = "marine")
 #' print(sp)
-#' raw    <- TaxaTools::prompt_api(sp)
+#' raw <- TaxaTools::prompt_api(sp)
 #' scheme <- parse_scheme_response(raw, sp)
 #' print(scheme)
 #' }
 build_scheme_prompt <- function(taxon_list,
                                 min_habitats = 2L,
                                 max_habitats = 10L,
-                                realm        = NULL) {
-
+                                realm = NULL) {
   if (!is.character(taxon_list) || length(taxon_list) == 0) {
     stop("build_scheme_prompt: 'taxon_list' must be a non-empty character vector.")
   }
@@ -1330,8 +1367,8 @@ build_scheme_prompt <- function(taxon_list,
     }
   }
 
-  taxon_list   <- unique(trimws(taxon_list))
-  taxon_list   <- taxon_list[nzchar(taxon_list)]
+  taxon_list <- unique(trimws(taxon_list))
+  taxon_list <- taxon_list[nzchar(taxon_list)]
   min_habitats <- as.integer(min_habitats)
   max_habitats <- as.integer(max_habitats)
 
@@ -1416,15 +1453,19 @@ build_scheme_prompt <- function(taxon_list,
 print.scheme_prompt <- function(x, ...) {
   cat("<scheme_prompt>\n")
   cat(sprintf("  Taxa:         %d species\n", length(x$taxa)))
-  cat(sprintf("  Habitats:     %d to %d categories requested\n",
-              x$min_habitats, x$max_habitats))
+  cat(sprintf(
+    "  Habitats:     %d to %d categories requested\n",
+    x$min_habitats, x$max_habitats
+  ))
   if (!is.null(x$realm)) {
     cat(sprintf("  Realm hint:   %s\n", x$realm))
   } else {
     cat("  Realm hint:   (none -- LLM infers from taxa)\n")
   }
-  cat(sprintf("  Prompt tokens (approx): ~%d\n",
-              nchar(x$prompts[[1]]) %/% 4L))
+  cat(sprintf(
+    "  Prompt tokens (approx): ~%d\n",
+    nchar(x$prompts[[1]]) %/% 4L
+  ))
   invisible(x)
 }
 
@@ -1475,15 +1516,14 @@ print.scheme_prompt <- function(x, ...) {
 #'
 #' @examples
 #' \dontrun{
-#' sp     <- build_scheme_prompt(taxa, realm = "marine")
-#' raw    <- TaxaTools::prompt_api(sp)
+#' sp <- build_scheme_prompt(taxa, realm = "marine")
+#' raw <- TaxaTools::prompt_api(sp)
 #' scheme <- parse_scheme_response(raw, sp)
 #' print(scheme)
 #' }
 parse_scheme_response <- function(raw_text, scheme_prompt = NULL) {
-
   if (!is.character(raw_text) || length(raw_text) != 1L ||
-      !nzchar(trimws(raw_text))) {
+    !nzchar(trimws(raw_text))) {
     stop("parse_scheme_response: 'raw_text' must be a length-1 non-empty string.")
   }
 
@@ -1498,7 +1538,7 @@ parse_scheme_response <- function(raw_text, scheme_prompt = NULL) {
   lines <- trimws(strsplit(txt, "\n")[[1]])
   lines <- lines[nzchar(lines)]
   hdr_idx <- which(grepl("habitat_name", lines, ignore.case = TRUE) &
-                     grepl(",", lines, fixed = TRUE))[1]
+    grepl(",", lines, fixed = TRUE))[1]
 
   if (is.na(hdr_idx)) {
     stop(
@@ -1510,16 +1550,18 @@ parse_scheme_response <- function(raw_text, scheme_prompt = NULL) {
   # Trim preamble/postamble
   lines <- lines[hdr_idx:length(lines)]
   is_data <- grepl(",", lines, fixed = TRUE) | seq_along(lines) == 1L
-  lines   <- lines[1:max(which(is_data))]
+  lines <- lines[1:max(which(is_data))]
 
   # Strip duplicate headers (shouldn't happen for single-chunk but be safe)
   header <- lines[1L]
-  lines  <- c(header, lines[-1L][lines[-1L] != header])
+  lines <- c(header, lines[-1L][lines[-1L] != header])
 
   parsed <- tryCatch(
-    utils::read.csv(text = paste(lines, collapse = "\n"),
-                    stringsAsFactors = FALSE, strip.white = TRUE,
-                    na.strings = c("", "NA", "N/A")),
+    utils::read.csv(
+      text = paste(lines, collapse = "\n"),
+      stringsAsFactors = FALSE, strip.white = TRUE,
+      na.strings = c("", "NA", "N/A")
+    ),
     error = function(e) {
       stop("parse_scheme_response: CSV parsing failed: ", e$message, call. = FALSE)
     }
@@ -1580,7 +1622,7 @@ parse_scheme_response <- function(raw_text, scheme_prompt = NULL) {
     l1_name = parsed$habitat_name,
     l2_name = NA_character_,
     l2_code = NA_character_,
-    realm   = parsed$realm,
+    realm = parsed$realm,
     stringsAsFactors = FALSE
   )
 

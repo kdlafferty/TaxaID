@@ -31,11 +31,10 @@
 #' @noRd
 
 .build_habitat_pts <- function(data, habitat_col, lat_col, lon_col,
-                                taxon_col, max_species = 10L) {
-
+                               taxon_col, max_species = 10L) {
   pts <- data.frame(
-    lon     = as.numeric(data[[lon_col]]),
-    lat     = as.numeric(data[[lat_col]]),
+    lon = as.numeric(data[[lon_col]]),
+    lat = as.numeric(data[[lat_col]]),
     habitat = as.character(data[[habitat_col]]),
     stringsAsFactors = FALSE
   )
@@ -69,9 +68,11 @@
 
   # Drop only genuinely unmappable rows (no coordinates or no point identity).
   keep <- !is.na(pts$lon) & !is.na(pts$lat) & !is.na(pts$point_id)
-  pts  <- pts[keep, ]
+  pts <- pts[keep, ]
 
-  if (nrow(pts) == 0L) return(pts)
+  if (nrow(pts) == 0L) {
+    return(pts)
+  }
 
   # Aggregate species per point_id before deduplication
   if (!is.null(taxon_col) && "taxon" %in% names(pts)) {
@@ -80,7 +81,9 @@
       pts$point_id,
       function(x) {
         spp <- sort(unique(x[!is.na(x) & nzchar(x)]))
-        if (length(spp) == 0L) return("(none)")
+        if (length(spp) == 0L) {
+          return("(none)")
+        }
         if (length(spp) > max_species) {
           paste0(
             paste(spp[seq_len(max_species)], collapse = ", "),
@@ -120,22 +123,21 @@
 # draw from the same fixed sequence -- extending never means duplicating this
 # literal in two places and letting them drift apart.
 .eco_habitat_colors <- c(
-  "#2166ac",  # deep blue      -- Marine
-  "#74add1",  # mid blue       -- Marine Neritic / Freshwater
-  "#4dac26",  # green          -- Terrestrial / Forest
-  "#d6604d",  # terracotta     -- Rocky / Arid
-  "#8073ac",  # purple         -- Subterranean / Cave
-  "#f4a582",  # peach          -- Estuarine / Coastal
-  "#1b7837",  # dark green     -- Woodland / Savanna
-  "#bf812d",  # brown          -- Grassland / Desert
-  "#35978f",  # teal           -- Wetlands
-  "#de77ae",  # pink           -- Artificial
-  "#fdbf6f",  # amber          -- Introduced Vegetation
-  "#969696"   # grey           -- Other / Unknown
+  "#2166ac", # deep blue      -- Marine
+  "#74add1", # mid blue       -- Marine Neritic / Freshwater
+  "#4dac26", # green          -- Terrestrial / Forest
+  "#d6604d", # terracotta     -- Rocky / Arid
+  "#8073ac", # purple         -- Subterranean / Cave
+  "#f4a582", # peach          -- Estuarine / Coastal
+  "#1b7837", # dark green     -- Woodland / Savanna
+  "#bf812d", # brown          -- Grassland / Desert
+  "#35978f", # teal           -- Wetlands
+  "#de77ae", # pink           -- Artificial
+  "#fdbf6f", # amber          -- Introduced Vegetation
+  "#969696" # grey           -- Other / Unknown
 )
 
 .habitat_palette <- function(hab_levels, colors = NULL) {
-
   n_hab <- length(hab_levels)
 
   if (!is.null(colors)) {
@@ -147,7 +149,7 @@
         paste(missing_hab, collapse = ", "),
         call. = FALSE
       )
-      extra  <- stats::setNames(rep("#aaaaaa", length(missing_hab)), missing_hab)
+      extra <- stats::setNames(rep("#aaaaaa", length(missing_hab)), missing_hab)
       colors <- c(colors, extra)
     }
     return(colors[hab_levels])
@@ -188,7 +190,9 @@
 
 .extend_habitat_palette <- function(pal, new_levels) {
   new_levels <- setdiff(unique(new_levels), names(pal))
-  if (length(new_levels) == 0L) return(pal)
+  if (length(new_levels) == 0L) {
+    return(pal)
+  }
 
   avail <- setdiff(.eco_habitat_colors, pal)
   n_new <- length(new_levels)
@@ -196,7 +200,7 @@
   if (length(avail) >= n_new) {
     new_colors <- avail[seq_len(n_new)]
   } else {
-    n_extra    <- n_new - length(avail)
+    n_extra <- n_new - length(avail)
     new_colors <- c(avail, grDevices::rainbow(n_extra, s = 0.7, v = 0.85))
   }
 
@@ -214,9 +218,9 @@
 #' @noRd
 
 .he <- function(x) {
-  x <- gsub("&",  "&amp;",  as.character(x), fixed = TRUE)
-  x <- gsub("<",  "&lt;",   x,               fixed = TRUE)
-  x <- gsub(">",  "&gt;",   x,               fixed = TRUE)
-  x <- gsub("\"", "&quot;", x,               fixed = TRUE)
+  x <- gsub("&", "&amp;", as.character(x), fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  x <- gsub(">", "&gt;", x, fixed = TRUE)
+  x <- gsub("\"", "&quot;", x, fixed = TRUE)
   x
 }

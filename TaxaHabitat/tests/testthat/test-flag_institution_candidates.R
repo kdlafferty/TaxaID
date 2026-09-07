@@ -5,12 +5,14 @@
 
 .make_flagged <- function() {
   data.frame(
-    species           = c("Plant A", "Fish A", "Mammal A", "Bird A", "Fish B", "Fish C"),
-    kingdom           = c("Plantae", "Animalia", "Animalia", "Animalia", "Animalia", "Animalia"),
-    institution_flag  = c(TRUE, TRUE, TRUE, TRUE, TRUE, FALSE),
-    institution_type  = c("Herbarium", "Botanic_garden", "Zoo", "University", NA, NA),
-    institution_name  = c("Some Herbarium", "UCLA Botanical Garden", "Some Zoo",
-                          "Some University", NA, NA),
+    species = c("Plant A", "Fish A", "Mammal A", "Bird A", "Fish B", "Fish C"),
+    kingdom = c("Plantae", "Animalia", "Animalia", "Animalia", "Animalia", "Animalia"),
+    institution_flag = c(TRUE, TRUE, TRUE, TRUE, TRUE, FALSE),
+    institution_type = c("Herbarium", "Botanic_garden", "Zoo", "University", NA, NA),
+    institution_name = c(
+      "Some Herbarium", "UCLA Botanical Garden", "Some Zoo",
+      "Some University", NA, NA
+    ),
     institution_dist_m = c(5, 20, 15, 60, NA, NA),
     stringsAsFactors = FALSE
   )
@@ -66,11 +68,11 @@ test_that("a flagged record with NA institution_type falls through to ambiguous,
   # suspicion_rules$institution_type == NA produces an all-NA logical index,
   # which subsets to NA rather than zero, without the is.na(t) guard.
   df <- data.frame(
-    species           = "Mystery fish",
-    kingdom           = "Animalia",
-    institution_flag  = TRUE,
-    institution_type  = NA_character_,
-    institution_name  = "Some Institution With No Recorded Type",
+    species = "Mystery fish",
+    kingdom = "Animalia",
+    institution_flag = TRUE,
+    institution_type = NA_character_,
+    institution_name = "Some Institution With No Recorded Type",
     institution_dist_m = 40,
     stringsAsFactors = FALSE
   )
@@ -83,8 +85,8 @@ test_that("custom suspicion_rules override the defaults", {
   df <- .make_flagged()
   custom_rules <- data.frame(
     institution_type = "University",
-    kingdom           = NA,
-    suspicion         = "high",
+    kingdom = NA,
+    suspicion = "high",
     stringsAsFactors = FALSE
   )
   out <- flag_institution_candidates(df, suspicion_rules = custom_rules)
@@ -94,7 +96,7 @@ test_that("custom suspicion_rules override the defaults", {
 })
 
 test_that("row count and column set are otherwise unchanged", {
-  df  <- .make_flagged()
+  df <- .make_flagged()
   out <- flag_institution_candidates(df)
   expect_equal(nrow(out), nrow(df))
   expect_true(all(names(df) %in% names(out)))

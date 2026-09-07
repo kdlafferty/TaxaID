@@ -89,18 +89,18 @@
 #'
 #' @examples
 #' \dontrun{
-#' prompt   <- build_habitat_prompt(c("Gadus morhua", "Oncorhynchus mykiss"),
-#'                                  habitat_scheme = my_scheme)
+#' prompt <- build_habitat_prompt(c("Gadus morhua", "Oncorhynchus mykiss"),
+#'   habitat_scheme = my_scheme
+#' )
 #' raw_text <- TaxaTools::prompt_api(prompt)
-#' hab_tbl  <- parse_hierarchical_habitat_response(raw_text, prompt$taxa,
-#'                                                 habitat_scheme = prompt)
+#' hab_tbl <- parse_hierarchical_habitat_response(raw_text, prompt$taxa,
+#'   habitat_scheme = prompt
+#' )
 #' }
-
 parse_hierarchical_habitat_response <- function(raw_text,
                                                 taxon_list,
-                                                habitat_scheme   = NULL,
+                                                habitat_scheme = NULL,
                                                 extra_covariates = NULL) {
-
   # ---------------------------------------------------------------------------
   # Argument checks
   # ---------------------------------------------------------------------------
@@ -126,18 +126,18 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # Resolve scheme and expected habitat columns from the prompt object
   # ---------------------------------------------------------------------------
   expected_hab_cols <- NULL
-  scheme            <- NULL
+  scheme <- NULL
 
   if (inherits(habitat_scheme, "habitat_prompt")) {
-    expected_hab_cols <- habitat_scheme$habitat_cols   # ordered vector from build_habitat_prompt()
-    scheme            <- habitat_scheme$scheme         # validated dataframe (or NULL for IUCN)
+    expected_hab_cols <- habitat_scheme$habitat_cols # ordered vector from build_habitat_prompt()
+    scheme <- habitat_scheme$scheme # validated dataframe (or NULL for IUCN)
   } else if (is.data.frame(habitat_scheme)) {
     # Legacy: bare dataframe -- derive cols the same way build_habitat_prompt() would
     scheme <- tryCatch(.validate_habitat_scheme_local(habitat_scheme), error = function(e) NULL)
     if (!is.null(scheme)) {
       if (.is_two_level_local(scheme)) {
         expected_hab_cols <- unique(scheme$l2_name[!is.na(scheme$l2_name) &
-                                                     nzchar(trimws(scheme$l2_name))])
+          nzchar(trimws(scheme$l2_name))])
       } else {
         expected_hab_cols <- unique(scheme$l1_name)
       }
@@ -158,7 +158,7 @@ parse_hierarchical_habitat_response <- function(raw_text,
   cleaned_lines <- strsplit(cleaned, "\n", fixed = TRUE)[[1]]
   if (length(cleaned_lines) > 1L) {
     header_line <- cleaned_lines[1L]
-    dup_header  <- cleaned_lines[-1L] == header_line
+    dup_header <- cleaned_lines[-1L] == header_line
     if (any(dup_header)) {
       cleaned_lines <- c(header_line, cleaned_lines[-1L][!dup_header])
     }
@@ -173,15 +173,17 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # row-name-inference rule kicks in and moves taxon_name into the
   # invisible row name instead of the taxon_name column).
   cleaned_lines <- .repair_unquoted_commas(cleaned_lines)
-  cleaned       <- paste(cleaned_lines, collapse = "\n")
+  cleaned <- paste(cleaned_lines, collapse = "\n")
 
   # ---------------------------------------------------------------------------
   # Parse CSV
   # ---------------------------------------------------------------------------
   parsed <- tryCatch(
-    utils::read.csv(text = cleaned, stringsAsFactors = FALSE,
-                    strip.white = TRUE, check.names = FALSE,
-                    na.strings = c("", "NA", "N/A")),
+    utils::read.csv(
+      text = cleaned, stringsAsFactors = FALSE,
+      strip.white = TRUE, check.names = FALSE,
+      na.strings = c("", "NA", "N/A")
+    ),
     error = function(e) {
       stop(
         "parse_hierarchical_habitat_response: CSV parsing failed: ", e$message,
@@ -214,20 +216,23 @@ parse_hierarchical_habitat_response <- function(raw_text,
   parsed$taxon_name <- trimws(as.character(parsed$taxon_name))
   # nzchar(NA) returns NA (not FALSE) -- must guard explicitly
   parsed <- parsed[!is.na(parsed$taxon_name) & nzchar(parsed$taxon_name), ,
-                   drop = FALSE]
+    drop = FALSE
+  ]
 
   # ---------------------------------------------------------------------------
   # Separate text columns before numeric detection
   # ---------------------------------------------------------------------------
-  has_best_guess     <- "habitat_best_guess" %in% names(parsed)
+  has_best_guess <- "habitat_best_guess" %in% names(parsed)
   has_ecoregion_guess <- "ecoregion_best_guess" %in% names(parsed)
 
   # ---------------------------------------------------------------------------
   # Identify numeric weight columns
   # ---------------------------------------------------------------------------
-  protected_cols     <- c("taxon_name",
-                          if (has_best_guess) "habitat_best_guess",
-                          if (has_ecoregion_guess) "ecoregion_best_guess")
+  protected_cols <- c(
+    "taxon_name",
+    if (has_best_guess) "habitat_best_guess",
+    if (has_ecoregion_guess) "ecoregion_best_guess"
+  )
   numeric_candidates <- setdiff(names(parsed), protected_cols)
 
   # A column is a weight col if:
@@ -237,12 +242,12 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # Case (c) matters for single-row inputs where the LLM wrote "NA" for a weight.
   is_weight_col <- vapply(numeric_candidates, function(col) {
     if (!is.null(expected_hab_cols) &&
-        (col %in% expected_hab_cols || col %in% c("Other_weight", "Other"))) {
+      (col %in% expected_hab_cols || col %in% c("Other_weight", "Other"))) {
       return(TRUE)
     }
-    vals      <- suppressWarnings(as.numeric(parsed[[col]]))
+    vals <- suppressWarnings(as.numeric(parsed[[col]]))
     n_numeric <- sum(!is.na(vals))
-    n_total   <- length(vals)
+    n_total <- length(vals)
     n_numeric >= max(1L, as.integer(n_total / 2)) || all(is.na(vals))
   }, logical(1))
 
@@ -253,9 +258,6 @@ parse_hierarchical_habitat_response <- function(raw_text,
     parsed[[wc]][is.na(parsed[[wc]])] <- 0
   }
 
-  # Drop clearly non-numeric columns that slipped through (e.g. Suitability)
-  non_weight_extra <- numeric_candidates[!is_weight_col]
-
   # ---------------------------------------------------------------------------
   # Validate / align against expected habitat columns
   # ---------------------------------------------------------------------------
@@ -263,8 +265,10 @@ parse_hierarchical_habitat_response <- function(raw_text,
     missing_expected <- setdiff(expected_hab_cols, weight_cols)
     if (length(missing_expected) > 0L) {
       warning(sprintf(
-        paste0("parse_hierarchical_habitat_response: %d expected habitat column(s) ",
-               "absent from LLM response: %s. Added with weight 0."),
+        paste0(
+          "parse_hierarchical_habitat_response: %d expected habitat column(s) ",
+          "absent from LLM response: %s. Added with weight 0."
+        ),
         length(missing_expected),
         paste(head(missing_expected, 5), collapse = ", ")
       ), call. = FALSE)
@@ -275,21 +279,27 @@ parse_hierarchical_habitat_response <- function(raw_text,
     }
 
     # Columns not in expected set and not Other/Other_weight -> fold into Other_weight
-    extra_cols <- setdiff(weight_cols,
-                          c(expected_hab_cols, "Other_weight", "Other"))
+    extra_cols <- setdiff(
+      weight_cols,
+      c(expected_hab_cols, "Other_weight", "Other")
+    )
     if (length(extra_cols) > 0L) {
       warning(sprintf(
-        paste0("parse_hierarchical_habitat_response: LLM returned %d unrecognised ",
-               "habitat column(s): %s. Folded into Other_weight."),
+        paste0(
+          "parse_hierarchical_habitat_response: LLM returned %d unrecognised ",
+          "habitat column(s): %s. Folded into Other_weight."
+        ),
         length(extra_cols),
         paste(head(extra_cols, 5), collapse = ", ")
       ), call. = FALSE)
       other_col <- if ("Other_weight" %in% weight_cols) "Other_weight" else "Other"
-      if (!other_col %in% names(parsed)) { parsed[[other_col]] <- 0 }
+      if (!other_col %in% names(parsed)) {
+        parsed[[other_col]] <- 0
+      }
       for (ec in extra_cols) {
         parsed[[other_col]] <- parsed[[other_col]] + parsed[[ec]]
         parsed[[ec]] <- NULL
-        weight_cols  <- setdiff(weight_cols, ec)
+        weight_cols <- setdiff(weight_cols, ec)
       }
     }
   }
@@ -315,9 +325,11 @@ parse_hierarchical_habitat_response <- function(raw_text,
   bad_rows <- abs(row_sums - 1) > 0.05 & row_sums > 0
   if (any(bad_rows)) {
     warning(sprintf(
-      paste0("parse_hierarchical_habitat_response: %d row(s) have habitat weights ",
-             "not summing to 1.0 (tolerance 0.05). First offenders: %s. ",
-             "Weights have NOT been renormalised."),
+      paste0(
+        "parse_hierarchical_habitat_response: %d row(s) have habitat weights ",
+        "not summing to 1.0 (tolerance 0.05). First offenders: %s. ",
+        "Weights have NOT been renormalised."
+      ),
       sum(bad_rows),
       paste(head(parsed$taxon_name[bad_rows], 3), collapse = ", ")
     ), call. = FALSE)
@@ -345,9 +357,9 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # Habitat convenience column: argmax of all weight columns
   # ---------------------------------------------------------------------------
   all_weight_cols <- c(pure_hab_cols, "Other_weight")
-  weight_mat      <- as.matrix(parsed[, all_weight_cols, drop = FALSE])
+  weight_mat <- as.matrix(parsed[, all_weight_cols, drop = FALSE])
   weight_mat[is.na(weight_mat)] <- 0
-  best_idx   <- max.col(weight_mat, ties.method = "first")
+  best_idx <- max.col(weight_mat, ties.method = "first")
   col_labels <- sub("^Other_weight$", "Other", all_weight_cols)
   parsed[["Habitat"]] <- col_labels[best_idx]
   parsed[["Habitat"]][rowSums(weight_mat) == 0] <- NA_character_
@@ -355,8 +367,10 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # ---------------------------------------------------------------------------
   # Warn on missing taxa
   # ---------------------------------------------------------------------------
-  parsed <- .warn_missing_taxa(parsed, taxon_list,
-                               "parse_hierarchical_habitat_response")
+  parsed <- .warn_missing_taxa(
+    parsed, taxon_list,
+    "parse_hierarchical_habitat_response"
+  )
 
   # ---------------------------------------------------------------------------
   # Retain any requested extra_covariates columns
@@ -370,10 +384,12 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # ---------------------------------------------------------------------------
   # Canonical column order; drop non-scheme leftovers
   # ---------------------------------------------------------------------------
-  col_order <- c("taxon_name", pure_hab_cols, "Other_weight",
-                 "habitat_best_guess",
-                 if (has_ecoregion_guess) "ecoregion_best_guess",
-                 "Habitat", covariate_keep)
+  col_order <- c(
+    "taxon_name", pure_hab_cols, "Other_weight",
+    "habitat_best_guess",
+    if (has_ecoregion_guess) "ecoregion_best_guess",
+    "Habitat", covariate_keep
+  )
   parsed[, intersect(col_order, names(parsed)), drop = FALSE]
 }
 
@@ -388,10 +404,12 @@ parse_hierarchical_habitat_response <- function(raw_text,
 #' to avoid cross-file dependency in this helper path.
 #' @noRd
 .validate_habitat_scheme_local <- function(scheme) {
-  if (!is.data.frame(scheme) || !"l1_name" %in% names(scheme)) return(NULL)
+  if (!is.data.frame(scheme) || !"l1_name" %in% names(scheme)) {
+    return(NULL)
+  }
   if (!"l2_code" %in% names(scheme)) scheme$l2_code <- NA_character_
   if (!"l2_name" %in% names(scheme)) scheme$l2_name <- NA_character_
-  if (!"realm"   %in% names(scheme)) scheme$realm   <- NA_character_
+  if (!"realm" %in% names(scheme)) scheme$realm <- NA_character_
   scheme[, c("l1_name", "l2_code", "l2_name", "realm")]
 }
 
@@ -399,7 +417,9 @@ parse_hierarchical_habitat_response <- function(raw_text,
 #' Local .is_two_level for bare-dataframe scheme validation path
 #' @noRd
 .is_two_level_local <- function(scheme) {
-  if (is.null(scheme)) return(FALSE)
+  if (is.null(scheme)) {
+    return(FALSE)
+  }
   all(c("l1_name", "l2_name") %in% names(scheme)) &&
     any(!is.na(scheme$l2_name) & nzchar(trimws(scheme$l2_name)))
 }
@@ -447,18 +467,22 @@ parse_hierarchical_habitat_response <- function(raw_text,
 #'   there is no \code{habitat_best_guess} column to repair against.
 #' @noRd
 .repair_unquoted_commas <- function(lines) {
-  if (length(lines) < 2L) return(lines)
+  if (length(lines) < 2L) {
+    return(lines)
+  }
 
-  header   <- strsplit(lines[1L], ",", fixed = TRUE)[[1]]
+  header <- strsplit(lines[1L], ",", fixed = TRUE)[[1]]
   n_header <- length(header)
 
   guess_idx <- which(header == "habitat_best_guess")
-  if (length(guess_idx) == 0L) return(lines)
+  if (length(guess_idx) == 0L) {
+    return(lines)
+  }
   guess_idx <- guess_idx[1L]
 
-  eco_idx      <- which(header == "ecoregion_best_guess")
+  eco_idx <- which(header == "ecoregion_best_guess")
   has_eco_next <- length(eco_idx) > 0L && eco_idx[1L] == guess_idx + 1L
-  n_free_cols  <- if (has_eco_next) 2L else 1L
+  n_free_cols <- if (has_eco_next) 2L else 1L
 
   for (i in seq(2L, length(lines))) {
     if (!nzchar(lines[i])) next
@@ -478,17 +502,17 @@ parse_hierarchical_habitat_response <- function(raw_text,
     close(con)
     if (!is.na(quoted_count) && quoted_count <= n_header) next
 
-    fields  <- strsplit(lines[i], ",", fixed = TRUE)[[1]]
+    fields <- strsplit(lines[i], ",", fixed = TRUE)[[1]]
     n_extra <- length(fields) - n_header
-    if (n_extra <= 0L) next   # already matches the header -- nothing to repair
+    if (n_extra <= 0L) next # already matches the header -- nothing to repair
 
     mid_start <- guess_idx
-    mid_end   <- guess_idx + n_extra + (n_free_cols - 1L)
-    if (mid_end > length(fields)) next   # malformed beyond repair -- leave as-is, read.csv() will error informatively
+    mid_end <- guess_idx + n_extra + (n_free_cols - 1L)
+    if (mid_end > length(fields)) next # malformed beyond repair -- leave as-is, read.csv() will error informatively
 
-    before     <- if (mid_start > 1L) fields[seq_len(mid_start - 1L)] else character(0)
+    before <- if (mid_start > 1L) fields[seq_len(mid_start - 1L)] else character(0)
     mid_fields <- fields[mid_start:mid_end]
-    after      <- if (mid_end < length(fields)) fields[(mid_end + 1L):length(fields)] else character(0)
+    after <- if (mid_end < length(fields)) fields[(mid_end + 1L):length(fields)] else character(0)
 
     if (n_free_cols == 2L) {
       hbg_raw <- paste(mid_fields[seq_len(length(mid_fields) - 1L)], collapse = ",")
@@ -517,23 +541,24 @@ parse_hierarchical_habitat_response <- function(raw_text,
 #' Returns a single character string suitable for utils::read.csv(text = ...).
 #' @noRd
 .strip_and_extract_csv <- function(raw_text) {
-
-  txt   <- gsub("```[a-zA-Z]*\n?", "", raw_text)
-  txt   <- gsub("```",              "", txt)
+  txt <- gsub("```[a-zA-Z]*\n?", "", raw_text)
+  txt <- gsub("```", "", txt)
   lines <- trimws(strsplit(txt, "\n")[[1]])
 
   # Header row must contain "taxon_name" and a comma
   header_idx <- which(grepl("taxon_name", lines, ignore.case = TRUE) &
-                        grepl(",", lines, fixed = TRUE))[1]
-  if (is.na(header_idx)) return(trimws(txt))
+    grepl(",", lines, fixed = TRUE))[1]
+  if (is.na(header_idx)) {
+    return(trimws(txt))
+  }
 
   # Trim preamble
   lines <- lines[header_idx:length(lines)]
 
   # Trim postamble: keep header + any line with a comma
   is_csv_line <- grepl(",", lines, fixed = TRUE) | seq_along(lines) == 1L
-  last_csv    <- max(which(is_csv_line))
-  lines       <- lines[1:last_csv]
+  last_csv <- max(which(is_csv_line))
+  lines <- lines[1:last_csv]
 
   # Drop blank lines
   lines <- lines[nzchar(lines)]
@@ -545,9 +570,12 @@ parse_hierarchical_habitat_response <- function(raw_text,
 #' Standardise the taxon name column to "taxon_name".
 #' @noRd
 .standardise_taxon_col <- function(parsed) {
-  if ("taxon_name" %in% names(parsed)) return(parsed)
+  if ("taxon_name" %in% names(parsed)) {
+    return(parsed)
+  }
   tax_col <- grep("taxon|species|name", names(parsed),
-                  ignore.case = TRUE, value = TRUE)[1]
+    ignore.case = TRUE, value = TRUE
+  )[1]
   if (!is.na(tax_col)) parsed[["taxon_name"]] <- parsed[[tax_col]]
   parsed
 }
@@ -558,7 +586,7 @@ parse_hierarchical_habitat_response <- function(raw_text,
 #' @noRd
 .warn_missing_taxa <- function(parsed, taxon_list, fn_name) {
   returned <- trimws(parsed[["taxon_name"]])
-  missing  <- setdiff(taxon_list, returned)
+  missing <- setdiff(taxon_list, returned)
   if (length(missing) > 0L) {
     warning(sprintf(
       "%s: %d taxon/taxa missing from response: %s",

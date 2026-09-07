@@ -44,18 +44,21 @@
 #' @export
 report_habitat <- function(habitat_data,
                            taxon_col = "scientificName",
-                           verbose   = FALSE) {
-
-  if (!is.data.frame(habitat_data) || nrow(habitat_data) == 0L)
+                           verbose = FALSE) {
+  if (!is.data.frame(habitat_data) || nrow(habitat_data) == 0L) {
     stop("report_habitat: 'habitat_data' must be a non-empty data frame.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # --- Detect habitat columns -------------------------------------------------
   # Habitat weight columns are numeric and not the taxon column or known
 
   # non-habitat columns
-  exclude_cols <- c(taxon_col, "habitat_best_guess", "ecoregion_best_guess",
-                    "Habitat", "main_habitat")
+  exclude_cols <- c(
+    taxon_col, "habitat_best_guess", "ecoregion_best_guess",
+    "Habitat", "main_habitat"
+  )
   numeric_cols <- names(habitat_data)[
     vapply(habitat_data, is.numeric, logical(1L))
   ]
@@ -113,7 +116,7 @@ report_habitat <- function(habitat_data,
   )
   if (!is.null(dominant_habitat)) {
     statistics$dominant_habitat <- dominant_habitat
-    statistics$dominant_pct     <- dominant_pct
+    statistics$dominant_pct <- dominant_pct
   }
 
   # --- Params -----------------------------------------------------------------

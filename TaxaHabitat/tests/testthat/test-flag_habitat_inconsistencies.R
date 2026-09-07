@@ -35,7 +35,7 @@ test_that("stops when lat_col is missing", {
 test_that("stops when lon_col is missing", {
   occurrence_data <- data.frame(
     decimalLatitude = 40.8,
-    main_habitat    = "Marine",
+    main_habitat = "Marine",
     stringsAsFactors = FALSE
   )
   expect_error(

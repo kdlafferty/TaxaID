@@ -60,7 +60,6 @@ NEEDS_SAMPLING_GROUP <- FALSE
 HABITAT_THRESHOLD <- 0.5
 
 if (DEBUG_MODE) {
-
   # ---- Tutorial example: continue from TaxaFetch's Gadus / North Atlantic run
   # This is the exact readRDS() line documented in fetch_occurrences_workflow.R's
   # Output block. If that script was never run (or tempdir() was cleared since),
@@ -69,8 +68,10 @@ if (DEBUG_MODE) {
 
   if (file.exists(.gadus_checkpoint)) {
     all_occurrences <- readRDS(.gadus_checkpoint)
-    message("DEBUG_MODE = TRUE -- loaded TaxaFetch's Gadus checkpoint: ",
-            .gadus_checkpoint)
+    message(
+      "DEBUG_MODE = TRUE -- loaded TaxaFetch's Gadus checkpoint: ",
+      .gadus_checkpoint
+    )
 
     # KNOWN GAP: fetch_occurrences_workflow.R's Variant A output (unmodified
     # GBIF columns -- species/genus/family/... -- plus point_id) does NOT
@@ -80,8 +81,10 @@ if (DEBUG_MODE) {
     # assuming TaxaFetch's output shape.
     if (!"taxon_name" %in% names(all_occurrences)) {
       all_occurrences <- TaxaTools::create_taxon_names(all_occurrences)
-      message("  taxon_name not present in checkpoint -- derived via ",
-              "TaxaTools::create_taxon_names() from GBIF's raw rank columns.")
+      message(
+        "  taxon_name not present in checkpoint -- derived via ",
+        "TaxaTools::create_taxon_names() from GBIF's raw rank columns."
+      )
     }
   } else {
     # ---- Fallback: tiny inline all_occurrences-shaped tibble ----------------
@@ -89,20 +92,22 @@ if (DEBUG_MODE) {
     # (marine, freshwater, terrestrial) so Step A's demo is meaningful even
     # without TaxaFetch's checkpoint on disk.
     all_occurrences <- tibble::tibble(
-      point_id         = c("pt_1", "pt_2", "pt_3"),
-      decimalLatitude  = c(60.0, 44.5, 46.8),
+      point_id = c("pt_1", "pt_2", "pt_3"),
+      decimalLatitude = c(60.0, 44.5, 46.8),
       decimalLongitude = c(2.0, -73.2, -121.7),
-      taxon_name       = c("Gadus morhua",        # marine (cod)
-                           "Salmo trutta",         # freshwater (brown trout)
-                           "Odocoileus hemionus")  # terrestrial (mule deer)
+      taxon_name = c(
+        "Gadus morhua", # marine (cod)
+        "Salmo trutta", # freshwater (brown trout)
+        "Odocoileus hemionus"
+      ) # terrestrial (mule deer)
     )
-    message("DEBUG_MODE = TRUE -- TaxaFetch checkpoint not found at ",
-            .gadus_checkpoint, "; using tiny built-in fallback (3 rows, ",
-            "one marine/freshwater/terrestrial taxon each).")
+    message(
+      "DEBUG_MODE = TRUE -- TaxaFetch checkpoint not found at ",
+      .gadus_checkpoint, "; using tiny built-in fallback (3 rows, ",
+      "one marine/freshwater/terrestrial taxon each)."
+    )
   }
-
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -115,19 +120,24 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the value here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real all_occurrences object has been ",
-       "supplied. Edit the 'SWAP IN YOUR OWN DATA' block in this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real all_occurrences object has been ",
+    "supplied. Edit the 'SWAP IN YOUR OWN DATA' block in this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_gadus"
 
-message(sprintf("NEEDS_SAMPLING_GROUP = %s -- %s", NEEDS_SAMPLING_GROUP,
-                if (NEEDS_SAMPLING_GROUP)
-                  "Step B (sampling-group classification) WILL run"
-                else
-                  "Step B (sampling-group classification) will be skipped"))
+message(sprintf(
+  "NEEDS_SAMPLING_GROUP = %s -- %s", NEEDS_SAMPLING_GROUP,
+  if (NEEDS_SAMPLING_GROUP) {
+    "Step B (sampling-group classification) WILL run"
+  } else {
+    "Step B (sampling-group classification) will be skipped"
+  }
+))
 
 # ==============================================================================
 # 1.  STEP A -- STANDARD HABITAT CLASSIFICATION (default 3-category scheme)
@@ -188,33 +198,39 @@ habitat_weights_a <- TaxaHabitat::parse_hierarchical_habitat_response(
 habitat_weights_a_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_weights_a.rds"))
 saveRDS(habitat_weights_a, habitat_weights_a_path)
 message(sprintf("  Saved: %s", habitat_weights_a_path))
-message(sprintf("  To reuse without re-querying the LLM, paste:\n    habitat_weights_a <- readRDS(\"%s\")",
-                habitat_weights_a_path))
+message(sprintf(
+  "  To reuse without re-querying the LLM, paste:\n    habitat_weights_a <- readRDS(\"%s\")",
+  habitat_weights_a_path
+))
 
 # ---- Join habitat weights onto occurrence points (per-point consensus) ----
 message("\n--- Step 4: Assigning habitat to occurrence points (Step A) ---")
 
 occurrences_with_habitat <- TaxaHabitat::assign_habitat_biological(
-  occurrence_data         = all_occurrences,
-  habitats_df  = habitat_weights_a,
+  occurrence_data = all_occurrences,
+  habitats_df = habitat_weights_a,
   point_id_col = "point_id",
-  taxon_col    = "taxon_name",
-  threshold    = HABITAT_THRESHOLD
+  taxon_col = "taxon_name",
+  threshold = HABITAT_THRESHOLD
 )
 
 n_habitats_assigned <- occurrences_with_habitat |>
   dplyr::filter(!is.na(main_habitat)) |>
   dplyr::distinct(point_id) |>
   nrow()
-message(sprintf("  %d point(s) assigned a habitat (threshold = %.2f).",
-                n_habitats_assigned, HABITAT_THRESHOLD))
+message(sprintf(
+  "  %d point(s) assigned a habitat (threshold = %.2f).",
+  n_habitats_assigned, HABITAT_THRESHOLD
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 occurrences_with_habitat_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_occurrences_with_habitat.rds"))
 saveRDS(occurrences_with_habitat, occurrences_with_habitat_path)
 message(sprintf("  Saved: %s", occurrences_with_habitat_path))
-message(sprintf("  To reuse without re-running Step A, paste:\n    occurrences_with_habitat <- readRDS(\"%s\")",
-                occurrences_with_habitat_path))
+message(sprintf(
+  "  To reuse without re-running Step A, paste:\n    occurrences_with_habitat <- readRDS(\"%s\")",
+  occurrences_with_habitat_path
+))
 
 
 # ==============================================================================
@@ -236,7 +252,6 @@ message(sprintf("  To reuse without re-running Step A, paste:\n    occurrences_w
 # ==============================================================================
 
 if (NEEDS_SAMPLING_GROUP) {
-
   message("\n--- Step B: Sampling-group classification (same mechanism as Step A) ---")
 
   # Custom scheme: l1_name is required; l2_name/l2_code/realm are optional and
@@ -248,7 +263,7 @@ if (NEEDS_SAMPLING_GROUP) {
     l1_name = c("Fishes", "Macroalgae", "Phytoplankton", "Zooplankton"),
     l2_name = NA_character_,
     l2_code = NA_character_,
-    realm   = NA_character_,
+    realm = NA_character_,
     stringsAsFactors = FALSE
   )
 
@@ -274,8 +289,10 @@ if (NEEDS_SAMPLING_GROUP) {
   sampling_group_weights_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_sampling_group_weights.rds"))
   saveRDS(sampling_group_weights, sampling_group_weights_path)
   message(sprintf("  Saved: %s", sampling_group_weights_path))
-  message(sprintf("  To reuse without re-querying the LLM, paste:\n    sampling_group_weights <- readRDS(\"%s\")",
-                  sampling_group_weights_path))
+  message(sprintf(
+    "  To reuse without re-querying the LLM, paste:\n    sampling_group_weights <- readRDS(\"%s\")",
+    sampling_group_weights_path
+  ))
 
   # IMPORTANT: run this against all_occurrences (the ORIGINAL raw table), NOT
   # against occurrences_with_habitat. assign_habitat_biological() unconditionally
@@ -289,14 +306,16 @@ if (NEEDS_SAMPLING_GROUP) {
   # renamed output columns onto occurrences_with_habitat -- Step A's
   # main_habitat is never at risk of being overwritten.
   sampling_group_result <- TaxaHabitat::assign_habitat_biological(
-    occurrence_data         = all_occurrences,
-    habitats_df  = sampling_group_weights,
+    occurrence_data = all_occurrences,
+    habitats_df = sampling_group_weights,
     point_id_col = "point_id",
-    taxon_col    = "taxon_name",
-    threshold    = HABITAT_THRESHOLD
+    taxon_col = "taxon_name",
+    threshold = HABITAT_THRESHOLD
   ) |>
-    dplyr::distinct(point_id, sampling_group = main_habitat,
-                    sampling_group_best_guess = habitat_best_guess)
+    dplyr::distinct(point_id,
+      sampling_group = main_habitat,
+      sampling_group_best_guess = habitat_best_guess
+    )
 
   occurrences_with_habitat <- occurrences_with_habitat |>
     dplyr::left_join(sampling_group_result, by = "point_id")
@@ -305,16 +324,19 @@ if (NEEDS_SAMPLING_GROUP) {
     dplyr::filter(!is.na(sampling_group)) |>
     dplyr::distinct(point_id) |>
     nrow()
-  message(sprintf("  %d point(s) assigned a sampling_group (threshold = %.2f).",
-                  n_groups_assigned, HABITAT_THRESHOLD))
+  message(sprintf(
+    "  %d point(s) assigned a sampling_group (threshold = %.2f).",
+    n_groups_assigned, HABITAT_THRESHOLD
+  ))
 
   # ---- Explicit checkpoint --------------------------------------------------
   occurrences_with_habitat_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_occurrences_with_habitat_and_group.rds"))
   saveRDS(occurrences_with_habitat, occurrences_with_habitat_path)
   message(sprintf("  Saved: %s", occurrences_with_habitat_path))
-  message(sprintf("  To reuse without re-running Step B, paste:\n    occurrences_with_habitat <- readRDS(\"%s\")",
-                  occurrences_with_habitat_path))
-
+  message(sprintf(
+    "  To reuse without re-running Step B, paste:\n    occurrences_with_habitat <- readRDS(\"%s\")",
+    occurrences_with_habitat_path
+  ))
 } else {
   message("\n--- Step B skipped (NEEDS_SAMPLING_GROUP = FALSE) ---")
 }
@@ -344,8 +366,10 @@ occurrences_flagged <- TaxaHabitat::flag_habitat_inconsistencies(
 occurrences_flagged_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_occurrences_flagged.rds"))
 saveRDS(occurrences_flagged, occurrences_flagged_path)
 message(sprintf("  Saved: %s", occurrences_flagged_path))
-message(sprintf("  To reuse without re-flagging, paste:\n    occurrences_flagged <- readRDS(\"%s\")",
-                occurrences_flagged_path))
+message(sprintf(
+  "  To reuse without re-flagging, paste:\n    occurrences_flagged <- readRDS(\"%s\")",
+  occurrences_flagged_path
+))
 
 # ---- Interactive review (run by hand -- NOT via source()) -----------------
 # review_spatial_flags() opens a Shiny gadget: click points on a map to move
@@ -362,19 +386,25 @@ message(sprintf("  To reuse without re-flagging, paste:\n    occurrences_flagged
 # Here we simply take all "likely" points as-is, without the interactive
 # upgrade/downgrade pass a real analysis would apply to "questionable" points.
 message("\n--- Step 6: Filtering to spatial_flag == \"likely\" (DEBUG_MODE shortcut) ---")
-message("  For real analyses, run TaxaHabitat::review_spatial_flags() interactively",
-        " instead of this shortcut -- see the commented block above.")
+message(
+  "  For real analyses, run TaxaHabitat::review_spatial_flags() interactively",
+  " instead of this shortcut -- see the commented block above."
+)
 
 occurrences_clean <- dplyr::filter(occurrences_flagged, spatial_flag == "likely")
-message(sprintf("  %d of %d row(s) retained (spatial_flag == \"likely\").",
-                nrow(occurrences_clean), nrow(occurrences_flagged)))
+message(sprintf(
+  "  %d of %d row(s) retained (spatial_flag == \"likely\").",
+  nrow(occurrences_clean), nrow(occurrences_flagged)
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 occurrences_clean_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_occurrences_clean.rds"))
 saveRDS(occurrences_clean, occurrences_clean_path)
 message(sprintf("  Saved: %s", occurrences_clean_path))
-message(sprintf("  To reuse without re-running this workflow, paste:\n    occurrences_clean <- readRDS(\"%s\")",
-                occurrences_clean_path))
+message(sprintf(
+  "  To reuse without re-running this workflow, paste:\n    occurrences_clean <- readRDS(\"%s\")",
+  occurrences_clean_path
+))
 
 message("\nWorkflow complete.")
 message("Next: pass occurrences_clean to TaxaExpect for grid optimization and prior generation.")

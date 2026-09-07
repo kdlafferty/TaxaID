@@ -103,7 +103,8 @@
 #' @seealso \code{\link{review_spatial_flags}}
 #'
 #' @importFrom terra rast vect extract
-#' @importFrom sf st_as_sf st_transform st_distance st_intersection st_union st_buffer st_within st_make_valid st_geometry st_as_sfc st_bbox st_crop sf_use_s2
+#' @importFrom sf st_as_sf st_transform st_distance st_intersection st_union st_buffer
+#' @importFrom sf st_within st_make_valid st_geometry st_as_sfc st_bbox st_crop sf_use_s2
 #' @importFrom marmap getNOAA.bathy as.raster
 #' @importFrom rnaturalearth ne_coastline ne_countries
 #' @importFrom dplyr left_join
@@ -133,21 +134,19 @@
 #'   dist_to_coast_km > 5
 #' )
 #' }
-
 flag_habitat_inconsistencies <- function(
-    occurrence_data,
-    lat_col         = "decimalLatitude",
-    lon_col         = "decimalLongitude",
-    habitat_col     = "main_habitat",
-    coast_buffer_m          = 1000,
-    marine_questionable_km  = 0,
-    depth_neritic_m = 200,
-    depth_oceanic_m = 4000,
-    resolution      = 4L,
-    verbose         = TRUE,
-    habitat_scheme  = NULL
+  occurrence_data,
+  lat_col = "decimalLatitude",
+  lon_col = "decimalLongitude",
+  habitat_col = "main_habitat",
+  coast_buffer_m = 1000,
+  marine_questionable_km = 0,
+  depth_neritic_m = 200,
+  depth_oceanic_m = 4000,
+  resolution = 4L,
+  verbose = TRUE,
+  habitat_scheme = NULL
 ) {
-
   # --------------------------------------------------------------------------
   # 0. Validate inputs
   # --------------------------------------------------------------------------
@@ -158,10 +157,14 @@ flag_habitat_inconsistencies <- function(
     }
   }
 
-  required_pkgs <- c("marmap", "rnaturalearth", "rnaturalearthdata",
-                     "rnaturalearthhires", "sf", "terra")
+  required_pkgs <- c(
+    "marmap", "rnaturalearth", "rnaturalearthdata",
+    "rnaturalearthhires", "sf", "terra"
+  )
   missing_pkgs <- required_pkgs[!vapply(required_pkgs, requireNamespace,
-                                        logical(1L), quietly = TRUE)]
+    logical(1L),
+    quietly = TRUE
+  )]
   if (length(missing_pkgs) > 0L) {
     # rnaturalearthhires (needed for scale = "large" below) is NOT on CRAN --
     # `install.packages("rnaturalearthhires")` alone fails. Give it its own,
@@ -180,7 +183,8 @@ flag_habitat_inconsistencies <- function(
       ))
     }
     if ("rnaturalearthhires" %in% missing_pkgs) {
-      msg <- paste0(msg,
+      msg <- paste0(
+        msg,
         "\n  rnaturalearthhires is NOT on CRAN (too large). Install with:\n",
         '    install.packages("rnaturalearthhires", repos = "https://ropensci.r-universe.dev")'
       )
@@ -193,15 +197,15 @@ flag_habitat_inconsistencies <- function(
   # --------------------------------------------------------------------------
 
   pts_all <- data.frame(
-    lon     = occurrence_data[[lon_col]],
-    lat     = occurrence_data[[lat_col]],
+    lon = occurrence_data[[lon_col]],
+    lat = occurrence_data[[lat_col]],
     habitat = occurrence_data[[habitat_col]],
     stringsAsFactors = FALSE
   )
 
   complete_rows <- !is.na(pts_all$lon) & !is.na(pts_all$lat) & !is.na(pts_all$habitat)
-  pts_unique    <- unique(pts_all[complete_rows, c("lon", "lat", "habitat")])
-  n_pts         <- nrow(pts_unique)
+  pts_unique <- unique(pts_all[complete_rows, c("lon", "lat", "habitat")])
+  n_pts <- nrow(pts_unique)
 
   if (n_pts == 0L) stop("No complete (non-NA) points found.")
 
@@ -213,10 +217,10 @@ flag_habitat_inconsistencies <- function(
 
   # Bounding box with margin
   margin <- 0.5
-  xmin   <- min(pts_unique$lon) - margin
-  xmax   <- max(pts_unique$lon) + margin
-  ymin   <- min(pts_unique$lat) - margin
-  ymax   <- max(pts_unique$lat) + margin
+  xmin <- min(pts_unique$lon) - margin
+  xmax <- max(pts_unique$lon) + margin
+  ymin <- min(pts_unique$lat) - margin
+  ymax <- max(pts_unique$lat) + margin
 
   bbox_poly <- sf::st_as_sfc(
     sf::st_bbox(c(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), crs = 4326L)
@@ -236,19 +240,19 @@ flag_habitat_inconsistencies <- function(
 
   if (verbose) message("  Classifying land/ocean via vector polygons...")
 
-  world_land  <- rnaturalearth::ne_countries(scale = "large", returnclass = "sf")
-  world_land  <- sf::st_make_valid(world_land)
+  world_land <- rnaturalearth::ne_countries(scale = "large", returnclass = "sf")
+  world_land <- sf::st_make_valid(world_land)
 
   # suppressWarnings: sf emits "assumes planar coordinates" notices for every
   # spatial operation after sf_use_s2(FALSE).  These are expected -- planar
   # mode is intentional here to allow simple buffering.
-  land_crop   <- suppressWarnings(tryCatch(
+  land_crop <- suppressWarnings(tryCatch(
     sf::st_intersection(sf::st_geometry(world_land), bbox_poly),
     error = function(e) sf::st_geometry(world_land)
   ))
-  land_union  <- sf::st_make_valid(suppressWarnings(sf::st_union(land_crop)))
+  land_union <- sf::st_make_valid(suppressWarnings(sf::st_union(land_crop)))
 
-  in_land     <- lengths(suppressWarnings(sf::st_within(pts_sf, sf::st_as_sf(data.frame(geometry = land_union))))) > 0L
+  in_land <- lengths(suppressWarnings(sf::st_within(pts_sf, sf::st_as_sf(data.frame(geometry = land_union))))) > 0L
   pts_unique$on_land <- in_land
 
   # --------------------------------------------------------------------------
@@ -257,14 +261,14 @@ flag_habitat_inconsistencies <- function(
 
   if (verbose) message("  Building coastal buffer...")
 
-  coast_sf   <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf")
+  coast_sf <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf")
   coast_crop <- suppressWarnings(tryCatch(
     sf::st_crop(sf::st_make_valid(coast_sf), bbox_poly),
     error = function(e) sf::st_make_valid(coast_sf)
   ))
 
   # Buffer in metres using projected CRS, then reproject back to WGS84
-  coast_merc_buf    <- sf::st_transform(sf::st_geometry(coast_crop), crs = 3857L)
+  coast_merc_buf <- sf::st_transform(sf::st_geometry(coast_crop), crs = 3857L)
   coast_buffer_geom <- sf::st_make_valid(
     sf::st_union(sf::st_buffer(coast_merc_buf, dist = coast_buffer_m))
   )
@@ -281,7 +285,7 @@ flag_habitat_inconsistencies <- function(
 
   if (verbose) message("  Computing distance to coastline...")
 
-  pts_merc   <- sf::st_transform(pts_sf,     crs = 3857L)
+  pts_merc <- sf::st_transform(pts_sf, crs = 3857L)
   coast_merc <- sf::st_transform(coast_crop, crs = 3857L)
 
   dist_m <- sf::st_distance(pts_merc, coast_merc)
@@ -322,7 +326,7 @@ flag_habitat_inconsistencies <- function(
   )
 
   if (!is.null(bathy_raw)) {
-    r_elev    <- terra::rast(marmap::as.raster(bathy_raw))
+    r_elev <- terra::rast(marmap::as.raster(bathy_raw))
     names(r_elev) <- "elevation_m"
     elev_vals <- terra::extract(r_elev, terra::vect(pts_sf))
     pts_unique$elevation_m <- elev_vals$elevation_m
@@ -348,14 +352,24 @@ flag_habitat_inconsistencies <- function(
 
   pts_unique$physical_zone <- mapply(
     function(on_land, in_coast, elev) {
-      if (in_coast) return("coastal")
-      if (on_land)  return("inland")
+      if (in_coast) {
+        return("coastal")
+      }
+      if (on_land) {
+        return("inland")
+      }
       # Ocean: subdivide by depth
-      if (is.na(elev)) return("marine_shallow")
+      if (is.na(elev)) {
+        return("marine_shallow")
+      }
       depth <- abs(elev)
-      if      (depth <= depth_neritic_m) "marine_shallow"
-      else if (depth <= depth_oceanic_m) "marine_deep"
-      else                               "marine_abyssal"
+      if (depth <= depth_neritic_m) {
+        "marine_shallow"
+      } else if (depth <= depth_oceanic_m) {
+        "marine_deep"
+      } else {
+        "marine_abyssal"
+      }
     },
     pts_unique$on_land,
     pts_unique$in_coastal_buffer,
@@ -374,7 +388,7 @@ flag_habitat_inconsistencies <- function(
       l1_name = c("Marine", "Freshwater", "Terrestrial"),
       l2_name = NA_character_,
       l2_code = NA_character_,
-      realm   = c("marine", "freshwater", "terrestrial"),
+      realm = c("marine", "freshwater", "terrestrial"),
       stringsAsFactors = FALSE
     )
   } else {
@@ -389,14 +403,24 @@ flag_habitat_inconsistencies <- function(
       # Try l2_name match, then l1_name match
       idx <- match(hab_lc, tolower(scheme$l2_name))
       if (is.na(idx)) idx <- match(hab_lc, tolower(scheme$l1_name))
-      if (!is.na(idx) && !is.na(scheme$realm[idx])) return(scheme$realm[idx])
+      if (!is.na(idx) && !is.na(scheme$realm[idx])) {
+        return(scheme$realm[idx])
+      }
     }
 
     # Fall back to name-pattern matching (works for IUCN and sensibly named custom schemes)
     if (grepl("^marine|^ocean|^pelagic|^neritic|^intertidal|^subtidal|^littoral|^reef|^kelp|^seagrass|^estuar",
-              hab_lc, perl = TRUE)) return("marine")
+      hab_lc,
+      perl = TRUE
+    )) {
+      return("marine")
+    }
     if (grepl("freshwater|wetland|aquatic|lake|river|stream|pond|marsh|bog|fen|riparian",
-              hab_lc, perl = TRUE)) return("freshwater")
+      hab_lc,
+      perl = TRUE
+    )) {
+      return("freshwater")
+    }
 
     # For IUCN scheme, also check .iucn_habitat_lookup
     if (.is_iucn_scheme(scheme)) {
@@ -404,13 +428,17 @@ flag_habitat_inconsistencies <- function(
       if (is.na(idx)) idx <- match(hab_lc, tolower(.iucn_habitat_lookup$l1_name))
       if (!is.na(idx)) {
         l1 <- .iucn_habitat_lookup$l1_name[idx]
-        if (grepl("^Marine", l1))                                        return("marine")
-        if (grepl("Wetland|Aquatic|Freshwater", l1, ignore.case = TRUE)) return("freshwater")
+        if (grepl("^Marine", l1)) {
+          return("marine")
+        }
+        if (grepl("Wetland|Aquatic|Freshwater", l1, ignore.case = TRUE)) {
+          return("freshwater")
+        }
         return("terrestrial")
       }
     }
 
-    return("unknown")
+    "unknown"
   }
 
   pts_unique$habitat_realm <- vapply(pts_unique$habitat, .realm, character(1L))
@@ -421,7 +449,6 @@ flag_habitat_inconsistencies <- function(
 
   flag_results <- mapply(
     function(zone, realm, elev, dist_km, hab) {
-
       if (realm == "freshwater") {
         return(list(flag = "likely", reason = "freshwater habitat not spatially verified"))
       }
@@ -437,7 +464,7 @@ flag_habitat_inconsistencies <- function(
       if (realm == "marine") {
         if (zone == "inland") {
           return(list(
-            flag   = "unlikely",
+            flag = "unlikely",
             reason = sprintf(
               "%s species located inland: %.1f km from coast, elevation %.0f m",
               hab, dist_km, elev
@@ -447,7 +474,7 @@ flag_habitat_inconsistencies <- function(
         if (zone == "coastal") {
           if (marine_questionable_km > 0 && dist_km <= marine_questionable_km) {
             return(list(
-              flag   = "questionable",
+              flag = "questionable",
               reason = sprintf(
                 "marine species within %.0f m coastal buffer (%.2f km from coast) -- verify location",
                 coast_buffer_m, dist_km
@@ -455,7 +482,7 @@ flag_habitat_inconsistencies <- function(
             ))
           }
           return(list(
-            flag   = "likely",
+            flag = "likely",
             reason = sprintf(
               "marine species in coastal zone (%.2f km from coast)",
               dist_km
@@ -463,7 +490,7 @@ flag_habitat_inconsistencies <- function(
           ))
         }
         return(list(
-          flag   = "likely",
+          flag = "likely",
           reason = sprintf(
             "marine species in %s zone (dist to coast: %.2f km)",
             gsub("_", " ", zone), dist_km
@@ -475,7 +502,7 @@ flag_habitat_inconsistencies <- function(
       if (realm == "terrestrial") {
         if (zone %in% c("marine_shallow", "marine_deep", "marine_abyssal")) {
           return(list(
-            flag   = "unlikely",
+            flag = "unlikely",
             reason = sprintf(
               "%s species located in ocean: depth %.0f m, %.2f km from coast",
               hab, abs(elev), dist_km
@@ -484,7 +511,7 @@ flag_habitat_inconsistencies <- function(
         }
         if (zone == "coastal") {
           return(list(
-            flag   = "questionable",
+            flag = "questionable",
             reason = sprintf(
               "terrestrial species within coastal buffer (%.2f km from coast)",
               dist_km
@@ -504,7 +531,7 @@ flag_habitat_inconsistencies <- function(
     SIMPLIFY = FALSE
   )
 
-  pts_unique$spatial_flag        <- vapply(flag_results, `[[`, character(1L), "flag")
+  pts_unique$spatial_flag <- vapply(flag_results, `[[`, character(1L), "flag")
   pts_unique$spatial_flag_reason <- vapply(flag_results, `[[`, character(1L), "reason")
 
   # --------------------------------------------------------------------------
@@ -512,9 +539,9 @@ flag_habitat_inconsistencies <- function(
   # --------------------------------------------------------------------------
 
   if (verbose) {
-    n_err  <- sum(pts_unique$spatial_flag == "unlikely")
+    n_err <- sum(pts_unique$spatial_flag == "unlikely")
     n_susp <- sum(pts_unique$spatial_flag == "questionable")
-    n_ok   <- sum(pts_unique$spatial_flag == "likely")
+    n_ok <- sum(pts_unique$spatial_flag == "likely")
     message(sprintf(
       "  Flagging complete: %d unlikely, %d questionable, %d likely.",
       n_err, n_susp, n_ok
@@ -542,9 +569,9 @@ flag_habitat_inconsistencies <- function(
   # explicit flag rather than NA, so downstream functions see only valid values.
   na_flag <- is.na(occurrence_data$spatial_flag)
   if (any(na_flag)) {
-    na_hab  <- is.na(occurrence_data[[habitat_col]])
+    na_hab <- is.na(occurrence_data[[habitat_col]])
     na_coord <- is.na(occurrence_data[[lon_col]]) | is.na(occurrence_data[[lat_col]])
-    occurrence_data$spatial_flag[na_flag]        <- "likely"
+    occurrence_data$spatial_flag[na_flag] <- "likely"
     occurrence_data$spatial_flag_reason[na_flag] <- ifelse(
       na_coord[na_flag],
       "missing coordinates -- not spatially validated",

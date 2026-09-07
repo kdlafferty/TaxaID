@@ -25,7 +25,7 @@ two_level_scheme <- data.frame(
   l1_name = c("Marine", "Marine", "Freshwater"),
   l2_name = c("Rocky Subtidal", "Pelagic Open Water", "Rivers"),
   l2_code = c("M1", "M2", "F1"),
-  realm   = c("marine", "marine", "freshwater"),
+  realm = c("marine", "marine", "freshwater"),
   stringsAsFactors = FALSE
 )
 
@@ -73,8 +73,10 @@ test_that("returns an object with class c('habitat_prompt', 'llm_prompt')", {
 
 test_that("object has all required list elements", {
   prompt <- build_habitat_prompt(simple_taxa, habitat_scheme = simple_scheme)
-  required <- c("prompts", "taxa", "chunks", "scheme",
-                "habitat_cols", "extra_covariates", "chunk_size", "n_chunks")
+  required <- c(
+    "prompts", "taxa", "chunks", "scheme",
+    "habitat_cols", "extra_covariates", "chunk_size", "n_chunks"
+  )
   expect_true(all(required %in% names(prompt)))
 })
 
@@ -91,29 +93,37 @@ test_that("taxa element has whitespace trimmed", {
 })
 
 test_that("n_chunks is correct for small list", {
-  prompt <- build_habitat_prompt(simple_taxa, habitat_scheme = simple_scheme,
-                                 chunk_size = 60L)
+  prompt <- build_habitat_prompt(simple_taxa,
+    habitat_scheme = simple_scheme,
+    chunk_size = 60L
+  )
   expect_equal(prompt$n_chunks, 1L)
 })
 
 test_that("n_chunks is correct when list exceeds chunk_size", {
   many_taxa <- paste0("Species ", seq_len(10))
-  prompt <- build_habitat_prompt(many_taxa, habitat_scheme = simple_scheme,
-                                 chunk_size = 3L)
-  expect_equal(prompt$n_chunks, 4L)   # ceiling(10/3)
+  prompt <- build_habitat_prompt(many_taxa,
+    habitat_scheme = simple_scheme,
+    chunk_size = 3L
+  )
+  expect_equal(prompt$n_chunks, 4L) # ceiling(10/3)
 })
 
 test_that("prompts list has one element per chunk", {
   many_taxa <- paste0("Species ", seq_len(7))
-  prompt <- build_habitat_prompt(many_taxa, habitat_scheme = simple_scheme,
-                                 chunk_size = 3L)
+  prompt <- build_habitat_prompt(many_taxa,
+    habitat_scheme = simple_scheme,
+    chunk_size = 3L
+  )
   expect_equal(length(prompt$prompts), prompt$n_chunks)
 })
 
 test_that("chunks list has one element per chunk", {
   many_taxa <- paste0("Species ", seq_len(7))
-  prompt <- build_habitat_prompt(many_taxa, habitat_scheme = simple_scheme,
-                                 chunk_size = 3L)
+  prompt <- build_habitat_prompt(many_taxa,
+    habitat_scheme = simple_scheme,
+    chunk_size = 3L
+  )
   expect_equal(length(prompt$chunks), prompt$n_chunks)
 })
 
@@ -133,8 +143,9 @@ test_that("prompt text does NOT contain binary covariates section by default", {
 
 test_that("prompt text DOES contain binary covariates section when supplied", {
   prompt <- build_habitat_prompt(simple_taxa,
-                                 habitat_scheme     = simple_scheme,
-                                 extra_covariates   = c("Invasive", "Migratory"))
+    habitat_scheme     = simple_scheme,
+    extra_covariates   = c("Invasive", "Migratory")
+  )
   expect_true(grepl("Invasive", prompt$prompts[[1]]))
   expect_true(grepl("Migratory", prompt$prompts[[1]]))
 })
@@ -150,8 +161,10 @@ test_that("habitat_cols matches single-level scheme l1_name values", {
 
 test_that("habitat_cols matches two-level scheme l2_name values", {
   prompt <- build_habitat_prompt(simple_taxa, habitat_scheme = two_level_scheme)
-  expect_equal(prompt$habitat_cols,
-               c("Rocky Subtidal", "Pelagic Open Water", "Rivers"))
+  expect_equal(
+    prompt$habitat_cols,
+    c("Rocky Subtidal", "Pelagic Open Water", "Rivers")
+  )
 })
 
 test_that("habitat_cols has no duplicates", {
@@ -160,7 +173,7 @@ test_that("habitat_cols has no duplicates", {
 })
 
 test_that("NULL habitat_scheme gives 3-category default", {
-  prompt <- build_habitat_prompt(simple_taxa)   # NULL -> Marine/Freshwater/Terrestrial
+  prompt <- build_habitat_prompt(simple_taxa) # NULL -> Marine/Freshwater/Terrestrial
   expect_equal(length(prompt$habitat_cols), 3L)
   expect_true("Marine" %in% prompt$habitat_cols)
   expect_true("Freshwater" %in% prompt$habitat_cols)
@@ -192,8 +205,10 @@ test_that("prompt text mentions summing to 1.0", {
 })
 
 test_that("each taxon name appears in its chunk's prompt", {
-  prompt <- build_habitat_prompt(simple_taxa, habitat_scheme = simple_scheme,
-                                 chunk_size = 60L)
+  prompt <- build_habitat_prompt(simple_taxa,
+    habitat_scheme = simple_scheme,
+    chunk_size = 60L
+  )
   for (taxon in simple_taxa) {
     expect_true(grepl(taxon, prompt$prompts[[1]], fixed = TRUE))
   }
@@ -201,8 +216,10 @@ test_that("each taxon name appears in its chunk's prompt", {
 
 test_that("taxon names do NOT spill across chunks", {
   many_taxa <- paste0("Species_", seq_len(6))
-  prompt <- build_habitat_prompt(many_taxa, habitat_scheme = simple_scheme,
-                                 chunk_size = 3L)
+  prompt <- build_habitat_prompt(many_taxa,
+    habitat_scheme = simple_scheme,
+    chunk_size = 3L
+  )
   # chunk 1 should only contain first 3, not last 3
   expect_true(grepl("Species_1", prompt$prompts[[1]], fixed = TRUE))
   expect_false(grepl("Species_4", prompt$prompts[[1]], fixed = TRUE))
@@ -236,15 +253,17 @@ test_that("NULL habitat_scheme stores 3-category scheme", {
   prompt <- build_habitat_prompt(simple_taxa)
   expect_true(is.data.frame(prompt$scheme))
   expect_equal(nrow(prompt$scheme), 3L)
-  expect_equal(sort(prompt$scheme$l1_name),
-               sort(c("Marine", "Freshwater", "Terrestrial")))
+  expect_equal(
+    sort(prompt$scheme$l1_name),
+    sort(c("Marine", "Freshwater", "Terrestrial"))
+  )
 })
 
 test_that("scheme stored has padded optional columns", {
   # simple_scheme has no l2_name/l2_code/realm -- these should be padded with NA
   prompt <- build_habitat_prompt(simple_taxa, habitat_scheme = simple_scheme)
   expect_true("l2_name" %in% names(prompt$scheme))
-  expect_true("realm"   %in% names(prompt$scheme))
+  expect_true("realm" %in% names(prompt$scheme))
   expect_true(all(is.na(prompt$scheme$l2_name)))
 })
 
@@ -263,8 +282,10 @@ test_that("print shows '(none)' when extra_covariates is empty", {
 })
 
 test_that("print shows covariate names when extra_covariates supplied", {
-  prompt <- build_habitat_prompt(simple_taxa, habitat_scheme = simple_scheme,
-                                 extra_covariates = c("Invasive"))
+  prompt <- build_habitat_prompt(simple_taxa,
+    habitat_scheme = simple_scheme,
+    extra_covariates = c("Invasive")
+  )
   expect_output(print(prompt), "Invasive")
 })
 
@@ -357,7 +378,7 @@ test_that("build_iucn_scheme(realm=) sets a non-NA realm matching the request", 
 test_that("build_iucn_scheme(realm = NULL) still varies realm per L1 group", {
   scheme <- suppressWarnings(build_iucn_scheme(l1 = "all", l2 = "none"))
   expect_true("marine" %in% scheme$realm)
-  expect_true(any(is.na(scheme$realm)))  # terrestrial/artificial groups
+  expect_true(any(is.na(scheme$realm))) # terrestrial/artificial groups
 })
 
 test_that("Shrubland has real Subarctic/Subantarctic/Boreal L2 subcategories, not Forest's order", {

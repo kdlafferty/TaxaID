@@ -70,20 +70,19 @@
 #'
 #' @examples
 #' \dontrun{
-#' clean  <- TaxaFetch::filter_gbif_quality(gbif_raw)
+#' clean <- TaxaFetch::filter_gbif_quality(gbif_raw)
 #' tiered <- flag_institution_candidates(clean)
 #' reviewed <- review_institution_flags(tiered)
-#' final    <- dplyr::filter(reviewed, institution_decision != "remove")
+#' final <- dplyr::filter(reviewed, institution_decision != "remove")
 #' }
 review_institution_flags <- function(
-    occurrence_data,
-    lat_col      = "decimalLatitude",
-    lon_col      = "decimalLongitude",
-    taxon_col    = "species",
-    tile         = "Esri.OceanBasemap",
-    point_radius = 7
+  occurrence_data,
+  lat_col = "decimalLatitude",
+  lon_col = "decimalLongitude",
+  taxon_col = "species",
+  tile = "Esri.OceanBasemap",
+  point_radius = 7
 ) {
-
   # --------------------------------------------------------------------------
   # 0. Checks
   # --------------------------------------------------------------------------
@@ -102,10 +101,12 @@ review_institution_flags <- function(
   if (!is.data.frame(occurrence_data)) {
     stop("review_institution_flags: 'occurrence_data' must be a dataframe.")
   }
-  required_cols <- c("institution_flag", "institution_suspicion",
-                     "institution_name", "institution_type",
-                     "institution_dist_m", "institution_lon", "institution_lat",
-                     lat_col, lon_col)
+  required_cols <- c(
+    "institution_flag", "institution_suspicion",
+    "institution_name", "institution_type",
+    "institution_dist_m", "institution_lon", "institution_lat",
+    lat_col, lon_col
+  )
   missing_cols <- setdiff(required_cols, names(occurrence_data))
   if (length(missing_cols) > 0L) {
     stop(sprintf(
@@ -119,7 +120,8 @@ review_institution_flags <- function(
   }
   if (!is.null(taxon_col) && !taxon_col %in% names(occurrence_data)) {
     warning("review_institution_flags: taxon_col not found -- species label suppressed.",
-            call. = FALSE)
+      call. = FALSE
+    )
     taxon_col <- NULL
   }
 
@@ -137,23 +139,27 @@ review_institution_flags <- function(
 
   flagged_idx <- which(is_flagged)
 
-  point_id <- if ("gbifID" %in% names(occurrence_data)) as.character(occurrence_data$gbifID[flagged_idx]) else NA_character_
+  point_id <- if ("gbifID" %in% names(occurrence_data)) {
+    as.character(occurrence_data$gbifID[flagged_idx])
+  } else {
+    NA_character_
+  }
   if (anyNA(point_id) || anyDuplicated(point_id) > 0L) {
     point_id <- as.character(flagged_idx)
   }
 
   pts <- data.frame(
-    point_id    = point_id,
-    row_idx     = flagged_idx,
-    lon         = occurrence_data[[lon_col]][flagged_idx],
-    lat         = occurrence_data[[lat_col]][flagged_idx],
-    taxon       = if (!is.null(taxon_col)) as.character(occurrence_data[[taxon_col]][flagged_idx]) else NA_character_,
-    suspicion   = occurrence_data$institution_suspicion[flagged_idx],
-    inst_name   = occurrence_data$institution_name[flagged_idx],
-    inst_type   = occurrence_data$institution_type[flagged_idx],
+    point_id = point_id,
+    row_idx = flagged_idx,
+    lon = occurrence_data[[lon_col]][flagged_idx],
+    lat = occurrence_data[[lat_col]][flagged_idx],
+    taxon = if (!is.null(taxon_col)) as.character(occurrence_data[[taxon_col]][flagged_idx]) else NA_character_,
+    suspicion = occurrence_data$institution_suspicion[flagged_idx],
+    inst_name = occurrence_data$institution_name[flagged_idx],
+    inst_type = occurrence_data$institution_type[flagged_idx],
     inst_dist_m = occurrence_data$institution_dist_m[flagged_idx],
-    inst_lon    = occurrence_data$institution_lon[flagged_idx],
-    inst_lat    = occurrence_data$institution_lat[flagged_idx],
+    inst_lon = occurrence_data$institution_lon[flagged_idx],
+    inst_lat = occurrence_data$institution_lat[flagged_idx],
     stringsAsFactors = FALSE
   )
   pts$suspicion[is.na(pts$suspicion)] <- "ambiguous"
@@ -162,19 +168,23 @@ review_institution_flags <- function(
   # share the same nearest institution; show it once, not once per record.
   inst_pts <- unique(pts[!is.na(pts$inst_lon), c("inst_name", "inst_type", "inst_lon", "inst_lat")])
 
-  tier_levels    <- c("high", "low", "ambiguous")
-  tier_color     <- c(high = "#d62728", low = "#2ca02c", ambiguous = "#ff7f0e")
+  tier_levels <- c("high", "low", "ambiguous")
+  tier_color <- c(high = "#d62728", low = "#2ca02c", ambiguous = "#ff7f0e")
   decision_color <- c(keep = "#2ca02c", remove = "#d62728")
 
-  pts$tooltip <- mapply(function(taxon, sus, iname, itype, idist) {
-    out <- sprintf("<b>%s</b>", .he(if (is.na(taxon) || !nzchar(taxon)) "(no taxon)" else taxon))
-    out <- paste0(out, "<br/><b>Suspicion:</b> ", .he(sus))
-    out <- paste0(out, "<br/><b>Institution:</b> ", .he(iname),
-                 if (!is.na(itype)) sprintf(" (%s)", .he(itype)) else "")
-    out <- paste0(out, "<br/><b>Distance:</b> ", .he(sprintf("%.0f m", idist)))
-    out
-  }, pts$taxon, pts$suspicion, pts$inst_name, pts$inst_type, pts$inst_dist_m,
-  SIMPLIFY = TRUE)
+  pts$tooltip <- mapply(
+    function(taxon, sus, iname, itype, idist) {
+      out <- sprintf("<b>%s</b>", .he(if (is.na(taxon) || !nzchar(taxon)) "(no taxon)" else taxon))
+      out <- paste0(out, "<br/><b>Suspicion:</b> ", .he(sus))
+      out <- paste0(
+        out, "<br/><b>Institution:</b> ", .he(iname),
+        if (!is.na(itype)) sprintf(" (%s)", .he(itype)) else ""
+      )
+      out <- paste0(out, "<br/><b>Distance:</b> ", .he(sprintf("%.0f m", idist)))
+      out
+    }, pts$taxon, pts$suspicion, pts$inst_name, pts$inst_type, pts$inst_dist_m,
+    SIMPLIFY = TRUE
+  )
 
   # --------------------------------------------------------------------------
   # 2. UI
@@ -183,26 +193,23 @@ review_institution_flags <- function(
   ui <- miniUI::miniPage(
     miniUI::gadgetTitleBar(
       "Review Institution Flags",
-      right = miniUI::miniTitleBarButton("done",   "Done",   primary = TRUE),
+      right = miniUI::miniTitleBarButton("done", "Done", primary = TRUE),
       left  = miniUI::miniTitleBarButton("cancel", "Cancel", primary = FALSE)
     ),
     miniUI::miniContentPanel(
       padding = 0,
       shiny::fillRow(
         flex = c(1, NA),
-
         leaflet::leafletOutput("map", height = "100%"),
-
         shiny::div(
           style = paste0(
             "width:240px;padding:10px;border-left:1px solid #ddd;",
             "background:#fafafa;height:100%;overflow-y:auto;box-sizing:border-box;"
           ),
-
           shiny::h4("Suspicion tier", style = "margin-top:6px;margin-bottom:6px;font-size:14px;"),
           shiny::checkboxGroupInput(
-            inputId  = "visible_tiers",
-            label    = NULL,
+            inputId = "visible_tiers",
+            label = NULL,
             choiceNames = lapply(tier_levels, function(t) {
               shiny::HTML(sprintf(
                 paste0(
@@ -214,16 +221,12 @@ review_institution_flags <- function(
               ))
             }),
             choiceValues = tier_levels,
-            selected     = tier_levels
+            selected = tier_levels
           ),
-
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::h4("Point Info", style = "margin-top:0;margin-bottom:4px;font-size:14px;"),
           shiny::uiOutput("point_info_panel"),
-
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::div(
             style = paste0(
               "padding:8px;border-radius:4px;background:#f0f0f0;",
@@ -233,14 +236,10 @@ review_institution_flags <- function(
             shiny::br(),
             shiny::HTML("Keep \u2192 Remove \u2192 Keep")
           ),
-
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::h4("Summary", style = "margin-top:0;margin-bottom:4px;font-size:13px;"),
           shiny::uiOutput("decision_summary"),
-
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::actionButton(
             "undo_last", "Undo Last",
             style = "width:100%;font-size:12px;padding:4px 8px;"
@@ -255,12 +254,11 @@ review_institution_flags <- function(
   # --------------------------------------------------------------------------
 
   server <- function(input, output, session) {
-
     cur_decisions <- shiny::reactiveVal(
       stats::setNames(rep("keep", nrow(pts)), pts$point_id)
     )
     hovered_point_id <- shiny::reactiveVal(NULL)
-    history           <- shiny::reactiveVal(list())
+    history <- shiny::reactiveVal(list())
 
     visible_tiers <- shiny::reactive({
       input$visible_tiers %||% character(0L)
@@ -273,7 +271,8 @@ review_institution_flags <- function(
     output$map <- leaflet::renderLeaflet({
       m <- leaflet::leaflet(options = leaflet::leafletOptions(maxZoom = 20)) |>
         leaflet::addProviderTiles(
-          tile, options = leaflet::providerTileOptions(maxZoom = 20)
+          tile,
+          options = leaflet::providerTileOptions(maxZoom = 20)
         )
 
       # Frame the view on the flagged points themselves (padded) rather than
@@ -303,7 +302,7 @@ review_institution_flags <- function(
           fillOpacity = 0.7,
           opacity     = 1,
           weight      = 1,
-          label       = ~sprintf("Institution: %s (%s)", .he(inst_name), .he(inst_type)),
+          label       = ~ sprintf("Institution: %s (%s)", .he(inst_name), .he(inst_type)),
           group       = "institutions"
         )
       }
@@ -313,12 +312,14 @@ review_institution_flags <- function(
     # Redraw occurrence markers whenever visible tiers or decisions change --
     # small point counts (tens, not thousands) make a full redraw cheap.
     shiny::observe({
-      dec     <- cur_decisions()
+      dec <- cur_decisions()
       sub_pts <- visible_pts()
 
       proxy <- leaflet::leafletProxy("map") |> leaflet::clearGroup("occurrences")
 
-      if (nrow(sub_pts) == 0L) return()
+      if (nrow(sub_pts) == 0L) {
+        return()
+      }
 
       # unname() matters here, not just style: a NAMED color vector gets
       # serialized by leaflet's htmlwidgets JSON layer as a keyed object
@@ -332,23 +333,23 @@ review_institution_flags <- function(
 
       leaflet::addCircleMarkers(
         proxy,
-        data         = sub_pts,
-        lng          = ~lon,
-        lat          = ~lat,
-        layerId      = ~point_id,
-        radius       = point_radius * 0.75,
-        color        = cols,
-        fillColor    = cols,
-        fillOpacity  = 0.85,
-        opacity      = 1,
-        weight       = 2,
-        label        = lapply(sub_pts$tooltip, shiny::HTML),
+        data = sub_pts,
+        lng = ~lon,
+        lat = ~lat,
+        layerId = ~point_id,
+        radius = point_radius * 0.75,
+        color = cols,
+        fillColor = cols,
+        fillOpacity = 0.85,
+        opacity = 1,
+        weight = 2,
+        label = lapply(sub_pts$tooltip, shiny::HTML),
         labelOptions = leaflet::labelOptions(
           style     = list("font-size" = "12px", "padding" = "4px 6px"),
           direction = "auto",
           delay     = 600L
         ),
-        group        = "occurrences"
+        group = "occurrences"
       )
     })
 
@@ -372,7 +373,10 @@ review_institution_flags <- function(
           "border:1px solid #dce3ea;font-size:11px;"
         ),
         shiny::p(shiny::HTML(sprintf(
-          "<span style='display:inline-block;width:9px;height:9px;border-radius:50%%;background:%s;margin-right:4px;vertical-align:middle;'></span><b>%s</b>",
+          paste0(
+            "<span style='display:inline-block;width:9px;height:9px;border-radius:50%%;",
+            "background:%s;margin-right:4px;vertical-align:middle;'></span><b>%s</b>"
+          ),
           dec_col, .he(toupper(dec))
         )), style = "margin:0 0 3px 0;"),
         shiny::p(shiny::HTML(row$tooltip), style = "margin:0;")
@@ -381,12 +385,14 @@ review_institution_flags <- function(
 
     shiny::observeEvent(input$map_marker_click, {
       pid <- input$map_marker_click$id
-      if (is.null(pid) || !nzchar(pid) || !pid %in% pts$point_id) return()
+      if (is.null(pid) || !nzchar(pid) || !pid %in% pts$point_id) {
+        return()
+      }
       hovered_point_id(pid)
 
-      dec      <- cur_decisions()
-      old_dec  <- dec[[pid]]
-      new_dec  <- if (old_dec == "keep") "remove" else "keep"
+      dec <- cur_decisions()
+      old_dec <- dec[[pid]]
+      new_dec <- if (old_dec == "keep") "remove" else "keep"
 
       hist <- history()
       history(c(hist, list(list(point_id = pid, old_decision = old_dec))))
@@ -397,7 +403,9 @@ review_institution_flags <- function(
 
     shiny::observeEvent(input$undo_last, {
       hist <- history()
-      if (length(hist) == 0L) return()
+      if (length(hist) == 0L) {
+        return()
+      }
       last <- hist[[length(hist)]]
       history(hist[-length(hist)])
 
@@ -407,10 +415,10 @@ review_institution_flags <- function(
     })
 
     output$decision_summary <- shiny::renderUI({
-      dec     <- cur_decisions()
+      dec <- cur_decisions()
       n_total <- length(dec)
-      n_keep  <- sum(dec == "keep")
-      n_rem   <- sum(dec == "remove")
+      n_keep <- sum(dec == "keep")
+      n_rem <- sum(dec == "remove")
       shiny::div(
         style = "font-size:11px;color:#444;",
         shiny::p(sprintf("%d flagged record(s)", n_total), style = "margin:0 0 4px 0;font-weight:bold;"),

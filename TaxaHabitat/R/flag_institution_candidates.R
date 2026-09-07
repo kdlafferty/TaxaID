@@ -64,21 +64,20 @@
 #'
 #' @examples
 #' \dontrun{
-#' clean   <- TaxaFetch::filter_gbif_quality(gbif_raw)
-#' tiered  <- flag_institution_candidates(clean)
+#' clean <- TaxaFetch::filter_gbif_quality(gbif_raw)
+#' tiered <- flag_institution_candidates(clean)
 #' table(tiered$institution_suspicion, useNA = "ifany")
 #' }
 flag_institution_candidates <- function(
-    occurrence_data,
-    kingdom_col      = "kingdom",
-    suspicion_rules  = NULL
+  occurrence_data,
+  kingdom_col = "kingdom",
+  suspicion_rules = NULL
 ) {
-
   if (!is.data.frame(occurrence_data)) {
     stop("flag_institution_candidates: 'occurrence_data' must be a dataframe.")
   }
   required_cols <- c("institution_flag", "institution_type")
-  missing_cols  <- setdiff(required_cols, names(occurrence_data))
+  missing_cols <- setdiff(required_cols, names(occurrence_data))
   if (length(missing_cols) > 0L) {
     stop(sprintf(
       paste0(
@@ -96,15 +95,21 @@ flag_institution_candidates <- function(
 
   if (is.null(suspicion_rules)) {
     suspicion_rules <- data.frame(
-      institution_type = c("Herbarium", "Herbarium", "Herbarium",
-                           "Botanic_garden", "Botanic_garden",
-                           "Zoo", "Zoo"),
-      kingdom          = c("Plantae", "Fungi", NA,
-                           "Plantae", NA,
-                           "Animalia", NA),
-      suspicion        = c("high", "high", "low",
-                           "high", "low",
-                           "high", "low"),
+      institution_type = c(
+        "Herbarium", "Herbarium", "Herbarium",
+        "Botanic_garden", "Botanic_garden",
+        "Zoo", "Zoo"
+      ),
+      kingdom = c(
+        "Plantae", "Fungi", NA,
+        "Plantae", NA,
+        "Animalia", NA
+      ),
+      suspicion = c(
+        "high", "high", "low",
+        "high", "low",
+        "high", "low"
+      ),
       stringsAsFactors = FALSE
     )
   }
@@ -117,7 +122,7 @@ flag_institution_candidates <- function(
     return(occurrence_data)
   }
 
-  flagged_type    <- occurrence_data$institution_type[is_flagged]
+  flagged_type <- occurrence_data$institution_type[is_flagged]
   flagged_kingdom <- occurrence_data[[kingdom_col]][is_flagged]
 
   tier <- mapply(function(type, k) {
@@ -130,22 +135,28 @@ flag_institution_candidates <- function(
     # of the documented "ambiguous" fallback. Guard suspicion_rules$
     # institution_type on the other side too, in case a caller-supplied
     # rules table has its own NA institution_type row.
-    if (is.na(type)) return("ambiguous")
+    if (is.na(type)) {
+      return("ambiguous")
+    }
 
     exact <- suspicion_rules$suspicion[
       !is.na(suspicion_rules$institution_type) &
-      !is.na(suspicion_rules$kingdom) &
-      suspicion_rules$institution_type == type &
-      suspicion_rules$kingdom == k
+        !is.na(suspicion_rules$kingdom) &
+        suspicion_rules$institution_type == type &
+        suspicion_rules$kingdom == k
     ]
-    if (length(exact) > 0L) return(exact[[1]])
+    if (length(exact) > 0L) {
+      return(exact[[1]])
+    }
 
     wildcard <- suspicion_rules$suspicion[
       !is.na(suspicion_rules$institution_type) &
-      is.na(suspicion_rules$kingdom) &
-      suspicion_rules$institution_type == type
+        is.na(suspicion_rules$kingdom) &
+        suspicion_rules$institution_type == type
     ]
-    if (length(wildcard) > 0L) return(wildcard[[1]])
+    if (length(wildcard) > 0L) {
+      return(wildcard[[1]])
+    }
 
     "ambiguous"
   }, flagged_type, flagged_kingdom, SIMPLIFY = TRUE, USE.NAMES = FALSE)

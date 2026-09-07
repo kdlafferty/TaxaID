@@ -104,10 +104,10 @@
 #' # hab_weights: species-by-habitat weight table, e.g. from
 #' # parse_hierarchical_habitat_response()
 #' hab_weights <- data.frame(
-#'   taxon_name   = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss"),
-#'   Marine       = c(1.0, 1.0, 0.5),
-#'   Freshwater   = c(0.0, 0.0, 0.5),
-#'   Terrestrial  = c(0.0, 0.0, 0.0),
+#'   taxon_name = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss"),
+#'   Marine = c(1.0, 1.0, 0.5),
+#'   Freshwater = c(0.0, 0.0, 0.5),
+#'   Terrestrial = c(0.0, 0.0, 0.0),
 #'   Other_weight = c(0.0, 0.0, 0.0),
 #'   habitat_best_guess = c("", "", "")
 #' )
@@ -124,19 +124,18 @@
 #'
 #' \dontrun{
 #' # Points where the scheme did not fit (dplyr shown for real workflows)
-#' result |> dplyr::filter(main_habitat == "Other") |>
+#' result |>
+#'   dplyr::filter(main_habitat == "Other") |>
 #'   dplyr::distinct(point_id, habitat_best_guess)
 #' }
-
 assign_habitat_biological <- function(occurrence_data,
                                       habitats_df,
-                                      habitat_cols        = NULL,
-                                      point_id_col        = "point_id",
-                                      taxon_col           = "taxon_name",
+                                      habitat_cols = NULL,
+                                      point_id_col = "point_id",
+                                      taxon_col = "taxon_name",
                                       weight_by_abundance = FALSE,
-                                      threshold           = 0.3,
-                                      min_species_weight  = 0.0) {
-
+                                      threshold = 0.3,
+                                      min_species_weight = 0.0) {
   # ---------------------------------------------------------------------------
   # Input checks
   # ---------------------------------------------------------------------------
@@ -163,7 +162,7 @@ assign_habitat_biological <- function(occurrence_data,
   }
 
   if (!is.logical(weight_by_abundance) || length(weight_by_abundance) != 1L ||
-      is.na(weight_by_abundance)) {
+    is.na(weight_by_abundance)) {
     stop("assign_habitat_biological: 'weight_by_abundance' must be TRUE or FALSE.")
   }
 
@@ -175,7 +174,7 @@ assign_habitat_biological <- function(occurrence_data,
   }
 
   if (!is.numeric(min_species_weight) || length(min_species_weight) != 1L ||
-      is.na(min_species_weight) || min_species_weight < 0 || min_species_weight >= 1) {
+    is.na(min_species_weight) || min_species_weight < 0 || min_species_weight >= 1) {
     stop(
       "assign_habitat_biological: 'min_species_weight' must be numeric in [0, 1). ",
       "Got: ", min_species_weight
@@ -186,18 +185,18 @@ assign_habitat_biological <- function(occurrence_data,
   # Identify habitat weight columns
   # ---------------------------------------------------------------------------
   hab_cols_info <- .detect_habitat_cols(habitats_df, habitat_cols, taxon_col,
-                                        caller = "assign_habitat_biological")
-  habitats_df  <- hab_cols_info$habitats_df
+    caller = "assign_habitat_biological"
+  )
+  habitats_df <- hab_cols_info$habitats_df
   habitat_cols <- hab_cols_info$habitat_cols
-  has_other_weight <- hab_cols_info$has_other_weight
-  has_best_guess   <- hab_cols_info$has_best_guess
+  has_best_guess <- hab_cols_info$has_best_guess
 
   # ---------------------------------------------------------------------------
   # Coverage report
   # ---------------------------------------------------------------------------
-  data_taxa   <- unique(occurrence_data[[taxon_col]])
+  data_taxa <- unique(occurrence_data[[taxon_col]])
   lookup_taxa <- unique(habitats_df[[taxon_col]])
-  n_covered   <- sum(data_taxa %in% lookup_taxa)
+  n_covered <- sum(data_taxa %in% lookup_taxa)
   pct_covered <- 100 * n_covered / length(data_taxa)
 
   message(sprintf(
@@ -220,7 +219,8 @@ assign_habitat_biological <- function(occurrence_data,
   # ---------------------------------------------------------------------------
   keep_cols <- c(taxon_col, habitat_cols, if (has_best_guess) "habitat_best_guess")
   weights_clean <- habitats_df[, intersect(keep_cols, names(habitats_df)),
-                               drop = FALSE]
+    drop = FALSE
+  ]
 
   # Coerce weight columns to numeric; replace NA with 0
   for (hc in habitat_cols) {
@@ -235,7 +235,7 @@ assign_habitat_biological <- function(occurrence_data,
     n_zeroed <- 0L
     for (hc in habitat_cols) {
       below_floor <- weights_clean[[hc]] > 0 &
-                     weights_clean[[hc]] < min_species_weight
+        weights_clean[[hc]] < min_species_weight
       n_zeroed <- n_zeroed + sum(below_floor, na.rm = TRUE)
       weights_clean[[hc]][below_floor] <- 0
     }
@@ -254,17 +254,19 @@ assign_habitat_biological <- function(occurrence_data,
   joined <- merge(
     occurrence_data[, unique(c(point_id_col, taxon_col)), drop = FALSE],
     weights_clean,
-    by    = taxon_col,
-    all.x = FALSE   # drop unmatched occurrences (taxa not in lookup)
+    by = taxon_col,
+    all.x = FALSE # drop unmatched occurrences (taxa not in lookup)
   )
 
   if (nrow(joined) == 0) {
     # No matches at all -- return occurrence_data with NA columns appended
     result <- occurrence_data
-    result[["main_habitat"]]       <- NA_character_
+    result[["main_habitat"]] <- NA_character_
     result[["habitat_best_guess"]] <- NA_character_
-    message("assign_habitat_biological: 0 of ", dplyr::n_distinct(occurrence_data[[point_id_col]]),
-            " site(s) assigned a habitat (no species matched lookup table).")
+    message(
+      "assign_habitat_biological: 0 of ", dplyr::n_distinct(occurrence_data[[point_id_col]]),
+      " site(s) assigned a habitat (no species matched lookup table)."
+    )
     return(result)
   }
 
@@ -285,13 +287,14 @@ assign_habitat_biological <- function(occurrence_data,
   } else {
     # De-duplicate to one row per point x taxon (equal species weight)
     joined <- joined[!duplicated(joined[, c(point_id_col, taxon_col)]), ,
-                     drop = FALSE]
+      drop = FALSE
+    ]
   }
 
   # Step 3: sum weight columns across species within each point
   point_sums <- aggregate(
     joined[, habitat_cols, drop = FALSE],
-    by  = joined[, point_id_col, drop = FALSE],
+    by = joined[, point_id_col, drop = FALSE],
     FUN = sum,
     na.rm = TRUE
   )
@@ -303,9 +306,9 @@ assign_habitat_biological <- function(occurrence_data,
   row_totals[row_totals == 0] <- NA_real_
   prop_mat <- weight_mat / row_totals
 
-  best_idx  <- max.col(prop_mat, ties.method = "first")
+  best_idx <- max.col(prop_mat, ties.method = "first")
   best_prop <- prop_mat[cbind(seq_len(nrow(prop_mat)), best_idx)]
-  best_hab  <- habitat_cols[best_idx]
+  best_hab <- habitat_cols[best_idx]
 
   # Apply threshold
   best_hab[is.na(best_prop) | best_prop < threshold] <- NA_character_
@@ -325,9 +328,11 @@ assign_habitat_biological <- function(occurrence_data,
   if (has_best_guess && "Other" %in% habitat_cols) {
     # For each point where Other_weight > 0 in any contributing species,
     # collect the unique non-blank habitat_best_guess strings.
-    other_contributors <- joined[joined[["Other"]] > 0 &
-                                   !is.na(joined[["Other"]]), ,
-                                 drop = FALSE]
+    other_contributors <- joined[
+      joined[["Other"]] > 0 &
+        !is.na(joined[["Other"]]), ,
+      drop = FALSE
+    ]
 
     if (nrow(other_contributors) > 0) {
       # Aggregate free-text guesses per point
@@ -355,26 +360,28 @@ assign_habitat_biological <- function(occurrence_data,
   # Merge back onto original occurrence_data and report
   # ---------------------------------------------------------------------------
   # Drop any pre-existing main_habitat / habitat_best_guess columns in occurrence_data
-  occurrence_data[["main_habitat"]]       <- NULL
+  occurrence_data[["main_habitat"]] <- NULL
   occurrence_data[["habitat_best_guess"]] <- NULL
 
   result <- merge(occurrence_data, site_habitats, by = point_id_col, all.x = TRUE)
 
-  n_sites      <- dplyr::n_distinct(occurrence_data[[point_id_col]])
-  n_assigned   <- dplyr::n_distinct(
+  n_sites <- dplyr::n_distinct(occurrence_data[[point_id_col]])
+  n_assigned <- dplyr::n_distinct(
     result[[point_id_col]][!is.na(result[["main_habitat"]])]
   )
   n_unassigned <- n_sites - n_assigned
-  n_other      <- dplyr::n_distinct(
+  n_other <- dplyr::n_distinct(
     result[[point_id_col]][
       !is.na(result[["main_habitat"]]) & result[["main_habitat"]] == "Other"
     ]
   )
 
   message(sprintf(
-    paste0("assign_habitat_biological: %d of %d site(s) assigned a habitat ",
-           "(threshold = %.2f). %d site(s) received NA. %d site(s) assigned 'Other' ",
-           "(scheme may need extending -- check habitat_best_guess column)."),
+    paste0(
+      "assign_habitat_biological: %d of %d site(s) assigned a habitat ",
+      "(threshold = %.2f). %d site(s) received NA. %d site(s) assigned 'Other' ",
+      "(scheme may need extending -- check habitat_best_guess column)."
+    ),
     n_assigned, n_sites, threshold, n_unassigned, n_other
   ))
 
@@ -416,11 +423,14 @@ assign_habitat_biological <- function(occurrence_data,
       )
     }
   } else {
-    exclude_cols <- c(taxon_col,
-                      if (has_best_guess) "habitat_best_guess",
-                      if ("ecoregion_best_guess" %in% names(habitats_df))
-                        "ecoregion_best_guess",
-                      "Habitat")
+    exclude_cols <- c(
+      taxon_col,
+      if (has_best_guess) "habitat_best_guess",
+      if ("ecoregion_best_guess" %in% names(habitats_df)) {
+        "ecoregion_best_guess"
+      },
+      "Habitat"
+    )
     numeric_cols <- names(habitats_df)[
       vapply(habitats_df, is.numeric, logical(1))
     ]
@@ -442,10 +452,12 @@ assign_habitat_biological <- function(occurrence_data,
     ))
   }
 
-  list(habitats_df       = habitats_df,
-       habitat_cols      = habitat_cols,
-       has_other_weight  = has_other_weight,
-       has_best_guess    = has_best_guess)
+  list(
+    habitats_df = habitats_df,
+    habitat_cols = habitat_cols,
+    has_other_weight = has_other_weight,
+    has_best_guess = has_best_guess
+  )
 }
 
 
@@ -497,36 +509,37 @@ assign_habitat_biological <- function(occurrence_data,
 #' @examples
 #' hab_weights <- data.frame(
 #'   taxon_name = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss"),
-#'   Marine     = c(1.0, 1.0, 0.5),
+#'   Marine = c(1.0, 1.0, 0.5),
 #'   Freshwater = c(0.0, 0.0, 0.5),
 #'   Terrestrial = c(0.0, 0.0, 0.0),
 #'   Other_weight = c(0.0, 0.0, 0.0),
 #'   habitat_best_guess = c("", "", "")
 #' )
 #' consensus_habitat(hab_weights)
-
 consensus_habitat <- function(habitats_df,
                               habitat_cols = NULL,
-                              taxon_col    = "taxon_name",
-                              threshold    = 0.3) {
-
+                              taxon_col = "taxon_name",
+                              threshold = 0.3) {
   # --- Input checks ---
   if (!is.data.frame(habitats_df)) {
     stop("consensus_habitat: 'habitats_df' must be a dataframe.")
   }
   if (!taxon_col %in% names(habitats_df)) {
-    stop("consensus_habitat: taxon column '", taxon_col,
-         "' not found in 'habitats_df'.")
+    stop(
+      "consensus_habitat: taxon column '", taxon_col,
+      "' not found in 'habitats_df'."
+    )
   }
   if (!is.numeric(threshold) || length(threshold) != 1L ||
-      is.na(threshold) || threshold <= 0 || threshold > 1) {
+    is.na(threshold) || threshold <= 0 || threshold > 1) {
     stop("consensus_habitat: 'threshold' must be numeric in (0, 1].")
   }
 
   # --- Detect habitat columns ---
   hab_cols_info <- .detect_habitat_cols(habitats_df, habitat_cols, taxon_col,
-                                        caller = "consensus_habitat")
-  habitats_df  <- hab_cols_info$habitats_df
+    caller = "consensus_habitat"
+  )
+  habitats_df <- hab_cols_info$habitats_df
   habitat_cols <- hab_cols_info$habitat_cols
 
   # --- De-duplicate to one row per taxon ---
@@ -534,7 +547,7 @@ consensus_habitat <- function(habitats_df,
 
   # --- Sum habitat weights across all taxa ---
   col_sums <- colSums(habitats_df[, habitat_cols, drop = FALSE], na.rm = TRUE)
-  total    <- sum(col_sums)
+  total <- sum(col_sums)
 
   if (total == 0) {
     props <- rep(0, length(habitat_cols))
@@ -557,14 +570,14 @@ consensus_habitat <- function(habitats_df,
     eco_vals <- eco_vals[!is.na(eco_vals) & nzchar(eco_vals)]
     if (length(eco_vals) > 0) {
       eco_counts <- table(eco_vals)
-      ecoregion  <- names(which.max(eco_counts))
+      ecoregion <- names(which.max(eco_counts))
     }
   }
 
   # --- habitat_best_guess when Other wins ---
   best_guess <- NA_character_
   if ("habitat_best_guess" %in% names(habitats_df) &&
-      !is.na(main_habitat) && main_habitat == "Other") {
+    !is.na(main_habitat) && main_habitat == "Other") {
     guesses <- trimws(habitats_df[["habitat_best_guess"]])
     guesses <- unique(guesses[!is.na(guesses) & nzchar(guesses)])
     if (length(guesses) > 0) best_guess <- paste(guesses, collapse = "; ")
