@@ -198,12 +198,20 @@ test_that(".widget_code's function_ref choices match .llm_provider_choices()", {
   }
 })
 
-test_that(".param_assembly_line's function_ref branch validates against the allow-list before eval", {
+test_that(".param_assembly_line's function_ref branch validates against the allow-list", {
   param <- list(name = "llm_fn", type = "function_ref", default = "TaxaTools::call_api")
   lines <- paste(TaxaWizard:::.param_assembly_line(param), collapse = "\n")
 
   expect_true(grepl(".allowed_fns", lines, fixed = TRUE))
-  expect_true(grepl("if (!.fn_str %in% .allowed_fns)", lines, fixed = TRUE))
+  expect_true(grepl(".fn_str %in% .allowed_fns", lines, fixed = TRUE))
+  expect_true(grepl("length(.fn_str) != 1L", lines, fixed = TRUE))
+  # The client-supplied value must never reach parse()/eval() at all -- it is
+  # resolved by namespace lookup once it is known to be on the allow-list.
+  code_lines <- grep("^\\s*#", TaxaWizard:::.param_assembly_line(param),
+                     value = TRUE, invert = TRUE)
+  expect_false(any(grepl("parse(", code_lines, fixed = TRUE)))
+  expect_false(any(grepl("eval(", code_lines, fixed = TRUE)))
+  expect_true(grepl("getExportedValue(", lines, fixed = TRUE))
   # Every real choice must appear in the generated allow-list literal.
   for (fn in unname(TaxaWizard:::.llm_provider_choices())) {
     expect_true(grepl(fn, lines, fixed = TRUE))
@@ -218,6 +226,23 @@ test_that(".param_assembly_line's function_ref allow-list actually blocks an unl
   # as a malicious client could send via Shiny.setInputValue() regardless of the
   # selectInput's own choices.
   input <- list(param_llm_fn = 'system("touch /tmp/pwned")')
+  env <- new.env()
+  expect_error(
+    eval(parse(text = lines), envir = environment()),
+    "Invalid LLM provider selection"
+  )
+})
+
+test_that(".param_assembly_line's allow-list rejects a multi-element tampered value", {
+  # Shiny.setInputValue() can send an ARRAY, not just a string. A bare
+  # `!.fn_str %in% .allowed_fns` test then reduces to its first element, so on
+  # R < 4.2 (this package declares R >= 4.1.0) a value whose first element is
+  # an allowed provider would have smuggled the rest past the guard.
+  param <- list(name = "llm_fn", type = "function_ref", default = "TaxaTools::call_api")
+  lines <- paste(TaxaWizard:::.param_assembly_line(param), collapse = "\n")
+
+  input <- list(param_llm_fn = c("TaxaTools::call_api",
+                                 'system("touch /tmp/pwned")'))
   env <- new.env()
   expect_error(
     eval(parse(text = lines), envir = environment()),
@@ -508,4 +533,63 @@ test_that("annotate_script errors when llm mode without llm_fn", {
     "llm_fn is required"
   )
   unlink(tmp)
+})
+
+# --- Backslash-safe embedding of text into generated R string literals -------
+# Regression tests for a real bug: the generated app.R embedded step code and
+# parameter defaults into R string literals while escaping only the double
+# quotes. A lone backslash in that text (a regex in a comment, a Windows path)
+# therefore became an invalid escape and the WHOLE app.R failed to parse.
+
+test_that("generated app.R parses when step code contains a lone backslash", {
+  skip_if_not_installed("shiny")
+  bs <- "\\"
+  tmp <- tempfile(fileext = ".R")
+  writeLines(c(
+    "# --- User Parameters ---",
+    "min_score <- 97",
+    "",
+    "# --- Step 1: Go ---",
+    'res <- .run_step(1, "Go", quote({',
+    paste0("  # keep only ", bs, "d digits"),
+    "  data.frame(x = 1)",
+    "}))"
+  ), tmp)
+
+  out_dir <- file.path(tempdir(), basename(tempfile()))
+  app <- workflow_app(tmp, output_dir = out_dir, launch = FALSE)
+  expect_silent(parse(file = app))
+  unlink(tmp)
+})
+
+test_that("generated app.R parses when a character parameter contains backslashes", {
+  skip_if_not_installed("shiny")
+  bs <- "\\"
+  tmp <- tempfile(fileext = ".R")
+  writeLines(c(
+    "# --- User Parameters ---",
+    paste0('note <- "C:', bs, bs, 'Users', bs, bs, 'me"'),
+    "",
+    "# --- Step 1: Go ---",
+    'res <- .run_step(1, "Go", quote({',
+    "  data.frame(x = 1)",
+    "}))"
+  ), tmp)
+
+  out_dir <- file.path(tempdir(), basename(tempfile()))
+  app <- workflow_app(tmp, output_dir = out_dir, launch = FALSE)
+  expect_silent(parse(file = app))
+  unlink(tmp)
+})
+
+test_that(".r_string round-trips text through an R literal", {
+  bs <- "\\"
+  for (x in list(paste0("a", bs, "d b"), 'quoted "value"', "line1\nline2",
+                 paste0("C:", bs, "Users"), "plain")) {
+    expect_identical(eval(parse(text = TaxaWizard:::.r_string(x))[[1L]]), x)
+  }
+  # NULL / NA never collapse to a zero-length result (which would silently drop
+  # the surrounding widget or step from the generated file).
+  expect_identical(TaxaWizard:::.r_string(NULL), '""')
+  expect_identical(TaxaWizard:::.r_string(NA), '""')
 })

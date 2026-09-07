@@ -1,3 +1,30 @@
+#' Encode a Value as a Literal R String for Generated Code
+#'
+#' Both generators in this package (\code{.generate_script()} for workflow
+#' scripts, \code{.build_app_code()} for Shiny apps) embed free-form text --
+#' file paths, step descriptions, parameter defaults, whole step code blocks
+#' -- inside R string literals in the file they emit. Escaping only the double
+#' quotes (the hand-rolled \code{gsub('"', '\\\\"', x)} idiom previously used)
+#' leaves any backslash in that text as a lone backslash in the emitted
+#' literal, which is an invalid R escape: the generated file then fails to
+#' parse in its entirety. \code{encodeString()} escapes backslashes, quotes
+#' and control characters together, so the emitted literal always parses back
+#' to exactly the original text.
+#'
+#' @param x Value to embed. Coerced with \code{as.character()}; \code{NULL}
+#'   and \code{NA} become an empty string so a widget or step is never
+#'   silently dropped from the generated file.
+#' @return Character scalar, including the surrounding double quotes.
+#' @noRd
+.r_string <- function(x) {
+  x <- as.character(x)
+  if (length(x) == 0L) return("\"\"")
+  x <- x[1L]
+  if (is.na(x)) x <- ""
+  encodeString(x, quote = "\"")
+}
+
+
 #' Generate Workflow Outputs
 #'
 #' Dispatches to the appropriate output generator(s) based on the
@@ -138,8 +165,8 @@
   # --- Checkpoint directory ---
   lines <- c(lines,
     "# --- Checkpoint directory (for resume on re-run) ---",
-    sprintf('checkpoint_dir <- file.path("%s", ".workflow_checkpoints")',
-            gsub('"', '\\\\"', output_dir)),
+    sprintf('checkpoint_dir <- file.path(%s, ".workflow_checkpoints")',
+            .r_string(output_dir)),
     "if (!dir.exists(checkpoint_dir)) dir.create(checkpoint_dir, recursive = TRUE)",
     sprintf("total_steps <- %dL  # updated automatically when workflow is extended",
             n_steps),
@@ -208,8 +235,8 @@
     # giving access to all variables from prior steps.
     lines <- c(lines,
       sprintf("# --- Step %d: %s ---", i, desc),
-      sprintf('%s <- .run_step(%d, "%s", quote({',
-              output_var, i, gsub('"', '\\\\"', desc)),
+      sprintf('%s <- .run_step(%d, %s, quote({',
+              output_var, i, .r_string(desc)),
       paste0("  ", strsplit(step$code, "\n")[[1]]),  # indent code inside quote
       "}))",
       ""
@@ -394,8 +421,8 @@
     new_step_lines <- c(new_step_lines,
       "",
       sprintf("# --- Step %d: %s ---", step_num, desc),
-      sprintf('%s <- .run_step(%d, "%s", quote({',
-              output_var, step_num, gsub('"', '\\\\"', desc)),
+      sprintf('%s <- .run_step(%d, %s, quote({',
+              output_var, step_num, .r_string(desc)),
       paste0("  ", strsplit(step$code, "\n")[[1]]),
       "}))",
       ""

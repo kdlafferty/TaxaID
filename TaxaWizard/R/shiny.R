@@ -1150,10 +1150,10 @@ annotate_script <- function(script_path,
     s <- steps[[i]]
     c(
       sprintf('      shiny::tags$details('),
-      sprintf('        shiny::tags$summary(shiny::tags$strong("Step %d: %s")),',
-              s$step_id, gsub('"', "'", s$description)),
+      sprintf('        shiny::tags$summary(shiny::tags$strong(%s)),',
+              .r_string(sprintf("Step %s: %s", s$step_id, s$description))),
       sprintf('        shiny::tags$pre(style = "font-size: 11px; max-height: 200px; overflow-y: auto;",'),
-      sprintf('          "%s"', gsub('"', '\\\\"', gsub("\n", "\\\\n", s$code_text))),
+      sprintf('          %s', .r_string(s$code_text)),
       "        )",
       "      ),"
     )
@@ -1279,10 +1279,11 @@ annotate_script <- function(script_path,
 #' parameter's widget may resolve to in a generated app. Shared between the
 #' UI widget (\code{.widget_code()}, which builds the \code{selectInput()}
 #' choices from it) and the server-side assembly code
-#' (\code{.param_assembly_line()}, which validates \code{input$...} against
-#' it before \code{eval(parse(text = ...))}) so a client that tampers with
-#' the Shiny input value client-side (e.g. via the browser console) cannot
-#' get arbitrary text evaluated server-side.
+#' (\code{.param_assembly_line()}, which requires \code{input$...} to be
+#' exactly one value from this list and then resolves it with
+#' \code{getExportedValue()}) so a client that tampers with the Shiny input
+#' value client-side (e.g. via the browser console) cannot get arbitrary
+#' text evaluated server-side.
 #'
 #' @return Named character vector: display label -> \code{pkg::fn} string.
 #' @noRd
@@ -1342,8 +1343,8 @@ annotate_script <- function(script_path,
       input_id, label
     ),
     file_output = sprintf(
-      'shiny::textInput("%s", "%s", value = "%s"),',
-      input_id, label, param$default
+      'shiny::textInput("%s", "%s", value = %s),',
+      input_id, label, .r_string(param$default)
     ),
     logical = sprintf(
       'shiny::checkboxInput("%s", "%s", value = %s),',
@@ -1382,14 +1383,14 @@ annotate_script <- function(script_path,
         csv_text <- paste(
           c(paste(names(df_val), collapse = ","),
             apply(df_val, 1, function(r) paste(r, collapse = ","))),
-          collapse = "\\n"
+          collapse = "\n"
         )
       } else {
         csv_text <- param$raw
       }
       sprintf(
-        'shiny::textAreaInput("%s", "%s (CSV: first line = column name, then one value per line)", value = "%s", rows = 4),',
-        input_id, label, csv_text
+        'shiny::textAreaInput("%s", "%s (CSV: first line = column name, then one value per line)", value = %s, rows = 4),',
+        input_id, label, .r_string(csv_text)
       )
     },
     function_ref = {
@@ -1409,8 +1410,8 @@ annotate_script <- function(script_path,
     ),
     # Default: character
     sprintf(
-      'shiny::textInput("%s", "%s", value = "%s"),',
-      input_id, label, gsub('"', '\\\\"', as.character(param$default))
+      'shiny::textInput("%s", "%s", value = %s),',
+      input_id, label, .r_string(param$default)
     )
   )
 }
@@ -1519,10 +1520,12 @@ annotate_script <- function(script_path,
       "",
       sprintf("      # Step %d: %s", s$step_id, s$description),
       sprintf('      if (!.failed) {'),
-      sprintf('        shiny::setProgress(value = %d, detail = "Step %d/%d: %s")',
-              i - 1L, s$step_id, n_steps, gsub('"', "'", short_desc)),
-      sprintf('        .log(sprintf("Step %%d/%d: %%s ...", %d, "%s"))',
-              n_steps, s$step_id, gsub('"', "'", short_desc)),
+      sprintf('        shiny::setProgress(value = %d, detail = %s)',
+              i - 1L,
+              .r_string(sprintf("Step %s/%d: %s", s$step_id, n_steps,
+                                short_desc))),
+      sprintf('        .log(sprintf("Step %%s/%d: %%s ...", %s, %s))',
+              n_steps, .r_string(s$step_id), .r_string(short_desc)),
       "        tryCatch(eval(quote({",
       sprintf("          %s", code_lines),
       "        }), envir = env), error = function(e) {",
@@ -1575,8 +1578,8 @@ annotate_script <- function(script_path,
       sprintf('      shiny::tags$p(shiny::tags$strong("Description: "),'),
       sprintf('        "%s"),', gsub('"', "'", help$detail)),
       sprintf('      shiny::tags$p(shiny::tags$strong("Type: "), "%s"),', help$type),
-      sprintf('      shiny::tags$p(shiny::tags$strong("Default: "), "%s"),',
-              gsub('"', "'", help$default)),
+      sprintf('      shiny::tags$p(shiny::tags$strong("Default: "), %s),',
+              .r_string(help$default)),
       "      easyClose = TRUE, size = \"s\"",
       "    ))",
       "  })",
@@ -1748,13 +1751,21 @@ annotate_script <- function(script_path,
       c(
         sprintf('.fn_str <- input$%s', input_id),
         sprintf('.allowed_fns <- c(%s)', allowed_text),
-        '# Validate against the fixed provider list before eval(): input$... is',
-        '# client-supplied and Shiny does not restrict it to the selectInput choices',
-        '# server-side, so this guards against arbitrary code reaching eval(parse()).',
-        'if (!.fn_str %in% .allowed_fns) {',
+        '# input$... is client-supplied: Shiny does not restrict it to the',
+        '# selectInput choices server-side, and it need not even be a single',
+        '# string. Require EXACTLY ONE value from the fixed provider list (a',
+        '# length-2 value would otherwise pass a bare %in% test on its first',
+        '# element), then resolve it by namespace lookup rather than',
+        '# eval(parse()), so no client-supplied text is ever parsed at all.',
+        'if (length(.fn_str) != 1L || is.na(.fn_str) ||',
+        '    !.fn_str %in% .allowed_fns) {',
         '  stop("Invalid LLM provider selection.")',
         '}',
-        sprintf('assign("%s", eval(parse(text = .fn_str)), envir = env)', nm)
+        '.fn_parts <- strsplit(.fn_str, "::", fixed = TRUE)[[1L]]',
+        sprintf(
+          'assign("%s", getExportedValue(.fn_parts[1L], .fn_parts[2L]), envir = env)',
+          nm
+        )
       )
     },
     null_param = c(
