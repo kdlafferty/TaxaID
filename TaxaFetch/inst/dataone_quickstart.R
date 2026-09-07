@@ -32,10 +32,10 @@
 # ==============================================================================
 
 rm(list = ls())
-devtools::load_all()   # or: library(TaxaFetch)
+devtools::load_all() # or: library(TaxaFetch)
 
 # Target area — Santa Barbara Channel
-bbox <- c(-120.5, -119.3, 33.8, 34.5)   # c(west, east, south, north)
+bbox <- c(-120.5, -119.3, 33.8, 34.5) # c(west, east, south, north)
 
 
 # ==============================================================================
@@ -58,16 +58,23 @@ occ <- fetch_dataone_occurrences("edi.885.1", bbox, timeout = 120L)
 
 cat(sprintf("\nRecords returned: %d\n", nrow(occ)))
 cat(sprintf("Unique taxa:      %d\n", dplyr::n_distinct(occ$scientificName,
-                                                         na.rm = TRUE)))
-cat(sprintf("Date range:       %s to %s\n",
-            min(occ$eventDate, na.rm = TRUE),
-            max(occ$eventDate, na.rm = TRUE)))
-cat(sprintf("Lat range:        %.3f to %.3f\n",
-            min(occ$decimalLatitude,  na.rm = TRUE),
-            max(occ$decimalLatitude,  na.rm = TRUE)))
-cat(sprintf("Lon range:        %.3f to %.3f\n",
-            min(occ$decimalLongitude, na.rm = TRUE),
-            max(occ$decimalLongitude, na.rm = TRUE)))
+  na.rm = TRUE
+)))
+cat(sprintf(
+  "Date range:       %s to %s\n",
+  min(occ$eventDate, na.rm = TRUE),
+  max(occ$eventDate, na.rm = TRUE)
+))
+cat(sprintf(
+  "Lat range:        %.3f to %.3f\n",
+  min(occ$decimalLatitude, na.rm = TRUE),
+  max(occ$decimalLatitude, na.rm = TRUE)
+))
+cat(sprintf(
+  "Lon range:        %.3f to %.3f\n",
+  min(occ$decimalLongitude, na.rm = TRUE),
+  max(occ$decimalLongitude, na.rm = TRUE)
+))
 
 # ── Top taxa by record count ──────────────────────────────────────────────────
 cat("\nTop 15 taxa by record count:\n")
@@ -101,10 +108,12 @@ abund_cols <- intersect(
 )
 if (length(abund_cols) > 0L) {
   cat(sprintf("\nAbundance column: '%s'\n", abund_cols[1]))
-  cat(sprintf("Non-zero records: %d of %d (%.1f%%)\n",
-              sum(occ[[abund_cols[1]]] > 0, na.rm = TRUE),
-              nrow(occ),
-              100 * mean(occ[[abund_cols[1]]] > 0, na.rm = TRUE)))
+  cat(sprintf(
+    "Non-zero records: %d of %d (%.1f%%)\n",
+    sum(occ[[abund_cols[1]]] > 0, na.rm = TRUE),
+    nrow(occ),
+    100 * mean(occ[[abund_cols[1]]] > 0, na.rm = TRUE)
+  ))
 } else {
   cat("\nNo abundance column detected — presence-only dataset.\n")
 }
@@ -124,17 +133,21 @@ cat("\n\n── ODM dataset example ──────────────�
 occ_odm <- fetch_dataone_occurrences("edi.189.2", bbox, timeout = 120L)
 
 cat(sprintf("\nODM records returned: %d\n", nrow(occ_odm)))
-cat(sprintf("Unique taxa:          %d\n",
-            dplyr::n_distinct(occ_odm$scientificName, na.rm = TRUE)))
+cat(sprintf(
+  "Unique taxa:          %d\n",
+  dplyr::n_distinct(occ_odm$scientificName, na.rm = TRUE)
+))
 
 # Confirm the same taxa appear in both datasets
 shared <- intersect(
   unique(occ$scientificName),
   unique(occ_odm$scientificName)
 )
-cat(sprintf("Taxa shared with DwC-A dataset: %d of %d\n",
-            length(shared),
-            dplyr::n_distinct(occ_odm$scientificName, na.rm = TRUE)))
+cat(sprintf(
+  "Taxa shared with DwC-A dataset: %d of %d\n",
+  length(shared),
+  dplyr::n_distinct(occ_odm$scientificName, na.rm = TRUE)
+))
 
 
 # ==============================================================================

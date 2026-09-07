@@ -47,7 +47,7 @@
 # fetch_gbif_occurrences() section, Section 1 there).
 # ==============================================================================
 
-devtools::load_all()   # or: library(TaxaFetch)
+devtools::load_all() # or: library(TaxaFetch)
 library(tibble)
 
 
@@ -62,8 +62,8 @@ library(tibble)
 # NA_character_ (not NULL) on an LLM-characterization failure, and this
 # package's shared %||% (NULL-only by design) doesn't catch that case.
 axis_default_null <- TaxaFetch:::.axis_or_default(NULL, "fallback")
-axis_default_na    <- TaxaFetch:::.axis_or_default(NA_character_, "fallback")
-axis_default_real  <- TaxaFetch:::.axis_or_default("real_value", "fallback")
+axis_default_na <- TaxaFetch:::.axis_or_default(NA_character_, "fallback")
+axis_default_real <- TaxaFetch:::.axis_or_default("real_value", "fallback")
 axis_default_null
 axis_default_na
 axis_default_real
@@ -88,14 +88,15 @@ axis_default_real
 # in .render_one_page_b64() itself; running it the same way
 # .render_pdf_pages() does is the correct way to exercise it safely.
 bundled_pdf_for_render <- system.file(
-  "extdata", "pdfs", "W2403944014.pdf", package = "TaxaFetch"
+  "extdata", "pdfs", "W2403944014.pdf",
+  package = "TaxaFetch"
 )
 page1_b64 <- callr::r(
   TaxaFetch:::.render_one_page_b64,
   args = list(pdf_path = bundled_pdf_for_render, pg = 1L, dpi = 100L)
 )
-nchar(page1_b64)          # length of the base64 string
-substr(page1_b64, 1, 40)  # just the start; it's a full PNG, base64-encoded
+nchar(page1_b64) # length of the base64 string
+substr(page1_b64, 1, 40) # just the start; it's a full PNG, base64-encoded
 
 
 # ==============================================================================
@@ -110,17 +111,20 @@ substr(page1_b64, 1, 40)  # just the start; it's a full PNG, base64-encoded
 # .detect_lon_col() passes it (not an arbitrary substitute) -- so this runs
 # the identical logic screen_eml_columns() actually relies on to find a
 # longitude column in a dataset's EML <attributeName> list.
-lon_exact_candidates   <- c("lon", "long", "longitude", "decimallongitude",
-                            "x", "xlon", "lon_dd", "longitude_dd",
-                            "site_lon", "start_lon", "end_lon", "easting",
-                            "x_coord", "xloc", "lon_wgs84",
-                            "longitude_wgs84", "point_x")
+lon_exact_candidates <- c(
+  "lon", "long", "longitude", "decimallongitude",
+  "x", "xlon", "lon_dd", "longitude_dd",
+  "site_lon", "start_lon", "end_lon", "easting",
+  "x_coord", "xloc", "lon_wgs84",
+  "longitude_wgs84", "point_x"
+)
 lon_partial_candidates <- c("lon", "long", "longitude", "easting", "xloc", "x_coord")
 
 # Case 1: an EML attributeName list with an exact match.
 attrs_exact_hit <- c("station_id", "sample_date", "decimallongitude", "notes")
 lon_col_exact <- TaxaFetch:::.detect_attr_col(
-  attrs_exact_hit, exact = lon_exact_candidates, partial = lon_partial_candidates
+  attrs_exact_hit,
+  exact = lon_exact_candidates, partial = lon_partial_candidates
 )
 lon_col_exact
 
@@ -128,14 +132,16 @@ lon_col_exact
 # dataset-specific column name that still contains "longitude".
 attrs_partial_hit <- c("site_code", "obs_longitude_deg")
 lon_col_partial <- TaxaFetch:::.detect_attr_col(
-  attrs_partial_hit, exact = lon_exact_candidates, partial = lon_partial_candidates
+  attrs_partial_hit,
+  exact = lon_exact_candidates, partial = lon_partial_candidates
 )
 lon_col_partial
 
 # Case 3: no match at all -- returns NA_character_, not an error.
 attrs_no_hit <- c("station_id", "sample_date", "recorder_name")
 lon_col_none <- TaxaFetch:::.detect_attr_col(
-  attrs_no_hit, exact = lon_exact_candidates, partial = lon_partial_candidates
+  attrs_no_hit,
+  exact = lon_exact_candidates, partial = lon_partial_candidates
 )
 lon_col_none
 
@@ -218,13 +224,14 @@ inat_occ_result
 # bundled data, no network call.
 real_institution_row <- CoordinateCleaner::institutions[
   !is.na(CoordinateCleaner::institutions$decimalLongitude) &
-    !is.na(CoordinateCleaner::institutions$decimalLatitude), ][1, ]
+    !is.na(CoordinateCleaner::institutions$decimalLatitude),
+][1, ]
 
 nearest_institution_result <- TaxaFetch:::.nearest_institution(
   lon = real_institution_row$decimalLongitude,
   lat = real_institution_row$decimalLatitude
 )
-nearest_institution_result   # dist_m should be ~0 -- the query point IS that institution
+nearest_institution_result # dist_m should be ~0 -- the query point IS that institution
 
 ## ---- .track_removed() ---- OFFLINE, pure function ---------------------------
 # Small synthetic input mirroring filter_gbif_quality()'s own real usage

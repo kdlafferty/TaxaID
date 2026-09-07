@@ -9,8 +9,8 @@
 library(testthat)
 
 .box_a <- make_bbox_wkt(lat = 34.40, lon = -120.41, radius_deg = 0.05)
-.box_b <- make_bbox_wkt(lat = 34.47, lon = -120.36, radius_deg = 0.05)  # overlaps .box_a
-.box_c <- make_bbox_wkt(lat = 10.00, lon = 10.00,    radius_deg = 0.05) # disjoint from both
+.box_b <- make_bbox_wkt(lat = 34.47, lon = -120.36, radius_deg = 0.05) # overlaps .box_a
+.box_c <- make_bbox_wkt(lat = 10.00, lon = 10.00, radius_deg = 0.05) # disjoint from both
 
 .mock_recording_fetch <- function(calls_env) {
   function(keys, geometry, year_range = "2000,2024", limit = NULL, ...) {
@@ -195,7 +195,7 @@ test_that("year_range and limit are forwarded to get_gbif_occurrences", {
   captured <- new.env()
   local_mocked_bindings(
     get_gbif_occurrences = function(keys, geometry, year_range = "2000,2024",
-                                     limit = NULL, ...) {
+                                    limit = NULL, ...) {
       captured$year_range <- year_range
       captured$limit <- limit
       tibble::tibble(gbifID = "g1", taxonKey = keys[1])

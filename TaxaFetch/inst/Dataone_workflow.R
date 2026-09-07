@@ -53,12 +53,12 @@ devtools::load_all()
 
 # ── Define your target area and taxonomic scope ───────────────────────────────
 # bbox: c(west, east, south, north) — decimal degrees, western longitudes negative
-bbox <- c(-81.2, -80.4, 25.1, 25.8) #florida everglades
-bbox <- c(-120.5, -119.3, 33.8, 34.5)   # Santa Barbara Channel
+bbox <- c(-81.2, -80.4, 25.1, 25.8) # florida everglades
+bbox <- c(-120.5, -119.3, 33.8, 34.5) # Santa Barbara Channel
 
 # taxon_scope: plain-language description of the organisms you want
 
-taxon_scope <- "marine fish"   # e.g. "marine invertebrates", "birds", "kelp"
+taxon_scope <- "marine fish" # e.g. "marine invertebrates", "birds", "kelp"
 taxon_scope <- "birds"
 # Other bbox examples:
 # bbox <- c(-119.9, -119.6, 34.3, 34.5)  # Santa Barbara city area (tighter)
@@ -98,7 +98,7 @@ geo_prompt <- build_geo_prompt(
 print(geo_prompt)
 geo_prompt$n_items
 geo_prompt$n_chunks
-cat(geo_prompt$prompts[[1]])   # inspect first chunk
+cat(geo_prompt$prompts[[1]]) # inspect first chunk
 
 
 # ==============================================================================
@@ -119,7 +119,7 @@ cat(geo_raw)
 # ==============================================================================
 
 geo_screened <- parse_geo_screening_response(geo_raw, geo_prompt)
-saveRDS(geo_screened, "geo_screened.rds")   # ← checkpoint
+saveRDS(geo_screened, "geo_screened.rds") # ← checkpoint
 
 table(geo_screened$geo_match)
 table(geo_screened$geo_source)
@@ -169,7 +169,7 @@ taxon_prompt <- build_taxon_screen_prompt(
 )
 
 print(taxon_prompt)
-cat(taxon_prompt$prompts[[1]])   # inspect first chunk — check framing looks right
+cat(taxon_prompt$prompts[[1]]) # inspect first chunk — check framing looks right
 
 
 # ==============================================================================
@@ -186,7 +186,7 @@ cat(taxon_raw)
 # taxon_raw <- read_llm_response(info$response_files)
 
 taxon_screened <- parse_taxon_screening_response(taxon_raw, taxon_prompt)
-saveRDS(taxon_screened, "taxon_screened.rds")   # ← checkpoint
+saveRDS(taxon_screened, "taxon_screened.rds") # ← checkpoint
 
 table(taxon_screened$taxon_match)
 table(taxon_screened$taxon_source)
@@ -214,15 +214,17 @@ taxon_screened[!taxon_screened$taxon_match, ] |>
 # ==============================================================================
 
 eml_screen <- screen_eml_columns(accepted$id, bbox, verbose = TRUE)
-saveRDS(eml_screen, "eml_screen.rds")   # ← checkpoint
+saveRDS(eml_screen, "eml_screen.rds") # ← checkpoint
 
 table(eml_screen$eml_status)
 table(eml_screen$eml_pass)
 
 eml_screen |>
-  dplyr::select(id, eml_status, eml_bbox_ok,
-                has_lat, has_lon, has_species,
-                lat_col, lon_col, species_col, n_tables) |>
+  dplyr::select(
+    id, eml_status, eml_bbox_ok,
+    has_lat, has_lon, has_species,
+    lat_col, lon_col, species_col, n_tables
+  ) |>
   print(n = 50)
 
 to_download <- accepted |>
@@ -266,7 +268,9 @@ length(fetch_ids)
 dataone_occ <- fetch_dataone_occurrences(fetch_ids, bbox)
 
 # ── Summary ───────────────────────────────────────────────────────────────────
-dataone_occ |> dplyr::count(datasetName) |> print(n = 30)
+dataone_occ |>
+  dplyr::count(datasetName) |>
+  print(n = 30)
 nrow(dataone_occ)
 dplyr::glimpse(dataone_occ)
 
@@ -284,25 +288,33 @@ all_candidates <- accepted |>
 diagnose_dataset <- function(dataset_id) {
   meta <- TaxaFetch:::.parse_eml_metadata(dataset_id)
   if (is.null(meta)) {
-    return(data.frame(dataset_id   = dataset_id,
-                      title        = NA_character_,
-                      entity       = "(EML failed)",
-                      category     = NA_character_,
-                      mapped_terms = NA_character_,
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      dataset_id = dataset_id,
+      title = NA_character_,
+      entity = "(EML failed)",
+      category = NA_character_,
+      mapped_terms = NA_character_,
+      stringsAsFactors = FALSE
+    ))
   }
   rows <- lapply(meta$entities, function(e) {
     col_names <- e$attributes$attributeName
     if (length(col_names) == 0L || all(is.na(col_names))) col_names <- character(0)
-    mapping <- if (length(col_names) > 0L)
-      TaxaFetch:::.map_columns_to_dwc(col_names, TaxaFetch:::.default_dwc_map) else character(0)
+    mapping <- if (length(col_names) > 0L) {
+      TaxaFetch:::.map_columns_to_dwc(col_names, TaxaFetch:::.default_dwc_map)
+    } else {
+      character(0)
+    }
     data.frame(
-      dataset_id   = dataset_id,
-      title        = substr(meta$title %||% "", 1, 60),
-      entity       = substr(e$entity_name %||% "(unnamed)", 1, 40),
-      category     = TaxaFetch:::.classify_entity(mapping),
-      mapped_terms = if (length(mapping) > 0L)
-        paste(sort(unique(mapping[!is.na(mapping)])), collapse = ", ") else "",
+      dataset_id = dataset_id,
+      title = substr(meta$title %||% "", 1, 60),
+      entity = substr(e$entity_name %||% "(unnamed)", 1, 40),
+      category = TaxaFetch:::.classify_entity(mapping),
+      mapped_terms = if (length(mapping) > 0L) {
+        paste(sort(unique(mapping[!is.na(mapping)])), collapse = ", ")
+      } else {
+        ""
+      },
       stringsAsFactors = FALSE
     )
   })
@@ -310,7 +322,9 @@ diagnose_dataset <- function(dataset_id) {
 }
 
 diag <- do.call(rbind, lapply(all_candidates$resolved_id, function(rid) {
-  if (is.na(rid)) return(NULL)
+  if (is.na(rid)) {
+    return(NULL)
+  }
   diagnose_dataset(rid)
 }))
 

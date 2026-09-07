@@ -109,8 +109,10 @@ pdf_dir <- system.file("extdata/pdfs", package = "TaxaFetch")
 
 message(sprintf("Taxon scope : %s", taxon_scope))
 message(sprintf("Geo scope   : %s", geo_scope))
-message(sprintf("bbox        : lon [%.2f, %.2f]  lat [%.2f, %.2f]",
-                bbox[1], bbox[2], bbox[3], bbox[4]))
+message(sprintf(
+  "bbox        : lon [%.2f, %.2f]  lat [%.2f, %.2f]",
+  bbox[1], bbox[2], bbox[3], bbox[4]
+))
 
 
 # ==============================================================================
@@ -156,8 +158,10 @@ cat("\n--- JOURNAL DISTRIBUTION (top 10) ---\n")
 print(head(sort(table(openalex_catalog$journal), decreasing = TRUE), 10L))
 
 cat("\n--- PDF URL AVAILABILITY ---\n")
-cat(sprintf("  With pdf_url    : %d / %d\n",
-            sum(!is.na(openalex_catalog$pdf_url)), nrow(openalex_catalog)))
+cat(sprintf(
+  "  With pdf_url    : %d / %d\n",
+  sum(!is.na(openalex_catalog$pdf_url)), nrow(openalex_catalog)
+))
 
 cat("\n--- QUERY PARAMETERS ---\n")
 cat(sprintf("  taxon_scope : %s\n", taxon_scope))
@@ -166,10 +170,12 @@ cat(sprintf("  from_year   : %s\n", if (exists("from_year") && !is.null(from_yea
 
 cat("\n--- ALL TITLES ---\n")
 for (i in seq_len(nrow(openalex_catalog))) {
-  cat(sprintf("  [%d] %s (%s)\n",
-              i,
-              substr(openalex_catalog$title[i], 1L, 90L),
-              openalex_catalog$year[i]))
+  cat(sprintf(
+    "  [%d] %s (%s)\n",
+    i,
+    substr(openalex_catalog$title[i], 1L, 90L),
+    openalex_catalog$year[i]
+  ))
 }
 
 # Inspect a specific abstract — useful for debugging screening decisions:
@@ -203,10 +209,9 @@ for (i in seq_len(nrow(openalex_catalog))) {
 #   after the abstract_chars cutoff — increase abstract_chars and re-run.
 # ==============================================================================
 
-run_taxon_screen <- FALSE   # set TRUE to enable
+run_taxon_screen <- FALSE # set TRUE to enable
 
 if (run_taxon_screen) {
-
   # Drop any stale screening columns left by a previous run
   openalex_catalog <- openalex_catalog |>
     dplyr::select(-dplyr::any_of(c("taxon_match", "taxon_source", "geo_match")))
@@ -216,7 +221,7 @@ if (run_taxon_screen) {
     taxon_scope    = taxon_scope,
     geo_scope      = geo_scope,
     chunk_size     = 50L,
-    abstract_chars = 2000L,   # higher than DataONE default — lit abstracts are long
+    abstract_chars = 2000L, # higher than DataONE default — lit abstracts are long
     verbose        = TRUE
   )
 
@@ -241,13 +246,16 @@ if (run_taxon_screen) {
   )])
 
   n_pass <- sum(taxon_screened$taxon_match & taxon_screened$geo_match,
-                na.rm = TRUE)
-  message(sprintf("Screening: %d / %d passed (taxon AND geo match).",
-                  n_pass, nrow(taxon_screened)))
+    na.rm = TRUE
+  )
+  message(sprintf(
+    "Screening: %d / %d passed (taxon AND geo match).",
+    n_pass, nrow(taxon_screened)
+  ))
 
   working_catalog <- taxon_screened[
-    taxon_screened$taxon_match & taxon_screened$geo_match, ]
-
+    taxon_screened$taxon_match & taxon_screened$geo_match,
+  ]
 } else {
   message("Stage 4: screening skipped — using full catalog.")
   working_catalog <- openalex_catalog
@@ -266,16 +274,20 @@ cat("\n--- WORKING CATALOG ---\n")
 cat(sprintf("  Total papers    : %d\n", nrow(working_catalog)))
 n_with_url <- sum(!is.na(working_catalog$pdf_url))
 cat(sprintf("  With pdf_url    : %d  (auto-downloadable)\n", n_with_url))
-cat(sprintf("  Without pdf_url : %d  (manual download needed)\n",
-            nrow(working_catalog) - n_with_url))
+cat(sprintf(
+  "  Without pdf_url : %d  (manual download needed)\n",
+  nrow(working_catalog) - n_with_url
+))
 
 cat("\n--- DOWNLOADABLE PAPERS ---\n")
 has_url <- working_catalog[!is.na(working_catalog$pdf_url), ]
 for (i in seq_len(nrow(has_url))) {
-  cat(sprintf("  [%d] %s (%s)\n",
-              i,
-              substr(has_url$title[i], 1L, 90L),
-              has_url$year[i]))
+  cat(sprintf(
+    "  [%d] %s (%s)\n",
+    i,
+    substr(has_url$title[i], 1L, 90L),
+    has_url$year[i]
+  ))
 }
 
 # Adjust as needed — start small
@@ -362,8 +374,10 @@ pdf_contents <- lapply(pdf_paths, function(p) {
   tryCatch(
     extract_pdf_text(pdf_path = p, sections = "all", verbose = FALSE),
     error = function(e) {
-      warning(sprintf("extract_pdf_text failed for '%s': %s",
-                      basename(p), conditionMessage(e)), call. = FALSE)
+      warning(sprintf(
+        "extract_pdf_text failed for '%s': %s",
+        basename(p), conditionMessage(e)
+      ), call. = FALSE)
       NULL
     }
   )
@@ -390,8 +404,10 @@ pdf_structures <- lapply(pdf_contents_ok, function(pc) {
   tryCatch(
     screen_pdf_structure(pdf_content = pc, use_llm = TRUE, verbose = FALSE),
     error = function(e) {
-      warning(sprintf("screen_pdf_structure failed for '%s': %s",
-                      basename(pc$pdf_path), conditionMessage(e)), call. = FALSE)
+      warning(sprintf(
+        "screen_pdf_structure failed for '%s': %s",
+        basename(pc$pdf_path), conditionMessage(e)
+      ), call. = FALSE)
       NULL
     }
   )
@@ -402,8 +418,10 @@ saveRDS(pdf_structures, "pdf_structures.rds")
 # pdf_structures <- readRDS("pdf_structures.rds")   # resume line
 
 n_ok <- sum(!vapply(pdf_structures, is.null, logical(1L)))
-message(sprintf("Characterisation: %d / %d succeeded.", n_ok,
-                length(pdf_structures)))
+message(sprintf(
+  "Characterisation: %d / %d succeeded.", n_ok,
+  length(pdf_structures)
+))
 
 
 # ==============================================================================
@@ -426,7 +444,7 @@ for (nm in names(pdf_structures)) {
   cat(sprintf(
     "  %-55s  obs=%-22s  loc=%-18s  send=%d%s\n",
     nm,
-    ps$observation_type   %||% "?",
+    ps$observation_type %||% "?",
     ps$location_structure %||% "?",
     n_send,
     if (n_send > 30L) "  [!] large — dpi=100 will be used" else ""
@@ -448,8 +466,8 @@ for (nm in names(pdf_structures)) {
 pdf_structures_ok <- Filter(Negate(is.null), pdf_structures)
 
 extract_prompts <- lapply(pdf_structures_ok, function(ps) {
-  n_send      <- sum(ps$page_table$send_image)
-  dpi         <- if (n_send > 30L) 100L else 150L
+  n_send <- sum(ps$page_table$send_image)
+  dpi <- if (n_send > 30L) 100L else 150L
   chunk_pages <- n_send > 25L
   tryCatch(
     build_pdf_extract_prompt(
@@ -459,8 +477,10 @@ extract_prompts <- lapply(pdf_structures_ok, function(ps) {
       verbose       = TRUE
     ),
     error = function(e) {
-      warning(sprintf("build_pdf_extract_prompt failed for '%s': %s",
-                      ps$pdf_path, conditionMessage(e)), call. = FALSE)
+      warning(sprintf(
+        "build_pdf_extract_prompt failed for '%s': %s",
+        ps$pdf_path, conditionMessage(e)
+      ), call. = FALSE)
       NULL
     }
   )
@@ -473,8 +493,10 @@ for (nm in names(extract_prompts)) {
   if (is.null(ep)) {
     cat(sprintf("  %-55s  skipped (non-extractable type)\n", nm))
   } else {
-    cat(sprintf("  %-55s  %d chunk(s), %d pages, dpi=%d\n",
-                nm, ep$n_chunks, ep$n_send, ep$dpi))
+    cat(sprintf(
+      "  %-55s  %d chunk(s), %d pages, dpi=%d\n",
+      nm, ep$n_chunks, ep$n_send, ep$dpi
+    ))
   }
 }
 
@@ -498,15 +520,19 @@ pdf_raw_responses <- lapply(
   function(nm) {
     ep <- extract_prompts_ok[[nm]]
     ps <- pdf_structures_ok[[nm]]
-    message(sprintf("API extraction: %s  (%d chunk(s), %d pages, dpi=%d) ...",
-                    nm, ep$n_chunks, ep$n_send, ep$dpi))
+    message(sprintf(
+      "API extraction: %s  (%d chunk(s), %d pages, dpi=%d) ...",
+      nm, ep$n_chunks, ep$n_send, ep$dpi
+    ))
 
     chunk_resps <- lapply(seq_len(ep$n_chunks), function(j) {
       if (ep$n_chunks > 1L) {
-        message(sprintf("  Chunk %d / %d (pages %d-%d) ...",
-                        j, ep$n_chunks,
-                        min(ep$page_chunks[[j]]),
-                        max(ep$page_chunks[[j]])))
+        message(sprintf(
+          "  Chunk %d / %d (pages %d-%d) ...",
+          j, ep$n_chunks,
+          min(ep$page_chunks[[j]]),
+          max(ep$page_chunks[[j]])
+        ))
       }
       page_map_j <- list(selected = ep$page_chunks[[j]])
       attr(page_map_j, "has_headers") <- TRUE
@@ -520,9 +546,13 @@ pdf_raw_responses <- lapply(
           verbose  = FALSE
         ),
         error = function(e) {
-          warning(sprintf("  Chunk %d/%d failed for '%s': %s",
-                          j, ep$n_chunks, nm, conditionMessage(e)),
-                  call. = FALSE)
+          warning(
+            sprintf(
+              "  Chunk %d/%d failed for '%s': %s",
+              j, ep$n_chunks, nm, conditionMessage(e)
+            ),
+            call. = FALSE
+          )
           NULL
         }
       )
@@ -530,7 +560,8 @@ pdf_raw_responses <- lapply(
 
     if (any(vapply(chunk_resps, is.null, logical(1L)))) {
       warning(sprintf("One or more chunks failed for '%s'; skipping.", nm),
-              call. = FALSE)
+        call. = FALSE
+      )
       return(NULL)
     }
 
@@ -543,8 +574,10 @@ saveRDS(pdf_raw_responses, "pdf_raw_responses.rds")
 # pdf_raw_responses <- readRDS("pdf_raw_responses.rds")   # resume line
 
 n_ok <- sum(!vapply(pdf_raw_responses, is.null, logical(1L)))
-message(sprintf("API extraction: %d / %d succeeded.", n_ok,
-                length(pdf_raw_responses)))
+message(sprintf(
+  "API extraction: %d / %d succeeded.", n_ok,
+  length(pdf_raw_responses)
+))
 
 # Inspect raw response for a specific paper (uncomment):
 # cat(pdf_raw_responses[["your_paper.pdf"]])
@@ -558,14 +591,18 @@ pdf_occ_list <- lapply(
   names(pdf_raw_responses),
   function(nm) {
     raw <- pdf_raw_responses[[nm]]
-    ep  <- extract_prompts_ok[[nm]]
-    if (is.null(raw) || is.null(ep)) return(NULL)
+    ep <- extract_prompts_ok[[nm]]
+    if (is.null(raw) || is.null(ep)) {
+      return(NULL)
+    }
     message(sprintf("Parsing: %s", nm))
     tryCatch(
       parse_pdf_extract_response(raw_text = raw, extract_prompt = ep),
       error = function(e) {
-        warning(sprintf("  parse failed for '%s': %s", nm,
-                        conditionMessage(e)), call. = FALSE)
+        warning(sprintf(
+          "  parse failed for '%s': %s", nm,
+          conditionMessage(e)
+        ), call. = FALSE)
         NULL
       }
     )
@@ -577,8 +614,10 @@ saveRDS(pdf_occ_list, "pdf_occ_list.rds")
 # pdf_occ_list <- readRDS("pdf_occ_list.rds")   # resume line
 
 pdf_occ_list_clean <- Filter(Negate(is.null), pdf_occ_list)
-message(sprintf("Parsing: %d / %d papers produced occurrence records.",
-                length(pdf_occ_list_clean), length(pdf_occ_list)))
+message(sprintf(
+  "Parsing: %d / %d papers produced occurrence records.",
+  length(pdf_occ_list_clean), length(pdf_occ_list)
+))
 
 for (nm in names(pdf_occ_list_clean)) {
   message(sprintf("  %-55s  %d records", nm, nrow(pdf_occ_list_clean[[nm]])))
@@ -602,7 +641,6 @@ for (nm in names(pdf_occ_list_clean)) {
 if (length(pdf_occ_list_clean) == 0L) {
   message("No occurrence records to stack.")
 } else {
-
   all_pdf_occ <- stack_occurrences(pdf_occ_list_clean)
   all_pdf_occ <- dedupe_occurrences(all_pdf_occ)
 
@@ -616,15 +654,21 @@ if (length(pdf_occ_list_clean) == 0L) {
 
   cat("\n--- COORDINATE SUMMARY ---\n")
   n_coords <- sum(!is.na(all_pdf_occ$decimalLatitude))
-  cat(sprintf("  Records with coordinates : %d / %d\n",
-              n_coords, nrow(all_pdf_occ)))
+  cat(sprintf(
+    "  Records with coordinates : %d / %d\n",
+    n_coords, nrow(all_pdf_occ)
+  ))
   if (n_coords > 0L) {
-    cat(sprintf("  Lat range : %.4f to %.4f\n",
-                min(all_pdf_occ$decimalLatitude, na.rm = TRUE),
-                max(all_pdf_occ$decimalLatitude, na.rm = TRUE)))
-    cat(sprintf("  Lon range : %.4f to %.4f\n",
-                min(all_pdf_occ$decimalLongitude, na.rm = TRUE),
-                max(all_pdf_occ$decimalLongitude, na.rm = TRUE)))
+    cat(sprintf(
+      "  Lat range : %.4f to %.4f\n",
+      min(all_pdf_occ$decimalLatitude, na.rm = TRUE),
+      max(all_pdf_occ$decimalLatitude, na.rm = TRUE)
+    ))
+    cat(sprintf(
+      "  Lon range : %.4f to %.4f\n",
+      min(all_pdf_occ$decimalLongitude, na.rm = TRUE),
+      max(all_pdf_occ$decimalLongitude, na.rm = TRUE)
+    ))
   }
 
   # Combine with DataONE or GBIF output (uncomment when merging pipelines):

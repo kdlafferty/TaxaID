@@ -123,7 +123,7 @@
 #' \dontrun{
 #' # Resolve keys first
 #' taxa_df <- data.frame(
-#'   family  = "Gadidae",
+#'   family = "Gadidae",
 #'   species = "Gadus morhua",
 #'   stringsAsFactors = FALSE
 #' )
@@ -132,7 +132,7 @@
 #'
 #' # Build a bounding box and fetch (checkpoint saved automatically)
 #' bbox <- make_bbox_wkt(lat = 56.0, lon = 4.0, radius_deg = 2.0)
-#' occ  <- fetch_gbif_occurrences(
+#' occ <- fetch_gbif_occurrences(
 #'   keys       = valid_keys,
 #'   geometry   = bbox,
 #'   year_range = "2010,2024",
@@ -142,18 +142,16 @@
 #' # Quality-filter and continue pipeline
 #' occ_clean <- filter_gbif_quality(occ)
 #' }
-
 fetch_gbif_occurrences <- function(keys,
                                    geometry,
-                                   year_range         = .gbif_default_year_range(),
-                                   limit              = 10000L,
-                                   chunk_size         = 20L,
-                                   pause_seconds      = 2,
+                                   year_range = .gbif_default_year_range(),
+                                   limit = 10000L,
+                                   chunk_size = 20L,
+                                   pause_seconds = 2,
                                    pause_between_keys = 0.5,
-                                   max_retries        = 4L,
-                                   cache_dir          = tools::R_user_dir("TaxaFetch", "cache"),
-                                   beep               = FALSE) {
-
+                                   max_retries = 4L,
+                                   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
+                                   beep = FALSE) {
   # --- Dependency check -------------------------------------------------------
   if (!requireNamespace("rgbif", quietly = TRUE)) {
     stop(
@@ -170,19 +168,21 @@ fetch_gbif_occurrences <- function(keys,
     stop("fetch_gbif_occurrences: 'keys' is empty after removing NAs.")
   }
   if (!is.null(geometry) &&
-      (!is.character(geometry) || length(geometry) != 1L)) {
-    stop("fetch_gbif_occurrences: 'geometry' must be a single WKT string, ",
-         "or NULL for an unrestricted global search.")
+    (!is.character(geometry) || length(geometry) != 1L)) {
+    stop(
+      "fetch_gbif_occurrences: 'geometry' must be a single WKT string, ",
+      "or NULL for an unrestricted global search."
+    )
   }
 
-  orig_keys <- keys  # full set; preserved for checkpoint signature
+  orig_keys <- keys # full set; preserved for checkpoint signature
 
   # --- Checkpoint: load if available ------------------------------------------
-  prior_records   <- NULL
+  prior_records <- NULL
   checkpoint_path <- .gbif_checkpoint_path(cache_dir, keys, geometry, year_range, limit)
 
   if (!is.null(checkpoint_path) && file.exists(checkpoint_path)) {
-    ckpt   <- readRDS(checkpoint_path)
+    ckpt <- readRDS(checkpoint_path)
     n_done <- length(orig_keys) - length(ckpt$remaining_keys)
     message(sprintf(
       paste0(
@@ -193,12 +193,12 @@ fetch_gbif_occurrences <- function(keys,
       if (is.null(ckpt$partial_records)) 0L else nrow(ckpt$partial_records),
       length(ckpt$remaining_keys)
     ))
-    keys          <- ckpt$remaining_keys
+    keys <- ckpt$remaining_keys
     prior_records <- ckpt$partial_records
   }
 
-  total    <- length(keys)
-  chunks   <- split(keys, ceiling(seq_along(keys) / chunk_size))
+  total <- length(keys)
+  chunks <- split(keys, ceiling(seq_along(keys) / chunk_size))
   n_chunks <- length(chunks)
 
   message(sprintf(
@@ -207,11 +207,11 @@ fetch_gbif_occurrences <- function(keys,
   ))
 
   # --- Fetch chunks -----------------------------------------------------------
-  results    <- vector("list", n_chunks)
+  results <- vector("list", n_chunks)
   global_pos <- 0L
 
   for (i in seq_along(chunks)) {
-    chunk_keys   <- chunks[[i]]
+    chunk_keys <- chunks[[i]]
     chunk_result <- .fetch_chunk(
       keys_chunk         = chunk_keys,
       geometry           = geometry,
@@ -239,11 +239,13 @@ fetch_gbif_occurrences <- function(keys,
       if (!is.null(checkpoint_path)) {
         remaining <- keys[(global_pos + 1L):length(keys)]
         saveRDS(list(
-          partial_records = dplyr::bind_rows(c(list(prior_records),
-                                               results[seq_len(i - 1L)])),
-          remaining_keys  = remaining,
-          keys_total      = orig_keys,
-          timestamp       = Sys.time()
+          partial_records = dplyr::bind_rows(c(
+            list(prior_records),
+            results[seq_len(i - 1L)]
+          )),
+          remaining_keys = remaining,
+          keys_total = orig_keys,
+          timestamp = Sys.time()
         ), checkpoint_path)
         stop(sprintf(
           paste0(
@@ -273,11 +275,13 @@ fetch_gbif_occurrences <- function(keys,
     if (!is.null(checkpoint_path) && global_pos < length(keys)) {
       remaining <- keys[(global_pos + 1L):length(keys)]
       saveRDS(list(
-        partial_records = dplyr::bind_rows(c(list(prior_records),
-                                             results[seq_len(i)])),
-        remaining_keys  = remaining,
-        keys_total      = orig_keys,
-        timestamp       = Sys.time()
+        partial_records = dplyr::bind_rows(c(
+          list(prior_records),
+          results[seq_len(i)]
+        )),
+        remaining_keys = remaining,
+        keys_total = orig_keys,
+        timestamp = Sys.time()
       ), checkpoint_path)
     }
 
@@ -302,8 +306,9 @@ fetch_gbif_occurrences <- function(keys,
   }
 
   # --- Add bibliographic citation ---------------------------------------------
-  if (!"bibliographicCitation" %in% names(out))
+  if (!"bibliographicCitation" %in% names(out)) {
     out$bibliographicCitation <- "GBIF.org. GBIF Occurrence Download via rgbif"
+  }
 
   message(sprintf(
     "fetch_gbif_occurrences: %d records retrieved across %d key(s).",
@@ -316,7 +321,7 @@ fetch_gbif_occurrences <- function(keys,
     n_keys    = length(orig_keys),
     n_records = nrow(out)
   )
-  if (!is.null(geometry)   && nzchar(geometry))   rp$geometry   <- geometry
+  if (!is.null(geometry) && nzchar(geometry)) rp$geometry <- geometry
   if (!is.null(year_range) && nzchar(year_range)) rp$year_range <- year_range
   attr(out, "report_params") <- rp
 
@@ -352,7 +357,9 @@ fetch_gbif_occurrences <- function(keys,
 #' @noRd
 
 .gbif_checkpoint_path <- function(cache_dir, keys, geometry, year_range, limit) {
-  if (is.null(cache_dir)) return(NULL)
+  if (is.null(cache_dir)) {
+    return(NULL)
+  }
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   geometry_len <- if (is.null(geometry)) 0L else nchar(geometry)
   # year_range can legitimately be NULL (no year filter, matching
@@ -398,22 +405,25 @@ fetch_gbif_occurrences <- function(keys,
 .fetch_chunk <- function(keys_chunk, geometry, year_range, limit,
                          global_pos, total,
                          pause_between_keys = 0.5,
-                         max_retries        = 4L) {
-
-  hierarchy_cols <- c("taxonKey", "speciesKey", "genusKey", "familyKey",
-                      "orderKey",  "classKey",   "phylumKey", "kingdomKey",
-                      "acceptedTaxonKey")
+                         max_retries = 4L) {
+  hierarchy_cols <- c(
+    "taxonKey", "speciesKey", "genusKey", "familyKey",
+    "orderKey", "classKey", "phylumKey", "kingdomKey",
+    "acceptedTaxonKey"
+  )
 
   # 429 = rate limit: longer waits (30, 60, 120, 240 sec)
   .is_rate_limit <- function(e) {
     grepl("429|Too many requests|rate.limit", conditionMessage(e),
-          ignore.case = TRUE)
+      ignore.case = TRUE
+    )
   }
 
   # 503 = server temporarily unavailable: shorter waits (5, 10, 20, 40 sec)
   .is_service_unavailable <- function(e) {
     grepl("503|Service Unavailable", conditionMessage(e),
-          ignore.case = TRUE)
+      ignore.case = TRUE
+    )
   }
 
   .fetch_one_key <- function(key) {
@@ -426,50 +436,57 @@ fetch_gbif_occurrences <- function(keys,
     )
   }
 
-  should_abort    <- FALSE
+  should_abort <- FALSE
   per_key_results <- vector("list", length(keys_chunk))
 
   for (i in seq_along(keys_chunk)) {
-
     key <- keys_chunk[[i]]
     pos <- global_pos + i
     if (i > 1L) Sys.sleep(pause_between_keys)
     message(sprintf("  [%d / %d] key %d", pos, total, key))
 
-    resp    <- NULL
+    resp <- NULL
     attempt <- 0L
     repeat {
       resp <- tryCatch(.fetch_one_key(key), error = function(e) e)
       if (!inherits(resp, "error")) break
       attempt <- attempt + 1L
       if (.is_rate_limit(resp) && attempt <= max_retries) {
-        wait <- 30 * 2^(attempt - 1L)   # 30, 60, 120, 240 sec
+        wait <- 30 * 2^(attempt - 1L) # 30, 60, 120, 240 sec
         message(sprintf(
           "  Rate limit (429) for key %d (attempt %d/%d). Waiting %d sec...",
-          key, attempt, max_retries, wait))
+          key, attempt, max_retries, wait
+        ))
         Sys.sleep(wait)
       } else if (.is_service_unavailable(resp) && attempt <= max_retries) {
-        wait <- 5 * 2^(attempt - 1L)    # 5, 10, 20, 40 sec
+        wait <- 5 * 2^(attempt - 1L) # 5, 10, 20, 40 sec
         message(sprintf(
           "  GBIF service unavailable (503) for key %d (attempt %d/%d). Waiting %d sec...",
-          key, attempt, max_retries, wait))
+          key, attempt, max_retries, wait
+        ))
         Sys.sleep(wait)
       } else {
         # All retries exhausted. Never silently skip a key -- that would
         # produce session-inconsistent results. Signal abort to outer loop.
         is_503 <- .is_service_unavailable(resp)
         is_429 <- .is_rate_limit(resp)
-        reason <- if (is_503)
+        reason <- if (is_503) {
           "HTTP 503 (GBIF service unavailable) persisted after all retries."
-        else if (is_429)
-          paste0("HTTP 429 (rate limit) persisted after all retries.",
-                 " Re-run later or increase pause_seconds.")
-        else
-          sprintf("key %d failed after all retries -- %s",
-                  key, conditionMessage(resp))
+        } else if (is_429) {
+          paste0(
+            "HTTP 429 (rate limit) persisted after all retries.",
+            " Re-run later or increase pause_seconds."
+          )
+        } else {
+          sprintf(
+            "key %d failed after all retries -- %s",
+            key, conditionMessage(resp)
+          )
+        }
         warning(sprintf(
           "fetch_gbif_occurrences: key %d failed -- %s",
-          key, conditionMessage(resp)), call. = FALSE)
+          key, conditionMessage(resp)
+        ), call. = FALSE)
         message(
           "\n  fetch_gbif_occurrences: ", reason,
           "\n  To diagnose, run: rgbif::occ_data(taxonKey = 1, limit = 1)",

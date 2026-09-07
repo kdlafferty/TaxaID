@@ -18,43 +18,49 @@ library(testthat)
 # Minimal catalog row for build_geo_prompt tests (no network)
 .make_catalog <- function() {
   data.frame(
-    id                   = c("scope.1.1", "scope.2.1", "other.1.1",
-                             "other.2.1", "nodesc.1.1"),
-    scope                = c("knb-lter-sbc", "knb-lter-sbc", "knb-lter-fce",
-                             "knb-lter-hfr", "knb-lter-arc"),
-    geographicdescription = c("Santa Barbara Channel, California",
-                              "Santa Barbara Channel, California",
-                              "Florida Everglades",
-                              "Harvard Forest, Massachusetts",
-                              NA_character_),
-    is_candidate         = c(TRUE, TRUE, TRUE, TRUE, TRUE),
-    stringsAsFactors     = FALSE
+    id = c(
+      "scope.1.1", "scope.2.1", "other.1.1",
+      "other.2.1", "nodesc.1.1"
+    ),
+    scope = c(
+      "knb-lter-sbc", "knb-lter-sbc", "knb-lter-fce",
+      "knb-lter-hfr", "knb-lter-arc"
+    ),
+    geographicdescription = c(
+      "Santa Barbara Channel, California",
+      "Santa Barbara Channel, California",
+      "Florida Everglades",
+      "Harvard Forest, Massachusetts",
+      NA_character_
+    ),
+    is_candidate = c(TRUE, TRUE, TRUE, TRUE, TRUE),
+    stringsAsFactors = FALSE
   )
 }
 
-.sbc_bbox <- c(-120.5, -119.3, 33.8, 34.5)  # Santa Barbara Channel
-.fce_bbox <- c(-81.2,  -80.4,  25.1, 25.8)  # Florida Everglades
+.sbc_bbox <- c(-120.5, -119.3, 33.8, 34.5) # Santa Barbara Channel
+.fce_bbox <- c(-81.2, -80.4, 25.1, 25.8) # Florida Everglades
 
 # Minimal ODM tables
 .make_obs <- function() {
   data.frame(
     observation_id = 1:6,
-    location_id    = c(1L, 1L, 2L, 2L, 3L, 3L),
-    taxon_id       = c(1L, 2L, 1L, 2L, 1L, 2L),
-    datetime       = rep("2020-01-10", 6),
-    variable_name  = rep("DENSITY", 6),
-    value          = c(0, 5, 3, 0, 1, 2),
-    unit           = rep("num_per_m2", 6),
+    location_id = c(1L, 1L, 2L, 2L, 3L, 3L),
+    taxon_id = c(1L, 2L, 1L, 2L, 1L, 2L),
+    datetime = rep("2020-01-10", 6),
+    variable_name = rep("DENSITY", 6),
+    value = c(0, 5, 3, 0, 1, 2),
+    unit = rep("num_per_m2", 6),
     stringsAsFactors = FALSE
   )
 }
 
 .make_loc <- function() {
   data.frame(
-    location_id      = c("1", "2", "3"),
-    location_name    = c("SiteA", "SiteB", "SiteC"),
-    latitude         = c(34.4, 34.5, 34.3),
-    longitude        = c(-119.8, -119.9, -120.0),
+    location_id = c("1", "2", "3"),
+    location_name = c("SiteA", "SiteB", "SiteC"),
+    latitude = c(34.4, 34.5, 34.3),
+    longitude = c(-119.8, -119.9, -120.0),
     parent_location_id = c(NA, NA, NA),
     stringsAsFactors = FALSE
   )
@@ -62,7 +68,7 @@ library(testthat)
 
 .make_tax <- function() {
   data.frame(
-    taxon_id   = c("1", "2"),
+    taxon_id = c("1", "2"),
     taxon_name = c("Sebastes mystinus", "Oxyjulis californica"),
     taxon_rank = c("Species", "Species"),
     stringsAsFactors = FALSE
@@ -71,43 +77,60 @@ library(testthat)
 
 # Wrap three tables into entity_info list as .attempt_odm_join expects
 .make_entity_info <- function(obs = .make_obs(),
-                               loc = .make_loc(),
-                               tax = .make_tax()) {
+                              loc = .make_loc(),
+                              tax = .make_tax()) {
   list(
-    list(ename = "observation", raw = obs,
-         entity = list(data_url = NA_character_,
-                       attributes = data.frame(
-                         attributeName = names(obs),
-                         stringsAsFactors = FALSE)),
-         mapping = character(0), category = "no_coords_no_species"),
-    list(ename = "location", raw = loc,
-         entity = list(data_url = NA_character_,
-                       attributes = data.frame(
-                         attributeName = names(loc),
-                         stringsAsFactors = FALSE)),
-         mapping = character(0), category = "no_coords_no_species"),
-    list(ename = "taxon", raw = tax,
-         entity = list(data_url = NA_character_,
-                       attributes = data.frame(
-                         attributeName = names(tax),
-                         stringsAsFactors = FALSE)),
-         mapping = character(0), category = "species_only")
+    list(
+      ename = "observation", raw = obs,
+      entity = list(
+        data_url = NA_character_,
+        attributes = data.frame(
+          attributeName = names(obs),
+          stringsAsFactors = FALSE
+        )
+      ),
+      mapping = character(0), category = "no_coords_no_species"
+    ),
+    list(
+      ename = "location", raw = loc,
+      entity = list(
+        data_url = NA_character_,
+        attributes = data.frame(
+          attributeName = names(loc),
+          stringsAsFactors = FALSE
+        )
+      ),
+      mapping = character(0), category = "no_coords_no_species"
+    ),
+    list(
+      ename = "taxon", raw = tax,
+      entity = list(
+        data_url = NA_character_,
+        attributes = data.frame(
+          attributeName = names(tax),
+          stringsAsFactors = FALSE
+        )
+      ),
+      mapping = character(0), category = "species_only"
+    )
   )
 }
 
 # Minimal meta object for .attempt_odm_join / .finalize_entity
 .make_meta <- function() {
   list(
-    id       = "test.1.1",
-    title    = "Test dataset",
-    creator  = "Tester",
+    id = "test.1.1",
+    title = "Test dataset",
+    creator = "Tester",
     pub_date = "2020-01-01",
     abstract = NA_character_,
     entities = list(),
-    sites    = data.frame(site_code = character(0),
-                          decimalLatitude  = numeric(0),
-                          decimalLongitude = numeric(0),
-                          stringsAsFactors = FALSE)
+    sites = data.frame(
+      site_code = character(0),
+      decimalLatitude = numeric(0),
+      decimalLongitude = numeric(0),
+      stringsAsFactors = FALSE
+    )
   )
 }
 
@@ -124,7 +147,7 @@ test_that("maps decimalLatitude and decimalLongitude", {
     c("decimalLatitude", "decimalLongitude"),
     TaxaFetch:::.default_dwc_map
   )
-  expect_equal(unname(m["decimalLatitude"]),  "decimalLatitude")
+  expect_equal(unname(m["decimalLatitude"]), "decimalLatitude")
   expect_equal(unname(m["decimalLongitude"]), "decimalLongitude")
 })
 
@@ -133,7 +156,7 @@ test_that("maps bare latitude and longitude (new regex)", {
     c("latitude", "longitude"),
     TaxaFetch:::.default_dwc_map
   )
-  expect_equal(unname(m["latitude"]),  "decimalLatitude")
+  expect_equal(unname(m["latitude"]), "decimalLatitude")
   expect_equal(unname(m["longitude"]), "decimalLongitude")
 })
 
@@ -192,7 +215,7 @@ test_that("matching is case-insensitive", {
     c("DECIMALLAT", "Decimal_Longitude"),
     TaxaFetch:::.default_dwc_map
   )
-  expect_equal(unname(m["DECIMALLAT"]),       "decimalLatitude")
+  expect_equal(unname(m["DECIMALLAT"]), "decimalLatitude")
   expect_equal(unname(m["Decimal_Longitude"]), "decimalLongitude")
 })
 
@@ -205,8 +228,10 @@ test_that("returns named vector with input names", {
 })
 
 test_that("handles empty input gracefully", {
-  m <- TaxaFetch:::.map_columns_to_dwc(character(0),
-                                        TaxaFetch:::.default_dwc_map)
+  m <- TaxaFetch:::.map_columns_to_dwc(
+    character(0),
+    TaxaFetch:::.default_dwc_map
+  )
   expect_equal(length(m), 0L)
 })
 
@@ -216,14 +241,18 @@ test_that("handles empty input gracefully", {
 # =============================================================================
 
 test_that("returns 'complete' when lat, lon, and species all present", {
-  m <- c(lat = "decimalLatitude", lon = "decimalLongitude",
-         sp  = "scientificName")
+  m <- c(
+    lat = "decimalLatitude", lon = "decimalLongitude",
+    sp = "scientificName"
+  )
   expect_equal(TaxaFetch:::.classify_entity(m), "complete")
 })
 
 test_that("returns 'spatial_only' when lat+lon but no species", {
-  m <- c(lat = "decimalLatitude", lon = "decimalLongitude",
-         x   = NA_character_)
+  m <- c(
+    lat = "decimalLatitude", lon = "decimalLongitude",
+    x = NA_character_
+  )
   expect_equal(TaxaFetch:::.classify_entity(m), "spatial_only")
 })
 
@@ -270,8 +299,8 @@ test_that("bare latitude/longitude columns classify as complete via new regex", 
 
 test_that("returns column with highest overlap fraction", {
   df <- data.frame(
-    site_code  = c("AQUE", "CARP", "MOHK"),
-    other_code = c("X1",   "X2",   "X3"),
+    site_code = c("AQUE", "CARP", "MOHK"),
+    other_code = c("X1", "X2", "X3"),
     stringsAsFactors = FALSE
   )
   result <- TaxaFetch:::.find_site_code_column(df, c("AQUE", "CARP", "MOHK"))
@@ -308,12 +337,13 @@ test_that("returns NULL when df has no columns", {
 
 test_that("partial overlap above threshold wins over lower-overlap column", {
   df <- data.frame(
-    good = c("AQUE", "CARP", "ZZZZ"),   # 2/3 overlap
-    bad  = c("AA",   "BB",   "AQUE"),   # 1/3 overlap
+    good = c("AQUE", "CARP", "ZZZZ"), # 2/3 overlap
+    bad = c("AA", "BB", "AQUE"), # 1/3 overlap
     stringsAsFactors = FALSE
   )
   result <- TaxaFetch:::.find_site_code_column(df, c("AQUE", "CARP", "MOHK"),
-                                                min_overlap_frac = 0.5)
+    min_overlap_frac = 0.5
+  )
   expect_equal(result, "good")
 })
 
@@ -325,7 +355,8 @@ test_that("returns NULL when best overlap is exactly at threshold (not above)", 
   # 1/2 = 0.5 overlap against c("AQUE", "CARP") with threshold 0.5
   # best_frac starts at min_overlap_frac and requires strictly greater
   result <- TaxaFetch:::.find_site_code_column(df, c("AQUE", "CARP"),
-                                                min_overlap_frac = 0.5)
+    min_overlap_frac = 0.5
+  )
   expect_null(result)
 })
 
@@ -335,27 +366,27 @@ test_that("returns NULL when best overlap is exactly at threshold (not above)", 
 # =============================================================================
 
 test_that("returns a data frame with expected DwC columns on valid input", {
-  ei   <- .make_entity_info()
+  ei <- .make_entity_info()
   meta <- .make_meta()
   bbox <- .sbc_bbox_list
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, bbox,
-    verbose      = FALSE,
+    verbose = FALSE,
     odm_variable = "DENSITY"
   )
 
   expect_true(is.data.frame(result))
-  expect_true("scientificName"   %in% names(result))
-  expect_true("decimalLatitude"  %in% names(result))
+  expect_true("scientificName" %in% names(result))
+  expect_true("decimalLatitude" %in% names(result))
   expect_true("decimalLongitude" %in% names(result))
-  expect_true("eventDate"        %in% names(result))
+  expect_true("eventDate" %in% names(result))
 })
 
 test_that("filters to odm_variable rows only", {
   obs <- .make_obs()
-  obs$variable_name[1:3] <- "BIOMASS"   # mix two variables
-  ei   <- .make_entity_info(obs = obs)
+  obs$variable_name[1:3] <- "BIOMASS" # mix two variables
+  ei <- .make_entity_info(obs = obs)
   meta <- .make_meta()
 
   result <- TaxaFetch:::.attempt_odm_join(
@@ -371,7 +402,7 @@ test_that("filters to odm_variable rows only", {
 test_that("falls back to all rows when odm_variable absent", {
   obs <- .make_obs()
   obs$variable_name <- rep("COUNT", nrow(obs))
-  ei   <- .make_entity_info(obs = obs)
+  ei <- .make_entity_info(obs = obs)
   meta <- .make_meta()
 
   result <- TaxaFetch:::.attempt_odm_join(
@@ -380,12 +411,12 @@ test_that("falls back to all rows when odm_variable absent", {
   )
 
   expect_true(is.data.frame(result))
-  expect_equal(nrow(result), nrow(obs))  # all rows kept
+  expect_equal(nrow(result), nrow(obs)) # all rows kept
 })
 
 test_that("returns NULL when observation entity is missing", {
-  ei   <- .make_entity_info()
-  ei   <- ei[vapply(ei, function(x) x$ename != "observation", logical(1L))]
+  ei <- .make_entity_info()
+  ei <- ei[vapply(ei, function(x) x$ename != "observation", logical(1L))]
   meta <- .make_meta()
 
   result <- TaxaFetch:::.attempt_odm_join(
@@ -396,8 +427,8 @@ test_that("returns NULL when observation entity is missing", {
 })
 
 test_that("returns NULL when location entity is missing", {
-  ei   <- .make_entity_info()
-  ei   <- ei[vapply(ei, function(x) x$ename != "location", logical(1L))]
+  ei <- .make_entity_info()
+  ei <- ei[vapply(ei, function(x) x$ename != "location", logical(1L))]
   meta <- .make_meta()
 
   result <- TaxaFetch:::.attempt_odm_join(
@@ -408,8 +439,8 @@ test_that("returns NULL when location entity is missing", {
 })
 
 test_that("returns NULL when taxon entity is missing", {
-  ei   <- .make_entity_info()
-  ei   <- ei[vapply(ei, function(x) x$ename != "taxon", logical(1L))]
+  ei <- .make_entity_info()
+  ei <- ei[vapply(ei, function(x) x$ename != "taxon", logical(1L))]
   meta <- .make_meta()
 
   result <- TaxaFetch:::.attempt_odm_join(
@@ -420,10 +451,10 @@ test_that("returns NULL when taxon entity is missing", {
 })
 
 test_that("returns NULL when location table has no coordinate rows", {
-  loc      <- .make_loc()
-  loc$latitude  <- NA_real_
+  loc <- .make_loc()
+  loc$latitude <- NA_real_
   loc$longitude <- NA_real_
-  ei   <- .make_entity_info(loc = loc)
+  ei <- .make_entity_info(loc = loc)
   meta <- .make_meta()
 
   result <- TaxaFetch:::.attempt_odm_join(
@@ -435,8 +466,8 @@ test_that("returns NULL when location table has no coordinate rows", {
 
 test_that("coerces numeric location_id in obs to character for join", {
   obs <- .make_obs()
-  obs$location_id <- as.numeric(obs$location_id)  # simulate real EDI data
-  ei   <- .make_entity_info(obs = obs)
+  obs$location_id <- as.numeric(obs$location_id) # simulate real EDI data
+  ei <- .make_entity_info(obs = obs)
   meta <- .make_meta()
 
   result <- TaxaFetch:::.attempt_odm_join(
@@ -450,14 +481,14 @@ test_that("coerces numeric location_id in obs to character for join", {
 test_that("bbox filter removes out-of-range records", {
   # Use a bbox that excludes all fixture sites
   tiny_bbox <- list(west = 0, east = 1, south = 0, north = 1)
-  ei   <- .make_entity_info()
+  ei <- .make_entity_info()
   meta <- .make_meta()
 
   result <- TaxaFetch:::.attempt_odm_join(
     ei, TaxaFetch:::.default_dwc_map, meta, tiny_bbox,
     verbose = FALSE, odm_variable = "DENSITY"
   )
-  expect_null(result)  # .finalize_entity returns NULL when 0 rows survive bbox
+  expect_null(result) # .finalize_entity returns NULL when 0 rows survive bbox
 })
 
 test_that("entity name matching is case-insensitive", {
@@ -477,12 +508,16 @@ test_that("prefers exact entity name match over partial (obs vs observation_anci
   ei <- .make_entity_info()
   # Add an ancillary entity that starts with "observation"
   ancillary <- list(
-    ename    = "observation_ancillary",
-    raw      = data.frame(x = 1:3),
-    entity   = list(data_url = NA_character_,
-                    attributes = data.frame(attributeName = "x",
-                                            stringsAsFactors = FALSE)),
-    mapping  = character(0),
+    ename = "observation_ancillary",
+    raw = data.frame(x = 1:3),
+    entity = list(
+      data_url = NA_character_,
+      attributes = data.frame(
+        attributeName = "x",
+        stringsAsFactors = FALSE
+      )
+    ),
+    mapping = character(0),
     category = "no_coords_no_species"
   )
   ei_with_anc <- c(ei, list(ancillary))
@@ -502,24 +537,24 @@ test_that("prefers exact entity name match over partial (obs vs observation_anci
 # =============================================================================
 
 test_that("scope_lookup = NULL sends all candidates to LLM", {
-  cat  <- .make_catalog()
+  cat <- .make_catalog()
   bbox <- .sbc_bbox
 
   gp <- build_geo_prompt(cat, bbox, scope_lookup = NULL, verbose = FALSE)
 
   expect_equal(length(gp$shortcut_accepted), 0L)
-  expect_equal(length(gp$shortcut_rejected), 1L)  # nodesc.1.1 only (NA desc)
+  expect_equal(length(gp$shortcut_rejected), 1L) # nodesc.1.1 only (NA desc)
   # All candidates with descriptions go to LLM
   expect_gt(gp$n_items, 0L)
 })
 
 test_that("scope_lookup accepts overlapping scope", {
-  cat  <- .make_catalog()
+  cat <- .make_catalog()
   bbox <- .sbc_bbox
 
   sl <- data.frame(
     scope = "knb-lter-sbc",
-    west  = -120.5, east = -119.3, south = 33.8, north = 34.5,
+    west = -120.5, east = -119.3, south = 33.8, north = 34.5,
     label = "SBC LTER"
   )
   gp <- build_geo_prompt(cat, bbox, scope_lookup = sl, verbose = FALSE)
@@ -529,13 +564,13 @@ test_that("scope_lookup accepts overlapping scope", {
 })
 
 test_that("scope_lookup rejects non-overlapping scope", {
-  cat  <- .make_catalog()
-  bbox <- .sbc_bbox   # Santa Barbara
+  cat <- .make_catalog()
+  bbox <- .sbc_bbox # Santa Barbara
 
   # FCE LTER is in Florida — no overlap with SBC bbox
   sl <- data.frame(
     scope = "knb-lter-fce",
-    west  = -81.2, east = -80.4, south = 25.1, north = 25.8,
+    west = -81.2, east = -80.4, south = 25.1, north = 25.8,
     label = "FCE LTER"
   )
   gp <- build_geo_prompt(cat, bbox, scope_lookup = sl, verbose = FALSE)
@@ -545,13 +580,13 @@ test_that("scope_lookup rejects non-overlapping scope", {
 })
 
 test_that("scope_lookup handles multiple rows — accept some, reject others", {
-  cat  <- .make_catalog()
+  cat <- .make_catalog()
   bbox <- .sbc_bbox
 
   sl <- data.frame(
     scope = c("knb-lter-sbc", "knb-lter-fce"),
     west  = c(-120.5, -81.2), east  = c(-119.3, -80.4),
-    south = c(33.8,   25.1),  north = c(34.5,   25.8),
+    south = c(33.8, 25.1),  north = c(34.5, 25.8),
     label = c("SBC LTER", "FCE LTER")
   )
   gp <- build_geo_prompt(cat, bbox, scope_lookup = sl, verbose = FALSE)
@@ -561,21 +596,21 @@ test_that("scope_lookup handles multiple rows — accept some, reject others", {
 })
 
 test_that("packages with NA geographicdescription are always excluded from LLM", {
-  cat  <- .make_catalog()
-  gp   <- build_geo_prompt(cat, .sbc_bbox, scope_lookup = NULL, verbose = FALSE)
+  cat <- .make_catalog()
+  gp <- build_geo_prompt(cat, .sbc_bbox, scope_lookup = NULL, verbose = FALSE)
 
   # nodesc.1.1 has NA description — should not appear in LLM descriptions
   expect_false(any(grepl("nodesc", unlist(gp$desc_to_ids))))
 })
 
 test_that("deduplication: identical descriptions sent to LLM only once", {
-  cat  <- .make_catalog()
+  cat <- .make_catalog()
   # scope.1.1 and scope.2.1 share the same geographicdescription
   # Without shortcut they should appear as ONE unique description
   gp <- build_geo_prompt(cat, .sbc_bbox, scope_lookup = NULL, verbose = FALSE)
 
   sbc_descs <- cat$geographicdescription[cat$scope == "knb-lter-sbc" &
-                                          !is.na(cat$geographicdescription)]
+    !is.na(cat$geographicdescription)]
   n_unique_sbc <- length(unique(sbc_descs))
   # The two SBC packages share one description → deduplicated to 1 LLM call
   expect_equal(n_unique_sbc, 1L)
@@ -586,7 +621,7 @@ test_that("deduplication: identical descriptions sent to LLM only once", {
 
 test_that("scope_lookup missing required columns errors clearly", {
   cat <- .make_catalog()
-  sl  <- data.frame(scope = "knb-lter-sbc", west = -120.5)  # missing east/south/north
+  sl <- data.frame(scope = "knb-lter-sbc", west = -120.5) # missing east/south/north
   expect_error(
     build_geo_prompt(cat, .sbc_bbox, scope_lookup = sl, verbose = FALSE),
     regexp = "scope_lookup.*missing"
@@ -603,24 +638,29 @@ test_that("scope_lookup = non-dataframe errors clearly", {
 
 test_that("geo_prompt S3 class is correct", {
   gp <- build_geo_prompt(.make_catalog(), .sbc_bbox,
-                          scope_lookup = NULL, verbose = FALSE)
+    scope_lookup = NULL, verbose = FALSE
+  )
   expect_true(inherits(gp, "geo_prompt"))
   expect_true(inherits(gp, "llm_prompt"))
 })
 
 test_that("geo_prompt contains required list elements", {
   gp <- build_geo_prompt(.make_catalog(), .sbc_bbox,
-                          scope_lookup = NULL, verbose = FALSE)
-  required <- c("prompts", "chunks", "n_chunks", "n_items",
-                "descriptions", "desc_to_ids",
-                "shortcut_accepted", "shortcut_rejected",
-                "catalog", "bbox")
+    scope_lookup = NULL, verbose = FALSE
+  )
+  required <- c(
+    "prompts", "chunks", "n_chunks", "n_items",
+    "descriptions", "desc_to_ids",
+    "shortcut_accepted", "shortcut_rejected",
+    "catalog", "bbox"
+  )
   expect_true(all(required %in% names(gp)))
 })
 
 test_that("prompt string contains bbox coordinates", {
   gp <- build_geo_prompt(.make_catalog(), .sbc_bbox,
-                          scope_lookup = NULL, verbose = FALSE)
+    scope_lookup = NULL, verbose = FALSE
+  )
   prompt_text <- gp$prompts[[1L]]
   expect_true(grepl("-120", prompt_text))
   expect_true(grepl("33.8", prompt_text))
@@ -699,8 +739,10 @@ test_that(".download_data_table() refuses an untrusted data_url without a networ
 }
 
 test_that(".extract_eml_sites() extracts the site code when description has no newline", {
-  eml <- .make_gc_eml("SONGS: San Onofre Nuclear Generating Station.",
-                      -117.5, -117.5, 33.4, 33.4)
+  eml <- .make_gc_eml(
+    "SONGS: San Onofre Nuclear Generating Station.",
+    -117.5, -117.5, 33.4, 33.4
+  )
   sites <- TaxaFetch:::.extract_eml_sites(eml)
   expect_equal(nrow(sites), 1L)
   expect_equal(sites$site_code[[1L]], "SONGS")

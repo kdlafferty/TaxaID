@@ -112,38 +112,44 @@
 #' @importFrom tibble tibble as_tibble
 #' @export
 search_dataone <- function(bbox,
-                           keywords      = NULL,
-                           max_rows      = 500L,
+                           keywords = NULL,
+                           max_rows = 500L,
                            exclude_noise = TRUE,
                            min_bio_score = 1L,
-                           verbose       = TRUE) {
-
+                           verbose = TRUE) {
   # -- Input validation -------------------------------------------------------
   if (!is.null(bbox)) {
     req_nms <- c("west", "east", "south", "north")
     if (!is.list(bbox) || !all(req_nms %in% names(bbox))) {
-      stop("search_dataone: 'bbox' must be NULL or a named list with ",
-           "elements west, east, south, north (decimal degrees).")
+      stop(
+        "search_dataone: 'bbox' must be NULL or a named list with ",
+        "elements west, east, south, north (decimal degrees)."
+      )
     }
     bbox_vals <- bbox[req_nms]
     non_numeric <- vapply(bbox_vals, function(x) {
       !is.numeric(x) || length(x) != 1L || is.na(x) || !is.finite(x)
     }, logical(1L))
     if (any(non_numeric)) {
-      stop("search_dataone: all bbox elements (west, east, south, north) must be ",
-           "single finite numeric values.")
+      stop(
+        "search_dataone: all bbox elements (west, east, south, north) must be ",
+        "single finite numeric values."
+      )
     }
   }
-  max_rows      <- as.integer(max_rows)
+  max_rows <- as.integer(max_rows)
   min_bio_score <- as.integer(min_bio_score)
-  if (is.na(max_rows) || max_rows < 1L)
+  if (is.na(max_rows) || max_rows < 1L) {
     stop("search_dataone: 'max_rows' must be a positive integer.")
+  }
 
   if (verbose) {
     message("search_dataone: querying EDI PASTA Solr...")
     if (!is.null(bbox)) {
-      message(sprintf("  bbox: W=%.4f  E=%.4f  S=%.4f  N=%.4f",
-                      bbox$west, bbox$east, bbox$south, bbox$north))
+      message(sprintf(
+        "  bbox: W=%.4f  E=%.4f  S=%.4f  N=%.4f",
+        bbox$west, bbox$east, bbox$south, bbox$north
+      ))
     }
     if (!is.null(keywords)) {
       message("  keywords: ", paste(keywords, collapse = " | "))
@@ -155,14 +161,18 @@ search_dataone <- function(bbox,
   req <- httr2::request(.pasta_solr_url) |>
     httr2::req_url_query(
       defType = "edismax",
-      q       = "*:*",
-      fl      = paste(c("packageid", "title", "authors", "scope", "site",
-                        "pubdate", "begindate", "enddate",
-                        "geographicdescription", "abstract", "taxonomic",
-                        "keyword", "coordinates"),
-                      collapse = ","),
-      rows    = max_rows,
-      start   = 0L
+      q = "*:*",
+      fl = paste(
+        c(
+          "packageid", "title", "authors", "scope", "site",
+          "pubdate", "begindate", "enddate",
+          "geographicdescription", "abstract", "taxonomic",
+          "keyword", "coordinates"
+        ),
+        collapse = ","
+      ),
+      rows = max_rows,
+      start = 0L
     ) |>
     # Two sort params as a vector -- .multi = "explode" sends each as a
     # separate ?sort= param, which is what PASTA requires.
@@ -186,8 +196,10 @@ search_dataone <- function(bbox,
       kw_safe <- gsub(":", "\\:", kw, fixed = TRUE)
       kw_safe <- gsub("/", "\\/", kw_safe, fixed = TRUE)
       if (grepl(" ", kw_safe)) kw_safe <- paste0('"', kw_safe, '"')
-      sprintf("title:%s OR geographicdescription:%s OR taxonomic:%s",
-              kw_safe, kw_safe, kw_safe)
+      sprintf(
+        "title:%s OR geographicdescription:%s OR taxonomic:%s",
+        kw_safe, kw_safe, kw_safe
+      )
     }, character(1L))
     req <- httr2::req_url_query(
       req,
@@ -227,18 +239,24 @@ search_dataone <- function(bbox,
       if (length(sample_raw) > 0L) {
         message("  Sample raw 'coordinates' value (first non-NA):")
         message("    '", sample_raw[[1L]], "'")
-        message("  (Inspect this to verify bbox parser is extracting ",
-                "N/S/E/W correctly.)")
+        message(
+          "  (Inspect this to verify bbox parser is extracting ",
+          "N/S/E/W correctly.)"
+        )
       } else {
-        message("  WARNING: all 'coordinates' values are NA. ",
-                "Bbox filter will retain all results (fail open).")
+        message(
+          "  WARNING: all 'coordinates' values are NA. ",
+          "Bbox filter will retain all results (fail open)."
+        )
       }
     }
   }
 
   # -- Biological relevance scoring ------------------------------------------
-  docs <- .score_occurrence_relevance(docs, .default_bio_keywords,
-                                      min_bio_score)
+  docs <- .score_occurrence_relevance(
+    docs, .default_bio_keywords,
+    min_bio_score
+  )
 
   # -- Bbox post-filter (R-side) ---------------------------------------------
   if (!is.null(bbox) && "coordinates_raw" %in% names(docs)) {
@@ -246,7 +264,9 @@ search_dataone <- function(bbox,
 
     docs$bbox_status <- vapply(docs$coordinates_raw, function(raw) {
       pb <- .parse_coordinates_field(raw)
-      if (is.null(pb)) return("unparseable")
+      if (is.null(pb)) {
+        return("unparseable")
+      }
       if (.bbox_overlaps(pb, bbox)) "overlap" else "no_overlap"
     }, character(1L))
 
@@ -256,10 +276,13 @@ search_dataone <- function(bbox,
     if (verbose) {
       message(sprintf(
         "  Bbox filter: %d -> %d dataset(s) kept. %d unparseable (retained).",
-        n_before, nrow(docs), n_unparse))
+        n_before, nrow(docs), n_unparse
+      ))
       if (n_unparse > 0L) {
-        message("  Inspect coordinates_raw on 'unparseable' rows to report ",
-                "the unhandled format.")
+        message(
+          "  Inspect coordinates_raw on 'unparseable' rows to report ",
+          "the unhandled format."
+        )
       }
     }
   } else {
@@ -270,32 +293,42 @@ search_dataone <- function(bbox,
     if (verbose) {
       message("  No datasets remain after bbox filter.")
       message("  Possible causes:")
-      message("    1. coordinates_raw is NA for all results ",
-              "(no bbox in EML metadata)")
+      message(
+        "    1. coordinates_raw is NA for all results ",
+        "(no bbox in EML metadata)"
+      )
       message("    2. Coordinates format not handled by parser")
       message("    3. Genuine spatial mismatch with bbox")
-      message("  Tip: run with bbox = NULL to see all results and inspect ",
-              "the coordinates_raw column.")
+      message(
+        "  Tip: run with bbox = NULL to see all results and inspect ",
+        "the coordinates_raw column."
+      )
     }
     return(tibble::tibble())
   }
 
   # -- Column order ----------------------------------------------------------
-  priority <- c("id", "title", "scope", "site", "pubdate",
-                "bio_score", "has_taxonomic", "is_candidate", "bbox_status",
-                "geographicdescription", "taxonomic", "keywords_str",
-                "authors", "begindate", "enddate", "abstract",
-                "coordinates_raw")
-  present   <- intersect(priority, names(docs))
+  priority <- c(
+    "id", "title", "scope", "site", "pubdate",
+    "bio_score", "has_taxonomic", "is_candidate", "bbox_status",
+    "geographicdescription", "taxonomic", "keywords_str",
+    "authors", "begindate", "enddate", "abstract",
+    "coordinates_raw"
+  )
+  present <- intersect(priority, names(docs))
   remaining <- setdiff(names(docs), priority)
-  docs      <- dplyr::select(docs,
-                              dplyr::all_of(present),
-                              dplyr::all_of(remaining))
+  docs <- dplyr::select(
+    docs,
+    dplyr::all_of(present),
+    dplyr::all_of(remaining)
+  )
 
   if (verbose) {
     n_cand <- sum(docs$is_candidate, na.rm = TRUE)
-    message(sprintf("  %d candidate(s) with bio_score >= %d.",
-                    n_cand, min_bio_score))
+    message(sprintf(
+      "  %d candidate(s) with bio_score >= %d.",
+      n_cand, min_bio_score
+    ))
   }
   docs
 }
@@ -320,7 +353,7 @@ search_dataone <- function(bbox,
 #' @export
 fetch_dataone_eml <- function(dataset_id) {
   if (!is.character(dataset_id) || length(dataset_id) != 1L ||
-      !nzchar(dataset_id)) {
+    !nzchar(dataset_id)) {
     stop("fetch_dataone_eml: 'dataset_id' must be a single non-empty string.")
   }
   url <- .pasta_eml_url(dataset_id)
@@ -346,11 +379,15 @@ fetch_dataone_eml <- function(dataset_id) {
   xml2::xml_ns_strip(doc)
 
   doc_nodes <- xml2::xml_find_all(doc, ".//document")
-  if (length(doc_nodes) == 0L) return(NULL)
+  if (length(doc_nodes) == 0L) {
+    return(NULL)
+  }
 
-  single_flds <- c("packageid", "title", "authors", "scope", "site",
-                   "pubdate", "begindate", "enddate",
-                   "geographicdescription", "abstract", "taxonomic")
+  single_flds <- c(
+    "packageid", "title", "authors", "scope", "site",
+    "pubdate", "begindate", "enddate",
+    "geographicdescription", "abstract", "taxonomic"
+  )
 
   rows <- lapply(doc_nodes, function(node) {
     row <- list()
@@ -367,13 +404,17 @@ fetch_dataone_eml <- function(dataset_id) {
 
     # keywords -- two possible XML layouts
     kw_nodes <- xml2::xml_find_all(node, "keywords/keyword")
-    if (length(kw_nodes) == 0L)
+    if (length(kw_nodes) == 0L) {
       kw_nodes <- xml2::xml_find_all(node, "keyword")
+    }
     if (length(kw_nodes) > 0L) {
       vals <- xml2::xml_text(kw_nodes, trim = TRUE)
       vals <- vals[nzchar(vals)]
-      row[["keywords_str"]] <- if (length(vals) > 0L)
-        paste(vals, collapse = "|") else NA_character_
+      row[["keywords_str"]] <- if (length(vals) > 0L) {
+        paste(vals, collapse = "|")
+      } else {
+        NA_character_
+      }
     } else {
       row[["keywords_str"]] <- NA_character_
     }
@@ -387,17 +428,22 @@ fetch_dataone_eml <- function(dataset_id) {
     # originally guessed. Try the confirmed path first; keep the original
     # guessed paths as fallbacks in case a different dataset shape uses them.
     coord_nodes <- xml2::xml_find_all(node, "coordinates/coordinate")
-    if (length(coord_nodes) == 0L)
+    if (length(coord_nodes) == 0L) {
       coord_nodes <- xml2::xml_find_all(node, "coordinate")
+    }
     if (length(coord_nodes) > 0L) {
       vals <- xml2::xml_text(coord_nodes, trim = TRUE)
       vals <- vals[nzchar(vals)]
-      row[["coordinates_raw"]] <- if (length(vals) > 0L)
-        paste(vals, collapse = "|") else NA_character_
+      row[["coordinates_raw"]] <- if (length(vals) > 0L) {
+        paste(vals, collapse = "|")
+      } else {
+        NA_character_
+      }
     } else {
       cn <- xml2::xml_find_first(node, "spatialCoverage/coordinates")
-      if (inherits(cn, "xml_missing") || length(cn) == 0L)
+      if (inherits(cn, "xml_missing") || length(cn) == 0L) {
         cn <- xml2::xml_find_first(node, "coordinates")
+      }
       if (!inherits(cn, "xml_missing") && length(cn) > 0L) {
         txt <- xml2::xml_text(cn, trim = TRUE)
         row[["coordinates_raw"]] <- if (nzchar(txt)) txt else NA_character_
@@ -411,8 +457,9 @@ fetch_dataone_eml <- function(dataset_id) {
 
   df <- do.call(rbind, lapply(rows, as.data.frame, stringsAsFactors = FALSE))
 
-  if ("packageid" %in% names(df))
+  if ("packageid" %in% names(df)) {
     names(df)[names(df) == "packageid"] <- "id"
+  }
 
   tibble::as_tibble(df)
 }
@@ -437,42 +484,54 @@ fetch_dataone_eml <- function(dataset_id) {
 #'
 #' @noRd
 .parse_coordinates_field <- function(raw) {
-  if (is.na(raw) || !nzchar(trimws(raw))) return(NULL)
+  if (is.na(raw) || !nzchar(trimws(raw))) {
+    return(NULL)
+  }
 
   # Format 1: Solr ENVELOPE(minX, maxX, maxY, minY) -- confirmed real format.
   env_m <- regmatches(raw, regexpr(
     "(?i)ENVELOPE\\s*\\(\\s*([+-]?[0-9.]+)\\s*,\\s*([+-]?[0-9.]+)\\s*,\\s*([+-]?[0-9.]+)\\s*,\\s*([+-]?[0-9.]+)\\s*\\)",
-    raw, perl = TRUE))
+    raw,
+    perl = TRUE
+  ))
   if (length(env_m) > 0L) {
     env_nums <- suppressWarnings(as.numeric(
-      regmatches(env_m, gregexpr("[+-]?[0-9]+\\.?[0-9]*", env_m))[[1L]]))
+      regmatches(env_m, gregexpr("[+-]?[0-9]+\\.?[0-9]*", env_m))[[1L]]
+    ))
     if (length(env_nums) == 4L) {
       w1 <- env_nums[1L]
       e1 <- env_nums[2L]
       n1 <- env_nums[3L]
       s1 <- env_nums[4L]
-      if (abs(n1) <= 90 && abs(s1) <= 90 && abs(e1) <= 180 && abs(w1) <= 180)
+      if (abs(n1) <= 90 && abs(s1) <= 90 && abs(e1) <= 180 && abs(w1) <= 180) {
         return(list(north = n1, south = s1, east = e1, west = w1))
+      }
     }
   }
 
   # Format 2: N:, S:, E:, W: tokens
   .xkey <- function(k) {
     m <- regmatches(raw, regexpr(
-      paste0("(?i)\\b", k, ":([+-]?[0-9]+\\.?[0-9]*)"), raw, perl = TRUE))
-    if (length(m) == 0L) return(NA_real_)
+      paste0("(?i)\\b", k, ":([+-]?[0-9]+\\.?[0-9]*)"), raw,
+      perl = TRUE
+    ))
+    if (length(m) == 0L) {
+      return(NA_real_)
+    }
     as.numeric(sub(paste0("(?i)\\b", k, ":"), "", m, perl = TRUE))
   }
   n <- .xkey("N")
   s <- .xkey("S")
   e <- .xkey("E")
   w <- .xkey("W")
-  if (!any(is.na(c(n, s, e, w))))
+  if (!any(is.na(c(n, s, e, w)))) {
     return(list(north = n, south = s, east = e, west = w))
+  }
 
   # Extract all numeric tokens
   nums <- suppressWarnings(as.numeric(
-    regmatches(raw, gregexpr("[+-]?[0-9]+\\.?[0-9]*", raw))[[1L]]))
+    regmatches(raw, gregexpr("[+-]?[0-9]+\\.?[0-9]*", raw))[[1L]]
+  ))
   nums <- nums[!is.na(nums)]
 
   # Format 3/4: exactly 4 numbers, assumed NSEW
@@ -481,9 +540,10 @@ fetch_dataone_eml <- function(dataset_id) {
     s2 <- nums[2L]
     e2 <- nums[3L]
     w2 <- nums[4L]
-    if (abs(n2) <= 90 && abs(s2) <= 90 && abs(e2) <= 180 && abs(w2) <= 180
-        && n2 >= s2)
+    if (abs(n2) <= 90 && abs(s2) <= 90 && abs(e2) <= 180 && abs(w2) <= 180 &&
+      n2 >= s2) {
       return(list(north = n2, south = s2, east = e2, west = w2))
+    }
     # Try WESN order (matches the confirmed ENVELOPE order above, minus the
     # explicit "ENVELOPE(" keyword -- kept as a fallback for a bare
     # 4-number string with no format marker at all)
@@ -491,27 +551,34 @@ fetch_dataone_eml <- function(dataset_id) {
     e3 <- nums[2L]
     n3 <- nums[3L]
     s3 <- nums[4L]
-    if (abs(n3) <= 90 && abs(s3) <= 90 && abs(e3) <= 180 && abs(w3) <= 180
-        && n3 >= s3)
+    if (abs(n3) <= 90 && abs(s3) <= 90 && abs(e3) <= 180 && abs(w3) <= 180 &&
+      n3 >= s3) {
       return(list(north = n3, south = s3, east = e3, west = w3))
+    }
   }
 
   # Format 5: 8 numbers as 4 lat,lon corner pairs
   if (length(nums) == 8L) {
     lats <- nums[c(1L, 3L, 5L, 7L)]
     lons <- nums[c(2L, 4L, 6L, 8L)]
-    if (all(abs(lats) <= 90) && all(abs(lons) <= 180))
-      return(list(north = max(lats), south = min(lats),
-                  east  = max(lons), west  = min(lons)))
+    if (all(abs(lats) <= 90) && all(abs(lons) <= 180)) {
+      return(list(
+        north = max(lats), south = min(lats),
+        east = max(lons), west = min(lons)
+      ))
+    }
   }
 
   # Fallback: even count >= 4, treat as lat/lon pairs
   if (length(nums) >= 4L && length(nums) %% 2L == 0L) {
     lats <- nums[seq(1L, length(nums), 2L)]
     lons <- nums[seq(2L, length(nums), 2L)]
-    if (all(abs(lats) <= 90) && all(abs(lons) <= 180))
-      return(list(north = max(lats), south = min(lats),
-                  east  = max(lons), west  = min(lons)))
+    if (all(abs(lats) <= 90) && all(abs(lons) <= 180)) {
+      return(list(
+        north = max(lats), south = min(lats),
+        east = max(lons), west = min(lons)
+      ))
+    }
   }
 
   NULL
@@ -522,29 +589,33 @@ fetch_dataone_eml <- function(dataset_id) {
 #' @noRd
 .bbox_overlaps <- function(a, b) {
   !(a$south > b$north || a$north < b$south ||
-    a$west  > b$east  || a$east  < b$west)
+    a$west > b$east || a$east < b$west)
 }
 
 
 #' Score biological relevance
 #' @noRd
 .score_occurrence_relevance <- function(docs, bio_keywords, min_bio_score) {
-  for (col in c("abstract", "taxonomic", "keywords_str", "title"))
+  for (col in c("abstract", "taxonomic", "keywords_str", "title")) {
     if (!col %in% names(docs)) docs[[col]] <- NA_character_
+  }
 
   scores <- mapply(function(ti, ab, kw, tax) {
     txt <- tolower(paste(c(
-      if (!is.na(ti))  ti  else "",
-      if (!is.na(ab))  ab  else "",
-      if (!is.na(kw))  kw  else "",
-      if (!is.na(tax)) tax else ""), collapse = " "))
-    sum(vapply(bio_keywords, function(k) grepl(k, txt, fixed = TRUE),
-               logical(1L)))
+      if (!is.na(ti)) ti else "",
+      if (!is.na(ab)) ab else "",
+      if (!is.na(kw)) kw else "",
+      if (!is.na(tax)) tax else ""
+    ), collapse = " "))
+    sum(vapply(
+      bio_keywords, function(k) grepl(k, txt, fixed = TRUE),
+      logical(1L)
+    ))
   }, docs$title, docs$abstract, docs$keywords_str, docs$taxonomic)
 
-  docs$bio_score     <- as.integer(scores)
+  docs$bio_score <- as.integer(scores)
   docs$has_taxonomic <- !is.na(docs$taxonomic) & nzchar(docs$taxonomic)
-  docs$is_candidate  <- docs$bio_score >= min_bio_score
+  docs$is_candidate <- docs$bio_score >= min_bio_score
   dplyr::arrange(docs, dplyr::desc(.data$bio_score))
 }
 
@@ -553,10 +624,13 @@ fetch_dataone_eml <- function(dataset_id) {
 #' @noRd
 .pasta_eml_url <- function(dataset_id) {
   parts <- strsplit(dataset_id, "\\.")[[1L]]
-  if (length(parts) < 3L)
-    stop(sprintf(".pasta_eml_url: cannot parse ID '%s'. ", dataset_id),
-         "Expected scope.identifier.revision (e.g. knb-lter-sbc.17.18).")
-  rev   <- parts[length(parts)]
+  if (length(parts) < 3L) {
+    stop(
+      sprintf(".pasta_eml_url: cannot parse ID '%s'. ", dataset_id),
+      "Expected scope.identifier.revision (e.g. knb-lter-sbc.17.18)."
+    )
+  }
+  rev <- parts[length(parts)]
   ident <- parts[length(parts) - 1L]
   scope <- paste(parts[seq_len(length(parts) - 2L)], collapse = ".")
   paste(.pasta_meta_url, scope, ident, rev, sep = "/")

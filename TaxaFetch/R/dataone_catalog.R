@@ -85,25 +85,26 @@
 #'
 #' @examples
 #' \dontrun{
-#' catalog <- harvest_dataone_catalog(cache_file = "pasta_catalog.rds",
-#'                                    max_age_days = 7)
+#' catalog <- harvest_dataone_catalog(
+#'   cache_file = "pasta_catalog.rds",
+#'   max_age_days = 7
+#' )
 #' nrow(catalog)
 #' table(catalog$is_candidate)
 #' }
-
-harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
-                                    max_age_days  = 7,
-                                    max_rows      = Inf,
-                                    page_size     = 500L,
+harvest_dataone_catalog <- function(cache_file = "pasta_catalog.rds",
+                                    max_age_days = 7,
+                                    max_rows = Inf,
+                                    page_size = 500L,
                                     exclude_noise = TRUE,
                                     pause_seconds = 0.5,
-                                    verbose       = TRUE) {
-
+                                    verbose = TRUE) {
   # ---- cache check -----------------------------------------------------------
   if (!is.null(cache_file) && file.exists(cache_file)) {
     age_days <- as.numeric(difftime(Sys.time(),
-                                    file.info(cache_file)$mtime,
-                                    units = "days"))
+      file.info(cache_file)$mtime,
+      units = "days"
+    ))
     if (age_days <= max_age_days) {
       if (verbose) {
         message(sprintf(
@@ -122,8 +123,10 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
   }
 
   if (!requireNamespace("httr2", quietly = TRUE)) {
-    stop("harvest_dataone_catalog: package 'httr2' is required. ",
-         "Install with: install.packages('httr2')")
+    stop(
+      "harvest_dataone_catalog: package 'httr2' is required. ",
+      "Install with: install.packages('httr2')"
+    )
   }
 
   # ---- build fixed fq params -------------------------------------------------
@@ -133,11 +136,11 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
   }
 
   # ---- paginate --------------------------------------------------------------
-  page_size  <- as.integer(page_size)
-  start      <- 0L
+  page_size <- as.integer(page_size)
+  start <- 0L
   total_rows <- NA_integer_
-  all_pages  <- list()
-  page_num   <- 0L
+  all_pages <- list()
+  page_num <- 0L
 
   repeat {
     page_num <- page_num + 1L
@@ -150,20 +153,26 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
 
     if (verbose) {
       if (is.na(total_rows)) {
-        message(sprintf("  Page %d (rows %d-%d) ...",
-                        page_num, start + 1L, start + rows_this_page))
+        message(sprintf(
+          "  Page %d (rows %d-%d) ...",
+          page_num, start + 1L, start + rows_this_page
+        ))
       } else {
-        message(sprintf("  Page %d (rows %d-%d of %d) ...",
-                        page_num, start + 1L,
-                        min(start + rows_this_page, total_rows),
-                        total_rows))
+        message(sprintf(
+          "  Page %d (rows %d-%d of %d) ...",
+          page_num, start + 1L,
+          min(start + rows_this_page, total_rows),
+          total_rows
+        ))
       }
     }
 
     result <- tryCatch(
-      .pasta_solr_page(start         = start,
-                       rows          = rows_this_page,
-                       fq_params     = fq_params),
+      .pasta_solr_page(
+        start = start,
+        rows = rows_this_page,
+        fq_params = fq_params
+      ),
       error = function(e) {
         warning(sprintf(
           "harvest_dataone_catalog: page %d failed -- %s",
@@ -203,7 +212,7 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
   # ---- derived columns -------------------------------------------------------
   catalog$has_taxonomic <- !is.na(catalog$taxonomic) &
     nzchar(trimws(catalog$taxonomic))
-  catalog$is_candidate  <- catalog$has_taxonomic
+  catalog$is_candidate <- catalog$has_taxonomic
 
   # ---- cache -----------------------------------------------------------------
   if (!is.null(cache_file)) {
@@ -228,7 +237,6 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
 #'
 #' @noRd
 .pasta_solr_page <- function(start, rows, fq_params) {
-
   # PASTA returns its own XML format (<resultset>) regardless of wt= parameter.
   # Parse with xml2 directly.
 
@@ -240,11 +248,11 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
 
   req <- httr2::request(.pasta_solr_url) |>
     httr2::req_url_query(
-      q     = "*:*",
-      fl    = fl_fields,
-      rows  = rows,
+      q = "*:*",
+      fl = fl_fields,
+      rows = rows,
       start = start,
-      sort  = c("pubdate,desc", "packageid,asc"),
+      sort = c("pubdate,desc", "packageid,asc"),
       .multi = "explode"
     )
 
@@ -252,12 +260,12 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
     req <- httr2::req_url_query(req, fq = fq_params, .multi = "explode")
   }
 
-  resp    <- req |> httr2::req_perform()
+  resp <- req |> httr2::req_perform()
   xml_doc <- xml2::read_xml(httr2::resp_body_string(resp))
 
   # <resultset numFound='N' ...>
   resultset <- xml2::xml_find_first(xml_doc, "//resultset")
-  n_found   <- as.integer(xml2::xml_attr(resultset, "numFound") %||% "0")
+  n_found <- as.integer(xml2::xml_attr(resultset, "numFound") %||% "0")
 
   docs <- xml2::xml_find_all(xml_doc, "//document")
 
@@ -271,7 +279,9 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
 
   .xml_scalar <- function(doc, field) {
     node <- xml2::xml_find_first(doc, field)
-    if (inherits(node, "xml_missing")) return(NA_character_)
+    if (inherits(node, "xml_missing")) {
+      return(NA_character_)
+    }
     val <- trimws(xml2::xml_text(node))
     if (!nzchar(val)) NA_character_ else val
   }
@@ -290,7 +300,9 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
       if (length(nodes) > 0L) {
         vals <- trimws(xml2::xml_text(nodes))
         vals <- vals[nzchar(vals)]
-        if (length(vals) > 0L) return(paste(vals, collapse = " | "))
+        if (length(vals) > 0L) {
+          return(paste(vals, collapse = " | "))
+        }
       }
     }
     NA_character_
@@ -298,23 +310,23 @@ harvest_dataone_catalog <- function(cache_file    = "pasta_catalog.rds",
 
   rows_list <- lapply(docs, function(doc) {
     dplyr::tibble(
-      id                    = .xml_scalar(doc, "id"),
-      scope                 = .xml_scalar(doc, "scope"),
-      title                 = .xml_scalar(doc, "title"),
-      site                  = .xml_scalar(doc, "site"),
-      pubdate               = .xml_scalar(doc, "pubdate"),
+      id = .xml_scalar(doc, "id"),
+      scope = .xml_scalar(doc, "scope"),
+      title = .xml_scalar(doc, "title"),
+      site = .xml_scalar(doc, "site"),
+      pubdate = .xml_scalar(doc, "pubdate"),
       geographicdescription = .xml_scalar(doc, "geographicdescription"),
-      taxonomic             = .xml_scalar(doc, "taxonomic"),
-      abstract              = .xml_scalar(doc, "abstract"),
-      keywords_str          = .xml_collapse(
+      taxonomic = .xml_scalar(doc, "taxonomic"),
+      abstract = .xml_scalar(doc, "abstract"),
+      keywords_str = .xml_collapse(
         doc, c("keyword", "keywords/keyword", "keywords")
       ),
-      authors               = .xml_collapse(
+      authors = .xml_collapse(
         doc, c("author", "authors/author", "authors")
       ),
-      doi                   = .xml_scalar(doc, "doi"),
-      begindate             = .xml_scalar(doc, "begindate"),
-      enddate               = .xml_scalar(doc, "enddate")
+      doi = .xml_scalar(doc, "doi"),
+      begindate = .xml_scalar(doc, "begindate"),
+      enddate = .xml_scalar(doc, "enddate")
     )
   })
 

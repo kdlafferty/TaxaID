@@ -73,7 +73,7 @@
 #' # Two sites, overlapping local boxes, both candidates for the same genus
 #' box_a <- make_bbox_wkt(lat = 34.40, lon = -120.41, radius_deg = 0.05)
 #' box_b <- make_bbox_wkt(lat = 34.47, lon = -120.36, radius_deg = 0.05)
-#' key   <- get_keys_from_context(data.frame(genus = "Sebastes"))$usageKey
+#' key <- get_keys_from_context(data.frame(genus = "Sebastes"))$usageKey
 #'
 #' taxon_geometry_map <- data.frame(
 #'   taxon_key = c(key, key),
@@ -84,18 +84,18 @@
 #' occ <- fetch_occurrences_by_taxon(taxon_geometry_map, year_range = "2000,2024")
 #' }
 fetch_occurrences_by_taxon <- function(taxon_geometry_map,
-                                        year_range = .gbif_default_year_range(),
-                                        limit = NULL,
-                                        combine_shared_geometry = TRUE,
-                                        ...) {
-
+                                       year_range = .gbif_default_year_range(),
+                                       limit = NULL,
+                                       combine_shared_geometry = TRUE,
+                                       ...) {
   # --- Input checks ---------------------------------------------------------
   if (!is.data.frame(taxon_geometry_map)) {
     stop("fetch_occurrences_by_taxon: 'taxon_geometry_map' must be a data frame.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   required_cols <- c("taxon_key", "geometry")
-  missing_cols  <- setdiff(required_cols, names(taxon_geometry_map))
+  missing_cols <- setdiff(required_cols, names(taxon_geometry_map))
   if (length(missing_cols) > 0L) {
     stop(sprintf(
       "fetch_occurrences_by_taxon: 'taxon_geometry_map' is missing required column(s): %s",
@@ -103,35 +103,37 @@ fetch_occurrences_by_taxon <- function(taxon_geometry_map,
     ), call. = FALSE)
   }
   if (!is.logical(combine_shared_geometry) || length(combine_shared_geometry) != 1L ||
-      is.na(combine_shared_geometry)) {
+    is.na(combine_shared_geometry)) {
     stop("fetch_occurrences_by_taxon: 'combine_shared_geometry' must be TRUE or FALSE.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   map <- taxon_geometry_map[, required_cols, drop = FALSE]
   map$taxon_key <- suppressWarnings(as.integer(map$taxon_key))
-  map$geometry  <- as.character(map$geometry)
+  map$geometry <- as.character(map$geometry)
   map <- map[!is.na(map$taxon_key) & !is.na(map$geometry) & nzchar(map$geometry), , drop = FALSE]
   map <- unique(map)
 
   if (nrow(map) == 0L) {
     stop("fetch_occurrences_by_taxon: no valid (taxon_key, geometry) rows after cleaning.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   # --- Union geometry per taxon key ------------------------------------------
   taxon_keys <- unique(map$taxon_key)
-  unioned    <- vector("character", length(taxon_keys))
+  unioned <- vector("character", length(taxon_keys))
 
   for (i in seq_along(taxon_keys)) {
-    geoms     <- map$geometry[map$taxon_key == taxon_keys[i]]
-    sfc       <- sf::st_as_sfc(geoms, crs = 4326)
+    geoms <- map$geometry[map$taxon_key == taxon_keys[i]]
+    sfc <- sf::st_as_sfc(geoms, crs = 4326)
     unioned[i] <- sf::st_as_text(sf::st_union(sfc))
   }
 
   per_taxon <- data.frame(
     taxon_key = taxon_keys,
-    geometry  = unioned,
+    geometry = unioned,
     stringsAsFactors = FALSE
   )
 

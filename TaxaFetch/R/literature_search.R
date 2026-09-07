@@ -49,14 +49,18 @@
 #'
 #' @noRd
 .decode_openalex_abstract <- function(inv_index) {
-  if (is.null(inv_index) || length(inv_index) == 0L) return(NA_character_)
+  if (is.null(inv_index) || length(inv_index) == 0L) {
+    return(NA_character_)
+  }
 
   # unlist() flattens the list-of-lists structure; as.integer() is defensive
   # against JSON integers arriving as numeric doubles or nested lists
   all_positions <- as.integer(unlist(inv_index, use.names = FALSE))
-  if (length(all_positions) == 0L) return(NA_character_)
+  if (length(all_positions) == 0L) {
+    return(NA_character_)
+  }
 
-  n_pos  <- max(all_positions) + 1L
+  n_pos <- max(all_positions) + 1L
   tokens <- character(n_pos)
 
   for (word in names(inv_index)) {
@@ -66,7 +70,9 @@
   }
 
   tokens <- tokens[nzchar(tokens)]
-  if (length(tokens) == 0L) return(NA_character_)
+  if (length(tokens) == 0L) {
+    return(NA_character_)
+  }
   paste(tokens, collapse = " ")
 }
 
@@ -79,14 +85,15 @@
       "User-Agent" = "TaxaFetch/0.1 (R package; biodiversity occurrence data)"
     ) |>
     httr2::req_url_query(api_key = api_key) |>
-    httr2::req_retry(max_tries = 3L, backoff = ~ 2) |>
-    httr2::req_throttle(rate = 9 / 1)    # stay under 10 req/s
+    httr2::req_retry(max_tries = 3L, backoff = ~2) |>
+    httr2::req_throttle(rate = 9 / 1) # stay under 10 req/s
 
   resp <- tryCatch(
     httr2::req_perform(req),
     error = function(e) {
       stop(sprintf("OpenAlex request failed: %s", conditionMessage(e)),
-           call. = FALSE)
+        call. = FALSE
+      )
     }
   )
   httr2::resp_body_json(resp, simplifyVector = FALSE)
@@ -103,7 +110,7 @@
 #' Lightweight query fingerprint (no digest dependency)
 #' @noRd
 .query_hash <- function(...) {
-  args  <- paste(c(...), collapse = "|")
+  args <- paste(c(...), collapse = "|")
   chars <- utf8ToInt(substr(args, 1L, 800L))
   as.character(abs(sum(chars * seq_along(chars))))
 }
@@ -187,23 +194,22 @@
 #'
 #' @export
 search_literature <- function(taxon_scope,
-                               geo_scope   = NULL,
-                               bbox        = NULL,
-                               api_key     = Sys.getenv("OPENALEX_API_KEY"),
-                               max_results = 200L,
-                               from_year   = NULL,
-                               open_access = TRUE,
-                               cache_dir   = NULL,
-                               verbose     = TRUE) {
-
+                              geo_scope = NULL,
+                              bbox = NULL,
+                              api_key = Sys.getenv("OPENALEX_API_KEY"),
+                              max_results = 200L,
+                              from_year = NULL,
+                              open_access = TRUE,
+                              cache_dir = NULL,
+                              verbose = TRUE) {
   # --- Input validation ---
   if (!is.character(taxon_scope) || length(taxon_scope) != 1L ||
-      is.na(taxon_scope) || !nzchar(trimws(taxon_scope))) {
+    is.na(taxon_scope) || !nzchar(trimws(taxon_scope))) {
     stop("'taxon_scope' must be a non-empty character string.", call. = FALSE)
   }
   if (!is.null(geo_scope)) {
     if (!is.character(geo_scope) || length(geo_scope) != 1L ||
-        is.na(geo_scope) || !nzchar(trimws(geo_scope))) {
+      is.na(geo_scope) || !nzchar(trimws(geo_scope))) {
       stop("'geo_scope' must be a non-empty character string or NULL.", call. = FALSE)
     }
   }
@@ -295,23 +301,29 @@ search_literature <- function(taxon_scope,
   # Taxon filter -- OR within terms
   filter_parts <- c(
     filter_parts,
-    sprintf("title_and_abstract.search:%s",
-            utils::URLencode(taxon_query, reserved = TRUE))
+    sprintf(
+      "title_and_abstract.search:%s",
+      utils::URLencode(taxon_query, reserved = TRUE)
+    )
   )
 
   # Geographic filter -- OR within place names, AND with taxon
   if (!is.null(geo_query)) {
     filter_parts <- c(
       filter_parts,
-      sprintf("title_and_abstract.search:%s",
-              utils::URLencode(geo_query, reserved = TRUE))
+      sprintf(
+        "title_and_abstract.search:%s",
+        utils::URLencode(geo_query, reserved = TRUE)
+      )
     )
   }
 
-  if (open_access)    filter_parts <- c(filter_parts, "open_access.is_oa:true")
+  if (open_access) filter_parts <- c(filter_parts, "open_access.is_oa:true")
   if (!is.null(from_year)) {
-    filter_parts <- c(filter_parts,
-                      sprintf("publication_year:>%d", from_year - 1L))
+    filter_parts <- c(
+      filter_parts,
+      sprintf("publication_year:>%d", from_year - 1L)
+    )
   }
   filter_parts <- c(filter_parts, "type:article", "is_paratext:false")
 
@@ -344,12 +356,12 @@ search_literature <- function(taxon_scope,
       message("  No geo_scope supplied -- searching without geographic pre-filtering.")
     }
     if (!is.null(from_year)) message(sprintf("  from_year         : %d", from_year))
-    if (open_access)          message("  open_access       : TRUE")
+    if (open_access) message("  open_access       : TRUE")
   }
 
   # --- Cursor-paginate ---
   all_works <- list()
-  cursor    <- "*"
+  cursor <- "*"
   n_fetched <- 0L
 
   repeat {
@@ -415,10 +427,9 @@ search_literature <- function(taxon_scope,
 
   # --- Parse works to catalog tibble ---
   rows <- lapply(all_works, function(w) {
-
     catalog_id <- w$id %||% NA_character_
-    title      <- w$title %||% NA_character_
-    abstract   <- .decode_openalex_abstract(w$abstract_inverted_index)
+    title <- w$title %||% NA_character_
+    abstract <- .decode_openalex_abstract(w$abstract_inverted_index)
 
     topic_names <- vapply(
       w$topics %||% list(),
@@ -430,16 +441,16 @@ search_literature <- function(taxon_scope,
       function(k) k$display_name %||% "",
       character(1L)
     )
-    all_kw   <- unique(c(topic_names, kw_names))
-    all_kw   <- all_kw[nzchar(all_kw)]
+    all_kw <- unique(c(topic_names, kw_names))
+    all_kw <- all_kw[nzchar(all_kw)]
     keywords <- if (length(all_kw) > 0L) {
       paste(all_kw, collapse = "; ")
     } else {
       NA_character_
     }
 
-    doi     <- w$doi %||% NA_character_
-    oa      <- w$open_access %||% list()
+    doi <- w$doi %||% NA_character_
+    oa <- w$open_access %||% list()
     pdf_url <- oa$oa_url %||% NA_character_
 
     year <- w$publication_year %||% NA_integer_
@@ -451,27 +462,27 @@ search_literature <- function(taxon_scope,
       character(1L)
     )
     author_names <- author_names[nzchar(author_names)]
-    authors      <- if (length(author_names) > 0L) {
+    authors <- if (length(author_names) > 0L) {
       paste(author_names, collapse = "; ")
     } else {
       NA_character_
     }
 
-    pl      <- w$primary_location %||% list()
-    src     <- pl$source %||% list()
+    pl <- w$primary_location %||% list()
+    src <- pl$source %||% list()
     journal <- src$display_name %||% NA_character_
 
     data.frame(
-      id          = catalog_id,
-      title       = title,
-      abstract    = abstract,
-      keywords    = keywords,
-      doi         = doi,
-      pdf_url     = pdf_url,
-      year        = year,
-      authors     = authors,
-      journal     = journal,
-      geo_match   = NA_character_,
+      id = catalog_id,
+      title = title,
+      abstract = abstract,
+      keywords = keywords,
+      doi = doi,
+      pdf_url = pdf_url,
+      year = year,
+      authors = authors,
+      journal = journal,
+      geo_match = NA_character_,
       taxon_match = NA_character_,
       stringsAsFactors = FALSE
     )
@@ -488,9 +499,9 @@ search_literature <- function(taxon_scope,
   }
 
   attr(result, "taxon_scope") <- taxon_scope
-  attr(result, "geo_scope")   <- geo_scope
-  attr(result, "bbox")        <- bbox
-  attr(result, "query_date")  <- Sys.time()
+  attr(result, "geo_scope") <- geo_scope
+  attr(result, "bbox") <- bbox
+  attr(result, "query_date") <- Sys.time()
 
   if (!is.null(cache_dir)) {
     saveRDS(result, cache_file)
@@ -554,19 +565,20 @@ search_literature <- function(taxon_scope,
 #'
 #' @export
 download_literature_pdfs <- function(catalog,
-                                      output_dir,
-                                      overwrite  = FALSE,
-                                      max_papers = NULL,
-                                      pause_s    = 0.5,
-                                      verbose    = TRUE) {
-
+                                     output_dir,
+                                     overwrite = FALSE,
+                                     max_papers = NULL,
+                                     pause_s = 0.5,
+                                     verbose = TRUE) {
   if (!is.data.frame(catalog)) {
     stop("'catalog' must be a data frame or tibble.", call. = FALSE)
   }
   missing_cols <- setdiff(c("id", "pdf_url"), names(catalog))
   if (length(missing_cols) > 0L) {
-    stop(sprintf("'catalog' is missing required columns: %s",
-                 paste(missing_cols, collapse = ", ")), call. = FALSE)
+    stop(sprintf(
+      "'catalog' is missing required columns: %s",
+      paste(missing_cols, collapse = ", ")
+    ), call. = FALSE)
   }
 
   if (!dir.exists(output_dir)) {
@@ -574,7 +586,7 @@ download_literature_pdfs <- function(catalog,
     if (verbose) message(sprintf("Created output directory: %s", output_dir))
   }
 
-  has_url    <- !is.na(catalog$pdf_url) & nzchar(catalog$pdf_url)
+  has_url <- !is.na(catalog$pdf_url) & nzchar(catalog$pdf_url)
   candidates <- which(has_url)
   if (!is.null(max_papers)) {
     candidates <- head(candidates, as.integer(max_papers))
@@ -595,64 +607,73 @@ download_literature_pdfs <- function(catalog,
   }
 
   n_success <- 0L
-  n_skip    <- 0L
-  n_fail    <- 0L
+  n_skip <- 0L
+  n_fail <- 0L
 
   for (i in candidates) {
-
-    url        <- catalog$pdf_url[i]
+    url <- catalog$pdf_url[i]
     catalog_id <- catalog$id[i] %||% sprintf("row%d", i)
 
     # Build a safe filename from catalog_id
-    safe_id   <- gsub("[^A-Za-z0-9_-]", "_", basename(catalog_id))
-    safe_id   <- substr(safe_id, 1L, 80L)
+    safe_id <- gsub("[^A-Za-z0-9_-]", "_", basename(catalog_id))
+    safe_id <- substr(safe_id, 1L, 80L)
     dest_file <- file.path(output_dir, paste0(safe_id, ".pdf"))
 
     if (!overwrite && file.exists(dest_file)) {
       catalog$local_pdf_path[i] <- dest_file
       n_skip <- n_skip + 1L
       if (verbose) {
-        message(sprintf("  [%d/%d] skip (exists): %s",
-                        which(candidates == i), length(candidates),
-                        basename(dest_file)))
+        message(sprintf(
+          "  [%d/%d] skip (exists): %s",
+          which(candidates == i), length(candidates),
+          basename(dest_file)
+        ))
       }
       next
     }
 
     if (verbose) {
-      message(sprintf("  [%d/%d] downloading: %s",
-                      which(candidates == i), length(candidates),
-                      basename(dest_file)))
+      message(sprintf(
+        "  [%d/%d] downloading: %s",
+        which(candidates == i), length(candidates),
+        basename(dest_file)
+      ))
     }
 
-    success <- tryCatch({
-      req  <- httr2::request(url) |>
-        httr2::req_headers(
-          "User-Agent" =
-            "TaxaFetch/0.1 (R package; biodiversity occurrence data)"
-        ) |>
-        httr2::req_retry(max_tries = 3L, backoff = ~ 2) |>
-        httr2::req_timeout(60L)
-      httr2::req_perform(req, path = dest_file)
-      TRUE
-    }, error = function(e) {
-      warning(sprintf(
-        "download_literature_pdfs: failed to download '%s': %s",
-        basename(dest_file), conditionMessage(e)
-      ), call. = FALSE)
-      if (file.exists(dest_file)) file.remove(dest_file)
-      FALSE
-    })
+    success <- tryCatch(
+      {
+        req <- httr2::request(url) |>
+          httr2::req_headers(
+            "User-Agent" =
+              "TaxaFetch/0.1 (R package; biodiversity occurrence data)"
+          ) |>
+          httr2::req_retry(max_tries = 3L, backoff = ~2) |>
+          httr2::req_timeout(60L)
+        httr2::req_perform(req, path = dest_file)
+        TRUE
+      },
+      error = function(e) {
+        warning(sprintf(
+          "download_literature_pdfs: failed to download '%s': %s",
+          basename(dest_file), conditionMessage(e)
+        ), call. = FALSE)
+        if (file.exists(dest_file)) file.remove(dest_file)
+        FALSE
+      }
+    )
 
     if (success) {
       # Sanity check: must be > 1 KB and start with the PDF magic bytes
       file_size <- file.info(dest_file)$size
-      is_pdf    <- tryCatch({
-        con    <- file(dest_file, "rb")
-        header <- rawToChar(readBin(con, "raw", n = 4L))
-        close(con)
-        header == "%PDF"
-      }, error = function(e) FALSE)
+      is_pdf <- tryCatch(
+        {
+          con <- file(dest_file, "rb")
+          header <- rawToChar(readBin(con, "raw", n = 4L))
+          close(con)
+          header == "%PDF"
+        },
+        error = function(e) FALSE
+      )
 
       if (!is_pdf || file_size < 1024L) {
         warning(sprintf(

@@ -75,9 +75,9 @@ gbif_rank_cols <- intersect(
 
 gbif_std <- occurrences_clean |>
   create_taxon_names(taxonomy_ranks = gbif_rank_cols) |>
-  filter(taxon_name_rank == "species")        # keep species-rank records only
+  filter(taxon_name_rank == "species") # keep species-rank records only
 
-gbif_std$datasource <- "GBIF"                 # tag provenance — do not skip
+gbif_std$datasource <- "GBIF" # tag provenance — do not skip
 
 
 # =============================================================================
@@ -88,19 +88,19 @@ gbif_std$datasource <- "GBIF"                 # tag provenance — do not skip
 # Replace with your actual data frame. Column names do not need to match GBIF
 # at this stage — rename_cols() handles that below.
 # Specify whichever rank columns are present in your supplemental data.
-supp_rank_cols <- c("Family", "Genus", "Species")   # edit as needed
+supp_rank_cols <- c("Family", "Genus", "Species") # edit as needed
 
 additional_data <- data.frame(
-  Family     = "Gobiidae",
-  Genus      = "Clevelandia",
-  Species    = "Clevelandia ios",
-  Latitude   = 34.11167,
-  Longitude  = -119.081667,
+  Family = "Gobiidae",
+  Genus = "Clevelandia",
+  Species = "Clevelandia ios",
+  Latitude = 34.11167,
+  Longitude = -119.081667,
   SurveyDate = "1 Jan 2022",
-  site       = "Carpinteria",
+  site = "Carpinteria",
   datasource = "govreport",
   stringsAsFactors = FALSE
-)|>
+) |>
   create_taxon_names(taxonomy_ranks = supp_rank_cols)
 
 # --- Create taxon_name -------------------------------------------------------
@@ -110,7 +110,7 @@ additional_data <- data.frame(
 verified <- verify_taxon_names(additional_data$taxon_name, backbone_id = 11)
 
 # Extract the rank vector used by the GBIF backbone for this taxonomic group.
-GBIF_ranks <- strsplit(verified$classification_ranks, "\\|")[[1]]
+gbif_ranks <- strsplit(verified$classification_ranks, "\\|")[[1]]
 
 # Rebuild taxon_name using GBIF backbone ranks so it aligns with gbif_std.
 additional_data_std <- verified |>
@@ -119,13 +119,13 @@ additional_data_std <- verified |>
     old_backbone_label = "taxon_name",
     new_backbone_label = "gbif_name"
   ) |>
-  left_join(additional_data)    # re-attach original columns
+  left_join(additional_data) # re-attach original columns
 
 # --- Rename columns to DarwinCore convention ---------------------------------
 # Map supplemental column names → DarwinCore (or GBIF) equivalents.
 # Only list columns whose names differ from the target convention.
 additional_data_std <- rename_cols(
-  df    = additional_data_std,
+  df = additional_data_std,
   col_map = c(
     "Latitude"   = "decimalLatitude",
     "Longitude"  = "decimalLongitude",
@@ -171,8 +171,10 @@ message(sprintf(
 message(sprintf("Total records:   %d", nrow(occurrence_data)))
 message(sprintf("Unique taxa:     %d", n_distinct(occurrence_data$taxon_name)))
 
-saveRDS(occurrence_data,
-        file.path(system.file("", package = "TaxaFetch"), "occurrence_data.rds"))
+saveRDS(
+  occurrence_data,
+  file.path(system.file("", package = "TaxaFetch"), "occurrence_data.rds")
+)
 message("Saved occurrence_data.")
 
 # occurrence_data is ready for:

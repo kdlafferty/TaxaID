@@ -62,12 +62,12 @@
 #' )
 #' }
 check_inat_range <- function(
-    taxon_names,
-    lat,
-    lng,
-    api_token = Sys.getenv("INAT_API_TOKEN"),
-    cache_dir = NULL,
-    verbose   = FALSE
+  taxon_names,
+  lat,
+  lng,
+  api_token = Sys.getenv("INAT_API_TOKEN"),
+  cache_dir = NULL,
+  verbose = FALSE
 ) {
   if (nchar(api_token) == 0L) {
     stop(
@@ -88,7 +88,7 @@ check_inat_range <- function(
     name <- taxon_names[[i]]
     if (verbose) message(sprintf("[%d/%d] %s", i, length(taxon_names), name))
 
-    info         <- .inat_taxon_id(name, api_token)
+    info <- .inat_taxon_id(name, api_token)
     inat_kingdom <- .iconic_to_kingdom(info$iconic_taxon_name)
 
     if (is.na(info$taxon_id)) {
@@ -166,26 +166,26 @@ check_inat_range <- function(
 .iconic_to_kingdom <- function(iconic) {
   lookup <- c(
     # Kingdom-level iconic taxa
-    Animalia  = "Animalia",
-    Plantae   = "Plantae",
-    Fungi     = "Fungi",
+    Animalia = "Animalia",
+    Plantae = "Plantae",
+    Fungi = "Fungi",
     Chromista = "Chromista",
-    Protozoa  = "Protozoa",
-    Bacteria  = "Bacteria",
-    Archaea   = "Archaea",
-    Viruses   = "Viruses",
+    Protozoa = "Protozoa",
+    Bacteria = "Bacteria",
+    Archaea = "Archaea",
+    Viruses = "Viruses",
     # Sub-kingdom iconic taxa (all Animalia)
-    Aves            = "Animalia",
-    Mammalia        = "Animalia",
-    Reptilia        = "Animalia",
-    Amphibia        = "Animalia",
-    Actinopterygii  = "Animalia",
-    Insecta         = "Animalia",
-    Arachnida       = "Animalia",
-    Mollusca        = "Animalia",
-    Elasmobranchii  = "Animalia"
+    Aves = "Animalia",
+    Mammalia = "Animalia",
+    Reptilia = "Animalia",
+    Amphibia = "Animalia",
+    Actinopterygii = "Animalia",
+    Insecta = "Animalia",
+    Arachnida = "Animalia",
+    Mollusca = "Animalia",
+    Elasmobranchii = "Animalia"
   )
-  unname(lookup[iconic])  # NA when iconic is NA or unrecognised
+  unname(lookup[iconic]) # NA when iconic is NA or unrecognised
 }
 
 #' Resolve a taxon name to iNaturalist taxon ID and metadata
@@ -210,7 +210,9 @@ check_inat_range <- function(
     n_observations    = NA_integer_
   )
 
-  if (is.null(resp)) return(empty)
+  if (is.null(resp)) {
+    return(empty)
+  }
   if (httr::status_code(resp) == 401L) {
     stop(
       "iNaturalist API returned 401 Unauthorized. ",
@@ -219,13 +221,17 @@ check_inat_range <- function(
       "update it with Sys.setenv(INAT_API_TOKEN = 'new_token') or in ~/.Renviron."
     )
   }
-  if (httr::status_code(resp) != 200L) return(empty)
+  if (httr::status_code(resp) != 200L) {
+    return(empty)
+  }
 
   parsed <- tryCatch(
     httr::content(resp, as = "parsed", type = "application/json"),
     error = function(e) NULL
   )
-  if (is.null(parsed) || length(parsed$results) == 0L) return(empty)
+  if (is.null(parsed) || length(parsed$results) == 0L) {
+    return(empty)
+  }
 
   r <- parsed$results[[1]]
   list(
@@ -258,20 +264,28 @@ check_inat_range <- function(
 
   resp <- tryCatch(httr::GET(url), error = function(e) NULL)
 
-  if (is.null(resp)) return(NULL)
-  if (httr::status_code(resp) %in% c(403L, 404L)) return(NULL)
+  if (is.null(resp)) {
+    return(NULL)
+  }
+  if (httr::status_code(resp) %in% c(403L, 404L)) {
+    return(NULL)
+  }
 
   geojson_text <- tryCatch(
     httr::content(resp, as = "text", encoding = "UTF-8"),
     error = function(e) NULL
   )
-  if (is.null(geojson_text)) return(NULL)
+  if (is.null(geojson_text)) {
+    return(NULL)
+  }
 
   polygon_sf <- tryCatch(
     sf::st_read(geojson_text, quiet = TRUE),
     error = function(e) NULL
   )
-  if (is.null(polygon_sf)) return(NULL)
+  if (is.null(polygon_sf)) {
+    return(NULL)
+  }
 
   if (!is.null(cache_dir) && dir.exists(cache_dir)) {
     tryCatch(

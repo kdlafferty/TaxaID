@@ -133,19 +133,18 @@
 #' occ <- dedupe_occurrences(occ)
 #' }
 dedupe_occurrences <- function(occurrence_data,
-                                collapse_duplicate_occasions = TRUE,
-                                taxon_col = "scientificName",
-                                date_col = "eventDate",
-                                lat_col = "decimalLatitude",
-                                lon_col = "decimalLongitude",
-                                coord_precision = 3L) {
-
+                               collapse_duplicate_occasions = TRUE,
+                               taxon_col = "scientificName",
+                               date_col = "eventDate",
+                               lat_col = "decimalLatitude",
+                               lon_col = "decimalLongitude",
+                               coord_precision = 3L) {
   if (!is.data.frame(occurrence_data)) {
     stop("dedupe_occurrences: 'occurrence_data' must be a data frame.", call. = FALSE)
   }
 
-  out           <- occurrence_data
-  n_gbifid_dup  <- 0L
+  out <- occurrence_data
+  n_gbifid_dup <- 0L
   n_occasion_dup <- 0L
 
   # --- Dedup by gbifID (see @details) ------------------------------------------
@@ -171,8 +170,8 @@ dedupe_occurrences <- function(occurrence_data,
   # information.
   if (isTRUE(collapse_duplicate_occasions)) {
     has_taxon <- taxon_col %in% names(out)
-    has_ymd   <- all(c("year", "month", "day") %in% names(out))
-    has_date  <- date_col %in% names(out) || has_ymd
+    has_ymd <- all(c("year", "month", "day") %in% names(out))
+    has_date <- date_col %in% names(out) || has_ymd
 
     # Silent no-op when the key columns simply aren't present -- matches the
     # gbifID check's own convention (no message when that column is absent).
@@ -194,21 +193,23 @@ dedupe_occurrences <- function(occurrence_data,
         # drop-on-incomplete-information this function documents it never does.
         built <- rep(NA_character_, length(y))
         complete_ymd <- !is.na(y) & !is.na(m) & !is.na(d)
-        built[complete_ymd] <- sprintf("%04d-%02d-%02d",
-                                       y[complete_ymd], m[complete_ymd],
-                                       d[complete_ymd])
+        built[complete_ymd] <- sprintf(
+          "%04d-%02d-%02d",
+          y[complete_ymd], m[complete_ymd],
+          d[complete_ymd]
+        )
         date_key[needs_ymd] <- built
       }
 
       taxon_key <- tolower(trimws(as.character(out[[taxon_col]])))
-      lat_key   <- round(out[[lat_col]], coord_precision)
-      lon_key   <- round(out[[lon_col]], coord_precision)
+      lat_key <- round(out[[lat_col]], coord_precision)
+      lon_key <- round(out[[lon_col]], coord_precision)
 
       key_complete <- !is.na(taxon_key) & nzchar(taxon_key) &
         !is.na(date_key) & nzchar(date_key) &
         !is.na(lat_key) & !is.na(lon_key)
 
-      occasion_key    <- paste(taxon_key, date_key, lat_key, lon_key, sep = "|")
+      occasion_key <- paste(taxon_key, date_key, lat_key, lon_key, sep = "|")
       is_dup_occasion <- rep(FALSE, nrow(out))
       is_dup_occasion[key_complete] <- duplicated(occasion_key[key_complete])
 
@@ -234,7 +235,7 @@ dedupe_occurrences <- function(occurrence_data,
   # --- Refresh report_params if present (see @return) --------------------------
   rp <- attr(occurrence_data, "report_params")
   if (!is.null(rp)) {
-    rp$n_records            <- nrow(out)
+    rp$n_records <- nrow(out)
     rp$n_duplicates_removed <- n_gbifid_dup + n_occasion_dup
     attr(out, "report_params") <- rp
   }

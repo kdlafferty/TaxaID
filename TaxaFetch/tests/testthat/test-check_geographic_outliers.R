@@ -18,11 +18,13 @@ library(testthat)
 # min_local_n = 5) and exercise the three possible outcomes.
 .make_local <- function() {
   data.frame(
-    gbifID           = 1:14,
-    species          = c(rep("Species A", 10), "Species B", "Species C",
-                         "Species C", "Species D"),
-    speciesKey       = c(rep(100L, 10), 200L, 300L, 300L, 400L),
-    decimalLatitude  = c(runif(10, 33.5, 34.5), 34.4, 34.0, 34.1, 10.02),
+    gbifID = 1:14,
+    species = c(
+      rep("Species A", 10), "Species B", "Species C",
+      "Species C", "Species D"
+    ),
+    speciesKey = c(rep(100L, 10), 200L, 300L, 300L, 400L),
+    decimalLatitude = c(runif(10, 33.5, 34.5), 34.4, 34.0, 34.1, 10.02),
     decimalLongitude = c(runif(10, -120.5, -119.5), -119.86, -120.0, -119.9, 10.03),
     stringsAsFactors = FALSE
   )
@@ -72,8 +74,7 @@ library(testthat)
 }
 
 .mock_occ_data <- function(taxonKey, ...) {
-  switch(
-    as.character(taxonKey),
+  switch(as.character(taxonKey),
     "200" = .global_resp_outlier(),
     "300" = .global_resp_sparse(),
     "400" = .global_resp_consistent(),
@@ -86,8 +87,10 @@ library(testthat)
 # =============================================================================
 
 test_that("stops if CoordinateCleaner is not installed", {
-  skip_if(requireNamespace("CoordinateCleaner", quietly = TRUE),
-          "CoordinateCleaner is installed; skipping missing-package test")
+  skip_if(
+    requireNamespace("CoordinateCleaner", quietly = TRUE),
+    "CoordinateCleaner is installed; skipping missing-package test"
+  )
   expect_error(
     check_geographic_outliers(.make_local()),
     regexp = "CoordinateCleaner"
@@ -209,7 +212,7 @@ test_that("output preserves row count and adds exactly the documented columns", 
   local_mocked_bindings(occ_data = .mock_occ_data, .package = "rgbif")
 
   local <- .make_local()
-  out   <- check_geographic_outliers(local, cache_dir = NULL)
+  out <- check_geographic_outliers(local, cache_dir = NULL)
 
   expect_equal(nrow(out), nrow(local))
   expect_true(all(c("local_n", "global_n_unique", "outlier_status") %in% names(out)))
@@ -234,51 +237,81 @@ test_that("output preserves row count and adds exactly the documented columns", 
 }
 
 test_that("candidate_scope='species' checks only exact candidates", {
-  seen <- new.env(); seen$keys <- NULL
+  seen <- new.env()
+  seen$keys <- NULL
   local_mocked_bindings(
-    get_gbif_occurrences = function(keys, ...) { seen$keys <- keys
-      data.frame(gbifID = character(0), species = character(0),
-                 decimalLatitude = numeric(0), decimalLongitude = numeric(0),
-                 stringsAsFactors = FALSE) })
+    get_gbif_occurrences = function(keys, ...) {
+      seen$keys <- keys
+      data.frame(
+        gbifID = character(0), species = character(0),
+        decimalLatitude = numeric(0), decimalLongitude = numeric(0),
+        stringsAsFactors = FALSE
+      )
+    }
+  )
   suppressMessages(check_geographic_outliers(
-    .cgo_local(), min_local_n = 5L, cache_dir = NULL,
-    candidate_taxa = "Cand alpha", candidate_scope = "species"))
-  expect_equal(seen$keys, 101L)          # Cong/Other excluded
+    .cgo_local(),
+    min_local_n = 5L, cache_dir = NULL,
+    candidate_taxa = "Cand alpha", candidate_scope = "species"
+  ))
+  expect_equal(seen$keys, 101L) # Cong/Other excluded
 })
 
 test_that("candidate_scope='genus' also keeps congeners of a candidate", {
-  seen <- new.env(); seen$keys <- NULL
+  seen <- new.env()
+  seen$keys <- NULL
   local_mocked_bindings(
-    get_gbif_occurrences = function(keys, ...) { seen$keys <- keys
-      data.frame(gbifID = character(0), species = character(0),
-                 decimalLatitude = numeric(0), decimalLongitude = numeric(0),
-                 stringsAsFactors = FALSE) })
+    get_gbif_occurrences = function(keys, ...) {
+      seen$keys <- keys
+      data.frame(
+        gbifID = character(0), species = character(0),
+        decimalLatitude = numeric(0), decimalLongitude = numeric(0),
+        stringsAsFactors = FALSE
+      )
+    }
+  )
   suppressMessages(check_geographic_outliers(
-    .cgo_local(), min_local_n = 5L, cache_dir = NULL,
-    candidate_taxa = c("Cand alpha", "Cong delta"), candidate_scope = "genus"))
-  expect_setequal(seen$keys, c(101L, 102L))   # Cong beta joins via its genus
+    .cgo_local(),
+    min_local_n = 5L, cache_dir = NULL,
+    candidate_taxa = c("Cand alpha", "Cong delta"), candidate_scope = "genus"
+  ))
+  expect_setequal(seen$keys, c(101L, 102L)) # Cong beta joins via its genus
 })
 
 test_that("candidate_taxa = NULL preserves the original full sweep", {
-  seen <- new.env(); seen$keys <- NULL
+  seen <- new.env()
+  seen$keys <- NULL
   local_mocked_bindings(
-    get_gbif_occurrences = function(keys, ...) { seen$keys <- keys
-      data.frame(gbifID = character(0), species = character(0),
-                 decimalLatitude = numeric(0), decimalLongitude = numeric(0),
-                 stringsAsFactors = FALSE) })
+    get_gbif_occurrences = function(keys, ...) {
+      seen$keys <- keys
+      data.frame(
+        gbifID = character(0), species = character(0),
+        decimalLatitude = numeric(0), decimalLongitude = numeric(0),
+        stringsAsFactors = FALSE
+      )
+    }
+  )
   suppressMessages(check_geographic_outliers(
-    .cgo_local(), min_local_n = 5L, cache_dir = NULL))
+    .cgo_local(),
+    min_local_n = 5L, cache_dir = NULL
+  ))
   expect_setequal(seen$keys, c(101L, 102L, 103L))
 })
 
 test_that("no assignable rare species short-circuits without any GBIF call", {
-  called <- new.env(); called$fetched <- FALSE
+  called <- new.env()
+  called$fetched <- FALSE
   local_mocked_bindings(
-    get_gbif_occurrences = function(...) { called$fetched <- TRUE
-      data.frame(gbifID = character(0)) })
+    get_gbif_occurrences = function(...) {
+      called$fetched <- TRUE
+      data.frame(gbifID = character(0))
+    }
+  )
   out <- suppressMessages(check_geographic_outliers(
-    .cgo_local(), min_local_n = 5L, cache_dir = NULL,
-    candidate_taxa = "Nothing here", candidate_scope = "species"))
+    .cgo_local(),
+    min_local_n = 5L, cache_dir = NULL,
+    candidate_taxa = "Nothing here", candidate_scope = "species"
+  ))
   expect_false(called$fetched)
   expect_equal(nrow(out), 9L)
 })
@@ -291,13 +324,21 @@ test_that("verdicts are cached, and the second call makes no GBIF request", {
     species = c("Cand alpha", "Cand alpha", "Cand alpha"),
     decimalLatitude = c(34.01, 34.02, 60.0),
     decimalLongitude = c(-120.01, -120.02, 10.0),
-    stringsAsFactors = FALSE)
-  n_calls <- new.env(); n_calls$n <- 0L
+    stringsAsFactors = FALSE
+  )
+  n_calls <- new.env()
+  n_calls$n <- 0L
   local_mocked_bindings(
-    get_gbif_occurrences = function(...) { n_calls$n <- n_calls$n + 1L; glob })
-  args <- list(.cgo_local(), min_local_n = 5L, cache_dir = cd,
-               candidate_taxa = "Cand alpha", candidate_scope = "species",
-               min_occs = 1L)
+    get_gbif_occurrences = function(...) {
+      n_calls$n <- n_calls$n + 1L
+      glob
+    }
+  )
+  args <- list(.cgo_local(),
+    min_local_n = 5L, cache_dir = cd,
+    candidate_taxa = "Cand alpha", candidate_scope = "species",
+    min_occs = 1L
+  )
   suppressMessages(do.call(check_geographic_outliers, args))
   expect_equal(n_calls$n, 1L)
   v <- list.files(cd, pattern = "outlier_verdicts", full.names = TRUE)
@@ -306,5 +347,5 @@ test_that("verdicts are cached, and the second call makes no GBIF request", {
   expect_setequal(names(readRDS(v)), c("gbifID", "global_n_unique", "cc_pass"))
   expect_lt(file.info(v)$size, 5000)
   suppressMessages(do.call(check_geographic_outliers, args))
-  expect_equal(n_calls$n, 1L)            # served from the verdict cache
+  expect_equal(n_calls$n, 1L) # served from the verdict cache
 })

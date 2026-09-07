@@ -53,15 +53,15 @@
 # too low for this real 3-image extraction call (Section 6).
 # ==============================================================================
 
-devtools::load_all()   # or: library(TaxaFetch)
+devtools::load_all() # or: library(TaxaFetch)
 library(tibble)
 
 # Flip to TRUE to also exercise steps that need credentials or make billed
 # LLM calls. Left FALSE by default so a bare run only touches OFFLINE and
 # no-credential NETWORK calls.
-RUN_GBIF_ACCOUNT_DOWNLOAD <- FALSE   # download_gbif_occurrences() -- needs GBIF_USER/PWD/EMAIL
-RUN_OPENALEX_LITERATURE   <- FALSE   # search_literature() / download_literature_pdfs() -- needs OPENALEX_API_KEY
-RUN_LLM_CALLS             <- TRUE    # screen_pdf_structure() / call_api_pdf() -- needs ANTHROPIC_API_KEY, costs money
+RUN_GBIF_ACCOUNT_DOWNLOAD <- FALSE # download_gbif_occurrences() -- needs GBIF_USER/PWD/EMAIL
+RUN_OPENALEX_LITERATURE <- FALSE # search_literature() / download_literature_pdfs() -- needs OPENALEX_API_KEY
+RUN_LLM_CALLS <- TRUE # screen_pdf_structure() / call_api_pdf() -- needs ANTHROPIC_API_KEY, costs money
 
 
 # ==============================================================================
@@ -79,11 +79,11 @@ bbox_wkt
 # Fixture reused verbatim from tests/testthat/test-get_keys_from_context.R
 hierarchy_full <- data.frame(
   kingdom = "Animalia",
-  phylum  = "Chordata",
-  class   = "Actinopterygii",
-  order   = "Scorpaeniformes",
-  family  = "Sebastidae",
-  genus   = "Sebastes",
+  phylum = "Chordata",
+  class = "Actinopterygii",
+  order = "Scorpaeniformes",
+  family = "Sebastidae",
+  genus = "Sebastes",
   species = "Sebastes mystinus",
   stringsAsFactors = FALSE
 )
@@ -133,10 +133,10 @@ occ_unified
 ## ---- fetch_occurrences_by_taxon() ---- NETWORK ------------------------------
 # Real bbox construction pattern from tests/testthat/test-fetch_occurrences_by_taxon.R
 box_a <- make_bbox_wkt(lat = 34.40, lon = -120.41, radius_deg = 0.05)
-box_b <- make_bbox_wkt(lat = 34.47, lon = -120.36, radius_deg = 0.05)  # overlaps box_a
+box_b <- make_bbox_wkt(lat = 34.47, lon = -120.36, radius_deg = 0.05) # overlaps box_a
 taxon_geometry_map <- data.frame(
   taxon_key = c(gbif_key_anchovy, gbif_key_anchovy),
-  geometry  = c(box_a, box_b),
+  geometry = c(box_a, box_b),
   stringsAsFactors = FALSE
 )
 occ_by_taxon <- fetch_occurrences_by_taxon(
@@ -148,16 +148,22 @@ occ_by_taxon
 ## ---- filter_gbif_quality() ---- OFFLINE, pure function ----------------------
 # Fixture reused verbatim from tests/testthat/test-filter_gbif_quality.R
 gbif_like <- data.frame(
-  decimalLatitude              = c(34.12, 35.678, NA,    33.0,  36.111, 34.5),
-  decimalLongitude             = c(-120.1, -119.5, -118.0, -121.0, -122.0, -120.0),
-  basisOfRecord                = c("HUMAN_OBSERVATION", "FOSSIL_SPECIMEN",
-                                   "HUMAN_OBSERVATION", "MACHINE_OBSERVATION",
-                                   "UNKNOWN", "PRESERVED_SPECIMEN"),
-  issues                       = c(NA, "COORDINATE_OUT_OF_RANGE", NA,
-                                   "COUNTRY_COORDINATE_MISMATCH", NA, NA),
+  decimalLatitude = c(34.12, 35.678, NA, 33.0, 36.111, 34.5),
+  decimalLongitude = c(-120.1, -119.5, -118.0, -121.0, -122.0, -120.0),
+  basisOfRecord = c(
+    "HUMAN_OBSERVATION", "FOSSIL_SPECIMEN",
+    "HUMAN_OBSERVATION", "MACHINE_OBSERVATION",
+    "UNKNOWN", "PRESERVED_SPECIMEN"
+  ),
+  issues = c(
+    NA, "COORDINATE_OUT_OF_RANGE", NA,
+    "COUNTRY_COORDINATE_MISMATCH", NA, NA
+  ),
   coordinateUncertaintyInMeters = c(100, 300, NA, 600, 1000, 50),
-  samplingProtocol             = c("net tow", "eDNA water sample", "trawl",
-                                   "visual survey", "metabarcoding", "trap"),
+  samplingProtocol = c(
+    "net tow", "eDNA water sample", "trawl",
+    "visual survey", "metabarcoding", "trap"
+  ),
   stringsAsFactors = FALSE
 )
 filtered <- filter_gbif_quality(gbif_like)
@@ -190,11 +196,11 @@ deduped
 ## ---- report_fetch() ---- OFFLINE, pure function -----------------------------
 # Fixture reused from tests/testthat/test-report_fetch.R
 occ_for_report <- data.frame(
-  scientificName         = c("Sp A", "Sp B", "Sp A"),
-  decimalLatitude        = c(34.0, 34.1, 34.2),
-  decimalLongitude       = c(-119.0, -119.1, -119.2),
-  bibliographicCitation  = c("GBIF Download", "GBIF Download", "GBIF Download"),
-  datasetID              = c("gbif:12345", "gbif:12345", "gbif:12345"),
+  scientificName = c("Sp A", "Sp B", "Sp A"),
+  decimalLatitude = c(34.0, 34.1, 34.2),
+  decimalLongitude = c(-119.0, -119.1, -119.2),
+  bibliographicCitation = c("GBIF Download", "GBIF Download", "GBIF Download"),
+  datasetID = c("gbif:12345", "gbif:12345", "gbif:12345"),
   stringsAsFactors = FALSE
 )
 fetch_report <- report_fetch(occ_for_report, study_area = "Santa Barbara Channel")
@@ -223,17 +229,21 @@ inat_range_result
 # Same synthetic-CSV pattern as tests/testthat/test-biotime_fetch.R's .bt_tmp()
 # helper -- no live BioTime account/download needed.
 biotime_csv <- data.frame(
-  ABUNDANCE   = c(1, 2, 10, 4),
-  BIOMAS      = c(NA, NA, 5.2, NA),
-  valid_name  = c("Alloclinus holderi", "Gobiiformes sp",
-                  "Alloclinus holderi", "Coryphopterus nicholsii"),
-  SAMPLE_DESC = c("2008_11_5_SB-AP", "2008_11_6_SB-CAT",
-                  "2004_9_30_SC-PB", "2003_8_7_SC-YB"),
-  LATITUDE    = c(33.48, 33.46, 34.03, 33.98),
-  LONGITUDE   = c(-119.02, -119.03, -119.70, -119.56),
-  DAY         = c(5L, 6L, 30L, 7L),
-  MONTH       = c(11L, 11L, 9L, 8L),
-  YEAR        = c(2008L, 2008L, 2004L, 2003L),
+  ABUNDANCE = c(1, 2, 10, 4),
+  BIOMAS = c(NA, NA, 5.2, NA),
+  valid_name = c(
+    "Alloclinus holderi", "Gobiiformes sp",
+    "Alloclinus holderi", "Coryphopterus nicholsii"
+  ),
+  SAMPLE_DESC = c(
+    "2008_11_5_SB-AP", "2008_11_6_SB-CAT",
+    "2004_9_30_SC-PB", "2003_8_7_SC-YB"
+  ),
+  LATITUDE = c(33.48, 33.46, 34.03, 33.98),
+  LONGITUDE = c(-119.02, -119.03, -119.70, -119.56),
+  DAY = c(5L, 6L, 30L, 7L),
+  MONTH = c(11L, 11L, 9L, 8L),
+  YEAR = c(2008L, 2008L, 2004L, 2003L),
   stringsAsFactors = FALSE
 )
 biotime_path <- file.path(tempdir(), "raw_data_595.csv")
@@ -256,27 +266,33 @@ biotime_occ
 
 ## ---- build_geo_prompt() ---- OFFLINE ----------------------------------------
 geo_catalog <- data.frame(
-  id                    = c("scope.1.1", "scope.2.1", "other.1.1",
-                            "other.2.1", "nodesc.1.1"),
-  scope                 = c("knb-lter-sbc", "knb-lter-sbc", "knb-lter-fce",
-                            "knb-lter-hfr", "knb-lter-arc"),
-  geographicdescription = c("Santa Barbara Channel, California",
-                            "Santa Barbara Channel, California",
-                            "Florida Everglades",
-                            "Harvard Forest, Massachusetts",
-                            NA_character_),
-  is_candidate          = c(TRUE, TRUE, TRUE, TRUE, TRUE),
+  id = c(
+    "scope.1.1", "scope.2.1", "other.1.1",
+    "other.2.1", "nodesc.1.1"
+  ),
+  scope = c(
+    "knb-lter-sbc", "knb-lter-sbc", "knb-lter-fce",
+    "knb-lter-hfr", "knb-lter-arc"
+  ),
+  geographicdescription = c(
+    "Santa Barbara Channel, California",
+    "Santa Barbara Channel, California",
+    "Florida Everglades",
+    "Harvard Forest, Massachusetts",
+    NA_character_
+  ),
+  is_candidate = c(TRUE, TRUE, TRUE, TRUE, TRUE),
   stringsAsFactors = FALSE
 )
-sbc_bbox <- c(-120.5, -119.3, 33.8, 34.5)  # c(west, east, south, north)
+sbc_bbox <- c(-120.5, -119.3, 33.8, 34.5) # c(west, east, south, north)
 
 geo_prompt <- build_geo_prompt(geo_catalog, sbc_bbox, scope_lookup = NULL, verbose = FALSE)
-geo_prompt          # exercises print.geo_prompt()
+geo_prompt # exercises print.geo_prompt()
 
 ## ---- parse_geo_screening_response() ---- OFFLINE ---------------------------
 # raw_text built to match geo_prompt$n_items exactly (however many unique
 # descriptions ended up going to the LLM) so this runs regardless of that count.
-geo_matches  <- rep(c("YES", "NO"), length.out = geo_prompt$n_items)
+geo_matches <- rep(c("YES", "NO"), length.out = geo_prompt$n_items)
 geo_raw_text <- paste(
   c("index,match", sprintf("%d,%s", seq_len(geo_prompt$n_items), geo_matches)),
   collapse = "\n"
@@ -287,17 +303,19 @@ geo_screened
 ## ---- build_taxon_screen_prompt() ---- OFFLINE -------------------------------
 # Fixture reused from tests/testthat/test-dataone_taxon_screening_geo.R
 taxon_catalog <- tibble(
-  id          = c("W1", "W2"),
-  title       = c("Paper 1", "Paper 2"),
-  abstract    = c("Abstract about fish species in California 1",
-                  "Abstract about fish species in California 2"),
-  keywords    = "fish; ecology; California",
-  doi         = c("10.1234/test.1", "10.1234/test.2"),
-  pdf_url     = NA_character_,
-  year        = 2020L,
-  authors     = "Smith J",
-  journal     = "Test Journal",
-  geo_match   = NA_character_,
+  id = c("W1", "W2"),
+  title = c("Paper 1", "Paper 2"),
+  abstract = c(
+    "Abstract about fish species in California 1",
+    "Abstract about fish species in California 2"
+  ),
+  keywords = "fish; ecology; California",
+  doi = c("10.1234/test.1", "10.1234/test.2"),
+  pdf_url = NA_character_,
+  year = 2020L,
+  authors = "Smith J",
+  journal = "Test Journal",
+  geo_match = NA_character_,
   taxon_match = NA_character_
 )
 taxon_prompt <- build_taxon_screen_prompt(
@@ -306,7 +324,7 @@ taxon_prompt <- build_taxon_screen_prompt(
   geo_scope   = "southern California",
   verbose     = FALSE
 )
-taxon_prompt        # exercises print.taxon_prompt()
+taxon_prompt # exercises print.taxon_prompt()
 
 ## ---- parse_taxon_screening_response() ---- OFFLINE --------------------------
 taxon_raw_text <- "index,taxon_match,geo_match\n1,YES,YES\n2,NO,YES"
@@ -348,7 +366,7 @@ dataone_search_result
 # can go stale). Using "edi.885.1" instead -- the same real, confirmed-working
 # dataset used in inst/dataone_quickstart.R.
 eml_xml <- fetch_dataone_eml("edi.885.1")
-substr(eml_xml, 1, 200)   # just show the start; it's a full XML document
+substr(eml_xml, 1, 200) # just show the start; it's a full XML document
 
 ## ---- screen_eml_columns() ---- NETWORK --------------------------------------
 # Same substitution as fetch_dataone_eml() above, for the same reason.
@@ -366,7 +384,7 @@ dataone_preview <- preview_dataone_occurrences(
   bbox        = sbc_bbox,
   n_rows      = 5L
 )
-dataone_preview    # exercises print.dataone_preview()
+dataone_preview # exercises print.dataone_preview()
 
 ## ---- fetch_dataone_occurrences() ---- NETWORK, slower (~2 min) -------------
 # Same real dataset as above, full standardize pipeline. This one dataset
@@ -436,7 +454,7 @@ if (RUN_LLM_CALLS) {
     llm_fn     = review_llm_fn,
     max_tokens = 400L
   )
-  pdf_structure        # exercises print.pdf_structure()
+  pdf_structure # exercises print.pdf_structure()
 
   ## ---- build_pdf_extract_prompt() ---- OFFLINE once pdf_structure exists ----
   # For this bundled PDF, the real LLM classification comes back
@@ -451,7 +469,7 @@ if (RUN_LLM_CALLS) {
     pdf_structure,
     single_site_coords = list(lat = 34.4, lon = -119.7)
   )
-  pdf_extract_prompt  # exercises print.pdf_extract_prompt()
+  pdf_extract_prompt # exercises print.pdf_extract_prompt()
 
   ## ---- call_api_pdf() ---- LLM_CALL, vision API -----------------------------
   # provider = "anthropic" for the same reason as review_llm_fn above --

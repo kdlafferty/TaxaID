@@ -93,7 +93,7 @@ test_that("download_literature_pdfs: input validation — missing columns", {
 
 test_that("download_literature_pdfs: returns catalog with local_pdf_path column", {
   catalog <- data.frame(
-    id      = "W123",
+    id = "W123",
     pdf_url = NA_character_,
     stringsAsFactors = FALSE
   )
@@ -110,8 +110,10 @@ test_that("download_literature_pdfs: returns catalog with local_pdf_path column"
 test_that("download_literature_pdfs: creates output_dir if absent", {
   new_dir <- file.path(tempdir(), paste0("dl_test_", sample(1e6, 1L)))
   expect_false(dir.exists(new_dir))
-  catalog <- data.frame(id = "W1", pdf_url = NA_character_,
-                         stringsAsFactors = FALSE)
+  catalog <- data.frame(
+    id = "W1", pdf_url = NA_character_,
+    stringsAsFactors = FALSE
+  )
   download_literature_pdfs(catalog, output_dir = new_dir, verbose = FALSE)
   expect_true(dir.exists(new_dir))
   unlink(new_dir, recursive = TRUE)

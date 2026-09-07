@@ -89,38 +89,44 @@ utils::globalVariables(c(
 
 #' @noRd
 .build_axis_instructions <- function(pdf_structure) {
-
-  obs  <- .axis_or_default(pdf_structure$observation_type,   "field_survey")
-  loc  <- .axis_or_default(pdf_structure$location_structure, "named_localities")
-  dens <- .axis_or_default(pdf_structure$data_density,       "tabular")
+  obs <- .axis_or_default(pdf_structure$observation_type, "field_survey")
+  loc <- .axis_or_default(pdf_structure$location_structure, "named_localities")
+  dens <- .axis_or_default(pdf_structure$data_density, "tabular")
   cont <- .axis_or_default(pdf_structure$contamination_risk, "low")
 
   lines <- character(0L)
 
   # --- observation_type instructions ---
   if (obs == "field_survey") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "OBSERVATION TYPE: Field survey. Extract individual occurrence records.",
       "Do NOT extract records from Introduction or Discussion (background mentions).",
-      "Leave individualCount blank unless explicitly stated in the source data.")
+      "Leave individualCount blank unless explicitly stated in the source data."
+    )
   } else if (obs == "prevalence_abundance") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "OBSERVATION TYPE: Prevalence / abundance study.",
       "Extract non-zero detection records only. Do NOT extract zero-counts as absence records.",
       "Populate organismQuantity with the numeric value (infection rate, density, count).",
       "Populate organismQuantityType with a plain-language description",
       "  e.g. 'prevalence' / 'density per m2' / 'mean abundance'.",
-      "Set occurrenceStatus = 'present' for all extracted records.")
+      "Set occurrenceStatus = 'present' for all extracted records."
+    )
   } else if (obs == "museum_collection") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "OBSERVATION TYPE: Museum / herbarium collection records.",
       "Extract each specimen record. Dates may be collection dates.",
-      "basisOfRecord should be 'PreservedSpecimen' for these records.")
+      "basisOfRecord should be 'PreservedSpecimen' for these records."
+    )
   }
 
   # --- location_structure instructions ---
   if (loc == "named_localities") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "",
       "LOCATION STRUCTURE: Named localities only.",
       "Populate 'locality' with the place name as written in the paper.",
@@ -132,9 +138,11 @@ utils::globalVariables(c(
       "    25000 m -- large region / county / island group",
       "  Leave lat/lon blank (NA) when uncertain -- do not guess.",
       "List resolution: if the text says 'A, B, and C Creeks', emit three separate rows.",
-      "Distributive nouns: 'species X and Y at site Z' = two rows, same locality.")
+      "Distributive nouns: 'species X and Y at site Z' = two rows, same locality."
+    )
   } else if (loc == "explicit_latlon") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "",
       "LOCATION STRUCTURE: Explicit lat/lon coordinates provided in the paper.",
       "Extract decimalLatitude and decimalLongitude from the paper's data.",
@@ -142,53 +150,66 @@ utils::globalVariables(c(
       "    1000 m  -- coordinates stated to 4+ decimal places",
       "    5000 m  -- coordinates stated to 2-3 decimal places",
       "    25000 m -- coordinates stated to 1 decimal place or less",
-      "Also populate 'locality' if a place name is given.")
+      "Also populate 'locality' if a place name is given."
+    )
   } else if (loc == "single_site") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "",
       "LOCATION STRUCTURE: Single study site throughout.",
       "Apply the coordinates provided below to every extracted record.",
-      "Also populate 'locality' if a place name is given.")
+      "Also populate 'locality' if a place name is given."
+    )
   }
 
   # --- data_density instructions ---
   if (dens == "tabular") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "",
       "DATA DENSITY: Tabular. Extract from data tables.",
       "Read table column headers carefully; map to DwC fields as accurately as possible.",
-      "Extract one row of output per row of source data (after list resolution).")
+      "Extract one row of output per row of source data (after list resolution)."
+    )
   } else if (dens == "prose_dense") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "",
       "DATA DENSITY: Prose-dense species accounts.",
       "Species records are embedded in narrative text, not tables.",
       "Extract each named species + locality combination as a separate record.",
-      "Date may be given once per page or section -- apply it to all records on that page.")
+      "Date may be given once per page or section -- apply it to all records on that page."
+    )
   } else if (dens == "mixed") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "",
       "DATA DENSITY: Mixed (tables and prose species accounts both present).",
       "Extract from both tables and prose sections.",
-      "Apply table-extraction rules to tables and prose-extraction rules to accounts.")
+      "Apply table-extraction rules to tables and prose-extraction rules to accounts."
+    )
   } else if (dens == "supplementary") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "",
       "DATA DENSITY: Primary data in supplementary materials.",
       "Extract what is visible in the main paper; note if supplementary tables",
-      "  appear to contain additional records not sent here.")
+      "  appear to contain additional records not sent here."
+    )
   }
 
   # --- contamination_risk instructions ---
   if (!is.na(cont) && cont == "high") {
-    lines <- c(lines,
+    lines <- c(
+      lines,
       "",
       "CONTAMINATION RISK: HIGH.",
       "This paper has extensive Introduction and Discussion sections that mention",
       "  species in contexts other than direct observation (background, comparisons,",
       "  historical records, model predictions).",
       "ONLY extract records that are direct results of this study.",
-      "Ignore all species mentions in Introduction, Discussion, and References.")
+      "Ignore all species mentions in Introduction, Discussion, and References."
+    )
   }
 
   paste(lines, collapse = "\n")
@@ -201,12 +222,18 @@ utils::globalVariables(c(
 
 #' @noRd
 .build_abbrev_table_text <- function(abbreviation_inventory) {
-  if (length(abbreviation_inventory) == 0L) return(NULL)
-  rows <- sprintf("  %-15s %s",
-                  names(abbreviation_inventory),
-                  unname(abbreviation_inventory))
-  paste(c("ABBREVIATION KEY (expand these in scientificName):",
-          rows), collapse = "\n")
+  if (length(abbreviation_inventory) == 0L) {
+    return(NULL)
+  }
+  rows <- sprintf(
+    "  %-15s %s",
+    names(abbreviation_inventory),
+    unname(abbreviation_inventory)
+  )
+  paste(c(
+    "ABBREVIATION KEY (expand these in scientificName):",
+    rows
+  ), collapse = "\n")
 }
 
 
@@ -245,7 +272,7 @@ utils::globalVariables(c(
     )
   }
   header_idx <- header_idx[1L]
-  csv_lines  <- lines[header_idx:length(lines)]
+  csv_lines <- lines[header_idx:length(lines)]
 
   # Parse with read.csv
   csv_text <- paste(csv_lines, collapse = "\n")
@@ -253,7 +280,8 @@ utils::globalVariables(c(
     read.csv(text = csv_text, stringsAsFactors = FALSE, na.strings = c("", "NA")),
     error = function(e) {
       stop(sprintf("read.csv failed on LLM response: %s", conditionMessage(e)),
-           call. = FALSE)
+        call. = FALSE
+      )
     }
   )
 }
@@ -270,16 +298,20 @@ utils::globalVariables(c(
   # Strategy: keep first two space-separated tokens only (Genus species)
   # Tokens that are purely uppercase (author names) or parenthetical are dropped
   vapply(x, function(nm) {
-    if (is.na(nm) || !nzchar(trimws(nm))) return(NA_character_)
+    if (is.na(nm) || !nzchar(trimws(nm))) {
+      return(NA_character_)
+    }
     tokens <- strsplit(trimws(nm), "\\s+")[[1L]]
     # Filter out tokens that look like author authorities:
     #   all-uppercase, or start with '(', or are pure numeric
     clean <- tokens[!grepl("^[A-Z]+$|^\\(|^[0-9]", tokens)]
-    if (length(clean) < 1L) return(NA_character_)
+    if (length(clean) < 1L) {
+      return(NA_character_)
+    }
     if (length(clean) >= 2L) {
       return(paste(clean[1L], clean[2L]))
     }
-    clean[1L]  # genus only fallback
+    clean[1L] # genus only fallback
   }, character(1L), USE.NAMES = FALSE)
 }
 
@@ -290,10 +322,14 @@ utils::globalVariables(c(
 
 #' @noRd
 .expand_abbreviated_names <- function(x, abbreviation_inventory) {
-  if (length(abbreviation_inventory) == 0L) return(x)
+  if (length(abbreviation_inventory) == 0L) {
+    return(x)
+  }
   # abbreviation_inventory: names = key e.g. "V.", values = full binomial
   vapply(x, function(nm) {
-    if (is.na(nm) || !nzchar(trimws(nm))) return(nm)
+    if (is.na(nm) || !nzchar(trimws(nm))) {
+      return(nm)
+    }
     # Check if first token matches an abbreviation key
     first_token <- strsplit(trimws(nm), "\\s+")[[1L]][1L]
     if (first_token %in% names(abbreviation_inventory)) {
@@ -393,12 +429,11 @@ utils::globalVariables(c(
 #' @export
 build_pdf_extract_prompt <- function(pdf_structure,
                                      single_site_coords = NULL,
-                                     dpi                = 150L,
-                                     chunk_pages        = FALSE,
-                                     verbose            = TRUE) {
-
+                                     dpi = 150L,
+                                     chunk_pages = FALSE,
+                                     verbose = TRUE) {
   stopifnot(inherits(pdf_structure, "pdf_structure"))
-  dpi        <- as.integer(dpi)
+  dpi <- as.integer(dpi)
   chunk_pages <- isTRUE(chunk_pages)
 
   # Skip non-extractable paper types
@@ -425,9 +460,9 @@ build_pdf_extract_prompt <- function(pdf_structure,
   }
 
   # Identify send pages
-  pt        <- pdf_structure$page_table
+  pt <- pdf_structure$page_table
   send_rows <- pt[isTRUE(pt$send_image) | pt$send_image == TRUE, ]
-  n_send    <- nrow(send_rows)
+  n_send <- nrow(send_rows)
   send_pages <- sort(unique(send_rows$page))
 
   # --- Page-count guard (Session 25) ---
@@ -459,8 +494,10 @@ build_pdf_extract_prompt <- function(pdf_structure,
   chunk_size <- 25L
   if (chunk_pages && n_send > chunk_size) {
     # Split send_pages into groups of at most chunk_size
-    idx_groups <- split(seq_along(send_pages),
-                        ceiling(seq_along(send_pages) / chunk_size))
+    idx_groups <- split(
+      seq_along(send_pages),
+      ceiling(seq_along(send_pages) / chunk_size)
+    )
     page_chunks <- lapply(idx_groups, function(idx) send_pages[idx])
     if (verbose) {
       message(sprintf(
@@ -474,7 +511,7 @@ build_pdf_extract_prompt <- function(pdf_structure,
   n_chunks <- length(page_chunks)
 
   # --- Build core prompt components (axis instructions, abbreviations) ---
-  axis_text   <- .build_axis_instructions(pdf_structure)
+  axis_text <- .build_axis_instructions(pdf_structure)
   abbrev_text <- .build_abbrev_table_text(
     pdf_structure$abbreviation_inventory %||% character(0L)
   )
@@ -519,7 +556,6 @@ build_pdf_extract_prompt <- function(pdf_structure,
   }
 
   prompts <- lapply(seq_along(page_chunks), function(i) {
-
     chunk_note <- if (!is.null(chunk_note_template)) {
       sprintf(chunk_note_template, i, n_chunks)
     } else {
@@ -528,15 +564,12 @@ build_pdf_extract_prompt <- function(pdf_structure,
 
     prompt_parts <- c(
       chunk_note,
-
       "You are extracting biodiversity occurrence records from pages of a scientific paper.\n",
       "Output a single CSV table with NO prose before or after.\n",
       "The FIRST LINE of your response must be the CSV header row.\n",
       "Use NA for any field you cannot determine.\n\n",
-
       "COLUMN ORDER (use exactly these names, in this order):\n",
       col_list, "\n\n",
-
       "FIELD RULES:\n",
       "- scientificName: Latin binomials only (Genus species). No sp. / spp. / authorities.\n",
       "  Zero tolerance for typos -- use the exact spelling from the paper.\n",
@@ -551,17 +584,13 @@ build_pdf_extract_prompt <- function(pdf_structure,
       "  Use the same value for every row in this paper.\n",
       "- associatedReferences: internal citation(s) linked to this specific record, if any.\n",
       "  Leave NA if none. Do NOT copy the full reference list.\n\n",
-
       "FILTERING RULES:\n",
       "- Extract ONLY records from the Results / Data sections.\n",
       "- Do NOT extract species mentions from Introduction, Abstract, Discussion,\n",
       "  or References (those are background / comparison mentions, not new observations).\n\n",
-
       axis_text, "\n\n",
-
       if (!is.null(abbrev_text)) paste0(abbrev_text, "\n\n") else "",
       if (!is.null(coord_inject)) paste0(coord_inject, "\n\n") else "",
-
       "Begin your response with the CSV header row now."
     )
     paste(prompt_parts, collapse = "")
@@ -570,13 +599,13 @@ build_pdf_extract_prompt <- function(pdf_structure,
   # --- Assemble S3 object ---
   structure(
     list(
-      prompts               = prompts,
-      page_chunks           = page_chunks,
-      n_chunks              = n_chunks,
-      n_send                = n_send,
-      dpi                   = dpi,
-      pdf_structure         = pdf_structure,
-      single_site_coords    = coords,
+      prompts = prompts,
+      page_chunks = page_chunks,
+      n_chunks = n_chunks,
+      n_send = n_send,
+      dpi = dpi,
+      pdf_structure = pdf_structure,
+      single_site_coords = coords,
       abbreviation_inventory = pdf_structure$abbreviation_inventory %||% character(0L)
     ),
     class = c("pdf_extract_prompt", "llm_prompt")
@@ -605,8 +634,10 @@ print.pdf_extract_prompt <- function(x, ...) {
   loc <- .axis_or_default(x$pdf_structure$location_structure, "(unknown)")
   cat(sprintf("  Location struct: %s\n", loc))
   if (!is.null(x$single_site_coords)) {
-    cat(sprintf("  Single-site lat: %s  lon: %s\n",
-                x$single_site_coords$lat, x$single_site_coords$lon))
+    cat(sprintf(
+      "  Single-site lat: %s  lon: %s\n",
+      x$single_site_coords$lat, x$single_site_coords$lon
+    ))
   }
   if (length(x$abbreviation_inventory) > 0L) {
     cat(sprintf("  Abbreviations  : %d\n", length(x$abbreviation_inventory)))
@@ -614,8 +645,10 @@ print.pdf_extract_prompt <- function(x, ...) {
   if (x$n_chunks > 1L) {
     for (i in seq_along(x$page_chunks)) {
       pg <- x$page_chunks[[i]]
-      cat(sprintf("  Chunk %d: pages %d-%d (%d pages)\n",
-                  i, min(pg), max(pg), length(pg)))
+      cat(sprintf(
+        "  Chunk %d: pages %d-%d (%d pages)\n",
+        i, min(pg), max(pg), length(pg)
+      ))
     }
   }
   invisible(x)
@@ -666,11 +699,10 @@ print.pdf_extract_prompt <- function(x, ...) {
 #'
 #' @export
 parse_pdf_extract_response <- function(raw_text, extract_prompt) {
-
   stopifnot(is.character(raw_text), length(raw_text) == 1L)
   stopifnot(inherits(extract_prompt, "pdf_extract_prompt"))
 
-  pdf_structure         <- extract_prompt$pdf_structure
+  pdf_structure <- extract_prompt$pdf_structure
   abbreviation_inventory <- extract_prompt$abbreviation_inventory
 
   # Retrieve pdf_path from structure for occurrenceID construction
@@ -689,7 +721,9 @@ parse_pdf_extract_response <- function(raw_text, extract_prompt) {
       NULL
     }
   )
-  if (is.null(occ_df)) return(invisible(NULL))
+  if (is.null(occ_df)) {
+    return(invisible(NULL))
+  }
   if (nrow(occ_df) == 0L) {
     warning(sprintf(
       "parse_pdf_extract_response: zero rows extracted from '%s'.",
@@ -707,8 +741,10 @@ parse_pdf_extract_response <- function(raw_text, extract_prompt) {
   }
 
   # --- Coerce numeric / integer columns ---
-  for (col in c("decimalLatitude", "decimalLongitude",
-                "coordinateUncertaintyInMeters")) {
+  for (col in c(
+    "decimalLatitude", "decimalLongitude",
+    "coordinateUncertaintyInMeters"
+  )) {
     if (col %in% names(occ_df)) {
       occ_df[[col]] <- .coerce_numeric_col(occ_df[[col]], col)
     }
@@ -719,31 +755,35 @@ parse_pdf_extract_response <- function(raw_text, extract_prompt) {
     }
   }
   if ("organismQuantity" %in% names(occ_df)) {
-    occ_df$organismQuantity <- .coerce_numeric_col(occ_df$organismQuantity,
-                                               "organismQuantity")
+    occ_df$organismQuantity <- .coerce_numeric_col(
+      occ_df$organismQuantity,
+      "organismQuantity"
+    )
   }
 
   # --- Assign occurrenceID ---
   occ_df$occurrenceID <- paste0(basename(pdf_path), "_row", seq_len(nrow(occ_df)))
 
   # --- Assign fixed PDF-pipeline columns ---
-  occ_df$datasetID        <- pdf_path
-  occ_df$institutionCode  <- NA_character_
-  occ_df$basisOfRecord    <- ifelse(
+  occ_df$datasetID <- pdf_path
+  occ_df$institutionCode <- NA_character_
+  occ_df$basisOfRecord <- ifelse(
     "basisOfRecord" %in% names(occ_df) & !is.na(occ_df$basisOfRecord),
     occ_df$basisOfRecord, "HumanObservation"
   )
-  occ_df$genus           <- NA_character_
-  occ_df$family          <- NA_character_
+  occ_df$genus <- NA_character_
+  occ_df$family <- NA_character_
   occ_df$specificEpithet <- NA_character_
-  occ_df$recordedBy      <- NA_character_
+  occ_df$recordedBy <- NA_character_
 
   # --- Ensure all 21 canonical DwC columns present ---
   for (col in .pdf_dwc_cols) {
     if (!col %in% names(occ_df)) {
       # Determine NA type
-      if (col %in% c("decimalLatitude", "decimalLongitude",
-                     "coordinateUncertaintyInMeters")) {
+      if (col %in% c(
+        "decimalLatitude", "decimalLongitude",
+        "coordinateUncertaintyInMeters"
+      )) {
         occ_df[[col]] <- NA_real_
       } else if (col %in% c("year", "month", "day", "individualCount")) {
         occ_df[[col]] <- NA_integer_

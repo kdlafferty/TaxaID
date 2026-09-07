@@ -116,19 +116,17 @@
 #'
 #' @examples
 #' \dontrun{
-#' accepted   <- parse_geo_screening_response(llm_raw, geo_prompt)
+#' accepted <- parse_geo_screening_response(llm_raw, geo_prompt)
 #' candidates <- accepted[accepted$geo_match, ]
 #' eml_screen <- screen_eml_columns(candidates$id, bbox)
 #'
 #' # Datasets ready for download:
 #' to_download <- eml_screen[eml_screen$eml_pass, ]
 #' }
-
 screen_eml_columns <- function(ids,
-                                bbox,
-                                pause_seconds = 0.5,
-                                verbose       = TRUE) {
-
+                               bbox,
+                               pause_seconds = 0.5,
+                               verbose = TRUE) {
   if (!is.character(ids) || length(ids) == 0L) {
     stop("screen_eml_columns: 'ids' must be a non-empty character vector.")
   }
@@ -136,8 +134,10 @@ screen_eml_columns <- function(ids,
     stop("screen_eml_columns: 'bbox' must be a finite numeric vector c(west, east, south, north).")
   }
 
-  query_bbox <- list(west = bbox[1], east = bbox[2],
-                     south = bbox[3], north = bbox[4])
+  query_bbox <- list(
+    west = bbox[1], east = bbox[2],
+    south = bbox[3], north = bbox[4]
+  )
 
   if (verbose) {
     message(sprintf("screen_eml_columns: screening %d dataset(s)...", length(ids)))
@@ -153,7 +153,8 @@ screen_eml_columns <- function(ids,
       .screen_one_eml(id, query_bbox),
       error = function(e) {
         warning(sprintf("screen_eml_columns: %s -- %s", id, conditionMessage(e)),
-                call. = FALSE)
+          call. = FALSE
+        )
         dplyr::tibble(
           id            = id,
           resolved_id   = NA_character_,
@@ -199,7 +200,6 @@ screen_eml_columns <- function(ids,
 #' Screen one dataset ID via its EML document
 #' @noRd
 .screen_one_eml <- function(id, query_bbox) {
-
   # ---- resolve to 3-part ID if needed (original id kept for join key) --------
   resolved_id <- .resolve_pasta_id(id)
 
@@ -218,9 +218,9 @@ screen_eml_columns <- function(ids,
   )
 
   # ---- bounding coordinates --------------------------------------------------
-  bboxes    <- .eml_bounding_boxes(xml_doc)
+  bboxes <- .eml_bounding_boxes(xml_doc)
   eml_bbox_ok <- if (length(bboxes) == 0L) {
-    NA   # no bbox in EML -- retain but flag
+    NA # no bbox in EML -- retain but flag
   } else {
     any(vapply(bboxes, .bbox_overlaps_query, logical(1), query = query_bbox))
   }
@@ -253,15 +253,15 @@ screen_eml_columns <- function(ids,
   }, logical(1)))
 
   # ---- attribute names -------------------------------------------------------
-  attrs    <- .eml_attribute_names(xml_doc)
+  attrs <- .eml_attribute_names(xml_doc)
   n_tables <- length(xml2::xml_find_all(xml_doc, ".//dataTable"))
 
-  lat_col     <- .detect_lat_col(attrs)
-  lon_col     <- .detect_lon_col(attrs)
+  lat_col <- .detect_lat_col(attrs)
+  lon_col <- .detect_lon_col(attrs)
   species_col <- .detect_species_col(attrs)
 
-  has_lat     <- !is.na(lat_col)
-  has_lon     <- !is.na(lon_col)
+  has_lat <- !is.na(lat_col)
+  has_lon <- !is.na(lon_col)
   has_species <- !is.na(species_col)
 
   # has_coords: either explicit lat/lon columns OR EML point sites
@@ -272,7 +272,7 @@ screen_eml_columns <- function(ids,
   } else if (!has_species) {
     "no_species"
   } else if (is.na(eml_bbox_ok)) {
-    "no_eml_bbox"   # passed column check; bbox unknown
+    "no_eml_bbox" # passed column check; bbox unknown
   } else {
     "pass"
   }
@@ -317,15 +317,18 @@ screen_eml_columns <- function(ids,
 #' @noRd
 .resolve_pasta_id <- function(id) {
   parts <- strsplit(id, "\\.")[[1L]]
-  if (length(parts) >= 3L) return(id)   # already fully qualified
+  if (length(parts) >= 3L) {
+    return(id)
+  } # already fully qualified
 
-  if (length(parts) < 2L)
+  if (length(parts) < 2L) {
     stop(sprintf(".resolve_pasta_id: cannot parse ID '%s'. Expected scope.identifier.", id))
+  }
 
   scope <- paste(parts[seq_len(length(parts) - 1L)], collapse = ".")
   ident <- parts[length(parts)]
 
-  url  <- sprintf("%s/eml/%s/%s", .pasta_base_url, scope, ident)
+  url <- sprintf("%s/eml/%s/%s", .pasta_base_url, scope, ident)
   resp <- tryCatch(
     httr2::request(url) |> httr2::req_perform(),
     error = function(e) {
@@ -338,10 +341,11 @@ screen_eml_columns <- function(ids,
   revs <- trimws(revs)
   revs <- revs[nzchar(revs)]
 
-  if (length(revs) == 0L)
+  if (length(revs) == 0L) {
     stop(sprintf(".resolve_pasta_id: no revisions returned for '%s'.", id))
+  }
 
-  newest <- revs[length(revs)]   # revisions are ascending; last = newest
+  newest <- revs[length(revs)] # revisions are ascending; last = newest
   paste0(id, ".", newest)
 }
 
@@ -355,11 +359,15 @@ screen_eml_columns <- function(ids,
 #' @noRd
 .eml_bounding_boxes <- function(xml_doc) {
   nodes <- xml2::xml_find_all(xml_doc, ".//boundingCoordinates")
-  if (length(nodes) == 0L) return(list())
+  if (length(nodes) == 0L) {
+    return(list())
+  }
 
   .num <- function(node, tag) {
     n <- xml2::xml_find_first(node, tag)
-    if (inherits(n, "xml_missing")) return(NA_real_)
+    if (inherits(n, "xml_missing")) {
+      return(NA_real_)
+    }
     suppressWarnings(as.numeric(xml2::xml_text(n, trim = TRUE)))
   }
 
@@ -380,8 +388,8 @@ screen_eml_columns <- function(ids,
 #' Test whether an EML bbox overlaps the query bbox (axis-aligned)
 #' @noRd
 .bbox_overlaps_query <- function(eml_bb, query) {
-  !(eml_bb$east  < query$west  |
-    eml_bb$west  > query$east  |
+  !(eml_bb$east < query$west |
+    eml_bb$west > query$east |
     eml_bb$north < query$south |
     eml_bb$south > query$north)
 }
@@ -396,7 +404,9 @@ screen_eml_columns <- function(ids,
 #' @noRd
 .eml_attribute_names <- function(xml_doc) {
   nodes <- xml2::xml_find_all(xml_doc, ".//attributeName")
-  if (length(nodes) == 0L) return(character(0))
+  if (length(nodes) == 0L) {
+    return(character(0))
+  }
   vals <- xml2::xml_text(nodes, trim = TRUE)
   tolower(vals[nzchar(vals)])
 }
@@ -416,13 +426,19 @@ screen_eml_columns <- function(ids,
 #' @return The matching attribute name, or \code{NA_character_}.
 #' @noRd
 .detect_attr_col <- function(attrs, exact, partial) {
-  if (length(attrs) == 0L) return(NA_character_)
+  if (length(attrs) == 0L) {
+    return(NA_character_)
+  }
 
   hit <- attrs[attrs %in% exact]
-  if (length(hit) > 0L) return(hit[1L])
+  if (length(hit) > 0L) {
+    return(hit[1L])
+  }
 
   hit <- attrs[grepl(paste(partial, collapse = "|"), attrs, fixed = FALSE)]
-  if (length(hit) > 0L) return(hit[1L])
+  if (length(hit) > 0L) {
+    return(hit[1L])
+  }
 
   NA_character_
 }
@@ -434,10 +450,12 @@ screen_eml_columns <- function(ids,
 .detect_lat_col <- function(attrs) {
   .detect_attr_col(
     attrs,
-    exact   = c("lat", "latitude", "decimallatitude", "y", "ylat",
-                "lat_dd", "latitude_dd", "site_lat", "start_lat",
-                "end_lat", "northing", "y_coord", "yloc", "lat_wgs84",
-                "latitude_wgs84", "point_y"),
+    exact = c(
+      "lat", "latitude", "decimallatitude", "y", "ylat",
+      "lat_dd", "latitude_dd", "site_lat", "start_lat",
+      "end_lat", "northing", "y_coord", "yloc", "lat_wgs84",
+      "latitude_wgs84", "point_y"
+    ),
     partial = c("lat", "latitude", "northing", "yloc", "y_coord")
   )
 }
@@ -449,10 +467,12 @@ screen_eml_columns <- function(ids,
 .detect_lon_col <- function(attrs) {
   .detect_attr_col(
     attrs,
-    exact   = c("lon", "long", "longitude", "decimallongitude", "x", "xlon",
-                "lon_dd", "longitude_dd", "site_lon", "start_lon",
-                "end_lon", "easting", "x_coord", "xloc", "lon_wgs84",
-                "longitude_wgs84", "point_x"),
+    exact = c(
+      "lon", "long", "longitude", "decimallongitude", "x", "xlon",
+      "lon_dd", "longitude_dd", "site_lon", "start_lon",
+      "end_lon", "easting", "x_coord", "xloc", "lon_wgs84",
+      "longitude_wgs84", "point_x"
+    ),
     partial = c("lon", "long", "longitude", "easting", "xloc", "x_coord")
   )
 }
@@ -464,12 +484,16 @@ screen_eml_columns <- function(ids,
 .detect_species_col <- function(attrs) {
   .detect_attr_col(
     attrs,
-    exact   = c("species", "taxon", "taxon_name", "scientific_name",
-                "scientificname", "organism", "genus", "sp_name",
-                "common_name", "commonname", "accepted_name",
-                "vernacular", "taxa", "taxon_code", "sp", "spp",
-                "species_name", "genus_species"),
-    partial = c("species", "taxon", "scientific", "organism",
-                "common_name", "vernacular", "genus")
+    exact = c(
+      "species", "taxon", "taxon_name", "scientific_name",
+      "scientificname", "organism", "genus", "sp_name",
+      "common_name", "commonname", "accepted_name",
+      "vernacular", "taxa", "taxon_code", "sp", "spp",
+      "species_name", "genus_species"
+    ),
+    partial = c(
+      "species", "taxon", "scientific", "organism",
+      "common_name", "vernacular", "genus"
+    )
   )
 }

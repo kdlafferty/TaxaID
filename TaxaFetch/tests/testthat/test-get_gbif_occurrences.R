@@ -62,20 +62,28 @@ test_that("stops on invalid columns", {
   csv_name <- "0000000-000000000000000.csv"
   writeLines(
     c(
-      paste(c("gbifID", "datasetKey", "license", "taxonKey", "speciesKey",
-              "kingdom", "phylum", "class", "order", "family", "genus", "species",
-              "infraspecificEpithet", "taxonRank", "scientificName",
-              "decimalLatitude", "decimalLongitude", "coordinateUncertaintyInMeters",
-              "countryCode", "stateProvince", "year", "month", "day",
-              "basisOfRecord", "issue", "occurrenceStatus"),
-            collapse = "\t"),
-      paste(c("1", "d1", "CC0", "100", "100",
-              "Animalia", "Chordata", "Actinopterygii", "Gadiformes", "Gadidae",
-              "Gadus", "Gadus morhua", "", "SPECIES", "Gadus morhua L.",
-              "60.0", "2.0", "100",
-              "NO", "", "2020", "1", "1",
-              "HUMAN_OBSERVATION", "", "PRESENT"),
-            collapse = "\t")
+      paste(
+        c(
+          "gbifID", "datasetKey", "license", "taxonKey", "speciesKey",
+          "kingdom", "phylum", "class", "order", "family", "genus", "species",
+          "infraspecificEpithet", "taxonRank", "scientificName",
+          "decimalLatitude", "decimalLongitude", "coordinateUncertaintyInMeters",
+          "countryCode", "stateProvince", "year", "month", "day",
+          "basisOfRecord", "issue", "occurrenceStatus"
+        ),
+        collapse = "\t"
+      ),
+      paste(
+        c(
+          "1", "d1", "CC0", "100", "100",
+          "Animalia", "Chordata", "Actinopterygii", "Gadiformes", "Gadidae",
+          "Gadus", "Gadus morhua", "", "SPECIES", "Gadus morhua L.",
+          "60.0", "2.0", "100",
+          "NO", "", "2020", "1", "1",
+          "HUMAN_OBSERVATION", "", "PRESENT"
+        ),
+        collapse = "\t"
+      )
     ),
     file.path(dir, csv_name)
   )
@@ -90,8 +98,8 @@ test_that("download path standardizes columns and reports 'issues', not 'issue'"
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
   zip_path <- .make_fake_gbif_zip(cache_dir)
 
-  keys       <- 100L
-  geometry   <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  keys <- 100L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
   year_range <- "2000,2024"
 
   meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
@@ -101,12 +109,12 @@ test_that("download path standardizes columns and reports 'issues', not 'issue'"
   )
 
   out <- get_gbif_occurrences(
-    keys          = keys,
-    geometry      = geometry,
-    year_range    = year_range,
+    keys = keys,
+    geometry = geometry,
+    year_range = year_range,
     key_threshold = 1L,
-    cache_dir     = cache_dir,
-    gbif_user     = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    cache_dir = cache_dir,
+    gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
   )
 
   expect_true("issues" %in% names(out))
@@ -121,8 +129,8 @@ test_that("rank_filter drops non-species records on the download path", {
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
   zip_path <- .make_fake_gbif_zip(cache_dir)
 
-  keys       <- 200L
-  geometry   <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  keys <- 200L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
   year_range <- "2000,2024"
 
   meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
@@ -132,13 +140,13 @@ test_that("rank_filter drops non-species records on the download path", {
   )
 
   out <- get_gbif_occurrences(
-    keys          = keys,
-    geometry      = geometry,
-    year_range    = year_range,
+    keys = keys,
+    geometry = geometry,
+    year_range = year_range,
     key_threshold = 1L,
-    rank_filter   = "genus",
-    cache_dir     = cache_dir,
-    gbif_user     = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    rank_filter = "genus",
+    cache_dir = cache_dir,
+    gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
   )
 
   expect_equal(nrow(out), 0L)

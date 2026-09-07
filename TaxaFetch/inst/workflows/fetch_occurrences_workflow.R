@@ -48,17 +48,14 @@ DEBUG_MODE <- TRUE
 GBIF_SMALL_QUERY_THRESHOLD <- 50L
 
 if (DEBUG_MODE) {
-
   # ---- Tutorial example: genus Gadus (cod), North Atlantic -------------------
-  STUDY_TAXA     <- tibble::tibble(genus = "Gadus")
-  STUDY_LAT      <- 60.0     # North Sea / Norwegian Sea
-  STUDY_LON      <- 2.0
-  STUDY_RADIUS   <- 2.0      # degrees -- modest box, keeps the example fast
-  YEAR_RANGE     <- "2015,2024"
-  GBIF_LIMIT     <- 500L     # small per-key cap -- this is a tutorial run
-
+  STUDY_TAXA <- tibble::tibble(genus = "Gadus")
+  STUDY_LAT <- 60.0 # North Sea / Norwegian Sea
+  STUDY_LON <- 2.0
+  STUDY_RADIUS <- 2.0 # degrees -- modest box, keeps the example fast
+  YEAR_RANGE <- "2015,2024"
+  GBIF_LIMIT <- 500L # small per-key cap -- this is a tutorial run
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -81,17 +78,24 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the values here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real study parameters have been supplied. ",
-       "Edit the 'SWAP IN YOUR OWN DATA' block in this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real study parameters have been supplied. ",
+    "Edit the 'SWAP IN YOUR OWN DATA' block in this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_gadus"
 
-message(sprintf("DEBUG_MODE = %s -- %s", DEBUG_MODE,
-                if (DEBUG_MODE) "using built-in tutorial example (Gadus)"
-                else "using user-supplied study parameters"))
+message(sprintf(
+  "DEBUG_MODE = %s -- %s", DEBUG_MODE,
+  if (DEBUG_MODE) {
+    "using built-in tutorial example (Gadus)"
+  } else {
+    "using user-supplied study parameters"
+  }
+))
 
 # ==============================================================================
 # 1.  DEFINE THE SEARCH AREA AND RESOLVE TAXON KEYS
@@ -111,11 +115,13 @@ bbox <- TaxaFetch::make_bbox_wkt(
 
 # get_keys_from_context() resolves the taxon list to GBIF usage keys, using
 # the full taxonomic hierarchy supplied in STUDY_TAXA to avoid homonym errors.
-taxa_keys  <- TaxaFetch::get_keys_from_context(STUDY_TAXA)
+taxa_keys <- TaxaFetch::get_keys_from_context(STUDY_TAXA)
 valid_keys <- taxa_keys$usageKey[!is.na(taxa_keys$usageKey)]
 
-message(sprintf("  %d of %d taxa resolved to valid GBIF keys.",
-                length(valid_keys), nrow(taxa_keys)))
+message(sprintf(
+  "  %d of %d taxa resolved to valid GBIF keys.",
+  length(valid_keys), nrow(taxa_keys)
+))
 if (length(valid_keys) == 0) {
   stop("No GBIF keys resolved -- check STUDY_TAXA spelling/rank columns.")
 }
@@ -126,8 +132,10 @@ if (length(valid_keys) == 0) {
 valid_keys_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_valid_keys.rds"))
 saveRDS(valid_keys, valid_keys_path)
 message(sprintf("  Saved: %s", valid_keys_path))
-message(sprintf("  To reuse without re-resolving keys, paste:\n    valid_keys <- readRDS(\"%s\")",
-                valid_keys_path))
+message(sprintf(
+  "  To reuse without re-resolving keys, paste:\n    valid_keys <- readRDS(\"%s\")",
+  valid_keys_path
+))
 
 # ==============================================================================
 # 2.  FETCH GBIF OCCURRENCES -- TWO-PATH DISPATCH
@@ -145,9 +153,11 @@ message(sprintf("  To reuse without re-resolving keys, paste:\n    valid_keys <-
 message("\n--- Step 2: Fetching GBIF occurrences ---")
 
 if (length(valid_keys) < GBIF_SMALL_QUERY_THRESHOLD) {
-
   message(sprintf(
-    "  %d keys < GBIF_SMALL_QUERY_THRESHOLD (%d) -> using fetch_gbif_occurrences() (real-time, no GBIF account needed).",
+    paste0(
+      "  %d keys < GBIF_SMALL_QUERY_THRESHOLD (%d) -> using fetch_gbif_occurrences() ",
+      "(real-time, no GBIF account needed)."
+    ),
     length(valid_keys), GBIF_SMALL_QUERY_THRESHOLD
   ))
   raw_gbif <- TaxaFetch::fetch_gbif_occurrences(
@@ -156,11 +166,12 @@ if (length(valid_keys) < GBIF_SMALL_QUERY_THRESHOLD) {
     year_range = YEAR_RANGE,
     limit      = GBIF_LIMIT
   )
-
 } else {
-
   message(sprintf(
-    "  %d keys >= GBIF_SMALL_QUERY_THRESHOLD (%d) -> using download_gbif_occurrences() (async bulk download, requires GBIF account).",
+    paste0(
+      "  %d keys >= GBIF_SMALL_QUERY_THRESHOLD (%d) -> using download_gbif_occurrences() ",
+      "(async bulk download, requires GBIF account)."
+    ),
     length(valid_keys), GBIF_SMALL_QUERY_THRESHOLD
   ))
   raw_gbif <- TaxaFetch::download_gbif_occurrences(
@@ -171,7 +182,6 @@ if (length(valid_keys) < GBIF_SMALL_QUERY_THRESHOLD) {
     basis_keep = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION"),
     overwrite  = TRUE
   )
-
 }
 
 message(sprintf("  %d raw records fetched.", nrow(raw_gbif)))
@@ -180,8 +190,10 @@ message(sprintf("  %d raw records fetched.", nrow(raw_gbif)))
 raw_gbif_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_raw_gbif.rds"))
 saveRDS(raw_gbif, raw_gbif_path)
 message(sprintf("  Saved: %s", raw_gbif_path))
-message(sprintf("  To reuse without re-fetching, paste:\n    raw_gbif <- readRDS(\"%s\")",
-                raw_gbif_path))
+message(sprintf(
+  "  To reuse without re-fetching, paste:\n    raw_gbif <- readRDS(\"%s\")",
+  raw_gbif_path
+))
 
 # ==============================================================================
 # 3.  QUALITY-FILTER AND STANDARDIZE
@@ -202,8 +214,10 @@ gbif_occurrences <- raw_gbif |>
   )
 
 if (nrow(gbif_occurrences) == 0) {
-  stop("No GBIF records survived quality filtering -- check STUDY_RADIUS, ",
-       "YEAR_RANGE, or loosen filter_gbif_quality() thresholds.")
+  stop(
+    "No GBIF records survived quality filtering -- check STUDY_RADIUS, ",
+    "YEAR_RANGE, or loosen filter_gbif_quality() thresholds."
+  )
 }
 
 all_occurrences <- TaxaFetch::stack_occurrences(gbif_occurrences)
@@ -273,8 +287,10 @@ message(sprintf("  %d occurrence records retained (Variant A).", nrow(all_occurr
 all_occurrences_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_all_occurrences.rds"))
 saveRDS(all_occurrences, all_occurrences_path)
 message(sprintf("  Saved: %s", all_occurrences_path))
-message(sprintf("  To reuse without re-fetching/re-filtering, paste:\n    all_occurrences <- readRDS(\"%s\")",
-                all_occurrences_path))
+message(sprintf(
+  "  To reuse without re-fetching/re-filtering, paste:\n    all_occurrences <- readRDS(\"%s\")",
+  all_occurrences_path
+))
 
 message("\nWorkflow complete.")
 message("Next: pass all_occurrences to TaxaHabitat for habitat assignment.")

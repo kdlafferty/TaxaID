@@ -24,8 +24,8 @@ test_that("parses a real ENVELOPE() coordinates string (degenerate point box)", 
   raw <- "ENVELOPE(-119.7445915, -119.7445915, 34.400275, 34.400275)"
   pb <- TaxaFetch:::.parse_coordinates_field(raw)
   expect_false(is.null(pb))
-  expect_equal(pb$west,  -119.7445915)
-  expect_equal(pb$east,  -119.7445915)
+  expect_equal(pb$west, -119.7445915)
+  expect_equal(pb$east, -119.7445915)
   expect_equal(pb$north, 34.400275)
   expect_equal(pb$south, 34.400275)
 })
@@ -35,8 +35,8 @@ test_that("parses a non-degenerate ENVELOPE() string with correct N/S/E/W order"
   # minX, maxX, maxY, minY, i.e. west, east, north, south.
   raw <- "ENVELOPE(-121.0, -118.5, 35.0, 33.5)"
   pb <- TaxaFetch:::.parse_coordinates_field(raw)
-  expect_equal(pb$west,  -121.0)
-  expect_equal(pb$east,  -118.5)
+  expect_equal(pb$west, -121.0)
+  expect_equal(pb$east, -118.5)
   expect_equal(pb$north, 35.0)
   expect_equal(pb$south, 33.5)
 })
@@ -44,7 +44,7 @@ test_that("parses a non-degenerate ENVELOPE() string with correct N/S/E/W order"
 test_that("ENVELOPE parsing is case-insensitive and tolerates extra whitespace", {
   raw <- "envelope( -121.0 ,  -118.5,35.0 ,33.5 )"
   pb <- TaxaFetch:::.parse_coordinates_field(raw)
-  expect_equal(pb$west,  -121.0)
+  expect_equal(pb$west, -121.0)
   expect_equal(pb$north, 35.0)
 })
 
@@ -53,8 +53,8 @@ test_that("legacy key:value format (N:/S:/E:/W:) still parses correctly", {
   pb <- TaxaFetch:::.parse_coordinates_field(raw)
   expect_equal(pb$north, 35.0)
   expect_equal(pb$south, 33.5)
-  expect_equal(pb$east,  -118.5)
-  expect_equal(pb$west,  -121.0)
+  expect_equal(pb$east, -118.5)
+  expect_equal(pb$west, -121.0)
 })
 
 test_that("bare 4-number fallback uses corrected WESN order (west,east,north,south)", {
@@ -63,8 +63,8 @@ test_that("bare 4-number fallback uses corrected WESN order (west,east,north,sou
   # south/north (swapped relative to the confirmed real order).
   raw <- "-121.0 -118.5 35.0 33.5"
   pb <- TaxaFetch:::.parse_coordinates_field(raw)
-  expect_equal(pb$west,  -121.0)
-  expect_equal(pb$east,  -118.5)
+  expect_equal(pb$west, -121.0)
+  expect_equal(pb$east, -118.5)
   expect_equal(pb$north, 35.0)
   expect_equal(pb$south, 33.5)
 })

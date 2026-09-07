@@ -36,7 +36,7 @@ library(testthat)
 
 .make_occ_resp_mismatch <- function(key, n = 2) {
   # Returns records whose hierarchy does NOT contain the query key
-  resp <- .make_occ_resp(key + 99999L, n)  # wrong key throughout
+  resp <- .make_occ_resp(key + 99999L, n) # wrong key throughout
   list(data = resp$data)
 }
 
@@ -45,8 +45,10 @@ library(testthat)
 # =============================================================================
 
 test_that("stops if rgbif is not installed", {
-  skip_if(requireNamespace("rgbif", quietly = TRUE),
-          "rgbif is installed; skipping missing-package test")
+  skip_if(
+    requireNamespace("rgbif", quietly = TRUE),
+    "rgbif is installed; skipping missing-package test"
+  )
   expect_error(
     fetch_gbif_occurrences(keys = 1L, geometry = .bbox),
     regexp = "rgbif"
@@ -85,11 +87,16 @@ test_that("removes duplicate keys before processing", {
   skip_if_not_installed("rgbif")
   call_count <- 0L
   local_mocked_bindings(
-    occ_data = function(...) { call_count <<- call_count + 1L; .make_occ_resp(1L) },
+    occ_data = function(...) {
+      call_count <<- call_count + 1L
+      .make_occ_resp(1L)
+    },
     .package = "rgbif"
   )
-  fetch_gbif_occurrences(keys = c(1L, 1L, 1L), geometry = .bbox,
-                         pause_seconds = 0)
+  fetch_gbif_occurrences(
+    keys = c(1L, 1L, 1L), geometry = .bbox,
+    pause_seconds = 0
+  )
   expect_equal(call_count, 1L)
 })
 
@@ -97,11 +104,16 @@ test_that("NA keys are silently dropped before processing", {
   skip_if_not_installed("rgbif")
   call_count <- 0L
   local_mocked_bindings(
-    occ_data = function(...) { call_count <<- call_count + 1L; .make_occ_resp(1L) },
+    occ_data = function(...) {
+      call_count <<- call_count + 1L
+      .make_occ_resp(1L)
+    },
     .package = "rgbif"
   )
-  fetch_gbif_occurrences(keys = c(1L, NA_integer_), geometry = .bbox,
-                         pause_seconds = 0)
+  fetch_gbif_occurrences(
+    keys = c(1L, NA_integer_), geometry = .bbox,
+    pause_seconds = 0
+  )
   expect_equal(call_count, 1L)
 })
 
@@ -115,8 +127,10 @@ test_that("returns a data frame", {
     occ_data = function(taxonKey, ...) .make_occ_resp(taxonKey),
     .package = "rgbif"
   )
-  out <- fetch_gbif_occurrences(keys = 1L, geometry = .bbox,
-                                pause_seconds = 0)
+  out <- fetch_gbif_occurrences(
+    keys = 1L, geometry = .bbox,
+    pause_seconds = 0
+  )
   expect_true(is.data.frame(out))
 })
 
@@ -126,9 +140,11 @@ test_that("returns rows from all keys combined", {
     occ_data = function(taxonKey, ...) .make_occ_resp(taxonKey, n = 3),
     .package = "rgbif"
   )
-  out <- fetch_gbif_occurrences(keys = c(1L, 2L, 3L), geometry = .bbox,
-                                pause_seconds = 0)
-  expect_gte(nrow(out), 9L)   # 3 rows × 3 keys
+  out <- fetch_gbif_occurrences(
+    keys = c(1L, 2L, 3L), geometry = .bbox,
+    pause_seconds = 0
+  )
+  expect_gte(nrow(out), 9L) # 3 rows × 3 keys
 })
 
 test_that("warns and returns empty tibble when no records pass", {
@@ -138,8 +154,10 @@ test_that("warns and returns empty tibble when no records pass", {
     .package = "rgbif"
   )
   expect_warning(
-    out <- fetch_gbif_occurrences(keys = 1L, geometry = .bbox,
-                                  pause_seconds = 0),
+    out <- fetch_gbif_occurrences(
+      keys = 1L, geometry = .bbox,
+      pause_seconds = 0
+    ),
     regexp = "no records"
   )
   expect_equal(nrow(out), 0L)
@@ -155,8 +173,10 @@ test_that("geometry = NULL issues an unrestricted global search", {
     },
     .package = "rgbif"
   )
-  out <- fetch_gbif_occurrences(keys = 1L, geometry = NULL,
-                                pause_seconds = 0, cache_dir = NULL)
+  out <- fetch_gbif_occurrences(
+    keys = 1L, geometry = NULL,
+    pause_seconds = 0, cache_dir = NULL
+  )
   expect_true(is.null(captured_geometry))
   expect_true(is.data.frame(out))
 })
@@ -224,8 +244,10 @@ test_that("splits keys into correct number of chunks", {
     .package = "rgbif"
   )
   # 5 keys, chunk_size = 2 -> 3 chunks, 5 occ_data calls
-  fetch_gbif_occurrences(keys = 1L:5L, geometry = .bbox,
-                         chunk_size = 2L, pause_seconds = 0)
+  fetch_gbif_occurrences(
+    keys = 1L:5L, geometry = .bbox,
+    chunk_size = 2L, pause_seconds = 0
+  )
   expect_equal(call_count, 5L)
 })
 
@@ -235,7 +257,7 @@ test_that("splits keys into correct number of chunks", {
 
 test_that("hierarchy validation retains records where query key is in lineage", {
   skip_if_not_installed("rgbif")
-  key  <- 42L
+  key <- 42L
   resp <- .make_occ_resp(key, n = 4)
   local_mocked_bindings(
     occ_data = function(...) resp,
@@ -255,7 +277,7 @@ test_that("hierarchy validation retains records where query key is in lineage", 
 
 test_that("hierarchy validation drops records where query key is absent from lineage", {
   skip_if_not_installed("rgbif")
-  key  <- 42L
+  key <- 42L
   resp <- .make_occ_resp_mismatch(key, n = 3)
   local_mocked_bindings(
     occ_data = function(...) resp,
@@ -324,8 +346,10 @@ test_that("checkpoint's remaining_keys includes the failed key itself, not just 
   # 5 keys, chunk_size = 2 -> chunks [1,2], [3,4], [5]; key 4 (2nd key of the
   # 2nd chunk) fails after key 3 succeeds within the same chunk.
   expect_error(
-    fetch_gbif_occurrences(keys = 1L:5L, geometry = .bbox, chunk_size = 2L,
-                           pause_seconds = 0, cache_dir = cache_dir),
+    fetch_gbif_occurrences(
+      keys = 1L:5L, geometry = .bbox, chunk_size = 2L,
+      pause_seconds = 0, cache_dir = cache_dir
+    ),
     regexp = "aborted"
   )
 
@@ -352,8 +376,10 @@ test_that("a failing key aborts the run with an error (no silent partial results
   # Key 999 fails immediately (non-transient error, no retry) -> abort
   # cache_dir = NULL so checkpoint is not written during the test
   expect_error(
-    fetch_gbif_occurrences(keys = c(1L, 999L, 2L), geometry = .bbox,
-                           pause_seconds = 0, cache_dir = NULL),
+    fetch_gbif_occurrences(
+      keys = c(1L, 999L, 2L), geometry = .bbox,
+      pause_seconds = 0, cache_dir = NULL
+    ),
     regexp = "aborted"
   )
 })
@@ -367,11 +393,11 @@ test_that("live API: returns records for a known taxon key", {
   skip_if_offline()
   # GBIF key for Engraulis mordax (northern anchovy) -- stable
   bbox <- make_bbox_wkt(37.0, -122.5, 2.0)
-  out  <- fetch_gbif_occurrences(
-    keys       = 2360464L,
-    geometry   = bbox,
+  out <- fetch_gbif_occurrences(
+    keys = 2360464L,
+    geometry = bbox,
     year_range = "2010,2024",
-    limit      = 10L,
+    limit = 10L,
     pause_seconds = 0
   )
   expect_true(is.data.frame(out))

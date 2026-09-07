@@ -237,37 +237,41 @@ utils::globalVariables(c(
 #' )
 #'
 #' # Institution-flagged records are RETAINED, not removed -- review them
-#' clean[clean$institution_flag %in% TRUE,
-#'       c("species", "institution_name", "institution_type", "institution_dist_m")]
+#' clean[
+#'   clean$institution_flag %in% TRUE,
+#'   c("species", "institution_name", "institution_type", "institution_dist_m")
+#' ]
 #'
 #' # Compare thresholds
 #' nrow(filter_gbif_quality(gbif_raw, max_coord_uncertainty = 500))
 #' nrow(filter_gbif_quality(gbif_raw, max_coord_uncertainty = 1000))
 #' nrow(filter_gbif_quality(gbif_raw, max_coord_uncertainty = Inf))
 #' }
-
 filter_gbif_quality <- function(
-    data,
-    basis_keep             = c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION",
-                               "LIVING_SPECIMEN",   "PRESERVED_SPECIMEN"),
-    exclude_edna           = TRUE,
-    exclude_absent         = TRUE,
-    bad_issues             = c("COORDINATE_OUT_OF_RANGE",
-                               "COUNTRY_COORDINATE_MISMATCH",
-                               "COORDINATE_INVALID",
-                               "ZERO_COORDINATE",
-                               "COORDINATE_PRECISION_INVALID"),
-    max_coord_uncertainty  = 500,
-    max_coord_decimal_places = NULL,
-    require_species        = FALSE,
-    exclude_equal_coords   = TRUE,
-    exclude_near_zero      = TRUE,
-    exclude_near_gbif_hq   = TRUE,
-    exclude_country_centroid = TRUE,
-    exclude_capital        = TRUE,
-    flag_institution       = TRUE
+  data,
+  basis_keep = c(
+    "HUMAN_OBSERVATION", "MACHINE_OBSERVATION",
+    "LIVING_SPECIMEN", "PRESERVED_SPECIMEN"
+  ),
+  exclude_edna = TRUE,
+  exclude_absent = TRUE,
+  bad_issues = c(
+    "COORDINATE_OUT_OF_RANGE",
+    "COUNTRY_COORDINATE_MISMATCH",
+    "COORDINATE_INVALID",
+    "ZERO_COORDINATE",
+    "COORDINATE_PRECISION_INVALID"
+  ),
+  max_coord_uncertainty = 500,
+  max_coord_decimal_places = NULL,
+  require_species = FALSE,
+  exclude_equal_coords = TRUE,
+  exclude_near_zero = TRUE,
+  exclude_near_gbif_hq = TRUE,
+  exclude_country_centroid = TRUE,
+  exclude_capital = TRUE,
+  flag_institution = TRUE
 ) {
-
   # --- Input checks -----------------------------------------------------------
   if (!is.data.frame(data)) {
     stop("filter_gbif_quality: 'data' must be a data frame.")
@@ -282,8 +286,10 @@ filter_gbif_quality <- function(
   # --- 1. Coordinate completeness ---------------------------------------------
   required_coord_cols <- c("decimalLatitude", "decimalLongitude")
   if (!all(required_coord_cols %in% names(data))) {
-    stop("filter_gbif_quality: missing required columns: ",
-         paste(setdiff(required_coord_cols, names(data)), collapse = ", "))
+    stop(
+      "filter_gbif_quality: missing required columns: ",
+      paste(setdiff(required_coord_cols, names(data)), collapse = ", ")
+    )
   }
 
   # Empty-shape template for removed_records when nothing is ever removed --
@@ -293,8 +299,10 @@ filter_gbif_quality <- function(
   removed_list <- list()
 
   keep <- !is.na(data$decimalLatitude) & !is.na(data$decimalLongitude)
-  removed_list <- .track_removed(removed_list, data[!keep, , drop = FALSE],
-                                 "missing_coordinates")
+  removed_list <- .track_removed(
+    removed_list, data[!keep, , drop = FALSE],
+    "missing_coordinates"
+  )
   if (any(!keep)) {
     message(sprintf("  Removed %d records with missing coordinates.", sum(!keep)))
   }
@@ -304,8 +312,10 @@ filter_gbif_quality <- function(
   if (exclude_absent && "occurrenceStatus" %in% names(data)) {
     keep <- is.na(data$occurrenceStatus) |
       toupper(trimws(data$occurrenceStatus)) != "ABSENT"
-    removed_list <- .track_removed(removed_list, data[!keep, , drop = FALSE],
-                                   "absent_occurrence")
+    removed_list <- .track_removed(
+      removed_list, data[!keep, , drop = FALSE],
+      "absent_occurrence"
+    )
     if (any(!keep)) {
       message(sprintf(
         "  Removed %d absent-occurrence records (occurrenceStatus = ABSENT).",
@@ -327,11 +337,15 @@ filter_gbif_quality <- function(
     # but protects against stray whitespace/case drift from any non-GBIF
     # source merged into the same pipeline.
     keep <- toupper(trimws(data$basisOfRecord)) %in% toupper(trimws(basis_keep))
-    removed_list <- .track_removed(removed_list, data[!keep, , drop = FALSE],
-                                   "basis_of_record")
+    removed_list <- .track_removed(
+      removed_list, data[!keep, , drop = FALSE],
+      "basis_of_record"
+    )
     if (any(!keep)) {
-      message(sprintf("  Removed %d records with excluded basis of record.",
-                      sum(!keep)))
+      message(sprintf(
+        "  Removed %d records with excluded basis of record.",
+        sum(!keep)
+      ))
     }
     data <- data[keep, , drop = FALSE]
   }
@@ -349,8 +363,10 @@ filter_gbif_quality <- function(
       }, character(1L))
       removed_rows$filter_reason <- paste0("flagged_issue_code:", matched)
       removed_list <- .track_removed(removed_list, removed_rows)
-      message(sprintf("  Removed %d records with flagged geospatial issues.",
-                      nrow(removed_rows)))
+      message(sprintf(
+        "  Removed %d records with flagged geospatial issues.",
+        nrow(removed_rows)
+      ))
     }
     data <- data[keep, , drop = FALSE]
   }
@@ -363,8 +379,10 @@ filter_gbif_quality <- function(
   } else {
     keep <- is.na(data$coordinateUncertaintyInMeters) |
       data$coordinateUncertaintyInMeters <= max_coord_uncertainty
-    removed_list <- .track_removed(removed_list, data[!keep, , drop = FALSE],
-                                   "coordinate_uncertainty")
+    removed_list <- .track_removed(
+      removed_list, data[!keep, , drop = FALSE],
+      "coordinate_uncertainty"
+    )
     if (any(!keep)) {
       message(sprintf(
         "  Removed %d records with coordinateUncertaintyInMeters > %g m.",
@@ -377,8 +395,8 @@ filter_gbif_quality <- function(
   # --- 6. Coordinate decimal-place precision ----------------------------------
   if (!is.null(max_coord_decimal_places)) {
     if (!is.numeric(max_coord_decimal_places) ||
-        length(max_coord_decimal_places) != 1L ||
-        max_coord_decimal_places < 1L) {
+      length(max_coord_decimal_places) != 1L ||
+      max_coord_decimal_places < 1L) {
       stop("filter_gbif_quality: 'max_coord_decimal_places' must be a single positive integer or NULL.")
     }
     d <- as.integer(max_coord_decimal_places)
@@ -388,8 +406,10 @@ filter_gbif_quality <- function(
 
     # OR logic: keep if EITHER coordinate meets the precision threshold
     keep <- (lat_dp >= d) | (lon_dp >= d)
-    removed_list <- .track_removed(removed_list, data[!keep, , drop = FALSE],
-                                   "coordinate_decimal_precision")
+    removed_list <- .track_removed(
+      removed_list, data[!keep, , drop = FALSE],
+      "coordinate_decimal_precision"
+    )
     if (any(!keep)) {
       message(sprintf(
         "  Removed %d records where both coordinates have fewer than %d decimal place(s).",
@@ -418,15 +438,19 @@ filter_gbif_quality <- function(
       edna_pattern <- paste("edna", "environmental dna", "metabarcod", sep = "|")
       search_text <- do.call(
         paste,
-        c(lapply(edna_cols, function(col) {
-          x <- data[[col]]
-          ifelse(is.na(x), "", x)
-        }),
-        sep = " ")
+        c(
+          lapply(edna_cols, function(col) {
+            x <- data[[col]]
+            ifelse(is.na(x), "", x)
+          }),
+          sep = " "
+        )
       )
       keep <- !grepl(edna_pattern, search_text, ignore.case = TRUE)
-      removed_list <- .track_removed(removed_list, data[!keep, , drop = FALSE],
-                                     "edna_keyword")
+      removed_list <- .track_removed(
+        removed_list, data[!keep, , drop = FALSE],
+        "edna_keyword"
+      )
       if (any(!keep)) {
         message(sprintf("  Removed %d eDNA/metabarcoding records.", sum(!keep)))
       }
@@ -440,8 +464,10 @@ filter_gbif_quality <- function(
       message("filter_gbif_quality: 'species' column not found -- skipping require_species filter.")
     } else {
       keep <- !is.na(data$species) & nzchar(data$species)
-      removed_list <- .track_removed(removed_list, data[!keep, , drop = FALSE],
-                                     "no_species_id")
+      removed_list <- .track_removed(
+        removed_list, data[!keep, , drop = FALSE],
+        "no_species_id"
+      )
       if (any(!keep)) {
         message(sprintf(
           "  Removed %d records with no species-level identification.",
@@ -511,11 +537,15 @@ filter_gbif_quality <- function(
       if (nrow(removed_rows) > 0L) {
         # A record can fail more than one of these checks at once (e.g. near
         # both a centroid and GBIF HQ) -- all reasons are joined with ";".
-        reason_matrix <- vapply(cc_results, function(pass) !pass[!keep],
-                                logical(nrow(removed_rows)))
+        reason_matrix <- vapply(
+          cc_results, function(pass) !pass[!keep],
+          logical(nrow(removed_rows))
+        )
         if (is.null(dim(reason_matrix))) {
-          reason_matrix <- matrix(reason_matrix, nrow = nrow(removed_rows),
-                                  dimnames = list(NULL, names(cc_results)))
+          reason_matrix <- matrix(reason_matrix,
+            nrow = nrow(removed_rows),
+            dimnames = list(NULL, names(cc_results))
+          )
         }
         removed_rows$filter_reason <- apply(reason_matrix, 1L, function(r) {
           paste(names(cc_results)[r], collapse = ";")
@@ -542,23 +572,23 @@ filter_gbif_quality <- function(
       x = data, lon = "decimalLongitude", lat = "decimalLatitude",
       value = "flagged", verbose = FALSE
     )
-    data$institution_flag     <- !inst_pass
-    data$institution_name     <- NA_character_
-    data$institution_type     <- NA_character_
-    data$institution_dist_m   <- NA_real_
-    data$institution_lon      <- NA_real_
-    data$institution_lat      <- NA_real_
+    data$institution_flag <- !inst_pass
+    data$institution_name <- NA_character_
+    data$institution_type <- NA_character_
+    data$institution_dist_m <- NA_real_
+    data$institution_lon <- NA_real_
+    data$institution_lat <- NA_real_
 
     if (any(data$institution_flag)) {
       matched <- .nearest_institution(
         data$decimalLongitude[data$institution_flag],
         data$decimalLatitude[data$institution_flag]
       )
-      data$institution_name[data$institution_flag]   <- matched$name
-      data$institution_type[data$institution_flag]   <- matched$type
+      data$institution_name[data$institution_flag] <- matched$name
+      data$institution_type[data$institution_flag] <- matched$type
       data$institution_dist_m[data$institution_flag] <- matched$dist_m
-      data$institution_lon[data$institution_flag]    <- matched$inst_lon
-      data$institution_lat[data$institution_flag]    <- matched$inst_lat
+      data$institution_lon[data$institution_flag] <- matched$inst_lon
+      data$institution_lat[data$institution_flag] <- matched$inst_lat
       message(sprintf(
         paste0(
           "  Flagged %d records within an institution's proximity -- ",
@@ -623,9 +653,9 @@ filter_gbif_quality <- function(
     d <- 2 * earth_radius_m * asin(pmin(1, sqrt(a)))
     idx <- which.min(d)
     data.frame(
-      name     = ref$name[idx],
-      type     = ref$type[idx],
-      dist_m   = round(d[idx], 1),
+      name = ref$name[idx],
+      type = ref$type[idx],
+      dist_m = round(d[idx], 1),
       inst_lon = ref$decimalLongitude[idx],
       inst_lat = ref$decimalLatitude[idx],
       stringsAsFactors = FALSE
@@ -646,7 +676,9 @@ filter_gbif_quality <- function(
 #' @return Updated list.
 #' @noRd
 .track_removed <- function(removed_list, removed_rows, reason = NULL) {
-  if (nrow(removed_rows) == 0L) return(removed_list)
+  if (nrow(removed_rows) == 0L) {
+    return(removed_list)
+  }
   if (is.null(removed_rows[["filter_reason"]])) {
     removed_rows$filter_reason <- reason
   }
@@ -663,12 +695,14 @@ filter_gbif_quality <- function(
 #' @return Integer vector of the same length as \code{v}.
 #' @noRd
 .count_decimal_places <- function(v) {
-  result <- integer(length(v))          # initialise all to 0L
+  result <- integer(length(v)) # initialise all to 0L
   finite_mask <- !is.na(v) & is.finite(v)
   if (any(finite_mask)) {
     result[finite_mask] <- vapply(v[finite_mask], function(x) {
       for (d in 0:10) {
-        if (isTRUE(all.equal(round(x, d), x, tolerance = 1e-9))) return(d)
+        if (isTRUE(all.equal(round(x, d), x, tolerance = 1e-9))) {
+          return(d)
+        }
       }
       10L
     }, integer(1L))

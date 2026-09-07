@@ -51,7 +51,6 @@
 #' @return Named list of base64-encoded PNG strings, named by page number.
 #' @noRd
 .render_pdf_pages <- function(pdf_path, page_numbers, dpi = 150L) {
-
   if (!requireNamespace("pdftools", quietly = TRUE)) {
     stop(
       ".render_pdf_pages: the 'pdftools' package is required.\n",
@@ -106,8 +105,10 @@
       b64 <- tryCatch(
         .render_one_page_b64(pdf_path, pg, dpi),
         error = function(e) {
-          warning(sprintf(".render_pdf_pages: could not render page %d: %s",
-                          pg, conditionMessage(e)), call. = FALSE)
+          warning(sprintf(
+            ".render_pdf_pages: could not render page %d: %s",
+            pg, conditionMessage(e)
+          ), call. = FALSE)
           NULL
         }
       )
@@ -139,8 +140,10 @@
 #' @return Base64-encoded PNG string.
 #' @noRd
 .render_one_page_b64 <- function(pdf_path, pg, dpi) {
-  img <- pdftools::pdf_render_page(pdf_path, page = pg, dpi = dpi,
-                                   numeric = FALSE)
+  img <- pdftools::pdf_render_page(pdf_path,
+    page = pg, dpi = dpi,
+    numeric = FALSE
+  )
   tmp <- tempfile(fileext = ".png")
   on.exit(unlink(tmp), add = TRUE)
   png::writePNG(img, tmp)
@@ -251,7 +254,7 @@
 #' # Typical Stage 3 usage -- page_map from Stage 2, pdf_structure from
 #' # screen_pdf_structure() (build_pdf_extract_prompt() takes a
 #' # pdf_structure object, not the raw output of extract_pdf_text()):
-#' pdf_content   <- extract_pdf_text("Swift_et_al_1993.pdf")
+#' pdf_content <- extract_pdf_text("Swift_et_al_1993.pdf")
 #' pdf_structure <- screen_pdf_structure(pdf_content)
 #'
 #' prompt <- build_pdf_extract_prompt(pdf_structure)
@@ -272,27 +275,25 @@
 #'   dpi      = 250L
 #' )
 #' }
-
 call_api_pdf <- function(prompt,
                          pdf_path,
-                         sections   = c("methods", "results", "appendix"),
-                         page_map   = NULL,
-                         dpi        = 150L,
-                         provider   = NULL,
-                         tier       = c("mid", "fast", "top"),
-                         model      = NULL,
+                         sections = c("methods", "results", "appendix"),
+                         page_map = NULL,
+                         dpi = 150L,
+                         provider = NULL,
+                         tier = c("mid", "fast", "top"),
+                         model = NULL,
                          max_tokens = 4000L,
-                         api_key    = NULL,
-                         base_url   = NULL,
-                         verbose    = TRUE) {
-
+                         api_key = NULL,
+                         base_url = NULL,
+                         verbose = TRUE) {
   # ---- input checks ----------------------------------------------------------
   if (!is.character(prompt) || length(prompt) != 1L ||
-      is.na(prompt) || !nzchar(trimws(prompt))) {
+    is.na(prompt) || !nzchar(trimws(prompt))) {
     stop("call_api_pdf: 'prompt' must be a non-empty character string.")
   }
   if (!is.character(pdf_path) || length(pdf_path) != 1L ||
-      is.na(pdf_path) || !nzchar(trimws(pdf_path))) {
+    is.na(pdf_path) || !nzchar(trimws(pdf_path))) {
     stop("call_api_pdf: 'pdf_path' must be a non-empty character string.")
   }
   if (!file.exists(pdf_path)) {
@@ -304,8 +305,8 @@ call_api_pdf <- function(prompt,
   if (!is.null(page_map) && !is.list(page_map)) {
     stop("call_api_pdf: 'page_map' must be a named list or NULL.")
   }
-  tier       <- match.arg(tier)
-  dpi        <- as.integer(dpi)
+  tier <- match.arg(tier)
+  dpi <- as.integer(dpi)
   max_tokens <- as.integer(max_tokens)
 
   # ---- build page_map if not supplied ----------------------------------------
@@ -313,9 +314,11 @@ call_api_pdf <- function(prompt,
     if (verbose) {
       message("call_api_pdf: no page_map supplied -- running extract_pdf_text() internally.")
     }
-    pdf_content <- extract_pdf_text(pdf_path, sections = "all",
-                                    verbose = verbose)
-    page_map    <- pdf_content$page_map
+    pdf_content <- extract_pdf_text(pdf_path,
+      sections = "all",
+      verbose = verbose
+    )
+    page_map <- pdf_content$page_map
   }
 
   has_headers <- attr(page_map, "has_headers") %||% TRUE
@@ -348,9 +351,11 @@ call_api_pdf <- function(prompt,
           "call_api_pdf: sending %d page(s) from sections: %s%s",
           length(selected_pages),
           paste(available, collapse = ", "),
-          if (length(skipped) > 0L)
+          if (length(skipped) > 0L) {
             sprintf(" (not found: %s)", paste(skipped, collapse = ", "))
-          else ""
+          } else {
+            ""
+          }
         ))
       }
     }

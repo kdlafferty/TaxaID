@@ -40,7 +40,7 @@ test_that("dedupe_occurrences: no gbifID column -- that check is a silent no-op"
   expect_equal(nrow(result), 2L)
 })
 
-test_that("dedupe_occurrences: works directly on a single, unstacked source (the whole point of splitting it out of stack_occurrences)", {
+test_that("dedupe_occurrences: works on a single, unstacked source (why it split from stack_occurrences)", {
   # e.g. one get_gbif_occurrences() call already containing duplicate
   # citizen-science reports of the same detection -- no stack_occurrences()
   # call involved at all.
@@ -69,9 +69,9 @@ test_that("dedupe_occurrences: collapses repeat reports of one detection occasio
   )
   df2 <- tibble::tibble(
     occurrenceID     = "ebird-2",
-    scientificName   = "larus argentatus",  # case difference -- still matches
+    scientificName   = "larus argentatus", # case difference -- still matches
     eventDate        = "2026-06-01",
-    decimalLatitude  = 34.4002,             # rounds to the same 3 d.p. cell
+    decimalLatitude  = 34.4002, # rounds to the same 3 d.p. cell
     decimalLongitude = -119.8503
   )
   combined <- stack_occurrences(df1, df2)
@@ -99,7 +99,7 @@ test_that("dedupe_occurrences: rows missing a key component are always kept", {
   df <- tibble::tibble(
     occurrenceID     = c("A1", "A2"),
     scientificName   = c("Larus argentatus", "Larus argentatus"),
-    eventDate        = c("2026-06-01", NA_character_),  # A2 has no date
+    eventDate        = c("2026-06-01", NA_character_), # A2 has no date
     decimalLatitude  = c(34.400, 34.400),
     decimalLongitude = c(-119.850, -119.850)
   )
@@ -109,10 +109,10 @@ test_that("dedupe_occurrences: rows missing a key component are always kept", {
 
 test_that("dedupe_occurrences: falls back to year/month/day when eventDate is absent (GBIF standard columns)", {
   df <- tibble::tibble(
-    occurrenceID     = c("gbif-1", "gbif-2"),
-    scientificName   = c("Larus argentatus", "Larus argentatus"),
+    occurrenceID = c("gbif-1", "gbif-2"),
+    scientificName = c("Larus argentatus", "Larus argentatus"),
     year = c(2026, 2026), month = c(6, 6), day = c(1, 1),
-    decimalLatitude  = c(34.400, 34.400),
+    decimalLatitude = c(34.400, 34.400),
     decimalLongitude = c(-119.850, -119.850)
   )
   expect_message(
@@ -129,17 +129,17 @@ test_that("dedupe_occurrences: an incomplete year/month/day triple is never coll
   # date is only known to the month, exactly the drop-on-incomplete-information
   # this function documents it never does.
   df <- tibble::tibble(
-    occurrenceID     = c("gbif-1", "gbif-2"),
-    scientificName   = c("Larus argentatus", "Larus argentatus"),
+    occurrenceID = c("gbif-1", "gbif-2"),
+    scientificName = c("Larus argentatus", "Larus argentatus"),
     year = c(2026, 2026), month = c(6, 6), day = c(NA, NA),
-    decimalLatitude  = c(34.400, 34.400),
+    decimalLatitude = c(34.400, 34.400),
     decimalLongitude = c(-119.850, -119.850)
   )
   result <- dedupe_occurrences(df)
   expect_equal(nrow(result), 2L)
 
   # Same, with the whole triple missing.
-  df$year  <- c(NA, NA)
+  df$year <- c(NA, NA)
   df$month <- c(NA, NA)
   expect_equal(nrow(dedupe_occurrences(df)), 2L)
 })

@@ -45,29 +45,35 @@ taxamatch_output <- data.frame(
 # in the TaxaMatch output. E.g., "family" fetches all family members, not
 # just the exact species in the sample. This captures co-occurring species
 # that inform the occupancy model even if they were not in the sample.
-taxonomy_ranks    <- c("kingdom", "phylum", "class", "order",
-                       "family", "genus", "species")
-search_rank     <- "family"
-taxa_to_exclude <- c("Hominidae","Anatidae")   # groups to exclude from download
+taxonomy_ranks <- c(
+  "kingdom", "phylum", "class", "order",
+  "family", "genus", "species"
+)
+search_rank <- "family"
+taxa_to_exclude <- c("Hominidae", "Anatidae") # groups to exclude from download
 
 # =============================================================================
 # 1.  OPTIONAL: TRANSLATE NAMES from NCBI --> GBIF backbone (generally a good idea if GBIF data are used)
 # =============================================================================
 
 message("\n--- Step 1: Translating NCBI names to GBIF backbone ---")
-taxa_unique <- taxamatch_output%>%create_taxon_names(taxonomy_ranks = taxonomy_ranks)%>%unique()
+taxa_unique <- taxamatch_output |>
+  create_taxon_names(taxonomy_ranks = taxonomy_ranks) |>
+  unique()
 taxa_in_gbif_backbone <- verify_taxon_names(taxa_unique$taxon_name, backbone_id = 11)
-GBIF_ranks<-strsplit(taxa_in_gbif_backbone$classification_ranks, "\\|")[[1]] #get the taxonomy ranks for GBIF
-taxa_gbif<-taxa_in_gbif_backbone|>
+gbif_ranks <- strsplit(taxa_in_gbif_backbone$classification_ranks, "\\|")[[1]] # get the taxonomy ranks for GBIF
+taxa_gbif <- taxa_in_gbif_backbone |>
   change_backbone(
     input_col          = "user_supplied_name",
     old_backbone_label = "taxon_name",
     new_backbone_label = "gbif_name"
   ) |>
-  create_taxon_names(taxonomy_ranks = GBIF_ranks)
+  create_taxon_names(taxonomy_ranks = gbif_ranks)
 n_translated <- sum(!is.na(taxa_gbif$taxon_name))
-message(sprintf("  %d of %d taxa translated to GBIF backbone.",
-                n_translated, nrow(taxa_gbif)))
+message(sprintf(
+  "  %d of %d taxa translated to GBIF backbone.",
+  n_translated, nrow(taxa_gbif)
+))
 if (n_translated == 0) stop("No taxa translated. Check backbone ID and name format.")
 
 # Expand to higher-rank groups for GBIF search:
@@ -81,7 +87,9 @@ higher_taxa_to_search <- taxa_gbif |>
   dplyr::select(kingdom:dplyr::any_of(search_rank)) |>
   distinct()
 
-message(sprintf("  %d unique %s group(s) identified for GBIF query.",
-                nrow(higher_taxa_to_search), search_rank))
+message(sprintf(
+  "  %d unique %s group(s) identified for GBIF query.",
+  nrow(higher_taxa_to_search), search_rank
+))
 
 higher_taxa_to_search

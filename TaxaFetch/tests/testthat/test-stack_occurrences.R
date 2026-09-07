@@ -27,8 +27,8 @@ test_that("stack_occurrences: two frames via ... works as before", {
 })
 
 test_that("stack_occurrences: list input unpacked correctly", {
-  df1    <- .make_occ(3L, "A")
-  df2    <- .make_occ(2L, "B")
+  df1 <- .make_occ(3L, "A")
+  df2 <- .make_occ(2L, "B")
   frames <- list(df1, df2)
   result <- stack_occurrences(frames)
   expect_equal(nrow(result), 5L)
@@ -36,14 +36,16 @@ test_that("stack_occurrences: list input unpacked correctly", {
 })
 
 test_that("stack_occurrences: named list input works", {
-  frames <- list(source1 = .make_occ(3L, "A"),
-                 source2 = .make_occ(4L, "B"))
+  frames <- list(
+    source1 = .make_occ(3L, "A"),
+    source2 = .make_occ(4L, "B")
+  )
   result <- stack_occurrences(frames)
   expect_equal(nrow(result), 7L)
 })
 
 test_that("stack_occurrences: single frame via ... returns with point_id, no error", {
-  df     <- .make_occ(5L, "A")
+  df <- .make_occ(5L, "A")
   result <- stack_occurrences(df)
   expect_equal(nrow(result), 5L)
   expect_true("point_id" %in% names(result))
@@ -77,7 +79,7 @@ test_that("stack_occurrences: empty list produces informative error", {
 })
 
 test_that("stack_occurrences: returns a tibble", {
-  df     <- .make_occ(3L, "A")
+  df <- .make_occ(3L, "A")
   result <- stack_occurrences(df)
   expect_s3_class(result, "tbl_df")
 })
@@ -143,12 +145,12 @@ test_that("stack_occurrences: never removes duplicate gbifID rows -- that's dedu
     decimalLongitude = c(-120.41, -120.40)
   )
   df2 <- tibble::tibble(
-    gbifID           = c("2", "3"),  # "2" overlaps df1 (e.g. overlapping search boxes)
+    gbifID           = c("2", "3"), # "2" overlaps df1 (e.g. overlapping search boxes)
     decimalLatitude  = c(34.41, 34.47),
     decimalLongitude = c(-120.40, -120.36)
   )
   result <- stack_occurrences(df1, df2)
-  expect_equal(nrow(result), 4L)  # not deduped -- stack_occurrences() only combines
+  expect_equal(nrow(result), 4L) # not deduped -- stack_occurrences() only combines
 })
 
 test_that("stack_occurrences: workflow list pattern (pdf_occ_list_clean) works end-to-end", {

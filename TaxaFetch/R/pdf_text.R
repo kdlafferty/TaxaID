@@ -47,30 +47,42 @@
 #'
 #' @noRd
 .section_patterns <- list(
-  abstract         = c("abstract"),
-  introduction     = c("introduction"),
-  methods          = c("methods", "materials and methods",
-                       "materials & methods",
-                       "study site", "study area", "study system",
-                       "study region", "field methods",
-                       "sampling methods", "data collection"),
-  results          = c("results", "results and discussion"),
-  discussion       = c("discussion"),
-  acknowledgements = c("acknowledgements", "acknowledgments",
-                       "acknowledgement", "acknowledgment"),
-  funding          = c("funding", "financial support",
-                       "funding information", "grant information"),
-  references       = c("references", "literature cited",
-                       "bibliography", "works cited",
-                       "references cited"),
-  appendix         = c("appendix", "supplementary material",
-                       "supplementary materials",
-                       "supplementary information",
-                       "supporting information",
-                       "online supplementary", "data accessibility",
-                       "data availability"),
-  figures          = c("figure captions", "list of figures",
-                       "figure legends")
+  abstract = c("abstract"),
+  introduction = c("introduction"),
+  methods = c(
+    "methods", "materials and methods",
+    "materials & methods",
+    "study site", "study area", "study system",
+    "study region", "field methods",
+    "sampling methods", "data collection"
+  ),
+  results = c("results", "results and discussion"),
+  discussion = c("discussion"),
+  acknowledgements = c(
+    "acknowledgements", "acknowledgments",
+    "acknowledgement", "acknowledgment"
+  ),
+  funding = c(
+    "funding", "financial support",
+    "funding information", "grant information"
+  ),
+  references = c(
+    "references", "literature cited",
+    "bibliography", "works cited",
+    "references cited"
+  ),
+  appendix = c(
+    "appendix", "supplementary material",
+    "supplementary materials",
+    "supplementary information",
+    "supporting information",
+    "online supplementary", "data accessibility",
+    "data availability"
+  ),
+  figures = c(
+    "figure captions", "list of figures",
+    "figure legends"
+  )
 )
 
 #' Sections excluded from extraction by default
@@ -80,14 +92,18 @@
 #' because species mentions there are comparative, not observational.
 #'
 #' @noRd
-.skip_sections <- c("discussion", "acknowledgements",
-                    "funding", "references", "figures")
+.skip_sections <- c(
+  "discussion", "acknowledgements",
+  "funding", "references", "figures"
+)
 
 #' Sections included in extraction by default
 #'
 #' @noRd
-.extract_sections <- c("abstract", "introduction", "methods",
-                       "results", "appendix")
+.extract_sections <- c(
+  "abstract", "introduction", "methods",
+  "results", "appendix"
+)
 
 
 # ==============================================================================
@@ -110,14 +126,14 @@
 #'   or NA_character_ if no match.
 #' @noRd
 .match_header <- function(line, patterns, max_chars = 80L) {
-
   line <- trimws(line)
-  if (!nzchar(line)) return(NA_character_)
+  if (!nzchar(line)) {
+    return(NA_character_)
+  }
 
   # ---- Pass 1: standard match (short lines only) ------------------------------
   # Handles single-column layouts where headers appear alone on a line.
   if (nchar(line) <= max_chars) {
-
     # Strip leading section numbers: "2.", "2.1", "II.", "II.1" etc.
     clean <- gsub("^[0-9IVXivx]+\\.?[0-9]*\\.?\\s*", "", line)
     # Strip trailing punctuation
@@ -128,7 +144,9 @@
       clean_lower <- tolower(clean)
       for (label in names(patterns)) {
         for (pat in patterns[[label]]) {
-          if (clean_lower == tolower(pat)) return(label)
+          if (clean_lower == tolower(pat)) {
+            return(label)
+          }
         }
       }
     }
@@ -150,14 +168,20 @@
   # digit, silently missing numbered headers in exactly the layout Pass 2
   # exists for (2026-08 human review).
   line_numstripped <- gsub("^[0-9IVXivx]+\\.?[0-9]*\\.?\\s*", "", line)
-  leading_caps <- regmatches(line_numstripped,
-                             regexpr("^[A-Z][A-Z &]{2,39}(?=\\s)",
-                                     line_numstripped, perl = TRUE))
+  leading_caps <- regmatches(
+    line_numstripped,
+    regexpr("^[A-Z][A-Z &]{2,39}(?=\\s)",
+      line_numstripped,
+      perl = TRUE
+    )
+  )
   if (length(leading_caps) == 1L && nzchar(leading_caps)) {
     caps_lower <- tolower(trimws(leading_caps))
     for (label in names(patterns)) {
       for (pat in patterns[[label]]) {
-        if (caps_lower == tolower(pat)) return(label)
+        if (caps_lower == tolower(pat)) {
+          return(label)
+        }
       }
     }
   }
@@ -193,9 +217,8 @@
 #'
 #' @noRd
 .detect_pdf_sections <- function(pages_text,
-                                 patterns         = .section_patterns,
+                                 patterns = .section_patterns,
                                  max_header_chars = 80L) {
-
   n_pages <- length(pages_text)
 
   # ---- scan every line of every page for header matches ----------------------
@@ -291,9 +314,10 @@
 #'
 #' @noRd
 .detect_document_boundary <- function(pages_text, min_boundary = 10L) {
-
   n <- length(pages_text)
-  if (n <= min_boundary) return(n)
+  if (n <= min_boundary) {
+    return(n)
+  }
 
   p1_lines <- trimws(strsplit(pages_text[[1L]], "\n")[[1L]])
   p1_lines <- p1_lines[nzchar(p1_lines)]
@@ -321,7 +345,7 @@
       pg_lines <- pg_lines[nzchar(pg_lines)]
       # Look for a citation-header line with a DIFFERENT page range
       for (ln in pg_lines[grepl(cite_pat, pg_lines) &
-                          grepl(page_range_pat, pg_lines)]) {
+        grepl(page_range_pat, pg_lines)]) {
         pg_range <- regmatches(ln, regexpr(page_range_pat, ln))
         if (length(pg_range) > 0L && pg_range != p1_range) {
           return(pg - 1L)
@@ -341,9 +365,11 @@
   if (length(banner_candidates) > 0L) {
     for (pg in seq(min_boundary + 1L, n)) {
       pg_text <- pages_text[[pg]]
-      if (any(vapply(banner_candidates,
-                     function(b) grepl(b, pg_text, fixed = TRUE),
-                     logical(1L)))) {
+      if (any(vapply(
+        banner_candidates,
+        function(b) grepl(b, pg_text, fixed = TRUE),
+        logical(1L)
+      ))) {
         return(pg - 1L)
       }
     }
@@ -452,17 +478,15 @@
 #' custom_patterns$methods <- c(custom_patterns$methods, "survey protocol")
 #' pdf_content <- extract_pdf_text("my_paper.pdf", patterns = custom_patterns)
 #' }
-
 extract_pdf_text <- function(pdf_path,
-                             sections              = .extract_sections,
-                             patterns              = .section_patterns,
-                             max_header_chars      = 80L,
-                             truncate_at_boundary  = TRUE,
-                             verbose               = TRUE) {
-
+                             sections = .extract_sections,
+                             patterns = .section_patterns,
+                             max_header_chars = 80L,
+                             truncate_at_boundary = TRUE,
+                             verbose = TRUE) {
   # ---- input checks ----------------------------------------------------------
   if (!is.character(pdf_path) || length(pdf_path) != 1L ||
-      is.na(pdf_path) || !nzchar(trimws(pdf_path))) {
+    is.na(pdf_path) || !nzchar(trimws(pdf_path))) {
     stop("extract_pdf_text: 'pdf_path' must be a non-empty character string.")
   }
   if (!file.exists(pdf_path)) {
@@ -470,7 +494,8 @@ extract_pdf_text <- function(pdf_path,
   }
   if (!grepl("\\.pdf$", pdf_path, ignore.case = TRUE)) {
     warning("extract_pdf_text: 'pdf_path' does not have a .pdf extension -- proceeding anyway.",
-            call. = FALSE)
+      call. = FALSE
+    )
   }
   if (!is.character(sections) || length(sections) == 0L) {
     stop("extract_pdf_text: 'sections' must be a non-empty character vector, or \"all\".")
@@ -483,7 +508,7 @@ extract_pdf_text <- function(pdf_path,
     stop("extract_pdf_text: 'verbose' must be TRUE or FALSE.")
   }
   if (!is.logical(truncate_at_boundary) || length(truncate_at_boundary) != 1L ||
-      is.na(truncate_at_boundary)) {
+    is.na(truncate_at_boundary)) {
     stop("extract_pdf_text: 'truncate_at_boundary' must be TRUE or FALSE.")
   }
 
@@ -509,8 +534,10 @@ extract_pdf_text <- function(pdf_path,
   n_pages <- length(pages_text)
 
   if (verbose) {
-    message(sprintf("extract_pdf_text: %d pages read from '%s'",
-                    n_pages, basename(pdf_path)))
+    message(sprintf(
+      "extract_pdf_text: %d pages read from '%s'",
+      n_pages, basename(pdf_path)
+    ))
   }
 
   # ---- document boundary detection ------------------------------------------
@@ -528,12 +555,12 @@ extract_pdf_text <- function(pdf_path,
         ))
       }
       pages_text <- pages_text[seq_len(boundary)]
-      n_pages    <- boundary
+      n_pages <- boundary
     }
   }
 
   # ---- detect section boundaries ---------------------------------------------
-  page_map   <- .detect_pdf_sections(pages_text, patterns, max_header_chars)
+  page_map <- .detect_pdf_sections(pages_text, patterns, max_header_chars)
   has_headers <- attr(page_map, "has_headers")
 
   if (verbose) {

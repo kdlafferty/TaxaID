@@ -113,8 +113,8 @@
 #'
 #' @examples
 #' \dontrun{
-#' catalog    <- harvest_dataone_catalog()
-#' bbox       <- c(-81.2, -80.4, 25.1, 25.8)  # Florida Everglades
+#' catalog <- harvest_dataone_catalog()
+#' bbox <- c(-81.2, -80.4, 25.1, 25.8) # Florida Everglades
 #'
 #' # Without shortcut -- all packages go to LLM:
 #' geo_prompt <- build_geo_prompt(catalog, bbox)
@@ -131,19 +131,17 @@
 #' )
 #' print(geo_prompt)
 #' }
-
 build_geo_prompt <- function(catalog,
                              bbox,
                              scope_lookup = NULL,
-                             chunk_size   = 80L,
-                             verbose      = TRUE) {
-
+                             chunk_size = 80L,
+                             verbose = TRUE) {
   # ---- input checks ----------------------------------------------------------
   if (!is.data.frame(catalog)) {
     stop("build_geo_prompt: 'catalog' must be a dataframe from harvest_dataone_catalog().")
   }
   required_cols <- c("id", "scope", "geographicdescription", "is_candidate")
-  missing_cols  <- setdiff(required_cols, names(catalog))
+  missing_cols <- setdiff(required_cols, names(catalog))
   if (length(missing_cols) > 0L) {
     stop(sprintf(
       paste0(
@@ -154,7 +152,7 @@ build_geo_prompt <- function(catalog,
     ))
   }
   if (!is.numeric(bbox) || length(bbox) != 4L ||
-      any(is.na(bbox)) || any(!is.finite(bbox))) {
+    any(is.na(bbox)) || any(!is.finite(bbox))) {
     stop("build_geo_prompt: 'bbox' must be a finite numeric vector of length 4: c(west, east, south, north).")
   }
   if (bbox[1] >= bbox[2]) stop("build_geo_prompt: west must be less than east.")
@@ -164,7 +162,7 @@ build_geo_prompt <- function(catalog,
       stop("build_geo_prompt: 'scope_lookup' must be a data.frame or NULL.")
     }
     required_sl <- c("scope", "west", "east", "south", "north")
-    missing_sl  <- setdiff(required_sl, names(scope_lookup))
+    missing_sl <- setdiff(required_sl, names(scope_lookup))
     if (length(missing_sl) > 0L) {
       stop(sprintf(
         "build_geo_prompt: 'scope_lookup' missing required columns: %s.",
@@ -184,13 +182,13 @@ build_geo_prompt <- function(catalog,
 
   # ---- scope shortcut --------------------------------------------------------
   shortcut_result <- .scope_shortcut(cands, bbox, scope_lookup, verbose = verbose)
-  undecided       <- shortcut_result$undecided   # rows not resolved by shortcut
+  undecided <- shortcut_result$undecided # rows not resolved by shortcut
 
   # ---- NA / blank description exclusion -------------------------------------
-  has_desc        <- !is.na(undecided$geographicdescription) &
-                     nzchar(trimws(undecided$geographicdescription))
-  no_desc_ids     <- undecided$id[!has_desc]
-  undecided       <- undecided[has_desc, ]
+  has_desc <- !is.na(undecided$geographicdescription) &
+    nzchar(trimws(undecided$geographicdescription))
+  no_desc_ids <- undecided$id[!has_desc]
+  undecided <- undecided[has_desc, ]
 
   if (verbose && length(no_desc_ids) > 0L) {
     message(sprintf(
@@ -206,7 +204,7 @@ build_geo_prompt <- function(catalog,
   # a real pair found on the live catalog by the 2026-08 human review;
   # normalizing this reduced unique descriptions there from 1247 to 1239,
   # i.e. fewer redundant LLM screening calls).
-  desc_vec    <- sub("\\.$", "", trimws(undecided$geographicdescription))
+  desc_vec <- sub("\\.$", "", trimws(undecided$geographicdescription))
   unique_desc <- unique(desc_vec)
 
   # Build description -> dataset IDs mapping
@@ -221,11 +219,11 @@ build_geo_prompt <- function(catalog,
   }
 
   # ---- chunk and build prompts -----------------------------------------------
-  chunk_size  <- as.integer(chunk_size)
+  chunk_size <- as.integer(chunk_size)
   # Assign a 1-based index to each unique description (used as LLM CSV key)
-  desc_index  <- seq_along(unique_desc)
-  chunks      <- split(desc_index, ceiling(desc_index / chunk_size))
-  n_chunks    <- length(chunks)
+  desc_index <- seq_along(unique_desc)
+  chunks <- split(desc_index, ceiling(desc_index / chunk_size))
+  n_chunks <- length(chunks)
 
   prompts <- lapply(chunks, function(idx) {
     .build_geo_prompt_single(
@@ -266,8 +264,10 @@ build_geo_prompt <- function(catalog,
 
 print.geo_prompt <- function(x, ...) {
   cat("<geo_prompt>\n")
-  cat(sprintf("  Target bbox:        W=%.3f  E=%.3f  S=%.3f  N=%.3f\n",
-              x$bbox[1], x$bbox[2], x$bbox[3], x$bbox[4]))
+  cat(sprintf(
+    "  Target bbox:        W=%.3f  E=%.3f  S=%.3f  N=%.3f\n",
+    x$bbox[1], x$bbox[2], x$bbox[3], x$bbox[4]
+  ))
   if (length(x$shortcut_accepted) > 0L || length(x$shortcut_rejected) > 0L) {
     cat(sprintf("  Shortcut accepted:  %d packages\n", length(x$shortcut_accepted)))
     cat(sprintf("  Shortcut rejected:  %d packages\n", length(x$shortcut_rejected)))
@@ -276,15 +276,21 @@ print.geo_prompt <- function(x, ...) {
   }
   cat(sprintf("  Unique descriptions for LLM: %d\n", x$n_items))
   if (x$n_chunks == 1L) {
-    cat(sprintf("  Chunks:             1 (chunk_size = %d)\n",
-                length(x$descriptions)))
+    cat(sprintf(
+      "  Chunks:             1 (chunk_size = %d)\n",
+      length(x$descriptions)
+    ))
   } else {
     chunk_sizes <- vapply(x$chunks, length, integer(1L))
-    cat(sprintf("  Chunks:             %d (sizes: %s)\n",
-                x$n_chunks, paste(chunk_sizes, collapse = ", ")))
+    cat(sprintf(
+      "  Chunks:             %d (sizes: %s)\n",
+      x$n_chunks, paste(chunk_sizes, collapse = ", ")
+    ))
   }
-  cat(sprintf("  Prompt tokens (approx): ~%d per chunk\n",
-              nchar(x$prompts[[1]]) %/% 4L))
+  cat(sprintf(
+    "  Prompt tokens (approx): ~%d per chunk\n",
+    nchar(x$prompts[[1]]) %/% 4L
+  ))
   invisible(x)
 }
 
@@ -342,12 +348,10 @@ print.geo_prompt <- function(x, ...) {
 #' @examples
 #' \dontrun{
 #' candidates <- parse_geo_screening_response(llm_output, geo_prompt)
-#' accepted   <- candidates[candidates$geo_match, ]
+#' accepted <- candidates[candidates$geo_match, ]
 #' nrow(accepted)
 #' }
-
 parse_geo_screening_response <- function(raw_text, geo_prompt) {
-
   if (!is.character(raw_text) || length(raw_text) != 1L) {
     stop("parse_geo_screening_response: 'raw_text' must be a length-1 character string.")
   }
@@ -356,34 +360,36 @@ parse_geo_screening_response <- function(raw_text, geo_prompt) {
   }
 
   # ---- parse LLM CSV ---------------------------------------------------------
-  txt   <- gsub("```[a-zA-Z]*\n?", "", raw_text)
-  txt   <- gsub("```", "", txt)
+  txt <- gsub("```[a-zA-Z]*\n?", "", raw_text)
+  txt <- gsub("```", "", txt)
   lines <- trimws(strsplit(txt, "\n")[[1]])
 
   # Find first header row, then strip ALL duplicate header lines that
   # .combine_chunk_responses() leaves behind (it only knows habitat headers,
   # not index,match headers from geo responses).
   is_header_line <- grepl("\\bindex\\b", lines, ignore.case = TRUE) &
-                    grepl("\\bmatch\\b",  lines, ignore.case = TRUE)
-  header_idx     <- which(is_header_line)[1]
+    grepl("\\bmatch\\b", lines, ignore.case = TRUE)
+  header_idx <- which(is_header_line)[1]
 
   llm_decisions <- if (!is.na(header_idx)) {
     data_lines <- lines[header_idx:length(lines)]
     data_lines <- data_lines[nzchar(data_lines)]
     # Remove duplicate header rows from chunks 2+ (keep only the first)
     is_dup_header <- grepl("\\bindex\\b", data_lines, ignore.case = TRUE) &
-                     grepl("\\bmatch\\b",  data_lines, ignore.case = TRUE)
-    is_dup_header[1] <- FALSE   # keep the first header
+      grepl("\\bmatch\\b", data_lines, ignore.case = TRUE)
+    is_dup_header[1] <- FALSE # keep the first header
     data_lines <- data_lines[!is_dup_header]
     parsed <- tryCatch(
-      utils::read.csv(text = paste(data_lines, collapse = "\n"),
-                      stringsAsFactors = FALSE, strip.white = TRUE),
+      utils::read.csv(
+        text = paste(data_lines, collapse = "\n"),
+        stringsAsFactors = FALSE, strip.white = TRUE
+      ),
       error = function(e) NULL
     )
     if (!is.null(parsed) && all(c("index", "match") %in% tolower(names(parsed)))) {
       # Normalise column names
       names(parsed) <- tolower(names(parsed))
-      parsed$match  <- toupper(trimws(parsed$match))
+      parsed$match <- toupper(trimws(parsed$match))
       parsed
     } else {
       warning(
@@ -403,21 +409,21 @@ parse_geo_screening_response <- function(raw_text, geo_prompt) {
   }
 
   # ---- build description-level decision lookup -------------------------------
-  descriptions <- geo_prompt$descriptions   # ordered same as LLM indices
+  descriptions <- geo_prompt$descriptions # ordered same as LLM indices
 
   # Default all to no_response
-  desc_match  <- rep(FALSE,              length(descriptions))
-  desc_source <- rep("llm_no_response",  length(descriptions))
+  desc_match <- rep(FALSE, length(descriptions))
+  desc_source <- rep("llm_no_response", length(descriptions))
 
   if (!is.null(llm_decisions)) {
     for (i in seq_len(nrow(llm_decisions))) {
       idx <- llm_decisions$index[i]
       if (!is.na(idx) && idx >= 1L && idx <= length(descriptions)) {
         if (llm_decisions$match[i] == "YES") {
-          desc_match[idx]  <- TRUE
+          desc_match[idx] <- TRUE
           desc_source[idx] <- "llm_yes"
         } else {
-          desc_match[idx]  <- FALSE
+          desc_match[idx] <- FALSE
           desc_source[idx] <- "llm_no"
         }
       }
@@ -425,11 +431,11 @@ parse_geo_screening_response <- function(raw_text, geo_prompt) {
   }
 
   # ---- fan decisions back to dataset IDs ------------------------------------
-  desc_to_ids  <- geo_prompt$desc_to_ids
-  id_rows      <- vector("list", length(descriptions))
+  desc_to_ids <- geo_prompt$desc_to_ids
+  id_rows <- vector("list", length(descriptions))
 
   for (i in seq_along(descriptions)) {
-    d   <- descriptions[i]
+    d <- descriptions[i]
     ids <- desc_to_ids[[d]]
     id_rows[[i]] <- dplyr::tibble(
       id         = ids,
@@ -443,14 +449,18 @@ parse_geo_screening_response <- function(raw_text, geo_prompt) {
   # ---- add shortcut results -------------------------------------------------
   shortcut_rows <- dplyr::bind_rows(
     if (length(geo_prompt$shortcut_accepted) > 0L) {
-      dplyr::tibble(id         = geo_prompt$shortcut_accepted,
-                    geo_match  = TRUE,
-                    geo_source = "shortcut_accepted")
+      dplyr::tibble(
+        id = geo_prompt$shortcut_accepted,
+        geo_match = TRUE,
+        geo_source = "shortcut_accepted"
+      )
     },
     if (length(geo_prompt$shortcut_rejected) > 0L) {
-      dplyr::tibble(id         = geo_prompt$shortcut_rejected,
-                    geo_match  = FALSE,
-                    geo_source = "shortcut_rejected")
+      dplyr::tibble(
+        id = geo_prompt$shortcut_rejected,
+        geo_match = FALSE,
+        geo_source = "shortcut_rejected"
+      )
     }
   )
 
@@ -461,7 +471,7 @@ parse_geo_screening_response <- function(raw_text, geo_prompt) {
   result <- dplyr::left_join(catalog_cands, all_decisions, by = "id")
 
   # Rows with no decision (e.g. no description, or LLM missed them)
-  result$geo_match[is.na(result$geo_match)]   <- FALSE
+  result$geo_match[is.na(result$geo_match)] <- FALSE
   result$geo_source[is.na(result$geo_source)] <- "llm_no_response"
 
   # Warn on missed indices
@@ -496,49 +506,59 @@ parse_geo_screening_response <- function(raw_text, geo_prompt) {
 #' not resolved by the shortcut).
 #' @noRd
 .scope_shortcut <- function(cands, bbox, scope_lookup, verbose) {
-
-  accepted_ids  <- character(0)
-  rejected_ids  <- character(0)
+  accepted_ids <- character(0)
+  rejected_ids <- character(0)
   undecided_idx <- rep(TRUE, nrow(cands))
 
   if (is.null(scope_lookup) || nrow(scope_lookup) == 0L) {
-    return(list(accepted_ids = accepted_ids,
-                rejected_ids = rejected_ids,
-                undecided    = cands))
+    return(list(
+      accepted_ids = accepted_ids,
+      rejected_ids = rejected_ids,
+      undecided = cands
+    ))
   }
 
   for (i in seq_len(nrow(scope_lookup))) {
-    row      <- scope_lookup[i, ]
-    prefix   <- as.character(row$scope)
-    label    <- if ("label" %in% names(row) && !is.na(row$label))
-                  as.character(row$label) else prefix
-    site_bbox <- c(as.numeric(row$west),  as.numeric(row$east),
-                   as.numeric(row$south), as.numeric(row$north))
+    row <- scope_lookup[i, ]
+    prefix <- as.character(row$scope)
+    label <- if ("label" %in% names(row) && !is.na(row$label)) {
+      as.character(row$label)
+    } else {
+      prefix
+    }
+    site_bbox <- c(
+      as.numeric(row$west), as.numeric(row$east),
+      as.numeric(row$south), as.numeric(row$north)
+    )
 
     in_scope <- startsWith(cands$scope, prefix)
     if (!any(in_scope)) next
 
     # Axis-aligned bbox overlap test
-    overlaps <- !(site_bbox[2] < bbox[1] |   # site east  < query west
-                  site_bbox[1] > bbox[2] |   # site west  > query east
-                  site_bbox[4] < bbox[3] |   # site north < query south
-                  site_bbox[3] > bbox[4])    # site south > query north
+    overlaps <- !(site_bbox[2] < bbox[1] | # site east  < query west
+      site_bbox[1] > bbox[2] | # site west  > query east
+      site_bbox[4] < bbox[3] | # site north < query south
+      site_bbox[3] > bbox[4]) # site south > query north
 
     ids_in_scope <- cands$id[in_scope]
 
     if (overlaps) {
-      accepted_ids              <- c(accepted_ids, ids_in_scope)
-      undecided_idx[in_scope]  <- FALSE
+      accepted_ids <- c(accepted_ids, ids_in_scope)
+      undecided_idx[in_scope] <- FALSE
       if (verbose) {
-        message(sprintf("  Shortcut ACCEPT (%d): %s",
-                        length(ids_in_scope), label))
+        message(sprintf(
+          "  Shortcut ACCEPT (%d): %s",
+          length(ids_in_scope), label
+        ))
       }
     } else {
-      rejected_ids              <- c(rejected_ids, ids_in_scope)
-      undecided_idx[in_scope]  <- FALSE
+      rejected_ids <- c(rejected_ids, ids_in_scope)
+      undecided_idx[in_scope] <- FALSE
       if (verbose) {
-        message(sprintf("  Shortcut REJECT (%d): %s -- outside query bbox",
-                        length(ids_in_scope), label))
+        message(sprintf(
+          "  Shortcut REJECT (%d): %s -- outside query bbox",
+          length(ids_in_scope), label
+        ))
       }
     }
   }
@@ -562,7 +582,6 @@ parse_geo_screening_response <- function(raw_text, geo_prompt) {
 #' @param bbox Numeric vector c(west, east, south, north).
 #' @noRd
 .build_geo_prompt_single <- function(descriptions, indices, bbox) {
-
   desc_block <- paste(
     sprintf("%d,%s", indices, gsub(",", ";", trimws(descriptions))),
     collapse = "\n"

@@ -19,9 +19,12 @@ test_that("taxafetch_clear_cache dry_run reports the matching files without dele
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  f1 <- file.path(d, "0000000-000000000000000.zip"); writeLines("x", f1)
-  f2 <- file.path(d, "gbif_dl_1k_s1_g1_2000_meta.rds"); saveRDS(list(), f2)
-  f3 <- file.path(d, "not_a_cache_file.txt"); writeLines("y", f3)
+  f1 <- file.path(d, "0000000-000000000000000.zip")
+  writeLines("x", f1)
+  f2 <- file.path(d, "gbif_dl_1k_s1_g1_2000_meta.rds")
+  saveRDS(list(), f2)
+  f3 <- file.path(d, "not_a_cache_file.txt")
+  writeLines("y", f3)
 
   out <- taxafetch_clear_cache(cache_dir = d, dry_run = TRUE)
   expect_setequal(basename(out$path), c(basename(f1), basename(f2)))
@@ -34,8 +37,10 @@ test_that("taxafetch_clear_cache(dry_run = FALSE) actually deletes matching file
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  f1 <- file.path(d, "0000000-000000000000000.zip"); writeLines("x", f1)
-  f2 <- file.path(d, "gbif_fetch_1k_s1_g1_2000_l10.rds"); saveRDS(list(), f2)
+  f1 <- file.path(d, "0000000-000000000000000.zip")
+  writeLines("x", f1)
+  f2 <- file.path(d, "gbif_fetch_1k_s1_g1_2000_l10.rds")
+  saveRDS(list(), f2)
 
   out <- taxafetch_clear_cache(cache_dir = d, dry_run = FALSE)
   expect_equal(nrow(out), 2L)
@@ -47,9 +52,11 @@ test_that("taxafetch_clear_cache(older_than_days=) only targets stale files", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  old_f <- file.path(d, "old.zip"); writeLines("x", old_f)
+  old_f <- file.path(d, "old.zip")
+  writeLines("x", old_f)
   Sys.setFileTime(old_f, Sys.time() - 100 * 86400)
-  new_f <- file.path(d, "new.zip"); writeLines("y", new_f)
+  new_f <- file.path(d, "new.zip")
+  writeLines("y", new_f)
 
   out <- taxafetch_clear_cache(cache_dir = d, older_than_days = 30, dry_run = FALSE)
   expect_equal(basename(out$path), "old.zip")
@@ -88,8 +95,10 @@ test_that(".taxafetch_cache_patterns recognizes every real TaxaFetch cache file 
   inv <- TaxaTools::list_cache_files(d, TaxaFetch:::.taxafetch_cache_patterns)
   expect_setequal(
     basename(inv$path),
-    c("0000000-000000000000000.zip", "gbif_dl_1k_s1_g1_2000_meta.rds",
-      "gbif_fetch_1k_s1_g1_2000_l10.rds", "12345.geojson", "openalex_cache_abc123.rds")
+    c(
+      "0000000-000000000000000.zip", "gbif_dl_1k_s1_g1_2000_meta.rds",
+      "gbif_fetch_1k_s1_g1_2000_l10.rds", "12345.geojson", "openalex_cache_abc123.rds"
+    )
   )
 })
 
@@ -107,12 +116,18 @@ test_that(".taxafetch_referenced_zips reads zip_path out of every meta.rds", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  z1 <- file.path(d, "AAA.zip"); writeLines("x", z1)
-  z2 <- file.path(d, "BBB.zip"); writeLines("x", z2)
-  saveRDS(list(dl_key = "AAA", zip_path = z1, timestamp = Sys.time()),
-          file.path(d, "gbif_dl_1_meta.rds"))
-  saveRDS(list(dl_key = "BBB", zip_path = z2, timestamp = Sys.time()),
-          file.path(d, "gbif_dl_2_meta.rds"))
+  z1 <- file.path(d, "AAA.zip")
+  writeLines("x", z1)
+  z2 <- file.path(d, "BBB.zip")
+  writeLines("x", z2)
+  saveRDS(
+    list(dl_key = "AAA", zip_path = z1, timestamp = Sys.time()),
+    file.path(d, "gbif_dl_1_meta.rds")
+  )
+  saveRDS(
+    list(dl_key = "BBB", zip_path = z2, timestamp = Sys.time()),
+    file.path(d, "gbif_dl_2_meta.rds")
+  )
 
   refs <- TaxaFetch:::.taxafetch_referenced_zips(d)
   expect_setequal(basename(refs), c("AAA.zip", "BBB.zip"))
@@ -125,15 +140,22 @@ test_that("orphans_only removes only a zip no current meta.rds points to", {
 
   # One query: an orphaned OLD zip (superseded, un-cleaned pre-fix leftover)
   # plus the CURRENT zip its meta.rds actually points to.
-  old_zip <- file.path(d, "OLD.zip"); writeLines("x", old_zip)
-  new_zip <- file.path(d, "NEW.zip"); writeLines("x", new_zip)
-  saveRDS(list(dl_key = "NEW", zip_path = new_zip, timestamp = Sys.time()),
-          file.path(d, "gbif_dl_1k_s1_g1_2000_meta.rds"))
+  old_zip <- file.path(d, "OLD.zip")
+  writeLines("x", old_zip)
+  new_zip <- file.path(d, "NEW.zip")
+  writeLines("x", new_zip)
+  saveRDS(
+    list(dl_key = "NEW", zip_path = new_zip, timestamp = Sys.time()),
+    file.path(d, "gbif_dl_1k_s1_g1_2000_meta.rds")
+  )
 
   # A second, unrelated query, fully current (no orphan).
-  other_zip <- file.path(d, "OTHER.zip"); writeLines("x", other_zip)
-  saveRDS(list(dl_key = "OTHER", zip_path = other_zip, timestamp = Sys.time()),
-          file.path(d, "gbif_dl_2k_s2_g2_2000_meta.rds"))
+  other_zip <- file.path(d, "OTHER.zip")
+  writeLines("x", other_zip)
+  saveRDS(
+    list(dl_key = "OTHER", zip_path = other_zip, timestamp = Sys.time()),
+    file.path(d, "gbif_dl_2k_s2_g2_2000_meta.rds")
+  )
 
   out <- taxafetch_clear_cache(cache_dir = d, orphans_only = TRUE, dry_run = TRUE)
   expect_equal(basename(out$path), "OLD.zip")
@@ -151,11 +173,15 @@ test_that("orphans_only never targets checkpoint or geojson files", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  ckpt <- file.path(d, "gbif_fetch_1k_s1_g1_2000_l10.rds"); saveRDS(list(), ckpt)
-  geo  <- file.path(d, "12345.geojson"); writeLines("x", geo)
+  ckpt <- file.path(d, "gbif_fetch_1k_s1_g1_2000_l10.rds")
+  saveRDS(list(), ckpt)
+  geo <- file.path(d, "12345.geojson")
+  writeLines("x", geo)
   writeLines("x", file.path(d, "CURRENT.zip"))
-  saveRDS(list(dl_key = "CURRENT", zip_path = file.path(d, "CURRENT.zip"), timestamp = Sys.time()),
-          file.path(d, "gbif_dl_1k_s1_g1_2000_meta.rds"))
+  saveRDS(
+    list(dl_key = "CURRENT", zip_path = file.path(d, "CURRENT.zip"), timestamp = Sys.time()),
+    file.path(d, "gbif_dl_1k_s1_g1_2000_meta.rds")
+  )
 
   expect_message(
     out <- taxafetch_clear_cache(cache_dir = d, orphans_only = TRUE, dry_run = TRUE),
@@ -170,9 +196,12 @@ test_that("orphans_only reports nothing to remove when every zip is current", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  z <- file.path(d, "AAA.zip"); writeLines("x", z)
-  saveRDS(list(dl_key = "AAA", zip_path = z, timestamp = Sys.time()),
-          file.path(d, "gbif_dl_1_meta.rds"))
+  z <- file.path(d, "AAA.zip")
+  writeLines("x", z)
+  saveRDS(
+    list(dl_key = "AAA", zip_path = z, timestamp = Sys.time()),
+    file.path(d, "gbif_dl_1_meta.rds")
+  )
 
   expect_message(
     out <- taxafetch_clear_cache(cache_dir = d, orphans_only = TRUE, dry_run = TRUE),
@@ -185,26 +214,32 @@ test_that("orphans_only reports nothing to remove when every zip is current", {
 test_that("zips_only targets the zips and leaves metadata and checkpoints alone", {
   cd <- file.path(tempdir(), paste0("zonly_", as.integer(runif(1, 1, 1e9))))
   dir.create(cd, recursive = TRUE)
-  z1 <- file.path(cd, "0000001-000000000000000.zip"); writeBin(raw(2048), z1)
-  z2 <- file.path(cd, "0000002-000000000000000.zip"); writeBin(raw(2048), z2)
+  z1 <- file.path(cd, "0000001-000000000000000.zip")
+  writeBin(raw(2048), z1)
+  z2 <- file.path(cd, "0000002-000000000000000.zip")
+  writeBin(raw(2048), z2)
   m1 <- file.path(cd, "gbif_dl_1k_s1_g7_20002024_meta.rds")
-  saveRDS(list(dl_key = "0000001-000000000000000", zip_path = z1,
-               timestamp = Sys.time()), m1)
+  saveRDS(list(
+    dl_key = "0000001-000000000000000", zip_path = z1,
+    timestamp = Sys.time()
+  ), m1)
   ck <- file.path(cd, "gbif_fetch_1k_s1_g7_20002024_l10000.rds")
   saveRDS(data.frame(a = 1), ck)
 
   res <- taxafetch_clear_cache(cache_dir = cd, zips_only = TRUE, dry_run = TRUE)
   expect_true(all(grepl("\\.zip$", basename(res$path))))
-  expect_equal(nrow(res), 2L)         # BOTH zips, incl. the referenced one
+  expect_equal(nrow(res), 2L) # BOTH zips, incl. the referenced one
 
   taxafetch_clear_cache(cache_dir = cd, zips_only = TRUE)
-  expect_false(file.exists(z1)); expect_false(file.exists(z2))
-  expect_true(file.exists(m1))        # key stays recoverable
-  expect_true(file.exists(ck))        # checkpoints untouched
+  expect_false(file.exists(z1))
+  expect_false(file.exists(z2))
+  expect_true(file.exists(m1)) # key stays recoverable
+  expect_true(file.exists(ck)) # checkpoints untouched
 })
 
 test_that("zips_only and orphans_only cannot be combined", {
   expect_error(
     taxafetch_clear_cache(cache_dir = tempdir(), zips_only = TRUE, orphans_only = TRUE),
-    "not both")
+    "not both"
+  )
 })

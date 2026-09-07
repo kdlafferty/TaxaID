@@ -108,9 +108,11 @@ test_that("returns a tibble with the correct ten columns", {
   )
   out <- check_inat_range("Unknown taxon", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_s3_class(out, "tbl_df")
-  expect_named(out, c("taxon_name", "taxon_id", "matched_name", "rank",
-                      "iconic_taxon_name", "inat_kingdom", "n_observations",
-                      "in_range", "range_status", "name_match"))
+  expect_named(out, c(
+    "taxon_name", "taxon_id", "matched_name", "rank",
+    "iconic_taxon_name", "inat_kingdom", "n_observations",
+    "in_range", "range_status", "name_match"
+  ))
 })
 
 test_that("returns one row per input taxon name", {
@@ -119,7 +121,8 @@ test_that("returns one row per input taxon name", {
     .package = "TaxaFetch"
   )
   out <- check_inat_range(c("Foo bar", "Baz qux", "Quux quuz"),
-                          lat = 34.1, lng = -119.1, api_token = "tok")
+    lat = 34.1, lng = -119.1, api_token = "tok"
+  )
   expect_equal(nrow(out), 3L)
   expect_equal(out$taxon_name, c("Foo bar", "Baz qux", "Quux quuz"))
 })
@@ -133,8 +136,10 @@ test_that("taxon_not_found: correct status and all-NA metadata", {
     .inat_taxon_id = function(...) .not_found,
     .package = "TaxaFetch"
   )
-  out <- check_inat_range("Definitely notaspecies", lat = 34.1, lng = -119.1,
-                          api_token = "tok")
+  out <- check_inat_range("Definitely notaspecies",
+    lat = 34.1, lng = -119.1,
+    api_token = "tok"
+  )
   expect_equal(out$range_status, "taxon_not_found")
   expect_true(is.na(out$in_range))
   expect_true(is.na(out$taxon_id))
@@ -144,7 +149,7 @@ test_that("taxon_not_found: correct status and all-NA metadata", {
 
 test_that("no_polygon: correct status, in_range NA, metadata preserved", {
   local_mocked_bindings(
-    .inat_taxon_id     = function(...) .found,
+    .inat_taxon_id = function(...) .found,
     .inat_range_polygon = function(...) NULL,
     .package = "TaxaFetch"
   )
@@ -159,8 +164,8 @@ test_that("no_polygon: correct status, in_range NA, metadata preserved", {
 
 test_that("in_range: in_range TRUE and range_status correct", {
   local_mocked_bindings(
-    .inat_taxon_id      = function(...) .found,
-    .inat_range_polygon  = function(...) "sentinel",
+    .inat_taxon_id = function(...) .found,
+    .inat_range_polygon = function(...) "sentinel",
     .point_in_inat_range = function(...) TRUE,
     .package = "TaxaFetch"
   )
@@ -171,8 +176,8 @@ test_that("in_range: in_range TRUE and range_status correct", {
 
 test_that("out_of_range: in_range FALSE and range_status correct", {
   local_mocked_bindings(
-    .inat_taxon_id      = function(...) .found,
-    .inat_range_polygon  = function(...) "sentinel",
+    .inat_taxon_id = function(...) .found,
+    .inat_range_polygon = function(...) "sentinel",
     .point_in_inat_range = function(...) FALSE,
     .package = "TaxaFetch"
   )
@@ -184,23 +189,28 @@ test_that("out_of_range: in_range FALSE and range_status correct", {
 test_that("mixed taxon list produces correct per-row outcomes", {
   call_count <- 0L
   taxon_info <- list(
-    list(taxon_id = 1L, matched_name = "Taxon a", rank = "species",
-         iconic_taxon_name = "Aves", n_observations = 100L),
+    list(
+      taxon_id = 1L, matched_name = "Taxon a", rank = "species",
+      iconic_taxon_name = "Aves", n_observations = 100L
+    ),
     .not_found,
-    list(taxon_id = 2L, matched_name = "Taxon c", rank = "species",
-         iconic_taxon_name = "Plantae", n_observations = 50L)
+    list(
+      taxon_id = 2L, matched_name = "Taxon c", rank = "species",
+      iconic_taxon_name = "Plantae", n_observations = 50L
+    )
   )
   local_mocked_bindings(
     .inat_taxon_id = function(...) {
       call_count <<- call_count + 1L
       taxon_info[[call_count]]
     },
-    .inat_range_polygon  = function(...) "sentinel",
+    .inat_range_polygon = function(...) "sentinel",
     .point_in_inat_range = function(...) TRUE,
     .package = "TaxaFetch"
   )
   out <- check_inat_range(c("Taxon a", "Unknown", "Taxon c"),
-                          lat = 0, lng = 0, api_token = "tok")
+    lat = 0, lng = 0, api_token = "tok"
+  )
   expect_equal(nrow(out), 3L)
   expect_equal(out$range_status, c("in_range", "taxon_not_found", "in_range"))
 })
@@ -211,13 +221,17 @@ test_that("verbose emits progress messages", {
     .package = "TaxaFetch"
   )
   expect_message(
-    check_inat_range(c("Foo bar", "Baz qux"), lat = 0, lng = 0,
-                     api_token = "tok", verbose = TRUE),
+    check_inat_range(c("Foo bar", "Baz qux"),
+      lat = 0, lng = 0,
+      api_token = "tok", verbose = TRUE
+    ),
     regexp = "\\[1/2\\]"
   )
   expect_message(
-    check_inat_range(c("Foo bar", "Baz qux"), lat = 0, lng = 0,
-                     api_token = "tok", verbose = TRUE),
+    check_inat_range(c("Foo bar", "Baz qux"),
+      lat = 0, lng = 0,
+      api_token = "tok", verbose = TRUE
+    ),
     regexp = "\\[2/2\\]"
   )
 })
@@ -228,7 +242,7 @@ test_that("verbose emits progress messages", {
 
 test_that(".inat_taxon_id: returns NAs when HTTP status is not 200", {
   local_mocked_bindings(
-    GET         = function(...) .resp(500L),
+    GET = function(...) .resp(500L),
     status_code = function(x) x$status_code,
     .package = "httr"
   )
@@ -240,7 +254,7 @@ test_that(".inat_taxon_id: returns NAs when HTTP status is not 200", {
 
 test_that(".inat_taxon_id: stops with token message on 401", {
   local_mocked_bindings(
-    GET         = function(...) .resp(401L),
+    GET = function(...) .resp(401L),
     status_code = function(x) x$status_code,
     .package = "httr"
   )
@@ -252,9 +266,9 @@ test_that(".inat_taxon_id: stops with token message on 401", {
 
 test_that(".inat_taxon_id: returns NAs when results list is empty", {
   local_mocked_bindings(
-    GET         = function(...) .resp(200L),
+    GET = function(...) .resp(200L),
     status_code = function(x) x$status_code,
-    content     = function(...) list(results = list()),
+    content = function(...) list(results = list()),
     .package = "httr"
   )
   result <- TaxaFetch:::.inat_taxon_id("Calidris mauri", "tok")
@@ -263,11 +277,15 @@ test_that(".inat_taxon_id: returns NAs when results list is empty", {
 
 test_that(".inat_taxon_id: parses all metadata fields correctly", {
   local_mocked_bindings(
-    GET         = function(...) .resp(200L),
+    GET = function(...) .resp(200L),
     status_code = function(x) x$status_code,
-    content     = function(...) .taxa_resp(id = 3855L, name = "Calidris mauri",
-                                           rank = "species", iconic = "Aves",
-                                           n_obs = 21169L),
+    content = function(...) {
+      .taxa_resp(
+        id = 3855L, name = "Calidris mauri",
+        rank = "species", iconic = "Aves",
+        n_obs = 21169L
+      )
+    },
     .package = "httr"
   )
   result <- TaxaFetch:::.inat_taxon_id("Calidris mauri", "tok")
@@ -280,9 +298,9 @@ test_that(".inat_taxon_id: parses all metadata fields correctly", {
 
 test_that(".inat_taxon_id: taxon_id is returned as integer", {
   local_mocked_bindings(
-    GET         = function(...) .resp(200L),
+    GET = function(...) .resp(200L),
     status_code = function(x) x$status_code,
-    content     = function(...) .taxa_resp(id = 3855L),
+    content = function(...) .taxa_resp(id = 3855L),
     .package = "httr"
   )
   result <- TaxaFetch:::.inat_taxon_id("Calidris mauri", "tok")
@@ -295,7 +313,7 @@ test_that(".inat_taxon_id: taxon_id is returned as integer", {
 
 test_that(".inat_range_polygon: returns NULL on 404", {
   local_mocked_bindings(
-    GET         = function(...) .resp(404L),
+    GET = function(...) .resp(404L),
     status_code = function(x) x$status_code,
     .package = "httr"
   )
@@ -305,7 +323,7 @@ test_that(".inat_range_polygon: returns NULL on 404", {
 
 test_that(".inat_range_polygon: returns NULL on 403", {
   local_mocked_bindings(
-    GET         = function(...) .resp(403L),
+    GET = function(...) .resp(403L),
     status_code = function(x) x$status_code,
     .package = "httr"
   )
@@ -322,7 +340,10 @@ test_that(".inat_range_polygon: reads from cache without calling GET", {
 
   get_called <- FALSE
   local_mocked_bindings(
-    GET = function(...) { get_called <<- TRUE; .resp(200L) },
+    GET = function(...) {
+      get_called <<- TRUE
+      .resp(200L)
+    },
     .package = "httr"
   )
   result <- TaxaFetch:::.inat_range_polygon(3855L, cache_dir = cache)
@@ -337,9 +358,9 @@ test_that(".inat_range_polygon: writes GeoJSON to cache after successful downloa
   on.exit(unlink(cache, recursive = TRUE))
 
   local_mocked_bindings(
-    GET         = function(...) .resp(200L),
+    GET = function(...) .resp(200L),
     status_code = function(x) x$status_code,
-    content     = function(...) .square_geojson,
+    content = function(...) .square_geojson,
     .package = "httr"
   )
   TaxaFetch:::.inat_range_polygon(3855L, cache_dir = cache)
@@ -352,7 +373,7 @@ test_that(".inat_range_polygon: does not write to cache on 404", {
   on.exit(unlink(cache, recursive = TRUE))
 
   local_mocked_bindings(
-    GET         = function(...) .resp(404L),
+    GET = function(...) .resp(404L),
     status_code = function(x) x$status_code,
     .package = "httr"
   )
@@ -390,19 +411,19 @@ test_that(".point_in_inat_range: FALSE for point on boundary edge", {
 # =============================================================================
 
 test_that(".iconic_to_kingdom: kingdom-level iconics map to themselves", {
-  expect_equal(TaxaFetch:::.iconic_to_kingdom("Animalia"),  "Animalia")
-  expect_equal(TaxaFetch:::.iconic_to_kingdom("Plantae"),   "Plantae")
-  expect_equal(TaxaFetch:::.iconic_to_kingdom("Fungi"),     "Fungi")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Animalia"), "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Plantae"), "Plantae")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Fungi"), "Fungi")
   expect_equal(TaxaFetch:::.iconic_to_kingdom("Chromista"), "Chromista")
-  expect_equal(TaxaFetch:::.iconic_to_kingdom("Protozoa"),  "Protozoa")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Protozoa"), "Protozoa")
 })
 
 test_that(".iconic_to_kingdom: sub-kingdom Animalia iconics map to Animalia", {
-  expect_equal(TaxaFetch:::.iconic_to_kingdom("Aves"),           "Animalia")
-  expect_equal(TaxaFetch:::.iconic_to_kingdom("Mammalia"),       "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Aves"), "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Mammalia"), "Animalia")
   expect_equal(TaxaFetch:::.iconic_to_kingdom("Actinopterygii"), "Animalia")
-  expect_equal(TaxaFetch:::.iconic_to_kingdom("Mollusca"),       "Animalia")
-  expect_equal(TaxaFetch:::.iconic_to_kingdom("Insecta"),        "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Mollusca"), "Animalia")
+  expect_equal(TaxaFetch:::.iconic_to_kingdom("Insecta"), "Animalia")
 })
 
 test_that(".iconic_to_kingdom: NA input returns NA", {
@@ -424,8 +445,8 @@ test_that("inat_kingdom is NA for taxon_not_found rows", {
 
 test_that("inat_kingdom reflects iconic_taxon_name for found taxa", {
   local_mocked_bindings(
-    .inat_taxon_id      = function(...) .found,   # iconic_taxon_name = "Aves"
-    .inat_range_polygon  = function(...) NULL,
+    .inat_taxon_id = function(...) .found, # iconic_taxon_name = "Aves"
+    .inat_range_polygon = function(...) NULL,
     .package = "TaxaFetch"
   )
   out <- check_inat_range("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
@@ -437,12 +458,17 @@ test_that("inat_kingdom reflects iconic_taxon_name for found taxa", {
 test_that("name_match is TRUE for an exact resolution, FALSE for a fuzzy misresolution, NA for not-found", {
   local_mocked_bindings(
     .inat_taxon_id = function(name, ...) {
-      if (name == "Calidris mauri") .found
-      else if (name == "Gasterosteus gymnurus") {
-        list(taxon_id = 999L, matched_name = "Gasterosteus aculeatus",
-             rank = "species", iconic_taxon_name = "Actinopterygii",
-             n_observations = 10135L)
-      } else .not_found
+      if (name == "Calidris mauri") {
+        .found
+      } else if (name == "Gasterosteus gymnurus") {
+        list(
+          taxon_id = 999L, matched_name = "Gasterosteus aculeatus",
+          rank = "species", iconic_taxon_name = "Actinopterygii",
+          n_observations = 10135L
+        )
+      } else {
+        .not_found
+      }
     },
     .inat_range_polygon = function(...) NULL
   )

@@ -74,18 +74,16 @@
 #' all_occ <- stack_occurrences(gbif_occ)
 #' all_occ <- dedupe_occurrences(all_occ)
 #' }
-
 stack_occurrences <- function(...,
-                               lat_col = "decimalLatitude",
-                               lon_col = "decimalLongitude") {
-
+                              lat_col = "decimalLatitude",
+                              lon_col = "decimalLongitude") {
   dots <- list(...)
 
   # --- Unpack list input -------------------------------------------------------
   # Detect the workflow pattern: stack_occurrences(some_list)
   # A single argument that is itself a list of data frames -> unpack it.
   if (length(dots) == 1L && is.list(dots[[1L]]) &&
-      !is.data.frame(dots[[1L]])) {
+    !is.data.frame(dots[[1L]])) {
     frames <- dots[[1L]]
   } else {
     frames <- dots
@@ -120,7 +118,7 @@ stack_occurrences <- function(...,
   }
 
   # --- Bind and add point_id ---------------------------------------------------
-  combined          <- dplyr::bind_rows(frames)
+  combined <- dplyr::bind_rows(frames)
   combined$point_id <- paste(combined[[lat_col]], combined[[lon_col]], sep = "_")
 
   n_per_frame <- vapply(frames, nrow, integer(1L))

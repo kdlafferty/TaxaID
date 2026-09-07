@@ -40,7 +40,7 @@ utils::globalVariables(c(
 
 .default_dwc_map <- data.frame(
   stringsAsFactors = FALSE,
-  pattern  = c(
+  pattern = c(
     "decimal.?lat|^lat$|^lat_dd|^latitude$",
     "decimal.?lon|^lon$|^lon_dd|^long$|^longitude$",
     "coord.*uncert|location.*acc",
@@ -203,49 +203,59 @@ utils::globalVariables(c(
 #'
 #' # Fix a non-standard column name
 #' extra <- data.frame(
-#'   pattern  = "spp_name",
+#'   pattern = "spp_name",
 #'   dwc_term = "scientificName",
 #'   stringsAsFactors = FALSE
 #' )
 #' occ <- fetch_dataone_occurrences(candidates$id[1], bbox,
-#'                                  extra_dwc_map = extra)
+#'   extra_dwc_map = extra
+#' )
 #' }
 fetch_dataone_occurrences <- function(dataset_ids,
                                       bbox,
-                                      extra_dwc_map      = NULL,
-                                      timeout            = 120L,
-                                      site_lookup        = NULL,
-                                      odm_variable       = "DENSITY",
-                                      verbose            = TRUE) {
-
+                                      extra_dwc_map = NULL,
+                                      timeout = 120L,
+                                      site_lookup = NULL,
+                                      odm_variable = "DENSITY",
+                                      verbose = TRUE) {
   # -- Input validation -------------------------------------------------------
   if (!is.character(dataset_ids) || length(dataset_ids) == 0L) {
-    stop("fetch_dataone_occurrences: 'dataset_ids' must be a non-empty ",
-         "character vector.")
+    stop(
+      "fetch_dataone_occurrences: 'dataset_ids' must be a non-empty ",
+      "character vector."
+    )
   }
   # Coerce c(west, east, south, north) vector to named list
   if (is.numeric(bbox) && length(bbox) == 4L && is.null(names(bbox))) {
-    bbox <- list(west = bbox[1], east = bbox[2],
-                 south = bbox[3], north = bbox[4])
+    bbox <- list(
+      west = bbox[1], east = bbox[2],
+      south = bbox[3], north = bbox[4]
+    )
   }
   if (!is.list(bbox) ||
-      !all(c("west", "east", "south", "north") %in% names(bbox))) {
-    stop("fetch_dataone_occurrences: 'bbox' must be a named list with ",
-         "elements west, east, south, and north (decimal degrees).")
+    !all(c("west", "east", "south", "north") %in% names(bbox))) {
+    stop(
+      "fetch_dataone_occurrences: 'bbox' must be a named list with ",
+      "elements west, east, south, and north (decimal degrees)."
+    )
   }
   if (!is.null(extra_dwc_map)) {
     if (!is.data.frame(extra_dwc_map) ||
-        !all(c("pattern", "dwc_term") %in% names(extra_dwc_map))) {
-      stop("fetch_dataone_occurrences: 'extra_dwc_map' must be a data.frame ",
-           "with columns 'pattern' and 'dwc_term'.")
+      !all(c("pattern", "dwc_term") %in% names(extra_dwc_map))) {
+      stop(
+        "fetch_dataone_occurrences: 'extra_dwc_map' must be a data.frame ",
+        "with columns 'pattern' and 'dwc_term'."
+      )
     }
   }
   if (!is.null(site_lookup)) {
     if (!is.data.frame(site_lookup) ||
-        !all(c("site_code", "decimalLatitude", "decimalLongitude") %in%
-             names(site_lookup))) {
-      stop("fetch_dataone_occurrences: 'site_lookup' must be a data.frame ",
-           "with columns 'site_code', 'decimalLatitude', and 'decimalLongitude'.")
+      !all(c("site_code", "decimalLatitude", "decimalLongitude") %in%
+        names(site_lookup))) {
+      stop(
+        "fetch_dataone_occurrences: 'site_lookup' must be a data.frame ",
+        "with columns 'site_code', 'decimalLatitude', and 'decimalLongitude'."
+      )
     }
   }
 
@@ -256,16 +266,20 @@ fetch_dataone_occurrences <- function(dataset_ids,
   }
 
   pb <- cli::cli_progress_bar("Fetching DataONE datasets",
-                               total = length(dataset_ids))
+    total = length(dataset_ids)
+  )
   results <- lapply(dataset_ids, function(id) {
     cli::cli_progress_update(id = pb)
     tryCatch(
       .process_one_dataset(id, bbox, dwc_map, verbose,
-                            timeout = timeout, site_lookup = site_lookup,
-                            odm_variable = odm_variable),
+        timeout = timeout, site_lookup = site_lookup,
+        odm_variable = odm_variable
+      ),
       error = function(e) {
-        message(sprintf("fetch_dataone_occurrences: ERROR on %s -- %s",
-                        id, conditionMessage(e)))
+        message(sprintf(
+          "fetch_dataone_occurrences: ERROR on %s -- %s",
+          id, conditionMessage(e)
+        ))
         NULL
       }
     )
@@ -288,20 +302,27 @@ fetch_dataone_occurrences <- function(dataset_ids,
   # drift apart).
   dwc_cols <- .pdf_dwc_cols
   present_dwc <- intersect(dwc_cols, names(all_results))
-  extra_cols  <- setdiff(names(all_results), dwc_cols)
-  all_results <- dplyr::select(all_results,
-                               dplyr::all_of(present_dwc),
-                               dplyr::all_of(extra_cols))
+  extra_cols <- setdiff(names(all_results), dwc_cols)
+  all_results <- dplyr::select(
+    all_results,
+    dplyr::all_of(present_dwc),
+    dplyr::all_of(extra_cols)
+  )
 
   if (verbose) {
     message("\nfetch_dataone_occurrences: summary --------------------------")
     message(sprintf("  Total records      : %d", nrow(all_results)))
-    message(sprintf("  Datasets processed : %d",
-                    dplyr::n_distinct(all_results$datasetID, na.rm = TRUE)))
+    message(sprintf(
+      "  Datasets processed : %d",
+      dplyr::n_distinct(all_results$datasetID, na.rm = TRUE)
+    ))
     if ("scientificName" %in% names(all_results)) {
-      message(sprintf("  Unique taxa        : %d",
-                      dplyr::n_distinct(all_results$scientificName,
-                                        na.rm = TRUE)))
+      message(sprintf(
+        "  Unique taxa        : %d",
+        dplyr::n_distinct(all_results$scientificName,
+          na.rm = TRUE
+        )
+      ))
     }
   }
 
@@ -321,7 +342,6 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .parse_eml_metadata <- function(dataset_id) {
-
   eml_url <- .pasta_eml_url(dataset_id)
   message("  Fetching EML: ", str_trunc_safe(dataset_id, 80))
 
@@ -334,7 +354,9 @@ fetch_dataone_occurrences <- function(dataset_ids,
       NULL
     }
   )
-  if (is.null(resp)) return(NULL)
+  if (is.null(resp)) {
+    return(NULL)
+  }
 
   eml <- tryCatch(
     xml2::read_xml(httr2::resp_body_string(resp)),
@@ -343,15 +365,18 @@ fetch_dataone_occurrences <- function(dataset_ids,
       NULL
     }
   )
-  if (is.null(eml)) return(NULL)
+  if (is.null(eml)) {
+    return(NULL)
+  }
 
   # Strip namespaces so XPath works across EML 2.1.x and 2.2.x
   xml2::xml_ns_strip(eml)
 
   # -- Package-level metadata -----------------------------------------------
-  title    <- xml_text_safe(xml2::xml_find_first(eml, ".//dataset/title"))
-  creator  <- xml_text_safe(xml2::xml_find_first(
-    eml, ".//creator/individualName/surName"))
+  title <- xml_text_safe(xml2::xml_find_first(eml, ".//dataset/title"))
+  creator <- xml_text_safe(xml2::xml_find_first(
+    eml, ".//creator/individualName/surName"
+  ))
   pub_date <- xml_text_safe(xml2::xml_find_first(eml, ".//pubDate"))
   abstract <- xml_text_safe(xml2::xml_find_first(eml, ".//abstract//para[1]"))
   if (!is.na(abstract)) abstract <- str_trunc_safe(abstract, 200)
@@ -361,10 +386,10 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
   entities <- lapply(entity_nodes, function(node) {
     entity_name <- xml_text_safe(xml2::xml_find_first(node, ".//entityName"))
-    obj_name    <- xml_text_safe(xml2::xml_find_first(node, ".//objectName"))
-    url_node    <- xml2::xml_find_first(node, ".//online/url")
-    data_url    <- if (!inherits(url_node, "xml_missing") &&
-                       length(url_node) > 0L) {
+    obj_name <- xml_text_safe(xml2::xml_find_first(node, ".//objectName"))
+    url_node <- xml2::xml_find_first(node, ".//online/url")
+    data_url <- if (!inherits(url_node, "xml_missing") &&
+      length(url_node) > 0L) {
       xml_text_safe(url_node)
     } else {
       NA_character_
@@ -375,13 +400,16 @@ fetch_dataone_occurrences <- function(dataset_ids,
     if (length(attr_nodes) > 0L) {
       attrs <- do.call(rbind, lapply(attr_nodes, function(a) {
         data.frame(
-          stringsAsFactors    = FALSE,
-          attributeName       = xml_text_safe(
-            xml2::xml_find_first(a, ".//attributeName")),
+          stringsAsFactors = FALSE,
+          attributeName = xml_text_safe(
+            xml2::xml_find_first(a, ".//attributeName")
+          ),
           attributeDefinition = xml_text_safe(
-            xml2::xml_find_first(a, ".//attributeDefinition")),
-          storageType         = xml_text_safe(
-            xml2::xml_find_first(a, ".//storageType"))
+            xml2::xml_find_first(a, ".//attributeDefinition")
+          ),
+          storageType = xml_text_safe(
+            xml2::xml_find_first(a, ".//storageType")
+          )
         )
       }))
     } else {
@@ -427,13 +455,14 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #' @noRd
 .map_columns_to_dwc <- function(col_names, dwc_map) {
   col_lower <- stringr::str_to_lower(col_names)
-  mapping   <- stats::setNames(rep(NA_character_, length(col_names)), col_names)
+  mapping <- stats::setNames(rep(NA_character_, length(col_names)), col_names)
 
   for (i in seq_len(nrow(dwc_map))) {
     unmatched <- is.na(mapping)
     if (!any(unmatched)) break
     hits <- grepl(dwc_map$pattern[i], col_lower[unmatched],
-                  ignore.case = TRUE, perl = TRUE)
+      ignore.case = TRUE, perl = TRUE
+    )
     mapping[unmatched][hits] <- dwc_map$dwc_term[i]
   }
 
@@ -445,19 +474,27 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .report_dwc_mapping <- function(col_names, mapping, entity_name = "") {
-  message("  Column mapping",
-          if (nzchar(entity_name)) paste0(" [", entity_name, "]"))
-  df       <- data.frame(raw = col_names, dwc = mapping,
-                         stringsAsFactors = FALSE)
-  mapped   <- df[!is.na(df$dwc), ]
+  message(
+    "  Column mapping",
+    if (nzchar(entity_name)) paste0(" [", entity_name, "]")
+  )
+  df <- data.frame(
+    raw = col_names, dwc = mapping,
+    stringsAsFactors = FALSE
+  )
+  mapped <- df[!is.na(df$dwc), ]
   unmapped <- df[is.na(df$dwc), ]
   if (nrow(mapped) > 0L) {
-    message(sprintf("    Mapped (%d): %s", nrow(mapped),
-                    paste(paste0(mapped$raw, "->", mapped$dwc), collapse = ", ")))
+    message(sprintf(
+      "    Mapped (%d): %s", nrow(mapped),
+      paste(paste0(mapped$raw, "->", mapped$dwc), collapse = ", ")
+    ))
   }
   if (nrow(unmapped) > 0L) {
-    message(sprintf("    Unmapped (%d): %s", nrow(unmapped),
-                    paste(unmapped$raw, collapse = ", ")))
+    message(sprintf(
+      "    Unmapped (%d): %s", nrow(unmapped),
+      paste(unmapped$raw, collapse = ", ")
+    ))
   }
 }
 
@@ -500,7 +537,9 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .download_data_table <- function(data_url, timeout = 120L) {
-  if (is.na(data_url) || !nzchar(data_url)) return(NULL)
+  if (is.na(data_url) || !nzchar(data_url)) {
+    return(NULL)
+  }
   if (!.is_trusted_pasta_url(data_url)) {
     message(
       "    Skipping: data_url host is not a trusted PASTA/EDI host (",
@@ -520,21 +559,25 @@ fetch_dataone_occurrences <- function(dataset_ids,
       NULL
     }
   )
-  if (is.null(resp)) return(NULL)
+  if (is.null(resp)) {
+    return(NULL)
+  }
 
-  raw_text   <- httr2::resp_body_string(resp)
+  raw_text <- httr2::resp_body_string(resp)
   first_line <- strsplit(raw_text, "\n")[[1L]][1L]
   if (is.na(first_line) || !nzchar(stringr::str_trim(first_line))) {
     message("    Could not read first line -- file may be binary. Skipping.")
     return(NULL)
   }
-  n_tab      <- stringr::str_count(first_line, "\t")
-  n_comma    <- stringr::str_count(first_line, ",")
-  delim      <- if (isTRUE(n_tab > n_comma)) "\t" else ","
+  n_tab <- stringr::str_count(first_line, "\t")
+  n_comma <- stringr::str_count(first_line, ",")
+  delim <- if (isTRUE(n_tab > n_comma)) "\t" else ","
 
   tryCatch(
-    readr::read_delim(raw_text, delim = delim,
-                      show_col_types = FALSE, name_repair = "minimal"),
+    readr::read_delim(raw_text,
+      delim = delim,
+      show_col_types = FALSE, name_repair = "minimal"
+    ),
     error = function(e) {
       message("    Parse error: ", conditionMessage(e))
       NULL
@@ -551,9 +594,8 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .standardize_to_dwc <- function(raw_df, col_mapping, dataset_meta) {
-
   mapped_cols <- col_mapping[!is.na(col_mapping)]
-  dwc_to_raw  <- tapply(names(mapped_cols), mapped_cols, function(x) x[1L])
+  dwc_to_raw <- tapply(names(mapped_cols), mapped_cols, function(x) x[1L])
 
   std_df <- raw_df |>
     dplyr::rename(dplyr::any_of(dwc_to_raw))
@@ -562,10 +604,10 @@ fetch_dataone_occurrences <- function(dataset_ids,
   # Handles datasets (e.g. SONGS UCSB) that split the name into two columns
   # rather than providing a single scientificName field.
   if (!"scientificName" %in% names(std_df)) {
-    has_genus   <- "genus"           %in% names(std_df)
+    has_genus <- "genus" %in% names(std_df)
     has_epithet <- "specificEpithet" %in% names(std_df)
     if (has_genus && has_epithet) {
-      g <- ifelse(is.na(std_df$genus),           "", std_df$genus)
+      g <- ifelse(is.na(std_df$genus), "", std_df$genus)
       e <- ifelse(is.na(std_df$specificEpithet), "", std_df$specificEpithet)
       sn <- trimws(paste(g, e))
       std_df$scientificName <- ifelse(nzchar(sn), sn, NA_character_)
@@ -585,12 +627,14 @@ fetch_dataone_occurrences <- function(dataset_ids,
   # Date standardization (no lubridate)
   if (!"eventDate" %in% names(std_df)) {
     has_ymd <- all(c("year", "month", "day") %in% names(std_df))
-    has_ym  <- all(c("year", "month") %in% names(std_df))
+    has_ym <- all(c("year", "month") %in% names(std_df))
     if (has_ymd) {
       std_df$eventDate <- as.character(suppressWarnings(
         as.Date(paste(as.integer(std_df$year),
-                      as.integer(std_df$month),
-                      as.integer(std_df$day), sep = "-"))
+          as.integer(std_df$month),
+          as.integer(std_df$day),
+          sep = "-"
+        ))
       ))
     } else if (has_ym) {
       std_df$eventDate <- paste0(
@@ -606,8 +650,8 @@ fetch_dataone_occurrences <- function(dataset_ids,
   if (!"basisOfRecord" %in% names(std_df)) {
     std_df$basisOfRecord <- "HumanObservation"
   }
-  std_df$datasetName     <- dataset_meta$title
-  std_df$datasetID       <- dataset_meta$id
+  std_df$datasetName <- dataset_meta$title
+  std_df$datasetID <- dataset_meta$id
   std_df$institutionCode <- dataset_meta$creator
 
   # Construct bibliographic citation from EML metadata
@@ -620,8 +664,10 @@ fetch_dataone_occurrences <- function(dataset_ids,
   }
 
   if (!"occurrenceID" %in% names(std_df)) {
-    std_df$occurrenceID <- paste0(dataset_meta$id, "_row",
-                                  seq_len(nrow(std_df)))
+    std_df$occurrenceID <- paste0(
+      dataset_meta$id, "_row",
+      seq_len(nrow(std_df))
+    )
   }
 
   # Coerce unmapped extra columns to character to prevent type-conflict errors
@@ -649,9 +695,11 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .try_parse_date <- function(x) {
-  formats <- c("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d-%m-%Y",
-               "%d/%m/%Y", "%Y%m%d", "%Y")
-  result  <- rep(NA_character_, length(x))
+  formats <- c(
+    "%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d-%m-%Y",
+    "%d/%m/%Y", "%Y%m%d", "%Y"
+  )
+  result <- rep(NA_character_, length(x))
 
   for (fmt in formats) {
     unparsed <- is.na(result)
@@ -661,8 +709,8 @@ fetch_dataone_occurrences <- function(dataset_ids,
     result[which(unparsed)[filled]] <- as.character(parsed[filled])
   }
 
-  still_na          <- is.na(result)
-  result[still_na]  <- as.character(x[still_na])
+  still_na <- is.na(result)
+  result[still_na] <- as.character(x[still_na])
   result
 }
 
@@ -680,8 +728,8 @@ fetch_dataone_occurrences <- function(dataset_ids,
     df,
     !is.na(.data$decimalLatitude),
     !is.na(.data$decimalLongitude),
-    .data$decimalLatitude  >= bbox$south,
-    .data$decimalLatitude  <= bbox$north,
+    .data$decimalLatitude >= bbox$south,
+    .data$decimalLatitude <= bbox$north,
     .data$decimalLongitude >= bbox$west,
     .data$decimalLongitude <= bbox$east
   )
@@ -704,26 +752,36 @@ fetch_dataone_occurrences <- function(dataset_ids,
 .extract_eml_sites <- function(eml) {
   gc_nodes <- xml2::xml_find_all(eml, ".//geographicCoverage")
   if (length(gc_nodes) == 0L) {
-    return(data.frame(site_code        = character(0),
-                      decimalLatitude  = numeric(0),
-                      decimalLongitude = numeric(0),
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      site_code = character(0),
+      decimalLatitude = numeric(0),
+      decimalLongitude = numeric(0),
+      stringsAsFactors = FALSE
+    ))
   }
 
   rows <- lapply(gc_nodes, function(g) {
-    desc  <- xml_text_safe(xml2::xml_find_first(g, ".//geographicDescription"))
-    west  <- suppressWarnings(as.numeric(xml_text_safe(
-      xml2::xml_find_first(g, ".//westBoundingCoordinate"))))
-    east  <- suppressWarnings(as.numeric(xml_text_safe(
-      xml2::xml_find_first(g, ".//eastBoundingCoordinate"))))
+    desc <- xml_text_safe(xml2::xml_find_first(g, ".//geographicDescription"))
+    west <- suppressWarnings(as.numeric(xml_text_safe(
+      xml2::xml_find_first(g, ".//westBoundingCoordinate")
+    )))
+    east <- suppressWarnings(as.numeric(xml_text_safe(
+      xml2::xml_find_first(g, ".//eastBoundingCoordinate")
+    )))
     south <- suppressWarnings(as.numeric(xml_text_safe(
-      xml2::xml_find_first(g, ".//southBoundingCoordinate"))))
+      xml2::xml_find_first(g, ".//southBoundingCoordinate")
+    )))
     north <- suppressWarnings(as.numeric(xml_text_safe(
-      xml2::xml_find_first(g, ".//northBoundingCoordinate"))))
+      xml2::xml_find_first(g, ".//northBoundingCoordinate")
+    )))
 
     # Only keep point sites (W == E and S == N) with valid coordinates
-    if (is.na(west) || is.na(east) || is.na(south) || is.na(north)) return(NULL)
-    if (!isTRUE(all.equal(west, east)) || !isTRUE(all.equal(south, north))) return(NULL)
+    if (is.na(west) || is.na(east) || is.na(south) || is.na(north)) {
+      return(NULL)
+    }
+    if (!isTRUE(all.equal(west, east)) || !isTRUE(all.equal(south, north))) {
+      return(NULL)
+    }
 
     # Extract site code: everything before the first ':' or whitespace.
     # (?s) is required -- PCRE's "." does not match newlines by default, and
@@ -738,18 +796,22 @@ fetch_dataone_occurrences <- function(dataset_ids,
       NA_character_
     }
 
-    data.frame(site_code        = code,
-               decimalLatitude  = south,
-               decimalLongitude = west,
-               stringsAsFactors = FALSE)
+    data.frame(
+      site_code = code,
+      decimalLatitude = south,
+      decimalLongitude = west,
+      stringsAsFactors = FALSE
+    )
   })
 
   rows <- Filter(Negate(is.null), rows)
   if (length(rows) == 0L) {
-    return(data.frame(site_code        = character(0),
-                      decimalLatitude  = numeric(0),
-                      decimalLongitude = numeric(0),
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      site_code = character(0),
+      decimalLatitude = numeric(0),
+      decimalLongitude = numeric(0),
+      stringsAsFactors = FALSE
+    ))
   }
   result <- do.call(rbind, rows)
   result[!is.na(result$site_code) & nzchar(result$site_code), ]
@@ -763,19 +825,21 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .find_site_code_column <- function(df, site_codes, min_overlap_frac = 0.5) {
-  if (length(site_codes) == 0L || ncol(df) == 0L) return(NULL)
+  if (length(site_codes) == 0L || ncol(df) == 0L) {
+    return(NULL)
+  }
   site_codes_upper <- toupper(site_codes)
 
-  best_col  <- NULL
+  best_col <- NULL
   best_frac <- min_overlap_frac
 
   for (col in names(df)) {
     vals <- toupper(as.character(df[[col]]))
     frac <- length(intersect(unique(vals), site_codes_upper)) /
-            length(site_codes_upper)
+      length(site_codes_upper)
     if (frac > best_frac) {
       best_frac <- frac
-      best_col  <- col
+      best_col <- col
     }
   }
   best_col
@@ -791,14 +855,23 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .classify_entity <- function(mapping) {
-  if (length(mapping) == 0L) return("unknown")
-  has_lat     <- any(mapping == "decimalLatitude",  na.rm = TRUE)
-  has_lon     <- any(mapping == "decimalLongitude", na.rm = TRUE)
+  if (length(mapping) == 0L) {
+    return("unknown")
+  }
+  has_lat <- any(mapping == "decimalLatitude", na.rm = TRUE)
+  has_lon <- any(mapping == "decimalLongitude", na.rm = TRUE)
   has_species <- any(mapping %in% c("scientificName", "specificEpithet", "genus"),
-                     na.rm = TRUE)
-  if (isTRUE(has_lat && has_lon && has_species)) return("complete")
-  if (isTRUE(has_lat && has_lon))               return("spatial_only")
-  if (isTRUE(has_species))                      return("species_only")
+    na.rm = TRUE
+  )
+  if (isTRUE(has_lat && has_lon && has_species)) {
+    return("complete")
+  }
+  if (isTRUE(has_lat && has_lon)) {
+    return("spatial_only")
+  }
+  if (isTRUE(has_species)) {
+    return("species_only")
+  }
   "no_coords_no_species"
 }
 
@@ -838,36 +911,42 @@ fetch_dataone_occurrences <- function(dataset_ids,
   if ("id" %in% s_lower && "id" %in% o_lower) {
     s_key <- names(spatial_df)[s_lower == "id"][1L]
     o_key <- names(species_df)[o_lower == "id"][1L]
-    n     <- n_overlap(spatial_df[[s_key]], species_df[[o_key]])
-    if (n > 0L) candidates[["shared_id"]] <- list(
-      s_key = s_key, o_key = o_key, n = n,
-      card  = cardinality(spatial_df[[s_key]]),
-      label = "shared id"
-    )
+    n <- n_overlap(spatial_df[[s_key]], species_df[[o_key]])
+    if (n > 0L) {
+      candidates[["shared_id"]] <- list(
+        s_key = s_key, o_key = o_key, n = n,
+        card = cardinality(spatial_df[[s_key]]),
+        label = "shared id"
+      )
+    }
   }
 
   # Strategy 2: DwC Archive asymmetric -- spatial$id <-> species$eventID
   if ("id" %in% s_lower && "eventid" %in% o_lower) {
     s_key <- names(spatial_df)[s_lower == "id"][1L]
     o_key <- names(species_df)[o_lower == "eventid"][1L]
-    n     <- n_overlap(spatial_df[[s_key]], species_df[[o_key]])
-    if (n > 0L) candidates[["asymmetric"]] <- list(
-      s_key = s_key, o_key = o_key, n = n,
-      card  = cardinality(spatial_df[[s_key]]),
-      label = "event$id <-> occ$eventID"
-    )
+    n <- n_overlap(spatial_df[[s_key]], species_df[[o_key]])
+    if (n > 0L) {
+      candidates[["asymmetric"]] <- list(
+        s_key = s_key, o_key = o_key, n = n,
+        card = cardinality(spatial_df[[s_key]]),
+        label = "event$id <-> occ$eventID"
+      )
+    }
   }
 
   # Strategy 3: shared eventID column
   if ("eventid" %in% s_lower && "eventid" %in% o_lower) {
     s_key <- names(spatial_df)[s_lower == "eventid"][1L]
     o_key <- names(species_df)[o_lower == "eventid"][1L]
-    n     <- n_overlap(spatial_df[[s_key]], species_df[[o_key]])
-    if (n > 0L) candidates[["shared_eventid"]] <- list(
-      s_key = s_key, o_key = o_key, n = n,
-      card  = cardinality(spatial_df[[s_key]]),
-      label = "shared eventID"
-    )
+    n <- n_overlap(spatial_df[[s_key]], species_df[[o_key]])
+    if (n > 0L) {
+      candidates[["shared_eventid"]] <- list(
+        s_key = s_key, o_key = o_key, n = n,
+        card = cardinality(spatial_df[[s_key]]),
+        label = "shared eventID"
+      )
+    }
   }
 
   # Strategy 4: any other shared event.*id-pattern column
@@ -877,12 +956,14 @@ fetch_dataone_occurrences <- function(dataset_ids,
     if (k %in% c("id", "eventid")) next
     s_key <- names(spatial_df)[s_lower == k][1L]
     o_key <- names(species_df)[o_lower == k][1L]
-    n     <- n_overlap(spatial_df[[s_key]], species_df[[o_key]])
-    if (n > 0L) candidates[[paste0("shared_", k)]] <- list(
-      s_key = s_key, o_key = o_key, n = n,
-      card  = cardinality(spatial_df[[s_key]]),
-      label = paste0("shared ", k)
-    )
+    n <- n_overlap(spatial_df[[s_key]], species_df[[o_key]])
+    if (n > 0L) {
+      candidates[[paste0("shared_", k)]] <- list(
+        s_key = s_key, o_key = o_key, n = n,
+        card = cardinality(spatial_df[[s_key]]),
+        label = paste0("shared ", k)
+      )
+    }
   }
 
   if (length(candidates) == 0L) {
@@ -913,26 +994,30 @@ fetch_dataone_occurrences <- function(dataset_ids,
 .do_entity_join <- function(spatial_df, species_df, s_key, o_key, verbose) {
   # Drop columns from species_df that already exist in spatial_df,
   # except the join keys themselves (both s_key and o_key must be protected).
-  overlap      <- setdiff(
+  overlap <- setdiff(
     intersect(tolower(names(spatial_df)), tolower(names(species_df))),
     c(tolower(s_key), tolower(o_key))
   )
-  species_df   <- species_df[, !tolower(names(species_df)) %in% overlap, drop = FALSE]
+  species_df <- species_df[, !tolower(names(species_df)) %in% overlap, drop = FALSE]
 
-  merged <- tryCatch({
-    spatial_df[[s_key]] <- as.character(spatial_df[[s_key]])
-    species_df[[o_key]] <- as.character(species_df[[o_key]])
-    dplyr::left_join(spatial_df, species_df,
-                     by = stats::setNames(o_key, s_key))
-  },
+  merged <- tryCatch(
+    {
+      spatial_df[[s_key]] <- as.character(spatial_df[[s_key]])
+      species_df[[o_key]] <- as.character(species_df[[o_key]])
+      dplyr::left_join(spatial_df, species_df,
+        by = stats::setNames(o_key, s_key)
+      )
+    },
     error = function(e) {
       message("    Join error: ", conditionMessage(e))
       NULL
     }
   )
   if (!is.null(merged) && verbose) {
-    message(sprintf("    Join result: %d rows \u00d7 %d cols",
-                    nrow(merged), ncol(merged)))
+    message(sprintf(
+      "    Join result: %d rows \u00d7 %d cols",
+      nrow(merged), ncol(merged)
+    ))
   }
   merged
 }
@@ -951,7 +1036,9 @@ fetch_dataone_occurrences <- function(dataset_ids,
       NULL
     }
   )
-  if (is.null(std)) return(NULL)
+  if (is.null(std)) {
+    return(NULL)
+  }
 
   std <- .filter_to_bbox_df(std, bbox)
   if (nrow(std) == 0L) {
@@ -974,14 +1061,15 @@ fetch_dataone_occurrences <- function(dataset_ids,
 .process_one_dataset <- function(dataset_id, bbox, dwc_map,
                                  verbose, timeout = 120L,
                                  site_lookup = NULL, odm_variable = "DENSITY") {
-
   if (verbose) message(sprintf("\nProcessing: %s", str_trunc_safe(dataset_id, 70)))
 
   meta <- .parse_eml_metadata(dataset_id)
-  if (is.null(meta)) return(NULL)
+  if (is.null(meta)) {
+    return(NULL)
+  }
 
   if (verbose) {
-    message(sprintf("  Title   : %s", str_trunc_safe(meta$title   %||% "(none)", 70)))
+    message(sprintf("  Title   : %s", str_trunc_safe(meta$title %||% "(none)", 70)))
     message(sprintf("  Creator : %s", str_trunc_safe(meta$creator %||% "(none)", 50)))
     message(sprintf("  Entities: %d", length(meta$entities)))
   }
@@ -989,10 +1077,10 @@ fetch_dataone_occurrences <- function(dataset_ids,
   # -- Pass 1: classify every entity from EML attribute names -----------------
   # No downloads yet -- just read the attribute list already in `meta`.
   entity_info <- lapply(meta$entities, function(entity) {
-    ename     <- entity$entity_name %||% "(unnamed)"
+    ename <- entity$entity_name %||% "(unnamed)"
     col_names <- entity$attributes$attributeName
     if (length(col_names) == 0L || all(is.na(col_names))) col_names <- character(0)
-    mapping   <- if (length(col_names) > 0L) {
+    mapping <- if (length(col_names) > 0L) {
       .map_columns_to_dwc(col_names, dwc_map)
     } else {
       character(0)
@@ -1030,8 +1118,10 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
     if (is.na(ei$entity$data_url)) {
       if (verbose) {
-        message(sprintf("\n  Entity: %s\n    No data URL \u2014 skipping.",
-                        str_trunc_safe(ei$ename, 60)))
+        message(sprintf(
+          "\n  Entity: %s\n    No data URL \u2014 skipping.",
+          str_trunc_safe(ei$ename, 60)
+        ))
       }
       entity_info[[i]]$category <- "skip"
       next
@@ -1058,9 +1148,9 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
     # Reclassify "unknown" entities once we have real column names
     if (ei$category == "unknown") {
-      mapping  <- .map_columns_to_dwc(names(raw), dwc_map)
+      mapping <- .map_columns_to_dwc(names(raw), dwc_map)
       if (verbose) .report_dwc_mapping(names(raw), mapping, ei$ename)
-      entity_info[[i]]$mapping  <- mapping
+      entity_info[[i]]$mapping <- mapping
       entity_info[[i]]$category <- .classify_entity(mapping)
     }
 
@@ -1101,8 +1191,10 @@ fetch_dataone_occurrences <- function(dataset_ids,
         merged <- .attempt_dwc_join(sei$raw, oei$raw, verbose)
         if (is.null(merged)) next
         merged_mapping <- .map_columns_to_dwc(names(merged), dwc_map)
-        result <- .finalize_entity(merged, merged_mapping, meta,
-                                   bbox, verbose)
+        result <- .finalize_entity(
+          merged, merged_mapping, meta,
+          bbox, verbose
+        )
         if (!is.null(result)) {
           jname <- paste0(sei$ename, " + ", oei$ename)
           entity_results[[jname]] <- result
@@ -1123,12 +1215,16 @@ fetch_dataone_occurrences <- function(dataset_ids,
   # correctly block the "occurrence" entity from re-running in Pass 5.
   # ODM table names (taxon, location, observation, taxon_ancillary, etc.) are
   # excluded -- they are handled by Pass 6 and should never receive site injection.
-  odm_entity_patterns <- c("^observation$", "^location$", "^taxon$",
-                            "observation_ancillary", "taxon_ancillary",
-                            "dataset_summary", "variable_mapping")
+  odm_entity_patterns <- c(
+    "^observation$", "^location$", "^taxon$",
+    "observation_ancillary", "taxon_ancillary",
+    "dataset_summary", "variable_mapping"
+  )
   is_odm_entity <- function(ename) {
     any(grepl(paste(odm_entity_patterns, collapse = "|"),
-              tolower(trimws(ename)), perl = TRUE))
+      tolower(trimws(ename)),
+      perl = TRUE
+    ))
   }
 
   already_covered <- names(entity_results) %||% character(0)
@@ -1137,9 +1233,11 @@ fetch_dataone_occurrences <- function(dataset_ids,
       isTRUE(ei$category == "species_only") &&
         !is.null(ei$raw) &&
         !is_odm_entity(ei$ename) &&
-        !any(vapply(already_covered,
-                    function(k) grepl(ei$ename, k, fixed = TRUE),
-                    logical(1L)))
+        !any(vapply(
+          already_covered,
+          function(k) grepl(ei$ename, k, fixed = TRUE),
+          logical(1L)
+        ))
     },
     entity_info
   )
@@ -1164,7 +1262,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
         rows <- meta$sites[meta$sites$site_code == code, ]
         data.frame(
           site_code        = code,
-          decimalLatitude  = mean(rows$decimalLatitude,  na.rm = TRUE),
+          decimalLatitude  = mean(rows$decimalLatitude, na.rm = TRUE),
           decimalLongitude = mean(rows$decimalLongitude, na.rm = TRUE),
           stringsAsFactors = FALSE
         )
@@ -1191,14 +1289,15 @@ fetch_dataone_occurrences <- function(dataset_ids,
       injected <- if (nrow(sites_table) == 1L) {
         # Case A: single site -- attach coords to all rows
         if (verbose) {
-          message(sprintf("    EML single-site injection: lat=%.4f lon=%.4f",
-                          sites_table$decimalLatitude[1L],
-                          sites_table$decimalLongitude[1L]))
+          message(sprintf(
+            "    EML single-site injection: lat=%.4f lon=%.4f",
+            sites_table$decimalLatitude[1L],
+            sites_table$decimalLongitude[1L]
+          ))
         }
-        ei$raw$decimalLatitude  <- sites_table$decimalLatitude[1L]
+        ei$raw$decimalLatitude <- sites_table$decimalLatitude[1L]
         ei$raw$decimalLongitude <- sites_table$decimalLongitude[1L]
         ei$raw
-
       } else {
         # Case B: multi-site -- find site code column and join
         site_col <- .find_site_code_column(ei$raw, sites_table$site_code)
@@ -1209,54 +1308,63 @@ fetch_dataone_occurrences <- function(dataset_ids,
               vapply(ei$raw, function(x) is.character(x) || is.factor(x), logical(1L))
             ]
             eml_codes_str <- paste(
-              head(unique(sites_table$site_code), 6), collapse = ", "
+              head(unique(sites_table$site_code), 6),
+              collapse = ", "
             )
             data_example <- if (length(char_cols) > 0L) {
               sample_vals <- head(unique(as.character(ei$raw[[char_cols[1L]]])), 5)
-              sprintf("column '%s' contains: %s",
-                      char_cols[1L], paste(sample_vals, collapse = ", "))
+              sprintf(
+                "column '%s' contains: %s",
+                char_cols[1L], paste(sample_vals, collapse = ", ")
+              )
             } else {
               "(no character columns found in data)"
             }
-            message(sprintf(paste(
-              "    WARNING: site code matching failed for entity '%s'.",
-              "    Site table has %d site(s) with codes: %s",
-              "    Best candidate %s",
-              "    These do not overlap well enough for automatic joining (threshold 50%%).",
-              "    To fix this, supply a site_lookup data.frame to fetch_dataone_occurrences():",
-              "      site_lookup = data.frame(",
-              "        site_code        = c(\"SiteA\", \"SiteB\", ...),",
-              "        decimalLatitude  = c(...),",
-              "        decimalLongitude = c(...)",
-              "      )",
-              "    Use the site labels as they appear in the DATA (not the EML).",
-              "    Alternatively, download the data manually and join coordinates yourself.",
-              sep = "\n    "
-            ),
-            str_trunc_safe(ei$ename, 40),
-            nrow(sites_table),
-            eml_codes_str,
-            data_example
+            message(sprintf(
+              paste(
+                "    WARNING: site code matching failed for entity '%s'.",
+                "    Site table has %d site(s) with codes: %s",
+                "    Best candidate %s",
+                "    These do not overlap well enough for automatic joining (threshold 50%%).",
+                "    To fix this, supply a site_lookup data.frame to fetch_dataone_occurrences():",
+                "      site_lookup = data.frame(",
+                "        site_code        = c(\"SiteA\", \"SiteB\", ...),",
+                "        decimalLatitude  = c(...),",
+                "        decimalLongitude = c(...)",
+                "      )",
+                "    Use the site labels as they appear in the DATA (not the EML).",
+                "    Alternatively, download the data manually and join coordinates yourself.",
+                sep = "\n    "
+              ),
+              str_trunc_safe(ei$ename, 40),
+              nrow(sites_table),
+              eml_codes_str,
+              data_example
             ))
           }
           next
         }
         if (verbose) {
-          message(sprintf("    EML multi-site injection: joining on '%s' (%d sites)",
-                          site_col, nrow(sites_table)))
+          message(sprintf(
+            "    EML multi-site injection: joining on '%s' (%d sites)",
+            site_col, nrow(sites_table)
+          ))
         }
         lookup <- sites_table
         lookup$site_code <- toupper(lookup$site_code)
         df_join <- ei$raw
         df_join[[site_col]] <- toupper(as.character(df_join[[site_col]]))
         dplyr::left_join(df_join, lookup,
-                         by = stats::setNames("site_code", site_col))
+          by = stats::setNames("site_code", site_col)
+        )
       }
 
       if (is.null(injected)) next
       inj_mapping <- .map_columns_to_dwc(names(injected), dwc_map)
-      result <- .finalize_entity(injected, inj_mapping, meta,
-                                 bbox, verbose)
+      result <- .finalize_entity(
+        injected, inj_mapping, meta,
+        bbox, verbose
+      )
       if (!is.null(result)) entity_results[[ei$ename]] <- result
     }
   }
@@ -1271,12 +1379,15 @@ fetch_dataone_occurrences <- function(dataset_ids,
   # per taxon x location x date.
   if (length(entity_results) == 0L) {
     odm_result <- .attempt_odm_join(entity_info, dwc_map, meta,
-                                    bbox, verbose,
-                                    odm_variable = odm_variable)
+      bbox, verbose,
+      odm_variable = odm_variable
+    )
     if (!is.null(odm_result)) entity_results[["ODM"]] <- odm_result
   }
 
-  if (length(entity_results) == 0L) return(NULL)
+  if (length(entity_results) == 0L) {
+    return(NULL)
+  }
   dplyr::bind_rows(entity_results)
 }
 
@@ -1297,14 +1408,15 @@ fetch_dataone_occurrences <- function(dataset_ids,
 #'
 #' @noRd
 .attempt_odm_join <- function(entity_info, dwc_map, meta,
-                               bbox, verbose,
-                               odm_variable = "DENSITY") {
-
+                              bbox, verbose,
+                              odm_variable = "DENSITY") {
   enames_lower <- tolower(vapply(entity_info, `[[`, "", "ename"))
 
   find_entity <- function(pattern) {
     idx <- grep(pattern, enames_lower, fixed = TRUE)
-    if (length(idx) == 0L) return(NULL)
+    if (length(idx) == 0L) {
+      return(NULL)
+    }
     # Prefer exact match over partial (e.g. "observation" over "observation_ancillary")
     exact <- which(enames_lower[idx] == pattern)
     if (length(exact) > 0L) idx[exact[1L]] else idx[1L]
@@ -1314,12 +1426,16 @@ fetch_dataone_occurrences <- function(dataset_ids,
   loc_idx <- find_entity("location")
   tax_idx <- find_entity("taxon")
 
-  if (is.null(obs_idx) || is.null(loc_idx) || is.null(tax_idx)) return(NULL)
+  if (is.null(obs_idx) || is.null(loc_idx) || is.null(tax_idx)) {
+    return(NULL)
+  }
 
   # ---- helper: get raw data, downloading if needed --------------------------
   get_raw <- function(idx) {
     ei <- entity_info[[idx]]
-    if (!is.null(ei$raw)) return(ei$raw)
+    if (!is.null(ei$raw)) {
+      return(ei$raw)
+    }
     if (is.na(ei$entity$data_url)) {
       if (verbose) message(sprintf("    ODM: no data URL for '%s' -- skipping.", ei$ename))
       return(NULL)
@@ -1338,7 +1454,9 @@ fetch_dataone_occurrences <- function(dataset_ids,
   loc_raw <- get_raw(loc_idx)
   tax_raw <- get_raw(tax_idx)
 
-  if (is.null(obs_raw) || is.null(loc_raw) || is.null(tax_raw)) return(NULL)
+  if (is.null(obs_raw) || is.null(loc_raw) || is.null(tax_raw)) {
+    return(NULL)
+  }
 
   # ---- detect column names case-insensitively --------------------------------
   find_col <- function(df, pattern) {
@@ -1346,30 +1464,36 @@ fetch_dataone_occurrences <- function(dataset_ids,
     if (length(idx) == 0L) NA_character_ else names(df)[idx[1L]]
   }
 
-  obs_loc_col  <- find_col(obs_raw, "location_id")
-  obs_tax_col  <- find_col(obs_raw, "taxon_id")
-  obs_var_col  <- find_col(obs_raw, "variable_name")
-  obs_val_col  <- find_col(obs_raw, "value")
+  obs_loc_col <- find_col(obs_raw, "location_id")
+  obs_tax_col <- find_col(obs_raw, "taxon_id")
+  obs_var_col <- find_col(obs_raw, "variable_name")
+  obs_val_col <- find_col(obs_raw, "value")
   obs_date_col <- find_col(obs_raw, "datetime")
-  loc_id_col   <- find_col(loc_raw, "location_id")
-  loc_lat_col  <- find_col(loc_raw, "latitude")
-  loc_lon_col  <- find_col(loc_raw, "longitude")
+  loc_id_col <- find_col(loc_raw, "location_id")
+  loc_lat_col <- find_col(loc_raw, "latitude")
+  loc_lon_col <- find_col(loc_raw, "longitude")
   loc_name_col <- find_col(loc_raw, "location_name")
-  tax_id_col   <- find_col(tax_raw, "taxon_id")
+  tax_id_col <- find_col(tax_raw, "taxon_id")
   tax_name_col <- find_col(tax_raw, "taxon_name")
 
-  required <- c(obs_loc_col, obs_tax_col, obs_var_col, obs_val_col,
-                obs_date_col, loc_id_col, loc_lat_col, loc_lon_col,
-                tax_id_col, tax_name_col)
+  required <- c(
+    obs_loc_col, obs_tax_col, obs_var_col, obs_val_col,
+    obs_date_col, loc_id_col, loc_lat_col, loc_lon_col,
+    tax_id_col, tax_name_col
+  )
   if (any(is.na(required))) {
     if (verbose) {
       message(sprintf(
         "    ODM join: required columns missing -- skipping.\n    Missing: %s",
-        paste(c("obs.location_id", "obs.taxon_id", "obs.variable_name",
-                "obs.value", "obs.datetime", "loc.location_id",
-                "loc.latitude", "loc.longitude",
-                "tax.taxon_id", "tax.taxon_name")[is.na(required)],
-              collapse = ", ")
+        paste(
+          c(
+            "obs.location_id", "obs.taxon_id", "obs.variable_name",
+            "obs.value", "obs.datetime", "loc.location_id",
+            "loc.latitude", "loc.longitude",
+            "tax.taxon_id", "tax.taxon_name"
+          )[is.na(required)],
+          collapse = ", "
+        )
       ))
     }
     return(NULL)
@@ -1377,7 +1501,8 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
   # ---- filter location table to rows with coordinates -----------------------
   loc_coords <- loc_raw[
-    !is.na(loc_raw[[loc_lat_col]]) & !is.na(loc_raw[[loc_lon_col]]), ]
+    !is.na(loc_raw[[loc_lat_col]]) & !is.na(loc_raw[[loc_lon_col]]),
+  ]
   if (nrow(loc_coords) == 0L) {
     if (verbose) message("    ODM join: location table has no coordinate rows -- skipping.")
     return(NULL)
@@ -1385,7 +1510,7 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
   # ---- filter observation table to chosen variable --------------------------
   if (!is.null(obs_var_col) && !is.na(obs_var_col) &&
-      odm_variable %in% obs_raw[[obs_var_col]]) {
+    odm_variable %in% obs_raw[[obs_var_col]]) {
     obs_filt <- obs_raw[obs_raw[[obs_var_col]] == odm_variable, ]
     if (verbose) {
       message(sprintf(
@@ -1397,8 +1522,11 @@ fetch_dataone_occurrences <- function(dataset_ids,
     # Requested variable absent -- use all rows and warn
     obs_filt <- obs_raw
     if (verbose) {
-      avail <- if (!is.na(obs_var_col))
-        paste(unique(obs_raw[[obs_var_col]]), collapse = ", ") else "(unknown)"
+      avail <- if (!is.na(obs_var_col)) {
+        paste(unique(obs_raw[[obs_var_col]]), collapse = ", ")
+      } else {
+        "(unknown)"
+      }
       message(sprintf(
         "    ODM join: variable '%s' not found; using all rows. Available: %s",
         odm_variable, avail
@@ -1412,7 +1540,8 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
   merged <- tryCatch(
     dplyr::left_join(obs_filt, loc_coords,
-                     by = stats::setNames(loc_id_col, obs_loc_col)),
+      by = stats::setNames(loc_id_col, obs_loc_col)
+    ),
     error = function(e) {
       if (verbose) message("    ODM obs->loc join error: ", conditionMessage(e))
       NULL
@@ -1435,7 +1564,8 @@ fetch_dataone_occurrences <- function(dataset_ids,
 
   merged <- tryCatch(
     dplyr::left_join(merged, tax_slim,
-                     by = stats::setNames(tax_id_col, obs_tax_col)),
+      by = stats::setNames(tax_id_col, obs_tax_col)
+    ),
     error = function(e) {
       if (verbose) message("    ODM merged->taxon join error: ", conditionMessage(e))
       NULL
@@ -1446,8 +1576,10 @@ fetch_dataone_occurrences <- function(dataset_ids,
     return(NULL)
   }
   if (verbose) {
-    message(sprintf("    ODM merged->taxon join: %d rows x %d cols",
-                    nrow(merged), ncol(merged)))
+    message(sprintf(
+      "    ODM merged->taxon join: %d rows x %d cols",
+      nrow(merged), ncol(merged)
+    ))
   }
 
   # ---- rename to DwC --------------------------------------------------------
@@ -1458,15 +1590,15 @@ fetch_dataone_occurrences <- function(dataset_ids,
     df
   }
 
-  merged <- rename_if_present(merged, tax_name_col,  "scientificName")
-  merged <- rename_if_present(merged, obs_date_col,   "eventDate")
-  merged <- rename_if_present(merged, obs_val_col,    "individualCount")
-  merged <- rename_if_present(merged, loc_lat_col,    "decimalLatitude")
-  merged <- rename_if_present(merged, loc_lon_col,    "decimalLongitude")
-  merged <- rename_if_present(merged, loc_name_col,   "locality")
+  merged <- rename_if_present(merged, tax_name_col, "scientificName")
+  merged <- rename_if_present(merged, obs_date_col, "eventDate")
+  merged <- rename_if_present(merged, obs_val_col, "individualCount")
+  merged <- rename_if_present(merged, loc_lat_col, "decimalLatitude")
+  merged <- rename_if_present(merged, loc_lon_col, "decimalLongitude")
+  merged <- rename_if_present(merged, loc_name_col, "locality")
 
   # Coerce coordinate columns to numeric
-  merged$decimalLatitude  <- suppressWarnings(as.numeric(merged$decimalLatitude))
+  merged$decimalLatitude <- suppressWarnings(as.numeric(merged$decimalLatitude))
   merged$decimalLongitude <- suppressWarnings(as.numeric(merged$decimalLongitude))
 
   # ---- finalize -------------------------------------------------------------
@@ -1489,7 +1621,11 @@ xml_text_safe <- function(node) {
 #' str_trunc fallback that works without stringr at load time
 #' @noRd
 str_trunc_safe <- function(x, width) {
-  if (is.na(x) || !nzchar(x)) return(x)
-  if (nchar(x) <= width) return(x)
+  if (is.na(x) || !nzchar(x)) {
+    return(x)
+  }
+  if (nchar(x) <= width) {
+    return(x)
+  }
   paste0(substr(x, 1L, width - 3L), "...")
 }

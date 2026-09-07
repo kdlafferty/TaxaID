@@ -71,17 +71,17 @@
 #' @export
 #' @examples
 #' \dontrun{
-#' taxafetch_clear_cache(dry_run = TRUE)                       # see what's there first
-#' taxafetch_clear_cache(orphans_only = TRUE, dry_run = TRUE)   # just stale leftovers
-#' taxafetch_clear_cache(orphans_only = TRUE)                   # remove just those
-#' taxafetch_clear_cache()                                      # actually clear everything
-#' taxafetch_clear_cache(older_than_days = 90)                  # only stale entries
+#' taxafetch_clear_cache(dry_run = TRUE) # see what's there first
+#' taxafetch_clear_cache(orphans_only = TRUE, dry_run = TRUE) # just stale leftovers
+#' taxafetch_clear_cache(orphans_only = TRUE) # remove just those
+#' taxafetch_clear_cache() # actually clear everything
+#' taxafetch_clear_cache(older_than_days = 90) # only stale entries
 #' }
 taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
-                                   older_than_days = NULL,
-                                   orphans_only = FALSE,
-                                   zips_only = FALSE,
-                                   dry_run = FALSE) {
+                                  older_than_days = NULL,
+                                  orphans_only = FALSE,
+                                  zips_only = FALSE,
+                                  dry_run = FALSE) {
   if (!is.logical(orphans_only) || length(orphans_only) != 1L || is.na(orphans_only)) {
     stop("taxafetch_clear_cache: 'orphans_only' must be TRUE or FALSE.")
   }
@@ -89,8 +89,10 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
     stop("taxafetch_clear_cache: 'zips_only' must be TRUE or FALSE.")
   }
   if (isTRUE(orphans_only) && isTRUE(zips_only)) {
-    stop("taxafetch_clear_cache: use either 'orphans_only' or 'zips_only', not both -- ",
-         "orphans_only already targets a subset of the zips.")
+    stop(
+      "taxafetch_clear_cache: use either 'orphans_only' or 'zips_only', not both -- ",
+      "orphans_only already targets a subset of the zips."
+    )
   }
 
   inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns)
@@ -110,12 +112,13 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
     }
     message(sprintf(
       "taxafetch_clear_cache: targeting %d zip(s); metadata kept so the download keys stay re-fetchable.",
-      nrow(inv)))
+      nrow(inv)
+    ))
   }
 
   if (isTRUE(orphans_only)) {
     referenced <- basename(.taxafetch_referenced_zips(cache_dir))
-    is_zip     <- grepl("\\.zip$", basename(inv$path))
+    is_zip <- grepl("\\.zip$", basename(inv$path))
     inv <- inv[is_zip & !(basename(inv$path) %in% referenced), , drop = FALSE]
     if (nrow(inv) == 0L) {
       message(
@@ -127,7 +130,8 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
   }
 
   TaxaTools::report_and_clear_cache(
-    inv, label = "taxafetch_clear_cache", cache_dir = cache_dir,
+    inv,
+    label = "taxafetch_clear_cache", cache_dir = cache_dir,
     older_than_days = older_than_days, dry_run = dry_run
   )
 }
@@ -147,7 +151,9 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
 #' @noRd
 .taxafetch_referenced_zips <- function(cache_dir) {
   meta_files <- list.files(cache_dir, pattern = "^gbif_dl_.*_meta\\.rds$", full.names = TRUE)
-  if (length(meta_files) == 0L) return(character(0))
+  if (length(meta_files) == 0L) {
+    return(character(0))
+  }
 
   paths <- vapply(meta_files, function(f) {
     meta <- tryCatch(readRDS(f), error = function(e) NULL)

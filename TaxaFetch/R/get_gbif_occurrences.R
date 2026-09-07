@@ -159,10 +159,10 @@
 #'
 #' @examples
 #' \dontrun{
-#' taxa_df    <- data.frame(family = "Felidae", stringsAsFactors = FALSE)
-#' keys_df    <- get_keys_from_context(taxa_df)
+#' taxa_df <- data.frame(family = "Felidae", stringsAsFactors = FALSE)
+#' keys_df <- get_keys_from_context(taxa_df)
 #' valid_keys <- keys_df$usageKey[!is.na(keys_df$usageKey)]
-#' bbox       <- make_bbox_wkt(lat = 34.41, lon = -119.86, radius_deg = 3.0)
+#' bbox <- make_bbox_wkt(lat = 34.41, lon = -119.86, radius_deg = 3.0)
 #'
 #' # Few keys -> fetch_gbif_occurrences() fires automatically (no GBIF account
 #' # needed). Hundreds of keys -> download_gbif_occurrences() fires instead.
@@ -173,28 +173,28 @@
 #' )
 #' }
 get_gbif_occurrences <- function(
-    keys,
-    geometry,
-    year_range         = .gbif_default_year_range(),
-    limit               = NULL,
-    key_threshold       = 50L,
-    rank_filter         = "species",
-    columns             = "standard",
-    cache_dir           = tools::R_user_dir("TaxaFetch", "cache"),
-    overwrite           = FALSE,
-    exclude_absent      = TRUE,
-    basis_keep          = NULL,
-    status_ping         = 15,
-    gbif_user           = Sys.getenv("GBIF_USER"),
-    gbif_pwd            = Sys.getenv("GBIF_PWD"),
-    gbif_email          = Sys.getenv("GBIF_EMAIL"),
-    chunk_size          = 20L,
-    pause_seconds       = 2,
-    pause_between_keys  = 0.5,
-    max_retries         = 4L,
-    on_cap              = c("warn", "escalate", "error"),
-    beep                = FALSE) {
-
+  keys,
+  geometry,
+  year_range = .gbif_default_year_range(),
+  limit = NULL,
+  key_threshold = 50L,
+  rank_filter = "species",
+  columns = "standard",
+  cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
+  overwrite = FALSE,
+  exclude_absent = TRUE,
+  basis_keep = NULL,
+  status_ping = 15,
+  gbif_user = Sys.getenv("GBIF_USER"),
+  gbif_pwd = Sys.getenv("GBIF_PWD"),
+  gbif_email = Sys.getenv("GBIF_EMAIL"),
+  chunk_size = 20L,
+  pause_seconds = 2,
+  pause_between_keys = 0.5,
+  max_retries = 4L,
+  on_cap = c("warn", "escalate", "error"),
+  beep = FALSE
+) {
   on_cap <- match.arg(on_cap)
 
   # --- Input checks -------------------------------------------------------
@@ -204,19 +204,24 @@ get_gbif_occurrences <- function(
     stop("get_gbif_occurrences: no valid 'keys' supplied.", call. = FALSE)
   }
   if (!is.numeric(key_threshold) || length(key_threshold) != 1L ||
-      is.na(key_threshold) || key_threshold <= 0) {
+    is.na(key_threshold) || key_threshold <= 0) {
     stop("get_gbif_occurrences: 'key_threshold' must be a single positive number.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   if (!(isFALSE(rank_filter) || is.null(rank_filter) ||
-        (is.character(rank_filter) && length(rank_filter) == 1L))) {
+    (is.character(rank_filter) && length(rank_filter) == 1L))) {
     stop("get_gbif_occurrences: 'rank_filter' must be a single character ",
-         "string, FALSE, or NULL.", call. = FALSE)
+      "string, FALSE, or NULL.",
+      call. = FALSE
+    )
   }
   if (!(identical(columns, "standard") || identical(columns, "all") ||
-        is.character(columns))) {
+    is.character(columns))) {
     stop("get_gbif_occurrences: 'columns' must be \"standard\", \"all\", ",
-         "or a character vector of column names.", call. = FALSE)
+      "or a character vector of column names.",
+      call. = FALSE
+    )
   }
 
   want_cols <- if (identical(columns, "all")) {
@@ -227,7 +232,7 @@ get_gbif_occurrences <- function(
     columns
   }
 
-  n_keys       <- length(keys)
+  n_keys <- length(keys)
   use_download <- n_keys >= key_threshold
 
   # select_cols is a SIMPLE_CSV-native argument -- translate the wrapper's
@@ -268,7 +273,6 @@ get_gbif_occurrences <- function(
       gbif_email     = gbif_email,
       beep           = beep
     )
-
   } else {
     message(sprintf(
       paste0(
@@ -309,11 +313,14 @@ get_gbif_occurrences <- function(
   # priors were near-identical and near-uninformative. The download backend
   # applies `limit` AFTER import, so there a cap is caller-inflicted and
   # `limit = NULL` removes it outright.
-  eff_limit <- if (use_download) limit else
+  eff_limit <- if (use_download) {
+    limit
+  } else {
     (if (is.null(limit)) 10000L else limit)
+  }
   capped_keys <- integer(0)
   if (!is.null(eff_limit) && is.finite(eff_limit) &&
-      "taxonKey" %in% names(raw) && nrow(raw) > 0L) {
+    "taxonKey" %in% names(raw) && nrow(raw) > 0L) {
     .cnt <- table(raw$taxonKey)
     capped_keys <- as.integer(names(.cnt)[.cnt >= eff_limit])
   }
@@ -327,35 +334,48 @@ get_gbif_occurrences <- function(
       ),
       length(capped_keys), length(unique(raw$taxonKey)), format(eff_limit),
       100 * sum(raw$taxonKey %in% capped_keys) / nrow(raw),
-      if (use_download)
+      if (use_download) {
         "This backend caps after import -- pass limit = NULL to keep every record."
-      else
+      } else {
         "The direct API caps here; on_cap = 'escalate' re-fetches these keys via the download API."
+      }
     )
     if (identical(on_cap, "error")) stop(.msg, call. = FALSE)
     if (identical(on_cap, "escalate")) {
       message(.msg)
       message(sprintf(
         "get_gbif_occurrences: escalating %d capped key(s) to the download API (limit = NULL)...",
-        length(capped_keys)))
+        length(capped_keys)
+      ))
       .esc <- try(download_gbif_occurrences(
         keys = capped_keys, geometry = geometry, year_range = year_range,
         limit = NULL, cache_dir = cache_dir, overwrite = overwrite,
         status_ping = status_ping, exclude_absent = exclude_absent,
         basis_keep = basis_keep, select_cols = select_cols_dl,
         gbif_user = gbif_user, gbif_pwd = gbif_pwd, gbif_email = gbif_email,
-        beep = beep), silent = TRUE)
+        beep = beep
+      ), silent = TRUE)
       if (inherits(.esc, "try-error") || !is.data.frame(.esc) || nrow(.esc) == 0L) {
-        warning(sprintf(
-          "get_gbif_occurrences: escalation failed (%s) -- returning TRUNCATED data. Set GBIF_USER/GBIF_PWD/GBIF_EMAIL, or re-run with limit = NULL.",
-          if (inherits(.esc, "try-error"))
-            trimws(conditionMessage(attr(.esc, "condition"))) else "no records"),
-          call. = FALSE)
+        warning(
+          sprintf(
+            paste0(
+              "get_gbif_occurrences: escalation failed (%s) -- returning TRUNCATED data. ",
+              "Set GBIF_USER/GBIF_PWD/GBIF_EMAIL, or re-run with limit = NULL."
+            ),
+            if (inherits(.esc, "try-error")) {
+              trimws(conditionMessage(attr(.esc, "condition")))
+            } else {
+              "no records"
+            }
+          ),
+          call. = FALSE
+        )
       } else {
         raw <- dplyr::bind_rows(raw[!raw$taxonKey %in% capped_keys, , drop = FALSE], .esc)
         message(sprintf(
           "get_gbif_occurrences: escalation replaced %d key(s); pool is now %d records.",
-          length(capped_keys), nrow(raw)))
+          length(capped_keys), nrow(raw)
+        ))
         capped_keys <- integer(0)
       }
     } else {

@@ -48,7 +48,7 @@ library(TaxaFetch)
 # --- Option A: explicit paths (recommended for reproducible scripts) ----------
 
 biotime_paths <- c(
-  file.choose()                        # select a BioTime CSV (raw_data_*.csv)
+  file.choose() # select a BioTime CSV (raw_data_*.csv)
   # file.choose(),                     # add more studies as needed
 )
 
@@ -111,8 +111,10 @@ biotime_occ_list <- lapply(biotime_paths, function(path) {
   tryCatch(
     read_biotime_study(local_path = path, verbose = TRUE),
     error = function(e) {
-      warning(sprintf("Failed to read '%s': %s", basename(path),
-                      conditionMessage(e)), call. = FALSE)
+      warning(sprintf(
+        "Failed to read '%s': %s", basename(path),
+        conditionMessage(e)
+      ), call. = FALSE)
       NULL
     }
   )
@@ -126,8 +128,10 @@ biotime_occ_list <- Filter(Negate(is.null), biotime_occ_list)
 
 if (length(biotime_occ_list) == 0L) stop("No BioTime files were read successfully.")
 
-message(sprintf("Stage 1 complete: %d study/studies read successfully.",
-                length(biotime_occ_list)))
+message(sprintf(
+  "Stage 1 complete: %d study/studies read successfully.",
+  length(biotime_occ_list)
+))
 
 
 # ==============================================================================
@@ -147,14 +151,20 @@ for (nm in names(biotime_occ_list)) {
   cat(sprintf("  Present      : %d\n", sum(occ$occurrenceStatus == "present")))
   cat(sprintf("  Absent       : %d\n", sum(occ$occurrenceStatus == "absent")))
   cat(sprintf("  Taxa         : %d unique\n", length(unique(occ$scientificName))))
-  cat(sprintf("  Years        : %d - %d\n",
-              min(occ$year, na.rm = TRUE), max(occ$year, na.rm = TRUE)))
-  cat(sprintf("  Lat range    : %.3f - %.3f\n",
-              min(occ$decimalLatitude,  na.rm = TRUE),
-              max(occ$decimalLatitude,  na.rm = TRUE)))
-  cat(sprintf("  Lon range    : %.3f - %.3f\n",
-              min(occ$decimalLongitude, na.rm = TRUE),
-              max(occ$decimalLongitude, na.rm = TRUE)))
+  cat(sprintf(
+    "  Years        : %d - %d\n",
+    min(occ$year, na.rm = TRUE), max(occ$year, na.rm = TRUE)
+  ))
+  cat(sprintf(
+    "  Lat range    : %.3f - %.3f\n",
+    min(occ$decimalLatitude, na.rm = TRUE),
+    max(occ$decimalLatitude, na.rm = TRUE)
+  ))
+  cat(sprintf(
+    "  Lon range    : %.3f - %.3f\n",
+    min(occ$decimalLongitude, na.rm = TRUE),
+    max(occ$decimalLongitude, na.rm = TRUE)
+  ))
   cat(sprintf("  datasetID    : %s\n", occ$datasetID[1L]))
   cat("  Taxa:\n")
   print(sort(table(occ$scientificName), decreasing = TRUE))

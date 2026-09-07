@@ -124,20 +124,18 @@
 #'
 #' @examples
 #' \dontrun{
-#' geo_screened   <- parse_geo_screening_response(llm_raw, geo_prompt)
-#' accepted_geo   <- geo_screened[geo_screened$geo_match, ]
-#' taxon_prompt   <- build_taxon_screen_prompt(accepted_geo, "marine fish")
+#' geo_screened <- parse_geo_screening_response(llm_raw, geo_prompt)
+#' accepted_geo <- geo_screened[geo_screened$geo_match, ]
+#' taxon_prompt <- build_taxon_screen_prompt(accepted_geo, "marine fish")
 #' print(taxon_prompt)
 #' cat(taxon_prompt$prompts[[1]])
 #' }
-
 build_taxon_screen_prompt <- function(catalog,
                                       taxon_scope,
-                                      geo_scope      = NULL,
-                                      chunk_size     = 50L,
+                                      geo_scope = NULL,
+                                      chunk_size = 50L,
                                       abstract_chars = 300L,
-                                      verbose        = TRUE) {
-
+                                      verbose = TRUE) {
   # ---- input checks ----------------------------------------------------------
   if (!is.data.frame(catalog)) {
     stop("build_taxon_screen_prompt: 'catalog' must be a dataframe.")
@@ -146,17 +144,17 @@ build_taxon_screen_prompt <- function(catalog,
     stop("build_taxon_screen_prompt: 'catalog' must contain an 'id' column.")
   }
   if (!is.character(taxon_scope) || length(taxon_scope) != 1L ||
-      is.na(taxon_scope) || !nzchar(trimws(taxon_scope))) {
+    is.na(taxon_scope) || !nzchar(trimws(taxon_scope))) {
     stop("build_taxon_screen_prompt: 'taxon_scope' must be a non-empty character string.")
   }
   if (!is.null(geo_scope)) {
     if (!is.character(geo_scope) || length(geo_scope) != 1L ||
-        is.na(geo_scope) || !nzchar(trimws(geo_scope))) {
+      is.na(geo_scope) || !nzchar(trimws(geo_scope))) {
       stop("build_taxon_screen_prompt: 'geo_scope' must be a non-empty character string or NULL.")
     }
     geo_scope <- trimws(geo_scope)
   }
-  chunk_size     <- as.integer(chunk_size)
+  chunk_size <- as.integer(chunk_size)
   abstract_chars <- as.integer(abstract_chars)
   if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("build_taxon_screen_prompt: 'verbose' must be TRUE or FALSE.")
@@ -192,30 +190,32 @@ build_taxon_screen_prompt <- function(catalog,
     ))
   }
   if (length(found_text) == 0L) {
-    stop("build_taxon_screen_prompt: catalog has none of the expected text columns ",
-         "(title, abstract, keywords) -- cannot build prompt.")
+    stop(
+      "build_taxon_screen_prompt: catalog has none of the expected text columns ",
+      "(title, abstract, keywords) -- cannot build prompt."
+    )
   }
 
-  titles    <- get_col(catalog, "title")
+  titles <- get_col(catalog, "title")
   abstracts <- get_col(catalog, "abstract")
-  keywords  <- get_col(catalog, "keywords")
-  ids       <- catalog$id
+  keywords <- get_col(catalog, "keywords")
+  ids <- catalog$id
 
   # ---- identify and skip datasets with no usable metadata --------------------
   has_text <- vapply(seq_len(nrow(catalog)), function(i) {
     !all(is.na(c(titles[i], abstracts[i], keywords[i])) |
-           !nzchar(trimws(c(
-             if (is.na(titles[i]))    "" else titles[i],
-             if (is.na(abstracts[i])) "" else abstracts[i],
-             if (is.na(keywords[i]))  "" else keywords[i]
-           ))))
+      !nzchar(trimws(c(
+        if (is.na(titles[i])) "" else titles[i],
+        if (is.na(abstracts[i])) "" else abstracts[i],
+        if (is.na(keywords[i])) "" else keywords[i]
+      ))))
   }, logical(1L))
 
   # Filter to has_text rows once, by subsetting the already-built vectors --
   # avoids rebuilding titles/abstracts/keywords a second time via get_col()
   # on a filtered data.frame (2026-08 human review).
   skipped_ids <- ids[!has_text]
-  ids_keep    <- ids[has_text]
+  ids_keep <- ids[has_text]
 
   if (verbose && length(skipped_ids) > 0L) {
     message(sprintf(
@@ -228,9 +228,9 @@ build_taxon_screen_prompt <- function(catalog,
     stop("build_taxon_screen_prompt: no datasets have title, abstract, or keyword metadata -- cannot build prompt.")
   }
 
-  titles_k    <- titles[has_text]
+  titles_k <- titles[has_text]
   abstracts_k <- abstracts[has_text]
-  keywords_k  <- keywords[has_text]
+  keywords_k <- keywords[has_text]
 
   # ---- truncate abstracts ----------------------------------------------------
   if (abstract_chars > 0L) {
@@ -244,20 +244,20 @@ build_taxon_screen_prompt <- function(catalog,
   }
 
   # ---- chunk and build prompts -----------------------------------------------
-  n_items  <- length(ids_keep)
-  indices  <- seq_len(n_items)
-  chunks   <- split(indices, ceiling(indices / chunk_size))
+  n_items <- length(ids_keep)
+  indices <- seq_len(n_items)
+  chunks <- split(indices, ceiling(indices / chunk_size))
   n_chunks <- length(chunks)
 
   prompts <- lapply(chunks, function(idx) {
     .build_taxon_prompt_single(
-      ids        = ids_keep[idx],
-      titles     = titles_k[idx],
-      abstracts  = abstracts_k[idx],
-      keywords   = keywords_k[idx],
-      indices    = idx,
+      ids = ids_keep[idx],
+      titles = titles_k[idx],
+      abstracts = abstracts_k[idx],
+      keywords = keywords_k[idx],
+      indices = idx,
       taxon_scope = taxon_scope,
-      geo_scope   = geo_scope
+      geo_scope = geo_scope
     )
   })
 
@@ -308,11 +308,15 @@ print.taxon_prompt <- function(x, ...) {
     cat(sprintf("  Chunks:             1 (chunk_size = %d)\n", x$n_items))
   } else {
     chunk_sizes <- vapply(x$chunks, length, integer(1L))
-    cat(sprintf("  Chunks:             %d (sizes: %s)\n",
-                x$n_chunks, paste(chunk_sizes, collapse = ", ")))
+    cat(sprintf(
+      "  Chunks:             %d (sizes: %s)\n",
+      x$n_chunks, paste(chunk_sizes, collapse = ", ")
+    ))
   }
-  cat(sprintf("  Prompt tokens (approx): ~%d per chunk\n",
-              nchar(x$prompts[[1]]) %/% 4L))
+  cat(sprintf(
+    "  Prompt tokens (approx): ~%d per chunk\n",
+    nchar(x$prompts[[1]]) %/% 4L
+  ))
   invisible(x)
 }
 
@@ -369,13 +373,11 @@ print.taxon_prompt <- function(x, ...) {
 #' @examples
 #' \dontrun{
 #' taxon_screened <- parse_taxon_screening_response(llm_raw2, taxon_prompt)
-#' accepted       <- taxon_screened[taxon_screened$taxon_match, ]
+#' accepted <- taxon_screened[taxon_screened$taxon_match, ]
 #' nrow(accepted)
 #' table(taxon_screened$taxon_source)
 #' }
-
 parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
-
   if (!is.character(raw_text) || length(raw_text) != 1L) {
     stop("parse_taxon_screening_response: 'raw_text' must be a length-1 character string.")
   }
@@ -387,8 +389,8 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
   }
 
   # ---- strip markdown fences and parse CSV -----------------------------------
-  txt   <- gsub("```[a-zA-Z]*\n?", "", raw_text)
-  txt   <- gsub("```", "", txt)
+  txt <- gsub("```[a-zA-Z]*\n?", "", raw_text)
+  txt <- gsub("```", "", txt)
   lines <- trimws(strsplit(txt, "\n")[[1]])
 
   combined_mode <- !is.null(taxon_prompt$geo_scope)
@@ -397,12 +399,12 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
   #   solo mode     : columns are  index, match
   #   combined mode : columns are  index, taxon_match, geo_match
   is_header_line <- if (combined_mode) {
-    grepl("\\bindex\\b",       lines, ignore.case = TRUE) &
-    grepl("\\btaxon_match\\b", lines, ignore.case = TRUE) &
-    grepl("\\bgeo_match\\b",   lines, ignore.case = TRUE)
+    grepl("\\bindex\\b", lines, ignore.case = TRUE) &
+      grepl("\\btaxon_match\\b", lines, ignore.case = TRUE) &
+      grepl("\\bgeo_match\\b", lines, ignore.case = TRUE)
   } else {
     grepl("\\bindex\\b", lines, ignore.case = TRUE) &
-    grepl("\\bmatch\\b",  lines, ignore.case = TRUE)
+      grepl("\\bmatch\\b", lines, ignore.case = TRUE)
   }
   header_idx <- which(is_header_line)[1L]
 
@@ -411,17 +413,19 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
     data_lines <- data_lines[nzchar(data_lines)]
     # Remove duplicate header rows from chunks 2+
     is_dup_header <- if (combined_mode) {
-      grepl("\\bindex\\b",       data_lines, ignore.case = TRUE) &
-      grepl("\\btaxon_match\\b", data_lines, ignore.case = TRUE)
+      grepl("\\bindex\\b", data_lines, ignore.case = TRUE) &
+        grepl("\\btaxon_match\\b", data_lines, ignore.case = TRUE)
     } else {
       grepl("\\bindex\\b", data_lines, ignore.case = TRUE) &
-      grepl("\\bmatch\\b",  data_lines, ignore.case = TRUE)
+        grepl("\\bmatch\\b", data_lines, ignore.case = TRUE)
     }
     is_dup_header[1L] <- FALSE
     data_lines <- data_lines[!is_dup_header]
     parsed <- tryCatch(
-      utils::read.csv(text = paste(data_lines, collapse = "\n"),
-                      stringsAsFactors = FALSE, strip.white = TRUE),
+      utils::read.csv(
+        text = paste(data_lines, collapse = "\n"),
+        stringsAsFactors = FALSE, strip.white = TRUE
+      ),
       error = function(e) NULL
     )
     if (combined_mode) {
@@ -433,7 +437,7 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
       names(parsed) <- tolower(names(parsed))
       if (combined_mode) {
         parsed$taxon_match <- toupper(trimws(parsed$taxon_match))
-        parsed$geo_match   <- toupper(trimws(parsed$geo_match))
+        parsed$geo_match <- toupper(trimws(parsed$geo_match))
       } else {
         parsed$match <- toupper(trimws(parsed$match))
       }
@@ -457,11 +461,11 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
 
   # ---- build dataset-level decision lookup -----------------------------------
   ids_submitted <- taxon_prompt$ids
-  n             <- length(ids_submitted)
+  n <- length(ids_submitted)
 
-  id_match     <- rep(FALSE,             n)
-  id_geo_match <- rep(FALSE,             n)
-  id_source    <- rep("llm_no_response", n)
+  id_match <- rep(FALSE, n)
+  id_geo_match <- rep(FALSE, n)
+  id_source <- rep("llm_no_response", n)
 
   if (!is.null(llm_decisions)) {
     for (i in seq_len(nrow(llm_decisions))) {
@@ -469,16 +473,16 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
       if (!is.na(idx) && idx >= 1L && idx <= n) {
         if (combined_mode) {
           tm <- llm_decisions$taxon_match[i] == "YES"
-          gm <- llm_decisions$geo_match[i]   == "YES"
-          id_match[idx]     <- tm
+          gm <- llm_decisions$geo_match[i] == "YES"
+          id_match[idx] <- tm
           id_geo_match[idx] <- gm
-          id_source[idx]    <- if (tm) "llm_yes" else "llm_no"
+          id_source[idx] <- if (tm) "llm_yes" else "llm_no"
         } else {
           if (llm_decisions$match[i] == "YES") {
-            id_match[idx]  <- TRUE
+            id_match[idx] <- TRUE
             id_source[idx] <- "llm_yes"
           } else {
-            id_match[idx]  <- FALSE
+            id_match[idx] <- FALSE
             id_source[idx] <- "llm_no"
           }
         }
@@ -533,7 +537,8 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
   )
   catalog_clean <- if (length(stale_cols) > 0L) {
     taxon_prompt$catalog[, setdiff(names(taxon_prompt$catalog), stale_cols),
-                         drop = FALSE]
+      drop = FALSE
+    ]
   } else {
     taxon_prompt$catalog
   }
@@ -580,16 +585,17 @@ parse_taxon_screening_response <- function(raw_text, taxon_prompt) {
 
 .build_taxon_prompt_single <- function(ids, titles, abstracts, keywords,
                                        indices, taxon_scope, geo_scope = NULL) {
-
   fmt_field <- function(label, val) {
-    if (is.na(val) || !nzchar(trimws(val))) return("")
+    if (is.na(val) || !nzchar(trimws(val))) {
+      return("")
+    }
     sprintf("  %s: %s", label, trimws(val))
   }
 
   dataset_block <- paste(
     vapply(seq_along(indices), function(i) {
       fields <- c(
-        fmt_field("Title",    titles[i]),
+        fmt_field("Title", titles[i]),
         fmt_field("Abstract", abstracts[i]),
         fmt_field("Keywords", keywords[i])
       )

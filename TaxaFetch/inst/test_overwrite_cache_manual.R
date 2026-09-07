@@ -43,8 +43,8 @@ cat("Test cache dir:", test_cache_dir, "\n")
 # back with 0 records for you.
 geometry <- TaxaFetch::make_bbox_wkt(lat = 34.408, lon = -119.843, radius_deg = 0.02)
 
-keys <- 212L   # Aves (birds) -- broad taxonomically, but the tiny bbox above
-               # is what actually keeps this small, not the taxon choice.
+keys <- 212L # Aves (birds) -- broad taxonomically, but the tiny bbox above
+# is what actually keeps this small, not the taxon choice.
 
 cat("\n=== Run 1: fresh download (nothing cached yet) ===\n")
 occ1 <- download_gbif_occurrences(

@@ -65,7 +65,6 @@
 #' @export
 
 get_keys_from_context <- function(hierarchy_df) {
-
   # --- Dependency check -------------------------------------------------------
   if (!requireNamespace("rgbif", quietly = TRUE)) {
     stop(
@@ -82,8 +81,10 @@ get_keys_from_context <- function(hierarchy_df) {
     stop("get_keys_from_context: 'hierarchy_df' has zero rows.")
   }
 
-  valid_ranks <- c("kingdom", "phylum", "class", "order",
-                   "family", "genus", "species")
+  valid_ranks <- c(
+    "kingdom", "phylum", "class", "order",
+    "family", "genus", "species"
+  )
 
   rank_cols_present <- names(hierarchy_df)[
     tolower(names(hierarchy_df)) %in% valid_ranks
@@ -124,8 +125,8 @@ get_keys_from_context <- function(hierarchy_df) {
   message(sprintf(
     "get_keys_from_context: done. %d matched (%d EXACT, %d FUZZY, %d NONE/ERROR%s).",
     sum(!is.na(results$usageKey)),
-    sum(results$matchType == "EXACT",  na.rm = TRUE),
-    sum(results$matchType == "FUZZY",  na.rm = TRUE),
+    sum(results$matchType == "EXACT", na.rm = TRUE),
+    sum(results$matchType == "FUZZY", na.rm = TRUE),
     sum(results$matchType %in% c("NONE", "NO_DATA", "ERROR"), na.rm = TRUE),
     if (n_recovered > 0L) sprintf(", %d LOOKUP_RECOVERED", n_recovered) else ""
   ))
@@ -146,7 +147,6 @@ get_keys_from_context <- function(hierarchy_df) {
 #' @noRd
 
 .process_gbif_row <- function(row, valid_ranks) {
-
   # Identify which rank columns are present in this row
   present_cols <- names(row)[tolower(names(row)) %in% valid_ranks]
 
@@ -160,14 +160,16 @@ get_keys_from_context <- function(hierarchy_df) {
   }
 
   if (length(rank_values) == 0) {
-    return(data.frame(usageKey = NA_integer_,
-                      matchType = "NO_DATA",
-                      gbif_rank = NA_character_,
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      usageKey = NA_integer_,
+      matchType = "NO_DATA",
+      gbif_rank = NA_character_,
+      stringsAsFactors = FALSE
+    ))
   }
 
   # Find the most specific rank present (species is most specific)
-  rank_order  <- rev(valid_ranks)   # species first in search order
+  rank_order <- rev(valid_ranks) # species first in search order
   target_rank <- NULL
   target_name <- NULL
 
@@ -181,43 +183,49 @@ get_keys_from_context <- function(hierarchy_df) {
 
   # Build API call args: context is all ranks except the target itself
   api_args <- rank_values
-  api_args[[target_rank]] <- NULL   # remove self-reference from context
-  api_args$name    <- target_name
-  api_args$rank    <- toupper(target_rank)
+  api_args[[target_rank]] <- NULL # remove self-reference from context
+  api_args$name <- target_name
+  api_args$rank <- toupper(target_rank)
   api_args$verbose <- FALSE
 
   # Call GBIF backbone with full context
-  tryCatch({
-    record   <- do.call(rgbif::name_backbone, api_args)
-    usage_key <- record$usageKey
-    if (is.null(usage_key) || length(usage_key) == 0) usage_key <- NA_integer_
+  tryCatch(
+    {
+      record <- do.call(rgbif::name_backbone, api_args)
+      usage_key <- record$usageKey
+      if (is.null(usage_key) || length(usage_key) == 0) usage_key <- NA_integer_
 
-    result <- data.frame(
-      usageKey  = as.integer(usage_key),
-      matchType = as.character(record$matchType %||% NA_character_),
-      gbif_rank = as.character(record$rank       %||% NA_character_),
-      stringsAsFactors = FALSE
-    )
+      result <- data.frame(
+        usageKey = as.integer(usage_key),
+        matchType = as.character(record$matchType %||% NA_character_),
+        gbif_rank = as.character(record$rank %||% NA_character_),
+        stringsAsFactors = FALSE
+      )
 
-    # --- HIGHERRANK recovery via name_lookup() ---
-    # When name_backbone() resolves to a rank much coarser than expected
-    # (e.g. Cyprinidae -> Animalia), try name_lookup() to find the correct
-    # key at the expected rank. This handles deprecated/split taxa that
-    # name_backbone() fails to resolve.
-    result <- .recover_higherrank(result, target_name, target_rank, valid_ranks,
-                                  context = rank_values)
+      # --- HIGHERRANK recovery via name_lookup() ---
+      # When name_backbone() resolves to a rank much coarser than expected
+      # (e.g. Cyprinidae -> Animalia), try name_lookup() to find the correct
+      # key at the expected rank. This handles deprecated/split taxa that
+      # name_backbone() fails to resolve.
+      result <- .recover_higherrank(result, target_name, target_rank, valid_ranks,
+        context = rank_values
+      )
 
-    result
-  }, error = function(e) {
-    warning(sprintf(
-      "get_keys_from_context: API call failed for '%s' -- %s",
-      target_name, conditionMessage(e)
-    ), call. = FALSE)
-    data.frame(usageKey  = NA_integer_,
-               matchType = "ERROR",
-               gbif_rank = NA_character_,
-               stringsAsFactors = FALSE)
-  })
+      result
+    },
+    error = function(e) {
+      warning(sprintf(
+        "get_keys_from_context: API call failed for '%s' -- %s",
+        target_name, conditionMessage(e)
+      ), call. = FALSE)
+      data.frame(
+        usageKey = NA_integer_,
+        matchType = "ERROR",
+        gbif_rank = NA_character_,
+        stringsAsFactors = FALSE
+      )
+    }
+  )
 }
 
 
@@ -257,68 +265,82 @@ get_keys_from_context <- function(hierarchy_df) {
 #'   result with the recovered key and matchType = "LOOKUP_RECOVERED".
 #' @noRd
 .recover_higherrank <- function(result, target_name, target_rank, valid_ranks,
-                                 context = list()) {
-
-  if (is.na(result$matchType) || result$matchType != "HIGHERRANK") return(result)
+                                context = list()) {
+  if (is.na(result$matchType) || result$matchType != "HIGHERRANK") {
+    return(result)
+  }
 
   # Check rank distance: is the resolved rank much coarser than expected?
   rank_hierarchy <- toupper(valid_ranks)
   expected_pos <- match(toupper(target_rank), rank_hierarchy)
   resolved_pos <- match(toupper(result$gbif_rank), rank_hierarchy)
 
-  if (is.na(expected_pos) || is.na(resolved_pos)) return(result)
-  if (resolved_pos >= expected_pos - 1L) return(result)  # allow 1-level coarsening
+  if (is.na(expected_pos) || is.na(resolved_pos)) {
+    return(result)
+  }
+  if (resolved_pos >= expected_pos - 1L) {
+    return(result)
+  } # allow 1-level coarsening
 
   # Rank jump is too large -- attempt recovery via name_lookup()
-  recovered <- tryCatch({
-    lookup <- rgbif::name_lookup(
-      query = target_name,
-      rank  = toupper(target_rank),
-      limit = 20L
-    )
+  recovered <- tryCatch(
+    {
+      lookup <- rgbif::name_lookup(
+        query = target_name,
+        rank  = toupper(target_rank),
+        limit = 20L
+      )
 
-    if (is.null(lookup$data) || nrow(lookup$data) == 0L) return(result)
+      if (is.null(lookup$data) || nrow(lookup$data) == 0L) {
+        return(result)
+      }
 
-    hits <- lookup$data
+      hits <- lookup$data
 
-    # Filter to rows at the correct rank with a nubKey (GBIF backbone key)
-    if (!"rank" %in% names(hits) || !"nubKey" %in% names(hits)) return(result)
-    hits <- hits[!is.na(hits$rank) & toupper(hits$rank) == toupper(target_rank), ]
-    hits <- hits[!is.na(hits$nubKey), ]
+      # Filter to rows at the correct rank with a nubKey (GBIF backbone key)
+      if (!"rank" %in% names(hits) || !"nubKey" %in% names(hits)) {
+        return(result)
+      }
+      hits <- hits[!is.na(hits$rank) & toupper(hits$rank) == toupper(target_rank), ]
+      hits <- hits[!is.na(hits$nubKey), ]
 
-    if (nrow(hits) == 0L) return(result)
+      if (nrow(hits) == 0L) {
+        return(result)
+      }
 
-    # Narrow to the row's own kingdom, when supplied and present in the
-    # lookup results, before voting -- see @details above.
-    if (!is.null(context$kingdom) && "kingdom" %in% names(hits)) {
-      kingdom_hits <- hits[
-        !is.na(hits$kingdom) & tolower(hits$kingdom) == tolower(context$kingdom),
-      ]
-      if (nrow(kingdom_hits) > 0L) hits <- kingdom_hits
+      # Narrow to the row's own kingdom, when supplied and present in the
+      # lookup results, before voting -- see @details above.
+      if (!is.null(context$kingdom) && "kingdom" %in% names(hits)) {
+        kingdom_hits <- hits[
+          !is.na(hits$kingdom) & tolower(hits$kingdom) == tolower(context$kingdom),
+        ]
+        if (nrow(kingdom_hits) > 0L) hits <- kingdom_hits
+      }
+
+      # Use the most common nubKey (consensus across checklist datasets)
+      nub_counts <- table(hits$nubKey)
+      best_nub <- as.integer(names(which.max(nub_counts)))
+
+      message(sprintf(
+        "  get_keys_from_context: '%s' resolved to %s via name_backbone; recovered %s key %d via name_lookup.",
+        target_name, result$gbif_rank, toupper(target_rank), best_nub
+      ))
+
+      data.frame(
+        usageKey = best_nub,
+        matchType = "LOOKUP_RECOVERED",
+        gbif_rank = toupper(target_rank),
+        stringsAsFactors = FALSE
+      )
+    },
+    error = function(e) {
+      warning(sprintf(
+        "get_keys_from_context: name_lookup recovery failed for '%s' -- %s",
+        target_name, conditionMessage(e)
+      ), call. = FALSE)
+      result
     }
-
-    # Use the most common nubKey (consensus across checklist datasets)
-    nub_counts <- table(hits$nubKey)
-    best_nub <- as.integer(names(which.max(nub_counts)))
-
-    message(sprintf(
-      "  get_keys_from_context: '%s' resolved to %s via name_backbone; recovered %s key %d via name_lookup.",
-      target_name, result$gbif_rank, toupper(target_rank), best_nub
-    ))
-
-    data.frame(
-      usageKey  = best_nub,
-      matchType = "LOOKUP_RECOVERED",
-      gbif_rank = toupper(target_rank),
-      stringsAsFactors = FALSE
-    )
-  }, error = function(e) {
-    warning(sprintf(
-      "get_keys_from_context: name_lookup recovery failed for '%s' -- %s",
-      target_name, conditionMessage(e)
-    ), call. = FALSE)
-    result
-  })
+  )
 
   recovered
 }

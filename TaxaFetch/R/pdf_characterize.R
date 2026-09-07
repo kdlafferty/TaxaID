@@ -81,7 +81,7 @@
   "diagram", "schematic", "conceptual",
   "equipment", "apparatus",
   "flow chart", "flowchart",
-  "map of.*study area",    # map of study area alone (no species)
+  "map of.*study area", # map of study area alone (no species)
   "photograph", "photo"
 )
 
@@ -106,9 +106,8 @@
 #'   values are the full legend text. Empty vector if no legends found.
 #' @noRd
 .extract_legend_text <- function(page_text, max_chars = 300L) {
-
-  lines  <- strsplit(page_text, "\n")[[1L]]
-  lines  <- trimws(lines)
+  lines <- strsplit(page_text, "\n")[[1L]]
+  lines <- trimws(lines)
   result <- character(0)
   names_out <- character(0)
 
@@ -147,7 +146,7 @@
         legend_lines <- c(legend_lines, next_ln)
         j <- j + 1L
       }
-      result    <- c(result, paste(legend_lines, collapse = " "))
+      result <- c(result, paste(legend_lines, collapse = " "))
       names_out <- c(names_out, label)
       i <- j
     } else {
@@ -155,7 +154,9 @@
     }
   }
 
-  if (length(result) == 0L) return(character(0))
+  if (length(result) == 0L) {
+    return(character(0))
+  }
   stats::setNames(result, names_out)
 }
 
@@ -175,22 +176,31 @@
 #' @return Logical. TRUE = send image to API; FALSE = skip.
 #' @noRd
 .score_legend_for_occurrence <- function(legend_text) {
-
-  if (!nzchar(trimws(legend_text))) return(FALSE)
+  if (!nzchar(trimws(legend_text))) {
+    return(FALSE)
+  }
 
   txt_lower <- tolower(legend_text)
 
-  n_occ     <- sum(vapply(.occurrence_legend_keywords,
-                          function(k) grepl(k, txt_lower, fixed = TRUE),
-                          logical(1L)))
-  n_non_occ <- sum(vapply(.non_occurrence_keywords,
-                          function(k) grepl(k, txt_lower, perl = TRUE),
-                          logical(1L)))
+  n_occ <- sum(vapply(
+    .occurrence_legend_keywords,
+    function(k) grepl(k, txt_lower, fixed = TRUE),
+    logical(1L)
+  ))
+  n_non_occ <- sum(vapply(
+    .non_occurrence_keywords,
+    function(k) grepl(k, txt_lower, perl = TRUE),
+    logical(1L)
+  ))
 
   # Strong non-occurrence signal with no occurrence signal -> skip
-  if (n_non_occ >= 2L && n_occ == 0L) return(FALSE)
+  if (n_non_occ >= 2L && n_occ == 0L) {
+    return(FALSE)
+  }
   # Any occurrence signal -> send
-  if (n_occ >= 1L) return(TRUE)
+  if (n_occ >= 1L) {
+    return(TRUE)
+  }
   # No signal either way -> conservative: send (ambiguous legends processed by model)
   TRUE
 }
@@ -222,7 +232,6 @@
 #'   send_image (logical).
 #' @noRd
 .build_page_table <- function(pages_text, page_map, has_supplementary = FALSE) {
-
   n_pages <- length(pages_text)
 
   # Build page -> section lookup from page_map
@@ -234,8 +243,10 @@
   page_section[is.na(page_section)] <- "unknown"
 
   # Sections that are never sent to the extraction API
-  skip_secs <- c("discussion", "acknowledgements", "funding",
-                 "references", "figures", "unknown")
+  skip_secs <- c(
+    "discussion", "acknowledgements", "funding",
+    "references", "figures", "unknown"
+  )
   # Sections that are always sent
   keep_secs <- c("abstract", "introduction", "methods", "results")
   # Appendix: sent only if has_supplementary = TRUE or appendix is present
@@ -245,30 +256,38 @@
 
   for (pg in seq_len(n_pages)) {
     pg_text <- pages_text[pg]
-    sec     <- page_section[pg]
+    sec <- page_section[pg]
 
     # Extract legends for this page
-    legends     <- .extract_legend_text(pg_text)
-    legend_text <- if (length(legends) == 0L) NA_character_
-                   else paste(legends, collapse = " | ")
+    legends <- .extract_legend_text(pg_text)
+    legend_text <- if (length(legends) == 0L) {
+      NA_character_
+    } else {
+      paste(legends, collapse = " | ")
+    }
 
     # Classify content type from text-layer signals
-    has_table  <- length(legends) > 0L &&
-                  any(grepl("^Table", names(legends)))
+    has_table <- length(legends) > 0L &&
+      any(grepl("^Table", names(legends)))
     has_figure <- length(legends) > 0L &&
-                  any(grepl("^Figure", names(legends)))
-    has_prose  <- nchar(trimws(pg_text)) > 200L
+      any(grepl("^Figure", names(legends)))
+    has_prose <- nchar(trimws(pg_text)) > 200L
 
-    content_type <- if (has_table && has_figure) "mixed"
-                    else if (has_table)           "table"
-                    else if (has_figure)          "figure"
-                    else if (has_prose)           "prose"
-                    else                          "other"
+    content_type <- if (has_table && has_figure) {
+      "mixed"
+    } else if (has_table) {
+      "table"
+    } else if (has_figure) {
+      "figure"
+    } else if (has_prose) {
+      "prose"
+    } else {
+      "other"
+    }
 
     # Determine send_image flag
     if (sec %in% skip_secs) {
       send_image <- FALSE
-
     } else if (sec %in% keep_secs) {
       # Always send prose and table pages in core sections
       # Figure pages: only send if legend scores as occurrence-relevant
@@ -276,12 +295,11 @@
         send_image <- if (length(legends) > 0L) {
           any(vapply(legends, .score_legend_for_occurrence, logical(1L)))
         } else {
-          FALSE   # figure page with no detectable legend -> skip
+          FALSE # figure page with no detectable legend -> skip
         }
       } else {
         send_image <- TRUE
       }
-
     } else if (sec %in% appendix_secs) {
       # Appendix pages: send only if has_supplementary flagged
       # and legend (if present) scores as occurrence-relevant
@@ -296,18 +314,17 @@
       } else {
         send_image <- TRUE
       }
-
     } else {
       # "document" fallback (no headers detected) -- send everything
       send_image <- TRUE
     }
 
     rows[[pg]] <- data.frame(
-      page         = pg,
-      section      = sec,
+      page = pg,
+      section = sec,
       content_type = content_type,
-      legend_text  = legend_text,
-      send_image   = send_image,
+      legend_text = legend_text,
+      send_image = send_image,
       stringsAsFactors = FALSE
     )
   }
@@ -339,8 +356,9 @@
 #'   abbreviation key are noted in a comment attribute on the result.
 #' @noRd
 .build_abbreviation_inventory <- function(text) {
-
-  if (!nzchar(trimws(text))) return(stats::setNames(character(0), character(0)))
+  if (!nzchar(trimws(text))) {
+    return(stats::setNames(character(0), character(0)))
+  }
 
   # Match full binomials: Capitalised genus + lowercase epithet, optionally
   # followed by an author name in parentheses or plain.
@@ -365,22 +383,24 @@
   # For each candidate binomial, build the expected abbreviation pattern
   # and confirm it appears in the text after the first full mention
   result_abbrev <- character(0)
-  result_full   <- character(0)
+  result_full <- character(0)
 
   for (binomial in candidates) {
     parts <- strsplit(trimws(binomial), "\\s+")[[1L]]
     if (length(parts) < 2L) next
 
-    genus   <- parts[1L]
+    genus <- parts[1L]
     epithet <- parts[2L]
-    abbrev  <- sprintf("%s. %s", substring(genus, 1L, 1L), epithet)
+    abbrev <- sprintf("%s. %s", substring(genus, 1L, 1L), epithet)
 
     # Check abbreviation actually appears in text
-    abbrev_pat <- sprintf("\\b%s\\. %s\\b",
-                          substring(genus, 1L, 1L), epithet)
+    abbrev_pat <- sprintf(
+      "\\b%s\\. %s\\b",
+      substring(genus, 1L, 1L), epithet
+    )
     if (grepl(abbrev_pat, text, perl = TRUE)) {
       result_abbrev <- c(result_abbrev, abbrev)
-      result_full   <- c(result_full,   sprintf("%s %s", genus, epithet))
+      result_full <- c(result_full, sprintf("%s %s", genus, epithet))
     }
   }
 
@@ -394,27 +414,29 @@
   # "Valencienea" vs "Valenciennea" produces the same "V. sexguttata" key).
   # Keep the first full binomial encountered per abbreviation key.
   # Collect any variants that were dropped for transparency.
-  seen_abbrevs  <- character(0)
-  keep          <- logical(length(result_abbrev))
-  variants      <- character(0)
+  seen_abbrevs <- character(0)
+  keep <- logical(length(result_abbrev))
+  variants <- character(0)
 
   for (i in seq_along(result_abbrev)) {
     ab <- result_abbrev[i]
     if (!ab %in% seen_abbrevs) {
       seen_abbrevs <- c(seen_abbrevs, ab)
-      keep[i]      <- TRUE
+      keep[i] <- TRUE
     } else {
       # Record the dropped variant for the comment attribute
       kept_full <- result_full[result_abbrev == ab][1L]
       if (result_full[i] != kept_full) {
-        variants <- c(variants, sprintf("%s (variant of %s -> %s)",
-                                        result_full[i], ab, kept_full))
+        variants <- c(variants, sprintf(
+          "%s (variant of %s -> %s)",
+          result_full[i], ab, kept_full
+        ))
       }
     }
   }
 
   result_abbrev <- result_abbrev[keep]
-  result_full   <- result_full[keep]
+  result_full <- result_full[keep]
 
   out <- stats::setNames(result_full, result_abbrev)
 
@@ -449,8 +471,9 @@
 #' @return Character string. Abstract text or first max_chars of document.
 #' @noRd
 .find_abstract_in_document <- function(doc_text, max_chars = 3000L) {
-
-  if (!nzchar(trimws(doc_text))) return("")
+  if (!nzchar(trimws(doc_text))) {
+    return("")
+  }
 
   # Look for "Abstract" as: standalone line, or inline label followed by text
   # Patterns (case-insensitive):
@@ -480,7 +503,7 @@
 
   end_line <- length(lines)
   for (i in seq_along(lines)) {
-    if (i == 1L) next   # skip first line -- might be continuation of label line
+    if (i == 1L) next # skip first line -- might be continuation of label line
     ln <- trimws(lines[i])
     if (grepl(header_pat, ln, ignore.case = TRUE) && nchar(ln) < 50L) {
       end_line <- i - 1L
@@ -513,20 +536,21 @@
                                        methods_text,
                                        results_text,
                                        max_chars = 3000L) {
-
   # Truncate sections to token budget
   trunc <- function(txt, n) {
-    if (!nzchar(trimws(txt))) return("(not available)")
+    if (!nzchar(trimws(txt))) {
+      return("(not available)")
+    }
     txt <- trimws(txt)
     if (nchar(txt) > n) paste0(substr(txt, 1L, n), "... [truncated]") else txt
   }
 
   abstract_trunc <- trunc(abstract_text, max_chars)
-  methods_trunc  <- trunc(methods_text,  max_chars)
-  results_trunc  <- trunc(results_text,  max_chars)
+  methods_trunc <- trunc(methods_text, max_chars)
+  results_trunc <- trunc(results_text, max_chars)
 
   sprintf(
-'You are classifying a scientific paper to determine whether and how to extract
+    'You are classifying a scientific paper to determine whether and how to extract
 species occurrence records from it. Read the text below and respond ONLY with
 a JSON object containing exactly these five keys. Do not include any text
 outside the JSON object, no markdown fences, no preamble.
@@ -607,16 +631,21 @@ Respond with only the JSON object.',
 #'   string or NA_character_ on parse failure.
 #' @noRd
 .parse_structure_response <- function(response_text) {
-
   valid_values <- list(
-    observation_type   = c("field_survey", "compilation_review",
-                           "experimental_lab", "monitoring_time_series",
-                           "prevalence_abundance", "analytical_modelling"),
-    location_structure = c("explicit_latlon", "named_localities",
-                           "split_tables", "single_site"),
-    data_density       = c("tabular", "prose_dense", "prose_sparse",
-                           "mixed", "supplementary"),
-    taxonomic_scope    = c("single_species", "few_species", "community_survey"),
+    observation_type = c(
+      "field_survey", "compilation_review",
+      "experimental_lab", "monitoring_time_series",
+      "prevalence_abundance", "analytical_modelling"
+    ),
+    location_structure = c(
+      "explicit_latlon", "named_localities",
+      "split_tables", "single_site"
+    ),
+    data_density = c(
+      "tabular", "prose_dense", "prose_sparse",
+      "mixed", "supplementary"
+    ),
+    taxonomic_scope = c("single_species", "few_species", "community_survey"),
     contamination_risk = c("high", "low")
   )
 
@@ -625,7 +654,7 @@ Respond with only the JSON object.',
 
   # Strip markdown fences if present
   clean <- gsub("```json\\s*", "", response_text)
-  clean <- gsub("```\\s*",     "", clean)
+  clean <- gsub("```\\s*", "", clean)
   clean <- trimws(clean)
 
   parsed <- tryCatch(
@@ -654,8 +683,10 @@ Respond with only the JSON object.',
       ), call. = FALSE)
     } else if (!val %in% valid_values[[key]]) {
       warning(sprintf(
-        paste0("screen_pdf_structure: unrecognised value '%s' for field '%s'. ",
-               "Valid values: %s -- set to NA."),
+        paste0(
+          "screen_pdf_structure: unrecognised value '%s' for field '%s'. ",
+          "Valid values: %s -- set to NA."
+        ),
         val, key, paste(valid_values[[key]], collapse = ", ")
       ), call. = FALSE)
     } else {
@@ -829,19 +860,17 @@ Respond with only the JSON object.',
 #' }
 #' structure <- screen_pdf_structure(pdf_content, llm_fn = my_llm)
 #' }
-
 screen_pdf_structure <- function(pdf_content,
-                                 use_llm    = TRUE,
-                                 llm_fn     = getOption("TaxaID.llm_fn", TaxaTools::call_api),
-                                 model      = "claude-sonnet-4-6",
+                                 use_llm = TRUE,
+                                 llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+                                 model = "claude-sonnet-4-6",
                                  max_tokens = 400L,
-                                 api_key    = Sys.getenv("ANTHROPIC_API_KEY"),
-                                 verbose    = TRUE) {
-
+                                 api_key = Sys.getenv("ANTHROPIC_API_KEY"),
+                                 verbose = TRUE) {
   # ---- input validation -------------------------------------------------------
   if (!is.list(pdf_content) ||
-      !all(c("sections", "page_map", "n_pages", "has_headers") %in%
-           names(pdf_content))) {
+    !all(c("sections", "page_map", "n_pages", "has_headers") %in%
+      names(pdf_content))) {
     stop(
       "screen_pdf_structure: 'pdf_content' must be the list returned by ",
       "extract_pdf_text(). Required elements: $sections, $page_map, ",
@@ -878,25 +907,25 @@ screen_pdf_structure <- function(pdf_content,
   secs <- pdf_content$sections
 
   abstract_text <- secs$abstract %||% ""
-  methods_text  <- secs$methods  %||% ""
-  results_text  <- secs$results  %||% ""
+  methods_text <- secs$methods %||% ""
+  results_text <- secs$results %||% ""
 
   # Fallback: if no recognised sections, use "document"
   # Use .find_abstract_in_document() to scan past author/journal metadata
   # and find the actual abstract text -- critical for two-column journal PDFs
   # where section headers are not detected.
   if (!nzchar(trimws(abstract_text)) &&
-      !nzchar(trimws(methods_text))  &&
-      !nzchar(trimws(results_text))) {
-    doc_text      <- secs$document %||% ""
+    !nzchar(trimws(methods_text)) &&
+    !nzchar(trimws(results_text))) {
+    doc_text <- secs$document %||% ""
     abstract_text <- .find_abstract_in_document(doc_text, max_chars = 3000L)
-    methods_text  <- ""
-    results_text  <- ""
+    methods_text <- ""
+    results_text <- ""
   }
 
   # ---- detect supplementary ---------------------------------------------------
   has_supplementary <- !is.null(pdf_content$page_map$appendix) &&
-                       length(pdf_content$page_map$appendix) > 0L
+    length(pdf_content$page_map$appendix) > 0L
 
   # ---- five-axis LLM classification -------------------------------------------
   axes <- list(
@@ -920,9 +949,10 @@ screen_pdf_structure <- function(pdf_content,
 
     raw_response <- tryCatch(
       llm_fn(prompt_str,
-             model      = model,
-             max_tokens = max_tokens,
-             api_key    = api_key),
+        model      = model,
+        max_tokens = max_tokens,
+        api_key    = api_key
+      ),
       error = function(e) {
         warning(sprintf(
           "screen_pdf_structure: LLM call failed -- %s\nFalling back to NA axis values.",
@@ -935,7 +965,6 @@ screen_pdf_structure <- function(pdf_content,
     if (!is.null(raw_response)) {
       axes <- .parse_structure_response(raw_response)
     }
-
   } else {
     if (verbose) {
       message(
@@ -960,7 +989,7 @@ screen_pdf_structure <- function(pdf_content,
   # causing the print method to report the wrong total page count.
   pages_text <- NULL
   if (!is.null(pdf_content$pdf_path) && nzchar(pdf_content$pdf_path) &&
-      file.exists(pdf_content$pdf_path)) {
+    file.exists(pdf_content$pdf_path)) {
     if (requireNamespace("pdftools", quietly = TRUE)) {
       pages_text <- tryCatch(
         pdftools::pdf_text(pdf_content$pdf_path),
@@ -974,7 +1003,7 @@ screen_pdf_structure <- function(pdf_content,
       )
       # Truncate to match boundary-truncated pdf_content
       if (!is.null(pages_text) &&
-          length(pages_text) > pdf_content$n_pages) {
+        length(pages_text) > pdf_content$n_pages) {
         pages_text <- pages_text[seq_len(pdf_content$n_pages)]
       }
     }
@@ -989,11 +1018,11 @@ screen_pdf_structure <- function(pdf_content,
       call. = FALSE
     )
     page_tbl <- data.frame(
-      page         = integer(0),
-      section      = character(0),
+      page = integer(0),
+      section = character(0),
       content_type = character(0),
-      legend_text  = character(0),
-      send_image   = logical(0),
+      legend_text = character(0),
+      send_image = logical(0),
       stringsAsFactors = FALSE
     )
   } else {
@@ -1014,7 +1043,7 @@ screen_pdf_structure <- function(pdf_content,
     sep = "\n"
   )
   if (!nzchar(trimws(combined_text)) || !pdf_content$has_headers) {
-    doc_text      <- pdf_content$sections$document %||% ""
+    doc_text <- pdf_content$sections$document %||% ""
     combined_text <- paste(combined_text, doc_text, sep = "\n")
   }
   abbrev_inventory <- .build_abbreviation_inventory(combined_text)
@@ -1025,11 +1054,13 @@ screen_pdf_structure <- function(pdf_content,
   # ---- warn on observation types unlikely to yield DwC records ---------------
   obs_type <- axes$observation_type
   if (!is.na(obs_type) &&
-      obs_type %in% c("experimental_lab", "analytical_modelling")) {
+    obs_type %in% c("experimental_lab", "analytical_modelling")) {
     warning(sprintf(
-      paste0("screen_pdf_structure: observation_type = '%s'. ",
-             "This paper type is unlikely to yield DwC occurrence records. ",
-             "Consider skipping Stage 3 extraction."),
+      paste0(
+        "screen_pdf_structure: observation_type = '%s'. ",
+        "This paper type is unlikely to yield DwC occurrence records. ",
+        "Consider skipping Stage 3 extraction."
+      ),
       obs_type
     ), call. = FALSE)
   }
@@ -1045,16 +1076,16 @@ screen_pdf_structure <- function(pdf_content,
 
   structure(
     list(
-      pdf_path              = pdf_content$pdf_path,
-      observation_type      = axes$observation_type,
-      location_structure    = axes$location_structure,
-      data_density          = axes$data_density,
-      taxonomic_scope       = axes$taxonomic_scope,
-      contamination_risk    = axes$contamination_risk,
-      page_table            = page_tbl,
+      pdf_path = pdf_content$pdf_path,
+      observation_type = axes$observation_type,
+      location_structure = axes$location_structure,
+      data_density = axes$data_density,
+      taxonomic_scope = axes$taxonomic_scope,
+      contamination_risk = axes$contamination_risk,
+      page_table = page_tbl,
       abbreviation_inventory = abbrev_inventory,
-      has_supplementary     = has_supplementary,
-      single_site_rule      = single_site_rule
+      has_supplementary = has_supplementary,
+      single_site_rule = single_site_rule
     ),
     class = c("pdf_structure", "list")
   )
@@ -1072,7 +1103,6 @@ screen_pdf_structure <- function(pdf_content,
 #' @export
 #' @noRd
 print.pdf_structure <- function(x, ...) {
-
   na_str <- function(v) if (is.na(v)) "(NA -- LLM not run or failed)" else v
 
   cat("<pdf_structure>\n")
@@ -1085,10 +1115,10 @@ print.pdf_structure <- function(x, ...) {
   cat(sprintf("  single_site_rule   : %s\n", x$single_site_rule))
 
   if (nrow(x$page_table) > 0L) {
-    n_send  <- sum(x$page_table$send_image)
+    n_send <- sum(x$page_table$send_image)
     n_total <- nrow(x$page_table)
-    n_tbl   <- sum(x$page_table$content_type == "table")
-    n_fig   <- sum(x$page_table$content_type == "figure")
+    n_tbl <- sum(x$page_table$content_type == "table")
+    n_fig <- sum(x$page_table$content_type == "figure")
     cat(sprintf(
       "  page_table         : %d pages total; %d flagged for image send (%d table, %d figure)\n",
       n_total, n_send, n_tbl, n_fig
@@ -1101,23 +1131,29 @@ print.pdf_structure <- function(x, ...) {
   if (n_abbrev > 0L) {
     cat(sprintf("  abbreviations      : %d found", n_abbrev))
     show_n <- min(n_abbrev, 4L)
-    previews <- sprintf("%s -> %s",
-                        names(x$abbreviation_inventory)[seq_len(show_n)],
-                        x$abbreviation_inventory[seq_len(show_n)])
-    cat(sprintf(" (%s%s)\n",
-                paste(previews, collapse = "; "),
-                if (n_abbrev > 4L) "; ..." else ""))
+    previews <- sprintf(
+      "%s -> %s",
+      names(x$abbreviation_inventory)[seq_len(show_n)],
+      x$abbreviation_inventory[seq_len(show_n)]
+    )
+    cat(sprintf(
+      " (%s%s)\n",
+      paste(previews, collapse = "; "),
+      if (n_abbrev > 4L) "; ..." else ""
+    ))
     variants <- attr(x$abbreviation_inventory, "spelling_variants")
     if (!is.null(variants) && length(variants) > 0L) {
-      cat(sprintf("  spelling variants  : %s\n",
-                  paste(head(variants, 3L), collapse = "; ")))
+      cat(sprintf(
+        "  spelling variants  : %s\n",
+        paste(head(variants, 3L), collapse = "; ")
+      ))
     }
   } else {
     cat("  abbreviations      : none detected\n")
   }
 
   # Extraction notes
-  obs  <- x$observation_type
+  obs <- x$observation_type
   dens <- x$data_density
   if (!is.na(obs)) {
     note <- switch(obs,

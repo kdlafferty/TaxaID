@@ -10,42 +10,45 @@
 #' @param omit_biomas  Write file without the BIOMAS column.
 #' @param omit_sample_desc  Write file without the SAMPLE_DESC column.
 #' @noRd
-.bt_tmp <- function(filename         = "raw_data_595.csv",
-                    include_zeros    = FALSE,
+.bt_tmp <- function(filename = "raw_data_595.csv",
+                    include_zeros = FALSE,
                     include_na_coords = FALSE,
-                    omit_biomas      = FALSE,
+                    omit_biomas = FALSE,
                     omit_sample_desc = FALSE) {
-
   df <- data.frame(
-    ABUNDANCE   = c(1, 2, 10, 4),
-    BIOMAS      = c(NA, NA, 5.2, NA),
-    valid_name  = c("Alloclinus holderi", "Gobiiformes sp",
-                    "Alloclinus holderi", "Coryphopterus nicholsii"),
-    SAMPLE_DESC = c("2008_11_5_SB-AP", "2008_11_6_SB-CAT",
-                    "2004_9_30_SC-PB", "2003_8_7_SC-YB"),
-    LATITUDE    = c(33.48, 33.46, 34.03, 33.98),
-    LONGITUDE   = c(-119.02, -119.03, -119.70, -119.56),
-    DAY         = c(5L, 6L, 30L, 7L),
-    MONTH       = c(11L, 11L, 9L, 8L),
-    YEAR        = c(2008L, 2008L, 2004L, 2003L),
+    ABUNDANCE = c(1, 2, 10, 4),
+    BIOMAS = c(NA, NA, 5.2, NA),
+    valid_name = c(
+      "Alloclinus holderi", "Gobiiformes sp",
+      "Alloclinus holderi", "Coryphopterus nicholsii"
+    ),
+    SAMPLE_DESC = c(
+      "2008_11_5_SB-AP", "2008_11_6_SB-CAT",
+      "2004_9_30_SC-PB", "2003_8_7_SC-YB"
+    ),
+    LATITUDE = c(33.48, 33.46, 34.03, 33.98),
+    LONGITUDE = c(-119.02, -119.03, -119.70, -119.56),
+    DAY = c(5L, 6L, 30L, 7L),
+    MONTH = c(11L, 11L, 9L, 8L),
+    YEAR = c(2008L, 2008L, 2004L, 2003L),
     stringsAsFactors = FALSE
   )
 
   if (include_zeros) {
-    zero_row            <- df[1L, ]
-    zero_row$ABUNDANCE  <- 0
-    zero_row$BIOMAS     <- 0
+    zero_row <- df[1L, ]
+    zero_row$ABUNDANCE <- 0
+    zero_row$BIOMAS <- 0
     df <- rbind(df, zero_row)
   }
 
   if (include_na_coords) {
-    na_row           <- df[1L, ]
-    na_row$LATITUDE  <- NA_real_
+    na_row <- df[1L, ]
+    na_row$LATITUDE <- NA_real_
     na_row$LONGITUDE <- NA_real_
     df <- rbind(df, na_row)
   }
 
-  if (omit_biomas)      df$BIOMAS      <- NULL
+  if (omit_biomas) df$BIOMAS <- NULL
   if (omit_sample_desc) df$SAMPLE_DESC <- NULL
 
   tmp <- file.path(tempdir(), filename)
@@ -74,15 +77,15 @@ test_that("read_biotime_study() error message includes download instructions", {
 })
 
 test_that("read_biotime_study() rejects non-string local_path", {
-  expect_error(read_biotime_study(123L),       regexp = "single character string")
-  expect_error(read_biotime_study(c("a","b")), regexp = "single character string")
+  expect_error(read_biotime_study(123L), regexp = "single character string")
+  expect_error(read_biotime_study(c("a", "b")), regexp = "single character string")
 })
 
 test_that("read_biotime_study() rejects bad verbose", {
   tmp <- .bt_tmp()
   on.exit(unlink(tmp))
   expect_error(read_biotime_study(tmp, verbose = "yes"), regexp = "TRUE or FALSE")
-  expect_error(read_biotime_study(tmp, verbose = NA),    regexp = "TRUE or FALSE")
+  expect_error(read_biotime_study(tmp, verbose = NA), regexp = "TRUE or FALSE")
 })
 
 test_that("read_biotime_study() errors when required columns are missing", {
@@ -141,10 +144,12 @@ test_that("read_biotime_study() returns expected DwC columns", {
   tmp <- .bt_tmp()
   on.exit(unlink(tmp))
   result <- read_biotime_study(tmp, verbose = FALSE)
-  expected <- c("scientificName", "decimalLatitude", "decimalLongitude",
-                "year", "month", "day",
-                "occurrenceStatus", "organismQuantity", "organismQuantityType",
-                "eventID", "datasetID", "basisOfRecord", "biotime_biomass")
+  expected <- c(
+    "scientificName", "decimalLatitude", "decimalLongitude",
+    "year", "month", "day",
+    "occurrenceStatus", "organismQuantity", "organismQuantityType",
+    "eventID", "datasetID", "basisOfRecord", "biotime_biomass"
+  )
   expect_true(all(expected %in% names(result)))
 })
 
@@ -184,7 +189,7 @@ test_that("read_biotime_study() works when SAMPLE_DESC column is absent", {
   tmp <- .bt_tmp(omit_sample_desc = TRUE)
   on.exit(unlink(tmp))
   expect_no_error(result <- read_biotime_study(tmp, verbose = FALSE))
-  expect_false("eventID" %in% names(result))   # absent in source → not added
+  expect_false("eventID" %in% names(result)) # absent in source → not added
 })
 
 
@@ -194,7 +199,7 @@ test_that("read_biotime_study() coerces decimalLatitude and decimalLongitude to 
   tmp <- .bt_tmp()
   on.exit(unlink(tmp))
   result <- read_biotime_study(tmp, verbose = FALSE)
-  expect_type(result$decimalLatitude,  "double")
+  expect_type(result$decimalLatitude, "double")
   expect_type(result$decimalLongitude, "double")
 })
 
@@ -202,9 +207,9 @@ test_that("read_biotime_study() coerces year, month, day to integer", {
   tmp <- .bt_tmp()
   on.exit(unlink(tmp))
   result <- read_biotime_study(tmp, verbose = FALSE)
-  expect_type(result$year,  "integer")
+  expect_type(result$year, "integer")
   expect_type(result$month, "integer")
-  expect_type(result$day,   "integer")
+  expect_type(result$day, "integer")
 })
 
 test_that("read_biotime_study() coerces organismQuantity to numeric", {
@@ -248,12 +253,12 @@ test_that("read_biotime_study() sets occurrenceStatus to 'present' when ABUNDANC
 
 test_that("read_biotime_study() sets occurrenceStatus to 'present' when BIOMAS > 0 even if ABUNDANCE is NA", {
   df <- data.frame(
-    ABUNDANCE   = NA_real_,
-    BIOMAS      = 3.5,
-    valid_name  = "Gadus morhua",
+    ABUNDANCE = NA_real_,
+    BIOMAS = 3.5,
+    valid_name = "Gadus morhua",
     SAMPLE_DESC = "s1",
-    LATITUDE    = 50.0,
-    LONGITUDE   = -10.0,
+    LATITUDE = 50.0,
+    LONGITUDE = -10.0,
     DAY = 1L, MONTH = 6L, YEAR = 2010L,
     stringsAsFactors = FALSE
   )
@@ -269,9 +274,9 @@ test_that("read_biotime_study() sets occurrenceStatus to 'absent' when ABUNDANCE
   on.exit(unlink(tmp))
   result <- read_biotime_study(tmp, verbose = FALSE)
   zero_rows <- result[!is.na(result$organismQuantity) &
-                        result$organismQuantity == 0 &
-                        !is.na(result$biotime_biomass) &
-                        result$biotime_biomass == 0, ]
+    result$organismQuantity == 0 &
+    !is.na(result$biotime_biomass) &
+    result$biotime_biomass == 0, ]
   if (nrow(zero_rows) > 0L) {
     expect_true(all(zero_rows$occurrenceStatus == "absent"))
   }
@@ -279,15 +284,15 @@ test_that("read_biotime_study() sets occurrenceStatus to 'absent' when ABUNDANCE
 
 test_that("read_biotime_study() leaves occurrenceStatus NA (not 'absent') when neither ABUNDANCE nor BIOMAS parses", {
   df <- data.frame(
-    ABUNDANCE   = c("1", "not_a_number"),
-    BIOMAS      = c(NA, NA),
-    valid_name  = c("Alloclinus holderi", "Gobiiformes sp"),
+    ABUNDANCE = c("1", "not_a_number"),
+    BIOMAS = c(NA, NA),
+    valid_name = c("Alloclinus holderi", "Gobiiformes sp"),
     SAMPLE_DESC = c("2008_11_5_SB-AP", "2008_11_6_SB-CAT"),
-    LATITUDE    = c(33.48, 33.46),
-    LONGITUDE   = c(-119.02, -119.03),
-    DAY         = c(5L, 6L),
-    MONTH       = c(11L, 11L),
-    YEAR        = c(2008L, 2008L),
+    LATITUDE = c(33.48, 33.46),
+    LONGITUDE = c(-119.02, -119.03),
+    DAY = c(5L, 6L),
+    MONTH = c(11L, 11L),
+    YEAR = c(2008L, 2008L),
     stringsAsFactors = FALSE
   )
   tmp <- tempfile(fileext = ".csv")
@@ -305,15 +310,15 @@ test_that("read_biotime_study() leaves occurrenceStatus NA (not 'absent') when n
 
 test_that("read_biotime_study() reports unknown-status row count when verbose", {
   df <- data.frame(
-    ABUNDANCE   = c("1", "not_a_number"),
-    BIOMAS      = c(NA, NA),
-    valid_name  = c("Alloclinus holderi", "Gobiiformes sp"),
+    ABUNDANCE = c("1", "not_a_number"),
+    BIOMAS = c(NA, NA),
+    valid_name = c("Alloclinus holderi", "Gobiiformes sp"),
     SAMPLE_DESC = c("2008_11_5_SB-AP", "2008_11_6_SB-CAT"),
-    LATITUDE    = c(33.48, 33.46),
-    LONGITUDE   = c(-119.02, -119.03),
-    DAY         = c(5L, 6L),
-    MONTH       = c(11L, 11L),
-    YEAR        = c(2008L, 2008L),
+    LATITUDE = c(33.48, 33.46),
+    LONGITUDE = c(-119.02, -119.03),
+    DAY = c(5L, 6L),
+    MONTH = c(11L, 11L),
+    YEAR = c(2008L, 2008L),
     stringsAsFactors = FALSE
   )
   tmp <- tempfile(fileext = ".csv")
@@ -350,7 +355,7 @@ test_that("read_biotime_study() returns a tibble", {
 test_that("read_biotime_study() output is compatible with stack_occurrences()", {
   tmp <- .bt_tmp()
   on.exit(unlink(tmp))
-  result  <- read_biotime_study(tmp, verbose = FALSE)
+  result <- read_biotime_study(tmp, verbose = FALSE)
   stacked <- stack_occurrences(result)
   expect_true("point_id" %in% names(stacked))
   expect_equal(nrow(stacked), nrow(result))

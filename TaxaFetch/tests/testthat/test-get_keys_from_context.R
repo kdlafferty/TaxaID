@@ -15,24 +15,24 @@ library(testthat)
 
 .hierarchy_full <- data.frame(
   kingdom = "Animalia",
-  phylum  = "Chordata",
-  class   = "Actinopterygii",
-  order   = "Scorpaeniformes",
-  family  = "Sebastidae",
-  genus   = "Sebastes",
+  phylum = "Chordata",
+  class = "Actinopterygii",
+  order = "Scorpaeniformes",
+  family = "Sebastidae",
+  genus = "Sebastes",
   species = "Sebastes mystinus",
   stringsAsFactors = FALSE
 )
 
 .hierarchy_genus_only <- data.frame(
   kingdom = "Animalia",
-  genus   = "Sebastes",
+  genus = "Sebastes",
   stringsAsFactors = FALSE
 )
 
 .hierarchy_no_ranks <- data.frame(
   common_name = "Blue rockfish",
-  notes       = "test",
+  notes = "test",
   stringsAsFactors = FALSE
 )
 
@@ -43,13 +43,13 @@ library(testthat)
 )
 
 .hierarchy_blank_species <- data.frame(
-  genus   = "Sebastes",
+  genus = "Sebastes",
   species = "",
   stringsAsFactors = FALSE
 )
 
 .hierarchy_na_species <- data.frame(
-  genus   = "Sebastes",
+  genus = "Sebastes",
   species = NA_character_,
   stringsAsFactors = FALSE
 )
@@ -89,8 +89,10 @@ test_that("stops if no recognised rank columns are present", {
 })
 
 test_that("stops if rgbif is not installed", {
-  skip_if(requireNamespace("rgbif", quietly = TRUE),
-          "rgbif is installed; skipping missing-package test")
+  skip_if(
+    requireNamespace("rgbif", quietly = TRUE),
+    "rgbif is installed; skipping missing-package test"
+  )
   expect_error(
     get_keys_from_context(.hierarchy_full),
     regexp = "rgbif"
@@ -167,7 +169,8 @@ test_that("selects species as target when present", {
     .package = "rgbif"
   )
   TaxaFetch:::.process_gbif_row(.hierarchy_full, valid_ranks = c(
-    "kingdom","phylum","class","order","family","genus","species"))
+    "kingdom", "phylum", "class", "order", "family", "genus", "species"
+  ))
   # name should be the species value, rank = SPECIES
   expect_equal(called_with$name, "Sebastes mystinus")
   expect_equal(called_with$rank, "SPECIES")
@@ -184,7 +187,8 @@ test_that("falls back to genus when species is absent", {
     .package = "rgbif"
   )
   TaxaFetch:::.process_gbif_row(.hierarchy_genus_only, valid_ranks = c(
-    "kingdom","phylum","class","order","family","genus","species"))
+    "kingdom", "phylum", "class", "order", "family", "genus", "species"
+  ))
   expect_equal(called_with$name, "Sebastes")
   expect_equal(called_with$rank, "GENUS")
 })
@@ -200,7 +204,8 @@ test_that("column names are matched case-insensitively", {
     .package = "rgbif"
   )
   TaxaFetch:::.process_gbif_row(.hierarchy_mixed_case, valid_ranks = c(
-    "kingdom","phylum","class","order","family","genus","species"))
+    "kingdom", "phylum", "class", "order", "family", "genus", "species"
+  ))
   expect_equal(called_with$name, "Engraulis mordax")
   expect_equal(called_with$rank, "SPECIES")
 })
@@ -216,7 +221,8 @@ test_that("higher-rank context is passed to API (target rank stripped from conte
     .package = "rgbif"
   )
   TaxaFetch:::.process_gbif_row(.hierarchy_full, valid_ranks = c(
-    "kingdom","phylum","class","order","family","genus","species"))
+    "kingdom", "phylum", "class", "order", "family", "genus", "species"
+  ))
   # kingdom should be passed as context
   expect_equal(called_with$kingdom, "Animalia")
   # species itself should NOT be in context (removed as target)
@@ -228,9 +234,10 @@ test_that("higher-rank context is passed to API (target rank stripped from conte
 # =============================================================================
 
 test_that("returns NO_DATA when species is blank", {
-  valid_ranks <- c("kingdom","phylum","class","order","family","genus","species")
+  valid_ranks <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
   out <- TaxaFetch:::.process_gbif_row(.hierarchy_blank_species,
-                                         valid_ranks = valid_ranks)
+    valid_ranks = valid_ranks
+  )
   # blank species -> falls back to genus; no API call needed to test:
   # but if only blank species provided and genus also absent -> NO_DATA
   no_rank_row <- data.frame(species = "", stringsAsFactors = FALSE)
@@ -240,9 +247,11 @@ test_that("returns NO_DATA when species is blank", {
 })
 
 test_that("returns NO_DATA when all rank values are NA", {
-  na_row <- data.frame(genus = NA_character_, species = NA_character_,
-                       stringsAsFactors = FALSE)
-  valid_ranks <- c("kingdom","phylum","class","order","family","genus","species")
+  na_row <- data.frame(
+    genus = NA_character_, species = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  valid_ranks <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
   out <- TaxaFetch:::.process_gbif_row(na_row, valid_ranks = valid_ranks)
   expect_equal(out$matchType, "NO_DATA")
   expect_true(is.na(out$usageKey))
@@ -315,7 +324,7 @@ test_that("one failed row does not prevent other rows from resolving", {
 
 .higherrank_result <- function() {
   data.frame(
-    usageKey  = NA_integer_,
+    usageKey = NA_integer_,
     matchType = "HIGHERRANK",
     gbif_rank = "KINGDOM",
     stringsAsFactors = FALSE
@@ -324,8 +333,8 @@ test_that("one failed row does not prevent other rows from resolving", {
 
 .mixed_kingdom_hits <- function() {
   list(data = data.frame(
-    rank    = rep("GENUS", 5L),
-    nubKey  = c(100L, 100L, 100L, 200L, 200L),
+    rank = rep("GENUS", 5L),
+    nubKey = c(100L, 100L, 100L, 200L, 200L),
     kingdom = c("Animalia", "Animalia", "Animalia", "Chromista", "Chromista"),
     stringsAsFactors = FALSE
   ))
@@ -340,7 +349,7 @@ test_that(".recover_higherrank() uses the unfiltered majority vote with no kingd
     .higherrank_result(), "Testgenus", "genus", .valid_ranks_coarse_to_fine
   )
   expect_equal(out$matchType, "LOOKUP_RECOVERED")
-  expect_equal(out$usageKey, 100L)  # majority nubKey, 3/5 hits
+  expect_equal(out$usageKey, 100L) # majority nubKey, 3/5 hits
 })
 
 test_that(".recover_higherrank() narrows to the supplied kingdom before voting", {
@@ -353,8 +362,8 @@ test_that(".recover_higherrank() narrows to the supplied kingdom before voting",
     context = list(kingdom = "Chromista")
   )
   expect_equal(out$matchType, "LOOKUP_RECOVERED")
-  expect_equal(out$usageKey, 200L)  # only Chromista hit, differs from the
-                                    # unfiltered majority vote above
+  expect_equal(out$usageKey, 200L) # only Chromista hit, differs from the
+  # unfiltered majority vote above
 })
 
 test_that(".recover_higherrank() falls back to unfiltered voting when the kingdom has no hits", {
@@ -364,9 +373,9 @@ test_that(".recover_higherrank() falls back to unfiltered voting when the kingdo
   )
   out <- TaxaFetch:::.recover_higherrank(
     .higherrank_result(), "Testgenus", "genus", .valid_ranks_coarse_to_fine,
-    context = list(kingdom = "Plantae")  # no Plantae rows in the mock hits
+    context = list(kingdom = "Plantae") # no Plantae rows in the mock hits
   )
-  expect_equal(out$usageKey, 100L)  # unfiltered majority, since narrowing emptied the set
+  expect_equal(out$usageKey, 100L) # unfiltered majority, since narrowing emptied the set
 })
 
 # =============================================================================

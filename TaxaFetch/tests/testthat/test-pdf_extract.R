@@ -61,11 +61,11 @@ test_that("build_pdf_extract_prompt() does not misroute an NA observation_type a
   # as unskippable-but-uninstructed.
   pdf_structure <- structure(
     list(
-      observation_type   = NA_character_,
+      observation_type = NA_character_,
       location_structure = NA_character_,
-      data_density        = NA_character_,
+      data_density = NA_character_,
       contamination_risk = NA_character_,
-      single_site_rule    = FALSE,
+      single_site_rule = FALSE,
       page_table = data.frame(page = 1L, send_image = TRUE),
       abbreviation_inventory = character(0L),
       pdf_path = "dummy.pdf"

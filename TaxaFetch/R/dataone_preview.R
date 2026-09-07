@@ -172,31 +172,38 @@ utils::globalVariables(c(
 #' @export
 preview_dataone_occurrences <- function(dataset_ids,
                                         bbox,
-                                        n_rows        = 20L,
-                                        large_mb      = 50,
-                                        assume_mbps   = 5,
+                                        n_rows = 20L,
+                                        large_mb = 50,
+                                        assume_mbps = 5,
                                         extra_dwc_map = NULL,
-                                        verbose       = TRUE) {
-
+                                        verbose = TRUE) {
   # -- Input validation --------------------------------------------------------
   if (!is.character(dataset_ids) || length(dataset_ids) == 0L) {
-    stop("preview_dataone_occurrences: 'dataset_ids' must be a non-empty ",
-         "character vector.")
+    stop(
+      "preview_dataone_occurrences: 'dataset_ids' must be a non-empty ",
+      "character vector."
+    )
   }
   if (is.numeric(bbox) && length(bbox) == 4L && is.null(names(bbox))) {
-    bbox <- list(west  = bbox[1L], east  = bbox[2L],
-                 south = bbox[3L], north = bbox[4L])
+    bbox <- list(
+      west = bbox[1L], east = bbox[2L],
+      south = bbox[3L], north = bbox[4L]
+    )
   }
   if (!is.list(bbox) ||
-      !all(c("west", "east", "south", "north") %in% names(bbox))) {
-    stop("preview_dataone_occurrences: 'bbox' must be c(west, east, south, ",
-         "north) or a named list with those four elements.")
+    !all(c("west", "east", "south", "north") %in% names(bbox))) {
+    stop(
+      "preview_dataone_occurrences: 'bbox' must be c(west, east, south, ",
+      "north) or a named list with those four elements."
+    )
   }
   if (!is.null(extra_dwc_map)) {
     if (!is.data.frame(extra_dwc_map) ||
-        !all(c("pattern", "dwc_term") %in% names(extra_dwc_map))) {
-      stop("preview_dataone_occurrences: 'extra_dwc_map' must be a data.frame ",
-           "with columns 'pattern' and 'dwc_term'.")
+      !all(c("pattern", "dwc_term") %in% names(extra_dwc_map))) {
+      stop(
+        "preview_dataone_occurrences: 'extra_dwc_map' must be a data.frame ",
+        "with columns 'pattern' and 'dwc_term'."
+      )
     }
   }
 
@@ -208,12 +215,16 @@ preview_dataone_occurrences <- function(dataset_ids,
 
   rows <- lapply(dataset_ids, function(id) {
     tryCatch(
-      .preview_one_dataset(id, bbox, n_rows, large_mb,
-                           assume_mbps, dwc_map, verbose),
+      .preview_one_dataset(
+        id, bbox, n_rows, large_mb,
+        assume_mbps, dwc_map, verbose
+      ),
       error = function(e) {
         if (verbose) {
-          message(sprintf("  preview error on %s: %s", id,
-                          conditionMessage(e)))
+          message(sprintf(
+            "  preview error on %s: %s", id,
+            conditionMessage(e)
+          ))
         }
         NULL
       }
@@ -248,13 +259,13 @@ preview_dataone_occurrences <- function(dataset_ids,
 #' @export
 print.dataone_preview <- function(x, ...) {
   threshold <- x$large_mb[1L] %||% 50
-  n_ds      <- dplyr::n_distinct(x$dataset_id)
-  n_ent     <- nrow(x)
+  n_ds <- dplyr::n_distinct(x$dataset_id)
+  n_ent <- nrow(x)
 
   cat(sprintf(
     "\n-- dataone_preview: %d %s across %d %s --\n",
     n_ent, if (n_ent == 1L) "entity" else "entities",
-    n_ds,  if (n_ds  == 1L) "dataset" else "datasets"
+    n_ds,  if (n_ds == 1L) "dataset" else "datasets"
   ))
 
   .print_preview_section(
@@ -292,7 +303,7 @@ print.dataone_preview <- function(x, ...) {
 
   for (did in unique(rows$dataset_id)) {
     ds_rows <- rows[rows$dataset_id == did, ]
-    title   <- ds_rows$dataset_title[1L]
+    title <- ds_rows$dataset_title[1L]
     # Full title on its own line -- no truncation
     cat(sprintf("\n  [%s]  %s\n", did, title))
     .print_preview_dataset(ds_rows, is_skip)
@@ -307,20 +318,28 @@ print.dataone_preview <- function(x, ...) {
     r <- ds_rows[i, ]
 
     if (is_skip) {
-      cat(sprintf("    %-40s  %s\n",
-                  str_trunc_safe(r$entity_name, 40L),
-                  r$skip_reason %||% ""))
+      cat(sprintf(
+        "    %-40s  %s\n",
+        str_trunc_safe(r$entity_name, 40L),
+        r$skip_reason %||% ""
+      ))
       next
     }
 
-    mb_str   <- if (is.na(r$file_mb))  "    ? MB" else
-                  sprintf("%6.1f MB", r$file_mb)
-    min_str  <- if (is.na(r$est_min))  "   ? min" else
-                  sprintf("%5.1f min", r$est_min)
-    csrc     <- r$coord_source %||% "?"
-    taxon    <- r$first_taxon  %||% "(taxon unknown)"
+    mb_str <- if (is.na(r$file_mb)) {
+      "    ? MB"
+    } else {
+      sprintf("%6.1f MB", r$file_mb)
+    }
+    min_str <- if (is.na(r$est_min)) {
+      "   ? min"
+    } else {
+      sprintf("%5.1f min", r$est_min)
+    }
+    csrc <- r$coord_source %||% "?"
+    taxon <- r$first_taxon %||% "(taxon unknown)"
 
-    n_samp   <- if (!is.null(r$sample[[1L]])) nrow(r$sample[[1L]]) else 0L
+    n_samp <- if (!is.null(r$sample[[1L]])) nrow(r$sample[[1L]]) else 0L
     bbox_str <- if (!is.na(r$n_bbox)) {
       sprintf(" [%d/%d in bbox]", r$n_bbox, n_samp)
     } else {
@@ -328,16 +347,18 @@ print.dataone_preview <- function(x, ...) {
     }
 
     join_str <- if (!is.na(r$join_key %||% NA_character_) &&
-                    nzchar(r$join_key %||% "")) {
+      nzchar(r$join_key %||% "")) {
       sprintf(" [join: %s]", r$join_key)
     } else {
       ""
     }
 
-    cat(sprintf("    %-36s  %s  %s  %-10s  %s%s%s\n",
-                str_trunc_safe(r$entity_name, 36L),
-                mb_str, min_str, csrc,
-                taxon, bbox_str, join_str))
+    cat(sprintf(
+      "    %-36s  %s  %s  %-10s  %s%s%s\n",
+      str_trunc_safe(r$entity_name, 36L),
+      mb_str, min_str, csrc,
+      taxon, bbox_str, join_str
+    ))
   }
 }
 
@@ -360,9 +381,13 @@ print.dataone_preview <- function(x, ...) {
       httr2::req_perform(),
     error = function(e) NULL
   )
-  if (is.null(resp)) return(NA_real_)
+  if (is.null(resp)) {
+    return(NA_real_)
+  }
   cl <- httr2::resp_header(resp, "content-length")
-  if (is.null(cl) || is.na(cl) || !nzchar(cl)) return(NA_real_)
+  if (is.null(cl) || is.na(cl) || !nzchar(cl)) {
+    return(NA_real_)
+  }
   suppressWarnings(as.numeric(cl)) / 1024^2
 }
 
@@ -377,22 +402,24 @@ print.dataone_preview <- function(x, ...) {
 #' @noRd
 .stream_n_rows <- function(url, n) {
   complete_lines <- character(0)
-  partial        <- ""
-  bytes_rx       <- 0L
-  t_start        <- proc.time()[["elapsed"]]
+  partial <- ""
+  bytes_rx <- 0L
+  t_start <- proc.time()[["elapsed"]]
 
   callback <- function(chunk) {
-    bytes_rx   <<- bytes_rx + length(chunk)
-    text       <- paste0(partial, rawToChar(chunk))
-    parts      <- strsplit(text, "\n", fixed = TRUE)[[1L]]
+    bytes_rx <<- bytes_rx + length(chunk)
+    text <- paste0(partial, rawToChar(chunk))
+    parts <- strsplit(text, "\n", fixed = TRUE)[[1L]]
     if (endsWith(text, "\n")) {
       complete_lines <<- c(complete_lines, parts)
-      partial        <<- ""
+      partial <<- ""
     } else {
       complete_lines <<- c(complete_lines, parts[-length(parts)])
-      partial        <<- parts[length(parts)]
+      partial <<- parts[length(parts)]
     }
-    if (length(complete_lines) >= n + 1L) return(FALSE)
+    if (length(complete_lines) >= n + 1L) {
+      return(FALSE)
+    }
     TRUE
   }
 
@@ -415,15 +442,19 @@ print.dataone_preview <- function(x, ...) {
 #'
 #' @noRd
 .parse_streamed_lines <- function(lines) {
-  if (length(lines) < 2L) return(NULL)
-  header  <- lines[1L]
-  n_tab   <- stringr::str_count(header, "\t")
+  if (length(lines) < 2L) {
+    return(NULL)
+  }
+  header <- lines[1L]
+  n_tab <- stringr::str_count(header, "\t")
   n_comma <- stringr::str_count(header, ",")
-  delim   <- if (isTRUE(n_tab > n_comma)) "\t" else ","
-  text    <- paste(lines, collapse = "\n")
+  delim <- if (isTRUE(n_tab > n_comma)) "\t" else ","
+  text <- paste(lines, collapse = "\n")
   tryCatch(
-    readr::read_delim(text, delim = delim,
-                      show_col_types = FALSE, name_repair = "minimal"),
+    readr::read_delim(text,
+      delim = delim,
+      show_col_types = FALSE, name_repair = "minimal"
+    ),
     error = function(e) NULL
   )
 }
@@ -437,17 +468,21 @@ print.dataone_preview <- function(x, ...) {
 .build_scientific_name <- function(df) {
   if ("scientificName" %in% names(df)) {
     sn <- as.character(df$scientificName)
-    if (!all(is.na(sn))) return(sn)
+    if (!all(is.na(sn))) {
+      return(sn)
+    }
   }
-  has_genus   <- "genus"           %in% names(df)
+  has_genus <- "genus" %in% names(df)
   has_epithet <- "specificEpithet" %in% names(df)
   if (has_genus && has_epithet) {
-    g  <- ifelse(is.na(df$genus),           "", as.character(df$genus))
-    e  <- ifelse(is.na(df$specificEpithet), "", as.character(df$specificEpithet))
+    g <- ifelse(is.na(df$genus), "", as.character(df$genus))
+    e <- ifelse(is.na(df$specificEpithet), "", as.character(df$specificEpithet))
     sn <- stringr::str_trim(paste(g, e))
     return(ifelse(nzchar(sn), sn, NA_character_))
   }
-  if (has_genus) return(as.character(df$genus))
+  if (has_genus) {
+    return(as.character(df$genus))
+  }
   NA_character_
 }
 
@@ -456,15 +491,15 @@ print.dataone_preview <- function(x, ...) {
 #'
 #' @noRd
 .apply_dwc_mapping <- function(raw_df, dwc_map) {
-  mapping    <- .map_columns_to_dwc(names(raw_df), dwc_map)
-  mapped     <- mapping[!is.na(mapping)]
+  mapping <- .map_columns_to_dwc(names(raw_df), dwc_map)
+  mapped <- mapping[!is.na(mapping)]
   dwc_to_raw <- tapply(names(mapped), mapped, function(x) x[1L])
   std <- tryCatch(
     dplyr::rename(raw_df, dplyr::any_of(dwc_to_raw)),
     error = function(e) raw_df
   )
-  if ("decimalLatitude"  %in% names(std)) {
-    std$decimalLatitude  <- suppressWarnings(as.numeric(std$decimalLatitude))
+  if ("decimalLatitude" %in% names(std)) {
+    std$decimalLatitude <- suppressWarnings(as.numeric(std$decimalLatitude))
   }
   if ("decimalLongitude" %in% names(std)) {
     std$decimalLongitude <- suppressWarnings(as.numeric(std$decimalLongitude))
@@ -480,12 +515,12 @@ print.dataone_preview <- function(x, ...) {
   if (!all(c("decimalLatitude", "decimalLongitude") %in% names(df))) {
     return(NA_integer_)
   }
-  in_box <- !is.na(df$decimalLatitude)  &
-            !is.na(df$decimalLongitude) &
-            df$decimalLatitude  >= bbox$south &
-            df$decimalLatitude  <= bbox$north &
-            df$decimalLongitude >= bbox$west  &
-            df$decimalLongitude <= bbox$east
+  in_box <- !is.na(df$decimalLatitude) &
+    !is.na(df$decimalLongitude) &
+    df$decimalLatitude >= bbox$south &
+    df$decimalLatitude <= bbox$north &
+    df$decimalLongitude >= bbox$west &
+    df$decimalLongitude <= bbox$east
   as.integer(sum(in_box))
 }
 
@@ -500,9 +535,8 @@ print.dataone_preview <- function(x, ...) {
 .preview_one_entity <- function(entity, mapping, meta, eml_sites,
                                 bbox, n_rows, large_mb, assume_mbps,
                                 dwc_map) {
-
   ename <- entity$entity_name %||% "(unnamed)"
-  title <- meta$title         %||% "(no title)"
+  title <- meta$title %||% "(no title)"
 
   make_skip <- function(reason, file_mb = NA_real_, cat = "unknown") {
     tibble::tibble(
@@ -523,10 +557,10 @@ print.dataone_preview <- function(x, ...) {
     )
   }
 
-  cat_entity     <- .classify_entity(mapping)
-  has_species    <- cat_entity %in% c("complete", "species_only")
+  cat_entity <- .classify_entity(mapping)
+  has_species <- cat_entity %in% c("complete", "species_only")
   has_coords_col <- cat_entity %in% c("complete", "spatial_only")
-  has_eml_sites  <- nrow(eml_sites) > 0L
+  has_eml_sites <- nrow(eml_sites) > 0L
 
   if (cat_entity == "no_coords_no_species") {
     return(make_skip("no species or coordinate columns", cat = cat_entity))
@@ -541,7 +575,8 @@ print.dataone_preview <- function(x, ...) {
   }
   if (!.is_trusted_pasta_url(data_url)) {
     return(make_skip(
-      "data_url host is not a trusted PASTA/EDI host", cat = cat_entity
+      "data_url host is not a trusted PASTA/EDI host",
+      cat = cat_entity
     ))
   }
 
@@ -549,83 +584,102 @@ print.dataone_preview <- function(x, ...) {
   file_mb <- .get_content_length(data_url)
 
   # Stream preview rows
-  stream     <- .stream_n_rows(data_url, n_rows)
+  stream <- .stream_n_rows(data_url, n_rows)
   raw_sample <- .parse_streamed_lines(stream$lines)
 
   if (is.null(raw_sample) || nrow(raw_sample) == 0L) {
-    if (!has_species) return(make_skip("stream returned no data", cat = cat_entity))
+    if (!has_species) {
+      return(make_skip("stream returned no data", cat = cat_entity))
+    }
     status <- if (is.na(file_mb) || file_mb > large_mb) "large" else "ready"
     return(tibble::tibble(
-      dataset_id    = meta$id,
+      dataset_id = meta$id,
       dataset_title = title,
-      entity_name   = ename,
-      status        = status,
-      skip_reason   = NA_character_,
-      file_mb       = file_mb,
-      est_min       = if (is.na(file_mb)) NA_real_ else
-                        round(file_mb / assume_mbps / 60, 2),
-      coord_source  = if (has_coords_col) "columns"
-                      else if (has_eml_sites) "eml_sites"
-                      else NA_character_,
-      n_bbox        = NA_integer_,
-      join_key      = NA_character_,
-      first_taxon   = NA_character_,
-      large_mb      = large_mb,
-      .entity_cat   = cat_entity,
-      sample        = list(NULL)
+      entity_name = ename,
+      status = status,
+      skip_reason = NA_character_,
+      file_mb = file_mb,
+      est_min = if (is.na(file_mb)) {
+        NA_real_
+      } else {
+        round(file_mb / assume_mbps / 60, 2)
+      },
+      coord_source = if (has_coords_col) {
+        "columns"
+      } else if (has_eml_sites) {
+        "eml_sites"
+      } else {
+        NA_character_
+      },
+      n_bbox = NA_integer_,
+      join_key = NA_character_,
+      first_taxon = NA_character_,
+      large_mb = large_mb,
+      .entity_cat = cat_entity,
+      sample = list(NULL)
     ))
   }
 
   std_sample <- .apply_dwc_mapping(raw_sample, dwc_map)
 
-  coord_source <- if (has_coords_col) "columns"
-                  else if (has_eml_sites) "eml_sites"
-                  else NA_character_
+  coord_source <- if (has_coords_col) {
+    "columns"
+  } else if (has_eml_sites) {
+    "eml_sites"
+  } else {
+    NA_character_
+  }
   n_bbox <- if (has_coords_col) .count_in_bbox(std_sample, bbox) else NA_integer_
 
-  sci_names   <- .build_scientific_name(std_sample)
-  non_na      <- sci_names[!is.na(sci_names) & nzchar(sci_names)]
+  sci_names <- .build_scientific_name(std_sample)
+  non_na <- sci_names[!is.na(sci_names) & nzchar(sci_names)]
   first_taxon <- if (length(non_na) > 0L) non_na[1L] else NA_character_
 
   # Species-only without eml_sites: hold for join detection
   if (has_species && !has_coords_col && !has_eml_sites) {
     return(tibble::tibble(
-      dataset_id    = meta$id,
+      dataset_id = meta$id,
       dataset_title = title,
-      entity_name   = ename,
-      status        = "skip",
-      skip_reason   = "species only -- checking for spatial join partner",
-      file_mb       = file_mb,
-      est_min       = if (is.na(file_mb)) NA_real_ else
-                        round(file_mb / assume_mbps / 60, 2),
-      coord_source  = NA_character_,
-      n_bbox        = NA_integer_,
-      join_key      = NA_character_,
-      first_taxon   = first_taxon,
-      large_mb      = large_mb,
-      .entity_cat   = cat_entity,
-      sample        = list(tibble::as_tibble(std_sample))
+      entity_name = ename,
+      status = "skip",
+      skip_reason = "species only -- checking for spatial join partner",
+      file_mb = file_mb,
+      est_min = if (is.na(file_mb)) {
+        NA_real_
+      } else {
+        round(file_mb / assume_mbps / 60, 2)
+      },
+      coord_source = NA_character_,
+      n_bbox = NA_integer_,
+      join_key = NA_character_,
+      first_taxon = first_taxon,
+      large_mb = large_mb,
+      .entity_cat = cat_entity,
+      sample = list(tibble::as_tibble(std_sample))
     ))
   }
 
   status <- if (is.na(file_mb) || file_mb > large_mb) "large" else "ready"
 
   tibble::tibble(
-    dataset_id    = meta$id,
+    dataset_id = meta$id,
     dataset_title = title,
-    entity_name   = ename,
-    status        = status,
-    skip_reason   = NA_character_,
-    file_mb       = file_mb,
-    est_min       = if (is.na(file_mb)) NA_real_ else
-                      round(file_mb / assume_mbps / 60, 2),
-    coord_source  = coord_source,
-    n_bbox        = n_bbox,
-    join_key      = NA_character_,
-    first_taxon   = first_taxon,
-    large_mb      = large_mb,
-    .entity_cat   = cat_entity,
-    sample        = list(tibble::as_tibble(std_sample))
+    entity_name = ename,
+    status = status,
+    skip_reason = NA_character_,
+    file_mb = file_mb,
+    est_min = if (is.na(file_mb)) {
+      NA_real_
+    } else {
+      round(file_mb / assume_mbps / 60, 2)
+    },
+    coord_source = coord_source,
+    n_bbox = n_bbox,
+    join_key = NA_character_,
+    first_taxon = first_taxon,
+    large_mb = large_mb,
+    .entity_cat = cat_entity,
+    sample = list(tibble::as_tibble(std_sample))
   )
 }
 
@@ -640,34 +694,35 @@ print.dataone_preview <- function(x, ...) {
 #'
 #' @noRd
 .detect_preview_joins <- function(entity_rows, large_mb, assume_mbps, bbox) {
+  if (is.null(entity_rows) || nrow(entity_rows) == 0L) {
+    return(entity_rows)
+  }
 
-  if (is.null(entity_rows) || nrow(entity_rows) == 0L) return(entity_rows)
-
-  cats    <- entity_rows$.entity_cat
-  sp_idx  <- which(cats == "spatial_only")
+  cats <- entity_rows$.entity_cat
+  sp_idx <- which(cats == "spatial_only")
   occ_idx <- which(cats == "species_only")
 
   if (length(sp_idx) == 0L || length(occ_idx) == 0L) {
     # No join possible -- update any pending species_only messages
     pending <- which(
       cats == "species_only" &
-      !is.na(entity_rows$skip_reason) &
-      entity_rows$skip_reason == "species only -- checking for spatial join partner"
+        !is.na(entity_rows$skip_reason) &
+        entity_rows$skip_reason == "species only -- checking for spatial join partner"
     )
     entity_rows$skip_reason[pending] <-
       "species only -- no spatial join partner found"
     return(entity_rows)
   }
 
-  joined_sp  <- integer(0)
+  joined_sp <- integer(0)
   joined_occ <- integer(0)
-  new_rows   <- list()
+  new_rows <- list()
 
   for (si in sp_idx) {
     for (oi in occ_idx) {
       if (oi %in% joined_occ) next
 
-      sp_sample  <- entity_rows$sample[[si]]
+      sp_sample <- entity_rows$sample[[si]]
       occ_sample <- entity_rows$sample[[oi]]
       if (is.null(sp_sample) || is.null(occ_sample)) next
 
@@ -682,18 +737,21 @@ print.dataone_preview <- function(x, ...) {
 
       mb_a <- entity_rows$file_mb[si]
       mb_b <- entity_rows$file_mb[oi]
-      combined_mb  <- if (!is.na(mb_a) && !is.na(mb_b)) mb_a + mb_b
-                      else NA_real_
+      combined_mb <- if (!is.na(mb_a) && !is.na(mb_b)) {
+        mb_a + mb_b
+      } else {
+        NA_real_
+      }
       combined_min <- if (!is.na(combined_mb)) {
         round(combined_mb / assume_mbps / 60, 2)
       } else {
         NA_real_
       }
 
-      sci         <- .build_scientific_name(merged_sample)
-      non_na      <- sci[!is.na(sci) & nzchar(sci)]
+      sci <- .build_scientific_name(merged_sample)
+      non_na <- sci[!is.na(sci) & nzchar(sci)]
       first_taxon <- if (length(non_na) > 0L) non_na[1L] else NA_character_
-      n_bbox      <- .count_in_bbox(merged_sample, bbox)
+      n_bbox <- .count_in_bbox(merged_sample, bbox)
       join_status <- if (is.na(combined_mb) || combined_mb > large_mb) {
         "join_large"
       } else {
@@ -701,26 +759,28 @@ print.dataone_preview <- function(x, ...) {
       }
 
       new_rows[[length(new_rows) + 1L]] <- tibble::tibble(
-        dataset_id    = entity_rows$dataset_id[si],
+        dataset_id = entity_rows$dataset_id[si],
         dataset_title = entity_rows$dataset_title[si],
-        entity_name   = paste0(entity_rows$entity_name[si], " + ",
-                               entity_rows$entity_name[oi]),
-        status        = join_status,
-        skip_reason   = NA_character_,
-        file_mb       = combined_mb,
-        est_min       = combined_min,
-        coord_source  = "columns",
-        n_bbox        = n_bbox,
-        join_key      = join_label,
-        first_taxon   = first_taxon,
-        large_mb      = large_mb,
-        .entity_cat   = "complete",
-        sample        = list(tibble::as_tibble(merged_sample))
+        entity_name = paste0(
+          entity_rows$entity_name[si], " + ",
+          entity_rows$entity_name[oi]
+        ),
+        status = join_status,
+        skip_reason = NA_character_,
+        file_mb = combined_mb,
+        est_min = combined_min,
+        coord_source = "columns",
+        n_bbox = n_bbox,
+        join_key = join_label,
+        first_taxon = first_taxon,
+        large_mb = large_mb,
+        .entity_cat = "complete",
+        sample = list(tibble::as_tibble(merged_sample))
       )
 
-      joined_sp  <- c(joined_sp,  si)
+      joined_sp <- c(joined_sp, si)
       joined_occ <- c(joined_occ, oi)
-      break  # each spatial entity joins at most one species entity
+      break # each spatial entity joins at most one species entity
     }
   }
 
@@ -730,8 +790,8 @@ print.dataone_preview <- function(x, ...) {
   # Update remaining unmatched species_only rows
   still_pending <- which(
     kept$.entity_cat == "species_only" &
-    !is.na(kept$skip_reason) &
-    kept$skip_reason == "species only -- checking for spatial join partner"
+      !is.na(kept$skip_reason) &
+      kept$skip_reason == "species only -- checking for spatial join partner"
   )
   kept$skip_reason[still_pending] <- "species only -- no key found for spatial join"
 
@@ -763,43 +823,49 @@ print.dataone_preview <- function(x, ...) {
   candidates <- list()
 
   if ("id" %in% s_lower && "id" %in% o_lower) {
-    sk <- names(sp_sample)[s_lower  == "id"][1L]
+    sk <- names(sp_sample)[s_lower == "id"][1L]
     ok <- names(occ_sample)[o_lower == "id"][1L]
     if (n_overlap(sp_sample[[sk]], occ_sample[[ok]]) > 0L) {
       candidates[["shared_id"]] <- list(
-        label = "shared id", card = cardinality(sp_sample[[sk]]))
+        label = "shared id", card = cardinality(sp_sample[[sk]])
+      )
     }
   }
   if ("id" %in% s_lower && "eventid" %in% o_lower) {
-    sk <- names(sp_sample)[s_lower  == "id"][1L]
+    sk <- names(sp_sample)[s_lower == "id"][1L]
     ok <- names(occ_sample)[o_lower == "eventid"][1L]
     if (n_overlap(sp_sample[[sk]], occ_sample[[ok]]) > 0L) {
       candidates[["asymmetric"]] <- list(
         label = "event$id <-> occ$eventID",
-        card  = cardinality(sp_sample[[sk]]))
+        card  = cardinality(sp_sample[[sk]])
+      )
     }
   }
   if ("eventid" %in% s_lower && "eventid" %in% o_lower) {
-    sk <- names(sp_sample)[s_lower  == "eventid"][1L]
+    sk <- names(sp_sample)[s_lower == "eventid"][1L]
     ok <- names(occ_sample)[o_lower == "eventid"][1L]
     if (n_overlap(sp_sample[[sk]], occ_sample[[ok]]) > 0L) {
       candidates[["shared_eventid"]] <- list(
-        label = "shared eventID", card = cardinality(sp_sample[[sk]]))
+        label = "shared eventID", card = cardinality(sp_sample[[sk]])
+      )
     }
   }
-  s_eid <- names(sp_sample)[grepl("event.?id",  s_lower, perl = TRUE)]
+  s_eid <- names(sp_sample)[grepl("event.?id", s_lower, perl = TRUE)]
   o_eid <- names(occ_sample)[grepl("event.?id", o_lower, perl = TRUE)]
   for (k in intersect(tolower(s_eid), tolower(o_eid))) {
     if (k %in% c("id", "eventid")) next
-    sk <- names(sp_sample)[s_lower  == k][1L]
+    sk <- names(sp_sample)[s_lower == k][1L]
     ok <- names(occ_sample)[o_lower == k][1L]
     if (n_overlap(sp_sample[[sk]], occ_sample[[ok]]) > 0L) {
       candidates[[paste0("shared_", k)]] <- list(
-        label = paste0("shared ", k), card = cardinality(sp_sample[[sk]]))
+        label = paste0("shared ", k), card = cardinality(sp_sample[[sk]])
+      )
     }
   }
 
-  if (length(candidates) == 0L) return(NA_character_)
+  if (length(candidates) == 0L) {
+    return(NA_character_)
+  }
   candidates[[which.max(vapply(candidates, `[[`, 0, "card"))]]$label
 }
 
@@ -809,13 +875,14 @@ print.dataone_preview <- function(x, ...) {
 #' @noRd
 .preview_one_dataset <- function(dataset_id, bbox, n_rows, large_mb,
                                  assume_mbps, dwc_map, verbose) {
-
   if (verbose) {
     message(sprintf("\nPreviewing: %s", str_trunc_safe(dataset_id, 70L)))
   }
 
   meta <- .parse_eml_metadata(dataset_id)
-  if (is.null(meta)) return(NULL)
+  if (is.null(meta)) {
+    return(NULL)
+  }
 
   if (verbose) {
     message(sprintf("  Title   : %s", meta$title %||% "(none)"))
@@ -823,10 +890,10 @@ print.dataone_preview <- function(x, ...) {
   }
 
   entity_rows <- lapply(meta$entities, function(entity) {
-    ename     <- entity$entity_name %||% "(unnamed)"
+    ename <- entity$entity_name %||% "(unnamed)"
     col_names <- entity$attributes$attributeName
     if (length(col_names) == 0L || all(is.na(col_names))) col_names <- character(0)
-    mapping   <- if (length(col_names) > 0L) {
+    mapping <- if (length(col_names) > 0L) {
       .map_columns_to_dwc(col_names, dwc_map)
     } else {
       character(0)
@@ -837,8 +904,10 @@ print.dataone_preview <- function(x, ...) {
     }
 
     tryCatch(
-      .preview_one_entity(entity, mapping, meta, meta$sites,
-                          bbox, n_rows, large_mb, assume_mbps, dwc_map),
+      .preview_one_entity(
+        entity, mapping, meta, meta$sites,
+        bbox, n_rows, large_mb, assume_mbps, dwc_map
+      ),
       error = function(e) {
         if (verbose) {
           message(sprintf("    preview error: %s", conditionMessage(e)))
@@ -849,7 +918,9 @@ print.dataone_preview <- function(x, ...) {
   })
 
   entity_rows <- Filter(Negate(is.null), entity_rows)
-  if (length(entity_rows) == 0L) return(NULL)
+  if (length(entity_rows) == 0L) {
+    return(NULL)
+  }
 
   combined <- dplyr::bind_rows(entity_rows)
 

@@ -83,16 +83,16 @@
 #' )
 #' }
 fetch_inat_occurrences <- function(
-    taxon_names,
-    lat,
-    lng,
-    radius_km     = 50,
-    captive       = c("any", "true", "false"),
-    quality_grade = c("any", "casual", "needs_id", "research"),
-    api_token     = Sys.getenv("INAT_API_TOKEN"),
-    verbose       = FALSE
+  taxon_names,
+  lat,
+  lng,
+  radius_km = 50,
+  captive = c("any", "true", "false"),
+  quality_grade = c("any", "casual", "needs_id", "research"),
+  api_token = Sys.getenv("INAT_API_TOKEN"),
+  verbose = FALSE
 ) {
-  captive       <- match.arg(captive)
+  captive <- match.arg(captive)
   quality_grade <- match.arg(quality_grade)
 
   if (nchar(api_token) == 0L) {
@@ -117,7 +117,7 @@ fetch_inat_occurrences <- function(
     name <- taxon_names[[i]]
     if (verbose) message(sprintf("[%d/%d] %s", i, length(taxon_names), name))
 
-    info         <- .inat_taxon_id(name, api_token)
+    info <- .inat_taxon_id(name, api_token)
     inat_kingdom <- .iconic_to_kingdom(info$iconic_taxon_name)
 
     if (is.na(info$taxon_id)) {
@@ -187,7 +187,9 @@ fetch_inat_occurrences <- function(
   )
   Sys.sleep(0.3)
 
-  if (is.null(resp)) return(NA_integer_)
+  if (is.null(resp)) {
+    return(NA_integer_)
+  }
   if (httr::status_code(resp) == 401L) {
     stop(
       "iNaturalist API returned 401 Unauthorized. ",
@@ -196,13 +198,17 @@ fetch_inat_occurrences <- function(
       "update it with Sys.setenv(INAT_API_TOKEN = 'new_token') or in ~/.Renviron."
     )
   }
-  if (httr::status_code(resp) != 200L) return(NA_integer_)
+  if (httr::status_code(resp) != 200L) {
+    return(NA_integer_)
+  }
 
   parsed <- tryCatch(
     httr::content(resp, as = "parsed", type = "application/json"),
     error = function(e) NULL
   )
-  if (is.null(parsed) || is.null(parsed$total_results)) return(NA_integer_)
+  if (is.null(parsed) || is.null(parsed$total_results)) {
+    return(NA_integer_)
+  }
 
   as.integer(parsed$total_results)
 }

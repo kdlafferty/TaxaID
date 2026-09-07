@@ -61,21 +61,26 @@
 #' fetch_gbif_occurrences(keys = my_keys, geometry = bbox)
 #' }
 make_bbox_wkt <- function(lat, lon, radius_deg) {
-
   # --- Input checks -----------------------------------------------------------
-  if (!is.numeric(lat)    || length(lat)    != 1 || is.na(lat))
+  if (!is.numeric(lat) || length(lat) != 1 || is.na(lat)) {
     stop("make_bbox_wkt: 'lat' must be a single non-NA numeric value.")
-  if (!is.numeric(lon)    || length(lon)    != 1 || is.na(lon))
+  }
+  if (!is.numeric(lon) || length(lon) != 1 || is.na(lon)) {
     stop("make_bbox_wkt: 'lon' must be a single non-NA numeric value.")
-  if (!is.numeric(radius_deg) || length(radius_deg) != 1 || is.na(radius_deg))
+  }
+  if (!is.numeric(radius_deg) || length(radius_deg) != 1 || is.na(radius_deg)) {
     stop("make_bbox_wkt: 'radius_deg' must be a single non-NA numeric value.")
+  }
 
-  if (lat < -90 || lat > 90)
+  if (lat < -90 || lat > 90) {
     stop("make_bbox_wkt: 'lat' must be in [-90, 90]. Got: ", lat)
-  if (lon < -180 || lon > 180)
+  }
+  if (lon < -180 || lon > 180) {
     stop("make_bbox_wkt: 'lon' must be in [-180, 180]. Got: ", lon)
-  if (radius_deg <= 0)
+  }
+  if (radius_deg <= 0) {
     stop("make_bbox_wkt: 'radius_deg' must be positive. Got: ", radius_deg)
+  }
 
   # --- Compute corners --------------------------------------------------------
   min_lat <- lat - radius_deg

@@ -46,12 +46,12 @@
 #' @export
 report_fetch <- function(occurrences,
                          study_area = NULL,
-                         verbose    = FALSE) {
-
-
-  if (!is.data.frame(occurrences) || nrow(occurrences) == 0L)
+                         verbose = FALSE) {
+  if (!is.data.frame(occurrences) || nrow(occurrences) == 0L) {
     stop("report_fetch: 'occurrences' must be a non-empty data frame.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # --- Read report_params if available ----------------------------------------
   rp <- attr(occurrences, "report_params")
@@ -69,13 +69,13 @@ report_fetch <- function(occurrences,
   sources <- list()
   if ("datasetID" %in% names(occurrences)) {
     ds <- occurrences$datasetID
-    sources$gbif    <- sum(grepl("^gbif:", ds, ignore.case = TRUE), na.rm = TRUE)
+    sources$gbif <- sum(grepl("^gbif:", ds, ignore.case = TRUE), na.rm = TRUE)
     sources$biotime <- sum(grepl("^biotime:", ds, ignore.case = TRUE), na.rm = TRUE)
     sources$dataone <- sum(grepl("^dataone:|^doi:", ds, ignore.case = TRUE), na.rm = TRUE)
-    sources$pdf     <- sum(grepl("\\.pdf", ds, ignore.case = TRUE), na.rm = TRUE)
+    sources$pdf <- sum(grepl("\\.pdf", ds, ignore.case = TRUE), na.rm = TRUE)
     # Anything else
     known <- sources$gbif + sources$biotime + sources$dataone + sources$pdf
-    sources$other   <- nrow(occurrences) - known
+    sources$other <- nrow(occurrences) - known
     # Remove zero-count sources
     sources <- sources[vapply(sources, function(x) x > 0L, logical(1L))]
   }
@@ -88,8 +88,10 @@ report_fetch <- function(occurrences,
     lat <- lat[!is.na(lat)]
     lon <- lon[!is.na(lon)]
     if (length(lat) > 0L && length(lon) > 0L) {
-      bbox_text <- sprintf("lat [%.2f, %.2f], lon [%.2f, %.2f]",
-                           min(lat), max(lat), min(lon), max(lon))
+      bbox_text <- sprintf(
+        "lat [%.2f, %.2f], lon [%.2f, %.2f]",
+        min(lat), max(lat), min(lon), max(lon)
+      )
     }
   }
 
@@ -103,15 +105,18 @@ report_fetch <- function(occurrences,
   }
 
   # --- Statistics -------------------------------------------------------------
-  n_records   <- nrow(occurrences)
+  n_records <- nrow(occurrences)
   # Standardized occurrence frames carry taxon_name, raw GBIF frames carry
   # scientificName -- accept either (a bare $scientificName on a tibble
   # missing the column warns and silently reports 0 taxa; found by the first
   # real kernel-path GL report run, 2026-09-01).
   .taxon_col <- intersect(c("scientificName", "taxon_name"), names(occurrences))[1]
-  n_taxa <- if (is.na(.taxon_col)) 0L else
+  n_taxa <- if (is.na(.taxon_col)) {
+    0L
+  } else {
     length(unique(occurrences[[.taxon_col]][!is.na(occurrences[[.taxon_col]])]))
-  n_sources   <- max(1L, length(sources))
+  }
+  n_sources <- max(1L, length(sources))
 
   statistics <- list(
     n_records = n_records,
@@ -128,31 +133,41 @@ report_fetch <- function(occurrences,
     )
     for (nm in names(sources)) {
       label <- if (nm %in% names(source_names)) source_names[[nm]] else nm
-      source_parts <- c(source_parts,
-                        sprintf("%s (n = %d)", label, sources[[nm]]))
+      source_parts <- c(
+        source_parts,
+        sprintf("%s (n = %d)", label, sources[[nm]])
+      )
     }
   }
 
   # --- Methods text -----------------------------------------------------------
   methods_parts <- "Occurrence records were obtained from"
   if (length(source_parts) > 0L) {
-    methods_parts <- paste0(methods_parts, " ",
-                            paste(source_parts, collapse = ", "), ".")
+    methods_parts <- paste0(
+      methods_parts, " ",
+      paste(source_parts, collapse = ", "), "."
+    )
   } else {
     methods_parts <- paste0(methods_parts, " biodiversity databases.")
   }
 
   if (!is.null(study_area)) {
-    methods_parts <- paste0(methods_parts,
-                            sprintf(" The study area encompassed %s.", study_area))
+    methods_parts <- paste0(
+      methods_parts,
+      sprintf(" The study area encompassed %s.", study_area)
+    )
   } else if (!is.null(bbox_text)) {
-    methods_parts <- paste0(methods_parts,
-                            sprintf(" Geographic extent: %s.", bbox_text))
+    methods_parts <- paste0(
+      methods_parts,
+      sprintf(" Geographic extent: %s.", bbox_text)
+    )
   }
 
   if (!is.null(year_text)) {
-    methods_parts <- paste0(methods_parts,
-                            sprintf(" Records spanned %s.", year_text))
+    methods_parts <- paste0(
+      methods_parts,
+      sprintf(" Records spanned %s.", year_text)
+    )
   }
 
   # --- Results text -----------------------------------------------------------
@@ -161,14 +176,18 @@ report_fetch <- function(occurrences,
     format(n_records, big.mark = ","), n_taxa
   )
   if (n_sources > 1L) {
-    results_text <- paste0(results_text,
-                           sprintf(" from %d data sources", n_sources))
+    results_text <- paste0(
+      results_text,
+      sprintf(" from %d data sources", n_sources)
+    )
   }
   results_text <- paste0(results_text, ".")
 
   if (!is.null(bbox_text) && is.null(study_area)) {
-    results_text <- paste0(results_text,
-                           sprintf(" Coordinates spanned %s.", bbox_text))
+    results_text <- paste0(
+      results_text,
+      sprintf(" Coordinates spanned %s.", bbox_text)
+    )
   }
 
   # --- Params -----------------------------------------------------------------

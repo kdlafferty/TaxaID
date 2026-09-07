@@ -156,18 +156,18 @@ utils::globalVariables(c(
 #' occ[occ$outlier_status == "outlier", ]
 #' }
 check_geographic_outliers <- function(
-    local_occurrences,
-    min_local_n     = 5L,
-    min_occs        = 7L,
-    method          = "distance",
-    tdi             = 1000,
-    mltpl           = 5,
-    year_range      = .gbif_default_year_range(),
-    cache_dir       = tools::R_user_dir("TaxaFetch", "cache"),
-    candidate_taxa  = NULL,
-    candidate_scope = c("genus", "species", "all"),
-    verdict_cache   = TRUE,
-    verbose         = FALSE
+  local_occurrences,
+  min_local_n = 5L,
+  min_occs = 7L,
+  method = "distance",
+  tdi = 1000,
+  mltpl = 5,
+  year_range = .gbif_default_year_range(),
+  cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
+  candidate_taxa = NULL,
+  candidate_scope = c("genus", "species", "all"),
+  verdict_cache = TRUE,
+  verbose = FALSE
 ) {
   candidate_scope <- match.arg(candidate_scope)
 
@@ -183,16 +183,20 @@ check_geographic_outliers <- function(
   if (!is.data.frame(local_occurrences)) {
     stop("check_geographic_outliers: 'local_occurrences' must be a data frame.")
   }
-  required_cols <- c("gbifID", "species", "speciesKey",
-                     "decimalLatitude", "decimalLongitude")
+  required_cols <- c(
+    "gbifID", "species", "speciesKey",
+    "decimalLatitude", "decimalLongitude"
+  )
   missing_cols <- setdiff(required_cols, names(local_occurrences))
   if (length(missing_cols) > 0L) {
-    stop("check_geographic_outliers: missing required column(s): ",
-         paste(missing_cols, collapse = ", "))
+    stop(
+      "check_geographic_outliers: missing required column(s): ",
+      paste(missing_cols, collapse = ", ")
+    )
   }
 
   local_occurrences$global_n_unique <- NA_integer_
-  local_occurrences$outlier_status  <- "not_tested_sufficient_local_data"
+  local_occurrences$outlier_status <- "not_tested_sufficient_local_data"
 
   local_counts <- dplyr::count(local_occurrences, species, name = "local_n")
   local_occurrences$local_n <- local_counts$local_n[
@@ -236,10 +240,13 @@ check_geographic_outliers <- function(
     n_before <- length(rare_species)
     rare_species <- rare_species[keep_sp]
     message(sprintf(
-      paste0("check_geographic_outliers: %d of %d locally-rare species are ",
-             "assignable (candidate_scope = \"%s\"); the other %d cannot reach ",
-             "a hypothesis and are not checked."),
-      length(rare_species), n_before, candidate_scope, n_before - length(rare_species)))
+      paste0(
+        "check_geographic_outliers: %d of %d locally-rare species are ",
+        "assignable (candidate_scope = \"%s\"); the other %d cannot reach ",
+        "a hypothesis and are not checked."
+      ),
+      length(rare_species), n_before, candidate_scope, n_before - length(rare_species)
+    ))
     if (length(rare_species) == 0L) {
       message("check_geographic_outliers: no assignable rare species -- nothing to check.")
       return(local_occurrences)
@@ -279,115 +286,123 @@ check_geographic_outliers <- function(
       "gbif_outlier_verdicts_%dsp_s%d_%s_%s.rds",
       length(rare_keys), as.integer(sum(as.numeric(rare_keys)) %% 1e9),
       gsub("[^0-9]", "", year_range),
-      paste0(method, "_", min_occs, "_", tdi, "_", mltpl)))
-  } else NULL
+      paste0(method, "_", min_occs, "_", tdi, "_", mltpl)
+    ))
+  } else {
+    NULL
+  }
 
   cached_verdicts <- NULL
   if (!is.null(.verdict_path) && file.exists(.verdict_path)) {
     cached_verdicts <- tryCatch(readRDS(.verdict_path), error = function(e) NULL)
-    if (!is.null(cached_verdicts))
+    if (!is.null(cached_verdicts)) {
       message(sprintf(
         "check_geographic_outliers: reusing cached verdicts for %d species (%s). Delete to recompute.",
-        length(rare_keys), basename(.verdict_path)))
+        length(rare_keys), basename(.verdict_path)
+      ))
+    }
   }
 
   if (is.null(cached_verdicts)) {
-  # Routed through get_gbif_occurrences() (2026-09-05) so this inherits the
-  # backend switch: above key_threshold it uses the async download API (one
-  # request, one zip) instead of one HTTP request per key. The per-key path
-  # earned a GBIF rate-limit block at ~360 keys -- "Too many requests! To
-  # download GBIF occurrence data in bulk, please use occ_download()" -- which
-  # is GBIF telling us directly to do this. limit = NULL because the default
-  # 10,000-per-key cap truncates by RETURN ORDER, and this cloud is the
-  # reference the outlier test measures "normal range" against: a
-  # dataset-clustered prefix biases the very thing being estimated.
-  global_occ <- get_gbif_occurrences(
-    keys       = rare_keys,
-    geometry   = NULL,
-    year_range = year_range,
-    limit      = NULL,
-    # rank_filter = NULL, NOT the wrapper's "species" default: the previous
-    # direct fetch_gbif_occurrences() call applied no rank filter, and this
-    # change is a BACKEND switch, not a change to which records qualify.
-    # (Genus-only records are excluded from the verdict anyway -- cc_outl() is
-    # run per `species`, so a blank species never forms a cloud.) Revisit
-    # deliberately if you want them dropped earlier.
-    rank_filter = NULL,
-    cache_dir  = cache_dir
-  )
+    # Routed through get_gbif_occurrences() (2026-09-05) so this inherits the
+    # backend switch: above key_threshold it uses the async download API (one
+    # request, one zip) instead of one HTTP request per key. The per-key path
+    # earned a GBIF rate-limit block at ~360 keys -- "Too many requests! To
+    # download GBIF occurrence data in bulk, please use occ_download()" -- which
+    # is GBIF telling us directly to do this. limit = NULL because the default
+    # 10,000-per-key cap truncates by RETURN ORDER, and this cloud is the
+    # reference the outlier test measures "normal range" against: a
+    # dataset-clustered prefix biases the very thing being estimated.
+    global_occ <- get_gbif_occurrences(
+      keys = rare_keys,
+      geometry = NULL,
+      year_range = year_range,
+      limit = NULL,
+      # rank_filter = NULL, NOT the wrapper's "species" default: the previous
+      # direct fetch_gbif_occurrences() call applied no rank filter, and this
+      # change is a BACKEND switch, not a change to which records qualify.
+      # (Genus-only records are excluded from the verdict anyway -- cc_outl() is
+      # run per `species`, so a blank species never forms a cloud.) Revisit
+      # deliberately if you want them dropped earlier.
+      rank_filter = NULL,
+      cache_dir = cache_dir
+    )
 
-  if (nrow(global_occ) == 0L) {
-    local_occurrences$outlier_status[is_rare_row] <- "insufficient_global_data"
-    return(local_occurrences)
-  }
+    if (nrow(global_occ) == 0L) {
+      local_occurrences$outlier_status[is_rare_row] <- "insufficient_global_data"
+      return(local_occurrences)
+    }
 
-  global_counts <- global_occ |>
-    dplyr::distinct(species, decimalLongitude, decimalLatitude) |>
-    dplyr::count(species, name = "global_n_unique")
+    global_counts <- global_occ |>
+      dplyr::distinct(species, decimalLongitude, decimalLatitude) |>
+      dplyr::count(species, name = "global_n_unique")
 
-  global_occ$.global_n_unique <- global_counts$global_n_unique[
-    match(global_occ$species, global_counts$species)
-  ]
+    global_occ$.global_n_unique <- global_counts$global_n_unique[
+      match(global_occ$species, global_counts$species)
+    ]
 
-  # cc_outl() is called ONCE PER SPECIES, not once for the whole combined
-  # batch -- confirmed on real production data (2026-07-20) that its
-  # "distance" method silently switches EVERY species in a single call to a
-  # coarser raster approximation whenever ANY ONE species in that call has
-  # >=10,000 records (CoordinateCleaner::cc_outl's own
-  # `if (any(record_numbers >= 10000)) { warning("Using raster
-  # approximation.") ... }`, scoped to the whole call, not per species). A
-  # locally-rare species can still be globally common, so batching every
-  # rare species into one cc_outl() call let one common species silently
-  # degrade every other species' precision -- this cleared a real, obvious
-  # ~9,000 km outlier (a Mugu Pseudotolithus epipercus record) that a
-  # per-species call correctly flags. Per-species calls scope that raster
-  # decision to each species' own record count, where it belongs.
-  #
-  # cc_outl() also warns about species below min_occs -- suppressed here
-  # because check_geographic_outliers() already reports that per-row and
-  # explicitly via outlier_status = "insufficient_global_data", not just to
-  # the console.
-  cc_pass <- rep(NA, nrow(global_occ))
-  for (sp in unique(global_occ$species)) {
-    sp_rows <- which(global_occ$species == sp)
-    cc_pass[sp_rows] <- suppressWarnings(CoordinateCleaner::cc_outl(
-      x        = global_occ[sp_rows, , drop = FALSE],
-      lon      = "decimalLongitude",
-      lat      = "decimalLatitude",
-      species  = "species",
-      method   = method,
-      mltpl    = mltpl,
-      tdi      = tdi,
-      min_occs = min_occs,
-      value    = "flagged",
-      verbose  = verbose
-    ))
-  }
-  global_occ$.cc_pass <- cc_pass
+    # cc_outl() is called ONCE PER SPECIES, not once for the whole combined
+    # batch -- confirmed on real production data (2026-07-20) that its
+    # "distance" method silently switches EVERY species in a single call to a
+    # coarser raster approximation whenever ANY ONE species in that call has
+    # >=10,000 records (CoordinateCleaner::cc_outl's own
+    # `if (any(record_numbers >= 10000)) { warning("Using raster
+    # approximation.") ... }`, scoped to the whole call, not per species). A
+    # locally-rare species can still be globally common, so batching every
+    # rare species into one cc_outl() call let one common species silently
+    # degrade every other species' precision -- this cleared a real, obvious
+    # ~9,000 km outlier (a Mugu Pseudotolithus epipercus record) that a
+    # per-species call correctly flags. Per-species calls scope that raster
+    # decision to each species' own record count, where it belongs.
+    #
+    # cc_outl() also warns about species below min_occs -- suppressed here
+    # because check_geographic_outliers() already reports that per-row and
+    # explicitly via outlier_status = "insufficient_global_data", not just to
+    # the console.
+    cc_pass <- rep(NA, nrow(global_occ))
+    for (sp in unique(global_occ$species)) {
+      sp_rows <- which(global_occ$species == sp)
+      cc_pass[sp_rows] <- suppressWarnings(CoordinateCleaner::cc_outl(
+        x        = global_occ[sp_rows, , drop = FALSE],
+        lon      = "decimalLongitude",
+        lat      = "decimalLatitude",
+        species  = "species",
+        method   = method,
+        mltpl    = mltpl,
+        tdi      = tdi,
+        min_occs = min_occs,
+        value    = "flagged",
+        verbose  = verbose
+      ))
+    }
+    global_occ$.cc_pass <- cc_pass
 
-  # Reduce to the durable artifact and drop the cloud: one row per global
-  # record that a LOCAL rare record can join to, carrying only the two values
-  # the verdict needs.
-  cached_verdicts <- data.frame(
-    gbifID          = global_occ$gbifID,
-    global_n_unique = global_occ$.global_n_unique,
-    cc_pass         = global_occ$.cc_pass,
-    stringsAsFactors = FALSE
-  )
-  cached_verdicts <- cached_verdicts[
-    cached_verdicts$gbifID %in% local_occurrences$gbifID[is_rare_row], , drop = FALSE]
-  if (!is.null(.verdict_path)) {
-    saveRDS(cached_verdicts, .verdict_path)
-    message(sprintf(
-      "check_geographic_outliers: cached %d verdict row(s) (%.2f MB) -- the global cloud itself is not retained.",
-      nrow(cached_verdicts), file.info(.verdict_path)$size / 1024^2))
-  }
-  }  # end recompute block
+    # Reduce to the durable artifact and drop the cloud: one row per global
+    # record that a LOCAL rare record can join to, carrying only the two values
+    # the verdict needs.
+    cached_verdicts <- data.frame(
+      gbifID = global_occ$gbifID,
+      global_n_unique = global_occ$.global_n_unique,
+      cc_pass = global_occ$.cc_pass,
+      stringsAsFactors = FALSE
+    )
+    cached_verdicts <- cached_verdicts[
+      cached_verdicts$gbifID %in% local_occurrences$gbifID[is_rare_row], ,
+      drop = FALSE
+    ]
+    if (!is.null(.verdict_path)) {
+      saveRDS(cached_verdicts, .verdict_path)
+      message(sprintf(
+        "check_geographic_outliers: cached %d verdict row(s) (%.2f MB) -- the global cloud itself is not retained.",
+        nrow(cached_verdicts), file.info(.verdict_path)$size / 1024^2
+      ))
+    }
+  } # end recompute block
 
   match_pos <- match(local_occurrences$gbifID[is_rare_row], cached_verdicts$gbifID)
 
   matched_n_unique <- cached_verdicts$global_n_unique[match_pos]
-  matched_cc_pass   <- cached_verdicts$cc_pass[match_pos]
+  matched_cc_pass <- cached_verdicts$cc_pass[match_pos]
 
   status <- ifelse(
     is.na(matched_n_unique) | matched_n_unique < min_occs,
@@ -396,7 +411,7 @@ check_geographic_outliers <- function(
   )
 
   local_occurrences$global_n_unique[is_rare_row] <- matched_n_unique
-  local_occurrences$outlier_status[is_rare_row]  <- status
+  local_occurrences$outlier_status[is_rare_row] <- status
 
   local_occurrences
 }

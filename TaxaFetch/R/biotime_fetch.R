@@ -103,12 +103,11 @@ utils::globalVariables(c(
 #'
 #' @export
 read_biotime_study <- function(local_path = NULL,
-                               study_id   = NULL,
-                               verbose    = TRUE) {
-
+                               study_id = NULL,
+                               verbose = TRUE) {
   # -- input validation --------------------------------------------------------
   if (!is.null(local_path) &&
-      (!is.character(local_path) || length(local_path) != 1L)) {
+    (!is.character(local_path) || length(local_path) != 1L)) {
     stop("`local_path` must be a single character string or NULL.", call. = FALSE)
   }
   if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
@@ -126,11 +125,13 @@ read_biotime_study <- function(local_path = NULL,
         call. = FALSE
       )
     }
-    if (verbose) message(
-      "No path supplied -- opening file chooser.\n",
-      "Navigate to your downloaded BioTime CSV (e.g. raw_data_595.csv).\n",
-      "Download studies from https://biotime.st-andrews.ac.uk/home.php"
-    )
+    if (verbose) {
+      message(
+        "No path supplied -- opening file chooser.\n",
+        "Navigate to your downloaded BioTime CSV (e.g. raw_data_595.csv).\n",
+        "Download studies from https://biotime.st-andrews.ac.uk/home.php"
+      )
+    }
     local_path <- file.choose()
     if (!nzchar(local_path)) stop("No file selected.", call. = FALSE)
   }
@@ -153,14 +154,16 @@ read_biotime_study <- function(local_path = NULL,
   # -- resolve study_id ---------------------------------------------------------
   if (is.null(study_id)) {
     # Try to extract from filename pattern raw_data_<id>.csv
-    fname    <- basename(local_path)
+    fname <- basename(local_path)
     id_match <- regmatches(fname, regexpr("(?<=raw_data_)\\d+", fname, perl = TRUE))
     if (length(id_match) == 1L && nzchar(id_match)) {
       study_id <- id_match
-      if (verbose) message(sprintf(
-        "study_id inferred from filename: %s (datasetID = \"biotime:%s\")",
-        study_id, study_id
-      ))
+      if (verbose) {
+        message(sprintf(
+          "study_id inferred from filename: %s (datasetID = \"biotime:%s\")",
+          study_id, study_id
+        ))
+      }
     } else {
       warning(
         "Could not infer study_id from filename '", fname, "'.\n",
@@ -188,7 +191,7 @@ read_biotime_study <- function(local_path = NULL,
 
   # -- check for required columns ------------------------------------------------
   required <- c("valid_name", "LATITUDE", "LONGITUDE", "YEAR", "ABUNDANCE")
-  missing  <- setdiff(required, names(raw))
+  missing <- setdiff(required, names(raw))
   if (length(missing) > 0L) {
     stop(
       "BioTime CSV is missing expected columns: ",
@@ -210,7 +213,7 @@ read_biotime_study <- function(local_path = NULL,
     MONTH       = "month",
     DAY         = "day",
     SAMPLE_DESC = "eventID",
-    BIOMAS      = "biotime_biomass"   # note: BioTime source spells it BIOMAS
+    BIOMAS      = "biotime_biomass" # note: BioTime source spells it BIOMAS
   )
 
   # Only rename columns that are actually present in this file
@@ -218,22 +221,25 @@ read_biotime_study <- function(local_path = NULL,
   names(raw)[match(names(present_map), names(raw))] <- present_map
 
   # -- coerce types --------------------------------------------------------------
-  raw$decimalLatitude  <- suppressWarnings(as.numeric(raw$decimalLatitude))
+  raw$decimalLatitude <- suppressWarnings(as.numeric(raw$decimalLatitude))
   raw$decimalLongitude <- suppressWarnings(as.numeric(raw$decimalLongitude))
   raw$organismQuantity <- suppressWarnings(as.numeric(raw$organismQuantity))
-  raw$year             <- suppressWarnings(as.integer(raw$year))
-  if ("month"          %in% names(raw))
-    raw$month          <- suppressWarnings(as.integer(raw$month))
-  if ("day"            %in% names(raw))
-    raw$day            <- suppressWarnings(as.integer(raw$day))
-  if ("biotime_biomass" %in% names(raw))
+  raw$year <- suppressWarnings(as.integer(raw$year))
+  if ("month" %in% names(raw)) {
+    raw$month <- suppressWarnings(as.integer(raw$month))
+  }
+  if ("day" %in% names(raw)) {
+    raw$day <- suppressWarnings(as.integer(raw$day))
+  }
+  if ("biotime_biomass" %in% names(raw)) {
     raw$biotime_biomass <- suppressWarnings(as.numeric(raw$biotime_biomass))
+  }
 
   # -- derived DwC columns -------------------------------------------------------
   biomass_vals <- if ("biotime_biomass" %in% names(raw)) raw$biotime_biomass else NA_real_
 
   has_abundance <- !is.na(raw$organismQuantity)
-  has_biomass   <- !is.na(biomass_vals)
+  has_biomass <- !is.na(biomass_vals)
   raw$occurrenceStatus <- ifelse(
     (has_abundance & raw$organismQuantity > 0) | (has_biomass & biomass_vals > 0),
     "present",
@@ -251,28 +257,30 @@ read_biotime_study <- function(local_path = NULL,
     ))
   }
   raw$organismQuantityType <- "abundance"
-  raw$basisOfRecord        <- "HumanObservation"
-  raw$datasetID            <- dataset_id
+  raw$basisOfRecord <- "HumanObservation"
+  raw$datasetID <- dataset_id
 
   # Ensure biotime_biomass column exists even when BIOMAS was absent in source
   if (!"biotime_biomass" %in% names(raw)) raw$biotime_biomass <- NA_real_
 
   # -- drop rows missing coordinates ---------------------------------------------
-  has_coords  <- !is.na(raw$decimalLatitude) & !is.na(raw$decimalLongitude)
+  has_coords <- !is.na(raw$decimalLatitude) & !is.na(raw$decimalLongitude)
   n_no_coords <- sum(!has_coords)
   if (n_no_coords > 0L) {
-    if (verbose) message(sprintf(
-      "  Dropping %d row(s) with missing coordinates.", n_no_coords
-    ))
+    if (verbose) {
+      message(sprintf(
+        "  Dropping %d row(s) with missing coordinates.", n_no_coords
+      ))
+    }
     raw <- raw[has_coords, , drop = FALSE]
   }
 
   # -- report --------------------------------------------------------------------
   if (verbose) {
     n_present <- sum(raw$occurrenceStatus == "present", na.rm = TRUE)
-    n_absent  <- sum(raw$occurrenceStatus == "absent", na.rm = TRUE)
+    n_absent <- sum(raw$occurrenceStatus == "absent", na.rm = TRUE)
     n_unknown <- sum(is.na(raw$occurrenceStatus))
-    n_taxa    <- length(unique(raw$scientificName))
+    n_taxa <- length(unique(raw$scientificName))
     message(sprintf(
       paste0(
         "  %d records: %d present, %d absent, %d unknown | %d taxa | ",
