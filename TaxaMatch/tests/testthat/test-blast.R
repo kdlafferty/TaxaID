@@ -916,3 +916,49 @@ test_that("parse_taxonomy_xml extracts lineage correctly", {
   expect_equal(result$family, "Hominidae")
   expect_equal(result$kingdom, "Metazoa")
 })
+
+# ------------------------------------------------------------------------------
+# .resolve_locations_by_acc() -- GBQualifier name/value pairing (2026-09-07)
+#
+# The INSDC GBSet DTD makes GBQualifier_value OPTIONAL, so a valueless source
+# qualifier -- /environmental_sample above all, ubiquitous on the eDNA-derived
+# records this package works with -- shifts every subsequent value onto the
+# wrong name when name and value are read as two independent xml_find_all()
+# sweeps. Reproduced against a fixture shaped exactly like the real NCBI
+# records this was confirmed on (AVFR00000000 / AVFR01000001 / AVFR01000002),
+# where /environmental_sample sits immediately before /lat_lon and the old
+# read returned "0 m" or a collection date as the coordinate string.
+# ------------------------------------------------------------------------------
+
+.gbseq_source_xml_with_valueless_qualifier <- function() {
+  paste0(
+    '<?xml version="1.0"?><GBSet><GBSeq>',
+    '<GBSeq_primary-accession>AVFR01000002</GBSeq_primary-accession>',
+    '<GBSeq_feature-table><GBFeature>',
+    '<GBFeature_key>source</GBFeature_key><GBFeature_quals>',
+    '<GBQualifier><GBQualifier_name>organism</GBQualifier_name>',
+    '<GBQualifier_value>microbial mat metagenome</GBQualifier_value></GBQualifier>',
+    # valueless qualifier, exactly as GenBank emits /environmental_sample
+    '<GBQualifier><GBQualifier_name>environmental_sample</GBQualifier_name></GBQualifier>',
+    '<GBQualifier><GBQualifier_name>country</GBQualifier_name>',
+    '<GBQualifier_value>USA: Massachusetts</GBQualifier_value></GBQualifier>',
+    '<GBQualifier><GBQualifier_name>lat_lon</GBQualifier_name>',
+    '<GBQualifier_value>41.5758 N 70.6392 W</GBQualifier_value></GBQualifier>',
+    '</GBFeature_quals></GBFeature></GBSeq_feature-table>',
+    '</GBSeq></GBSet>'
+  )
+}
+
+test_that(".resolve_locations_by_acc() pairs a valueless source GBQualifier with the right name", {
+  testthat::local_mocked_bindings(
+    entrez_fetch = function(...) .gbseq_source_xml_with_valueless_qualifier(),
+    .package = "rentrez"
+  )
+  out <- .resolve_locations_by_acc("AVFR01000002", verbose = FALSE)
+  expect_equal(nrow(out), 1L)
+  # Before the fix, lat/lon came back NA (the shifted value was not a
+  # parseable lat_lon string) and country picked up the neighbouring value.
+  expect_equal(out$lat, 41.5758)
+  expect_equal(out$lon, -70.6392)
+  expect_equal(out$country, "USA: Massachusetts")
+})

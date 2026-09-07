@@ -147,14 +147,24 @@
           }
           do.call(rbind, lapply(feats, function(feat) {
             fkey   <- xml2::xml_text(xml2::xml_find_first(feat, "./GBFeature_key"))
-            qnames <- xml2::xml_text(xml2::xml_find_all(
-              feat, "./GBFeature_quals/GBQualifier/GBQualifier_name"
-            ))
-            qvals  <- xml2::xml_text(xml2::xml_find_all(
-              feat, "./GBFeature_quals/GBQualifier/GBQualifier_value"
-            ))
-            gene_val    <- qvals[qnames == "gene"]
-            product_val <- qvals[qnames == "product"]
+            # Name and value are read PER GBQualifier NODE, not as two
+            # independent xml_find_all() sweeps. The INSDC GBSet DTD makes
+            # GBQualifier_value OPTIONAL (`GBQualifier (GBQualifier_name,
+            # GBQualifier_value?)`), so a valueless qualifier -- `/pseudo`,
+            # `/partial`, `/trans_splicing`, `/ribosomal_slippage` -- yields
+            # one fewer value than names and shifts every subsequent value
+            # onto the wrong name. Confirmed on real NCBI data
+            # (NC_000932, Arabidopsis chloroplast): the rps12 gene/CDS
+            # features carry a valueless `/trans_splicing` BEFORE `/product`,
+            # so the old parallel-vector read returned another qualifier's
+            # text as the product. xml_find_first() over the qualifier
+            # nodeset returns one element per node (NA where the value is
+            # absent), so the two vectors stay aligned by construction.
+            quals  <- xml2::xml_find_all(feat, "./GBFeature_quals/GBQualifier")
+            qnames <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_name"))
+            qvals  <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_value"))
+            gene_val    <- stats::na.omit(qvals[qnames %in% "gene"])
+            product_val <- stats::na.omit(qvals[qnames %in% "product"])
             # GBFeature_intervals/GBInterval's own from/to -- min/max across
             # every interval covers a multi-interval feature (e.g. a
             # spliced CDS) by its full outer span; NA when the feature
@@ -195,6 +205,22 @@
 
   out <- do.call(rbind, Filter(Negate(is.null), res))
   if (is.null(out) || nrow(out) == 0L) return(empty)
+
+  # Report each row under the accession string the CALLER asked about, not
+  # NCBI's own `GBSeq_primary-accession` (which is always version-free). Both
+  # consumers key on the requested string -- `check_marker_mismatch()` does
+  # `ann$accession == acc`, `.extract_feature_table_fallback()` the same --
+  # so a versioned request ("NC_012920.1") previously matched nothing and
+  # silently read as "this record has no annotation": `marker_match = NA`
+  # instead of `TRUE`, and a declined feature-table rescue reported
+  # "no_annotation" instead of the real reason. This is the same
+  # version-suffix-stripped join back to the caller's own strings that
+  # `.fetch_reference_accession_records()` already performs for the identical
+  # reason.
+  requested <- accessions[
+    match(.strip_acc_version(out$accession), .strip_acc_version(accessions))
+  ]
+  out$accession[!is.na(requested)] <- requested[!is.na(requested)]
   out
 }
 

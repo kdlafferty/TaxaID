@@ -101,13 +101,6 @@ utils::globalVariables(c(
 #' @noRd
 .strip_acc_version <- function(x) sub("\\.[0-9]+$", "", x)
 
-#' Add any column the persistent cache carries that new rows lack
-#'
-#' [migrate_reference_cache()] stamps a `migrated_from` column onto the cache
-#' file; rows computed afterwards do not have it, and
-#' `rbind(cache, new_rows[, names(cache)])` would error on the absent column.
-#' `NA`-fills, then orders to the cache's own columns.
-#' @noRd
 #' Cache columns that may be NA-filled rather than forcing a full discard
 #'
 #' `.load_reference_accession_cache()` discards an entire cache file whose
@@ -146,8 +139,18 @@ utils::globalVariables(c(
 #' @noRd
 .na_like <- function(proto, n) proto[rep(NA_integer_, n)]
 
+#' Add any column the persistent cache carries that new rows lack
+#'
+#' [migrate_reference_cache()] stamps a `migrated_from` column onto the cache
+#' file; rows computed afterwards do not have it, and
+#' `rbind(cache, new_rows[, names(cache)])` would error on the absent column.
+#' `NA`-fills (typed, via `.na_like()`, so the subsequent `rbind()` cannot
+#' coerce an existing column's storage mode), then orders to the cache's own
+#' columns.
+#' @noRd
 .align_to_cache_columns <- function(rows, cache) {
-  for (nm in setdiff(names(cache), names(rows))) rows[[nm]] <- rep(NA, nrow(rows))
+  for (nm in setdiff(names(cache), names(rows)))
+    rows[[nm]] <- .na_like(cache[[nm]], nrow(rows))
   rows[, names(cache), drop = FALSE]
 }
 

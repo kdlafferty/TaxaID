@@ -109,25 +109,24 @@ string \code{"__MISSING__"} to make blanks/NAs count as their own
 category. If any real taxon name in your data literally equals
 \code{"__MISSING__"}, it would be misinterpreted as a blank placeholder
 -- an extremely unlikely collision in practice.
-
+}
+\examples{
 m <- data.frame(
-observation_id = rep("obs1", 4),
-order   = rep("Sessilia", 4),
-family  = c("Balanidae", "Archaeobalanidae", "Balanidae", "Chthamalidae"),
-genus   = c("Amphibalanus", "Semibalanus", "Balanus", "Chthamalus"),
-species = c("Amphibalanus improvisus", "Semibalanus balanoides",
-"Balanus balanus", "Chthamalus fragilis")
+  observation_id = rep("obs1", 4),
+  order   = rep("Sessilia", 4),
+  family  = c("Balanidae", "Archaeobalanidae", "Balanidae", "Chthamalidae"),
+  genus   = c("Amphibalanus", "Semibalanus", "Balanus", "Chthamalus"),
+  species = c("Amphibalanus improvisus", "Semibalanus balanoides",
+              "Balanus balanus", "Chthamalus fragilis")
 )
-}
-\section{Strict mode: lowest consistent rank = order (3 different families)}{
+# Strict mode: lowest consistent rank = order (3 different families)
 add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"))
-}
 
-\section{Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 → family is consistent}{
+# Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 -> family is consistent
 add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"),
-majority_threshold = 0.75)
-}
+                            majority_threshold = 0.75)
 
+}
 \seealso{
 \code{\link[=standardize_match_data]{standardize_match_data()}}, \code{\link[=filter_redundant_hypotheses]{filter_redundant_hypotheses()}}
 }

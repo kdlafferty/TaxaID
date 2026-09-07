@@ -97,6 +97,7 @@
 #' \code{"__MISSING__"}, it would be misinterpreted as a blank placeholder
 #' -- an extremely unlikely collision in practice.
 #'
+#' @examples
 #' m <- data.frame(
 #'   observation_id = rep("obs1", 4),
 #'   order   = rep("Sessilia", 4),
@@ -108,7 +109,7 @@
 #' # Strict mode: lowest consistent rank = order (3 different families)
 #' add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"))
 #'
-#' # Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 → family is consistent
+#' # Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 -> family is consistent
 #' add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"),
 #'                             majority_threshold = 0.75)
 #'
@@ -186,6 +187,16 @@ add_lowest_consistent_rank <- function(match_obj,
 
   # ---- per-observation computation --------------------------------------------
   obs_ids      <- match_obj[[observation_id_col]]
+  # Every per-observation result below is looked up BY NAME out of a named
+  # vector (per_obs_rank[obs_key] etc.), and names are always character. A
+  # numeric/integer observation_id column would therefore index those vectors
+  # POSITIONALLY instead -- silently returning NA for every row whose id is
+  # larger than the number of distinct observations, i.e. usually all of them.
+  # Confirmed: integer ids c(10, 10, 20) returned lowest_consistent_rank =
+  # NA for all three rows, where the identical data with character ids
+  # returns "family"/"family"/"species". Coerced once, here, so the lookups
+  # cannot silently change meaning with the column's storage type.
+  obs_key      <- as.character(obs_ids)
   unique_ids   <- unique(obs_ids)
   majority_mode <- !is.null(majority_threshold)
 
@@ -256,23 +267,23 @@ add_lowest_consistent_rank <- function(match_obj,
   per_obs_rank <- vapply(per_obs_list, `[[`, character(1L), "rank")
 
   # ---- broadcast lowest_consistent_rank to all rows --------------------------
-  match_obj[["lowest_consistent_rank"]] <- per_obs_rank[obs_ids]
+  match_obj[["lowest_consistent_rank"]] <- unname(per_obs_rank[obs_key])
 
   # ---- majority mode: add fraction, majority value, and outlier flag ----------
   if (majority_mode) {
     per_obs_majv <- vapply(per_obs_list, `[[`, character(1L), "majority_val")
     per_obs_majf <- vapply(per_obs_list, `[[`, double(1L),    "majority_frac")
 
-    match_obj[["rank_majority_value"]]    <- per_obs_majv[obs_ids]
-    match_obj[["rank_majority_fraction"]] <- per_obs_majf[obs_ids]
+    match_obj[["rank_majority_value"]]    <- unname(per_obs_majv[obs_key])
+    match_obj[["rank_majority_fraction"]] <- unname(per_obs_majf[obs_key])
 
     # is_rank_outlier: vectorised per rank.
     # A row is an outlier when its value at lowest_consistent_rank is non-blank
     # AND differs from the majority value for its observation.
     # Rows with blank/NA values at that rank are FALSE (missing, not contradicting).
     is_outlier           <- rep(FALSE, nrow(match_obj))
-    majority_val_per_row <- per_obs_majv[obs_ids]
-    lcr_per_row          <- per_obs_rank[obs_ids]
+    majority_val_per_row <- unname(per_obs_majv[obs_key])
+    lcr_per_row          <- unname(per_obs_rank[obs_key])
 
     for (rk in rank_system) {
       mask <- !is.na(lcr_per_row) & lcr_per_row == rk

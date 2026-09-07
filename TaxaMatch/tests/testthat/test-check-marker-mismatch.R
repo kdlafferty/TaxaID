@@ -136,3 +136,85 @@ test_that("check_marker_mismatch() validates inputs", {
   expect_error(check_marker_mismatch("AY850362", NA_character_), "expected_marker")
   expect_error(check_marker_mismatch("AY850362", c("12S", "16S")), "expected_marker")
 })
+
+# ------------------------------------------------------------------------------
+# .fetch_marker_annotation() -- GBQualifier name/value pairing and the
+# version-suffix-stripped join back to the caller's own accession strings.
+#
+# Both were real defects (fixed 2026-09-07, formal review pass), both
+# reproduced here against fixtures shaped exactly like real NCBI GBSet XML:
+#
+#   (1) The INSDC GBSet DTD makes GBQualifier_value OPTIONAL, so a valueless
+#       qualifier (/trans_splicing here -- real, on NC_000932's rps12
+#       gene/CDS features) shifts every subsequent value onto the wrong name
+#       when name and value are read as two independent xml_find_all()
+#       sweeps. Confirmed on the real record before fixing.
+#   (2) GBSeq_primary-accession is always version-free, but both consumers
+#       key on the string the CALLER asked about -- so a versioned request
+#       matched nothing and read as "this record has no annotation at all".
+# ------------------------------------------------------------------------------
+
+.gbseq_xml_with_valueless_qualifier <- function() {
+  paste0(
+    '<?xml version="1.0"?><GBSet><GBSeq>',
+    '<GBSeq_primary-accession>NC_000932</GBSeq_primary-accession>',
+    '<GBSeq_accession-version>NC_000932.1</GBSeq_accession-version>',
+    '<GBSeq_feature-table><GBFeature>',
+    '<GBFeature_key>CDS</GBFeature_key>',
+    '<GBFeature_intervals><GBInterval>',
+    '<GBInterval_from>100</GBInterval_from><GBInterval_to>400</GBInterval_to>',
+    '</GBInterval></GBFeature_intervals>',
+    '<GBFeature_quals>',
+    '<GBQualifier><GBQualifier_name>gene</GBQualifier_name>',
+    '<GBQualifier_value>rps12</GBQualifier_value></GBQualifier>',
+    # valueless qualifier, exactly as GenBank emits /trans_splicing
+    '<GBQualifier><GBQualifier_name>trans_splicing</GBQualifier_name></GBQualifier>',
+    '<GBQualifier><GBQualifier_name>codon_start</GBQualifier_name>',
+    '<GBQualifier_value>1</GBQualifier_value></GBQualifier>',
+    '<GBQualifier><GBQualifier_name>product</GBQualifier_name>',
+    '<GBQualifier_value>12S ribosomal RNA</GBQualifier_value></GBQualifier>',
+    '</GBFeature_quals></GBFeature></GBSeq_feature-table>',
+    '</GBSeq></GBSet>'
+  )
+}
+
+test_that(".fetch_marker_annotation() pairs a valueless GBQualifier with the right name", {
+  local_mocked_bindings(
+    entrez_fetch = function(...) .gbseq_xml_with_valueless_qualifier(),
+    .package = "rentrez"
+  )
+  out <- .fetch_marker_annotation("NC_000932", verbose = FALSE)
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$gene, "rps12")
+  # Before the fix this read "1" (codon_start's value, shifted one position
+  # by the valueless /trans_splicing qualifier), not the real product.
+  expect_equal(out$product, "12S ribosomal RNA")
+  expect_equal(out$feature_from, 100)
+  expect_equal(out$feature_to, 400)
+})
+
+test_that(".fetch_marker_annotation() reports rows under the caller's own versioned accession", {
+  local_mocked_bindings(
+    entrez_fetch = function(...) .gbseq_xml_with_valueless_qualifier(),
+    .package = "rentrez"
+  )
+  out <- .fetch_marker_annotation("NC_000932.1", verbose = FALSE)
+  expect_equal(out$accession, "NC_000932.1")
+
+  # ... and unchanged for a version-free request.
+  out2 <- .fetch_marker_annotation("NC_000932", verbose = FALSE)
+  expect_equal(out2$accession, "NC_000932")
+})
+
+test_that("check_marker_mismatch() resolves a versioned accession (regression)", {
+  local_mocked_bindings(
+    entrez_fetch = function(...) .gbseq_xml_with_valueless_qualifier(),
+    .package = "rentrez"
+  )
+  # Before the fix this returned marker_match = NA and all-NA annotation,
+  # purely because "NC_000932.1" != NCBI's version-free primary accession.
+  out <- check_marker_mismatch("NC_000932.1", "12S", verbose = FALSE)
+  expect_equal(nrow(out), 1L)
+  expect_true(out$marker_match)
+  expect_equal(out$annotated_products, "12S ribosomal RNA")
+})

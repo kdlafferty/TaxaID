@@ -269,3 +269,38 @@ test_that("auto-detects rank_system from column names", {
   out <- add_lowest_consistent_rank(m)  # rank_system = NULL
   expect_equal(unique(out$lowest_consistent_rank), "family")
 })
+
+# ------------------------------------------------------------------------------
+# add_lowest_consistent_rank() -- non-character observation_id (2026-09-07)
+#
+# Every per-observation result is looked up BY NAME out of a named vector, and
+# names are always character. A numeric/integer observation_id column indexed
+# those vectors POSITIONALLY instead, silently returning NA for every row.
+# ------------------------------------------------------------------------------
+
+test_that("add_lowest_consistent_rank() handles a numeric observation_id column", {
+  m_chr <- data.frame(
+    observation_id = c("10", "10", "20"),
+    family  = c("Fa", "Fa", "Fb"),
+    genus   = c("Ga", "Gb", "Gc"),
+    species = c("Ga a", "Gb b", "Gc c"),
+    stringsAsFactors = FALSE
+  )
+  m_int <- m_chr
+  m_int$observation_id <- c(10L, 10L, 20L)
+
+  rs <- c("family", "genus", "species")
+  out_chr <- add_lowest_consistent_rank(m_chr, rank_system = rs)
+  out_int <- add_lowest_consistent_rank(m_int, rank_system = rs)
+
+  expect_equal(out_chr$lowest_consistent_rank, c("family", "family", "species"))
+  # Before the fix this was NA for all three rows.
+  expect_equal(out_int$lowest_consistent_rank, out_chr$lowest_consistent_rank)
+
+  # Majority mode's own broadcast columns use the same lookup.
+  maj_chr <- add_lowest_consistent_rank(m_chr, rank_system = rs, majority_threshold = 0.9)
+  maj_int <- add_lowest_consistent_rank(m_int, rank_system = rs, majority_threshold = 0.9)
+  expect_equal(maj_int$rank_majority_value, maj_chr$rank_majority_value)
+  expect_equal(maj_int$rank_majority_fraction, maj_chr$rank_majority_fraction)
+  expect_equal(maj_int$is_rank_outlier, maj_chr$is_rank_outlier)
+})

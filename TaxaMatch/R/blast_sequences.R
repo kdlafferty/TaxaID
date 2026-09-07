@@ -1722,11 +1722,30 @@ blast_sequences <- function(seq_df,
           quals <- xml2::xml_find_all(
             node, ".//GBFeature[GBFeature_key='source']/GBFeature_quals/GBQualifier"
           )
-          qnames <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_name"))
-          qvals  <- xml2::xml_text(xml2::xml_find_all(quals, "./GBQualifier_value"))
+          # Name and value are read PER GBQualifier NODE, not as two
+          # independent xml_find_all() sweeps. The INSDC GBSet DTD makes
+          # GBQualifier_value OPTIONAL (`GBQualifier (GBQualifier_name,
+          # GBQualifier_value?)`), so a valueless source qualifier --
+          # `/environmental_sample` above all, which is ubiquitous on exactly
+          # the eDNA-derived records this package works with, plus
+          # `/germline`, `/transgenic`, `/focus`, `/macronuclear` -- yields
+          # one fewer value than names and shifts every subsequent value onto
+          # the wrong name. Confirmed on real NCBI records (AVFR00000000,
+          # AVFR01000001, AVFR01000002): `/environmental_sample` sits
+          # immediately before `/geo_loc_name` and `/lat_lon`, so the old
+          # parallel-vector read returned "2010-07-01" / "0 m" / "microbial
+          # mat metagenome" as the lat_lon string and .parse_lat_lon()
+          # correctly rejected each one -- real collection coordinates
+          # (41.5758 N 70.6392 W) silently lost, and `country` liable to
+          # report a neighbouring qualifier's text instead. xml_find_first()
+          # over the qualifier nodeset returns one element per node (NA where
+          # the value is absent), so the two vectors stay aligned by
+          # construction.
+          qnames <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_name"))
+          qvals  <- xml2::xml_text(xml2::xml_find_first(quals, "./GBQualifier_value"))
 
-          lat_lon_raw <- qvals[qnames == "lat_lon"]
-          country_raw <- qvals[qnames == "country"]
+          lat_lon_raw <- stats::na.omit(qvals[qnames %in% "lat_lon"])
+          country_raw <- stats::na.omit(qvals[qnames %in% "country"])
           ll <- .parse_lat_lon(if (length(lat_lon_raw) > 0L) lat_lon_raw[1L] else NA_character_)
 
           data.frame(
