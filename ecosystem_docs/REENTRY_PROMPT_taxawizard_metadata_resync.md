@@ -70,9 +70,12 @@ order-invariance fix, `review_assignments()`'s cache/join-key fixes, every new p
 Don't attempt this until the live 18S PtConception run (and whatever it turns up) has
 settled, and until the critical fix-review pass (`ecosystem_docs/REENTRY_PROMPT_critical_fix_review_and_changelog.md`) is done -- both are likely to touch function signatures again, which would mean re-doing part of this sync.
 
-**Status: Steps 1-2 (metadata drift audit + fixes) and step 4 (path-computation
-verification) done 2026-09-07 -- see TaxaWizard/CLAUDE.md's own top session note for the
-full record (13 genuine fixes, 44 -> 30 remaining findings all confirmed noise/intentional
-design). Step 3 (new node/edge design for the 3 wholly-missing mechanisms below) NOT yet
-done -- this is a separate, larger design task, not a metadata sync, deliberately not
-attempted in the same pass.**
+**Status: CLOSED, 2026-09-07. All steps done -- see TaxaWizard/CLAUDE.md's own two top
+session notes for the full record: steps 1-2 (metadata drift audit + fixes: 13 genuine
+fixes, 44 -> 30 remaining findings all confirmed noise/intentional design) and step 3
+(new node/edge design for all 3 wholly-missing mechanisms -- the kernel-based prior
+estimator as its own std_to_priors_kernel edge; the 5 newer reference-quality-screening
+functions split between a seq_to_match.R extension and metadata-only entries per each
+function's real scope; plot_theta_surface() as a real metadata entry, not a gadget
+exception, wired inside the kernel edge). Step 4 (path-computation verification) done
+throughout. devtools::test() 908/908, devtools::check() 0/0/0, reinstalled.**

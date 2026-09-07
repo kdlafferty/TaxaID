@@ -1,6 +1,76 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-07 (Sonnet 5 -- metadata resync, per
+# Last updated: 2026-09-07, later (Sonnet 5 -- closes out the metadata resync's item 3:
+# new graph node/edge design for the 3 wholly-missing mechanisms flagged in
+# ecosystem_docs/REENTRY_PROMPT_taxawizard_metadata_resync.md.
+#
+# (1) Kernel-based prior estimator (TaxaExpect::calibrate_kernel_bandwidth()/
+# estimate_kernel_priors()/generate_undetected_diversity(), 2026-08-30/31 redesign) --
+# a genuinely different estimator from the GLMM/grid path (dist_to_priors.R), not an
+# add-on step, per this file's own established rule for when a new alternative edge is
+# warranted vs. a gated extension. New edge std_to_priors_kernel (std_occurrences ->
+# priors, new snippet std_to_priors_kernel.R) -- deliberately sourced from
+# std_occurrences, NOT distributions: the kernel path needs no gridding/
+# create_sites_from_grid() step at all (each record is weighted by its own distance
+# from the site instead of being binned into a grid cell), confirmed directly against
+# estimate_kernel_priors()'s real formals (occurrence_data, not gridded distributions)
+# before designing, not assumed from the function name. Snippet built from the real
+# production kernel-priors path (GreatLakes2023_ConsensusWorkflow.R /
+# PtConceptionWorkflow_18S_2_single_site.R), same "extract from a real battle-tested
+# workflow" convention every other snippet already follows. Optional domestic/food
+# priors block preserved (same as dist_to_priors.R). apply_undetected_evidence()
+# (regional-proximity/invasive-watch/iNat evidence elevation) is metadata-only, no
+# graph edge -- it needs a real evidence table from a caller-specific generator
+# (a watch list, a search radius, etc.), no one-size default exists, matching
+# dist_to_priors.R's own scope (which doesn't wire the full evidence-mixture system
+# either, only the simpler domestic-priors add-on).
+#
+# (2) The 5 newer BLAST reference-quality-screening functions built since the
+# 2026-08-09 partial wiring (which only wired evaluate_reference_accessions() +
+# flag_incongruent_references()). Investigated each one's real scope before deciding
+# where it belongs, rather than uniformly extending one edge: corroborate_references_
+# locally()/match_driving_accessions() need seq_matrix/reference_df, which don't exist
+# until AFTER the DECIPHER alignment step (refs_to_matrix.R) -- later in the pipeline
+# than seq_to_match.R's own scope -- so both are metadata-only (documented, available
+# to wire in directly for a caller past that point in the pipeline) rather than forced
+# into a scope that doesn't have the objects they need. review_flagged_accessions()/
+# resolve_review_overrides() DO fit seq_to_match.R's existing gated screening block
+# (they only need evaluate_reference_accessions()'s own output, already computed
+# there) -- added as a nested optional sub-step, with an explicit further-gated
+# remove_incongruent_references() call for the harder opt-in (never silently escalates
+# from "flag" to "remove"). verify_removal_candidates() is metadata-only, matching the
+# established investigate_flagged_accession(s)()/check_marker_mismatch() precedent for
+# on-demand human-audit tools (not a mechanical pipeline step). score_reference_labels()
+# is NOT given its own entry at all -- it's already called automatically inside
+# evaluate_reference_accessions() itself, so no caller ever invokes it directly.
+# Found and fixed a real, separate metadata gap while here: remove_incongruent_
+# references()'s existing entry (added well before this session) was missing
+# override_accessions/gate entirely -- both real, optional formals that predate this
+# session's own work, just never caught by the audit script (which only flags a
+# MISSING metadata entry for a REQUIRED real param, never an optional one).
+#
+# (3) plot_theta_surface() (2026-09-01) -- checked directly rather than assumed to
+# fit the established "interactive gadget, no graph representation" precedent
+# (review_spatial_flags()/review_institution_flags()/review_spatial_context()): its
+# real default is interactive=FALSE, a genuine static, scriptable plot, not a Shiny
+# gadget with no non-interactive path at all -- so it does NOT fit that precedent and
+# gets a real metadata entry. Wired as an optional step inside std_to_priors_kernel.R
+# itself (not the generic priors_to_map.R edge) since it needs the kernel_fit object
+# directly, not just the flattened priors table -- an object that only exists inside
+# the kernel path's own scope.
+#
+# One pre-existing test needed updating (test-graph.R's "multi-input edges produce
+# full Bayesian path", exactly the same class of update the 2026-07-24 session already
+# made once for dist_to_priors_by_group): its has_priors check enumerated a fixed list
+# of recognized priors-building edges, and some Bayesian paths now legitimately use the
+# new kernel edge instead of the two it already knew about.
+#
+# Verified via TaxaWizard:::.compute_paths(): std_occurrences -> priors now returns 3
+# paths (the 2 existing GLMM routes + the new direct kernel edge, confirmed reachable
+# as its own single-edge path, not buried inside a longer chain).
+# devtools::test() 908/908 (up from 735), devtools::check() 0/0/0, reinstalled.
+#
+# Previous update, 2026-09-07 (Sonnet 5 -- metadata resync, per
 # ecosystem_docs/REENTRY_PROMPT_taxawizard_metadata_resync.md (written 2026-09-05,
 # deliberately deferred until both its own stated blockers -- the live 18S PtConception
 # run settling, and the critical fix-review pass -- resolved). Re-ran the existing

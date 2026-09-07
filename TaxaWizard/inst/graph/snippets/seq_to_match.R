@@ -50,6 +50,39 @@ if (isTRUE({{screen_reference_accessions}})) {
     sum(match_df$hierarchy_flag == "incongruent", na.rm = TRUE),
     " of ", nrow(match_df), " match rows rest on an incongruent reference accession"
   )
+
+  # Optional: LLM second-look review of flagged/borderline accessions (2026-08-13,
+  # TaxaMatch::review_flagged_accessions()). A raw "incongruent" verdict alone can't
+  # distinguish a genuine mislabel from a correctly-labeled record with poor marker
+  # resolving power or thin corroborating coverage -- this gives every flagged
+  # accession a real LLM second look before anything is ever removed. Never
+  # re-decides hierarchy_flag itself; only produces overrides an explicit removal
+  # step can choose to honor. Set {{review_flagged_references}} to FALSE to skip.
+  if (isTRUE({{review_flagged_references}})) {
+    accession_review <- TaxaMatch::review_flagged_accessions(
+      accession_eval,
+      llm_fn = {{llm_fn}}
+    )
+    accession_overrides <- TaxaMatch::resolve_review_overrides(accession_review)
+    message(
+      "LLM review: ", length(accession_overrides),
+      " flagged accession(s) confirmed safe to keep (poor marker resolution/thin coverage/hybrid artifact, not a genuine mislabel)"
+    )
+
+    # Optional, separately gated: actually DROP rows resting on an accession
+    # still judged "remove" after the review overrides above (the harder,
+    # deliberate opt-in -- flag_incongruent_references() above already
+    # annotated everything without removing anything, the recommended
+    # default). Set {{remove_incongruent_references}} to TRUE only after
+    # reviewing the flags/review comments yourself.
+    if (isTRUE({{remove_incongruent_references}})) {
+      match_df <- TaxaMatch::remove_incongruent_references(
+        match_df, accession_eval,
+        override_accessions = accession_overrides
+      )
+      message("Removed match rows resting on a reference accession still judged incongruent after review")
+    }
+  }
 }
 
 match_df

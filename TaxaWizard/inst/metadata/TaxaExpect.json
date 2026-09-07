@@ -89,6 +89,85 @@
       "output": {"type": "data.frame", "description": "One row per resolved domestic/food/plant taxon: taxon_name (always populated, unlike generate_undetected_diversity()'s anonymous proxies), grid_id, alpha, beta, theta_mean, theta_sd, model_tier ('tier_domestic_food'), prior_source_type ('domestic_animal'/'food_species'/'domestic_plant'), inat_n_observations_local, inat_kingdom, inat_kingdom_mismatch"},
       "scaling": "api_limited",
       "scaling_note": "iNaturalist API; seconds to ~1 min depending on how many candidate_plant_taxa are supplied"
+    },
+    {
+      "name": "calibrate_kernel_bandwidth",
+      "description": "2026-09-07, new -- kernel-priors path (2026-08-30/31 redesign), a site-centered distance-kernel alternative to the GLMM/grid-cell prediction path (dist_to_priors.R). Selects the kernel bandwidth (lambda_km, and optionally a covariate bandwidth) via leave-one-block-out composition prediction -- replaces the GLMM path's AIC formula screening. Offline, no network calls, seconds.",
+      "inputs": [
+        {"name": "occurrence_data", "type": "occurrences_df", "required": true, "description": "Standardized occurrence data with lat/lon/main_habitat/taxon_name columns (std_occurrences)"},
+        {"name": "site_habitat", "type": "character", "required": true, "description": "Focal habitat to restrict the calibration/estimation to (e.g. 'Marine')"},
+        {"name": "lambda_grid", "type": "numeric_vector", "required": false, "default": [10, 25, 50, 100, 200], "description": "Candidate bandwidths (km) to try"},
+        {"name": "covariate_col", "type": "character", "required": false, "default": null, "description": "Optional numeric covariate column (e.g. 'depth_m') for a second, covariate-space kernel factor"},
+        {"name": "lambda_covariate_grid", "type": "numeric_vector", "required": false, "default": null, "description": "Candidate covariate bandwidths, only used when covariate_col is supplied"},
+        {"name": "block_size_deg", "type": "numeric", "required": false, "default": 0.5, "description": "Spatial block size (degrees) for the leave-one-block-out cross-validation"},
+        {"name": "min_block_records", "type": "integer", "required": false, "default": 20, "description": "Minimum records a block needs to be scored"}
+      ],
+      "output": {"type": "list", "description": "$best (the chosen lambda_km/lambda_covariate + its LOBO loss), $results (loss for every grid point tried, plus 'regional'/'nearest_block' reference rows)"},
+      "scaling": "linear",
+      "scaling_note": "Offline, no network calls; seconds for a typical real dataset"
+    },
+    {
+      "name": "estimate_kernel_priors",
+      "description": "2026-09-07, new -- the kernel-priors estimator itself. Site-centered distance-kernel weighting (geo x optional-covariate product kernel), replacing gridding + GLMM prediction entirely -- there is no create_sites_from_grid()/train_biodiversity_model() step in this path at all. Produces a priors object structurally compatible with the GLMM path's generate_full_priors() output (bind_rows()-compatible taxaexpect_priors), so every downstream consumer (join_priors(), generate_domestic_food_priors(), etc.) works unchanged regardless of which path produced it.",
+      "inputs": [
+        {"name": "occurrence_data", "type": "occurrences_df", "required": true, "description": "Standardized occurrence data with lat/lon/main_habitat/taxon_name columns (std_occurrences)"},
+        {"name": "site_lat", "type": "numeric", "required": true, "description": "Focal site latitude"},
+        {"name": "site_lon", "type": "numeric", "required": true, "description": "Focal site longitude"},
+        {"name": "site_habitat", "type": "character", "required": true, "description": "Focal habitat (e.g. 'Marine')"},
+        {"name": "lambda_km", "type": "numeric", "required": true, "description": "Kernel bandwidth in km -- use calibrate_kernel_bandwidth()'s $best$lambda_km rather than guessing"},
+        {"name": "m", "type": "numeric", "required": false, "default": 1, "description": "Pseudo-record count for the regional back-off prior"},
+        {"name": "covariate_col", "type": "character", "required": false, "default": null, "description": "Optional numeric covariate column (e.g. 'depth_m'); must match calibrate_kernel_bandwidth()'s own covariate_col if used"},
+        {"name": "site_covariate", "type": "numeric", "required": false, "default": null, "description": "The focal site's own covariate value (e.g. mean depth of nearby records), required when covariate_col is supplied"},
+        {"name": "lambda_covariate", "type": "numeric", "required": false, "default": null, "description": "Covariate-space bandwidth, from calibrate_kernel_bandwidth()'s $best$lambda_covariate"},
+        {"name": "site_id", "type": "character", "required": false, "default": null, "description": "Site identifier stamped onto every output row (e.g. sprintf('Site_%.2f_%.2f', site_lat, site_lon)) -- used downstream as this path's grid_id equivalent"}
+      ],
+      "output": {"type": "kernel_priors_fit", "description": "$priors (the taxaexpect_priors-shaped data frame: taxon_name, alpha, beta, theta_mean, theta_sd, prior_branch='resident_observed', effective_records), $params (incl. site_id), $n_eff, $missing_mass -- pass the WHOLE object (not just $priors) to generate_undetected_diversity()/generate_domestic_food_priors() as model_obj"},
+      "scaling": "linear",
+      "scaling_note": "Offline, no network calls; seconds for a typical real dataset"
+    },
+    {
+      "name": "generate_undetected_diversity",
+      "description": "2026-09-07, new -- unseen-taxa floor (Good-Turing/Chao-based dark-diversity mirrors) for the kernel-priors path, the kernel analog of what the GLMM path's generate_full_priors() computes internally. Output is bind_rows()-compatible with estimate_kernel_priors()'s own $priors.",
+      "inputs": [
+        {"name": "model_obj", "type": "kernel_priors_fit", "required": true, "description": "Output of estimate_kernel_priors() (the whole object, not just $priors)"},
+        {"name": "jeffreys_threshold", "type": "integer", "required": false, "default": 2, "description": "Minimum singleton count before falling back to a Jeffreys-bounds floor"},
+        {"name": "singleton_ess", "type": "integer", "required": false, "default": 2, "description": "Effective sample size assigned to each singleton mirror row"},
+        {"name": "taxonomy", "type": "data.frame", "required": false, "default": null, "description": "Occurrence data (e.g. the same std_occurrences fed to estimate_kernel_priors()) used to derive higher-rank taxonomy for the dark-diversity mirrors"}
+      ],
+      "output": {"type": "data.frame", "description": "Anonymous dark-diversity/undetected prior rows, prior_branch='resident_undetected', bind_rows()-compatible with estimate_kernel_priors()'s $priors"},
+      "scaling": "linear",
+      "scaling_note": "Offline, no network calls; fast"
+    },
+    {
+      "name": "apply_undetected_evidence",
+      "description": "2026-09-07, new -- advanced/optional: elevates the dark-diversity floor for specific NAMED unobserved taxa using outside evidence (regional GBIF proximity just outside the study bbox, invasive/nonindigenous watch-list status, or iNaturalist range checks -- each its own evidence generator, e.g. generate_regional_proximity_evidence()/generate_invasive_watch_evidence()/generate_inat_range_evidence(), not covered by this entry). Metadata-only (no graph edge) -- this needs a real evidence table as input, which itself needs case-by-case design (a watch list, a regional-proximity search radius, etc.) rather than a one-size default; wire in directly if you have a specific evidence source, following the real production kernel-priors workflows' own pattern.",
+      "inputs": [
+        {"name": "taxaexpect_priors", "type": "data.frame", "required": true, "description": "The priors table so far (e.g. estimate_kernel_priors()'s $priors + generate_undetected_diversity()'s output, already bind_rows()'d)"},
+        {"name": "model_obj", "type": "kernel_priors_fit", "required": true, "description": "Output of estimate_kernel_priors()"},
+        {"name": "evidence", "type": "data.frame", "required": true, "description": "taxon_name + weight (+ p_conc) rows from an evidence generator -- see description"},
+        {"name": "grid_id", "type": "character", "required": true, "description": "Site id to elevate priors at (e.g. model_obj$params$site_id)"},
+        {"name": "main_habitat", "type": "character", "required": false, "default": null, "description": "Habitat to stamp on elevated rows"},
+        {"name": "taxonomy", "type": "data.frame", "required": false, "default": null, "description": "Occurrence data for deriving elevated rows' higher-rank taxonomy"},
+        {"name": "pricing", "type": "character", "required": false, "default": "blend", "description": "'blend' (linear weight*ceiling) or 'curve' (per-sampling-group Good-Turing budget pricing)"}
+      ],
+      "output": {"type": "data.frame", "description": "Elevated prior rows for the named evidence taxa, bind_rows()-compatible with the rest of taxaexpect_priors"},
+      "scaling": "linear",
+      "scaling_note": "Offline once the evidence table exists; the evidence generators themselves may make live GBIF/iNaturalist calls"
+    },
+    {
+      "name": "plot_theta_surface",
+      "description": "2026-09-07, new -- the kernel-priors path's own visualizer (2026-09-01): a static (default) or optionally interactive KDE prior-field map for ONE taxon, evaluating estimate_kernel_priors()'s same estimator on a full grid via binned FFT convolution instead of at one site. Replaces plot_theta_map_interactive() for kernel priors, which parses Grid_<lat>_<lon> ids into centroids and has nothing to draw for a single opaque kernel site_id. Genuinely scriptable (interactive=FALSE is the default, a real static plot, not a Shiny gadget with no non-interactive path) -- unlike review_spatial_flags()/review_institution_flags()/review_spatial_context(), which have no non-interactive mode at all and so have no graph representation by design.",
+      "inputs": [
+        {"name": "kernel_fit", "type": "kernel_priors_fit", "required": true, "description": "Output of estimate_kernel_priors() (the whole object)"},
+        {"name": "occurrence_data", "type": "occurrences_df", "required": true, "description": "The same standardized occurrence data fed to estimate_kernel_priors()"},
+        {"name": "taxon", "type": "character", "required": true, "description": "Which taxon_name to render the prior field for (one taxon per call)"},
+        {"name": "n_grid", "type": "integer", "required": false, "default": 256, "description": "Grid resolution (n_grid x n_grid lattice)"},
+        {"name": "covariate_at", "type": "numeric", "required": false, "default": null, "description": "Fixed covariate value to evaluate the surface at, if the kernel fit used one (e.g. a depth). Omitting it on a covariate-fit surface renders an explicitly labeled 'covariate omitted' map, never a silently wrong one"},
+        {"name": "interactive", "type": "logical", "required": false, "default": false, "description": "FALSE (default) renders a static base-R plot; TRUE renders an interactive leaflet map (requires leaflet)"}
+      ],
+      "output": {"type": "plot", "description": "A static plot (default) or leaflet htmlwidget (interactive=TRUE) of the prior field for the requested taxon"},
+      "scaling": "quadratic",
+      "scaling_note": "~1-2s per taxon for a 512x512 grid from ~1M occurrence records, after the shared kernel FFT is computed once per call"
     }
   ]
 }

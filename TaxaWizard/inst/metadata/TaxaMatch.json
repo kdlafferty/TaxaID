@@ -731,6 +731,20 @@
           "required": false,
           "default": false,
           "description": "If TRUE, also removes rows whose accession verdict is 'insufficient_independent_evidence' (not just 'incongruent')"
+        },
+        {
+          "name": "override_accessions",
+          "type": "character_vector",
+          "required": false,
+          "default": null,
+          "description": "2026-09-07, added -- accessions to spare from removal regardless of their verdict, e.g. resolve_review_overrides()'s output (accessions an LLM second look confirmed are not genuine mislabels)"
+        },
+        {
+          "name": "gate",
+          "type": "character",
+          "required": false,
+          "default": "action",
+          "description": "2026-09-07, added -- 'action' (default) removes only accessions evaluate_reference_accessions() itself resolved to reference_action=='remove' (incongruent AND uncorroborated anywhere AND below the confidence threshold); 'flag' removes every 'incongruent'-flagged accession regardless of corroboration (the older, more aggressive behavior)"
         }
       ],
       "output": {
@@ -848,6 +862,73 @@
       },
       "scaling": "api_limited",
       "scaling_note": "One cheap GBSeq feature-table fetch per accession"
+    },
+    {
+      "name": "review_flagged_accessions",
+      "description": "2026-09-07, added -- LLM second-look reviewer for evaluate_reference_accessions()'s flagged/borderline accessions (2026-08-13). A raw 'incongruent' verdict alone can't distinguish a genuine mislabel from a correctly-labeled record with poor marker resolving power or thin corroborating coverage. Never re-decides hierarchy_flag itself -- only produces a free-text explanation/confidence a caller can act on via resolve_review_overrides().",
+      "inputs": [
+        {"name": "evaluated_df", "type": "data.frame", "required": true, "description": "Output of evaluate_reference_accessions()"},
+        {"name": "hierarchy_flags", "type": "character_vector", "required": false, "default": ["incongruent", "insufficient_independent_evidence"], "description": "Which hierarchy_flag values to review"},
+        {"name": "include_non_species_resolved", "type": "logical", "required": false, "default": true, "description": "Also review accessions whose listed_taxon_is_species is FALSE"},
+        {"name": "cache_dir", "type": "file_path", "required": false, "description": "Persistent, content-fingerprint-keyed review cache; default tools::R_user_dir('TaxaMatch','cache')"},
+        {"name": "llm_fn", "type": "function", "required": false, "description": "LLM call function; default getOption('TaxaID.llm_fn', TaxaTools::call_api)"}
+      ],
+      "output": {"type": "data.frame", "description": "evaluated_df plus accession_likely_explanation ('genuine_mislabel'/'poor_marker_resolution'/'sister_family_thin_coverage'/'hybrid_or_specimen_code_artifact'/'uncertain'), accession_review_confidence ('high'/'moderate'/'low'), accession_review_comment (free text)"},
+      "scaling": "api_limited",
+      "scaling_note": "One LLM call per batch of ~10 flagged accessions; cached, so a re-run with unchanged input makes zero new calls"
+    },
+    {
+      "name": "resolve_review_overrides",
+      "description": "2026-09-07, added -- turns review_flagged_accessions()'s free-text review into a plain accession vector safe to pass as remove_incongruent_references(override_accessions=): every accession the LLM review judged NOT a genuine mislabel, at sufficient confidence.",
+      "inputs": [
+        {"name": "review_result", "type": "data.frame", "required": true, "description": "Output of review_flagged_accessions()"},
+        {"name": "keep_explanations", "type": "character_vector", "required": false, "default": ["poor_marker_resolution", "sister_family_thin_coverage", "hybrid_or_specimen_code_artifact"], "description": "Which accession_likely_explanation values count as 'safe to keep'"},
+        {"name": "min_confidence", "type": "character_vector", "required": false, "default": ["high", "moderate"], "description": "Which accession_review_confidence values are trusted enough to act on"}
+      ],
+      "output": {"type": "character_vector", "description": "Accessions safe to spare from removal"},
+      "scaling": "linear",
+      "scaling_note": "Pure filter, no new calls"
+    },
+    {
+      "name": "corroborate_references_locally",
+      "description": "2026-09-07, added, metadata-only (no graph edge -- needs seq_matrix/reference_df, which only exist after the DECIPHER alignment step (refs_to_matrix.R), later in the pipeline than seq_to_match.R's own scope; wire in directly following the real production workflows' pattern if you're past that point). Free, zero-NCBI-call reference corroboration from a workflow's own already-built seq_matrix: flags an accession 'corroborated' when an INDEPENDENT (different submission batch) conspecific deposit agrees at >= min_pident over >= min_overlap of the amplicon. Feeds evaluate_reference_accessions(local_corroboration=) (skips BLASTing already-corroborated accessions) and score_reference_labels(local_corroboration=) (vetoes a 'remove' verdict a corroborated accession would otherwise get).",
+      "inputs": [
+        {"name": "seq_matrix", "type": "data.frame", "required": true, "description": "Output of TaxaLikely::build_sequence_matrix()"},
+        {"name": "reference_meta", "type": "data.frame", "required": true, "description": "Reference metadata (e.g. reference_df) with accession/species/submission-date columns"},
+        {"name": "min_overlap", "type": "numeric", "required": false, "default": 0.8, "description": "Minimum amplicon coverage fraction for a pair to count as corroborating"},
+        {"name": "min_pident", "type": "numeric", "required": false, "default": 0.99, "description": "Minimum percent-identity (as a 0-1 fraction) for a pair to count as corroborating"},
+        {"name": "submission_window", "type": "integer", "required": false, "default": 5, "description": "Days within which two accessions are treated as the same submission batch (not independent)"}
+      ],
+      "output": {"type": "data.frame", "description": "One row per accession: n_conspecific, n_independent_conspecific, best_independent_pident, best_independent_partner, local_tier ('singleton'/'same_batch_only'/'disagree'/'corroborated')"},
+      "scaling": "linear",
+      "scaling_note": "Offline, no NCBI calls; fast even at real ~1M-row seq_matrix scale"
+    },
+    {
+      "name": "match_driving_accessions",
+      "description": "2026-09-07, added, metadata-only (no graph edge -- a cost filter for a screen you're already running elsewhere in the pipeline). The accessions that are the max-scoring accession of their species for at least one observation -- everything else never drives a likelihood, so screening it can never change an assignment. Cuts the population evaluate_reference_accessions() needs to BLAST substantially on real data.",
+      "inputs": [
+        {"name": "match_df", "type": "match_df", "required": true, "description": "A standardized/restored match object"},
+        {"name": "score_col", "type": "character", "required": false, "default": "score_original", "description": "Match-score column"},
+        {"name": "obs_col", "type": "character", "required": false, "default": "observation_id", "description": "Observation identifier column"},
+        {"name": "species_col", "type": "character", "required": false, "default": "species", "description": "Species column"},
+        {"name": "accession_col", "type": "character", "required": false, "default": "accession", "description": "Reference accession column"}
+      ],
+      "output": {"type": "character_vector", "description": "Accessions worth screening"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure filter"
+    },
+    {
+      "name": "verify_removal_candidates",
+      "description": "2026-09-07, added, metadata-only (no graph edge -- an on-demand pre-removal audit tool, a human decision point rather than a mechanical pipeline step, matching the existing investigate_flagged_accession(s)()/check_marker_mismatch() precedent). Re-evaluates ONLY the accessions a screen actually flagged for removal, at a wider max_hits, and reports which stop being removable -- read the corroborators it names before trusting a 'spared' verdict (a real GreatLakes case was spared by exactly one partner that was itself a documented mislabel).",
+      "inputs": [
+        {"name": "evaluation", "type": "data.frame", "required": true, "description": "Output of evaluate_reference_accessions() (the production run whose removals you want to audit)"},
+        {"name": "audit_max_hits", "type": "integer", "required": false, "default": 100, "description": "Wider BLAST hit window for the audit re-evaluation"},
+        {"name": "cache_dir", "type": "file_path", "required": false, "default": null, "description": "Separate cache dir for the audit's own re-BLAST results"},
+        {"name": "screen_corroborators", "type": "logical", "required": false, "default": true, "description": "Also check whether a spared accession's own corroborator has a trustworthy label"}
+      ],
+      "output": {"type": "data.frame", "description": "One row per removal-candidate accession: spared (logical), still_saturated, n_corroborators, best_corroborator_rank, corroborators, corroborator_worst_action, corroborator_flagged"},
+      "scaling": "api_limited",
+      "scaling_note": "One BLAST re-evaluation per removal-candidate accession, at a wider hit window"
     }
   ]
 }

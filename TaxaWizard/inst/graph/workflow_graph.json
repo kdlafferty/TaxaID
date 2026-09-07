@@ -156,7 +156,10 @@
         "standardize_match_data",
         "filter_redundant_hypotheses",
         "evaluate_reference_accessions",
-        "flag_incongruent_references"
+        "flag_incongruent_references",
+        "review_flagged_accessions",
+        "resolve_review_overrides",
+        "remove_incongruent_references"
       ],
       "snippet": "seq_to_match.R",
       "time_estimate": "10-60 min (depends on BLAST method and number of sequences)"
@@ -329,6 +332,27 @@
       ],
       "snippet": "dist_to_priors_by_group.R",
       "time_estimate": "5-40 min (one model fit per sampling group)"
+    },
+    {
+      "id": "std_to_priors_kernel",
+      "from": [
+        "std_occurrences"
+      ],
+      "to": "priors",
+      "label": "Build priors via site-centered kernel estimation (2026-08-30/31 redesign)",
+      "description": "A genuinely different estimator from the GLMM/grid-cell paths above, not an add-on step: site-centered distance-kernel weighting (geo x optional-covariate product kernel) directly on standardized occurrence data, with NO gridding/create_sites_from_grid() step at all -- each record is weighted by its own distance from the focal site instead of being binned into a grid cell first. Bandwidth is chosen automatically via leave-one-block-out composition prediction (replaces the GLMM path's AIC formula screening). Recommended over the GLMM/grid paths for a single-site study, or where the grid-cell approach has previously produced boundary-sensitive/alphabetical-tie artifacts. Optionally adds named domestic/commensal-animal and food-species priors, same as the other priors-building edges.",
+      "packages": [
+        "TaxaExpect"
+      ],
+      "functions": [
+        "calibrate_kernel_bandwidth",
+        "estimate_kernel_priors",
+        "generate_undetected_diversity",
+        "generate_domestic_food_priors",
+        "plot_theta_surface"
+      ],
+      "snippet": "std_to_priors_kernel.R",
+      "time_estimate": "seconds to ~1 min (offline; no live network calls unless domestic priors are included)"
     },
     {
       "id": "taxa_to_priors_wrapper",
