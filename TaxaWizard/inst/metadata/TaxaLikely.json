@@ -137,7 +137,7 @@
           "name": "dereplicate",
           "type": "logical",
           "required": false,
-          "default": true,
+          "default": false,
           "description": "Collapse exact-duplicate sequences within the same species"
         }
       ],
@@ -396,7 +396,7 @@
           "name": "mislabel_threshold",
           "type": "numeric",
           "required": false,
-          "default": 3,
+          "default": 0.02,
           "description": "Z-score threshold for mislabel detection"
         },
         {
@@ -441,7 +441,7 @@
           "name": "mislabel_threshold",
           "type": "numeric",
           "required": false,
-          "default": 3,
+          "default": 0.02,
           "description": "Z-score threshold for mislabel detection"
         }
       ],
@@ -478,7 +478,7 @@
           "name": "n_sims",
           "type": "integer",
           "required": false,
-          "default": 100,
+          "default": 0,
           "description": "Monte Carlo simulations"
         }
       ],

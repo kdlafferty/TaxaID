@@ -170,7 +170,7 @@
       "description": "2026-07-23, new -- split out of stack_occurrences(). Removes duplicates from a single occurrence data frame (stacked or not) via (1) exact gbifID match and (2) collapse_duplicate_occasions, a content-based match on taxon x date x rounded lat/lon that catches repeat citizen-science reports of one detection occasion across DIFFERENT records/platforms (e.g. many eBird checklists for one rare-bird alert). Call this even after a single-source fetch -- one GBIF call querying overlapping taxon keys can already contain duplicates",
       "inputs": [
         {
-          "name": "data",
+          "name": "occurrence_data",
           "type": "occurrences_df",
           "required": true,
           "description": "A single occurrence data frame (output of stack_occurrences() or a direct fetch)"
@@ -341,8 +341,8 @@
           "name": "year_range",
           "type": "character",
           "required": false,
-          "default": "2000,2024",
-          "description": "Year range for the global GBIF fetch, e.g. '2000,2024'"
+          "default": null,
+          "description": "Year range for the global GBIF fetch, e.g. '2000,2024'. Default (NULL) resolves dynamically at call time to \"2000,<current year>\" (.gbif_default_year_range()) -- 2026-09-07 metadata resync: previously a stale fixed literal '2000,2024' that silently excluded 2025+ GBIF data (fixed in TaxaFetch 2026-08-08)."
         },
         {
           "name": "cache_dir",

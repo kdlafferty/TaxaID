@@ -70,4 +70,9 @@ order-invariance fix, `review_assignments()`'s cache/join-key fixes, every new p
 Don't attempt this until the live 18S PtConception run (and whatever it turns up) has
 settled, and until the critical fix-review pass (`ecosystem_docs/REENTRY_PROMPT_critical_fix_review_and_changelog.md`) is done -- both are likely to touch function signatures again, which would mean re-doing part of this sync.
 
-**Status: not started.**
+**Status: Steps 1-2 (metadata drift audit + fixes) and step 4 (path-computation
+verification) done 2026-09-07 -- see TaxaWizard/CLAUDE.md's own top session note for the
+full record (13 genuine fixes, 44 -> 30 remaining findings all confirmed noise/intentional
+design). Step 3 (new node/edge design for the 3 wholly-missing mechanisms below) NOT yet
+done -- this is a separate, larger design task, not a metadata sync, deliberately not
+attempted in the same pass.**

@@ -7,7 +7,7 @@
       "description": "Ingest DADA2 seqtab matrix, FASTA file, or DNAStringSet; optional taxonomy join",
       "inputs": [
         {
-          "name": "data",
+          "name": "input_data",
           "type": "file_path|matrix|DNAStringSet",
           "required": true,
           "description": "Sequence table, FASTA path, or DNAStringSet"

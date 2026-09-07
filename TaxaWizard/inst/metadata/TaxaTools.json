@@ -113,8 +113,8 @@
           "name": "model",
           "type": "character",
           "required": false,
-          "default": "claude-opus-4-6",
-          "description": "Model ID"
+          "default": null,
+          "description": "Model ID. Default (NULL) resolves dynamically at call time via the model registry (.resolve_model(provider, tier)) -- 2026-09-07 metadata resync: previously a stale hardcoded 'claude-opus-4-6' literal."
         },
         {
           "name": "max_tokens",

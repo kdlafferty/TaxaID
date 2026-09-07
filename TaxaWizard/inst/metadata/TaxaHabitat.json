@@ -119,7 +119,7 @@
           "name": "taxon_col",
           "type": "character",
           "required": false,
-          "default": "species",
+          "default": "taxon_name",
           "description": "Column with taxon names"
         }
       ],

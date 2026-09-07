@@ -1,6 +1,59 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-08-11 (Sonnet 5 -- TaxaWizard's first human-authored code review
+# Last updated: 2026-09-07 (Sonnet 5 -- metadata resync, per
+# ecosystem_docs/REENTRY_PROMPT_taxawizard_metadata_resync.md (written 2026-09-05,
+# deliberately deferred until both its own stated blockers -- the live 18S PtConception
+# run settling, and the critical fix-review pass -- resolved). Re-ran the existing
+# structural auditor (diagnostics/taxawizard_metadata_audit.R) against freshly
+# reinstalled packages: 44 findings, down to 30 after fixing every genuine one. Same
+# triage discipline as the 2026-08-09 audit this builds on (documented below) --
+# confirmed several apparent "findings" are actually the auditor's own display bug
+# (a JSON array default gets correctly parsed and matches the real vector exactly, but
+# the auditor's sprintf() call silently vectorizes over it, printing one spurious line
+# per array element -- convert_taxonomy_backbone's rank_system and
+# compute_group_priors's rank_cols were both already fully correct, just displayed this
+# way) and confirmed several more are the deliberate match.arg()-style single-value
+# representation (train_biodiversity_model_by_group's response,
+# evaluate_reference_accessions's method, add_posthoc_assessment's
+# domestic_prior_source -- metadata correctly shows the practical resolved default, a
+# real vector default would only ever mean "pick one of these", not "use all of these").
+#
+# 13 genuine fixes: 2 real param-NAME drift (TaxaFetch::dedupe_occurrences data ->
+# occurrence_data; TaxaMatch::read_sequence_table data -> input_data -- both real
+# renames, but positional in every real snippet call so neither was actually broken,
+# Tier 2 severity); TaxaFetch::check_geographic_outliers's year_range and
+# TaxaTools::call_anthropic_api's model both had stale hardcoded literals where the real
+# function now resolves the value dynamically at call time (year range to the current
+# year; model via the model registry) -- both updated to null with a description
+# explaining the dynamic resolution; 9 stale VALUE drifts across TaxaHabitat (taxon_col
+# species->taxon_name), TaxaExpect (optimize_grid_size's species_col same fix;
+# build_priors's rank_system was missing 4 coarser ranks entirely, search_radius_deg was
+# actively wrong -- metadata said 5, real default is 2, meaning the interview was
+# silently overriding the true default with a different value rather than describing
+# it), TaxaLikely (read_crabs_output's dereplicate was the OPPOSITE boolean;
+# flag_reference_errors/train_likelihood_model's mislabel_threshold was off by 150x --
+# 3 vs the real 0.02, evidently stale from before this parameter's scale was reworked;
+# evaluate_likelihoods's n_sims 100 vs the real default 0), and TaxaAssign
+# (posterior_consensus's cumulative_threshold/min_posterior both drifted from their
+# real 0.9/0.05 defaults). standardize_match_data's `data` REQUIRED_MISMATCH finding
+# (real formal now has a NULL default enabling an interactive file.choose() fallback)
+# deliberately left as `required: true` in metadata -- same judgment call the 2026-08-09
+# audit already made and documented below: NULL would hang/error in a non-interactive
+# wizard-generated script, so treating it as required is the operationally correct
+# choice for this package's use case even though it diverges from bare R semantics.
+#
+# Verified via `TaxaWizard:::.compute_paths()`: sequences -> consensus 32 paths,
+# distributions -> prior_map 2 paths, birdnet_detections -> consensus 32 paths -- all
+# match the 2026-08-09 note's own documented counts exactly, confirming no topology
+# regression. `devtools::test()` 735/735, `devtools::check()` 0/0/0, reinstalled.
+#
+# NOT done this pass: the reentry doc's own item 3, the three wholly-missing mechanisms
+# (kernel-based prior estimator; the 5 newer BLAST reference-quality-screening functions
+# built since the 2026-08-09 partial wiring; plot_theta_surface()) -- these need new
+# graph node/edge DESIGN, not a metadata sync, and are a genuinely separate, larger task
+# from what this session's pass covered. See the reentry doc's own updated status.
+#
+# Previous update, 2026-08-11 (Sonnet 5 -- TaxaWizard's first human-authored code review
 # (Micah Wright, replacing the prior Claude-authored inst/taxawizard_review.Rmd entirely --
 # see inst/taxawizard_review_response.md and this file's Function Inventory below for the
 # full record). The review's own reported test crash ("Error in if (fn_name ==

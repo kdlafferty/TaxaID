@@ -314,14 +314,14 @@
           "name": "cumulative_threshold",
           "type": "numeric",
           "required": false,
-          "default": 0.95,
+          "default": 0.9,
           "description": "Cumulative posterior threshold for plausibility"
         },
         {
           "name": "min_posterior",
           "type": "numeric",
           "required": false,
-          "default": 0.01,
+          "default": 0.05,
           "description": "Minimum individual posterior to include"
         },
         {
