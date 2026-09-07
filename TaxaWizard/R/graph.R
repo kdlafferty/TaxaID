@@ -10,12 +10,15 @@
 .load_graph <- function() {
   # Check namespace cache
   cache <- .graph_cache()
-  if (!is.null(cache)) return(cache)
+  if (!is.null(cache)) {
+    return(cache)
+  }
 
   path <- system.file("graph", "workflow_graph.json", package = "TaxaWizard")
   if (!nzchar(path)) {
     stop("workflow_graph.json not found. Is TaxaWizard installed?",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   graph <- jsonlite::fromJSON(path, simplifyVector = FALSE)
 
@@ -112,12 +115,18 @@
   # starting from `input_type`. Returns list of character vectors (edge IDs).
   find_plans <- function(target, visited_targets = character(0)) {
     # Base case: target is already available
-    if (target == input_type) return(list(character(0)))
+    if (target == input_type) {
+      return(list(character(0)))
+    }
     # Cycle prevention
-    if (target %in% visited_targets) return(list())
+    if (target %in% visited_targets) {
+      return(list())
+    }
 
     producers <- rev_adj[[target]]
-    if (is.null(producers)) return(list())
+    if (is.null(producers)) {
+      return(list())
+    }
 
     visited_targets <- c(visited_targets, target)
     results <- list()
@@ -150,7 +159,9 @@
   }
 
   raw_plans <- find_plans(output_type)
-  if (length(raw_plans) == 0L) return(list())
+  if (length(raw_plans) == 0L) {
+    return(list())
+  }
 
   # Deduplicate (same edge set in different order = same plan)
   plan_keys <- vapply(raw_plans, function(p) paste(sort(p), collapse = "|"), "")
@@ -179,8 +190,12 @@
 #' @return List of character vectors (merged edge IDs).
 #' @noRd
 .cartesian_plans <- function(plan_lists) {
-  if (length(plan_lists) == 0L) return(list(character(0)))
-  if (length(plan_lists) == 1L) return(plan_lists[[1L]])
+  if (length(plan_lists) == 0L) {
+    return(list(character(0)))
+  }
+  if (length(plan_lists) == 1L) {
+    return(plan_lists[[1L]])
+  }
 
   # Recursive: combine first list with cartesian product of rest
   first <- plan_lists[[1L]]
@@ -205,7 +220,9 @@
 #' @return Character vector of edge IDs in dependency order.
 #' @noRd
 .topo_sort_edges <- function(edge_ids, edge_index, input_type) {
-  if (length(edge_ids) <= 1L) return(edge_ids)
+  if (length(edge_ids) <= 1L) {
+    return(edge_ids)
+  }
 
   # Track which nodes are available
   available <- input_type
@@ -262,7 +279,9 @@
 #' @noRd
 .describe_paths <- function(paths, graph = NULL) {
   if (is.null(graph)) graph <- .load_graph()
-  if (length(paths) == 0L) return("No valid paths found.")
+  if (length(paths) == 0L) {
+    return("No valid paths found.")
+  }
 
   edge_index <- stats::setNames(graph$edges, vapply(graph$edges, `[[`, "", "id"))
 
@@ -273,16 +292,22 @@
     # Build step list with edge IDs visible
     steps <- vapply(seq_along(edges), function(j) {
       e <- edges[[j]]
-      sprintf("  Step %d [edge_id: `%s`]: %s [%s]",
-              j, e$id, e$label,
-              paste(e$packages, collapse = ", "))
+      sprintf(
+        "  Step %d [edge_id: `%s`]: %s [%s]",
+        j, e$id, e$label,
+        paste(e$packages, collapse = ", ")
+      )
     }, "")
 
-    header <- sprintf("Path %d%s", i,
-                       if (path$uses_wrapper) " (uses wrapper -- recommended)" else "")
+    header <- sprintf(
+      "Path %d%s", i,
+      if (path$uses_wrapper) " (uses wrapper -- recommended)" else ""
+    )
     time_line <- sprintf("  Time: %s", path$time_estimate)
-    edge_ids_line <- sprintf("  edge_ids: %s",
-                              jsonlite::toJSON(path$edges, auto_unbox = FALSE))
+    edge_ids_line <- sprintf(
+      "  edge_ids: %s",
+      jsonlite::toJSON(path$edges, auto_unbox = FALSE)
+    )
 
     paste(c(header, steps, time_line, edge_ids_line), collapse = "\n")
   }, "")
@@ -330,10 +355,12 @@
 
     # Load snippet
     snippet_file <- system.file("graph", "snippets", edge$snippet,
-                                 package = "TaxaWizard")
+      package = "TaxaWizard"
+    )
     if (nzchar(snippet_file)) {
       snippets[[eid]] <- paste(readLines(snippet_file, warn = FALSE),
-                                collapse = "\n")
+        collapse = "\n"
+      )
     } else {
       snippets[[eid]] <- sprintf("# Snippet not found: %s", edge$snippet)
     }
@@ -408,15 +435,19 @@
           req <- if (isTRUE(p$required)) " (REQUIRED)" else ""
           def <- if (!is.null(p$default)) sprintf(" [default: %s]", p$default) else ""
           desc <- p$description %||% ""
-          param_lines <- c(param_lines,
-                            sprintf("  - %s: %s%s%s", p$name, desc, req, def))
+          param_lines <- c(
+            param_lines,
+            sprintf("  - %s: %s%s%s", p$name, desc, req, def)
+          )
         }
       }
 
-      lines <- c(lines,
-                  sprintf("## %s::%s", doc$package %||% "?", fn_name),
-                  if (length(param_lines) > 0) param_lines else "  (no params)",
-                  "")
+      lines <- c(
+        lines,
+        sprintf("## %s::%s", doc$package %||% "?", fn_name),
+        if (length(param_lines) > 0) param_lines else "  (no params)",
+        ""
+      )
     }
   }
 
@@ -448,12 +479,13 @@
 #' @return Character string: the assembled system prompt.
 #' @noRd
 .build_phase_prompt <- function(phase, context = list(), graph = NULL,
-                                 metadata = NULL) {
+                                metadata = NULL) {
   if (is.null(graph)) graph <- .load_graph()
 
   template_file <- sprintf("phase_%s.md", phase)
   template_path <- system.file("prompts", template_file,
-                                package = "TaxaWizard")
+    package = "TaxaWizard"
+  )
   if (!nzchar(template_path)) {
     stop("Prompt template not found: ", template_file, call. = FALSE)
   }
@@ -462,7 +494,9 @@
   switch(phase,
     classify = {
       prompt <- sub("{{NODE_TYPES}}", .describe_node_types(graph),
-                     prompt, fixed = TRUE)
+        prompt,
+        fixed = TRUE
+      )
       # Continuation context: when extending a completed workflow
       prior_out <- context$prior_output_type
       if (!is.null(prior_out) && nzchar(prior_out)) {
@@ -482,8 +516,10 @@
           }
         }
         reachable_text <- if (length(reachable) > 0L) {
-          paste0("Reachable outputs from `", prior_out, "`:\n",
-                 paste(reachable, collapse = "\n"))
+          paste0(
+            "Reachable outputs from `", prior_out, "`:\n",
+            paste(reachable, collapse = "\n")
+          )
         } else {
           "No further outputs are reachable from this input."
         }
@@ -511,11 +547,11 @@
       }
     },
     path_select = {
-      input_type  <- context$input_type
+      input_type <- context$input_type
       output_type <- context$output_type
 
       # Look up labels
-      input_label  <- graph$node_index[[input_type]]$label %||% input_type
+      input_label <- graph$node_index[[input_type]]$label %||% input_type
       output_label <- graph$node_index[[output_type]]$label %||% output_type
 
       # Compute paths if not provided
@@ -529,11 +565,13 @@
       prompt <- sub("{{INPUT_LABEL}}", input_label, prompt, fixed = TRUE)
       prompt <- sub("{{OUTPUT_LABEL}}", output_label, prompt, fixed = TRUE)
       prompt <- sub("{{PATH_OPTIONS}}", .describe_paths(paths, graph),
-                     prompt, fixed = TRUE)
+        prompt,
+        fixed = TRUE
+      )
     },
     parameterize = {
-      input_type    <- context$input_type
-      output_type   <- context$output_type
+      input_type <- context$input_type
+      output_type <- context$output_type
       selected_path <- context$selected_path
 
       if (is.null(metadata)) metadata <- .load_metadata()
@@ -541,15 +579,19 @@
 
       # Format snippets
       snippet_text <- vapply(names(path_ctx$snippets), function(eid) {
-        sprintf("### %s: %s\n```r\n%s\n```",
-                eid, path_ctx$edge_labels[eid], path_ctx$snippets[[eid]])
+        sprintf(
+          "### %s: %s\n```r\n%s\n```",
+          eid, path_ctx$edge_labels[eid], path_ctx$snippets[[eid]]
+        )
       }, "")
       snippet_block <- paste(snippet_text, collapse = "\n\n")
 
       # Format edge descriptions
       edge_desc <- paste(vapply(seq_along(selected_path), function(i) {
-        sprintf("Step %d: %s (`%s`)", i,
-                path_ctx$edge_labels[selected_path[i]], selected_path[i])
+        sprintf(
+          "Step %d: %s (`%s`)", i,
+          path_ctx$edge_labels[selected_path[i]], selected_path[i]
+        )
       }, ""), collapse = "\n")
 
       prompt <- gsub("{{INPUT_TYPE}}", input_type, prompt, fixed = TRUE)
@@ -558,8 +600,10 @@
       prompt <- sub("{{SNIPPETS}}", snippet_block, prompt, fixed = TRUE)
       prompt <- sub("{{PARAM_DOCS}}", path_ctx$param_docs, prompt, fixed = TRUE)
       prompt <- sub("{{SELECTED_PATH_JSON}}",
-                     jsonlite::toJSON(selected_path, auto_unbox = FALSE),
-                     prompt, fixed = TRUE)
+        jsonlite::toJSON(selected_path, auto_unbox = FALSE),
+        prompt,
+        fixed = TRUE
+      )
 
       # Continuation mode: tell the LLM that input variables already exist
       if (isTRUE(context$is_continuation)) {
@@ -580,14 +624,16 @@
       if (is.null(metadata)) metadata <- .load_metadata()
 
       step_number <- context$step_number %||% "?"
-      edge_id     <- context$edge_id %||% "unknown"
-      step_desc   <- context$step_description %||% ""
-      error_msg   <- context$error_message %||% ""
-      step_code   <- context$step_code %||% ""
+      edge_id <- context$edge_id %||% "unknown"
+      step_desc <- context$step_description %||% ""
+      error_msg <- context$error_message %||% ""
+      step_code <- context$step_code %||% ""
 
       # Get full docs for the failing edge's functions
-      edge_index <- stats::setNames(graph$edges,
-                                     vapply(graph$edges, `[[`, "", "id"))
+      edge_index <- stats::setNames(
+        graph$edges,
+        vapply(graph$edges, `[[`, "", "id")
+      )
       edge <- edge_index[[edge_id]]
       if (!is.null(edge)) {
         fn_list <- list()

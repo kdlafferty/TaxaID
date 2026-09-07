@@ -10,11 +10,11 @@
 #'   signatures, input/output types, and scaling notes.
 #' @noRd
 .load_metadata <- function(packages = NULL) {
-
   metadata_dir <- system.file("metadata", package = "TaxaWizard")
   if (!nzchar(metadata_dir)) {
     stop("TaxaWizard metadata directory not found. Is the package installed?",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   json_files <- list.files(metadata_dir, pattern = "\\.json$", full.names = TRUE)
@@ -47,7 +47,6 @@
 #' @return Character string: compact function registry table.
 #' @noRd
 .compress_metadata <- function(registry) {
-
   lines <- character()
   for (pkg_name in names(registry)) {
     pkg <- registry[[pkg_name]]
@@ -55,8 +54,8 @@
 
     for (fn in pkg$functions) {
       # One-line summary: function | input_type | output_type | description
-      input_types  <- paste(vapply(fn$inputs, `[[`, "", "type"), collapse = ", ")
-      output_type  <- fn$output$type %||% "none"
+      input_types <- paste(vapply(fn$inputs, `[[`, "", "type"), collapse = ", ")
+      output_type <- fn$output$type %||% "none"
       lines <- c(lines, sprintf(
         "- %s(%s) -> %s | %s",
         fn$name, input_types, output_type, fn$description

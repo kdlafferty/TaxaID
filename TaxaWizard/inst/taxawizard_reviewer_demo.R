@@ -59,7 +59,8 @@ azure_llm_fn <- function(messages, system_prompt, model, max_tokens) {
 # Quick sanity check: a bare (non-TaxaWizard) call to confirm the Azure
 # connection itself works before spending calls on the engine below.
 cat(TaxaTools::call_api("Reply with exactly one word: pong",
-                        provider = "azure_openai"), "\n")
+  provider = "azure_openai"
+), "\n")
 
 
 # --- 1. Offline checks (no API calls, no cost) -------------------------------
@@ -87,7 +88,7 @@ TaxaWizard:::.parse_engine_response(
 # call.
 
 history <- list(list(
-  role    = "user",
+  role = "user",
   content = paste(
     "I have 12S eDNA amplicon sequences from a coral reef survey in",
     "Hawaii and want to identify the fish species present, with a",
@@ -175,7 +176,7 @@ writeLines(demo_script, file.path(demo_dir, "demo_workflow.R"))
 app_path <- workflow_app(
   script_path = file.path(demo_dir, "demo_workflow.R"),
   output_dir  = demo_dir,
-  launch      = FALSE   # set TRUE (or omit) to actually launch the app
+  launch      = FALSE # set TRUE (or omit) to actually launch the app
 )
 cat("Generated app:", app_path, "\n")
 # Inspect the generated app, or launch it yourself:

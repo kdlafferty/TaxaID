@@ -69,13 +69,12 @@
 #' # Generate to a specific directory
 #' workflow_create(output_dir = "~/my_project")
 #' }
-workflow_create <- function(mode       = c("auto", "viewer", "browser", "console"),
+workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
                             output_dir = ".",
-                            model      = "claude-sonnet-4-6",
-                            api_key    = NULL,
-                            llm_fn     = NULL,
-                            trial      = FALSE) {
-
+                            model = "claude-sonnet-4-6",
+                            api_key = NULL,
+                            llm_fn = NULL,
+                            trial = FALSE) {
   mode <- match.arg(mode)
 
   if (!interactive()) {
@@ -105,12 +104,16 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
     }
     message("When finished, press the Stop button in the R console to exit the chat.")
     message("Then source the generated script to run your workflow.")
-    .create_viewer(model = model, api_key = api_key, llm_fn = llm_fn,
-                   output_dir = output_dir, trial = trial,
-                   use_browser = identical(mode, "browser"))
+    .create_viewer(
+      model = model, api_key = api_key, llm_fn = llm_fn,
+      output_dir = output_dir, trial = trial,
+      use_browser = identical(mode, "browser")
+    )
   } else {
-    .create_console(model = model, api_key = api_key, llm_fn = llm_fn,
-                    output_dir = output_dir, trial = trial)
+    .create_console(
+      model = model, api_key = api_key, llm_fn = llm_fn,
+      output_dir = output_dir, trial = trial
+    )
   }
 }
 
@@ -132,16 +135,17 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
 
 #' @noRd
 .create_console <- function(model, api_key, llm_fn, output_dir, trial) {
-
   metadata <- .load_metadata()
-  history  <- list()
+  history <- list()
 
   # Check for saved context from a previous session
   saved_ctx <- .load_context(output_dir)
 
   cat("=== TaxaWizard Designer ===\n")
   cat("Note: each message you send makes a live, billed LLM API call ",
-      "(no per-session limit) -- see ?workflow_create for details.\n", sep = "")
+    "(no per-session limit) -- see ?workflow_create for details.\n",
+    sep = ""
+  )
   if (!is.null(saved_ctx)) {
     cat("Previous session context found.\n")
     use_ctx <- readline(prompt = "Use previous session defaults? (yes/no): ")
@@ -157,8 +161,8 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
   cat("Describe your data and what you want to accomplish.\n")
   cat("Type 'quit' to exit.\n\n")
 
-  auto_message <- NULL   # set non-NULL to skip readline on next iteration
-  session_script_path <- NULL   # script this session has generated, if any
+  auto_message <- NULL # set non-NULL to skip readline on next iteration
+  session_script_path <- NULL # script this session has generated, if any
 
   repeat {
     # --- Get user input (or use auto-message from phase transition) ---
@@ -190,7 +194,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
         context  = list(saved_context_text = .format_context_for_prompt(saved_ctx)),
         metadata = metadata
       )
-      saved_ctx <- NULL   # only inject on this first turn
+      saved_ctx <- NULL # only inject on this first turn
     }
 
     result <- tryCatch(
@@ -230,12 +234,14 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
 
     # --- Handle complete workflow ---
     if (identical(result$status, "complete")) {
-
       # Validate DAG has actual steps
       dag <- result$dag
       if (is.null(dag) || length(dag$steps) == 0L) {
         if (has_path_no_dag) {
-          auto_message <- "Path confirmed. Please ask the user for any parameter values you still need (file paths, coordinates, etc.), or generate the DAG if you already have everything."
+          auto_message <- paste0(
+            "Path confirmed. Please ask the user for any parameter values you still need ",
+            "(file paths, coordinates, etc.), or generate the DAG if you already have everything."
+          )
           next
         }
 
@@ -269,7 +275,9 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
               "The selected_path is: ", jsonlite::toJSON(retry_path, auto_unbox = TRUE), ". ",
               "Generate one step per edge in this path. "
             )
-          } else "",
+          } else {
+            ""
+          },
           "Return the complete JSON response now with dag.steps populated."
         )
         next
@@ -278,11 +286,13 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
       confirm <- readline(prompt = "Generate workflow? (yes/no): ")
       if (tolower(trimws(confirm)) %in% c("yes", "y")) {
         if (is.null(session_script_path) &&
-            !is.null(.find_existing_script(output_dir))) {
+          !is.null(.find_existing_script(output_dir))) {
           cat("Note: an existing taxaid_workflow_", format(Sys.Date(), "%Y%m%d"),
-              ".R was found in this directory from earlier today -- ",
-              "new steps will be appended to it. If this is a different, ",
-              "unrelated project, cancel and use a different output_dir.\n", sep = "")
+            ".R was found in this directory from earlier today -- ",
+            "new steps will be appended to it. If this is a different, ",
+            "unrelated project, cancel and use a different output_dir.\n",
+            sep = ""
+          )
         }
         generated <- .generate_outputs(
           dag               = dag,
@@ -326,7 +336,6 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
 #' @noRd
 .create_viewer <- function(model, api_key, llm_fn, output_dir, trial,
                            use_browser = FALSE) {
-
   metadata <- .load_metadata()
 
   # --- UI ---
@@ -373,14 +382,18 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
         #send_btn:hover { background: #884ea0; }
       "))
     ),
-    shiny::div(id = "chat-container",
-      shiny::div(id = "chat-title",
+    shiny::div(
+      id = "chat-container",
+      shiny::div(
+        id = "chat-title",
         shiny::h4("TaxaWizard Designer", style = "margin: 4px 0 8px 0;")
       ),
       # The frame gets flex height; the chat-log inside is absolute-positioned
       # so it gets a real pixel height and can scroll.
-      shiny::div(id = "chat-log-frame",
-        shiny::div(id = "chat-log",
+      shiny::div(
+        id = "chat-log-frame",
+        shiny::div(
+          id = "chat-log",
           shiny::div(id = "chat-log-inner")
         )
       ),
@@ -418,10 +431,13 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
           Shiny.setInputValue('keepalive', Date.now());
         }, 30000);
       ")),
-      shiny::div(id = "input-row",
-        shiny::textInput("user_input", label = NULL,
-                         placeholder = "Describe your data and goals...",
-                         width = "100%"),
+      shiny::div(
+        id = "input-row",
+        shiny::textInput("user_input",
+          label = NULL,
+          placeholder = "Describe your data and goals...",
+          width = "100%"
+        ),
         shiny::actionButton("send_btn", "Send")
       )
     )
@@ -429,12 +445,11 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
 
   # --- Server ---
   server <- function(input, output, session) {
-
     # Keep session alive while user thinks about what to type
     session$allowReconnect(TRUE)
 
     chat_history <- shiny::reactiveVal(list())
-    session_script_path <- NULL   # script this session has generated, if any
+    session_script_path <- NULL # script this session has generated, if any
     display_msgs <- shiny::reactiveVal(list(
       list(type = "system", text = paste(
         "Describe your data and what you want to accomplish.",
@@ -445,7 +460,9 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
     # Send on button click
     shiny::observeEvent(input$send_btn, {
       msg <- trimws(input$user_input)
-      if (!nzchar(msg)) return()
+      if (!nzchar(msg)) {
+        return()
+      }
 
       # Update display
       msgs <- display_msgs()
@@ -471,8 +488,10 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
           llm_fn   = llm_fn
         ),
         error = function(e) {
-          list(status = "error",
-               message = paste("Error:", conditionMessage(e)))
+          list(
+            status = "error",
+            message = paste("Error:", conditionMessage(e))
+          )
         }
       )
 
@@ -498,7 +517,10 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
         # Inject auto-advance message
         hist <- c(hist, list(list(
           role    = "user",
-          content = "Path confirmed. Please ask the user for any parameter values you still need (file paths, coordinates, etc.), or generate the DAG if you already have everything."
+          content = paste0(
+            "Path confirmed. Please ask the user for any parameter values you still need ",
+            "(file paths, coordinates, etc.), or generate the DAG if you already have everything."
+          )
         )))
         msgs <- c(msgs, list(list(type = "system", text = "Thinking...")))
         display_msgs(msgs)
@@ -514,8 +536,10 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
             llm_fn   = llm_fn
           ),
           error = function(e) {
-            list(status = "error",
-                 message = paste("Error:", conditionMessage(e)))
+            list(
+              status = "error",
+              message = paste("Error:", conditionMessage(e))
+            )
           }
         )
 
@@ -539,7 +563,7 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
 
       # Handle complete workflow
       if (identical(result$status, "complete") && !is.null(result$dag) &&
-          length(result$dag$steps) > 0L) {
+        length(result$dag$steps) > 0L) {
         generated <- .generate_outputs(
           dag               = result$dag,
           outputs           = result$outputs %||% "script",
@@ -556,25 +580,33 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
         is_extension <- isTRUE(attr(generated, "appended"))
         action_word <- if (is_extension) "Updated" else "Generated"
         rerun_note <- if (is_extension) {
-          paste0("New steps were appended to the existing script. ",
-                 "Re-source it to run the full pipeline ",
-                 "(earlier steps will load from cache).")
+          paste0(
+            "New steps were appended to the existing script. ",
+            "Re-source it to run the full pipeline ",
+            "(earlier steps will load from cache)."
+          )
         } else {
           "Run the script in the console. Use workflow_fix() if you hit errors."
         }
         cross_session_note <- if (isTRUE(attr(generated, "cross_session_append"))) {
-          paste0("\n\nNote: this appended to an existing same-day workflow file ",
-                 "found in this directory, not one created in this session. If ",
-                 "that was a different, unrelated project, use a different ",
-                 "output_dir next time.")
-        } else ""
+          paste0(
+            "\n\nNote: this appended to an existing same-day workflow file ",
+            "found in this directory, not one created in this session. If ",
+            "that was a different, unrelated project, use a different ",
+            "output_dir next time."
+          )
+        } else {
+          ""
+        }
         msgs <- c(display_msgs(), list(list(
           type = "system",
-          text = paste0(action_word, " files:\n  ", file_list,
-                        "\n\n", rerun_note, cross_session_note,
-                        "\n\nYou can continue typing here to extend ",
-                        "the workflow (e.g. add flagging or review). ",
-                        "Or press Stop in the R console to exit.")
+          text = paste0(
+            action_word, " files:\n  ", file_list,
+            "\n\n", rerun_note, cross_session_note,
+            "\n\nYou can continue typing here to extend ",
+            "the workflow (e.g. add flagging or review). ",
+            "Or press Stop in the R console to exit."
+          )
         )))
         display_msgs(msgs)
       }
@@ -603,13 +635,15 @@ workflow_create <- function(mode       = c("auto", "viewer", "browser", "console
   if (use_browser) {
     # Opens in the default web browser as a separate window
     shiny::runGadget(ui, server,
-                     viewer = shiny::browserViewer(),
-                     stopOnCancel = TRUE)
+      viewer = shiny::browserViewer(),
+      stopOnCancel = TRUE
+    )
   } else {
     # Opens in the RStudio Viewer tab (bottom-right pane).
     # Click the "pop out" arrow icon to move it to a separate window.
     shiny::runGadget(ui, server,
-                     viewer = shiny::paneViewer(minHeight = 400),
-                     stopOnCancel = TRUE)
+      viewer = shiny::paneViewer(minHeight = 400),
+      stopOnCancel = TRUE
+    )
   }
 }

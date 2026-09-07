@@ -59,18 +59,19 @@
 #' cat(result$message)
 #' }
 workflow_engine <- function(history,
-                            metadata      = NULL,
-                            model         = "claude-sonnet-4-6",
-                            api_key       = NULL,
-                            llm_fn        = NULL,
+                            metadata = NULL,
+                            model = "claude-sonnet-4-6",
+                            api_key = NULL,
+                            llm_fn = NULL,
                             system_prompt = NULL) {
-
   # Wrap the engine body in a tryCatch so that any unexpected
 
   # NULL/NA-in-if errors produce a recoverable response instead of crashing.
   tryCatch(
-    .workflow_engine_impl(history, metadata, model, api_key, llm_fn,
-                          system_prompt),
+    .workflow_engine_impl(
+      history, metadata, model, api_key, llm_fn,
+      system_prompt
+    ),
     error = function(e) {
       msg <- conditionMessage(e)
       # Re-throw API and configuration errors as-is
@@ -78,8 +79,8 @@ workflow_engine <- function(history,
       # Wrap unexpected errors (e.g. NA-in-if from LLM response parsing)
       warning("workflow_engine internal error: ", msg, call. = FALSE)
       list(
-        status  = "incomplete",
-        phase   = "classify",
+        status = "incomplete",
+        phase = "classify",
         message = paste0(
           "I encountered an internal processing error. ",
           "Could you rephrase your last message? (Detail: ", msg, ")"
@@ -93,8 +94,7 @@ workflow_engine <- function(history,
 #' Internal engine implementation
 #' @noRd
 .workflow_engine_impl <- function(history, metadata, model, api_key, llm_fn,
-                                   system_prompt) {
-
+                                  system_prompt) {
   # --- Load metadata ---
   if (is.null(metadata)) {
     metadata <- .load_metadata()
@@ -105,7 +105,7 @@ workflow_engine <- function(history,
   if (is.null(system_prompt)) {
     phase_info <- .detect_phase(history)
     system_prompt <- .build_phase_prompt(
-      phase   = phase_info$phase,
+      phase = phase_info$phase,
       context = phase_info$context,
       metadata = metadata
     )
@@ -117,7 +117,7 @@ workflow_engine <- function(history,
   # The classify prompt already carries the prior_output_type context.
   api_history <- history
   if (!is.null(phase_info) && identical(phase_info$phase, "classify") &&
-      !is.null(phase_info$context$prior_output_type)) {
+    !is.null(phase_info$context$prior_output_type)) {
     # Keep only the last user message (the extension request)
     user_msgs <- Filter(function(m) identical(m$role, "user"), history)
     if (length(user_msgs) > 0L) {
@@ -140,9 +140,9 @@ workflow_engine <- function(history,
   if (!is.list(response)) {
     response <- list(status = "incomplete", message = as.character(response))
   }
-  response$status  <- as.character(response$status  %||% "incomplete")[1L]
+  response$status <- as.character(response$status %||% "incomplete")[1L]
   response$message <- as.character(response$message %||% "")[1L]
-  if (is.na(response$status))  response$status  <- "incomplete"
+  if (is.na(response$status)) response$status <- "incomplete"
   if (is.na(response$message)) response$message <- ""
 
   # Normalize invented status values
@@ -167,14 +167,17 @@ workflow_engine <- function(history,
     bad_ids <- setdiff(unlist(response$selected_path), valid_ids)
     if (length(bad_ids) > 0) {
       # Try to repair: fuzzy match against real edge IDs
-      repaired <- .repair_edge_ids(unlist(response$selected_path), valid_ids,
-                                    response$input_type, response$output_type, graph)
+      repaired <- .repair_edge_ids(
+        unlist(response$selected_path), valid_ids,
+        response$input_type, response$output_type, graph
+      )
       if (!is.null(repaired)) {
         response$selected_path <- repaired
       } else {
         warning(
           "LLM returned invalid edge IDs: ", paste(bad_ids, collapse = ", "),
-          ". Clearing selected_path.", call. = FALSE
+          ". Clearing selected_path.",
+          call. = FALSE
         )
         response$selected_path <- NULL
         response$status <- "incomplete"
@@ -200,7 +203,9 @@ workflow_engine <- function(history,
   # Default: start fresh with classify
   default <- list(phase = "classify", context = list())
 
-  if (length(history) == 0L) return(default)
+  if (length(history) == 0L) {
+    return(default)
+  }
 
   # Check if the latest user message looks like an error report
   last_user <- .last_message_by_role(history, "user")
@@ -208,7 +213,7 @@ workflow_engine <- function(history,
     # Error fix mode — try to find context from previous assistant state
     last_asst <- .last_assistant_state(history)
     return(list(
-      phase   = "error_fix",
+      phase = "error_fix",
       context = list(
         error_message = last_user,
         selected_path = last_asst$selected_path
@@ -218,7 +223,9 @@ workflow_engine <- function(history,
 
   # Parse the last assistant response for phase state
   last_asst <- .last_assistant_state(history)
-  if (is.null(last_asst)) return(default)
+  if (is.null(last_asst)) {
+    return(default)
+  }
 
   # Normalize selected_path: JSON round-trip with simplifyVector=FALSE
 
@@ -227,10 +234,10 @@ workflow_engine <- function(history,
     last_asst$selected_path <- unlist(last_asst$selected_path)
   }
 
-  has_input    <- !is.null(last_asst$input_type) && nzchar(last_asst$input_type)
-  has_output   <- !is.null(last_asst$output_type) && nzchar(last_asst$output_type)
-  has_path     <- !is.null(last_asst$selected_path) && length(last_asst$selected_path) > 0
-  has_dag      <- !is.null(last_asst$dag) && length(last_asst$dag) > 0
+  has_input <- !is.null(last_asst$input_type) && nzchar(last_asst$input_type)
+  has_output <- !is.null(last_asst$output_type) && nzchar(last_asst$output_type)
+  has_path <- !is.null(last_asst$selected_path) && length(last_asst$selected_path) > 0
+  has_dag <- !is.null(last_asst$dag) && length(last_asst$dag) > 0
 
   if (has_dag) {
     # Workflow already complete -- the user wants to extend it.
@@ -243,7 +250,7 @@ workflow_engine <- function(history,
     prior_out <- last_asst$output_type
     continuation_input <- output_to_input[prior_out] %||% prior_out
     return(list(
-      phase   = "classify",
+      phase = "classify",
       context = list(
         prior_output_type = continuation_input
       )
@@ -255,7 +262,7 @@ workflow_engine <- function(history,
     # Check if this is a continuation (a prior DAG exists in history).
     is_continuation <- .history_has_prior_dag(history, exclude_last = TRUE)
     return(list(
-      phase   = "parameterize",
+      phase = "parameterize",
       context = list(
         input_type      = last_asst$input_type,
         output_type     = last_asst$output_type,
@@ -271,7 +278,7 @@ workflow_engine <- function(history,
     graph <- .load_graph()
     paths <- .compute_paths(last_asst$input_type, last_asst$output_type, graph)
     return(list(
-      phase   = "path_select",
+      phase = "path_select",
       context = list(
         input_type  = last_asst$input_type,
         output_type = last_asst$output_type,
@@ -295,10 +302,14 @@ workflow_engine <- function(history,
 #' @noRd
 .last_assistant_state <- function(history) {
   asst_msgs <- Filter(function(m) identical(m$role, "assistant"), history)
-  if (length(asst_msgs) == 0L) return(NULL)
+  if (length(asst_msgs) == 0L) {
+    return(NULL)
+  }
 
   last_content <- asst_msgs[[length(asst_msgs)]]$content
-  if (is.null(last_content) || !nzchar(last_content)) return(NULL)
+  if (is.null(last_content) || !nzchar(last_content)) {
+    return(NULL)
+  }
 
   # Try to parse as JSON
   parsed <- tryCatch(
@@ -314,7 +325,9 @@ workflow_engine <- function(history,
 #' @noRd
 .last_message_by_role <- function(history, role) {
   msgs <- Filter(function(m) identical(m$role, role), history)
-  if (length(msgs) == 0L) return(NULL)
+  if (length(msgs) == 0L) {
+    return(NULL)
+  }
   msgs[[length(msgs)]]$content
 }
 
@@ -350,7 +363,9 @@ workflow_engine <- function(history,
 #' Check if Text Looks Like an Error Report
 #' @noRd
 .looks_like_error <- function(text) {
-  if (is.null(text) || length(text) == 0L || is.na(text[1L])) return(FALSE)
+  if (is.null(text) || length(text) == 0L || is.na(text[1L])) {
+    return(FALSE)
+  }
   # "Error:" alone covers both "Error:" and "error:" -- every pattern here
   # is matched with ignore.case = TRUE below, so no separate lower-case
   # variant is needed.
@@ -380,21 +395,29 @@ workflow_engine <- function(history,
 .repair_edge_ids <- function(bad_path, valid_ids, input_type, output_type, graph) {
   # If input/output types are available, compute the real paths and pick
   # the one with the same number of steps
-  if (is.null(input_type) || is.null(output_type)) return(NULL)
+  if (is.null(input_type) || is.null(output_type)) {
+    return(NULL)
+  }
 
   paths <- tryCatch(
     .compute_paths(input_type, output_type, graph),
     error = function(e) list()
   )
-  if (length(paths) == 0L) return(NULL)
+  if (length(paths) == 0L) {
+    return(NULL)
+  }
 
   # Prefer a path with the same number of edges
   n_bad <- length(bad_path)
   same_len <- Filter(function(p) length(p$edges) == n_bad, paths)
-  if (length(same_len) == 1L) return(same_len[[1L]]$edges)
+  if (length(same_len) == 1L) {
+    return(same_len[[1L]]$edges)
+  }
 
   # If multiple same-length paths, pick the first (simplest)
-  if (length(same_len) > 1L) return(same_len[[1L]]$edges)
+  if (length(same_len) > 1L) {
+    return(same_len[[1L]]$edges)
+  }
 
   # No same-length match; return the shortest path
   lengths <- vapply(paths, function(p) length(p$edges), 0L)
@@ -412,12 +435,13 @@ workflow_engine <- function(history,
 #' @return Character string: the full system prompt.
 #' @noRd
 .load_system_prompt <- function(metadata, output_dir = ".") {
-
   prompt_path <- system.file("prompts", "system_prompt.md",
-                             package = "TaxaWizard")
+    package = "TaxaWizard"
+  )
   if (!nzchar(prompt_path)) {
     stop("System prompt file not found. Is TaxaWizard installed?",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   template <- paste(readLines(prompt_path, warn = FALSE), collapse = "\n")

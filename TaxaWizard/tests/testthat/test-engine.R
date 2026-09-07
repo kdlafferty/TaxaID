@@ -56,7 +56,7 @@ test_that(".estimate_scaling: quadratic scaling", {
 test_that(".subset_for_trial: subsets by observation_id", {
   df <- data.frame(
     observation_id = rep(paste0("s", 1:50), each = 3),
-    score     = runif(150)
+    score = runif(150)
   )
   sub <- TaxaWizard:::.subset_for_trial(df, n = 5)
   expect_equal(length(unique(sub$observation_id)), 5)
@@ -139,10 +139,14 @@ test_that(".parse_error_context: extracts step number", {
       status = "complete", message = "Done.",
       selected_path = list("seq_to_match", "match_to_consensus_score"),
       dag = list(steps = list(
-        list(step_id = 1, edge_id = "seq_to_match",
-             description = "BLAST sequences", code = "match <- blast()"),
-        list(step_id = 2, edge_id = "match_to_consensus_score",
-             description = "Score consensus", code = "cons <- score_consensus()")
+        list(
+          step_id = 1, edge_id = "seq_to_match",
+          description = "BLAST sequences", code = "match <- blast()"
+        ),
+        list(
+          step_id = 2, edge_id = "match_to_consensus_score",
+          description = "Score consensus", code = "cons <- score_consensus()"
+        )
       ))
     ), auto_unbox = TRUE))
   ))

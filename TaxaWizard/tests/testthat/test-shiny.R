@@ -113,17 +113,17 @@ test_that(".extract_params skips infrastructure params", {
 
 test_that(".extract_steps parses quote-style steps", {
   lines <- c(
-    '# --- Step 1: Load data ---',
+    "# --- Step 1: Load data ---",
     'df <- .run_step(1, "Load data", quote({',
     '  df <- read.csv("test.csv")',
-    '  df',
-    '}))',
-    '',
-    '# --- Step 2: Process ---',
+    "  df",
+    "}))",
+    "",
+    "# --- Step 2: Process ---",
     'result <- .run_step(2, "Process", quote({',
-    '  result <- nrow(df)',
-    '  result',
-    '}))'
+    "  result <- nrow(df)",
+    "  result",
+    "}))"
   )
   steps <- TaxaWizard:::.extract_steps(lines)
   expect_length(steps, 2)
@@ -137,8 +137,8 @@ test_that(".extract_steps parses function-style steps", {
   lines <- c(
     'df <- .run_step(1, "Load data", function() {',
     '  df <- read.csv("test.csv")',
-    '  df',
-    '})'
+    "  df",
+    "})"
   )
   steps <- TaxaWizard:::.extract_steps(lines)
   expect_length(steps, 1)
@@ -152,10 +152,10 @@ test_that(".parse_workflow_script returns complete structure", {
     "# --- User Parameters ---",
     "min_score <- 97",
     "",
-    '# --- Step 1: Load ---',
+    "# --- Step 1: Load ---",
     'df <- .run_step(1, "Load", quote({',
-    '  data.frame(x = 1)',
-    '}))'
+    "  data.frame(x = 1)",
+    "}))"
   )
   parsed <- TaxaWizard:::.parse_workflow_script(lines)
   expect_true("libraries" %in% names(parsed))
@@ -173,10 +173,10 @@ test_that(".build_app_code produces valid structure", {
     "# --- User Parameters ---",
     "min_score <- 97",
     "",
-    '# --- Step 1: Load ---',
+    "# --- Step 1: Load ---",
     'df <- .run_step(1, "Load", quote({',
-    '  data.frame(x = 1)',
-    '}))'
+    "  data.frame(x = 1)",
+    "}))"
   )
   parsed <- TaxaWizard:::.parse_workflow_script(lines)
   app_code <- TaxaWizard:::.build_app_code(parsed)
@@ -208,7 +208,8 @@ test_that(".param_assembly_line's function_ref branch validates against the allo
   # The client-supplied value must never reach parse()/eval() at all -- it is
   # resolved by namespace lookup once it is known to be on the allow-list.
   code_lines <- grep("^\\s*#", TaxaWizard:::.param_assembly_line(param),
-                     value = TRUE, invert = TRUE)
+    value = TRUE, invert = TRUE
+  )
   expect_false(any(grepl("parse(", code_lines, fixed = TRUE)))
   expect_false(any(grepl("eval(", code_lines, fixed = TRUE)))
   expect_true(grepl("getExportedValue(", lines, fixed = TRUE))
@@ -241,8 +242,10 @@ test_that(".param_assembly_line's allow-list rejects a multi-element tampered va
   param <- list(name = "llm_fn", type = "function_ref", default = "TaxaTools::call_api")
   lines <- paste(TaxaWizard:::.param_assembly_line(param), collapse = "\n")
 
-  input <- list(param_llm_fn = c("TaxaTools::call_api",
-                                 'system("touch /tmp/pwned")'))
+  input <- list(param_llm_fn = c(
+    "TaxaTools::call_api",
+    'system("touch /tmp/pwned")'
+  ))
   env <- new.env()
   expect_error(
     eval(parse(text = lines), envir = environment()),
@@ -265,10 +268,10 @@ test_that("workflow_app writes app.R", {
     "# --- User Parameters ---",
     "n <- 10",
     "",
-    '# --- Step 1: Create data ---',
+    "# --- Step 1: Create data ---",
     'df <- .run_step(1, "Create", quote({',
-    '  data.frame(x = seq_len(n))',
-    '}))'
+    "  data.frame(x = seq_len(n))",
+    "}))"
   )
   tmp_script <- tempfile(fileext = ".R")
   writeLines(lines, tmp_script)
@@ -290,11 +293,11 @@ test_that("workflow_app writes app.R", {
 
 test_that(".segment_script extracts libraries", {
   lines <- c(
-    'library(dplyr)',
-    'library(ggplot2)',
-    '',
-    'x <- 10',
-    'plot(x)'
+    "library(dplyr)",
+    "library(ggplot2)",
+    "",
+    "x <- 10",
+    "plot(x)"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   expect_true("dplyr" %in% seg$libraries)
@@ -303,15 +306,15 @@ test_that(".segment_script extracts libraries", {
 
 test_that(".segment_script identifies parameter candidates", {
   lines <- c(
-    'library(stats)',
-    '',
-    'n_iter <- 100',
-    'threshold <- 0.05',
+    "library(stats)",
+    "",
+    "n_iter <- 100",
+    "threshold <- 0.05",
     'input_file <- "data.csv"',
-    'use_cache <- TRUE',
-    '',
-    '# Analysis',
-    'result <- lm(y ~ x, data = df)'
+    "use_cache <- TRUE",
+    "",
+    "# Analysis",
+    "result <- lm(y ~ x, data = df)"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   expect_equal(length(seg$param_candidates), 4L)
@@ -321,12 +324,12 @@ test_that(".segment_script identifies parameter candidates", {
 
 test_that(".segment_script classifies param types correctly", {
   lines <- c(
-    'n <- 100',
-    'flag <- TRUE',
+    "n <- 100",
+    "flag <- TRUE",
     'path <- "output.csv"',
     'label <- "hello"',
-    '',
-    'print(n)'
+    "",
+    "print(n)"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   types <- setNames(
@@ -340,9 +343,9 @@ test_that(".segment_script classifies param types correctly", {
 
 test_that(".segment_script stops collecting params at first non-assignment", {
   lines <- c(
-    'x <- 10',
+    "x <- 10",
     'print("hello")',
-    'y <- 20'
+    "y <- 20"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   # Only x should be a param; y comes after a non-assignment
@@ -353,14 +356,14 @@ test_that(".segment_script stops collecting params at first non-assignment", {
 
 test_that(".segment_script identifies steps from remaining code", {
   lines <- c(
-    'n <- 10',
-    '',
-    '# Step 1: Load data',
+    "n <- 10",
+    "",
+    "# Step 1: Load data",
     'df <- read.csv("data.csv")',
-    '',
-    '# Step 2: Analyze',
-    'result <- summary(df)',
-    'print(result)'
+    "",
+    "# Step 2: Analyze",
+    "result <- summary(df)",
+    "print(result)"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   expect_true(length(seg$step_candidates) >= 2L)
@@ -372,11 +375,11 @@ test_that(".segment_script identifies steps from remaining code", {
 
 test_that(".segment_script uses comment headers as step descriptions", {
   lines <- c(
-    '## Load data',
+    "## Load data",
     'df <- read.csv("x.csv")',
-    '',
-    '## Run model',
-    'mod <- lm(y ~ x, data = df)'
+    "",
+    "## Run model",
+    "mod <- lm(y ~ x, data = df)"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   descs <- vapply(seg$step_candidates, `[[`, character(1), "description")
@@ -386,12 +389,12 @@ test_that(".segment_script uses comment headers as step descriptions", {
 
 test_that(".segment_script extracts output_var from last assignment", {
   lines <- c(
-    '# Step',
+    "# Step",
     'tmp <- read.csv("x.csv")',
-    'df <- tmp[1:10, ]',
-    '',
-    '# Another step',
-    'print(df)'
+    "df <- tmp[1:10, ]",
+    "",
+    "# Another step",
+    "print(df)"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   # First step's output_var should be "df"
@@ -401,7 +404,7 @@ test_that(".segment_script extracts output_var from last assignment", {
 test_that(".segment_script handles script with no params", {
   lines <- c(
     'df <- read.csv("x.csv")',
-    'print(df)'
+    "print(df)"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   expect_equal(length(seg$param_candidates), 0L)
@@ -427,11 +430,11 @@ test_that(".segment_script handles script with parse errors", {
 
 test_that(".segment_script skips library and source calls in step detection", {
   lines <- c(
-    'library(dplyr)',
+    "library(dplyr)",
     'source("helpers.R")',
-    'n <- 5',
-    '',
-    'result <- n + 1'
+    "n <- 5",
+    "",
+    "result <- n + 1"
   )
   seg <- TaxaWizard:::.segment_script(lines)
   # n is a param, library/source skipped, result is a step
@@ -456,10 +459,14 @@ test_that(".is_simple_assignment rejects function calls", {
 
 test_that(".call_fn_name unwraps pkg::fn and pkg:::fn calls to a scalar", {
   expect_equal(TaxaWizard:::.call_fn_name(quote(data.frame(x = 1))), "data.frame")
-  expect_equal(TaxaWizard:::.call_fn_name(quote(TaxaTools::create_taxon_names(x))),
-               "create_taxon_names")
-  expect_equal(TaxaWizard:::.call_fn_name(quote(TaxaTools:::.internal_fn(x))),
-               ".internal_fn")
+  expect_equal(
+    TaxaWizard:::.call_fn_name(quote(TaxaTools::create_taxon_names(x))),
+    "create_taxon_names"
+  )
+  expect_equal(
+    TaxaWizard:::.call_fn_name(quote(TaxaTools:::.internal_fn(x))),
+    ".internal_fn"
+  )
   expect_true(is.na(TaxaWizard:::.call_fn_name(quote(x))))
   expect_true(is.na(TaxaWizard:::.call_fn_name(1)))
 })
@@ -508,7 +515,7 @@ test_that(".segment_script does not crash on a top-level namespaced call", {
 
 test_that("workflow_app errors with annotate='none' on generic script", {
   skip_if_not_installed("shiny")
-  lines <- c('x <- 10', 'print(x)')
+  lines <- c("x <- 10", "print(x)")
   tmp <- tempfile(fileext = ".R")
   writeLines(lines, tmp)
   expect_error(
@@ -568,7 +575,7 @@ test_that("generated app.R parses when a character parameter contains backslashe
   tmp <- tempfile(fileext = ".R")
   writeLines(c(
     "# --- User Parameters ---",
-    paste0('note <- "C:', bs, bs, 'Users', bs, bs, 'me"'),
+    paste0('note <- "C:', bs, bs, "Users", bs, bs, 'me"'),
     "",
     "# --- Step 1: Go ---",
     'res <- .run_step(1, "Go", quote({',
@@ -584,8 +591,10 @@ test_that("generated app.R parses when a character parameter contains backslashe
 
 test_that(".r_string round-trips text through an R literal", {
   bs <- "\\"
-  for (x in list(paste0("a", bs, "d b"), 'quoted "value"', "line1\nline2",
-                 paste0("C:", bs, "Users"), "plain")) {
+  for (x in list(
+    paste0("a", bs, "d b"), 'quoted "value"', "line1\nline2",
+    paste0("C:", bs, "Users"), "plain"
+  )) {
     expect_identical(eval(parse(text = TaxaWizard:::.r_string(x))[[1L]]), x)
   }
   # NULL / NA never collapse to a zero-length result (which would silently drop

@@ -3,6 +3,7 @@
 ^LICENSE\.md$
 ^DISCLAIMER\.md$
 ^CLAUDE\.md$
+^\.lintr$
 ^\.Rhistory$
 ^\.DS_Store$
 ^taxaid_workflow.*\.R$

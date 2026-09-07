@@ -18,7 +18,9 @@
 #' @noRd
 .r_string <- function(x) {
   x <- as.character(x)
-  if (length(x) == 0L) return("\"\"")
+  if (length(x) == 0L) {
+    return("\"\"")
+  }
   x <- x[1L]
   if (is.na(x)) x <- ""
   encodeString(x, quote = "\"")
@@ -57,7 +59,6 @@
 #' @noRd
 .generate_outputs <- function(dag, outputs, output_dir, trial = FALSE,
                               known_script_path = NULL) {
-
   generated <- character()
   appended <- FALSE
   cross_session_append <- FALSE
@@ -69,7 +70,8 @@
     appended <- !is.null(existing)
     cross_session_append <- appended && !known_valid
     script_path <- .generate_script(dag, output_dir, trial,
-                                    known_script_path = known_script_path)
+      known_script_path = known_script_path
+    )
     generated <- c(generated, script_path)
   }
 
@@ -114,7 +116,6 @@
 #' @noRd
 .generate_script <- function(dag, output_dir, trial = FALSE,
                              known_script_path = NULL) {
-
   n_steps <- length(dag$steps)
 
   # --- Check for existing script to append to ---
@@ -132,7 +133,8 @@
   lines <- character()
 
   # --- Header ---
-  lines <- c(lines,
+  lines <- c(
+    lines,
     "# =============================================================================",
     sprintf("# TaxaID Workflow -- Generated %s by TaxaWizard", Sys.Date()),
     "# =============================================================================",
@@ -154,7 +156,8 @@
   lines <- c(lines, "")
 
   # --- Debug mode ---
-  lines <- c(lines,
+  lines <- c(
+    lines,
     "# --- Debug / Trial Mode ---",
     "# Set TRUE for first run (fast, catches errors); FALSE for full dataset",
     "debug_mode <- TRUE",
@@ -163,13 +166,18 @@
   )
 
   # --- Checkpoint directory ---
-  lines <- c(lines,
+  lines <- c(
+    lines,
     "# --- Checkpoint directory (for resume on re-run) ---",
-    sprintf('checkpoint_dir <- file.path(%s, ".workflow_checkpoints")',
-            .r_string(output_dir)),
+    sprintf(
+      'checkpoint_dir <- file.path(%s, ".workflow_checkpoints")',
+      .r_string(output_dir)
+    ),
     "if (!dir.exists(checkpoint_dir)) dir.create(checkpoint_dir, recursive = TRUE)",
-    sprintf("total_steps <- %dL  # updated automatically when workflow is extended",
-            n_steps),
+    sprintf(
+      "total_steps <- %dL  # updated automatically when workflow is extended",
+      n_steps
+    ),
     "",
     "# Helper: run a step with checkpoint and auto-fix on error.",
     "# Code is evaluated in the CALLING environment so all variables created",
@@ -233,35 +241,54 @@
     # Wrap the LLM-generated code in the checkpoint/error-catch helper.
     # Uses quote({...}) so code is evaluated in the calling environment,
     # giving access to all variables from prior steps.
-    lines <- c(lines,
+    lines <- c(
+      lines,
       sprintf("# --- Step %d: %s ---", i, desc),
-      sprintf('%s <- .run_step(%d, %s, quote({',
-              output_var, i, .r_string(desc)),
-      paste0("  ", strsplit(step$code, "\n")[[1]]),  # indent code inside quote
+      sprintf(
+        "%s <- .run_step(%d, %s, quote({",
+        output_var, i, .r_string(desc)
+      ),
+      paste0("  ", strsplit(step$code, "\n")[[1]]), # indent code inside quote
       "}))",
       ""
     )
 
     # Add debug subsetting after the first data-loading step
     if (i == 1L) {
-      lines <- c(lines,
+      lines <- c(
+        lines,
         "# Apply debug subsetting after initial data load",
         "# Subsets by observation_id (not raw rows) so each sample keeps all its matches",
-        sprintf("if (debug_mode && is.data.frame(%s) && \"observation_id\" %%in%% names(%s)) {",
-                output_var, output_var),
+        sprintf(
+          "if (debug_mode && is.data.frame(%s) && \"observation_id\" %%in%% names(%s)) {",
+          output_var, output_var
+        ),
         sprintf("  .debug_n_total <- nrow(%s)", output_var),
-        sprintf("  .debug_ids <- unique(%s$observation_id)[seq_len(min(debug_n, length(unique(%s$observation_id))))]",
-                output_var, output_var),
-        sprintf("  %s <- %s[%s$observation_id %%in%% .debug_ids, , drop = FALSE]",
-                output_var, output_var, output_var),
-        sprintf('  message(sprintf("DEBUG MODE: subsetting to %%d observation_ids (%%d rows of %%d)", length(.debug_ids), nrow(%s), .debug_n_total))',
-                output_var),
-        sprintf("} else if (debug_mode && is.data.frame(%s) && nrow(%s) > debug_n) {",
-                output_var, output_var),
+        sprintf(
+          "  .debug_ids <- unique(%s$observation_id)[seq_len(min(debug_n, length(unique(%s$observation_id))))]",
+          output_var, output_var
+        ),
+        sprintf(
+          "  %s <- %s[%s$observation_id %%in%% .debug_ids, , drop = FALSE]",
+          output_var, output_var, output_var
+        ),
+        sprintf(
+          paste0(
+            '  message(sprintf("DEBUG MODE: subsetting to %%d observation_ids ',
+            '(%%d rows of %%d)", length(.debug_ids), nrow(%s), .debug_n_total))'
+          ),
+          output_var
+        ),
+        sprintf(
+          "} else if (debug_mode && is.data.frame(%s) && nrow(%s) > debug_n) {",
+          output_var, output_var
+        ),
         sprintf("  .debug_n_total <- nrow(%s)", output_var),
         sprintf("  %s <- head(%s, debug_n)", output_var, output_var),
-        sprintf('  message(sprintf("DEBUG MODE: subsetting to %%d rows (of %%d)", nrow(%s), .debug_n_total))',
-                output_var),
+        sprintf(
+          '  message(sprintf("DEBUG MODE: subsetting to %%d rows (of %%d)", nrow(%s), .debug_n_total))',
+          output_var
+        ),
         "}",
         ""
       )
@@ -269,7 +296,8 @@
   }
 
   # --- Clear checkpoints message ---
-  lines <- c(lines,
+  lines <- c(
+    lines,
     "# --- Workflow complete ---",
     'message("Workflow complete.")',
     "if (debug_mode) {",
@@ -279,8 +307,10 @@
     "}",
     "",
     "# To clear all checkpoints and re-run from scratch:",
-    sprintf('# unlink("%s/.workflow_checkpoints", recursive = TRUE)',
-            gsub('"', '\\\\"', output_dir)),
+    sprintf(
+      '# unlink("%s/.workflow_checkpoints", recursive = TRUE)',
+      gsub('"', '\\\\"', output_dir)
+    ),
     ""
   )
 
@@ -304,11 +334,17 @@
 .find_existing_script <- function(output_dir) {
   # Only match today's date to avoid appending to old scripts
 
-  today_pattern <- sprintf("^taxaid_workflow_%s\\.R$",
-                           format(Sys.Date(), "%Y%m%d"))
-  candidates <- list.files(output_dir, pattern = today_pattern,
-                           full.names = TRUE)
-  if (length(candidates) == 0L) return(NULL)
+  today_pattern <- sprintf(
+    "^taxaid_workflow_%s\\.R$",
+    format(Sys.Date(), "%Y%m%d")
+  )
+  candidates <- list.files(output_dir,
+    pattern = today_pattern,
+    full.names = TRUE
+  )
+  if (length(candidates) == 0L) {
+    return(NULL)
+  }
   # Return the most recently modified
   info <- file.info(candidates)
   candidates[which.max(info$mtime)]
@@ -328,14 +364,15 @@
 #' @return Character: path to the updated script file.
 #' @noRd
 .append_to_script <- function(script_path, dag, output_dir) {
-
   existing_lines <- readLines(script_path, warn = FALSE)
 
   # --- Find highest existing step number ---
   step_pattern <- "^# --- Step (\\d+):"
   step_matches <- regmatches(existing_lines, regexpr(step_pattern, existing_lines))
-  step_nums <- as.integer(gsub("^# --- Step (\\d+):.*", "\\1",
-                                step_matches[nzchar(step_matches)]))
+  step_nums <- as.integer(gsub(
+    "^# --- Step (\\d+):.*", "\\1",
+    step_matches[nzchar(step_matches)]
+  ))
   last_step <- if (length(step_nums) > 0L) max(step_nums) else 0L
 
   # --- Find insertion point (just before "# --- Workflow complete ---") ---
@@ -393,8 +430,10 @@
       # Only add if not already defined in existing script
       param_pattern <- sprintf("^%s\\s*<-", gsub("\\.", "\\\\.", param$name))
       if (!any(grepl(param_pattern, existing_lines))) {
-        new_param_lines <- c(new_param_lines,
-                             sprintf("%s <- %s", param$name, param$value))
+        new_param_lines <- c(
+          new_param_lines,
+          sprintf("%s <- %s", param$name, param$value)
+        )
       }
     }
     new_param_lines <- c(new_param_lines, "")
@@ -418,11 +457,14 @@
     desc <- step$description %||% step$function_name
     output_var <- step$output_var %||% sprintf("step_%d_result", step_num)
 
-    new_step_lines <- c(new_step_lines,
+    new_step_lines <- c(
+      new_step_lines,
       "",
       sprintf("# --- Step %d: %s ---", step_num, desc),
-      sprintf('%s <- .run_step(%d, %s, quote({',
-              output_var, step_num, .r_string(desc)),
+      sprintf(
+        "%s <- .run_step(%d, %s, quote({",
+        output_var, step_num, .r_string(desc)
+      ),
       paste0("  ", strsplit(step$code, "\n")[[1]]),
       "}))",
       ""
@@ -436,8 +478,10 @@
   # New-style scripts use a total_steps variable; update it
   combined <- sub(
     "^total_steps <- \\d+L.*$",
-    sprintf("total_steps <- %dL  # updated automatically when workflow is extended",
-            total_steps),
+    sprintf(
+      "total_steps <- %dL  # updated automatically when workflow is extended",
+      total_steps
+    ),
     combined
   )
 
@@ -465,9 +509,9 @@
 #' @return Character: path to generated file.
 #' @noRd
 .generate_markdown <- function(dag, output_dir) {
-
   lines <- character()
-  lines <- c(lines,
+  lines <- c(
+    lines,
     sprintf("# Methods -- Generated %s by TaxaWizard", Sys.Date()),
     "",
     dag$methods_text %||% "Methods text will be generated after the workflow runs.",
@@ -500,11 +544,12 @@
 #' @return Character: path to generated file.
 #' @noRd
 .generate_app <- function(dag, output_dir, script_path = NULL) {
-
   if (!is.null(script_path) && file.exists(script_path) &&
-      requireNamespace("shiny", quietly = TRUE)) {
-    return(workflow_app(script_path = script_path, output_dir = output_dir,
-                        launch = FALSE))
+    requireNamespace("shiny", quietly = TRUE)) {
+    return(workflow_app(
+      script_path = script_path, output_dir = output_dir,
+      launch = FALSE
+    ))
   }
 
   # Fallback: no sibling script was generated in this response (the user

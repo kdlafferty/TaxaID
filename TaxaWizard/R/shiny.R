@@ -68,19 +68,20 @@ utils::globalVariables(c("log_lines", "final_result"))
 #' workflow_app("my_analysis.R", annotate = "self")
 #'
 #' # Any R script -- LLM annotation (needs a live LLM API call)
-#' workflow_app("my_analysis.R", annotate = "llm",
-#'              llm_fn = TaxaTools::call_anthropic_api)
+#' workflow_app("my_analysis.R",
+#'   annotate = "llm",
+#'   llm_fn = TaxaTools::call_anthropic_api
+#' )
 #'
 #' # App where users supply their own API key
 #' workflow_app("taxaid_workflow_20260506.R", api_key_mode = "user")
 #' }
 workflow_app <- function(script_path,
-                         output_dir   = dirname(script_path),
+                         output_dir = dirname(script_path),
                          api_key_mode = "server",
-                         annotate     = c("auto", "self", "llm", "none"),
-                         llm_fn       = NULL,
-                         launch       = TRUE) {
-
+                         annotate = c("auto", "self", "llm", "none"),
+                         llm_fn = NULL,
+                         launch = TRUE) {
   api_key_mode <- match.arg(api_key_mode, c("server", "user", "both"))
   annotate <- match.arg(annotate)
 
@@ -107,8 +108,9 @@ workflow_app <- function(script_path,
     # No TaxaWizard markers -- handle based on annotate mode
     if (annotate == "none") {
       stop("No TaxaWizard step markers found in script.\n",
-           "Use annotate = 'self' or 'llm' for generic R scripts.",
-           call. = FALSE)
+        "Use annotate = 'self' or 'llm' for generic R scripts.",
+        call. = FALSE
+      )
     }
 
     if (annotate == "auto") {
@@ -142,8 +144,10 @@ workflow_app <- function(script_path,
     file.copy(logo_src, file.path(www_dir, "usgs_logo.png"), overwrite = TRUE)
   }
   message("Shiny app written to: ", app_path)
-  message("  ", length(parsed$params), " parameters, ",
-          length(parsed$steps), " steps")
+  message(
+    "  ", length(parsed$params), " parameters, ",
+    length(parsed$steps), " steps"
+  )
 
   if (launch) {
     message("Launching app...")
@@ -208,7 +212,9 @@ workflow_app <- function(script_path,
 .extract_params <- function(lines) {
   # Find parameter section headers
   param_headers <- grep("^# --- (User|Extension) Parameters", lines)
-  if (length(param_headers) == 0L) return(list())
+  if (length(param_headers) == 0L) {
+    return(list())
+  }
 
   # Infrastructure params to skip
   skip_names <- c("debug_mode", "debug_n", "checkpoint_dir", "total_steps")
@@ -297,14 +303,14 @@ workflow_app <- function(script_path,
 
   # String -- file path (input)
   if (grepl('^".*\\.(csv|tsv|txt|rds|xlsx|fasta|fa)"', ve, ignore.case = TRUE) &&
-      !grepl("output|save|write", name, ignore.case = TRUE)) {
+    !grepl("output|save|write", name, ignore.case = TRUE)) {
     val <- gsub('^"|"$', "", ve)
     return(list(name = name, type = "file_input", default = val, raw = ve))
   }
 
   # String -- file path (output)
   if (grepl('^".*\\.(csv|tsv|rds)"', ve, ignore.case = TRUE) &&
-      grepl("output|save|write", name, ignore.case = TRUE)) {
+    grepl("output|save|write", name, ignore.case = TRUE)) {
     val <- gsub('^"|"$', "", ve)
     return(list(name = name, type = "file_output", default = val, raw = ve))
   }
@@ -354,7 +360,10 @@ workflow_app <- function(script_path,
       # Count braces (simple -- doesn't handle braces inside strings,
       # but generated scripts don't have that)
       for (ch in strsplit(line, "")[[1]]) {
-        if (ch == "{") { brace_count <- brace_count + 1L; started <- TRUE }
+        if (ch == "{") {
+          brace_count <- brace_count + 1L
+          started <- TRUE
+        }
         if (ch == "}") brace_count <- brace_count - 1L
       }
       if (started && brace_count <= 0L) break
@@ -402,13 +411,15 @@ workflow_app <- function(script_path,
     parse(text = paste(lines, collapse = "\n"), keep.source = TRUE),
     error = function(e) {
       warning("Script has parse errors: ", conditionMessage(e), call. = FALSE)
-      return(NULL)
+      NULL
     }
   )
   if (is.null(src)) {
-    return(list(libraries = libraries,
-                param_candidates = list(),
-                step_candidates = list()))
+    return(list(
+      libraries = libraries,
+      param_candidates = list(),
+      step_candidates = list()
+    ))
   }
 
   srcref <- utils::getSrcref(src)
@@ -419,14 +430,12 @@ workflow_app <- function(script_path,
 
   # non-source expression.
   param_candidates <- list()
-  first_step_expr <- n_expr + 1L  # index of first non-param expression
+  first_step_expr <- n_expr + 1L # index of first non-param expression
 
   for (k in seq_len(n_expr)) {
     expr_k <- src[[k]]
     ref_k <- srcref[[k]]
     line_start <- ref_k[1L]
-    line_end   <- ref_k[3L]
-    expr_text <- paste(lines[line_start:line_end], collapse = "\n")
 
     # Skip library() / require() calls
     if (.is_library_call(expr_k)) next
@@ -437,7 +446,6 @@ workflow_app <- function(script_path,
     # Check if this is a simple assignment: name <- literal
     if (.is_simple_assignment(expr_k)) {
       name <- as.character(expr_k[[2]])
-      value_expr <- trimws(deparse(expr_k[[3]], width.cutoff = 500L))
       # Reconstruct the raw value from the source line for .classify_param
       raw_line <- trimws(lines[line_start])
       raw_value <- sub("^\\w+\\s*(<-|=)\\s*", "", raw_line)
@@ -455,9 +463,11 @@ workflow_app <- function(script_path,
   # Collect remaining expressions and group by comment headers or proximity
   if (first_step_expr > n_expr) {
     # No step expressions found
-    return(list(libraries = libraries,
-                param_candidates = param_candidates,
-                step_candidates = list()))
+    return(list(
+      libraries = libraries,
+      param_candidates = param_candidates,
+      step_candidates = list()
+    ))
   }
 
   # Get source line ranges for remaining expressions
@@ -500,11 +510,15 @@ workflow_app <- function(script_path,
 #'   \code{expr} is not a call whose head resolves to a simple name.
 #' @noRd
 .call_fn_name <- function(expr) {
-  if (!is.call(expr)) return(NA_character_)
+  if (!is.call(expr)) {
+    return(NA_character_)
+  }
   head <- expr[[1L]]
-  if (is.symbol(head)) return(as.character(head))
+  if (is.symbol(head)) {
+    return(as.character(head))
+  }
   if (is.call(head) && length(head) == 3L &&
-      as.character(head[[1L]]) %in% c("::", ":::")) {
+    as.character(head[[1L]]) %in% c("::", ":::")) {
     return(as.character(head[[3L]]))
   }
   NA_character_
@@ -530,14 +544,22 @@ workflow_app <- function(script_path,
 #' Check if an expression is a simple assignment of a literal value
 #' @noRd
 .is_simple_assignment <- function(expr) {
-  if (!is.call(expr)) return(FALSE)
+  if (!is.call(expr)) {
+    return(FALSE)
+  }
   op <- .call_fn_name(expr)
-  if (is.na(op) || !op %in% c("<-", "=")) return(FALSE)
-  if (length(expr) != 3L) return(FALSE)
+  if (is.na(op) || !op %in% c("<-", "=")) {
+    return(FALSE)
+  }
+  if (length(expr) != 3L) {
+    return(FALSE)
+  }
 
   # LHS must be a simple name (not subset, not $)
   lhs <- expr[[2]]
-  if (!is.symbol(lhs)) return(FALSE)
+  if (!is.symbol(lhs)) {
+    return(FALSE)
+  }
 
   # RHS must be a literal, a c() of literals, or a simple string/number
   rhs <- expr[[3]]
@@ -549,12 +571,18 @@ workflow_app <- function(script_path,
 #' @noRd
 .is_literal_value <- function(expr) {
   # Atomic literal: number, string, logical, NULL
-  if (is.numeric(expr) || is.character(expr) || is.logical(expr)) return(TRUE)
-  if (is.null(expr)) return(TRUE)
+  if (is.numeric(expr) || is.character(expr) || is.logical(expr)) {
+    return(TRUE)
+  }
+  if (is.null(expr)) {
+    return(TRUE)
+  }
 
   # Negative number: -N
   if (is.call(expr) && identical(expr[[1L]], as.symbol("-")) &&
-      length(expr) == 2L && is.numeric(expr[[2L]])) return(TRUE)
+    length(expr) == 2L && is.numeric(expr[[2L]])) {
+    return(TRUE)
+  }
 
   # c() of literals
   if (is.call(expr) && identical(expr[[1L]], as.symbol("c"))) {
@@ -564,7 +592,9 @@ workflow_app <- function(script_path,
 
   # data.frame() call -- treat as parameter
   fn_name <- .call_fn_name(expr)
-  if (!is.na(fn_name) && fn_name == "data.frame") return(TRUE)
+  if (!is.na(fn_name) && fn_name == "data.frame") {
+    return(TRUE)
+  }
 
   FALSE
 }
@@ -573,7 +603,9 @@ workflow_app <- function(script_path,
 #' Group expression ranges into steps using comment headers as delimiters
 #' @noRd
 .group_into_steps <- function(lines, expr_ranges) {
-  if (length(expr_ranges) == 0L) return(list())
+  if (length(expr_ranges) == 0L) {
+    return(list())
+  }
 
   # Find comment-header lines: "# ---", "## Section", "# ===", "####",
   # or single-# comments that look like section headers (standalone, 3+ chars)
@@ -597,11 +629,11 @@ workflow_app <- function(script_path,
       if (gap_end >= gap_start) {
         # Look for headers in the gap
         gap_headers <- header_lines[header_lines >= gap_start &
-                                    header_lines <= gap_end]
+          header_lines <= gap_end]
         # Look for blank-line gaps (2+ consecutive blank lines)
         gap_lines <- lines[gap_start:gap_end]
         has_blank_gap <- any(nchar(trimws(gap_lines)) == 0L) &&
-                         (gap_end - gap_start + 1L) >= 1L
+          (gap_end - gap_start + 1L) >= 1L
 
         if (length(gap_headers) > 0L || has_blank_gap) {
           # Save current group and start new one
@@ -691,7 +723,8 @@ workflow_app <- function(script_path,
       # For assignments, use RHS function name
       if (fn %in% c("<-", "=") && length(e) >= 3L && is.call(e[[3L]])) {
         fn <- tryCatch(deparse(e[[3L]][[1L]], width.cutoff = 60L),
-                       error = function(e) "")
+          error = function(e) ""
+        )
         fn <- paste(fn, collapse = "")
       }
       if (nzchar(fn) && fn != "") {
@@ -712,7 +745,7 @@ workflow_app <- function(script_path,
     if (is.call(e)) {
       op <- .call_fn_name(e)
       if (!is.na(op) && op %in% c("<-", "=") &&
-          length(e) >= 2L && is.symbol(e[[2L]])) {
+        length(e) >= 2L && is.symbol(e[[2L]])) {
         last_var <- as.character(e[[2L]])
       }
     }
@@ -756,11 +789,13 @@ workflow_app <- function(script_path,
 #' parsed <- annotate_script("my_analysis.R", mode = "self")
 #'
 #' # LLM-guided annotation
-#' parsed <- annotate_script("my_analysis.R", mode = "llm",
-#'                           llm_fn = TaxaTools::call_anthropic_api)
+#' parsed <- annotate_script("my_analysis.R",
+#'   mode = "llm",
+#'   llm_fn = TaxaTools::call_anthropic_api
+#' )
 #' }
 annotate_script <- function(script_path,
-                            mode   = c("self", "llm"),
+                            mode = c("self", "llm"),
                             llm_fn = NULL) {
   mode <- match.arg(mode)
 
@@ -776,9 +811,10 @@ annotate_script <- function(script_path,
   } else {
     if (is.null(llm_fn)) {
       stop("llm_fn is required for mode = 'llm'.\n",
-           "Example: annotate_script(path, mode = 'llm', ",
-           "llm_fn = TaxaTools::call_anthropic_api)",
-           call. = FALSE)
+        "Example: annotate_script(path, mode = 'llm', ",
+        "llm_fn = TaxaTools::call_anthropic_api)",
+        call. = FALSE
+      )
     }
     .annotate_llm(segmented, lines, script_path, llm_fn)
   }
@@ -798,8 +834,10 @@ annotate_script <- function(script_path,
     message("I found these potential parameters (top-level literal assignments):")
     for (i in seq_along(param_cands)) {
       p <- param_cands[[i]]
-      message(sprintf("  [%d] %s = %s  (type: %s, line %d)",
-                       i, p$name, p$raw, p$type, p$line))
+      message(sprintf(
+        "  [%d] %s = %s  (type: %s, line %d)",
+        i, p$name, p$raw, p$type, p$line
+      ))
     }
     message("")
     resp <- readline(
@@ -827,9 +865,11 @@ annotate_script <- function(script_path,
     for (i in seq_along(step_cands)) {
       s <- step_cands[[i]]
       n_lines <- s$end_line - s$start_line + 1L
-      message(sprintf("  [%d] \"%s\" (lines %d-%d, %d lines, output: %s)",
-                       i, s$description, s$start_line, s$end_line,
-                       n_lines, s$output_var))
+      message(sprintf(
+        "  [%d] \"%s\" (lines %d-%d, %d lines, output: %s)",
+        i, s$description, s$start_line, s$end_line,
+        n_lines, s$output_var
+      ))
     }
     message("")
     resp <- readline("Does this grouping look right? (y/n, or enter numbers to keep): ")
@@ -939,7 +979,8 @@ annotate_script <- function(script_path,
 .annotate_llm <- function(segmented, lines, script_path, llm_fn) {
   # Load prompt template
   prompt_path <- system.file("prompts", "annotate_script.md",
-                             package = "TaxaWizard")
+    package = "TaxaWizard"
+  )
   if (!nzchar(prompt_path)) {
     stop("annotate_script.md prompt template not found.", call. = FALSE)
   }
@@ -1004,41 +1045,44 @@ annotate_script <- function(script_path,
   json_str <- sub("(?s)\\s*```.*$", "", json_str, perl = TRUE)
 
   # Try to find a JSON object
-  result <- tryCatch({
-    obj <- jsonlite::fromJSON(json_str, simplifyVector = FALSE)
+  result <- tryCatch(
+    {
+      obj <- jsonlite::fromJSON(json_str, simplifyVector = FALSE)
 
-    # Extract params
-    params <- lapply(obj$parameters %||% list(), function(p) {
+      # Extract params
+      params <- lapply(obj$parameters %||% list(), function(p) {
+        list(
+          name    = p$name,
+          type    = p$type %||% "character",
+          default = p$default,
+          raw     = as.character(p$default %||% ""),
+          line    = p$line %||% NA_integer_
+        )
+      })
+
+      # Extract steps
+      steps <- lapply(seq_along(obj$steps %||% list()), function(i) {
+        s <- obj$steps[[i]]
+        list(
+          step_id     = i,
+          description = s$description %||% paste("Step", i),
+          output_var  = s$output_var %||% paste0("step_", i, "_result"),
+          code_text   = s$code_text %||% "",
+          start_line  = s$start_line %||% NA_integer_,
+          end_line    = s$end_line %||% NA_integer_
+        )
+      })
+
       list(
-        name    = p$name,
-        type    = p$type %||% "character",
-        default = p$default,
-        raw     = as.character(p$default %||% ""),
-        line    = p$line %||% NA_integer_
+        libraries = obj$libraries %||% character(0),
+        params    = params,
+        steps     = steps
       )
-    })
-
-    # Extract steps
-    steps <- lapply(seq_along(obj$steps %||% list()), function(i) {
-      s <- obj$steps[[i]]
-      list(
-        step_id     = i,
-        description = s$description %||% paste("Step", i),
-        output_var  = s$output_var %||% paste0("step_", i, "_result"),
-        code_text   = s$code_text %||% "",
-        start_line  = s$start_line %||% NA_integer_,
-        end_line    = s$end_line %||% NA_integer_
-      )
-    })
-
-    list(
-      libraries = obj$libraries %||% character(0),
-      params    = params,
-      steps     = steps
-    )
-  }, error = function(e) {
-    NULL
-  })
+    },
+    error = function(e) {
+      NULL
+    }
+  )
 
   result
 }
@@ -1068,7 +1112,9 @@ annotate_script <- function(script_path,
     for (fp in file_params) {
       # Replace hardcoded path literal with variable reference
       code <- gsub(fp$default, paste0('", ', fp$name, ', "'),
-                   code, fixed = TRUE)
+        code,
+        fixed = TRUE
+      )
       # Clean up empty string concatenation artifacts
       code <- gsub(', ""', "", code, fixed = TRUE)
       code <- gsub('"", ', "", code, fixed = TRUE)
@@ -1085,7 +1131,8 @@ annotate_script <- function(script_path,
     .app_ui(params, steps, api_key_mode = api_key_mode, has_llm = has_llm),
     "",
     .app_server(params, steps, step_code_blocks, n_steps,
-                api_key_mode = api_key_mode, has_llm = has_llm),
+      api_key_mode = api_key_mode, has_llm = has_llm
+    ),
     "",
     "shinyApp(ui, server)"
   )
@@ -1149,11 +1196,13 @@ annotate_script <- function(script_path,
   step_details <- unlist(lapply(seq_along(steps), function(i) {
     s <- steps[[i]]
     c(
-      sprintf('      shiny::tags$details('),
-      sprintf('        shiny::tags$summary(shiny::tags$strong(%s)),',
-              .r_string(sprintf("Step %s: %s", s$step_id, s$description))),
+      sprintf("      shiny::tags$details("),
+      sprintf(
+        "        shiny::tags$summary(shiny::tags$strong(%s)),",
+        .r_string(sprintf("Step %s: %s", s$step_id, s$description))
+      ),
       sprintf('        shiny::tags$pre(style = "font-size: 11px; max-height: 200px; overflow-y: auto;",'),
-      sprintf('          %s', .r_string(s$code_text)),
+      sprintf("          %s", .r_string(s$code_text)),
       "        )",
       "      ),"
     )
@@ -1163,20 +1212,20 @@ annotate_script <- function(script_path,
     "ui <- shiny::fluidPage(",
     # CSS for info buttons + USGS header/footer
     '  shiny::tags$head(shiny::tags$style("',
-    '    .param-row { margin-bottom: 5px; }',
-    '    .info-btn { background: none; border: 1px solid #ccc; border-radius: 50%;',
-    '      width: 22px; height: 22px; padding: 0; font-size: 12px; color: #666;',
-    '      cursor: pointer; margin-left: 4px; vertical-align: middle; }',
-    '    .info-btn:hover { background: #e8e8e8; color: #333; }',
-    '    body > .container-fluid { padding-top: 0; }',
-    '    .usgs-header { background: white; padding: 10px 15px;',
-    '      border-bottom: 2px solid #234a22; }',
-    '    .usgs-header img { height: 50px; vertical-align: middle; }',
-    '    .usgs-header .usgs-title { color: #234a22; font-size: 18px;',
-    '      font-weight: bold; margin-left: 15px; vertical-align: middle; }',
-    '    .usgs-footer { background: #234a22; color: white; padding: 10px 15px;',
-    '      margin-top: 20px; font-size: 11px; }',
-    '    .usgs-footer a { color: #b3d4b3; }',
+    "    .param-row { margin-bottom: 5px; }",
+    "    .info-btn { background: none; border: 1px solid #ccc; border-radius: 50%;",
+    "      width: 22px; height: 22px; padding: 0; font-size: 12px; color: #666;",
+    "      cursor: pointer; margin-left: 4px; vertical-align: middle; }",
+    "    .info-btn:hover { background: #e8e8e8; color: #333; }",
+    "    body > .container-fluid { padding-top: 0; }",
+    "    .usgs-header { background: white; padding: 10px 15px;",
+    "      border-bottom: 2px solid #234a22; }",
+    "    .usgs-header img { height: 50px; vertical-align: middle; }",
+    "    .usgs-header .usgs-title { color: #234a22; font-size: 18px;",
+    "      font-weight: bold; margin-left: 15px; vertical-align: middle; }",
+    "    .usgs-footer { background: #234a22; color: white; padding: 10px 15px;",
+    "      margin-top: 20px; font-size: 11px; }",
+    "    .usgs-footer a { color: #b3d4b3; }",
     '  ")),',
     # USGS header with logo from www/ directory
     '  shiny::tags$div(class = "usgs-header",',
@@ -1193,10 +1242,10 @@ annotate_script <- function(script_path,
     '                          class = "btn-primary", width = "100%")',
     "    ),",
     "    shiny::mainPanel(width = 8,",
-    '      shiny::tabsetPanel(',
+    "      shiny::tabsetPanel(",
     '        shiny::tabPanel("Workflow",',
     '          shiny::h4("Progress"),',
-    '          shiny::tags$div(',
+    "          shiny::tags$div(",
     '            style = "max-height: 400px; overflow-y: auto; background: #f5f5f5; padding: 10px; font-size: 12px; font-family: monospace; white-space: pre-wrap;",',
     '            shiny::textOutput("log_display")',
     "          ),",
@@ -1210,7 +1259,7 @@ annotate_script <- function(script_path,
     '              shiny::downloadButton("download_rds", "Download RDS")',
     "            )",
     "          ),",
-    '          shiny::hr(),',
+    "          shiny::hr(),",
     '          shiny::h4("Workflow Steps"),',
     '          shiny::tags$p(style = "color: #666; font-size: 12px;",',
     '            "Click a step to see the underlying R code."',
@@ -1220,13 +1269,13 @@ annotate_script <- function(script_path,
     # Help / About tab
     '        shiny::tabPanel("Help & About",',
     '          shiny::h4("About This Application"),',
-    '          shiny::tags$p(',
+    "          shiny::tags$p(",
     '            "This application was generated by ",',
     '            shiny::tags$a(href = "https://github.com/DOI-USGS/TaxaID",',
     '                          "TaxaID"),',
     '            ", a modular R ecosystem for Bayesian taxonomic assignment."',
     "          ),",
-    '          shiny::tags$p(',
+    "          shiny::tags$p(",
     '            "TaxaID is developed by the U.S. Geological Survey,",',
     '            " Western Ecological Research Center."',
     "          ),",
@@ -1307,27 +1356,27 @@ annotate_script <- function(script_path,
 
   # Descriptive labels for common TaxaWizard parameter names
   known_labels <- c(
-    input_file       = "Input file",
-    input_path       = "Input file",
-    output_path      = "Output file path",
-    output_file      = "Output file path",
-    min_score        = "Min score (percent identity threshold)",
-    max_gap          = "Max gap (score gap to second-best match)",
-    rank_thresholds  = "Rank thresholds (min % identity per rank)",
-    geographic_hint  = "Geographic location (e.g. 'Santa Barbara, CA, USA')",
+    input_file = "Input file",
+    input_path = "Input file",
+    output_path = "Output file path",
+    output_file = "Output file path",
+    min_score = "Min score (percent identity threshold)",
+    max_gap = "Max gap (score gap to second-best match)",
+    rank_thresholds = "Rank thresholds (min % identity per rank)",
+    geographic_hint = "Geographic location (e.g. 'Santa Barbara, CA, USA')",
     geographic_context = "Geographic context for habitat/occurrence queries",
-    date             = "Sample date or year range (e.g. '2023' or '2020-2024')",
-    habitat_scheme   = "Habitat classification scheme",
-    target_group     = "Target organism group (e.g. 'fish', 'invertebrates')",
-    marker           = "Molecular marker or barcode (e.g. 'MiFish', 'COI')",
-    llm_fn           = "LLM provider for AI-assisted steps",
-    barcode_term     = "Barcode marker for NCBI search (e.g. 'MiFish', '12S')",
-    lat              = "Latitude (decimal degrees)",
-    lon              = "Longitude (decimal degrees)",
+    date = "Sample date or year range (e.g. '2023' or '2020-2024')",
+    habitat_scheme = "Habitat classification scheme",
+    target_group = "Target organism group (e.g. 'fish', 'invertebrates')",
+    marker = "Molecular marker or barcode (e.g. 'MiFish', 'COI')",
+    llm_fn = "LLM provider for AI-assisted steps",
+    barcode_term = "Barcode marker for NCBI search (e.g. 'MiFish', '12S')",
+    lat = "Latitude (decimal degrees)",
+    lon = "Longitude (decimal degrees)",
     search_radius_deg = "Search radius (degrees) for occurrence data",
-    year_range       = "Year range for occurrence data",
+    year_range = "Year range for occurrence data",
     target_backbone_id = "Taxonomic backbone (11 = GBIF, 9 = WoRMS, 4 = NCBI)",
-    taxon_col        = "Column name containing taxon names"
+    taxon_col = "Column name containing taxon names"
   )
 
   label <- if (nm %in% names(known_labels)) {
@@ -1371,18 +1420,24 @@ annotate_script <- function(script_path,
       )
     },
     numeric_range = c(
-      sprintf('shiny::fluidRow(shiny::column(6, shiny::numericInput("%s_1", "%s (min)", value = %s)),',
-              input_id, label, param$default[1]),
-      sprintf('               shiny::column(6, shiny::numericInput("%s_2", "%s (max)", value = %s))),',
-              input_id, label, param$default[2])
+      sprintf(
+        'shiny::fluidRow(shiny::column(6, shiny::numericInput("%s_1", "%s (min)", value = %s)),',
+        input_id, label, param$default[1]
+      ),
+      sprintf(
+        '               shiny::column(6, shiny::numericInput("%s_2", "%s (max)", value = %s))),',
+        input_id, label, param$default[2]
+      )
     ),
     data_frame = {
       # Convert data.frame expression to CSV-like text for textarea
       df_val <- tryCatch(eval(parse(text = param$raw)), error = function(e) NULL)
       if (!is.null(df_val) && is.data.frame(df_val)) {
         csv_text <- paste(
-          c(paste(names(df_val), collapse = ","),
-            apply(df_val, 1, function(r) paste(r, collapse = ","))),
+          c(
+            paste(names(df_val), collapse = ","),
+            apply(df_val, 1, function(r) paste(r, collapse = ","))
+          ),
           collapse = "\n"
         )
       } else {
@@ -1423,9 +1478,6 @@ annotate_script <- function(script_path,
   nm <- param$name
   btn_id <- paste0("info_", nm)
   widget_lines <- .widget_code(param)
-
-  # Build help text for the modal
-  help <- .param_help_text(param)
 
   # Wrap: info button on a line, then the widget
   c(
@@ -1516,16 +1568,23 @@ annotate_script <- function(script_path,
       s$description
     }
 
-    step_exec <- c(step_exec,
+    step_exec <- c(
+      step_exec,
       "",
       sprintf("      # Step %d: %s", s$step_id, s$description),
-      sprintf('      if (!.failed) {'),
-      sprintf('        shiny::setProgress(value = %d, detail = %s)',
-              i - 1L,
-              .r_string(sprintf("Step %s/%d: %s", s$step_id, n_steps,
-                                short_desc))),
-      sprintf('        .log(sprintf("Step %%s/%d: %%s ...", %s, %s))',
-              n_steps, .r_string(s$step_id), .r_string(short_desc)),
+      sprintf("      if (!.failed) {"),
+      sprintf(
+        "        shiny::setProgress(value = %d, detail = %s)",
+        i - 1L,
+        .r_string(sprintf(
+          "Step %s/%d: %s", s$step_id, n_steps,
+          short_desc
+        ))
+      ),
+      sprintf(
+        '        .log(sprintf("Step %%s/%d: %%s ...", %s, %s))',
+        n_steps, .r_string(s$step_id), .r_string(short_desc)
+      ),
       "        tryCatch(eval(quote({",
       sprintf("          %s", code_lines),
       "        }), envir = env), error = function(e) {",
@@ -1551,14 +1610,14 @@ annotate_script <- function(script_path,
       unlist(lapply(file_input_params, function(p) {
         input_id <- paste0("param_", p$name)
         c(
-          sprintf('    if (is.null(input$%s)) {', input_id),
-          sprintf('      shiny::showModal(shiny::modalDialog('),
+          sprintf("    if (is.null(input$%s)) {", input_id),
+          sprintf("      shiny::showModal(shiny::modalDialog("),
           sprintf('        title = "Missing input",'),
           sprintf('        "Please upload a file for: %s",', gsub("_", " ", p$name)),
-          sprintf('        easyClose = TRUE'),
-          sprintf('      ))'),
-          sprintf('      return()'),
-          sprintf('    }')
+          sprintf("        easyClose = TRUE"),
+          sprintf("      ))"),
+          sprintf("      return()"),
+          sprintf("    }")
         )
       })),
       ""
@@ -1572,14 +1631,16 @@ annotate_script <- function(script_path,
     label <- gsub("_", " ", p$name)
     label <- paste0(toupper(substring(label, 1, 1)), substring(label, 2))
     c(
-      sprintf('  shiny::observeEvent(input$%s, {', btn_id),
-      sprintf('    shiny::showModal(shiny::modalDialog('),
+      sprintf("  shiny::observeEvent(input$%s, {", btn_id),
+      sprintf("    shiny::showModal(shiny::modalDialog("),
       sprintf('      title = "%s",', gsub('"', "'", label)),
       sprintf('      shiny::tags$p(shiny::tags$strong("Description: "),'),
       sprintf('        "%s"),', gsub('"', "'", help$detail)),
       sprintf('      shiny::tags$p(shiny::tags$strong("Type: "), "%s"),', help$type),
-      sprintf('      shiny::tags$p(shiny::tags$strong("Default: "), %s),',
-              .r_string(help$default)),
+      sprintf(
+        '      shiny::tags$p(shiny::tags$strong("Default: "), %s),',
+        .r_string(help$default)
+      ),
       "      easyClose = TRUE, size = \"s\"",
       "    ))",
       "  })",
@@ -1593,41 +1654,41 @@ annotate_script <- function(script_path,
   fn_input_id <- if (length(fn_ref_param) > 0L) {
     paste0("param_", fn_ref_param[[1]]$name)
   } else {
-    "param_llm_fn"  # fallback
+    "param_llm_fn" # fallback
   }
 
   api_key_setup <- character()
   if (has_llm && api_key_mode == "user") {
     api_key_setup <- c(
-      '    # Set API key from user input',
-      '    if (!nzchar(input$api_key)) {',
-      '      shiny::showModal(shiny::modalDialog(',
+      "    # Set API key from user input",
+      "    if (!nzchar(input$api_key)) {",
+      "      shiny::showModal(shiny::modalDialog(",
       '        title = "API key required",',
       '        "Please enter your API key before running LLM-assisted steps.",',
-      '        easyClose = TRUE',
-      '      ))',
-      '      return()',
-      '    }',
-      '    # Detect which provider is selected and set the appropriate env var',
+      "        easyClose = TRUE",
+      "      ))",
+      "      return()",
+      "    }",
+      "    # Detect which provider is selected and set the appropriate env var",
       sprintf('    .key_var <- if (grepl("openai", input$%s, ignore.case = TRUE)) "OPENAI_API_KEY"', fn_input_id),
       sprintf('      else if (grepl("gemini", input$%s, ignore.case = TRUE)) "GEMINI_API_KEY"', fn_input_id),
       '      else "ANTHROPIC_API_KEY"',
-      '    .old_key <- Sys.getenv(.key_var)',
-      '    do.call(Sys.setenv, stats::setNames(list(input$api_key), .key_var))',
-      '    on.exit(do.call(Sys.setenv, stats::setNames(list(.old_key), .key_var)), add = TRUE)',
+      "    .old_key <- Sys.getenv(.key_var)",
+      "    do.call(Sys.setenv, stats::setNames(list(input$api_key), .key_var))",
+      "    on.exit(do.call(Sys.setenv, stats::setNames(list(.old_key), .key_var)), add = TRUE)",
       ""
     )
   } else if (has_llm && api_key_mode == "both") {
     api_key_setup <- c(
-      '    # Set API key from user input (or fall back to server default)',
-      '    if (nzchar(input$api_key)) {',
+      "    # Set API key from user input (or fall back to server default)",
+      "    if (nzchar(input$api_key)) {",
       '      .key_var <- if (grepl("openai", input$param_llm_fn, ignore.case = TRUE)) "OPENAI_API_KEY"',
       '        else if (grepl("gemini", input$param_llm_fn, ignore.case = TRUE)) "GEMINI_API_KEY"',
       '        else "ANTHROPIC_API_KEY"',
-      '      .old_key <- Sys.getenv(.key_var)',
-      '      do.call(Sys.setenv, stats::setNames(list(input$api_key), .key_var))',
-      '      on.exit(do.call(Sys.setenv, stats::setNames(list(.old_key), .key_var)), add = TRUE)',
-      '    }',
+      "      .old_key <- Sys.getenv(.key_var)",
+      "      do.call(Sys.setenv, stats::setNames(list(input$api_key), .key_var))",
+      "      on.exit(do.call(Sys.setenv, stats::setNames(list(.old_key), .key_var)), add = TRUE)",
+      "    }",
       ""
     )
   }
@@ -1645,9 +1706,9 @@ annotate_script <- function(script_path,
     file_checks,
     api_key_setup,
     "    # Helper to append to log and flush to UI",
-    '    .log <- function(msg) {',
-    '      log_lines(c(log_lines(), msg))',
-    '    }',
+    "    .log <- function(msg) {",
+    "      log_lines(c(log_lines(), msg))",
+    "    }",
     "",
     "    # Assemble parameters from widgets",
     "    env <- new.env(parent = globalenv())",
@@ -1664,18 +1725,22 @@ annotate_script <- function(script_path,
     '      .log("")',
     '      .log("Workflow halted due to error. See above.")',
     "    } else {",
-    sprintf("      if (exists(\"%s\", envir = env) && is.data.frame(env$%s)) {",
-            last_var, last_var),
+    sprintf(
+      "      if (exists(\"%s\", envir = env) && is.data.frame(env$%s)) {",
+      last_var, last_var
+    ),
     sprintf("        final_result(env$%s)", last_var),
-    sprintf('        .log(sprintf("\\nWorkflow complete. Result: %%d rows, %%d columns.", nrow(env$%s), ncol(env$%s)))',
-            last_var, last_var),
+    sprintf(
+      '        .log(sprintf("\\nWorkflow complete. Result: %%d rows, %%d columns.", nrow(env$%s), ncol(env$%s)))',
+      last_var, last_var
+    ),
     "      } else {",
     '        .log("\\nWorkflow complete but no data frame result to display.")',
     "      }",
     "    }",
     "  })",
     "",
-    '  output$log_display <- shiny::renderText({',
+    "  output$log_display <- shiny::renderText({",
     '    paste(log_lines(), collapse = "\\n")',
     "  })",
     "",
@@ -1717,7 +1782,7 @@ annotate_script <- function(script_path,
 
   switch(param$type,
     file_input = c(
-      sprintf('if (!is.null(input$%s)) {', input_id),
+      sprintf("if (!is.null(input$%s)) {", input_id),
       sprintf('  assign("%s", input$%s$datapath, envir = env)', nm, input_id),
       "} else {",
       sprintf('  assign("%s", NULL, envir = env)', nm),
@@ -1738,8 +1803,8 @@ annotate_script <- function(script_path,
       nm, input_id, input_id
     ),
     data_frame = c(
-      paste0('.df_text <- input$', input_id),
-      'if (nzchar(trimws(.df_text))) {',
+      paste0(".df_text <- input$", input_id),
+      "if (nzchar(trimws(.df_text))) {",
       paste0('  assign("', nm, '", utils::read.csv(text = .df_text, stringsAsFactors = FALSE), envir = env)'),
       "} else {",
       paste0('  assign("', nm, '", NULL, envir = env)'),
@@ -1749,18 +1814,18 @@ annotate_script <- function(script_path,
       allowed <- unname(.llm_provider_choices())
       allowed_text <- paste(sprintf('"%s"', allowed), collapse = ", ")
       c(
-        sprintf('.fn_str <- input$%s', input_id),
-        sprintf('.allowed_fns <- c(%s)', allowed_text),
-        '# input$... is client-supplied: Shiny does not restrict it to the',
-        '# selectInput choices server-side, and it need not even be a single',
-        '# string. Require EXACTLY ONE value from the fixed provider list (a',
-        '# length-2 value would otherwise pass a bare %in% test on its first',
-        '# element), then resolve it by namespace lookup rather than',
-        '# eval(parse()), so no client-supplied text is ever parsed at all.',
-        'if (length(.fn_str) != 1L || is.na(.fn_str) ||',
-        '    !.fn_str %in% .allowed_fns) {',
+        sprintf(".fn_str <- input$%s", input_id),
+        sprintf(".allowed_fns <- c(%s)", allowed_text),
+        "# input$... is client-supplied: Shiny does not restrict it to the",
+        "# selectInput choices server-side, and it need not even be a single",
+        "# string. Require EXACTLY ONE value from the fixed provider list (a",
+        "# length-2 value would otherwise pass a bare %in% test on its first",
+        "# element), then resolve it by namespace lookup rather than",
+        "# eval(parse()), so no client-supplied text is ever parsed at all.",
+        "if (length(.fn_str) != 1L || is.na(.fn_str) ||",
+        "    !.fn_str %in% .allowed_fns) {",
         '  stop("Invalid LLM provider selection.")',
-        '}',
+        "}",
         '.fn_parts <- strsplit(.fn_str, "::", fixed = TRUE)[[1L]]',
         sprintf(
           'assign("%s", getExportedValue(.fn_parts[1L], .fn_parts[2L]), envir = env)',
@@ -1769,7 +1834,7 @@ annotate_script <- function(script_path,
       )
     },
     null_param = c(
-      sprintf('if (nzchar(trimws(input$%s))) {', input_id),
+      sprintf("if (nzchar(trimws(input$%s))) {", input_id),
       sprintf('  assign("%s", input$%s, envir = env)', nm, input_id),
       "} else {",
       sprintf('  assign("%s", NULL, envir = env)', nm),

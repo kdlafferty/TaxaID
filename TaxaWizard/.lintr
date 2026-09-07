@@ -1,0 +1,26 @@
+linters: linters_with_defaults(
+    line_length_linter(120L),
+    # Disabled package-wide, not per-file: near-100% false positives here.
+    # - indentation_linter: a hanging-indent house style choice.
+    # - commented_code_linter: this ecosystem's "# Edge:"/"# Source:" snippet
+    #   header convention and commented-out usage examples in demo scripts --
+    #   not dead code.
+    indentation_linter = NULL,
+    commented_code_linter = NULL
+  )
+encoding: "UTF-8"
+exclusions: list(
+    # Remaining line-length hits: long generated-UI-code string literals
+    # (R/shiny.R) and long function-call lines in template code snippets
+    # (inst/graph/snippets/*.R, {{placeholder}}-driven, not hand-wrappable
+    # without breaking the template) -- zero correctness value; the real
+    # findings in this package (a redundant return(), two genuinely dead
+    # local variables) were fixed directly instead of suppressed.
+    "R/shiny.R" = list(line_length_linter = Inf),
+    "inst/graph/snippets/match_to_consensus_bayes.R" = list(line_length_linter = Inf),
+    "inst/graph/snippets/match_to_consensus_llm.R" = list(line_length_linter = Inf),
+    "inst/graph/snippets/match_to_consensus_score.R" = list(line_length_linter = Inf),
+    "inst/graph/snippets/match_to_taxa.R" = list(line_length_linter = Inf),
+    "inst/graph/snippets/occ_to_std.R" = list(line_length_linter = Inf),
+    "inst/graph/snippets/seq_to_match.R" = list(line_length_linter = Inf)
+  )

@@ -31,26 +31,25 @@ NULL
 #' @noRd
 .call_llm <- function(messages,
                       system_prompt,
-                      model      = "claude-sonnet-4-6",
-                      api_key    = NULL,
+                      model = "claude-sonnet-4-6",
+                      api_key = NULL,
                       max_tokens = 16384L,
-                      llm_fn     = NULL,
-                      timeout    = 120) {
-
+                      llm_fn = NULL,
+                      timeout = 120) {
   # --- Auto-detect TaxaTools provider when no explicit llm_fn or api_key ---
   # If TaxaID.provider is set (by TaxaTools or TaxaWizard's .onAttach) and the
   # provider is not Anthropic, build a bridge so workflow_create() works on
   # non-Anthropic machines without any manual llm_fn= argument.
   if (is.null(llm_fn) && is.null(api_key)) {
     opt_provider <- getOption("TaxaID.provider")
-    opt_fn       <- getOption("TaxaID.llm_fn")
+    opt_fn <- getOption("TaxaID.llm_fn")
     # Fall back to TaxaTools::call_api directly if llm_fn option not yet set
     if (is.null(opt_fn) && !is.null(opt_provider) &&
-        requireNamespace("TaxaTools", quietly = TRUE)) {
+      requireNamespace("TaxaTools", quietly = TRUE)) {
       opt_fn <- TaxaTools::call_api
     }
     if (!is.null(opt_provider) && !identical(opt_provider, "anthropic") &&
-        is.function(opt_fn)) {
+      is.function(opt_fn)) {
       # Flatten system_prompt + conversation into one prompt string.
       # call_api() (TaxaTools) takes a single prompt_str; the full context
       # is preserved so the model sees all prior turns.
@@ -110,9 +109,9 @@ NULL
   resp <- tryCatch(
     httr2::request("https://api.anthropic.com/v1/messages") |>
       httr2::req_headers(
-        `x-api-key`         = api_key,
-        `anthropic-version`  = "2023-06-01",
-        `content-type`       = "application/json"
+        `x-api-key` = api_key,
+        `anthropic-version` = "2023-06-01",
+        `content-type` = "application/json"
       ) |>
       httr2::req_body_json(body, auto_unbox = TRUE) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
@@ -162,7 +161,6 @@ NULL
 #' @return Parsed list matching the engine response schema.
 #' @noRd
 .parse_engine_response <- function(raw_text) {
-
   # Strategy: try multiple approaches to extract JSON from the response
 
   cleaned <- trimws(raw_text)
@@ -173,12 +171,16 @@ NULL
     fenced <- sub("(?s)\\s*```.*", "", fenced, perl = TRUE)
     fenced <- trimws(fenced)
     result <- tryCatch(jsonlite::fromJSON(fenced, simplifyVector = FALSE), error = function(e) NULL)
-    if (!is.null(result)) return(result)
+    if (!is.null(result)) {
+      return(result)
+    }
   }
 
- # Approach 2: Try parsing as-is (already valid JSON)
+  # Approach 2: Try parsing as-is (already valid JSON)
   result <- tryCatch(jsonlite::fromJSON(cleaned, simplifyVector = FALSE), error = function(e) NULL)
-  if (!is.null(result)) return(result)
+  if (!is.null(result)) {
+    return(result)
+  }
 
   # Approach 3: Find all top-level {...} blocks and try each
   # Work backwards from the last } to find the main JSON object
@@ -203,10 +205,14 @@ NULL
     depth <- 0L
     end <- NA_integer_
     for (i in seq(start, n)) {
-      if (chars[i] == "{") depth <- depth + 1L
-      else if (chars[i] == "}") {
+      if (chars[i] == "{") {
+        depth <- depth + 1L
+      } else if (chars[i] == "}") {
         depth <- depth - 1L
-        if (depth == 0L) { end <- i; break }
+        if (depth == 0L) {
+          end <- i
+          break
+        }
       }
     }
     if (!is.na(end)) {
@@ -215,7 +221,9 @@ NULL
         jsonlite::fromJSON(json_str, simplifyVector = FALSE),
         error = function(e) NULL
       )
-      if (!is.null(result) && !is.null(result$status)) return(result)
+      if (!is.null(result) && !is.null(result$status)) {
+        return(result)
+      }
     }
   }
 

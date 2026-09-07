@@ -13,20 +13,20 @@
 .make_dag <- function(n_steps = 2) {
   steps <- lapply(seq_len(n_steps), function(i) {
     list(
-      step_id     = i,
-      edge_id     = sprintf("edge_%d", i),
-      package     = "TaxaTools",
+      step_id = i,
+      edge_id = sprintf("edge_%d", i),
+      package = "TaxaTools",
       function_name = sprintf("fn_%d", i),
       description = sprintf("Step %d description", i),
-      code        = sprintf('step_%d_out <- data.frame(x = 1:3)', i),
-      output_var  = sprintf("step_%d_out", i)
+      code = sprintf("step_%d_out <- data.frame(x = 1:3)", i),
+      output_var = sprintf("step_%d_out", i)
     )
   })
   list(
     parameters = list(
       list(name = "input_file", value = '"data.csv"', description = "Input file")
     ),
-    steps   = steps,
+    steps = steps,
     outputs = "script"
   )
 }
@@ -76,7 +76,7 @@ test_that(".generate_script appends to an existing same-day script instead of ov
 
   dag2 <- .make_dag(1)
   dag2$steps[[1]]$description <- "Extension step"
-  dag2$steps[[1]]$output_var  <- "ext_out"
+  dag2$steps[[1]]$output_var <- "ext_out"
 
   path2 <- TaxaWizard:::.generate_script(dag2, dir, trial = FALSE)
   expect_equal(path1, path2)
@@ -130,8 +130,10 @@ test_that(".generate_outputs's known_script_path makes same-session continuation
   # Passing back the script_path from the first call (as create.R's console/
   # viewer loops now do) appends to the SAME file with no ambiguity, and is
   # never flagged as a cross-session append.
-  generated2 <- TaxaWizard:::.generate_outputs(dag, outputs = "script", output_dir = dir,
-                                                known_script_path = script_path)
+  generated2 <- TaxaWizard:::.generate_outputs(dag,
+    outputs = "script", output_dir = dir,
+    known_script_path = script_path
+  )
   expect_true(isTRUE(attr(generated2, "appended")))
   expect_false(isTRUE(attr(generated2, "cross_session_append")))
   expect_equal(attr(generated2, "script_path"), script_path)

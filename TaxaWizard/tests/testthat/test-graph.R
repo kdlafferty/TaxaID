@@ -5,7 +5,8 @@ test_that(".load_graph() returns valid structure", {
   graph <- TaxaWizard:::.load_graph()
   expect_type(graph, "list")
   expect_named(graph, c("nodes", "edges", "adj", "node_index"),
-               ignore.order = TRUE)
+    ignore.order = TRUE
+  )
 
   # Nodes have all three categories
 
@@ -35,7 +36,8 @@ test_that(".compute_paths() finds sequences -> consensus (multiple paths)", {
   paths <- .compute_paths("sequences", "consensus")
 
   expect_true(length(paths) >= 2,
-              info = "Should find at least score-based and LLM paths")
+    info = "Should find at least score-based and LLM paths"
+  )
 
   # Each path should be a list with edges, uses_wrapper, time_estimate
 
@@ -55,7 +57,8 @@ test_that(".compute_paths() finds taxa -> priors (wrapper and manual)", {
   paths <- .compute_paths("taxa", "priors")
 
   expect_true(length(paths) >= 2,
-              info = "Should find wrapper and manual paths")
+    info = "Should find wrapper and manual paths"
+  )
 
   # One path should use the wrapper
   has_wrapper <- vapply(paths, function(p) p$uses_wrapper, FALSE)
@@ -73,7 +76,8 @@ test_that(".compute_paths() finds match_df -> consensus (3+ paths)", {
   paths <- .compute_paths("match_df", "consensus")
 
   expect_true(length(paths) >= 2,
-              info = "Should find score, LLM wrapper, and possibly Bayesian paths")
+    info = "Should find score, LLM wrapper, and possibly Bayesian paths"
+  )
 
   # Score-based path should exist (single edge)
   edge_sets <- lapply(paths, `[[`, "edges")
@@ -143,7 +147,8 @@ test_that(".get_path_context() returns snippets and docs", {
 
   expect_type(ctx, "list")
   expect_named(ctx, c("snippets", "edge_labels", "packages", "functions", "param_docs"),
-               ignore.order = TRUE)
+    ignore.order = TRUE
+  )
 
   # Snippets should be loaded
 
@@ -152,7 +157,7 @@ test_that(".get_path_context() returns snippets and docs", {
 
   # Edge labels present
   expect_true(all(c("seq_to_match", "match_to_consensus_score") %in%
-                    names(ctx$edge_labels)))
+    names(ctx$edge_labels)))
 
   # Packages collected
   expect_true("TaxaMatch" %in% ctx$packages)
@@ -219,7 +224,8 @@ test_that("multi-input edges produce full Bayesian path", {
   bayes_paths <- paths[has_bayes]
   has_dna_model <- vapply(bayes_paths, function(p) "matrix_to_model" %in% p$edges, FALSE)
   expect_true(any(has_dna_model),
-    info = "At least one Bayesian path should train a DNA likelihood model")
+    info = "At least one Bayesian path should train a DNA likelihood model"
+  )
   dna_bayes <- bayes_paths[has_dna_model]
   for (p in dna_bayes) {
     expect_true("seq_to_match" %in% p$edges)
@@ -227,9 +233,9 @@ test_that("multi-input edges produce full Bayesian path", {
     # or the kernel-based site-centered estimator -- a genuinely different
     # estimator added 2026-09-07, not a duplicate of the GLMM paths)
     has_priors <- "taxa_to_priors_wrapper" %in% p$edges ||
-                  "dist_to_priors" %in% p$edges ||
-                  "dist_to_priors_by_group" %in% p$edges ||
-                  "std_to_priors_kernel" %in% p$edges
+      "dist_to_priors" %in% p$edges ||
+      "dist_to_priors_by_group" %in% p$edges ||
+      "std_to_priors_kernel" %in% p$edges
     expect_true(has_priors, info = "Bayesian path needs priors")
   }
 
@@ -272,7 +278,8 @@ test_that("edges are topologically sorted in path output", {
       edge <- edge_index[[eid]]
       # All inputs should be available before this edge
       expect_true(all(edge$from %in% available),
-                  info = sprintf("Edge %s inputs not yet produced", eid))
+        info = sprintf("Edge %s inputs not yet produced", eid)
+      )
       available <- c(available, edge$to)
     }
   }

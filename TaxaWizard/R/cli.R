@@ -32,13 +32,12 @@
 #' workflow_fix()
 #'
 #' # Direct mode (use single quotes to avoid nesting issues):
-#' workflow_fix('Error in build_context: date must be NULL')
+#' workflow_fix("Error in build_context: date must be NULL")
 #'
 #' # With additional context:
 #' workflow_fix(context = "the column is called ESV_ID not ESVID")
 #' }
 workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
-
   session <- .load_session()
   if (is.null(session)) {
     stop(
@@ -134,7 +133,6 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
 
   # If corrected, regenerate files
   if (identical(result$status, "complete") && !is.null(result$dag)) {
-
     do_regen <- auto
     if (!auto) {
       confirm <- readline(prompt = "Regenerate workflow? (yes/no): ")
@@ -177,11 +175,15 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
   }
 
   # Save updated state
-  .save_session(history, session$metadata, session$model,
-                session$api_key, session$llm_fn, session$output_dir, session$trial)
+  .save_session(
+    history, session$metadata, session$model,
+    session$api_key, session$llm_fn, session$output_dir, session$trial
+  )
 
   # Return script path in auto mode for re-sourcing
-  if (auto) return(invisible(script_path))
+  if (auto) {
+    return(invisible(script_path))
+  }
   invisible(result)
 }
 
@@ -208,7 +210,8 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
   # Try to extract step number from error text
   # Common patterns: "Step 3 (...) failed:" or "step_3" or "Step 3:"
   step_match <- regmatches(error_text, regexpr("Step\\s+(\\d+)", error_text,
-                                                ignore.case = TRUE))
+    ignore.case = TRUE
+  ))
   if (length(step_match) > 0L && nzchar(step_match)) {
     step_num <- as.integer(sub("\\D+", "", step_match))
     ctx$step_number <- step_num
@@ -268,6 +271,8 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
 #' @noRd
 .load_session <- function() {
   session_path <- file.path(tempdir(), "taxawizard_session.rds")
-  if (!file.exists(session_path)) return(NULL)
+  if (!file.exists(session_path)) {
+    return(NULL)
+  }
   readRDS(session_path)
 }

@@ -12,10 +12,9 @@
 #' @return Subsetted data frame.
 #' @noRd
 .subset_for_trial <- function(input_df, n = 20L, by = "observation_id") {
-
   if (!is.null(by) && by %in% names(input_df)) {
     unique_vals <- unique(input_df[[by]])
-    keep_vals   <- utils::head(unique_vals, n)
+    keep_vals <- utils::head(unique_vals, n)
     input_df[input_df[[by]] %in% keep_vals, , drop = FALSE]
   } else {
     utils::head(input_df, n)
@@ -37,14 +36,13 @@
 #' @noRd
 .estimate_scaling <- function(trial_time, trial_n, full_n,
                               scaling = "linear") {
-
   ratio <- full_n / trial_n
 
   estimated <- switch(scaling,
     linear      = trial_time * ratio,
     quadratic   = trial_time * ratio^2,
-    api_limited = trial_time * ratio * 1.2,  # 20% overhead for rate limits
-    trial_time * ratio  # default to linear
+    api_limited = trial_time * ratio * 1.2, # 20% overhead for rate limits
+    trial_time * ratio # default to linear
   )
 
   note <- switch(scaling,

@@ -8,7 +8,6 @@
 #' @param output_dir Character. Directory to write context file.
 #' @noRd
 .save_context <- function(dag, output_dir) {
-
   ctx <- list(
     parameters = dag$parameters,
     outputs    = dag$outputs %||% "script",
@@ -32,9 +31,10 @@
 #' @return Named list of context, or NULL if no context file exists.
 #' @noRd
 .load_context <- function(output_dir) {
-
   filepath <- file.path(output_dir, "workflow_context.json")
-  if (!file.exists(filepath)) return(NULL)
+  if (!file.exists(filepath)) {
+    return(NULL)
+  }
 
   tryCatch(
     jsonlite::fromJSON(filepath, simplifyVector = FALSE),
@@ -52,7 +52,9 @@
 #' @return Character string for prompt injection, or empty string.
 #' @noRd
 .format_context_for_prompt <- function(ctx) {
-  if (is.null(ctx) || length(ctx$parameters) == 0L) return("")
+  if (is.null(ctx) || length(ctx$parameters) == 0L) {
+    return("")
+  }
 
   lines <- "# PREVIOUS SESSION CONTEXT\nThe user has previously specified:"
   for (param in ctx$parameters) {
@@ -63,7 +65,8 @@
       param$description %||% ""
     ))
   }
-  lines <- c(lines,
+  lines <- c(
+    lines,
     "",
     "Use these values as defaults. Ask the user if they want to change any.",
     ""
@@ -95,7 +98,9 @@
 #' @noRd
 .load_corrections <- function() {
   path <- .corrections_path()
-  if (!file.exists(path)) return(list())
+  if (!file.exists(path)) {
+    return(list())
+  }
 
   tryCatch(
     jsonlite::fromJSON(path, simplifyVector = FALSE),
@@ -143,7 +148,9 @@
 #' @noRd
 .format_corrections_for_prompt <- function() {
   corrections <- .load_corrections()
-  if (length(corrections) == 0L) return("")
+  if (length(corrections) == 0L) {
+    return("")
+  }
 
   # Only inject the 5 most recent corrections to keep prompt size reasonable
   if (length(corrections) > 5L) {
