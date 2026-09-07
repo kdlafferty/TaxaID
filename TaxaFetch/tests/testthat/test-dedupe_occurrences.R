@@ -122,6 +122,28 @@ test_that("dedupe_occurrences: falls back to year/month/day when eventDate is ab
   expect_equal(nrow(result), 1L)
 })
 
+test_that("dedupe_occurrences: an incomplete year/month/day triple is never collapsed", {
+  # Regression: sprintf() renders NA as the literal text "NA", so an unknown
+  # day used to build a complete-LOOKING key ("2026-06-NA") that passed the
+  # key-completeness test -- collapsing two genuinely separate reports whose
+  # date is only known to the month, exactly the drop-on-incomplete-information
+  # this function documents it never does.
+  df <- tibble::tibble(
+    occurrenceID     = c("gbif-1", "gbif-2"),
+    scientificName   = c("Larus argentatus", "Larus argentatus"),
+    year = c(2026, 2026), month = c(6, 6), day = c(NA, NA),
+    decimalLatitude  = c(34.400, 34.400),
+    decimalLongitude = c(-119.850, -119.850)
+  )
+  result <- dedupe_occurrences(df)
+  expect_equal(nrow(result), 2L)
+
+  # Same, with the whole triple missing.
+  df$year  <- c(NA, NA)
+  df$month <- c(NA, NA)
+  expect_equal(nrow(dedupe_occurrences(df)), 2L)
+})
+
 test_that("dedupe_occurrences: collapse_duplicate_occasions = FALSE preserves every raw report", {
   df <- tibble::tibble(
     occurrenceID     = c("ebird-1", "ebird-2"),

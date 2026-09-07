@@ -113,7 +113,11 @@
       )
     }
 
-    results[[i]] <- b64
+    # `results[i] <- list(b64)`, NOT `results[[i]] <- b64`: assigning NULL via
+    # [[<- DELETES the element, shrinking the list and shifting every later
+    # page's name, so a single failed page silently mislabels every page after
+    # it (page 2's image ending up named "3", the last one named "").
+    results[i] <- list(b64)
   }
 
   # Drop failed pages

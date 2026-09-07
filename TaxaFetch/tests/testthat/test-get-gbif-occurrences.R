@@ -61,3 +61,29 @@ test_that("on_cap = 'escalate' re-fetches capped keys via the download API", {
   expect_equal(sum(out$taxonKey == 1L), 25L)   # full record set, not the prefix
   expect_length(attr(out, "capped_keys"), 0L)
 })
+
+test_that("on_cap = 'escalate' passes a fully-resolved select_cols to the download API", {
+  # Regression: select_cols_dl was computed only inside the DOWNLOAD branch,
+  # but escalation reaches download_gbif_occurrences() from the FETCH branch --
+  # so the argument referenced an object that did not exist, and every
+  # escalation failed at import, AFTER paying for the whole download. The
+  # earlier escalate test could not catch it: its mock swallowed the argument
+  # in `...` and so never forced the promise.
+  seen <- NULL
+  testthat::local_mocked_bindings(
+    fetch_gbif_occurrences = function(...) .cap_raw(10L),
+    download_gbif_occurrences = function(keys, select_cols, ...) {
+      seen <<- select_cols          # forcing the promise is the point
+      data.frame(taxonKey = rep(1L, 25L), issues = NA_character_,
+                 species = "Aa aa", stringsAsFactors = FALSE)
+    },
+    .package = "TaxaFetch")
+  expect_message(
+    out <- get_gbif_occurrences(keys = c(1, 2), geometry = "POLYGON((0 0,1 0,1 1,0 1,0 0))",
+                                limit = 10L, key_threshold = 100L, rank_filter = FALSE,
+                                columns = c("taxonKey", "issues", "species"),
+                                cache_dir = NULL, on_cap = "escalate"),
+    "escalation replaced")
+  # "issues" is the wrapper's canonical name; SIMPLE_CSV calls it "issue".
+  expect_equal(seen, c("taxonKey", "issue", "species"))
+})

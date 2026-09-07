@@ -230,6 +230,19 @@ get_gbif_occurrences <- function(
   n_keys       <- length(keys)
   use_download <- n_keys >= key_threshold
 
+  # select_cols is a SIMPLE_CSV-native argument -- translate the wrapper's
+  # canonical "issues" name to SIMPLE_CSV's actual "issue" column before
+  # requesting it (see @details); everything else passes through unchanged.
+  # Computed OUTSIDE the backend branch below because the download API is also
+  # reached from the FETCH path, via on_cap = "escalate"; defining it only in
+  # the download branch left that call referencing an undefined object, so
+  # every escalation failed at import -- after paying for the whole download.
+  select_cols_dl <- if (is.null(want_cols)) {
+    NULL
+  } else {
+    ifelse(want_cols == "issues", "issue", want_cols)
+  }
+
   if (use_download) {
     message(sprintf(
       paste0(
@@ -238,15 +251,6 @@ get_gbif_occurrences <- function(
       ),
       n_keys, key_threshold
     ))
-
-    # select_cols is a SIMPLE_CSV-native argument -- translate the wrapper's
-    # canonical "issues" name to SIMPLE_CSV's actual "issue" column before
-    # requesting it (see @details); everything else passes through unchanged.
-    select_cols_dl <- if (is.null(want_cols)) {
-      NULL
-    } else {
-      ifelse(want_cols == "issues", "issue", want_cols)
-    }
 
     raw <- download_gbif_occurrences(
       keys           = keys,

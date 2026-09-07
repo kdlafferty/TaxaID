@@ -184,12 +184,20 @@ dedupe_occurrences <- function(occurrence_data,
       }
       needs_ymd <- is.na(date_key) | !nzchar(date_key)
       if (has_ymd && any(needs_ymd)) {
-        date_key[needs_ymd] <- sprintf(
-          "%04d-%02d-%02d",
-          as.integer(out$year[needs_ymd]),
-          as.integer(out$month[needs_ymd]),
-          as.integer(out$day[needs_ymd])
-        )
+        y <- as.integer(out$year[needs_ymd])
+        m <- as.integer(out$month[needs_ymd])
+        d <- as.integer(out$day[needs_ymd])
+        # An incomplete y/m/d triple must stay NA, not be pasted into a literal
+        # "2015-06-NA" (sprintf renders NA as text, not NA) -- such a string is
+        # non-NA and non-empty, so it would pass the key_complete test below and
+        # let two records with an UNKNOWN day collapse into one, exactly the
+        # drop-on-incomplete-information this function documents it never does.
+        built <- rep(NA_character_, length(y))
+        complete_ymd <- !is.na(y) & !is.na(m) & !is.na(d)
+        built[complete_ymd] <- sprintf("%04d-%02d-%02d",
+                                       y[complete_ymd], m[complete_ymd],
+                                       d[complete_ymd])
+        date_key[needs_ymd] <- built
       }
 
       taxon_key <- tolower(trimws(as.character(out[[taxon_col]])))
