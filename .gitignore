@@ -87,3 +87,7 @@ birdnet_results/
 # ── IDE ─────────────────────────────────────────
 .vscode/
 .idea/
+
+# ── pkgdown local build output (destination TBD -- migrating to GitLab) ──
+pkgdown_sites/
+*/docs/
