@@ -650,3 +650,76 @@ Not flagged with any file-specific comments in the review. No changes made.
 errors, 0 warnings, 0 notes. Reinstalled to `~/Library/R/4.0/library`.
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `.beta_mean`
+- `.beta_sd`
+- `.empty_undetected_evidence_result`
+- `.glmm_deprecation_notice`
+- `.parse_grid_id_coords`
+- `.prepare_one_group`
+- `.resolve_evidence_groups`
+- `.resolve_gbif_taxon_key`
+- `.resolve_gbif_taxon_keys_batch`
+- `.resolve_group_prices`
+- `.score_one_resolution`
+- `.theta_surface_accumulate`
+- `.theta_surface_apply_mask`
+- `.theta_surface_axis`
+- `.theta_surface_bbox`
+- `.theta_surface_bin_index`
+- `.theta_surface_condition_label`
+- `.theta_surface_downsample`
+- `.theta_surface_downsample_matrix`
+- `.theta_surface_engine`
+- `.theta_surface_fft_convolve`
+- `.theta_surface_fft_convolve_batch`
+- `.theta_surface_in_polygon`
+- `.theta_surface_kernel`
+- `.theta_surface_plot_leaflet`
+- `.theta_surface_plot_static`
+- `.theta_surface_raster`
+- `.theta_surface_wkt_to_polys`
+- `.translate_to_gbif`
+- `add_pca_covariates`
+- `apply_undetected_evidence`
+- `build_priors`
+- `calibrate_kernel_bandwidth`
+- `compute_adaptive_sampling_groups`
+- `compute_moran_basis`
+- `create_sites_from_grid`
+- `estimate_kernel_priors`
+- `fit_regional_presence_curve`
+- `generate_domestic_food_priors`
+- `generate_full_priors`
+- `generate_inat_range_evidence`
+- `generate_invasive_watch_evidence`
+- `generate_presence_curve_evidence`
+- `generate_regional_proximity_evidence`
+- `generate_undetected_diversity`
+- `generate_user_specified_evidence`
+- `kernel_budget_sensitivity`
+- `optimize_grid_size`
+- `plot_theta_map_interactive`
+- `plot_theta_surface`
+- `prepare_model_dataframe`
+- `print.taxaexpect_kernel_budget_sensitivity`
+- `print.taxaexpect_kernel_priors`
+- `print.taxaexpect_theta_surface`
+- `report_priors`
+- `rewrite_habitat_formula`
+- `screen_spatial_formula`
+- `train_biodiversity_model`
+- `train_biodiversity_model_by_group`
+

@@ -309,3 +309,48 @@ All fixes verified against the full test suite and `R CMD check` (0 errors/0 war
 notes) after the complete set of changes, not just once at the end; the crash-bug fix was
 verified with a genuinely reproducing regression test at each of the four instances found,
 not assumed fixed by inspection.
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `.annotate_self`
+- `.app_server`
+- `.app_ui`
+- `.append_to_script`
+- `.build_phase_prompt`
+- `.call_fn_name`
+- `.call_llm`
+- `.confirm_yes`
+- `.create_console`
+- `.create_viewer`
+- `.extract_libraries`
+- `.generate_app`
+- `.generate_markdown`
+- `.generate_outputs`
+- `.generate_script`
+- `.is_library_call`
+- `.is_literal_value`
+- `.is_simple_assignment`
+- `.is_source_call`
+- `.last_assignment_var`
+- `.llm_provider_choices`
+- `.looks_like_error`
+- `.param_assembly_line`
+- `.parse_error_context`
+- `.parse_workflow_script`
+- `.r_string`
+- `.save_session`
+- `.segment_script`
+- `.subset_for_trial`
+- `.widget_code`
+- `workflow_engine`
+

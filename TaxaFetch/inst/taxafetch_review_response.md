@@ -854,3 +854,70 @@ New test files (previously zero coverage): `test-dataone_occurrence_search.R`,
 `test-filter_gbif_quality.R` (`basisOfRecord` case/whitespace insensitivity).
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `.attempt_odm_join`
+- `.axis_or_default`
+- `.build_axis_instructions`
+- `.detect_attr_col`
+- `.detect_lat_col`
+- `.detect_lon_col`
+- `.detect_species_col`
+- `.do_entity_join`
+- `.eml_attribute_names`
+- `.extract_eml_sites`
+- `.filter_to_bbox_df`
+- `.finalize_entity`
+- `.gbif_checkpoint_path`
+- `.gbif_declared_size`
+- `.gbif_default_year_range`
+- `.gbif_dl_meta_path`
+- `.gbif_download_consent`
+- `.gbif_zip_intact`
+- `.inat_observation_count`
+- `.match_header`
+- `.nearest_institution`
+- `.parse_coordinates_field`
+- `.parse_dwc_csv`
+- `.parse_pasta_response`
+- `.pasta_solr_page`
+- `.process_one_dataset`
+- `.read_gbif_zip`
+- `.render_one_page_b64`
+- `.render_pdf_pages`
+- `.resolve_pasta_id`
+- `.screen_one_eml`
+- `.taxafetch_referenced_zips`
+- `.track_removed`
+- `build_geo_prompt`
+- `build_pdf_extract_prompt`
+- `build_taxon_screen_prompt`
+- `call_api_pdf`
+- `check_geographic_outliers`
+- `check_inat_range`
+- `dedupe_occurrences`
+- `download_gbif_occurrences`
+- `fetch_dataone_occurrences`
+- `fetch_gbif_occurrences`
+- `fetch_inat_occurrences`
+- `fetch_occurrences_by_taxon`
+- `filter_gbif_quality`
+- `get_gbif_occurrences`
+- `parse_pdf_extract_response`
+- `print.pdf_extract_prompt`
+- `report_fetch`
+- `screen_eml_columns`
+- `stack_occurrences`
+- `taxafetch_clear_cache`
+

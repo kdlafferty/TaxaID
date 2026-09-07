@@ -622,3 +622,55 @@ command exited cleanly -- this package's own session history flagged that distin
 as having caused a real problem once before).
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `.beta_mean`
+- `.build_citation_text`
+- `.build_methods_text`
+- `.cap_rank_by_threshold`
+- `.check_rank_system_order`
+- `.combine_one_multisite_group`
+- `.compute_dark_diversity_groups`
+- `.consensus_one_observation`
+- `.expand_coarse_rank_rows`
+- `.extract_rank_values`
+- `.find_nearest_grid`
+- `.latlon_to_grid`
+- `.make_slash_name`
+- `.merge_llm_priors`
+- `.new_unreferenced_species_result`
+- `.parse_grid_ids`
+- `.parse_plausible_response`
+- `.parse_taxa_response`
+- `.resolve_llm_fn`
+- `.row_col_or`
+- `.run_consensus_and_report`
+- `.score_consensus_one`
+- `add_slash_taxon`
+- `adjust_inat_range_priors`
+- `assign_taxa_llm`
+- `combine_multisite_priors`
+- `compute_group_priors`
+- `compute_posterior`
+- `generate_report`
+- `join_priors`
+- `posterior_consensus`
+- `print.unreferenced_species_result`
+- `report_assign`
+- `run_bayesian_pipeline`
+- `run_llm_pipeline`
+- `score_consensus`
+- `suggest_unreferenced_species`
+- `update_prior_from_consensus`
+

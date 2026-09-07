@@ -447,3 +447,56 @@ set of changes, not piecemeal. `devtools::test()`: 415/415, 0 failures.
 `~/Library/R/4.0/library`.
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `.build_candidate_label`
+- `.build_review_prompt`
+- `.build_spatial_context_server`
+- `.check_gbif_tile_range_at_zoom`
+- `.combine_notes`
+- `.compute_contaminant_scores`
+- `.dilate8`
+- `.fetch_gbif_tile_alpha`
+- `.fetch_inat_points`
+- `.fmt_pipeline_value`
+- `.gbif_legend_swatch`
+- `.gbif_tile_url`
+- `.grow_patch_size`
+- `.haversine_km`
+- `.lonlat_to_tile_pixel`
+- `.mercator_resolution_km`
+- `.normalise_context`
+- `.parse_json_text`
+- `.parse_review_response`
+- `.recover_truncated_json`
+- `.resolve_gbif_taxon_key`
+- `.review_batch_with_retry`
+- `.review_cache_hash`
+- `.review_cache_read`
+- `.review_cache_write`
+- `.review_spatial_context_impl`
+- `.summarise_candidate_weights`
+- `.summarise_pipeline_context`
+- `.summarise_spatial_context`
+- `add_posthoc_assessment`
+- `check_gbif_tile_range`
+- `compute_local_occurrence_distance`
+- `flag_contaminant`
+- `flag_handler`
+- `flag_watch_candidates`
+- `report_flags`
+- `review_assignments`
+- `review_spatial_context`
+- `taxaflag_clear_cache`
+

@@ -812,3 +812,67 @@ Developer Environment convention.
   parameter with a default matching prior hardcoded behavior.
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `.align_pairs_by_genus`
+- `.audit_barcode_coverage_impl`
+- `.audit_one_genus_reverse`
+- `.build_restored_row`
+- `.build_search_term`
+- `.check_score_ratio_monotonicity`
+- `.compute_reference_qc_stats`
+- `.coverage_checkpoint_path`
+- `.decipher_align_pairs`
+- `.detect_finest_rank_col`
+- `.empty_reference_df`
+- `.evaluate_one_query`
+- `.fetch_locations_batched`
+- `.fetch_summaries_batched`
+- `.first_two_words`
+- `.genus_taxid`
+- `.has_seq_matrix_presence`
+- `.inat_species_info`
+- `.ncbi_species_enumerate`
+- `.normalize_scores`
+- `.parse_fasta_text`
+- `.parse_lat_lon`
+- `.prep_training_data`
+- `.resolve_hierarchy_score`
+- `.reverse_barcode_check`
+- `.transform_p`
+- `assign_scores`
+- `audit_acoustic_coverage`
+- `audit_barcode_coverage`
+- `audit_reference_coverage`
+- `build_sequence_matrix`
+- `calibrate_coverage_filter`
+- `check_cross_genus_sampling_noise`
+- `compute_likelihoods`
+- `coverage_threshold`
+- `detect_suppressed_candidates`
+- `evaluate_likelihoods`
+- `fetch_bold_reference_sequences`
+- `fetch_ncbi_reference_sequences`
+- `filter_top_hypotheses`
+- `flag_reference_errors`
+- `interpret_model`
+- `model_likelihoods`
+- `read_crabs_output`
+- `remove_flagged_references`
+- `restore_suppressed_candidates`
+- `subset_local_database`
+- `taxalikely_clear_cache`
+- `train_likelihood_model`
+- `trim_to_amplicon`
+

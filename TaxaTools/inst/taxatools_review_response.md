@@ -195,3 +195,41 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 **Multiline if-statement style (lines 75–78):** Fixed. `doi_note` assignment moved inside braces.
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `.build_anthropic_request`
+- `.build_endpoint_url`
+- `.build_gemini_request`
+- `.build_genus_family_lookup`
+- `.build_openai_compat_request`
+- `.last_classification_rank`
+- `.lookup_family_from_backbone`
+- `.parse_openai_compat_response`
+- `.pts_to_wkt`
+- `.verify_via_ncbi`
+- `.wkt_to_pts`
+- `call_api`
+- `clean_taxon_names`
+- `define_search_polygon`
+- `draft_methods_text`
+- `escalate_taxonomic_rank`
+- `fill_higher_ranks`
+- `list_cache_files`
+- `print.report_context`
+- `report_and_clear_cache`
+- `resolve_barcode_lengths`
+- `resolve_barcode_marker`
+- `resolve_barcode_primers`
+- `verify_taxon_names`
+

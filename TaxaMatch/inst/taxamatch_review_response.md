@@ -504,3 +504,150 @@ just once at the end; the two live-verification questions were resolved with rea
 calls (iNaturalist CV API, `exiftool`) rather than assumed from documentation alone.
 
 ------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `.accession_review_fingerprint`
+- `.align_to_cache_columns`
+- `.apply_local_veto`
+- `.apply_top_n`
+- `.attach_taxonomy`
+- `.blast_against_comparison_set`
+- `.blast_local`
+- `.blast_poll`
+- `.blast_rate_limit_sleep`
+- `.blast_remote`
+- `.blast_server_rejected`
+- `.blast_submit`
+- `.build_accession_review_prompt`
+- `.build_core_seq_df`
+- `.build_params_key`
+- `.build_submission_batch_lookup`
+- `.check_col_exists`
+- `.check_pkg`
+- `.check_rename_safe`
+- `.compute_hierarchy_congruence`
+- `.default_params_key`
+- `.detect_rank_cols`
+- `.empty_acc_taxonomy_result`
+- `.empty_animl_result`
+- `.empty_birdnet_result`
+- `.empty_blast_result`
+- `.empty_inat_result`
+- `.empty_raw_hits`
+- `.empty_reference_pair_cache`
+- `.empty_speciesnet_result`
+- `.evaluate_reference_accessions_chunk`
+- `.extract_amplicon_one_tm`
+- `.extract_exif_info`
+- `.extract_feature_table_fallback`
+- `.extract_genus`
+- `.fetch_marker_annotation`
+- `.fetch_reference_accession_records`
+- `.filter_and_cap_accessions`
+- `.filter_blast_hits`
+- `.fmt_time`
+- `.generate_asv_ids`
+- `.get_species_comparison_meta`
+- `.investigate_flagged_accession_core`
+- `.investigate_params_key`
+- `.investigate_verdict`
+- `.join_taxonomy`
+- `.label_confidence_from_evidence`
+- `.load_accession_review_cache`
+- `.load_investigate_cache`
+- `.load_reference_accession_cache`
+- `.load_reference_pair_cache`
+- `.local_corroboration_columns`
+- `.lookup_investigate_cache`
+- `.na_like`
+- `.parse_accession_review_response`
+- `.parse_animl_file`
+- `.parse_birdnet_df`
+- `.parse_birdnet_file`
+- `.parse_blast_xml`
+- `.parse_create_date`
+- `.parse_inat_cv_file`
+- `.parse_inat_cv_response`
+- `.parse_lat_lon`
+- `.parse_semicolon_headers`
+- `.parse_speciesnet_label`
+- `.parse_speciesnet_predictions`
+- `.parse_taxonomy_xml`
+- `.partner_trust_weight`
+- `.pivot_wide_animl`
+- `.print_investigation_summary`
+- `.read_dada2_matrix`
+- `.read_dna_stringset`
+- `.read_esv_dataframe`
+- `.read_fasta_file`
+- `.read_match_file`
+- `.recover_truncated_accession_json`
+- `.reference_action_from_confidence`
+- `.resolve_expected_marker`
+- `.resolve_image_files`
+- `.resolve_label_params`
+- `.resolve_locations_by_acc`
+- `.resolve_marker_pattern`
+- `.resolve_taxonomy`
+- `.resolve_taxonomy_by_acc`
+- `.resolve_trimmed_span_max`
+- `.review_accession_batch_with_retry`
+- `.same_submission_batch`
+- `.save_accession_review_cache`
+- `.save_investigate_cache`
+- `.save_reference_accession_cache`
+- `.save_reference_pair_cache`
+- `.search_species_accessions`
+- `.speciesnet_detection_coverage`
+- `.split_batches_by_length`
+- `.stop_missing_files`
+- `.store_investigate_result`
+- `.strip_acc_version`
+- `.summarise_corroborators`
+- `.trim_queries_to_amplicon`
+- `.valid_reference_length`
+- `.validate_min_conf_top_n`
+- `.validate_rank_system`
+- `.warn_duplicate_basenames`
+- `.warn_na_coercion`
+- `add_lowest_consistent_rank`
+- `blast_sequences`
+- `check_marker_mismatch`
+- `convert_taxonomy_backbone`
+- `corroborate_references_locally`
+- `evaluate_reference_accessions`
+- `filter_redundant_hypotheses`
+- `filter_sequences`
+- `flag_incongruent_references`
+- `investigate_flagged_accession`
+- `investigate_flagged_accessions`
+- `match_driving_accessions`
+- `migrate_reference_cache`
+- `read_animl_output`
+- `read_birdnet_output`
+- `read_inaturalist_cv_output`
+- `read_sequence_table`
+- `read_speciesnet_output`
+- `refine_reference_verdicts`
+- `remove_incongruent_references`
+- `report_match`
+- `resolve_review_overrides`
+- `review_flagged_accessions`
+- `score_image_inat`
+- `score_reference_labels`
+- `standardize_match_data`
+- `verify_flagged_references`
+- `verify_local_corroborations`
+- `verify_removal_candidates`
+

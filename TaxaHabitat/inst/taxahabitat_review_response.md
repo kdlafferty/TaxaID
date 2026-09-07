@@ -696,3 +696,18 @@ default).
 source("~/My Drive/Rscripts/projects/TaxaID/ecosystem_docs/install_all.R")
 .rs.restartR()
 ```
+
+------------------------------------------------------------------------
+
+## Functions added or modified since this review (through 2026-09-07)
+
+The functions below were added or modified after this review's own date
+(above), in response to client requests and/or fixes identified during
+testing against real production data, consistent with USGS code review
+policy. Each was individually code-reviewed against the same checklist
+used above (functionality, coding standards, vulnerabilities, and -- where
+applicable -- domain/scientific reasonableness) as part of this software
+release.
+
+- `report_habitat`
+
