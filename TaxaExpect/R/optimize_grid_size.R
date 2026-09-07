@@ -179,23 +179,22 @@ utils::globalVariables(c(
 #' @export
 
 optimize_grid_size <- function(
-    observation_data,
-    n_covariates,
-    protected_habitat    = NULL,
-    min_s_threshold      = 5L,
-    min_N_threshold      = 10L,
-    min_distinct_locs    = 20L,
-    min_locs_per_habitat = 3L,
-    min_grid             = 0.1,
-    max_grid             = 1.0,
-    step_grid            = 0.05,
-    lat_col              = "decimalLatitude",
-    lon_col              = "decimalLongitude",
-    species_col          = "taxon_name",
-    habitat_col          = "main_habitat",
-    weights              = c(resolution = 0.4, quality = 0.4, stability = 0.2)
+  observation_data,
+  n_covariates,
+  protected_habitat = NULL,
+  min_s_threshold = 5L,
+  min_N_threshold = 10L,
+  min_distinct_locs = 20L,
+  min_locs_per_habitat = 3L,
+  min_grid = 0.1,
+  max_grid = 1.0,
+  step_grid = 0.05,
+  lat_col = "decimalLatitude",
+  lon_col = "decimalLongitude",
+  species_col = "taxon_name",
+  habitat_col = "main_habitat",
+  weights = c(resolution = 0.4, quality = 0.4, stability = 0.2)
 ) {
-
   .glmm_deprecation_notice("optimize_grid_size")
 
   # --- Input checks -----------------------------------------------------------
@@ -211,12 +210,14 @@ optimize_grid_size <- function(
 
   no_habitat <- is.null(habitat_col)
   if (no_habitat && !is.null(protected_habitat)) {
-    stop("optimize_grid_size: 'protected_habitat' requires a real habitat_col; ",
-         "it cannot be used when habitat_col = NULL.")
+    stop(
+      "optimize_grid_size: 'protected_habitat' requires a real habitat_col; ",
+      "it cannot be used when habitat_col = NULL."
+    )
   }
 
   required_cols <- c(lat_col, lon_col, species_col, habitat_col)
-  missing_cols  <- setdiff(required_cols, names(observation_data))
+  missing_cols <- setdiff(required_cols, names(observation_data))
   if (length(missing_cols) > 0) {
     stop(
       "optimize_grid_size: missing columns in ",
@@ -273,7 +274,7 @@ optimize_grid_size <- function(
   }
 
   # Sample-size guidance (informational only)
-  model_df  <- n_covariates + 1L
+  model_df <- n_covariates + 1L
   target_10 <- 10L * model_df
   target_15 <- 15L * model_df
   message(sprintf(
@@ -287,12 +288,16 @@ optimize_grid_size <- function(
   # Column names and thresholds bundled into two lists rather than passed as
   # 8 separate arguments -- .score_one_resolution() only needs "which columns"
   # and "which cutoffs", not each one individually threaded through.
-  site_cols  <- list(lat_col = lat_col, lon_col = lon_col,
-                     species_col = species_col, habitat_col = habitat_col)
-  thresholds <- list(min_s_threshold = min_s_threshold,
-                     min_N_threshold = min_N_threshold,
-                     min_distinct_locs = min_distinct_locs,
-                     min_locs_per_habitat = min_locs_per_habitat)
+  site_cols <- list(
+    lat_col = lat_col, lon_col = lon_col,
+    species_col = species_col, habitat_col = habitat_col
+  )
+  thresholds <- list(
+    min_s_threshold = min_s_threshold,
+    min_N_threshold = min_N_threshold,
+    min_distinct_locs = min_distinct_locs,
+    min_locs_per_habitat = min_locs_per_habitat
+  )
 
   results_list <- lapply(
     resolutions,
@@ -316,15 +321,15 @@ optimize_grid_size <- function(
     scored <- results_df |>
       dplyr::filter(passed) |>
       dplyr::mutate(
-        log_locs       = log(n_distinct_locs),
-        norm_locs      = .safe_normalise(log_locs),
-        norm_quality   = .safe_normalise(median_N),
-        inv_cv         = 1 / cv_N,
+        log_locs = log(n_distinct_locs),
+        norm_locs = .safe_normalise(log_locs),
+        norm_quality = .safe_normalise(median_N),
+        inv_cv = 1 / cv_N,
         norm_stability = .safe_normalise(inv_cv),
         suitability_score =
           weights["resolution"] * norm_locs +
-          weights["quality"]    * norm_quality +
-          weights["stability"]  * norm_stability
+            weights["quality"] * norm_quality +
+            weights["stability"] * norm_stability
       ) |>
       dplyr::arrange(dplyr::desc(suitability_score)) |>
       dplyr::select(
@@ -336,7 +341,7 @@ optimize_grid_size <- function(
   }
 
   if (nrow(scored) > 0) {
-    winner      <- scored[1, ]
+    winner <- scored[1, ]
     explanation <- sprintf(
       paste0(
         "Recommended grid: %.2f degrees.\n",
@@ -366,7 +371,7 @@ optimize_grid_size <- function(
 
     if (nrow(fallback_a_candidates) > 0) {
       winner_grid <- fallback_a_candidates$grid_size[1]
-      winner_row  <- fallback_a_candidates[1, ]
+      winner_row <- fallback_a_candidates[1, ]
       explanation <- sprintf(
         paste0(
           "Fallback A applied: no resolution met the min_distinct_locs = %d ",
@@ -397,7 +402,7 @@ optimize_grid_size <- function(
 
     if (nrow(fallback_b_candidates) > 0) {
       winner_grid <- fallback_b_candidates$grid_size[1]
-      winner_row  <- fallback_b_candidates[1, ]
+      winner_row <- fallback_b_candidates[1, ]
       explanation <- sprintf(
         paste0(
           "Fallback B applied: no resolution yielded >= 10 grid cells in any ",
@@ -420,9 +425,9 @@ optimize_grid_size <- function(
   }
 
   # --- Fallback C: single bbox-spanning grid cell (fully pooled) --------------
-  lat_range        <- diff(range(df_clean[[lat_col]]))
-  lon_range        <- diff(range(df_clean[[lon_col]]))
-  bbox_span        <- max(lat_range, lon_range)
+  lat_range <- diff(range(df_clean[[lat_col]]))
+  lon_range <- diff(range(df_clean[[lon_col]]))
+  bbox_span <- max(lat_range, lon_range)
   single_grid_size <- ceiling((bbox_span + step_grid) * 100) / 100
 
   # Verify (not just assume) that this grid size actually pools every real
@@ -439,10 +444,10 @@ optimize_grid_size <- function(
   .one_cell <- function(vals, g) length(unique(round(vals / g))) <= 1L
   grow_attempts <- 0L
   while ((!.one_cell(df_clean[[lat_col]], single_grid_size) ||
-          !.one_cell(df_clean[[lon_col]], single_grid_size)) &&
-         grow_attempts < 20L) {
+    !.one_cell(df_clean[[lon_col]], single_grid_size)) &&
+    grow_attempts < 20L) {
     single_grid_size <- single_grid_size * 1.5
-    grow_attempts     <- grow_attempts + 1L
+    grow_attempts <- grow_attempts + 1L
   }
   single_grid_size <- round(single_grid_size, 2)
 
@@ -485,22 +490,21 @@ optimize_grid_size <- function(
 #' @noRd
 
 .score_one_resolution <- function(res,
-                                   df_clean,
-                                   site_cols,
-                                   thresholds,
-                                   protected_habitat) {
-
-  lat_col     <- site_cols$lat_col
-  lon_col     <- site_cols$lon_col
+                                  df_clean,
+                                  site_cols,
+                                  thresholds,
+                                  protected_habitat) {
+  lat_col <- site_cols$lat_col
+  lon_col <- site_cols$lon_col
   species_col <- site_cols$species_col
   habitat_col <- site_cols$habitat_col
 
-  min_s_threshold       <- thresholds$min_s_threshold
-  min_N_threshold       <- thresholds$min_N_threshold
-  min_distinct_locs     <- thresholds$min_distinct_locs
-  min_locs_per_habitat  <- thresholds$min_locs_per_habitat
+  min_s_threshold <- thresholds$min_s_threshold
+  min_N_threshold <- thresholds$min_N_threshold
+  min_distinct_locs <- thresholds$min_distinct_locs
+  min_locs_per_habitat <- thresholds$min_locs_per_habitat
 
-  hab_sym     <- rlang::sym(habitat_col)
+  hab_sym <- rlang::sym(habitat_col)
   species_sym <- rlang::sym(species_col)
 
   # Snap to grid and summarise per site-habitat cell
@@ -521,7 +525,9 @@ optimize_grid_size <- function(
   valid_sites <- site_data |>
     dplyr::filter(S >= min_s_threshold, N >= min_N_threshold)
 
-  if (nrow(valid_sites) == 0) return(NULL)
+  if (nrow(valid_sites) == 0) {
+    return(NULL)
+  }
 
   # Drop habitats with too few distinct locations (unless protected)
   habitat_locs <- valid_sites |>
@@ -531,7 +537,7 @@ optimize_grid_size <- function(
   if (!is.null(protected_habitat)) {
     kept_habs <- habitat_locs |>
       dplyr::filter(n_locs >= min_locs_per_habitat |
-                      (!!hab_sym) == protected_habitat) |>
+        (!!hab_sym) == protected_habitat) |>
       dplyr::pull(!!hab_sym)
   } else {
     kept_habs <- habitat_locs |>
@@ -542,11 +548,13 @@ optimize_grid_size <- function(
   final_sites <- valid_sites |>
     dplyr::filter((!!hab_sym) %in% kept_habs)
 
-  if (nrow(final_sites) == 0) return(NULL)
+  if (nrow(final_sites) == 0) {
+    return(NULL)
+  }
 
   n_locs <- dplyr::n_distinct(final_sites$loc_id)
   mean_n <- mean(final_sites$N)
-  sd_n   <- stats::sd(final_sites$N)
+  sd_n <- stats::sd(final_sites$N)
   if (mean_n == 0 || !is.finite(mean_n)) {
     cv_n <- Inf
   } else {

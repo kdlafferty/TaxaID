@@ -12,7 +12,7 @@ library(dplyr)
 
 .make_grouped_raw_occurrences <- function(n_sites = 20, seed = 1) {
   set.seed(seed)
-  grids    <- paste0("g", seq_len(n_sites))
+  grids <- paste0("g", seq_len(n_sites))
   lat_vals <- seq(33, 37, length.out = n_sites)
   lon_vals <- seq(-122, -118.4, length.out = n_sites)
   habitats <- sample(c("Kelp", "Rocky", "Sandy"), n_sites, replace = TRUE)
@@ -28,8 +28,10 @@ library(dplyr)
     data.frame(
       grid_id = grids[i], lat_r = lat_vals[i], lon_r = lon_vals[i],
       main_habitat = habitats[i],
-      taxon_name = sample(c("Vert_A", "Vert_B"), n_rec, replace = TRUE,
-                          prob = c(0.6, 0.4)),
+      taxon_name = sample(c("Vert_A", "Vert_B"), n_rec,
+        replace = TRUE,
+        prob = c(0.6, 0.4)
+      ),
       sampling_group = "vertebrate",
       stringsAsFactors = FALSE
     )
@@ -42,8 +44,10 @@ library(dplyr)
     data.frame(
       grid_id = grids[i], lat_r = lat_vals[i], lon_r = lon_vals[i],
       main_habitat = habitats[i],
-      taxon_name = sample(c("Phyto_A", "Phyto_B"), n_rec, replace = TRUE,
-                          prob = c(0.5, 0.5)),
+      taxon_name = sample(c("Phyto_A", "Phyto_B"), n_rec,
+        replace = TRUE,
+        prob = c(0.5, 0.5)
+      ),
       sampling_group = "phytoplankton",
       stringsAsFactors = FALSE
     )
@@ -58,7 +62,8 @@ test_that("returns a named list of biofreq_model objects, one per group", {
 
   models <- suppressWarnings(suppressMessages(
     train_biodiversity_model_by_group(
-      input, formula = formula, sampling_group_col = "sampling_group",
+      input,
+      formula = formula, sampling_group_col = "sampling_group",
       verbose = FALSE
     )
   ))
@@ -74,7 +79,8 @@ test_that("each group's model reflects only its own effort scale (N_total)", {
 
   models <- suppressWarnings(suppressMessages(
     train_biodiversity_model_by_group(
-      input, formula = formula, sampling_group_col = "sampling_group",
+      input,
+      formula = formula, sampling_group_col = "sampling_group",
       verbose = FALSE
     )
   ))
@@ -102,7 +108,8 @@ test_that("errors when sampling_group_col is not a column in data", {
   input$sampling_group <- NULL
   expect_error(
     train_biodiversity_model_by_group(
-      input, formula = cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name),
+      input,
+      formula = cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name),
       sampling_group_col = "sampling_group"
     ),
     "not found"
@@ -114,7 +121,8 @@ test_that("warns when the grouping column has fewer than 2 distinct values", {
   input <- input[input$sampling_group == "vertebrate", ]
   expect_warning(
     suppressMessages(train_biodiversity_model_by_group(
-      input, formula = cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name),
+      input,
+      formula = cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name),
       sampling_group_col = "sampling_group", verbose = FALSE
     )),
     "nothing to separate"
@@ -136,7 +144,8 @@ test_that("one group's fitting failure doesn't crash the whole call (Session 149
   expect_warning(
     models <- suppressMessages(
       train_biodiversity_model_by_group(
-        input, formula = formula, sampling_group_col = "sampling_group",
+        input,
+        formula = formula, sampling_group_col = "sampling_group",
         verbose = FALSE
       )
     ),
@@ -150,11 +159,13 @@ test_that("one group's fitting failure doesn't crash the whole call (Session 149
 test_that("train_biodiversity_model() itself refuses multi-group data", {
   input <- .make_grouped_raw_occurrences()
   model_df <- suppressWarnings(prepare_model_dataframe(
-    input, sampling_group_col = "sampling_group"
+    input,
+    sampling_group_col = "sampling_group"
   ))
   expect_error(
     train_biodiversity_model(
-      model_df, formula = cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name)
+      model_df,
+      formula = cbind(n_species, n_other) ~ main_habitat + (1 | taxon_name)
     ),
     "sampling groups"
   )

@@ -69,20 +69,27 @@ generate_presence_curve_evidence <- function(taxon_names,
                                              p_conc = 1,
                                              source = NULL) {
   if (!is.character(taxon_names) || length(taxon_names) == 0L ||
-      anyNA(taxon_names)) {
-    stop("generate_presence_curve_evidence: taxon_names must be a non-empty, ",
-         "non-NA character vector.")
+    anyNA(taxon_names)) {
+    stop(
+      "generate_presence_curve_evidence: taxon_names must be a non-empty, ",
+      "non-NA character vector."
+    )
   }
   if (missing(w_scale)) {
-    stop("generate_presence_curve_evidence: w_scale is required and has no ",
-         "default -- calibrate it against a local checklist (see ",
-         "generate_regional_proximity_evidence()'s calibration record; the ",
-         "GreatLakes value is 0.05).")
+    stop(
+      "generate_presence_curve_evidence: w_scale is required and has no ",
+      "default -- calibrate it against a local checklist (see ",
+      "generate_regional_proximity_evidence()'s calibration record; the ",
+      "GreatLakes value is 0.05)."
+    )
   }
   .chk <- function(x, nm, lo, hi = Inf) {
-    if (!is.numeric(x) || length(x) != 1L || is.na(x) || x < lo || x > hi)
-      stop(sprintf("generate_presence_curve_evidence: %s must be a single numeric in [%g, %g].",
-                   nm, lo, hi))
+    if (!is.numeric(x) || length(x) != 1L || is.na(x) || x < lo || x > hi) {
+      stop(sprintf(
+        "generate_presence_curve_evidence: %s must be a single numeric in [%g, %g].",
+        nm, lo, hi
+      ))
+    }
   }
   .chk(w_scale, "w_scale", .Machine$double.eps, 1)
   .chk(d_half, "d_half", .Machine$double.eps)
@@ -93,15 +100,18 @@ generate_presence_curve_evidence <- function(taxon_names,
   n <- length(taxon_names)
   d <- rep(NA_real_, n)
   if (!is.null(distance_km)) {
-    if (!is.numeric(distance_km))
+    if (!is.numeric(distance_km)) {
       stop("generate_presence_curve_evidence: distance_km must be numeric (or NULL).")
+    }
     if (!is.null(names(distance_km))) {
       d <- unname(distance_km[taxon_names])
     } else if (length(distance_km) == n) {
       d <- distance_km
     } else {
-      stop("generate_presence_curve_evidence: distance_km must be named by ",
-           "taxon or the same length as taxon_names.")
+      stop(
+        "generate_presence_curve_evidence: distance_km must be named by ",
+        "taxon or the same length as taxon_names."
+      )
     }
   }
   clamped <- is.na(d)
@@ -111,12 +121,12 @@ generate_presence_curve_evidence <- function(taxon_names,
   }
 
   data.frame(
-    taxon_name  = taxon_names,
-    weight      = w_scale * exp(-pmin(d, d_cap) / (k * d_half)),
-    p_conc      = p_conc,
-    source      = source,
+    taxon_name = taxon_names,
+    weight = w_scale * exp(-pmin(d, d_cap) / (k * d_half)),
+    p_conc = p_conc,
+    source = source,
     distance_km = d,
-    k           = k,
+    k = k,
     stringsAsFactors = FALSE
   )
 }
@@ -152,10 +162,12 @@ generate_presence_curve_evidence <- function(taxon_names,
 #' @export
 generate_user_specified_evidence <- function(taxon_weights, p_conc = 1) {
   if (!is.numeric(taxon_weights) || length(taxon_weights) == 0L ||
-      is.null(names(taxon_weights)) || any(!nzchar(names(taxon_weights))) ||
-      anyNA(taxon_weights)) {
-    stop("generate_user_specified_evidence: taxon_weights must be a non-empty ",
-         "named numeric vector with no NAs.")
+    is.null(names(taxon_weights)) || any(!nzchar(names(taxon_weights))) ||
+    anyNA(taxon_weights)) {
+    stop(
+      "generate_user_specified_evidence: taxon_weights must be a non-empty ",
+      "named numeric vector with no NAs."
+    )
   }
   if (any(taxon_weights <= 0 | taxon_weights > 1)) {
     stop("generate_user_specified_evidence: every weight must be in (0, 1].")
@@ -172,20 +184,22 @@ generate_user_specified_evidence <- function(taxon_weights, p_conc = 1) {
   high <- taxon_weights[taxon_weights > dilution]
   if (length(high) > 0L) {
     message(sprintf(
-      paste0("generate_user_specified_evidence: %d weight(s) exceed the ",
-             "~%.2f dilution threshold (%s) -- these can materially reduce a ",
-             "singleton-level observed native's posterior share at likelihood ",
-             "parity. Deliberate surveillance choices are legitimate; this is ",
-             "the disclosure."),
+      paste0(
+        "generate_user_specified_evidence: %d weight(s) exceed the ",
+        "~%.2f dilution threshold (%s) -- these can materially reduce a ",
+        "singleton-level observed native's posterior share at likelihood ",
+        "parity. Deliberate surveillance choices are legitimate; this is ",
+        "the disclosure."
+      ),
       length(high), dilution,
       paste(sprintf("%s = %.2f", names(high), high), collapse = ", ")
     ))
   }
   data.frame(
     taxon_name = names(taxon_weights),
-    weight     = unname(taxon_weights),
-    p_conc     = p_conc,
-    source     = "user_specified",
+    weight = unname(taxon_weights),
+    p_conc = p_conc,
+    source = "user_specified",
     stringsAsFactors = FALSE
   )
 }

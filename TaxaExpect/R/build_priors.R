@@ -123,30 +123,31 @@
 #'
 #' @export
 build_priors <- function(
-    taxa,
-    lat,
-    lon,
-    search_radius_deg       = 2,
-    year_range              = NULL,
-    gbif_limit              = 10000L,
-    habitat_scheme          = NULL,
-    max_coord_uncertainty   = 500,
-    llm_fn                  = getOption("TaxaID.llm_fn", TaxaTools::call_api),
-    habitat_threshold       = 0.5,
-    geographic_context      = NULL,
-    min_phi                 = 2,
-    moran_k                 = 5L,
-    sd_threshold            = 0.20,
-    rank_system             = c("kingdom", "phylum", "class", "order",
-                                "family", "genus", "species"),
-    search_rank             = "family",
-    target_backbone_id      = 4L,
-    supplemental_occurrences = NULL,
-    census_genera           = TRUE,
-    checkpoint_dir          = NULL,
-    verbose                 = TRUE
+  taxa,
+  lat,
+  lon,
+  search_radius_deg = 2,
+  year_range = NULL,
+  gbif_limit = 10000L,
+  habitat_scheme = NULL,
+  max_coord_uncertainty = 500,
+  llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+  habitat_threshold = 0.5,
+  geographic_context = NULL,
+  min_phi = 2,
+  moran_k = 5L,
+  sd_threshold = 0.20,
+  rank_system = c(
+    "kingdom", "phylum", "class", "order",
+    "family", "genus", "species"
+  ),
+  search_rank = "family",
+  target_backbone_id = 4L,
+  supplemental_occurrences = NULL,
+  census_genera = TRUE,
+  checkpoint_dir = NULL,
+  verbose = TRUE
 ) {
-
   .glmm_deprecation_notice("build_priors")
 
   # --- Check dependencies ---
@@ -192,7 +193,7 @@ build_priors <- function(
   }
   valid_search_ranks <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
   if (!is.character(search_rank) || length(search_rank) != 1L ||
-      !tolower(search_rank) %in% valid_search_ranks) {
+    !tolower(search_rank) %in% valid_search_ranks) {
     stop(
       "build_priors: 'search_rank' must be one of: ",
       paste(valid_search_ranks, collapse = ", "),
@@ -238,11 +239,15 @@ build_priors <- function(
 
   if ("gbif_rank" %in% names(keys)) {
     input_ranks <- toupper(vapply(seq_len(nrow(taxa)), function(i) {
-      cols <- intersect(c("species", "genus", "family", "order", "class", "phylum", "kingdom"),
-                        tolower(names(taxa)))
+      cols <- intersect(
+        c("species", "genus", "family", "order", "class", "phylum", "kingdom"),
+        tolower(names(taxa))
+      )
       for (r in cols) {
         val <- taxa[[r]][i]
-        if (!is.na(val) && nzchar(trimws(val))) return(toupper(r))
+        if (!is.na(val) && nzchar(trimws(val))) {
+          return(toupper(r))
+        }
       }
       NA_character_
     }, character(1L)))
@@ -250,7 +255,7 @@ build_priors <- function(
     resolved_ranks <- toupper(keys$gbif_rank)
     for (i in seq_len(nrow(keys))) {
       if (!good_match[i] || is.na(input_ranks[i]) || is.na(resolved_ranks[i])) next
-      input_pos    <- match(input_ranks[i], rank_hierarchy)
+      input_pos <- match(input_ranks[i], rank_hierarchy)
       resolved_pos <- match(resolved_ranks[i], rank_hierarchy)
       if (!is.na(input_pos) && !is.na(resolved_pos) && resolved_pos < input_pos - 1L) {
         .msg(sprintf(
@@ -277,7 +282,7 @@ build_priors <- function(
       queried_rank <- if (exists("input_ranks")) tolower(input_ranks[di]) else NA_character_
       if (is.na(queried_rank)) next
       queried_pos <- match(queried_rank, finer_ranks)
-      if (is.na(queried_pos) || queried_pos <= 1L) next  # already at finest rank
+      if (is.na(queried_pos) || queried_pos <= 1L) next # already at finest rank
 
       # Look for finer-rank columns in taxa
       candidates <- finer_ranks[seq_len(queried_pos - 1L)]
@@ -285,7 +290,7 @@ build_priors <- function(
       if (length(avail) == 0L) next
 
       # Build a new taxa frame with finer-rank values from this row's group
-      finest <- avail[1L]  # most specific available
+      finest <- avail[1L] # most specific available
       col_idx <- which(rank_cols_lc == finest)
       if (length(col_idx) == 0L) next
 
@@ -320,10 +325,12 @@ build_priors <- function(
       )
       if (!is.null(sub_keys)) {
         new_valid <- sub_keys$usageKey[!is.na(sub_keys$usageKey) &
-                                         !sub_keys$matchType %in% c("NONE", "ERROR", "HIGHERRANK")]
+          !sub_keys$matchType %in% c("NONE", "ERROR", "HIGHERRANK")]
         if (length(new_valid) > 0L) {
-          .msg(sprintf("  Recovered %d key(s) at %s level for '%s'.",
-                       length(new_valid), finest, dropped_val))
+          .msg(sprintf(
+            "  Recovered %d key(s) at %s level for '%s'.",
+            length(new_valid), finest, dropped_val
+          ))
           valid_keys <- c(valid_keys, new_valid)
         }
       }
@@ -360,7 +367,9 @@ build_priors <- function(
   # Track species before filtering to detect purged taxa
   species_before <- if ("species" %in% names(gbif_raw)) {
     table(gbif_raw$species[!is.na(gbif_raw$species) & nzchar(gbif_raw$species)])
-  } else NULL
+  } else {
+    NULL
+  }
 
   occurrences <- TaxaFetch::filter_gbif_quality(
     gbif_raw,
@@ -371,10 +380,10 @@ build_priors <- function(
   # Warn about species heavily impacted or entirely removed by filtering
   if (!is.null(species_before) && "species" %in% names(occurrences)) {
     species_after <- table(occurrences$species[!is.na(occurrences$species) &
-                                                 nzchar(occurrences$species)])
+      nzchar(occurrences$species)])
     for (sp in names(species_before)) {
       n_before <- as.integer(species_before[sp])
-      n_after  <- if (sp %in% names(species_after)) as.integer(species_after[sp]) else 0L
+      n_after <- if (sp %in% names(species_after)) as.integer(species_after[sp]) else 0L
       pct_lost <- 100 * (n_before - n_after) / n_before
       if (n_after == 0L) {
         warning(
@@ -384,8 +393,10 @@ build_priors <- function(
           ),
           "  This can happen when coordinates are intentionally degraded ",
           "(e.g. endangered species).\n",
-          sprintf("  Try increasing max_coord_uncertainty (current: %g m).",
-                  max_coord_uncertainty),
+          sprintf(
+            "  Try increasing max_coord_uncertainty (current: %g m).",
+            max_coord_uncertainty
+          ),
           call. = FALSE
         )
       } else if (pct_lost >= 80) {
@@ -394,8 +405,10 @@ build_priors <- function(
             "build_priors: %d of %d records (%.0f%%) of '%s' removed by quality filtering.\n",
             n_before - n_after, n_before, pct_lost, sp
           ),
-          sprintf("  Consider increasing max_coord_uncertainty (current: %g m).",
-                  max_coord_uncertainty),
+          sprintf(
+            "  Consider increasing max_coord_uncertainty (current: %g m).",
+            max_coord_uncertainty
+          ),
           call. = FALSE
         )
       }
@@ -413,7 +426,9 @@ build_priors <- function(
   # Ensure point_id exists (created by stack_occurrences, but needed even without stacking)
   if (!"point_id" %in% names(occurrences)) {
     occurrences$point_id <- paste(occurrences$decimalLatitude,
-                                  occurrences$decimalLongitude, sep = "_")
+      occurrences$decimalLongitude,
+      sep = "_"
+    )
   }
 
   # Dedup regardless of whether supplemental data was stacked -- duplicate
@@ -421,7 +436,7 @@ build_priors <- function(
   # occasion) can already exist within a single occurrence fetch, not just
   # when combining sources. See TaxaFetch::dedupe_occurrences().
   n_before_dedup <- nrow(occurrences)
-  occurrences    <- TaxaFetch::dedupe_occurrences(occurrences)
+  occurrences <- TaxaFetch::dedupe_occurrences(occurrences)
   if (nrow(occurrences) < n_before_dedup) {
     .msg(sprintf("  %d total records after deduplication.", nrow(occurrences)))
   }
@@ -439,13 +454,13 @@ build_priors <- function(
   # =========================================================================
   gbif_census <- NULL
   if (isTRUE(census_genera) &&
-      "genusKey" %in% names(occurrences) &&
-      requireNamespace("TaxaTools", quietly = TRUE) &&
-      !is.null(utils::getFromNamespace("census_genus_species", "TaxaTools"))) {
-
+    "genusKey" %in% names(occurrences) &&
+    requireNamespace("TaxaTools", quietly = TRUE) &&
+    !is.null(utils::getFromNamespace("census_genus_species", "TaxaTools"))) {
     genus_df <- unique(occurrences[
       !is.na(occurrences$genusKey) & !is.na(occurrences$genus),
-      c("genus", "genusKey"), drop = FALSE
+      c("genus", "genusKey"),
+      drop = FALSE
     ])
     genus_df <- genus_df[!duplicated(genus_df$genus), , drop = FALSE]
 
@@ -453,8 +468,10 @@ build_priors <- function(
       named_keys <- stats::setNames(
         as.integer(genus_df$genusKey), genus_df$genus
       )
-      .msg(sprintf("build_priors [1b/7]: GBIF genus census for %d genera...",
-                   length(named_keys)))
+      .msg(sprintf(
+        "build_priors [1b/7]: GBIF genus census for %d genera...",
+        length(named_keys)
+      ))
       gbif_census <- tryCatch(
         TaxaTools::census_genus_species(
           genus_keys    = named_keys,
@@ -462,14 +479,18 @@ build_priors <- function(
           verbose       = verbose
         ),
         error = function(e) {
-          .msg(sprintf("  Warning: GBIF genus census failed: %s",
-                       conditionMessage(e)))
+          .msg(sprintf(
+            "  Warning: GBIF genus census failed: %s",
+            conditionMessage(e)
+          ))
           NULL
         }
       )
       if (!is.null(gbif_census)) {
-        .msg(sprintf("  Censused %d genera; %d total described species.",
-                     nrow(gbif_census), sum(gbif_census$total_described)))
+        .msg(sprintf(
+          "  Censused %d genera; %d total described species.",
+          nrow(gbif_census), sum(gbif_census$total_described)
+        ))
       }
     }
   }
@@ -486,16 +507,20 @@ build_priors <- function(
     # TaxaHabitat::build_habitat_prompt()'s .validate_habitat_scheme() requires
     # an "l1_name" column specifically (not just "whichever column comes
     # first") -- read it directly rather than assuming column order.
-    scheme_col   <- if ("l1_name" %in% names(habitat_scheme)) "l1_name" else 1L
-    scheme_label <- sprintf("custom (%d categories)",
-                            dplyr::n_distinct(habitat_scheme[[scheme_col]]))
+    scheme_col <- if ("l1_name" %in% names(habitat_scheme)) "l1_name" else 1L
+    scheme_label <- sprintf(
+      "custom (%d categories)",
+      dplyr::n_distinct(habitat_scheme[[scheme_col]])
+    )
   } else {
     scheme_label <- "unknown"
   }
 
   .msg("build_priors [2/7]: Assigning habitat via LLM...")
-  .msg(sprintf("  Habitat scheme: %s. To change, set habitat_scheme = 'IUCN_L1' or supply a custom data frame.",
-               scheme_label))
+  .msg(sprintf(
+    "  Habitat scheme: %s. To change, set habitat_scheme = 'IUCN_L1' or supply a custom data frame.",
+    scheme_label
+  ))
 
   species_list <- unique(occurrences$taxon_name)
   species_list <- species_list[!is.na(species_list) & nzchar(species_list)]
@@ -524,16 +549,19 @@ build_priors <- function(
 
   occurrences <- TaxaHabitat::assign_habitat_biological(
     occurrence_data = occurrences,
-    habitats_df    = habitats_df,
-    threshold      = habitat_threshold
+    habitats_df = habitats_df,
+    threshold = habitat_threshold
   )
 
   # Flag spatial inconsistencies (non-blocking)
-  tryCatch({
-    occurrences <- TaxaHabitat::flag_habitat_inconsistencies(occurrences)
-  }, error = function(e) {
-    .msg("  Warning: habitat flagging failed (", conditionMessage(e), "). Continuing.")
-  })
+  tryCatch(
+    {
+      occurrences <- TaxaHabitat::flag_habitat_inconsistencies(occurrences)
+    },
+    error = function(e) {
+      .msg("  Warning: habitat flagging failed (", conditionMessage(e), "). Continuing.")
+    }
+  )
 
   .msg(sprintf("  %d records with habitat assigned.", sum(!is.na(occurrences$main_habitat))))
   .save(occurrences, "occurrences_with_habitat")
@@ -567,16 +595,20 @@ build_priors <- function(
       k        = moran_k
     )
     model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
-    .msg(sprintf("  %d rows, %d species, %d sites, %d Moran eigenvectors.",
-                 nrow(model_data),
-                 dplyr::n_distinct(model_data$taxon_name),
-                 dplyr::n_distinct(model_data$grid_id),
-                 moran_k))
+    .msg(sprintf(
+      "  %d rows, %d species, %d sites, %d Moran eigenvectors.",
+      nrow(model_data),
+      dplyr::n_distinct(model_data$taxon_name),
+      dplyr::n_distinct(model_data$grid_id),
+      moran_k
+    ))
   } else {
-    .msg(sprintf("  %d rows, %d species, %d sites, Moran eigenvectors disabled.",
-                 nrow(model_data),
-                 dplyr::n_distinct(model_data$taxon_name),
-                 dplyr::n_distinct(model_data$grid_id)))
+    .msg(sprintf(
+      "  %d rows, %d species, %d sites, Moran eigenvectors disabled.",
+      nrow(model_data),
+      dplyr::n_distinct(model_data$taxon_name),
+      dplyr::n_distinct(model_data$grid_id)
+    ))
   }
 
   # =========================================================================
@@ -587,7 +619,8 @@ build_priors <- function(
   # Build formula dynamically based on moran_k
   if (moran_k > 0L) {
     basis_terms <- paste0("(0 + B", seq_len(moran_k), " | taxon_name)",
-                          collapse = " + ")
+      collapse = " + "
+    )
     formula_str <- paste0(
       "cbind(n_species, n_other) ~ main_habitat + ",
       "(1 | taxon_name) + diag(main_habitat | taxon_name) + ",
@@ -605,31 +638,34 @@ build_priors <- function(
   }
   model_formula <- stats::as.formula(formula_str)
 
-  model_fit <- tryCatch({
-    screen_spatial_formula(
-      data          = model_data,
-      formula_full  = model_formula,
-      sd_threshold  = sd_threshold,
-      delta_aic_max = 2.0,
-      verbose       = verbose
-    )
-  }, error = function(e) {
-    n_rows  <- nrow(model_data)
-    n_sites <- dplyr::n_distinct(model_data$grid_id)
-    n_taxa  <- dplyr::n_distinct(model_data$taxon_name)
-    n_hab   <- dplyr::n_distinct(model_data$main_habitat)
-    warning(
-      "build_priors: model training failed (", conditionMessage(e), ").\n",
-      sprintf("  Data: %d rows, %d grid cells, %d taxa, %d habitats.\n", n_rows, n_sites, n_taxa, n_hab),
-      "  The spatial model needs more data. Try:\n",
-      "  - Larger search_radius_deg (more grid cells)\n",
-      "  - Fewer habitat categories (habitat_scheme = NULL for 3 categories)\n",
-      "  - Broader taxonomic group (more species)\n",
-      "Returning occurrences and grid_result without priors.",
-      call. = FALSE
-    )
-    NULL
-  })
+  model_fit <- tryCatch(
+    {
+      screen_spatial_formula(
+        data          = model_data,
+        formula_full  = model_formula,
+        sd_threshold  = sd_threshold,
+        delta_aic_max = 2.0,
+        verbose       = verbose
+      )
+    },
+    error = function(e) {
+      n_rows <- nrow(model_data)
+      n_sites <- dplyr::n_distinct(model_data$grid_id)
+      n_taxa <- dplyr::n_distinct(model_data$taxon_name)
+      n_hab <- dplyr::n_distinct(model_data$main_habitat)
+      warning(
+        "build_priors: model training failed (", conditionMessage(e), ").\n",
+        sprintf("  Data: %d rows, %d grid cells, %d taxa, %d habitats.\n", n_rows, n_sites, n_taxa, n_hab),
+        "  The spatial model needs more data. Try:\n",
+        "  - Larger search_radius_deg (more grid cells)\n",
+        "  - Fewer habitat categories (habitat_scheme = NULL for 3 categories)\n",
+        "  - Broader taxonomic group (more species)\n",
+        "Returning occurrences and grid_result without priors.",
+        call. = FALSE
+      )
+      NULL
+    }
+  )
 
   if (is.null(model_fit)) {
     return(list(
@@ -657,8 +693,10 @@ build_priors <- function(
 
   priors_combined <- dplyr::bind_rows(priors_observed, priors_undetected)
 
-  .msg(sprintf("  %d observed + %d undetected = %d total prior rows.",
-               nrow(priors_observed), nrow(priors_undetected), nrow(priors_combined)))
+  .msg(sprintf(
+    "  %d observed + %d undetected = %d total prior rows.",
+    nrow(priors_observed), nrow(priors_undetected), nrow(priors_combined)
+  ))
 
   # =========================================================================
   # Stage 7: Translate to target backbone
@@ -668,7 +706,8 @@ build_priors <- function(
   gbif_taxa_unique <- unique(priors_combined$taxon_name)
 
   ncbi_lookup <- TaxaTools::verify_taxon_names(gbif_taxa_unique,
-                                                backbone_id = target_backbone_id) |>
+    backbone_id = target_backbone_id
+  ) |>
     TaxaTools::change_backbone(
       input_col          = "user_supplied_name",
       old_backbone_label = "gbif_name",
@@ -680,7 +719,8 @@ build_priors <- function(
   # NCBI directly, so this recovery step should be a no-op for NCBI backbone.
   # Retained as safety net for other backbones.
   ncbi_lookup <- .recover_demoted_species(ncbi_lookup, target_backbone_id,
-                                           verbose = verbose)
+    verbose = verbose
+  )
 
   translated <- priors_combined |>
     dplyr::left_join(ncbi_lookup, by = c("taxon_name" = "gbif_name")) |>
@@ -689,8 +729,10 @@ build_priors <- function(
   taxaexpect_priors <- TaxaTools::create_taxon_names(translated, rank_system = translated_ranks)
 
   n_translated <- sum(!is.na(taxaexpect_priors$taxon_name))
-  .msg(sprintf("  %d of %d prior rows have a translated name.",
-               n_translated, nrow(taxaexpect_priors)))
+  .msg(sprintf(
+    "  %d of %d prior rows have a translated name.",
+    n_translated, nrow(taxaexpect_priors)
+  ))
 
   .save(taxaexpect_priors, "taxaexpect_priors")
 
@@ -744,7 +786,6 @@ build_priors <- function(
 # --------------------------------------------------------------------------
 #' @noRd
 .translate_to_gbif <- function(taxa, rank_system, search_rank, .msg) {
-
   # Translate input taxa to GBIF backbone by verifying the finest available
   # names against GBIF, then aggregating to `search_rank`. Species-level
   # queries are essential because family-level disagreements (e.g. Girellidae
@@ -757,19 +798,25 @@ build_priors <- function(
     c("species", "genus", "family", "order", "class", "phylum", "kingdom"),
     tolower(names(taxa))
   )
-  if (length(rank_cols) == 0L) return(taxa)
+  if (length(rank_cols) == 0L) {
+    return(taxa)
+  }
 
   # Extract finest-rank name per row (species > genus > family > ...)
   finest_names <- vapply(seq_len(nrow(taxa)), function(i) {
     for (rc in rank_cols) {
       val <- taxa[[rc]][i]
-      if (!is.na(val) && nzchar(trimws(val))) return(trimws(val))
+      if (!is.na(val) && nzchar(trimws(val))) {
+        return(trimws(val))
+      }
     }
     NA_character_
   }, character(1L))
 
   unique_names <- unique(finest_names[!is.na(finest_names)])
-  if (length(unique_names) == 0L) return(taxa)
+  if (length(unique_names) == 0L) {
+    return(taxa)
+  }
 
   # Verify against GBIF backbone (backbone_id = 11)
   gbif_verified <- tryCatch(
@@ -779,17 +826,22 @@ build_priors <- function(
       NULL
     }
   )
-  if (is.null(gbif_verified) || nrow(gbif_verified) == 0L) return(taxa)
+  if (is.null(gbif_verified) || nrow(gbif_verified) == 0L) {
+    return(taxa)
+  }
 
   gbif_parsed <- tryCatch(
     TaxaTools::change_backbone(gbif_verified,
-                               input_col = "user_supplied_name"),
+      input_col = "user_supplied_name"
+    ),
     error = function(e) {
       .msg("  NOTE: change_backbone() failed: ", conditionMessage(e))
       NULL
     }
   )
-  if (is.null(gbif_parsed) || nrow(gbif_parsed) == 0L) return(taxa)
+  if (is.null(gbif_parsed) || nrow(gbif_parsed) == 0L) {
+    return(taxa)
+  }
 
   # Extract unique GBIF values at the search_rank level from classification
   # paths. This is the key step: species classification paths reveal the
@@ -802,7 +854,7 @@ build_priors <- function(
       orig_values <- unique(taxa[[search_rank]])
       orig_values <- orig_values[!is.na(orig_values) & nzchar(orig_values)]
 
-      new_values  <- setdiff(gbif_values, orig_values)
+      new_values <- setdiff(gbif_values, orig_values)
       lost_values <- setdiff(orig_values, gbif_values)
 
       if (length(new_values) > 0L || length(lost_values) > 0L) {
@@ -826,7 +878,9 @@ build_priors <- function(
     # search_rank column not in GBIF output -- fall back to per-row
     # replacement of whatever rank columns exist.
     gbif_rank_cols <- intersect(rank_cols, names(gbif_parsed))
-    if (length(gbif_rank_cols) == 0L) return(taxa)
+    if (length(gbif_rank_cols) == 0L) {
+      return(taxa)
+    }
 
     n_changed <- 0L
     for (i in seq_len(nrow(taxa))) {

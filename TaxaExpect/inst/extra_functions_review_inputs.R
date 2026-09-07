@@ -48,7 +48,7 @@
 # string/data-reshaping helpers, not I/O-performing functions.
 # ==============================================================================
 
-#devtools::load_all()   # or: library(TaxaExpect)
+# devtools::load_all()   # or: library(TaxaExpect)
 library(TaxaExpect)
 
 
@@ -66,21 +66,21 @@ library(TaxaExpect)
 # hand-picked (a, b) pair with an obvious expected answer (Beta(2, 8) has
 # mean 0.2) is the clearest possible input for a reviewer to hand-verify.
 mean_val <- TaxaExpect:::.beta_mean(a = 2, b = 8)
-mean_val   # 0.2 = 2 / (2 + 8)
+mean_val # 0.2 = 2 / (2 + 8)
 
 # Vectorised over a/b pairs, exactly as every real caller uses it (one alpha/
 # beta pair per prior row) -- shown here with the same Beta(2, 8) case plus a
 # symmetric Beta(5, 5) (mean 0.5) alongside it.
-TaxaExpect:::.beta_mean(a = c(2, 5), b = c(8, 5))   # c(0.2, 0.5)
+TaxaExpect:::.beta_mean(a = c(2, 5), b = c(8, 5)) # c(0.2, 0.5)
 
 ## ---- .beta_sd() ---- OFFLINE, new small synthetic input ----------------------
 # Same Beta(2, 8) input as .beta_mean() above, for direct side-by-side
 # comparison -- both helpers are always called together on the same (a, b)
 # pair by every real caller (mean and SD of the same fitted Beta prior).
 sd_val <- TaxaExpect:::.beta_sd(a = 2, b = 8)
-sd_val   # sqrt((2*8) / ((2+8)^2 * (2+8+1))) ~= 0.1206
+sd_val # sqrt((2*8) / ((2+8)^2 * (2+8+1))) ~= 0.1206
 
-TaxaExpect:::.beta_sd(a = c(2, 5), b = c(8, 5))   # c(~0.1206, ~0.1508)
+TaxaExpect:::.beta_sd(a = c(2, 5), b = c(8, 5)) # c(~0.1206, ~0.1508)
 
 
 # ==============================================================================
@@ -143,11 +143,11 @@ TaxaExpect:::.parse_grid_id_coords(ids)
 # internal split(data, sampling_group_col) does before calling
 # .prepare_one_group() on each piece.
 one_group_data <- data.frame(
-  grid_id      = "g1",
-  lat_r        = 34,
-  lon_r        = -120,
+  grid_id = "g1",
+  lat_r = 34,
+  lon_r = -120,
   main_habitat = "Kelp",
-  taxon_name   = c(rep("V1", 3), rep("V2", 2)),
+  taxon_name = c(rep("V1", 3), rep("V2", 2)),
   stringsAsFactors = FALSE
 )
 
@@ -156,8 +156,10 @@ one_group_out <- TaxaExpect:::.prepare_one_group(
   covariates  = c("lat_r", "lon_r"),
   habitat_col = "main_habitat"
 )
-one_group_out[, c("grid_id", "taxon_name", "n_species", "n_total_at_site",
-                   "n_other", "is_present", "observed_in_habitat")]
+one_group_out[, c(
+  "grid_id", "taxon_name", "n_species", "n_total_at_site",
+  "n_other", "is_present", "observed_in_habitat"
+)]
 # n_total_at_site = 5 for both V1 and V2 -- this group's own total (3+2),
 # NOT contaminated by the phytoplankton group's 10 records (which
 # .prepare_one_group() never sees when called this way, since the split
@@ -172,4 +174,4 @@ one_group_out_nohab <- TaxaExpect:::.prepare_one_group(
   covariates  = c("lat_r", "lon_r"),
   habitat_col = NULL
 )
-names(one_group_out_nohab)   # no "main_habitat" column present
+names(one_group_out_nohab) # no "main_habitat" column present

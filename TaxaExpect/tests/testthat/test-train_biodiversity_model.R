@@ -26,50 +26,51 @@ library(dplyr)
 # n_common: species with many detections (Tier 1 candidates)
 # n_rare:   species with few detections (Tier 2 candidates)
 .make_train_data <- function(n_common = 3,
-                              n_rare   = 2,
-                              n_sites  = 20,
-                              seed     = 42) {
+                             n_rare = 2,
+                             n_sites = 20,
+                             seed = 42) {
   set.seed(seed)
   habitats <- c("Kelp", "Rocky", "Sandy")
-  grids    <- paste0("g", seq_len(n_sites))
+  grids <- paste0("g", seq_len(n_sites))
   lat_vals <- seq(33, 37, length.out = n_sites)
   lon_vals <- seq(-122, -118, length.out = n_sites)
 
   site_df <- data.frame(
-    grid_id         = grids,
-    lat_r           = lat_vals,
-    lon_r           = lon_vals,
-    lat_r_s         = as.numeric(scale(lat_vals)),
-    lon_r_s         = as.numeric(scale(lon_vals)),
-    main_habitat    = sample(habitats, n_sites, replace = TRUE),
+    grid_id = grids,
+    lat_r = lat_vals,
+    lon_r = lon_vals,
+    lat_r_s = as.numeric(scale(lat_vals)),
+    lon_r_s = as.numeric(scale(lon_vals)),
+    main_habitat = sample(habitats, n_sites, replace = TRUE),
     n_total_at_site = 15L,
     stringsAsFactors = FALSE
   )
 
   # Common: detected at many sites
-  common_sp   <- paste0("Common_", LETTERS[seq_len(n_common)])
+  common_sp <- paste0("Common_", LETTERS[seq_len(n_common)])
   common_rows <- lapply(common_sp, function(sp) {
     n_det <- rbinom(n_sites, size = 15L, prob = runif(1, 0.4, 0.7))
     dplyr::mutate(site_df,
-      taxon_name               = sp,
-      n_species                = n_det,
-      n_other                  = 15L - n_det,
-      is_present               = as.integer(n_det > 0),
+      taxon_name = sp,
+      n_species = n_det,
+      n_other = 15L - n_det,
+      is_present = as.integer(n_det > 0),
       observed_in_habitat = TRUE
     )
   })
 
   # Rare: detected at 1-2 sites only
-  rare_sp   <- paste0("Rare_", seq_len(n_rare))
+  rare_sp <- paste0("Rare_", seq_len(n_rare))
   rare_rows <- lapply(rare_sp, function(sp) {
     n_det <- integer(n_sites)
     n_det[sample(n_sites, min(2L, n_sites))] <- sample(1:3, min(2L, n_sites),
-                                                        replace = TRUE)
+      replace = TRUE
+    )
     dplyr::mutate(site_df,
-      taxon_name               = sp,
-      n_species                = n_det,
-      n_other                  = 15L - n_det,
-      is_present               = as.integer(n_det > 0),
+      taxon_name = sp,
+      n_species = n_det,
+      n_other = 15L - n_det,
+      is_present = as.integer(n_det > 0),
       observed_in_habitat = TRUE
     )
   })
@@ -92,12 +93,12 @@ library(dplyr)
   lon_vals <- seq(-122, -119, length.out = n_sites)
 
   site_df <- data.frame(
-    grid_id         = paste0("g", seq_len(n_sites)),
-    lat_r           = lat_vals,
-    lon_r           = lon_vals,
-    lat_r_s         = as.numeric(scale(lat_vals)),
-    lon_r_s         = as.numeric(scale(lon_vals)),
-    main_habitat    = sample(c("Kelp", "Rocky"), n_sites, replace = TRUE),
+    grid_id = paste0("g", seq_len(n_sites)),
+    lat_r = lat_vals,
+    lon_r = lon_vals,
+    lat_r_s = as.numeric(scale(lat_vals)),
+    lon_r_s = as.numeric(scale(lon_vals)),
+    main_habitat = sample(c("Kelp", "Rocky"), n_sites, replace = TRUE),
     n_total_at_site = 10L,
     stringsAsFactors = FALSE
   )
@@ -106,10 +107,10 @@ library(dplyr)
     n_det <- integer(n_sites)
     n_det[1] <- 1L
     dplyr::mutate(site_df,
-      taxon_name               = sp,
-      n_species                = n_det,
-      n_other                  = 10L - n_det,
-      is_present               = as.integer(n_det > 0),
+      taxon_name = sp,
+      n_species = n_det,
+      n_other = 10L - n_det,
+      is_present = as.integer(n_det > 0),
       observed_in_habitat = TRUE
     )
   })
@@ -133,11 +134,13 @@ library(dplyr)
 # rare species so Tier 2 actually gets exercised (the regression this
 # session found only shows up when a Tier 2 species exists).
 .make_train_data_no_habitat <- function(n_common = 3,
-                                        n_rare   = 2,
-                                        n_sites  = 20,
-                                        seed     = 42) {
-  df <- .make_train_data(n_common = n_common, n_rare = n_rare,
-                         n_sites = n_sites, seed = seed)
+                                        n_rare = 2,
+                                        n_sites = 20,
+                                        seed = 42) {
+  df <- .make_train_data(
+    n_common = n_common, n_rare = n_rare,
+    n_sites = n_sites, seed = seed
+  )
   sp <- attr(df, "scale_params")
   df$main_habitat <- NULL
   attr(df, "scale_params") <- sp
@@ -155,17 +158,19 @@ library(dplyr)
 test_that("train_biodiversity_model returns a biofreq_model object", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data()
-  mod  <- train_biodiversity_model(data, formula = .simple_formula())
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
   expect_s3_class(mod, "biofreq_model")
   expect_true(is.list(mod))
 })
 
 test_that("output contains expected top-level components", {
   skip_if_not_installed("glmmTMB")
-  data     <- .make_train_data()
-  mod      <- train_biodiversity_model(data, formula = .simple_formula())
-  required <- c("models", "tiers", "scale_params", "singletons",
-                "N_total", "tier2_empirical", "convergence_warnings", "meta")
+  data <- .make_train_data()
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
+  required <- c(
+    "models", "tiers", "scale_params", "singletons",
+    "N_total", "tier2_empirical", "convergence_warnings", "meta"
+  )
   for (nm in required) {
     expect_true(nm %in% names(mod), info = paste("Missing component:", nm))
   }
@@ -174,7 +179,7 @@ test_that("output contains expected top-level components", {
 test_that("$models is a list with $tier1 and $tier2 slots", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data()
-  mod  <- train_biodiversity_model(data, formula = .simple_formula())
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
   expect_true(is.list(mod$models))
   expect_true("tier1" %in% names(mod$models))
   expect_true("tier2" %in% names(mod$models))
@@ -183,7 +188,7 @@ test_that("$models is a list with $tier1 and $tier2 slots", {
 test_that("$meta contains formula_tier1 and formula_tier2 as character strings", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data()
-  mod  <- train_biodiversity_model(data, formula = .simple_formula())
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
   expect_true(!is.null(mod$meta$formula_tier1))
   expect_true(!is.null(mod$meta$formula_tier2))
   expect_type(mod$meta$formula_tier1, "character")
@@ -196,63 +201,67 @@ test_that("$meta contains formula_tier1 and formula_tier2 as character strings",
 
 test_that("$tiers is a dataframe with taxon_name, tier, n_detections", {
   skip_if_not_installed("glmmTMB")
-  data  <- .make_train_data()
-  mod   <- train_biodiversity_model(data, formula = .simple_formula())
+  data <- .make_train_data()
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
   tiers <- mod$tiers
   expect_true(is.data.frame(tiers))
-  expect_true("taxon_name"   %in% names(tiers))
-  expect_true("tier"         %in% names(tiers))
+  expect_true("taxon_name" %in% names(tiers))
+  expect_true("tier" %in% names(tiers))
   expect_true("n_detections" %in% names(tiers))
 })
 
 test_that("every training species has a tier assignment", {
   skip_if_not_installed("glmmTMB")
-  data     <- .make_train_data()
-  mod      <- train_biodiversity_model(data, formula = .simple_formula())
-  all_sp   <- unique(data$taxon_name)
+  data <- .make_train_data()
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
+  all_sp <- unique(data$taxon_name)
   tiers_sp <- mod$tiers$taxon_name
   expect_setequal(all_sp, tiers_sp)
 })
 
 test_that("tier values are strings 'tier1' and/or 'tier2'", {
   skip_if_not_installed("glmmTMB")
-  data  <- .make_train_data()
-  mod   <- train_biodiversity_model(data, formula = .simple_formula())
+  data <- .make_train_data()
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
   tiers <- mod$tiers$tier
   expect_true(all(tiers %in% c("tier1", "tier2")))
 })
 
 test_that("common species (many detections) are assigned 'tier1'", {
   skip_if_not_installed("glmmTMB")
-  data   <- .make_train_data(n_common = 3, n_rare = 0)
-  mod    <- train_biodiversity_model(data,
-                                     formula          = .simple_formula(),
-                                     min_obs_threshold = 5L)
-  tiers  <- mod$tiers
+  data <- .make_train_data(n_common = 3, n_rare = 0)
+  mod <- train_biodiversity_model(data,
+    formula = .simple_formula(),
+    min_obs_threshold = 5L
+  )
+  tiers <- mod$tiers
   common <- tiers$tier[grepl("^Common_", tiers$taxon_name)]
   expect_true(all(common == "tier1"))
 })
 
 test_that("rare species fall to 'tier2' when below min_obs_threshold", {
   skip_if_not_installed("glmmTMB")
-  data  <- .make_all_rare_data()
-  mod   <- train_biodiversity_model(data,
-                                    formula          = .simple_formula(),
-                                    min_obs_threshold = 5L)
+  data <- .make_all_rare_data()
+  mod <- train_biodiversity_model(data,
+    formula = .simple_formula(),
+    min_obs_threshold = 5L
+  )
   tiers <- mod$tiers
   expect_true(all(tiers$tier == "tier2"))
 })
 
 test_that("raising min_obs_threshold moves species from tier1 to tier2", {
   skip_if_not_installed("glmmTMB")
-  data  <- .make_train_data(n_common = 3, n_rare = 2)
-  mod1  <- train_biodiversity_model(data,
-                                    formula          = .simple_formula(),
-                                    min_obs_threshold = 2L)
-  mod2  <- train_biodiversity_model(data,
-                                    formula          = .simple_formula(),
-                                    min_obs_threshold = 50L)
-  n_t1_low  <- sum(mod1$tiers$tier == "tier1")
+  data <- .make_train_data(n_common = 3, n_rare = 2)
+  mod1 <- train_biodiversity_model(data,
+    formula = .simple_formula(),
+    min_obs_threshold = 2L
+  )
+  mod2 <- train_biodiversity_model(data,
+    formula = .simple_formula(),
+    min_obs_threshold = 50L
+  )
+  n_t1_low <- sum(mod1$tiers$tier == "tier1")
   n_t1_high <- sum(mod2$tiers$tier == "tier1")
   expect_gte(n_t1_low, n_t1_high)
 })
@@ -264,8 +273,8 @@ test_that("raising min_obs_threshold moves species from tier1 to tier2", {
 test_that("$scale_params is a list with center and scale entries", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data()
-  mod  <- train_biodiversity_model(data, formula = .simple_formula())
-  sp   <- mod$scale_params
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
+  sp <- mod$scale_params
   expect_true(is.list(sp))
   expect_true(any(grepl("lat_r|lon_r", names(sp))))
   # Each entry should have $center and $scale
@@ -281,14 +290,14 @@ test_that("$scale_params is a list with center and scale entries", {
 test_that("$N_total is a positive integer", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data()
-  mod  <- train_biodiversity_model(data, formula = .simple_formula())
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
   expect_true(mod$N_total > 0)
 })
 
 test_that("$singletons is a dataframe", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data()
-  mod  <- train_biodiversity_model(data, formula = .simple_formula())
+  mod <- train_biodiversity_model(data, formula = .simple_formula())
   expect_true(is.data.frame(mod$singletons))
 })
 
@@ -301,8 +310,9 @@ test_that("effort_threshold below all site totals excludes no data", {
   data <- .make_train_data(n_sites = 20)
   expect_no_error(
     train_biodiversity_model(data,
-                             formula          = .simple_formula(),
-                             effort_threshold = 5L)
+      formula          = .simple_formula(),
+      effort_threshold = 5L
+    )
   )
 })
 
@@ -313,9 +323,10 @@ test_that("effort_threshold below all site totals excludes no data", {
 test_that("$models$tier1 is a glmmTMB object when Tier 1 species exist", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data(n_common = 3)
-  mod  <- train_biodiversity_model(data,
-                                   formula          = .simple_formula(),
-                                   min_obs_threshold = 5L)
+  mod <- train_biodiversity_model(data,
+    formula = .simple_formula(),
+    min_obs_threshold = 5L
+  )
   expect_s3_class(mod$models$tier1, "glmmTMB")
 })
 
@@ -338,7 +349,8 @@ test_that("response = 'psi' runs without error", {
 test_that("formula is required and must be a formula object", {
   data <- .make_train_data()
   expect_error(train_biodiversity_model(data),
-               info = "formula argument is required")
+    info = "formula argument is required"
+  )
   expect_error(
     train_biodiversity_model(data, formula = "n_species ~ 1"),
     regexp = "formula.*formula object"
@@ -348,8 +360,10 @@ test_that("formula is required and must be a formula object", {
 test_that("LHS must be cbind() for response = 'theta'", {
   data <- .make_train_data()
   expect_error(
-    train_biodiversity_model(data, formula = n_species ~ main_habitat,
-                             response = "theta"),
+    train_biodiversity_model(data,
+      formula = n_species ~ main_habitat,
+      response = "theta"
+    ),
     regexp = "cbind"
   )
 })
@@ -376,10 +390,11 @@ test_that("missing required columns trigger informative error", {
 test_that("habitat_col = NULL fits Tier 1 and Tier 2 without a habitat term", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data_no_habitat(n_common = 3, n_rare = 2)
-  mod  <- train_biodiversity_model(data,
-                                   formula     = .no_habitat_formula(),
-                                   habitat_col = NULL,
-                                   min_obs_threshold = 5L)
+  mod <- train_biodiversity_model(data,
+    formula = .no_habitat_formula(),
+    habitat_col = NULL,
+    min_obs_threshold = 5L
+  )
   expect_s3_class(mod, "biofreq_model")
   expect_true(is.null(mod$meta$habitat_col))
   # The key regression: Tier 2 must actually fit, not error out.
@@ -391,9 +406,10 @@ test_that("habitat_col = NULL fits Tier 1 and Tier 2 without a habitat term", {
 test_that("habitat_col = NULL produces no habitat_screening entries", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data_no_habitat()
-  mod  <- train_biodiversity_model(data,
-                                   formula     = .no_habitat_formula(),
-                                   habitat_col = NULL)
+  mod <- train_biodiversity_model(data,
+    formula     = .no_habitat_formula(),
+    habitat_col = NULL
+  )
   expect_length(mod$habitat_screening$supported, 0)
   expect_length(mod$habitat_screening$sparse, 0)
 })
@@ -413,10 +429,11 @@ test_that("habitat_col = NULL errors clearly if formula still has a diag() habit
 test_that("$N_total and $singletons work correctly with habitat_col = NULL", {
   skip_if_not_installed("glmmTMB")
   data <- .make_train_data_no_habitat(n_common = 3, n_rare = 2)
-  mod  <- train_biodiversity_model(data,
-                                   formula     = .no_habitat_formula(),
-                                   habitat_col = NULL,
-                                   min_obs_threshold = 5L)
+  mod <- train_biodiversity_model(data,
+    formula = .no_habitat_formula(),
+    habitat_col = NULL,
+    min_obs_threshold = 5L
+  )
   expect_true(mod$N_total > 0)
   expect_true(is.data.frame(mod$singletons))
 })

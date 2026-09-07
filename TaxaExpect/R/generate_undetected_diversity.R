@@ -158,9 +158,8 @@
 
 generate_undetected_diversity <- function(model_obj,
                                           jeffreys_threshold = 2L,
-                                          singleton_ess      = 2L,
-                                          taxonomy           = NULL) {
-
+                                          singleton_ess = 2L,
+                                          taxonomy = NULL) {
   # --- Input checks -----------------------------------------------------------
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     # Kernel-priors adapter (Phase 2 redesign, 2026-08-31): re-plumb the same
@@ -191,15 +190,21 @@ generate_undetected_diversity <- function(model_obj,
     # fits are unaffected: the sum IS the group's own n_eff.
     n_eff_for <- rep(kp$n_eff, nrow(sing))
     if ("sampling_group" %in% names(sing) && !is.null(kp$budget) &&
-        nrow(kp$budget) > 1L) {
-      n_eff_for <- kp$budget$n_eff[match(as.character(sing$sampling_group),
-                                         kp$budget$sampling_group)]
-      if (anyNA(n_eff_for))
-        stop("generate_undetected_diversity: a singleton's sampling group is ",
-             "absent from the fit's own budget -- the fit is inconsistent.")
+      nrow(kp$budget) > 1L) {
+      n_eff_for <- kp$budget$n_eff[match(
+        as.character(sing$sampling_group),
+        kp$budget$sampling_group
+      )]
+      if (anyNA(n_eff_for)) {
+        stop(
+          "generate_undetected_diversity: a singleton's sampling group is ",
+          "absent from the fit's own budget -- the fit is inconsistent."
+        )
+      }
       message(sprintf(
         "generate_undetected_diversity: multi-group kernel fit (%d groups) -- each singleton mirror scaled by its OWN group's n_eff, not the pooled sum.",
-        nrow(kp$budget)))
+        nrow(kp$budget)
+      ))
     }
     singletons <- tibble::tibble(
       taxon_name      = sing$taxon_name,
@@ -208,22 +213,30 @@ generate_undetected_diversity <- function(model_obj,
       n_total_at_site = N_total,
       main_habitat    = kp$params$site_habitat
     )
-    model_obj <- list(N_total = N_total, singletons = singletons,
-                      meta = list(taxon_col = "taxon_name",
-                                  habitat_col = habitat_col))
+    model_obj <- list(
+      N_total = N_total, singletons = singletons,
+      meta = list(
+        taxon_col = "taxon_name",
+        habitat_col = habitat_col
+      )
+    )
   } else if (!inherits(model_obj, "biofreq_model")) {
-    stop("generate_undetected_diversity: model_obj must be a biofreq_model ",
-         "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
-         "object from estimate_kernel_priors().")
+    stop(
+      "generate_undetected_diversity: model_obj must be a biofreq_model ",
+      "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
+      "object from estimate_kernel_priors()."
+    )
   }
 
-  N_total     <- model_obj$N_total
-  singletons  <- model_obj$singletons
+  N_total <- model_obj$N_total
+  singletons <- model_obj$singletons
   habitat_col <- model_obj$meta$habitat_col
 
   if (N_total <= 0) {
-    stop("generate_undetected_diversity: N_total is zero or negative. ",
-         "Check that train_biodiversity_model() ran successfully.")
+    stop(
+      "generate_undetected_diversity: N_total is zero or negative. ",
+      "Check that train_biodiversity_model() ran successfully."
+    )
   }
 
   tax_rank_cols <- .dark_diversity_rank_cols
@@ -256,8 +269,8 @@ generate_undetected_diversity <- function(model_obj,
     ))
 
     for (i in seq_len(nrow(singletons))) {
-      row        <- singletons[i, ]
-      theta_obs  <- row$theta_obs
+      row <- singletons[i, ]
+      theta_obs <- row$theta_obs
 
       # Guard against NA or boundary theta values
       if (is.na(theta_obs) || theta_obs <= 0 || theta_obs >= 1) {
@@ -276,7 +289,7 @@ generate_undetected_diversity <- function(model_obj,
       # evidence that undetected species have similar detectability to
       # observed singletons.
       alpha_i <- theta_obs * singleton_ess
-      beta_i  <- (1 - theta_obs) * singleton_ess
+      beta_i <- (1 - theta_obs) * singleton_ess
 
       proxy_tbl <- tibble::tibble(
         taxon_name        = NA_character_,
@@ -307,7 +320,7 @@ generate_undetected_diversity <- function(model_obj,
   if (N_total < jeffreys_threshold) {
     # Jeffreys prior for very small N_total
     alpha_floor <- 0.5
-    beta_floor  <- 0.5
+    beta_floor <- 0.5
     message(sprintf(
       "N_total (%d) below jeffreys_threshold (%d): using Jeffreys prior Beta(0.5, 0.5).",
       N_total, jeffreys_threshold
@@ -318,7 +331,7 @@ generate_undetected_diversity <- function(model_obj,
     # the expected theta if an undetected species appeared exactly once
     # across all sampling effort. A principled lower bound.
     alpha_floor <- 1
-    beta_floor  <- N_total - 1
+    beta_floor <- N_total - 1
   }
 
   global_floor <- tibble::tibble(
@@ -358,8 +371,8 @@ generate_undetected_diversity <- function(model_obj,
       by = c("source_taxon_name" = "taxon_name")
     )
     n_matched <- sum(!is.na(result$source_taxon_name) &
-                     result$undetected_type == "singleton_mirror" &
-                     !is.na(result[[tax_cols_present[1]]]))
+      result$undetected_type == "singleton_mirror" &
+      !is.na(result[[tax_cols_present[1]]]))
     message(sprintf(
       "  Taxonomy join: %d / %d singleton mirror(s) annotated with %s.",
       n_matched,

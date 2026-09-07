@@ -205,31 +205,31 @@
 #' @importFrom tibble tibble
 #' @export
 generate_regional_proximity_evidence <- function(
-    zero_bbox_taxa,
-    lat, lng,
-    d_half                = 150,
-    w_scale               = 1,
-    age_half              = 15,
-    tile_zoom             = 6L,
-    buffer_margin         = 1.5,
-    min_buffer_km         = 50,
-    max_buffer_km         = 1000,
-    near_lat_tolerance_deg = 6,
-    near_occurrence_min_n  = 3L,
-    max_coord_uncertainty = 500,
-    year_range            = NULL,
-    cache_dir             = tools::R_user_dir("TaxaFetch", "cache"),
-    verbose               = FALSE
+  zero_bbox_taxa,
+  lat, lng,
+  d_half = 150,
+  w_scale = 1,
+  age_half = 15,
+  tile_zoom = 6L,
+  buffer_margin = 1.5,
+  min_buffer_km = 50,
+  max_buffer_km = 1000,
+  near_lat_tolerance_deg = 6,
+  near_occurrence_min_n = 3L,
+  max_coord_uncertainty = 500,
+  year_range = NULL,
+  cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
+  verbose = FALSE
 ) {
   if (!is.character(zero_bbox_taxa) || length(zero_bbox_taxa) == 0L) {
     stop("generate_regional_proximity_evidence: `zero_bbox_taxa` must be a non-empty character vector.")
   }
   if (!is.numeric(lat) || length(lat) != 1L || is.na(lat) ||
-      !is.numeric(lng) || length(lng) != 1L || is.na(lng)) {
+    !is.numeric(lng) || length(lng) != 1L || is.na(lng)) {
     stop("generate_regional_proximity_evidence: `lat`/`lng` must be single non-NA numeric values.")
   }
   if (!is.numeric(w_scale) || length(w_scale) != 1L || is.na(w_scale) ||
-      w_scale <= 0 || w_scale > 1) {
+    w_scale <= 0 || w_scale > 1) {
     stop("generate_regional_proximity_evidence: `w_scale` must be a single value in (0, 1].")
   }
   for (nm in c("d_half", "age_half", "near_lat_tolerance_deg")) {
@@ -239,7 +239,7 @@ generate_regional_proximity_evidence <- function(
     }
   }
   if (!is.numeric(near_occurrence_min_n) || length(near_occurrence_min_n) != 1L ||
-      is.na(near_occurrence_min_n) || near_occurrence_min_n < 0) {
+    is.na(near_occurrence_min_n) || near_occurrence_min_n < 0) {
     stop("generate_regional_proximity_evidence: `near_occurrence_min_n` must be a single non-negative integer.")
   }
   for (pkg in c("TaxaFlag", "TaxaFetch", "rgbif")) {
@@ -278,7 +278,7 @@ generate_regional_proximity_evidence <- function(
   for (i in seq_along(taxa)) {
     nm <- taxa[i]
 
-    taxon_key    <- key_lookup$usage_key[i]
+    taxon_key <- key_lookup$usage_key[i]
     gbif_species <- key_lookup$gbif_species[i]
     if (is.na(taxon_key)) {
       if (verbose) message(sprintf("[%d/%d] %s: no GBIF backbone match -- skipped.", i, length(taxa), nm))
@@ -354,7 +354,7 @@ generate_regional_proximity_evidence <- function(
     # naming convention `zero_bbox_taxa` itself used, and this internal
     # GBIF-name substitution must not leak into that join key.
     dist_out <- TaxaFlag::compute_local_occurrence_distance(
-      taxon_names     = gbif_species, query_lat = lat, query_lon = lng,
+      taxon_names = gbif_species, query_lat = lat, query_lon = lng,
       occurrence_data = occ_clean, taxon_col = "species", date_col = "year"
     )
     if (is.na(dist_out$dist_nearest_km) || dist_out$n_local_records == 0L) {
@@ -374,7 +374,7 @@ generate_regional_proximity_evidence <- function(
     # tool: a taxon with fewer filtered records than near_occurrence_min_n
     # must have ALL of them nearby rather than face an impossible bar.
     occ_species <- occ_clean[!is.na(occ_clean$species) & occ_clean$species == gbif_species &
-                                !is.na(occ_clean$decimalLatitude), , drop = FALSE]
+      !is.na(occ_clean$decimalLatitude), , drop = FALSE]
     near_count <- sum(abs(occ_species$decimalLatitude - lat) <= near_lat_tolerance_deg)
     lat_ok <- if (nrow(occ_species) < near_occurrence_min_n) {
       near_count >= 1L && near_count == nrow(occ_species)
@@ -382,15 +382,17 @@ generate_regional_proximity_evidence <- function(
       near_count >= near_occurrence_min_n
     }
     if (!lat_ok) {
-      if (verbose) message(sprintf(
-        "  Stage 2: %d/%d filtered record(s) within %g deg latitude (need %d) -- skipped as an isolated-record artifact.",
-        near_count, nrow(occ_species), near_lat_tolerance_deg, near_occurrence_min_n
-      ))
+      if (verbose) {
+        message(sprintf(
+          "  Stage 2: %d/%d filtered record(s) within %g deg latitude (need %d) -- skipped as an isolated-record artifact.",
+          near_count, nrow(occ_species), near_lat_tolerance_deg, near_occurrence_min_n
+        ))
+      }
       next
     }
 
     record_year <- suppressWarnings(as.numeric(dist_out$nearest_date))
-    age_years   <- if (is.na(record_year)) NA_real_ else max(0, as.numeric(format(Sys.Date(), "%Y")) - record_year)
+    age_years <- if (is.na(record_year)) NA_real_ else max(0, as.numeric(format(Sys.Date(), "%Y")) - record_year)
 
     weight <- w_scale * exp(-dist_out$dist_nearest_km / d_half)
     p_conc <- if (is.na(age_years)) 1 else exp(-age_years / age_half)
@@ -405,9 +407,13 @@ generate_regional_proximity_evidence <- function(
       age_years      = age_years,
       tile_zoom_used = tile$zoom_used
     )
-    if (verbose) message(sprintf("  applied: weight=%.3f, p_conc=%.2f (distance=%.0fkm, age=%s)",
-                                  weight, p_conc, dist_out$dist_nearest_km,
-                                  if (is.na(age_years)) "unknown" else sprintf("%.0fy", age_years)))
+    if (verbose) {
+      message(sprintf(
+        "  applied: weight=%.3f, p_conc=%.2f (distance=%.0fkm, age=%s)",
+        weight, p_conc, dist_out$dist_nearest_km,
+        if (is.na(age_years)) "unknown" else sprintf("%.0fy", age_years)
+      ))
+    }
   }
 
   result <- dplyr::bind_rows(Filter(Negate(is.null), rows))
@@ -526,7 +532,7 @@ generate_regional_proximity_evidence <- function(
   attempts <- list(
     list(bucket_size = 300L, sleep = 1),
     list(bucket_size = 100L, sleep = 2),
-    list(bucket_size = 50L,  sleep = 3)
+    list(bucket_size = 50L, sleep = 3)
   )
   res <- NULL
   last_error <- NULL
@@ -580,12 +586,12 @@ generate_regional_proximity_evidence <- function(
   }
   is_species <- !is.na(resolved_rank) & resolved_rank == "SPECIES" & !is.na(res$usageKey)
 
-  idx     <- match(taxon_names, res[[match_col]])
+  idx <- match(taxon_names, res[[match_col]])
   has_idx <- !is.na(idx)
-  ok      <- rep(FALSE, length(taxon_names))
+  ok <- rep(FALSE, length(taxon_names))
   ok[has_idx] <- is_species[idx[has_idx]]
 
-  out$usage_key[ok]    <- as.numeric(res$usageKey[idx[ok]])
+  out$usage_key[ok] <- as.numeric(res$usageKey[idx[ok]])
   out$gbif_species[ok] <- resolved_species[idx[ok]]
 
   out

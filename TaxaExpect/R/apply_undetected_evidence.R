@@ -360,24 +360,25 @@
 #' @importFrom tibble tibble
 #' @export
 apply_undetected_evidence <- function(
-    taxaexpect_priors,
-    model_obj,
-    evidence,
-    grid_id,
-    main_habitat    = NULL,
-    taxonomy        = NULL,
-    pricing         = c("blend", "curve"),
-    sampling_group  = NULL,
-    group_fallback  = c("pooled_qualifying", "error", "skip"),
-    min_group_n_eff = 100,
-    min_group_f1    = 1L
+  taxaexpect_priors,
+  model_obj,
+  evidence,
+  grid_id,
+  main_habitat = NULL,
+  taxonomy = NULL,
+  pricing = c("blend", "curve"),
+  sampling_group = NULL,
+  group_fallback = c("pooled_qualifying", "error", "skip"),
+  min_group_n_eff = 100,
+  min_group_f1 = 1L
 ) {
   pricing <- match.arg(pricing)
   group_fallback <- match.arg(group_fallback)
   for (.nm in c("min_group_n_eff", "min_group_f1")) {
     .v <- get(.nm)
-    if (!is.numeric(.v) || length(.v) != 1L || is.na(.v) || .v < 0)
+    if (!is.numeric(.v) || length(.v) != 1L || is.na(.v) || .v < 0) {
       stop("apply_undetected_evidence: `", .nm, "` must be a single non-negative number.")
+    }
   }
   # Curve pricing (unobserved-taxa redesign, 2026-08-31): theta = w *
   # theta_present, with theta_present = missing_mass / f1 from the kernel fit
@@ -408,32 +409,39 @@ apply_undetected_evidence <- function(
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     # A one-group fit still has a group NAME when sampling_group_col was
     # supplied; recorded so the output says which process it priced.
-    if (!is.null(model_obj$budget) && nrow(model_obj$budget) == 1L)
+    if (!is.null(model_obj$budget) && nrow(model_obj$budget) == 1L) {
       model_obj_group_label <- as.character(model_obj$budget$sampling_group[1L])
+    }
     kernel_theta_present <- model_obj$theta_present %||% NA_real_
     kernel_f1 <- model_obj$f1 %||% NA_integer_
     kernel_f2 <- model_obj$f2 %||% NA_integer_
     kernel_group_col <- model_obj$params$sampling_group_col %||% NA_character_
     if (pricing == "curve" && (model_obj$params$n_sampling_groups %||% 1L) > 1L) {
       curve_groups <- .resolve_group_prices(
-        model_obj, min_group_n_eff, min_group_f1, group_fallback)
-      if (curve_groups$n_qualifying == 0L)
-        stop("apply_undetected_evidence: not one of this fit's ",
-             nrow(curve_groups$budget), " sampling groups clears the pricing ",
-             "guards (n_eff >= ", min_group_n_eff, ", f1 >= ", min_group_f1,
-             ", and a defined theta_present), so there is no trustworthy price ",
-             "anywhere in it. Inspect model_fit$budget, lower min_group_n_eff ",
-             "if you mean to, or use pricing = \"blend\".")
+        model_obj, min_group_n_eff, min_group_f1, group_fallback
+      )
+      if (curve_groups$n_qualifying == 0L) {
+        stop(
+          "apply_undetected_evidence: not one of this fit's ",
+          nrow(curve_groups$budget), " sampling groups clears the pricing ",
+          "guards (n_eff >= ", min_group_n_eff, ", f1 >= ", min_group_f1,
+          ", and a defined theta_present), so there is no trustworthy price ",
+          "anywhere in it. Inspect model_fit$budget, lower min_group_n_eff ",
+          "if you mean to, or use pricing = \"blend\"."
+        )
+      }
     }
   }
   if (pricing == "curve" && is.null(curve_groups) &&
-      (!is.numeric(kernel_theta_present) || !is.finite(kernel_theta_present) ||
-       kernel_theta_present <= 0)) {
-    stop("apply_undetected_evidence: pricing = \"curve\" requires a ",
-         "taxaexpect_kernel_priors model_obj whose theta_present is a finite ",
-         "positive value (missing_mass / f1 -- needs at least one ",
-         "neighborhood singleton). Re-fit with estimate_kernel_priors() or ",
-         "use pricing = \"blend\".")
+    (!is.numeric(kernel_theta_present) || !is.finite(kernel_theta_present) ||
+      kernel_theta_present <= 0)) {
+    stop(
+      "apply_undetected_evidence: pricing = \"curve\" requires a ",
+      "taxaexpect_kernel_priors model_obj whose theta_present is a finite ",
+      "positive value (missing_mass / f1 -- needs at least one ",
+      "neighborhood singleton). Re-fit with estimate_kernel_priors() or ",
+      "use pricing = \"blend\"."
+    )
   }
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     # Kernel-priors adapter (Phase 2, 2026-08-31): only the habitat concept is
@@ -441,9 +449,11 @@ apply_undetected_evidence <- function(
     model_obj <- list(meta = list(habitat_col = "main_habitat"))
     class(model_obj) <- "biofreq_model_shim"
   } else if (!inherits(model_obj, "biofreq_model")) {
-    stop("apply_undetected_evidence: model_obj must be a biofreq_model ",
-         "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
-         "object from estimate_kernel_priors().")
+    stop(
+      "apply_undetected_evidence: model_obj must be a biofreq_model ",
+      "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
+      "object from estimate_kernel_priors()."
+    )
   }
   if (!is.data.frame(taxaexpect_priors)) {
     stop("apply_undetected_evidence: taxaexpect_priors must be a data frame.")
@@ -455,30 +465,38 @@ apply_undetected_evidence <- function(
   habitat_col <- model_obj$meta$habitat_col
   if (!is.null(habitat_col)) {
     if (is.null(main_habitat) || !is.character(main_habitat) ||
-        length(main_habitat) != 1L || is.na(main_habitat)) {
-      stop("apply_undetected_evidence: `main_habitat` is required (a single ",
-           "non-NA character value) because model_obj was trained with a ",
-           "non-NULL habitat_col. There is no habitat-agnostic option here -- ",
-           "occurrence-plausibility evidence is deliberately habitat-aware.")
+      length(main_habitat) != 1L || is.na(main_habitat)) {
+      stop(
+        "apply_undetected_evidence: `main_habitat` is required (a single ",
+        "non-NA character value) because model_obj was trained with a ",
+        "non-NULL habitat_col. There is no habitat-agnostic option here -- ",
+        "occurrence-plausibility evidence is deliberately habitat-aware."
+      )
     }
   } else if (!is.null(main_habitat)) {
-    stop("apply_undetected_evidence: model_obj was trained with ",
-         "habitat_col = NULL, so `main_habitat` must be NULL too.")
+    stop(
+      "apply_undetected_evidence: model_obj was trained with ",
+      "habitat_col = NULL, so `main_habitat` must be NULL too."
+    )
   }
 
   required_evidence_cols <- c("taxon_name", "weight", "source")
   if (!is.data.frame(evidence) || !all(required_evidence_cols %in% names(evidence))) {
-    stop("apply_undetected_evidence: `evidence` must be a data frame with columns ",
-         paste(required_evidence_cols, collapse = ", "), ".")
+    stop(
+      "apply_undetected_evidence: `evidence` must be a data frame with columns ",
+      paste(required_evidence_cols, collapse = ", "), "."
+    )
   }
   if ("n_eff" %in% names(evidence) && !"p_conc" %in% names(evidence)) {
-    stop("apply_undetected_evidence: `evidence$n_eff` is retired (2026-08-26 ",
-         "mixture redesign). The elevated prior's Beta concentration is now ",
-         "moment-matched from the presence mixture, not caller-chosen; supply ",
-         "`p_conc` (confidence in the presence probability itself, in ",
-         "pseudo-observations -- used by the confirmation update, not by the ",
-         "static prior) or omit both. See ",
-         "ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md.")
+    stop(
+      "apply_undetected_evidence: `evidence$n_eff` is retired (2026-08-26 ",
+      "mixture redesign). The elevated prior's Beta concentration is now ",
+      "moment-matched from the presence mixture, not caller-chosen; supply ",
+      "`p_conc` (confidence in the presence probability itself, in ",
+      "pseudo-observations -- used by the confirmation update, not by the ",
+      "static prior) or omit both. See ",
+      "ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md."
+    )
   }
   if (nrow(evidence) == 0L) {
     message("apply_undetected_evidence: `evidence` has zero rows -- nothing to apply.")
@@ -501,134 +519,144 @@ apply_undetected_evidence <- function(
   # path keeps its original anchor requirements.
   theta_floor <- var_floor <- theta_singleton <- var_singleton <- NA_real_
   if (pricing == "blend") {
-  # ---- Floor anchor: read directly from taxaexpect_priors, don't recompute ---
-  floor_rows <- taxaexpect_priors[
-    !is.na(taxaexpect_priors$undetected_type) &
-      taxaexpect_priors$undetected_type == "global_floor",
-    , drop = FALSE
-  ]
-  if (nrow(floor_rows) == 0L) {
-    stop("apply_undetected_evidence: taxaexpect_priors has no undetected_type == ",
-         "'global_floor' row. Pass generate_undetected_diversity()'s output ",
-         "(or a table it was bound into) so the floor anchor is available.")
-  }
-  floor_alpha <- mean(floor_rows$alpha, na.rm = TRUE)
-  floor_beta  <- mean(floor_rows$beta,  na.rm = TRUE)
-  theta_floor <- .beta_mean(floor_alpha, floor_beta)
-  var_floor   <- .beta_sd(floor_alpha, floor_beta)^2
-
-  # ---- Singleton anchor: prefer this site's own singleton mirrors, fall
-  # back to the global singleton mean when this site has none. Mirrors
-  # TaxaAssign::join_priors()'s own singleton_by_site/global_singleton
-  # fallback design.
-  singleton_rows <- taxaexpect_priors[
-    !is.na(taxaexpect_priors$undetected_type) &
-      taxaexpect_priors$undetected_type == "singleton_mirror",
-    , drop = FALSE
-  ]
-  if (nrow(singleton_rows) == 0L) {
-    # ---- Ceiling anchor ladder (2026-08-26 mixture redesign, D2) -----------
-    # No singletons does NOT mean no ceiling: the anchor's meaning is "the
-    # detection rate of a species present but rare enough to have plausibly
-    # escaped local detection." Descend a ladder of estimates rather than
-    # silently collapsing the ceiling onto the floor (the previous behavior,
-    # which made every elevation a weight-independent no-op):
-    #   (2) minimum theta among genuinely modelled rows -- in a dataset with
-    #       no singletons every detected species was seen >= 2 times, so the
-    #       rarest detected rate mildly OVERestimates the present-but-
-    #       undetected rate: conservative in the safe direction.
-    #   (3) ~1 detection per site effort (n_obs), i.e. what a singleton's
-    #       rate would have been.
-    #   (4) only if neither is computable: the old floor-equals-ceiling
-    #       no-op, with the original warning.
-    theta_singleton <- NA_real_
-    var_singleton   <- NA_real_
-    modelled <- taxaexpect_priors[
-      is.na(taxaexpect_priors$undetected_type) &
-        !is.na(taxaexpect_priors$taxon_name) &
-        !is.na(taxaexpect_priors$alpha) & !is.na(taxaexpect_priors$beta),
-      , drop = FALSE
+    # ---- Floor anchor: read directly from taxaexpect_priors, don't recompute ---
+    floor_rows <- taxaexpect_priors[
+      !is.na(taxaexpect_priors$undetected_type) &
+        taxaexpect_priors$undetected_type == "global_floor", ,
+      drop = FALSE
     ]
-    # Excludes evidence/domestic rows from ever serving as the ceiling anchor
-    # (an evidence-elevated row anchoring the NEXT evidence row is exactly the
-    # circularity this ladder exists to avoid). `model_tier` is doc-deprecated
-    # in favor of `prior_branch` (kernel schema) -- 2026-09-05 critical-fix-
-    # review finding D2: guarding this clause on `"model_tier" %in%
-    # names(modelled)` means the filter silently VANISHES once that column is
-    # actually retired from kernel output, rather than erroring or falling
-    # back. Both clauses are applied (independently, whichever columns are
-    # present) so retiring `model_tier` cannot silently reopen this gap.
-    if ("model_tier" %in% names(modelled) && nrow(modelled) > 0L) {
-      modelled <- modelled[
-        is.na(modelled$model_tier) |
-          !modelled$model_tier %in% c("tier_undetected_evidence", "tier_domestic_food"),
-        , drop = FALSE
-      ]
-    }
-    if ("prior_branch" %in% names(modelled) && nrow(modelled) > 0L) {
-      modelled <- modelled[
-        is.na(modelled$prior_branch) |
-          !modelled$prior_branch %in% c("resident_undetected", "transport"),
-        , drop = FALSE
-      ]
-    }
-    if (nrow(modelled) > 0L) {
-      site_modelled <- modelled[
-        !is.na(modelled$grid_id) & modelled$grid_id == grid_id, , drop = FALSE]
-      use_modelled <- if (nrow(site_modelled) > 0L) site_modelled else modelled
-      theta_singleton <- min(
-        .beta_mean(use_modelled$alpha, use_modelled$beta), na.rm = TRUE)
-      message(sprintf(
-        "apply_undetected_evidence: no singleton_mirror rows -- ceiling anchor set to the minimum modelled theta (%.3g).",
-        theta_singleton
-      ))
-    } else if ("n_obs" %in% names(taxaexpect_priors) &&
-               any(is.finite(taxaexpect_priors$n_obs) & taxaexpect_priors$n_obs > 0)) {
-      eff <- stats::median(
-        taxaexpect_priors$n_obs[is.finite(taxaexpect_priors$n_obs) &
-                                  taxaexpect_priors$n_obs > 0])
-      theta_singleton <- 1 / (eff + 1)
-      message(sprintf(
-        "apply_undetected_evidence: no singleton_mirror or modelled rows -- ceiling anchor set to 1/(site effort + 1) = %.3g.",
-        theta_singleton
-      ))
-    }
-    if (is.finite(theta_singleton) && theta_singleton > theta_floor) {
-      # Ladder-derived anchors carry no fitted Beta of their own -- hold them at
-      # the singleton_ess = 2 convention (generate_undetected_diversity()'s own
-      # mirror concentration), the same "observed about once" epistemic state.
-      var_singleton <- theta_singleton * (1 - theta_singleton) / 3
-    }
-    if (!is.finite(theta_singleton) || theta_singleton <= theta_floor) {
-      warning(
-        "apply_undetected_evidence: taxaexpect_priors has no singleton_mirror ",
-        "rows and no usable modelled/effort fallback -- no upper anchor exists ",
-        "for the evidence blend. Every elevated row will equal the floor ",
-        "exactly (weight has no effect).",
-        call. = FALSE
+    if (nrow(floor_rows) == 0L) {
+      stop(
+        "apply_undetected_evidence: taxaexpect_priors has no undetected_type == ",
+        "'global_floor' row. Pass generate_undetected_diversity()'s output ",
+        "(or a table it was bound into) so the floor anchor is available."
       )
-      theta_singleton <- theta_floor
-      var_singleton   <- var_floor
     }
-  } else {
-    site_singletons <- singleton_rows[
-      !is.na(singleton_rows$grid_id) & singleton_rows$grid_id == grid_id,
-      , drop = FALSE
-    ]
-    if (!is.null(habitat_col) && nrow(site_singletons) > 0L) {
-      site_singletons <- site_singletons[
-        !is.na(site_singletons[[habitat_col]]) & site_singletons[[habitat_col]] == main_habitat,
-        , drop = FALSE
-      ]
-    }
-    use_singletons <- if (nrow(site_singletons) > 0L) site_singletons else singleton_rows
-    theta_singleton <- .beta_mean(mean(use_singletons$alpha, na.rm = TRUE),
-                                   mean(use_singletons$beta,  na.rm = TRUE))
-    var_singleton   <- .beta_sd(mean(use_singletons$alpha, na.rm = TRUE),
-                                 mean(use_singletons$beta,  na.rm = TRUE))^2
-  }
+    floor_alpha <- mean(floor_rows$alpha, na.rm = TRUE)
+    floor_beta <- mean(floor_rows$beta, na.rm = TRUE)
+    theta_floor <- .beta_mean(floor_alpha, floor_beta)
+    var_floor <- .beta_sd(floor_alpha, floor_beta)^2
 
-  }  # end blend-mode anchor block
+    # ---- Singleton anchor: prefer this site's own singleton mirrors, fall
+    # back to the global singleton mean when this site has none. Mirrors
+    # TaxaAssign::join_priors()'s own singleton_by_site/global_singleton
+    # fallback design.
+    singleton_rows <- taxaexpect_priors[
+      !is.na(taxaexpect_priors$undetected_type) &
+        taxaexpect_priors$undetected_type == "singleton_mirror", ,
+      drop = FALSE
+    ]
+    if (nrow(singleton_rows) == 0L) {
+      # ---- Ceiling anchor ladder (2026-08-26 mixture redesign, D2) -----------
+      # No singletons does NOT mean no ceiling: the anchor's meaning is "the
+      # detection rate of a species present but rare enough to have plausibly
+      # escaped local detection." Descend a ladder of estimates rather than
+      # silently collapsing the ceiling onto the floor (the previous behavior,
+      # which made every elevation a weight-independent no-op):
+      #   (2) minimum theta among genuinely modelled rows -- in a dataset with
+      #       no singletons every detected species was seen >= 2 times, so the
+      #       rarest detected rate mildly OVERestimates the present-but-
+      #       undetected rate: conservative in the safe direction.
+      #   (3) ~1 detection per site effort (n_obs), i.e. what a singleton's
+      #       rate would have been.
+      #   (4) only if neither is computable: the old floor-equals-ceiling
+      #       no-op, with the original warning.
+      theta_singleton <- NA_real_
+      var_singleton <- NA_real_
+      modelled <- taxaexpect_priors[
+        is.na(taxaexpect_priors$undetected_type) &
+          !is.na(taxaexpect_priors$taxon_name) &
+          !is.na(taxaexpect_priors$alpha) & !is.na(taxaexpect_priors$beta), ,
+        drop = FALSE
+      ]
+      # Excludes evidence/domestic rows from ever serving as the ceiling anchor
+      # (an evidence-elevated row anchoring the NEXT evidence row is exactly the
+      # circularity this ladder exists to avoid). `model_tier` is doc-deprecated
+      # in favor of `prior_branch` (kernel schema) -- 2026-09-05 critical-fix-
+      # review finding D2: guarding this clause on `"model_tier" %in%
+      # names(modelled)` means the filter silently VANISHES once that column is
+      # actually retired from kernel output, rather than erroring or falling
+      # back. Both clauses are applied (independently, whichever columns are
+      # present) so retiring `model_tier` cannot silently reopen this gap.
+      if ("model_tier" %in% names(modelled) && nrow(modelled) > 0L) {
+        modelled <- modelled[
+          is.na(modelled$model_tier) |
+            !modelled$model_tier %in% c("tier_undetected_evidence", "tier_domestic_food"), ,
+          drop = FALSE
+        ]
+      }
+      if ("prior_branch" %in% names(modelled) && nrow(modelled) > 0L) {
+        modelled <- modelled[
+          is.na(modelled$prior_branch) |
+            !modelled$prior_branch %in% c("resident_undetected", "transport"), ,
+          drop = FALSE
+        ]
+      }
+      if (nrow(modelled) > 0L) {
+        site_modelled <- modelled[
+          !is.na(modelled$grid_id) & modelled$grid_id == grid_id, ,
+          drop = FALSE
+        ]
+        use_modelled <- if (nrow(site_modelled) > 0L) site_modelled else modelled
+        theta_singleton <- min(
+          .beta_mean(use_modelled$alpha, use_modelled$beta),
+          na.rm = TRUE
+        )
+        message(sprintf(
+          "apply_undetected_evidence: no singleton_mirror rows -- ceiling anchor set to the minimum modelled theta (%.3g).",
+          theta_singleton
+        ))
+      } else if ("n_obs" %in% names(taxaexpect_priors) &&
+        any(is.finite(taxaexpect_priors$n_obs) & taxaexpect_priors$n_obs > 0)) {
+        eff <- stats::median(
+          taxaexpect_priors$n_obs[is.finite(taxaexpect_priors$n_obs) &
+            taxaexpect_priors$n_obs > 0]
+        )
+        theta_singleton <- 1 / (eff + 1)
+        message(sprintf(
+          "apply_undetected_evidence: no singleton_mirror or modelled rows -- ceiling anchor set to 1/(site effort + 1) = %.3g.",
+          theta_singleton
+        ))
+      }
+      if (is.finite(theta_singleton) && theta_singleton > theta_floor) {
+        # Ladder-derived anchors carry no fitted Beta of their own -- hold them at
+        # the singleton_ess = 2 convention (generate_undetected_diversity()'s own
+        # mirror concentration), the same "observed about once" epistemic state.
+        var_singleton <- theta_singleton * (1 - theta_singleton) / 3
+      }
+      if (!is.finite(theta_singleton) || theta_singleton <= theta_floor) {
+        warning(
+          "apply_undetected_evidence: taxaexpect_priors has no singleton_mirror ",
+          "rows and no usable modelled/effort fallback -- no upper anchor exists ",
+          "for the evidence blend. Every elevated row will equal the floor ",
+          "exactly (weight has no effect).",
+          call. = FALSE
+        )
+        theta_singleton <- theta_floor
+        var_singleton <- var_floor
+      }
+    } else {
+      site_singletons <- singleton_rows[
+        !is.na(singleton_rows$grid_id) & singleton_rows$grid_id == grid_id, ,
+        drop = FALSE
+      ]
+      if (!is.null(habitat_col) && nrow(site_singletons) > 0L) {
+        site_singletons <- site_singletons[
+          !is.na(site_singletons[[habitat_col]]) & site_singletons[[habitat_col]] == main_habitat, ,
+          drop = FALSE
+        ]
+      }
+      use_singletons <- if (nrow(site_singletons) > 0L) site_singletons else singleton_rows
+      theta_singleton <- .beta_mean(
+        mean(use_singletons$alpha, na.rm = TRUE),
+        mean(use_singletons$beta, na.rm = TRUE)
+      )
+      var_singleton <- .beta_sd(
+        mean(use_singletons$alpha, na.rm = TRUE),
+        mean(use_singletons$beta, na.rm = TRUE)
+      )^2
+    }
+  } # end blend-mode anchor block
 
   # ---- Dataset-specific veto bound (2026-08-26 mixture redesign, D4) --------
   # At likelihood parity, an elevated species stays in the consensus plausible
@@ -667,27 +695,36 @@ apply_undetected_evidence <- function(
       theta_present = signif(b$theta_present, 3),
       price_used = signif(b$price, 3),
       basis = ifelse(is.na(b$pricing_basis), "UNPRICED", b$pricing_basis),
-      stringsAsFactors = FALSE)
+      stringsAsFactors = FALSE
+    )
     message(sprintf(
       "apply_undetected_evidence: PER-GROUP curve pricing across %d sampling groups ('%s'); %d clear the guards (n_eff >= %g, f1 >= %g).",
       nrow(b), if (is.na(kernel_group_col)) "sampling_group" else kernel_group_col,
-      curve_groups$n_qualifying, min_group_n_eff, min_group_f1))
+      curve_groups$n_qualifying, min_group_n_eff, min_group_f1
+    ))
     message(paste(utils::capture.output(print(tab, row.names = FALSE)),
-                  collapse = "\n"))
-    if (any(tab$basis == "pooled_qualifying"))
+      collapse = "\n"
+    ))
+    if (any(tab$basis == "pooled_qualifying")) {
       message(sprintf(
         "apply_undetected_evidence: %d group(s) failed the guards and are priced at the pooled-qualifying fallback (%.3g) -- a BORROWED price, not their own. Groups: %s.",
         sum(tab$basis == "pooled_qualifying"), curve_groups$fallback_price,
-        paste(tab$sampling_group[tab$basis == "pooled_qualifying"], collapse = ", ")))
+        paste(tab$sampling_group[tab$basis == "pooled_qualifying"], collapse = ", ")
+      ))
+    }
   } else if (pricing == "curve") {
     # Single-group: purely informational -- no veto bound (see above).
     message(sprintf(
-      "apply_undetected_evidence: curve pricing (theta = w * theta_present, theta_present = %.3g from f1 = %s singleton(s)).",
+      paste0(
+        "apply_undetected_evidence: curve pricing (theta = w * theta_present, ",
+        "theta_present = %.3g from f1 = %s singleton(s), f2 = %s doubleton(s))."
+      ),
       kernel_theta_present,
-      if (is.na(kernel_f1)) "?" else format(kernel_f1)
+      if (is.na(kernel_f1)) "?" else format(kernel_f1),
+      if (is.na(kernel_f2)) "?" else format(kernel_f2)
     ))
   } else if (theta_singleton > theta_floor) {
-    m_ret  <- 0.05
+    m_ret <- 0.05
     w_veto <- ((m_ret / (1 - m_ret)) * theta_singleton - theta_floor) /
       (theta_singleton - theta_floor)
     veto_bound_scalar <- max(w_veto, 0)
@@ -717,8 +754,10 @@ apply_undetected_evidence <- function(
   n_evidence_taxa <- length(unique(evidence$taxon_name))
   evidence <- evidence[!evidence$taxon_name %in% observed_taxa, , drop = FALSE]
   if (nrow(evidence) == 0L) {
-    message("apply_undetected_evidence: every taxon in `evidence` is already ",
-            "observed (has a row in taxaexpect_priors) -- nothing to elevate.")
+    message(
+      "apply_undetected_evidence: every taxon in `evidence` is already ",
+      "observed (has a row in taxaexpect_priors) -- nothing to elevate."
+    )
     return(.empty_undetected_evidence_result(habitat_col, pricing))
   }
 
@@ -740,8 +779,8 @@ apply_undetected_evidence <- function(
   # tibble::tibble(), onto the resulting columns) that has nothing to do with
   # the data itself.
   w_combined_vec <- vapply(combined, function(x) x$w_combined, numeric(1), USE.NAMES = FALSE)
-  p_conc_new     <- vapply(combined, function(x) x$p_combined, numeric(1), USE.NAMES = FALSE)
-  sources_vec    <- vapply(combined, function(x) x$sources, character(1), USE.NAMES = FALSE)
+  p_conc_new <- vapply(combined, function(x) x$p_combined, numeric(1), USE.NAMES = FALSE)
+  sources_vec <- vapply(combined, function(x) x$sources, character(1), USE.NAMES = FALSE)
 
   # ---- Per-group price assignment -------------------------------------------
   grp_vec <- rep(NA_character_, length(taxa))
@@ -749,29 +788,37 @@ apply_undetected_evidence <- function(
   price_vec <- rep(NA_real_, length(taxa))
   if (!is.null(curve_groups)) {
     grp_vec <- unname(.resolve_evidence_groups(
-      taxa, evidence, sampling_group, curve_groups$budget$sampling_group))
+      taxa, evidence, sampling_group, curve_groups$budget$sampling_group
+    ))
     price_vec <- unname(curve_groups$price[grp_vec])
     basis_vec <- unname(curve_groups$basis[grp_vec])
     unpriced <- !is.finite(price_vec) | price_vec <= 0
     if (any(unpriced)) {
-      if (identical(group_fallback, "error"))
-        stop("apply_undetected_evidence: ", sum(unpriced), " evidence taxon/taxa ",
-             "belong to sampling group(s) that failed the pricing guards (",
-             paste(unique(grp_vec[unpriced]), collapse = ", "), ") and ",
-             "group_fallback = \"error\". Use \"pooled_qualifying\" to borrow the ",
-             "qualifying groups' combined price, \"skip\" to drop these taxa, or ",
-             "lower min_group_n_eff / min_group_f1 if you mean to trust the ",
-             "group's own thin budget. See model_fit$budget.")
+      if (identical(group_fallback, "error")) {
+        stop(
+          "apply_undetected_evidence: ", sum(unpriced), " evidence taxon/taxa ",
+          "belong to sampling group(s) that failed the pricing guards (",
+          paste(unique(grp_vec[unpriced]), collapse = ", "), ") and ",
+          "group_fallback = \"error\". Use \"pooled_qualifying\" to borrow the ",
+          "qualifying groups' combined price, \"skip\" to drop these taxa, or ",
+          "lower min_group_n_eff / min_group_f1 if you mean to trust the ",
+          "group's own thin budget. See model_fit$budget."
+        )
+      }
       # group_fallback = "skip": drop them, loudly. Never silently, and never
       # by pricing them at zero -- an unpriced taxon is one this fit cannot
       # speak to, which is a different statement from "implausible".
       message(sprintf(
         "apply_undetected_evidence: dropping %d taxon/taxa in unpriced sampling group(s) %s (group_fallback = \"skip\") -- this fit has no trustworthy price for them, which is NOT the same as judging them implausible.",
-        sum(unpriced), paste(unique(grp_vec[unpriced]), collapse = ", ")))
+        sum(unpriced), paste(unique(grp_vec[unpriced]), collapse = ", ")
+      ))
       keep <- !unpriced
-      taxa <- taxa[keep]; w_combined_vec <- w_combined_vec[keep]
-      p_conc_new <- p_conc_new[keep]; sources_vec <- sources_vec[keep]
-      grp_vec <- grp_vec[keep]; price_vec <- price_vec[keep]
+      taxa <- taxa[keep]
+      w_combined_vec <- w_combined_vec[keep]
+      p_conc_new <- p_conc_new[keep]
+      sources_vec <- sources_vec[keep]
+      grp_vec <- grp_vec[keep]
+      price_vec <- price_vec[keep]
       basis_vec <- basis_vec[keep]
       if (length(taxa) == 0L) {
         message("apply_undetected_evidence: no evidence taxon survives group pricing -- nothing to elevate.")
@@ -843,16 +890,16 @@ apply_undetected_evidence <- function(
     # Both states are POINTS here (no within-state variance) -- var_present/
     # var_absent are exactly 0, unlike blend mode below.
     mix_present <- price_vec
-    mix_absent  <- 0
-    theta_new   <- w_combined_vec * mix_present
-    v_mix       <- w_combined_vec * (1 - w_combined_vec) * mix_present^2
+    mix_absent <- 0
+    theta_new <- w_combined_vec * mix_present
+    v_mix <- w_combined_vec * (1 - w_combined_vec) * mix_present^2
     var_present_vec <- rep(0, length(taxa))
-    var_absent_vec  <- rep(0, length(taxa))
+    var_absent_vec <- rep(0, length(taxa))
   } else {
     mix_present <- theta_singleton
-    mix_absent  <- theta_floor
+    mix_absent <- theta_floor
     theta_new <- theta_floor + (theta_singleton - theta_floor) * w_combined_vec
-    delta_sq  <- (theta_singleton - theta_floor)^2
+    delta_sq <- (theta_singleton - theta_floor)^2
     v_mix <- w_combined_vec * var_singleton +
       (1 - w_combined_vec) * var_floor +
       w_combined_vec * (1 - w_combined_vec) * delta_sq
@@ -862,35 +909,35 @@ apply_undetected_evidence <- function(
     # dropping these two positive terms -- which would otherwise silently
     # over-concentrate the refreshed Beta summary for blend-mode rows.
     var_present_vec <- rep(var_singleton, length(taxa))
-    var_absent_vec  <- rep(var_floor, length(taxa))
+    var_absent_vec <- rep(var_floor, length(taxa))
   }
   n_eff_mm <- ifelse(
     is.finite(v_mix) & v_mix > 0,
     pmax(theta_new * (1 - theta_new) / v_mix - 1, 1e-3),
-    2  # degenerate anchors (ceiling == floor, or w in {0,1}): singleton_ess convention
+    2 # degenerate anchors (ceiling == floor, or w in {0,1}): singleton_ess convention
   )
   alpha_new <- theta_new * n_eff_mm
-  beta_new  <- (1 - theta_new) * n_eff_mm
+  beta_new <- (1 - theta_new) * n_eff_mm
 
   result <- tibble::tibble(
-    taxon_name       = taxa,
-    taxon_name_rank  = "species",
-    grid_id          = grid_id,
-    alpha            = alpha_new,
-    beta             = beta_new,
-    theta_mean       = .beta_mean(alpha_new, beta_new),
-    theta_sd         = .beta_sd(alpha_new, beta_new),
-    model_tier       = "tier_undetected_evidence",
-    prior_branch     = "resident_undetected",
-    undetected_type  = "evidence_blend",
-    evidence_weight  = w_combined_vec,
+    taxon_name = taxa,
+    taxon_name_rank = "species",
+    grid_id = grid_id,
+    alpha = alpha_new,
+    beta = beta_new,
+    theta_mean = .beta_mean(alpha_new, beta_new),
+    theta_sd = .beta_sd(alpha_new, beta_new),
+    model_tier = "tier_undetected_evidence",
+    prior_branch = "resident_undetected",
+    undetected_type = "evidence_blend",
+    evidence_weight = w_combined_vec,
     evidence_sources = sources_vec,
-    prior_mix_w             = w_combined_vec,
+    prior_mix_w = w_combined_vec,
     prior_mix_theta_present = mix_present,
-    prior_mix_theta_absent  = mix_absent,
-    prior_mix_p_conc        = p_conc_new,
-    prior_mix_var_present   = var_present_vec,
-    prior_mix_var_absent    = var_absent_vec,
+    prior_mix_theta_absent = mix_absent,
+    prior_mix_p_conc = p_conc_new,
+    prior_mix_var_present = var_present_vec,
+    prior_mix_var_absent = var_absent_vec,
     # Persisted (2026-09-05 critical-fix-review finding B2) so a later
     # confirmation update (TaxaAssign::update_prior_from_consensus()) can cap
     # ITS OWN post-update w at this SAME bound, rather than only this
@@ -899,13 +946,13 @@ apply_undetected_evidence <- function(
     # correlated cross-observation support, which the A2 check alone cannot
     # see. NA for every curve-priced row (no bound applies there, 2026-09-05)
     # and for a blend row where no bound was computable.
-    prior_mix_veto_bound    = w_veto_applicable
+    prior_mix_veto_bound = w_veto_applicable
   )
   if (pricing == "curve") {
     # Curve-only provenance: which detection process priced this row, and
     # whether that price was the group's own or borrowed.
     result$sampling_group <- grp_vec
-    result$pricing_basis  <- basis_vec
+    result$pricing_basis <- basis_vec
   }
   if (!is.null(habitat_col)) {
     result[[habitat_col]] <- main_habitat
@@ -930,10 +977,11 @@ apply_undetected_evidence <- function(
   }
 
   message(sprintf(
-    if (pricing == "curve")
+    if (pricing == "curve") {
       "--- Undetected evidence applied: %d row(s) priced by the presence curve (of %d taxa named in evidence) ---"
-    else
-      "--- Undetected evidence applied: %d row(s) elevated above the floor (of %d taxa named in evidence) ---",
+    } else {
+      "--- Undetected evidence applied: %d row(s) elevated above the floor (of %d taxa named in evidence) ---"
+    },
     nrow(result), n_evidence_taxa
   ))
 
@@ -944,28 +992,28 @@ apply_undetected_evidence <- function(
 #' @noRd
 .empty_undetected_evidence_result <- function(habitat_col, pricing = "blend") {
   result <- tibble::tibble(
-    taxon_name       = character(0),
-    taxon_name_rank  = character(0),
-    grid_id          = character(0),
-    alpha            = numeric(0),
-    beta             = numeric(0),
-    theta_mean       = numeric(0),
-    theta_sd         = numeric(0),
-    model_tier       = character(0),
-    undetected_type  = character(0),
-    evidence_weight  = numeric(0),
+    taxon_name = character(0),
+    taxon_name_rank = character(0),
+    grid_id = character(0),
+    alpha = numeric(0),
+    beta = numeric(0),
+    theta_mean = numeric(0),
+    theta_sd = numeric(0),
+    model_tier = character(0),
+    undetected_type = character(0),
+    evidence_weight = numeric(0),
     evidence_sources = character(0),
-    prior_mix_w             = numeric(0),
+    prior_mix_w = numeric(0),
     prior_mix_theta_present = numeric(0),
-    prior_mix_theta_absent  = numeric(0),
-    prior_mix_p_conc        = numeric(0),
-    prior_mix_var_present   = numeric(0),
-    prior_mix_var_absent    = numeric(0),
-    prior_mix_veto_bound    = numeric(0)
+    prior_mix_theta_absent = numeric(0),
+    prior_mix_p_conc = numeric(0),
+    prior_mix_var_present = numeric(0),
+    prior_mix_var_absent = numeric(0),
+    prior_mix_veto_bound = numeric(0)
   )
   if (identical(pricing, "curve")) {
     result$sampling_group <- character(0)
-    result$pricing_basis  <- character(0)
+    result$pricing_basis <- character(0)
   }
   if (!is.null(habitat_col)) result[[habitat_col]] <- character(0)
   result
@@ -1020,9 +1068,10 @@ apply_undetected_evidence <- function(
   if (length(q) > 0L) {
     n_q <- sum(b$n_eff[q])
     mass_q <- sum((b$n_eff[q] / n_q) * b$missing_mass[q])
-    f1_q   <- sum(b$f1[q])
-    if (is.finite(mass_q) && f1_q > 0)
+    f1_q <- sum(b$f1[q])
+    if (is.finite(mass_q) && f1_q > 0) {
       fallback_price <- mass_q / f1_q
+    }
   }
   if (identical(group_fallback, "pooled_qualifying") && is.finite(fallback_price)) {
     price[!b$qualifies] <- fallback_price
@@ -1031,11 +1080,13 @@ apply_undetected_evidence <- function(
   b$price <- price
   b$pricing_basis <- basis
 
-  list(price = stats::setNames(price, b$sampling_group),
-       basis = stats::setNames(basis, b$sampling_group),
-       budget = b,
-       fallback_price = fallback_price,
-       n_qualifying = length(q))
+  list(
+    price = stats::setNames(price, b$sampling_group),
+    basis = stats::setNames(basis, b$sampling_group),
+    budget = b,
+    fallback_price = fallback_price,
+    n_qualifying = length(q)
+  )
 }
 
 #' Resolve each evidence taxon's sampling group
@@ -1053,56 +1104,73 @@ apply_undetected_evidence <- function(
   if ("sampling_group" %in% names(evidence)) {
     for (i in seq_along(taxa)) {
       v <- unique(stats::na.omit(as.character(
-        evidence$sampling_group[evidence$taxon_name == taxa[i]])))
-      if (length(v) > 1L)
-        stop("apply_undetected_evidence: taxon '", taxa[i], "' is assigned to ",
-             "more than one sampling group in `evidence` (",
-             paste(v, collapse = ", "), "). One taxon has one detection ",
-             "process; reconcile the evidence rows before combining them.")
+        evidence$sampling_group[evidence$taxon_name == taxa[i]]
+      )))
+      if (length(v) > 1L) {
+        stop(
+          "apply_undetected_evidence: taxon '", taxa[i], "' is assigned to ",
+          "more than one sampling group in `evidence` (",
+          paste(v, collapse = ", "), "). One taxon has one detection ",
+          "process; reconcile the evidence rows before combining them."
+        )
+      }
       if (length(v) == 1L) out[i] <- v
     }
   }
 
   if (!is.null(sampling_group)) {
     if (is.data.frame(sampling_group)) {
-      if (!all(c("taxon_name", "sampling_group") %in% names(sampling_group)))
-        stop("apply_undetected_evidence: a data-frame `sampling_group` must have ",
-             "columns 'taxon_name' and 'sampling_group'.")
-      map <- stats::setNames(as.character(sampling_group$sampling_group),
-                             as.character(sampling_group$taxon_name))
+      if (!all(c("taxon_name", "sampling_group") %in% names(sampling_group))) {
+        stop(
+          "apply_undetected_evidence: a data-frame `sampling_group` must have ",
+          "columns 'taxon_name' and 'sampling_group'."
+        )
+      }
+      map <- stats::setNames(
+        as.character(sampling_group$sampling_group),
+        as.character(sampling_group$taxon_name)
+      )
     } else if (is.character(sampling_group) && length(sampling_group) == 1L &&
-               is.null(names(sampling_group))) {
+      is.null(names(sampling_group))) {
       map <- stats::setNames(rep(sampling_group, length(taxa)), taxa)
     } else if (is.character(sampling_group) && !is.null(names(sampling_group))) {
       map <- sampling_group
     } else {
-      stop("apply_undetected_evidence: `sampling_group` must be a single group ",
-           "name, a named character vector (taxon -> group), or a data frame ",
-           "with taxon_name/sampling_group columns.")
+      stop(
+        "apply_undetected_evidence: `sampling_group` must be a single group ",
+        "name, a named character vector (taxon -> group), or a data frame ",
+        "with taxon_name/sampling_group columns."
+      )
     }
     fill <- is.na(out) & taxa %in% names(map)
     out[fill] <- unname(map[taxa[fill]])
   }
 
   bad <- !is.na(out) & !out %in% valid_groups
-  if (any(bad))
-    stop("apply_undetected_evidence: sampling group(s) ",
-         paste(unique(out[bad]), collapse = ", "), " are not present in the ",
-         "fit's own budget. Groups available: ",
-         paste(valid_groups, collapse = ", "), ".")
+  if (any(bad)) {
+    stop(
+      "apply_undetected_evidence: sampling group(s) ",
+      paste(unique(out[bad]), collapse = ", "), " are not present in the ",
+      "fit's own budget. Groups available: ",
+      paste(valid_groups, collapse = ", "), "."
+    )
+  }
 
-  if (anyNA(out))
-    stop("apply_undetected_evidence: this model_obj has ", length(valid_groups),
-         " sampling groups, so every evidence taxon needs one -- ",
-         sum(is.na(out)), " have none (",
-         paste(utils::head(taxa[is.na(out)], 5L), collapse = ", "),
-         if (sum(is.na(out)) > 5L) ", ..." else "",
-         "). Supply `sampling_group` (a single group name if the whole ",
-         "evidence list shares one detection process, e.g. an all-fish watch ",
-         "list; or a named vector / taxon_name+sampling_group data frame), or ",
-         "add a `sampling_group` column to `evidence`. This is deliberately ",
-         "never guessed from taxonomy: the classification that built the ",
-         "occurrence pool's groups lives in your workflow, and a wrong group ",
-         "mis-prices silently.")
+  if (anyNA(out)) {
+    stop(
+      "apply_undetected_evidence: this model_obj has ", length(valid_groups),
+      " sampling groups, so every evidence taxon needs one -- ",
+      sum(is.na(out)), " have none (",
+      paste(utils::head(taxa[is.na(out)], 5L), collapse = ", "),
+      if (sum(is.na(out)) > 5L) ", ..." else "",
+      "). Supply `sampling_group` (a single group name if the whole ",
+      "evidence list shares one detection process, e.g. an all-fish watch ",
+      "list; or a named vector / taxon_name+sampling_group data frame), or ",
+      "add a `sampling_group` column to `evidence`. This is deliberately ",
+      "never guessed from taxonomy: the classification that built the ",
+      "occurrence pool's groups lives in your workflow, and a wrong group ",
+      "mis-prices silently."
+    )
+  }
   out
 }

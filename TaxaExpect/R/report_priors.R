@@ -45,16 +45,15 @@
 #' @export
 report_priors <- function(priors_output,
                           verbose = FALSE) {
-
   # --- Accept list (build_priors output) or data frame ------------------------
   if (is.list(priors_output) && !is.data.frame(priors_output) &&
-      "priors" %in% names(priors_output)) {
+    "priors" %in% names(priors_output)) {
     priors_df <- priors_output$priors
     rp <- attr(priors_output, "report_params")
     habitat_scheme <- attr(priors_output, "habitat_scheme")
     # Try to get occurrence count from the occurrences slot
     n_occurrence_records <- if (!is.null(priors_output$occurrences) &&
-                                is.data.frame(priors_output$occurrences)) {
+      is.data.frame(priors_output$occurrences)) {
       nrow(priors_output$occurrences)
     } else {
       NULL
@@ -66,7 +65,8 @@ report_priors <- function(priors_output,
     n_occurrence_records <- NULL
   } else {
     stop("report_priors: 'priors_output' must be a non-empty data frame or build_priors() list.",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
 
   # --- Extract statistics from priors -----------------------------------------
@@ -116,8 +116,11 @@ report_priors <- function(priors_output,
   if (!is.null(tier_breakdown)) statistics$tier_breakdown <- tier_breakdown
 
   # --- Params -----------------------------------------------------------------
-  params <- list(method = if (kernel_schema)
-    "site-centered kernel estimation" else "hierarchical biodiversity model")
+  params <- list(method = if (kernel_schema) {
+    "site-centered kernel estimation"
+  } else {
+    "hierarchical biodiversity model"
+  })
   if (!is.null(habitat_scheme)) params$habitat_scheme <- habitat_scheme
   if (!is.na(n_grid_cells)) params$n_grid_cells <- n_grid_cells
   if (!is.null(rp)) {
@@ -130,28 +133,35 @@ report_priors <- function(priors_output,
 
   if (!is.null(n_occurrence_records)) {
     methods_text <- paste0(methods_text, sprintf(
-      " from %s occurrence records", format(n_occurrence_records, big.mark = ",")))
+      " from %s occurrence records", format(n_occurrence_records, big.mark = ",")
+    ))
   }
 
   if (kernel_schema) {
-    methods_text <- paste0(methods_text,
+    methods_text <- paste0(
+      methods_text,
       " by site-centered kernel estimation (habitat-stratified,",
       " distance-weighted record shares with a regional back-off;",
       " unrecorded species priced as presence mixtures on a calibrated",
-      " presence-distance curve)")
+      " presence-distance curve)"
+    )
   } else {
-    methods_text <- paste0(methods_text,
-      " using a hierarchical biodiversity model")
+    methods_text <- paste0(
+      methods_text,
+      " using a hierarchical biodiversity model"
+    )
     if (!is.na(n_grid_cells)) {
       methods_text <- paste0(methods_text, sprintf(
-        " across %d spatial grid cells", n_grid_cells))
+        " across %d spatial grid cells", n_grid_cells
+      ))
     }
   }
   methods_text <- paste0(methods_text, ".")
 
   if (!is.null(habitat_scheme)) {
     methods_text <- paste0(methods_text, sprintf(
-      " Habitat scheme: %s.", habitat_scheme))
+      " Habitat scheme: %s.", habitat_scheme
+    ))
   }
 
   # --- Results text -----------------------------------------------------------
@@ -159,7 +169,8 @@ report_priors <- function(priors_output,
 
   if (!is.na(n_taxa)) {
     results_parts <- c(results_parts, sprintf(
-      "Priors were generated for %d taxa.", n_taxa))
+      "Priors were generated for %d taxa.", n_taxa
+    ))
   }
 
   if (!is.null(tier_breakdown)) {
@@ -167,9 +178,13 @@ report_priors <- function(priors_output,
       sprintf("%s: %d", nm, tier_breakdown[[nm]])
     }, character(1L))
     results_parts <- c(results_parts, sprintf(
-      if (kernel_schema) "Prior branch breakdown: %s."
-      else "Model tier breakdown: %s.",
-      paste(tier_strs, collapse = ", ")))
+      if (kernel_schema) {
+        "Prior branch breakdown: %s."
+      } else {
+        "Model tier breakdown: %s."
+      },
+      paste(tier_strs, collapse = ", ")
+    ))
   }
 
   results_text <- if (length(results_parts) > 0L) {
@@ -179,9 +194,12 @@ report_priors <- function(priors_output,
   }
 
   # --- Construct report_section -----------------------------------------------
-  if (!requireNamespace("TaxaTools", quietly = TRUE))
+  if (!requireNamespace("TaxaTools", quietly = TRUE)) {
     stop("report_priors: TaxaTools is required for report_section objects. ",
-         "Install with: devtools::install('path/to/TaxaTools')", call. = FALSE)
+      "Install with: devtools::install('path/to/TaxaTools')",
+      call. = FALSE
+    )
+  }
 
   TaxaTools::new_report_section(
     package    = "TaxaExpect",

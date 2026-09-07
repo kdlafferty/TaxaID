@@ -223,15 +223,18 @@ plot_theta_surface <- function(kernel_fit,
                                lon_col = "decimalLongitude",
                                habitat_col = "main_habitat",
                                ...) {
-
-  if (!inherits(kernel_fit, "taxaexpect_kernel_priors"))
+  if (!inherits(kernel_fit, "taxaexpect_kernel_priors")) {
     stop("plot_theta_surface: 'kernel_fit' must be a taxaexpect_kernel_priors object (from estimate_kernel_priors()).")
-  if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L)
+  }
+  if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L) {
     stop("plot_theta_surface: 'occurrence_data' must be a non-empty data frame.")
-  if (!is.character(taxon) || length(taxon) < 1L || anyNA(taxon))
+  }
+  if (!is.character(taxon) || length(taxon) < 1L || anyNA(taxon)) {
     stop("plot_theta_surface: 'taxon' must be a non-NA character vector of one or more species names.")
-  if (!is.numeric(n_grid) || length(n_grid) != 1L || is.na(n_grid) || n_grid < 4L)
+  }
+  if (!is.numeric(n_grid) || length(n_grid) != 1L || is.na(n_grid) || n_grid < 4L) {
     stop("plot_theta_surface: 'n_grid' must be a single numeric >= 4.")
+  }
   n_grid <- as.integer(round(n_grid))
 
   p <- kernel_fit$params
@@ -242,24 +245,30 @@ plot_theta_surface <- function(kernel_fit,
   # that fit. That is a silent failure of the site-identity invariant, so it is
   # refused rather than approximated. The 18S workflow shows the supported
   # shape: fit each group on its own record subset, then map that fit.
-  if (!is.null(p$sampling_group_col))
-    stop("plot_theta_surface: 'kernel_fit' was built with sampling_group_col = '",
-         p$sampling_group_col, "', whose per-group n_eff and regional composition ",
-         "this function does not reproduce -- the surface would show the POOLED ",
-         "ungrouped field. Map one group at a time instead, by re-fitting on that ",
-         "group's records: estimate_kernel_priors(subset(occurrence_data, ",
-         p$sampling_group_col, " == g), ...).")
+  if (!is.null(p$sampling_group_col)) {
+    stop(
+      "plot_theta_surface: 'kernel_fit' was built with sampling_group_col = '",
+      p$sampling_group_col, "', whose per-group n_eff and regional composition ",
+      "this function does not reproduce -- the surface would show the POOLED ",
+      "ungrouped field. Map one group at a time instead, by re-fitting on that ",
+      "group's records: estimate_kernel_priors(subset(occurrence_data, ",
+      p$sampling_group_col, " == g), ...)."
+    )
+  }
   m_use <- if (is.null(m)) p$m else m
-  if (!is.numeric(m_use) || length(m_use) != 1L || is.na(m_use) || m_use < 0)
+  if (!is.numeric(m_use) || length(m_use) != 1L || is.na(m_use) || m_use < 0) {
     stop("plot_theta_surface: 'm' must be a single non-NA numeric >= 0.")
+  }
 
   use_cov <- !is.null(p$covariate_col)
-  if (!is.null(covariate_at) && !use_cov)
+  if (!is.null(covariate_at) && !use_cov) {
     stop("plot_theta_surface: 'covariate_at' was supplied but kernel_fit has no covariate_col -- nothing to condition on.")
+  }
   if (use_cov && is.null(covariate_at)) {
     message(sprintf(
       "plot_theta_surface: covariate_at not supplied -- the '%s' covariate factor is OMITTED from this surface. This map does NOT depict a %s-conditioned field.",
-      p$covariate_col, p$covariate_col))
+      p$covariate_col, p$covariate_col
+    ))
   }
 
   surf <- .theta_surface_engine(
@@ -276,14 +285,18 @@ plot_theta_surface <- function(kernel_fit,
   if (!is.null(mask)) surf <- .theta_surface_apply_mask(surf, mask)
 
   plt <- if (isTRUE(interactive)) {
-    .theta_surface_plot_leaflet(surf, site_lat = p$site_lat, site_lon = p$site_lon,
-                                site_id = p$site_id, alpha_by_n_eff = alpha_by_n_eff,
-                                n_eff_floor = n_eff_floor,
-                                site_marker_radius = site_marker_radius,
-                                hover_labels = hover_labels, ...)
+    .theta_surface_plot_leaflet(surf,
+      site_lat = p$site_lat, site_lon = p$site_lon,
+      site_id = p$site_id, alpha_by_n_eff = alpha_by_n_eff,
+      n_eff_floor = n_eff_floor,
+      site_marker_radius = site_marker_radius,
+      hover_labels = hover_labels, ...
+    )
   } else {
-    .theta_surface_plot_static(surf, site_lat = p$site_lat, site_lon = p$site_lon,
-                               alpha_by_n_eff = alpha_by_n_eff, n_eff_floor = n_eff_floor, ...)
+    .theta_surface_plot_static(surf,
+      site_lat = p$site_lat, site_lon = p$site_lon,
+      alpha_by_n_eff = alpha_by_n_eff, n_eff_floor = n_eff_floor, ...
+    )
   }
 
   structure(list(surface = surf, plot = plt), class = "taxaexpect_theta_surface")
@@ -297,7 +310,8 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     "taxaexpect_theta_surface: %d x %d lattice, taxa: %s\n  lat [%.4f, %.4f], lon [%.4f, %.4f], lambda = %g km, m = %g\n",
     length(s$lat_grid), length(s$lon_grid), paste(taxa, collapse = ", "),
     min(s$lat_grid), max(s$lat_grid), min(s$lon_grid), max(s$lon_grid),
-    s$params$lambda_km, s$params$m))
+    s$params$lambda_km, s$params$m
+  ))
   cat(sprintf("  %s\n", .theta_surface_condition_label(s$params)))
   # Show the map. A function named plot_*() that prints only a text summary
   # is a trap: at the console the summary looks like success while nothing is
@@ -321,27 +335,31 @@ print.taxaexpect_theta_surface <- function(x, ...) {
                                   lambda_covariate, lambda_latitude,
                                   taxon, n_grid, bbox,
                                   taxon_col, lat_col, lon_col, habitat_col) {
-
   hab <- occurrence_data[[habitat_col]]
   keep <- !is.na(hab) & hab == site_habitat & !is.na(occurrence_data[[taxon_col]]) &
     !is.na(occurrence_data[[lat_col]]) & !is.na(occurrence_data[[lon_col]])
   rec <- occurrence_data[keep, , drop = FALSE]
-  if (nrow(rec) == 0L)
+  if (nrow(rec) == 0L) {
     stop(sprintf("plot_theta_surface: no usable records with %s == '%s'.", habitat_col, site_habitat))
+  }
   taxa <- as.character(rec[[taxon_col]])
-  rec_lat <- as.numeric(rec[[lat_col]]); rec_lon <- as.numeric(rec[[lon_col]])
+  rec_lat <- as.numeric(rec[[lat_col]])
+  rec_lon <- as.numeric(rec[[lon_col]])
 
   # ---- regional composition p_i, exactly as estimate_kernel_priors() -------
-  p_reg <- table(taxa); p_reg <- as.numeric(p_reg) / sum(p_reg)
+  p_reg <- table(taxa)
+  p_reg <- as.numeric(p_reg) / sum(p_reg)
   names(p_reg) <- names(table(taxa))
   p_i <- stats::setNames(rep(0, length(taxon)), taxon)
   found <- intersect(taxon, names(p_reg))
   p_i[found] <- p_reg[found]
   missing_taxa <- setdiff(taxon, names(p_reg))
-  if (length(missing_taxa) > 0L)
+  if (length(missing_taxa) > 0L) {
     message(sprintf(
       "plot_theta_surface: taxon %s has zero records in this habitat stratum -- c_i(x) = 0 across the whole surface (theta given entirely by the back-off term).",
-      paste(sprintf("'%s'", missing_taxa), collapse = ", ")))
+      paste(sprintf("'%s'", missing_taxa), collapse = ", ")
+    ))
+  }
 
   # ---- lattice (anchored on the site so it lands EXACTLY on a lattice node --
   # this is what makes the site-identity invariant hold to near machine
@@ -349,15 +367,18 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   bb <- .theta_surface_bbox(bbox, rec_lat, rec_lon, site_lat, site_lon, lambda_km, n_grid)
   lat_ax <- .theta_surface_axis(bb["lat_min"], bb["lat_max"], site_lat, n_grid)
   lon_ax <- .theta_surface_axis(bb["lon_min"], bb["lon_max"], site_lon, n_grid)
-  lat_grid <- lat_ax$grid; lon_grid <- lon_ax$grid
-  dlat <- lat_ax$d; dlon <- lon_ax$d
+  lat_grid <- lat_ax$grid
+  lon_grid <- lon_ax$grid
+  dlat <- lat_ax$d
+  dlon <- lon_ax$d
 
   # ---- hemisphere-mixing check for the latitude factor -----------------------
   if (!is.null(lambda_latitude)) {
     signs <- sign(c(lat_grid, rec_lat, site_lat))
     signs <- signs[signs != 0]
-    if (length(unique(signs)) > 1L)
+    if (length(unique(signs)) > 1L) {
       message("plot_theta_surface: the lattice/records span both hemispheres and lambda_latitude is set -- see @section Limitations in ?plot_theta_surface for the single-kernel-pass approximation this implies away from the site.")
+    }
   }
 
   # ---- per-record covariate weight (constant across x -> folds into mass) ---
@@ -397,7 +418,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   S2_mat <- .theta_surface_fft_convolve_batch(list(mass2_all), K2)[[1L]]
 
   W_mat <- k_conv[[1L]]
-  W_mat[W_mat < 0] <- 0     # guard against FFT round-off noise at ~0
+  W_mat[W_mat < 0] <- 0 # guard against FFT round-off noise at ~0
   S2_mat[S2_mat < 0] <- 0
   # FFT round-off noise scales with the LARGEST value in the transform, not with
   # .Machine$double.eps, so a lattice point whose true kernel weight underflows
@@ -438,12 +459,14 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     lat_grid = lat_grid, lon_grid = lon_grid,
     theta = theta_list, n_eff = n_eff_mat, W = W_mat,
     regional_composition = p_i,
-    params = list(site_lat = site_lat, site_lon = site_lon, site_habitat = site_habitat,
-                  habitat_col = habitat_col,
-                  lambda_km = lambda_km, m = m, covariate_col = covariate_col,
-                  covariate_at = covariate_at, lambda_covariate = lambda_covariate,
-                  lambda_latitude = lambda_latitude, taxon = taxon, n_grid = n_grid,
-                  n_records_stratum = nrow(rec))
+    params = list(
+      site_lat = site_lat, site_lon = site_lon, site_habitat = site_habitat,
+      habitat_col = habitat_col,
+      lambda_km = lambda_km, m = m, covariate_col = covariate_col,
+      covariate_at = covariate_at, lambda_covariate = lambda_covariate,
+      lambda_latitude = lambda_latitude, taxon = taxon, n_grid = n_grid,
+      n_records_stratum = nrow(rec)
+    )
   )
 }
 
@@ -452,21 +475,32 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 .theta_surface_bbox <- function(bbox, rec_lat, rec_lon, site_lat, site_lon, lambda_km, n_grid) {
   if (!is.null(bbox)) {
     req <- c("lat_min", "lat_max", "lon_min", "lon_max")
-    if (!all(req %in% names(bbox)))
+    if (!all(req %in% names(bbox))) {
       stop("plot_theta_surface: 'bbox' must have names lat_min, lat_max, lon_min, lon_max.")
-    if (bbox["lat_min"] >= bbox["lat_max"] || bbox["lon_min"] >= bbox["lon_max"])
+    }
+    if (bbox["lat_min"] >= bbox["lat_max"] || bbox["lon_min"] >= bbox["lon_max"]) {
       stop("plot_theta_surface: 'bbox' must have lat_min < lat_max and lon_min < lon_max.")
+    }
     return(unlist(bbox[req]))
   }
   # padding: a few bandwidths (in degrees), floored so a single/degenerate
   # record set (or an infinite top-hat lambda) still yields a sane extent.
   pad <- max(3 * lambda_km / 111, 0.05)
   if (!is.finite(pad)) pad <- 0.05
-  lat_all <- c(rec_lat, site_lat); lon_all <- c(rec_lon, site_lon)
-  lat_min <- min(lat_all) - pad; lat_max <- max(lat_all) + pad
-  lon_min <- min(lon_all) - pad; lon_max <- max(lon_all) + pad
-  if (lat_min == lat_max) { lat_min <- lat_min - pad; lat_max <- lat_max + pad }
-  if (lon_min == lon_max) { lon_min <- lon_min - pad; lon_max <- lon_max + pad }
+  lat_all <- c(rec_lat, site_lat)
+  lon_all <- c(rec_lon, site_lon)
+  lat_min <- min(lat_all) - pad
+  lat_max <- max(lat_all) + pad
+  lon_min <- min(lon_all) - pad
+  lon_max <- max(lon_all) + pad
+  if (lat_min == lat_max) {
+    lat_min <- lat_min - pad
+    lat_max <- lat_max + pad
+  }
+  if (lon_min == lon_max) {
+    lon_min <- lon_min - pad
+    lon_max <- lon_max + pad
+  }
   c(lat_min = lat_min, lat_max = lat_max, lon_min = lon_min, lon_max = lon_max)
 }
 
@@ -495,7 +529,9 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' @noRd
 .theta_surface_accumulate <- function(i_idx, j_idx, w, ny, nx) {
   mass <- numeric(ny * nx)
-  if (length(i_idx) == 0L) return(matrix(mass, ny, nx))
+  if (length(i_idx) == 0L) {
+    return(matrix(mass, ny, nx))
+  }
   lin <- (j_idx - 1L) * ny + i_idx
   rs <- rowsum(w, lin)
   mass[as.integer(rownames(rs))] <- rs[, 1L]
@@ -506,16 +542,19 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' di in -(ny-1):(ny-1), dj in -(nx-1):(nx-1)
 #' @noRd
 .theta_surface_kernel <- function(lat_grid, lon_grid, site_lat, lambda_km, lambda_latitude) {
-  ny <- length(lat_grid); nx <- length(lon_grid)
-  dlat <- lat_grid[2] - lat_grid[1]; dlon <- lon_grid[2] - lon_grid[1]
+  ny <- length(lat_grid)
+  nx <- length(lon_grid)
+  dlat <- lat_grid[2] - lat_grid[1]
+  dlon <- lon_grid[2] - lon_grid[1]
   di <- ((-(ny - 1L)):(ny - 1L)) * dlat
   dj <- ((-(nx - 1L)):(nx - 1L)) * dlon
   delta_lat <- matrix(di, nrow = 2L * ny - 1L, ncol = 2L * nx - 1L)
   delta_lon <- matrix(dj, nrow = 2L * ny - 1L, ncol = 2L * nx - 1L, byrow = TRUE)
   d_km <- 111 * sqrt(delta_lat^2 + (delta_lon * cos(site_lat * pi / 180))^2)
   K <- exp(-d_km / lambda_km)
-  if (!is.null(lambda_latitude))
+  if (!is.null(lambda_latitude)) {
     K <- K * exp(-111 * abs(delta_lat) / lambda_latitude)
+  }
   K
 }
 
@@ -523,12 +562,16 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' returns the ny x nx region aligned with the original mass lattice.
 #' @noRd
 .theta_surface_fft_convolve <- function(mass, kernel) {
-  ny <- nrow(mass); nx <- ncol(mass)
-  ky <- nrow(kernel); kx <- ncol(kernel)
+  ny <- nrow(mass)
+  nx <- ncol(mass)
+  ky <- nrow(kernel)
+  kx <- ncol(kernel)
   Nr <- stats::nextn(ny + ky - 1L)
   Nc <- stats::nextn(nx + kx - 1L)
-  Mpad <- matrix(0, Nr, Nc); Mpad[seq_len(ny), seq_len(nx)] <- mass
-  Kpad <- matrix(0, Nr, Nc); Kpad[seq_len(ky), seq_len(kx)] <- kernel
+  Mpad <- matrix(0, Nr, Nc)
+  Mpad[seq_len(ny), seq_len(nx)] <- mass
+  Kpad <- matrix(0, Nr, Nc)
+  Kpad[seq_len(ky), seq_len(kx)] <- kernel
   Cfull <- Re(stats::fft(stats::fft(Mpad) * stats::fft(Kpad), inverse = TRUE)) / (Nr * Nc)
   Cfull[ny:(2L * ny - 1L), nx:(2L * nx - 1L)]
 }
@@ -540,14 +583,18 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' mass image; kept as a separate code path purely for that shared-FFT saving.
 #' @noRd
 .theta_surface_fft_convolve_batch <- function(mass_list, kernel) {
-  ny <- nrow(mass_list[[1L]]); nx <- ncol(mass_list[[1L]])
-  ky <- nrow(kernel); kx <- ncol(kernel)
+  ny <- nrow(mass_list[[1L]])
+  nx <- ncol(mass_list[[1L]])
+  ky <- nrow(kernel)
+  kx <- ncol(kernel)
   Nr <- stats::nextn(ny + ky - 1L)
   Nc <- stats::nextn(nx + kx - 1L)
-  Kpad <- matrix(0, Nr, Nc); Kpad[seq_len(ky), seq_len(kx)] <- kernel
+  Kpad <- matrix(0, Nr, Nc)
+  Kpad[seq_len(ky), seq_len(kx)] <- kernel
   Kfft <- stats::fft(Kpad)
   lapply(mass_list, function(mass) {
-    Mpad <- matrix(0, Nr, Nc); Mpad[seq_len(ny), seq_len(nx)] <- mass
+    Mpad <- matrix(0, Nr, Nc)
+    Mpad[seq_len(ny), seq_len(nx)] <- mass
     Cfull <- Re(stats::fft(stats::fft(Mpad) * Kfft, inverse = TRUE)) / (Nr * Nc)
     Cfull[ny:(2L * ny - 1L), nx:(2L * nx - 1L)]
   })
@@ -581,11 +628,15 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   parts <- sprintf("%s: %s", hab_col, params$site_habitat)
   if (!is.null(params$covariate_col)) {
     parts <- c(parts, if (is.null(params$covariate_at)) {
-      sprintf("%s: OMITTED (not a %s-conditioned field)",
-              params$covariate_col, params$covariate_col)
+      sprintf(
+        "%s: OMITTED (not a %s-conditioned field)",
+        params$covariate_col, params$covariate_col
+      )
     } else {
-      sprintf("%s = %s (held constant)", params$covariate_col,
-              format(params$covariate_at, trim = TRUE))
+      sprintf(
+        "%s = %s (held constant)", params$covariate_col,
+        format(params$covariate_at, trim = TRUE)
+      )
     })
   }
   paste(parts, collapse = "   |   ")
@@ -599,20 +650,27 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   old_par <- graphics::par(no.readonly = TRUE)
   on.exit(graphics::par(old_par), add = TRUE)
   if (n_panel > 1L) {
-    ncol_p <- ceiling(sqrt(n_panel)); nrow_p <- ceiling(n_panel / ncol_p)
+    ncol_p <- ceiling(sqrt(n_panel))
+    nrow_p <- ceiling(n_panel / ncol_p)
     graphics::par(mfrow = c(nrow_p, ncol_p))
   }
   for (nm in names(theta)) {
     ras <- .theta_surface_raster(theta[[nm]], surf$n_eff, alpha_by_n_eff, n_eff_floor)
     graphics::plot.new()
     graphics::plot.window(xlim = range(surf$lon_grid), ylim = range(surf$lat_grid), asp = 1)
-    graphics::rasterImage(ras, min(surf$lon_grid), min(surf$lat_grid),
-                          max(surf$lon_grid), max(surf$lat_grid))
+    graphics::rasterImage(
+      ras, min(surf$lon_grid), min(surf$lat_grid),
+      max(surf$lon_grid), max(surf$lat_grid)
+    )
     graphics::points(site_lon, site_lat, pch = 4, lwd = 2, col = "black")
-    graphics::axis(1); graphics::axis(2); graphics::box()
+    graphics::axis(1)
+    graphics::axis(2)
+    graphics::box()
     graphics::title(main = if (is.list(surf$theta)) nm else "theta", xlab = "lon", ylab = "lat", ...)
-    graphics::mtext(.theta_surface_condition_label(surf$params), side = 3,
-                    line = 0.25, cex = 0.7, col = "grey25")
+    graphics::mtext(.theta_surface_condition_label(surf$params),
+      side = 3,
+      line = 0.25, cex = 0.7, col = "grey25"
+    )
   }
   invisible(NULL)
 }
@@ -640,11 +698,13 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   alpha[na_cell] <- 0
   alpha[is.na(alpha)] <- 0
   rgba_vec <- grDevices::rgb(pal_rgb[1, idx], pal_rgb[2, idx], pal_rgb[3, idx],
-                             alpha * 255, maxColorValue = 255)
+    alpha * 255,
+    maxColorValue = 255
+  )
   rgba <- matrix(rgba_vec, nrow(theta_mat), ncol(theta_mat))
   # rasterImage expects row 1 = top of image (north); lat_grid is ascending
   # south-to-north, so flip rows.
-  grDevices::as.raster(rgba[nrow(rgba):1, , drop = FALSE])
+  grDevices::as.raster(rgba[rev(seq_len(nrow(rgba))), , drop = FALSE])
 }
 
 #' Interactive leaflet overlay -- guarded exactly as plot_theta_map_interactive()
@@ -682,9 +742,12 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   for (nm in nms) {
     th_ds <- .theta_surface_downsample_matrix(theta[[nm]], surf, ds)
     n_eff_ds <- .theta_surface_downsample_matrix(surf$n_eff, surf, ds)
-    th_v <- as.vector(th_ds); ne_v <- as.vector(n_eff_ds)
-    pal <- leaflet::colorNumeric("YlOrRd", domain = range(th_v, na.rm = TRUE),
-                                 na.color = "transparent")
+    th_v <- as.vector(th_ds)
+    ne_v <- as.vector(n_eff_ds)
+    pal <- leaflet::colorNumeric("YlOrRd",
+      domain = range(th_v, na.rm = TRUE),
+      na.color = "transparent"
+    )
     opac <- rep(0.7, length(th_v))
     if (isTRUE(alpha_by_n_eff)) {
       ref <- max(ne_v, na.rm = TRUE)
@@ -707,7 +770,8 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     # Legend per species, tied to the same group so the radio selector
     # swaps the legend along with the surface.
     map <- leaflet::addLegend(
-      map, position = "bottomright", pal = pal, values = th_v,
+      map,
+      position = "bottomright", pal = pal, values = th_v,
       title = sprintf("theta<br/><span class='taxa-legend-tag' data-group=\"%s\" style='font-weight:normal'>%s</span>", nm, nm),
       opacity = 0.7, group = nm, na.label = "masked/absent"
     )
@@ -716,7 +780,8 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   # Site marker LAST so it draws above the surface, and small + hollow so it
   # never hides the cell it marks (2026-09-01 user feedback).
   map <- leaflet::addCircleMarkers(
-    map, lng = site_lon, lat = site_lat,
+    map,
+    lng = site_lon, lat = site_lat,
     radius = site_marker_radius, stroke = TRUE, weight = 2,
     color = "#1a1a1a", opacity = 1, fill = FALSE,
     label = htmltools::HTML(sprintf("site: %s", site_id))
@@ -724,8 +789,10 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 
   if (length(theta) > 1L) {
     map <- leaflet::addLayersControl(
-      map, baseGroups = nms,
-      options = leaflet::layersControlOptions(collapsed = length(nms) > 6L))
+      map,
+      baseGroups = nms,
+      options = leaflet::layersControlOptions(collapsed = length(nms) > 6L)
+    )
     # Legend/base-group sync. leaflet's own addLegend(group=) binding follows
     # OVERLAY toggles only -- with baseGroups (the radio selector this map
     # wants, so surfaces never stack) every species' legend stays visible at
@@ -739,7 +806,8 @@ print.taxaexpect_theta_surface <- function(x, ...) {
       first <- gsub('"', '\\\\"', nms[1L], fixed = TRUE)
       js <- sprintf(
         "function(el, x) { var sync = function(name) { var tags = el.querySelectorAll('.taxa-legend-tag'); for (var i = 0; i < tags.length; i++) { var leg = tags[i].closest('.legend'); if (leg) { leg.style.display = (tags[i].getAttribute('data-group') === name) ? '' : 'none'; } } }; sync(\"%s\"); this.on('baselayerchange', function(e) { sync(e.name); }); }",
-        first)
+        first
+      )
       map <- htmlwidgets::onRender(map, js)
     }
   }
@@ -752,19 +820,24 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     map,
     html = sprintf(
       "<div style='background:rgba(255,255,255,0.85);padding:3px 6px;border-radius:3px;font:11px/1.4 sans-serif;color:#333'>%s</div>",
-      htmltools::htmlEscape(.theta_surface_condition_label(surf$params))),
-    position = "bottomleft")
+      htmltools::htmlEscape(.theta_surface_condition_label(surf$params))
+    ),
+    position = "bottomleft"
+  )
   map
 }
 
 #' Downsampled lattice coordinates (stride subsetting) for leaflet rendering
 #' @noRd
 .theta_surface_downsample <- function(surf, max_dim) {
-  ny <- length(surf$lat_grid); nx <- length(surf$lon_grid)
+  ny <- length(surf$lat_grid)
+  nx <- length(surf$lon_grid)
   i_keep <- unique(round(seq(1, ny, length.out = min(max_dim, ny))))
   j_keep <- unique(round(seq(1, nx, length.out = min(max_dim, nx))))
-  list(lat_grid = surf$lat_grid[i_keep], lon_grid = surf$lon_grid[j_keep],
-       i_keep = i_keep, j_keep = j_keep)
+  list(
+    lat_grid = surf$lat_grid[i_keep], lon_grid = surf$lon_grid[j_keep],
+    i_keep = i_keep, j_keep = j_keep
+  )
 }
 
 #' Apply a previously-computed downsample index to another matrix on the same lattice
@@ -782,37 +855,49 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' rather than silently filling in a hole.
 #' @noRd
 .theta_surface_wkt_to_polys <- function(wkt) {
-  if (length(wkt) != 1L || is.na(wkt) || !nzchar(trimws(wkt)))
+  if (length(wkt) != 1L || is.na(wkt) || !nzchar(trimws(wkt))) {
     stop("plot_theta_surface: 'mask' given as text must be a single non-empty WKT POLYGON string.")
-  if (!grepl("POLYGON", wkt, ignore.case = TRUE))
+  }
+  if (!grepl("POLYGON", wkt, ignore.case = TRUE)) {
     stop("plot_theta_surface: 'mask' given as text must be a WKT POLYGON or MULTIPOLYGON string.")
+  }
 
   if (requireNamespace("sf", quietly = TRUE)) {
     geom <- tryCatch(sf::st_sfc(sf::st_as_sfc(wkt), crs = 4326),
-                     error = function(e)
-                       stop(sprintf("plot_theta_surface: could not parse 'mask' as WKT: %s",
-                                    conditionMessage(e)), call. = FALSE))
+      error = function(e) {
+        stop(sprintf(
+          "plot_theta_surface: could not parse 'mask' as WKT: %s",
+          conditionMessage(e)
+        ), call. = FALSE)
+      }
+    )
     return(geom)
   }
 
   rings <- regmatches(wkt, gregexpr("\\(([^()]*)\\)", wkt))[[1L]]
-  if (length(rings) == 0L)
+  if (length(rings) == 0L) {
     stop("plot_theta_surface: 'mask' WKT contained no coordinate ring.")
-  if (length(rings) > 1L)
-    stop(paste0("plot_theta_surface: this 'mask' WKT has ", length(rings),
-                " rings (a hole or a multipart polygon), which cannot be handled ",
-                "without the 'sf' package -- treating them as separate outer ",
-                "rings would fill in the holes. Install sf, or pass a two-column ",
-                "lon/lat matrix."))
+  }
+  if (length(rings) > 1L) {
+    stop(paste0(
+      "plot_theta_surface: this 'mask' WKT has ", length(rings),
+      " rings (a hole or a multipart polygon), which cannot be handled ",
+      "without the 'sf' package -- treating them as separate outer ",
+      "rings would fill in the holes. Install sf, or pass a two-column ",
+      "lon/lat matrix."
+    ))
+  }
 
   coords <- gsub("^\\(|\\)$", "", rings[[1L]])
-  pairs  <- strsplit(trimws(strsplit(coords, ",")[[1L]]), "[[:space:]]+")
+  pairs <- strsplit(trimws(strsplit(coords, ",")[[1L]]), "[[:space:]]+")
   ok <- vapply(pairs, length, integer(1L)) >= 2L
-  if (!any(ok))
+  if (!any(ok)) {
     stop("plot_theta_surface: 'mask' WKT ring had no parseable lon/lat pairs.")
+  }
   m <- do.call(rbind, lapply(pairs[ok], function(p) as.numeric(p[1:2])))
-  if (anyNA(m))
+  if (anyNA(m)) {
     stop("plot_theta_surface: 'mask' WKT contained non-numeric coordinates.")
+  }
   # WKT is lon-first, which is the orientation the matrix branch expects.
   list(m)
 }
@@ -842,28 +927,34 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   if (is.character(mask)) mask <- .theta_surface_wkt_to_polys(mask)
 
   if (inherits(mask, c("sf", "sfc"))) {
-    if (!requireNamespace("sf", quietly = TRUE))
+    if (!requireNamespace("sf", quietly = TRUE)) {
       stop("plot_theta_surface: 'mask' is an sf object but the 'sf' package is not installed. Install sf, or pass a two-column lon/lat matrix instead.")
+    }
     crs_use <- tryCatch(sf::st_crs(mask), error = function(e) NA)
     if (is.na(crs_use)) crs_use <- 4326
     pts <- sf::st_as_sf(data.frame(lon = lon_v, lat = lat_v),
-                        coords = c("lon", "lat"), crs = crs_use)
+      coords = c("lon", "lat"), crs = crs_use
+    )
     keep <- lengths(sf::st_intersects(pts, sf::st_union(mask))) > 0L
   } else {
     polys <- if (is.list(mask) && !is.data.frame(mask)) mask else list(mask)
     keep <- rep(FALSE, length(lat_v))
     for (poly in polys) {
       poly <- as.matrix(poly)
-      if (!is.numeric(poly) || ncol(poly) < 2L)
+      if (!is.numeric(poly) || ncol(poly) < 2L) {
         stop("plot_theta_surface: each 'mask' polygon must be a two-column numeric lon/lat matrix or data frame.")
+      }
       keep <- keep | .theta_surface_in_polygon(lon_v, lat_v, poly[, 1L], poly[, 2L])
     }
   }
 
-  drop_mat <- function(mat) { mat[!keep] <- NA_real_; mat }
+  drop_mat <- function(mat) {
+    mat[!keep] <- NA_real_
+    mat
+  }
   surf$theta <- if (is.list(surf$theta)) lapply(surf$theta, drop_mat) else drop_mat(surf$theta)
   surf$n_eff <- drop_mat(surf$n_eff)
-  surf$W     <- drop_mat(surf$W)
+  surf$W <- drop_mat(surf$W)
   surf$params$masked_cells <- sum(!keep)
   surf
 }
@@ -876,7 +967,8 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   inside <- rep(FALSE, length(x))
   j <- n
   for (i in seq_len(n)) {
-    yi <- poly_y[i]; yj <- poly_y[j]
+    yi <- poly_y[i]
+    yj <- poly_y[j]
     straddles <- (yi > y) != (yj > y)
     if (any(straddles)) {
       xint <- (poly_x[j] - poly_x[i]) * (y - yi) / (yj - yi) + poly_x[i]

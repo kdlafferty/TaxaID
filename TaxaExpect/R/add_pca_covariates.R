@@ -68,13 +68,15 @@
 #' names(model_df_pca)
 #'
 #' \dontrun{
-#' model_df     <- prepare_model_dataframe(gridded_data,
-#'                   covariates = c("lat_r", "lon_r", "depth"))
+#' model_df <- prepare_model_dataframe(gridded_data,
+#'   covariates = c("lat_r", "lon_r", "depth")
+#' )
 #' model_df_pca <- add_pca_covariates(model_df)
-#' model_obj    <- train_biodiversity_model(
-#'                   model_df_pca,
-#'                   formula = cbind(n_species, n_other) ~
-#'                     main_habitat + (1 | taxon_name) + (0 + PC1_s | taxon_name))
+#' model_obj <- train_biodiversity_model(
+#'   model_df_pca,
+#'   formula = cbind(n_species, n_other) ~
+#'     main_habitat + (1 | taxon_name) + (0 + PC1_s | taxon_name)
+#' )
 #' }
 #'
 #' @importFrom dplyr bind_cols as_tibble
@@ -93,34 +95,39 @@
 #'
 #' @export
 add_pca_covariates <- function(model_df,
-                                cor_threshold = 0.7,
-                                prefix        = "PC") {
-
+                               cor_threshold = 0.7,
+                               prefix = "PC") {
   .glmm_deprecation_notice("add_pca_covariates")
 
-  if (!is.data.frame(model_df))
+  if (!is.data.frame(model_df)) {
     stop("model_df must be a data frame")
+  }
   if (!is.numeric(cor_threshold) || length(cor_threshold) != 1L ||
-      is.na(cor_threshold) || cor_threshold <= 0 || cor_threshold >= 1)
+    is.na(cor_threshold) || cor_threshold <= 0 || cor_threshold >= 1) {
     stop("cor_threshold must be a numeric scalar strictly between 0 and 1")
-  if (!is.character(prefix) || length(prefix) != 1L || !nzchar(trimws(prefix)))
+  }
+  if (!is.character(prefix) || length(prefix) != 1L || !nzchar(trimws(prefix))) {
     stop("prefix must be a non-empty character scalar")
+  }
 
   # ---- Identify scaled covariate columns (_s suffix) -----------------------
   s_cols <- grep("_s$", names(model_df), value = TRUE)
 
   if (length(s_cols) < 2L) {
-    message("add_pca_covariates: fewer than 2 scaled covariate columns (_s suffix); ",
-            "returning unchanged.")
+    message(
+      "add_pca_covariates: fewer than 2 scaled covariate columns (_s suffix); ",
+      "returning unchanged."
+    )
     return(model_df)
   }
 
   # ---- Correlation check among _s columns ----------------------------------
-  cor_mat   <- stats::cor(as.matrix(model_df[, s_cols, drop = FALSE]),
-                           use = "pairwise.complete.obs")
+  cor_mat <- stats::cor(as.matrix(model_df[, s_cols, drop = FALSE]),
+    use = "pairwise.complete.obs"
+  )
   cor_upper <- cor_mat
   cor_upper[lower.tri(cor_upper, diag = TRUE)] <- NA
-  high_cor  <- which(abs(cor_upper) > cor_threshold, arr.ind = TRUE)
+  high_cor <- which(abs(cor_upper) > cor_threshold, arr.ind = TRUE)
 
   if (nrow(high_cor) == 0L) {
     message(sprintf(
@@ -134,8 +141,10 @@ add_pca_covariates <- function(model_df,
   involved <- unique(c(s_cols[high_cor[, 1L]], s_cols[high_cor[, 2L]]))
 
   pairs_msg <- apply(high_cor, 1L, function(idx) {
-    sprintf("%s & %s (r = %.2f)",
-            s_cols[idx[1L]], s_cols[idx[2L]], cor_upper[idx[1L], idx[2L]])
+    sprintf(
+      "%s & %s (r = %.2f)",
+      s_cols[idx[1L]], s_cols[idx[2L]], cor_upper[idx[1L], idx[2L]]
+    )
   })
   message(sprintf(
     "add_pca_covariates: replacing %d correlated column(s) with PCA scores (%s).",
@@ -161,20 +170,21 @@ add_pca_covariates <- function(model_df,
   }
   pca_fit <- stats::prcomp(pca_mat, center = TRUE, scale. = FALSE)
 
-  n_pc    <- ncol(pca_fit$rotation)
+  n_pc <- ncol(pca_fit$rotation)
   pc_cols <- paste0(prefix, seq_len(n_pc), "_s")
 
   # Guard against name collisions with columns we are keeping
   keep_names <- setdiff(names(model_df), involved)
   collisions <- intersect(pc_cols, keep_names)
-  if (length(collisions) > 0L)
+  if (length(collisions) > 0L) {
     stop(sprintf(
       "add_pca_covariates: PC column name(s) collide with existing columns: %s. Change 'prefix'.",
       paste(collisions, collapse = ", ")
     ))
+  }
 
   # ---- Build output data frame ---------------------------------------------
-  out       <- model_df[, keep_names, drop = FALSE]
+  out <- model_df[, keep_names, drop = FALSE]
   pc_scores <- as.data.frame(pca_fit$x, stringsAsFactors = FALSE)
   names(pc_scores) <- pc_cols
   out <- dplyr::bind_cols(out, pc_scores)
@@ -187,7 +197,7 @@ add_pca_covariates <- function(model_df,
     source_cols = involved,
     pc_cols     = pc_cols,
     rotation    = pca_fit$rotation,
-    center      = pca_fit$center,   # per-column means used during prcomp
+    center      = pca_fit$center, # per-column means used during prcomp
     prefix      = prefix
   )
 
@@ -220,34 +230,36 @@ add_pca_covariates <- function(model_df,
 #' set.seed(1)
 #' model_df <- data.frame(lat_r_s = rnorm(30), lon_r_s = rnorm(30))
 #' model_df$depth_r_s <- 0.9 * model_df$lat_r_s + 0.1 * rnorm(30)
-#' model_df_pca  <- add_pca_covariates(model_df)
-#' pca_rot       <- attr(model_df_pca, "pca_rotation")
+#' model_df_pca <- add_pca_covariates(model_df)
+#' pca_rot <- attr(model_df_pca, "pca_rotation")
 #' new_sites_pca <- apply_pca_transform(model_df, pca_rot)
 #' names(new_sites_pca)
 #'
 #' \dontrun{
 #' # Typical workflow when model was trained with PCA covariates:
-#' pca_rot       <- attr(model_df_pca, "pca_rotation")
+#' pca_rot <- attr(model_df_pca, "pca_rotation")
 #' new_sites_pca <- apply_pca_transform(new_sites_scaled, pca_rot)
-#' priors        <- generate_full_priors(model_obj, new_sites_pca)
+#' priors <- generate_full_priors(model_obj, new_sites_pca)
 #' }
 #'
 #' @importFrom dplyr bind_cols
 #' @export
 apply_pca_transform <- function(new_sites, pca_rotation) {
-
-  if (!is.data.frame(new_sites))
+  if (!is.data.frame(new_sites)) {
     stop("new_sites must be a data frame")
+  }
   if (!is.list(pca_rotation) ||
-      !all(c("source_cols", "pc_cols", "rotation") %in% names(pca_rotation)))
+    !all(c("source_cols", "pc_cols", "rotation") %in% names(pca_rotation))) {
     stop("pca_rotation must be a list with elements 'source_cols', 'pc_cols', 'rotation'")
+  }
 
   missing_src <- setdiff(pca_rotation$source_cols, names(new_sites))
-  if (length(missing_src) > 0L)
+  if (length(missing_src) > 0L) {
     stop(sprintf(
       "apply_pca_transform: source columns not found in new_sites: %s",
       paste(missing_src, collapse = ", ")
     ))
+  }
 
   src_mat <- as.matrix(new_sites[, pca_rotation$source_cols, drop = FALSE])
   # Subtract training center (matches prcomp(center = TRUE) projection)
@@ -255,7 +267,8 @@ apply_pca_transform <- function(new_sites, pca_rotation) {
     src_mat <- sweep(src_mat, 2L, pca_rotation$center, "-")
   }
   pc_scores <- as.data.frame(src_mat %*% pca_rotation$rotation,
-                              stringsAsFactors = FALSE)
+    stringsAsFactors = FALSE
+  )
   names(pc_scores) <- pca_rotation$pc_cols
 
   keep <- setdiff(names(new_sites), pca_rotation$source_cols)

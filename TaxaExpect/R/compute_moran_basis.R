@@ -89,8 +89,8 @@
 #' @examples
 #' # A small 4x4 regular grid, built the same way create_sites_from_grid()
 #' # encodes coordinates into grid_id strings.
-#' lat_seq  <- seq(33.0, 34.5, by = 0.5)
-#' lon_seq  <- seq(-119.5, -118.0, by = 0.5)
+#' lat_seq <- seq(33.0, 34.5, by = 0.5)
+#' lon_seq <- seq(-119.5, -118.0, by = 0.5)
 #' grid_ids <- as.vector(outer(lat_seq, lon_seq, function(la, lo) {
 #'   s <- sprintf("Grid_%.1f_%.1f", la, lo)
 #'   s <- gsub("-", "m", s, fixed = TRUE)
@@ -125,11 +125,10 @@
 #'
 #' @export
 compute_moran_basis <- function(grid_ids,
-                                k                  = 10L,
+                                k = 10L,
                                 distance_threshold = NULL,
-                                min_neighbours     = 1L,
-                                coords             = NULL) {
-
+                                min_neighbours = 1L,
+                                coords = NULL) {
   .glmm_deprecation_notice("compute_moran_basis")
 
   # --- Input validation -------------------------------------------------------
@@ -137,7 +136,7 @@ compute_moran_basis <- function(grid_ids,
     stop("compute_moran_basis: 'grid_ids' must be a non-empty character vector.")
   }
   grid_ids <- unique(grid_ids)
-  n        <- length(grid_ids)
+  n <- length(grid_ids)
 
   if (!is.numeric(k) || length(k) != 1L || k < 1L || k != round(k)) {
     stop("compute_moran_basis: 'k' must be a positive integer.")
@@ -154,19 +153,23 @@ compute_moran_basis <- function(grid_ids,
   # --- Resolve coordinates: real coords when supplied, else parse grid_ids ----
   if (!is.null(coords)) {
     if (!is.data.frame(coords) ||
-        !all(c("grid_id", "lat", "lon") %in% names(coords))) {
-      stop("compute_moran_basis: 'coords' must be a data frame with columns ",
-           "grid_id, lat, lon.")
+      !all(c("grid_id", "lat", "lon") %in% names(coords))) {
+      stop(
+        "compute_moran_basis: 'coords' must be a data frame with columns ",
+        "grid_id, lat, lon."
+      )
     }
     coord_lookup <- coords[!duplicated(coords$grid_id), ]
-    resolved     <- coord_lookup[match(grid_ids, coord_lookup$grid_id), c("lat", "lon")]
-    unresolved   <- is.na(resolved$lat) | is.na(resolved$lon)
+    resolved <- coord_lookup[match(grid_ids, coord_lookup$grid_id), c("lat", "lon")]
+    unresolved <- is.na(resolved$lat) | is.na(resolved$lon)
     if (any(unresolved)) {
-      parsed_fallback       <- .parse_grid_id_coords(grid_ids[unresolved])
+      parsed_fallback <- .parse_grid_id_coords(grid_ids[unresolved])
       resolved[unresolved, ] <- parsed_fallback
     }
-    coords <- data.frame(lat = resolved$lat, lon = resolved$lon,
-                          stringsAsFactors = FALSE)
+    coords <- data.frame(
+      lat = resolved$lat, lon = resolved$lon,
+      stringsAsFactors = FALSE
+    )
   } else {
     coords <- .parse_grid_id_coords(grid_ids)
   }
@@ -180,8 +183,8 @@ compute_moran_basis <- function(grid_ids,
       paste(utils::head(bad, 5L), collapse = ", ")
     ))
     grid_ids <- grid_ids[!unparseable]
-    coords   <- coords[!unparseable, ]
-    n        <- length(grid_ids)
+    coords <- coords[!unparseable, ]
+    n <- length(grid_ids)
     if (n < 3L) {
       stop("compute_moran_basis: fewer than 3 parseable grid cells \u2014 cannot compute basis.")
     }
@@ -191,12 +194,12 @@ compute_moran_basis <- function(grid_ids,
   if (is.null(distance_threshold)) {
     lat_sorted <- sort(unique(round(coords$lat, 4L)))
     if (length(lat_sorted) < 2L) {
-      lon_sorted   <- sort(unique(round(coords$lon, 4L)))
-      diffs        <- diff(lon_sorted)
+      lon_sorted <- sort(unique(round(coords$lon, 4L)))
+      diffs <- diff(lon_sorted)
     } else {
-      diffs        <- diff(lat_sorted)
+      diffs <- diff(lat_sorted)
     }
-    pos_diffs    <- diffs[diffs > 1e-6]
+    pos_diffs <- diffs[diffs > 1e-6]
     grid_spacing <- if (length(pos_diffs) > 0L) min(pos_diffs) else 1.0
     distance_threshold <- 1.5 * grid_spacing
     message(sprintf(
@@ -211,18 +214,18 @@ compute_moran_basis <- function(grid_ids,
 
   # --- Drop isolated cells ----------------------------------------------------
   n_neighbours <- rowSums(W)
-  isolated     <- n_neighbours == 0L
+  isolated <- n_neighbours == 0L
 
   if (any(isolated)) {
     warning(sprintf(
       "compute_moran_basis: %d grid cell(s) have 0 neighbours at the current threshold (%.4f deg) and will be dropped. Consider increasing distance_threshold.",
       sum(isolated), distance_threshold
     ))
-    keep     <- !isolated
+    keep <- !isolated
     grid_ids <- grid_ids[keep]
-    coords   <- coords[keep, ]
-    W        <- W[keep, keep]
-    n        <- length(grid_ids)
+    coords <- coords[keep, ]
+    W <- W[keep, keep]
+    n <- length(grid_ids)
     if (n < 3L) {
       stop("compute_moran_basis: fewer than 3 connected grid cells remain.")
     }
@@ -247,13 +250,13 @@ compute_moran_basis <- function(grid_ids,
   # grid. eigen(..., symmetric = TRUE) silently reads only the lower
   # triangle of its input with no warning, so an asymmetric M here would
   # silently produce a wrong basis with no error at all.
-  n2         <- nrow(W)
-  I          <- diag(n2)
-  centering  <- I - matrix(1 / n2, n2, n2)
-  M          <- centering %*% W %*% centering
+  n2 <- nrow(W)
+  I <- diag(n2)
+  centering <- I - matrix(1 / n2, n2, n2)
+  M <- centering %*% W %*% centering
 
   # --- Eigen decomposition ----------------------------------------------------
-  eig     <- eigen(M, symmetric = TRUE)
+  eig <- eigen(M, symmetric = TRUE)
   pos_idx <- which(eig$values > 1e-8)
 
   if (length(pos_idx) == 0L) {
@@ -273,9 +276,9 @@ compute_moran_basis <- function(grid_ids,
   vecs <- scale(vecs, center = FALSE, scale = apply(vecs, 2, stats::sd))
 
   # --- Assemble output dataframe ----------------------------------------------
-  basis_df          <- as.data.frame(vecs)
+  basis_df <- as.data.frame(vecs)
   colnames(basis_df) <- paste0("B", seq_len(k))
-  basis_df          <- cbind(
+  basis_df <- cbind(
     data.frame(grid_id = grid_ids, stringsAsFactors = FALSE),
     basis_df
   )

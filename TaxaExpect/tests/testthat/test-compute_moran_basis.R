@@ -14,8 +14,10 @@
 
 # Standard 5x5 test grid reused across tests
 .grid5x5 <- local({
-  g <- expand.grid(lat = seq(33.0, 33.4, by = 0.1),
-                   lon = seq(-119.0, -118.6, by = 0.1))
+  g <- expand.grid(
+    lat = seq(33.0, 33.4, by = 0.1),
+    lon = seq(-119.0, -118.6, by = 0.1)
+  )
   g$grid_id <- mapply(.make_gid, g$lat, g$lon)
   g
 })
@@ -42,8 +44,8 @@ test_that("B columns have unit variance", {
 })
 
 test_that("B columns are orthogonal (max |off-diagonal correlation| < 0.01)", {
-  basis    <- suppressMessages(compute_moran_basis(.grid5x5$grid_id, k = 5L))
-  cor_mat  <- cor(basis[, -1])
+  basis <- suppressMessages(compute_moran_basis(.grid5x5$grid_id, k = 5L))
+  cor_mat <- cor(basis[, -1])
   off_diag <- abs(cor_mat[upper.tri(cor_mat)])
   expect_lt(max(off_diag), 0.01)
 })
@@ -53,9 +55,11 @@ test_that("B columns are orthogonal (max |off-diagonal correlation| < 0.01)", {
 # ===========================================================================
 test_that("isolated cells are dropped with a warning", {
   # Remove all neighbours of corner cell (33.0, -119.0) including diagonal
-  gaps <- c(.make_gid(33.0, -118.9),
-            .make_gid(33.1, -119.0),
-            .make_gid(33.1, -118.9))
+  gaps <- c(
+    .make_gid(33.0, -118.9),
+    .make_gid(33.1, -119.0),
+    .make_gid(33.1, -118.9)
+  )
   grid_gaps <- .grid5x5[!.grid5x5$grid_id %in% gaps, ]
 
   expect_warning(
@@ -65,9 +69,11 @@ test_that("isolated cells are dropped with a warning", {
 })
 
 test_that("isolated cell is excluded from output", {
-  gaps <- c(.make_gid(33.0, -118.9),
-            .make_gid(33.1, -119.0),
-            .make_gid(33.1, -118.9))
+  gaps <- c(
+    .make_gid(33.0, -118.9),
+    .make_gid(33.1, -119.0),
+    .make_gid(33.1, -118.9)
+  )
   grid_gaps <- .grid5x5[!.grid5x5$grid_id %in% gaps, ]
 
   basis <- suppressMessages(suppressWarnings(
@@ -82,8 +88,10 @@ test_that("isolated cell is excluded from output", {
 # Test 3: grid_id parsing -- positive and negative coordinates
 # ===========================================================================
 test_that("southern hemisphere / eastern longitude grid parses correctly", {
-  g <- expand.grid(lat = seq(-34.0, -33.8, by = 0.1),
-                   lon = seq(151.0, 151.2, by = 0.1))
+  g <- expand.grid(
+    lat = seq(-34.0, -33.8, by = 0.1),
+    lon = seq(151.0, 151.2, by = 0.1)
+  )
   g$grid_id <- mapply(.make_gid, g$lat, g$lon)
   basis <- suppressMessages(compute_moran_basis(g$grid_id, k = 3L))
   expect_equal(nrow(basis), nrow(g))
@@ -91,8 +99,10 @@ test_that("southern hemisphere / eastern longitude grid parses correctly", {
 })
 
 test_that("northern hemisphere / western longitude (California) grid parses correctly", {
-  g <- expand.grid(lat = seq(34.0, 34.4, by = 0.1),
-                   lon = seq(-120.0, -119.6, by = 0.1))
+  g <- expand.grid(
+    lat = seq(34.0, 34.4, by = 0.1),
+    lon = seq(-120.0, -119.6, by = 0.1)
+  )
   g$grid_id <- mapply(.make_gid, g$lat, g$lon)
   basis <- suppressMessages(compute_moran_basis(g$grid_id, k = 4L))
   expect_equal(nrow(basis), nrow(g))
@@ -103,12 +113,14 @@ test_that("northern hemisphere / western longitude (California) grid parses corr
 # Test 4: Spatial ordering
 # ===========================================================================
 test_that("B1 or B2 has higher lat correlation than B3 (broadest first)", {
-  basis  <- suppressMessages(compute_moran_basis(.grid5x5$grid_id, k = 5L))
+  basis <- suppressMessages(compute_moran_basis(.grid5x5$grid_id, k = 5L))
   merged <- merge(basis, .grid5x5, by = "grid_id")
 
-  max_b12 <- max(abs(cor(merged$B1, merged$lat)),
-                 abs(cor(merged$B2, merged$lat)))
-  b3_cor  <- abs(cor(merged$B3, merged$lat))
+  max_b12 <- max(
+    abs(cor(merged$B1, merged$lat)),
+    abs(cor(merged$B2, merged$lat))
+  )
+  b3_cor <- abs(cor(merged$B3, merged$lat))
 
   expect_gt(max_b12, b3_cor)
   expect_gt(max_b12, 0.5)
@@ -119,13 +131,15 @@ test_that("B1 or B2 has higher lat correlation than B3 (broadest first)", {
 # ===========================================================================
 test_that("k is silently reduced when fewer positive eigenvalues are available", {
   # 3x3 grid; request k=7 which exceeds available positive eigenvalues
-  g <- expand.grid(lat = seq(33.0, 33.2, by = 0.1),
-                   lon = seq(-119.0, -118.8, by = 0.1))
+  g <- expand.grid(
+    lat = seq(33.0, 33.2, by = 0.1),
+    lon = seq(-119.0, -118.8, by = 0.1)
+  )
   g$grid_id <- mapply(.make_gid, g$lat, g$lon)
 
   basis <- suppressMessages(compute_moran_basis(g$grid_id, k = 7L))
   expect_equal(nrow(basis), 9L)
-  expect_lt(ncol(basis), 9L)   # grid_id + fewer than 8 B columns
+  expect_lt(ncol(basis), 9L) # grid_id + fewer than 8 B columns
   expect_equal(sum(is.na(basis)), 0L)
 })
 

@@ -15,19 +15,26 @@
 #'   succeeded.
 #' @noRd
 .recover_demoted_species <- function(lookup, backbone_id,
-                                      verbose = FALSE) {
-
+                                     verbose = FALSE) {
   # Only attempt recovery for NCBI backbone
-  if (!identical(as.integer(backbone_id), 4L)) return(lookup)
-  if (!"species" %in% names(lookup)) return(lookup)
-  if (!"gbif_name" %in% names(lookup)) return(lookup)
+  if (!identical(as.integer(backbone_id), 4L)) {
+    return(lookup)
+  }
+  if (!"species" %in% names(lookup)) {
+    return(lookup)
+  }
+  if (!"gbif_name" %in% names(lookup)) {
+    return(lookup)
+  }
 
   # Identify binomials that were demoted: input has a space (binomial) but
   # species column is NA in the output
   is_binomial <- grepl(" ", lookup$gbif_name) & !grepl("\\s\u00d7\\s", lookup$gbif_name)
-  is_demoted  <- is_binomial & (is.na(lookup$species) | !nzchar(lookup$species))
+  is_demoted <- is_binomial & (is.na(lookup$species) | !nzchar(lookup$species))
 
-  if (sum(is_demoted) == 0L) return(lookup)
+  if (sum(is_demoted) == 0L) {
+    return(lookup)
+  }
 
   if (!requireNamespace("rentrez", quietly = TRUE)) {
     warning(
@@ -47,7 +54,7 @@
 
   # Query NCBI taxonomy for each demoted species
   recovery_map <- data.frame(
-    gbif_name    = demoted_names,
+    gbif_name = demoted_names,
     ncbi_species = NA_character_,
     stringsAsFactors = FALSE
   )
@@ -56,18 +63,21 @@
 
   for (i in seq_along(demoted_names)) {
     sp <- demoted_names[i]
-    tryCatch({
-      res <- rentrez::entrez_search(
-        db = "taxonomy",
-        term = paste0(sp, "[Scientific Name]"),
-        retmax = 1L
-      )
-      if (as.integer(res$count) > 0L) {
-        recovery_map$ncbi_species[i] <- sp
+    tryCatch(
+      {
+        res <- rentrez::entrez_search(
+          db = "taxonomy",
+          term = paste0(sp, "[Scientific Name]"),
+          retmax = 1L
+        )
+        if (as.integer(res$count) > 0L) {
+          recovery_map$ncbi_species[i] <- sp
+        }
+      },
+      error = function(e) {
+        # Silently skip failed lookups
       }
-    }, error = function(e) {
-      # Silently skip failed lookups
-    })
+    )
     if (i < length(demoted_names)) Sys.sleep(delay)
   }
 
@@ -77,8 +87,10 @@
     return(lookup)
   }
 
-  msg(sprintf("  Recovered %d of %d demoted species from NCBI taxonomy.",
-              n_recovered, length(demoted_names)))
+  msg(sprintf(
+    "  Recovered %d of %d demoted species from NCBI taxonomy.",
+    n_recovered, length(demoted_names)
+  ))
 
   # Fill species column in lookup for recovered names
   recovered <- recovery_map[!is.na(recovery_map$ncbi_species), ]

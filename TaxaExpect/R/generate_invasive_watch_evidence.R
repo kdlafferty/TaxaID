@@ -73,10 +73,10 @@
 #' @importFrom tibble tibble
 #' @export
 generate_invasive_watch_evidence <- function(
-    invasive_taxa,
-    weight,
-    p_conc = 1,
-    match_list_taxa = NULL
+  invasive_taxa,
+  weight,
+  p_conc = 1,
+  match_list_taxa = NULL
 ) {
   if (!is.character(invasive_taxa) || length(invasive_taxa) == 0L) {
     stop("generate_invasive_watch_evidence: `invasive_taxa` must be a non-empty character vector.")
@@ -88,13 +88,15 @@ generate_invasive_watch_evidence <- function(
     stop("generate_invasive_watch_evidence: `p_conc` must be a single non-NA positive value.")
   }
   if (!requireNamespace("TaxaTools", quietly = TRUE)) {
-    stop("generate_invasive_watch_evidence: the TaxaTools package is required ",
-         "(used to normalize candidate taxon names via clean_taxon_names()).")
+    stop(
+      "generate_invasive_watch_evidence: the TaxaTools package is required ",
+      "(used to normalize candidate taxon names via clean_taxon_names())."
+    )
   }
 
-  raw_names     <- unique(invasive_taxa)
+  raw_names <- unique(invasive_taxa)
   cleaned_names <- TaxaTools::clean_taxon_names(raw_names)
-  dropped       <- unique(raw_names[is.na(cleaned_names)])
+  dropped <- unique(raw_names[is.na(cleaned_names)])
   if (length(dropped) > 0L) {
     warning(sprintf(
       "generate_invasive_watch_evidence: %d taxon name(s) could not be cleaned by TaxaTools::clean_taxon_names() and were dropped: %s",
@@ -104,8 +106,8 @@ generate_invasive_watch_evidence <- function(
   candidates <- unique(stats::na.omit(cleaned_names))
 
   if (!is.null(match_list_taxa) && length(match_list_taxa) > 0L) {
-    match_set  <- unique(stats::na.omit(TaxaTools::clean_taxon_names(match_list_taxa)))
-    n_before   <- length(candidates)
+    match_set <- unique(stats::na.omit(TaxaTools::clean_taxon_names(match_list_taxa)))
+    n_before <- length(candidates)
     candidates <- intersect(candidates, match_set)
     message(sprintf(
       "generate_invasive_watch_evidence: match_list_taxa supplied -- restricted %d listed taxon/taxa to %d actually present in the match list.",

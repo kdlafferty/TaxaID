@@ -94,29 +94,29 @@
 #'
 #' # Ocean basemap, satellite imagery, or streets
 #' plot_theta_map_interactive(priors_combined, occurrences_with_habitat,
-#'                             tile = "Esri.WorldImagery")
+#'   tile = "Esri.WorldImagery"
+#' )
 #'
 #' # No occurrence points
 #' plot_theta_map_interactive(priors_combined, occurrences = NULL)
 #'
 #' # Single colour for occurrence points (no habitat coloring)
 #' plot_theta_map_interactive(priors_combined, occurrences_with_habitat,
-#'                             occurrence_habitat_col = NULL,
-#'                             point_color = "#0000ff")
+#'   occurrence_habitat_col = NULL,
+#'   point_color = "#0000ff"
+#' )
 #' }
-
 plot_theta_map_interactive <- function(
-    priors,
-    occurrences            = NULL,
-    prior_habitat_col      = "main_habitat",
-    occurrence_habitat_col = "main_habitat",
-    tile                   = "Esri.OceanBasemap",
-    theta_col              = "theta_mean",
-    grid_opacity           = 0.7,
-    point_radius           = 4,
-    point_color            = "#ff6600"
+  priors,
+  occurrences = NULL,
+  prior_habitat_col = "main_habitat",
+  occurrence_habitat_col = "main_habitat",
+  tile = "Esri.OceanBasemap",
+  theta_col = "theta_mean",
+  grid_opacity = 0.7,
+  point_radius = 4,
+  point_color = "#ff6600"
 ) {
-
   # --- Package checks ---------------------------------------------------------
   for (pkg in c("shiny", "miniUI", "leaflet")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -160,7 +160,7 @@ plot_theta_map_interactive <- function(
       }
     }
     if (!is.null(occurrence_habitat_col) &&
-        !occurrence_habitat_col %in% names(occurrences)) {
+      !occurrence_habitat_col %in% names(occurrences)) {
       warning(sprintf(
         "plot_theta_map_interactive: occurrence_habitat_col '%s' not found -- occurrences will not be habitat-filtered or habitat-coloured.",
         occurrence_habitat_col
@@ -169,8 +169,8 @@ plot_theta_map_interactive <- function(
     }
 
     occ <- data.frame(
-      lat   = as.numeric(occurrences[["decimalLatitude"]]),
-      lon   = as.numeric(occurrences[["decimalLongitude"]]),
+      lat = as.numeric(occurrences[["decimalLatitude"]]),
+      lon = as.numeric(occurrences[["decimalLongitude"]]),
       taxon = as.character(occurrences[["taxon_name"]]),
       stringsAsFactors = FALSE
     )
@@ -192,25 +192,27 @@ plot_theta_map_interactive <- function(
   # --- Prepare priors ---------------------------------------------------------
   pr <- data.frame(
     taxon_name = as.character(priors[["taxon_name"]]),
-    grid_id    = as.character(priors[["grid_id"]]),
-    habitat    = as.character(priors[[prior_habitat_col]]),
-    theta      = unname(as.numeric(priors[[theta_col]])),
+    grid_id = as.character(priors[["grid_id"]]),
+    habitat = as.character(priors[[prior_habitat_col]]),
+    theta = unname(as.numeric(priors[[theta_col]])),
     stringsAsFactors = FALSE
   )
   # Carry optional diagnostic columns if present -- unname() strips vector names
   # (e.g. "eta_predict" from predict()) that break Leaflet's JSON serialization
-  for (col in c("theta_sd", "n_obs", "model_tier",
-                "effort_flag", "extrapolation_warning", "jeffreys_fallback")) {
+  for (col in c(
+    "theta_sd", "n_obs", "model_tier",
+    "effort_flag", "extrapolation_warning", "jeffreys_fallback"
+  )) {
     if (col %in% names(priors)) pr[[col]] <- unname(priors[[col]])
   }
   pr <- pr[!is.na(pr$theta) & !is.na(pr$grid_id), ]
 
   # --- Parse grid_id -> centroid coords ---------------------------------------
-  coords     <- .parse_grid_id_coords(pr$grid_id)
+  coords <- .parse_grid_id_coords(pr$grid_id)
   pr$lat_ctr <- coords$lat
   pr$lon_ctr <- coords$lon
   bad_coords <- is.na(pr$lat_ctr) | is.na(pr$lon_ctr) |
-                is.nan(pr$lat_ctr) | is.nan(pr$lon_ctr)
+    is.nan(pr$lat_ctr) | is.nan(pr$lon_ctr)
   if (any(bad_coords)) {
     warning(sprintf(
       "plot_theta_map_interactive: dropped %d rows with unparseable grid_id coordinates.",
@@ -233,7 +235,7 @@ plot_theta_map_interactive <- function(
   # instead of correctly-sized ones for each cell.
   recorded_grid_size <- attr(priors, "grid_size")
   grid_hw <- if (!is.null(recorded_grid_size) && is.finite(recorded_grid_size) &&
-                 recorded_grid_size > 0) {
+    recorded_grid_size > 0) {
     recorded_grid_size / 2
   } else {
     all_lat_ctr <- sort(unique(pr$lat_ctr))
@@ -241,9 +243,9 @@ plot_theta_map_interactive <- function(
   }
 
   # --- Initial dropdown / checkbox state --------------------------------------
-  all_taxa      <- sort(unique(pr$taxon_name))
+  all_taxa <- sort(unique(pr$taxon_name))
   default_taxon <- all_taxa[1L]
-  default_habs  <- sort(unique(pr$habitat[pr$taxon_name %in% default_taxon]))
+  default_habs <- sort(unique(pr$habitat[pr$taxon_name %in% default_taxon]))
 
   # --- UI ---------------------------------------------------------------------
   ui <- miniUI::miniPage(
@@ -268,15 +270,14 @@ plot_theta_map_interactive <- function(
             "width:230px;flex-shrink:0;padding:12px;border-left:1px solid #ddd;",
             "background:#fafafa;overflow-y:auto;"
           ),
-
           shiny::h4("Species", style = "margin:6px 0 4px;font-size:13px;"),
           shiny::selectInput(
-            "taxon", label = NULL,
-            choices  = all_taxa,
+            "taxon",
+            label = NULL,
+            choices = all_taxa,
             selected = default_taxon,
-            width    = "100%"
+            width = "100%"
           ),
-
           shiny::h4("Habitats", style = "margin:6px 0 2px;font-size:13px;"),
           shiny::div(
             style = "display:flex;gap:6px;margin-bottom:6px;",
@@ -290,20 +291,18 @@ plot_theta_map_interactive <- function(
             )
           ),
           shiny::checkboxGroupInput(
-            "habitat", label = NULL,
-            choices  = default_habs,
+            "habitat",
+            label = NULL,
+            choices = default_habs,
             selected = default_habs,
-            width    = "100%"
+            width = "100%"
           ),
-
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::h4("Display", style = "margin:6px 0 4px;font-size:13px;"),
           shiny::checkboxInput("show_occ", "Show occurrence points",
-                               value = !is.null(occ)),
-
+            value = !is.null(occ)
+          ),
           shiny::hr(style = "margin:8px 0;"),
-
           shiny::uiOutput("summary_panel")
         )
       )
@@ -312,13 +311,13 @@ plot_theta_map_interactive <- function(
 
   # --- Server -----------------------------------------------------------------
   server <- function(input, output, session) {
-
     # Update habitat checkboxes when taxon changes -- select all by default
     shiny::observeEvent(input$taxon, {
       habs <- sort(unique(pr$habitat[pr$taxon_name %in% input$taxon]))
       shiny::updateCheckboxGroupInput(session, "habitat",
-                                      choices  = habs,
-                                      selected = habs)
+        choices  = habs,
+        selected = habs
+      )
     })
 
     # All / None buttons
@@ -337,7 +336,9 @@ plot_theta_map_interactive <- function(
 
     # Filtered occurrences for current taxon x selected habitats
     occ_sel <- shiny::reactive({
-      if (is.null(occ)) return(NULL)
+      if (is.null(occ)) {
+        return(NULL)
+      }
       # %in%, not ==: matches pr_sel()'s own pattern above and, unlike ==,
       # never turns an NA in occ$taxon into an NA logical mask entry, which
       # `[`-indexing then silently expands into a ghost all-NA row (a real
@@ -352,49 +353,54 @@ plot_theta_map_interactive <- function(
 
     # Build popups for grid cells
     grid_popup <- shiny::reactive({
-      d  <- pr_sel()
-      if (nrow(d) == 0L) return(character(0L))
-      mapply(function(theta, lat, lon, ...) {
-        args  <- list(...)
-        lines <- sprintf(
-          "<b>Grid cell:</b> %.4f, %.4f<br/><b>%s:</b> %.4f",
-          lat, lon, theta_col, theta
-        )
-        if (!is.null(args$theta_sd)) {
-          lines <- paste0(lines, sprintf("<br/><b>theta_sd:</b> %.4f", args$theta_sd))
-        }
-        if (!is.null(args$n_obs)) {
-          lines <- paste0(lines, sprintf("<br/><b>n_obs:</b> %d", as.integer(args$n_obs)))
-        }
-        if (!is.null(args$model_tier)) {
-          lines <- paste0(lines, sprintf("<br/><b>tier:</b> %s", args$model_tier))
-        }
-        flags <- character(0L)
-        if (isTRUE(args$effort_flag))           flags <- c(flags, "effort")
-        if (isTRUE(args$extrapolation_warning)) flags <- c(flags, "extrapolation")
-        if (isTRUE(args$jeffreys_fallback))     flags <- c(flags, "variance fallback")
-        if (length(flags)) {
-          lines <- paste0(lines, sprintf("<br/><b>flags:</b> %s",
-                                         paste(flags, collapse = ", ")))
-        }
-        lines
-      },
-      d$theta,
-      d$lat_ctr,
-      d$lon_ctr,
-      theta_sd              = if ("theta_sd"              %in% names(d)) d$theta_sd              else rep(list(NULL), nrow(d)),
-      n_obs                 = if ("n_obs"                 %in% names(d)) d$n_obs                 else rep(list(NULL), nrow(d)),
-      model_tier            = if ("model_tier"            %in% names(d)) d$model_tier            else rep(list(NULL), nrow(d)),
-      effort_flag           = if ("effort_flag"           %in% names(d)) d$effort_flag           else rep(list(NULL), nrow(d)),
-      extrapolation_warning = if ("extrapolation_warning" %in% names(d)) d$extrapolation_warning else rep(list(NULL), nrow(d)),
-      jeffreys_fallback     = if ("jeffreys_fallback"     %in% names(d)) d$jeffreys_fallback     else rep(list(NULL), nrow(d)),
-      SIMPLIFY = TRUE
+      d <- pr_sel()
+      if (nrow(d) == 0L) {
+        return(character(0L))
+      }
+      mapply(
+        function(theta, lat, lon, ...) {
+          args <- list(...)
+          lines <- sprintf(
+            "<b>Grid cell:</b> %.4f, %.4f<br/><b>%s:</b> %.4f",
+            lat, lon, theta_col, theta
+          )
+          if (!is.null(args$theta_sd)) {
+            lines <- paste0(lines, sprintf("<br/><b>theta_sd:</b> %.4f", args$theta_sd))
+          }
+          if (!is.null(args$n_obs)) {
+            lines <- paste0(lines, sprintf("<br/><b>n_obs:</b> %d", as.integer(args$n_obs)))
+          }
+          if (!is.null(args$model_tier)) {
+            lines <- paste0(lines, sprintf("<br/><b>tier:</b> %s", args$model_tier))
+          }
+          flags <- character(0L)
+          if (isTRUE(args$effort_flag)) flags <- c(flags, "effort")
+          if (isTRUE(args$extrapolation_warning)) flags <- c(flags, "extrapolation")
+          if (isTRUE(args$jeffreys_fallback)) flags <- c(flags, "variance fallback")
+          if (length(flags)) {
+            lines <- paste0(lines, sprintf(
+              "<br/><b>flags:</b> %s",
+              paste(flags, collapse = ", ")
+            ))
+          }
+          lines
+        },
+        d$theta,
+        d$lat_ctr,
+        d$lon_ctr,
+        theta_sd = if ("theta_sd" %in% names(d)) d$theta_sd else rep(list(NULL), nrow(d)),
+        n_obs = if ("n_obs" %in% names(d)) d$n_obs else rep(list(NULL), nrow(d)),
+        model_tier = if ("model_tier" %in% names(d)) d$model_tier else rep(list(NULL), nrow(d)),
+        effort_flag = if ("effort_flag" %in% names(d)) d$effort_flag else rep(list(NULL), nrow(d)),
+        extrapolation_warning = if ("extrapolation_warning" %in% names(d)) d$extrapolation_warning else rep(list(NULL), nrow(d)),
+        jeffreys_fallback = if ("jeffreys_fallback" %in% names(d)) d$jeffreys_fallback else rep(list(NULL), nrow(d)),
+        SIMPLIFY = TRUE
       )
     })
 
     # Initial map render -- zoom to default taxon x all habitats extent
     output$map <- leaflet::renderLeaflet({
-      d_init    <- pr[pr$taxon_name %in% default_taxon & pr$habitat %in% default_habs, ]
+      d_init <- pr[pr$taxon_name %in% default_taxon & pr$habitat %in% default_habs, ]
       leaflet::leaflet() |>
         leaflet::addProviderTiles(tile) |>
         leaflet::fitBounds(
@@ -414,8 +420,8 @@ plot_theta_map_interactive <- function(
 
     # Update rectangles and points when selection changes
     shiny::observe({
-      d   <- pr_sel()
-      hw  <- grid_hw
+      d <- pr_sel()
+      hw <- grid_hw
       pop <- grid_popup()
 
       proxy <- leaflet::leafletProxy("map")
@@ -424,7 +430,9 @@ plot_theta_map_interactive <- function(
       proxy <- leaflet::clearGroup(proxy, "occurrences")
       proxy <- leaflet::clearControls(proxy)
 
-      if (nrow(d) == 0L) return()
+      if (nrow(d) == 0L) {
+        return()
+      }
 
       # Theta palette scaled to current selection
       theta_range <- range(d$theta, na.rm = TRUE)
@@ -453,15 +461,17 @@ plot_theta_map_interactive <- function(
 
       # Theta legend -- title shows taxon only (habitat selection shown in sidebar)
       proxy <- leaflet::addLegend(
-        map      = proxy,
+        map = proxy,
         position = "bottomright",
-        pal      = theta_pal,
-        values   = theta_range,
-        title    = sprintf("%s<br/><small>%s</small>",
-                           theta_col,
-                           .truncate_label(input$taxon, 28L)),
+        pal = theta_pal,
+        values = theta_range,
+        title = sprintf(
+          "%s<br/><small>%s</small>",
+          theta_col,
+          .truncate_label(input$taxon, 28L)
+        ),
         labFormat = leaflet::labelFormat(digits = 3),
-        opacity  = 0.9
+        opacity = 0.9
       )
 
       # Single-grid-cell warning -- this gadget is built to compare theta
@@ -470,9 +480,9 @@ plot_theta_map_interactive <- function(
       # several selected habitats produces many rows all sharing one grid_id.
       if (n_cells() == 1L) {
         proxy <- leaflet::addControl(
-          map      = proxy,
+          map = proxy,
           position = "topright",
-          html     = paste0(
+          html = paste0(
             "<div style='background:#fff3cd;border:1px solid #ffe69c;",
             "border-radius:4px;padding:6px 10px;max-width:220px;",
             "font-size:11px;line-height:1.4;color:#664d03;'>",
@@ -489,19 +499,20 @@ plot_theta_map_interactive <- function(
       # Occurrence points
       sub <- occ_sel()
       if (input$show_occ && !is.null(sub) && nrow(sub) > 0L) {
-
-        occ_popup <- sprintf("<b>point_id:</b> %s<br/><b>taxon:</b> %s",
-                             .he(sub$point_id), .he(sub$taxon))
+        occ_popup <- sprintf(
+          "<b>point_id:</b> %s<br/><b>taxon:</b> %s",
+          .he(sub$point_id), .he(sub$taxon)
+        )
 
         # Colour by habitat when available; fall back to point_color otherwise.
         # .habitat_palette() keys colours to the habitat labels present in the
         # current filtered occurrence subset, matching the palette used by the
         # other interactive plot functions in this package.
         if (!is.null(occurrence_habitat_col) && "habitat" %in% names(sub) &&
-            length(unique(sub$habitat)) > 0L) {
+          length(unique(sub$habitat)) > 0L) {
           occ_hab_levels <- sort(unique(sub$habitat))
-          occ_pal        <- .habitat_palette(occ_hab_levels)
-          sub_colors     <- unname(occ_pal[sub$habitat])
+          occ_pal <- .habitat_palette(occ_hab_levels)
+          sub_colors <- unname(occ_pal[sub$habitat])
         } else {
           sub_colors <- rep(point_color, nrow(sub))
         }
@@ -523,7 +534,7 @@ plot_theta_map_interactive <- function(
         # Habitat legend for occurrence points -- shown only when >1 habitat
         # is present in the current filtered subset
         if (!is.null(occurrence_habitat_col) && "habitat" %in% names(sub) &&
-            length(unique(sub$habitat)) > 1L) {
+          length(unique(sub$habitat)) > 1L) {
           occ_pal_leaflet <- leaflet::colorFactor(
             palette = unname(occ_pal),
             levels  = occ_hab_levels
@@ -554,11 +565,13 @@ plot_theta_map_interactive <- function(
       d <- pr_sel()
       if (length(input$habitat) == 0L) {
         return(shiny::p("No habitats selected.",
-                        style = "font-size:11px;color:#999;"))
+          style = "font-size:11px;color:#999;"
+        ))
       }
       if (nrow(d) == 0L) {
         return(shiny::p("No data for this combination.",
-                        style = "font-size:11px;color:#999;"))
+          style = "font-size:11px;color:#999;"
+        ))
       }
       hab_str <- if (length(input$habitat) == 1L) {
         .truncate_label(input$habitat, 26L)
@@ -575,19 +588,25 @@ plot_theta_map_interactive <- function(
           sprintf("theta range: %.3f \u2013 %.3f", min(d$theta), max(d$theta)),
           shiny::br(),
           sprintf("theta mean: %.3f", mean(d$theta)),
-          if ("n_obs" %in% names(d))
-            shiny::tagList(shiny::br(),
-                           sprintf("Total obs: %d", sum(d$n_obs, na.rm = TRUE)))
-          else NULL,
+          if ("n_obs" %in% names(d)) {
+            shiny::tagList(
+              shiny::br(),
+              sprintf("Total obs: %d", sum(d$n_obs, na.rm = TRUE))
+            )
+          } else {
+            NULL
+          },
           style = "font-size:11px;line-height:1.7;margin:0;"
         ),
-        if (n_cells() == 1L)
+        if (n_cells() == 1L) {
           shiny::p(
             "This explorer is built for comparing theta across multiple ",
             "grid cells. A single cell may not be very instructive.",
             style = "font-size:11px;line-height:1.5;margin:6px 0 0;color:#664d03;"
           )
-        else NULL
+        } else {
+          NULL
+        }
       )
     })
 

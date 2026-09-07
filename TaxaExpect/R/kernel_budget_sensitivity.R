@@ -96,37 +96,48 @@ kernel_budget_sensitivity <- function(fit,
                                       support_weight_grid = exp(-(1:5)),
                                       lambda_grid = NULL,
                                       verbose = FALSE) {
-  if (!inherits(fit, "taxaexpect_kernel_priors"))
+  if (!inherits(fit, "taxaexpect_kernel_priors")) {
     stop("fit must be a 'taxaexpect_kernel_priors' object from estimate_kernel_priors().")
-  if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L)
+  }
+  if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L) {
     stop("occurrence_data must be the non-empty data frame `fit` was computed from.")
+  }
   if (!is.numeric(support_weight_grid) || length(support_weight_grid) < 1L ||
-      any(is.na(support_weight_grid)) || any(support_weight_grid <= 0) ||
-      any(support_weight_grid > 1))
+    any(is.na(support_weight_grid)) || any(support_weight_grid <= 0) ||
+    any(support_weight_grid > 1)) {
     stop("support_weight_grid must be numerics in (0, 1].")
+  }
   if (!is.null(lambda_grid) &&
-      (!is.numeric(lambda_grid) || length(lambda_grid) < 1L ||
-       any(is.na(lambda_grid)) || any(lambda_grid <= 0)))
+    (!is.numeric(lambda_grid) || length(lambda_grid) < 1L ||
+      any(is.na(lambda_grid)) || any(lambda_grid <= 0))) {
     stop("lambda_grid must be positive numerics, or NULL.")
+  }
 
   p <- fit$params
   # Always include the fit's own settings, so the sweep contains the number the
   # caller is actually quoting and $reproduces_fit has something to check.
-  sw_grid  <- sort(unique(c(support_weight_grid, p$support_weight)), decreasing = TRUE)
-  lam_grid <- sort(unique(c(if (is.null(lambda_grid)) numeric(0) else lambda_grid,
-                            p$lambda_km)))
-  settings <- expand.grid(lambda_km = lam_grid, support_weight = sw_grid,
-                          KEEP.OUT.ATTRS = FALSE)
+  sw_grid <- sort(unique(c(support_weight_grid, p$support_weight)), decreasing = TRUE)
+  lam_grid <- sort(unique(c(
+    if (is.null(lambda_grid)) numeric(0) else lambda_grid,
+    p$lambda_km
+  )))
+  settings <- expand.grid(
+    lambda_km = lam_grid, support_weight = sw_grid,
+    KEEP.OUT.ATTRS = FALSE
+  )
 
   # Column names were not recorded before 2026-09-03; fall back to the
   # estimator's own defaults for objects fitted by an older version.
   .col <- function(nm, default) if (is.null(p[[nm]])) default else p[[nm]]
 
   rows <- lapply(seq_len(nrow(settings)), function(i) {
-    if (isTRUE(verbose))
-      message(sprintf("  lambda_km = %g, support_weight = %.4g (%.1f bandwidths)",
-                      settings$lambda_km[i], settings$support_weight[i],
-                      -log(settings$support_weight[i])))
+    if (isTRUE(verbose)) {
+      message(sprintf(
+        "  lambda_km = %g, support_weight = %.4g (%.1f bandwidths)",
+        settings$lambda_km[i], settings$support_weight[i],
+        -log(settings$support_weight[i])
+      ))
+    }
     f <- estimate_kernel_priors(
       occurrence_data,
       site_lat = p$site_lat, site_lon = p$site_lon,
@@ -140,34 +151,45 @@ kernel_budget_sensitivity <- function(fit,
       lon_col = .col("lon_col", "decimalLongitude"),
       habitat_col = .col("habitat_col", "main_habitat"),
       sampling_group_col = p$sampling_group_col,
-      support_weight = settings$support_weight[i])
+      support_weight = settings$support_weight[i]
+    )
     b <- f$budget
-    b$lambda_km      <- settings$lambda_km[i]
+    b$lambda_km <- settings$lambda_km[i]
     b$support_weight <- settings$support_weight[i]
     b$radius_lambdas <- -log(settings$support_weight[i])
-    b$radius_km      <- -log(settings$support_weight[i]) * settings$lambda_km[i]
+    b$radius_km <- -log(settings$support_weight[i]) * settings$lambda_km[i]
     b
   })
   budget <- do.call(rbind, rows)
-  budget <- budget[order(budget$sampling_group, budget$lambda_km,
-                         -budget$support_weight), , drop = FALSE]
+  budget <- budget[order(
+    budget$sampling_group, budget$lambda_km,
+    -budget$support_weight
+  ), , drop = FALSE]
   rownames(budget) <- NULL
 
   at_fit <- budget[budget$lambda_km == p$lambda_km &
-                     budget$support_weight == p$support_weight, , drop = FALSE]
+    budget$support_weight == p$support_weight, , drop = FALSE]
   keep <- intersect(names(fit$budget), names(at_fit))
   reproduces <- isTRUE(all.equal(
     fit$budget[order(fit$budget$sampling_group), keep, drop = FALSE],
     at_fit[order(at_fit$sampling_group), keep, drop = FALSE],
-    check.attributes = FALSE))
+    check.attributes = FALSE
+  ))
 
-  .rng <- function(v) if (all(is.na(v))) c(NA_real_, NA_real_) else
-    range(v, na.rm = TRUE)
+  .rng <- function(v) {
+    if (all(is.na(v))) {
+      c(NA_real_, NA_real_)
+    } else {
+      range(v, na.rm = TRUE)
+    }
+  }
   grps <- unique(budget$sampling_group)
   summary_tab <- do.call(rbind, lapply(grps, function(g) {
-    s <- budget[(is.na(g) & is.na(budget$sampling_group)) |
-                  (!is.na(budget$sampling_group) & budget$sampling_group == g), ,
-                drop = FALSE]
+    s <- budget[
+      (is.na(g) & is.na(budget$sampling_group)) |
+        (!is.na(budget$sampling_group) & budget$sampling_group == g), ,
+      drop = FALSE
+    ]
     tp <- s$theta_present[is.finite(s$theta_present) & s$theta_present > 0]
     data.frame(
       sampling_group = g,
@@ -179,9 +201,11 @@ kernel_budget_sensitivity <- function(fit,
       theta_present_max = if (length(tp)) max(tp) else NA_real_,
       theta_present_spread = if (length(tp) > 1L) max(tp) / min(tp) else NA_real_,
       theta_present_at_fit = at_fit$theta_present[
-        match(g, at_fit$sampling_group)],
+        match(g, at_fit$sampling_group)
+      ],
       n_unpriced = sum(!is.finite(s$theta_present)),
-      stringsAsFactors = FALSE)
+      stringsAsFactors = FALSE
+    )
   }))
   rownames(summary_tab) <- NULL
 
@@ -190,13 +214,15 @@ kernel_budget_sensitivity <- function(fit,
     summary = summary_tab,
     at_fit = at_fit,
     reproduces_fit = reproduces,
-    params = list(fit_lambda_km = p$lambda_km,
-                  fit_support_weight = p$support_weight,
-                  sampling_group_col = p$sampling_group_col,
-                  site_id = p$site_id, site_habitat = p$site_habitat,
-                  support_weight_grid = sw_grid,
-                  lambda_grid = lam_grid,
-                  n_settings = nrow(settings))
+    params = list(
+      fit_lambda_km = p$lambda_km,
+      fit_support_weight = p$support_weight,
+      sampling_group_col = p$sampling_group_col,
+      site_id = p$site_id, site_habitat = p$site_habitat,
+      support_weight_grid = sw_grid,
+      lambda_grid = lam_grid,
+      n_settings = nrow(settings)
+    )
   ), class = "taxaexpect_kernel_budget_sensitivity")
 }
 
@@ -208,10 +234,14 @@ print.taxaexpect_kernel_budget_sensitivity <- function(x, ...) {
     p$n_settings, p$site_id, p$site_habitat,
     min(-log(p$support_weight_grid)), max(-log(p$support_weight_grid)),
     paste(format(p$lambda_grid, trim = TRUE), collapse = "/"),
-    -log(p$fit_support_weight), p$fit_lambda_km))
-  if (!isTRUE(x$reproduces_fit))
+    -log(p$fit_support_weight), p$fit_lambda_km
+  ))
+  if (!isTRUE(x$reproduces_fit)) {
     cat("  ! the fit's own settings did NOT reproduce its $budget -- occurrence_data\n",
-        "    is not the data this fit was computed from.\n", sep = "")
+      "    is not the data this fit was computed from.\n",
+      sep = ""
+    )
+  }
   s <- x$summary
   out <- data.frame(
     group = ifelse(is.na(s$sampling_group), "(pooled)", s$sampling_group),
@@ -220,18 +250,24 @@ print.taxaexpect_kernel_budget_sensitivity <- function(x, ...) {
     chao = sprintf("%.3g-%.3g", s$chao_min, s$chao_max),
     theta_present = sprintf("%.3g", s$theta_present_at_fit),
     spread = ifelse(is.na(s$theta_present_spread), "-",
-                    sprintf("%.3gx", s$theta_present_spread)),
+      sprintf("%.3gx", s$theta_present_spread)
+    ),
     unpriced = s$n_unpriced,
-    stringsAsFactors = FALSE)
+    stringsAsFactors = FALSE
+  )
   print(out, row.names = FALSE)
   thin <- s[is.finite(s$f2_min) & s$f2_min > 0 & s$f2_min < 10, , drop = FALSE]
-  if (nrow(thin) > 0L)
+  if (nrow(thin) > 0L) {
     cat(sprintf(
       "  CAUTION: chao_missing rests on single-digit doubleton counts in %d group(s) (f2 as low as %d: %s).\n           Chao = f1^2/(2 f2) is hypersensitive there; quote the spread with the figure.\n",
       nrow(thin), min(thin$f2_min),
       paste(utils::head(ifelse(is.na(thin$sampling_group), "(pooled)",
-                               thin$sampling_group), 4L), collapse = ", ")))
-  if (any(s$n_unpriced > 0L))
+        thin$sampling_group
+      ), 4L), collapse = ", ")
+    ))
+  }
+  if (any(s$n_unpriced > 0L)) {
     cat("  NOTE: some settings leave a group with no defined theta_present (f1 = 0 --\n        no singleton anchor at that counting radius).\n")
+  }
   invisible(x)
 }

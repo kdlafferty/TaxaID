@@ -17,7 +17,7 @@ library(dplyr)
   floor_row <- tibble::tibble(
     taxon_name = NA_character_, taxon_name_rank = NA_character_,
     grid_id = NA_character_, alpha = 1, beta = 999,
-    theta_mean = 1/1000, theta_sd = NA_real_,
+    theta_mean = 1 / 1000, theta_sd = NA_real_,
     model_tier = "tier3_undetected", undetected_type = "global_floor",
     source_taxon_name = NA_character_
   )
@@ -75,7 +75,8 @@ test_that("stops when main_habitat is supplied but habitat_col is NULL", {
   expect_error(
     apply_undetected_evidence(
       .make_priors(habitat_col = NULL), .make_mock_model_obj(habitat_col = NULL),
-      .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic"
+      .make_evidence(),
+      grid_id = "Grid_A", main_habitat = "Lentic"
     ),
     regexp = "main_habitat"
   )
@@ -115,7 +116,7 @@ test_that("stops when taxaexpect_priors has no global_floor row", {
 # =============================================================================
 
 test_that("empty evidence returns an empty tibble with the documented schema", {
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), tibble::tibble(taxon_name=character(0), weight=numeric(0), p_conc=numeric(0), source=character(0)), grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), tibble::tibble(taxon_name = character(0), weight = numeric(0), p_conc = numeric(0), source = character(0)), grid_id = "Grid_A", main_habitat = "Lentic")
   expect_s3_class(out, "tbl_df")
   expect_equal(nrow(out), 0L)
   expect_true(all(c("taxon_name", "alpha", "beta", "undetected_type", "evidence_weight") %in% names(out)))
@@ -140,15 +141,15 @@ test_that("a genuinely unobserved taxon is elevated with the documented blend fo
   out <- apply_undetected_evidence(priors, .make_mock_model_obj(), .make_evidence("Gymnocephalus cernua", weight = 0.5, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
   expect_equal(nrow(out), 1L)
 
-  theta_floor     <- 1/1000
+  theta_floor <- 1 / 1000
   theta_singleton <- 0.025
-  expected_theta  <- theta_floor + (theta_singleton - theta_floor) * 0.5
+  expected_theta <- theta_floor + (theta_singleton - theta_floor) * 0.5
 
   expect_equal(out$theta_mean, expected_theta, tolerance = 1e-8)
   # Concentration is MOMENT-MATCHED to the presence mixture (2026-08-26), not
   # the caller's p_conc: v = w*Var_c + (1-w)*Var_f + w(1-w)*(theta_c-theta_f)^2
   var_c <- 0.025 * 0.975 / (0.05 + 1.95 + 1)
-  var_f <- (1/1000) * (999/1000) / (1 + 999 + 1)
+  var_f <- (1 / 1000) * (999 / 1000) / (1 + 999 + 1)
   v_mix <- 0.5 * var_c + 0.5 * var_f + 0.25 * (theta_singleton - theta_floor)^2
   n_eff_mm <- expected_theta * (1 - expected_theta) / v_mix - 1
   expect_equal(out$alpha + out$beta, n_eff_mm, tolerance = 1e-6)
@@ -170,7 +171,7 @@ test_that("weight = 1 elevates exactly to the singleton-mirror ceiling, never be
 
 test_that("weight = 0 leaves theta exactly at the floor", {
   out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence("Gymnocephalus cernua", weight = 0, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
-  expect_equal(out$theta_mean, 1/1000, tolerance = 1e-8)
+  expect_equal(out$theta_mean, 1 / 1000, tolerance = 1e-8)
 })
 
 # ---- Ceiling anchor ladder (2026-08-26 mixture redesign, D2) ----------------
@@ -185,7 +186,7 @@ test_that("no singletons: ceiling falls back to the minimum modelled theta (site
     dplyr::filter(undetected_type != "singleton_mirror" | is.na(undetected_type)) |>
     dplyr::bind_rows(tibble::tibble(
       taxon_name = "Sander canadensis", taxon_name_rank = "species",
-      grid_id = "Grid_B", alpha = 1, beta = 9,      # theta 0.1, but WRONG grid
+      grid_id = "Grid_B", alpha = 1, beta = 9, # theta 0.1, but WRONG grid
       theta_mean = 0.1, theta_sd = NA_real_,
       model_tier = "tier1", undetected_type = NA_character_,
       source_taxon_name = NA_character_, main_habitat = "Lentic"
@@ -193,12 +194,13 @@ test_that("no singletons: ceiling falls back to the minimum modelled theta (site
   expect_message(
     out <- apply_undetected_evidence(priors_no_singleton, .make_mock_model_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
-      grid_id = "Grid_A", main_habitat = "Lentic"),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    ),
     regexp = "minimum modelled theta"
   )
   # site-scoped min modelled theta at Grid_A is Perca's 40/(40+60) = 0.4,
   # NOT Grid_B's 0.1; blend = floor + (0.4 - floor) * 0.8
-  expected <- 1/1000 + (0.4 - 1/1000) * 0.8
+  expected <- 1 / 1000 + (0.4 - 1 / 1000) * 0.8
   expect_equal(out$theta_mean, expected, tolerance = 1e-8)
 })
 
@@ -209,10 +211,11 @@ test_that("no singletons and no modelled rows: ceiling falls back to 1/(median s
   expect_message(
     out <- apply_undetected_evidence(floor_only, .make_mock_model_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 1, p_conc = 4),
-      grid_id = "Grid_A", main_habitat = "Lentic"),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    ),
     regexp = "site effort"
   )
-  expect_equal(out$theta_mean, 1/50, tolerance = 1e-8)  # weight 1 -> ceiling exactly
+  expect_equal(out$theta_mean, 1 / 50, tolerance = 1e-8) # weight 1 -> ceiling exactly
 })
 
 test_that("no singletons, no modelled rows, no effort: warns and pins theta to the floor", {
@@ -221,10 +224,11 @@ test_that("no singletons, no modelled rows, no effort: warns and pins theta to t
   expect_warning(
     out <- apply_undetected_evidence(floor_only, .make_mock_model_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
-      grid_id = "Grid_A", main_habitat = "Lentic"),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    ),
     regexp = "no singleton_mirror"
   )
-  expect_equal(out$theta_mean, 1/1000, tolerance = 1e-8)
+  expect_equal(out$theta_mean, 1 / 1000, tolerance = 1e-8)
 })
 
 test_that("ladder's modelled-theta rung ignores evidence/domestic named rows", {
@@ -243,10 +247,11 @@ test_that("ladder's modelled-theta rung ignores evidence/domestic named rows", {
   expect_warning(
     out <- apply_undetected_evidence(pri, .make_mock_model_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
-      grid_id = "Grid_A", main_habitat = "Lentic"),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    ),
     regexp = "no singleton_mirror"
   )
-  expect_equal(out$theta_mean, 1/1000, tolerance = 1e-8)
+  expect_equal(out$theta_mean, 1 / 1000, tolerance = 1e-8)
 })
 
 test_that("ladder's modelled-theta rung ignores evidence/domestic rows via prior_branch alone (2026-09-05, finding D2)", {
@@ -267,10 +272,11 @@ test_that("ladder's modelled-theta rung ignores evidence/domestic rows via prior
   expect_warning(
     out <- apply_undetected_evidence(pri, .make_mock_model_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
-      grid_id = "Grid_A", main_habitat = "Lentic"),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    ),
     regexp = "no singleton_mirror"
   )
-  expect_equal(out$theta_mean, 1/1000, tolerance = 1e-8)
+  expect_equal(out$theta_mean, 1 / 1000, tolerance = 1e-8)
 })
 
 # =============================================================================
@@ -310,7 +316,7 @@ test_that("combined weight from two sources never exceeds 1 / the singleton ceil
 test_that("a site-specific singleton mean is preferred over the global one when both exist", {
   floor_row <- tibble::tibble(
     taxon_name = NA_character_, taxon_name_rank = NA_character_, grid_id = NA_character_,
-    alpha = 1, beta = 999, theta_mean = 1/1000, theta_sd = NA_real_,
+    alpha = 1, beta = 999, theta_mean = 1 / 1000, theta_sd = NA_real_,
     model_tier = "tier3_undetected", undetected_type = "global_floor",
     source_taxon_name = NA_character_, main_habitat = NA_character_
   )
@@ -356,11 +362,14 @@ test_that("taxonomy join adds rank columns when supplied", {
 })
 
 test_that("legacy n_eff column without p_conc errors with migration guidance", {
-  ev <- tibble::tibble(taxon_name = "Gymnocephalus cernua", weight = 0.5,
-                        n_eff = 4, source = "invasive_watch")
+  ev <- tibble::tibble(
+    taxon_name = "Gymnocephalus cernua", weight = 0.5,
+    n_eff = 4, source = "invasive_watch"
+  )
   expect_error(
     apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), ev,
-                               grid_id = "Grid_A", main_habitat = "Lentic"),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    ),
     regexp = "retired"
   )
 })
@@ -368,7 +377,9 @@ test_that("legacy n_eff column without p_conc errors with migration guidance", {
 test_that("prints the dataset-specific veto bound (D4)", {
   msgs <- capture_messages(
     apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
-      .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic")
+      .make_evidence(),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    )
   )
   expect_true(any(grepl("veto bound", msgs)))
   # bound value for these anchors: ((0.05/0.95)*0.025 - 0.001)/(0.025 - 0.001)
@@ -382,22 +393,28 @@ test_that("warns when a supplied evidence weight exceeds the printed veto bound 
   # guard exists to catch generically, for any evidence source/weight.
   expect_warning(
     apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
-      .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic"),
+      .make_evidence(),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    ),
     "ABOVE the veto bound"
   )
   w <- tryCatch(
     apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
-      .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic"),
+      .make_evidence(),
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    ),
     warning = function(w) w
   )
   expect_match(conditionMessage(w), "Gymnocephalus cernua")
 })
 
 test_that("no veto-bound warning when the evidence weight is comfortably below the bound", {
-  ev_low <- .make_evidence(weight = 0.001)  # well under the ~0.013 bound
+  ev_low <- .make_evidence(weight = 0.001) # well under the ~0.013 bound
   expect_no_warning(
     apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
-      ev_low, grid_id = "Grid_A", main_habitat = "Lentic")
+      ev_low,
+      grid_id = "Grid_A", main_habitat = "Lentic"
+    )
   )
 })
 
@@ -412,34 +429,40 @@ test_that("no veto-bound warning when the evidence weight is comfortably below t
   occ <- data.frame(
     taxon_name = c("A", "A", "A", "B", "C"),
     decimalLatitude = 34 + (1:5) * 1e-6, decimalLongitude = -120,
-    main_habitat = "Lentic", depth_m = NA_real_, stringsAsFactors = FALSE)
+    main_habitat = "Lentic", depth_m = NA_real_, stringsAsFactors = FALSE
+  )
   estimate_kernel_priors(occ, 34, -120, "Lentic", lambda_km = 1e9, m = 0)
 }
 
 test_that("kernel fit emits f1/f2/chao_missing/theta_present", {
   kp <- .make_kernel_fit_for_curve()
-  expect_equal(kp$f1, 2L)              # B and C are singletons
+  expect_equal(kp$f1, 2L) # B and C are singletons
   expect_equal(kp$f2, 0L)
   # chao_missing (f2 = 0 fallback: f1*(f1-1)/2) is retained for the separate
   # budget AUDIT (sum(w) vs chao_missing) but no longer feeds theta_present's
   # price (2026-09-05, open decision #1, resolved).
   expect_equal(kp$chao_missing, 1)
-  expect_equal(kp$missing_mass, 2/5, tolerance = 1e-6)
+  expect_equal(kp$missing_mass, 2 / 5, tolerance = 1e-6)
   # theta_present = missing_mass / f1 (the neighborhood's own singleton mean),
   # not missing_mass / chao_missing.
-  expect_equal(kp$theta_present, (2/5) / 2, tolerance = 1e-6)
+  expect_equal(kp$theta_present, (2 / 5) / 2, tolerance = 1e-6)
 })
 
 test_that("curve pricing yields theta = w * theta_present with theta_absent = 0", {
   kp <- .make_kernel_fit_for_curve()
-  priors <- dplyr::bind_rows(kp$priors,
-                             .make_priors(grid = "budget", hab = "Lentic"))
-  ev <- data.frame(taxon_name = c("Esox niger", "Ameiurus melas"),
-                   weight = c(0.05, 0.5), source = "regional_proximity",
-                   stringsAsFactors = FALSE)
+  priors <- dplyr::bind_rows(
+    kp$priors,
+    .make_priors(grid = "budget", hab = "Lentic")
+  )
+  ev <- data.frame(
+    taxon_name = c("Esox niger", "Ameiurus melas"),
+    weight = c(0.05, 0.5), source = "regional_proximity",
+    stringsAsFactors = FALSE
+  )
   out <- apply_undetected_evidence(priors, kp, ev,
-                                   grid_id = "budget", main_habitat = "Lentic",
-                                   pricing = "curve")
+    grid_id = "budget", main_habitat = "Lentic",
+    pricing = "curve"
+  )
   expect_equal(nrow(out), 2L)
   expect_equal(out$theta_mean, ev$weight * kp$theta_present, tolerance = 1e-6)
   expect_equal(out$prior_mix_theta_present, rep(kp$theta_present, 2))
@@ -451,7 +474,8 @@ test_that("curve pricing yields theta = w * theta_present with theta_absent = 0"
   # it equals chao_missing -- that separate budget AUDIT is no longer tied to
   # the price, 2026-09-05 open decision #1).
   expect_equal(sum(out$theta_mean), kp$theta_present * sum(ev$weight),
-               tolerance = 1e-9)
+    tolerance = 1e-9
+  )
 })
 
 test_that("curve pricing prints f1 next to the price it produced", {
@@ -460,13 +484,20 @@ test_that("curve pricing prints f1 next to the price it produced", {
   # no doubleton-hypersensitivity story left to tell about the PRICE (f2 still
   # drives the separate chao_missing budget AUDIT, unaffected by this message).
   kp <- .make_kernel_fit_for_curve()
-  priors <- dplyr::bind_rows(kp$priors,
-                             .make_priors(grid = "budget", hab = "Lentic"))
-  ev <- data.frame(taxon_name = "Esox niger", weight = 0.05,
-                   source = "regional_proximity", stringsAsFactors = FALSE)
+  priors <- dplyr::bind_rows(
+    kp$priors,
+    .make_priors(grid = "budget", hab = "Lentic")
+  )
+  ev <- data.frame(
+    taxon_name = "Esox niger", weight = 0.05,
+    source = "regional_proximity", stringsAsFactors = FALSE
+  )
   msgs <- capture_messages(
-    apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
-                              main_habitat = "Lentic", pricing = "curve"))
+    apply_undetected_evidence(priors, kp, ev,
+      grid_id = "budget",
+      main_habitat = "Lentic", pricing = "curve"
+    )
+  )
   expect_true(any(grepl("f1 = 2 singleton", msgs, fixed = TRUE)))
   expect_false(any(grepl("hypersensitive", msgs)))
   expect_false(any(grepl("[Vv]eto bound", msgs)))
@@ -474,35 +505,51 @@ test_that("curve pricing prints f1 next to the price it produced", {
 
 test_that("curve pricing refuses a GLMM model_obj or a no-singleton kernel fit", {
   priors <- .make_priors()
-  ev <- data.frame(taxon_name = "X y", weight = 0.1, source = "s",
-                   stringsAsFactors = FALSE)
+  ev <- data.frame(
+    taxon_name = "X y", weight = 0.1, source = "s",
+    stringsAsFactors = FALSE
+  )
   expect_error(
     apply_undetected_evidence(priors, .make_mock_model_obj(), ev,
-                              grid_id = "Grid_A", main_habitat = "Lentic",
-                              pricing = "curve"),
-    "theta_present")
+      grid_id = "Grid_A", main_habitat = "Lentic",
+      pricing = "curve"
+    ),
+    "theta_present"
+  )
   # kernel fit with no singletons (both species have 2+ records)
-  occ <- data.frame(taxon_name = rep(c("A", "B"), each = 3),
-                    decimalLatitude = 34, decimalLongitude = -120,
-                    main_habitat = "Lentic", stringsAsFactors = FALSE)
+  occ <- data.frame(
+    taxon_name = rep(c("A", "B"), each = 3),
+    decimalLatitude = 34, decimalLongitude = -120,
+    main_habitat = "Lentic", stringsAsFactors = FALSE
+  )
   kp0 <- estimate_kernel_priors(occ, 34, -120, "Lentic", lambda_km = 1e9, m = 0)
   expect_error(
     apply_undetected_evidence(dplyr::bind_rows(kp0$priors, priors), kp0, ev,
-                              grid_id = "Grid_A", main_habitat = "Lentic",
-                              pricing = "curve"),
-    "theta_present")
+      grid_id = "Grid_A", main_habitat = "Lentic",
+      pricing = "curve"
+    ),
+    "theta_present"
+  )
 })
 
 test_that("blend pricing is byte-identical with the pricing param defaulted", {
   kp <- .make_kernel_fit_for_curve()
-  priors <- dplyr::bind_rows(kp$priors,
-                             .make_priors(grid = "budget", hab = "Lentic"))
-  ev <- data.frame(taxon_name = "Esox niger", weight = 0.3,
-                   source = "regional_proximity", stringsAsFactors = FALSE)
-  o1 <- apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
-                                  main_habitat = "Lentic")
-  o2 <- apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
-                                  main_habitat = "Lentic", pricing = "blend")
+  priors <- dplyr::bind_rows(
+    kp$priors,
+    .make_priors(grid = "budget", hab = "Lentic")
+  )
+  ev <- data.frame(
+    taxon_name = "Esox niger", weight = 0.3,
+    source = "regional_proximity", stringsAsFactors = FALSE
+  )
+  o1 <- apply_undetected_evidence(priors, kp, ev,
+    grid_id = "budget",
+    main_habitat = "Lentic"
+  )
+  o2 <- apply_undetected_evidence(priors, kp, ev,
+    grid_id = "budget",
+    main_habitat = "Lentic", pricing = "blend"
+  )
   expect_identical(o1, o2)
 })
 
@@ -516,80 +563,110 @@ test_that("blend pricing is byte-identical with the pricing param defaulted", {
 .make_grouped_kernel_fit_data <- function() {
   set.seed(11)
   # fish: well supported, several singletons and doubletons -> qualifies.
-  fish_common <- do.call(rbind, lapply(1:8, function(i) data.frame(
-    taxon_name = sprintf("Fish_%02d", i),
-    decimalLatitude = 34 + rnorm(40, 0, 0.02),
-    decimalLongitude = -119 + rnorm(40, 0, 0.02),
-    main_habitat = "Marine", sampling_group = "fishes",
-    stringsAsFactors = FALSE)))
-  fish_rare <- do.call(rbind, lapply(1:12, function(i) data.frame(
-    taxon_name = sprintf("FishRare_%02d", i),
-    decimalLatitude = 34 + rnorm(1, 0, 0.02),
-    decimalLongitude = -119 + rnorm(1, 0, 0.02),
-    main_habitat = "Marine", sampling_group = "fishes",
-    stringsAsFactors = FALSE)))
-  fish_double <- do.call(rbind, lapply(1:3, function(i) data.frame(
-    taxon_name = sprintf("FishDbl_%02d", i),
-    decimalLatitude = 34 + rnorm(2, 0, 0.02),
-    decimalLongitude = -119 + rnorm(2, 0, 0.02),
-    main_habitat = "Marine", sampling_group = "fishes",
-    stringsAsFactors = FALSE)))
+  fish_common <- do.call(rbind, lapply(1:8, function(i) {
+    data.frame(
+      taxon_name = sprintf("Fish_%02d", i),
+      decimalLatitude = 34 + rnorm(40, 0, 0.02),
+      decimalLongitude = -119 + rnorm(40, 0, 0.02),
+      main_habitat = "Marine", sampling_group = "fishes",
+      stringsAsFactors = FALSE
+    )
+  }))
+  fish_rare <- do.call(rbind, lapply(1:12, function(i) {
+    data.frame(
+      taxon_name = sprintf("FishRare_%02d", i),
+      decimalLatitude = 34 + rnorm(1, 0, 0.02),
+      decimalLongitude = -119 + rnorm(1, 0, 0.02),
+      main_habitat = "Marine", sampling_group = "fishes",
+      stringsAsFactors = FALSE
+    )
+  }))
+  fish_double <- do.call(rbind, lapply(1:3, function(i) {
+    data.frame(
+      taxon_name = sprintf("FishDbl_%02d", i),
+      decimalLatitude = 34 + rnorm(2, 0, 0.02),
+      decimalLongitude = -119 + rnorm(2, 0, 0.02),
+      main_habitat = "Marine", sampling_group = "fishes",
+      stringsAsFactors = FALSE
+    )
+  }))
   # plants: the real "downwash" shape -- a handful of records, mostly
   # singletons. Far too thin to price itself.
-  plants <- do.call(rbind, lapply(1:5, function(i) data.frame(
-    taxon_name = sprintf("Plant_%02d", i),
-    decimalLatitude = 34 + rnorm(1, 0, 0.02),
-    decimalLongitude = -119 + rnorm(1, 0, 0.02),
-    main_habitat = "Marine", sampling_group = "plants",
-    stringsAsFactors = FALSE)))
+  plants <- do.call(rbind, lapply(1:5, function(i) {
+    data.frame(
+      taxon_name = sprintf("Plant_%02d", i),
+      decimalLatitude = 34 + rnorm(1, 0, 0.02),
+      decimalLongitude = -119 + rnorm(1, 0, 0.02),
+      main_habitat = "Marine", sampling_group = "plants",
+      stringsAsFactors = FALSE
+    )
+  }))
   # inverts: also well supported, but a different singleton structure, so it
   # qualifies with a genuinely DIFFERENT price -- the whole point of the
   # mechanism is that two qualifying groups do not share one.
-  inv_common <- do.call(rbind, lapply(1:15, function(i) data.frame(
-    taxon_name = sprintf("Inv_%02d", i),
-    decimalLatitude = 34 + rnorm(30, 0, 0.02),
-    decimalLongitude = -119 + rnorm(30, 0, 0.02),
-    main_habitat = "Marine", sampling_group = "inverts",
-    stringsAsFactors = FALSE)))
-  inv_rare <- do.call(rbind, lapply(1:4, function(i) data.frame(
-    taxon_name = sprintf("InvRare_%02d", i),
-    decimalLatitude = 34 + rnorm(1, 0, 0.02),
-    decimalLongitude = -119 + rnorm(1, 0, 0.02),
-    main_habitat = "Marine", sampling_group = "inverts",
-    stringsAsFactors = FALSE)))
+  inv_common <- do.call(rbind, lapply(1:15, function(i) {
+    data.frame(
+      taxon_name = sprintf("Inv_%02d", i),
+      decimalLatitude = 34 + rnorm(30, 0, 0.02),
+      decimalLongitude = -119 + rnorm(30, 0, 0.02),
+      main_habitat = "Marine", sampling_group = "inverts",
+      stringsAsFactors = FALSE
+    )
+  }))
+  inv_rare <- do.call(rbind, lapply(1:4, function(i) {
+    data.frame(
+      taxon_name = sprintf("InvRare_%02d", i),
+      decimalLatitude = 34 + rnorm(1, 0, 0.02),
+      decimalLongitude = -119 + rnorm(1, 0, 0.02),
+      main_habitat = "Marine", sampling_group = "inverts",
+      stringsAsFactors = FALSE
+    )
+  }))
   rbind(fish_common, fish_rare, fish_double, inv_common, inv_rare, plants)
 }
 
 .make_grouped_kernel_fit <- function() {
   suppressWarnings(estimate_kernel_priors(
-    .make_grouped_kernel_fit_data(), 34, -119, "Marine", lambda_km = 25, m = 1,
-    sampling_group_col = "sampling_group"))
+    .make_grouped_kernel_fit_data(), 34, -119, "Marine",
+    lambda_km = 25, m = 1,
+    sampling_group_col = "sampling_group"
+  ))
 }
 
 .grouped_priors_and_evidence <- function(kp) {
-  priors <- dplyr::bind_rows(kp$priors,
-                             .make_priors(grid = "budget", hab = "Marine"))
+  priors <- dplyr::bind_rows(
+    kp$priors,
+    .make_priors(grid = "budget", hab = "Marine")
+  )
   ev <- data.frame(
     taxon_name = c("Watchfish alpha", "Watchfish beta"),
     weight = c(0.05, 0.2), source = "invasive_watch",
-    stringsAsFactors = FALSE)
+    stringsAsFactors = FALSE
+  )
   list(priors = priors, evidence = ev)
 }
 
 test_that("a single-group curve fit is completely unaffected by the group machinery", {
   kp <- .make_kernel_fit_for_curve()
-  priors <- dplyr::bind_rows(kp$priors,
-                             .make_priors(grid = "budget", hab = "Lentic"))
-  ev <- data.frame(taxon_name = c("Esox niger", "Ameiurus melas"),
-                   weight = c(0.05, 0.5), source = "regional_proximity",
-                   stringsAsFactors = FALSE)
-  out <- apply_undetected_evidence(priors, kp, ev, grid_id = "budget",
-                                   main_habitat = "Lentic", pricing = "curve")
+  priors <- dplyr::bind_rows(
+    kp$priors,
+    .make_priors(grid = "budget", hab = "Lentic")
+  )
+  ev <- data.frame(
+    taxon_name = c("Esox niger", "Ameiurus melas"),
+    weight = c(0.05, 0.5), source = "regional_proximity",
+    stringsAsFactors = FALSE
+  )
+  out <- apply_undetected_evidence(priors, kp, ev,
+    grid_id = "budget",
+    main_habitat = "Lentic", pricing = "curve"
+  )
   # the pre-2026-09-04 expectations, unchanged
   expect_equal(out$theta_mean, ev$weight * kp$theta_present, tolerance = 1e-6)
   expect_equal(out$prior_mix_theta_present, rep(kp$theta_present, 2))
   expect_equal(sum(out$theta_mean), kp$theta_present * sum(ev$weight),
-               tolerance = 1e-9)
+    tolerance = 1e-9
+  )
   # the guards do not fire, and would not even if this thin fit failed them
   expect_equal(out$pricing_basis, rep("own_group", 2))
   # ... which is the point: n_eff here is ~5, far below min_group_n_eff = 100
@@ -600,8 +677,10 @@ test_that("each taxon is priced by its own sampling group's budget", {
   kp <- .make_grouped_kernel_fit()
   fx <- .grouped_priors_and_evidence(kp)
   out <- suppressMessages(apply_undetected_evidence(
-    fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
-    pricing = "curve", sampling_group = "fishes"))
+    fx$priors, kp, fx$evidence,
+    grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", sampling_group = "fishes"
+  ))
   fish_price <- kp$budget$theta_present[kp$budget$sampling_group == "fishes"]
   expect_equal(out$sampling_group, rep("fishes", 2))
   expect_equal(out$prior_mix_theta_present, rep(fish_price, 2))
@@ -616,18 +695,25 @@ test_that("two qualifying groups in one call get two different prices", {
   ev <- fx$evidence
   ev$sampling_group <- c("fishes", "inverts")
   out <- suppressMessages(apply_undetected_evidence(
-    fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
-    pricing = "curve"))
+    fx$priors, kp, ev,
+    grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve"
+  ))
   expect_setequal(out$sampling_group, c("fishes", "inverts"))
   expect_equal(out$pricing_basis, rep("own_group", 2))
   expect_equal(length(unique(out$prior_mix_theta_present)), 2L)
-  for (g in c("fishes", "inverts"))
-    expect_equal(out$prior_mix_theta_present[out$sampling_group == g],
-                 kp$budget$theta_present[kp$budget$sampling_group == g])
+  for (g in c("fishes", "inverts")) {
+    expect_equal(
+      out$prior_mix_theta_present[out$sampling_group == g],
+      kp$budget$theta_present[kp$budget$sampling_group == g]
+    )
+  }
   # the evidence column wins over the argument
   out2 <- suppressMessages(apply_undetected_evidence(
-    fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
-    pricing = "curve", sampling_group = "fishes"))
+    fx$priors, kp, ev,
+    grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", sampling_group = "fishes"
+  ))
   expect_equal(out2$sampling_group, out$sampling_group)
 })
 
@@ -637,7 +723,8 @@ test_that("with only one qualifying group the borrowed price IS that group's", {
   b <- data.frame(
     sampling_group = c("only", "thin"), n_taxa = c(20L, 2L), n_eff = c(500, 4),
     f1 = c(10L, 2L), f2 = c(2L, 0L), missing_mass = c(0.02, 0.5),
-    chao_missing = c(25, 1), stringsAsFactors = FALSE)
+    chao_missing = c(25, 1), stringsAsFactors = FALSE
+  )
   b$theta_present <- b$missing_mass / b$f1
   kp <- structure(list(budget = b), class = "taxaexpect_kernel_priors")
   r <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, "pooled_qualifying")
@@ -653,8 +740,10 @@ test_that("a group too thin to price itself borrows, and says so per row", {
   ev <- fx$evidence
   ev$sampling_group <- c("fishes", "plants")
   msgs <- capture_messages(out <- apply_undetected_evidence(
-    fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
-    pricing = "curve"))
+    fx$priors, kp, ev,
+    grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve"
+  ))
   plant_row <- out[out$sampling_group == "plants", ]
   expect_equal(plant_row$pricing_basis, "pooled_qualifying")
   expect_equal(out$pricing_basis[out$sampling_group == "fishes"], "own_group")
@@ -671,12 +760,17 @@ test_that("group_fallback = 'error' and 'skip' behave as documented", {
   ev$sampling_group <- c("fishes", "plants")
   expect_error(
     suppressMessages(apply_undetected_evidence(
-      fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
-      pricing = "curve", group_fallback = "error")),
-    "failed the pricing guards")
+      fx$priors, kp, ev,
+      grid_id = "budget", main_habitat = "Marine",
+      pricing = "curve", group_fallback = "error"
+    )),
+    "failed the pricing guards"
+  )
   out <- suppressMessages(apply_undetected_evidence(
-    fx$priors, kp, ev, grid_id = "budget", main_habitat = "Marine",
-    pricing = "curve", group_fallback = "skip"))
+    fx$priors, kp, ev,
+    grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", group_fallback = "skip"
+  ))
   expect_equal(nrow(out), 1L)
   expect_equal(out$sampling_group, "fishes")
 })
@@ -686,14 +780,20 @@ test_that("an unassigned taxon errors with actionable guidance, never a guess", 
   fx <- .grouped_priors_and_evidence(kp)
   expect_error(
     suppressMessages(apply_undetected_evidence(
-      fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
-      pricing = "curve")),
-    "every evidence taxon needs one")
+      fx$priors, kp, fx$evidence,
+      grid_id = "budget", main_habitat = "Marine",
+      pricing = "curve"
+    )),
+    "every evidence taxon needs one"
+  )
   expect_error(
     suppressMessages(apply_undetected_evidence(
-      fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
-      pricing = "curve", sampling_group = "not_a_real_group")),
-    "not present in the fit's own budget")
+      fx$priors, kp, fx$evidence,
+      grid_id = "budget", main_habitat = "Marine",
+      pricing = "curve", sampling_group = "not_a_real_group"
+    )),
+    "not present in the fit's own budget"
+  )
 })
 
 # "the singleton cap binds exactly when f1 < 2*f2, and not otherwise" REMOVED
@@ -710,7 +810,8 @@ test_that("the pooled-qualifying fallback combines group-wise, not by re-pooling
     f1 = c(30L, 5L, 2L), f2 = c(10L, 2L, 0L),
     missing_mass = c(0.01, 0.05, 0.4),
     chao_missing = c(45, 6.25, 1),
-    stringsAsFactors = FALSE)
+    stringsAsFactors = FALSE
+  )
   b$theta_present <- b$missing_mass / b$f1
   kp <- structure(list(budget = b), class = "taxaexpect_kernel_priors")
   r <- TaxaExpect:::.resolve_group_prices(kp, 100, 1L, "pooled_qualifying")
@@ -729,28 +830,41 @@ test_that("a fit where no group clears the guards refuses to price anything", {
   b <- data.frame(
     sampling_group = c("a", "b"), n_taxa = c(2L, 2L), n_eff = c(5, 9),
     f1 = c(1L, 2L), f2 = c(0L, 0L), missing_mass = c(0.3, 0.4),
-    chao_missing = c(0, 1), stringsAsFactors = FALSE)
+    chao_missing = c(0, 1), stringsAsFactors = FALSE
+  )
   b$theta_present <- b$missing_mass / b$f1
   kp <- structure(
-    list(budget = b, theta_present = NA_real_, f1 = NA_integer_,
-         f2 = NA_integer_, missing_mass = NA_real_,
-         params = list(n_sampling_groups = 2L,
-                       sampling_group_col = "sampling_group")),
-    class = "taxaexpect_kernel_priors")
-  ev <- data.frame(taxon_name = "X y", weight = 0.1, source = "s",
-                   sampling_group = "a", stringsAsFactors = FALSE)
+    list(
+      budget = b, theta_present = NA_real_, f1 = NA_integer_,
+      f2 = NA_integer_, missing_mass = NA_real_,
+      params = list(
+        n_sampling_groups = 2L,
+        sampling_group_col = "sampling_group"
+      )
+    ),
+    class = "taxaexpect_kernel_priors"
+  )
+  ev <- data.frame(
+    taxon_name = "X y", weight = 0.1, source = "s",
+    sampling_group = "a", stringsAsFactors = FALSE
+  )
   expect_error(
-    apply_undetected_evidence(.make_priors(), kp, ev, grid_id = "Grid_A",
-                              main_habitat = "Lentic", pricing = "curve"),
-    "not one of this fit's 2 sampling groups clears the pricing guards")
+    apply_undetected_evidence(.make_priors(), kp, ev,
+      grid_id = "Grid_A",
+      main_habitat = "Lentic", pricing = "curve"
+    ),
+    "not one of this fit's 2 sampling groups clears the pricing guards"
+  )
 })
 
 test_that("the per-group budget table is printed with the price adopted for each", {
   kp <- .make_grouped_kernel_fit()
   fx <- .grouped_priors_and_evidence(kp)
   msgs <- capture_messages(apply_undetected_evidence(
-    fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
-    pricing = "curve", sampling_group = "fishes"))
+    fx$priors, kp, fx$evidence,
+    grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", sampling_group = "fishes"
+  ))
   expect_true(any(grepl("PER-GROUP curve pricing", msgs)))
   expect_true(any(grepl("price_used", msgs)))
   expect_true(any(grepl("basis", msgs)))
@@ -764,19 +878,25 @@ test_that("the per-group printout names the fit's OWN grouping column (2026-09-0
   occ <- .make_grouped_kernel_fit_data()
   names(occ)[names(occ) == "sampling_group"] <- "detection_process"
   kp <- suppressWarnings(estimate_kernel_priors(
-    occ, 34, -119, "Marine", lambda_km = 25, m = 1,
-    sampling_group_col = "detection_process"))
+    occ, 34, -119, "Marine",
+    lambda_km = 25, m = 1,
+    sampling_group_col = "detection_process"
+  ))
   fx <- .grouped_priors_and_evidence(kp)
   msgs <- capture_messages(apply_undetected_evidence(
-    fx$priors, kp, fx$evidence, grid_id = "budget", main_habitat = "Marine",
-    pricing = "curve", sampling_group = "fishes"))
+    fx$priors, kp, fx$evidence,
+    grid_id = "budget", main_habitat = "Marine",
+    pricing = "curve", sampling_group = "fishes"
+  ))
   expect_true(any(grepl("'detection_process'", msgs, fixed = TRUE)))
 })
 
 test_that("blend mode gains no group columns", {
   out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
-                                   .make_evidence(), grid_id = "Grid_A",
-                                   main_habitat = "Lentic")
+    .make_evidence(),
+    grid_id = "Grid_A",
+    main_habitat = "Lentic"
+  )
   expect_false("sampling_group" %in% names(out))
   expect_false("pricing_basis" %in% names(out))
 })

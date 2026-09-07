@@ -199,7 +199,8 @@ utils::globalVariables(c(
 #' @examples
 #' \dontrun{
 #' priors <- generate_full_priors(
-#'   model_fit, new_sites = sample_meta,
+#'   model_fit,
+#'   new_sites = sample_meta,
 #'   undetected = dark_priors
 #' )
 #' head(priors)
@@ -224,10 +225,9 @@ utils::globalVariables(c(
 
 generate_full_priors <- function(model_obj,
                                  new_sites,
-                                 undetected    = NULL,
-                                 min_phi       = 2,
+                                 undetected = NULL,
+                                 min_phi = 2,
                                  theta_epsilon = 1e-6) {
-
   .glmm_deprecation_notice("generate_full_priors")
 
   # ---------------------------------------------------------------------------
@@ -237,26 +237,28 @@ generate_full_priors <- function(model_obj,
     stop("generate_full_priors: model_obj must be a biofreq_model object.")
   }
 
-  taxon_col    <- model_obj$meta$taxon_col
-  habitat_col  <- model_obj$meta$habitat_col
-  effort_thr   <- model_obj$meta$effort_threshold
+  taxon_col <- model_obj$meta$taxon_col
+  habitat_col <- model_obj$meta$habitat_col
+  effort_thr <- model_obj$meta$effort_threshold
   scale_params <- model_obj$scale_params
 
   required_site_cols <- c("grid_id", "lat_r", "lon_r", habitat_col)
   missing_cols <- setdiff(required_site_cols, names(new_sites))
   if (length(missing_cols) > 0) {
-    stop("generate_full_priors: new_sites is missing columns: ",
-         paste(missing_cols, collapse = ", "))
+    stop(
+      "generate_full_priors: new_sites is missing columns: ",
+      paste(missing_cols, collapse = ", ")
+    )
   }
 
   if (!is.numeric(min_phi) || length(min_phi) != 1L || is.na(min_phi) || min_phi < 0) {
     stop("generate_full_priors: min_phi must be a non-negative numeric scalar.")
   }
 
-  has_n_total  <- "n_total_at_site" %in% names(new_sites)
-  no_habitat   <- is.null(habitat_col)
-  habitat_sym  <- if (no_habitat) NULL else rlang::sym(habitat_col)
-  taxon_sym    <- rlang::sym(taxon_col)
+  has_n_total <- "n_total_at_site" %in% names(new_sites)
+  no_habitat <- is.null(habitat_col)
+  habitat_sym <- if (no_habitat) NULL else rlang::sym(habitat_col)
+  taxon_sym <- rlang::sym(taxon_col)
 
   # ---------------------------------------------------------------------------
   # Derive a Tier-2-only theta_epsilon floor from singleton mirrors when the
@@ -281,12 +283,13 @@ generate_full_priors <- function(model_obj,
   # ---------------------------------------------------------------------------
   theta_epsilon_floor <- theta_epsilon
   if (!is.null(undetected) && nrow(undetected) > 0 &&
-      "undetected_type" %in% names(undetected)) {
+    "undetected_type" %in% names(undetected)) {
     sm_rows <- undetected[
       !is.na(undetected$undetected_type) &
         undetected$undetected_type == "singleton_mirror" &
         !is.na(undetected$alpha) &
-        !is.na(undetected$beta), , drop = FALSE
+        !is.na(undetected$beta), ,
+      drop = FALSE
     ]
     if (nrow(sm_rows) > 0) {
       singleton_floor <- mean(sm_rows$alpha / (sm_rows$alpha + sm_rows$beta))
@@ -327,12 +330,13 @@ generate_full_priors <- function(model_obj,
   # ---------------------------------------------------------------------------
   theta_epsilon_t1 <- theta_epsilon
   if (!is.null(undetected) && nrow(undetected) > 0 &&
-      "undetected_type" %in% names(undetected)) {
+    "undetected_type" %in% names(undetected)) {
     gf_rows <- undetected[
       !is.na(undetected$undetected_type) &
         undetected$undetected_type == "global_floor" &
         !is.na(undetected$alpha) &
-        !is.na(undetected$beta), , drop = FALSE
+        !is.na(undetected$beta), ,
+      drop = FALSE
     ]
     if (nrow(gf_rows) > 0) {
       global_floor_val <- mean(gf_rows$alpha / (gf_rows$alpha + gf_rows$beta))
@@ -366,14 +370,18 @@ generate_full_priors <- function(model_obj,
   # NULL every time, and phi was instead capped only by the hardcoded 1000
   # fallback below, with no error or warning either way.
   grid_term <- paste0(taxon_col, ":grid_id")
-  max_phi   <- tryCatch({
-    vc  <- glmmTMB::VarCorr(model_obj$models$tier1)
-    mat <- vc$cond[[grid_term]]
-    if (!is.null(mat) && is.numeric(mat) && as.numeric(mat) > 0)
-      1 / as.numeric(mat)
-    else
-      NULL
-  }, error = function(e) NULL)
+  max_phi <- tryCatch(
+    {
+      vc <- glmmTMB::VarCorr(model_obj$models$tier1)
+      mat <- vc$cond[[grid_term]]
+      if (!is.null(mat) && is.numeric(mat) && as.numeric(mat) > 0) {
+        1 / as.numeric(mat)
+      } else {
+        NULL
+      }
+    },
+    error = function(e) NULL
+  )
 
   if (!is.null(max_phi)) {
     if (min_phi > 0 && max_phi < min_phi) {
@@ -410,15 +418,15 @@ generate_full_priors <- function(model_obj,
 
   for (covariate in names(scale_params)) {
     if (!covariate %in% names(sites_scaled)) next
-    center  <- scale_params[[covariate]]$center
-    sc      <- scale_params[[covariate]]$scale
+    center <- scale_params[[covariate]]$center
+    sc <- scale_params[[covariate]]$scale
     if (sc == 0 || !is.finite(sc)) {
       warning(sprintf(
         "generate_full_priors: scale_params for '%s' has zero/non-finite scale; centering only.", covariate
       ))
       sc <- 1
     }
-    scaled  <- (sites_scaled[[covariate]] - center) / sc
+    scaled <- (sites_scaled[[covariate]] - center) / sc
     sites_scaled[[paste0(covariate, "_s")]] <- scaled
     extrap_flags <- extrap_flags | (abs(scaled) > 3)
   }
@@ -449,13 +457,14 @@ generate_full_priors <- function(model_obj,
   # Helper: moment-match (mean, variance) -> (alpha, beta)
   # ---------------------------------------------------------------------------
   moment_match <- function(m, v, epsilon, max_phi = NULL, min_phi = 0) {
-    m        <- pmax(pmin(m, 1 - epsilon), epsilon)
-    phi      <- m * (1 - m) / v - 1
+    m <- pmax(pmin(m, 1 - epsilon), epsilon)
+    phi <- m * (1 - m) / v - 1
     # Cap phi at the model-derived ceiling before checking for the fallback below.
     # This prevents astronomically tight priors when theta is near 0 or 1,
     # where m*(1-m) is tiny and phi explodes even with a modest logit-SE.
-    if (!is.null(max_phi) && is.finite(max_phi))
-      phi    <- pmin(phi, max_phi)
+    if (!is.null(max_phi) && is.finite(max_phi)) {
+      phi <- pmin(phi, max_phi)
+    }
     # Floor: ensure phi never drops below min_phi. When the phi cap is very low
     # (high grid variance), unchecked phi produces alpha/beta so small that MC
     # posterior simulation is unstable and modelled priors become less informative
@@ -467,8 +476,9 @@ generate_full_priors <- function(model_obj,
     # propagated from an unusable SE), a narrower and rarer failure than a plain
     # large-but-finite variance. With min_phi = 0, the finite phi <= 0 case is
     # reachable again and hits the same fallback.
-    if (min_phi > 0)
-      phi    <- pmax(phi, min_phi)
+    if (min_phi > 0) {
+      phi <- pmax(phi, min_phi)
+    }
     # phi <= 0, or non-finite (NA/NaN/Inf: a genuinely failed/unreliable SE
     # prediction for this row): the variance side of the moment-match is
     # unusable. Session 149 fix -- do NOT discard the mean `m` for an agnostic
@@ -484,13 +494,13 @@ generate_full_priors <- function(model_obj,
     # non-informative prior for a Bernoulli parameter (Jeffreys, 1946) -- when
     # even the mean is unusable (a total prediction failure, not just an
     # unreliable SE).
-    jeffreys      <- phi <= 0 | !is.finite(phi)
-    mean_usable   <- is.finite(m)
+    jeffreys <- phi <= 0 | !is.finite(phi)
+    mean_usable <- is.finite(m)
     fallback_conc <- if (min_phi > 0) min_phi else 1
-    fb_mean       <- dplyr::if_else(mean_usable, m, 0.5)
-    fb_conc       <- dplyr::if_else(mean_usable, fallback_conc, 1)
-    alpha    <- dplyr::if_else(jeffreys, fb_mean * fb_conc, m * phi)
-    beta     <- dplyr::if_else(jeffreys, (1 - fb_mean) * fb_conc, (1 - m) * phi)
+    fb_mean <- dplyr::if_else(mean_usable, m, 0.5)
+    fb_conc <- dplyr::if_else(mean_usable, fallback_conc, 1)
+    alpha <- dplyr::if_else(jeffreys, fb_mean * fb_conc, m * phi)
+    beta <- dplyr::if_else(jeffreys, (1 - fb_mean) * fb_conc, (1 - m) * phi)
     list(alpha = alpha, beta = beta, jeffreys_fallback = jeffreys)
   }
 
@@ -514,10 +524,10 @@ generate_full_priors <- function(model_obj,
   .assign_effort_flag <- function(grid) {
     if (has_n_total) {
       grid$effort_flag <- grid$n_total_at_site < effort_thr
-      grid$n_obs       <- grid$n_total_at_site
+      grid$n_obs <- grid$n_total_at_site
     } else {
       grid$effort_flag <- NA
-      grid$n_obs       <- NA_integer_
+      grid$n_obs <- NA_integer_
     }
     grid
   }
@@ -527,58 +537,66 @@ generate_full_priors <- function(model_obj,
   # Extract from tier2_empirical (reliable) and tier1 model frame (best effort)
   # ---------------------------------------------------------------------------
   observed_combos <- if (no_habitat) {
-    tryCatch({
-      t1_frame <- model_obj$models$tier1$frame
-      resp_col <- t1_frame[[1]]
-      n_sp     <- if (is.matrix(resp_col)) resp_col[, 1] else resp_col
-      t1_obs   <- t1_frame[n_sp > 0, c(taxon_col), drop = FALSE]
-      names(t1_obs) <- "taxon_name"
-      t2_obs <- model_obj$tier2_empirical |>
-        dplyr::select(dplyr::all_of(taxon_col)) |>
-        dplyr::rename(taxon_name = !!taxon_sym)
-      dplyr::bind_rows(t1_obs, t2_obs) |>
-        dplyr::distinct() |>
-        dplyr::mutate(observed_in_habitat = TRUE)
-    }, error = function(e) {
-      model_obj$tier2_empirical |>
-        dplyr::select(dplyr::all_of(taxon_col)) |>
-        dplyr::rename(taxon_name = !!taxon_sym) |>
-        dplyr::distinct() |>
-        dplyr::mutate(observed_in_habitat = TRUE)
-    })
-  } else {
-    tryCatch({
-      t1_frame <- model_obj$models$tier1$frame
-      # response is cbind -- first column is n_taxon_name
-      resp_col  <- t1_frame[[1]]
-      if (is.matrix(resp_col)) {
-        n_sp <- resp_col[, 1]
-      } else {
-        n_sp <- resp_col
+    tryCatch(
+      {
+        t1_frame <- model_obj$models$tier1$frame
+        resp_col <- t1_frame[[1]]
+        n_sp <- if (is.matrix(resp_col)) resp_col[, 1] else resp_col
+        t1_obs <- t1_frame[n_sp > 0, c(taxon_col), drop = FALSE]
+        names(t1_obs) <- "taxon_name"
+        t2_obs <- model_obj$tier2_empirical |>
+          dplyr::select(dplyr::all_of(taxon_col)) |>
+          dplyr::rename(taxon_name = !!taxon_sym)
+        dplyr::bind_rows(t1_obs, t2_obs) |>
+          dplyr::distinct() |>
+          dplyr::mutate(observed_in_habitat = TRUE)
+      },
+      error = function(e) {
+        model_obj$tier2_empirical |>
+          dplyr::select(dplyr::all_of(taxon_col)) |>
+          dplyr::rename(taxon_name = !!taxon_sym) |>
+          dplyr::distinct() |>
+          dplyr::mutate(observed_in_habitat = TRUE)
       }
-      t1_obs <- t1_frame[n_sp > 0, c(taxon_col, habitat_col), drop = FALSE]
-      names(t1_obs) <- c("taxon_name", ".habitat")
-      t2_obs <- model_obj$tier2_empirical |>
-        dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
-        dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym)
-      dplyr::bind_rows(t1_obs, t2_obs) |>
-        dplyr::distinct() |>
-        dplyr::mutate(observed_in_habitat = TRUE)
-    }, error = function(e) {
-      # Fallback: tier2_empirical only
-      model_obj$tier2_empirical |>
-        dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
-        dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym) |>
-        dplyr::distinct() |>
-        dplyr::mutate(observed_in_habitat = TRUE)
-    })
+    )
+  } else {
+    tryCatch(
+      {
+        t1_frame <- model_obj$models$tier1$frame
+        # response is cbind -- first column is n_taxon_name
+        resp_col <- t1_frame[[1]]
+        if (is.matrix(resp_col)) {
+          n_sp <- resp_col[, 1]
+        } else {
+          n_sp <- resp_col
+        }
+        t1_obs <- t1_frame[n_sp > 0, c(taxon_col, habitat_col), drop = FALSE]
+        names(t1_obs) <- c("taxon_name", ".habitat")
+        t2_obs <- model_obj$tier2_empirical |>
+          dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
+          dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym)
+        dplyr::bind_rows(t1_obs, t2_obs) |>
+          dplyr::distinct() |>
+          dplyr::mutate(observed_in_habitat = TRUE)
+      },
+      error = function(e) {
+        # Fallback: tier2_empirical only
+        model_obj$tier2_empirical |>
+          dplyr::select(dplyr::all_of(c(taxon_col, habitat_col))) |>
+          dplyr::rename(taxon_name = !!taxon_sym, .habitat = !!habitat_sym) |>
+          dplyr::distinct() |>
+          dplyr::mutate(observed_in_habitat = TRUE)
+      }
+    )
   }
 
   # ---------------------------------------------------------------------------
   # Helper: predict one tier
   # ---------------------------------------------------------------------------
   predict_tier <- function(model, taxon_name_vec, tier_label, epsilon) {
-    if (is.null(model) || length(taxon_name_vec) == 0) return(NULL)
+    if (is.null(model) || length(taxon_name_vec) == 0) {
+      return(NULL)
+    }
 
     # Reduce to unique site rows before crossing -- sites_scaled is derived
     # from model_data which contains taxon_name (one row per taxon_name x site).
@@ -587,13 +605,15 @@ generate_full_priors <- function(model_obj,
     # Detect Moran basis columns present in sites_scaled (B1, B2, ... BK)
     moran_cols <- grep("^B[0-9]+$", names(sites_scaled), value = TRUE)
 
-    site_cols <- c("grid_id", habitat_col,
-                   names(scale_params),
-                   paste0(names(scale_params), "_s"),
-                   hs$indicators,
-                   moran_cols,
-                   "extrapolation_warning",
-                   "n_total_at_site")
+    site_cols <- c(
+      "grid_id", habitat_col,
+      names(scale_params),
+      paste0(names(scale_params), "_s"),
+      hs$indicators,
+      moran_cols,
+      "extrapolation_warning",
+      "n_total_at_site"
+    )
     sites_unique <- sites_scaled |>
       dplyr::select(dplyr::any_of(site_cols)) |>
       dplyr::distinct()
@@ -613,10 +633,12 @@ generate_full_priors <- function(model_obj,
     }
 
     # Filter sites with NA predictors BEFORE crossing to avoid large intermediate
-    pred_cols <- c(habitat_col,
-                   paste0(names(scale_params), "_s"),
-                   moran_cols,
-                   hs$indicators)
+    pred_cols <- c(
+      habitat_col,
+      paste0(names(scale_params), "_s"),
+      moran_cols,
+      hs$indicators
+    )
     site_pred_cols <- intersect(pred_cols, names(sites_unique))
     if (length(site_pred_cols) > 0L) {
       na_sites <- !stats::complete.cases(sites_unique[, site_pred_cols, drop = FALSE])
@@ -635,36 +657,42 @@ generate_full_priors <- function(model_obj,
     )
     if (nrow(grid) == 0) {
       warning("generate_full_priors: no valid rows remain for ",
-              tier_label, " after NA removal. Returning NULL.",
-              call. = FALSE)
+        tier_label, " after NA removal. Returning NULL.",
+        call. = FALSE
+      )
       return(NULL)
     }
 
     # Predict on link scale with SE
     pred <- tryCatch(
       stats::predict(model,
-                     newdata          = grid,
-                     type             = "link",
-                     se.fit           = TRUE,
-                     allow.new.levels = TRUE),
+        newdata          = grid,
+        type             = "link",
+        se.fit           = TRUE,
+        allow.new.levels = TRUE
+      ),
       error = function(e) {
-        stop("generate_full_priors: prediction failed for ", tier_label,
-             " model.\nError: ", conditionMessage(e))
+        stop(
+          "generate_full_priors: prediction failed for ", tier_label,
+          " model.\nError: ", conditionMessage(e)
+        )
       }
     )
 
     eta <- pred$fit
-    se  <- pred$se.fit
+    se <- pred$se.fit
 
     # Back-transform and moment-match to Beta parameters
-    bt  <- backxform(eta, se)
-    ab  <- moment_match(bt$mean, bt$var, epsilon, max_phi = max_phi,
-                        min_phi = min_phi)
+    bt <- backxform(eta, se)
+    ab <- moment_match(bt$mean, bt$var, epsilon,
+      max_phi = max_phi,
+      min_phi = min_phi
+    )
 
-    grid$alpha              <- ab$alpha
-    grid$beta               <- ab$beta
-    grid$jeffreys_fallback  <- ab$jeffreys_fallback
-    grid$model_tier         <- tier_label
+    grid$alpha <- ab$alpha
+    grid$beta <- ab$beta
+    grid$jeffreys_fallback <- ab$jeffreys_fallback
+    grid$model_tier <- tier_label
 
     .assign_effort_flag(grid)
   }
@@ -691,10 +719,14 @@ generate_full_priors <- function(model_obj,
   # ---------------------------------------------------------------------------
   predict_tier_empirical <- function(taxon_name_vec, tier_label, epsilon) {
     emp <- model_obj$tier2_empirical
-    if (length(taxon_name_vec) == 0 || is.null(emp) || nrow(emp) == 0) return(NULL)
+    if (length(taxon_name_vec) == 0 || is.null(emp) || nrow(emp) == 0) {
+      return(NULL)
+    }
 
     emp <- emp[emp[[taxon_col]] %in% taxon_name_vec, , drop = FALSE]
-    if (nrow(emp) == 0) return(NULL)
+    if (nrow(emp) == 0) {
+      return(NULL)
+    }
 
     site_cols <- c("grid_id", habitat_col, "n_total_at_site")
     sites_unique <- sites_scaled |>
@@ -709,15 +741,18 @@ generate_full_priors <- function(model_obj,
     } else {
       dplyr::inner_join(emp, sites_unique, by = habitat_col)
     }
-    if (nrow(grid) == 0) return(NULL)
+    if (nrow(grid) == 0) {
+      return(NULL)
+    }
 
     ab <- moment_match(grid$theta_mean_emp, grid$theta_sd_emp^2, epsilon,
-                       max_phi = max_phi, min_phi = min_phi)
+      max_phi = max_phi, min_phi = min_phi
+    )
 
-    grid$alpha                 <- ab$alpha
-    grid$beta                  <- ab$beta
-    grid$jeffreys_fallback     <- ab$jeffreys_fallback
-    grid$model_tier            <- tier_label
+    grid$alpha <- ab$alpha
+    grid$beta <- ab$beta
+    grid$jeffreys_fallback <- ab$jeffreys_fallback
+    grid$model_tier <- tier_label
     # Empirical means carry no covariate-based extrapolation to flag.
     grid$extrapolation_warning <- FALSE
 
@@ -735,35 +770,45 @@ generate_full_priors <- function(model_obj,
   # species don't collapse toward the dark-diversity floor. See the comment
   # above theta_epsilon_floor's derivation for why these must differ.
   result_t1 <- predict_tier(model_obj$models$tier1, taxa_tier1, "tier1",
-                            epsilon = theta_epsilon_t1)
+    epsilon = theta_epsilon_t1
+  )
   result_t2 <- predict_tier(model_obj$models$tier2, taxa_tier2, "tier2",
-                            epsilon = theta_epsilon_floor)
+    epsilon = theta_epsilon_floor
+  )
 
   if (is.null(model_obj$models$tier2) && length(taxa_tier2) > 0) {
-    message("Tier 2 model is not fitted -- falling back to per-species empirical ",
-            "means ($tier2_empirical) instead of GLMM predictions for Tier 2 species.")
+    message(
+      "Tier 2 model is not fitted -- falling back to per-species empirical ",
+      "means ($tier2_empirical) instead of GLMM predictions for Tier 2 species."
+    )
     result_t2 <- predict_tier_empirical(taxa_tier2, "tier2", epsilon = theta_epsilon_floor)
   }
 
   predictions <- dplyr::bind_rows(result_t1, result_t2)
-  message(sprintf("Prior generation complete (%.1fs).",
-                  proc.time()[["elapsed"]] - t0_pred))
+  message(sprintf(
+    "Prior generation complete (%.1fs).",
+    proc.time()[["elapsed"]] - t0_pred
+  ))
 
   if (nrow(predictions) == 0) {
-    stop("generate_full_priors: no predictions generated. ",
-         "Check that model_obj contains fitted models.")
+    stop(
+      "generate_full_priors: no predictions generated. ",
+      "Check that model_obj contains fitted models."
+    )
   }
 
   if (any(predictions$jeffreys_fallback, na.rm = TRUE)) {
     n_jf <- sum(predictions$jeffreys_fallback, na.rm = TRUE)
-    warning(sprintf(
-      "generate_full_priors: %d row(s) had an unusable prediction variance ",
-      n_jf
-    ), "(>= Bernoulli maximum, or a non-finite SE) and received a diffuse ",
-    "fallback prior -- at the model's own predicted mean when that mean was ",
-    "itself finite, or the fully agnostic Jeffreys Beta(0.5, 0.5) only when ",
-    "it was not. This may indicate extrapolation beyond the training range.",
-    call. = FALSE)
+    warning(
+      sprintf(
+        "generate_full_priors: %d row(s) had an unusable prediction variance ",
+        n_jf
+      ), "(>= Bernoulli maximum, or a non-finite SE) and received a diffuse ",
+      "fallback prior -- at the model's own predicted mean when that mean was ",
+      "itself finite, or the fully agnostic Jeffreys Beta(0.5, 0.5) only when ",
+      "it was not. This may indicate extrapolation beyond the training range.",
+      call. = FALSE
+    )
   }
 
   # ---------------------------------------------------------------------------
@@ -779,10 +824,12 @@ generate_full_priors <- function(model_obj,
     predictions |>
       dplyr::rename(.habitat = !!habitat_sym) |>
       dplyr::left_join(observed_combos,
-                       by = c("taxon_name", ".habitat")) |>
+        by = c("taxon_name", ".habitat")
+      ) |>
       dplyr::mutate(
         observed_in_habitat = tidyr::replace_na(
-          observed_in_habitat, FALSE)
+          observed_in_habitat, FALSE
+        )
       ) |>
       dplyr::rename(!!habitat_col := .habitat)
   }
@@ -790,14 +837,16 @@ generate_full_priors <- function(model_obj,
   # ---------------------------------------------------------------------------
   # Finalise columns
   # ---------------------------------------------------------------------------
-  output_cols <- c("taxon_name", "grid_id", habitat_col,
-                   "alpha", "beta", "theta_mean", "theta_sd",
-                   "n_obs", "model_tier", "effort_flag",
-                   "observed_in_habitat",
-                   "extrapolation_warning",
-                   "undetected_type",
-                   "source_taxon_name",
-                   "jeffreys_fallback")
+  output_cols <- c(
+    "taxon_name", "grid_id", habitat_col,
+    "alpha", "beta", "theta_mean", "theta_sd",
+    "n_obs", "model_tier", "effort_flag",
+    "observed_in_habitat",
+    "extrapolation_warning",
+    "undetected_type",
+    "source_taxon_name",
+    "jeffreys_fallback"
+  )
 
   predictions <- predictions |>
     dplyr::mutate(
@@ -826,8 +875,8 @@ generate_full_priors <- function(model_obj,
     predictions <- dplyr::bind_rows(predictions, undetected_out)
   }
 
-  n_mod    <- sum(!is.na(predictions$taxon_name))
-  n_undet  <- sum(is.na(predictions$taxon_name))
+  n_mod <- sum(!is.na(predictions$taxon_name))
+  n_undet <- sum(is.na(predictions$taxon_name))
   message(sprintf(
     "--- Priors complete: %d modelled rows, %d undetected rows, %d total ---",
     n_mod, n_undet, nrow(predictions)

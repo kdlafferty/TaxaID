@@ -70,21 +70,24 @@ create_sites_from_grid <- function(data,
                                    grid_size,
                                    lat_col = "decimalLatitude",
                                    lon_col = "decimalLongitude") {
-
   if (!is.data.frame(data)) {
     stop("create_sites_from_grid: 'data' must be a dataframe.")
   }
 
   missing_cols <- setdiff(c(lat_col, lon_col), names(data))
   if (length(missing_cols) > 0) {
-    stop("create_sites_from_grid: column(s) not found in 'data': ",
-         paste(missing_cols, collapse = ", "))
+    stop(
+      "create_sites_from_grid: column(s) not found in 'data': ",
+      paste(missing_cols, collapse = ", ")
+    )
   }
 
   if (!is.numeric(grid_size) || length(grid_size) != 1L ||
-      is.na(grid_size) || grid_size <= 0) {
-    stop("create_sites_from_grid: 'grid_size' must be a single positive number. ",
-         "Got: ", grid_size)
+    is.na(grid_size) || grid_size <= 0) {
+    stop(
+      "create_sites_from_grid: 'grid_size' must be a single positive number. ",
+      "Got: ", grid_size
+    )
   }
 
   if (grid_size > 10) {
@@ -108,12 +111,12 @@ create_sites_from_grid <- function(data,
   # precision, with a floor of 1 (matching the previous default behavior
   # for grid_size >= 0.1).
   decimals <- max(1L, -floor(log10(grid_size)))
-  fmt      <- paste0("Grid_%.", decimals, "f_%.", decimals, "f")
+  fmt <- paste0("Grid_%.", decimals, "f_%.", decimals, "f")
 
   out <- dplyr::mutate(
     data,
-    lat_r   = round(!!lat_sym / grid_size) * grid_size,
-    lon_r   = round(!!lon_sym / grid_size) * grid_size,
+    lat_r = round(!!lat_sym / grid_size) * grid_size,
+    lon_r = round(!!lon_sym / grid_size) * grid_size,
     # Both replacements operate on disjoint characters ("-" vs "."), so a
     # single sprintf() + two chained str_replace_all() calls needs no
     # intermediate grid_id_raw column to hold the pre-replacement string.

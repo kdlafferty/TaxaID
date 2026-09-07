@@ -136,16 +136,19 @@ utils::globalVariables(c(
 #'
 #' @examples
 #' gridded_data <- data.frame(
-#'   grid_id      = rep(c("Grid_34p0_m119p0", "Grid_34p5_m119p5"), each = 4),
-#'   lat_r        = rep(c(34.0, 34.5), each = 4),
-#'   lon_r        = rep(c(-119.0, -119.5), each = 4),
+#'   grid_id = rep(c("Grid_34p0_m119p0", "Grid_34p5_m119p5"), each = 4),
+#'   lat_r = rep(c(34.0, 34.5), each = 4),
+#'   lon_r = rep(c(-119.0, -119.5), each = 4),
 #'   main_habitat = rep(c("Marine", "Freshwater"), 4),
-#'   taxon_name   = c("Sp_a", "Sp_b", "Sp_a", "Sp_c",
-#'                    "Sp_a", "Sp_b", "Sp_b", "Sp_a")
+#'   taxon_name = c(
+#'     "Sp_a", "Sp_b", "Sp_a", "Sp_c",
+#'     "Sp_a", "Sp_b", "Sp_b", "Sp_a"
+#'   )
 #' )
 #' model_df <- prepare_model_dataframe(gridded_data,
-#'                                     covariates = c("lat_r", "lon_r"),
-#'                                     habitat_col = "main_habitat")
+#'   covariates = c("lat_r", "lon_r"),
+#'   habitat_col = "main_habitat"
+#' )
 #' head(model_df)
 #'
 #' \dontrun{
@@ -176,45 +179,52 @@ utils::globalVariables(c(
 #'
 #' @export
 prepare_model_dataframe <- function(data,
-                                    covariates    = c("lat_r", "lon_r"),
-                                    habitat_col   = "main_habitat",
+                                    covariates = c("lat_r", "lon_r"),
+                                    habitat_col = "main_habitat",
                                     cor_threshold = 0.7,
                                     sampling_group_col = NULL) {
-
   .glmm_deprecation_notice("prepare_model_dataframe")
 
   # --- Required column check --------------------------------------------------
   # habitat_col = NULL means "no habitat modeling" -- the caller has no habitat
   # column to supply and none is required. See @details.
   required_cols <- c("grid_id", "lat_r", "lon_r", habitat_col, "taxon_name")
-  missing_cols  <- setdiff(required_cols, names(data))
+  missing_cols <- setdiff(required_cols, names(data))
   if (length(missing_cols) > 0) {
-    stop("prepare_model_dataframe: missing required columns: ",
-         paste(missing_cols, collapse = ", "))
+    stop(
+      "prepare_model_dataframe: missing required columns: ",
+      paste(missing_cols, collapse = ", ")
+    )
   }
 
   missing_covs <- setdiff(covariates, names(data))
   if (length(missing_covs) > 0) {
-    stop("prepare_model_dataframe: covariate columns not found in data: ",
-         paste(missing_covs, collapse = ", "))
+    stop(
+      "prepare_model_dataframe: covariate columns not found in data: ",
+      paste(missing_covs, collapse = ", ")
+    )
   }
 
   if (!is.null(sampling_group_col) && !sampling_group_col %in% names(data)) {
-    stop("prepare_model_dataframe: sampling_group_col '", sampling_group_col,
-         "' not found in data.")
+    stop(
+      "prepare_model_dataframe: sampling_group_col '", sampling_group_col,
+      "' not found in data."
+    )
   }
 
   # --- Multicollinearity check ------------------------------------------------
   if (length(covariates) > 1) {
     cor_matrix <- cor(as.matrix(data[, covariates]), use = "pairwise.complete.obs")
-    cor_upper  <- cor_matrix
+    cor_upper <- cor_matrix
     cor_upper[lower.tri(cor_upper, diag = TRUE)] <- NA
     high_cor <- which(abs(cor_upper) > cor_threshold, arr.ind = TRUE)
     if (nrow(high_cor) > 0) {
       pairs <- apply(high_cor, 1, function(idx) {
-        sprintf("%s and %s (r = %.2f)",
-                covariates[idx[1]], covariates[idx[2]],
-                cor_upper[idx[1], idx[2]])
+        sprintf(
+          "%s and %s (r = %.2f)",
+          covariates[idx[1]], covariates[idx[2]],
+          cor_upper[idx[1], idx[2]]
+        )
       })
       warning(
         "prepare_model_dataframe: the following covariate pairs are correlated ",
@@ -303,7 +313,6 @@ prepare_model_dataframe <- function(data,
 #'   \code{\link{prepare_model_dataframe}}'s own \code{@return}.
 #' @noRd
 .prepare_one_group <- function(data, covariates, habitat_col) {
-
   # --- Internal rename ---------------------------------------------------------
   # No habitat_col supplied: use a single constant internal placeholder so the
   # existing grouping/join logic below runs unchanged (grouping by a constant
@@ -326,8 +335,9 @@ prepare_model_dataframe <- function(data,
       dplyr::group_by(grid_id, .habitat) |>
       dplyr::summarise(
         dplyr::across(dplyr::all_of(extra_covs),
-                      ~ length(unique(.x)) > 1,
-                      .names = "{.col}_varies"),
+          ~ length(unique(.x)) > 1,
+          .names = "{.col}_varies"
+        ),
         .groups = "drop"
       )
     vary_cols <- names(cov_variance)[
@@ -397,8 +407,8 @@ prepare_model_dataframe <- function(data,
   # --- Scale covariates -----------------------------------------------------------
   scale_params <- list()
   for (covariate in covariates) {
-    cov_center             <- mean(model_df[[covariate]], na.rm = TRUE)
-    cov_scale              <- sd(model_df[[covariate]],   na.rm = TRUE)
+    cov_center <- mean(model_df[[covariate]], na.rm = TRUE)
+    cov_scale <- sd(model_df[[covariate]], na.rm = TRUE)
     if (cov_scale == 0 || !is.finite(cov_scale)) {
       warning(sprintf(
         "Covariate '%s' has zero variance; centering only (no scaling).", covariate
@@ -406,8 +416,8 @@ prepare_model_dataframe <- function(data,
       cov_scale <- 1
     }
     scale_params[[covariate]] <- list(center = cov_center, scale = cov_scale)
-    new_col                   <- paste0(covariate, "_s")
-    model_df[[new_col]]       <- (model_df[[covariate]] - cov_center) / cov_scale
+    new_col <- paste0(covariate, "_s")
+    model_df[[new_col]] <- (model_df[[covariate]] - cov_center) / cov_scale
   }
   attr(model_df, "scale_params") <- scale_params
 

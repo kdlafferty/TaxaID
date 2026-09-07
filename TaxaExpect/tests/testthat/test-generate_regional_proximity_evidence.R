@@ -119,12 +119,13 @@ test_that("a taxon clearing both stages gets a correctly-computed evidence row",
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ("Etheostoma chlorosomum", year = 2020),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    "Etheostoma chlorosomum", lat = 41.67, lng = -87.15,
+    "Etheostoma chlorosomum",
+    lat = 41.67, lng = -87.15,
     d_half = 150, age_half = 15
   )
 
@@ -148,16 +149,17 @@ test_that("weight/p_conc scale correctly with d_half/age_half overrides", {
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 100), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ("Gadus morhua", year = as.numeric(format(Sys.Date(), "%Y"))),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    "Gadus morhua", lat = 41.67, lng = -87.15, d_half = 50
+    "Gadus morhua",
+    lat = 41.67, lng = -87.15, d_half = 50
   )
   expect_equal(out$weight, exp(-out$distance_km / 50), tolerance = 1e-6)
   expect_equal(out$age_years, 0)
-  expect_equal(out$p_conc, 1)  # age 0 -> a fresh record = one pseudo-observation
+  expect_equal(out$p_conc, 1) # age 0 -> a fresh record = one pseudo-observation
 })
 
 test_that("a record with no usable year gets p_conc == 1, not a value in between", {
@@ -165,7 +167,7 @@ test_that("a record with no usable year gets p_conc == 1, not a value in between
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ("Gadus morhua", year = NA_real_),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
@@ -191,14 +193,14 @@ test_that("a query name matching a GBIF SYNONYM still produces evidence, matched
   )
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
-    get_gbif_occurrences = .mock_occ("Cyprinella monacha", year = 2015),  # GBIF's ACCEPTED name, not the query
-    filter_gbif_quality  = .passthrough_filter,
+    get_gbif_occurrences = .mock_occ("Cyprinella monacha", year = 2015), # GBIF's ACCEPTED name, not the query
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence("Erimonax monachus", lat = 41.67, lng = -87.15)
   expect_equal(nrow(out), 1L)
-  expect_equal(out$taxon_name, "Erimonax monachus")  # original query, not "Cyprinella monacha"
+  expect_equal(out$taxon_name, "Erimonax monachus") # original query, not "Cyprinella monacha"
 })
 
 test_that("without the gbif_species fix, a synonym query would find zero matching records (negative control)", {
@@ -206,8 +208,8 @@ test_that("without the gbif_species fix, a synonym query would find zero matchin
   # query name (what the code did before this fix) genuinely fails to find
   # the fetched records, which are filed under the accepted name.
   dist_out <- TaxaFlag::compute_local_occurrence_distance(
-    taxon_names     = "Erimonax monachus",  # the query/synonym name
-    query_lat       = 41.67, query_lon = -87.15,
+    taxon_names = "Erimonax monachus", # the query/synonym name
+    query_lat = 41.67, query_lon = -87.15,
     occurrence_data = tibble::tibble(
       species = "Cyprinella monacha", decimalLatitude = 41.68, decimalLongitude = -87.14
     ),
@@ -237,13 +239,16 @@ test_that("a bare genus name that resolves to a GENUS-rank record is rejected, n
   )
   fetch_called <- FALSE
   local_mocked_bindings(
-    get_gbif_occurrences = function(...) { fetch_called <<- TRUE; tibble::tibble() },
+    get_gbif_occurrences = function(...) {
+      fetch_called <<- TRUE
+      tibble::tibble()
+    },
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence("Ictalurus", lat = 41.67, lng = -87.15)
   expect_equal(nrow(out), 0L)
-  expect_false(fetch_called)  # never even reached Stage 1's tile check
+  expect_false(fetch_called) # never even reached Stage 1's tile check
 })
 
 test_that("a name_backbone_checklist() response missing a rank field entirely is treated as no match", {
@@ -263,7 +268,10 @@ test_that("Stage 1 beyond_buffer = TRUE skips the taxon and never triggers a Sta
 
   fetch_called <- FALSE
   local_mocked_bindings(
-    get_gbif_occurrences = function(...) { fetch_called <<- TRUE; tibble::tibble() },
+    get_gbif_occurrences = function(...) {
+      fetch_called <<- TRUE
+      tibble::tibble()
+    },
     .package = "TaxaFetch"
   )
 
@@ -289,7 +297,7 @@ test_that("everything failing quality filtering skips the taxon", {
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ("Gadus morhua"),
-    filter_gbif_quality  = function(data, ...) data[0, , drop = FALSE],
+    filter_gbif_quality = function(data, ...) data[0, , drop = FALSE],
     .package = "TaxaFetch"
   )
 
@@ -307,8 +315,8 @@ test_that("one failing taxon does not block another succeeding in the same call"
       tibble::tibble(
         verbatim_name = name_data$name,
         usageKey = ifelse(name_data$name == "Fictional sp.", NA_real_, 999),
-        rank     = ifelse(name_data$name == "Fictional sp.", NA_character_, "SPECIES"),
-        species  = ifelse(name_data$name == "Fictional sp.", NA_character_, name_data$name)
+        rank = ifelse(name_data$name == "Fictional sp.", NA_character_, "SPECIES"),
+        species = ifelse(name_data$name == "Fictional sp.", NA_character_, name_data$name)
       )
     },
     .package = "rgbif"
@@ -316,12 +324,13 @@ test_that("one failing taxon does not block another succeeding in the same call"
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = function(keys, geometry, ...) .mock_occ("Gadus morhua")(keys, geometry),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    c("Fictional sp.", "Gadus morhua"), lat = 41.67, lng = -87.15
+    c("Fictional sp.", "Gadus morhua"),
+    lat = 41.67, lng = -87.15
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$taxon_name, "Gadus morhua")
@@ -331,17 +340,21 @@ test_that("duplicate taxon names in zero_bbox_taxa are only checked once", {
   local_mocked_bindings(name_backbone_checklist = .mock_key(), .package = "rgbif")
   n_tile_calls <- 0L
   local_mocked_bindings(
-    check_gbif_tile_range = function(...) { n_tile_calls <<- n_tile_calls + 1L; .mock_tile(dist_km = 80)(...) },
+    check_gbif_tile_range = function(...) {
+      n_tile_calls <<- n_tile_calls + 1L
+      .mock_tile(dist_km = 80)(...)
+    },
     .package = "TaxaFlag"
   )
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ("Gadus morhua"),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    c("Gadus morhua", "Gadus morhua"), lat = 41.67, lng = -87.15
+    c("Gadus morhua", "Gadus morhua"),
+    lat = 41.67, lng = -87.15
   )
   expect_equal(nrow(out), 1L)
   expect_equal(n_tile_calls, 1L)
@@ -363,7 +376,7 @@ test_that("name resolution happens in exactly ONE batched call regardless of tax
     lat = 41.67, lng = -87.15
   )
   expect_equal(n_checklist_calls, 1L)
-  expect_equal(nrow(out), 0L)  # beyond_buffer for all -- irrelevant to this test's assertion
+  expect_equal(nrow(out), 0L) # beyond_buffer for all -- irrelevant to this test's assertion
 })
 
 # =============================================================================
@@ -373,7 +386,10 @@ test_that("name resolution happens in exactly ONE batched call regardless of tax
 # =============================================================================
 
 .mock_occ_multi <- function(species, lats, lons, years) {
-  force(species); force(lats); force(lons); force(years)
+  force(species)
+  force(lats)
+  force(lons)
+  force(years)
   function(keys, geometry, ...) {
     tibble::tibble(
       species = rep(species, length(lats)),
@@ -387,12 +403,13 @@ test_that("a single isolated record far in latitude from the study site is rejec
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ_multi("Astronotus ocellatus", lats = 25.0, lons = -87.15, years = 2019),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    "Astronotus ocellatus", lat = 41.67, lng = -87.15
+    "Astronotus ocellatus",
+    lat = 41.67, lng = -87.15
   )
   expect_equal(nrow(out), 0L)
 })
@@ -402,12 +419,13 @@ test_that("a single isolated record CLOSE in latitude still clears the proportio
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ_multi("Carassius carassius", lats = 41.68, lons = -87.14, years = 2020),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    "Carassius carassius", lat = 41.67, lng = -87.15
+    "Carassius carassius",
+    lat = 41.67, lng = -87.15
   )
   expect_equal(nrow(out), 1L)
 })
@@ -420,15 +438,16 @@ test_that("several records but too few near the study site's latitude are reject
       "Cichla ocellaris",
       lats = c(41.68, 25.0, 24.5, 26.1, 25.7), lons = rep(-87.15, 5), years = rep(2018, 5)
     ),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    "Cichla ocellaris", lat = 41.67, lng = -87.15,
+    "Cichla ocellaris",
+    lat = 41.67, lng = -87.15,
     near_lat_tolerance_deg = 6, near_occurrence_min_n = 3L
   )
-  expect_equal(nrow(out), 0L)  # only 1 of 5 records within tolerance, need >= 3
+  expect_equal(nrow(out), 0L) # only 1 of 5 records within tolerance, need >= 3
 })
 
 test_that("enough records genuinely clustered near the study site's latitude clear the test", {
@@ -439,15 +458,16 @@ test_that("enough records genuinely clustered near the study site's latitude cle
       "Gymnocephalus cernua",
       lats = c(46.5, 46.7, 46.6, 25.0), lons = rep(-87.15, 4), years = rep(2019, 4)
     ),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    "Gymnocephalus cernua", lat = 41.67, lng = -87.15,
+    "Gymnocephalus cernua",
+    lat = 41.67, lng = -87.15,
     near_lat_tolerance_deg = 6, near_occurrence_min_n = 3L
   )
-  expect_equal(nrow(out), 1L)  # 3 of 4 records within 6 deg latitude
+  expect_equal(nrow(out), 1L) # 3 of 4 records within 6 deg latitude
 })
 
 test_that("near_occurrence_min_n = 0 disables the safeguard entirely (original nearest-point-only behavior)", {
@@ -455,12 +475,13 @@ test_that("near_occurrence_min_n = 0 disables the safeguard entirely (original n
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ_multi("Astronotus ocellatus", lats = 25.0, lons = -87.15, years = 2019),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
 
   out <- generate_regional_proximity_evidence(
-    "Astronotus ocellatus", lat = 41.67, lng = -87.15, near_occurrence_min_n = 0L
+    "Astronotus ocellatus",
+    lat = 41.67, lng = -87.15, near_occurrence_min_n = 0L
   )
   expect_equal(nrow(out), 1L)
 })
@@ -506,8 +527,8 @@ test_that(".resolve_gbif_taxon_keys_batch() gives NA for a fictional name, a gen
       tibble::tibble(
         verbatim_name = name_data$name,
         usageKey = c(1, NA_real_, 44),
-        rank     = c("SPECIES", NA_character_, "GENUS"),
-        species  = c("Homo sapiens", NA_character_, NA_character_)
+        rank = c("SPECIES", NA_character_, "GENUS"),
+        species = c("Homo sapiens", NA_character_, NA_character_)
       )
     },
     .package = "rgbif"
@@ -637,11 +658,13 @@ test_that("w_scale scales the distance weight and validates its range", {
   local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
   local_mocked_bindings(
     get_gbif_occurrences = .mock_occ("Gadus morhua", year = 2020),
-    filter_gbif_quality  = .passthrough_filter,
+    filter_gbif_quality = .passthrough_filter,
     .package = "TaxaFetch"
   )
-  out <- generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15,
-                                               w_scale = 0.05)
+  out <- generate_regional_proximity_evidence("Gadus morhua",
+    lat = 41.67, lng = -87.15,
+    w_scale = 0.05
+  )
   expect_equal(out$weight, 0.05 * exp(-out$distance_km / 150), tolerance = 1e-6)
   expect_error(
     generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15, w_scale = 0),

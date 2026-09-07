@@ -33,16 +33,16 @@ library(dplyr)
 # to ensure all vectors are guaranteed to have matching lengths even when
 # any of the counts is 0.
 
-.make_mock_model_obj <- function(n_tier1       = 3,
-                                  n_tier2       = 2,
-                                  n_singleton   = 4,
-                                  N_total       = 200L,
-                                  seed          = 42) {
+.make_mock_model_obj <- function(n_tier1 = 3,
+                                 n_tier2 = 2,
+                                 n_singleton = 4,
+                                 N_total = 200L,
+                                 seed = 42) {
   set.seed(seed)
 
   # Build species name vectors first; handle n = 0 explicitly
-  tier1_sp     <- if (n_tier1    > 0) paste0("Tier1_",    seq_len(n_tier1))    else character(0)
-  tier2_sp     <- if (n_tier2    > 0) paste0("Tier2_",    seq_len(n_tier2))    else character(0)
+  tier1_sp <- if (n_tier1 > 0) paste0("Tier1_", seq_len(n_tier1)) else character(0)
+  tier2_sp <- if (n_tier2 > 0) paste0("Tier2_", seq_len(n_tier2)) else character(0)
   singleton_sp <- if (n_singleton > 0) paste0("Singleton_", seq_len(n_singleton)) else character(0)
 
   all_sp <- c(tier1_sp, tier2_sp, singleton_sp)
@@ -50,13 +50,17 @@ library(dplyr)
   # Build tiers using length() of the pre-built vectors, not n_tier* variables,
   # so length always matches all_sp regardless of edge cases.
   tiers <- data.frame(
-    taxon_name   = all_sp,
-    tier         = c(rep("tier1", length(tier1_sp)),
-                     rep("tier2", length(tier2_sp)),
-                     rep("tier2", length(singleton_sp))),
-    n_detections = c(rep(15L, length(tier1_sp)),
-                     rep(3L,  length(tier2_sp)),
-                     rep(1L,  length(singleton_sp))),
+    taxon_name = all_sp,
+    tier = c(
+      rep("tier1", length(tier1_sp)),
+      rep("tier2", length(tier2_sp)),
+      rep("tier2", length(singleton_sp))
+    ),
+    n_detections = c(
+      rep(15L, length(tier1_sp)),
+      rep(3L, length(tier2_sp)),
+      rep(1L, length(singleton_sp))
+    ),
     stringsAsFactors = FALSE
   )
 
@@ -87,14 +91,14 @@ library(dplyr)
 
   obj <- list(
     models = list(tier1 = NULL, tier2 = NULL),
-    tiers  = tiers,
+    tiers = tiers,
     scale_params = list(
-      lat_r = list(center = 35.0,   scale = 1.5),
+      lat_r = list(center = 35.0, scale = 1.5),
       lon_r = list(center = -120.0, scale = 1.5)
     ),
-    singletons           = singletons,
-    N_total              = N_total,
-    tier2_empirical      = data.frame(),
+    singletons = singletons,
+    N_total = N_total,
+    tier2_empirical = data.frame(),
     convergence_warnings = character(0),
     meta = list(
       taxon_col         = "taxon_name",
@@ -124,11 +128,13 @@ test_that("generate_undetected_diversity returns a dataframe", {
 })
 
 test_that("output contains all documented columns", {
-  mod      <- .make_mock_model_obj()
-  out      <- generate_undetected_diversity(mod)
-  required <- c("taxon_name", "grid_id", "main_habitat", "alpha", "beta",
-                "theta_mean", "theta_sd", "n_obs", "model_tier",
-                "undetected_type", "source_taxon_name")
+  mod <- .make_mock_model_obj()
+  out <- generate_undetected_diversity(mod)
+  required <- c(
+    "taxon_name", "grid_id", "main_habitat", "alpha", "beta",
+    "theta_mean", "theta_sd", "n_obs", "model_tier",
+    "undetected_type", "source_taxon_name"
+  )
   for (col in required) {
     expect_true(col %in% names(out), info = paste("Missing column:", col))
   }
@@ -142,7 +148,8 @@ test_that("taxon_name is NA for all proxy rows", {
   mod <- .make_mock_model_obj()
   out <- generate_undetected_diversity(mod)
   expect_true(all(is.na(out$taxon_name)),
-              info = "Proxy rows must have taxon_name = NA")
+    info = "Proxy rows must have taxon_name = NA"
+  )
 })
 
 # =============================================================================
@@ -153,19 +160,21 @@ test_that("at least one global_floor row is always present", {
   mod <- .make_mock_model_obj()
   out <- generate_undetected_diversity(mod)
   expect_true(any(out$undetected_type == "global_floor"),
-              info = "Global floor must always be present")
+    info = "Global floor must always be present"
+  )
 })
 
 test_that("function returns at least 1 row even with no singletons", {
   mod <- .make_mock_model_obj(n_singleton = 0)
   out <- generate_undetected_diversity(mod)
   expect_gte(nrow(out), 1L,
-             label = "At least global floor row expected")
+    label = "At least global floor row expected"
+  )
 })
 
 test_that("global floor grid_id and habitat are NA", {
-  mod       <- .make_mock_model_obj()
-  out       <- generate_undetected_diversity(mod)
+  mod <- .make_mock_model_obj()
+  out <- generate_undetected_diversity(mod)
   floor_row <- out[out$undetected_type == "global_floor", ]
   expect_true(is.na(floor_row$grid_id[1]))
   expect_true(is.na(floor_row$main_habitat[1]))
@@ -176,19 +185,19 @@ test_that("global floor grid_id and habitat are NA", {
 # =============================================================================
 
 test_that("N_total >= jeffreys_threshold uses Beta(1, N_total - 1) for floor", {
-  mod       <- .make_mock_model_obj(N_total = 100L, n_singleton = 0)
-  out       <- generate_undetected_diversity(mod, jeffreys_threshold = 2L)
+  mod <- .make_mock_model_obj(N_total = 100L, n_singleton = 0)
+  out <- generate_undetected_diversity(mod, jeffreys_threshold = 2L)
   floor_row <- out[out$undetected_type == "global_floor", ]
   expect_equal(floor_row$alpha, 1)
-  expect_equal(floor_row$beta,  99)
+  expect_equal(floor_row$beta, 99)
 })
 
 test_that("N_total < jeffreys_threshold uses Jeffreys prior Beta(0.5, 0.5)", {
-  mod       <- .make_mock_model_obj(N_total = 1L, n_singleton = 0)
-  out       <- generate_undetected_diversity(mod, jeffreys_threshold = 2L)
+  mod <- .make_mock_model_obj(N_total = 1L, n_singleton = 0)
+  out <- generate_undetected_diversity(mod, jeffreys_threshold = 2L)
   floor_row <- out[out$undetected_type == "global_floor", ]
   expect_equal(floor_row$alpha, 0.5)
-  expect_equal(floor_row$beta,  0.5)
+  expect_equal(floor_row$beta, 0.5)
 })
 
 # =============================================================================
@@ -196,24 +205,24 @@ test_that("N_total < jeffreys_threshold uses Jeffreys prior Beta(0.5, 0.5)", {
 # =============================================================================
 
 test_that("number of singleton mirrors equals number of valid singletons", {
-  n_sing  <- 4
-  mod     <- .make_mock_model_obj(n_singleton = n_sing)
-  out     <- generate_undetected_diversity(mod)
+  n_sing <- 4
+  mod <- .make_mock_model_obj(n_singleton = n_sing)
+  out <- generate_undetected_diversity(mod)
   mirrors <- out[out$undetected_type == "singleton_mirror", ]
   expect_equal(nrow(mirrors), n_sing)
 })
 
 test_that("total rows = n_singletons + 1 (global floor)", {
   n_sing <- 3
-  mod    <- .make_mock_model_obj(n_singleton = n_sing)
-  out    <- generate_undetected_diversity(mod)
+  mod <- .make_mock_model_obj(n_singleton = n_sing)
+  out <- generate_undetected_diversity(mod)
   expect_equal(nrow(out), n_sing + 1L)
 })
 
 test_that("source_taxon_name is NA for global floor and populated for mirrors", {
-  mod     <- .make_mock_model_obj(n_singleton = 2)
-  out     <- generate_undetected_diversity(mod)
-  floor   <- out[out$undetected_type == "global_floor", ]
+  mod <- .make_mock_model_obj(n_singleton = 2)
+  out <- generate_undetected_diversity(mod)
+  floor <- out[out$undetected_type == "global_floor", ]
   mirrors <- out[out$undetected_type == "singleton_mirror", ]
   expect_true(is.na(floor$source_taxon_name))
   expect_true(all(!is.na(mirrors$source_taxon_name)))
@@ -226,8 +235,8 @@ test_that("source_taxon_name is NA for global floor and populated for mirrors", 
 test_that("alpha and beta are strictly positive and finite", {
   mod <- .make_mock_model_obj()
   out <- generate_undetected_diversity(mod)
-  expect_true(all(out$alpha > 0),      info = "alpha must be > 0")
-  expect_true(all(out$beta  > 0),      info = "beta must be > 0")
+  expect_true(all(out$alpha > 0), info = "alpha must be > 0")
+  expect_true(all(out$beta > 0), info = "beta must be > 0")
   expect_true(all(is.finite(out$alpha)))
   expect_true(all(is.finite(out$beta)))
 })
@@ -256,10 +265,10 @@ test_that("model_tier is 'tier3_undetected' for all rows", {
 # =============================================================================
 
 test_that("higher singleton_ess produces narrower priors (larger alpha + beta)", {
-  mod      <- .make_mock_model_obj(n_singleton = 5)
-  out_low  <- generate_undetected_diversity(mod, singleton_ess = 1L)
+  mod <- .make_mock_model_obj(n_singleton = 5)
+  out_low <- generate_undetected_diversity(mod, singleton_ess = 1L)
   out_high <- generate_undetected_diversity(mod, singleton_ess = 10L)
-  ess_low  <- sum(out_low$alpha  + out_low$beta)
+  ess_low <- sum(out_low$alpha + out_low$beta)
   ess_high <- sum(out_high$alpha + out_high$beta)
   expect_lt(ess_low, ess_high)
 })
@@ -276,7 +285,7 @@ test_that("non-biofreq_model input triggers informative error", {
 })
 
 test_that("N_total <= 0 triggers informative error", {
-  mod         <- .make_mock_model_obj()
+  mod <- .make_mock_model_obj()
   mod$N_total <- 0L
   expect_error(
     generate_undetected_diversity(mod),

@@ -63,27 +63,29 @@
 #'
 #' @export
 generate_inat_range_evidence <- function(
-    inat_range,
-    weight             = 0.8,
-    p_conc             = 1,
-    n_obs_threshold    = 500L,
-    require_name_match = TRUE
+  inat_range,
+  weight = 0.8,
+  p_conc = 1,
+  n_obs_threshold = 500L,
+  require_name_match = TRUE
 ) {
   required_cols <- c("taxon_name", "in_range", "n_observations")
   if (!is.data.frame(inat_range) || !all(required_cols %in% names(inat_range))) {
-    stop("generate_inat_range_evidence: `inat_range` must be a data frame with columns ",
-         paste(required_cols, collapse = ", "),
-         " (TaxaFetch::check_inat_range() output).")
+    stop(
+      "generate_inat_range_evidence: `inat_range` must be a data frame with columns ",
+      paste(required_cols, collapse = ", "),
+      " (TaxaFetch::check_inat_range() output)."
+    )
   }
   if (!is.numeric(weight) || length(weight) != 1L || is.na(weight) ||
-      weight < 0 || weight > 1) {
+    weight < 0 || weight > 1) {
     stop("generate_inat_range_evidence: `weight` must be a single non-NA value in [0, 1].")
   }
   if (!is.numeric(p_conc) || length(p_conc) != 1L || is.na(p_conc) || p_conc <= 0) {
     stop("generate_inat_range_evidence: `p_conc` must be a single non-NA positive value.")
   }
   if (!is.logical(require_name_match) || length(require_name_match) != 1L ||
-      is.na(require_name_match)) {
+    is.na(require_name_match)) {
     stop("generate_inat_range_evidence: `require_name_match` must be TRUE or FALSE.")
   }
 
@@ -93,10 +95,12 @@ generate_inat_range_evidence <- function(
 
   if (require_name_match) {
     if (!"name_match" %in% names(inat_range)) {
-      message("generate_inat_range_evidence: `inat_range` has no name_match ",
-              "column (pre-2026-08-28 check_inat_range() output) -- every row ",
-              "is unverifiable against the fuzzy-match risk and is excluded. ",
-              "Re-run TaxaFetch::check_inat_range() to get the column.")
+      message(
+        "generate_inat_range_evidence: `inat_range` has no name_match ",
+        "column (pre-2026-08-28 check_inat_range() output) -- every row ",
+        "is unverifiable against the fuzzy-match risk and is excluded. ",
+        "Re-run TaxaFetch::check_inat_range() to get the column."
+      )
       keep <- keep & FALSE
     } else {
       unverified <- keep & !(inat_range$name_match %in% TRUE)

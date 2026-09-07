@@ -10,7 +10,7 @@ library(testthat)
 
 .make_occ <- function() {
   data.frame(
-    decimalLatitude  = c(34.12, 34.37, -33.7, 0.0,  89.9),
+    decimalLatitude  = c(34.12, 34.37, -33.7, 0.0, 89.9),
     decimalLongitude = c(-119.63, -120.14, 18.4, 0.0, -179.5),
     taxon_name       = paste0("Sp_", 1:5),
     stringsAsFactors = FALSE
@@ -45,8 +45,10 @@ test_that("stops if lon_col is not found", {
 })
 
 test_that("stops if custom lat_col is not found", {
-  df <- data.frame(lat = 34.5, decimalLongitude = -120.0,
-                   stringsAsFactors = FALSE)
+  df <- data.frame(
+    lat = 34.5, decimalLongitude = -120.0,
+    stringsAsFactors = FALSE
+  )
   expect_error(
     create_sites_from_grid(df, grid_size = 0.5, lat_col = "latitude"),
     regexp = "latitude"
@@ -109,15 +111,15 @@ test_that("returns a data frame", {
 })
 
 test_that("same number of rows as input", {
-  df  <- .make_occ()
+  df <- .make_occ()
   out <- create_sites_from_grid(df, grid_size = 0.5)
   expect_equal(nrow(out), nrow(df))
 })
 
 test_that("adds lat_r, lon_r, and grid_id columns", {
   out <- create_sites_from_grid(.make_occ(), grid_size = 0.5)
-  expect_true("lat_r"   %in% names(out))
-  expect_true("lon_r"   %in% names(out))
+  expect_true("lat_r" %in% names(out))
+  expect_true("lon_r" %in% names(out))
   expect_true("grid_id" %in% names(out))
 })
 
@@ -127,13 +129,13 @@ test_that("grid_id_raw intermediate column is NOT in output", {
 })
 
 test_that("all original columns are preserved", {
-  df  <- .make_occ()
+  df <- .make_occ()
   out <- create_sites_from_grid(df, grid_size = 0.5)
   expect_true(all(names(df) %in% names(out)))
 })
 
 test_that("row order is unchanged", {
-  df  <- .make_occ()
+  df <- .make_occ()
   out <- create_sites_from_grid(df, grid_size = 0.5)
   expect_equal(out$taxon_name, df$taxon_name)
 })
@@ -155,7 +157,7 @@ test_that("lat_r and lon_r are rounded to nearest grid multiple", {
 
 test_that("points within the same grid cell share the same grid_id", {
   df <- data.frame(
-    decimalLatitude  = c(34.26, 34.49, 34.74),   # all round to 34.5 at 0.5 res
+    decimalLatitude  = c(34.26, 34.49, 34.74), # all round to 34.5 at 0.5 res
     decimalLongitude = c(-120.26, -120.3, -120.4), # all round to -120.5 at 0.5 res
     stringsAsFactors = FALSE
   )
@@ -265,8 +267,10 @@ test_that("accepts custom lat_col and lon_col names", {
     lat = 34.37, lon = -119.63,
     stringsAsFactors = FALSE
   )
-  out <- create_sites_from_grid(df, grid_size = 0.5,
-                                lat_col = "lat", lon_col = "lon")
+  out <- create_sites_from_grid(df,
+    grid_size = 0.5,
+    lat_col = "lat", lon_col = "lon"
+  )
   expect_equal(out$lat_r, 34.5)
   expect_equal(out$lon_r, -119.5)
 })

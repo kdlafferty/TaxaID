@@ -3,14 +3,17 @@
 # hand-computable answers; the grid-as-top-hat reduction is the key invariant.
 
 .mk_occ <- function(taxa, lat, lon, habitat = "Marine", depth = NA_real_) {
-  data.frame(taxon_name = taxa, decimalLatitude = lat, decimalLongitude = lon,
-             main_habitat = habitat, depth_m = depth, stringsAsFactors = FALSE)
+  data.frame(
+    taxon_name = taxa, decimalLatitude = lat, decimalLongitude = lon,
+    main_habitat = habitat, depth_m = depth, stringsAsFactors = FALSE
+  )
 }
 
 test_that("near-flat kernel reduces to ordinary record shares (top-hat limit)", {
   # 6 records at (essentially) the site: A x3, B x2, C x1
   occ <- .mk_occ(c("A", "A", "A", "B", "B", "C"),
-                 lat = 34 + (1:6) * 1e-6, lon = -120 + (1:6) * 1e-6)
+    lat = 34 + (1:6) * 1e-6, lon = -120 + (1:6) * 1e-6
+  )
   kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0)
   expect_equal(kp$n_eff, 6, tolerance = 1e-6)
   th <- kp$priors$theta_mean[match(c("A", "B", "C"), kp$priors$taxon_name)]
@@ -36,40 +39,48 @@ test_that("m back-off shrinks toward regional composition and m=0 disables it", 
   # local neighborhood is all-A; region also holds B far away
   far <- 5000 / 111
   occ <- .mk_occ(c("A", "A", "A", "B"),
-                 lat = c(34, 34, 34, 34 + far), lon = rep(-120, 4))
+    lat = c(34, 34, 34, 34 + far), lon = rep(-120, 4)
+  )
   kp0 <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 10, m = 0)
   kp1 <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 10, m = 5)
   b0 <- kp0$priors$theta_mean[kp0$priors$taxon_name == "B"]
   b1 <- kp1$priors$theta_mean[kp1$priors$taxon_name == "B"]
-  expect_lt(b0, 1e-6)          # kernel alone: B is invisible locally
-  expect_gt(b1, b0)            # back-off gives B its regional share of m
+  expect_lt(b0, 1e-6) # kernel alone: B is invisible locally
+  expect_gt(b1, b0) # back-off gives B its regional share of m
   expect_equal(b1, 5 * 0.25 / (kp1$n_eff + 5), tolerance = 1e-6)
 })
 
 test_that("covariate (depth) kernel down-weights mismatched records", {
   # equal distances; A records at site depth, B records 100 m off
-  occ <- .mk_occ(c("A", "A", "B", "B"), lat = rep(34, 4), lon = rep(-120, 4),
-                 depth = c(5, 5, 105, 105))
-  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 0,
-                               covariate_col = "depth_m", site_covariate = 5,
-                               lambda_covariate = 20)
+  occ <- .mk_occ(c("A", "A", "B", "B"),
+    lat = rep(34, 4), lon = rep(-120, 4),
+    depth = c(5, 5, 105, 105)
+  )
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 50, m = 0,
+    covariate_col = "depth_m", site_covariate = 5,
+    lambda_covariate = 20
+  )
   th <- kp$priors$theta_mean[match(c("A", "B"), kp$priors$taxon_name)]
   expect_equal(th[1] / th[2], 1 / exp(-100 / 20), tolerance = 1e-6)
   # NA covariate gets neutral weight, not dropped
   occ$depth_m[3:4] <- NA_real_
-  kp2 <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 0,
-                                covariate_col = "depth_m", site_covariate = 5,
-                                lambda_covariate = 20)
+  kp2 <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 50, m = 0,
+    covariate_col = "depth_m", site_covariate = 5,
+    lambda_covariate = 20
+  )
   th2 <- kp2$priors$theta_mean[match(c("A", "B"), kp2$priors$taxon_name)]
   expect_equal(th2[1], th2[2], tolerance = 1e-6)
 })
 
 test_that("singletons and Good-Turing mass reduce to classical values in the top-hat limit", {
   occ <- .mk_occ(c("A", "A", "A", "B", "C"),
-                 lat = 34 + (1:5) * 1e-6, lon = rep(-120, 5))
+    lat = 34 + (1:5) * 1e-6, lon = rep(-120, 5)
+  )
   kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0)
   expect_setequal(kp$singletons$taxon_name, c("B", "C"))
-  expect_equal(kp$missing_mass, 2 / 5, tolerance = 1e-6)  # f1/n
+  expect_equal(kp$missing_mass, 2 / 5, tolerance = 1e-6) # f1/n
   # a far-away record does not count as neighborhood support
   occ2 <- rbind(occ, .mk_occ("D", lat = 34 + 5000 / 111, lon = -120))
   kp2 <- estimate_kernel_priors(occ2, 34, -120, "Marine", lambda_km = 10, m = 0)
@@ -77,14 +88,20 @@ test_that("singletons and Good-Turing mass reduce to classical values in the top
 })
 
 test_that("schema carries prior_branch and effective_records, habitat stratifies, site_id lands in grid_id", {
-  occ <- rbind(.mk_occ(c("A", "B"), c(34, 34), c(-120, -120)),
-               .mk_occ("Z", 34, -120, habitat = "Terrestrial"))
-  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50,
-                               site_id = "BurnsTest")
-  expect_true(all(c("taxon_name", "grid_id", "main_habitat", "alpha", "beta",
-                    "theta_mean", "theta_sd", "prior_branch",
-                    "effective_records") %in% names(kp$priors)))
-  expect_false("Z" %in% kp$priors$taxon_name)   # wrong habitat excluded
+  occ <- rbind(
+    .mk_occ(c("A", "B"), c(34, 34), c(-120, -120)),
+    .mk_occ("Z", 34, -120, habitat = "Terrestrial")
+  )
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 50,
+    site_id = "BurnsTest"
+  )
+  expect_true(all(c(
+    "taxon_name", "grid_id", "main_habitat", "alpha", "beta",
+    "theta_mean", "theta_sd", "prior_branch",
+    "effective_records"
+  ) %in% names(kp$priors)))
+  expect_false("Z" %in% kp$priors$taxon_name) # wrong habitat excluded
   expect_true(all(kp$priors$prior_branch == "resident_observed"))
   expect_true(all(kp$priors$grid_id == "BurnsTest"))
   expect_true(all(kp$priors$effective_records > 0))
@@ -92,15 +109,25 @@ test_that("schema carries prior_branch and effective_records, habitat stratifies
 
 test_that("input validation errors are informative", {
   occ <- .mk_occ("A", 34, -120)
-  expect_error(estimate_kernel_priors(occ, 34, -120, "Marine"),
-               "calibrate_kernel_bandwidth")           # lambda required
-  expect_error(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = -1),
-               "lambda_km")
-  expect_error(estimate_kernel_priors(occ, 34, -120, "Freshwater", lambda_km = 10),
-               "No usable records")
-  expect_error(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 10,
-                                      covariate_col = "depth_m"),
-               "site_covariate")
+  expect_error(
+    estimate_kernel_priors(occ, 34, -120, "Marine"),
+    "calibrate_kernel_bandwidth"
+  ) # lambda required
+  expect_error(
+    estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = -1),
+    "lambda_km"
+  )
+  expect_error(
+    estimate_kernel_priors(occ, 34, -120, "Freshwater", lambda_km = 10),
+    "No usable records"
+  )
+  expect_error(
+    estimate_kernel_priors(occ, 34, -120, "Marine",
+      lambda_km = 10,
+      covariate_col = "depth_m"
+    ),
+    "site_covariate"
+  )
 })
 
 test_that("calibrate_kernel_bandwidth prefers locality on spatially structured data", {
@@ -111,17 +138,19 @@ test_that("calibrate_kernel_bandwidth prefers locality on spatially structured d
   lat <- 34 + reg * (300 / 111) + stats::runif(n, 0, 0.9)
   lon <- -120 + stats::runif(n, 0, 0.9)
   taxa <- ifelse(reg == 0,
-                 sample(c("A", "B"), n, TRUE, prob = c(0.9, 0.1)),
-                 sample(c("A", "B"), n, TRUE, prob = c(0.1, 0.9)))[seq_len(n)]
+    sample(c("A", "B"), n, TRUE, prob = c(0.9, 0.1)),
+    sample(c("A", "B"), n, TRUE, prob = c(0.1, 0.9))
+  )[seq_len(n)]
   occ <- .mk_occ(taxa, lat, lon)
   cal <- calibrate_kernel_bandwidth(occ, "Marine",
-                                    lambda_grid = c(25, 5000),
-                                    block_size_deg = 0.45,
-                                    min_block_records = 10L)
+    lambda_grid = c(25, 5000),
+    block_size_deg = 0.45,
+    min_block_records = 10L
+  )
   r <- cal$results
   ll_local <- r$weighted_logloss[which(r$lambda_km == 25)]
   ll_flat <- r$weighted_logloss[which(r$lambda_km == 5000)]
-  expect_lt(ll_local, ll_flat)   # locality must win when structure exists
+  expect_lt(ll_local, ll_flat) # locality must win when structure exists
   expect_true(all(c("regional", "nearest_block") %in% rownames(r)))
   expect_equal(cal$best$lambda_km, 25)
 })
@@ -129,15 +158,20 @@ test_that("calibrate_kernel_bandwidth prefers locality on spatially structured d
 test_that("calibrate_kernel_bandwidth validates inputs", {
   occ <- .mk_occ(rep("A", 10), rep(34, 10), rep(-120, 10))
   expect_error(calibrate_kernel_bandwidth(occ, "Marine"), "Too few records")
-  expect_error(calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = -5),
-               "lambda_grid")
+  expect_error(
+    calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = -5),
+    "lambda_grid"
+  )
 })
 
 test_that("generate_undetected_diversity() accepts a kernel-priors object (B5 port)", {
   occ <- .mk_occ(c("A", "A", "A", "B", "C"),
-                 lat = 34 + (1:5) * 1e-6, lon = rep(-120, 5))
-  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1e9, m = 0,
-                               site_id = "KTest")
+    lat = 34 + (1:5) * 1e-6, lon = rep(-120, 5)
+  )
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 1e9, m = 0,
+    site_id = "KTest"
+  )
   ud <- suppressMessages(generate_undetected_diversity(kp))
   # one mirror per neighborhood singleton (B, C) + one global floor
   expect_equal(sum(ud$undetected_type == "singleton_mirror"), 2L)
@@ -151,14 +185,17 @@ test_that("generate_undetected_diversity() accepts a kernel-priors object (B5 po
   expect_equal(mir$theta_mean, rep(1 / 5, 2), tolerance = 1e-6)
   # floor = Beta(1, N_eff - 1) on the Kish N
   fl <- ud[ud$undetected_type == "global_floor", ]
-  expect_equal(fl$alpha, 1); expect_equal(fl$beta, 5 - 1)
+  expect_equal(fl$alpha, 1)
+  expect_equal(fl$beta, 5 - 1)
   expect_equal(fl$n_obs, 5L)
   # frozen-machinery columns + new branch label both present
   expect_true(all(ud$model_tier == "tier3_undetected"))
   expect_true(all(ud$prior_branch == "resident_undetected"))
   # taxonomy join still works through the adapter
-  tx <- data.frame(taxon_name = c("B", "C"), genus = c("Bg", "Cg"),
-                   family = c("Bf", "Cf"), stringsAsFactors = FALSE)
+  tx <- data.frame(
+    taxon_name = c("B", "C"), genus = c("Bg", "Cg"),
+    family = c("Bf", "Cf"), stringsAsFactors = FALSE
+  )
   ud2 <- suppressMessages(generate_undetected_diversity(kp, taxonomy = tx))
   mir2 <- ud2[ud2$undetected_type == "singleton_mirror", ]
   expect_setequal(mir2$genus, c("Bg", "Cg"))
@@ -175,11 +212,15 @@ test_that("kernel priors carry observed_in_habitat = TRUE (join_priors D1 guard)
 # ------------------------------------------------------------------------------
 
 test_that("lambda_latitude = NULL reproduces the unfactored weights exactly", {
-  occ <- .mk_occ(c("A", "B", "B"), lat = c(34, 35, 34),
-                 lon = c(-120, -120, -119))
+  occ <- .mk_occ(c("A", "B", "B"),
+    lat = c(34, 35, 34),
+    lon = c(-120, -120, -119)
+  )
   kp0 <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 0)
-  kp1 <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 0,
-                                lambda_latitude = NULL)
+  kp1 <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 50, m = 0,
+    lambda_latitude = NULL
+  )
   expect_equal(kp0$priors$theta_mean, kp1$priors$theta_mean, tolerance = 1e-12)
   expect_null(kp1$params$lambda_latitude)
 })
@@ -187,10 +228,14 @@ test_that("lambda_latitude = NULL reproduces the unfactored weights exactly", {
 test_that("lambda_latitude penalizes N-S displacement more than E-W", {
   # A due north of the site, B due east, both exactly 111 km away: the
   # geographic factor is identical, so only the climate factor separates them.
-  occ <- .mk_occ(c("A", "B"), lat = c(35, 34),
-                 lon = c(-120, -120 + 1 / cos(34 * pi / 180)))
-  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 100, m = 0,
-                               lambda_latitude = 111)
+  occ <- .mk_occ(c("A", "B"),
+    lat = c(35, 34),
+    lon = c(-120, -120 + 1 / cos(34 * pi / 180))
+  )
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 100, m = 0,
+    lambda_latitude = 111
+  )
   th <- kp$priors$theta_mean[match(c("A", "B"), kp$priors$taxon_name)]
   # A carries the extra factor exp(-111*1/111) = exp(-1); B carries none.
   expect_equal(th[1] / th[2], exp(-1), tolerance = 1e-6)
@@ -201,8 +246,10 @@ test_that("climate factor is hemisphere-symmetric (absolute latitude)", {
   # B at 30 N (|dlat| = 20 geographically, climate delta 20 deg). Same
   # longitude, same geographic distance -- only climate separates them.
   occ <- .mk_occ(c("A", "B"), lat = c(-10, 30), lon = c(-120, -120))
-  kp <- estimate_kernel_priors(occ, 10, -120, "Marine", lambda_km = 1e9, m = 0,
-                               lambda_latitude = 555)
+  kp <- estimate_kernel_priors(occ, 10, -120, "Marine",
+    lambda_km = 1e9, m = 0,
+    lambda_latitude = 555
+  )
   th <- kp$priors$theta_mean[match(c("A", "B"), kp$priors$taxon_name)]
   # A: climate factor exp(0) = 1; B: exp(-111*20/555) = exp(-4)
   expect_equal(th[1] / th[2], exp(4), tolerance = 1e-4)
@@ -212,20 +259,25 @@ test_that("calibrate_kernel_bandwidth sweeps lambda_latitude with an Inf off-swi
   set.seed(42)
   n <- 240
   occ <- .mk_occ(sample(c("A", "B", "C"), n, replace = TRUE),
-                 lat = runif(n, 34, 36), lon = runif(n, -121, -119))
-  cal <- calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = c(50, 100),
-                                    lambda_latitude_grid = c(50),
-                                    block_size_deg = 0.5,
-                                    min_block_records = 10L)
+    lat = runif(n, 34, 36), lon = runif(n, -121, -119)
+  )
+  cal <- calibrate_kernel_bandwidth(occ, "Marine",
+    lambda_grid = c(50, 100),
+    lambda_latitude_grid = c(50),
+    block_size_deg = 0.5,
+    min_block_records = 10L
+  )
   expect_true("lambda_latitude" %in% names(cal$results))
   # Inf added automatically: both 50 and Inf appear among kernel rows
   ll <- cal$results$lambda_latitude
   expect_true(any(is.infinite(ll[!is.na(ll)])))
   expect_true(any(ll[!is.na(ll)] == 50))
   # NULL grid still works and yields NA column (references) without the sweep
-  cal0 <- calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = c(50, 100),
-                                     block_size_deg = 0.5,
-                                     min_block_records = 10L)
+  cal0 <- calibrate_kernel_bandwidth(occ, "Marine",
+    lambda_grid = c(50, 100),
+    block_size_deg = 0.5,
+    min_block_records = 10L
+  )
   expect_true(all(is.na(cal0$results$lambda_latitude)))
 })
 
@@ -233,18 +285,24 @@ test_that("lambda_latitude = Inf in the sweep scores identically to no factor", 
   set.seed(7)
   n <- 200
   occ <- .mk_occ(sample(c("A", "B"), n, replace = TRUE),
-                 lat = runif(n, 34, 36), lon = runif(n, -121, -119))
-  cal_off <- calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = 50,
-                                        block_size_deg = 0.5,
-                                        min_block_records = 10L)
-  cal_inf <- calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = 50,
-                                        lambda_latitude_grid = c(25),
-                                        block_size_deg = 0.5,
-                                        min_block_records = 10L)
+    lat = runif(n, 34, 36), lon = runif(n, -121, -119)
+  )
+  cal_off <- calibrate_kernel_bandwidth(occ, "Marine",
+    lambda_grid = 50,
+    block_size_deg = 0.5,
+    min_block_records = 10L
+  )
+  cal_inf <- calibrate_kernel_bandwidth(occ, "Marine",
+    lambda_grid = 50,
+    lambda_latitude_grid = c(25),
+    block_size_deg = 0.5,
+    min_block_records = 10L
+  )
   off_ll <- cal_off$results$weighted_logloss[1]
   inf_row <- which(is.infinite(cal_inf$results$lambda_latitude))
   expect_equal(cal_inf$results$weighted_logloss[inf_row], off_ll,
-               tolerance = 1e-12)
+    tolerance = 1e-12
+  )
 })
 
 test_that("priors/singletons are tibbles (drop-in parity with generate_full_priors)", {
@@ -272,20 +330,24 @@ test_that("priors/singletons are tibbles (drop-in parity with generate_full_prio
 test_that("estimate_kernel_priors warns when the pool does not reach 6 lambda", {
   # records confined to ~10 km, lambda 50 km => 6 lambda = 300 km >> reach
   occ <- .mk_occ(rep(c("A", "B"), each = 5),
-                 lat = 34 + seq(0, 0.09, length.out = 10), lon = -120)
+    lat = 34 + seq(0, 0.09, length.out = 10), lon = -120
+  )
   expect_warning(
     estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50),
-    "truncated by the fetch boundary")
+    "truncated by the fetch boundary"
+  )
   # a small lambda against the same pool is fine
   expect_no_warning(
-    estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1))
+    estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1)
+  )
 })
 
 test_that("calibrate_kernel_bandwidth warns when the best lambda is the grid maximum", {
   set.seed(11)
   n <- 300
   occ <- .mk_occ(sample(c("A", "B", "C"), n, replace = TRUE),
-                 lat = runif(n, 34, 36), lon = runif(n, -121, -119))
+    lat = runif(n, 34, 36), lon = runif(n, -121, -119)
+  )
   # Grid chosen by measuring this fixture, not by assumption: on these
   # spatially unstructured labels the loss curve is nearly flat, and among
   # c(50, 100) the larger bandwidth wins -- pinning the optimum at the top of
@@ -293,14 +355,20 @@ test_that("calibrate_kernel_bandwidth warns when the best lambda is the grid max
   # would not test it: the kernel saturates, ties on loss, and which.min then
   # returns the FIRST row, i.e. the grid minimum.)
   expect_warning(
-    calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = c(50, 100),
-                               block_size_deg = 0.5, min_block_records = 10L),
-    "LARGEST value in lambda_grid")
+    calibrate_kernel_bandwidth(occ, "Marine",
+      lambda_grid = c(50, 100),
+      block_size_deg = 0.5, min_block_records = 10L
+    ),
+    "LARGEST value in lambda_grid"
+  )
   # and the opposite edge is reported too, as a message rather than a warning
   expect_message(
-    calibrate_kernel_bandwidth(occ, "Marine", lambda_grid = c(1, 5, 25),
-                               block_size_deg = 0.5, min_block_records = 10L),
-    "SMALLEST value offered")
+    calibrate_kernel_bandwidth(occ, "Marine",
+      lambda_grid = c(1, 5, 25),
+      block_size_deg = 0.5, min_block_records = 10L
+    ),
+    "SMALLEST value offered"
+  )
 })
 
 # ------------------------------------------------------------------------------
@@ -312,39 +380,53 @@ test_that("calibrate_kernel_bandwidth warns when the best lambda is the grid max
 
 .mixed_pool <- function() {
   set.seed(42)
-  fish <- do.call(rbind, lapply(1:20, function(i) data.frame(
-    taxon_name = sprintf("Fish_%02d", i),
-    decimalLatitude = 34.1 + rnorm(30, 0, .05),
-    decimalLongitude = -119.1 + rnorm(30, 0, .05),
-    main_habitat = "Coastal", sampling_group = "fish", stringsAsFactors = FALSE)))
-  fish_rare <- do.call(rbind, lapply(1:4, function(i) data.frame(
-    taxon_name = sprintf("FishRare_%02d", i),
-    decimalLatitude = 34.1 + rnorm(1, 0, .05),
-    decimalLongitude = -119.1 + rnorm(1, 0, .05),
-    main_habitat = "Coastal", sampling_group = "fish", stringsAsFactors = FALSE)))
+  fish <- do.call(rbind, lapply(1:20, function(i) {
+    data.frame(
+      taxon_name = sprintf("Fish_%02d", i),
+      decimalLatitude = 34.1 + rnorm(30, 0, .05),
+      decimalLongitude = -119.1 + rnorm(30, 0, .05),
+      main_habitat = "Coastal", sampling_group = "fish", stringsAsFactors = FALSE
+    )
+  }))
+  fish_rare <- do.call(rbind, lapply(1:4, function(i) {
+    data.frame(
+      taxon_name = sprintf("FishRare_%02d", i),
+      decimalLatitude = 34.1 + rnorm(1, 0, .05),
+      decimalLongitude = -119.1 + rnorm(1, 0, .05),
+      main_habitat = "Coastal", sampling_group = "fish", stringsAsFactors = FALSE
+    )
+  }))
   # "downwash" taxa: present in the occurrence pool, one record each, and
   # effectively unsampleable by the assay the priors are for.
-  bird <- do.call(rbind, lapply(1:30, function(i) data.frame(
-    taxon_name = sprintf("Bird_%02d", i),
-    decimalLatitude = 34.1 + rnorm(1, 0, .05),
-    decimalLongitude = -119.1 + rnorm(1, 0, .05),
-    main_habitat = "Coastal", sampling_group = "bird", stringsAsFactors = FALSE)))
+  bird <- do.call(rbind, lapply(1:30, function(i) {
+    data.frame(
+      taxon_name = sprintf("Bird_%02d", i),
+      decimalLatitude = 34.1 + rnorm(1, 0, .05),
+      decimalLongitude = -119.1 + rnorm(1, 0, .05),
+      main_habitat = "Coastal", sampling_group = "bird", stringsAsFactors = FALSE
+    )
+  }))
   rbind(fish, fish_rare, bird)
 }
 
 test_that("sampling_group_col = NULL reproduces the ungrouped result exactly", {
   occ <- .mixed_pool()
   a <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
-                                               lambda_km = 25, m = 1))
+    lambda_km = 25, m = 1
+  ))
   # one constant group must be identical to no grouping at all
   occ$one <- "only"
   b <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
-                                               lambda_km = 25, m = 1,
-                                               sampling_group_col = "one"))
-  expect_equal(a$priors$theta_mean,
-               b$priors$theta_mean[match(a$priors$taxon_name, b$priors$taxon_name)])
+    lambda_km = 25, m = 1,
+    sampling_group_col = "one"
+  ))
+  expect_equal(
+    a$priors$theta_mean,
+    b$priors$theta_mean[match(a$priors$taxon_name, b$priors$taxon_name)]
+  )
   expect_equal(a$n_eff, b$n_eff)
-  expect_equal(a$f1, b$f1); expect_equal(a$f2, b$f2)
+  expect_equal(a$f1, b$f1)
+  expect_equal(a$f2, b$f2)
   expect_equal(a$theta_present, b$theta_present)
   # the ungrouped schema must not gain a column
   expect_false("sampling_group" %in% names(a$priors))
@@ -369,12 +451,14 @@ test_that("pooling groups with different detection processes deflates theta_pres
   # them.
   occ <- .mixed_pool()
   occ$decimalLatitude[occ$sampling_group == "bird"] <-
-    occ$decimalLatitude[occ$sampling_group == "bird"] + 0.45  # ~50 km away
-  pooled  <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
-                                                     lambda_km = 25, m = 1))
+    occ$decimalLatitude[occ$sampling_group == "bird"] + 0.45 # ~50 km away
+  pooled <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+    lambda_km = 25, m = 1
+  ))
   grouped <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
-                                                     lambda_km = 25, m = 1,
-                                                     sampling_group_col = "sampling_group"))
+    lambda_km = 25, m = 1,
+    sampling_group_col = "sampling_group"
+  ))
   tp_fish <- grouped$budget$theta_present[grouped$budget$sampling_group == "fish"]
 
   # pooling drags the detectable group's price DOWN, substantially
@@ -389,8 +473,9 @@ test_that("pooling groups with different detection processes deflates theta_pres
 test_that("grouped fits give each group its own simplex and its own budget", {
   occ <- .mixed_pool()
   g <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
-                                               lambda_km = 25, m = 1,
-                                               sampling_group_col = "sampling_group"))
+    lambda_km = 25, m = 1,
+    sampling_group_col = "sampling_group"
+  ))
   for (grp in c("fish", "bird")) {
     s <- sum(g$priors$theta_mean[g$priors$sampling_group == grp])
     expect_equal(s, 1, tolerance = 1e-6)
@@ -403,13 +488,15 @@ test_that("grouped fits give each group its own simplex and its own budget", {
 test_that("a multi-group fit reports NA pooled scalars rather than a wrong number", {
   occ <- .mixed_pool()
   g <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
-                                               lambda_km = 25, m = 1,
-                                               sampling_group_col = "sampling_group"))
+    lambda_km = 25, m = 1,
+    sampling_group_col = "sampling_group"
+  ))
   # There is no single budget across detection processes; a scalar would be
   # silently wrong wherever it were used.
   expect_true(is.na(g$theta_present))
   expect_true(is.na(g$chao_missing))
-  expect_true(is.na(g$f1)); expect_true(is.na(g$f2))
+  expect_true(is.na(g$f1))
+  expect_true(is.na(g$f2))
   expect_equal(g$params$n_sampling_groups, 2L)
   # ...but the per-group table is complete
   expect_false(any(is.na(g$budget$theta_present)))
@@ -422,32 +509,44 @@ test_that("curve pricing on a multi-group fit prices by group, not by a pooled s
   # each taxon. See apply_undetected_evidence()'s own test file for the guards.
   occ <- .mixed_pool()
   g <- suppressWarnings(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
-                                               lambda_km = 25, m = 1,
-                                               sampling_group_col = "sampling_group"))
+    lambda_km = 25, m = 1,
+    sampling_group_col = "sampling_group"
+  ))
   expect_true(is.na(g$theta_present))
-  ev <- data.frame(taxon_name = "Newcomer sp", weight = 0.5, p_conc = 1,
-                   source = "test", stringsAsFactors = FALSE)
+  ev <- data.frame(
+    taxon_name = "Newcomer sp", weight = 0.5, p_conc = 1,
+    source = "test", stringsAsFactors = FALSE
+  )
   out <- suppressMessages(apply_undetected_evidence(
     taxaexpect_priors = g$priors, evidence = ev, model_obj = g,
     grid_id = "x", main_habitat = "Coastal", pricing = "curve",
-    sampling_group = "fish", min_group_n_eff = 0))
+    sampling_group = "fish", min_group_n_eff = 0
+  ))
   expect_equal(nrow(out), 1L)
   expect_equal(out$sampling_group, "fish")
-  expect_equal(out$prior_mix_theta_present,
-               g$budget$theta_present[g$budget$sampling_group == "fish"])
+  expect_equal(
+    out$prior_mix_theta_present,
+    g$budget$theta_present[g$budget$sampling_group == "fish"]
+  )
   # a group that does not exist in the fit is still refused
   expect_error(
     suppressMessages(apply_undetected_evidence(
       taxaexpect_priors = g$priors, evidence = ev, model_obj = g,
       grid_id = "x", main_habitat = "Coastal", pricing = "curve",
-      sampling_group = "nope", min_group_n_eff = 0)),
-    "not present in the fit's own budget")
+      sampling_group = "nope", min_group_n_eff = 0
+    )),
+    "not present in the fit's own budget"
+  )
 })
 
 test_that("sampling_group_col validates its input", {
   occ <- .mixed_pool()
-  expect_error(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal", lambda_km = 25,
-                                      sampling_group_col = "nope"), "not found")
-  expect_error(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal", lambda_km = 25,
-                                      sampling_group_col = c("a", "b")), "single column")
+  expect_error(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+    lambda_km = 25,
+    sampling_group_col = "nope"
+  ), "not found")
+  expect_error(estimate_kernel_priors(occ, 34.1, -119.1, "Coastal",
+    lambda_km = 25,
+    sampling_group_col = c("a", "b")
+  ), "single column")
 })

@@ -25,13 +25,13 @@ library(dplyr)
 # 0.  USER INPUTS  -- edit this section only
 # =============================================================================
 
-moran_k      <- 5L     # number of Moran eigenvectors to compute
-sd_threshold <- 0.20   # VarCorr SD threshold for screening random slopes
+moran_k <- 5L # number of Moran eigenvectors to compute
+sd_threshold <- 0.20 # VarCorr SD threshold for screening random slopes
 rank_system <- c("kingdom", "phylum", "class", "order", "family", "genus", "species")
 
 # Load upstream data (from TaxaHabitat's assign_habitat_workflow.R)
 occurrences_with_habitat <-
-readRDS(file.choose())  # select occurrences_clean.rds from TaxaHabitat/inst/
+  readRDS(file.choose()) # select occurrences_clean.rds from TaxaHabitat/inst/
 
 
 # =============================================================================
@@ -63,10 +63,12 @@ message("\n--- Step 2: Preparing model dataframe ---")
 
 model_data <- prepare_model_dataframe(occurrences_gridded)
 
-message(sprintf("  Model dataframe: %d rows, %d species, %d sites.",
-                nrow(model_data),
-                dplyr::n_distinct(model_data$taxon_name),
-                dplyr::n_distinct(model_data$grid_id)))
+message(sprintf(
+  "  Model dataframe: %d rows, %d species, %d sites.",
+  nrow(model_data),
+  dplyr::n_distinct(model_data$taxon_name),
+  dplyr::n_distinct(model_data$grid_id)
+))
 
 
 # =============================================================================
@@ -124,9 +126,11 @@ model_fit <- screen_spatial_formula(
 # model_fit$model_selection$recommended_formula
 # model_fit$model_selection$sd_table
 
-message(sprintf("  Tier assignment: %d Tier 1, %d Tier 2.",
-                sum(model_fit$tiers$tier == "tier1"),
-                sum(model_fit$tiers$tier == "tier2")))
+message(sprintf(
+  "  Tier assignment: %d Tier 1, %d Tier 2.",
+  sum(model_fit$tiers$tier == "tier1"),
+  sum(model_fit$tiers$tier == "tier2")
+))
 
 
 # =============================================================================
@@ -156,7 +160,7 @@ priors_combined <- dplyr::bind_rows(priors_observed, priors_undetected)
 message(sprintf("  %d observed-species prior rows.", nrow(priors_observed)))
 message(sprintf("  %d undetected-species prior rows.", nrow(priors_undetected)))
 
-plot_theta_map_interactive(priors_combined, occurrences_with_habitat,tile = "OpenStreetMap")
+plot_theta_map_interactive(priors_combined, occurrences_with_habitat, tile = "OpenStreetMap")
 
 
 # =============================================================================
@@ -182,16 +186,18 @@ taxaexpect_priors <- priors_combined |>
   create_taxon_names(rank_system = rank_system)
 
 n_translated <- sum(!is.na(taxaexpect_priors$taxon_name))
-message(sprintf("  %d of %d prior rows have an NCBI name.",
-                n_translated, nrow(taxaexpect_priors)))
+message(sprintf(
+  "  %d of %d prior rows have an NCBI name.",
+  n_translated, nrow(taxaexpect_priors)
+))
 
 # =============================================================================
 # 7.  SAVE OUTPUTS FOR TaxaAssign
 # =============================================================================
 
 message("\n--- Step 7: Saving outputs ---")
-saveRDS(taxaexpect_priors, file.choose(new = TRUE))  # choose where to save taxaexpect_priors.rds
-saveRDS(model_fit, file.choose(new = TRUE))  # choose where to save model_fit.rds
+saveRDS(taxaexpect_priors, file.choose(new = TRUE)) # choose where to save taxaexpect_priors.rds
+saveRDS(model_fit, file.choose(new = TRUE)) # choose where to save model_fit.rds
 message("Saved all_occurrences.")
 message("\n--- Done. Next step: TaxaAssign/inst/TaxaAssign_bayesian_workflow.R ---")
 
@@ -206,31 +212,32 @@ message("\n--- Done. Next step: TaxaAssign/inst/TaxaAssign_bayesian_workflow.R -
 #
 # The step-by-step workflow above gives full control over each stage;
 # the wrapper is for the common single-site case where defaults suffice.
-match_obj  <- readRDS(file.choose())  # select your match data file (.rds)
-match_obj  <-match_obj[1:20,]
+match_obj <- readRDS(file.choose()) # select your match data file (.rds)
+match_obj <- match_obj[1:20, ]
 higher_taxa_to_search <- unique(match_obj$family)
 higher_taxa_to_search <- higher_taxa_to_search[!is.na(higher_taxa_to_search)]
 
 bp_result <- build_priors(
-  taxa               = data.frame(family = higher_taxa_to_search),
-  lat                = 34.1,                     # site latitude
-  lon                = -119.1,                   # site longitude
-  search_radius_deg  = 2,                        # GBIF search radius
-  habitat_scheme     = NULL,                     # NULL = 3-category default
-  llm_fn             = TaxaTools::call_anthropic_api,
+  taxa = data.frame(family = higher_taxa_to_search),
+  lat = 34.1, # site latitude
+  lon = -119.1, # site longitude
+  search_radius_deg = 2, # GBIF search radius
+  habitat_scheme = NULL, # NULL = 3-category default
+  llm_fn = TaxaTools::call_anthropic_api,
   geographic_context = "Southern California estuary",
-  moran_k            = 5L,
-  sd_threshold       = 0.20,
-  rank_system        = c("kingdom", "phylum", "class", "order",
-                         "family", "genus", "species"),
-  target_backbone_id = 4L,                       # NCBI
-  checkpoint_dir     = tempdir(),                # saves intermediates
-  verbose            = TRUE
+  moran_k = 5L,
+  sd_threshold = 0.20,
+  rank_system = c(
+    "kingdom", "phylum", "class", "order",
+    "family", "genus", "species"
+  ),
+  target_backbone_id = 4L, # NCBI
+  checkpoint_dir = tempdir(), # saves intermediates
+  verbose = TRUE
 )
 
 # Equivalent outputs:
 taxaexpect_priors <- bp_result$priors
-model_fit         <- bp_result$model
-occurrences       <- bp_result$occurrences
-grid_result       <- bp_result$grid_result
-
+model_fit <- bp_result$model
+occurrences <- bp_result$occurrences
+grid_result <- bp_result$grid_result

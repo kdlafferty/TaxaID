@@ -35,7 +35,8 @@ test_that("stops when p_conc is non-positive", {
 
 test_that("returns one row per taxon with the documented schema", {
   out <- generate_invasive_watch_evidence(
-    c("Gymnocephalus cernua", "Neogobius melanostomus"), weight = 0.6, p_conc = 4
+    c("Gymnocephalus cernua", "Neogobius melanostomus"),
+    weight = 0.6, p_conc = 4
   )
   expect_s3_class(out, "tbl_df")
   expect_equal(nrow(out), 2L)
@@ -47,7 +48,8 @@ test_that("returns one row per taxon with the documented schema", {
 
 test_that("duplicate taxon names collapse to one row", {
   out <- generate_invasive_watch_evidence(
-    c("Gymnocephalus cernua", "Gymnocephalus cernua"), weight = 0.5, p_conc = 4
+    c("Gymnocephalus cernua", "Gymnocephalus cernua"),
+    weight = 0.5, p_conc = 4
   )
   expect_equal(nrow(out), 1L)
 })
@@ -58,7 +60,8 @@ test_that("duplicate taxon names collapse to one row", {
 
 test_that("match_list_taxa restricts output to the intersection", {
   out <- generate_invasive_watch_evidence(
-    c("Gymnocephalus cernua", "Neogobius melanostomus"), weight = 0.5, p_conc = 4,
+    c("Gymnocephalus cernua", "Neogobius melanostomus"),
+    weight = 0.5, p_conc = 4,
     match_list_taxa = "Gymnocephalus cernua"
   )
   expect_equal(out$taxon_name, "Gymnocephalus cernua")
@@ -66,7 +69,8 @@ test_that("match_list_taxa restricts output to the intersection", {
 
 test_that("no overlap with match_list_taxa returns an empty tibble with correct columns", {
   out <- generate_invasive_watch_evidence(
-    "Gymnocephalus cernua", weight = 0.5, p_conc = 4,
+    "Gymnocephalus cernua",
+    weight = 0.5, p_conc = 4,
     match_list_taxa = "Some other species"
   )
   expect_equal(nrow(out), 0L)
@@ -75,7 +79,8 @@ test_that("no overlap with match_list_taxa returns an empty tibble with correct 
 
 test_that("NULL match_list_taxa (default) does not restrict", {
   out <- generate_invasive_watch_evidence(
-    c("Gymnocephalus cernua", "Neogobius melanostomus"), weight = 0.5, p_conc = 4
+    c("Gymnocephalus cernua", "Neogobius melanostomus"),
+    weight = 0.5, p_conc = 4
   )
   expect_equal(nrow(out), 2L)
 })
@@ -86,7 +91,7 @@ test_that("NULL match_list_taxa (default) does not restrict", {
 
 test_that("two calls with different weights can be bound into one evidence table", {
   strong <- generate_invasive_watch_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 6)
-  weak   <- generate_invasive_watch_evidence("Alburnus alburnus",    weight = 0.2, p_conc = 2)
+  weak <- generate_invasive_watch_evidence("Alburnus alburnus", weight = 0.2, p_conc = 2)
   combined <- dplyr::bind_rows(strong, weak)
   expect_equal(nrow(combined), 2L)
   expect_equal(combined$weight, c(0.8, 0.2))

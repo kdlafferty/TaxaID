@@ -25,7 +25,6 @@ utils::globalVariables(c(
 #' @noRd
 screen_habitat_slopes <- function(df_t1, habitat_col, taxon_col,
                                   min_positive_rows) {
-
   hab_sym <- rlang::sym(habitat_col)
 
   hab_summary <- df_t1 |>
@@ -50,9 +49,9 @@ screen_habitat_slopes <- function(df_t1, habitat_col, taxon_col,
   # when inserted into the formula string by rewrite_habitat_formula().
   indicators <- character(0)
   for (hab in supported) {
-    col_name        <- paste0("hab_", make.names(hab))
+    col_name <- paste0("hab_", make.names(hab))
     df_t1[[col_name]] <- as.integer(df_t1[[habitat_col]] == hab)
-    indicators      <- c(indicators, col_name)
+    indicators <- c(indicators, col_name)
   }
 
   list(
@@ -78,28 +77,30 @@ screen_habitat_slopes <- function(df_t1, habitat_col, taxon_col,
 #' @return A formula object.
 #' @noRd
 rewrite_habitat_formula <- function(formula, indicators) {
-    f_chr <- paste(deparse(formula, width.cutoff = 500), collapse = " ")
-    quoted <- paste0("`", indicators, "`")
-    if (length(indicators) == 0) {
-        f_chr <- gsub("\\+\\s*diag\\([^)]+\\)", "", f_chr)
-        f_chr <- gsub("diag\\([^)]+\\)\\s*\\+", "", f_chr)
-        f_chr <- gsub("diag\\([^)]+\\)", "", f_chr)
-        message("  Habitat random slopes: none supported (all habitats sparse). ",
-            "Habitat fixed effect retained.")
-    } else if (length(quoted) == 1) {
-        slope_term <- sprintf("(0 + %s | taxon_name)", quoted)
-        f_chr <- gsub("diag\\([^)]+\\)", slope_term, f_chr)
-    } else {
-        # FIX: one independent (0 + hab_X | taxon_name) term per indicator
-        # (previously joined into one correlated block -- caused Hessian failures)
-        slope_term <- paste(
-            sprintf("(0 + %s | taxon_name)", quoted),
-            collapse = " + "
-        )
-        f_chr <- gsub("diag\\([^)]+\\)", slope_term, f_chr)
-    }
-    f_chr <- gsub("\\s{2,}", " ", trimws(f_chr))
-    stats::as.formula(f_chr)
+  f_chr <- paste(deparse(formula, width.cutoff = 500), collapse = " ")
+  quoted <- paste0("`", indicators, "`")
+  if (length(indicators) == 0) {
+    f_chr <- gsub("\\+\\s*diag\\([^)]+\\)", "", f_chr)
+    f_chr <- gsub("diag\\([^)]+\\)\\s*\\+", "", f_chr)
+    f_chr <- gsub("diag\\([^)]+\\)", "", f_chr)
+    message(
+      "  Habitat random slopes: none supported (all habitats sparse). ",
+      "Habitat fixed effect retained."
+    )
+  } else if (length(quoted) == 1) {
+    slope_term <- sprintf("(0 + %s | taxon_name)", quoted)
+    f_chr <- gsub("diag\\([^)]+\\)", slope_term, f_chr)
+  } else {
+    # FIX: one independent (0 + hab_X | taxon_name) term per indicator
+    # (previously joined into one correlated block -- caused Hessian failures)
+    slope_term <- paste(
+      sprintf("(0 + %s | taxon_name)", quoted),
+      collapse = " + "
+    )
+    f_chr <- gsub("diag\\([^)]+\\)", slope_term, f_chr)
+  }
+  f_chr <- gsub("\\s{2,}", " ", trimws(f_chr))
+  stats::as.formula(f_chr)
 }
 
 
@@ -336,34 +337,39 @@ rewrite_habitat_formula <- function(formula, indicators) {
 
 train_biodiversity_model <- function(data,
                                      formula,
-                                     taxon_col         = "taxon_name",
-                                     habitat_col       = "main_habitat",
-                                     response          = c("theta", "psi"),
+                                     taxon_col = "taxon_name",
+                                     habitat_col = "main_habitat",
+                                     response = c("theta", "psi"),
                                      min_obs_threshold = 5L,
-                                     effort_threshold  = 10L,
+                                     effort_threshold = 10L,
                                      min_positive_rows = 50L,
-                                     full_data         = NULL) {
-
+                                     full_data = NULL) {
   .glmm_deprecation_notice("train_biodiversity_model")
 
-  response   <- match.arg(response)
+  response <- match.arg(response)
   no_habitat <- is.null(habitat_col)
 
   if (!requireNamespace("glmmTMB", quietly = TRUE)) {
-    stop("train_biodiversity_model: package 'glmmTMB' is required. ",
-         "Install it with: install.packages('glmmTMB')")
+    stop(
+      "train_biodiversity_model: package 'glmmTMB' is required. ",
+      "Install it with: install.packages('glmmTMB')"
+    )
   }
 
   # ---------------------------------------------------------------------------
   # Input checks
   # ---------------------------------------------------------------------------
-  required_cols <- c("grid_id", "n_species", "n_other",
-                     "n_total_at_site", taxon_col, habitat_col)
-  missing_cols  <- setdiff(required_cols, names(data))
+  required_cols <- c(
+    "grid_id", "n_species", "n_other",
+    "n_total_at_site", taxon_col, habitat_col
+  )
+  missing_cols <- setdiff(required_cols, names(data))
   if (length(missing_cols) > 0) {
-    stop("train_biodiversity_model: missing required columns: ",
-         paste(missing_cols, collapse = ", "),
-         "\nDid you run prepare_model_dataframe() first?")
+    stop(
+      "train_biodiversity_model: missing required columns: ",
+      paste(missing_cols, collapse = ", "),
+      "\nDid you run prepare_model_dataframe() first?"
+    )
   }
 
   # Session 149: refuse to silently pool multiple sampling groups (different
@@ -374,7 +380,7 @@ train_biodiversity_model <- function(data,
   # prepare_model_dataframe(sampling_group_col = ...)) and actually spans more
   # than one value; callers who never use groups are unaffected.
   if ("sampling_group" %in% names(data) &&
-      dplyr::n_distinct(data$sampling_group) > 1L) {
+    dplyr::n_distinct(data$sampling_group) > 1L) {
     stop(
       "train_biodiversity_model: 'data' spans ", dplyr::n_distinct(data$sampling_group),
       " sampling groups (", paste(sort(unique(data$sampling_group)), collapse = ", "), "). ",
@@ -390,8 +396,10 @@ train_biodiversity_model <- function(data,
 
   lhs <- deparse(formula[[2]])
   if (!grepl("cbind", lhs) && response == "theta") {
-    stop("train_biodiversity_model: formula LHS must be cbind(n_species, n_other) ",
-         "for response = 'theta'.")
+    stop(
+      "train_biodiversity_model: formula LHS must be cbind(n_species, n_other) ",
+      "for response = 'theta'."
+    )
   }
 
   # habitat_col = NULL but formula still references a habitat diag() term:
@@ -399,34 +407,43 @@ train_biodiversity_model <- function(data,
   # the error names the actual mistake (NULL habitat_col), not just a missing
   # column.
   if (no_habitat &&
-      grepl("diag\\(", deparse(formula, width.cutoff = 500))) {
-    stop("train_biodiversity_model: formula contains a diag(<habitat> | ",
-         taxon_col, ") term but habitat_col = NULL was supplied. Either ",
-         "pass a real habitat_col, or remove the diag() term from formula.")
+    grepl("diag\\(", deparse(formula, width.cutoff = 500))) {
+    stop(
+      "train_biodiversity_model: formula contains a diag(<habitat> | ",
+      taxon_col, ") term but habitat_col = NULL was supplied. Either ",
+      "pass a real habitat_col, or remove the diag() term from formula."
+    )
   }
 
   # Check formula variables exist in data, excluding interaction terms
   # (e.g., taxon_name:grid_id is handled by glmmTMB, not a required column)
-  formula_vars  <- all.vars(formula)
+  formula_vars <- all.vars(formula)
   response_vars <- c("n_species", "n_other", "is_present")
   # Exclude variables that are grouping factors in random effects -- glmmTMB
   # resolves interactions like taxon_name:grid_id internally
-  check_vars    <- setdiff(formula_vars, c(response_vars, taxon_col,
-                                           habitat_col, "grid_id"))
-  missing_vars  <- setdiff(check_vars, names(data))
+  check_vars <- setdiff(formula_vars, c(
+    response_vars, taxon_col,
+    habitat_col, "grid_id"
+  ))
+  missing_vars <- setdiff(check_vars, names(data))
   if (length(missing_vars) > 0) {
     old_style <- intersect(missing_vars, c("lat_s", "lon_s"))
     if (length(old_style) > 0) {
       scaled_cols <- paste(grep("_s$", names(data), value = TRUE),
-                           collapse = ", ")
-      stop("train_biodiversity_model: formula references '",
-           paste(missing_vars, collapse = "', '"), "' which are not in data.\n",
-           "Note: prepare_model_dataframe() names scaled columns <covariate>_s ",
-           "(e.g., lat_r_s, lon_r_s, not lat_s/lon_s).\n",
-           "Scaled columns available in your data: ", scaled_cols)
+        collapse = ", "
+      )
+      stop(
+        "train_biodiversity_model: formula references '",
+        paste(missing_vars, collapse = "', '"), "' which are not in data.\n",
+        "Note: prepare_model_dataframe() names scaled columns <covariate>_s ",
+        "(e.g., lat_r_s, lon_r_s, not lat_s/lon_s).\n",
+        "Scaled columns available in your data: ", scaled_cols
+      )
     }
-    stop("train_biodiversity_model: formula references columns not found in data: ",
-         paste(missing_vars, collapse = ", "))
+    stop(
+      "train_biodiversity_model: formula references columns not found in data: ",
+      paste(missing_vars, collapse = ", ")
+    )
   }
 
   # ---------------------------------------------------------------------------
@@ -440,13 +457,15 @@ train_biodiversity_model <- function(data,
       "before train_biodiversity_model(). Estimating scaling from data directly.",
       call. = FALSE
     )
-    s_cols       <- grep("_s$", names(data), value = TRUE)
-    orig_cols    <- sub("_s$", "", s_cols)
-    present      <- orig_cols %in% names(data)
+    s_cols <- grep("_s$", names(data), value = TRUE)
+    orig_cols <- sub("_s$", "", s_cols)
+    present <- orig_cols %in% names(data)
     scale_params <- setNames(
       lapply(orig_cols[present], function(oc) {
-        list(center = mean(data[[oc]], na.rm = TRUE),
-             scale  = sd(data[[oc]],   na.rm = TRUE))
+        list(
+          center = mean(data[[oc]], na.rm = TRUE),
+          scale = sd(data[[oc]], na.rm = TRUE)
+        )
       }),
       orig_cols[present]
     )
@@ -456,7 +475,7 @@ train_biodiversity_model <- function(data,
   # Apply effort threshold
   # ---------------------------------------------------------------------------
   n_total_rows <- nrow(data)
-  n_dropped    <- sum(data$n_total_at_site < effort_threshold)
+  n_dropped <- sum(data$n_total_at_site < effort_threshold)
   if (n_dropped > 0) {
     message(sprintf(
       "Effort threshold: excluding %d site-habitat cells with N < %d (%.1f%% of rows).",
@@ -466,8 +485,10 @@ train_biodiversity_model <- function(data,
   df <- dplyr::filter(data, n_total_at_site >= effort_threshold)
 
   if (nrow(df) == 0) {
-    stop("train_biodiversity_model: no rows remain after effort threshold filtering. ",
-         "Consider reducing effort_threshold (currently ", effort_threshold, ").")
+    stop(
+      "train_biodiversity_model: no rows remain after effort threshold filtering. ",
+      "Consider reducing effort_threshold (currently ", effort_threshold, ")."
+    )
   }
 
   # ---------------------------------------------------------------------------
@@ -478,7 +499,7 @@ train_biodiversity_model <- function(data,
     if (!"is_present" %in% names(df)) {
       df <- dplyr::mutate(df, is_present = as.integer(n_species > 0))
     }
-    formula_chr   <- deparse(formula)
+    formula_chr <- deparse(formula)
     formula_tier1 <- stats::as.formula(
       gsub("cbind\\(n_species,\\s*n_other\\)", "is_present", formula_chr)
     )
@@ -488,7 +509,7 @@ train_biodiversity_model <- function(data,
   # ---------------------------------------------------------------------------
   # Species tier assignment
   # ---------------------------------------------------------------------------
-  taxon_sym   <- rlang::sym(taxon_col)
+  taxon_sym <- rlang::sym(taxon_col)
   habitat_sym <- if (no_habitat) NULL else rlang::sym(habitat_col)
 
   species_detections <- df |>
@@ -520,7 +541,7 @@ train_biodiversity_model <- function(data,
   # = NULL is the correct way to opt out; see prepare_model_dataframe()'s
   # matching @details note.
   # ---------------------------------------------------------------------------
-  lhs_str   <- if (response == "psi") "is_present" else "cbind(n_species, n_other)"
+  lhs_str <- if (response == "psi") "is_present" else "cbind(n_species, n_other)"
   tier2_rhs <- if (no_habitat) {
     paste0("(1 | ", taxon_col, ")")
   } else {
@@ -548,7 +569,7 @@ train_biodiversity_model <- function(data,
   # Identify singletons for generate_undetected_diversity()
   # ---------------------------------------------------------------------------
   singleton_src <- if (!is.null(full_data)) full_data else data
-  is_raw        <- !"n_species" %in% names(singleton_src)
+  is_raw <- !"n_species" %in% names(singleton_src)
 
   if (is_raw) {
     species_totals <- singleton_src |>
@@ -588,11 +609,14 @@ train_biodiversity_model <- function(data,
 
     singletons <- singleton_src |>
       dplyr::filter((!!rlang::sym(taxon_col)) %in% singleton_names) |>
-      dplyr::group_by(!!rlang::sym(taxon_col), grid_id,
-                      !!rlang::sym(habitat_col)) |>
+      dplyr::group_by(
+        !!rlang::sym(taxon_col), grid_id,
+        !!rlang::sym(habitat_col)
+      ) |>
       dplyr::summarise(n_species = dplyr::n(), .groups = "drop") |>
       dplyr::left_join(site_totals_for_singletons,
-                       by = c("grid_id", habitat_col)) |>
+        by = c("grid_id", habitat_col)
+      ) |>
       dplyr::mutate(
         theta_obs = dplyr::if_else(
           !is.na(n_total_at_site), n_species / n_total_at_site, NA_real_
@@ -610,8 +634,10 @@ train_biodiversity_model <- function(data,
       ) |>
       dplyr::mutate(theta_obs = n_species / n_total_at_site) |>
       dplyr::select(
-        dplyr::all_of(c(taxon_col, "grid_id",
-                        "n_species", "n_total_at_site", "theta_obs"))
+        dplyr::all_of(c(
+          taxon_col, "grid_id",
+          "n_species", "n_total_at_site", "theta_obs"
+        ))
       ) |>
       dplyr::left_join(
         dplyr::rename(species_totals, !!taxon_col := !!rlang::sym(taxon_col)),
@@ -625,8 +651,10 @@ train_biodiversity_model <- function(data,
       ) |>
       dplyr::mutate(theta_obs = n_species / n_total_at_site) |>
       dplyr::select(
-        dplyr::all_of(c(taxon_col, "grid_id", habitat_col,
-                        "n_species", "n_total_at_site", "theta_obs"))
+        dplyr::all_of(c(
+          taxon_col, "grid_id", habitat_col,
+          "n_species", "n_total_at_site", "theta_obs"
+        ))
       ) |>
       dplyr::left_join(
         dplyr::rename(species_totals, !!taxon_col := !!rlang::sym(taxon_col)),
@@ -668,7 +696,7 @@ train_biodiversity_model <- function(data,
   tier2_empirical <- tier2_empirical |>
     dplyr::summarise(
       theta_mean_emp = mean(n_species / n_total_at_site, na.rm = TRUE),
-      theta_sd_emp   = sd(n_species / n_total_at_site,   na.rm = TRUE),
+      theta_sd_emp   = sd(n_species / n_total_at_site, na.rm = TRUE),
       n_detections   = sum(n_species > 0),
       .groups        = "drop"
     ) |>
@@ -687,15 +715,14 @@ train_biodiversity_model <- function(data,
   # Replaces diag(main_habitat | taxon_name) with indicator-based slopes
   # for habitats that pass the min_positive_rows threshold.
   # ---------------------------------------------------------------------------
-  hab_screen    <- NULL
-  formula_final <- formula_tier1   # default if no diag() term in formula
+  hab_screen <- NULL
+  formula_final <- formula_tier1 # default if no diag() term in formula
 
   # (no_habitat + diag() term is already rejected earlier, right after
   # formula validation, with a more specific error than this point could give)
   has_diag_term <- grepl("diag\\(", deparse(formula_tier1, width.cutoff = 500))
 
   if (has_diag_term && length(taxa_tier1) > 0) {
-
     df_t1_screen <- df |>
       dplyr::filter((!!taxon_sym) %in% taxa_tier1)
 
@@ -707,21 +734,27 @@ train_biodiversity_model <- function(data,
     )
 
     n_supported <- length(hab_screen$supported)
-    n_sparse    <- length(hab_screen$sparse)
+    n_sparse <- length(hab_screen$sparse)
 
     message(sprintf(
       "Habitat random slopes: %d supported (%s)%s.",
       n_supported,
-      if (n_supported > 0) paste(hab_screen$supported, collapse = ", ")
-      else "none",
-      if (n_sparse > 0) sprintf(
-        "; %d sparse \u2014 fixed effect only (%s)",
-        n_sparse, paste(hab_screen$sparse, collapse = ", ")
-      ) else ""
+      if (n_supported > 0) {
+        paste(hab_screen$supported, collapse = ", ")
+      } else {
+        "none"
+      },
+      if (n_sparse > 0) {
+        sprintf(
+          "; %d sparse \u2014 fixed effect only (%s)",
+          n_sparse, paste(hab_screen$sparse, collapse = ", ")
+        )
+      } else {
+        ""
+      }
     ))
 
     formula_final <- rewrite_habitat_formula(formula_tier1, hab_screen$indicators)
-
   } else if (!has_diag_term) {
     message("No diag() habitat term found in formula \u2014 using formula as supplied.")
   }
@@ -730,7 +763,7 @@ train_biodiversity_model <- function(data,
   # Fit Tier 1 model
   # ---------------------------------------------------------------------------
   convergence_warnings <- character(0)
-  mod_tier1            <- NULL
+  mod_tier1 <- NULL
 
   if (length(taxa_tier1) > 0) {
     t0_tier1 <- proc.time()[["elapsed"]]
@@ -750,39 +783,45 @@ train_biodiversity_model <- function(data,
     }
 
     tier1_warns <- character(0)
-    tryCatch({
-      withCallingHandlers(
-        {
-          mod_tier1 <- glmmTMB::glmmTMB(
-            formula_final,
-            data   = df_t1,
-            family = stats::binomial()
-          )
-        },
-        warning = function(w) {
-          tier1_warns <<- c(tier1_warns, paste("Tier 1:", conditionMessage(w)))
-          invokeRestart("muffleWarning")
-        }
-      )
-    }, error = function(e) {
-      stop(
-        "train_biodiversity_model: Tier 1 model failed to fit.\n",
-        "Error: ", conditionMessage(e), "\n",
-        "Consider simplifying the formula or increasing min_positive_rows ",
-        "to reduce random slope complexity."
-      )
-    })
+    tryCatch(
+      {
+        withCallingHandlers(
+          {
+            mod_tier1 <- glmmTMB::glmmTMB(
+              formula_final,
+              data   = df_t1,
+              family = stats::binomial()
+            )
+          },
+          warning = function(w) {
+            tier1_warns <<- c(tier1_warns, paste("Tier 1:", conditionMessage(w)))
+            invokeRestart("muffleWarning")
+          }
+        )
+      },
+      error = function(e) {
+        stop(
+          "train_biodiversity_model: Tier 1 model failed to fit.\n",
+          "Error: ", conditionMessage(e), "\n",
+          "Consider simplifying the formula or increasing min_positive_rows ",
+          "to reduce random slope complexity."
+        )
+      }
+    )
 
     convergence_warnings <- c(convergence_warnings, tier1_warns)
 
     if (length(tier1_warns) > 0) {
-      message(sprintf("Tier 1 convergence warnings captured (%.1fs; see $convergence_warnings).",
-                      proc.time()[["elapsed"]] - t0_tier1))
+      message(sprintf(
+        "Tier 1 convergence warnings captured (%.1fs; see $convergence_warnings).",
+        proc.time()[["elapsed"]] - t0_tier1
+      ))
     } else {
-      message(sprintf("Tier 1 model fitted successfully (%.1fs).",
-                      proc.time()[["elapsed"]] - t0_tier1))
+      message(sprintf(
+        "Tier 1 model fitted successfully (%.1fs).",
+        proc.time()[["elapsed"]] - t0_tier1
+      ))
     }
-
   } else {
     warning(
       "train_biodiversity_model: no Tier 1 species found at min_obs_threshold = ",
@@ -805,28 +844,31 @@ train_biodiversity_model <- function(data,
       droplevels()
 
     tier2_warns <- character(0)
-    tryCatch({
-      withCallingHandlers(
-        {
-          mod_tier2 <- glmmTMB::glmmTMB(
-            formula_tier2,
-            data   = df_t2,
-            family = stats::binomial()
-          )
-        },
-        warning = function(w) {
-          tier2_warns <<- c(tier2_warns, paste("Tier 2:", conditionMessage(w)))
-          invokeRestart("muffleWarning")
-        }
-      )
-    }, error = function(e) {
-      warning(
-        "train_biodiversity_model: Tier 2 model failed to fit. ",
-        "Tier 2 species will fall back to empirical means.\n",
-        "Error: ", conditionMessage(e),
-        call. = FALSE
-      )
-    })
+    tryCatch(
+      {
+        withCallingHandlers(
+          {
+            mod_tier2 <- glmmTMB::glmmTMB(
+              formula_tier2,
+              data   = df_t2,
+              family = stats::binomial()
+            )
+          },
+          warning = function(w) {
+            tier2_warns <<- c(tier2_warns, paste("Tier 2:", conditionMessage(w)))
+            invokeRestart("muffleWarning")
+          }
+        )
+      },
+      error = function(e) {
+        warning(
+          "train_biodiversity_model: Tier 2 model failed to fit. ",
+          "Tier 2 species will fall back to empirical means.\n",
+          "Error: ", conditionMessage(e),
+          call. = FALSE
+        )
+      }
+    )
 
     convergence_warnings <- c(convergence_warnings, tier2_warns)
 
@@ -867,12 +909,12 @@ train_biodiversity_model <- function(data,
       tier1 = mod_tier1,
       tier2 = mod_tier2
     ),
-    tiers                = species_detections,
-    scale_params         = scale_params,
-    singletons           = singletons,
-    N_total              = N_total,
-    tier2_empirical      = tier2_empirical,
-    habitat_screening    = hab_screen_out,
+    tiers = species_detections,
+    scale_params = scale_params,
+    singletons = singletons,
+    N_total = N_total,
+    tier2_empirical = tier2_empirical,
+    habitat_screening = hab_screen_out,
     convergence_warnings = convergence_warnings,
     meta = list(
       taxon_col         = taxon_col,
@@ -914,42 +956,62 @@ print.biofreq_model <- function(x, ...) {
   cat("biofreq_model\n")
   cat("-------------\n")
   cat("Response:            ", x$meta$response, "\n")
-  cat("Tier 1 species:      ", x$meta$n_species_tier1,
-      " (threshold: >=", x$meta$min_obs_threshold, "detections)\n")
-  cat("Tier 2 species:      ", x$meta$n_species_tier2,
-      " (intercept-only)\n")
+  cat(
+    "Tier 1 species:      ", x$meta$n_species_tier1,
+    " (threshold: >=", x$meta$min_obs_threshold, "detections)\n"
+  )
+  cat(
+    "Tier 2 species:      ", x$meta$n_species_tier2,
+    " (intercept-only)\n"
+  )
   cat("Sites modelled:      ", x$meta$n_sites, "\n")
   cat("Effort threshold:    ", x$meta$effort_threshold, " (min N per cell)\n")
-  cat("Min positive rows:   ", x$meta$min_positive_rows,
-      " (habitat random slope threshold)\n")
-  cat("Singletons:          ", nrow(x$singletons),
-      " (basis for undetected species priors)\n")
-  cat("N_total:             ", x$N_total,
-      " (global undetected floor denominator)\n")
+  cat(
+    "Min positive rows:   ", x$meta$min_positive_rows,
+    " (habitat random slope threshold)\n"
+  )
+  cat(
+    "Singletons:          ", nrow(x$singletons),
+    " (basis for undetected species priors)\n"
+  )
+  cat(
+    "N_total:             ", x$N_total,
+    " (global undetected floor denominator)\n"
+  )
 
   # Habitat screening summary
   hs <- x$habitat_screening
   if (length(hs$supported) > 0 || length(hs$sparse) > 0) {
     cat("\nHabitat random slopes:\n")
-    if (length(hs$supported) > 0)
+    if (length(hs$supported) > 0) {
       cat("  Supported: ", paste(hs$supported, collapse = ", "), "\n")
-    if (length(hs$sparse) > 0)
-      cat("  Sparse (fixed effect only): ",
-          paste(hs$sparse, collapse = ", "), "\n")
+    }
+    if (length(hs$sparse) > 0) {
+      cat(
+        "  Sparse (fixed effect only): ",
+        paste(hs$sparse, collapse = ", "), "\n"
+      )
+    }
   }
 
   cat("\nTier 1 formula:\n  ", x$meta$formula_tier1, "\n")
   cat("Tier 2 formula:\n  ", x$meta$formula_tier2, "\n")
-  cat("\nScale params stored for",
-      length(x$scale_params), "covariate(s):",
-      paste(names(x$scale_params), collapse = ", "), "\n")
+  cat(
+    "\nScale params stored for",
+    length(x$scale_params), "covariate(s):",
+    paste(names(x$scale_params), collapse = ", "), "\n"
+  )
 
   if (length(x$convergence_warnings) > 0) {
     cat("\n*** Convergence warnings (", length(x$convergence_warnings),
-        ") ***\n", sep = "")
+      ") ***\n",
+      sep = ""
+    )
     cat("  Run x$convergence_warnings to view details.\n")
-    cat("  If Tier 1: consider simplifying the formula or increasing ",
-        "min_positive_rows.\n")
+    cat(
+      "  If Tier 1: consider simplifying the formula or increasing ",
+      "min_positive_rows.\n"
+    )
   } else {
     cat("\nNo convergence warnings.\n")
   }

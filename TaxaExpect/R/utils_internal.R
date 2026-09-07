@@ -54,14 +54,14 @@
 #'   length as \code{grid_id}; \code{NA} for unparseable entries).
 #' @noRd
 .parse_grid_id_coords <- function(grid_id) {
-  x         <- sub("^Grid_", "", grid_id)
-  parts     <- sub("_.*$", "", x)
+  x <- sub("^Grid_", "", grid_id)
+  parts <- sub("_.*$", "", x)
   lon_parts <- sub("^[^_]+_", "", x)
 
   parse_coord <- function(s) {
     neg <- startsWith(s, "m")
-    s   <- sub("^m", "", s)
-    s   <- gsub("p", ".", s, fixed = TRUE)
+    s <- sub("^m", "", s)
+    s <- gsub("p", ".", s, fixed = TRUE)
     val <- suppressWarnings(as.numeric(s))
     ifelse(neg, -val, val)
   }

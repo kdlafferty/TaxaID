@@ -1037,7 +1037,8 @@
 #' @examples
 #' \dontrun{
 #' domestic_food <- generate_domestic_food_priors(
-#'   model_fit, lat = 34.41, lng = -119.86, grid_id = "Grid_34p4_m119p9"
+#'   model_fit,
+#'   lat = 34.41, lng = -119.86, grid_id = "Grid_34p4_m119p9"
 #' )
 #' taxaexpect_priors <- dplyr::bind_rows(taxaexpect_priors, domestic_food)
 #' }
@@ -1046,33 +1047,37 @@
 #' @importFrom tibble tibble
 #' @export
 generate_domestic_food_priors <- function(
-    model_obj,
-    lat,
-    lng,
-    grid_id              = NA_character_,
-    domestic_animal_taxa = .default_domestic_animal_taxa,
-    food_species_taxa    = .default_food_species_taxa,
-    known_cultivar_taxa  = .default_known_cultivar_taxa,
-    candidate_plant_taxa  = NULL,
-    match_list_taxa       = NULL,
-    taxaexpect_priors     = NULL,
-    radius_km            = 50,
-    ess                   = 5,
-    max_ess               = 50,
-    taxonomy              = NULL,
-    api_token             = Sys.getenv("INAT_API_TOKEN"),
-    verbose               = FALSE
+  model_obj,
+  lat,
+  lng,
+  grid_id = NA_character_,
+  domestic_animal_taxa = .default_domestic_animal_taxa,
+  food_species_taxa = .default_food_species_taxa,
+  known_cultivar_taxa = .default_known_cultivar_taxa,
+  candidate_plant_taxa = NULL,
+  match_list_taxa = NULL,
+  taxaexpect_priors = NULL,
+  radius_km = 50,
+  ess = 5,
+  max_ess = 50,
+  taxonomy = NULL,
+  api_token = Sys.getenv("INAT_API_TOKEN"),
+  verbose = FALSE
 ) {
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     # Kernel-priors adapter (Phase 2, 2026-08-31): N = Kish effective sample
     # size; habitat concept always present on kernel estimates.
-    model_obj <- list(N_total = as.integer(model_obj$params$n_records_stratum),
-                      meta = list(habitat_col = "main_habitat"))
+    model_obj <- list(
+      N_total = as.integer(model_obj$params$n_records_stratum),
+      meta = list(habitat_col = "main_habitat")
+    )
     class(model_obj) <- "biofreq_model_shim"
   } else if (!inherits(model_obj, "biofreq_model")) {
-    stop("generate_domestic_food_priors: model_obj must be a biofreq_model ",
-         "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
-         "object from estimate_kernel_priors().")
+    stop(
+      "generate_domestic_food_priors: model_obj must be a biofreq_model ",
+      "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
+      "object from estimate_kernel_priors()."
+    )
   }
   if (!is.numeric(lat) || length(lat) != 1L || is.na(lat)) {
     stop("generate_domestic_food_priors: `lat` must be a single non-NA numeric value.")
@@ -1081,35 +1086,47 @@ generate_domestic_food_priors <- function(
     stop("generate_domestic_food_priors: `lng` must be a single non-NA numeric value.")
   }
   if (!requireNamespace("TaxaTools", quietly = TRUE)) {
-    stop("generate_domestic_food_priors: the TaxaTools package is required ",
-         "(used to normalize candidate taxon names to this ecosystem's ",
-         "binomial convention via clean_taxon_names()).")
+    stop(
+      "generate_domestic_food_priors: the TaxaTools package is required ",
+      "(used to normalize candidate taxon names to this ecosystem's ",
+      "binomial convention via clean_taxon_names())."
+    )
   }
 
-  N_total     <- model_obj$N_total
+  N_total <- model_obj$N_total
   habitat_col <- model_obj$meta$habitat_col
 
   if (N_total <= 0) {
-    stop("generate_domestic_food_priors: N_total is zero or negative. ",
-         "Check that train_biodiversity_model() ran successfully.")
+    stop(
+      "generate_domestic_food_priors: N_total is zero or negative. ",
+      "Check that train_biodiversity_model() ran successfully."
+    )
   }
 
   candidates <- dplyr::bind_rows(
     if (length(domestic_animal_taxa) > 0L) {
-      tibble::tibble(taxon_name = unique(domestic_animal_taxa), prior_source_type = "domestic_animal",
-                     requires_local_evidence = FALSE, cultivar_evidence_source = NA_character_)
+      tibble::tibble(
+        taxon_name = unique(domestic_animal_taxa), prior_source_type = "domestic_animal",
+        requires_local_evidence = FALSE, cultivar_evidence_source = NA_character_
+      )
     },
     if (length(food_species_taxa) > 0L) {
-      tibble::tibble(taxon_name = unique(food_species_taxa), prior_source_type = "food_species",
-                     requires_local_evidence = FALSE, cultivar_evidence_source = NA_character_)
+      tibble::tibble(
+        taxon_name = unique(food_species_taxa), prior_source_type = "food_species",
+        requires_local_evidence = FALSE, cultivar_evidence_source = NA_character_
+      )
     },
     if (length(known_cultivar_taxa) > 0L) {
-      tibble::tibble(taxon_name = unique(known_cultivar_taxa), prior_source_type = "domestic_plant",
-                     requires_local_evidence = FALSE, cultivar_evidence_source = "known_list")
+      tibble::tibble(
+        taxon_name = unique(known_cultivar_taxa), prior_source_type = "domestic_plant",
+        requires_local_evidence = FALSE, cultivar_evidence_source = "known_list"
+      )
     },
     if (!is.null(candidate_plant_taxa) && length(candidate_plant_taxa) > 0L) {
-      tibble::tibble(taxon_name = unique(candidate_plant_taxa), prior_source_type = "domestic_plant",
-                     requires_local_evidence = TRUE, cultivar_evidence_source = "candidate_supplied")
+      tibble::tibble(
+        taxon_name = unique(candidate_plant_taxa), prior_source_type = "domestic_plant",
+        requires_local_evidence = TRUE, cultivar_evidence_source = "candidate_supplied"
+      )
     }
   )
 
@@ -1122,9 +1139,9 @@ generate_domestic_food_priors <- function(
     # pipeline -- skipping this step here would leave an uncleaned trinomial
     # (or a hybrid-formula name like "Fragaria x ananassa") that can never
     # exact-match join_priors()'s taxon_name join.
-    raw_names     <- candidates$taxon_name
+    raw_names <- candidates$taxon_name
     cleaned_names <- TaxaTools::clean_taxon_names(raw_names)
-    dropped       <- unique(raw_names[is.na(cleaned_names)])
+    dropped <- unique(raw_names[is.na(cleaned_names)])
     if (length(dropped) > 0L) {
       warning(sprintf(
         "generate_domestic_food_priors: %d candidate name(s) could not be cleaned by TaxaTools::clean_taxon_names() and were dropped: %s",
@@ -1166,7 +1183,7 @@ generate_domestic_food_priors <- function(
   if (!is.null(match_list_taxa) && length(match_list_taxa) > 0L) {
     match_set <- unique(stats::na.omit(TaxaTools::clean_taxon_names(match_list_taxa)))
 
-    n_before   <- nrow(candidates)
+    n_before <- nrow(candidates)
     candidates <- candidates[candidates$taxon_name %in% match_set, ]
     message(sprintf(
       paste0(
@@ -1213,7 +1230,7 @@ generate_domestic_food_priors <- function(
         # carry either "Streptophyta" (NCBI-style) or "Tracheophyta"
         # (GBIF-backbone-style) for land plants, sometimes both at once.
         residual_scoped <- residual_pool[!is.na(residual_phylum) &
-                                          residual_phylum %in% c("Streptophyta", "Tracheophyta")]
+          residual_phylum %in% c("Streptophyta", "Tracheophyta")]
         message(sprintf(
           paste0(
             "generate_domestic_food_priors: %d unreferenced match-list taxon/taxa; ",
@@ -1241,7 +1258,7 @@ generate_domestic_food_priors <- function(
   # same as before this check existed.
   kingdom_lookup <- NULL
   if (!is.null(taxonomy) && is.data.frame(taxonomy) &&
-      all(c("taxon_name", "kingdom") %in% names(taxonomy))) {
+    all(c("taxon_name", "kingdom") %in% names(taxonomy))) {
     kingdom_lookup <- stats::setNames(taxonomy$kingdom, taxonomy$taxon_name)
     kingdom_lookup <- kingdom_lookup[!duplicated(names(kingdom_lookup))]
   }
@@ -1252,7 +1269,7 @@ generate_domestic_food_priors <- function(
     message(sprintf("Checking %d domestic/food/plant candidate(s) against iNaturalist...", nrow(candidates)))
 
     for (i in seq_len(nrow(candidates))) {
-      row      <- candidates[i, ]
+      row <- candidates[i, ]
       category <- row$prior_source_type
       if (verbose) message(sprintf("[%d/%d] %s (%s)", i, nrow(candidates), row$taxon_name, category))
 
@@ -1276,7 +1293,7 @@ generate_domestic_food_priors <- function(
         }
       )
 
-      n_local      <- if (is.null(inat_out)) NA_integer_ else inat_out$n_observations_local[[1]]
+      n_local <- if (is.null(inat_out)) NA_integer_ else inat_out$n_observations_local[[1]]
       inat_kingdom <- if (is.null(inat_out)) NA_character_ else inat_out$inat_kingdom[[1]]
 
       # iNaturalist resolves names against its own curated taxonomy, not
@@ -1290,7 +1307,7 @@ generate_domestic_food_priors <- function(
       known_kingdom <- if (is.null(kingdom_lookup)) {
         NA_character_
       } else {
-        unname(kingdom_lookup[row$taxon_name])  # single-bracket: NA for an unmatched name, not an error
+        unname(kingdom_lookup[row$taxon_name]) # single-bracket: NA for an unmatched name, not an error
       }
       # Normalize backbone kingdom vocabularies before comparing: NCBI says
       # "Metazoa"/"Viridiplantae" where iNat (and GBIF) say "Animalia"/
@@ -1298,7 +1315,9 @@ generate_domestic_food_priors <- function(
       # 2026-08-31: every NCBI-taxonomy candidate, e.g. Gadus morhua, was
       # wrongly flagged as a cross-kingdom homonym and lost its boost.)
       .norm_kingdom <- function(k) {
-        if (is.na(k)) return(k)
+        if (is.na(k)) {
+          return(k)
+        }
         map <- c(Metazoa = "Animalia", Viridiplantae = "Plantae")
         if (k %in% names(map)) unname(map[[k]]) else k
       }
@@ -1335,7 +1354,7 @@ generate_domestic_food_priors <- function(
       }
 
       alpha_i <- min(evidence_ess, N_total - 1)
-      beta_i  <- N_total - alpha_i
+      beta_i <- N_total - alpha_i
 
       proxy_tbl <- tibble::tibble(
         taxon_name                = row$taxon_name,

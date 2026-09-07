@@ -8,8 +8,10 @@
 # ecosystem_docs/SPEC_plot_theta_surface.md).
 
 .mk_occ <- function(taxa, lat, lon, habitat = "Marine", depth = NA_real_) {
-  data.frame(taxon_name = taxa, decimalLatitude = lat, decimalLongitude = lon,
-             main_habitat = habitat, depth_m = depth, stringsAsFactors = FALSE)
+  data.frame(
+    taxon_name = taxa, decimalLatitude = lat, decimalLongitude = lon,
+    main_habitat = habitat, depth_m = depth, stringsAsFactors = FALSE
+  )
 }
 
 .eng <- function(occ, site_lat, site_lon, site_habitat = "Marine", lambda_km,
@@ -35,7 +37,8 @@
 
 test_that(".theta_surface_fft_convolve matches brute-force 2-D convolution", {
   set.seed(11)
-  ny <- 6L; nx <- 7L
+  ny <- 6L
+  nx <- 7L
   mass <- matrix(0, ny, nx)
   mass[c(2, 4, 5), c(3, 1, 7)] <- c(1.3, 0.6, 2.1)
   kernel <- matrix(stats::rnorm((2 * ny - 1) * (2 * nx - 1)), 2 * ny - 1, 2 * nx - 1)
@@ -43,25 +46,33 @@ test_that(".theta_surface_fft_convolve matches brute-force 2-D convolution", {
   fft_out <- TaxaExpect:::.theta_surface_fft_convolve(mass, kernel)
 
   brute <- matrix(0, ny, nx)
-  for (xi in seq_len(ny)) for (xj in seq_len(nx)) {
-    s <- 0
-    for (ri in seq_len(ny)) for (rj in seq_len(nx)) {
-      if (mass[ri, rj] == 0) next
-      krow <- (xi - ri) + ny; kcol <- (xj - rj) + nx
-      s <- s + mass[ri, rj] * kernel[krow, kcol]
+  for (xi in seq_len(ny)) {
+    for (xj in seq_len(nx)) {
+      s <- 0
+      for (ri in seq_len(ny)) {
+        for (rj in seq_len(nx)) {
+          if (mass[ri, rj] == 0) next
+          krow <- (xi - ri) + ny
+          kcol <- (xj - rj) + nx
+          s <- s + mass[ri, rj] * kernel[krow, kcol]
+        }
+      }
+      brute[xi, xj] <- s
     }
-    brute[xi, xj] <- s
   }
   expect_equal(fft_out, brute, tolerance = 1e-9)
 })
 
 test_that(".theta_surface_fft_convolve_batch agrees with the single-pair convolution", {
   set.seed(12)
-  ny <- 5L; nx <- 5L
+  ny <- 5L
+  nx <- 5L
   m1 <- matrix(stats::rpois(ny * nx, 1), ny, nx)
   m2 <- matrix(stats::rpois(ny * nx, 2), ny, nx)
-  kernel <- matrix(exp(-abs(stats::rnorm((2 * ny - 1) * (2 * nx - 1)))),
-                   2 * ny - 1, 2 * nx - 1)
+  kernel <- matrix(
+    exp(-abs(stats::rnorm((2 * ny - 1) * (2 * nx - 1)))),
+    2 * ny - 1, 2 * nx - 1
+  )
   single1 <- TaxaExpect:::.theta_surface_fft_convolve(m1, kernel)
   single2 <- TaxaExpect:::.theta_surface_fft_convolve(m2, kernel)
   batch <- TaxaExpect:::.theta_surface_fft_convolve_batch(list(m1, m2), kernel)
@@ -77,12 +88,14 @@ test_that("surface theta at the site reduces to estimate_kernel_priors() theta (
   set.seed(42)
   n <- 400
   occ <- .mk_occ(sample(c("A", "B", "C", "D"), n, TRUE, prob = c(0.4, 0.3, 0.2, 0.1)),
-                lat = 34 + stats::rnorm(n, 0, 0.5), lon = -120 + stats::rnorm(n, 0, 0.5))
+    lat = 34 + stats::rnorm(n, 0, 0.5), lon = -120 + stats::rnorm(n, 0, 0.5)
+  )
   kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 30, m = 2)
   surf <- .eng(occ, 34, -120, lambda_km = 30, m = 2, taxon = c("A", "B", "C", "D"), n_grid = 200L)
 
-  i0 <- .nearest_idx(surf$lat_grid, 34); j0 <- .nearest_idx(surf$lon_grid, -120)
-  expect_equal(surf$lat_grid[i0], 34, tolerance = 1e-9)   # anchored exactly on the site
+  i0 <- .nearest_idx(surf$lat_grid, 34)
+  j0 <- .nearest_idx(surf$lon_grid, -120)
+  expect_equal(surf$lat_grid[i0], 34, tolerance = 1e-9) # anchored exactly on the site
   expect_equal(surf$lon_grid[j0], -120, tolerance = 1e-9)
   expect_equal(surf$n_eff[i0, j0], kp$n_eff, tolerance = 1e-2)
 
@@ -100,13 +113,19 @@ test_that("surface theta at the site reduces to estimate_kernel_priors() theta W
   set.seed(43)
   n <- 400
   occ <- .mk_occ(sample(c("A", "B", "C"), n, TRUE, prob = c(0.5, 0.3, 0.2)),
-                lat = 34 + stats::rnorm(n, 0, 0.5), lon = -120 + stats::rnorm(n, 0, 0.5))
-  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 25, m = 1,
-                               lambda_latitude = 200)
-  surf <- .eng(occ, 34, -120, lambda_km = 25, m = 1, taxon = c("A", "B", "C"),
-              n_grid = 200L, lambda_latitude = 200)
+    lat = 34 + stats::rnorm(n, 0, 0.5), lon = -120 + stats::rnorm(n, 0, 0.5)
+  )
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 25, m = 1,
+    lambda_latitude = 200
+  )
+  surf <- .eng(occ, 34, -120,
+    lambda_km = 25, m = 1, taxon = c("A", "B", "C"),
+    n_grid = 200L, lambda_latitude = 200
+  )
 
-  i0 <- .nearest_idx(surf$lat_grid, 34); j0 <- .nearest_idx(surf$lon_grid, -120)
+  i0 <- .nearest_idx(surf$lat_grid, 34)
+  j0 <- .nearest_idx(surf$lon_grid, -120)
   for (tx in c("A", "B", "C")) {
     est <- kp$priors$theta_mean[kp$priors$taxon_name == tx]
     expect_equal(surf$theta[[tx]][i0, j0], est, tolerance = 1e-2)
@@ -122,11 +141,13 @@ test_that("m override changes the surface but defaulting to the fit's own m repr
   # already and back-off is a near no-op regardless of m.
   far <- 5000 / 111
   occ <- .mk_occ(c(rep("A", 20), "B"),
-                lat = c(rep(34, 20), 34 + far), lon = rep(-120, 21))
+    lat = c(rep(34, 20), 34 + far), lon = rep(-120, 21)
+  )
   kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 20, m = 3)
   surf_default <- .eng(occ, 34, -120, lambda_km = 20, m = 3, taxon = "B", n_grid = 150L)
-  surf_other   <- .eng(occ, 34, -120, lambda_km = 20, m = 500, taxon = "B", n_grid = 150L)
-  i0 <- .nearest_idx(surf_default$lat_grid, 34); j0 <- .nearest_idx(surf_default$lon_grid, -120)
+  surf_other <- .eng(occ, 34, -120, lambda_km = 20, m = 500, taxon = "B", n_grid = 150L)
+  i0 <- .nearest_idx(surf_default$lat_grid, 34)
+  j0 <- .nearest_idx(surf_default$lon_grid, -120)
   est <- kp$priors$theta_mean[kp$priors$taxon_name == "B"]
   expect_equal(surf_default$theta[i0, j0], est, tolerance = 1e-2)
   expect_gt(abs(surf_other$theta[i0, j0] - est), 0.02)
@@ -140,12 +161,15 @@ test_that("a very large lambda flattens the surface to the regional composition"
   set.seed(45)
   n <- 300
   occ <- .mk_occ(sample(c("A", "B", "C"), n, TRUE, prob = c(0.5, 0.3, 0.2)),
-                lat = 34 + stats::rnorm(n, 0, 0.3), lon = -120 + stats::rnorm(n, 0, 0.3))
+    lat = 34 + stats::rnorm(n, 0, 0.3), lon = -120 + stats::rnorm(n, 0, 0.3)
+  )
   reg <- table(occ$taxon_name) / nrow(occ)
   surf <- .eng(occ, 34, -120, lambda_km = 1e9, m = 0, taxon = c("A", "B", "C"), n_grid = 60L)
   for (tx in c("A", "B", "C")) {
     expect_equal(as.numeric(range(surf$theta[[tx]])),
-                rep(unname(reg[tx]), 2), tolerance = 1e-6)
+      rep(unname(reg[tx]), 2),
+      tolerance = 1e-6
+    )
   }
 })
 
@@ -154,11 +178,15 @@ test_that("a very large lambda flattens the surface to the regional composition"
 # ------------------------------------------------------------------------------
 
 test_that("covariate_at = NULL on a covariate-built fit emits a message and omits the factor", {
-  occ <- .mk_occ(c("A", "A", "B", "B"), lat = rep(34, 4), lon = rep(-120, 4),
-                depth = c(5, 5, 105, 105))
-  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 0,
-                               covariate_col = "depth_m", site_covariate = 5,
-                               lambda_covariate = 20)
+  occ <- .mk_occ(c("A", "A", "B", "B"),
+    lat = rep(34, 4), lon = rep(-120, 4),
+    depth = c(5, 5, 105, 105)
+  )
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 50, m = 0,
+    covariate_col = "depth_m", site_covariate = 5,
+    lambda_covariate = 20
+  )
   expect_message(
     out <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 20L),
     "covariate_at not supplied.*OMITTED"
@@ -167,14 +195,21 @@ test_that("covariate_at = NULL on a covariate-built fit emits a message and omit
 })
 
 test_that("supplying covariate_at reweights the surface toward the matching covariate value", {
-  occ <- .mk_occ(c("A", "A", "B", "B"), lat = rep(34, 4), lon = rep(-120, 4),
-                depth = c(5, 5, 105, 105))
-  kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 50, m = 0,
-                               covariate_col = "depth_m", site_covariate = 5,
-                               lambda_covariate = 20)
-  surf <- .eng(occ, 34, -120, lambda_km = 50, m = 0, taxon = c("A", "B"), n_grid = 60L,
-              covariate_col = "depth_m", covariate_at = 5, lambda_covariate = 20)
-  i0 <- .nearest_idx(surf$lat_grid, 34); j0 <- .nearest_idx(surf$lon_grid, -120)
+  occ <- .mk_occ(c("A", "A", "B", "B"),
+    lat = rep(34, 4), lon = rep(-120, 4),
+    depth = c(5, 5, 105, 105)
+  )
+  kp <- estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 50, m = 0,
+    covariate_col = "depth_m", site_covariate = 5,
+    lambda_covariate = 20
+  )
+  surf <- .eng(occ, 34, -120,
+    lambda_km = 50, m = 0, taxon = c("A", "B"), n_grid = 60L,
+    covariate_col = "depth_m", covariate_at = 5, lambda_covariate = 20
+  )
+  i0 <- .nearest_idx(surf$lat_grid, 34)
+  j0 <- .nearest_idx(surf$lon_grid, -120)
   th <- c(surf$theta$A[i0, j0], surf$theta$B[i0, j0])
   expect_equal(th[1] / th[2], 1 / exp(-100 / 20), tolerance = 1e-2)
 })
@@ -212,7 +247,8 @@ test_that("a bbox with no nearby records returns gracefully (W = 0, no error)", 
   expect_true(all(surf$n_eff == 0))
   # m > 0: theta backs off entirely to the regional composition p_i
   expect_equal(as.numeric(surf$theta), rep(surf$regional_composition["A"], length(surf$theta)),
-              tolerance = 1e-9, ignore_attr = TRUE)
+    tolerance = 1e-9, ignore_attr = TRUE
+  )
 })
 
 test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-07)", {
@@ -226,8 +262,9 @@ test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-0
   set.seed(2)
   n <- 400
   occ <- .mk_occ(rep(c("A", "B"), each = n),
-                 lat = c(34 + stats::rnorm(n, 0, 0.05), 38 + stats::rnorm(n, 0, 0.05)),
-                 lon = c(-119 + stats::rnorm(n, 0, 0.05), -123 + stats::rnorm(n, 0, 0.05)))
+    lat = c(34 + stats::rnorm(n, 0, 0.05), 38 + stats::rnorm(n, 0, 0.05)),
+    lon = c(-119 + stats::rnorm(n, 0, 0.05), -123 + stats::rnorm(n, 0, 0.05))
+  )
   surf <- .eng(occ, 34, -119, lambda_km = 5, m = 1, taxon = "A", n_grid = 128L)
 
   expect_true(all(is.finite(surf$n_eff)))
@@ -235,16 +272,20 @@ test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-0
   expect_lte(max(surf$n_eff), nrow(occ))
   # An unsupported point backs off entirely to the regional composition.
   expect_equal(surf$theta[1L, 1L], unname(surf$regional_composition["A"]),
-               tolerance = 1e-9)
+    tolerance = 1e-9
+  )
   # ... and the raster is not uniformly transparent (the visible symptom).
   ras <- TaxaExpect:::.theta_surface_raster(surf$theta, surf$n_eff, TRUE, NULL)
   expect_true(any(substr(as.character(ras), 8L, 9L) != "00"))
 
   # The site itself is untouched by the guard.
   kp <- estimate_kernel_priors(occ, 34, -119, "Marine", lambda_km = 5, m = 1)
-  i0 <- .nearest_idx(surf$lat_grid, 34); j0 <- .nearest_idx(surf$lon_grid, -119)
+  i0 <- .nearest_idx(surf$lat_grid, 34)
+  j0 <- .nearest_idx(surf$lon_grid, -119)
   expect_equal(surf$theta[i0, j0],
-               kp$priors$theta_mean[kp$priors$taxon_name == "A"], tolerance = 1e-2)
+    kp$priors$theta_mean[kp$priors$taxon_name == "A"],
+    tolerance = 1e-2
+  )
 })
 
 # ------------------------------------------------------------------------------
@@ -293,12 +334,15 @@ test_that("mask (lon/lat matrix) NAs out cells outside the polygon", {
     taxon_name = rep(c("A", "B"), each = 6),
     decimalLatitude = c(34.0, 34.1, 34.2, 34.3, 34.4, 34.5, 34.0, 34.1, 34.2, 34.3, 34.4, 34.5),
     decimalLongitude = rep(c(-120.0, -119.9, -119.8), 4),
-    main_habitat = "Marine", stringsAsFactors = FALSE)
+    main_habitat = "Marine", stringsAsFactors = FALSE
+  )
   kp <- estimate_kernel_priors(occ, 34.2, -119.9, "Marine", lambda_km = 50)
   # a small box around the site only
-  box <- cbind(c(-120.0, -119.8, -119.8, -120.0),
-               c(34.15,  34.15,  34.25,  34.25))
-  s_all  <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 32L)
+  box <- cbind(
+    c(-120.0, -119.8, -119.8, -120.0),
+    c(34.15, 34.15, 34.25, 34.25)
+  )
+  s_all <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 32L)
   s_mask <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 32L, mask = box)
   expect_true(all(is.finite(s_all$surface$theta)))
   expect_true(any(is.na(s_mask$surface$theta)))
@@ -312,33 +356,41 @@ test_that("mask (lon/lat matrix) NAs out cells outside the polygon", {
 })
 
 test_that("mask accepts a list of polygons and validates its input", {
-  occ <- data.frame(taxon_name = c("A", "A", "B"),
-                    decimalLatitude = c(34, 34.1, 34.2),
-                    decimalLongitude = c(-120, -119.9, -119.8),
-                    main_habitat = "Marine", stringsAsFactors = FALSE)
+  occ <- data.frame(
+    taxon_name = c("A", "A", "B"),
+    decimalLatitude = c(34, 34.1, 34.2),
+    decimalLongitude = c(-120, -119.9, -119.8),
+    main_habitat = "Marine", stringsAsFactors = FALSE
+  )
   kp <- estimate_kernel_priors(occ, 34.1, -119.9, "Marine", lambda_km = 50)
-  two <- list(cbind(c(-120.05, -119.95, -119.95, -120.05), c(33.95, 33.95, 34.05, 34.05)),
-              cbind(c(-119.85, -119.75, -119.75, -119.85), c(34.15, 34.15, 34.25, 34.25)))
+  two <- list(
+    cbind(c(-120.05, -119.95, -119.95, -120.05), c(33.95, 33.95, 34.05, 34.05)),
+    cbind(c(-119.85, -119.75, -119.75, -119.85), c(34.15, 34.15, 34.25, 34.25))
+  )
   s <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 24L, mask = two)
   expect_true(any(is.na(s$surface$theta)))
-  expect_true(any(is.finite(s$surface$theta)))   # both boxes survive
-  expect_error(plot_theta_surface(kp, occ, taxon = "A", n_grid = 16L,
-                                  mask = cbind(1:2, 1:2)), "at least 3 vertices")
+  expect_true(any(is.finite(s$surface$theta))) # both boxes survive
+  expect_error(plot_theta_surface(kp, occ,
+    taxon = "A", n_grid = 16L,
+    mask = cbind(1:2, 1:2)
+  ), "at least 3 vertices")
 })
 
 test_that("interactive map carries legend, hover labels, small site marker and a species selector", {
   skip_if_not_installed("leaflet")
-  occ <- data.frame(taxon_name = rep(c("A", "B"), each = 4),
-                    decimalLatitude = rep(c(34.0, 34.1, 34.2, 34.3), 2),
-                    decimalLongitude = rep(c(-120.0, -119.9), 4),
-                    main_habitat = "Marine", stringsAsFactors = FALSE)
+  occ <- data.frame(
+    taxon_name = rep(c("A", "B"), each = 4),
+    decimalLatitude = rep(c(34.0, 34.1, 34.2, 34.3), 2),
+    decimalLongitude = rep(c(-120.0, -119.9), 4),
+    main_habitat = "Marine", stringsAsFactors = FALSE
+  )
   kp <- estimate_kernel_priors(occ, 34.15, -119.95, "Marine", lambda_km = 50)
   m <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 16L, interactive = TRUE)$plot
   calls <- vapply(m$x$calls, function(cl) cl$method, character(1))
-  expect_true("addLegend" %in% calls)          # legend present
-  expect_true("addCircleMarkers" %in% calls)   # small hollow site marker, not addMarkers
+  expect_true("addLegend" %in% calls) # legend present
+  expect_true("addCircleMarkers" %in% calls) # small hollow site marker, not addMarkers
   expect_false("addMarkers" %in% calls)
-  expect_true("addLayersControl" %in% calls)   # species selector
+  expect_true("addLayersControl" %in% calls) # species selector
   # radio (baseGroups), not stacked overlays
   lc <- m$x$calls[[which(calls == "addLayersControl")[1]]]
   expect_setequal(unlist(lc$args[[1]]), c("A", "B"))
@@ -348,10 +400,12 @@ test_that("interactive map carries legend, hover labels, small site marker and a
 })
 
 test_that("printing the object renders the map, not just a summary (2026-09-01)", {
-  occ <- data.frame(taxon_name = rep(c("A", "B"), each = 3),
-                    decimalLatitude = rep(c(34.0, 34.1, 34.2), 2),
-                    decimalLongitude = rep(c(-120.0, -119.9, -119.8), 2),
-                    main_habitat = "Marine", stringsAsFactors = FALSE)
+  occ <- data.frame(
+    taxon_name = rep(c("A", "B"), each = 3),
+    decimalLatitude = rep(c(34.0, 34.1, 34.2), 2),
+    decimalLongitude = rep(c(-120.0, -119.9, -119.8), 2),
+    main_habitat = "Marine", stringsAsFactors = FALSE
+  )
   kp <- estimate_kernel_priors(occ, 34.1, -119.9, "Marine", lambda_km = 50)
   # static path: base graphics draws at construction, so $plot is NULL and the
   # summary alone is correct behaviour
@@ -383,11 +437,14 @@ test_that("a WKT POLYGON mask clips identically to the equivalent lon/lat matrix
     taxon_name = rep(c("A", "B"), each = 6),
     decimalLatitude = c(34.0, 34.1, 34.2, 34.3, 34.4, 34.5, 34.0, 34.1, 34.2, 34.3, 34.4, 34.5),
     decimalLongitude = rep(c(-120.0, -119.9, -119.8), 4),
-    main_habitat = "Marine", stringsAsFactors = FALSE)
+    main_habitat = "Marine", stringsAsFactors = FALSE
+  )
   kp <- estimate_kernel_priors(occ, 34.2, -119.9, "Marine", lambda_km = 50)
 
-  box <- cbind(c(-120.0, -119.8, -119.8, -120.0),
-               c(34.15,  34.15,  34.25,  34.25))
+  box <- cbind(
+    c(-120.0, -119.8, -119.8, -120.0),
+    c(34.15, 34.15, 34.25, 34.25)
+  )
   wkt <- "POLYGON((-120.0 34.15, -119.8 34.15, -119.8 34.25, -120.0 34.25, -120.0 34.15))"
 
   s_box <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 32L, mask = box)
@@ -397,8 +454,10 @@ test_that("a WKT POLYGON mask clips identically to the equivalent lon/lat matrix
   # of the same geometry, not a different clip.
   expect_identical(is.na(s_wkt$surface$theta), is.na(s_box$surface$theta))
   expect_equal(s_wkt$surface$theta, s_box$surface$theta)
-  expect_equal(s_wkt$surface$params$masked_cells,
-               s_box$surface$params$masked_cells)
+  expect_equal(
+    s_wkt$surface$params$masked_cells,
+    s_box$surface$params$masked_cells
+  )
   expect_gt(s_wkt$surface$params$masked_cells, 0)
 })
 
@@ -408,8 +467,10 @@ test_that("WKT mask parsing rejects input it cannot handle rather than guessing"
   expect_error(w2p("LINESTRING(0 0, 1 1)"), "POLYGON")
   expect_error(w2p(""), "non-empty")
   expect_error(w2p(NA_character_), "non-empty")
-  expect_error(w2p(c("POLYGON((0 0,1 0,1 1,0 0))",
-                     "POLYGON((0 0,1 0,1 1,0 0))")), "single")
+  expect_error(w2p(c(
+    "POLYGON((0 0,1 0,1 1,0 0))",
+    "POLYGON((0 0,1 0,1 1,0 0))"
+  )), "single")
 
   # A valid single-ring polygon parses to something the masker accepts.
   g <- w2p("POLYGON((-120 34, -119 34, -119 35, -120 35, -120 34))")
@@ -421,11 +482,15 @@ test_that("the no-sf WKT fallback refuses a polygon with a hole", {
   # silently masking in the exact region the caller asked to exclude. The
   # fallback must refuse instead. (Skipped when sf is present, since sf then
   # handles holes correctly and this branch is unreachable.)
-  skip_if(requireNamespace("sf", quietly = TRUE),
-          "sf installed: the dependency-free fallback branch is not exercised")
+  skip_if(
+    requireNamespace("sf", quietly = TRUE),
+    "sf installed: the dependency-free fallback branch is not exercised"
+  )
   w2p <- TaxaExpect:::.theta_surface_wkt_to_polys
-  donut <- paste0("POLYGON((0 0, 10 0, 10 10, 0 10, 0 0),",
-                  "(4 4, 6 4, 6 6, 4 6, 4 4))")
+  donut <- paste0(
+    "POLYGON((0 0, 10 0, 10 10, 0 10, 0 0),",
+    "(4 4, 6 4, 6 6, 4 6, 4 4))"
+  )
   expect_error(w2p(donut), "rings")
 })
 
@@ -440,40 +505,51 @@ test_that("the no-sf WKT fallback refuses a polygon with a hole", {
 .lab <- function(params) TaxaExpect:::.theta_surface_condition_label(params)
 
 test_that("condition label names the habitat stratum and its column", {
-  expect_equal(.lab(list(habitat_col = "main_habitat", site_habitat = "Marine")),
-               "main_habitat: Marine")
+  expect_equal(
+    .lab(list(habitat_col = "main_habitat", site_habitat = "Marine")),
+    "main_habitat: Marine"
+  )
   # habitat_col absent (an older surface object) still labels the stratum
   expect_equal(.lab(list(site_habitat = "Freshwater")), "habitat: Freshwater")
 })
 
 test_that("a covariate the map OMITS is stated affirmatively, never by silence", {
-  lab <- .lab(list(habitat_col = "main_habitat", site_habitat = "Marine",
-                   covariate_col = "depth_m", covariate_at = NULL))
+  lab <- .lab(list(
+    habitat_col = "main_habitat", site_habitat = "Marine",
+    covariate_col = "depth_m", covariate_at = NULL
+  ))
   expect_match(lab, "depth_m", fixed = TRUE)
   expect_match(lab, "OMITTED", fixed = TRUE)
   # and it is distinguishable from a fit that simply has no covariate
   expect_false(identical(
-    lab, .lab(list(habitat_col = "main_habitat", site_habitat = "Marine"))))
+    lab, .lab(list(habitat_col = "main_habitat", site_habitat = "Marine"))
+  ))
 })
 
 test_that("a held covariate reports its value and that it is constant", {
-  lab <- .lab(list(habitat_col = "main_habitat", site_habitat = "Marine",
-                   covariate_col = "depth_m", covariate_at = 50))
+  lab <- .lab(list(
+    habitat_col = "main_habitat", site_habitat = "Marine",
+    covariate_col = "depth_m", covariate_at = 50
+  ))
   expect_match(lab, "depth_m = 50", fixed = TRUE)
   expect_match(lab, "held constant", fixed = TRUE)
   expect_false(grepl("OMITTED", lab, fixed = TRUE))
 })
 
 test_that("lambda and m are kept OFF the plot label (they stay in print())", {
-  lab <- .lab(list(habitat_col = "main_habitat", site_habitat = "Marine",
-                   lambda_km = 25, m = 1))
+  lab <- .lab(list(
+    habitat_col = "main_habitat", site_habitat = "Marine",
+    lambda_km = 25, m = 1
+  ))
   expect_false(grepl("lambda", lab, fixed = TRUE))
   expect_false(grepl("25", lab, fixed = TRUE))
 })
 
 test_that("print() reports the conditions alongside the tuning values", {
-  occ <- .mk_occ(rep(c("A", "B"), each = 3), lat = rep(c(34.0, 34.1, 34.2), 2),
-                 lon = rep(c(-120.0, -119.9, -120.1), 2))
+  occ <- .mk_occ(rep(c("A", "B"), each = 3),
+    lat = rep(c(34.0, 34.1, 34.2), 2),
+    lon = rep(c(-120.0, -119.9, -120.1), 2)
+  )
   kp <- estimate_kernel_priors(occ, 34.1, -120, "Marine", lambda_km = 50)
   out <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 12L)
   txt <- paste(utils::capture.output(print(out)), collapse = "\n")
@@ -482,8 +558,10 @@ test_that("print() reports the conditions alongside the tuning values", {
 
 test_that("the interactive map carries the conditions as an on-map caption", {
   skip_if_not_installed("leaflet")
-  occ <- .mk_occ(rep(c("A", "B"), each = 3), lat = rep(c(34.0, 34.1, 34.2), 2),
-                 lon = rep(c(-120.0, -119.9, -120.1), 2))
+  occ <- .mk_occ(rep(c("A", "B"), each = 3),
+    lat = rep(c(34.0, 34.1, 34.2), 2),
+    lon = rep(c(-120.0, -119.9, -120.1), 2)
+  )
   kp <- estimate_kernel_priors(occ, 34.1, -120, "Marine", lambda_km = 50)
   m <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 12L, interactive = TRUE)$plot
   calls <- vapply(m$x$calls, function(cl) cl$method, character(1))
@@ -493,11 +571,17 @@ test_that("the interactive map carries the conditions as an on-map caption", {
 })
 
 test_that("a fit built with sampling_group_col is refused, not silently pooled", {
-  occ <- .mk_occ(rep(c("A", "B"), each = 3), lat = rep(c(34.0, 34.1, 34.2), 2),
-                 lon = rep(c(-120.0, -119.9, -120.1), 2))
+  occ <- .mk_occ(rep(c("A", "B"), each = 3),
+    lat = rep(c(34.0, 34.1, 34.2), 2),
+    lon = rep(c(-120.0, -119.9, -120.1), 2)
+  )
   occ$sampling_group <- rep(c("fishes", "inverts"), each = 3)
-  kp <- estimate_kernel_priors(occ, 34.1, -120, "Marine", lambda_km = 50,
-                               sampling_group_col = "sampling_group")
-  expect_error(plot_theta_surface(kp, occ, taxon = "A", n_grid = 12L),
-               "sampling_group_col")
+  kp <- estimate_kernel_priors(occ, 34.1, -120, "Marine",
+    lambda_km = 50,
+    sampling_group_col = "sampling_group"
+  )
+  expect_error(
+    plot_theta_surface(kp, occ, taxon = "A", n_grid = 12L),
+    "sampling_group_col"
+  )
 })

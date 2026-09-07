@@ -27,22 +27,24 @@ test_that("every row is assigned to exactly one group -- no gaps, no overlaps, n
   # ranks -- stresses the merge-and-defer logic much harder than the earlier
   # hand-built scenarios.
   specs <- list(
-    list(order = "Perciformes",    class = "Actinopteri", phylum = "Chordata", n = 150),
+    list(order = "Perciformes", class = "Actinopteri", phylum = "Chordata", n = 150),
     list(order = "Anguilliformes", class = "Actinopteri", phylum = "Chordata", n = 8),
-    list(order = "Clupeiformes",   class = "Actinopteri", phylum = "Chordata", n = 12),
-    list(order = "Carnivora",      class = "Mammalia",    phylum = "Chordata", n = 6),
-    list(order = "Primates",       class = "Mammalia",    phylum = "Chordata", n = 200),
-    list(order = NA_character_,    class = "Actinopteri", phylum = "Chordata", n = 20),
-    list(order = NA_character_,    class = NA_character_, phylum = "Chordata", n = 3),
-    list(order = NA_character_,    class = NA_character_, phylum = NA_character_, n = 4)
+    list(order = "Clupeiformes", class = "Actinopteri", phylum = "Chordata", n = 12),
+    list(order = "Carnivora", class = "Mammalia", phylum = "Chordata", n = 6),
+    list(order = "Primates", class = "Mammalia", phylum = "Chordata", n = 200),
+    list(order = NA_character_, class = "Actinopteri", phylum = "Chordata", n = 20),
+    list(order = NA_character_, class = NA_character_, phylum = "Chordata", n = 3),
+    list(order = NA_character_, class = NA_character_, phylum = NA_character_, n = 4)
   )
   occ <- do.call(rbind, lapply(specs, function(s) {
     .make_group_rows(s$order, s$class, s$phylum, s$n)
   }))
-  occ$row_id <- seq_len(nrow(occ))  # unique identity marker, independent of taxonomy
+  occ$row_id <- seq_len(nrow(occ)) # unique identity marker, independent of taxonomy
 
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
 
   # No gaps: every row has a non-NA sampling_group.
   expect_false(anyNA(out$sampling_group))
@@ -74,8 +76,10 @@ test_that("every row is assigned to exactly one group -- no gaps, no overlaps, n
 
 test_that("a group that clears min_n at the finest rank stays at that rank", {
   occ <- .make_group_rows("Perciformes", "Actinopteri", "Chordata", 150)
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   expect_true(all(out$sampling_group == "order:Perciformes"))
   expect_true(all(!out$sampling_group_below_min_n))
 })
@@ -83,12 +87,14 @@ test_that("a group that clears min_n at the finest rank stays at that rank", {
 test_that("two sparse sibling orders are pooled at their shared class", {
   occ <- rbind(
     .make_group_rows("Anguilliformes", "Actinopteri", "Chordata", 60),
-    .make_group_rows("Clupeiformes",   "Actinopteri", "Chordata", 60)
+    .make_group_rows("Clupeiformes", "Actinopteri", "Chordata", 60)
   )
   # Neither order alone clears 100 (60 < 100), but pooled at class they do
   # (120 >= 100).
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   expect_true(all(out$sampling_group == "class:Actinopteri"))
   expect_true(all(!out$sampling_group_below_min_n))
 })
@@ -96,11 +102,13 @@ test_that("two sparse sibling orders are pooled at their shared class", {
 test_that("groups that still don't clear min_n even pooled at the ceiling are flagged, not merged further", {
   occ <- rbind(
     .make_group_rows("Anguilliformes", "Actinopteri", "Chordata", 10),
-    .make_group_rows("Clupeiformes",   "Actinopteri", "Chordata", 10),
-    .make_group_rows("Carnivora",      "Mammalia",    "Chordata", 5)
+    .make_group_rows("Clupeiformes", "Actinopteri", "Chordata", 10),
+    .make_group_rows("Carnivora", "Mammalia", "Chordata", 5)
   )
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   # All three end up pooled at the ceiling (phylum) since neither the order-
   # nor class-level pools reached 100 -- but they are pooled together (all
   # share phylum = Chordata), not left unresolved past the ceiling.
@@ -110,12 +118,14 @@ test_that("groups that still don't clear min_n even pooled at the ceiling are fl
 
 test_that("an independently-resolved finer group is not swept into a coarser pool", {
   occ <- rbind(
-    .make_group_rows("Perciformes",    "Actinopteri", "Chordata", 150), # clears at order
-    .make_group_rows("Anguilliformes", "Actinopteri", "Chordata", 10),  # needs class pooling
-    .make_group_rows("Clupeiformes",   "Actinopteri", "Chordata", 10)
+    .make_group_rows("Perciformes", "Actinopteri", "Chordata", 150), # clears at order
+    .make_group_rows("Anguilliformes", "Actinopteri", "Chordata", 10), # needs class pooling
+    .make_group_rows("Clupeiformes", "Actinopteri", "Chordata", 10)
   )
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   perci <- out[out$order == "Perciformes", ]
   others <- out[out$order != "Perciformes", ]
   expect_true(all(perci$sampling_group == "order:Perciformes"))
@@ -127,11 +137,13 @@ test_that("an independently-resolved finer group is not swept into a coarser poo
 
 test_that("never merges across the ceiling rank even when both groups are sparse", {
   occ <- rbind(
-    .make_group_rows("Anguilliformes", "Actinopteri", "Chordata",    10),
-    .make_group_rows("Rodentia",       "Mammalia",    "Mammalophyta", 10)
+    .make_group_rows("Anguilliformes", "Actinopteri", "Chordata", 10),
+    .make_group_rows("Rodentia", "Mammalia", "Mammalophyta", 10)
   )
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   expect_setequal(unique(out$sampling_group), c("phylum:Chordata", "phylum:Mammalophyta"))
   expect_true(all(out$sampling_group_below_min_n))
 })
@@ -141,19 +153,21 @@ test_that("never merges across the ceiling rank even when both groups are sparse
 test_that("NA at the finest rank holds back and resolves at a coarser rank", {
   occ <- data.frame(
     grid_id = rep(paste0("g", 1:5), each = 30),
-    order   = NA_character_,
-    class   = "Actinopteri",
-    phylum  = "Chordata",
+    order = NA_character_,
+    class = "Actinopteri",
+    phylum = "Chordata",
     taxon_name = "Unknown_fish",
     stringsAsFactors = FALSE
   )
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   # class = "Actinopteri" is a real (non-NA) value, so this resolves there or
   # escalates further as a normal group -- it must NOT be dumped into
   # "unknown" just because order was NA.
   expect_false(any(out$sampling_group == "unknown"))
-  expect_true(all(out$sampling_group == "phylum:Chordata"))  # 150/5 = 30 < 100
+  expect_true(all(out$sampling_group == "phylum:Chordata")) # 150/5 = 30 < 100
 })
 
 test_that("NA at every rank finalizes as its own 'unknown' group at the ceiling", {
@@ -162,8 +176,10 @@ test_that("NA at every rank finalizes as its own 'unknown' group at the ceiling"
     order = NA_character_, class = NA_character_, phylum = NA_character_,
     taxon_name = "Totally_unknown", stringsAsFactors = FALSE
   )
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   expect_true(all(out$sampling_group == "unknown"))
   expect_true(all(out$sampling_group_below_min_n))
 })
@@ -178,21 +194,27 @@ test_that("empty-string taxonomy (real GBIF data uses '' for unclassified, not a
     order = "", class = "", phylum = "",
     taxon_name = "Empty_string_taxonomy", stringsAsFactors = FALSE
   )
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   expect_true(all(out$sampling_group == "unknown"))
   expect_false(any(grepl("^order:$|^class:$|^phylum:$", out$sampling_group)))
 })
 
 test_that("'unknown' rows are never merged with a named ceiling-rank group", {
   occ <- rbind(
-    data.frame(grid_id = rep(paste0("g", 1:5), each = 30),
-              order = NA_character_, class = NA_character_, phylum = NA_character_,
-              taxon_name = "Totally_unknown", stringsAsFactors = FALSE),
+    data.frame(
+      grid_id = rep(paste0("g", 1:5), each = 30),
+      order = NA_character_, class = NA_character_, phylum = NA_character_,
+      taxon_name = "Totally_unknown", stringsAsFactors = FALSE
+    ),
     .make_group_rows("Carnivora", "Mammalia", "Chordata", 5, grids = paste0("g", 1:5))
   )
-  out <- compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                          min_n = 100)
+  out <- compute_adaptive_sampling_groups(occ,
+    rank_system = c("order", "class", "phylum"),
+    min_n = 100
+  )
   expect_true(all(out$sampling_group[is.na(out$phylum)] == "unknown"))
   expect_true(all(out$sampling_group[!is.na(out$phylum)] == "phylum:Chordata"))
 })
@@ -209,13 +231,15 @@ test_that("habitat_col makes the effort metric per (grid, habitat) instead of pe
     taxon_name = "Perciformes_sp", stringsAsFactors = FALSE
   )
   out_no_habitat <- compute_adaptive_sampling_groups(
-    occ, rank_system = c("order", "class", "phylum"), min_n = 100
+    occ,
+    rank_system = c("order", "class", "phylum"), min_n = 100
   )
   # Pooled across habitats: 120 records at one grid_id -> clears 100.
   expect_false(unique(out_no_habitat$sampling_group_below_min_n))
 
   out_with_habitat <- compute_adaptive_sampling_groups(
-    occ, rank_system = c("order", "class", "phylum"), min_n = 100,
+    occ,
+    rank_system = c("order", "class", "phylum"), min_n = 100,
     habitat_col = "main_habitat"
   )
   # Per (grid, habitat): only 60 records each -- does not clear 100 at order,
@@ -229,8 +253,10 @@ test_that("errors on missing required columns", {
   occ <- .make_group_rows("Perciformes", "Actinopteri", "Chordata", 10)
   occ$class <- NULL
   expect_error(
-    compute_adaptive_sampling_groups(occ, rank_system = c("order", "class", "phylum"),
-                                      min_n = 100),
+    compute_adaptive_sampling_groups(occ,
+      rank_system = c("order", "class", "phylum"),
+      min_n = 100
+    ),
     "missing required columns"
   )
 })

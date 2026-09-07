@@ -75,7 +75,7 @@
 #' )
 #'
 #' priors_by_group <- lapply(names(models), function(g) {
-#'   undet  <- generate_undetected_diversity(models[[g]])
+#'   undet <- generate_undetected_diversity(models[[g]])
 #'   generate_full_priors(models[[g]], new_sites = sites_for_group[[g]], undetected = undet)
 #' })
 #' priors_combined <- dplyr::bind_rows(priors_by_group)
@@ -100,28 +100,31 @@
 train_biodiversity_model_by_group <- function(data,
                                               formula,
                                               sampling_group_col,
-                                              covariates        = c("lat_r", "lon_r"),
-                                              habitat_col       = "main_habitat",
-                                              cor_threshold     = 0.7,
-                                              taxon_col         = "taxon_name",
-                                              response          = c("theta", "psi"),
+                                              covariates = c("lat_r", "lon_r"),
+                                              habitat_col = "main_habitat",
+                                              cor_threshold = 0.7,
+                                              taxon_col = "taxon_name",
+                                              response = c("theta", "psi"),
                                               min_obs_threshold = 5L,
-                                              effort_threshold  = 10L,
+                                              effort_threshold = 10L,
                                               min_positive_rows = 50L,
-                                              verbose           = TRUE) {
-
+                                              verbose = TRUE) {
   .glmm_deprecation_notice("train_biodiversity_model_by_group")
 
   response <- match.arg(response)
 
   if (missing(sampling_group_col) || is.null(sampling_group_col) ||
-      length(sampling_group_col) != 1L || !is.character(sampling_group_col)) {
-    stop("train_biodiversity_model_by_group: 'sampling_group_col' is required ",
-         "(a single column name). For ungrouped data, use train_biodiversity_model() directly.")
+    length(sampling_group_col) != 1L || !is.character(sampling_group_col)) {
+    stop(
+      "train_biodiversity_model_by_group: 'sampling_group_col' is required ",
+      "(a single column name). For ungrouped data, use train_biodiversity_model() directly."
+    )
   }
   if (!sampling_group_col %in% names(data)) {
-    stop("train_biodiversity_model_by_group: sampling_group_col '", sampling_group_col,
-         "' not found in data.")
+    stop(
+      "train_biodiversity_model_by_group: sampling_group_col '", sampling_group_col,
+      "' not found in data."
+    )
   }
 
   # sort(unique(x)) silently DROPS NA (sort()'s default na.last = NA removes
@@ -131,7 +134,7 @@ train_biodiversity_model_by_group <- function(data,
   # be surfaced as its own group, not silently vanish from every fitted
   # model. Mirrors the equivalent fix in prepare_model_dataframe().
   group_vals <- data[[sampling_group_col]]
-  groups     <- sort(unique(group_vals[!is.na(group_vals)]))
+  groups <- sort(unique(group_vals[!is.na(group_vals)]))
   if (anyNA(group_vals)) {
     groups <- c(groups, NA)
     message(sprintf(
@@ -165,32 +168,39 @@ train_biodiversity_model_by_group <- function(data,
   # lookup would silently treat the NA group's data as empty.
   models <- stats::setNames(lapply(groups, function(g) {
     split_data <- data_splits[[match(g, names(data_splits))]]
-    if (verbose) message(sprintf("--- Sampling group '%s' (%d record(s)) ---",
-                                  g, nrow(split_data)))
+    if (verbose) {
+      message(sprintf(
+        "--- Sampling group '%s' (%d record(s)) ---",
+        g, nrow(split_data)
+      ))
+    }
 
-    tryCatch({
-      model_df <- prepare_model_dataframe(
-        split_data,
-        covariates    = covariates,
-        habitat_col   = habitat_col,
-        cor_threshold = cor_threshold
-      )
+    tryCatch(
+      {
+        model_df <- prepare_model_dataframe(
+          split_data,
+          covariates    = covariates,
+          habitat_col   = habitat_col,
+          cor_threshold = cor_threshold
+        )
 
-      train_biodiversity_model(
-        model_df,
-        formula           = formula,
-        taxon_col         = taxon_col,
-        habitat_col       = habitat_col,
-        response          = response,
-        min_obs_threshold = min_obs_threshold,
-        effort_threshold  = effort_threshold,
-        min_positive_rows = min_positive_rows,
-        full_data         = split_data
-      )
-    }, error = function(e) {
-      if (verbose) message(sprintf("  Group '%s' failed to fit: %s", g, conditionMessage(e)))
-      NULL
-    })
+        train_biodiversity_model(
+          model_df,
+          formula           = formula,
+          taxon_col         = taxon_col,
+          habitat_col       = habitat_col,
+          response          = response,
+          min_obs_threshold = min_obs_threshold,
+          effort_threshold  = effort_threshold,
+          min_positive_rows = min_positive_rows,
+          full_data         = split_data
+        )
+      },
+      error = function(e) {
+        if (verbose) message(sprintf("  Group '%s' failed to fit: %s", g, conditionMessage(e)))
+        NULL
+      }
+    )
   }), groups)
 
   n_failed <- sum(vapply(models, is.null, logical(1)))

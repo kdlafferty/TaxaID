@@ -104,7 +104,7 @@ model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
 
 ```{r train, eval = FALSE, purl = FALSE}
 model_fit <- screen_spatial_formula(
-  data         = model_data,
+  data = model_data,
   formula_full = cbind(n_species, n_other) ~ main_habitat +
     (1 | taxon_name) + diag(main_habitat | taxon_name) +
     (0 + B1 | taxon_name) + (0 + B2 | taxon_name),
@@ -115,9 +115,9 @@ model_fit <- screen_spatial_formula(
 ### Step 6: Generate priors
 
 ```{r priors, eval = FALSE, purl = FALSE}
-priors_observed   <- generate_full_priors(model_fit, new_sites = model_data)
+priors_observed <- generate_full_priors(model_fit, new_sites = model_data)
 priors_undetected <- generate_undetected_diversity(model_fit)
-priors_combined   <- dplyr::bind_rows(priors_observed, priors_undetected)
+priors_combined <- dplyr::bind_rows(priors_observed, priors_undetected)
 ```
 
 ### Step 7: Translate to target backbone

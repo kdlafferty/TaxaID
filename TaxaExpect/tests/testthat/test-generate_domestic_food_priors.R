@@ -48,9 +48,9 @@ library(dplyr)
 # Shorthand: zero out every fixed/supplied channel not being tested.
 .no_defaults <- list(
   domestic_animal_taxa = character(0),
-  food_species_taxa    = character(0),
-  known_cultivar_taxa  = character(0),
-  candidate_plant_taxa  = NULL
+  food_species_taxa = character(0),
+  known_cultivar_taxa = character(0),
+  candidate_plant_taxa = NULL
 )
 
 # =============================================================================
@@ -87,16 +87,19 @@ test_that("stops when N_total is zero", {
 test_that("all four fixed/supplied channels empty/NULL returns an empty tibble with correct columns", {
   mod <- .make_mock_model_obj()
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0),
-    food_species_taxa    = character(0),
-    known_cultivar_taxa   = character(0),
-    candidate_plant_taxa  = NULL
+    food_species_taxa = character(0),
+    known_cultivar_taxa = character(0),
+    candidate_plant_taxa = NULL
   )
   expect_s3_class(out, "tbl_df")
   expect_equal(nrow(out), 0L)
-  expect_true(all(c("taxon_name", "prior_source_type", "cultivar_evidence_source",
-                    "model_tier", "inat_n_observations_local") %in% names(out)))
+  expect_true(all(c(
+    "taxon_name", "prior_source_type", "cultivar_evidence_source",
+    "model_tier", "inat_n_observations_local"
+  ) %in% names(out)))
 })
 
 # =============================================================================
@@ -110,10 +113,11 @@ test_that("domestic_animal_taxa gets a row even with zero local iNat evidence", 
     .package = "TaxaFetch"
   )
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus",
-    food_species_taxa    = character(0),
-    known_cultivar_taxa   = character(0)
+    food_species_taxa = character(0),
+    known_cultivar_taxa = character(0)
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$taxon_name, "Felis catus", ignore_attr = "collapsed_to_genus")
@@ -131,10 +135,11 @@ test_that("food_species_taxa gets its own category label", {
     .package = "TaxaFetch"
   )
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0),
-    food_species_taxa    = "Solanum lycopersicum",
-    known_cultivar_taxa   = character(0)
+    food_species_taxa = "Solanum lycopersicum",
+    known_cultivar_taxa = character(0)
   )
   expect_equal(out$prior_source_type, "food_species")
   expect_true(is.na(out$cultivar_evidence_source))
@@ -145,14 +150,16 @@ test_that("local iNat evidence increases alpha (theta_mean) relative to zero evi
 
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out_zero <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
 
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(500L), .package = "TaxaFetch")
   out_evidence <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
@@ -167,7 +174,8 @@ test_that("max_ess caps the evidence boost", {
     .package = "TaxaFetch"
   )
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0),
     max_ess = 10
@@ -182,10 +190,11 @@ test_that("duplicate taxon name across channels is kept once, first channel wins
     .package = "TaxaFetch"
   )
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Ambiguous species",
-    food_species_taxa    = "Ambiguous species",
-    known_cultivar_taxa   = character(0)
+    food_species_taxa = "Ambiguous species",
+    known_cultivar_taxa = character(0)
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$prior_source_type, "domestic_animal")
@@ -199,9 +208,10 @@ test_that("known_cultivar_taxa gets a row even with zero local iNat evidence", {
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L, inat_kingdom = "Plantae"), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = character(0),
-    known_cultivar_taxa   = "Iris"
+    known_cultivar_taxa = "Iris"
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$prior_source_type, "domestic_plant")
@@ -214,10 +224,11 @@ test_that("known_cultivar_taxa and candidate_plant_taxa share prior_source_type 
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(30L, inat_kingdom = "Plantae"), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = character(0),
-    known_cultivar_taxa   = "Iris",
-    candidate_plant_taxa  = "Tulipa gesneriana"
+    known_cultivar_taxa = "Iris",
+    candidate_plant_taxa = "Tulipa gesneriana"
   )
   expect_equal(nrow(out), 2L)
   expect_true(all(out$prior_source_type == "domestic_plant"))
@@ -235,11 +246,12 @@ test_that("candidate_plant_taxa with zero local evidence is skipped entirely", {
     .package = "TaxaFetch"
   )
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0),
-    food_species_taxa    = character(0),
-    known_cultivar_taxa   = character(0),
-    candidate_plant_taxa  = "Tulipa gesneriana"
+    food_species_taxa = character(0),
+    known_cultivar_taxa = character(0),
+    candidate_plant_taxa = "Tulipa gesneriana"
   )
   expect_equal(nrow(out), 0L)
 })
@@ -251,11 +263,12 @@ test_that("candidate_plant_taxa with real casual-grade evidence gets a row", {
     .package = "TaxaFetch"
   )
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0),
-    food_species_taxa    = character(0),
-    known_cultivar_taxa   = character(0),
-    candidate_plant_taxa  = "Tulipa gesneriana"
+    food_species_taxa = character(0),
+    known_cultivar_taxa = character(0),
+    candidate_plant_taxa = "Tulipa gesneriana"
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$prior_source_type, "domestic_plant")
@@ -274,11 +287,12 @@ test_that("candidate_plant_taxa query uses quality_grade = 'casual'", {
     .package = "TaxaFetch"
   )
   generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0),
-    food_species_taxa    = character(0),
-    known_cultivar_taxa   = character(0),
-    candidate_plant_taxa  = "Tulipa gesneriana"
+    food_species_taxa = character(0),
+    known_cultivar_taxa = character(0),
+    candidate_plant_taxa = "Tulipa gesneriana"
   )
   expect_equal(captured_quality_grade, "casual")
 })
@@ -291,7 +305,8 @@ test_that("match_list_taxa = NULL preserves original unrestricted behavior", {
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0), match_list_taxa = NULL
   )
@@ -302,11 +317,12 @@ test_that("match_list_taxa restricts fixed-list candidates to the intersection",
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = c("Felis catus", "Canis lupus"),
-    food_species_taxa    = character(0),
-    known_cultivar_taxa   = character(0),
-    match_list_taxa       = "Felis catus"  # Canis lupus never detected this run
+    food_species_taxa = character(0),
+    known_cultivar_taxa = character(0),
+    match_list_taxa = "Felis catus" # Canis lupus never detected this run
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$taxon_name, "Felis catus", ignore_attr = "collapsed_to_genus")
@@ -317,10 +333,11 @@ test_that("match_list_taxa with no taxonomy skips the open-discovery step with a
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   expect_no_warning(
     out <- generate_domestic_food_priors(
-      mod, lat = 34.1, lng = -119.1,
+      mod,
+      lat = 34.1, lng = -119.1,
       domestic_animal_taxa = character(0), food_species_taxa = character(0),
       known_cultivar_taxa = character(0),
-      match_list_taxa = "Bidens torta"  # unreferenced, no taxonomy to scope it
+      match_list_taxa = "Bidens torta" # unreferenced, no taxonomy to scope it
     )
   )
   expect_equal(nrow(out), 0L)
@@ -331,7 +348,8 @@ test_that("open-discovery step checks a match-list taxon in a plausibly-cultivab
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(40L, inat_kingdom = "Plantae"), .package = "TaxaFetch")
   taxonomy <- tibble::tibble(taxon_name = "Bidens torta", phylum = "Streptophyta")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = character(0),
     known_cultivar_taxa = character(0),
     match_list_taxa = "Bidens torta",
@@ -348,7 +366,8 @@ test_that("open-discovery step recognizes Tracheophyta as well as Streptophyta",
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(40L, inat_kingdom = "Plantae"), .package = "TaxaFetch")
   taxonomy <- tibble::tibble(taxon_name = "Bidens torta", phylum = "Tracheophyta")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = character(0),
     known_cultivar_taxa = character(0),
     match_list_taxa = "Bidens torta",
@@ -369,14 +388,15 @@ test_that("open-discovery step excludes a match-list taxon outside the plausibly
   )
   taxonomy <- tibble::tibble(taxon_name = "Paracalanus parvus", phylum = "Arthropoda")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = character(0),
     known_cultivar_taxa = character(0),
     match_list_taxa = "Paracalanus parvus",
     taxonomy = taxonomy
   )
   expect_equal(nrow(out), 0L)
-  expect_equal(call_count, 0L)  # never even checked -- excluded before any iNat call
+  expect_equal(call_count, 0L) # never even checked -- excluded before any iNat call
 })
 
 test_that("open-discovery step excludes a match-list taxon already covered by taxaexpect_priors", {
@@ -392,7 +412,8 @@ test_that("open-discovery step excludes a match-list taxon already covered by ta
   taxonomy <- tibble::tibble(taxon_name = "Bidens torta", phylum = "Streptophyta")
   existing_priors <- tibble::tibble(taxon_name = "Bidens torta", theta_mean = 0.01)
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = character(0),
     known_cultivar_taxa = character(0),
     match_list_taxa = "Bidens torta",
@@ -408,11 +429,12 @@ test_that("open-discovery step accepts a bare taxon_name vector for taxaexpect_p
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(40L), .package = "TaxaFetch")
   taxonomy <- tibble::tibble(taxon_name = "Bidens torta", phylum = "Streptophyta")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = character(0),
     known_cultivar_taxa = character(0),
     match_list_taxa = "Bidens torta",
-    taxaexpect_priors = "Bidens torta",  # bare character vector, not a data frame
+    taxaexpect_priors = "Bidens torta", # bare character vector, not a data frame
     taxonomy = taxonomy
   )
   expect_equal(nrow(out), 0L)
@@ -427,9 +449,10 @@ test_that("open-discovery step is not restricted to known_cultivar_taxa membersh
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(40L, inat_kingdom = "Plantae"), .package = "TaxaFetch")
   taxonomy <- tibble::tibble(taxon_name = "Bidens torta", phylum = "Streptophyta")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = character(0),
-    known_cultivar_taxa = character(0),  # deliberately empty -- not what admits this taxon
+    known_cultivar_taxa = character(0), # deliberately empty -- not what admits this taxon
     match_list_taxa = "Bidens torta",
     taxonomy = taxonomy
   )
@@ -444,7 +467,8 @@ test_that("habitat column is added as NA when model_obj has one", {
   mod <- .make_mock_model_obj(N_total = 200L, habitat_col = "main_habitat")
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
@@ -456,7 +480,8 @@ test_that("no habitat column added when model_obj was trained with habitat_col =
   mod <- .make_mock_model_obj(N_total = 200L, habitat_col = NULL)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
@@ -470,7 +495,8 @@ test_that("taxonomy is joined onto result rows by taxon_name", {
     taxon_name = "Felis catus", genus = "Felis", family = "Felidae"
   )
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0),
     taxonomy = taxonomy
@@ -485,7 +511,8 @@ test_that("taxonomy rank columns are always present even when taxonomy is NULL",
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
@@ -504,7 +531,8 @@ test_that("a kingdom mismatch discards the local-evidence boost with a warning",
   taxonomy <- tibble::tibble(taxon_name = "Felis catus", kingdom = "Animalia", genus = "Felis")
   expect_warning(
     out <- generate_domestic_food_priors(
-      mod, lat = 34.1, lng = -119.1,
+      mod,
+      lat = 34.1, lng = -119.1,
       domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
       known_cultivar_taxa = character(0),
       taxonomy = taxonomy
@@ -523,7 +551,8 @@ test_that("a kingdom match does not discard evidence and is not flagged", {
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(500L, inat_kingdom = "Animalia"), .package = "TaxaFetch")
   taxonomy <- tibble::tibble(taxon_name = "Felis catus", kingdom = "Animalia", genus = "Felis")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0),
     taxonomy = taxonomy
@@ -535,10 +564,11 @@ test_that("a kingdom match does not discard evidence and is not flagged", {
 test_that("no kingdom column in taxonomy means the mismatch cannot be checked (no flag, no warning)", {
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(500L, inat_kingdom = "Plantae"), .package = "TaxaFetch")
-  taxonomy <- tibble::tibble(taxon_name = "Felis catus", genus = "Felis")  # no kingdom column
+  taxonomy <- tibble::tibble(taxon_name = "Felis catus", genus = "Felis") # no kingdom column
   out <- expect_no_warning(
     generate_domestic_food_priors(
-      mod, lat = 34.1, lng = -119.1,
+      mod,
+      lat = 34.1, lng = -119.1,
       domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
       known_cultivar_taxa = character(0),
       taxonomy = taxonomy
@@ -554,10 +584,11 @@ test_that("candidate_plant_taxa with a kingdom mismatch is skipped entirely (no 
   taxonomy <- tibble::tibble(taxon_name = "Tulipa gesneriana", kingdom = "Plantae", genus = "Tulipa")
   expect_warning(
     out <- generate_domestic_food_priors(
-      mod, lat = 34.1, lng = -119.1,
+      mod,
+      lat = 34.1, lng = -119.1,
       domestic_animal_taxa = character(0), food_species_taxa = character(0),
-      known_cultivar_taxa   = character(0),
-      candidate_plant_taxa  = "Tulipa gesneriana",
+      known_cultivar_taxa = character(0),
+      candidate_plant_taxa = "Tulipa gesneriana",
       taxonomy = taxonomy
     ),
     regexp = "homonym|kingdom"
@@ -569,7 +600,8 @@ test_that("inat_kingdom column is always present in the output", {
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Felis catus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
@@ -637,7 +669,8 @@ test_that("a subspecies trinomial candidate is normalized to a binomial before j
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Sus scrofa domesticus", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )
@@ -648,7 +681,8 @@ test_that("a hybrid-formula candidate name is normalized the same way clean_taxo
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0), food_species_taxa = "Fragaria x ananassa",
     known_cultivar_taxa = character(0)
   )
@@ -660,7 +694,8 @@ test_that("a candidate name that cannot be cleaned is dropped with a warning, no
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   expect_warning(
     out <- generate_domestic_food_priors(
-      mod, lat = 34.1, lng = -119.1,
+      mod,
+      lat = 34.1, lng = -119.1,
       domestic_animal_taxa = "lowercase invalid", food_species_taxa = character(0),
       known_cultivar_taxa = character(0)
     ),
@@ -681,10 +716,11 @@ test_that("every emitted row carries taxon_name_rank = 'species'", {
   mod <- .make_mock_model_obj(N_total = 200L)
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = c("Felis catus", "Gadus morhua"),
-    food_species_taxa    = "Solanum lycopersicum",
-    known_cultivar_taxa  = character(0)
+    food_species_taxa = "Solanum lycopersicum",
+    known_cultivar_taxa = character(0)
   )
   expect_equal(nrow(out), 3L)
   expect_true(all(out$taxon_name_rank == "species"))
@@ -693,11 +729,12 @@ test_that("every emitted row carries taxon_name_rank = 'species'", {
 test_that("the empty-channel result still has a taxon_name_rank column (zero rows)", {
   mod <- .make_mock_model_obj()
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = character(0),
-    food_species_taxa    = character(0),
-    known_cultivar_taxa   = character(0),
-    candidate_plant_taxa  = NULL
+    food_species_taxa = character(0),
+    known_cultivar_taxa = character(0),
+    candidate_plant_taxa = NULL
   )
   expect_true("taxon_name_rank" %in% names(out))
   expect_equal(nrow(out), 0L)
@@ -707,7 +744,8 @@ test_that("main_habitat stays NA (habitat-agnostic by design), only taxon_name_r
   mod <- .make_mock_model_obj(N_total = 200L, habitat_col = "main_habitat")
   local_mocked_bindings(fetch_inat_occurrences = .mock_inat(0L), .package = "TaxaFetch")
   out <- generate_domestic_food_priors(
-    mod, lat = 34.1, lng = -119.1,
+    mod,
+    lat = 34.1, lng = -119.1,
     domestic_animal_taxa = "Gadus morhua", food_species_taxa = character(0),
     known_cultivar_taxa = character(0)
   )

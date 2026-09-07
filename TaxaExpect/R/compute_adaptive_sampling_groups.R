@@ -132,14 +132,20 @@
 #' @examples
 #' obs <- data.frame(
 #'   grid_id = rep(c("Grid_1", "Grid_2", "Grid_3"), each = 4),
-#'   order   = c("Perciformes", "Perciformes", "Perciformes", "Perciformes",
-#'               "Diatomea", "Diatomea", "Rotifera", "Rotifera",
-#'               "Perciformes", "Diatomea", "Rotifera", "Perciformes"),
-#'   class   = c(rep("Actinopteri", 4), rep("Bacillariophyceae", 2),
-#'               rep("Rotifera", 2), "Actinopteri", "Bacillariophyceae",
-#'               "Rotifera", "Actinopteri"),
-#'   phylum  = c(rep("Chordata", 4), rep("Ochrophyta", 2), rep("Rotifera", 2),
-#'               "Chordata", "Ochrophyta", "Rotifera", "Chordata")
+#'   order = c(
+#'     "Perciformes", "Perciformes", "Perciformes", "Perciformes",
+#'     "Diatomea", "Diatomea", "Rotifera", "Rotifera",
+#'     "Perciformes", "Diatomea", "Rotifera", "Perciformes"
+#'   ),
+#'   class = c(
+#'     rep("Actinopteri", 4), rep("Bacillariophyceae", 2),
+#'     rep("Rotifera", 2), "Actinopteri", "Bacillariophyceae",
+#'     "Rotifera", "Actinopteri"
+#'   ),
+#'   phylum = c(
+#'     rep("Chordata", 4), rep("Ochrophyta", 2), rep("Rotifera", 2),
+#'     "Chordata", "Ochrophyta", "Rotifera", "Chordata"
+#'   )
 #' )
 #' grouped <- compute_adaptive_sampling_groups(obs, min_n = 3)
 #' table(grouped$sampling_group)
@@ -151,31 +157,34 @@
 #'   min_n       = 100
 #' )
 #' model_data <- prepare_model_dataframe(
-#'   occurrences_gridded, sampling_group_col = "sampling_group"
+#'   occurrences_gridded,
+#'   sampling_group_col = "sampling_group"
 #' )
 #' }
 #'
 #' @export
 compute_adaptive_sampling_groups <- function(data,
-                                              rank_system = c("order", "class", "phylum"),
-                                              min_n,
-                                              grid_col    = "grid_id",
-                                              habitat_col = NULL) {
-
+                                             rank_system = c("order", "class", "phylum"),
+                                             min_n,
+                                             grid_col = "grid_id",
+                                             habitat_col = NULL) {
   if (length(rank_system) < 1L) {
     stop("compute_adaptive_sampling_groups: 'rank_system' must have at least one rank.")
   }
   if (missing(min_n)) {
     stop("compute_adaptive_sampling_groups: 'min_n' is required -- there is no ",
-         "safe universal default across study systems. Supply the minimum ",
-         "viable typical per-site record count for YOUR effort scale (see ",
-         "the Details section of ?compute_adaptive_sampling_groups).",
-         call. = FALSE)
+      "safe universal default across study systems. Supply the minimum ",
+      "viable typical per-site record count for YOUR effort scale (see ",
+      "the Details section of ?compute_adaptive_sampling_groups).",
+      call. = FALSE
+    )
   }
   missing_cols <- setdiff(c(grid_col, rank_system, habitat_col), names(data))
   if (length(missing_cols) > 0L) {
-    stop("compute_adaptive_sampling_groups: missing required columns: ",
-         paste(missing_cols, collapse = ", "))
+    stop(
+      "compute_adaptive_sampling_groups: missing required columns: ",
+      paste(missing_cols, collapse = ", ")
+    )
   }
   if (!is.numeric(min_n) || length(min_n) != 1L || is.na(min_n) || min_n <= 0) {
     stop("compute_adaptive_sampling_groups: 'min_n' must be a single positive number.")
@@ -198,9 +207,9 @@ compute_adaptive_sampling_groups <- function(data,
     paste(data[[grid_col]], data[[habitat_col]], sep = "\r")
   }
 
-  group_label    <- rep(NA_character_, n)
-  below_min_flag <- rep(NA,            n)
-  unresolved     <- seq_len(n)
+  group_label <- rep(NA_character_, n)
+  below_min_flag <- rep(NA, n)
+  unresolved <- seq_len(n)
 
   .effort_metric <- function(idx) {
     mean(table(site_key[idx]))
@@ -208,7 +217,7 @@ compute_adaptive_sampling_groups <- function(data,
 
   for (depth in seq_along(rank_system)) {
     if (length(unresolved) == 0L) break
-    rank       <- rank_system[depth]
+    rank <- rank_system[depth]
     is_ceiling <- depth == length(rank_system)
 
     vals <- data[[rank]][unresolved]
@@ -223,7 +232,7 @@ compute_adaptive_sampling_groups <- function(data,
     # positional [[i]] indexing is unaffected by that and always retrieves
     # the right group.
     for (i in seq_along(idx_by_val)) {
-      idx     <- idx_by_val[[i]]
+      idx <- idx_by_val[[i]]
       val_chr <- names(idx_by_val)[i]
       # All rows in idx share one factor level (including the explicit NA
       # level), so checking the first element's rank value is sufficient.
@@ -243,7 +252,7 @@ compute_adaptive_sampling_groups <- function(data,
         } else {
           paste0(rank, ":", val_chr)
         }
-        group_label[idx]    <- label
+        group_label[idx] <- label
         below_min_flag[idx] <- !cleared
         unresolved <- setdiff(unresolved, idx)
       }
@@ -253,7 +262,7 @@ compute_adaptive_sampling_groups <- function(data,
     }
   }
 
-  data$sampling_group             <- group_label
+  data$sampling_group <- group_label
   data$sampling_group_below_min_n <- below_min_flag
   data
 }

@@ -77,7 +77,6 @@ MIN_SPECIES_FOR_TUTORIAL <- 3L
 SITE_HABITAT <- "Marine"
 
 if (DEBUG_MODE) {
-
   # ---- Tutorial example: continue from TaxaHabitat's Gadus checkpoint -------
   # This is the exact readRDS() line documented in assign_habitat_workflow.R's
   # Output block (its Section 6 saves occurrences_clean to
@@ -91,32 +90,39 @@ if (DEBUG_MODE) {
       dplyr::distinct(decimalLatitude, decimalLongitude) |>
       nrow()
     n_distinct_species <- dplyr::n_distinct(occurrences_clean$taxon_name)
-    message("DEBUG_MODE = TRUE -- loaded TaxaHabitat's checkpoint: ",
-            .habitat_checkpoint, " (", n_distinct_locs, " distinct location(s), ",
-            n_distinct_species, " distinct species).")
+    message(
+      "DEBUG_MODE = TRUE -- loaded TaxaHabitat's checkpoint: ",
+      .habitat_checkpoint, " (", n_distinct_locs, " distinct location(s), ",
+      n_distinct_species, " distinct species)."
+    )
     if (n_distinct_locs >= MIN_LOCS_FOR_TUTORIAL &&
-        n_distinct_species >= MIN_SPECIES_FOR_TUTORIAL) {
+      n_distinct_species >= MIN_SPECIES_FOR_TUTORIAL) {
       .have_broad_checkpoint <- TRUE
     } else if (n_distinct_species < MIN_SPECIES_FOR_TUTORIAL) {
-      message("  Checkpoint has fewer than MIN_SPECIES_FOR_TUTORIAL (",
-              MIN_SPECIES_FOR_TUTORIAL, ") distinct species -- a single-genus ",
-              "tutorial checkpoint (e.g. TaxaFetch/TaxaHabitat's genus-Gadus ",
-              "run) has no co-occurring-species signal for the biodiversity ",
-              "model to use. Falling back to a wider live GBIF fetch instead.")
+      message(
+        "  Checkpoint has fewer than MIN_SPECIES_FOR_TUTORIAL (",
+        MIN_SPECIES_FOR_TUTORIAL, ") distinct species -- a single-genus ",
+        "tutorial checkpoint (e.g. TaxaFetch/TaxaHabitat's genus-Gadus ",
+        "run) has no co-occurring-species signal for the biodiversity ",
+        "model to use. Falling back to a wider live GBIF fetch instead."
+      )
     } else {
-      message("  Checkpoint has fewer than MIN_LOCS_FOR_TUTORIAL (",
-              MIN_LOCS_FOR_TUTORIAL, ") distinct locations -- ",
-              "optimize_grid_size()'s min_distinct_locs = 20 default would ",
-              "very likely fall back or degenerate. Falling back to a wider ",
-              "live GBIF fetch instead.")
+      message(
+        "  Checkpoint has fewer than MIN_LOCS_FOR_TUTORIAL (",
+        MIN_LOCS_FOR_TUTORIAL, ") distinct locations -- ",
+        "optimize_grid_size()'s min_distinct_locs = 20 default would ",
+        "very likely fall back or degenerate. Falling back to a wider ",
+        "live GBIF fetch instead."
+      )
     }
   } else {
-    message("DEBUG_MODE = TRUE -- TaxaHabitat checkpoint not found at ",
-            .habitat_checkpoint, "; falling back to a wider live GBIF fetch.")
+    message(
+      "DEBUG_MODE = TRUE -- TaxaHabitat checkpoint not found at ",
+      .habitat_checkpoint, "; falling back to a wider live GBIF fetch."
+    )
   }
 
   if (!.have_broad_checkpoint) {
-
     # ---- Fallback: modest LIVE GBIF fetch, wider than the upstream tutorial's
     # narrow genus-Gadus box. Family Gadidae (cod family) over a bigger North
     # Atlantic box and a longer year range gives enough spatial + taxonomic
@@ -131,12 +137,12 @@ if (DEBUG_MODE) {
     # actual sampling domain, not copy these numbers.
     message("\n--- Fallback: live GBIF fetch (family Gadidae, wider North Atlantic box) ---")
 
-    .fallback_taxa   <- tibble::tibble(family = "Gadidae")
-    .fallback_lat    <- 60.0
-    .fallback_lon    <- 2.0
-    .fallback_radius <- 6.0      # degrees -- wider than the upstream 2-degree tutorial box
-    .fallback_years  <- "2000,2024"
-    .fallback_limit  <- 2000L
+    .fallback_taxa <- tibble::tibble(family = "Gadidae")
+    .fallback_lat <- 60.0
+    .fallback_lon <- 2.0
+    .fallback_radius <- 6.0 # degrees -- wider than the upstream 2-degree tutorial box
+    .fallback_years <- "2000,2024"
+    .fallback_limit <- 2000L
 
     .fallback_bbox <- TaxaFetch::make_bbox_wkt(
       lat        = .fallback_lat,
@@ -148,8 +154,10 @@ if (DEBUG_MODE) {
     .fallback_valid_keys <- .fallback_keys$usageKey[!is.na(.fallback_keys$usageKey)]
 
     if (length(.fallback_valid_keys) == 0) {
-      stop("Fallback GBIF key resolution failed -- no valid usageKey for ",
-           "family Gadidae. Check network access / rgbif availability.")
+      stop(
+        "Fallback GBIF key resolution failed -- no valid usageKey for ",
+        "family Gadidae. Check network access / rgbif availability."
+      )
     }
 
     .fallback_raw <- TaxaFetch::fetch_gbif_occurrences(
@@ -163,12 +171,14 @@ if (DEBUG_MODE) {
       TaxaFetch::filter_gbif_quality(
         max_coord_uncertainty    = 500,
         max_coord_decimal_places = 2,
-        require_species          = TRUE   # family-level query returns coarser ranks too
+        require_species          = TRUE # family-level query returns coarser ranks too
       )
 
     if (nrow(.fallback_filtered) == 0) {
-      stop("No GBIF records survived quality filtering in the fallback fetch -- ",
-           "widen .fallback_radius or .fallback_years.")
+      stop(
+        "No GBIF records survived quality filtering in the fallback fetch -- ",
+        "widen .fallback_radius or .fallback_years."
+      )
     }
 
     .fallback_occurrences <- TaxaFetch::stack_occurrences(.fallback_filtered)
@@ -203,17 +213,17 @@ if (DEBUG_MODE) {
       nrow(occurrences_clean), n_distinct_locs, n_distinct_species
     ))
     if (n_distinct_species < MIN_SPECIES_FOR_TUTORIAL) {
-      warning(sprintf(
-        "Fallback fetch returned only %d distinct species (< MIN_SPECIES_FOR_TUTORIAL = %d) -- ",
-        n_distinct_species, MIN_SPECIES_FOR_TUTORIAL
-      ), "the biodiversity model needs co-occurring species to estimate relative ",
-      "abundance. Widen .fallback_taxa/.fallback_radius/.fallback_years above.",
-      call. = FALSE)
+      warning(
+        sprintf(
+          "Fallback fetch returned only %d distinct species (< MIN_SPECIES_FOR_TUTORIAL = %d) -- ",
+          n_distinct_species, MIN_SPECIES_FOR_TUTORIAL
+        ), "the biodiversity model needs co-occurring species to estimate relative ",
+        "abundance. Widen .fallback_taxa/.fallback_radius/.fallback_years above.",
+        call. = FALSE
+      )
     }
   }
-
 } else {
-
   # ==========================================================================
   # >>> SWAP IN YOUR OWN DATA <<<
   # ==========================================================================
@@ -228,19 +238,24 @@ if (DEBUG_MODE) {
   #
   # Set DEBUG_MODE <- FALSE above and fill in the values here.
   # ==========================================================================
-  stop("DEBUG_MODE is FALSE but no real occurrences_clean object has been ",
-       "supplied. Edit the 'SWAP IN YOUR OWN DATA' block in this script.")
+  stop(
+    "DEBUG_MODE is FALSE but no real occurrences_clean object has been ",
+    "supplied. Edit the 'SWAP IN YOUR OWN DATA' block in this script."
+  )
 }
 
 # Output location for checkpoint files (see explicit-checkpoint pattern below)
-OUT_DIR    <- tempdir()
+OUT_DIR <- tempdir()
 OUT_PREFIX <- "tutorial_gadus"
 
-message(sprintf("NEEDS_SAMPLING_GROUP = %s -- %s", NEEDS_SAMPLING_GROUP,
-                if (NEEDS_SAMPLING_GROUP)
-                  "VARIANT B (per-sampling_group modelling) applies"
-                else
-                  "VARIANT A (single model across all species) applies"))
+message(sprintf(
+  "NEEDS_SAMPLING_GROUP = %s -- %s", NEEDS_SAMPLING_GROUP,
+  if (NEEDS_SAMPLING_GROUP) {
+    "VARIANT B (per-sampling_group modelling) applies"
+  } else {
+    "VARIANT A (single model across all species) applies"
+  }
+))
 
 # ==============================================================================
 # 1.  OPTIMIZE GRID SIZE
@@ -253,17 +268,21 @@ message("\n--- Step 1: Optimizing grid size ---")
 
 grid_opt <- TaxaExpect::optimize_grid_size(
   observation_data = occurrences_clean,
-  n_covariates     = 2L    # lat_r, lon_r (Section 4's covariates)
+  n_covariates     = 2L # lat_r, lon_r (Section 4's covariates)
 )
 
-message(sprintf("  best_grid = %.2f degrees (fallback_level = \"%s\")",
-                grid_opt$best_grid, grid_opt$fallback_level))
+message(sprintf(
+  "  best_grid = %.2f degrees (fallback_level = \"%s\")",
+  grid_opt$best_grid, grid_opt$fallback_level
+))
 message(grid_opt$explanation)
 if (grid_opt$fallback_level != "none") {
-  message("  NOTE: fallback_level != \"none\" -- minimum-data thresholds were ",
-          "not met at every resolution tried. This is expected for a tutorial-",
-          "sized dataset; real analyses should investigate before trusting ",
-          "the recommended grid.")
+  message(
+    "  NOTE: fallback_level != \"none\" -- minimum-data thresholds were ",
+    "not met at every resolution tried. This is expected for a tutorial-",
+    "sized dataset; real analyses should investigate before trusting ",
+    "the recommended grid."
+  )
 }
 
 # ---- Explicit checkpoint (not automatic) ------------------------------------
@@ -272,8 +291,10 @@ if (grid_opt$fallback_level != "none") {
 grid_opt_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_grid_opt.rds"))
 saveRDS(grid_opt, grid_opt_path)
 message(sprintf("  Saved: %s", grid_opt_path))
-message(sprintf("  To reuse without re-optimizing, paste:\n    grid_opt <- readRDS(\"%s\")",
-                grid_opt_path))
+message(sprintf(
+  "  To reuse without re-optimizing, paste:\n    grid_opt <- readRDS(\"%s\")",
+  grid_opt_path
+))
 
 # ==============================================================================
 # 2.  SNAP OCCURRENCES TO GRID CELLS
@@ -286,15 +307,19 @@ sites <- TaxaExpect::create_sites_from_grid(
   grid_size = grid_opt$best_grid
 )
 
-message(sprintf("  %d occurrence row(s) assigned to %d distinct grid cell(s).",
-                nrow(sites), length(unique(sites$grid_id))))
+message(sprintf(
+  "  %d occurrence row(s) assigned to %d distinct grid cell(s).",
+  nrow(sites), length(unique(sites$grid_id))
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 sites_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_sites.rds"))
 saveRDS(sites, sites_path)
 message(sprintf("  Saved: %s", sites_path))
-message(sprintf("  To reuse without re-gridding, paste:\n    sites <- readRDS(\"%s\")",
-                sites_path))
+message(sprintf(
+  "  To reuse without re-gridding, paste:\n    sites <- readRDS(\"%s\")",
+  sites_path
+))
 
 # ==============================================================================
 # 3.  MORAN BASIS -- SPATIAL AUTOCORRELATION COVARIATES
@@ -318,14 +343,16 @@ message(sprintf("  To reuse without re-gridding, paste:\n    sites <- readRDS(\"
 message("\n--- Step 3: Computing Moran eigenvector basis ---")
 
 .n_grid_cells <- dplyr::n_distinct(sites$grid_id)
-.moran_k      <- min(10L, .n_grid_cells - 1L)
+.moran_k <- min(10L, .n_grid_cells - 1L)
 
 .moran_basis <- if (.moran_k >= 1L) {
   tryCatch(
     TaxaExpect::compute_moran_basis(grid_ids = unique(sites$grid_id), k = .moran_k),
     error = function(e) {
-      message(sprintf("  compute_moran_basis() failed (%s) -- skipping Moran basis.",
-                      conditionMessage(e)))
+      message(sprintf(
+        "  compute_moran_basis() failed (%s) -- skipping Moran basis.",
+        conditionMessage(e)
+      ))
       NULL
     }
   )
@@ -344,19 +371,23 @@ if (!is.null(.moran_basis)) {
     "  No Moran eigenvector basis available for %d distinct grid cell(s). ",
     .n_grid_cells
   ))
-  message("  Skipping spatial-autocorrelation terms; Step 5's formula will use ",
-          "main_habitat/lat_r_s/lon_r_s terms only. This is expected when ",
-          "optimize_grid_size() returns a coarse fallback grid (see Step 1's ",
-          "fallback_level message) or when cells are too sparse to form a ",
-          "connected spatial network.")
+  message(
+    "  Skipping spatial-autocorrelation terms; Step 5's formula will use ",
+    "main_habitat/lat_r_s/lon_r_s terms only. This is expected when ",
+    "optimize_grid_size() returns a coarse fallback grid (see Step 1's ",
+    "fallback_level message) or when cells are too sparse to form a ",
+    "connected spatial network."
+  )
 }
 
 # ---- Explicit checkpoint ----------------------------------------------------
 sites_with_basis_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_sites_with_basis.rds"))
 saveRDS(sites, sites_with_basis_path)
 message(sprintf("  Saved: %s", sites_with_basis_path))
-message(sprintf("  To reuse without re-computing the Moran basis, paste:\n    sites <- readRDS(\"%s\")",
-                sites_with_basis_path))
+message(sprintf(
+  "  To reuse without re-computing the Moran basis, paste:\n    sites <- readRDS(\"%s\")",
+  sites_with_basis_path
+))
 
 # ==============================================================================
 # 4.  PREPARE MODEL DATAFRAME
@@ -418,8 +449,10 @@ message(sprintf("  model_data: %d row(s) (taxon x site x habitat).", nrow(model_
 model_data_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_model_data.rds"))
 saveRDS(model_data, model_data_path)
 message(sprintf("  Saved: %s", model_data_path))
-message(sprintf("  To reuse without re-preparing, paste:\n    model_data <- readRDS(\"%s\")",
-                model_data_path))
+message(sprintf(
+  "  To reuse without re-preparing, paste:\n    model_data <- readRDS(\"%s\")",
+  model_data_path
+))
 
 # ==============================================================================
 # 5.  SCREEN SPATIAL FORMULA FOR PARSIMONY
@@ -440,11 +473,13 @@ message("\n--- Step 5: Screening spatial formula ---")
 # when zero Moran columns existed) in an earlier version of this script.
 
 .n_moran_cols <- sum(grepl("^B[0-9]+$", names(model_data)))
-.moran_terms  <- if (.n_moran_cols > 0L) {
+.moran_terms <- if (.n_moran_cols > 0L) {
   sprintf("(0 + B%d | taxon_name)", seq_len(min(10L, .n_moran_cols)))
 } else {
-  message("  0 Moran eigenvector columns in model_data -- omitting spatial-",
-          "autocorrelation terms (see Step 3's message for why).")
+  message(
+    "  0 Moran eigenvector columns in model_data -- omitting spatial-",
+    "autocorrelation terms (see Step 3's message for why)."
+  )
   character(0)
 }
 
@@ -458,13 +493,15 @@ message("\n--- Step 5: Screening spatial formula ---")
 .habitat_term <- if (.n_habitat_levels >= 2L) {
   "main_habitat"
 } else {
-  message(sprintf(
-    "  Only %d distinct main_habitat value(s) in model_data -- omitting the ",
-    .n_habitat_levels
-  ), "main_habitat fixed effect (R cannot fit contrasts on a single-level ",
-  "factor). Expected for this tutorial's single-family fallback data; a real ",
-  "multi-habitat community survey would retain this term -- see TaxaExpect/",
-  "CLAUDE.md's recommended formula.")
+  message(
+    sprintf(
+      "  Only %d distinct main_habitat value(s) in model_data -- omitting the ",
+      .n_habitat_levels
+    ), "main_habitat fixed effect (R cannot fit contrasts on a single-level ",
+    "factor). Expected for this tutorial's single-family fallback data; a real ",
+    "multi-habitat community survey would retain this term -- see TaxaExpect/",
+    "CLAUDE.md's recommended formula."
+  )
   character(0)
 }
 
@@ -483,8 +520,8 @@ full_formula <- stats::as.formula(
 message(sprintf("  Full formula: %s", deparse(full_formula)))
 
 screened <- TaxaExpect::screen_spatial_formula(
-  data          = model_data,
-  formula_full  = full_formula,
+  data = model_data,
+  formula_full = full_formula,
   effort_threshold = 10L
 )
 
@@ -501,8 +538,10 @@ message(sprintf("  Recommended formula: %s", deparse(recommended_formula)))
 screened_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_screened.rds"))
 saveRDS(screened, screened_path)
 message(sprintf("  Saved: %s", screened_path))
-message(sprintf("  To reuse without re-screening, paste:\n    screened <- readRDS(\"%s\")",
-                screened_path))
+message(sprintf(
+  "  To reuse without re-screening, paste:\n    screened <- readRDS(\"%s\")",
+  screened_path
+))
 
 # ==============================================================================
 # 6.  FIT THE FINAL BIODIVERSITY MODEL
@@ -527,8 +566,10 @@ print(mod)
 mod_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_mod.rds"))
 saveRDS(mod, mod_path)
 message(sprintf("  Saved: %s", mod_path))
-message(sprintf("  To reuse without re-fitting, paste:\n    mod <- readRDS(\"%s\")",
-                mod_path))
+message(sprintf(
+  "  To reuse without re-fitting, paste:\n    mod <- readRDS(\"%s\")",
+  mod_path
+))
 
 # ==============================================================================
 # 7.  UNDETECTED DIVERSITY -- TIER 3 PROXY PRIORS
@@ -545,15 +586,19 @@ priors_undetected <- TaxaExpect::generate_undetected_diversity(
   taxonomy  = occurrences_clean
 )
 
-message(sprintf("  %d proxy prior row(s) generated (singleton mirrors + global floor).",
-                nrow(priors_undetected)))
+message(sprintf(
+  "  %d proxy prior row(s) generated (singleton mirrors + global floor).",
+  nrow(priors_undetected)
+))
 
 # ---- Explicit checkpoint ----------------------------------------------------
 priors_undetected_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_priors_undetected.rds"))
 saveRDS(priors_undetected, priors_undetected_path)
 message(sprintf("  Saved: %s", priors_undetected_path))
-message(sprintf("  To reuse without re-generating, paste:\n    priors_undetected <- readRDS(\"%s\")",
-                priors_undetected_path))
+message(sprintf(
+  "  To reuse without re-generating, paste:\n    priors_undetected <- readRDS(\"%s\")",
+  priors_undetected_path
+))
 
 # ==============================================================================
 # 8.  DERIVE THE FOCAL SITE'S GRID_ID (DYNAMIC -- DO NOT HARDCODE)
@@ -584,19 +629,25 @@ SITE_LON <- 2.0
 SITE_GRID_ID <- sites |>
   dplyr::filter(main_habitat == SITE_HABITAT) |>
   dplyr::group_by(grid_id) |>
-  dplyr::summarise(.lat = mean(decimalLatitude), .lon = mean(decimalLongitude),
-                   .groups = "drop") |>
+  dplyr::summarise(
+    .lat = mean(decimalLatitude), .lon = mean(decimalLongitude),
+    .groups = "drop"
+  ) |>
   dplyr::mutate(.dist2 = (.lat - SITE_LAT)^2 +
-                         ((.lon - SITE_LON) * cos(SITE_LAT * pi / 180))^2) |>
+    ((.lon - SITE_LON) * cos(SITE_LAT * pi / 180))^2) |>
   dplyr::slice_min(.dist2, n = 1, with_ties = FALSE) |>
   dplyr::pull(grid_id)
 
 if (length(SITE_GRID_ID) == 0) {
-  stop("No grid_id found for SITE_HABITAT = \"", SITE_HABITAT, "\" in sites. ",
-       "Check that SITE_HABITAT matches a value actually present in main_habitat.")
+  stop(
+    "No grid_id found for SITE_HABITAT = \"", SITE_HABITAT, "\" in sites. ",
+    "Check that SITE_HABITAT matches a value actually present in main_habitat."
+  )
 }
-message(sprintf("  SITE_GRID_ID = \"%s\" (most-frequent grid cell at habitat \"%s\").",
-                SITE_GRID_ID, SITE_HABITAT))
+message(sprintf(
+  "  SITE_GRID_ID = \"%s\" (most-frequent grid cell at habitat \"%s\").",
+  SITE_GRID_ID, SITE_HABITAT
+))
 
 # KNOWN FOOTGUN (distinct from the undetected-diversity one below): new_sites
 # for generate_full_priors() must be SITE-level -- one row per grid_id x
@@ -616,11 +667,15 @@ message(sprintf("  SITE_GRID_ID = \"%s\" (most-frequent grid cell at habitat \"%
 
 new_sites_focal <- sites |>
   dplyr::filter(grid_id == SITE_GRID_ID) |>
-  dplyr::distinct(grid_id, lat_r, lon_r, main_habitat,
-                  dplyr::across(dplyr::all_of(.moran_cols)))
+  dplyr::distinct(
+    grid_id, lat_r, lon_r, main_habitat,
+    dplyr::across(dplyr::all_of(.moran_cols))
+  )
 
-message(sprintf("  new_sites_focal: %d distinct site-habitat row(s) (not taxon-expanded).",
-                nrow(new_sites_focal)))
+message(sprintf(
+  "  new_sites_focal: %d distinct site-habitat row(s) (not taxon-expanded).",
+  nrow(new_sites_focal)
+))
 
 # ==============================================================================
 # 9.  GENERATE FULL PRIOR TABLE
@@ -638,8 +693,10 @@ taxaexpect_priors <- TaxaExpect::generate_full_priors(
   undetected = priors_undetected
 )
 
-message(sprintf("  %d prior row(s) generated for SITE_GRID_ID = \"%s\".",
-                nrow(taxaexpect_priors), SITE_GRID_ID))
+message(sprintf(
+  "  %d prior row(s) generated for SITE_GRID_ID = \"%s\".",
+  nrow(taxaexpect_priors), SITE_GRID_ID
+))
 
 # ---- KNOWN FOOTGUN: filter the undetected/global-floor rows by HABITAT ONLY,
 # never by grid_id. generate_undetected_diversity()'s singleton-mirror rows
@@ -651,9 +708,11 @@ message(sprintf("  %d prior row(s) generated for SITE_GRID_ID = \"%s\".",
 # below is a defensive sanity check, not a re-filter -- do not "fix" this by
 # adding a grid_id filter here.
 n_singleton_mirrors <- sum(taxaexpect_priors$undetected_type == "singleton_mirror",
-                           na.rm = TRUE)
+  na.rm = TRUE
+)
 n_global_floor <- sum(taxaexpect_priors$undetected_type == "global_floor",
-                      na.rm = TRUE)
+  na.rm = TRUE
+)
 message(sprintf(
   "  Sanity check -- undetected rows present: %d singleton_mirror, %d global_floor.",
   n_singleton_mirrors, n_global_floor
@@ -668,13 +727,16 @@ message(sprintf(
 # then failed to survive into taxaexpect_priors -- that combination is the
 # actual signature of the grid_id footgun recurring.
 n_singleton_mirrors_upstream <- sum(priors_undetected$undetected_type == "singleton_mirror",
-                                    na.rm = TRUE)
+  na.rm = TRUE
+)
 if (n_singleton_mirrors == 0 && n_singleton_mirrors_upstream > 0) {
-  warning("priors_undetected had ", n_singleton_mirrors_upstream, " singleton_mirror ",
-          "row(s), but none survived into taxaexpect_priors -- if you changed this ",
-          "script to re-filter by grid_id anywhere downstream, that is almost ",
-          "certainly the cause. Filter by main_habitat only (main_habitat == ",
-          "SITE_HABITAT | is.na(main_habitat)), never by grid_id.")
+  warning(
+    "priors_undetected had ", n_singleton_mirrors_upstream, " singleton_mirror ",
+    "row(s), but none survived into taxaexpect_priors -- if you changed this ",
+    "script to re-filter by grid_id anywhere downstream, that is almost ",
+    "certainly the cause. Filter by main_habitat only (main_habitat == ",
+    "SITE_HABITAT | is.na(main_habitat)), never by grid_id."
+  )
 }
 
 # Example of the CORRECT downstream filter pattern (for TaxaAssign::join_priors()
@@ -689,8 +751,10 @@ if (n_singleton_mirrors == 0 && n_singleton_mirrors_upstream > 0) {
 taxaexpect_priors_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_taxaexpect_priors.rds"))
 saveRDS(taxaexpect_priors, taxaexpect_priors_path)
 message(sprintf("  Saved: %s", taxaexpect_priors_path))
-message(sprintf("  To reuse without re-running this workflow, paste:\n    taxaexpect_priors <- readRDS(\"%s\")",
-                taxaexpect_priors_path))
+message(sprintf(
+  "  To reuse without re-running this workflow, paste:\n    taxaexpect_priors <- readRDS(\"%s\")",
+  taxaexpect_priors_path
+))
 
 # ---- Interactive exploration (run by hand -- NOT via source()) -------------
 # plot_theta_map_interactive() opens a Shiny/leaflet gadget: a heatmap of

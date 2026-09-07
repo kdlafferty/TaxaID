@@ -16,7 +16,6 @@
 #' @noRd
 
 .habitat_palette <- function(hab_levels, colors = NULL) {
-
   n_hab <- length(hab_levels)
 
   if (!is.null(colors)) {
@@ -28,7 +27,7 @@
         paste(missing_hab, collapse = ", "),
         call. = FALSE
       )
-      extra  <- stats::setNames(rep("#aaaaaa", length(missing_hab)), missing_hab)
+      extra <- stats::setNames(rep("#aaaaaa", length(missing_hab)), missing_hab)
       colors <- c(colors, extra)
     }
     return(colors[hab_levels])
@@ -36,18 +35,18 @@
 
   # Default 12-colour ecological palette
   eco_pal <- c(
-    "#2166ac",  # deep blue      -- Marine
-    "#74add1",  # mid blue       -- Marine Neritic / Freshwater
-    "#4dac26",  # green          -- Terrestrial / Forest
-    "#d6604d",  # terracotta     -- Rocky / Arid
-    "#8073ac",  # purple         -- Subterranean / Cave
-    "#f4a582",  # peach          -- Estuarine / Coastal
-    "#1b7837",  # dark green     -- Woodland / Savanna
-    "#bf812d",  # brown          -- Grassland / Desert
-    "#35978f",  # teal           -- Wetlands
-    "#de77ae",  # pink           -- Artificial
-    "#fdbf6f",  # amber          -- Introduced Vegetation
-    "#969696"   # grey           -- Other / Unknown
+    "#2166ac", # deep blue      -- Marine
+    "#74add1", # mid blue       -- Marine Neritic / Freshwater
+    "#4dac26", # green          -- Terrestrial / Forest
+    "#d6604d", # terracotta     -- Rocky / Arid
+    "#8073ac", # purple         -- Subterranean / Cave
+    "#f4a582", # peach          -- Estuarine / Coastal
+    "#1b7837", # dark green     -- Woodland / Savanna
+    "#bf812d", # brown          -- Grassland / Desert
+    "#35978f", # teal           -- Wetlands
+    "#de77ae", # pink           -- Artificial
+    "#fdbf6f", # amber          -- Introduced Vegetation
+    "#969696" # grey           -- Other / Unknown
   )
 
   if (n_hab <= length(eco_pal)) {
@@ -73,10 +72,10 @@
 #' @noRd
 
 .he <- function(x) {
-  x <- gsub("&",  "&amp;",  as.character(x), fixed = TRUE)
-  x <- gsub("<",  "&lt;",   x,               fixed = TRUE)
-  x <- gsub(">",  "&gt;",   x,               fixed = TRUE)
-  x <- gsub("\"", "&quot;", x,               fixed = TRUE)
-  x <- gsub("'",  "&#39;",  x,               fixed = TRUE)
+  x <- gsub("&", "&amp;", as.character(x), fixed = TRUE)
+  x <- gsub("<", "&lt;", x, fixed = TRUE)
+  x <- gsub(">", "&gt;", x, fixed = TRUE)
+  x <- gsub("\"", "&quot;", x, fixed = TRUE)
+  x <- gsub("'", "&#39;", x, fixed = TRUE)
   x
 }
