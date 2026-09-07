@@ -41,7 +41,109 @@
 # later), as were the two review docs themselves and several genuinely-still-open design
 # docs.
 #
-# Last updated: 2026-09-04, later (Opus 5 -- PER-GROUP CURVE PRICING BUILT, closing open
+# Previous update, 2026-09-06, later still (Sonnet 5 -- three follow-ups to the
+# review_assignments() rename entry directly below. (1) REAL GAP FOUND: the rename sweep
+# had been scoped to ~/My Drive/Rscripts/eDNA/, missing GreatLakes2023_ConsensusWorkflow.R
+# entirely -- it lives at ~/My Drive/Stats and Data/GreatLakes data/, outside eDNA/ (same
+# "lives outside eDNA/" trap [[project_greatlakes_workflow_debug_notes]] already
+# documents). Fixed the same way as the other 7 files (backed up as
+# *.bak_pre_llm_column_rename, parses cleanly); it's the 8th and last real production
+# workflow needing this rename, not 7. (2) Both real review_assignments() caches that had
+# actually been run since the 2026-09-04 cache_dir feature shipped (GreatLakes, 72 entries;
+# PtCon 18S, 1,731 entries) were pruned via TaxaFlag::taxaflag_clear_cache() -- every entry
+# was orphaned by the rename's own taxa_info-hash mechanism (new has_unprecedented/
+# has_indistinguishable columns changed every cache key), so nothing live was discarded.
+# (3) A small, comment/heading-only cleanup pass on 3 files (12S_single_site,
+# 12S_multi_site, GreatLakes -- each backed up as *.bak_pre_section_heading_cleanup): added
+# an explicit "10. FILTER + OUTPUT" section banner + Step message right after the
+# review_assignments() save point, matching the convention 18S_2 and both Mugu workflows
+# already use (those three previously folded the identical filter-and-write logic into an
+# unlabeled tail alongside the session-metadata/report code). Two heading-inconsistency
+# HYPOTHESES raised earlier the same day were investigated and found NOT to be real:
+# GreatLakes' "6. MATCH STANDARDISATION (TaxaMatch)" heading looked mismatched against its
+# actual "Joining contaminant flags for provenance" content, but the step's own inline
+# comment already explains this correctly (standardisation genuinely happened at Step 1 for
+# this dataset; Step 6 is a deliberately-thin provenance join, not drift) -- left untouched,
+# per [[feedback_verify_purpose_before_flagging]]. Several apparently-"unlabeled" `# ===`
+# dividers (GreatLakes, PtCon 12S multi-site) turned out to be real, sensibly-titled
+# sub-sections (`1.5`, `2.5`, `8j`, `8k`) that a too-strict header regex simply failed to
+# match during the initial survey -- not orphaned markers, no fix needed.
+#
+# TWO REAL FINDINGS surfaced by this pass, deliberately NOT fixed here (more than cosmetic,
+# left for explicit decision): (a) both `inst/TaxaID_Workflow_Template_TEST.R` and
+# `PtConceptionWorkflow_12S_multi_site.R` still filter on the literal column name
+# `lab_contaminant_risk` -- a name `flag_contaminant()` stopped emitting on 2026-07-24 (see
+# this file's own Recent Breaking Changes table), replaced by the unified
+# `validity_flag`/`observation_validity` schema. Run as written today, both filters would
+# error (column not found) rather than silently misbehave. (b) `inst/
+# TaxaID_Workflow_Template_TEST.R` (the generic, package-level template) has no explicit
+# "1. LOAD INPUT DATA" section at all -- it jumps straight from "0. CONFIGURATION" to
+# "2. CONTAMINANT DETECTION" -- and has zero `message("\n--- Step N: ...")` console
+# announcements anywhere, unlike every real production workflow and unlike
+# `PtConception/TaxaID_eDNA_Workflow_Template.R` (a separate, more evolved, clearly
+# actively-maintained site template the 3 PtConception production scripts were built
+# from). This raises a real question -- is the generic template stale/abandoned relative
+# to the PtCon one? -- that the user asked to defer to a dedicated audit rather than decide
+# ad hoc. See `ecosystem_docs/REENTRY_PROMPT_workflow_structure_audit.md` for the full
+# write-up and the wider "outline every real workflow, cross-reference against TaxaWizard's
+# graph" plan this pass fed into.
+#
+# STEP-NUMBERING FAMILIES (recorded here so a future reader doesn't mistake a real
+# structural difference for drift): PtCon 12S/18S_2 + GreatLakes share one 0-10 scheme
+# (single-marker). Both Mugu workflows use a longer, genuinely different scheme (per-marker
+# scored likelihoods -> per-marker Round 1 -> cross-marker prior update -> Round 2 ->
+# TaxaFlag -> Filter+Output) because they score more than one marker per observation and
+# combine posteriors across markers -- MuguFishWorkflow.R is 0-11, MuguWilderFishWorkflow.R
+# is 0-12 (one extra step: it builds per-marker match objects itself, where MuguFishWorkflow
+# loads them pre-built). "Step 9" is TaxaFlag review in the single-marker family and
+# "cross-marker prior update" in Mugu's -- a real difference in what each pipeline does, not
+# a numbering bug to reconcile.
+# Previous update, 2026-09-06, later (Sonnet 5 -- TaxaFlag::review_assignments() column rename +
+# skepticism gate + deterministic disagreement flag, prompted by a real, surprising output
+# row (Musculus discors: posterior=1 forced by single-candidate normalisation against a
+# ~6.5e-6 prior, pipeline flags both unprecedented AND indistinguishable, yet
+# geographic_plausibility came back "likely" with no legible justification). Three-part
+# fix, all in TaxaFlag: (1) the four LLM-sourced output columns renamed with an llm_ prefix
+# (llm_habitat_plausibility/llm_geographic_plausibility/llm_scope_plausibility/
+# llm_contamination_risk) so a "likely"/"unlikely" verdict's SOURCE is legible from the
+# column name alone, not just documentation -- these are independent LLM judgments, never
+# derived from or gated by any pipeline value; (2) a new consensus-scope skepticism
+# GUIDELINES bullet requires the LLM to cite specific site-relevant evidence before rating
+# a taxon flagged "unprecedented" (no local record) and/or "indistinguishable" (a
+# confusable relative scores equally well) as likely/possible, declared a hard requirement
+# (the one exception to review_assignments()'s own "bracket informs, never overrides" rule);
+# (3) a new deterministic, code-computed geographic_disagreement_basis column fires
+# whenever the LLM rates likely/possible despite either ground (OR, per the user's explicit
+# direction) -- built because an LLM cannot be trusted to reliably self-flag its own
+# disagreement in prose (this ecosystem's own trusted_rank removal precedent). Also widened
+# the pipeline-context prompt formatter so near-zero priors render in scientific notation
+# instead of masking as "0.00" under %.2f. All 7 real external eDNA workflow scripts
+# (PtConception x4, Mugu x2, the shared Template) updated for the rename, backed up first
+# (*.bak_pre_llm_column_rename); TaxaFlag devtools::test() 456/456, check() 0/0/0,
+# reinstalled. See TaxaFlag/CLAUDE.md's own top session note for the full record.
+# Previous update, 2026-09-06 (Sonnet 5 -- the by_genus fix (below) also wired into
+# PtConceptionWorkflow_18S_2_single_site.R, the real 1,412-genus dataset that motivated
+# the whole redesign, the same day the user stopped that workflow's own live 5+-hour
+# whole-set alignment run via RStudio. Wired on the strength of the Mugu/PtCon-12S
+# validation, NOT independently re-measured at 18S's own much larger scale (a live
+# 1,412-genus NCBI fetch needed for that was flagged as itself a long, historically-
+# throttled operation and deliberately not run this session, per the user's choice). See
+# TaxaLikely/CLAUDE.md's own top note for the full record.
+# Previous update, 2026-09-05/06 (Sonnet 5, branch kernel-priors -- E1's per-genus alignment
+# redesign (fable_ecosystem_review_2026-09-05.md) CLOSED OUT: TaxaLikely::
+# build_sequence_matrix(by_genus=) went through a full false-start-and-recovery arc --
+# a representative-only first version validated H2/H3 well but measurably inflated H1's
+# "gap" discriminator for non-representative sequences; the obvious fix (give every genus's
+# alignment a copy of every OTHER genus's representative) fixed the statistics but was found,
+# on real data, to cost MORE than whole-set alignment and get WORSE as genus count grows
+# (exactly backwards); a capped version (`max_foreign_reps_per_genus`, default 20) restored
+# the win (~2-2.7x faster than whole-set on two independent real datasets, 88 and 221 genera)
+# while roughly halving the gap-inflation. Package default kept `FALSE` (by_genus=TRUE hard-
+# requires a genus column, unsafe as a universal default); wired explicitly instead into
+# MuguWilderFishWorkflow.R and PtConceptionWorkflow_12S_single_site.R, the two real datasets
+# it was validated against. Full arc + exact numbers in TaxaLikely/CLAUDE.md's own top note.
+# TaxaLikely devtools::test() 1075/0, check 0/0/0, reinstalled.
+# Previous update, 2026-09-04, later (Opus 5 -- PER-GROUP CURVE PRICING BUILT, closing open
 # decision #2 of ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md (read its
 # "2026-09-04 UPDATE" section). apply_undetected_evidence(pricing = "curve") used to REFUSE a
 # multi-group kernel fit; it now prices each evidence taxon at its OWN sampling group's
@@ -3425,3 +3527,4 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-09-04 (Opus 5) | Four additive diagnostic columns: `query_len_submitted`, `query_trim_path`, `n_excluded_same_batch`, `n_excluded_not_species_resolved`; `.trim_queries_to_amplicon()` gains `attr(out, "trimmed")` | TaxaMatch | **Additive; NO cache discarded and nothing re-BLASTed** (they ride the allowlist above and are `NA` on existing rows until an accession is re-evaluated). The screen's audit trail: what was actually submitted (`query_len_submitted`), which rescue produced it (`query_trim_path`: `"as_deposited"`/`"primer_match"`/`"feature_table"`), and why a BLAST hit did not become a voting partner. The two exclusion counts PARTITION the excluded hits, so `n_top_matches_available` minus both equals the survivors. Answers a question that had to be re-derived by hand repeatedly: a zero-partner accession previously read `n_independent_top_matches == 0` and nothing else, making "BLAST found nothing" indistinguishable from "BLAST returned a full slate and every hit was the accession's own submission batch". Deliberately per-accession rather than extra pair-cache rows, since the pair sidecar is what `refine_reference_verdicts()` votes over and disqualified partners must not risk being counted as voters. |
 | 2026-09-04 (Opus 5) | `apply_undetected_evidence(pricing = "curve")` accepts a MULTI-GROUP kernel fit and prices per group; new `sampling_group`/`group_fallback`/`min_group_n_eff`/`min_group_f1`/`cap_at_singleton`; new `sampling_group`/`pricing_basis` output columns; `generate_undetected_diversity()` scales singleton mirrors by their own group's `n_eff` | TaxaExpect | **Additive + a behaviour change on a path that previously ERRORED.** Closes open decision #2 of the kernel budget/pricing re-entry doc: a multi-group fit used to be refused outright ("per-group curve pricing is not wired up yet"), and is now the supported path -- each evidence taxon is priced at its own sampling group's Good-Turing budget, justified by the 1859x per-group spread the 18S diagnostic measured. Group assignment is NEVER inferred from taxonomy (an unassigned taxon errors with guidance): the classification that built the occurrence pool's groups lives in the caller's workflow, and a wrong group mis-prices silently. Three guards, each of which fires on the real 10-group PtConception 18S fit -- support (`min_group_n_eff`/`min_group_f1`, which stops a 27-effective-record group pricing an unseen plant at 2.1% of its own community), a singleton cap (binds exactly when `f1 < 2*f2`, i.e. real zooplankton priced 4.7x ABOVE a species seen once; deliberately NOT the open `mass/f1` decision, which binds the other way), and a group-wise pooled-qualifying fallback that never re-pools records. **SINGLE-GROUP FITS ARE BYTE-IDENTICAL** -- verified old-vs-new on the real GreatLakes checkpoint at max \|delta\| = 0 on alpha/beta/theta_mean, so the Lamar-validated GL result does not move. Second real bug fixed alongside: `generate_undetected_diversity()`'s kernel adapter divided every singleton mirror by the POOLED `n_eff`, understating each group's mirrors by 1.86x (fishes) to 4295x (terrestrial arthropods) on a multi-group fit. `PtConceptionWorkflow_18S_2_single_site.R` wired (`WATCH_SAMPLING_GROUP <- "fishes"`, 1.26x the pooled price); domestic/food deliberately stays on the pooled fit. `devtools::test()` 1018/0, `devtools::check()` 0/0/0. |
 | 2026-09-05 (Opus 5) | `download_gbif_occurrences()`: zip integrity verification + retry, self-healing cache hit, extraction warning promoted to error, `allow_prompts = FALSE` (NO blocking menus by default), `prompt_mb`, `cache_prompt_mb`, `keep_zip`; `check_geographic_outliers()`: `candidate_taxa`/`candidate_scope`/`verdict_cache`, routed through `get_gbif_occurrences()`; `taxafetch_clear_cache(zips_only=)` | TaxaFetch | **Mostly additive; two real behaviour changes.** (a) **No prompt blocks any more.** `utils::menu()` reads stdin, and RStudio queues a sourced script's remaining lines as console input -- on 2026-09-04 a cache prompt consumed ~600 lines of a live workflow as menu answers, silently swallowing them so they never executed (the GBIF download had already succeeded). `interactive()` cannot distinguish a human from the editor, so gating on it does not help. Every decision is now REPORTED with the command to act on it; pass `allow_prompts = TRUE` only when calling by hand. Same hazard this package already documented for `readline()` in `TaxaMatch::group_observations_by_bbox()`. (b) **`check_geographic_outliers()` can now be scoped to assignable taxa.** `candidate_taxa = NULL` keeps the old full sweep, so nothing breaks silently, but every workflow now passes it: a family-derived occurrence pool is ~20x wider than its species-level candidates (387 of 7,392 at PtCon 18S), and the unscoped per-key global fetch earned a GBIF rate-limit block at 360/829 keys. Real reduction 2,683 -> 591 rare species. Also: a truncated download is no longer cached as complete (127,733,417 of 130,577,434 declared bytes, which then failed on every re-run); the global fetch no longer inherits a `limit = 10000` cap that truncated the reference cloud by return order; verdicts are cached instead of the raw global cloud; and `keep_zip = FALSE` + `zips_only` address the fact that 38 zips held 17.0 GB against 52 MB for every other cache file combined. `devtools::test()` 737/2 (both pre-existing CoordinateCleaner environment failures). |
+| 2026-09-06 (Sonnet 5) | `review_assignments()`: `habitat_plausibility`/`geographic_plausibility`/`scope_plausibility`/`contamination_risk` -> `llm_habitat_plausibility`/`llm_geographic_plausibility`/`llm_scope_plausibility`/`llm_contamination_risk`; new `consensus_plausibility_col`/`consensus_discrimination_col` params (defaults `"consensus_plausibility"`/`"consensus_discrimination"`); new `geographic_disagreement_basis` output column | TaxaFlag | **Breaking rename + additive.** All four renamed columns are independent LLM judgments, never derived from or gated by the pipeline's own values -- the old bare names read as if they might be pipeline output, which is what made a real surprising case (an LLM rating a taxon "likely" despite a ~6.5e-6 prior and both `unprecedented`+`indistinguishable` pipeline flags) hard to trace. The two new params gate a consensus-scope skepticism GUIDELINES bullet (LLM must cite specific evidence or default to "unlikely" for a flagged taxon); `geographic_disagreement_basis` is a deterministic, code-computed column (not derived from `review_comment`, which an LLM isn't guaranteed to populate) that fires whenever `llm_geographic_plausibility %in% c("likely","possible")` despite either ground (`"unprecedented"`/`"indistinguishable"`/`"unprecedented+indistinguishable"`, `NA` otherwise). The LLM's own JSON response schema is unchanged -- only the final output column names carry the prefix. `report_flags()`'s contaminant-detection regex updated to also match `llm_contamination_risk`; `review_spatial_context()`'s AI-review panel updated; all 7 real external eDNA workflow scripts (PtConception x4, Mugu x2, the shared Template) updated, backed up first (`*.bak_pre_llm_column_rename`). `devtools::test()` 456/456, `devtools::check()` 0/0/0, reinstalled. See `TaxaFlag/CLAUDE.md`'s own top session note. |
