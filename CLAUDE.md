@@ -1,6 +1,46 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
+# Last updated: 2026-09-07 (Sonnet 5 -- CLOSED, pre-publication: reconciled a third,
+# separate dormant Claude Code session's uncommitted work (idle since 2026-09-05) across
+# TaxaAssign/TaxaExpect/TaxaLikely/TaxaMatch, implementing most of the
+# fable_ecosystem_review_2026-09-05.md findings (A1, A2, A3, A4, B5, C, D2, E1's screening
+# doctrine) plus TaxaExpect's own kernel-budget open decision #1 (mass/f1, not
+# mass/chao_missing). Verified clean on all four packages (devtools::test()/check(), 0
+# failures, 0 errors/warnings) before committing as four separate package commits, each
+# reviewed line-by-line, not trusted blind. Then closed B2, the review's one remaining
+# substantive item, from real evidence rather than picking the cheap default: the
+# committed veto-bound cap (the review's own "at minimum" floor) reproduces the review's
+# exact worked example correctly (uncapped w1 = 0.3298 -> capped 0.05, a 6.6x reduction,
+# matching the review's own numbers to the digit -- diagnostics/
+# b2_mixture_update_veto_cap_check.R) AND held up on a fresh, full real GreatLakes
+# production run (2792 real mixture-row updates, sum(prior_mix_w) 110 -> 386) with a
+# held-out Lamar validation matching or beating the established 2026-08-31 curve-pricing
+# benchmark (precision 0.8527 vs 0.853, co-detections 602 vs 594, unique-species
+# intersection 29 vs 28, overconfidence 1/1081 both times) -- no degradation despite
+# substantial real w-inflation. A structural finding sharpened WHY: the cap never actually
+# fired on that run, because GreatLakes now runs curve pricing and `prior_mix_veto_bound`
+# is only ever non-NA under blend pricing -- but curve pricing has a STRONGER built-in
+# guarantee (`theta = w * theta_present`, pinned to the singleton mean, so an elevated
+# species' theta cannot exceed a genuinely-observed native's regardless of w) that makes
+# the whole failure class structurally impossible, not just capped. The deeper level-aware
+# redesign (support-weighted-quantile success rate, or n_observations-scaled trials) is
+# NOT built -- a closed decision, not deferred, made explicitly because this is a final
+# pre-publication screen with no opportunity to revisit. See
+# `ecosystem_docs/fable_ecosystem_review_2026-09-05.md`'s own B2 "Resolved" section for
+# the full record.
+#
+# Also this session: cleaned up `ecosystem_docs/` (63 files -> 25 + 2 deliberate archive
+# subdirs), removing closed REENTRY_PROMPT design threads and one-time April-July 2026
+# audit reports whose findings were never referenced again by any later session, and
+# relocating 2 copyrighted journal PDFs + a supplementary .docx + an unrelated personal
+# HTML file out of this public repo entirely (to a sibling, non-git
+# `TaxaID_reference_material/` directory) -- each removal individually verified as
+# closed/superseded before deleting, not a blanket sweep. REENTRY_PROMPT_
+# workflow_structure_audit.md kept deliberately (explicit user request, to be implemented
+# later), as were the two review docs themselves and several genuinely-still-open design
+# docs.
+#
 # Last updated: 2026-09-04, later (Opus 5 -- PER-GROUP CURVE PRICING BUILT, closing open
 # decision #2 of ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md (read its
 # "2026-09-04 UPDATE" section). apply_undetected_evidence(pricing = "curve") used to REFUSE a
