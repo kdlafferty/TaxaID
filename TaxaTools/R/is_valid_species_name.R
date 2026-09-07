@@ -20,6 +20,7 @@ is_plausible_binomial <- function(x) {
   grepl("^[A-Z][a-z]+ [a-z]", x) &
     !grepl(
       "\\bsp\\.?\\s*$|\\bsp\\b|\\bcf\\.\\s|\\baff\\.\\s|uncultured|environmental|metagenom",
-      x, ignore.case = TRUE, perl = TRUE
+      x,
+      ignore.case = TRUE, perl = TRUE
     )
 }

@@ -8,11 +8,16 @@
 # skip_if_offline().
 skip_if_verifier_down <- function() {
   testthat::skip_if_offline()
-  reachable <- tryCatch({
-    resp <- httr::HEAD("https://verifier.globalnames.org/api/v1/data_sources",
-                        httr::timeout(5))
-    httr::status_code(resp) < 500
-  }, error = function(e) FALSE)
+  reachable <- tryCatch(
+    {
+      resp <- httr::HEAD(
+        "https://verifier.globalnames.org/api/v1/data_sources",
+        httr::timeout(5)
+      )
+      httr::status_code(resp) < 500
+    },
+    error = function(e) FALSE
+  )
   if (!reachable) {
     testthat::skip("verifier.globalnames.org is unreachable from this runner")
   }

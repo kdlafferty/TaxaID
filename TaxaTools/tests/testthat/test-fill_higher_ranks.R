@@ -10,7 +10,7 @@ library(testthat)
 # =============================================================================
 
 .local_src <- data.frame(
-  genus  = c("Sebastes", "Paralabrax", "Cottus", "Homo"),
+  genus = c("Sebastes", "Paralabrax", "Cottus", "Homo"),
   family = c("Scorpaenidae", "Serranidae", "Cottidae", "Hominidae"),
   stringsAsFactors = FALSE
 )
@@ -18,7 +18,7 @@ library(testthat)
 .species_vec <- c(
   "Sebastes mystinus",
   "Paralabrax clathratus",
-  "Corvus corax",         # not in local source
+  "Corvus corax", # not in local source
   "Homo sapiens"
 )
 
@@ -56,8 +56,9 @@ test_that("stops if verbose is not logical", {
 test_that("resolves family from a single local source", {
   out <- suppressWarnings(
     fill_higher_ranks("Sebastes mystinus",
-                      local_sources = list(.local_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(.local_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_equal(out$family, "Scorpaenidae")
 })
@@ -65,8 +66,9 @@ test_that("resolves family from a single local source", {
 test_that("genus extracted as first word of binomial", {
   out <- suppressWarnings(
     fill_higher_ranks("Paralabrax clathratus",
-                      local_sources = list(.local_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(.local_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_equal(out$genus, "Paralabrax")
 })
@@ -74,46 +76,60 @@ test_that("genus extracted as first word of binomial", {
 test_that("handles single-word (genus-only) input", {
   out <- suppressWarnings(
     fill_higher_ranks("Sebastes",
-                      local_sources = list(.local_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(.local_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
-  expect_equal(out$genus,  "Sebastes")
+  expect_equal(out$genus, "Sebastes")
   expect_equal(out$family, "Scorpaenidae")
 })
 
 test_that("multiple local sources combined; first-source-wins on conflict", {
-  src1 <- data.frame(genus = "Corvus", family = "Corvidae",
-                     stringsAsFactors = FALSE)
-  src2 <- data.frame(genus = "Corvus", family = "WrongFamily",
-                     stringsAsFactors = FALSE)
+  src1 <- data.frame(
+    genus = "Corvus", family = "Corvidae",
+    stringsAsFactors = FALSE
+  )
+  src2 <- data.frame(
+    genus = "Corvus", family = "WrongFamily",
+    stringsAsFactors = FALSE
+  )
   out <- suppressWarnings(
     fill_higher_ranks("Corvus corax",
-                      local_sources = list(src1, src2),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(src1, src2),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_equal(out$family, "Corvidae")
 })
 
 test_that("sources with missing genus/family columns are silently skipped", {
-  bad_src  <- data.frame(taxon = "Corvus", family = "Corvidae",
-                          stringsAsFactors = FALSE)
-  good_src <- data.frame(genus = "Corvus", family = "Corvidae",
-                          stringsAsFactors = FALSE)
+  bad_src <- data.frame(
+    taxon = "Corvus", family = "Corvidae",
+    stringsAsFactors = FALSE
+  )
+  good_src <- data.frame(
+    genus = "Corvus", family = "Corvidae",
+    stringsAsFactors = FALSE
+  )
   out <- suppressWarnings(
     fill_higher_ranks("Corvus corax",
-                      local_sources = list(bad_src, good_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(bad_src, good_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_equal(out$family, "Corvidae")
 })
 
 test_that("case-insensitive column names in local source work", {
-  mixed_case <- data.frame(Genus = "Sebastes", Family = "Scorpaenidae",
-                            stringsAsFactors = FALSE)
+  mixed_case <- data.frame(
+    Genus = "Sebastes", Family = "Scorpaenidae",
+    stringsAsFactors = FALSE
+  )
   out <- suppressWarnings(
     fill_higher_ranks("Sebastes mystinus",
-                      local_sources = list(mixed_case),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(mixed_case),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_equal(out$family, "Scorpaenidae")
 })
@@ -125,8 +141,9 @@ test_that("case-insensitive column names in local source work", {
 test_that("output is a tibble with taxon_name, genus, family columns", {
   out <- suppressWarnings(
     fill_higher_ranks(.species_vec,
-                      local_sources = list(.local_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(.local_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_s3_class(out, "tbl_df")
   expect_true(all(c("taxon_name", "genus", "family") %in% names(out)))
@@ -136,8 +153,9 @@ test_that("output length matches input length (preserves duplicates)", {
   names_with_dup <- c("Sebastes mystinus", "Sebastes mystinus", "Homo sapiens")
   out <- suppressWarnings(
     fill_higher_ranks(names_with_dup,
-                      local_sources = list(.local_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(.local_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_equal(nrow(out), 3L)
   expect_equal(out$family, c("Scorpaenidae", "Scorpaenidae", "Hominidae"))
@@ -145,10 +163,11 @@ test_that("output length matches input length (preserves duplicates)", {
 
 test_that("output order matches input order", {
   input <- c("Homo sapiens", "Sebastes mystinus", "Paralabrax clathratus")
-  out   <- suppressWarnings(
+  out <- suppressWarnings(
     fill_higher_ranks(input,
-                      local_sources = list(.local_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(.local_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_equal(out$taxon_name, input)
 })
@@ -156,8 +175,9 @@ test_that("output order matches input order", {
 test_that("NA and blank inputs produce NA genus and family", {
   out <- suppressWarnings(
     fill_higher_ranks(c("Sebastes mystinus", NA, ""),
-                      local_sources = list(.local_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(.local_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
   expect_equal(nrow(out), 3L)
   expect_true(is.na(out$genus[2L]))
@@ -171,8 +191,9 @@ test_that("NA and blank inputs produce NA genus and family", {
 test_that("warns when family cannot be resolved", {
   expect_warning(
     fill_higher_ranks("Unknown species",
-                      local_sources = list(),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE),
+      local_sources = list(),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    ),
     regexp = "no family"
   )
 })
@@ -180,8 +201,9 @@ test_that("warns when family cannot be resolved", {
 test_that("no warning when all families resolved locally", {
   expect_no_warning(
     fill_higher_ranks("Sebastes mystinus",
-                      local_sources = list(.local_src),
-                      backbone_id   = NULL, fallback_backbone_id = NULL, verbose = FALSE)
+      local_sources = list(.local_src),
+      backbone_id = NULL, fallback_backbone_id = NULL, verbose = FALSE
+    )
   )
 })
 
@@ -213,8 +235,8 @@ test_that("primary backbone API is called for genera not in local sources", {
   out <- fill_higher_ranks(
     "Corvus corax",
     local_sources = list(.local_src),
-    backbone_id   = 4L, fallback_backbone_id = NULL,
-    verbose       = FALSE
+    backbone_id = 4L, fallback_backbone_id = NULL,
+    verbose = FALSE
   )
   expect_true(api_called)
   expect_equal(out$family, "Corvidae")
@@ -257,37 +279,42 @@ test_that("fallback is skipped when backbone_id == fallback_backbone_id", {
     verify_taxon_names = function(names, backbone_id, ...) {
       call_count <<- call_count + 1L
       tibble::tibble(
-        user_supplied_name   = names,
-        matched_name         = NA_character_,
-        classification_path  = NA_character_,
+        user_supplied_name = names,
+        matched_name = NA_character_,
+        classification_path = NA_character_,
         classification_ranks = NA_character_,
-        score                = 0.0, verified = FALSE
+        score = 0.0, verified = FALSE
       )
     },
     .package = "TaxaTools"
   )
   suppressWarnings(
     fill_higher_ranks("Corvus corax",
-                      local_sources        = list(),
-                      backbone_id          = 4L,
-                      fallback_backbone_id = 4L,
-                      verbose              = FALSE)
+      local_sources        = list(),
+      backbone_id          = 4L,
+      fallback_backbone_id = 4L,
+      verbose              = FALSE
+    )
   )
-  expect_equal(call_count, 1L)   # only one API call
+  expect_equal(call_count, 1L) # only one API call
 })
 
 test_that("both backbone_id and fallback_backbone_id = NULL skips all API calls", {
   called <- FALSE
   local_mocked_bindings(
-    verify_taxon_names = function(...) { called <<- TRUE; NULL },
+    verify_taxon_names = function(...) {
+      called <<- TRUE
+      NULL
+    },
     .package = "TaxaTools"
   )
   suppressWarnings(
     fill_higher_ranks("Corvus corax",
-                      local_sources        = list(),
-                      backbone_id          = NULL,
-                      fallback_backbone_id = NULL,
-                      verbose              = FALSE)
+      local_sources        = list(),
+      backbone_id          = NULL,
+      fallback_backbone_id = NULL,
+      verbose              = FALSE
+    )
   )
   expect_false(called)
 })
@@ -302,14 +329,14 @@ test_that("both backbone_id and fallback_backbone_id = NULL skips all API calls"
 
 .make_verified_synonym <- function(query_genus, resolved_genus, family) {
   tibble::tibble(
-    user_supplied_name   = query_genus,
-    matched_name          = resolved_genus,
-    matched_rank          = "genus",
-    is_synonym            = TRUE,
-    classification_path  = paste0("Animalia|Chordata|", family, "|", resolved_genus),
+    user_supplied_name = query_genus,
+    matched_name = resolved_genus,
+    matched_rank = "genus",
+    is_synonym = TRUE,
+    classification_path = paste0("Animalia|Chordata|", family, "|", resolved_genus),
     classification_ranks = "kingdom|phylum|family|genus",
-    score                = 1.0,
-    verified             = TRUE
+    score = 1.0,
+    verified = TRUE
   )
 }
 
@@ -341,7 +368,7 @@ test_that("genus is left unchanged when the API response has no matched_rank col
   # predates the fix.
   local_mocked_bindings(
     verify_taxon_names = function(names, backbone_id, ...) {
-      .make_verified("Inu", "Gobiidae")  # matched_name = "Inu" too, no matched_rank
+      .make_verified("Inu", "Gobiidae") # matched_name = "Inu" too, no matched_rank
     },
     .package = "TaxaTools"
   )
@@ -352,7 +379,7 @@ test_that("genus is left unchanged when the API response has no matched_rank col
     fallback_backbone_id = NULL,
     verbose              = FALSE
   )
-  expect_equal(out$genus, "Inu")  # unchanged, as before this fix
+  expect_equal(out$genus, "Inu") # unchanged, as before this fix
   expect_equal(out$family, "Gobiidae")
 })
 
@@ -363,7 +390,7 @@ test_that("genus is unchanged when matched_rank is present but not \"genus\"", {
     verify_taxon_names = function(names, backbone_id, ...) {
       row <- .make_verified("Inu", "Gobiidae")
       row$matched_rank <- "family"
-      row$is_synonym   <- NA
+      row$is_synonym <- NA
       row
     },
     .package = "TaxaTools"
@@ -390,7 +417,7 @@ test_that(".extract_classified_rank returns NA for NA inputs", {
 })
 
 test_that(".extract_classified_rank extracts correct rank", {
-  path  <- "Animalia|Chordata|Cottidae|Cottus|Cottus asper"
+  path <- "Animalia|Chordata|Cottidae|Cottus|Cottus asper"
   ranks <- "kingdom|phylum|family|genus|species"
   expect_equal(
     TaxaTools:::.extract_classified_rank(path, ranks, "family"),

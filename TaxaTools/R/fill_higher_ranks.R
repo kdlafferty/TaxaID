@@ -1,5 +1,7 @@
-utils::globalVariables(c("taxon_name", "genus", "family", "family.local",
-                          "family.api", "family.fb"))
+utils::globalVariables(c(
+  "taxon_name", "genus", "family", "family.local",
+  "family.api", "family.fb"
+))
 
 #' Fill Higher Taxonomic Ranks from Local Data and Backbone APIs
 #'
@@ -94,27 +96,31 @@ utils::globalVariables(c("taxon_name", "genus", "family", "family.local",
 #' @importFrom tibble tibble
 #' @export
 fill_higher_ranks <- function(taxon_names,
-                               local_sources        = list(),
-                               backbone_id          = 4L,
-                               fallback_backbone_id = 11L,
-                               verbose              = TRUE) {
-
+                              local_sources = list(),
+                              backbone_id = 4L,
+                              fallback_backbone_id = 11L,
+                              verbose = TRUE) {
   # ---- Input validation ------------------------------------------------------
-  if (!is.character(taxon_names) || length(taxon_names) == 0L)
+  if (!is.character(taxon_names) || length(taxon_names) == 0L) {
     stop("taxon_names must be a non-empty character vector")
-  if (!is.list(local_sources))
+  }
+  if (!is.list(local_sources)) {
     stop("local_sources must be a list of data frames")
+  }
   if (!is.null(backbone_id) && (!is.numeric(backbone_id) ||
-      length(backbone_id) != 1L || is.na(backbone_id)))
+    length(backbone_id) != 1L || is.na(backbone_id))) {
     stop("backbone_id must be a single integer or NULL")
+  }
   if (!is.null(fallback_backbone_id) && (!is.numeric(fallback_backbone_id) ||
-      length(fallback_backbone_id) != 1L || is.na(fallback_backbone_id)))
+    length(fallback_backbone_id) != 1L || is.na(fallback_backbone_id))) {
     stop("fallback_backbone_id must be a single integer or NULL")
-  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose))
+  }
+  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("verbose must be TRUE or FALSE")
+  }
 
   # ---- Working table: unique non-NA names + extracted genus ------------------
-  all_names  <- taxon_names
+  all_names <- taxon_names
   valid_mask <- !is.na(taxon_names) & nzchar(trimws(taxon_names))
 
   work <- tibble::tibble(
@@ -127,11 +133,12 @@ fill_higher_ranks <- function(taxon_names,
   local_lookup <- .build_genus_family_lookup(local_sources)
 
   if (nrow(local_lookup) > 0L) {
-    na_idx  <- is.na(work$family)
+    na_idx <- is.na(work$family)
     if (any(na_idx)) {
       filled <- dplyr::left_join(
         work[na_idx, c("taxon_name", "genus"), drop = FALSE],
-        local_lookup, by = "genus"
+        local_lookup,
+        by = "genus"
       )
       work$family[na_idx] <- filled$family
     }
@@ -141,18 +148,23 @@ fill_higher_ranks <- function(taxon_names,
   missing_genera <- unique(work$genus[is.na(work$family)])
 
   if (length(missing_genera) > 0L && !is.null(backbone_id)) {
-    if (verbose) message(sprintf(
-      "fill_higher_ranks: %d genera not in local sources; querying backbone %d...",
-      length(missing_genera), as.integer(backbone_id)
-    ))
-    api_lookup <- .lookup_family_from_backbone(missing_genera,
-                                                as.integer(backbone_id))
+    if (verbose) {
+      message(sprintf(
+        "fill_higher_ranks: %d genera not in local sources; querying backbone %d...",
+        length(missing_genera), as.integer(backbone_id)
+      ))
+    }
+    api_lookup <- .lookup_family_from_backbone(
+      missing_genera,
+      as.integer(backbone_id)
+    )
     if (nrow(api_lookup) > 0L) {
       na_idx <- is.na(work$family)
       if (any(na_idx)) {
         filled <- dplyr::left_join(
           work[na_idx, c("taxon_name", "genus"), drop = FALSE],
-          api_lookup, by = "genus"
+          api_lookup,
+          by = "genus"
         )
         work$family[na_idx] <- filled$family
         # Correct genus to the backbone's resolved form wherever a match was
@@ -169,20 +181,25 @@ fill_higher_ranks <- function(taxon_names,
   still_missing <- unique(work$genus[is.na(work$family)])
 
   if (length(still_missing) > 0L &&
-      !is.null(fallback_backbone_id) &&
-      !identical(as.integer(fallback_backbone_id), as.integer(backbone_id))) {
-    if (verbose) message(sprintf(
-      "fill_higher_ranks: %d genera still unresolved; trying fallback backbone %d...",
-      length(still_missing), as.integer(fallback_backbone_id)
-    ))
-    fb_lookup <- .lookup_family_from_backbone(still_missing,
-                                               as.integer(fallback_backbone_id))
+    !is.null(fallback_backbone_id) &&
+    !identical(as.integer(fallback_backbone_id), as.integer(backbone_id))) {
+    if (verbose) {
+      message(sprintf(
+        "fill_higher_ranks: %d genera still unresolved; trying fallback backbone %d...",
+        length(still_missing), as.integer(fallback_backbone_id)
+      ))
+    }
+    fb_lookup <- .lookup_family_from_backbone(
+      still_missing,
+      as.integer(fallback_backbone_id)
+    )
     if (nrow(fb_lookup) > 0L) {
       na_idx <- is.na(work$family)
       if (any(na_idx)) {
         filled <- dplyr::left_join(
           work[na_idx, c("taxon_name", "genus"), drop = FALSE],
-          fb_lookup, by = "genus"
+          fb_lookup,
+          by = "genus"
         )
         work$family[na_idx] <- filled$family
         work$genus[na_idx] <- dplyr::coalesce(filled$resolved_genus, work$genus[na_idx])
@@ -204,11 +221,11 @@ fill_higher_ranks <- function(taxon_names,
   result_map <- work[, c("taxon_name", "genus", "family"), drop = FALSE]
 
   out <- tibble::tibble(taxon_name = all_names)
-  out$genus  <- result_map$genus[match(all_names, result_map$taxon_name)]
+  out$genus <- result_map$genus[match(all_names, result_map$taxon_name)]
   out$family <- result_map$family[match(all_names, result_map$taxon_name)]
 
   # NAs for originally-NA/blank inputs
-  out$genus[!valid_mask]  <- NA_character_
+  out$genus[!valid_mask] <- NA_character_
   out$family[!valid_mask] <- NA_character_
 
   out
@@ -283,18 +300,25 @@ parse_classification_path <- function(path, ranks, target_rank) {
 #' @noRd
 .build_genus_family_lookup <- function(sources) {
   parts <- lapply(sources, function(df) {
-    if (!is.data.frame(df)) return(NULL)
+    if (!is.data.frame(df)) {
+      return(NULL)
+    }
     names(df) <- tolower(names(df))
-    if (!all(c("genus", "family") %in% names(df))) return(NULL)
+    if (!all(c("genus", "family") %in% names(df))) {
+      return(NULL)
+    }
     df[, c("genus", "family"), drop = FALSE]
   })
   parts <- Filter(Negate(is.null), parts)
-  if (length(parts) == 0L)
+  if (length(parts) == 0L) {
     return(tibble::tibble(genus = character(), family = character()))
+  }
 
   dplyr::bind_rows(parts) |>
-    dplyr::filter(!is.na(genus), !is.na(family),
-                  nzchar(trimws(genus)), nzchar(trimws(family))) |>
+    dplyr::filter(
+      !is.na(genus), !is.na(family),
+      nzchar(trimws(genus)), nzchar(trimws(family))
+    ) |>
     dplyr::distinct(genus, .keep_all = TRUE)
 }
 
@@ -308,8 +332,10 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # still join on the original spelling while writing the corrected value back.
 #' @noRd
 .lookup_family_from_backbone <- function(genera, backbone_id) {
-  empty <- tibble::tibble(genus = character(), resolved_genus = character(),
-                          family = character())
+  empty <- tibble::tibble(
+    genus = character(), resolved_genus = character(),
+    family = character()
+  )
 
   verified <- tryCatch(
     verify_taxon_names(genera, backbone_id = backbone_id),
@@ -322,14 +348,16 @@ parse_classification_path <- function(path, ranks, target_rank) {
     }
   )
 
-  if (is.null(verified) || nrow(verified) == 0L) return(empty)
+  if (is.null(verified) || nrow(verified) == 0L) {
+    return(empty)
+  }
 
   families <- mapply(
     .extract_classified_rank,
     verified$classification_path,
     verified$classification_ranks,
     MoreArgs = list(target_rank = "family"),
-    SIMPLIFY  = TRUE
+    SIMPLIFY = TRUE
   )
 
   # Prefer the backbone's own resolved genus over the query genus when the
@@ -373,12 +401,14 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # classification_ranks strings.  Returns NA_character_ if rank not found.
 #' @noRd
 .extract_classified_rank <- function(path, ranks, target_rank) {
-  if (is.na(path) || is.na(ranks) || !nzchar(path) || !nzchar(ranks))
+  if (is.na(path) || is.na(ranks) || !nzchar(path) || !nzchar(ranks)) {
     return(NA_character_)
+  }
   rank_vec <- strsplit(ranks, "|", fixed = TRUE)[[1L]]
-  path_vec <- strsplit(path,  "|", fixed = TRUE)[[1L]]
+  path_vec <- strsplit(path, "|", fixed = TRUE)[[1L]]
   idx <- which(rank_vec == target_rank)
-  if (length(idx) == 0L || idx[1L] > length(path_vec))
+  if (length(idx) == 0L || idx[1L] > length(path_vec)) {
     return(NA_character_)
+  }
   path_vec[idx[1L]]
 }

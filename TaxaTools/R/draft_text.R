@@ -110,32 +110,39 @@
 #'
 #' @export
 build_report_context <- function(study_description = NULL,
-                                  data_type         = NULL,
-                                  workflow          = NULL,
-                                  packages          = NULL,
-                                  parameters        = NULL,
-                                  statistics        = NULL,
-                                  citations         = NULL,
-                                  facts             = NULL) {
-
+                                 data_type = NULL,
+                                 workflow = NULL,
+                                 packages = NULL,
+                                 parameters = NULL,
+                                 statistics = NULL,
+                                 citations = NULL,
+                                 facts = NULL) {
   # Validate types
   if (!is.null(study_description) &&
-      (!is.character(study_description) || length(study_description) != 1L))
+    (!is.character(study_description) || length(study_description) != 1L)) {
     stop("study_description must be a single character string or NULL")
-  if (!is.null(data_type) && (!is.character(data_type) || length(data_type) != 1L))
+  }
+  if (!is.null(data_type) && (!is.character(data_type) || length(data_type) != 1L)) {
     stop("data_type must be a single character string or NULL")
-  if (!is.null(workflow) && (!is.character(workflow) || length(workflow) != 1L))
+  }
+  if (!is.null(workflow) && (!is.character(workflow) || length(workflow) != 1L)) {
     stop("workflow must be a single character string or NULL")
-  if (!is.null(packages) && !is.character(packages))
+  }
+  if (!is.null(packages) && !is.character(packages)) {
     stop("packages must be a character vector or NULL")
-  if (!is.null(parameters) && !is.list(parameters))
+  }
+  if (!is.null(parameters) && !is.list(parameters)) {
     stop("parameters must be a named list or NULL")
-  if (!is.null(statistics) && !is.list(statistics))
+  }
+  if (!is.null(statistics) && !is.list(statistics)) {
     stop("statistics must be a named list or NULL")
-  if (!is.null(citations) && !is.character(citations))
+  }
+  if (!is.null(citations) && !is.character(citations)) {
     stop("citations must be a character vector or NULL")
-  if (!is.null(facts) && !is.list(facts))
+  }
+  if (!is.null(facts) && !is.list(facts)) {
     stop("facts must be a named list or NULL")
+  }
 
   ctx <- list(
     study_description = study_description,
@@ -269,27 +276,31 @@ print.report_context <- function(x, ...) {
 #'
 #' @export
 draft_methods_text <- function(code,
-                               description    = NULL,
-                               context        = NULL,
-                               audience       = "journal",
-                               llm_fn         = getOption("TaxaID.llm_fn", call_api),
+                               description = NULL,
+                               context = NULL,
+                               audience = "journal",
+                               llm_fn = getOption("TaxaID.llm_fn", call_api),
                                max_code_lines = 300L,
-                               verbose        = FALSE) {
-
+                               verbose = FALSE) {
   # --- Input validation -------------------------------------------------------
-  if (!is.character(code) || length(code) == 0L)
+  if (!is.character(code) || length(code) == 0L) {
     stop("code must be a non-empty character vector (code lines, file path, or single string)")
-  if (!is.null(context) && !inherits(context, "report_context"))
+  }
+  if (!is.null(context) && !inherits(context, "report_context")) {
     stop("context must be a report_context object from build_report_context()")
-  if (!is.null(description) && (!is.character(description) || length(description) != 1L))
+  }
+  if (!is.null(description) && (!is.character(description) || length(description) != 1L)) {
     stop("description must be a single character string or NULL")
+  }
   audience <- match.arg(audience, c("journal", "technical", "brief"))
-  if (!is.function(llm_fn))
+  if (!is.function(llm_fn)) {
     stop("llm_fn must be a function")
+  }
 
   # Context overrides description
-  if (!is.null(context) && !is.null(context$study_description))
+  if (!is.null(context) && !is.null(context$study_description)) {
     description <- context$study_description
+  }
 
   # --- Resolve code input -----------------------------------------------------
   code_lines <- .resolve_code_input(code)
@@ -297,8 +308,10 @@ draft_methods_text <- function(code,
   if (length(code_lines) > max_code_lines) {
     code_lines <- c(
       code_lines[seq_len(max_code_lines)],
-      sprintf("# ... [truncated: %d additional lines not shown]",
-              length(code_lines) - max_code_lines)
+      sprintf(
+        "# ... [truncated: %d additional lines not shown]",
+        length(code_lines) - max_code_lines
+      )
     )
   }
 
@@ -394,35 +407,41 @@ draft_methods_text <- function(code,
 #' @export
 draft_results_text <- function(...,
                                description = NULL,
-                               context     = NULL,
-                               audience    = "journal",
-                               code        = NULL,
-                               llm_fn      = getOption("TaxaID.llm_fn", call_api),
-                               max_rows    = 20L,
-                               verbose     = FALSE) {
-
+                               context = NULL,
+                               audience = "journal",
+                               code = NULL,
+                               llm_fn = getOption("TaxaID.llm_fn", call_api),
+                               max_rows = 20L,
+                               verbose = FALSE) {
   # --- Capture named objects --------------------------------------------------
   dots <- list(...)
   obj_names <- names(dots)
 
-  if (length(dots) == 0L)
+  if (length(dots) == 0L) {
     stop("At least one named R object must be provided")
-  if (is.null(obj_names) || any(obj_names == ""))
+  }
+  if (is.null(obj_names) || any(obj_names == "")) {
     stop("All objects passed to ... must be named (e.g., results = my_df)")
-  if (all(vapply(dots, is.null, logical(1L))))
+  }
+  if (all(vapply(dots, is.null, logical(1L)))) {
     stop("All objects passed via ... are NULL; provide at least one non-NULL object")
+  }
 
-  if (!is.null(context) && !inherits(context, "report_context"))
+  if (!is.null(context) && !inherits(context, "report_context")) {
     stop("context must be a report_context object from build_report_context()")
-  if (!is.null(description) && (!is.character(description) || length(description) != 1L))
+  }
+  if (!is.null(description) && (!is.character(description) || length(description) != 1L)) {
     stop("description must be a single character string or NULL")
+  }
   audience <- match.arg(audience, c("journal", "technical", "brief"))
-  if (!is.function(llm_fn))
+  if (!is.function(llm_fn)) {
     stop("llm_fn must be a function")
+  }
 
   # Context overrides description
-  if (!is.null(context) && !is.null(context$study_description))
+  if (!is.null(context) && !is.null(context$study_description)) {
     description <- context$study_description
+  }
 
   # --- Serialize objects to text summaries ------------------------------------
   obj_summaries <- vapply(obj_names, function(nm) {
@@ -436,16 +455,20 @@ draft_results_text <- function(...,
   if (!is.null(code)) {
     code_lines <- .resolve_code_input(code)
     if (length(code_lines) > 200L) {
-      code_lines <- c(code_lines[seq_len(200L)],
-                      "# ... [truncated]")
+      code_lines <- c(
+        code_lines[seq_len(200L)],
+        "# ... [truncated]"
+      )
     }
     code_block <- paste(code_lines, collapse = "\n")
   }
 
   # --- Build prompt -----------------------------------------------------------
   context_block <- if (!is.null(context)) .format_context(context) else NULL
-  prompt <- .build_results_prompt(data_block, description, audience,
-                                  code_block, context_block)
+  prompt <- .build_results_prompt(
+    data_block, description, audience,
+    code_block, context_block
+  )
 
   if (verbose) message("Sending object summaries to LLM for results drafting...")
 
@@ -466,13 +489,16 @@ draft_results_text <- function(...,
 .format_context <- function(ctx) {
   lines <- character()
 
-  if (!is.null(ctx$data_type))
+  if (!is.null(ctx$data_type)) {
     lines <- c(lines, sprintf("Data type: %s", ctx$data_type))
-  if (!is.null(ctx$workflow))
+  }
+  if (!is.null(ctx$workflow)) {
     lines <- c(lines, sprintf("Analysis workflow: %s", ctx$workflow))
+  }
 
-  if (!is.null(ctx$packages))
+  if (!is.null(ctx$packages)) {
     lines <- c(lines, sprintf("Software: %s", paste(ctx$packages, collapse = ", ")))
+  }
 
   if (!is.null(ctx$parameters) && length(ctx$parameters) > 0L) {
     param_strs <- vapply(names(ctx$parameters), function(k) {
@@ -496,8 +522,10 @@ draft_results_text <- function(...,
   }
 
   if (!is.null(ctx$citations) && length(ctx$citations) > 0L) {
-    lines <- c(lines, "Citations to include:",
-               paste("  -", ctx$citations))
+    lines <- c(
+      lines, "Citations to include:",
+      paste("  -", ctx$citations)
+    )
   }
 
   paste(lines, collapse = "\n")
@@ -512,7 +540,7 @@ draft_results_text <- function(...,
 .resolve_code_input <- function(code) {
   # Single string that looks like a file path
   if (length(code) == 1L && !grepl("\n", code) &&
-      file.exists(code) && grepl("\\.[Rr]$", code)) {
+    file.exists(code) && grepl("\\.[Rr]$", code)) {
     return(tryCatch(
       readLines(code, warn = FALSE),
       error = function(e) {
@@ -721,8 +749,10 @@ draft_results_text <- function(...,
 
   # Column types
   col_types <- vapply(df, function(x) class(x)[1L], character(1L))
-  lines <- c(lines, sprintf("Columns: %s",
-    paste(sprintf("%s (%s)", names(col_types), col_types), collapse = ", ")))
+  lines <- c(lines, sprintf(
+    "Columns: %s",
+    paste(sprintf("%s (%s)", names(col_types), col_types), collapse = ", ")
+  ))
 
   # Summary statistics for numeric columns
   num_cols <- names(df)[vapply(df, is.numeric, logical(1L))]
@@ -740,8 +770,10 @@ draft_results_text <- function(...,
     top_vals <- utils::head(sort(table(vals), decreasing = TRUE), 5L)
     lines <- c(lines, sprintf("\n%s: %d unique values, %d NA", cc, n_unique, n_na))
     if (length(top_vals) > 0L) {
-      lines <- c(lines, sprintf("  Top values: %s",
-        paste(sprintf("%s (%d)", names(top_vals), as.integer(top_vals)), collapse = ", ")))
+      lines <- c(lines, sprintf(
+        "  Top values: %s",
+        paste(sprintf("%s (%d)", names(top_vals), as.integer(top_vals)), collapse = ", ")
+      ))
     }
   }
 
@@ -787,12 +819,16 @@ draft_results_text <- function(...,
   )
   if (n_unique <= 20L) {
     top_vals <- utils::head(sort(table(obj), decreasing = TRUE), 20L)
-    lines <- c(lines, sprintf("Values: %s",
-      paste(sprintf("%s (%d)", names(top_vals), as.integer(top_vals)), collapse = ", ")))
+    lines <- c(lines, sprintf(
+      "Values: %s",
+      paste(sprintf("%s (%d)", names(top_vals), as.integer(top_vals)), collapse = ", ")
+    ))
   } else {
     top_vals <- utils::head(sort(table(obj), decreasing = TRUE), 10L)
-    lines <- c(lines, sprintf("Top 10 values: %s",
-      paste(sprintf("%s (%d)", names(top_vals), as.integer(top_vals)), collapse = ", ")))
+    lines <- c(lines, sprintf(
+      "Top 10 values: %s",
+      paste(sprintf("%s (%d)", names(top_vals), as.integer(top_vals)), collapse = ", ")
+    ))
   }
   paste(lines, collapse = "\n")
 }
@@ -805,5 +841,6 @@ draft_results_text <- function(...,
     lines <- c(lines[seq_len(30L)], "... [truncated]")
   }
   paste(c(sprintf("Object of class: %s", paste(class(obj), collapse = ", ")), lines),
-        collapse = "\n")
+    collapse = "\n"
+  )
 }

@@ -44,45 +44,63 @@ test_that("build_report_context with no args returns empty context", {
 })
 
 test_that("build_report_context validates study_description type", {
-  expect_error(build_report_context(study_description = 42),
-               "study_description must be a single character")
-  expect_error(build_report_context(study_description = c("a", "b")),
-               "study_description must be a single character")
+  expect_error(
+    build_report_context(study_description = 42),
+    "study_description must be a single character"
+  )
+  expect_error(
+    build_report_context(study_description = c("a", "b")),
+    "study_description must be a single character"
+  )
 })
 
 test_that("build_report_context validates data_type type", {
-  expect_error(build_report_context(data_type = 42),
-               "data_type must be a single character")
+  expect_error(
+    build_report_context(data_type = 42),
+    "data_type must be a single character"
+  )
 })
 
 test_that("build_report_context validates workflow type", {
-  expect_error(build_report_context(workflow = list("x")),
-               "workflow must be a single character")
+  expect_error(
+    build_report_context(workflow = list("x")),
+    "workflow must be a single character"
+  )
 })
 
 test_that("build_report_context validates packages type", {
-  expect_error(build_report_context(packages = 42),
-               "packages must be a character vector")
+  expect_error(
+    build_report_context(packages = 42),
+    "packages must be a character vector"
+  )
 })
 
 test_that("build_report_context validates parameters type", {
-  expect_error(build_report_context(parameters = "not a list"),
-               "parameters must be a named list")
+  expect_error(
+    build_report_context(parameters = "not a list"),
+    "parameters must be a named list"
+  )
 })
 
 test_that("build_report_context validates statistics type", {
-  expect_error(build_report_context(statistics = "not a list"),
-               "statistics must be a named list")
+  expect_error(
+    build_report_context(statistics = "not a list"),
+    "statistics must be a named list"
+  )
 })
 
 test_that("build_report_context validates citations type", {
-  expect_error(build_report_context(citations = 42),
-               "citations must be a character vector")
+  expect_error(
+    build_report_context(citations = 42),
+    "citations must be a character vector"
+  )
 })
 
 test_that("build_report_context validates facts type", {
-  expect_error(build_report_context(facts = "not a list"),
-               "facts must be a named list")
+  expect_error(
+    build_report_context(facts = "not a list"),
+    "facts must be a named list"
+  )
 })
 
 # --- print.report_context() ---------------------------------------------------
@@ -107,8 +125,10 @@ test_that("draft_methods_text rejects non-character code", {
 })
 
 test_that("draft_methods_text rejects empty character code", {
-  expect_error(draft_methods_text(code = character(0)),
-               "code must be a non-empty character")
+  expect_error(
+    draft_methods_text(code = character(0)),
+    "code must be a non-empty character"
+  )
 })
 
 test_that("draft_methods_text rejects bad context type", {
@@ -163,8 +183,10 @@ test_that("draft_methods_text includes context in prompt", {
     study_description = "reef fish survey",
     facts = list(marker = "12S")
   )
-  capture.output(draft_methods_text(code = "x <- 1", context = ctx,
-                                     llm_fn = mock_llm))
+  capture.output(draft_methods_text(
+    code = "x <- 1", context = ctx,
+    llm_fn = mock_llm
+  ))
   expect_true(grepl("reef fish survey", captured_prompt))
   expect_true(grepl("12S", captured_prompt))
 })

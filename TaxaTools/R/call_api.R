@@ -42,10 +42,14 @@
 #' Errors with a setup message when no provider is configured.
 #' @noRd
 .resolve_provider <- function(provider) {
-  if (!is.null(provider) && nzchar(provider)) return(provider)
+  if (!is.null(provider) && nzchar(provider)) {
+    return(provider)
+  }
 
   opt <- getOption("TaxaID.provider")
-  if (!is.null(opt) && nzchar(opt)) return(opt)
+  if (!is.null(opt) && nzchar(opt)) {
+    return(opt)
+  }
 
   # Check if an API key is present but options haven't been set —
   # this means .onAttach() hasn't run (package loaded via :: not library()).
@@ -90,12 +94,16 @@
 #' @noRd
 .resolve_api_key <- function(provider, api_key, registry) {
   # Explicit non-empty key always wins
-  if (!is.null(api_key) && nzchar(api_key)) return(api_key)
+  if (!is.null(api_key) && nzchar(api_key)) {
+    return(api_key)
+  }
 
   prov_reg <- registry$providers[[provider]]
 
   # Keyless providers (auth_type = "none")
-  if (identical(prov_reg$auth_type %||% "bearer", "none")) return("")
+  if (identical(prov_reg$auth_type %||% "bearer", "none")) {
+    return("")
+  }
 
   # Look up env var name: registry field first, then built-in fallbacks
   key_var <- prov_reg$api_key_var %||% switch(as.character(provider),
@@ -106,7 +114,9 @@
     ""
   )
 
-  if (!nzchar(key_var)) return("")  # no key variable -- treat as keyless
+  if (!nzchar(key_var)) {
+    return("")
+  } # no key variable -- treat as keyless
 
   key <- Sys.getenv(key_var)
   if (!nzchar(key)) {
@@ -143,7 +153,7 @@
     tpl <- prov_reg$chat_endpoint_template %||% prov_reg$endpoint_template
     if (!is.null(tpl) && grepl("{model}", tpl, fixed = TRUE)) {
       old_host <- sub("^(https?://[^/]+).*", "\\1", tpl)
-      url      <- sub(old_host, base_clean, tpl, fixed = TRUE)
+      url <- sub(old_host, base_clean, tpl, fixed = TRUE)
       return(gsub("{model}", model, url, fixed = TRUE))
     }
 
@@ -156,7 +166,7 @@
   # ------------------------------------------------------------------
   tpl <- prov_reg$chat_endpoint_template %||% prov_reg$endpoint_template
   if (!is.null(tpl)) {
-    url <- gsub("{model}",    model %||% "",          tpl, fixed = TRUE)
+    url <- gsub("{model}", model %||% "", tpl, fixed = TRUE)
     url <- gsub("{base_url}", "http://localhost:11434", url, fixed = TRUE)
     return(url)
   }
@@ -165,7 +175,9 @@
   # Fixed endpoint (Anthropic, OpenAI)
   # ------------------------------------------------------------------
   ep <- prov_reg$chat_endpoint
-  if (!is.null(ep)) return(ep)
+  if (!is.null(ep)) {
+    return(ep)
+  }
 
   # ------------------------------------------------------------------
   # Session-registered providers (register_provider())
@@ -332,20 +344,25 @@
   status <- httr2::resp_status(resp)
   if (status != 200L) {
     body <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
-    stop(sprintf("call_api (%s): HTTP %d: %s",
-                 provider, status, body$error$message %||% "(no message)"),
-         call. = FALSE)
+    stop(
+      sprintf(
+        "call_api (%s): HTTP %d: %s",
+        provider, status, body$error$message %||% "(no message)"
+      ),
+      call. = FALSE
+    )
   }
-  body        <- httr2::resp_body_json(resp)
+  body <- httr2::resp_body_json(resp)
   text_blocks <- Filter(function(b) identical(b$type, "text"), body$content)
   if (length(text_blocks) == 0L) {
     stop(sprintf("call_api (%s): response contained no text blocks.", provider),
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   list(
-    text   = text_blocks[[1L]]$text,
+    text = text_blocks[[1L]]$text,
     tokens = list(
-      input  = body$usage$input_tokens  %||% NA_integer_,
+      input  = body$usage$input_tokens %||% NA_integer_,
       output = body$usage$output_tokens %||% NA_integer_
     )
   )
@@ -357,32 +374,40 @@
   status <- httr2::resp_status(resp)
   if (status != 200L) {
     body_err <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
-    stop(sprintf("call_api (%s): HTTP %d: %s",
-                 provider, status, body_err$error$message %||% "(no message)"),
-         call. = FALSE)
+    stop(
+      sprintf(
+        "call_api (%s): HTTP %d: %s",
+        provider, status, body_err$error$message %||% "(no message)"
+      ),
+      call. = FALSE
+    )
   }
-  parsed     <- httr2::resp_body_json(resp)
+  parsed <- httr2::resp_body_json(resp)
   candidates <- parsed$candidates
   if (is.null(candidates) || length(candidates) == 0L) {
     feedback <- parsed$promptFeedback$blockReason
     if (!is.null(feedback)) {
-      stop(sprintf("call_api (%s): prompt blocked by safety filter: %s",
-                   provider, feedback), call. = FALSE)
+      stop(sprintf(
+        "call_api (%s): prompt blocked by safety filter: %s",
+        provider, feedback
+      ), call. = FALSE)
     }
     stop(sprintf("call_api (%s): response contained no candidates.", provider),
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   parts <- candidates[[1L]]$content$parts
   if (is.null(parts) || length(parts) == 0L) {
     stop(sprintf("call_api (%s): candidate contained no content parts.", provider),
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   # Concatenate all text parts (Gemini can split a long response)
   text <- paste(vapply(parts, function(p) p$text %||% "", character(1)), collapse = "")
   list(
-    text   = text,
+    text = text,
     tokens = list(
-      input  = parsed$usageMetadata$promptTokenCount     %||% NA_integer_,
+      input  = parsed$usageMetadata$promptTokenCount %||% NA_integer_,
       output = parsed$usageMetadata$candidatesTokenCount %||% NA_integer_
     )
   )
@@ -394,26 +419,33 @@
   status <- httr2::resp_status(resp)
   if (status != 200L) {
     body_err <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
-    stop(sprintf("call_api (%s): HTTP %d: %s",
-                 provider, status, body_err$error$message %||% "(no message)"),
-         call. = FALSE)
+    stop(
+      sprintf(
+        "call_api (%s): HTTP %d: %s",
+        provider, status, body_err$error$message %||% "(no message)"
+      ),
+      call. = FALSE
+    )
   }
-  parsed  <- httr2::resp_body_json(resp)
+  parsed <- httr2::resp_body_json(resp)
   choices <- parsed$choices
   if (is.null(choices) || length(choices) == 0L) {
     stop(sprintf("call_api (%s): response contained no choices.", provider),
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   content <- choices[[1L]]$message$content
   if (is.null(content) || !nzchar(trimws(content))) {
     finish_reason <- choices[[1L]]$finish_reason %||% "unknown"
-    stop(sprintf("call_api (%s): empty response (finish_reason: %s).",
-                 provider, finish_reason), call. = FALSE)
+    stop(sprintf(
+      "call_api (%s): empty response (finish_reason: %s).",
+      provider, finish_reason
+    ), call. = FALSE)
   }
   list(
-    text   = content,
+    text = content,
     tokens = list(
-      input  = parsed$usage$prompt_tokens     %||% NA_integer_,
+      input  = parsed$usage$prompt_tokens %||% NA_integer_,
       output = parsed$usage$completion_tokens %||% NA_integer_
     )
   )
@@ -546,7 +578,8 @@
 #'   \code{\link{call_openai_api}}, \code{\link{call_azure_openai_api}},
 #'   \code{\link{call_ollama_api}}
 #'
-#' @importFrom httr2 request req_headers req_body_json req_url_query req_error req_perform req_timeout resp_status resp_body_json
+#' @importFrom httr2 request req_headers req_body_json req_url_query req_error
+#' @importFrom httr2 req_perform req_timeout resp_status resp_body_json
 #' @export
 #'
 #' @examples
@@ -556,30 +589,33 @@
 #'
 #' # Explicit provider and tier
 #' answer <- call_api("What phylum do sea urchins belong to?",
-#'                    provider = "gemini", tier = "fast")
+#'   provider = "gemini", tier = "fast"
+#' )
 #'
 #' # Pinned model for reproducibility
 #' answer <- call_api("What phylum do sea urchins belong to?",
-#'                    provider = "anthropic", model = "claude-sonnet-4-5")
+#'   provider = "anthropic", model = "claude-sonnet-4-5"
+#' )
 #'
 #' # Registered custom provider (see register_provider())
 #' register_provider("xai", "XAI_API_KEY", "https://api.x.ai",
-#'   fallback_models = list(mid = "grok-3"))
+#'   fallback_models = list(mid = "grok-3")
+#' )
 #' answer <- call_api("What phylum do sea urchins belong to?",
-#'                    provider = "xai")
+#'   provider = "xai"
+#' )
 #' }
 call_api <- function(prompt_str,
-                     provider         = NULL,
-                     tier             = c("mid", "fast", "top"),
-                     model            = NULL,
-                     max_tokens       = 3000L,
-                     api_key          = NULL,
-                     base_url         = NULL,
-                     images           = NULL,
-                     show_tokens      = FALSE,
+                     provider = NULL,
+                     tier = c("mid", "fast", "top"),
+                     model = NULL,
+                     max_tokens = 3000L,
+                     api_key = NULL,
+                     base_url = NULL,
+                     images = NULL,
+                     show_tokens = FALSE,
                      max_input_tokens = NULL,
-                     timeout          = 120) {
-
+                     timeout = 120) {
   tier <- match.arg(tier)
 
   if (!is.character(prompt_str) || length(prompt_str) != 1L) {
@@ -587,7 +623,9 @@ call_api <- function(prompt_str,
   }
   if (!requireNamespace("httr2", quietly = TRUE)) {
     stop("call_api: package 'httr2' is required. ",
-         "Install with: install.packages('httr2')", call. = FALSE)
+      "Install with: install.packages('httr2')",
+      call. = FALSE
+    )
   }
 
   # Pre-flight token size guard (before any HTTP call)
@@ -623,16 +661,22 @@ call_api <- function(prompt_str,
     )
   }
 
-  model    <- model %||% .resolve_model(provider, tier)
-  api_key  <- .resolve_api_key(provider, api_key, registry)
+  model <- model %||% .resolve_model(provider, tier)
+  api_key <- .resolve_api_key(provider, api_key, registry)
   endpoint <- .build_endpoint_url(provider, model, base_url, prov_reg)
-  family   <- prov_reg$handler_family %||% "openai_compat"
+  family <- prov_reg$handler_family %||% "openai_compat"
 
   # Build the provider-appropriate HTTP request
   req <- switch(as.character(family),
-    anthropic     = .build_anthropic_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout),
-    gemini        = .build_gemini_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout),
-    openai_compat = .build_openai_compat_request(endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout),
+    anthropic = .build_anthropic_request(
+      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout
+    ),
+    gemini = .build_gemini_request(
+      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout
+    ),
+    openai_compat = .build_openai_compat_request(
+      endpoint, model, prompt_str, max_tokens, api_key, prov_reg, images, timeout
+    ),
     stop(sprintf(
       "call_api: unknown handler_family '%s' for provider '%s'. Check inst/model_tiers.json.",
       family, provider
@@ -645,7 +689,9 @@ call_api <- function(prompt_str,
     error = function(e) {
       msg <- conditionMessage(e)
       if (grepl("Could not connect|Connection refused|Could not resolve",
-                msg, ignore.case = TRUE)) {
+        msg,
+        ignore.case = TRUE
+      )) {
         if (identical(provider, "ollama")) {
           stop(paste0(
             "call_api (ollama): cannot connect to Ollama at ",
@@ -661,19 +707,20 @@ call_api <- function(prompt_str,
         }
       }
       stop(sprintf("call_api (%s): HTTP request failed: %s", provider, msg),
-           call. = FALSE)
+        call. = FALSE
+      )
     }
   )
 
   # Parse the provider-appropriate response (returns list(text, tokens))
   parsed <- switch(as.character(family),
-    anthropic     = .parse_anthropic_response(resp, provider),
-    gemini        = .parse_gemini_response(resp, provider),
+    anthropic = .parse_anthropic_response(resp, provider),
+    gemini = .parse_gemini_response(resp, provider),
     openai_compat = .parse_openai_compat_response(resp, provider),
     stop(sprintf("call_api: unknown handler_family '%s'.", family), call. = FALSE)
   )
 
-  text   <- parsed$text
+  text <- parsed$text
   tokens <- parsed$tokens
 
   # Accumulate in session ledger (non-NA calls only)
@@ -682,21 +729,23 @@ call_api <- function(prompt_str,
       caller   = .get_llm_caller(),
       provider = provider,
       model    = model %||% "",
-      input    = tokens$input  %||% NA_integer_,
+      input    = tokens$input %||% NA_integer_,
       output   = tokens$output %||% NA_integer_
     )
   }
 
   if (isTRUE(show_tokens)) {
-    message(sprintf("Tokens used [%s / %s] \u2014 input: %s, output: %s",
-                    provider,
-                    model %||% "unknown",
-                    if (is.na(tokens$input))  "NA" else as.character(tokens$input),
-                    if (is.na(tokens$output)) "NA" else as.character(tokens$output)))
+    message(sprintf(
+      "Tokens used [%s / %s] \u2014 input: %s, output: %s",
+      provider,
+      model %||% "unknown",
+      if (is.na(tokens$input)) "NA" else as.character(tokens$input),
+      if (is.na(tokens$output)) "NA" else as.character(tokens$output)
+    ))
   }
 
-  attr(text, "model")    <- model
+  attr(text, "model") <- model
   attr(text, "provider") <- provider
-  attr(text, "tokens")   <- tokens
+  attr(text, "tokens") <- tokens
   text
 }

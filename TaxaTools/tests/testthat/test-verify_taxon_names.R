@@ -11,20 +11,28 @@
 # ── Offline tests: input validation ─────────────────────────────────────────
 
 test_that("rejects non-character input", {
-  expect_error(verify_taxon_names(123, backbone_id = 4),
-               "`name_list` must be a non-empty character vector")
+  expect_error(
+    verify_taxon_names(123, backbone_id = 4),
+    "`name_list` must be a non-empty character vector"
+  )
 })
 
 test_that("rejects empty character vector", {
-  expect_error(verify_taxon_names(character(0), backbone_id = 4),
-               "`name_list` must be a non-empty character vector")
+  expect_error(
+    verify_taxon_names(character(0), backbone_id = 4),
+    "`name_list` must be a non-empty character vector"
+  )
 })
 
 test_that("rejects missing or non-scalar backbone_id", {
-  expect_error(verify_taxon_names("Homo sapiens", backbone_id = c(4, 9)),
-               "`backbone_id` must be a single integer")
-  expect_error(verify_taxon_names("Homo sapiens", backbone_id = "ncbi"),
-               "`backbone_id` must be a single integer")
+  expect_error(
+    verify_taxon_names("Homo sapiens", backbone_id = c(4, 9)),
+    "`backbone_id` must be a single integer"
+  )
+  expect_error(
+    verify_taxon_names("Homo sapiens", backbone_id = "ncbi"),
+    "`backbone_id` must be a single integer"
+  )
 })
 
 # ── Online tests: real API behavior ─────────────────────────────────────────
@@ -47,10 +55,13 @@ test_that("returns correct structure for valid names", {
   # All expected columns present (fuzzy_corrected is specific to the
   # backbone_id = 4 / NCBI path)
   expect_named(result,
-               c("user_supplied_name", "matched_name", "matched_rank",
-                 "is_synonym", "classification_path", "classification_ranks",
-                 "score", "verified", "fuzzy_corrected"),
-               ignore.order = TRUE)
+    c(
+      "user_supplied_name", "matched_name", "matched_rank",
+      "is_synonym", "classification_path", "classification_ranks",
+      "score", "verified", "fuzzy_corrected"
+    ),
+    ignore.order = TRUE
+  )
 
   # matched_rank correctly reflects the resolved rank (species, here)
   expect_true(all(result$matched_rank == "species"))
@@ -177,7 +188,7 @@ test_that("a genus-only synonym match resolves to the current accepted genus, no
 
   result <- verify_taxon_names(
     "Inu sp. 1 sensu Shibukawa et al., 2020.",
-    backbone_id = 11L  # GBIF
+    backbone_id = 11L # GBIF
   )
 
   expect_equal(result$matched_name, "Luciogobius")
@@ -245,11 +256,11 @@ test_that("a response with no 'names' field is reported as malformed, not as a r
   local_mocked_bindings(
     POST        = function(...) structure(list(), class = "response"),
     status_code = function(resp) 200L,
-    content     = function(resp, ...) list(),   # 200 OK, but no 'names' field
+    content     = function(resp, ...) list(), # 200 OK, but no 'names' field
     .package    = "httr"
   )
 
-  warns  <- character()
+  warns <- character()
   result <- withCallingHandlers(
     suppressMessages(
       verify_taxon_names(c("Aaa bbb", "Ccc ddd"), backbone_id = 11L)

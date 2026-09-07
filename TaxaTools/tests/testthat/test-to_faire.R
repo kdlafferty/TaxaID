@@ -6,16 +6,16 @@
 # ---------------------------------------------------------------------------
 make_match_df <- function() {
   data.frame(
-    observation_id  = c("ASV1", "ASV2"),
-    taxon_name      = c("Fundulus parvipinnis", "Atherinops affinis"),
+    observation_id = c("ASV1", "ASV2"),
+    taxon_name = c("Fundulus parvipinnis", "Atherinops affinis"),
     taxon_name_rank = c("species", "species"),
-    score           = c(98.7, 95.1),
-    coverage        = c(0.98, 0.94),
-    accession       = c("MG002616.1", "KT215432.1"),
-    family          = c("Fundulidae", "Atherinopsidae"),
-    genus           = c("Fundulus", "Atherinops"),
-    species         = c("Fundulus parvipinnis", "Atherinops affinis"),
-    testid          = c("MiFishU", "MiFishU"),
+    score = c(98.7, 95.1),
+    coverage = c(0.98, 0.94),
+    accession = c("MG002616.1", "KT215432.1"),
+    family = c("Fundulidae", "Atherinopsidae"),
+    genus = c("Fundulus", "Atherinops"),
+    species = c("Fundulus parvipinnis", "Atherinops affinis"),
+    testid = c("MiFishU", "MiFishU"),
     stringsAsFactors = FALSE
   )
 }
@@ -26,43 +26,43 @@ make_match_df <- function() {
 
 test_that("to_faire: core column renames are applied", {
   out <- to_faire(make_match_df())
-  expect_true("seq_id"             %in% names(out))
-  expect_true("scientificName"     %in% names(out))
-  expect_true("taxonRank"          %in% names(out))
-  expect_true("percent_match"      %in% names(out))
+  expect_true("seq_id" %in% names(out))
+  expect_true("scientificName" %in% names(out))
+  expect_true("taxonRank" %in% names(out))
+  expect_true("percent_match" %in% names(out))
   expect_true("percent_query_cover" %in% names(out))
-  expect_true("accession_id"       %in% names(out))
-  expect_true("assay_name"         %in% names(out))
+  expect_true("accession_id" %in% names(out))
+  expect_true("assay_name" %in% names(out))
 })
 
 test_that("to_faire: original TaxaID column names are gone after rename", {
   out <- to_faire(make_match_df())
-  expect_false("observation_id"  %in% names(out))
-  expect_false("taxon_name"      %in% names(out))
+  expect_false("observation_id" %in% names(out))
+  expect_false("taxon_name" %in% names(out))
   expect_false("taxon_name_rank" %in% names(out))
-  expect_false("score"           %in% names(out))
-  expect_false("coverage"        %in% names(out))
-  expect_false("accession"       %in% names(out))
-  expect_false("testid"          %in% names(out))
+  expect_false("score" %in% names(out))
+  expect_false("coverage" %in% names(out))
+  expect_false("accession" %in% names(out))
+  expect_false("testid" %in% names(out))
 })
 
 test_that("to_faire: values are preserved through renames", {
-  df  <- make_match_df()
+  df <- make_match_df()
   out <- to_faire(df)
-  expect_equal(out$seq_id,              df$observation_id)
-  expect_equal(out$scientificName,      df$taxon_name)
-  expect_equal(out$taxonRank,           df$taxon_name_rank)
-  expect_equal(out$percent_match,       df$score)
+  expect_equal(out$seq_id, df$observation_id)
+  expect_equal(out$scientificName, df$taxon_name)
+  expect_equal(out$taxonRank, df$taxon_name_rank)
+  expect_equal(out$percent_match, df$score)
   expect_equal(out$percent_query_cover, df$coverage)
-  expect_equal(out$accession_id,        df$accession)
-  expect_equal(out$assay_name,          df$testid)
+  expect_equal(out$accession_id, df$accession)
+  expect_equal(out$assay_name, df$testid)
 })
 
 test_that("to_faire: taxonomy rank columns (family/genus/species) are unchanged", {
-  df  <- make_match_df()
+  df <- make_match_df()
   out <- to_faire(df)
-  expect_equal(out$family,  df$family)
-  expect_equal(out$genus,   df$genus)
+  expect_equal(out$family, df$family)
+  expect_equal(out$genus, df$genus)
   expect_equal(out$species, df$species)
 })
 
@@ -75,8 +75,8 @@ test_that("to_faire: verbatimIdentification is semicolon-delimited taxonomy", {
   expect_true("verbatimIdentification" %in% names(out))
   expect_true(grepl(";", out$verbatimIdentification[1L]))
   # Should contain family, genus, and species values
-  expect_true(grepl("Fundulidae",            out$verbatimIdentification[1L]))
-  expect_true(grepl("Fundulus parvipinnis",  out$verbatimIdentification[1L]))
+  expect_true(grepl("Fundulidae", out$verbatimIdentification[1L]))
+  expect_true(grepl("Fundulus parvipinnis", out$verbatimIdentification[1L]))
 })
 
 test_that("to_faire: specificEpithet is second word of species binomial", {
@@ -112,7 +112,7 @@ test_that("to_faire: custom checkls_ver is used", {
 test_that("to_faire: faire_table attribute is attached", {
   out <- to_faire(make_match_df(), table_type = "taxaRaw")
   att <- attr(out, "faire_table")
-  expect_equal(att$table_type,  "taxaRaw")
+  expect_equal(att$table_type, "taxaRaw")
   expect_equal(att$checkls_ver, "1.02")
 })
 
@@ -141,11 +141,13 @@ test_that("to_faire: assay_name param fills in when testid absent", {
 })
 
 test_that("to_faire: works without score/coverage columns (partial match df)", {
-  df <- make_match_df()[, c("observation_id", "taxon_name", "taxon_name_rank",
-                             "family", "genus", "species")]
+  df <- make_match_df()[, c(
+    "observation_id", "taxon_name", "taxon_name_rank",
+    "family", "genus", "species"
+  )]
   out <- suppressMessages(to_faire(df))
   expect_true("seq_id" %in% names(out))
-  expect_false("percent_match"       %in% names(out))
+  expect_false("percent_match" %in% names(out))
   expect_false("percent_query_cover" %in% names(out))
 })
 

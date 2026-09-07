@@ -78,15 +78,14 @@ census_genus_species <- function(genus_keys,
                                  rank = "genus",
                                  status_filter = "ACCEPTED",
                                  verbose = TRUE) {
-
-
   # --- Input validation ---
   if (length(genus_keys) == 0L) {
     stop("`genus_keys` must be a named vector with length >= 1.", call. = FALSE)
   }
   if (is.null(names(genus_keys)) || any(names(genus_keys) == "")) {
     stop("`genus_keys` must be named (names = taxon names, values = GBIF usageKeys).",
-         call. = FALSE)
+      call. = FALSE
+    )
   }
   # Coerce character keys (from rgbif::name_backbone) to numeric
   if (is.character(genus_keys)) {
@@ -108,15 +107,19 @@ census_genus_species <- function(genus_keys,
   }
   if (!requireNamespace("rgbif", quietly = TRUE)) {
     stop("Package 'rgbif' is required for census_genus_species(). ",
-         "Install with: install.packages('rgbif')", call. = FALSE)
+      "Install with: install.packages('rgbif')",
+      call. = FALSE
+    )
   }
 
   rank <- tolower(rank)
 
   # --- If rank is higher than genus, recurse: find child genera first ---
   if (rank != "genus") {
-    return(.census_higher_rank(genus_keys, match_species, rank,
-                               status_filter, verbose))
+    return(.census_higher_rank(
+      genus_keys, match_species, rank,
+      status_filter, verbose
+    ))
   }
 
   # --- Genus-level census ---
@@ -125,30 +128,37 @@ census_genus_species <- function(genus_keys,
 
   for (i in seq_along(genus_keys)) {
     g_name <- names(genus_keys)[i]
-    g_key  <- unname(genus_keys[i])
+    g_key <- unname(genus_keys[i])
 
     if (verbose) {
-      message(sprintf("Querying GBIF backbone: %s (key %d) [%d/%d]",
-                      g_name, g_key, i, length(genus_keys)))
+      message(sprintf(
+        "Querying GBIF backbone: %s (key %d) [%d/%d]",
+        g_name, g_key, i, length(genus_keys)
+      ))
     }
 
-    species_names <- tryCatch({
-      .fetch_children_species(g_key, status_filter)
-    }, error = function(e) {
-      if (verbose) {
-        message(sprintf("  Warning: GBIF query failed for %s: %s", g_name,
-                        conditionMessage(e)))
+    species_names <- tryCatch(
+      {
+        .fetch_children_species(g_key, status_filter)
+      },
+      error = function(e) {
+        if (verbose) {
+          message(sprintf(
+            "  Warning: GBIF query failed for %s: %s", g_name,
+            conditionMessage(e)
+          ))
+        }
+        character(0)
       }
-      character(0)
-    })
+    )
 
     all_species_flat <- c(all_species_flat, species_names)
 
     # Compute reference comparison if match_species provided
     if (!is.null(match_species)) {
       missing <- setdiff(species_names, match_species)
-      in_ref  <- length(species_names) - length(missing)
-      n_miss  <- length(missing)
+      in_ref <- length(species_names) - length(missing)
+      n_miss <- length(missing)
       if (n_miss == 0L) {
         status_val <- "complete"
       } else if (n_miss == 1L) {
@@ -157,23 +167,23 @@ census_genus_species <- function(genus_keys,
         status_val <- "incomplete"
       }
     } else {
-      missing    <- character(0)
-      in_ref     <- NA_integer_
-      n_miss     <- NA_integer_
+      missing <- character(0)
+      in_ref <- NA_integer_
+      n_miss <- NA_integer_
       status_val <- NA_character_
     }
 
     results[[i]] <- data.frame(
-      group           = g_name,
-      gbif_key        = as.integer(g_key),
+      group = g_name,
+      gbif_key = as.integer(g_key),
       total_described = length(species_names),
-      in_reference    = as.integer(in_ref),
-      n_missing       = as.integer(n_miss),
+      in_reference = as.integer(in_ref),
+      n_missing = as.integer(n_miss),
       stringsAsFactors = FALSE
     )
-    results[[i]]$missing_species    <- list(missing)
-    results[[i]]$described_species  <- list(species_names)
-    results[[i]]$status             <- status_val
+    results[[i]]$missing_species <- list(missing)
+    results[[i]]$described_species <- list(species_names)
+    results[[i]]$status <- status_val
   }
 
   out <- do.call(rbind, results)
@@ -210,10 +220,12 @@ census_genus_species <- function(genus_keys,
 
   if ("taxonomicStatus" %in% names(children) && length(status_filter) > 0L) {
     children <- children[toupper(children$taxonomicStatus) %in%
-                           toupper(status_filter), , drop = FALSE]
+      toupper(status_filter), , drop = FALSE]
   }
 
-  if (nrow(children) == 0L) return(character(0))
+  if (nrow(children) == 0L) {
+    return(character(0))
+  }
 
   # Use canonicalName (binomial without authorship)
   if ("canonicalName" %in% names(children)) {
@@ -244,33 +256,41 @@ census_genus_species <- function(genus_keys,
 #' @noRd
 .census_higher_rank <- function(keys, match_species, rank,
                                 status_filter, verbose) {
-
   all_genus_keys <- integer(0)
   all_genus_names <- character(0)
 
   for (i in seq_along(keys)) {
     parent_name <- names(keys)[i]
-    parent_key  <- unname(keys[i])
+    parent_key <- unname(keys[i])
 
     if (verbose) {
-      message(sprintf("Enumerating genera in %s %s (key %d)...",
-                      rank, parent_name, parent_key))
+      message(sprintf(
+        "Enumerating genera in %s %s (key %d)...",
+        rank, parent_name, parent_key
+      ))
     }
 
-    genera <- tryCatch({
-      .fetch_children_genera(parent_key)
-    }, error = function(e) {
-      if (verbose) {
-        message(sprintf("  Warning: GBIF query failed for %s: %s",
-                        parent_name, conditionMessage(e)))
+    genera <- tryCatch(
+      {
+        .fetch_children_genera(parent_key)
+      },
+      error = function(e) {
+        if (verbose) {
+          message(sprintf(
+            "  Warning: GBIF query failed for %s: %s",
+            parent_name, conditionMessage(e)
+          ))
+        }
+        data.frame(
+          name = character(0), key = integer(0),
+          stringsAsFactors = FALSE
+        )
       }
-      data.frame(name = character(0), key = integer(0),
-                 stringsAsFactors = FALSE)
-    })
+    )
 
     if (nrow(genera) > 0L) {
       all_genus_names <- c(all_genus_names, genera$name)
-      all_genus_keys  <- c(all_genus_keys, genera$key)
+      all_genus_keys <- c(all_genus_keys, genera$key)
       if (verbose) {
         message(sprintf("  Found %d genera in %s", nrow(genera), parent_name))
       }
@@ -283,9 +303,9 @@ census_genus_species <- function(genus_keys,
       total_described = integer(0), in_reference = integer(0),
       n_missing = integer(0), stringsAsFactors = FALSE
     )
-    out$missing_species   <- list()
+    out$missing_species <- list()
     out$described_species <- list()
-    out$status            <- character(0)
+    out$status <- character(0)
     attr(out, "all_species") <- character(0)
     return(out)
   }
@@ -296,11 +316,11 @@ census_genus_species <- function(genus_keys,
   genus_keys_named <- genus_keys_named[!duplicated(names(genus_keys_named))]
 
   census_genus_species(
-    genus_keys   = genus_keys_named,
+    genus_keys = genus_keys_named,
     match_species = match_species,
-    rank         = "genus",
+    rank = "genus",
     status_filter = status_filter,
-    verbose      = verbose
+    verbose = verbose
   )
 }
 
@@ -314,8 +334,10 @@ census_genus_species <- function(genus_keys,
   resp <- rgbif::name_usage(key = key, data = "children", limit = 1000)
 
   if (is.null(resp$data) || nrow(resp$data) == 0L) {
-    return(data.frame(name = character(0), key = integer(0),
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      name = character(0), key = integer(0),
+      stringsAsFactors = FALSE
+    ))
   }
 
   children <- resp$data
@@ -326,12 +348,15 @@ census_genus_species <- function(genus_keys,
   }
   if ("taxonomicStatus" %in% names(children)) {
     children <- children[toupper(children$taxonomicStatus) == "ACCEPTED", ,
-                         drop = FALSE]
+      drop = FALSE
+    ]
   }
 
   if (nrow(children) == 0L) {
-    return(data.frame(name = character(0), key = integer(0),
-                      stringsAsFactors = FALSE))
+    return(data.frame(
+      name = character(0), key = integer(0),
+      stringsAsFactors = FALSE
+    ))
   }
 
   if ("canonicalName" %in% names(children)) {
@@ -342,7 +367,7 @@ census_genus_species <- function(genus_keys,
 
   data.frame(
     name = children[[name_col]],
-    key  = as.integer(children$key),
+    key = as.integer(children$key),
     stringsAsFactors = FALSE
   )
 }

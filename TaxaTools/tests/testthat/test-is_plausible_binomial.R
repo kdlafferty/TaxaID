@@ -54,8 +54,10 @@ test_that("returns FALSE for metagenome names", {
 # --- Vectorized behavior ------------------------------------------------------
 
 test_that("vectorizes correctly over a mixed input", {
-  x <- c("Cottus asper", "Cottus sp.", "uncultured bacterium",
-         "Homo sapiens", "mus musculus")
+  x <- c(
+    "Cottus asper", "Cottus sp.", "uncultured bacterium",
+    "Homo sapiens", "mus musculus"
+  )
   result <- is_plausible_binomial(x)
   expect_equal(result, c(TRUE, FALSE, FALSE, TRUE, FALSE))
 })

@@ -102,7 +102,7 @@ utils::globalVariables(c(
 #' # Translate NCBI names to GBIF taxonomy
 #' ncbi_names <- c("Homo sapiens", "Mus musculus")
 #'
-#' verify_taxon_names(ncbi_names, backbone_id = 11) |>  # 11 = GBIF
+#' verify_taxon_names(ncbi_names, backbone_id = 11) |> # 11 = GBIF
 #'   change_backbone(
 #'     input_col          = "user_supplied_name",
 #'     old_backbone_label = "NCBI",
@@ -110,11 +110,10 @@ utils::globalVariables(c(
 #'   )
 #' }
 change_backbone <- function(input_df,
-                             input_col,
-                             old_backbone_label = "source_name",
-                             new_backbone_label = "translated_name",
-                             keep_unmatched     = TRUE) {
-
+                            input_col,
+                            old_backbone_label = "source_name",
+                            new_backbone_label = "translated_name",
+                            keep_unmatched = TRUE) {
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("`input_df` must be a data frame.")
   if (!is.character(input_col) || length(input_col) != 1) {
@@ -138,7 +137,7 @@ change_backbone <- function(input_df,
   }
 
   required_cols <- c(input_col, "matched_name", "classification_ranks", "classification_path")
-  missing_cols  <- setdiff(required_cols, names(input_df))
+  missing_cols <- setdiff(required_cols, names(input_df))
   if (length(missing_cols) > 0) {
     stop(
       "Required column(s) missing from `input_df`: ", paste(missing_cols, collapse = ", "),
@@ -158,34 +157,32 @@ change_backbone <- function(input_df,
       !!rlang::sym(old_backbone_label) := !!rlang::sym(input_col),
       !!rlang::sym(new_backbone_label) := !!rlang::sym("matched_name")
     ) |>
-
     # --- Parse pipe-delimited rank and path strings into paired lists ---
     dplyr::mutate(
       ranks = strsplit(classification_ranks, "\\|"),
-      paths = strsplit(classification_path,  "\\|")
+      paths = strsplit(classification_path, "\\|")
     ) |>
-
     # --- Build a named character vector per row: name = rank, value = taxon ---
     dplyr::mutate(
       tax_list = purrr::map2(ranks, paths, function(r, p) {
         # Guard against NA or zero-length splits (e.g., unverified names)
         # strsplit(NA, ...) returns list(NA_character_), not list(character(0))
         if (length(r) == 0 || length(p) == 0 ||
-            (length(r) == 1L && is.na(r[1L])) ||
-            (length(p) == 1L && is.na(p[1L])) ||
-            all(is.na(r)) || all(is.na(p))) return(NULL)
+          (length(r) == 1L && is.na(r[1L])) ||
+          (length(p) == 1L && is.na(p[1L])) ||
+          all(is.na(r)) || all(is.na(p))) {
+          return(NULL)
+        }
 
-        keep   <- !is.na(r) & nchar(r) > 0 & !is.na(p) & nchar(p) > 0
-        named  <- stats::setNames(p[keep], r[keep])
+        keep <- !is.na(r) & nchar(r) > 0 & !is.na(p) & nchar(p) > 0
+        named <- stats::setNames(p[keep], r[keep])
 
         # Drop "unranked" entries -- backbone sometimes inserts these
         named[names(named) != "unranked"]
       })
     ) |>
-
     # --- Drop intermediate columns before widening ---
     dplyr::select(-ranks, -paths, -classification_ranks, -classification_path) |>
-
     # --- Expand the named-vector list column into one column per rank ---
     # Ranks absent for a given row become NA automatically.
     tidyr::unnest_wider(tax_list)
@@ -197,12 +194,14 @@ change_backbone <- function(input_df,
   if (keep_unmatched) {
     n_unmatched <- sum(!genuine_match)
     if (n_unmatched > 0L) {
-      message(sprintf(
-        "change_backbone: %d name(s) had no match in the target backbone; ",
-        n_unmatched
-      ), "original name retained in '", new_backbone_label,
-      "' column (keep_unmatched = TRUE). ",
-      "Rank columns for these rows remain NA.")
+      message(
+        sprintf(
+          "change_backbone: %d name(s) had no match in the target backbone; ",
+          n_unmatched
+        ), "original name retained in '", new_backbone_label,
+        "' column (keep_unmatched = TRUE). ",
+        "Rank columns for these rows remain NA."
+      )
       result[[new_backbone_label]] <- dplyr::coalesce(
         result[[new_backbone_label]],
         result[[old_backbone_label]]

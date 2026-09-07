@@ -105,30 +105,35 @@
 #' @importFrom dplyr bind_rows
 #' @export
 common_to_scientific <- function(common_names,
-                                   taxon_group = NULL,
-                                   location    = NULL,
-                                   backbone_id = 11L,
-                                   verify      = TRUE,
-                                   llm_fn      = getOption("TaxaID.llm_fn"),
-                                   ...) {
-
+                                 taxon_group = NULL,
+                                 location = NULL,
+                                 backbone_id = 11L,
+                                 verify = TRUE,
+                                 llm_fn = getOption("TaxaID.llm_fn"),
+                                 ...) {
   # ---- input validation -------------------------------------------------------
-  if (!is.character(common_names) || length(common_names) == 0L)
+  if (!is.character(common_names) || length(common_names) == 0L) {
     stop("common_names must be a non-empty character vector", call. = FALSE)
-  if (!is.null(taxon_group) && (!is.character(taxon_group) || length(taxon_group) != 1L))
+  }
+  if (!is.null(taxon_group) && (!is.character(taxon_group) || length(taxon_group) != 1L)) {
     stop("taxon_group must be a single character string or NULL", call. = FALSE)
-  if (!is.null(location) && (!is.character(location) || length(location) != 1L))
+  }
+  if (!is.null(location) && (!is.character(location) || length(location) != 1L)) {
     stop("location must be a single character string or NULL", call. = FALSE)
-  if (!is.logical(verify) || length(verify) != 1L || is.na(verify))
+  }
+  if (!is.logical(verify) || length(verify) != 1L || is.na(verify)) {
     stop("verify must be TRUE or FALSE", call. = FALSE)
-  if (is.null(llm_fn))
+  }
+  if (is.null(llm_fn)) {
     stop(
       "No LLM function configured. Load TaxaTools with library(TaxaTools) to ",
       "auto-detect a provider, or supply llm_fn explicitly.",
       call. = FALSE
     )
-  if (!is.function(llm_fn))
+  }
+  if (!is.function(llm_fn)) {
     stop("llm_fn must be a function", call. = FALSE)
+  }
 
   # ---- build prompt -----------------------------------------------------------
   names_block <- paste(
@@ -139,12 +144,18 @@ common_to_scientific <- function(common_names,
   )
 
   context_lines <- character(0L)
-  if (!is.null(taxon_group))
-    context_lines <- c(context_lines,
-                       sprintf("Taxonomic group: %s", taxon_group))
-  if (!is.null(location))
-    context_lines <- c(context_lines,
-                       sprintf("Geographic location: %s", location))
+  if (!is.null(taxon_group)) {
+    context_lines <- c(
+      context_lines,
+      sprintf("Taxonomic group: %s", taxon_group)
+    )
+  }
+  if (!is.null(location)) {
+    context_lines <- c(
+      context_lines,
+      sprintf("Geographic location: %s", location)
+    )
+  }
   if (length(context_lines) > 0L) {
     context_block <- paste0("\nContext:\n", paste(context_lines, collapse = "\n"), "\n")
   } else {
@@ -174,7 +185,7 @@ common_to_scientific <- function(common_names,
   # ---- parse JSON response ----------------------------------------------------
   # Strip markdown fences if present
   json_text <- gsub("(?s)^```(?:json)?\\s*", "", raw, perl = TRUE)
-  json_text <- gsub("(?s)\\s*```$",          "", json_text, perl = TRUE)
+  json_text <- gsub("(?s)\\s*```$", "", json_text, perl = TRUE)
   json_text <- trimws(json_text)
 
   parsed <- tryCatch(
@@ -183,39 +194,45 @@ common_to_scientific <- function(common_names,
   )
 
   if (is.null(parsed) || !is.data.frame(parsed) ||
-      !all(c("common_name", "scientific_name") %in% names(parsed))) {
+    !all(c("common_name", "scientific_name") %in% names(parsed))) {
     warning(
       "Could not parse LLM response as JSON. Returning raw text in 'notes'.",
       call. = FALSE
     )
     return(data.frame(
-      common_name             = common_names,
-      scientific_name_llm     = NA_character_,
+      common_name = common_names,
+      scientific_name_llm = NA_character_,
       scientific_name_verified = NA_character_,
-      backbone_id             = as.integer(backbone_id),
-      verified                = FALSE,
-      notes                   = raw,
-      stringsAsFactors        = FALSE
+      backbone_id = as.integer(backbone_id),
+      verified = FALSE,
+      notes = raw,
+      stringsAsFactors = FALSE
     ))
   }
 
   # Align rows to input order (LLM may reorder)
-  llm_names  <- as.character(parsed$common_name)
-  llm_sci    <- as.character(parsed$scientific_name)
+  llm_names <- as.character(parsed$common_name)
+  llm_sci <- as.character(parsed$scientific_name)
   llm_sci[llm_sci == "NULL" | llm_sci == "null"] <- NA_character_
-  llm_notes  <- if ("notes" %in% names(parsed)) as.character(parsed$notes)
-                else rep("", nrow(parsed))
+  llm_notes <- if ("notes" %in% names(parsed)) {
+    as.character(parsed$notes)
+  } else {
+    rep("", nrow(parsed))
+  }
 
   # Match back to input order
-  idx        <- match(tolower(trimws(common_names)),
-                      tolower(trimws(llm_names)))
-  sci_ordered   <- ifelse(is.na(idx), NA_character_, llm_sci[idx])
+  idx <- match(
+    tolower(trimws(common_names)),
+    tolower(trimws(llm_names))
+  )
+  sci_ordered <- ifelse(is.na(idx), NA_character_, llm_sci[idx])
   notes_ordered <- ifelse(is.na(idx), "LLM response row not matched",
-                          llm_notes[idx])
+    llm_notes[idx]
+  )
 
   # ---- verify via backbone ----------------------------------------------------
   sci_verified <- rep(NA_character_, length(common_names))
-  is_verified  <- rep(FALSE,         length(common_names))
+  is_verified <- rep(FALSE, length(common_names))
 
   if (verify) {
     to_verify <- !is.na(sci_ordered) & nzchar(sci_ordered)
@@ -226,10 +243,13 @@ common_to_scientific <- function(common_names,
       )
       # verify_taxon_names returns a data frame; verified names in
       # $name_verified (or similar column — use first non-input column)
-      verified_col <- if ("name_verified" %in% names(vdf)) "name_verified"
-                      else names(vdf)[ncol(vdf)]
+      verified_col <- if ("name_verified" %in% names(vdf)) {
+        "name_verified"
+      } else {
+        names(vdf)[ncol(vdf)]
+      }
       sci_verified[to_verify] <- as.character(vdf[[verified_col]])
-      is_verified[to_verify]  <- !is.na(sci_verified[to_verify])
+      is_verified[to_verify] <- !is.na(sci_verified[to_verify])
     }
   }
 
@@ -254,62 +274,95 @@ common_to_scientific <- function(common_names,
 # or NULL when nothing found.
 #' @noRd
 .gbif_common_names <- function(name) {
-  if (!requireNamespace("rgbif", quietly = TRUE))
+  if (!requireNamespace("rgbif", quietly = TRUE)) {
     stop("Package 'rgbif' is required for backbone_id = 11. ",
-         "Install with: install.packages('rgbif')", call. = FALSE)
+      "Install with: install.packages('rgbif')",
+      call. = FALSE
+    )
+  }
   bb <- tryCatch(
     rgbif::name_backbone(name = name, strict = FALSE),
     error = function(e) NULL
   )
-  if (is.null(bb) || identical(bb$matchType, "NONE")) return(NULL)
+  if (is.null(bb) || identical(bb$matchType, "NONE")) {
+    return(NULL)
+  }
   # Use speciesKey when available; fall back to usageKey for higher ranks
-  key <- if (!is.null(bb$speciesKey) && !is.na(bb$speciesKey)) bb$speciesKey
-         else bb$usageKey
-  if (is.null(key) || is.na(key)) return(NULL)
+  key <- if (!is.null(bb$speciesKey) && !is.na(bb$speciesKey)) {
+    bb$speciesKey
+  } else {
+    bb$usageKey
+  }
+  if (is.null(key) || is.na(key)) {
+    return(NULL)
+  }
   vn <- tryCatch(
     rgbif::name_usage(key = key, data = "vernacularNames"),
     error = function(e) NULL
   )
-  if (is.null(vn) || is.null(vn$data) || nrow(vn$data) == 0L) return(NULL)
+  if (is.null(vn) || is.null(vn$data) || nrow(vn$data) == 0L) {
+    return(NULL)
+  }
   eng <- vn$data[!is.na(vn$data$language) & vn$data$language == "eng",
-                 "vernacularName", drop = TRUE]
+    "vernacularName",
+    drop = TRUE
+  ]
   eng <- unique(trimws(as.character(eng)))
   eng <- eng[nzchar(eng)]
-  if (length(eng) == 0L) return(NULL)
+  if (length(eng) == 0L) {
+    return(NULL)
+  }
   list(
-    primary      = eng[[1L]],
-    alternatives = if (length(eng) > 1L) paste(eng[-1L], collapse = "; ")
-                   else NA_character_
+    primary = eng[[1L]],
+    alternatives = if (length(eng) > 1L) {
+      paste(eng[-1L], collapse = "; ")
+    } else {
+      NA_character_
+    }
   )
 }
 
 #' @noRd
 .itis_common_names <- function(name) {
-  if (!requireNamespace("taxize", quietly = TRUE))
+  if (!requireNamespace("taxize", quietly = TRUE)) {
     stop("Package 'taxize' is required for backbone_id = 3. ",
-         "Install with: install.packages('taxize')", call. = FALSE)
+      "Install with: install.packages('taxize')",
+      call. = FALSE
+    )
+  }
   tsn <- tryCatch(
     suppressMessages(
       taxize::get_tsn(name, accepted = TRUE, ask = FALSE, messages = FALSE)
     ),
     error = function(e) NA_character_
   )
-  if (length(tsn) == 0L || is.na(tsn[[1L]])) return(NULL)
+  if (length(tsn) == 0L || is.na(tsn[[1L]])) {
+    return(NULL)
+  }
   rec <- tryCatch(
     taxize::itis_getrecord(tsn[[1L]]),
     error = function(e) NULL
   )
-  if (is.null(rec)) return(NULL)
+  if (is.null(rec)) {
+    return(NULL)
+  }
   cn <- tryCatch(rec$commonNameList$commonNames, error = function(e) NULL)
-  if (is.null(cn) || nrow(cn) == 0L) return(NULL)
+  if (is.null(cn) || nrow(cn) == 0L) {
+    return(NULL)
+  }
   eng <- cn[tolower(cn$language) == "english", "commonName", drop = TRUE]
   eng <- unique(trimws(as.character(eng)))
   eng <- eng[nzchar(eng)]
-  if (length(eng) == 0L) return(NULL)
+  if (length(eng) == 0L) {
+    return(NULL)
+  }
   list(
-    primary      = eng[[1L]],
-    alternatives = if (length(eng) > 1L) paste(eng[-1L], collapse = "; ")
-                   else NA_character_
+    primary = eng[[1L]],
+    alternatives = if (length(eng) > 1L) {
+      paste(eng[-1L], collapse = "; ")
+    } else {
+      NA_character_
+    }
   )
 }
 
@@ -345,19 +398,20 @@ common_to_scientific <- function(common_names,
       "\nReturn exactly ", length(batch_names),
       " elements in the same order as the input list."
     )
-    raw       <- llm_fn(prompt, ...)
-    json_text <- gsub("(?s)^```(?:json)?\\s*", "", raw,  perl = TRUE)
-    json_text <- gsub("(?s)\\s*```$",           "", json_text, perl = TRUE)
+    raw <- llm_fn(prompt, ...)
+    json_text <- gsub("(?s)^```(?:json)?\\s*", "", raw, perl = TRUE)
+    json_text <- gsub("(?s)\\s*```$", "", json_text, perl = TRUE)
     json_text <- trimws(json_text)
     parsed <- tryCatch(
       jsonlite::fromJSON(json_text, simplifyDataFrame = TRUE),
       error = function(e) NULL
     )
     if (is.null(parsed) || !is.data.frame(parsed) ||
-        !"scientific_name" %in% names(parsed)) {
+      !"scientific_name" %in% names(parsed)) {
       warning(sprintf(
         "Could not parse LLM response as JSON for batch starting with '%s'.",
-        batch_names[[1L]]), call. = FALSE)
+        batch_names[[1L]]
+      ), call. = FALSE)
       return(data.frame(
         scientific_name          = batch_names,
         common_name              = NA_character_,
@@ -366,13 +420,17 @@ common_to_scientific <- function(common_names,
       ))
     }
     llm_sci <- as.character(parsed$scientific_name)
-    llm_cn  <- if ("common_name" %in% names(parsed))
-                 as.character(parsed$common_name)
-               else rep(NA_character_, nrow(parsed))
-    llm_alt <- if ("common_name_alternatives" %in% names(parsed))
-                 as.character(parsed$common_name_alternatives)
-               else rep(NA_character_, nrow(parsed))
-    llm_cn[llm_cn   %in% c("NULL", "null", "NA")] <- NA_character_
+    llm_cn <- if ("common_name" %in% names(parsed)) {
+      as.character(parsed$common_name)
+    } else {
+      rep(NA_character_, nrow(parsed))
+    }
+    llm_alt <- if ("common_name_alternatives" %in% names(parsed)) {
+      as.character(parsed$common_name_alternatives)
+    } else {
+      rep(NA_character_, nrow(parsed))
+    }
+    llm_cn[llm_cn %in% c("NULL", "null", "NA")] <- NA_character_
     llm_alt[llm_alt %in% c("NULL", "null", "NA")] <- NA_character_
     idx <- match(tolower(trimws(batch_names)), tolower(trimws(llm_sci)))
     data.frame(
@@ -385,9 +443,9 @@ common_to_scientific <- function(common_names,
 
   # Split into batches and combine
   n_batches <- ceiling(length(names) / batch_size)
-  batches   <- vector("list", n_batches)
+  batches <- vector("list", n_batches)
   for (b in seq_len(n_batches)) {
-    idx        <- ((b - 1L) * batch_size + 1L):min(b * batch_size, length(names))
+    idx <- ((b - 1L) * batch_size + 1L):min(b * batch_size, length(names))
     batches[[b]] <- .parse_one_batch(names[idx])
   }
   do.call(rbind, batches)
@@ -490,59 +548,68 @@ common_to_scientific <- function(common_names,
 #' @export
 scientific_to_common <- function(scientific_names,
                                  backbone_id = 11L,
-                                 location    = NULL,
-                                 use_llm     = FALSE,
-                                 llm_fn      = getOption("TaxaID.llm_fn"),
+                                 location = NULL,
+                                 use_llm = FALSE,
+                                 llm_fn = getOption("TaxaID.llm_fn"),
                                  ...) {
-
   # ---- input validation -------------------------------------------------------
-  if (!is.character(scientific_names) || length(scientific_names) == 0L)
+  if (!is.character(scientific_names) || length(scientific_names) == 0L) {
     stop("scientific_names must be a non-empty character vector", call. = FALSE)
-  if (!is.null(location) && (!is.character(location) || length(location) != 1L))
+  }
+  if (!is.null(location) && (!is.character(location) || length(location) != 1L)) {
     stop("location must be a single character string or NULL", call. = FALSE)
+  }
   if (!is.null(backbone_id)) {
     backbone_id <- as.integer(backbone_id)
     if (!backbone_id %in% c(3L, 11L)) {
       warning(sprintf(
         "backbone_id %d is not supported for common name lookup (use 3 = ITIS or 11 = GBIF). Falling back to LLM.",
-        backbone_id), call. = FALSE)
+        backbone_id
+      ), call. = FALSE)
       backbone_id <- NULL
     }
   }
-  if (!is.logical(use_llm) || length(use_llm) != 1L || is.na(use_llm))
+  if (!is.logical(use_llm) || length(use_llm) != 1L || is.na(use_llm)) {
     stop("use_llm must be TRUE or FALSE", call. = FALSE)
+  }
   llm_needed <- is.null(backbone_id) || use_llm
-  if (llm_needed && is.null(llm_fn))
+  if (llm_needed && is.null(llm_fn)) {
     stop(
       "No LLM function configured. Load TaxaTools with library(TaxaTools) to ",
       "auto-detect a provider, or supply llm_fn explicitly. ",
       "To use backbone-only lookup without LLM fallback, set use_llm = FALSE.",
       call. = FALSE
     )
-  if (!is.null(llm_fn) && !is.function(llm_fn))
+  }
+  if (!is.null(llm_fn) && !is.function(llm_fn)) {
     stop("llm_fn must be a function", call. = FALSE)
+  }
 
   # ---- initialise output vectors ----------------------------------------------
-  n             <- length(scientific_names)
-  out_cn        <- rep(NA_character_, n)
-  out_alt       <- rep(NA_character_, n)
-  out_source    <- rep("none", n)
-  out_backbone  <- rep(NA_integer_,  n)
+  n <- length(scientific_names)
+  out_cn <- rep(NA_character_, n)
+  out_alt <- rep(NA_character_, n)
+  out_source <- rep("none", n)
+  out_backbone <- rep(NA_integer_, n)
 
   # ---- backbone lookup (per-taxon) --------------------------------------------
   if (!is.null(backbone_id)) {
     lookup_fn <- if (backbone_id == 11L) .gbif_common_names else .itis_common_names
     for (i in seq_len(n)) {
       res <- tryCatch(lookup_fn(scientific_names[[i]]), error = function(e) {
-        warning(sprintf("Backbone lookup failed for '%s': %s",
-                        scientific_names[[i]], conditionMessage(e)),
-                call. = FALSE)
+        warning(
+          sprintf(
+            "Backbone lookup failed for '%s': %s",
+            scientific_names[[i]], conditionMessage(e)
+          ),
+          call. = FALSE
+        )
         NULL
       })
       if (!is.null(res)) {
-        out_cn[[i]]       <- res$primary
-        out_alt[[i]]      <- res$alternatives
-        out_source[[i]]   <- if (backbone_id == 11L) "gbif" else "itis"
+        out_cn[[i]] <- res$primary
+        out_alt[[i]] <- res$alternatives
+        out_source[[i]] <- if (backbone_id == 11L) "gbif" else "itis"
         out_backbone[[i]] <- backbone_id
       }
     }
@@ -552,13 +619,13 @@ scientific_to_common <- function(scientific_names,
   needs_llm <- out_source == "none"
   if (use_llm && any(needs_llm) && !is.null(llm_fn)) {
     llm_names <- scientific_names[needs_llm]
-    llm_res   <- .llm_common_names(llm_names, llm_fn, location = location, ...)
-    llm_idx   <- which(needs_llm)
+    llm_res <- .llm_common_names(llm_names, llm_fn, location = location, ...)
+    llm_idx <- which(needs_llm)
     for (j in seq_along(llm_idx)) {
       i <- llm_idx[[j]]
       if (!is.na(llm_res$common_name[[j]])) {
-        out_cn[[i]]     <- llm_res$common_name[[j]]
-        out_alt[[i]]    <- llm_res$common_name_alternatives[[j]]
+        out_cn[[i]] <- llm_res$common_name[[j]]
+        out_alt[[i]] <- llm_res$common_name_alternatives[[j]]
         out_source[[i]] <- "llm"
       }
     }
@@ -567,8 +634,8 @@ scientific_to_common <- function(scientific_names,
     llm_res <- .llm_common_names(scientific_names, llm_fn, location = location, ...)
     for (i in seq_len(n)) {
       if (!is.na(llm_res$common_name[[i]])) {
-        out_cn[[i]]     <- llm_res$common_name[[i]]
-        out_alt[[i]]    <- llm_res$common_name_alternatives[[i]]
+        out_cn[[i]] <- llm_res$common_name[[i]]
+        out_alt[[i]] <- llm_res$common_name_alternatives[[i]]
         out_source[[i]] <- "llm"
       }
     }

@@ -71,13 +71,14 @@
 #' @export
 #'
 #' @examples
-#' nms <- c("Homo sapiens", "mus musculus", NA, "sp.", "Canis lupus sp.",
-#'          "Homo sapiens", "[Bacillus] subtilis", "Unknown")
+#' nms <- c(
+#'   "Homo sapiens", "mus musculus", NA, "sp.", "Canis lupus sp.",
+#'   "Homo sapiens", "[Bacillus] subtilis", "Unknown"
+#' )
 #' clean_taxon_names(nms)
 #' # Returns: c("Homo sapiens", NA, NA, NA, "Canis lupus",
 #' #            "Homo sapiens", "Bacillus subtilis", NA)
 clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NULL) {
-
   # --- Input validation ---
   if (is.factor(name_vec)) name_vec <- as.character(name_vec)
   if (!is.character(name_vec)) stop("`name_vec` must be a character vector.")
@@ -144,8 +145,8 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   # --- Split into at most three tokens: genus | epithet | remainder ---
   # str_split_fixed always returns exactly n columns, so no ragged results.
   # NA inputs produce NA in all columns, which ifelse propagates correctly.
-  mat     <- stringr::str_split_fixed(x, " ", n = 3)
-  genus   <- mat[, 1]
+  mat <- stringr::str_split_fixed(x, " ", n = 3)
+  genus <- mat[, 1]
   epithet <- mat[, 2]
   # mat[, 3] (remainder / author string) is discarded intentionally;
   # it is already excluded by limiting the split to 3 tokens and using
@@ -155,7 +156,7 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   # Single-character epithets are abbreviations (e.g., "P." for a species),
   # not valid species names; require at least 2 characters.
   keep_epithet <- nchar(epithet) >= 2 & !(epithet %in% remove_abbr)
-  cleaned      <- ifelse(keep_epithet, paste0(genus, " ", epithet), genus)
+  cleaned <- ifelse(keep_epithet, paste0(genus, " ", epithet), genus)
 
   # Names that were bad get NA (genus from split of NA is "NA" string; fix that)
   cleaned[bad] <- NA_character_

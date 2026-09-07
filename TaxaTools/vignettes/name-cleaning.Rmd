@@ -33,13 +33,16 @@ functions and text generation tools.
 library(TaxaTools)
 
 # Clean raw names
-clean <- clean_taxon_names(c("Fundulus parvipinnis (Girard, 1854)",
-                              "Atherinops  affinis", "sp. nov."))
+clean <- clean_taxon_names(c(
+  "Fundulus parvipinnis (Girard, 1854)",
+  "Atherinops  affinis", "sp. nov."
+))
 # "Fundulus parvipinnis", "Atherinops affinis", NA
 
 # Verify against a backbone
 verified <- verify_taxon_names(c("Fundulus parvipinnis", "Atherinops afinis"),
-                                backbone_id = 4)
+  backbone_id = 4
+)
 ```
 
 ## Core Functions
@@ -50,11 +53,13 @@ verified <- verify_taxon_names(c("Fundulus parvipinnis", "Atherinops afinis"),
 invalid entries. Output is the same length as input; invalid names become `NA`.
 
 ```{r clean}
-raw <- c("Fundulus parvipinnis (Girard, 1854)",
-         "Atherinops  affinis",
-         "Uncultured bacterium clone",
-         "Cottus sp.",
-         "")
+raw <- c(
+  "Fundulus parvipinnis (Girard, 1854)",
+  "Atherinops  affinis",
+  "Uncultured bacterium clone",
+  "Cottus sp.",
+  ""
+)
 clean_taxon_names(raw)
 # "Fundulus parvipinnis", "Atherinops affinis", NA, NA, NA
 ```
@@ -65,8 +70,8 @@ clean_taxon_names(raw)
 
 ```{r verify}
 verified <- verify_taxon_names(
-  c("Fundulus parvipinnis", "Atherinops afinis"),  # note typo
-  backbone_id = 4  # NCBI
+  c("Fundulus parvipinnis", "Atherinops afinis"), # note typo
+  backbone_id = 4 # NCBI
 )
 # Returns: matched_name, classification_path, match_type, etc.
 ```
@@ -78,16 +83,20 @@ WoRMS, etc.).
 
 ```{r backbone}
 translated <- verified |>
-  change_backbone(input_col = "user_supplied_name",
-                  old_backbone_label = "gbif_name",
-                  new_backbone_label = "ncbi_name")
+  change_backbone(
+    input_col = "user_supplied_name",
+    old_backbone_label = "gbif_name",
+    new_backbone_label = "ncbi_name"
+  )
 ```
 
 ### Creating taxon names from taxonomy columns
 
 ```{r create}
-df <- data.frame(family = "Fundulidae", genus = "Fundulus",
-                 species = "Fundulus parvipinnis")
+df <- data.frame(
+  family = "Fundulidae", genus = "Fundulus",
+  species = "Fundulus parvipinnis"
+)
 create_taxon_names(df, rank_system = c("family", "genus", "species"))
 # Adds: taxon_name = "Fundulus parvipinnis", taxon_name_rank = "species"
 ```
@@ -103,7 +112,7 @@ is_plausible_binomial(c("Cottus asper", "Cottus sp.", "uncultured clone"))
 # TRUE, FALSE, FALSE
 
 # Resolve barcode length ranges
-resolve_barcode_lengths("MiFishU")  # c(100, 600)
+resolve_barcode_lengths("MiFishU") # c(100, 600)
 
 # Find taxonomy conflicts
 find_taxonomy_conflicts(taxonomy_df)
@@ -118,11 +127,12 @@ TaxaTools hosts the `llm_fn` pattern used across the ecosystem:
 result <- call_api("What habitat does Fundulus parvipinnis prefer?")
 
 # Inspect token usage
-attr(result, "tokens")  # list(input = N, output = N)
+attr(result, "tokens") # list(input = N, output = N)
 
 # Print token counts inline (useful during prompt development)
 result <- call_api("What habitat does Fundulus parvipinnis prefer?",
-                   show_tokens = TRUE)
+  show_tokens = TRUE
+)
 
 # Guard against large prompts before making the HTTP call
 result <- call_api(big_prompt, max_input_tokens = 5000)

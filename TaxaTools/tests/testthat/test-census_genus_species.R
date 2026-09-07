@@ -71,8 +71,10 @@ test_that("census returns correct structure for single genus", {
   # Mock the GBIF response
   mock_data <- data.frame(
     key = c(100L, 101L, 102L),
-    canonicalName = c("Clevelandia ios", "Clevelandia rosae",
-                      "Clevelandia hybrid"),
+    canonicalName = c(
+      "Clevelandia ios", "Clevelandia rosae",
+      "Clevelandia hybrid"
+    ),
     rank = c("SPECIES", "SPECIES", "SPECIES"),
     taxonomicStatus = c("ACCEPTED", "ACCEPTED", "DOUBTFUL"),
     stringsAsFactors = FALSE
@@ -158,8 +160,10 @@ test_that("incomplete status when multiple species missing", {
 
   mock_data <- data.frame(
     key = 100:104,
-    canonicalName = paste("Fundulus", c("parvipinnis", "heteroclitus",
-                                        "diaphanus", "majalis", "grandis")),
+    canonicalName = paste("Fundulus", c(
+      "parvipinnis", "heteroclitus",
+      "diaphanus", "majalis", "grandis"
+    )),
     rank = rep("SPECIES", 5),
     taxonomicStatus = rep("ACCEPTED", 5),
     stringsAsFactors = FALSE
@@ -280,8 +284,9 @@ test_that("status_filter includes DOUBTFUL when requested", {
 
   # Include DOUBTFUL
   result2 <- census_genus_species(c(Genus = 100L),
-                                   status_filter = c("ACCEPTED", "DOUBTFUL"),
-                                   verbose = FALSE)
+    status_filter = c("ACCEPTED", "DOUBTFUL"),
+    verbose = FALSE
+  )
   expect_equal(result2$total_described, 2L)
 })
 

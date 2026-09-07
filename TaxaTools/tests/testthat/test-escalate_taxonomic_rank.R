@@ -15,7 +15,7 @@ library(testthat)
   )
 }
 
-.rhaco_path  <- "Animalia|Chordata|Actinopterygii|Perciformes|Embiotocidae|Rhacochilus"
+.rhaco_path <- "Animalia|Chordata|Actinopterygii|Perciformes|Embiotocidae|Rhacochilus"
 .rhaco_ranks <- "kingdom|phylum|class|order|family|genus"
 
 # =============================================================================
@@ -43,9 +43,11 @@ test_that("stops if current_rank is not found in rank_system", {
 
 test_that("stops if max_levels is not a single positive integer", {
   expect_error(escalate_taxonomic_rank("Rhacochilus", "genus", max_levels = 0),
-               regexp = "positive integer")
+    regexp = "positive integer"
+  )
   expect_error(escalate_taxonomic_rank("Rhacochilus", "genus", max_levels = c(1, 2)),
-               regexp = "positive integer")
+    regexp = "positive integer"
+  )
 })
 
 test_that("stops if backbone_id is not a single integer or NULL", {
@@ -69,7 +71,10 @@ test_that("stops if verbose is not logical", {
 test_that("returns NA/NA immediately when current_rank is already the coarsest", {
   called <- FALSE
   local_mocked_bindings(
-    verify_taxon_names = function(...) { called <<- TRUE; NULL },
+    verify_taxon_names = function(...) {
+      called <<- TRUE
+      NULL
+    },
     .package = "TaxaTools"
   )
   out <- escalate_taxonomic_rank("Animalia", "kingdom", verbose = FALSE)
@@ -100,7 +105,7 @@ test_that("escalates genus to family when family is present in the classificatio
 # =============================================================================
 
 test_that("skips to order when family is absent from the classification path", {
-  path  <- "Animalia|Chordata|Actinopterygii|Perciformes|Rhacochilus"
+  path <- "Animalia|Chordata|Actinopterygii|Perciformes|Rhacochilus"
   ranks <- "kingdom|phylum|class|order|genus"
   local_mocked_bindings(
     verify_taxon_names = function(names, backbone_id, ...) {
@@ -108,14 +113,16 @@ test_that("skips to order when family is absent from the classification path", {
     },
     .package = "TaxaTools"
   )
-  out <- escalate_taxonomic_rank("Rhacochilus", current_rank = "genus",
-                                 max_levels = 2L, verbose = FALSE)
+  out <- escalate_taxonomic_rank("Rhacochilus",
+    current_rank = "genus",
+    max_levels = 2L, verbose = FALSE
+  )
   expect_equal(out$taxon_name, "Perciformes")
   expect_equal(out$rank, "order")
 })
 
 test_that("returns NA/NA when max_levels is exhausted before a rank resolves", {
-  path  <- "Animalia|Chordata|Actinopterygii|Perciformes|Rhacochilus"
+  path <- "Animalia|Chordata|Actinopterygii|Perciformes|Rhacochilus"
   ranks <- "kingdom|phylum|class|order|genus"
   local_mocked_bindings(
     verify_taxon_names = function(names, backbone_id, ...) {
@@ -123,8 +130,10 @@ test_that("returns NA/NA when max_levels is exhausted before a rank resolves", {
     },
     .package = "TaxaTools"
   )
-  out <- escalate_taxonomic_rank("Rhacochilus", current_rank = "genus",
-                                 max_levels = 1L, verbose = FALSE)
+  out <- escalate_taxonomic_rank("Rhacochilus",
+    current_rank = "genus",
+    max_levels = 1L, verbose = FALSE
+  )
   expect_true(is.na(out$taxon_name))
   expect_true(is.na(out$rank))
 })
@@ -152,9 +161,11 @@ test_that("fallback backbone is used when primary backbone doesn't resolve", {
     },
     .package = "TaxaTools"
   )
-  out <- escalate_taxonomic_rank("Rhacochilus", current_rank = "genus",
-                                 backbone_id = 4L, fallback_backbone_id = 11L,
-                                 verbose = FALSE)
+  out <- escalate_taxonomic_rank("Rhacochilus",
+    current_rank = "genus",
+    backbone_id = 4L, fallback_backbone_id = 11L,
+    verbose = FALSE
+  )
   expect_true(fb_called)
   expect_equal(out$taxon_name, "Embiotocidae")
 })
@@ -165,17 +176,18 @@ test_that("fallback is skipped when backbone_id == fallback_backbone_id", {
     verify_taxon_names = function(names, backbone_id, ...) {
       call_count <<- call_count + 1L
       tibble::tibble(
-        user_supplied_name   = names,
-        matched_name         = NA_character_,
-        classification_path  = NA_character_,
+        user_supplied_name = names,
+        matched_name = NA_character_,
+        classification_path = NA_character_,
         classification_ranks = NA_character_,
-        score                = 0.0, verified = FALSE
+        score = 0.0, verified = FALSE
       )
     },
     .package = "TaxaTools"
   )
   out <- suppressMessages(escalate_taxonomic_rank(
-    "Rhacochilus", current_rank = "genus",
+    "Rhacochilus",
+    current_rank = "genus",
     backbone_id = 4L, fallback_backbone_id = 4L, verbose = FALSE
   ))
   expect_equal(call_count, 1L)
@@ -190,9 +202,11 @@ test_that("backbone_id = NULL skips straight to fallback_backbone_id", {
     },
     .package = "TaxaTools"
   )
-  out <- escalate_taxonomic_rank("Rhacochilus", current_rank = "genus",
-                                 backbone_id = NULL, fallback_backbone_id = 11L,
-                                 verbose = FALSE)
+  out <- escalate_taxonomic_rank("Rhacochilus",
+    current_rank = "genus",
+    backbone_id = NULL, fallback_backbone_id = 11L,
+    verbose = FALSE
+  )
   expect_equal(out$taxon_name, "Embiotocidae")
 })
 
@@ -200,17 +214,19 @@ test_that("returns NA/NA when classification cannot be resolved at all", {
   local_mocked_bindings(
     verify_taxon_names = function(names, backbone_id, ...) {
       tibble::tibble(
-        user_supplied_name   = names,
-        matched_name         = NA_character_,
-        classification_path  = NA_character_,
+        user_supplied_name = names,
+        matched_name = NA_character_,
+        classification_path = NA_character_,
         classification_ranks = NA_character_,
-        score                = 0.0, verified = FALSE
+        score = 0.0, verified = FALSE
       )
     },
     .package = "TaxaTools"
   )
-  out <- escalate_taxonomic_rank("Unknownus genus", current_rank = "genus",
-                                 fallback_backbone_id = NULL, verbose = FALSE)
+  out <- escalate_taxonomic_rank("Unknownus genus",
+    current_rank = "genus",
+    fallback_backbone_id = NULL, verbose = FALSE
+  )
   expect_true(is.na(out$taxon_name))
   expect_true(is.na(out$rank))
 })
@@ -221,8 +237,10 @@ test_that("a backbone API error is caught and returns NA/NA with a warning", {
     .package = "TaxaTools"
   )
   expect_warning(
-    out <- escalate_taxonomic_rank("Rhacochilus", current_rank = "genus",
-                                   fallback_backbone_id = NULL, verbose = FALSE),
+    out <- escalate_taxonomic_rank("Rhacochilus",
+      current_rank = "genus",
+      fallback_backbone_id = NULL, verbose = FALSE
+    ),
     regexp = "backbone 4 query failed"
   )
   expect_true(is.na(out$taxon_name))
@@ -233,7 +251,7 @@ test_that("a backbone API error is caught and returns NA/NA with a warning", {
 # =============================================================================
 
 test_that("escalates species-level current_rank to genus", {
-  path  <- "Animalia|Chordata|Actinopterygii|Perciformes|Embiotocidae|Embiotoca|Embiotoca caryi"
+  path <- "Animalia|Chordata|Actinopterygii|Perciformes|Embiotocidae|Embiotoca|Embiotoca caryi"
   ranks <- "kingdom|phylum|class|order|family|genus|species"
   local_mocked_bindings(
     verify_taxon_names = function(names, backbone_id, ...) {
@@ -251,7 +269,7 @@ test_that("escalates species-level current_rank to genus", {
 # =============================================================================
 
 test_that("respects a custom rank_system", {
-  path  <- "Animalia|Chordata|Actinopterygii|Perciformes|Embiotocidae|Rhacochilus"
+  path <- "Animalia|Chordata|Actinopterygii|Perciformes|Embiotocidae|Rhacochilus"
   ranks <- "kingdom|phylum|class|order|family|genus"
   local_mocked_bindings(
     verify_taxon_names = function(names, backbone_id, ...) {
@@ -260,7 +278,8 @@ test_that("respects a custom rank_system", {
     .package = "TaxaTools"
   )
   out <- escalate_taxonomic_rank(
-    "Rhacochilus", current_rank = "genus",
+    "Rhacochilus",
+    current_rank = "genus",
     rank_system = c("phylum", "class", "order", "family", "genus"),
     verbose = FALSE
   )

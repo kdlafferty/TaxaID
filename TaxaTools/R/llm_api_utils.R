@@ -86,19 +86,19 @@
 #' answer <- call_anthropic_api("What phylum do sea urchins belong to?")
 #' cat(answer)
 #' }
-
 call_anthropic_api <- function(prompt_str,
-                               model      = NULL,
-                               tier       = c("mid", "fast", "top"),
+                               model = NULL,
+                               tier = c("mid", "fast", "top"),
                                max_tokens = 3000L,
-                               api_key    = Sys.getenv("ANTHROPIC_API_KEY")) {
+                               api_key = Sys.getenv("ANTHROPIC_API_KEY")) {
   tier <- match.arg(tier)
   call_api(prompt_str,
-           provider   = "anthropic",
-           tier       = tier,
-           model      = model,
-           max_tokens = max_tokens,
-           api_key    = if (nzchar(api_key)) api_key else NULL)
+    provider   = "anthropic",
+    tier       = tier,
+    model      = model,
+    max_tokens = max_tokens,
+    api_key    = if (nzchar(api_key)) api_key else NULL
+  )
 }
 
 
@@ -193,24 +193,26 @@ call_anthropic_api <- function(prompt_str,
 #' # Azure OpenAI (DOI employees; requires DOI network or VPN)
 #' raw_text <- prompt_api(prompt, llm_fn = call_azure_openai_api)
 #' }
-
 prompt_api <- function(prompt,
-                       llm_fn        = getOption("TaxaID.llm_fn", call_api),
+                       llm_fn = getOption("TaxaID.llm_fn", call_api),
                        pause_seconds = 1,
-                       verbose       = TRUE) {
-
+                       verbose = TRUE) {
   if (!inherits(prompt, "llm_prompt")) {
-    stop("prompt_api: 'prompt' must be an llm_prompt object ",
-         "(e.g. from build_habitat_prompt() or build_geo_prompt()).")
+    stop(
+      "prompt_api: 'prompt' must be an llm_prompt object ",
+      "(e.g. from build_habitat_prompt() or build_geo_prompt())."
+    )
   }
   if (!is.function(llm_fn)) {
-    stop("prompt_api: 'llm_fn' must be a function with signature ",
-         "function(prompt_str, ...) -> character(1). ",
-         "Use call_api, call_anthropic_api, call_gemini_api, call_openai_api, or call_ollama_api.")
+    stop(
+      "prompt_api: 'llm_fn' must be a function with signature ",
+      "function(prompt_str, ...) -> character(1). ",
+      "Use call_api, call_anthropic_api, call_gemini_api, call_openai_api, or call_ollama_api."
+    )
   }
 
   n_chunks <- prompt$n_chunks
-  n_items  <- prompt$n_items %||% length(prompt$taxa %||% character(0))
+  n_items <- prompt$n_items %||% length(prompt$taxa %||% character(0))
   if (verbose) {
     message(sprintf(
       "prompt_api: submitting %d chunk(s) for %d item(s)...",
@@ -218,13 +220,15 @@ prompt_api <- function(prompt,
     ))
   }
 
-  results       <- vector("list", n_chunks)
+  results <- vector("list", n_chunks)
   failed_chunks <- integer(0)
 
   for (i in seq_len(n_chunks)) {
     if (verbose) {
-      message(sprintf("  Chunk %d / %d (%d item(s))...",
-                      i, n_chunks, length(prompt$chunks[[i]])))
+      message(sprintf(
+        "  Chunk %d / %d (%d item(s))...",
+        i, n_chunks, length(prompt$chunks[[i]])
+      ))
     }
 
     raw <- tryCatch(
@@ -248,7 +252,10 @@ prompt_api <- function(prompt,
 
   if (length(failed_chunks) > 0L) {
     warning(sprintf(
-      "prompt_api: %d of %d chunk(s) failed (indices: %s). Taxa in failed chunks will have NA values. Check provider credentials and network connection.",
+      paste0(
+        "prompt_api: %d of %d chunk(s) failed (indices: %s). Taxa in failed chunks ",
+        "will have NA values. Check provider credentials and network connection."
+      ),
       length(failed_chunks), n_chunks, paste(failed_chunks, collapse = ", ")
     ), call. = FALSE)
   }
@@ -305,18 +312,18 @@ prompt_api <- function(prompt,
 #' @examples
 #' \dontrun{
 #' prompt <- TaxaHabitat::build_habitat_prompt(c("Gadus morhua", "Sebastes mystinus"))
-#' info   <- prompt_manual(prompt, out_dir = "habitat_assignment")
+#' info <- prompt_manual(prompt, out_dir = "habitat_assignment")
 #' # paste prompts into your LLM, save responses to the listed files
 #' raw_text <- read_llm_response(info$response_files)
 #' }
-
 prompt_manual <- function(prompt,
                           out_dir = getwd(),
-                          prefix  = "habitat") {
-
+                          prefix = "habitat") {
   if (!inherits(prompt, "llm_prompt")) {
-    stop("prompt_manual: 'prompt' must be an llm_prompt object ",
-         "(e.g. from build_habitat_prompt() or build_geo_prompt()).")
+    stop(
+      "prompt_manual: 'prompt' must be an llm_prompt object ",
+      "(e.g. from build_habitat_prompt() or build_geo_prompt())."
+    )
   }
 
   if (!dir.exists(out_dir)) {
@@ -326,10 +333,14 @@ prompt_manual <- function(prompt,
 
   n_chunks <- prompt$n_chunks
 
-  prompt_files   <- file.path(out_dir,
-                              sprintf("%s_prompt_%d.txt",   prefix, seq_len(n_chunks)))
-  response_files <- file.path(out_dir,
-                              sprintf("%s_response_%d.txt", prefix, seq_len(n_chunks)))
+  prompt_files <- file.path(
+    out_dir,
+    sprintf("%s_prompt_%d.txt", prefix, seq_len(n_chunks))
+  )
+  response_files <- file.path(
+    out_dir,
+    sprintf("%s_response_%d.txt", prefix, seq_len(n_chunks))
+  )
 
   for (i in seq_len(n_chunks)) {
     writeLines(prompt$prompts[[i]], con = prompt_files[i])
@@ -341,12 +352,16 @@ prompt_manual <- function(prompt,
   cat(rep("=", 70), "\n\n", sep = "")
 
   for (i in seq_len(n_chunks)) {
-    cat(sprintf("  CHUNK %d of %d (%d taxa):\n", i, n_chunks,
-                length(prompt$chunks[[i]])))
+    cat(sprintf(
+      "  CHUNK %d of %d (%d taxa):\n", i, n_chunks,
+      length(prompt$chunks[[i]])
+    ))
     cat(sprintf("    1. Open:  %s\n", normalizePath(prompt_files[i])))
     cat(sprintf("    2. Paste the entire file contents into your LLM.\n"))
-    cat(sprintf("    3. Save the response to: %s\n\n",
-                normalizePath(response_files[i])))
+    cat(sprintf(
+      "    3. Save the response to: %s\n\n",
+      normalizePath(response_files[i])
+    ))
   }
 
   cat("  ALTERNATIVE: paste the LLM response directly into R as a string:\n")
@@ -361,8 +376,10 @@ prompt_manual <- function(prompt,
   cat("  Next steps -- run these lines in R:\n")
   cat(rep("=", 70), "\n\n", sep = "")
   if (n_chunks == 1L) {
-    cat(sprintf("  raw_text <- read_llm_response(\"%s\")\n",
-                normalizePath(response_files[1])))
+    cat(sprintf(
+      "  raw_text <- read_llm_response(\"%s\")\n",
+      normalizePath(response_files[1])
+    ))
   } else {
     file_vec <- paste0(
       "c(\n    \"",
@@ -410,12 +427,12 @@ prompt_manual <- function(prompt,
 #' @examples
 #' \dontrun{
 #' raw_text <- read_llm_response("habitat_response_1.txt")
-#' raw_text <- read_llm_response(c("habitat_response_1.txt",
-#'                                 "habitat_response_2.txt"))
+#' raw_text <- read_llm_response(c(
+#'   "habitat_response_1.txt",
+#'   "habitat_response_2.txt"
+#' ))
 #' }
-
 read_llm_response <- function(files) {
-
   if (!is.character(files) || length(files) == 0L) {
     stop("read_llm_response: 'files' must be a non-empty character vector of file paths.")
   }
@@ -433,9 +450,9 @@ read_llm_response <- function(files) {
     if (i > 1L) {
       # Strip duplicate header row from chunks 2+
       # Header is any line containing "taxon_name" and a comma.
-      lines      <- strsplit(txt, "\n")[[1]]
+      lines <- strsplit(txt, "\n")[[1]]
       header_idx <- which(grepl("taxon_name", lines, ignore.case = TRUE) &
-                            grepl(",", lines, fixed = TRUE))[1]
+        grepl(",", lines, fixed = TRUE))[1]
       if (!is.na(header_idx)) lines <- lines[-header_idx]
       txt <- paste(lines, collapse = "\n")
     }
@@ -472,17 +489,21 @@ read_llm_response <- function(files) {
 #' @noRd
 .combine_chunk_responses <- function(results) {
   non_null <- Filter(Negate(is.null), results)
-  if (length(non_null) == 0L) return("")  # empty string, not length-0 character
-  if (length(non_null) == 1L) return(non_null[[1]])
+  if (length(non_null) == 0L) {
+    return("")
+  } # empty string, not length-0 character
+  if (length(non_null) == 1L) {
+    return(non_null[[1]])
+  }
 
   chunks <- character(length(non_null))
   chunks[1] <- non_null[[1]]
 
   for (i in seq_along(non_null)[-1]) {
-    txt   <- non_null[[i]]
+    txt <- non_null[[i]]
     lines <- strsplit(txt, "\n")[[1]]
-    hdr   <- which(grepl("taxon_name", lines, ignore.case = TRUE) &
-                     grepl(",", lines, fixed = TRUE))[1]
+    hdr <- which(grepl("taxon_name", lines, ignore.case = TRUE) &
+      grepl(",", lines, fixed = TRUE))[1]
     if (!is.na(hdr)) lines <- lines[-hdr]
     chunks[i] <- paste(lines, collapse = "\n")
   }
@@ -570,19 +591,19 @@ read_llm_response <- function(files) {
 #' answer <- call_gemini_api("What phylum do sea urchins belong to?")
 #' cat(answer)
 #' }
-
 call_gemini_api <- function(prompt_str,
-                            model      = NULL,
-                            tier       = c("mid", "fast", "top"),
+                            model = NULL,
+                            tier = c("mid", "fast", "top"),
                             max_tokens = 3000L,
-                            api_key    = Sys.getenv("GEMINI_API_KEY")) {
+                            api_key = Sys.getenv("GEMINI_API_KEY")) {
   tier <- match.arg(tier)
   call_api(prompt_str,
-           provider   = "gemini",
-           tier       = tier,
-           model      = model,
-           max_tokens = max_tokens,
-           api_key    = if (nzchar(api_key)) api_key else NULL)
+    provider   = "gemini",
+    tier       = tier,
+    model      = model,
+    max_tokens = max_tokens,
+    api_key    = if (nzchar(api_key)) api_key else NULL
+  )
 }
 
 
@@ -671,25 +692,24 @@ call_gemini_api <- function(prompt_str,
 #' answer <- call_openai_api("What phylum do sea urchins belong to?")
 #' cat(answer)
 #' }
-
 call_openai_api <- function(prompt_str,
-                            model      = NULL,
-                            tier       = c("mid", "fast", "top"),
+                            model = NULL,
+                            tier = c("mid", "fast", "top"),
                             max_tokens = 3000L,
-                            base_url   = "https://api.openai.com",
-                            api_key    = Sys.getenv("OPENAI_API_KEY")) {
-
-  tier       <- match.arg(tier)
+                            base_url = "https://api.openai.com",
+                            api_key = Sys.getenv("OPENAI_API_KEY")) {
+  tier <- match.arg(tier)
   base_clean <- gsub("/$", "", base_url)
 
   # Standard OpenAI endpoint: route directly
   if (grepl("api\\.openai\\.com", base_clean, fixed = FALSE)) {
     return(call_api(prompt_str,
-                    provider   = "openai",
-                    tier       = tier,
-                    model      = model,
-                    max_tokens = max_tokens,
-                    api_key    = if (nzchar(api_key)) api_key else NULL))
+      provider   = "openai",
+      tier       = tier,
+      model      = model,
+      max_tokens = max_tokens,
+      api_key    = if (nzchar(api_key)) api_key else NULL
+    ))
   }
 
   # Custom base_url: check if a registered provider matches
@@ -698,11 +718,12 @@ call_openai_api <- function(prompt_str,
     prov_base <- gsub("/$", "", reg$providers[[prov]]$base_url %||% "")
     if (nzchar(prov_base) && identical(base_clean, prov_base)) {
       return(call_api(prompt_str,
-                      provider   = prov,
-                      tier       = tier,
-                      model      = model,
-                      max_tokens = max_tokens,
-                      api_key    = if (nzchar(api_key)) api_key else NULL))
+        provider   = prov,
+        tier       = tier,
+        model      = model,
+        max_tokens = max_tokens,
+        api_key    = if (nzchar(api_key)) api_key else NULL
+      ))
     }
   }
 
@@ -717,12 +738,13 @@ call_openai_api <- function(prompt_str,
   }
   # Route through openai with base_url override (uses bearer auth)
   call_api(prompt_str,
-           provider   = "openai",
-           tier       = tier,
-           model      = model,
-           max_tokens = max_tokens,
-           api_key    = if (nzchar(api_key)) api_key else NULL,
-           base_url   = base_clean)
+    provider   = "openai",
+    tier       = tier,
+    model      = model,
+    max_tokens = max_tokens,
+    api_key    = if (nzchar(api_key)) api_key else NULL,
+    base_url   = base_clean
+  )
 }
 
 
@@ -795,14 +817,13 @@ call_openai_api <- function(prompt_str,
 #' answer <- call_azure_openai_api("What phylum do sea urchins belong to?")
 #' cat(answer)
 #' }
-
 call_azure_openai_api <- function(
-    prompt_str,
-    model                 = NULL,
-    tier                  = c("mid", "fast", "top"),
-    endpoint              = NULL,
-    max_completion_tokens = 3000L,
-    api_key               = Sys.getenv("AZURE_OPENAI_API_KEY")
+  prompt_str,
+  model = NULL,
+  tier = c("mid", "fast", "top"),
+  endpoint = NULL,
+  max_completion_tokens = 3000L,
+  api_key = Sys.getenv("AZURE_OPENAI_API_KEY")
 ) {
   tier <- match.arg(tier)
 
@@ -810,17 +831,18 @@ call_azure_openai_api <- function(
   if (!is.null(endpoint)) {
     # Backward-compat: extract deployment name and host from full URL.
     # The host is passed as base_url so call_api swaps it into the template.
-    model        <- model %||% sub(".*/deployments/([^/?]+).*", "\\1", endpoint)
+    model <- model %||% sub(".*/deployments/([^/?]+).*", "\\1", endpoint)
     base_url_arg <- sub("^(https?://[^/]+).*", "\\1", endpoint)
   }
 
   call_api(prompt_str,
-           provider   = "azure_openai",
-           tier       = tier,
-           model      = model,
-           max_tokens = as.integer(max_completion_tokens),
-           api_key    = if (nzchar(api_key)) api_key else NULL,
-           base_url   = base_url_arg)
+    provider   = "azure_openai",
+    tier       = tier,
+    model      = model,
+    max_tokens = as.integer(max_completion_tokens),
+    api_key    = if (nzchar(api_key)) api_key else NULL,
+    base_url   = base_url_arg
+  )
 }
 
 
@@ -896,16 +918,17 @@ call_azure_openai_api <- function(
 #'
 #' # Larger model (requires more RAM):
 #' answer <- call_ollama_api("What phylum do sea urchins belong to?",
-#'                           model = "qwen2.5:14b")
+#'   model = "qwen2.5:14b"
+#' )
 #' }
-
 call_ollama_api <- function(prompt_str,
-                            model      = "llama3.2",
+                            model = "llama3.2",
                             max_tokens = 3000L,
-                            base_url   = "http://localhost:11434") {
+                            base_url = "http://localhost:11434") {
   call_api(prompt_str,
-           provider   = "ollama",
-           model      = model,
-           max_tokens = max_tokens,
-           base_url   = base_url)
+    provider   = "ollama",
+    model      = model,
+    max_tokens = max_tokens,
+    base_url   = base_url
+  )
 }

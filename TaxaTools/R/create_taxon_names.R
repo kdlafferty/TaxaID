@@ -37,34 +37,35 @@
 #'   genus   = "Homo",
 #'   species = NA_character_
 #' )
-#' create_taxon_names(input_df)  # auto-detects rank_system
+#' create_taxon_names(input_df) # auto-detects rank_system
 #' # taxon_name = "Homo", taxon_name_rank = "genus"
 #'
 #' # Or specify explicitly:
 #' create_taxon_names(input_df, c("kingdom", "genus", "species"))
 create_taxon_names <- function(input_df, rank_system = NULL) {
-
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("`input_df` must be a data frame.")
   if (is.null(rank_system)) {
     rank_system <- detect_ranks(input_df)
     if (length(rank_system) == 0L) {
-      stop("No recognised rank columns found in `input_df`. ",
-           "Supply `rank_system` explicitly.")
+      stop(
+        "No recognised rank columns found in `input_df`. ",
+        "Supply `rank_system` explicitly."
+      )
     }
   }
   if (!is.character(rank_system) || length(rank_system) == 0) {
     stop("`rank_system` must be a non-empty character vector of column names.")
   }
   if (nrow(input_df) == 0L) {
-    input_df$taxon_name      <- character(0)
+    input_df$taxon_name <- character(0)
     input_df$taxon_name_rank <- character(0)
     return(input_df)
   }
 
   # --- Case-insensitive column matching ---
   rank_cols_lower <- tolower(rank_system)
-  input_df_names_lower  <- tolower(names(input_df))
+  input_df_names_lower <- tolower(names(input_df))
 
   # Check for ambiguous column names after lowercasing
   dup_lower <- input_df_names_lower[duplicated(input_df_names_lower) & input_df_names_lower %in% rank_cols_lower]

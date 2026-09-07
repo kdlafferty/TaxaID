@@ -130,7 +130,7 @@
 #' @examples
 #' \dontrun{
 #' names <- c("Homo sapiens", "Mus musculus", "Tyranosaurus rex")
-#' result <- verify_taxon_names(names, backbone_id = 4)  # NCBI
+#' result <- verify_taxon_names(names, backbone_id = 4) # NCBI
 #' result
 #'
 #' # Check which names failed verification or had no match
@@ -138,16 +138,15 @@
 #' }
 verify_taxon_names <- function(name_list,
                                backbone_id,
-                               batch_size           = 500,
-                               timeout_sec          = 30,
+                               batch_size = 500,
+                               timeout_sec = 30,
                                fallback_backbone_id = 11L) {
-
   # --- Input validation ---
   if (!is.character(name_list) || length(name_list) == 0) {
     stop("`name_list` must be a non-empty character vector.")
   }
   if ((!is.numeric(backbone_id) && !is.integer(backbone_id)) ||
-      length(backbone_id) != 1 || is.na(backbone_id)) {
+    length(backbone_id) != 1 || is.na(backbone_id)) {
     stop("`backbone_id` must be a single integer (e.g., 4 for NCBI).")
   }
   backbone_id <- as.integer(backbone_id)
@@ -155,9 +154,9 @@ verify_taxon_names <- function(name_list,
   # --- Clean and deduplicate ---
   trimmed_names <- trimws(name_list)
   # Remove NA and empty strings before deduplication
-  clean_names   <- unique(trimmed_names)
-  clean_names   <- clean_names[!is.na(clean_names) & nzchar(clean_names)]
-  n_total       <- length(clean_names)
+  clean_names <- unique(trimmed_names)
+  clean_names <- clean_names[!is.na(clean_names) & nzchar(clean_names)]
+  n_total <- length(clean_names)
 
   if (n_total == 0L) {
     stop("verify_taxon_names: no valid (non-NA, non-empty) names in `name_list`.")
@@ -187,7 +186,7 @@ verify_taxon_names <- function(name_list,
   api_url <- "https://verifier.globalnames.org/api/v1/verifications"
 
   # --- Split into batches ---
-  batches   <- split(clean_names, ceiling(seq_along(clean_names) / batch_size))
+  batches <- split(clean_names, ceiling(seq_along(clean_names) / batch_size))
   n_batches <- length(batches)
   if (n_batches > 1) {
     message("Processing in ", n_batches, " batches of up to ", batch_size, "...")
@@ -196,43 +195,126 @@ verify_taxon_names <- function(name_list,
   all_results <- vector("list", n_batches)
 
   for (i in seq_along(batches)) {
-
     batch <- batches[[i]]
     if (n_batches > 1) {
       message("  Batch ", i, " of ", n_batches, " (", length(batch), " names)...")
     }
 
     body <- list(
-      nameStrings    = as.list(batch),           # as.list() ensures JSON array even for single names
+      nameStrings    = as.list(batch), # as.list() ensures JSON array even for single names
       dataSources    = list(as.integer(backbone_id)),
       withAllMatches = FALSE
     )
 
-    batch_result <- tryCatch({
+    batch_result <- tryCatch(
+      {
+        resp <- httr::POST(
+          url    = api_url,
+          body   = body,
+          encode = "json",
+          httr::timeout(timeout_sec)
+        )
 
-      resp <- httr::POST(
-        url    = api_url,
-        body   = body,
-        encode = "json",
-        httr::timeout(timeout_sec)
-      )
+        if (httr::status_code(resp) != 200) {
+          stop("API returned status ", httr::status_code(resp))
+        }
 
-      if (httr::status_code(resp) != 200) {
-        stop("API returned status ", httr::status_code(resp))
-      }
+        data <- httr::content(resp, as = "parsed", type = "application/json")
 
-      data <- httr::content(resp, as = "parsed", type = "application/json")
+        if (is.null(data$names) || length(data$names) == 0L) {
+          warning(sprintf(
+            paste0(
+              "verify_taxon_names: batch %d returned no 'names' field. API response ",
+              "may be malformed. Treating %d names as unverified."
+            ),
+            i, length(batch)
+          ))
+          # This tibble is the tryCatch expression's value, so it becomes this
+          # batch's result directly -- assigning to the accumulator here (or
+          # calling next) would either skip the assignment at the bottom of the
+          # loop or return early out of the whole function.
+          dplyr::tibble(
+            user_supplied_name   = batch,
+            matched_name         = NA_character_,
+            matched_rank         = NA_character_,
+            is_synonym           = NA,
+            classification_path  = NA_character_,
+            classification_ranks = NA_character_,
+            score                = NA_real_,
+            verified             = FALSE
+          )
+        } else {
+          # httr::content(as = "parsed") can return single-element lists instead of
+          # plain scalars for some fields. These helpers safely extract a scalar value.
+          safe_chr <- function(x) {
+            if (is.null(x)) {
+              return(NA_character_)
+            }
+            if (is.list(x)) x <- x[[1]]
+            as.character(x)
+          }
+          safe_dbl <- function(x) {
+            if (is.null(x)) {
+              return(NA_real_)
+            }
+            if (is.list(x)) x <- x[[1]]
+            as.double(x)
+          }
 
-      if (is.null(data$names) || length(data$names) == 0L) {
+          # --- Parse each name's result ---
+          parsed <- lapply(data$names, function(item) {
+            best <- item$bestResult
 
-        warning(sprintf(
-          "verify_taxon_names: batch %d returned no 'names' field. API response may be malformed. Treating %d names as unverified.",
-          i, length(batch)
-        ))
-        # This tibble is the tryCatch expression's value, so it becomes this
-        # batch's result directly -- assigning to the accumulator here (or
-        # calling next) would either skip the assignment at the bottom of the
-        # loop or return early out of the whole function.
+            if (is.null(best)) {
+              # API responded but found no match for this name
+              return(dplyr::tibble(
+                user_supplied_name   = safe_chr(item$name),
+                matched_name         = NA_character_,
+                matched_rank         = NA_character_,
+                is_synonym           = NA,
+                classification_path  = NA_character_,
+                classification_ranks = NA_character_,
+                score                = NA_real_,
+                verified             = TRUE # API worked; it just found nothing
+              ))
+            }
+
+            # Prefer GNVerifier's own authority-free canonical fields over a local
+            # regex -- matchedCanonicalSimple/currentCanonicalSimple are already
+            # stripped of authorship AND correctly preserve a full trinomial
+            # (e.g. a subspecies), unlike the previous strip_authority() regex
+            # (genus + at most one lowercase word), which silently truncated any
+            # subspecies-rank match to a binomial.
+            is_syn <- isTRUE(best$isSynonym)
+            current_simple <- safe_chr(best$currentCanonicalSimple)
+            matched_simple <- safe_chr(best$matchedCanonicalSimple)
+            use_current <- is_syn && !is.na(current_simple) && nzchar(current_simple)
+            resolved_name <- if (use_current) current_simple else matched_simple
+
+            dplyr::tibble(
+              user_supplied_name   = safe_chr(item$name),
+              matched_name         = resolved_name,
+              matched_rank         = .last_classification_rank(safe_chr(best$classificationRanks)),
+              is_synonym           = is_syn,
+              classification_path  = safe_chr(best$classificationPath),
+              classification_ranks = safe_chr(best$classificationRanks),
+              score                = safe_dbl(best$score),
+              verified             = TRUE
+            )
+          })
+
+          dplyr::bind_rows(parsed)
+        }
+      },
+      error = function(e) {
+        warning(
+          "API request failed for batch ", i, ". ",
+          "Returning unverified passthrough for these names.\n",
+          "Error: ", e$message,
+          call. = FALSE
+        )
+
+        # Fallback: return names as-is, clearly flagged as unverified
         dplyr::tibble(
           user_supplied_name   = batch,
           matched_name         = NA_character_,
@@ -243,88 +325,8 @@ verify_taxon_names <- function(name_list,
           score                = NA_real_,
           verified             = FALSE
         )
-
-      } else {
-
-        # httr::content(as = "parsed") can return single-element lists instead of
-        # plain scalars for some fields. These helpers safely extract a scalar value.
-        safe_chr <- function(x) {
-          if (is.null(x)) return(NA_character_)
-          if (is.list(x)) x <- x[[1]]
-          as.character(x)
-        }
-        safe_dbl <- function(x) {
-          if (is.null(x)) return(NA_real_)
-          if (is.list(x)) x <- x[[1]]
-          as.double(x)
-        }
-
-        # --- Parse each name's result ---
-        parsed <- lapply(data$names, function(item) {
-          best <- item$bestResult
-
-          if (is.null(best)) {
-            # API responded but found no match for this name
-            return(dplyr::tibble(
-              user_supplied_name   = safe_chr(item$name),
-              matched_name         = NA_character_,
-              matched_rank         = NA_character_,
-              is_synonym           = NA,
-              classification_path  = NA_character_,
-              classification_ranks = NA_character_,
-              score                = NA_real_,
-              verified             = TRUE   # API worked; it just found nothing
-            ))
-          }
-
-          # Prefer GNVerifier's own authority-free canonical fields over a local
-          # regex -- matchedCanonicalSimple/currentCanonicalSimple are already
-          # stripped of authorship AND correctly preserve a full trinomial
-          # (e.g. a subspecies), unlike the previous strip_authority() regex
-          # (genus + at most one lowercase word), which silently truncated any
-          # subspecies-rank match to a binomial.
-          is_syn          <- isTRUE(best$isSynonym)
-          current_simple  <- safe_chr(best$currentCanonicalSimple)
-          matched_simple  <- safe_chr(best$matchedCanonicalSimple)
-          use_current     <- is_syn && !is.na(current_simple) && nzchar(current_simple)
-          resolved_name   <- if (use_current) current_simple else matched_simple
-
-          dplyr::tibble(
-            user_supplied_name   = safe_chr(item$name),
-            matched_name         = resolved_name,
-            matched_rank         = .last_classification_rank(safe_chr(best$classificationRanks)),
-            is_synonym           = is_syn,
-            classification_path  = safe_chr(best$classificationPath),
-            classification_ranks = safe_chr(best$classificationRanks),
-            score                = safe_dbl(best$score),
-            verified             = TRUE
-          )
-        })
-
-        dplyr::bind_rows(parsed)
       }
-
-    }, error = function(e) {
-
-      warning(
-        "API request failed for batch ", i, ". ",
-        "Returning unverified passthrough for these names.\n",
-        "Error: ", e$message,
-        call. = FALSE
-      )
-
-      # Fallback: return names as-is, clearly flagged as unverified
-      dplyr::tibble(
-        user_supplied_name   = batch,
-        matched_name         = NA_character_,
-        matched_rank         = NA_character_,
-        is_synonym           = NA,
-        classification_path  = NA_character_,
-        classification_ranks = NA_character_,
-        score                = NA_real_,
-        verified             = FALSE
-      )
-    })
+    )
 
     all_results[[i]] <- batch_result
   }
@@ -342,12 +344,12 @@ verify_taxon_names <- function(name_list,
   }
   rownames(final_df) <- NULL
 
-  n_verified   <- sum(unique_df$verified, na.rm = TRUE)
+  n_verified <- sum(unique_df$verified, na.rm = TRUE)
   n_unverified <- sum(!unique_df$verified, na.rm = TRUE)
-  n_no_match   <- sum(unique_df$verified & is.na(unique_df$matched_name), na.rm = TRUE)
+  n_no_match <- sum(unique_df$verified & is.na(unique_df$matched_name), na.rm = TRUE)
 
   msg <- sprintf("Done. %d name(s) reached the API.", n_verified)
-  if (n_no_match   > 0L) msg <- paste0(msg, sprintf(" %d had no match.", n_no_match))
+  if (n_no_match > 0L) msg <- paste0(msg, sprintf(" %d had no match.", n_no_match))
   if (n_unverified > 0L) msg <- paste0(msg, sprintf(" %d were unverified due to API failure.", n_unverified))
   message(msg)
 
@@ -366,10 +368,14 @@ verify_taxon_names <- function(name_list,
 #' species-level one; see this file's Synonym resolution section above).
 #' @noRd
 .last_classification_rank <- function(ranks_str) {
-  if (is.na(ranks_str) || !nzchar(ranks_str)) return(NA_character_)
+  if (is.na(ranks_str) || !nzchar(ranks_str)) {
+    return(NA_character_)
+  }
   ranks <- strsplit(ranks_str, "|", fixed = TRUE)[[1]]
   ranks <- ranks[nzchar(ranks)]
-  if (length(ranks) == 0L) return(NA_character_)
+  if (length(ranks) == 0L) {
+    return(NA_character_)
+  }
   ranks[[length(ranks)]]
 }
 
@@ -400,12 +406,11 @@ verify_taxon_names <- function(name_list,
 #'   fuzzy_corrected.
 #' @noRd
 .verify_via_ncbi <- function(clean_names,
-                             search_batch_size    = 40L,
-                             fetch_batch_size     = 100L,
+                             search_batch_size = 40L,
+                             fetch_batch_size = 100L,
                              fallback_backbone_id = 11L) {
-
   if (!requireNamespace("rentrez", quietly = TRUE) ||
-      !requireNamespace("xml2", quietly = TRUE)) {
+    !requireNamespace("xml2", quietly = TRUE)) {
     stop(
       "verify_taxon_names: packages 'rentrez' and 'xml2' are required for ",
       "direct NCBI lookup (backbone_id = 4).\n",
@@ -425,7 +430,11 @@ verify_taxon_names <- function(name_list,
   message("Verifying ", n_total, " unique name(s) against NCBI taxonomy (direct)...")
 
   delay <- if (nzchar(Sys.getenv("ENTREZ_KEY", "")) ||
-               nzchar(Sys.getenv("NCBI_API_KEY", ""))) 0.11 else 0.34
+    nzchar(Sys.getenv("NCBI_API_KEY", ""))) {
+    0.11
+  } else {
+    0.34
+  }
 
   # --- Step 1: Batch entrez_search to find taxids ---
   # Build OR'd queries: "Name1"[Scientific Name] OR "Name2"[Scientific Name] ...
@@ -440,29 +449,33 @@ verify_taxon_names <- function(name_list,
     or_terms <- paste0('"', batch, '"[Scientific Name]')
     query <- paste(or_terms, collapse = " OR ")
 
-    tryCatch({
-      res <- rentrez::entrez_search(
-        db     = "taxonomy",
-        term   = query,
-        retmax = length(batch) * 2L  # allow some overhead
-      )
+    tryCatch(
+      {
+        res <- rentrez::entrez_search(
+          db     = "taxonomy",
+          term   = query,
+          retmax = length(batch) * 2L # allow some overhead
+        )
 
-      if (as.integer(res$count) > 0L && length(res$ids) > 0L) {
-        # Resolve taxids back to names via esummary
-        summaries <- .ncbi_batch_summary(res$ids, delay)
-        for (s in summaries) {
-          sci_name <- s$scientificname %||% s$ScientificName
-          if (!is.null(sci_name) && sci_name %in% clean_names) {
-            name_to_taxid[[sci_name]] <- as.character(s$uid %||% s$TaxId)
+        if (as.integer(res$count) > 0L && length(res$ids) > 0L) {
+          # Resolve taxids back to names via esummary
+          summaries <- .ncbi_batch_summary(res$ids, delay)
+          for (s in summaries) {
+            sci_name <- s$scientificname %||% s$ScientificName
+            if (!is.null(sci_name) && sci_name %in% clean_names) {
+              name_to_taxid[[sci_name]] <- as.character(s$uid %||% s$TaxId)
+            }
           }
         }
+      },
+      error = function(e) {
+        warning(
+          "verify_taxon_names: NCBI search batch ", i, " failed: ",
+          conditionMessage(e),
+          call. = FALSE
+        )
       }
-    }, error = function(e) {
-      warning(
-        "verify_taxon_names: NCBI search batch ", i, " failed: ",
-        conditionMessage(e), call. = FALSE
-      )
-    })
+    )
 
     if (i < length(batches)) Sys.sleep(delay)
   }
@@ -474,16 +487,19 @@ verify_taxon_names <- function(name_list,
   missing_names <- clean_names[is.na(name_to_taxid)]
   if (length(missing_names) > 0L) {
     for (nm in missing_names) {
-      tryCatch({
-        res <- rentrez::entrez_search(
-          db     = "taxonomy",
-          term   = paste0('"', nm, '"[All Names]'),
-          retmax = 1L
-        )
-        if (as.integer(res$count) > 0L && length(res$ids) > 0L) {
-          name_to_taxid[[nm]] <- as.character(res$ids[1L])
-        }
-      }, error = function(e) NULL)
+      tryCatch(
+        {
+          res <- rentrez::entrez_search(
+            db     = "taxonomy",
+            term   = paste0('"', nm, '"[All Names]'),
+            retmax = 1L
+          )
+          if (as.integer(res$count) > 0L && length(res$ids) > 0L) {
+            name_to_taxid[[nm]] <- as.character(res$ids[1L])
+          }
+        },
+        error = function(e) NULL
+      )
       Sys.sleep(delay)
     }
   }
@@ -508,7 +524,7 @@ verify_taxon_names <- function(name_list,
 
     if (!is.null(fuzzy_hits) && nrow(fuzzy_hits) == length(still_missing)) {
       for (i in seq_along(still_missing)) {
-        orig      <- still_missing[i]
+        orig <- still_missing[i]
         corrected <- fuzzy_hits$matched_name[i]
         if (is.na(corrected) || identical(corrected, orig)) next
 
@@ -517,19 +533,22 @@ verify_taxon_names <- function(name_list,
         # correctly); otherwise do one fresh exact NCBI lookup for it.
         tid <- if (corrected %in% names(name_to_taxid)) name_to_taxid[[corrected]] else NA_character_
         if (is.na(tid)) {
-          tryCatch({
-            res <- rentrez::entrez_search(
-              db = "taxonomy", term = paste0('"', corrected, '"[All Names]'), retmax = 1L
-            )
-            if (as.integer(res$count) > 0L && length(res$ids) > 0L) {
-              tid <- as.character(res$ids[1L])
-            }
-          }, error = function(e) NULL)
+          tryCatch(
+            {
+              res <- rentrez::entrez_search(
+                db = "taxonomy", term = paste0('"', corrected, '"[All Names]'), retmax = 1L
+              )
+              if (as.integer(res$count) > 0L && length(res$ids) > 0L) {
+                tid <- as.character(res$ids[1L])
+              }
+            },
+            error = function(e) NULL
+          )
           Sys.sleep(delay)
         }
 
         if (!is.na(tid)) {
-          name_to_taxid[[orig]]   <- tid
+          name_to_taxid[[orig]] <- tid
           fuzzy_corrected[[orig]] <- TRUE
         }
       }
@@ -549,37 +568,42 @@ verify_taxon_names <- function(name_list,
     )
   }
 
-  found_mask   <- !is.na(name_to_taxid)
+  found_mask <- !is.na(name_to_taxid)
   found_taxids <- name_to_taxid[found_mask]
-  n_found      <- sum(found_mask)
+  n_found <- sum(found_mask)
 
   message("  Found ", n_found, " of ", n_total, " names in NCBI taxonomy.")
 
   # --- Step 2: Fetch full lineage XML for found taxids ---
-  lineage_map <- list()  # taxid => list(classification_path, classification_ranks)
+  lineage_map <- list() # taxid => list(classification_path, classification_ranks)
 
   if (n_found > 0L) {
-    unique_taxids  <- unique(found_taxids)
-    fetch_batches  <- split(unique_taxids,
-                            ceiling(seq_along(unique_taxids) / fetch_batch_size))
+    unique_taxids <- unique(found_taxids)
+    fetch_batches <- split(
+      unique_taxids,
+      ceiling(seq_along(unique_taxids) / fetch_batch_size)
+    )
 
     for (i in seq_along(fetch_batches)) {
       attempt <- 0L
       success <- FALSE
       while (attempt < 3L && !success) {
         attempt <- attempt + 1L
-        tryCatch({
-          xml_raw <- rentrez::entrez_fetch(
-            db = "taxonomy", id = fetch_batches[[i]], rettype = "xml"
-          )
-          parsed <- .parse_ncbi_lineage_xml(xml_raw)
-          for (tid in names(parsed)) {
-            lineage_map[[tid]] <- parsed[[tid]]
+        tryCatch(
+          {
+            xml_raw <- rentrez::entrez_fetch(
+              db = "taxonomy", id = fetch_batches[[i]], rettype = "xml"
+            )
+            parsed <- .parse_ncbi_lineage_xml(xml_raw)
+            for (tid in names(parsed)) {
+              lineage_map[[tid]] <- parsed[[tid]]
+            }
+            success <- TRUE
+          },
+          error = function(e) {
+            if (attempt < 3L) Sys.sleep(attempt)
           }
-          success <- TRUE
-        }, error = function(e) {
-          if (attempt < 3L) Sys.sleep(attempt)
-        })
+        )
       }
       if (i < length(fetch_batches)) Sys.sleep(delay)
     }
@@ -623,9 +647,9 @@ verify_taxon_names <- function(name_list,
 
   result <- dplyr::bind_rows(rows)
 
-  n_matched  <- sum(!is.na(result$matched_name))
+  n_matched <- sum(!is.na(result$matched_name))
   n_no_match <- sum(is.na(result$matched_name))
-  n_fuzzy    <- sum(result$fuzzy_corrected)
+  n_fuzzy <- sum(result$fuzzy_corrected)
   msg_ncbi <- sprintf("Done. %d name(s) matched.", n_matched)
   if (n_fuzzy > 0L) msg_ncbi <- paste0(msg_ncbi, sprintf(" %d matched only after fuzzy correction.", n_fuzzy))
   if (n_no_match > 0L) msg_ncbi <- paste0(msg_ncbi, sprintf(" %d had no match.", n_no_match))
@@ -647,17 +671,20 @@ verify_taxon_names <- function(name_list,
   all_summaries <- list()
 
   for (i in seq_along(batches)) {
-    tryCatch({
-      summ <- rentrez::entrez_summary(db = "taxonomy", id = batches[[i]])
-      # entrez_summary returns a single record (not a list) when length == 1
-      if (inherits(summ, "esummary")) {
-        all_summaries <- c(all_summaries, list(summ))
-      } else {
-        all_summaries <- c(all_summaries, summ)
+    tryCatch(
+      {
+        summ <- rentrez::entrez_summary(db = "taxonomy", id = batches[[i]])
+        # entrez_summary returns a single record (not a list) when length == 1
+        if (inherits(summ, "esummary")) {
+          all_summaries <- c(all_summaries, list(summ))
+        } else {
+          all_summaries <- c(all_summaries, summ)
+        }
+      },
+      error = function(e) {
+        warning("NCBI summary batch failed: ", conditionMessage(e), call. = FALSE)
       }
-    }, error = function(e) {
-      warning("NCBI summary batch failed: ", conditionMessage(e), call. = FALSE)
-    })
+    )
     if (i < length(batches)) Sys.sleep(delay)
   }
 
@@ -673,13 +700,13 @@ verify_taxon_names <- function(name_list,
 #' @noRd
 .parse_ncbi_lineage_xml <- function(xml_raw) {
   xml_doc <- xml2::read_xml(xml_raw)
-  nodes   <- xml2::xml_find_all(xml_doc, "//TaxaSet/Taxon")
+  nodes <- xml2::xml_find_all(xml_doc, "//TaxaSet/Taxon")
 
   result <- list()
 
   for (node in nodes) {
-    this_id   <- xml2::xml_text(xml2::xml_find_first(node, "./TaxId"))
-    this_sci  <- xml2::xml_text(xml2::xml_find_first(node, "./ScientificName"))
+    this_id <- xml2::xml_text(xml2::xml_find_first(node, "./TaxId"))
+    this_sci <- xml2::xml_text(xml2::xml_find_first(node, "./ScientificName"))
     this_rank <- xml2::xml_text(xml2::xml_find_first(node, "./Rank"))
 
     # Parse lineage ancestors
@@ -690,17 +717,19 @@ verify_taxon_names <- function(name_list,
     # Build path: lineage ranks + the taxon's own rank
     # Keep only standard Linnaean ranks + common sub-ranks to avoid duplicate
     # "clade" entries that break change_backbone()'s unnest_wider().
-    linnaean_ranks <- c("superkingdom", "kingdom", "subkingdom",
-                        "superphylum", "phylum", "subphylum",
-                        "superclass", "class", "subclass", "infraclass",
-                        "superorder", "order", "suborder", "infraorder",
-                        "superfamily", "family", "subfamily",
-                        "tribe", "subtribe",
-                        "genus", "subgenus",
-                        "species", "subspecies", "varietas", "forma")
+    linnaean_ranks <- c(
+      "superkingdom", "kingdom", "subkingdom",
+      "superphylum", "phylum", "subphylum",
+      "superclass", "class", "subclass", "infraclass",
+      "superorder", "order", "suborder", "infraorder",
+      "superfamily", "family", "subfamily",
+      "tribe", "subtribe",
+      "genus", "subgenus",
+      "species", "subspecies", "varietas", "forma"
+    )
 
     keep <- !is.na(l_ranks) & nzchar(l_ranks) & l_ranks %in% linnaean_ranks &
-            !is.na(l_names) & nzchar(l_names)
+      !is.na(l_names) & nzchar(l_names)
     path_names <- l_names[keep]
     path_ranks <- l_ranks[keep]
 

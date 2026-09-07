@@ -33,7 +33,7 @@ You can install the development version of TaxaTools like so:
 This is a basic example which shows you how to solve a common problem:
 
 ```{r example}
-#library(TaxaTools)
+# library(TaxaTools)
 ## basic example code
 ```
 

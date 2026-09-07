@@ -49,34 +49,41 @@
 #'
 #' @export
 escalate_taxonomic_rank <- function(taxon_name,
-                                     current_rank,
-                                     rank_system = standard_ranks,
-                                     max_levels = 2L,
-                                     backbone_id = 4L,
-                                     fallback_backbone_id = 11L,
-                                     verbose = TRUE) {
-
+                                    current_rank,
+                                    rank_system = standard_ranks,
+                                    max_levels = 2L,
+                                    backbone_id = 4L,
+                                    fallback_backbone_id = 11L,
+                                    verbose = TRUE) {
   # ---- Input validation ------------------------------------------------------
   if (!is.character(taxon_name) || length(taxon_name) != 1L ||
-      is.na(taxon_name) || !nzchar(trimws(taxon_name)))
+    is.na(taxon_name) || !nzchar(trimws(taxon_name))) {
     stop("taxon_name must be a single non-empty character string")
-  if (!is.character(current_rank) || length(current_rank) != 1L || is.na(current_rank))
+  }
+  if (!is.character(current_rank) || length(current_rank) != 1L || is.na(current_rank)) {
     stop("current_rank must be a single character string")
-  if (!is.character(rank_system) || length(rank_system) == 0L)
+  }
+  if (!is.character(rank_system) || length(rank_system) == 0L) {
     stop("rank_system must be a non-empty character vector")
-  if (!(current_rank %in% rank_system))
+  }
+  if (!(current_rank %in% rank_system)) {
     stop(sprintf("current_rank (\"%s\") not found in rank_system", current_rank))
+  }
   if (!is.numeric(max_levels) || length(max_levels) != 1L || is.na(max_levels) ||
-      max_levels < 1L)
+    max_levels < 1L) {
     stop("max_levels must be a single positive integer")
+  }
   if (!is.null(backbone_id) && (!is.numeric(backbone_id) ||
-      length(backbone_id) != 1L || is.na(backbone_id)))
+    length(backbone_id) != 1L || is.na(backbone_id))) {
     stop("backbone_id must be a single integer or NULL")
+  }
   if (!is.null(fallback_backbone_id) && (!is.numeric(fallback_backbone_id) ||
-      length(fallback_backbone_id) != 1L || is.na(fallback_backbone_id)))
+    length(fallback_backbone_id) != 1L || is.na(fallback_backbone_id))) {
     stop("fallback_backbone_id must be a single integer or NULL")
-  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose))
+  }
+  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("verbose must be TRUE or FALSE")
+  }
 
   no_result <- list(taxon_name = NA_character_, rank = NA_character_)
 
@@ -107,11 +114,13 @@ escalate_taxonomic_rank <- function(taxon_name,
     is.na(verified$classification_path[1L])
 
   if (unresolved && !is.null(fallback_backbone_id) &&
-      !identical(as.integer(fallback_backbone_id), as.integer(backbone_id))) {
-    if (verbose) message(sprintf(
-      "escalate_taxonomic_rank: primary backbone did not resolve \"%s\"; trying fallback backbone %d...",
-      taxon_name, as.integer(fallback_backbone_id)
-    ))
+    !identical(as.integer(fallback_backbone_id), as.integer(backbone_id))) {
+    if (verbose) {
+      message(sprintf(
+        "escalate_taxonomic_rank: primary backbone did not resolve \"%s\"; trying fallback backbone %d...",
+        taxon_name, as.integer(fallback_backbone_id)
+      ))
+    }
     verified <- tryCatch(
       verify_taxon_names(taxon_name, backbone_id = fallback_backbone_id),
       error = function(e) {
@@ -125,14 +134,16 @@ escalate_taxonomic_rank <- function(taxon_name,
   }
 
   if (is.null(verified) || nrow(verified) == 0L || is.na(verified$classification_path[1L])) {
-    if (verbose) message(sprintf(
-      "escalate_taxonomic_rank: could not resolve classification for \"%s\"; returning NA.",
-      taxon_name
-    ))
+    if (verbose) {
+      message(sprintf(
+        "escalate_taxonomic_rank: could not resolve classification for \"%s\"; returning NA.",
+        taxon_name
+      ))
+    }
     return(no_result)
   }
 
-  path  <- verified$classification_path[1L]
+  path <- verified$classification_path[1L]
   ranks <- verified$classification_ranks[1L]
 
   # ---- Walk coarser ranks, up to max_levels steps, first hit wins ------------
@@ -144,9 +155,11 @@ escalate_taxonomic_rank <- function(taxon_name,
     }
   }
 
-  if (verbose) message(sprintf(
-    "escalate_taxonomic_rank: no coarser rank resolved for \"%s\" within %d level(s).",
-    taxon_name, as.integer(max_levels)
-  ))
+  if (verbose) {
+    message(sprintf(
+      "escalate_taxonomic_rank: no coarser rank resolved for \"%s\" within %d level(s).",
+      taxon_name, as.integer(max_levels)
+    ))
+  }
   no_result
 }

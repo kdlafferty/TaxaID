@@ -1,5 +1,38 @@
 linters: linters_with_defaults(
   line_length_linter(120L),
   indentation_linter = NULL
-)
+  )
 encoding: "UTF-8"
+exclusions: list(
+    # Reviewer-facing runnable-example scripts, not shipped package code --
+    # commented_code_linter's heuristic (does the stripped comment parse as
+    # valid R?) misfires on the bulleted function-name lists and a genuine,
+    # deliberately-commented alternative invocation these files use for
+    # documentation, not dead code.
+    "inst/extra_functions_review_inputs.R" = list(commented_code_linter = Inf),
+    "inst/test_api_keys.R" = list(
+      commented_code_linter = Inf,
+      # TEST_PROMPT is a SCREAMING_SNAKE_CASE user-configurable constant --
+      # this ecosystem's own established convention for top-level constants
+      # in scripts (e.g. OUT_PREFIX, BLANKS_MARCH elsewhere), not a naming bug.
+      object_name_linter = c(46L)
+    ),
+    # Every test file's own "# tests/testthat/test-<name>.R" header comment
+    # parses as valid R (division/subtraction of undefined objects) purely by
+    # coincidence of the filename shape -- a false positive, not dead code.
+    "tests/testthat/test-change_backbone.R" = list(commented_code_linter = c(1L)),
+    "tests/testthat/test-clean_taxon_names.R" = list(commented_code_linter = c(1L)),
+    "tests/testthat/test-create_taxon_names.R" = list(commented_code_linter = c(1L)),
+    "tests/testthat/test-to_faire.R" = list(commented_code_linter = c(1L)),
+    "tests/testthat/test-verify_taxon_names.R" = list(commented_code_linter = c(1L, 228L)),
+    # "# =====" divider + "# function_name()" section-header comments --
+    # this ecosystem's established documentation convention, not dead code.
+    "tests/testthat/test-cache_utils.R" = list(commented_code_linter = c(7L, 55L)),
+    # Prose comments containing "->"/"="/";" that happen to parse as valid R
+    # (arrow-assign, statement chains) once the leading "#" is stripped.
+    "tests/testthat/test-call_api.R" = list(commented_code_linter = c(46L)),
+    "tests/testthat/test-census_genus_species.R" = list(commented_code_linter = c(302L)),
+    # Inline "expected output" comments in a vignette code chunk (a common,
+    # legitimate documentation convention) that parse as valid R literals.
+    "vignettes/name-cleaning.Rmd" = list(commented_code_linter = c(115L, 130L))
+  )

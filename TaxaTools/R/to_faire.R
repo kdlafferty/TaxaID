@@ -72,38 +72,37 @@
 #'
 #' @examples
 #' match_df <- data.frame(
-#'   observation_id  = c("ASV1", "ASV2"),
-#'   taxon_name      = c("Fundulus parvipinnis", "Atherinops affinis"),
+#'   observation_id = c("ASV1", "ASV2"),
+#'   taxon_name = c("Fundulus parvipinnis", "Atherinops affinis"),
 #'   taxon_name_rank = c("species", "species"),
-#'   score           = c(98.7, 95.1),
-#'   coverage        = c(0.98, 0.94),
-#'   accession       = c("MG002616.1", "KT215432.1"),
-#'   family          = c("Fundulidae", "Atherinopsidae"),
-#'   genus           = c("Fundulus", "Atherinops"),
-#'   species         = c("Fundulus parvipinnis", "Atherinops affinis"),
-#'   testid          = c("MiFishU", "MiFishU"),
+#'   score = c(98.7, 95.1),
+#'   coverage = c(0.98, 0.94),
+#'   accession = c("MG002616.1", "KT215432.1"),
+#'   family = c("Fundulidae", "Atherinopsidae"),
+#'   genus = c("Fundulus", "Atherinops"),
+#'   species = c("Fundulus parvipinnis", "Atherinops affinis"),
+#'   testid = c("MiFishU", "MiFishU"),
 #'   stringsAsFactors = FALSE
 #' )
 #'
 #' faire_df <- to_faire(match_df, table_type = "taxaRaw")
 #' names(faire_df)
 to_faire <- function(input_df,
-                     table_type  = c("taxaFinal", "taxaRaw"),
+                     table_type = c("taxaFinal", "taxaRaw"),
                      checkls_ver = "1.02",
-                     assay_name  = NULL) {
-
+                     assay_name = NULL) {
   table_type <- match.arg(table_type)
 
   if (!is.data.frame(input_df)) {
     stop("`input_df` must be a data frame.", call. = FALSE)
   }
   if (!is.character(checkls_ver) || length(checkls_ver) != 1L ||
-      !nzchar(checkls_ver)) {
+    !nzchar(checkls_ver)) {
     stop("`checkls_ver` must be a non-empty single string.", call. = FALSE)
   }
   if (!is.null(assay_name) &&
-      (!is.character(assay_name) || length(assay_name) != 1L ||
-       !nzchar(assay_name))) {
+    (!is.character(assay_name) || length(assay_name) != 1L ||
+      !nzchar(assay_name))) {
     stop("`assay_name` must be a non-empty single string or NULL.", call. = FALSE)
   }
 
@@ -143,8 +142,10 @@ to_faire <- function(input_df,
   # ---------------------------------------------------------------------------
   # Construct verbatimIdentification (semicolon-delimited lineage string)
   # ---------------------------------------------------------------------------
-  tax_ranks     <- c("kingdom", "phylum", "class", "order",
-                     "family", "genus", "species")
+  tax_ranks <- c(
+    "kingdom", "phylum", "class", "order",
+    "family", "genus", "species"
+  )
   present_ranks <- intersect(tax_ranks, names(input_df))
 
   if (length(present_ranks) > 0L) {

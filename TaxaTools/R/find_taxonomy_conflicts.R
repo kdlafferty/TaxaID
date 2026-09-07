@@ -31,8 +31,8 @@
 #'
 #' @examples
 #' df <- data.frame(
-#'   family  = c("Cottidae", "Scorpaenidae", "Cottidae"),
-#'   genus   = c("Cottus",   "Cottus",        "Enophrys"),
+#'   family = c("Cottidae", "Scorpaenidae", "Cottidae"),
+#'   genus = c("Cottus", "Cottus", "Enophrys"),
 #'   species = c("Cottus asper", "Cottus rhotheus", "Enophrys bison"),
 #'   stringsAsFactors = FALSE
 #' )
@@ -78,12 +78,12 @@ find_taxonomy_conflicts <- function(input_df, rank_system = NULL) {
 
       # Skip rows with NA in either column
       ok <- !is.na(child_vals) & !is.na(parent_vals) &
-            nchar(trimws(child_vals)) > 0L & nchar(trimws(parent_vals)) > 0L
+        nchar(trimws(child_vals)) > 0L & nchar(trimws(parent_vals)) > 0L
 
       if (!any(ok)) next
 
       # For each unique child name, count distinct parent values
-      child_sub  <- child_vals[ok]
+      child_sub <- child_vals[ok]
       parent_sub <- parent_vals[ok]
 
       uniq_children <- unique(child_sub)
@@ -93,11 +93,11 @@ find_taxonomy_conflicts <- function(input_df, rank_system = NULL) {
         if (length(parents) > 1L) {
           k <- k + 1L
           conflicts[[k]] <- data.frame(
-            taxon_name  = ch,
-            taxon_rank  = child_rank,
+            taxon_name = ch,
+            taxon_rank = child_rank,
             parent_rank = parent_rank,
             parent_values = paste(sort(parents), collapse = "; "),
-            n_values    = length(parents),
+            n_values = length(parents),
             stringsAsFactors = FALSE
           )
         }
@@ -116,11 +116,11 @@ find_taxonomy_conflicts <- function(input_df, rank_system = NULL) {
 #' @noRd
 .empty_conflict_df <- function() {
   data.frame(
-    taxon_name    = character(0),
-    taxon_rank    = character(0),
-    parent_rank   = character(0),
+    taxon_name = character(0),
+    taxon_rank = character(0),
+    parent_rank = character(0),
     parent_values = character(0),
-    n_values      = integer(0),
+    n_values = integer(0),
     stringsAsFactors = FALSE
   )
 }

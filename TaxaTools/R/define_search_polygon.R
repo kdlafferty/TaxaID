@@ -15,8 +15,8 @@
 #' WKT uses (longitude latitude) order -- X before Y.
 #' @noRd
 .pts_to_wkt <- function(lng, lat) {
-  lng_c  <- c(lng, lng[1L])
-  lat_c  <- c(lat, lat[1L])
+  lng_c <- c(lng, lng[1L])
+  lat_c <- c(lat, lat[1L])
   coords <- paste(sprintf("%.6f %.6f", lng_c, lat_c), collapse = ", ")
   sprintf("POLYGON ((%s))", coords)
 }
@@ -28,8 +28,8 @@
 .wkt_to_pts <- function(wkt) {
   inner <- sub("^\\s*POLYGON\\s*\\(\\((.*)\\)\\)\\s*$", "\\1", wkt, ignore.case = TRUE)
   pairs <- strsplit(inner, ",\\s*")[[1]]
-  mat   <- do.call(rbind, lapply(pairs, function(p) as.numeric(strsplit(trimws(p), "\\s+")[[1]])))
-  n     <- nrow(mat)
+  mat <- do.call(rbind, lapply(pairs, function(p) as.numeric(strsplit(trimws(p), "\\s+")[[1]])))
+  n <- nrow(mat)
   if (n > 1L && isTRUE(all.equal(mat[1L, ], mat[n, ]))) mat <- mat[-n, , drop = FALSE]
   list(lng = mat[, 1L], lat = mat[, 2L])
 }
@@ -161,86 +161,103 @@
 #' # Overlay points colored by an existing spatial_group_id
 #' bbox3 <- define_search_polygon(
 #'   lat = 34.4, lon = -120.4, radius_deg = 2,
-#'   points    = sites_with_groups,
+#'   points = sites_with_groups,
 #'   group_col = "spatial_group_id"
 #' )
 #' }
 #'
 #' @export
-define_search_polygon <- function(lat        = NULL,
-                                  lon        = NULL,
+define_search_polygon <- function(lat = NULL,
+                                  lon = NULL,
                                   radius_deg = NULL,
-                                  tile       = "Esri.OceanBasemap",
-                                  points     = NULL,
-                                  group_col  = NULL,
+                                  tile = "Esri.OceanBasemap",
+                                  points = NULL,
+                                  group_col = NULL,
                                   init_polygon = NULL,
-                                  title        = "Define Search Polygon",
-                                  done_label   = "Done",
+                                  title = "Define Search Polygon",
+                                  done_label = "Done",
                                   cancel_label = "Cancel",
-                                  viewer     = shiny::paneViewer(minHeight = 500)) {
-
+                                  viewer = shiny::paneViewer(minHeight = 500)) {
   # ---------------------------------------------------------------------------
   # 0. Checks
   # ---------------------------------------------------------------------------
 
   if (!is.null(init_polygon)) {
-    if (!is.character(init_polygon) || length(init_polygon) != 1L || is.na(init_polygon))
+    if (!is.character(init_polygon) || length(init_polygon) != 1L || is.na(init_polygon)) {
       stop("define_search_polygon: 'init_polygon' must be a single non-NA WKT POLYGON string.", call. = FALSE)
+    }
   } else {
-    if (!is.numeric(lat) || length(lat) != 1L || is.na(lat))
+    if (!is.numeric(lat) || length(lat) != 1L || is.na(lat)) {
       stop("define_search_polygon: 'lat' must be a single non-NA numeric.", call. = FALSE)
-    if (!is.numeric(lon) || length(lon) != 1L || is.na(lon))
+    }
+    if (!is.numeric(lon) || length(lon) != 1L || is.na(lon)) {
       stop("define_search_polygon: 'lon' must be a single non-NA numeric.", call. = FALSE)
+    }
     if (!is.numeric(radius_deg) || length(radius_deg) != 1L ||
-        is.na(radius_deg) || radius_deg <= 0)
+      is.na(radius_deg) || radius_deg <= 0) {
       stop("define_search_polygon: 'radius_deg' must be a single positive numeric.", call. = FALSE)
-    if (lat < -90 || lat > 90)
+    }
+    if (lat < -90 || lat > 90) {
       stop("define_search_polygon: 'lat' must be in [-90, 90].", call. = FALSE)
-    if (lon < -180 || lon > 180)
+    }
+    if (lon < -180 || lon > 180) {
       stop("define_search_polygon: 'lon' must be in [-180, 180].", call. = FALSE)
+    }
   }
-  if (!interactive())
+  if (!interactive()) {
     stop("define_search_polygon: must be run in an interactive R session.", call. = FALSE)
+  }
   if (!is.null(points)) {
-    if (!is.data.frame(points) || !all(c("lat", "lng") %in% names(points)))
+    if (!is.data.frame(points) || !all(c("lat", "lng") %in% names(points))) {
       stop("define_search_polygon: 'points' must be a data frame with 'lat' and 'lng' columns.", call. = FALSE)
-    if (!is.null(group_col) && !group_col %in% names(points))
+    }
+    if (!is.null(group_col) && !group_col %in% names(points)) {
       stop(sprintf("define_search_polygon: 'group_col' (\"%s\") not found in 'points'.", group_col), call. = FALSE)
+    }
   }
 
   for (pkg in c("shiny", "miniUI", "leaflet")) {
-    if (!requireNamespace(pkg, quietly = TRUE))
+    if (!requireNamespace(pkg, quietly = TRUE)) {
       stop(sprintf(
         "define_search_polygon: package '%s' is required. Install with: install.packages('%s')",
-        pkg, pkg), call. = FALSE)
+        pkg, pkg
+      ), call. = FALSE)
+    }
   }
 
   if (!is.null(init_polygon)) {
     parsed <- tryCatch(.wkt_to_pts(init_polygon), error = function(e) NULL)
-    if (is.null(parsed) || length(parsed$lat) < 3L)
+    if (is.null(parsed) || length(parsed$lat) < 3L) {
       stop("define_search_polygon: 'init_polygon' could not be parsed as a valid WKT POLYGON.", call. = FALSE)
-    init_pts <- data.frame(id = seq_along(parsed$lat), lat = parsed$lat, lng = parsed$lng,
-                           stringsAsFactors = FALSE)
+    }
+    init_pts <- data.frame(
+      id = seq_along(parsed$lat), lat = parsed$lat, lng = parsed$lng,
+      stringsAsFactors = FALSE
+    )
     view_lat <- mean(range(parsed$lat))
     view_lon <- mean(range(parsed$lng))
     view_radius_deg <- max(diff(range(parsed$lat)) / 2, diff(range(parsed$lng)) / 2, 0.05) * 1.3
     n_init_corners <- nrow(init_pts)
-    next_id_start  <- n_init_corners + 1L
+    next_id_start <- n_init_corners + 1L
   } else {
     # Initial square: SW -> SE -> NE -> NW (counter-clockwise)
     init_pts <- data.frame(
-      id  = 1:4,
-      lat = c(lat - radius_deg, lat - radius_deg,
-              lat + radius_deg, lat + radius_deg),
-      lng = c(lon - radius_deg, lon + radius_deg,
-              lon + radius_deg, lon - radius_deg),
+      id = 1:4,
+      lat = c(
+        lat - radius_deg, lat - radius_deg,
+        lat + radius_deg, lat + radius_deg
+      ),
+      lng = c(
+        lon - radius_deg, lon + radius_deg,
+        lon + radius_deg, lon - radius_deg
+      ),
       stringsAsFactors = FALSE
     )
     view_lat <- lat
     view_lon <- lon
     view_radius_deg <- radius_deg
     n_init_corners <- 4L
-    next_id_start  <- 5L
+    next_id_start <- 5L
   }
 
   # Sensible initial zoom for the given radius -- one step further out than
@@ -253,7 +270,7 @@ define_search_polygon <- function(lat        = NULL,
   point_pal <- NULL
   if (!is.null(points) && !is.null(group_col)) {
     point_groups <- as.factor(points[[group_col]])
-    point_pal    <- leaflet::colorFactor(palette = "Set2", domain = point_groups)
+    point_pal <- leaflet::colorFactor(palette = "Set2", domain = point_groups)
   }
 
   # ---------------------------------------------------------------------------
@@ -300,7 +317,6 @@ define_search_polygon <- function(lat        = NULL,
   # ---------------------------------------------------------------------------
 
   server <- function(input, output, session) {
-
     rv <- shiny::reactiveValues(
       data    = init_pts,
       next_id = next_id_start
@@ -326,7 +342,8 @@ define_search_polygon <- function(lat        = NULL,
             options     = leaflet::pathOptions(interactive = FALSE)
           )
           m <- leaflet::addLegend(
-            m, position = "bottomright", pal = point_pal, values = point_groups,
+            m,
+            position = "bottomright", pal = point_pal, values = point_groups,
             title = group_col, opacity = 0.8
           )
         } else {
@@ -354,8 +371,8 @@ define_search_polygon <- function(lat        = NULL,
     # in the initial renderLeaflet() above, since this observer also fires on
     # gadget startup). clearGroup() only touches layers tagged with this group.
     shiny::observe({
-      d     <- rv$data
-      n     <- nrow(d)
+      d <- rv$data
+      n <- nrow(d)
       proxy <- leaflet::leafletProxy("map", session)
 
       leaflet::clearGroup(proxy, group = "editor")
@@ -378,27 +395,31 @@ define_search_polygon <- function(lat        = NULL,
       # limitation); addMarkers() with markerOptions(draggable = TRUE) is required.
       leaflet::addMarkers(
         proxy,
-        lng          = d$lng,
-        lat          = d$lat,
-        layerId      = paste0("pt_", d$id),
-        label        = as.character(seq_len(n)),
+        lng = d$lng,
+        lat = d$lat,
+        layerId = paste0("pt_", d$id),
+        label = as.character(seq_len(n)),
         labelOptions = leaflet::labelOptions(
-          noHide    = TRUE,
+          noHide = TRUE,
           direction = "top",
-          textOnly  = FALSE,
-          style     = list("font-weight" = "bold", "color" = "#2c7bb6",
-                           "font-size" = "12px")
+          textOnly = FALSE,
+          style = list(
+            "font-weight" = "bold", "color" = "#2c7bb6",
+            "font-size" = "12px"
+          )
         ),
-        group        = "editor",
-        options      = leaflet::markerOptions(draggable = TRUE)
+        group = "editor",
+        options = leaflet::markerOptions(draggable = TRUE)
       )
     })
 
     # -- Update position on drag end ------------------------------------------
     shiny::observeEvent(input$map_marker_dragend, {
-      ev  <- input$map_marker_dragend
+      ev <- input$map_marker_dragend
       mid <- suppressWarnings(as.integer(sub("^pt_", "", ev$id)))
-      if (is.na(mid)) return()
+      if (is.na(mid)) {
+        return()
+      }
       i <- which(rv$data$id == mid)
       if (length(i) == 1L) {
         rv$data$lat[i] <- ev$lat
@@ -421,7 +442,7 @@ define_search_polygon <- function(lat        = NULL,
       j_max <- if (i_max == n) 1L else i_max + 1L
 
       new_row <- data.frame(
-        id  = rv$next_id,
+        id = rv$next_id,
         lat = (d$lat[i_max] + d$lat[j_max]) / 2,
         lng = (d$lng[i_max] + d$lng[j_max]) / 2,
         stringsAsFactors = FALSE
@@ -433,9 +454,9 @@ define_search_polygon <- function(lat        = NULL,
         rv$data <- rbind(d, new_row)
       } else {
         rv$data <- rbind(
-          d[seq_len(i_max),       , drop = FALSE],
+          d[seq_len(i_max), , drop = FALSE],
           new_row,
-          d[seq(i_max + 1L, n),  , drop = FALSE]
+          d[seq(i_max + 1L, n), , drop = FALSE]
         )
       }
     })
@@ -451,7 +472,7 @@ define_search_polygon <- function(lat        = NULL,
         return()
       }
       remove_id <- max(added$id)
-      rv$data   <- rv$data[rv$data$id != remove_id, , drop = FALSE]
+      rv$data <- rv$data[rv$data$id != remove_id, , drop = FALSE]
     })
 
     # -- Live WKT preview ------------------------------------------------------

@@ -20,18 +20,18 @@
 #'
 #' @export
 barcode_length_defaults <- list(
-  "mifish" = c(130L,  210L),   # MiFishU/E 12S amplicon 163-185 bp; bounds exclude non-target cross-amplicons
-  "teleo"  = c(50L,  300L),    # Teleo 12S amplicon ~60-100 bp
-  "12s"    = c(100L,  600L),   # General 12S vertebrate
-  "16s"    = c(100L,  700L),   # 16S vertebrate ~200-450 bp
-  "coi"    = c(300L,  900L),   # COI Folmer ~650 bp; mini ~130-200 bp
-  "cytb"   = c(200L,  900L),   # CytB partial ~300-700 bp
-  "its2"   = c(100L,  600L),   # ITS2 ~200-350 bp
-  "its"    = c(100L,  900L),   # ITS full ~500-750 bp
-  "rbcl"   = c(400L,  800L),   # rbcL ~550-650 bp
-  "matk"   = c(600L, 1100L),   # matK ~800-900 bp
-  "18s"    = c(100L, 2000L),   # 18S varies by primer set
-  "trnl"   = c(10L,  300L)     # trnL P6 loop ~10-150 bp
+  "mifish" = c(130L, 210L), # MiFishU/E 12S amplicon 163-185 bp; bounds exclude non-target cross-amplicons
+  "teleo"  = c(50L, 300L), # Teleo 12S amplicon ~60-100 bp
+  "12s"    = c(100L, 600L), # General 12S vertebrate
+  "16s"    = c(100L, 700L), # 16S vertebrate ~200-450 bp
+  "coi"    = c(300L, 900L), # COI Folmer ~650 bp; mini ~130-200 bp
+  "cytb"   = c(200L, 900L), # CytB partial ~300-700 bp
+  "its2"   = c(100L, 600L), # ITS2 ~200-350 bp
+  "its"    = c(100L, 900L), # ITS full ~500-750 bp
+  "rbcl"   = c(400L, 800L), # rbcL ~550-650 bp
+  "matk"   = c(600L, 1100L), # matK ~800-900 bp
+  "18s"    = c(100L, 2000L), # 18S varies by primer set
+  "trnl"   = c(10L, 300L) # trnL P6 loop ~10-150 bp
 )
 
 
@@ -74,14 +74,16 @@ resolve_barcode_lengths <- function(barcode_term, min_len = NULL,
     return(stats::setNames(c(min_i, max_i), c("min_bp", "max_bp")))
   }
 
-  if (is.null(barcode_term))
+  if (is.null(barcode_term)) {
     stop("Specify barcode_term for auto-detection, or provide both min_len and max_len")
+  }
 
   all_ranges <- lapply(barcode_term, function(bt) {
     key <- tolower(trimws(bt))
     for (nm in names(barcode_length_defaults)) {
-      if (startsWith(key, nm) || grepl(nm, key, fixed = TRUE))
+      if (startsWith(key, nm) || grepl(nm, key, fixed = TRUE)) {
         return(barcode_length_defaults[[nm]])
+      }
     }
     NULL
   })
@@ -90,15 +92,16 @@ resolve_barcode_lengths <- function(barcode_term, min_len = NULL,
 
   if (length(matched) == 0L) {
     resolved <- c(100L, 2000L)
-    if (is.null(min_len) || is.null(max_len))
+    if (is.null(min_len) || is.null(max_len)) {
       message(sprintf(
         "No length defaults found for barcode_term '%s'. Using fallback 100-2000 bp. ",
         paste(barcode_term, collapse = "/")
       ), "Supply min_len/max_len to override.")
+    }
   } else {
-    all_mins  <- vapply(matched, `[`, integer(1L), 1L)
+    all_mins <- vapply(matched, `[`, integer(1L), 1L)
     all_maxes <- vapply(matched, `[`, integer(1L), 2L)
-    resolved  <- c(min(all_mins), max(all_maxes))
+    resolved <- c(min(all_mins), max(all_maxes))
   }
 
   if (!is.null(min_len)) resolved[1L] <- as.integer(min_len)
@@ -389,30 +392,41 @@ barcode_primer_defaults <- list(
 #' @export
 resolve_barcode_primers <- function(barcode_term) {
   if (is.null(barcode_term) || length(barcode_term) != 1L || is.na(barcode_term) ||
-      !nzchar(trimws(barcode_term)))
+    !nzchar(trimws(barcode_term))) {
     stop("resolve_barcode_primers: barcode_term must be a single non-empty string")
+  }
 
   norm <- function(x) gsub("[-_ ]", "", tolower(trimws(x)))
-  key  <- norm(barcode_term)
+  key <- norm(barcode_term)
   reg_keys <- names(barcode_primer_defaults)
   reg_norm <- norm(reg_keys)
 
   exact <- which(reg_norm == key)
-  if (length(exact) == 1L)
+  if (length(exact) == 1L) {
     return(barcode_primer_defaults[[reg_keys[exact]]])
+  }
 
   prefix <- which(startsWith(reg_norm, key))
-  if (length(prefix) == 1L)
+  if (length(prefix) == 1L) {
     return(barcode_primer_defaults[[reg_keys[prefix]]])
+  }
 
-  if (length(prefix) > 1L)
+  if (length(prefix) > 1L) {
     stop(sprintf(
-      "resolve_barcode_primers: '%s' is ambiguous -- matches %s. Specify the exact primer variant (e.g. '%s'), or supply primer_fwd/primer_rev directly.",
+      paste0(
+        "resolve_barcode_primers: '%s' is ambiguous -- matches %s. Specify the ",
+        "exact primer variant (e.g. '%s'), or supply primer_fwd/primer_rev directly."
+      ),
       barcode_term, paste0("'", reg_keys[prefix], "'", collapse = ", "), reg_keys[prefix[1]]
     ), call. = FALSE)
+  }
 
   stop(sprintf(
-    "resolve_barcode_primers: no primer defaults found for '%s'. Currently registered: %s. Supply primer_fwd/primer_rev directly, or pre-trim with the external CRABS tool (see TaxaLikely::read_crabs_output()).",
+    paste0(
+      "resolve_barcode_primers: no primer defaults found for '%s'. Currently registered: %s. ",
+      "Supply primer_fwd/primer_rev directly, or pre-trim with the external CRABS tool ",
+      "(see TaxaLikely::read_crabs_output())."
+    ),
     barcode_term, paste0("'", reg_keys, "'", collapse = ", ")
   ), call. = FALSE)
 }
@@ -441,16 +455,20 @@ resolve_barcode_primers <- function(barcode_term) {
 #' @return Character vector the same length as `barcode_term`: the base marker
 #'   name for a recognised primer variant, otherwise the input unchanged.
 #' @examples
-#' resolve_barcode_marker("COI-Folmer")   # "COI"
-#' resolve_barcode_marker("16S-Palumbi")  # "16S"
-#' resolve_barcode_marker("12S")          # "12S" (unchanged)
-#' resolve_barcode_marker("MiFishU")      # "MiFishU" (deliberately unchanged)
+#' resolve_barcode_marker("COI-Folmer") # "COI"
+#' resolve_barcode_marker("16S-Palumbi") # "16S"
+#' resolve_barcode_marker("12S") # "12S" (unchanged)
+#' resolve_barcode_marker("MiFishU") # "MiFishU" (deliberately unchanged)
 #' @export
 resolve_barcode_marker <- function(barcode_term) {
-  if (is.null(barcode_term)) return(barcode_term)
-  if (!is.character(barcode_term))
+  if (is.null(barcode_term)) {
+    return(barcode_term)
+  }
+  if (!is.character(barcode_term)) {
     stop("resolve_barcode_marker: barcode_term must be a character vector.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   variant_to_marker <- c(
     "coi-folmer"    = "COI",
@@ -463,7 +481,9 @@ resolve_barcode_marker <- function(barcode_term) {
   )
 
   vapply(barcode_term, function(bt) {
-    if (is.na(bt)) return(NA_character_)
+    if (is.na(bt)) {
+      return(NA_character_)
+    }
     hit <- variant_to_marker[tolower(trimws(bt))]
     if (is.na(hit)) bt else unname(hit)
   }, character(1L), USE.NAMES = FALSE)

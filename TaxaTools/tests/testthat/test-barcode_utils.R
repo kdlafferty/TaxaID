@@ -134,7 +134,7 @@ test_that("resolve_barcode_primers resolves bare marker names unambiguously for 
 
 test_that("resolve_barcode_primers distinguishes COI-Folmer from COI-Leray", {
   folmer <- resolve_barcode_primers("COI-Folmer")
-  leray  <- resolve_barcode_primers("COI-Leray")
+  leray <- resolve_barcode_primers("COI-Leray")
   expect_false(identical(folmer$fwd, leray$fwd))
   expect_false(identical(folmer$rev, leray$rev))
   expect_equal(leray$fwd, "GGWACWGGWTGAACWGTWTAYCCYCC")
@@ -190,24 +190,24 @@ test_that("is_plausible_binomial is vectorized", {
 # suggest_unreferenced_species), which is why the map lives here.
 
 test_that("resolve_barcode_marker maps every registered primer variant to its marker", {
-  expect_identical(resolve_barcode_marker("COI-Folmer"),    "COI")
-  expect_identical(resolve_barcode_marker("COI-Leray"),     "COI")
-  expect_identical(resolve_barcode_marker("16S-Palumbi"),   "16S")
-  expect_identical(resolve_barcode_marker("cytb-Kocher"),   "cytb")
-  expect_identical(resolve_barcode_marker("rbcLa"),         "rbcL")
-  expect_identical(resolve_barcode_marker("matK-Kim"),      "matK")
+  expect_identical(resolve_barcode_marker("COI-Folmer"), "COI")
+  expect_identical(resolve_barcode_marker("COI-Leray"), "COI")
+  expect_identical(resolve_barcode_marker("16S-Palumbi"), "16S")
+  expect_identical(resolve_barcode_marker("cytb-Kocher"), "cytb")
+  expect_identical(resolve_barcode_marker("rbcLa"), "rbcL")
+  expect_identical(resolve_barcode_marker("matK-Kim"), "matK")
   expect_identical(resolve_barcode_marker("trnL-Taberlet"), "trnL")
 })
 
 test_that("resolve_barcode_marker is case- and whitespace-insensitive", {
-  expect_identical(resolve_barcode_marker("coi-folmer"),   "COI")
+  expect_identical(resolve_barcode_marker("coi-folmer"), "COI")
   expect_identical(resolve_barcode_marker("  COI-FOLMER "), "COI")
 })
 
 test_that("resolve_barcode_marker leaves plain markers and unknown terms alone", {
   # A bare marker is already searchable.
-  expect_identical(resolve_barcode_marker("12S"),  "12S")
-  expect_identical(resolve_barcode_marker("COI"),  "COI")
+  expect_identical(resolve_barcode_marker("12S"), "12S")
+  expect_identical(resolve_barcode_marker("COI"), "COI")
   # An unregistered/custom term must still search as itself, not be swallowed.
   expect_identical(resolve_barcode_marker("my-lab-primer"), "my-lab-primer")
 })
@@ -215,13 +215,15 @@ test_that("resolve_barcode_marker leaves plain markers and unknown terms alone",
 test_that("resolve_barcode_marker deliberately does NOT remap MiFish terms", {
   # Unlike the others, real records ARE annotated with the MiFish primer name,
   # so the variant is genuinely searchable and callers OR it with 12S.
-  expect_identical(resolve_barcode_marker("MiFishU"),  "MiFishU")
+  expect_identical(resolve_barcode_marker("MiFishU"), "MiFishU")
   expect_identical(resolve_barcode_marker("mifish-e"), "mifish-e")
 })
 
 test_that("resolve_barcode_marker is vectorised and NULL/NA-safe", {
-  expect_identical(resolve_barcode_marker(c("COI-Folmer", "12S", "rbcLa")),
-                   c("COI", "12S", "rbcL"))
+  expect_identical(
+    resolve_barcode_marker(c("COI-Folmer", "12S", "rbcLa")),
+    c("COI", "12S", "rbcL")
+  )
   expect_null(resolve_barcode_marker(NULL))
   expect_identical(resolve_barcode_marker(NA_character_), NA_character_)
   expect_error(resolve_barcode_marker(12), "character")

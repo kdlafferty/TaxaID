@@ -10,32 +10,38 @@
 # and via testthat::test_dir() on an installed package.
 .reset_registry <- function() {
   env <- get(".registry_env", envir = asNamespace("TaxaTools"))
-  env$session_pins    <- NULL
-  env$discovered      <- NULL
-  env$registry        <- NULL
+  env$session_pins <- NULL
+  env$discovered <- NULL
+  env$registry <- NULL
   env$registry_loaded <- FALSE
 }
 
 # Convenience wrappers for internal functions (same namespace portability reason)
-.get_registry  <- function(...) get(".get_registry",  envir = asNamespace("TaxaTools"))(...)
+.get_registry <- function(...) get(".get_registry", envir = asNamespace("TaxaTools"))(...)
 .resolve_model <- function(...) get(".resolve_model", envir = asNamespace("TaxaTools"))(...)
 
 
 # --- register_provider() input validation -------------------------------------
 
 test_that("register_provider rejects blank name", {
-  expect_error(register_provider("", "MY_KEY", "https://example.com"),
-               "'name' must be a non-empty character string")
+  expect_error(
+    register_provider("", "MY_KEY", "https://example.com"),
+    "'name' must be a non-empty character string"
+  )
 })
 
 test_that("register_provider rejects blank api_key_var", {
-  expect_error(register_provider("myprov", "", "https://example.com"),
-               "'api_key_var' must be a non-empty character string")
+  expect_error(
+    register_provider("myprov", "", "https://example.com"),
+    "'api_key_var' must be a non-empty character string"
+  )
 })
 
 test_that("register_provider rejects blank base_url", {
-  expect_error(register_provider("myprov", "MY_KEY", ""),
-               "'base_url' must be a non-empty character string")
+  expect_error(
+    register_provider("myprov", "MY_KEY", ""),
+    "'base_url' must be a non-empty character string"
+  )
 })
 
 test_that("register_provider rejects built-in provider names", {
@@ -63,8 +69,10 @@ test_that("register_provider adds provider to session registry", {
   expect_true("testprov" %in% names(reg$providers))
   expect_equal(reg$providers$testprov$api_key_var, "TEST_API_KEY")
   expect_equal(reg$providers$testprov$base_url, "https://api.test.example.com")
-  expect_equal(reg$providers$testprov$models_endpoint,
-               "https://api.test.example.com/v1/models")
+  expect_equal(
+    reg$providers$testprov$models_endpoint,
+    "https://api.test.example.com/v1/models"
+  )
   expect_equal(reg$providers$testprov$handler_family, "openai_compat")
   expect_equal(reg$providers$testprov$fallback_models$mid, "test-std")
 })
@@ -80,8 +88,10 @@ test_that("register_provider strips trailing slash from base_url", {
 
   reg <- .get_registry()
   expect_equal(reg$providers$slashprov$base_url, "https://api.slash.example.com")
-  expect_equal(reg$providers$slashprov$models_endpoint,
-               "https://api.slash.example.com/v1/models")
+  expect_equal(
+    reg$providers$slashprov$models_endpoint,
+    "https://api.slash.example.com/v1/models"
+  )
 })
 
 test_that("register_provider fallback resolves via .resolve_model()", {
@@ -123,15 +133,17 @@ test_that("set_model accepts a registered custom provider", {
   m <- .resolve_model("pinprov", "mid")
   expect_equal(m, "pin-custom-v2")
 
-  suppressMessages(set_model("pinprov", "mid", NULL))  # unpin
+  suppressMessages(set_model("pinprov", "mid", NULL)) # unpin
   m2 <- .resolve_model("pinprov", "mid")
   expect_equal(m2, "pin-default")
 })
 
 test_that("set_model still rejects completely unknown provider names", {
   on.exit(.reset_registry())
-  expect_error(set_model("doesnotexist", "mid", "some-model"),
-               "unknown provider")
+  expect_error(
+    set_model("doesnotexist", "mid", "some-model"),
+    "unknown provider"
+  )
 })
 
 

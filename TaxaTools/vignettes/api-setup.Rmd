@@ -85,7 +85,7 @@ library(TaxaTools)
 answer <- call_api("Reply with just the word 'connected'.")
 answer
 # Should return "connected" (or similar)
-attr(answer, "tokens")  # input/output token counts from the provider
+attr(answer, "tokens") # input/output token counts from the provider
 ```
 
 ### Test NCBI access

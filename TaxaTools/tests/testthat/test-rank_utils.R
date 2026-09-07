@@ -1,7 +1,6 @@
 # ---- standard_ranks and extended_ranks ----------------------------------------
 
 test_that("standard_ranks is a length-7 character vector with expected values", {
-
   expect_type(standard_ranks, "character")
   expect_length(standard_ranks, 7L)
   expect_true(all(c("kingdom", "family", "genus", "species") %in% standard_ranks))
@@ -23,9 +22,11 @@ test_that("detect_ranks finds standard rank columns", {
 })
 
 test_that("detect_ranks returns all matching standard ranks in order", {
-  df <- data.frame(kingdom = "A", phylum = "B", class = "C",
-                   order = "D", family = "E", genus = "F",
-                   species = "G", extra = 1)
+  df <- data.frame(
+    kingdom = "A", phylum = "B", class = "C",
+    order = "D", family = "E", genus = "F",
+    species = "G", extra = 1
+  )
   out <- detect_ranks(df)
   expect_equal(out, standard_ranks)
 })
@@ -49,8 +50,8 @@ test_that("detect_ranks errors on non-data-frame", {
 
 test_that("find_taxonomy_conflicts detects genus under two families", {
   df <- data.frame(
-    family  = c("Cottidae", "Scorpaenidae", "Cottidae"),
-    genus   = c("Cottus",   "Cottus",        "Enophrys"),
+    family = c("Cottidae", "Scorpaenidae", "Cottidae"),
+    genus = c("Cottus", "Cottus", "Enophrys"),
     species = c("Cottus asper", "Cottus rhotheus", "Enophrys bison"),
     stringsAsFactors = FALSE
   )
@@ -62,8 +63,8 @@ test_that("find_taxonomy_conflicts detects genus under two families", {
 
 test_that("find_taxonomy_conflicts returns empty df when no conflicts", {
   df <- data.frame(
-    family  = c("Cottidae", "Cottidae"),
-    genus   = c("Cottus",   "Cottus"),
+    family = c("Cottidae", "Cottidae"),
+    genus = c("Cottus", "Cottus"),
     species = c("Cottus asper", "Cottus rhotheus"),
     stringsAsFactors = FALSE
   )

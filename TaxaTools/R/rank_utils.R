@@ -9,8 +9,10 @@
 #' standard_ranks
 #' # "kingdom" "phylum" "class" "order" "family" "genus" "species"
 #' @export
-standard_ranks <- c("kingdom", "phylum", "class", "order",
-                     "family", "genus", "species")
+standard_ranks <- c(
+  "kingdom", "phylum", "class", "order",
+  "family", "genus", "species"
+)
 
 
 #' Extended Rank Order Including Intermediate Ranks (Coarse to Fine)
@@ -52,8 +54,10 @@ extended_ranks <- c(
 #'   \code{character(0)}.
 #'
 #' @examples
-#' input_df <- data.frame(family = "Fundulidae", genus = "Fundulus",
-#'                        species = "Fundulus parvipinnis", score = 99)
+#' input_df <- data.frame(
+#'   family = "Fundulidae", genus = "Fundulus",
+#'   species = "Fundulus parvipinnis", score = 99
+#' )
 #' detect_ranks(input_df)
 #' # "family" "genus" "species"
 #'

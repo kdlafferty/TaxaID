@@ -13,12 +13,16 @@ test_that("prompt_api rejects non-llm_prompt input", {
 
 test_that("prompt_api rejects non-function llm_fn", {
   mock_prompt <- structure(
-    list(prompts = list("test"), chunks = list("taxon"),
-         n_chunks = 1L, taxa = "Fundulus"),
+    list(
+      prompts = list("test"), chunks = list("taxon"),
+      n_chunks = 1L, taxa = "Fundulus"
+    ),
     class = "llm_prompt"
   )
-  expect_error(prompt_api(mock_prompt, llm_fn = "not_a_function"),
-               "must be a function")
+  expect_error(
+    prompt_api(mock_prompt, llm_fn = "not_a_function"),
+    "must be a function"
+  )
 })
 
 test_that("prompt_api calls llm_fn for each chunk and combines", {
@@ -84,8 +88,10 @@ test_that("read_llm_response rejects non-character input", {
 
 test_that("read_llm_response reads a single file", {
   tmp <- tempfile(fileext = ".txt")
-  writeLines(c("taxon_name,Marine,Freshwater",
-               "Fundulus parvipinnis,0.9,0.1"), tmp)
+  writeLines(c(
+    "taxon_name,Marine,Freshwater",
+    "Fundulus parvipinnis,0.9,0.1"
+  ), tmp)
   result <- read_llm_response(tmp)
   expect_true(grepl("taxon_name", result))
   expect_true(grepl("Fundulus parvipinnis", result))
@@ -95,10 +101,14 @@ test_that("read_llm_response reads a single file", {
 test_that("read_llm_response strips duplicate headers from chunk 2+", {
   tmp1 <- tempfile(fileext = ".txt")
   tmp2 <- tempfile(fileext = ".txt")
-  writeLines(c("taxon_name,Marine,Freshwater",
-               "Fundulus parvipinnis,0.9,0.1"), tmp1)
-  writeLines(c("taxon_name,Marine,Freshwater",
-               "Cottus asper,0.0,1.0"), tmp2)
+  writeLines(c(
+    "taxon_name,Marine,Freshwater",
+    "Fundulus parvipinnis,0.9,0.1"
+  ), tmp1)
+  writeLines(c(
+    "taxon_name,Marine,Freshwater",
+    "Cottus asper,0.0,1.0"
+  ), tmp2)
   result <- read_llm_response(c(tmp1, tmp2))
   # Header should appear once from file 1, stripped from file 2
   header_count <- length(gregexpr("taxon_name", result)[[1]])

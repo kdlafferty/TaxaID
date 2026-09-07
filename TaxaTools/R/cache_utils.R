@@ -51,17 +51,21 @@ list_cache_files <- function(cache_dir, patterns) {
   )
 
   files <- list.files(cache_dir, full.names = TRUE)
-  if (length(files) == 0L) return(empty)
+  if (length(files) == 0L) {
+    return(empty)
+  }
 
   keep <- Reduce(`|`, lapply(patterns, function(p) grepl(p, basename(files))))
   files <- files[keep]
-  if (length(files) == 0L) return(empty)
+  if (length(files) == 0L) {
+    return(empty)
+  }
 
   info <- file.info(files)
   data.frame(
-    path    = files,
+    path = files,
     size_mb = info$size / 1024^2,
-    mtime   = info$mtime,
+    mtime = info$mtime,
     stringsAsFactors = FALSE
   )
 }
@@ -97,7 +101,7 @@ list_cache_files <- function(cache_dir, patterns) {
 #' report_and_clear_cache(inv, "my_pkg_clear_cache", cache_dir, dry_run = TRUE)
 #' }
 report_and_clear_cache <- function(inv, label, cache_dir,
-                                    older_than_days = NULL, dry_run = FALSE) {
+                                   older_than_days = NULL, dry_run = FALSE) {
   if (!is.data.frame(inv) || !all(c("path", "size_mb", "mtime") %in% names(inv))) {
     stop("report_and_clear_cache: 'inv' must be a data frame with 'path', 'size_mb', 'mtime' columns.")
   }
@@ -109,7 +113,7 @@ report_and_clear_cache <- function(inv, label, cache_dir,
   }
   if (!is.null(older_than_days)) {
     if (!is.numeric(older_than_days) || length(older_than_days) != 1L ||
-        is.na(older_than_days) || older_than_days < 0) {
+      is.na(older_than_days) || older_than_days < 0) {
       stop(sprintf("%s: 'older_than_days' must be a single non-negative number or NULL.", label))
     }
   }

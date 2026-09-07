@@ -12,12 +12,11 @@
 #' Detect available LLM providers and set the default
 #' @noRd
 .detect_llm_provider <- function() {
-
   # Priority: Anthropic > Gemini > OpenAI > Azure (DOI network/VPN required)
   providers <- list(
-    list(key = "ANTHROPIC_API_KEY",    name = "anthropic",  label = "Anthropic"),
-    list(key = "GEMINI_API_KEY",       name = "gemini",     label = "Gemini"),
-    list(key = "OPENAI_API_KEY",       name = "openai",     label = "OpenAI"),
+    list(key = "ANTHROPIC_API_KEY", name = "anthropic", label = "Anthropic"),
+    list(key = "GEMINI_API_KEY", name = "gemini", label = "Gemini"),
+    list(key = "OPENAI_API_KEY", name = "openai", label = "OpenAI"),
     list(key = "AZURE_OPENAI_API_KEY", name = "azure_openai", label = "Azure OpenAI (DOI)")
   )
 
@@ -34,13 +33,16 @@
 
 
 .onAttach <- function(libname, pkgname) {
-
   # Skip in non-interactive sessions (CRAN checks, CI, scripts)
-  if (!interactive()) return(invisible())
+  if (!interactive()) {
+    return(invisible())
+  }
 
   # Respect any user-set option (e.g., from .Rprofile)
   if (!is.null(getOption("TaxaID.llm_fn")) ||
-      !is.null(getOption("TaxaID.provider"))) return(invisible())
+    !is.null(getOption("TaxaID.provider"))) {
+    return(invisible())
+  }
 
   available <- .detect_llm_provider()
   n <- length(available)
@@ -63,15 +65,17 @@
   # Use first available (priority: Anthropic > Gemini > OpenAI > Azure)
   chosen <- available[[1L]]
   options(TaxaID.provider = chosen$name)
-  options(TaxaID.llm_fn   = call_api)
+  options(TaxaID.llm_fn = call_api)
 
   if (n == 1L) {
     msg <- sprintf("TaxaID: Using %s as LLM provider.", chosen$label)
     if (identical(chosen$name, "azure_openai")) {
       msg <- paste0(msg, "\n  NOTE: Azure OpenAI requires connection to a DOI computer system or DOI VPN.")
     }
-    msg <- paste0(msg, "\n  NOTE: Cloud LLM providers transmit prompts to third-party servers.",
-                  " Use provider = 'ollama' for local inference with sensitive data.")
+    msg <- paste0(
+      msg, "\n  NOTE: Cloud LLM providers transmit prompts to third-party servers.",
+      " Use provider = 'ollama' for local inference with sensitive data."
+    )
     packageStartupMessage(msg)
   } else {
     if (identical(chosen$name, "azure_openai")) {
@@ -80,9 +84,12 @@
       doi_note <- ""
     }
     packageStartupMessage(
-      sprintf("TaxaID: Multiple LLM providers available (%s).",
-              paste(vapply(available, `[[`, character(1L), "label"),
-                    collapse = ", ")),
+      sprintf(
+        "TaxaID: Multiple LLM providers available (%s).",
+        paste(vapply(available, `[[`, character(1L), "label"),
+          collapse = ", "
+        )
+      ),
       sprintf("\n  Using %s (first available). Change with:", chosen$label),
       sprintf('\n    options(TaxaID.provider = "%s")', available[[2L]]$name),
       doi_note,

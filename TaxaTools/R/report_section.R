@@ -57,25 +57,31 @@
 new_report_section <- function(package,
                                section,
                                methods,
-                               results    = NULL,
-                               citations  = NULL,
-                               params     = NULL,
+                               results = NULL,
+                               citations = NULL,
+                               params = NULL,
                                statistics = NULL) {
-
-  if (!is.character(package) || length(package) != 1L || !nzchar(package))
+  if (!is.character(package) || length(package) != 1L || !nzchar(package)) {
     stop("'package' must be a non-empty single string.", call. = FALSE)
-  if (!is.character(section) || length(section) != 1L || !nzchar(section))
+  }
+  if (!is.character(section) || length(section) != 1L || !nzchar(section)) {
     stop("'section' must be a non-empty single string.", call. = FALSE)
-  if (!is.character(methods) || length(methods) != 1L)
+  }
+  if (!is.character(methods) || length(methods) != 1L) {
     stop("'methods' must be a single character string.", call. = FALSE)
-  if (!is.null(results) && (!is.character(results) || length(results) != 1L))
+  }
+  if (!is.null(results) && (!is.character(results) || length(results) != 1L)) {
     stop("'results' must be a single character string or NULL.", call. = FALSE)
-  if (!is.null(citations) && !is.character(citations))
+  }
+  if (!is.null(citations) && !is.character(citations)) {
     stop("'citations' must be a character vector or NULL.", call. = FALSE)
-  if (!is.null(params) && !is.list(params))
+  }
+  if (!is.null(params) && !is.list(params)) {
     stop("'params' must be a named list or NULL.", call. = FALSE)
-  if (!is.null(statistics) && !is.list(statistics))
+  }
+  if (!is.null(statistics) && !is.list(statistics)) {
     stop("'statistics' must be a named list or NULL.", call. = FALSE)
+  }
 
   structure(
     list(
@@ -140,8 +146,10 @@ format.report_section <- function(x, ...) {
     parts <- c(parts, "\n## Results\n", x$results)
   }
   if (!is.null(x$citations) && length(x$citations) > 0L) {
-    parts <- c(parts, "\n## Data Sources\n",
-               paste(sprintf("- %s", x$citations), collapse = "\n"))
+    parts <- c(
+      parts, "\n## Data Sources\n",
+      paste(sprintf("- %s", x$citations), collapse = "\n")
+    )
   }
   paste(parts, collapse = "\n")
 }
@@ -173,11 +181,12 @@ format.report_section <- function(x, ...) {
 #'
 #' @examples
 #' \dontrun{
-#' fetch_sec  <- report_fetch(occurrences)
-#' match_sec  <- report_match(match_data)
+#' fetch_sec <- report_fetch(occurrences)
+#' match_sec <- report_match(match_data)
 #' assign_sec <- report_assign(result, consensus)
 #' full_report <- assemble_report(fetch_sec, match_sec, assign_sec,
-#'                                title = "eDNA Taxonomic Assignment Report")
+#'   title = "eDNA Taxonomic Assignment Report"
+#' )
 #' writeLines(full_report, "methods_report.md")
 #' }
 #'
@@ -185,31 +194,36 @@ format.report_section <- function(x, ...) {
 assemble_report <- function(...,
                             title = NULL,
                             study_description = NULL) {
-
   sections <- list(...)
 
   # Validate inputs
 
-  if (length(sections) == 0L)
+  if (length(sections) == 0L) {
     stop("assemble_report: at least one report_section object required.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # Accept a single list of sections (convenience)
   if (length(sections) == 1L && is.list(sections[[1L]]) &&
-      !inherits(sections[[1L]], "report_section")) {
+    !inherits(sections[[1L]], "report_section")) {
     sections <- sections[[1L]]
   }
 
   not_section <- !vapply(sections, inherits, logical(1L), "report_section")
-  if (any(not_section))
+  if (any(not_section)) {
     stop("assemble_report: all arguments must be report_section objects.",
-         call. = FALSE)
+      call. = FALSE
+    )
+  }
 
   # Order by pipeline position
-  pipeline_order <- c("fetch", "match", "likelihood", "habitat",
-                      "priors", "assign", "flags")
+  pipeline_order <- c(
+    "fetch", "match", "likelihood", "habitat",
+    "priors", "assign", "flags"
+  )
   section_ids <- vapply(sections, function(s) s$section, character(1L))
-  order_idx   <- match(section_ids, pipeline_order)
+  order_idx <- match(section_ids, pipeline_order)
   # Unknown sections go at the end
   order_idx[is.na(order_idx)] <- length(pipeline_order) + 1L
   sections <- sections[order(order_idx)]

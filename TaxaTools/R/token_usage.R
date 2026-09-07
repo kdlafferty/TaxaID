@@ -30,7 +30,7 @@
     fn <- tryCatch(deparse(calls[[i]][[1L]]), error = function(e) "")
     fn <- trimws(fn)
     if (nzchar(fn) && !startsWith(fn, ".") && !fn %in% .skip_fns &&
-        !grepl("^\\$|^::|\\[", fn)) {
+      !grepl("^\\$|^::|\\[", fn)) {
       return(fn)
     }
   }
@@ -103,23 +103,24 @@
 #' library(TaxaTools)
 #'
 #' # After running workflow steps that call LLMs:
-#' token_usage()                       # per-call detail
-#' token_usage(by = "function")        # totals per TaxaID function
-#' token_usage(by = "session")         # grand total
+#' token_usage() # per-call detail
+#' token_usage(by = "function") # totals per TaxaID function
+#' token_usage(by = "session") # grand total
 #'
 #' # With cost estimate (Anthropic claude-sonnet-4 pricing example)
-#' token_usage(by = "function",
-#'             cost_per_1k_input  = 0.003,
-#'             cost_per_1k_output = 0.015)
+#' token_usage(
+#'   by = "function",
+#'   cost_per_1k_input = 0.003,
+#'   cost_per_1k_output = 0.015
+#' )
 #'
-#' reset_token_usage()                 # clear before next workflow step
+#' reset_token_usage() # clear before next workflow step
 #' }
 #'
 #' @export
-token_usage <- function(by                  = c("call", "function", "provider", "session"),
-                        cost_per_1k_input   = NULL,
-                        cost_per_1k_output  = NULL) {
-
+token_usage <- function(by = c("call", "function", "provider", "session"),
+                        cost_per_1k_input = NULL,
+                        cost_per_1k_output = NULL) {
   by <- match.arg(by)
 
   recs <- .token_ledger$records
@@ -132,15 +133,19 @@ token_usage <- function(by                  = c("call", "function", "provider", 
   }
 
   df <- data.frame(
-    timestamp = as.POSIXct(vapply(recs, function(r) as.numeric(r$timestamp),
-                                  numeric(1L)),
-                           origin = "1970-01-01", tz = "UTC"),
-    caller    = vapply(recs, `[[`, character(1L), "caller"),
-    provider  = vapply(recs, `[[`, character(1L), "provider"),
-    model     = vapply(recs, `[[`, character(1L), "model"),
-    input     = vapply(recs, function(r) r$input  %||% NA_integer_, integer(1L)),
-    output    = vapply(recs, function(r) r$output %||% NA_integer_, integer(1L)),
-    total     = vapply(recs, function(r) r$total  %||% NA_integer_, integer(1L)),
+    timestamp = as.POSIXct(
+      vapply(
+        recs, function(r) as.numeric(r$timestamp),
+        numeric(1L)
+      ),
+      origin = "1970-01-01", tz = "UTC"
+    ),
+    caller = vapply(recs, `[[`, character(1L), "caller"),
+    provider = vapply(recs, `[[`, character(1L), "provider"),
+    model = vapply(recs, `[[`, character(1L), "model"),
+    input = vapply(recs, function(r) r$input %||% NA_integer_, integer(1L)),
+    output = vapply(recs, function(r) r$output %||% NA_integer_, integer(1L)),
+    total = vapply(recs, function(r) r$total %||% NA_integer_, integer(1L)),
     stringsAsFactors = FALSE
   )
 
@@ -148,38 +153,44 @@ token_usage <- function(by                  = c("call", "function", "provider", 
     "call" = df,
     "function" = {
       agg <- lapply(split(df, df$caller), function(g) {
-        data.frame(caller   = g$caller[[1L]],
-                   n_calls  = nrow(g),
-                   input    = sum(g$input,  na.rm = TRUE),
-                   output   = sum(g$output, na.rm = TRUE),
-                   total    = sum(g$total,  na.rm = TRUE),
-                   stringsAsFactors = FALSE)
+        data.frame(
+          caller = g$caller[[1L]],
+          n_calls = nrow(g),
+          input = sum(g$input, na.rm = TRUE),
+          output = sum(g$output, na.rm = TRUE),
+          total = sum(g$total, na.rm = TRUE),
+          stringsAsFactors = FALSE
+        )
       })
       do.call(rbind, unname(agg))
     },
     "provider" = {
       agg <- lapply(split(df, df$provider), function(g) {
-        data.frame(provider = g$provider[[1L]],
-                   n_calls  = nrow(g),
-                   input    = sum(g$input,  na.rm = TRUE),
-                   output   = sum(g$output, na.rm = TRUE),
-                   total    = sum(g$total,  na.rm = TRUE),
-                   stringsAsFactors = FALSE)
+        data.frame(
+          provider = g$provider[[1L]],
+          n_calls = nrow(g),
+          input = sum(g$input, na.rm = TRUE),
+          output = sum(g$output, na.rm = TRUE),
+          total = sum(g$total, na.rm = TRUE),
+          stringsAsFactors = FALSE
+        )
       })
       do.call(rbind, unname(agg))
     },
     "session" = {
-      data.frame(n_calls = nrow(df),
-                 input   = sum(df$input,  na.rm = TRUE),
-                 output  = sum(df$output, na.rm = TRUE),
-                 total   = sum(df$total,  na.rm = TRUE),
-                 stringsAsFactors = FALSE)
+      data.frame(
+        n_calls = nrow(df),
+        input = sum(df$input, na.rm = TRUE),
+        output = sum(df$output, na.rm = TRUE),
+        total = sum(df$total, na.rm = TRUE),
+        stringsAsFactors = FALSE
+      )
     }
   )
 
   # Optional cost column
   if (!is.null(cost_per_1k_input)) {
-    rate_out  <- cost_per_1k_output %||% cost_per_1k_input
+    rate_out <- cost_per_1k_output %||% cost_per_1k_input
     out$cost_usd <- round(
       (out$input * cost_per_1k_input + out$output * rate_out) / 1000, 4
     )
@@ -206,7 +217,7 @@ token_usage <- function(by                  = c("call", "function", "provider", 
 #' \dontrun{
 #' reset_token_usage()
 #' # ... run a workflow step ...
-#' token_usage(by = "session")   # tokens for that step only
+#' token_usage(by = "session") # tokens for that step only
 #' }
 #'
 #' @export

@@ -90,37 +90,43 @@
 #' @export
 #'
 #' @examples
-#' df <- data.frame(Latitude  = 34.1,
-#'                  Longitude = -119.1,
-#'                  date      = "2022-01-01",
-#'                  species   = "Clevelandia ios")
+#' df <- data.frame(
+#'   Latitude = 34.1,
+#'   Longitude = -119.1,
+#'   date = "2022-01-01",
+#'   species = "Clevelandia ios"
+#' )
 #'
 #' # Default pattern matching
 #' rename_cols(df)
 #'
 #' # Explicit col_map — replaces default patterns entirely
 #' rename_cols(df,
-#'             col_map = c("Latitude"  = "decimalLatitude",
-#'                         "Longitude" = "decimalLongitude",
-#'                         "date"      = "eventDate",
-#'                         "species"   = "scientificName"))
+#'   col_map = c(
+#'     "Latitude" = "decimalLatitude",
+#'     "Longitude" = "decimalLongitude",
+#'     "date" = "eventDate",
+#'     "species" = "scientificName"
+#'   )
+#' )
 #'
 #' \dontrun{
 #' # Pipe-friendly
 #' df_std <- my_survey |>
-#'   rename_cols(col_map = c("Lat" = "decimalLatitude",
-#'                           "Lon" = "decimalLongitude"))
+#'   rename_cols(col_map = c(
+#'     "Lat" = "decimalLatitude",
+#'     "Lon" = "decimalLongitude"
+#'   ))
 #'
 #' # strict = TRUE stops if any key is missing
 #' df_std <- rename_cols(my_survey,
-#'                       col_map = c("Lat" = "decimalLatitude"),
-#'                       strict  = TRUE)
+#'   col_map = c("Lat" = "decimalLatitude"),
+#'   strict  = TRUE
+#' )
 #' }
-
 rename_cols <- function(input_df,
                         col_map = NULL,
-                        strict  = FALSE) {
-
+                        strict = FALSE) {
   # --- Input validation -------------------------------------------------------
   if (!is.data.frame(input_df)) stop("`input_df` must be a data frame.")
   if (!is.logical(strict) || length(strict) != 1L || is.na(strict)) {
@@ -129,10 +135,9 @@ rename_cols <- function(input_df,
 
   # --- Branch: user col_map vs default pattern matching ----------------------
   if (!is.null(col_map)) {
-
     # Validate col_map type — catches unquoted bare-name mistakes
     if (!is.character(col_map) || is.null(names(col_map)) ||
-        any(!nzchar(names(col_map)))) {
+      any(!nzchar(names(col_map)))) {
       stop(
         "`col_map` must be a named character vector with quoted strings on ",
         "both sides.\n",
@@ -155,12 +160,10 @@ rename_cols <- function(input_df,
     }
 
     # Apply renames
-    to_rename            <- intersect(names(col_map), names(input_df))
-    idx                  <- match(to_rename, names(input_df))
+    to_rename <- intersect(names(col_map), names(input_df))
+    idx <- match(to_rename, names(input_df))
     names(input_df)[idx] <- col_map[to_rename]
-
   } else {
-
     # Default regex pattern → DarwinCore target map.
     # Applied case-insensitively against column names when col_map = NULL.
     # Each pattern must match at most one column; ambiguous matches are skipped.
@@ -175,12 +178,12 @@ rename_cols <- function(input_df,
     renamed_targets <- character(0)
 
     for (pattern in names(dwc_patterns)) {
-      target  <- dwc_patterns[[pattern]]
+      target <- dwc_patterns[[pattern]]
       matches <- which(grepl(pattern, names(input_df), ignore.case = TRUE))
 
-      if (length(matches) == 0L)        next  # no match — skip silently
-      if (target %in% names(input_df))  next  # already correctly named
-      if (target %in% renamed_targets)  next  # already claimed this session
+      if (length(matches) == 0L) next # no match — skip silently
+      if (target %in% names(input_df)) next # already correctly named
+      if (target %in% renamed_targets) next # already claimed this session
 
       if (length(matches) > 1L) {
         warning(sprintf(
@@ -191,7 +194,7 @@ rename_cols <- function(input_df,
       }
 
       names(input_df)[matches] <- target
-      renamed_targets          <- c(renamed_targets, target)
+      renamed_targets <- c(renamed_targets, target)
     }
   }
 

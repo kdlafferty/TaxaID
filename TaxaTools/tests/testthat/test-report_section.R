@@ -38,18 +38,25 @@ test_that("new_report_section validates inputs", {
   expect_error(new_report_section(package = "", section = "s", methods = "M"))
   expect_error(new_report_section(package = "P", section = "", methods = "M"))
   expect_error(new_report_section(package = "P", section = "s", methods = c("a", "b")))
-  expect_error(new_report_section(package = "P", section = "s", methods = "M",
-                                  results = c("a", "b")))
-  expect_error(new_report_section(package = "P", section = "s", methods = "M",
-                                  citations = 123))
-  expect_error(new_report_section(package = "P", section = "s", methods = "M",
-                                  params = "not a list"))
-  expect_error(new_report_section(package = "P", section = "s", methods = "M",
-                                  statistics = "not a list"))
+  expect_error(new_report_section(
+    package = "P", section = "s", methods = "M",
+    results = c("a", "b")
+  ))
+  expect_error(new_report_section(
+    package = "P", section = "s", methods = "M",
+    citations = 123
+  ))
+  expect_error(new_report_section(
+    package = "P", section = "s", methods = "M",
+    params = "not a list"
+  ))
+  expect_error(new_report_section(
+    package = "P", section = "s", methods = "M",
+    statistics = "not a list"
+  ))
 })
 
 test_that("print.report_section outputs markdown", {
-
   sec <- new_report_section(
     package = "TaxaFetch", section = "fetch",
     methods = "Data from GBIF.",
@@ -79,16 +86,16 @@ test_that("format.report_section returns markdown string", {
 
 test_that("assemble_report orders sections by pipeline position", {
   assign_sec <- new_report_section(package = "A", section = "assign", methods = "Assign.")
-  fetch_sec  <- new_report_section(package = "F", section = "fetch", methods = "Fetch.")
-  match_sec  <- new_report_section(package = "M", section = "match", methods = "Match.")
+  fetch_sec <- new_report_section(package = "F", section = "fetch", methods = "Fetch.")
+  match_sec <- new_report_section(package = "M", section = "match", methods = "Match.")
 
   # Pass in wrong order — should reorder
   report <- assemble_report(assign_sec, fetch_sec, match_sec)
 
   # fetch should appear before match, match before assign
-  fetch_pos  <- regexpr("Fetch\\.", report)
+  fetch_pos <- regexpr("Fetch\\.", report)
 
-  match_pos  <- regexpr("Match\\.", report)
+  match_pos <- regexpr("Match\\.", report)
   assign_pos <- regexpr("Assign\\.", report)
 
   expect_true(fetch_pos < match_pos)
@@ -96,10 +103,14 @@ test_that("assemble_report orders sections by pipeline position", {
 })
 
 test_that("assemble_report deduplicates citations", {
-  sec1 <- new_report_section(package = "A", section = "fetch", methods = "M.",
-                             citations = c("Cite A", "Cite B"))
-  sec2 <- new_report_section(package = "B", section = "match", methods = "M.",
-                             citations = c("Cite B", "Cite C"))
+  sec1 <- new_report_section(
+    package = "A", section = "fetch", methods = "M.",
+    citations = c("Cite A", "Cite B")
+  )
+  sec2 <- new_report_section(
+    package = "B", section = "match", methods = "M.",
+    citations = c("Cite B", "Cite C")
+  )
 
   report <- assemble_report(sec1, sec2)
 
@@ -123,8 +134,10 @@ test_that("assemble_report accepts a list of sections", {
 test_that("assemble_report includes title and study_description", {
   sec <- new_report_section(package = "A", section = "fetch", methods = "M.")
 
-  report <- assemble_report(sec, title = "My Report",
-                            study_description = "This study examined fish.")
+  report <- assemble_report(sec,
+    title = "My Report",
+    study_description = "This study examined fish."
+  )
   expect_true(grepl("# My Report", report))
   expect_true(grepl("This study examined fish", report))
 })
@@ -135,9 +148,11 @@ test_that("assemble_report errors on non-section objects", {
 })
 
 test_that("assemble_report separates Methods from Results", {
-  sec <- new_report_section(package = "A", section = "fetch",
-                            methods = "METHODS_TEXT",
-                            results = "RESULTS_TEXT")
+  sec <- new_report_section(
+    package = "A", section = "fetch",
+    methods = "METHODS_TEXT",
+    results = "RESULTS_TEXT"
+  )
   report <- assemble_report(sec)
 
   methods_pos <- regexpr("METHODS_TEXT", report)

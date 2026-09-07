@@ -56,8 +56,10 @@ test_that("list_cache_files reports real size and mtime", {
 # =============================================================================
 
 test_that("report_and_clear_cache validates its arguments", {
-  ok_inv <- data.frame(path = character(0), size_mb = numeric(0),
-                       mtime = as.POSIXct(character(0)))
+  ok_inv <- data.frame(
+    path = character(0), size_mb = numeric(0),
+    mtime = as.POSIXct(character(0))
+  )
   expect_error(report_and_clear_cache(inv = 1L, "lbl", "dir"), "inv")
   expect_error(report_and_clear_cache(ok_inv, label = 1L, "dir"), "label")
   expect_error(report_and_clear_cache(ok_inv, "lbl", cache_dir = 1L), "cache_dir")
@@ -66,8 +68,10 @@ test_that("report_and_clear_cache validates its arguments", {
 })
 
 test_that("report_and_clear_cache uses 'label' in its messages", {
-  ok_inv <- data.frame(path = character(0), size_mb = numeric(0),
-                       mtime = as.POSIXct(character(0)))
+  ok_inv <- data.frame(
+    path = character(0), size_mb = numeric(0),
+    mtime = as.POSIXct(character(0))
+  )
   expect_message(report_and_clear_cache(ok_inv, "my_custom_label", "some/dir"), "my_custom_label")
   expect_error(report_and_clear_cache(ok_inv, "my_custom_label", "dir", dry_run = "x"), "my_custom_label")
 })
@@ -76,7 +80,8 @@ test_that("report_and_clear_cache dry_run reports without deleting", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  f <- file.path(d, "a.zip"); writeLines("x", f)
+  f <- file.path(d, "a.zip")
+  writeLines("x", f)
   inv <- list_cache_files(d, "\\.zip$")
 
   out <- report_and_clear_cache(inv, "lbl", d, dry_run = TRUE)
@@ -88,7 +93,8 @@ test_that("report_and_clear_cache(dry_run = FALSE) actually deletes", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  f <- file.path(d, "a.zip"); writeLines("x", f)
+  f <- file.path(d, "a.zip")
+  writeLines("x", f)
   inv <- list_cache_files(d, "\\.zip$")
 
   out <- report_and_clear_cache(inv, "lbl", d, dry_run = FALSE)
@@ -100,9 +106,11 @@ test_that("report_and_clear_cache(older_than_days=) only targets stale rows", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  old_f <- file.path(d, "old.zip"); writeLines("x", old_f)
+  old_f <- file.path(d, "old.zip")
+  writeLines("x", old_f)
   Sys.setFileTime(old_f, Sys.time() - 100 * 86400)
-  new_f <- file.path(d, "new.zip"); writeLines("y", new_f)
+  new_f <- file.path(d, "new.zip")
+  writeLines("y", new_f)
   inv <- list_cache_files(d, "\\.zip$")
 
   out <- report_and_clear_cache(inv, "lbl", d, older_than_days = 30, dry_run = FALSE)
@@ -112,8 +120,10 @@ test_that("report_and_clear_cache(older_than_days=) only targets stale rows", {
 })
 
 test_that("report_and_clear_cache reports 'no cache files found' for an empty inv", {
-  empty_inv <- data.frame(path = character(0), size_mb = numeric(0),
-                          mtime = as.POSIXct(character(0)))
+  empty_inv <- data.frame(
+    path = character(0), size_mb = numeric(0),
+    mtime = as.POSIXct(character(0))
+  )
   expect_message(out <- report_and_clear_cache(empty_inv, "lbl", "some/dir"), "no cache files found")
   expect_equal(nrow(out), 0L)
 })

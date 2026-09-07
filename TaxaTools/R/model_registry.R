@@ -70,7 +70,9 @@
 #' @noRd
 .load_local_cache <- function() {
   path <- .local_cache_path()
-  if (!file.exists(path)) return(NULL)
+  if (!file.exists(path)) {
+    return(NULL)
+  }
   tryCatch(
     jsonlite::fromJSON(path, simplifyVector = FALSE),
     error = function(e) {
@@ -107,7 +109,6 @@
 
 #' @noRd
 .get_registry <- function() {
-
   if (isTRUE(.registry_env$registry_loaded)) {
     return(.registry_env$registry)
   }
@@ -133,7 +134,7 @@
       # Overlay only fallback_models from local cache -- never tier_patterns
       for (prov in names(local$providers %||% list())) {
         if (!is.null(reg$providers[[prov]]) &&
-            !is.null(local$providers[[prov]]$fallback_models)) {
+          !is.null(local$providers[[prov]]$fallback_models)) {
           reg$providers[[prov]]$fallback_models <-
             local$providers[[prov]]$fallback_models
         }
@@ -141,7 +142,10 @@
       .registry_env$registry_source <- "local_cache"
     } else {
       warning(sprintf(
-        "TaxaTools: model cache is %d days old. Run refresh_models() for the latest, or reinstall TaxaTools for updated bundled defaults.",
+        paste0(
+          "TaxaTools: model cache is %d days old. Run refresh_models() for the ",
+          "latest, or reinstall TaxaTools for updated bundled defaults."
+        ),
         round(age_days)
       ), call. = FALSE)
       .registry_env$registry_source <- "bundled"
@@ -150,7 +154,7 @@
     .registry_env$registry_source <- "bundled"
   }
 
-  .registry_env$registry        <- reg
+  .registry_env$registry <- reg
   .registry_env$registry_loaded <- TRUE
   reg
 }
@@ -176,7 +180,9 @@
       httr2::req_perform(),
     error = function(e) NULL
   )
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(character(0))
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(character(0))
+  }
 
   parsed <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
   # Anthropic returns data sorted newest-first already
@@ -193,7 +199,9 @@
       httr2::req_perform(),
     error = function(e) NULL
   )
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(character(0))
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(character(0))
+  }
 
   parsed <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
   models <- parsed$models %||% list()
@@ -223,10 +231,12 @@
       httr2::req_perform(),
     error = function(e) NULL
   )
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(character(0))
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(character(0))
+  }
 
-  parsed  <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
-  models  <- parsed$data %||% list()
+  parsed <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
+  models <- parsed$data %||% list()
 
   # Keep only chat-capable models (gpt-* and o-series).
   # Exclude specialized non-chat variants (TTS, transcription, search, image).
@@ -236,12 +246,14 @@
     id <- m$id %||% ""
     grepl("^gpt-|^o[0-9]", id, perl = TRUE) &&
       !grepl("tts|transcribe|diarize|search|dall-e|whisper|embed|instruct",
-             id, ignore.case = TRUE)
+        id,
+        ignore.case = TRUE
+      )
   }, models)
 
   # Sort by creation timestamp descending (newest first)
   if (length(chat_models) > 1L) {
-    ts          <- vapply(chat_models, function(m) m$created %||% 0L, numeric(1))
+    ts <- vapply(chat_models, function(m) m$created %||% 0L, numeric(1))
     chat_models <- chat_models[order(ts, decreasing = TRUE)]
   }
 
@@ -253,23 +265,27 @@
   # Build the /models URL from the endpoint template
   # Template: https://host/openai/deployments/{model}/chat/completions?api-version=X
   # Models:   https://host/openai/models?api-version=X
-  base_url    <- sub("/openai/deployments/.*", "", endpoint_template)
+  base_url <- sub("/openai/deployments/.*", "", endpoint_template)
   api_version <- regmatches(
     endpoint_template,
     regexpr("api-version=[^&]+", endpoint_template)
   )
-  if (length(api_version) == 0L || !nzchar(api_version)) return(character(0))
+  if (length(api_version) == 0L || !nzchar(api_version)) {
+    return(character(0))
+  }
 
-  url  <- paste0(base_url, "/openai/models?", api_version)
+  url <- paste0(base_url, "/openai/models?", api_version)
   resp <- tryCatch(
     httr2::request(url) |>
       httr2::req_headers(`api-key` = api_key) |>
       httr2::req_timeout(10) |>
       httr2::req_error(is_error = function(resp) FALSE) |>
       httr2::req_perform(),
-    error = function(e) NULL   # connection refused when not on DOI network
+    error = function(e) NULL # connection refused when not on DOI network
   )
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(character(0))
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(character(0))
+  }
 
   parsed <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
   models <- parsed$data %||% list()
@@ -289,13 +305,15 @@
       httr2::req_perform(),
     error = function(e) NULL
   )
-  if (is.null(resp) || httr2::resp_status(resp) != 200L) return(character(0))
+  if (is.null(resp) || httr2::resp_status(resp) != 200L) {
+    return(character(0))
+  }
 
   parsed <- tryCatch(httr2::resp_body_json(resp), error = function(e) list())
   models <- parsed$data %||% list()
 
   if (length(models) > 1L) {
-    ts     <- vapply(models, function(m) m$created %||% 0L, numeric(1))
+    ts <- vapply(models, function(m) m$created %||% 0L, numeric(1))
     models <- models[order(ts, decreasing = TRUE)]
   }
 
@@ -354,11 +372,12 @@
 
 #' @noRd
 .resolve_model <- function(provider, tier) {
-
   # --- 1. Session pin (set_model()) -----------------------------------------
   pin_key <- paste0(provider, ".", tier)
-  pin     <- .registry_env$session_pins[[pin_key]]
-  if (!is.null(pin) && nzchar(pin)) return(pin)
+  pin <- .registry_env$session_pins[[pin_key]]
+  if (!is.null(pin) && nzchar(pin)) {
+    return(pin)
+  }
 
   # --- 2. Session discovery cache -------------------------------------------
   disc <- .registry_env$discovered[[provider]]
@@ -367,15 +386,15 @@
   }
 
   # --- 3. Provider /models API ----------------------------------------------
-  registry  <- .get_registry()
-  prov_reg  <- registry$providers[[provider]]
+  registry <- .get_registry()
+  prov_reg <- registry$providers[[provider]]
 
   if (!is.null(prov_reg)) {
     # Registered providers store api_key_var; built-ins use hardcoded lookup
     key_var <- prov_reg$api_key_var %||% switch(provider,
       anthropic = "ANTHROPIC_API_KEY",
-      gemini    = "GEMINI_API_KEY",
-      openai    = "OPENAI_API_KEY",
+      gemini = "GEMINI_API_KEY",
+      openai = "OPENAI_API_KEY",
       azure_openai = "AZURE_OPENAI_API_KEY",
       ""
     )
@@ -384,20 +403,23 @@
     if (nzchar(api_key)) {
       endpoint_tpl <- prov_reg$endpoint_template %||% ""
 
-      model_ids <- tryCatch({
-        if (identical(prov_reg$handler_family, "openai_compat")) {
-          ep <- prov_reg$models_endpoint %||% ""
-          if (nzchar(ep)) .fetch_openai_compat_models(api_key, ep) else character(0)
-        } else {
-          switch(provider,
-            anthropic = .fetch_anthropic_models(api_key),
-            gemini    = .fetch_gemini_models(api_key),
-            openai    = .fetch_openai_models(api_key),
-            azure_openai = .fetch_azure_models(api_key, endpoint_tpl),
-            character(0)
-          )
-        }
-      }, error = function(e) character(0))
+      model_ids <- tryCatch(
+        {
+          if (identical(prov_reg$handler_family, "openai_compat")) {
+            ep <- prov_reg$models_endpoint %||% ""
+            if (nzchar(ep)) .fetch_openai_compat_models(api_key, ep) else character(0)
+          } else {
+            switch(provider,
+              anthropic = .fetch_anthropic_models(api_key),
+              gemini = .fetch_gemini_models(api_key),
+              openai = .fetch_openai_models(api_key),
+              azure_openai = .fetch_azure_models(api_key, endpoint_tpl),
+              character(0)
+            )
+          }
+        },
+        error = function(e) character(0)
+      )
 
       if (length(model_ids) > 0L) {
         patterns <- prov_reg$tier_patterns
@@ -469,7 +491,6 @@
 #' list_models("anthropic")
 #' }
 list_models <- function(provider = NULL) {
-
   registry <- .get_registry()
 
   # Build key_vars dynamically (includes registered custom providers)
@@ -477,8 +498,8 @@ list_models <- function(provider = NULL) {
     prov_reg <- registry$providers[[p]]
     prov_reg$api_key_var %||% switch(p,
       anthropic = "ANTHROPIC_API_KEY",
-      gemini    = "GEMINI_API_KEY",
-      openai    = "OPENAI_API_KEY",
+      gemini = "GEMINI_API_KEY",
+      openai = "OPENAI_API_KEY",
       azure_openai = "AZURE_OPENAI_API_KEY",
       ""
     )
@@ -504,25 +525,25 @@ list_models <- function(provider = NULL) {
       pin_key <- paste0(prov, ".", tier)
 
       if (!is.null(.registry_env$session_pins[[pin_key]]) &&
-          nzchar(.registry_env$session_pins[[pin_key]])) {
+        nzchar(.registry_env$session_pins[[pin_key]])) {
         model_name <- .registry_env$session_pins[[pin_key]]
-        src        <- "pinned"
+        src <- "pinned"
       } else {
         disc <- .registry_env$discovered[[prov]]
         if (!is.null(disc) && tier %in% names(disc) && nzchar(disc[[tier]] %||% "")) {
           model_name <- disc[[tier]]
-          src        <- "discovered"
+          src <- "discovered"
         } else {
           model_name <- prov_reg$fallback_models[[tier]] %||% NA_character_
-          src        <- "bundled"
+          src <- "bundled"
         }
       }
 
       data.frame(
         provider = prov,
-        tier     = tier,
-        model    = model_name %||% NA_character_,
-        source   = src,
+        tier = tier,
+        model = model_name %||% NA_character_,
+        source = src,
         stringsAsFactors = FALSE
       )
     }))
@@ -560,7 +581,6 @@ list_models <- function(provider = NULL) {
 #' refresh_models("gemini")
 #' }
 refresh_models <- function(providers = NULL) {
-
   registry <- .get_registry()
 
   # Build key_vars dynamically (includes registered custom providers)
@@ -568,8 +588,8 @@ refresh_models <- function(providers = NULL) {
     prov_reg <- registry$providers[[p]]
     prov_reg$api_key_var %||% switch(p,
       anthropic = "ANTHROPIC_API_KEY",
-      gemini    = "GEMINI_API_KEY",
-      openai    = "OPENAI_API_KEY",
+      gemini = "GEMINI_API_KEY",
+      openai = "OPENAI_API_KEY",
       azure_openai = "AZURE_OPENAI_API_KEY",
       ""
     )
@@ -594,7 +614,7 @@ refresh_models <- function(providers = NULL) {
   # Reset registry so .get_registry() re-reads bundled patterns fresh.
   # This ensures any JSON updates (via install or reinstall) take effect.
   .registry_env$registry_loaded <- FALSE
-  .registry_env$registry        <- NULL
+  .registry_env$registry <- NULL
 
   # Clear session discovery cache for these providers (force API re-query)
   for (p in to_refresh) {
@@ -622,7 +642,7 @@ refresh_models <- function(providers = NULL) {
 
   # Persist: save a copy of the registry with updated fallback_models so that
   # next session can skip the API query if the cache is recent
-  cache <- .get_registry()  # get a copy
+  cache <- .get_registry() # get a copy
   for (p in to_refresh) {
     disc <- .registry_env$discovered[[p]]
     if (!is.null(disc) && length(disc) > 0L) {
@@ -631,7 +651,7 @@ refresh_models <- function(providers = NULL) {
       }
     }
   }
-  cache[["_meta"]][["version"]]    <- format(Sys.Date())
+  cache[["_meta"]][["version"]] <- format(Sys.Date())
   cache[["_meta"]][["updated_by"]] <- "refresh_models()"
   .save_local_cache(cache)
 
@@ -665,15 +685,14 @@ refresh_models <- function(providers = NULL) {
 #' \dontrun{
 #' # At the top of a reproducible analysis script:
 #' set_model("anthropic", "mid", "claude-sonnet-4-5")
-#' set_model("gemini",    "mid", "gemini-2.5-flash")
+#' set_model("gemini", "mid", "gemini-2.5-flash")
 #'
 #' # Remove a pin:
 #' set_model("anthropic", "mid", NULL)
 #' }
 set_model <- function(provider, tier, model) {
-
   valid_providers <- names(.get_registry()$providers)
-  valid_tiers     <- c("fast", "mid", "top")
+  valid_tiers <- c("fast", "mid", "top")
 
   if (!provider %in% valid_providers) {
     stop(sprintf(
@@ -727,9 +746,9 @@ set_model <- function(provider, tier, model) {
 #' model_cache_info()
 #' }
 model_cache_info <- function() {
-  path      <- .local_cache_path()
-  exists    <- file.exists(path)
-  age_days  <- if (exists) {
+  path <- .local_cache_path()
+  exists <- file.exists(path)
+  age_days <- if (exists) {
     as.numeric(difftime(Sys.time(), file.info(path)$mtime, units = "days"))
   } else {
     NA_real_
@@ -792,14 +811,14 @@ model_cache_info <- function() {
 #' # Register xAI Grok (OpenAI-compatible)
 #' Sys.setenv(XAI_API_KEY = "xai-...")
 #' register_provider(
-#'   name            = "xai",
-#'   api_key_var     = "XAI_API_KEY",
-#'   base_url        = "https://api.x.ai",
+#'   name = "xai",
+#'   api_key_var = "XAI_API_KEY",
+#'   base_url = "https://api.x.ai",
 #'   fallback_models = list(fast = "grok-3-mini", mid = "grok-3", top = "grok-3"),
-#'   tier_patterns   = list(
-#'     fast = list(include = "mini",    exclude = NULL),
+#'   tier_patterns = list(
+#'     fast = list(include = "mini", exclude = NULL),
 #'     mid  = list(include = "grok-3$", exclude = "mini"),
-#'     top  = list(include = NULL,      exclude = NULL)
+#'     top  = list(include = NULL, exclude = NULL)
 #'   )
 #' )
 #'
@@ -811,11 +830,13 @@ model_cache_info <- function() {
 #' )
 #'
 #' # Or as an llm_fn closure for use anywhere in the ecosystem
-#' my_grok <- function(p, ...) call_openai_api(p,
-#'   tier     = "mid",
-#'   base_url = "https://api.x.ai",
-#'   api_key  = Sys.getenv("XAI_API_KEY")
-#' )
+#' my_grok <- function(p, ...) {
+#'   call_openai_api(p,
+#'     tier     = "mid",
+#'     base_url = "https://api.x.ai",
+#'     api_key  = Sys.getenv("XAI_API_KEY")
+#'   )
+#' }
 #' options(TaxaID.llm_fn = my_grok)
 #'
 #' # Inspect
@@ -823,13 +844,12 @@ model_cache_info <- function() {
 #' refresh_models("xai")
 #' }
 register_provider <- function(
-    name,
-    api_key_var,
-    base_url,
-    fallback_models = list(),
-    tier_patterns   = NULL
+  name,
+  api_key_var,
+  base_url,
+  fallback_models = list(),
+  tier_patterns = NULL
 ) {
-
   if (!is.character(name) || length(name) != 1L || !nzchar(name)) {
     stop("register_provider: 'name' must be a non-empty character string.")
   }
@@ -846,7 +866,7 @@ register_provider <- function(
     ))
   }
 
-  base_clean      <- gsub("/$", "", base_url)
+  base_clean <- gsub("/$", "", base_url)
   models_endpoint <- paste0(base_clean, "/v1/models")
 
   # Ensure registry is loaded, then add provider to session copy
@@ -860,8 +880,8 @@ register_provider <- function(
     fallback_models = as.list(fallback_models),
     handler_family  = "openai_compat"
   )
-  .registry_env$registry        <- reg
-  .registry_env$discovered[[name]] <- NULL  # clear any stale entry
+  .registry_env$registry <- reg
+  .registry_env$discovered[[name]] <- NULL # clear any stale entry
 
   message(sprintf(
     "register_provider: '%s' registered (key var: %s, base URL: %s).",

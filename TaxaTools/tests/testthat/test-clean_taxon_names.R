@@ -11,8 +11,8 @@
 # ==============================================================================
 
 test_that("rejects non-character input", {
-  expect_error(clean_taxon_names(123),      "`name_vec` must be a character vector")
-  expect_error(clean_taxon_names(TRUE),     "`name_vec` must be a character vector")
+  expect_error(clean_taxon_names(123), "`name_vec` must be a character vector")
+  expect_error(clean_taxon_names(TRUE), "`name_vec` must be a character vector")
   expect_error(clean_taxon_names(list("Homo sapiens")), "`name_vec` must be a character vector")
 })
 
@@ -166,12 +166,12 @@ test_that("custom remove_abbr replaces defaults", {
 test_that("handles a realistic mixed vector correctly", {
   input <- c(
     "Homo sapiens",
-    "mus musculus",        # lowercase — NA
-    NA,                    # NA — NA
-    "sp.",                 # no capital — NA
-    "Canis lupus sp.",     # "sp." is third token (author position) -> "Canis lupus"
-    "Homo sapiens",        # duplicate — preserved
-    "[Bacillus] subtilis"  # bracket artefact removed
+    "mus musculus", # lowercase — NA
+    NA, # NA — NA
+    "sp.", # no capital — NA
+    "Canis lupus sp.", # "sp." is third token (author position) -> "Canis lupus"
+    "Homo sapiens", # duplicate — preserved
+    "[Bacillus] subtilis" # bracket artefact removed
   )
   out <- clean_taxon_names(input)
   expect_equal(length(out), length(input))
@@ -206,19 +206,19 @@ test_that("does not alter names that already have a space", {
 test_that("does not alter OTU codes with uppercase+digit pattern", {
   # OTU_001: epithet starts with a digit, not [a-z] — regex does not match
   out <- clean_taxon_names("OTU_001")
-  expect_equal(out, "OTU_001", ignore_attr = "collapsed_to_genus")  # returned unchanged (genus-only, no epithet)
+  expect_equal(out, "OTU_001", ignore_attr = "collapsed_to_genus") # returned unchanged (genus-only, no epithet)
 })
 
 test_that("does not alter clade codes like MAST-4", {
   # MAST-4 has no underscore at all — regex does not match
   out <- clean_taxon_names("MAST-4")
-  expect_equal(out, "MAST-4", ignore_attr = "collapsed_to_genus")  # returned unchanged
+  expect_equal(out, "MAST-4", ignore_attr = "collapsed_to_genus") # returned unchanged
 })
 
 test_that("does not alter multi-underscore strings", {
   # Genus_epithet_extra has two underscores — second underscore fails [A-Za-z.-]* anchor
   out <- clean_taxon_names("Genus_epithet_extra")
-  expect_equal(out, "Genus_epithet_extra", ignore_attr = "collapsed_to_genus")  # returned unchanged (no conversion)
+  expect_equal(out, "Genus_epithet_extra", ignore_attr = "collapsed_to_genus") # returned unchanged (no conversion)
 })
 
 test_that("underscore conversion handles abbreviation stripping correctly", {
@@ -233,7 +233,7 @@ test_that("mixed vector with underscore names", {
   out <- clean_taxon_names(input)
   expect_equal(out[1], "Corallina officinalis")
   expect_equal(out[2], "Homo sapiens")
-  expect_true(is.na(out[3]))   # starts lowercase — NA
+  expect_true(is.na(out[3])) # starts lowercase — NA
   expect_true(is.na(out[4]))
 })
 
@@ -271,8 +271,10 @@ test_that("strip_modifiers only removes ONE leading word, never a repeated run",
 test_that("strip_modifiers does not rescue an uncertainty-hedge word", {
   # Deliberately NOT in the default list -- a hedge should keep failing the
   # capital-letter filter, not get silently rescued into a confident binomial.
-  out <- clean_taxon_names(c("possible Homo sapiens", "putative Cottus asper",
-                             "cf. Cottus asper"))
+  out <- clean_taxon_names(c(
+    "possible Homo sapiens", "putative Cottus asper",
+    "cf. Cottus asper"
+  ))
   expect_true(all(is.na(out)))
 })
 
@@ -325,18 +327,18 @@ test_that("collapsed_to_genus is FALSE for a rejected (NA-output) name", {
 
 test_that("collapsed_to_genus is elementwise-correct across a mixed vector", {
   input <- c(
-    "Ictalurus cf. pricei USON-01120-1",  # collapsed
-    "Homo sapiens",                        # kept as binomial
-    "Canis",                               # already genus-only
-    NA,                                    # rejected
-    "Canis sp."                            # collapsed
+    "Ictalurus cf. pricei USON-01120-1", # collapsed
+    "Homo sapiens", # kept as binomial
+    "Canis", # already genus-only
+    NA, # rejected
+    "Canis sp." # collapsed
   )
   out <- clean_taxon_names(input)
   expect_equal(out, c("Ictalurus", "Homo sapiens", "Canis", NA, "Canis"), ignore_attr = "collapsed_to_genus")
   expect_equal(attr(out, "collapsed_to_genus"), c(TRUE, FALSE, FALSE, FALSE, TRUE))
 })
 
-test_that("collapsed_to_genus survives strip_modifiers stripping (still measures epithet collapse, not modifier stripping)", {
+test_that("collapsed_to_genus survives strip_modifiers stripping (measures epithet collapse, not modifier stripping)", {
   # The leading modifier word is stripped BEFORE the genus/epithet split, so
   # this case is a genuine binomial after stripping -- collapsed_to_genus
   # should read FALSE, not TRUE.
