@@ -20,8 +20,10 @@ matter.
 | `run_greatlakes_fast_smoketest.R` | Same pipeline as `run_fast_smoketest.R`, against the GreatLakes fixture. **Runs in ~6 seconds.** With the flat placeholder prior, real Yellow Perch observations correctly do NOT resolve to a single species (they share posterior mass with real congeners Sander/Zingel/Niphon/Perca fluviatilis/schrenkii with nothing ecological to discriminate them) -- expected placeholder-prior limitation, not a bug; see the script's own inline note. |
 | `mugu12s_fast_posterior_df.rds` | Real fixture from `MuguWilderFish_blast_r1_12s.rds`'s `$posteriors` sub-object (at `~/My Drive/Rscripts/eDNA/SepulvedaMugu/`, stable). Already a real, fully-computed `compute_posterior()` output carrying genuine kernel-priors-derived `prior_mean`/`prior_alpha`/`prior_beta`, not a placeholder. 75 observations / 546 rows (~14KB): 7 wide-candidate-set "interesting" + 50 baseline + 19 guaranteed `Fundulus lima`/`Fundulus parvipinnis` observations (this ecosystem's single most-debugged real edge case -- Sessions 158-159). |
 | `run_mugu_fast_smoketest.R` | Starts one stage later than the other two (`posterior_consensus() -> add_slash_taxon()` only, since real posteriors already exist) -- and with GENUINELY REAL priors, not a placeholder. **Runs in <1 second.** Real result: every Fundulus lima/parvipinnis observation correctly resolves to `Fundulus parvipinnis` at ~0.999 posterior, matching this ecosystem's documented real production outcome. |
-| `ptcon18s_fast_match_obj.rds` | Real fixture from the LIVE 18S production run's `PtCon18SSchulte_match_obj.rds`, built 2026-09-05 while that run was still in progress -- read only after confirming the file was 83+ minutes stable (well past the 30-minute threshold), and only from Step 1's already-completed match object, never from a checkpoint the run was actively writing at build time. 200 observations / 841 rows (~40KB): 150 "interesting" (contamination-flagged/wide-candidate-set) + 50 baseline. No `always_include_taxa` -- 18S has no established problem-taxon precedent from past debugging yet (unlike the other three sites); add one here once a real 18S-specific debugging case exists. This checkpoint predates reference-quality screening and `restore_suppressed_candidates()` (no `hierarchy_flag`/`reference_action` columns yet) -- it's an earlier pipeline stage than the other three sites' fixtures. **Staged, not yet paired with a smoke test -- see "PtConception 18S: staged, blocked" below.** |
-| `ptcon18s_fast_taxaexpect_priors.rds` | Real (not placeholder) kernel-priors output, copied from the same live run's `taxaexpect_priors.rds` (Step 5, already complete). |
+| `ptcon18s_fast_match_obj.rds` | Real fixture from the LIVE 18S production run's `PtCon18SSchulte_match_obj.rds`, built 2026-09-05 while that run was still in progress -- read only after confirming the file was 83+ minutes stable (well past the 30-minute threshold), and only from Step 1's already-completed match object, never from a checkpoint the run was actively writing at build time. 200 observations / 841 rows (~40KB): 150 "interesting" (contamination-flagged/wide-candidate-set) + 50 baseline. No `always_include_taxa` -- 18S has no established problem-taxon precedent from past debugging yet (unlike the other three sites); add one here once a real 18S-specific debugging case exists. This checkpoint predates reference-quality screening and `restore_suppressed_candidates()` (no `hierarchy_flag`/`reference_action` columns yet) -- it's an earlier pipeline stage than the other three sites' fixtures. |
+| `ptcon18s_fast_taxaexpect_priors.rds` | Real (not placeholder) kernel-priors output, copied from the same live run's `taxaexpect_priors.rds` (Step 5, already complete). Single-site kernel fit -- exactly 1 unique `grid_id` (`"Site_34.40_-120.40"`). |
+| `ptcon18s_fast_lik_model_calibrated.rds` | **Added 2026-09-07** once the live 18S run completed `train_likelihood_model()`/`calibrate_query_noise()` (in fact the whole pipeline, through `review_assignments()`) -- copied from `PtCon18SSchulte_lik_model_calibrated.rds` after confirming it (and the run's final outputs) were 30+ hours stable, not a live write. This unblocks the smoke test below. |
+| `run_ptcon18s_fast_smoketest.R` | **Added 2026-09-07.** `evaluate_likelihoods() -> join_priors() (REAL priors, not a placeholder) -> compute_posterior() -> posterior_consensus() -> add_slash_taxon()`. Same `Stage 1-5` numbering as the other two full-pipeline smoke tests, with Stage 2 now a real `join_priors()` call instead of a flat placeholder, since a real `taxaexpect_priors` checkpoint exists for this site. `join_priors()` called without `expansion_taxonomy`/`singleton_taxonomy` (both optional) -- only affects unmodelled/habitat-agnostic candidates, not what this test regression-checks. **Runs in ~35s** (the one smoke test here that makes a small, real, live NCBI/GBIF backbone-verification call inside `join_priors()` -- ~10 names, not the full dataset -- still comfortably inside the "seconds/minutes not hours" bar, but the one exception to the other two tests' zero-network-call design). Live-run result (2026-09-07): 194 observations, no errors, `irreducible_consensus` 82 FALSE / 112 TRUE. |
 
 ## Safety note
 
@@ -45,42 +47,31 @@ before reusing this tooling against a directory that might have a live run in pr
 `build_fast_fixture.R`'s `output_path` at a directory a real workflow is currently reading
 from/writing to.
 
-## PtConception 18S: staged, blocked
+## PtConception 18S: unblocked 2026-09-07
 
-A smoke test is only meaningful if it exercises the SAME pipeline production actually
-uses to make its calls. For every other site here, that's the Bayesian pathway:
-`evaluate_likelihoods() -> compute_posterior() -> posterior_consensus() -> add_slash_taxon()`,
-which needs a real trained `lik_model` (`TaxaLikely::train_likelihood_model()` +
-`calibrate_query_noise()`). At the time `ptcon18s_fast_match_obj.rds`/
-`ptcon18s_fast_taxaexpect_priors.rds` were built (2026-09-05), the live 18S run had reached
-priors (Step 5) but not yet `train_likelihood_model()` (Step 7 -- still fetching reference
-sequences / training, both real NCBI-bound steps with no intermediate checkpoint) -- so no
-`lik_model_calibrated.rds` exists for 18S yet.
+Previously staged-but-blocked (no trained likelihood model existed for this site yet).
+**A smoke test is only meaningful if it exercises the SAME pipeline production actually
+uses to make its calls** -- an earlier version of this file used `score_consensus()` as a
+stand-in so *something* would run before the real model existed; that was corrected the
+same day (2026-09-05) at the user's direct instruction and removed entirely, since
+`score_consensus()` is a benchmarking/mimicry tool for comparison against the Bayesian
+pathway, not what the real 18S workflow uses (see `TaxaAssign::score_consensus()`'s own
+`@section Purpose`) -- a smoke test built on it would validate the wrong pipeline while
+looking like it validates the real one.
 
-**An earlier version of this file used `score_consensus()` as a stand-in** (a
-no-likelihood-model pathway that needs only `match_obj`) so *something* would run today.
-That was the wrong call, corrected the same day at the user's direct instruction:
-`score_consensus()` is documented as a benchmarking/mimicry tool that deliberately
-reproduces a conventional fixed-threshold pipeline for COMPARISON against the Bayesian
-pathway (see `TaxaAssign::score_consensus()`'s own `@section Purpose`) -- it is not what
-the real 18S workflow uses to make its actual calls, so a smoke test built on it would
-validate the wrong pipeline while looking like it validates the real one. Removed
-entirely rather than kept as a partial substitute.
-
-**The fixture and priors above are staged and ready** -- once the live run produces
-`PtCon18SSchulte_lik_model_calibrated.rds` (or an equivalent, e.g. from a completed re-run),
-copy it here the same way the other three sites' companion `lik_model_calibrated.rds`
-files were copied (checking its mtime for live-write safety first), and build
-`run_ptcon18s_fast_smoketest.R` following the exact same
-`evaluate_likelihoods() -> join_priors(taxaexpect_priors = <the real ptcon18s priors>) ->
-compute_posterior() -> posterior_consensus() -> add_slash_taxon()` shape as
-`run_fast_smoketest.R`/`run_greatlakes_fast_smoketest.R`. Note `join_priors()` will need a
-`grid_id`/`main_habitat` or `lat`/`lon` -- read these off the live workflow script's own
-`SITE_GRID_ID`/`SITE_HABITAT` (or `STUDY_LAT`/`STUDY_LON`) variables rather than guessing,
-since this run uses per-group kernel fits (`sampling_group_col`) -- see this project's
-2026-09-04 per-group curve pricing entry in `TaxaID/CLAUDE.md` before assuming a single
-pooled prior table is the right join target. **Until then: no 18S smoke test exists, by
-design, not as an oversight.**
+The live 18S run has since completed through `train_likelihood_model()`/
+`calibrate_query_noise()` (in fact the whole pipeline, through `review_assignments()`).
+`ptcon18s_fast_lik_model_calibrated.rds` was copied in (confirmed 30+ hours stable, not a
+live write) and `run_ptcon18s_fast_smoketest.R` was built following the exact
+`evaluate_likelihoods() -> join_priors() -> compute_posterior() -> posterior_consensus() ->
+add_slash_taxon()` shape used for PtConception 12S/GreatLakes, with Stage 2 now a real
+`join_priors()` call (this site's real kernel-priors `taxaexpect_priors` checkpoint already
+existed) instead of the flat placeholder the other two need. `site$grid_id` derived the
+same way the real production workflow derives its kernel-mode `focal_grid` (the single
+non-NA `grid_id` in `taxaexpect_priors` -- confirmed exactly 1, `"Site_34.40_-120.40"`),
+not guessed. Ran successfully end to end 2026-09-07: 194 observations, no errors,
+`irreducible_consensus` 82 FALSE / 112 TRUE, ~35s (see the table above for the one
+network-call caveat this smoke test carries that the other two don't).
 
 ## Extending this to other sites/markers
 
@@ -114,3 +105,34 @@ unrepresentative pipeline for the smoke test itself).
   this real dataset, which its own docs say can corrupt formatting. Not a placeholder-prior
   artifact -- reproduces regardless of the prior used. Worth checking whether genus-level
   fallback hypotheses are reaching this function in cases they shouldn't.
+
+## Real finding from the first PtConception 18S run (2026-09-07) -- FIXED same day
+
+`TaxaAssign::join_priors()`'s internal `TaxaMatch::filter_redundant_hypotheses(result,
+rank_system = rank_system)` call warned `"rank_system name(s) not found as a column in
+match_df (check for typos): species"` whenever `join_priors()` was called with
+`rank_system = c("order", "family", "genus", "species")` against `evaluate_likelihoods()`'s
+own output (which, by documented design, only carries `taxon_name`/`taxon_name_rank`
+forward, never a literal `species` column) -- NOT specific to this smoke test; the real
+`PtConceptionWorkflow_18S_2_single_site.R` production workflow (and every other real
+single-marker workflow) passes the identical `rank_system` to its own `join_priors()` call
+against the same kind of input, so this fired on every real production run too, previously
+unnoticed.
+
+**Investigated and fixed at the root cause in `TaxaMatch::filter_redundant_hypotheses()`
+itself.** Traced the exact redundancy-comparison loop: `rank_system`'s own FINEST entry
+(here, `"species"`) is provably never consulted as a comparison column by the algorithm --
+a row AT the finest rank is always skipped before its own column would matter (line
+~372's `next`; nothing is finer, so it can never be superseded), and no coarser row's own
+comparison ever needs it either (its position in `rank_system` is always last, so
+`cols_to_check <- rank_cols_present[seq_len(ri_in_present)]` for any coarser row never
+reaches it). A missing column for the finest rank is therefore 100% inert -- the warning
+was a genuine false positive, not a symptom of anything the algorithm actually needed.
+Fixed by excluding `rank_system`'s own last element from the "must have a matching
+column" check (a genuinely load-bearing missing COARSER column still warns, confirmed by
+a new regression test). 2 new tests in `test-filter_redundant_hypotheses.R`;
+`devtools::test()` 1370/0 (TaxaMatch), `devtools::check()` 0/0/0, reinstalled. Re-ran
+this smoke test after reinstalling: the warning is gone, output is otherwise byte-identical
+(813 rows, `irreducible_consensus` 82/112 unchanged) -- confirms this was a pure
+warning-suppression fix with zero behavioral change, as the trace predicted. See
+`TaxaMatch/CLAUDE.md`'s own 2026-09-07 top session note for the full record.
