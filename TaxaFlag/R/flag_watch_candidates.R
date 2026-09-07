@@ -143,7 +143,15 @@ flag_watch_candidates <- function(
     watch_taxon[i] <- m_taxon[best_w]
     watch_score[i] <- m_score[best_w]
 
-    ref_idx <- idx[!is.na(m_score[idx]) & !is.na(m_taxon[idx]) & m_taxon[idx] == winner_i]
+    # An NA winner (an observation the consensus left unresolved) has no match
+    # row of its own by definition -- and comparing against it elementwise
+    # would yield NA indices, an NA reference score, and finally an NA
+    # watch_flag, which this function's own contract says is logical.
+    ref_idx <- if (is.na(winner_i)) {
+      integer(0)
+    } else {
+      idx[!is.na(m_score[idx]) & !is.na(m_taxon[idx]) & m_taxon[idx] == winner_i]
+    }
     if (length(ref_idx) == 0L) {
       # winner has no match row of its own (unreferenced/rank-expanded):
       # compare against the best non-watch candidate instead

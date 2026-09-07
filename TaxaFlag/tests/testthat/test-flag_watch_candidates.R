@@ -78,3 +78,25 @@ test_that("never modifies consensus columns; validates inputs", {
   expect_error(flag_watch_candidates(cons[, "observation_id", drop = FALSE], .make_match(), WATCH),
                "primary_taxon")
 })
+
+test_that("an NA winner falls back to the best non-watch score, never an NA flag", {
+  # A consensus row the pipeline left unresolved has no winner to look up, so
+  # it takes the same fallback as an unreferenced/rank-expanded winner. Before
+  # this was guarded, comparing NA elementwise produced NA indices, an NA
+  # reference score and finally an NA in a column documented as logical (and
+  # an "NA of N observation(s) flagged" message).
+  cons <- data.frame(observation_id = c("D1", "D2"),
+                     primary_taxon  = c(NA_character_, "Perca flavescens"),
+                     stringsAsFactors = FALSE)
+  m <- data.frame(
+    observation_id = c("D1", "D1", "D2", "D2"),
+    taxon_name     = c("Sander lucioperca", "Perca flavescens",
+                       "Sander lucioperca", "Perca flavescens"),
+    score_original = c(99, 98, 97, 99),
+    stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(flag_watch_candidates(cons, m, WATCH))
+  expect_false(anyNA(out$watch_flag))
+  expect_equal(out$watch_flag, c(TRUE, FALSE))
+  expect_equal(out$watch_reference_score, c(98, 99))
+})

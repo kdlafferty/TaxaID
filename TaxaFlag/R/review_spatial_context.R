@@ -512,7 +512,12 @@ review_spatial_context <- function(input_df,
             style = "font-size:12px;margin:4px 0;color:#999;"
           )))
         } else {
-          mismatch <- !is.na(ir$matched_name) &&
+          # NULL-guarded like in_range/n_observations/taxon_id below: a
+          # caller-supplied inat_range predating check_inat_range()'s
+          # matched_name column has no such field, and `!is.na(NULL)` is
+          # logical(0), which makes `mismatch` NA and errors the whole panel
+          # at the `if (mismatch)` below.
+          mismatch <- !is.null(ir$matched_name) && !is.na(ir$matched_name) &&
             tolower(trimws(ir$matched_name)) != tolower(trimws(input$taxon))
           parts <- character(0)
           if (mismatch) parts <- c(parts, sprintf("matched to '%s' (differs from query!)", ir$matched_name))

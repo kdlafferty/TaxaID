@@ -575,3 +575,29 @@ test_that(".fetch_inat_points() returns a 0-row lon/lat frame when there are no 
   expect_equal(nrow(pts), 0L)
   expect_equal(names(pts), c("lon", "lat"))
 })
+
+test_that("an inat_range without a matched_name column still renders the panel", {
+  # matched_name was the one iNat field read without a NULL guard (unlike
+  # in_range/n_observations/taxon_id), so a caller-supplied inat_range
+  # predating check_inat_range()'s matched_name column made `mismatch` NA and
+  # errored the WHOLE stats panel, not just the iNat line.
+  testthat::local_mocked_bindings(
+    .resolve_gbif_taxon_key = function(name) 1L, .package = "TaxaFlag"
+  )
+  testthat::local_mocked_bindings(
+    check_gbif_tile_range = function(...) data.frame(
+      dist_nearest_occupied_km = 41.0, patch_diameter_km = 2.1,
+      beyond_buffer = FALSE, escalated = FALSE, zoom_used = 6L
+    ),
+    .package = "TaxaFlag"
+  )
+  inat_no_matched_name <- data.frame(
+    taxon_name = "Lepomis peltastes", in_range = TRUE, n_observations = 1275,
+    stringsAsFactors = FALSE
+  )
+  shiny::testServer(.make_server(inat_range = inat_no_matched_name), {
+    session$setInputs(taxon = "Lepomis peltastes")
+    expect_match(output$stats_panel$html, "in range")
+    expect_false(grepl("differs from query", output$stats_panel$html))
+  })
+})

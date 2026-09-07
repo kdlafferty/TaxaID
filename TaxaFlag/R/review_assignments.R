@@ -547,7 +547,20 @@ review_assignments <- function(input_df,
     # reviewed twice, so this also removes a redundant LLM call rather than
     # adding one.
     taxa_info <- taxa_info[!duplicated(taxa_info$.canon), , drop = FALSE]
-    label_canon_map <- stats::setNames(taxa_info$.canon, taxa_info$taxon_name)
+    # ... and then once more on the LABEL, because a label is NOT guaranteed
+    # unique across canonical sets in the other direction either:
+    # add_slash_taxon() deliberately clears the slash name for a downranked
+    # row, so consensus_OTU falls back to consensus_taxon and two genuinely
+    # different candidate sets can share one display label. The LLM only ever
+    # sees the label -- and everything else keyed on it (the pipeline/spatial
+    # notes, the cache key) is already per-label -- so such sets cannot be
+    # reviewed apart; one verdict is obtained and fanned back out to every
+    # canonical set carrying that label. Left un-deduplicated, the label
+    # appeared twice in one batch, the taxon_name merges below multiplied the
+    # review rows, and the final join DUPLICATED input rows (2 rows in, 5
+    # out, in the regression test that pins this).
+    label_canon_map <- split(taxa_info$.canon, taxa_info$taxon_name)
+    taxa_info <- taxa_info[!duplicated(taxa_info$taxon_name), , drop = FALSE]
     taxa_info$.canon <- NULL
 
     if (nrow(taxa_info) == 0L)
@@ -777,9 +790,20 @@ review_assignments <- function(input_df,
   flag_lookup <- taxa_info[, c("taxon_name", "has_unprecedented", "has_indistinguishable")]
   review_df <- merge(review_df, flag_lookup, by = "taxon_name", all.x = TRUE, sort = FALSE)
 
+  # One reviewed label can stand for more than one canonical candidate set
+  # (see the label dedup above), so a verdict row is repeated once per set it
+  # covers before the join. A label with no entry in the map contributes no
+  # key and simply drops out, exactly as an unmatched key did before.
+  join_keys <- if (is.null(label_canon_map)) {
+    review_df$taxon_name
+  } else {
+    keys <- label_canon_map[review_df$taxon_name]
+    review_df <- review_df[rep(seq_len(nrow(review_df)), lengths(keys)), , drop = FALSE]
+    as.character(unlist(keys, use.names = FALSE))  # NULL -> character(0), keeps the column
+  }
+
   merge_key <- data.frame(
-    .join_key                   = if (is.null(label_canon_map)) review_df$taxon_name
-                                  else unname(label_canon_map[review_df$taxon_name]),
+    .join_key                   = join_keys,
     llm_habitat_plausibility    = review_df$habitat_plausibility,
     llm_geographic_plausibility = review_df$geographic_plausibility,
     llm_scope_plausibility      = review_df$scope_plausibility,
@@ -1511,19 +1535,16 @@ review_assignments <- function(input_df,
   }
 
   # Strategy 2: Parse directly
-  parsed <- tryCatch(
-    jsonlite::fromJSON(fenced, simplifyDataFrame = TRUE),
-    error = function(e) NULL
-  )
+  parsed <- .parse_json_text(fenced)
 
   # Strategy 3: Extract [...] array
   if (is.null(parsed) || !is.data.frame(parsed)) {
+    # sub() returns its input UNCHANGED when the pattern doesn't match, so
+    # arr_str is whatever the model actually said whenever no JSON array was
+    # found -- hence .parse_json_text()'s guard matters here too.
     arr_str <- sub("(?s).*?(\\[\\s*\\{[\\s\\S]*\\}\\s*\\]).*", "\\1",
                    cleaned, perl = TRUE)
-    parsed <- tryCatch(
-      jsonlite::fromJSON(arr_str, simplifyDataFrame = TRUE),
-      error = function(e) NULL
-    )
+    parsed <- .parse_json_text(arr_str)
   }
 
   # Strategy 4: Truncated JSON recovery
@@ -1660,6 +1681,28 @@ review_assignments <- function(input_df,
 }
 
 
+#' Parse a JSON string that came back from the LLM, and ONLY a JSON string
+#'
+#' \code{jsonlite::fromJSON()} accepts a JSON string, a URL, or a file path in
+#' the same argument: when a short input does not validate as JSON it is
+#' retried as \code{url()} (if it starts with http:// or https://) or as
+#' \code{file()} (if such a file exists). Every string reaching the parser here
+#' is LLM-generated, and none of the three call sites guarantees valid JSON --
+#' \code{sub()} returns its input unchanged when the pattern doesn't match --
+#' so a model reply consisting of a bare URL or path would be FETCHED or READ
+#' rather than simply failing to parse. Requiring a JSON opening bracket is
+#' enough to rule that out and changes nothing for real responses: every
+#' string the three call sites intend to parse begins with \code{[} or
+#' \code{\{}, and anything else already failed to parse before.
+#' @noRd
+.parse_json_text <- function(text) {
+  if (!is.character(text) || length(text) != 1L || is.na(text)) return(NULL)
+  if (!grepl("^\\s*[\\[{]", text, perl = TRUE)) return(NULL)
+  tryCatch(jsonlite::fromJSON(text, simplifyDataFrame = TRUE),
+           error = function(e) NULL)
+}
+
+
 #' Recover Parseable Objects from Truncated JSON Array
 #' @noRd
 .recover_truncated_json <- function(text) {
@@ -1674,10 +1717,7 @@ review_assignments <- function(input_df,
 
   for (i in rev(seq_along(brace_positions))) {
     candidate <- paste0(substring(text_from_arr, 1L, brace_positions[i]), "\n]")
-    parsed <- tryCatch(
-      jsonlite::fromJSON(candidate, simplifyDataFrame = TRUE),
-      error = function(e) NULL
-    )
+    parsed <- .parse_json_text(candidate)
     if (is.data.frame(parsed) && nrow(parsed) > 0L) return(parsed)
   }
 

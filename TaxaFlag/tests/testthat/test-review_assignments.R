@@ -576,3 +576,54 @@ test_that("a hash collision is a miss, never another taxon's verdict", {
   expect_null(TaxaFlag:::.review_cache_read(f, "the key we actually want"))
   expect_null(TaxaFlag:::.review_cache_read(file.path(cd, "absent.rds"), "k"))
 })
+
+test_that("two candidate sets sharing one display label are reviewed once, and no input row is duplicated", {
+  # add_slash_taxon() clears the slash name on a downranked row, so
+  # consensus_OTU falls back to consensus_taxon and two genuinely different
+  # candidate sets can carry the identical display label. The LLM only ever
+  # sees that label, so it must be reviewed once and the verdict fanned out.
+  # Before the label dedup, the label went into one batch twice, the
+  # taxon_name merges multiplied the review rows, and the final join returned
+  # 5 rows for 2 input rows (with one of them unscored).
+  df <- data.frame(
+    observation_id  = c("o1", "o2"),
+    consensus_taxon = "Oncorhynchus mykiss",
+    consensus_OTU   = "Oncorhynchus mykiss",
+    irreducible_consensus = TRUE,
+    stringsAsFactors = FALSE
+  )
+  df$plausible_taxa <- list(c("Salmo salar", "Salvelinus alpinus"), "Salmo trutta")
+
+  n_calls <- 0L
+  fake_llm <- function(prompt, ...) {
+    n_calls <<- n_calls + 1L
+    '[{"taxon_name":"Oncorhynchus mykiss","habitat_plausibility":"likely",
+       "geographic_plausibility":"likely","scope_plausibility":null,
+       "contamination_risk":"low","review_alternatives":null,
+       "review_lower_hypotheses":null,"review_confidence":"high",
+       "review_comment":null}]'
+  }
+  out <- review_assignments(
+    df, plausible_taxa_col = "plausible_taxa",
+    context = list(geography = "Lake Michigan", habitat = "harbor"),
+    llm_fn = fake_llm, verbose = FALSE
+  )
+  expect_equal(nrow(out), nrow(df))
+  expect_equal(out$llm_geographic_plausibility, c("likely", "likely"))
+  expect_equal(n_calls, 1L)
+})
+
+test_that(".parse_json_text() refuses to treat a model reply as a URL or file path", {
+  # jsonlite::fromJSON() accepts a JSON string, a URL, or a file path in the
+  # same argument -- a short non-JSON reply that looks like either would be
+  # fetched/read instead of failing to parse.
+  expect_null(TaxaFlag:::.parse_json_text("https://example.com/whatever.json"))
+  tmp <- tempfile(fileext = ".json")
+  writeLines('[{"taxon_name":"Trojan sp."}]', tmp)
+  on.exit(unlink(tmp), add = TRUE)
+  expect_null(TaxaFlag:::.parse_json_text(tmp))
+  # ... while still parsing what the real call sites actually pass
+  expect_equal(TaxaFlag:::.parse_json_text('[{"taxon_name":"Salmo salar"}]')$taxon_name,
+               "Salmo salar")
+  expect_null(TaxaFlag:::.parse_json_text("This is not JSON at all"))
+})
