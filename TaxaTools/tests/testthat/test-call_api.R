@@ -328,3 +328,62 @@ test_that(".parse_openai_compat_response errors when choices is empty", {
     "no choices"
   )
 })
+
+# ==============================================================================
+# .build_endpoint_url() — session-registered providers
+# ==============================================================================
+
+test_that(".build_endpoint_url resolves a register_provider() provider from its stored base_url", {
+  # Regression guard: register_provider() stores only base_url (no
+  # chat_endpoint, no chat_endpoint_template), and .build_endpoint_url() only
+  # ever consulted the caller's own base_url argument -- so the documented
+  # "register_provider() then call_api(provider = ...)" workflow (call_api()'s
+  # own @examples) died with "no chat endpoint configured ... Check
+  # inst/model_tiers.json" unless base_url was repeated on every call.
+  on.exit(.reset_registry())
+
+  suppressMessages(register_provider(
+    "xai_test", "XAI_TEST_API_KEY", "https://api.x.ai/",
+    fallback_models = list(mid = "grok-3")
+  ))
+  prov_reg <- TaxaTools:::.get_registry()$providers[["xai_test"]]
+
+  expect_equal(
+    TaxaTools:::.build_endpoint_url("xai_test", "grok-3", NULL, prov_reg),
+    "https://api.x.ai/v1/chat/completions"
+  )
+  # An explicit base_url still wins over the stored one
+  expect_equal(
+    TaxaTools:::.build_endpoint_url("xai_test", "grok-3", "https://proxy.example.com", prov_reg),
+    "https://proxy.example.com/v1/chat/completions"
+  )
+})
+
+test_that(".build_endpoint_url still errors for a provider with no endpoint of any kind", {
+  expect_error(
+    TaxaTools:::.build_endpoint_url("mystery", "m", NULL, list(handler_family = "openai_compat")),
+    "no chat endpoint configured"
+  )
+})
+
+test_that(".build_endpoint_url is unchanged for built-in providers", {
+  on.exit(.reset_registry())
+  provs <- TaxaTools:::.get_registry()$providers
+
+  expect_equal(
+    TaxaTools:::.build_endpoint_url("anthropic", "claude-x", NULL, provs$anthropic),
+    "https://api.anthropic.com/v1/messages"
+  )
+  expect_equal(
+    TaxaTools:::.build_endpoint_url("openai", "gpt-x", NULL, provs$openai),
+    "https://api.openai.com/v1/chat/completions"
+  )
+  expect_match(
+    TaxaTools:::.build_endpoint_url("gemini", "gemini-x", NULL, provs$gemini),
+    "models/gemini-x:generateContent$"
+  )
+  expect_equal(
+    TaxaTools:::.build_endpoint_url("ollama", "qwen", NULL, provs$ollama),
+    "http://localhost:11434/v1/chat/completions"
+  )
+})

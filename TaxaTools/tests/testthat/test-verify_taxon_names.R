@@ -233,3 +233,40 @@ test_that("a no-match result has NA matched_rank and NA is_synonym", {
   expect_true(is.na(result$matched_rank))
   expect_true(is.na(result$is_synonym))
 })
+
+# ── Offline regression: malformed API response (no 'names' field) ────────────
+
+test_that("a response with no 'names' field is reported as malformed, not as a request failure", {
+  # Regression guard: the malformed-response branch used to assign to an
+  # undefined object (`results[[i]]`), which threw inside the tryCatch and so
+  # surfaced as the generic "API request failed" warning -- a misleading
+  # diagnosis of a response that actually arrived with HTTP 200. It also
+  # meant the branch's own carefully-built unverified tibble was thrown away.
+  local_mocked_bindings(
+    POST        = function(...) structure(list(), class = "response"),
+    status_code = function(resp) 200L,
+    content     = function(resp, ...) list(),   # 200 OK, but no 'names' field
+    .package    = "httr"
+  )
+
+  warns  <- character()
+  result <- withCallingHandlers(
+    suppressMessages(
+      verify_taxon_names(c("Aaa bbb", "Ccc ddd"), backbone_id = 11L)
+    ),
+    warning = function(w) {
+      warns <<- c(warns, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_true(any(grepl("no 'names' field", warns)))
+  # ...and ONLY that warning: a 200-OK response must never be reported as a
+  # failed request.
+  expect_false(any(grepl("API request failed", warns)))
+
+  expect_equal(nrow(result), 2L)
+  expect_equal(result$user_supplied_name, c("Aaa bbb", "Ccc ddd"))
+  expect_false(any(result$verified))
+  expect_true(all(is.na(result$matched_name)))
+})

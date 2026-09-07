@@ -167,6 +167,19 @@
   ep <- prov_reg$chat_endpoint
   if (!is.null(ep)) return(ep)
 
+  # ------------------------------------------------------------------
+  # Session-registered providers (register_provider())
+  # ------------------------------------------------------------------
+  # These store only base_url -- no chat_endpoint and no template -- so
+  # without this the documented "register_provider() then call_api(provider =)"
+  # workflow errored unless the caller ALSO repeated base_url on every
+  # call_api() call. Same standard OpenAI-compatible chat path the base_url
+  # override above builds. Last in the chain, so no provider that supplies its
+  # own endpoint or template is affected.
+  if (identical(family, "openai_compat") && !is.null(prov_reg$base_url)) {
+    return(paste0(gsub("/$", "", prov_reg$base_url), "/v1/chat/completions"))
+  }
+
   stop(sprintf(
     "call_api: no chat endpoint configured for provider '%s'. Check inst/model_tiers.json.",
     provider

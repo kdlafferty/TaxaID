@@ -224,11 +224,16 @@ verify_taxon_names <- function(name_list,
       data <- httr::content(resp, as = "parsed", type = "application/json")
 
       if (is.null(data$names) || length(data$names) == 0L) {
+
         warning(sprintf(
           "verify_taxon_names: batch %d returned no 'names' field. API response may be malformed. Treating %d names as unverified.",
           i, length(batch)
         ))
-        batch_result <- dplyr::tibble(
+        # This tibble is the tryCatch expression's value, so it becomes this
+        # batch's result directly -- assigning to the accumulator here (or
+        # calling next) would either skip the assignment at the bottom of the
+        # loop or return early out of the whole function.
+        dplyr::tibble(
           user_supplied_name   = batch,
           matched_name         = NA_character_,
           matched_rank         = NA_character_,
@@ -238,66 +243,66 @@ verify_taxon_names <- function(name_list,
           score                = NA_real_,
           verified             = FALSE
         )
-        results[[i]] <- batch_result
-        next
-      }
 
-      # httr::content(as = "parsed") can return single-element lists instead of
-      # plain scalars for some fields. These helpers safely extract a scalar value.
-      safe_chr <- function(x) {
-        if (is.null(x)) return(NA_character_)
-        if (is.list(x)) x <- x[[1]]
-        as.character(x)
-      }
-      safe_dbl <- function(x) {
-        if (is.null(x)) return(NA_real_)
-        if (is.list(x)) x <- x[[1]]
-        as.double(x)
-      }
+      } else {
 
-      # --- Parse each name's result ---
-      parsed <- lapply(data$names, function(item) {
-        best <- item$bestResult
-
-        if (is.null(best)) {
-          # API responded but found no match for this name
-          return(dplyr::tibble(
-            user_supplied_name   = safe_chr(item$name),
-            matched_name         = NA_character_,
-            matched_rank         = NA_character_,
-            is_synonym           = NA,
-            classification_path  = NA_character_,
-            classification_ranks = NA_character_,
-            score                = NA_real_,
-            verified             = TRUE   # API worked; it just found nothing
-          ))
+        # httr::content(as = "parsed") can return single-element lists instead of
+        # plain scalars for some fields. These helpers safely extract a scalar value.
+        safe_chr <- function(x) {
+          if (is.null(x)) return(NA_character_)
+          if (is.list(x)) x <- x[[1]]
+          as.character(x)
+        }
+        safe_dbl <- function(x) {
+          if (is.null(x)) return(NA_real_)
+          if (is.list(x)) x <- x[[1]]
+          as.double(x)
         }
 
-        # Prefer GNVerifier's own authority-free canonical fields over a local
-        # regex -- matchedCanonicalSimple/currentCanonicalSimple are already
-        # stripped of authorship AND correctly preserve a full trinomial
-        # (e.g. a subspecies), unlike the previous strip_authority() regex
-        # (genus + at most one lowercase word), which silently truncated any
-        # subspecies-rank match to a binomial.
-        is_syn          <- isTRUE(best$isSynonym)
-        current_simple  <- safe_chr(best$currentCanonicalSimple)
-        matched_simple  <- safe_chr(best$matchedCanonicalSimple)
-        use_current     <- is_syn && !is.na(current_simple) && nzchar(current_simple)
-        resolved_name   <- if (use_current) current_simple else matched_simple
+        # --- Parse each name's result ---
+        parsed <- lapply(data$names, function(item) {
+          best <- item$bestResult
 
-        dplyr::tibble(
-          user_supplied_name   = safe_chr(item$name),
-          matched_name         = resolved_name,
-          matched_rank         = .last_classification_rank(safe_chr(best$classificationRanks)),
-          is_synonym           = is_syn,
-          classification_path  = safe_chr(best$classificationPath),
-          classification_ranks = safe_chr(best$classificationRanks),
-          score                = safe_dbl(best$score),
-          verified             = TRUE
-        )
-      })
+          if (is.null(best)) {
+            # API responded but found no match for this name
+            return(dplyr::tibble(
+              user_supplied_name   = safe_chr(item$name),
+              matched_name         = NA_character_,
+              matched_rank         = NA_character_,
+              is_synonym           = NA,
+              classification_path  = NA_character_,
+              classification_ranks = NA_character_,
+              score                = NA_real_,
+              verified             = TRUE   # API worked; it just found nothing
+            ))
+          }
 
-      dplyr::bind_rows(parsed)
+          # Prefer GNVerifier's own authority-free canonical fields over a local
+          # regex -- matchedCanonicalSimple/currentCanonicalSimple are already
+          # stripped of authorship AND correctly preserve a full trinomial
+          # (e.g. a subspecies), unlike the previous strip_authority() regex
+          # (genus + at most one lowercase word), which silently truncated any
+          # subspecies-rank match to a binomial.
+          is_syn          <- isTRUE(best$isSynonym)
+          current_simple  <- safe_chr(best$currentCanonicalSimple)
+          matched_simple  <- safe_chr(best$matchedCanonicalSimple)
+          use_current     <- is_syn && !is.na(current_simple) && nzchar(current_simple)
+          resolved_name   <- if (use_current) current_simple else matched_simple
+
+          dplyr::tibble(
+            user_supplied_name   = safe_chr(item$name),
+            matched_name         = resolved_name,
+            matched_rank         = .last_classification_rank(safe_chr(best$classificationRanks)),
+            is_synonym           = is_syn,
+            classification_path  = safe_chr(best$classificationPath),
+            classification_ranks = safe_chr(best$classificationRanks),
+            score                = safe_dbl(best$score),
+            verified             = TRUE
+          )
+        })
+
+        dplyr::bind_rows(parsed)
+      }
 
     }, error = function(e) {
 
