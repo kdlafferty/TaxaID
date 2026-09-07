@@ -274,6 +274,16 @@ corroborates it; see \verb{@section Local corroboration}. Treated like
 \code{NA} if the accession's own GenBank record could not be fetched (a
 \code{warning()} is issued listing these; not cached, so a subsequent
 call retries them).}
+\item{\code{local_corroborator_accession}}{The specific accession vouching
+for a \code{"locally_corroborated"} row (added 2026-09-05, critical-fix-
+review finding B5) -- \code{NA} for every other \code{hierarchy_flag} value.
+\code{"locally_corroborated"} is cached indefinitely and exempt from
+\code{\link[=refine_reference_verdicts]{refine_reference_verdicts()}}'s trust-weighted refinement (the
+MATCH itself, once observed, is permanent) -- but the corroborator's
+own label is exactly as falsifiable as any other accession's, so
+this column exists to make that dependency visible and checkable,
+the same transparency \code{\link[=verify_removal_candidates]{verify_removal_candidates()}} already gives
+its own corroborators.}
 \item{\code{evaluated_at}}{When this verdict was computed (\code{NA} for a
 fetch failure).}
 \item{\code{cache_hit}}{\code{TRUE} if this row was read from \code{cache_dir}
@@ -333,6 +343,43 @@ BLASTing each accession against an unrestricted database removes the
 full real-data evidence (a real 6-genus GreatLakes 12S test flagged 15
 genuine, Smithsonian-vouchered \code{Menidia} accessions "incongruent" purely
 because \code{Menidia}'s family had no other representative on the list).
+}
+
+\section{Scoping a large marker's screen (2026-09-05)}{
+
+Per-accession remote BLAST does not scale to a large reference set under
+this ecosystem's own NCBI throttle -- confirmed directly: a 995-accession
+PtConception 12S run has already tripped it, and the 18S reference set
+(21,899 accessions) is over 20x that size. Screening every accession in a
+large marker's reference set is NOT the recommended default; it is a
+deliberate, budgeted choice for when you specifically want that coverage
+and can absorb the cost (\code{chunk_size}/\code{max_consecutive_batch_failures}
+exist to make a full run survivable, not to make it free).
+
+The recommended default for a large marker scopes the screen to the two
+populations that actually drive real decisions, both already-built tools,
+not something this section is asking you to build:
+\itemize{
+\item \strong{Accessions that actually drive a match.}
+\code{\link[=match_driving_accessions]{match_driving_accessions()}} returns only the accessions that are the
+max-scoring accession of their species for at least one real
+observation -- everything else can never change an assignment
+regardless of what this function would say about it. Real effect:
+709 of 995 on a real PtConception 12S match object.
+\item \strong{Accessions the training screen already flagged.}
+\code{\link[=verify_flagged_references]{verify_flagged_references()}} verifies only
+\code{TaxaLikely::flag_reference_errors()}'s own \code{"likely_mislabeled"}
+subset (that screen already runs for free, no NCBI call, reusing the
+\code{seq_matrix} already built for training) -- turning "BLAST the whole
+training reference set" into "BLAST only the ~9-11\% it actually
+disputed." See that function's own \verb{@section Why the flagged subset, not the whole reference set}.
+}
+Together these concentrate this screen's real NCBI cost exactly where a
+verdict can change something -- a match-driving accession feeds a real
+assignment; a training-flagged accession feeds \code{train_likelihood_model()}'s
+own silent removal -- while leaving every other accession in a large
+reference set unscreened by default, not as an oversight but as the
+documented, correct scope.
 }
 
 \section{Why "incongruent" gained a TTL (2026-09-02)}{

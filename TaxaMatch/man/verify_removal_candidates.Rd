@@ -9,6 +9,7 @@ verify_removal_candidates(
   ...,
   audit_max_hits = 100L,
   cache_dir = NULL,
+  screen_corroborators = TRUE,
   verbose = TRUE
 )
 }
@@ -27,7 +28,20 @@ clean result here bounds the problem rather than closing it.}
 \item{cache_dir}{Directory for the audit's own cache, or \code{NULL} (default)
 for no caching. Because \code{max_hits} is in \code{params_key} an audit can never
 overwrite a production row, but a separate directory keeps the
-production cache free of rows no production call will ever read.}
+production cache free of rows no production call will ever read. Also
+the cache \code{screen_corroborators} reads/writes corroborator verdicts
+through, so corroborators already evaluated (production or a prior
+audit) are served free.}
+
+\item{screen_corroborators}{Logical (default \code{TRUE}). For a row spared on
+1-2 corroborators (see the section below), also check those
+corroborators' OWN label via \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} --
+reusing an accession already present in \code{evaluation} for free where
+possible -- and surface a corroborator that itself reads a non-\code{"keep"}
+action as a stronger, separate warning. Never un-spares a row
+automatically; a flagged corroborator is reported for a human to look
+at, not acted on. \code{FALSE} skips this entirely (zero extra NCBI calls,
+matching pre-2026-09-05 behavior).}
 
 \item{verbose}{Logical (default \code{TRUE}).}
 }
@@ -41,7 +55,13 @@ A data frame with one row per removal candidate: \code{accession},
 (the accession is no longer actioned \code{"remove"}), and -- when
 \code{cache_dir} is supplied -- \code{n_corroborators}, \code{best_corroborator_rank}
 and \code{corroborators}, a short list of the strongest partners that agreed.
-Zero rows, and zero NCBI calls, when nothing would be removed.
+When \code{screen_corroborators = TRUE} and any row is thin (spared on <= 2
+corroborators), also \code{corroborator_accessions} (the checked
+accession(s)), \code{corroborator_worst_action} (the worst
+\code{reference_action} among them), and \code{corroborator_flagged} (logical,
+\code{NA} when nothing could be checked). Zero rows, and zero NCBI calls,
+when nothing would be removed; zero EXTRA NCBI calls (beyond the audit
+itself) when nothing is thin or \code{screen_corroborators = FALSE}.
 }
 \description{
 Re-evaluates ONLY the accessions an evaluation would actually remove, at a
@@ -112,7 +132,10 @@ that partner's OWN verdict, and a corroborator which is merely a BLAST hit
 Widening the window makes the exposure larger, not smaller, since it
 admits more potential bad corroborators. So treat \code{spared} as a prompt to
 look, not a conclusion: a row rescued by one or two partners gets an
-explicit warning naming them.
+explicit warning naming them, and (\code{screen_corroborators = TRUE},
+2026-09-05) that corroborator's own label is now actually checked --
+never automatically, only flagged, per this project's own "flag, don't
+auto-act" convention.
 }
 
 \seealso{

@@ -1,6 +1,97 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-04, fifth pass (Opus 5, branch kernel-priors -- verify_removal_
+# Last updated: 2026-09-05, seventh pass (Sonnet 5, branch kernel-priors -- E1's screening-
+# scope doctrine (fable_ecosystem_review_2026-09-05.md) promoted from an informal practice
+# to documented default: new `@section Scoping a large marker's screen (2026-09-05)` on
+# `evaluate_reference_accessions()`'s own roxygen, naming `match_driving_accessions()` +
+# `verify_flagged_references()` as the recommended default scope for a large marker's
+# reference set (a full-population screen stays available, but is now documented as a
+# deliberate, budgeted choice, not the default one reaches for). Doc-only -- no code/
+# behavior change, no cache invalidation. `devtools::test()` 228/228 (targeted;
+# doc-only change), `devtools::check()` 0/0/0, reinstalled (Built 2026-09-05 21:34:57 UTC).
+#
+# Previous update, 2026-09-05, sixth pass (Sonnet 5, branch kernel-priors -- B5's REMAINING
+# item closed: NEW verify_local_corroborations(), the free, no-NCBI audit of thin
+# "locally_corroborated" rows against their own corroborator's cached verdict (the
+# fable_ecosystem_review_2026-09-05.md B5 finding's first "adjacent door" -- the second,
+# screening thin removal-audit corroborators, is the fifth-pass verify_removal_
+# candidates(screen_corroborators=) entry directly below).
+#
+# THE GAP: a "locally_corroborated" verdict (an accession spared BLAST entirely because
+# the caller's own reference set already has an independent conspecific deposit for it)
+# is cached with TTL Inf and exempt from refine_reference_verdicts()'s trust-weighted
+# refinement -- correct for the MATCH itself (permanent, once observed), but the
+# CORROBORATOR'S OWN LABEL is exactly as falsifiable as MZ605481's was. Nothing revisited
+# that. The only existing lever, skip_locally_corroborated = FALSE, re-BLASTs the ENTIRE
+# locally_corroborated population, not the one row whose corroborator turned out bad.
+#
+# THE DESIGN, reached with the user before building anything (their own two proposed
+# pre-filters, both confirmed free and already true): (1) a thin row (n_independent_
+# top_matches <= max_corroborators, default 2L -- confirmed with the user that this
+# threshold does NOT already exist anywhere in local_tier's own "corroborated" assignment,
+# which fires on ANY n_indep >= 1 regardless of count, per corroborate_references_
+# locally()'s own tier logic) is the only population worth checking -- many independent
+# partners all being wrong the same way is implausible. (2) the corroborator's own verdict
+# is looked up via a SELF-JOIN against the SAME persistent cache, not a fresh evaluation --
+# BOTH numbers this needs are already stored, for free, on every locally_corroborated row:
+# n_independent_top_matches (the corroborator count, reusing the BLAST-diagnostic schema
+# column) and local_corroborator_accession (the fifth-pass provenance column). So the
+# whole audit is zero NCBI calls, always -- confirmed via a call-counting-style design
+# (score_reference_labels() runs once over the WHOLE loaded cache, pure R, no BLAST).
+# Deliberately does NOT screen an unresolved ("unchecked") corroborator the way
+# verify_removal_candidates(screen_corroborators=) does for its own (much smaller, 1-4-
+# per-site) population -- locally_corroborated is the ordinary fast path for any accession
+# the reference set happens to double-cover, plausibly hundreds of rows per project, and
+# forcing every unresolved corroborator through BLAST here could be a real surprise NCBI
+# cost this function's whole point is to avoid.
+#
+# A REAL BUG found and fixed along the way, in the fifth-pass verify_removal_candidates()
+# corroborator-screening code itself: its own comment said "'untested' is deliberately NOT
+# flagged -- no usable evidence about the corroborator is not evidence AGAINST it," but the
+# actual guard read `!corr_action %in% "keep"`, which DOES flag "untested" (since
+# "untested" != "keep") -- directly contradicting its own documented intent. Fixed to
+# `!corr_action %in% c("keep", "untested")`, matching what was already written down as the
+# design. Caught by re-deriving the SAME "is this action bad" logic for the new function
+# and noticing the two didn't agree with the existing comment -- not caught by the
+# fifth-pass tests, since none of them exercised an "untested" corroborator. New regression
+# test added to both the existing verify_removal_candidates() suite and the new function's.
+#
+# devtools::test() 1348/1348 (0 failures; 1 pre-existing unrelated warning in
+# test-convert_taxonomy_backbone.R:931), devtools::check() 0/0/0, reinstalled and verified
+# at ~/Library/R/4.0/library (Built 2026-09-05 20:31:07 UTC).
+#
+# Previous update, 2026-09-05 (Sonnet 5, branch kernel-priors -- B5(2): verify_removal_
+# candidates() now SCREENS the corroborators themselves, closing the gap the 2026-09-04
+# fifth-pass note (below) could only describe: a thin spare (<=2 corroborators) had no
+# way to know whether its rescuer's OWN label was trustworthy -- exactly the KJ135626/
+# MZ605481 shape. Scoped and confirmed with the user first (four design questions, all
+# answered: fold into this function, not a standalone tool; flag a bad corroborator for
+# human review, never auto-un-spare; threshold matches the existing 1-2-partner "thin"
+# wording; scope stays the removal-audit path only, never the broader locally_corroborated
+# population).
+#
+# New `screen_corroborators = TRUE` param. `.summarise_corroborators()` now also captures
+# the corroborators' real accession IDs (`accessions_list`, previously discarded the moment
+# the `who` display string was built). For each thin row, those accessions are checked via
+# `evaluate_reference_accessions()` -- reusing anything already present in `evaluation`
+# for free first -- and the worst `reference_action` among them is surfaced as
+# `corroborator_worst_action`/`corroborator_flagged` (logical, never auto-acted on: a
+# flagged corroborator escalates the existing "CHECK THESE BY HAND" message to a "STRONG
+# RED FLAG" one, nothing more). Re-running the real GreatLakes case with this on: BADREF-
+# shaped mocks now correctly escalate; zero extra NCBI calls when nothing is thin or when
+# `screen_corroborators = FALSE`. A real bug was caught before it shipped, by the existing
+# test suite: the corroborator lookup initially called `score_reference_labels()` on
+# `evaluate_reference_accessions()`'s own output, which ALREADY computes those columns
+# (2026-09-03) -- erroring "already has column(s) ... pass overwrite = TRUE"; fixed by
+# not re-deriving them. Also fixed one real sprintf bug in the new STRONG RED FLAG message
+# (a stray, unused second `%s`/argument pair left over from drafting) -- this project's own
+# documented recurring footgun class, caught by review before it shipped, not by a test.
+#
+# `devtools::test()` 1328/1328 (0 failures; 1 pre-existing unrelated warning in
+# test-convert_taxonomy_backbone.R:931), `devtools::check()` 0/0/0, reinstalled and
+# verified at `~/Library/R/4.0/library` (Built 2026-09-05 19:19:40 UTC).
+#
+# Previous update, 2026-09-04, fifth pass (Opus 5, branch kernel-priors -- verify_removal_
 # candidates()'s FIRST REAL USE found a false rescue, and the function now shows its work.
 #
 # THE CASE: GreatLakes KJ135626 (Pseudorasbora parva) came back spared = TRUE at
@@ -2015,6 +2106,8 @@ likelihood output downstream — it is NOT part of the match object.
 | `migrate_reference_cache()` | R/migrate_reference_cache.R | Written, tested (offline), new 2026-09-03 | Carries an existing `evaluate_reference_accessions()` cache across a `params_key`/cache-version bump: backs up (`.bak_pre_<version>`), rewrites the key ONLY on `"congruent"` rows (+ `migrated_from`), leaves everything else to re-BLAST, migrates the pair-cache sidecar. Shipped with the 2026-09-03 `"v5_amplicon_query"` bump so ~3,000 real rows are not all re-BLASTed. Default `to_key` = the key the current defaults produce (`.default_params_key()`). |
 | `score_reference_labels()` | R/reference_label_verdict.R | Written, tested (offline), 2026-09-02 | Derives `label_confidence` (numeric, high = the label is more likely correct), `label_identity_margin`, and `reference_action` (`"keep"`/`"caution"`/`"inspect"`/`"remove"`/`"untested"`) from `evaluate_reference_accessions()`'s existing diagnostic columns. A pure function of cached columns, so it retro-applies to any existing cache with no version bump and no re-BLAST; `evaluate_reference_accessions()` calls it on its own output. `"remove"` requires `"incongruent"` AND no corroboration anywhere AND sub-threshold confidence -- see this file's own top session note and `inst/reference_accession_evaluation_guide.md`. **2026-09-03**: `local_corroboration=` adds always-present `corroboration_source`/`local_best_independent_pident`/`local_n_independent_conspecific`/`action_reason` and VETOES a `"remove"` the local set corroborates down to `"inspect"`; `label_confidence` stays BLAST-only on purpose. |
 | `refine_reference_verdicts()` | R/reference_label_verdict.R | Written, tested (offline), 2026-09-02 | Re-runs the congruence vote with each comparison partner weighted by its own `label_confidence`, iterating to a deterministic (Jacobi) fixpoint -- Thread 1 of `REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`. Reads the per-partner votes from the sidecar `reference_pair_cache.rds` that `evaluate_reference_accessions()` began persisting the same day; a documented no-op for any accession evaluated before then. Cascade guard: never discounts an under-evaluated partner. Returns parallel `*_trust` columns, overwrites nothing. |
+| `verify_removal_candidates()` | R/reference_label_verdict.R | Written, tested, 2026-09-04 | The pre-removal audit: re-evaluates ONLY the `"remove"`-actioned accessions at a wider `max_hits` (default 100) and reports which stop being removable. Also names each spared row's own corroborators (`n_corroborators`/`best_corroborator_rank`/`corroborators`, via the persistent pair cache) so `spared = TRUE` is a prompt to look, not a conclusion -- real GreatLakes case: `KJ135626` was spared by exactly one partner, `MZ605481`, itself a documented mislabel. **2026-09-05**: gains `screen_corroborators = TRUE` -- for a THIN spare (<= 2 corroborators), checks those corroborators' own label via `evaluate_reference_accessions()` (reusing anything already in `evaluation` for free first) and escalates the message to a "STRONG RED FLAG" when a corroborator itself reads non-`"keep"`; never auto-un-spares, only flags. See this file's own top session notes for the real KJ135626/MZ605481 case and the fixed `"untested"`-flagging bug. |
+| `verify_local_corroborations()` | R/reference_label_verdict.R | Written, tested (offline), new 2026-09-05 | The free, no-NCBI-call audit of the OTHER thin-corroboration population: `"locally_corroborated"` rows (an accession spared BLAST entirely because the caller's own reference set already vouches for it), scoped to those resting on `<= max_corroborators` (default 2L) independent conspecifics. Both numbers it needs are already stored per row for free -- `n_independent_top_matches` (the corroborator count) and `local_corroborator_accession` (the fifth-pass provenance column) -- so the whole audit is a self-join against the same persistent cache, never a fresh BLAST. Reports `status` = `"flagged"` (the corroborator's own cached verdict is bad), `"clean"` (verdict is `"keep"`), or `"unchecked"` (the corroborator has never been independently evaluated -- deliberately NOT screened here, unlike `verify_removal_candidates(screen_corroborators=)`, since this population is plausibly hundreds of rows per project, not a handful). |
 | `flag_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline), 2026-08-07 continued | **The RECOMMENDED default consumer.** Left-joins `evaluate_reference_accessions()`'s full output (hierarchy_flag + all diagnostics) onto a match object by accession (version-suffix-stripped), never removes a row. Added after a real live case (`Abylopsis eschscholtzii`) showed why an unreviewed hard drop is the wrong default -- see this file's own top session note. |
 | `remove_incongruent_references()` | R/evaluate_reference_accessions.R | Written, tested (offline) | The harder, deliberate opt-in -- mirrors `TaxaLikely::remove_flagged_references()`'s exact pattern. Drops only rows whose accession was flagged `"incongruent"` by `evaluate_reference_accessions()` (version-suffix-stripped match); `"insufficient_independent_evidence"` is retained by default (`remove_insufficient_evidence = FALSE`). **No longer the recommended default pipeline step as of 2026-08-07 continued** -- its own roxygen now says to reach for `flag_incongruent_references()` first and only use this deliberately, after reviewing the identity diagnostics. Deliberately consumes only the binary blacklist decision, not the full quality signal -- see this file's top session note for the TaxaLikely-side graded-weighting work this does NOT yet do. |
 | `verify_flagged_references()` | R/evaluate_reference_accessions.R | Written, tested (offline), new 2026-08-18 | Bridges `TaxaLikely::flag_reference_errors()`'s free/offline (but known over-flagging) mislabel screen to this function -- **without** BLASTing an entire training reference database. Takes `flag_reference_errors()`'s output (or a plain accession vector), screens only the `"likely_mislabeled"` subset (`error_types` param) via `evaluate_reference_accessions()`, and returns `verified_clean` (accessions NOT confirmed `"incongruent"` -- pass straight to `TaxaLikely::flag_reference_errors(verified_clean=)`/`train_likelihood_model(verified_clean=)`). Built after discovering `train_likelihood_model()` calls `flag_reference_errors()` unconditionally on every training run and silently drops flagged accessions -- a real pilot on GreatLakes 12S data found 0 of 40 randomly-sampled `"likely_mislabeled"` accessions confirmed as genuine mislabels (85% false positives). Screening only the flagged subset (not the whole ~2,650-accession reference set, which is LARGER than a typical match-candidate screening population on real data) keeps NCBI cost bounded -- see `TaxaID/CLAUDE.md`'s top session note for the full cost analysis and pilot numbers. |

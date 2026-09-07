@@ -47,7 +47,19 @@ accession. See \verb{@section Local corroboration}.}
 \describe{
 \item{\code{label_confidence}}{Numeric in (0, 1). \code{NA} for a row with no
 computed congruence at all (\code{"not_evaluated_oversized"},
-\code{"not_evaluated_wrong_marker"}, or a fetch failure).}
+\code{"not_evaluated_wrong_marker"}, or a fetch failure). \strong{Named
+contract (2026-09-05 critical-fix-review finding C): this value
+CANNOT REACH 1}, by construction -- the Jeffreys smoothing floors
+the disagreement fraction at \code{0.5/(n+1)}, so even a perfectly
+corroborated multi-partner accession tops out just under 1 (e.g.
+\code{0.99939} for a real 5-partner case). Any future consumer reading
+this as a RATIO where 1 means "no adjustment needed" (e.g. a
+likelihood-covariate-style rescale) must normalize by the per-row
+achievable ceiling first, or it will silently adjust every
+candidate in the dataset -- this is exactly the bug the one prior
+attempt to use this column as a likelihood covariate hit before
+being removed entirely (see \verb{[[project_reference_quality_verdicts_ threads123]]} in the project memory system). Previously this
+constraint was recorded only in a reentry doc, not here.}
 \item{\code{label_identity_margin}}{Numeric, the capped \code{d} in
 percent-identity points. \code{NA} when the row carries no identity
 information of any kind.}

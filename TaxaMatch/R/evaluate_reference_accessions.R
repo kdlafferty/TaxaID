@@ -138,7 +138,8 @@ utils::globalVariables(c(
   "query_len_submitted",         # diagnostic: bp actually sent to BLAST
   "query_trim_path",             # diagnostic: which rescue produced it
   "n_excluded_same_batch",       # diagnostic: hits lost to the independence filter
-  "n_excluded_not_species_resolved"  # diagnostic: hits lost to the species-resolution filter
+  "n_excluded_not_species_resolved",  # diagnostic: hits lost to the species-resolution filter
+  "local_corroborator_accession"  # provenance: which accession vouches for a locally_corroborated row
 )
 
 #' Typed NA vector matching a prototype column
@@ -647,6 +648,7 @@ utils::globalVariables(c(
     query_len_submitted = integer(0L), query_trim_path = character(0L),
     n_excluded_same_batch = integer(0L),
     n_excluded_not_species_resolved = integer(0L),
+    local_corroborator_accession = character(0L),
     stringsAsFactors = FALSE
   )
   if (is.null(cache_dir)) return(empty)
@@ -936,6 +938,7 @@ utils::globalVariables(c(
         query_trim_path = oversized_meta$trim_path,
         n_excluded_same_batch = NA_integer_,
         n_excluded_not_species_resolved = NA_integer_,
+        local_corroborator_accession = NA_character_,
         stringsAsFactors = FALSE
       )
       if (verbose) {
@@ -1230,6 +1233,7 @@ utils::globalVariables(c(
         n_excluded_same_batch = as.integer(congruence$n_excluded_same_batch),
         n_excluded_not_species_resolved =
           as.integer(congruence$n_excluded_not_species_resolved),
+        local_corroborator_accession = NA_character_,  # this row went through BLAST, not the local-corroboration skip
         stringsAsFactors = FALSE
       )
     }
@@ -1277,6 +1281,42 @@ utils::globalVariables(c(
 #' full real-data evidence (a real 6-genus GreatLakes 12S test flagged 15
 #' genuine, Smithsonian-vouchered `Menidia` accessions "incongruent" purely
 #' because `Menidia`'s family had no other representative on the list).
+#'
+#' @section Scoping a large marker's screen (2026-09-05):
+#' Per-accession remote BLAST does not scale to a large reference set under
+#' this ecosystem's own NCBI throttle -- confirmed directly: a 995-accession
+#' PtConception 12S run has already tripped it, and the 18S reference set
+#' (21,899 accessions) is over 20x that size. Screening every accession in a
+#' large marker's reference set is NOT the recommended default; it is a
+#' deliberate, budgeted choice for when you specifically want that coverage
+#' and can absorb the cost (`chunk_size`/`max_consecutive_batch_failures`
+#' exist to make a full run survivable, not to make it free).
+#'
+#' The recommended default for a large marker scopes the screen to the two
+#' populations that actually drive real decisions, both already-built tools,
+#' not something this section is asking you to build:
+#' \itemize{
+#'   \item \strong{Accessions that actually drive a match.}
+#'     [match_driving_accessions()] returns only the accessions that are the
+#'     max-scoring accession of their species for at least one real
+#'     observation -- everything else can never change an assignment
+#'     regardless of what this function would say about it. Real effect:
+#'     709 of 995 on a real PtConception 12S match object.
+#'   \item \strong{Accessions the training screen already flagged.}
+#'     [verify_flagged_references()] verifies only
+#'     `TaxaLikely::flag_reference_errors()`'s own `"likely_mislabeled"`
+#'     subset (that screen already runs for free, no NCBI call, reusing the
+#'     `seq_matrix` already built for training) -- turning "BLAST the whole
+#'     training reference set" into "BLAST only the ~9-11% it actually
+#'     disputed." See that function's own `@section Why the flagged subset,
+#'     not the whole reference set`.
+#' }
+#' Together these concentrate this screen's real NCBI cost exactly where a
+#' verdict can change something -- a match-driving accession feeds a real
+#' assignment; a training-flagged accession feeds `train_likelihood_model()`'s
+#' own silent removal -- while leaving every other accession in a large
+#' reference set unscreened by default, not as an oversight but as the
+#' documented, correct scope.
 #'
 #' @section Why "incongruent" gained a TTL (2026-09-02):
 #' It was cached indefinitely on the reasoning that an accession's own
@@ -1612,6 +1652,16 @@ utils::globalVariables(c(
 #'       `NA` if the accession's own GenBank record could not be fetched (a
 #'       `warning()` is issued listing these; not cached, so a subsequent
 #'       call retries them).}
+#'     \item{`local_corroborator_accession`}{The specific accession vouching
+#'       for a `"locally_corroborated"` row (added 2026-09-05, critical-fix-
+#'       review finding B5) -- `NA` for every other `hierarchy_flag` value.
+#'       `"locally_corroborated"` is cached indefinitely and exempt from
+#'       [refine_reference_verdicts()]'s trust-weighted refinement (the
+#'       MATCH itself, once observed, is permanent) -- but the corroborator's
+#'       own label is exactly as falsifiable as any other accession's, so
+#'       this column exists to make that dependency visible and checkable,
+#'       the same transparency [verify_removal_candidates()] already gives
+#'       its own corroborators.}
 #'     \item{`evaluated_at`}{When this verdict was computed (`NA` for a
 #'       fetch failure).}
 #'     \item{`cache_hit`}{`TRUE` if this row was read from `cache_dir`
@@ -2152,6 +2202,18 @@ evaluate_reference_accessions <- function(accessions,
         query_trim_path = NA_character_,   # never fetched, so never trimmed
         n_excluded_same_batch = NA_integer_,
         n_excluded_not_species_resolved = NA_integer_,
+        # Provenance (2026-09-05 critical-fix-review finding B5): WHICH
+        # accession is vouching for this one. A locally_corroborated verdict
+        # is cached with TTL Inf and exempt from refine_reference_verdicts()'s
+        # trust-weighted refinement -- reasonable for the MATCH itself (a
+        # permanent fact), but the corroborator's own label is exactly as
+        # falsifiable as any other accession's. Recording it here is the same
+        # transparency treatment verify_removal_candidates() already gives its
+        # own corroborators, so a reviewer (or a future automated check) can
+        # look this accession up too, rather than the corroboration resting
+        # on an unnamed, unverifiable partner forever.
+        local_corroborator_accession = .strip_acc_version(
+          as.character(local_corroboration$best_independent_partner[idx])),
         stringsAsFactors = FALSE
       )
       needs_eval <- needs_eval[!is_skip]
@@ -2181,7 +2243,8 @@ evaluate_reference_accessions <- function(accessions,
                "congruent_evidence_exists_anywhere",
                "congruent_evidence_best_pident", "hierarchy_flag", "evaluated_at", "cache_hit",
                "taxonomy_resolution_source", "query_len_submitted", "query_trim_path",
-               "n_excluded_same_batch", "n_excluded_not_species_resolved")
+               "n_excluded_same_batch", "n_excluded_not_species_resolved",
+               "local_corroborator_accession")
 
   # No early return for a purely cache-served call (removed 2026-09-03): the
   # general path below handles an empty needs_eval (the chunk loop simply
@@ -2306,6 +2369,7 @@ evaluate_reference_accessions <- function(accessions,
       taxonomy_resolution_source = NA_character_,
       query_len_submitted = NA_integer_, query_trim_path = NA_character_,
       n_excluded_same_batch = NA_integer_, n_excluded_not_species_resolved = NA_integer_,
+      local_corroborator_accession = NA_character_,
       stringsAsFactors = FALSE
     )
   } else {

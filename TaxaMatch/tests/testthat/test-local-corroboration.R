@@ -393,10 +393,16 @@ test_that("a locally corroborated accession is never fetched or BLASTed; it gets
   expect_equal(z$corroboration_source, "local")
   expect_equal(attr(out, "run_summary")$n_skipped_locally_corroborated, 1L)
   expect_equal(attr(out, "run_summary")$pct_complete, 100)
+  # 2026-09-05 critical-fix-review finding B5: the corroborating accession
+  # itself is now visible, not just its numbers -- so its own label can be
+  # checked/re-evaluated independently rather than trusted forever unnamed.
+  expect_equal(z$local_corroborator_accession, "OQ846041")
 
-  # The uncorroborated one went through the ordinary path.
-  expect_equal(out$hierarchy_flag[out$accession == "KM057967"],
-               "insufficient_independent_evidence")
+  # The uncorroborated one went through the ordinary path -- no local
+  # corroborator to name.
+  j <- out[out$accession == "KM057967", ]
+  expect_equal(j$hierarchy_flag, "insufficient_independent_evidence")
+  expect_true(is.na(j$local_corroborator_accession))
 })
 
 test_that("the skipped row is cached with TTL Inf, and skip_locally_corroborated = FALSE sends it to BLAST after all", {

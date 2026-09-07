@@ -296,7 +296,20 @@ utils::globalVariables(c(
 #'   \describe{
 #'     \item{`label_confidence`}{Numeric in (0, 1). `NA` for a row with no
 #'       computed congruence at all (`"not_evaluated_oversized"`,
-#'       `"not_evaluated_wrong_marker"`, or a fetch failure).}
+#'       `"not_evaluated_wrong_marker"`, or a fetch failure). **Named
+#'       contract (2026-09-05 critical-fix-review finding C): this value
+#'       CANNOT REACH 1**, by construction -- the Jeffreys smoothing floors
+#'       the disagreement fraction at `0.5/(n+1)`, so even a perfectly
+#'       corroborated multi-partner accession tops out just under 1 (e.g.
+#'       `0.99939` for a real 5-partner case). Any future consumer reading
+#'       this as a RATIO where 1 means "no adjustment needed" (e.g. a
+#'       likelihood-covariate-style rescale) must normalize by the per-row
+#'       achievable ceiling first, or it will silently adjust every
+#'       candidate in the dataset -- this is exactly the bug the one prior
+#'       attempt to use this column as a likelihood covariate hit before
+#'       being removed entirely (see `[[project_reference_quality_verdicts_
+#'       threads123]]` in the project memory system). Previously this
+#'       constraint was recorded only in a reentry doc, not here.}
 #'     \item{`label_identity_margin`}{Numeric, the capped `d` in
 #'       percent-identity points. `NA` when the row carries no identity
 #'       information of any kind.}
@@ -918,6 +931,7 @@ refine_reference_verdicts <- function(evaluation,
   out <- data.frame(accession = accessions, n = NA_integer_,
                     best_rank = NA_character_, who = NA_character_,
                     stringsAsFactors = FALSE)
+  out$accessions_list <- vector("list", length(accessions))
   if (is.null(cache_dir)) return(out)
   pairs <- tryCatch(.load_reference_pair_cache(cache_dir), error = function(e) NULL)
   if (is.null(pairs) || nrow(pairs) == 0L) return(out)
@@ -943,6 +957,12 @@ refine_reference_verdicts <- function(evaluation,
                                 ifelse(is.na(top$species_y), "?", top$species_y),
                                 100 * top$p_match, top$pair_finest_common_rank),
                         collapse = "; ")
+    # The actual accession IDs behind `who` -- .summarise_corroborators() had
+    # only ever built the formatted DISPLAY string, discarding the IDs
+    # themselves once printed. verify_removal_candidates(screen_corroborators=)
+    # (2026-09-05, critical-fix-review finding B5) needs the real IDs to
+    # actually go check them, not just show them to a human.
+    out$accessions_list[[k]] <- top$id_y
   }
   out
 }
@@ -1002,7 +1022,19 @@ refine_reference_verdicts <- function(evaluation,
 #' @param cache_dir Directory for the audit's own cache, or `NULL` (default)
 #'   for no caching. Because `max_hits` is in `params_key` an audit can never
 #'   overwrite a production row, but a separate directory keeps the
-#'   production cache free of rows no production call will ever read.
+#'   production cache free of rows no production call will ever read. Also
+#'   the cache `screen_corroborators` reads/writes corroborator verdicts
+#'   through, so corroborators already evaluated (production or a prior
+#'   audit) are served free.
+#' @param screen_corroborators Logical (default `TRUE`). For a row spared on
+#'   1-2 corroborators (see the section below), also check those
+#'   corroborators' OWN label via [evaluate_reference_accessions()] --
+#'   reusing an accession already present in `evaluation` for free where
+#'   possible -- and surface a corroborator that itself reads a non-`"keep"`
+#'   action as a stronger, separate warning. Never un-spares a row
+#'   automatically; a flagged corroborator is reported for a human to look
+#'   at, not acted on. `FALSE` skips this entirely (zero extra NCBI calls,
+#'   matching pre-2026-09-05 behavior).
 #' @param verbose Logical (default `TRUE`).
 #' @return A data frame with one row per removal candidate: `accession`,
 #'   `listed_taxon`, `action_production`/`action_audit`,
@@ -1013,7 +1045,13 @@ refine_reference_verdicts <- function(evaluation,
 #'   (the accession is no longer actioned `"remove"`), and -- when
 #'   `cache_dir` is supplied -- `n_corroborators`, `best_corroborator_rank`
 #'   and `corroborators`, a short list of the strongest partners that agreed.
-#'   Zero rows, and zero NCBI calls, when nothing would be removed.
+#'   When `screen_corroborators = TRUE` and any row is thin (spared on <= 2
+#'   corroborators), also `corroborator_accessions` (the checked
+#'   accession(s)), `corroborator_worst_action` (the worst
+#'   `reference_action` among them), and `corroborator_flagged` (logical,
+#'   `NA` when nothing could be checked). Zero rows, and zero NCBI calls,
+#'   when nothing would be removed; zero EXTRA NCBI calls (beyond the audit
+#'   itself) when nothing is thin or `screen_corroborators = FALSE`.
 #'
 #' @section Read the corroborators, not just `spared`:
 #' `congruent_evidence_exists_anywhere` counts a corroborating partner
@@ -1036,12 +1074,16 @@ refine_reference_verdicts <- function(evaluation,
 #' Widening the window makes the exposure larger, not smaller, since it
 #' admits more potential bad corroborators. So treat `spared` as a prompt to
 #' look, not a conclusion: a row rescued by one or two partners gets an
-#' explicit warning naming them.
+#' explicit warning naming them, and (`screen_corroborators = TRUE`,
+#' 2026-09-05) that corroborator's own label is now actually checked --
+#' never automatically, only flagged, per this project's own "flag, don't
+#' auto-act" convention.
 #' @seealso [remove_incongruent_references()], [score_reference_labels()]
 #' @export
 verify_removal_candidates <- function(evaluation, ...,
                                       audit_max_hits = 100L,
                                       cache_dir = NULL,
+                                      screen_corroborators = TRUE,
                                       verbose = TRUE) {
 
   if (!is.data.frame(evaluation) || !"accession" %in% names(evaluation))
@@ -1049,6 +1091,9 @@ verify_removal_candidates <- function(evaluation, ...,
   if (!is.numeric(audit_max_hits) || length(audit_max_hits) != 1L ||
       is.na(audit_max_hits) || audit_max_hits < 1)
     stop("audit_max_hits must be a single positive number.", call. = FALSE)
+  if (!is.logical(screen_corroborators) || length(screen_corroborators) != 1L ||
+      is.na(screen_corroborators))
+    stop("screen_corroborators must be TRUE or FALSE.", call. = FALSE)
 
   if (!"reference_action" %in% names(evaluation))
     evaluation <- score_reference_labels(evaluation)
@@ -1136,13 +1181,111 @@ verify_removal_candidates <- function(evaluation, ...,
   out$best_corroborator_rank <- corr$best_rank[match(out$accession, corr$accession)]
   out$corroborators <- corr$who[match(out$accession, corr$accession)]
 
+  # "thin" -- spared on only 1-2 corroborators -- is computed regardless of
+  # `verbose`, since `screen_corroborators` (below) needs it too, not just
+  # the message. Threshold matches the wording this function already used
+  # for its own warning before screen_corroborators existed.
+  thin <- out$spared %in% TRUE & !is.na(out$n_corroborators) & out$n_corroborators <= 2L
+
+  # ---- Screen the corroborators themselves (2026-09-05, finding B5) --------
+  # `congruent_evidence_exists_anywhere` counts a corroborating partner with
+  # no notion of whether THAT partner's own label is trustworthy --
+  # `refine_reference_verdicts()` cannot close this, since a corroborator
+  # that is "merely a BLAST hit" has no verdict of its own to discount (see
+  # this function's own roxygen). For a THIN spare (<=2 corroborators, where
+  # one bad corroborator is a real, not diluted, risk -- see the real
+  # KJ135626/MZ605481 case), check the corroborator(s)' own label the same
+  # way any other accession's is checked, instead of trusting them at face
+  # value forever.
+  out$corroborator_accessions   <- NA_character_
+  out$corroborator_worst_action <- NA_character_
+  out$corroborator_flagged      <- NA
+  if (isTRUE(screen_corroborators) && any(thin)) {
+    thin_acc_lists <- corr$accessions_list[match(out$accession[thin], corr$accession)]
+    to_check <- unique(stats::na.omit(unlist(thin_acc_lists, use.names = FALSE)))
+    if (length(to_check) > 0L) {
+      # Free lookup first: a corroborator that already has a real verdict
+      # from the PRODUCTION evaluation (e.g. it is also a match-driving
+      # accession somewhere else) needs no new NCBI call at all.
+      already_known <- evaluation[evaluation$accession %in% to_check, , drop = FALSE]
+      if (!"reference_action" %in% names(already_known) && nrow(already_known) > 0L)
+        already_known <- score_reference_labels(already_known)
+      still_unknown <- setdiff(to_check, already_known$accession)
+
+      # evaluate_reference_accessions() already runs score_reference_labels()
+      # on its own output (2026-09-03) -- calling it again here would error
+      # ("already has column(s) ... pass overwrite = TRUE").
+      corr_eval <- if (length(still_unknown) > 0L) {
+        if (verbose)
+          message(sprintf(
+            "verify_removal_candidates(): screening %d corroborator accession(s) behind %d thin spare(s) (screen_corroborators = TRUE)...",
+            length(still_unknown), sum(thin)
+          ))
+        evaluate_reference_accessions(
+          still_unknown, ..., max_hits = as.integer(audit_max_hits),
+          cache_dir = cache_dir, verbose = verbose
+        )
+      } else {
+        NULL
+      }
+      corr_lookup <- dplyr::bind_rows(
+        already_known[, intersect(c("accession", "reference_action", "hierarchy_flag"),
+                                  names(already_known)), drop = FALSE],
+        if (!is.null(corr_eval))
+          corr_eval[, intersect(c("accession", "reference_action", "hierarchy_flag"),
+                                names(corr_eval)), drop = FALSE]
+      )
+      corr_lookup <- corr_lookup[!duplicated(corr_lookup$accession), , drop = FALSE]
+
+      # A corroborator's OWN evidence is flagged when its reference_action is
+      # anything other than a clean "keep", or (if reference_action was not
+      # computable for it -- e.g. a fetch failure) its own hierarchy_flag
+      # itself reads "incongruent". "untested" is deliberately NOT "flagged"
+      # -- no usable evidence about the corroborator is not evidence AGAINST
+      # it, the same distinction this package draws everywhere else. (A prior
+      # version of this line read `!corr_action %in% "keep"`, which flagged
+      # "untested" too -- contradicting this very comment. Fixed 2026-09-05.)
+      corr_action <- corr_lookup$reference_action[match(to_check, corr_lookup$accession)]
+      corr_hflag  <- corr_lookup$hierarchy_flag[match(to_check, corr_lookup$accession)]
+      corr_bad <- ifelse(!is.na(corr_action), !corr_action %in% c("keep", "untested"),
+                         ifelse(!is.na(corr_hflag), corr_hflag %in% "incongruent", NA))
+
+      thin_idx <- which(thin)
+      for (j in seq_along(thin_idx)) {
+        accs <- thin_acc_lists[[j]]
+        if (length(accs) == 0L || all(is.na(accs))) next
+        acts <- corr_action[match(accs, to_check)]
+        bad  <- corr_bad[match(accs, to_check)]
+        out$corroborator_accessions[thin_idx[j]] <- paste(accs, collapse = "; ")
+        out$corroborator_worst_action[thin_idx[j]] <-
+          if (all(is.na(acts))) NA_character_ else {
+            lvl <- c(keep = 1L, caution = 2L, untested = 2L, inspect = 3L, remove = 4L)
+            acts[which.max(lvl[acts])]
+          }
+        out$corroborator_flagged[thin_idx[j]] <- if (all(is.na(bad))) NA else any(bad, na.rm = TRUE)
+      }
+    }
+  }
+
   if (verbose) {
-    thin <- out$spared %in% TRUE & !is.na(out$n_corroborators) & out$n_corroborators <= 2L
-    if (any(thin))
-      message(sprintf(
-        "  CHECK THESE BY HAND: %s spared on 1-2 corroborator(s) only. Look at whose label is doing the work -- a corroborator that is itself mislabeled reads exactly like real corroboration here (real case: GreatLakes KJ135626, rescued by MZ605481, a documented mislabel of the same species).",
-        paste(sprintf("%s (%s)", out$accession[thin], out$corroborators[thin]), collapse = "; ")
-      ))
+    if (any(thin)) {
+      flagged_thin <- thin & out$corroborator_flagged %in% TRUE
+      if (any(flagged_thin))
+        message(sprintf(
+          "  STRONG RED FLAG: %s -- this corroboration is likely unreliable, not just thin.",
+          paste(sprintf("%s (corroborator action: %s)", out$accession[flagged_thin],
+                        out$corroborator_worst_action[flagged_thin]), collapse = "; ")
+        ))
+      other_thin <- thin & !(out$corroborator_flagged %in% TRUE)
+      if (any(other_thin))
+        message(sprintf(
+          "  CHECK THESE BY HAND: %s spared on 1-2 corroborator(s) only. Look at whose label is doing the work -- a corroborator that is itself mislabeled reads exactly like real corroboration here (real case: GreatLakes KJ135626, rescued by MZ605481, a documented mislabel of the same species).%s",
+          paste(sprintf("%s (%s)", out$accession[other_thin], out$corroborators[other_thin]), collapse = "; "),
+          if (isTRUE(screen_corroborators))
+            " (their own corroborator(s) checked out clean, or could not be checked -- see corroborator_worst_action.)"
+          else ""
+        ))
+    }
     message(sprintf(
       "verify_removal_candidates(): %d of %d removal candidate(s) are no longer removable at max_hits = %d%s.",
       sum(out$spared, na.rm = TRUE), nrow(out), as.integer(audit_max_hits),
@@ -1154,6 +1297,166 @@ verify_removal_candidates <- function(evaluation, ...,
       message(sprintf(
         "  %d still-removable candidate(s) came back AT the audit window too, so that window is also truncated: %s",
         n_sat, paste(out$accession[out$still_saturated & !(out$spared %in% TRUE)], collapse = ", ")
+      ))
+  }
+  out
+}
+
+#' Audit thin locally-corroborated rows against their own corroborator's verdict
+#'
+#' `"locally_corroborated"` (2026-09-03) skips BLASTing an accession entirely
+#' when the caller's own reference set already has an independent conspecific
+#' deposit for it -- cached with TTL `Inf` and exempt from
+#' [refine_reference_verdicts()]'s trust-weighted refinement, since the MATCH
+#' itself, once observed, is permanent. But the *corroborator's own label* is
+#' exactly as falsifiable as any other accession's (this is the same
+#' `KJ135626`/`MZ605481` shape [verify_removal_candidates()] closed for the
+#' removal veto, showing up in a different, larger population). Nothing
+#' today ever asks whether a corroborator's own label later turned out to be
+#' wrong.
+#'
+#' This function audits that gap CHEAPLY -- it never BLASTs anything and
+#' never touches NCBI. Both numbers it needs are already sitting in the
+#' persistent cache for free: a `"locally_corroborated"` row already carries
+#' its own corroborator count (`n_independent_top_matches`, reused from the
+#' BLAST-diagnostic schema) and the corroborator's own accession
+#' (`local_corroborator_accession`), and a corroborator that has EVER been
+#' independently evaluated for any other reason already has its own verdict
+#' sitting in the same cache file. So the audit is two free filters, not a
+#' new evaluation: (1) scope to rows resting on `<= max_corroborators`
+#' corroborators (a spare resting on many independent partners agreeing is
+#' not the same risk as one resting on one or two -- the same "thin"
+#' threshold [verify_removal_candidates()] already uses); (2) self-join each
+#' thin row's `local_corroborator_accession` against the SAME cache to read
+#' its own verdict, if one exists.
+#'
+#' @section Deliberately does not screen the unresolved remainder:
+#' A corroborator with no cached verdict at all (never independently
+#' evaluated) is reported `status = "unchecked"`, not sent to
+#' [evaluate_reference_accessions()] -- unlike [verify_removal_candidates()]'s
+#' own `screen_corroborators = TRUE`, which DOES screen its own (much
+#' smaller, 1-4-per-site) unresolved corroborators. The
+#' `locally_corroborated` population is the ordinary fast path for any
+#' accession the caller's reference set happens to already double-cover --
+#' plausibly hundreds of rows per project, not a handful -- so forcing every
+#' unresolved corroborator through a fresh BLAST call here could mean a real,
+#' surprise NCBI cost this function's whole point is to avoid. Screening the
+#' unresolved remainder, if wanted, is a separate, explicit follow-up step
+#' (e.g. passing `out$local_corroborator_accession[out$status == "unchecked"]`
+#' to [evaluate_reference_accessions()] directly), not something this
+#' function does on your behalf.
+#'
+#' @param cache_dir The same persistent cache directory
+#'   [evaluate_reference_accessions()] was called with. Required -- a
+#'   `"locally_corroborated"` verdict only ever exists inside a persistent
+#'   cache (the skip mechanism has nothing to record it in otherwise).
+#' @param max_corroborators Integer (default `2L`). A `"locally_corroborated"`
+#'   row resting on more than this many independent corroborators is left out
+#'   of the audit entirely -- many independent partners all being wrong the
+#'   same way is implausible, matching
+#'   [verify_removal_candidates()]'s identical threshold.
+#' @param verbose Logical (default `TRUE`).
+#' @return A data frame, one row per thin `"locally_corroborated"` accession:
+#'   `accession`, `listed_taxon`, `n_corroborators`,
+#'   `local_corroborator_accession`, `corroborator_reference_action`,
+#'   `corroborator_hierarchy_flag`, and `status` (`"flagged"` -- the
+#'   corroborator's own evidence reads something other than a clean `"keep"`
+#'   or `"untested"`; `"clean"` -- the corroborator has a real `"keep"`
+#'   verdict; `"unchecked"` -- the corroborator has never been independently
+#'   evaluated in this cache, so nothing is known either way). Never
+#'   `"flagged"` for `"untested"`: no usable evidence about a corroborator is
+#'   not evidence AGAINST it, the same distinction
+#'   [verify_removal_candidates()] draws for its own thin corroborators.
+#'   Zero rows, and zero NCBI calls always, when the cache has no thin
+#'   `"locally_corroborated"` rows.
+#' @seealso [verify_removal_candidates()], [score_reference_labels()],
+#'   [corroborate_references_locally()]
+#' @export
+verify_local_corroborations <- function(cache_dir,
+                                        max_corroborators = 2L,
+                                        verbose = TRUE) {
+
+  if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir))
+    stop("verify_local_corroborations: `cache_dir` must be a single, non-NA path.", call. = FALSE)
+  if (!is.numeric(max_corroborators) || length(max_corroborators) != 1L ||
+      is.na(max_corroborators) || max_corroborators < 0)
+    stop("verify_local_corroborations: `max_corroborators` must be a single non-negative number.", call. = FALSE)
+
+  empty <- data.frame(
+    accession = character(0L), listed_taxon = character(0L),
+    n_corroborators = integer(0L), local_corroborator_accession = character(0L),
+    corroborator_reference_action = character(0L),
+    corroborator_hierarchy_flag = character(0L),
+    status = character(0L), stringsAsFactors = FALSE
+  )
+
+  cache <- .load_reference_accession_cache(cache_dir)
+  if (nrow(cache) == 0L) {
+    if (verbose)
+      message("verify_local_corroborations(): cache is empty or missing -- nothing to audit, no NCBI call made.")
+    return(empty)
+  }
+
+  # Every row (not just locally_corroborated ones) needs its own
+  # reference_action, since a locally_corroborated row can itself BE the
+  # corroborator behind a different, thin row.
+  scored <- score_reference_labels(cache)
+
+  lc <- scored[scored$hierarchy_flag %in% "locally_corroborated", , drop = FALSE]
+  if (nrow(lc) == 0L) {
+    if (verbose)
+      message("verify_local_corroborations(): no 'locally_corroborated' rows in this cache -- nothing to audit, no NCBI call made.")
+    return(empty)
+  }
+
+  thin <- !is.na(lc$n_independent_top_matches) &
+    lc$n_independent_top_matches <= max_corroborators
+  if (!any(thin)) {
+    if (verbose)
+      message(sprintf(
+        "verify_local_corroborations(): %d 'locally_corroborated' row(s), none resting on <= %d corroborator(s) -- nothing thin to audit, no NCBI call made.",
+        nrow(lc), as.integer(max_corroborators)
+      ))
+    return(empty)
+  }
+  lc <- lc[thin, , drop = FALSE]
+
+  corrob_acc <- .strip_acc_version(lc$local_corroborator_accession)
+  j <- match(corrob_acc, .strip_acc_version(scored$accession))
+  corrob_action <- scored$reference_action[j]
+  corrob_hflag  <- scored$hierarchy_flag[j]
+  # Same rule as verify_removal_candidates(screen_corroborators=): flagged is
+  # anything other than a clean "keep", falling back to hierarchy_flag ==
+  # "incongruent" only when reference_action itself is unavailable.
+  # "untested" is deliberately NOT flagged.
+  bad <- ifelse(!is.na(corrob_action), !corrob_action %in% c("keep", "untested"),
+               ifelse(!is.na(corrob_hflag), corrob_hflag %in% "incongruent", NA))
+  status <- ifelse(is.na(j), "unchecked", ifelse(bad, "flagged", "clean"))
+
+  out <- data.frame(
+    accession = lc$accession,
+    listed_taxon = lc$listed_taxon,
+    n_corroborators = lc$n_independent_top_matches,
+    local_corroborator_accession = lc$local_corroborator_accession,
+    corroborator_reference_action = corrob_action,
+    corroborator_hierarchy_flag = corrob_hflag,
+    status = status,
+    stringsAsFactors = FALSE
+  )
+
+  if (verbose) {
+    n_flagged   <- sum(out$status == "flagged")
+    n_clean     <- sum(out$status == "clean")
+    n_unchecked <- sum(out$status == "unchecked")
+    message(sprintf(
+      "verify_local_corroborations(): %d 'locally_corroborated' row(s), %d resting on <= %d corroborator(s) audited for free (no NCBI call made). Of those: %d corroborator(s) already verdicted clean, %d never independently evaluated (status = 'unchecked'), %d already verdicted BAD elsewhere in this cache.",
+      nrow(scored[scored$hierarchy_flag %in% "locally_corroborated", , drop = FALSE]),
+      nrow(out), as.integer(max_corroborators), n_clean, n_unchecked, n_flagged
+    ))
+    if (n_flagged > 0L)
+      message(sprintf(
+        "  STRONG RED FLAG: %s rest on a corroborator whose OWN label already reads flagged elsewhere in this same cache -- the match itself is permanent, its evidential value was not. Treat as unresolved, not congruent.",
+        paste(out$accession[out$status == "flagged"], collapse = ", ")
       ))
   }
   out

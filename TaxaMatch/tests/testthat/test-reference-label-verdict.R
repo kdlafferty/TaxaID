@@ -596,9 +596,15 @@ test_that("verify_removal_candidates() names the corroborators and warns when a 
     .package = "TaxaMatch"
   )
 
+  # screen_corroborators = TRUE (the default) checks BADREF's own label via
+  # the same mocked evaluate_reference_accessions() -- which reads it as
+  # "inspect", not "keep" -- so this is now the STRONG RED FLAG path, not the
+  # plain CHECK THESE BY HAND one. That escalation is the point: this is
+  # exactly the real KJ135626/MZ605481 shape the whole mechanism was built
+  # to catch (see the roxygen's own "Read the corroborators" section).
   expect_message(
     verify_removal_candidates(.audit_eval_fixture(), cache_dir = cache_dir),
-    "CHECK THESE BY HAND"
+    "STRONG RED FLAG"
   )
   out <- suppressMessages(
     verify_removal_candidates(.audit_eval_fixture(), cache_dir = cache_dir)
@@ -609,6 +615,108 @@ test_that("verify_removal_candidates() names the corroborators and warns when a 
   expect_equal(out$best_corroborator_rank[1L], "species")
   expect_match(out$corroborators[1L], "BADREF")
   expect_match(out$corroborators[1L], "Pseudorasbora parva")
+  # The corroborator itself (BADREF) was checked and came back flagged.
+  expect_true(out$corroborator_flagged[1L])
+  expect_match(out$corroborator_accessions[1L], "BADREF")
+  expect_equal(out$corroborator_worst_action[1L], "inspect")
+})
+
+test_that("verify_removal_candidates() does NOT flag a corroborator whose own action is 'untested'", {
+  # Regression: an earlier version of the corr_bad rule read
+  # `!corr_action %in% "keep"`, which flagged "untested" too -- directly
+  # contradicting this same code's own comment ("untested is deliberately
+  # NOT flagged -- no usable evidence about the corroborator is not evidence
+  # AGAINST it"). Fixed 2026-09-05.
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  saveRDS(
+    data.frame(
+      id_x = "SPARED", id_y = "UNTESTEDREF", p_match = 1,
+      pair_finest_common_rank = "species", species_y = "Pseudorasbora parva",
+      params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+      evaluated_at = Sys.time(), stringsAsFactors = FALSE
+    ),
+    file.path(cache_dir, "reference_pair_cache.rds")
+  )
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      data.frame(
+        accession = accessions,
+        reference_action = c("untested", "remove"),
+        congruent_evidence_exists_anywhere = c(TRUE, FALSE),
+        n_independent_top_matches = 5L, n_top_matches_available = 99L,
+        params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
+  out <- suppressMessages(
+    verify_removal_candidates(.audit_eval_fixture(), cache_dir = cache_dir)
+  )
+  expect_false(out$corroborator_flagged[1L])
+  expect_equal(out$corroborator_worst_action[1L], "untested")
+})
+
+test_that("verify_removal_candidates() screen_corroborators = FALSE skips the corroborator check entirely", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  saveRDS(
+    data.frame(
+      id_x = "SPARED", id_y = "BADREF", p_match = 1,
+      pair_finest_common_rank = "species", species_y = "Pseudorasbora parva",
+      params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+      evaluated_at = Sys.time(), stringsAsFactors = FALSE
+    ),
+    file.path(cache_dir, "reference_pair_cache.rds")
+  )
+  call_log <- new.env()
+  call_log$accessions <- list()
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      call_log$accessions[[length(call_log$accessions) + 1L]] <- accessions
+      data.frame(
+        accession = accessions,
+        reference_action = c("inspect", "remove"),
+        congruent_evidence_exists_anywhere = c(TRUE, FALSE),
+        n_independent_top_matches = 5L, n_top_matches_available = 99L,
+        params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
+  out <- suppressMessages(
+    verify_removal_candidates(.audit_eval_fixture(), cache_dir = cache_dir,
+                               screen_corroborators = FALSE)
+  )
+  expect_true(is.na(out$corroborator_flagged[1L]))
+  # Only the audit call itself (the two candidate accessions) -- no second
+  # call screening BADREF.
+  expect_length(call_log$accessions, 1L)
+  expect_false("BADREF" %in% call_log$accessions[[1L]])
+})
+
+test_that("verify_removal_candidates() screens no corroborators (zero extra NCBI calls) when nothing is thin", {
+  # Nothing is spared at all here (stays "remove"), so `thin` is empty --
+  # screen_corroborators = TRUE must still make exactly one evaluate_
+  # reference_accessions() call (the audit itself), never a second.
+  n_calls <- 0L
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      n_calls <<- n_calls + 1L
+      data.frame(accession = accessions, reference_action = "remove",
+                 congruent_evidence_exists_anywhere = FALSE,
+                 n_independent_top_matches = 5L, n_top_matches_available = 40L,
+                 params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+                 stringsAsFactors = FALSE)
+    },
+    .package = "TaxaMatch"
+  )
+  suppressMessages(
+    verify_removal_candidates(.audit_eval_fixture(actions = "remove"), cache_dir = NULL)
+  )
+  expect_equal(n_calls, 1L)
 })
 
 test_that("verify_removal_candidates() returns NA corroborator columns when no pair cache exists", {
@@ -627,4 +735,146 @@ test_that("verify_removal_candidates() returns NA corroborator columns when no p
   )
   expect_true(is.na(out$n_corroborators))
   expect_true(is.na(out$corroborators))
+})
+
+# ------------------------------------------------------------------------------
+# verify_local_corroborations() -- the free, no-NCBI audit of thin
+# locally_corroborated rows against their own corroborator's cached verdict
+# (2026-09-05, B5's remaining "adjacent door").
+# ------------------------------------------------------------------------------
+
+# One raw persistent-cache row, matching .load_reference_accession_cache()'s
+# real schema exactly (the hard-required columns; the additive ones are
+# included too for realism, though NA-safe if omitted).
+.raw_cache_row <- function(accession, hierarchy_flag, n_partners = NA_integer_,
+                          frac = NA_real_, best_agree = NA_real_,
+                          best_disagree = NA_real_, anywhere = FALSE,
+                          anywhere_pident = NA_real_,
+                          local_corroborator_accession = NA_character_) {
+  data.frame(
+    accession = accession, listed_taxon = NA_character_,
+    n_independent_top_matches = n_partners, n_top_matches_available = NA_integer_,
+    frac_independent_below_min_congruent_rank = frac,
+    finest_common_rank = NA_character_,
+    best_hit_pident = NA_real_, best_agreeing_pident = best_agree,
+    best_disagreeing_pident = best_disagree, best_disagreeing_taxon = NA_character_,
+    congruent_evidence_exists_anywhere = anywhere,
+    congruent_evidence_best_pident = anywhere_pident,
+    hierarchy_flag = hierarchy_flag,
+    evaluated_at = Sys.time(), params_key = "k",
+    taxonomy_resolution_source = NA_character_,
+    query_len_submitted = NA_integer_, query_trim_path = NA_character_,
+    n_excluded_same_batch = NA_integer_, n_excluded_not_species_resolved = NA_integer_,
+    local_corroborator_accession = local_corroborator_accession,
+    stringsAsFactors = FALSE
+  )
+}
+
+.write_raw_cache <- function(cache_dir, rows) {
+  if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
+  saveRDS(do.call(rbind, rows), file.path(cache_dir, "reference_accession_cache.rds"))
+}
+
+test_that("verify_local_corroborations() makes no NCBI call and returns zero rows when the cache is empty or missing", {
+  skip_if_not_installed("withr")
+  expect_message(
+    out <- verify_local_corroborations(withr::local_tempdir()),
+    "no NCBI call made"
+  )
+  expect_equal(nrow(out), 0L)
+})
+
+test_that("verify_local_corroborations() flags a thin row whose corroborator is itself removable", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  .write_raw_cache(cache_dir, list(
+    # THIN1: 1 corroborator (BADREF), which independently reads "remove"
+    # (the real REMOVE1 shape from .verdict_eval_fixture()).
+    .raw_cache_row("THIN1", "locally_corroborated", n_partners = 1L,
+                   best_agree = 100, anywhere = TRUE,
+                   local_corroborator_accession = "BADREF"),
+    .raw_cache_row("BADREF", "incongruent", n_partners = 3L, frac = 0.875,
+                   best_disagree = 98.62, anywhere = FALSE)
+  ))
+  msgs <- capture_messages(out <- verify_local_corroborations(cache_dir))
+  expect_equal(nrow(out), 1L)
+  expect_equal(out$accession, "THIN1")
+  expect_equal(out$status, "flagged")
+  expect_equal(out$corroborator_reference_action, "remove")
+  expect_true(any(grepl("STRONG RED FLAG", msgs)))
+})
+
+test_that("verify_local_corroborations() reads 'clean' when the corroborator's own verdict is keep", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  .write_raw_cache(cache_dir, list(
+    .raw_cache_row("THIN2", "locally_corroborated", n_partners = 2L,
+                   best_agree = 100, anywhere = TRUE,
+                   local_corroborator_accession = "GOODREF"),
+    # GOODREF: the real KEEP1 shape -- ordinary congruent, nothing disagrees.
+    .raw_cache_row("GOODREF", "congruent", n_partners = 5L, frac = 0.08333,
+                   best_agree = 99.5, anywhere = TRUE, anywhere_pident = 99.5)
+  ))
+  out <- suppressMessages(verify_local_corroborations(cache_dir))
+  expect_equal(out$status, "clean")
+  expect_equal(out$corroborator_reference_action, "keep")
+})
+
+test_that("verify_local_corroborations() reads 'unchecked' when the corroborator has no cached verdict at all", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  .write_raw_cache(cache_dir, list(
+    .raw_cache_row("THIN3", "locally_corroborated", n_partners = 1L,
+                   best_agree = 100, anywhere = TRUE,
+                   local_corroborator_accession = "NEVERSEEN")
+  ))
+  out <- suppressMessages(verify_local_corroborations(cache_dir))
+  expect_equal(out$status, "unchecked")
+  expect_true(is.na(out$corroborator_reference_action))
+})
+
+test_that("verify_local_corroborations() excludes a row resting on more than max_corroborators", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  .write_raw_cache(cache_dir, list(
+    # THICK1 rests on 5 independent corroborators -- many independent
+    # partners agreeing is not the thin-rescue risk, so it is left out of
+    # the audit entirely, regardless of BADREF's own bad verdict.
+    .raw_cache_row("THICK1", "locally_corroborated", n_partners = 5L,
+                   best_agree = 100, anywhere = TRUE,
+                   local_corroborator_accession = "BADREF"),
+    .raw_cache_row("BADREF", "incongruent", n_partners = 3L, frac = 0.875,
+                   best_disagree = 98.62, anywhere = FALSE)
+  ))
+  expect_message(
+    out <- verify_local_corroborations(cache_dir),
+    "nothing thin to audit, no NCBI call made"
+  )
+  expect_equal(nrow(out), 0L)
+})
+
+test_that("verify_local_corroborations() never flags an 'untested' corroborator", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  .write_raw_cache(cache_dir, list(
+    .raw_cache_row("THIN4", "locally_corroborated", n_partners = 1L,
+                   best_agree = 100, anywhere = TRUE,
+                   local_corroborator_accession = "UNTESTEDREF"),
+    # UNTESTEDREF: zero partners -> "untested", never "remove"/"caution"/
+    # "inspect" regardless of its own frac.
+    .raw_cache_row("UNTESTEDREF", "incongruent", n_partners = 0L, frac = 0.5,
+                   anywhere = FALSE)
+  ))
+  out <- suppressMessages(verify_local_corroborations(cache_dir))
+  expect_equal(out$corroborator_reference_action, "untested")
+  expect_equal(out$status, "clean")
+})
+
+test_that("verify_local_corroborations() input validation", {
+  expect_error(verify_local_corroborations(cache_dir = 1L), "single, non-NA path")
+  expect_error(verify_local_corroborations(cache_dir = NA_character_), "single, non-NA path")
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  expect_error(verify_local_corroborations(cache_dir, max_corroborators = -1),
+              "non-negative number")
 })
