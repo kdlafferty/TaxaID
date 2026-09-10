@@ -94,6 +94,18 @@ habitat_weights <- parse_hierarchical_habitat_response(raw_text, prompt)
 # Cottus asper          0.0            1.0                0.0
 # Anas platyrhynchos    0.05           0.60               0.35
 
+# Steps 1-3 in one call, with a per-taxon on-disk cache -- what every
+# production workflow should use. A habitat verdict decides which occurrence
+# records count toward a habitat-stratified site prior downstream, so an
+# uncached verdict that differs between two runs moves priors by orders of
+# magnitude and makes the published taxon list irreproducible. Only taxa not
+# already classified under the same scheme are sent to the LLM.
+habitat_weights <- build_habitat_lookup(
+  c("Fundulus parvipinnis", "Cottus asper", "Anas platyrhynchos"),
+  cache_dir = "my_project_habitat_cache"
+)
+attr(habitat_weights, "cache_summary")   # n_from_cache / n_called
+
 # 4. Assign habitat to sampling sites based on species composition
 occurrences_with_habitat <- assign_habitat_biological(
   occurrences, habitat_weights
@@ -105,10 +117,13 @@ flagged <- flag_habitat_inconsistencies(occurrences_with_habitat)
 
 ## Key Functions
 
-**Habitat classification:** - `build_habitat_prompt()` -- create LLM
-prompt for species habitat weights -
-`parse_hierarchical_habitat_response()` -- parse LLM output to numeric
-weights - `assign_habitat_biological()` -- assign site habitat from
+**Habitat classification:** - `build_habitat_lookup()` -- cached
+one-call classification (prompt, LLM call, parse; a taxon already
+classified under the same scheme is never re-asked) -
+`taxahabitat_clear_cache()` -- report or prune that cache -
+`build_habitat_prompt()` -- create LLM prompt for species habitat
+weights - `parse_hierarchical_habitat_response()` -- parse LLM output to
+numeric weights - `assign_habitat_biological()` -- assign site habitat from
 species composition - `consensus_habitat()` -- assemblage-level
 consensus with ecoregion extraction
 
@@ -222,6 +237,12 @@ Francisco, California), but any compatible provider works:
 ``` r
 # Use Gemini instead
 raw_text <- TaxaTools::prompt_api(prompt, llm_fn = TaxaTools::call_gemini_api)
+
+# Same, through the cached wrapper (pass a new cache_tag, or clear the
+# cache, when you change model and want fresh verdicts)
+habitat_weights <- build_habitat_lookup(taxa, llm_fn = TaxaTools::call_gemini_api,
+                                        cache_dir = "my_project_habitat_cache",
+                                        cache_tag = "gemini")
 ```
 
 `call_gemini_api()` calls Google Gemini (Google LLC, Mountain View,

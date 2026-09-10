@@ -665,6 +665,21 @@ No comments in the review; nothing to do.
   mean, never to any individual species' own shrunk estimate. Added this full derivation to
   `train_likelihood_model()`'s own `@section Pseudo-data anchoring`.
 
+**Addendum, 2026-09-10 -- two changes to `train_likelihood_model()` since this review.**
+(1) `min_pair_coverage` (default 0.8): a reference pair must meet the match object's own
+coverage floor before it may define a reference's best foreign/congener/conspecific match.
+Found on the first full GreatLakes run after the reference-screen rewiring: 86% of references'
+"best foreign match" was a 100%-identity, 4.6%-coverage short-overlap pair, so the trained
+gap was negative for 89% of references and the H1 likelihood was a near-tie on 82% of ASVs.
+Not a data filter (no pair removed, no species dropped -- this is the objection that archived
+`calibrate_coverage_filter()` on 2026-09-09, and it does not apply here). (2) `shrinkage =
+"empirical_bayes"` (default): the per-species mean weights are now `tau^2/(tau^2 +
+sigma^2/N)` with `tau^2` estimated per dimension, replacing the fixed `N/(N+prior_weight)`
+for the means only (`"fixed"` restores it; variances unchanged). Validated on the real
+GreatLakes workflow code path against Lamar: co-detections 593 -> 798, precision 0.805 ->
+0.818, 29 -> 41 of 61 species, none lost. See TaxaLikely/CLAUDE.md 2026-09-10 (later) and
+`ecosystem_docs/REENTRY_PROMPT_h1_foreign_coverage_floor.md`.
+
 ### tansform.R [sic -- transform.R]
 
 - **"Presumably there's significance to 99.3%/50% -- why these thresholds?"** **Answered with

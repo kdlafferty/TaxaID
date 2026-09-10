@@ -551,6 +551,13 @@ match:
 | `taxon_name_rank` | Rank of `taxon_name` (species, genus, etc.) |
 | `family`, `genus`, `species`, ... | Taxonomy columns |
 
+`blast_sequences()` also attaches `attr(match_obj, "report_params")`
+(`method`, `database`, `min_score`, `min_query_coverage`, `n_samples`).
+`min_query_coverage` is the alignment-coverage floor the match object was
+built under; `TaxaLikely::train_likelihood_model(min_pair_coverage =)` must
+equal it as a fraction, and `TaxaLikely::evaluate_likelihoods()` reads it
+from here to warn on a mismatch.
+
 ## Vignettes
 
 -   [Match Standardization](vignettes/match-standardization.Rmd) -- full

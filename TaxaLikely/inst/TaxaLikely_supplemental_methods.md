@@ -221,6 +221,30 @@ extreme outliers from dominating the training distribution. Gap computation is
 implemented in `.prep_training_data()` for training and in
 `.evaluate_one_query()` for inference.
 
+**Which pairs may define the "best alternative" at training time.** At
+inference the best alternative is the best-scoring *other* candidate the
+matching step returned, and every such candidate covers at least the match
+step's coverage floor (`TaxaMatch::blast_sequences(min_query_coverage = 80)`
+by default). The reference-vs-reference matrix contains no such floor: a
+pairwise alignment between a short deposit and an unrelated sequence can be
+100% identical over a few percent of the sequence, and on real 12S data
+(2,750 references) such a pair was the best foreign match for 86% of
+references (median coverage 4.6%), so 89% of references trained with a gap at
+or below zero and the model learned that the true species is normally beaten
+by a foreign one -- a gap no query can produce. `train_likelihood_model()`
+therefore applies the same floor (`min_pair_coverage`, default 0.8) to *pair
+selection*: only a pair at or above it may define a reference's best foreign,
+best congener (Section 4, H2) or best conspecific match. This is
+train/inference distribution matching for one feature, not a data-quality
+filter: no pair is removed and no species is dropped (a reference with no
+conspecific pair above the floor falls back to its best one; one with no
+foreign pair above it is treated as having no foreign comparison, exactly as a
+reference with no foreign pair at all). `evaluate_likelihoods()` reads the
+floor the match object was built under and warns if it is lower than the
+model's. Validated on the real GreatLakes 12S workflow against the independent
+Lamar species list (2026-09-10): species co-detections 593 to 798, precision
+0.805 to 0.818, 29 to 41 of 61 species recovered, none lost.
+
 ---
 
 ## 4. The Three Hypotheses
@@ -352,19 +376,39 @@ strategies:
 ### 5A. Empirical Bayes Shrinkage
 
 Per-species parameters are shrunk toward the global mean using a James–Stein /
-Empirical Bayes estimator (Efron & Morris 1973), with weight inversely
-proportional to sample size:
+Empirical Bayes estimator (Efron & Morris 1973):
 
-    w = N_obs / (N_obs + prior_weight)
     mu_species = w * mu_observed + (1 - w) * mu_global
 
-A species with many reference sequences retains its own estimate (w -> 1); a
-species with few observations is pulled toward the global mean (w -> 0). The
-`prior_weight` parameter (default 10.0) controls the shrinkage strength. This is
-implemented in `train_likelihood_model()`.
+For the two *means* (score and gap) the weight is, by default
+(`shrinkage = "empirical_bayes"`), the normal-normal empirical Bayes weight
 
-The per-species score *variance* is shrunk by the identical weight, applied
-directly to the variance itself (no further transformation of `w`):
+    w_i = tau^2 / (tau^2 + sigma^2 / N_i)
+
+where `sigma^2` is the global within-species variance of that dimension and
+`tau^2`, the real between-species variance of the species means, is estimated
+by method of moments from the species means themselves (`var(means) -
+mean(sigma^2 / N)`, floored at zero; the perfect-match anchor pseudo-species of
+Section 5C is excluded). When the species means spread no more than their own
+sampling noise, `tau^2 = 0` and every species takes the global mean; when they
+carry real structure, well-referenced species keep more of their own mean. The
+weight is estimated separately for score and gap, because the two behave
+differently in practice: on real 12S data the per-species score means carry no
+signal beyond noise (`tau/sigma = 0.00`, every species at the global score
+mean -- the same conclusion Section 11A reached from the query side), while the
+gap means do (`tau/sigma = 0.50`, weights 0.34-0.72). A weighted average of two
+finite means cannot leave the interval between them, so this cannot produce an
+implausible value for a thinly referenced species. `shrinkage = "fixed"`
+restores the original weight
+
+    w = N_obs / (N_obs + prior_weight)
+
+exactly, with `prior_weight` (default 10.0) as the equivalent pseudo-sample
+size; the estimated `tau^2` values are reported in the model's `Stats`.
+
+The per-species score *variance* is always shrunk by the fixed weight `w =
+N_obs / (N_obs + prior_weight)`, applied directly to the variance itself (no
+further transformation of `w`):
 
     var_species = w * var_observed + (1 - w) * var_global
 

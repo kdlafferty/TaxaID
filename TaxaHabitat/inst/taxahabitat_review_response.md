@@ -539,6 +539,16 @@ removed entirely (see below), so this concern is moot for that specific function
   reason about independently; not worth the churn given everything else already changed in this
   file this pass.
 
+### build_habitat_lookup.R (added 2026-09-10, after this review)
+
+Not part of the reviewed code. Cached one-call wrapper over the reviewed three-step pattern
+(`build_habitat_prompt()` -> `prompt_api()` -> `parse_hierarchical_habitat_response()`),
+built because the uncached step made production priors irreproducible between runs (a
+verdict flip moved a species' kernel prior by orders of magnitude on the 2026-09-10
+GreatLakes run). Same per-taxon file-per-key cache design as
+`TaxaFlag::review_assignments(cache_dir=)`; unresolved verdicts are never cached; 8 tests,
+no LLM call in tests. See TaxaHabitat/CLAUDE.md's "The habitat LLM step MUST be cached".
+
 ### report_habitat.R
 
 - **Example not runnable as-is:** Noted, not actioned. The example is already inside

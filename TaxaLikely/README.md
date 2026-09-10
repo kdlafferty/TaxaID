@@ -289,7 +289,9 @@ before trusting a result on real data.
 distance matrix via DECIPHER; required for `train_likelihood_model()`
 (screen for mislabeled references via TaxaMatch first -- see "Detecting
 Mislabeled References" below) - `train_likelihood_model()` -- fit
-hierarchical Bayesian model
+hierarchical Bayesian model (pair-coverage floor and empirical Bayes
+shrinkage on by default; see "Reference Coverage Quality Filtering" and
+"Statistical Design" below)
 
 **Inference:** - `calibrate_query_noise()` -- correct H1's mean for
 query-vs-reference technical noise invisible to reference-vs-reference
@@ -364,17 +366,30 @@ computed from a 580 bp overlap — yet both produce the same score.
 *alignment coverage* is the number of positions where both sequences
 contribute a non-gap character, divided by the shorter unaligned
 sequence length. Values near 1.0 indicate nearly complete overlap;
-values near 0.0 indicate highly gappy or partial alignments. Apply a
-minimum-coverage threshold directly before training if desired:
+values near 0.0 indicate highly gappy or partial alignments.
+
+`train_likelihood_model()` uses that column itself (2026-09-10): its
+`min_pair_coverage` floor (default `0.8`) decides which pairs may
+*define* a reference's best foreign, best congener and best conspecific
+match. It removes no pair from the data and drops no species -- a
+reference with no conspecific pair above the floor falls back to its
+best one. The floor exists because a pairwise alignment between a short
+deposit and an unrelated sequence can be 100% identical over a few
+percent of the sequence; on real 12S data that was the "best foreign
+match" for 86% of references, so the trained gap was negative for 89% of
+them while every real BLAST candidate at inference had coverage of at
+least 80. The floor must equal the coverage floor the match object was
+built under (`TaxaMatch::blast_sequences(min_query_coverage = 80)` is
+`0.8`); `blast_sequences()` records that value in the match object and
+`evaluate_likelihoods()` warns if the two disagree.
 
 ``` r
-ref_matrix   <- build_sequence_matrix(reference_df)
-ref_filtered <- ref_matrix[ref_matrix$coverage >= 0.9, ]
-model        <- train_likelihood_model(ref_filtered)
+ref_matrix <- build_sequence_matrix(reference_df)
+model      <- train_likelihood_model(ref_matrix, min_pair_coverage = 0.8)
 ```
 
-Be cautious about excluding low-coverage pairs from training, even
-manually: a real test on full-scale production data found that a
+Do not confuse this with excluding low-coverage pairs from training
+altogether. Be cautious about that, even manually: a real test on full-scale production data found that a
 coverage floor produces a genuine likelihood-quality improvement on the
 pairs it keeps, but also a real, quantified cost — roughly 19% of
 species can lose every training pair, and roughly 25% of real
@@ -499,6 +514,27 @@ hypothesis type:
     borrow a shifted mean rather than observing their own species
     directly, correctly come out wider than a well-referenced H1
     candidate.
+
+-   **Pair-coverage floor (`min_pair_coverage`, default 0.8):** only a
+    reference pair at or above the match object's own coverage floor may
+    define a reference's best foreign/congener/conspecific match when
+    the gap feature is trained. Train/inference distribution matching
+    for one feature, not a data filter -- no pair removed, no species
+    dropped. Validated on the real GreatLakes workflow code path against
+    the independent Lamar species list: species co-detections 593 to
+    798, precision 0.805 to 0.818, 29 to 41 of 61 species, none lost.
+
+-   **Shrinkage weights (`shrinkage`, default `"empirical_bayes"`):**
+    each species' H1 mean score and mean gap are shrunk toward the
+    global mean with weight `tau^2 / (tau^2 + sigma^2/N)`, where `tau^2`
+    (the real between-species variance of the means) is estimated by
+    method of moments, per dimension. No signal beyond noise collapses
+    every species to the global mean; real signal lets well-referenced
+    species keep more of their own. On real 12S data the score means
+    carry no such signal (weight 0 for every species) while the gap
+    means do (weights 0.34-0.72). `"fixed"` restores the original
+    `N / (N + prior_weight)` weight exactly. Variance shrinkage always
+    uses the fixed weight.
 
 -   **Alignment coverage filter (optional):** A `min_coverage` threshold
     can be passed to `evaluate_likelihoods()` to drop low-coverage
