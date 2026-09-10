@@ -354,7 +354,8 @@ value that explodes near `theta` = 0 or 1, or collapses toward zero
 under covariate extrapolation. No concentration cap, concentration
 floor, Jeffreys fallback, or extrapolation warning is needed on
 kernel-estimated rows. (The global floor prior for genuinely undetected
-species, Section 7.1, retains its own small-`N` Jeffreys fallback, which
+species, Section 7.1, retains its own small-`N` Jeffreys fallback --
+named for the invariant prior of Jeffreys (1946) -- which
 is a different mechanism serving a different purpose and is unaffected
 by this.)
 

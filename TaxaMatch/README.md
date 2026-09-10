@@ -30,7 +30,7 @@ users will start from an existing bioinformatics pipeline.
 ## Supported Data Types
 
 | Data type | Input format | Function |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | **DNA sequences** | DADA2 seqtab, FASTA, DNAStringSet | `read_sequence_table()` |
 | **BLAST results** | Remote NCBI or local rBLAST | `blast_sequences()` |
 | **Images** | Animl CSV export | `read_animl_output()` |
@@ -178,7 +178,8 @@ downloaded audio, then join detections back to the known species via
 Wildlife Alliance, San Diego, California) is an R package on CRAN that
 wraps MegaDetector (Microsoft AI for Earth; Microsoft Corporation,
 Redmond, Washington) and SpeciesNet (Google LLC, Mountain View,
-California) to classify camera trap images. Install it with
+California) to classify camera trap images -- an approach with a long
+track record in ecology (Tabak et al. 2019). Install it with
 `install.packages("animl")` (requires Python \>= 3.12 via `reticulate`).
 
 **Read Animl results into match object format:**
@@ -315,7 +316,7 @@ sn_df <- read_speciesnet_output(
 ) |> subset(!is.na(taxon_rank))
 ```
 
-**InsectNet** (He et al. 2025; Iowa State University, Ames, Iowa;
+**InsectNet** (Chiranjeevi et al. 2025; Iowa State University, Ames, Iowa;
 <https://insectapp.las.iastate.edu>) targets insects (2,526 species, 17
 orders) with 96.4% top-1 accuracy. Unlike the classifiers above, it
 returns *conformal prediction sets* rather than a single
@@ -328,7 +329,7 @@ interface is available; programmatic access to model weights is
 described in the paper but no public API exists at time of writing.
 
 | Classifier | Reader function | Score type | R package |
-|------------------|------------------|------------------|------------------|
+|----|----|----|----|
 | Animl / SpeciesNet | `read_animl_output()` | Confidence 0--1 | `animl` (CRAN) |
 | iNaturalist CV (direct) | `score_image_inat()` | Softmax 0--100 | Free API (token required) |
 | iNaturalist CV (saved JSON) | `read_inaturalist_cv_output()` | Softmax 0--1 | `rinat` (indirect) |
@@ -584,7 +585,7 @@ taxonomic assignment: U.S. Geological Survey software release,
 -   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (foundation package, installed first)
 -   httr2 and rentrez (for remote NCBI BLAST)
--   Biostrings and rBLAST (Hahsler and Nagar 2019; optional, for local
+-   Biostrings and rBLAST (Hahsler and Nagar 2024; optional, for local
     BLAST)
 -   Python 3.9+ and birdnetlib (`pip3 install birdnetlib`; optional, for
     acoustic analysis via BirdNET-Analyzer)
@@ -601,14 +602,16 @@ Altschul, S.F., Gish, W., Miller, W., Myers, E.W. and Lipman, D.J.
 (1990). Basic local alignment search tool. *Journal of Molecular
 Biology*, 215(3), 403--410.
 
-Hahsler, M. and Nagar, A. (2019). rBLAST: R Interface for the Basic
-Local Alignment Search Tool. R package.
-<https://github.com/mhahsler/rBLAST>
-
-He, S., Li, Y., Wang, Y., Galloway, B., Li, H., Liu, S., Huang, C.,
-Hart, T.J. and Zhao, Z. (2025). InsectNet: automated insect
-identification from around the world. *PNAS Nexus*, 4(1), pgae575.
+Chiranjeevi, S., Saadati, M., Deng, Z.K., Koushik, J., Jubery, T.Z.,
+Mueller, D.S., O'Neal, M., Merchant, N., Singh, Aarti, Singh, A.K.,
+Sarkar, S., Singh, Arti and Ganapathysubramanian, B. (2025). InsectNet:
+Real-time identification of insects using an end-to-end machine learning
+pipeline. *PNAS Nexus*, 4(1), pgae575.
 <https://doi.org/10.1093/pnasnexus/pgae575>
+
+Hahsler, M. and Nagar, A. (2024). rBLAST: R Interface for the Basic
+Local Alignment Search Tool. R package version 0.99.4. Bioconductor.
+<https://doi.org/10.18129/B9.bioc.rBLAST>
 
 R Core Team (2025). R: A Language and Environment for Statistical
 Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,

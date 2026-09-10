@@ -9,9 +9,9 @@ intended as a manuscript-ready methods reference for the TaxaID ecosystem.*
 
 ## 1. Problem Statement
 
-Traditional DNA barcoding relies on "top hit" approaches (e.g., BLAST; Hebert
-et al. 2003), which assign taxonomy based strictly on the highest percentage
-match. This approach fails in the context of **open-set recognition** (Scheirer
+Traditional DNA barcoding (Hebert et al. 2003) is in practice most often applied
+through "top hit" approaches such as BLAST (Altschul et al. 1990), which assign
+taxonomy based strictly on the highest percentage match. This approach fails in the context of **open-set recognition** (Scheirer
 et al. 2013) — the scenario where the true species or genus of the query
 sequence is absent from the reference database.
 
@@ -21,9 +21,14 @@ Distinguishing these scenarios requires a probabilistic framework that evaluates
 not just the magnitude of the match, but the distribution of matches expected at
 each taxonomic rank.
 
-Previous work on probabilistic taxonomic assignment (Somervuo et al. 2017;
-Axtner et al. 2019; Zito et al. 2023) has addressed the open-set problem by
-placing prior probabilities over both known and unknown taxa. TaxaLikely extends
+Previous work has addressed the open-set problem by placing prior probabilities
+over both known and unknown taxa: PROTAX spreads probability across a taxonomy
+tree that includes unnamed branches, so that a query need not be forced onto a
+described species (Somervuo et al. 2016), and BayesANT uses species-sampling-model
+priors that allow unobserved taxa to be discovered at each rank (Zito et al.
+2023). Applied metabarcoding pipelines have adopted PROTAX for exactly this
+property, because it can account for incomplete reference databases (Axtner et
+al. 2019). TaxaLikely extends
 this approach by explicitly separating the likelihood estimation from the prior,
 training a generative model on reference-vs-reference pairwise distances
 (`build_sequence_matrix()` + `train_likelihood_model()`) and then applying that
@@ -454,13 +459,13 @@ positive gaps.
 
 To capture the interaction between score and gap (e.g., a small gap is more
 tolerable if the score is extremely high), TaxaLikely models the joint
-distribution using a **bivariate normal density** (Genz et al. 2023):
+distribution using a **bivariate normal density**:
 
     L(H) = P(score, gap | mu_H, Sigma_H)
 
 Where `mu_H` is the 2D mean vector and `Sigma_H` is the 2x2 covariance matrix
-for hypothesis H. This is evaluated via `mvtnorm::dmvnorm()` inside
-`.evaluate_one_query()`.
+for hypothesis H. This is evaluated via `mvtnorm::dmvnorm()` (Genz & Bretz 2009)
+inside `.evaluate_one_query()`.
 
 For queries with only a **single candidate taxon** (no meaningful gap), TaxaLikely
 automatically falls back to a 1D normal over score alone.
@@ -637,8 +642,9 @@ for acoustic recordings. These scores are bounded, monotonically related to matc
 quality, and superficially probability-like, which invites the temptation to read
 them directly as probabilities of correct identification. This temptation should be
 resisted. As Wood & Kahl (2024) state for the BirdNET classifier, confidence scores
-"are not probabilities"; Knight et al. (2017) reach the same conclusion for acoustic
-recognizers in general. The same caution applies to BLAST percent identity: a score
+"are not probabilities". Knight et al. (2017) do not make that claim directly, but
+they recommend that recognizer scores be assessed empirically against validated
+detections rather than taken at face value. The same caution applies to BLAST percent identity: a score
 of 98% is not a 98% probability that the query and reference are conspecific, and a
 score of 100% is not certainty. A match score is an *unitless* quantity whose
 relationship to identification accuracy must be learned, not assumed.
@@ -1081,15 +1087,19 @@ Abdo, Z., and G. B. Golding. 2007. A step toward barcoding life: a model-based,
 decision-theoretic method to assign genes to preexisting species groups.
 *Systematic Biology* 56(1):44–56. doi:10.1080/10635150601167005
 
+Altschul, S.F., Gish, W., Miller, W., Myers, E.W. and Lipman, D.J. (1990).
+Basic local alignment search tool. *Journal of Molecular Biology*, 215(3),
+403–410. doi:10.1016/S0022-2836(05)80360-2
+
 Anscombe, F. J. (1948). The transformation of Poisson, binomial and
 negative-binomial data. *Biometrika*, 35(3/4), 246–254.
 doi:10.1093/biomet/35.3-4.246
 
-Axtner, J., Crampton-Platt, A., Hoerig, L.A., Mohamed, A., Xu, C.C.Y.,
+Axtner, J., Crampton-Platt, A., Hörig, L.A., Mohamed, A., Xu, C.C.Y.,
 Yu, D.W. and Wilting, A. (2019). An efficient and robust laboratory workflow
-and target capture method for species identification from environmental DNA.
-*Molecular Ecology Resources*, 19(2), 524–541.
-doi:10.1111/1755-0998.12969
+and tetrapod database for larger scale environmental DNA studies.
+*GigaScience*, 8(4), giz029.
+doi:10.1093/gigascience/giz029
 
 Burnham, K. P., and D. R. Anderson. 2002. *Model selection and multimodel inference: a
 practical information-theoretic approach.* 2nd ed. Springer, New York.
@@ -1099,9 +1109,9 @@ competitors — an empirical Bayes approach. *Journal of the American
 Statistical Association*, 68(341), 117–130.
 doi:10.1080/01621459.1973.10481350
 
-Genz, A., Bretz, F., Miwa, T., Mi, X., Leisch, F., Scheipl, F. and
-Hothorn, T. (2023). *mvtnorm: Multivariate Normal and t Distributions*.
-R package. doi:10.5281/zenodo.10021696
+Genz, A. and Bretz, F. (2009). *Computation of Multivariate Normal and t
+Probabilities*. Lecture Notes in Statistics. Springer-Verlag, Heidelberg.
+ISBN 978-3-642-01688-2. (Citation designated by the mvtnorm package.)
 
 Hebert, P.D.N., Cywinska, A., Ball, S.L. and deWaard, J.R. (2003).
 Biological identifications through DNA barcodes. *Proceedings of the
@@ -1142,9 +1152,9 @@ Machine Intelligence*, 35(7), 1757–1772.
 doi:10.1109/TPAMI.2012.256
 
 Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
-(2017). Unbiased probabilistic taxonomic classification for DNA barcoding
-and DNA metabarcoding. *Bioinformatics*, 33(19), 2997–3005.
-doi:10.1093/bioinformatics/btx369
+(2016). Unbiased probabilistic taxonomic classification for DNA barcoding.
+*Bioinformatics*, 32(19), 2920–2927.
+doi:10.1093/bioinformatics/btw346
 
 Wang, Q., Garrity, G.M., Tiedje, J.M. and Cole, J.R. (2007). Naïve Bayesian
 classifier for rapid assignment of rRNA sequences into the new bacterial
@@ -1154,7 +1164,7 @@ doi:10.1128/AEM.00062-07
 Wood, C. M., and S. Kahl. 2024. Guidelines for appropriate use of BirdNET scores and other
 detector outputs. *Journal of Ornithology* 165:777–782. doi:10.1007/s10336-024-02144-5
 
-Zito, A., Rigon, T., Ovaskainen, O. and Dunson, D.B. (2023). Bayesian
-nonparametric modelling of sequential discoveries. *Methods in Ecology
-and Evolution*, 14(6), 1373–1385.
+Zito, A., Rigon, T. and Dunson, D.B. (2023). Inferring taxonomic placement
+from DNA barcoding aiding in discovery of new taxa. *Methods in Ecology
+and Evolution*, 14(2), 529–542.
 doi:10.1111/2041-210X.14009

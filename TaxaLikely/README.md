@@ -413,7 +413,7 @@ hypothesis type:
     that differences near 100% are amplified appropriately
 
 -   **Transform choice (`score_transform`):** `"logit"` (default,
-    `ln(p/(1-p))`) or `"sqrt_mismatch"` (`-sqrt(1-p)`, Anscombe's
+    `ln(p/(1-p))`) or `"sqrt_mismatch"` (`-sqrt(1-p)`, Anscombe's (1948)
     classical rare-event-count variance stabilizer, applied to the match
     *mismatch*). Logit's derivative diverges fastest exactly where real
     barcode matches concentrate (near 100% identity), which was found to
@@ -815,6 +815,13 @@ Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC, San
 Francisco, California).
 
 ## References
+
+Anscombe, F.J. (1948). The transformation of Poisson, binomial and
+negative-binomial data. *Biometrika*, 35(3/4), 246--254.
+
+Efron, B. and Morris, C. (1973). Stein's estimation rule and its
+competitors -- an empirical Bayes approach. *Journal of the American
+Statistical Association*, 68(341), 117--130.
 
 Gentleman, R.C., Carey, V.J., Bates, D.M., Bolstad, B., Dettling, M.,
 Dudoit, S., Ellis, B., Gautier, L., Ge, Y., Gentry, J., Hornik, K.,

@@ -38,6 +38,5 @@ exclusions: list(
     "R/fit_regional_presence_curve.R" = list(line_length_linter = Inf),
     "tests/testthat/test-apply_undetected_evidence.R" = list(line_length_linter = Inf),
     "tests/testthat/test-generate_regional_proximity_evidence.R" = list(line_length_linter = Inf),
-    "tests/testthat/test-generate_domestic_food_priors.R" = list(line_length_linter = Inf),
-    "inst/workflows/generate_priors_workflow.R" = list(line_length_linter = Inf)
+    "tests/testthat/test-generate_domestic_food_priors.R" = list(line_length_linter = Inf)
   )

@@ -71,16 +71,24 @@ report_habitat <- function(habitat_data,
   # a data frame can legitimately carry both a real main_habitat column AND
   # real per-category weight columns together (this file's own "excludes
   # known non-habitat columns" test does exactly that). Positively identify
-  # real weight columns instead: every habitat weight column is documented
-  # (parse_hierarchical_habitat_response()'s own @return) to hold values in
-  # [0, 1] -- a coordinate or other incidental numeric column essentially
-  # never does. Only fall back to tallying the categorical main_habitat
-  # column when NOTHING numeric passes that range check.
+  # real weight columns instead -- see .looks_like_habitat_weights() for the
+  # exact signals and why a bare [0, 1] range check on ANY one column (the
+  # 2026-09-08 form of this dispatch) was not enough. Only fall back to
+  # tallying the categorical main_habitat column when the numeric columns
+  # do not positively look like a weight table.
+  # Resolve the taxon column ONCE, here, and hand the resolved name to both
+  # branches. Previously only .summarise_main_habitat() consulted
+  # .resolve_taxon_col(); .summarise_habitat_weights() tested the raw
+  # taxon_col, so the documented Shape A call -- report_habitat() on
+  # parse_hierarchical_habitat_response()'s output, which always names its
+  # taxon column taxon_name, against this function's historical
+  # "scientificName" default -- silently fell through to nrow() and reported
+  # ROWS as n_taxa. Same class as the "1419840 taxa" bug .resolve_taxon_col()
+  # was written for, just on the other branch (found 2026-09-10).
+  taxon_col <- .resolve_taxon_col(habitat_data, taxon_col)
+
   candidate_cols <- .candidate_habitat_cols(habitat_data, taxon_col)
-  has_weight_cols <- length(candidate_cols) > 0L && any(vapply(candidate_cols, function(hc) {
-    x <- habitat_data[[hc]]
-    all(is.na(x) | (x >= 0 & x <= 1))
-  }, logical(1L)))
+  has_weight_cols <- .looks_like_habitat_weights(habitat_data, candidate_cols)
 
   if (!has_weight_cols && "main_habitat" %in% names(habitat_data)) {
     hab <- .summarise_main_habitat(habitat_data, taxon_col)
@@ -128,6 +136,112 @@ report_habitat <- function(habitat_data,
     params     = params,
     statistics = statistics
   )
+}
+
+
+#' Do the candidate numeric columns positively look like a habitat weight table?
+#'
+#' report_habitat() accepts two documented shapes and must tell them apart from
+#' the data alone. Shape A -- parse_hierarchical_habitat_response()'s per-species
+#' weight table -- has one numeric column per habitat plus Other_weight,
+#' documented to hold values in [0, 1] and (its own @details) to sum to ~1.0
+#' across a row within a tolerance of 0.05. Shape B --
+#' assign_habitat_biological()'s occurrence-level output -- adds only a
+#' categorical main_habitat winner per row and NO numeric weight columns at all,
+#' so its only numeric columns are the occurrence data's own incidental ones
+#' (decimalLatitude/decimalLongitude in every real production caller, often also
+#' elevation_m/dist_to_coast_km/depth_m).
+#'
+#' The 2026-09-08 dispatch asked only whether ANY single candidate column
+#' satisfied all(is.na(x) | (x >= 0 & x <= 1)). That has two holes, both
+#' confirmed by evaluation on the real Pt Conception 12S object (2026-09-10):
+#'
+#' 1. It passes VACUOUSLY for an all-NA numeric column -- is.na(x) is then TRUE
+#'    everywhere and the range half of the `|` is never reached. GBIF exports
+#'    routinely carry such columns (depth, elevation, coordinatePrecision).
+#' 2. It passes for any genuinely proportional non-habitat column, e.g. a
+#'    coordinatePrecision of 0.001, or a dist_to_coast_km that is 0 for every
+#'    retained record in a coastal-only survey.
+#'
+#' Either flips Shape B into the weight branch and reproduces the exact pre-fix
+#' symptom the 2026-09-07/08 fix was written to prevent -- verified live: adding
+#' one all-NA `depth` column to the real PtConMifishSchulte occurrence object
+#' turned a correct "356 taxa ... Dominant habitat: Marine (89% of assigned
+#' records)" into "20000 taxa ... Dominant habitat: decimalLatitude (mean weight
+#' 3506%)".
+#'
+#' So ask for POSITIVE evidence of a weight table instead of mere absence of a
+#' range violation. All of:
+#'
+#' 1. at least one candidate column;
+#' 2. EVERY candidate column carries real data (at least one non-NA value) and
+#'    lies in [0, 1.05]. `all`, not `any`, because a genuine weight table has no
+#'    non-weight numeric columns while an occurrence frame essentially always
+#'    carries at least one out-of-range one -- this closes hole 1 by making an
+#'    all-NA column a disqualifier rather than a free pass. The 0.05 upper slack
+#'    is parse_hierarchical_habitat_response()'s own tolerance, since it
+#'    documents that weights are NOT renormalised;
+#' 3. the columns behave like a composition: over rows with any positive weight,
+#'    more than half sum to 1.0 within 0.05 -- deliberately the same
+#'    `abs(row_sums - 1) > 0.05 & row_sums > 0` rule that function uses to call
+#'    a row's weights malformed. This closes hole 2: a lone 0.001 precision
+#'    column, or an all-zero distance column, is in range but never composes.
+#'
+#' Chosen over the minimal `any(!is.na(x)) && all(...)` patch, which closes hole
+#' 1 only; and over dispatching purely on structural markers (Other_weight /
+#' Habitat present, main_habitat absent), because a hand-assembled table can
+#' carry main_habitat and real weight columns together with none of Shape A's
+#' other markers -- this file's own "excludes known non-habitat columns" test
+#' does exactly that, and structure alone would misdispatch it.
+#'
+#' Being strict is cheap: report_habitat() consults this only when deciding
+#' whether to PREFER the main_habitat tally, so a false negative on a frame with
+#' no main_habitat column still falls through to the weight branch.
+#'
+#' @return Logical scalar.
+#' @noRd
+.looks_like_habitat_weights <- function(habitat_data, candidate_cols) {
+  if (length(candidate_cols) == 0L) {
+    return(FALSE)
+  }
+
+  # parse_hierarchical_habitat_response() documents weights as [0, 1] but
+  # explicitly does not renormalise, and warns only beyond 0.05 of 1.0.
+  weight_tol <- 0.05
+
+  ok <- vapply(candidate_cols, function(hc) {
+    x <- habitat_data[[hc]]
+    nn <- x[!is.na(x)]
+    # length(nn) > 0L first: this is the all-NA guard. An all-NA column is
+    # not evidence of a weight table, and treating it as such is the bug.
+    length(nn) > 0L && all(nn >= 0 & nn <= 1 + weight_tol)
+  }, logical(1L))
+  if (!all(ok)) {
+    return(FALSE)
+  }
+
+  # Build the matrix by column so this works for data.frame, tibble and
+  # data.table alike ([ , cols] means something else entirely for the last).
+  # dim<- rather than relying on vapply's shape: with a single row vapply
+  # returns a bare vector, not a 1-row matrix.
+  n <- nrow(habitat_data)
+  w <- vapply(
+    candidate_cols,
+    function(hc) as.numeric(habitat_data[[hc]]),
+    numeric(n)
+  )
+  dim(w) <- c(n, length(candidate_cols))
+  row_sums <- rowSums(w, na.rm = TRUE)
+
+  # row_sums > 0 mirrors parse_hierarchical_habitat_response()'s own exemption
+  # for all-zero rows (a taxon the LLM gave no weight anywhere). If NOTHING is
+  # scored -- every candidate column is zero throughout -- there is no positive
+  # evidence of a weight table, so this is FALSE rather than vacuously TRUE.
+  scored <- row_sums > 0
+  if (!any(scored)) {
+    return(FALSE)
+  }
+  mean(abs(row_sums[scored] - 1) <= weight_tol) > 0.5
 }
 
 
@@ -231,8 +345,13 @@ report_habitat <- function(habitat_data,
     }
   }
 
-  n_taxa <- if (taxon_col %in% names(habitat_data)) {
-    length(unique(habitat_data[[taxon_col]][!is.na(habitat_data[[taxon_col]])]))
+  # taxon_col arrives already resolved by report_habitat(); .resolve_taxon_col()
+  # is idempotent, so calling it again here keeps this helper correct if it is
+  # ever used directly. The nrow() fallback is a last resort only -- reaching it
+  # means n_taxa counts ROWS, which is exactly the wrong number to print.
+  resolved_taxon_col <- .resolve_taxon_col(habitat_data, taxon_col)
+  n_taxa <- if (resolved_taxon_col %in% names(habitat_data)) {
+    length(unique(habitat_data[[resolved_taxon_col]][!is.na(habitat_data[[resolved_taxon_col]])]))
   } else {
     nrow(habitat_data)
   }

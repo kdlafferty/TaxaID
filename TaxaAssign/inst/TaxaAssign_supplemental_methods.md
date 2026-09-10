@@ -126,8 +126,11 @@ merely the best on average.
 ### 2.4 Prior Uncertainty via the Beta Distribution
 
 Priors are modelled as $\text{Beta}(\alpha, \beta)$ rather than fixed
-point estimates. The Beta distribution is the natural choice for
-probabilities bounded on $[0, 1]$ (Jeffreys 1946). Key relationships:
+point estimates. The Beta distribution is supported on $[0, 1]$ and is the
+conjugate prior for a binomial probability, which makes it a convenient
+carrier of uncertainty about a prior probability; the invariance rule of
+Jeffreys (1946) yields $\text{Beta}(1/2, 1/2)$ as the corresponding
+non-informative special case. Key relationships:
 
 -   **Mean**: $\mu = \alpha / (\alpha + \beta)$
 -   **Concentration**: $\phi = \alpha + \beta$ controls precision. Large
@@ -339,9 +342,10 @@ anchor the LLM's prior weights to ecologically defensible bounds:
 | taxonomically_impossible | 0.0001 -- 0.002 | Wrong continent/realm |
 
 These ranges produce approximately a 10-fold reduction per ecological
-step, consistent with expert elicitation principles (O'Hagan et al.
-2006). The user can customize ranges via the `prior_weight_guide`
-parameter.
+step. The step size is our own choice rather than a prescribed scheme;
+O'Hagan and others (2006) provide the general framework for eliciting and
+encoding judgements of this kind. The user can customize ranges via the
+`prior_weight_guide` parameter.
 
 #### Information Quality and Beta Concentration
 
@@ -448,7 +452,8 @@ finest taxonomic rank at which assignment is confident:
 
 4.  **Lowest Common Ancestor (LCA)**: when the plausible set contains
     multiple taxa, compute the LCA -- the finest taxonomic rank at which
-    all plausible candidates agree. For example, if the plausible set
+    all plausible candidates agree, following the convention established
+    for metagenomic assignment by Huson and others (2007). For example, if the plausible set
     contains *Fundulus parvipinnis* and *Fundulus heteroclitus*, the LCA
     is genus *Fundulus*.
 
@@ -542,9 +547,10 @@ The updated result carries `prior_updated = TRUE/FALSE` flags and
 pre-refinement assignment, enabling comparison of pass-1 and pass-2
 outcomes.
 
-This approach is analogous to empirical Bayes methods in genomics (Efron
-and Morris 1973), where information from the full dataset informs
-estimation for individual observations. It is particularly effective for
+This approach is analogous to empirical Bayes shrinkage (Efron and Morris
+1973), where information from the full dataset informs estimation for
+individual observations; the same idea underpins standard genomic
+applications such as Smyth (2004). It is particularly effective for
 studies where the same species may appear in multiple observations at
 different confidence levels.
 
@@ -707,12 +713,6 @@ Within TaxaAssign:
 Berger, J.O., 1985, Statistical Decision Theory and Bayesian Analysis,
 2nd ed.: Springer-Verlag, New York, 617 p.
 
-Brooks, M.E., Kristensen, K., van Benthem, K.J., Magnusson, A., Berg,
-C.W., Nielsen, A., Skaug, H.J., Maechler, M., and Bolker, B.M., 2017,
-glmmTMB balances speed and flexibility among packages for zero-inflated
-generalized linear mixed modeling: The R Journal, v. 9, no. 2, p.
-378--400.
-
 Efron, B., and Morris, C., 1973, Stein's estimation rule and its
 competitors -- an empirical Bayes approach: Journal of the American
 Statistical Association, v. 68, p. 117--130.
@@ -728,3 +728,7 @@ O'Hagan, A., Buck, C.E., Daneshkhah, A., Eiser, J.R., Garthwaite, P.H.,
 Jenkinson, D.J., Oakley, J.E., and Rakow, T., 2006, Uncertain Judgements
 -- Eliciting Experts' Probabilities: John Wiley and Sons, Chichester,
 321 p.
+
+Smyth, G.K., 2004, Linear models and empirical Bayes methods for
+assessing differential expression in microarray experiments: Statistical
+Applications in Genetics and Molecular Biology, v. 3, no. 1, article 3.

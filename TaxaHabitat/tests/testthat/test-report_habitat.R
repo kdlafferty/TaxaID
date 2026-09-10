@@ -153,3 +153,155 @@ test_that("main_habitat branch: n_habitat_cols and dominant_habitat are NULL/0 w
   expect_null(sec$statistics$dominant_habitat)
   expect_null(sec$params$habitat_scheme)
 })
+
+# ------------------------------------------------------------------------------
+# 2026-09-10: the 2026-09-08 dispatch test --
+#   any(vapply(candidate_cols, function(hc) all(is.na(x) | (x >= 0 & x <= 1))))
+# -- had two holes that put occurrence-level data back down the weight branch.
+# Confirmed by direct evaluation, then reproduced end-to-end on the real
+# PtConMifishSchulte occurrence object. Each test below fixes one hole.
+# ------------------------------------------------------------------------------
+
+test_that("an all-NA numeric column does not vacuously look like a habitat weight (2026-09-10)", {
+  # is.na(x) is TRUE everywhere for an all-NA column, so the `|` short-circuits
+  # the range condition away and all() returns TRUE regardless. GBIF exports
+  # routinely carry such columns. On the real Pt Conception 12S object, adding
+  # a single all-NA `depth` column turned "356 taxa ... Dominant habitat:
+  # Marine (89% of assigned records)" into "20000 taxa ... Dominant habitat:
+  # decimalLatitude (mean weight 3506%)" -- the exact pre-fix symptom, and the
+  # one printed in the 2026-08-30 generated report.
+  df <- data.frame(
+    taxon_name       = c("Sp A", "Sp A", "Sp B", "Sp C", "Sp C"),
+    decimalLatitude  = c(34.1, 34.2, 35.0, 34.5, 34.6),
+    decimalLongitude = c(-119.8, -119.7, -120.1, -119.9, -119.9),
+    depth            = NA_real_,
+    main_habitat     = c("Marine", "Marine", "Estuarine", "Marine", NA_character_),
+    stringsAsFactors = FALSE
+  )
+
+  sec <- report_habitat(df)
+  expect_equal(sec$statistics$n_taxa, 3L)
+  expect_equal(sec$statistics$dominant_habitat, "Marine")
+  expect_equal(sec$params$habitat_scheme, "Marine/Estuarine")
+  expect_false(grepl("decimalLat|decimalLon|depth", sec$methods))
+  expect_false(grepl("mean weight", sec$results, fixed = TRUE))
+})
+
+test_that("an in-range but non-compositional column does not look like a habitat weight (2026-09-10)", {
+  # coordinatePrecision is legitimately in [0, 1] without being a weight, so
+  # the range check alone passed it too. Same symptom as the all-NA case.
+  df <- data.frame(
+    taxon_name          = c("Sp A", "Sp A", "Sp B", "Sp C", "Sp C"),
+    decimalLatitude     = c(34.1, 34.2, 35.0, 34.5, 34.6),
+    decimalLongitude    = c(-119.8, -119.7, -120.1, -119.9, -119.9),
+    coordinatePrecision = c(0.001, 0.001, 0.0001, 0.01, 0.001),
+    main_habitat        = c("Marine", "Marine", "Estuarine", "Marine", NA_character_),
+    stringsAsFactors    = FALSE
+  )
+
+  sec <- report_habitat(df)
+  expect_equal(sec$statistics$n_taxa, 3L)
+  expect_equal(sec$statistics$dominant_habitat, "Marine")
+  expect_false(grepl("coordinatePrecision", sec$methods, fixed = TRUE))
+})
+
+test_that("an all-zero in-range column does not look like a habitat weight (2026-09-10)", {
+  # The production-shaped version of the same hole: dist_to_coast_km is 0 for
+  # every retained record in a coastal-only survey, which is in [0, 1] and has
+  # real (non-NA) data, so neither the range check nor a bare non-NA guard
+  # would reject it.
+  df <- data.frame(
+    taxon_name       = c("Sp A", "Sp A", "Sp B"),
+    decimalLatitude  = c(34.1, 34.2, 35.0),
+    dist_to_coast_km = c(0, 0, 0),
+    main_habitat     = c("Marine", "Marine", "Estuarine"),
+    stringsAsFactors = FALSE
+  )
+
+  sec <- report_habitat(df)
+  expect_equal(sec$statistics$n_taxa, 2L)
+  expect_equal(sec$params$habitat_scheme, "Marine/Estuarine")
+})
+
+test_that("real weight columns still win over a co-occurring main_habitat (2026-09-10)", {
+  # The hardened dispatch must not overshoot: a hand-assembled table carrying
+  # BOTH main_habitat and real per-category weights is still Shape A, because
+  # its numeric columns are all in range and do compose to 1.0 per row.
+  df <- data.frame(
+    scientificName = c("Sp A", "Sp B", "Sp C"),
+    Marine         = c(0.9, 1.0, 0.25),
+    Freshwater     = c(0.1, 0.0, 0.75),
+    main_habitat   = c("Marine", "Marine", "Freshwater"),
+    stringsAsFactors = FALSE
+  )
+
+  sec <- report_habitat(df)
+  expect_equal(sec$statistics$n_habitat_cols, 2L)
+  expect_equal(sec$statistics$dominant_habitat, "Marine")
+  expect_true(grepl("mean weight", sec$results, fixed = TRUE))
+})
+
+test_that("un-renormalised weights within parse()'s own 0.05 tolerance still dispatch as weights (2026-09-10)", {
+  # parse_hierarchical_habitat_response() documents that weights are NOT
+  # renormalised and warns only past 0.05 of 1.0, so the composition check
+  # uses that same tolerance rather than exact equality.
+  df <- data.frame(
+    taxon_name   = c("Sp A", "Sp B", "Sp C"),
+    Marine       = c(0.96, 1.02, 0.60),
+    Freshwater   = c(0.06, 0.00, 0.42),
+    main_habitat = c("Marine", "Marine", "Marine"),
+    stringsAsFactors = FALSE
+  )
+
+  sec <- report_habitat(df, taxon_col = "taxon_name")
+  expect_equal(sec$statistics$n_habitat_cols, 2L)
+  expect_equal(sec$statistics$dominant_habitat, "Marine")
+})
+
+test_that("single-row weight tables survive the composition check (2026-09-10)", {
+  # vapply() returns a bare vector rather than a 1-row matrix when nrow == 1,
+  # so the row-sum matrix has its dim set explicitly. Guard that here.
+  df <- data.frame(
+    scientificName = "Sp A",
+    Marine         = 0.7,
+    Freshwater     = 0.3,
+    main_habitat   = "Marine",
+    stringsAsFactors = FALSE
+  )
+  sec <- report_habitat(df)
+  expect_equal(sec$statistics$n_habitat_cols, 2L)
+  expect_equal(sec$statistics$dominant_habitat, "Marine")
+})
+
+test_that("Shape A n_taxa resolves taxon_name against the scientificName default (2026-09-10)", {
+  # parse_hierarchical_habitat_response() ALWAYS names its taxon column
+  # taxon_name, but report_habitat()'s default taxon_col is "scientificName".
+  # Only .summarise_main_habitat() used to consult .resolve_taxon_col(), so the
+  # documented Shape A call fell through to nrow() and reported rows as taxa --
+  # the same class as the "1419840 taxa" bug, on the weight branch.
+  df <- data.frame(
+    taxon_name   = c("Sp A", "Sp A", "Sp B"),
+    Marine       = c(0.9, 0.9, 0.2),
+    Other_weight = c(0.1, 0.1, 0.8),
+    stringsAsFactors = FALSE
+  )
+
+  # No taxon_col given: must still count 2 unique taxa, not 3 rows.
+  expect_equal(report_habitat(df)$statistics$n_taxa, 2L)
+  # Explicit taxon_col agrees.
+  expect_equal(report_habitat(df, taxon_col = "taxon_name")$statistics$n_taxa, 2L)
+})
+
+test_that("an explicitly named, present taxon_col still wins over taxon_name (2026-09-10)", {
+  # .resolve_taxon_col() only falls back when the requested column is ABSENT,
+  # so a frame carrying both must honour the caller's choice.
+  df <- data.frame(
+    scientificName = c("Sp A", "Sp B", "Sp C"),
+    taxon_name     = c("Sp A", "Sp A", "Sp A"),
+    Marine         = c(0.9, 1.0, 0.5),
+    Freshwater     = c(0.1, 0.0, 0.5),
+    stringsAsFactors = FALSE
+  )
+  expect_equal(report_habitat(df)$statistics$n_taxa, 3L)
+  expect_equal(report_habitat(df, taxon_col = "taxon_name")$statistics$n_taxa, 1L)
+})

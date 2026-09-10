@@ -199,6 +199,39 @@ but it means a wrong verdict persists until someone clears it
 
 ## Recent Activity
 
+**2026-09-10** (Opus 5): Hardened `report_habitat()`'s Shape A/Shape B dispatch.
+The 2026-09-08 test — `any(vapply(candidate_cols, \(hc) all(is.na(x) | (x >= 0 & x <= 1))))`
+— had two holes, both confirmed by direct evaluation and then reproduced end-to-end on the
+real `PtConMifishSchulte_occurrences_clean.rds`: (1) it passes **vacuously** for an all-NA
+numeric column, because `is.na(x)` is TRUE everywhere and the range half of the `|` is never
+reached — GBIF exports routinely carry `depth`/`elevation`/`coordinatePrecision` like this;
+(2) it passes for any genuinely proportional non-habitat column (a `coordinatePrecision` of
+0.001, or a `dist_to_coast_km` that is 0 for every record in a coastal-only survey). Either
+one sends occurrence-level data back down the weight branch and reprints the exact pre-fix
+symptom: adding one all-NA `depth` column turned "356 taxa … Dominant habitat: Marine (89%
+of assigned records)" into "20000 taxa … Dominant habitat: decimalLatitude (mean weight
+3506%)". Replaced with `.looks_like_habitat_weights()`, which requires **positive** evidence:
+every candidate column has ≥1 non-NA value AND lies in [0, 1.05], AND the columns compose —
+over rows with any positive weight, >half sum to 1.0 within 0.05, deliberately the same
+`abs(row_sums - 1) > 0.05 & row_sums > 0` rule `parse_hierarchical_habitat_response()` itself
+uses. Chosen over the minimal `any(!is.na(x)) && all(...)` patch (closes hole 1 only) and over
+purely structural dispatch (a hand-assembled table can carry `main_habitat` and real weights
+together — this file's own "excludes known non-habitat columns" test does). **No current
+production caller was affected**: audited PtCon 12S/18S and both GreatLakes occurrence
+objects, and `decimalLatitude` is out of range in every one, so all four already dispatched
+correctly — this is a latent guard, not a live fix. 6 regression tests added.
+`devtools::test()` 287/0, `check()` 0/0/0. Reinstalled.
+
+Same session, second fix: `n_taxa` on the WEIGHT branch used the raw `taxon_col`
+while only `.summarise_main_habitat()` went through `.resolve_taxon_col()`. Since
+`parse_hierarchical_habitat_response()` always emits `taxon_name` and
+`report_habitat()` defaults to `"scientificName"`, the documented Shape A call
+`report_habitat(parse_output)` silently fell through to `nrow()` — same class as
+the "1419840 taxa" bug, on the other branch. Now resolved ONCE in
+`report_habitat()` and handed to both branches; `.resolve_taxon_col()` is
+idempotent so the helpers stay correct if called directly. An explicitly named,
+present `taxon_col` still wins. 2 more regression tests.
+
 **2026-09-10** (Fable 5.1): NEW `build_habitat_lookup()` + `taxahabitat_clear_cache()`
 (R/build_habitat_lookup.R, 8 tests, no LLM call in tests). Motivated by the first full
 GreatLakes run after the reference-screen rewiring: 56/885 consensus calls moved and

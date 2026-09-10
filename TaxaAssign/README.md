@@ -151,7 +151,7 @@ LLM-estimated biogeographic prior).
     from the same study, analogous to shrinkage estimators (Efron and
     Morris 1973)
 -   **Dark diversity fallback**: "dark diversity" is an ecological
-    concept (Partel et al. 2011) for species that belong to the regional
+    concept (Pärtel et al. 2011) for species that belong to the regional
     species pool and could plausibly occur at a site given its
     environmental conditions, but have not actually been observed there.
     TaxaExpect computes per-species Tier 3 ("undetected species")
@@ -206,6 +206,14 @@ Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC, San
 Francisco, California).
 
 ## References
+
+Efron, B. and Morris, C. (1973). Stein's estimation rule and its
+competitors -- an empirical Bayes approach. *Journal of the American
+Statistical Association*, 68(341), 117--130.
+
+Pärtel, M., Szava-Kovats, R. and Zobel, M. (2011). Dark diversity:
+shedding light on absent species. *Trends in Ecology & Evolution*,
+26(3), 124--128.
 
 R Core Team (2025). R: A Language and Environment for Statistical
 Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,

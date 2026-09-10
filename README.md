@@ -24,13 +24,16 @@ galaxy-tool-lca; Beentjes et al. 2019 -- see Related Software, below),
 but its main advances are to:
 
 1.  screen for reference-database errors
-2.  detect and patch taxa missing from the reference library
-3.  consider whether a taxon is plausible at the sampling location
-4.  apply Bayes' Theorem to generate assignment probabilities from match
-    scores
-5.  Make assignments transparent
-6.  Use LLMs to improve assignments, assist with workflows, and review
+2.  detect and patch missing references
+3.  convert match scores to likelihoods
+4.  consider whether a taxon is apriori plausible at the sampling
+    location
+5.  apply Bayes' Theorem to generate assignment probabilities from
+    likelihoods and priors
+6.  make assignments transparent
+7.  use LLMs to improve assignments, assist with workflows, and review
     results
+8.  create shiny apps for clients to process their data
 
 To apply Bayes' Theorem, TaxaID converts match scores to likelihoods,
 estimates spatially explicit occurrence-based priors (from GBIF and/or
@@ -39,7 +42,7 @@ The ecosystem was designed with eDNA metabarcoding in mind, but image
 and acoustic analyses are possible when starting from a table of
 candidate matches.
 
-The ecosystem supports three workflows, ranging from simple to
+The ecosystem supports three types of workflows, ranging from simple to
 comprehensive:
 
 -   **Traditional workflow** -- Select a consensus taxon using score
@@ -51,10 +54,11 @@ comprehensive:
     LLC, San Francisco, California), or local Ollama (Ollama, Palo Alto,
     California) -- to rapidly estimate priors and generate consensus
     assignments.
--   **Bayesian workflow** -- Train a likelihood model on reference data,
-    build spatially explicit priors from GBIF (Global Biodiversity
-    Information Facility; GBIF Secretariat, Copenhagen, Denmark)
-    occurrences, and compute posteriors via Monte Carlo simulation.
+-   **Bayesian workflow** (the main purpose of TaxaID)-- Train a
+    likelihood model on reference data, build spatially explicit priors
+    from GBIF (Global Biodiversity Information Facility; GBIF
+    Secretariat, Copenhagen, Denmark) occurrences, and compute
+    posteriors via Monte Carlo simulation.
 
 These workflows converge at the same posterior consensus step, enabling
 direct comparison of model-based and LLM-based assignments.
@@ -67,50 +71,58 @@ Programming Interface (API) key (see below).
 
 Automated classifiers for DNA, sound, and image data produce taxonomic
 assignments with systematic errors that are often difficult to detect.
-In a replicated eDNA study from the California rocky intertidal, 28% of
-metazoan sequences matched taxa not present on the Pacific Coast (Shea
-and Boehm 2024). Camera trap false positive rates can exceed 40% for
-rare species (Thompson et al. 2025), and acoustic classifier precision
-is highly sensitive to confidence threshold settings (Fairbairn et al.
-2025). Raw classifier scores mimic probabilities but are uncalibrated;
-95% score does not mean 95% confidence (Dussert et al. 2025), and the
-same match percentage can be diagnostic for one taxon group but
-ambiguous for another (Ficetola et al. 2015). These errors fall into
-three categories: false positives (FP; wrong taxon assigned, or overly
-confident in), false negatives (FN; correct taxon missed or
-underestimated), and combined errors where one taxon's false positive is
-another's false negative. FP/FN labels below mark which category each
-error mechanism produces.
+False presences are frequent enough in eDNA metabarcoding that presence
+must be estimated across replicates rather than read directly off a
+single detection (Ficetola et al. 2015). In a replicated eDNA study from
+the California rocky intertidal, about 28% of the species detected could
+not be confirmed as occurring in the California Current System (Shea and
+Boehm 2024). Auto-classified camera trap images carry error rates near
+10% even at well-studied sites (Henrich et al. 2026), and acoustic
+classifier precision is highly sensitive to confidence threshold
+settings (Thompson et al. 2025; Fairbairn et al. 2025). Raw classifier
+scores mimic probabilities but are uncalibrated; 95% score does not mean
+95% confidence (Dussert et al. 2025), and the same match percentage can
+be diagnostic for one taxon group but ambiguous for another (Pappalardo
+et al. 2025). These errors fall into three categories: false positives
+(FP; wrong taxon assigned, or overly confident in), false negatives (FN;
+correct taxon missed or underestimated), and combined errors where one
+taxon's false positive is another's false negative. FP/FN labels below
+mark which category each error mechanism produces.
 
 #### Reference database quality
 
 **Reference mislabeling** (FP). Mislabeled sequences or images already
 present in the reference database can lead to confident wrong
 assignments that propagate to every query matching that reference.
-*TaxaMatch BLASTs each reference accession and flags accessions whose
-top hits disagree with their own listed taxonomy, allowing a user to
-block or remove them as candidates (`evaluate_reference_accessions()`,
-`flag_incongruent_references()`, `remove_incongruent_references()`). A
-flag alone can't distinguish a genuine mislabel from a marker with poor
-resolving power for that lineage; `review_flagged_accessions()`
-optionally sends the flagged subset to an LLM for a free-text second
-look (known hybrid crosses, informal specimen codes) without ever
-re-deciding the flag itself.*
+*TaxaMatch* can check if accessions might be mislabeled so they can be
+removed before training models and generating consensus taxonomies.
+This generally follows three steps:
+*corroborate_references_locally()* is a relatively fast initial check
+for whether a reference has internal consistency within the data (i.e.,
+a reference is similar to other same-named references). If internal
+consistency cannot be verified, DNA sequences can be more extensively
+evaluated with *evaluate_reference_accessions()*. This step does a BLAST
+search to see if an accession matches taxa related to its label. This
+makes it possible to find gross label errors that could mess with
+statistical models or give incorrect matches. *review_flagged_accessions()*
+gives flagged/borderline accessions a real LLM second look;
+*resolve_review_overrides()* turns that into the specific accessions
+that should survive an otherwise-automatic removal.
 
 **Missing reference redirect** (FP + FN). The reference database itself
-usually incomplete: when the true species has no entry in the reference
-library at all, its detections are assigned to the closest relative that
-does have an entry, a false positive for that relative and a false
-negative for the true species. Reference library gaps are geographically
-biased, systematically affecting some regions and taxa more than others
-(Marques et al. 2021). *TaxaLikely models the expected score profile of
-unreferenced taxa, and TaxaAssign identifies and names plausible missing
-species.*
+is usually incomplete: when the true species has no entry in the
+reference library at all, its detections are assigned to the closest
+relative that does have an entry, a false positive for that relative and
+a false negative for the true species. Reference library gaps are
+geographically biased, systematically affecting some regions and taxa
+more than others (Marques et al. 2021). *TaxaLikely models the expected
+score profile of unreferenced taxa, and TaxaAssign identifies and names
+plausible missing species.*
 
 #### Score interpretation
 
 **Overconfident species assignment** (FP + FN). Even when the correct
-species IS present in the reference database, its raw match score is
+species is present in the reference database, its raw match score is
 uncalibrated and taken at face value; a 100% match may still be
 ambiguous at species rank if competing candidates score nearly as well.
 Unlike the reference-gap problems above, this error arises purely from
@@ -145,16 +157,12 @@ assignments.*
 
 **Contamination or artifact** (FP). Lab or field contamination, handler
 artifacts (camera traps), or equipment carryover introduces real
-detections of taxa not present in the environment. *TaxaFlag detects
-proportion-based and temporal-proximity artifacts.*
-
-**Allochthonous transport** (FP). Detections originate from outside the
+detections of taxa not present in the environment. *TaxaFlag* can use
+information from blanks to remove contaminants from the source.
+Downstream, *TaxaFlag* uses LLM review toalert the user to candidates
+that look like contaminants or allocthonous transport from outside the
 sampling area: eDNA carried by runoff or currents, sounds from playback
-devices or captive animals. *Spatial priors inherently down-weight
-species outside their expected habitat.*
-
-*Additionally, TaxaFlag provides LLM-based expert review that can flag
-most of these error types post-assignment.*
+devices or captive animals.
 
 ### Ecosystem Packages
 
@@ -195,7 +203,7 @@ most of these error types post-assignment.*
     generates a complete R script, methods section, or Shiny
     application.
 
-### Dependency Chain
+### Dependency Chain (import order)
 
 ```         
 TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag
@@ -311,6 +319,30 @@ See [LICENSE.md](LICENSE.md) for details. TaxaExpect depends on glmmTMB
 (GPL \>= 3); the TaxaExpect source code itself is CC0, but binary
 distributions that bundle glmmTMB may be subject to GPL terms.
 
+# Use of Large Language Models
+
+TaxaID uses large language models in two distinct ways, and they should not be
+confused.
+
+**In the software.** Several functions call an LLM as part of the analysis:
+TaxaHabitat assigns habitat categories by biological consensus, TaxaFlag reviews
+assignments for ecological plausibility, TaxaAssign offers an LLM-elicited
+alternative to the modelled prior, and TaxaWizard generates workflow scripts. All
+of these route through a common provider interface (`TaxaTools::call_api()`), so
+any supported provider can be used, and every one of them except TaxaWizard has a
+non-LLM alternative. Functions that make billed API calls cache their results to
+disk, so re-running a workflow does not pay for the same call twice.
+
+**In writing the code.** The TaxaID source code was written with the assistance of
+Anthropic Claude models, used through Claude Code. Claude Sonnet did the bulk of
+the development; Claude Opus and Claude Fable were used more recently. Because
+this assistance was continuous rather than confined to particular functions,
+per-function annotation would imply a precision that does not exist, so this
+repository-level statement is the annotation. All of it was reviewed and tested
+before release: every package carries a `testthat` suite, and each was checked
+with `R CMD check` before release. The author reviewed the code and takes
+responsibility for it.
+
 # Related Software
 
 Several R packages and standalone tools address taxonomic assignment
@@ -324,7 +356,7 @@ tools.
 | Tool | Approach | Posterior probabilities | Spatial priors | Unreferenced taxa | Multi-data-type |
 |------------|------------|------------|------------|------------|------------|
 | **TaxaID** | Generative Bayesian (MVN score + gap) | Yes (full distribution) | Yes (GBIF + habitat) | Yes (NCBI census + LLM) | Yes |
-| PROTAX (Somervuo et al. 2017) | Bayesian with taxonomy-tree prior | Yes | No | Yes (tree-based) | No (DNA only) |
+| PROTAX (Somervuo et al. 2016) | Bayesian with taxonomy-tree prior | Yes | No | Yes (tree-based) | No (DNA only) |
 | BayesANT (Zito et al. 2023) | Bayesian nonparametric (kmer) | Yes | No | Yes (Pitman-Yor) | No (DNA only) |
 | IdTaxa / DECIPHER (Murali et al. 2018) | Phylogenetic ML | Bootstrap confidence | No | No | No (DNA only) |
 | insect (Wilkinson et al. 2018) | Profile HMM + classification tree | Akaike weights | No | No | No (DNA only) |
@@ -333,8 +365,8 @@ tools.
 | DADA2 `assignTaxonomy` (Callahan et al. 2016) | Naive Bayes (kmer) | Bootstrap confidence | No | No | No (DNA only) |
 | galaxy-tool-lca (Beentjes et al. 2019) | Score-threshold + LCA (deterministic) | No | No | No (upranked) | No (BLAST/DNA only) |
 
-TaxaID is complementary to several of these tools rather than a
-replacement. DADA2 or OBITools handle upstream sequence processing;
+TaxaID is complementary to several of these tools (and may load them for
+some purposes). DADA2 or OBITools handle upstream sequence processing;
 TaxaMatch ingests their output. DECIPHER is used internally by
 TaxaLikely for reference sequence alignment. The key innovation of
 TaxaID is that the same likelihood model can be combined with different
@@ -395,7 +427,7 @@ TaxaLikely process.
 | **TaxaID (image path)** | Any (classifier-agnostic) | Calibrated likelihoods → Bayesian posteriors | Yes (GBIF + habitat) | Yes (coverage audit) | Native |
 | animl / SpeciesNet (Tabak et al. 2019; Wildlife Insights\*) | Camera trap mammals | Confidence (0--1), top-5; rollup ensemble | No | No | `animl` R package |
 | iNaturalist computer vision | General wildlife (108,000+ taxa) | Softmax (0--1), top-10; genus/family fallback | Limited (app UI only) | No | `rinat` (indirect) |
-| InsectNet (He et al. 2025) | Insects (2,526 spp, 17 orders) | Conformal prediction sets; OOD energy score | No | Limited (OOD flag) | Web app only |
+| InsectNet (Chiranjeevi et al. 2025) | Insects (2,526 spp, 17 orders) | Conformal prediction sets; OOD energy score | No | Limited (OOD flag) | Web app only |
 | Seek / iNaturalist mobile | General wildlife | Community consensus | No | No | None |
 | Wildlife Insights\* | Camera trap wildlife | Confidence (0--1), rollup ensemble | No | No | None (web platform) |
 
@@ -425,7 +457,7 @@ TaxaMatch, then `unreferenced_candidates()` + `assign_scores()` convert
 classifier confidence scores to likelihoods (no separate
 reference-building step required).
 
-InsectNet (He et al. 2025) is a notable recent advance for invertebrate
+InsectNet (Chiranjeevi et al. 2025) is a notable recent advance for invertebrate
 specialists, achieving 96.4% top-1 accuracy across 2,526 species in 17
 insect orders. Its standout methodological innovation is replacing point
 confidence scores with **conformal prediction sets**: rather than a
@@ -488,7 +520,7 @@ final assignments.
 |------------------|------------------|------------------|------------------|
 | R | \>= 4.1.0 | 64 | R Core Team. 2025. R: A Language and Environment for Statistical Computing. V.4.5.2. <https://www.r-project.org>. |
 | Bioconductor (DECIPHER, Biostrings) | \>= 3.17 | 64 | Gentleman et al. 2004. Bioconductor. <https://www.bioconductor.org>. Required only for `TaxaLikely::build_sequence_matrix()`. |
-| rBLAST | \>= 0.99 | 64 | Hahsler and Nagar. 2019. rBLAST. <https://github.com/mhahsler/rBLAST>. Optional; required only for local BLAST in TaxaMatch. |
+| rBLAST | \>= 0.99 | 64 | Hahsler and Nagar. 2024. rBLAST. Bioconductor. <https://doi.org/10.18129/B9.bioc.rBLAST>. Optional; required only for local BLAST in TaxaMatch. |
 
 All other R package dependencies are declared in each package's
 DESCRIPTION file and will be installed automatically by
@@ -863,29 +895,31 @@ Altschul, S.F., Gish, W., Miller, W., Myers, E.W. and Lipman, D.J.
 (1990). Basic local alignment search tool. *Journal of Molecular
 Biology*, 215(3), 403--410.
 
-Beentjes, K.K., Speksnijder, A.G.C.L., Schilthuizen, M., Hoogeveen, M.
-and van der Hoorn, B.B. (2019). The effects of spatial scale and habitat
-on the composition of the aquatic macroinvertebrate community as
-determined by eDNA metabarcoding. *PLOS ONE*, 14(2), e0211143.
+Beentjes, K.K., Speksnijder, A.G.C.L., Schilthuizen, M., Hoogeveen, M.,
+Pastoor, R. and van der Hoorn, B.B. (2019). Increased performance of DNA
+metabarcoding of macroinvertebrates by taxonomic sorting. *PLOS ONE*,
+14(12), e0226527.
 
 Callahan, B.J., McMurdie, P.J., Rosen, M.J., Han, A.W., Johnson, A.J.A.
 and Holmes, S.P. (2016). DADA2: High-resolution sample inference from
 Illumina amplicon data. *Nature Methods*, 13(7), 581--583.
+
+Chiranjeevi, S., Saadati, M., Deng, Z.K., Koushik, J., Jubery, T.Z.,
+Mueller, D.S., O'Neal, M., Merchant, N., Singh, Aarti, Singh, A.K.,
+Sarkar, S., Singh, Arti and Ganapathysubramanian, B. (2025). InsectNet:
+Real-time identification of insects using an end-to-end machine learning
+pipeline. *PNAS Nexus*, 4(1), pgae575.
+<https://doi.org/10.1093/pnasnexus/pgae575>
 
 Davis, N.M., Proctor, D.M., Holmes, S.P., Relman, D.A. and Callahan,
 B.J. (2018). Simple statistical identification and removal of
 contaminant sequences in marker-gene and metagenomics data.
 *Microbiome*, 6, 226.
 
-Dussert, G., Chamaille-Jammes, S., Dray, S. and Miele, V. (2025). Being
+Dussert, G., Chamaillé-Jammes, S., Dray, S. and Miele, V. (2025). Being
 confident in confidence scores: calibration in deep learning models for
 camera trap image sequences. *Remote Sensing in Ecology and
 Conservation*, 11(1), 88--99.
-
-He, S., Li, Y., Wang, Y., Galloway, B., Li, H., Liu, S., Huang, C.,
-Hart, T.J. and Zhao, Z. (2025). InsectNet: automated insect
-identification from around the world. *PNAS Nexus*, 4(1), pgae575.
-<https://doi.org/10.1093/pnasnexus/pgae575>
 
 Edgar, R.C. (2016). SINTAX: a simple non-Bayesian taxonomy classifier
 for 16S and ITS sequences. *bioRxiv*, 074161.
@@ -895,7 +929,7 @@ BirdNET can be as good as experts for acoustic bird monitoring in a
 European city. *PLoS One*, 20(9), e0330836.
 
 Ficetola, G.F., Pansu, J., Bonin, A., Coissac, E., Giguet-Covex, C., De
-Barba, M., Gielly, L., Lopes, C.M., Boyer, F., Pompanon, F., Raye, G.
+Barba, M., Gielly, L., Lopes, C.M., Boyer, F., Pompanon, F., Rayé, G.
 and Taberlet, P. (2015). Replication levels, false presences and the
 estimation of the presence/absence from eDNA metabarcoding data.
 *Molecular Ecology Resources*, 15(3), 543--556.
@@ -908,33 +942,52 @@ Tierney, L., Yang, J.Y.H. and Zhang, J. (2004). Bioconductor: open
 software development for computational biology and bioinformatics.
 *Genome Biology*, 5, R80.
 
+Hahsler, M. and Nagar, A. (2024). rBLAST: R Interface for the Basic
+Local Alignment Search Tool. R package version 0.99.4. Bioconductor.
+<https://doi.org/10.18129/B9.bioc.rBLAST>
+
+Henrich, M., Fiderer, C., Klamm, A., Schneider, A., Ballmann, A., Stein,
+J., Kratzer, R., Reiner, R., Greiner, S., Twietmeyer, S., Rönitz, T.,
+Spicher, V., Chamaillé-Jammes, S., Miele, V., Dussert, G. and Heurich,
+M. (2026). Camera traps and deep learning enable efficient large-scale
+density estimation of wildlife in temperate forest ecosystems. *Remote
+Sensing in Ecology and Conservation*, 12(1), 148--163.
+
 Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
 
-Marques, V., Milhau, T., Albouy, C., Troussellier, M., Dejean, T.,
-Valentini, A., Manel, S., Mouillot, D. and Pellissier, L. (2021).
-GAPeDNA: assessing and mapping global species gaps in genetic databases
-for eDNA metabarcoding. *Diversity and Distributions*, 27(10),
-1880--1892.
+Marques, V., Milhau, T., Albouy, C., Dejean, T., Manel, S., Mouillot, D.
+and Juhel, J.-B. (2021). GAPeDNA: assessing and mapping global species
+gaps in genetic databases for eDNA metabarcoding. *Diversity and
+Distributions*, 27(10), 1880--1892.
+
+Murali, A., Bhargava, A. and Wright, E.S. (2018). IDTAXA: a novel
+approach for accurate taxonomic classification of microbiome sequences.
+*Microbiome*, 6, 140.
 
 Orsholm, J., Zito, A., Somervuo, P., Harrison, J.P., Koskela, M.,
 Ovaskainen, O., Braga, M.P., Chazot, N., Roslin, T. and Furneaux, B.
 (2026). Discovering the unseen: A performance comparison of taxonomic
 classification methods for unknown DNA barcodes. *Methods in Ecology and
-Evolution*, 17, 2574--2593.
+Evolution*, 17(9), 2574--2593.
 
-Murali, A., Bhargava, A. and Wright, E.S. (2018). IDTAXA: a novel
-approach for accurate taxonomic classification of microbiome sequences.
-*Microbiome*, 6, 140.
+Pappalardo, P., Hemmi, J.M., Machida, R.J., Leray, M., Collins, A.G. and
+Osborn, K.J. (2025). Taxon-specific BLAST percent identity thresholds
+for identification of unknown sequences using metabarcoding. *Methods in
+Ecology and Evolution*, 16(10), 2380--2394.
+
+R Core Team (2025). *R: A Language and Environment for Statistical
+Computing*. Version 4.5.2. R Foundation for Statistical Computing,
+Vienna, Austria. <https://www.r-project.org>
 
 Shea, M.M. and Boehm, A.B. (2024). Environmental DNA metabarcoding
 differentiates between micro-habitats within the rocky intertidal.
 *Environmental DNA*, 6(2), e521.
 
 Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen,
-O. (2017). Unbiased probabilistic taxonomic classification for DNA
-barcoding. *Bioinformatics*, 33(19), 2997--3005.
+O. (2016). Unbiased probabilistic taxonomic classification for DNA
+barcoding. *Bioinformatics*, 32(19), 2920--2927.
 
 Somervuo, P., Yu, D.W., Xu, C.C.Y., Ji, Y., Hultman, J., Wirta, H. and
 Ovaskainen, O. (2017). Quantifying uncertainty of taxonomic placement in
@@ -950,20 +1003,20 @@ and Miller, R.S. (2019). Machine learning to classify animal species in
 camera trap images: applications in ecology. *Methods in Ecology and
 Evolution*, 10(4), 585--590.
 
-Thompson, W.L., Kahl, S. and Mathevon, N. (2025). A post-processing
-framework for assessing BirdNET identification accuracy and community
-composition. *Ibis*, 167(1), 213--229.
+Thompson, M.C., Ducey, M.J., Gunn, J.S. and Rowe, R.J. (2025). A
+post-processing framework for assessing BirdNET identification accuracy
+and community composition. *Ibis*, 167(2), 530--542.
 
 Wang, Q., Garrity, G.M., Tiedje, J.M. and Cole, J.R. (2007). Naive
 Bayesian classifier for rapid assignment of rRNA sequences into the new
 bacterial taxonomy. *Applied and Environmental Microbiology*, 73(16),
 5261--5267.
 
-Wilkinson, S.P., Davy, S.K., Bunce, M. and Stat, M. (2018).
-Characterising taxonomic assignment quality in environmental DNA
-metabarcoding data with the insect R package. *Methods in Ecology and
-Evolution*, 11, 1457--1468.
+Wilkinson, S.P., Stat, M., Bunce, M. and Davy, S.K. (2018). Taxonomic
+identification of environmental DNA with informatic sequence
+classification trees. *PeerJ Preprints*, 6, e26812v1.
+<https://doi.org/10.7287/peerj.preprints.26812v1>
 
-Zito, A., Rigon, T., Ovaskainen, O. and Dunson, D.B. (2023). Bayesian
-nonparametric modelling of sequential discoveries. *Methods in Ecology
-and Evolution*, 14(6), 1373--1385.
+Zito, A., Rigon, T. and Dunson, D.B. (2023). Inferring taxonomic
+placement from DNA barcoding aiding in discovery of new taxa. *Methods
+in Ecology and Evolution*, 14(2), 529--542.

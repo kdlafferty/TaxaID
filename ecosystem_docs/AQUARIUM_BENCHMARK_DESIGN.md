@@ -236,9 +236,9 @@ request a 2D alternative anyway) and radar chart (readability degrades past
 
 ### 7d. Probabilistic/Bayesian motivation (closest intellectual precedent to TaxaID itself)
 
-- **Somervuo, Koskela, Pennanen, Nilsson & Ovaskainen (2017).** "Unbiased
+- **Somervuo, Koskela, Pennanen, Nilsson & Ovaskainen (2016).** "Unbiased
   probabilistic taxonomic classification for DNA barcoding." *Bioinformatics*
-  33:2997–3005 (PROTAX) — already cited in TaxaID's README Table 1.
+  32(19):2920–2927 (PROTAX) — already cited in TaxaID's README Table 1.
 - **Somervuo et al. (2017).** "Quantifying uncertainty of taxonomic placement
   in DNA barcoding and metabarcoding." *Methods in Ecology and Evolution*
   — a companion paper not yet in the README's citation list; worth adding,
