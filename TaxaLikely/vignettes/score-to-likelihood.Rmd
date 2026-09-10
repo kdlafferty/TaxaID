@@ -7,7 +7,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include = FALSE, eval = FALSE, purl = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -20,6 +20,16 @@ knitr::opts_chunk$set(
   purl = FALSE
 )
 ```
+
+<!--
+  EVERY chunk in this vignette carries `eval = FALSE, purl = FALSE` in its own
+  header, and that repetition is load-bearing (2026-09-10) -- do not DRY it up
+  into the setup chunk. R CMD check's "running R code from vignettes" step
+  TANGLES the vignette with knitr::purl(), which does NOT execute the setup
+  chunk, so an opts_chunk$set(purl = FALSE) there has no effect at tangle time
+  and every chunk is sourced. Same fix as TaxaExpect/vignettes/building-priors.Rmd
+  (2026-09-03).
+-->
 
 ## Purpose
 
@@ -35,7 +45,7 @@ learns these species-specific patterns from a reference database.
 
 ## Quick Start
 
-```{r quickstart}
+```{r quickstart, eval = FALSE, purl = FALSE}
 library(TaxaLikely)
 
 # 1. Build reference alignment matrix
@@ -57,7 +67,7 @@ likelihoods <- result$likelihoods
 
 TaxaLikely provides two ways to build a `reference_df`:
 
-```{r fetch-refs}
+```{r fetch-refs, eval = FALSE, purl = FALSE}
 # Option A: Fetch from NCBI by taxon + barcode marker
 reference_df <- fetch_ncbi_reference_sequences(
   taxa = c("Fundulidae", "Atherinopsidae", "Gobiidae"),
@@ -79,7 +89,7 @@ reference_df <- read_reference_fasta(
 Align all reference sequences against each other to learn the expected score
 distributions.
 
-```{r build-matrix}
+```{r build-matrix, eval = FALSE, purl = FALSE}
 ref_matrix <- build_sequence_matrix(reference_df)
 # Returns a data frame with columns: query, subject, p_match, family, genus, species
 ```
@@ -92,7 +102,7 @@ screening step lives in TaxaMatch, not TaxaLikely -- a free local check
 (`evaluate_reference_accessions()`) only for accessions the free check
 couldn't resolve.
 
-```{r flag-errors}
+```{r flag-errors, eval = FALSE, purl = FALSE}
 local_corr <- TaxaMatch::corroborate_references_locally(ref_matrix, reference_df)
 ref_eval <- TaxaMatch::evaluate_reference_accessions(
   unique(reference_df$composite_id),
@@ -113,7 +123,7 @@ match_df_clean <- match_df[!match_df$accession %in% bad_accessions, ]
 
 ### Step 4: Train the likelihood model
 
-```{r train}
+```{r train, eval = FALSE, purl = FALSE}
 model <- train_likelihood_model(ref_matrix)
 print(model) # Summary: n_species, AIC, global parameters
 ```
@@ -128,7 +138,7 @@ The model learns three hypothesis distributions:
 
 ### Step 5: Evaluate likelihoods
 
-```{r evaluate}
+```{r evaluate, eval = FALSE, purl = FALSE}
 result <- evaluate_likelihoods(
   match_df        = match_df,
   model_params    = model,
@@ -144,7 +154,7 @@ unresolved <- result$unresolved
 
 ### Step 6: Filter and constrain
 
-```{r filter}
+```{r filter, eval = FALSE, purl = FALSE}
 # Keep only the finest-rank candidates per observation
 top <- filter_top_hypotheses(likelihoods, rank_system = c("family", "genus", "species"))
 

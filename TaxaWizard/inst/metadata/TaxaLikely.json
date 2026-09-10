@@ -150,7 +150,7 @@
     },
     {
       "name": "audit_acoustic_coverage",
-      "description": "Acoustic/image analog of audit_barcode_coverage(). Which plausible species are absent from the classifier's known species list? Simple set-membership check \u2014 no NCBI API calls",
+      "description": "Acoustic/image analog of audit_barcode_coverage(). Which plausible species are absent from the classifier's known species list? Simple set-membership check — no NCBI API calls",
       "inputs": [
         {
           "name": "plausible_species",
@@ -270,6 +270,20 @@
           "required": false,
           "default": true,
           "description": "Inject synthetic perfect-match anchors"
+        },
+        {
+          "name": "min_pair_coverage",
+          "type": "numeric",
+          "required": false,
+          "default": 0.8,
+          "description": "Alignment-coverage floor a reference pair must meet to define a reference's best foreign/congener/conspecific match. Must equal blast_sequences(min_query_coverage)/100. No pair removed, no species dropped."
+        },
+        {
+          "name": "shrinkage",
+          "type": "character",
+          "required": false,
+          "default": "empirical_bayes",
+          "description": "How per-species H1 means are shrunk toward the global mean: \"empirical_bayes\" (estimated between-species variance) or \"fixed\" (N/(N+prior_weight))."
         }
       ],
       "output": {

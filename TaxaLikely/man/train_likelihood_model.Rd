@@ -14,7 +14,9 @@ train_likelihood_model(
   anchor_perfect = TRUE,
   logit_epsilon = 1e-04,
   max_gap_ceiling = NULL,
-  score_transform = "logit"
+  score_transform = "logit",
+  min_pair_coverage = 0.8,
+  shrinkage = c("empirical_bayes", "fixed")
 )
 }
 \arguments{
@@ -92,6 +94,33 @@ boundary. \strong{Not yet ported to this scale}: \code{calibrate_query_noise()}
 and \code{evaluate_likelihoods()}'s \code{evidence_col}/\code{min_coverage} mechanisms
 all assume \code{"logit"} internally and will error rather than silently
 produce wrong numbers if combined with a \code{"sqrt_mismatch"}-trained model.}
+
+\item{min_pair_coverage}{Numeric in (0, 1] or \code{NULL} (default \code{0.8}).  The
+alignment-coverage floor a reference-vs-reference pair must meet before it
+may DEFINE a reference's best foreign match, best congener match, or best
+conspecific match (\code{coverage} column from \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}).
+Must equal the coverage floor the match object was built under --
+\code{TaxaMatch::blast_sequences(min_query_coverage = 80)} is \code{0.8} here --
+so that training and inference see the same pair population;
+\code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} checks the two against each other and warns
+on a mismatch.  This is NOT a data filter: no pair is removed from the
+data and no species is ever dropped (a reference with no qualifying
+conspecific pair falls back to its best one).  \code{NULL} disables the
+floor; a \code{raw_df} without a \code{coverage} column skips it with a message.
+See the "Alignment-coverage floor" section.}
+
+\item{shrinkage}{\code{"empirical_bayes"} (default) or \code{"fixed"}.  How each
+species' H1 mean score and mean gap are shrunk toward the global mean.
+\code{"fixed"} is the original \code{N / (N + prior_weight)} weight.
+\code{"empirical_bayes"} estimates the real between-species variance of the
+means (\code{tau^2}, method of moments, per dimension) and weights each
+species by \code{tau^2 / (tau^2 + sigma^2 / N)}: no signal beyond noise
+collapses every species to the global mean, real signal lets
+well-referenced species keep more of their own.  The estimate is
+reported in \code{Stats$tau2_score}/\code{Stats$tau2_gap} and the per-species
+weights in \code{H1_Lookup$shrink_w_score}/\code{shrink_w_gap}.  Variance
+shrinkage always uses the fixed weight.  Needs at least 3 species;
+otherwise falls back to \code{"fixed"} with a message.}
 }
 \value{
 A named list (class \code{"taxa_model_params"}) with slots:
@@ -311,6 +340,32 @@ range, with no free parameter) and is the more robust choice for any new
 training run near this boundary.
 }
 
+\section{Alignment-coverage floor on pair selection (2026-09-10)}{
+
+The H1 gap feature is \code{score - max_foreign_score}, and \code{max_foreign_score}
+is taken over every cross-species pair a reference has.  A pairwise
+alignment between a short deposit and an unrelated sequence can be 100\%
+identical over a few percent of the sequence, and on real GreatLakes 12S
+data (2,750 references) that was the "best foreign match" for 86\% of
+references (median coverage 4.6\%): 89\% of references trained with
+\code{gap <= 0}, the global expected gap was negative, and at inference -- where
+every BLAST candidate has query coverage >= 80 -- a perfect match with a
+real positive gap read as atypical while a 96\% match with a negative gap
+read as typical.  728 of 885 ASVs were H1 near-ties and a Lamar-confirmed
+grass carp detection lost to bighead carp at equal priors.
+
+\code{min_pair_coverage} restricts which pair may define the foreign, congener
+and conspecific maxima to pairs at or above the inference-side floor.
+It is train/inference distribution matching for one feature, not a data
+quality filter: the archived \code{calibrate_coverage_filter()} removed
+low-coverage pairs from everything and dropped species from training;
+this removes nothing and drops no species.  Measured on the same data
+(foreign side only): global expected gap -0.010 -> +0.122, near-ties
+728 -> 295, and the top H1 candidate agrees with a unique >= 99.5\% best
+BLAST hit in 244/326 cases vs 178/326.  Full record:
+\code{ecosystem_docs/REENTRY_PROMPT_h1_foreign_coverage_floor.md}.
+}
+
 \section{No built-in reference-quality screening (2026-09-08)}{
 
 This function does NOT screen \code{raw_df} for mislabeled/contaminated
@@ -350,13 +405,13 @@ Statistical Association}, 68(341), 117--130.
 \doi{10.1080/01621459.1973.10481350}
 
 Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
-(2017). Unbiased probabilistic taxonomic classification for DNA barcoding.
-\emph{Bioinformatics}, 33(19), 2997--3005.
-\doi{10.1093/bioinformatics/btx369}
+(2016). Unbiased probabilistic taxonomic classification for DNA barcoding.
+\emph{Bioinformatics}, 32(19), 2920--2927.
+\doi{10.1093/bioinformatics/btw346}
 
-Genz, A., Bretz, F., Miwa, T., Mi, X., Leisch, F., Scheipl, F. and
-Hothorn, T. (2023). \emph{mvtnorm: Multivariate Normal and t
-Distributions}. R package. \doi{10.5281/zenodo.10021696}
+Genz, A. and Bretz, F. (2009). \emph{Computation of Multivariate Normal
+and t Probabilities}. Lecture Notes in Statistics. Springer-Verlag,
+Heidelberg. ISBN 978-3-642-01688-2.
 
 Hebert, P.D.N., Cywinska, A., Ball, S.L. and deWaard, J.R. (2003).
 Biological identifications through DNA barcodes. \emph{Proceedings of

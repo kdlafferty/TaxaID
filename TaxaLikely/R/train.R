@@ -11,7 +11,8 @@ utils::globalVariables(c(
   "w", "species", "max_congener_score", "delta_emp", "n_pairs", "delta_shrunk",
   "mean_cong", "var_cong", "var_shrunk",
   "median_foreign_match", "n_foreign_pairs", "n_foreign_taxa", "species_x",
-  "coverage", "foreign_match_coverage", "median_self_coverage"
+  "coverage", "foreign_match_coverage", "median_self_coverage",
+  "pair_ok", "has_ok", "self_fallback", "w_score", "w_gap"
 ))
 
 # ==============================================================================
@@ -91,7 +92,8 @@ utils::globalVariables(c(
                                 score_bounds = NULL,
                                 logit_epsilon = 1e-4,
                                 max_gap_ceiling = NULL,
-                                score_transform = "logit") {
+                                score_transform = "logit",
+                                min_pair_coverage = NULL) {
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
   if (!is.data.frame(raw_df)) {
     stop("raw_df must be a data frame")
@@ -119,6 +121,27 @@ utils::globalVariables(c(
 
   score_col <- if ("p_match" %in% names(raw_df)) "p_match" else "raw_score"
   raw_df$p_norm <- .normalize_scores(raw_df[[score_col]], bounds = score_bounds)
+
+  # ---- ALIGNMENT-COVERAGE FLOOR ON PAIR SELECTION (2026-09-10) -------------
+  # pair_ok marks a pair as eligible to DEFINE a reference's best foreign /
+  # congener / conspecific match. It never removes a pair from the data and
+  # never removes a reference from training (see the self-side fallback in
+  # STEP 4). See train_likelihood_model()'s "Alignment-coverage floor" section
+  # for why: a 100%-identity hit over 4% of the sequence is not a foreign
+  # match any query can ever produce, yet without this floor it defined 86% of
+  # references' "best foreign match" on real 12S data.
+  if (!is.null(min_pair_coverage) && !"coverage" %in% names(raw_df)) {
+    message(
+      "min_pair_coverage: raw_df has no 'coverage' column (build_sequence_matrix() ",
+      "supplies one); the pair-coverage floor is not applied."
+    )
+    min_pair_coverage <- NULL
+  }
+  raw_df$pair_ok <- if (is.null(min_pair_coverage)) {
+    TRUE
+  } else {
+    !is.na(raw_df$coverage) & raw_df$coverage >= min_pair_coverage
+  }
 
   # ---- STEP 1: GENERALISE TAXONOMY COLUMNS ----------------------------------
   # Rename rank columns to rank_code_a/b/c... (finest rank -> code_a).
@@ -151,7 +174,7 @@ utils::globalVariables(c(
   }
 
   df_combined <- dplyr::bind_cols(
-    dplyr::select(raw_df, id_x, id_y, p_norm),
+    dplyr::select(raw_df, id_x, id_y, p_norm, pair_ok),
     df_x, df_y
   )
 
@@ -177,11 +200,21 @@ utils::globalVariables(c(
     ) |>
     dplyr::group_by(id_x) |>
     dplyr::summarise(
+      # Only a pair passing the coverage floor may define the best foreign
+      # match. A reference whose every cross-species pair is a short overlap
+      # has NO usable foreign comparison and falls to the noise floor below --
+      # exactly as a reference with no foreign pair at all always has. It does
+      # NOT fall back to the unfiltered maximum, which would reinstate the
+      # very artifact the floor removes.
       max_foreign_score = suppressWarnings(
         max(
-          score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]]],
+          score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] & pair_ok],
           -Inf
         )
+      ),
+      n_foreign_unqualified = as.integer(
+        is.infinite(max(score_logit[.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] & pair_ok], -Inf)) &
+          any(.data[["rank_code_a.x"]] != .data[["rank_code_a.y"]])
       ),
       .groups = "drop"
     ) |>
@@ -231,7 +264,8 @@ utils::globalVariables(c(
         max_congener_score = suppressWarnings(
           max(score_logit[
             .data[["rank_code_b.x"]] == .data[["rank_code_b.y"]] &
-              .data[["rank_code_a.x"]] != .data[["rank_code_a.y"]]
+              .data[["rank_code_a.x"]] != .data[["rank_code_a.y"]] &
+              pair_ok
           ], -Inf)
         ),
         .groups = "drop"
@@ -272,10 +306,18 @@ utils::globalVariables(c(
     dplyr::group_by(rank_code_a.x) |>
     dplyr::summarise(N_Obs = dplyr::n(), .groups = "drop")
 
+  # Self side: prefer a conspecific pair that passes the coverage floor; when
+  # a reference has none, fall back to its best conspecific pair regardless
+  # (self_fallback = TRUE), so a species is NEVER dropped from training by the
+  # floor -- the cost the archived whole-matrix coverage filter paid.
   df_h1 <- h1_pairs |>
     dplyr::group_by(id_x) |>
+    dplyr::mutate(has_ok = any(pair_ok)) |>
+    dplyr::filter(!has_ok | pair_ok) |>
+    dplyr::mutate(self_fallback = !has_ok) |>
     dplyr::slice_max(score_logit, n = 1L, with_ties = FALSE) |>
     dplyr::ungroup() |>
+    dplyr::select(-has_ok) |>
     dplyr::left_join(species_counts, by = "rank_code_a.x")
 
   # ---- STEP 5: SINGLETONS ---------------------------------------------------
@@ -316,7 +358,9 @@ utils::globalVariables(c(
       max_congener_score = NA_real_,
       gap_logit          = max_gap_ceiling,
       rank_category      = "Singleton",
-      N_Obs              = 1L
+      N_Obs              = 1L,
+      self_fallback      = FALSE,
+      n_foreign_unqualified = 0L
     )
 
   # ---- COMBINE + STRIP .x SUFFIXES ------------------------------------------
@@ -495,6 +539,31 @@ utils::globalVariables(c(
 #'   more conservative (less species-specific) estimates; lower values trust
 #'   per-species data more but risk overfitting for species with few
 #'   references.  Default `10.0`.
+#' @param min_pair_coverage Numeric in (0, 1] or `NULL` (default `0.8`).  The
+#'   alignment-coverage floor a reference-vs-reference pair must meet before it
+#'   may DEFINE a reference's best foreign match, best congener match, or best
+#'   conspecific match (`coverage` column from [build_sequence_matrix()]).
+#'   Must equal the coverage floor the match object was built under --
+#'   `TaxaMatch::blast_sequences(min_query_coverage = 80)` is `0.8` here --
+#'   so that training and inference see the same pair population;
+#'   [evaluate_likelihoods()] checks the two against each other and warns
+#'   on a mismatch.  This is NOT a data filter: no pair is removed from the
+#'   data and no species is ever dropped (a reference with no qualifying
+#'   conspecific pair falls back to its best one).  `NULL` disables the
+#'   floor; a `raw_df` without a `coverage` column skips it with a message.
+#'   See the "Alignment-coverage floor" section.
+#' @param shrinkage `"empirical_bayes"` (default) or `"fixed"`.  How each
+#'   species' H1 mean score and mean gap are shrunk toward the global mean.
+#'   `"fixed"` is the original `N / (N + prior_weight)` weight.
+#'   `"empirical_bayes"` estimates the real between-species variance of the
+#'   means (`tau^2`, method of moments, per dimension) and weights each
+#'   species by `tau^2 / (tau^2 + sigma^2 / N)`: no signal beyond noise
+#'   collapses every species to the global mean, real signal lets
+#'   well-referenced species keep more of their own.  The estimate is
+#'   reported in `Stats$tau2_score`/`Stats$tau2_gap` and the per-species
+#'   weights in `H1_Lookup$shrink_w_score`/`shrink_w_gap`.  Variance
+#'   shrinkage always uses the fixed weight.  Needs at least 3 species;
+#'   otherwise falls back to `"fixed"` with a message.
 #' @param use_hierarchy Logical (default `TRUE`).  If `TRUE` and `lme4` is
 #'   available, fits random intercepts per rank level to stabilize estimates
 #'   across the taxonomic hierarchy.
@@ -539,6 +608,30 @@ utils::globalVariables(c(
 #'   and `evaluate_likelihoods()`'s `evidence_col`/`min_coverage` mechanisms
 #'   all assume `"logit"` internally and will error rather than silently
 #'   produce wrong numbers if combined with a `"sqrt_mismatch"`-trained model.
+#'
+#' @section Alignment-coverage floor on pair selection (2026-09-10):
+#' The H1 gap feature is `score - max_foreign_score`, and `max_foreign_score`
+#' is taken over every cross-species pair a reference has.  A pairwise
+#' alignment between a short deposit and an unrelated sequence can be 100%
+#' identical over a few percent of the sequence, and on real GreatLakes 12S
+#' data (2,750 references) that was the "best foreign match" for 86% of
+#' references (median coverage 4.6%): 89% of references trained with
+#' `gap <= 0`, the global expected gap was negative, and at inference -- where
+#' every BLAST candidate has query coverage >= 80 -- a perfect match with a
+#' real positive gap read as atypical while a 96% match with a negative gap
+#' read as typical.  728 of 885 ASVs were H1 near-ties and a Lamar-confirmed
+#' grass carp detection lost to bighead carp at equal priors.
+#'
+#' `min_pair_coverage` restricts which pair may define the foreign, congener
+#' and conspecific maxima to pairs at or above the inference-side floor.
+#' It is train/inference distribution matching for one feature, not a data
+#' quality filter: the archived `calibrate_coverage_filter()` removed
+#' low-coverage pairs from everything and dropped species from training;
+#' this removes nothing and drops no species.  Measured on the same data
+#' (foreign side only): global expected gap -0.010 -> +0.122, near-ties
+#' 728 -> 295, and the top H1 candidate agrees with a unique >= 99.5% best
+#' BLAST hit in 244/326 cases vs 178/326.  Full record:
+#' `ecosystem_docs/REENTRY_PROMPT_h1_foreign_coverage_floor.md`.
 #'
 #' @section No built-in reference-quality screening (2026-09-08):
 #' This function does NOT screen `raw_df` for mislabeled/contaminated
@@ -617,13 +710,13 @@ utils::globalVariables(c(
 #' \doi{10.1080/01621459.1973.10481350}
 #'
 #' Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
-#' (2017). Unbiased probabilistic taxonomic classification for DNA barcoding.
-#' \emph{Bioinformatics}, 33(19), 2997--3005.
-#' \doi{10.1093/bioinformatics/btx369}
+#' (2016). Unbiased probabilistic taxonomic classification for DNA barcoding.
+#' \emph{Bioinformatics}, 32(19), 2920--2927.
+#' \doi{10.1093/bioinformatics/btw346}
 #'
-#' Genz, A., Bretz, F., Miwa, T., Mi, X., Leisch, F., Scheipl, F. and
-#' Hothorn, T. (2023). \emph{mvtnorm: Multivariate Normal and t
-#' Distributions}. R package. \doi{10.5281/zenodo.10021696}
+#' Genz, A. and Bretz, F. (2009). \emph{Computation of Multivariate Normal
+#' and t Probabilities}. Lecture Notes in Statistics. Springer-Verlag,
+#' Heidelberg. ISBN 978-3-642-01688-2.
 #'
 #' Hebert, P.D.N., Cywinska, A., Ball, S.L. and deWaard, J.R. (2003).
 #' Biological identifications through DNA barcodes. \emph{Proceedings of
@@ -660,8 +753,16 @@ train_likelihood_model <- function(raw_df,
                                    anchor_perfect = TRUE,
                                    logit_epsilon = 1e-4,
                                    max_gap_ceiling = NULL,
-                                   score_transform = "logit") {
+                                   score_transform = "logit",
+                                   min_pair_coverage = 0.8,
+                                   shrinkage = c("empirical_bayes", "fixed")) {
   score_transform <- match.arg(score_transform, c("logit", "sqrt_mismatch"))
+  shrinkage <- match.arg(shrinkage)
+  if (!is.null(min_pair_coverage) &&
+    (!is.numeric(min_pair_coverage) || length(min_pair_coverage) != 1L ||
+      is.na(min_pair_coverage) || min_pair_coverage <= 0 || min_pair_coverage > 1)) {
+    stop("min_pair_coverage must be NULL or a single number in (0, 1]")
+  }
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
   if (is.null(min_observed_sigma)) {
     min_observed_sigma <- 1.0 * .transform_unit_ratio(score_transform)^2
@@ -744,8 +845,18 @@ train_likelihood_model <- function(raw_df,
     score_bounds    = score_bounds,
     logit_epsilon   = logit_epsilon,
     max_gap_ceiling = max_gap_ceiling,
-    score_transform = score_transform
+    score_transform = score_transform,
+    min_pair_coverage = min_pair_coverage
   )
+  floor_applied <- !is.null(min_pair_coverage) && "coverage" %in% tolower(names(raw_clean))
+  n_self_fallback <- sum(train_df$self_fallback %in% TRUE)
+  n_foreign_unqualified <- sum(train_df$n_foreign_unqualified %in% 1L)
+  if (floor_applied) {
+    message(sprintf(
+      "Pair-coverage floor %.2f: %d reference(s) had no qualifying foreign pair (noise floor); %d fell back to an unqualified conspecific pair (kept in training).",
+      min_pair_coverage, n_foreign_unqualified, n_self_fallback
+    ))
+  }
 
   if (nrow(train_df) == 0L) {
     stop(paste0(
@@ -922,8 +1033,6 @@ train_likelihood_model <- function(raw_df,
       # prior_weight is the "equivalent sample size" of the prior: with
       # N = prior_weight observations, species and global means get equal weight.
       w = n_obs_species / (n_obs_species + prior_weight),
-      shrunk_mu_score = w * score_logit_mean + (1 - w) * mu_score_global,
-      shrunk_mu_gap = w * gap_logit_mean + (1 - w) * mu_gap_global,
       # Variance shrinkage via linear combination is an approximation to the
       # inverse-chi-squared posterior. Adequate for typical barcode reference
       # sizes (3-20 sequences per species).
@@ -953,6 +1062,52 @@ train_likelihood_model <- function(raw_df,
       shrunk_sigma = w * score_logit_var + (1 - w) * global_var_score
     )
 
+  # ---- MEAN SHRINKAGE WEIGHTS (2026-09-10) ---------------------------------
+  # "fixed": the original w = N / (N + prior_weight) for both dimensions.
+  # "empirical_bayes": the normal-normal EB weight w_i = tau^2 / (tau^2 +
+  # sigma^2 / n_i), with tau^2 (the real between-species variance of the
+  # means) estimated by method of moments from the species means themselves,
+  # separately for score and gap. When the species means spread no more than
+  # their own sampling noise, tau^2 -> 0 and every species collapses to the
+  # global mean; when they carry real structure, well-referenced species keep
+  # more of their own mean. A weighted average between two finite means can
+  # never leave the interval between them, so this cannot produce an absurd
+  # value. The anchor pseudo-species is excluded from the tau^2 estimate (its
+  # mean is the perfect score by construction). Variance shrinkage
+  # (shrunk_sigma) stays on the fixed weight, unchanged.
+  sp_real <- species_params$rank_code_a != "ANCHOR_PERFECT"
+  tau2_score <- NA_real_
+  tau2_gap <- NA_real_
+  if (shrinkage == "empirical_bayes" && sum(sp_real) >= 3L) {
+    .eb_w <- function(means, n, s2) {
+      tau2 <- max(0, stats::var(means[sp_real], na.rm = TRUE) - mean(s2 / n[sp_real]))
+      list(tau2 = tau2, w = tau2 / (tau2 + s2 / n))
+    }
+    es <- .eb_w(species_params$score_logit_mean, species_params$n_obs_species, global_var_score)
+    eg <- .eb_w(species_params$gap_logit_mean, species_params$n_obs_species, global_var_gap)
+    species_params$w_score <- es$w
+    species_params$w_gap <- eg$w
+    tau2_score <- es$tau2
+    tau2_gap <- eg$tau2
+    message(sprintf(
+      "Empirical Bayes mean shrinkage: tau/sigma = %.2f (score), %.2f (gap); species weight on own mean %.2f-%.2f (score), %.2f-%.2f (gap).",
+      sqrt(tau2_score / global_var_score), sqrt(tau2_gap / global_var_gap),
+      min(es$w[sp_real]), max(es$w[sp_real]), min(eg$w[sp_real]), max(eg$w[sp_real])
+    ))
+  } else {
+    if (shrinkage == "empirical_bayes") {
+      message("Empirical Bayes mean shrinkage needs >= 3 species; using the fixed prior_weight shrinkage.")
+      shrinkage <- "fixed"
+    }
+    species_params$w_score <- species_params$w
+    species_params$w_gap <- species_params$w
+  }
+  species_params <- dplyr::mutate(
+    species_params,
+    shrunk_mu_score = w_score * score_logit_mean + (1 - w_score) * mu_score_global,
+    shrunk_mu_gap = w_gap * gap_logit_mean + (1 - w_gap) * mu_gap_global
+  )
+
   # Remove anchor pseudo-species from lookup
   species_params <- dplyr::filter(
     species_params,
@@ -965,7 +1120,9 @@ train_likelihood_model <- function(raw_df,
     mu_score       = species_params$shrunk_mu_score,
     mu_gap         = species_params$shrunk_mu_gap,
     sigma_score    = species_params$shrunk_sigma,
-    n_obs_species  = species_params$n_obs_species
+    n_obs_species  = species_params$n_obs_species,
+    shrink_w_score = species_params$w_score,
+    shrink_w_gap   = species_params$w_gap
   )
 
   # ---- H2 / H3 PARAMETERS ---------------------------------------------------
@@ -1243,6 +1400,12 @@ train_likelihood_model <- function(raw_df,
         n_h1_pooled = sum(species_params$n_obs_species),
         n_h2_pooled = n_h2_pooled,
         prior_weight = prior_weight,
+        shrinkage = shrinkage,
+        tau2_score = tau2_score,
+        tau2_gap = tau2_gap,
+        min_pair_coverage = if (floor_applied) min_pair_coverage else NA_real_,
+        n_self_fallback = n_self_fallback,
+        n_foreign_unqualified = n_foreign_unqualified,
         mlr_violations = mlr_check$violations,
         max_ceiling_z = mlr_check$max_z,
         max_ceiling_z_species = mlr_check$max_z_species

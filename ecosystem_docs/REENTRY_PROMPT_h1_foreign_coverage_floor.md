@@ -1,7 +1,50 @@
 # Re-entry prompt — Should `train_likelihood_model()` floor alignment coverage on the FOREIGN side of the H1 gap?
 
 **Written 2026-09-10 (Fable 5.1), after the first full GreatLakes run on the rewired
-reference screen.** Status: **OPEN — a user decision.** Nothing in the package was changed.
+reference screen.** Status: **RESOLVED the same day — built, validated, default-on.**
+
+## Resolution (2026-09-10, later)
+
+User decision: the floor is a requirement, not an opt-in, and its value is the match
+object's own floor (`blast_sequences(min_query_coverage = 80)`, now recorded in the
+match object's `report_params`; `evaluate_likelihoods()` checks the two agree). For the
+gap, the user preferred data-driven shrinkage over globalising: the per-species gap
+means are now shrunk with an estimated between-species variance (`shrinkage =
+"empirical_bayes"`), which on this data gives `tau/sigma` = 0.00 for score (collapses
+to global) and 0.50 for gap (real signal kept, weights 0.34–0.72). Model D below is
+withdrawn: it discarded that signal. Shrinkage cannot produce absurd values (a
+weighted average of two finite means); the extrapolation risk belongs to the affine
+remap in `calibrate_query_noise()`, which touches score only.
+
+Validated on the REAL workflow's code path, not the fastpath: `REVIEW_coverage_floor_
+arms.R` (GreatLakes data dir) executes `GreatLakes2023_ConsensusWorkflow.R`'s own
+lines 7b.5 → 8h against the 2026-09-10 checkpoints, `.save()` redirected, one arm per
+model; the control arm reproduced production `consensus_final` in 884/885 observations.
+Priors were identical across arms, so only `lik_model` differed. Lamar scoring
+(`REVIEW_lamar_score_arm.R`, species level, matched samples):
+
+| Arm | both | ours-only | precision | recall | species | overconfident |
+|---|---|---|---|---|---|---|
+| A control (production model) | 593 | 144 | 0.805 | 0.549 | 29/61 | 1/1081 |
+| B floor 0.8, fixed shrinkage | 802 | 191 | 0.808 | 0.742 | 42/61 | 0/1081 |
+| **C floor 0.8, EB shrinkage (adopted)** | 798 | 177 | **0.818** | 0.738 | 41/61 | 0/1081 |
+
+Species-rank observations 543 → 690; 13 species newly resolved, none lost. Grass carp
+back at species rank (5 ASVs; 8 Lamar-supported sample calls). Largest gains, all
+Lamar-confirmed: *Lepomis cyanellus* +25, *Ambloplites rupestris* +24, *Micropterus
+salmoides* +23, *Notropis stramineus* +21, *Catostomus commersonii* +20. The one new
+unsupported species is *Fundulus notatus* (10 sample calls, 0 Lamar); *Notropis
+hudsonius* remains the largest ours-only taxon (26). B vs C differ on three taxa only
+(*Ameiurus natalis* 2/15 in B, absent in C; *Catostomus commersonii* 24 vs 22).
+
+Not yet done: the same arms at the PtConception sites (no independent ground truth
+there; the check is `evaluate_likelihoods()`'s warning plus a species-list diff), and a
+full end-to-end GreatLakes run to refresh the report tail.
+
+---
+
+## Original analysis (kept as written)
+
 Every number below is from real GreatLakes 12S data (`GreatLakes2023BurnsHarbor_*.rds`,
 run of 2026-09-10; seq_matrix 2.83M pairwise comparisons, 2,750 references, 885 ASVs).
 The retrained models used below are NOT saved anywhere durable; they take 2.4 s to

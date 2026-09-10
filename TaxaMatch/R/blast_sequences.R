@@ -223,6 +223,9 @@ NULL
 #'   This output is ready for \code{\link{standardize_match_data}}.
 #'
 #'   An \code{attr(out, "report_params")} list (\code{method}, \code{database},
+#'   \code{min_query_coverage} -- the coverage floor, read by
+#'   \code{TaxaLikely::evaluate_likelihoods()} to check it against the model's
+#'   \code{min_pair_coverage} --
 #'   \code{min_score}, \code{n_samples}) is also attached, consumed by
 #'   \code{\link{report_match}}.
 #'
@@ -691,6 +694,10 @@ blast_sequences <- function(seq_df,
     method    = if (method == "remote") "remote BLAST" else "local BLAST",
     database  = database,
     min_score = min_score,
+    # 2026-09-10: the coverage floor this match object was built under.
+    # TaxaLikely::train_likelihood_model(min_pair_coverage=) must match it
+    # (as a fraction), and evaluate_likelihoods() reads it from here to check.
+    min_query_coverage = min_query_coverage,
     n_samples = length(unique(out$observation_id))
   )
   attr(out, "failed_query_ids") <- failed_query_ids

@@ -428,9 +428,9 @@ nrow(result$unresolved)
 }
 \references{
 Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
-(2017). Unbiased probabilistic taxonomic classification for DNA barcoding.
-\emph{Bioinformatics}, 33(19), 2997--3005.
-\doi{10.1093/bioinformatics/btx369}
+(2016). Unbiased probabilistic taxonomic classification for DNA barcoding.
+\emph{Bioinformatics}, 32(19), 2920--2927.
+\doi{10.1093/bioinformatics/btw346}
 
 Efron, B. and Morris, C. (1973). Stein's estimation rule and its
 competitors -- an empirical Bayes approach. \emph{Journal of the American

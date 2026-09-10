@@ -837,3 +837,40 @@ test_that(".evaluate_one_query: H2 mean anchors on the ANCHOR SPECIES' own resol
   expect_false(isTRUE(all.equal(h2_near, h2_far)))
   expect_gt(h2_near, h2_far)
 })
+
+# ------------------------------------------------------------------------------
+# Train/inference pair-coverage check (2026-09-10)
+# ------------------------------------------------------------------------------
+
+test_that("evaluate_likelihoods warns when the match object admits lower coverage than the model's pair floor", {
+  mp <- .make_model_params()
+  mp$Stats$min_pair_coverage <- 0.8
+  mp$Score_Transform <- "logit"
+  md <- .make_match_df()
+  md$score_original <- md$score
+  md$query_coverage <- c(100, 95, 60) # one hit well below the 0.8 floor
+  expect_warning(
+    evaluate_likelihoods(md, mp, rank_system = c("genus", "species"), verbose = FALSE),
+    "min_pair_coverage = 0.80"
+  )
+  # The recorded BLAST floor, when present, is authoritative over the observed minimum.
+  md2 <- md
+  attr(md2, "report_params") <- list(min_query_coverage = 80)
+  expect_no_warning(
+    evaluate_likelihoods(md2, mp, rank_system = c("genus", "species"), verbose = FALSE)
+  )
+  # A recorded floor BELOW the model's warns even if the observed hits happen to be high.
+  md3 <- md
+  md3$query_coverage <- 100
+  attr(md3, "report_params") <- list(min_query_coverage = 50)
+  expect_warning(
+    evaluate_likelihoods(md3, mp, rank_system = c("genus", "species"), verbose = FALSE),
+    "blast_sequences"
+  )
+  # No floor recorded on the model (NA / absent) -> never warns.
+  mp_na <- mp
+  mp_na$Stats$min_pair_coverage <- NA_real_
+  expect_no_warning(
+    evaluate_likelihoods(md, mp_na, rank_system = c("genus", "species"), verbose = FALSE)
+  )
+})

@@ -1345,9 +1345,9 @@ utils::globalVariables(c(
 #'
 #' @references
 #' Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
-#' (2017). Unbiased probabilistic taxonomic classification for DNA barcoding.
-#' \emph{Bioinformatics}, 33(19), 2997--3005.
-#' \doi{10.1093/bioinformatics/btx369}
+#' (2016). Unbiased probabilistic taxonomic classification for DNA barcoding.
+#' \emph{Bioinformatics}, 32(19), 2920--2927.
+#' \doi{10.1093/bioinformatics/btw346}
 #'
 #' Efron, B. and Morris, C. (1973). Stein's estimation rule and its
 #' competitors -- an empirical Bayes approach. \emph{Journal of the American
@@ -1397,6 +1397,14 @@ evaluate_likelihoods <- function(match_df,
   if (!inherits(model_params, "taxa_model_params")) {
     stop("model_params must be a 'taxa_model_params' object from train_likelihood_model()")
   }
+
+  # Train/inference coverage check (2026-09-10): the model's pair-coverage
+  # floor (train_likelihood_model(min_pair_coverage=)) must not be looser than
+  # what the match object admits, or the gap feature is evaluated on hits the
+  # model never saw the like of. The floor the match object was built under
+  # is read from blast_sequences()'s report_params when present, else
+  # estimated as the observed minimum query_coverage.
+  .check_pair_coverage_floor(match_df, model_params)
 
   # Session 158, revised: evidence_col/min_coverage's sigma-modulation
   # mechanisms (the crossover gate and the coverage inflation) were initially
@@ -1834,4 +1842,37 @@ filter_top_hypotheses <- function(likelihood_df, rank_system = NULL) {
   }
 
   dplyr::bind_rows(finest_rows, preserved_coarser, non_specific)
+}
+
+
+#' Warn when the match object admits lower coverage than the model's pair floor
+#' @noRd
+.check_pair_coverage_floor <- function(match_df, model_params) {
+  floor_tr <- model_params$Stats$min_pair_coverage
+  if (is.null(floor_tr) || is.na(floor_tr)) {
+    return(invisible(NULL))
+  }
+  obs <- attr(match_df, "report_params")$min_query_coverage
+  src <- "blast_sequences(min_query_coverage = )"
+  if (is.null(obs) && "query_coverage" %in% names(match_df)) {
+    obs <- suppressWarnings(min(match_df$query_coverage, na.rm = TRUE))
+    src <- "the observed minimum query_coverage in match_df"
+  }
+  if (is.null(obs) || !is.finite(obs)) {
+    return(invisible(NULL))
+  }
+  if (obs > 1) obs <- obs / 100
+  if (obs < floor_tr - 0.01) {
+    warning(sprintf(
+      paste0(
+        "match_df admits hits down to %.2f alignment coverage (%s) but model_params was ",
+        "trained with min_pair_coverage = %.2f -- the gap feature is being evaluated on ",
+        "lower-coverage hits than it was trained on. Retrain with ",
+        "train_likelihood_model(min_pair_coverage = %.2f), or raise the match object's ",
+        "coverage floor (TaxaMatch::blast_sequences(min_query_coverage = %d))."
+      ),
+      obs, src, floor_tr, obs, as.integer(round(floor_tr * 100))
+    ), call. = FALSE)
+  }
+  invisible(NULL)
 }

@@ -1203,6 +1203,11 @@ match_obj_restored <- TaxaMatch::convert_taxonomy_backbone(
 # point.
 lik_model <- TaxaLikely::train_likelihood_model(
   raw_df          = seq_matrix,
+  # 2026-09-10: the H1 pair-coverage floor MUST equal the coverage floor the match
+  # object was built under (blast_sequences(min_query_coverage = 80) -> 0.8). Not a
+  # filter: no pair removed, no species dropped. evaluate_likelihoods() warns if the
+  # match object admits lower coverage than this. See TaxaLikely/CLAUDE.md 2026-09-10.
+  min_pair_coverage = 0.8,
   rank_system     = c("family", "genus", "species"),
   prior_weight    = 10.0,
   score_transform = "sqrt_mismatch"

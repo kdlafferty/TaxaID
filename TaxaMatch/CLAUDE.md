@@ -1,6 +1,13 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-10 (Fable 5.1 -- `verify_removal_candidates()` no longer reports
+# Last updated: 2026-09-10, later (Fable 5.1 -- `blast_sequences()` now records
+# `min_query_coverage` in `attr(out, "report_params")` next to `min_score`. It is the
+# coverage floor the match object was built under, and TaxaLikely::train_likelihood_
+# model(min_pair_coverage=) must equal it (as a fraction); TaxaLikely::evaluate_
+# likelihoods() reads it from here to check train/inference agreement, falling back to
+# the observed minimum query_coverage for a match object built before this. Additive.
+# See TaxaLikely/CLAUDE.md's top note for why.
+# Previous update, 2026-09-10 (Fable 5.1 -- `verify_removal_candidates()` no longer reports
 # `spared = TRUE` for an audit that never ran. `spared` was `!(action_audit %in% "remove")`,
 # so an audit whose BLAST timed out (`action_audit = "untested"`) read as "this removal was
 # overturned". Seen live on the first real GreatLakes training-screen audit after the

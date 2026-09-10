@@ -1,5 +1,54 @@
 # CLAUDE.md -- TaxaLikely
-# Last updated: 2026-09-10 (Fable 5.1 -- FOUND, NOT FIXED, user decision pending: the H1 gap
+# Last updated: 2026-09-10, later (Fable 5.1 -- BUILT AND VALIDATED, user decision: the
+# pair-coverage floor is a REQUIREMENT, on by default. `train_likelihood_model()` gains
+# `min_pair_coverage = 0.8` and `shrinkage = c("empirical_bayes", "fixed")`.
+#
+# THE FLOOR (min_pair_coverage): a reference-vs-reference pair must have alignment
+# coverage >= the floor before it may DEFINE a reference's best foreign match (STEP 3),
+# best congener match (3B) or best conspecific match (STEP 4, df_h1). It is not a data
+# filter -- no pair is removed and no species is dropped: a reference with no qualifying
+# conspecific pair falls back to its best one (self_fallback), a reference with no
+# qualifying foreign pair goes to the noise floor exactly as one with no foreign pair
+# ever did (it does NOT fall back to the unfiltered max, which would reinstate the
+# artifact). 0.8 is the inference-side floor: `TaxaMatch::blast_sequences(min_query_
+# coverage = 80)`, which now records itself in the match object's report_params, and
+# `evaluate_likelihoods()` (new `.check_pair_coverage_floor()`) warns when the match
+# object admits lower coverage than the model was trained under. A raw_df with no
+# `coverage` column skips the floor with a message; `Stats$min_pair_coverage` is NA then.
+#
+# THE SHRINKAGE (shrinkage = "empirical_bayes", default): the per-species H1 mean score
+# and mean gap were always shrunk toward the global mean, with a fixed weight
+# N/(N+prior_weight). Now the weight is w_i = tau^2/(tau^2 + sigma^2/n_i) with tau^2 (real
+# between-species variance of the means) by method of moments, per dimension, anchor
+# pseudo-species excluded. Bounded: a weighted average of two finite means. Variance
+# shrinkage stays on the fixed weight. `"fixed"` reproduces the old behaviour exactly
+# (regression-tested). On real GreatLakes 12S with the floor: tau/sigma = 0.00 (score --
+# per-species score means carry no signal beyond noise, every species takes the global
+# mean, consistent with calibrate_query_noise()'s July finding) and 0.50 (gap -- real
+# structure; weights 0.34-0.72, i.e. LESS shrinkage than the fixed weight gave). An
+# earlier "globalise the gap" idea (model D in the reentry doc) is therefore withdrawn:
+# it discarded signal.
+#
+# VALIDATION, on the REAL workflow's own code path (not the fastpath): a driver executed
+# GreatLakes2023_ConsensusWorkflow.R's literal lines 7b.5 -> 8h against the 2026-09-10
+# checkpoints with .save() redirected, once per arm; the control arm reproduced the
+# production consensus_final in 884/885 observations (1 MC-noise row). Priors identical
+# across arms (habitat cache + checkpoints), so ONLY lik_model differed. Scored with
+# REVIEW_formal_lamar_check.R (species level, matched samples):
+#   A control (no floor, fixed):  both 593 | ours_only 144 | precision 0.805 | recall 0.549 | 29/61 species | overconfident 1/1081
+#   B floor + fixed shrinkage:    both 802 | ours_only 191 | precision 0.808 | recall 0.742 | 42/61 species | 0/1081
+#   C floor + EB shrinkage:       both 798 | ours_only 177 | precision 0.818 | recall 0.738 | 41/61 species | 0/1081
+# Species-rank observations 543 -> 690 (C); 13 species newly resolved and NONE lost;
+# grass carp (Ctenopharyngodon idella) back at species rank in 5 observations, 8 of them
+# Lamar-supported; Lepomis cyanellus +25, Ambloplites rupestris +24, Micropterus
+# salmoides +23, Catostomus commersonii +20 co-detections, all Lamar-confirmed. The one
+# new unsupported species is Fundulus notatus (10 sample calls, 0 Lamar). C adopted as
+# the default. Full record: ecosystem_docs/REENTRY_PROMPT_h1_foreign_coverage_floor.md
+# (now RESOLVED); harness: GreatLakes data/REVIEW_coverage_floor_arms.R +
+# REVIEW_lamar_score_arm.R. 7 new tests; devtools::test() 1099/0, check() 0/0/0 (the
+# score-to-likelihood vignette carried the setup-chunk purl=FALSE that knitr's tangler
+# ignores -- fixed per-chunk like TaxaExpect 2026-09-03), reinstalled 18:44 UTC.
+# Previous update, 2026-09-10 (Fable 5.1 -- FOUND, NOT FIXED, user decision pending: the H1 gap
 # feature is trained on short-overlap foreign pairs. `train.R` STEP 3 takes each reference's
 # `max_foreign_score` over ALL cross-species pairs with no coverage condition; on real
 # GreatLakes 12S data 86% of references get a p_match = 1.0 "best foreign match" at median

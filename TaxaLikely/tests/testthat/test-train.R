@@ -513,3 +513,130 @@ test_that("train_likelihood_model: the pooled-H2 lme4 branch counts genera, not 
     "only 8 genera with congener data"
   )
 })
+
+# ------------------------------------------------------------------------------
+# Alignment-coverage floor on pair selection + empirical Bayes shrinkage
+# (2026-09-10). Fixture: the genus fixture plus a `coverage` column, with two
+# planted short-overlap artifacts: L1/L2 (Fundulus lima) each "match" D1
+# (Distant distantus) at 100% identity over 4% of the sequence -- exactly the
+# real GreatLakes pattern (C. idella vs a marine drum) -- and the distantus
+# pair itself only overlaps at 30%.
+# ------------------------------------------------------------------------------
+
+.make_coverage_raw_df <- function() {
+  g <- .make_genus_raw_df()
+  g$coverage <- 1.0
+  art <- (g$id_x %in% c("L1", "L2") & g$id_y == "D1") |
+    (g$id_y %in% c("L1", "L2") & g$id_x == "D1")
+  g$p_match[art] <- 1.00
+  g$coverage[art] <- 0.04
+  thin <- g$id_x %in% c("D1", "D2") & g$id_y %in% c("D1", "D2") & g$id_x != g$id_y
+  g$coverage[thin] <- 0.30
+  g
+}
+
+test_that("min_pair_coverage: a short-overlap 100% hit no longer defines the foreign match", {
+  skip_if_not_installed("TaxaTools")
+  off <- suppressMessages(train_likelihood_model(.make_coverage_raw_df(), c("genus", "species"),
+    min_pair_coverage = NULL, shrinkage = "fixed", use_hierarchy = FALSE, anchor_perfect = FALSE
+  ))
+  on <- suppressMessages(train_likelihood_model(.make_coverage_raw_df(), c("genus", "species"),
+    min_pair_coverage = 0.8, shrinkage = "fixed", use_hierarchy = FALSE, anchor_perfect = FALSE
+  ))
+  gap_off <- off$H1_Lookup$mu_gap[off$H1_Lookup$lookup_key == "lima"]
+  gap_on <- on$H1_Lookup$mu_gap[on$H1_Lookup$lookup_key == "lima"]
+  # Without the floor lima's "best foreign match" is the 4%-overlap 1.00 hit,
+  # so its gap is negative (0.97 self vs 1.00 foreign); with it, the best
+  # qualifying foreign match is the real congener at 0.90 and the gap is positive.
+  expect_lt(gap_off, 0)
+  expect_gt(gap_on, 0)
+  expect_gt(gap_on, gap_off)
+  expect_equal(on$Stats$min_pair_coverage, 0.8)
+  expect_true(is.na(off$Stats$min_pair_coverage))
+  expect_equal(on$Stats$n_foreign_unqualified, 0L)
+})
+
+test_that("min_pair_coverage: a species whose only conspecific pairs are below the floor is kept, via fallback", {
+  skip_if_not_installed("TaxaTools")
+  on <- suppressMessages(train_likelihood_model(.make_coverage_raw_df(), c("genus", "species"),
+    min_pair_coverage = 0.8, shrinkage = "fixed", use_hierarchy = FALSE, anchor_perfect = FALSE
+  ))
+  expect_true("distantus" %in% on$H1_Lookup$lookup_key)
+  expect_equal(on$Stats$n_species, 5L)
+  # D1 and D2 both fell back to their (30%-coverage) conspecific pair.
+  expect_equal(on$Stats$n_self_fallback, 2L)
+})
+
+test_that("min_pair_coverage: no coverage column -> floor skipped with a message, identical to NULL", {
+  skip_if_not_installed("TaxaTools")
+  expect_message(
+    a <- train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+      min_pair_coverage = 0.8, shrinkage = "fixed", use_hierarchy = FALSE, anchor_perfect = FALSE
+    ),
+    "no 'coverage' column"
+  )
+  b <- suppressMessages(train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+    min_pair_coverage = NULL, shrinkage = "fixed", use_hierarchy = FALSE, anchor_perfect = FALSE
+  ))
+  expect_equal(a$H1_Lookup$mu_gap, b$H1_Lookup$mu_gap)
+  expect_equal(a$H1_Lookup$mu_score, b$H1_Lookup$mu_score)
+  expect_true(is.na(a$Stats$min_pair_coverage))
+})
+
+test_that("min_pair_coverage: argument validation", {
+  expect_error(
+    train_likelihood_model(.make_genus_raw_df(), c("genus", "species"), min_pair_coverage = 1.5),
+    "min_pair_coverage"
+  )
+  expect_error(
+    train_likelihood_model(.make_genus_raw_df(), c("genus", "species"), min_pair_coverage = c(0.5, 0.8)),
+    "min_pair_coverage"
+  )
+})
+
+test_that("shrinkage = 'fixed' reproduces the N / (N + prior_weight) weight on both dimensions", {
+  skip_if_not_installed("TaxaTools")
+  out <- suppressMessages(train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+    prior_weight = 10, shrinkage = "fixed", use_hierarchy = FALSE, anchor_perfect = FALSE
+  ))
+  n <- out$H1_Lookup$n_obs_species
+  expect_equal(out$H1_Lookup$shrink_w_score, n / (n + 10))
+  expect_equal(out$H1_Lookup$shrink_w_gap, n / (n + 10))
+  expect_equal(out$Stats$shrinkage, "fixed")
+  expect_true(is.na(out$Stats$tau2_gap))
+})
+
+test_that("shrinkage = 'empirical_bayes': no between-species signal collapses to the global mean; weights stay in [0, 1]", {
+  skip_if_not_installed("TaxaTools")
+  # In the genus fixture every within-species pair scores 0.97, so the
+  # species score means are identical: tau^2 = 0 and every species gets the
+  # global score mean. The gap means differ by genus (0.90 vs 0.75 vs 0.70
+  # congeners), so the gap can carry real between-species variance.
+  out <- suppressMessages(train_likelihood_model(.make_genus_raw_df(), c("genus", "species"),
+    shrinkage = "empirical_bayes", use_hierarchy = FALSE, anchor_perfect = FALSE
+  ))
+  expect_equal(out$Stats$shrinkage, "empirical_bayes")
+  expect_equal(out$Stats$tau2_score, 0)
+  expect_true(all(out$H1_Lookup$shrink_w_score == 0))
+  expect_true(all(abs(out$H1_Lookup$mu_score - out$H1_Global_Mu[["score_logit"]]) < 1e-12))
+  expect_true(all(out$H1_Lookup$shrink_w_gap >= 0 & out$H1_Lookup$shrink_w_gap <= 1))
+  expect_gte(out$Stats$tau2_gap, 0)
+  # A shrunk mean always lies between the global mean and the species' own
+  # mean: with weight w in [0,1] it can never overshoot either.
+  g <- out$H1_Global_Mu[["gap_logit"]]
+  expect_true(all(
+    (out$H1_Lookup$mu_gap - g) * (out$H1_Lookup$shrink_w_gap) >= -1e-12 |
+      out$H1_Lookup$shrink_w_gap == 0
+  ))
+})
+
+test_that("shrinkage = 'empirical_bayes' falls back to 'fixed' with fewer than 3 species", {
+  skip_if_not_installed("TaxaTools")
+  expect_message(
+    out <- train_likelihood_model(.make_raw_df(), c("genus", "species"),
+      shrinkage = "empirical_bayes", use_hierarchy = FALSE, anchor_perfect = FALSE
+    ),
+    "needs >= 3 species"
+  )
+  expect_equal(out$Stats$shrinkage, "fixed")
+})

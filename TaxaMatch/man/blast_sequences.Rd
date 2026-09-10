@@ -259,6 +259,9 @@ If \code{resolve_taxonomy = TRUE}, taxonomy columns (\code{kingdom},
 This output is ready for \code{\link{standardize_match_data}}.
 
 An \code{attr(out, "report_params")} list (\code{method}, \code{database},
+\code{min_query_coverage} -- the coverage floor, read by
+\code{TaxaLikely::evaluate_likelihoods()} to check it against the model's
+\code{min_pair_coverage} --
 \code{min_score}, \code{n_samples}) is also attached, consumed by
 \code{\link{report_match}}.
 
