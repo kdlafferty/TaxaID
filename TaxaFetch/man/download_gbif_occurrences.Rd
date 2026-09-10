@@ -87,7 +87,8 @@ removed once the new one is saved -- it is never silently orphaned on
 disk.}
 
 \item{submit_attempts}{Integer (default \code{4}). How many times the download
-\emph{request} is submitted before giving up when GBIF answers with a
+\emph{request} is submitted (and, separately, how many times the prepared
+file is fetched) before giving up when GBIF answers with a
 transient server-side failure (HTTP 5xx such as \code{"503 Backend fetch
 failed"}, gateway errors, timeouts). Non-transient errors (bad credentials,
 a malformed predicate) are raised immediately, never retried.}
@@ -97,7 +98,9 @@ slept between submission attempts; the last value repeats if
 \code{submit_attempts} exceeds its length.}
 
 \item{on_submit_failure}{\code{"use_cache"} (default) or \code{"error"}. What
-to do when every submission attempt fails AND a verified cached zip for
+to do when every submission attempt -- or every attempt to fetch the
+prepared file (curl timeouts, resets, truncated transfers) -- fails AND a
+verified cached zip for
 this exact query exists (only possible with \code{overwrite = TRUE}, since
 the default already reuses such a zip without asking GBIF at all).
 \code{"use_cache"} imports that zip with a loud \code{warning()} naming

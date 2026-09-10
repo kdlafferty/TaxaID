@@ -56,7 +56,8 @@ utils::globalVariables("taxonKey")
 #'   removed once the new one is saved -- it is never silently orphaned on
 #'   disk.
 #' @param submit_attempts Integer (default \code{4}). How many times the download
-#'   \emph{request} is submitted before giving up when GBIF answers with a
+#'   \emph{request} is submitted (and, separately, how many times the prepared
+#'   file is fetched) before giving up when GBIF answers with a
 #'   transient server-side failure (HTTP 5xx such as \code{"503 Backend fetch
 #'   failed"}, gateway errors, timeouts). Non-transient errors (bad credentials,
 #'   a malformed predicate) are raised immediately, never retried.
@@ -64,7 +65,9 @@ utils::globalVariables("taxonKey")
 #'   slept between submission attempts; the last value repeats if
 #'   \code{submit_attempts} exceeds its length.
 #' @param on_submit_failure \code{"use_cache"} (default) or \code{"error"}. What
-#'   to do when every submission attempt fails AND a verified cached zip for
+#'   to do when every submission attempt -- or every attempt to fetch the
+#'   prepared file (curl timeouts, resets, truncated transfers) -- fails AND a
+#'   verified cached zip for
 #'   this exact query exists (only possible with \code{overwrite = TRUE}, since
 #'   the default already reuses such a zip without asking GBIF at all).
 #'   \code{"use_cache"} imports that zip with a loud \code{warning()} naming
@@ -668,34 +671,82 @@ download_gbif_occurrences <- function(
       # the structural test stands alone when it is not.
       .expected <- .gbif_declared_size(dl_key)
       .chk <- list(ok = FALSE, reason = "not attempted")
-      for (.attempt in seq_len(2L)) {
-        rgbif::occ_download_get(dl_key, path = dest_dir, overwrite = TRUE)
-        if (!file.exists(zip_path)) {
+      # 2026-09-10: a thrown transfer error (curl "Connection timed out",
+      # "Empty reply", a reset) used to escape this loop entirely -- only a
+      # BAD ZIP was retried. Both are the same transient failure; both retry,
+      # with the same backoff the request step uses, and both can fall back to
+      # the verified cached zip when GBIF stays down.
+      .get_attempts <- max(2L, as.integer(submit_attempts))
+      for (.attempt in seq_len(.get_attempts)) {
+        .got <- tryCatch(
+          {
+            rgbif::occ_download_get(dl_key, path = dest_dir, overwrite = TRUE)
+            TRUE
+          },
+          error = function(e) e
+        )
+        if (inherits(.got, "error")) {
+          .chk <- list(ok = FALSE, reason = paste(
+            "transfer error:", gsub("\\s+", " ", conditionMessage(.got))
+          ))
+        } else if (!file.exists(zip_path)) {
           .chk <- list(ok = FALSE, reason = "no file written")
         } else {
           .chk <- .gbif_zip_intact(zip_path, expected_size = .expected)
         }
         if (isTRUE(.chk$ok)) break
         message(sprintf(
-          "  Download attempt %d produced an unusable zip (%s).",
-          .attempt, .chk$reason
+          "  Download attempt %d of %d failed (%s).",
+          .attempt, .get_attempts, substr(.chk$reason, 1L, 160L)
         ))
         if (file.exists(zip_path)) file.remove(zip_path)
-        if (.attempt < 2L) message("  Retrying the same prepared key once...")
+        if (.attempt < .get_attempts) {
+          .w <- submit_wait[min(.attempt, length(submit_wait))]
+          message(sprintf("  Retrying the same prepared key in %s s...", format(.w)))
+          Sys.sleep(.w)
+        }
       }
       if (!isTRUE(.chk$ok)) {
-        stop(sprintf(
-          paste0(
-            "download_gbif_occurrences: the GBIF zip for key %s could not be downloaded ",
-            "intact after 2 attempts (%s). Nothing was cached, so simply re-running is ",
-            "safe -- the key stays prepared server-side. If it keeps failing, check free ",
-            "disk space and network stability, or fetch it by hand from\n  %s"
-          ),
-          dl_key, .chk$reason,
-          sprintf("https://api.gbif.org/v1/occurrence/download/request/%s.zip", dl_key)
-        ))
+        .fallback_zip <- if (!is.null(old_zip_path) && file.exists(old_zip_path) &&
+          isTRUE(.gbif_zip_intact(old_zip_path)$ok)) {
+          old_zip_path
+        } else {
+          NULL
+        }
+        if (identical(on_submit_failure, "use_cache") && !is.null(.fallback_zip)) {
+          .meta_ts <- tryCatch(readRDS(meta_path)$timestamp, error = function(e) NA)
+          warning(sprintf(
+            paste0(
+              "download_gbif_occurrences: GBIF prepared download key %s but the file could not ",
+              "be fetched in %d attempt(s) (%s). USING THE VERIFIED CACHED ZIP for this exact ",
+              "query instead (fetched %s, key %s). The data are identical unless GBIF's holdings ",
+              "changed since then; the new key stays prepared server-side. Re-run with ",
+              "overwrite = TRUE once GBIF is back for a fresh pull; pass ",
+              "on_submit_failure = \"error\" to fail instead of falling back."
+            ),
+            dl_key, .get_attempts, substr(.chk$reason, 1L, 160L),
+            format(.meta_ts, "%Y-%m-%d %H:%M"), meta$dl_key
+          ), call. = FALSE)
+          dl_key <- meta$dl_key
+          zip_path <- .fallback_zip
+          old_zip_path <- NULL
+          .served_from_cache_after_failure <- TRUE
+        } else {
+          stop(sprintf(
+            paste0(
+              "download_gbif_occurrences: the GBIF zip for key %s could not be downloaded ",
+              "intact after %d attempts (%s). Nothing was cached, so simply re-running is ",
+              "safe -- the key stays prepared server-side%s. If it keeps failing, check ",
+              "https://www.gbif.org/health, free disk space and network stability, or fetch ",
+              "it by hand from\n  %s"
+            ),
+            dl_key, .get_attempts, substr(.chk$reason, 1L, 160L),
+            if (is.null(.fallback_zip)) " (no verified cached zip for this exact query exists to fall back on)" else "",
+            sprintf("https://api.gbif.org/v1/occurrence/download/request/%s.zip", dl_key)
+          ), call. = FALSE)
+        }
       }
-      message(sprintf(
+      if (!isTRUE(.served_from_cache_after_failure)) message(sprintf(
         "  Zip saved to: %s (verified%s)", zip_path,
         if (is.null(.expected)) {
           " structurally"
@@ -708,8 +759,9 @@ download_gbif_occurrences <- function(
       ))
     }
 
-    # Save metadata -- only ever AFTER verification passes.
-    if (!is.null(meta_path)) {
+    # Save metadata -- only ever AFTER verification passes (and never when the
+    # verified cached zip was used as a fallback: its metadata is already right).
+    if (!is.null(meta_path) && !isTRUE(.served_from_cache_after_failure)) {
       saveRDS(
         list(dl_key = dl_key, zip_path = zip_path, timestamp = Sys.time()),
         meta_path

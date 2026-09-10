@@ -835,3 +835,56 @@ test_that("a non-transient submission error (bad credentials) is raised at once,
   )
   expect_equal(calls, 1L)
 })
+
+test_that("a thrown transfer error at occ_download_get() is retried, then falls back to the verified cache", {
+  cache_dir <- tempfile("gbif_get_fallback_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  old_zip <- .make_fake_gbif_zip(cache_dir)
+  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
+  saveRDS(list(dl_key = "0000000-000000000000000", zip_path = old_zip, timestamp = Sys.time() - 3600), meta_path)
+  gets <- 0L
+  testthat::local_mocked_bindings(
+    occ_download = function(...) "3333333-999999999999999",
+    occ_download_wait = function(...) invisible(NULL),
+    occ_download_meta = function(...) stop("offline"),
+    occ_download_get = function(...) { gets <<- gets + 1L; stop("Timeout was reached [occurrence-download.gbif.org]: Connection timed out after 10002 milliseconds") },
+    .package = "rgbif"
+  )
+  expect_warning(
+    out <- suppressMessages(download_gbif_occurrences(
+      keys = keys, geometry = geometry, year_range = year_range,
+      cache_dir = cache_dir, overwrite = TRUE, submit_attempts = 3L, submit_wait = 0,
+      gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    )),
+    "could not be fetched in 3 attempt"
+  )
+  expect_equal(gets, 3L)
+  expect_true(attr(out, "served_from_cache_after_failure"))
+  expect_equal(attr(out, "download_key"), "0000000-000000000000000")
+  expect_true(file.exists(old_zip))
+  expect_equal(readRDS(meta_path)$dl_key, "0000000-000000000000000") # metadata untouched
+  expect_gt(nrow(out), 0L)
+})
+
+test_that("a thrown transfer error with no cache errors after all attempts and names the prepared key", {
+  cache_dir <- tempfile("gbif_get_err_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  testthat::local_mocked_bindings(
+    occ_download = function(...) "4444444-999999999999999",
+    occ_download_wait = function(...) invisible(NULL),
+    occ_download_meta = function(...) stop("offline"),
+    occ_download_get = function(...) stop("Connection timed out"),
+    .package = "rgbif"
+  )
+  expect_error(
+    suppressMessages(download_gbif_occurrences(
+      keys = 100L, geometry = "POLYGON((0 0,0 1,1 1,1 0,0 0))", year_range = "2000,2024",
+      cache_dir = cache_dir, submit_attempts = 2L, submit_wait = 0,
+      gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    )),
+    "4444444-999999999999999.*no verified cached zip"
+  )
+})

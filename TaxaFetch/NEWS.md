@@ -10,6 +10,11 @@
   warning and sets `attr(out, "served_from_cache_after_failure")`; `"error"`
   restores the old behaviour. Motivated by a real run dying on GBIF's
   "HTTP 503 Backend fetch failed" with an identical verified zip on disk.
+* `download_gbif_occurrences()`: the fetch of the prepared file now treats a
+  thrown transfer error (curl connection timeout, reset, empty reply) as the
+  same transient failure as a truncated zip: retried with backoff, then the
+  same verified-cache fallback. Previously a thrown curl error escaped the
+  retry loop entirely.
 
 ## Polishing Phase (Sessions 57-59)
 

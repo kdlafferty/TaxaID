@@ -16,8 +16,20 @@
 # sets `attr(out, "served_from_cache_after_failure") = TRUE`; `"error"` fails as before;
 # with no usable cache it always errors, now pointing at gbif.org/health. New internal
 # `.gbif_submit_with_retry()`. 4 tests (retry-then-succeed; fallback with warning and
-# intact cache; error mode and no-cache error; 401 not retried). Full suite + check see
-# session report; reinstalled.
+# intact cache; error mode and no-cache error; 401 not retried).
+#
+# Same session, one step later: the very next attempt got past the request and died at
+# `rgbif::occ_download_get()` with curl's "Connection timed out after 10002 milliseconds"
+# to occurrence-download.gbif.org -- a THROWN transfer error, which the 2026-09-05
+# verify-and-retry-once loop never caught (it only retried a bad zip that had been
+# written). The fetch loop now catches thrown transfer errors as the same transient
+# failure, retries `max(2, submit_attempts)` times with the same backoff, and falls back
+# to the verified cached zip under the same `on_submit_failure = "use_cache"` rule (the
+# prepared key stays server-side; the cache metadata is left untouched so the fallback
+# zip stays the live cache). +2 tests (transfer error -> retry -> cache fallback; transfer
+# error with no cache -> error naming the prepared key). 80/80 on the file; full suite
+# 764 pass / 2 pre-existing CoordinateCleaner environment failures; check 0/0/0;
+# reinstalled.
 # Previous update, 2026-09-05 (Opus 5 -- GBIF fetch: integrity, non-blocking communication,
 # candidate scoping, and zip retention. Four separate real failures from one overnight
 # PtConception 18S run, in the order they bit:
