@@ -31,6 +31,8 @@ Rplots.pdf
 TaxaID_presentation.html
 TaxaID_presentation_files/
 ecosystem_docs/*.html
+**/vignettes/*.html
+**/vignettes/*_files/
 
 # ── Presentation source and assets ──────────────
 TaxaID_presentation.qmd
