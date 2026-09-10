@@ -653,6 +653,7 @@ test_that("a 169 bp primer-free input passes through unchanged; a 217 bp inclusi
 
 test_that(".resolve_trimmed_span_max(strip_primers = TRUE) is the inclusive bound minus both primer lengths", {
   skip_if_not_installed("TaxaTools")
+  skip_if_not_installed("Biostrings")
   pi <- TaxaTools::resolve_barcode_primers("MiFishU")
   expect_equal(
     .resolve_trimmed_span_max("MiFishU", strip_primers = TRUE),
