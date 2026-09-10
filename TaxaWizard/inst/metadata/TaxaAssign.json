@@ -104,7 +104,7 @@
           "name": "taxaexpect_priors",
           "type": "priors_df",
           "required": true,
-          "description": "Prior probabilities from TaxaExpect (or build_priors() output)"
+          "description": "Prior probabilities from TaxaExpect (estimate_kernel_priors()'s $priors)"
         },
         {
           "name": "site",
@@ -390,7 +390,7 @@
           "name": "taxaexpect_priors",
           "type": "data.frame",
           "required": true,
-          "description": "Prior table from TaxaExpect (build_priors()/generate_full_priors()/generate_domestic_food_priors())"
+          "description": "Prior table from TaxaExpect (estimate_kernel_priors()/generate_domestic_food_priors())"
         },
         {
           "name": "site",
@@ -443,49 +443,6 @@
       },
       "scaling": "linear",
       "scaling_note": "Fast; group + combine operation"
-    },
-    {
-      "name": "suggest_unreferenced_species",
-      "description": "LLM-first unreferenced species detection: plausible species per genus not in reference",
-      "inputs": [
-        {
-          "name": "match_df",
-          "type": "match_df",
-          "required": true,
-          "description": "Match object (genera extracted automatically)"
-        },
-        {
-          "name": "context",
-          "type": "context_df",
-          "required": false,
-          "description": "Site context for plausibility"
-        },
-        {
-          "name": "llm_fn",
-          "type": "function",
-          "required": false,
-          "description": "LLM provider function"
-        },
-        {
-          "name": "barcode_term",
-          "type": "character",
-          "required": false,
-          "description": "Barcode marker for NCBI verification"
-        },
-        {
-          "name": "expand_to_family",
-          "type": "logical",
-          "required": false,
-          "default": false,
-          "description": "Also check family-level unreferenced taxa"
-        }
-      ],
-      "output": {
-        "type": "unreferenced_species_result",
-        "description": "Character vector of unreferenced species; census and plausible in attributes"
-      },
-      "scaling": "api_limited",
-      "scaling_note": "LLM calls + optional NCBI verification; ~2-5 min"
     },
     {
       "name": "generate_report",
@@ -543,7 +500,7 @@
           "name": "taxaexpect_priors",
           "type": "priors",
           "required": true,
-          "description": "Output of TaxaExpect's prior-generation functions (build_priors()/generate_full_priors()), with taxon_col and theta_col"
+          "description": "Output of TaxaExpect's prior-generation functions (estimate_kernel_priors()), with taxon_col and theta_col"
         },
         {
           "name": "taxonomy_map",

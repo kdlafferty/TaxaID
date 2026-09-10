@@ -157,12 +157,12 @@ ref <- subset_local_database(
 
 # Filter MIDORI2 COI to a genus; drop sequences > 700 bp
 ref <- subset_local_database(
-  fasta_path    = "MIDORI2_UNIQ_NUC_GB260_COI_QIIME.fasta",
-  taxa          = "Thunnus",
-  rank          = "genus",
-  rank_system   = c("family", "genus", "species"),
+  fasta_path = "MIDORI2_UNIQ_NUC_GB260_COI_QIIME.fasta",
+  taxa = "Thunnus",
+  rank = "genus",
+  rank_system = c("family", "genus", "species"),
   taxonomy_file = "MIDORI2_UNIQ_NUC_GB260_COI_QIIME_taxon.tsv",
-  max_n_bases   = 700L,
+  max_n_bases = 700L,
   require_species = TRUE
 )
 
@@ -172,12 +172,12 @@ ref <- subset_local_database(
   taxa        = c("Salmo", "Oncorhynchus"),
   rank        = "genus",
   rank_system = c("family", "genus", "species"),
-  taxonomy    = my_tax_df   # must have composite_id + rank columns
+  taxonomy    = my_tax_df # must have composite_id + rank columns
 )
 
 # Continue with the standard workflow
 ref_matrix <- build_sequence_matrix(ref)
-model      <- train_likelihood_model(ref_matrix)
+model <- train_likelihood_model(ref_matrix)
 }
 
 }

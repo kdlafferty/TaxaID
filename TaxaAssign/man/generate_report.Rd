@@ -31,7 +31,7 @@ automatically from column presence (\code{top_score} for score-based;
 accordingly.}
 
 \item{unreferenced_result}{Optional. An \code{unreferenced_species_result}
-S3 object from \code{\link{suggest_unreferenced_species}}. When provided,
+S3 object from \code{\link[TaxaLikely]{suggest_unreferenced_species}}. When provided,
 the report includes reference database completeness statistics and
 unreferenced species findings.}
 
@@ -88,18 +88,18 @@ functions. If these attributes are absent, sensible defaults are assumed.
 }
 \examples{
 result <- data.frame(
-  observation_id       = c("S1", "S1"),
-  taxon_name           = c("Gadus morhua", "Gadus chalcogrammus"),
-  taxon_name_rank       = "species",
-  hypothesis_type       = "specific_candidate",
-  genus                 = "Gadus",
-  family                = "Gadidae",
-  score_likelihood      = c(0.8, 0.2),
+  observation_id = c("S1", "S1"),
+  taxon_name = c("Gadus morhua", "Gadus chalcogrammus"),
+  taxon_name_rank = "species",
+  hypothesis_type = "specific_candidate",
+  genus = "Gadus",
+  family = "Gadidae",
+  score_likelihood = c(0.8, 0.2),
   score_likelihood_mean = c(0.8, 0.2),
-  score_likelihood_sd   = c(0.05, 0.05),
-  prior_mean            = c(0.6, 0.4),
-  prior_alpha           = c(30, 20),
-  prior_beta            = c(20, 30)
+  score_likelihood_sd = c(0.05, 0.05),
+  prior_mean = c(0.6, 0.4),
+  prior_alpha = c(30, 20),
+  prior_beta = c(20, 30)
 )
 result <- compute_posterior(result, n_sims = 0)
 consensus <- posterior_consensus(result)

@@ -120,7 +120,7 @@ reviewed <- review_assignments(
   llm_fn = TaxaTools::call_api
 )
 
-# Adds 8 structured columns (llm_ prefixed since 2026-09-06 -- these are
+# Adds 8 structured columns (llm_ prefixed -- these are
 # independent LLM judgments, never derived from the pipeline's own values):
 # llm_habitat_plausibility, llm_geographic_plausibility, llm_scope_plausibility,
 # llm_contamination_risk, review_alternatives, review_lower_hypotheses,

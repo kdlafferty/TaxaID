@@ -76,8 +76,10 @@ df <- df |> dplyr::mutate(taxon_name = clean_taxon_names(taxon_name))
 }
 }
 \examples{
-nms <- c("Homo sapiens", "mus musculus", NA, "sp.", "Canis lupus sp.",
-         "Homo sapiens", "[Bacillus] subtilis", "Unknown")
+nms <- c(
+  "Homo sapiens", "mus musculus", NA, "sp.", "Canis lupus sp.",
+  "Homo sapiens", "[Bacillus] subtilis", "Unknown"
+)
 clean_taxon_names(nms)
 # Returns: c("Homo sapiens", NA, NA, NA, "Canis lupus",
 #            "Homo sapiens", "Bacillus subtilis", NA)

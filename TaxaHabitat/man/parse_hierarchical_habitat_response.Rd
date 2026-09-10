@@ -73,11 +73,13 @@ output trigger a warning listing the first five missing names.
 }
 \examples{
 \dontrun{
-prompt   <- build_habitat_prompt(c("Gadus morhua", "Oncorhynchus mykiss"),
-                                 habitat_scheme = my_scheme)
+prompt <- build_habitat_prompt(c("Gadus morhua", "Oncorhynchus mykiss"),
+  habitat_scheme = my_scheme
+)
 raw_text <- TaxaTools::prompt_api(prompt)
-hab_tbl  <- parse_hierarchical_habitat_response(raw_text, prompt$taxa,
-                                                habitat_scheme = prompt)
+hab_tbl <- parse_hierarchical_habitat_response(raw_text, prompt$taxa,
+  habitat_scheme = prompt
+)
 }
 }
 \seealso{

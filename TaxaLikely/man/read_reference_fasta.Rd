@@ -88,11 +88,12 @@ automatically detected and skipped.
 tax <- data.frame(
   composite_id = c("ACC001", "ACC002"),
   family = c("Fundulidae", "Atherinopsidae"),
-  genus  = c("Fundulus", "Atherinops"),
+  genus = c("Fundulus", "Atherinops"),
   species = c("Fundulus parvipinnis", "Atherinops affinis")
 )
 ref <- read_reference_fasta("my_references.fasta", tax,
-                            rank_system = c("family", "genus", "species"))
+  rank_system = c("family", "genus", "species")
+)
 
 # Option B: QIIME2/RESCRIPt taxonomy file (prefix-style)
 ref <- read_reference_fasta(

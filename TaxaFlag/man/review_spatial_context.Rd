@@ -240,14 +240,16 @@ when \code{context} is supplied.
 \examples{
 \dontrun{
 review_spatial_context(
-  input_df               = consensus_final,
-  query_lat        = STUDY_LAT, query_lon = STUDY_LON,
-  occurrence_data  = occurrences_clean,
-  inat_range       = inat_range,
-  context          = list(geography = "Lake Michigan, Burns/Indiana Harbor",
-                          habitat   = "harbor, standing water"),
-  target_group     = "fish",
-  marker           = "12S eDNA"
+  input_df = consensus_final,
+  query_lat = STUDY_LAT, query_lon = STUDY_LON,
+  occurrence_data = occurrences_clean,
+  inat_range = inat_range,
+  context = list(
+    geography = "Lake Michigan, Burns/Indiana Harbor",
+    habitat = "harbor, standing water"
+  ),
+  target_group = "fish",
+  marker = "12S eDNA"
 )
 }
 

@@ -97,9 +97,9 @@ content is usually unique per dataset, so deduplication is not applied.
 }
 \examples{
 \dontrun{
-geo_screened   <- parse_geo_screening_response(llm_raw, geo_prompt)
-accepted_geo   <- geo_screened[geo_screened$geo_match, ]
-taxon_prompt   <- build_taxon_screen_prompt(accepted_geo, "marine fish")
+geo_screened <- parse_geo_screening_response(llm_raw, geo_prompt)
+accepted_geo <- geo_screened[geo_screened$geo_match, ]
+taxon_prompt <- build_taxon_screen_prompt(accepted_geo, "marine fish")
 print(taxon_prompt)
 cat(taxon_prompt$prompts[[1]])
 }

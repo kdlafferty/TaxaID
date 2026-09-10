@@ -76,7 +76,7 @@ Ignored (may be left \code{NULL}) when \code{lookup_missing_taxonomy = FALSE}.}
 downrank unresolved coarse-rank consensus assignments. Accepts two forms:
 \itemize{
 \item \strong{\code{unreferenced_species_result}} (from
-\code{\link[=suggest_unreferenced_species]{suggest_unreferenced_species()}}): the full LLM-generated plausible
+\code{\link[TaxaLikely:suggest_unreferenced_species]{TaxaLikely::suggest_unreferenced_species()}}): the full LLM-generated plausible
 species list is extracted automatically from
 \code{attr(x, "plausible")}. This includes referenced species (e.g.
 \emph{Leptocottus armatus}) that the LLM flagged as plausible but that
@@ -368,24 +368,24 @@ plausible hypotheses agree.
 }
 \examples{
 posterior_df <- data.frame(
-  observation_id   = c("S1", "S1", "S1"),
-  taxon_name       = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
-  taxon_name_rank  = c("species", "species", "genus"),
-  hypothesis_type  = "specific_candidate",
-  genus            = "Gadus",
-  family           = "Gadidae",
-  posterior_mean   = c(0.75, 0.20, 0.05),
+  observation_id = c("S1", "S1", "S1"),
+  taxon_name = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+  taxon_name_rank = c("species", "species", "genus"),
+  hypothesis_type = "specific_candidate",
+  genus = "Gadus",
+  family = "Gadidae",
+  posterior_mean = c(0.75, 0.20, 0.05),
   posterior_point_est = c(0.75, 0.20, 0.05)
 )
 consensus <- posterior_consensus(
   posterior_df,
   cumulative_threshold = 0.9,
-  min_posterior         = 0.05
+  min_posterior = 0.05
 )
 consensus[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
 
 }
 \seealso{
 \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}, \code{\link[=compute_posterior]{compute_posterior()}},
-\code{\link[=suggest_unreferenced_species]{suggest_unreferenced_species()}}
+\code{\link[TaxaLikely:suggest_unreferenced_species]{TaxaLikely::suggest_unreferenced_species()}}
 }

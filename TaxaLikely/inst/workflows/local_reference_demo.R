@@ -1,30 +1,33 @@
 # ==============================================================================
-# TEST SCRIPT: Local Reference Library Functions
+# TEST SCRIPT: write_reference_fasta()
 # ==============================================================================
-# Tests write_reference_fasta() and build_site_reference().
+# Tests write_reference_fasta() -- fully offline, no internet required.
 #
-# Structure:
-#   PART 1 -- write_reference_fasta() [OFFLINE: no internet required]
-#   PART 2 -- build_site_reference() [ONLINE: queries NCBI]
+# NOTE (2026-09-09): this script previously also demonstrated
+# build_site_reference(), a high-level fetch -> audit -> export wrapper
+# around fetch_ncbi_reference_sequences() + audit_barcode_coverage() +
+# write_reference_fasta(). build_site_reference() was archived (zero real
+# callers anywhere in the monorepo -- every real production workflow builds
+# its reference database by calling the component functions directly; see
+# TaxaLikely/archive_unused_reference_wrappers/ and TaxaLikely/CLAUDE.md's
+# 2026-09-09 session note). To build a site-specific reference the manual
+# way, see Workflow 1 (inst/workflows/1_fetch_references_workflow.R):
+#   reference_df <- fetch_ncbi_reference_sequences(taxa = ..., barcode_term = ...)
+#   coverage     <- audit_barcode_coverage(reference_df, ...)
+#   write_reference_fasta(reference_df, file = ..., taxonomy_file = ...)
 #
-# Run PART 1 first to verify the write/read round-trip works before
-# committing to an NCBI download. PART 2 uses a small taxa list and
-# max_sequences = 60 (~2 min with NCBI rate limiting at 3 req/s).
-#
-# Expected run time:
-#   Part 1: < 5 seconds
-#   Part 2: 2-5 minutes (NCBI rate-limited; use ENTREZ_KEY to speed up)
+# Expected run time: < 5 seconds
 # ==============================================================================
 
 library(TaxaLikely)
 
 # ==============================================================================
-# PART 1: write_reference_fasta() -- no internet required
+# write_reference_fasta() -- no internet required
 # ==============================================================================
 # Build a tiny synthetic reference_df and verify the FASTA and taxonomy TSV
 # can be written and read back correctly.
 
-cat("\n===== PART 1: write_reference_fasta() =====\n")
+cat("\n===== write_reference_fasta() =====\n")
 
 # A minimal reference_df -- the same structure as fetch_ncbi_reference_sequences() output
 ref_df <- data.frame(
@@ -77,7 +80,7 @@ stopifnot(nrow(ref_reload) == nrow(ref_df))
 ref_reload_sorted <- ref_reload[order(ref_reload$composite_id), ]
 ref_df_sorted <- ref_df[order(ref_df$composite_id), ]
 stopifnot(all(ref_reload_sorted$species == ref_df_sorted$species))
-cat("  PASS: round-trip write → read produces identical species column\n")
+cat("  PASS: round-trip write -> read produces identical species column\n")
 
 # ---- 1c. auto-detect rank_system from columns --------------------------------
 # When rank_system = NULL (default), all non-id columns are used
@@ -95,95 +98,7 @@ na_lines <- readLines(fasta3)
 stopifnot(!grepl("\\bNA\\b", na_lines[3])) # header for row 2 has no "NA"
 cat("  PASS: NA rank values omitted from FASTA header\n")
 
-cat("\n===== PART 1 complete =====\n")
-
-
-# ==============================================================================
-# PART 2: build_site_reference() -- REQUIRES INTERNET (NCBI)
-# ==============================================================================
-# Downloads sequences for 3 small fish species, audits barcode coverage, and
-# exports a FASTA. Uses strict limits to minimise download volume.
-#
-# Expected sequences: ~10-30 per species = ~30-90 total.
-# To speed up: set ENTREZ_KEY in ~/.Renviron (free NCBI API key; see
-# https://www.ncbi.nlm.nih.gov/account/).
-
-cat("\n===== PART 2: build_site_reference() =====\n")
-cat("NOTE: This part queries NCBI and requires internet access.\n")
-cat("      Expected time: 2-5 minutes without API key.\n\n")
-
-# Three species with well-characterised MiFish 12S records.
-# Species-level (not genus-level) taxa → smaller, faster downloads.
-taxa <- c("Fundulus heteroclitus", "Gambusia affinis", "Lepomis macrochirus")
-output_dir <- file.path(tempdir(), "site_reference_test")
-
-lib <- build_site_reference(
-  taxa = taxa,
-  barcode_term = "MiFishU",
-  rank_system = c("family", "genus", "species"),
-  output_dir = output_dir, # saves reference.fasta + taxonomy TSV
-  flag_errors = FALSE, # skip DECIPHER step (fast)
-  audit_coverage = TRUE, # check NCBI for species with no barcodes
-  max_sequences = 60L, # safety limit (each species gets ~max/3)
-  max_per_species = 5L,
-  max_date = "2024/12/31" # reproducible: fix GenBank state
-)
-
-# ---- Inspect results ---------------------------------------------------------
-cat("\n--- reference_df ---\n")
-print(head(lib$reference_df[, c("composite_id", "genus", "species")], 10))
-cat(sprintf("Total sequences: %d\n", nrow(lib$reference_df)))
-cat(sprintf("Unique species:  %d\n", length(unique(lib$reference_df$species))))
-
-cat("\n--- Coverage census (per genus) ---\n")
-if (nrow(lib$census) > 0) {
-  print(lib$census)
-}
-
-cat("\n--- Unreferenced species (no barcode in NCBI) ---\n")
-if (length(lib$unreferenced) > 0) {
-  cat(paste(" -", lib$unreferenced), sep = "\n")
-} else {
-  cat("  None (all described species have barcodes)\n")
-}
-
-# ---- Verify FASTA was written ------------------------------------------------
-fasta_out <- file.path(output_dir, "reference.fasta")
-tsv_out <- file.path(output_dir, "reference_taxonomy.tsv")
-stopifnot(file.exists(fasta_out))
-stopifnot(file.exists(tsv_out))
-cat(sprintf("\nFASTA written to: %s\n", fasta_out))
-cat(sprintf("Taxonomy TSV:     %s\n", tsv_out))
-cat("  PASS: output files exist\n")
-
-# ---- Reload and verify round-trip -------------------------------------------
-ref2 <- read_reference_fasta(
-  fasta_path    = fasta_out,
-  taxonomy_file = tsv_out,
-  rank_system   = c("family", "genus", "species")
-)
-stopifnot(nrow(ref2) == nrow(lib$reference_df))
-# Verify species sets match (order may differ after reload)
-stopifnot(setequal(ref2$species, lib$reference_df$species))
-cat(sprintf("  PASS: reloaded %d sequences from FASTA\n", nrow(ref2)))
-
-# ---- Sequence length distribution -------------------------------------------
-lens <- nchar(lib$reference_df$sequence)
-cat(sprintf(
-  "\nSequence lengths: min=%d, median=%d, max=%d bp\n",
-  min(lens), as.integer(median(lens)), max(lens)
-))
-hist(lens, main = "Sequence lengths (test reference)", xlab = "bp", col = "steelblue")
-
-# ---- (Optional) train a model on the small reference -------------------------
-# Uncomment to proceed to model training -- requires DECIPHER + Biostrings.
-# ref_matrix <- build_sequence_matrix(lib$reference_df,
-#                                      rank_system = c("family", "genus", "species"))
-# model <- train_likelihood_model(ref_matrix)
-# interpret_model(model)
-
-cat("\n===== PART 2 complete =====\n")
+cat("\n===== write_reference_fasta() demo complete =====\n")
 cat("\nNEXT STEPS:\n")
-cat("  - Expand taxa list to all genera expected at your site (from TaxaExpect)\n")
-cat("  - Pass lib$unreferenced to TaxaAssign::suggest_unreferenced_species()\n")
-cat("  - Train a model: build_sequence_matrix(lib$reference_df) |> train_likelihood_model()\n")
+cat("  - Build a real reference_df: see Workflow 1 (1_fetch_references_workflow.R)\n")
+cat("  - Train a model: build_sequence_matrix(reference_df) |> train_likelihood_model()\n")

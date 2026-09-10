@@ -9,3 +9,41 @@
 # for reference during the BLAST-based redesign, deliberately not committed.
 # See ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md.
 archive_decipher_reference_audit/
+
+# Orphaned unified-likelihood-pipeline entry point (2026-09-09) -- compute_
+# likelihoods()/model_likelihoods() had zero real callers anywhere; moved
+# intact for reference, deliberately not committed. See TaxaLikely/CLAUDE.md's
+# top session note.
+archive_unused_likelihood_entrypoint/
+
+# build_site_reference() (2026-09-09) -- a high-level fetch -> audit -> export
+# wrapper found to have zero real callers anywhere in the monorepo (every real
+# production workflow builds its reference database by calling
+# fetch_ncbi_reference_sequences()/audit_barcode_coverage() directly). Kept
+# locally as a record of the design, deliberately not committed, matching the
+# DECIPHER precedent above. write_reference_fasta() -- its one internal
+# caller -- was investigated in the same pass and kept LIVE/exported: it's a
+# generic, standalone, round-trippable (with read_reference_fasta()) FASTA
+# export utility with its own dedicated test coverage, not tightly coupled to
+# build_site_reference()'s own output shape, and is this package's only
+# reference-export capability -- archiving it too would have been a real
+# capability loss, not just dead-code cleanup. See TaxaLikely/CLAUDE.md's
+# 2026-09-09 session note and ecosystem_docs/NAME_CHANGE_HISTORY.md.
+archive_unused_reference_wrappers/
+
+# Coverage-filter calibration pair (2026-09-09) -- calibrate_coverage_filter()/
+# coverage_threshold() archived (not deleted): a real A/B test on full-scale
+# PtConception 12S data found a real H1 win-rate improvement (54.9%->65.1%,
+# reproduced 55.1%->65.8%) on queries the filter is willing to answer, but a
+# real, quantified cost (134/691 species, 19.4%, lose every training pair at
+# the calibrated threshold; 25.1% of real evaluation queries end up
+# unresolved) -- the same hard-exclusion-on-an-imperfect-proxy pattern this
+# ecosystem has already relearned twice (apply_coverage_constraints()'s
+# zero->relabel fix, filter_gbif_quality()'s exclude_institution->
+# flag_institution fix). The one separable value (a Youden's-J diagnostic on
+# whether coverage predicts pair quality) is a standard statistic that
+# doesn't need a dedicated exported function. Kept locally for reference,
+# deliberately not committed, matching the DECIPHER/likelihood-entrypoint/
+# reference-wrapper precedents above. See TaxaLikely/CLAUDE.md's top session
+# note and ecosystem_docs/NAME_CHANGE_HISTORY.md.
+archive_unused_coverage_calibration/

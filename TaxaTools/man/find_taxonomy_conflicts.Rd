@@ -42,8 +42,8 @@ corrections.  Adapted from the GITA pipeline's
 }
 \examples{
 df <- data.frame(
-  family  = c("Cottidae", "Scorpaenidae", "Cottidae"),
-  genus   = c("Cottus",   "Cottus",        "Enophrys"),
+  family = c("Cottidae", "Scorpaenidae", "Cottidae"),
+  genus = c("Cottus", "Cottus", "Enophrys"),
   species = c("Cottus asper", "Cottus rhotheus", "Enophrys bison"),
   stringsAsFactors = FALSE
 )

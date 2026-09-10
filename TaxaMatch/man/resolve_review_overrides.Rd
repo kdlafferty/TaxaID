@@ -65,7 +65,8 @@ evaluation <- evaluate_reference_accessions(accessions_to_screen)
 review <- review_flagged_accessions(evaluation, llm_fn = my_llm_fn)
 overrides <- resolve_review_overrides(review)
 match_df_clean <- remove_incongruent_references(match_df, evaluation,
-  override_accessions = overrides)
+  override_accessions = overrides
+)
 }
 
 }

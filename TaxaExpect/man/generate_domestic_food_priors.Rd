@@ -318,7 +318,8 @@ prior, theta_mean off by ~3.4x from what this function intended).
 \examples{
 \dontrun{
 domestic_food <- generate_domestic_food_priors(
-  model_fit, lat = 34.41, lng = -119.86, grid_id = "Grid_34p4_m119p9"
+  model_fit,
+  lat = 34.41, lng = -119.86, grid_id = "Grid_34p4_m119p9"
 )
 taxaexpect_priors <- dplyr::bind_rows(taxaexpect_priors, domestic_food)
 }

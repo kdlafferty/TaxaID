@@ -86,15 +86,29 @@ ref_matrix <- build_sequence_matrix(reference_df)
 
 ### Step 3: Check for mislabeled references
 
-Before training, identify potential errors in the reference database.
+Before training, identify potential errors in the reference database. This
+screening step lives in TaxaMatch, not TaxaLikely -- a free local check
+(`corroborate_references_locally()`) first, then a BLAST-based check
+(`evaluate_reference_accessions()`) only for accessions the free check
+couldn't resolve.
 
 ```{r flag-errors}
-errors <- flag_reference_errors(ref_matrix)
-# Inspect flagged sequences
-print(errors)
+local_corr <- TaxaMatch::corroborate_references_locally(ref_matrix, reference_df)
+ref_eval <- TaxaMatch::evaluate_reference_accessions(
+  unique(reference_df$composite_id),
+  barcode_term = "MiFishU",
+  local_corroboration = local_corr,
+  skip_locally_corroborated = TRUE
+)
+ref_labeled <- TaxaMatch::score_reference_labels(ref_eval, local_corroboration = local_corr)
+bad_accessions <- ref_labeled$accession[ref_labeled$reference_action == "remove"]
 
-# Remove flagged sequences from the match object before evaluation
-match_df_clean <- match_df[!match_df$accession %in% errors$accession, ]
+# Exclude flagged accessions before training
+reference_df_clean <- reference_df[!reference_df$composite_id %in% bad_accessions, ]
+ref_matrix <- build_sequence_matrix(reference_df_clean)
+
+# Remove flagged references from the match object before evaluation too
+match_df_clean <- match_df[!match_df$accession %in% bad_accessions, ]
 ```
 
 ### Step 4: Train the likelihood model

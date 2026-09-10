@@ -74,7 +74,7 @@ will error as it would for any other invalid geometry.
 # Two sites, overlapping local boxes, both candidates for the same genus
 box_a <- make_bbox_wkt(lat = 34.40, lon = -120.41, radius_deg = 0.05)
 box_b <- make_bbox_wkt(lat = 34.47, lon = -120.36, radius_deg = 0.05)
-key   <- get_keys_from_context(data.frame(genus = "Sebastes"))$usageKey
+key <- get_keys_from_context(data.frame(genus = "Sebastes"))$usageKey
 
 taxon_geometry_map <- data.frame(
   taxon_key = c(key, key),

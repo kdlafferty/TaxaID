@@ -7,12 +7,13 @@
 # PURPOSE
 # -------
 # Companion to inst/review_function_inputs.R (which covers all 35 EXPORTED
-# functions). This file covers the 3 internal (dot-prefixed, @noRd) functions
+# functions). This file covers 2 internal (dot-prefixed, @noRd) functions
 # an audit found postdate that review:
 #   - .audit_barcode_coverage_impl()   (R/coverage.R)  -- backs audit_barcode_coverage()
 #   - .check_score_ratio_monotonicity() (R/train.R)     -- runs inside train_likelihood_model()
-#   - .compute_reference_qc_stats()     (R/train.R)     -- backs flag_reference_errors() /
-#                                                           audit_reference_database()
+# (A former Section 2 covered .compute_reference_qc_stats(), which backed
+# flag_reference_errors() -- both retired 2026-09-08, see
+# NAME_CHANGE_HISTORY.md; that section is removed, not renumbered around.)
 #
 # ON CALLING INTERNALS VIA `TaxaLikely:::` -- expected, not a bug:
 # All three are unexported (@noRd) implementation details, not part of the
@@ -95,59 +96,6 @@ coverage_impl <- TaxaLikely:::.audit_barcode_coverage_impl(
 )
 coverage_impl$census
 length(coverage_impl$unreferenced)
-
-
-# ==============================================================================
-# SECTION 2 -- .compute_reference_qc_stats()  ---- OFFLINE ---------------------
-# Backs flag_reference_errors() (which calls it directly, then dplyr::select()s
-# back down to that function's own smaller documented @return contract) and
-# audit_reference_database()'s per-accession QC stats. Fixture reused verbatim
-# from tests/testthat/test-train.R's own .make_raw_df() -- 3 sequences, 2
-# species (A1/A2 = "Aa", B1 = "Bb"), chosen by that file's own author
-# specifically to exercise both a real within-species (self) comparison and a
-# real cross-species (foreign) comparison.
-# ==============================================================================
-
-## ---- .compute_reference_qc_stats() ---- OFFLINE -----------------------------
-make_raw_df_extra <- function() {
-  data.frame(
-    id_x = c("A1", "A1", "A1", "A2", "A2", "A2", "B1", "B1", "B1"),
-    id_y = c("A1", "A2", "B1", "A1", "A2", "B1", "A1", "A2", "B1"),
-    species.x = c("Aa", "Aa", "Aa", "Aa", "Aa", "Aa", "Bb", "Bb", "Bb"),
-    species.y = c("Aa", "Aa", "Bb", "Aa", "Aa", "Bb", "Aa", "Aa", "Bb"),
-    genus.x = c("A", "A", "A", "A", "A", "A", "B", "B", "B"),
-    genus.y = c("A", "A", "B", "A", "A", "B", "A", "A", "B"),
-    p_match = c(1.00, 0.95, 0.70, 0.95, 1.00, 0.68, 0.70, 0.68, 1.00),
-    stringsAsFactors = FALSE
-  )
-}
-qc_stats_no_floor <- TaxaLikely:::.compute_reference_qc_stats(make_raw_df_extra())
-qc_stats_no_floor[, c(
-  "id_x", "species_x", "median_self_match", "max_foreign_match",
-  "n_self_neighbors", "n_foreign_pairs", "n_foreign_taxa",
-  "integrity_gap"
-)]
-
-# min_coverage: a permissive pairwise-overlap floor (NOT the same as the
-# calibrated trust threshold flag_reference_errors()/classify_reference_
-# accessions() apply downstream -- see this function's own roxygen). Add a
-# coverage column and show A1's one foreign comparison (A1-B1) dropping out
-# once its coverage is too thin to trust, same pattern as that test file's
-# own "min_coverage excludes low-coverage pairs" regression test.
-raw_df_with_coverage <- make_raw_df_extra()
-raw_df_with_coverage$coverage <- 1.0
-raw_df_with_coverage$coverage[raw_df_with_coverage$id_x == "A1" &
-  raw_df_with_coverage$id_y == "B1"] <- 0.1
-qc_stats_floored <- TaxaLikely:::.compute_reference_qc_stats(
-  raw_df_with_coverage,
-  min_coverage = 0.5
-)
-qc_stats_floored[
-  qc_stats_floored$id_x == "A1",
-  c("id_x", "max_foreign_match", "n_foreign_pairs")
-]
-# max_foreign_match falls back to 0 (not 0.70) -- A1's only foreign pair was
-# excluded by the coverage floor, leaving zero foreign comparisons.
 
 
 # ==============================================================================

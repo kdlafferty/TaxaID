@@ -143,14 +143,14 @@ a fully-sampled genus (from \code{apply_coverage_constraints()}).
 }
 \examples{
 likelihood_w_prior <- data.frame(
-  observation_id       = c("S1", "S1", "S1"),
-  taxon_name           = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
-  score_likelihood      = c(0.85, 0.30, 0.10),
+  observation_id = c("S1", "S1", "S1"),
+  taxon_name = c("Gadus morhua", "Gadus chalcogrammus", "Gadus"),
+  score_likelihood = c(0.85, 0.30, 0.10),
   score_likelihood_mean = c(0.83, 0.31, 0.10),
-  score_likelihood_sd   = c(0.05, 0.04, 0.02),
-  prior_mean            = c(0.60, 0.30, 0.10),
-  prior_alpha           = c(30, 15, 5),
-  prior_beta            = c(20, 35, 45)
+  score_likelihood_sd = c(0.05, 0.04, 0.02),
+  prior_mean = c(0.60, 0.30, 0.10),
+  prior_alpha = c(30, 15, 5),
+  prior_beta = c(20, 35, 45)
 )
 result <- compute_posterior(likelihood_w_prior, n_sims = 200)
 result[, c("observation_id", "taxon_name", "posterior_mean")]

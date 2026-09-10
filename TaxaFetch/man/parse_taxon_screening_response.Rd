@@ -49,7 +49,7 @@ added back with \code{taxon_match = FALSE} and
 \examples{
 \dontrun{
 taxon_screened <- parse_taxon_screening_response(llm_raw2, taxon_prompt)
-accepted       <- taxon_screened[taxon_screened$taxon_match, ]
+accepted <- taxon_screened[taxon_screened$taxon_match, ]
 nrow(accepted)
 table(taxon_screened$taxon_source)
 }

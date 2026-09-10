@@ -77,7 +77,8 @@ cat(answer)
 
 # Larger model (requires more RAM):
 answer <- call_ollama_api("What phylum do sea urchins belong to?",
-                          model = "qwen2.5:14b")
+  model = "qwen2.5:14b"
+)
 }
 }
 \seealso{

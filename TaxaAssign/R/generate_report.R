@@ -47,7 +47,7 @@ utils::globalVariables(c(
 #'   \code{consensus_posterior} for posterior-based) and the report adapts
 #'   accordingly.
 #' @param unreferenced_result Optional. An \code{unreferenced_species_result}
-#'   S3 object from \code{\link{suggest_unreferenced_species}}. When provided,
+#'   S3 object from \code{\link[TaxaLikely]{suggest_unreferenced_species}}. When provided,
 #'   the report includes reference database completeness statistics and
 #'   unreferenced species findings.
 #' @param workflow Character or \code{NULL}. One of \code{"bayesian"} or

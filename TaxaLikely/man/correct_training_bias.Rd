@@ -239,8 +239,10 @@ scored <- data.frame(
   n_observations = c(500000, 20, 300)
 )
 corrected <- correct_training_bias(scored, count_col = "n_observations")
-corrected[, c("taxon_name", "score_uncorrected", "score_original",
-              "n_used", "tau_used")]
+corrected[, c(
+  "taxon_name", "score_uncorrected", "score_original",
+  "n_used", "tau_used"
+)]
 
 }
 \references{

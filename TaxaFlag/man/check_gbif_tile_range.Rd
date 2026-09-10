@@ -174,7 +174,7 @@ compare against \code{zoom_used}, not \code{zoom}, when judging precision.
 \examples{
 \dontrun{
 check_gbif_tile_range(
-  taxon_key = 2379089,  # Neogobius melanostomus
+  taxon_key = 2379089, # Neogobius melanostomus
   query_lat = 41.67, query_lon = -87.15
 )
 }

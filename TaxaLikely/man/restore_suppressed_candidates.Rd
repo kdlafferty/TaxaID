@@ -143,7 +143,9 @@ control} for two real, measured cases).}
 A plain data frame -- this package has no dependency on TaxaExpect and
 never calls into it; the name and default \code{taxon_col}/
 \code{grid_col}/\code{theta_col} column names are simply chosen to match
-\code{TaxaExpect::generate_full_priors()}'s own output shape, so that
+\code{TaxaExpect::estimate_kernel_priors()}'s own \code{$priors} output
+shape (the current recommended path -- the archived
+\code{generate_full_priors()} used the identical column names), so that
 object can be passed directly without renaming columns. Any data frame
 with the right columns (or with \code{taxon_col}/\code{grid_col}/
 \code{theta_col} overridden to match your own column names) works.
@@ -386,8 +388,9 @@ unbounded number of candidates for one anchor.
 \examples{
 \dontrun{
 match_obj <- restore_suppressed_candidates(match_obj, reference_df,
-                                            seq_matrix = seq_matrix,
-                                            model_params = model_params)
+  seq_matrix = seq_matrix,
+  model_params = model_params
+)
 # With scores: continue to evaluate_likelihoods()
 # No-score:    continue to assign_scores(score_type = "direct")
 }

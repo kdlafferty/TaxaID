@@ -116,12 +116,13 @@ occ <- fetch_dataone_occurrences("edi.885.1", bbox)
 
 # Fix a non-standard column name
 extra <- data.frame(
-  pattern  = "spp_name",
+  pattern = "spp_name",
   dwc_term = "scientificName",
   stringsAsFactors = FALSE
 )
 occ <- fetch_dataone_occurrences(candidates$id[1], bbox,
-                                 extra_dwc_map = extra)
+  extra_dwc_map = extra
+)
 }
 }
 \seealso{

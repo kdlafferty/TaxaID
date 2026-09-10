@@ -42,8 +42,8 @@ using and, unless \code{dry_run = TRUE}, removes it.
 }
 \examples{
 \dontrun{
-taxalikely_clear_cache(dry_run = TRUE)         # see what's there first
-taxalikely_clear_cache()                       # actually clear it
-taxalikely_clear_cache(older_than_days = 180)  # only stale entries
+taxalikely_clear_cache(dry_run = TRUE) # see what's there first
+taxalikely_clear_cache() # actually clear it
+taxalikely_clear_cache(older_than_days = 180) # only stale entries
 }
 }

@@ -634,7 +634,7 @@
     },
     {
       "name": "evaluate_reference_accessions",
-      "description": "Per-accession BLAST-based reference-quality screen: for each reference accession, checks whether independent GenBank evidence agrees taxonomically at min_congruent_rank. Recommended (2026-08-08 ecosystem audit) as the pre-training reference screen going forward, ahead of TaxaLikely::flag_reference_errors()'s narrower same-database comparison.",
+      "description": "Per-accession BLAST-based reference-quality screen: for each reference accession, checks whether independent GenBank evidence agrees taxonomically at min_congruent_rank. The recommended pre-training/pre-matching reference screen. Automatically calls score_reference_labels() internally, so its own output already carries a reference_action verdict -- no separate call needed. Pair with corroborate_references_locally() (local_corroboration=, skip_locally_corroborated=TRUE) so only accessions the free local check can't already resolve get BLASTed.",
       "inputs": [
         {
           "name": "accessions",
@@ -657,6 +657,13 @@
           "description": "Passed through to blast_sequences()"
         },
         {
+          "name": "barcode_term",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Marker/primer name (e.g. 'MiFishU') -- trims each query to its amplicon before BLASTing and resolves the length-plausibility bound; NULL submits sequences at full length"
+        },
+        {
           "name": "top_n",
           "type": "integer",
           "required": false,
@@ -671,6 +678,20 @@
           "description": "Rank at which independent hits must agree to count as congruent evidence"
         },
         {
+          "name": "local_corroboration",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Output of corroborate_references_locally() -- when supplied with skip_locally_corroborated=TRUE, an accession already corroborated for free is never BLASTed"
+        },
+        {
+          "name": "skip_locally_corroborated",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Skip BLASTing accessions local_corroboration already resolved to 'corroborated'"
+        },
+        {
           "name": "cache_dir",
           "type": "file_path",
           "required": false,
@@ -680,10 +701,10 @@
       ],
       "output": {
         "type": "data.frame",
-        "description": "One row per accession: hierarchy_flag ('congruent'/'incongruent'/'insufficient_independent_evidence', NA if the record couldn't be fetched), finest_common_rank, best_hit_pident/best_agreeing_pident/best_disagreeing_pident (identity diagnostics), congruent_evidence_exists_anywhere, evaluated_at, cache_hit"
+        "description": "One row per accession: hierarchy_flag ('congruent'/'incongruent'/'insufficient_independent_evidence'/'locally_corroborated', NA if the record couldn't be fetched), finest_common_rank, best_hit_pident/best_agreeing_pident/best_disagreeing_pident (identity diagnostics), congruent_evidence_exists_anywhere, reference_action ('keep'/'caution'/'inspect'/'remove'/'untested', from the automatic internal score_reference_labels() call), evaluated_at, cache_hit"
       },
       "scaling": "api_limited",
-      "scaling_note": "One BLAST round-trip per unique accession -- can be multi-hour for large (1000+) accession sets; cached with an asymmetric TTL"
+      "scaling_note": "One BLAST round-trip per unique accession not already locally corroborated -- can be multi-hour for large (1000+) accession sets; cached with an asymmetric TTL"
     },
     {
       "name": "flag_incongruent_references",

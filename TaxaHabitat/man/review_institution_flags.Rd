@@ -82,10 +82,10 @@ always retained by that filter).
 
 \examples{
 \dontrun{
-clean  <- TaxaFetch::filter_gbif_quality(gbif_raw)
+clean <- TaxaFetch::filter_gbif_quality(gbif_raw)
 tiered <- flag_institution_candidates(clean)
 reviewed <- review_institution_flags(tiered)
-final    <- dplyr::filter(reviewed, institution_decision != "remove")
+final <- dplyr::filter(reviewed, institution_decision != "remove")
 }
 }
 \seealso{

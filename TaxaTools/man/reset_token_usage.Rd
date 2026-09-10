@@ -17,7 +17,7 @@ before starting a new workflow step when you want per-step accounting.
 \dontrun{
 reset_token_usage()
 # ... run a workflow step ...
-token_usage(by = "session")   # tokens for that step only
+token_usage(by = "session") # tokens for that step only
 }
 
 }

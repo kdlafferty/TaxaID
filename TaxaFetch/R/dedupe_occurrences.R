@@ -117,7 +117,7 @@
 #' that genuinely lacks these columns should not see noise on every call.
 #'
 #' @seealso \code{\link{stack_occurrences}}, \code{\link{get_gbif_occurrences}},
-#'   \code{\link[TaxaExpect]{prepare_model_dataframe}}
+#'   \code{\link[TaxaExpect]{estimate_kernel_priors}}
 #'
 #' @export
 #'

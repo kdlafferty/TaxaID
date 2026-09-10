@@ -125,7 +125,7 @@ modeling functions do not require it. Install with
 \dontrun{
 # Resolve keys first
 taxa_df <- data.frame(
-  family  = "Gadidae",
+  family = "Gadidae",
   species = "Gadus morhua",
   stringsAsFactors = FALSE
 )
@@ -134,7 +134,7 @@ valid_keys <- keys_df$usageKey[!is.na(keys_df$usageKey)]
 
 # Build a bounding box and fetch (checkpoint saved automatically)
 bbox <- make_bbox_wkt(lat = 56.0, lon = 4.0, radius_deg = 2.0)
-occ  <- fetch_gbif_occurrences(
+occ <- fetch_gbif_occurrences(
   keys       = valid_keys,
   geometry   = bbox,
   year_range = "2010,2024",

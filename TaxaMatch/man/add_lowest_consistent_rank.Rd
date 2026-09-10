@@ -113,18 +113,22 @@ category. If any real taxon name in your data literally equals
 \examples{
 m <- data.frame(
   observation_id = rep("obs1", 4),
-  order   = rep("Sessilia", 4),
-  family  = c("Balanidae", "Archaeobalanidae", "Balanidae", "Chthamalidae"),
-  genus   = c("Amphibalanus", "Semibalanus", "Balanus", "Chthamalus"),
-  species = c("Amphibalanus improvisus", "Semibalanus balanoides",
-              "Balanus balanus", "Chthamalus fragilis")
+  order = rep("Sessilia", 4),
+  family = c("Balanidae", "Archaeobalanidae", "Balanidae", "Chthamalidae"),
+  genus = c("Amphibalanus", "Semibalanus", "Balanus", "Chthamalus"),
+  species = c(
+    "Amphibalanus improvisus", "Semibalanus balanoides",
+    "Balanus balanus", "Chthamalus fragilis"
+  )
 )
 # Strict mode: lowest consistent rank = order (3 different families)
 add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"))
 
 # Majority mode: 3/4 rows share "Balanidae"; threshold 0.75 -> family is consistent
-add_lowest_consistent_rank(m, rank_system = c("order", "family", "genus", "species"),
-                            majority_threshold = 0.75)
+add_lowest_consistent_rank(m,
+  rank_system = c("order", "family", "genus", "species"),
+  majority_threshold = 0.75
+)
 
 }
 \seealso{

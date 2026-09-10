@@ -38,7 +38,9 @@ and steps; user confirms with one question.}
 parsed <- annotate_script("my_analysis.R", mode = "self")
 
 # LLM-guided annotation
-parsed <- annotate_script("my_analysis.R", mode = "llm",
-                          llm_fn = TaxaTools::call_anthropic_api)
+parsed <- annotate_script("my_analysis.R",
+  mode = "llm",
+  llm_fn = TaxaTools::call_anthropic_api
+)
 }
 }

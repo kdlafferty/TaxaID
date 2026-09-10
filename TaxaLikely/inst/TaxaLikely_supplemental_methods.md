@@ -538,15 +538,17 @@ for a fully-unreferenced genus's fallback delta gave an implied SD of only
 
 ## 9. Reference Quality Control
 
-Mislabeled reference sequences can corrupt model training. TaxaLikely provides
-two pre-training quality checks:
+Mislabeled reference sequences can corrupt model training. Reference-quality
+screening is not TaxaLikely's own concern (see 9A below); TaxaLikely's
+pre-training quality check is coverage auditing (9B).
 
-### 9A. Error Detection (`flag_reference_errors()`)
+### 9A. Error Detection
 
-Examines the pairwise distance matrix and flags mislabeled sequences — references
-whose best match is to a different species than their own label. Detected
-mislabeled sequences are automatically removed before training by
-`train_likelihood_model()`.
+Reference-quality screening lives entirely in TaxaMatch
+(`corroborate_references_locally()` → `evaluate_reference_accessions()`),
+applied by the caller to `reference_df`/`raw_df` *before* calling
+`train_likelihood_model()`. TaxaLikely does not screen its own training
+input.
 
 ### 9B. Coverage Auditing
 
@@ -910,11 +912,15 @@ cross-species pairs, because the two label forms are treated as distinct taxa. A
 `build_sequence_matrix()` ensures all records of the same species share a canonical label,
 preventing this class of spurious cross-species pairing.
 
-Second, **error correction** (`flag_reference_errors()`). Mislabelled reference sequences create
-false within-species pairs — cross-species comparisons masquerading as conspecific — which
-simultaneously inflate $p_{\text{cross}}$ and deflate $p_{\text{self}}$ and so bias the likelihood
-ratio toward the unreferenced hypotheses $H_2/H_3$. Flagging and removing suspected mislabels
-before estimation protects the within-species distribution from contamination.
+Second, **error correction**, the caller's own responsibility rather than a
+built-in step (see Section 9A). Mislabelled reference sequences
+create false within-species pairs — cross-species comparisons masquerading as
+conspecific — which simultaneously inflate $p_{\text{cross}}$ and deflate
+$p_{\text{self}}$ and so bias the likelihood ratio toward the unreferenced
+hypotheses $H_2/H_3$. Screening `reference_df` via
+`TaxaMatch::corroborate_references_locally()`/`evaluate_reference_accessions()`
+before it ever reaches `build_sequence_matrix()` protects the within-species
+distribution from this contamination.
 
 Third, **blank-name filtering** (`filter_unnamed = TRUE` in `build_sequence_matrix()`).
 Sequences lacking a species-level identifier generate spurious within-species pairs whenever two
@@ -939,7 +945,9 @@ validation design that Wood & Kahl (2024) recommend for score-performance assess
 The theoretical pieces above correspond directly to stages of the TaxaLikely workflow.
 `build_sequence_matrix()` constructs the within-/cross-species pair table and applies the
 blank-name filtering (Section 15, step 3) and thinning (step 4) needed for an unbiased fit;
-`flag_reference_errors()` performs the mislabel error correction (step 2); binomial name
+mislabel error correction (step 2) is now the caller's own upstream step
+(`TaxaMatch::corroborate_references_locally()`/`evaluate_reference_accessions()` on
+`reference_df`, before it ever reaches this function — see Section 9A); binomial name
 cleaning (step 1) is applied upstream via `TaxaTools::clean_taxon_names()` before building
 the matrix. The diagnostic script `diagnostics/seq_matrix_score_distribution.R` then verifies
 the modelling assumptions of Section 14 — continuity (spike ratio), $p_{\text{self}}$,
@@ -988,10 +996,10 @@ reference incompleteness firmly in the prior where it belongs.
 
 | Function | Role in Pipeline |
 |----------|-----------------|
-| `fetch_reference_sequences()` | Acquire reference sequences from NCBI |
+| `fetch_ncbi_reference_sequences()` | Acquire reference sequences from NCBI |
 | `read_reference_fasta()` | Load local reference FASTA + taxonomy |
 | `build_sequence_matrix()` | Align sequences, compute pairwise distance matrix |
-| `flag_reference_errors()` | Detect mislabeled references |
+| `TaxaMatch::corroborate_references_locally()` / `evaluate_reference_accessions()` | Detect mislabeled references (screen `reference_df` before this function; see Section 9A) |
 | `train_likelihood_model()` | Fit hierarchical model, produce `taxa_model_params`; `score_transform = "logit"`/`"sqrt_mismatch"` (Section 3A-i) |
 | `interpret_model()` | Summarize model parameters in human-readable form |
 | `calibrate_query_noise()` | Correct H1's mean for query-vs-reference technical noise not visible to reference-vs-reference training pairs |

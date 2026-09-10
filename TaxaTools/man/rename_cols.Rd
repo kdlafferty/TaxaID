@@ -94,31 +94,39 @@ existing column names and values are desired target names.
 }
 
 \examples{
-df <- data.frame(Latitude  = 34.1,
-                 Longitude = -119.1,
-                 date      = "2022-01-01",
-                 species   = "Clevelandia ios")
+df <- data.frame(
+  Latitude = 34.1,
+  Longitude = -119.1,
+  date = "2022-01-01",
+  species = "Clevelandia ios"
+)
 
 # Default pattern matching
 rename_cols(df)
 
 # Explicit col_map — replaces default patterns entirely
 rename_cols(df,
-            col_map = c("Latitude"  = "decimalLatitude",
-                        "Longitude" = "decimalLongitude",
-                        "date"      = "eventDate",
-                        "species"   = "scientificName"))
+  col_map = c(
+    "Latitude" = "decimalLatitude",
+    "Longitude" = "decimalLongitude",
+    "date" = "eventDate",
+    "species" = "scientificName"
+  )
+)
 
 \dontrun{
 # Pipe-friendly
 df_std <- my_survey |>
-  rename_cols(col_map = c("Lat" = "decimalLatitude",
-                          "Lon" = "decimalLongitude"))
+  rename_cols(col_map = c(
+    "Lat" = "decimalLatitude",
+    "Lon" = "decimalLongitude"
+  ))
 
 # strict = TRUE stops if any key is missing
 df_std <- rename_cols(my_survey,
-                      col_map = c("Lat" = "decimalLatitude"),
-                      strict  = TRUE)
+  col_map = c("Lat" = "decimalLatitude"),
+  strict  = TRUE
+)
 }
 }
 \seealso{

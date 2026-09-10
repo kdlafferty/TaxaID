@@ -10,13 +10,15 @@ Conversational workflow designer for the
 [TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem. An LLM-powered
 interview identifies your inputs, parameters, and pipeline steps, then
 generates a self-contained R script, methods text, or Shiny application.
+Although one could use other LLMs to do the same, TaxaWizard comes
+pre-informed with context about the TaxaID package.
 
-The TaxaID ecosystem has many possible workflows, and choosing the
-right combination of packages and parameters can be daunting.
-TaxaWizard makes this easier through a guided conversation: describe
-your data and goals, and it generates the appropriate script.
-`workflow_app()` can also convert any R script (not just TaxaID
-scripts) into a Shiny application with point-and-click inputs.
+The TaxaID ecosystem has many possible workflows, and choosing the right
+combination of packages and parameters can be daunting. TaxaWizard makes
+this easier through a guided conversation: describe your data and goals,
+and it generates the appropriate script. `workflow_app()` can also
+convert any R script (not just TaxaID scripts) into a Shiny application
+with point-and-click inputs.
 
 ## Installation
 
@@ -28,8 +30,8 @@ devtools::install("path/to/TaxaWizard")
 
 Requires an Application Programming Interface (API) key for an LLM
 provider (Anthropic Claude -- Anthropic PBC, San Francisco, California
--- by default; Google Gemini, OpenAI, or local Ollama are also
-supported via TaxaTools). See the TaxaTools [API Setup
+-- by default; Google Gemini, OpenAI, or local Ollama are also supported
+via TaxaTools). See the TaxaTools [API Setup
 vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 
 ## Quick Start
@@ -55,10 +57,10 @@ pipeline. Supported workflow paths include:
     the National Center for Biotechnology Information, U.S. National
     Library of Medicine, National Institutes of Health, Bethesda,
     Maryland) → likelihood model → Bayesian or LLM assignment
--   **Acoustic** — BirdNET-Analyzer (Cornell Lab of Ornithology,
-    Cornell University, Ithaca, New York) CSV output → match data; or
-    Xeno-canto (Xeno-canto Foundation, Netherlands) reference
-    recordings + BirdNET → acoustic likelihood model
+-   **Acoustic** — BirdNET-Analyzer (Cornell Lab of Ornithology, Cornell
+    University, Ithaca, New York) CSV output → match data; or Xeno-canto
+    (Xeno-canto Foundation, Netherlands) reference recordings + BirdNET
+    → acoustic likelihood model
 -   **Camera trap / image** — `animl` (Conservation Technology Lab, San
     Diego Zoo Wildlife Alliance, San Diego, California), iNaturalist CV
     (a joint initiative of the California Academy of Sciences and the
@@ -90,7 +92,7 @@ workflow_fix()
 ## Converting Scripts to Shiny Apps
 
 ``` r
-# Convert any TaxaWizard-generated (or annotated) script to a Shiny app
+# Convert any TaxaID-generated (or annotated) script to a Shiny app that your clients could use to do run their own taxonomic consensus without having to run R.
 workflow_app("my_workflow.R")
 
 # Annotate a generic R script first, then convert
@@ -134,8 +136,8 @@ taxonomic assignment: U.S. Geological Survey software release,
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
-San Francisco, California).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC, San
+Francisco, California).
 
 ## References
 

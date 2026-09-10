@@ -1,7 +1,173 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-07, later (Sonnet 5 -- production-workflow section/structure
+# Last updated: 2026-09-09 (Sonnet 5 -- re-verified and resolved a discrepancy an earlier
+# usage audit had left open this session: `TaxaLikely::compute_likelihoods()` (documented
+# as "the recommended high-level entry point" for `unreferenced_candidates()` ->
+# `assign_scores()` -> `model_likelihoods()`) was flagged as having zero real callers
+# anywhere, with the audit further claiming all three of `assign_scores()`/
+# `model_likelihoods()`/`unreferenced_candidates()` had zero DIRECT real callers of their
+# own -- an orphaned four-function chain. This conflicted with THIS FILE's own "Ecosystem
+# logic (no-score pathway)" section, which describes `unreferenced_candidates()`/
+# `assign_scores()` as real, designed infrastructure for a genuinely different data-type
+# scenario (no-score/morphology/single-score classifiers, e.g. BirdNET top-1) than the 8
+# real eDNA/BLAST production workflows the original audit had scoped its search to --
+# exactly the shape of a false negative (checking the wrong workflow population), not
+# proof of abandonment, analogous to how an acoustic/image-only function correctly shows
+# zero hits in an eDNA-only workflow search without being unused.
+#
+# Resolved from direct evidence, not by picking a side: read both flagged functions' full
+# source first (`assign_scores()` genuinely has a real `score_type` parameter with
+# `"none"`/`"similarity_softmax"` values, matching this file's own description exactly),
+# then grepped `inst/workflows/*.R` across the WHOLE monorepo (not just the 8 eDNA
+# production scripts) and found real, direct callers of `unreferenced_candidates()`/
+# `assign_scores()` bypassing `compute_likelihoods()` entirely: TaxaLikely's own
+# `inst/workflows/image_acoustic_likelihood_workflow.R` (both its IMAGE and ACOUSTIC
+# sections -- the real image/acoustic demo workflow this investigation specifically
+# needed to check for) and `inst/workflows/6_no_score_pathway_workflow.R`, plus
+# cross-package in `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`. **Split
+# verdict, not all-or-nothing**: `unreferenced_candidates()`/`assign_scores()` are real,
+# adopted no-score-pathway infrastructure and were NOT archived -- this file's "Ecosystem
+# logic (no-score pathway)" section below is accurate and was left unchanged.
+# `model_likelihoods()`, checked separately, has no real caller outside
+# `compute_likelihoods()` beyond its own required demonstration section in TaxaLikely's
+# `inst/review_function_inputs.R` (a "one section per exported function" reference
+# gallery, structurally guaranteed regardless of real adoption, not treated as evidence of
+# real use the way a genuine `inst/workflows/*.R` demo is) -- still orphaned even though
+# its siblings are safe. `compute_likelihoods()` itself confirmed to have zero real
+# callers anywhere. Both `compute_likelihoods()` and `model_likelihoods()` (they share one
+# source file) ARCHIVED to `TaxaLikely/archive_unused_likelihood_entrypoint/` (moved
+# intact, not deleted -- matches this same package's established `archive_decipher_
+# reference_audit/` precedent), with every real cross-reference fixed (roxygen, README x2,
+# `inst/review_function_inputs.R`, `inst/TaxaID_Workflow_Template_TEST.R`'s adaptation
+# notes) and a dated addendum on `TaxaLikely/inst/taxalikely_review_response.md`'s own
+# prior discussion of these functions. See `TaxaLikely/CLAUDE.md`'s own top session note
+# and `ecosystem_docs/NAME_CHANGE_HISTORY.md` for the full record. `devtools::test()`/
+# `devtools::check()` re-verified clean on TaxaLikely, reinstalled.
+# Previous update, 2026-09-08, later still (Sonnet 5 -- `TaxaLikely::suggest_unreferenced_
+# species()` package-placement fix, prompted by the user asking (right after the
+# flag_reference_errors() retirement directly below) whether the same duplicate-mechanism
+# pattern also applied to "unreferenced species" naming, given the README juxtaposition of
+# TaxaAssign::suggest_unreferenced_species() next to TaxaLikely::expand_unreferenced_
+# hypotheses(). Investigated exactly like the prior retirement -- read every function body,
+# grepped every real call site across all 9 packages plus the wider ~/My Drive/Rscripts/
+# eDNA/, ~/My Drive/Stats and Data/, and broader ~/My Drive/Rscripts/ trees -- and found a
+# DIFFERENT shape of problem than flag_reference_errors(): not two mechanisms competing to
+# do the identical job that real workflows had to reconcile, but a real package-placement
+# gap. suggest_unreferenced_species()'s own roxygen already self-described as "a fast,
+# LLM-first alternative to TaxaLikely::audit_barcode_coverage()" -- it does the identical
+# reference-coverage-auditing job (detecting species missing from the reference database)
+# that audit_barcode_coverage()/audit_acoustic_coverage()/audit_inat_coverage() already do
+# in TaxaLikely, whose own stated Package Purpose is literally "auditing taxonomic
+# completeness (identifying unreferenced taxa missing from the reference)" -- the identical
+# logic already applied to expand_unreferenced_hypotheses()'s TaxaAssign -> TaxaLikely move
+# (Session 150, 2026-07-10). TaxaExpect's own prior-generation functions (generate_
+# undetected_diversity()/apply_undetected_evidence()/generate_domestic_food_priors()/
+# generate_invasive_watch_evidence()/estimate_kernel_priors(), all "generate priors" per
+# their own roxygen) were confirmed to be a genuinely separate pipeline stage (occurrence-
+# probability theta, not reference-database candidate naming) -- the user's third worry, no
+# redundancy found there at all.
+#
+# The real-usage search found suggest_unreferenced_species()'s own consuming pathway
+# (TaxaAssign::run_llm_pipeline()/assign_taxa_llm(), the documented "LLM-shortcut"
+# alternative to the Full Bayesian pipeline) has real but narrow use: assign_taxa_llm()
+# runs live in GreatLakes2023_ConsensusWorkflow.R Section 8k, but only as an internal
+# LLM-vs-Bayesian comparison diagnostic (cached, never feeding TaxaFlag review/export),
+# called WITHOUT unreferenced_taxa= -- so suggest_unreferenced_species() itself has zero
+# real callers anywhere outside 2 in-package inst/ demo scripts. Moved to TaxaLikely
+# (function + its print.unreferenced_species_result S3 method + all internal helpers, plus
+# two small duplicated LLM-prompt helpers this package didn't have before -- TaxaLikely
+# gains its first-ever LLM-calling function); a thin .Deprecated() forwarding wrapper kept
+# in TaxaAssign. assign_taxa_llm()/run_llm_pipeline() themselves correctly stay in
+# TaxaAssign (genuine posterior computation, just with an LLM-generated prior/likelihood
+# proxy) -- per the user's explicit request, TaxaAssign's README/roxygen rewritten to
+# frame the LLM-shortcut pathway clearly as a fast approximation used IN PLACE OF
+# TaxaLikely's/TaxaExpect's modeled effort, not parallel first-class infrastructure.
+#
+# Two pre-existing, unrelated roxygen bugs found and fixed opportunistically while
+# relocating the function's cross-references: TaxaLikely::build_site_reference()'s and
+# audit_acoustic_coverage()'s own docs both pointed their $unreferenced output (a flat
+# character vector) at suggest_unreferenced_species() with an unreferenced_taxa= argument
+# that function has never had a parameter for (it discovers unreferenced species itself
+# from a match_df, it can't accept a pre-built list) -- corrected to
+# TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...), the function whose parameter
+# actually matches that shape; these examples were wrong before this session, not
+# introduced by it. `rentrez` dropped from TaxaAssign's DESCRIPTION Imports (closed a real
+# devtools::check() NOTE once nothing in that package used it anymore).
+#
+# devtools::test()/check() clean on both touched packages (TaxaLikely 1118/0 test, 0/0/0
+# check; TaxaAssign 675/0 test, 0/0/0 check), both reinstalled. See TaxaLikely/CLAUDE.md's
+# and TaxaAssign/CLAUDE.md's own top session notes and ecosystem_docs/NAME_CHANGE_HISTORY.md
+# for the full per-package record.
+# Previous update, 2026-09-08 (Sonnet 5 -- full, careful, cross-package retirement of
+# TaxaLikely::flag_reference_errors() and its dependent mechanisms, per the user's
+# explicit direction after an architectural investigation established it was now
+# redundant with, and strictly weaker than, TaxaMatch::corroborate_references_locally()
+# (built 2026-09-03, a free/local independence-filtering + coverage-checking check)
+# feeding TaxaMatch::evaluate_reference_accessions(local_corroboration=,
+# skip_locally_corroborated=TRUE) (the BLAST-based screen -- which already computes
+# reference_action internally via score_reference_labels(), so no separate scoring
+# call is ever needed by a consumer). Three explicit design decisions confirmed with
+# the user before executing (via AskUserQuestion, all three "Recommended" options
+# chosen): (1) TaxaLikely::remove_flagged_references() and
+# TaxaMatch::verify_flagged_references() (the 2026-08-18 bridge function connecting
+# the two mechanisms) are BOTH retired too, not kept as parallel generic
+# infrastructure -- TaxaMatch's own flag_incongruent_references()/
+# remove_incongruent_references() already do match-object cleaning for the stronger
+# BLAST-based verdict. (2) train_likelihood_model() gains NO replacement parameter --
+# reference-quality screening moves entirely upstream into a caller-orchestrated
+# pre-filtering step against reference_df/raw_df, BEFORE build_sequence_matrix() is
+# ever called, preserving TaxaLikely's architectural no-TaxaMatch-dependency boundary.
+# (3) Deleted outright, not deprecated -- matches this project's own established
+# zero-external-users precedent (fetch_reference_sequences(),
+# audit_barcode_coverage_ncbi(), expand_consensus_candidates(),
+# read_wildlife_insights_output() were all removed the same way).
+#
+# Six phases, each verified clean before moving to the next: (1) TaxaLikely -- deleted
+# flag_reference_errors()/.compute_reference_qc_stats()/remove_flagged_references(),
+# stripped train_likelihood_model()'s 4 retired params + reference_errors output slot,
+# build_site_reference() lost its flag_errors/$errors step, report_likelihood()'s
+# now-permanently-dead mislabel-count branch removed, README/vignette/workflow/test
+# updates throughout. (2) TaxaMatch -- deleted verify_flagged_references(), simplified
+# evaluate_reference_accessions()'s own scoping-doctrine roxygen. (3) TaxaAssign --
+# removed run_llm_pipeline()'s reference_errors param and both pipeline wrappers'
+# Stage-0 remove_flagged_references() auto-filter block (confirmed via grep: neither
+# wrapper is called by any real production workflow, low risk). (4) TaxaWizard --
+# rewrote the matrix_to_clean code-gen snippet and workflow_graph.json edge around the
+# new TaxaMatch pattern, fixed 2 stale metadata JSON entries. (5) All 4 real external
+# production workflows that used the old pattern (GreatLakes2023_ConsensusWorkflow.R;
+# PtConceptionWorkflow_12S_single_site.R/_12S_multi_site.R/_18S_2_single_site.R; both
+# Mugu scripts never used this pattern, confirmed via grep, untouched) rewired to
+# corroborate_references_locally() -> evaluate_reference_accessions(local_
+# corroboration=, skip_locally_corroborated=TRUE), filtering seq_matrix directly by
+# id_x/id_y membership against reference_action=="remove" accessions -- the same cheap,
+# no-re-alignment equivalent train_likelihood_model()'s old mislabel_behavior="remove"
+# mode used. GreatLakes' own comment (which had claimed training "silently removes...
+# before fitting," stale since the 2026-08-18 mislabel_behavior="flag" default change)
+# corrected in the same edit. All 4 files backed up first (*.bak_pre_retire_flag_
+# reference_errors, not under git) and parse-checked; deliberately NOT run live (real
+# NCBI cost) -- left for the user to trigger. (6) Root README.md's "Detecting Mislabeled
+# References" bullet and 3 living ecosystem_docs files (TaxaLikely_supplemental_
+# methods.md's Sections 9A/15/16 + Key Functions table, EXTERNAL_DATA_SOURCES.md's NCBI
+# row) updated to describe the new mechanism; a NAME_CHANGE_HISTORY.md entry added.
+# Frozen-historical documents deliberately left untouched, per this project's own
+# established convention: past CLAUDE.md session-note prose (including this file's own
+# 2026-08-18/2026-09-07 entries below, which still narrate the old mechanism as live --
+# correct as a record of what was true then), taxalikely_review_response.md,
+# taxamatch_review_response.md, fable_ecosystem_review_2026-09-05.md,
+# ecosystem_docs/session_notes/TaxaLikely_sessions.md (archived past session notes),
+# STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md/STATISTICAL_COMPONENT_CATALOG.md (point-in-
+# time audit snapshots, not living reference), DATA_TYPE_AUDIT_PLAN.md (a one-time,
+# already-frozen 2026-05-27 naming audit that itself still cites the already-renamed
+# fetch_reference_sequences() -- never kept in sync with renames, confirming it was
+# already treated as frozen before this session), TaxaLikely_theory_context_brief.md (a
+# one-time authoring prompt whose commissioned content already exists in
+# TaxaLikely_supplemental_methods.md), and "misc review docs/" (a frozen WERC review
+# submission bundle, dated alongside its own WERCReview.docx). All 5 touched packages
+# (TaxaLikely, TaxaMatch, TaxaAssign, TaxaWizard) individually devtools::test()/
+# devtools::check()-verified clean and reinstalled -- see each package's own CLAUDE.md
+# top session note for its exact numbers.
+# Previous update, 2026-09-07, later (Sonnet 5 -- production-workflow section/structure
 # standardization pass, per the user's own outline-first-then-canonical-then-apply
 # process (ecosystem_docs/REENTRY_PROMPT_workflow_structure_audit.md). Deliberately kept
 # the two established numbering families separate (single-marker 0-10 vs multi-marker
@@ -3578,3 +3744,6 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-09-04 (Opus 5) | `apply_undetected_evidence(pricing = "curve")` accepts a MULTI-GROUP kernel fit and prices per group; new `sampling_group`/`group_fallback`/`min_group_n_eff`/`min_group_f1`/`cap_at_singleton`; new `sampling_group`/`pricing_basis` output columns; `generate_undetected_diversity()` scales singleton mirrors by their own group's `n_eff` | TaxaExpect | **Additive + a behaviour change on a path that previously ERRORED.** Closes open decision #2 of the kernel budget/pricing re-entry doc: a multi-group fit used to be refused outright ("per-group curve pricing is not wired up yet"), and is now the supported path -- each evidence taxon is priced at its own sampling group's Good-Turing budget, justified by the 1859x per-group spread the 18S diagnostic measured. Group assignment is NEVER inferred from taxonomy (an unassigned taxon errors with guidance): the classification that built the occurrence pool's groups lives in the caller's workflow, and a wrong group mis-prices silently. Three guards, each of which fires on the real 10-group PtConception 18S fit -- support (`min_group_n_eff`/`min_group_f1`, which stops a 27-effective-record group pricing an unseen plant at 2.1% of its own community), a singleton cap (binds exactly when `f1 < 2*f2`, i.e. real zooplankton priced 4.7x ABOVE a species seen once; deliberately NOT the open `mass/f1` decision, which binds the other way), and a group-wise pooled-qualifying fallback that never re-pools records. **SINGLE-GROUP FITS ARE BYTE-IDENTICAL** -- verified old-vs-new on the real GreatLakes checkpoint at max \|delta\| = 0 on alpha/beta/theta_mean, so the Lamar-validated GL result does not move. Second real bug fixed alongside: `generate_undetected_diversity()`'s kernel adapter divided every singleton mirror by the POOLED `n_eff`, understating each group's mirrors by 1.86x (fishes) to 4295x (terrestrial arthropods) on a multi-group fit. `PtConceptionWorkflow_18S_2_single_site.R` wired (`WATCH_SAMPLING_GROUP <- "fishes"`, 1.26x the pooled price); domestic/food deliberately stays on the pooled fit. `devtools::test()` 1018/0, `devtools::check()` 0/0/0. |
 | 2026-09-05 (Opus 5) | `download_gbif_occurrences()`: zip integrity verification + retry, self-healing cache hit, extraction warning promoted to error, `allow_prompts = FALSE` (NO blocking menus by default), `prompt_mb`, `cache_prompt_mb`, `keep_zip`; `check_geographic_outliers()`: `candidate_taxa`/`candidate_scope`/`verdict_cache`, routed through `get_gbif_occurrences()`; `taxafetch_clear_cache(zips_only=)` | TaxaFetch | **Mostly additive; two real behaviour changes.** (a) **No prompt blocks any more.** `utils::menu()` reads stdin, and RStudio queues a sourced script's remaining lines as console input -- on 2026-09-04 a cache prompt consumed ~600 lines of a live workflow as menu answers, silently swallowing them so they never executed (the GBIF download had already succeeded). `interactive()` cannot distinguish a human from the editor, so gating on it does not help. Every decision is now REPORTED with the command to act on it; pass `allow_prompts = TRUE` only when calling by hand. Same hazard this package already documented for `readline()` in `TaxaMatch::group_observations_by_bbox()`. (b) **`check_geographic_outliers()` can now be scoped to assignable taxa.** `candidate_taxa = NULL` keeps the old full sweep, so nothing breaks silently, but every workflow now passes it: a family-derived occurrence pool is ~20x wider than its species-level candidates (387 of 7,392 at PtCon 18S), and the unscoped per-key global fetch earned a GBIF rate-limit block at 360/829 keys. Real reduction 2,683 -> 591 rare species. Also: a truncated download is no longer cached as complete (127,733,417 of 130,577,434 declared bytes, which then failed on every re-run); the global fetch no longer inherits a `limit = 10000` cap that truncated the reference cloud by return order; verdicts are cached instead of the raw global cloud; and `keep_zip = FALSE` + `zips_only` address the fact that 38 zips held 17.0 GB against 52 MB for every other cache file combined. `devtools::test()` 737/2 (both pre-existing CoordinateCleaner environment failures). |
 | 2026-09-06 (Sonnet 5) | `review_assignments()`: `habitat_plausibility`/`geographic_plausibility`/`scope_plausibility`/`contamination_risk` -> `llm_habitat_plausibility`/`llm_geographic_plausibility`/`llm_scope_plausibility`/`llm_contamination_risk`; new `consensus_plausibility_col`/`consensus_discrimination_col` params (defaults `"consensus_plausibility"`/`"consensus_discrimination"`); new `geographic_disagreement_basis` output column | TaxaFlag | **Breaking rename + additive.** All four renamed columns are independent LLM judgments, never derived from or gated by the pipeline's own values -- the old bare names read as if they might be pipeline output, which is what made a real surprising case (an LLM rating a taxon "likely" despite a ~6.5e-6 prior and both `unprecedented`+`indistinguishable` pipeline flags) hard to trace. The two new params gate a consensus-scope skepticism GUIDELINES bullet (LLM must cite specific evidence or default to "unlikely" for a flagged taxon); `geographic_disagreement_basis` is a deterministic, code-computed column (not derived from `review_comment`, which an LLM isn't guaranteed to populate) that fires whenever `llm_geographic_plausibility %in% c("likely","possible")` despite either ground (`"unprecedented"`/`"indistinguishable"`/`"unprecedented+indistinguishable"`, `NA` otherwise). The LLM's own JSON response schema is unchanged -- only the final output column names carry the prefix. `report_flags()`'s contaminant-detection regex updated to also match `llm_contamination_risk`; `review_spatial_context()`'s AI-review panel updated; all 7 real external eDNA workflow scripts (PtConception x4, Mugu x2, the shared Template) updated, backed up first (`*.bak_pre_llm_column_rename`). `devtools::test()` 456/456, `devtools::check()` 0/0/0, reinstalled. See `TaxaFlag/CLAUDE.md`'s own top session note. |
+| 2026-09-08 (Sonnet 5) | `TaxaLikely::flag_reference_errors()`/`.compute_reference_qc_stats()`/`remove_flagged_references()` removed entirely; `TaxaMatch::verify_flagged_references()` removed entirely; `train_likelihood_model()` loses `mislabel_threshold`/`singleton_match_threshold`/`verified_clean`/`mislabel_behavior` + `reference_errors` output slot; `build_site_reference()` loses `flag_errors`/`$errors`; `TaxaAssign::run_llm_pipeline()`/`run_bayesian_pipeline()` lose the `reference_errors`-driven auto-filter | TaxaLikely, TaxaMatch, TaxaAssign | **Breaking, deleted not deprecated** (zero-external-users precedent). Redundant with, and strictly weaker than, `TaxaMatch::corroborate_references_locally()` + `evaluate_reference_accessions(local_corroboration=, skip_locally_corroborated=TRUE)`. Reference-quality screening now lives entirely upstream, caller-orchestrated against `reference_df`/`raw_df` before `train_likelihood_model()` is called -- no replacement parameter added. All 4 real production workflows using the old pattern rewired (both Mugu scripts never used it). See this file's own top session note and `ecosystem_docs/NAME_CHANGE_HISTORY.md` for the full record. |
+| 2026-09-09 (Sonnet 5) | `evaluate_likelihoods(min_coverage = ...)` no longer crashes when EVERY candidate for an observation_id falls below threshold | TaxaLikely | **Behavioral bug fix, not a signature change.** Previously hard-errored ("replacement has 1 row, data has 0") for any such observation -- root cause: `.evaluate_one_query()` already returned a correctly-shaped 0-row data frame for this case, but the wrapper's per-observation loop then unconditionally ran `result$observation_id <- sid`, which cannot assign a length-1 id into 0 rows. Confirmed to hit 195/800 (24.4%) of real test queries in `diagnostics/coverage_filter_ab_comparison.R` at a calibrated `min_coverage = 0.995`. Fixed by routing such an observation to `$unresolved` with a named warning -- the SAME convention this function already used for its pre-existing coarser-than-`rank_system` `$unresolved` case, not a new mechanism. A related second gap (an all-NULL `results` list producing a 0-column `out` that crashed the downstream `dplyr::select()`) was fixed the same session. `devtools::test()` 1091/0 (up from 1086), `devtools::check()` 0/0/1 (pre-existing environmental note), reinstalled. Full uncensored A/B re-measurement in `diagnostics/coverage_filter_ab_comparison_v2.R`. See `TaxaLikely/CLAUDE.md`'s top session note for the full record. |
+| 2026-09-08 (Sonnet 5) | `TaxaAssign::suggest_unreferenced_species()` -> `TaxaLikely::suggest_unreferenced_species()` | TaxaAssign -> TaxaLikely | **Function moved, `.Deprecated()` forwarding wrapper kept in TaxaAssign** -- package-placement fix (matches the `expand_unreferenced_hypotheses()` Session 150 precedent exactly), not a redundancy retirement. It's a reference-coverage-auditing function ("a fast, LLM-first alternative to `audit_barcode_coverage()`" per its own roxygen), so it belongs next to `audit_barcode_coverage()`/`audit_acoustic_coverage()`/`audit_inat_coverage()` in TaxaLikely, not in the posterior-computation package. `rentrez` dropped from TaxaAssign's Imports (no longer used there); `jsonlite` added to TaxaLikely's Imports. `TaxaAssign::run_llm_pipeline()`'s internal call site now calls `TaxaLikely::suggest_unreferenced_species()` directly (guarded by `requireNamespace("TaxaLikely")`, a Suggests-only dependency) instead of triggering its own package's deprecation warning on every real call. `assign_taxa_llm()`/`run_llm_pipeline()` stay in TaxaAssign -- README/roxygen rewritten to frame the whole LLM-shortcut pathway as a fast approximation used in place of TaxaLikely's/TaxaExpect's modeled effort, not parallel first-class infrastructure. See this file's own top session note and `ecosystem_docs/NAME_CHANGE_HISTORY.md` for the full record. |

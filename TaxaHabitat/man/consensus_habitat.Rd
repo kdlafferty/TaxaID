@@ -53,7 +53,7 @@ candidate taxon names when occurrence records or spatial data are unavailable.
 \examples{
 hab_weights <- data.frame(
   taxon_name = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss"),
-  Marine     = c(1.0, 1.0, 0.5),
+  Marine = c(1.0, 1.0, 0.5),
   Freshwater = c(0.0, 0.0, 0.5),
   Terrestrial = c(0.0, 0.0, 0.0),
   Other_weight = c(0.0, 0.0, 0.0),

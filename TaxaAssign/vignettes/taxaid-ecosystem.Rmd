@@ -128,8 +128,8 @@ reference_df <- fetch_ncbi_reference_sequences(
 # Build alignment matrix
 ref_matrix <- build_sequence_matrix(reference_df)
 
-# Flag mislabeled references
-errors <- flag_reference_errors(ref_matrix)
+# Screen for mislabeled references before training -- see
+# TaxaMatch::corroborate_references_locally()/evaluate_reference_accessions()
 
 # Train the hierarchical model
 model <- train_likelihood_model(ref_matrix, rank_system = c("family", "genus", "species"))
@@ -171,25 +171,37 @@ occurrences <- assign_habitat_biological(occurrences, habitats)
 
 ### Step 5: Build priors (TaxaExpect)
 
+TaxaExpect prices each species' prior as its kernel-weighted share of
+occurrence records near the site, shrunk toward the regional composition.
+The geographic bandwidth is chosen empirically, then the estimator is
+evaluated once at the site, then a Good-Turing budget is added for species
+that are locally plausible but never actually recorded.
+
 ```{r priors}
 library(TaxaExpect)
 
-grid <- create_sites_from_grid(occurrences, grid_size = 0.25)
-model_fit <- fit_occupancy_model(grid$data)
-priors <- generate_full_priors(model_fit, grid)
-```
-
-### Step 5 (alternative): One-call wrapper
-
-```{r build_priors}
-# build_priors() wraps Steps 3-5 into a single call
-prior_result <- TaxaExpect::build_priors(
-  taxa = unique(match_df$family),
-  lat = 34.4, lon = -119.8,
-  llm_fn = TaxaTools::call_anthropic_api,
-  verbose = TRUE
+# Choose the geographic bandwidth by leave-one-block-out prediction
+calib <- calibrate_kernel_bandwidth(
+  occurrence_data = occurrences,
+  site_habitat    = "Marine",
+  lambda_grid     = c(10, 25, 50, 100, 200)
 )
-priors <- prior_result$priors
+lambda_km <- calib$best$lambda_km
+
+# Estimate site priors at the study coordinates
+kernel_fit <- estimate_kernel_priors(
+  occurrence_data = occurrences,
+  site_lat        = 34.4,
+  site_lon        = -119.8,
+  site_habitat    = "Marine",
+  lambda_km       = lambda_km
+)
+
+# Add priors for species never recorded locally but plausible nearby
+undetected <- generate_undetected_diversity(kernel_fit)
+
+# Assemble the prior table TaxaAssign consumes
+priors <- dplyr::bind_rows(kernel_fit$priors, undetected)
 ```
 
 ### Step 6: Compute posteriors (TaxaAssign)
@@ -198,7 +210,7 @@ priors <- prior_result$priors
 library(TaxaAssign)
 
 # Detect unreferenced species
-unreferenced <- suggest_unreferenced_species(
+unreferenced <- TaxaLikely::suggest_unreferenced_species(
   match_df,
   llm_fn = TaxaTools::call_anthropic_api,
   barcode_term = "MiFish"

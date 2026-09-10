@@ -17,10 +17,15 @@
 #'
 #' @param priors_output Either:
 #'   \itemize{
-#'     \item A list returned by \code{\link{build_priors}} (contains
-#'       \code{$priors}, \code{$model}, \code{$occurrences}, \code{$grid_result}).
-#'     \item A data frame of priors directly (output of
-#'       \code{\link{generate_full_priors}}).
+#'     \item A list with a \code{$priors} element (contains \code{$priors},
+#'       \code{$model}, \code{$occurrences}, \code{$grid_result}) -- the
+#'       shape produced by the archived \code{build_priors()} (GLMM chain,
+#'       archived 2026-09-09, see \code{archive_glmm_prior_pipeline/}). Still
+#'       accepted here so an OLD, already-computed \code{build_priors()}
+#'       result cached on disk keeps working with this function.
+#'     \item A data frame of priors directly -- the shape produced by
+#'       \code{\link{estimate_kernel_priors}} (current recommended path) or,
+#'       historically, the archived \code{generate_full_priors()}.
 #'   }
 #' @param verbose Logical. Print summary messages. Default \code{FALSE}.
 #'
@@ -33,12 +38,15 @@
 #'   \item{statistics}{Named list of summary counts.}
 #' }
 #'
-#' @seealso \code{\link{build_priors}}, \code{\link{generate_full_priors}}
+#' @seealso \code{\link{estimate_kernel_priors}}
 #'
 #' @examples
 #' \dontrun{
-#' bp <- build_priors(taxa = c("Sebastes atrovirens"), lat = 34.4, lon = -119.7)
-#' sec <- report_priors(bp)
+#' kernel_fit <- estimate_kernel_priors(
+#'   occurrence_data, site_lat = 34.4, site_lon = -119.7,
+#'   site_habitat = "Kelp", lambda_km = 25
+#' )
+#' sec <- report_priors(kernel_fit$priors)
 #' print(sec)
 #' }
 #'

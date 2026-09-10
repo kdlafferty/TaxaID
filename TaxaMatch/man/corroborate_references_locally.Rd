@@ -105,10 +105,13 @@ within-species distribution is a recorded later refinement, not built.
 local_corr <- corroborate_references_locally(seq_matrix, reference_df)
 table(local_corr$local_tier)
 match_eval <- evaluate_reference_accessions(
-  match_driving_accessions(match_obj), cache_dir = "ref_eval_cache",
-  barcode_term = "MiFishU", local_corroboration = local_corr)
+  match_driving_accessions(match_obj),
+  cache_dir = "ref_eval_cache",
+  barcode_term = "MiFishU", local_corroboration = local_corr
+)
 match_eval <- score_reference_labels(match_eval,
-  local_corroboration = local_corr, overwrite = TRUE)
+  local_corroboration = local_corr, overwrite = TRUE
+)
 }
 
 }

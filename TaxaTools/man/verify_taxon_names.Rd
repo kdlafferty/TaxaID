@@ -143,7 +143,7 @@ its own classification lineage.
 \examples{
 \dontrun{
 names <- c("Homo sapiens", "Mus musculus", "Tyranosaurus rex")
-result <- verify_taxon_names(names, backbone_id = 4)  # NCBI
+result <- verify_taxon_names(names, backbone_id = 4) # NCBI
 result
 
 # Check which names failed verification or had no match

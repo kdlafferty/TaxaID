@@ -57,16 +57,18 @@ changes are needed in downstream package functions.
 library(TaxaTools)
 
 # After running workflow steps that call LLMs:
-token_usage()                       # per-call detail
-token_usage(by = "function")        # totals per TaxaID function
-token_usage(by = "session")         # grand total
+token_usage() # per-call detail
+token_usage(by = "function") # totals per TaxaID function
+token_usage(by = "session") # grand total
 
 # With cost estimate (Anthropic claude-sonnet-4 pricing example)
-token_usage(by = "function",
-            cost_per_1k_input  = 0.003,
-            cost_per_1k_output = 0.015)
+token_usage(
+  by = "function",
+  cost_per_1k_input = 0.003,
+  cost_per_1k_output = 0.015
+)
 
-reset_token_usage()                 # clear before next workflow step
+reset_token_usage() # clear before next workflow step
 }
 
 }

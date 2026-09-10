@@ -42,7 +42,7 @@ have saved the response file(s).
 \examples{
 \dontrun{
 prompt <- TaxaHabitat::build_habitat_prompt(c("Gadus morhua", "Sebastes mystinus"))
-info   <- prompt_manual(prompt, out_dir = "habitat_assignment")
+info <- prompt_manual(prompt, out_dir = "habitat_assignment")
 # paste prompts into your LLM, save responses to the listed files
 raw_text <- read_llm_response(info$response_files)
 }

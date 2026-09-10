@@ -188,12 +188,56 @@ preserved; unreferenced and unknown rows have \code{NA} in these columns.
 Sorted by \code{observation_id}, then descending \code{posterior_mean}.
 }
 \description{
-A fast approximation of the full TaxaLikely -> TaxaExpect -> TaxaAssign pipeline.
-Replaces the Bayesian likelihood model with exponentially-weighted match scores,
-and replaces occurrence-based priors with LLM-estimated prior weights. Posteriors
-are computed by \code{compute_posterior()} as normal.
+Assign Taxa Using an LLM-Approximated Bayesian Pipeline
 }
 \details{
+\strong{Parameter sensitivity:} a sweep of \code{score_sharpness},
+\code{unknown_lik_weight}, \code{prior_phi}, and \code{absent_detection_prob} against one
+real, fixed LLM response (see \code{diagnostics/llm_prior_shape_sweep.R}) found
+these four parameters mostly shape \emph{confidence}
+(\code{consensus_posterior}), not \emph{which} taxon wins. \code{unknown_lik_weight}
+has the largest effect (raising it toward 0.20 measurably lowers winning-
+hypothesis confidence); \code{score_sharpness} has almost none (the LLM-derived
+prior does most of the discriminating work); a flat scalar \code{prior_phi}
+performed comparably to the tiered default in this one sweep, so whether
+the tiered structure earns its complexity is a real, unresolved question;
+\code{absent_detection_prob} showed no aggregate effect in a small synthetic
+test (no real workflow in this ecosystem currently supplies
+\code{known_absent}). This reflects one non-reproducible LLM response, not a
+calibration study -- treat it as sensitivity direction, not a precise
+estimate.
+
+\strong{Context is optional but strongly recommended.} The prompt always
+asks the LLM to commit to \code{range_status} (geographic presence "in this
+region") regardless of whether \code{context} supplies a region at all. With no
+\code{context}, the LLM has nothing but each taxon's name to reason from and
+falls back on general knowledge of the species' typical range rather than
+anything about the actual survey site -- \code{range_status}/\code{prior_weight}
+from a context-less call should be treated as weak, unverified evidence,
+not a real site-specific assessment. A \code{cli_warn()} is emitted whenever
+\code{context} is \code{NULL}. \code{context} is not a hard requirement (rather than an
+error) because a coarse call -- e.g. flagging an unambiguously
+\code{taxonomically_impossible} candidate by genus/family alone -- can still be
+useful without any location at all; supply \code{context} whenever a real
+site is available.
+}
+\section{Purpose}{
+
+This is the \strong{LLM-shortcut pathway} -- a fast \emph{approximation} of the Full
+Bayesian pipeline (\code{TaxaLikely::train_likelihood_model()}/
+\code{evaluate_likelihoods()} -> \code{TaxaExpect}'s occurrence-modelled priors ->
+\code{run_bayesian_pipeline()}), used in place of that modeled effort when no
+trained TaxaLikely model or TaxaExpect priors exist yet, or as a quick
+comparison against a Full Bayesian result already in hand. It is \strong{not} a
+parallel, equally-supported first-class pipeline: replaces the trained
+likelihood model with exponentially-weighted match scores, and replaces the
+occurrence-modelled prior with an LLM's biogeographic judgment. Best suited
+to well-known taxa in a well-known ecoregion; rare/novel taxa or
+poorly-known regions need the Full Bayesian pathway's real modeled evidence,
+which the LLM has no access to. Every real production workflow in this
+ecosystem uses the Full Bayesian pathway exclusively. Posteriors are
+computed by \code{compute_posterior()} as normal, so both pathways are directly
+comparable via the same downstream consensus/reporting functions.
 \subsection{Key design}{
 
 Geographic plausibility is a taxon-level property, not an observation-level one.
@@ -228,58 +272,36 @@ Species absent from the reference database (from
 scored candidate are inserted as additional hypotheses. Their likelihood equals
 the median of their referenced congeners so unreferenced taxa start on equal
 footing. They appear in the prompt labelled \verb{[no reference sequence]}.
-
-\strong{Parameter sensitivity:} a sweep of \code{score_sharpness},
-\code{unknown_lik_weight}, \code{prior_phi}, and \code{absent_detection_prob} against one
-real, fixed LLM response (see \code{diagnostics/llm_prior_shape_sweep.R}) found
-these four parameters mostly shape \emph{confidence}
-(\code{consensus_posterior}), not \emph{which} taxon wins. \code{unknown_lik_weight}
-has the largest effect (raising it toward 0.20 measurably lowers winning-
-hypothesis confidence); \code{score_sharpness} has almost none (the LLM-derived
-prior does most of the discriminating work); a flat scalar \code{prior_phi}
-performed comparably to the tiered default in this one sweep, so whether
-the tiered structure earns its complexity is a real, unresolved question;
-\code{absent_detection_prob} showed no aggregate effect in a small synthetic
-test (no real workflow in this ecosystem currently supplies
-\code{known_absent}). This reflects one non-reproducible LLM response, not a
-calibration study -- treat it as sensitivity direction, not a precise
-estimate.
-
-\strong{Context is optional but strongly recommended.} The prompt always
-asks the LLM to commit to \code{range_status} (geographic presence "in this
-region") regardless of whether \code{context} supplies a region at all. With no
-\code{context}, the LLM has nothing but each taxon's name to reason from and
-falls back on general knowledge of the species' typical range rather than
-anything about the actual survey site -- \code{range_status}/\code{prior_weight}
-from a context-less call should be treated as weak, unverified evidence,
-not a real site-specific assessment. A \code{cli_warn()} is emitted whenever
-\code{context} is \code{NULL}. \code{context} is not a hard requirement (rather than an
-error) because a coarse call -- e.g. flagging an unambiguously
-\code{taxonomically_impossible} candidate by genus/family alone -- can still be
-useful without any location at all; supply \code{context} whenever a real
-site is available.
 }
 }
+
 \examples{
 match_df <- data.frame(
-  observation_id   = c("S1", "S1", "S1", "S2", "S2"),
-  score_original   = c(99, 93, 85, 100, 88),
-  taxon_name       = c("Eucyclogobius newberryi", "Quietula y-cauda",
-                       "Gillichthys mirabilis",
-                       "Eucyclogobius newberryi", "Gillichthys mirabilis"),
-  taxon_name_rank  = rep("species", 5),
+  observation_id = c("S1", "S1", "S1", "S2", "S2"),
+  score_original = c(99, 93, 85, 100, 88),
+  taxon_name = c(
+    "Eucyclogobius newberryi", "Quietula y-cauda",
+    "Gillichthys mirabilis",
+    "Eucyclogobius newberryi", "Gillichthys mirabilis"
+  ),
+  taxon_name_rank = rep("species", 5),
   stringsAsFactors = FALSE
 )
 
 # A stub llm_fn stands in for a real API call so this example is runnable
 # offline; a real call would use llm_fn = TaxaTools::call_api instead.
 stub_llm_fn <- function(prompt_str) {
-  taxa <- regmatches(prompt_str,
-    gregexpr("(?m)(?<=^- )[^\n(]+(?= \\\\()", prompt_str, perl = TRUE))[[1]]
+  taxa <- regmatches(
+    prompt_str,
+    gregexpr("(?m)(?<=^- )[^\n(]+(?= \\\\()", prompt_str, perl = TRUE)
+  )[[1]]
   rows <- paste0(
-    sprintf('{"taxon_name":"\%s","range_status":"native","prior_weight":1}',
-            trimws(taxa)),
-    collapse = ",\n  ")
+    sprintf(
+      '{"taxon_name":"\%s","range_status":"native","prior_weight":1}',
+      trimws(taxa)
+    ),
+    collapse = ",\n  "
+  )
   paste0("[\n  ", rows, "\n]")
 }
 
@@ -289,17 +311,23 @@ result <- assign_taxa_llm(match_df, llm_fn = stub_llm_fn, pause_seconds = 0)
 
 # With shared context (all observations share one site)
 ctx <- data.frame(ecoregion = "California Coast", main_habitat = "estuarine")
-result <- assign_taxa_llm(match_df, context = ctx, llm_fn = stub_llm_fn,
-                           pause_seconds = 0)
+result <- assign_taxa_llm(match_df,
+  context = ctx, llm_fn = stub_llm_fn,
+  pause_seconds = 0
+)
 
 \dontrun{
 # With per-observation context grouped by ecoregion (one LLM call per region)
-ctx <- data.frame(observation_id = c("S1", "S2"),
-                   ecoregion      = c("California Coast", "Oregon Coast"),
-                   stringsAsFactors = FALSE)
-result <- assign_taxa_llm(match_df, context = ctx,
-                           context_group = "ecoregion",
-                           llm_fn = TaxaTools::call_api)
+ctx <- data.frame(
+  observation_id = c("S1", "S2"),
+  ecoregion = c("California Coast", "Oregon Coast"),
+  stringsAsFactors = FALSE
+)
+result <- assign_taxa_llm(match_df,
+  context = ctx,
+  context_group = "ecoregion",
+  llm_fn = TaxaTools::call_api
+)
 }
 }
 \seealso{

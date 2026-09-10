@@ -26,7 +26,6 @@ Imports:
     cli,
     dplyr,
     jsonlite,
-    rentrez,
     rlang,
     stats,
     TaxaTools

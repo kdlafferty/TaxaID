@@ -45,7 +45,7 @@ priors are obtained:
 
 -   **Full Bayesian workflow**: calibrated likelihoods from TaxaLikely's
     hierarchical model + spatially-explicit priors from TaxaExpect's
-    GLMM.
+    kernel-based occurrence estimator.
 -   **LLM-shortcut workflow**: exponential score weighting as a
     likelihood proxy + LLM-estimated priors from a large language model
     acting as an expert biogeographer.
@@ -170,8 +170,13 @@ hypothesis types are considered:
 
 TaxaLikely produces generic H2 and H3 rows at the genus and family
 level. `expand_unreferenced_hypotheses()` replaces these generic rows
-with named species from an `unreferenced_df` (typically from
-`audit_barcode_coverage()` or `suggest_unreferenced_species()`):
+with named species from an `unreferenced_df` (a species/genus/family
+data frame -- in every real production workflow, built from
+`audit_barcode_coverage()`'s `$unreferenced` vector run through
+`TaxaTools::fill_higher_ranks()`; NOT `suggest_unreferenced_species()`,
+whose flat character-vector output has no parameter shape this function
+accepts -- that output goes to `assign_taxa_llm(unreferenced_taxa = ...)`
+in the separate LLM-shortcut pathway instead):
 
 -   **H2 rows**: each generic genus-level row is replaced by one row per
     unreferenced species in that genus. All inherit the generic H2
@@ -189,9 +194,8 @@ H2 and H3 rows are dropped rather than retained with unmatchable names.
 
 ### 3.3 GBIF Census Integration
 
-When TaxaExpect's `build_priors()` includes a GBIF genus census (default
-behavior), `run_bayesian_pipeline()` applies a three-tier logic to H2
-hypotheses:
+When TaxaExpect's prior generation includes a GBIF genus census,
+`run_bayesian_pipeline()` applies a three-tier logic to H2 hypotheses:
 
 -   **Complete genera** (all described species have observations): H2
     rows are suppressed entirely. Any unreferenced species in these
@@ -283,7 +287,7 @@ probability that the true taxon is not among any of the candidates.
 ### 4.2 Unreferenced Species Insertion
 
 When `unreferenced_taxa` is provided (typically from
-`suggest_unreferenced_species()`), unreferenced species are inserted
+`TaxaLikely::suggest_unreferenced_species()`), unreferenced species are inserted
 into the likelihood table with scores derived from their referenced
 congeners:
 
@@ -403,11 +407,10 @@ presence information into its weights.
 ### 4.5 The Unreferenced-Family Hypothesis
 
 Both workflows include an explicit `unreferenced_family` hypothesis
-(Session 99+; formerly `"unknown_species"`) that captures the
-probability that the observation belongs to a taxon not represented by
-any named candidate. This makes it possible to discover
-range expansions and newly introduced species. In the LLM-shortcut
-workflow:
+that captures the probability that the observation belongs to a taxon
+not represented by any named candidate. This makes it possible to
+discover range expansions and newly introduced species. In the
+LLM-shortcut workflow:
 
 -   Likelihood: fixed at `unknown_lik_weight` (default 0.05)
 -   Prior: set to `unknown_lik_weight` after all named priors are
@@ -636,7 +639,7 @@ Within TaxaAssign:
     a `species_reference` is supplied to `posterior_consensus()`. This
     reference is a lookup table of plausible species at the study site
     -- typically an `unreferenced_species_result` object (from
-    `suggest_unreferenced_species()`) or a data.frame with species,
+    `TaxaLikely::suggest_unreferenced_species()`) or a data.frame with species,
     genus, and family columns (e.g., from a GBIF census). When a
     consensus resolves to a coarse rank (say genus *Fundulus*), the
     function checks the reference for finer-rank taxa under that
@@ -694,7 +697,7 @@ Within TaxaAssign:
 | `update_prior_from_consensus()` | Empirical Bayes: boost confirmed species in unresolved observations |
 | `run_bayesian_pipeline()` | High-level wrapper for full Bayesian workflow |
 | `run_llm_pipeline()` | High-level wrapper for LLM-shortcut workflow |
-| `suggest_unreferenced_species()` | LLM-first unreferenced species detection |
+| `TaxaLikely::suggest_unreferenced_species()` | LLM-first unreferenced species detection (moved from this package 2026-09-08; a deprecated forwarding wrapper remains here) |
 | `build_context()` | Auto-populate ecological context from taxon names via LLM |
 
 ------------------------------------------------------------------------

@@ -9,6 +9,12 @@
 #' \code{inst/TaxaAssign_llm_workflow.R}) into a single step. For fine-grained
 #' control, use the individual functions directly.
 #'
+#' See \code{\link{assign_taxa_llm}}'s own \verb{Purpose} section for what the
+#' LLM-shortcut pathway is (a fast approximation of the Full Bayesian pipeline,
+#' used in place of TaxaLikely's/TaxaExpect's modeled effort, not a parallel
+#' first-class pipeline) and when to prefer \code{\link{run_bayesian_pipeline}}
+#' instead.
+#'
 #' @param match_df Data frame. Standardized match object from
 #'   \code{\link[TaxaMatch]{standardize_match_data}}, with columns
 #'   \code{observation_id}, \code{score}, \code{taxon_name}, \code{taxon_name_rank},
@@ -32,12 +38,14 @@
 #'   \code{getOption("TaxaID.llm_fn")} when set, otherwise
 #'   \code{TaxaTools::call_api} (requires TaxaTools).
 #' @param detect_unreferenced Logical. When \code{TRUE} (default), run
-#'   \code{\link{suggest_unreferenced_species}} to detect taxa absent from the
-#'   reference database. Set to \code{FALSE} to skip.
+#'   \code{\link[TaxaLikely]{suggest_unreferenced_species}} to detect taxa
+#'   absent from the reference database (requires TaxaLikely). Set to
+#'   \code{FALSE} to skip.
 #' @param barcode_term Character. Barcode marker for unreferenced species
 #'   detection. Default \code{"12S"}.
 #' @param expand_to_family Logical. Expand unreferenced search to family level.
-#'   Default \code{TRUE}. Passed to \code{\link{suggest_unreferenced_species}}.
+#'   Default \code{TRUE}. Passed to
+#'   \code{\link[TaxaLikely]{suggest_unreferenced_species}}.
 #' @param max_date Optional character. NCBI date filter for unreferenced species
 #'   detection (e.g. \code{"2024/12/31"}).
 #' @param unreferenced_taxa Optional character vector of known unreferenced
@@ -94,11 +102,6 @@
 #' @param report_params Named list of additional arguments passed to
 #'   \code{\link{generate_report}} (e.g. \code{data_type}, \code{marker},
 #'   \code{study_description}).
-#' @param reference_errors Optional data frame. Output of
-#'   \code{\link[TaxaLikely]{flag_reference_errors}} (or
-#'   \code{model_params$reference_errors} from a trained model). When
-#'   supplied, mislabeled accessions are removed from \code{match_df}
-#'   before assignment. Default \code{NULL} (no filtering).
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
 #' @return A named list with components:
@@ -172,7 +175,6 @@ run_llm_pipeline <- function(
   confirmation_discount = 0.25,
   generate_report = FALSE,
   report_params = list(),
-  reference_errors = NULL,
   verbose = TRUE
 ) {
   if (missing(backbone_id)) {
@@ -189,13 +191,11 @@ run_llm_pipeline <- function(
   .msg <- function(...) if (verbose) message(...)
   llm_fn <- .resolve_llm_fn(llm_fn, "run_llm_pipeline")
 
-  # =========================================================================
-  # Stage 0: Remove flagged reference errors from match_df
-  # =========================================================================
-  if (!is.null(reference_errors) && is.data.frame(reference_errors) &&
-    nrow(reference_errors) > 0L && "accession" %in% names(match_df)) {
-    match_df <- TaxaLikely::remove_flagged_references(match_df, reference_errors)
-  }
+  # Reference-quality screening (removing rows resting on a flagged accession)
+  # is no longer this pipeline's job -- screen match_df yourself via
+  # TaxaMatch::flag_incongruent_references()/remove_incongruent_references()
+  # before calling this function. See TaxaLikely::train_likelihood_model()'s
+  # own documentation for the recommended pattern.
 
   # =========================================================================
   # Stage 1: Build context (if needed)
@@ -240,7 +240,16 @@ run_llm_pipeline <- function(
   } else if (detect_unreferenced) {
     .msg("run_llm_pipeline [2/4]: Detecting unreferenced species via LLM + NCBI...")
 
-    unreferenced_result <- suggest_unreferenced_species(
+    if (!requireNamespace("TaxaLikely", quietly = TRUE)) {
+      cli::cli_abort(c(
+        "{.arg detect_unreferenced} = TRUE requires the TaxaLikely package \\
+        (suggest_unreferenced_species() moved there 2026-09-08).",
+        "i" = "Install TaxaLikely, or pass {.arg detect_unreferenced} = FALSE / \\
+        supply {.arg unreferenced_taxa} directly."
+      ))
+    }
+
+    unreferenced_result <- TaxaLikely::suggest_unreferenced_species(
       match_df         = match_df,
       context          = context,
       barcode_term     = barcode_term,

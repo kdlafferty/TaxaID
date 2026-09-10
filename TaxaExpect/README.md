@@ -9,40 +9,58 @@ editor_options:
 Estimate spatially-explicit Bayesian priors for species occurrence. Part
 of the [TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
 
+A taxonomic assignment based on a match to a reference can propose an
+implausible species. These are sometimes accepted as fact, but often are
+screened afterwards, or prevented from occuring by reducing the
+reference list to known local species.
+
 Bayes' Theorem improves taxonomic assignment by considering the prior
 probability that a hypothesized taxon occurs at the sampling location.
-TaxaExpect estimates these priors from occurrence records -- typically
-GBIF (Global Biodiversity Information Facility; GBIF Secretariat,
-Copenhagen, Denmark) records fetched via TaxaFetch, or user-supplied
-data. Although occurrence data are often
-sparse and biased, they are usually sufficient to distinguish among taxa
-with similar match scores but very different geographic ranges.
+TaxaExpect estimates these priors from occurrence records. This is
+typically GBIF (Global Biodiversity Information Facility; GBIF
+Secretariat, Copenhagen, Denmark) records fetched via TaxaFetch, or
+user-supplied data. Although occurrence data are often sparse and
+biased, they are usually sufficient to distinguish among taxa with
+similar match scores but very different geographic ranges. Various
+species distribution models could be used to generate species priors.
+TaxaExpect is one such method.
 
-TaxaExpect places occurrence data on a spatial grid (whose resolution is
-optimized automatically) and fits a hierarchical model that accounts for
-habitat type and spatial autocorrelation. These grid-based priors can be
-mapped over occurrences using `plot_theta_map_interactive()`, so that
-TaxaExpect becomes a full species distribution model.
-The model can also incorporate environmental covariates such as
-temperature or altitude, and it adjusts confidence based on sampling
-effort at each site. For taxa never reported in the study area,
-TaxaExpect generates "dark diversity" priors based on singleton
-observations elsewhere. Spatial priors reduce false positives from
-ecologically implausible assignments and can break ties between
+TaxaExpect uses a **site-centered distance kernel**: each species' prior
+is its kernel-weighted share of related, nearby occurrence records,
+computed directly at the query site. Weight decays smoothly with
+distance (and, optionally, with a covariate such as depth), so spatial
+borrowing degrades continuously rather than switching on or off at an
+arbitrary cell boundary, and even lightly-sampled sites get informative
+priors by shrinking toward the surrounding region's composition. The
+kernel bandwidth is chosen from data via leave-one-block-out composition
+prediction (`calibrate_kernel_bandwidth()`), not guessed, and the
+resulting prior field can be mapped continuously over the study area
+with `plot_theta_surface()`. For taxa never reported in the study area,
+TaxaExpect prices a "dark diversity" prior from a Good-Turing/Chao-
+anchored presence-distance curve.
+
+The resulting spatial priors are helpful in reducing false positives
+from ecologically implausible assignments and can break ties between
 similar-scoring species, rescuing species-level resolution that would
 otherwise be lost to defensive upranking.
 
 ## Overview
 
 TaxaExpect generates theta priors (occupancy x detectability) for
-taxonomic assignment from occurrence data. Uses hierarchical spatial
-models to estimate expected species composition at grid cells,
-incorporating habitat type and geographic distance effects.
+taxonomic assignment from occurrence data. The current (kernel) pathway
+estimates expected species composition directly at a site via
+distance-weighted occurrence sharing, incorporating habitat
+stratification and, optionally, a covariate such as depth.
 
-Three model tiers: - **Tier 1** -- species observed at the site (direct
-estimate) - **Tier 2** -- species observed nearby (spatial
-interpolation) - **Tier 3** -- species expected but unobserved (dark
-diversity).
+Priors are organized into three branches (`prior_branch`):
+
+-   **`resident_observed`** -- species with kernel-weighted local
+    occurrence evidence (direct estimate)
+-   **`resident_undetected`** -- species plausibly present but not
+    locally recorded (singleton mirrors, a Good-Turing floor, and named
+    claimants priced on a shared presence-distance curve)
+-   **`transport`** -- domestic/food/cultivar species and other
+    non-resident presence hypotheses
 
 ## Assumptions
 
@@ -53,19 +71,20 @@ selected observation at a site belongs to a given taxon. The denominator
 `n_total_at_site` is the total count of all observations at a site and
 serves as the shared effort measure for every taxon in the model.
 
-**All taxa in a single model must be detected through the same sampling
-process.** Combining taxa collected by incommensurable methods corrupts
-the shared denominator: a phytoplankton cell count and a bird point-count
-sighting are not equivalent detection events. Mixing them implies that
-plankton-sampling effort informs expected bird relative abundance, which
-is not true --- the two surveys represent independent detection processes.
+**All taxa in a particular model should be detected through a similar
+sampling process.** Combining taxa collected by incommensurable methods
+corrupts the shared denominator: a phytoplankton cell count and a bird
+point-count sighting are not equivalent detection events. Mixing them
+implies that plankton-sampling effort informs expected bird relative
+abundance, which is not true. The two surveys represent independent
+detection processes.
 
 *Problematic mixing (do not combine in a single model):*
 
 -   Phytoplankton cell counts + bird point counts
 -   eDNA reads from different gene markers (e.g. 12S fish reads combined
-    with COI invertebrate reads; amplification efficiency differs between
-    markers, so read counts are not on a shared effort scale)
+    with COI invertebrate reads; amplification efficiency differs
+    between markers, so read counts are not on a shared effort scale)
 -   Arthropods from pitfall traps + arthropods from Malaise traps
 
 *Valid pooling:*
@@ -74,9 +93,44 @@ is not true --- the two surveys represent independent detection processes.
 -   All bird species detected during the same standardized point count
 -   All macroinvertebrate taxa from the same kick-net sample
 
-If your study covers taxa with truly independent detection processes,
-build separate models for each survey type and pass the appropriate
-priors to TaxaAssign for the relevant taxonomic hypotheses.
+**This grouping is not automatic, and there is no automated way to make
+it automatic.** `estimate_kernel_priors()` has no way to tell, on its
+own, which taxa share a detection process -- if you leave
+`sampling_group_col` unset, it silently pools every taxon into one
+shared denominator regardless of detection process, with no warning and
+no error. Supplying a correct grouping is your responsibility, and it
+must be done by hand, from real knowledge of how each taxon was
+detected -- there is no way to infer "comparable detection method" from
+taxonomy or occurrence data alone (two co-occurring taxa sampled by
+different gear look identical in an occurrence table). Automatic, data-driven classification of detection process does not
+work reliably for this: tested against a real, full-scale expert-
+classified dataset, it answered a different question than
+`sampling_group` is meant to answer (whether a group clears a per-site
+record-count floor, not whether it shares a detection process) -- it
+fragmented a single real detection process into dozens of spurious
+groups, and separately conflated two taxa an expert had deliberately
+kept apart (a genuine marine survey target and likely airborne
+contamination) purely because neither cleared the floor on its own. An
+LLM guess at the grouping is not a substitute for
+real methodological knowledge either, for the same reason: the
+distinction lives in how the data were collected, not in anything
+visible in the records themselves. Two options remain: 1) manually
+choose similar taxa that are sampled in similar ways, the approach
+this project's own analysts have used successfully for every real
+dataset handled so far; or 2) build separate models for each survey
+type and pass the appropriate priors to TaxaAssign for the relevant
+taxonomic hypotheses.
+
+Choosing a grouping by hand does not require worrying about sample
+size. `estimate_kernel_priors()` does **not** need pre-merged,
+sample-size-adequate groups for statistical adequacy -- it produces
+honestly wide uncertainty for a small group on its own (confirmed on a
+real 9-group expert classification, including a single-taxon group and
+a 3-taxon group, both of which fit cleanly with appropriately wide
+`theta_sd`). Classify at whatever granularity genuinely reflects
+distinct detection methods, and let the estimator's own uncertainty
+reflect how much data backs each group -- there is no separate merging
+step to get right.
 
 ## Installation
 
@@ -91,95 +145,107 @@ devtools::install("path/to/TaxaExpect")
 ``` r
 library(TaxaExpect)
 
-# Option A: End-to-end wrapper (fetches GBIF, assigns habitat, builds priors)
-priors <- build_priors(
-  taxa = species_df,          # data frame with taxonomy columns
-  geometry = bbox_wkt,        # WKT bounding box from TaxaFetch
-  main_habitat = "Marine"     # site habitat
+# 1. Calibrate the kernel bandwidth (and regional back-off m) by
+#    leave-one-block-out composition prediction -- never hand-set.
+calib <- calibrate_kernel_bandwidth(
+  occurrence_data = occurrences,   # habitat-labelled occurrence records
+  site_habitat    = "Marine",
+  lambda_grid     = c(10, 25, 50, 100, 200)   # km
+)
+lambda_km <- calib$best$lambda_km
+
+# 2. Estimate kernel priors at your site (resident_observed rows)
+kernel_fit <- estimate_kernel_priors(
+  occurrence_data = occurrences,
+  site_lat        = 34.45,
+  site_lon        = -120.47,
+  site_habitat    = "Marine",
+  lambda_km       = lambda_km
 )
 
-# Option B: Step-by-step pipeline
-# 1. Grid the occurrence data
-sites <- create_sites_from_grid(occurrences, grid_size = 0.25)
+# 3. Add resident_undetected rows (singleton mirrors + Good-Turing floor)
+undetected <- generate_undetected_diversity(kernel_fit)
 
-# 2. Optimize grid resolution
-grid_results <- optimize_grid_size(occurrences, n_covariates = 2)
+# 4. Assemble the prior table for TaxaAssign
+priors <- dplyr::bind_rows(kernel_fit$priors, undetected)
 
-# 3. Prepare model data (zero-fill, add covariates)
-model_df <- prepare_model_dataframe(sites)
-
-# 4. Fit the spatial model
-model_fit <- train_biodiversity_model(
-  model_df,
-  formula = presence ~ lat_r + lon_r + (1 | taxon_name)
-)
-
-# 5. Generate priors (Tier 1 + 2 + 3)
-priors <- generate_full_priors(model_fit)
+# 5. Explore the prior field
+plot_theta_surface(kernel_fit, occurrence_data = occurrences,
+                    taxon = "Girella nigricans")
 ```
 
 ## Key Functions
 
-**High-level wrapper:** - `build_priors()` -- end-to-end: GBIF fetch -\>
-habitat -\> grid -\> model -\> priors
+### Kernel pathway (current, recommended) {#kernel-pathway-current-recommended}
 
-**Gridding:** - `create_sites_from_grid()` -- generate spatial grid
-cells from occurrences - `optimize_grid_size()` -- find optimal grid
-resolution for the study area
+**Calibration:** - `calibrate_kernel_bandwidth()` -- choose the
+geographic bandwidth (and optional covariate bandwidth, and the regional
+back-off mass `m`) by leave-one-block-out composition prediction
 
-**Modeling:** - `prepare_model_dataframe()` -- zero-fill and add spatial
-covariates - `compute_moran_basis()` -- Moran eigenvector maps for
-spatial autocorrelation - `screen_spatial_formula()` -- evaluate
-candidate model formulas - `train_biodiversity_model()` -- fit
-hierarchical spatial model (glmmTMB)
+**Prior estimation:** - `estimate_kernel_priors()` -- site-centered
+kernel estimation of `resident_observed` priors (no grid, no model
+fit) - `generate_undetected_diversity()` -- singleton-mirror and
+global-floor `resident_undetected` priors (accepts kernel or GLMM
+input) - `generate_presence_curve_evidence()` /
+`generate_user_specified_evidence()` +
+`apply_undetected_evidence(pricing = "curve")` -- price named unobserved
+claimants (regional, watch-listed, or distance-clamped) on a shared
+presence-distance curve - `generate_domestic_food_priors()` --
+`transport`-branch priors for domestic, food, and cultivar species
 
-**Prior generation:** - `generate_full_priors()` -- predict priors at
-target sites (Tier 1 + 2) - `generate_undetected_diversity()` -- dark
-diversity priors (Tier 3)
-
-**Diagnostics and reporting:** - `plot_theta_map_interactive()` --
-interactive Leaflet map of priors - `report_priors()` -- generate report
+**Diagnostics and reporting:** - `plot_theta_surface()` -- continuous
+prior-field map, evaluating the estimator on a lattice via FFT -
+`kernel_budget_sensitivity()` --
+reports how the Good-Turing budget behind `theta_present` moves across
+counting radius/bandwidth choices - `report_priors()` -- generate report
 section for `assemble_report()`
 
 ## Statistical Methods
 
-TaxaExpect fits a binomial generalized linear mixed model (GLMM) via
-glmmTMB (Brooks et al. 2017). The response is the count of species *s*
-at site *g* out of the total community count, modelled on the logit
-scale with:
+TaxaExpect's current pathway prices each species' prior as its
+kernel-weighted share of occurrence records in the focal-habitat
+stratum, shrunk toward the regional composition by `m` pseudo-records (a
+Dirichlet back-off):
 
--   **Fixed habitat effects** capturing baseline differences across
-    habitat types (Marine, Freshwater, Terrestrial, or IUCN L1
-    categories)
--   **Random species intercepts** allowing each species its own baseline
-    rarity, shrunk toward the global mean
--   **Random habitat slopes** (screened for data sufficiency) giving
-    each species its own habitat preference
--   **Random spatial gradients** (latitude, longitude) per species,
-    capturing geographic range trends
--   **Species x grid deviations** capturing local departures from the
-    spatial surface; the variance of this term provides the principled
-    ceiling for prior concentration
+```         
+theta_i = (c_i * s + m * p_i) / (n_eff + m)
+```
 
-Model predictions are back-transformed via the delta method and
-converted to Beta(alpha, beta) priors through moment-matching. A phi cap
-(from the grid-level variance) prevents astronomically tight priors near
-boundary theta values, while a phi floor (default 2) prevents modelled
-priors from becoming less informative than dark diversity fallbacks. For
-undetected species, singleton mirrors and a global floor prior Beta(1,
-N-1) provide Tier 3 coverage.
+where `c_i` is species *i*'s summed distance-weighted record count
+(`w_r = exp(-d_r/lambda_km)`, optionally multiplied by a covariate
+factor such as depth), `s = n_eff / W` is an effective-scale factor,
+`p_i` is the unweighted regional (habitat-stratified) record share, and
+`n_eff = W^2 / sum(w_r^2)` is the Kish (1965) effective sample size of
+the weighted neighborhood. `alpha = c_i*s + m*p_i` and
+`beta = (n_eff + m) - alpha` are the row's Beta parameters directly --
+no delta-method back-transformation, no phi cap/floor, no Jeffreys
+fallback are needed, since `alpha`/`beta` are built from non-negative
+counts and pseudo-counts by construction and cannot produce the boundary
+pathologies a link-scale model can. `lambda_km` (and, if used, a
+covariate bandwidth and `m`) is chosen from data by
+`calibrate_kernel_bandwidth()`'s leave-one-block-out composition
+prediction -- never hand-set.
 
-Moran eigenvector maps (Dray et al. 2006) capture fine-scale spatial
-autocorrelation beyond the latitude/longitude gradients and are included
-by default in `build_priors()` (`moran_k = 5`).
+For undetected species, a Good-Turing/Chao-anchored presence-distance
+curve (`apply_undetected_evidence(pricing = "curve")`) prices each named
+claimant as a two-point presence mixture, `theta = w * theta_present`,
+where `theta_present` is the neighborhood's own observed singleton mean
+and `w` comes from the claimant's distance to its nearest occurrence
+record (or, for iNaturalist range evidence, from independent
+verification).
+
+**Real validation.** Leave-one-block-out testing -- holding out blocks
+of occurrence records and scoring composition predictions against them
+by multinomial log-loss -- found that single-cell GLMM prediction
+scored *worse* than ignoring space entirely, while the kernel estimator
+beat both regional pooling and the single-cell predictor at every
+bandwidth tested. On real Great Lakes data, switching from the GLMM
+baseline to the kernel estimator raised species co-detections from 237
+to 564 and precision from 0.748 to 0.868 (independently validated
+against a held-out checklist).
 
 For the full statistical derivation, assumptions, and references, see
 [`inst/TaxaExpect_supplemental_methods.md`](inst/TaxaExpect_supplemental_methods.md).
-
-## Vignettes
-
--   [Building Priors](vignettes/building-priors.Rmd) -- full workflow
-    guide
 
 ## Part of TaxaID
 
@@ -202,26 +268,25 @@ taxonomic assignment: U.S. Geological Survey software release,
 ## Software Requirements
 
 -   R (\>= 4.1.0; R Core Team 2025)
--   glmmTMB (Brooks et al. 2017; for hierarchical biodiversity models)
--   TaxaTools, TaxaFetch, TaxaHabitat (for the `build_priors()`
-    high-level wrapper; in Suggests)
+-   TaxaTools (foundation package)
+-   TaxaFetch, TaxaHabitat (for fetching and habitat-labeling occurrence
+    records upstream of the kernel pathway; in Suggests)
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
-San Francisco, California).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC, San
+Francisco, California).
 
 ## References
 
-Brooks, M.E., Kristensen, K., van Benthem, K.J., Magnusson, A., Berg,
-C.W., Nielsen, A., Skaug, H.J., Machler, M. and Bolker, B.M. (2017).
-glmmTMB balances speed and flexibility among packages for zero-inflated
-generalized linear mixed modeling. *The R Journal*, 9(2), 378--400.
+Chao, A. (1984). Nonparametric estimation of the number of classes in a
+population. *Scandinavian Journal of Statistics*, 11(4), 265--270.
 
-Dray, S., Legendre, P. and Peres-Neto, P.R. (2006). Spatial modelling: a
-comprehensive framework for principal coordinate analysis of neighbour
-matrices (PCNM). *Ecological Modelling*, 196(3-4), 483--493.
+Good, I.J. (1953). The population frequencies of species and the
+estimation of population parameters. *Biometrika*, 40(3-4), 237--264.
+
+Kish, L. (1965). *Survey Sampling*. New York: Wiley.
 
 R Core Team (2025). R: A Language and Environment for Statistical
 Computing. V.4.5.2. R Foundation for Statistical Computing, Vienna,

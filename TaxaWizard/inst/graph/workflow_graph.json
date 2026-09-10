@@ -59,11 +59,6 @@
         "description": "Habitat-assigned, spatially cleaned occurrence data"
       },
       {
-        "id": "distributions",
-        "label": "Spatial Distributions",
-        "description": "Gridded occurrences with grid_id, ready for biodiversity modeling"
-      },
-      {
         "id": "reference_matrix",
         "label": "Reference Matrix (DNA)",
         "description": "Pairwise distance matrix from DECIPHER alignment of DNA sequences"
@@ -91,7 +86,7 @@
       {
         "id": "priors",
         "label": "Prior Probabilities",
-        "description": "Spatial priors from build_priors() or occurrence-based pipeline"
+        "description": "Spatial priors from TaxaExpect's occurrence-based prior-estimation pipeline (estimate_kernel_priors(), current recommended path)"
       },
       {
         "id": "posteriors",
@@ -265,73 +260,28 @@
       "time_estimate": "1-3 min (LLM call for habitat)"
     },
     {
-      "id": "std_to_dist",
+      "id": "dist_to_priors_by_group",
       "from": [
         "std_occurrences"
       ],
-      "to": "distributions",
-      "label": "Create spatial grid and assign occurrences to grid cells",
-      "description": "Optimize grid size for the data, create grid_id for each occurrence point",
-      "packages": [
-        "TaxaExpect"
-      ],
-      "functions": [
-        "optimize_grid_size",
-        "create_sites_from_grid"
-      ],
-      "snippet": "std_to_dist.R",
-      "time_estimate": "seconds to 1 min"
-    },
-    {
-      "id": "dist_to_priors",
-      "from": [
-        "distributions"
-      ],
       "to": "priors",
-      "label": "Build priors from spatial distributions (manual path)",
-      "description": "Prepare model data, compute Moran spatial basis, screen formula, train biodiversity model, generate priors, translate backbone. Optionally adds named domestic/commensal-animal and food-species priors (generate_domestic_food_priors()) -- use this for eDNA/camera-trap studies at risk of pet/livestock/food contamination, where the occurrence database structurally under-counts those species and would otherwise give them an artificially low floor prior.",
-      "packages": [
-        "TaxaExpect",
-        "TaxaTools"
-      ],
-      "functions": [
-        "prepare_model_dataframe",
-        "compute_moran_basis",
-        "screen_spatial_formula",
-        "train_biodiversity_model",
-        "generate_full_priors",
-        "generate_domestic_food_priors",
-        "verify_taxon_names",
-        "change_backbone"
-      ],
-      "snippet": "dist_to_priors.R",
-      "time_estimate": "5-30 min (depends on grid size and number of taxa)"
-    },
-    {
-      "id": "dist_to_priors_by_group",
-      "from": [
-        "distributions"
-      ],
-      "to": "priors",
-      "label": "Build priors from spatial distributions, grouped by sampling/detection process",
-      "description": "Same as the manual priors path, but fits one biodiversity model PER sampling_group_col value (train_biodiversity_model_by_group()) instead of pooling every taxon into one model. Use when your data spans multiple detection PROCESSES with different effort (e.g. one dataset covering fish, birds, AND phytoplankton via different survey methods) -- pooling incomparable sampling effort across groups into one model silently distorts every group's estimated detection frequency. This is a DIFFERENT axis than the site_table node (which groups by physical SITE, not by detection method) -- the two can be combined but are independent choices.",
+      "label": "Build priors from standardized occurrences, grouped by sampling/detection process (kernel path)",
+      "description": "Same as std_to_priors_kernel, but computes composition AND the Good-Turing budget WITHIN each sampling_group_col value (estimate_kernel_priors(sampling_group_col=)) instead of pooling every taxon into one shared denominator. Use when your data spans multiple detection PROCESSES with different effort (e.g. one dataset covering fish, birds, AND phytoplankton via different survey methods) -- pooling incomparable sampling effort across groups silently dilutes a detectable taxon's share and inflates barely-sampled groups' singleton counts. This is a DIFFERENT axis than the site_table node (which groups by physical SITE, not by detection method) -- the two can be combined but are independent choices. 2026-09-09: rewritten from the retired GLMM-path wrapper train_biodiversity_model_by_group() (archived, zero real callers) to the kernel-path equivalent -- a single estimate_kernel_priors(sampling_group_col=) call now handles every group at once, no per-group model-fitting loop needed.",
       "packages": [
         "TaxaExpect",
         "TaxaTools",
         "TaxaMatch"
       ],
       "functions": [
-        "prepare_model_dataframe",
-        "compute_moran_basis",
-        "screen_spatial_formula",
-        "train_biodiversity_model_by_group",
-        "generate_full_priors",
+        "calibrate_kernel_bandwidth",
+        "estimate_kernel_priors",
+        "generate_undetected_diversity",
         "generate_domestic_food_priors",
         "verify_taxon_names",
         "convert_taxonomy_backbone"
       ],
       "snippet": "dist_to_priors_by_group.R",
-      "time_estimate": "5-40 min (one model fit per sampling group)"
+      "time_estimate": "seconds to ~1 min (offline; no live network calls unless domestic priors are included)"
     },
     {
       "id": "std_to_priors_kernel",
@@ -353,24 +303,6 @@
       ],
       "snippet": "std_to_priors_kernel.R",
       "time_estimate": "seconds to ~1 min (offline; no live network calls unless domestic priors are included)"
-    },
-    {
-      "id": "taxa_to_priors_wrapper",
-      "from": [
-        "taxa"
-      ],
-      "to": "priors",
-      "label": "Build priors via wrapper (recommended)",
-      "description": "Single call that runs GBIF fetch, habitat assignment, spatial gridding, model training, and prior generation. Use when standard defaults are acceptable. IMPORTANT: the prior algorithm estimates sampling effort from multiple species captured by similar methods. A single target species is insufficient \u2014 provide a broader taxonomic group (e.g. a family) or a multi-species list. Does NOT include domestic/food-species priors or multi-site model grouping -- use the manual dist_to_priors / dist_to_priors_multisite path for either of those.",
-      "packages": [
-        "TaxaExpect"
-      ],
-      "functions": [
-        "build_priors"
-      ],
-      "wrapper": true,
-      "snippet": "taxa_to_priors_wrapper.R",
-      "time_estimate": "5-30 min"
     },
     {
       "id": "taxa_to_context",
@@ -426,20 +358,21 @@
     {
       "id": "matrix_to_clean",
       "from": [
-        "reference_matrix"
+        "reference_matrix",
+        "reference_df"
       ],
       "to": "clean_refs",
-      "label": "Flag and remove mislabeled references",
-      "description": "Identify mislabeled sequences by score distribution anomalies, remove them from the reference",
+      "label": "Screen and remove mislabeled references",
+      "description": "Free local corroboration check (does an independent conspecific already in the reference set agree?), then BLAST only what that check can't resolve, then remove accessions flagged for removal",
       "packages": [
-        "TaxaLikely"
+        "TaxaMatch"
       ],
       "functions": [
-        "flag_reference_errors",
-        "remove_flagged_references"
+        "corroborate_references_locally",
+        "evaluate_reference_accessions"
       ],
       "snippet": "matrix_to_clean.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds to hours (BLAST only for accessions the free local check can't resolve)"
     },
     {
       "id": "matrix_to_model",
@@ -660,14 +593,12 @@
         "priors"
       ],
       "to": "prior_map",
-      "label": "Save or visualize prior probability map",
-      "description": "Save priors object as RDS and/or plot interactive leaflet map",
+      "label": "Save prior probability table to disk",
+      "description": "Save priors object as RDS. The archived plot_theta_map_interactive() (GLMM/grid path) was this edge's own interactive-map step until it was archived 2026-09-09 along with the rest of the GLMM chain; the kernel path's own visualizer, plot_theta_surface(), needs the full kernel_fit object (not just the flattened priors table this generic edge has), so it is wired directly inside std_to_priors_kernel.R / dist_to_priors_by_group.R instead of here -- this edge is now save-only.",
       "packages": [
         "TaxaExpect"
       ],
-      "functions": [
-        "plot_theta_map_interactive"
-      ],
+      "functions": [],
       "snippet": "priors_to_map.R",
       "time_estimate": "seconds"
     },
@@ -805,15 +736,17 @@
         "taxa"
       ],
       "to": "reference_df",
-      "label": "Build site-specific reference library (wrapper, recommended for eDNA)",
-      "description": "Single call: fetch sequences from NCBI + audit barcode coverage + export FASTA. Best when taxa list comes from TaxaExpect. DNA / eDNA only.",
+      "label": "Build site-specific reference library (recommended for eDNA)",
+      "description": "Fetch sequences from NCBI + audit barcode coverage + export FASTA, chained directly (build_site_reference() wrapper archived 2026-09-09, zero real callers). Best when taxa list comes from TaxaExpect. DNA / eDNA only.",
       "packages": [
         "TaxaLikely"
       ],
       "functions": [
-        "build_site_reference"
+        "fetch_ncbi_reference_sequences",
+        "audit_barcode_coverage",
+        "write_reference_fasta"
       ],
-      "wrapper": true,
+      "wrapper": false,
       "snippet": "taxa_to_site_refs.R",
       "time_estimate": "5-30 min (NCBI fetch + coverage audit)"
     }

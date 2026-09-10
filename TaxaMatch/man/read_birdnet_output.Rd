@@ -120,22 +120,26 @@ tmp1 <- tempfile(fileext = ".BirdNET.results.csv")
 tmp2 <- tempfile(fileext = ".BirdNET.results.csv")
 
 write.csv(data.frame(
-  "Start (s)"       = c(0.0, 0.0, 3.0),
-  "End (s)"         = c(3.0, 3.0, 6.0),
-  "Scientific name" = c("Turdus migratorius", "Setophaga petechia",
-                        "Turdus migratorius"),
-  "Common name"     = c("American Robin", "Yellow Warbler",
-                        "American Robin"),
-  "Confidence"      = c(0.92, 0.45, 0.87),
+  "Start (s)" = c(0.0, 0.0, 3.0),
+  "End (s)" = c(3.0, 3.0, 6.0),
+  "Scientific name" = c(
+    "Turdus migratorius", "Setophaga petechia",
+    "Turdus migratorius"
+  ),
+  "Common name" = c(
+    "American Robin", "Yellow Warbler",
+    "American Robin"
+  ),
+  "Confidence" = c(0.92, 0.45, 0.87),
   check.names = FALSE, stringsAsFactors = FALSE
 ), tmp1, row.names = FALSE)
 
 write.csv(data.frame(
-  "Start (s)"       = 0.0,
-  "End (s)"         = 3.0,
+  "Start (s)" = 0.0,
+  "End (s)" = 3.0,
   "Scientific name" = "Corvus brachyrhynchos",
-  "Common name"     = "American Crow",
-  "Confidence"      = 0.78,
+  "Common name" = "American Crow",
+  "Confidence" = 0.78,
   check.names = FALSE, stringsAsFactors = FALSE
 ), tmp2, row.names = FALSE)
 

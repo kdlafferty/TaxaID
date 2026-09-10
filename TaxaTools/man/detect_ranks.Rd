@@ -29,8 +29,10 @@ warning when auto-detection finds nothing and falls back to
 \code{c("family", "genus", "species")}.
 }
 \examples{
-input_df <- data.frame(family = "Fundulidae", genus = "Fundulus",
-                       species = "Fundulus parvipinnis", score = 99)
+input_df <- data.frame(
+  family = "Fundulidae", genus = "Fundulus",
+  species = "Fundulus parvipinnis", score = 99
+)
 detect_ranks(input_df)
 # "family" "genus" "species"
 

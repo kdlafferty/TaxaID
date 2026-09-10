@@ -94,8 +94,7 @@
 #'   \code{\link[shiny]{runGadget}}. Default \code{shiny::paneViewer(minHeight = 500)}
 #'   (renders in RStudio's own Viewer pane) -- matches the viewer style already
 #'   used by this ecosystem's other interactive mapping gadgets
-#'   (\code{TaxaHabitat::review_spatial_flags()},
-#'   \code{TaxaExpect::plot_theta_map_interactive()}), so all mapping
+#'   (\code{TaxaHabitat::review_spatial_flags()}), so all mapping
 #'   interactions look and feel the same rather than mixing viewer styles.
 #'   \strong{Not} \code{\link[shiny]{dialogViewer}} (RStudio's own popup
 #'   dialog) -- on at least one real system, RStudio's embedded dialog webview

@@ -2,6 +2,31 @@
 # TaxaExpect end-to-end workflow
 # =============================================================================
 #
+# ARCHIVED PATHWAY NOTICE (2026-09-09): this script demonstrates the grid/GLMM
+# prior-fitting chain (optimize_grid_size(), prepare_model_dataframe(),
+# compute_moran_basis(), screen_spatial_formula(), train_biodiversity_model(),
+# generate_full_priors(), build_priors()), which was archived once every real
+# production workflow completed its migration to the kernel-priors path
+# (estimate_kernel_priors()/calibrate_kernel_bandwidth()). Running this script
+# as written will now error ("could not find function") -- the source is kept,
+# unexecuted, at TaxaExpect/archive_glmm_prior_pipeline/ as a record of the
+# superseded design; restore it there first if you need to re-run this exact
+# pathway. UPDATE, later the same day: create_sites_from_grid() -- along with
+# compute_adaptive_sampling_groups() -- was ALSO archived alongside the rest
+# of the chain, then that specific archival was reversed later still the same
+# day (a real safety gap found in estimate_kernel_priors(sampling_group_col =
+# NULL), which silently pools incompatible detection processes with no guard).
+# FINAL UPDATE, later again the same day: that restoration's own reasoning
+# was tested against real evidence and refuted -- compute_adaptive_sampling_
+# groups() answers a different question than sampling_group is meant to
+# answer, and estimate_kernel_priors() was shown to need no pre-merged,
+# sample-size-adequate groups at all. Both functions are ARCHIVED again, this
+# time final -- create_sites_from_grid() is NOT live, and the Step 2 call in
+# this script below will also error, along with the rest of the chain it
+# feeds (prepare_model_dataframe() onward). See TaxaExpect/CLAUDE.md's final
+# 2026-09-09 session note and the package README's Quick Start for the
+# current, runnable kernel-path workflow.
+#
 # INPUT:  occurrences_with_habitat -- output of TaxaHabitat's habitat assignment
 #         workflow (inst/workflows/assign_habitat_workflow.R), or in environment
 #

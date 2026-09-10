@@ -1,5 +1,5 @@
 # ==============================================================================
-# WORKFLOW 2: FLAG REFERENCE DATABASE ERRORS
+# WORKFLOW 2: SCREEN REFERENCE DATABASE FOR QUALITY ISSUES
 # ==============================================================================
 # DATA TYPE SCOPE: DNA sequences only.
 #   For Xeno-canto acoustic data, use quality grade filtering in Workflow 3b
@@ -8,34 +8,36 @@
 #   would remove legitimate hard-case recordings.
 #   For image (camera trap) data, guidance is TBD pending read_animl_output().
 #
-# Purpose: Identify mislabeled or suspect sequences in a reference database.
-#   Mislabeled references corrupt model training and produce misleading
-#   likelihood estimates. Finding them is an important QC step.
+# Purpose: Identify mislabeled or suspect sequences in a reference database
+#   BEFORE training a likelihood model on it. Mislabeled references corrupt
+#   model training and produce misleading likelihood estimates.
 #
-# Input: reference_df from Workflow 1 (or a pre-built pairwise matrix)
-# Output: A table of flagged sequences with error types and diagnostics
+# Requires TaxaMatch, not just TaxaLikely: reference-quality screening lives
+#   in TaxaMatch (corroborate_references_locally() + evaluate_reference_
+#   accessions()), not in TaxaLikely -- TaxaLikely::train_likelihood_model()
+#   trains on whatever reference_df/ref_matrix it's given, with no built-in
+#   screening step (retired 2026-09-08; see NAME_CHANGE_HISTORY.md).
 #
-# Error types detected:
-#   "likely_mislabeled"                 -- sequence matches a foreign species
-#       better than its own label (strong evidence of mislabeling)
-#   "unverified_singleton_high_match"   -- only representative of its species,
-#       but matches a foreign species at >= 98% (suspicious but ambiguous)
+# Input: reference_df from Workflow 1
+# Output: reference_df with bad accessions excluded, ready for Workflow 3
 #
-# What to do with errors:
-#   - Inspect them (this workflow shows how)
-#   - Remove them before training a model (Workflow 3 does this automatically)
-#   - Remove them from your match object before evaluating likelihoods
-#     (Workflow 4 shows this step)
-#   - Optionally report them to the database maintainer
+# Two-tier design:
+#   1. corroborate_references_locally() -- free, zero-NCBI-cost. Checks
+#      whether an INDEPENDENT conspecific already in your own reference set
+#      agrees with each accession's label. Most accessions resolve here.
+#   2. evaluate_reference_accessions() -- BLASTs against a broad, independent
+#      database. Only run for accessions the free check couldn't resolve
+#      (skip_locally_corroborated = TRUE skips the rest automatically).
 #
 # Requires: DECIPHER and Biostrings (for build_sequence_matrix)
 #   Install with: BiocManager::install("DECIPHER")
 # ==============================================================================
 
 library(TaxaLikely)
+library(TaxaMatch)
 
 # ---- 1. Load reference_df ---------------------------------------------------
-# From Workflow 1 (fetch_reference_sequences or read_reference_fasta)
+# From Workflow 1 (fetch_ncbi_reference_sequences or read_reference_fasta)
 reference_df <- readRDS("reference_df.rds")
 cat(
   "reference_df:", nrow(reference_df), "sequences,",
@@ -45,7 +47,7 @@ cat(
 # ---- 2. Build pairwise distance matrix --------------------------------------
 # This aligns all sequences and computes pairwise distances.
 # Can take several minutes for large databases (100+ sequences).
-# The result is reusable: save it for Workflow 3 (model training).
+# The result is reusable: save it for Workflow 3 (model training) too.
 
 rank_system <- c("family", "genus", "species")
 
@@ -62,79 +64,59 @@ cat("Matrix:", nrow(ref_matrix), "pairwise comparisons\n")
 # Save the matrix -- it's expensive to rebuild
 saveRDS(ref_matrix, "ref_matrix.rds")
 
-# ---- 3. Flag errors ----------------------------------------------------------
-# flag_reference_errors() examines each sequence's within-species vs
-# cross-species match scores. If a sequence matches a foreign species
-# better than its own conspecifics, it is flagged.
+# ---- 3. Free local corroboration check --------------------------------------
+# For each accession: does an independent conspecific already in your own
+# reference set agree with it at high identity over real overlap? Zero NCBI
+# cost -- this is a pure function of ref_matrix/reference_df.
 
-errors <- flag_reference_errors(
-  raw_df = ref_matrix,
-  mislabel_threshold = 0.02, # margin (in p_match units) required
-  return_all = FALSE # TRUE to also see "clean" sequences
+local_corr <- corroborate_references_locally(
+  seq_matrix     = ref_matrix,
+  reference_meta = reference_df
+  # min_overlap = 0.8, min_pident = 0.99  # defaults
 )
 
-cat("\nFlagged sequences:", nrow(errors), "\n")
-if (nrow(errors) > 0) print(errors)
+cat("\nLocal corroboration tiers:\n")
+print(table(local_corr$local_tier))
 
-# ---- 4. Explore errors -------------------------------------------------------
+# ---- 4. BLAST-based screen (only for accessions the free check couldn't resolve) ----
+# skip_locally_corroborated = TRUE skips every accession local_corr already
+# resolved to "corroborated" -- only the remainder costs a real NCBI call.
 
-# 4a. How many of each type?
-if (nrow(errors) > 0) {
-  cat("\nError type summary:\n")
-  print(table(errors$error_type))
-}
-
-# 4b. Which species are most affected?
-if (nrow(errors) > 0) {
-  cat("\nSpecies with most flagged sequences:\n")
-  print(sort(table(errors$species_x), decreasing = TRUE))
-}
-
-# 4c. Look at the integrity gap distribution
-# Negative gap = foreign match is better than self match (bad sign)
-if (nrow(errors) > 0) {
-  cat("\nIntegrity gap summary (should be negative for mislabeled):\n")
-  print(summary(errors$integrity_gap))
-}
-
-# 4d. Full QC report (including clean sequences)
-all_qc <- flag_reference_errors(ref_matrix, return_all = TRUE)
-cat("\nOverall QC summary:\n")
-print(table(all_qc$error_type))
-
-# Histogram of integrity gaps across all sequences
-hist(all_qc$integrity_gap,
-  main = "Integrity gap distribution (all sequences)",
-  xlab = "Integrity gap (self - foreign match score)",
-  breaks = 30
+ref_eval <- evaluate_reference_accessions(
+  accessions              = unique(reference_df$composite_id),
+  barcode_term            = "MiFishU", # match your own marker
+  local_corroboration     = local_corr,
+  skip_locally_corroborated = TRUE,
+  cache_dir               = "ref_eval_cache" # persists across reruns
 )
-abline(v = 0, col = "red", lty = 2)
 
-# 4e. Singleton analysis
-# Singletons have no within-species neighbors -- can't compute integrity gap.
-# They aren't necessarily errors, but high foreign matches are suspicious.
-singletons <- all_qc[all_qc$n_self_neighbors == 0, ]
-cat("\nSingletons:", nrow(singletons), "of", nrow(all_qc), "sequences\n")
-if (nrow(singletons) > 0) {
-  cat("Singletons with high foreign match (>0.95):\n")
-  print(singletons[singletons$max_foreign_match > 0.95, ])
-}
+cat("\nBLAST-based hierarchy_flag summary:\n")
+print(table(ref_eval$hierarchy_flag, useNA = "ifany"))
 
-# ---- 5. Save error list for downstream use -----------------------------------
-# Workflow 3 (train_model_workflow.R) uses flag_reference_errors() internally,
-# so you don't need to pass the error list there.
-#
-# But you SHOULD filter your match object against these errors before
-# running Workflow 4 (score_to_likelihood_workflow.R). See that workflow
-# for the one-liner to do so.
+# ---- 5. Derive a keep/remove verdict -----------------------------------------
+# score_reference_labels() combines the BLAST verdict with the local
+# corroboration evidence into one reference_action per accession.
 
-if (nrow(errors) > 0) {
-  saveRDS(errors, "reference_errors.rds")
-  message("Saved reference_errors.rds (", nrow(errors), " flagged sequences)")
+ref_labeled <- score_reference_labels(ref_eval, local_corroboration = local_corr)
 
-  # Optional: export as CSV for sharing with collaborators / database curators
-  # write.csv(errors, "reference_errors.csv", row.names = FALSE)
-}
+cat("\nreference_action summary:\n")
+print(table(ref_labeled$reference_action, useNA = "ifany"))
+
+bad_accessions <- ref_labeled$accession[ref_labeled$reference_action == "remove"]
+cat("\n", length(bad_accessions), "accession(s) recommended for removal.\n")
+if (length(bad_accessions) > 0) print(ref_labeled[ref_labeled$accession %in% bad_accessions, ])
+
+# ---- 6. Exclude bad accessions before training -------------------------------
+# This is what train_likelihood_model() no longer does for you automatically.
+
+reference_df_clean <- reference_df[!reference_df$composite_id %in% bad_accessions, ]
+cat(
+  "\nreference_df reduced from", nrow(reference_df), "to",
+  nrow(reference_df_clean), "sequences after screening.\n"
+)
+
+saveRDS(reference_df_clean, "reference_df_clean.rds")
+message("Saved reference_df_clean.rds (", nrow(reference_df_clean), " sequences)")
 
 message("\nWorkflow 2 complete.")
-message("Next: Workflow 3 (train model) or Workflow 4 (score to likelihood)")
+message("Next: Workflow 3 (train model on reference_df_clean.rds)")

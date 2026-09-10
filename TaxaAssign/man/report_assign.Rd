@@ -55,13 +55,13 @@ For the full-featured report (with LLM-generated results prose), use
 }
 \examples{
 result <- data.frame(
-  observation_id  = c("S1", "S1"),
-  taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+  observation_id = c("S1", "S1"),
+  taxon_name = c("Gadus morhua", "Gadus chalcogrammus"),
   taxon_name_rank = "species",
   hypothesis_type = "specific_candidate",
-  genus           = "Gadus",
-  family          = "Gadidae",
-  posterior_mean  = c(0.8, 0.2),
+  genus = "Gadus",
+  family = "Gadidae",
+  posterior_mean = c(0.8, 0.2),
   posterior_point_est = c(0.8, 0.2)
 )
 consensus <- posterior_consensus(result)

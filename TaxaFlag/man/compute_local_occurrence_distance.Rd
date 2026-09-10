@@ -91,10 +91,10 @@ occ <- data.frame(
   year              = c(2019, 2003)
 )
 compute_local_occurrence_distance(
-  taxon_names     = c("Neogobius melanostomus", "Salmo salar"),
-  query_lat       = 41.67, query_lon = -87.15,
+  taxon_names = c("Neogobius melanostomus", "Salmo salar"),
+  query_lat = 41.67, query_lon = -87.15,
   occurrence_data = occ,
-  date_col        = "year"
+  date_col = "year"
 )
 
 }

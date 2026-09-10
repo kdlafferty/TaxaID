@@ -37,8 +37,8 @@ correctness.
 }
 \examples{
 \dontrun{
-taxaflag_clear_cache(dry_run = TRUE)                     # report only
-taxaflag_clear_cache(older_than_days = 90)               # prune old entries
+taxaflag_clear_cache(dry_run = TRUE) # report only
+taxaflag_clear_cache(older_than_days = 90) # prune old entries
 }
 }
 \seealso{

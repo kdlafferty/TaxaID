@@ -4,3 +4,20 @@
 .httr-oauth
 .DS_Store
 .quarto
+
+# Retired GLMM grid/prior-fitting chain (build_priors, optimize_grid_size,
+# prepare_model_dataframe, add_pca_covariates (+ apply_pca_transform),
+# compute_moran_basis, screen_spatial_formula, train_biodiversity_model,
+# train_biodiversity_model_by_group, generate_full_priors, plus the now-
+# orphaned plot_theta_map_interactive() visualization -- archived 2026-09-09)
+# -- kept locally as a record of the superseded design, deliberately not
+# committed. Deprecated ecosystem-wide 2026-08-31 (gentle, notice-only) once
+# every real production workflow (PtConception x3, Mugu x2, GreatLakes)
+# migrated to estimate_kernel_priors()/calibrate_kernel_bandwidth() behind a
+# USE_KERNEL_PRIORS flag; archived once that migration was confirmed complete
+# ecosystem-wide. train_biodiversity_model_by_group() was archived first
+# (same day, separately, zero real callers found independently of the rest
+# of the chain) and consolidated into this same directory for a single home
+# for the whole retired chain. See TaxaExpect/CLAUDE.md's 2026-09-09 session
+# note and ecosystem_docs/NAME_CHANGE_HISTORY.md.
+archive_glmm_prior_pipeline/

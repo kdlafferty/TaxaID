@@ -113,12 +113,15 @@
 
 #' Build a "Context:" prompt block from a context list
 #'
-#' Shared context-formatting logic for LLM prompts. Used identically by
-#' `assign_taxa_llm()`'s `.build_taxa_prompt()` and
-#' `suggest_unreferenced_species()`'s `.build_plausible_prompt()`/
-#' `.build_family_prompt()` -- the three previously duplicated this block
-#' verbatim, differing only in which field name in `ctx` holds the habitat
-#' value (`"main_habitat"` vs `"habitat"`).
+#' Shared context-formatting logic for LLM prompts. Used by
+#' `assign_taxa_llm()`'s `.build_taxa_prompt()` -- originally extracted
+#' (2026-08-04) as a DRY refactor shared with `suggest_unreferenced_species()`'s
+#' `.build_plausible_prompt()`/`.build_family_prompt()` too, which duplicated
+#' this block verbatim differing only in which field name in `ctx` holds the
+#' habitat value (`"main_habitat"` vs `"habitat"`); that function moved to
+#' TaxaLikely 2026-09-08 and took its own copy of this helper with it (see
+#' `TaxaLikely/R/suggest_unreferenced_species.R`'s own copy -- cross-package
+#' internal (`:::`) calls aren't used in this codebase).
 #' @noRd
 .build_context_block <- function(ctx, habitat_field = "main_habitat") {
   ctx_fields <- c("ecoregion", "lat", "lon", "date", habitat_field)

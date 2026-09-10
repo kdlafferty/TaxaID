@@ -39,10 +39,22 @@ utils::globalVariables(c(
 
 #' Assign Taxa Using an LLM-Approximated Bayesian Pipeline
 #'
-#' A fast approximation of the full TaxaLikely -> TaxaExpect -> TaxaAssign pipeline.
-#' Replaces the Bayesian likelihood model with exponentially-weighted match scores,
-#' and replaces occurrence-based priors with LLM-estimated prior weights. Posteriors
-#' are computed by `compute_posterior()` as normal.
+#' @section Purpose:
+#' This is the **LLM-shortcut pathway** -- a fast *approximation* of the Full
+#' Bayesian pipeline (`TaxaLikely::train_likelihood_model()`/
+#' `evaluate_likelihoods()` -> `TaxaExpect`'s occurrence-modelled priors ->
+#' `run_bayesian_pipeline()`), used in place of that modeled effort when no
+#' trained TaxaLikely model or TaxaExpect priors exist yet, or as a quick
+#' comparison against a Full Bayesian result already in hand. It is **not** a
+#' parallel, equally-supported first-class pipeline: replaces the trained
+#' likelihood model with exponentially-weighted match scores, and replaces the
+#' occurrence-modelled prior with an LLM's biogeographic judgment. Best suited
+#' to well-known taxa in a well-known ecoregion; rare/novel taxa or
+#' poorly-known regions need the Full Bayesian pathway's real modeled evidence,
+#' which the LLM has no access to. Every real production workflow in this
+#' ecosystem uses the Full Bayesian pathway exclusively. Posteriors are
+#' computed by `compute_posterior()` as normal, so both pathways are directly
+#' comparable via the same downstream consensus/reporting functions.
 #'
 #' ## Key design
 #' Geographic plausibility is a taxon-level property, not an observation-level one.

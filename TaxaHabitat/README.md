@@ -9,33 +9,62 @@ editor_options:
 Habitat assignment and spatial quality control for the
 [TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem. Classifies
 species into habitat categories using LLM-based biological consensus,
-assigns habitats to sampling sites, and flags spatial outliers.
+assigns habitats to sampling sites, and flags spatial outliers. It
+accepts that species can occur in multiple habitats, but assumes that a
+particular sampling location can be defined as a single habitat
+category. In other words, it uses the species collected at a location to
+guess the habitat at the site where the species was observed. It gets
+this right most of the time, and indicates its uncertainty when it can't
+decide.
 
-Habitat is a key predictor of which species are plausible at a sampling
-location. Incorrect habitat classification leads to false positives when
+Habitat (e.g., terrestrial, marine, freshwater) is a key predictor of
+which species are plausible at a sampling location. In TaxaID, I
+recommend a few coarse habitat types rather than a long list of subtle
+ones. Incorrect habitat classification leads to false positives when
 species from the wrong habitat receive inflated priors. Ideally, a
 knowledgeable user assigns each taxon to its habitat. When the species
 list is long, LLMs can do a reasonable job of classifying species into
-habitat categories. As with any LLM output, users should review the
-results. `flag_habitat_inconsistencies()` provides an interactive map
-that makes errant classifications easy to spot and correct.
+basic habitat categories. As with any LLM output, users should review
+the results. `flag_habitat_inconsistencies()` provides an interactive
+map that makes errant classifications easy to spot and correct.
 
-A key feature of TaxaHabitat is the ability to review and proof
-occupancy data. Even well-curated data like GBIF (Global Biodiversity
-Information Facility; GBIF Secretariat, Copenhagen, Denmark) have a
-high frequency of location errors. By mapping points by habitat type, users can easily
+The interactive map makes it easier to review and proof occupancy data.
+Even well-curated data like GBIF (Global Biodiversity Information
+Facility; GBIF Secretariat, Copenhagen, Denmark) have a high frequency
+of location errors. By mapping points by habitat type, users can easily
 view which observations have incorrect coordinates. The function
 review_spatial_flags(occurrences_flagged) is designed to flag errant
-points for removal before model building begins. TaxaHabitat thus can be
-a standalone database QAQC for biodiversity databases.
+points for removal before model building begins. For instance, a point
+on the map in the middle of the ocean labeled "Terrestrial", is likely
+an error in habitat assignment that would weaken a species distribution
+model. This tool makes it possible to delete that point or reassign it
+to "Marine". TaxaHabitat thus can be a standalone database QAQC for
+biodiversity databases and helpful for creating species distribution
+models from occupancy data.
 
 ## Habitat Schemes
 
 | Scheme | Categories | Use case |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | **3-category** (default) | Marine / Freshwater / Terrestrial | Most eDNA studies |
 | **IUCN Level 1** | 18 IUCN habitat categories | Fine-grained habitat mapping |
 | **Custom** | User-defined | Specialized study designs |
+
+A custom scheme is a plain data frame (`l1_name` required; `l2_name`,
+`l2_code`, `realm` optional -- see `example_habitat_scheme` for the
+exact shape):
+
+``` r
+my_scheme <- data.frame(
+  l1_name = c("Kelp forest", "Sandy bottom", "Rocky intertidal"),
+  realm   = c("marine", "marine", "marine")
+)
+prompt <- build_habitat_prompt(taxa, habitat_scheme = my_scheme)
+```
+
+Don't want to hand-build one? `build_scheme_prompt()` +
+`parse_scheme_response()` can draft a scheme from your taxon list via
+LLM first, and you edit the result before using it.
 
 ## Installation
 
@@ -127,9 +156,9 @@ because generalist species spread weight across multiple habitats,
 diluting any single category.
 
 By default, each species counts equally regardless of how many times it
-was recorded at a point (`weight_by_abundance = FALSE`). This is
-deliberate: occurrence record counts reflect sampling effort, not
-ecological dominance.
+was recorded at a point (`weight_by_abundance = FALSE`). This is because
+I assume occurrence record counts reflect sampling effort more than
+habitat.
 
 ### Assemblage-Level Consensus
 
@@ -141,6 +170,8 @@ alongside the habitat consensus.
 
 ### Spatial Quality Control
 
+TaxaHabitat can do some basic ground truthing of its habitat assignments
+using habitat polygons to overlay the search area.
 `flag_habitat_inconsistencies()` checks whether each occurrence record
 is spatially consistent with its assigned habitat using vector polygons
 (Natural Earth land/ocean boundaries; a public-domain map dataset
@@ -167,11 +198,26 @@ ocean). The 1 km coastal buffer accounts for GPS uncertainty and tidal
 gradients. `review_spatial_flags()` provides an interactive Leaflet map
 for manual inspection and correction.
 
+The Natural Earth and GEBCO reference layers themselves are fixed --
+`flag_habitat_inconsistencies()` does not currently accept a
+user-supplied coastline, bathymetry, or other custom spatial reference
+layer. Only the numeric thresholds above (`coast_buffer_m`,
+`depth_neritic_m`, `depth_oceanic_m`, bathymetry `resolution`) are
+tunable.
+
+<img src="man/figures/README-review-spatial-flags.png" alt="review_spatial_flags() Shiny/Leaflet gadget open on a real Lake Michigan dataset, showing 5,044 points colored by assigned habitat (Lentic/Lotic/Other/Unknown), with the sidebar&apos;s view filter, per-point species info, and Flag/Reassign Habitat controls." width="100%"/>
+
+`review_spatial_flags()` (real Great Lakes data shown above) is where
+`flag_habitat_inconsistencies()`'s output actually gets reviewed: points
+are colored by habitat category, clicking one shows its species list,
+and the sidebar's Flag / Reassign Habitat controls let you correct a
+misclassified point without leaving the map.
+
 ## LLM Integration
 
 TaxaHabitat uses the `llm_fn` pattern from TaxaTools. The default
-provider is `call_anthropic_api()` (Anthropic Claude; Anthropic PBC,
-San Francisco, California), but any compatible provider works:
+provider is `call_anthropic_api()` (Anthropic Claude; Anthropic PBC, San
+Francisco, California), but any compatible provider works:
 
 ``` r
 # Use Gemini instead
@@ -179,15 +225,15 @@ raw_text <- TaxaTools::prompt_api(prompt, llm_fn = TaxaTools::call_gemini_api)
 ```
 
 `call_gemini_api()` calls Google Gemini (Google LLC, Mountain View,
-California); other supported providers include OpenAI (OpenAI OpCo,
-LLC, San Francisco, California) and local Ollama (Ollama, Palo Alto,
+California); other supported providers include OpenAI (OpenAI OpCo, LLC,
+San Francisco, California) and local Ollama (Ollama, Palo Alto,
 California) -- see TaxaTools.
 
 ## API Keys
 
-Requires an Application Programming Interface (API) key for at least
-one LLM provider (Anthropic by default). See the TaxaTools [API
-Setup vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
+Requires an Application Programming Interface (API) key for at least one
+LLM provider (Anthropic by default). See the TaxaTools [API Setup
+vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 
 ## Vignettes
 
@@ -221,8 +267,8 @@ taxonomic assignment: U.S. Geological Survey software release,
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
-San Francisco, California).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC, San
+Francisco, California).
 
 ## References
 

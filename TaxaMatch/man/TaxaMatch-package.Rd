@@ -6,7 +6,7 @@
 \alias{TaxaMatch}
 \title{TaxaMatch: Store and Standardize Biological Match Data}
 \description{
-Stores and standardizes raw match data produced by external tools that compare biological observations (eDNA sequences, images, acoustic recordings) against reference databases. Outputs a canonical match object (one row per sample x reference match, with standard column names) for input to TaxaLikely. Match data sources include DNA barcode programs (e.g. MiFish), image classifiers, and acoustic recognizers. Score-to-likelihood conversion and reference quality assessment live in TaxaLikely. Part of the TaxaID ecosystem.
+Stores and standardizes raw match data produced by external tools that compare biological observations (eDNA sequences, images, acoustic recordings) against reference databases. Outputs a canonical match object (one row per sample x reference match, with standard column names) for input to TaxaLikely. Match data sources include DNA barcode programs (e.g. MiFish), image classifiers, and acoustic recognizers. Also screens reference accessions for taxonomic mislabeling via independent BLAST-based congruence checking before the reference set is used for likelihood model training. Score-to-likelihood conversion itself lives in TaxaLikely. Part of the TaxaID ecosystem.
 
 Ingests raw match data from external tools (BLAST, image classifiers,
 acoustic recognizers) and produces a canonical match object for input to

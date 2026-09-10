@@ -101,11 +101,13 @@ build_iucn_scheme(realm = "freshwater", l2 = "all")
 # Build a specific marine scheme with selected L2 subcategories
 scheme <- build_iucn_scheme(
   realm = "marine",
-  l2    = c("Subtidal Rock and Rocky Reefs", "Estuaries", "Macroalgal/Kelp",
-            "Subtidal Sandy", "Rocky Shoreline")
+  l2 = c(
+    "Subtidal Rock and Rocky Reefs", "Estuaries", "Macroalgal/Kelp",
+    "Subtidal Sandy", "Rocky Shoreline"
+  )
 )
 print(scheme)
-taxa   <- c("Gadus morhua", "Oncorhynchus mykiss")
+taxa <- c("Gadus morhua", "Oncorhynchus mykiss")
 prompt <- build_habitat_prompt(taxa, habitat_scheme = scheme)
 }
 \seealso{

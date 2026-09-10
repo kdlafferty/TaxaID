@@ -83,8 +83,10 @@ if (requireNamespace("shiny", quietly = TRUE)) {
 workflow_app("my_analysis.R", annotate = "self")
 
 # Any R script -- LLM annotation (needs a live LLM API call)
-workflow_app("my_analysis.R", annotate = "llm",
-             llm_fn = TaxaTools::call_anthropic_api)
+workflow_app("my_analysis.R",
+  annotate = "llm",
+  llm_fn = TaxaTools::call_anthropic_api
+)
 
 # App where users supply their own API key
 workflow_app("taxaid_workflow_20260506.R", api_key_mode = "user")

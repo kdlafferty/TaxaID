@@ -238,8 +238,8 @@ is fixed.
 \dontrun{
 result_updated <- update_prior_from_consensus(
   result, consensus,
-  confirmation_quantile  = 0.9,
-  confirmation_discount  = 0.25
+  confirmation_quantile = 0.9,
+  confirmation_discount = 0.25
 )
 }
 

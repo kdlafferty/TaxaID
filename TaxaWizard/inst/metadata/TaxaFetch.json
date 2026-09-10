@@ -180,7 +180,7 @@
           "type": "logical",
           "required": false,
           "default": true,
-          "description": "Content-based occasion collapse (taxon x date x rounded lat/lon). Default TRUE because TaxaExpect::prepare_model_dataframe() counts raw records as both n_species and n_total_at_site -- uncollapsed repeat reports inflate a species' modeled detection frequency directly"
+          "description": "Content-based occasion collapse (taxon x date x rounded lat/lon). Default TRUE because TaxaExpect::estimate_kernel_priors() counts raw records as both a species' effective share and the site's effective sample size -- uncollapsed repeat reports inflate a species' modeled detection frequency directly"
         },
         {
           "name": "taxon_col",

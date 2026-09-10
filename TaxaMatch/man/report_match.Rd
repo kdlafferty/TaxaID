@@ -57,9 +57,11 @@ into \code{TaxaTools::assemble_report()} for a unified pipeline report.
 # Self-contained example (no BLAST call needed)
 hits <- data.frame(
   observation_id = c("ASV1", "ASV1", "ASV2"),
-  score_original  = c(98.5, 91.2, 99.1),
-  taxon_name      = c("Girella nigricans", "Girella simplicidens",
-                      "Oncorhynchus mykiss")
+  score_original = c(98.5, 91.2, 99.1),
+  taxon_name = c(
+    "Girella nigricans", "Girella simplicidens",
+    "Oncorhynchus mykiss"
+  )
 )
 sec <- report_match(hits, data_type = "eDNA")
 print(sec)

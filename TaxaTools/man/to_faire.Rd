@@ -72,16 +72,16 @@ and joined to this output before submission.
 }
 \examples{
 match_df <- data.frame(
-  observation_id  = c("ASV1", "ASV2"),
-  taxon_name      = c("Fundulus parvipinnis", "Atherinops affinis"),
+  observation_id = c("ASV1", "ASV2"),
+  taxon_name = c("Fundulus parvipinnis", "Atherinops affinis"),
   taxon_name_rank = c("species", "species"),
-  score           = c(98.7, 95.1),
-  coverage        = c(0.98, 0.94),
-  accession       = c("MG002616.1", "KT215432.1"),
-  family          = c("Fundulidae", "Atherinopsidae"),
-  genus           = c("Fundulus", "Atherinops"),
-  species         = c("Fundulus parvipinnis", "Atherinops affinis"),
-  testid          = c("MiFishU", "MiFishU"),
+  score = c(98.7, 95.1),
+  coverage = c(0.98, 0.94),
+  accession = c("MG002616.1", "KT215432.1"),
+  family = c("Fundulidae", "Atherinopsidae"),
+  genus = c("Fundulus", "Atherinops"),
+  species = c("Fundulus parvipinnis", "Atherinops affinis"),
+  testid = c("MiFishU", "MiFishU"),
   stringsAsFactors = FALSE
 )
 

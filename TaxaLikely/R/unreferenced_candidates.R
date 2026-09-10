@@ -22,8 +22,7 @@
 #' used by [evaluate_likelihoods()].
 #'
 #' The expanded data frame is passed to [assign_scores()] to obtain
-#' \code{score_likelihood} values, or directly to [model_likelihoods()] for
-#' the bivariate-normal (similarity) pathway.
+#' \code{score_likelihood} values.
 #'
 #' @param match_df Data frame. Canonical match object from
 #'   \code{TaxaMatch::standardize_match_data()} or equivalent. Must contain
@@ -51,7 +50,7 @@
 #'   \code{"unreferenced_family"} for added rows).  Added rows have
 #'   \code{score_original = NA} (and any other score columns set to \code{NA}).
 #'
-#' @seealso [assign_scores()], [model_likelihoods()], [compute_likelihoods()]
+#' @seealso [assign_scores()]
 #'
 #' @note For a fully runnable, non-`\dontrun{}` demonstration (including how
 #'   `match_df` is derived), see `inst/review_function_inputs.R` Section 3

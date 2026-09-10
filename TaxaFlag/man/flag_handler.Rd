@@ -131,10 +131,12 @@ column name alone no longer identifies which check produced it.
 
 \examples{
 camera_detections <- data.frame(
-  datetime   = as.POSIXct(c("2026-01-01 08:00:00", "2026-01-01 08:15:00",
-                            "2026-01-01 09:00:00", "2026-01-01 09:45:00")),
+  datetime = as.POSIXct(c(
+    "2026-01-01 08:00:00", "2026-01-01 08:15:00",
+    "2026-01-01 09:00:00", "2026-01-01 09:45:00"
+  )),
   taxon_name = c("Homo sapiens", "Homo sapiens", "Lynx rufus", "Homo sapiens"),
-  station    = "A"
+  station = "A"
 )
 flag_handler(
   input_df         = camera_detections,
@@ -147,12 +149,12 @@ flag_handler(
 # Anchored on real per-station deploy/retrieve timestamps instead of the
 # detection data's own min/max (see "Edge anchoring" above)
 flagged <- flag_handler(
-  input_df               = camera_detections,
-  datetime_col     = "datetime",
-  group_col        = "station",
+  input_df = camera_detections,
+  datetime_col = "datetime",
+  group_col = "station",
   interval_minutes = 30,
-  handler_taxa     = "Homo sapiens",
-  station_metadata = station_deploy_log  # columns: station, deploy_time, retrieve_time
+  handler_taxa = "Homo sapiens",
+  station_metadata = station_deploy_log # columns: station, deploy_time, retrieve_time
 )
 }
 

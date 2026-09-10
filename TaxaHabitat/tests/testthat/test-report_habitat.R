@@ -112,3 +112,44 @@ test_that("no crash when EVERY habitat column is entirely NA (2026-09-07 code re
   expect_null(sec$statistics$dominant_pct)
   expect_false(grepl("Dominant habitat", sec$results, fixed = TRUE))
 })
+
+test_that("occurrence-level habitat data is summarised from main_habitat, not coordinates (2026-09-07 bug)", {
+  # Reproduces the real shape that produced "under the decimalLatitude/
+  # decimalLongitude scheme" and "Dominant habitat: decimalLatitude (mean
+  # weight 3519%)" in both a real 18S and a real GreatLakes generated report:
+  # occurrence-level data (taxon_name, not scientificName; decimalLatitude/
+  # decimalLongitude as the only other numeric columns) with a categorical
+  # main_habitat winner per row, no numeric habitat-weight columns at all.
+  df <- data.frame(
+    taxon_name       = c("Sp A", "Sp A", "Sp B", "Sp C", "Sp C"),
+    decimalLatitude  = c(34.1, 34.2, 35.0, 34.5, 34.6),
+    decimalLongitude = c(-119.8, -119.7, -120.1, -119.9, -119.9),
+    main_habitat     = c("Marine", "Marine", "Estuarine", "Marine", NA_character_),
+    habitat_best_guess = c(NA_character_, NA_character_, NA_character_, NA_character_, "unclear"),
+    stringsAsFactors = FALSE
+  )
+
+  sec <- report_habitat(df)
+  # 3 unique taxa, not 5 raw rows.
+  expect_equal(sec$statistics$n_taxa, 3L)
+  # Real categories (Marine/Estuarine), never the coordinate column names.
+  expect_equal(sec$statistics$n_habitat_cols, 2L)
+  expect_equal(sec$params$habitat_scheme, "Marine/Estuarine")
+  expect_false(grepl("decimalLat|decimalLon", sec$methods))
+  # Dominant = most common category among ASSIGNED (non-NA) rows: Marine, 3/4.
+  expect_equal(sec$statistics$dominant_habitat, "Marine")
+  expect_equal(sec$statistics$dominant_pct, 75)
+  expect_true(grepl("Marine \\(75% of assigned records\\)", sec$results))
+})
+
+test_that("main_habitat branch: n_habitat_cols and dominant_habitat are NULL/0 when every row is NA", {
+  df <- data.frame(
+    taxon_name   = c("Sp A", "Sp B"),
+    main_habitat = c(NA_character_, NA_character_),
+    stringsAsFactors = FALSE
+  )
+  sec <- report_habitat(df)
+  expect_equal(sec$statistics$n_habitat_cols, 0L)
+  expect_null(sec$statistics$dominant_habitat)
+  expect_null(sec$params$habitat_scheme)
+})

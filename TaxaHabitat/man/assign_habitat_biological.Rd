@@ -123,10 +123,10 @@ occurrence_data <- data.frame(
 # hab_weights: species-by-habitat weight table, e.g. from
 # parse_hierarchical_habitat_response()
 hab_weights <- data.frame(
-  taxon_name   = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss"),
-  Marine       = c(1.0, 1.0, 0.5),
-  Freshwater   = c(0.0, 0.0, 0.5),
-  Terrestrial  = c(0.0, 0.0, 0.0),
+  taxon_name = c("Sebastes mystinus", "Gadus morhua", "Oncorhynchus mykiss"),
+  Marine = c(1.0, 1.0, 0.5),
+  Freshwater = c(0.0, 0.0, 0.5),
+  Terrestrial = c(0.0, 0.0, 0.0),
   Other_weight = c(0.0, 0.0, 0.0),
   habitat_best_guess = c("", "", "")
 )
@@ -143,11 +143,12 @@ result[is.na(result$main_habitat), "point_id"]
 
 \dontrun{
 # Points where the scheme did not fit (dplyr shown for real workflows)
-result |> dplyr::filter(main_habitat == "Other") |>
+result |>
+  dplyr::filter(main_habitat == "Other") |>
   dplyr::distinct(point_id, habitat_best_guess)
 }
 }
 \seealso{
 \code{\link{parse_hierarchical_habitat_response}},
-\code{\link{build_habitat_prompt}}, \code{prepare_model_dataframe()}
+\code{\link{build_habitat_prompt}}, \code{TaxaExpect::estimate_kernel_priors()}
 }

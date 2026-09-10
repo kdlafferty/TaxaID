@@ -72,17 +72,18 @@ Generate this file with \code{crabs db_download}, \code{crabs db_import},
 and \code{crabs db_merge}.
 }
 
-\section{Complementary role with TaxaLikely quality tools}{
+\section{Complementary role with reference-quality screening}{
 
 CRABS handles efficient sequence retrieval and bulk quality filters at the
 database-building stage (e.g., length range, primer trimming, taxonomic
-scope, exact dereplication). TaxaLikely catches mislabeling errors that
-CRABS cannot detect: sequences where the taxonomic label is wrong but the
-sequence is otherwise valid.  These errors inflate within-species distance
-estimates and produce unreliable likelihoods.  After loading a CRABS
-database with this function, run \code{\link[=flag_reference_errors]{flag_reference_errors()}} on the output
-of \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} to identify and remove them before training
-the likelihood model.
+scope, exact dereplication). It does not catch mislabeling errors:
+sequences where the taxonomic label is wrong but the sequence is otherwise
+valid, which inflate within-species distance estimates and produce
+unreliable likelihoods. After loading a CRABS database with this function,
+screen it via \code{TaxaMatch::corroborate_references_locally()} +
+\code{TaxaMatch::evaluate_reference_accessions()} before training the
+likelihood model -- see \code{train_likelihood_model()}'s own
+documentation for the exact pattern.
 }
 
 \examples{
@@ -96,14 +97,12 @@ ref <- read_crabs_output(
 
 # Standard TaxaLikely workflow continues here
 ref_matrix <- build_sequence_matrix(ref)
-errors     <- flag_reference_errors(ref_matrix)
-clean_mat  <- remove_flagged_references(ref_matrix, errors)
-model      <- train_likelihood_model(clean_mat)
+model <- train_likelihood_model(ref_matrix)
 }
 
 }
 \seealso{
 \code{\link[=read_reference_fasta]{read_reference_fasta()}} for FASTA + separate taxonomy table,
 \code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}} for downloading from NCBI,
-\code{\link[=build_sequence_matrix]{build_sequence_matrix()}}, \code{\link[=flag_reference_errors]{flag_reference_errors()}}
+\code{\link[=build_sequence_matrix]{build_sequence_matrix()}}
 }

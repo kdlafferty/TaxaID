@@ -56,15 +56,6 @@ report_likelihood <- function(model,
   n_anchors <- if (!is.null(stats_slot$n_anchors)) stats_slot$n_anchors else 0L
   aic_score <- stats_slot$AIC_Score
 
-  # Reference errors
-
-  n_errors <- if (!is.null(model$reference_errors) &&
-    is.data.frame(model$reference_errors)) {
-    sum(model$reference_errors$error_type == "likely_mislabeled", na.rm = TRUE)
-  } else {
-    0L
-  }
-
   # H1 lookup info
   n_profiled <- if (!is.null(model$H1_Lookup) &&
     is.data.frame(model$H1_Lookup)) {
@@ -77,8 +68,7 @@ report_likelihood <- function(model,
   statistics <- list(
     n_species    = n_species,
     n_singletons = n_singletons,
-    n_anchors    = n_anchors,
-    n_errors     = n_errors
+    n_anchors    = n_anchors
   )
   if (!is.null(aic_score)) statistics$aic_score <- round(aic_score, 1)
   if (!is.na(n_profiled)) statistics$n_profiled <- n_profiled
@@ -114,13 +104,6 @@ report_likelihood <- function(model,
     methods_parts <- paste0(
       methods_parts,
       sprintf(" Perfect-match pseudo-data anchoring was applied (n = %d).", n_anchors)
-    )
-  }
-
-  if (n_errors > 0L) {
-    methods_parts <- paste0(
-      methods_parts,
-      sprintf(" %d likely mislabeled reference sequences were detected and removed.", n_errors)
     )
   }
 

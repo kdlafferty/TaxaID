@@ -33,7 +33,7 @@ restart R or call \code{set_model(provider, tier, NULL)}.
 \dontrun{
 # At the top of a reproducible analysis script:
 set_model("anthropic", "mid", "claude-sonnet-4-5")
-set_model("gemini",    "mid", "gemini-2.5-flash")
+set_model("gemini", "mid", "gemini-2.5-flash")
 
 # Remove a pin:
 set_model("anthropic", "mid", NULL)

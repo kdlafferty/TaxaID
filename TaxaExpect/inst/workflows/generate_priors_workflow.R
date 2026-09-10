@@ -1,6 +1,33 @@
 # ==============================================================================
 # WORKFLOW: GENERATE PRIORS (TaxaExpect)
 # ==============================================================================
+# ARCHIVED PATHWAY NOTICE (2026-09-09): the GLMM chain this workflow exercises
+# (optimize_grid_size(), prepare_model_dataframe(), compute_moran_basis(),
+# screen_spatial_formula(), train_biodiversity_model(), generate_full_priors())
+# was archived once every real production workflow completed its migration to
+# the kernel-priors path (estimate_kernel_priors()/calibrate_kernel_bandwidth()).
+# Running this script as written will now error ("could not find function") --
+# the source is kept, unexecuted, at TaxaExpect/archive_glmm_prior_pipeline/ as
+# a record of the superseded design. UPDATE, later the same day: this script's
+# own create_sites_from_grid() call (Step 2, below) was ALSO archived --
+# archived alongside the rest of the chain later the same day, once the
+# separate justification for keeping it live was re-examined and found to
+# describe a scenario that had never actually materialized in any real
+# dataset. FURTHER UPDATE, later still the same day: that archival was
+# reversed once (a real safety gap found in estimate_kernel_priors(
+# sampling_group_col = NULL), with no guard against silently pooling
+# incompatible detection processes), restoring both functions to the live
+# package. FINAL UPDATE, later again the same day: the restoration's own
+# reasoning was tested against real evidence and refuted -- compute_adaptive_
+# sampling_groups() answers a different question than sampling_group is meant
+# to answer, and estimate_kernel_priors() was shown to need no pre-merged,
+# sample-size-adequate groups at all. Both functions are ARCHIVED again, this
+# time final -- create_sites_from_grid() is NOT live, so Step 2's call below
+# will also error, along with the rest of this workflow's GLMM chain
+# (prepare_model_dataframe() onward). See TaxaExpect/CLAUDE.md's final
+# 2026-09-09 session note and the package README's Quick Start for the
+# current pathway.
+#
 # Purpose: Grid occurrence data, fit a binomial GLMM of detection probability
 #   (theta) across taxa x site x habitat, generate Tier 3 proxy priors for
 #   undetected diversity, and assemble the full prior table consumed by

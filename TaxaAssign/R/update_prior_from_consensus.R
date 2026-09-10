@@ -540,11 +540,11 @@ update_prior_from_consensus <- function(result,
       posterior actually used -- this is the post-refinement counterpart \\
       (2026-09-05 critical-fix-review finding A3), purely informational.",
       if (n_capped > 0L) {
-        "!" <- "{n_capped} row(s) would have updated PAST their own veto bound \\
+        c("!" = "{n_capped} row(s) would have updated PAST their own veto bound \\
         (finding B2) -- capped there instead. This is a floor against runaway \\
         correlated-confirmation accumulation, not a fix to the update rule \\
         itself; see that finding for the deeper level-aware redesign this \\
-        stands in for."
+        stands in for.")
       }
     ))
   }

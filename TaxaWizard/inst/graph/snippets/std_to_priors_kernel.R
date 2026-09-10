@@ -70,8 +70,9 @@ if (isTRUE({{include_domestic_priors}})) {
 
 # Optional: static KDE prior-field map for one focal taxon (2026-09-01,
 # TaxaExpect::plot_theta_surface()) -- the kernel path's own visualizer,
-# replacing plot_theta_map_interactive() (which parses Grid_<lat>_<lon> ids
-# into centroids and has nothing to draw for a single opaque kernel site_id).
+# replacing the archived plot_theta_map_interactive() (GLMM/grid path,
+# archived 2026-09-09 -- it parsed Grid_<lat>_<lon> ids into centroids and
+# had nothing to draw for a single opaque kernel site_id).
 # Needs kernel_priors_fit itself (not just the flattened priors table), so
 # this lives here rather than in the generic priors_to_map.R edge. Set
 # {{plot_theta_surface_taxon}} to NULL (default) to skip; a real taxon_name

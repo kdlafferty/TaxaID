@@ -144,9 +144,13 @@ A data frame with one row per sequence pair within \code{max_dist}:
 sequences contribute a non-gap character, divided by the shorter
 unaligned sequence length.  Range (0, 1].  Values near 1.0 indicate
 nearly complete overlap; values near 0.0 indicate highly gappy or
-partial alignments that produce unreliable match scores.  Use
-\code{\link[=calibrate_coverage_filter]{calibrate_coverage_filter()}} or \code{\link[=coverage_threshold]{coverage_threshold()}} to select a
-minimum coverage threshold before calling \code{\link[=train_likelihood_model]{train_likelihood_model()}}.}
+partial alignments that produce unreliable match scores.  A minimum
+coverage threshold can be applied directly (e.g.
+\code{ref_matrix[ref_matrix$coverage >= threshold, ]}) before calling
+\code{\link[=train_likelihood_model]{train_likelihood_model()}}; a dedicated threshold-calibration helper
+(\code{calibrate_coverage_filter()}/\code{coverage_threshold()}) existed
+through 2026-09-09 and was archived -- see \code{TaxaLikely/CLAUDE.md}
+for the full reasoning.}
 \item{\verb{\{rank\}.x}, \verb{\{rank\}.y}}{Taxonomy columns for each pair member.}
 }
 }
@@ -154,8 +158,7 @@ minimum coverage threshold before calling \code{\link[=train_likelihood_model]{t
 Aligns DNA sequences using \code{DECIPHER::AlignSeqs()}, computes pairwise
 distances with \code{DECIPHER::DistanceMatrix()}, converts distances to match
 scores (\code{p_match = 1 - distance}), and joins taxonomy metadata.  The
-resulting data frame is the input to \code{\link[=flag_reference_errors]{flag_reference_errors()}} and
-\code{\link[=train_likelihood_model]{train_likelihood_model()}}.
+resulting data frame is the input to \code{\link[=train_likelihood_model]{train_likelihood_model()}}.
 }
 \section{Requirements}{
 
@@ -216,14 +219,14 @@ just because they consume conceptually the same pairs.
 # Requires DECIPHER + Biostrings (Bioconductor)
 ref_matrix <- build_sequence_matrix(
   reference_df,
-  rank_system       = c("family", "genus", "species"),
-  filter_unnamed    = TRUE,   # drop blank/NA species (default)
-  max_seqs_per_taxon = 20L    # cap per-species sequences before alignment
+  rank_system = c("family", "genus", "species"),
+  filter_unnamed = TRUE, # drop blank/NA species (default)
+  max_seqs_per_taxon = 20L # cap per-species sequences before alignment
 )
 head(ref_matrix)
 }
 
 }
 \seealso{
-\code{\link[=flag_reference_errors]{flag_reference_errors()}}, \code{\link[=train_likelihood_model]{train_likelihood_model()}}
+\code{\link[=train_likelihood_model]{train_likelihood_model()}}
 }

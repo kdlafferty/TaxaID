@@ -18,9 +18,12 @@ utils::globalVariables(c("taxon_name", "group", "is_complete"))
 #' @param model_params A \code{taxa_model_params} object from
 #'   \code{\link[TaxaLikely]{train_likelihood_model}}.
 #' @param taxaexpect_priors Priors from TaxaExpect. Accepts either a data
-#'   frame (from \code{\link[TaxaExpect]{generate_full_priors}}) or the full
-#'   list returned by \code{TaxaExpect::build_priors()} (the \code{$priors}
-#'   element is extracted automatically).
+#'   frame (from \code{\link[TaxaExpect]{estimate_kernel_priors}}'s
+#'   \code{$priors} element, or historically \code{generate_full_priors()})
+#'   or a full list with a \code{$priors} element (the shape
+#'   \code{estimate_kernel_priors()} itself returns, or the archived
+#'   \code{build_priors()}'s output if you have one cached -- the
+#'   \code{$priors} element is extracted automatically either way).
 #' @param site Site context for prior joining, including habitat.
 #'   \code{main_habitat} is always required — the function does not guess
 #'   which habitat your observations came from. Accepted formats:
@@ -120,7 +123,7 @@ utils::globalVariables(c("taxon_name", "group", "is_complete"))
 #' # match_obj from TaxaMatch (sequence/image/acoustic match data), a fitted
 #' # trained_model from TaxaLikely::train_likelihood_model() (needs a real
 #' # reference sequence database), and priors from
-#' # TaxaExpect::generate_full_priors() (needs a real GBIF occurrence fetch).
+#' # TaxaExpect::estimate_kernel_priors() (needs a real GBIF occurrence fetch).
 #' # See vignette("taxonomic-assignment", package = "TaxaAssign") for a
 #' # complete, step-by-step runnable version of this pipeline.
 #' out <- run_bayesian_pipeline(
@@ -202,11 +205,12 @@ run_bayesian_pipeline <- function(
     ))
   }
 
-  # --- Accept build_priors() output ---
+  # --- Accept a list-with-$priors shape (estimate_kernel_priors() output,
+  # or the archived build_priors()'s output if the caller has one cached) ---
   # If taxaexpect_priors is a list with $priors, extract the data frame
   if (is.list(taxaexpect_priors) && !is.data.frame(taxaexpect_priors) &&
     "priors" %in% names(taxaexpect_priors)) {
-    .msg("Detected build_priors() output; extracting $priors.")
+    .msg("Detected a list-with-$priors object (e.g. estimate_kernel_priors() output); extracting $priors.")
     taxaexpect_priors <- taxaexpect_priors$priors
   }
 
@@ -282,17 +286,12 @@ run_bayesian_pipeline <- function(
     }
   }
 
-  # =========================================================================
-  # Stage 0: Remove flagged reference errors from match_df
-  # =========================================================================
-  if (!is.null(model_params$reference_errors) &&
-    nrow(model_params$reference_errors) > 0L &&
-    "accession" %in% names(match_df)) {
-    match_df <- TaxaLikely::remove_flagged_references(
-      match_df,
-      model_params$reference_errors
-    )
-  }
+  # Reference-quality screening (removing rows resting on a flagged accession)
+  # is no longer this pipeline's job, and model_params no longer carries a
+  # reference_errors slot to auto-filter from -- screen match_df yourself via
+  # TaxaMatch::flag_incongruent_references()/remove_incongruent_references()
+  # before calling this function. See TaxaLikely::train_likelihood_model()'s
+  # own documentation for the recommended pattern.
 
   # =========================================================================
   # Stage 1: Evaluate likelihoods

@@ -80,7 +80,17 @@ parameter of \code{TaxaMatch::standardize_match_data()}.
 Typical values: \code{0.8} (80\\% query coverage) for DNA BLAST results.
 \code{NA} coverage values are always retained (treated as fully covered).
 When \code{coverage} is absent from \code{match_df}, this parameter is silently
-ignored.}
+ignored.
+
+\strong{Every candidate below threshold (fixed 2026-09-09):} when
+\code{min_coverage} drops EVERY candidate row for a given \code{observation_id},
+that observation is routed to \verb{$unresolved} (with a named warning)
+instead of erroring -- the same degrade-gracefully convention already
+used for the coarser-than-\code{rank_system} case above. Confirmed to hit
+195/800 (24.4\\%) of real test queries in a real production A/B
+comparison at a Youden's-J-calibrated \code{min_coverage}; before this fix,
+any such observation crashed the whole call with \code{"replacement has 1 row, data has 0"}. Re-run \code{evaluate_likelihoods()} on \verb{$unresolved} with
+a lower (or \code{NULL}) \code{min_coverage} to resolve these queries.}
 
 \item{evidence_col}{Character or \code{NULL} (default \code{NULL}). Name of a column
 in \code{match_df} giving each candidate's raw evidence quantity (e.g. DNA read

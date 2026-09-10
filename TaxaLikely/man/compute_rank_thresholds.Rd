@@ -60,9 +60,11 @@ option that error message points at.
 \examples{
 \dontrun{
 ref_matrix <- build_sequence_matrix(reference_df,
-                                    rank_system = c("family", "genus", "species"))
+  rank_system = c("family", "genus", "species")
+)
 rt <- compute_rank_thresholds(ref_matrix,
-                              rank_system = c("family", "genus", "species"))
+  rank_system = c("family", "genus", "species")
+)
 TaxaAssign::score_consensus(match_df, rank_thresholds = rt)
 }
 

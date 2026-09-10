@@ -33,7 +33,9 @@ values produce more uniform likelihoods.}
 \value{
 For \code{score_type = "similarity"}: the input data frame with
 \code{score_norm} (H1 rows only) and \code{score_method = "similarity"}
-added.  Pass to \code{\link[=model_likelihoods]{model_likelihoods()}} to complete the pipeline.
+added.  See the \code{"similarity"} entry under \code{@details} above --
+real callers use \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} directly instead of continuing
+from this output.
 
 For all other \code{score_type} values: a data frame with one row per
 \code{observation_id} x hypothesis (H1 aggregated to one row per
@@ -71,12 +73,18 @@ via \code{.normalize_scores()}, exponentiated
 H2/H3 are anchored at the median softmax-normalized score of same-genus
 (H2) or same-family (H3) H1 candidates.  Appropriate for the LLM
 shortcut pathway when no trained model exists.}
-\item{\code{"similarity"}}{Similarity scores that will be processed by
-the bivariate-normal model in \code{\link[=model_likelihoods]{model_likelihoods()}}.  This function
-only adds \code{score_norm} to H1 rows and sets
-\code{score_method = "similarity"}; it does \strong{not} write
-\code{score_likelihood}.  Call \code{\link[=model_likelihoods]{model_likelihoods()}} to complete the
-pipeline.}
+\item{\code{"similarity"}}{Similarity scores destined for the
+bivariate-normal model.  This function only adds \code{score_norm} to
+H1 rows and sets \code{score_method = "similarity"}; it does
+\strong{not} write \code{score_likelihood}.  In practice this
+pathway is not how the bivariate-normal model is actually reached --
+every real caller trains a model with \code{\link[=train_likelihood_model]{train_likelihood_model()}} and
+calls \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} directly on the original \code{match_df}
+(see that function's own \code{@param match_df}), which internally
+performs the same logit transform / H1 selection this \code{score_type}
+value stages.  \code{score_type = "similarity"} is retained as a
+documented, tested contract of this function, not as a recommended
+entry point.}
 }
 
 \strong{Normalization convention:} all \code{score_likelihood} values are
@@ -95,16 +103,15 @@ Section 3 in the package source.
 \dontrun{
 # No-score pathway (morphology IDs)
 hyp_df <- unreferenced_candidates(match_df)
-liks   <- assign_scores(hyp_df, score_type = "none")
+liks <- assign_scores(hyp_df, score_type = "none")
 # head(liks[, c("observation_id", "taxon_name", "score_likelihood")])
 
 # Probability pathway (BirdNET multi-candidate)
 hyp_df <- unreferenced_candidates(match_df)
-liks   <- assign_scores(hyp_df, score_type = "probability")
+liks <- assign_scores(hyp_df, score_type = "probability")
 }
 
 }
 \seealso{
-\code{\link[=unreferenced_candidates]{unreferenced_candidates()}}, \code{\link[=model_likelihoods]{model_likelihoods()}},
-\code{\link[=compute_likelihoods]{compute_likelihoods()}}
+\code{\link[=unreferenced_candidates]{unreferenced_candidates()}}, \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}
 }

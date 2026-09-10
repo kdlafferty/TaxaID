@@ -60,16 +60,18 @@ ref <- fetch_ncbi_reference_sequences(
   barcode_term = "MiFishU"
 )
 write_reference_fasta(ref, "fundulus_mifish.fasta",
-                      taxonomy_file = "fundulus_mifish_taxonomy.tsv")
+  taxonomy_file = "fundulus_mifish_taxonomy.tsv"
+)
 
 # Round-trip: reload the same reference
 ref2 <- read_reference_fasta("fundulus_mifish.fasta",
-                              taxonomy_file = "fundulus_mifish_taxonomy.tsv",
-                              rank_system   = c("family", "genus", "species"))
+  taxonomy_file = "fundulus_mifish_taxonomy.tsv",
+  rank_system   = c("family", "genus", "species")
+)
 }
 
 }
 \seealso{
 \code{\link[=read_reference_fasta]{read_reference_fasta()}}, \code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}},
-\code{\link[=read_crabs_output]{read_crabs_output()}}, \code{\link[=build_site_reference]{build_site_reference()}}
+\code{\link[=read_crabs_output]{read_crabs_output()}}
 }

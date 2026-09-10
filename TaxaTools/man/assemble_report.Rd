@@ -31,11 +31,12 @@ into a single "Data Sources" section at the end.
 }
 \examples{
 \dontrun{
-fetch_sec  <- report_fetch(occurrences)
-match_sec  <- report_match(match_data)
+fetch_sec <- report_fetch(occurrences)
+match_sec <- report_match(match_data)
 assign_sec <- report_assign(result, consensus)
 full_report <- assemble_report(fetch_sec, match_sec, assign_sec,
-                               title = "eDNA Taxonomic Assignment Report")
+  title = "eDNA Taxonomic Assignment Report"
+)
 writeLines(full_report, "methods_report.md")
 }
 

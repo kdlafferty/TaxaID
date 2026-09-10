@@ -40,9 +40,12 @@ and taxonomy columns.}
 \code{\link[TaxaLikely]{train_likelihood_model}}.}
 
 \item{taxaexpect_priors}{Priors from TaxaExpect. Accepts either a data
-frame (from \code{\link[TaxaExpect]{generate_full_priors}}) or the full
-list returned by \code{TaxaExpect::build_priors()} (the \code{$priors}
-element is extracted automatically).}
+frame (from \code{\link[TaxaExpect]{estimate_kernel_priors}}'s
+\code{$priors} element, or historically \code{generate_full_priors()})
+or a full list with a \code{$priors} element (the shape
+\code{estimate_kernel_priors()} itself returns, or the archived
+\code{build_priors()}'s output if you have one cached -- the
+\code{$priors} element is extracted automatically either way).}
 
 \item{site}{Site context for prior joining, including habitat.
 \code{main_habitat} is always required — the function does not guess
@@ -171,15 +174,15 @@ fine-grained control, use the individual functions directly.
 # match_obj from TaxaMatch (sequence/image/acoustic match data), a fitted
 # trained_model from TaxaLikely::train_likelihood_model() (needs a real
 # reference sequence database), and priors from
-# TaxaExpect::generate_full_priors() (needs a real GBIF occurrence fetch).
+# TaxaExpect::estimate_kernel_priors() (needs a real GBIF occurrence fetch).
 # See vignette("taxonomic-assignment", package = "TaxaAssign") for a
 # complete, step-by-step runnable version of this pipeline.
 out <- run_bayesian_pipeline(
-  match_df          = match_obj,
-  model_params      = trained_model,
+  match_df = match_obj,
+  model_params = trained_model,
   taxaexpect_priors = priors,
   site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
-  backbone_id       = 11L
+  backbone_id = 11L
 )
 head(out$consensus)
 }

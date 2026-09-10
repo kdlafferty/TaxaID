@@ -39,7 +39,6 @@ run_llm_pipeline(
   confirmation_discount = 0.25,
   generate_report = FALSE,
   report_params = list(),
-  reference_errors = NULL,
   verbose = TRUE
 )
 }
@@ -74,14 +73,16 @@ assignment. Default \code{NULL} (3-category).}
 \code{TaxaTools::call_api} (requires TaxaTools).}
 
 \item{detect_unreferenced}{Logical. When \code{TRUE} (default), run
-\code{\link{suggest_unreferenced_species}} to detect taxa absent from the
-reference database. Set to \code{FALSE} to skip.}
+\code{\link[TaxaLikely]{suggest_unreferenced_species}} to detect taxa
+absent from the reference database (requires TaxaLikely). Set to
+\code{FALSE} to skip.}
 
 \item{barcode_term}{Character. Barcode marker for unreferenced species
 detection. Default \code{"12S"}.}
 
 \item{expand_to_family}{Logical. Expand unreferenced search to family level.
-Default \code{TRUE}. Passed to \code{\link{suggest_unreferenced_species}}.}
+Default \code{TRUE}. Passed to
+\code{\link[TaxaLikely]{suggest_unreferenced_species}}.}
 
 \item{max_date}{Optional character. NCBI date filter for unreferenced species
 detection (e.g. \code{"2024/12/31"}).}
@@ -163,12 +164,6 @@ Default \code{FALSE}.}
 \code{\link{generate_report}} (e.g. \code{data_type}, \code{marker},
 \code{study_description}).}
 
-\item{reference_errors}{Optional data frame. Output of
-\code{\link[TaxaLikely]{flag_reference_errors}} (or
-\code{model_params$reference_errors} from a trained model). When
-supplied, mislabeled accessions are removed from \code{match_df}
-before assignment. Default \code{NULL} (no filtering).}
-
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
 \value{
@@ -196,6 +191,12 @@ optionally generate a report.
 This encapsulates ~7 function calls (Sections 2-5 of
 \code{inst/TaxaAssign_llm_workflow.R}) into a single step. For fine-grained
 control, use the individual functions directly.
+
+See \code{\link{assign_taxa_llm}}'s own \verb{Purpose} section for what the
+LLM-shortcut pathway is (a fast approximation of the Full Bayesian pipeline,
+used in place of TaxaLikely's/TaxaExpect's modeled effort, not a parallel
+first-class pipeline) and when to prefer \code{\link{run_bayesian_pipeline}}
+instead.
 }
 \examples{
 \dontrun{

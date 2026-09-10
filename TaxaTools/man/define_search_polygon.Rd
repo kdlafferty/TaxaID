@@ -77,8 +77,7 @@ describing what \emph{not} drawing anything means in the calling context
 \code{\link[shiny]{runGadget}}. Default \code{shiny::paneViewer(minHeight = 500)}
 (renders in RStudio's own Viewer pane) -- matches the viewer style already
 used by this ecosystem's other interactive mapping gadgets
-(\code{TaxaHabitat::review_spatial_flags()},
-\code{TaxaExpect::plot_theta_map_interactive()}), so all mapping
+(\code{TaxaHabitat::review_spatial_flags()}), so all mapping
 interactions look and feel the same rather than mixing viewer styles.
 \strong{Not} \code{\link[shiny]{dialogViewer}} (RStudio's own popup
 dialog) -- on at least one real system, RStudio's embedded dialog webview
@@ -151,7 +150,7 @@ bbox2 <- define_search_polygon(init_polygon = bbox)
 # Overlay points colored by an existing spatial_group_id
 bbox3 <- define_search_polygon(
   lat = 34.4, lon = -120.4, radius_deg = 2,
-  points    = sites_with_groups,
+  points = sites_with_groups,
   group_col = "spatial_group_id"
 )
 }

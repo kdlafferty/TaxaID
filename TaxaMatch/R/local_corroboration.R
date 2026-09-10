@@ -11,7 +11,7 @@ utils::globalVariables(c(
 # Implements items 2 and 3 of
 # ecosystem_docs/REENTRY_PROMPT_local_corroboration_and_primer_stripped_screen.md
 # (2026-09-03). Both functions consume plain data frames -- no new
-# cross-package dependency, the same reasoning as verify_flagged_references().
+# cross-package dependency.
 # ==============================================================================
 
 #' Corroborate Reference Labels From the Local Reference Set, Without BLAST

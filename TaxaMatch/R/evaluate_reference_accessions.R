@@ -1395,21 +1395,21 @@ utils::globalVariables(c(
 #'     observation -- everything else can never change an assignment
 #'     regardless of what this function would say about it. Real effect:
 #'     709 of 995 on a real PtConception 12S match object.
-#'   \item \strong{Accessions the training screen already flagged.}
-#'     [verify_flagged_references()] verifies only
-#'     `TaxaLikely::flag_reference_errors()`'s own `"likely_mislabeled"`
-#'     subset (that screen already runs for free, no NCBI call, reusing the
-#'     `seq_matrix` already built for training) -- turning "BLAST the whole
-#'     training reference set" into "BLAST only the ~9-11% it actually
-#'     disputed." See that function's own `@section Why the flagged subset,
-#'     not the whole reference set`.
+#'   \item \strong{Accessions the free local check can't already resolve.}
+#'     [corroborate_references_locally()] runs first, for free (no NCBI
+#'     call, reusing the `seq_matrix` already built for training) -- pass
+#'     its output as `local_corroboration` with `skip_locally_corroborated =
+#'     TRUE` and this function only BLASTs the accessions that check
+#'     couldn't already corroborate from within the reference set itself,
+#'     turning "BLAST the whole training reference set" into "BLAST only
+#'     what's still disputed after the free pass."
 #' }
 #' Together these concentrate this screen's real NCBI cost exactly where a
 #' verdict can change something -- a match-driving accession feeds a real
-#' assignment; a training-flagged accession feeds `train_likelihood_model()`'s
-#' own silent removal -- while leaving every other accession in a large
-#' reference set unscreened by default, not as an oversight but as the
-#' documented, correct scope.
+#' assignment; a training accession the free local check couldn't already
+#' resolve is exactly the population worth spending NCBI budget on -- while
+#' leaving every other accession in a large reference set unscreened by
+#' default, not as an oversight but as the documented, correct scope.
 #'
 #' @section Why "incongruent" gained a TTL (2026-09-02):
 #' It was cached indefinitely on the reasoning that an accession's own
@@ -2721,10 +2721,8 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' Remove Confidently-Incongruent Reference Accessions from a Match Object
 #'
 #' Filters a match data frame to remove rows whose reference accession was
-#' flagged `"incongruent"` by [evaluate_reference_accessions()] -- mirrors
-#' `TaxaLikely::remove_flagged_references()`'s existing consumption pattern
-#' (which drops `flag_reference_errors()`'s `"likely_mislabeled"` rows) but
-#' fed from the new BLAST-based verdict instead. Deliberately conservative:
+#' flagged `"incongruent"` by [evaluate_reference_accessions()]. Deliberately
+#' conservative:
 #' only the confident `"incongruent"` verdict is dropped by default --
 #' `"insufficient_independent_evidence"` is ambiguous (may simply mean a
 #' sparsely-referenced region of the database, not a real problem) and is
@@ -2916,150 +2914,3 @@ remove_incongruent_references <- function(match_df,
   result
 }
 
-#' Verify a Small, Flagged Reference Subset via BLAST, Not the Whole Database
-#'
-#' Bridges `TaxaLikely::flag_reference_errors()`'s free, offline (but known
-#' over-flagging) within-reference-set mislabel screen to this package's
-#' stronger, BLAST-based `evaluate_reference_accessions()` -- purpose-built
-#' so a caller never has to BLAST an entire training reference database to
-#' get the benefit of the better screen.
-#'
-#' @section Why the flagged subset, not the whole reference set (2026-08-18):
-#' `TaxaLikely::train_likelihood_model()` calls `flag_reference_errors()`
-#' unconditionally on every training run and silently drops every
-#' `"likely_mislabeled"` accession before fitting H1/H2/H3 -- this has
-#' always been true, it just went unnoticed until a user asked directly
-#' whether it was happening at all. That screen is known to over-flag (see
-#' `flag_reference_errors()`'s own `@param verified_clean`): a real pilot
-#' check against a real GreatLakes 12S reference set found 0 of 40
-#' randomly-sampled `"likely_mislabeled"` accessions confirmed as genuine
-#' mislabels by this package's own `evaluate_reference_accessions()` (a
-#' BLAST-based check against a broad, independent database) -- 85% looked
-#' like false positives.
-#'
-#' `evaluate_reference_accessions()` is the right tool to adjudicate this,
-#' but BLASTing an entire training reference database (which can be LARGER
-#' than a typical match-candidate screening population -- confirmed on real
-#' GreatLakes data, ~2,650 accessions vs. a 1,183-accession match-candidate
-#' run that already tripped a real NCBI CPU-budget rejection) risks exactly
-#' the shutout this package's rate-limit resilience
-#' (`evaluate_reference_accessions(chunk_size=,
-#' max_consecutive_batch_failures=)`) exists to survive, not avoid entirely.
-#' `flag_reference_errors()` is already running for free (no NCBI call,
-#' reuses the `seq_matrix` already built for training) -- this function
-#' verifies only the small subset it actually flagged, turning "BLAST
-#' thousands of accessions to find a few real mislabels" into "BLAST only
-#' the disputed ones."
-#'
-#' @param flagged Either a data frame (output of
-#'   `TaxaLikely::flag_reference_errors()`, with `id_x`/`error_type`
-#'   columns) or a plain character vector of accession IDs to verify.
-#' @param error_types Character vector (default `"likely_mislabeled"`).
-#'   When `flagged` is a data frame, only rows whose `error_type` is in this
-#'   set are verified. The default matches what
-#'   `train_likelihood_model()` actually removes by default --
-#'   `"unverified_singleton_high_match"` is computed by
-#'   `flag_reference_errors()` but never acted on automatically, so
-#'   verifying it too roughly doubles NCBI cost for a category that isn't
-#'   currently removing anything from training. Pass
-#'   `c("likely_mislabeled", "unverified_singleton_high_match")` to verify
-#'   both.
-#' @param trust_insufficient_evidence Logical (default `FALSE`). Whether an
-#'   `"insufficient_independent_evidence"` verdict (broader evidence exists,
-#'   but too little of it to say either way) counts as verified-clean.
-#'   `FALSE` is the conservative choice -- an accession this ambiguous stays
-#'   removed from training rather than being restored on thin grounds.
-#' @param cache_dir,ncbi_api_key,barcode_term,... Forwarded to
-#'   `evaluate_reference_accessions()`. `cache_dir` deliberately shares that
-#'   function's own default (`tools::R_user_dir("TaxaMatch", "cache")`) --
-#'   pass an explicit, project-scoped path shared with a real match-candidate
-#'   screen so any accession appearing in both populations is served from
-#'   cache for free rather than BLASTed twice.
-#'
-#' @return A list: `verified_clean` (character vector of accessions safe to
-#'   pass to `flag_reference_errors(verified_clean=)`/
-#'   `train_likelihood_model(verified_clean=)` -- everything NOT confirmed
-#'   `"incongruent"`), and `evaluation` (the full
-#'   `evaluate_reference_accessions()` output, for review). `verified_clean`
-#'   is `character(0)` and `evaluation` is `NULL` when `flagged` contains no
-#'   matching accessions -- no NCBI call is made in that case.
-#'
-#' @seealso [evaluate_reference_accessions()],
-#'   [TaxaLikely::flag_reference_errors()]
-#'
-#' @examples
-#' \dontrun{
-#' seq_matrix <- TaxaLikely::build_sequence_matrix(reference_df,
-#'   rank_system = c("family", "genus", "species")
-#' )
-#' errors <- TaxaLikely::flag_reference_errors(seq_matrix)
-#' result <- verify_flagged_references(errors,
-#'   cache_dir = "~/my_project_ref_eval_cache"
-#' )
-#' lik_model <- TaxaLikely::train_likelihood_model(seq_matrix,
-#'   rank_system = c("family", "genus", "species"),
-#'   verified_clean = result$verified_clean
-#' )
-#' }
-#'
-#' @export
-verify_flagged_references <- function(flagged,
-                                      error_types = "likely_mislabeled",
-                                      trust_insufficient_evidence = FALSE,
-                                      cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
-                                      ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
-                                      barcode_term = NULL,
-                                      ...) {
-  if (is.data.frame(flagged)) {
-    needed <- c("id_x", "error_type")
-    missing_cols <- setdiff(needed, names(flagged))
-    if (length(missing_cols) > 0L) {
-      stop(sprintf(
-        "flagged is missing required columns: %s",
-        paste(missing_cols, collapse = ", ")
-      ), call. = FALSE)
-    }
-    accessions <- unique(flagged$id_x[flagged$error_type %in% error_types])
-  } else if (is.character(flagged)) {
-    accessions <- unique(flagged)
-  } else {
-    stop(
-      "flagged must be a data frame (TaxaLikely::flag_reference_errors() ",
-      "output) or a character vector of accessions.",
-      call. = FALSE
-    )
-  }
-
-  if (length(accessions) == 0L) {
-    message("No flagged accessions to verify -- no NCBI call made.")
-    return(list(verified_clean = character(0L), evaluation = NULL))
-  }
-
-  qc <- evaluate_reference_accessions(
-    accessions,
-    cache_dir    = cache_dir,
-    ncbi_api_key = ncbi_api_key,
-    barcode_term = barcode_term,
-    ...
-  )
-
-  # "locally_corroborated" (2026-09-03) counts as verified-clean alongside
-  # "congruent": both assert corroborating evidence WAS found, only the
-  # source differs (the caller's own reference set vs nt). It can only
-  # appear here if the caller forwarded a local_corroboration table through
-  # `...`.
-  keep_flags <- if (isTRUE(trust_insufficient_evidence)) {
-    c("congruent", "locally_corroborated", "insufficient_independent_evidence")
-  } else {
-    c("congruent", "locally_corroborated")
-  }
-  verified_clean <- unique(qc$accession[qc$hierarchy_flag %in% keep_flags])
-  n_incongruent <- sum(qc$hierarchy_flag == "incongruent", na.rm = TRUE)
-
-  message(sprintf(
-    "%d of %d flagged accession(s) verified NOT incongruent (safe to keep in training); %d confirmed incongruent.",
-    length(verified_clean), length(accessions), n_incongruent
-  ))
-
-  list(verified_clean = verified_clean, evaluation = qc)
-}

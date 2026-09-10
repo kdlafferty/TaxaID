@@ -70,8 +70,8 @@ ahead of an interactive review gadget. It adds one column
 }
 \examples{
 \dontrun{
-clean   <- TaxaFetch::filter_gbif_quality(gbif_raw)
-tiered  <- flag_institution_candidates(clean)
+clean <- TaxaFetch::filter_gbif_quality(gbif_raw)
+tiered <- flag_institution_candidates(clean)
 table(tiered$institution_suspicion, useNA = "ifany")
 }
 }

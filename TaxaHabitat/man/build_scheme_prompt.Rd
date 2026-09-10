@@ -80,9 +80,9 @@ hab_tbl  <- parse_hierarchical_habitat_response(raw_text, taxa_in_data,
 \examples{
 \dontrun{
 taxa <- unique(occurrence_data$taxon_name)
-sp   <- build_scheme_prompt(taxa, realm = "marine")
+sp <- build_scheme_prompt(taxa, realm = "marine")
 print(sp)
-raw    <- TaxaTools::prompt_api(sp)
+raw <- TaxaTools::prompt_api(sp)
 scheme <- parse_scheme_response(raw, sp)
 print(scheme)
 }

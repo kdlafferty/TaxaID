@@ -74,7 +74,7 @@ serves both rather than duplicating the join per pathway.
 \examples{
 detections <- data.frame(
   observation_id = c("ASV1", "ASV1", "ASV2"),
-  event_id        = c("site_A", "site_B", "site_A")
+  event_id = c("site_A", "site_B", "site_A")
 )
 site_metadata <- data.frame(
   event_id    = c("site_A", "site_B"),

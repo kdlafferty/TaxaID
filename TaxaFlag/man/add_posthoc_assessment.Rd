@@ -322,38 +322,45 @@ than being compared against the wrong rank's threshold.
 
 \examples{
 cons <- data.frame(
-  observation_id    = c("obs1", "obs2", "obs3", "obs4", "obs5", "obs6"),
-  consensus_taxon   = c("Oncorhynchus mykiss", "Homo sapiens",
-                        "Salmo salar", "Sardina pilchardus",
-                        "Rare sp.", "Cottus sp."),
-  consensus_rank    = c("species", "species", "species",
-                        "species", "species", "genus"),
+  observation_id = c("obs1", "obs2", "obs3", "obs4", "obs5", "obs6"),
+  consensus_taxon = c(
+    "Oncorhynchus mykiss", "Homo sapiens",
+    "Salmo salar", "Sardina pilchardus",
+    "Rare sp.", "Cottus sp."
+  ),
+  consensus_rank = c(
+    "species", "species", "species",
+    "species", "species", "genus"
+  ),
   winner_likelihood = c(0.95, 0.03, 0.15, 0.80, 0.70, 0.90),
   winner_theta_mean = c(0.010, 0.020, 0.009, 0.0005, NA, 0.003),
   winner_has_occurrence_record = c(TRUE, TRUE, TRUE, TRUE, FALSE, TRUE),
-  stringsAsFactors  = FALSE
+  stringsAsFactors = FALSE
 )
 # expected_theta_threshold has no default -- a named vector, one entry
 # per rank ("species" required). Typically the median theta at that rank
 # (species: median(taxaexpect_priors$theta_mean); genus/family: median of
 # TaxaAssign::compute_group_priors()'s theta_sum at that rank).
 add_posthoc_assessment(cons,
-                       expected_theta_threshold = c(species = 0.008, genus = 0.02))
+  expected_theta_threshold = c(species = 0.008, genus = 0.02)
+)
 
 # Domestic-species caveat: a cat with a strong ID but a database-driven
 # low occurrence plausibility gets a distinct flag rather than looking
 # like a genuinely surprising detection.
 cons2 <- data.frame(
-  observation_id    = c("obs7", "obs8"),
-  consensus_taxon   = c("Felis catus", "Made-up sp."),
-  consensus_rank    = c("species", "species"),
+  observation_id = c("obs7", "obs8"),
+  consensus_taxon = c("Felis catus", "Made-up sp."),
+  consensus_rank = c("species", "species"),
   winner_likelihood = c(0.90, 0.90),
   winner_theta_mean = c(0.0002, 0.0002),
   winner_has_occurrence_record = c(TRUE, TRUE),
-  stringsAsFactors  = FALSE
+  stringsAsFactors = FALSE
 )
-add_posthoc_assessment(cons2, domestic_taxa = "Felis catus",
-                       expected_theta_threshold = c(species = 0.008))
+add_posthoc_assessment(cons2,
+  domestic_taxa = "Felis catus",
+  expected_theta_threshold = c(species = 0.008)
+)
 
 }
 \seealso{

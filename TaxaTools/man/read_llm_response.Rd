@@ -27,8 +27,10 @@ combined text, a warning is also emitted.
 \examples{
 \dontrun{
 raw_text <- read_llm_response("habitat_response_1.txt")
-raw_text <- read_llm_response(c("habitat_response_1.txt",
-                                "habitat_response_2.txt"))
+raw_text <- read_llm_response(c(
+  "habitat_response_1.txt",
+  "habitat_response_2.txt"
+))
 }
 }
 \seealso{

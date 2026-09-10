@@ -204,6 +204,16 @@ See also: `TaxaFetch/inst/PDF_PIPELINE_DATAONE_PARALLEL.md` for parallel DataOne
 
 ### PRIOR PIPELINE — Modelling and Prior Generation (TaxaExpect)
 
+> **Archived pathway (2026-09-09).** This whole document predates the kernel-priors
+> redesign and describes only the GLMM/grid pipeline below, which was archived
+> 2026-09-09 (source kept, unexecuted, at `TaxaExpect/archive_glmm_prior_pipeline/`)
+> once every real production workflow completed its migration to the kernel path.
+> None of `optimize_grid_size()`/`prepare_model_dataframe()`/`compute_moran_basis()`/
+> `screen_spatial_formula()`/`generate_full_priors()` is present in the installed
+> package any more. For the current pathway, see `TaxaExpect/README.md`'s Quick Start
+> (`estimate_kernel_priors()`/`calibrate_kernel_bandwidth()`); this section is kept as
+> a record of the superseded design, not updated in place.
+
 **Script:** `TaxaExpect/inst/TaxaExpect_workflow.R`
 
 **Inputs:** `occurrences_with_habitat`
@@ -300,9 +310,22 @@ joining to `taxaexpect_priors`.
 
 Required columns: `sample_id`, `grid_id`, `main_habitat`
 
+> **Superseded pattern (2026-09-09).** `create_sites_from_grid()` in the code
+> comment below is ARCHIVED (final, not committed to the live package) --
+> after a brief same-day archive/restore/archive-again history, it was
+> retired for good once its restoration's own justification was tested
+> against real evidence and refuted; see `TaxaExpect/CLAUDE.md`'s final
+> 2026-09-09 session note for the full record. That is not the only reason
+> the pattern below is superseded, though: on the kernel-priors path,
+> `estimate_kernel_priors()` returns one opaque `site_id` per call rather
+> than a grid of `grid_id`s, so this whole `create_sites_from_grid()`-keyed
+> `sample_meta` pattern is superseded for a reason unrelated to the
+> function's archival status too -- kept here as a record of the superseded
+> design.
+
 ```r
 # grid_id must use the SAME grid_size as the TaxaExpect model:
-#   sample_locations <- create_sites_from_grid(
+#   sample_locations <- create_sites_from_grid(   # archived; this pattern is SUPERSEDED, see note above
 #     sample_lat_lon_df,            # user data: sample_id + decimalLatitude + decimalLongitude
 #     grid_size = grid_result$best_grid   # saved from TaxaExpect workflow
 #   )

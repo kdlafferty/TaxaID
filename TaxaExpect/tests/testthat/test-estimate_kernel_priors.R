@@ -550,3 +550,63 @@ test_that("sampling_group_col validates its input", {
     sampling_group_col = c("a", "b")
   ), "single column")
 })
+
+# ------------------------------------------------------------------------------
+# Single-taxon-group warning (2026-09-09, final re-archival session, Finding 5).
+# A group with exactly one distinct taxon gets theta_mean = 1.0, theta_sd = 0
+# by construction (100% share of a group with one member) -- mathematically
+# correct, but could mislead a reader into "certain to be present" instead of
+# "the only thing we have to compare it to." A WARNING, never an error, and
+# never a change to the computed value.
+# ------------------------------------------------------------------------------
+
+test_that("estimate_kernel_priors warns for a single-taxon sampling group, naming the group", {
+  # Spread reaches ~10 km (as in the "reach warns / small lambda is fine"
+  # fixture above) so that, at lambda_km = 1 (6 lambda = 6 km), the unrelated
+  # fetch-boundary warning does NOT fire -- otherwise it would be conflated
+  # with the single-taxon-group warning this test targets.
+  occ <- rbind(
+    .mk_occ(rep("OnlyOne", 4),
+      lat = 34 + seq(0, 0.09, length.out = 4), lon = -120
+    ),
+    .mk_occ(c("A", "B"), lat = 34 + seq(0, 0.09, length.out = 2), lon = -120)
+  )
+  occ$sampling_group <- c(rep("solo", 4), rep("multi", 2))
+  expect_warning(
+    estimate_kernel_priors(occ, 34, -120, "Marine",
+      lambda_km = 1, sampling_group_col = "sampling_group"
+    ),
+    "sampling group 'solo' contains only one distinct taxon"
+  )
+  # the offending taxon name is named in the message too
+  expect_warning(
+    estimate_kernel_priors(occ, 34, -120, "Marine",
+      lambda_km = 1, sampling_group_col = "sampling_group"
+    ),
+    "OnlyOne"
+  )
+  # the computation itself is unaffected: theta_mean = 1.0 by construction
+  out <- suppressWarnings(estimate_kernel_priors(occ, 34, -120, "Marine",
+    lambda_km = 1, sampling_group_col = "sampling_group"
+  ))
+  solo_row <- out$priors[out$priors$sampling_group == "solo", ]
+  expect_equal(nrow(solo_row), 1L)
+  expect_equal(solo_row$theta_mean, 1)
+})
+
+test_that("estimate_kernel_priors does not warn for a normal multi-taxon group, however sparse", {
+  occ <- .mk_occ(c("A", "B"), lat = 34 + seq(0, 0.09, length.out = 2), lon = -120)
+  occ$sampling_group <- "sparse_multi"
+  expect_no_warning(
+    estimate_kernel_priors(occ, 34, -120, "Marine",
+      lambda_km = 1, sampling_group_col = "sampling_group"
+    )
+  )
+})
+
+test_that("the single-taxon-group warning only fires when sampling_group_col is supplied", {
+  occ <- .mk_occ(rep("Solo", 3), lat = 34 + seq(0, 0.09, length.out = 3), lon = -120)
+  expect_no_warning(
+    estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1)
+  )
+})

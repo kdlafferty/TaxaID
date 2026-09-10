@@ -185,9 +185,9 @@ test_that("is_plausible_binomial is vectorized", {
 # A primer-variant term is right for primers/lengths but is not indexed by any
 # sequence database. Searching on it matches nothing, and "nothing found" is a
 # legitimate search result, so the failure is SILENT: downstream it reads as
-# "this species has no barcode" rather than "this query was malformed". Three
-# packages built queries this way (TaxaLikely fetch + coverage, TaxaAssign
-# suggest_unreferenced_species), which is why the map lives here.
+# "this species has no barcode" rather than "this query was malformed". Multiple
+# call sites built queries this way (TaxaLikely's fetch, coverage, and
+# suggest_unreferenced_species()), which is why the map lives here.
 
 test_that("resolve_barcode_marker maps every registered primer variant to its marker", {
   expect_identical(resolve_barcode_marker("COI-Folmer"), "COI")

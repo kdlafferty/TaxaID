@@ -85,9 +85,10 @@ utils::globalVariables(c(
   # resolve a genuine resolve_barcode_primers() ambiguity: 23/23 genera, 0 hits.
   # Resolve the variant to the marker it amplifies, then search as that marker.
   # The map lives in TaxaTools (resolve_barcode_marker) because the identical
-  # silent failure reaches three packages -- here, audit_barcode_coverage(),
-  # and TaxaAssign::suggest_unreferenced_species() -- and TaxaTools already
-  # owns the primer/length registries these terms come from.
+  # silent failure reaches multiple call sites -- here, audit_barcode_coverage(),
+  # and suggest_unreferenced_species() (moved from TaxaAssign to this package
+  # 2026-09-08) -- and TaxaTools already owns the primer/length registries
+  # these terms come from.
   bc_parts <- vapply(barcode_term, function(bt) {
     key <- tolower(trimws(bt))
     resolved <- TaxaTools::resolve_barcode_marker(bt)

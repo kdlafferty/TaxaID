@@ -377,6 +377,76 @@ test_that("evaluate_likelihoods: evidence_col/min_coverage guards do not fire fo
   )
 })
 
+# --- Regression: min_coverage zeroing EVERY candidate for an observation ----
+# (bug fix, 2026-09-09). Root cause: .evaluate_one_query() already returns a
+# correctly-shaped, zero-row data frame when min_coverage drops every
+# candidate row for an observation (its own "if (nrow(cand) == 0L) return
+# (...)" branch) -- but evaluate_likelihoods()'s per-observation loop then
+# unconditionally ran `result$observation_id <- sid`, which errors on a
+# zero-row target ("replacement has 1 row, data has 0") because `sid` has
+# length 1 and there are 0 rows to receive it. Confirmed via a real
+# production A/B comparison (diagnostics/coverage_filter_ab_comparison.R) to
+# hit 195/800 (24.4%) of real test queries at a calibrated min_coverage.
+# Fixed by routing such an observation to $unresolved instead -- the same
+# graceful-degrade convention this function already used for the
+# coarser-than-rank_system case.
+
+test_that("evaluate_likelihoods: min_coverage zeroing every candidate no longer crashes (original bug repro)", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  df <- .make_match_df() # single observation_id "ESV_001", 3 candidate rows
+  df$coverage <- 0.10 # every row below the threshold used below
+
+  expect_no_error(
+    result <- evaluate_likelihoods(
+      df, params, c("family", "genus", "species"),
+      min_coverage = 0.995
+    )
+  )
+})
+
+test_that("evaluate_likelihoods: an observation with every candidate below min_coverage is routed to $unresolved with a named warning", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  df <- .make_match_df()
+  df$coverage <- 0.10
+
+  expect_warning(
+    result <- evaluate_likelihoods(
+      df, params, c("family", "genus", "species"),
+      min_coverage = 0.995
+    ),
+    "ESV_001"
+  )
+  expect_equal(nrow(result$likelihoods), 0L)
+  expect_equal(unique(result$unresolved$observation_id), "ESV_001")
+  # The original 3 candidate rows for the zeroed-out observation are all
+  # returned, unmodified, in $unresolved -- not just a placeholder.
+  expect_equal(nrow(result$unresolved), 3L)
+})
+
+test_that("evaluate_likelihoods: min_coverage zeroing one observation doesn't affect a sibling observation that passes", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  failing <- .make_match_df() # ESV_001, every row coverage 0.10
+  failing$coverage <- 0.10
+  passing <- .make_match_df()
+  passing$observation_id <- "ESV_002"
+  passing$coverage <- 0.999 # clears the threshold
+  df <- rbind(failing, passing)
+
+  expect_warning(
+    result <- evaluate_likelihoods(
+      df, params, c("family", "genus", "species"),
+      min_coverage = 0.995
+    ),
+    "ESV_001"
+  )
+  expect_equal(unique(result$unresolved$observation_id), "ESV_001")
+  expect_true("ESV_002" %in% result$likelihoods$observation_id)
+  expect_false("ESV_001" %in% result$likelihoods$observation_id)
+})
+
 test_that("evaluate_likelihoods: $likelihoods has no NA taxon_name", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()

@@ -92,8 +92,8 @@ in \code{$shortcut_rejected}.
 }
 \examples{
 \dontrun{
-catalog    <- harvest_dataone_catalog()
-bbox       <- c(-81.2, -80.4, 25.1, 25.8)  # Florida Everglades
+catalog <- harvest_dataone_catalog()
+bbox <- c(-81.2, -80.4, 25.1, 25.8) # Florida Everglades
 
 # Without shortcut -- all packages go to LLM:
 geo_prompt <- build_geo_prompt(catalog, bbox)

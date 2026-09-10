@@ -115,10 +115,14 @@
 # learn a coverage-score relationship. Coverage is therefore NOT a
 # dimension of the bivariate normal model.
 #
-# Coverage is used in two ways:
-#   1. Hard filter here in training: pairs below a threshold are excluded
-#      before model fitting. Low-coverage cross-species pairs inflate
-#      variance estimates and weaken H1/H2 discrimination.
+# Coverage can be used two ways:
+#   1. A hard threshold filter applied before model fitting (excluding
+#      low-coverage cross-species pairs that inflate variance estimates and
+#      weaken H1/H2 discrimination). A dedicated calibration helper for this
+#      (calibrate_coverage_filter()/coverage_threshold()) existed here
+#      through 2026-09-09 and was archived after a real A/B test found the
+#      real accuracy win came with a real cost (see TaxaLikely/CLAUDE.md's
+#      top session note) -- training below uses the full, unfiltered matrix.
 #   2. Soft inflation at inference (Workflow 4): evaluate_likelihoods()
 #      produces score_likelihood_cov alongside score_likelihood, widening
 #      H1 sigma by 1/sqrt(coverage) for each candidate. This is a
@@ -149,7 +153,7 @@ ref_matrix <- build_sequence_matrix(
 saveRDS(ref_matrix, "ref_matrix.rds")
 
 
-# ---- 3. Calibrate and apply a coverage filter before training ---------------
+# ---- 3. Coverage summary (informational; no calibrated filter applied) ------
 #
 # build_sequence_matrix() attaches a 'coverage' column: positions where both
 # sequences contribute a non-gap character, divided by the shorter unaligned
@@ -157,12 +161,17 @@ saveRDS(ref_matrix, "ref_matrix.rds")
 #
 # Within-species (H1) pairs nearly always have coverage = 1 because
 # same-species sequences share the same amplicon. Low-coverage pairs are
-# almost entirely cross-species comparisons. Including them in training
-# inflates H2 variance estimates and weakens H1/H2 discrimination.
+# almost entirely cross-species comparisons.
 #
-# calibrate_coverage_filter() sweeps thresholds and returns Youden's J
-# (H1 retention minus H2 retention) to find the Pareto-optimal cutoff.
-# coverage_threshold() is a faster quantile-based alternative.
+# A calibrated coverage-threshold filter (calibrate_coverage_filter()/
+# coverage_threshold()) existed here through 2026-09-09 and was archived: a
+# real A/B test found a real accuracy win on the queries it was willing to
+# answer, but also a real cost (~19% of species lost every training pair at
+# the calibrated threshold; ~25% of real evaluation queries ended up
+# unresolved) -- the same hard-exclusion-on-an-imperfect-proxy pattern this
+# ecosystem has already relearned twice elsewhere. See TaxaLikely/CLAUDE.md's
+# top session note for the full reasoning. Training below proceeds on the
+# full, unfiltered ref_matrix.
 
 # Confirm coverage distribution
 cat("Coverage summary (all pairs):\n")
@@ -181,29 +190,18 @@ cat(sprintf(
   mean(h2$coverage), var(h2$coverage), nrow(h2)
 ))
 
-cal <- calibrate_coverage_filter(ref_matrix)
-best_thresh <- cal$threshold[which.max(cal$youden_j)]
-cat(sprintf(
-  "\nOptimal coverage threshold: %.3f  (Youden J = %.3f, breadth = %.1f%%)\n",
-  best_thresh, max(cal$youden_j), cal$breadth[which.max(cal$youden_j)] * 100
-))
-
-# Filter training data to the calibrated threshold.
-# Pass the same threshold as min_coverage in evaluate_likelihoods() (Workflow 4)
-# to keep inference within the same range as training.
-ref_matrix_filtered <- ref_matrix[ref_matrix$coverage >= best_thresh, ]
-cat(sprintf(
-  "Pairs retained after coverage filter: %d of %d (%.1f%%)\n",
-  nrow(ref_matrix_filtered), nrow(ref_matrix),
-  100 * nrow(ref_matrix_filtered) / nrow(ref_matrix)
-))
+ref_matrix_filtered <- ref_matrix
 
 
 # ---- 4. Train the model -----------------------------------------------------
-# train_likelihood_model() does three things:
-#   1. Removes mislabeled sequences (calls flag_reference_errors() internally)
-#   2. Computes per-species score and gap distributions
-#   3. Estimates H1, H2, H3 parameters with Empirical Bayes shrinkage
+# train_likelihood_model() does two things:
+#   1. Computes per-species score and gap distributions
+#   2. Estimates H1, H2, H3 parameters with Empirical Bayes shrinkage
+#
+# It does NOT screen for mislabeled sequences -- that's Workflow 2's job
+# (TaxaMatch::corroborate_references_locally() + evaluate_reference_
+# accessions()), run BEFORE reaching this step. If you skipped Workflow 2,
+# ref_matrix_filtered may still contain mislabeled reference sequences.
 #
 # The model is ALWAYS bivariate: (score_logit, gap_logit).
 # Coverage is handled as a hard filter (above) and a soft inference-time
@@ -221,7 +219,6 @@ model <- train_likelihood_model(
   rank_system   = rank_system,
   prior_weight  = 10.0,
   use_hierarchy = TRUE # default; explicit here for clarity
-  # mislabel_threshold = 0.02   # passed to flag_reference_errors()
 )
 
 
@@ -264,7 +261,6 @@ str(model, max.level = 1)
 cat("\nModel type: BIVARIATE (score_logit + gap_logit)\n")
 cat("Species in model:", model$Stats$n_species, "\n")
 cat("Singletons:", model$Stats$n_singletons, "\n")
-cat("Coverage threshold for Workflow 4 min_coverage:", round(best_thresh, 3), "\n")
 
 # How many species have enough data for reliable per-species estimates?
 well_sampled <- sum(model$H1_Lookup$rank == "species")
@@ -351,12 +347,14 @@ if (length(h1_low_cov_ids) > 0) {
 }
 
 
-# ---- 8. Save model and threshold for Workflow 4 -----------------------------
+# ---- 8. Save model for Workflow 4 -------------------------------------------
+# No calibrated coverage_threshold.rds is produced -- calibrate_coverage_
+# filter()/coverage_threshold() were archived 2026-09-09 (see TaxaLikely/
+# CLAUDE.md's top session note). Workflow 4 already handles a missing
+# coverage_threshold.rds gracefully (min_coverage = NULL, no pre-filter).
 saveRDS(model, "trained_model.rds")
-saveRDS(best_thresh, "coverage_threshold.rds") # min_coverage filter for Workflow 4
-message("Saved trained_model.rds and coverage_threshold.rds")
+message("Saved trained_model.rds")
 
 message("\nWorkflow 3 complete.")
 message("Next: Workflow 4 (convert match scores to likelihoods)")
-message("  Pass coverage_threshold.rds as min_coverage to evaluate_likelihoods()")
 message("  Compare score_likelihood vs score_likelihood_cov in Workflow 4 output")

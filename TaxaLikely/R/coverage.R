@@ -985,8 +985,9 @@ audit_barcode_coverage <- function(match_df,
 #'           if it has very few training recordings.}
 #'       }}
 #'     \item{`unreferenced`}{Character vector of species names absent from
-#'       `reference_species`.  Pass to `TaxaAssign::suggest_unreferenced_species()`
-#'       as `unreferenced_taxa` to build H2 hypotheses for these species.}
+#'       `reference_species`.  Pass directly to
+#'       `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)` to build H2
+#'       hypotheses for these species.}
 #'   }
 #'
 #' @seealso [audit_barcode_coverage()], [apply_coverage_constraints()]

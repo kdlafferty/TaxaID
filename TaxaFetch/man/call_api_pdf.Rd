@@ -122,7 +122,7 @@ session-wide, or pass \code{provider} explicitly for a single call.
 # Typical Stage 3 usage -- page_map from Stage 2, pdf_structure from
 # screen_pdf_structure() (build_pdf_extract_prompt() takes a
 # pdf_structure object, not the raw output of extract_pdf_text()):
-pdf_content   <- extract_pdf_text("Swift_et_al_1993.pdf")
+pdf_content <- extract_pdf_text("Swift_et_al_1993.pdf")
 pdf_structure <- screen_pdf_structure(pdf_content)
 
 prompt <- build_pdf_extract_prompt(pdf_structure)

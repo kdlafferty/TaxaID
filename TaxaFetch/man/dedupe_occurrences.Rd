@@ -148,5 +148,5 @@ occ <- dedupe_occurrences(occ)
 }
 \seealso{
 \code{\link{stack_occurrences}}, \code{\link{get_gbif_occurrences}},
-\code{\link[TaxaExpect]{prepare_model_dataframe}}
+\code{\link[TaxaExpect]{estimate_kernel_priors}}
 }

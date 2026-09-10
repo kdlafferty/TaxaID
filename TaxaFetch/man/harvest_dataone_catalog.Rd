@@ -84,8 +84,10 @@ handled downstream via \code{\link{screen_eml_columns}} (EML
 }
 \examples{
 \dontrun{
-catalog <- harvest_dataone_catalog(cache_file = "pasta_catalog.rds",
-                                   max_age_days = 7)
+catalog <- harvest_dataone_catalog(
+  cache_file = "pasta_catalog.rds",
+  max_age_days = 7
+)
 nrow(catalog)
 table(catalog$is_candidate)
 }

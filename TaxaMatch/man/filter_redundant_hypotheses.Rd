@@ -58,17 +58,17 @@ uncertainty that the data doesn't actually support.
 }
 \examples{
 df <- data.frame(
-  observation_id       = "S1",
-  kingdom         = "Eukaryota",
-  phylum          = "Chordata",
-  class           = "Actinopteri",
-  order           = "Gobiiformes",
-  family          = "Gobiidae",
-  genus           = c("Gobius", "Gobius", "Acanthogobius"),
-  species         = c("Gobius paganellus", NA, NA),
-  taxon_name      = c("Gobius paganellus", "Gobius", "Acanthogobius"),
+  observation_id = "S1",
+  kingdom = "Eukaryota",
+  phylum = "Chordata",
+  class = "Actinopteri",
+  order = "Gobiiformes",
+  family = "Gobiidae",
+  genus = c("Gobius", "Gobius", "Acanthogobius"),
+  species = c("Gobius paganellus", NA, NA),
+  taxon_name = c("Gobius paganellus", "Gobius", "Acanthogobius"),
   taxon_name_rank = c("species", "genus", "genus"),
-  score_original  = c(99, 95, 88),
+  score_original = c(99, 95, 88),
   stringsAsFactors = FALSE
 )
 filter_redundant_hypotheses(df)

@@ -103,7 +103,7 @@ using the result downstream.
 # Translate NCBI names to GBIF taxonomy
 ncbi_names <- c("Homo sapiens", "Mus musculus")
 
-verify_taxon_names(ncbi_names, backbone_id = 11) |>  # 11 = GBIF
+verify_taxon_names(ncbi_names, backbone_id = 11) |> # 11 = GBIF
   change_backbone(
     input_col          = "user_supplied_name",
     old_backbone_label = "NCBI",

@@ -49,12 +49,18 @@ utils::globalVariables(c(
 #'     H2/H3 are anchored at the median softmax-normalized score of same-genus
 #'     (H2) or same-family (H3) H1 candidates.  Appropriate for the LLM
 #'     shortcut pathway when no trained model exists.}
-#'   \item{\code{"similarity"}}{Similarity scores that will be processed by
-#'     the bivariate-normal model in [model_likelihoods()].  This function
-#'     only adds \code{score_norm} to H1 rows and sets
-#'     \code{score_method = "similarity"}; it does \strong{not} write
-#'     \code{score_likelihood}.  Call [model_likelihoods()] to complete the
-#'     pipeline.}
+#'   \item{\code{"similarity"}}{Similarity scores destined for the
+#'     bivariate-normal model.  This function only adds \code{score_norm} to
+#'     H1 rows and sets \code{score_method = "similarity"}; it does
+#'     \strong{not} write \code{score_likelihood}.  In practice this
+#'     pathway is not how the bivariate-normal model is actually reached --
+#'     every real caller trains a model with [train_likelihood_model()] and
+#'     calls [evaluate_likelihoods()] directly on the original \code{match_df}
+#'     (see that function's own \code{@param match_df}), which internally
+#'     performs the same logit transform / H1 selection this \code{score_type}
+#'     value stages.  \code{score_type = "similarity"} is retained as a
+#'     documented, tested contract of this function, not as a recommended
+#'     entry point.}
 #' }
 #'
 #' \strong{Normalization convention:} all \code{score_likelihood} values are
@@ -81,7 +87,9 @@ utils::globalVariables(c(
 #'
 #' @return For \code{score_type = "similarity"}: the input data frame with
 #'   \code{score_norm} (H1 rows only) and \code{score_method = "similarity"}
-#'   added.  Pass to [model_likelihoods()] to complete the pipeline.
+#'   added.  See the \code{"similarity"} entry under \code{@details} above --
+#'   real callers use [evaluate_likelihoods()] directly instead of continuing
+#'   from this output.
 #'
 #'   For all other \code{score_type} values: a data frame with one row per
 #'   \code{observation_id} x hypothesis (H1 aggregated to one row per
@@ -89,8 +97,7 @@ utils::globalVariables(c(
 #'   \code{score_likelihood}, \code{score_likelihood_mean} (= point estimate),
 #'   \code{score_likelihood_sd} (= 0), and \code{score_method} added.
 #'
-#' @seealso [unreferenced_candidates()], [model_likelihoods()],
-#'   [compute_likelihoods()]
+#' @seealso [unreferenced_candidates()], [evaluate_likelihoods()]
 #'
 #' @note For a fully runnable, non-`\dontrun{}` demonstration (including where
 #'   `match_df`/`hyp_df` come from), see `inst/review_function_inputs.R`
@@ -282,8 +289,9 @@ assign_scores <- function(hypotheses_df,
     # rather than dropping it -- so a single NA hypothesis_type manufactured
     # four fully-NA output rows, one of which carried the fixed H4 likelihood
     # of 0.05 and two of which carried a likelihood of 1.0. A NA
-    # hypothesis_type is reachable (model_likelihoods() explicitly handles it),
-    # and a row with an unknown hypothesis type belongs to none of the four
+    # hypothesis_type is reachable (a caller-supplied hypotheses_df can
+    # legitimately carry one), and a row with an unknown hypothesis type
+    # belongs to none of the four
     # groups, which is exactly what %in% gives.
     h1_mask <- obs_rows$hypothesis_type %in% "specific_candidate"
     h2_mask <- obs_rows$hypothesis_type %in% "unreferenced_species"

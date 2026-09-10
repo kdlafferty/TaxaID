@@ -101,17 +101,18 @@ if (DEBUG_MODE) {
     " (", nrow(taxaexpect_priors), " prior row(s))."
   )
 
-  # CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: TaxaExpect::generate_full_priors()'s
-  # own roxygen docs (R/generate_full_priors.R, @note) state its output has
-  # taxon_name but NOT taxon_name_rank, and that join_priors() requires the
+  # CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: TaxaExpect's priors output --
+  # from the archived generate_full_priors() (GLMM path, archived 2026-09-09)
+  # or the current estimate_kernel_priors()$priors (kernel path) -- has
+  # taxon_name but NOT taxon_name_rank, and join_priors() requires the
   # latter -- join_priors() errors outright ("missing required column(s):
-  # taxon_name_rank") without it. generate_full_priors()'s every modelled row
-  # is species-level by construction (TaxaExpect predicts at the species rank
-  # only); the one exception is the global-floor undetected row, whose
-  # taxon_name is NA and so has no meaningful rank either. Add the column
-  # directly rather than routing through TaxaTools::create_taxon_names()
-  # (which derives taxon_name/taxon_name_rank FROM separate rank columns --
-  # taxaexpect_priors has only the single flat taxon_name string, not that).
+  # taxon_name_rank") without it. Every modelled row is species-level by
+  # construction (TaxaExpect predicts at the species rank only); the one
+  # exception is the global-floor undetected row, whose taxon_name is NA and
+  # so has no meaningful rank either. Add the column directly rather than
+  # routing through TaxaTools::create_taxon_names() (which derives taxon_name/
+  # taxon_name_rank FROM separate rank columns -- taxaexpect_priors has only
+  # the single flat taxon_name string, not that).
   taxaexpect_priors$taxon_name_rank <- ifelse(
     is.na(taxaexpect_priors$taxon_name), NA_character_, "species"
   )
@@ -278,9 +279,10 @@ if (DEBUG_MODE) {
   #   taxaexpect_priors$taxon_name_rank <- ifelse(
   #     is.na(taxaexpect_priors$taxon_name), NA_character_, "species"
   #   )
-  #     (REQUIRED: generate_full_priors() does not add taxon_name_rank, but
-  #     join_priors() requires it -- see the comment above this block's
-  #     DEBUG_MODE counterpart for why this one-liner is correct.)
+  #     (REQUIRED: neither the archived generate_full_priors() nor the current
+  #     estimate_kernel_priors() adds taxon_name_rank, but join_priors()
+  #     requires it -- see the comment above this block's DEBUG_MODE
+  #     counterpart for why this one-liner is correct.)
   #
   #   likelihoods <- readRDS("path/to/your_likelihoods.rds")
   #     (the object produced by TaxaMatch + TaxaLikely -- a data frame with at

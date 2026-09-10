@@ -36,7 +36,7 @@
 #'   writing files.
 #'
 #' @seealso [read_reference_fasta()], [fetch_ncbi_reference_sequences()],
-#'   [read_crabs_output()], [build_site_reference()]
+#'   [read_crabs_output()]
 #'
 #' @examples
 #' \dontrun{

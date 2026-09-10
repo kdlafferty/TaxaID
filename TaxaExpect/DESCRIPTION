@@ -13,27 +13,21 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Imports:
     dplyr,
-    rlang,
-    glmmTMB,
     grDevices,
     graphics,
     stats,
     utils,
-    stringr,
     tibble,
-    tidyr,
     TaxaTools
 Suggests:
     htmltools,
     htmlwidgets,
     knitr,
     leaflet,
-    miniUI,
     rentrez,
     rmarkdown,
     rgbif,
     sf,
-    shiny,
     TaxaFetch,
     TaxaFlag,
     TaxaHabitat,

@@ -93,8 +93,8 @@ message(sprintf("Pairwise comparisons: %d", nrow(ref_matrix)))
 # 3. FLAG OUTLIER SEQUENCES (optional)
 # ==============================================================================
 # Within-species pairs with unusually low matches suggest mislabeled references.
-# TaxaLikely::flag_reference_errors() does this systematically, but here we
-# use a quick MAD-based filter for the demo.
+# TaxaMatch::corroborate_references_locally()/evaluate_reference_accessions()
+# do this systematically, but here we use a quick MAD-based filter for the demo.
 
 outliers <- ref_matrix |>
   filter(species.x == species.y) |>

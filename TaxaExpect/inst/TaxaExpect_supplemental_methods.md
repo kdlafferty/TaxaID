@@ -42,21 +42,17 @@ than switching on or off at an arbitrary spatial boundary, and produces
 informative priors even for lightly sampled sites by shrinking toward
 the surrounding region's composition.
 
-An earlier version of TaxaExpect aggregated occurrence records into a
-fixed grid and fit priors with a spatial hierarchical generalized linear
-mixed model (GLMM), predicting each site's priors from its single
-nearest grid cell. Leave-one-block-out validation -- holding out blocks
-of occurrence records and scoring composition predictions by
-multinomial log-loss against the held-out records -- found that this
-single-nearest-cell predictor scored *worse* than ignoring space
-entirely (unweighted regional pooling), while a continuous distance
-kernel beat both. That empirical result, not a stylistic preference, is
-why the grid/GLMM architecture was retired in favor of the kernel
-estimator described in the rest of this document (Section 5 reports the
-specific numbers). The GLMM functions remain in the package, deprecated
-(each emits a one-time notice pointing to its kernel replacement) for
-reference and backward compatibility, but are not described further
-here.
+A fixed-grid approach -- aggregating occurrence records into cells and
+predicting each site's priors from its single nearest grid cell -- was
+evaluated as an alternative during development. Leave-one-block-out
+validation -- holding out blocks of occurrence records and scoring
+composition predictions by multinomial log-loss against the held-out
+records -- found that this single-nearest-cell predictor scored *worse*
+than ignoring space entirely (unweighted regional pooling), while a
+continuous distance kernel beat both. That empirical result, not a
+stylistic preference, is why TaxaExpect uses the kernel estimator
+described in the rest of this document (Section 5 reports the specific
+numbers).
 
 ------------------------------------------------------------------------
 
@@ -67,8 +63,7 @@ Section 4) has tuning values -- principally the geographic bandwidth
 `lambda_km`, and optionally a covariate bandwidth and the regional
 back-off mass `m` -- that must be chosen from data rather than guessed.
 `calibrate_kernel_bandwidth()` chooses them by out-of-sample composition
-prediction, replacing the retired architecture's AIC-based formula
-screening (`screen_spatial_formula()`, no longer described here):
+prediction:
 
 1.  **Partition** occurrence records into spatial blocks (default
     0.5-degree squares; a block enters scoring only if it holds at
@@ -86,8 +81,8 @@ screening (`screen_spatial_formula()`, no longer described here):
 4.  **Compare against two references**, scored the same way, for
     context: `regional` (all held-out records, unweighted -- tests
     whether locality is worth anything at all) and `nearest_block` (the
-    single nearest other block's composition -- the retired
-    one-cell-per-site architecture).
+    single nearest other block's composition -- a fixed-grid,
+    one-cell-per-site alternative).
 
 The parameter combination with the lowest weighted log-loss among
 kernel rows is reported as `best`, alongside the full results table so
@@ -99,9 +94,9 @@ log-loss (lower is better) was: `nearest_block` (single nearest cell)
 3.659 -- the *worst* of every option tested; `regional` (no spatial
 structure at all) 3.526; kernel bandwidths ranging from 3.538 (10 km) to
 3.267 (25 km, the interior optimum) to 3.384 (100 km). The single-cell
-predictor -- the retired architecture -- scored worse than ignoring
-space entirely, while the distance kernel beat both regional pooling
-and the single-cell predictor at every bandwidth from 25 km to 100 km.
+predictor scored worse than ignoring space entirely, while the distance
+kernel beat both regional pooling and the single-cell predictor at every
+bandwidth from 25 km to 100 km.
 Adding a depth covariate kernel (Section 4.2) improved prediction
 further beyond the geographic-only optimum: the best combined
 configuration (geographic bandwidth 100 km, depth bandwidth 25) scored
@@ -126,18 +121,14 @@ query site's own coordinates, focal habitat, and calibrated bandwidth.
 **Habitat stratification happens first, before any distance weighting.**
 Records are restricted to `habitat_col == site_habitat` before the
 kernel is ever evaluated -- a species recorded only in a different
-habitat contributes zero weight to this site's estimate. This is
-stricter than the retired architecture, which could extrapolate a
-species into a habitat it had never been recorded in via the model's
-fixed habitat effect (with the `observed_in_habitat` flag marking that
-extrapolation as risky, Section 3 of the retired design). Under the
-kernel estimator, every `resident_observed` row carries
-`observed_in_habitat = TRUE` by construction, because a row simply
-cannot exist otherwise -- there is no cross-habitat interpolation risk
-left to flag for these rows. The corresponding gap this stratification
-opens (a species genuinely present but recorded in the *wrong* habitat)
-is not resolved by widening the stratum; it is addressed, where it is
-addressed at all, by the separate transport branch (Section 7.4).
+habitat contributes zero weight to this site's estimate. Every
+`resident_observed` row therefore carries `observed_in_habitat = TRUE`
+by construction, because a row simply cannot exist otherwise -- there is
+no cross-habitat interpolation risk left to flag for these rows. The
+corresponding gap this stratification opens (a species genuinely present
+but recorded in the *wrong* habitat) is not resolved by widening the
+stratum; it is addressed, where it is addressed at all, by the separate
+transport branch (Section 7.4).
 
 **Covariates** are supplied per record and per site (e.g. `depth_m`);
 records with a missing covariate value receive the neutral weight 1 for
@@ -249,9 +240,7 @@ prior; a site whose only nearby evidence is a few weakly-overlapping
 distant records has low `n_eff` and a diffuse one, whatever the raw
 record count in the stratum happens to be.
 
-The output table's schema reflects this directly, replacing the retired
-architecture's discrete `model_tier` vocabulary (`"tier1"` /
-`"tier2"` / `"tier3_undetected"`) with two columns:
+The output table's schema reflects this directly, via two columns:
 
 -   **`prior_branch`** (character): which part of the framework a row
     belongs to. `"resident_observed"` marks the kernel-fitted rows
@@ -264,13 +253,12 @@ architecture's discrete `model_tier` vocabulary (`"tier1"` /
 -   **`effective_records`** (numeric, continuous): the kernel-effective
     record count `c_i * s` backing the row, in count units. A species
     with 4.3 effective records is priced continuously on that scale,
-    rather than being binned into a `>= 5 detections` / `< 5 detections`
-    tier split as the retired architecture did.
+    rather than being binned into a discrete detection-count tier.
 
-`model_tier` is retained on rows built by the still-functional (but
-deprecated) GLMM path, and on a handful of downstream columns for
-backward compatibility, but carries no meaning on kernel-estimated
-rows.
+`model_tier` survives only as a legacy column, on tables built before
+the GLMM prior-fitting pathway was archived and on a handful of
+downstream columns for backward compatibility, but carries no meaning on
+kernel-estimated rows.
 
 ### 4.4. Computation
 
@@ -279,9 +267,8 @@ prediction time, never a latent spatial model. One pass over the
 occurrence records computes every species' weight simultaneously (0.11
 seconds at 1.8 million records, measured), so cost is independent of
 species count and there is no iterative optimization or convergence
-step to monitor, unlike the retired GLMM's Laplace-approximation fit
-(minutes-scale, with its own convergence diagnostics, Section 4.4 of
-the retired design). Per-species latent spatial fields (Gaussian
+step to monitor, unlike a Laplace-approximation GLMM fit (minutes-scale,
+with its own convergence diagnostics). Per-species latent spatial fields (Gaussian
 process / SPDE / per-taxon GAMM smooths) were considered during the
 original design and are deliberately excluded: that family is
 computationally infeasible at many-species scale (an hours-scale cost
@@ -322,7 +309,7 @@ rank correlation was 0.923 overall and 0.927 restricted to the GLMM's
 tier-1 (best-supported) rows. The larger divergences were concentrated
 in rows the GLMM had priced either by its wrong-habitat promotion clause
 (a real species detected in the wrong habitat, promoted to singleton
-parity by the retired architecture) or by its own epsilon-clamp
+parity by the model's fixed habitat effect) or by its own epsilon-clamp
 artifact (`theta = 1e-6` exactly -- not a model prediction, a numerical
 floor); the kernel prices both classes of row far lower and, per the
 same leave-one-block-out predictive standard used at Great Lakes, more
@@ -340,10 +327,9 @@ factor (Section 4.2) at regional scale.
 
 ### 6.1. Direct Construction
 
-Unlike the retired architecture, the kernel estimator's Beta parameters
-are not back-transformed from a link-scale prediction and standard
-error -- they are built directly from the same count-like quantities
-used to compute `theta`:
+The kernel estimator's Beta parameters are not back-transformed from a
+link-scale prediction and standard error -- they are built directly
+from the same count-like quantities used to compute `theta`:
 
 ```         
 alpha = c_i * s + m * p_i
@@ -355,35 +341,22 @@ theta_sd   = sqrt( alpha * beta / ((alpha + beta)^2 * (alpha + beta + 1)) )
 The concentration `alpha + beta = n_eff + m` is the effective sample
 size backing the estimate: higher concentration (more effectively
 supporting records, or a larger back-off mass at a data-poor site) means
-a more informative prior, exactly as in the retired architecture's
-`phi`, but now equal to a quantity the estimator already computes for
-`theta` itself rather than a separate variance-propagation step.
+a more informative prior, equal to a quantity the estimator already
+computes for `theta` itself rather than a separate variance-propagation
+step.
 
-### 6.2. Why the Retired Safeguards No Longer Apply
+### 6.2. Why No Numerical Safeguards Are Needed
 
-The retired architecture needed a phi cap (bounding concentration by the
-model's own `taxon_name:grid_id` random-effect variance), a phi floor
-(a minimum concentration, `min_phi`), a Jeffreys fallback (Beta(0.5,
-0.5) when phi collapsed to zero or below), and extrapolation warnings
-(flagging sites far outside the training covariate range) because its
-predictions were made on the logit link scale and back-transformed by
-the delta method -- a transformation that can produce concentration
-values that explode near `theta` = 0 or 1, or collapse to zero or
-negative under covariate extrapolation. (One of these, the phi cap, was
-already failing open in production before the kernel redesign: its
-`VarCorr` lookup for the `taxon_name:grid_id` term was silently falling
-back to a fixed value of 1000 rather than the intended model-derived
-ceiling -- a pre-existing bug, not something the kernel path
-introduces or must reproduce.)
-
-The kernel estimator has no analogous failure mode to guard against:
-`alpha` and `beta` are built from non-negative counts and pseudo-counts
-by construction, so they cannot go negative and there is no link-scale
-transformation to blow up. None of the four safeguards above are
-needed on kernel-estimated rows. (The global floor prior for genuinely
-undetected species, Section 7.1, retains its own small-`N` Jeffreys
-fallback, which is a different mechanism serving a different purpose
-and is unaffected by this.)
+`alpha` and `beta` are built directly from non-negative counts and
+pseudo-counts (Section 6.1), so they cannot go negative, and there is no
+link-scale transformation involved that could produce a concentration
+value that explodes near `theta` = 0 or 1, or collapses toward zero
+under covariate extrapolation. No concentration cap, concentration
+floor, Jeffreys fallback, or extrapolation warning is needed on
+kernel-estimated rows. (The global floor prior for genuinely undetected
+species, Section 7.1, retains its own small-`N` Jeffreys fallback, which
+is a different mechanism serving a different purpose and is unaffected
+by this.)
 
 ------------------------------------------------------------------------
 
@@ -579,24 +552,19 @@ papers over.
 
 ## 8. Assembling the Prior Table
 
-There is currently no single kernel-path equivalent of the retired
-`build_priors()` wrapper (which remains the GLMM-only convenience
-function, deprecated but unchanged in behavior). The kernel pipeline is
-assembled from its component functions, typically in this order:
+The kernel pipeline is assembled from its component functions, typically
+in this order:
 
-1.  Fetch and habitat-label occurrence records (TaxaFetch, TaxaHabitat --
-    unchanged from the retired pipeline).
+1.  Fetch and habitat-label occurrence records (TaxaFetch, TaxaHabitat).
 2.  `calibrate_kernel_bandwidth()` -- choose `lambda_km` (and, if used,
     `lambda_covariate`, `lambda_latitude`, `m`) by leave-one-block-out
     prediction (Section 2).
 3.  `estimate_kernel_priors()` -- fit the `resident_observed` rows at
     the study site (Sections 4, 6).
 4.  `generate_undetected_diversity()` -- `resident_undetected`
-    floor/singleton rows from the same kernel object (Section 7.1); the
-    function's rules are unchanged from the retired architecture, only
-    re-plumbed onto kernel ingredients (`N` becomes the Kish `n_eff`;
-    singletons are the kernel's neighborhood singletons, stamped with
-    the site's own id rather than a distant donor cell's).
+    floor/singleton rows from the same kernel object (Section 7.1): `N`
+    is the Kish `n_eff`, and singletons are the kernel neighborhood's
+    own singletons, stamped with the site's own id.
 5.  `generate_presence_curve_evidence()` and/or
     `generate_user_specified_evidence()`, combined via
     `apply_undetected_evidence(pricing = "curve")` -- price named
@@ -604,9 +572,9 @@ assembled from its component functions, typically in this order:
 6.  `generate_domestic_food_priors()` -- transport-branch rows
     (Section 7.4).
 7.  `dplyr::bind_rows()` the results into one `taxaexpect_priors`
-    table, which `TaxaAssign::join_priors()` consumes exactly as it did
-    the retired architecture's output -- `grid_id` remains an opaque
-    join key throughout.
+    table, which `TaxaAssign::join_priors()` consumes on the composite
+    key `(taxon_name, taxon_name_rank, grid_id, main_habitat)` --
+    `grid_id` remains an opaque join key throughout.
 
 ------------------------------------------------------------------------
 
@@ -628,19 +596,15 @@ distinguishes the locally present species from a distant relative.
 
 **Effective sample size reflects effort, not community size:** `n_eff`
 (Section 4.3) reflects how much effectively-independent local evidence
-exists, which tracks sampling effort more than true community size --
-the same caveat that applied to the retired architecture's raw record
-count `N`. Unlike the retired architecture, the kernel estimator does
-not exclude low-effort sites outright (there is no `effort_threshold`
-cell exclusion); instead, low `n_eff` sites lean more heavily on the
-`m`-pseudo-record regional back-off, continuously rather than via a
-hard cutoff.
+exists, which tracks sampling effort more than true community size. The
+kernel estimator does not exclude low-effort sites outright; instead,
+low `n_eff` sites lean more heavily on the `m`-pseudo-record regional
+back-off, continuously rather than via a hard cutoff.
 
 **Habitat classification:** Records are stratified to the site's own
 habitat before any weighting (Section 3), so a misclassified habitat
 record contributes zero weight to that site's estimate rather than
-propagating an incorrect extrapolated prior, as could happen under the
-retired architecture's fixed habitat effect. The corresponding tradeoff
+propagating an incorrect extrapolated prior. The corresponding tradeoff
 is Section 7.4's transport-branch gap: a genuinely present species
 recorded only in the wrong habitat currently receives a transport row
 only if it is on the domestic/food list; other wrong-habitat wild
@@ -664,7 +628,7 @@ claimant's own establishment or abundance evidence raises its presence
 probability `w`, never `theta_present` itself. The budget audit (Section
 7.3) reports, but does not enforce, how much of the Good-Turing
 unseen-mass budget a run's named claimants collectively draw on.
-`TaxaAssign::suggest_unreferenced_species()` (LLM-based plausibility)
+`TaxaLikely::suggest_unreferenced_species()` (LLM-based plausibility)
 remains the complementary mechanism for diversity too poorly recorded
 to reach any occurrence-based estimate at all.
 
@@ -692,13 +656,12 @@ in Section 8:
 | `evidence_weight`, `evidence_sources` | Audit columns on `evidence_blend` rows: the combined presence weight and contributing evidence sources |
 | `prior_mix_w`, `prior_mix_theta_present`, `prior_mix_theta_absent`, `prior_mix_p_conc` | The presence mixture itself, on `evidence_blend` rows, for `TaxaAssign::compute_posterior()`'s presence-draw sampler |
 | `prior_source_type` | Finer transport-branch provenance (`"domestic_animal"`, `"food_species"`, `"domestic_plant"`, etc.), `transport` rows only |
-| `model_tier` | Present only on rows built by the still-functional but deprecated GLMM path; carries no meaning on kernel-estimated rows |
+| `model_tier` | Legacy column, present only on rows built by the GLMM prior-fitting pathway; carries no meaning on kernel-estimated rows |
 
 `TaxaAssign::join_priors()` joins this table to likelihood output on the
 composite key `(taxon_name, taxon_name_rank, grid_id, main_habitat)` and
 uses the alpha/beta parameters for Beta-distributed priors in Monte
-Carlo posterior estimation -- the join key and downstream consumption
-are unchanged from the retired architecture.
+Carlo posterior estimation.
 
 ------------------------------------------------------------------------
 
@@ -733,8 +696,7 @@ are unchanged from the retired architecture.
 | `generate_user_specified_evidence()` | Caller-asserted presence weights for named species, with dilution-threshold disclosure |
 | `apply_undetected_evidence()` | Combine evidence sources into elevated `resident_undetected` priors (`pricing = "blend"` or `"curve"`) |
 | `generate_domestic_food_priors()` | `transport`-branch priors for domestic, food, and cultivar species |
-| `build_priors()` | End-to-end GLMM wrapper (deprecated; no kernel-path equivalent yet) |
-| `plot_theta_map_interactive()` | Interactive Leaflet map of priors (deprecated GLMM branch only; parses `Grid_*` ids) |
+| `plot_theta_surface()` | KDE prior-field map for the kernel-priors path |
 
 ------------------------------------------------------------------------
 
@@ -761,12 +723,6 @@ TaxaAssign
     |-- join_priors(): match priors to query site
     |-- compute_posterior(): combine with TaxaLikely likelihoods
 ```
-
-(The retired GLMM chain -- `build_priors()`, `optimize_grid_size()`,
-`prepare_model_dataframe()`, `compute_moran_basis()`,
-`screen_spatial_formula()`, `train_biodiversity_model()`,
-`generate_full_priors()` -- remains in the package, deprecated, and is
-not shown above.)
 
 ------------------------------------------------------------------------
 

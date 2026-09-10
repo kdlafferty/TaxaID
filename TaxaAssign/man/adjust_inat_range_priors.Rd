@@ -82,7 +82,7 @@ left unchanged.
 \examples{
 likelihoods_ready <- data.frame(
   taxon_name      = c("Species alpha", "Species beta"),
-  alpha           = c(NA, 5),          # NA = unmodelled
+  alpha           = c(NA, 5), # NA = unmodelled
   prior_alpha     = c(1, 5),
   prior_beta      = c(99, 15),
   prior_mean      = c(0.01, 0.25),
@@ -90,8 +90,8 @@ likelihoods_ready <- data.frame(
   singleton_beta  = c(18, 18)
 )
 inat_range <- data.frame(
-  taxon_name    = c("Species alpha", "Species beta"),
-  in_range      = c(TRUE, FALSE),
+  taxon_name = c("Species alpha", "Species beta"),
+  in_range = c(TRUE, FALSE),
   n_observations = c(800, 5)
 )
 adjust_inat_range_priors(likelihoods_ready, inat_range, n_obs_threshold = 500L)

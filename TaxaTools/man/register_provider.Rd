@@ -61,14 +61,14 @@ for automatic re-registration.
 # Register xAI Grok (OpenAI-compatible)
 Sys.setenv(XAI_API_KEY = "xai-...")
 register_provider(
-  name            = "xai",
-  api_key_var     = "XAI_API_KEY",
-  base_url        = "https://api.x.ai",
+  name = "xai",
+  api_key_var = "XAI_API_KEY",
+  base_url = "https://api.x.ai",
   fallback_models = list(fast = "grok-3-mini", mid = "grok-3", top = "grok-3"),
-  tier_patterns   = list(
-    fast = list(include = "mini",    exclude = NULL),
+  tier_patterns = list(
+    fast = list(include = "mini", exclude = NULL),
     mid  = list(include = "grok-3$", exclude = "mini"),
-    top  = list(include = NULL,      exclude = NULL)
+    top  = list(include = NULL, exclude = NULL)
   )
 )
 
@@ -80,11 +80,13 @@ call_openai_api("What phylum do sea urchins belong to?",
 )
 
 # Or as an llm_fn closure for use anywhere in the ecosystem
-my_grok <- function(p, ...) call_openai_api(p,
-  tier     = "mid",
-  base_url = "https://api.x.ai",
-  api_key  = Sys.getenv("XAI_API_KEY")
-)
+my_grok <- function(p, ...) {
+  call_openai_api(p,
+    tier     = "mid",
+    base_url = "https://api.x.ai",
+    api_key  = Sys.getenv("XAI_API_KEY")
+  )
+}
 options(TaxaID.llm_fn = my_grok)
 
 # Inspect

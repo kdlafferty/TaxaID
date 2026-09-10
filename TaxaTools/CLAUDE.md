@@ -278,14 +278,26 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
+| `call_api()` | Generic, provider-neutral LLM dispatcher (Session 87) -- resolves provider/model/API key/endpoint and submits one prompt string; every `call_*_api()` provider function below is a thin wrapper around it. Also the default `llm_fn` most of this ecosystem's LLM-calling functions fall back to via `getOption("TaxaID.llm_fn")`. Handles token-usage accounting (auto-populates `token_usage()`'s ledger), `max_input_tokens` pre-flight guard, `images` (base64 PNG vision input), `show_tokens`. **2026-09-04 fix**: was undocumented in this table since Session 87 despite being this package's central dispatch function -- added during the ecosystem-wide Function Inventory accuracy pass. | Complete | R/call_api.R |
 | `call_anthropic_api()` | Submit one prompt string to Anthropic Claude | Complete | R/llm_api_utils.R |
 | `call_gemini_api()` | Submit one prompt string to Google Gemini (free tier available) | Complete | R/llm_api_utils.R |
 | `call_openai_api()` | Submit one prompt string to OpenAI ChatGPT | Complete | R/llm_api_utils.R |
 | `call_ollama_api()` | Submit one prompt string to a local Ollama model (no API key) | Complete | R/llm_api_utils.R |
+| `call_azure_openai_api()` | Submit one prompt string to a DOI-internal Azure OpenAI Chat Completions endpoint (DOI employees only -- requires DOI network/VPN + `AZURE_OPENAI_API_KEY`). Thin wrapper around `call_api()`, drop-in `llm_fn`. **2026-09-04 fix**: missing from this table since it was added; found during the ecosystem-wide accuracy pass. | Complete | R/llm_api_utils.R |
 | `prompt_api()` | Multi-chunk llm_prompt dispatcher; default `llm_fn` from `getOption("TaxaID.llm_fn")` | Complete | R/llm_api_utils.R |
 | `prompt_manual()` | Write prompt files for manual web interface submission | Complete | R/llm_api_utils.R |
 | `read_llm_response()` | Read and concatenate saved LLM response files | Complete | R/llm_api_utils.R |
 | `%||%` | Null-coalescing operator; exported for use by downstream packages via `@importFrom` | Complete | R/llm_api_utils.R |
+
+### Model registry & discovery functions (undocumented gap, added 2026-09-04)
+
+| Function | Purpose | Status | Source file |
+|---|---|---|---|
+| `list_models()` | List current tier -> model-ID assignments per provider (lazy-discovered on first real use, cached locally). | Complete | R/model_registry.R |
+| `refresh_models()` | Force re-discovery of available models from each provider's live API, refreshing the local persistent model cache. Call when a model name becomes stale. | Complete | R/model_registry.R |
+| `set_model()` | Pin a specific model version for a given provider/tier for reproducibility (session-only, does not touch the persistent cache). | Complete | R/model_registry.R |
+| `model_cache_info()` | Report the location and age of the local persistent model-discovery cache. | Complete | R/model_registry.R |
+| `register_provider()` | Register a custom OpenAI-compatible LLM provider (e.g. xAI/Grok) so it can be selected via `call_api(provider = ...)`. | Complete | R/model_registry.R |
 
 ### LLM provider auto-detection (Session 82)
 
@@ -331,6 +343,13 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `build_report_context()` | Domain-agnostic S3 context object with verified facts for grounding LLM output | Complete | R/draft_text.R |
 | `draft_methods_text()` | Read R code and draft Methods section via LLM; context-aware; audience param | Complete | R/draft_text.R |
 | `draft_results_text()` | Read R objects and draft Results section via LLM; context-aware; audience param | Complete | R/draft_text.R |
+
+### Report section assembly functions (undocumented gap, added 2026-09-04)
+
+| Function | Purpose | Status | Source file |
+|---|---|---|---|
+| `new_report_section()` | Constructor for the `report_section` S3 class used by every package's own `report_*()` function (e.g. `TaxaFetch::report_fetch()`, `TaxaMatch::report_match()`) -- one section per pipeline step, holding methods/results text, citations, params, statistics. Has `print.report_section()`/`format.report_section()` S3 methods (registered, not separately exported). | Complete | R/report_section.R |
+| `assemble_report()` | Combine any number of `report_section` objects (typically one per TaxaID package used in a pipeline) into one unified markdown report, ordered by pipeline position, with deduplicated citations collected into a trailing "Data Sources" section. | Complete | R/report_section.R |
 
 ---
 

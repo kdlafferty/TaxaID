@@ -15,304 +15,6 @@ utils::globalVariables(c(
 ))
 
 # ==============================================================================
-# MODULE B-QC: REFERENCE DATABASE ERROR DETECTION
-# ==============================================================================
-
-#' Compute per-accession reference QC statistics
-#'
-#' Internal helper shared by [flag_reference_errors()] and
-#' `TaxaLikely::audit_reference_database()`. Reduces a pairwise distance
-#' matrix (output of `build_sequence_matrix()`) to one row per accession,
-#' carrying only the raw self-match/foreign-match statistics -- no
-#' categorization. `flag_reference_errors()` applies its own `error_type`
-#' threshold on top of this; `audit_reference_database()` returns these raw
-#' numbers directly, leaving categorization to `classify_reference_accessions()`.
-#'
-#' @param raw_df Data frame of pairwise match scores, as returned by
-#'   `build_sequence_matrix()`. Must contain `id_x`, `id_y`, `species.x`,
-#'   `species.y`, and `p_match`.
-#' @param min_coverage Numeric or `NULL` (default `NULL`). When not `NULL`
-#'   and a `coverage` column is present in `raw_df`, a pair whose `coverage`
-#'   is below this threshold is excluded before any statistic is computed --
-#'   `coverage` (see `build_sequence_matrix()`) is the fraction of the
-#'   shorter sequence that actually aligned against non-gap positions in the
-#'   other, i.e. a direct, per-pair measurement of whether the two sequences
-#'   genuinely cover the same stretch of the gene. This is a more general
-#'   and more precise fix for the "amplicon-window mismatch" problem than
-#'   restricting `build_sequence_matrix(barcode_term=)` to one named
-#'   primer's length range: two sequences of similar length can still cover
-#'   *different* parts of the gene (length alone can't detect this, real
-#'   alignment coverage can), and a length-window restriction excludes a
-#'   whole accession outright even when it *would* have genuinely overlapped
-#'   some other sequence of a different length. Matching
-#'   `evaluate_likelihoods()`'s own `min_coverage` convention: `NA` coverage
-#'   (e.g. a `raw_df` built without `build_sequence_matrix()`) is treated as
-#'   fully covered, not penalised.
-#'
-#' @return A data frame with one row per unique `id_x`: `id_x`, `species_x`,
-#'   `median_self_match`, `max_foreign_match`, `median_foreign_match`,
-#'   `n_self_neighbors`, `n_foreign_pairs`, `n_foreign_taxa`,
-#'   `integrity_gap`, `foreign_match_coverage`, `median_self_coverage`.
-#'
-#' @section foreign_match_coverage / median_self_coverage (2026-08-06, `audit_reference_database()`):
-#' `max_foreign_match` is a single extreme value (the best of however many
-#' foreign comparisons this accession has), so a caller deciding whether to
-#' TRUST it needs to know the coverage of that ONE specific pair, not a
-#' summary over all of them -- a 99% identity hit on 15% real overlap is a
-#' different kind of evidence than the same identity on 95% overlap.
-#' `foreign_match_coverage` is exactly that: the `coverage` value of whichever
-#' pair achieved `max_foreign_match` (`NA` when there are zero foreign rows).
-#' `median_self_coverage` is a companion diagnostic on the self side (median
-#' `coverage` among same-species pairs) -- deliberately NOT used to gate
-#' anything automatically, since thin self-evidence can bias
-#' `median_self_match` in EITHER direction (a short coincidental overlap can
-#' read spuriously high OR a messy short fragment spuriously low), unlike the
-#' foreign side where the concern (a spurious high-identity hit on a tiny
-#' shared fragment inflating `max_foreign_match`) has one clear direction.
-#' Both are computed from whatever `raw_df` survives the `min_coverage`
-#' pre-filter above -- pass a low, permissive `min_coverage` (a sanity floor,
-#' not the calibrated trust threshold) so these reflect real available
-#' evidence, and gate on the calibrated threshold downstream instead (see
-#' `classify_reference_accessions(min_coverage=)`), not here.
-#'
-#' @section median_foreign_match / n_foreign_pairs / n_foreign_taxa (grown for `audit_reference_database()`):
-#' Every foreign row entering this function is already restricted to
-#' `p_match > 1 - max_dist` (`build_sequence_matrix()`'s own default
-#' `max_dist = 0.25`, i.e. `p_match > 0.75`) -- `median_foreign_match` is
-#' therefore the median of the *upper tail* of the foreign-match
-#' distribution, not the whole distribution. This can differ from
-#' `max_foreign_match` in either direction depending on how many foreign
-#' neighbours exist (a genus with one congener at 0.99 has a median of 0.99;
-#' one with forty congeners mostly at 0.90 has a median of 0.90), not just
-#' whether they exist -- still a useful, cheap column, just don't oversell
-#' what it measures. `n_foreign_pairs` counts ROWS (an id_x can have many
-#' rows against the same foreign species), not distinct foreign taxa --
-#' `n_foreign_taxa` (distinct `species.y` among foreign rows) is the
-#' companion for "supported by many species" vs. "supported by many
-#' accessions of few species." NA convention, matching `max_foreign_match`'s
-#' existing `-Inf`/`NA` -> `0` coercion: when there are zero foreign rows,
-#' `median_foreign_match` is also `0`, not `NA` (`stats::median(numeric(0))`
-#' would otherwise return `NA`, and a downstream `case_when` comparing `0`
-#' against `NA` would silently produce `NA` verdicts).
-#'
-#' @noRd
-.compute_reference_qc_stats <- function(raw_df, min_coverage = NULL) {
-  if (!"coverage" %in% names(raw_df)) raw_df$coverage <- NA_real_
-  if (!is.null(min_coverage)) {
-    cov_vals <- raw_df[["coverage"]]
-    raw_df <- raw_df[is.na(cov_vals) | cov_vals >= min_coverage, , drop = FALSE]
-  }
-  raw_df |>
-    dplyr::group_by(id_x, species.x) |>
-    dplyr::summarise(
-      median_self_match = stats::median(
-        p_match[species.x == species.y & id_x != id_y],
-        na.rm = TRUE
-      ),
-      median_self_coverage = suppressWarnings(stats::median(
-        coverage[species.x == species.y & id_x != id_y],
-        na.rm = TRUE
-      )),
-      max_foreign_match = suppressWarnings(
-        max(p_match[species.x != species.y], na.rm = TRUE)
-      ),
-      # Coverage of the SPECIFIC pair that produced max_foreign_match --
-      # see the "foreign_match_coverage / median_self_coverage" section
-      # above for why this needs to be the driving pair's own value, not a
-      # summary across every foreign comparison.
-      foreign_match_coverage = {
-        fidx <- which(species.x != species.y & !is.na(p_match))
-        if (length(fidx) == 0L) NA_real_ else coverage[fidx[which.max(p_match[fidx])]]
-      },
-      median_foreign_match = suppressWarnings(
-        stats::median(p_match[species.x != species.y], na.rm = TRUE)
-      ),
-      n_self_neighbors = sum(species.x == species.y & id_x != id_y),
-      n_foreign_pairs = sum(species.x != species.y, na.rm = TRUE),
-      n_foreign_taxa = dplyr::n_distinct(species.y[species.x != species.y]),
-      .groups = "drop"
-    ) |>
-    dplyr::mutate(
-      max_foreign_match = ifelse(
-        is.infinite(max_foreign_match) | is.na(max_foreign_match),
-        0, max_foreign_match
-      ),
-      median_foreign_match = ifelse(
-        is.na(median_foreign_match), 0, median_foreign_match
-      ),
-      integrity_gap = median_self_match - max_foreign_match
-    ) |>
-    dplyr::rename(species_x = species.x)
-}
-
-#' Flag mislabeled sequences in the reference database
-#'
-#' Examines a pairwise distance matrix (output of `build_sequence_matrix()`)
-#' and flags sequences whose best match is to a *different* species than their
-#' own label -- a pattern consistent with mislabeling or contamination.
-#'
-#' @section Scope:
-#' This function applies to DNA sequence reference databases only.  For
-#' acoustic and image data, users bring pre-classified candidate outputs
-#' (classifier confidence scores); mislabel detection via score distributions
-#' is not applicable in that context.
-#'
-#' Two error types are returned:
-#' * **`"likely_mislabeled"`** -- the sequence's median within-species match is
-#'   lower than its best cross-species match by more than `mislabel_threshold`.
-#' * **`"unverified_singleton_high_match"`** -- the sequence has no within-species
-#'   neighbours yet matches a foreign species at >= 0.98; it may be mislabeled or
-#'   simply the only representative of its species.
-#'
-#' @param raw_df Data frame of pairwise match scores, as returned by
-#'   `build_sequence_matrix()`.  Must contain columns `id_x`, `id_y`,
-#'   `species.x`, `species.y`, and `p_match` (raw scores on the 0-100 or 0-1
-#'   scale used consistently within the matrix).
-#' @param mislabel_threshold Numeric scalar (default `0.02`).  A reference
-#'   sequence is flagged when its median within-species match score minus its
-#'   maximum cross-species match score is below negative `mislabel_threshold`.
-#'   The default 0.02 means a sequence is flagged if its best foreign match is
-#'   within 2 percentage points of its typical self-match.  Adjust based on
-#'   reference quality: lower values are stricter, flagging more sequences;
-#'   higher values are more permissive, suitable for noisier markers.
-#' @param return_all Logical (default `FALSE`).  If `TRUE`, returns all
-#'   sequences including those flagged `"clean"`.
-#' @param min_coverage Numeric or `NULL` (default `NULL`). See
-#'   `.compute_reference_qc_stats()`'s own documentation of this same
-#'   parameter -- excludes a pair from every statistic below when its
-#'   `coverage` (real per-pair alignment overlap, from `build_sequence_matrix()`)
-#'   falls below this threshold, catching e.g. two same-length sequences
-#'   that cover different, non-overlapping parts of the gene.
-#' @param singleton_match_threshold Numeric scalar in (0, 1] (default `0.98`).
-#'   A singleton (no within-species neighbours) is flagged
-#'   `"unverified_singleton_high_match"` when its best cross-species match
-#'   exceeds this value. 98% identity is the conventional barcode gap
-#'   threshold for many markers; for ITS (fungi), where within-species
-#'   variation is higher, consider raising to `0.99`. Previously a hardcoded
-#'   literal with a comment suggesting it be raised for ITS but no actual way
-#'   for a caller to do so -- now a real parameter, with the exact same
-#'   default and comparison (`>`) as before.
-#' @param verified_clean Character vector of `id_x` accessions (default
-#'   `NULL`), or `NULL` to disable. Forces these accessions to `error_type =
-#'   "clean"` regardless of what the within-reference-set heuristic above
-#'   computes for them. Exists because this heuristic is known to over-flag
-#'   (a 2026-08-08 audit against `TaxaMatch::evaluate_reference_accessions()`
-#'   -- a BLAST-based check against a broad, independent database -- found
-#'   0 of 40 randomly-sampled real `"likely_mislabeled"` flags on one real
-#'   dataset were confirmed as genuine mislabels; most were same-submission-
-#'   batch artifacts or tight-congener false positives this function's
-#'   narrow same-reference-set comparison cannot distinguish from a real
-#'   error). `train_likelihood_model()` calls this function unconditionally
-#'   on every training run; by default (`mislabel_behavior = "flag"`, see
-#'   that function's own docs) it no longer removes anything on this
-#'   heuristic's say-so, but if a caller explicitly opts into
-#'   `mislabel_behavior = "remove"`, an accession independently confirmed
-#'   clean by a stronger check would otherwise be re-flagged and re-removed
-#'   on every retrain without this parameter. Supply the accessions
-#'   `TaxaMatch::evaluate_reference_accessions()`
-#'   verdicts `"congruent"` (or `"insufficient_independent_evidence"`, if
-#'   you choose to trust that too) here to keep them in training under
-#'   `"remove"` mode. Does not
-#'   change `"clean"`-when-return_all rows, and does not force the OPPOSITE
-#'   direction (an accession this heuristic calls `"clean"` is never forced
-#'   to `"likely_mislabeled"` -- this parameter only rescues, never removes).
-#'
-#' @return A data frame with one row per unique `id_x` and columns:
-#'   \describe{
-#'     \item{`id_x`}{Sequence identifier.}
-#'     \item{`species_x`}{Species label assigned to the sequence.}
-#'     \item{`median_self_match`}{Median match score to within-species sequences.}
-#'     \item{`max_foreign_match`}{Best match score to any cross-species sequence.}
-#'     \item{`n_self_neighbors`}{Number of within-species neighbours.}
-#'     \item{`integrity_gap`}{`median_self_match - max_foreign_match`.}
-#'     \item{`error_type`}{`"likely_mislabeled"`, `"unverified_singleton_high_match"`,
-#'       or `"clean"`.}
-#'   }
-#'
-#' @seealso [build_sequence_matrix()], [train_likelihood_model()]
-#'
-#' @note For a fully runnable, non-`\dontrun{}` demonstration, see
-#'   `inst/review_function_inputs.R` Section 2 in the package source.
-#'
-#' @examples
-#' \dontrun{
-#' ref_matrix <- build_sequence_matrix(reference_df,
-#'   rank_system = c("family", "genus", "species")
-#' )
-#' flagged <- flag_reference_errors(ref_matrix, mislabel_threshold = 0.02)
-#' table(flagged$error_type)
-#' }
-#'
-#' @export
-flag_reference_errors <- function(raw_df,
-                                  mislabel_threshold = 0.02,
-                                  return_all = FALSE,
-                                  min_coverage = NULL,
-                                  singleton_match_threshold = 0.98,
-                                  verified_clean = NULL) {
-  if (!is.data.frame(raw_df)) {
-    stop("raw_df must be a data frame")
-  }
-  needed <- c("id_x", "id_y", "species.x", "species.y", "p_match")
-  missing_cols <- setdiff(needed, names(raw_df))
-  if (length(missing_cols) > 0) {
-    stop(sprintf(
-      "raw_df is missing required columns: %s",
-      paste(missing_cols, collapse = ", ")
-    ))
-  }
-  if (!is.numeric(mislabel_threshold) || length(mislabel_threshold) != 1L ||
-    is.na(mislabel_threshold)) {
-    stop("mislabel_threshold must be a single non-NA numeric value")
-  }
-  if (!is.logical(return_all) || length(return_all) != 1L || is.na(return_all)) {
-    stop("return_all must be TRUE or FALSE")
-  }
-  if (!is.null(min_coverage) && (!is.numeric(min_coverage) || length(min_coverage) != 1L ||
-    is.na(min_coverage))) {
-    stop("min_coverage must be NULL or a single non-NA numeric value")
-  }
-  if (!is.numeric(singleton_match_threshold) || length(singleton_match_threshold) != 1L ||
-    is.na(singleton_match_threshold) || singleton_match_threshold <= 0 ||
-    singleton_match_threshold > 1) {
-    stop("singleton_match_threshold must be a single numeric value in (0, 1]")
-  }
-  if (!is.null(verified_clean) && !is.character(verified_clean)) {
-    stop("verified_clean must be NULL or a character vector of id_x accessions")
-  }
-
-  # .compute_reference_qc_stats() gained median_foreign_match/n_foreign_pairs/
-  # n_foreign_taxa (audit_reference_database() consumes all three); this
-  # function's own public @return contract -- and its existing tests -- are
-  # unaffected by that growth via this explicit dplyr::select() back down to
-  # the documented column set.
-  qc <- .compute_reference_qc_stats(raw_df, min_coverage = min_coverage) |>
-    dplyr::mutate(
-      error_type = dplyr::case_when(
-        id_x %in% verified_clean ~ "clean",
-        integrity_gap < -mislabel_threshold & n_self_neighbors > 0 ~
-          "likely_mislabeled",
-        n_self_neighbors == 0 & max_foreign_match > singleton_match_threshold ~
-          "unverified_singleton_high_match",
-        .default = "clean"
-      )
-    ) |>
-    dplyr::select(
-      id_x, species_x, median_self_match, max_foreign_match,
-      n_self_neighbors, integrity_gap, error_type
-    )
-
-  if (!return_all) {
-    qc <- dplyr::filter(qc, error_type != "clean")
-  }
-  if (nrow(qc) == 0L && !return_all) {
-    message("No reference errors detected.")
-  }
-  qc
-}
-
-
-# ==============================================================================
 # MODULE C: TRAINING ENGINE (Empirical Bayes Shrinkage)
 # ==============================================================================
 
@@ -799,45 +501,6 @@ flag_reference_errors <- function(raw_df,
 #' @param anchor_perfect Logical (default `TRUE`).  If `TRUE`, injects
 #'   synthetic perfect-match observations into the H1 training data to
 #'   prevent the perfection penalty (see section below).
-#' @param mislabel_threshold Numeric.  Passed to `flag_reference_errors()` when
-#'   removing mislabeled sequences before training (default `0.02`).  A
-#'   reference sequence is flagged when its median within-species match score
-#'   minus its maximum cross-species match score is below negative
-#'   `mislabel_threshold`.  The default 0.02 means a sequence is flagged if
-#'   its best foreign match is within 2 percentage points of its typical
-#'   self-match.  Lower values are stricter, flagging more sequences.
-#' @param singleton_match_threshold Numeric.  Passed to
-#'   `flag_reference_errors()` (default `0.98`) -- see that function's own
-#'   documentation of this parameter.
-#' @param verified_clean Character vector or `NULL` (default).  Passed to
-#'   `flag_reference_errors()` -- see that function's own `@param
-#'   verified_clean` for the full rationale.  Accessions listed here are
-#'   never removed from training regardless of what the internal mislabel
-#'   heuristic computes for them, because they have already been verified
-#'   clean by a stronger, independent check (e.g.
-#'   `TaxaMatch::evaluate_reference_accessions()`/
-#'   `TaxaMatch::verify_flagged_references()`).
-#' @param mislabel_behavior Character, `"flag"` (default) or `"remove"`.
-#'   `flag_reference_errors()`'s `"likely_mislabeled"` heuristic was measured
-#'   (2026-08-08 screening-comparison audit, a real 40-accession live-BLAST
-#'   pilot) at roughly 6.7% precision against
-#'   `TaxaMatch::evaluate_reference_accessions()`'s BLAST-based screen --
-#'   0 of 40 randomly-sampled real flags confirmed as genuine mislabels. That
-#'   audit's own recommendation was to treat this heuristic as high-recall/
-#'   low-precision, "worth a review pass, not an auto-blacklist." `"flag"`
-#'   (default) honors that: every flagged accession is still reported (a
-#'   console message, and the returned `reference_errors` slot) but none are
-#'   removed from the training data. `"remove"` restores the
-#'   original, silently-destructive default (drops every
-#'   `"likely_mislabeled"` accession from both sides of the pair table before
-#'   fitting) -- use it only alongside `verified_clean` (populated from
-#'   `TaxaMatch::verify_flagged_references()`) so a confirmed false positive
-#'   isn't lost. This mirrors the same default flip already made elsewhere in
-#'   this ecosystem for an unreviewed heuristic acting as a silent, automatic
-#'   remover (`TaxaLikely::apply_coverage_constraints()`'s
-#'   `constraint_behavior`, `TaxaFetch::filter_gbif_quality()`'s institution
-#'   check) -- training was the last place this pattern still acted
-#'   destructively by default.
 #' @param logit_epsilon Numeric.  Logit-clipping value (default `1e-4`).
 #'   Used only when `score_transform = "logit"`.
 #' @param max_gap_ceiling Numeric or `NULL` (default).  Gap cap.  `NULL`
@@ -876,6 +539,24 @@ flag_reference_errors <- function(raw_df,
 #'   and `evaluate_likelihoods()`'s `evidence_col`/`min_coverage` mechanisms
 #'   all assume `"logit"` internally and will error rather than silently
 #'   produce wrong numbers if combined with a `"sqrt_mismatch"`-trained model.
+#'
+#' @section No built-in reference-quality screening (2026-09-08):
+#' This function does NOT screen `raw_df` for mislabeled/contaminated
+#' reference accessions before fitting -- it trains on exactly what it's
+#' given. Earlier versions called an internal, free, within-reference-set
+#' heuristic (`flag_reference_errors()`, retired this date) unconditionally
+#' on every run; a 2026-08-08 audit found it roughly 6.7% precise against
+#' `TaxaMatch::evaluate_reference_accessions()`'s BLAST-based screen (0 of 40
+#' randomly-sampled real flags confirmed as genuine mislabels on one real
+#' dataset), and a newer TaxaMatch mechanism
+#' (`TaxaMatch::corroborate_references_locally()` +
+#' `TaxaMatch::evaluate_reference_accessions()`) already does the same job
+#' more precisely, for the same zero/low NCBI cost, directly on `reference_df`
+#' before it ever reaches `build_sequence_matrix()`. Screen there, exclude
+#' any accession `evaluate_reference_accessions()`/`score_reference_labels()`
+#' resolves to `reference_action == "remove"` from `reference_df` (or from
+#' `raw_df` by `id_x`/`id_y`) before calling this function -- there is no
+#' longer a parameter here to pass a bad-accession list through.
 #'
 #' @return A named list (class `"taxa_model_params"`) with slots:
 #'   \describe{
@@ -927,9 +608,6 @@ flag_reference_errors <- function(raw_df,
 #'       confidently that average applies to a candidate we have zero direct
 #'       data for, so using it directly would understate uncertainty exactly
 #'       where it should be largest.}
-#'     \item{`reference_errors`}{Data frame of flagged references (output of
-#'       \code{flag_reference_errors()}). Use with
-#'       \code{\link{remove_flagged_references}} to clean a match object.}
 #'   }
 #'
 #' @references
@@ -980,15 +658,10 @@ train_likelihood_model <- function(raw_df,
                                    prior_weight = 10.0,
                                    use_hierarchy = TRUE,
                                    anchor_perfect = TRUE,
-                                   mislabel_threshold = 0.02,
-                                   singleton_match_threshold = 0.98,
-                                   verified_clean = NULL,
-                                   mislabel_behavior = "flag",
                                    logit_epsilon = 1e-4,
                                    max_gap_ceiling = NULL,
                                    score_transform = "logit") {
   score_transform <- match.arg(score_transform, c("logit", "sqrt_mismatch"))
-  mislabel_behavior <- match.arg(mislabel_behavior, c("flag", "remove"))
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
   if (is.null(min_observed_sigma)) {
     min_observed_sigma <- 1.0 * .transform_unit_ratio(score_transform)^2
@@ -1035,37 +708,11 @@ train_likelihood_model <- function(raw_df,
     stop("anchor_perfect must be TRUE or FALSE")
   }
 
-  message("Screening for mislabeled references...")
-  errors <- flag_reference_errors(raw_df,
-    mislabel_threshold = mislabel_threshold,
-    return_all = FALSE,
-    singleton_match_threshold = singleton_match_threshold,
-    verified_clean = verified_clean
-  )
-  bad_ids <- errors$id_x[errors$error_type == "likely_mislabeled"]
-  n_flagged <- length(bad_ids)
-
-  if (mislabel_behavior == "remove") {
-    if (n_flagged > 0) {
-      message(sprintf("Removed %d likely-mislabeled sequence(s) before training", n_flagged))
-    }
-    raw_clean <- dplyr::filter(raw_df, !id_x %in% bad_ids, !id_y %in% bad_ids)
-  } else {
-    # mislabel_behavior = "flag" (default): this heuristic is high-recall/
-    # low-precision (2026-08-08 audit, 0/40 real flags confirmed genuine) --
-    # report, don't remove. See @param mislabel_behavior.
-    if (n_flagged > 0) {
-      message(sprintf(
-        paste(
-          "%d sequence(s) flagged 'likely_mislabeled' (kept in training --",
-          "see reference_errors, or pass mislabel_behavior = \"remove\"",
-          "with a verified_clean list to act on this)"
-        ),
-        n_flagged
-      ))
-    }
-    raw_clean <- raw_df
-  }
+  # No built-in reference-quality screening -- see @section "No built-in
+  # reference-quality screening" above. raw_df is trained on as-is; a caller
+  # wanting to exclude flagged accessions does so upstream, before calling
+  # this function.
+  raw_clean <- raw_df
 
   # ---- CONFUSION-RISK CURVES (2026-07-23) ------------------------------------
   # Genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank score curves
@@ -1599,8 +1246,7 @@ train_likelihood_model <- function(raw_df,
         mlr_violations = mlr_check$violations,
         max_ceiling_z = mlr_check$max_z,
         max_ceiling_z_species = mlr_check$max_z_species
-      ),
-      reference_errors = errors
+      )
     ),
     class = "taxa_model_params"
   )

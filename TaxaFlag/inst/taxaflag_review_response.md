@@ -216,6 +216,17 @@ once here rather than repeated per file below.
 
 ## `flag_handler.R`
 
+**2026-09-09 addendum:** revisited during an ecosystem-wide redundant/abandoned-function
+sweep -- confirmed this function still has only one real call site anywhere in the
+monorepo (its own vignette example), and, unlike a clean data-type exemption, is not even
+called by the one camera-trap-oriented workflow that exists (`TaxaAssign/inst/workflows/
+camera_trap_posterior_workflow.R`). Decided to keep it anyway, on the same grounds as
+`build_review_covariates.R`'s decision directly above: it's real, general-purpose,
+actively maintained infrastructure (the Session 151 `station_metadata` edge-anchoring
+feature was built specifically for it) for a data type (camera-trap/timestamped
+detections) this ecosystem's real production workflows don't currently include -- not
+neglected code, just not yet needed by any live pipeline. No code change.
+
 **Fixed:**
 - **"Example not runnable as-is":** added a small, self-contained synthetic
   `camera_detections` frame and made the primary usage pattern (no `station_metadata`)

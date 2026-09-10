@@ -64,10 +64,10 @@ the cache is using and, unless \code{dry_run = TRUE}, removes it.
 }
 \examples{
 \dontrun{
-taxafetch_clear_cache(dry_run = TRUE)                       # see what's there first
-taxafetch_clear_cache(orphans_only = TRUE, dry_run = TRUE)   # just stale leftovers
-taxafetch_clear_cache(orphans_only = TRUE)                   # remove just those
-taxafetch_clear_cache()                                      # actually clear everything
-taxafetch_clear_cache(older_than_days = 90)                  # only stale entries
+taxafetch_clear_cache(dry_run = TRUE) # see what's there first
+taxafetch_clear_cache(orphans_only = TRUE, dry_run = TRUE) # just stale leftovers
+taxafetch_clear_cache(orphans_only = TRUE) # remove just those
+taxafetch_clear_cache() # actually clear everything
+taxafetch_clear_cache(older_than_days = 90) # only stale entries
 }
 }

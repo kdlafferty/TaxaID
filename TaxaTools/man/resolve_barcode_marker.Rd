@@ -33,8 +33,8 @@ records are annotated with the MiFish primer name, so the variant is
 genuinely searchable and callers already OR it together with \verb{12S}.
 }
 \examples{
-resolve_barcode_marker("COI-Folmer")   # "COI"
-resolve_barcode_marker("16S-Palumbi")  # "16S"
-resolve_barcode_marker("12S")          # "12S" (unchanged)
-resolve_barcode_marker("MiFishU")      # "MiFishU" (deliberately unchanged)
+resolve_barcode_marker("COI-Folmer") # "COI"
+resolve_barcode_marker("16S-Palumbi") # "16S"
+resolve_barcode_marker("12S") # "12S" (unchanged)
+resolve_barcode_marker("MiFishU") # "MiFishU" (deliberately unchanged)
 }

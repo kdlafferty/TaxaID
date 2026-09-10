@@ -949,6 +949,26 @@ utils::globalVariables(c(
     dplyr::arrange(dplyr::desc(score_likelihood_mean))
 }
 
+#' Truncate a character vector of observation_ids for a warning message
+#'
+#' Shows up to the first 5 ids, then a "... (N more)" summary -- shared by
+#' both `evaluate_likelihoods()` $unresolved warnings (coverage-zeroed and
+#' coarser-than-rank_system) so the two stay formatted identically.
+#'
+#' @param ids Character vector of observation_ids.
+#' @return A single formatted string.
+#' @noRd
+.format_id_list <- function(ids) {
+  if (length(ids) <= 5L) {
+    paste(ids, collapse = ", ")
+  } else {
+    paste0(
+      paste(ids[1:5], collapse = ", "),
+      sprintf(", ... (%d more)", length(ids) - 5L)
+    )
+  }
+}
+
 #' Convert match scores to likelihoods for all queries
 #'
 #' Applies the trained likelihood model to every `observation_id` in the match
@@ -1015,6 +1035,17 @@ utils::globalVariables(c(
 #'   `NA` coverage values are always retained (treated as fully covered).
 #'   When `coverage` is absent from `match_df`, this parameter is silently
 #'   ignored.
+#'
+#'   \strong{Every candidate below threshold (fixed 2026-09-09):} when
+#'   `min_coverage` drops EVERY candidate row for a given `observation_id`,
+#'   that observation is routed to `$unresolved` (with a named warning)
+#'   instead of erroring -- the same degrade-gracefully convention already
+#'   used for the coarser-than-`rank_system` case above. Confirmed to hit
+#'   195/800 (24.4\%) of real test queries in a real production A/B
+#'   comparison at a Youden's-J-calibrated `min_coverage`; before this fix,
+#'   any such observation crashed the whole call with `"replacement has 1
+#'   row, data has 0"`. Re-run `evaluate_likelihoods()` on `$unresolved` with
+#'   a lower (or `NULL`) `min_coverage` to resolve these queries.
 #' @param evidence_col Character or `NULL` (default `NULL`). Name of a column
 #'   in `match_df` giving each candidate's raw evidence quantity (e.g. DNA read
 #'   depth, image detection count, acoustic recording duration -- whatever is
@@ -1440,6 +1471,28 @@ evaluate_likelihoods <- function(match_df,
   start_time <- proc.time()[["elapsed"]]
   results <- vector("list", length(query_groups))
   n_failed <- 0L
+  # Session 2026-09-09 bug fix: observation_ids whose ENTIRE candidate set was
+  # dropped by min_coverage (or any other upstream filter inside
+  # .evaluate_one_query()) before a single hypothesis could be evaluated.
+  # .evaluate_one_query() already degrades gracefully here -- it returns a
+  # correctly-shaped, zero-row data frame rather than erroring (see its own
+  # "if (nrow(cand) == 0L) return(...)" branch) -- but this wrapper used to
+  # then run `result$observation_id <- sid` unconditionally, which crashes on
+  # a zero-row target ("replacement has 1 row, data has 0") because `sid` has
+  # length 1 and there are 0 rows to receive it. At the calibrated
+  # min_coverage threshold used in a real production comparison
+  # (diagnostics/coverage_filter_ab_comparison.R), this hit 195/800 (24.4%)
+  # of real test queries. Routed to $unresolved instead, below -- the SAME
+  # graceful-degrade convention this function already uses for the
+  # coarser-than-rank_system NA-taxon-name case just below (not a new
+  # mechanism) -- rather than option (a) (silently falling back to
+  # unfiltered candidates), because min_coverage is a caller-chosen quality
+  # gate: silently ignoring it for exactly the observations where it would
+  # have mattered most (every candidate too low-quality) is the wrong
+  # default. A caller who wants graceful fallback instead of $unresolved can
+  # already get it by re-running evaluate_likelihoods() on $unresolved with
+  # min_coverage = NULL.
+  zero_row_sids <- character(0L)
 
   pb <- cli::cli_progress_bar("Evaluating queries", total = length(query_groups))
   for (i in seq_along(query_groups)) {
@@ -1468,11 +1521,13 @@ evaluate_likelihoods <- function(match_df,
         NULL
       }
     )
-    if (!is.null(result)) {
+    if (is.null(result)) {
+      n_failed <- n_failed + 1L
+    } else if (nrow(result) == 0L) {
+      zero_row_sids <- c(zero_row_sids, sid)
+    } else {
       result$observation_id <- sid
       results[[i]] <- result
-    } else {
-      n_failed <- n_failed + 1L
     }
   }
 
@@ -1487,7 +1542,50 @@ evaluate_likelihoods <- function(match_df,
     ))
   }
 
+  if (length(zero_row_sids) > 0L) {
+    show_ids <- .format_id_list(zero_row_sids)
+    warning(sprintf(
+      paste0(
+        "%d observation_id(s) had EVERY candidate row filtered out by ",
+        "min_coverage = %s and produced no usable likelihoods; returned in ",
+        "$unresolved: %s. Re-run evaluate_likelihoods() on $unresolved with ",
+        "a lower min_coverage (or min_coverage = NULL) to resolve them."
+      ),
+      length(zero_row_sids), format(min_coverage), show_ids
+    ))
+  }
+
   out <- dplyr::bind_rows(results)
+  # `results` is a list of NULL entries whenever EVERY observation either
+  # errored or (Session 2026-09-09 fix) had every candidate row filtered out
+  # by min_coverage -- dplyr::bind_rows() on an all-NULL list returns a
+  # 0-row, 0-column tibble, which the dplyr::select() call below cannot
+  # operate on ("Column `taxon_name` doesn't exist"). Give it the same shape
+  # .evaluate_one_query()'s own empty-candidate-set return already uses (see
+  # its "if (nrow(cand) == 0L) return(...)" branch), so the rest of this
+  # function proceeds exactly as it would for a partially-empty batch.
+  if (!("taxon_name" %in% names(out))) {
+    out <- data.frame(
+      observation_id = character(0L),
+      hypothesis_type = character(0L),
+      taxon_name = character(0L),
+      taxon_name_rank = character(0L),
+      raw_likelihood = numeric(0L),
+      raw_likelihood_cov = numeric(0L),
+      raw_likelihood_evidence = numeric(0L),
+      score_likelihood = numeric(0L),
+      score_likelihood_mean = numeric(0L),
+      score_likelihood_sd = numeric(0L),
+      score_likelihood_cov = numeric(0L),
+      score_likelihood_evidence = numeric(0L),
+      h2_delta_source = character(0L),
+      species_confusion_risk = numeric(0L),
+      genus_confusion_risk = numeric(0L),
+      family_confusion_risk = numeric(0L),
+      own_rank_confusion_risk = numeric(0L),
+      stringsAsFactors = FALSE
+    )
+  }
   unresolved <- match_df[integer(0L), ] # zero-row copy; populated below if needed
 
   # Identify rows where taxon_name resolved to NA (occurs when all taxonomy
@@ -1495,21 +1593,14 @@ evaluate_likelihoods <- function(match_df,
   # rank_system specifies).  Rows are always dropped from $likelihoods.
   # observation_ids with NO surviving rows are returned in $unresolved with a warning.
   na_name <- is.na(out$taxon_name)
+  all_na_sids <- character(0L)
   if (any(na_name)) {
     sids_with_na <- unique(out$observation_id[na_name])
     sids_with_good <- unique(out$observation_id[!na_name])
     all_na_sids <- setdiff(sids_with_na, sids_with_good)
 
     if (length(all_na_sids) > 0L) {
-      unresolved <- match_df[match_df$observation_id %in% all_na_sids, ]
-      show_ids <- if (length(all_na_sids) <= 5L) {
-        paste(all_na_sids, collapse = ", ")
-      } else {
-        paste0(
-          paste(all_na_sids[1:5], collapse = ", "),
-          sprintf(", ... (%d more)", length(all_na_sids) - 5L)
-        )
-      }
+      show_ids <- .format_id_list(all_na_sids)
       warning(sprintf(
         paste0(
           "%d observation_id(s) produced no usable likelihoods and are returned in ",
@@ -1524,6 +1615,16 @@ evaluate_likelihoods <- function(match_df,
     }
 
     out <- out[!na_name, ]
+  }
+
+  # Union both sources of unresolved observation_ids (coverage-zeroed +
+  # coarser-than-rank_system) into one final $unresolved -- they are
+  # mutually exclusive in practice (a coverage-zeroed observation_id never
+  # contributes a row to `out` at all, so it can never also appear in
+  # na_name), but unioned defensively rather than assumed disjoint.
+  unresolved_sids <- union(zero_row_sids, all_na_sids)
+  if (length(unresolved_sids) > 0L) {
+    unresolved <- match_df[match_df$observation_id %in% unresolved_sids, ]
   }
 
   likelihoods <- dplyr::select(

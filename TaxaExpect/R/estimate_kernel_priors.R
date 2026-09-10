@@ -88,8 +88,26 @@
 #'   `"decimalLongitude"`, `"main_habitat"`).
 #' @param sampling_group_col Optional column naming a detection-process
 #'   grouping (e.g. `"sampling_group"`). Default `NULL`: all taxa share one
-#'   composition and one Good-Turing budget, the pre-2026-09-03 behaviour
-#'   exactly. When supplied, `theta` AND the budget (`f1`, `f2`,
+#'   composition and one Good-Turing budget. \strong{This default is not a
+#'   safe "do nothing" choice}: with no `sampling_group_col`, every record is
+#'   pooled regardless of detection process, with no warning or error, even
+#'   when that means silently mixing genuinely incompatible processes (e.g.
+#'   phytoplankton cell counts with bird point counts). Grouping is never
+#'   inferred automatically from taxonomy or data -- this function has no way
+#'   to know which taxa were sampled by a comparable process, so it never
+#'   guesses. Supplying a correct `sampling_group_col` is the caller's
+#'   responsibility, built BY HAND from real knowledge of detection
+#'   methodology -- there is no automated way to detect "comparable method"
+#'   from taxonomy or data alone (an LLM guess is not a substitute for real
+#'   methodological knowledge either). This is not a burdensome ask: this
+#'   function does NOT require pre-merged, sample-size-adequate groups for
+#'   statistical adequacy -- it degrades gracefully, producing honestly wide
+#'   uncertainty for a sparse group on its own (empirically confirmed on a
+#'   real 9-group expert classification down to a single-taxon group, see
+#'   `README.md`'s "Shared detection effort" section) -- so classify at
+#'   whatever granularity genuinely reflects distinct detection methods,
+#'   without worrying whether each resulting group individually "has enough
+#'   data." When supplied, `theta` AND the budget (`f1`, `f2`,
 #'   `missing_mass`, `chao_missing`, `theta_present`) are computed WITHIN each
 #'   group, because both are shared-denominator quantities that assume a
 #'   common detection process. Pooling across processes dilutes a detectable
@@ -98,14 +116,13 @@
 #'   `chao_missing`, quadratically -- while adding almost nothing to
 #'   `missing_mass`, deflating `theta_present` (`theta_present` is priced from
 #'   `missing_mass / f1`, so a diluted `missing_mass` still deflates it even
-#'   though `chao_missing` no longer sits in that formula). Build the column with
-#'   [compute_adaptive_sampling_groups()], or supply your own if you know the
-#'   split. Note this is a no-op for a taxonomically homogeneous pool (a fish
-#'   assay whose occurrence pool is all fish), which is why it changes nothing
-#'   at sites like GreatLakes; it matters for broad markers (18S) spanning
-#'   groups with very different detection probabilities. With more than one
-#'   group the pooled scalars are `NA` by design and `$budget` is
-#'   authoritative -- a single number would be silently wrong.
+#'   though `chao_missing` no longer sits in that formula). Note this is a
+#'   no-op for a taxonomically homogeneous pool (a fish assay whose
+#'   occurrence pool is all fish), which is why it changes nothing at sites
+#'   like GreatLakes; it matters for broad markers (18S) spanning groups with
+#'   very different detection probabilities. With more than one group the
+#'   pooled scalars are `NA` by design and `$budget` is authoritative -- a
+#'   single number would be silently wrong.
 #' @param support_weight Numeric in (0, 1]. A record counts toward the
 #'   discrete neighborhood-support statistics (singleton detection, record
 #'   counts) when its total kernel weight is at least
@@ -287,8 +304,12 @@ estimate_kernel_priors <- function(occurrence_data,
   # figure), quadratically. This is the same principle already adopted for
   # the GLMM path's effort
   # denominator (prepare_model_dataframe(sampling_group_col=), Session 149);
-  # the kernel rewrite dropped it, and this restores it. Build the column with
-  # compute_adaptive_sampling_groups() or supply your own.
+  # the kernel rewrite dropped it, and this restores it. Build the column
+  # yourself, BY HAND, from real knowledge of detection methodology -- this
+  # parameter is optional but NOT inferred automatically, and omitting it
+  # silently pools every detection process with no warning (see the @param
+  # doc above for the full reasoning, including why an automatic classifier
+  # was tried and retired rather than recommended here).
   # NULL (default) = one group over the whole stratum = the pre-2026-09-03
   # behaviour, exactly (regression-tested).
   grp_all <- if (is.null(sampling_group_col)) {
@@ -399,6 +420,27 @@ estimate_kernel_priors <- function(occurrence_data,
   blocks <- lapply(grp_levels, function(g) .kernel_block(which(grp_all == g)))
   names(blocks) <- grp_levels
   grouped <- !is.null(sampling_group_col)
+
+  # Single-taxon-group warning (2026-09-09). A group with exactly one
+  # distinct taxon gets theta_mean = 1.0, theta_sd = 0 for that taxon --
+  # mathematically correct given the compositional framing (100% of a
+  # group's share when the group has one member, by construction), but not
+  # an informative occurrence-probability estimate the way a multi-taxon
+  # group's theta is, and could mislead a downstream reader into treating
+  # "certain to be present" as the claim, rather than "the only thing we
+  # have to compare it to." Computation is not blocked or altered -- this is
+  # a warning, not an error -- see README.md's "Shared detection effort"
+  # section for the real single-taxon-group example this is grounded in.
+  if (grouped) {
+    for (g in grp_levels) {
+      if (length(blocks[[g]]$sp) == 1L) {
+        warning(sprintf(
+          "estimate_kernel_priors: sampling group '%s' contains only one distinct taxon (%s). Its theta_mean is trivially 1.0 by construction (100%% share of a group with one member) and does not reflect a real occurrence-probability estimate the way a multi-taxon group's does -- read it as \"the only thing we have to compare it to,\" not \"certain to be present.\"",
+          g, blocks[[g]]$sp
+        ), call. = FALSE)
+      }
+    }
+  }
 
   budget <- do.call(rbind, lapply(grp_levels, function(g) {
     b <- blocks[[g]]

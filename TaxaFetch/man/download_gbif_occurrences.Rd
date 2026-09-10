@@ -275,22 +275,22 @@ usethis::edit_r_environ()
 
 # --- Typical workflow -----------------------------------------------------
 taxa_df <- data.frame(
-  family  = "Gadidae",
+  family = "Gadidae",
   species = "Gadus morhua",
   stringsAsFactors = FALSE
 )
-keys_df    <- get_keys_from_context(taxa_df)
+keys_df <- get_keys_from_context(taxa_df)
 valid_keys <- keys_df$usageKey[!is.na(keys_df$usageKey)]
 
 bbox <- make_bbox_wkt(lat = 56.0, lon = 4.0, radius_deg = 2.0)
-occ  <- download_gbif_occurrences(
+occ <- download_gbif_occurrences(
   keys       = valid_keys,
   geometry   = bbox,
   year_range = "2010,2024"
 )
 
 occ_clean <- filter_gbif_quality(occ)
-attr(occ, "download_key")   # cite this in your methods section
+attr(occ, "download_key") # cite this in your methods section
 }
 }
 \seealso{

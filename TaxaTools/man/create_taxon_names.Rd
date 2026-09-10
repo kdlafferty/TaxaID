@@ -41,7 +41,7 @@ input_df <- data.frame(
   genus   = "Homo",
   species = NA_character_
 )
-create_taxon_names(input_df)  # auto-detects rank_system
+create_taxon_names(input_df) # auto-detects rank_system
 # taxon_name = "Homo", taxon_name_rank = "genus"
 
 # Or specify explicitly:

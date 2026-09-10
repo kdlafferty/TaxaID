@@ -105,7 +105,7 @@
 #'   downrank unresolved coarse-rank consensus assignments. Accepts two forms:
 #'   \itemize{
 #'     \item \strong{`unreferenced_species_result`} (from
-#'       [suggest_unreferenced_species()]): the full LLM-generated plausible
+#'       [TaxaLikely::suggest_unreferenced_species()]): the full LLM-generated plausible
 #'       species list is extracted automatically from
 #'       \code{attr(x, "plausible")}. This includes referenced species (e.g.
 #'       \emph{Leptocottus armatus}) that the LLM flagged as plausible but that
@@ -364,7 +364,7 @@
 #'   }
 #'
 #' @seealso [assign_taxa_llm()], [compute_posterior()],
-#'   [suggest_unreferenced_species()]
+#'   [TaxaLikely::suggest_unreferenced_species()]
 #'
 #' @examples
 #' posterior_df <- data.frame(

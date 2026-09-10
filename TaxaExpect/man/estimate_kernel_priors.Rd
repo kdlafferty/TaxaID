@@ -74,8 +74,26 @@ Default: \code{"Site_<lat>_<lon>"}.}
 
 \item{sampling_group_col}{Optional column naming a detection-process
 grouping (e.g. \code{"sampling_group"}). Default \code{NULL}: all taxa share one
-composition and one Good-Turing budget, the pre-2026-09-03 behaviour
-exactly. When supplied, \code{theta} AND the budget (\code{f1}, \code{f2},
+composition and one Good-Turing budget. \strong{This default is not a
+safe "do nothing" choice}: with no \code{sampling_group_col}, every record is
+pooled regardless of detection process, with no warning or error, even
+when that means silently mixing genuinely incompatible processes (e.g.
+phytoplankton cell counts with bird point counts). Grouping is never
+inferred automatically from taxonomy or data -- this function has no way
+to know which taxa were sampled by a comparable process, so it never
+guesses. Supplying a correct \code{sampling_group_col} is the caller's
+responsibility, built BY HAND from real knowledge of detection
+methodology -- there is no automated way to detect "comparable method"
+from taxonomy or data alone (an LLM guess is not a substitute for real
+methodological knowledge either). This is not a burdensome ask: this
+function does NOT require pre-merged, sample-size-adequate groups for
+statistical adequacy -- it degrades gracefully, producing honestly wide
+uncertainty for a sparse group on its own (empirically confirmed on a
+real 9-group expert classification down to a single-taxon group, see
+\code{README.md}'s "Shared detection effort" section) -- so classify at
+whatever granularity genuinely reflects distinct detection methods,
+without worrying whether each resulting group individually "has enough
+data." When supplied, \code{theta} AND the budget (\code{f1}, \code{f2},
 \code{missing_mass}, \code{chao_missing}, \code{theta_present}) are computed WITHIN each
 group, because both are shared-denominator quantities that assume a
 common detection process. Pooling across processes dilutes a detectable
@@ -84,14 +102,13 @@ barely-sampled groups contribute singletons that inflate \code{f1} -- and so
 \code{chao_missing}, quadratically -- while adding almost nothing to
 \code{missing_mass}, deflating \code{theta_present} (\code{theta_present} is priced from
 \code{missing_mass / f1}, so a diluted \code{missing_mass} still deflates it even
-though \code{chao_missing} no longer sits in that formula). Build the column with
-\code{\link[=compute_adaptive_sampling_groups]{compute_adaptive_sampling_groups()}}, or supply your own if you know the
-split. Note this is a no-op for a taxonomically homogeneous pool (a fish
-assay whose occurrence pool is all fish), which is why it changes nothing
-at sites like GreatLakes; it matters for broad markers (18S) spanning
-groups with very different detection probabilities. With more than one
-group the pooled scalars are \code{NA} by design and \verb{$budget} is
-authoritative -- a single number would be silently wrong.}
+though \code{chao_missing} no longer sits in that formula). Note this is a
+no-op for a taxonomically homogeneous pool (a fish assay whose
+occurrence pool is all fish), which is why it changes nothing at sites
+like GreatLakes; it matters for broad markers (18S) spanning groups with
+very different detection probabilities. With more than one group the
+pooled scalars are \code{NA} by design and \verb{$budget} is authoritative -- a
+single number would be silently wrong.}
 
 \item{support_weight}{Numeric in (0, 1]. A record counts toward the
 discrete neighborhood-support statistics (singleton detection, record

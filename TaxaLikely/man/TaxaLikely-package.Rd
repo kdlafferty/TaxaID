@@ -25,8 +25,9 @@ unreferenced species (H2), and unreferenced genus (H3).
 
 \itemize{
 \item \code{\link{build_sequence_matrix}} -- pairwise distance matrix
-\item \code{\link{flag_reference_errors}} -- detect mislabeled references
 \item \code{\link{train_likelihood_model}} -- fit hierarchical model
+(reference-quality screening happens upstream, in TaxaMatch -- see
+\code{\link{train_likelihood_model}}'s own documentation)
 }
 }
 
@@ -53,7 +54,6 @@ Session 150)
 
 \itemize{
 \item \code{\link{audit_barcode_coverage}} -- check completeness
-\item \code{\link{remove_flagged_references}} -- clean match data
 }
 }
 

@@ -68,8 +68,10 @@ produced by \code{read_sequence_table()}, which always derives
 }
 \examples{
 \dontrun{
-filtered <- filter_sequences(seq_df, barcode_term = "MiFishU",
-                             min_abundance = 2)
+filtered <- filter_sequences(seq_df,
+  barcode_term = "MiFishU",
+  min_abundance = 2
+)
 }
 
 }

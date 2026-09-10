@@ -98,7 +98,7 @@ the final spatial check.
 }
 \examples{
 \dontrun{
-accepted   <- parse_geo_screening_response(llm_raw, geo_prompt)
+accepted <- parse_geo_screening_response(llm_raw, geo_prompt)
 candidates <- accepted[accepted$geo_match, ]
 eml_screen <- screen_eml_columns(candidates$id, bbox)
 

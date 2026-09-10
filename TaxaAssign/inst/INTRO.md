@@ -37,7 +37,7 @@ inputs generated outside the ecosystem.
 - All exported functions documented with `roxygen2` including `@examples`
 - All exported functions validate inputs and return informative errors via `cli`
 - Standard return object: tibble
-- Naming convention: `verb_noun()` (e.g., `build_priors()`, `match_sequences()`)
+- Naming convention: `verb_noun()` (e.g., `estimate_kernel_priors()`, `match_sequences()`)
 - Renaming log maintained in each function file header when functions are renamed
 - Tidyverse as default dependency; base R second; new dependencies flagged explicitly
 - No hard coded inputs — all parameters exposed with sensible defaults

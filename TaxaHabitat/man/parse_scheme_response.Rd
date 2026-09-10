@@ -45,8 +45,8 @@ prompt <- build_habitat_prompt(taxa, habitat_scheme = scheme)
 }
 \examples{
 \dontrun{
-sp     <- build_scheme_prompt(taxa, realm = "marine")
-raw    <- TaxaTools::prompt_api(sp)
+sp <- build_scheme_prompt(taxa, realm = "marine")
+raw <- TaxaTools::prompt_api(sp)
 scheme <- parse_scheme_response(raw, sp)
 print(scheme)
 }

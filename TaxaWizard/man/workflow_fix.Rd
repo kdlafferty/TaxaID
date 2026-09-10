@@ -40,7 +40,7 @@ also pass the error as a string argument.
 workflow_fix()
 
 # Direct mode (use single quotes to avoid nesting issues):
-workflow_fix('Error in build_context: date must be NULL')
+workflow_fix("Error in build_context: date must be NULL")
 
 # With additional context:
 workflow_fix(context = "the column is called ESV_ID not ESVID")

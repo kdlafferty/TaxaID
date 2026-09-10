@@ -1,6 +1,38 @@
 # ==============================================================================
 # WORKFLOW: CAMERA-TRAP MAMMAL POSTERIORS (TaxaAssign)
 # ==============================================================================
+# ARCHIVED PATHWAY NOTICE (2026-09-09): this workflow's prior-generation steps
+# call TaxaExpect::optimize_grid_size()/create_sites_from_grid()/
+# compute_moran_basis()/prepare_model_dataframe()/screen_spatial_formula()/
+# train_biodiversity_model()/generate_full_priors() -- the grid/GLMM prior-
+# fitting chain, archived once every real production workflow completed its
+# migration to the kernel-priors path. Those calls will now error ("could not
+# find function"); the archived source is kept, unexecuted, at
+# TaxaExpect/archive_glmm_prior_pipeline/. See TaxaExpect/CLAUDE.md's
+# 2026-09-09 session note. UPDATE, later the same day: TaxaExpect::
+# create_sites_from_grid() -- along with compute_adaptive_sampling_groups(),
+# neither used in this script -- was archived alongside the rest of the chain
+# too, once the "still live, independent of this chain" justification above
+# was re-examined and found to describe a scenario that had never actually
+# materialized in any real dataset. FURTHER UPDATE, later still the same day:
+# that archival was reversed once (a real safety gap was found in
+# estimate_kernel_priors(sampling_group_col = NULL) with no guard against
+# silently pooling incompatible detection processes), restoring both
+# functions to the live package. FINAL UPDATE, later again the same day: the
+# restoration's own reasoning was tested against real evidence and refuted
+# (compute_adaptive_sampling_groups() answers a different question than
+# sampling_group is meant to answer, fragments a single real detection
+# process into dozens of automatic groups, and can conflate genuinely
+# distinct detection processes -- while estimate_kernel_priors() was shown to
+# need no pre-merged, sample-size-adequate groups at all). Both functions are
+# ARCHIVED again, this time final -- see TaxaExpect/CLAUDE.md's final
+# 2026-09-09 session note for the full record. create_sites_from_grid() is
+# therefore ALSO archived and non-functional as written -- along with the
+# rest of this script's GLMM-chain calls (optimize_grid_size()/
+# compute_moran_basis()/prepare_model_dataframe()/screen_spatial_formula()/
+# train_biodiversity_model()/generate_full_priors()); optimize_grid_size()
+# runs before create_sites_from_grid() in this script and will error first.
+#
 # Purpose: Take the real image likelihood object already built by
 #   TaxaMatch::score_image_workflow.R + TaxaLikely::image_acoustic_likelihood_
 #   workflow.R (Session 124/128) and, for the FIRST time, feed it real

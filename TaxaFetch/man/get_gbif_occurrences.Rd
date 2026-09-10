@@ -184,10 +184,10 @@ download path; they are included when present on the fetch path.
 }
 \examples{
 \dontrun{
-taxa_df    <- data.frame(family = "Felidae", stringsAsFactors = FALSE)
-keys_df    <- get_keys_from_context(taxa_df)
+taxa_df <- data.frame(family = "Felidae", stringsAsFactors = FALSE)
+keys_df <- get_keys_from_context(taxa_df)
 valid_keys <- keys_df$usageKey[!is.na(keys_df$usageKey)]
-bbox       <- make_bbox_wkt(lat = 34.41, lon = -119.86, radius_deg = 3.0)
+bbox <- make_bbox_wkt(lat = 34.41, lon = -119.86, radius_deg = 3.0)
 
 # Few keys -> fetch_gbif_occurrences() fires automatically (no GBIF account
 # needed). Hundreds of keys -> download_gbif_occurrences() fires instead.

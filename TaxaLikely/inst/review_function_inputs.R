@@ -24,6 +24,15 @@
 # in-monorepo callers (2 vignettes, 2 diagnostics/ scripts), all updated to
 # call the current name directly first. See NAME_CHANGE_HISTORY.md.
 #
+# Two more, calibrate_coverage_filter() and coverage_threshold(), are also not
+# covered here: ARCHIVED 2026-09-09 (moved intact, not deleted, to
+# archive_unused_coverage_calibration/ alongside their own test file and demo
+# workflow) after a real A/B test found a real accuracy win on the queries the
+# filter is willing to answer, but also a real, quantified cost (~19% of
+# species lose every training pair at the calibrated threshold; ~25% of real
+# evaluation queries end up unresolved) -- see TaxaLikely/CLAUDE.md's top
+# session note for the full reasoning.
+#
 # Inputs are pulled from three sources, cheapest first:
 #   1. Existing testthat fixtures (already validated, fully offline) -- the
 #      large majority of sections below
@@ -55,6 +64,9 @@
 # test-identify-confident-observations.R, test-infer-exclude-predicted.R).
 # This file's examples for those five are therefore drawn from the same
 # fixtures now backing real regression tests, not invented fresh for this
+# session. (calibrate_coverage_filter()/coverage_threshold()/test-calibrate.R
+# were later archived entirely, 2026-09-09 -- see the note above and
+# TaxaLikely/CLAUDE.md's top session note.)
 # file alone. (A sixth, audit_barcode_coverage_ncbi(), was also closed this
 # way but the function itself was later deleted entirely -- see above.)
 #
@@ -214,15 +226,19 @@ nchar(ref_trimmed$sequence) # matches mf_amplicon's own length exactly
 
 # ==============================================================================
 # SECTION 2 -- Training (fit model on reference database)
-# build_sequence_matrix() -> flag_reference_errors() -> train_likelihood_model()
+# build_sequence_matrix() -> train_likelihood_model()
+# Reference-quality screening (formerly flag_reference_errors(), retired
+# 2026-09-08) now lives in TaxaMatch -- see that package's own
+# corroborate_references_locally()/evaluate_reference_accessions().
 # ==============================================================================
 
 ## ---- build_sequence_matrix() ---- OFFLINE+BIOC ------------------------------
 # 5 synthetic sequences, 2 species in 2 genera. S3 is a truncated copy of S1
 # (60bp of a 120bp sequence) so DECIPHER's real alignment produces genuinely
-# varying `coverage` values -- deliberately NOT hand-set, so Section 8's
-# calibrate_coverage_filter()/coverage_threshold() have real signal to work
-# with, not a single constant.
+# varying `coverage` values -- deliberately NOT hand-set, so range(ref_matrix
+# $coverage) below is non-degenerate, not a single constant. (Previously also
+# fed Section 8's calibrate_coverage_filter()/coverage_threshold() demo;
+# that section was archived 2026-09-09 -- see below.)
 seq_a <- paste(rep("ATGCATGCATGC", 10), collapse = "") # 120bp, species Aa
 seq_b <- paste(rep("ATGCATGCATGG", 10), collapse = "") # 120bp, species Aa
 seq_c_short <- substr(seq_a, 1, 60) # 60bp,  species Aa (truncated)
@@ -242,14 +258,6 @@ ref_matrix <- build_sequence_matrix(reference_df_train,
 )
 str(ref_matrix)
 range(ref_matrix$coverage) # non-degenerate: truncated S3 pulls some pairs down
-
-## ---- flag_reference_errors() ---- OFFLINE -----------------------------------
-# Clean fixture -- expect zero flagged rows by default; return_all = TRUE
-# shows the full per-sequence QC table instead (all "clean").
-errors_none <- flag_reference_errors(ref_matrix)
-nrow(errors_none) # 0
-errors_all <- flag_reference_errors(ref_matrix, return_all = TRUE)
-table(errors_all$error_type)
 
 ## ---- train_likelihood_model() ---- OFFLINE ----------------------------------
 # use_hierarchy = FALSE: this fixture is too small (2 taxonomic levels, 5
@@ -314,9 +322,23 @@ trained_model_sqrt$H2_Lookup # Fundulus's tighter delta vs. Loose's looser one
 
 
 # ==============================================================================
-# SECTION 3 -- Unified likelihood pipeline
-# unreferenced_candidates() -> assign_scores() -> model_likelihoods() /
-# compute_likelihoods()
+# SECTION 3 -- No-score / non-sequence candidate expansion
+# unreferenced_candidates() -> assign_scores()
+# ==============================================================================
+# model_likelihoods()/compute_likelihoods() (the orchestrating wrapper that
+# used to chain these two functions into the bivariate-normal "similarity"
+# pathway) were archived 2026-09-09 (see TaxaLikely/CLAUDE.md's top session
+# note and archive_unused_likelihood_entrypoint/) -- a bulk usage audit found
+# zero real callers anywhere for either function; every real production
+# workflow reaches the bivariate-normal model via train_likelihood_model() +
+# evaluate_likelihoods() directly (Section 6 below), never through this
+# two-step assign_scores(score_type="similarity")/model_likelihoods() split.
+# unreferenced_candidates()/assign_scores() themselves are NOT archived --
+# both have real, direct callers (TaxaLikely's own inst/workflows/
+# image_acoustic_likelihood_workflow.R and 6_no_score_pathway_workflow.R,
+# plus TaxaAssign's inst/workflows/camera_trap_posterior_workflow.R) -- this
+# is the real, adopted no-score/non-sequence pathway the root CLAUDE.md's
+# "Ecosystem logic (no-score pathway)" section describes.
 # ==============================================================================
 
 ## ---- unreferenced_candidates() ---- OFFLINE ---------------------------------
@@ -363,63 +385,14 @@ liks_prob[
   c("taxon_name", "hypothesis_type", "score_likelihood")
 ]
 
-# score_type = "similarity": adds score_norm only, feeds model_likelihoods().
+# score_type = "similarity": adds score_norm only (H1 rows). Retained as part
+# of assign_scores()'s own tested contract; NOT continued into
+# model_likelihoods() here, since that function is archived -- see the
+# Section 3 header comment above. A real "similarity" pathway consumer
+# would train a model (Section 2) and call evaluate_likelihoods() directly
+# on the ORIGINAL match_df (Section 6), not on this sc_df.
 sc_df <- assign_scores(hyp_df, score_type = "similarity")
 sc_df[, c("taxon_name", "hypothesis_type", "score_norm")]
-
-## ---- model_likelihoods() ---- OFFLINE ---------------------------------------
-# Minimal hand-built model_params (same fixture pattern as
-# tests/testthat/test-compute-likelihoods.R) -- deterministic, avoids
-# depending on Section 2's live-trained model matching these taxon names.
-make_model_params_small <- function() {
-  sigma <- matrix(c(2.0, 0.2, 0.2, 1.0),
-    nrow = 2L,
-    dimnames = list(
-      c("score_logit", "gap_logit"),
-      c("score_logit", "gap_logit")
-    )
-  )
-  h2s <- diag(2)
-  rownames(h2s) <- colnames(h2s) <- c("score_logit", "gap_logit")
-  h3s <- diag(2)
-  rownames(h3s) <- colnames(h3s) <- c("score_logit", "gap_logit")
-  structure(
-    list(
-      H1_Lookup = data.frame(
-        lookup_key = "Hybognathus nuchalis", rank = "species",
-        mu_score = 4.5, mu_gap = 2.0, sigma_score = 2.0,
-        stringsAsFactors = FALSE
-      ),
-      H1_Global_Mu = c(score_logit = 3.5, gap_logit = 1.5),
-      H1_Sigma = sigma,
-      H2 = list(delta = 3.0, sigma = h2s),
-      H3 = list(delta = 5.0, sigma = h3s),
-      Stats = list(n_species = 1L, n_singletons = 0L)
-    ),
-    class = "taxa_model_params"
-  )
-}
-model_small <- make_model_params_small()
-model_lik_result <- model_likelihoods(sc_df,
-  model_params = model_small,
-  rank_system = c("family", "genus", "species")
-)
-head(model_lik_result$likelihoods)
-
-## ---- compute_likelihoods() ---- OFFLINE -------------------------------------
-# Orchestrating wrapper: unreferenced_candidates() + assign_scores() +
-# (for "similarity") model_likelihoods(), in one call.
-# Same expected "scores will be ignored" warning as assign_scores() above.
-compute_none <- suppressWarnings(compute_likelihoods(make_uc_match(), score_type = "none"))
-head(compute_none$likelihoods)
-
-compute_similarity <- compute_likelihoods(
-  make_uc_match(),
-  score_type = "similarity",
-  model_params = model_small, rank_system = c("family", "genus", "species"),
-  n_sims = 50L
-)
-head(compute_similarity$likelihoods)
 
 
 # ==============================================================================
@@ -503,8 +476,8 @@ make_calib_model_params <- function(score_transform = "logit") {
 # affine "linear" fit (needs >= min_calib_species, default 8) -- pass
 # "constant" explicitly rather than relying on the (linear, with fallback)
 # default, so this section demonstrates the calibration itself, not the
-# fallback warning (Section 8's calibrate_coverage_filter... no, see Section
-# 5's own multi-species variant below for the "linear" path).
+# fallback warning (see this section's own multi-species variant below for
+# the "linear" path).
 model_calibrated <- calibrate_query_noise(
   make_calib_model_params("logit"), make_calib_match_df(), make_calib_priors(),
   offset_form = "constant", min_confident_obs = 30L
@@ -741,21 +714,17 @@ expanded[, c("taxon_name", "taxon_name_rank", "hypothesis_type", "score_likeliho
 
 
 # ==============================================================================
-# SECTION 8 -- Coverage quality calibration
-# calibrate_coverage_filter() / coverage_threshold()
-# Chained directly off Section 2's ref_matrix (real DECIPHER alignment output,
-# not hand-set coverage values).
+# SECTION 8 -- Coverage quality calibration -- ARCHIVED 2026-09-09
+# calibrate_coverage_filter() / coverage_threshold() no longer exist in the
+# live package. A real A/B test on full-scale PtConception 12S data found a
+# real H1 win-rate improvement on the queries the filter is willing to answer,
+# but also a real, quantified cost (~19% of species lose every training pair
+# at the calibrated threshold; ~25% of real evaluation queries end up
+# unresolved) -- the same hard-exclusion-on-an-imperfect-proxy pattern this
+# ecosystem has already relearned twice elsewhere. Moved intact (source +
+# tests + demo workflow) to archive_unused_coverage_calibration/. See
+# TaxaLikely/CLAUDE.md's top session note for the full reasoning.
 # ==============================================================================
-
-## ---- calibrate_coverage_filter() ---- OFFLINE --------------------------------
-coverage_cal <- calibrate_coverage_filter(ref_matrix, rank_system = c("genus", "species"))
-coverage_cal[, c("threshold", "breadth", "h1_retention", "h2_retention", "youden_j")]
-best_threshold <- coverage_cal[which.max(coverage_cal$youden_j), ]
-best_threshold
-
-## ---- coverage_threshold() ---- OFFLINE ---------------------------------------
-thresh_90 <- coverage_threshold(ref_matrix, keep_frac = 0.90)
-thresh_90
 
 
 # ==============================================================================
@@ -851,25 +820,17 @@ restored[, c("species", "is_restored", "hypothesis_type", "restoration_basis", "
 
 # ==============================================================================
 # SECTION 10 -- Match object cleaning and export
-# remove_flagged_references() / write_reference_fasta() / build_site_reference()
+# write_reference_fasta()
+# Match-object cleaning against flagged reference accessions (formerly
+# remove_flagged_references(), retired 2026-09-08) now lives in TaxaMatch --
+# see TaxaMatch::remove_incongruent_references()/flag_incongruent_references().
+# build_site_reference() (the former fetch -> audit -> export wrapper around
+# write_reference_fasta()) was archived 2026-09-09 (zero real callers anywhere
+# in the monorepo) -- see TaxaLikely/archive_unused_reference_wrappers/ and
+# TaxaLikely/CLAUDE.md's 2026-09-09 session note. To build a site-specific
+# reference the manual way: fetch_ncbi_reference_sequences() -> audit_barcode_
+# coverage() -> write_reference_fasta() (see Workflow 1).
 # ==============================================================================
-
-## ---- remove_flagged_references() ---- OFFLINE -------------------------------
-# Fixture reused verbatim from tests/testthat/test-clean.R.
-match_df_clean <- data.frame(
-  observation_id = c("S1", "S1", "S2", "S2"),
-  accession = c("AB123.1", "CD456.2", "AB123.1", "EF789"),
-  score = c(99, 95, 98, 97),
-  taxon_name = c("Sp A", "Sp B", "Sp A", "Sp C"),
-  stringsAsFactors = FALSE
-)
-reference_errors <- data.frame(
-  id_x = c("AB123", "GH999"),
-  error_type = c("likely_mislabeled", "likely_mislabeled"),
-  stringsAsFactors = FALSE
-)
-cleaned_match <- remove_flagged_references(match_df_clean, reference_errors)
-cleaned_match
 
 ## ---- write_reference_fasta() ---- OFFLINE -----------------------------------
 ref_for_export <- data.frame(
@@ -884,24 +845,6 @@ export_tsv <- tempfile(fileext = ".tsv")
 write_reference_fasta(ref_for_export, export_fasta, taxonomy_file = export_tsv)
 readLines(export_fasta)
 readLines(export_tsv)
-
-## ---- build_site_reference() ---- NETWORK, small real taxa -------------------
-# High-level wrapper: fetch_ncbi_reference_sequences() -> audit_barcode_
-# coverage() -> write_reference_fasta(). flag_errors left FALSE (its TRUE path
-# additionally needs build_sequence_matrix(), already exercised in Section 2).
-site_ref_dir <- file.path(tempdir(), "review_site_reference")
-site_ref <- build_site_reference(
-  taxa = "Fundulus",
-  barcode_term = "MiFishU",
-  output_dir = site_ref_dir,
-  flag_errors = FALSE,
-  audit_coverage = TRUE,
-  max_sequences = 20L,
-  max_per_species = 2L
-)
-names(site_ref)
-nrow(site_ref$reference_df)
-list.files(site_ref_dir)
 
 
 # ==============================================================================
@@ -924,11 +867,11 @@ model_summary$species_thresholds
 ## ---- report_likelihood() ---- OFFLINE ---------------------------------------
 # A hand-built model_params (fixture reused verbatim from
 # tests/testthat/test-report_likelihood.R) rather than Section 2's real
-# trained_model, so this section's n_species/n_singletons/n_anchors/AIC/
-# reference_errors fields are all populated and non-degenerate -- Section 2's
-# 5-sequence fixture trains successfully but doesn't populate every one of
-# these diagnostic fields richly enough to demonstrate report_likelihood()'s
-# own methods-text generation.
+# trained_model, so this section's n_species/n_singletons/n_anchors/AIC
+# fields are all populated and non-degenerate -- Section 2's 5-sequence
+# fixture trains successfully but doesn't populate every one of these
+# diagnostic fields richly enough to demonstrate report_likelihood()'s own
+# methods-text generation.
 mock_model_for_report <- structure(
   list(
     H1_Lookup = data.frame(
@@ -940,12 +883,7 @@ mock_model_for_report <- structure(
     H1_Sigma = matrix(c(0.5, 0.1, 0.1, 0.4), 2, 2),
     H2 = list(delta = 3.0, sigma = matrix(c(0.8, 0.2, 0.2, 0.6), 2, 2)),
     H3 = list(delta = 5.0, sigma = matrix(c(1.2, 0.3, 0.3, 0.9), 2, 2)),
-    Stats = list(AIC_Score = 200.0, n_species = 35L, n_singletons = 5L, n_anchors = 10L),
-    reference_errors = data.frame(
-      accession = paste0("NC_", 1:3),
-      error_type = c("likely_mislabeled", "likely_mislabeled", "unverified_singleton_high_match"),
-      stringsAsFactors = FALSE
-    )
+    Stats = list(AIC_Score = 200.0, n_species = 35L, n_singletons = 5L, n_anchors = 10L)
   ),
   class = "taxa_model_params"
 )

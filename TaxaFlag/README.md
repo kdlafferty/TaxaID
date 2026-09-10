@@ -12,20 +12,21 @@ anomalous detections in taxonomic assignment results using data-driven
 and expert-review approaches.
 
 Taxonomic assignment matches observations to identifications, but
-samples often contain artifacts. TaxaFlag provides three independent
-post-hoc checks:
+samples often contain artifacts and uncertainties. TaxaFlag provides
+three independent post-hoc checks:
 
 -   **Contamination screening** compares taxon read counts against
     control samples (lab blanks, field blanks, positive controls). For
-    example, in metabarcoding, human and food-related sequences
-    commonly appear in blanks, and their relative frequency in controls
-    can justify removal.
--   **Handler artifact detection** flags observations that fall within
-    a time buffer around camera setup and retrieval, when human
-    activity is expected.
+    example, in metabarcoding, human and food-related sequences commonly
+    appear, and their relative frequency in controls can justify
+    removal.
+-   **Handler artifact detection** flags observations that fall within a
+    time buffer around camera setup and retrieval, when human activity
+    is expected.
 -   **LLM expert review** uses a language model to assess whether each
     assignment is plausible given the habitat and geographic location,
-    flagging unusual detections for closer inspection.
+    flagging unusual detections for closer inspection. This includes
+    contaminants that were not found screening blanks.
 
 ## Flagging Methods
 
@@ -35,31 +36,35 @@ post-hoc checks:
 | **Handler artifacts** | `flag_handler()` | Timestamps + setup/retrieval times |
 | **Expert review** | `review_assignments()` | Assignments + LLM API key |
 
-Each method is independent -- use one, two, or all three depending on
-your data type and available metadata. Flags are additive columns, not
+Each method is independent; use one, two, or all three depending on your
+data type and available metadata. Flags are additive columns, not
 filters. Together, these checks target false positives that survive
 upstream statistical assignment: contamination, handler artifacts,
-allochthonous transport (e.g., eDNA carried by currents from outside
-the sampling area), and other ecologically implausible detections.
+allochthonous transport (e.g., eDNA carried by currents from outside the
+sampling area), and other ecologically implausible detections.
 
 ## Methods
 
 ### Contamination Scoring
 
+TaxaID can screen out contaminant DNA found disproportionately in blanks
+before that sequences enters a workflow. Specifically,
 `flag_contaminant()` compares the relative abundance of each taxon in
 field samples versus control samples. Within each sample, read counts
 are first converted to proportions (reads for taxon / total reads),
 normalizing for sequencing depth. Proportions are then averaged across
 field and control replicates, and a score is computed:
 
-    score = mean_prop_field / (mean_prop_field + mean_prop_control)
+```         
+score = mean_prop_field / (mean_prop_field + mean_prop_control)
+```
 
 Scores range from 0 (taxon found only in controls) to 1 (taxon found
 only in field samples). Taxa absent from controls receive a score of
 1.0; taxa absent from field samples receive 0.0. Default thresholds
 classify scores as `"high"` risk (score ≤ 0.5, probable contaminant),
-`"moderate"` risk (0.5 < score ≤ 0.9, ambiguous), or `"low"` risk
-(score > 0.9, likely genuine detection). For positive controls, the
+`"moderate"` risk (0.5 \< score ≤ 0.9, ambiguous), or `"low"` risk
+(score \> 0.9, likely genuine detection). For positive controls, the
 interpretation inverts: taxa from positive controls appearing in field
 samples indicate cross-contamination.
 
@@ -71,13 +76,15 @@ group (e.g., camera station), the function identifies the earliest and
 latest timestamps as the sampling-period edges. Each observation
 receives a linear score based on its proximity to the nearest edge:
 
-    handler_score = minutes_to_nearest_edge / interval_minutes
+```         
+handler_score = minutes_to_nearest_edge / interval_minutes
+```
 
 clamped to [0, 1]. The default interval is 30 minutes. Observations
 outside the interval score 1.0 (valid); those at the exact edge score
-0.0 (probable artifact). When `handler_taxa` is specified (e.g.,
-"Homo sapiens"), only those taxa are scored for temporal proximity --
-other species detected near edges are assumed legitimate.
+0.0 (probable artifact). When `handler_taxa` is specified (e.g., "Homo
+sapiens"), only those taxa are scored for temporal proximity -- other
+species detected near edges are assumed legitimate.
 
 ### LLM Expert Review
 
@@ -85,16 +92,16 @@ other species detected near edges are assumed legitimate.
 an LLM for structured assessment across eight dimensions: habitat fit,
 geographic plausibility, taxonomic scope, contamination risk, plausible
 alternatives, finer-rank hypotheses, confidence, and a free-text
-comment. Plausibility columns use a consistent vocabulary:
-`"likely"` / `"possible"` / `"unlikely"` (higher = more plausible
-genuine detection). Contamination risk uses `"low"` / `"moderate"` /
-`"high"` (higher = more contamination risk). The function includes
-truncation recovery: if an LLM response is cut off mid-JSON, it walks
-backward to find the last complete object and parses what is available.
-Taxa omitted by the LLM are filled with NA. Supports eDNA, acoustic,
-and image data via the `data_type` param. This review is intended as a
-structured second opinion, not an automated filter -- users should treat
-the flags as candidates for closer inspection.
+comment. Plausibility columns use a consistent vocabulary: `"likely"` /
+`"possible"` / `"unlikely"` (higher = more plausible genuine detection).
+Contamination risk (independent of `flag_contaminant()`) uses `"low"` /
+`"moderate"` / `"high"` (higher = more contamination risk). The function
+includes truncation recovery: if an LLM response is cut off mid-JSON, it
+walks backward to find the last complete object and parses what is
+available. Taxa omitted by the LLM are filled with NA. Supports eDNA,
+acoustic, and image data via the `data_type` param. This review is
+intended as a structured second opinion, not an automated filter --
+users should treat the flags as candidates for closer inspection.
 
 ## Installation
 
@@ -195,8 +202,8 @@ taxonomic assignment: U.S. Geological Survey software release,
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
-San Francisco, California).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC, San
+Francisco, California).
 
 ## References
 

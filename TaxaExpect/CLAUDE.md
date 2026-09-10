@@ -1,5 +1,701 @@
 # CLAUDE.md -- TaxaExpect
-# Last updated: 2026-09-05 (Sonnet 5 -- open decision #1 of ecosystem_docs/
+# Last updated: 2026-09-09, FINAL (Sonnet 5 -- re-archives `create_sites_from_grid()` and
+# `compute_adaptive_sampling_groups()` for the THIRD time in one day, reversing the
+# restoration directly below. This is the final decision on this pair -- not expected to
+# reverse again. The restoration's own reasoning (an automatic classifier is a reasonable
+# fallback for a published-package user without this project's own domain depth to
+# hand-classify `sampling_group`) was tested against real evidence, gathered live against
+# the actual `TaxaExpect::estimate_kernel_priors()`/`compute_adaptive_sampling_groups()`
+# functions and a real, full-scale checkpoint
+# (`/Users/lafferty/My Drive/Rscripts/eDNA/PtConception/PtCon18SSchulte_occurrences_clean.rds`,
+# 1,375,345 real occurrence rows with a real, hand-built, expert 9-group `sampling_group`
+# classification already on it as ground truth) -- and refuted. Recording the full evidence
+# here in detail, since it is genuinely hard-won and should not be lost to a summary:
+#
+# FINDING 1 -- the algorithm answers the wrong question, confirmed on real data. Running
+# `compute_adaptive_sampling_groups(min_n=100)` on the real gridded data at three grid sizes
+# (0.1 deg, 0.5 deg, 1.0 deg) produced 37, 47, and 58 automatic groups respectively, against
+# the real expert's 10 groups. The dominant real group (`macroinvertebrates`, 1.27M records)
+# was split into 28-39 separate automatic groups (`order:Forcipulatida`, `order:Actiniaria`,
+# `order:Valvatida`, etc.) -- because each order individually clears the per-site record-
+# count floor on its own, the algorithm never merges them, even though they're all genuinely
+# detected via the same real eDNA marker (the actual reason the expert grouped them
+# together). The algorithm's criterion ("does this group have enough per-site records") is
+# simply a different question from what `sampling_group` is meant to answer ("was this
+# detected by a comparable method") -- no threshold tuning fixes this, since the two
+# questions are not the same question.
+#
+# FINDING 2 -- the algorithm produces a real, false conflation on real data. The real expert
+# classification separately labels `parasites` (n=9 records) and `terrestrial_arthropods`
+# (n=3 records) -- almost certainly because one is a genuine marine survey target and the
+# other is likely airborne/handler contamination, an important ecological distinction. The
+# automatic algorithm collapses BOTH into a single group, `phylum:Arthropoda`, purely because
+# neither clears `min_n` even at the taxonomic ceiling rank and they happen to share a
+# phylum. This is exactly the "combining taxa collected by incommensurable methods" failure
+# the whole `sampling_group` mechanism exists to prevent -- produced automatically, silently,
+# by the tool that was supposed to help avoid it.
+#
+# FINDING 3 -- grid_size sensitivity confirmed directly and non-trivial. Fragmentation got
+# WORSE (37->58 automatic groups), not better, going from a finer (0.1 deg) to a coarser
+# (1.0 deg) grid -- a coarser grid inflates apparent per-site record density, so MORE groups
+# look individually "adequate" and never get merged. This is the opposite of naive intuition
+# and confirms the `grid_size` choice materially, non-trivially changes the classification.
+#
+# FINDING 4 -- the kernel model does NOT need pre-merged, sample-size-adequate groups at
+# all, confirmed empirically. Running `estimate_kernel_priors(sampling_group_col=
+# "sampling_group")` directly on the real, UNMERGED, 9-group expert classification (no
+# `compute_adaptive_sampling_groups()` involved at all) succeeded with zero errors for every
+# group, including the tiniest ones: `terrestrial_arthropods` (n_taxa=1, n_eff=2.0) and
+# `parasites` (n_taxa=3, n_eff=6.1). The math degrades gracefully -- `parasites`' top taxon
+# came back `theta_mean=0.036, theta_sd=0.065` (honestly wide, appropriately uncertain given
+# the sparse data), while the dominant group's top taxa came back tight
+# (`theta_mean~=0.10-0.16, theta_sd~=0.001`). This directly refutes the premise that a
+# sample-size-adequate merge step is needed before calling the kernel estimator -- it was
+# never actually necessary on this path (unlike the old GLMM, which could genuinely fail to
+# converge with too little data).
+#
+# FINDING 5 -- one real, narrower, separate wrinkle worth a small targeted fix (implemented
+# this session, see below), not a merge algorithm. A single-TAXON group (not single-record --
+# `terrestrial_arthropods` had `n_taxa=1`) produces a degenerate result: `theta_mean=1.0,
+# theta_sd=0` for that one taxon -- mathematically correct given the compositional framing
+# (100% of a group with one member, by definition) but not informative, and could mislead a
+# downstream consumer into reading "certain to be present" rather than "the only thing we
+# have to compare it to." This is a real, much narrower concern than sample-size adequacy --
+# worth a lightweight warning, not a merging algorithm.
+#
+# ACTION TAKEN, Part 1 (re-archival): `R/create_sites_from_grid.R`,
+# `R/compute_adaptive_sampling_groups.R`, and their dedicated test files
+# (`tests/testthat/test-create_sites_from_grid.R`, `tests/testthat/test-compute_adaptive_
+# sampling_groups.R`) moved back, intact, to `archive_glmm_prior_pipeline/{R,tests}/` --
+# rejoining the rest of the GLMM/grid chain. Neither file's own content was rewritten (a
+# file relocation, not an edit), matching every prior move of this same pair.
+#
+# CROSS-REFERENCES reversed a third time: `TaxaExpect-package.R`'s `@section Spatial
+# modelling` (both functions removed from the live bulleted list) and `@section Archived`
+# (both names added back, with the full three-stage-then-final history recorded in prose);
+# `estimate_kernel_priors.R`'s `sampling_group_col` `@param` roxygen and internal code
+# comment (both rewritten to state plainly that grouping must be built BY HAND, with no
+# automated shortcut recommended, and that the estimator does not need pre-merged,
+# sample-size-adequate groups -- see Finding 4 above); `TaxaWizard/inst/metadata/
+# TaxaExpect.json`'s `sampling_group_col` description (restores the "build this column
+# yourself by hand" framing, drops the `compute_adaptive_sampling_groups()` mention);
+# `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R` and root
+# `inst/TaxaID_Workflow_Template_TEST.R` (both re-corrected from "create_sites_from_grid()
+# itself is unaffected (still live)" back to archived); `TaxaExpect/inst/TaxaExpect_
+# workflow.R` and `inst/workflows/generate_priors_workflow.R` (their restoration-era
+# addenda corrected to say both functions are archived again, final). `TaxaExpect/
+# README.md`: the "Sampling-group utilities" Key Functions bullet REMOVED entirely (no
+# archived-function names remain as user-facing capabilities); the "Problematic mixing"
+# paragraph (under Assumptions > Shared detection effort) rewritten to state plainly that
+# grouping must be done by hand, based on real knowledge of detection methodology -- there
+# is no automated way to detect "comparable method" from taxonomy or data alone (an LLM
+# guess isn't a substitute either), AND that the kernel estimator does NOT require
+# pre-merging sparse groups for statistical adequacy (Finding 4) -- a user should classify
+# at whatever granularity genuinely reflects distinct detection methods without worrying
+# whether each group individually "has enough data." `TaxaExpect/vignettes/building-
+# priors.Rmd`'s "sampling-group correctness" step (Step 5) rewritten to match: explains the
+# mixing risk, states grouping must be done by hand (no automated shortcut), and shows a
+# simple illustrative example of a caller building `sampling_group` directly via
+# `dplyr::case_when()` on taxonomic columns, with NO grid step at all, passed straight to
+# `estimate_kernel_priors(sampling_group_col=)` -- keeps the vignette's established
+# `eval=FALSE, purl=FALSE` pattern and plain, non-jargon, no-archival-framing style.
+# `ecosystem_docs/ECOSYSTEM_WORKFLOW.md`'s superseded-pattern banner corrected back from
+# "LIVE" to "ARCHIVED" for `create_sites_from_grid()`. `TaxaExpect/inst/
+# taxaexpect_review_response.md` gained a THIRD dated addendum on both functions' sections
+# (the first two archival/restoration addenda left unrewritten, per this project's own
+# convention -- the history is now legible as three back-and-forth entries). New dated row
+# in `ecosystem_docs/NAME_CHANGE_HISTORY.md` (the fourth row for this pair, referencing the
+# prior three rather than editing them). `stringr`/`rlang` dropped from DESCRIPTION Imports
+# again (their only real caller, `create_sites_from_grid()`, is archived again -- confirmed
+# via grep that no other live `R/*.R` file uses either package).
+# `ecosystem_docs/STATISTICAL_COMPONENT_CATALOG.md`/`STATISTICAL_COMPONENT_SOUNDNESS_
+# REVIEW.md` checked directly -- neither ever gained a catalog/review entry for either
+# function (confirmed via grep: no mention of either function name in either file), so no
+# removal was needed there.
+#
+# ACTION TAKEN, Part 2 (Finding 5's small, targeted fix): `estimate_kernel_priors()`
+# (`R/estimate_kernel_priors.R`) now emits a base-R `warning(sprintf(...), call. = FALSE)`
+# (matching this file's own existing warning convention -- confirmed by reading the file
+# first; it does not use `cli`/`rlang` anywhere) whenever `sampling_group_col` is supplied
+# and a resulting group contains exactly one distinct taxon. Exact message: "estimate_
+# kernel_priors: sampling group '<group>' contains only one distinct taxon (<taxon>). Its
+# theta_mean is trivially 1.0 by construction (100% share of a group with one member) and
+# does not reflect a real occurrence-probability estimate the way a multi-taxon group's
+# does -- read it as \"the only thing we have to compare it to,\" not \"certain to be
+# present.\"" A WARNING, not an error -- the computation is mathematically valid, not
+# blocked, and its output value is completely unchanged; only a warning is emitted. Fires
+# once per offending group per call (not once per taxon). Deliberately narrow and
+# NOT wired into any grouping/merging logic -- this is Finding 5's fix, not a
+# rehabilitation of Finding 1-3's algorithm. Three new tests in
+# `tests/testthat/test-estimate_kernel_priors.R`: the warning fires and names both the
+# group and the offending taxon, and confirms `theta_mean == 1` is unaffected; a normal
+# multi-taxon group (down to 1 record per taxon, deliberately sparse) does NOT fire it
+# regardless of sparsity; and the warning never fires at all when `sampling_group_col` is
+# omitted (even for a single-taxon-total dataset), confirming the change is fully scoped to
+# the grouped path.
+#
+# VERIFICATION: `devtools::document()` clean (zero dangling-link warnings, confirmed after
+# a first run correctly flagged + then cleared two stale `NAMESPACE` export() entries for
+# the two now-archived functions), `devtools::install()` + `packageDescription()$Built`
+# confirmed fresh (`R 4.5.2; ; 2026-09-09 18:14:11 UTC; unix`), `devtools::test()` 618/0
+# (down from the 682 restored baseline, matching the documented pre-restoration baseline of
+# 612 plus exactly 6 new expectations across the 3 new single-taxon-group-warning test_that
+# blocks -- confirmed via `as.data.frame(devtools::test())`, `[ FAIL 0 | WARN 55 | SKIP 1 |
+# PASS 618 ]`; the 55 warnings are pre-existing, expected warnings this suite has always
+# produced -- e.g. the fetch-boundary-truncation warning several fixtures intentionally
+# trigger -- plus the 3 new single-taxon-group warnings now correctly fired by one
+# pre-existing `plot_theta_surface` test's own multi-group fixture, which happens to use
+# single-taxon groups incidentally; not a regression, that test still passes; 1 pre-existing
+# skip unchanged), `devtools::check()` 0 errors / 0 warnings / 1 note (the "non-standard
+# top-level file" note for `archive_glmm_prior_pipeline/`; the standing "future file
+# timestamps" note did not fire this run, environment-dependent, not a regression).
+# TaxaWizard (touched via the metadata description edit) separately re-`document()`ed,
+# reinstalled, and re-tested: `devtools::test()` 633/0 (0 failures, unchanged -- no test
+# asserts on this specific description string), `devtools::check()` 0 errors / 0 warnings /
+# 0 notes. All 4 edited `inst/` workflow/template files confirmed to still `parse()`
+# cleanly.
+#
+# Previous update, 2026-09-09, even later still (Sonnet 5 -- REVERSES the retirement directly
+# below: `create_sites_from_grid()` and `compute_adaptive_sampling_groups()` are restored
+# to the live package, moved back from `archive_glmm_prior_pipeline/{R,tests}/` to
+# `R/`/`tests/testthat/`. Not a re-litigation of the archival's own "zero real callers"
+# finding (still true, not disputed) -- a real, different safety consideration was found
+# reviewing `TaxaExpect/README.md`'s "Shared detection effort" section for an unrelated
+# task, and it changes the calculus for this specific pair even though the rest of the
+# GLMM/grid chain (the 9 other archived functions, all archived for the separate, real,
+# and unambiguous reason that the GLMM modeling math itself is obsolete on the kernel
+# path) is correctly NOT reconsidered here.
+#
+# THE GAP: `estimate_kernel_priors(sampling_group_col = NULL)` has no guard at all against
+# silently pooling data from genuinely incompatible detection processes. Confirmed directly
+# in `R/estimate_kernel_priors.R`: `sampling_group_col` is purely optional, and when omitted
+# the function pools every record into one shared composition and one shared Good-Turing
+# budget with zero warning and zero error -- a phytoplankton cell count and a bird point
+# count would be silently combined exactly as if they were commensurate detection events.
+# This is a real regression from the now-(mostly-)archived GLMM path: `train_biodiversity_
+# model()` had a hard `stop()` whenever its input carried a `sampling_group` column spanning
+# more than one value (Session 149, 2026-07-10) -- the kernel path rewrite (2026-08-30/31)
+# dropped that enforcement and never replaced it with an equivalent guard of its own.
+#
+# WHY NOT AUTO-DETECT THE MIXING INSTEAD (considered and rejected, not just skipped): this
+# codebase has an established, explicit design precedent against inferring a domain
+# classification from taxonomy or data alone -- `generate_invasive_watch_evidence()`'s own
+# roxygen states the general principle plainly: "the classification that built the pool's
+# groups lives in the workflow, and a wrong group mis-prices silently." Whether two taxa
+# share a genuinely comparable detection process is exactly this kind of domain judgment,
+# not something inferable from the records themselves (two co-occurring taxa sampled by
+# different gear look identical in an occurrence table). The fix is therefore NOT a smarter
+# default -- it's making the user's responsibility to supply `sampling_group_col` unmissable
+# in the documentation, and keeping a real, usable tool on hand for a caller who genuinely
+# cannot hand-classify every taxon: `compute_adaptive_sampling_groups()`.
+#
+# WHY THE ORIGINAL ARCHIVAL WAS RIGHT AS FAR AS IT WENT, BUT NOT THE WHOLE PICTURE: the
+# archival's own reasoning (directly below, and in the row above it) was empirically
+# correct -- every real dataset this project's own analysts have handled, including the
+# taxonomically broadest one (PtConception 18S, ~10-11 groups), was successfully
+# hand-classified by a domain expert, and `compute_adaptive_sampling_groups()` genuinely has
+# never been load-bearing for any real study here. But that reasoning implicitly scoped its
+# audience to this project's own internal team. TaxaID is headed for a USGS software release
+# and an MEE manuscript -- a future external user adopting this package won't have the same
+# domain depth the person who hand-built the real 18S workflow's 11-way `case_when()`
+# classification did. An automatic fallback is exactly the kind of thing a published
+# scientific package should offer users who lack that expertise, even though it has never
+# been the load-bearing path internally so far -- a genuinely different consideration from
+# what was weighed at archival time, not a re-litigation of the same facts.
+#
+# RESTORED: `R/create_sites_from_grid.R`, `R/compute_adaptive_sampling_groups.R`, plus their
+# dedicated test files (`tests/testthat/test-create_sites_from_grid.R`, `tests/testthat/
+# test-compute_adaptive_sampling_groups.R`), moved back intact from `archive_glmm_prior_
+# pipeline/{R,tests}/` -- neither file's own content was ever rewritten during either the
+# archival or this reversal, since both moves were file relocations, not edits (both files'
+# own roxygen already narrated their live, kernel-path purpose correctly and needed no
+# change). `.gitignore`'s `archive_glmm_prior_pipeline/` entry and its own explanatory
+# comment are unaffected by this reversal -- the directory still holds the genuinely
+# obsolete 9-function GLMM chain and is still correctly excluded.
+#
+# CROSS-REFERENCES fixed in the reverse direction of the archival below: `TaxaExpect-
+# package.R`'s `@section Spatial modelling` (both functions moved back into the live
+# bulleted list) and `@section Archived` (both names removed from the archived list, with
+# the full three-stage history -- kept live, archived, restored -- spelled out in prose
+# instead); `estimate_kernel_priors.R`'s `sampling_group_col` `@param` roxygen and internal
+# code comment (both rewritten to restore the recommendation of `compute_adaptive_sampling_
+# groups()` as the automatic alternative to hand-building the column, stating the silent-
+# pooling hazard explicitly rather than just noting a default); `TaxaWizard/inst/metadata/
+# TaxaExpect.json`'s `sampling_group_col` description (restores the `compute_adaptive_
+# sampling_groups()` mention and adds the explicit not-safe-to-omit warning; confirmed
+# neither function has ever had its own top-level metadata entry in this file to restore --
+# the 2026-09-09-earlier archival session note only recorded `build_priors`/`optimize_grid_
+# size`/`prepare_model_dataframe` losing entries, not this pair). Two of the four archived-
+# pathway-notice `inst/` demo scripts (`TaxaAssign/inst/workflows/camera_trap_posterior_
+# workflow.R`, root `inst/TaxaID_Workflow_Template_TEST.R`) had their "create_sites_from_
+# grid() itself is unaffected (still live)" claim corrected TO archived by the retirement
+# below -- both re-corrected back to live, with the rest of each script's GLMM chain
+# explicitly still noted as archived and non-functional as written (unchanged). The other
+# two (`TaxaExpect/inst/TaxaExpect_workflow.R`, `inst/workflows/generate_priors_workflow.R`)
+# gained a matching addendum for consistency. `TaxaExpect/README.md`'s "Shared detection
+# effort" section (the actual motivating task -- a `!!...!!`-marked draft paragraph the user
+# had already started there): finalized into clean prose keeping its three-option substance
+# (hand-classify; `compute_adaptive_sampling_groups()`; separate per-survey-type models) and
+# made the core point explicit rather than implied -- "**This grouping is not automatic**
+# ... if you leave `sampling_group_col` unset, it silently pools every taxon into one shared
+# denominator regardless of detection process, with no warning and no error." Both functions
+# added back to the README's Key Functions, a new "Sampling-group utilities" bullet under
+# the existing "Kernel pathway (current, recommended)" heading. `ecosystem_docs/
+# ECOSYSTEM_WORKFLOW.md`'s `create_sites_from_grid()`-keyed `sample_meta` code-comment
+# banner corrected (the WIDER point -- that pattern is superseded on the kernel path because
+# `estimate_kernel_priors()` returns one opaque `site_id`, not a grid -- is unrelated to
+# either function's archival status and was left as-is). `TaxaExpect/inst/
+# taxaexpect_review_response.md` gained a further dated addendum on both functions' sections
+# (the archival addenda directly below are left unrewritten, per this project's own
+# convention that past review-response entries are a record of what was true then). New row
+# in `ecosystem_docs/NAME_CHANGE_HISTORY.md` documenting the reversal, referencing the
+# original archival row rather than editing it.
+#
+# ONE INCIDENTAL DESCRIPTION FIX found restoring the files, not part of the archival's own
+# record: `stringr`/`rlang` had been dropped from DESCRIPTION Imports when `create_sites_
+# from_grid()` was archived (its only real callers, `stringr::str_replace_all()`/
+# `rlang::sym()`) -- both restored now that the file is live again; confirmed via grep
+# before restoring, not assumed.
+#
+# `devtools::document()` clean (zero dangling-link warnings), `devtools::install()` +
+# `packageDescription()$Built` confirmed fresh (`R 4.5.2; ; 2026-09-09 15:21:07 UTC; unix`),
+# `devtools::test()` 682/0 (up from 612, exactly matching the pre-reversal baseline this
+# same file's own archival note below recorded -- 53 pre-existing environmental warnings
+# unchanged in kind, 1 pre-existing skip), `devtools::check()` 0 errors / 0 warnings / 2
+# notes (both benign/expected: the standing "future file timestamps" environmental note, and
+# the "non-standard top-level file" note for `archive_glmm_prior_pipeline/` itself, which
+# still holds the genuinely-retired 9-function chain). TaxaWizard (touched via the metadata
+# description edit) separately re-`document()`ed, reinstalled, and re-tested: `devtools::
+# test()` 633/0 (0 failures, unchanged from before this session -- no test asserts on this
+# specific description string), `devtools::check()` 0 errors / 0 warnings / 0 notes. All 4
+# edited `inst/` workflow/template files confirmed to still `parse()` cleanly.
+#
+# Previous update, 2026-09-09, later still (Sonnet 5 -- retires the dormant final pair from
+# the GLMM/grid chain, `create_sites_from_grid()` and `compute_adaptive_sampling_groups()`,
+# a few hours after the main 9-function archival below deliberately kept both live. That
+# earlier pass's own justification -- `create_sites_from_grid()`'s roxygen claiming one
+# remaining live purpose independent of the archived GLMM math, namely the spatial-binning
+# step `compute_adaptive_sampling_groups()` uses to measure per-site effort ahead of
+# `estimate_kernel_priors(sampling_group_col=)` -- was directly questioned by the user, who
+# asked for it to be checked again rather than taken at face value.
+#
+# STEP 0 VERIFICATION, redone from scratch rather than trusted from the earlier pass: a
+# fresh `grep -rln "create_sites_from_grid\|compute_adaptive_sampling_groups"` across the
+# WHOLE monorepo (not just TaxaExpect) found 25 files. Read every hit in context. Confirmed
+# via `grep -n "create_sites_from_grid(\|compute_adaptive_sampling_groups(" TaxaExpect/R/*.R`
+# (excluding the two files' own source) that NEITHER function is called by
+# `estimate_kernel_priors()`, `calibrate_kernel_bandwidth()`, or anything else in the live
+# kernel path -- the only two hits inside `estimate_kernel_priors.R` were roxygen/comment
+# mentions of `compute_adaptive_sampling_groups()` as a suggestion, never a call. Confirmed
+# zero calls in any of the 6 real production workflows (`GreatLakes2023_ConsensusWorkflow.R`,
+# `PtConceptionWorkflow_12S_single_site.R`/`_12S_multi_site.R`/`_18S_2_single_site.R`,
+# `MuguFishWorkflow.R`, `MuguWilderFishWorkflow.R`). `compute_adaptive_sampling_groups()`'s
+# own package changelog (this file, 2026-08-04 entry) already recorded "zero real callers
+# affected" from a past parameter-default change -- direct evidence the function was built
+# but never actually adopted by any real study, not just an absence of recent use.
+#
+# The only real callers left, ecosystem-wide: (a) the same 4 already-archived-pathway-notice
+# `inst/` demo/template scripts the main 9-function archival below already flagged as
+# non-functional as written (`TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`,
+# root `inst/TaxaID_Workflow_Template_TEST.R`, `TaxaExpect/inst/TaxaExpect_workflow.R`,
+# `TaxaExpect/inst/workflows/generate_priors_workflow.R`) -- these call
+# `create_sites_from_grid()` for the OLD GLMM purpose, not the newer kernel-path purpose, and
+# already error before reaching that call (each script's own `optimize_grid_size()` call, also
+# archived, runs first); (b) one diagnostics script,
+# `diagnostics/kernel_budget_18S_sampling_groups.R`, which genuinely uses both functions for
+# their real, current purpose (Section 6, spatial-binning the real 18S occurrence checkpoint
+# ahead of an adaptive-grouping comparison). Per this project's own established convention for
+# `diagnostics/*.R` files (a frozen, dated, one-time analysis record, not live code expected to
+# keep working), left completely untouched -- its own header already reads as a point-in-time
+# investigation, dated and self-contained, not something meant to be re-run indefinitely.
+#
+# The user's own reasoning for archiving now, recorded here since it's the actual basis for
+# the decision, not just "no callers found": the scenario that would justify keeping this pair
+# (a future marker/dataset with taxonomic breadth too large to hand-classify into detection-
+# process sampling groups) is real in principle but has never actually materialized -- every
+# real dataset this ecosystem has handled, including the taxonomically broadest one (the 18S
+# workflow, ~10-11 groups), was successfully hand-classified by a domain expert instead.
+#
+# MOVED (intact, source + tests, matching the established archival convention -- not
+# deleted): `TaxaExpect/R/create_sites_from_grid.R` and
+# `TaxaExpect/R/compute_adaptive_sampling_groups.R`, plus their dedicated test files
+# (`tests/testthat/test-create_sites_from_grid.R`, `tests/testthat/test-compute_adaptive_
+# sampling_groups.R`), into the SAME `archive_glmm_prior_pipeline/{R,tests}/` directory the
+# rest of the GLMM chain already lives in -- a natural, related addition to an existing
+# archive, not a new sibling directory. `.gitignore` already covered this directory from the
+# earlier archival; no `.Rbuildignore` change needed (the directory already produces the same
+# accepted "non-standard top-level file" `R CMD check` NOTE the rest of the chain does).
+#
+# CROSS-REFERENCES fixed: `TaxaExpect-package.R`'s `@section Spatial modelling` (removed the
+# `create_sites_from_grid()`/`compute_adaptive_sampling_groups()` bullets) and `@section
+# Archived` (both names added to the archived list, with the two-stage "kept live, then
+# re-examined and archived" history spelled out); `estimate_kernel_priors.R`'s two
+# `sampling_group_col` mentions of `compute_adaptive_sampling_groups()` (one `@param`
+# roxygen block, one internal code comment) redirected to "build the column yourself."
+# `TaxaWizard/inst/metadata/TaxaExpect.json`'s `sampling_group_col` entry updated the same
+# way (no snippet or graph-topology change -- only the one description string). Two of the 4
+# archived-pathway-notice scripts (`camera_trap_posterior_workflow.R`,
+# `TaxaID_Workflow_Template_TEST.R`) had explicitly claimed "`create_sites_from_grid()` itself
+# is unaffected (still live)" -- both corrected; the other two never made that specific claim
+# but gained a short addendum for consistency. `TaxaExpect/README.md`'s Key Functions and
+# "Archived: Grid + GLMM Pathway" sections rewritten to list both functions among the
+# archived, with the same two-stage history. `ecosystem_docs/ECOSYSTEM_WORKFLOW.md` gained a
+# note on its own `create_sites_from_grid()`-keyed `sample_meta` code example (outside that
+# doc's existing archived-pathway banner). `TaxaExpect/inst/taxaexpect_review_response.md`
+# gained dated addenda on both functions' existing review-response sections (original answers
+# left unrewritten, per this project's own convention). New row in
+# `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
+#
+# Two real, incidental `R CMD check` findings from actually running it (not assumed clean):
+# a roxygen edit split `\link{calibrate_kernel_bandwidth}` across a line break, producing a
+# "Missing link(s)" WARNING (`calibrate_kernel_ bandwidth`, with a stray space) -- fixed by
+# not wrapping mid-tag. `stringr` and `rlang` both dropped from DESCRIPTION Imports: each had
+# exactly one real caller in the live package (`create_sites_from_grid()`'s
+# `stringr::str_replace_all()`/`rlang::sym()`), now archived -- confirmed via grep before
+# removing, and `R CMD check` independently flagged the `rlang` case as an "Imports not used"
+# NOTE once removed from source. Matching `CLAUDE.md`'s own Key Dependencies table rows
+# removed for both (the table's other stale rows, e.g. `glmmTMB`/`tidyr`/`shiny`/`miniUI`
+# left over from the EARLIER 9-function archival's own DESCRIPTION cleanup, are a separate,
+# pre-existing staleness out of this session's scope -- not touched).
+#
+# `devtools::document()` clean (zero dangling-link warnings after the line-wrap fix),
+# `devtools::install()` + `packageDescription()$Built` confirmed fresh, `devtools::test()`
+# 612/0 (down from 682, matching the ~70 `test_that` assertions removed with the two archived
+# test files; 53 pre-existing environmental warnings unchanged in kind -- the same kernel-
+# fetch-boundary noise this suite has always produced; 1 pre-existing skip), `devtools::check()`
+# 0 errors / 0 warnings / 2 notes (both benign/expected: the standing "future file timestamps"
+# environmental note, and the same "non-standard top-level file" note the archive directory
+# already produced before this session). TaxaWizard (touched via the one metadata description
+# edit) separately re-`document()`ed, reinstalled, and re-tested: `devtools::test()` 633/0 (0
+# failures, unchanged from before this session -- no test asserts on this specific description
+# string), `devtools::check()` 0 errors / 0 warnings / 1 note (the same standing environmental
+# note). All 4 edited `inst/` workflow/template files confirmed to still `parse()` cleanly.
+#
+# Previous update, 2026-09-09, later (Sonnet 5 -- archives the remaining 8 members of the
+# GLMM grid/prior-fitting chain (`build_priors()`, `optimize_grid_size()`,
+# `prepare_model_dataframe()`, `add_pca_covariates()`/`apply_pca_transform()`,
+# `compute_moran_basis()`, `screen_spatial_formula()`, `train_biodiversity_model()`,
+# `generate_full_priors()`), plus `plot_theta_map_interactive()` as a 9th item, closing
+# out the "gentle" 2026-08-31 deprecation (this file's own B7 note further below) now
+# that its own stated precondition -- every real production workflow finishing its
+# migration to the kernel path -- is confirmed true. `train_biodiversity_model_by_group()`
+# was already archived earlier the same day (entry directly below); this pass finishes
+# the rest of the chain and consolidates both into one directory.
+#
+# STEP 0 VERIFICATION (done before touching anything, per this project's own "confirm
+# via grep, don't assume" convention): grepped every live kernel-path source file
+# (`estimate_kernel_priors.R`, `calibrate_kernel_bandwidth.R`, `generate_undetected_
+# diversity.R`, `apply_undetected_evidence.R`, `generate_domestic_food_priors.R`,
+# `plot_theta_surface.R`, `generate_inat_range_evidence.R`, `generate_regional_
+# proximity_evidence.R`, `fit_regional_presence_curve.R`, `kernel_budget_sensitivity.R`)
+# for real (non-roxygen, non-comment) calls into any of the 8 candidates -- ZERO found;
+# every hit was a roxygen cross-reference, a comment, or a legacy-input-shape description
+# inside an error message (the `model_tier`-legacy-fallback text those functions
+# deliberately still carry, per this project's own explicit scope boundary: DO NOT touch
+# `model_tier` handling anywhere, since it exists to correctly read OLD, already-computed
+# GLMM-shaped prior objects a user might still have cached on disk).
+#
+# TWO SPECIFIC INVESTIGATIONS, per explicit instruction, both resolved with real evidence
+# rather than assumption: (1) `create_sites_from_grid()` was NOT on the original
+# deprecation list and was checked for an independent purpose before deciding whether to
+# archive it -- confirmed it has one: `diagnostics/kernel_budget_18S_sampling_groups.R`
+# calls it purely as a spatial-binning utility feeding `compute_adaptive_sampling_groups()`
+# / `estimate_kernel_priors(sampling_group_col=)`, with zero calls into any archived GLMM
+# function anywhere in that same script. NOT archived; its own roxygen/DESCRIPTION/
+# CLAUDE.md row updated to describe this dual history instead. (2) `plot_theta_map_
+# interactive()` was checked for any live (non-dead-else-branch) caller: every real
+# caller found in this repo (the root generic template, one TaxaWizard code-gen snippet)
+# traces back through the GLMM chain itself, and all 6 real production workflows only
+# ever called it from the same dead `else` branch as the other 8 -- confirmed fully
+# orphaned, archived as the 9th item.
+#
+# ARCHIVE CONSOLIDATION: created `archive_glmm_prior_pipeline/{R,tests}/`, moved all 8
+# newly-archived R files + their 8 dedicated test files (`build_priors()` has none --
+# confirmed via grep, it was never covered by a dedicated test file even when live, only
+# indirectly referenced in `test-report_priors.R`'s doc comments) into it, and relocated
+# the already-archived `train_biodiversity_model_by_group.R` + its test there too from
+# the now-deleted `archive_glmm_by_group/` -- one home for the whole retired chain, per
+# the task's own "your call, be consistent" latitude. `.gitignore` updated to the new
+# directory name with a fuller comment covering the whole chain; `.lintr`'s now-orphaned
+# per-file line-length exclusions for the 5 moved files removed. Two internal helpers in
+# `R/utils_internal.R` (`.parse_grid_id_coords()`, used only by `compute_moran_basis.R`
+# and the archived `plot_theta_map_interactive.R`; `.glmm_deprecation_notice()`, used only
+# by the 9 GLMM-chain functions themselves) were fully orphaned once every one of their
+# callers was archived -- removed, not left as dead code. `glmmTMB` dropped from
+# DESCRIPTION Imports (its only 3 real call sites were all in archived files);
+# `shiny`/`miniUI` dropped from Suggests (their only live consumer was the archived
+# gadget); `tidyr` ALSO dropped, found only by `devtools::check()` itself flagging an
+# "Imports not used" NOTE post-archival (its only real callers, `tidyr::complete()`/
+# `crossing()`, were both in now-archived files).
+#
+# CROSS-REFERENCE SWEEP (Step 2), ecosystem-wide, not just this package: fixed every real
+# dangling roxygen `\link{}`/`[...]` cross-reference before ever running `devtools::
+# document()` (confirmed clean both times -- once after the in-package sweep, again after
+# the cross-package one). In-package: `TaxaExpect-package.R` (rewrote the "Spatial
+# modelling" `@section` to lead with the live kernel-path functions and added a new
+# "Archived" `@section` naming the whole retired chain), `compute_adaptive_sampling_
+# groups.R` (4 spots, plus its own header comment and one `@examples` block rewritten to
+# call `estimate_kernel_priors()` instead of the now-gone `prepare_model_dataframe()`),
+# `create_sites_from_grid.R` (3 spots -- its own roxygen now explains its dual GLMM/
+# kernel-path history directly), `generate_undetected_diversity.R` (its already-updated
+# "Fix, GLMM path" `@section` from the earlier `train_biodiversity_model_by_group()` pass
+# needed a second correction now that the WHOLE chain, not just that one function, is
+# gone), `report_priors.R` (its `priors_output` `@param`/`@seealso`/`@examples` rewritten
+# to describe the archived `build_priors()` list shape as legacy-but-still-accepted input,
+# alongside the current `estimate_kernel_priors()` shape). Cross-package: found via a
+# targeted `\link[TaxaExpect]{...}` grep across all 8 other packages' R/ folders (a plain
+# `\link{name}` in another package can never resolve to a TaxaExpect symbol regardless, so
+# this specific pattern is the one that actually breaks `R CMD check`) -- exactly two real
+# hits, `TaxaAssign::run_bayesian_pipeline()`'s `\link[TaxaExpect]{generate_full_priors}`
+# and `TaxaFetch::dedupe_occurrences()`'s `\link[TaxaExpect]{prepare_model_dataframe}`,
+# both redirected to `\link[TaxaExpect]{estimate_kernel_priors}`. A broader sweep for
+# plain-`\code{}` (non-link, so `R CMD check`-safe but still misleading) mentions of the 9
+# archived names across all 9 packages' real (non-frozen-historical) R/ files found and
+# fixed several more, all describing runtime object-SHAPE compatibility rather than an
+# actual function call, so none were behavior changes: `TaxaAssign::run_bayesian_
+# pipeline()`'s `taxaexpect_priors` `@param` and its "Accept build_priors() output" input-
+# detection comment/message (this code path is real, generic list-with-`$priors` shape
+# detection -- `estimate_kernel_priors()` ALSO returns that shape, so the code needed no
+# change, only its documentation); `TaxaAssign::join_priors()` (5 spots -- the `search_
+# center`-attribute auto-fill mechanism only `build_priors()` ever set, now explicitly
+# flagged legacy-only; four other spots describing the `source_taxon_name`/`observed_in_
+# habitat`/global-floor-row shape conventions `generate_full_priors()` originated and
+# `estimate_kernel_priors()` now equally produces); `TaxaLikely::build_site_reference()`
+# and `TaxaLikely::score_collapse.R`'s `taxaexpect_priors` `@param` (both cited `build_
+# priors()`/`generate_full_priors()` as the column-naming-convention source; repointed at
+# `estimate_kernel_priors()`, noting the archived function used identical names);
+# `TaxaTools::define_search_polygon()` (dropped a viewer-style comparison to the now-gone
+# gadget, kept the still-valid `TaxaHabitat::review_spatial_flags()` comparison);
+# `TaxaHabitat::assign_habitat_biological()`'s `@seealso` (repointed from a bare, unlinked
+# `prepare_model_dataframe()` mention to `estimate_kernel_priors()`). Two low-value,
+# purely-historical-attribution mentions (a Jeffreys-prior citation in `TaxaLikely::
+# support_curves.R`, a `theta_mean` provenance note in `TaxaFlag::add_posthoc_
+# assessment()`) were deliberately left as-is -- accurate design-lineage citations, not
+# operational claims a reader could act on incorrectly.
+#
+# TAXAWIZARD (the real, functionally live code-generation surface, not just documentation):
+# the `std_to_dist`/`dist_to_priors`/`taxa_to_priors_wrapper` edges and their three
+# snippets were 100% composed of calls into the now-archived chain with no kernel-path
+# equivalent for the grid step specifically (the kernel path never grids at all) -- deleted
+# outright (snippet files removed, edges removed from `workflow_graph.json`), not rewritten,
+# since nothing about "optimize a grid resolution" survives on the kernel path to rewrite
+# INTO. This orphaned the `distributions` intermediate node (its only other edge, `dist_to_
+# priors_by_group`, turned out to have a STALE `from: ["distributions"]` left over from its
+# own 2026-09-09-earlier rewrite to the kernel path -- that snippet's own code never
+# actually consumed a gridded object, it works directly on `std_occurrences` exactly like
+# its sibling `std_to_priors_kernel` -- fixed the same session, closing a real graph-
+# correctness bug introduced earlier the same day, not just archival fallout) -- removed
+# the now-fully-unreachable `distributions` node too. `priors_to_map` (its own interactive-
+# map step was `plot_theta_map_interactive()`, archived) simplified to save-only, with a
+# comment explaining WHY it can't just call `plot_theta_surface()` instead (that function
+# needs the full `kernel_fit` object, which this generic priors-only edge never has --
+# `plot_theta_surface()` stays wired inline inside `std_to_priors_kernel.R`/`dist_to_
+# priors_by_group.R` instead, unchanged). `metadata/TaxaExpect.json` lost its `build_
+# priors`/`optimize_grid_size`/`prepare_model_dataframe` entries entirely and had every
+# remaining entry's description corrected (no more claiming `generate_full_priors()`/
+# `create_sites_from_grid()`/`train_biodiversity_model()` are things `estimate_kernel_
+# priors()` "replaces" in the present tense -- they're archived, so it doesn't compete with
+# them, it's simply what's there now); `metadata/TaxaAssign.json`/`TaxaFetch.json` and
+# `prompts/phase_parameterize.md`'s parameter-type teaching example (which used to walk
+# the LLM through `build_priors(taxa=...)` specifically) updated to stop citing the
+# archived wrapper, redirected to `get_keys_from_context()` (the real `taxa -> occurrences`
+# step) for the same "column name encodes taxonomic rank" teaching point.
+#
+# `tests/testthat/test-graph.R` needed two real fixes, not just tolerance widening: the
+# `taxa -> priors (wrapper and manual)` test asserted a wrapper path MUST exist, which is
+# no longer true (no kernel-path wrapper replaces `build_priors()`) -- rewritten to assert
+# the manual multi-hop path (`taxa -> occurrences -> std_occurrences -> priors`, confirmed
+# still reachable via `.compute_paths()`) exists and that NO wrapper path does; the "multi-
+# input edges produce full Bayesian path" test's `has_priors` check enumerated the two now-
+# deleted edge IDs alongside the two real remaining ones -- trimmed to just the two kernel-
+# path edges. `devtools::test()` count drop (908 -> 633) is the same documented,
+# expected-not-regressive effect this package's own history already records twice for the
+# identical reason (2026-08-09: 855 -> 655; removing real edges shrinks the number of
+# enumerable combinatorial paths, and several of this package's own tests iterate one
+# assertion per computed path) -- confirmed `FAIL 0` before and after, not just a lower
+# number.
+#
+# PRODUCTION WORKFLOWS (Step 3, comment-only per explicit instruction -- the dead `else`
+# branches' CODE was not touched, not even reformatted): all 6 real external production
+# workflows (`PtConceptionWorkflow_12S_single_site.R`, `_12S_multi_site.R`, `_18S_2_
+# single_site.R`, `MuguFishWorkflow.R`, `MuguWilderFishWorkflow.R`, `GreatLakes2023_
+# ConsensusWorkflow.R`) already ran the kernel path via `USE_KERNEL_PRIORS <- TRUE`, with
+# the GLMM code sitting inertly in each `if (USE_KERNEL_PRIORS) {...} else {...}`
+# construct's `else` branch (confirmed by locating each file's own outer-level `else {`
+# via its exact brace nesting, not just the first textual match -- several files have
+# OTHER, unrelated nested `else` blocks, e.g. cache-hit/cache-miss branches, inside the
+# same region that a naive first-match search would have mis-targeted). Each else branch
+# gained one comment block at its top stating the chain was archived 2026-09-09, that the
+# branch is no longer functional as written, and where to restore the source from if ever
+# needed again. All 6 files backed up first as `*.bak_pre_glmm_archive_comment` (these
+# files are not under git, per this project's established convention for real external
+# production scripts) and confirmed to still `parse()` cleanly after editing. A SEPARATE,
+# unrelated `else` branch some of these same files have (legacy BLEND pricing vs. curve
+# pricing for undetected-evidence elevation) was correctly left untouched -- it calls
+# `generate_invasive_watch_evidence()`/`apply_undetected_evidence()`, both still-live
+# kernel-path functions, not archived GLMM ones.
+#
+# IN-REPO GLMM-ONLY TEACHING/DEMO SCRIPTS, a category the task's own Step 3 scope didn't
+# explicitly name but which the same treatment clearly applies to once found (comment-only,
+# not rewritten, matching the production-workflow precedent): root `inst/TaxaID_Workflow_
+# Template_TEST.R` (a self-contained teaching example whose own prior-generation section is
+# 100% archived-chain calls -- its "runs end to end with no external data files" claim no
+# longer holds as written, now says so explicitly), `TaxaExpect/inst/TaxaExpect_workflow.R`
+# and `inst/workflows/generate_priors_workflow.R` (both pure GLMM-chain walkthroughs, no
+# kernel-path content at all), `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`
+# (its prior-generation steps call the archived chain; `create_sites_from_grid()` calls in
+# the same file are correctly noted as unaffected). `TaxaExpect/vignettes/building-
+# priors.Rmd` (the package's ONLY vignette, entirely GLMM-focused) poses zero `R CMD check`
+# risk as-is (every chunk already carries `eval = FALSE, purl = FALSE`, the 2026-09-03 fix
+# for a real prior tangle-time execution bug) but gained a prominent top-of-file archived-
+# pathway notice anyway, since a new reader would otherwise reasonably assume this generic-
+# titled "Building Occurrence-Based Priors" vignette is current guidance. `README.md`'s own
+# "Deprecated / Legacy" section renamed "Archived" and rewritten to state the stronger fact
+# plainly (functions are GONE from the installed package, not just discouraged-but-
+# functional) -- the exact update the task explicitly asked for, since the prior wording
+# ("still runs... kept, not archived") was written for the notice-only 2026-08-31 state and
+# is no longer true. `README.md`'s Vignettes section and Key Functions/Diagnostics bullets
+# updated to match throughout.
+#
+# `taxaexpect_review_response.md` was checked (per explicit instruction) for existing
+# sections discussing any of the other 8 functions -- found none beyond the `train_
+# biodiversity_model_by_group.R` section already addended earlier the same day (that
+# section's own reviewer Q&A was specifically about the by_group wrapper's design worth,
+# not the wider chain) -- so no further addendum was needed there.
+#
+# VERIFICATION: `devtools::document()` clean (zero dangling-link warnings, confirmed twice
+# -- once immediately after moving files, again after the full cross-reference sweep),
+# `devtools::install()` + `packageDescription()$Built` confirmed fresh, `devtools::test()`
+# 682/0 (down from 1011 pre-archival, matching the ~169 test_that blocks removed with the
+# 8 test files; 53 pre-existing environmental warnings unchanged in kind -- kernel-fetch-
+# boundary/glmmTMB-version noise this suite has always produced; 1 pre-existing skip),
+# `devtools::check()` 0 errors / 0 warnings / 2 notes (both benign/expected: the standing
+# "future file timestamps" environmental note, and a "non-standard top-level file" note for
+# `archive_glmm_prior_pipeline/` itself -- the same note class the DECIPHER precedent's own
+# archive directories produce elsewhere in this ecosystem, an intended consequence of
+# following that convention, not a regression). TaxaWizard (touched via Step 2's snippet/
+# metadata/graph edits) separately reinstalled and verified: `devtools::test()` 633/0 (down
+# from 908, the documented combinatorial-path-count effect above, `FAIL 0` both before and
+# after), `devtools::check()` 0/0/1 (the same standing environmental note). The other 7
+# touched packages (TaxaAssign, TaxaFetch, TaxaLikely, TaxaTools, TaxaHabitat, plus the two
+# already covered) were re-`document()`ed, reinstalled, and re-tested to confirm the
+# doc-only cross-reference edits introduced no regressions: TaxaAssign 675/0 (`check()`
+# 0/0/1), TaxaFetch 750/2 (both pre-existing, unrelated CoordinateCleaner/terra environment
+# failures in `test-filter_gbif_quality.R`, confirmed via direct inspection to be about
+# `cc_equ`/`cc_zero` record-count assertions, nothing this session touched; `check()`
+# 0/0/1), TaxaLikely 1082/0 (`check()` 0/0/1), TaxaTools 906/0 (`check()` 0/0/1), TaxaHabitat
+# 236/0 (`check()` 0/0/0 -- genuinely zero notes, not even the standing environmental one).
+#
+# ADDENDUM, same session: the initial 8-file archive move (matched against the Step-0
+# grep, which only checked whether the 8 candidates were CALLED from live files) missed
+# two @noRd internal helper files whose OWN sole caller was one of the 8 -- caught only by
+# a follow-up ecosystem-wide sweep for lingering plain-`\code{}` mentions of the archived
+# names, not by the original grep (an internal helper file has no roxygen `@name`/
+# `@export` for a caller-direction grep to find). `R/recover_demoted_species.R`
+# (`.recover_demoted_species()`, called only from the archived `build_priors()`) and
+# `R/utils_plot.R` (`.habitat_palette()`/`.he()`, called only from the archived
+# `plot_theta_map_interactive()`) were both fully orphaned once their one caller moved --
+# moved into `archive_glmm_prior_pipeline/R/` alongside it (neither had a dedicated test
+# file). Re-verified clean after the move: `devtools::document()` (NAMESPACE unchanged
+# beyond this pass's own earlier cleanup), `devtools::test()` 682/0 (unchanged -- neither
+# file had test coverage to lose), `devtools::check()` 0/0/2 (unchanged). Lesson for next
+# time: when archiving a function chain, also grep for `@noRd`-only helper files whose
+# name never appears in any live file's CALL list, not just whether the 8 target names
+# themselves are still called.
+#
+# Previous update, 2026-09-09 (Sonnet 5 -- retires `train_biodiversity_model_by_group()`,
+# one function of the GLMM prior-fitting chain deprecated ecosystem-wide 2026-08-31 in
+# favor of `estimate_kernel_priors()`/`calibrate_kernel_bandwidth()`. Unlike the chain's
+# other 8 members (all still have real callers via production workflows mid-migration to
+# the kernel path), this one function was safe to retire in isolation now: a full usage
+# audit found ZERO real callers anywhere -- (1) a bulk grep across every real production
+# workflow and every cross-package/same-package R call found no invocation; (2) a
+# targeted follow-up specifically checked whether `PtConceptionWorkflow_18S_2_single_site.R`
+# -- the exact "broad-marker data spanning multiple detection processes" scenario this
+# function's own roxygen called its "recommended entry point" for -- actually calls it.
+# It doesn't: that workflow hand-rolls its own per-group loop
+# (`prepare_model_dataframe(sampling_group_col=)` then a manual loop calling
+# `screen_spatial_formula()`/`train_biodiversity_model()` per group with its own
+# `tryCatch()`), which turns out to be a strict superset of what this function did (adds
+# AIC-based formula screening this function had no equivalent for). So the packaged
+# function was built but never adopted, and its own target use case evolved past it
+# before anyone ever called it.
+#
+# Followed this project's own established DECIPHER-module retirement precedent
+# (`TaxaLikely/archive_decipher_reference_audit/`) exactly rather than deleting: source
+# (`R/train_biodiversity_model_by_group.R`) + its test file
+# (`tests/testthat/test-train_biodiversity_model_by_group.R`) moved INTACT to
+# `archive_glmm_by_group/{R,tests}/` -- same subdirectory layout, same "kept locally,
+# deliberately not committed" `.gitignore` convention (new entry added, mirroring the
+# DECIPHER entry's own comment style). `.lintr`'s now-orphaned exclusion for the moved
+# test file removed. `devtools::document()` regenerated `NAMESPACE`/`man/` once the
+# source was gone (confirmed zero dangling `\link{train_biodiversity_model_by_group}`
+# roxygen cross-references anywhere before running it, per the standard "this breaks
+# `R CMD check`" footgun).
+#
+# Fixed every live cross-reference that would otherwise have pointed at a symbol that no
+# longer exists: `generate_undetected_diversity.R`'s "Taxonomic-group dilution" fix
+# section, `prepare_model_dataframe.R` (the Shared-effort-assumption `@details` and its
+# own `sampling_group_col` `@section`, two separate spots), `compute_adaptive_sampling_groups.R`
+# (its file-header comment plus two roxygen spots), `train_biodiversity_model.R` (both its
+# `@section Multi-group data is refused` roxygen AND its runtime `stop()` error message --
+# the one place this retirement could have broken a live, user-facing error string, not
+# just documentation), and `TaxaExpect-package.R`'s `@section` listing. Each redirected to
+# `estimate_kernel_priors(sampling_group_col=)` (added 2026-09-03 specifically to restore
+# per-group/multi-detection-process stratification on the kernel path -- confirmed by
+# reading that function's own roxygen before writing any redirect, not guessed) as the
+# current recommended path, or to "call `train_biodiversity_model()` once per group
+# yourself" where the still-live GLMM path itself is what's being documented.
+#
+# `TaxaExpect/CLAUDE.md`'s own Function Inventory table row changed Complete -> Archived
+# (matching the tone/format other zero-caller removals in this ecosystem's CLAUDE.md
+# files use, e.g. `audit_barcode_coverage_gbif()`'s TaxaLikely entry); the
+# `compute_adaptive_sampling_groups()` row's own cross-reference fixed too.
+# `inst/taxaexpect_review_response.md`'s existing `train_biodiversity_model_by_group.R`
+# section (which already recorded the reviewer's "is this worth having?" question and this
+# package's own reasoning for why the answer was "yes, architecturally") gained a dated
+# addendum stating the question was answered concretely this session, per this project's
+# own convention that past review-response entries are a record of what was true then --
+# the original answer wasn't rewritten, just followed up. New dated row in
+# `ecosystem_docs/NAME_CHANGE_HISTORY.md`.
+#
+# The one real, non-production caller -- `TaxaWizard/inst/graph/snippets/dist_to_priors_by_group.R`
+# (a TaxaWizard code-generation template snippet) -- was rewritten to call
+# `TaxaExpect::estimate_kernel_priors(sampling_group_col=)` instead, read against that
+# function's real formals/roxygen first rather than guessed. Kept the snippet's
+# `{{...}}` templating convention and its explanatory comment that `sampling_group_col`
+# means DETECTION METHOD/PROCESS, not physical site (still exactly correct on the kernel
+# path). Domestic/food priors are deliberately computed from a separate POOLED
+# `estimate_kernel_priors()` call, not the grouped one -- matching the real
+# `PtConceptionWorkflow_18S_2_single_site.R` convention recorded in this file's own
+# 2026-09-04 session note ("Domestic/food stays on the POOLED fit"), since a
+# domestic/food species isn't scoped to one detection process. `TaxaWizard/inst/graph/workflow_graph.json`'s
+# `dist_to_priors_by_group` edge (function list + description + time estimate) and
+# `TaxaWizard/inst/metadata/TaxaExpect.json` updated to match: the
+# `train_biodiversity_model_by_group` metadata entry removed, `prepare_model_dataframe`'s
+# output description and `generate_domestic_food_priors`'s `model_obj` input description
+# both repointed, and (found opportunistically while touching this file) `estimate_kernel_priors`'s
+# own metadata entry gained a `sampling_group_col` parameter it had been missing entirely
+# since that parameter shipped 2026-09-03 -- a real, pre-existing metadata gap the new
+# snippet's own usage would otherwise have perpetuated. `TaxaWizard/tests/testthat/test-graph.R`'s
+# only reference to this edge (`"dist_to_priors_by_group" %in% p$edges`) checks edge
+# membership, not snippet content, so it needed no change -- confirmed via grep before
+# assuming so, not guessed.
+#
+# `devtools::test()` 1011/0 (down from 1017, the exact ~7-test_that-block delta the
+# archived test file's own removal accounts for; 90 pre-existing environmental
+# glmmTMB/TMB-version warnings unchanged, 1 pre-existing skip unchanged), `devtools::check()`
+# 0 errors / 0 warnings / 2 notes (both benign/expected: a "future file timestamps"
+# environmental note, and a "non-standard top-level file" note for
+# `archive_glmm_by_group/` itself -- the same note the DECIPHER precedent's own archive
+# directory produces in TaxaLikely, an intended consequence of following that convention
+# exactly, not a regression), reinstalled and verified at `~/Library/R/4.0/library`
+# (Built 2026-09-09). TaxaWizard `devtools::test()` 908/908 unchanged (the snippet/graph/
+# metadata edits are read at runtime, not exercised by any existing test's content
+# assertions), reinstalled too since its `inst/` files (snippets/metadata/graph JSON) are
+# bundled at install time, not just read from the source tree the way `devtools::test()`'s
+# own `load_all()` does.
+# Previous update, 2026-09-05 (Sonnet 5 -- open decision #1 of ecosystem_docs/
 # REENTRY_PROMPT_kernel_budget_pricing_and_scope.md RESOLVED, and B4's "remove the now-
 # dead-weight guard code" implemented, per the user's explicit choices ("1 y, 2 remove,
 # 3 no, NA" -- switch to mass/f1, remove the veto-bound/cap_at_singleton machinery it
@@ -1218,41 +1914,62 @@ and prior generation only.
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `create_sites_from_grid()` | Snap lat/lon to grid cells; add `lat_r`, `lon_r`, `grid_id`. **2026-08-04:** also records `attr(result, "grid_size")` -- the resolution used, propagated by `prepare_model_dataframe()`/`train_biodiversity_model()`/`generate_full_priors()` so `plot_theta_map_interactive()` can read the real cell half-width instead of inferring it. | Complete | R/create_sites_from_grid.R |
-| `prepare_model_dataframe()` | Aggregate occurrences to species × site-habitat counts; zero-fill; scale covariates. `sampling_group_col` (default `NULL`) computes `n_total_at_site` within each group rather than pooling all taxa -- the code-level fix for the long-documented-but-unenforced "Shared effort assumption" (e.g. don't mix phytoplankton counts with vertebrate counts on one denominator). **2026-08-04:** propagates `data`'s `grid_size` attribute (if present) to its own output, in both the ungrouped and grouped paths; internal single-group aggregation logic extracted to a top-level `.prepare_one_group()` helper (was a badly-indented nested closure) and converted to native pipes. | Complete | R/prepare_model_dataframe.R |
-| `train_biodiversity_model()` | Fit Tier 1/2 binomial GLMM; return `biofreq_model` S3 object. Refuses to fit against data whose `sampling_group` column (from `prepare_model_dataframe(sampling_group_col=)`) spans more than one value -- use `train_biodiversity_model_by_group()` instead. **2026-08-04:** `$meta` gains `grid_size` (from `attr(data, "grid_size")`). | Complete | R/train_biodiversity_model.R |
-| `train_biodiversity_model_by_group()` | **Session 149, new.** Splits raw occurrence data by `sampling_group_col` and runs `prepare_model_dataframe()` + `train_biodiversity_model()` once per group (each with its own effort denominator and covariate scaling); returns a named list of `biofreq_model` objects. Recommended entry point for broad-marker data (e.g. 18S) spanning multiple detection processes. Each group's fit is wrapped in `tryCatch()` (added after real-data testing found a single failing group crashed the whole call) -- failed groups are dropped with a `warning()` naming them, not fatal. | Complete | R/train_biodiversity_model_by_group.R |
-| `compute_adaptive_sampling_groups()` | Automated alternative to hand-classifying `sampling_group`: greedily merges taxa up a taxonomic rank hierarchy (`rank_system`, finest first, e.g. `c("order","class","phylum")`) until each group's mean per-site record count clears `min_n`, never merging across the ceiling rank (default phylum). Analogous to "stratum collapsing" in survey methodology; structurally similar to `TaxaAssign::join_priors()`'s hierarchical dark-diversity grouping but merges bottom-up on a sample-size criterion rather than descending top-down on singleton presence. Groups still below `min_n` even at the ceiling are finalized anyway (never escalated further) and flagged via `sampling_group_below_min_n`. Feed its output into `prepare_model_dataframe(sampling_group_col=)`/`train_biodiversity_model_by_group()` the same as a manually-supplied grouping. **2026-08-04: `min_n` is now required (no default)** -- no safe universal value across study systems; zero real callers affected. | Complete | R/compute_adaptive_sampling_groups.R |
+| `create_sites_from_grid()` | Snaps lat/lon to grid cells; adds `lat_r`, `lon_r`, `grid_id`. **Archived (2026-09-09, FINAL -- four-stage history, all same day):** (1) kept live at the main 9-function GLMM-chain archival, on the strength of an independent spatial-binning purpose feeding `compute_adaptive_sampling_groups()`; (2) archived a few hours later, once that purpose was re-examined and found to describe a scenario that had never actually materialized in any real dataset; (3) restored the same day after a real safety gap was found -- `estimate_kernel_priors(sampling_group_col = NULL)` has no guard against silently pooling incompatible detection processes, and `compute_adaptive_sampling_groups()` looked like a reasonable automatic fallback; (4) **archived again, final**, once that restoration's own reasoning was tested against a real, full-scale expert-classified 18S checkpoint and refuted -- the automatic classifier answers a different question than `sampling_group` means (record-count adequacy, not shared detection process), fragments and falsely conflates real groups, and the kernel estimator was shown to need no pre-merged groups at all. See this file's top (FINAL) session note for the full evidence record. | Archived | archive_glmm_prior_pipeline/R/create_sites_from_grid.R |
+| `prepare_model_dataframe()` | **Archived (2026-09-09)** -- the whole grid/GLMM prior-fitting chain was deprecated ecosystem-wide 2026-08-31 and archived once every real production workflow (PtConception x3, Mugu x2, GreatLakes) completed its migration to the kernel path. Source + tests moved intact to `archive_glmm_prior_pipeline/`. Its group-aware `n_total_at_site` role is superseded by `estimate_kernel_priors(sampling_group_col=)`'s own within-group effort accounting on the kernel path. See this file's 2026-09-09 session note. | Archived | archive_glmm_prior_pipeline/R/prepare_model_dataframe.R |
+| `train_biodiversity_model()` | **Archived (2026-09-09)** -- see `prepare_model_dataframe()`'s row above for the retirement record; both were archived together as part of the same chain. Superseded by `estimate_kernel_priors()` on the kernel path. | Archived | archive_glmm_prior_pipeline/R/train_biodiversity_model.R |
+| `train_biodiversity_model_by_group()` | **Archived (2026-09-09)**, consolidated into the same directory as the rest of the chain the same day (was `archive_glmm_by_group/`, which no longer exists as a separate directory) -- zero real callers ecosystem-wide, confirmed two ways (a bulk usage-audit grep, and a targeted check of `PtConceptionWorkflow_18S_2_single_site.R`, the exact "broad-marker data spanning multiple detection processes" scenario this function's own roxygen called its "recommended entry point" for: that workflow hand-rolls its own per-group loop, a strict superset of what this function did). Superseded by `estimate_kernel_priors(sampling_group_col=)` on the kernel path. See this file's 2026-09-09 session note. | Archived | archive_glmm_prior_pipeline/R/train_biodiversity_model_by_group.R |
+| `compute_adaptive_sampling_groups()` | Would-be automated alternative to hand-classifying `sampling_group`: greedily merges taxa up a taxonomic rank hierarchy until each group's mean per-site record count clears `min_n`, never merging across the ceiling rank. **Archived (2026-09-09, FINAL -- same four-stage history as `create_sites_from_grid()`**, see that row above): kept live at the main GLMM-chain archival; archived hours later (zero real callers ecosystem-wide, never adopted by any real production workflow); restored the same day once `estimate_kernel_priors(sampling_group_col = NULL)`'s silent-pooling gap made an automatic fallback look worth having; **archived again, final**, once real testing against a real, full-scale, hand-built 9-group expert 18S classification showed this function answers a DIFFERENT question than `sampling_group` means (per-site record adequacy, not shared detection process) -- fragmenting one real detection process into 28-39 automatic groups and falsely conflating two the expert kept deliberately separate -- while `estimate_kernel_priors()` was shown to need no pre-merged, sample-size-adequate groups at all (degrades gracefully down to a single-taxon group). See this file's top (FINAL) session note for the full evidence record (Findings 1-5) and the small, separate single-taxon-group warning it motivated in `estimate_kernel_priors()`. | Archived | archive_glmm_prior_pipeline/R/compute_adaptive_sampling_groups.R |
 | `generate_undetected_diversity()` | Tier 3 proxy priors: singleton mirrors + global floor | Complete | R/generate_undetected_diversity.R |
 | `generate_domestic_food_priors()` | **2026-07-23, new.** Non-GBIF prior source for domestic/commensal animal, food/crop, and cultivated-plant species -- named rows (real `taxon_name`, unlike the Tier 3 proxies above) with a `prior_source_type` categorical column and `model_tier = "tier_domestic_food"`. Implements `ecosystem_docs/REENTRY_PROMPT_domestic_food_species_priors.md`. **2026-07-24:** gains an iNaturalist kingdom cross-check -- when `taxonomy` supplies a `kingdom` column, a candidate's known kingdom is compared against `fetch_inat_occurrences()`'s `inat_kingdom`; a mismatch (likely a cross-backbone homonym) discards the local-evidence boost without removing the fixed-list category. **2026-07-28, re-implemented around match-list gating:** `domestic_animal_taxa`/`food_species_taxa` (now 449 species, up from 20) are fixed vectors checked immediately; new 4th fixed list `known_cultivar_taxa` (216 species) likewise patched immediately (`cultivar_evidence_source = "known_list"`); `candidate_plant_taxa` requires real local iNat evidence (`cultivar_evidence_source = "candidate_supplied"`); new `match_list_taxa` param (taxa with real likelihoods this run) gates all four channels to the intersection and drives an automatic open-discovery residual step (unreferenced match-list taxa, restricted to `phylum %in% c("Streptophyta","Tracheophyta")`, deliberately NOT pre-restricted to any known list -- `cultivar_evidence_source = "inat_confirmed"`) using a new `taxaexpect_priors` param to exclude already-modelled taxa. `match_list_taxa = NULL` (default) preserves the original unrestricted behavior exactly. **2026-08-20:** every emitted row now carries `taxon_name_rank = "species"` -- a real bug fix, not additive: this column was previously unset (NA via `bind_rows()`), silently defeating `TaxaAssign::join_priors()`'s primary join for every real caller since this function shipped. `main_habitat` is unchanged, still deliberately `NA` -- see `TaxaAssign::join_priors()`'s new habitat-agnostic fallback tier, the paired fix that makes an `NA`-habitat row actually apply. | Complete | R/generate_domestic_food_priors.R |
 | `apply_undetected_evidence()` | **2026-08-20, new (replaces the same-day, same-session `generate_invasive_watch_priors()`).** The single shared mechanism for elevating `generate_undetected_diversity()`'s generic dark-diversity floor for named species with external occurrence-plausibility evidence -- from any number of independent sources at once, safely. Takes a plain `evidence` table (`taxon_name`/`weight`/`n_eff`/`source`, typically row-bound from one or more evidence-generating functions), excludes any taxon already observed anywhere in `taxaexpect_priors` (checked via both `taxon_name` and `source_taxon_name`), combines multiple sources per taxon via `w_combined = 1 - prod(1 - weight_i)` / `n_eff_combined = sum(n_eff_i)`, then blends `theta_floor -> theta_singleton` (the site's own singleton-mirror mean, falling back to the global one) by `w_combined` -- giving a free, principled ceiling (external evidence, however strong, can never exceed the plausibility of a genuinely observed singleton). New `undetected_type = "evidence_blend"` value. Requires `grid_id`/`main_habitat` (mirrors `generate_domestic_food_priors()`'s single-site-per-call convention -- `TaxaAssign::join_priors()`'s primary join key is the full composite `(taxon_name, taxon_name_rank, grid_id, main_habitat)`, so a row without a real, matching `grid_id` would never actually take effect). **Deliberately excludes `generate_domestic_food_priors()`** from ever being a valid evidence source -- a food/domestic detection is a contamination-risk claim, an occurrence-plausibility detection (invasive-watch, regional-proximity) is a genuine-population claim; OR-combining them would conflate two different questions about the same zero-detection fact. Implements `ecosystem_docs/REENTRY_PROMPT_invasive_species_watch_list_priors.md`, converged with a concurrent chat building `ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_check.md`'s companion mechanism onto this exact same shared applier -- see this file's top session note for the full cross-session design record. | Complete | R/apply_undetected_evidence.R |
 | `generate_invasive_watch_evidence()` | **2026-08-20, new.** Thin evidence generator for `apply_undetected_evidence()` -- given a plain, user-supplied `invasive_taxa` character vector (e.g. hand-pulled from the USGS NAS database, restricted to species relevant to your own study region) plus a caller-chosen `weight`/`n_eff` (both required, no default), returns one evidence row per listed taxon. Does no live querying, no geography/watershed reasoning, no Beta-parameter math -- deliberately simpler than the same-day, same-session, now-removed NAS-API/HUC8-based `generate_invasive_watch_priors()` (see `TaxaFetch/CLAUDE.md`'s matching removal note): region-scoping now lives entirely in how the caller builds `invasive_taxa`, not in this function. Different-confidence tiers are handled by calling this function once per tier and `dplyr::bind_rows()`-ing the results, not a built-in tiering system. | Complete | R/generate_invasive_watch_evidence.R |
 | `generate_regional_proximity_evidence()` | **2026-08-21, new.** The companion evidence generator for `apply_undetected_evidence()` from the parallel `ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_check.md` thread -- unlike `generate_invasive_watch_evidence()`, this one DOES do live querying (a two-stage design): Stage 1 resolves a GBIF backbone key and calls `TaxaFlag::check_gbif_tile_range()` as a cheap presence/absence gate; only taxa that clear it get a real, quality-filtered Stage 2 fetch (`TaxaFetch::get_gbif_occurrences()` + `filter_gbif_quality()`, scoped to a buffer sized from Stage 1's own reported distance) that reads the real distance and record age via `TaxaFlag::compute_local_occurrence_distance(date_col=)`. `weight = exp(-distance_km/d_half)`; `n_eff = n_eff_base * exp(-age_years/age_half)` -- age discounts confidence, never the mean, since old evidence is ambiguous (a real unresurveyed population vs. a contracted range), not necessarily weaker. `d_half`/`age_half`/`n_eff_base` all default but stay overridable, per explicit user direction. No connectivity/basin gate -- deliberately dropped from scope, see this file's own top session note. **2026-08-22**: Stage 1's key resolution now uses one batched `rgbif::name_backbone_checklist()` call (new internal `.resolve_gbif_taxon_keys_batch()`) instead of one `rgbif::name_backbone()` call per taxon -- a real, live-verified GBIF-level speedup (see this file's own top session note for the full investigation, including why the analogous Stage 2 batching idea was tested and rejected). Live-verified against the real GBIF API on the real motivating GreatLakes2023 species, before and after the batching change, with identical real numbers both times. **2026-08-22, continued**: fixes a real, more serious PRE-EXISTING bug found running this function at real production scale (194 taxa, 0 elevated) -- a query name matching a GBIF SYNONYM resolves to that synonym's usageKey, whose real occurrence records are filed under GBIF's currently-ACCEPTED name; Stage 2's exact-name match against the original query silently found nothing even when real, quality-filtered records existed. `.resolve_gbif_taxon_keys_batch()` now also returns GBIF's own resolved `species` name, used for internal occurrence matching (the OUTPUT `taxon_name` still reports the original query name, unaffected). Predates today's batching work -- present identically in the original single-call resolver, just never exercised by the narrower 3-species validation. | Complete | R/generate_regional_proximity_evidence.R |
-| `generate_full_priors()` | Predict theta at all taxon × site × habitat; return Beta(alpha, beta) prior table. **2026-08-04:** output gains `attr(result, "grid_size")` (from `model_obj$meta$grid_size`, `NULL`-safe); `cov` loop variable renamed `covariate` (shadowed `stats::cov()`); `predict_tier()`/`predict_tier_empirical()`'s duplicated effort-flag assignment factored into a shared local helper. | Complete | R/generate_full_priors.R |
+| `generate_full_priors()` | **Archived (2026-09-09)** -- see `prepare_model_dataframe()`'s row above for the retirement record. Superseded by `estimate_kernel_priors()`'s own `$priors` output on the kernel path (`generate_undetected_diversity()` covers the Tier 3 role). | Archived | archive_glmm_prior_pipeline/R/generate_full_priors.R |
+
+### Kernel-priors pipeline (undocumented gap, added 2026-09-09 -- these 9 exported functions, spanning the whole 2026-08-30-onward kernel-priors era, had no Function Inventory rows at all despite being extensively discussed in this file's own session notes; found during the ecosystem-wide accuracy pass)
+
+| Function | Purpose | Status | Source file |
+|---|---|---|---|
+| `estimate_kernel_priors()` | The kernel-path prior estimator (2026-08-30/31): site-centered distance-kernel (geo x depth/covariate product kernel) estimation from raw occurrence records -- Kish effective sample size, Beta concentration `n_eff + m`, m-pseudo-record regional back-off, weighted Good-Turing singletons. Returns `$priors` (schema: `prior_branch` + `effective_records`, replacing the archived GLMM chain's `model_tier`) and, when curve pricing is used, `f1`/`f2`/`chao_missing`/`theta_present`. `sampling_group_col` (2026-09-03) stratifies composition/budget by detection process (NULL = pooled, exact byte-identical to the ungrouped estimator). `lambda_latitude` (2026-08-31) adds an optional climate-similarity kernel factor. This is the function every real production workflow's kernel branch calls in place of the archived `generate_full_priors()`. | Complete | R/estimate_kernel_priors.R |
+| `calibrate_kernel_bandwidth()` | Leave-one-block-out composition-prediction bandwidth calibration for `estimate_kernel_priors()` -- replaces the archived GLMM chain's AIC-based `screen_spatial_formula()`. `lambda_latitude_grid` (2026-08-31) sweeps the optional latitude-kernel factor (always including `Inf`, i.e. factor off, so the no-factor case competes on equal footing). | Complete | R/calibrate_kernel_bandwidth.R |
+| `kernel_budget_sensitivity()` | Re-runs `estimate_kernel_priors()`'s Good-Turing budget across a sweep of counting radii (and optionally bandwidths), reporting per-group budget rows plus a summary of `f1`/`f2`/Chao/`theta_present` sensitivity -- a transparency report, no pass/fail threshold, closing open decision #4 of `ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md` (2026-09-03). `$reproduces_fit` flags when the supplied data isn't what the fit was actually computed from. | Complete | R/kernel_budget_sensitivity.R |
+| `fit_regional_presence_curve()` | The generic D5 leave-the-bbox-out / checklist distance-to-presence fitter (2026-08-28): fits a log-link binomial GLM to `w_scale*exp(-d/d_half)`; the zero-positive case returns Jeffreys bounds first-class rather than erroring. Feeds `generate_presence_curve_evidence()`'s curve parameters. | Complete | R/fit_regional_presence_curve.R |
+| `generate_presence_curve_evidence()` | Curve-pricing evidence generator (2026-08-31) for `apply_undetected_evidence(pricing="curve")`: prices each unobserved candidate on `w = w_scale * exp(-min(d,d_cap)/(k*d_half))` -- `k=1` for a plain regional distance price (equivalent to `generate_regional_proximity_evidence()`'s formula when distances are already in hand), `k=2` for a watch-listed invader's log-space-halfway lift, or the flat `d_cap` clamp for a species with no measured distance (the non-regional/human-vector tail). | Complete | R/generate_presence_curve_evidence.R |
+| `generate_user_specified_evidence()` | The explicit user-policy evidence generator (2026-08-31): lets a caller directly assert a presence probability `w` (named numeric vector, species -> weight in (0,1]) for a species of special concern, tagged `source = "user_specified"` so the provenance survives into `evidence_sources`. | Complete | R/generate_presence_curve_evidence.R |
+| `generate_inat_range_evidence()` | Evidence generator (2026-08-28) wrapping `TaxaFetch::check_inat_range()`'s name-matched, in-range verdict into an `apply_undetected_evidence()`-ready evidence row (`w = 0.8` default). Name-gated (`require_name_match`-style logic) so a fuzzy iNat name misresolution can't drive a prior elevation. | Complete | R/generate_inat_range_evidence.R |
+| `plot_theta_surface()` | KDE prior-field map for the kernel-priors path (2026-09-01, `ecosystem_docs/SPEC_plot_theta_surface.md`): evaluates `estimate_kernel_priors()`'s same estimator on an `n_grid` x `n_grid` lattice via binned FFT convolution, so the map IS the prior field rather than one opaque site value. Replaces `plot_theta_map_interactive()` (archived, GLMM-only) for the kernel path; refuses a `sampling_group_col`-fit kernel object (no per-group split concept on a surface); draws the habitat stratum/covariate state directly on the plot. `mask` (2026-09-02) accepts a WKT POLYGON string (e.g. from `TaxaTools::define_search_polygon()`) to clip the surface to the real search geometry instead of a bounding rectangle. | Complete | R/plot_theta_surface.R |
+| `report_priors()` | Generate a `report_section` object (TaxaTools) summarizing prior estimation for Methods/Results reporting; feeds `TaxaTools::assemble_report()`. Falls back to reading `prior_branch` (2026-08-31) when the newer kernel schema is present, alongside its original `model_tier`-based summary for legacy GLMM-chain output. | Complete | R/report_priors.R |
 
 ### High-level wrapper
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `build_priors()` | End-to-end pipeline: GBIF fetch → habitat → grid → model → priors → backbone translation (~18 calls → 1). Params include `search_rank` (default "family"), `max_coord_uncertainty` (default 500m), `min_phi` (default 2), `census_genera` (default TRUE — GBIF genus census attached as attribute). | Complete | R/build_priors.R |
+| `build_priors()` | **Archived (2026-09-09)** -- see `prepare_model_dataframe()`'s row above for the retirement record. No single-call kernel-path wrapper replaces it; a caller now chains `TaxaFetch`/`TaxaHabitat` occurrence acquisition into `estimate_kernel_priors()` directly (see `estimate_kernel_priors()`'s own row and the package README's Quick Start). | Archived | archive_glmm_prior_pipeline/R/build_priors.R |
 
 ### Supporting functions
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `add_pca_covariates()` | Replace correlated `_s` covariate columns with orthogonal PCA scores; returns same structure as `prepare_model_dataframe()` output; stores `pca_rotation` attribute for prediction-time use | Complete | R/add_pca_covariates.R |
-| `apply_pca_transform()` | Apply stored PCA rotation to scaled new-site data before `generate_full_priors()` | Complete | R/add_pca_covariates.R |
-| `optimize_grid_size()` | Score grid resolutions on coverage, quality, stability; return best size + fallback | Complete | R/optimize_grid_size.R |
-| `compute_moran_basis()` | Build Moran Eigenvector Maps (MEM) for spatial autocorrelation covariates. **2026-08-04:** new `coords` param (data frame of `grid_id`/`lat`/`lon`) supplies real coordinates directly instead of parsing `grid_ids`' string encoding; `coords = NULL` (default) preserves the original string-parsing behavior. Internal parser consolidated into shared `TaxaExpect:::.parse_grid_id_coords()` (`R/utils_internal.R`). | Complete | R/compute_moran_basis.R |
-| `screen_spatial_formula()` | Fit full spatial model, screen Moran/gradient slopes by VarCorr SD, select parsimonious formula by AIC. Gradient-covariate detection reads `data`'s own `scale_params` attribute (set by `prepare_model_dataframe()`) instead of hardcoding `lat_r_s`/`lon_r_s` -- any additional covariate (e.g. `depth_m_s`) is screened identically, not silently carried through unscreened. Falls back to the old hardcoded pair when `scale_params` is absent. | Complete | R/screen_spatial_formula.R |
-| `plot_theta_map_interactive()` | Shiny gadget: Leaflet heatmap of `theta_mean` with occurrence point overlay. **2026-08-04:** grid-cell half-width now prefers `priors`'s recorded `grid_size` attribute over inferring it from centroid spacing, when present; internal grid_id parser consolidated into shared `TaxaExpect:::.parse_grid_id_coords()`; `@return` no longer references a nonexistent `plot_theta_map()` function. | Complete | R/plot_theta_map_interactive.R |
+| `add_pca_covariates()` / `apply_pca_transform()` | **Archived (2026-09-09)** -- see `prepare_model_dataframe()`'s row above for the retirement record. No kernel-path equivalent exists; the kernel estimator does not use scaled `_s` covariate columns the way the GLMM formula did. | Archived | archive_glmm_prior_pipeline/R/add_pca_covariates.R |
+| `optimize_grid_size()` | **Archived (2026-09-09)** -- see `prepare_model_dataframe()`'s row above for the retirement record. `create_sites_from_grid()` (live again -- see the Core pipeline table above for its own three-stage 2026-09-09 history) no longer needs a tuned resolution on the kernel path -- `grid_size` there only ever needs to be fine enough for `compute_adaptive_sampling_groups()`'s own `min_n` effort criterion (also live again), not tuned for a GLMM model formula. | Archived | archive_glmm_prior_pipeline/R/optimize_grid_size.R |
+| `compute_moran_basis()` | **Archived (2026-09-09)** -- see `prepare_model_dataframe()`'s row above for the retirement record. The kernel estimator's own geo x covariate product kernel (`estimate_kernel_priors(lambda_km=, lambda_covariate=)`) captures spatial autocorrelation directly, with no separate Moran eigenvector step needed. | Archived | archive_glmm_prior_pipeline/R/compute_moran_basis.R |
+| `screen_spatial_formula()` | **Archived (2026-09-09)** -- see `prepare_model_dataframe()`'s row above for the retirement record. Superseded by `calibrate_kernel_bandwidth()`'s leave-one-block-out composition prediction (a genuinely different selection mechanism, not a like-for-like formula screen). | Archived | archive_glmm_prior_pipeline/R/screen_spatial_formula.R |
+| `plot_theta_map_interactive()` | **Archived (2026-09-09)**, a 9th item not on the original 2026-08-31 deprecation list -- investigated separately and found fully orphaned once the GLMM chain that fed it was gone: every real caller in this repo traced back through the GLMM chain itself (never the kernel path), and all 6 production workflows only ever called it from the same dead `else` branch as the other 8 archived functions. Superseded by `plot_theta_surface()` on the kernel path (evaluates `estimate_kernel_priors()`'s own estimator on a lattice; has no `Grid_*`-id concept to parse the way this function did). | Archived | archive_glmm_prior_pipeline/R/plot_theta_map_interactive.R |
 
 ### S3 methods
 
-| Function | Purpose | Source file |
-|---|---|---|
-| `print.biofreq_model()` | Compact summary of tiers, formula, convergence | R/train_biodiversity_model.R |
-| `summary.biofreq_model()` | print + tier assignments + habitat screening table | R/train_biodiversity_model.R |
+**Status correction (2026-09-09, ecosystem-wide Function Inventory accuracy pass):** both
+rows below still pointed at `R/train_biodiversity_model.R` as if live, but that whole file
+(and both S3 methods defined in it) moved to `archive_glmm_prior_pipeline/` in the same
+2026-09-09 GLMM-chain archival documented in the Core pipeline table above -- confirmed
+absent from the live `R/` directory and unregistered in `NAMESPACE` (no `S3method()` entry
+for either). No kernel-path replacement exists; `estimate_kernel_priors()`'s own return
+object has no dedicated `print`/`summary` method.
+
+| Function | Purpose | Status | Source file |
+|---|---|---|---|
+| `print.biofreq_model()` | Compact summary of tiers, formula, convergence | **Archived** | archive_glmm_prior_pipeline/R/train_biodiversity_model.R |
+| `summary.biofreq_model()` | print + tier assignments + habitat screening table | **Archived** | archive_glmm_prior_pipeline/R/train_biodiversity_model.R |
 
 ### Internal helpers (not exported)
 
@@ -1562,11 +2279,9 @@ boundary as before). `test-compute_adaptive_sampling_groups.R` and
 | glmmTMB | Binomial GLMM fitting (Tier 1 and Tier 2 models) |
 | dplyr | Data manipulation throughout |
 | tidyr | `complete()` for zero-filling, `crossing()` for prediction grid |
-| rlang | NSE (`sym`, `:=`) |
 | stats | `predict()`, `plogis()`, `binomial()`, `as.formula()` |
 | shiny / miniUI | `plot_theta_map_interactive()` gadget |
 | leaflet / leaflet.extras | Interactive map rendering |
-| stringr | `grid_id` string manipulation in `create_sites_from_grid()` |
 | tibble | `tibble()` in `generate_undetected_diversity()` |
 
 ---

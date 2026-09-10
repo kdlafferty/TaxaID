@@ -20,16 +20,17 @@
 #' Generate this file with \code{crabs db_download}, \code{crabs db_import},
 #' and \code{crabs db_merge}.
 #'
-#' @section Complementary role with TaxaLikely quality tools:
+#' @section Complementary role with reference-quality screening:
 #' CRABS handles efficient sequence retrieval and bulk quality filters at the
 #' database-building stage (e.g., length range, primer trimming, taxonomic
-#' scope, exact dereplication). TaxaLikely catches mislabeling errors that
-#' CRABS cannot detect: sequences where the taxonomic label is wrong but the
-#' sequence is otherwise valid.  These errors inflate within-species distance
-#' estimates and produce unreliable likelihoods.  After loading a CRABS
-#' database with this function, run [flag_reference_errors()] on the output
-#' of [build_sequence_matrix()] to identify and remove them before training
-#' the likelihood model.
+#' scope, exact dereplication). It does not catch mislabeling errors:
+#' sequences where the taxonomic label is wrong but the sequence is otherwise
+#' valid, which inflate within-species distance estimates and produce
+#' unreliable likelihoods. After loading a CRABS database with this function,
+#' screen it via \code{TaxaMatch::corroborate_references_locally()} +
+#' \code{TaxaMatch::evaluate_reference_accessions()} before training the
+#' likelihood model -- see \code{train_likelihood_model()}'s own
+#' documentation for the exact pattern.
 #'
 #' @param crabs_file Character scalar. Path to the CRABS internal-format file.
 #' @param rank_system Character vector of ranks to include, \strong{coarse to
@@ -64,7 +65,7 @@
 #'
 #' @seealso [read_reference_fasta()] for FASTA + separate taxonomy table,
 #'   [fetch_ncbi_reference_sequences()] for downloading from NCBI,
-#'   [build_sequence_matrix()], [flag_reference_errors()]
+#'   [build_sequence_matrix()]
 #'
 #' @note For a fully runnable, non-`\dontrun{}` demonstration, see
 #'   `inst/review_function_inputs.R` Section 1 in the package source.
@@ -80,9 +81,7 @@
 #'
 #' # Standard TaxaLikely workflow continues here
 #' ref_matrix <- build_sequence_matrix(ref)
-#' errors <- flag_reference_errors(ref_matrix)
-#' clean_mat <- remove_flagged_references(ref_matrix, errors)
-#' model <- train_likelihood_model(clean_mat)
+#' model <- train_likelihood_model(ref_matrix)
 #' }
 #'
 #' @export

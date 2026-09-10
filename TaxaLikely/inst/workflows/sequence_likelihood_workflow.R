@@ -162,38 +162,17 @@ ref_matrix <- TaxaLikely::build_sequence_matrix(
 message(sprintf("  %d pairwise comparison(s) built.", nrow(ref_matrix)))
 
 # ==============================================================================
-# 3.  CALIBRATE AND APPLY A COVERAGE FILTER
+# 3.  (formerly: calibrate and apply a coverage filter)
 # ==============================================================================
-# Within-species (H1) pairs nearly always have coverage = 1 (same amplicon);
-# low-coverage pairs are almost entirely cross-species. calibrate_coverage_
-# filter() sweeps thresholds and returns Youden's J (H1 retention minus H2
-# retention) to find the Pareto-optimal cutoff. On a small/clean reference
-# set coverage may be near-categorical (few unique values) -- the function
-# messages when this makes J close to flat; coverage_threshold()'s quantile
-# shortcut is used as a fallback in that case.
+# calibrate_coverage_filter()/coverage_threshold() were archived 2026-09-09 --
+# a real A/B test found the accuracy win on queries the filter is willing to
+# answer was real, but so was the cost (~19% of species lose every training
+# pair; ~25% of real queries end up unresolved). See TaxaLikely/CLAUDE.md's
+# top session note for the full reasoning. Training proceeds on the full,
+# unfiltered ref_matrix below.
 # ==============================================================================
 
-message("\n--- Step 3: Calibrating coverage filter ---")
-
-.cal <- TaxaLikely::calibrate_coverage_filter(ref_matrix)
-.best_thresh <- .cal$threshold[which.max(.cal$youden_j)]
-
-if (length(unique(.cal$youden_j)) <= 1L) {
-  message(
-    "  Youden's J is flat (categorical/near-constant coverage) -- ",
-    "falling back to coverage_threshold()'s quantile shortcut."
-  )
-  .best_thresh <- TaxaLikely::coverage_threshold(ref_matrix)
-}
-
-message(sprintf("  Coverage threshold: %.3f", .best_thresh))
-
-ref_matrix_filtered <- ref_matrix[ref_matrix$coverage >= .best_thresh, ]
-message(sprintf(
-  "  Pairs retained after coverage filter: %d of %d (%.1f%%).",
-  nrow(ref_matrix_filtered), nrow(ref_matrix),
-  100 * nrow(ref_matrix_filtered) / nrow(ref_matrix)
-))
+ref_matrix_filtered <- ref_matrix
 
 # ==============================================================================
 # 4.  TRAIN THE LIKELIHOOD MODEL
@@ -237,15 +216,29 @@ message(sprintf(
 # ==============================================================================
 # 5.  REMOVE FLAGGED REFERENCE ERRORS FROM THE QUERY MATCH OBJECT
 # ==============================================================================
-# train_likelihood_model() calls flag_reference_errors() internally and
-# stores the result in model$reference_errors -- mislabeled reference
-# accessions the query match object's candidates may point to.
+# train_likelihood_model() has no built-in reference-quality screening
+# (retired 2026-09-08 -- see NAME_CHANGE_HISTORY.md). Screen the query match
+# object's own accessions directly via TaxaMatch, using the SAME reference_df/
+# ref_matrix already built in Steps 1-2 for the free local-corroboration check.
 # ==============================================================================
 
 message("\n--- Step 5: Removing flagged reference errors ---")
 
-taxamatch_blast_match_obj_clean <- TaxaLikely::remove_flagged_references(
-  taxamatch_blast_match_obj, taxalikely_sequence_model$reference_errors
+local_corr <- TaxaMatch::corroborate_references_locally(
+  seq_matrix     = ref_matrix,
+  reference_meta = reference_df
+)
+
+accession_eval <- TaxaMatch::evaluate_reference_accessions(
+  accessions                = unique(taxamatch_blast_match_obj$accession),
+  barcode_term               = BARCODE_TERM,
+  local_corroboration        = local_corr,
+  skip_locally_corroborated  = TRUE,
+  cache_dir                  = file.path(OUT_DIR, paste0(OUT_PREFIX, "_ref_eval_cache"))
+)
+
+taxamatch_blast_match_obj_clean <- TaxaMatch::remove_incongruent_references(
+  taxamatch_blast_match_obj, accession_eval
 )
 
 message(sprintf(

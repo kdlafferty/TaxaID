@@ -80,7 +80,7 @@ if (curve$identifiable) {
     w_scale = curve$w_scale, d_half = curve$d_half
   )
 } else {
-  print(curve$bin_table)  # choose w_scale under these bounds
+  print(curve$bin_table) # choose w_scale under these bounds
 }
 }
 

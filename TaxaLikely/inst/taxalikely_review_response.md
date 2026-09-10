@@ -217,6 +217,16 @@ not evaluated this session (out of scope; the workflow lives outside this monore
   see "General comments" above** for the DECIPHER point. The TaxaLikely/TaxaAssign-merge
   suggestion is the same point as `assign_scores.R`'s above -- design decision, not changed.
 
+**Addendum, 2026-09-09:** `build_site_reference()` itself was archived this date -- a usage
+audit found zero real callers anywhere in the monorepo (every real production workflow builds
+its reference database by calling `fetch_ncbi_reference_sequences()` -> `audit_barcode_
+coverage()` -> `write_reference_fasta()` directly, not through this wrapper). Moved intact
+(source + tests) to `archive_unused_reference_wrappers/`, not deleted, matching this file's
+own `clean.R`/`remove_flagged_references.R` precedent for "retired but kept as a record."
+The original review answer above is left as-is, a record of what was true at review time.
+See `TaxaLikely/CLAUDE.md`'s 2026-09-09 top session note and `ecosystem_docs/
+NAME_CHANGE_HISTORY.md` for the full record.
+
 ### calibrate.R
 
 - **"Could `.detect_finest_rank_col` be used elsewhere?"** **Answered, see "General comments."**
@@ -236,6 +246,25 @@ not evaluated this session (out of scope; the workflow lives outside this monore
   what a genuinely continuous DNA-alignment coverage distribution shows on real data (typically
   hundreds to thousands of unique values). Added as an explicit comment at both of the two
   `<= 10L` checks in this file (`calibrate_coverage_filter()` and `coverage_threshold()`).
+
+**Addendum, 2026-09-09 -- both functions ARCHIVED (moved intact, not deleted, to
+`archive_unused_coverage_calibration/`).** The answers above remain a correct record of
+this file's design as reviewed; they are not retracted. What changed is the decision on
+whether to keep the mechanism live, made with real evidence in hand rather than at review
+time: a real A/B test on full-scale PtConception 12S data
+(`diagnostics/coverage_filter_ab_comparison.R`/`_v2.R`) found a real, reproduced H1
+win-rate improvement (54.9%->65.1%, then 55.1%->65.8%) on queries the calibrated filter is
+willing to answer, but also a real, quantified cost: 134 of 691 species (19.4%) lose every
+training pair at the calibrated threshold, and 25.1% of real evaluation queries end up
+unresolved rather than answered. This is the same hard-exclusion-on-an-imperfect-proxy
+shape this ecosystem has already relearned twice (`apply_coverage_constraints()`'s
+zero->relabel fix; `TaxaFetch::filter_gbif_quality()`'s exclude_institution->
+flag_institution fix). The one piece of genuinely separable value (the Youden's-J
+diagnostic on whether coverage predicts pair quality at all) is a fairly standard
+statistic that doesn't need a dedicated exported function -- and the exclusion-oriented
+framing around it is the specific part already known not to be trusted. See
+`TaxaLikely/CLAUDE.md`'s top session note and `ecosystem_docs/NAME_CHANGE_HISTORY.md` for
+the full record.
 
 ### clean.R -> renamed remove_flagged_references.R
 
@@ -681,6 +710,15 @@ No comments in the review; nothing to do.
 
 No comments in the review; nothing to do.
 
+**Addendum, 2026-09-09:** `build_site_reference()` (`write_reference_fasta()`'s one internal
+caller) was archived this date (zero real callers anywhere in the monorepo -- see the
+`build_site_reference.R` section above). `write_reference_fasta()` itself was investigated in
+the same pass and deliberately KEPT live/exported, not archived alongside it: it's a generic,
+standalone, round-trippable (with `read_reference_fasta()`) FASTA-export utility with its own
+dedicated test coverage and README documentation independent of the wrapper, and this
+package's only reference-export capability -- archiving it too would have removed real,
+still-useful functionality, not just dead code. No change to this file's own content.
+
 ------------------------------------------------------------------------
 
 ## Real bugs fixed (summary, with file:line)
@@ -875,4 +913,35 @@ release.
 - `taxalikely_clear_cache`
 - `train_likelihood_model`
 - `trim_to_amplicon`
+
+---
+
+## Addendum, 2026-09-09 (Sonnet 5 -- `compute_likelihoods.R` retirement, unrelated to any
+review item above but touching the same file this document's own "compute_likelihoods.R"
+section discusses)
+
+This review (above, "### compute_likelihoods.R") answered two documentation questions
+about `model_likelihoods()`/`compute_likelihoods()` (the broken example, the empty-
+`unresolved`-data.frame design choice) but never questioned whether either function had
+any real caller -- that wasn't in scope for this review. A later usage audit found they
+didn't: `compute_likelihoods()` (documented at the time as "the recommended high-level
+entry point") had zero real callers anywhere in the monorepo, and `model_likelihoods()`'s
+only caller outside `compute_likelihoods()` itself was its own required demonstration
+section in `inst/review_function_inputs.R` (structurally guaranteed for every exported
+function, not evidence of real adoption). Both were archived intact (moved, not deleted)
+to `archive_unused_likelihood_entrypoint/`, following the same convention this package
+already used for `archive_decipher_reference_audit/`.
+
+`unreferenced_candidates()`/`assign_scores()` -- the two functions this pipeline's first
+two stages named, also covered by this review's checklist above -- were investigated at
+the same time and found to have real, direct callers (`inst/workflows/
+image_acoustic_likelihood_workflow.R`, `inst/workflows/6_no_score_pathway_workflow.R`,
+and cross-package in `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`) and
+were NOT archived.
+
+The Function Inventory checklist just above this addendum (and everywhere else in this
+frozen review-response document) is left as a record of what was true on 2026-08-07 --
+it still lists `compute_likelihoods`/`model_likelihoods` as live exported functions,
+which is no longer accurate. See `TaxaLikely/CLAUDE.md`'s own Function Inventory and its
+2026-09-09 top session note for the current, living record.
 

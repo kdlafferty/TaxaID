@@ -4,17 +4,19 @@
 # companion" clause of the Phase 1 spec in
 # ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md.
 #
-# WHAT THIS REPLACES: plot_theta_map_interactive() renders per-GRID-CELL
+# WHAT THIS REPLACES: plot_theta_map_interactive() rendered per-GRID-CELL
 # theta by parsing Grid_<lat>_<lon> identifiers into centroids. The
 # kernel-priors redesign (estimate_kernel_priors()) produces ONE site row
-# with an opaque site_id, so that function has nothing to draw on the kernel
-# path -- it is currently gated OFF (if (!USE_KERNEL_PRIORS)) in all five
-# production workflows. This function evaluates the SAME estimator formula
-# on a lattice of points instead of at one site, via binned FFT convolution
+# with an opaque site_id, so that function had nothing to draw on the kernel
+# path -- it was gated OFF (if (!USE_KERNEL_PRIORS)) in all five production
+# workflows. This function evaluates the SAME estimator formula on a
+# lattice of points instead of at one site, via binned FFT convolution
 # (stats::fft, base R -- no new dependency), so the resulting map IS the
 # prior field, not a smoothed picture of something else.
-# plot_theta_map_interactive() is left completely unmodified for the
-# (deprecated but live) GLMM path.
+# plot_theta_map_interactive() and the rest of the GLMM/grid prior-fitting
+# chain were archived 2026-09-09 (see archive_glmm_prior_pipeline/ and
+# TaxaExpect/CLAUDE.md's 2026-09-09 session note) -- this function is now
+# the package's only prior-field visualization.
 
 #' Evaluate the kernel-prior estimator on a spatial lattice (KDE prior field)
 #'
@@ -100,20 +102,23 @@
 #' Map one group at a time by fitting it on its own record subset (the shape
 #' the 18S workflow already uses) rather than passing a grouped fit here.
 #'
-#' @section Relationship to plot_theta_map_interactive():
-#' [plot_theta_map_interactive()] parses `Grid_<lat>_<lon>` identifiers out
-#' of a `grid_id` column to find grid-cell centroids to draw -- it depicts
+#' @section Relationship to the retired plot_theta_map_interactive():
+#' The GLMM/grid prior-fitting chain's own visualization,
+#' `plot_theta_map_interactive()`, parsed `Grid_<lat>_<lon>` identifiers out
+#' of a `grid_id` column to find grid-cell centroids to draw -- it depicted
 #' predictions already computed at a fixed set of grid cells. The
 #' kernel-priors path (`estimate_kernel_priors()`) has no grid: it returns
 #' ONE site row with an opaque `site_id` that encodes no spatial extent, so
-#' `plot_theta_map_interactive()` has nothing to parse and nothing to draw
-#' for it (this is why it is gated OFF on the kernel path in every
-#' production workflow). `plot_theta_surface()` replaces it for kernel
-#' priors by evaluating the estimator AT EVERY LATTICE POINT rather than
-#' relying on pre-computed per-cell predictions, so the map is the estimator
-#' evaluated continuously, not an interpolation between grid predictions.
-#' [plot_theta_map_interactive()] is unchanged and remains the right tool
-#' for the (deprecated but still live) GLMM/grid path.
+#' that function had nothing to parse and nothing to draw for it (this is
+#' why it was gated OFF on the kernel path in every production workflow).
+#' `plot_theta_surface()` replaces it for kernel priors by evaluating the
+#' estimator AT EVERY LATTICE POINT rather than relying on pre-computed
+#' per-cell predictions, so the map is the estimator evaluated continuously,
+#' not an interpolation between grid predictions. `plot_theta_map_
+#' interactive()` was archived 2026-09-09 along with the rest of the GLMM
+#' chain (see `archive_glmm_prior_pipeline/` and TaxaExpect/CLAUDE.md's
+#' 2026-09-09 session note) -- this function is now the only prior-field
+#' visualization in the package.
 #'
 #' @param kernel_fit A `taxaexpect_kernel_priors` object from
 #'   [estimate_kernel_priors()] -- the source of `lambda_km`, `m`,
@@ -175,9 +180,8 @@
 #'   interactive map.
 #' @param interactive Logical (default `FALSE`). `FALSE` returns a static
 #'   base-graphics plot. `TRUE` returns a Leaflet overlay (guarded by
-#'   `requireNamespace("leaflet")`, exactly as
-#'   [plot_theta_map_interactive()] guards it); `leaflet` is already in
-#'   TaxaExpect's `Suggests`, so this adds no new dependency.
+#'   `requireNamespace("leaflet")`); `leaflet` is already in TaxaExpect's
+#'   `Suggests`, so this adds no new dependency.
 #' @param taxon_col,lat_col,lon_col,habitat_col Column names in
 #'   `occurrence_data` (defaults matching [estimate_kernel_priors()]:
 #'   `"taxon_name"`, `"decimalLatitude"`, `"decimalLongitude"`,
@@ -202,8 +206,9 @@
 #'   Returned invisibly is never done here -- callers can inspect or
 #'   re-render `$surface` without recomputing.
 #' @seealso [estimate_kernel_priors()] for the site-level estimator this
-#'   function reproduces on a lattice; [plot_theta_map_interactive()] for the
-#'   GLMM/grid-cell equivalent.
+#'   function reproduces on a lattice. The GLMM/grid-cell equivalent,
+#'   `plot_theta_map_interactive()`, was archived 2026-09-09 along with the
+#'   rest of the GLMM prior-fitting chain (see `archive_glmm_prior_pipeline/`).
 #' @export
 plot_theta_surface <- function(kernel_fit,
                                occurrence_data,
@@ -707,9 +712,10 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   grDevices::as.raster(rgba[rev(seq_len(nrow(rgba))), , drop = FALSE])
 }
 
-#' Interactive leaflet overlay -- guarded exactly as plot_theta_map_interactive()
-#' guards its package requirements. Renders at a capped resolution (the
-#' returned $surface stays at full n_grid) since a leaflet map with
+#' Interactive leaflet overlay -- guarded by requireNamespace("leaflet"),
+#' the same pattern this package's other leaflet-based renderers use.
+#' Renders at a capped resolution (the returned $surface stays at full
+#' n_grid) since a leaflet map with
 #' n_grid^2 rectangles is impractical in a browser.
 #'
 #' User-feedback round 2026-09-01 (first real click-through, GreatLakes):

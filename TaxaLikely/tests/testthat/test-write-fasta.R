@@ -118,9 +118,3 @@ test_that("write_reference_fasta: single-column taxonomy works", {
   lines <- readLines(fasta_file)
   expect_equal(lines[1], ">acc1 Fundulus parvipinnis")
 })
-
-test_that("build_site_reference: validates required inputs", {
-  expect_error(build_site_reference(123, "MiFishU"), "taxa must be")
-  expect_error(build_site_reference("Fundulus", 123), "barcode_term must be")
-  expect_error(build_site_reference(character(0), "MiFishU"), "taxa must be")
-})

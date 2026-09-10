@@ -259,8 +259,10 @@ clean <- filter_gbif_quality(
 )
 
 # Institution-flagged records are RETAINED, not removed -- review them
-clean[clean$institution_flag \%in\% TRUE,
-      c("species", "institution_name", "institution_type", "institution_dist_m")]
+clean[
+  clean$institution_flag \%in\% TRUE,
+  c("species", "institution_name", "institution_type", "institution_dist_m")
+]
 
 # Compare thresholds
 nrow(filter_gbif_quality(gbif_raw, max_coord_uncertainty = 500))

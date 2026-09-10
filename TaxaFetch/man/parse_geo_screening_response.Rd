@@ -51,7 +51,7 @@ catalog to recover them.
 \examples{
 \dontrun{
 candidates <- parse_geo_screening_response(llm_output, geo_prompt)
-accepted   <- candidates[candidates$geo_match, ]
+accepted <- candidates[candidates$geo_match, ]
 nrow(accepted)
 }
 }

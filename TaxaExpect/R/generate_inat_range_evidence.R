@@ -24,6 +24,31 @@
 #' not site-scale, and (b) citizen-science identifications carry a real
 #' misidentification rate.
 #'
+#' @section Calibration status (2026-09-05 critical-fix-review, finding A2):
+#' Unlike \code{\link{generate_regional_proximity_evidence}}'s \code{w_scale}
+#' (checklist-calibrated against a real site species list) and
+#' \code{generate_invasive_watch_evidence()}'s weight (derived from the
+#' dataset-independent ordering bound), this function's \code{0.8} default is
+#' design intuition, not empirically calibrated -- it predates the checklist-
+#' calibration work by two days and was never re-examined against it. Under
+#' \code{pricing = "blend"} (see \code{\link{apply_undetected_evidence}}), the
+#' printed dataset-specific veto bound is often far below 0.8 (~0.05 on
+#' GreatLakes' own real anchors) -- a weight this high can block species-level
+#' resolution of a genuinely observed singleton-level native, the exact
+#' failure the pre-calibration invasive weight (0.6) caused for yellow perch
+#' before it was cut to 0.05. \code{apply_undetected_evidence()} already warns
+#' generically whenever any evidence source's combined weight exceeds that
+#' bound in blend mode, so a blend-mode misuse of this default will not pass
+#' silently -- but the warning fires after the row is built, not before, and
+#' no number here has been chosen to avoid triggering it. Under
+#' \code{pricing = "curve"} the bound is structurally unreachable (see that
+#' function's own docs), so \code{0.8} carries no such risk there -- this is
+#' the only pricing mode any real production caller currently uses this
+#' function under. Before wiring this into a blend-mode workflow, either lower
+#' \code{weight} below that call's own printed bound or calibrate it by the
+#' same checklist recipe \code{w_scale} used, rather than trusting this
+#' default's intuition-only provenance.
+#'
 #' @section The fuzzy-match gate is mandatory by default:
 #' iNaturalist's taxon search takes the single best TEXT match, so a query
 #' can silently resolve to a DIFFERENT species (real production case:

@@ -24,8 +24,17 @@
 #' }
 #'
 #' @section Unreferenced species:
+#' Two separate mechanisms, one per workflow -- not used together. Full
+#' Bayesian: \code{TaxaLikely::audit_barcode_coverage()} feeds
+#' \code{TaxaLikely::expand_unreferenced_hypotheses()} (models likelihoods for
+#' named unreferenced taxa). LLM-shortcut:
+#' \code{TaxaLikely::suggest_unreferenced_species()} (a fast, LLM-first
+#' alternative to \code{audit_barcode_coverage()}; moved here from this
+#' package in 2026-09-08) feeds \code{\link{assign_taxa_llm}}'s own
+#' \code{unreferenced_taxa} parameter directly.
 #' \itemize{
-#'   \item \code{\link{suggest_unreferenced_species}} -- LLM-first detection
+#'   \item \code{\link{suggest_unreferenced_species}} -- deprecated forwarding
+#'     wrapper; call \code{TaxaLikely::suggest_unreferenced_species()} directly
 #'   \item \code{TaxaLikely::expand_unreferenced_hypotheses()} -- models
 #'     likelihoods for named unreferenced taxa (lives in TaxaLikely, next to
 #'     \code{TaxaLikely::unreferenced_candidates()})

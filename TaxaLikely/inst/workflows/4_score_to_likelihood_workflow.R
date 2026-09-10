@@ -54,25 +54,33 @@ cat(
   length(unique(match_df$observation_id)), "unique queries\n"
 )
 
-# ---- 2. Remove flagged reference errors (DNA only) --------------------------
+# ---- 2. Clean flagged reference accessions from the match object (DNA only) --
 # SKIP THIS SECTION FOR ACOUSTIC DATA.
 #
-# DNA sequences from NCBI may include mislabeled accessions. train_likelihood_model()
-# stores detected errors in model$reference_errors; remove them before evaluating.
+# DNA sequences from NCBI may include mislabeled accessions. Screen the match
+# object's own accessions via TaxaMatch (the same package used in Workflow 2,
+# but here scoped to match_df's accessions rather than reference_df's -- these
+# can differ):
+#   accession_eval <- TaxaMatch::evaluate_reference_accessions(
+#     unique(match_df$accession), barcode_term = "MiFishU"
+#   )
+#   match_df <- TaxaMatch::flag_incongruent_references(match_df, accession_eval)
+#   # then, only after reviewing the flags:
+#   # match_df <- TaxaMatch::remove_incongruent_references(match_df, accession_eval)
+#
 # For acoustic (Xeno-canto) data, rely on quality grade filtering in Workflow 3b
 # instead -- curation quality is high and "flagged" recordings are usually just
 # noisy, not mislabeled.
-#
-# Uncomment for DNA workflows:
-# errors  <- model$reference_errors        # stored by train_likelihood_model()
-# # Or: errors <- readRDS("reference_errors.rds")  # from Workflow 2
-# match_df <- remove_flagged_references(match_df, errors)
 
 # ---- 2b. Coverage filter (optional) -----------------------------------------
 # If the match object has a 'coverage' column (e.g. BLAST qcovs, Xeno-canto
-# grade), pass the threshold saved by Workflow 3 as min_coverage below.
+# grade), a minimum-coverage threshold can be passed as min_coverage below.
 # Candidates below the threshold are dropped before score aggregation,
 # keeping inference data within the range the model was trained on.
+# Workflow 3 no longer calibrates and saves a threshold (calibrate_coverage_
+# filter()/coverage_threshold() were archived 2026-09-09 -- see TaxaLikely/
+# CLAUDE.md's top session note); supply a value directly if you want this
+# filter, otherwise it stays off (min_cov = NULL).
 #
 # DNA (BLAST): ensure match_df has a 'coverage' column (qcovs from BLAST
 # tabular output, 0-100 scale -- evaluate_likelihoods() auto-rescales).
@@ -84,12 +92,7 @@ cat(
 #                                                levels = c("E","D","C","B","A"))))
 #   min_cov <- 4L   # B or better
 
-if (file.exists("coverage_threshold.rds")) {
-  min_cov <- readRDS("coverage_threshold.rds")
-  cat(sprintf("Coverage threshold (from Workflow 3): %.3f\n", min_cov))
-} else {
-  min_cov <- NULL # no filter
-}
+min_cov <- NULL # no filter by default; set to a numeric threshold to enable
 
 # ---- 3. Evaluate likelihoods ------------------------------------------------
 # evaluate_likelihoods() does the heavy lifting:

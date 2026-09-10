@@ -11,6 +11,15 @@
 #   - The genus/family/order/class/phylum rank-column vector used to join
 #     taxonomy onto proxy prior rows was reimplemented identically in
 #     generate_undetected_diversity.R and generate_domestic_food_priors.R.
+#
+# 2026-09-09: .parse_grid_id_coords() and .glmm_deprecation_notice() removed
+# -- both were used only by the GLMM grid/prior-fitting chain archived this
+# session (see TaxaExpect/CLAUDE.md's 2026-09-09 session note); with every
+# one of their callers gone, both were fully orphaned dead code. Moved intact
+# (not just deleted) as part of archive_glmm_prior_pipeline/'s own record --
+# see that directory's R/plot_theta_map_interactive.R and R/compute_moran_
+# basis.R for .parse_grid_id_coords()'s original callers, and any archived
+# chain file's .glmm_deprecation_notice("<fn_name>") call for that helper's.
 # ==============================================================================
 
 #' Beta distribution mean from alpha/beta
@@ -35,68 +44,3 @@
 #' historically used.
 #' @noRd
 .dark_diversity_rank_cols <- c("genus", "family", "order", "class", "phylum")
-
-#' Parse a TaxaExpect grid_id string to centroid lat/lon
-#'
-#' Format: \code{"Grid_{lat_int}p{lat_dec}_{m}{lon_int}p{lon_dec}"}, where
-#' \code{"p"} encodes a decimal point and a leading \code{"m"} encodes a
-#' negative sign (see \code{\link{create_sites_from_grid}}).
-#'
-#' Uses \code{sub()} rather than \code{regmatches(regexpr(...))}: the latter
-#' silently DROPS any element with no match (e.g. \code{NA} input) instead of
-#' returning \code{NA}, which would desync the parsed lat/lon vectors' length
-#' from \code{grid_id}'s own length whenever any input is \code{NA} or
-#' malformed. \code{sub()} always preserves length (an \code{NA} input stays
-#' \code{NA} in place).
-#'
-#' @param grid_id Character vector of grid_id strings.
-#' @return A data frame with columns \code{lat}, \code{lon} (numeric, same
-#'   length as \code{grid_id}; \code{NA} for unparseable entries).
-#' @noRd
-.parse_grid_id_coords <- function(grid_id) {
-  x <- sub("^Grid_", "", grid_id)
-  parts <- sub("_.*$", "", x)
-  lon_parts <- sub("^[^_]+_", "", x)
-
-  parse_coord <- function(s) {
-    neg <- startsWith(s, "m")
-    s <- sub("^m", "", s)
-    s <- gsub("p", ".", s, fixed = TRUE)
-    val <- suppressWarnings(as.numeric(s))
-    ifelse(neg, -val, val)
-  }
-
-  data.frame(
-    lat = parse_coord(parts),
-    lon = parse_coord(lon_parts),
-    stringsAsFactors = FALSE
-  )
-}
-
-#' Once-per-session deprecation notice for the GLMM prior-fitting path
-#'
-#' B7 of the kernel-priors redesign (2026-08-31): the grid/GLMM fitting chain
-#' is deprecated in favor of estimate_kernel_priors() +
-#' calibrate_kernel_bandwidth(). The GLMM path stays functional (a message,
-#' never a warning or error) until the remaining production workflows
-#' (PtConception, Mugu) migrate to the kernel estimator, at which point the
-#' chain moves to an archive directory (DECIPHER-module precedent).
-#' One shared .frequency_id so a full GLMM pipeline run emits the notice once,
-#' not once per stage.
-#' @param fn_name Character scalar, the user-facing function name (no parens).
-#' @return Invisibly, NULL.
-#' @noRd
-.glmm_deprecation_notice <- function(fn_name) {
-  rlang::inform(
-    message = paste0(
-      fn_name, "() is part of the deprecated GLMM prior-fitting path. ",
-      "New analyses should use estimate_kernel_priors() and ",
-      "calibrate_kernel_bandwidth() instead (kernel-priors redesign, ",
-      "2026-08-31). The GLMM path remains functional until existing ",
-      "workflows migrate."
-    ),
-    .frequency = "once",
-    .frequency_id = "taxaexpect_glmm_path_deprecation"
-  )
-  invisible(NULL)
-}

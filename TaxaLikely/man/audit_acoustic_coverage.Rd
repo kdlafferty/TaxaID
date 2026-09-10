@@ -54,8 +54,9 @@ Even a species present in the BirdNET list may be poorly classified
 if it has very few training recordings.}
 }}
 \item{\code{unreferenced}}{Character vector of species names absent from
-\code{reference_species}.  Pass to \code{TaxaAssign::suggest_unreferenced_species()}
-as \code{unreferenced_taxa} to build H2 hypotheses for these species.}
+\code{reference_species}.  Pass directly to
+\code{TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)} to build H2
+hypotheses for these species.}
 }
 }
 \description{
@@ -79,14 +80,18 @@ is the relevant coverage concept, not presence in a classifier list).
 }
 
 \examples{
-plausible <- c("Turdus migratorius", "Setophaga petechia",
-               "Limosa fedoa", "Selasphorus calliope")
-birdnet_list <- c("Turdus migratorius", "Setophaga petechia",
-                  "Turdus merula", "Corvus brachyrhynchos")
+plausible <- c(
+  "Turdus migratorius", "Setophaga petechia",
+  "Limosa fedoa", "Selasphorus calliope"
+)
+birdnet_list <- c(
+  "Turdus migratorius", "Setophaga petechia",
+  "Turdus merula", "Corvus brachyrhynchos"
+)
 
 result <- audit_acoustic_coverage(plausible, birdnet_list)
 result$census
-result$unreferenced  # c("Limosa fedoa", "Selasphorus calliope")
+result$unreferenced # c("Limosa fedoa", "Selasphorus calliope")
 
 }
 \seealso{

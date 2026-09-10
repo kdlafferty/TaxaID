@@ -576,8 +576,11 @@ utils::globalVariables(c(
 #'   habitats and row counts at the resolved grid cell.
 #'   \code{list(main_habitat = "Marine")} alone (no \code{lat}/\code{lon}/
 #'   \code{grid_id}) auto-fills coordinates from
-#'   \code{attr(taxaexpect_priors, "search_center")} when present (set by
-#'   \code{TaxaExpect::build_priors()}) -- \code{main_habitat} itself is
+#'   \code{attr(taxaexpect_priors, "search_center")} when present -- set by
+#'   the archived \code{TaxaExpect::build_priors()} (GLMM chain, archived
+#'   2026-09-09; only relevant for an old cached \code{build_priors()}
+#'   result you still have on disk, since \code{estimate_kernel_priors()}
+#'   does not set this attribute) -- \code{main_habitat} itself is
 #'   never auto-filled or guessed.
 #'   See Details.
 #' @param taxonomy_lookup Optional data frame mapping `taxon_name` to
@@ -1166,8 +1169,10 @@ join_priors <- function(likelihoods,
     cli::cli_warn(paste0(
       "join_priors: no global_floor row found in taxaexpect_priors. ",
       "Unmodelled species will use site-level dark diversity as fallback. ",
-      "Pass the global_floor row (undetected_type == 'global_floor') to ",
-      "generate_full_priors() to enable the principled unmodelled-species prior."
+      "Make sure taxaexpect_priors includes the global_floor row ",
+      "(undetected_type == 'global_floor') from ",
+      "TaxaExpect::generate_undetected_diversity() to enable the principled ",
+      "unmodelled-species prior."
     ))
   }
 
@@ -1217,8 +1222,9 @@ join_priors <- function(likelihoods,
   #     never recorded in this habitat in training, the rule's actual
   #     motivating case) are promoted. When taxaexpect_priors carries no
   #     observed_in_habitat column at all (priors not from
-  #     generate_full_priors()), the pre-redesign behavior is retained for
-  #     modelled rows so older callers are unaffected.
+  #     estimate_kernel_priors() or the archived generate_full_priors()),
+  #     the pre-redesign behavior is retained for modelled rows so older
+  #     callers are unaffected.
   has_model <- !is.na(result$alpha)
   singleton_mean <- result$singleton_alpha / (result$singleton_alpha + result$singleton_beta)
 
@@ -1285,7 +1291,8 @@ join_priors <- function(likelihoods,
     # Retrieve singleton mirror rows from taxaexpect_priors; join taxonomy via
     # source_taxon_name so we know which phylum/class/order/family/genus each
     # singleton proxy represents. (Taxonomy columns were stripped by
-    # generate_full_priors() select() -- must re-join here.)
+    # estimate_kernel_priors()/the archived generate_full_priors()'s own
+    # select() -- must re-join here.)
     if ("source_taxon_name" %in% names(taxaexpect_priors)) {
       sing_rows <- taxaexpect_priors[
         !is.na(taxaexpect_priors$undetected_type) &
@@ -1305,8 +1312,10 @@ join_priors <- function(likelihoods,
       sing_rows <- taxaexpect_priors[integer(0L), , drop = FALSE]
       cli::cli_warn(paste0(
         "join_priors: singleton_taxonomy supplied but taxaexpect_priors lacks ",
-        "'source_taxon_name'. Group dark diversity priors require TaxaExpect ",
-        ">= Session 117 with source_taxon_name in generate_full_priors() output."
+        "'source_taxon_name'. Group dark diversity priors require ",
+        "source_taxon_name in your priors table (present in ",
+        "TaxaExpect::generate_undetected_diversity() output since Session 117, ",
+        "and in estimate_kernel_priors() output)."
       ))
     }
 

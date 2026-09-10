@@ -55,10 +55,8 @@ flagged accessions are found.
 }
 \description{
 Filters a match data frame to remove rows whose reference accession was
-flagged \code{"incongruent"} by \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} -- mirrors
-\code{TaxaLikely::remove_flagged_references()}'s existing consumption pattern
-(which drops \code{flag_reference_errors()}'s \code{"likely_mislabeled"} rows) but
-fed from the new BLAST-based verdict instead. Deliberately conservative:
+flagged \code{"incongruent"} by \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}. Deliberately
+conservative:
 only the confident \code{"incongruent"} verdict is dropped by default --
 \code{"insufficient_independent_evidence"} is ambiguous (may simply mean a
 sparsely-referenced region of the database, not a real problem) and is

@@ -89,7 +89,7 @@
 #' }
 #'
 #' @seealso \code{\link{parse_hierarchical_habitat_response}},
-#'   \code{\link{build_habitat_prompt}}, \code{prepare_model_dataframe()}
+#'   \code{\link{build_habitat_prompt}}, \code{TaxaExpect::estimate_kernel_priors()}
 #'
 #' @importFrom dplyr n_distinct
 #' @export

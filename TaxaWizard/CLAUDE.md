@@ -1,6 +1,122 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-07, later (Sonnet 5 -- closes out the metadata resync's item 3:
+# Last updated: 2026-09-09, later (Sonnet 5 -- graph updates from TaxaExpect's archival of
+# the remaining 8 members of the GLMM grid/prior-fitting chain (`build_priors()`,
+# `optimize_grid_size()`, `prepare_model_dataframe()`, `add_pca_covariates()`/
+# `apply_pca_transform()`, `compute_moran_basis()`, `screen_spatial_formula()`,
+# `train_biodiversity_model()`, `generate_full_priors()`, plus `plot_theta_map_
+# interactive()` as a 9th item) -- see TaxaExpect/CLAUDE.md's own 2026-09-09-later top
+# note for the full archival record; this note covers only this package's own side.
+#
+# Three edges/snippets DELETED outright (not rewritten): `std_to_dist`, `dist_to_priors`,
+# `taxa_to_priors_wrapper` -- all three were 100% composed of calls into the now-archived
+# chain, and unlike the earlier `train_biodiversity_model_by_group()` retirement (which had
+# a direct one-call kernel-path replacement to rewrite the snippet onto), there is no
+# kernel-path equivalent for "grid the occurrences" or "one wrapper call, taxa in, priors
+# out" -- the kernel path never grids at all, and no kernel-path wrapper was ever built to
+# replace `build_priors()`'s single-call convenience. This orphaned the `distributions`
+# intermediate node (its only other edge, `dist_to_priors_by_group`, is itself kernel-path
+# and doesn't consume a gridded object -- see below), so it was removed from `workflow_
+# graph.json` too.
+#
+# REAL, PRE-EXISTING BUG found and fixed while investigating whether `distributions` was
+# genuinely orphaned: `dist_to_priors_by_group`'s own `from: ["distributions"]` was stale,
+# left over from its 2026-09-09-earlier rewrite (see the entry directly below) to call
+# `estimate_kernel_priors(sampling_group_col=)` -- that rewrite changed the snippet's
+# CODE to work directly on `std_occurrences` (exactly like its sibling `std_to_priors_
+# kernel`, no grid ever built or consumed) but never updated the edge's own `from` field to
+# match, leaving the graph topology claiming a dependency the snippet's real content
+# doesn't have. Fixed the same session (`from` -> `["std_occurrences"]`), closing a real
+# graph-correctness gap the earlier session introduced, not just cleanup incidental to this
+# one.
+#
+# `priors_to_map` simplified to save-only: its old interactive-map step called the now-
+# archived `plot_theta_map_interactive()`. Cannot simply be repointed at `plot_theta_
+# surface()` instead -- that function needs the full `kernel_fit` object (not just the
+# flattened priors table this generic, priors-only edge has access to), which is exactly
+# why `plot_theta_surface()` was ALREADY wired inline inside `std_to_priors_kernel.R`/
+# `dist_to_priors_by_group.R` rather than here, back when it was first added (2026-09-07).
+# `metadata/TaxaExpect.json` lost its `build_priors`/`optimize_grid_size`/`prepare_model_
+# dataframe` entries entirely; every remaining entry's description corrected to stop
+# describing the archived functions in the present tense (they're gone, not "replaced" by
+# something competing with them). `metadata/TaxaAssign.json`/`TaxaFetch.json` and
+# `prompts/phase_parameterize.md`'s parameter-type teaching example (previously walked the
+# LLM through `build_priors(taxa=...)` specifically) updated -- the teaching point about
+# rank-encoded data.frame columns now uses `get_keys_from_context()` (the real, still-live
+# `taxa -> occurrences` step) as its example instead.
+#
+# `tests/testthat/test-graph.R`: two real fixes, not tolerance widening. The `taxa ->
+# priors (wrapper and manual)` test's whole premise (a wrapper path must exist) is now
+# false -- rewritten to `taxa -> priors (manual, multi-hop)`, asserting the real remaining
+# path (`taxa -> occurrences -> std_occurrences -> priors` via `taxa_to_occ` -> `occ_to_
+# std` -> `std_to_priors_kernel`/`dist_to_priors_by_group`) exists and that NO path uses a
+# wrapper. The "multi-input edges produce full Bayesian path" test's `has_priors` check
+# dropped the two now-deleted edge IDs, keeping only the two real kernel-path ones.
+# `devtools::test()` 908 -> 633 is the SAME documented, non-regressive effect this file's
+# own history already records twice for the identical reason (2026-08-09: 855 -> 655) --
+# fewer real edges means fewer enumerable combinatorial paths, and several tests iterate
+# one assertion per computed path; confirmed `FAIL 0` before and after the edit, not just a
+# smaller number. `devtools::check()` 0 errors / 0 warnings / 1 note (the standing "future
+# file timestamps" environmental note, unchanged). Reinstalled (its `inst/` files --
+# snippets/metadata/graph JSON -- are bundled at install time, not just read from source).
+#
+# Previous update, 2026-09-09 (Sonnet 5 -- `dist_to_priors_by_group` edge (distributions ->
+# priors, grouped by sampling/detection process) rewritten, following TaxaExpect's
+# retirement of `train_biodiversity_model_by_group()` (zero real callers ecosystem-wide,
+# archived to `TaxaExpect/archive_glmm_by_group/` -- see `TaxaExpect/CLAUDE.md`'s own
+# 2026-09-09 top note for the full record). The old snippet called the now-archived
+# function directly -- would have hard-errored on generation. New pattern: a single
+# `TaxaExpect::estimate_kernel_priors(sampling_group_col=)` call handles every sampling
+# group at once (composition AND Good-Turing budget computed within each group, no
+# per-group model-fitting loop needed, unlike the retired GLMM wrapper), followed by
+# `generate_undetected_diversity()` for the unseen-taxa floor -- mirrors the
+# `std_to_priors_kernel.R` snippet's own house style (already built from the real
+# production kernel-priors path). Domestic/food priors deliberately still computed from a
+# separate POOLED `estimate_kernel_priors()` call, not the grouped one -- a domestic/food
+# species isn't scoped to one detection process, matching the real
+# `PtConceptionWorkflow_18S_2_single_site.R` convention. `functions`/`description`/
+# `time_estimate` on the edge itself updated in `workflow_graph.json` (topology --
+# `id`/`from`/`to`/`snippet` filename -- left unchanged, matching this project's own
+# in-place-update precedent for a rewritten-not-relocated edge). `metadata/TaxaExpect.json`'s
+# now-stale `train_biodiversity_model_by_group` entry removed; `prepare_model_dataframe`'s
+# output description and `generate_domestic_food_priors`'s `model_obj` input description
+# both repointed away from it; `estimate_kernel_priors`'s own metadata entry gained a
+# `sampling_group_col` parameter it had been missing since that parameter shipped
+# 2026-09-03 (found opportunistically while touching this file, not part of the original
+# ask -- a real, separate metadata gap the new snippet's own usage would otherwise have
+# perpetuated). `tests/testthat/test-graph.R`'s only reference to this edge checks edge-ID
+# membership in a computed path, not snippet content, so needed no change (confirmed via
+# grep, not assumed). `devtools::test()` 908/908 unchanged, `devtools::check()` clean,
+# reinstalled (its `inst/` files -- snippets/metadata/graph JSON -- are bundled at install
+# time, not just read from the source tree the way `devtools::test()`'s own `load_all()`
+# does).
+# Previous update, 2026-09-08 (Sonnet 5 -- `matrix_to_clean` edge (reference_matrix ->
+# clean_refs) rewritten, following TaxaLikely's retirement of `flag_reference_errors()`/
+# `remove_flagged_references()` (see TaxaLikely/CLAUDE.md's own top note for the full
+# ecosystem-level record). The old snippet called both retired functions -- would have
+# hard-errored on generation. New pattern: `TaxaMatch::corroborate_references_locally()`
+# (free local check) -> `TaxaMatch::evaluate_reference_accessions(local_corroboration=,
+# skip_locally_corroborated=TRUE)` (BLAST only what the free check can't resolve; its own
+# output already carries a `reference_action` verdict via an automatic internal
+# `score_reference_labels()` call, so no separate call is needed) -> filter `reference_df`
+# to exclude accessions actioned `"remove"`. Edge's `from` widened to `[reference_matrix,
+# reference_df]` (both now genuinely needed) and `packages` changed TaxaLikely -> TaxaMatch.
+# `metadata/TaxaLikely.json`'s stale `flag_reference_errors`/`remove_flagged_references`
+# entries removed; `train_likelihood_model`/`build_site_reference`/`read_crabs_output`
+# descriptions updated to stop citing them. `metadata/TaxaMatch.json`'s
+# `evaluate_reference_accessions` entry (already present from an earlier metadata pass)
+# gained the `barcode_term`/`local_corroboration`/`skip_locally_corroborated` inputs and
+# `reference_action` output it was missing -- needed by this new snippet, previously
+# undocumented since nothing had called for them yet. `clean_refs` remains a genuine
+# terminal graph node (nothing downstream consumes it -- confirmed pre-existing, not
+# something this change introduced) -- a real, standalone deliverable ("give me a cleaned
+# reference database"), not wired back into `matrix_to_model`. `devtools::test()`/`check()`
+# re-verified clean. `TaxaWizard:::.compute_paths()` confirms real reachability post-edit:
+# `reference_df -> clean_refs` (1 path) and `taxa -> clean_refs` (3 paths) both resolve --
+# `reference_matrix -> clean_refs` alone correctly finds 0, since the edge's widened `from`
+# now genuinely needs BOTH inputs and `reference_df` isn't derivable starting only from
+# `reference_matrix` (it's the coarser, earlier object `reference_matrix` is built from).
+# Previous update, 2026-09-07, later (Sonnet 5 -- closes out the metadata resync's item 3:
 # new graph node/edge design for the 3 wholly-missing mechanisms flagged in
 # ecosystem_docs/REENTRY_PROMPT_taxawizard_metadata_resync.md.
 #
@@ -711,7 +827,7 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 | `.find_existing_script()` | Find today's script for continuation mode | R/output.R |
 | `.append_to_script()` | Append new DAG steps to existing script (step renumbering, dedup) | R/output.R |
 | `.generate_markdown()` | DAG -> .md file | R/output.R |
-| `.generate_app()` | DAG -> app.R (placeholder) | R/output.R |
+| `.generate_app()` | **Fixed 2026-08-09** (was a non-functional placeholder despite `workflow_app()` already existing in-package) -- now delegates to `workflow_app(script_path=, launch=FALSE)` when a sibling script was generated in the same response; falls back to a minimal placeholder pointing at `workflow_app()` directly only when no script exists to convert (e.g. "app" requested without "script") or `shiny` is unavailable. | R/output.R |
 | `.save_session()` / `.load_session()` | Temp RDS for conversation state (workflow_fix) | R/cli.R |
 | `.parse_error_context()` | Extract step number + edge ID from error text + saved DAG | R/cli.R |
 | `.history_has_prior_dag()` | Detect continuation mode from conversation history | R/engine.R |

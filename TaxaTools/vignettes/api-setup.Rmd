@@ -143,8 +143,8 @@ taxa, taxonomic review) cost under $1 per run with Claude Sonnet.
 
 ### GBIF Credentials (GBIF_USER, GBIF_PWD, GBIF_EMAIL)
 
-**Used by:** `fetch_gbif_occurrences()` in TaxaFetch, `build_priors()` in
-TaxaExpect
+**Used by:** `fetch_gbif_occurrences()` in TaxaFetch, `estimate_kernel_priors()`'s
+upstream occurrence fetch in TaxaExpect
 
 **Why:** GBIF requires authentication for occurrence download requests. Searches
 work without credentials, but bulk downloads (which TaxaFetch uses) need a

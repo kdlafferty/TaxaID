@@ -11,8 +11,7 @@ utils::globalVariables(c(
 #' Aligns DNA sequences using `DECIPHER::AlignSeqs()`, computes pairwise
 #' distances with `DECIPHER::DistanceMatrix()`, converts distances to match
 #' scores (`p_match = 1 - distance`), and joins taxonomy metadata.  The
-#' resulting data frame is the input to [flag_reference_errors()] and
-#' [train_likelihood_model()].
+#' resulting data frame is the input to [train_likelihood_model()].
 #'
 #' @section Requirements:
 #' Packages `DECIPHER` and `Biostrings` must be installed
@@ -180,13 +179,17 @@ utils::globalVariables(c(
 #'       sequences contribute a non-gap character, divided by the shorter
 #'       unaligned sequence length.  Range (0, 1].  Values near 1.0 indicate
 #'       nearly complete overlap; values near 0.0 indicate highly gappy or
-#'       partial alignments that produce unreliable match scores.  Use
-#'       [calibrate_coverage_filter()] or [coverage_threshold()] to select a
-#'       minimum coverage threshold before calling [train_likelihood_model()].}
+#'       partial alignments that produce unreliable match scores.  A minimum
+#'       coverage threshold can be applied directly (e.g.
+#'       `ref_matrix[ref_matrix$coverage >= threshold, ]`) before calling
+#'       [train_likelihood_model()]; a dedicated threshold-calibration helper
+#'       (`calibrate_coverage_filter()`/`coverage_threshold()`) existed
+#'       through 2026-09-09 and was archived -- see `TaxaLikely/CLAUDE.md`
+#'       for the full reasoning.}
 #'     \item{`{rank}.x`, `{rank}.y`}{Taxonomy columns for each pair member.}
 #'   }
 #'
-#' @seealso [flag_reference_errors()], [train_likelihood_model()]
+#' @seealso [train_likelihood_model()]
 #'
 #' @examples
 #' \dontrun{

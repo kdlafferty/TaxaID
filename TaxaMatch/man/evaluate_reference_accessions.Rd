@@ -366,20 +366,20 @@ max-scoring accession of their species for at least one real
 observation -- everything else can never change an assignment
 regardless of what this function would say about it. Real effect:
 709 of 995 on a real PtConception 12S match object.
-\item \strong{Accessions the training screen already flagged.}
-\code{\link[=verify_flagged_references]{verify_flagged_references()}} verifies only
-\code{TaxaLikely::flag_reference_errors()}'s own \code{"likely_mislabeled"}
-subset (that screen already runs for free, no NCBI call, reusing the
-\code{seq_matrix} already built for training) -- turning "BLAST the whole
-training reference set" into "BLAST only the ~9-11\% it actually
-disputed." See that function's own \verb{@section Why the flagged subset, not the whole reference set}.
+\item \strong{Accessions the free local check can't already resolve.}
+\code{\link[=corroborate_references_locally]{corroborate_references_locally()}} runs first, for free (no NCBI
+call, reusing the \code{seq_matrix} already built for training) -- pass
+its output as \code{local_corroboration} with \code{skip_locally_corroborated = TRUE} and this function only BLASTs the accessions that check
+couldn't already corroborate from within the reference set itself,
+turning "BLAST the whole training reference set" into "BLAST only
+what's still disputed after the free pass."
 }
 Together these concentrate this screen's real NCBI cost exactly where a
 verdict can change something -- a match-driving accession feeds a real
-assignment; a training-flagged accession feeds \code{train_likelihood_model()}'s
-own silent removal -- while leaving every other accession in a large
-reference set unscreened by default, not as an oversight but as the
-documented, correct scope.
+assignment; a training accession the free local check couldn't already
+resolve is exactly the population worth spending NCBI budget on -- while
+leaving every other accession in a large reference set unscreened by
+default, not as an oversight but as the documented, correct scope.
 }
 
 \section{Why "incongruent" gained a TTL (2026-09-02)}{

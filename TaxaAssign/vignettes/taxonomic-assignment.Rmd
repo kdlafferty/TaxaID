@@ -146,7 +146,7 @@ ctx <- build_context(
 )
 
 # Detect unreferenced species via LLM
-unreferenced <- suggest_unreferenced_species(
+unreferenced <- TaxaLikely::suggest_unreferenced_species(
   match_df,
   context = ctx, barcode_term = "12S",
   expand_to_family = TRUE
@@ -203,8 +203,9 @@ comparison <- dplyr::left_join(
    `join_priors()` found matching priors (look for dark-diversity fallback
    warnings).
 
-2. **"unknown_species" wins:** The LLM pipeline includes a catch-all
-   hypothesis. If it dominates, the true species may not be in the candidate
+2. **"unreferenced_family" wins:** The LLM pipeline includes a catch-all
+   hypothesis (`taxon_name = NA`) for a taxon not represented by any named
+   candidate. If it dominates, the true species may not be in the candidate
    list. Check `score_threshold` and `unreferenced_taxa`.
 
 3. **TaxaMatch not installed:** `join_priors()` uses

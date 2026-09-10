@@ -435,21 +435,23 @@ silently skipped when the named column is absent from \code{input_df}.
 \dontrun{
 # Standard review (consensus taxon only)
 reviewed <- review_assignments(
-  input_df           = consensus_df,
-  context      = list(geography = "Palmyra Atoll, central Pacific",
-                      habitat   = "coral reef"),
+  input_df = consensus_df,
+  context = list(
+    geography = "Palmyra Atoll, central Pacific",
+    habitat = "coral reef"
+  ),
   target_group = "fish",
-  marker       = "12S MiFish"
+  marker = "12S MiFish"
 )
 
 # Candidate-aware review (recommended for upranked assignments)
 consensus_df <- TaxaAssign::add_slash_taxon(consensus_df)
 reviewed <- review_assignments(
-  input_df                 = consensus_df,
+  input_df = consensus_df,
   plausible_taxa_col = "plausible_taxa",
-  irreducible_only   = TRUE,
-  context            = ctx,
-  target_group       = "fish"
+  irreducible_only = TRUE,
+  context = ctx,
+  target_group = "fish"
 )
 }
 

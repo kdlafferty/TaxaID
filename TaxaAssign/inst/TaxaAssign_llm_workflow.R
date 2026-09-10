@@ -123,7 +123,7 @@ known_absent <- c()
 # Example: Fundulus parvipinnis (native SCB, no 12S reference) is unreferenced;
 # the LLM ranks it above Fundulus lima (Mexican, has reference).
 #
-# suggest_unreferenced_species() strategy (LLM-first, preferred):
+# TaxaLikely::suggest_unreferenced_species() strategy (LLM-first, preferred):
 #   1. LLM generates biogeographically plausible species per genus (one call
 #      per batch of genera). Species outside this region are never queried.
 #   2. Removes species already in match_df (skip-list: have references).
@@ -138,7 +138,7 @@ known_absent <- c()
 #
 # To skip unreferenced species insertion entirely, set unreferenced_species <- NULL.
 
-unreferenced_species <- suggest_unreferenced_species(
+unreferenced_species <- TaxaLikely::suggest_unreferenced_species(
   match_df,
   context          = ctx,
   barcode_term     = "12S", # adjust to your marker: "COI", "ITS2", etc.

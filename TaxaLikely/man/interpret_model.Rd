@@ -40,7 +40,8 @@ Section 11 in the package source.
 \examples{
 \dontrun{
 model <- train_likelihood_model(ref_matrix,
-                                rank_system = c("family", "genus", "species"))
+  rank_system = c("family", "genus", "species")
+)
 summary_df <- interpret_model(model)
 }
 

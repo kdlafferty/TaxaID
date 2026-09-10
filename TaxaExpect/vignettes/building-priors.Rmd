@@ -23,139 +23,465 @@ knitr::opts_chunk$set(
   knitr::purl(), and purl() does NOT execute the setup chunk, so an
   opts_chunk$set(purl = FALSE) written there has no effect at tangle time: every
   chunk still lands in the tangled .R file and is sourced. This vignette is
-  documentation-only (its code makes live GBIF calls and references objects its
-  prose never defines), so a tangled chunk is a guaranteed check ERROR. It was
-  one until 2026-09-03, on the quickstart chunk's build_priors() call.
+  documentation-only (its code makes live GBIF/NCBI calls and references
+  objects its prose never defines, e.g. `occurrences`), so a tangled chunk is a
+  guaranteed check ERROR. This exact bug hit this vignette once already
+  (fixed 2026-09-03, on a since-removed quickstart chunk) -- see
+  `TaxaExpect/CLAUDE.md`'s 2026-09-03 session note for the full record.
 -->
 
-## Purpose
+## What TaxaExpect Computes, and Why
 
-TaxaExpect generates prior probabilities for species occurrence at a given
-location and habitat. These priors feed into TaxaAssign's Bayesian workflow,
-where they are combined with likelihoods from TaxaLikely to produce posterior
-taxonomic assignments.
+A taxonomic assignment pipeline usually has to choose among several
+candidate species that all match the evidence about equally well. Two
+mockingbird-sized shorebirds, two look-alike gobies, a fish and its
+introduced-but-absent-here relative: the sequence, image, or acoustic
+match alone often can't tell them apart. What can help is a second,
+independent piece of information: how likely is each candidate to
+actually occur at this location?
 
-The core question TaxaExpect answers: *"Before seeing any match data, how
-likely is it that this species occurs at this site?"*
+That's what TaxaExpect computes: a **prior**, one number per candidate
+species, expressing how plausible it is that a random legitimate
+detection at a site belongs to that species, before any match evidence
+is considered. Combined with a likelihood (from TaxaLikely) via Bayes'
+theorem, a well-calibrated prior can break a tie between two
+equally-scoring candidates in favor of the one that's actually known to
+live there, and can down-weight a candidate that scores well but has
+never been recorded anywhere near the site.
+
+TaxaExpect builds these priors from occurrence records, typically GBIF
+observations fetched by TaxaFetch and habitat-labelled by TaxaHabitat
+(though any similarly-shaped data works). It estimates a species' prior as
+its distance-weighted share of nearby occurrence records: records close
+to the site count fully, records farther away count less, and the decay
+is smooth rather than an abrupt cutoff. Even a site with very few nearby
+records gets a usable prior, because it borrows some information from
+the surrounding region rather than falling back to nothing.
+
+This vignette walks through that estimation process end to end: choosing
+how quickly influence should decay with distance, estimating a prior at
+a real site, handling species that were never recorded at all, and
+producing a final table ready to hand to TaxaAssign.
 
 ## Quick Start
+
+The shape of a full run, before the walkthrough below explains each
+step:
 
 ```{r quickstart, eval = FALSE, purl = FALSE}
 library(TaxaExpect)
 
-bp <- build_priors(
-  taxa = c("Fundulidae", "Atherinopsidae", "Gobiidae"),
-  lat = 34.4, lon = -119.8,
-  geographic_context = "Santa Barbara Channel, California"
+# 1. Calibrate the kernel bandwidth (and regional back-off m) by
+#    leave-one-block-out composition prediction -- never hand-set.
+calib <- calibrate_kernel_bandwidth(
+  occurrence_data = occurrences,   # habitat-labelled occurrence records
+  site_habitat    = "Marine",
+  lambda_grid     = c(10, 25, 50, 100, 200)   # km
+)
+lambda_km <- calib$best$lambda_km
+
+# 2. Estimate kernel priors at your site (resident_observed rows)
+kernel_fit <- estimate_kernel_priors(
+  occurrence_data = occurrences,
+  site_lat        = 34.45,
+  site_lon        = -120.47,
+  site_habitat    = "Marine",
+  lambda_km       = lambda_km
 )
 
-head(bp$priors)
-print(bp$model)
+# 3. Add resident_undetected rows (singleton mirrors + Good-Turing floor)
+undetected <- generate_undetected_diversity(kernel_fit)
+
+# 4. Assemble the prior table for TaxaAssign
+priors <- dplyr::bind_rows(kernel_fit$priors, undetected)
+
+# 5. Explore the prior field
+plot_theta_surface(kernel_fit, occurrence_data = occurrences,
+                    taxon = "Girella nigricans")
 ```
 
-## Detailed Walkthrough
+The rest of this vignette explains each of these steps, plus two things
+the Quick Start skips: what to do about species your data never
+recorded at all, and a correctness issue (mixing incompatible detection
+methods) that a first-time user needs to know about before running this
+on real data.
 
-### Step 1: Fetch GBIF occurrences (TaxaFetch)
+## Step 1: Start with habitat-labelled occurrence data
 
-```{r fetch, eval = FALSE, purl = FALSE}
+`estimate_kernel_priors()` expects one row per occurrence record, with
+at least a taxon name, a latitude/longitude, and a habitat category.
+Fetching and labelling that data is the job of two upstream packages,
+not TaxaExpect itself:
+
+```{r fetch-habitat, eval = FALSE, purl = FALSE}
 library(TaxaFetch)
-
-keys <- get_keys_from_context(data.frame(taxon_name = c("Fundulidae", "Gobiidae")))
-bbox <- make_bbox_wkt(lat = 34.4, lon = -119.8, radius_deg = 2)
-
-gbif_raw <- fetch_gbif_occurrences(keys$usageKey, bbox = bbox)
-occurrences <- filter_gbif_quality(gbif_raw)
-```
-
-### Step 2: Assign habitat (TaxaHabitat)
-
-```{r habitat, eval = FALSE, purl = FALSE}
 library(TaxaHabitat)
 
-prompt <- build_habitat_prompt(
-  unique(occurrences$taxon_name),
-  geographic_context = "Southern California"
-)
+keys <- get_keys_from_context(data.frame(taxon_name = candidate_taxa))
+bbox <- make_bbox_wkt(lat = 34.45, lon = -120.47, radius_deg = 2)
 
-# Submit to LLM (one chunk at a time)
-raw_text <- llm_fn(prompt$prompts[[1]])
-habitats_df <- parse_hierarchical_habitat_response(raw_text, prompt$chunks[[1]], prompt)
+occurrences_raw <- get_gbif_occurrences(keys = keys$usageKey, geometry = bbox)
+occurrences_clean <- filter_gbif_quality(occurrences_raw)
 
-occurrences <- assign_habitat_biological(occurrences, habitats_df)
-```
-
-### Step 3: Spatial gridding
-
-```{r grid, eval = FALSE, purl = FALSE}
-grid_result <- optimize_grid_size(occurrences, n_covariates = 2)
-occurrences_gridded <- create_sites_from_grid(occurrences, grid_size = grid_result$best_grid)
-```
-
-### Step 4: Prepare model data
-
-```{r model-data, eval = FALSE, purl = FALSE}
-model_data <- prepare_model_dataframe(occurrences_gridded)
-
-basis <- compute_moran_basis(unique(model_data$grid_id), k = 5)
-model_data <- dplyr::left_join(model_data, basis, by = "grid_id")
-```
-
-### Step 5: Train biodiversity model
-
-```{r train, eval = FALSE, purl = FALSE}
-model_fit <- screen_spatial_formula(
-  data = model_data,
-  formula_full = cbind(n_species, n_other) ~ main_habitat +
-    (1 | taxon_name) + diag(main_habitat | taxon_name) +
-    (0 + B1 | taxon_name) + (0 + B2 | taxon_name),
-  sd_threshold = 0.20
+occurrences <- assign_habitat_biological(
+  occurrence_data = occurrences_clean,
+  habitats_df     = habitat_lookup
 )
 ```
 
-### Step 6: Generate priors
+The rest of this vignette assumes `occurrences` is a data frame shaped
+like that: one row per record, columns for taxon name, latitude,
+longitude, and a habitat category (`main_habitat` by default).
 
-```{r priors, eval = FALSE, purl = FALSE}
-priors_observed <- generate_full_priors(model_fit, new_sites = model_data)
-priors_undetected <- generate_undetected_diversity(model_fit)
-priors_combined <- dplyr::bind_rows(priors_observed, priors_undetected)
+## Step 2: Choose the bandwidth (`calibrate_kernel_bandwidth()`)
+
+The kernel estimator has one tuning value that matters most: how quickly
+a record's influence decays with distance from the site (`lambda_km`).
+Set it too small and the estimate rests on a handful of very close
+records, ignoring real regional structure; set it too large and every
+site in the study area gets nearly the same, over-smoothed answer.
+There's no universal right value: it depends on how occurrence records
+are distributed for your particular dataset, so TaxaExpect chooses it
+empirically rather than asking you to guess.
+
+`calibrate_kernel_bandwidth()` does this by leave-one-block-out
+cross-validation: it partitions the occurrence records into spatial
+blocks, predicts each held-out block's species composition from every
+record outside it, and scores each candidate bandwidth by how well that
+prediction matches the block's real records. It reports the bandwidth
+that predicts best, alongside two references for context: what you'd
+get by ignoring space entirely (`regional`), and what you'd get from the
+older single-nearest-cell approach (`nearest_block`).
+
+```{r calibrate, eval = FALSE, purl = FALSE}
+calib <- calibrate_kernel_bandwidth(
+  occurrence_data = occurrences,
+  site_habitat    = "Marine",
+  lambda_grid     = c(10, 25, 50, 100, 200)   # km, candidate bandwidths
+)
+
+calib$best             # the winning row: lambda_km, m, its score
+calib$results           # every candidate scored, plus the two references
+lambda_km <- calib$best$lambda_km
 ```
 
-### Step 7: Translate to target backbone
+On a real Great Lakes dataset, this comparison showed why the
+calibration step matters: the single-nearest-cell approach scored
+*worse* than ignoring space altogether, while the distance kernel beat
+both a plain regional average and the nearest-cell approach across a
+wide range of bandwidths. That's an empirical result, not a stylistic
+preference, and it's why TaxaExpect estimates priors this way.
 
-```{r translate, eval = FALSE, purl = FALSE}
-library(TaxaTools)
+If `calib$best$lambda_km` comes back at the largest value in
+`lambda_grid`, `calibrate_kernel_bandwidth()` will warn you: the true
+optimum may lie beyond what you tried, and it's worth widening the grid
+before trusting the result. See `?calibrate_kernel_bandwidth` for
+`covariate_col`/`lambda_covariate_grid` if you also want to calibrate a
+covariate bandwidth at the same time, useful when a variable like depth
+helps separate species that occupy the same horizontal footprint but
+different depths.
 
-ncbi_lookup <- verify_taxon_names(unique(priors_combined$taxon_name), backbone_id = 4) |>
-  change_backbone(input_col = "user_supplied_name")
+## Step 3: Estimate priors at your site (`estimate_kernel_priors()`)
 
-taxaexpect_priors <- priors_combined |>
-  dplyr::left_join(ncbi_lookup, by = c("taxon_name" = "gbif_name")) |>
-  create_taxon_names(rank_system = c("family", "genus", "species"))
+With a calibrated bandwidth in hand, `estimate_kernel_priors()` computes
+every species' prior at one site: its kernel-weighted share of nearby
+occurrence records, shrunk toward the surrounding region's own
+composition so that lightly-sampled sites still get an informative
+answer rather than pure noise.
+
+```{r estimate, eval = FALSE, purl = FALSE}
+kernel_fit <- estimate_kernel_priors(
+  occurrence_data = occurrences,
+  site_lat        = 34.45,
+  site_lon        = -120.47,
+  site_habitat    = "Marine",
+  lambda_km       = lambda_km,
+  m               = calib$best$m     # regional back-off weight, from calibration
+)
+
+kernel_fit
+#> taxaexpect_kernel_priors: 214 taxa at Site_34.4500_-120.4700 (Marine)
+#>   n_eff = 843 effective records (of 128301 in stratum), lambda = 25 km, m = 1
+#>   singletons: 31, Good-Turing missing mass: 0.0164
+#>   budget: f1 = 31, f2 = 12, chao_missing = 40, theta_present = 0.000529
+
+head(kernel_fit$priors)
 ```
 
-## Key Parameters
+`kernel_fit$priors` is a table with one row per species recorded in the
+focal habitat stratum, giving `alpha`/`beta` (the Beta-distribution prior
+parameters TaxaAssign consumes directly), `theta_mean` (the prior
+probability itself), and `effective_records` (how many effectively
+independent nearby records support that estimate). A species backed by
+many close records gets a tightly concentrated prior; a species with
+only a few, distant, weakly-overlapping records gets a much more diffuse
+one. The spread of the prior honestly reflects how much evidence went
+into it.
 
-| Parameter | Default | When to change |
-|---|---|---|
-| `search_radius_deg` | 2 | Increase for data-poor regions |
-| `moran_k` | 5 | Reduce if model fails to converge |
-| `sd_threshold` | 0.20 | Lower to keep more spatial terms |
-| `target_backbone_id` | 4 (NCBI) | Change to match your reference DB |
-| `habitat_scheme` | NULL (3-cat) | Use "IUCN_L1" for finer classification |
-| `checkpoint_dir` | NULL | Set a path for crash recovery |
+Records are restricted to the requested habitat (`site_habitat`) before
+any distance weighting happens, so a species recorded only in a
+different habitat contributes nothing to this site's estimate.
 
-## Common Pitfalls
+## Step 4: Dark diversity for species you never detected
 
-1. **Zero GBIF records:** Increase `search_radius_deg` or add
-   `supplemental_occurrences` from local surveys.
+Every occurrence dataset is incomplete: some species that are genuinely
+present at a site will have no record there at all. `estimate_kernel_priors()`
+only produces rows for species that *were* recorded, so the next step
+fills in a prior for everything else.
 
-2. **Model convergence failure:** `build_priors()` returns `$model = NULL`
-   with a warning. Common with few species or small spatial extent. Try
-   reducing `moran_k` or using a simpler formula.
+### The baseline floor
 
-3. **glmmTMB/TMB version mismatch:** Reinstall glmmTMB from source:
-   `install.packages("glmmTMB", type = "source")`.
+`generate_undetected_diversity()` builds two kinds of proxy rows from the
+same kernel fit:
 
-4. **Habitat column mismatch:** TaxaAssign's `join_priors()` joins on
-   `main_habitat`. Ensure the habitat names in priors match your site
-   specification.
+```{r undetected, eval = FALSE, purl = FALSE}
+undetected <- generate_undetected_diversity(kernel_fit)
+```
+
+- **Singleton mirrors**: one anonymous proxy per species recorded
+  exactly once nearby. A neighborhood with many such barely-detected
+  species is telling you it likely holds more undetected diversity than
+  one where every recorded species has many records.
+- **A global floor**: a single low prior (`Good-Turing` missing mass
+  divided across an estimated number of unrecorded species) that always
+  exists, so any candidate with zero local evidence at all still gets
+  *some* prior rather than an implicit zero.
+
+These rows have no taxon name of their own: they're anonymous
+placeholders representing "some undetected species," not a specific one.
+
+### Naming a specific unobserved candidate
+
+Sometimes you have a real, named candidate that wasn't recorded locally
+but has other evidence in its favor: an occurrence just outside the
+search area, a documented invasion front, a verified iNaturalist
+observation nearby. For those, `apply_undetected_evidence()` prices a
+*named* row instead of relying on the anonymous floor:
+
+```{r evidence, eval = FALSE, purl = FALSE}
+priors_partial <- dplyr::bind_rows(kernel_fit$priors, undetected)
+
+evidence <- generate_presence_curve_evidence(
+  taxon_names = c("Girella simplicidens"),
+  w_scale     = 0.05,          # calibrated presence probability at distance 0
+  distance_km = c(38)          # this species' distance to its nearest record
+)
+
+priors_with_evidence <- apply_undetected_evidence(
+  taxaexpect_priors = priors_partial,
+  model_obj         = kernel_fit,
+  evidence          = evidence,
+  grid_id           = kernel_fit$params$site_id,
+  main_habitat      = "Marine",
+  pricing           = "curve"
+)
+```
+
+Under `pricing = "curve"`, a named claimant is priced as `theta = w *
+theta_present`: with probability `w` (from the distance curve, or from
+`generate_user_specified_evidence()` for a caller-asserted probability)
+the species is really there, contributing `theta_present` (the typical
+share of the neighborhood's own barely-detected species); with
+probability `1 - w` it's absent, contributing nothing. Because
+`theta_present` is pinned to the same scale as a genuinely observed
+singleton, external evidence, however strong, can never make an
+unrecorded species look more plausible than one your data actually
+detected once.
+
+This step is optional: skip it if you have no named unobserved
+candidates worth pricing individually, and let the global floor from
+`generate_undetected_diversity()` cover the rest.
+
+## Step 5: Don't mix incompatible detection methods
+
+Before assembling a final table, there's a correctness issue worth
+understanding, not just a tuning knob: **TaxaExpect assumes every
+species in a single model was detected by a comparable process.**
+
+The estimator treats the total number of records at a site as a shared
+measure of sampling effort for every species in it. That's a reasonable
+assumption when every species really was sampled the same way -- e.g.
+every fish species from the same eDNA marker on the same filter, or
+every bird detected during one standardized point count. It breaks down
+when you combine species sampled by genuinely different methods in one
+model -- a phytoplankton cell count and a bird point-count sighting are
+not equivalent detection events, and pooling them implies that
+plankton-sampling effort says something about expected bird abundance,
+which it doesn't.
+
+**This grouping is never inferred automatically, and there is no
+automated shortcut for it.** If you don't tell `estimate_kernel_priors()`
+which taxa share a detection process, it has no way to know on its own
+-- it silently pools everything into one shared effort denominator,
+with no warning and no error. Getting this right is your responsibility
+as the analyst, not something the function (or an LLM asked to guess)
+can do for you: whether two taxa were detected by a comparable process
+is a fact about how the data were collected, not something visible in
+the taxonomy or the occurrence records themselves. An automatic,
+taxonomy-based classifier for this was tried and retired after testing
+against a real, expert-classified dataset: it answered a different
+question than `sampling_group` is meant to answer (whether a group has
+enough records at each site, not whether it shares a detection
+process), splitting one real detection process into dozens of separate
+automatic groups, and in one case merging two taxa the expert had kept
+deliberately separate (a genuine marine survey target and likely
+contamination) purely because neither had enough records on its own.
+
+You have two options:
+
+1. **Classify by hand.** If you know your study system, group taxa
+   yourself. This is the approach used successfully for every real
+   dataset this project has analyzed so far -- a simple
+   `dplyr::case_when()` over a taxonomic column is usually enough:
+
+```{r sampling-groups, eval = FALSE, purl = FALSE}
+# Build the sampling_group column yourself, directly on the taxonomy you
+# already have -- no gridding or binning step is needed first, since
+# estimate_kernel_priors() reads sampling_group_col straight off
+# occurrence_data.
+occurrences_grouped <- occurrences |>
+  dplyr::mutate(
+    sampling_group = dplyr::case_when(
+      class == "Actinopteri"   ~ "fishes",       # same eDNA marker/filter
+      class %in% c("Aves")     ~ "birds",        # standardized point counts
+      phylum == "Arthropoda"   ~ "invertebrates", # kick-net samples
+      TRUE                     ~ "other"
+    )
+  )
+
+table(occurrences_grouped$sampling_group)
+
+kernel_fit_grouped <- estimate_kernel_priors(
+  occurrence_data     = occurrences_grouped,
+  site_lat            = 34.45,
+  site_lon            = -120.47,
+  site_habitat        = "Marine",
+  lambda_km           = lambda_km,
+  sampling_group_col  = "sampling_group"
+)
+```
+
+2. **Build separate models per survey type**, and pass the appropriate
+   priors to TaxaAssign for the relevant taxonomic hypotheses.
+
+With `sampling_group_col` supplied, both the composition estimate and
+the dark-diversity budget (Step 4) are computed *within* each group
+rather than pooled across all of them. A barely-sampled group (say, a
+handful of incidental plant records collected alongside a fish survey)
+can then no longer dilute a well-sampled group's estimates, or inflate
+the dark-diversity floor for species the assay could never have
+detected in the first place.
+
+Don't hold back from splitting a group finely because you're worried
+about sample size -- `estimate_kernel_priors()` does not need each
+group to individually "have enough data" for statistical adequacy. A
+sparse group just gets an honestly wide `theta_sd` instead of a wrong,
+falsely-precise one; the estimator has been confirmed to fit cleanly
+down to a single-taxon group. Classify at whatever granularity
+genuinely reflects distinct detection methods, and let the model's own
+uncertainty do the rest.
+
+For a single-taxon-group dataset (a dedicated fish survey, say), this
+option is a no-op by construction: there's only one group to have, so
+supplying it changes nothing. It only matters once your occurrence pool
+genuinely spans more than one detection process.
+
+## Step 6: Assemble the final prior table
+
+Bring every piece together into one table, in the compositional order
+TaxaExpect uses throughout: species with real local evidence, dark
+diversity, and (if used) named unobserved evidence:
+
+```{r assemble, eval = FALSE, purl = FALSE}
+priors <- dplyr::bind_rows(
+  kernel_fit$priors,   # resident_observed: species with local evidence
+  undetected           # resident_undetected: singleton mirrors + global floor
+  # , priors_with_evidence   # if Step 4's named-evidence step was used
+)
+
+table(priors$prior_branch)
+```
+
+Every row carries a `prior_branch` column (`"resident_observed"`,
+`"resident_undetected"`, or -- if you add domestic/food priors, next --
+`"transport"`) that `TaxaAssign::join_priors()` reads to decide how a row
+should be treated, plus the composite key
+`(taxon_name, taxon_name_rank, grid_id, main_habitat)` it joins on. Hand
+this table straight to `join_priors()`:
+
+```{r hand-off, eval = FALSE, purl = FALSE}
+library(TaxaAssign)
+
+posteriors <- likelihoods_df |>
+  join_priors(priors, backbone_id = 4L) |>
+  compute_posterior()
+```
+
+### Optional: domestic and food species
+
+Occurrence databases like GBIF systematically under-represent captive
+and domestic organisms -- pets, livestock, food crops -- because most
+citizen-science and museum records describe wild populations. Left
+alone, a genuinely plausible detection of, say, a food fish near a
+processing facility gets the same tiny dark-diversity floor as a
+species with no plausible reason to be there at all.
+`generate_domestic_food_priors()` populates a separate `transport`
+branch for exactly this case, using fixed lists of known domestic
+animals, food species, and cultivars, plus (optionally) a live check
+against local iNaturalist records for anything not on those lists:
+
+```{r domestic-food, eval = FALSE, purl = FALSE}
+transport_priors <- generate_domestic_food_priors(
+  model_obj       = kernel_fit,
+  lat             = 34.45,
+  lng             = -120.47,
+  grid_id         = kernel_fit$params$site_id,
+  match_list_taxa = unique(likelihoods_df$taxon_name)   # taxa with real likelihoods this run
+)
+
+priors <- dplyr::bind_rows(priors, transport_priors)
+```
+
+This is a different kind of claim than the occurrence-plausibility
+evidence in Step 4: a domestic/food detection means "this species is
+plausible here because of human transport," not "a wild population is
+probably present," so the two are never combined into one row.
+
+## Step 7: Visualize the result
+
+`plot_theta_surface()` evaluates the same kernel estimator continuously
+across a lattice of points, rather than at one site, so you can see how
+a species' prior varies across the whole study area:
+
+```{r visualize, eval = FALSE, purl = FALSE}
+plot_theta_surface(
+  kernel_fit,
+  occurrence_data = occurrences,
+  taxon           = "Girella nigricans"
+)
+
+# An interactive leaflet map, with a hover label per cell:
+plot_theta_surface(
+  kernel_fit,
+  occurrence_data = occurrences,
+  taxon           = c("Girella nigricans", "Semicossyphus pulcher"),
+  interactive     = TRUE
+)
+```
+
+Because it evaluates the identical formula `estimate_kernel_priors()`
+uses, the surface's value at the site's own coordinates reproduces
+`kernel_fit$priors$theta_mean` exactly. It's a picture of the
+estimator, not a separate approximation of it.
+
+## Where to Learn More
+
+This vignette covers the workflow end to end but keeps the statistics
+light. For the full derivation (the exact kernel formula, how the
+Good-Turing/Chao budget for undetected species is priced, the validation
+results on real datasets, and the assumptions and limitations that
+apply), see
+[`inst/TaxaExpect_supplemental_methods.md`](../inst/TaxaExpect_supplemental_methods.md),
+and the function help pages (`?estimate_kernel_priors`,
+`?calibrate_kernel_bandwidth`, `?apply_undetected_evidence`) for full
+argument documentation.

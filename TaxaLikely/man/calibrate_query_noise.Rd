@@ -250,7 +250,8 @@ a different \code{score_transform}.
 model <- train_likelihood_model(seq_matrix, rank_system = c("family", "genus", "species"))
 model_calibrated <- calibrate_query_noise(model, match_obj_restored, taxaexpect_priors)
 lik_result <- evaluate_likelihoods(match_obj_restored, model_calibrated,
-                                    rank_system = c("family", "genus", "species"))
+  rank_system = c("family", "genus", "species")
+)
 }
 
 }

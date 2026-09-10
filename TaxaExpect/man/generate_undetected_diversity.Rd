@@ -126,14 +126,19 @@ PtConception 18S data: pooling \code{macroinvertebrates} +
 \code{zooplankton} a floor ~34x too low relative to its own group's true
 effort.
 
-\strong{Fix (opt-in, not automatic):} call
-\code{\link{train_biodiversity_model_by_group}} instead of
-\code{\link{train_biodiversity_model}}, then call this function once per
-returned \code{biofreq_model} -- each group's model carries its own
-correctly-scoped \code{N_total}, so its global floor is automatically
-group-appropriate with no extra parameter here. This is the same
-\code{sampling_group_col} infrastructure built for the "Shared effort
-assumption" (see \code{\link{prepare_model_dataframe}}'s docs). If you do not group your
+\strong{Fix, GLMM path (whole chain archived 2026-09-09):} this used to be
+fixable by calling \code{train_biodiversity_model_by_group()} instead of
+\code{train_biodiversity_model()}, then calling this function once per
+returned \code{biofreq_model}. Both functions, and the rest of the GLMM
+prior-fitting chain, are archived at \code{archive_glmm_prior_pipeline/}
+(see \code{TaxaExpect/CLAUDE.md}'s 2026-09-09 session note) and no longer
+available at all.
+\strong{Fix, kernel path (current recommendation):}
+\code{\link{estimate_kernel_priors}(sampling_group_col = ...)} solves this
+same problem natively -- its Good-Turing budget (\code{f1}/\code{f2}/
+\code{chao_missing}/\code{theta_present}) is computed \emph{within} each
+sampling group rather than pooled, so a minority group's floor is never
+diluted by a dominant one. If you do not group your
 data this way, the dilution described above still applies uncorrected --
 in practice its impact is also blunted by three things even when
 unmitigated: (1) modelled species priors come from the Tier 1/2 model and

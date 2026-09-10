@@ -60,8 +60,7 @@ first row if no scores are present).  This is the same anchor convention
 used by \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}.
 
 The expanded data frame is passed to \code{\link[=assign_scores]{assign_scores()}} to obtain
-\code{score_likelihood} values, or directly to \code{\link[=model_likelihoods]{model_likelihoods()}} for
-the bivariate-normal (similarity) pathway.
+\code{score_likelihood} values.
 }
 \note{
 For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
@@ -81,5 +80,5 @@ table(hyp_df$hypothesis_type)
 
 }
 \seealso{
-\code{\link[=assign_scores]{assign_scores()}}, \code{\link[=model_likelihoods]{model_likelihoods()}}, \code{\link[=compute_likelihoods]{compute_likelihoods()}}
+\code{\link[=assign_scores]{assign_scores()}}
 }

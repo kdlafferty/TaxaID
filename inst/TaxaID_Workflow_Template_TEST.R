@@ -21,6 +21,42 @@
 # comment below) -- NOT otherwise renumbered or restructured, per the
 # audit's own explicit "don't touch section numbering without separate
 # agreement" scope limit.
+#
+# ARCHIVED PATHWAY NOTICE (2026-09-09): this template's own prior-generation
+# section (TaxaExpect::optimize_grid_size()/create_sites_from_grid()/
+# prepare_model_dataframe()/compute_moran_basis()/screen_spatial_formula()/
+# generate_full_priors(), plus the plot_theta_map_interactive() visualization)
+# calls into the grid/GLMM prior-fitting chain, which was archived once every
+# real production workflow completed its migration to the kernel-priors path
+# (estimate_kernel_priors()/calibrate_kernel_bandwidth()). This template's own
+# "runs end to end with no external data files" claim above no longer holds
+# as written -- those calls will now error ("could not find function"). The
+# archived source is kept, unexecuted, at
+# TaxaExpect/archive_glmm_prior_pipeline/. UPDATE, later the same day:
+# TaxaExpect::create_sites_from_grid() -- along with
+# compute_adaptive_sampling_groups(), not used in this template -- was
+# archived alongside the rest of the chain too, once the "still live,
+# independent of this chain" justification directly above was re-examined
+# and found to describe a scenario that had never actually materialized in
+# any real dataset. FURTHER UPDATE, later still the same day: that archival
+# was reversed once (a real safety gap was found in estimate_kernel_priors(
+# sampling_group_col = NULL) with no guard against silently pooling
+# incompatible detection processes), restoring both functions to the live
+# package. FINAL UPDATE, later again the same day: the restoration's own
+# reasoning was tested against real evidence and refuted (compute_adaptive_
+# sampling_groups() answers a different question than sampling_group is
+# meant to answer, fragments a single real detection process into dozens of
+# automatic groups, and can conflate genuinely distinct detection processes
+# -- while estimate_kernel_priors() was shown to need no pre-merged,
+# sample-size-adequate groups at all). Both functions are ARCHIVED again,
+# this time final. create_sites_from_grid() is therefore ALSO archived and
+# non-functional as written -- along with the rest of the GLMM chain this
+# template calls (optimize_grid_size()/prepare_model_dataframe()/
+# compute_moran_basis()/screen_spatial_formula()/generate_full_priors(),
+# plus plot_theta_map_interactive()); optimize_grid_size() runs before
+# create_sites_from_grid() in this template and will error first. See
+# TaxaExpect/CLAUDE.md's final 2026-09-09 session note and
+# TaxaExpect/README.md's Quick Start for the current, runnable pathway.
 # =============================================================================
 # 0.  CONFIGURATION  (edit this section only)
 # =============================================================================
@@ -269,6 +305,50 @@ decontaminated_table <-
   filter( #remove ASVs identified as contaminants.
     !observation_id%in%contaminant_ids
   )
+
+# --- Positive controls, if you have them (2026-09-07 design assessment: -----
+# ecosystem_docs/POSITIVE_CONTROLS_design_options.md) -----------------------
+# flag_contaminant() has no notion of "spiked on purpose" -- run as a control
+# sample, it scores the spiked species by its rate in controls vs. field,
+# same as a blank. Whether that's the right thing to do depends entirely on
+# whether the spiked species is NON-NATIVE (cannot genuinely occur in your
+# field samples) or NATIVE (a real species of interest that legitimately
+# could be there):
+#
+#   Non-native spike -- run it as a control sample, same pattern as blank_ids
+#   above. The leakage screen is exactly what you want: any field reads of
+#   that species are cross-talk, not detection.
+#     positive_control_ids <- c("PosCtrl_1")
+#     pc_flags <- TaxaFlag::flag_contaminant(
+#       input_df = reads_long, event_col = "event_id", taxon_col = "observation_id",
+#       reads_col = "n_reads", control_samples = positive_control_ids,
+#       contaminant_type = "positive_control"
+#     )
+#     # add its flagged ids to contaminant_ids above before filtering.
+#
+#   Native spike (a species you also expect to detect for real) -- do NOT run
+#   it through flag_contaminant() as a control sample at all; that would
+#   delete every genuine field detection the control was meant to validate,
+#   since a spike is by construction the dominant taxon in its own control.
+#   Instead exclude the control from every contaminant pass with
+#   exclude_samples (matching the Palmyra workflow's own convention, see
+#   TaxaFlag/inst/contaminant_workflow.R), and separately confirm recovery --
+#   spike reads present in the control above a threshold means PCR worked:
+#     contaminant_flags <- TaxaFlag::flag_contaminant(
+#       ..., exclude_samples = c("NativeSpikeCtrl_1")
+#     )
+#   Watch the blank passes too: a heavily-concentrated native spike can leak
+#   into adjacent blanks and get flagged there as an ordinary lab
+#   contaminant, deleting it anyway -- keep spike concentration modest.
+#   Best practice (design doc's own recommendation): pair a non-native spike
+#   alongside any native one in the same control. The non-native spike's
+#   field-sample reads then measure that sample's own leakage rate, which
+#   you can apply to the native spike's control reads to get an expected
+#   leaked-read count per field sample -- turning "is this native detection
+#   real or spillover" into a per-sample read threshold instead of a
+#   species-wide guess.
+# -----------------------------------------------------------------------------
+
 # Captured before the rename below so Section 2.5 can relabel site_df's
 # observation_id to match decontaminated_table's easier-to-track IDs.
 .original_to_asv_id <- stats::setNames(
@@ -685,6 +765,31 @@ additional_occurrences<-
          family = c("Embioticidae"),
          decimalLatitude = c(STUDY_LAT),
          decimalLongitude = c(STUDY_LON))
+
+# --- Positive-control (Type 1, ecological) occurrences, if you have any -----
+# (2026-09-07 design assessment: ecosystem_docs/POSITIVE_CONTROLS_design_options.md,
+# option 1A). A species independently confirmed present at your site (survey,
+# capture, tag, direct observation) is stacked in exactly the same way as
+# `additional_occurrences` above, just tagged so its provenance survives:
+#   positive_control_occ <- tibble(
+#     species = c("Confirmed species name"),
+#     genus = c("..."), family = c("..."),
+#     decimalLatitude = c(STUDY_LAT), decimalLongitude = c(STUDY_LON),
+#     datasource = "positive_control"
+#   )
+# and stacked alongside the others (TaxaFetch::stack_occurrences(
+# positive_control_occ, additional_occurrences, gbif_occurrences)).
+# One record moves that species' prior share by roughly 1/n_eff (a small,
+# data-sized nudge, by design) -- it will not overturn a strong sequence
+# match on its own, but can legitimately tilt an ambiguous call among
+# congeners a marker can't separate. Use one row per real visit/replicate,
+# not one per individual: the row count is a real sampling-effort knob, not
+# a confidence dial. If the same confirmation might also already be in your
+# GBIF pull, keep the `datasource` tag distinct so it's not double-counted.
+# The recommended pairing is a recovery check (was the confirmed species
+# actually detected, at what support, what posterior?) run after Step 7 --
+# see the note near the end of this template, after Step 8.
+# -----------------------------------------------------------------------------
 
 all_occurrences <-
   TaxaFetch::stack_occurrences(additional_occurrences,gbif_occurrences)|> #creates point_id
@@ -1379,6 +1484,17 @@ print(flag_summary)
 message("\nWorkflow complete: taxaassign_consensus / reviewed_assignments are the ",
         "final outputs. See flag_summary for the QC roll-up.")
 
+# --- Positive-control (Type 1) recovery report, if you stacked any in ------
+# Step 3 (2026-09-07 design assessment: option 1B). This changes no
+# assignment -- it just reports, for each confirmed-present species, whether
+# the pipeline actually recovered it and at what confidence, which is what an
+# ecological positive control is FOR (sensitivity / false-negative rate), and
+# is reportable directly in a methods section:
+#   recovery_report <- taxaassign_consensus |>
+#     dplyr::filter(consensus_taxon %in% c("your", "confirmed", "species")) |>
+#     dplyr::select(observation_id, consensus_taxon, consensus_posterior)
+# -----------------------------------------------------------------------------
+
 # =============================================================================
 # NOTES FOR ADAPTING THIS TEMPLATE TO A NEW DATASET / DATA TYPE
 # =============================================================================
@@ -1402,10 +1518,14 @@ message("\nWorkflow complete: taxaassign_consensus / reviewed_assignments are th
 #   carries no site metadata either) -- see Phase 4 of the reentry plan below.
 # - Where this template most likely needs a NEW function or wrapper rather
 #   than just parameter changes: (1) a single high-level function spanning
-#   Section 6 for the non-sequence data types (TaxaLikely::compute_likelihoods()
-#   already does part of this for the sequence path -- an analogous wrapper
-#   for image/acoustic would collapse unreferenced_candidates() + assign_scores()
-#   into one call); (2) Section 7/8's join_priors -> compute_posterior ->
+#   Section 6 for the non-sequence data types -- TaxaLikely::compute_likelihoods()
+#   was built as exactly this kind of wrapper but was archived 2026-09-09
+#   (zero real callers ever found; every real sequence-path workflow calls
+#   train_likelihood_model() + evaluate_likelihoods() directly, not through
+#   it -- see TaxaLikely/CLAUDE.md's top session note); an analogous wrapper
+#   for image/acoustic would still need to collapse unreferenced_candidates()
+#   + assign_scores() into one call, but should be designed fresh rather than
+#   resurrecting the archived one; (2) Section 7/8's join_priors -> compute_posterior ->
 #   posterior_consensus -> add_slash_taxon -> add_posthoc_assessment chain is
 #   already covered by TaxaAssign::run_bayesian_pipeline() for the common case --
 #   consider swapping Section 7 for that wrapper once this template's shape is

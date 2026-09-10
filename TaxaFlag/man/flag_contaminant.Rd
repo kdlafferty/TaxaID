@@ -169,12 +169,16 @@ column name alone no longer identifies which check produced it.
 
 \examples{
 reads_long <- data.frame(
-  event_id   = c("Palmyra01", "Palmyra01", "Palmyra02", "Palmyra02",
-                 "Palmyra30", "Palmyra30"),
-  taxon_name = c("Kyphosus vaigiensis", "Homo sapiens",
-                 "Kyphosus vaigiensis", "Homo sapiens",
-                 "Kyphosus vaigiensis", "Homo sapiens"),
-  n_reads    = c(48000, 12, 51000, 8, 5, 4200)
+  event_id = c(
+    "Palmyra01", "Palmyra01", "Palmyra02", "Palmyra02",
+    "Palmyra30", "Palmyra30"
+  ),
+  taxon_name = c(
+    "Kyphosus vaigiensis", "Homo sapiens",
+    "Kyphosus vaigiensis", "Homo sapiens",
+    "Kyphosus vaigiensis", "Homo sapiens"
+  ),
+  n_reads = c(48000, 12, 51000, 8, 5, 4200)
 )
 
 # Identify extraction control columns, flag contaminants
@@ -187,17 +191,17 @@ flagged <- flag_contaminant(
 \dontrun{
 # Using sample_type column instead
 flagged <- flag_contaminant(
-  input_df              = reads_long,
+  input_df = reads_long,
   sample_type_col = "sample_type",
-  control_types     = c("extraction_blank", "pcr_blank"),
+  control_types = c("extraction_blank", "pcr_blank"),
   contaminant_type = "lab_contaminant"
 )
 
 # Flag positive control leakage
 flagged <- flag_contaminant(
-  input_df               = reads_long,
-  control_samples    = c("Palmyra32", "Palmyra64"),
-  exclude_samples  = c("Palmyra30", "Palmyra31", "Palmyra62", "Palmyra63"),
+  input_df = reads_long,
+  control_samples = c("Palmyra32", "Palmyra64"),
+  exclude_samples = c("Palmyra30", "Palmyra31", "Palmyra62", "Palmyra63"),
   contaminant_type = "positive_control"
 )
 }

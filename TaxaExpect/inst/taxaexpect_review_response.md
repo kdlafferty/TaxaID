@@ -264,6 +264,57 @@ isolated unit tests.
   unrelated signature change.
 - Gained a real, fast, non-`\dontrun{}` `@examples` block.
 
+**Addendum, 2026-09-09 (dated, does not rewrite the answer above):** archived to
+`archive_glmm_prior_pipeline/`, alongside `create_sites_from_grid()` (see that
+function's own section below). Confirmed via a fresh grep across the whole monorepo:
+still zero real callers anywhere -- the "never been wired into a production workflow"
+observation recorded above at review time remained true right up to archival. See
+`TaxaExpect/CLAUDE.md`'s 2026-09-09 (later) session note for the full record.
+
+**Addendum, 2026-09-09, later still (dated, does not rewrite the answers above):** the
+archival above is REVERSED -- this function is restored to `R/` and live again, moved
+back out of `archive_glmm_prior_pipeline/`. Not a re-litigation of the "zero real
+callers" finding above (still true) but a real, different consideration found while
+reviewing `TaxaExpect/README.md`: `estimate_kernel_priors(sampling_group_col = NULL)`
+has no guard at all against silently pooling data from genuinely incompatible detection
+processes (e.g. phytoplankton cell counts + bird point counts) -- confirmed directly in
+`R/estimate_kernel_priors.R`. The now-archived GLMM path had a hard `stop()` for this
+exact hazard (`train_biodiversity_model()`'s `sampling_group` multi-value check); the
+kernel path has no equivalent, and this is a real safety regression, not a hypothetical
+one. Auto-detecting the mixing was explicitly rejected (this codebase's established
+precedent, see `generate_invasive_watch_evidence()`'s own roxygen, is to never guess a
+domain classification a wrong guess could silently mis-price) -- the fix is making
+`sampling_group_col` unmissable in the docs and keeping a real tool available to
+discharge that responsibility, which is exactly what this function is. Also, TaxaID is
+headed for a USGS software release and an MEE manuscript -- an external user adopting
+this package won't have the domain depth the person who hand-built the real 18S
+workflow's 11-way classification did, which the original archival's "never actually
+needed" reasoning implicitly assumed. See `TaxaExpect/CLAUDE.md`'s later 2026-09-09
+session note for the full record.
+
+**Addendum, 2026-09-09, final (dated, does not rewrite the answers above):** the
+restoration directly above is REVERSED, this time final -- this function is archived
+again, moved back to `archive_glmm_prior_pipeline/`. The restoration's own reasoning
+was tested against real evidence, not just re-argued, and refuted: run live against a
+real, full-scale, hand-built 9-group expert classification on the actual PtConception
+18S occurrence checkpoint (1,375,345 rows), `compute_adaptive_sampling_groups(min_n =
+100)` produced 37-58 automatic groups at three grid sizes against the expert's 10 --
+splitting the single largest real group (`macroinvertebrates`, 1.27M records, all
+genuinely detected by the same eDNA marker) into 28-39 separate automatic groups purely
+because each order individually clears the per-site record floor on its own. The
+algorithm also collapsed two taxa the expert had deliberately kept separate --
+`parasites` (n=9) and `terrestrial_arthropods` (n=3), almost certainly a real marine
+target vs. likely airborne contamination -- into one `phylum:Arthropoda` group, purely
+because neither cleared `min_n` even at the phylum ceiling. This is exactly the
+"combining taxa collected by incommensurable methods" failure the whole `sampling_group`
+mechanism exists to prevent, produced automatically by the tool meant to help avoid it.
+Separately, `estimate_kernel_priors(sampling_group_col=)` was run directly on the real,
+UNMERGED 9-group expert classification (no merge step at all) and succeeded with zero
+errors for every group, including the tiniest (`terrestrial_arthropods`, n_taxa=1;
+`parasites`, n_taxa=3) -- refuting the premise that a sample-size-adequate merge step was
+ever necessary before calling the estimator. See `TaxaExpect/CLAUDE.md`'s final
+2026-09-09 session note for the full evidence record (Findings 1-5).
+
 ### `compute_moran_basis.R`
 
 **Fixed:**
@@ -301,6 +352,53 @@ fixes above.
 **Declined:** requiring fixed `lat_col`/`lon_col` names instead of configurable
 parameters -- see `optimize_grid_size.R`'s matching section below for the shared
 reasoning (this decision was made once and applies identically to both files).
+
+**Addendum, 2026-09-09 (dated, does not rewrite the answer above):** archived to
+`archive_glmm_prior_pipeline/`, alongside `compute_adaptive_sampling_groups.R`. This
+function was deliberately kept live at the time of the main 2026-09-09 GLMM-chain
+archival, on the strength of its own roxygen's claim of one remaining independent
+purpose (spatial binning feeding `compute_adaptive_sampling_groups()`'s per-site
+effort measurement, ahead of `estimate_kernel_priors(sampling_group_col=)`). That
+justification was re-examined directly, later the same day, at the user's explicit
+prompt: a fresh grep confirmed zero calls in any of the 6 real production workflows,
+and the scenario it would justify keeping this pair for (taxonomic breadth too large
+to hand-classify into detection-process sampling groups) has never actually
+materialized in any real dataset this ecosystem has handled, including the
+taxonomically broadest one (PtConception 18S, ~10-11 groups, successfully
+hand-classified). The one remaining real caller,
+`diagnostics/kernel_budget_18S_sampling_groups.R`, is a frozen, dated one-time
+analysis script and was left untouched, per this project's own convention for such
+scripts. See `TaxaExpect/CLAUDE.md`'s 2026-09-09 (later) session note for the full
+record.
+
+**Addendum, 2026-09-09, later still (dated, does not rewrite the answers above):** the
+archival above is REVERSED -- this function is restored to `R/` and live again, moved
+back out of `archive_glmm_prior_pipeline/`, alongside `compute_adaptive_sampling_
+groups()` (see that function's own addendum above). Real reason, not a re-litigation:
+a safety gap found reviewing `TaxaExpect/README.md` -- `estimate_kernel_priors(
+sampling_group_col = NULL)` silently pools incompatible detection processes with no
+guard, unlike the archived GLMM path's hard `stop()` for the same hazard. Auto-detection
+was rejected as out of character for this codebase (never guess a domain
+classification); the fix is an unmissable doc warning plus a real tool a user can reach
+for -- this function is that tool. Also weighed: TaxaID is headed for a USGS/MEE
+publication, and an external adopter won't have this project's own hand-built-11-way-
+classification domain depth, a genuinely different consideration from what was weighed
+at archival time. See `TaxaExpect/CLAUDE.md`'s later 2026-09-09 session note for the
+full record.
+
+**Addendum, 2026-09-09, final (dated, does not rewrite the answers above):** the
+restoration directly above is REVERSED, this time final -- this function is archived
+again, moved back to `archive_glmm_prior_pipeline/`, alongside `compute_adaptive_
+sampling_groups()` (see that function's own final addendum above for the full evidence
+record). In short: real, full-scale testing against a hand-built 9-group expert
+classification on the actual PtConception 18S occurrence checkpoint confirmed
+`compute_adaptive_sampling_groups()` (the function this file's own spatial-binning
+purpose exists to feed) answers the wrong question -- record-count adequacy, not shared
+detection process -- and can fragment or falsely conflate real groups. It also confirmed
+`estimate_kernel_priors()` needs no pre-merged, sample-size-adequate groups at all (it
+fits cleanly on the real unmerged classification down to a single-taxon group), so the
+spatial-binning purpose this function was kept alive for was never actually load-bearing.
+See `TaxaExpect/CLAUDE.md`'s final 2026-09-09 session note for the full record.
 
 ### `generate_domestic_food_priors.R`
 
@@ -509,6 +607,17 @@ reasoning (this decision was made once and applies identically to both files).
 - **"Is having `train_biodiversity_model_by_group` worth having?"**: see that function's
   own section below (the identical question is asked there too).
 
+**Addendum, 2026-09-09:** `prepare_model_dataframe()` itself, along with the rest of the
+GLMM grid/prior-fitting chain, was archived this session (source + tests moved intact to
+`archive_glmm_prior_pipeline/`) once every real production workflow finished migrating to
+the kernel-priors path (`estimate_kernel_priors()`). The `habitat_col` design defense
+above remains an accurate record of why that choice was made at the time and is not being
+revisited or overturned -- it is simply no longer live code. The kernel path's own
+`estimate_kernel_priors()` takes a required `site_habitat` argument instead (no `NULL`-
+means-opt-out convention, since the kernel estimator has no equivalent GLMM-contrasts
+failure mode to guard against). See `TaxaExpect/CLAUDE.md`'s 2026-09-09 top session note
+and `ecosystem_docs/NAME_CHANGE_HISTORY.md` for the full archival record.
+
 ### `recover_demoted_species.R`
 
 Not flagged with any file-specific comments in the review (only marked "reviewed"). No
@@ -616,6 +725,31 @@ Not flagged with any file-specific comments in the review. No changes made.
   which point it would just be this function under a different name.
 - **Example not runnable**: left `\dontrun{}` -- needs real occurrence data spanning
   multiple sampling groups.
+
+**Addendum, 2026-09-09:** the question this section opens with -- "Is having
+`train_biodiversity_model_by_group` worth having?" -- was answered concretely this
+session, not just argued through in the abstract. A full usage audit (bulk grep across
+every real production workflow and every cross-package/same-package R call, plus a
+targeted follow-up specifically checking whether `PtConceptionWorkflow_18S_2_single_site.R`
+-- the exact "broad-marker data spanning multiple detection processes" scenario this
+function's own roxygen called its "recommended entry point" for -- actually calls it)
+found **zero real callers anywhere**, including in that one workflow: it hand-rolls its
+own per-group loop (`prepare_model_dataframe(sampling_group_col=)` then a manual loop
+calling `screen_spatial_formula()`/`train_biodiversity_model()` per group with its own
+`tryCatch()`), which turns out to be a strict superset of what this function did (it adds
+AIC-based formula screening this function had no equivalent for). So the two reasons given
+above for keeping this function separate from `train_biodiversity_model()` were sound
+architecture, but the function itself was built, never adopted, and its own target use case
+evolved past it before anyone ever called it. Archived (source + tests moved intact,
+DECIPHER-module retirement precedent) rather than deleted -- it remains fully functional
+GLMM-path infrastructure, just not live; later the same day, the rest of the GLMM chain
+was archived too and this function's own archive location was consolidated into that same
+directory, `archive_glmm_prior_pipeline/` (the original, separate `archive_glmm_by_group/`
+no longer exists). Superseded by `estimate_kernel_priors(sampling_group_col=)` (added
+2026-09-03) on the kernel path, which restores per-group/multi-detection-process
+stratification without needing a separate orchestrating wrapper. See
+`TaxaExpect/CLAUDE.md`'s 2026-09-09 top session notes and `ecosystem_docs/NAME_CHANGE_
+HISTORY.md` for the full record.
 
 ### `utils_plot.R`
 

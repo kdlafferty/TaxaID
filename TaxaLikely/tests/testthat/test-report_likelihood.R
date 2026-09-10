@@ -2,7 +2,7 @@
 # Tests for report_likelihood()
 
 .mock_model <- function(n_species = 30L, aic = 200.0, n_singletons = 5L,
-                        n_anchors = 10L, n_errors = 2L) {
+                        n_anchors = 10L) {
   structure(
     list(
       H1_Lookup = data.frame(
@@ -22,11 +22,6 @@
         n_species = n_species + n_singletons,
         n_singletons = n_singletons,
         n_anchors = n_anchors
-      ),
-      reference_errors = data.frame(
-        accession = paste0("NC_", seq_len(n_errors + 1L)),
-        error_type = c(rep("likely_mislabeled", n_errors), "unverified_singleton_high_match"),
-        stringsAsFactors = FALSE
       )
     ),
     class = "taxa_model_params"
@@ -43,13 +38,11 @@ test_that("report_likelihood returns valid report_section", {
 test_that("report_likelihood extracts correct statistics", {
   sec <- report_likelihood(.mock_model(
     n_species = 40, aic = 150.3,
-    n_singletons = 7, n_anchors = 15,
-    n_errors = 3
+    n_singletons = 7, n_anchors = 15
   ))
   expect_equal(sec$statistics$n_species, 47L)
   expect_equal(sec$statistics$n_singletons, 7L)
   expect_equal(sec$statistics$n_anchors, 15L)
-  expect_equal(sec$statistics$n_errors, 3L)
   expect_equal(sec$statistics$aic_score, 150.3)
   expect_equal(sec$statistics$n_profiled, 40L)
 })
@@ -63,11 +56,6 @@ test_that("report_likelihood methods mentions species count", {
 test_that("report_likelihood methods mentions anchoring", {
   sec <- report_likelihood(.mock_model(n_anchors = 20))
   expect_true(grepl("anchoring.*n = 20", sec$methods))
-})
-
-test_that("report_likelihood methods mentions mislabeled references", {
-  sec <- report_likelihood(.mock_model(n_errors = 4))
-  expect_true(grepl("4 likely mislabeled", sec$methods))
 })
 
 test_that("report_likelihood results mentions AIC", {
@@ -90,11 +78,3 @@ test_that("report_likelihood handles model without AIC", {
   expect_null(sec$statistics$aic_score)
 })
 
-test_that("report_likelihood handles model without reference_errors", {
-  model <- .mock_model()
-  model$reference_errors <- NULL
-
-  sec <- report_likelihood(model)
-  expect_equal(sec$statistics$n_errors, 0L)
-  expect_false(grepl("mislabeled", sec$methods))
-})

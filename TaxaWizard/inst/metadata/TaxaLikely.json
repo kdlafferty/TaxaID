@@ -105,7 +105,7 @@
     },
     {
       "name": "read_crabs_output",
-      "description": "Read CRABS internal-format database (headerless 11-column TSV) -> reference_df. Complements flag_reference_errors(): CRABS handles bulk QC, TaxaLikely catches mislabeling",
+      "description": "Read CRABS internal-format database (headerless 11-column TSV) -> reference_df. Complements TaxaMatch's reference-quality screen (corroborate_references_locally()/evaluate_reference_accessions()): CRABS handles bulk QC, TaxaMatch catches mislabeling",
       "inputs": [
         {
           "name": "crabs_file",
@@ -149,85 +149,6 @@
       "scaling_note": "I/O bound; fast"
     },
     {
-      "name": "build_site_reference",
-      "description": "High-level site-specific DNA reference builder (recommended). taxa list -> NCBI fetch -> optional mislabel flagging -> barcode coverage audit -> FASTA export. DNA/eDNA only",
-      "inputs": [
-        {
-          "name": "taxa",
-          "type": "character_vector",
-          "required": true,
-          "description": "Taxon names (from TaxaExpect species list or user-supplied)"
-        },
-        {
-          "name": "barcode_term",
-          "type": "character",
-          "required": true,
-          "description": "Barcode marker (e.g., '12S', 'COI', 'MiFishU')"
-        },
-        {
-          "name": "rank_system",
-          "type": "character_vector",
-          "required": false,
-          "description": "Taxonomy ranks (auto-detected if NULL)"
-        },
-        {
-          "name": "output_dir",
-          "type": "file_path",
-          "required": false,
-          "default": null,
-          "description": "Write reference.fasta + reference_taxonomy.tsv here"
-        },
-        {
-          "name": "max_sequences",
-          "type": "integer",
-          "required": false,
-          "default": 5000,
-          "description": "Total sequence download budget"
-        },
-        {
-          "name": "max_per_species",
-          "type": "integer",
-          "required": false,
-          "default": 5,
-          "description": "Maximum sequences per species"
-        },
-        {
-          "name": "max_date",
-          "type": "character",
-          "required": false,
-          "default": null,
-          "description": "Restrict to sequences available by this date (YYYY/MM/DD)"
-        },
-        {
-          "name": "ncbi_api_key",
-          "type": "character",
-          "required": false,
-          "default": null,
-          "description": "NCBI API key for higher rate limits"
-        },
-        {
-          "name": "flag_errors",
-          "type": "logical",
-          "required": false,
-          "default": false,
-          "description": "Run flag_reference_errors() after fetch (requires DECIPHER)"
-        },
-        {
-          "name": "audit_coverage",
-          "type": "logical",
-          "required": false,
-          "default": true,
-          "description": "Run audit_barcode_coverage() to identify unreferenced species"
-        }
-      ],
-      "output": {
-        "type": "list",
-        "description": "List with $reference_df, $errors, $census, $unreferenced"
-      },
-      "scaling": "api_limited",
-      "scaling_note": "NCBI API limited; ~5-30 min depending on taxon count"
-    },
-    {
       "name": "audit_acoustic_coverage",
       "description": "Acoustic/image analog of audit_barcode_coverage(). Which plausible species are absent from the classifier's known species list? Simple set-membership check \u2014 no NCBI API calls",
       "inputs": [
@@ -264,61 +185,6 @@
       },
       "scaling": "linear",
       "scaling_note": "Instant; set operations only"
-    },
-    {
-      "name": "calibrate_coverage_filter",
-      "description": "Sweep coverage thresholds over reference pairs; return H1/H2 discrimination metrics. Youden's J (youden_j) identifies the Pareto-optimal threshold",
-      "inputs": [
-        {
-          "name": "ref_pairs",
-          "type": "reference_matrix",
-          "required": true,
-          "description": "From build_sequence_matrix()"
-        },
-        {
-          "name": "thresholds",
-          "type": "numeric_vector",
-          "required": false,
-          "description": "Coverage thresholds to test (default seq(0, 0.99, by=0.05))"
-        },
-        {
-          "name": "rank_system",
-          "type": "character_vector",
-          "required": false,
-          "description": "Taxonomy ranks (auto-detected if NULL)"
-        }
-      ],
-      "output": {
-        "type": "data.frame",
-        "description": "Per-threshold metrics: threshold, breadth, h1_retention, h2_retention, youden_j, discrimination"
-      },
-      "scaling": "linear",
-      "scaling_note": "Fast; sweeps thresholds over existing data"
-    },
-    {
-      "name": "coverage_threshold",
-      "description": "Quantile shortcut for coverage filtering: keep_frac=0.95 returns threshold at 5th percentile of coverage distribution",
-      "inputs": [
-        {
-          "name": "ref_pairs",
-          "type": "reference_matrix",
-          "required": true,
-          "description": "From build_sequence_matrix()"
-        },
-        {
-          "name": "keep_frac",
-          "type": "numeric",
-          "required": false,
-          "default": 0.95,
-          "description": "Fraction of pairs to retain (0-1); higher = more lenient"
-        }
-      ],
-      "output": {
-        "type": "numeric",
-        "description": "Coverage threshold value; use as: raw_df[raw_df$coverage >= threshold, ]"
-      },
-      "scaling": "linear",
-      "scaling_note": "Instant"
     },
     {
       "name": "write_reference_fasta",
@@ -383,40 +249,8 @@
       "scaling_note": "Pairwise alignment: O(n^2). ~5 min for 500 sequences, ~20 min for 2000"
     },
     {
-      "name": "flag_reference_errors",
-      "description": "Flag mislabeled reference sequences using trained model residuals",
-      "inputs": [
-        {
-          "name": "raw_df",
-          "type": "reference_matrix",
-          "required": true,
-          "description": "From build_sequence_matrix()"
-        },
-        {
-          "name": "mislabel_threshold",
-          "type": "numeric",
-          "required": false,
-          "default": 0.02,
-          "description": "Z-score threshold for mislabel detection"
-        },
-        {
-          "name": "singleton_match_threshold",
-          "type": "numeric",
-          "required": false,
-          "default": 0.98,
-          "description": "Percent-identity threshold above which a singleton (no independent corroborating match) is still treated as clean rather than flagged"
-        }
-      ],
-      "output": {
-        "type": "data.frame",
-        "description": "Error list with accession, error_type, score"
-      },
-      "scaling": "linear",
-      "scaling_note": "Fast; uses model residuals"
-    },
-    {
       "name": "train_likelihood_model",
-      "description": "Train hierarchical likelihood model from reference matrix",
+      "description": "Train hierarchical likelihood model from reference matrix. No built-in reference-quality screening -- trains on raw_df as-is (retired 2026-09-08; screen reference_df via TaxaMatch::corroborate_references_locally()/evaluate_reference_accessions() BEFORE build_sequence_matrix(), not here).",
       "inputs": [
         {
           "name": "raw_df",
@@ -436,18 +270,11 @@
           "required": false,
           "default": true,
           "description": "Inject synthetic perfect-match anchors"
-        },
-        {
-          "name": "mislabel_threshold",
-          "type": "numeric",
-          "required": false,
-          "default": 0.02,
-          "description": "Z-score threshold for mislabel detection"
         }
       ],
       "output": {
         "type": "taxa_model_params",
-        "description": "Trained model object with H1/H2/H3 parameters and reference_errors"
+        "description": "Trained model object with H1/H2/H3 parameters"
       },
       "scaling": "linear",
       "scaling_note": "Fast after matrix is built; ~10 sec"
@@ -508,37 +335,6 @@
       "scaling_note": "Fast; pure R"
     },
     {
-      "name": "remove_flagged_references",
-      "description": "Remove mislabeled accessions from match_df using flag_reference_errors() output",
-      "inputs": [
-        {
-          "name": "match_df",
-          "type": "match_df",
-          "required": true,
-          "description": "Match object to clean"
-        },
-        {
-          "name": "reference_errors",
-          "type": "data.frame",
-          "required": true,
-          "description": "From model_params$reference_errors"
-        },
-        {
-          "name": "remove_unverified_singletons",
-          "type": "logical",
-          "required": false,
-          "default": false,
-          "description": "Also remove unverified singletons"
-        }
-      ],
-      "output": {
-        "type": "match_df",
-        "description": "Cleaned match object"
-      },
-      "scaling": "linear",
-      "scaling_note": "Fast; row filtering"
-    },
-    {
       "name": "interpret_model",
       "description": "Summarize trained model: species count, diagnostics, per-species profiles",
       "inputs": [
@@ -555,6 +351,49 @@
       },
       "scaling": "linear",
       "scaling_note": "Instant"
+    },
+    {
+      "name": "suggest_unreferenced_species",
+      "description": "LLM-first alternative to audit_barcode_coverage() for unreferenced species detection: plausible species per genus not in reference. Moved here from TaxaAssign 2026-09-08 (reference-coverage-auditing, not posterior computation). Result feeds TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...), the LLM-shortcut pipeline.",
+      "inputs": [
+        {
+          "name": "match_df",
+          "type": "match_df",
+          "required": true,
+          "description": "Match object (genera extracted automatically)"
+        },
+        {
+          "name": "context",
+          "type": "context_df",
+          "required": false,
+          "description": "Site context for plausibility"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "description": "LLM provider function"
+        },
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": false,
+          "description": "Barcode marker for NCBI verification"
+        },
+        {
+          "name": "expand_to_family",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Also check family-level unreferenced taxa"
+        }
+      ],
+      "output": {
+        "type": "unreferenced_species_result",
+        "description": "Character vector of unreferenced species; census and plausible in attributes"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "LLM calls + optional NCBI verification; ~2-5 min"
     }
   ]
 }

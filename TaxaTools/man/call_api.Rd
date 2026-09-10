@@ -152,17 +152,21 @@ answer <- call_api("What phylum do sea urchins belong to?")
 
 # Explicit provider and tier
 answer <- call_api("What phylum do sea urchins belong to?",
-                   provider = "gemini", tier = "fast")
+  provider = "gemini", tier = "fast"
+)
 
 # Pinned model for reproducibility
 answer <- call_api("What phylum do sea urchins belong to?",
-                   provider = "anthropic", model = "claude-sonnet-4-5")
+  provider = "anthropic", model = "claude-sonnet-4-5"
+)
 
 # Registered custom provider (see register_provider())
 register_provider("xai", "XAI_API_KEY", "https://api.x.ai",
-  fallback_models = list(mid = "grok-3"))
+  fallback_models = list(mid = "grok-3")
+)
 answer <- call_api("What phylum do sea urchins belong to?",
-                   provider = "xai")
+  provider = "xai"
+)
 }
 }
 \seealso{

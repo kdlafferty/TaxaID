@@ -93,22 +93,22 @@ table), not something this function can detect or guard against.
 # A candidate ("Gadus morhua") detected at two sites, plus a single-site
 # candidate ("Gadus chalcogrammus") for the same observation.
 joined <- data.frame(
-  observation_id  = c("ASV_1", "ASV_1", "ASV_1"),
-  taxon_name      = c("Gadus morhua", "Gadus morhua", "Gadus chalcogrammus"),
+  observation_id = c("ASV_1", "ASV_1", "ASV_1"),
+  taxon_name = c("Gadus morhua", "Gadus morhua", "Gadus chalcogrammus"),
   taxon_name_rank = "species",
-  grid_id         = c("Grid_A", "Grid_B", "Grid_A"),
-  main_habitat    = c("Neritic", "Neritic", "Neritic"),
-  prior_alpha     = c(80, 3, 10),
-  prior_beta      = c(20, 2, 90),
-  prior_mean      = c(0.80, 0.60, 0.10),
+  grid_id = c("Grid_A", "Grid_B", "Grid_A"),
+  main_habitat = c("Neritic", "Neritic", "Neritic"),
+  prior_alpha = c(80, 3, 10),
+  prior_beta = c(20, 2, 90),
+  prior_mean = c(0.80, 0.60, 0.10),
   stringsAsFactors = FALSE
 )
 combined <- combine_multisite_priors(joined)
 combined
 
 \dontrun{
-joined    <- join_priors(likelihoods, taxaexpect_priors, site = site_df)
-combined  <- combine_multisite_priors(joined)
+joined <- join_priors(likelihoods, taxaexpect_priors, site = site_df)
+combined <- combine_multisite_priors(joined)
 posterior <- compute_posterior(combined)
 }
 

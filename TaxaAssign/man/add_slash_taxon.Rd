@@ -100,13 +100,13 @@ against each flagged name's \code{hypothesis_type}, to tell them apart.
 }
 \examples{
 posterior_df <- data.frame(
-  observation_id  = c("S1", "S1", "S2"),
-  taxon_name      = c("Homo sapiens", "Homo heidelbergensis", "Bos taurus"),
+  observation_id = c("S1", "S1", "S2"),
+  taxon_name = c("Homo sapiens", "Homo heidelbergensis", "Bos taurus"),
   taxon_name_rank = "species",
   hypothesis_type = "specific_candidate",
-  genus           = c("Homo", "Homo", "Bos"),
-  family          = c("Hominidae", "Hominidae", "Bovidae"),
-  posterior_mean  = c(0.55, 0.45, 1.0),
+  genus = c("Homo", "Homo", "Bos"),
+  family = c("Hominidae", "Hominidae", "Bovidae"),
+  posterior_mean = c(0.55, 0.45, 1.0),
   posterior_point_est = c(0.55, 0.45, 1.0)
 )
 consensus <- posterior_consensus(posterior_df, min_posterior = 0)

@@ -52,23 +52,21 @@ test_that(".compute_paths() finds sequences -> consensus (multiple paths)", {
   expect_true(all(starts == "seq_to_match"))
 })
 
-test_that(".compute_paths() finds taxa -> priors (wrapper and manual)", {
+test_that(".compute_paths() finds taxa -> priors (manual, multi-hop)", {
+  # No single-call wrapper exists for taxa -> priors any more: build_priors()
+  # (the old wrapper) was archived 2026-09-09 along with the rest of the
+  # GLMM prior-fitting chain (see TaxaExpect/CLAUDE.md's 2026-09-09 session
+  # note), and no kernel-path wrapper replaced it -- a caller now goes
+  # taxa -> occurrences -> std_occurrences -> priors via separate edges.
   .graph_env$graph <- NULL
   paths <- .compute_paths("taxa", "priors")
 
-  expect_true(length(paths) >= 2,
-    info = "Should find wrapper and manual paths"
+  expect_true(length(paths) >= 1,
+    info = "Should find at least one manual (multi-hop) path"
   )
-
-  # One path should use the wrapper
-  has_wrapper <- vapply(paths, function(p) p$uses_wrapper, FALSE)
-  expect_true(any(has_wrapper), info = "Should include wrapper path")
-  expect_true(any(!has_wrapper), info = "Should include manual path")
-
-  # Wrapper path should be shorter
-  wrapper_len <- min(vapply(paths[has_wrapper], function(p) length(p$edges), 0L))
-  manual_len <- max(vapply(paths[!has_wrapper], function(p) length(p$edges), 0L))
-  expect_true(wrapper_len < manual_len)
+  expect_true(all(vapply(paths, function(p) !p$uses_wrapper, FALSE)),
+    info = "No wrapper path should exist for taxa -> priors any more"
+  )
 })
 
 test_that(".compute_paths() finds match_df -> consensus (3+ paths)", {
@@ -229,12 +227,11 @@ test_that("multi-input edges produce full Bayesian path", {
   dna_bayes <- bayes_paths[has_dna_model]
   for (p in dna_bayes) {
     expect_true("seq_to_match" %in% p$edges)
-    # Priors via wrapper or manual (single-model, grouped-by-sampling-process,
-    # or the kernel-based site-centered estimator -- a genuinely different
-    # estimator added 2026-09-07, not a duplicate of the GLMM paths)
-    has_priors <- "taxa_to_priors_wrapper" %in% p$edges ||
-      "dist_to_priors" %in% p$edges ||
-      "dist_to_priors_by_group" %in% p$edges ||
+    # Priors via the kernel-based estimator, grouped-by-sampling-process or
+    # plain site-centered (the GLMM/grid paths -- taxa_to_priors_wrapper,
+    # dist_to_priors -- were archived 2026-09-09 along with the functions
+    # they called; see TaxaExpect/CLAUDE.md's 2026-09-09 session note)
+    has_priors <- "dist_to_priors_by_group" %in% p$edges ||
       "std_to_priors_kernel" %in% p$edges
     expect_true(has_priors, info = "Bayesian path needs priors")
   }

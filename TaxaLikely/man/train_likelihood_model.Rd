@@ -12,10 +12,6 @@ train_likelihood_model(
   prior_weight = 10,
   use_hierarchy = TRUE,
   anchor_perfect = TRUE,
-  mislabel_threshold = 0.02,
-  singleton_match_threshold = 0.98,
-  verified_clean = NULL,
-  mislabel_behavior = "flag",
   logit_epsilon = 1e-04,
   max_gap_ceiling = NULL,
   score_transform = "logit"
@@ -55,48 +51,6 @@ across the taxonomic hierarchy.}
 \item{anchor_perfect}{Logical (default \code{TRUE}).  If \code{TRUE}, injects
 synthetic perfect-match observations into the H1 training data to
 prevent the perfection penalty (see section below).}
-
-\item{mislabel_threshold}{Numeric.  Passed to \code{flag_reference_errors()} when
-removing mislabeled sequences before training (default \code{0.02}).  A
-reference sequence is flagged when its median within-species match score
-minus its maximum cross-species match score is below negative
-\code{mislabel_threshold}.  The default 0.02 means a sequence is flagged if
-its best foreign match is within 2 percentage points of its typical
-self-match.  Lower values are stricter, flagging more sequences.}
-
-\item{singleton_match_threshold}{Numeric.  Passed to
-\code{flag_reference_errors()} (default \code{0.98}) -- see that function's own
-documentation of this parameter.}
-
-\item{verified_clean}{Character vector or \code{NULL} (default).  Passed to
-\code{flag_reference_errors()} -- see that function's own \verb{@param verified_clean} for the full rationale.  Accessions listed here are
-never removed from training regardless of what the internal mislabel
-heuristic computes for them, because they have already been verified
-clean by a stronger, independent check (e.g.
-\code{TaxaMatch::evaluate_reference_accessions()}/
-\code{TaxaMatch::verify_flagged_references()}).}
-
-\item{mislabel_behavior}{Character, \code{"flag"} (default) or \code{"remove"}.
-\code{flag_reference_errors()}'s \code{"likely_mislabeled"} heuristic was measured
-(2026-08-08 screening-comparison audit, a real 40-accession live-BLAST
-pilot) at roughly 6.7\% precision against
-\code{TaxaMatch::evaluate_reference_accessions()}'s BLAST-based screen --
-0 of 40 randomly-sampled real flags confirmed as genuine mislabels. That
-audit's own recommendation was to treat this heuristic as high-recall/
-low-precision, "worth a review pass, not an auto-blacklist." \code{"flag"}
-(default) honors that: every flagged accession is still reported (a
-console message, and the returned \code{reference_errors} slot) but none are
-removed from the training data. \code{"remove"} restores the
-original, silently-destructive default (drops every
-\code{"likely_mislabeled"} accession from both sides of the pair table before
-fitting) -- use it only alongside \code{verified_clean} (populated from
-\code{TaxaMatch::verify_flagged_references()}) so a confirmed false positive
-isn't lost. This mirrors the same default flip already made elsewhere in
-this ecosystem for an unreviewed heuristic acting as a silent, automatic
-remover (\code{TaxaLikely::apply_coverage_constraints()}'s
-\code{constraint_behavior}, \code{TaxaFetch::filter_gbif_quality()}'s institution
-check) -- training was the last place this pattern still acted
-destructively by default.}
 
 \item{logit_epsilon}{Numeric.  Logit-clipping value (default \code{1e-4}).
 Used only when \code{score_transform = "logit"}.}
@@ -190,9 +144,6 @@ reference data at all: the true pooled sample size (\code{n_h1_pooled}/
 confidently that average applies to a candidate we have zero direct
 data for, so using it directly would understate uncertainty exactly
 where it should be largest.}
-\item{\code{reference_errors}}{Data frame of flagged references (output of
-\code{flag_reference_errors()}). Use with
-\code{\link{remove_flagged_references}} to clean a match object.}
 }
 }
 \description{
@@ -360,12 +311,34 @@ range, with no free parameter) and is the more robust choice for any new
 training run near this boundary.
 }
 
+\section{No built-in reference-quality screening (2026-09-08)}{
+
+This function does NOT screen \code{raw_df} for mislabeled/contaminated
+reference accessions before fitting -- it trains on exactly what it's
+given. Earlier versions called an internal, free, within-reference-set
+heuristic (\code{flag_reference_errors()}, retired this date) unconditionally
+on every run; a 2026-08-08 audit found it roughly 6.7\% precise against
+\code{TaxaMatch::evaluate_reference_accessions()}'s BLAST-based screen (0 of 40
+randomly-sampled real flags confirmed as genuine mislabels on one real
+dataset), and a newer TaxaMatch mechanism
+(\code{TaxaMatch::corroborate_references_locally()} +
+\code{TaxaMatch::evaluate_reference_accessions()}) already does the same job
+more precisely, for the same zero/low NCBI cost, directly on \code{reference_df}
+before it ever reaches \code{build_sequence_matrix()}. Screen there, exclude
+any accession \code{evaluate_reference_accessions()}/\code{score_reference_labels()}
+resolves to \code{reference_action == "remove"} from \code{reference_df} (or from
+\code{raw_df} by \code{id_x}/\code{id_y}) before calling this function -- there is no
+longer a parameter here to pass a bad-accession list through.
+}
+
 \examples{
 \dontrun{
 ref_matrix <- build_sequence_matrix(reference_df,
-                                     rank_system = c("family", "genus", "species"))
+  rank_system = c("family", "genus", "species")
+)
 model <- train_likelihood_model(ref_matrix,
-                                rank_system = c("family", "genus", "species"))
+  rank_system = c("family", "genus", "species")
+)
 interpret_model(model)
 }
 

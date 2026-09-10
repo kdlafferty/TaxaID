@@ -17,6 +17,7 @@ Imports:
     cli,
     dplyr,
     httr2,
+    jsonlite,
     stats,
     utils,
     tibble,

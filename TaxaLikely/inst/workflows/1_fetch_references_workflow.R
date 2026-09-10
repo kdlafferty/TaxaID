@@ -10,23 +10,7 @@
 # Purpose: Assemble a reference_df of DNA sequences + taxonomy for model
 #   building. This is the starting point for Workflows 2-4.
 #
-# QUICK PATH: build_site_reference()
-#   If you have a list of expected taxa (e.g., from TaxaExpect::build_priors()),
-#   build_site_reference() wraps Paths A + B + coverage audit in one call:
-#
-#   lib <- build_site_reference(
-#     taxa         = c("Fundulus", "Gambusia", "Lepomis"),
-#     barcode_term = "MiFishU",
-#     output_dir   = "site_reference/",  # writes reference.fasta + taxonomy TSV
-#     max_date     = "2024/12/31"
-#   )
-#   lib$unreferenced  # species with no barcode in NCBI
-#   lib$reference_df  # ready for build_sequence_matrix()
-#
-#   See also: inst/test_local_reference.R for an interactive test script.
-#
-# MANUAL PATH (this workflow):
-#   Two paths:
+# Two paths (this workflow covers both):
 #     A. Fetch sequences from NCBI
 #     B. Load a local FASTA file (if you already have a reference database)
 #

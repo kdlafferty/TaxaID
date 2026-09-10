@@ -588,20 +588,6 @@ test_that("flag_incongruent_references() carries the new columns when present", 
   expect_true("action_reason" %in% names(out))
 })
 
-test_that("verify_flagged_references() counts locally_corroborated as verified clean", {
-  mock_qc <- data.frame(
-    accession = c("A1", "A2"),
-    hierarchy_flag = c("locally_corroborated", "incongruent"),
-    stringsAsFactors = FALSE
-  )
-  local_mocked_bindings(
-    evaluate_reference_accessions = function(accessions, ...) mock_qc,
-    .package = "TaxaMatch"
-  )
-  result <- suppressMessages(verify_flagged_references(c("A1", "A2")))
-  expect_equal(result$verified_clean, "A1")
-})
-
 test_that("a locally_corroborated partner is never discounted by the trust weight", {
   w <- .partner_trust_weight(
     flag = c("locally_corroborated", "incongruent", "congruent"),

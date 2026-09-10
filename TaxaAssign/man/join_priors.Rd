@@ -44,8 +44,11 @@ If \code{main_habitat} is omitted, the error message lists available
 habitats and row counts at the resolved grid cell.
 \code{list(main_habitat = "Marine")} alone (no \code{lat}/\code{lon}/
 \code{grid_id}) auto-fills coordinates from
-\code{attr(taxaexpect_priors, "search_center")} when present (set by
-\code{TaxaExpect::build_priors()}) -- \code{main_habitat} itself is
+\code{attr(taxaexpect_priors, "search_center")} when present -- set by
+the archived \code{TaxaExpect::build_priors()} (GLMM chain, archived
+2026-09-09; only relevant for an old cached \code{build_priors()}
+result you still have on disk, since \code{estimate_kernel_priors()}
+does not set this attribute) -- \code{main_habitat} itself is
 never auto-filled or guessed.
 See Details.}
 
@@ -246,11 +249,11 @@ unchanged and receive the dark diversity floor prior as before.
 
 \examples{
 likelihoods <- data.frame(
-  observation_id  = c("ASV_1", "ASV_1"),
-  taxon_name      = c("Gadus morhua", "Gadus chalcogrammus"),
+  observation_id = c("ASV_1", "ASV_1"),
+  taxon_name = c("Gadus morhua", "Gadus chalcogrammus"),
   taxon_name_rank = "species",
-  genus           = "Gadus",
-  family          = "Gadidae",
+  genus = "Gadus",
+  family = "Gadidae",
   stringsAsFactors = FALSE
 )
 taxaexpect_priors <- data.frame(

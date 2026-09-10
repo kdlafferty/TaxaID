@@ -136,7 +136,7 @@ then re-run \code{\link[=standardize_match_data]{standardize_match_data()}}.
 # Long-format Animl output (one row per image x candidate)
 tmp <- tempfile(fileext = ".csv")
 write.csv(data.frame(
-  FileName   = c("img001.jpg", "img001.jpg", "img002.jpg"),
+  FileName = c("img001.jpg", "img001.jpg", "img002.jpg"),
   prediction = c("Odocoileus virginianus", "Cervus canadensis", "empty"),
   confidence = c(0.93, 0.05, 0.99),
   stringsAsFactors = FALSE
