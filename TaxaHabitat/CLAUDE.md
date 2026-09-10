@@ -38,6 +38,8 @@ TaxaHabitat depends on TaxaTools for LLM provider functions
 | `build_scheme_prompt()` | R/build_habitat_prompt.R | Complete | Stage-0 LLM prompt builder for the auto-scheme workflow -- given a taxon list, asks the LLM to suggest `min_habitats`-`max_habitats` sensible single-level habitat categories, output parsed by `parse_scheme_response()`. **2026-09-04 doc gap**: same as above. |
 | `parse_scheme_response()` | R/build_habitat_prompt.R | Complete | Parse `build_scheme_prompt()`'s raw LLM response into a single-level `habitat_scheme` data.frame (`l2_name`/`l2_code` set `NA`), suitable for `build_habitat_prompt(habitat_scheme=)`. **2026-09-04 doc gap**: same as above. |
 | `report_habitat()` | R/report_habitat.R | Complete | Generate a `report_section` object (TaxaTools) summarizing habitat assignment for Methods/Results reporting; feeds `TaxaTools::assemble_report()`. **2026-09-04 doc gap**: exported since Session 65 but missing from this table; found during the ecosystem-wide accuracy pass. |
+| `build_habitat_lookup()` | R/build_habitat_lookup.R | Complete (2026-09-10) | Cached one-call wrapper over `build_habitat_prompt()` -> `TaxaTools::prompt_api()` -> `parse_hierarchical_habitat_response()`. Per-taxon on-disk cache (`cache_dir=`), keyed on taxon + scheme-derived habitat columns + covariates + context + `cache_tag`; full key verified on read. Unresolved rows (`Habitat` NA) are never cached. The habitat step of all 6 production workflows + both templates now calls this. |
+| `taxahabitat_clear_cache()` | R/build_habitat_lookup.R | Complete (2026-09-10) | Report/prune that cache via the shared TaxaTools cache engine (pattern `_habitat\.rds$`), matching `TaxaFlag::taxaflag_clear_cache()`. |
 | `parse_hierarchical_habitat_response()` | R/parse_habitat_response.R | Complete | Parse LLM CSV response into habitat weights table. Protects `ecoregion_best_guess` from numeric detection. Repairs unquoted-comma-corrupted rows before `read.csv()` sees them (see Known Footguns). |
 | `assign_habitat_biological()` | R/assign_habitat_biological.R | Complete | Join habitat weights to occurrence data (per-point consensus). Param is `occurrence_data`, not `data` — see Known Footguns. |
 | `consensus_habitat()` | R/assign_habitat_biological.R | Complete | Assemblage-level consensus habitat from per-species weights; modal ecoregion extraction. Returns one-row data frame. |
@@ -96,6 +98,26 @@ Provider functions (`call_anthropic_api`, `call_gemini_api`, etc.) live in TaxaT
   primary IUCN document directly — do not trust secondary sources or memory.
 
 ---
+
+### The habitat LLM step MUST be cached (2026-09-10)
+
+A habitat verdict is not cosmetic: it decides which of a species' occurrence records
+count toward a habitat-stratified site prior in TaxaExpect. Uncached, the verdict can
+differ between two runs on identical input, and a species then moves between
+`resident_observed` and `resident_undetected` with its kernel prior changing by orders
+of magnitude. Measured on the real 2026-09-10 GreatLakes run: *Moxostoma
+macrolepidotum*'s 16 nearby records all read Lotic, it fell to the undetected branch
+(theta 1.1e-5 vs 0.06 in the 2026-09-07 baseline), *M. anisurum* (one Lentic record
+140 km away) won 28 observations and was then amplified 478x by the consensus prior
+update, and Lamar precision fell 0.853 -> 0.805 with the reference screen's own
+likelihood effect measured at ~0. `build_habitat_lookup(cache_dir=)` is the fix; it is
+the same design `TaxaFlag::review_assignments(cache_dir=)` adopted on 2026-09-04 for the
+same reason. Do not re-introduce the bare three-step pattern in a workflow.
+
+The cache freezes whichever verdict came first. That is the point (reproducibility),
+but it means a wrong verdict persists until someone clears it
+(`taxahabitat_clear_cache()`) or changes `cache_tag`. The per-taxon files are plain
+`list(key, row)` .rds and can be inspected directly.
 
 ## Known Footguns
 
@@ -176,6 +198,16 @@ Provider functions (`call_anthropic_api`, `call_gemini_api`, etc.) live in TaxaT
 ---
 
 ## Recent Activity
+
+**2026-09-10** (Fable 5.1): NEW `build_habitat_lookup()` + `taxahabitat_clear_cache()`
+(R/build_habitat_lookup.R, 8 tests, no LLM call in tests). Motivated by the first full
+GreatLakes run after the reference-screen rewiring: 56/885 consensus calls moved and
+Lamar precision fell 0.853 -> 0.805, traced to run-to-run habitat-verdict drift, not to
+the screen (see Key Design Notes above and TaxaID/CLAUDE.md 2026-09-10). All 6 production
+workflows (GreatLakes, PtCon 12S single/multi, PtCon 18S, Mugu Fish/WilderFish) and both
+templates rewired to it with `cache_dir = <OUT_PREFIX>_habitat_cache`; external files
+backed up as `*.bak_pre_habitat_cache`. TaxaWizard metadata entry added.
+`devtools::test()` 274/0, `check()` see session report.
 
 **2026-08-02**: Fixed `review_spatial_flags()`'s Reassign-Habitat mode to
 preserve a point's existing `spatial_flag` instead of resetting it to

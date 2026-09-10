@@ -7,7 +7,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include = FALSE, eval = FALSE, purl = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -21,6 +21,16 @@ knitr::opts_chunk$set(
 )
 ```
 
+<!--
+  EVERY chunk in this vignette carries `eval = FALSE, purl = FALSE` in its own
+  header, and that repetition is load-bearing (2026-09-10) -- do not DRY it up
+  into the setup chunk. R CMD check's "running R code from vignettes" step
+  TANGLES the vignette with knitr::purl(), which does NOT execute the setup
+  chunk, so an opts_chunk$set(purl = FALSE) there has no effect at tangle time
+  and every chunk is sourced. Same fix as TaxaExpect/vignettes/building-priors.Rmd
+  (2026-09-03).
+-->
+
 ## Purpose
 
 TaxaHabitat assigns habitat types to species and occurrence records using LLM
@@ -30,7 +40,7 @@ biodiversity modelling.
 
 ## Quick Start
 
-```{r quickstart}
+```{r quickstart, eval = FALSE, purl = FALSE}
 library(TaxaHabitat)
 library(TaxaTools)
 
@@ -51,7 +61,7 @@ occurrences <- assign_habitat_biological(occurrence_data, habitats)
 
 ### Step 1: Choose a habitat scheme
 
-```{r scheme}
+```{r scheme, eval = FALSE, purl = FALSE}
 # Default: 3-category (Marine / Freshwater / Terrestrial)
 prompt <- build_habitat_prompt(species_list, habitat_scheme = NULL)
 
@@ -70,7 +80,7 @@ prompt <- build_habitat_prompt(species_list, habitat_scheme = my_scheme)
 
 The prompt is automatically chunked for large species lists.
 
-```{r submit}
+```{r submit, eval = FALSE, purl = FALSE}
 raw_texts <- character(prompt$n_chunks)
 for (i in seq_len(prompt$n_chunks)) {
   raw_texts[i] <- call_anthropic_api(prompt$prompts[[i]])
@@ -85,7 +95,7 @@ habitats_df <- do.call(rbind, habitats_list)
 
 ### Step 3: Assign habitat to points
 
-```{r assign}
+```{r assign, eval = FALSE, purl = FALSE}
 occurrences <- assign_habitat_biological(
   occurrence_data = occurrence_data,
   habitats_df = habitats_df,
@@ -98,7 +108,7 @@ table(occurrences$main_habitat, useNA = "always")
 
 ### Step 4: Flag spatial inconsistencies
 
-```{r flag}
+```{r flag, eval = FALSE, purl = FALSE}
 occurrences <- flag_habitat_inconsistencies(occurrences)
 # Review flagged points
 table(occurrences$spatial_flag)

@@ -1253,7 +1253,17 @@ verify_removal_candidates <- function(evaluation, ...,
   # weaker claim than one from a row with room to spare.
   out$still_saturated <- !is.na(out$n_hits_audit) &
     out$n_hits_audit >= as.integer(audit_max_hits) - 1L
-  out$spared <- !(out$action_audit %in% "remove")
+  # `spared` is a three-valued answer, not a boolean (2026-09-10): an audit
+  # whose own BLAST never completed comes back `action_audit = "untested"`
+  # (or NA), and that is NO evidence either way -- reporting it as
+  # `spared = TRUE` would tell the caller a removal was overturned when
+  # nothing was looked at. Seen live on a real GreatLakes training-screen
+  # audit where all 8 candidates timed out at NCBI and every row read
+  # "spared". NA here; every downstream use already tests `spared %in% TRUE`.
+  out$spared <- ifelse(
+    is.na(out$action_audit) | out$action_audit %in% "untested",
+    NA, !(out$action_audit %in% "remove")
+  )
   out$n_corroborators <- corr$n[match(out$accession, corr$accession)]
   out$best_corroborator_rank <- corr$best_rank[match(out$accession, corr$accession)]
   out$corroborators <- corr$who[match(out$accession, corr$accession)]
@@ -1380,11 +1390,20 @@ verify_removal_candidates <- function(evaluation, ...,
         ))
       }
     }
+    n_unaudited <- sum(is.na(out$spared))
     message(sprintf(
-      "verify_removal_candidates(): %d of %d removal candidate(s) are no longer removable at max_hits = %d%s.",
+      "verify_removal_candidates(): %d of %d removal candidate(s) are no longer removable at max_hits = %d%s.%s",
       sum(out$spared, na.rm = TRUE), nrow(out), as.integer(audit_max_hits),
       if (any(out$spared, na.rm = TRUE)) {
         paste0(": ", paste(out$accession[out$spared %in% TRUE], collapse = ", "))
+      } else {
+        ""
+      },
+      if (n_unaudited > 0L) {
+        sprintf(
+          " %d could NOT be audited (their BLAST never completed -- spared = NA, not a verdict): %s",
+          n_unaudited, paste(out$accession[is.na(out$spared)], collapse = ", ")
+        )
       } else {
         ""
       }

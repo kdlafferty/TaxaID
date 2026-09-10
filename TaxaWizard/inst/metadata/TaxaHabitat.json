@@ -87,6 +87,73 @@
       "scaling_note": "Fast; JSON parsing"
     },
     {
+      "name": "build_habitat_lookup",
+      "description": "Cached one-call habitat classification: build_habitat_prompt() -> prompt_api() -> parse_hierarchical_habitat_response(), asking the LLM only about taxa not already classified under the same scheme (per-taxon on-disk cache). Returns the habitats_df that assign_habitat_biological() consumes.",
+      "inputs": [
+        {
+          "name": "taxon_list",
+          "type": "character_vector",
+          "required": true,
+          "description": "Non-empty vector of scientific names to classify"
+        },
+        {
+          "name": "habitat_scheme",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Passed to build_habitat_prompt(): NULL (three-realm default), \"IUCN_L1\", or a scheme data frame"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "default": "getOption(\"TaxaID.llm_fn\", TaxaTools::call_api)",
+          "description": "LLM provider function, as for TaxaTools::prompt_api()"
+        },
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Per-taxon cache directory; NULL disables caching. Workflows pass file.path(OUT_DIR, paste0(OUT_PREFIX, \"_habitat_cache\"))"
+        },
+        {
+          "name": "extra_covariates",
+          "type": "character_vector",
+          "required": false,
+          "default": [],
+          "description": "Passed to build_habitat_prompt()"
+        },
+        {
+          "name": "chunk_size",
+          "type": "integer",
+          "required": false,
+          "default": 60,
+          "description": "Taxa per LLM call"
+        },
+        {
+          "name": "geographic_context",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Passed to build_habitat_prompt()"
+        },
+        {
+          "name": "cache_tag",
+          "type": "character",
+          "required": false,
+          "default": "",
+          "description": "Free-text component of the cache key; change it (e.g. to a model name) to force fresh verdicts"
+        }
+      ],
+      "output": {
+        "type": "habitats_df",
+        "description": "Wide data frame, one row per taxon in taxon_list order, with a cache_summary attribute (n_total, n_from_cache, n_called, n_cached_new)"
+      },
+      "scaling": "linear",
+      "scaling_note": "One LLM call per chunk of uncached taxa; zero calls on a full cache hit"
+    },
+    {
       "name": "assign_habitat_biological",
       "description": "Assign habitat classifications from pre-computed habitat weight table to spatial data",
       "inputs": [

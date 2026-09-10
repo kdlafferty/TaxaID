@@ -592,6 +592,42 @@ test_that("verify_removal_candidates() audits only the removal candidates and re
   expect_equal(out$still_saturated, c(FALSE, TRUE))
 })
 
+test_that("verify_removal_candidates() reports spared = NA, not TRUE, when the audit itself never completed", {
+  # 2026-09-10: a real GreatLakes training-screen audit timed out at NCBI for
+  # all 8 candidates; every row came back action_audit = "untested" and was
+  # reported spared = TRUE -- "your removal was overturned" when nothing had
+  # been looked at. No evidence is not evidence against removal.
+  local_mocked_bindings(
+    evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      data.frame(
+        accession = accessions,
+        reference_action = c("untested", "inspect"),
+        congruent_evidence_exists_anywhere = c(NA, TRUE),
+        n_independent_top_matches = c(NA_integer_, 5L),
+        n_top_matches_available = c(NA_integer_, 40L),
+        params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
+  msgs <- character(0)
+  out <- withCallingHandlers(
+    verify_removal_candidates(.audit_eval_fixture()),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+  expect_identical(out$spared, c(NA, TRUE))
+  # The timed-out row is never announced as "no longer removable"; it is
+  # announced separately as un-audited.
+  summ <- msgs[grepl("no longer removable", msgs)]
+  expect_length(summ, 1L)
+  expect_match(summ, "1 of 2 removal candidate\\(s\\) are no longer removable at max_hits = 100: STILL\\.")
+  expect_match(summ, "1 could NOT be audited.*SPARED")
+})
+
 test_that("verify_removal_candidates() warns when the audit differs from production in more than max_hits", {
   local_mocked_bindings(
     evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
@@ -706,12 +742,19 @@ test_that("verify_removal_candidates() does NOT flag a corroborator whose own ac
     ),
     file.path(cache_dir, "reference_pair_cache.rds")
   )
+  # The same mock serves both the candidate audit and the corroborator
+  # screen, so it branches on what it is asked for: the CANDIDATE audit must
+  # come back with a real verdict ("inspect" -> spared), and only the
+  # CORROBORATOR reads "untested". (2026-09-10: an "untested" candidate audit
+  # is itself no verdict -- spared = NA -- so it would never reach the
+  # corroborator screen, and this test would silently stop testing it.)
   local_mocked_bindings(
     evaluate_reference_accessions = function(accessions, ..., max_hits, cache_dir, verbose) {
+      is_corr <- "UNTESTEDREF" %in% accessions
       data.frame(
         accession = accessions,
-        reference_action = c("untested", "remove"),
-        congruent_evidence_exists_anywhere = c(TRUE, FALSE),
+        reference_action = if (is_corr) "untested" else c("inspect", "remove"),
+        congruent_evidence_exists_anywhere = if (is_corr) NA else c(TRUE, FALSE),
         n_independent_top_matches = 5L, n_top_matches_available = 99L,
         params_key = "5|family|5|0.5|3|8|70|100|remote|nt|amplicon|v5_amplicon_query",
         stringsAsFactors = FALSE
@@ -722,6 +765,7 @@ test_that("verify_removal_candidates() does NOT flag a corroborator whose own ac
   out <- suppressMessages(
     verify_removal_candidates(.audit_eval_fixture(), cache_dir = cache_dir)
   )
+  expect_true(out$spared[1L])
   expect_false(out$corroborator_flagged[1L])
   expect_equal(out$corroborator_worst_action[1L], "untested")
 })

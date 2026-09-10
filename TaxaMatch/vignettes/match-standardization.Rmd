@@ -7,7 +7,7 @@ vignette: >
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include = FALSE, eval = FALSE, purl = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -21,6 +21,16 @@ knitr::opts_chunk$set(
 )
 ```
 
+<!--
+  EVERY chunk in this vignette carries `eval = FALSE, purl = FALSE` in its own
+  header, and that repetition is load-bearing (2026-09-10) -- do not DRY it up
+  into the setup chunk. R CMD check's "running R code from vignettes" step
+  TANGLES the vignette with knitr::purl(), which does NOT execute the setup
+  chunk, so an opts_chunk$set(purl = FALSE) there has no effect at tangle time
+  and every chunk is sourced. Same fix as TaxaExpect/vignettes/building-priors.Rmd
+  (2026-09-03).
+-->
+
 ## Purpose
 
 TaxaMatch handles sequence input, BLAST search, and match standardisation.
@@ -29,7 +39,7 @@ likelihood modelling) and TaxaAssign (for posterior computation).
 
 ## Quick Start
 
-```{r quickstart}
+```{r quickstart, eval = FALSE, purl = FALSE}
 library(TaxaMatch)
 
 # From DADA2 output
@@ -44,7 +54,7 @@ match_df <- standardize_match_data(blasted) |>
 
 ### Step 1: Read sequence data
 
-```{r read}
+```{r read, eval = FALSE, purl = FALSE}
 # Option A: DADA2 sequence table (matrix: samples x ASVs)
 seqs <- read_sequence_table("seqtab_nochim.rds")
 
@@ -59,7 +69,7 @@ seqs <- read_sequence_table("seqtab_nochim.rds",
 
 ### Step 2: Filter sequences
 
-```{r filter}
+```{r filter, eval = FALSE, purl = FALSE}
 filtered <- filter_sequences(
   seqs,
   barcode_term  = "12S", # auto-detects length range
@@ -69,7 +79,7 @@ filtered <- filter_sequences(
 
 ### Step 3: BLAST search
 
-```{r blast}
+```{r blast, eval = FALSE, purl = FALSE}
 # Remote NCBI BLAST
 blasted <- blast_sequences(
   filtered,
@@ -84,7 +94,7 @@ blasted <- blast_sequences(
 
 ### Step 4: Standardize
 
-```{r standardize}
+```{r standardize, eval = FALSE, purl = FALSE}
 match_df <- standardize_match_data(
   blasted,
   observation_id_col = "ESVId",

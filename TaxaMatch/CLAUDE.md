@@ -1,6 +1,23 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-08 (Sonnet 5 -- `verify_flagged_references()` REMOVED (R/
+# Last updated: 2026-09-10 (Fable 5.1 -- `verify_removal_candidates()` no longer reports
+# `spared = TRUE` for an audit that never ran. `spared` was `!(action_audit %in% "remove")`,
+# so an audit whose BLAST timed out (`action_audit = "untested"`) read as "this removal was
+# overturned". Seen live on the first real GreatLakes training-screen audit after the
+# rewiring: all 8 removal candidates timed out at NCBI and all 8 came back `spared = TRUE`.
+# Now `spared` is NA for an untested/NA audit (every downstream use already tested
+# `spared %in% TRUE`), and the summary message names the un-audited accessions separately
+# ("could NOT be audited ... spared = NA, not a verdict"). One existing test had conflated
+# the CANDIDATE's audit action with the CORROBORATOR's ("untested" for both, via one shared
+# mock); its mock now branches so it still tests what it says it tests. +1 regression test.
+# `devtools::test()` 137/0 on the verdict file; `check()` see session report. Also from the
+# same GreatLakes run, for the record: the match-candidate audit reproduced the documented
+# KJ135626/MZ605481 one-corroborator rescue at max_hits = 100, and the corroborator BLAST
+# was CPU-budget rejected (so `corroborator_worst_action = "untested"`, correctly not
+# flagged). The training screen itself tripped the circuit breaker at 71.6% (781 of 2,750
+# never evaluated, kept as 'untested'); the four rewired workflows now print an explicit
+# INCOMPLETE banner off `attr(., "run_summary")$circuit_breaker_tripped` after each screen.
+# Previous update, 2026-09-08 (Sonnet 5 -- `verify_flagged_references()` REMOVED (R/
 # evaluate_reference_accessions.R), the bridge function built 2026-08-18 specifically to
 # connect `TaxaLikely::flag_reference_errors()`'s output to this package's BLAST-based
 # screen -- both halves of that bridge are retired together (see TaxaLikely/CLAUDE.md's

@@ -1,7 +1,22 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-09 (Sonnet 5 -- re-verified and resolved a discrepancy an earlier
+# Last updated: 2026-09-10 (Fable 5.1 -- FIRST FULL GREATLAKES RUN on the rewired reference
+# screen, assessed per ecosystem_docs/REENTRY_PROMPT_post_reference_screen_full_workflow_
+# runs.md (its new "Run 1 outcome" section has the numbers). The screen itself worked and
+# moved likelihoods ~0; the training screen tripped NCBI's circuit breaker at 71.6% (kept as
+# 'untested', now bannered by the workflows). Lamar precision fell 0.853 -> 0.805 for two
+# reasons upstream of the screen: (1) the habitat LLM step was uncached and a verdict flip
+# moved a species' prior by orders of magnitude -- FIXED: NEW TaxaHabitat::build_habitat_
+# lookup(cache_dir=) + taxahabitat_clear_cache(), wired into all 6 production workflows +
+# both templates; (2) the H1 gap feature is trained on short-overlap foreign pairs so the
+# likelihood is a near-tie on 82% of ASVs -- OPEN, user decision, see ecosystem_docs/
+# REENTRY_PROMPT_h1_foreign_coverage_floor.md. Also fixed: TaxaMatch::verify_removal_
+# candidates() reported spared = TRUE for audits that never ran (now NA). GreatLakes'
+# InspectConsensusWorkflowRun.R rewritten for the new architecture; three scripts that
+# exercised the retired flag_reference_errors() mechanism moved to
+# _archive_retired_scripts_2026_09_10/ in that directory with the workflow .bak files.
+# Previous update, 2026-09-09 (Sonnet 5 -- re-verified and resolved a discrepancy an earlier
 # usage audit had left open this session: `TaxaLikely::compute_likelihoods()` (documented
 # as "the recommended high-level entry point" for `unreferenced_candidates()` ->
 # `assign_scores()` -> `model_likelihoods()`) was flagged as having zero real callers

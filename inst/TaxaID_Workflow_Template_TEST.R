@@ -824,14 +824,22 @@ simple_scheme <- data.frame(
   stringsAsFactors = FALSE
 )
 
-prompt     <- TaxaHabitat::build_habitat_prompt(taxa_in_data, habitat_scheme = simple_scheme)
 .llm_fn_   <- function(p, ...) call_anthropic_api(p, model = "claude-sonnet-4-6")
-LLM_output <- prompt_api(prompt, llm_fn = .llm_fn_)
-
-habitat_lookup <- TaxaHabitat::parse_hierarchical_habitat_response(
-  LLM_output,
-  taxon_list     = prompt$taxa,
-  habitat_scheme = prompt
+# 2026-09-10: CACHED. TaxaHabitat::build_habitat_lookup() runs the same
+# build_habitat_prompt() -> prompt_api() -> parse_hierarchical_habitat_response()
+# chain as before, but a taxon already classified under this scheme is served
+# from <OUT_PREFIX>_habitat_cache/ instead of re-asked. Uncached, a habitat
+# verdict could flip between runs, moving a species' records in or out of the
+# site's habitat stratum and its kernel prior by orders of magnitude -- the
+# 2026-09-10 GreatLakes run lost 0.05 of Lamar precision to exactly this
+# (see TaxaHabitat/CLAUDE.md, 2026-09-10). Same design as review_assignments()'s
+# cache (2026-09-04). Force fresh verdicts with
+# TaxaHabitat::taxahabitat_clear_cache(<that directory>).
+habitat_lookup <- TaxaHabitat::build_habitat_lookup(
+  taxa_in_data,
+  habitat_scheme = simple_scheme,
+  llm_fn         = .llm_fn_,
+  cache_dir      = file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_cache"))
 )
 occurrences_with_habitat <- TaxaHabitat::assign_habitat_biological(
   occurrence_data = all_occurrences,

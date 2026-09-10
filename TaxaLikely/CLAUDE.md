@@ -1,5 +1,21 @@
 # CLAUDE.md -- TaxaLikely
-# Last updated: 2026-09-09, latest (Sonnet 5 -- ARCHIVED: the "stays opt-in" decision
+# Last updated: 2026-09-10 (Fable 5.1 -- FOUND, NOT FIXED, user decision pending: the H1 gap
+# feature is trained on short-overlap foreign pairs. `train.R` STEP 3 takes each reference's
+# `max_foreign_score` over ALL cross-species pairs with no coverage condition; on real
+# GreatLakes 12S data 86% of references get a p_match = 1.0 "best foreign match" at median
+# 4.6% alignment coverage (*C. idella* vs a marine drum), so 89% of references train with
+# raw_gap <= 0 and global mu_gap = -0.010, while every inference-side BLAST candidate has
+# query_coverage >= 80. Consequence: 728/885 ASVs are H1 near-ties (top/second < 1.5), the
+# prior decides nearly everything, and grass carp (100% to 6 references) lost to bighead
+# carp (96.4%) on the 2026-09-10 run. Flooring coverage at the inference minimum (0.8) on
+# the FOREIGN side only -- no H1 pair excluded, 402/402 species keep parameters -- gives
+# mu_gap +0.122, near-ties 295, and top-H1 agreement with a clean unique >= 99.5% best hit
+# 244/326 (269/326 with per-species mu_gap replaced by the global mean) vs 178/326 today.
+# This is NOT the archived calibrate_coverage_filter() question (that excluded pairs from
+# everything and dropped species); it is train/inference distribution matching for one
+# feature. Full numbers, model table, and the reproduce snippet:
+# ecosystem_docs/REENTRY_PROMPT_h1_foreign_coverage_floor.md. No code changed here.
+# Previous update, 2026-09-09, latest (Sonnet 5 -- ARCHIVED: the "stays opt-in" decision
 # recorded in the note directly below evolved, after further discussion the same day, to
 # ARCHIVING calibrate_coverage_filter()/coverage_threshold() entirely. Both moved intact
 # (source + tests + their dedicated demo workflow) to

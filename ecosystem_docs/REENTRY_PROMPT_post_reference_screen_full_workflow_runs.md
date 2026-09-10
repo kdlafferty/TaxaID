@@ -19,6 +19,53 @@ Read `TaxaLikely/CLAUDE.md`'s 2026-09-08 top session note (the retirement) and
 `verify_local_corroborations()`, the KJ135626/MZ605481 false-rescue lesson) before
 digging into any specific number below -- this doc assumes that context.
 
+## Run 1 outcome — GreatLakes, 2026-09-10 (09:02–14:03, 296 min). Read before running site 2.
+
+**Completed end to end; the rewiring worked; the Lamar numbers moved for reasons upstream
+of the screen.** No console log was saved (run in RStudio), so every count was
+reconstructed from checkpoints — save the console next time (`sink()` or Rscript `> log`).
+
+- **Screen counts (reconstructed):** 7a.10 match-candidate screen: 1,073 driving
+  accessions, all cache-served, 7 flagged/borderline, KJ135626 removed, NC_028197 spared
+  by LLM review, 31 overrides (30 of them on accessions that were "keep" anyway). 7a.11
+  training screen: 8 of 2,750 removed, 10,464 of 2,829,714 pairwise rows dropped.
+  Likelihood ratio new/old on the 800 unchanged observations: median 1.00, 0.5% moved
+  >26%. **The screen did not move the results.**
+- **The training screen tripped NCBI's circuit breaker at 71.6%**: 781 of 2,750 never
+  evaluated (`attr(ref_eval, "run_summary")$circuit_breaker_tripped`), kept as
+  'untested'. The 4 rewired workflows now print an INCOMPLETE banner after each screen.
+  Not worth a run on its own (expected yield ~3 more removals, likelihood effect ~0); it
+  completes itself, cache-served, on the next run.
+- **Audits:** `verify_local_corroborations()`: 291 thin rows, all clean (goal2 cache: 3
+  Fundulus rows unchecked, corroborator column predates the cache). `verify_removal_
+  candidates()`: match screen reproduced the KJ135626/MZ605481 one-corroborator rescue,
+  corroborator BLAST CPU-budget rejected; training-screen audit timed out on all 8 and —
+  bug, fixed same day — reported all 8 `spared = TRUE` (now NA).
+- **Lamar (REVIEW_formal_lamar_check.R, saved as `*_postscreen.rds` beside the `_wcal`
+  baseline):** co-detections 602 -> 593, ours-only 104 -> 144, precision 0.8527 ->
+  0.8046; intersection 29/61 and overconfidence 1/1081 unchanged. 56/885 consensus calls
+  changed: *Moxostoma* genus -> *M. anisurum* species (28, Lamar supports 7/49),
+  Leuciscidae -> *Pimephales notatus* (7), *Ctenopharyngodon idella* -> Xenocyprididae
+  (5, **grass carp lost**), *Paranotropis volucellus* -> *Rhinichthys cataractae* (4),
+  *Notropis stramineus* -> *Notropis* (3), …
+- **Cause 1 (fixed):** the habitat LLM step was uncached; *M. macrolepidotum*'s 16
+  nearby records all read Lotic this run, it fell to `resident_undetected`, *M. anisurum*
+  won on a 20x prior edge and was amplified 478x by `update_prior_from_consensus()`.
+  55 of 462 taxa are amplified >10x by that update (max 736x). NEW
+  `TaxaHabitat::build_habitat_lookup(cache_dir=)`, wired into every workflow.
+- **Cause 2 (open):** the H1 gap feature is trained on short-overlap foreign pairs, so
+  the likelihood is a near-tie on 728/885 ASVs and the prior decides. Grass carp lost to
+  bighead carp at equal priors on likelihood 0.77 vs 0.95 (100% vs 96.4% identity).
+  Decision doc: `REENTRY_PROMPT_h1_foreign_coverage_floor.md`.
+- **Other indicators fine:** `irreducible_consensus` 290/595; *Perca flavescens* 78 obs
+  at species; `add_slash_taxon()` genus-only warning 30 names on the fast fixture, 0 at
+  full scale; only archived-function reference is in the documented dead GLMM branch;
+  export filter symmetric, 882 CSV rows / 48 taxa.
+- **For sites 2–4:** the habitat cache starts empty at each site, so run 1 at each site
+  freezes that site's verdicts. Do not compare Lamar-style numbers across runs made
+  before and after the cache landed. Inspect the cache for the site's known-sensitive
+  taxa (*Girella nigricans* at PtCon 12S) before trusting a surprise.
+
 ## What was already verified before this run (2026-09-10, prior session), so don't re-derive it
 
 - All 9 packages were freshly built 2026-09-10 and spot-checked to reflect every recent
