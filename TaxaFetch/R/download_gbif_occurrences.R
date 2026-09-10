@@ -55,6 +55,23 @@ utils::globalVariables("taxonKey")
 #'   proceeds straight to a fresh download. Either way, the old cached zip is
 #'   removed once the new one is saved -- it is never silently orphaned on
 #'   disk.
+#' @param submit_attempts Integer (default \code{4}). How many times the download
+#'   \emph{request} is submitted before giving up when GBIF answers with a
+#'   transient server-side failure (HTTP 5xx such as \code{"503 Backend fetch
+#'   failed"}, gateway errors, timeouts). Non-transient errors (bad credentials,
+#'   a malformed predicate) are raised immediately, never retried.
+#' @param submit_wait Numeric vector of seconds (default \code{c(15, 30, 60)})
+#'   slept between submission attempts; the last value repeats if
+#'   \code{submit_attempts} exceeds its length.
+#' @param on_submit_failure \code{"use_cache"} (default) or \code{"error"}. What
+#'   to do when every submission attempt fails AND a verified cached zip for
+#'   this exact query exists (only possible with \code{overwrite = TRUE}, since
+#'   the default already reuses such a zip without asking GBIF at all).
+#'   \code{"use_cache"} imports that zip with a loud \code{warning()} naming
+#'   the failure, the cache date and the download key, and sets
+#'   \code{attr(result, "served_from_cache_after_failure") = TRUE}; the cached
+#'   zip is kept as the live cache. \code{"error"} fails as before. With no
+#'   usable cached zip the function always errors.
 #' @param prompt_mb Numeric. In an INTERACTIVE session, a prepared download at
 #'   least this many MB triggers a summary (size, record count, whether a zip
 #'   for this exact query is already cached, what the cache holds now and will
@@ -212,6 +229,15 @@ utils::globalVariables("taxonKey")
 #' of the requested keys. Off-target records are dropped with a diagnostic
 #' message.
 #'
+#' \strong{GBIF outages (2026-09-10):} a production run that re-requests its
+#' occurrences on every run (\code{overwrite = TRUE}) used to die at this step
+#' the moment GBIF's API returned a 5xx, even with a verified zip for the
+#' identical query already on disk. The request is now retried with backoff
+#' (\code{submit_attempts}/\code{submit_wait}), and if GBIF is still refusing,
+#' \code{on_submit_failure = "use_cache"} falls back to that zip -- with a
+#' warning, never silently -- so the run completes on data that differ from a
+#' fresh pull only if GBIF's holdings changed since the cache was written.
+#'
 #' \strong{Concurrent download limits:} GBIF limits accounts to 3
 #' concurrent downloads (fewer for accounts with many prior downloads). If
 #' a request is rejected, cancel in-progress downloads at
@@ -262,6 +288,9 @@ download_gbif_occurrences <- function(
   on_cap = c("warn", "error"),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   overwrite = FALSE,
+  submit_attempts = 4L,
+  submit_wait = c(15, 30, 60),
+  on_submit_failure = c("use_cache", "error"),
   prompt_mb = 50,
   cache_prompt_mb = 5120,
   allow_prompts = FALSE,
@@ -296,6 +325,15 @@ download_gbif_occurrences <- function(
   beep = FALSE
 ) {
   on_cap <- match.arg(on_cap)
+  on_submit_failure <- match.arg(on_submit_failure)
+  if (!is.numeric(submit_attempts) || length(submit_attempts) != 1L ||
+    is.na(submit_attempts) || submit_attempts < 1) {
+    stop("submit_attempts must be a single number >= 1")
+  }
+  if (!is.numeric(submit_wait) || length(submit_wait) == 0L || any(is.na(submit_wait)) ||
+    any(submit_wait < 0)) {
+    stop("submit_wait must be a non-empty numeric vector of non-negative seconds")
+  }
 
   # --- Dependency check -------------------------------------------------------
   if (!requireNamespace("rgbif", quietly = TRUE)) {
@@ -373,6 +411,7 @@ download_gbif_occurrences <- function(
   zip_path <- NULL
   old_zip_path <- NULL
   redownload_key <- NULL # a prepared GBIF key whose local zip was unusable
+  .served_from_cache_after_failure <- FALSE
 
   if (!is.null(meta_path) && file.exists(meta_path)) {
     meta <- readRDS(meta_path)
@@ -524,24 +563,64 @@ download_gbif_occurrences <- function(
       if (!is.null(basis_keep)) {
         preds <- c(preds, list(rgbif::pred_in("basisOfRecord", basis_keep)))
       }
-      dl_req <- do.call(
-        rgbif::occ_download,
-        c(preds, list(
-          format = "SIMPLE_CSV",
-          user = gbif_user,
-          pwd = gbif_pwd,
-          email = gbif_email
-        ))
+      dl_req <- .gbif_submit_with_retry(
+        preds,
+        list(format = "SIMPLE_CSV", user = gbif_user, pwd = gbif_pwd, email = gbif_email),
+        max_attempts = as.integer(submit_attempts), waits = submit_wait
       )
-      dl_key <- as.character(dl_req)
-      message(sprintf(
-        "  Download key: %s\n  Waiting for GBIF to prepare the file (polling every %d s)...",
-        dl_key, as.integer(max(status_ping, 3))
-      ))
+      if (inherits(dl_req, "gbif_submit_failure")) {
+        # GBIF itself refused the request (a 5xx/timeout, retried above). A
+        # verified cached zip for THIS EXACT query -- the one overwrite = TRUE
+        # was about to replace -- is the only thing that can rescue the run,
+        # and it is used loudly, never silently: this is the difference between
+        # a 5-hour production run dying at Step 3 and it completing on data
+        # that is identical unless GBIF changed since the cache was written.
+        .fallback_zip <- if (!is.null(old_zip_path) && file.exists(old_zip_path) &&
+          isTRUE(.gbif_zip_intact(old_zip_path)$ok)) {
+          old_zip_path
+        } else {
+          NULL
+        }
+        .err <- gsub("\\s+", " ", conditionMessage(dl_req$error))
+        if (identical(on_submit_failure, "use_cache") && !is.null(.fallback_zip)) {
+          .meta_ts <- tryCatch(readRDS(meta_path)$timestamp, error = function(e) NA)
+          warning(sprintf(
+            paste0(
+              "download_gbif_occurrences: GBIF rejected the download request %d time(s) (%s). ",
+              "USING THE VERIFIED CACHED ZIP for this exact query instead (fetched %s, key %s). ",
+              "The data are identical unless GBIF's holdings changed since then. Re-run with ",
+              "overwrite = TRUE once GBIF is back if you need a fresh pull; pass ",
+              "on_submit_failure = \"error\" to fail instead of falling back."
+            ),
+            dl_req$attempts, .err, format(.meta_ts, "%Y-%m-%d %H:%M"), meta$dl_key
+          ), call. = FALSE)
+          dl_key <- meta$dl_key
+          zip_path <- .fallback_zip
+          old_zip_path <- NULL # it is the live zip again; nothing to clean up
+          .served_from_cache_after_failure <- TRUE
+        } else {
+          stop(sprintf(
+            paste0(
+              "download_gbif_occurrences: GBIF rejected the download request %d time(s) (%s). ",
+              "This is a GBIF-side failure, not a query problem%s. Wait and re-run; ",
+              "check https://www.gbif.org/health for outages."
+            ),
+            dl_req$attempts, .err,
+            if (is.null(.fallback_zip)) " -- and no verified cached zip for this exact query exists to fall back on" else ""
+          ), call. = FALSE)
+        }
+      } else {
+        dl_key <- as.character(dl_req)
+        message(sprintf(
+          "  Download key: %s\n  Waiting for GBIF to prepare the file (polling every %d s)...",
+          dl_key, as.integer(max(status_ping, 3))
+        ))
 
-      rgbif::occ_download_wait(dl_req, status_ping = max(status_ping, 3L))
+        rgbif::occ_download_wait(dl_req, status_ping = max(status_ping, 3L))
+      }
     }
 
+    if (!isTRUE(.served_from_cache_after_failure)) {
     # Download zip to cache_dir (or tempdir if caching disabled)
     dest_dir <- if (!is.null(cache_dir)) {
       dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -645,6 +724,7 @@ download_gbif_occurrences <- function(
       file.remove(old_zip_path)
       message(sprintf("  Removed previous cached zip: %s", old_zip_path))
     }
+    } # end !.served_from_cache_after_failure
   }
 
   # --- Import -----------------------------------------------------------------
@@ -776,6 +856,7 @@ download_gbif_occurrences <- function(
 
   # --- Attributes -------------------------------------------------------------
   attr(raw, "download_key") <- dl_key %||% NA_character_
+  attr(raw, "served_from_cache_after_failure") <- isTRUE(.served_from_cache_after_failure)
   attr(raw, "capped_keys") <- capped_keys
   attr(raw, "report_params") <- list(
     source     = "GBIF (async download)",
@@ -1225,4 +1306,55 @@ download_gbif_occurrences <- function(
       show_col_types = FALSE, progress = FALSE
     ))
   }
+}
+
+
+# ------------------------------------------------------------------------------
+# Download-request submission with retry (2026-09-10)
+# ------------------------------------------------------------------------------
+
+#' Is this error message a transient GBIF/network failure worth retrying?
+#' @noRd
+.gbif_transient_error <- function(msg) {
+  grepl(
+    "\\b50[0-9]\\b|Backend fetch|Service Unavailable|Gateway|Timeout|timed out|Could not resolve host|Connection reset|Empty reply|Failed to connect",
+    msg,
+    ignore.case = TRUE
+  )
+}
+
+#' Submit a GBIF download request, retrying transient failures with backoff
+#'
+#' Returns the `occ_download` result on success, or an object of class
+#' `gbif_submit_failure` (fields `error`, `attempts`) once `max_attempts` are
+#' exhausted or a NON-transient error is met (that one is not retried: bad
+#' credentials or a malformed predicate will not fix themselves).
+#' @noRd
+.gbif_submit_with_retry <- function(preds, args, max_attempts = 4L, waits = c(15, 30, 60)) {
+  last <- NULL
+  attempts <- 0L
+  for (i in seq_len(max_attempts)) {
+    attempts <- i
+    res <- tryCatch(do.call(rgbif::occ_download, c(preds, args)), error = function(e) e)
+    if (!inherits(res, "error")) {
+      return(res)
+    }
+    last <- res
+    msg <- gsub("\\s+", " ", conditionMessage(res))
+    if (!.gbif_transient_error(msg)) {
+      stop(sprintf(
+        "download_gbif_occurrences: GBIF rejected the download request and the error does not look transient, so it was not retried: %s",
+        msg
+      ), call. = FALSE)
+    }
+    if (i < max_attempts) {
+      w <- waits[min(i, length(waits))]
+      message(sprintf(
+        "  GBIF refused the download request (attempt %d of %d): %s\n  Retrying in %s s...",
+        i, max_attempts, substr(msg, 1L, 120L), format(w)
+      ))
+      Sys.sleep(w)
+    }
+  }
+  structure(list(error = last, attempts = attempts), class = "gbif_submit_failure")
 }

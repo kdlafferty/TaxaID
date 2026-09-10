@@ -713,3 +713,125 @@ test_that("geometry = NULL is a global download: no pred_within, cache signs g0"
     "pred_within must NOT be built"
   )
 })
+
+# =============================================================================
+# Download-request retry + verified-cache fallback (2026-09-10). Motivated by a
+# real GreatLakes run dying at Step 3 on GBIF's own "HTTP 503 Backend fetch
+# failed" while a verified 1.1 MB zip for the identical query sat in the cache.
+# =============================================================================
+
+.gbif_503 <- function(...) stop("[\n  \"HTTP 503 Backend fetch failed\",\n  \"Request XID: 141370626077\"\n]")
+
+test_that("a transient 503 at submission is retried and then succeeds", {
+  cache_dir <- tempfile("gbif_retry_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  calls <- 0L
+  new_dl_key <- "2222222-999999999999999"
+  testthat::local_mocked_bindings(
+    occ_download = function(...) {
+      calls <<- calls + 1L
+      if (calls < 3L) .gbif_503()
+      new_dl_key
+    },
+    occ_download_wait = function(...) invisible(NULL),
+    occ_download_get = function(key, path, overwrite = TRUE) {
+      .make_fake_gbif_zip_named(path, key)
+      invisible(NULL)
+    },
+    .package = "rgbif"
+  )
+  out <- suppressMessages(download_gbif_occurrences(
+    keys = 100L, geometry = "POLYGON((0 0,0 1,1 1,1 0,0 0))", year_range = "2000,2024",
+    cache_dir = cache_dir, submit_wait = 0,
+    gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+  ))
+  expect_equal(calls, 3L)
+  expect_equal(attr(out, "download_key"), new_dl_key)
+  expect_false(attr(out, "served_from_cache_after_failure"))
+})
+
+test_that("with overwrite = TRUE and GBIF down, the verified cached zip is used with a loud warning", {
+  cache_dir <- tempfile("gbif_fallback_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  old_zip <- .make_fake_gbif_zip(cache_dir)
+  keys <- 100L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  year_range <- "2000,2024"
+  meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
+  saveRDS(list(dl_key = "0000000-000000000000000", zip_path = old_zip, timestamp = Sys.time() - 3600), meta_path)
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    occ_download = function(...) { calls <<- calls + 1L; .gbif_503() },
+    occ_download_meta = function(...) stop("offline"),
+    occ_download_get = function(...) stop("must not download"),
+    .package = "rgbif"
+  )
+  expect_warning(
+    out <- suppressMessages(download_gbif_occurrences(
+      keys = keys, geometry = geometry, year_range = year_range,
+      cache_dir = cache_dir, overwrite = TRUE, submit_attempts = 2L, submit_wait = 0,
+      gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    )),
+    "USING THE VERIFIED CACHED ZIP"
+  )
+  expect_equal(calls, 2L)
+  expect_true(attr(out, "served_from_cache_after_failure"))
+  expect_equal(attr(out, "download_key"), "0000000-000000000000000")
+  expect_true(file.exists(old_zip)) # the cache is the live zip again, not an orphan
+  expect_equal(readRDS(meta_path)$dl_key, "0000000-000000000000000")
+  expect_gt(nrow(out), 0L)
+})
+
+test_that("on_submit_failure = 'error' fails even with a verified cache; no cache always fails", {
+  cache_dir <- tempfile("gbif_fallback_err_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  old_zip <- .make_fake_gbif_zip(cache_dir)
+  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
+  saveRDS(list(dl_key = "0000000-000000000000000", zip_path = old_zip, timestamp = Sys.time()), meta_path)
+  testthat::local_mocked_bindings(
+    occ_download = function(...) .gbif_503(),
+    occ_download_meta = function(...) stop("offline"),
+    .package = "rgbif"
+  )
+  expect_error(
+    suppressMessages(suppressWarnings(download_gbif_occurrences(
+      keys = keys, geometry = geometry, year_range = year_range,
+      cache_dir = cache_dir, overwrite = TRUE, submit_attempts = 2L, submit_wait = 0,
+      on_submit_failure = "error",
+      gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    ))),
+    "GBIF rejected the download request 2 time"
+  )
+  expect_error(
+    suppressMessages(download_gbif_occurrences(
+      keys = 101L, geometry = geometry, year_range = year_range,
+      cache_dir = cache_dir, submit_attempts = 2L, submit_wait = 0,
+      gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    )),
+    "no verified cached zip"
+  )
+})
+
+test_that("a non-transient submission error (bad credentials) is raised at once, not retried", {
+  cache_dir <- tempfile("gbif_auth_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    occ_download = function(...) { calls <<- calls + 1L; stop("HTTP 401 Unauthorized") },
+    .package = "rgbif"
+  )
+  expect_error(
+    suppressMessages(download_gbif_occurrences(
+      keys = 100L, geometry = "POLYGON((0 0,0 1,1 1,1 0,0 0))", year_range = "2000,2024",
+      cache_dir = cache_dir, submit_wait = 0,
+      gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    )),
+    "does not look transient"
+  )
+  expect_equal(calls, 1L)
+})

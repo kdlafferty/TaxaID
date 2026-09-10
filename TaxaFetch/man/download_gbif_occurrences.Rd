@@ -12,6 +12,9 @@ download_gbif_occurrences(
   on_cap = c("warn", "error"),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   overwrite = FALSE,
+  submit_attempts = 4L,
+  submit_wait = c(15, 30, 60),
+  on_submit_failure = c("use_cache", "error"),
   prompt_mb = 50,
   cache_prompt_mb = 5120,
   allow_prompts = FALSE,
@@ -82,6 +85,26 @@ cached zip's date and size) before deleting it; a non-interactive session
 proceeds straight to a fresh download. Either way, the old cached zip is
 removed once the new one is saved -- it is never silently orphaned on
 disk.}
+
+\item{submit_attempts}{Integer (default \code{4}). How many times the download
+\emph{request} is submitted before giving up when GBIF answers with a
+transient server-side failure (HTTP 5xx such as \code{"503 Backend fetch
+failed"}, gateway errors, timeouts). Non-transient errors (bad credentials,
+a malformed predicate) are raised immediately, never retried.}
+
+\item{submit_wait}{Numeric vector of seconds (default \code{c(15, 30, 60)})
+slept between submission attempts; the last value repeats if
+\code{submit_attempts} exceeds its length.}
+
+\item{on_submit_failure}{\code{"use_cache"} (default) or \code{"error"}. What
+to do when every submission attempt fails AND a verified cached zip for
+this exact query exists (only possible with \code{overwrite = TRUE}, since
+the default already reuses such a zip without asking GBIF at all).
+\code{"use_cache"} imports that zip with a loud \code{warning()} naming
+the failure, the cache date and the download key, and sets
+\code{attr(result, "served_from_cache_after_failure") = TRUE}; the cached
+zip is kept as the live cache. \code{"error"} fails as before. With no
+usable cached zip the function always errors.}
 
 \item{prompt_mb}{Numeric. In an INTERACTIVE session, a prepared download at
 least this many MB triggers a summary (size, record count, whether a zip
@@ -241,6 +264,15 @@ that one of its rank-specific key columns (\code{taxonKey},
 \code{familyKey}, \code{genusKey}, \code{speciesKey}, etc.) matches one
 of the requested keys. Off-target records are dropped with a diagnostic
 message.
+
+\strong{GBIF outages (2026-09-10):} a production run that re-requests its
+occurrences on every run (\code{overwrite = TRUE}) used to die at this step
+the moment GBIF's API returned a 5xx, even with a verified zip for the
+identical query already on disk. The request is now retried with backoff
+(\code{submit_attempts}/\code{submit_wait}), and if GBIF is still refusing,
+\code{on_submit_failure = "use_cache"} falls back to that zip -- with a
+warning, never silently -- so the run completes on data that differ from a
+fresh pull only if GBIF's holdings changed since the cache was written.
 
 \strong{Concurrent download limits:} GBIF limits accounts to 3
 concurrent downloads (fewer for accounts with many prior downloads). If

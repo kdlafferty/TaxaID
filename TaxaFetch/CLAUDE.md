@@ -1,5 +1,24 @@
 # CLAUDE.md -- TaxaFetch
-# Last updated: 2026-09-05 (Opus 5 -- GBIF fetch: integrity, non-blocking communication,
+# Last updated: 2026-09-10 (Fable 5.1 -- `download_gbif_occurrences()` no longer dies when
+# GBIF itself refuses the download REQUEST. Real failure: the GreatLakes workflow, which
+# re-requests its occurrences on every run (`overwrite = TRUE`, Step 3, no cache gate by
+# design), stopped at `rgbif::occ_download()` with GBIF's own "HTTP 503 Backend fetch
+# failed" while a verified 1.1 MB zip for the IDENTICAL query sat in the cache. Two
+# changes, both in the submission path only (the existing download-side verify/retry of
+# 2026-09-05 is untouched): (1) the request is retried with backoff on transient
+# server-side errors (`submit_attempts = 4`, `submit_wait = c(15, 30, 60)`; 5xx / gateway
+# / timeout / connection errors, via `.gbif_transient_error()`); a NON-transient error
+# (401, malformed predicate) is raised at once, never retried, because a cache fallback
+# must not mask a broken credential. (2) When every attempt fails and a verified cached
+# zip for this exact query exists (only possible under `overwrite = TRUE`),
+# `on_submit_failure = "use_cache"` (default) imports it with a loud warning naming the
+# failure, the cache date and the key, keeps it as the live cache (not an orphan), and
+# sets `attr(out, "served_from_cache_after_failure") = TRUE`; `"error"` fails as before;
+# with no usable cache it always errors, now pointing at gbif.org/health. New internal
+# `.gbif_submit_with_retry()`. 4 tests (retry-then-succeed; fallback with warning and
+# intact cache; error mode and no-cache error; 401 not retried). Full suite + check see
+# session report; reinstalled.
+# Previous update, 2026-09-05 (Opus 5 -- GBIF fetch: integrity, non-blocking communication,
 # candidate scoping, and zip retention. Four separate real failures from one overnight
 # PtConception 18S run, in the order they bit:
 #

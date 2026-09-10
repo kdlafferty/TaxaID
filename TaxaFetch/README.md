@@ -99,7 +99,12 @@ same query skips the GBIF wait. GBIF download zips in particular can be
 multi-gigabyte and are cached **permanently, with no automatic
 expiration** -- re-running a query with `overwrite = TRUE` replaces the
 cached zip (asking for confirmation first in an interactive session) but
-otherwise nothing is ever cleared for you.
+otherwise nothing is ever cleared for you. If GBIF itself refuses the
+download request (a transient 5xx), the request is retried with backoff,
+and with `overwrite = TRUE` a verified cached zip for the identical query
+is used instead -- with a warning, never silently -- so a long run does
+not die at the fetch step (`on_submit_failure = "error"` restores the old
+behaviour).
 
 Run `taxafetch_clear_cache(dry_run = TRUE)` to see how much space the
 cache is using before clearing it, or `taxafetch_clear_cache()` to
