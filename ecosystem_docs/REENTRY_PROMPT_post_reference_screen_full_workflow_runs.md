@@ -55,6 +55,50 @@ as `*_run2_2026_09_11.rds`):
 - Largest remaining unsupported taxa: *Notropis hudsonius* 26 (was 20 in every run),
   *M. macrolepidotum* 18, *Umbra limi* 16, *Fundulus notatus* 10, *Esox lucius* 9.
 
+## Site 2 outcome — PtConception 12S single-site, 2026-09-11 (finished 12:26, 261 min)
+
+**Completed end to end on the new defaults. No ground truth here; checks are structural.**
+13,440 ASVs; 9,113 species-rank / 3,080 genus / 1,228 family / 9 order; 151 consensus
+taxa, 112 at species rank; final CSV 13,118 rows / 113 taxa. No earlier species list
+survives to diff against (the checkpoints are overwritten in place), so this run is the
+new baseline for the site.
+
+- **Match-candidate screen (7a.10):** 708 driving accessions, all cache-served, 2
+  actioned remove (OQ846263 *Rathbunella hypoplecta*, KM057967 *Jordania zonope*), 14 LLM
+  overrides, none on a removal. **The hand override `VETO_AUDIT_SPARED = "OQ846263"` is
+  still needed, not redundant**: the fresh production verdict is again `incongruent` /
+  `remove` / no corroboration at max_hits 20 (the 2026-09-04 audit found it at 100).
+- **Training screen (7a.11): did not run at all.** `ref_eval` 4,061 accessions, 0 from
+  cache, 0 evaluated, 1,866 pending, breaker tripped on the first batch (NCBI was
+  throttling all night); 2,195 read `keep` from local corroboration alone. 0 removed, 0
+  pairwise rows dropped (the 2026-09-03 prediction of ~360 "unverified" drops was for the
+  old mechanism; under the new one untested = kept). The 12S training-screen cache dir is
+  new, so nothing was served. It will fill in over runs; harmless.
+- **Coverage floor:** this site's externally built match object has no `query_coverage`
+  column and no recorded BLAST floor, so `evaluate_likelihoods()`'s check is silent and
+  0.8 is an assumption. The floor matters less here than at GreatLakes because the
+  matrix was built `by_genus = TRUE` (capped foreign reps): 19% of references had a
+  short-overlap best foreign pair (GreatLakes 81%). Measured on a 2,500-ASV sample,
+  old-style vs this run: H1 near-ties 951 -> 679, median top/second 1.32 -> 1.58,
+  agreement with the best BLAST hit 2,149 -> 2,174; global expected gap 0.154 -> 0.176.
+  Smaller effect, same direction.
+- **Shrinkage consequence worth knowing:** `tau2_score = 0` again (as at GreatLakes), so
+  every species' H1 mean score is the global mean (1 distinct value across 691 species);
+  species identity now lives in the gap mean (`tau/sigma` 0.50, weights up to 0.7) and
+  the variance. Because of that, `calibrate_query_noise(offset_form = "linear")` -- which
+  this workflow requests -- has no spread of trained means to fit a line through and
+  falls back to the constant offset (`-0.073`, 6,604 confident obs, 44 genera), with its
+  documented warning. That is the correct outcome, and it is the same conclusion the July
+  train-vs-inference study reached from the query side; the `"linear"` request is now
+  moot wherever EB collapses the score means.
+- **Sentinel:** *Girella nigricans* at species rank in 175 ASVs, no genus fallback, no
+  *G. simplicidens* leakage. Contamination: 10,218 `questionable_lab_contaminant` (the
+  known March-run control situation, unchanged), 205 LLM `high`. Habitat cache 681 taxa.
+- Top species by ASV count read as a coherent southern-California nearshore list
+  (*Sardinops sagax* 1,433, *Scorpaenichthys marmoratus* 1,109, *Engraulis mordax*
+  1,025, *Clinocottus recalvus* 843, ...) plus the usual human/cattle/pig/sea-lion/gray
+  whale rows.
+
 ## Run 1 outcome — GreatLakes, 2026-09-10 (09:02–14:03, 296 min). Read before running site 2.
 
 **Completed end to end; the rewiring worked; the Lamar numbers moved for reasons upstream

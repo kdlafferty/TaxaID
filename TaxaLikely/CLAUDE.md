@@ -48,6 +48,11 @@
 # REVIEW_lamar_score_arm.R. 7 new tests; devtools::test() 1099/0, check() 0/0/0 (the
 # score-to-likelihood vignette carried the setup-chunk purl=FALSE that knitr's tangler
 # ignores -- fixed per-chunk like TaxaExpect 2026-09-03), reinstalled 18:44 UTC.
+# INTERACTION seen on the first PtConception 12S run (2026-09-11): with tau2_score = 0
+# every species' H1 mu_score IS the global mean, so calibrate_query_noise(offset_form =
+# "linear") has no spread of trained means to fit and falls back to "constant" (with its
+# documented warning). Correct, and consistent with the July train-vs-inference study;
+# it just means the "linear" request is moot whenever EB collapses the score means.
 # Previous update, 2026-09-10 (Fable 5.1 -- FOUND, NOT FIXED, user decision pending: the H1 gap
 # feature is trained on short-overlap foreign pairs. `train.R` STEP 3 takes each reference's
 # `max_foreign_score` over ALL cross-species pairs with no coverage condition; on real
