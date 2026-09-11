@@ -88,19 +88,25 @@ OUT_PREFIX <- "TaxaID_test"
 # console: the screen banners, the calibration fallback warning, the cache
 # summaries and the GBIF fallback notice live only there. Output is tee'd
 # (sink split = TRUE, so it still shows here); messages and warnings are copied
-# by a calling handler, so they still show too. Once per session: a re-run in
-# the same session appends to the same log.
-if (!isTRUE(getOption("TaxaID.run_log_active"))) {
-  .log_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_run_", format(Sys.time(), "%Y%m%d_%H%M"), ".log"))
-  .log_con  <- file(.log_path, open = "wt")
+# by a calling handler through the SAME connection (two writers on one file
+# clip each other) and flushed at once. RE-ARMS ITSELF: an interrupt or error
+# at the console drops R's sink diversion but not this block's option flags,
+# so a re-run in the same session found the sink gone and logged nothing
+# (first MuguWilderFish run, 2026-09-11). Now a missing sink is reopened in
+# append mode on the same file; the handlers are registered once per session.
+.log_path <- getOption("TaxaID.run_log_path") %||%
+  file.path(OUT_DIR, paste0(OUT_PREFIX, "_run_", format(Sys.time(), "%Y%m%d_%H%M"), ".log"))
+if (sink.number() == 0L) {
+  .log_con <- file(.log_path, open = "at")
   sink(.log_con, split = TRUE)
-  # Handlers write through the SAME connection the sink uses (not by path):
-  # two writers on one file interleave and clip each other's lines.
-  globalCallingHandlers(
-    message = function(m) cat(conditionMessage(m), file = getOption("TaxaID.run_log_con")),
-    warning = function(w) cat("Warning: ", conditionMessage(w), "\n", file = getOption("TaxaID.run_log_con"))
-  )
-  options(TaxaID.run_log_active = TRUE, TaxaID.run_log_path = .log_path, TaxaID.run_log_con = .log_con)
+  options(TaxaID.run_log_path = .log_path, TaxaID.run_log_con = .log_con)
+  if (!isTRUE(getOption("TaxaID.run_log_handlers"))) {
+    globalCallingHandlers(
+      message = function(m) { con <- getOption("TaxaID.run_log_con"); if (!is.null(con) && isOpen(con)) { cat(conditionMessage(m), file = con); flush(con) } },
+      warning = function(w) { con <- getOption("TaxaID.run_log_con"); if (!is.null(con) && isOpen(con)) { cat("Warning: ", conditionMessage(w), "\n", file = con); flush(con) } }
+    )
+    options(TaxaID.run_log_handlers = TRUE)
+  }
 }
 message(sprintf("Console log for this session: %s", getOption("TaxaID.run_log_path")))
 
