@@ -81,6 +81,27 @@ library(rentrez)
 OUT_DIR <- getwd() #or set.
 OUT_PREFIX <- "TaxaID_test"
 # Helper: save an RDS with a standard name (useful for outputs from functions that use an api)
+# --- Console log (2026-09-11) --------------------------------------------------
+# Everything printed, messaged or warned during this run also goes to a
+# timestamped log in OUT_DIR. The first full run after the reference-screen
+# rewiring had to be reconstructed from checkpoints because nothing kept the
+# console: the screen banners, the calibration fallback warning, the cache
+# summaries and the GBIF fallback notice live only there. Output is tee'd
+# (sink split = TRUE, so it still shows here); messages and warnings are copied
+# by a calling handler, so they still show too. Once per session: a re-run in
+# the same session appends to the same log.
+if (!isTRUE(getOption("TaxaID.run_log_active"))) {
+  .log_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_run_", format(Sys.time(), "%Y%m%d_%H%M"), ".log"))
+  .log_con  <- file(.log_path, open = "wt")
+  sink(.log_con, split = TRUE)
+  globalCallingHandlers(
+    message = function(m) cat(conditionMessage(m), file = getOption("TaxaID.run_log_path"), append = TRUE),
+    warning = function(w) cat("Warning: ", conditionMessage(w), "\n", file = getOption("TaxaID.run_log_path"), append = TRUE)
+  )
+  options(TaxaID.run_log_active = TRUE, TaxaID.run_log_path = .log_path)
+}
+message(sprintf("Console log for this session: %s", getOption("TaxaID.run_log_path")))
+
 .save <- function(obj, tag) {
   path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_", tag, ".rds"))
   saveRDS(obj, path)
@@ -160,6 +181,10 @@ SITE_HABITAT <- "Marine"                 # Target site habitat
 
 # --- TaxaLikely reference/coverage settings -----------------------------------
 BARCODE_TERM <- "12S"                    # Marker term for audit_barcode_coverage();
+# Regression sentinels (2026-09-11): species-rank counts for these taxa are
+# recorded in the session metadata at the end of the run, so drift between runs
+# is caught by diffing two small files rather than re-deriving anything by hand.
+SENTINEL_TAXA <- character(0)  # EDIT: species with a documented debugging history at this site
                                           # matches this template's tiny MiFish-style test sequences
 
 # --- Review context (Step 9) -------------------------------------------------
@@ -841,6 +866,7 @@ habitat_lookup <- TaxaHabitat::build_habitat_lookup(
   llm_fn         = .llm_fn_,
   cache_dir      = file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_cache"))
 )
+.save(habitat_lookup, "habitat_lookup")  # 2026-09-11: per-taxon verdicts, diffable across runs
 occurrences_with_habitat <- TaxaHabitat::assign_habitat_biological(
   occurrence_data = all_occurrences,
   habitats_df  = habitat_lookup,

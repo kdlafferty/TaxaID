@@ -19,6 +19,40 @@ Read `TaxaLikely/CLAUDE.md`'s 2026-09-08 top session note (the retirement) and
 `verify_local_corroborations()`, the KJ135626/MZ605481 false-rescue lesson) before
 digging into any specific number below -- this doc assumes that context.
 
+## Workflow additions, 2026-09-11 (all 6 production workflows + both templates; external files backed up `*.bak_pre_sentinels_log_audit`)
+
+1. **Console log.** Each session writes `<OUT_PREFIX>_run_<timestamp>.log` in OUT_DIR:
+   printed output is tee'd (`sink(split = TRUE)`), messages and warnings are copied
+   by a `globalCallingHandlers()` handler so they still show in the console. Once per
+   session; a re-run appends. Path recorded in the session metadata.
+2. **`.save(habitat_lookup, "habitat_lookup")`** right after the cached lookup, so
+   per-taxon habitat verdicts are a diffable checkpoint, not just cache files.
+3. **Standalone, resumable training screen:** `inst/screen_training_references_
+   standalone.R <GreatLakes|PtCon12S|PtCon18S> [max_hours]` runs Step 7a.11's exact
+   call against the same cache dir, sleeping on NCBI's breaker, until every accession
+   has a verdict; the next workflow run then serves the screen from cache. Run it
+   overnight instead of letting the workflow grind. Mugu has no training screen.
+4. **`session_meta$regression_sentinels`** (single-marker workflows) /
+   `<OUT_PREFIX>_regression_sentinels.rds` (Mugu, which has no metadata block):
+   training stats and floor, both screens' breaker flags and removal counts, the GBIF
+   cache-fallback flag, the habitat cache summary, species-rank counts for the site's
+   `SENTINEL_TAXA` (Section 0: GL grass carp/yellow perch/walleye; PtCon 12S *Girella
+   nigricans*/*G. simplicidens*/*Fundulus parvipinnis*; Mugu the *Fundulus* pair; 18S
+   none yet), and the console-log path.
+5. **Automatic removal audit** after the match-candidate screen: when anything is
+   actioned "remove", `verify_removal_candidates(screen_corroborators = TRUE)` runs on
+   just those accessions (cache dir `*_audit_cache`, checkpoint `removal_audit`). A
+   removal is overturned automatically ONLY if the audit ran (spared is NA on an NCBI
+   timeout), it is spared on >= 3 corroborators or on 1-2 whose own labels read "keep"
+   ("untested" does not count), and the LLM review did not call it a genuine mislabel
+   -- the KJ135626/MZ605481 shape stays removed. PtCon 12S keeps `VETO_AUDIT_SPARED`
+   alongside (Reduce(union, ...)); the audit should reproduce it and make it redundant.
+6. **PtConception match objects** are built by each workflow's own Step 1
+   `blast_sequences()` call behind a `match_obj.rds` checkpoint. Deleting that
+   checkpoint forces a full re-BLAST (hours, NCBI) and the rebuilt object then carries
+   `query_coverage` + the recorded floor, so `evaluate_likelihoods()`'s train/inference
+   check works there too. Not done; a user decision on when to spend that.
+
 ## Run 2 outcome — GreatLakes, 2026-09-10/11 (finished 02:34, 244 min), first run on the coverage floor + habitat cache
 
 **Completed end to end; PASSES the validation gate and beats the pre-drift baseline.**
