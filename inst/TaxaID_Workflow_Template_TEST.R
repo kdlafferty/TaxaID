@@ -94,11 +94,13 @@ if (!isTRUE(getOption("TaxaID.run_log_active"))) {
   .log_path <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_run_", format(Sys.time(), "%Y%m%d_%H%M"), ".log"))
   .log_con  <- file(.log_path, open = "wt")
   sink(.log_con, split = TRUE)
+  # Handlers write through the SAME connection the sink uses (not by path):
+  # two writers on one file interleave and clip each other's lines.
   globalCallingHandlers(
-    message = function(m) cat(conditionMessage(m), file = getOption("TaxaID.run_log_path"), append = TRUE),
-    warning = function(w) cat("Warning: ", conditionMessage(w), "\n", file = getOption("TaxaID.run_log_path"), append = TRUE)
+    message = function(m) cat(conditionMessage(m), file = getOption("TaxaID.run_log_con")),
+    warning = function(w) cat("Warning: ", conditionMessage(w), "\n", file = getOption("TaxaID.run_log_con"))
   )
-  options(TaxaID.run_log_active = TRUE, TaxaID.run_log_path = .log_path)
+  options(TaxaID.run_log_active = TRUE, TaxaID.run_log_path = .log_path, TaxaID.run_log_con = .log_con)
 }
 message(sprintf("Console log for this session: %s", getOption("TaxaID.run_log_path")))
 
