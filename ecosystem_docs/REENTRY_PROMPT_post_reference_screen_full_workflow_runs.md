@@ -19,6 +19,42 @@ Read `TaxaLikely/CLAUDE.md`'s 2026-09-08 top session note (the retirement) and
 `verify_local_corroborations()`, the KJ135626/MZ605481 false-rescue lesson) before
 digging into any specific number below -- this doc assumes that context.
 
+## Run 2 outcome — GreatLakes, 2026-09-10/11 (finished 02:34, 244 min), first run on the coverage floor + habitat cache
+
+**Completed end to end; PASSES the validation gate and beats the pre-drift baseline.**
+Lamar, species level, matched samples (`REVIEW_formal_lamar_check.R`, outputs saved
+as `*_run2_2026_09_11.rds`):
+
+| | Run 1 (2026-09-10) | Validation arm C | **Run 2** | 2026-09-07 baseline |
+|---|---|---|---|---|
+| co-detections | 593 | 798 | **840** | 602 |
+| ours-only | 144 | 177 | **141** | 104 |
+| precision | 0.805 | 0.818 | **0.856** | 0.853 |
+| recall vs Lamar species calls | 0.549 | 0.738 | **0.777** | 0.557 |
+| unique species | 29/61 | 41/61 | **42/61** | 29/61 |
+| overconfident | 1/1081 | 0 | **0** | 1/1081 |
+
+- Species-rank observations 543 -> 694; 64 distinct consensus taxa; final CSV 870 rows /
+  59 taxa (46 in the 2026-09-04 baseline). Grass carp at species rank in 5 ASVs, reviewed
+  possible/possible/likely/low, valid, in the CSV. *Perca flavescens* 78 obs unchanged.
+- Training: `min_pair_coverage 0.8`, EB shrinkage `tau/sigma` 0.00 (score) / 0.50 (gap),
+  61 self-side fallbacks, 3 references with no qualifying foreign pair; 402 species,
+  363 singletons, as in the harness.
+- GBIF fetch succeeded on a fresh key (`served_from_cache_after_failure = FALSE`) after
+  two earlier attempts that night died on GBIF's own 503 and a transfer timeout -- both
+  now retried/fallback-handled in `download_gbif_occurrences()`.
+- Training screen still INCOMPLETE: 761 pending (20 more evaluated before the breaker
+  tripped again). Kept as 'untested'; harmless; it will keep chipping away per run.
+- **Why run 2 beats arm C (810/885 agree):** the habitat cache holds the verdicts from
+  the 2026-09-10 live test, not the ones run 1 drew uncached. Under the cached weights
+  3 of *Moxostoma macrolepidotum*'s 17 nearby records read Lentic (run 1: 0), so it is
+  `resident_observed` (theta 2.1e-3, 6.3 effective records; run 1: 1.1e-5, undetected)
+  and it takes the redhorse calls with Lamar support (24 of 42) where *M. anisurum* had
+  7 of 49. *Minytrema melanops* +21 supported for the same reason. This is the exact
+  instability the cache exists to freeze; from here on the priors are reproducible.
+- Largest remaining unsupported taxa: *Notropis hudsonius* 26 (was 20 in every run),
+  *M. macrolepidotum* 18, *Umbra limi* 16, *Fundulus notatus* 10, *Esox lucius* 9.
+
 ## Run 1 outcome — GreatLakes, 2026-09-10 (09:02–14:03, 296 min). Read before running site 2.
 
 **Completed end to end; the rewiring worked; the Lamar numbers moved for reasons upstream
