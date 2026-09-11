@@ -30,6 +30,21 @@
 # error with no cache -> error naming the prepared key). 80/80 on the file; full suite
 # 764 pass / 2 pre-existing CoordinateCleaner environment failures; check 0/0/0;
 # reinstalled.
+#
+# 2026-09-11, third GBIF spot in one night: the first Mugu run got a key, then the
+# STATUS POLL (`rgbif::occ_download_wait()`) died on curl's "Timeout was reached
+# [api.gbif.org]" -- and the prepared key was lost, so a re-run would have paid for a
+# new request. Now: (1) `.gbif_wait_with_retry()` restarts the poll on transient
+# errors with the same backoff, then the same cache fallback; (2) on any error path
+# AFTER GBIF has issued a key (poll or fetch exhausted, no cache), `.gbif_record_
+# pending_key()` writes the key into the cache metadata with `pending = TRUE`, and
+# the next call re-fetches that prepared download -- polling it first, since it may
+# still be preparing -- instead of submitting a new request, regardless of
+# `overwrite` (a never-downloaded key is not a stale cache). A completed key whose
+# zip merely went missing is still re-fetched WITHOUT polling, as before (an
+# existing test asserts that; my first draft polled it and broke the test). +2
+# tests (poll retry-then-succeed; poll never succeeds -> pending recorded, re-run
+# fetches with zero new requests and clears the flag). 89/89 on the file.
 # Previous update, 2026-09-05 (Opus 5 -- GBIF fetch: integrity, non-blocking communication,
 # candidate scoping, and zip retention. Four separate real failures from one overnight
 # PtConception 18S run, in the order they bit:

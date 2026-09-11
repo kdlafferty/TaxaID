@@ -15,6 +15,11 @@
   same transient failure as a truncated zip: retried with backoff, then the
   same verified-cache fallback. Previously a thrown curl error escaped the
   retry loop entirely.
+* `download_gbif_occurrences()`: the status poll (`occ_download_wait()`) is
+  retried the same way; and when GBIF has issued a key but the poll or fetch
+  still fails with no cache to fall back on, the key is recorded as *pending*
+  in the cache metadata so the next call re-fetches the prepared download
+  instead of submitting a new request.
 
 ## Polishing Phase (Sessions 57-59)
 

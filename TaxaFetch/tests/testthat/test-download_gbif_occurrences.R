@@ -888,3 +888,69 @@ test_that("a thrown transfer error with no cache errors after all attempts and n
     "4444444-999999999999999.*no verified cached zip"
   )
 })
+
+test_that("a transient timeout while polling status is retried, then the download proceeds", {
+  cache_dir <- tempfile("gbif_poll_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  polls <- 0L
+  key <- "5555555-999999999999999"
+  testthat::local_mocked_bindings(
+    occ_download = function(...) key,
+    occ_download_wait = function(...) { polls <<- polls + 1L; if (polls < 3L) stop("Timeout was reached [api.gbif.org]: Connection timed out after 10003 milliseconds"); invisible(NULL) },
+    occ_download_meta = function(...) stop("offline"),
+    occ_download_get = function(k, path, overwrite = TRUE) { .make_fake_gbif_zip_named(path, k); invisible(NULL) },
+    .package = "rgbif"
+  )
+  out <- suppressMessages(download_gbif_occurrences(
+    keys = 100L, geometry = "POLYGON((0 0,0 1,1 1,1 0,0 0))", year_range = "2000,2024",
+    cache_dir = cache_dir, submit_wait = 0,
+    gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+  ))
+  expect_equal(polls, 3L)
+  expect_equal(attr(out, "download_key"), key)
+})
+
+test_that("a poll that never succeeds records the prepared key, and the re-run fetches it without a new request", {
+  cache_dir <- tempfile("gbif_pending_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  key <- "6666666-999999999999999"
+  requests <- 0L
+  testthat::local_mocked_bindings(
+    occ_download = function(...) { requests <<- requests + 1L; key },
+    occ_download_wait = function(...) stop("Timeout was reached [api.gbif.org]"),
+    occ_download_meta = function(...) stop("offline"),
+    .package = "rgbif"
+  )
+  expect_error(
+    suppressMessages(download_gbif_occurrences(
+      keys = keys, geometry = geometry, year_range = year_range,
+      cache_dir = cache_dir, submit_attempts = 2L, submit_wait = 0,
+      gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    )),
+    "recorded in the cache metadata"
+  )
+  meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
+  expect_true(file.exists(meta_path))
+  expect_true(isTRUE(readRDS(meta_path)$pending))
+  expect_equal(requests, 1L)
+
+  # Re-run: GBIF is back. No new request may be submitted; the pending key is fetched.
+  testthat::local_mocked_bindings(
+    occ_download = function(...) stop("must not submit a new request"),
+    occ_download_wait = function(...) invisible(NULL),
+    occ_download_meta = function(...) stop("offline"),
+    occ_download_get = function(k, path, overwrite = TRUE) { .make_fake_gbif_zip_named(path, k); invisible(NULL) },
+    .package = "rgbif"
+  )
+  out <- suppressMessages(download_gbif_occurrences(
+    keys = keys, geometry = geometry, year_range = year_range,
+    cache_dir = cache_dir, overwrite = TRUE, submit_wait = 0,
+    gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+  ))
+  expect_equal(attr(out, "download_key"), key)
+  expect_false(isTRUE(readRDS(meta_path)$pending))
+  expect_gt(nrow(out), 0L)
+})

@@ -268,14 +268,18 @@ that one of its rank-specific key columns (\code{taxonKey},
 of the requested keys. Off-target records are dropped with a diagnostic
 message.
 
-\strong{GBIF outages (2026-09-10):} a production run that re-requests its
+\strong{GBIF outages (2026-09-10/11):} a production run that re-requests its
 occurrences on every run (\code{overwrite = TRUE}) used to die at this step
 the moment GBIF's API returned a 5xx, even with a verified zip for the
 identical query already on disk. The request is now retried with backoff
 (\code{submit_attempts}/\code{submit_wait}), and if GBIF is still refusing,
 \code{on_submit_failure = "use_cache"} falls back to that zip -- with a
 warning, never silently -- so the run completes on data that differ from a
-fresh pull only if GBIF's holdings changed since the cache was written.
+fresh pull only if GBIF's holdings changed since the cache was written. The
+status poll and the file fetch retry the same way. When a key has been issued
+but the poll or fetch still fails and there is no cache to fall back on, the
+key is recorded in the cache metadata as \emph{pending}, and the next call
+re-fetches that prepared download instead of submitting a new request.
 
 \strong{Concurrent download limits:} GBIF limits accounts to 3
 concurrent downloads (fewer for accounts with many prior downloads). If
