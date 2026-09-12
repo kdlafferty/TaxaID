@@ -1,4 +1,56 @@
 # CLAUDE.md -- TaxaAssign
+# 2026-09-12, later (Opus 5): score_consensus() gains consensus_mode = c("gap", "bracket"),
+# plus agreement_fraction / bracket_width / bracket_fallback, and two new output columns
+# (bracket_width_used, agreement_achieved). "gap" is the default and is UNCHANGED -- verified
+# not just by the existing tests but by diffing the new function against `git show HEAD:` over
+# 576 parameter/data combinations (12 random datasets x min_score x max_gap x rank_thresholds
+# x whitelist, plus the auto-detected rank_system path): 0 mismatches, new columns strictly
+# additive at the end. The backward-compat guarantee is STRUCTURAL, not incidental:
+# .find_consensus_by_agreement() delegates to the existing .find_lca() whenever
+# agreement_fraction >= 1, so unanimity is literally the same code it always was.
+#
+# THE DOCS WERE WRONG AND ARE NOW CORRECTED. This function's header and @section Purpose
+# claimed it reproduced "the GITA / Jonah Ventures convention". It did not. JV's actual
+# published rule is: a 1%-wide bracket anchored at the ESV's top score, then any taxon
+# holding >= 90% of the HITS in that bracket is reported at its rank (NA at that rank
+# otherwise), with a widen-to-2% fallback when a 97%-or-better match still returns no family.
+# The old (single, gap-style) algorithm is the generic fixed-threshold/LCA convention.
+# This is load-bearing for the benchmark paper: strict unanimity upranks MORE readily than a
+# 90% rule, so a TaxaID-vs-score_consensus() comparison run in gap mode is biased toward
+# TaxaID on resolution. Measured on real data: same-name rate vs JV's delivered taxonomy is
+# 0.9999 at agreement_fraction = 0.9 but 0.9957/0.9918 at 1.0 -- unanimity disagrees ~60x
+# more often. ecosystem_docs/AQUARIUM_BENCHMARK_DESIGN.md and TODO_validation_benchmark.md
+# both proposed gap mode AS the JV benchmark and were corrected too.
+#
+# VALIDATED ON REAL DATA, 14,718 / 14,719 ESVs = 0.9999 exact (same rank AND same name)
+# against Jonah Ventures' OWN delivered consensus taxonomy for both Pt Conception MiFish runs
+# -- diagnostics/jv_bracket_consensus_validation.R. Run on JV's own *-esv-data.csv detailed-hit
+# tables rather than TaxaID's BLAST output ON PURPOSE: both sides then see an identical hit
+# table, so a disagreement is the decision RULE, not the reference library. (Confirmed the
+# esv-data file really is their 1% bracket: every ESV's hits span <= 1 point.) NOT tuned to
+# that number -- we cannot see their reference library, so exact reproduction is not expected.
+#
+# Three JV ambiguities decided; all three are paper-relevant, none is buried:
+#   1. BRACKET LOWER BOUND. Implemented half-open (top - width, top] as specified. JV's real
+#      bound is CLOSED: ESV_108298 has 9 hits at exactly top - 1 that demonstrably fed their
+#      published Perciformes call (10/11 = 0.909). Independent confirmation: JV's delivered
+#      "% match" for that ESV is 87.8, not the top 87.2->88.2, and "# species" is 9 -- those
+#      are the best identity and species count among the hits SUPPORTING the consensus, which
+#      only reconcile if the 87.2 hits were inside their bracket. Costs exactly 1 ESV in
+#      14,719. Left as specified, not silently widened; bracket_width = 1 + 1e-6 gives closed
+#      behaviour. NB on IEEE doubles 71.9 - 1 = 70.89999..., so a strict reading would
+#      otherwise have rested on binary representation.
+#   2. "NO FAMILY LEVEL TAXONOMY IS RETURNED" read as "consensus is coarser than family, or
+#      absent" -- a genus-level call DOES print a family in a hierarchical Kingdom..Species
+#      output, so those are not eligible. Fired on 10 ESVs, changed 0 calls.
+#   3. ANCHORED BRACKET, NOT A STEPPING LOOP -- confirmed empirically: JV hit sets span e.g.
+#      98.8-99.4, which crosses an integer boundary and rules out a fixed 99-100 / 98-99 grid.
+# Also learned: widening is NON-monotone (added hits can break a tie, e.g. 1:1 at 1% becoming
+# 1:19 at 2%), which is the only case where the fallback can rescue a family call.
+# 13 new tests (regression, mode equivalence, the 90% rule, the inclusive agreement boundary,
+# NA-in-denominator, fallback both-conditions, unresolvable in both modes, hits-not-taxa,
+# multi-taxon-clears-bar -> NA). devtools::check() 0 errors / 0 warnings / 1 pre-existing NOTE
+# (a stray README .bak at repo top level). Reinstalled.
 # 2026-09-12 (Fable 5.1): combine_multisite_priors() NaN fix. The first real multi-site run
 # (new PtConceptionWorkflow_12S_multi_site_FAST.R: per-Location kernel priors, join_priors(site
 # = <obs x site table>) -> combine_multisite_priors() -> compute_posterior()) died at

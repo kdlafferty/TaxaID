@@ -11,7 +11,11 @@ score_consensus(
   whitelist = NULL,
   score_col = "score_original",
   rank_system = NULL,
-  rank_thresholds
+  rank_thresholds,
+  consensus_mode = c("gap", "bracket"),
+  agreement_fraction = 1,
+  bracket_width = 1,
+  bracket_fallback = NULL
 )
 }
 \arguments{
@@ -75,6 +79,68 @@ rather than 0-100 percent-identity, a supplied 0-100-scale
 \code{rank_thresholds} is automatically rescaled by /100 (with an
 informational message) -- pass your own already-scaled
 \code{rank_thresholds} to silence this.}
+
+\item{consensus_mode}{Character, one of \code{"gap"} (default) or \code{"bracket"}.
+\code{"gap"} is the pre-2026-09-12 behaviour exactly: \code{min_score} floor ->
+\code{max_gap} window -> LCA over the \emph{distinct retained taxa}.  \code{"bracket"}
+selects the Jonah Ventures rule: \code{min_score} floor -> a \code{bracket_width}
+window anchored at the top score -> agreement rule over the \emph{retained
+hits} (not distinct taxa -- JV's rule counts hits).  \code{max_gap} is ignored
+in \code{"bracket"} mode; \code{bracket_width}/\code{bracket_fallback} are ignored in
+\code{"gap"} mode.}
+
+\item{agreement_fraction}{Numeric in \verb{(0, 1]}.  A taxon is reported at a
+rank when it appears in at least this fraction of the retained rows.
+\code{1} (default) is strict unanimity, i.e. a classical LCA.  Jonah Ventures
+uses \code{0.9}.  Applies in \strong{both} modes: in \code{"gap"} mode it generalises
+the LCA step, and \code{agreement_fraction = 1} there is byte-for-byte the
+pre-2026-09-12 result.  The comparison is inclusive at the boundary
+(9 of 10 rows resolves at \code{agreement_fraction = 0.9}), and is made with
+a small floating-point tolerance so that e.g. \code{27/30 >= 0.9} cannot fail
+on binary representation.  If two or more taxa clear the bar at the same
+rank (possible only when \code{agreement_fraction <= 0.5}), \code{NA} is reported
+at that rank rather than an arbitrary winner -- JV: "If several taxa
+within a taxonomic level match the ESV, an NA is reported for that
+taxonomic level."
+
+\strong{Rows whose label at a rank is missing count toward the denominator,
+not toward any taxon.} A hit with no family assigned is evidence
+\emph{against} a family-level consensus, not a row to be quietly dropped;
+dropping it would inflate agreement, and JV's own delivered output
+contains \code{NA} ranks.}
+
+\item{bracket_width}{Numeric, positive.  Width of the score bracket in
+\code{score_col}'s own units.  Jonah Ventures uses \code{1} (one percent-identity
+point), which is the default.  Hits scoring in
+\verb{(top - bracket_width, top]} are retained.  Only used when
+\code{consensus_mode = "bracket"}.
+
+\strong{The lower bound is exclusive, and Jonah Ventures' own is not} (found
+2026-09-12 while validating against their delivered Pt Conception MiFish
+taxonomy -- \code{diagnostics/jv_bracket_consensus_validation.R}).  Their
+delivered detailed-hit tables do contain hits at exactly \code{top - 1}, and
+those hits demonstrably contributed to their published consensus, so
+their real interval is the closed \verb{[top - 1, top]}.  The exclusive bound
+implemented here is the documented published description read literally.
+It matters for 1 ESV in 14,719 across both Pt Conception MiFish runs, so
+it is left as specified rather than quietly widened; pass
+\code{bracket_width = 1 + 1e-6} for the closed-interval behaviour.}
+
+\item{bracket_fallback}{\code{NULL} (default, no fallback) or a named list with
+elements \code{min_score}, \code{rank} and \code{width} describing a widen-the-bracket
+rule.  Jonah Ventures' published rule is
+\code{list(min_score = 97, rank = "family", width = 2)}: \emph{if} the top score is
+at least \code{min_score} \strong{and} the bracket produced no taxonomy at
+\code{rank} or finer (i.e. no family-level name would be printed), the
+observation is recomputed with a bracket of width \code{width}.  Only used
+when \code{consensus_mode = "bracket"}.
+
+Widening is \strong{not} monotone in resolution: adding hits usually dilutes
+agreement, but it can also break a tie in favour of one label (e.g. a
+1:1 split at 1\% becoming 1:19 at 2\%), which is the case in which the
+fallback actually rescues a family-level call.  The widened result
+replaces the narrow one whenever the fallback fires, whether or not it
+resolved -- \code{bracket_width_used} records which bracket produced the row.}
 }
 \value{
 A data frame with one row per \code{observation_id}:
@@ -86,8 +152,14 @@ A data frame with one row per \code{observation_id}:
 \code{"unanimous"} (all retained taxa agree at the finest rank),
 \code{"single"} (only one taxon retained after filtering),
 \code{"lca"} (upranked because retained taxa disagree at finer ranks),
+\code{"bracket"} (\code{"bracket"} mode: resolved by the agreement rule inside
+the initial bracket), \code{"bracket_widened"} (\code{"bracket"} mode:
+resolved only after \code{bracket_fallback} widened the bracket),
 \code{"threshold"} (rank-capped by \code{rank_thresholds}), or \code{NA}
-(unresolvable).}
+(unresolvable).  \code{"threshold"} takes precedence over the bracket
+reasons when a rank cap also fired, exactly as it does over
+\code{"unanimous"}/\code{"lca"}; read \code{bracket_width_used} to see whether the
+fallback ran on such a row.}
 \item{\code{is_resolved}}{\code{TRUE} when the consensus is at the finest rank in
 \code{rank_system}.}
 \item{\code{top_score}}{Highest score among retained hits for this sample.}
@@ -103,23 +175,54 @@ is non-\code{NULL}.}
 \item{\code{whitelist_capped}}{Logical.  \code{TRUE} when the consensus was
 upranked because the original taxon was absent from \code{whitelist}.
 Only present when \code{whitelist} is non-\code{NULL}.}
+\item{\code{bracket_width_used}}{Numeric.  The bracket width that actually
+produced this row -- \code{bracket_width} normally, \code{bracket_fallback$width}
+when the fallback fired, and \code{NA_real_} in \code{"gap"} mode (which has no
+bracket).  Always present, so the column set does not change with
+\code{consensus_mode}.}
+\item{\code{agreement_achieved}}{Numeric.  The fraction of the rows the
+consensus was computed over (retained hits in \code{"bracket"} mode,
+distinct retained taxa in \code{"gap"} mode) that carry
+\code{consensus_taxon} at \code{consensus_rank} -- recomputed at the \emph{final}
+reported rank, so it still describes the row after a rank cap or a
+whitelist uprank.  \code{NA_real_} when unresolvable, and also when the
+final rank has no column and no derivation in the retained rows (so
+the fraction is not computable rather than genuinely zero).}
 }
 }
 \description{
 For each \code{observation_id}, applies conventional score-based filtering to derive a
-consensus taxonomic assignment.  The algorithm:
+consensus taxonomic assignment.  Two conventional decision rules are
+available, selected by \code{consensus_mode}.
 }
 \details{
+\strong{\code{consensus_mode = "gap"} (default) -- fixed-threshold / LCA convention:}
 \enumerate{
 \item \strong{Score filter:} discard hits below \code{min_score}.
 \item \strong{Gap filter:} among remaining hits, keep only those within \code{max_gap} of
 the top score (per sample).
-\item \strong{LCA:} compute the lowest common ancestor (LCA) of the retained hits.
+\item \strong{LCA:} compute the lowest common ancestor (LCA) of the retained taxa.
 \item \strong{Rank threshold cap:} if \code{rank_thresholds} is supplied, cap the
 consensus at the finest rank whose minimum score the top hit meets.
 \item \strong{Whitelist upranking:} if \code{whitelist} is supplied, verify the consensus
 taxon appears in the whitelist.  If not, uprank to the coarsest rank
 where at least one whitelist member agrees with the retained candidates.
+}
+
+\strong{\code{consensus_mode = "bracket"} -- adaptive-bracket / agreement-fraction
+convention (the rule Jonah Ventures documents):}
+\enumerate{
+\item \strong{Score filter:} discard hits below \code{min_score} (as above).
+\item \strong{Bracket:} retain hits scoring in \verb{(top - bracket_width, top]}, where
+\code{top} is this observation's highest surviving score.
+\item \strong{Agreement:} walking finest rank to coarsest, report the taxon holding
+at least \code{agreement_fraction} of the \emph{retained hits} at that rank;
+report \code{NA} at that rank otherwise.  The consensus is the finest rank
+with a non-\code{NA} label.
+\item \strong{Fallback:} if \code{bracket_fallback} is supplied and its condition is met,
+repeat steps 2-3 with the wider bracket it names.
+\item \strong{Rank threshold cap} and \strong{whitelist upranking} then apply exactly as
+in \code{"gap"} mode.
 }
 
 This function does not require a trained likelihood model or priors.  It is
@@ -160,15 +263,42 @@ pipeline you're mirroring genuinely has no rank-threshold step (rare).
 \section{Purpose -- why this function exists alongside the Bayesian pathway}{
 
 \code{score_consensus()} is deliberately a \strong{reproduction of a conventional,
-non-Bayesian pipeline's decision rule} (fixed percent-identity thresholds
-per rank, e.g. the GITA / Jonah Ventures convention), not TaxaID's own
-species-level discriminator. Its purpose is to let a user run the exact
-same match data through both approaches and compare: what would a
-conventional fixed-threshold workflow have called here, versus what does
-TaxaID's Bayesian pathway (\code{TaxaLikely}'s bivariate-normal likelihoods ->
-\code{\link[=compute_posterior]{compute_posterior()}} -> \code{\link[=posterior_consensus]{posterior_consensus()}}) call? This is the
-intended, load-bearing use case -- mirroring another pipeline's process so
-its output can be directly compared against TaxaID's.
+non-Bayesian pipeline's decision rule}, not TaxaID's own species-level
+discriminator. Its purpose is to let a user run the exact same match data
+through both approaches and compare: what would a conventional workflow
+have called here, versus what does TaxaID's Bayesian pathway
+(\code{TaxaLikely}'s bivariate-normal likelihoods -> \code{\link[=compute_posterior]{compute_posterior()}} ->
+\code{\link[=posterior_consensus]{posterior_consensus()}}) call? This is the intended, load-bearing use case
+-- mirroring another pipeline's process so its output can be directly
+compared against TaxaID's.
+
+\strong{Which convention is reproduced (corrected 2026-09-12).} \code{"gap"} mode
+reproduces the \strong{common fixed-threshold / LCA convention}: a fixed
+percent-identity floor, an optional gap window, per-rank thresholds, and a
+strict-unanimity LCA. \code{"bracket"} mode reproduces the
+\strong{adaptive-bracket-with-agreement-fraction convention used by Jonah
+Ventures}: a 1\%-wide bracket anchored at the ESV's top score, a taxon
+reported at a rank only when it holds at least 90\% of the hits in that
+bracket, \code{NA} at that rank otherwise, and a widen-to-2\% fallback when a
+match of 97\% or better still returns no family. Before 2026-09-12 this function's
+documentation attributed the gap-mode rule to "the GITA / Jonah Ventures
+convention"; that attribution was \strong{wrong} and has been removed. The
+difference is not cosmetic for a published comparison: \strong{strict unanimity
+(\code{agreement_fraction = 1}) upranks more readily than a 90\% rule}, so a
+TaxaID-vs-\code{score_consensus()} comparison run in gap mode is biased toward
+TaxaID on resolution.
+
+\strong{Prefer a provider's delivered taxonomy when you have it.} When a
+commercial provider ships its own consensus taxonomy alongside the read
+data (Jonah Ventures' \verb{*-read-data.csv} carries \code{Kingdom}...\code{Species} per
+ESV; the companion \verb{*-esv-data.csv} carries the bracketed hit table it was
+derived from), \strong{comparing against that delivered taxonomy is more
+defensible than reconstructing their rule}: the reconstruction cannot see
+their reference library, their taxonomic backbone, or their own
+undocumented tie-breaking, so any disagreement confounds the algorithm with
+the database. \code{"bracket"} mode is for the case where a delivered
+taxonomy is \emph{not} shipped -- or for showing what the published rule alone
+would have produced.
 
 Because of this, \code{rank_thresholds}' known inability to reliably separate a
 true species from its closest congener (percent-identity alone cannot do
@@ -196,6 +326,21 @@ sc <- score_consensus(
   rank_thresholds = c(species = 98, genus = 95, family = 90)
 )
 sc[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
+
+# Jonah Ventures' published rule: 1\% bracket, 90\% agreement, widen to 2\%
+# when a >= 97\% match still yields no family.
+jv <- score_consensus(
+  match_df,
+  consensus_mode     = "bracket",
+  agreement_fraction = 0.9,
+  bracket_width      = 1,
+  bracket_fallback   = list(min_score = 97, rank = "family", width = 2),
+  rank_thresholds    = NULL
+)
+jv[, c(
+  "consensus_taxon", "consensus_rank", "agreement_achieved",
+  "bracket_width_used"
+)]
 
 }
 \seealso{

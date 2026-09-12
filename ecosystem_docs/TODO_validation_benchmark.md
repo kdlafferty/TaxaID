@@ -104,7 +104,7 @@ baselines:
 |---|---|
 | Score threshold (legacy OTU-style cutoff) | No -- would need a small new function |
 | 100% match + LCA (Wilderlabs-style, conservative) | No -- would need a small new function |
-| `TaxaAssign::score_consensus()` (score threshold + gap + rank_thresholds -- closest existing analog to the Jonah Ventures consensus-LCA style) | **Yes** -- already exported, already wired into `TaxaWizard`'s `match_to_consensus_score` snippet |
+| `TaxaAssign::score_consensus()` | **Yes** -- already exported, already wired into `TaxaWizard`'s `match_to_consensus_score` snippet. **Corrected 2026-09-12**: this row previously called the default (`consensus_mode = "gap"`) rule "the closest existing analog to the Jonah Ventures consensus-LCA style". It is not -- gap mode is the generic fixed-threshold/LCA convention. The actual JV rule is now `consensus_mode = "bracket"` (1% bracket anchored at the top score, 90% hit-agreement per rank, widen to 2% when a >=97% match returns no family), validated against JV's own delivered Pt Conception MiFish taxonomy -- see `diagnostics/jv_bracket_consensus_validation.R`. |
 | Bootstrap classifier (IDTAXA/SINTAX-style) | No -- real new engineering if included |
 | Coverage-weighted LCA (galaxy-tool-lca-style) | No |
 | TaxaID Bayesian (`TaxaLikely` + `TaxaExpect` + `TaxaAssign`) -- a few variations (e.g. with/without spatial grouping once that lands, different `presence_multiplier`, with/without dark-diversity floor) | **Yes**, core chain exists (see Pipeline section below) |
