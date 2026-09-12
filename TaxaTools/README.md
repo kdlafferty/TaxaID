@@ -102,7 +102,8 @@ downstream function needs its own provider-detection logic.
 | Function | Purpose |
 |---------------------------|------------------------------------------------------------|
 | `common_to_scientific()` | Convert common names to scientific names via LLM, with optional backbone verification. |
-| `scientific_to_common()` | Convert scientific names to English common names via a taxonomic backbone (GBIF or ITIS) with LLM fallback; `location` biases toward regionally appropriate names. |
+| `scientific_to_common()` | Convert scientific names to English common names via a taxonomic backbone (GBIF or ITIS) with LLM fallback; `location` biases toward regionally appropriate names. `cache_dir` keeps one small `.rds` per name so a re-run asks nothing twice; `verbose` prints a summary and one line per LLM batch. |
+| `taxatools_clear_cache()` | Report and prune a `scientific_to_common(cache_dir = )` directory (built on `list_cache_files()`/`report_and_clear_cache()`). |
 | `build_report_context()` | Domain-agnostic context object carrying verified facts for grounding LLM-drafted text. |
 | `draft_methods_text()` / `draft_results_text()` | Read R code or R objects and draft a Methods or Results section via LLM. |
 | `census_genus_species()` | Enumerate described species per genus (or higher rank) via the GBIF backbone; flags whether a reference set is complete, missing only its rarest member, or genuinely incomplete. |

@@ -81,32 +81,38 @@ library(rentrez)
 OUT_DIR <- getwd() #or set.
 OUT_PREFIX <- "TaxaID_test"
 # Helper: save an RDS with a standard name (useful for outputs from functions that use an api)
-# --- Console log (2026-09-11) --------------------------------------------------
+# --- Console log (2026-09-11; self-healing 2026-09-12) -------------------------
 # Everything printed, messaged or warned during this run also goes to a
 # timestamped log in OUT_DIR. The first full run after the reference-screen
 # rewiring had to be reconstructed from checkpoints because nothing kept the
-# console: the screen banners, the calibration fallback warning, the cache
-# summaries and the GBIF fallback notice live only there. Output is tee'd
-# (sink split = TRUE, so it still shows here); messages and warnings are copied
-# by a calling handler through the SAME connection (two writers on one file
-# clip each other) and flushed at once. RE-ARMS ITSELF: an interrupt or error
-# at the console drops R's sink diversion but not this block's option flags,
-# so a re-run in the same session found the sink gone and logged nothing
-# (first MuguWilderFish run, 2026-09-11). Now a missing sink is reopened in
-# append mode on the same file; the handlers are registered once per session.
-.log_path <- getOption("TaxaID.run_log_path") %||%
-  file.path(OUT_DIR, paste0(OUT_PREFIX, "_run_", format(Sys.time(), "%Y%m%d_%H%M"), ".log"))
+# console. Output is tee'd (sink split = TRUE, so it still shows here);
+# messages and warnings are copied by calling handlers through the SAME
+# connection (two writers on one file clip each other) and flushed at once.
+# SELF-HEALING, because each piece can be lost separately: an interrupt or
+# error drops R's sink diversion; an R restart forgets the options AND the
+# handlers but not the log file on disk (the 2026-09-12 PtCon 18S run lost
+# every message after a mid-run package reinstall while its prints kept
+# arriving). So on every run: reuse the session's log path, else the newest
+# log for this prefix modified in the last 12 h, else a new one; reopen the
+# sink (append) if none is active; re-register the handlers if the tagged
+# ones are no longer in globalCallingHandlers().
+.log_path <- getOption("TaxaID.run_log_path")
+if (is.null(.log_path)) {
+  .prev_logs <- list.files(OUT_DIR, pattern = paste0("^", OUT_PREFIX, "_run_[0-9]{8}_[0-9]{4}[.]log$"), full.names = TRUE)
+  .prev_logs <- .prev_logs[difftime(Sys.time(), file.mtime(.prev_logs), units = "hours") < 12]
+  .log_path <- if (length(.prev_logs)) .prev_logs[which.max(file.mtime(.prev_logs))] else
+    file.path(OUT_DIR, paste0(OUT_PREFIX, "_run_", format(Sys.time(), "%Y%m%d_%H%M"), ".log"))
+}
 if (sink.number() == 0L) {
   .log_con <- file(.log_path, open = "at")
   sink(.log_con, split = TRUE)
   options(TaxaID.run_log_path = .log_path, TaxaID.run_log_con = .log_con)
-  if (!isTRUE(getOption("TaxaID.run_log_handlers"))) {
-    globalCallingHandlers(
-      message = function(m) { con <- getOption("TaxaID.run_log_con"); if (!is.null(con) && isOpen(con)) { cat(conditionMessage(m), file = con); flush(con) } },
-      warning = function(w) { con <- getOption("TaxaID.run_log_con"); if (!is.null(con) && isOpen(con)) { cat("Warning: ", conditionMessage(w), "\n", file = con); flush(con) } }
-    )
-    options(TaxaID.run_log_handlers = TRUE)
-  }
+}
+if (!any(vapply(globalCallingHandlers(), function(h) isTRUE(attr(h, "TaxaID_log")), logical(1)))) {
+  .log_msg  <- function(m) { con <- getOption("TaxaID.run_log_con"); if (!is.null(con) && isOpen(con)) { cat(conditionMessage(m), file = con); flush(con) } }
+  .log_warn <- function(w) { con <- getOption("TaxaID.run_log_con"); if (!is.null(con) && isOpen(con)) { cat("Warning: ", conditionMessage(w), "\n", file = con); flush(con) } }
+  attr(.log_msg, "TaxaID_log") <- TRUE; attr(.log_warn, "TaxaID_log") <- TRUE
+  globalCallingHandlers(message = .log_msg, warning = .log_warn)
 }
 message(sprintf("Console log for this session: %s", getOption("TaxaID.run_log_path")))
 
@@ -1494,7 +1500,8 @@ print(taxaassign_consensus)
 # location hint; falls back to the un-localized common name if unavailable).
 taxaassign_consensus$common_name <- TaxaTools::scientific_to_common(
   taxaassign_consensus$consensus_taxon,
-  location = REVIEW_CONTEXT$geography
+  location = REVIEW_CONTEXT$geography,
+  cache_dir   = file.path(OUT_DIR, paste0(OUT_PREFIX, "_common_name_cache"))
 )$common_name
 
 # Checkpoint: reload to skip Step 7 on re-runs

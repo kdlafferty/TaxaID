@@ -1,5 +1,14 @@
 # TaxaTools (development version)
 
+## 2026-09-12
+
+* `scientific_to_common()` gains `cache_dir` (one `.rds` per name, keyed on
+  name + `backbone_id` + `location`; a parsed "no common name" answer is
+  cached, an unparseable batch and an un-asked backbone miss are not) and
+  `verbose` (a summary line plus one line per LLM batch). Motivated by the
+  PtConception 18S workflow: 1,151 names, 58 sequential LLM calls, no
+  output, repeated on every re-run. New `taxatools_clear_cache()`.
+
 ## Polishing Phase (Sessions 57-59)
 
 * New exports: `standard_ranks`, `extended_ranks`, `detect_ranks()`,

@@ -1,4 +1,15 @@
 # CLAUDE.md -- TaxaTools
+# 2026-09-12 (Fable 5.1): scientific_to_common() gains cache_dir + verbose, new
+# taxatools_clear_cache(). The real PtCon 18S run's Step 10 sent 1,151 consensus taxa to
+# the LLM in 58 sequential batches of 20 with NO output (read as a hang) and would repeat
+# every call on every re-run. Cache: one small .rds per (name, backbone_id, location),
+# rlang::hash() filename, full key stored inside and verified on read -- the same
+# file-per-key shape as TaxaFlag's review cache and TaxaHabitat's habitat cache, so
+# list_cache_files()/report_and_clear_cache() manage it. Cached: backbone hits, LLM hits,
+# and a PARSED LLM "no common name" (that is its answer). Not cached: an unparseable batch
+# (re-asked) and a backbone miss on a use_llm = FALSE call (a later use_llm = TRUE call
+# must still ask). .llm_common_names() gains verbose + an llm_parsed column. 7 new tests
+# (74/0 on the file), check 0/0/0, reinstalled; cache_dir wired into all 8 workflows.
 # Last updated: 2026-09-04 (Sonnet 5, branch cache-management -- NEW cache_utils.R:
 # list_cache_files()/report_and_clear_cache(), a shared engine for a downstream
 # package's own <pkg>_clear_cache() helper.
@@ -332,7 +343,7 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `fill_higher_ranks()` | Given a character vector of taxon names (typically species binomials), extract `genus` and look up `family` via a priority chain: (1) local data frames (`local_sources`), (2) primary backbone via `verify_taxon_names()` at genus level (`backbone_id = 4L`), (3) fallback backbone (`fallback_backbone_id = 11L`). Returns tibble with `taxon_name`, `genus`, `family`; warns for unresolved taxa. **2026-07-25**: `genus` is now corrected to the backbone's resolved name (not just the locally-extracted query genus) whenever an API lookup shows it's a taxonomic synonym at genus rank -- keeps this function consistent with `convert_taxonomy_backbone()`'s current-name preference, closing a real gap that silently broke `TaxaAssign::join_priors()`'s exact-string genus/family match. Backward compatible when `verify_fn`'s response lacks `matched_rank`. Internal helpers: `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`, `.extract_classified_rank()`. | Complete | R/fill_higher_ranks.R |
 | `escalate_taxonomic_rank()` | The escalation-ladder function (Session 137 reentry plan, Phase 1): given `taxon_name` at `current_rank`, resolves its full classification via `verify_taxon_names()` and returns the name at the next coarser rank in `rank_system` (default `standard_ranks`) -- e.g. broadening a genus with no reference sequences/occurrence records to its family. Walks up to `max_levels` (default `2L`) rank levels within one call if an intermediate rank is itself absent from the classification path (e.g. genus straight to order when family is missing), so callers get one escalation step per retry-loop iteration rather than a fixed single-rank hop. Same primary/fallback backbone pattern as `fill_higher_ranks()` (`backbone_id = 4L` NCBI, `fallback_backbone_id = 11L` GBIF). Returns `list(taxon_name, rank)`, both `NA` if already at the coarsest rank or nothing resolves within `max_levels`. Only walks the hierarchy -- has no notion of whether a fetch at any rank returned data; that's the caller's retry loop. Live-verified against real NCBI data for the PtConception 12S validation cases (*Rhacochilus*, *Embiotoca caryi* -> family `Embiotocidae`) and the bobcat-photo case (*Lynx* -> family `Felidae`). | Complete | R/escalate_taxonomic_rank.R |
 | `parse_classification_path()` | Extract one rank value from the pipe-delimited `classification_path` and `classification_ranks` columns returned by `verify_taxon_names()`. Params: `path`, `ranks`, `target_rank`. Returns `NA_character_` if rank absent. Thin wrapper around `.extract_classified_rank()`; use with `mapply()` for column-level parsing. | Complete | R/fill_higher_ranks.R |
-| `scientific_to_common()` | Convert scientific names to English common names. Backbone sources: GBIF (backbone_id=11, via rgbif) or ITIS (backbone_id=3, via taxize). LLM fallback when backbone returns nothing or backbone_id=NULL. `location` param biases LLM toward regionally appropriate names. Batches LLM calls (20/batch). Returns `scientific_name`, `common_name`, `common_name_alternatives` (semicolon-delimited), `source` ("gbif"/"itis"/"llm"/"none"), `backbone_id`. | Complete | R/common_names.R |
+| `scientific_to_common()` | Convert scientific names to English common names. Backbone sources: GBIF (backbone_id=11, via rgbif) or ITIS (backbone_id=3, via taxize). LLM fallback when backbone returns nothing or backbone_id=NULL. `location` param biases LLM toward regionally appropriate names. Batches LLM calls (20/batch, one progress line each when `verbose`). `cache_dir` = per-name on-disk cache (2026-09-12), managed by `taxatools_clear_cache()`. Returns `scientific_name`, `common_name`, `common_name_alternatives` (semicolon-delimited), `source` ("gbif"/"itis"/"llm"/"none"), `backbone_id`. | Complete | R/common_names.R |
 
 ### LLM text generation functions (Session 55)
 
@@ -376,7 +387,7 @@ rename_cols()           # align column names to DarwinCore
 | test-change_backbone.R | `change_backbone()` | Fully offline; uses mock verified tibbles |
 | test-rename_cols.R | `rename_cols()` | Fully offline |
 | test-to_faire.R | `to_faire()` | Fully offline; 52 tests covering renames, constructed columns, attribute, missing-column handling, validation |
-| test-common-names.R | `common_to_scientific()`, `scientific_to_common()` | Offline; backbone calls mocked via `local_mocked_bindings()`; location param verified via prompt capture; 52 tests |
+| test-common-names.R | `common_to_scientific()`, `scientific_to_common()`, `taxatools_clear_cache()` | Offline; backbone calls mocked via `local_mocked_bindings()`; location param verified via prompt capture; cache round-trip/miss/not-cached cases; 74 tests |
 | test-fill_higher_ranks.R | `fill_higher_ranks()`, `.build_genus_family_lookup()`, `.lookup_family_from_backbone()`, `.extract_classified_rank()` | Fully offline (API mocked); 35 tests |
 | test-escalate_taxonomic_rank.R | `escalate_taxonomic_rank()` | Fully offline (API mocked); 35 tests; covers immediate-parent escalation, skip-level escalation within `max_levels`, already-coarsest short-circuit, primary/fallback backbone, custom `rank_system` |
 | test-token_usage.R | `token_usage()`, `reset_token_usage()` | Fully offline; mocks `.token_ledger` directly |

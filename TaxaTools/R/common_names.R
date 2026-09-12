@@ -371,7 +371,7 @@ common_to_scientific <- function(common_names,
 # common_name_alternatives (may be NA).
 #' @noRd
 .llm_common_names <- function(names, llm_fn, location = NULL,
-                              batch_size = 20L, ...) {
+                              batch_size = 20L, verbose = TRUE, ...) {
   location_line <- if (!is.null(location)) {
     sprintf("\nGeographic context: %s. Prefer common names in use for this region.\n", location)
   } else {
@@ -416,6 +416,7 @@ common_to_scientific <- function(common_names,
         scientific_name          = batch_names,
         common_name              = NA_character_,
         common_name_alternatives = NA_character_,
+        llm_parsed               = FALSE,
         stringsAsFactors         = FALSE
       ))
     }
@@ -437,18 +438,98 @@ common_to_scientific <- function(common_names,
       scientific_name          = batch_names,
       common_name              = ifelse(is.na(idx), NA_character_, llm_cn[idx]),
       common_name_alternatives = ifelse(is.na(idx), NA_character_, llm_alt[idx]),
+      # TRUE when the batch parsed: a NULL common name from a parsed batch is
+      # the LLM's real answer ("no common name exists"), a NULL from an
+      # unparseable batch is not an answer at all. The caller's cache keeps
+      # only the former.
+      llm_parsed               = TRUE,
       stringsAsFactors         = FALSE
     )
   }
 
-  # Split into batches and combine
+  # Split into batches and combine. One message per batch (2026-09-12): the
+  # real PtConception 18S run sent 1,151 names in 58 sequential calls with
+  # no output at all, which read as a hung workflow.
   n_batches <- ceiling(length(names) / batch_size)
   batches <- vector("list", n_batches)
   for (b in seq_len(n_batches)) {
     idx <- ((b - 1L) * batch_size + 1L):min(b * batch_size, length(names))
+    if (isTRUE(verbose)) {
+      message(sprintf(
+        "scientific_to_common(): LLM batch %d/%d (%d name(s))...",
+        b, n_batches, length(idx)
+      ))
+    }
     batches[[b]] <- .parse_one_batch(names[idx])
   }
   do.call(rbind, batches)
+}
+
+
+# ---- per-name on-disk cache --------------------------------------------------
+# One small .rds per (name, backbone_id, location), the same file-per-key
+# shape TaxaFlag::review_assignments(cache_dir=) and
+# TaxaHabitat::build_habitat_lookup(cache_dir=) use, so
+# TaxaTools::list_cache_files()/report_and_clear_cache() manage it. The full
+# key is stored inside the file and verified on read, so a hash collision
+# costs one re-asked name and can never return another name's answer.
+
+#' @noRd
+.common_name_cache_key <- function(name, backbone_id, location) {
+  list(
+    name        = tolower(trimws(name)),
+    backbone_id = if (is.null(backbone_id)) NA_integer_ else as.integer(backbone_id),
+    location    = if (is.null(location)) NA_character_ else location
+  )
+}
+
+#' @noRd
+.common_name_cache_path <- function(cache_dir, key) {
+  file.path(cache_dir, paste0(rlang::hash(key), "_common_name.rds"))
+}
+
+#' @noRd
+.read_common_name_cache <- function(cache_dir, key) {
+  path <- .common_name_cache_path(cache_dir, key)
+  if (!file.exists(path)) return(NULL)
+  hit <- tryCatch(readRDS(path), error = function(e) NULL)
+  if (is.null(hit) || !identical(hit$key, key) || !is.list(hit$row)) return(NULL)
+  hit$row
+}
+
+#' @noRd
+.write_common_name_cache <- function(cache_dir, key, row) {
+  saveRDS(list(key = key, row = row), .common_name_cache_path(cache_dir, key))
+  invisible(TRUE)
+}
+
+
+#' Report and clear the scientific_to_common() cache
+#'
+#' \code{scientific_to_common(cache_dir = )} keeps one small \code{.rds} per
+#' looked-up name. This helper reports what the directory holds and deletes
+#' it (optionally only files older than \code{older_than_days}), via the
+#' shared \code{\link{report_and_clear_cache}} engine -- the same shape as
+#' \code{TaxaFetch::taxafetch_clear_cache()} and
+#' \code{TaxaFlag::taxaflag_clear_cache()}.
+#'
+#' @param cache_dir Character. The directory passed to
+#'   \code{scientific_to_common(cache_dir = )}.
+#' @param older_than_days Numeric or \code{NULL}. Only files older than this
+#'   many days are targeted; \code{NULL} (default) targets every file.
+#' @param dry_run Logical. If \code{TRUE}, reports without deleting.
+#' @return Invisibly, the data frame of targeted files (see
+#'   \code{\link{list_cache_files}}).
+#' @export
+#' @examples
+#' \dontrun{
+#' taxatools_clear_cache("my_run_common_name_cache", dry_run = TRUE)
+#' }
+taxatools_clear_cache <- function(cache_dir, older_than_days = NULL, dry_run = FALSE) {
+  inv <- list_cache_files(cache_dir, "_common_name\\.rds$")
+  report_and_clear_cache(inv, "taxatools_clear_cache", cache_dir,
+    older_than_days = older_than_days, dry_run = dry_run
+  )
 }
 
 
@@ -499,6 +580,20 @@ common_to_scientific <- function(common_names,
 #'   character(1)}.  Required when \code{use_llm = TRUE} or
 #'   \code{backbone_id} is unsupported / \code{NULL}.  Default
 #'   \code{getOption("TaxaID.llm_fn")}.
+#' @param cache_dir Character or \code{NULL} (default, no cache). A
+#'   directory holding one small \code{.rds} per looked-up name, keyed on
+#'   the name (case/whitespace-insensitive), \code{backbone_id} and
+#'   \code{location}. A name found there is served without any backbone or
+#'   LLM call; a name resolved this call is written back. A name the LLM was
+#'   asked about and answered "no common name" IS cached (that is its
+#'   answer); a name from a batch the LLM answered unparseably is NOT (it
+#'   will be re-asked), and neither is a backbone miss on a
+#'   \code{use_llm = FALSE} call (a later \code{use_llm = TRUE} call must
+#'   still be able to ask). Manage it with \code{\link{taxatools_clear_cache}}.
+#'   Added 2026-09-12: a real 18S workflow spent 58 silent LLM calls on
+#'   1,151 names, then repeated them on every re-run.
+#' @param verbose Logical (default \code{TRUE}). Print a one-line summary
+#'   (cache / backbone / LLM counts) and one line per LLM batch.
 #' @param ... Additional arguments passed to \code{llm_fn}.
 #'
 #' @return A data frame with one row per element of \code{scientific_names}:
@@ -551,6 +646,8 @@ scientific_to_common <- function(scientific_names,
                                  location = NULL,
                                  use_llm = FALSE,
                                  llm_fn = getOption("TaxaID.llm_fn"),
+                                 cache_dir = NULL,
+                                 verbose = TRUE,
                                  ...) {
   # ---- input validation -------------------------------------------------------
   if (!is.character(scientific_names) || length(scientific_names) == 0L) {
@@ -572,6 +669,12 @@ scientific_to_common <- function(scientific_names,
   if (!is.logical(use_llm) || length(use_llm) != 1L || is.na(use_llm)) {
     stop("use_llm must be TRUE or FALSE", call. = FALSE)
   }
+  if (!is.null(cache_dir) && (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir))) {
+    stop("cache_dir must be a single character string or NULL", call. = FALSE)
+  }
+  if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
+    stop("verbose must be TRUE or FALSE", call. = FALSE)
+  }
   llm_needed <- is.null(backbone_id) || use_llm
   if (llm_needed && is.null(llm_fn)) {
     stop(
@@ -591,11 +694,33 @@ scientific_to_common <- function(scientific_names,
   out_alt <- rep(NA_character_, n)
   out_source <- rep("none", n)
   out_backbone <- rep(NA_integer_, n)
+  from_cache <- rep(FALSE, n)
+  asked_llm <- rep(FALSE, n)
+  llm_parsed <- rep(FALSE, n)
+
+  # ---- cache read -------------------------------------------------------------
+  cache_keys <- NULL
+  if (!is.null(cache_dir)) {
+    if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
+    cache_keys <- lapply(scientific_names, .common_name_cache_key,
+      backbone_id = backbone_id, location = location
+    )
+    for (i in seq_len(n)) {
+      hit <- .read_common_name_cache(cache_dir, cache_keys[[i]])
+      if (!is.null(hit)) {
+        out_cn[[i]] <- hit$common_name
+        out_alt[[i]] <- hit$common_name_alternatives
+        out_source[[i]] <- hit$source
+        out_backbone[[i]] <- hit$backbone_id
+        from_cache[[i]] <- TRUE
+      }
+    }
+  }
 
   # ---- backbone lookup (per-taxon) --------------------------------------------
   if (!is.null(backbone_id)) {
     lookup_fn <- if (backbone_id == 11L) .gbif_common_names else .itis_common_names
-    for (i in seq_len(n)) {
+    for (i in which(!from_cache)) {
       res <- tryCatch(lookup_fn(scientific_names[[i]]), error = function(e) {
         warning(
           sprintf(
@@ -616,28 +741,55 @@ scientific_to_common <- function(scientific_names,
   }
 
   # ---- LLM fallback for unresolved taxa ---------------------------------------
-  needs_llm <- out_source == "none"
-  if (use_llm && any(needs_llm) && !is.null(llm_fn)) {
-    llm_names <- scientific_names[needs_llm]
-    llm_res <- .llm_common_names(llm_names, llm_fn, location = location, ...)
-    llm_idx <- which(needs_llm)
+  needs_llm <- out_source == "none" & !from_cache
+  llm_idx <- if (use_llm && any(needs_llm) && !is.null(llm_fn)) {
+    which(needs_llm)
+  } else if (is.null(backbone_id) && !is.null(llm_fn)) {
+    # backbone_id = NULL: pure LLM path for every name not served from cache
+    which(!from_cache)
+  } else {
+    integer(0)
+  }
+  if (isTRUE(verbose)) {
+    message(sprintf(
+      "scientific_to_common(): %d name(s) -- %d from cache, %d resolved by backbone, %d to the LLM%s.",
+      n, sum(from_cache), sum(out_source != "none" & !from_cache), length(llm_idx),
+      if (length(llm_idx)) sprintf(" in %d batch(es)", ceiling(length(llm_idx) / 20L)) else ""
+    ))
+  }
+  if (length(llm_idx) > 0L) {
+    llm_res <- .llm_common_names(scientific_names[llm_idx], llm_fn,
+      location = location, verbose = verbose, ...
+    )
     for (j in seq_along(llm_idx)) {
       i <- llm_idx[[j]]
+      asked_llm[[i]] <- TRUE
+      llm_parsed[[i]] <- isTRUE(llm_res$llm_parsed[[j]])
       if (!is.na(llm_res$common_name[[j]])) {
         out_cn[[i]] <- llm_res$common_name[[j]]
         out_alt[[i]] <- llm_res$common_name_alternatives[[j]]
         out_source[[i]] <- "llm"
       }
     }
-  } else if (is.null(backbone_id) && !is.null(llm_fn)) {
-    # backbone_id = NULL: pure LLM path for all names
-    llm_res <- .llm_common_names(scientific_names, llm_fn, location = location, ...)
-    for (i in seq_len(n)) {
-      if (!is.na(llm_res$common_name[[i]])) {
-        out_cn[[i]] <- llm_res$common_name[[i]]
-        out_alt[[i]] <- llm_res$common_name_alternatives[[i]]
-        out_source[[i]] <- "llm"
-      }
+  }
+
+  # ---- cache write ------------------------------------------------------------
+  # A row is worth keeping when it carries a real answer: resolved by a
+  # backbone or the LLM, or asked of the LLM in a batch that parsed (its NA
+  # is the answer "no common name"). Never a backbone miss that was not put
+  # to the LLM, and never a row from an unparseable batch.
+  if (!is.null(cache_dir)) {
+    worth_caching <- !from_cache & (out_source != "none" | (asked_llm & llm_parsed))
+    for (i in which(worth_caching)) {
+      .write_common_name_cache(cache_dir, cache_keys[[i]], list(
+        common_name              = out_cn[[i]],
+        common_name_alternatives = out_alt[[i]],
+        source                   = out_source[[i]],
+        backbone_id              = out_backbone[[i]]
+      ))
+    }
+    if (isTRUE(verbose) && any(worth_caching)) {
+      message(sprintf("scientific_to_common(): %d name(s) written to the cache at %s.", sum(worth_caching), cache_dir))
     }
   }
 

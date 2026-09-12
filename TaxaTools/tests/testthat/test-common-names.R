@@ -377,3 +377,124 @@ test_that("mixed batch: backbone hit for first, LLM fallback for second", {
   expect_equal(result$source, c("gbif", "llm"))
   expect_equal(result$common_name, c("rainbow trout", "Atlantic salmon"))
 })
+
+
+# ---- cache_dir + verbose (2026-09-12) ----------------------------------------
+
+# An LLM mock that answers every name in the prompt and counts its calls.
+.make_counting_llm <- function(known, null_for = character(0), garbage = FALSE) {
+  calls <- new.env(parent = emptyenv()); calls$n <- 0L
+  fn <- function(prompt, ...) {
+    calls$n <- calls$n + 1L
+    if (garbage) return("not json at all")
+    asked <- known[vapply(known, function(k) grepl(k, prompt, fixed = TRUE), logical(1))]
+    rows <- vapply(asked, function(k) {
+      cn <- if (k %in% null_for) "null" else sprintf('"%s common"', tolower(sub(" .*", "", k)))
+      sprintf('{"scientific_name":"%s","common_name":%s,"common_name_alternatives":null}', k, cn)
+    }, character(1))
+    paste0("[", paste(rows, collapse = ","), "]")
+  }
+  list(fn = fn, calls = calls)
+}
+
+test_that("cache_dir: a second identical call is served with zero LLM calls", {
+  cache_dir <- withr::local_tempdir()
+  taxa <- c("Salmo salar", "Oncorhynchus mykiss")
+  llm <- .make_counting_llm(taxa)
+  first <- suppressMessages(scientific_to_common(taxa,
+    backbone_id = NULL, location = "North Pacific",
+    llm_fn = llm$fn, cache_dir = cache_dir
+  ))
+  expect_equal(llm$calls$n, 1L)
+  expect_equal(first$source, c("llm", "llm"))
+  expect_length(list.files(cache_dir, pattern = "_common_name\\.rds$"), 2L)
+
+  never <- function(prompt, ...) stop("the LLM must not be called on a full cache hit")
+  second <- suppressMessages(scientific_to_common(taxa,
+    backbone_id = NULL, location = "North Pacific",
+    llm_fn = never, cache_dir = cache_dir
+  ))
+  expect_equal(second$common_name, first$common_name)
+  expect_equal(second$source, first$source)
+})
+
+test_that("cache_dir: a different location is a cache miss; a case/space variant is a hit", {
+  cache_dir <- withr::local_tempdir()
+  llm <- .make_counting_llm("Salmo salar")
+  suppressMessages(scientific_to_common("Salmo salar",
+    backbone_id = NULL, location = "Atlantic", llm_fn = llm$fn, cache_dir = cache_dir
+  ))
+  llm2 <- .make_counting_llm("Salmo salar")
+  suppressMessages(scientific_to_common("Salmo salar",
+    backbone_id = NULL, location = "Pacific", llm_fn = llm2$fn, cache_dir = cache_dir
+  ))
+  expect_equal(llm2$calls$n, 1L)
+  never <- function(prompt, ...) stop("must be a cache hit")
+  out <- suppressMessages(scientific_to_common("  salmo salar ",
+    backbone_id = NULL, location = "Atlantic", llm_fn = never, cache_dir = cache_dir
+  ))
+  expect_equal(out$source, "llm")
+})
+
+test_that("cache_dir: a parsed 'no common name' answer is cached, an unparseable batch is not", {
+  cache_dir <- withr::local_tempdir()
+  llm <- .make_counting_llm("Pseudo-nitzschia delicatissima", null_for = "Pseudo-nitzschia delicatissima")
+  out <- suppressMessages(scientific_to_common("Pseudo-nitzschia delicatissima",
+    backbone_id = NULL, llm_fn = llm$fn, cache_dir = cache_dir
+  ))
+  expect_true(is.na(out$common_name))
+  expect_length(list.files(cache_dir, pattern = "_common_name\\.rds$"), 1L)
+  never <- function(prompt, ...) stop("must be a cache hit")
+  expect_no_error(suppressMessages(scientific_to_common("Pseudo-nitzschia delicatissima",
+    backbone_id = NULL, llm_fn = never, cache_dir = cache_dir
+  )))
+
+  cache_dir2 <- withr::local_tempdir()
+  bad <- .make_counting_llm("Salmo salar", garbage = TRUE)
+  suppressWarnings(suppressMessages(scientific_to_common("Salmo salar",
+    backbone_id = NULL, llm_fn = bad$fn, cache_dir = cache_dir2
+  )))
+  expect_length(list.files(cache_dir2, pattern = "_common_name\\.rds$"), 0L)
+})
+
+test_that("cache_dir: a backbone miss on a use_llm = FALSE call is not cached", {
+  cache_dir <- withr::local_tempdir()
+  local_mocked_bindings(.gbif_common_names = function(name) NULL, .package = "TaxaTools")
+  suppressMessages(scientific_to_common("Rare taxon sp.",
+    backbone_id = 11L, use_llm = FALSE, llm_fn = NULL, cache_dir = cache_dir
+  ))
+  expect_length(list.files(cache_dir, pattern = "_common_name\\.rds$"), 0L)
+})
+
+test_that("verbose = TRUE reports the summary and one line per LLM batch", {
+  taxa <- sprintf("Genus%02d species", 1:25)
+  llm <- .make_counting_llm(taxa)
+  msgs <- character(0)
+  withCallingHandlers(
+    scientific_to_common(taxa, backbone_id = NULL, llm_fn = llm$fn, verbose = TRUE),
+    message = function(m) { msgs <<- c(msgs, conditionMessage(m)); invokeRestart("muffleMessage") }
+  )
+  expect_true(any(grepl("25 name\\(s\\) -- 0 from cache, 0 resolved by backbone, 25 to the LLM in 2 batch", msgs)))
+  expect_true(any(grepl("LLM batch 1/2 \\(20 name", msgs)))
+  expect_true(any(grepl("LLM batch 2/2 \\(5 name", msgs)))
+  expect_equal(llm$calls$n, 2L)
+  expect_silent(scientific_to_common(taxa[1:2], backbone_id = NULL, llm_fn = llm$fn, verbose = FALSE))
+})
+
+test_that("taxatools_clear_cache() reports and removes the common-name cache files", {
+  cache_dir <- withr::local_tempdir()
+  llm <- .make_counting_llm(c("Salmo salar", "Oncorhynchus mykiss"))
+  suppressMessages(scientific_to_common(c("Salmo salar", "Oncorhynchus mykiss"),
+    backbone_id = NULL, llm_fn = llm$fn, cache_dir = cache_dir
+  ))
+  inv <- suppressMessages(taxatools_clear_cache(cache_dir, dry_run = TRUE))
+  expect_equal(nrow(inv), 2L)
+  expect_length(list.files(cache_dir, pattern = "_common_name\\.rds$"), 2L)
+  suppressMessages(taxatools_clear_cache(cache_dir))
+  expect_length(list.files(cache_dir, pattern = "_common_name\\.rds$"), 0L)
+})
+
+test_that("scientific_to_common() validates cache_dir and verbose", {
+  expect_error(scientific_to_common("Salmo salar", backbone_id = NULL, llm_fn = function(p, ...) "[]", cache_dir = c("a", "b")), "cache_dir")
+  expect_error(scientific_to_common("Salmo salar", backbone_id = NULL, llm_fn = function(p, ...) "[]", verbose = NA), "verbose")
+})
