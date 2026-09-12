@@ -354,3 +354,87 @@ silently exclude" pattern this ecosystem has independently re-learned three time
 the 2026-08-08 mislabel-probability-weighting closure) if the fix involves a quality-based
 exclusion decision. Record the finding in the relevant package's `CLAUDE.md` and, if it's a
 real behavior/signature change, in `ecosystem_docs/NAME_CHANGE_HISTORY.md` too.
+
+## PtConception 18S run outcome (2026-09-12, Fable 5.1)
+
+First full 18S run on the rewired screen (`PtCon18SSchulte_*`, finished 13:55).
+Two package bugs surfaced and were fixed mid-run (both committed):
+`TaxaMatch::.trim_queries_to_amplicon()` errored on any marker with no
+registered primer pair (18S), killing the match screen on chunk 1 (4a910ab);
+`TaxaTools::scientific_to_common()` ran 58 silent sequential LLM calls on
+1,151 names with no progress output and no cache (now `cache_dir`/`verbose`).
+
+| Quantity | Value |
+|---|---|
+| Observations / consensus taxa | 10,968 / 1,151 |
+| Consensus rank: species / genus / family / order / NA | 4,868 / 4,364 / 918 / 97 / 721 |
+| Plausibility: expected / unexpected / unprecedented | 929 / 335 / 9,703 |
+| Likelihood model | 3,380 species, sqrt_mismatch, floor 0.8, EB; tau/sigma score 0.27, gap 0.48 |
+| Calibration | constant (by design at 18S) |
+| Training screen | 21,899 accessions: 7,492 locally corroborated, 14,407 pending, breaker tripped at once, 0 removed |
+| Match screen | 3,410: 402 evaluated (125 congruent, 30 incongruent, 92 insufficient, 12 oversized, 14 wrong-marker), 3,008 pending, 20 actioned remove |
+| LLM review overrides | 49 (8 of the 20 removals kept); 12 accessions actually removed (274 rows) |
+| Removal audit | all 20 `untested` (NCBI poll timed out at 100 hits on ~1.8 kb 18S queries) -- removals stand unaudited |
+| Review flags | geographic unlikely 8,295 (8,221 of them on unprecedented rows: the skepticism gate); habitat unlikely 869; scope unlikely 929; contamination high 75 |
+| Final list | 2,513 rows pass the four LLM filters, 1,640 rows / 191 taxa after the marine filter |
+| Habitat cache | 2,027 taxa, 2,024 served from cache |
+
+Reading: the 18S final list is governed by the geographic gate, not by the
+likelihood model. 9,703 of 10,968 rows are `unprecedented` because only 108 of
+the 701 species-rank consensus taxa have a named prior row (GBIF has almost no
+protist/phytoplankton occurrence data), and the skepticism gate then rates
+8,221 of those geographically unlikely. That is the designed behaviour
+(validated 2026-09-06), but it means the 18S species list is a GBIF-coverage
+list as much as an eDNA list. Per-group CSVs were not written: `sampling_group`
+lives only on the occurrence side and never reaches the consensus table, so
+Step 10's `any_of("sampling_group")` split is dead code at this site.
+Cosmetic: 9 `Unknown or uninitialised column: usageKey/rank` warnings from
+`get_keys_from_context()`'s rank-recovery fallback at Step 3.
+
+Console log: every message after the first (primer) crash is missing while
+prints kept arriving -- the handlers were gone but the sink was not (a mid-run
+reinstall/restart is the likely cause; a top-level error, a nested error and an
+rlang abort were all tested and do NOT drop `globalCallingHandlers()`). The
+block in all 8 workflows now re-registers tagged handlers when absent and
+appends to the day's existing log after a restart.
+
+Next: run `inst/screen_training_references_standalone.R PtCon18S` overnight
+(14,407 pending) and re-run the 18S match screen step later (3,008 pending);
+PtCon 12S multi-site and MuguFish still to run.
+
+## PtConception 12S multi-site: FAST version built and run (2026-09-12, Fable 5.1)
+
+`PtConceptionWorkflow_12S_multi_site.R` had not run since 2026-07-13 and was
+barely multi-site (one kernel fit at STUDY_LAT/LON; the only multi-site element
+was the spatially gated consensus update). NEW
+`PtConceptionWorkflow_12S_multi_site_FAST.R` (same directory) reuses the
+single-site run's checkpoints for everything identical (contaminant flags,
+occurrences, priors at the STUDY site, match object, references, model,
+likelihoods, coverage, iNat) and computes only the multi-site part: a site table
+from the Dangermond metadata (BioD 34.4425/-120.4535, Cojo 34.4529/-120.4183,
+Jalama 34.5096/-120.5017), one kernel fit per Location with the single-site
+run's calibrated bandwidths (25 km, 250 m depth), evidence rows replicated per
+site, `join_priors(site = <obs x site>)` -> `combine_multisite_priors()` ->
+posterior -> spatially gated consensus update, review (cached), common names
+(cached), final CSV, and a side-by-side comparison with the single-site
+consensus. August-only sequences get their own singleton spatial group (the
+old file's open question). FAST_SUBSET: 1,218 of 13,440 sequences (579
+multi-Location, 450 single-Location, 100 no-site, 96 sentinel-topped); 1.6 min
+end to end once the review cache is warm.
+
+FOUND AND FIXED (TaxaAssign 2d3cdf9): `combine_multisite_priors()` returned
+NaN/Inf for 349 of 4,469 candidate rows -- every candidate whose per-site
+priors were all J-shaped (dark-diversity floor alpha ~2e-6, evidence-blend
+~6e-5): the logit combination underflowed to a mean of exactly 0. The
+multi-site path had never met real priors before. Logit rule kept wherever
+finite; probability-scale precision weighting when every site is J-shaped.
+
+Results: per-site theta ratio (max/min) across 514 modelled species median
+1.27, 90th pct 2.28, max 2.34 (sites 3.5-9 km apart, lambda 25 km); 2,099
+candidate rows combined across 2-3 sites; consensus 770 species / 291 genus /
+155 family; multi-site vs single-site consensus taxon agreement 99.2% at 1
+Location, 99.4% at 2, 99.1% at 3, 96.6% for no-site sequences; the changes
+are cottid genus/species flips (Clinocottus recalvus <-> Clinocottus,
+Orthonopias triacis -> Cottidae) and one Hylobatidae. Final list 1,202
+sequences / 72 taxa. Sentinels: Girella nigricans theta 8.8e-3 at every
+site, Fundulus parvipinnis 4.2e-8 to 5.5e-8.
