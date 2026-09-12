@@ -1,7 +1,25 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-12, later (Opus 5 -- TaxaAssign::score_consensus() gains
+# Last updated: 2026-09-12 (Fable 5.1 -- MUGU WORKFLOWS CONSOLIDATED: MuguWilderFishWorkflow.R
+# (last run 2026-06-25; the original monolithic WilderLab-source script) retired to
+# ~/My Drive/Rscripts/eDNA/SepulvedaMugu/_archive_retired_scripts_2026_09_12/ (README there).
+# It duplicated MuguFishWorkflow.R except for building its match objects inline -- which
+# Mugu_Match_from_Wilder.R already does -- and had drifted (live GLMM branch, no regional-
+# unreferenced wiring, no accession screen). MuguFishWorkflow.R is now the ONLY Mugu
+# workflow: MATCH_SOURCE <- "blast" (prefix MuguWilderFish_blast_*, run 2026-09-11) or
+# "wilder" (prefix MuguWilderFish_wilder_*; match objects rebuilt 2026-09-12, loader
+# dry-run OK). Shared across sources: MuguWilderFish_bbox.rds (the site polygon) and the
+# habitat / review / common-name caches (content-keyed; the blast-run dirs were renamed).
+# The accession screen is skipped with a message when the match objects carry no
+# accessions. There are now SEVEN production workflows, not eight. Same day, earlier:
+# NEW PtConceptionWorkflow_12S_multi_site_FAST.R (per-Location kernel priors + the real
+# multi-site path on a subset, reusing single-site checkpoints) found and fixed
+# TaxaAssign::combine_multisite_priors() returning NaN for all-J-shaped priors (2d3cdf9);
+# TaxaMatch's primer trimmer erroring on 18S (4a910ab); TaxaTools::scientific_to_common()
+# cache_dir/verbose (c7675f8). See ecosystem_docs/REENTRY_PROMPT_post_reference_screen_
+# full_workflow_runs.md for every run's numbers.
+# Previous update, 2026-09-12, later (Opus 5 -- TaxaAssign::score_consensus() gains
 # consensus_mode = c("gap", "bracket"). "gap" is the default and is UNCHANGED (verified by
 # diffing against `git show HEAD:` over 576 parameter/data combinations, 0 mismatches).
 # "bracket" implements Jonah Ventures' ACTUAL published rule -- 1% bracket anchored at the
