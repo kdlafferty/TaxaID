@@ -438,3 +438,44 @@ are cottid genus/species flips (Clinocottus recalvus <-> Clinocottus,
 Orthonopias triacis -> Cottidae) and one Hylobatidae. Final list 1,202
 sequences / 72 taxa. Sentinels: Girella nigricans theta 8.8e-3 at every
 site, Fundulus parvipinnis 4.2e-8 to 5.5e-8.
+
+## Implausible-taxon audit and two fixes (2026-09-12, Fable 5.1)
+
+Four implausible consensus taxa were traced (Prosopium williamsoni and
+Pseudotolithus senegallus at Mugu; Sufflamen fraenatum and Symphalangus
+syndactylus at PtCon 12S). All four were flagged (unprecedented, weak or
+indistinguishable discrimination, LLM geographic "unlikely") and excluded
+from every final list. Two mechanisms produced misleading species labels on
+the way and were fixed:
+
+1. **Downranking to a clamp-only species** (Mugu): posterior_consensus()'s
+   species_reference narrowed a genus LCA (Pseudotolithus, three plausible
+   congeners at 0.50/0.27/0.11) to P. senegallus (posterior 0.009, never
+   plausible) and reported it at the genus's 0.89, because since curve
+   pricing every zero-record BLAST candidate has a distance-clamp row in the
+   priors table. FIX (all 7 workflows, `.bak_pre_downrank_yearrange`):
+   clamp-only rows are excluded from the species reference. 1 of 145
+   downranked rows across four sites was affected.
+2. **Regional-proximity evidence from all-time GBIF records** (PtCon): a 1929
+   SBMNH preserved specimen of a captive siamang ("Featherhill Ranch") 74 km
+   away gave the species a weight of 0.031 (480x the floor) and beat the
+   family-level hypothesis whose likelihood was 33x higher. FIX: the
+   generator's `year_range` default is now the 2000-to-now window (was NULL,
+   all time; TaxaExpect d0232cd) and every workflow passes its own YEAR_RANGE.
+
+Sensitivity (`ecosystem_docs/regional_evidence_sensitivity_2026_09_12.csv`;
+each site's regional-evidence taxa re-fetched with the study year window and
+classified under the site's habitat scheme):
+
+| Site | regional rows | lost by year filter | kept by year but Habitat != site | consensus winners among regional taxa (lost by year / habitat-fail) |
+|---|---|---|---|---|
+| PtCon 12S | 53 | 36 | 13 | 25 rows: Bubalus bubalis 9, Cervus elaphus 9, siamang 2, bison, channel catfish, red bat, cutthroat, steelhead (13 / 12) |
+| Mugu | 22 | 9 | 11 | 4 rows: Pimephales promelas 2, coho, mountain whitefish (0 / 4) |
+| GreatLakes | 132 | 42 | 81 | 0 -- no GL consensus winner rests on a regional-evidence row, so the year filter cannot move the Lamar validation |
+
+Habitat gate NOT built (user decision pending): a hard gate (taxon's best
+habitat must equal the site habitat) would also drop steelhead at PtCon
+(Freshwater 0.75 / Marine 0.25) and 81 lotic darters at GL; the softer form
+-- multiply the regional weight by the taxon's site-habitat weight from the
+cached habitat lookup -- keeps steelhead at a quarter weight and zeroes the
+mammals, whitefish and fathead minnow. GL unaffected either way (0 winners).
