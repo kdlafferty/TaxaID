@@ -18,7 +18,16 @@
 # TaxaAssign::combine_multisite_priors() returning NaN for all-J-shaped priors (2d3cdf9);
 # TaxaMatch's primer trimmer erroring on 18S (4a910ab); TaxaTools::scientific_to_common()
 # cache_dir/verbose (c7675f8). See ecosystem_docs/REENTRY_PROMPT_post_reference_screen_
-# full_workflow_runs.md for every run's numbers.
+# full_workflow_runs.md for every run's numbers. LATER THE SAME DAY: implausible-taxon audit ->
+# (a) downranking species_reference excludes distance-clamp-only rows (7 workflows); (b)
+# generate_regional_proximity_evidence(year_range=) default all-time -> "2000,<year>", workflows
+# pass YEAR_RANGE (a 1929 captive-siamang museum specimen had driven a species call); (c) NEW
+# TaxaExpect::condition_evidence_on_habitat(): w_site = max(w * H_site, W_CLAMP) -- evidence rows
+# now obey the residents' habitat stratification, linear so bleed survives in proportion;
+# wired into GL / PtCon 12S single + multi / Mugu kernel branches and VALIDATED on the real
+# workflow lines: GL Lamar precision 0.856 -> 0.872 with 42/61 species and grass carp / perch /
+# walleye unchanged; PtCon 99.73% same consensus, the water buffalo / siamang / red bat species
+# calls gone. Full table in the reentry doc's "Habitat conditioning" section.
 # Previous update, 2026-09-12, later (Opus 5 -- TaxaAssign::score_consensus() gains
 # consensus_mode = c("gap", "bracket"). "gap" is the default and is UNCHANGED (verified by
 # diffing against `git show HEAD:` over 576 parameter/data combinations, 0 mismatches).
