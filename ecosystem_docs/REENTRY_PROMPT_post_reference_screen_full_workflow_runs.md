@@ -479,3 +479,42 @@ habitat must equal the site habitat) would also drop steelhead at PtCon
 -- multiply the regional weight by the taxon's site-habitat weight from the
 cached habitat lookup -- keeps steelhead at a quarter weight and zeroes the
 mammals, whitefish and fathead minnow. GL unaffected either way (0 winners).
+
+## Habitat conditioning of presence evidence -- BUILT and VALIDATED (2026-09-12, Fable 5.1)
+
+Design agreed with the user (defensible, allows bleed): evidence rows now obey
+the habitat stratification the resident priors already obey.
+`TaxaExpect::condition_evidence_on_habitat()` (9c9ea9a):
+`w_site = max(w * H_site, W_CLAMP)`, H_site = the taxon's weight for
+SITE_HABITAT from the same cached LLM habitat lookup that supplies the
+residents' point votes; W_CLAMP = the zero-evidence clamp
+(`w_scale * exp(-d_cap/d_half)` = 6.36e-5). Product = P(present in the site
+habitat | evidence) under distance/habitat independence (the geo x depth
+product-kernel idiom); linear so bleed survives in proportion; floored so no
+row sinks below a zero-evidence taxon. Applied to regional, watch-list and
+iNat evidence in the kernel branches of GreatLakes, PtCon 12S single + multi
+and MuguFish (`.habitat_condition()` wrapper; backups
+`.bak_pre_habitat_conditioning`). The 18S workflow and the templates have no
+evidence block.
+
+Validated on the REAL workflow lines (harnesses execute the patched
+workflows' own 7a.7 -> 7a.9b evidence block, kernel fit re-estimated at the
+run's bandwidths, then 7b.5 -> 8h at GL / 8a -> 8i at PtCon, against the
+2026-09-11 checkpoints; arm P = production priors reproduces production):
+
+| Site | Arm P (control) | Arm H (year window + habitat) |
+|---|---|---|
+| GreatLakes Lamar species-level | both 840, ours_only 141, precision 0.856, 42/61 species | both 840, ours_only 123, **precision 0.872**, 42/61 species; grass carp 5, yellow perch 78, walleye 42 unchanged |
+| GreatLakes consensus vs production | 885/885 | 875/885: Moxostoma macrolepidotum -> Moxostoma x8 (golden redhorse gained an iNat row at Lentic 0.2), Etheostoma -> E. nigrum x1 |
+| GreatLakes evidence rows | regional 132 | regional 90 (18 floored), iNat 7, watch 13; sum(w) 1.95 vs Chao 22.5 |
+| PtCon 12S consensus vs production | 13426/13440 (MC noise) | 13404/13440 (99.73%): Bubalus bubalis -> Bovidae x9, siamang -> Hylobatidae x2, red bat -> Lasiurus, O. nerka -> Oncorhynchus x7, O. clarkii -> O. kisutch, Sardinops -> S. sagax; Girella nigricans 175 unchanged |
+| PtCon 12S evidence rows | regional 53 | regional 17 (11 floored), iNat 3, watch 1, clamp 235; sum(w) 0.78 vs Chao 97.8 |
+
+Cervus elaphus (x9), Bison bison and Ictalurus punctatus still win their
+sequences at PtCon: each is the ONLY candidate, so no prior can move them --
+they stay flagged unprecedented, like the triggerfish. Harness scripts:
+`GreatLakes data/REVIEW_habitat_conditioning_arms.R` (arms P/H, scored by
+`REVIEW_lamar_score_arm.R P|H`) and
+`PtConception/REVIEW_habitat_conditioning_ptcon.R`; outputs in
+`_coverage_floor_validation_2026_09_10/` (GL, arm letters P/H) and
+`_habitat_conditioning_validation_2026_09_12/` (PtCon).
