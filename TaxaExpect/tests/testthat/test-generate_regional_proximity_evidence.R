@@ -675,3 +675,25 @@ test_that("w_scale scales the distance weight and validates its range", {
     "w_scale"
   )
 })
+
+
+test_that("year_range defaults to the ecosystem's 2000-to-now window and is forwarded to the Stage 2 fetch (2026-09-12)", {
+  fm <- formals(generate_regional_proximity_evidence)
+  expect_false(is.null(fm$year_range))
+  expect_match(eval(fm$year_range), "^2000,[0-9]{4}$")
+
+  seen <- new.env(parent = emptyenv())
+  local_mocked_bindings(name_backbone_checklist = .mock_key(), .package = "rgbif")
+  local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
+  inner <- .mock_occ("Gadus morhua", year = 2015)
+  local_mocked_bindings(
+    get_gbif_occurrences = function(keys, geometry, year_range, ...) {
+      seen$year_range <- year_range
+      inner(keys = keys, geometry = geometry, year_range = year_range, ...)
+    },
+    filter_gbif_quality = function(x, ...) x,
+    .package = "TaxaFetch"
+  )
+  suppressMessages(generate_regional_proximity_evidence("Gadus morhua", lat = 45, lng = -60, year_range = "1995,2026"))
+  expect_equal(seen$year_range, "1995,2026")
+})

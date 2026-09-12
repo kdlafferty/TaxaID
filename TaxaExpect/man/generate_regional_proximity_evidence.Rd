@@ -18,7 +18,7 @@ generate_regional_proximity_evidence(
   near_lat_tolerance_deg = 6,
   near_occurrence_min_n = 3L,
   max_coord_uncertainty = 500,
-  year_range = NULL,
+  year_range = paste0("2000,", format(Sys.Date(), "\%Y")),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   verbose = FALSE
 )
@@ -111,11 +111,18 @@ original nearest-point-only behavior.}
 \code{TaxaFetch::filter_gbif_quality()}. Default \code{500} (meters,
 matching that function's own default).}
 
-\item{year_range}{Character or \code{NULL}. Forwarded to
-\code{TaxaFetch::get_gbif_occurrences()}'s underlying fetch. Default
-\code{NULL} (that function's own all-time default) -- deliberately not
-narrowed, since record age is exactly the signal this function reads
-out, not something to pre-filter away.}
+\item{year_range}{Character (\code{"YYYY,YYYY"}) or \code{NULL}. Forwarded
+to \code{TaxaFetch::get_gbif_occurrences()}'s Stage 2 fetch. Default:
+2000 to the current year, the same window every other GBIF fetcher in
+this ecosystem defaults to. PASS THE STUDY'S OWN WINDOW (the same
+\code{year_range} the main occurrence fetch used) so regional evidence
+and resident priors are judged on the same record set. Until 2026-09-12
+the default was \code{NULL} (all time) on the reasoning that record age is
+the signal the \code{p_conc} discount reads out -- but that discount only
+narrows a row's CONFIDENCE, never its weight: a 1929 preserved specimen of
+a captive siamang 74 km from Point Conception still lifted that species'
+prior 480x above the zero-record floor and turned an 82\\%-identity family-
+level call into a species call. \code{NULL} restores the all-time fetch.}
 
 \item{cache_dir}{Character or \code{NULL}. Forwarded to the Stage 2 fetch
 for checkpointing. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.}

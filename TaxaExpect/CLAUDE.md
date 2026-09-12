@@ -1,4 +1,16 @@
 # CLAUDE.md -- TaxaExpect
+# 2026-09-12 (Fable 5.1): generate_regional_proximity_evidence(year_range=) default NULL ->
+# "2000,<year>" (TaxaFetch's own convention); all 7 workflows now pass their study window
+# (YEAR_RANGE). Found from a real implausible call: Symphalangus syndactylus at PtCon 12S
+# reached SPECIES rank at posterior 0.99 from an 82%-identity match because a 1929 SBMNH
+# preserved specimen ("Featherhill Ranch", a captive animal GBIF labels native) 74 km away
+# earned it a regional-proximity weight of 0.031 -- 480x the zero-record floor -- and the
+# family-level hypothesis (likelihood 33x higher) lost on prior. The old "age is the signal"
+# rationale only held for p_conc (confidence), not the weight. Forwarding test added.
+# Same session, TaxaAssign-side: posterior_consensus()'s species_reference downranking
+# narrowed a genus LCA to a distance-clamp-only species at Mugu (Pseudotolithus senegallus,
+# posterior 0.009, reported at the genus's 0.89) -- fixed in the workflows by excluding
+# clamp-only rows from the reference; see TaxaID/CLAUDE.md.
 # Last updated: 2026-09-09, FINAL (Sonnet 5 -- re-archives `create_sites_from_grid()` and
 # `compute_adaptive_sampling_groups()` for the THIRD time in one day, reversing the
 # restoration directly below. This is the final decision on this pair -- not expected to
