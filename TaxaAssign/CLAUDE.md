@@ -1,4 +1,19 @@
 # CLAUDE.md -- TaxaAssign
+# 2026-09-12 (Fable 5.1): combine_multisite_priors() NaN fix. The first real multi-site run
+# (new PtConceptionWorkflow_12S_multi_site_FAST.R: per-Location kernel priors, join_priors(site
+# = <obs x site table>) -> combine_multisite_priors() -> compute_posterior()) died at
+# compute_posterior() with 349 of 4,469 rows NaN/Inf. Cause: every site's prior for those
+# candidates was J-shaped (dark-diversity floor alpha ~2e-6/beta 2; evidence-blend alpha
+# ~6e-5) -- digamma is singular at 0, the combined logit was ~ -5e5, plogis() returned
+# exactly 0, phi = Inf, alpha = 0*Inf. The Session-138 rule had only ever met moderate
+# alphas (tests used 1..80). Fix: keep the logit rule whenever it yields finite positive
+# parameters (with one informative site the J-shaped site's weight is ~alpha^2 and is
+# correctly ignored -- a floor prior is uninformed, not confident, so the probability scale
+# must NOT be used there); fall back to probability-scale precision weighting (variance
+# m(1-m)/(phi+1), concentration recovered from the combined variance, never below the sum
+# of the sites' own) only when the logit rule underflows. Also documented: presence-mixture
+# columns (prior_mix_*) are inherited from the first site row, not recombined. 4 new tests,
+# check 0/0/0, reinstalled.
 # Last updated: 2026-09-08, later (Sonnet 5 -- `suggest_unreferenced_species()` MOVED to
 # TaxaLikely (package-placement fix, no math/behavior change) -- prompted by the user asking
 # whether the same duplicate-mechanism pattern found in the `flag_reference_errors()`

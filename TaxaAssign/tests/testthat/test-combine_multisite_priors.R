@@ -174,3 +174,90 @@ test_that("prior_mean is required, not silently NA-filled", {
   )
   expect_error(combine_multisite_priors(df), "prior_mean")
 })
+
+
+# ---- J-shaped priors (2026-09-12) --------------------------------------------
+
+test_that("all-sites J-shaped priors (dark-diversity floor) combine to finite, positive parameters", {
+  # The exact real numbers from the first PtConception multi-site run: an
+  # unreferenced species at two sites, each at the dark-diversity floor.
+  df <- tibble(
+    observation_id   = "ESV_000787",
+    taxon_name       = c("Sardinops caeruleus", "Sardinops caeruleus"),
+    taxon_name_rank  = "species",
+    hypothesis_type  = "unreferenced_species",
+    score_likelihood = 1,
+    grid_id          = c("Site_BioD", "Site_Jalama"),
+    main_habitat     = "Marine",
+    prior_alpha      = c(1.913572e-06, 1.913572e-06),
+    prior_beta       = c(1.999998, 1.999998),
+    prior_mean       = c(9.567861e-07, 9.567861e-07)
+  )
+  out <- suppressMessages(combine_multisite_priors(df))
+  expect_equal(nrow(out), 1L)
+  expect_true(is.finite(out$prior_alpha) && out$prior_alpha > 0)
+  expect_true(is.finite(out$prior_beta) && out$prior_beta > 0)
+  expect_equal(out$prior_mean, 9.567861e-07, tolerance = 1e-6)
+  # two identical priors -> same mean, at least twice the concentration
+  expect_gte(out$prior_alpha + out$prior_beta, 2 * (1.913572e-06 + 1.999998) * 0.999)
+  expect_equal(out$n_sites_combined, 2L)
+  expect_no_error(compute_posterior(out |> mutate(score_likelihood_mean = 1, score_likelihood_sd = 0.1), n_sims = 50L))
+})
+
+test_that("an evidence-blend row (alpha ~ 6e-5, beta ~ 3e5) at three sites combines finitely", {
+  df <- tibble(
+    observation_id   = "obs1",
+    taxon_name       = "Sardinops melanosticta",
+    taxon_name_rank  = "species",
+    hypothesis_type  = "specific_candidate",
+    score_likelihood = 1,
+    grid_id          = c("s1", "s2", "s3"),
+    main_habitat     = "Marine",
+    prior_alpha      = rep(6.36355e-05, 3),
+    prior_beta       = rep(262890, 3),
+    prior_mean       = rep(2.420613e-10, 3)
+  )
+  out <- suppressMessages(combine_multisite_priors(df))
+  expect_true(all(is.finite(c(out$prior_alpha, out$prior_beta, out$prior_mean))))
+  expect_true(out$prior_alpha > 0 && out$prior_beta > 0)
+  expect_equal(out$prior_mean, 2.420613e-10, tolerance = 1e-6)
+})
+
+test_that("one J-shaped site plus one moderate site: the logit rule ignores the uninformed floor and the confident site dominates", {
+  df <- tibble(
+    observation_id   = "obs1",
+    taxon_name       = "X",
+    taxon_name_rank  = "species",
+    hypothesis_type  = "specific_candidate",
+    score_likelihood = 1,
+    grid_id          = c("floor_site", "data_site"),
+    main_habitat     = "Marine",
+    prior_alpha      = c(2e-6, 80),
+    prior_beta       = c(2, 20),
+    prior_mean       = c(1e-6, 0.8)
+  )
+  out <- suppressMessages(combine_multisite_priors(df))
+  expect_true(all(is.finite(c(out$prior_alpha, out$prior_beta))))
+  # The floor's logit weight is ~alpha^2, so the result is the informative
+  # site alone: plogis(digamma(80) - digamma(20)) = 0.803 (the logit-scale
+  # mean of a Beta is not the logit of its mean).
+  expect_equal(out$prior_mean, stats::plogis(digamma(80) - digamma(20)), tolerance = 1e-3)
+})
+
+test_that("moderate priors still use the logit rule (worked numbers unchanged)", {
+  df <- tibble(
+    observation_id   = "obs1",
+    taxon_name       = c("X", "X", "Y", "Y"),
+    taxon_name_rank  = "species",
+    hypothesis_type  = "specific_candidate",
+    score_likelihood = 1,
+    grid_id          = c("siteA", "siteB", "siteA", "siteB"),
+    main_habitat     = "Marine",
+    prior_alpha      = c(80, 2, 20, 3),
+    prior_beta       = c(20, 3, 80, 2),
+    prior_mean       = c(0.8, 0.4, 0.2, 0.6)
+  )
+  out <- suppressMessages(combine_multisite_priors(df))
+  x <- out$prior_mean[out$taxon_name == "X"]; y <- out$prior_mean[out$taxon_name == "Y"]
+  expect_equal(x / (x + y), 0.785, tolerance = 0.01)
+})

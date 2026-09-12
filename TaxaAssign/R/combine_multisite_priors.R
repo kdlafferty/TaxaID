@@ -36,19 +36,53 @@ utils::globalVariables(c(
     return(rows)
   }
 
+  # Logit-space precision weighting needs every site's Beta to be
+  # unimodal-ish (alpha and beta comfortably above 1): digamma/trigamma are
+  # singular at 0, so a J-shaped prior (alpha << 1 -- the dark-diversity
+  # floor gives alpha ~ 2e-6, an evidence-blend row ~ 6e-5) has a logit mean
+  # near -1/alpha and plogis() of the combination underflows to exactly 0,
+  # from which phi = Inf and alpha = 0 * Inf = NaN. Found 2026-09-12 on the
+  # first real multi-site run (PtConception 12S): 349 of 4,469 candidate rows
+  # -- most unreferenced-species hypotheses -- came back NaN/Inf and
+  # compute_posterior() refused them. Such rows are the majority of real
+  # candidates, not an edge case. The logit rule is still right whenever at
+  # least one site is informative: a J-shaped site's logit weight is ~alpha^2,
+  # so it is correctly ignored in favour of the site with data (a near-zero
+  # floor prior is UNINFORMED, not confident -- which is exactly why the
+  # probability scale, where its tiny variance would make it look precise,
+  # is not used in that case). Only when EVERY site is J-shaped does the
+  # logit combination underflow; then combine on the probability scale:
+  # precision-weight the Beta means by the inverse of each Beta's own
+  # variance m(1-m)/(phi+1) (finite and positive for any alpha, beta > 0)
+  # and recover phi from the combined variance. Two identical J-shaped priors
+  # combine to the same mean at twice the concentration -- the same
+  # "agreement sharpens" behaviour the logit rule gives moderate priors.
   logit_mean <- digamma(rows$prior_alpha) - digamma(rows$prior_beta)
   logit_var <- trigamma(rows$prior_alpha) + trigamma(rows$prior_beta)
   w <- 1 / logit_var
-
   logit_combined <- sum(logit_mean * w) / sum(w)
   var_combined <- 1 / sum(w)
   mean_combined <- stats::plogis(logit_combined)
-
   phi_combined <- 1 / (var_combined * mean_combined * (1 - mean_combined))
+  alpha_combined <- mean_combined * phi_combined
+  beta_combined <- (1 - mean_combined) * phi_combined
+  if (!is.finite(alpha_combined) || !is.finite(beta_combined) ||
+    alpha_combined <= 0 || beta_combined <= 0) {
+    phi_i <- rows$prior_alpha + rows$prior_beta
+    m_i <- rows$prior_alpha / phi_i
+    v_i <- m_i * (1 - m_i) / (phi_i + 1)
+    w <- 1 / v_i
+    mean_combined <- sum(m_i * w) / sum(w)
+    var_combined <- 1 / sum(w)
+    phi_combined <- mean_combined * (1 - mean_combined) / var_combined - 1
+    phi_combined <- max(phi_combined, sum(phi_i))   # never LESS concentrated than the sites agree on
+    alpha_combined <- mean_combined * phi_combined
+    beta_combined <- (1 - mean_combined) * phi_combined
+  }
 
   template <- rows[1L, , drop = FALSE]
-  template$prior_alpha <- mean_combined * phi_combined
-  template$prior_beta <- (1 - mean_combined) * phi_combined
+  template$prior_alpha <- alpha_combined
+  template$prior_beta <- beta_combined
   template$prior_mean <- mean_combined
   template$grid_id <- NA_character_
   template$main_habitat <- NA_character_
@@ -99,6 +133,32 @@ utils::globalVariables(c(
 #' the low-confidence site (about 16x less weight than site A here, from the
 #' ratio of their logit variances) rather than counting it at face value or
 #' distorting the result in an uncontrolled direction.
+#'
+#' ## J-shaped (alpha or beta at or below 1) priors
+#' The logit-space rule assumes each site's Beta is reasonably concentrated.
+#' Where any site's prior is J-shaped -- the dark-diversity floor
+#' (`alpha ~ 2e-6, beta ~ 2`), a singleton mirror, or an evidence-blend row --
+#' the logit moments are dominated by digamma's singularity at 0 and the
+#' back-transformed mean underflows to exactly 0 (NaN alpha, Inf beta; found
+#' on the first real multi-site run, 2026-09-12, on 349 of 4,469 rows). The
+#' logit rule still applies whenever at least one site is informative: a
+#' J-shaped site's logit weight is about `alpha^2`, so it is ignored in favour
+#' of the site with data, as it should be (a floor prior is uninformed, not
+#' confident). Only when EVERY site is J-shaped does the logit combination
+#' underflow; those candidates are then combined on the probability scale:
+#' each site's mean weighted by the inverse of its Beta variance
+#' `m(1-m)/(phi+1)`, with the combined concentration recovered from the
+#' combined variance (never below the sum of the sites' own concentrations).
+#' Moderate priors are unaffected -- the worked numbers above still apply.
+#'
+#' ## Presence-mixture rows
+#' A row carrying `prior_mix_w`/`prior_mix_theta_present`/
+#' `prior_mix_theta_absent` (see [TaxaExpect::apply_undetected_evidence()])
+#' inherits those columns from its FIRST site row; only `prior_alpha`,
+#' `prior_beta` and `prior_mean` are recombined. When the per-site mixture
+#' rows are copies of one evidence pricing (the usual case: evidence is priced
+#' once per study) this is exact; genuinely site-specific mixture weights are
+#' not combined here.
 #'
 #' ## Ecological independence assumption
 #' Combining priors multiplicatively/in log-odds across sites assumes the

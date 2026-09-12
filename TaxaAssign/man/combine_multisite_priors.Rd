@@ -77,6 +77,36 @@ ratio of their logit variances) rather than counting it at face value or
 distorting the result in an uncontrolled direction.
 }
 
+\subsection{J-shaped (alpha or beta at or below 1) priors}{
+
+The logit-space rule assumes each site's Beta is reasonably concentrated.
+Where any site's prior is J-shaped -- the dark-diversity floor
+(\verb{alpha ~ 2e-6, beta ~ 2}), a singleton mirror, or an evidence-blend row --
+the logit moments are dominated by digamma's singularity at 0 and the
+back-transformed mean underflows to exactly 0 (NaN alpha, Inf beta; found
+on the first real multi-site run, 2026-09-12, on 349 of 4,469 rows). The
+logit rule still applies whenever at least one site is informative: a
+J-shaped site's logit weight is about \code{alpha^2}, so it is ignored in favour
+of the site with data, as it should be (a floor prior is uninformed, not
+confident). Only when EVERY site is J-shaped does the logit combination
+underflow; those candidates are then combined on the probability scale:
+each site's mean weighted by the inverse of its Beta variance
+\code{m(1-m)/(phi+1)}, with the combined concentration recovered from the
+combined variance (never below the sum of the sites' own concentrations).
+Moderate priors are unaffected -- the worked numbers above still apply.
+}
+
+\subsection{Presence-mixture rows}{
+
+A row carrying \code{prior_mix_w}/\code{prior_mix_theta_present}/
+\code{prior_mix_theta_absent} (see \code{\link[TaxaExpect:apply_undetected_evidence]{TaxaExpect::apply_undetected_evidence()}})
+inherits those columns from its FIRST site row; only \code{prior_alpha},
+\code{prior_beta} and \code{prior_mean} are recombined. When the per-site mixture
+rows are copies of one evidence pricing (the usual case: evidence is priced
+once per study) this is exact; genuinely site-specific mixture weights are
+not combined here.
+}
+
 \subsection{Ecological independence assumption}{
 
 Combining priors multiplicatively/in log-odds across sites assumes the
