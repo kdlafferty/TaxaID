@@ -96,7 +96,18 @@ OUT_PREFIX <- "TaxaID_test"
 # log for this prefix modified in the last 12 h, else a new one; reopen the
 # sink (append) if none is active; re-register the handlers if the tagged
 # ones are no longer in globalCallingHandlers().
+# PREFIX-AWARE (2026-09-12, later): the option is session-global, so after running
+# one workflow in a session the next workflow's block found the option set and
+# the sink still open and wrote into the FIRST workflow's log (the 12S single-site
+# run logged into the multi-site FAST run's file). A path is reused only when its
+# basename carries THIS workflow's OUT_PREFIX; otherwise any sink of ours is closed
+# and a log for this prefix is opened.
 .log_path <- getOption("TaxaID.run_log_path")
+if (!is.null(.log_path) && !startsWith(basename(.log_path), paste0(OUT_PREFIX, "_run_"))) {
+  if (sink.number() > 0L && !is.null(getOption("TaxaID.run_log_con"))) { sink(); try(close(getOption("TaxaID.run_log_con")), silent = TRUE) }
+  options(TaxaID.run_log_path = NULL, TaxaID.run_log_con = NULL)
+  .log_path <- NULL
+}
 if (is.null(.log_path)) {
   .prev_logs <- list.files(OUT_DIR, pattern = paste0("^", OUT_PREFIX, "_run_[0-9]{8}_[0-9]{4}[.]log$"), full.names = TRUE)
   .prev_logs <- .prev_logs[difftime(Sys.time(), file.mtime(.prev_logs), units = "hours") < 12]
