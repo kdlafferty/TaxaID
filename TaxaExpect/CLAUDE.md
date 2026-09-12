@@ -7,6 +7,16 @@
 # earned it a regional-proximity weight of 0.031 -- 480x the zero-record floor -- and the
 # family-level hypothesis (likelihood 33x higher) lost on prior. The old "age is the signal"
 # rationale only held for p_conc (confidence), not the weight. Forwarding test added.
+# Same session, later: NEW condition_evidence_on_habitat(evidence, habitat_lookup, site_habitat,
+# w_floor) -- w_site = max(w * H_site, w_floor), H_site from TaxaHabitat::build_habitat_lookup()
+# (the residents' own point-vote weights), w_floor = the run's clamp weight. Design agreed with
+# the user: evidence rows bypassed the habitat stratification residents obey (a distant deer
+# record out-priced the deer living on the site); the product is P(present in site habitat |
+# evidence) under distance/habitat independence, the same product-kernel idiom as geo x depth;
+# linear so bleed survives in proportion (steelhead 0.25 at a marine site), floor so no row
+# sinks below a zero-evidence taxon; applies to regional, watch-list and iNat evidence alike.
+# Wired into the kernel branches of GL / PtCon 12S single + multi / Mugu; GL result validated
+# against Lamar via the workflow-line harness before adoption (see TaxaID/CLAUDE.md).
 # Same session, TaxaAssign-side: posterior_consensus()'s species_reference downranking
 # narrowed a genus LCA to a distance-clamp-only species at Mugu (Pseudotolithus senegallus,
 # posterior 0.009, reported at the genus's 0.89) -- fixed in the workflows by excluding

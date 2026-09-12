@@ -2,6 +2,14 @@
 
 ## 2026-09-12
 
+* New `condition_evidence_on_habitat()`: multiplies an evidence table's
+  presence weights by each taxon's weight for the site habitat (from the same
+  LLM habitat lookup that stratifies the resident priors), floored at the
+  run's zero-evidence clamp. Evidence rows had skipped the habitat
+  stratification residents obey: a red deer record 54 km from a marine site
+  was priced 480x above a local deer population. Linear in the habitat
+  weight, so habitat bleed survives in proportion (steelhead keeps a quarter
+  of its regional weight at a marine site).
 * `generate_regional_proximity_evidence(year_range = )` now defaults to the
   ecosystem's 2000-to-current-year GBIF window instead of `NULL` (all time),
   and workflows pass their own study window. A 1929 museum specimen of a

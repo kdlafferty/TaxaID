@@ -62,6 +62,17 @@ Priors are organized into three branches (`prior_branch`):
 -   **`transport`** -- domestic/food/cultivar species and other
     non-resident presence hypotheses
 
+![Interactive prior-field map produced by `plot_theta_surface()`. The
+surface is the estimator evaluated continuously across a lattice, not one
+value per grid cell, so it shows how a species' expected share changes
+across the region rather than only at the sampling site. Here theta for
+kelp surfperch (*Brachyistius frenatus*) rises along the Santa Barbara
+Channel and the Los Angeles coastline, and the hollow circle marks the
+focal site. Passing several taxa to `taxon` adds the layer toggle at top
+right, so priors can be compared species by species. The surface is
+clipped to a supplied search polygon via `mask`, which is why it stops at
+the coast instead of painting inland.](man/figures/theta_surface.png)
+
 ## Assumptions
 
 ### Shared detection effort
@@ -190,7 +201,12 @@ input) - `generate_presence_curve_evidence()` /
 `generate_user_specified_evidence()` +
 `apply_undetected_evidence(pricing = "curve")` -- price named unobserved
 claimants (regional, watch-listed, or distance-clamped) on a shared
-presence-distance curve - `generate_domestic_food_priors()` --
+presence-distance curve - `condition_evidence_on_habitat()` -- multiply
+any evidence table's presence weights by each taxon's weight for the site
+habitat (from the cached LLM habitat lookup), floored at the zero-evidence
+clamp, so evidence obeys the same habitat stratification as the resident
+priors while habitat bleed survives in proportion -
+`generate_domestic_food_priors()` --
 `transport`-branch priors for domestic, food, and cultivar species
 
 **Diagnostics and reporting:** - `plot_theta_surface()` -- continuous
