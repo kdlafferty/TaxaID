@@ -470,3 +470,20 @@ test_that(".extract_feature_table_fallback() still rescues when the span genuine
   )
   expect_equal(nchar(out), 1115L) # from = 1, to = min(1200, 1115)
 })
+
+test_that(".trim_queries_to_amplicon() returns sequences as deposited for a marker with no registered primers", {
+  skip_if_not_installed("Biostrings")
+  # 18S has no entry in TaxaTools::barcode_primer_defaults (a nuclear marker
+  # with no canonical primer pair). Before 2026-09-12 this errored -- and
+  # killed the real PtConception 18S reference screen on its first chunk.
+  seqs <- c(paste(rep("ACGT", 600), collapse = ""), "ACGTACGTAC", NA_character_)
+  expect_no_error(
+    out <- suppressMessages(.trim_queries_to_amplicon(seqs, barcode_term = "18S"))
+  )
+  expect_identical(as.character(out), seqs)
+  expect_identical(attr(out, "trimmed"), c(FALSE, FALSE, FALSE))
+  expect_message(
+    .trim_queries_to_amplicon(seqs, barcode_term = "18S", verbose = TRUE),
+    "no registered primer pair"
+  )
+})

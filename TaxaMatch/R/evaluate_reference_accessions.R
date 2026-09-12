@@ -1608,7 +1608,12 @@ utils::globalVariables(c(
 #'   (~217 bp), the only behaviour before 2026-09-03. See `@section Why the
 #'   query is the primer-stripped amplicon`. Verdict-affecting, so it is part
 #'   of `params_key`. Ignored when `barcode_term` is `NULL` (nothing is
-#'   trimmed).
+#'   trimmed), and moot for a marker with no registered primer pair in
+#'   `TaxaTools::barcode_primer_defaults` (e.g. `"18S"`, `"ITS"`): such
+#'   queries are submitted AS DEPOSITED with a one-line message, never
+#'   trimmed and never an error (2026-09-12; previously the whole screen
+#'   died on its first chunk for 18S). Over-length records still go to
+#'   the feature-table fallback.
 #' @param chunk_size Integer (default `200L`). Accessions needing real
 #'   evaluation are processed this many at a time, with the persistent
 #'   cache written after EACH chunk -- see `@section Chunked evaluation and

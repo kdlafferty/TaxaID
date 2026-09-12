@@ -131,7 +131,12 @@ submitted to BLAST: the primer-STRIPPED amplicon (the region between the
 two primer sites, ~169 bp for MiFish-U) or the primer-INCLUSIVE span
 (~217 bp), the only behaviour before 2026-09-03. See \verb{@section Why the query is the primer-stripped amplicon}. Verdict-affecting, so it is part
 of \code{params_key}. Ignored when \code{barcode_term} is \code{NULL} (nothing is
-trimmed).}
+trimmed), and moot for a marker with no registered primer pair in
+\code{TaxaTools::barcode_primer_defaults} (e.g. \code{"18S"}, \code{"ITS"}): such
+queries are submitted AS DEPOSITED with a one-line message, never
+trimmed and never an error (2026-09-12; previously the whole screen
+died on its first chunk for 18S). Over-length records still go to
+the feature-table fallback.}
 
 \item{chunk_size}{Integer (default \code{200L}). Accessions needing real
 evaluation are processed this many at a time, with the persistent

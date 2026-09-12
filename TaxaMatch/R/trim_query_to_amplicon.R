@@ -173,7 +173,30 @@
     )
   }
 
-  primer_info <- TaxaTools::resolve_barcode_primers(barcode_term)
+  # A marker with no registered primer pair (18S, ITS -- nuclear markers
+  # with no single canonical primer set to verify; or any custom term) can
+  # never be trimmed here, but that is no reason to fail the whole screen:
+  # this function's contract is "only ever shortens a query, never discards
+  # or errors on one it can't trim". Return every sequence as deposited and
+  # let the caller's feature-table fallback handle over-length records.
+  # Found 2026-09-12: the PtConception 18S screen (barcode_term = "18S")
+  # died on its first chunk, AFTER the NCBI fetch, because this call was
+  # unguarded -- and unlike TaxaTools::resolve_barcode_marker(), which passes
+  # an unrecognised term through, resolve_barcode_primers() errors on one.
+  primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
+    error = function(e) NULL
+  )
+  if (is.null(primer_info)) {
+    if (verbose) {
+      message(sprintf(
+        "evaluate_reference_accessions(barcode_term = '%s'): no registered primer pair for this marker -- queries are submitted as deposited (no primer trimming; over-length records go to the feature-table fallback).",
+        paste(barcode_term, collapse = "/")
+      ))
+    }
+    out <- sequences
+    attr(out, "trimmed") <- rep(FALSE, length(sequences))
+    return(out)
+  }
   lens <- TaxaTools::resolve_barcode_lengths(barcode_term)
   max_len <- lens[["max_bp"]]
   min_len <- lens[["min_bp"]]

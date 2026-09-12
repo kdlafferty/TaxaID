@@ -1,5 +1,16 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# 2026-09-12 (Fable 5.1): `.trim_queries_to_amplicon()` no longer errors on a marker with no
+# registered primer pair. The real PtConception 18S match-candidate screen (barcode_term =
+# "18S") died on chunk 1/17, AFTER the 200-accession NCBI fetch, with "resolve_barcode_primers:
+# no primer defaults found for '18S'": the helper called the resolver unguarded before it even
+# checked whether any query needed trimming, and -- unlike resolve_barcode_marker(), which the
+# 18S workflow's own comment cited as precedent for a pass-through -- resolve_barcode_primers()
+# errors on an unlisted term. Now tryCatch'd: no primers -> every query returned as deposited
+# (attr trimmed = FALSE), one message, and the existing feature-table fallback still handles
+# over-length records. Regression test added; test 285/0 on the two affected files, check
+# 0/0/0, reinstalled. The 18S workflow comment corrected (it claimed the pass-through already
+# happened). No cache impact: the failed chunk never reached the cache.
 # Last updated: 2026-09-10, later (Fable 5.1 -- `blast_sequences()` now records
 # `min_query_coverage` in `attr(out, "report_params")` next to `min_score`. It is the
 # coverage floor the match object was built under, and TaxaLikely::train_likelihood_
