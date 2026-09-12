@@ -93,3 +93,10 @@ birdnet_results/
 # ── pkgdown local build output (destination TBD -- migrating to GitLab) ──
 pkgdown_sites/
 */docs/
+
+# ── Patch backups (the ecosystem's *.bak_pre_<change> convention) and rendered README ──
+*.bak_*
+README.html
+
+# ── Ad-hoc session outputs ──────────────────────
+Claude outputs/

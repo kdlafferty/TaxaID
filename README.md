@@ -1012,7 +1012,7 @@ Bayesian classifier for rapid assignment of rRNA sequences into the new
 bacterial taxonomy. *Applied and Environmental Microbiology*, 73(16),
 5261--5267.
 
-Wilkinson, S.P., Stat, M., Bunce, M. and Davy, S.K. (2018). Taxonomic
+Wilkinson, S.P., Davy, S.K., Bunce, M. and Stat, M. (2018). Taxonomic
 identification of environmental DNA with informatic sequence
 classification trees. *PeerJ Preprints*, 6, e26812v1.
 <https://doi.org/10.7287/peerj.preprints.26812v1>

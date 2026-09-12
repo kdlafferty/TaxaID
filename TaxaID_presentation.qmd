@@ -36,7 +36,7 @@ False Negatives: Most taxa don't have references.  And many markers don't assign
 
 . . .
 
-False Positives: Shea and Boehm (2024) found that standard algorithms matched 117 out of 415 metazoan sequences to taxa not even present in the study area. 
+False Positives: Shea and Boehm (2024) found that 117 of 415 identified species (28%) had no occurrence record in the California Current System. 
 
 ## Problem: Scores are not probabilities
 
