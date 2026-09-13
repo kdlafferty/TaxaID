@@ -1,5 +1,10 @@
 # TaxaMatch (development version)
 
+## 2026-09-12
+
+* Reference screen no longer errors on a marker with no registered primer
+  pair (18S; 4a910ab).
+
 ## 2026-09-10
 
 * `blast_sequences()`: `attr(out, "report_params")` now records
@@ -10,6 +15,13 @@
   own BLAST never completed (`action_audit` untested/NA); the summary message
   names un-audited accessions separately. Seen live on a real audit where all 8
   candidates timed out at NCBI and every row read "spared".
+
+## 2026-09-07
+
+* New `verify_local_corroborations()` (65a5d09).
+* Four defects fixed from the formal review (179c8c7).
+* `filter_redundant_hypotheses()`: fixed a false-positive warning
+  (6b9f743).
 
 ## Polishing Phase (Sessions 57-59)
 

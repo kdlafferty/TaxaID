@@ -55,7 +55,7 @@ seqs <- read_sequence_table("seqtab_nochim.rds")
 
 # 2. Filter by length and abundance
 filtered <- filter_sequences(seqs, min_length = 100, max_length = 300,
-                             min_reads = 10)
+                             min_abundance = 10)
 
 # 3. BLAST against NCBI
 blast_hits <- blast_sequences(filtered, database = "nt",
@@ -168,7 +168,7 @@ to keep only the best candidate per window.
 **Reference training workflow:** Download ground-truth recordings from
 Xeno-canto (Xeno-canto Foundation, Netherlands, with support from
 Naturalis Biodiversity Center, Leiden; <https://xeno-canto.org/>) with
-`TaxaLikely::fetch_reference_recordings()`, run BirdNET-Analyzer on the
+`TaxaLikely::fetch_xc_recording_locations()`, run BirdNET-Analyzer on the
 downloaded audio, then join detections back to the known species via
 `source_file` to label H1/H2/H3 training examples.
 
@@ -234,9 +234,6 @@ falls back to a coarse "Animal" label. TaxaID handles both:
 -   **"Animal" / unconfirmed** can be re-scored with
     `score_image_inat()` (iNaturalist CV API), flagged for manual
     review, or carried forward as prior-only assignments
-
-See `inst/animl_workflow_design.md` for a full discussion document,
-including questions to resolve with your team before implementing.
 
 ### MegaDetector
 

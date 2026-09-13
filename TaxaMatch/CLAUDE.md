@@ -1,6 +1,13 @@
 # CLAUDE.md — TaxaMatch
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# 2026-09-12 (Fable 5.1): `.trim_queries_to_amplicon()` no longer errors on a marker with no
+# 2026-09-13 (Sonnet 5): ecosystem review, roxygen-only pass: verify_removal_candidates()
+# (reference_label_verdict.R) gained @section notes that a spared candidate is NA-safe,
+# that corroborator columns are always present, and that screen_corroborators() needs
+# cache_dir. NEWS.md updated; README fixes (min_abundance, fetch_xc_recording_locations, a
+# dead link); inst/CITATION -> 0.1.0 + github.com/DOI-USGS/TaxaID. No code changed in this
+# package today. devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library; not yet reinstalled. Full findings:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md.
+# Previous update, 2026-09-12 (Fable 5.1): `.trim_queries_to_amplicon()` no longer errors on a marker with no
 # registered primer pair. The real PtConception 18S match-candidate screen (barcode_term =
 # "18S") died on chunk 1/17, AFTER the 200-accession NCBI fetch, with "resolve_barcode_primers:
 # no primer defaults found for '18S'": the helper called the resolver unguarded before it even

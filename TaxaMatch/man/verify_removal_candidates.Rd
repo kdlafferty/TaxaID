@@ -37,11 +37,16 @@ audit) are served free.}
 1-2 corroborators (see the section below), also check those
 corroborators' OWN label via \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} --
 reusing an accession already present in \code{evaluation} for free where
-possible -- and surface a corroborator that itself reads a non-\code{"keep"}
-action as a stronger, separate warning. Never un-spares a row
-automatically; a flagged corroborator is reported for a human to look
-at, not acted on. \code{FALSE} skips this entirely (zero extra NCBI calls,
-matching pre-2026-09-05 behavior).}
+possible -- and surface a corroborator whose own \code{reference_action} is
+neither \code{"keep"} NOR \code{"untested"} (i.e. \code{"caution"}/\code{"inspect"}/
+\code{"remove"}) as a stronger, separate warning; an \code{"untested"}
+corroborator is deliberately NOT flagged -- no usable evidence about it
+is not evidence AGAINST it. Never un-spares a row automatically; a
+flagged corroborator is reported for a human to look at, not acted on.
+Requires \code{cache_dir} -- with \code{cache_dir = NULL} nothing is screened
+(zero extra NCBI calls) and \code{corroborator_flagged} is \code{NA} for every
+row, regardless of this parameter's value. \code{FALSE} also skips this
+entirely (matching pre-2026-09-05 behavior).}
 
 \item{verbose}{Logical (default \code{TRUE}).}
 }
@@ -52,16 +57,21 @@ A data frame with one row per removal candidate: \code{accession},
 \code{n_partners_production}/\code{n_partners_audit},
 \code{n_hits_audit}, \code{still_saturated} (the audit itself hit
 \code{audit_max_hits}, so its own window is also truncated), \code{spared}
-(the accession is no longer actioned \code{"remove"}), and -- when
-\code{cache_dir} is supplied -- \code{n_corroborators}, \code{best_corroborator_rank}
-and \code{corroborators}, a short list of the strongest partners that agreed.
-When \code{screen_corroborators = TRUE} and any row is thin (spared on <= 2
-corroborators), also \code{corroborator_accessions} (the checked
-accession(s)), \code{corroborator_worst_action} (the worst
-\code{reference_action} among them), and \code{corroborator_flagged} (logical,
-\code{NA} when nothing could be checked). Zero rows, and zero NCBI calls,
-when nothing would be removed; zero EXTRA NCBI calls (beyond the audit
-itself) when nothing is thin or \code{screen_corroborators = FALSE}.
+(\code{TRUE}/\code{FALSE}, or \code{NA} when the audit itself never completed -- i.e.
+\code{action_audit} is \code{"untested"}/\code{NA}, e.g. an NCBI BLAST timeout or
+CPU-budget rejection. \code{NA} is not "not removable" -- test
+\code{spared \%in\% TRUE}, never bare \code{spared}, before treating a row as
+overturned). The corroborator columns -- \code{n_corroborators},
+\code{best_corroborator_rank}, \code{corroborators} (a short list of the
+strongest partners that agreed), and, when \code{screen_corroborators = TRUE},
+\code{corroborator_accessions} (the checked accession(s)),
+\code{corroborator_worst_action} (the worst \code{reference_action} among them),
+and \code{corroborator_flagged} (logical) -- are ALWAYS present as columns,
+but are NA-filled whenever \code{cache_dir} is \code{NULL} (nothing to build them
+from) or a given row is not thin (spared on more than 2 corroborators,
+or not spared at all). Zero rows, and zero NCBI calls, when nothing
+would be removed; zero EXTRA NCBI calls (beyond the audit itself) when
+nothing is thin or \code{screen_corroborators = FALSE}.
 }
 \description{
 Re-evaluates ONLY the accessions an evaluation would actually remove, at a

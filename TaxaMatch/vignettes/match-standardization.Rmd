@@ -37,6 +37,11 @@ TaxaMatch handles sequence input, BLAST search, and match standardisation.
 It produces the canonical "match object" consumed by TaxaLikely (for
 likelihood modelling) and TaxaAssign (for posterior computation).
 
+Every code chunk below is illustrative and is not executed when the package
+is checked, since it calls live NCBI/BLAST services; a test in this
+package's own suite verifies every call and argument name against the
+installed package instead.
+
 ## Quick Start
 
 ```{r quickstart, eval = FALSE, purl = FALSE}

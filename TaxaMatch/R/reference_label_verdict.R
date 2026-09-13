@@ -1101,11 +1101,16 @@ refine_reference_verdicts <- function(evaluation,
 #'   1-2 corroborators (see the section below), also check those
 #'   corroborators' OWN label via [evaluate_reference_accessions()] --
 #'   reusing an accession already present in `evaluation` for free where
-#'   possible -- and surface a corroborator that itself reads a non-`"keep"`
-#'   action as a stronger, separate warning. Never un-spares a row
-#'   automatically; a flagged corroborator is reported for a human to look
-#'   at, not acted on. `FALSE` skips this entirely (zero extra NCBI calls,
-#'   matching pre-2026-09-05 behavior).
+#'   possible -- and surface a corroborator whose own `reference_action` is
+#'   neither `"keep"` NOR `"untested"` (i.e. `"caution"`/`"inspect"`/
+#'   `"remove"`) as a stronger, separate warning; an `"untested"`
+#'   corroborator is deliberately NOT flagged -- no usable evidence about it
+#'   is not evidence AGAINST it. Never un-spares a row automatically; a
+#'   flagged corroborator is reported for a human to look at, not acted on.
+#'   Requires `cache_dir` -- with `cache_dir = NULL` nothing is screened
+#'   (zero extra NCBI calls) and `corroborator_flagged` is `NA` for every
+#'   row, regardless of this parameter's value. `FALSE` also skips this
+#'   entirely (matching pre-2026-09-05 behavior).
 #' @param verbose Logical (default `TRUE`).
 #' @return A data frame with one row per removal candidate: `accession`,
 #'   `listed_taxon`, `action_production`/`action_audit`,
@@ -1113,16 +1118,21 @@ refine_reference_verdicts <- function(evaluation,
 #'   `n_partners_production`/`n_partners_audit`,
 #'   `n_hits_audit`, `still_saturated` (the audit itself hit
 #'   `audit_max_hits`, so its own window is also truncated), `spared`
-#'   (the accession is no longer actioned `"remove"`), and -- when
-#'   `cache_dir` is supplied -- `n_corroborators`, `best_corroborator_rank`
-#'   and `corroborators`, a short list of the strongest partners that agreed.
-#'   When `screen_corroborators = TRUE` and any row is thin (spared on <= 2
-#'   corroborators), also `corroborator_accessions` (the checked
-#'   accession(s)), `corroborator_worst_action` (the worst
-#'   `reference_action` among them), and `corroborator_flagged` (logical,
-#'   `NA` when nothing could be checked). Zero rows, and zero NCBI calls,
-#'   when nothing would be removed; zero EXTRA NCBI calls (beyond the audit
-#'   itself) when nothing is thin or `screen_corroborators = FALSE`.
+#'   (`TRUE`/`FALSE`, or `NA` when the audit itself never completed -- i.e.
+#'   `action_audit` is `"untested"`/`NA`, e.g. an NCBI BLAST timeout or
+#'   CPU-budget rejection. `NA` is not "not removable" -- test
+#'   `spared %in% TRUE`, never bare `spared`, before treating a row as
+#'   overturned). The corroborator columns -- `n_corroborators`,
+#'   `best_corroborator_rank`, `corroborators` (a short list of the
+#'   strongest partners that agreed), and, when `screen_corroborators = TRUE`,
+#'   `corroborator_accessions` (the checked accession(s)),
+#'   `corroborator_worst_action` (the worst `reference_action` among them),
+#'   and `corroborator_flagged` (logical) -- are ALWAYS present as columns,
+#'   but are NA-filled whenever `cache_dir` is `NULL` (nothing to build them
+#'   from) or a given row is not thin (spared on more than 2 corroborators,
+#'   or not spared at all). Zero rows, and zero NCBI calls, when nothing
+#'   would be removed; zero EXTRA NCBI calls (beyond the audit itself) when
+#'   nothing is thin or `screen_corroborators = FALSE`.
 #'
 #' @section Read the corroborators, not just `spared`:
 #' `congruent_evidence_exists_anywhere` counts a corroborating partner
