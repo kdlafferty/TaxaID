@@ -115,3 +115,32 @@ Then stop and wait for the user's verdict before implementing anything.
 - Harness scripts and outputs: `GreatLakes data/REVIEW_coverage_floor_arms.R`, `REVIEW_habitat_conditioning_arms.R`, `REVIEW_lamar_score_arm.R`, `_coverage_floor_validation_2026_09_10/`; `PtConception/REVIEW_habitat_conditioning_ptcon.R`, `_habitat_conditioning_validation_2026_09_12/`
 - Production checkpoints by prefix: `GreatLakes2023BurnsHarbor_`, `PtConMifishSchulte_`, `PtConMifishSchulteMultiFast_`, `PtCon18SSchulte_`, `MuguWilderFish_blast_` (and `_wilder_` if run)
 - `git log --since=2026-09-05`
+
+## 5. File hygiene done 2026-09-13 (so the reviewer does not re-find it)
+
+- The seven production workflows are now under git, in two small local repos
+  that track only `*.R` and `*.md`: `~/My Drive/Rscripts/eDNA/` (PtConception
+  + SepulvedaMugu) and `~/My Drive/Stats and Data/GreatLakes data/`. Data,
+  checkpoints, caches, logs and archives are ignored. The `*.bak_pre_<change>`
+  backup convention is retired: future edits to those files should be
+  committed there, not backed up by suffix.
+- Every existing `.bak_*` file, stale `.rds.*` variant, Mugu's
+  `_stale_cache_backup/` and Point Conception's superseded global-GBIF cache
+  items (a 107 MB 2026-09-05 zip, its metadata and verdicts, and two
+  pre-scoping `gbif_fetch_*` tables) were MOVED, not deleted, into
+  `_archive_backups_and_stale_2026_09_13/` in each site directory (~205 MB
+  total). Google Drive multi-parent files make `rm` unsafe here; the user
+  trashes those folders from the Drive UI when ready.
+- GreatLakes' raw sequencing data (5.1 GB, `correct-barcodes*`) moved to
+  `~/My Drive/Stats and Data/GreatLakes raw sequencing/`; the three DADA2
+  scripts' `FASTQ_DIR` updated. The analysis directory is now ~200 MB.
+- Checkpoint rule adopted: save on compute, never on load. A sweep of the
+  five workflows found the raw_gbif re-save (fixed) plus two harmless cases
+  (`bbox`, which is deliberately re-saved under the run prefix; `model_fit`
+  in the archived GLMM branch). The per-taxon LLM caches (~7,600 files,
+  ~30 MB across sites) are kept as designed: content-keyed, one clear-cache
+  function each.
+- Still open for the reviewer: whether `institution_reviewed` and
+  `geo_outlier_check` (36 MB each at PtCon 18S, derivable from raw_gbif in
+  minutes) deserve their own checkpoints, and whether the 18S
+  `HabitatFilteredMifish.rds` (40 MB, provenance unknown) is still used.
