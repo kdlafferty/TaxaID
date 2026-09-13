@@ -26,8 +26,10 @@ test_that("saved decisions are re-applied per point and pending drops to the und
   reviewed$spatial_flag[reviewed$point_id == "p1"] <- "likely"        # reviewer confirmed p1
   reviewed$spatial_flag[reviewed$point_id == "p3"] <- "unlikely"      # reviewer left p3 excluded
   reviewed$main_habitat[reviewed$point_id == "p3"] <- "Marine"        # and reassigned its habitat
-  dec <- suppressMessages(save_spatial_review_decisions(reviewed, path))
+  dec <- suppressMessages(save_spatial_review_decisions(reviewed, path, before = .flagged()))
   expect_equal(nrow(dec), 4L)   # one row per point_id
+  expect_equal(dec$habitat_reassigned[dec$point_id == "p3"], TRUE)    # Terrestrial -> Marine was the reviewer
+  expect_equal(dec$habitat_reassigned[dec$point_id == "p1"], FALSE)   # p1's habitat is the automatic one
   expect_true(file.exists(path))
 
   fresh <- .flagged()
@@ -57,4 +59,29 @@ test_that("inputs are validated", {
   expect_error(save_spatial_review_decisions(.flagged()[, -1], path), "no column 'point_id'")
   expect_error(apply_spatial_review_decisions(.flagged(), c("a", "b")), "single file path")
   expect_error(apply_spatial_review_decisions("x", path), "data frame")
+})
+
+
+test_that("an automatic habitat is not frozen: only a reviewer reassignment overrides today's assignment", {
+  path <- file.path(withr::local_tempdir(), "dec.rds")
+  suppressMessages(save_spatial_review_decisions(.flagged(), path, before = .flagged()))   # nothing reassigned
+  fresh <- .flagged(); fresh$main_habitat[fresh$point_id == "p2"] <- "Estuarine"   # today's automatic assignment moved
+  out <- suppressMessages(apply_spatial_review_decisions(fresh, path))
+  expect_equal(out$main_habitat[out$point_id == "p2"], "Estuarine")
+  expect_equal(attr(out, "n_applied"), 0L)
+  # without `before`, every saved habitat counts as a reassignment (conservative)
+  path2 <- file.path(withr::local_tempdir(), "dec2.rds")
+  suppressMessages(save_spatial_review_decisions(.flagged(), path2))
+  out2 <- suppressMessages(apply_spatial_review_decisions(fresh, path2))
+  expect_equal(out2$main_habitat[out2$point_id == "p2"], "Marine")
+})
+
+test_that("a reassignment survives a later review that left it in place", {
+  path <- file.path(withr::local_tempdir(), "dec.rds")
+  r1 <- .flagged(); r1$main_habitat[r1$point_id == "p3"] <- "Marine"
+  suppressMessages(save_spatial_review_decisions(r1, path, before = .flagged()))
+  applied <- suppressMessages(apply_spatial_review_decisions(.flagged(), path))   # p3 now reads Marine
+  suppressMessages(save_spatial_review_decisions(applied, path, before = applied))  # reviewer changed nothing
+  dec <- readRDS(path)
+  expect_true(dec$habitat_reassigned[dec$point_id == "p3"])
 })

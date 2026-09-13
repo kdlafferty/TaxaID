@@ -30,8 +30,9 @@ points whose flag is not \code{"likely"} and that carry no decision) and
 \code{pending_point_ids}.
 }
 \description{
-Overwrites \code{spatial_flag} and \code{main_habitat} on every row whose
-\code{point_id} has a saved decision, marks the reason, and reports how
+Overwrites \code{spatial_flag} on every row whose \code{point_id} has a
+saved decision (and \code{main_habitat} where the decision was a reviewer
+reassignment), marks the reason, and reports how
 many flagged points still need a reviewer. Call it on
 \code{\link{flag_habitat_inconsistencies}}'s output; open
 \code{\link{review_spatial_flags}} only when

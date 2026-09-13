@@ -920,7 +920,7 @@ occurrences_flagged <- TaxaHabitat::apply_spatial_review_decisions(occurrences_f
 if (isTRUE(REDO_SPATIAL_REVIEW) || attr(occurrences_flagged, "n_pending_review") > 0L) {
   reviewed_spatial <- review_spatial_flags(occurrences_flagged)
   if (is.null(reviewed_spatial)) stop("review_spatial_flags() was cancelled -- nothing saved; re-run this step.")
-  TaxaHabitat::save_spatial_review_decisions(reviewed_spatial, SPATIAL_REVIEW_DECISIONS)
+  TaxaHabitat::save_spatial_review_decisions(reviewed_spatial, SPATIAL_REVIEW_DECISIONS, before = occurrences_flagged)
 } else {
   message("  Spatial review: every flagged point carries a saved decision -- gadget skipped (REDO_SPATIAL_REVIEW <- TRUE to re-review).")
   reviewed_spatial <- occurrences_flagged

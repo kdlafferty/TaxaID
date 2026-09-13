@@ -7,6 +7,7 @@
 save_spatial_review_decisions(
   reviewed,
   path,
+  before = NULL,
   point_id_col = "point_id",
   flag_col = "spatial_flag",
   habitat_col = "main_habitat"
@@ -18,12 +19,21 @@ save_spatial_review_decisions(
 
 \item{path}{Character. The \code{.rds} decisions file, one per site.}
 
+\item{before}{Optional data frame: the table the gadget was opened on
+(\code{flag_habitat_inconsistencies()}'s output). When supplied, a
+point's habitat is recorded as a reviewer REASSIGNMENT only where it
+differs from \code{before}; otherwise the habitat is treated as the
+automatic assignment of the day and is NOT frozen for later runs. Without
+\code{before}, every saved habitat is treated as a reassignment (the
+conservative reading).}
+
 \item{point_id_col, flag_col, habitat_col}{Column names. Defaults match
 \code{review_spatial_flags()}'s output.}
 }
 \value{
 Invisibly, the merged decisions table (\code{point_id},
-\code{spatial_flag}, \code{main_habitat}, \code{decided_at}).
+\code{spatial_flag}, \code{main_habitat}, \code{habitat_reassigned},
+\code{decided_at}).
 }
 \description{
 Extracts one row per \code{point_id} from \code{review_spatial_flags()}'s

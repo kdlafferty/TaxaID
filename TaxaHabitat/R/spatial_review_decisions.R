@@ -27,13 +27,21 @@
 #' @param reviewed Data frame returned by \code{\link{review_spatial_flags}}
 #'   (must carry \code{point_id}, \code{spatial_flag}, \code{main_habitat}).
 #' @param path Character. The \code{.rds} decisions file, one per site.
+#' @param before Optional data frame: the table the gadget was opened on
+#'   (\code{flag_habitat_inconsistencies()}'s output). When supplied, a
+#'   point's habitat is recorded as a reviewer REASSIGNMENT only where it
+#'   differs from \code{before}; otherwise the habitat is treated as the
+#'   automatic assignment of the day and is NOT frozen for later runs. Without
+#'   \code{before}, every saved habitat is treated as a reassignment (the
+#'   conservative reading).
 #' @param point_id_col,flag_col,habitat_col Column names. Defaults match
 #'   \code{review_spatial_flags()}'s output.
 #' @return Invisibly, the merged decisions table (\code{point_id},
-#'   \code{spatial_flag}, \code{main_habitat}, \code{decided_at}).
+#'   \code{spatial_flag}, \code{main_habitat}, \code{habitat_reassigned},
+#'   \code{decided_at}).
 #' @seealso \code{\link{apply_spatial_review_decisions}}
 #' @export
-save_spatial_review_decisions <- function(reviewed, path,
+save_spatial_review_decisions <- function(reviewed, path, before = NULL,
                                           point_id_col = "point_id",
                                           flag_col = "spatial_flag",
                                           habitat_col = "main_habitat") {
@@ -51,9 +59,26 @@ save_spatial_review_decisions <- function(reviewed, path,
   )
   new <- new[!is.na(new$point_id) & !is.na(new$spatial_flag), , drop = FALSE]
   new <- new[!duplicated(new$point_id), , drop = FALSE]
+  if (!is.null(before)) {
+    if (!is.data.frame(before) || !all(c(point_id_col, habitat_col) %in% names(before))) {
+      stop("save_spatial_review_decisions: `before` must be a data frame with the point_id and habitat columns.", call. = FALSE)
+    }
+    bh <- as.character(before[[habitat_col]])[match(new$point_id, as.character(before[[point_id_col]]))]
+    new$habitat_reassigned <- !is.na(new$main_habitat) & (is.na(bh) | bh != new$main_habitat)
+  } else {
+    new$habitat_reassigned <- !is.na(new$main_habitat)
+  }
   old <- if (file.exists(path)) readRDS(path) else new[0, ]
+  if (!"habitat_reassigned" %in% names(old)) old$habitat_reassigned <- !is.na(old$main_habitat)
+  # A reassignment recorded earlier survives a later review that left it in place
+  # (the gadget was opened on the already-applied table, so "unchanged" there
+  # means "still the reassigned value", not "back to automatic").
+  oi <- match(new$point_id, old$point_id)
+  keep_old <- !is.na(oi) & old$habitat_reassigned[ifelse(is.na(oi), 1L, oi)] %in% TRUE &
+    !is.na(new$main_habitat) & new$main_habitat == old$main_habitat[ifelse(is.na(oi), 1L, oi)]
+  new$habitat_reassigned[keep_old] <- TRUE
   old <- old[!old$point_id %in% new$point_id, , drop = FALSE]
-  out <- rbind(old, new)
+  out <- rbind(old[, names(new), drop = FALSE], new)
   rownames(out) <- NULL
   dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
   saveRDS(out, path)
@@ -64,8 +89,9 @@ save_spatial_review_decisions <- function(reviewed, path,
 
 #' Apply saved spatial-flag decisions before (or instead of) the gadget
 #'
-#' Overwrites \code{spatial_flag} and \code{main_habitat} on every row whose
-#' \code{point_id} has a saved decision, marks the reason, and reports how
+#' Overwrites \code{spatial_flag} on every row whose \code{point_id} has a
+#' saved decision (and \code{main_habitat} where the decision was a reviewer
+#' reassignment), marks the reason, and reports how
 #' many flagged points still need a reviewer. Call it on
 #' \code{\link{flag_habitat_inconsistencies}}'s output; open
 #' \code{\link{review_spatial_flags}} only when
@@ -102,12 +128,13 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
     idx <- match(pid, dec$point_id)
     hit <- !is.na(idx)
     if (any(hit)) {
-      changed <- hit & (is.na(occurrence_data[[flag_col]]) |
-        occurrence_data[[flag_col]] != dec$spatial_flag[idx] |
-        is.na(occurrence_data[[habitat_col]]) |
-        occurrence_data[[habitat_col]] != dec$main_habitat[idx])
+      if (!"habitat_reassigned" %in% names(dec)) dec$habitat_reassigned <- !is.na(dec$main_habitat)
+      reassign <- hit & dec$habitat_reassigned[ifelse(is.na(idx), 1L, idx)] %in% TRUE
+      .ne <- function(a, b) (is.na(a) != is.na(b)) | (!is.na(a) & !is.na(b) & a != b)
+      changed <- (hit & .ne(occurrence_data[[flag_col]], dec$spatial_flag[idx])) |
+        (reassign & .ne(occurrence_data[[habitat_col]], dec$main_habitat[idx]))
       occurrence_data[[flag_col]][hit] <- dec$spatial_flag[idx[hit]]
-      occurrence_data[[habitat_col]][hit] <- dec$main_habitat[idx[hit]]
+      occurrence_data[[habitat_col]][reassign] <- dec$main_habitat[idx[reassign]]
       if (reason_col %in% names(occurrence_data)) {
         occurrence_data[[reason_col]][hit] <- paste0(
           "reviewer decision (", dec$decided_at[idx[hit]], "); auto: ",
