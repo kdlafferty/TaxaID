@@ -27,7 +27,14 @@
 # wired into GL / PtCon 12S single + multi / Mugu kernel branches and VALIDATED on the real
 # workflow lines: GL Lamar precision 0.856 -> 0.872 with 42/61 species and grass carp / perch /
 # walleye unchanged; PtCon 99.73% same consensus, the water buffalo / siamang / red bat species
-# calls gone. Full table in the reentry doc's "Habitat conditioning" section.
+# calls gone. Full table in the reentry doc's "Habitat conditioning" section. 2026-09-13: NEW
+# TaxaHabitat::save_spatial_review_decisions()/apply_spatial_review_decisions() -- the gadget's
+# decisions are persisted per point_id and re-applied (all 6 gadget workflows; seeded at GL /
+# PtCon / Mugu); PtCon 12S single-site gained SCREENS_FROM_CHECKPOINT (both NCBI screens served
+# from checkpoints) and a fix for a 2 h 47 min self-inflicted cache invalidation (re-saving the
+# cached raw_gbif bumped the mtime the outlier gate keys on); the console-log block is now
+# prefix-aware. PtCon 12S run 2 (08:39): 99.48% same consensus, sentinels unchanged, buffalo /
+# siamang / red bat gone. NEXT: ecosystem_docs/REVIEW_PROMPT_full_ecosystem_review_2026_09_13.md.
 # Previous update, 2026-09-12, later (Opus 5 -- TaxaAssign::score_consensus() gains
 # consensus_mode = c("gap", "bracket"). "gap" is the default and is UNCHANGED (verified by
 # diffing against `git show HEAD:` over 576 parameter/data combinations, 0 mismatches).
