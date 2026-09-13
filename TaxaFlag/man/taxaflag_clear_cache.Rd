@@ -2,7 +2,7 @@
 % Please edit documentation in R/taxaflag_clear_cache.R
 \name{taxaflag_clear_cache}
 \alias{taxaflag_clear_cache}
-\title{Report and clear TaxaFlag's on-disk review cache}
+\title{Report and clear TaxaFlag's on-disk caches}
 \usage{
 taxaflag_clear_cache(
   cache_dir = tools::R_user_dir("TaxaFlag", "cache"),
@@ -12,7 +12,9 @@ taxaflag_clear_cache(
 }
 \arguments{
 \item{cache_dir}{Character. The directory passed to
-\code{\link[=review_assignments]{review_assignments()}}'s \code{cache_dir}. Defaults to
+\code{\link[=review_assignments]{review_assignments()}}'s or \code{\link[=check_gbif_tile_range]{check_gbif_tile_range()}}'s \code{cache_dir}
+(each function's cache lives in its own directory, so point this at
+whichever one you want to inspect/clear). Defaults to
 \code{tools::R_user_dir("TaxaFlag", "cache")}, matching the sibling packages;
 workflows that pass a project-local directory should pass the same one
 here.}
@@ -28,12 +30,15 @@ Invisibly, the inventory data frame
 (\code{\link[TaxaTools:list_cache_files]{TaxaTools::list_cache_files()}} output) of the files considered.
 }
 \description{
-Lists, and optionally deletes, the per-taxon files written by
-\code{\link[=review_assignments]{review_assignments()}} when it is given a \code{cache_dir}. Entries have no
-built-in expiry -- a verdict stays valid until the taxon's own context
-changes, which changes its key and makes it a miss anyway -- so pruning is
-about disk usage and about deliberately forcing a fresh review, not about
-correctness.
+Lists, and optionally deletes, the per-key files written by
+\code{\link[=review_assignments]{review_assignments()}} and \code{\link[=check_gbif_tile_range]{check_gbif_tile_range()}} when either is given
+a \code{cache_dir}: \code{\link[=review_assignments]{review_assignments()}}'s per-reviewed-taxon LLM verdict
+cache, and \code{\link[=check_gbif_tile_range]{check_gbif_tile_range()}}'s per-(taxon, location, zoom, ...)
+GBIF density-tile verdict cache. Entries in both have no built-in expiry
+-- a verdict stays valid until its own key changes (e.g. the taxon's
+review context changes, or the query location/zoom changes), which makes
+it a miss anyway -- so pruning is about disk usage and about deliberately
+forcing a fresh review/re-fetch, not about correctness.
 }
 \examples{
 \dontrun{
@@ -42,7 +47,7 @@ taxaflag_clear_cache(older_than_days = 90) # prune old entries
 }
 }
 \seealso{
-\code{\link[=review_assignments]{review_assignments()}},
+\code{\link[=review_assignments]{review_assignments()}}, \code{\link[=check_gbif_tile_range]{check_gbif_tile_range()}},
 \code{\link[TaxaTools:report_and_clear_cache]{TaxaTools::report_and_clear_cache()}},
 \code{TaxaFetch::taxafetch_clear_cache()}, \code{TaxaLikely::taxalikely_clear_cache()}
 }

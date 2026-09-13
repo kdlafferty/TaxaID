@@ -10,3 +10,4 @@
 ^DISCLAIMER\.md$
 ^REENTRY_PROMPT_.*\.md$
 ^\.lintr$
+^.*\.bak_.*$

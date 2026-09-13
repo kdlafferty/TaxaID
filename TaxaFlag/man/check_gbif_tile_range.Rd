@@ -12,7 +12,8 @@ check_gbif_tile_range(
   buffer_px = 512L,
   escalate = TRUE,
   min_zoom = 0L,
-  base_url = "https://api.gbif.org/v2/map/occurrence/density"
+  base_url = "https://api.gbif.org/v2/map/occurrence/density",
+  cache_dir = NULL
 )
 }
 \arguments{
@@ -44,6 +45,11 @@ allowed to reach. Default \code{0L} (the whole world, one tile). Ignored
 when \code{escalate = FALSE}.}
 
 \item{base_url}{Character. GBIF map tile base URL. Exposed for testing.}
+
+\item{cache_dir}{Character or \code{NULL} (default). Directory for a
+persistent, per-key on-disk cache -- see \verb{Caching} below. \code{NULL}
+disables caching entirely (identical to every prior release of this
+function).}
 }
 \value{
 A one-row data frame:
@@ -171,6 +177,59 @@ or the originally requested \code{zoom} if nothing was found at any level) --
 compare against \code{zoom_used}, not \code{zoom}, when judging precision.
 }
 
+\section{Caching}{
+
+\code{check_gbif_tile_range()} is called once per zero-record taxon by
+\code{TaxaExpect::generate_regional_proximity_evidence()}'s Stage 1 gate --
+cheap per call, but re-paid in full on every re-run of a workflow against
+otherwise-unchanged data. When \code{cache_dir} is supplied, a hit is read
+from disk with \strong{no HTTP request at all} and a miss is fetched normally
+and then written.
+
+\strong{Cache key} (order shown; joined into one string and hashed for the
+filename): \code{taxon_key}, \code{query_lat}/\code{query_lon} each rounded to \strong{4
+decimal places} (about 11m of ground resolution at the equator --
+comfortably finer than anything that could move which GBIF density tile
+pixel a query lands in, so rounding only ever collapses floating-point
+noise, never two genuinely different query points), \code{buffer_px}, \code{zoom},
+\code{escalate}, \code{min_zoom}, \code{base_url}. The full, unhashed key is stored
+\emph{inside} the cache file and re-checked on every read (the same pattern
+\code{TaxaHabitat::build_habitat_lookup()} and
+\code{TaxaTools::scientific_to_common()} use) -- a filename hash collision
+therefore costs one extra re-fetch, and can never hand back a different
+taxon/location's verdict. Each file also stores \code{fetched_at} (a
+\code{POSIXct}), which is how staleness is surfaced (see below) without a TTL.
+
+\strong{No expiry, by design.} A hit is always used, however old -- there is
+no automatic re-fetch. If you want fresher verdicts (GBIF's density map
+is refreshed with new occurrence submissions over time), you must
+deliberately clear the cache with \code{\link[=taxaflag_clear_cache]{taxaflag_clear_cache()}}; this function
+will never do it for you.
+
+\strong{Why no year dimension in the key.} Unlike
+\code{TaxaFetch::get_gbif_occurrences()} (Stage 2 of the regional-proximity
+evidence generator, which IS cached per-year-range via its own
+\code{cache_dir}), GBIF's density tile API has no year filter at all -- a tile
+request always reflects GBIF's current full-history density map for that
+taxon. There is therefore no year-scoped cache key to add here; Stage 2's
+separate, year-aware fetch exists precisely because Stage 1's tiles
+cannot answer a time-scoped question.
+
+\strong{What is and isn't cached.} Every value this function can return once
+the fetch itself succeeds -- including \code{beyond_buffer = TRUE} -- is a
+real, decisive verdict (see \verb{@return} below) and is cached. Nothing here
+is ever cached on a thrown error (a missing \code{httr2}/\code{png} package, a
+malformed GBIF tile, or any other condition that stops this function
+before it can construct a result) -- an error always propagates to the
+caller with no cache read or write, so a transient failure is retried
+plainly on the next call rather than being frozen as "unknown."
+
+The returned data frame carries \code{attr(out, "cache_age_days")}: the age in
+days of the cached verdict on a hit, or \code{NA} on a miss/uncached call --
+lets a caller report how stale the tile checks behind a run were, rather
+than that staleness being silent.
+}
+
 \examples{
 \dontrun{
 check_gbif_tile_range(
@@ -181,5 +240,5 @@ check_gbif_tile_range(
 
 }
 \seealso{
-\code{\link[=compute_local_occurrence_distance]{compute_local_occurrence_distance()}}
+\code{\link[=compute_local_occurrence_distance]{compute_local_occurrence_distance()}}, \code{\link[=taxaflag_clear_cache]{taxaflag_clear_cache()}}
 }

@@ -1,6 +1,14 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-06, later (Sonnet 5 -- follow-up to the rename entry directly below:
+# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (G-C2) -- NEW
+# check_gbif_tile_range(cache_dir=): one file per (taxon key, rounded lat/lon, buffer,
+# zoom, escalate, min_zoom, base_url), full key verified on read, NO expiry by user
+# decision, attr(, "cache_age_days") reported. taxaflag_clear_cache() now covers both the
+# review cache and this new tile cache. Wired into GL / PtCon 12S / Mugu via
+# TaxaExpect::generate_regional_proximity_evidence(tile_cache_dir=). No year dimension:
+# GBIF density tiles are not year-filterable (that's what Stage 2 is for). Full record:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md Section L.
+# Previous update, 2026-09-06, later (Sonnet 5 -- follow-up to the rename entry directly below:
 # GreatLakes2023_ConsensusWorkflow.R (~/My Drive/Stats and Data/GreatLakes data/, outside
 # eDNA/) had been missed by the original 7-file sweep -- fixed the same way, the real 8th
 # and last production caller. Both real on-disk review_assignments() caches (GreatLakes 72

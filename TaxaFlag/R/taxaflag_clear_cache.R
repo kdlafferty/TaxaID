@@ -3,26 +3,36 @@
 # TaxaFlag's wrapper over the shared TaxaTools cache engine, matching
 # TaxaFetch::taxafetch_clear_cache() / TaxaLikely::taxalikely_clear_cache().
 #
-# The cache this manages is review_assignments(cache_dir=)'s: one small .rds
-# per reviewed taxon, named by a hash of its full key. That is exactly the
-# file-per-key shape TaxaTools::list_cache_files() is built for, so it is
-# reported and pruned the same way as every other cache in the ecosystem
-# rather than accumulating unmanaged.
+# TWO caches share this one management function, both one small .rds per
+# key, named by a hash of the full key -- exactly the file-per-key shape
+# TaxaTools::list_cache_files() is built for, so both are reported and
+# pruned the same way as every other cache in the ecosystem rather than
+# accumulating unmanaged:
+#   1. review_assignments(cache_dir=)'s per-reviewed-taxon LLM verdict cache
+#      (files ending "_review.rds").
+#   2. check_gbif_tile_range(cache_dir=)'s per-(taxon, location, zoom, ...)
+#      GBIF density-tile verdict cache (files ending "_tile_range.rds"),
+#      added 2026-09-13.
 # ==============================================================================
 
-.taxaflag_cache_patterns <- c("_review\\.rds$")
+.taxaflag_cache_patterns <- c("_review\\.rds$", "_tile_range\\.rds$")
 
-#' Report and clear TaxaFlag's on-disk review cache
+#' Report and clear TaxaFlag's on-disk caches
 #'
-#' Lists, and optionally deletes, the per-taxon files written by
-#' [review_assignments()] when it is given a `cache_dir`. Entries have no
-#' built-in expiry -- a verdict stays valid until the taxon's own context
-#' changes, which changes its key and makes it a miss anyway -- so pruning is
-#' about disk usage and about deliberately forcing a fresh review, not about
-#' correctness.
+#' Lists, and optionally deletes, the per-key files written by
+#' [review_assignments()] and [check_gbif_tile_range()] when either is given
+#' a `cache_dir`: [review_assignments()]'s per-reviewed-taxon LLM verdict
+#' cache, and [check_gbif_tile_range()]'s per-(taxon, location, zoom, ...)
+#' GBIF density-tile verdict cache. Entries in both have no built-in expiry
+#' -- a verdict stays valid until its own key changes (e.g. the taxon's
+#' review context changes, or the query location/zoom changes), which makes
+#' it a miss anyway -- so pruning is about disk usage and about deliberately
+#' forcing a fresh review/re-fetch, not about correctness.
 #'
 #' @param cache_dir Character. The directory passed to
-#'   [review_assignments()]'s `cache_dir`. Defaults to
+#'   [review_assignments()]'s or [check_gbif_tile_range()]'s `cache_dir`
+#'   (each function's cache lives in its own directory, so point this at
+#'   whichever one you want to inspect/clear). Defaults to
 #'   `tools::R_user_dir("TaxaFlag", "cache")`, matching the sibling packages;
 #'   workflows that pass a project-local directory should pass the same one
 #'   here.
@@ -32,7 +42,7 @@
 #'   deleting it.
 #' @return Invisibly, the inventory data frame
 #'   ([TaxaTools::list_cache_files()] output) of the files considered.
-#' @seealso [review_assignments()],
+#' @seealso [review_assignments()], [check_gbif_tile_range()],
 #'   [TaxaTools::report_and_clear_cache()],
 #'   `TaxaFetch::taxafetch_clear_cache()`, `TaxaLikely::taxalikely_clear_cache()`
 #' @export

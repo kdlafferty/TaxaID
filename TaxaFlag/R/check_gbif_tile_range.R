@@ -80,6 +80,61 @@
 #'   allowed to reach. Default `0L` (the whole world, one tile). Ignored
 #'   when `escalate = FALSE`.
 #' @param base_url Character. GBIF map tile base URL. Exposed for testing.
+#' @param cache_dir Character or `NULL` (default). Directory for a
+#'   persistent, per-key on-disk cache -- see \verb{Caching} below. `NULL`
+#'   disables caching entirely (identical to every prior release of this
+#'   function).
+#'
+#' @section Caching:
+#' `check_gbif_tile_range()` is called once per zero-record taxon by
+#' `TaxaExpect::generate_regional_proximity_evidence()`'s Stage 1 gate --
+#' cheap per call, but re-paid in full on every re-run of a workflow against
+#' otherwise-unchanged data. When `cache_dir` is supplied, a hit is read
+#' from disk with **no HTTP request at all** and a miss is fetched normally
+#' and then written.
+#'
+#' **Cache key** (order shown; joined into one string and hashed for the
+#' filename): `taxon_key`, `query_lat`/`query_lon` each rounded to **4
+#' decimal places** (about 11m of ground resolution at the equator --
+#' comfortably finer than anything that could move which GBIF density tile
+#' pixel a query lands in, so rounding only ever collapses floating-point
+#' noise, never two genuinely different query points), `buffer_px`, `zoom`,
+#' `escalate`, `min_zoom`, `base_url`. The full, unhashed key is stored
+#' *inside* the cache file and re-checked on every read (the same pattern
+#' `TaxaHabitat::build_habitat_lookup()` and
+#' `TaxaTools::scientific_to_common()` use) -- a filename hash collision
+#' therefore costs one extra re-fetch, and can never hand back a different
+#' taxon/location's verdict. Each file also stores `fetched_at` (a
+#' `POSIXct`), which is how staleness is surfaced (see below) without a TTL.
+#'
+#' **No expiry, by design.** A hit is always used, however old -- there is
+#' no automatic re-fetch. If you want fresher verdicts (GBIF's density map
+#' is refreshed with new occurrence submissions over time), you must
+#' deliberately clear the cache with [taxaflag_clear_cache()]; this function
+#' will never do it for you.
+#'
+#' **Why no year dimension in the key.** Unlike
+#' `TaxaFetch::get_gbif_occurrences()` (Stage 2 of the regional-proximity
+#' evidence generator, which IS cached per-year-range via its own
+#' `cache_dir`), GBIF's density tile API has no year filter at all -- a tile
+#' request always reflects GBIF's current full-history density map for that
+#' taxon. There is therefore no year-scoped cache key to add here; Stage 2's
+#' separate, year-aware fetch exists precisely because Stage 1's tiles
+#' cannot answer a time-scoped question.
+#'
+#' **What is and isn't cached.** Every value this function can return once
+#' the fetch itself succeeds -- including `beyond_buffer = TRUE` -- is a
+#' real, decisive verdict (see `@return` below) and is cached. Nothing here
+#' is ever cached on a thrown error (a missing `httr2`/`png` package, a
+#' malformed GBIF tile, or any other condition that stops this function
+#' before it can construct a result) -- an error always propagates to the
+#' caller with no cache read or write, so a transient failure is retried
+#' plainly on the next call rather than being frozen as "unknown."
+#'
+#' The returned data frame carries `attr(out, "cache_age_days")`: the age in
+#' days of the cached verdict on a hit, or `NA` on a miss/uncached call --
+#' lets a caller report how stale the tile checks behind a run were, rather
+#' than that staleness being silent.
 #'
 #' @return A one-row data frame:
 #'   \describe{
@@ -140,7 +195,7 @@
 #'       single requested `zoom`/`buffer_px` window.}
 #'   }
 #'
-#' @seealso [compute_local_occurrence_distance()]
+#' @seealso [compute_local_occurrence_distance()], [taxaflag_clear_cache()]
 #'
 #' @examples
 #' \dontrun{
@@ -158,7 +213,8 @@ check_gbif_tile_range <- function(taxon_key,
                                   buffer_px = 512L,
                                   escalate = TRUE,
                                   min_zoom = 0L,
-                                  base_url = "https://api.gbif.org/v2/map/occurrence/density") {
+                                  base_url = "https://api.gbif.org/v2/map/occurrence/density",
+                                  cache_dir = NULL) {
   if (!is.numeric(taxon_key) || length(taxon_key) != 1L || is.na(taxon_key)) {
     stop("check_gbif_tile_range: taxon_key must be a single non-NA numeric GBIF usageKey.")
   }
@@ -182,6 +238,30 @@ check_gbif_tile_range <- function(taxon_key,
     min_zoom < 0 || min_zoom > zoom || min_zoom != round(min_zoom)) {
     stop("check_gbif_tile_range: min_zoom must be a single integer in [0, zoom].")
   }
+  if (!is.null(cache_dir) &&
+    (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir))) {
+    stop("check_gbif_tile_range: cache_dir must be a single non-NA character string, or NULL.")
+  }
+
+  zoom <- as.integer(zoom)
+  min_zoom <- as.integer(min_zoom)
+  tile_size <- 512L # GBIF's @1x.png tile size -- confirmed empirically, NOT the 256px slippy-map convention
+
+  # ---- cache lookup (see this function's own "Caching" roxygen section) ----
+  cache_key <- NULL
+  cache_path <- NULL
+  if (!is.null(cache_dir)) {
+    cache_key <- .tile_cache_key(taxon_key, query_lat, query_lon, buffer_px, zoom, escalate, min_zoom, base_url)
+    if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    cache_path <- file.path(cache_dir, paste0(.review_cache_hash(cache_key), "_tile_range.rds"))
+    hit <- .tile_cache_read(cache_path, cache_key)
+    if (!is.null(hit)) {
+      out <- hit$row
+      attr(out, "cache_age_days") <- as.numeric(difftime(Sys.time(), hit$fetched_at, units = "days"))
+      return(out)
+    }
+  }
+
   for (pkg in c("httr2", "png")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop(sprintf(
@@ -190,10 +270,6 @@ check_gbif_tile_range <- function(taxon_key,
       ))
     }
   }
-
-  zoom <- as.integer(zoom)
-  min_zoom <- as.integer(min_zoom)
-  tile_size <- 512L # GBIF's @1x.png tile size -- confirmed empirically, NOT the 256px slippy-map convention
 
   zoom_seq <- if (escalate) seq.int(zoom, min_zoom, by = -1L) else zoom
 
@@ -234,7 +310,7 @@ check_gbif_tile_range <- function(taxon_key,
     patch_diameter_km <- sqrt(patch_size_px) * found_attempt$resolution_km_per_px
   }
 
-  data.frame(
+  out <- data.frame(
     taxon_key = taxon_key,
     query_lat = query_lat,
     query_lon = query_lon,
@@ -253,6 +329,17 @@ check_gbif_tile_range <- function(taxon_key,
     beyond_buffer = beyond_buffer,
     stringsAsFactors = FALSE
   )
+
+  # Reached only on a successful computation (any thrown error above -- a
+  # missing package, a malformed tile -- propagates before this point and is
+  # never cached, matching the "unresolved verdicts are never cached"
+  # convention). Every outcome that reaches here, beyond_buffer included, is
+  # a real, decisive verdict per this function's own @return docs.
+  if (!is.null(cache_dir)) {
+    .tile_cache_write(cache_path, cache_key, out, fetched_at = Sys.time())
+  }
+  attr(out, "cache_age_days") <- NA_real_
+  out
 }
 
 #' One zoom level's worth of tile fetch + presence/distance/patch computation
@@ -429,4 +516,65 @@ check_gbif_tile_range <- function(taxon_key,
     region <- grown
   }
   list(size = sum(region), capped = capped)
+}
+
+# ------------------------------------------------------------------------------
+# Internal cache helpers for check_gbif_tile_range(cache_dir=)
+# Same shape as review_assignments()'s own cache (see taxaflag_clear_cache.R):
+# one small .rds per key, the full key stored inside and re-checked on read
+# so a filename-hash collision costs one re-fetch, never a wrong verdict.
+# Hashing itself reuses .review_cache_hash() (taxaflag_clear_cache.R) -- a
+# generic string hash, not actually review-specific, despite its name.
+# ------------------------------------------------------------------------------
+
+#' Build the tile-range cache key
+#' Order: taxon_key, query_lat/query_lon (each rounded to 4 decimal places
+#' -- see check_gbif_tile_range()'s own "Caching" roxygen section for why),
+#' buffer_px, zoom, escalate, min_zoom, base_url. Deliberately has NO year/
+#' date component -- GBIF's density tile API has no year filter at all, so
+#' there is nothing time-scoped to key on (unlike TaxaFetch::
+#' get_gbif_occurrences(), Stage 2's own year-aware cache).
+#' @noRd
+.tile_cache_key <- function(taxon_key, query_lat, query_lon, buffer_px, zoom, escalate, min_zoom, base_url) {
+  paste(
+    "v1",
+    taxon_key,
+    sprintf("%.4f", round(query_lat, 4)),
+    sprintf("%.4f", round(query_lon, 4)),
+    buffer_px, zoom, escalate, min_zoom, base_url,
+    sep = "|"
+  )
+}
+
+#' Read one cached tile-range verdict, verifying its full key and shape
+#' Returns the whole stored list (key/row/fetched_at) on a genuine hit, or
+#' NULL on any miss/corruption/collision -- the caller reads $row/$fetched_at.
+#' @noRd
+.tile_cache_read <- function(path, key) {
+  if (!file.exists(path)) {
+    return(NULL)
+  }
+  ent <- tryCatch(readRDS(path), error = function(e) NULL)
+  if (is.null(ent) || !is.list(ent) || is.null(ent$key) || is.null(ent$row) || is.null(ent$fetched_at)) {
+    return(NULL)
+  }
+  if (!identical(ent$key, key)) {
+    return(NULL)
+  } # collision or stale layout -- costs one re-fetch, never a wrong verdict
+  if (!is.data.frame(ent$row) || nrow(ent$row) != 1L) {
+    return(NULL)
+  }
+  if (!inherits(ent$fetched_at, "POSIXct")) {
+    return(NULL)
+  }
+  ent
+}
+
+#' Write one tile-range verdict to the cache, alongside its full key + fetch time
+#' @noRd
+.tile_cache_write <- function(path, key, row, fetched_at) {
+  tryCatch(saveRDS(list(key = key, row = row, fetched_at = fetched_at), path),
+    error = function(e) invisible(NULL)
+  )
+  invisible(NULL)
 }

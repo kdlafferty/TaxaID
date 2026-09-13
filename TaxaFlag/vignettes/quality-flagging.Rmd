@@ -26,6 +26,11 @@ anomalous detections in taxonomic assignment results:
 Each flag function appends categorical columns to your data. You decide how to
 weight and combine them.
 
+Most of the code below is illustrative and is not executed when the package
+is checked, since it calls a live LLM service for expert review; a test in
+this package's own suite verifies every call and argument name against the
+installed package instead.
+
 ## Contamination Flagging
 
 The `flag_contaminant()` function compares read proportions in your samples
