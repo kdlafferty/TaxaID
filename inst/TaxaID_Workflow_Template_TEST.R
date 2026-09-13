@@ -907,7 +907,24 @@ n_assigned <- occurrences_with_habitat |>
 occurrences_flagged <- TaxaHabitat::flag_habitat_inconsistencies(occurrences_with_habitat)
 system("afplay /System/Library/Sounds/Ping.aiff", wait = FALSE)  # Shiny app ready
 .shiny_t0        <- proc.time()[["elapsed"]]
-reviewed_spatial <- review_spatial_flags(occurrences_flagged)
+# --- Spatial-review decisions cache (2026-09-12) ------------------------------
+# The gadget's output is a REVIEWER'S DECISION, not a computed intermediate,
+# and it used to be re-asked and overwritten on every run. Decisions are kept
+# per point_id (stable: built from the coordinates) and re-applied; the gadget
+# opens only for flagged points with no decision yet, or when
+# REDO_SPATIAL_REVIEW <- TRUE. Cancelling the gadget stops the run rather than
+# silently proceeding unreviewed.
+if (!exists("REDO_SPATIAL_REVIEW")) REDO_SPATIAL_REVIEW <- FALSE
+SPATIAL_REVIEW_DECISIONS <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_spatial_review_decisions.rds"))
+occurrences_flagged <- TaxaHabitat::apply_spatial_review_decisions(occurrences_flagged, SPATIAL_REVIEW_DECISIONS)
+if (isTRUE(REDO_SPATIAL_REVIEW) || attr(occurrences_flagged, "n_pending_review") > 0L) {
+  reviewed_spatial <- review_spatial_flags(occurrences_flagged)
+  if (is.null(reviewed_spatial)) stop("review_spatial_flags() was cancelled -- nothing saved; re-run this step.")
+  TaxaHabitat::save_spatial_review_decisions(reviewed_spatial, SPATIAL_REVIEW_DECISIONS)
+} else {
+  message("  Spatial review: every flagged point carries a saved decision -- gadget skipped (REDO_SPATIAL_REVIEW <- TRUE to re-review).")
+  reviewed_spatial <- occurrences_flagged
+}
 
 occurrences_clean <- filter(reviewed_spatial, spatial_flag == "likely")
 .save(occurrences_clean, "occurrences_clean")

@@ -1,4 +1,15 @@
-# CLAUDE.md — TaxaHabitat
+# CLAUDE.md
+# 2026-09-12 (Fable 5.1): NEW save_spatial_review_decisions() / apply_spatial_review_decisions()
+# (R/spatial_review_decisions.R). review_spatial_flags() returns a reviewer's DECISIONS, and every
+# workflow re-opened the gadget and overwrote them on each run (the search-polygon lesson again).
+# Decisions are kept in one small .rds per site keyed on point_id (stable: TaxaFetch::
+# stack_occurrences() builds it from the coordinates); apply_* overwrites spatial_flag/
+# main_habitat for decided points, prefixes spatial_flag_reason with "reviewer decision (date)",
+# and reports n_pending_review (flagged points with no decision) so the workflow opens the gadget
+# only when that is > 0 or REDO_SPATIAL_REVIEW <- TRUE. Seeded at GL / PtCon 12S / Mugu from the
+# last completed runs' occurrences_clean checkpoints (every retained point = "likely" with its
+# reviewed habitat; points the reviewer had excluded are NOT recoverable from that file and will
+# be re-asked once). 4 tests, check clean, reinstalled. — TaxaHabitat
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
 # Full chronological session history: ecosystem_docs/session_notes/TaxaHabitat_sessions.md
 # This file holds durable reference material only (purpose, functions, design

@@ -1,5 +1,13 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-12)
+
+* `save_spatial_review_decisions()` / `apply_spatial_review_decisions()`:
+  persist a reviewer's `review_spatial_flags()` decisions per `point_id` and
+  re-apply them on the next run, so the gadget opens only for flagged points
+  with no decision yet. Every production workflow had been re-opening the
+  gadget and overwriting the previous decisions on each run.
+
 ## New features (2026-09-10)
 
 * `build_habitat_lookup()`: cached one-call habitat classification
