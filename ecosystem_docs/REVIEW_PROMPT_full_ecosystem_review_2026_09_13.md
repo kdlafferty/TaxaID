@@ -84,6 +84,9 @@ GreatLakes runs 1 and 2 (Lamar 0.805 -> 0.856), PtCon 12S single (9,113 species-
    - Mugu's kernel branch prices evidence in blend mode with no clamp rows; the `W_CLAMP` floor there is a constant borrowed from the curve pricing.
    - `README.md.bak_pre_citation_fix_20260912_131218` in TaxaAssign (check NOTE; now gitignored).
    - `train_likelihood_model()` warns "N singleton reference(s) found but distance matrix lacks self-matches" on every real run: `build_sequence_matrix()` never emits `id_x == id_y` rows, so the self-match singleton path is dead code and the warning is noise. Decide which to remove.
+   - Cache gates keyed on `file.mtime` are fooled by a re-save of unchanged content (the 2026-09-13 12S run spent 2 h 47 min re-running the outlier check because the cached raw_gbif was re-saved); the 12S single-site file is fixed, the other workflows' gates should be checked for the same pattern.
+   - The evidence block costs ~40 min per run at PtCon (one GBIF tile check + fetch per zero-record taxon, 256 taxa, no per-taxon cache keyed on the year window).
+   - `train_likelihood_model()` warns "N singleton reference(s) found but distance matrix lacks self-matches" on every real run: `build_sequence_matrix()` never emits `id_x == id_y` rows, so the self-match singleton path is dead code and the warning is noise. Decide which to remove.
    - Cache gates keyed on `file.mtime` are fooled by a re-save of unchanged content (the 12S run spent 2 h 47 min re-running the outlier check because the cached raw_gbif was re-saved); the 12S single-site file is fixed, the other workflows' gates should be checked for the same pattern.
    - The evidence block costs ~40 min per run at PtCon (one GBIF tile check + fetch per zero-record taxon, 256 taxa, no per-taxon cache keyed on year window).
    - The standalone training screen exists; the match-candidate screen still blocks a production run on NCBI.
