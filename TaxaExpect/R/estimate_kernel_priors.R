@@ -47,7 +47,13 @@
 #' record count `c_i * n_eff / W`, in units of records) replace the retired
 #' `model_tier` tier1/tier2 vocabulary. Undetected/evidence/domestic rows
 #' belong to other branches and are appended by their own generators, not
-#' this function.
+#' this function. A species whose nearby records are all classified to a
+#' habitat other than `site_habitat` yields NO resident row here at all and
+#' is indistinguishable, at this stage, from a species with no nearby
+#' records whatsoever -- it only re-enters via the evidence pathway
+#' (`apply_undetected_evidence()`), where the taxon-level habitat weight
+#' (`condition_evidence_on_habitat()`) applies a SECOND, continuous discount
+#' on top of whatever this function already omitted.
 #'
 #' @param occurrence_data Data frame of cleaned, habitat-labelled occurrence
 #'   records (one row per record).
@@ -62,8 +68,12 @@
 #'   back-off (default `1`, a weakly-informative single pseudo-record;
 #'   tunable via [calibrate_kernel_bandwidth()]). `m = 0` disables
 #'   shrinkage.
-#' @param covariate_col Optional character. Name of a numeric record column
-#'   (e.g. `"depth_m"`) for the product kernel. `NULL` (default) disables it.
+#' @param covariate_col Optional character. Name of a SINGLE numeric record
+#'   column (e.g. `"depth_m"`) for the product kernel -- accepts one scalar
+#'   column name only. A second covariate (e.g. time) is not supported by the
+#'   product kernel as written; adding one would require a second
+#'   `lambda_*`/`site_*` pair and a genuine multi-factor product, not just a
+#'   longer vector here. `NULL` (default) disables it.
 #' @param site_covariate Numeric scalar. The site's own value of
 #'   `covariate_col`. Required when `covariate_col` is supplied.
 #' @param lambda_covariate Numeric scalar. Covariate kernel bandwidth, in the

@@ -178,6 +178,20 @@
 #'   level call into a species call. \code{NULL} restores the all-time fetch.
 #' @param cache_dir Character or \code{NULL}. Forwarded to the Stage 2 fetch
 #'   for checkpointing. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.
+#' @param tile_cache_dir Character or \code{NULL} (default). Forwarded
+#'   straight through to Stage 1's \code{TaxaFlag::check_gbif_tile_range(
+#'   cache_dir = )} -- see that function's own \verb{Caching} section for the
+#'   exact key/no-expiry/age-reporting design. \code{NULL} (the default)
+#'   disables Stage 1 caching entirely, matching every prior release of this
+#'   function: every zero-record taxon re-pays a live GBIF tile fetch on
+#'   every call, which is exactly the cost this parameter exists to remove
+#'   on a repeat run against unchanged data (the 2026-09-13 PtConception run
+#'   spent 43 minutes here across 256 taxa). When supplied, this function
+#'   also emits one summary line when it finishes: how many Stage 1 verdicts
+#'   were served from cache, how many were freshly fetched, and the age in
+#'   days of the oldest cache hit actually used -- so staleness (there is no
+#'   TTL; see \code{check_gbif_tile_range()}) is visible to the caller rather
+#'   than silent.
 #' @param verbose Logical. Print per-taxon Stage 1/Stage 2 progress. Default
 #'   \code{FALSE}.
 #'
@@ -192,6 +206,7 @@
 #'
 #' @seealso \code{\link{apply_undetected_evidence}},
 #'   \code{TaxaFlag::check_gbif_tile_range()},
+#'   \code{TaxaFlag::taxaflag_clear_cache()},
 #'   \code{TaxaFlag::compute_local_occurrence_distance()},
 #'   \code{TaxaFetch::get_gbif_occurrences()},
 #'   \code{TaxaFetch::filter_gbif_quality()}
@@ -226,6 +241,7 @@ generate_regional_proximity_evidence <- function(
   max_coord_uncertainty = 500,
   year_range = paste0("2000,", format(Sys.Date(), "%Y")),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
+  tile_cache_dir = NULL,
   verbose = FALSE
 ) {
   if (!is.character(zero_bbox_taxa) || length(zero_bbox_taxa) == 0L) {
@@ -248,6 +264,10 @@ generate_regional_proximity_evidence <- function(
   if (!is.numeric(near_occurrence_min_n) || length(near_occurrence_min_n) != 1L ||
     is.na(near_occurrence_min_n) || near_occurrence_min_n < 0) {
     stop("generate_regional_proximity_evidence: `near_occurrence_min_n` must be a single non-negative integer.")
+  }
+  if (!is.null(tile_cache_dir) &&
+    (!is.character(tile_cache_dir) || length(tile_cache_dir) != 1L || is.na(tile_cache_dir))) {
+    stop("generate_regional_proximity_evidence: `tile_cache_dir` must be a single non-NA character string, or NULL.")
   }
   for (pkg in c("TaxaFlag", "TaxaFetch", "rgbif")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
@@ -282,6 +302,12 @@ generate_regional_proximity_evidence <- function(
 
   rows <- vector("list", length(taxa))
 
+  # Stage 1 cache tallying (only meaningful when tile_cache_dir is supplied --
+  # see the summary message after the loop below).
+  n_stage1_from_cache <- 0L
+  n_stage1_fetched <- 0L
+  stage1_cache_ages <- numeric(0)
+
   for (i in seq_along(taxa)) {
     nm <- taxa[i]
 
@@ -299,7 +325,8 @@ generate_regional_proximity_evidence <- function(
 
     tile <- tryCatch(
       TaxaFlag::check_gbif_tile_range(
-        taxon_key = taxon_key, query_lat = lat, query_lon = lng, zoom = tile_zoom
+        taxon_key = taxon_key, query_lat = lat, query_lon = lng, zoom = tile_zoom,
+        cache_dir = tile_cache_dir
       ),
       error = function(e) {
         warning(sprintf(
@@ -309,6 +336,15 @@ generate_regional_proximity_evidence <- function(
         NULL
       }
     )
+    if (!is.null(tile)) {
+      age <- attr(tile, "cache_age_days")
+      if (!is.null(age) && !is.na(age)) {
+        n_stage1_from_cache <- n_stage1_from_cache + 1L
+        stage1_cache_ages <- c(stage1_cache_ages, age)
+      } else {
+        n_stage1_fetched <- n_stage1_fetched + 1L
+      }
+    }
     if (is.null(tile) || isTRUE(tile$beyond_buffer)) {
       if (verbose) message("  Stage 1: nothing found -- skipped.")
       next
@@ -430,6 +466,22 @@ generate_regional_proximity_evidence <- function(
       source = character(0), distance_km = numeric(0), record_year = numeric(0),
       age_years = numeric(0), tile_zoom_used = integer(0)
     )
+  }
+
+  # One-line cache-visibility summary (only when Stage 1 caching is actually
+  # enabled -- with tile_cache_dir = NULL every call is a "fetch" by
+  # construction, and that's already implied by n_stage1_from_cache always
+  # being reported instead of silently 0).
+  if (!is.null(tile_cache_dir)) {
+    oldest_str <- if (length(stage1_cache_ages) > 0L) {
+      sprintf(" (oldest %.0f days)", max(stage1_cache_ages))
+    } else {
+      ""
+    }
+    message(sprintf(
+      "Stage 1 tile checks: %d from cache%s, %d fetched.",
+      n_stage1_from_cache, oldest_str, n_stage1_fetched
+    ))
   }
 
   message(sprintf(

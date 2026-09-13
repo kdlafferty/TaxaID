@@ -6,24 +6,27 @@ editor_options:
 
 # TaxaExpect
 
-Estimate spatially-explicit Bayesian priors for species occurrence. Part
-of the [TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
+Estimate spatially-explicit Bayesian priors for expected species
+composition. Part of the
+[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
 
 A taxonomic assignment based on a match to a reference can propose an
 implausible species. These are sometimes accepted as fact, but often are
 screened afterwards, or prevented from occuring by reducing the
 reference list to known local species.
 
-Bayes' Theorem improves taxonomic assignment by considering the prior
-probability that a hypothesized taxon occurs at the sampling location.
-TaxaExpect estimates these priors from occurrence records. This is
+Bayes' Theorem improves taxonomic assignment by considering, before any
+match score is seen, how large a share of the detections at the sampling
+location a hypothesized taxon is expected to account for. TaxaExpect
+estimates these priors from occurrence records. This is
 typically GBIF (Global Biodiversity Information Facility; GBIF
 Secretariat, Copenhagen, Denmark) records fetched via TaxaFetch, or
 user-supplied data. Although occurrence data are often sparse and
 biased, they are usually sufficient to distinguish among taxa with
-similar match scores but very different geographic ranges. Various
-species distribution models could be used to generate species priors.
-TaxaExpect is one such method.
+similar match scores but very different geographic ranges. TaxaExpect's
+priors are compositional shares -- the expected relative share of a
+species at a site, not an occurrence probability -- estimated directly
+from occurrence data rather than from an occurrence/occupancy model.
 
 TaxaExpect uses a **site-centered distance kernel**: each species' prior
 is its kernel-weighted share of related, nearby occurrence records,
@@ -46,9 +49,12 @@ otherwise be lost to defensive upranking.
 
 ## Overview
 
-TaxaExpect generates theta priors (occupancy x detectability) for
-taxonomic assignment from occurrence data. The current (kernel) pathway
-estimates expected species composition directly at a site via
+TaxaExpect generates theta priors for taxonomic assignment from
+occurrence data. Theta is compositional: the expected relative share of
+a species at a site, P(a random legitimate detection = species X). It is
+not an occurrence probability, and not occupancy -- see *Shared
+detection effort* below for the formal definition. The current (kernel)
+pathway estimates expected species composition directly at a site via
 distance-weighted occurrence sharing, incorporating habitat
 stratification and, optionally, a covariate such as depth.
 

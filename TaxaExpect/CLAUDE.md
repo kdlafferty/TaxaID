@@ -1,5 +1,24 @@
 # CLAUDE.md -- TaxaExpect
-# 2026-09-12 (Fable 5.1): generate_regional_proximity_evidence(year_range=) default NULL ->
+# 2026-09-13, evening (Sonnet 5): ecosystem review Section L (G-C2) -- NEW
+# generate_regional_proximity_evidence(tile_cache_dir=), wired to TaxaFlag's new
+# check_gbif_tile_range() no-expiry tile cache. Prints one summary line per call: "N from
+# cache (oldest X days), M fetched". Wired into GL / PtCon 12S / Mugu (replaces an
+# uncached GBIF tile check on every regional-proximity call at those sites). No year
+# dimension added: GBIF density tiles aren't year-filterable, which is why Stage 2
+# (occurrence-level, year-filtered) exists alongside it. Full record:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md Section L.
+# Previous update, 2026-09-13 (Sonnet 5): ecosystem review "easy batch" (A5):
+# generate_domestic_food_priors.R's .norm_kingdom() now returns NA for Eukaryota/Bacteria/
+# Archaea (superkingdoms), so a superkingdom is never compared as if it were a kingdom; the
+# domestic/food-species prior now requires BOTH sides non-NA. Also (A11): `^archive_glmm_
+# prior_pipeline$` added to .Rbuildignore. Roxygen: estimate_kernel_priors() documents
+# covariate_col as a single scalar and the double habitat-gating sentence;
+# update_prior_from_consensus() documents spatial_group_map as binary membership, no
+# distance decay. NEWS.md gained the 2026-09-07 entries it was missing; README wording
+# fixes; inst/CITATION -> 0.1.0 + github.com/DOI-USGS/TaxaID. devtools::test() 639/0.
+# devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library; not yet reinstalled. Full findings:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md.
+# Previous update, 2026-09-12 (Fable 5.1): generate_regional_proximity_evidence(year_range=) default NULL ->
 # "2000,<year>" (TaxaFetch's own convention); all 7 workflows now pass their study window
 # (YEAR_RANGE). Found from a real implausible call: Symphalangus syndactylus at PtCon 12S
 # reached SPECIES rank at posterior 0.99 from an 82%-identity match because a 1929 SBMNH

@@ -43,8 +43,12 @@ back-off (default \code{1}, a weakly-informative single pseudo-record;
 tunable via \code{\link[=calibrate_kernel_bandwidth]{calibrate_kernel_bandwidth()}}). \code{m = 0} disables
 shrinkage.}
 
-\item{covariate_col}{Optional character. Name of a numeric record column
-(e.g. \code{"depth_m"}) for the product kernel. \code{NULL} (default) disables it.}
+\item{covariate_col}{Optional character. Name of a SINGLE numeric record
+column (e.g. \code{"depth_m"}) for the product kernel -- accepts one scalar
+column name only. A second covariate (e.g. time) is not supported by the
+product kernel as written; adding one would require a second
+\verb{lambda_*}/\verb{site_*} pair and a genuine multi-factor product, not just a
+longer vector here. \code{NULL} (default) disables it.}
 
 \item{site_covariate}{Numeric scalar. The site's own value of
 \code{covariate_col}. Required when \code{covariate_col} is supplied.}
@@ -199,7 +203,13 @@ the focal habitat) and \code{effective_records} (the species' kernel-effective
 record count \code{c_i * n_eff / W}, in units of records) replace the retired
 \code{model_tier} tier1/tier2 vocabulary. Undetected/evidence/domestic rows
 belong to other branches and are appended by their own generators, not
-this function.
+this function. A species whose nearby records are all classified to a
+habitat other than \code{site_habitat} yields NO resident row here at all and
+is indistinguishable, at this stage, from a species with no nearby
+records whatsoever -- it only re-enters via the evidence pathway
+(\code{apply_undetected_evidence()}), where the taxon-level habitat weight
+(\code{condition_evidence_on_habitat()}) applies a SECOND, continuous discount
+on top of whatever this function already omitted.
 }
 
 \seealso{

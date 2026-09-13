@@ -1314,15 +1314,26 @@ generate_domestic_food_priors <- function(
       # "Plantae" -- a vocabulary difference, not a homonym. (Real bug found
       # 2026-08-31: every NCBI-taxonomy candidate, e.g. Gadus morhua, was
       # wrongly flagged as a cross-kingdom homonym and lost its boost.)
+      # Same class of bug again 2026-09-12: NCBI reports kingdom "Eukaryota"
+      # (a superkingdom) for lineages with no formal Kingdom node, so every
+      # domestic animal at PtCon lost its boost against iNat's "Animalia".
+      # A superkingdom is too coarse to compare: it normalises to NA and the
+      # comparison is skipped (never blanket-mapped to Animalia -- a domestic
+      # plant or fungus reads "Eukaryota" too).
       .norm_kingdom <- function(k) {
         if (is.na(k)) {
           return(k)
         }
         map <- c(Metazoa = "Animalia", Viridiplantae = "Plantae")
+        if (k %in% c("Eukaryota", "Bacteria", "Archaea")) {
+          return(NA_character_)
+        }
         if (k %in% names(map)) unname(map[[k]]) else k
       }
-      kingdom_mismatch <- !is.na(known_kingdom) && !is.na(inat_kingdom) &&
-        !identical(.norm_kingdom(known_kingdom), .norm_kingdom(inat_kingdom))
+      known_k <- .norm_kingdom(known_kingdom)
+      inat_k <- .norm_kingdom(inat_kingdom)
+      kingdom_mismatch <- !is.na(known_k) && !is.na(inat_k) &&
+        !identical(known_k, inat_k)
       if (isTRUE(kingdom_mismatch)) {
         warning(sprintf(
           paste0(

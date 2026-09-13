@@ -697,3 +697,119 @@ test_that("year_range defaults to the ecosystem's 2000-to-now window and is forw
   suppressMessages(generate_regional_proximity_evidence("Gadus morhua", lat = 45, lng = -60, year_range = "1995,2026"))
   expect_equal(seen$year_range, "1995,2026")
 })
+
+# =============================================================================
+# tile_cache_dir wiring + the Stage 1 cache-visibility summary line
+# (2026-09-13, closes the 43-minute-per-run Stage 1 cost documented in
+# check_gbif_tile_range()'s own "Caching" roxygen section). Fully offline:
+# check_gbif_tile_range() is mocked, same as every other test in this file,
+# so no real cache_dir is ever read or written here -- these tests only
+# confirm tile_cache_dir is forwarded and that this function's own summary
+# line correctly reads TaxaFlag::check_gbif_tile_range()'s cache_age_days
+# attribute.
+# =============================================================================
+
+.mock_tile_with_cache_age <- function(ages, dist_km = 80) {
+  # ages: a plain vector, one entry per call IN ORDER (NA = "fetched").
+  i <- 0L
+  function(taxon_key, query_lat, query_lon, zoom = 6L, ...) {
+    i <<- i + 1L
+    out <- data.frame(
+      taxon_key = taxon_key, query_lat = query_lat, query_lon = query_lon,
+      zoom_requested = zoom, zoom_used = zoom, escalated = FALSE, tile_size = 512L,
+      n_tiles_fetched = 9L, resolution_km_per_px = 10, point_occupied = FALSE,
+      dist_nearest_occupied_km = dist_km, patch_size_px = 5L, patch_size_capped = FALSE,
+      patch_area_km2 = 500, patch_diameter_km = 22, beyond_buffer = FALSE,
+      stringsAsFactors = FALSE
+    )
+    attr(out, "cache_age_days") <- ages[i]
+    out
+  }
+}
+
+test_that("tile_cache_dir is forwarded straight through to check_gbif_tile_range(cache_dir=)", {
+  seen <- new.env(parent = emptyenv())
+  local_mocked_bindings(name_backbone_checklist = .mock_key(), .package = "rgbif")
+  local_mocked_bindings(
+    check_gbif_tile_range = function(taxon_key, query_lat, query_lon, zoom = 6L, cache_dir = NULL, ...) {
+      seen$cache_dir <- cache_dir
+      .mock_tile(dist_km = 80)(taxon_key, query_lat, query_lon, zoom = zoom, ...)
+    },
+    .package = "TaxaFlag"
+  )
+  local_mocked_bindings(
+    get_gbif_occurrences = .mock_occ("Gadus morhua", year = 2015),
+    filter_gbif_quality = .passthrough_filter,
+    .package = "TaxaFetch"
+  )
+  suppressMessages(generate_regional_proximity_evidence(
+    "Gadus morhua", lat = 41.67, lng = -87.15, tile_cache_dir = "some/project/tile_cache"
+  ))
+  expect_equal(seen$cache_dir, "some/project/tile_cache")
+})
+
+test_that("tile_cache_dir defaults to NULL (Stage 1 caching off unless explicitly enabled)", {
+  fm <- formals(generate_regional_proximity_evidence)
+  expect_true("tile_cache_dir" %in% names(fm))
+  expect_null(eval(fm$tile_cache_dir))
+})
+
+test_that("the Stage 1 cache summary line reports hits/fetches/oldest age when tile_cache_dir is supplied", {
+  taxa <- c("TaxonA", "TaxonB", "TaxonC")
+  local_mocked_bindings(name_backbone_checklist = .mock_key(), .package = "rgbif")
+  # Call order follows unique(zero_bbox_taxa): TaxonA (cache, 37d old),
+  # TaxonB (fetched), TaxonC (cache, 5d old) -> 2 from cache, oldest 37, 1 fetched.
+  local_mocked_bindings(
+    check_gbif_tile_range = .mock_tile_with_cache_age(c(37, NA, 5)),
+    .package = "TaxaFlag"
+  )
+  local_mocked_bindings(
+    get_gbif_occurrences = .mock_occ(taxa),
+    filter_gbif_quality = .passthrough_filter,
+    .package = "TaxaFetch"
+  )
+  expect_message(
+    generate_regional_proximity_evidence(taxa, lat = 41.67, lng = -87.15, tile_cache_dir = "unused_dir"),
+    "Stage 1 tile checks: 2 from cache \\(oldest 37 days\\), 1 fetched\\."
+  )
+})
+
+test_that("the Stage 1 cache summary line omits the oldest-age parenthetical when nothing came from cache", {
+  local_mocked_bindings(name_backbone_checklist = .mock_key(), .package = "rgbif")
+  local_mocked_bindings(
+    check_gbif_tile_range = .mock_tile_with_cache_age(c(NA_real_)),
+    .package = "TaxaFlag"
+  )
+  local_mocked_bindings(
+    get_gbif_occurrences = .mock_occ("TaxonA"),
+    filter_gbif_quality = .passthrough_filter,
+    .package = "TaxaFetch"
+  )
+  expect_message(
+    generate_regional_proximity_evidence("TaxonA", lat = 41.67, lng = -87.15, tile_cache_dir = "unused_dir"),
+    "Stage 1 tile checks: 0 from cache, 1 fetched\\."
+  )
+})
+
+test_that("the Stage 1 cache summary line is silent when tile_cache_dir is NULL (default, uncached)", {
+  local_mocked_bindings(name_backbone_checklist = .mock_key(), .package = "rgbif")
+  local_mocked_bindings(check_gbif_tile_range = .mock_tile(dist_km = 80), .package = "TaxaFlag")
+  local_mocked_bindings(
+    get_gbif_occurrences = .mock_occ("TaxonA"),
+    filter_gbif_quality = .passthrough_filter,
+    .package = "TaxaFetch"
+  )
+  msgs <- capture_messages(generate_regional_proximity_evidence("TaxonA", lat = 41.67, lng = -87.15))
+  expect_false(any(grepl("Stage 1 tile checks", msgs)))
+})
+
+test_that("input validation rejects a malformed tile_cache_dir before any network call", {
+  expect_error(
+    generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15, tile_cache_dir = 1),
+    "tile_cache_dir"
+  )
+  expect_error(
+    generate_regional_proximity_evidence("Gadus morhua", lat = 41.67, lng = -87.15, tile_cache_dir = NA_character_),
+    "tile_cache_dir"
+  )
+})

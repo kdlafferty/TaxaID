@@ -20,6 +20,7 @@ generate_regional_proximity_evidence(
   max_coord_uncertainty = 500,
   year_range = paste0("2000,", format(Sys.Date(), "\%Y")),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
+  tile_cache_dir = NULL,
   verbose = FALSE
 )
 }
@@ -126,6 +127,21 @@ level call into a species call. \code{NULL} restores the all-time fetch.}
 
 \item{cache_dir}{Character or \code{NULL}. Forwarded to the Stage 2 fetch
 for checkpointing. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.}
+
+\item{tile_cache_dir}{Character or \code{NULL} (default). Forwarded
+straight through to Stage 1's \code{TaxaFlag::check_gbif_tile_range(
+cache_dir = )} -- see that function's own \verb{Caching} section for the
+exact key/no-expiry/age-reporting design. \code{NULL} (the default)
+disables Stage 1 caching entirely, matching every prior release of this
+function: every zero-record taxon re-pays a live GBIF tile fetch on
+every call, which is exactly the cost this parameter exists to remove
+on a repeat run against unchanged data (the 2026-09-13 PtConception run
+spent 43 minutes here across 256 taxa). When supplied, this function
+also emits one summary line when it finishes: how many Stage 1 verdicts
+were served from cache, how many were freshly fetched, and the age in
+days of the oldest cache hit actually used -- so staleness (there is no
+TTL; see \code{check_gbif_tile_range()}) is visible to the caller rather
+than silent.}
 
 \item{verbose}{Logical. Print per-taxon Stage 1/Stage 2 progress. Default
 \code{FALSE}.}
@@ -254,6 +270,7 @@ elevated <- apply_undetected_evidence(
 \seealso{
 \code{\link{apply_undetected_evidence}},
 \code{TaxaFlag::check_gbif_tile_range()},
+\code{TaxaFlag::taxaflag_clear_cache()},
 \code{TaxaFlag::compute_local_occurrence_distance()},
 \code{TaxaFetch::get_gbif_occurrences()},
 \code{TaxaFetch::filter_gbif_quality()}

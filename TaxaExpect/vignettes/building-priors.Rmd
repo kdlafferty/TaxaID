@@ -63,6 +63,11 @@ how quickly influence should decay with distance, estimating a prior at
 a real site, handling species that were never recorded at all, and
 producing a final table ready to hand to TaxaAssign.
 
+Every code chunk below is illustrative and is not executed when the package
+is checked, since it calls live GBIF/NCBI services; a test in this
+package's own suite verifies every call and argument name against the
+installed package instead.
+
 ## Quick Start
 
 The shape of a full run, before the walkthrough below explains each
