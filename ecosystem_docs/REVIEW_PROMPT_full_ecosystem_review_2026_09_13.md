@@ -82,7 +82,10 @@ GreatLakes runs 1 and 2 (Lamar 0.805 -> 0.856), PtCon 12S single (9,113 species-
    - `inst/TaxaID_Workflow_Template_TEST.R` has no `species_reference` (downranking) at all; the PtCon template still has the old construction pattern in one of its two evidence-free paths.
    - `PtConceptionWorkflow_12S_multi_site.R` (the full file) is stale relative to the FAST script and the single-site file; decide whether it should be retired the way the WilderFish file was.
    - Mugu's kernel branch prices evidence in blend mode with no clamp rows; the `W_CLAMP` floor there is a constant borrowed from the curve pricing.
-   - `README.md.bak_pre_citation_fix_20260912_131218` in TaxaAssign (check NOTE).
+   - `README.md.bak_pre_citation_fix_20260912_131218` in TaxaAssign (check NOTE; now gitignored).
+   - `train_likelihood_model()` warns "N singleton reference(s) found but distance matrix lacks self-matches" on every real run: `build_sequence_matrix()` never emits `id_x == id_y` rows, so the self-match singleton path is dead code and the warning is noise. Decide which to remove.
+   - Cache gates keyed on `file.mtime` are fooled by a re-save of unchanged content (the 12S run spent 2 h 47 min re-running the outlier check because the cached raw_gbif was re-saved); the 12S single-site file is fixed, the other workflows' gates should be checked for the same pattern.
+   - The evidence block costs ~40 min per run at PtCon (one GBIF tile check + fetch per zero-record taxon, 256 taxa, no per-taxon cache keyed on year window).
    - The standalone training screen exists; the match-candidate screen still blocks a production run on NCBI.
 8. **Publication readiness against the WERC criteria** (see `[[reference_usgs_werc_release_process]]` / `reference_pre_review_checklist`): pkgdown sites (none yet, flagged since June), `NEWS.md` currency per package, vignettes that are all `eval = FALSE` (three packages), CI status, licensing note on glmmTMB now that the GLMM path is archived.
 9. **Performance.** The 18S match screen re-BLASTs full-length 1.8 kb queries at 100 hits in the removal audit and times out; the regional generator makes one GBIF tile check + one fetch per zero-record taxon per run (35-40 min for 256 taxa at PtCon in the harness). Both are per-run costs on a throttled service; say whether either needs a cache or a cap before release.

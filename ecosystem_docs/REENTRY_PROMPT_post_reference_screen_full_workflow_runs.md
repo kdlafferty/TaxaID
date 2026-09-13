@@ -518,3 +518,39 @@ they stay flagged unprecedented, like the triggerfish. Harness scripts:
 `PtConception/REVIEW_habitat_conditioning_ptcon.R`; outputs in
 `_coverage_floor_validation_2026_09_10/` (GL, arm letters P/H) and
 `_habitat_conditioning_validation_2026_09_12/` (PtCon).
+
+## PtConception 12S single-site run 2 (2026-09-13 08:39) -- all of 2026-09-12's changes, screens from checkpoint
+
+| Quantity | Run 1 (2026-09-11) | Run 2 (2026-09-13) |
+|---|---|---|
+| Consensus rows / taxa | 13,440 / (see run 1) | 13,440 / 147 |
+| Species / genus / family / order rank | 9,113 / 3,080 / 1,228 / 9 | 9,125 / 3,071 / 1,225 / 9 |
+| Plausibility expected / unexpected / unprecedented | 13,132 / 41 / 267 | 13,147 / 29 / 264 |
+| Sentinels Girella nigricans / simplicidens / F. parvipinnis | 175 / 0 / 2 | 175 / 0 / 2 |
+| Evidence rows regional / iNat / watch / clamp | 53 / - / - / - | 19 (12 floored) / 3 / 1 / 235; sum(w) 0.79 |
+| Match screen | live | served from checkpoint: 2 removed (OQ846263, KM057967), 14 LLM overrides, audit 0 spared |
+| Final list | (run 1) | 13,154 rows / 112 taxa, every row with a common name |
+| Same consensus taxon as run 1 | | 13,370 / 13,440 (99.48%); vs the habitat harness arm H 99.57% |
+
+Changes are the intended ones: Bubalus bubalis x9 -> Bovidae, siamang x2 ->
+Hylobatidae, red bat -> Lasiurus (year window / habitat conditioning);
+Cottidae -> Leiocottus hirundo x15, Artedius -> A. lateralis x10,
+Oncorhynchus nerka -> O. tshawytscha x7 (resident species now win once the
+regional freshwater competitors dropped to the floor -- all `single`,
+`expected`); Microcebus murinus -> Vulpes vulpes x1 (both absurd, flagged
+habitat-unlikely, excluded). Cervus elaphus x9 and Sufflamen fraenatum x3
+remain as sole candidates, flagged unprecedented, excluded.
+
+Spatial review: 220,311 saved decisions applied, 0 pending, gadget skipped.
+Console log complete (`PtConMifishSchulte_run_20260912_2200.log`).
+
+RUNTIME 290 min, of which 2 h 47 min was `check_geographic_outliers()`
+re-running on unchanged data: the workflow re-saved the cached raw_gbif
+object, bumping its mtime, and the outlier gate (`inputs = raw_gbif_path`)
+read its own cache as stale. FIXED (save only on a fresh download;
+`.bak_pre_raw_gbif_resave_fix`). Other costs: evidence block 43 min (one
+GBIF tile check + fetch per zero-record taxon), coverage audit 22 min,
+likelihoods 16 min. Warnings: the domestic-priors Eukaryota/Animalia kingdom
+mismatch (9 taxa; review-prompt loose end) and "541 singleton reference(s)
+... lacks self-matches" -- benign and pre-existing: build_sequence_matrix()
+never emits self-pairs, so that branch fires on every run.
