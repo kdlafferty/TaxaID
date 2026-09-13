@@ -27,6 +27,7 @@ them into a standardized format for downstream habitat assignment
 | **BioTIME** | `read_biotime_study()` | Time-series biodiversity data |
 | **Literature** | `search_literature()` | OpenAlex (operated by OurResearch, a nonprofit organization) scholarly search + PDF download |
 | **PDFs** | `extract_pdf_text()` | Extract occurrence data from published PDFs |
+| **iNaturalist** | `fetch_inat_occurrences()`, `check_inat_range()` | Local observation counts and known-range checks via the iNaturalist API |
 
 ## Installation
 
@@ -42,14 +43,15 @@ devtools::install("path/to/TaxaFetch")
 library(TaxaFetch)
 
 # 1. Define a bounding box (Southern California coast)
-bbox <- make_bbox_wkt(lat_min = 33.5, lat_max = 34.5,
-                      lon_min = -120.0, lon_max = -118.5)
+bbox <- make_bbox_wkt(lat = 34.0, lon = -119.25, radius_deg = 0.5)
 
-# 2. Get GBIF taxon keys from verified names
-keys <- get_keys_from_context(
-  c("Fundulus parvipinnis", "Atherinops affinis"),
-  backbone_id = 11  # GBIF backbone
+# 2. Get GBIF taxon keys from verified names, with full hierarchy context
+#    to avoid homonym errors
+hierarchy_df <- data.frame(
+  genus   = c("Fundulus", "Atherinops"),
+  species = c("Fundulus parvipinnis", "Atherinops affinis")
 )
+keys <- get_keys_from_context(hierarchy_df)
 
 # 3. Fetch GBIF occurrences
 gbif_data <- fetch_gbif_occurrences(keys = keys$usageKey, geometry = bbox)

@@ -13,3 +13,4 @@
 ^pdfs$
 ^taxaid_methods_.*\.md$
 ^taxaid_workflow_.*\.R$
+^.*\.bak_.*$

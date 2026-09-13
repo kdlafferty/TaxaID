@@ -1,5 +1,17 @@
 # TaxaFetch 0.1.0
 
+## 2026-09-13
+
+* `download_gbif_occurrences()`: a download key recorded as *pending* (see the
+  2026-09-10 entry below) is no longer honoured forever once GBIF has itself
+  killed, cancelled, failed, or purged it server-side -- previously every
+  subsequent call died identically, and the only recovery was deleting the
+  cache metadata file by hand. Two fixes: a pending record older than the new
+  `pending_max_age_days` (default 30) is abandoned without polling it at all;
+  and when the poll on a still-fresh pending key fails non-transiently, the
+  dead record is cleared and a fresh request is submitted automatically, in
+  the same call.
+
 ## 2026-09-10
 
 * `download_gbif_occurrences()`: the download request is retried with backoff

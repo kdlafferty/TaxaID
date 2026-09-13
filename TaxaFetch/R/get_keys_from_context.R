@@ -192,13 +192,16 @@ get_keys_from_context <- function(hierarchy_df) {
   tryCatch(
     {
       record <- do.call(rgbif::name_backbone, api_args)
-      usage_key <- record$usageKey
+      # [[ ]] not $: rgbif returns a tibble and omits usageKey/rank for
+      # matchType "NONE"; tibble's $ warns "Unknown or uninitialised column"
+      # on every such miss (9 per PtCon 18S run), [[ ]] is silent (2026-09-13).
+      usage_key <- record[["usageKey"]]
       if (is.null(usage_key) || length(usage_key) == 0) usage_key <- NA_integer_
 
       result <- data.frame(
         usageKey = as.integer(usage_key),
         matchType = as.character(record$matchType %||% NA_character_),
-        gbif_rank = as.character(record$rank %||% NA_character_),
+        gbif_rank = as.character(record[["rank"]] %||% NA_character_),
         stringsAsFactors = FALSE
       )
 

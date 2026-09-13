@@ -1,5 +1,23 @@
 # CLAUDE.md -- TaxaFetch
-# Last updated: 2026-09-10 (Fable 5.1 -- `download_gbif_occurrences()` no longer dies when
+# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (A4) --
+# RESOLVED, was OPEN below. A dead pending GBIF key is now cleared and a fresh request
+# submitted in the SAME call (download_gbif_occurrences.R:425-438, :803, :1440-1446); new
+# pending_max_age_days = 30 abandons a stale key without polling forever.
+# .gbif_wait_with_retry() returns a classed gbif_poll_dead failure instead of stop()ing;
+# the fresh-submit caller still errors on it, the pending caller recovers. Transient
+# (5xx/backoff) behaviour from 2026-09-10 is byte-identical. Full record:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md Section L.
+# Previous update, 2026-09-13 (Sonnet 5 -- ecosystem review "easy batch" (A14):
+# get_keys_from_context.R now uses `[[ ]]` instead of `$` to pull usageKey/rank (the
+# every-call usageKey/rank warnings are gone). Roxygen: download_gbif_occurrences() gained
+# an @section Attributes block. README: two examples that errored as written
+# (make_bbox_wkt(), get_keys_from_context()) fixed, + a missing iNaturalist row. inst/
+# CITATION -> 0.1.0 + github.com/DOI-USGS/TaxaID. devtools::test() 781/2 (the 2 are the
+# pre-existing CoordinateCleaner environment failures, unrelated). devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library; not yet
+# reinstalled. OPEN, awaiting user verdict: A4, the stale pending-key clearing loop
+# (download_gbif_occurrences.R:425-438, :803, :1440-1446) -- fix proposed, not applied.
+# Full findings: ecosystem_docs/fable_ecosystem_review_2026-09-13.md.
+# Previous update, 2026-09-10 (Fable 5.1 -- `download_gbif_occurrences()` no longer dies when
 # GBIF itself refuses the download REQUEST. Real failure: the GreatLakes workflow, which
 # re-requests its occurrences on every run (`overwrite = TRUE`, Step 3, no cache gate by
 # design), stopped at `rgbif::occ_download()` with GBIF's own "HTTP 503 Backend fetch

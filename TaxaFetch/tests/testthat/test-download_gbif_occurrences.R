@@ -954,3 +954,161 @@ test_that("a poll that never succeeds records the prepared key, and the re-run f
   expect_false(isTRUE(readRDS(meta_path)$pending))
   expect_gt(nrow(out), 0L)
 })
+
+# =============================================================================
+# Dead pending keys (2026-09-13): clear and resubmit in the same call
+# =============================================================================
+
+test_that("a pending key whose poll dies non-transiently is cleared and a fresh request is submitted in the same call", {
+  cache_dir <- tempfile("gbif_dead_pending_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  dead_key <- "7777777-999999999999999"
+  new_key <- "8888888-999999999999999"
+
+  meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
+  dir.create(dirname(meta_path), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(
+    list(
+      dl_key = dead_key, zip_path = file.path(cache_dir, paste0(dead_key, ".zip")),
+      timestamp = Sys.time(), pending = TRUE
+    ),
+    meta_path
+  )
+
+  submits <- 0L
+  testthat::local_mocked_bindings(
+    occ_download = function(...) {
+      submits <<- submits + 1L
+      new_key
+    },
+    occ_download_wait = function(dl_key, ...) {
+      if (identical(dl_key, dead_key)) stop("404 Not Found: download key does not exist")
+      invisible(NULL)
+    },
+    occ_download_meta = function(...) stop("offline"),
+    occ_download_get = function(k, path, overwrite = TRUE) {
+      .make_fake_gbif_zip_named(path, k)
+      invisible(NULL)
+    },
+    .package = "rgbif"
+  )
+
+  out <- suppressMessages(download_gbif_occurrences(
+    keys = keys, geometry = geometry, year_range = year_range,
+    cache_dir = cache_dir, submit_wait = 0,
+    gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+  ))
+
+  expect_equal(submits, 1L) # exactly one fresh request, not a retry loop
+  expect_equal(attr(out, "download_key"), new_key)
+  final_meta <- readRDS(meta_path)
+  expect_false(isTRUE(final_meta$pending)) # the dead key's pending flag is gone
+  expect_equal(final_meta$dl_key, new_key) # and the cache now points at the live key
+  expect_gt(nrow(out), 0L)
+})
+
+test_that("a pending key older than pending_max_age_days is abandoned without polling it, and a fresh request is submitted", {
+  cache_dir <- tempfile("gbif_stale_pending_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  old_key <- "9999999-999999999999999"
+  new_key <- "1010101-999999999999999"
+
+  meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
+  dir.create(dirname(meta_path), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(
+    list(
+      dl_key = old_key, zip_path = file.path(cache_dir, paste0(old_key, ".zip")),
+      timestamp = Sys.time() - 40 * 86400, pending = TRUE # 40 days old > default 30
+    ),
+    meta_path
+  )
+
+  submits <- 0L
+  waited_keys <- character(0)
+  testthat::local_mocked_bindings(
+    occ_download = function(...) {
+      submits <<- submits + 1L
+      new_key
+    },
+    occ_download_wait = function(dl_key, ...) {
+      waited_keys <<- c(waited_keys, dl_key)
+      invisible(NULL)
+    },
+    occ_download_meta = function(...) stop("offline"),
+    occ_download_get = function(k, path, overwrite = TRUE) {
+      .make_fake_gbif_zip_named(path, k)
+      invisible(NULL)
+    },
+    .package = "rgbif"
+  )
+
+  out <- suppressMessages(download_gbif_occurrences(
+    keys = keys, geometry = geometry, year_range = year_range,
+    cache_dir = cache_dir, submit_wait = 0,
+    gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+  ))
+
+  expect_false(old_key %in% waited_keys) # the stale key was never polled
+  expect_true(new_key %in% waited_keys) # only the fresh key's own poll ran
+  expect_equal(submits, 1L)
+  expect_equal(attr(out, "download_key"), new_key)
+  expect_gt(nrow(out), 0L)
+})
+
+test_that("pending_max_age_days = NULL always polls a pending key first, no matter how old", {
+  cache_dir <- tempfile("gbif_stale_pending_nullage_")
+  dir.create(cache_dir, recursive = TRUE)
+  on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
+  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  old_key <- "1212121-999999999999999"
+
+  meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
+  dir.create(dirname(meta_path), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(
+    list(
+      dl_key = old_key, zip_path = file.path(cache_dir, paste0(old_key, ".zip")),
+      timestamp = Sys.time() - 400 * 86400, pending = TRUE
+    ),
+    meta_path
+  )
+
+  waited_keys <- character(0)
+  testthat::local_mocked_bindings(
+    occ_download = function(...) stop("must not submit a new request"),
+    occ_download_wait = function(dl_key, ...) {
+      waited_keys <<- c(waited_keys, dl_key)
+      invisible(NULL)
+    },
+    occ_download_meta = function(...) stop("offline"),
+    occ_download_get = function(k, path, overwrite = TRUE) {
+      .make_fake_gbif_zip_named(path, k)
+      invisible(NULL)
+    },
+    .package = "rgbif"
+  )
+
+  out <- suppressMessages(download_gbif_occurrences(
+    keys = keys, geometry = geometry, year_range = year_range,
+    cache_dir = cache_dir, submit_wait = 0, pending_max_age_days = NULL,
+    gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+  ))
+
+  expect_true(old_key %in% waited_keys)
+  expect_equal(attr(out, "download_key"), old_key)
+  expect_gt(nrow(out), 0L)
+})
+
+test_that("pending_max_age_days validates its input", {
+  expect_error(
+    download_gbif_occurrences(
+      keys = 1L, geometry = "POLYGON((0 0,0 1,1 1,1 0,0 0))",
+      pending_max_age_days = -1,
+      gbif_user = "u", gbif_pwd = "p", gbif_email = "e@example.com"
+    ),
+    regexp = "pending_max_age_days"
+  )
+})

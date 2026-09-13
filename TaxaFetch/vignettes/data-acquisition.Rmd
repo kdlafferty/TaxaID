@@ -33,6 +33,11 @@ literature searches. It produces standardised occurrence records that feed
 into TaxaHabitat (for habitat assignment) and TaxaExpect (for prior
 construction).
 
+Every code chunk below is illustrative and is not executed when the package
+is checked, since it calls live GBIF/DataONE/literature-search services; a
+test in this package's own suite verifies every call and argument name
+against the installed package instead.
+
 ## Quick Start: GBIF
 
 ```{r quickstart, eval = FALSE, purl = FALSE}

@@ -55,6 +55,15 @@ utils::globalVariables("taxonKey")
 #'   proceeds straight to a fresh download. Either way, the old cached zip is
 #'   removed once the new one is saved -- it is never silently orphaned on
 #'   disk.
+#' @param pending_max_age_days Numeric or \code{NULL} (default \code{30}). A
+#'   download key recorded in the cache metadata as \emph{pending} (see
+#'   \strong{GBIF outages} below) is normally polled and re-fetched on the
+#'   next call. When that record is older than this many days, it is instead
+#'   abandoned WITHOUT polling it -- a message names the key and its age --
+#'   and a fresh request is submitted in the same call, since GBIF has almost
+#'   certainly killed, cancelled, or purged a prepared download that old.
+#'   \code{NULL} disables the age check, so a pending key is always polled
+#'   first no matter how old.
 #' @param submit_attempts Integer (default \code{4}). How many times the download
 #'   \emph{request} is submitted (and, separately, how many times the prepared
 #'   file is fetched) before giving up when GBIF answers with a
@@ -174,6 +183,23 @@ utils::globalVariables("taxonKey")
 #'   (or the download key if DOI lookup fails). A \code{download_key}
 #'   attribute stores the GBIF download key for citation purposes.
 #'
+#' @section Attributes:
+#' Beyond \code{download_key}, the returned tibble always carries:
+#' \itemize{
+#'   \item \code{report_params} -- a list recording the call's own
+#'     parameterization for downstream reporting: \code{source} (always
+#'     \code{"GBIF (async download)"}), \code{n_keys}, \code{n_records},
+#'     \code{doi} (the download's DOI URL, or \code{NA} if lookup failed),
+#'     \code{geometry}, and \code{year_range}.
+#'   \item \code{served_from_cache_after_failure} -- logical, \code{TRUE}
+#'     when every submission/fetch/poll attempt failed and a verified cached
+#'     zip for this exact query was imported instead (see the
+#'     \code{on_submit_failure} parameter); \code{FALSE} otherwise.
+#'   \item \code{capped_keys} -- integer vector of taxon keys `limit`
+#'     actually truncated (see the \code{on_cap} parameter); \code{integer(0)}
+#'     when nothing was capped.
+#' }
+#'
 #' @details
 #' \strong{When to use this function vs \code{fetch_gbif_occurrences}:}
 #' \itemize{
@@ -245,6 +271,25 @@ utils::globalVariables("taxonKey")
 #' key is recorded in the cache metadata as \emph{pending}, and the next call
 #' re-fetches that prepared download instead of submitting a new request.
 #'
+#' \strong{Dead pending keys (2026-09-13):} nothing used to clear a pending
+#' record once written, so a key GBIF had itself killed, cancelled, failed, or
+#' purged server-side made every subsequent call fail identically forever --
+#' the poll retries on a transient error, but a prepared download that no
+#' longer exists server-side fails NON-transiently, and that used to be a hard
+#' \code{stop()} with no recovery except deleting the cache metadata by hand.
+#' Two fixes, per the decision to clear and resubmit within the same call:
+#' (1) a pending key older than \code{pending_max_age_days} is abandoned
+#' unpolled and a fresh request is submitted instead (see that parameter);
+#' (2) when the poll on a still-fresh pending key fails non-transiently, the
+#' dead record is cleared (the whole metadata file is removed when its zip
+#' was never obtained, the common case; otherwise the record is kept but
+#' marked no longer pending, so the real local zip is still served as an
+#' ordinary cache hit) and a fresh request is submitted automatically, in the
+#' same call -- no manual intervention needed. A brand-new key that itself
+#' fails to poll non-transiently is unaffected by this: that is still raised
+#' as an immediate error, since a first-time failure of that kind is a real
+#' problem worth surfacing, not a stale cache to route around.
+#'
 #' \strong{Concurrent download limits:} GBIF limits accounts to 3
 #' concurrent downloads (fewer for accounts with many prior downloads). If
 #' a request is rejected, cancel in-progress downloads at
@@ -295,6 +340,7 @@ download_gbif_occurrences <- function(
   on_cap = c("warn", "error"),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   overwrite = FALSE,
+  pending_max_age_days = 30,
   submit_attempts = 4L,
   submit_wait = c(15, 30, 60),
   on_submit_failure = c("use_cache", "error"),
@@ -333,6 +379,11 @@ download_gbif_occurrences <- function(
 ) {
   on_cap <- match.arg(on_cap)
   on_submit_failure <- match.arg(on_submit_failure)
+  if (!is.null(pending_max_age_days) &&
+    (!is.numeric(pending_max_age_days) || length(pending_max_age_days) != 1L ||
+      is.na(pending_max_age_days) || pending_max_age_days <= 0)) {
+    stop("download_gbif_occurrences: 'pending_max_age_days' must be a single positive number or NULL.")
+  }
   if (!is.numeric(submit_attempts) || length(submit_attempts) != 1L ||
     is.na(submit_attempts) || submit_attempts < 1) {
     stop("submit_attempts must be a single number >= 1")
@@ -431,13 +482,30 @@ download_gbif_occurrences <- function(
       # poll or the fetch (2026-09-11: a curl timeout on the status poll). The
       # prepared file is still server-side, so re-fetch THAT key -- no new
       # request, no new queue wait -- regardless of overwrite: a key that was
-      # never downloaded is not a stale cache.
-      redownload_key <- meta$dl_key
-      .pending_key <- TRUE
-      message(sprintf(
-        "download_gbif_occurrences: a previous run left download key %s prepared but never fetched; re-fetching it (no new request).",
-        meta$dl_key
-      ))
+      # never downloaded is not a stale cache. UNLESS the record is old enough
+      # that GBIF has almost certainly killed/cancelled/purged it server-side
+      # by now (2026-09-13): nothing ever cleared a pending record on its own,
+      # so an ancient one would otherwise poll (and fail) identically forever.
+      # An old record is abandoned WITHOUT polling it, and the call proceeds
+      # exactly as if no usable cache existed at all -- old_zip_path is left
+      # unset here just like every other "no cache" case.
+      .pending_age_days <- as.numeric(difftime(Sys.time(), meta$timestamp, units = "days"))
+      if (!is.null(pending_max_age_days) && .pending_age_days > pending_max_age_days) {
+        message(sprintf(
+          paste0(
+            "download_gbif_occurrences: abandoning download key %s, prepared %.1f day(s) ago ",
+            "(older than pending_max_age_days = %s) -- not polling it. Submitting a fresh request."
+          ),
+          meta$dl_key, .pending_age_days, format(pending_max_age_days)
+        ))
+      } else {
+        redownload_key <- meta$dl_key
+        .pending_key <- TRUE
+        message(sprintf(
+          "download_gbif_occurrences: a previous run left download key %s prepared but never fetched; re-fetching it (no new request).",
+          meta$dl_key
+        ))
+      }
     } else if (!overwrite) {
       if (cached_zip_exists) {
         # Verify before trusting it. A truncated cached zip used to be reused
@@ -546,113 +614,151 @@ download_gbif_occurrences <- function(
 
   # --- Submit download if needed ----------------------------------------------
   if (is.null(zip_path)) {
-    if (!is.null(redownload_key)) {
-      # The query is unchanged and GBIF already prepared this key -- re-fetch the
-      # SAME file rather than paying for a fresh request and queue wait.
-      dl_key <- redownload_key
-      message(sprintf(
-        "download_gbif_occurrences: re-fetching prepared download key %s (no new request).",
-        dl_key
-      ))
-    } else {
-      message(sprintf(
-        "download_gbif_occurrences: submitting GBIF download request for %d key(s)...",
-        length(keys)
-      ))
-
-      # Build predicate list. Rank-specific OR ensures family/genus keys reach
-      # all descendant records (download API taxonKey is exact-match only).
-      # basis_keep is optional -- when supplied it shrinks the download server-side.
-      preds <- list(
-        rgbif::pred_or(
-          rgbif::pred_in("taxonKey", keys),
-          rgbif::pred_in("familyKey", keys),
-          rgbif::pred_in("genusKey", keys),
-          rgbif::pred_in("speciesKey", keys)
-        ),
-        rgbif::pred_gte("year", yr_parts[1L]),
-        rgbif::pred_lte("year", yr_parts[2L]),
-        rgbif::pred("hasCoordinate", TRUE)
-      )
-      # Spatial restriction only when one was asked for; NULL = global.
-      if (!is.null(geometry)) {
-        preds <- c(preds, list(rgbif::pred_within(geometry)))
-      }
-      if (isTRUE(exclude_absent)) {
-        preds <- c(preds, list(rgbif::pred("occurrenceStatus", "PRESENT")))
-      }
-      if (!is.null(basis_keep)) {
-        preds <- c(preds, list(rgbif::pred_in("basisOfRecord", basis_keep)))
-      }
-      dl_req <- .gbif_submit_with_retry(
-        preds,
-        list(format = "SIMPLE_CSV", user = gbif_user, pwd = gbif_pwd, email = gbif_email),
-        max_attempts = as.integer(submit_attempts), waits = submit_wait
-      )
-      if (inherits(dl_req, "gbif_submit_failure")) {
-        # GBIF itself refused the request (a 5xx/timeout, retried above). A
-        # verified cached zip for THIS EXACT query -- the one overwrite = TRUE
-        # was about to replace -- is the only thing that can rescue the run,
-        # and it is used loudly, never silently: this is the difference between
-        # a 5-hour production run dying at Step 3 and it completing on data
-        # that is identical unless GBIF changed since the cache was written.
-        .fallback_zip <- if (!is.null(old_zip_path) && file.exists(old_zip_path) &&
-          isTRUE(.gbif_zip_intact(old_zip_path)$ok)) {
-          old_zip_path
-        } else {
-          NULL
-        }
-        .err <- gsub("\\s+", " ", conditionMessage(dl_req$error))
-        if (identical(on_submit_failure, "use_cache") && !is.null(.fallback_zip)) {
-          .meta_ts <- tryCatch(readRDS(meta_path)$timestamp, error = function(e) NA)
-          warning(sprintf(
-            paste0(
-              "download_gbif_occurrences: GBIF rejected the download request %d time(s) (%s). ",
-              "USING THE VERIFIED CACHED ZIP for this exact query instead (fetched %s, key %s). ",
-              "The data are identical unless GBIF's holdings changed since then. Re-run with ",
-              "overwrite = TRUE once GBIF is back if you need a fresh pull; pass ",
-              "on_submit_failure = \"error\" to fail instead of falling back."
-            ),
-            dl_req$attempts, .err, format(.meta_ts, "%Y-%m-%d %H:%M"), meta$dl_key
-          ), call. = FALSE)
-          dl_key <- meta$dl_key
-          zip_path <- .fallback_zip
-          old_zip_path <- NULL # it is the live zip again; nothing to clean up
-          .served_from_cache_after_failure <- TRUE
-        } else {
-          stop(sprintf(
-            paste0(
-              "download_gbif_occurrences: GBIF rejected the download request %d time(s) (%s). ",
-              "This is a GBIF-side failure, not a query problem%s. Wait and re-run; ",
-              "check https://www.gbif.org/health for outages."
-            ),
-            dl_req$attempts, .err,
-            if (is.null(.fallback_zip)) " -- and no verified cached zip for this exact query exists to fall back on" else ""
-          ), call. = FALSE)
+    # A `repeat` wrapping this decision, not a plain if/else, because a dead
+    # pending key (below) needs to fall through to the exact same
+    # fresh-request path a first-time call takes -- `next` re-enters this body
+    # with `redownload_key`/`.pending_key` cleared, reusing the code instead
+    # of duplicating it.
+    repeat {
+      if (!is.null(redownload_key)) {
+        # The query is unchanged and GBIF already prepared this key -- re-fetch the
+        # SAME file rather than paying for a fresh request and queue wait.
+        dl_key <- redownload_key
+        message(sprintf(
+          "download_gbif_occurrences: re-fetching prepared download key %s (no new request).",
+          dl_key
+        ))
+        if (isTRUE(.pending_key)) {
+          # A PENDING key (a run died mid-poll or mid-fetch) may still be
+          # preparing, so poll it first; a completed key re-fetched because its
+          # zip went missing is never polled (it finished long ago).
+          .waited <- .gbif_wait_with_retry(dl_key, status_ping = max(status_ping, 3L),
+            max_attempts = as.integer(submit_attempts), waits = submit_wait
+          )
+          if (inherits(.waited, "gbif_poll_dead")) {
+            # GBIF has killed/cancelled/failed/purged this key server-side --
+            # polling it again would fail identically forever, which is
+            # exactly how this used to go unrecovered. Clear the record (so a
+            # later run cannot re-honour it either, and cannot mistake the
+            # dead key for a completed cache) and submit a fresh request in
+            # THIS SAME CALL, per the 2026-09-13 "clear and resubmit" decision.
+            .err <- gsub("\\s+", " ", conditionMessage(.waited$error))
+            message(sprintf(
+              paste0(
+                "download_gbif_occurrences: download key %s is dead server-side (%s). ",
+                "Clearing it and submitting a fresh request."
+              ),
+              dl_key, .err
+            ))
+            .gbif_clear_pending_key(meta_path, meta)
+            redownload_key <- NULL
+            .pending_key <- FALSE
+            dl_key <- NULL
+            next
+          } else if (inherits(.waited, "gbif_submit_failure")) {
+            .poll_failed <- .waited
+          }
         }
       } else {
-        dl_key <- as.character(dl_req)
         message(sprintf(
-          "  Download key: %s\n  Waiting for GBIF to prepare the file (polling every %d s)...",
-          dl_key, as.integer(max(status_ping, 3))
+          "download_gbif_occurrences: submitting GBIF download request for %d key(s)...",
+          length(keys)
         ))
 
-        .waited <- .gbif_wait_with_retry(dl_key, status_ping = max(status_ping, 3L),
+        # Build predicate list. Rank-specific OR ensures family/genus keys reach
+        # all descendant records (download API taxonKey is exact-match only).
+        # basis_keep is optional -- when supplied it shrinks the download server-side.
+        preds <- list(
+          rgbif::pred_or(
+            rgbif::pred_in("taxonKey", keys),
+            rgbif::pred_in("familyKey", keys),
+            rgbif::pred_in("genusKey", keys),
+            rgbif::pred_in("speciesKey", keys)
+          ),
+          rgbif::pred_gte("year", yr_parts[1L]),
+          rgbif::pred_lte("year", yr_parts[2L]),
+          rgbif::pred("hasCoordinate", TRUE)
+        )
+        # Spatial restriction only when one was asked for; NULL = global.
+        if (!is.null(geometry)) {
+          preds <- c(preds, list(rgbif::pred_within(geometry)))
+        }
+        if (isTRUE(exclude_absent)) {
+          preds <- c(preds, list(rgbif::pred("occurrenceStatus", "PRESENT")))
+        }
+        if (!is.null(basis_keep)) {
+          preds <- c(preds, list(rgbif::pred_in("basisOfRecord", basis_keep)))
+        }
+        dl_req <- .gbif_submit_with_retry(
+          preds,
+          list(format = "SIMPLE_CSV", user = gbif_user, pwd = gbif_pwd, email = gbif_email),
           max_attempts = as.integer(submit_attempts), waits = submit_wait
         )
-        if (inherits(.waited, "gbif_submit_failure")) {
-          .poll_failed <- .waited
+        if (inherits(dl_req, "gbif_submit_failure")) {
+          # GBIF itself refused the request (a 5xx/timeout, retried above). A
+          # verified cached zip for THIS EXACT query -- the one overwrite = TRUE
+          # was about to replace -- is the only thing that can rescue the run,
+          # and it is used loudly, never silently: this is the difference between
+          # a 5-hour production run dying at Step 3 and it completing on data
+          # that is identical unless GBIF changed since the cache was written.
+          .fallback_zip <- if (!is.null(old_zip_path) && file.exists(old_zip_path) &&
+            isTRUE(.gbif_zip_intact(old_zip_path)$ok)) {
+            old_zip_path
+          } else {
+            NULL
+          }
+          .err <- gsub("\\s+", " ", conditionMessage(dl_req$error))
+          if (identical(on_submit_failure, "use_cache") && !is.null(.fallback_zip)) {
+            .meta_ts <- tryCatch(readRDS(meta_path)$timestamp, error = function(e) NA)
+            warning(sprintf(
+              paste0(
+                "download_gbif_occurrences: GBIF rejected the download request %d time(s) (%s). ",
+                "USING THE VERIFIED CACHED ZIP for this exact query instead (fetched %s, key %s). ",
+                "The data are identical unless GBIF's holdings changed since then. Re-run with ",
+                "overwrite = TRUE once GBIF is back if you need a fresh pull; pass ",
+                "on_submit_failure = \"error\" to fail instead of falling back."
+              ),
+              dl_req$attempts, .err, format(.meta_ts, "%Y-%m-%d %H:%M"), meta$dl_key
+            ), call. = FALSE)
+            dl_key <- meta$dl_key
+            zip_path <- .fallback_zip
+            old_zip_path <- NULL # it is the live zip again; nothing to clean up
+            .served_from_cache_after_failure <- TRUE
+          } else {
+            stop(sprintf(
+              paste0(
+                "download_gbif_occurrences: GBIF rejected the download request %d time(s) (%s). ",
+                "This is a GBIF-side failure, not a query problem%s. Wait and re-run; ",
+                "check https://www.gbif.org/health for outages."
+              ),
+              dl_req$attempts, .err,
+              if (is.null(.fallback_zip)) " -- and no verified cached zip for this exact query exists to fall back on" else ""
+            ), call. = FALSE)
+          }
+        } else {
+          dl_key <- as.character(dl_req)
+          message(sprintf(
+            "  Download key: %s\n  Waiting for GBIF to prepare the file (polling every %d s)...",
+            dl_key, as.integer(max(status_ping, 3))
+          ))
+
+          .waited <- .gbif_wait_with_retry(dl_key, status_ping = max(status_ping, 3L),
+            max_attempts = as.integer(submit_attempts), waits = submit_wait
+          )
+          if (inherits(.waited, "gbif_poll_dead")) {
+            # A BRAND-NEW key failing non-transiently is a real problem, not a
+            # stale-cache situation to route around -- still an immediate
+            # error, unchanged from before this key ever became "pending".
+            stop(sprintf(
+              "download_gbif_occurrences: polling download key %s failed with a non-transient error: %s",
+              dl_key, gsub("\\s+", " ", conditionMessage(.waited$error))
+            ), call. = FALSE)
+          } else if (inherits(.waited, "gbif_submit_failure")) {
+            .poll_failed <- .waited
+          }
         }
       }
-    }
-    if (isTRUE(.pending_key) && is.null(zip_path)) {
-      # A PENDING key (a run died mid-poll or mid-fetch) may still be
-      # preparing, so poll it first; a completed key re-fetched because its
-      # zip went missing is never polled (it finished long ago).
-      .waited <- .gbif_wait_with_retry(dl_key, status_ping = max(status_ping, 3L),
-        max_attempts = as.integer(submit_attempts), waits = submit_wait
-      )
-      if (inherits(.waited, "gbif_submit_failure")) .poll_failed <- .waited
+      break
     }
     if (!is.null(.poll_failed)) {
       .fallback_zip <- if (!is.null(old_zip_path) && file.exists(old_zip_path) &&
@@ -1486,9 +1592,18 @@ download_gbif_occurrences <- function(
 #'
 #' `rgbif::occ_download_wait()` polls api.gbif.org every `status_ping` seconds
 #' and throws on a connection timeout (seen 2026-09-11: curl "Timeout was
-#' reached [api.gbif.org]" mid-poll). The key is already prepared server-side,
-#' so the poll can simply be restarted. Same return contract as
-#' `.gbif_submit_with_retry()`.
+#' reached `[api.gbif.org]`" mid-poll). The key is already prepared server-side,
+#' so the poll can simply be restarted.
+#'
+#' A NON-transient failure (e.g. the key itself is dead server-side --
+#' killed, cancelled, failed, or purged) is no longer a hard `stop()`
+#' (2026-09-13): it is returned as a classed `gbif_poll_dead` failure (which
+#' also inherits `gbif_submit_failure`, so any caller checking only for that
+#' class still sees a failure) so ONE caller -- the pending-key re-fetch path
+#' -- can react by clearing the dead record and submitting a fresh request in
+#' the same call, while every other caller can still choose to re-raise it
+#' immediately. A transient failure that exhausts every retry is unchanged:
+#' a plain `gbif_submit_failure` object, exactly as before.
 #' @noRd
 .gbif_wait_with_retry <- function(dl_key, status_ping = 15L, max_attempts = 4L, waits = c(15, 30, 60)) {
   last <- NULL
@@ -1508,10 +1623,10 @@ download_gbif_occurrences <- function(
     last <- res
     msg <- gsub("\\s+", " ", conditionMessage(res))
     if (!.gbif_transient_error(msg)) {
-      stop(sprintf(
-        "download_gbif_occurrences: polling download key %s failed with a non-transient error: %s",
-        dl_key, msg
-      ), call. = FALSE)
+      return(structure(
+        list(error = last, attempts = attempts, dl_key = dl_key),
+        class = c("gbif_poll_dead", "gbif_submit_failure")
+      ))
     }
     if (i < max_attempts) {
       w <- waits[min(i, length(waits))]
@@ -1544,6 +1659,40 @@ download_gbif_occurrences <- function(
            timestamp = Sys.time(), pending = TRUE),
       meta_path
     ),
+    error = function(e) invisible(NULL)
+  )
+  invisible(NULL)
+}
+
+#' Clear a pending-download record whose key died non-transiently server-side
+#'
+#' Called only from the pending-key poll when `.gbif_wait_with_retry()`
+#' returns a `gbif_poll_dead` result -- the key GBIF issued earlier has since
+#' been killed, cancelled, failed, or purged, and polling it again would fail
+#' identically forever, so the record must not be honoured by a later run
+#' either. `pending = TRUE` is only ever written by `.gbif_record_pending_key()`
+#' when there was NO usable zip to fall back on, so the common case here is a
+#' `zip_path` that was never actually populated -- the whole metadata file is
+#' removed, so a later call sees "no cache at all" and submits fresh rather
+#' than repeating the exact re-fetch-this-dead-key attempt forever. In the
+#' otherwise-unreachable case that the zip DOES exist on disk, the record is
+#' rewritten with `pending` cleared instead of deleted, so it is served as an
+#' ordinary completed cache hit from the real local file on the next call --
+#' never by trying to reuse the dead key itself as if it were still live.
+#' @noRd
+.gbif_clear_pending_key <- function(meta_path, meta) {
+  if (is.null(meta_path) || is.null(meta)) {
+    return(invisible(NULL))
+  }
+  tryCatch(
+    {
+      if (!is.null(meta$zip_path) && file.exists(meta$zip_path)) {
+        meta$pending <- FALSE
+        saveRDS(meta, meta_path)
+      } else if (file.exists(meta_path)) {
+        file.remove(meta_path)
+      }
+    },
     error = function(e) invisible(NULL)
   )
   invisible(NULL)

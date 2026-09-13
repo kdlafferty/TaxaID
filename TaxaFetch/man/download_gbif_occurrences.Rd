@@ -12,6 +12,7 @@ download_gbif_occurrences(
   on_cap = c("warn", "error"),
   cache_dir = tools::R_user_dir("TaxaFetch", "cache"),
   overwrite = FALSE,
+  pending_max_age_days = 30,
   submit_attempts = 4L,
   submit_wait = c(15, 30, 60),
   on_submit_failure = c("use_cache", "error"),
@@ -85,6 +86,16 @@ cached zip's date and size) before deleting it; a non-interactive session
 proceeds straight to a fresh download. Either way, the old cached zip is
 removed once the new one is saved -- it is never silently orphaned on
 disk.}
+
+\item{pending_max_age_days}{Numeric or \code{NULL} (default \code{30}). A
+download key recorded in the cache metadata as \emph{pending} (see
+\strong{GBIF outages} below) is normally polled and re-fetched on the
+next call. When that record is older than this many days, it is instead
+abandoned WITHOUT polling it -- a message names the key and its age --
+and a fresh request is submitted in the same call, since GBIF has almost
+certainly killed, cancelled, or purged a prepared download that old.
+\code{NULL} disables the age check, so a pending key is always polled
+first no matter how old.}
 
 \item{submit_attempts}{Integer (default \code{4}). How many times the download
 \emph{request} is submitted (and, separately, how many times the prepared
@@ -281,6 +292,25 @@ but the poll or fetch still fails and there is no cache to fall back on, the
 key is recorded in the cache metadata as \emph{pending}, and the next call
 re-fetches that prepared download instead of submitting a new request.
 
+\strong{Dead pending keys (2026-09-13):} nothing used to clear a pending
+record once written, so a key GBIF had itself killed, cancelled, failed, or
+purged server-side made every subsequent call fail identically forever --
+the poll retries on a transient error, but a prepared download that no
+longer exists server-side fails NON-transiently, and that used to be a hard
+\code{stop()} with no recovery except deleting the cache metadata by hand.
+Two fixes, per the decision to clear and resubmit within the same call:
+(1) a pending key older than \code{pending_max_age_days} is abandoned
+unpolled and a fresh request is submitted instead (see that parameter);
+(2) when the poll on a still-fresh pending key fails non-transiently, the
+dead record is cleared (the whole metadata file is removed when its zip
+was never obtained, the common case; otherwise the record is kept but
+marked no longer pending, so the real local zip is still served as an
+ordinary cache hit) and a fresh request is submitted automatically, in the
+same call -- no manual intervention needed. A brand-new key that itself
+fails to poll non-transiently is unaffected by this: that is still raised
+as an immediate error, since a first-time failure of that kind is a real
+problem worth surfacing, not a stale cache to route around.
+
 \strong{Concurrent download limits:} GBIF limits accounts to 3
 concurrent downloads (fewer for accounts with many prior downloads). If
 a request is rejected, cancel in-progress downloads at
@@ -300,6 +330,25 @@ waiting to type. This package already documented the same hazard for
 advice ("run this call on its own") is unavailable to a function called
 mid-workflow. Every decision here is therefore REPORTED, with the command to
 act on it, unless \code{allow_prompts = TRUE} is passed deliberately.
+}
+
+\section{Attributes}{
+
+Beyond \code{download_key}, the returned tibble always carries:
+\itemize{
+\item \code{report_params} -- a list recording the call's own
+parameterization for downstream reporting: \code{source} (always
+\code{"GBIF (async download)"}), \code{n_keys}, \code{n_records},
+\code{doi} (the download's DOI URL, or \code{NA} if lookup failed),
+\code{geometry}, and \code{year_range}.
+\item \code{served_from_cache_after_failure} -- logical, \code{TRUE}
+when every submission/fetch/poll attempt failed and a verified cached
+zip for this exact query was imported instead (see the
+\code{on_submit_failure} parameter); \code{FALSE} otherwise.
+\item \code{capped_keys} -- integer vector of taxon keys \code{limit}
+actually truncated (see the \code{on_cap} parameter); \code{integer(0)}
+when nothing was capped.
+}
 }
 
 \examples{
