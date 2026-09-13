@@ -251,6 +251,47 @@ identify_confident_observations <- function(match_df,
 #' never reuse one for the other, and always recompute after retraining with
 #' a different `score_transform`.
 #'
+#' @section Bimodality diagnostic (2026-09-13):
+#' `train_likelihood_model()` fits ONE Gaussian per species for H1, and this
+#' function's own `offset_form = "linear"` fits a single line across species
+#' -- both assume the underlying H1 score distribution is unimodal. Mixing
+#' sequencing platforms (or markers, or primer sets) inside one calibration
+#' run breaks that assumption silently: a real Nanopore top-hit distribution
+#' (measured 2026-09-13) had a 20.3% spike at exactly 100 and a tail reaching
+#' 94.1 at the 10th percentile, while Illumina data for the same marker was
+#' tight and unimodal. Fitting one Gaussian (or one line) across a mix like
+#' that lands the mean between the two modes, where almost nothing actually
+#' is.
+#'
+#' This function now runs an internal two-component-normal-mixture-vs-BIC
+#' check (see `.bimodality_check()`) on the SAME confident-observation score
+#' vector (`p_norm * 100`, i.e. raw percent identity, computed before the
+#' `score_transform` step) that the calibration itself fits. The check flags
+#' bimodality only when a 2-component fit beats a 1-component fit by
+#' `delta_bic > 10` (Kass & Raftery 1995's "very strong" evidence band -- see
+#' `.bimodality_check()`'s own docs for the verified citation) AND the two
+#' fitted component means are separated by more than 1 percentage point --
+#' both conditions guard against a false positive from ordinary,
+#' ceiling-skewed-but-genuinely-unimodal H1 data (the reason a simpler
+#' bimodality-coefficient test was explicitly rejected for this diagnostic:
+#' H1 scores pile up near 100% identity by construction, and a
+#' skewness/kurtosis-based test would flag that shape on its own).
+#'
+#' When the check fires, this function emits exactly ONE `warning()` naming
+#' the fitted structure in plain numbers (component weights, means, sds, and
+#' `delta_bic`) and pointing at the remedy -- calibrating mixed platforms or
+#' markers separately, which this function does NOT do for you. **This is a
+#' diagnostic only**: it never changes any fitted value (the offset,
+#' `offset_form`, slope/intercept, or sigma ratio are computed exactly as
+#' they always were) and calibration is never refused -- a caller who ignores
+#' the warning gets the same, still-computed-but-now-suspect single offset a
+#' pre-2026-09-13 version of this function would have silently returned.
+#' `train_likelihood_model()` runs the identical check on its own H1 training
+#' scores and RECORDS the result in `Stats$h1_bimodality` (no warning there --
+#' this function is where the warning belongs, since it is the one place
+#' *inference*-time calibration is actually about to apply a single, possibly
+#' wrong, offset/line).
+#'
 #' @param model_params Object of class `"taxa_model_params"` from
 #'   [train_likelihood_model()].
 #' @param match_df Data frame. Canonical match object for the *same* dataset
@@ -281,7 +322,15 @@ identify_confident_observations <- function(match_df,
 #'   `"constant"` (with a warning) when fewer than `min_calib_species` confident
 #'   species, or no spread of trained means, are available -- so a thin-reference
 #'   marker (e.g. one with only a handful of referenced species) is handled
-#'   safely without a caller having to special-case it.
+#'   safely without a caller having to special-case it. In particular, when
+#'   the trained per-species score means have no spread at all -- which
+#'   happens whenever `train_likelihood_model()` reports
+#'   `Stats$tau2_score = 0` under `shrinkage = "empirical_bayes"` (observed on
+#'   every production site to date, per that shrinkage mode's own
+#'   documentation) -- every species' H1 mean IS the global mean by
+#'   construction, `"linear"` has no spread of trained means to fit against,
+#'   and it falls back to `"constant"` with a warning -- so requesting
+#'   `"linear"` there is moot.
 #' @param min_calib_species Integer (default `8L`). Minimum number of distinct
 #'   confident species (spanning a range of trained means) required to fit the
 #'   `offset_form = "linear"` line. Ignored when `offset_form = "constant"`.
@@ -414,6 +463,31 @@ calibrate_query_noise <- function(model_params,
   p_raw <- confident[[score_col]]
   p_norm <- if (max(p_raw, na.rm = TRUE) > 1) p_raw / 100 else p_raw
   observed_logit <- .transform_p(p_norm, model_score_transform, logit_epsilon)
+
+  # Bimodality diagnostic (2026-09-13, see @section Bimodality diagnostic
+  # above) -- runs on the SAME confident-observation score vector the
+  # calibration itself fits, on the raw percent-identity scale (p_norm * 100,
+  # BEFORE the score_transform step) rather than the transformed
+  # `observed_logit` -- see .bimodality_check()'s own `min_separation` docs
+  # for why: a spike at exactly 100% identity has no natural distance-to-a-
+  # second-mode interpretation once clipped onto the logit scale, while a
+  # percentage-point gap is directly the unit the real motivating comparison
+  # (Nanopore vs Illumina) is stated in. Never errors, never changes any
+  # fitted value -- see that section for the full reasoning.
+  h1_bimodal <- .bimodality_check(p_norm * 100)
+  if (isTRUE(h1_bimodal$flag)) {
+    warning(sprintf(
+      paste0(
+        "calibrate_query_noise: H1 scores look bimodal: %.0f%% near %.1f (sd %.1f) and ",
+        "%.0f%% near %.1f (sd %.1f), delta BIC %.0f. A single linear offset fits neither ",
+        "component; if this run mixes sequencing platforms or markers, calibrate them ",
+        "separately."
+      ),
+      100 * h1_bimodal$weights[1], h1_bimodal$means[1], h1_bimodal$sds[1],
+      100 * h1_bimodal$weights[2], h1_bimodal$means[2], h1_bimodal$sds[2],
+      h1_bimodal$delta_bic
+    ), call. = FALSE)
+  }
 
   global_mu_score <- as.numeric(model_params$H1_Global_Mu["score_logit"])
   lookup_idx <- match(confident$confident_species, model_params$H1_Lookup$lookup_key)

@@ -1,5 +1,27 @@
 # CLAUDE.md -- TaxaLikely
-# Last updated: 2026-09-10, later (Fable 5.1 -- BUILT AND VALIDATED, user decision: the
+# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (J3) -- NEW
+# bimodal-H1 diagnostic: a deterministic base-R 2-component normal-mixture EM compared to
+# a 1-component fit by BIC, PLUS a required density-valley condition between the fitted
+# means -- delta_bic > 10 + mean-separation alone false-positived on the ceiling-skewed
+# unimodal fixture (the exact failure that ruled out the earlier bimodality coefficient).
+# Warns in calibrate_query_noise(); recorded in train_likelihood_model()'s
+# Stats$h1_bimodality. The BIC-10 threshold verified against Kass & Raftery (1995) JASA
+# 90(430):773-795 directly. No new dependency. Diagnostic only -- the remedy (per-platform
+# calibration) is not built. Full record:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md Section L.
+# Previous update, 2026-09-13 (Sonnet 5 -- ecosystem review "easy batch" (A15): train.R's dead
+# singleton self-match branch removed, along with its every-run warning. Roxygen:
+# train_likelihood_model() gained a full Stats @return block, documents the tau2 detection
+# floor, and documents min_pair_coverage's one-directional coverage check; evaluate.R
+# gained an @section Pair-coverage check; calibrate_query_noise.R notes that
+# offset_form="linear" is moot when tau2_score = 0. Also: session-number narrative
+# stripped from the README; NEWS.md gained the 2026-09-08/09 entries it was missing;
+# inst/CITATION -> 0.1.0 + github.com/DOI-USGS/TaxaID. New finding recorded, not a fix:
+# tau2_score = 0 at every site is at the method-of-moments detection floor (K~39
+# references -> tau/sigma below ~0.25 is undetectable), not evidence the true value is
+# zero. devtools::test() 1099/0. devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library; not yet reinstalled. Full findings:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md.
+# Previous update, 2026-09-10, later (Fable 5.1 -- BUILT AND VALIDATED, user decision: the
 # pair-coverage floor is a REQUIREMENT, on by default. `train_likelihood_model()` gains
 # `min_pair_coverage = 0.8` and `shrinkage = c("empirical_bayes", "fixed")`.
 #

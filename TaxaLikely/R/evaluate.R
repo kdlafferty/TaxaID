@@ -1343,6 +1343,24 @@ utils::globalVariables(c(
 #' pass-through for how a downstream consumer reads these off the winning
 #' row.
 #'
+#' @section Pair-coverage check:
+#' On every call, `.check_pair_coverage_floor()` compares `match_df`'s own
+#' alignment-coverage floor against `model_params$Stats$min_pair_coverage`
+#' (the floor `train_likelihood_model(min_pair_coverage=)` was trained
+#' under). It reads `attr(match_df, "report_params")$min_query_coverage`
+#' when present (set by `TaxaMatch::blast_sequences()`), else falls back to
+#' the observed minimum of `match_df$query_coverage`; a value greater than 1
+#' is treated as a 0-100 percentage and normalised to 0-1. It warns only
+#' when the match object's floor sits more than 0.01 below the model's own
+#' `min_pair_coverage` -- i.e. only when inference is being asked to
+#' evaluate the gap feature on lower-coverage hits than the model was
+#' trained on. The check is one-directional by design: a match object with a
+#' STRICTER coverage floor than training never warns, since evaluating on a
+#' cleaner-than-trained population is not the failure mode this check exists
+#' to catch. Silently skipped (no check performed) when `model_params` was
+#' trained with no coverage floor at all, or when neither `report_params`
+#' nor a `query_coverage` column is available on `match_df`.
+#'
 #' @references
 #' Somervuo, P., Koskela, S., Pennanen, J., Nilsson, R.H. and Ovaskainen, O.
 #' (2016). Unbiased probabilistic taxonomic classification for DNA barcoding.

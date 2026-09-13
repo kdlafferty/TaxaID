@@ -313,7 +313,7 @@ unreferenced species (borrowed from the generic H2/H3 values) and
 expands them so they can join TaxaExpect priors directly; requires a
 TaxaExpect- derived unreferenced-species list, so it runs after both
 TaxaLikely and TaxaExpect and before `TaxaAssign::compute_posterior()`
-(moved from TaxaAssign, Session 150)
+(moved from TaxaAssign in September 2026)
 
 **Reference QC:** - `audit_barcode_coverage()` -- find unreferenced
 species (no barcode sequence; eDNA/DNA only) -
@@ -321,7 +321,7 @@ species (no barcode sequence; eDNA/DNA only) -
 `audit_barcode_coverage()` (also supports acoustic/image via
 `data_type`); feeds
 `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`, the LLM-shortcut
-pathway -- moved here from TaxaAssign, Session 2026-09-08 -
+pathway -- moved here from TaxaAssign in September 2026 -
 `audit_acoustic_coverage()` -- find plausible species absent from
 classifier's known list (acoustic/image) - `audit_reference_coverage()`
 -- taxonomic completeness check - `apply_coverage_constraints()` --
@@ -348,7 +348,7 @@ section.
 |----|----|----|
 | **NCBI nucleotide** (via `fetch_ncbi_reference_sequences()`) | Yes, using the pattern above | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. |
 | **Curated libraries** (CRUX, custom expert-built FASTA) | Optional | Lower mislabeling rate than NCBI. If your library has a quality column, use that filter instead. |
-| **Xeno-canto**\* bird sounds (acoustic) | No | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Filter on the recording's own quality grade (A-E) instead -- the acoustic `seq_matrix`'s `coverage` column encodes quality grade categorically; a dedicated threshold-calibration helper for this existed here through 2026-09-09 and was archived (see `CLAUDE.md`'s top session note) after a real A/B test found the accuracy gain came with a real coverage cost -- apply a threshold directly (e.g. `seq_matrix[seq_matrix$coverage >= threshold, ]`) if you need one. |
+| **Xeno-canto**\* bird sounds (acoustic) | No | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Filter on the recording's own quality grade (A-E) instead -- the acoustic `seq_matrix`'s `coverage` column encodes quality grade categorically; a dedicated threshold-calibration helper for this existed here and was archived after a real A/B test found the accuracy gain came with a real coverage cost -- apply a threshold directly (e.g. `seq_matrix[seq_matrix$coverage >= threshold, ]`) if you need one. |
 | **Camera trap images** (Animl/SpeciesNet) | Not applicable | This screen is DNA-specific (BLAST + sequence alignment). Camera trap ground-truth labeling has different error modes (occlusion, blur, multiple animals, handler setup) needing a different mechanism, not built. |
 
 \* Xeno-canto (Xeno-canto Foundation, Netherlands, with support from

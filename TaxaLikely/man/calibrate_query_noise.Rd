@@ -54,7 +54,15 @@ them on a location-only validation set. \code{"linear"} falls back to
 \code{"constant"} (with a warning) when fewer than \code{min_calib_species} confident
 species, or no spread of trained means, are available -- so a thin-reference
 marker (e.g. one with only a handful of referenced species) is handled
-safely without a caller having to special-case it.}
+safely without a caller having to special-case it. In particular, when
+the trained per-species score means have no spread at all -- which
+happens whenever \code{train_likelihood_model()} reports
+\code{Stats$tau2_score = 0} under \code{shrinkage = "empirical_bayes"} (observed on
+every production site to date, per that shrinkage mode's own
+documentation) -- every species' H1 mean IS the global mean by
+construction, \code{"linear"} has no spread of trained means to fit against,
+and it falls back to \code{"constant"} with a warning -- so requesting
+\code{"linear"} there is moot.}
 
 \item{min_calib_species}{Integer (default \code{8L}). Minimum number of distinct
 confident species (spanning a range of trained means) required to fit the
@@ -243,6 +251,49 @@ on (read automatically), but a \code{"logit"}-scale offset and a
 \code{"sqrt_mismatch"}-scale offset are different numbers in different units --
 never reuse one for the other, and always recompute after retraining with
 a different \code{score_transform}.
+}
+
+\section{Bimodality diagnostic (2026-09-13)}{
+
+\code{train_likelihood_model()} fits ONE Gaussian per species for H1, and this
+function's own \code{offset_form = "linear"} fits a single line across species
+-- both assume the underlying H1 score distribution is unimodal. Mixing
+sequencing platforms (or markers, or primer sets) inside one calibration
+run breaks that assumption silently: a real Nanopore top-hit distribution
+(measured 2026-09-13) had a 20.3\% spike at exactly 100 and a tail reaching
+94.1 at the 10th percentile, while Illumina data for the same marker was
+tight and unimodal. Fitting one Gaussian (or one line) across a mix like
+that lands the mean between the two modes, where almost nothing actually
+is.
+
+This function now runs an internal two-component-normal-mixture-vs-BIC
+check (see \code{.bimodality_check()}) on the SAME confident-observation score
+vector (\code{p_norm * 100}, i.e. raw percent identity, computed before the
+\code{score_transform} step) that the calibration itself fits. The check flags
+bimodality only when a 2-component fit beats a 1-component fit by
+\code{delta_bic > 10} (Kass & Raftery 1995's "very strong" evidence band -- see
+\code{.bimodality_check()}'s own docs for the verified citation) AND the two
+fitted component means are separated by more than 1 percentage point --
+both conditions guard against a false positive from ordinary,
+ceiling-skewed-but-genuinely-unimodal H1 data (the reason a simpler
+bimodality-coefficient test was explicitly rejected for this diagnostic:
+H1 scores pile up near 100\% identity by construction, and a
+skewness/kurtosis-based test would flag that shape on its own).
+
+When the check fires, this function emits exactly ONE \code{warning()} naming
+the fitted structure in plain numbers (component weights, means, sds, and
+\code{delta_bic}) and pointing at the remedy -- calibrating mixed platforms or
+markers separately, which this function does NOT do for you. \strong{This is a
+diagnostic only}: it never changes any fitted value (the offset,
+\code{offset_form}, slope/intercept, or sigma ratio are computed exactly as
+they always were) and calibration is never refused -- a caller who ignores
+the warning gets the same, still-computed-but-now-suspect single offset a
+pre-2026-09-13 version of this function would have silently returned.
+\code{train_likelihood_model()} runs the identical check on its own H1 training
+scores and RECORDS the result in \code{Stats$h1_bimodality} (no warning there --
+this function is where the warning belongs, since it is the one place
+\emph{inference}-time calibration is actually about to apply a single, possibly
+wrong, offset/line).
 }
 
 \examples{

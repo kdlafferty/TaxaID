@@ -414,6 +414,26 @@ pass-through for how a downstream consumer reads these off the winning
 row.
 }
 
+\section{Pair-coverage check}{
+
+On every call, \code{.check_pair_coverage_floor()} compares \code{match_df}'s own
+alignment-coverage floor against \code{model_params$Stats$min_pair_coverage}
+(the floor \code{train_likelihood_model(min_pair_coverage=)} was trained
+under). It reads \code{attr(match_df, "report_params")$min_query_coverage}
+when present (set by \code{TaxaMatch::blast_sequences()}), else falls back to
+the observed minimum of \code{match_df$query_coverage}; a value greater than 1
+is treated as a 0-100 percentage and normalised to 0-1. It warns only
+when the match object's floor sits more than 0.01 below the model's own
+\code{min_pair_coverage} -- i.e. only when inference is being asked to
+evaluate the gap feature on lower-coverage hits than the model was
+trained on. The check is one-directional by design: a match object with a
+STRICTER coverage floor than training never warns, since evaluating on a
+cleaner-than-trained population is not the failure mode this check exists
+to catch. Silently skipped (no check performed) when \code{model_params} was
+trained with no coverage floor at all, or when neither \code{report_params}
+nor a \code{query_coverage} column is available on \code{match_df}.
+}
+
 \examples{
 \dontrun{
 result <- evaluate_likelihoods(

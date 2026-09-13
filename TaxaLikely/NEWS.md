@@ -1,5 +1,34 @@
 # TaxaLikely (development version)
 
+## 2026-09-13
+
+* New bimodality diagnostic for H1 (known-species) scores (`R/bimodality.R`):
+  `train_likelihood_model()` fits one Gaussian per species, and
+  `calibrate_query_noise()`'s `offset_form = "linear"` fits one line across
+  species -- both assume a unimodal H1 score distribution, which mixed
+  sequencing platforms (or markers, or primer sets) can silently break. New
+  internal `.bimodality_check()` fits a 2-component normal mixture by a
+  dependency-free base-R EM (`.fit_two_component_normal()`, deterministic
+  init, sd-floored so a component landing on a repeated value -- e.g. a real
+  platform's spike at exactly 100 -- cannot collapse to zero variance) and
+  flags bimodality only when the 2-component fit beats 1 component by
+  `delta_bic > 10` (Kass & Raftery 1995's "very strong" evidence band,
+  verified against the paper directly), the two means are separated by more
+  than 1 percentage point, AND the fitted mixture density has a genuine
+  antimode between the two means (`.mixture_has_valley()`) -- the third
+  condition, found necessary during testing, is what keeps a ceiling-skewed
+  but genuinely unimodal H1 distribution (real match data piles up near 100%
+  identity by construction) from false-positiving, exactly the failure mode
+  that ruled out a simpler bimodality-coefficient test for this diagnostic.
+  `calibrate_query_noise()` now runs this check on the confident-observation
+  score vector it already computes and emits ONE `warning()` naming the
+  fitted structure in plain numbers when it fires (never changes any fitted
+  value, never refuses to calibrate). `train_likelihood_model()` runs the
+  identical check on its own real H1 training scores and records the result
+  in the new `Stats$h1_bimodality` -- it does not warn (the warning belongs
+  at calibration time, per the user's decision, since that is the point a
+  single offset/line is actually about to be applied).
+
 ## 2026-09-10
 
 * `train_likelihood_model()`: new `min_pair_coverage` (default `0.8`) -- only a
@@ -20,6 +49,13 @@
   `blast_sequences()`, else the observed minimum `query_coverage`).
 * Validated on the real GreatLakes workflow code path against the Lamar species
   list: co-detections 593 -> 798, precision 0.805 -> 0.818, 29 -> 41 of 61 species.
+
+## 2026-09-08/09
+
+* `flag_reference_errors()`/`remove_flagged_references()` retired; training
+  no longer auto-removes references on that screen (c15f0fe).
+* `compute_likelihoods()`/`model_likelihoods()` archived (ad97447).
+* 12 fixes from the post-checklist review (8ffba9a).
 
 ## Polishing Phase (Sessions 57-59)
 

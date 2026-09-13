@@ -102,8 +102,10 @@ conspecific match (\code{coverage} column from \code{\link[=build_sequence_matri
 Must equal the coverage floor the match object was built under --
 \code{TaxaMatch::blast_sequences(min_query_coverage = 80)} is \code{0.8} here --
 so that training and inference see the same pair population;
-\code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} checks the two against each other and warns
-on a mismatch.  This is NOT a data filter: no pair is removed from the
+\code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}'s check against the match object is
+one-directional -- it warns only when the match object admits LOWER
+coverage than this model's own floor (a 0.01 tolerance), never the
+other way around.  This is NOT a data filter: no pair is removed from the
 data and no species is ever dropped (a reference with no qualifying
 conspecific pair falls back to its best one).  \code{NULL} disables the
 floor; a \code{raw_df} without a \code{coverage} column skips it with a message.
@@ -159,20 +161,75 @@ never an error). See
 structure, and \code{compute_rank_thresholds()} for the sibling function
 that derives \code{TaxaAssign::score_consensus()}'s \code{rank_thresholds}
 from the same underlying curves.}
-\item{\code{Stats}}{List of diagnostics (e.g., \code{AIC_Score} if lmer succeeded,
-\code{n_species}, \code{n_singletons}, \code{n_h1_pooled} -- total sequences behind
-the global H1 mean (informational only; NOT used as the Monte Carlo
-uncertainty fallback -- see \code{prior_weight} below) -- and
-\code{n_h2_pooled} -- foreign-match count behind the pooled global \code{H2}
-delta, \code{NA} when too few foreign matches existed to estimate one
-(also informational only). \code{prior_weight} -- the same value passed to
-this call -- is what \code{evaluate_likelihoods()} actually uses as the
-equivalent sample size for candidates with no species/genus-specific
-reference data at all: the true pooled sample size (\code{n_h1_pooled}/
-\code{n_h2_pooled}) reflects how well the GLOBAL average is known, not how
-confidently that average applies to a candidate we have zero direct
-data for, so using it directly would understate uncertainty exactly
-where it should be largest.}
+\item{\code{Stats}}{List of diagnostics:
+\describe{
+\item{\code{AIC_Score}}{From the \code{lme4} hierarchy fit, when it succeeded;
+\code{NA} otherwise.}
+\item{\code{n_species}}{Number of species with at least one H1
+(within-species) training pair.}
+\item{\code{n_singletons}}{Number of reference sequences with no
+within-species neighbour, trained via the \code{"Singleton"} pathway
+(see \code{.prep_training_data()}).}
+\item{\code{n_anchors}}{Number of synthetic perfect-match pseudo-
+observations injected via \code{anchor_perfect}; \code{0} when disabled.}
+\item{\code{n_h1_pooled}}{Total sequences behind the global H1 mean
+(informational only; NOT used as the Monte Carlo uncertainty
+fallback -- see \code{prior_weight} below).}
+\item{\code{n_h2_pooled}}{Foreign-match count behind the pooled global
+\code{H2} delta, \code{NA} when too few foreign matches existed to estimate
+one (also informational only).}
+\item{\code{prior_weight}}{The same value passed to this call -- what
+\code{evaluate_likelihoods()} actually uses as the equivalent sample
+size for candidates with no species/genus-specific reference data
+at all: the true pooled sample size (\code{n_h1_pooled}/\code{n_h2_pooled})
+reflects how well the GLOBAL average is known, not how
+confidently that average applies to a candidate we have zero
+direct data for, so using it directly would understate
+uncertainty exactly where it should be largest.}
+\item{\code{shrinkage}}{\code{"empirical_bayes"} or \code{"fixed"} -- which
+shrinkage-weight formula was actually used for the per-species H1
+means (see the \code{shrinkage} parameter).}
+\item{\code{tau2_score}, \code{tau2_gap}}{Method-of-moments estimates of the
+between-species variance of the H1 score/gap means (used only
+under \code{shrinkage = "empirical_bayes"}; both \code{NA} under
+\code{"fixed"}). These carry NO standard error: with K non-singleton
+species, the sampling SD of the between-species variance estimate
+is roughly \code{var * sqrt(2/(K-1))}, so a true tau/sigma up to about
+0.2-0.3 is statistically indistinguishable from 0 at K ~= 40 and
+gets truncated to exactly 0. A value of \code{0} therefore means "not
+detectable at this species count," not "genuinely absent."}
+\item{\code{min_pair_coverage}}{The coverage floor actually applied (see
+the \code{min_pair_coverage} parameter), or \code{NA_real_} when \code{raw_df}
+carried no \code{coverage} column and the floor was skipped entirely.}
+\item{\code{n_self_fallback}}{Number of references whose best conspecific
+pair fell below \code{min_pair_coverage}, so they fell back to their
+best conspecific pair regardless -- a reference is never dropped
+from training by the floor.}
+\item{\code{n_foreign_unqualified}}{Number of references with no
+qualifying foreign pair clearing \code{min_pair_coverage}, routed to
+the noise-floor global rather than an unfiltered (and
+potentially coverage-inflated) maximum.}
+\item{\code{mlr_violations}}{Character vector of species names failing
+the monotone-likelihood-ratio check against their genus's H2
+alternative (see \code{.check_score_ratio_monotonicity()}); empty
+(length 0) when none violate it.}
+\item{\code{max_ceiling_z}, \code{max_ceiling_z_species}}{The largest
+floored-sigma distance, across every trained species, between a
+perfect match and that species' own fitted score mean, and which
+species it belongs to.}
+\item{\code{h1_bimodality}}{The result of running \code{.bimodality_check()}
+(2026-09-13) on this model's own real H1 training scores (raw
+percent identity, real within-species pairs only -- computed
+BEFORE any \code{anchor_perfect} pseudo-observations are appended, so
+a synthetic anchor spike can never manufacture a false second
+mode). A list with \code{n}, \code{bic_1}, \code{bic_2}, \code{delta_bic}, \code{weights},
+\code{means}, \code{sds}, \code{flag}, and \code{explanation} -- see that function's
+own docs and \code{calibrate_query_noise()}'s "Bimodality diagnostic"
+\verb{@section} for the full mechanism and thresholds. This function
+only RECORDS the result on the model, it does not warn -- see
+\verb{@section H1 bimodality (recorded, not warned)} below.}
+}
+}
 }
 }
 \description{
@@ -384,6 +441,26 @@ any accession \code{evaluate_reference_accessions()}/\code{score_reference_label
 resolves to \code{reference_action == "remove"} from \code{reference_df} (or from
 \code{raw_df} by \code{id_x}/\code{id_y}) before calling this function -- there is no
 longer a parameter here to pass a bad-accession list through.
+}
+
+\section{H1 bimodality (recorded, not warned)}{
+
+\code{Stats$h1_bimodality} runs the same two-component-normal-vs-BIC check
+\code{calibrate_query_noise()} uses (see that function's own "Bimodality
+diagnostic" section for the full method, the thresholds, and why a
+bimodality-coefficient test was rejected instead) against this model's
+OWN real H1 training scores, so a saved \code{lik_model} carries the evidence
+regardless of whether/when \code{calibrate_query_noise()} is ever called on it.
+This function deliberately does NOT \code{warning()} when the check flags
+bimodal training data -- \code{calibrate_query_noise()} is the one place a
+single offset/line is actually about to be applied to inference-time
+scores, so that is where the warning belongs (per the user's explicit
+direction); warning in both places for the same underlying fact would be
+redundant, not more informative. \strong{This is a diagnostic only}: it never
+changes H1's fitted mean/sigma, and training is never refused when
+\code{Stats$h1_bimodality$flag} is \code{TRUE}. The remedy for genuinely mixed
+sequencing platforms or markers is to train/calibrate them separately --
+this package does not do that for you.
 }
 
 \examples{

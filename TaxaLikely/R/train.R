@@ -325,32 +325,19 @@ utils::globalVariables(c(
   all_ids <- unique(df_logit$id_x)
   missing_ids <- setdiff(all_ids, trained_ids)
 
-  # Singletons are identified as sequences absent from h1_pairs (no within-species
-  # neighbours). They require self-match rows (id_x == id_y) in the distance matrix.
-  # If the matrix lacks self-matches, singletons are identified by missing_ids alone.
-  has_self_match <- any(df_logit$id_x == df_logit$id_y)
-  if (length(missing_ids) > 0L && !has_self_match) {
-    warning(sprintf(
-      paste0(
-        "%d singleton reference(s) found but distance matrix lacks self-matches. ",
-        "Singleton score estimates will use global mean instead of self-match scores."
-      ),
-      length(missing_ids)
-    ))
-  }
-
-  df_singletons <- if (has_self_match) {
-    df_logit |>
-      dplyr::filter(id_x %in% missing_ids, id_x == id_y) |>
-      dplyr::distinct(id_x, .keep_all = TRUE)
-  } else {
-    # Fallback: take one row per missing_id with best score
-    df_logit |>
-      dplyr::filter(id_x %in% missing_ids) |>
-      dplyr::group_by(id_x) |>
-      dplyr::slice_max(score_logit, n = 1L, with_ties = FALSE) |>
-      dplyr::ungroup()
-  }
+  # Singletons are sequences absent from h1_pairs (no within-species
+  # neighbours). No matrix builder in this ecosystem emits self-match rows
+  # (id_x == id_y): .decipher_align_pairs() drops the diagonal unconditionally,
+  # so the former "use self-match scores" branch was unreachable and its
+  # warning ("distance matrix lacks self-matches") fired on every real run.
+  # Removed 2026-09-13. Each singleton takes its best cross-species row; the
+  # mutate() below then anchors max_foreign_score to the noise-floor global
+  # and the gap to max_gap_ceiling (rank_category "Singleton").
+  df_singletons <- df_logit |>
+    dplyr::filter(id_x %in% missing_ids) |>
+    dplyr::group_by(id_x) |>
+    dplyr::slice_max(score_logit, n = 1L, with_ties = FALSE) |>
+    dplyr::ungroup()
 
   df_singletons <- df_singletons |>
     dplyr::mutate(
@@ -546,8 +533,10 @@ utils::globalVariables(c(
 #'   Must equal the coverage floor the match object was built under --
 #'   `TaxaMatch::blast_sequences(min_query_coverage = 80)` is `0.8` here --
 #'   so that training and inference see the same pair population;
-#'   [evaluate_likelihoods()] checks the two against each other and warns
-#'   on a mismatch.  This is NOT a data filter: no pair is removed from the
+#'   [evaluate_likelihoods()]'s check against the match object is
+#'   one-directional -- it warns only when the match object admits LOWER
+#'   coverage than this model's own floor (a 0.01 tolerance), never the
+#'   other way around.  This is NOT a data filter: no pair is removed from the
 #'   data and no species is ever dropped (a reference with no qualifying
 #'   conspecific pair falls back to its best one).  `NULL` disables the
 #'   floor; a `raw_df` without a `coverage` column skips it with a message.
@@ -687,21 +676,94 @@ utils::globalVariables(c(
 #'       structure, and `compute_rank_thresholds()` for the sibling function
 #'       that derives `TaxaAssign::score_consensus()`'s `rank_thresholds`
 #'       from the same underlying curves.}
-#'     \item{`Stats`}{List of diagnostics (e.g., `AIC_Score` if lmer succeeded,
-#'       `n_species`, `n_singletons`, `n_h1_pooled` -- total sequences behind
-#'       the global H1 mean (informational only; NOT used as the Monte Carlo
-#'       uncertainty fallback -- see `prior_weight` below) -- and
-#'       `n_h2_pooled` -- foreign-match count behind the pooled global `H2`
-#'       delta, `NA` when too few foreign matches existed to estimate one
-#'       (also informational only). `prior_weight` -- the same value passed to
-#'       this call -- is what `evaluate_likelihoods()` actually uses as the
-#'       equivalent sample size for candidates with no species/genus-specific
-#'       reference data at all: the true pooled sample size (`n_h1_pooled`/
-#'       `n_h2_pooled`) reflects how well the GLOBAL average is known, not how
-#'       confidently that average applies to a candidate we have zero direct
-#'       data for, so using it directly would understate uncertainty exactly
-#'       where it should be largest.}
+#'     \item{`Stats`}{List of diagnostics:
+#'       \describe{
+#'         \item{`AIC_Score`}{From the `lme4` hierarchy fit, when it succeeded;
+#'           `NA` otherwise.}
+#'         \item{`n_species`}{Number of species with at least one H1
+#'           (within-species) training pair.}
+#'         \item{`n_singletons`}{Number of reference sequences with no
+#'           within-species neighbour, trained via the `"Singleton"` pathway
+#'           (see `.prep_training_data()`).}
+#'         \item{`n_anchors`}{Number of synthetic perfect-match pseudo-
+#'           observations injected via `anchor_perfect`; `0` when disabled.}
+#'         \item{`n_h1_pooled`}{Total sequences behind the global H1 mean
+#'           (informational only; NOT used as the Monte Carlo uncertainty
+#'           fallback -- see `prior_weight` below).}
+#'         \item{`n_h2_pooled`}{Foreign-match count behind the pooled global
+#'           `H2` delta, `NA` when too few foreign matches existed to estimate
+#'           one (also informational only).}
+#'         \item{`prior_weight`}{The same value passed to this call -- what
+#'           `evaluate_likelihoods()` actually uses as the equivalent sample
+#'           size for candidates with no species/genus-specific reference data
+#'           at all: the true pooled sample size (`n_h1_pooled`/`n_h2_pooled`)
+#'           reflects how well the GLOBAL average is known, not how
+#'           confidently that average applies to a candidate we have zero
+#'           direct data for, so using it directly would understate
+#'           uncertainty exactly where it should be largest.}
+#'         \item{`shrinkage`}{`"empirical_bayes"` or `"fixed"` -- which
+#'           shrinkage-weight formula was actually used for the per-species H1
+#'           means (see the `shrinkage` parameter).}
+#'         \item{`tau2_score`, `tau2_gap`}{Method-of-moments estimates of the
+#'           between-species variance of the H1 score/gap means (used only
+#'           under `shrinkage = "empirical_bayes"`; both `NA` under
+#'           `"fixed"`). These carry NO standard error: with K non-singleton
+#'           species, the sampling SD of the between-species variance estimate
+#'           is roughly `var * sqrt(2/(K-1))`, so a true tau/sigma up to about
+#'           0.2-0.3 is statistically indistinguishable from 0 at K ~= 40 and
+#'           gets truncated to exactly 0. A value of `0` therefore means "not
+#'           detectable at this species count," not "genuinely absent."}
+#'         \item{`min_pair_coverage`}{The coverage floor actually applied (see
+#'           the `min_pair_coverage` parameter), or `NA_real_` when `raw_df`
+#'           carried no `coverage` column and the floor was skipped entirely.}
+#'         \item{`n_self_fallback`}{Number of references whose best conspecific
+#'           pair fell below `min_pair_coverage`, so they fell back to their
+#'           best conspecific pair regardless -- a reference is never dropped
+#'           from training by the floor.}
+#'         \item{`n_foreign_unqualified`}{Number of references with no
+#'           qualifying foreign pair clearing `min_pair_coverage`, routed to
+#'           the noise-floor global rather than an unfiltered (and
+#'           potentially coverage-inflated) maximum.}
+#'         \item{`mlr_violations`}{Character vector of species names failing
+#'           the monotone-likelihood-ratio check against their genus's H2
+#'           alternative (see `.check_score_ratio_monotonicity()`); empty
+#'           (length 0) when none violate it.}
+#'         \item{`max_ceiling_z`, `max_ceiling_z_species`}{The largest
+#'           floored-sigma distance, across every trained species, between a
+#'           perfect match and that species' own fitted score mean, and which
+#'           species it belongs to.}
+#'         \item{`h1_bimodality`}{The result of running `.bimodality_check()`
+#'           (2026-09-13) on this model's own real H1 training scores (raw
+#'           percent identity, real within-species pairs only -- computed
+#'           BEFORE any `anchor_perfect` pseudo-observations are appended, so
+#'           a synthetic anchor spike can never manufacture a false second
+#'           mode). A list with `n`, `bic_1`, `bic_2`, `delta_bic`, `weights`,
+#'           `means`, `sds`, `flag`, and `explanation` -- see that function's
+#'           own docs and `calibrate_query_noise()`'s "Bimodality diagnostic"
+#'           `@section` for the full mechanism and thresholds. This function
+#'           only RECORDS the result on the model, it does not warn -- see
+#'           `@section H1 bimodality (recorded, not warned)` below.}
+#'       }
+#'     }
 #'   }
+#'
+#' @section H1 bimodality (recorded, not warned):
+#' `Stats$h1_bimodality` runs the same two-component-normal-vs-BIC check
+#' `calibrate_query_noise()` uses (see that function's own "Bimodality
+#' diagnostic" section for the full method, the thresholds, and why a
+#' bimodality-coefficient test was rejected instead) against this model's
+#' OWN real H1 training scores, so a saved `lik_model` carries the evidence
+#' regardless of whether/when `calibrate_query_noise()` is ever called on it.
+#' This function deliberately does NOT `warning()` when the check flags
+#' bimodal training data -- `calibrate_query_noise()` is the one place a
+#' single offset/line is actually about to be applied to inference-time
+#' scores, so that is where the warning belongs (per the user's explicit
+#' direction); warning in both places for the same underlying fact would be
+#' redundant, not more informative. **This is a diagnostic only**: it never
+#' changes H1's fitted mean/sigma, and training is never refused when
+#' `Stats$h1_bimodality$flag` is `TRUE`. The remedy for genuinely mixed
+#' sequencing platforms or markers is to train/calibrate them separately --
+#' this package does not do that for you.
 #'
 #' @references
 #' Efron, B. and Morris, C. (1973). Stein's estimation rule and its
@@ -875,6 +937,18 @@ train_likelihood_model <- function(raw_df,
       "be singletons (only one per species in the reference database)."
     ))
   }
+
+  # ---- BIMODALITY DIAGNOSTIC (2026-09-13) -----------------------------------
+  # Runs on h1_data$p_norm (raw percent identity, real pairs only) BEFORE the
+  # pseudo-data anchor rows are appended below -- anchor rows are synthetic
+  # perfect-match pseudo-observations with no p_norm value of their own, so
+  # including them here would risk manufacturing a spurious second mode out
+  # of injected data rather than reporting a real, measured one. Recorded
+  # only -- see calibrate_query_noise()'s own "Bimodality diagnostic" section
+  # for why the WARNING lives there instead of here (this function only
+  # trains a model; calibrate_query_noise() is the place a single, possibly
+  # wrong, offset/line is actually about to be applied at inference time).
+  h1_bimodality <- .bimodality_check(h1_data$p_norm * 100)
 
   # ---- PSEUDO-DATA ANCHORING ------------------------------------------------
   # Anchoring is a form of informative pseudo-data, analogous to Bayesian
@@ -1408,7 +1482,8 @@ train_likelihood_model <- function(raw_df,
         n_foreign_unqualified = n_foreign_unqualified,
         mlr_violations = mlr_check$violations,
         max_ceiling_z = mlr_check$max_z,
-        max_ceiling_z_species = mlr_check$max_z_species
+        max_ceiling_z_species = mlr_check$max_z_species,
+        h1_bimodality = h1_bimodality
       )
     ),
     class = "taxa_model_params"

@@ -38,6 +38,11 @@ acoustic confidence) into calibrated statistical likelihoods for taxonomic
 assignment. It sits between TaxaMatch (which produces match scores) and
 TaxaAssign (which combines likelihoods with priors to compute posteriors).
 
+Every code chunk below is illustrative and is not executed when the package
+is checked, since it calls live NCBI/BLAST services; a test in this
+package's own suite verifies every call and argument name against the
+installed package instead.
+
 **The core idea:** A 98% match to Species A means different things depending on
 the database. If Species A typically matches at 99.5%, a 98% match is
 suspicious. If it typically matches at 96%, a 98% match is excellent. TaxaLikely

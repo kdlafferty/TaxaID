@@ -22,3 +22,4 @@
 ^archive_unused_likelihood_entrypoint$
 ^archive_unused_reference_wrappers$
 ^archive_unused_coverage_calibration$
+^.*\.bak_.*$
