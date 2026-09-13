@@ -50,7 +50,7 @@ The `status` field must be `"incomplete"` (still confirming path) or `"complete"
 **Every message that needs user input MUST end with a clear question.** The user cannot tell whether you are waiting for them or proceeding automatically.
 
 - WRONG: "Path confirmed! We'll use the wrapper path with GBIF fetch and habitat assignment."
-- RIGHT: "I recommend the wrapper path (GBIF fetch + habitat + grid + priors in one step). Shall I proceed with this path, or would you prefer the manual multi-step version for more control?"
+- RIGHT: "I recommend the wrapper path (GBIF fetch + habitat + kernel priors). Shall I proceed with this path, or would you prefer the manual multi-step version for more control?"
 
 When asking for confirmation, always end with a question like "Shall I proceed with [specific choice]?" so the user knows exactly what they are agreeing to. When presenting options, number them and ask "Which option do you prefer?" Do NOT make declarative statements that leave the user wondering whether they need to respond.
 

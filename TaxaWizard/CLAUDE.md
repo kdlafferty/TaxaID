@@ -1,6 +1,29 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-09, later (Sonnet 5 -- graph updates from TaxaExpect's archival of
+# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (E1), FULL
+# option -- resolves most gaps listed as NOT fixed below. Three Tier-1 snippets fixed:
+# cached build_habitat_lookup(), species_reference + add_slash_taxon(),
+# review_assignments (cache_dir=). The curve-pricing EVIDENCE BLOCK ported behind
+# {{include_evidence_block}} with W_CLAMP derived. Graph edges updated to match. Metadata
+# grew 71 -> 94 entries across 7 files. New structural guard test asserts every function
+# named in a snippet or edge is a real export -- found 0 offenders. 639 tests. Full
+# record: ecosystem_docs/fable_ecosystem_review_2026-09-13.md Section L.
+# Previous update, 2026-09-13 (Sonnet 5 -- ecosystem review "easy batch" (A2): fix in
+# R/graph.R:432, .extract_param_docs() reads doc$inputs %||% doc$params %||% doc$parameters
+# (was doc$params only, so every generated param block for the metadata's "inputs" shape
+# rendered "(no params)"). New test in tests/testthat/test-graph.R asserts param_docs are
+# populated and no metadata-documented function renders "(no params)". Also:
+# metadata/TaxaAssign.json (run_llm_pipeline's phantom reference_errors param removed),
+# metadata/TaxaMatch.json (standardize_match_data's data made optional); prompts/
+# phase_parameterize.md:97 and phase_path_select.md:53 rewritten (stale GLMM/grid-fitting
+# teaching text); NEWS.md created; inst/CITATION -> 0.1.0 + github.com/DOI-USGS/TaxaID.
+# devtools::test() 637/0. devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library; not yet reinstalled. Known remaining gaps from the
+# review, NOT fixed here: occ_to_std.R has no cached habitat step, std_to_priors_kernel.R
+# has no evidence block, post_to_consensus.R has no species_reference, review_assignments
+# has no cache_dir, ~30 exports still absent from metadata; REENTRY_PROMPT.md is stale
+# (names deleted edges). Full ecosystem findings:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md.
+# Previous update, 2026-09-09, later (Sonnet 5 -- graph updates from TaxaExpect's archival of
 # the remaining 8 members of the GLMM grid/prior-fitting chain (`build_priors()`,
 # `optimize_grid_size()`, `prepare_model_dataframe()`, `add_pca_covariates()`/
 # `apply_pca_transform()`, `compute_moran_basis()`, `screen_spatial_formula()`,

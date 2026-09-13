@@ -176,6 +176,104 @@
           "description": "Column for consensus rank; triggers lower_hypotheses when coarser than species"
         },
         {
+          "name": "plausible_taxa_col",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Name of the list column containing per-observation plausible candidate taxa (e.g. 'plausible_taxa' from TaxaAssign::posterior_consensus()). When supplied, the LLM receives the FULL candidate set for each unique combination rather than just the upranked consensus taxon (the 'use candidates' review mode); singletons are still reviewed by species name. NULL (default): dedupes on taxon_col only"
+        },
+        {
+          "name": "irreducible_only",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "When plausible_taxa_col is supplied and an irreducible_consensus column is present in input_df (added by TaxaAssign::add_slash_taxon()), only candidate sets where irreducible_consensus==TRUE are reviewed; non-irreducible rows get NA review columns. Ignored when plausible_taxa_col=NULL"
+        },
+        {
+          "name": "consensus_posterior_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_posterior",
+          "description": "Column for TaxaAssign::posterior_consensus()'s consensus_posterior -- the pipeline's own statistical confidence in the winning taxon, shown to the LLM as median context per label. Purely additive text; silently skipped when absent. Set NULL to disable"
+        },
+        {
+          "name": "winner_prior_col",
+          "type": "character",
+          "required": false,
+          "default": "winner_prior",
+          "description": "Column for posterior_consensus()'s winner_prior (the occurrence-database prior for the winning taxon), shown as median context (e.g. 'occurrence prior=0.42'). Silently skipped when absent. Set NULL to disable"
+        },
+        {
+          "name": "winner_rank_expanded_col",
+          "type": "character",
+          "required": false,
+          "default": "winner_rank_expanded",
+          "description": "Column for posterior_consensus()'s winner_rank_expanded (TRUE when the winning species-level call was manufactured by join_priors()'s coarse-rank expansion from occurrence-prior mass alone, with no direct sequence/image/acoustic evidence discriminating candidates). Adds a note to the LLM context when TRUE. Silently skipped when absent. Set NULL to disable"
+        },
+        {
+          "name": "plausible_posteriors_col",
+          "type": "character",
+          "required": false,
+          "default": "plausible_posteriors",
+          "description": "Column for posterior_consensus()'s plausible_posteriors list column (per-candidate posterior weights, aligned with plausible_taxa_col). Only used when plausible_taxa_col is supplied; averaged across rows sharing a label and shown to the LLM (e.g. candidate weights per species). Silently skipped when absent"
+        },
+        {
+          "name": "consensus_plausibility_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_plausibility",
+          "description": "Column for add_posthoc_assessment()'s consensus_plausibility -- specifically its 'unprecedented' value (no local occurrence record at all, a pipeline-computed fact). Shown to the LLM as 'pipeline flags UNPRECEDENTED: ...' and gates the consensus-scope skepticism GUIDELINES bullet plus the deterministic geographic_disagreement_basis output column. Silently skipped when absent. Set NULL to disable"
+        },
+        {
+          "name": "consensus_discrimination_col",
+          "type": "character",
+          "required": false,
+          "default": "consensus_discrimination",
+          "description": "Column for add_posthoc_assessment()'s consensus_discrimination -- specifically its 'indistinguishable' value (a one-sided tail probability says a confusable relative could score just as well). Same skepticism-gate treatment as consensus_plausibility_col. Set NULL to disable"
+        },
+        {
+          "name": "dist_nearest_occupied_km_col",
+          "type": "character",
+          "required": false,
+          "default": "dist_nearest_occupied_km",
+          "description": "Column for TaxaFlag::check_gbif_tile_range()'s dist_nearest_occupied_km -- distance from the study site to the nearest GBIF-mapped occurrence of the taxon worldwide. Shown as median context alongside patch_diameter_km_col. Silently skipped when absent. Set NULL to disable"
+        },
+        {
+          "name": "patch_diameter_km_col",
+          "type": "character",
+          "required": false,
+          "default": "patch_diameter_km",
+          "description": "Column for check_gbif_tile_range()'s patch_diameter_km, shown alongside dist_nearest_occupied_km_col as a rough size for the occupied area found. Silently skipped when absent or when dist_nearest_occupied_km_col is not shown. Set NULL to disable"
+        },
+        {
+          "name": "beyond_buffer_col",
+          "type": "character",
+          "required": false,
+          "default": "beyond_buffer",
+          "description": "Column for check_gbif_tile_range()'s beyond_buffer -- when TRUE, shown instead of distance/patch as 'GBIF: no occurrence found anywhere globally'. Silently skipped when absent. Set NULL to disable"
+        },
+        {
+          "name": "inat_in_range_col",
+          "type": "character",
+          "required": false,
+          "default": "in_range",
+          "description": "Column for TaxaFetch::check_inat_range()'s in_range. Shown as 'in range'/'outside range' alongside inat_n_observations_col/inat_matched_name_col when present. Silently skipped when absent. Set NULL to disable"
+        },
+        {
+          "name": "inat_n_observations_col",
+          "type": "character",
+          "required": false,
+          "default": "n_observations",
+          "description": "Column for check_inat_range()'s n_observations. Set NULL to disable"
+        },
+        {
+          "name": "inat_matched_name_col",
+          "type": "character",
+          "required": false,
+          "default": "matched_name",
+          "description": "Column for check_inat_range()'s matched_name -- the taxon iNaturalist's own name search actually resolved the query to. When it differs from the taxon under review, flagged in the prompt as a plain factual annotation. Set NULL to disable"
+        },
+        {
           "name": "context",
           "type": "list_or_context_df",
           "required": true,
@@ -212,7 +310,21 @@
           "type": "integer",
           "required": false,
           "default": 15,
-          "description": "Maximum taxa per LLM batch call (default 15 to avoid response truncation)"
+          "description": "Maximum taxa (or candidate sets) per LLM batch call (default 15 to avoid response truncation; candidate-set entries are longer than single taxon names, consider 8-10 with plausible_taxa_col)"
+        },
+        {
+          "name": "max_tokens",
+          "type": "integer",
+          "required": false,
+          "default": null,
+          "description": "Maximum response tokens requested from llm_fn. NULL (default) does not pass max_tokens at all, so llm_fn's own default applies (3000L for TaxaTools::call_api()). Raise this if max_retries alone isn't resolving truncation warnings"
+        },
+        {
+          "name": "max_retries",
+          "type": "integer",
+          "required": false,
+          "default": 2,
+          "description": "When a batch's LLM response is truncated, empty, or unparseable, the batch is automatically split in half and retried up to this many times before falling back to NA defaults for whatever's still missing. Does not apply to a hard llm_fn error"
         },
         {
           "name": "pause_seconds",
@@ -220,6 +332,13 @@
           "required": false,
           "default": 1,
           "description": "Seconds between LLM calls"
+        },
+        {
+          "name": "cache_dir",
+          "type": "file_path",
+          "required": false,
+          "default": null,
+          "description": "Directory for a per-taxon review cache. NULL (default) disables caching entirely (the historical behaviour). Supplying a directory makes a re-run REPRODUCIBLE and stops it re-paying for verdicts already obtained -- the review is a judgement, and two runs 50 minutes apart on identical input can disagree. Keyed on the taxon label/rank, its attached pipeline/weight/spatial notes, context, target_group, marker, data_type, and the candidate-set path. Manage with taxaflag_clear_cache()"
         },
         {
           "name": "verbose",
@@ -231,10 +350,10 @@
       ],
       "output": {
         "type": "review_df",
-        "description": "Input df with 8 review columns (llm_ prefixed since 2026-09-06 -- independent LLM judgments, never derived from the pipeline's own values): llm_habitat_plausibility, llm_geographic_plausibility, llm_scope_plausibility, llm_contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment. Also adds geographic_disagreement_basis (character, NA unless the LLM rated geographic_plausibility likely/possible despite the pipeline flagging the taxon unprecedented and/or indistinguishable)."
+        "description": "Input df with 8 or 9 review columns (llm_ prefixed since 2026-09-06 -- independent LLM judgments, never derived from the pipeline's own values): llm_habitat_plausibility, llm_geographic_plausibility, llm_scope_plausibility, llm_contamination_risk, review_alternatives, review_lower_hypotheses, review_confidence, review_comment. Also adds geographic_disagreement_basis (character, NA unless the LLM rated llm_geographic_plausibility likely/possible despite the pipeline flagging the taxon unprecedented (via consensus_plausibility_col) and/or indistinguishable (via consensus_discrimination_col) -- deterministic, code-computed, not an LLM output)."
       },
       "scaling": "api_limited",
-      "scaling_note": "LLM calls; batched at taxa_per_call, ~1 min per 15 taxa"
+      "scaling_note": "LLM calls; batched at taxa_per_call, ~1 min per 15 taxa. Cached calls (cache_dir supplied) make zero new LLM calls for unchanged input"
     },
     {
       "name": "add_posthoc_assessment",
@@ -357,6 +476,478 @@
       },
       "scaling": "linear",
       "scaling_note": "Fast; vectorised lookup \u2014 runs on full consensus_df before filtering for review"
+    },
+    {
+      "name": "flag_watch_candidates",
+      "description": "The likelihood-side surveillance guarantee for watch-list species: flags an observation where a watch-list species' raw match score ties or beats the consensus winner's own best match score. Prior-free and purely informational -- never edits consensus columns.",
+      "inputs": [
+        {
+          "name": "consensus_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "One row per observation -- TaxaAssign::posterior_consensus() output (or anything carrying observation_col and winner_col)"
+        },
+        {
+          "name": "match_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame of raw match candidates (e.g. the workflow's match_obj_restored) carrying observation_col, taxon_col, and score_col"
+        },
+        {
+          "name": "watch_taxa",
+          "type": "character_vector",
+          "required": true,
+          "description": "Watch-list species names (e.g. an invasive-species list)"
+        },
+        {
+          "name": "observation_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Observation identifier column shared by both inputs"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Candidate taxon-name column in match_df"
+        },
+        {
+          "name": "score_col",
+          "type": "character",
+          "required": false,
+          "default": "score_original",
+          "description": "Raw match-score column in match_df (higher = better)"
+        },
+        {
+          "name": "winner_col",
+          "type": "character",
+          "required": false,
+          "default": "primary_taxon",
+          "description": "Winner column in consensus_df (the top-posterior candidate, present even when the final consensus upranked to a coarser rank)"
+        },
+        {
+          "name": "score_margin",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Flag when the best watch score is within this many score units of the reference score (0 = must tie or exceed)"
+        }
+      ],
+      "output": {
+        "type": "consensus_df",
+        "description": "consensus_df with four added columns: watch_flag (logical, TRUE when a watch-list species scored within score_margin of the winner's own best score), watch_taxon (best-scoring watch-list species, NA if none), watch_score (its best raw score, NA likewise), watch_reference_score (the reference score used -- winner's own best match, or best non-watch score)"
+      },
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation"
+    },
+    {
+      "name": "build_review_covariates",
+      "description": "Collapses a long-format reads table (one row per taxon x sample) to one row per observation, joined to a categorical classification column (e.g. add_posthoc_assessment()'s primary_plausibility, or a review_assignments() output column), producing covariates for modelling what predicts a review classification.",
+      "inputs": [
+        {
+          "name": "reads_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Long-format data frame: one row per taxon x sample, with a taxon identifier, a sample/event identifier, a read-count column, and (optionally) a sequence column. Matches flag_contaminant()'s input shape"
+        },
+        {
+          "name": "classification_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame with a taxon identifier and a classification column to be modelled -- typically add_posthoc_assessment()'s output or a review_assignments() output column"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "ESVId",
+          "description": "Taxon/observation identifier column in reads_df"
+        },
+        {
+          "name": "classification_taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Taxon/observation identifier column in classification_df (this ecosystem's consensus/review tables use a different id-column name than its read-count tables by convention)"
+        },
+        {
+          "name": "classification_col",
+          "type": "character",
+          "required": false,
+          "default": "primary_plausibility",
+          "description": "Column in classification_df holding the categorical label to model"
+        },
+        {
+          "name": "event_col",
+          "type": "character",
+          "required": false,
+          "default": "event_id",
+          "description": "Sample/event identifier column in reads_df"
+        },
+        {
+          "name": "reads_col",
+          "type": "character",
+          "required": false,
+          "default": "n_reads",
+          "description": "Read-count column in reads_df"
+        },
+        {
+          "name": "sequence_col",
+          "type": "character",
+          "required": false,
+          "default": "sequence",
+          "description": "Sequence column in reads_df, used to derive seq_length. Set NULL to skip"
+        },
+        {
+          "name": "control_samples",
+          "type": "character_vector",
+          "required": false,
+          "default": null,
+          "description": "event_col values that are blanks/controls (same convention as flag_contaminant()); excludes blanks ONLY from the field-side read-depth covariates, not from contaminant-frequency (that comes from contaminant_df)"
+        },
+        {
+          "name": "contaminant_df",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Output of flag_contaminant(), joined in to supply blank-frequency covariates. NULL omits these columns entirely"
+        },
+        {
+          "name": "contaminant_taxon_col",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Taxon identifier column in contaminant_df; defaults to taxon_col's own value"
+        },
+        {
+          "name": "contaminant_cols",
+          "type": "character_vector",
+          "required": false,
+          "default": "control_rate",
+          "description": "Columns from contaminant_df to join onto the result"
+        },
+        {
+          "name": "extra_covariate_cols",
+          "type": "character_vector",
+          "required": false,
+          "default": null,
+          "description": "Additional columns to carry through unchanged from classification_df (e.g. 'winner_likelihood', 'consensus_rank') -- read-count-independent covariates already present there"
+        },
+        {
+          "name": "read_quantile",
+          "type": "numeric",
+          "required": false,
+          "default": 0.9,
+          "description": "Quantile (0,1] of per-sample field read counts used for quantile_reads (a less extreme-value-sensitive alternative to max_reads); 1 reproduces max_reads"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "One row per classification_df row: observation_id, classification, seq_length (omitted if sequence_col=NULL), min_reads, max_reads, quantile_reads, total_reads, n_samples_detected, prop_samples_detected, plus contaminant_df columns when supplied"
+      },
+      "scaling": "linear",
+      "scaling_note": "Fast; group-by/summarise over reads_df"
+    },
+    {
+      "name": "check_gbif_tile_range",
+      "description": "Spatial-isolation signal for a taxon from GBIF's occurrence-density map tiles: downloads the GBIF density PNG tile(s) covering a query point and a buffer, and reports how isolated the point is from the taxon's known range (occupied cell? nearest occupied cell distance? patch size?).",
+      "inputs": [
+        {
+          "name": "taxon_key",
+          "type": "integer",
+          "required": true,
+          "description": "GBIF backbone usageKey for the taxon (resolve via TaxaFetch::get_keys_from_context() or rgbif::name_backbone())"
+        },
+        {
+          "name": "query_lat",
+          "type": "numeric",
+          "required": true,
+          "description": "The point to check. Must be within Web Mercator's valid range (approx -85.05 to 85.05)"
+        },
+        {
+          "name": "query_lon",
+          "type": "numeric",
+          "required": true,
+          "description": "The point to check (longitude)"
+        },
+        {
+          "name": "zoom",
+          "type": "integer",
+          "required": false,
+          "default": 6,
+          "description": "Starting tile zoom level in [0,12]. Controls the real-world size of each density cell and how much ground a fixed buffer_px covers. 6 is roughly continental scale"
+        },
+        {
+          "name": "buffer_px",
+          "type": "integer",
+          "required": false,
+          "default": 512,
+          "description": "How far around the query point to scan for the nearest occupied cell, in tile pixels; rounded up to the nearest multiple of 512"
+        },
+        {
+          "name": "escalate",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Widen the search to coarser zoom levels when nothing is found at zoom"
+        },
+        {
+          "name": "min_zoom",
+          "type": "integer",
+          "required": false,
+          "default": 0,
+          "description": "Coarsest zoom level escalation is allowed to reach in [0, zoom]. 0 means the whole world (one tile). Ignored when escalate=FALSE"
+        },
+        {
+          "name": "base_url",
+          "type": "character",
+          "required": false,
+          "default": "https://api.gbif.org/v2/map/occurrence/density",
+          "description": "GBIF map tile base URL. Exposed for testing"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "One-row data frame: taxon_key, query_lat, query_lon, zoom_requested, zoom_used (NA if nothing found anywhere), escalated (logical), tile_size, n_tiles_fetched, resolution_km_per_px, point_occupied (logical), dist_nearest_occupied_km, patch_size_px, patch_size_capped (logical, a lower bound if TRUE), patch_area_km2, patch_diameter_km, beyond_buffer (logical -- TRUE means no occupied cell found anywhere in the escalation range, a real global-absence finding when escalate=TRUE with default min_zoom=0)"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "A few GBIF tile downloads per call (more if escalation runs); fast, no auth needed"
+    },
+    {
+      "name": "compute_local_occurrence_distance",
+      "description": "For each taxon in taxon_names, finds the nearest record of that taxon already present in occurrence_data (data already fetched for this study -- no new network call) and reports the geodesic distance from query_lat/query_lon to it.",
+      "inputs": [
+        {
+          "name": "taxon_names",
+          "type": "character_vector",
+          "required": true,
+          "description": "One or more taxon names to check (e.g. every consensus_taxon flagged 'unexpected'/'unprecedented'). Matched exactly against occurrence_data[[taxon_col]]"
+        },
+        {
+          "name": "query_lat",
+          "type": "numeric",
+          "required": true,
+          "description": "The point to measure distance from -- typically the study site's own centroid"
+        },
+        {
+          "name": "query_lon",
+          "type": "numeric",
+          "required": true,
+          "description": "The point to measure distance from (longitude)"
+        },
+        {
+          "name": "occurrence_data",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame of already-fetched occurrence records (e.g. all_occurrences, occurrences_clean). Must contain taxon_col, lat_col, lon_col"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Column name in occurrence_data"
+        },
+        {
+          "name": "lat_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLatitude",
+          "description": "Column name in occurrence_data (DarwinCore convention)"
+        },
+        {
+          "name": "lon_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLongitude",
+          "description": "Column name in occurrence_data (DarwinCore convention)"
+        },
+        {
+          "name": "date_col",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Optional column in occurrence_data giving the nearest record's collection date/year (e.g. GBIF's own 'year' column). When supplied and present, surfaces nearest_date on the matched record. NULL (default): no age column requested, fully backward compatible"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "One row per unique entry in taxon_names: taxon_name, n_local_records (0 for a taxon with no local record -- the answer, not a failure), dist_nearest_km (NA if n_local_records=0), nearest_lat, nearest_lon, nearest_date (only present when date_col supplied and found)"
+      },
+      "scaling": "linear",
+      "scaling_note": "Fast; free -- reuses already-fetched occurrence_data, no new network call"
+    },
+    {
+      "name": "review_spatial_context",
+      "description": "Opens a Shiny gadget for scrolling through consensus taxa (grouped by plausibility) with an interactive GBIF density-tile map, local occurrence-distance panel, iNaturalist range/point context, and an opt-in 'Run AI Review' button (review_assignments()). Interactive gadget only -- no non-graph representation needed beyond metadata.",
+      "inputs": [
+        {
+          "name": "input_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame of consensus taxa (e.g. consensus_final after add_posthoc_assessment()). Must contain taxon_col; supply plausibility_col=NULL if there's no grouping column"
+        },
+        {
+          "name": "query_lat",
+          "type": "numeric",
+          "required": true,
+          "description": "The study site to check distances/tiles against"
+        },
+        {
+          "name": "query_lon",
+          "type": "numeric",
+          "required": true,
+          "description": "The study site to check distances/tiles against (longitude)"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "primary_taxon",
+          "description": "Column in input_df naming each taxon"
+        },
+        {
+          "name": "plausibility_col",
+          "type": "character",
+          "required": false,
+          "default": "primary_plausibility",
+          "description": "Column in input_df used to group the taxon dropdown. NULL shows every taxon in one unfiltered list"
+        },
+        {
+          "name": "occurrence_data",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Already-fetched occurrence records this study kept (e.g. occurrences_clean); passed to compute_local_occurrence_distance() and overlaid on the map. NULL (default) omits the free/local panel and point overlay"
+        },
+        {
+          "name": "excluded_occurrence_data",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Occurrence records this study's own GBIF quality/outlier/institution/spatial-QC filtering excluded, same shape as occurrence_data -- overlaid as hollow red rings for provenance. NULL (default) omits this overlay"
+        },
+        {
+          "name": "occurrence_taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Column shared by occurrence_data AND excluded_occurrence_data"
+        },
+        {
+          "name": "occurrence_lat_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLatitude",
+          "description": "Column shared by occurrence_data AND excluded_occurrence_data"
+        },
+        {
+          "name": "occurrence_lon_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLongitude",
+          "description": "Column shared by occurrence_data AND excluded_occurrence_data"
+        },
+        {
+          "name": "inat_range",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Pre-computed TaxaFetch::check_inat_range() output (one row per taxon), checked FIRST for free before any live call. Typically only computed for a pipeline's undetected/unreferenced candidate list, not every taxon -- see live_inat_check"
+        },
+        {
+          "name": "inat_taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Taxon-name column in inat_range"
+        },
+        {
+          "name": "live_inat_check",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "When a taxon has no row in inat_range (including inat_range=NULL), falls back to a real, live TaxaFetch::check_inat_range() call for just that taxon. Free (no LLM billing), fires automatically on selection. Requires TaxaFetch and a real INAT_API_TOKEN; silently falls back to 'no data' when unavailable"
+        },
+        {
+          "name": "inat_cache_dir",
+          "type": "file_path",
+          "required": false,
+          "default": null,
+          "description": "Forwarded to check_inat_range()'s own cache_dir when live_inat_check fires. NULL (default) disables caching"
+        },
+        {
+          "name": "inat_radius_km",
+          "type": "numeric",
+          "required": false,
+          "default": 500,
+          "description": "Search radius (km) for the real iNaturalist observation points plotted on the map -- distinct from live_inat_check's range-polygon check. A dashed circle of this radius is drawn on the map"
+        },
+        {
+          "name": "context",
+          "type": "list_or_context_df",
+          "required": false,
+          "default": null,
+          "description": "Passed straight to review_assignments() when 'Run AI Review' is clicked. Defaulting to NULL (rather than required) is what hides the button entirely -- supply it to enable on-demand AI review"
+        },
+        {
+          "name": "target_group",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Passed straight to review_assignments() when 'Run AI Review' is clicked"
+        },
+        {
+          "name": "marker",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Passed straight to review_assignments() when 'Run AI Review' is clicked"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "default": "getOption('TaxaID.llm_fn', TaxaTools::call_api)",
+          "description": "Passed straight to review_assignments() when 'Run AI Review' is clicked"
+        },
+        {
+          "name": "tile",
+          "type": "character",
+          "required": false,
+          "default": "CartoDB.Positron",
+          "description": "Leaflet base-map tile provider -- muted/mostly-grayscale so GBIF's own density colours stand out"
+        },
+        {
+          "name": "gbif_style",
+          "type": "character",
+          "required": false,
+          "default": "classic.point",
+          "description": "GBIF map API style query parameter. A bare '.point' style is auto-upgraded to its '.poly' counterpart and combined with gbif_bin_size unless it's a Heat-family style"
+        },
+        {
+          "name": "gbif_bin_size",
+          "type": "integer",
+          "required": false,
+          "default": 256,
+          "description": "GBIF map API bin=square/squareSize binning, aggregating raw single-pixel occurrence dots into visibly larger squares. Silently a no-op unless style is switched to .poly (handled automatically via gbif_style). NULL disables binning entirely"
+        },
+        {
+          "name": "gbif_year_range",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "GBIF map API year query parameter (e.g. '1995,2025'), display-only -- affects only the visual tile layer, NOT check_gbif_tile_range()'s own distance/patch numbers (which stay all-time/global). NULL (default) shows GBIF's full all-time record"
+        }
+      ],
+      "output": {
+        "type": "NULL",
+        "description": "NULL invisibly. The gadget is for interactive exploration only"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "Interactive; GBIF tile fetches and optional live iNat checks per taxon selected. LLM review only when 'Run AI Review' is clicked"
     }
   ]
 }

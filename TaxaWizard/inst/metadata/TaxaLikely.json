@@ -288,7 +288,7 @@
       ],
       "output": {
         "type": "taxa_model_params",
-        "description": "Trained model object with H1/H2/H3 parameters"
+        "description": "Trained model object with H1/H2/H3 parameters. Under shrinkage='empirical_bayes' (the default), H1_Lookup gains per-species shrink_w_score/shrink_w_gap (the Empirical-Bayes shrinkage weight actually applied to that species' H1 mean score/gap, in [0,1] -- real signal beyond noise lets a well-referenced species keep more of its own mean instead of collapsing to the global mean), and Stats gains tau2_score/tau2_gap (method-of-moments estimates of the between-species variance of the H1 score/gap means; both NA under shrinkage='fixed'). Stats also carries min_pair_coverage (the floor actually applied, or NA if raw_df had no coverage column), n_self_fallback, and n_foreign_unqualified."
       },
       "scaling": "linear",
       "scaling_note": "Fast after matrix is built; ~10 sec"

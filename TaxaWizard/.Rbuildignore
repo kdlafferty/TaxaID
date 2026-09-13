@@ -12,3 +12,4 @@
 ^.*\.csv$
 ^workflow_context\.json$
 ^REENTRY_PROMPT\.md$
+^.*\.bak_.*$

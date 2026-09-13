@@ -100,6 +100,111 @@
       "output": {"type": "plot", "description": "A static plot (default) or leaflet htmlwidget (interactive=TRUE) of the prior field for the requested taxon"},
       "scaling": "quadratic",
       "scaling_note": "~1-2s per taxon for a 512x512 grid from ~1M occurrence records, after the shared kernel FFT is computed once per call"
+    },
+    {
+      "name": "condition_evidence_on_habitat",
+      "description": "Multiplies each evidence row's presence weight by the taxon's own weight for the site habitat, floored at the weight a taxon with no evidence at all receives -- so undetected-evidence rows (regional proximity, invasive watch, etc.) obey the residents' habitat stratification instead of bleeding evenly across habitats regardless of suitability.",
+      "inputs": [
+        {"name": "evidence", "type": "data.frame", "required": true, "description": "Data frame with taxon_name and weight columns (any evidence generator's output, e.g. generate_regional_proximity_evidence())"},
+        {"name": "habitat_lookup", "type": "data.frame", "required": true, "description": "Output of TaxaHabitat::build_habitat_lookup(): taxon_name plus one numeric weight column per habitat class"},
+        {"name": "site_habitat", "type": "character", "required": true, "description": "Character scalar naming the site's habitat column in habitat_lookup"},
+        {"name": "w_floor", "type": "numeric", "required": false, "default": 0, "description": "The weight below which no evidence row may fall -- pass the run's clamp weight (w_scale * exp(-d_cap/d_half) under curve pricing)"},
+        {"name": "verbose", "type": "logical", "required": false, "default": true, "description": "Report counts"}
+      ],
+      "output": {"type": "data.frame", "description": "evidence with weight replaced by the conditioned weight, plus habitat_weight (H_site, NA when unknown), weight_unconditioned (the generator's original weight), habitat_floored (TRUE where the product fell below w_floor)"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation over an already-built evidence table and habitat lookup"
+    },
+    {
+      "name": "generate_regional_proximity_evidence",
+      "description": "A thin, two-stage evidence generator for apply_undetected_evidence(): for each taxon with no in-bbox occurrence record, cheaply checks (via GBIF density tiles) whether GBIF has ANY record nearby at all before paying for a real filtered occurrence fetch, then derives a distance-decayed presence weight and an age-decayed confidence.",
+      "inputs": [
+        {"name": "zero_bbox_taxa", "type": "character_vector", "required": true, "description": "Taxon names with no in-bbox occurrence record this run -- typically every named candidate absent from taxaexpect_priors entirely"},
+        {"name": "lat", "type": "numeric", "required": true, "description": "The study site's own latitude (both stages search around this point)"},
+        {"name": "lng", "type": "numeric", "required": true, "description": "The study site's own longitude"},
+        {"name": "d_half", "type": "numeric", "required": false, "default": 150, "description": "Distance (km) at which weight decays to half its maximum"},
+        {"name": "w_scale", "type": "numeric", "required": false, "default": 1, "description": "Near-boundary presence probability ceiling: weight = w_scale * exp(-distance_km/d_half). The default 1 is almost certainly too high for any real study -- calibrate against a local expert checklist (GreatLakes2023 adopted 0.05)"},
+        {"name": "age_half", "type": "numeric", "required": false, "default": 15, "description": "Record age (years) at which p_conc decays to half its fresh-record value of 1"},
+        {"name": "tile_zoom", "type": "integer", "required": false, "default": 6, "description": "Forwarded to TaxaFlag::check_gbif_tile_range(zoom=) for Stage 1"},
+        {"name": "buffer_margin", "type": "numeric", "required": false, "default": 1.5, "description": "Stage 2's fetch radius is Stage 1's own dist_nearest_occupied_km times this margin, clamped to [min_buffer_km, max_buffer_km]"},
+        {"name": "min_buffer_km", "type": "numeric", "required": false, "default": 50, "description": "Floor on Stage 2's fetch radius regardless of what Stage 1 reported"},
+        {"name": "max_buffer_km", "type": "numeric", "required": false, "default": 1000, "description": "Ceiling on Stage 2's fetch radius regardless of what Stage 1 reported"},
+        {"name": "near_lat_tolerance_deg", "type": "numeric", "required": false, "default": 6, "description": "A taxon must have at least near_occurrence_min_n of its Stage-2-filtered records within this many degrees of latitude of lat, a cheap climate-tolerance proxy that catches a real invader whose bulk range sits many latitude degrees away from one isolated nearby record"},
+        {"name": "near_occurrence_min_n", "type": "integer", "required": false, "default": 3, "description": "How many Stage-2-filtered records must fall within near_lat_tolerance_deg (an absolute count, not a fraction). A taxon with fewer total filtered records than this gets a proportional fallback (ALL of its few records must fall within tolerance) instead of an impossible bar"},
+        {"name": "max_coord_uncertainty", "type": "numeric", "required": false, "default": 500, "description": "Forwarded to TaxaFetch::filter_gbif_quality() (metres)"},
+        {"name": "year_range", "type": "character", "required": false, "default": "paste0('2000,', format(Sys.Date(), '%Y'))", "description": "Forwarded to TaxaFetch::get_gbif_occurrences()'s Stage 2 fetch. Real default is a 2000-to-current-year window (same window every other GBIF fetcher in this ecosystem defaults to). PASS THE STUDY'S OWN WINDOW (the same year_range the main occurrence fetch used) -- every production workflow does this rather than relying on the default, so that regional evidence and resident priors are judged on the same record set. A too-wide window can let an old, geographically-distant preserved specimen inflate a species' prior (a 1929 captive-specimen record once turned an 82%-identity family-level call into a species call). Pass NULL to restore the all-time fetch"},
+        {"name": "cache_dir", "type": "file_path", "required": false, "default": "tools::R_user_dir('TaxaFetch', 'cache')", "description": "Forwarded to the Stage 2 fetch for checkpointing"},
+        {"name": "verbose", "type": "logical", "required": false, "default": false, "description": "Print per-taxon Stage 1/Stage 2 progress"}
+      ],
+      "output": {"type": "data.frame", "description": "One row per taxon that cleared both stages: taxon_name, weight, p_conc, source ('regional_proximity'), plus audit columns distance_km, record_year, age_years (NA when the matched record had no usable year), tile_zoom_used. Empty (correct schema, zero rows) when nothing clears Stage 1, Stage 2's quality filter, or GBIF key resolution"},
+      "scaling": "api_limited",
+      "scaling_note": "One cheap GBIF-tile check per taxon (Stage 1), then a real filtered GBIF fetch only for taxa that clear it (Stage 2)"
+    },
+    {
+      "name": "generate_invasive_watch_evidence",
+      "description": "A thin evidence generator for apply_undetected_evidence(): given a plain, user-supplied list of taxa (e.g. hand-pulled from the USGS Nonindigenous Aquatic Species database or a regional invasive-species watch list), emits a fixed-weight presence-evidence row for each list member restricted to taxa that actually have a likelihood this run.",
+      "inputs": [
+        {"name": "invasive_taxa", "type": "character_vector", "required": true, "description": "Taxon names on the watch list"},
+        {"name": "weight", "type": "numeric", "required": true, "description": "How strongly this list's membership should pull an unobserved taxon's prior toward the singleton-mirror ceiling. No safe universal default -- an invasion risk you're highly confident about locally warrants a different weight than a precautionary watch-list entry"},
+        {"name": "p_conc", "type": "numeric", "required": false, "default": 1, "description": "How much weight the presence claim carries against future evidence (the confirmation update), in pseudo-observations. Does NOT affect the static prior's mean or concentration"},
+        {"name": "match_list_taxa", "type": "character_vector", "required": false, "default": null, "description": "Optional taxa that actually have a likelihood this run (e.g. unique(match_obj$taxon_name)). When supplied, invasive_taxa is restricted to the intersection"}
+      ],
+      "output": {"type": "data.frame", "description": "One row per taxon in scope: taxon_name, weight, p_conc, source ('invasive_watch'). Empty (correct schema, zero rows) when nothing is in scope"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation, no network calls"
+    },
+    {
+      "name": "generate_inat_range_evidence",
+      "description": "The third evidence generator for apply_undetected_evidence(): emits a presence-evidence row for each species whose iNaturalist geomodel range polygon covers the study site AND has sufficient observation coverage to trust that polygon, with a name-match guard against iNat's fuzzy text search silently resolving a query to a different species.",
+      "inputs": [
+        {"name": "inat_range", "type": "data.frame", "required": true, "description": "Output of TaxaFetch::check_inat_range()"},
+        {"name": "weight", "type": "numeric", "required": false, "default": 0.8, "description": "P(locally present) for an in-range, well-observed, name-verified species"},
+        {"name": "p_conc", "type": "numeric", "required": false, "default": 1, "description": "Presence-claim confidence in pseudo-observations (drives the confirmation update, not the static prior)"},
+        {"name": "n_obs_threshold", "type": "integer", "required": false, "default": 500, "description": "Minimum n_observations for the range polygon to count as well-observed, matching TaxaAssign::adjust_inat_range_priors()'s established value"},
+        {"name": "require_name_match", "type": "logical", "required": false, "default": true, "description": "Exclude rows whose resolved iNat name differs from the query (or cannot be verified). Set FALSE only with a reviewed name mapping in hand"}
+      ],
+      "output": {"type": "data.frame", "description": "Evidence data frame: taxon_name, weight, p_conc, source ('inat_range'). Zero rows when nothing qualifies"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation over an already-fetched inat_range table, no new network calls"
+    },
+    {
+      "name": "generate_presence_curve_evidence",
+      "description": "Prices unobserved candidates on a shared presence-distance curve: weight = w_scale * exp(-min(distance, d_cap)/(k * d_half)). The generic version of generate_regional_proximity_evidence()'s distance-decay logic, for a caller who already has distances in hand rather than needing the two-stage GBIF-tile-then-fetch pipeline.",
+      "inputs": [
+        {"name": "taxon_names", "type": "character_vector", "required": true, "description": "Candidate species names"},
+        {"name": "w_scale", "type": "numeric", "required": true, "description": "The curve's ceiling: presence probability for a species with a record at the site itself. No safe default -- calibrate against a local checklist (the GreatLakes value is 0.05)"},
+        {"name": "distance_km", "type": "numeric_vector", "required": false, "default": null, "description": "Distances (km), either named by taxon or positionally aligned with taxon_names. Missing/NA entries -- and the NULL default -- price at d_cap (the clamp)"},
+        {"name": "d_half", "type": "numeric", "required": false, "default": 150, "description": "The curve's e-folding half-distance in km, matching generate_regional_proximity_evidence()'s own default"},
+        {"name": "d_cap", "type": "numeric", "required": false, "default": 1000, "description": "The instrument-cap distance in km beyond which the curve is flat, matching the regional generator's own fetch-buffer cap"},
+        {"name": "k", "type": "numeric", "required": false, "default": 1, "description": "Bandwidth stretch (>= 1) for listed invaders, e.g. a log-space halfway lift at their own nearest-record distance; 1 = no lift"},
+        {"name": "p_conc", "type": "numeric", "required": false, "default": 1, "description": "Passed through to apply_undetected_evidence()"},
+        {"name": "source", "type": "character", "required": false, "default": "distance_clamp", "description": "Stamped on the output rows -- 'distance_clamp' when no distances are supplied, 'presence_curve' otherwise"}
+      ],
+      "output": {"type": "data.frame", "description": "taxon_name, weight, p_conc, source, distance_km, k -- ready for apply_undetected_evidence()"},
+      "scaling": "linear",
+      "scaling_note": "Fast; pure R computation"
+    },
+    {
+      "name": "generate_user_specified_evidence",
+      "description": "The explicit policy knob from the unobserved-taxa redesign: a user may assert a presence probability for particular species of special concern (raising a watch species' chance of RESOLVING in consensus; detection itself is unaffected -- the evidence only competes for posterior mass once a candidate has a real likelihood).",
+      "inputs": [
+        {"name": "taxon_weights", "type": "named_numeric_vector", "required": true, "description": "Names are species, values are presence probabilities in (0,1]"},
+        {"name": "p_conc", "type": "numeric", "required": false, "default": 1, "description": "Presence-claim confidence in pseudo-observations"}
+      ],
+      "output": {"type": "data.frame", "description": "taxon_name, weight, p_conc, source -- ready for apply_undetected_evidence()"},
+      "scaling": "linear",
+      "scaling_note": "Instant; pure R computation"
+    },
+    {
+      "name": "fit_regional_presence_curve",
+      "description": "The per-dataset, self-calibrating alternative to accepting generate_regional_proximity_evidence()'s default w_scale/d_half: fits a distance-to-presence curve (log-link binomial GLM) from a real presence/distance sample, e.g. a leave-the-bbox-out checklist or occurrence recipe. A zero-positive sample returns Jeffreys bounds instead of an unfittable GLM.",
+      "inputs": [
+        {"name": "presence_df", "type": "data.frame", "required": true, "description": "Data frame with columns present (logical) and distance_km (numeric > 0): one row per species in the chosen recipe's population"},
+        {"name": "bins", "type": "numeric_vector", "required": false, "default": [0, 100, 200, 400, 700, 1100], "description": "Distance-bin edges for the zero-positive bound table (and a fit-vs-binned diagnostic otherwise)"}
+      ],
+      "output": {"type": "list", "description": "w_scale, d_half (fitted parameters, NA when unidentifiable); fit (the glm object or NULL); identifiable (FALSE when zero positives or a degenerate fit); bin_table (per-bin n/positives/Jeffreys 95% upper bound on P(present), plus a pooled row); n, n_present"},
+      "scaling": "linear",
+      "scaling_note": "Fast; a single GLM fit over the presence_df sample"
     }
   ]
 }

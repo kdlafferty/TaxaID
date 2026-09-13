@@ -429,7 +429,12 @@
 
       # Format parameter list
       param_lines <- character(0)
-      params <- doc$params %||% doc$parameters
+      # The metadata JSON files store parameters under "inputs" (every file in
+      # inst/metadata/ uses that key and only that key). Until 2026-09-13 this
+      # read `doc$params %||% doc$parameters`, neither of which exists, so every
+      # function rendered as "(no params)" while phase_parameterize.md told the
+      # model "if a parameter is not listed, it does NOT exist".
+      params <- doc$inputs %||% doc$params %||% doc$parameters
       if (!is.null(params)) {
         for (p in params) {
           req <- if (isTRUE(p$required)) " (REQUIRED)" else ""

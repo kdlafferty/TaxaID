@@ -266,6 +266,272 @@
       },
       "scaling": "linear",
       "scaling_note": "Fast; vectorised lookup"
+    },
+    {
+      "name": "flag_habitat_inconsistencies",
+      "description": "For each unique occurrence point, derives the physical spatial zone (inland, coastal, marine shallow/deep/abyssal) using vector land polygons and NOAA bathymetry, and flags points whose recorded habitat is spatially inconsistent with that zone.",
+      "inputs": [
+        {
+          "name": "occurrence_data",
+          "type": "data.frame",
+          "required": true,
+          "description": "Typically occurrences_with_habitat from the TaxaExpect workflow. Must contain latitude, longitude, and habitat columns"
+        },
+        {
+          "name": "lat_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLatitude",
+          "description": "Latitude column name"
+        },
+        {
+          "name": "lon_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLongitude",
+          "description": "Longitude column name"
+        },
+        {
+          "name": "habitat_col",
+          "type": "character",
+          "required": false,
+          "default": "main_habitat",
+          "description": "Habitat assignment column name"
+        },
+        {
+          "name": "coast_buffer_m",
+          "type": "numeric",
+          "required": false,
+          "default": 1000,
+          "description": "Buffer distance (metres) around coastlines for habitat classification -- points within this buffer are not flagged as marine/freshwater inconsistencies (accounts for GPS uncertainty, tidal zones, coastal gradients)"
+        },
+        {
+          "name": "marine_questionable_km",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "If > 0, marine species within this distance (km) of the coastline are flagged 'questionable' rather than 'likely'. 0 (default) disables this"
+        },
+        {
+          "name": "depth_neritic_m",
+          "type": "numeric",
+          "required": false,
+          "default": 200,
+          "description": "Depth threshold (metres) defining the neritic (continental shelf) zone"
+        },
+        {
+          "name": "depth_oceanic_m",
+          "type": "numeric",
+          "required": false,
+          "default": 4000,
+          "description": "Depth threshold (metres) defining the bathyal/abyssal boundary"
+        },
+        {
+          "name": "resolution",
+          "type": "integer",
+          "required": false,
+          "default": 4,
+          "description": "Bathymetry resolution in arc-minutes for the NOAA GEBCO download; used only for depth classification of confirmed marine points"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Print progress messages"
+        },
+        {
+          "name": "habitat_scheme",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Optional habitat_prompt object or habitat scheme dataframe used to resolve habitat names for depth/distance checks. NULL relies on habitat_col values directly"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "occurrence_data with elevation_m (GEBCO value, diagnostic only), dist_to_coast_km, spatial_flag ('likely'/'questionable'/'unlikely'), spatial_flag_reason (plain-English explanation with numeric context) added"
+      },
+      "scaling": "linear",
+      "scaling_note": "One-time NOAA bathymetry download per bbox, then vectorised per-point classification; fast after the download"
+    },
+    {
+      "name": "review_spatial_flags",
+      "description": "Opens a Shiny gadget for reviewing/correcting the spatial_flag column added by flag_habitat_inconsistencies(). Points are shown in three views (Likely/Questionable/Unlikely) with a map for reassigning habitat or overriding the flag.",
+      "inputs": [
+        {
+          "name": "occurrence_data",
+          "type": "data.frame",
+          "required": true,
+          "description": "Output of flag_habitat_inconsistencies(). Must contain spatial_flag, spatial_flag_reason, point_id, and coordinate columns"
+        },
+        {
+          "name": "habitat_col",
+          "type": "character",
+          "required": false,
+          "default": "main_habitat",
+          "description": "Habitat column for point colouring"
+        },
+        {
+          "name": "lat_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLatitude",
+          "description": "Latitude column"
+        },
+        {
+          "name": "lon_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLongitude",
+          "description": "Longitude column"
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Taxon column for the Point Info species display"
+        },
+        {
+          "name": "colors",
+          "type": "named_character",
+          "required": false,
+          "default": null,
+          "description": "Named vector mapping habitat labels to colours. NULL uses the standard ecological palette"
+        },
+        {
+          "name": "tile",
+          "type": "character",
+          "required": false,
+          "default": "Esri.OceanBasemap",
+          "description": "Leaflet tile provider"
+        },
+        {
+          "name": "point_radius",
+          "type": "numeric",
+          "required": false,
+          "default": 6,
+          "description": "Circle marker radius in pixels"
+        },
+        {
+          "name": "viewer",
+          "type": "function",
+          "required": false,
+          "default": "shiny::paneViewer(minHeight = 450)",
+          "description": "Shiny viewer function passed to shiny::runGadget(). Some RStudio configurations silently swallow leaflet-map clicks inside the Viewer pane -- pass shiny::browserViewer() as a workaround if map clicks appear unresponsive"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "Input occurrence_data with spatial_flag, spatial_flag_reason, and main_habitat updated where changed. Returns NULL if the user clicks Cancel"
+      },
+      "scaling": "linear",
+      "scaling_note": "Interactive; time depends on the reviewer, not data size"
+    },
+    {
+      "name": "save_spatial_review_decisions",
+      "description": "Extracts one row per point_id from review_spatial_flags()'s output (the reviewed spatial_flag and main_habitat) and merges it into a persistent decisions file at path, so a reviewer's decisions survive a later re-run of the automatic classifier.",
+      "inputs": [
+        {
+          "name": "reviewed",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame returned by review_spatial_flags() (must carry point_id, spatial_flag, main_habitat)"
+        },
+        {
+          "name": "path",
+          "type": "file_path",
+          "required": true,
+          "description": "The .rds decisions file, one per site"
+        },
+        {
+          "name": "before",
+          "type": "data.frame",
+          "required": false,
+          "default": null,
+          "description": "Optional: the table the gadget was opened on (flag_habitat_inconsistencies()'s output). When supplied, a point's habitat is recorded as a reviewer REASSIGNMENT only where it differs from before. Without before, EVERY non-NA main_habitat in reviewed is recorded as a reassignment (the conservative reading) and will be re-applied verbatim on every later run -- pass before whenever the pre-review table is available"
+        },
+        {
+          "name": "point_id_col",
+          "type": "character",
+          "required": false,
+          "default": "point_id",
+          "description": "Column name, matching review_spatial_flags()'s output"
+        },
+        {
+          "name": "flag_col",
+          "type": "character",
+          "required": false,
+          "default": "spatial_flag",
+          "description": "Column name, matching review_spatial_flags()'s output"
+        },
+        {
+          "name": "habitat_col",
+          "type": "character",
+          "required": false,
+          "default": "main_habitat",
+          "description": "Column name, matching review_spatial_flags()'s output"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "Invisibly, the merged decisions table: point_id, spatial_flag, main_habitat, habitat_reassigned, decided_at"
+      },
+      "scaling": "linear",
+      "scaling_note": "Fast; small file read/write"
+    },
+    {
+      "name": "apply_spatial_review_decisions",
+      "description": "Overwrites spatial_flag on every row whose point_id has a saved decision (and main_habitat where the decision was a reviewer reassignment), before (or instead of) re-opening the review_spatial_flags() gadget -- lets a saved review persist across re-runs.",
+      "inputs": [
+        {
+          "name": "occurrence_data",
+          "type": "data.frame",
+          "required": true,
+          "description": "Output of flag_habitat_inconsistencies() (carries point_id, spatial_flag, spatial_flag_reason, main_habitat)"
+        },
+        {
+          "name": "path",
+          "type": "file_path",
+          "required": true,
+          "description": "The decisions file written by save_spatial_review_decisions()"
+        },
+        {
+          "name": "point_id_col",
+          "type": "character",
+          "required": false,
+          "default": "point_id",
+          "description": "Column name"
+        },
+        {
+          "name": "flag_col",
+          "type": "character",
+          "required": false,
+          "default": "spatial_flag",
+          "description": "Column name"
+        },
+        {
+          "name": "reason_col",
+          "type": "character",
+          "required": false,
+          "default": "spatial_flag_reason",
+          "description": "Column name"
+        },
+        {
+          "name": "habitat_col",
+          "type": "character",
+          "required": false,
+          "default": "main_habitat",
+          "description": "Column name"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "occurrence_data with decisions applied. Attributes n_applied (rows changed), n_pending_review (distinct points whose flag is not 'likely' and carry no decision), pending_point_ids"
+      },
+      "scaling": "linear",
+      "scaling_note": "Fast; small file read + vectorised join"
     }
   ]
 }

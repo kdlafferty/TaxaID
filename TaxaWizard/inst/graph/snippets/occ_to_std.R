@@ -21,24 +21,25 @@ if ("institution_flag" %in% names(occurrences)) {
 unique_taxa <- unique(occurrences$taxon_name)
 unique_taxa <- unique_taxa[!is.na(unique_taxa) & nzchar(unique_taxa)]
 
-# Step 2: Build habitat prompt and get LLM response
-prompt <- TaxaHabitat::build_habitat_prompt(
-  taxon_list         = unique_taxa,
+# Step 2: Build the habitat lookup via the CACHED one-call path
+# (TaxaHabitat::build_habitat_lookup()), not the uncached
+# build_habitat_prompt() -> {{llm_fn}} loop -> parse_hierarchical_habitat_response()
+# chain. All six production workflows moved to this on 2026-09-10: a taxon
+# already classified under this scheme is served from cache_dir instead of
+# re-asked. Uncached, a habitat verdict could flip between runs, moving a
+# species' records in or out of the site's habitat stratum and its kernel
+# prior by orders of magnitude -- the 2026-09-10 GreatLakes run lost 0.05 of
+# Lamar precision to exactly this. Same design as review_assignments()'s
+# cache. Force fresh verdicts with TaxaHabitat::taxahabitat_clear_cache(<cache_dir>).
+habitat_lookup <- TaxaHabitat::build_habitat_lookup(
+  unique_taxa,
   habitat_scheme     = {{habitat_scheme}},
-  geographic_context = {{geographic_hint}}
-)
-raw_texts <- character(prompt$n_chunks)
-for (i in seq_len(prompt$n_chunks)) {
-  raw_texts[i] <- {{llm_fn}}(prompt$prompts[[i]])
-}
-
-# Step 3: Parse response into habitat weights
-habitat_lookup <- TaxaHabitat::parse_hierarchical_habitat_response(
-  response       = raw_texts,
-  habitat_prompt = prompt
+  llm_fn             = {{llm_fn}},
+  geographic_context = {{geographic_hint}},
+  cache_dir          = {{habitat_cache_dir}}
 )
 
-# Step 4: Assign habitat to occurrences
+# Step 3: Assign habitat to occurrences
 std_occurrences <- TaxaHabitat::assign_habitat_biological(
   occurrence_data = occurrences,
   habitats_df = habitat_lookup,

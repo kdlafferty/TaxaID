@@ -19,6 +19,35 @@ group_priors_obj <- if (isTRUE({{include_group_priors}})) {
   NULL
 }
 
+# Optional: species reference for posterior_consensus()'s downranking
+# (2026-09-12): a genus-level LCA is narrowed to a species only when the
+# reference lists exactly one species of that genus. Since curve pricing
+# (2026-08-31) the priors table also holds a distance-clamp row for EVERY
+# zero-record BLAST candidate, so "in the priors table" no longer means
+# "known locally": at Mugu a genus consensus (Pseudotolithus, three
+# plausible congeners) was narrowed to P. senegallus, a West African croaker
+# with posterior 0.009 that was never among the plausible set, and reported
+# at the genus's 0.89. Clamp-only rows are therefore excluded here; resident,
+# singleton-mirror, domestic and real-evidence (regional/invasive/iNat) rows
+# stay.
+# 2026-09-13 (ecosystem review C3): the exclusion is by prior_branch, not by the
+# clamp source string. Every non-resident evidence row (distance clamp, regional
+# proximity, watch list, iNat range) is resident_undetected and carries no local
+# record, so none may be the sole taxon that narrows a coarse consensus. Residents
+# and the named domestic/food (transport) rows remain eligible -- the same rule
+# TaxaAssign::compute_group_priors(allowed_branches=) now applies at group scope.
+# Set {{include_downranking}} to FALSE to skip entirely.
+species_reference_df <- if (isTRUE({{include_downranking}})) {
+  .not_clamp <- if ("prior_branch" %in% names({{taxaexpect_priors_var}})) {{taxaexpect_priors_var}}$prior_branch %in% c("resident_observed", "transport") else if ("evidence_sources" %in% names({{taxaexpect_priors_var}})) !({{taxaexpect_priors_var}}$evidence_sources %in% "distance_clamp") else rep(TRUE, nrow({{taxaexpect_priors_var}}))
+  {{taxaexpect_priors_var}}[.not_clamp, , drop = FALSE] |>
+    dplyr::filter(!is.na(taxon_name)) |>
+    dplyr::distinct(taxon_name) |>
+    dplyr::left_join({{taxonomy_map_var}}, by = "taxon_name") |>
+    unique()
+} else {
+  NULL
+}
+
 consensus <- TaxaAssign::posterior_consensus(
   {{input_var}},
   cumulative_threshold   = {{cumulative_threshold}},
@@ -27,6 +56,7 @@ consensus <- TaxaAssign::posterior_consensus(
   lookup_missing_taxonomy = TRUE,
   backbone_id             = 4,
   rank_system             = {{rank_system}},
+  species_reference       = species_reference_df,
   group_priors            = group_priors_obj
 )
 
@@ -40,8 +70,11 @@ consensus_final <- TaxaAssign::posterior_consensus(
   lookup_missing_taxonomy = TRUE,
   backbone_id             = 4,
   rank_system             = {{rank_system}},
+  species_reference       = species_reference_df,
   group_priors            = group_priors_obj
-)
+) |> TaxaAssign::add_slash_taxon()
+# add_slash_taxon() derives consensus_OTU + primary_taxon (present whenever
+# consensus_taxon is in consensus_final).
 message("Consensus: ", sum(consensus_final$is_resolved), " of ",
         nrow(consensus_final), " samples resolved")
 consensus_final

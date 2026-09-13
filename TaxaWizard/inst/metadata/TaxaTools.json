@@ -190,6 +190,66 @@
       },
       "scaling": "linear",
       "scaling_note": "Fast; pure R"
+    },
+    {
+      "name": "scientific_to_common",
+      "description": "Looks up English common names for a character vector of scientific names. By default queries the GBIF vernacular names database (backbone_id=11) or ITIS (backbone_id=3); a backbone miss is left as NA unless use_llm=TRUE routes it to an LLM instead.",
+      "inputs": [
+        {
+          "name": "scientific_names",
+          "type": "character_vector",
+          "required": true,
+          "description": "Scientific names to look up"
+        },
+        {
+          "name": "backbone_id",
+          "type": "integer",
+          "required": false,
+          "default": 11,
+          "description": "Backbone for structured lookup: 11=GBIF (default, via rgbif), 3=ITIS (via taxize). Other values warn and fall through to the LLM. NULL skips backbone lookup entirely"
+        },
+        {
+          "name": "location",
+          "type": "character",
+          "required": false,
+          "default": null,
+          "description": "Geographic context for the LLM (e.g. 'Southern California Bight'), biasing it toward regionally appropriate common names. No effect on backbone-sourced results"
+        },
+        {
+          "name": "use_llm",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "If TRUE, taxa with no backbone result are sent to the LLM in batches of 20 names. FALSE (default) returns NA for unresolved taxa without an LLM call. A name the LLM omits from its batch response is NOT cached (per-row llm_parsed, 2026-09-13) -- it is re-asked on a later call rather than silently treated as a confirmed 'no common name' answer"
+        },
+        {
+          "name": "llm_fn",
+          "type": "function",
+          "required": false,
+          "default": "getOption('TaxaID.llm_fn')",
+          "description": "Required when use_llm=TRUE or backbone_id is unsupported/NULL"
+        },
+        {
+          "name": "cache_dir",
+          "type": "file_path",
+          "required": false,
+          "default": null,
+          "description": "A directory holding one small .rds per looked-up name, keyed on the name (case/whitespace-insensitive), backbone_id, and location. NULL (default) means no cache. A name found there is served without any backbone or LLM call; a name resolved this call is written back. A name the LLM was asked about and answered 'no common name' IS cached; one from an unparseable batch is NOT (re-asked); neither is a backbone miss on a use_llm=FALSE call. Manage with taxatools_clear_cache(). Added 2026-09-12 after a real 18S workflow spent 58 silent LLM calls on 1,151 names, then repeated them on every re-run"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Print a one-line summary (cache/backbone/LLM counts) and one line per LLM batch"
+        }
+      ],
+      "output": {
+        "type": "data.frame",
+        "description": "One row per element of scientific_names: scientific_name, common_name (primary English common name or NA), common_name_alternatives (semicolon-delimited additional names or NA), source ('gbif'/'itis'/'llm'/'none'), backbone_id (integer used, or NA for LLM/no-result rows)"
+      },
+      "scaling": "api_limited",
+      "scaling_note": "Backbone lookups are fast; use_llm=TRUE adds one LLM call per batch of 20 unresolved names. cache_dir makes repeat calls on the same names free"
     }
   ]
 }

@@ -162,6 +162,27 @@ test_that(".get_path_context() returns snippets and docs", {
   expect_true("TaxaAssign" %in% ctx$packages)
 })
 
+test_that(".get_path_context() param_docs are populated from the metadata 'inputs' key", {
+  # 2026-09-13: .extract_param_docs() read doc$params / doc$parameters, neither of
+  # which any inst/metadata/*.json uses (the key is "inputs"), so every function
+  # rendered as "(no params)" while phase_parameterize.md told the model that an
+  # unlisted parameter does not exist.
+  .graph_env$graph <- NULL
+  ctx <- TaxaWizard:::.get_path_context(c("match_to_consensus_score"))
+  docs <- ctx$param_docs
+  expect_true(grepl("score_consensus", docs, fixed = TRUE))
+  expect_true(grepl("- match_df:", docs, fixed = TRUE))
+  expect_true(grepl("(REQUIRED)", docs, fixed = TRUE))
+  # Every function that HAS a metadata entry must list at least one parameter.
+  meta <- TaxaWizard:::.load_metadata()
+  documented <- unlist(lapply(meta, function(m) vapply(m$functions, function(f) f$name, "")))
+  blocks <- strsplit(docs, "\n## ")[[1]]
+  for (b in blocks[-1]) {
+    fn <- sub("^[^:]*::", "", strsplit(b, "\n")[[1]][1])
+    if (fn %in% documented) expect_false(grepl("(no params)", b, fixed = TRUE), info = fn)
+  }
+})
+
 test_that(".get_path_context() errors on unknown edge", {
   .graph_env$graph <- NULL
   expect_error(.get_path_context(c("nonexistent_edge")), "Unknown edge ID")
@@ -280,4 +301,93 @@ test_that("edges are topologically sorted in path output", {
       available <- c(available, edge$to)
     }
   }
+})
+
+# ---------------------------------------------------------------------------
+# Structural guard: every function a snippet/edge claims to call must be a
+# real, currently-exported function of the package it's attributed to. This
+# is the check that would have caught the last month's real archived-
+# function breakages (e.g. matrix_to_clean.R calling TaxaLikely::
+# flag_reference_errors()/remove_flagged_references() after both were
+# deleted 2026-09-08; priors_to_map.R calling the archived
+# TaxaExpect::plot_theta_map_interactive() before it was simplified to
+# save-only 2026-09-09) at test time instead of at script-generation time.
+# ---------------------------------------------------------------------------
+
+test_that("every edge's functions[] are real exports of one of its packages[]", {
+  .graph_env$graph <- NULL
+  graph <- TaxaWizard:::.load_graph()
+
+  offenders <- character(0)
+  checked_any <- FALSE
+
+  for (edge in graph$edges) {
+    fns <- unlist(edge$functions)
+    if (length(fns) == 0L) next
+    pkgs <- unlist(edge$packages)
+    if (length(pkgs) == 0L) next
+    if (!all(vapply(pkgs, requireNamespace, logical(1), quietly = TRUE))) {
+      next # skip_if_not_installed()-equivalent for this one edge
+    }
+    checked_any <- TRUE
+
+    exports <- unique(unlist(lapply(pkgs, getNamespaceExports)))
+    bad <- setdiff(fns, exports)
+    if (length(bad) > 0L) {
+      offenders <- c(offenders, sprintf(
+        "edge '%s': %s not exported by {%s}",
+        edge$id, paste(bad, collapse = ", "), paste(pkgs, collapse = ", ")
+      ))
+    }
+  }
+
+  skip_if(!checked_any, "no edge had every one of its packages installed")
+  expect_true(length(offenders) == 0L,
+    info = paste(c("Offending edge/function pairs:", offenders), collapse = "\n")
+  )
+})
+
+test_that("every Pkg::fn() call in inst/graph/snippets/ is a real export of that package", {
+  snippet_dir <- system.file("graph", "snippets", package = "TaxaWizard")
+  skip_if(!nzchar(snippet_dir), "snippets directory not found in installed package")
+
+  files <- list.files(snippet_dir, pattern = "\\.R$", full.names = TRUE)
+  skip_if(length(files) == 0L, "no snippet files found")
+
+  # A `Pkg::fn(` call is only a real dependency when it appears in live code --
+  # strip line comments first so a comment merely NAMING a retired/archived
+  # function (explaining why a step was rewritten) isn't treated as a call.
+  # No snippet line contains a literal "#" inside a quoted string (verified),
+  # so this simple per-line strip is safe here.
+  .strip_comments <- function(lines) sub("#.*$", "", lines)
+
+  call_re <- "[A-Za-z][A-Za-z0-9._]*::[A-Za-z.][A-Za-z0-9._]*\\("
+
+  offenders <- character(0)
+  checked_any <- FALSE
+
+  for (f in files) {
+    code_only <- paste(.strip_comments(readLines(f, warn = FALSE)), collapse = "\n")
+    calls <- regmatches(code_only, gregexpr(call_re, code_only, perl = TRUE))[[1]]
+    if (length(calls) == 0L) next
+
+    calls <- unique(sub("\\($", "", calls))
+    for (call in calls) {
+      pkg <- sub("::.*$", "", call)
+      fn  <- sub("^.*::", "", call)
+      if (!requireNamespace(pkg, quietly = TRUE)) next
+      checked_any <- TRUE
+      if (!fn %in% getNamespaceExports(pkg)) {
+        offenders <- c(offenders, sprintf(
+          "%s: %s::%s is not an export of %s",
+          basename(f), pkg, fn, pkg
+        ))
+      }
+    }
+  }
+
+  skip_if(!checked_any, "no Pkg::fn() call found against an installed package")
+  expect_true(length(offenders) == 0L,
+    info = paste(c("Offending snippet calls:", unique(offenders)), collapse = "\n")
+  )
 })

@@ -242,7 +242,7 @@
       ],
       "to": "std_occurrences",
       "label": "Standardize occurrences and assign habitat",
-      "description": "Rename columns to DwC, stack multiple sources, classify any institution-proximity flags from filter_gbif_quality(), assign habitat via LLM (build_habitat_prompt + parse + assign_habitat_biological), flag spatial inconsistencies",
+      "description": "Rename columns to DwC, stack multiple sources, classify any institution-proximity flags from filter_gbif_quality(), assign habitat via a cached one-call LLM lookup (build_habitat_lookup(), 2026-09-10 -- replaces the uncached build_habitat_prompt + per-chunk LLM loop + parse pattern all six production workflows moved off of), assign_habitat_biological, flag spatial inconsistencies",
       "packages": [
         "TaxaTools",
         "TaxaFetch",
@@ -252,8 +252,7 @@
         "rename_cols",
         "stack_occurrences",
         "flag_institution_candidates",
-        "build_habitat_prompt",
-        "parse_hierarchical_habitat_response",
+        "build_habitat_lookup",
         "assign_habitat_biological"
       ],
       "snippet": "occ_to_std.R",
@@ -290,14 +289,23 @@
       ],
       "to": "priors",
       "label": "Build priors via site-centered kernel estimation (2026-08-30/31 redesign)",
-      "description": "A genuinely different estimator from the GLMM/grid-cell paths above, not an add-on step: site-centered distance-kernel weighting (geo x optional-covariate product kernel) directly on standardized occurrence data, with NO gridding/create_sites_from_grid() step at all -- each record is weighted by its own distance from the focal site instead of being binned into a grid cell first. Bandwidth is chosen automatically via leave-one-block-out composition prediction (replaces the GLMM path's AIC formula screening). Recommended over the GLMM/grid paths for a single-site study, or where the grid-cell approach has previously produced boundary-sensitive/alphabetical-tie artifacts. Optionally adds named domestic/commensal-animal and food-species priors, same as the other priors-building edges.",
+      "description": "A genuinely different estimator from the GLMM/grid-cell paths above, not an add-on step: site-centered distance-kernel weighting (geo x optional-covariate product kernel) directly on standardized occurrence data, with NO gridding/create_sites_from_grid() step at all -- each record is weighted by its own distance from the focal site instead of being binned into a grid cell first. Bandwidth is chosen automatically via leave-one-block-out composition prediction (replaces the GLMM path's AIC formula screening). Recommended over the GLMM/grid paths for a single-site study, or where the grid-cell approach has previously produced boundary-sensitive/alphabetical-tie artifacts. Optionally adds named domestic/commensal-animal and food-species priors, same as the other priors-building edges. Optionally also runs the curve-pricing evidence block (2026-08-31/09-12 redesign): elevates the dark-diversity floor for zero-record candidates with a regional GBIF record just outside the site, a named invasive/watch-listed species, or a verified iNaturalist range, all habitat-conditioned against the same habitat lookup the residents use.",
       "packages": [
-        "TaxaExpect"
+        "TaxaExpect",
+        "TaxaHabitat",
+        "TaxaFetch"
       ],
       "functions": [
         "calibrate_kernel_bandwidth",
         "estimate_kernel_priors",
         "generate_undetected_diversity",
+        "generate_regional_proximity_evidence",
+        "generate_presence_curve_evidence",
+        "generate_inat_range_evidence",
+        "apply_undetected_evidence",
+        "condition_evidence_on_habitat",
+        "build_habitat_lookup",
+        "check_inat_range",
         "generate_domestic_food_priors",
         "plot_theta_surface"
       ],
@@ -457,14 +465,15 @@
       ],
       "to": "consensus",
       "label": "Posterior consensus via LCA",
-      "description": "Select most probable taxon per sample using cumulative threshold, then refine via empirical Bayes update. Optionally computes group-level occurrence priors (compute_group_priors(), 2026-07-30) so consensus_prior reflects a real group-level sum instead of a candidate-scoped max.",
+      "description": "Select most probable taxon per sample using cumulative threshold, then refine via empirical Bayes update. Optionally computes group-level occurrence priors (compute_group_priors(), 2026-07-30) so consensus_prior reflects a real group-level sum instead of a candidate-scoped max. Optionally downranks a coarse LCA to a species via a clamp-excluded species_reference (2026-09-12/13), then derives consensus_OTU/primary_taxon via add_slash_taxon().",
       "packages": [
         "TaxaAssign"
       ],
       "functions": [
         "posterior_consensus",
         "update_prior_from_consensus",
-        "compute_group_priors"
+        "compute_group_priors",
+        "add_slash_taxon"
       ],
       "snippet": "post_to_consensus.R",
       "time_estimate": "seconds"
