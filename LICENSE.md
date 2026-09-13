@@ -17,8 +17,6 @@ work is published from the United States.
 
 ## Note on Dependencies
 
-TaxaExpect depends on glmmTMB, which is licensed under GPL (>= 3). The
-TaxaExpect source code itself is CC0, but binary distributions that
-bundle glmmTMB may be subject to GPL terms. Since downstream TaxaID
-packages list TaxaExpect in Suggests (never Imports), this does not
-affect the licensing of other packages in the ecosystem.
+The former glmmTMB (GPL >= 3) dependency in TaxaExpect was removed on
+2026-09-09 along with the archived GLMM prior-fitting path, so no package
+in this ecosystem currently carries a GPL dependency.

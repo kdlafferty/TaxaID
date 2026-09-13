@@ -391,11 +391,21 @@ Step 10's `any_of("sampling_group")` split is dead code at this site.
 Cosmetic: 9 `Unknown or uninitialised column: usageKey/rank` warnings from
 `get_keys_from_context()`'s rank-recovery fallback at Step 3.
 
+**2026-09-13 correction note:** this run's numbers were computed under the
+pre-2026-09-13 inline `sampling_group` classifier. The corrected scheme (now
+`TaxaTools::assign_sampling_group()`, wired into this workflow the same day)
+moves 114,744 Liliopsida records out of `macroinvertebrates` into
+`other_vascular_plants`, and adds 2,773 diatoms + 66 copepods + 7
+Zygnematophyceae records to their proper strata. Every per-group quantity
+built on this run's `occurrences_clean` -- shared-effort denominators,
+per-group Good-Turing budgets, each stratum's dark-diversity floor -- is
+stale until 18S is re-run.
+
 Console log: every message after the first (primer) crash is missing while
 prints kept arriving -- the handlers were gone but the sink was not (a mid-run
 reinstall/restart is the likely cause; a top-level error, a nested error and an
 rlang abort were all tested and do NOT drop `globalCallingHandlers()`). The
-block in all 8 workflows now re-registers tagged handlers when absent and
+block in all 7 workflows (plus both templates) now re-registers tagged handlers when absent and
 appends to the day's existing log after a restart.
 
 Next: run `inst/screen_training_references_standalone.R PtCon18S` overnight

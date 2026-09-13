@@ -144,3 +144,13 @@ Then stop and wait for the user's verdict before implementing anything.
   `geo_outlier_check` (36 MB each at PtCon 18S, derivable from raw_gbif in
   minutes) deserve their own checkpoints, and whether the 18S
   `HabitatFilteredMifish.rds` (40 MB, provenance unknown) is still used.
+
+## 6. Corrections (2026-09-13 review)
+
+- Mugu prices in curve mode; the blend-mode/no-clamp-row file is
+  `PtConceptionWorkflow_12S_multi_site.R`.
+- Workflows pass `YEAR_RANGE "1995,<year>"` (Mugu `"1990,<year>"`); only the
+  package default is 2000-to-now.
+- `unreferenced_genus`/`unreferenced_species` hypotheses exist for every
+  query.
+- The findings document is `ecosystem_docs/fable_ecosystem_review_2026-09-13.md`.

@@ -1,7 +1,73 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-12 (Fable 5.1 -- MUGU WORKFLOWS CONSOLIDATED: MuguWilderFishWorkflow.R
+# Last updated: 2026-09-13, evening (Sonnet 5 -- SECOND PASS: user went through
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md Sections A-K item by item; every
+# item was decided in sequence, then built, tested and installed the same session. Full
+# record (decision + measured outcome per item): the review doc's new Section L.
+#
+# VERIFIED FINAL STATE: devtools::check() 0 errors / 0 warnings / 0 notes on all NINE
+# packages (the four earlier top-level-file NOTEs are gone -- *.bak_* is now in every
+# package's .Rbuildignore). All nine reinstalled 2026-09-13 23:16-23:17 UTC; all eight
+# pkgdown sites rebuilt 20:17-20:19. Tests: TaxaTools 958, TaxaFetch 796 (2 pre-existing
+# CoordinateCleaner env failures), TaxaHabitat 315, TaxaMatch 1366, TaxaLikely 1147,
+# TaxaExpect 648, TaxaAssign 788, TaxaFlag 495, TaxaWizard 639. NOTHING COMMITTED in any
+# of the three repos.
+#
+# CROSS-CUTTING: stale PtConceptionWorkflow_12S_multi_site.R RETIRED (git mv to
+# PtConception/_archive_retired_scripts_2026_09_13/ with a README) -- SIX production
+# workflows remain. The species-reference filter in 6 workflow files moved from the clamp
+# source string to prior_branch %in% c("resident_observed","transport"). GreatLakes gained
+# .cache_ok() gates. The 18S workflow now calls TaxaTools::assign_sampling_group() (97
+# inline lines removed, .n_fishes guard kept); its per-group numbers are LABELLED STALE in
+# both REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md and the review doc until
+# 18S is re-run. PtCon 12S and GreatLakes verified to have NO classifier (only a defensive
+# any_of() selector) and were correctly left alone; CaliforniaIntertidal keeps its own
+# deliberately divergent classifier. A vignette guard added to all 8 packages with
+# vignettes found and fixed one real defect (a stranded third argument to
+# expand_unreferenced_hypotheses() in TaxaAssign's ecosystem vignette, from the 2026-07-10
+# move). Per-package detail in each package's own CLAUDE.md.
+#
+# NEXT: re-run PtCon 18S under the corrected classifier; commit the three repos; hosting
+# decision for pkgdown.
+# Previous update, 2026-09-13, later (Fable 5.1 -- WHOLE-ECOSYSTEM REVIEW implemented per
+# ecosystem_docs/REVIEW_PROMPT_full_ecosystem_review_2026_09_13.md; findings in
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md (Sections A-J, verdict table, closed
+# list) -- seven Sonnet sub-reviews after a spend-limit outage killed the first Fable set.
+# Three prompt premises corrected in the writeup: Mugu prices in CURVE mode (the stale
+# blend/no-clamp file is PtConceptionWorkflow_12S_multi_site.R, not a live Mugu path);
+# workflows pass YEAR_RANGE "1995,<yr>" (Mugu "1990,<yr>"), only the PACKAGE DEFAULT is
+# 2000-to-now; an unreferenced_genus/species hypothesis exists for every query, contra the
+# prompt's premise.
+#
+# SAME DAY, "easy batch" implemented (user: "do the easy stuff first"): A1 FAST multi-site
+# workflow gained the missing .not_clamp downranking exclusion; A2 TaxaWizard
+# .extract_param_docs() reads doc$inputs, not doc$params (every generated param block had
+# read "(no params)") + regression test; A5 generate_domestic_food_priors()'s
+# .norm_kingdom() returns NA for Eukaryota/Bacteria/Archaea (no superkingdom comparison);
+# A6 scientific_to_common()'s llm_parsed is now per-row (an LLM-omitted name no longer
+# cached as "no common name") + regression test; A7 W_CLAMP derived (W_SCALE *
+# exp(-D_CAP/D_HALF)) in GL/PtCon-12S-single/Mugu, was a literal; A9 Mugu
+# RERUN_FROM_STEP <- Inf (step 3 had invalidated every checkpoint at step>=3 on every run
+# since 2026-08-29); A11 TaxaExpect .Rbuildignore gains the archived GLMM dir; A12 misc
+# review docs/code.json replaced with root's (was MIT); A13 all 9 inst/CITATION -> 0.1.0 +
+# github.com/DOI-USGS/TaxaID; A14 get_keys_from_context() uses [[ ]] (usageKey/rank
+# warnings gone); A15 train_likelihood_model() dead singleton self-match branch + its
+# warning removed. Plus NEWS.md for TaxaFlag/TaxaWizard, NAME_CHANGE_HISTORY (6 entries),
+# LICENSE.md + glmmTMB caveat, INTRO.md "four"->"nine" packages, TaxaWizard metadata/prompt
+# fixes, roxygen across 7 packages, 19 README fixes, devtools::document() on 7 packages.
+# Tests: TaxaTools 933/0, TaxaFetch 781/2 (pre-existing), TaxaExpect 639/0, TaxaLikely
+# 1099/0, TaxaWizard 637/0. devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library (running separately, result unknown to this
+# session); NOT yet reinstalled. Per-package detail in each package's own CLAUDE.md.
+#
+# NOT done, awaiting user verdict: A3 group-prior branch filter, A4 pending-key clearing,
+# A8 GL cache gates, A10/F2 retire stale multi-site file, B1 multi-site mixture guard,
+# C2/C3 downranking scope, D-A1 spatial-review seeding, E1 TaxaWizard snippets, G-C2
+# tile-check cache, vignettes, pkgdown, Section J (sampling_group package fn, 18S
+# sampling_group bug, bimodal-H1 diagnostic) from the user's parallel session. A parallel
+# session also wrote *.bak_20260913_1259* README backups today despite the retired backup
+# convention.
+# Previous update, 2026-09-12 (Fable 5.1 -- MUGU WORKFLOWS CONSOLIDATED: MuguWilderFishWorkflow.R
 # (last run 2026-06-25; the original monolithic WilderLab-source script) retired to
 # ~/My Drive/Rscripts/eDNA/SepulvedaMugu/_archive_retired_scripts_2026_09_12/ (README there).
 # It duplicated MuguFishWorkflow.R except for building its match objects inline -- which
@@ -3251,7 +3317,7 @@ TaxaWizard: no TaxaID dependencies (uses metadata JSON files as interface)
 - Session 60: TaxaFlag created for post-assignment anomalous detection flagging
 - Session 68: TaxaWizard created for conversational workflow design (outside dependency chain)
 
-**Licensing:** All packages use CC0 1.0 (public domain, per USGS policy). TaxaExpect depends on glmmTMB (GPL >= 3); source is CC0 but binary distributions bundling glmmTMB may be subject to GPL terms.
+**Licensing:** All packages use CC0 1.0 (public domain, per USGS policy). The former glmmTMB (GPL >= 3) dependency in TaxaExpect was removed on 2026-09-09 along with the archived GLMM prior-fitting path.
 
 ---
 
