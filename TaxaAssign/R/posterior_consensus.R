@@ -121,7 +121,23 @@
 #'   the function looks up how many taxa at the next finer rank belong to the
 #'   consensus taxon. If exactly one, it downranks (recursively — e.g. family
 #'   to unique genus to unique species in one pass). Stops at any rank with
-#'   more than one option. Default `NULL` (no downranking).
+#'   more than one option. Default `NULL` (no downranking). Since 2026-09-13
+#'   a narrowing must also survive `downrank_requires_candidate`. Callers
+#'   building `species_reference` from a mix of observed and evidence-only
+#'   rows should still exclude the evidence-only ones
+#'   (`prior_branch != "resident_observed"`) before passing it in, so a
+#'   downrank reflects a species this observation could plausibly have
+#'   produced, not merely one that is locally plausible in the abstract.
+#' @param downrank_requires_candidate Logical. When `TRUE` (default), a
+#'   downranking step is taken only if the reference's single finer taxon is
+#'   at or above a taxon this observation actually scored (its
+#'   `plausible_taxa`). A narrowing to a coarser-than-finest rank is kept when
+#'   the candidates belong to it (family to genus *Ulva* when the candidates
+#'   are *Ulva* species), so this is a taxonomy test, not a string match. Rows
+#'   with no `plausible_taxa` column, or an empty one, are not gated. `FALSE`
+#'   restores the pre-2026-09-13 behaviour, where the reference alone decided.
+#'   Measured across four production sites before this gate: 35 of 150
+#'   downranked rows named a taxon outside their own candidate set.
 #' @param group_priors Optional data frame from [compute_group_priors()]
 #'   (`rank`/`taxon`/`theta_sum`/`n_members` columns), the SUM of
 #'   `theta_mean` over every locally modelled member of a genus or family --
@@ -162,6 +178,17 @@
 #' walks from finest to coarsest rank and stops at the first rank where all
 #' plausible hypotheses agree.
 #'
+#' \strong{Why a sole perfect-identity candidate can still be wrong:} H2/H3
+#' (`unreferenced_species`/`unreferenced_genus`) hypotheses exist for every
+#' query, but their likelihood sits a fixed, training-derived shift below the
+#' best H1 candidate's -- so when H1 has a sole candidate at full identity,
+#' no amount of locally-informed prior competition can move the call away
+#' from it: H2/H3 start too far behind to catch up regardless of how
+#' implausible the H1 candidate is ecologically. Ecological implausibility at
+#' that confidence has to be caught post hoc, by
+#' `TaxaFlag::review_assignments()`'s `plausibility == "unprecedented"` check,
+#' not by prior competition inside this function.
+#'
 #' @return A dataframe with one row per `observation_id`:
 #'   \describe{
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
@@ -185,7 +212,10 @@
 #'       `cumulative_threshold` filtering, so it is independent of threshold
 #'       settings and suitable for post-hoc confidence filtering (e.g. keep
 #'       only assignments with `consensus_posterior >= 0.95`).
-#'       `NA` when `consensus_taxon` is `NA`.}
+#'       `NA` when `consensus_taxon` is `NA`. When `downranked = TRUE` this is
+#'       the mass of the coarser rank that was actually resolved, not a
+#'       re-estimate at the finer reported rank; gate any confidence-threshold
+#'       filter on `downranked`.}
 #'     \item{`consensus_confidence_score`}{Sum of `confidence_score` values for
 #'       all named hypotheses within the consensus taxon (computed over all named
 #'       hypotheses, not just the plausible set).  `confidence_score` is the
@@ -200,9 +230,12 @@
 #'     \item{`n_plausible`}{Number of hypotheses in the plausible set (0 if
 #'       all hypotheses were excluded).}
 #'     \item{`plausible_taxa`}{List column: character vector of plausible taxon
-#'       names, sorted by descending posterior.}
+#'       names, sorted by descending posterior. Computed BEFORE downranking, so
+#'       for a downranked row it reflects the original coarser-rank plausible
+#'       set and may not include the downranked species itself.}
 #'     \item{`plausible_posteriors`}{List column: named numeric vector of
-#'       posterior values for plausible taxa (names = taxon_name).}
+#'       posterior values for plausible taxa (names = taxon_name). Same
+#'       pre-downranking timing as `plausible_taxa` above.}
 #'     \item{`downranked`}{Logical. `TRUE` when the initial LCA rank was
 #'       coarser than the final `consensus_rank` due to downranking via
 #'       `species_reference`. Only present when `species_reference` is
@@ -397,6 +430,7 @@ posterior_consensus <- function(posterior_df,
                                 lookup_missing_taxonomy = FALSE,
                                 backbone_id = NULL,
                                 species_reference = NULL,
+                                downrank_requires_candidate = TRUE,
                                 group_priors = NULL) {
   # --- Input validation -------------------------------------------------------
   required <- c(
@@ -544,7 +578,10 @@ posterior_consensus <- function(posterior_df,
   if (!is.null(species_reference)) {
     species_ref <- .build_species_ref(species_reference, rank_system_eff)
     if (!is.null(species_ref)) {
-      result <- .downrank_consensus(result, species_ref, rank_system_eff)
+      result <- .downrank_consensus(
+        result, species_ref, rank_system_eff,
+        require_candidate = downrank_requires_candidate
+      )
     }
   }
 
@@ -1167,7 +1204,8 @@ posterior_consensus <- function(posterior_df,
 #' more than one option (conservative). Updates consensus_taxon, consensus_rank,
 #' is_resolved, and downranked in place.
 #' @noRd
-.downrank_consensus <- function(consensus_df, species_ref, rank_system) {
+.downrank_consensus <- function(consensus_df, species_ref, rank_system,
+                                require_candidate = TRUE) {
   finest_rank <- rank_system[length(rank_system)]
 
   # Map a rank name to its column in species_ref.
@@ -1189,6 +1227,37 @@ posterior_consensus <- function(posterior_df,
     NA_character_
   }
 
+  # Rank value(s) a plausible candidate takes at `rk` -- used to check that a
+  # proposed narrowing lands at or above a taxon THIS observation actually
+  # scored (2026-09-13). species_ref is the first source; a binomial's own
+  # first word is the genus fallback for a candidate the reference lacks.
+  .cand_rank_values <- function(cand, rk) {
+    if (length(cand) == 0L) {
+      return(character(0))
+    }
+    if (rk == finest_rank) {
+      return(cand)
+    }
+    col <- .ref_col(rk)
+    fin <- .ref_col(finest_rank)
+    out <- character(0)
+    if (!is.na(col) && !is.na(fin)) {
+      hit <- species_ref[
+        !is.na(species_ref[[fin]]) & species_ref[[fin]] %in% cand, ,
+        drop = FALSE
+      ]
+      out <- unique(as.character(hit[[col]]))
+      out <- out[!is.na(out)]
+    }
+    if (identical(rk, "genus")) {
+      out <- unique(c(out, sub(" .*", "", cand[grepl(" ", cand, fixed = TRUE)])))
+    }
+    out
+  }
+
+  has_plausible <- "plausible_taxa" %in% names(consensus_df)
+  n_blocked <- 0L
+
   consensus_df$downranked <- FALSE
 
   for (i in seq_len(nrow(consensus_df))) {
@@ -1200,6 +1269,15 @@ posterior_consensus <- function(posterior_df,
 
     rank_idx <- match(cur_rank, rank_system)
     if (is.na(rank_idx) || rank_idx >= length(rank_system)) next
+
+    plaus <- character(0)
+    if (has_plausible) {
+      pv <- consensus_df$plausible_taxa[[i]]
+      if (!is.null(pv)) {
+        pv <- as.character(pv)
+        plaus <- pv[!is.na(pv) & nzchar(pv)]
+      }
+    }
 
     changed <- FALSE
 
@@ -1221,6 +1299,25 @@ posterior_consensus <- function(posterior_df,
 
       if (length(finer_vals) != 1L) break # 0 or >1 options — stop
 
+      # Candidate-set gate (2026-09-13). The reference knowing exactly one
+      # finer taxon is not enough: that taxon must also be at or above a
+      # candidate this observation actually scored, or the row is relabelled
+      # to something it has no evidence for while keeping the coarse rank's
+      # posterior mass. Measured across four sites before this gate existed:
+      # 35 of 150 downranked rows narrowed outside their own candidate set
+      # (PtCon 18S Ulva lactuca x21 over five other Ulva species; PtCon 12S
+      # Sardinops sagax over three congeners; Mugu Pseudotolithus senegallus).
+      # Narrowing to a COARSER-than-finest rank stays legitimate when the
+      # candidates are members of it (family -> genus Ulva is kept), which is
+      # why this is a taxonomy test, not a string match on plausible_taxa.
+      if (isTRUE(require_candidate) && length(plaus) > 0L) {
+        ok_vals <- .cand_rank_values(plaus, finer_rank)
+        if (!(finer_vals[[1L]] %in% ok_vals)) {
+          n_blocked <- n_blocked + 1L
+          break
+        }
+      }
+
       cur_rank <- finer_rank
       cur_taxon <- finer_vals[[1L]]
       changed <- TRUE
@@ -1232,6 +1329,12 @@ posterior_consensus <- function(posterior_df,
       consensus_df$is_resolved[i] <- (cur_rank == finest_rank)
       consensus_df$downranked[i] <- TRUE
     }
+  }
+
+  if (n_blocked > 0L) {
+    cli::cli_inform(
+      "posterior_consensus: {n_blocked} downranking step(s) blocked because the reference's only finer taxon was not among the observation's own candidates (see {.arg downrank_requires_candidate})."
+    )
   }
 
   consensus_df

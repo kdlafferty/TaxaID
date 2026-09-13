@@ -311,6 +311,17 @@ need real species-vs-congener discrimination for an actual assignment,
 use \code{\link[=posterior_consensus]{posterior_consensus()}}, not this function.
 }
 
+\section{Attributes}{
+
+\code{attr(out, "report_params")} is always set, recording the call's own
+parameterization for downstream reporting (e.g.
+\code{TaxaAssign::generate_report()}): \code{min_score}, \code{max_gap},
+\code{rank_thresholds}, \code{has_whitelist} (logical, whether \code{whitelist} was
+supplied), \code{consensus_mode}, \code{agreement_fraction}, \code{bracket_width}
+(\code{NA_real_} in \code{"gap"} mode), and \code{bracket_fallback} (\code{NULL} in \code{"gap"}
+mode).
+}
+
 \examples{
 match_df <- data.frame(
   observation_id  = c("S1", "S1", "S1"),

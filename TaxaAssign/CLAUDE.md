@@ -1,5 +1,32 @@
 # CLAUDE.md -- TaxaAssign
-# 2026-09-12, later (Opus 5): score_consensus() gains consensus_mode = c("gap", "bracket"),
+# 2026-09-13, evening (Sonnet 5): ecosystem review Section L, THREE ITEMS BUILT (resolves
+# A3/C2/C3 below, now closed). compute_group_priors(allowed_branches=) makes the
+# group-scope plausibility check branch-blind no longer: default
+# c("resident_observed","transport"). MEASURED first: of 264 winner-scope unprecedented
+# rows, 75 rested only on a clamp or evidence row (now excluded), 181 domestic/transport
+# rows kept, 2 had genuine group backing. combine_multisite_priors() now blanks
+# prior_mix_* on a combined row whose sites DISAGREE (warns naming the candidates) so
+# compute_posterior() samples the recombined Beta instead of inheriting one site's
+# Bernoulli. posterior_consensus(downrank_requires_candidate = TRUE): a narrowing must
+# land at or above a taxon the observation actually scored -- a TAXONOMY test, not a
+# string match (family->genus Ulva kept when candidates are Ulva species; genus->U.
+# lactuca blocked). MEASURED: 35 of 150 downranked rows across four sites named a taxon
+# outside their own candidate set (PtCon 18S Ulva lactuca x21, PtCon 12S Sardinops sagax
+# + an Oncorhynchus call with only Salmo/Salvelinus candidates, Mugu Pseudotolithus
+# senegallus). Full record: ecosystem_docs/fable_ecosystem_review_2026-09-13.md Section L.
+# Previous update, 2026-09-13 (Sonnet 5): ecosystem review, roxygen-only pass: posterior_consensus() gained
+# the downranked-consensus_posterior/plausible_taxa-pre-downranking clarification, the
+# species_reference caveat, and the H2/H3 sole-candidate paragraph; update_prior_from_
+# consensus() documents spatial_group_map as binary membership; score_consensus() gained
+# an @section Attributes block. Two pre-existing roxygen syntax bugs fixed en route (a
+# stray `%` inside a \strong line; a missing `}` in the new nested \describe). NEWS.md and
+# inst/CITATION (-> 0.1.0 + github.com/DOI-USGS/TaxaID) updated; INTRO.md "four"->"nine"
+# packages. No code changed in this package today. devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library; not yet reinstalled.
+# OPEN, awaiting user verdict (not fixed): A3 compute_group_priors() is branch-blind
+# (group_priors.R:143-148); C2 downranking never checks the observation's own hypotheses;
+# C3 the exclusion should be prior_branch == "resident_observed". Full findings:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md.
+# Previous update, 2026-09-12, later (Opus 5): score_consensus() gains consensus_mode = c("gap", "bracket"),
 # plus agreement_fraction / bracket_width / bracket_fallback, and two new output columns
 # (bracket_width_used, agreement_achieved). "gap" is the default and is UNCHANGED -- verified
 # not just by the existing tests but by diffing the new function against `git show HEAD:` over

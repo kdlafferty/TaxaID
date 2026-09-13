@@ -9,6 +9,19 @@
   the probability scale. Found on the first real multi-site run (PtConception
   12S, 349 of 4,469 rows); moderate priors and mixed J-shaped/informative
   cases are unchanged.
+* `score_consensus(consensus_mode = "bracket")`: implements Jonah Ventures'
+  actual published rule (1% bracket anchored at the ESV's top score, a taxon
+  reported at a rank only when it holds >= 90% of the hits in that bracket,
+  widened to 2% when a 97%+ match returns no family). `"gap"` mode is
+  unchanged and remains the default. The roxygen's earlier claim that gap
+  mode reproduced "the GITA/Jonah Ventures convention" was wrong and has
+  been removed.
+
+## 2026-09-07
+
+* `update_prior_from_consensus()`: veto-bound cap and variance carry-through
+  (a691025).
+* Three bugs fixed from the post-review audit (c92398d).
 
 ## Polishing Phase (Sessions 57-59)
 

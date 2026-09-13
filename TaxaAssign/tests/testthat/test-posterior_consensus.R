@@ -1003,3 +1003,118 @@ test_that("errors clearly (not a cryptic subscript-out-of-bounds) when no rank c
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
   expect_equal(nrow(out), 1L)
 })
+
+# ==============================================================================
+# Downranking: candidate-set gate (2026-09-13, ecosystem review C2)
+# ==============================================================================
+
+test_that("downranking is blocked when the reference's only finer taxon was never a candidate", {
+  # Mugu shape: a genus LCA over three congeners; the reference knows exactly
+  # one Pseudotolithus locally, but it is not one of the three scored.
+  df <- make_posterior(
+    observation_id = rep("ASV_1", 3),
+    taxon_name = c("Pseudotolithus epipercus", "Pseudotolithus typus", "Pseudotolithus elongatus"),
+    taxon_name_rank = rep("species", 3),
+    hypothesis_type = rep("specific_candidate", 3),
+    posterior_mean = c(0.50, 0.27, 0.11),
+    genus = rep("Pseudotolithus", 3)
+  )
+  ref <- data.frame(
+    taxon_name = "Pseudotolithus senegallus",
+    genus = "Pseudotolithus",
+    stringsAsFactors = FALSE
+  )
+  rs <- c("genus", "species")
+  gated <- suppressMessages(posterior_consensus(df, rank_system = rs, species_reference = ref))
+  expect_equal(gated$consensus_taxon, "Pseudotolithus")
+  expect_equal(gated$consensus_rank, "genus")
+  expect_false(gated$downranked)
+
+  # The pre-2026-09-13 behaviour is still available and still does the relabel.
+  ungated <- suppressMessages(posterior_consensus(
+    df, rank_system = rs, species_reference = ref, downrank_requires_candidate = FALSE
+  ))
+  expect_equal(ungated$consensus_taxon, "Pseudotolithus senegallus")
+  expect_true(ungated$downranked)
+})
+
+test_that("a narrowing to a taxon that IS a scored candidate still happens", {
+  df <- make_posterior(
+    observation_id = rep("ASV_2", 2),
+    taxon_name = c("Girella nigricans", "Girella simplicidens"),
+    taxon_name_rank = rep("species", 2),
+    hypothesis_type = rep("specific_candidate", 2),
+    posterior_mean = c(0.55, 0.45),
+    genus = rep("Girella", 2)
+  )
+  ref <- data.frame(
+    taxon_name = "Girella nigricans", genus = "Girella",
+    stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(posterior_consensus(
+    df, rank_system = c("genus", "species"), species_reference = ref
+  ))
+  expect_equal(out$consensus_taxon, "Girella nigricans")
+  expect_true(out$downranked)
+})
+
+test_that("a coarser downranking step is kept when the candidates belong to it, and the finer step is still gated", {
+  # PtCon 18S Ulva shape. Candidates sit in two genera of one family, so the
+  # LCA is the family. The reference knows exactly one genus (Ulva) and, under
+  # it, exactly one species (U. lactuca) -- which no candidate is.
+  # family -> genus Ulva is legitimate (a candidate IS an Ulva);
+  # genus -> U. lactuca is not.
+  df <- make_posterior(
+    observation_id = rep("ASV_3", 2),
+    taxon_name = c("Ulva lobata", "Umbraulva olivascens"),
+    taxon_name_rank = rep("species", 2),
+    hypothesis_type = rep("specific_candidate", 2),
+    posterior_mean = c(0.5, 0.5),
+    genus = c("Ulva", "Umbraulva"),
+    family = c("Ulvaceae", "Ulvaceae")
+  )
+  ref <- data.frame(
+    taxon_name = "Ulva lactuca", genus = "Ulva", family = "Ulvaceae",
+    stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(posterior_consensus(
+    df, rank_system = c("family", "genus", "species"), species_reference = ref
+  ))
+  expect_equal(out$consensus_rank, "genus")
+  expect_equal(out$consensus_taxon, "Ulva")
+  expect_true(out$downranked)
+  expect_false(out$is_resolved)
+
+  # Ungated, the same row is relabelled all the way to a species no candidate was.
+  ungated <- suppressMessages(posterior_consensus(
+    df, rank_system = c("family", "genus", "species"), species_reference = ref,
+    downrank_requires_candidate = FALSE
+  ))
+  expect_equal(ungated$consensus_taxon, "Ulva lactuca")
+})
+
+test_that("the candidate gate does not fire when plausible_taxa is empty or absent", {
+  df <- make_posterior(
+    observation_id = rep("ASV_4", 2),
+    taxon_name = c("Sardinops caeruleus", "Sardinops ocellatus"),
+    taxon_name_rank = rep("species", 2),
+    hypothesis_type = rep("specific_candidate", 2),
+    posterior_mean = c(0.5, 0.5),
+    genus = rep("Sardinops", 2)
+  )
+  ref <- data.frame(taxon_name = "Sardinops sagax", genus = "Sardinops", stringsAsFactors = FALSE)
+  res <- suppressMessages(posterior_consensus(
+    df, rank_system = c("genus", "species"), species_reference = ref
+  ))
+  # plausible_taxa is populated here, so the gate DOES fire
+  expect_equal(res$consensus_taxon, "Sardinops")
+  # a hand-built frame with the column stripped keeps the old behaviour
+  stripped <- res
+  stripped$plausible_taxa <- NULL
+  stripped$is_resolved <- FALSE
+  stripped$consensus_taxon <- "Sardinops"
+  stripped$consensus_rank <- "genus"
+  ref2 <- TaxaAssign:::.build_species_ref(ref, c("genus", "species"))
+  out <- TaxaAssign:::.downrank_consensus(stripped, ref2, c("genus", "species"))
+  expect_equal(out$consensus_taxon, "Sardinops sagax")
+})

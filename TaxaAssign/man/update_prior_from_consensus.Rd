@@ -53,7 +53,11 @@ observations in a single-observation spatial group (a singleton
 \code{spatial_group_id} -- there is no separate naming convention for these,
 see \code{group_observations_by_bbox()}) are always returned unchanged.
 Default \code{NULL} (no group-based restriction — all observations
-participate, matching this function's original behaviour).}
+participate, matching this function's original behaviour). Membership is
+binary (same group or not), with no distance decay within a group --
+two sites 100 km apart placed in different spatial groups donate nothing
+to each other by design, exactly as if they were in the same group but
+1 km apart they would donate at full weight.}
 }
 \value{
 The full posterior dataframe with the same structure as \code{result},

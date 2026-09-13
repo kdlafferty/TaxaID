@@ -58,6 +58,20 @@
 #'   auto-derived as `taxon_col`'s own identity when `taxonomy_map` has no
 #'   explicit `"species"` column.
 #'
+#' @param allowed_branches Character vector or `NULL`. Which `prior_branch`
+#'   values count as an occurrence record when summing a group's theta. Default
+#'   `c("resident_observed", "transport")`: kernel residents and the named
+#'   domestic/food rows. Rows on every other branch -- the `resident_undetected`
+#'   evidence rows (regional proximity, watch list, iNat range) and, since curve
+#'   pricing, the distance-clamp row every zero-record BLAST candidate carries --
+#'   are excluded, because "has a row in the priors table" stopped meaning "known
+#'   locally" on 2026-08-31. Measured on the PtCon 12S run of 2026-09-13: without
+#'   this filter 256 of 264 winner-scope `unprecedented` rows read `expected` or
+#'   `unexpected` at consensus scope, 75 of them on nothing but a clamp or
+#'   evidence row (a neon tetra, a plains minnow, a red deer at a marine site),
+#'   so `TaxaFlag::review_assignments()`'s skepticism gate never saw them.
+#'   `NULL` disables the filter. Ignored, with the pre-2026-09-13 behaviour, when
+#'   `taxaexpect_priors` has no `prior_branch` column (GLMM-era tables).
 #' @return A data frame with one row per (rank, taxon) group actually
 #'   present in the data: `rank` (the `rank_cols` value, e.g. `"genus"`),
 #'   `taxon` (the group's name at that rank), `theta_sum` (sum of `theta_col`
@@ -89,7 +103,8 @@ compute_group_priors <- function(taxaexpect_priors,
                                  taxonomy_map,
                                  taxon_col = "taxon_name",
                                  theta_col = "theta_mean",
-                                 rank_cols = c("species", "genus", "family")) {
+                                 rank_cols = c("species", "genus", "family"),
+                                 allowed_branches = c("resident_observed", "transport")) {
   if (!is.data.frame(taxaexpect_priors)) {
     cli::cli_abort("{.arg taxaexpect_priors} must be a data frame.")
   }
@@ -117,6 +132,16 @@ compute_group_priors <- function(taxaexpect_priors,
     cli::cli_abort(
       "{.arg rank_cols} not found in {.arg taxonomy_map}: {.field {missing_rank_cols}}."
     )
+  }
+
+  # Branch filter (2026-09-13): only rows on an allowed branch may support a
+  # group. Skipped when the table predates prior_branch (GLMM schema).
+  if (!is.null(allowed_branches) && "prior_branch" %in% names(taxaexpect_priors)) {
+    if (!is.character(allowed_branches)) {
+      cli::cli_abort("{.arg allowed_branches} must be a character vector or NULL.")
+    }
+    keep_branch <- taxaexpect_priors$prior_branch %in% allowed_branches
+    taxaexpect_priors <- taxaexpect_priors[keep_branch, , drop = FALSE]
   }
 
   priors_slim <- taxaexpect_priors[, c(taxon_col, theta_col), drop = FALSE]

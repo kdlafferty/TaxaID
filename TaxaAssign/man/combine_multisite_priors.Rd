@@ -103,8 +103,14 @@ A row carrying \code{prior_mix_w}/\code{prior_mix_theta_present}/
 inherits those columns from its FIRST site row; only \code{prior_alpha},
 \code{prior_beta} and \code{prior_mean} are recombined. When the per-site mixture
 rows are copies of one evidence pricing (the usual case: evidence is priced
-once per study) this is exact; genuinely site-specific mixture weights are
-not combined here.
+once per study) this is exact. When the rows DIFFER (site-specific
+pricing, or sites in different habitats after
+\code{\link[TaxaExpect:condition_evidence_on_habitat]{TaxaExpect::condition_evidence_on_habitat()}}), the mixture columns are set
+to \code{NA} on the combined row and a warning names the candidates, because
+\code{\link[=compute_posterior]{compute_posterior()}}'s Monte Carlo path would otherwise sample presence
+from one site's \code{prior_mix_w} alone while \code{posterior_point_est} used the
+recombined mean (2026-09-13). The recombined Beta is sampled instead.
+Recombining the mixture itself across sites is not implemented.
 }
 
 \subsection{Ecological independence assumption}{

@@ -328,6 +328,15 @@ utils::globalVariables(c("score_val"))
 #'       the fraction is not computable rather than genuinely zero).}
 #'   }
 #'
+#' @section Attributes:
+#' `attr(out, "report_params")` is always set, recording the call's own
+#' parameterization for downstream reporting (e.g.
+#' `TaxaAssign::generate_report()`): `min_score`, `max_gap`,
+#' `rank_thresholds`, `has_whitelist` (logical, whether `whitelist` was
+#' supplied), `consensus_mode`, `agreement_fraction`, `bracket_width`
+#' (`NA_real_` in `"gap"` mode), and `bracket_fallback` (`NULL` in `"gap"`
+#' mode).
+#'
 #' @seealso [posterior_consensus()] for the Bayesian posterior-based approach.
 #'
 #' @examples

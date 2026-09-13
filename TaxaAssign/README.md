@@ -137,15 +137,17 @@ LLM-estimated biogeographic prior).
     (fraction of simulations won)
 -   **Two workflows**: the full Bayesian workflow uses calibrated
     likelihoods from TaxaLikely's hierarchical model and
-    spatially-explicit priors from TaxaExpect's kernel-based occurrence
+    spatially-explicit priors from TaxaExpect's kernel-based composition
     estimator; the LLM-shortcut workflow uses exponential score
     weighting ($L_i = e^{\lambda s_i}$) and LLM-estimated priors with
     information-quality-driven Beta concentration
--   **Posterior consensus**: the smallest set of hypotheses capturing
-    \$\geq\$95% of posterior mass is identified; if multiple taxa
-    remain, the lowest common ancestor (LCA) determines the consensus
-    rank; downranking refines coarse assignments when only one
-    finer-rank taxon exists at the study site
+-   **Posterior consensus**: hypotheses below `min_posterior` (default
+    0.05) are dropped, then the remainder are accumulated in decreasing
+    order until they reach `cumulative_threshold` (default 0.90) of the
+    named-taxon posterior mass; if multiple taxa remain, the lowest
+    common ancestor (LCA) determines the consensus rank; optional
+    downranking (`species_reference`, off by default) refines coarse
+    assignments when only one finer-rank taxon exists at the study site
 -   **Empirical Bayes refinement**: species confidently identified in
     one observation receive boosted priors in unresolved observations
     from the same study, analogous to shrinkage estimators (Efron and

@@ -261,3 +261,31 @@ test_that("moderate priors still use the logit rule (worked numbers unchanged)",
   x <- out$prior_mean[out$taxon_name == "X"]; y <- out$prior_mean[out$taxon_name == "Y"]
   expect_equal(x / (x + y), 0.785, tolerance = 0.01)
 })
+
+
+test_that("presence-mixture columns that differ across sites are blanked with a warning (2026-09-13)", {
+  joined <- data.frame(
+    observation_id = c("ASV_1", "ASV_1", "ASV_2", "ASV_2"),
+    taxon_name = c("Cervus elaphus", "Cervus elaphus", "Gadus morhua", "Gadus morhua"),
+    taxon_name_rank = "species",
+    grid_id = c("Site_A", "Site_B", "Site_A", "Site_B"),
+    main_habitat = "Marine",
+    prior_alpha = c(6e-5, 6e-5, 5, 5),
+    prior_beta = c(3e5, 3e5, 100, 100),
+    prior_mean = c(2e-10, 2e-10, 0.048, 0.048),
+    prior_mix_w = c(0.35, 6.36e-5, 0.2, 0.2),
+    prior_mix_theta_present = c(0.02, 0.02, 0.05, 0.05),
+    prior_mix_theta_absent = c(0, 0, 0, 0),
+    stringsAsFactors = FALSE
+  )
+  expect_warning(out <- combine_multisite_priors(joined), "DIFFER across sites")
+  ce <- out[out$taxon_name == "Cervus elaphus", ]
+  gm <- out[out$taxon_name == "Gadus morhua", ]
+  expect_equal(nrow(ce), 1L); expect_equal(nrow(gm), 1L)
+  expect_true(is.na(ce$prior_mix_w)); expect_true(is.na(ce$prior_mix_theta_present))
+  expect_true(is.finite(ce$prior_alpha) && ce$prior_alpha > 0)
+  # identical mixture across sites is inherited unchanged, no warning
+  expect_equal(gm$prior_mix_w, 0.2)
+  expect_false(".mix_dropped" %in% names(out))
+  expect_no_warning(combine_multisite_priors(joined[joined$taxon_name == "Gadus morhua", ]))
+})

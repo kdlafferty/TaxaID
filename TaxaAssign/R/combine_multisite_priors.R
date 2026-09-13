@@ -89,6 +89,24 @@ utils::globalVariables(c(
   template$n_sites_combined <- n
   template$combined_sites <- paste(sort(unique(rows$grid_id)), collapse = "|")
 
+  # Presence-mixture guard (2026-09-13). compute_posterior()'s Monte Carlo
+  # path samples presence from prior_mix_w ALONE for any row carrying the
+  # mixture columns, ignoring the recombined alpha/beta. Copying the first
+  # site's mixture is exact only when every site row carries the same
+  # pricing (the case today: evidence is priced once per study). If the
+  # sites disagree, the combined row must not carry one site's Bernoulli, so
+  # the mixture columns are blanked and the recombined Beta is sampled
+  # instead; the caller warns once per call.
+  mix_cols <- grep("^prior_mix_", names(rows), value = TRUE)
+  template$.mix_dropped <- FALSE
+  if (length(mix_cols) > 0L && any(!is.na(rows$prior_mix_w))) {
+    same <- nrow(unique(rows[, mix_cols, drop = FALSE])) == 1L
+    if (!same) {
+      template[mix_cols] <- NA
+      template$.mix_dropped <- TRUE
+    }
+  }
+
   template
 }
 
@@ -157,8 +175,14 @@ utils::globalVariables(c(
 #' inherits those columns from its FIRST site row; only `prior_alpha`,
 #' `prior_beta` and `prior_mean` are recombined. When the per-site mixture
 #' rows are copies of one evidence pricing (the usual case: evidence is priced
-#' once per study) this is exact; genuinely site-specific mixture weights are
-#' not combined here.
+#' once per study) this is exact. When the rows DIFFER (site-specific
+#' pricing, or sites in different habitats after
+#' [TaxaExpect::condition_evidence_on_habitat()]), the mixture columns are set
+#' to `NA` on the combined row and a warning names the candidates, because
+#' [compute_posterior()]'s Monte Carlo path would otherwise sample presence
+#' from one site's `prior_mix_w` alone while `posterior_point_est` used the
+#' recombined mean (2026-09-13). The recombined Beta is sampled instead.
+#' Recombining the mixture itself across sites is not implemented.
 #'
 #' ## Ecological independence assumption
 #' Combining priors multiplicatively/in log-odds across sites assumes the
@@ -265,6 +289,18 @@ combine_multisite_priors <- function(joined) {
   result <- groups |>
     lapply(.combine_one_multisite_group) |>
     dplyr::bind_rows()
+
+  if (".mix_dropped" %in% names(result)) {
+    dropped <- result$.mix_dropped %in% TRUE
+    if (any(dropped)) {
+      taxa <- unique(result$taxon_name[dropped])
+      cli::cli_warn(c(
+        "combine_multisite_priors: {sum(dropped)} combined row(s) had presence-mixture columns that DIFFER across sites ({.val {utils::head(taxa, 5)}}{if (length(taxa) > 5) ', ...' else ''}).",
+        "i" = "The mixture is not recombined across sites, so those columns were set to NA on the combined row and compute_posterior() will sample the recombined Beta prior instead of one site's presence probability."
+      ))
+    }
+    result$.mix_dropped <- NULL
+  }
 
   n_multi <- sum(group_sizes > 1L)
   cli::cli_inform(

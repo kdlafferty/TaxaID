@@ -13,6 +13,7 @@ posterior_consensus(
   lookup_missing_taxonomy = FALSE,
   backbone_id = NULL,
   species_reference = NULL,
+  downrank_requires_candidate = TRUE,
   group_priors = NULL
 )
 }
@@ -92,7 +93,24 @@ For each unresolved row where \code{consensus_rank} is not the finest rank,
 the function looks up how many taxa at the next finer rank belong to the
 consensus taxon. If exactly one, it downranks (recursively — e.g. family
 to unique genus to unique species in one pass). Stops at any rank with
-more than one option. Default \code{NULL} (no downranking).}
+more than one option. Default \code{NULL} (no downranking). Since 2026-09-13
+a narrowing must also survive \code{downrank_requires_candidate}. Callers
+building \code{species_reference} from a mix of observed and evidence-only
+rows should still exclude the evidence-only ones
+(\code{prior_branch != "resident_observed"}) before passing it in, so a
+downrank reflects a species this observation could plausibly have
+produced, not merely one that is locally plausible in the abstract.}
+
+\item{downrank_requires_candidate}{Logical. When \code{TRUE} (default), a
+downranking step is taken only if the reference's single finer taxon is
+at or above a taxon this observation actually scored (its
+\code{plausible_taxa}). A narrowing to a coarser-than-finest rank is kept when
+the candidates belong to it (family to genus \emph{Ulva} when the candidates
+are \emph{Ulva} species), so this is a taxonomy test, not a string match. Rows
+with no \code{plausible_taxa} column, or an empty one, are not gated. \code{FALSE}
+restores the pre-2026-09-13 behaviour, where the reference alone decided.
+Measured across four production sites before this gate: 35 of 150
+downranked rows named a taxon outside their own candidate set.}
 
 \item{group_priors}{Optional data frame from \code{\link[=compute_group_priors]{compute_group_priors()}}
 (\code{rank}/\code{taxon}/\code{theta_sum}/\code{n_members} columns), the SUM of
@@ -129,7 +147,10 @@ of the consensus taxon without requiring a denominator.  Computed over
 \code{cumulative_threshold} filtering, so it is independent of threshold
 settings and suitable for post-hoc confidence filtering (e.g. keep
 only assignments with \code{consensus_posterior >= 0.95}).
-\code{NA} when \code{consensus_taxon} is \code{NA}.}
+\code{NA} when \code{consensus_taxon} is \code{NA}. When \code{downranked = TRUE} this is
+the mass of the coarser rank that was actually resolved, not a
+re-estimate at the finer reported rank; gate any confidence-threshold
+filter on \code{downranked}.}
 \item{\code{consensus_confidence_score}}{Sum of \code{confidence_score} values for
 all named hypotheses within the consensus taxon (computed over all named
 hypotheses, not just the plausible set).  \code{confidence_score} is the
@@ -144,9 +165,12 @@ consistently that taxon dominated across simulations.  \code{NA} when
 \item{\code{n_plausible}}{Number of hypotheses in the plausible set (0 if
 all hypotheses were excluded).}
 \item{\code{plausible_taxa}}{List column: character vector of plausible taxon
-names, sorted by descending posterior.}
+names, sorted by descending posterior. Computed BEFORE downranking, so
+for a downranked row it reflects the original coarser-rank plausible
+set and may not include the downranked species itself.}
 \item{\code{plausible_posteriors}}{List column: named numeric vector of
-posterior values for plausible taxa (names = taxon_name).}
+posterior values for plausible taxa (names = taxon_name). Same
+pre-downranking timing as \code{plausible_taxa} above.}
 \item{\code{downranked}}{Logical. \code{TRUE} when the initial LCA rank was
 coarser than the final \code{consensus_rank} due to downranking via
 \code{species_reference}. Only present when \code{species_reference} is
@@ -365,6 +389,17 @@ Lowest Common Ancestor is the standard conservative consensus method in
 molecular systematics (Huson et al., 2007, MEGAN). The implementation
 walks from finest to coarsest rank and stops at the first rank where all
 plausible hypotheses agree.
+
+\strong{Why a sole perfect-identity candidate can still be wrong:} H2/H3
+(\code{unreferenced_species}/\code{unreferenced_genus}) hypotheses exist for every
+query, but their likelihood sits a fixed, training-derived shift below the
+best H1 candidate's -- so when H1 has a sole candidate at full identity,
+no amount of locally-informed prior competition can move the call away
+from it: H2/H3 start too far behind to catch up regardless of how
+implausible the H1 candidate is ecologically. Ecological implausibility at
+that confidence has to be caught post hoc, by
+\code{TaxaFlag::review_assignments()}'s \code{plausibility == "unprecedented"} check,
+not by prior competition inside this function.
 }
 \examples{
 posterior_df <- data.frame(

@@ -1,7 +1,7 @@
 # TaxaID Ecosystem — Shared Introduction
 
 ## Purpose
-The `TaxaID` ecosystem is a suite of four R packages that together implement a Bayesian 
+The `TaxaID` ecosystem is a suite of nine R packages that together implement a Bayesian 
 framework for taxonomic identification and assignment. The ecosystem is designed for 
 scientists who work with biodiversity data — including eDNA sequences, camera trap images, 
 and acoustic recordings — and need a principled, reproducible approach to assigning 

@@ -95,3 +95,37 @@ test_that("stops on missing required columns", {
   t$genus <- NULL
   expect_error(compute_group_priors(.priors(), t), "genus")
 })
+
+
+test_that("allowed_branches excludes clamp/evidence rows from group support (2026-09-13)", {
+  pri <- data.frame(
+    taxon_name = c("Sebastes miniatus", "Sebastes mystinus", "Cervus elaphus", "Bos taurus", "Umbra limi"),
+    theta_mean = c(0.02, 0.01, 1e-6, 5e-4, 2e-8),
+    prior_branch = c("resident_observed", "resident_observed", "resident_undetected", "transport", "resident_undetected"),
+    stringsAsFactors = FALSE
+  )
+  tax <- data.frame(
+    taxon_name = pri$taxon_name,
+    genus  = c("Sebastes", "Sebastes", "Cervus", "Bos", "Umbra"),
+    family = c("Sebastidae", "Sebastidae", "Cervidae", "Bovidae", "Umbridae"),
+    stringsAsFactors = FALSE
+  )
+  gp <- compute_group_priors(pri, tax)
+  # residents and transport survive
+  expect_true("Sebastes" %in% gp$taxon[gp$rank == "genus"])
+  expect_true("Bos taurus" %in% gp$taxon[gp$rank == "species"])
+  # evidence-only and clamp-only rows do not support any rank
+  expect_false("Cervus elaphus" %in% gp$taxon)
+  expect_false("Cervidae" %in% gp$taxon)
+  expect_false("Umbra" %in% gp$taxon)
+  # NULL restores the old branch-blind behaviour
+  gp_all <- compute_group_priors(pri, tax, allowed_branches = NULL)
+  expect_true("Cervidae" %in% gp_all$taxon)
+  # stricter choice: resident only drops transport too
+  gp_res <- compute_group_priors(pri, tax, allowed_branches = "resident_observed")
+  expect_false("Bos taurus" %in% gp_res$taxon)
+  # a table without prior_branch is untouched
+  gp_legacy <- compute_group_priors(pri[, c("taxon_name", "theta_mean")], tax)
+  expect_true("Cervidae" %in% gp_legacy$taxon)
+  expect_error(compute_group_priors(pri, tax, allowed_branches = 1), "allowed_branches")
+})

@@ -9,7 +9,8 @@ compute_group_priors(
   taxonomy_map,
   taxon_col = "taxon_name",
   theta_col = "theta_mean",
-  rank_cols = c("species", "genus", "family")
+  rank_cols = c("species", "genus", "family"),
+  allowed_branches = c("resident_observed", "transport")
 )
 }
 \arguments{
@@ -34,6 +35,21 @@ aggregate by (default \code{c("species", "genus", "family")}). See
 "Why \code{"species"} is in the default \code{rank_cols}" below -- \code{"species"} is
 auto-derived as \code{taxon_col}'s own identity when \code{taxonomy_map} has no
 explicit \code{"species"} column.}
+
+\item{allowed_branches}{Character vector or \code{NULL}. Which \code{prior_branch}
+values count as an occurrence record when summing a group's theta. Default
+\code{c("resident_observed", "transport")}: kernel residents and the named
+domestic/food rows. Rows on every other branch -- the \code{resident_undetected}
+evidence rows (regional proximity, watch list, iNat range) and, since curve
+pricing, the distance-clamp row every zero-record BLAST candidate carries --
+are excluded, because "has a row in the priors table" stopped meaning "known
+locally" on 2026-08-31. Measured on the PtCon 12S run of 2026-09-13: without
+this filter 256 of 264 winner-scope \code{unprecedented} rows read \code{expected} or
+\code{unexpected} at consensus scope, 75 of them on nothing but a clamp or
+evidence row (a neon tetra, a plains minnow, a red deer at a marine site),
+so \code{TaxaFlag::review_assignments()}'s skepticism gate never saw them.
+\code{NULL} disables the filter. Ignored, with the pre-2026-09-13 behaviour, when
+\code{taxaexpect_priors} has no \code{prior_branch} column (GLMM-era tables).}
 }
 \value{
 A data frame with one row per (rank, taxon) group actually
