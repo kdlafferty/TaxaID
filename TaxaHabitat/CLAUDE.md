@@ -1,5 +1,20 @@
 # CLAUDE.md
-# 2026-09-12 (Fable 5.1): NEW save_spatial_review_decisions() / apply_spatial_review_decisions()
+# 2026-09-13, evening (Sonnet 5): ecosystem review Section L (D-A1) -- RESOLVED, was OPEN
+# below. save_spatial_review_decisions() now warns, naming the count, when before = NULL
+# would record habitats as reassignments -- i.e. freeze automatic classifications with no
+# re-validation, silently, on first seeding. MEASURED first: all three seeded production
+# decision files are clean (0 of 244,860 rows have habitat_reassigned = TRUE, 0 frozen
+# habitats) and all four live call sites already pass before=. The worry behind D-A1 was
+# unfounded; the guard is the only change, for any future seeding call. Full record:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md Section L. — TaxaHabitat
+# Previous update, 2026-09-13 (Sonnet 5): ecosystem review, roxygen-only pass on spatial_review_decisions.R
+# (save_spatial_review_decisions()/apply_spatial_review_decisions() @section notes: seeding
+# with before=NULL freezes habitats at their automatic classification with no
+# re-validation). inst/CITATION -> 0.1.0 + github.com/DOI-USGS/TaxaID. No code changed in
+# this package today. devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library; not yet reinstalled. OPEN, awaiting user verdict (not
+# fixed): D-A1, seeding without before= freezes automatic habitats. Full findings:
+# ecosystem_docs/fable_ecosystem_review_2026-09-13.md. — TaxaHabitat
+# Previous update, 2026-09-12 (Fable 5.1): NEW save_spatial_review_decisions() / apply_spatial_review_decisions()
 # (R/spatial_review_decisions.R). review_spatial_flags() returns a reviewer's DECISIONS, and every
 # workflow re-opened the gadget and overwrote them on each run (the search-polygon lesson again).
 # Decisions are kept in one small .rds per site keyed on point_id (stable: TaxaFetch::

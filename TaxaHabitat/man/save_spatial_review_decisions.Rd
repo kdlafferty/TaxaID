@@ -23,9 +23,16 @@ save_spatial_review_decisions(
 (\code{flag_habitat_inconsistencies()}'s output). When supplied, a
 point's habitat is recorded as a reviewer REASSIGNMENT only where it
 differs from \code{before}; otherwise the habitat is treated as the
-automatic assignment of the day and is NOT frozen for later runs. Without
-\code{before}, every saved habitat is treated as a reassignment (the
-conservative reading).}
+automatic assignment of the day and is NOT frozen for later runs.
+\strong{Without \code{before}, this function cannot tell an automatic
+habitat from a reviewer reassignment at all}: every non-\code{NA}
+\code{main_habitat} in \code{reviewed} is recorded as a reassignment
+(the conservative reading) and will be re-applied VERBATIM by
+\code{\link{apply_spatial_review_decisions}} on every later run --
+freezing that point's habitat at whatever the automatic classifier
+happened to say the day it was reviewed, even if the classifier's own
+logic later changes for the better. Pass \code{before} whenever the
+pre-review table is available to avoid this.}
 
 \item{point_id_col, flag_col, habitat_col}{Column names. Defaults match
 \code{review_spatial_flags()}'s output.}

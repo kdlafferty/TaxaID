@@ -38,6 +38,11 @@ TaxaHabitat assigns habitat types to species and occurrence records using LLM
 vectors and per-point habitat classifications that feed into TaxaExpect for
 biodiversity modelling.
 
+Every code chunk below is illustrative and is not executed when the package
+is checked, since it calls live LLM services; a test in this package's own
+suite verifies every call and argument name against the installed package
+instead.
+
 ## Quick Start
 
 ```{r quickstart, eval = FALSE, purl = FALSE}

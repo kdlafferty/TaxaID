@@ -31,9 +31,16 @@
 #'   (\code{flag_habitat_inconsistencies()}'s output). When supplied, a
 #'   point's habitat is recorded as a reviewer REASSIGNMENT only where it
 #'   differs from \code{before}; otherwise the habitat is treated as the
-#'   automatic assignment of the day and is NOT frozen for later runs. Without
-#'   \code{before}, every saved habitat is treated as a reassignment (the
-#'   conservative reading).
+#'   automatic assignment of the day and is NOT frozen for later runs.
+#'   \strong{Without \code{before}, this function cannot tell an automatic
+#'   habitat from a reviewer reassignment at all}: every non-\code{NA}
+#'   \code{main_habitat} in \code{reviewed} is recorded as a reassignment
+#'   (the conservative reading) and will be re-applied VERBATIM by
+#'   \code{\link{apply_spatial_review_decisions}} on every later run --
+#'   freezing that point's habitat at whatever the automatic classifier
+#'   happened to say the day it was reviewed, even if the classifier's own
+#'   logic later changes for the better. Pass \code{before} whenever the
+#'   pre-review table is available to avoid this.
 #' @param point_id_col,flag_col,habitat_col Column names. Defaults match
 #'   \code{review_spatial_flags()}'s output.
 #' @return Invisibly, the merged decisions table (\code{point_id},
@@ -67,6 +74,25 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
     new$habitat_reassigned <- !is.na(new$main_habitat) & (is.na(bh) | bh != new$main_habitat)
   } else {
     new$habitat_reassigned <- !is.na(new$main_habitat)
+    # Without `before` there is no way to tell a point whose habitat the
+    # reviewer CHANGED from one they merely confirmed, so every non-NA
+    # habitat is recorded as a reassignment and will be re-applied verbatim
+    # on every later run -- freezing whatever the automatic classifier said
+    # the day of the review. Warn rather than let a seeding script do this
+    # silently (2026-09-13; the three seeded production files were checked
+    # and are clean, 0 of 244,860 rows frozen).
+    n_frozen <- sum(new$habitat_reassigned)
+    if (n_frozen > 0L) {
+      warning(sprintf(
+        paste0(
+          "save_spatial_review_decisions: `before` was not supplied, so %d point(s) with a ",
+          "non-NA %s are recorded as habitat REASSIGNMENTS and will be re-applied verbatim on ",
+          "every later run, freezing the automatic habitat for those points. Pass `before = ` ",
+          "(the pre-review table) to record only genuine changes."
+        ),
+        n_frozen, habitat_col
+      ), call. = FALSE)
+    }
   }
   old <- if (file.exists(path)) readRDS(path) else new[0, ]
   if (!"habitat_reassigned" %in% names(old)) old$habitat_reassigned <- !is.na(old$main_habitat)
@@ -98,6 +124,14 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
 #' \code{attr(result, "n_pending_review") > 0} (or when you deliberately want
 #' to re-review). A missing decisions file is not an error: nothing is
 #' applied and every flagged point is pending.
+#'
+#' @details
+#' A saved \code{spatial_flag} and a saved reassigned \code{main_habitat} are
+#' both re-applied AS-IS -- neither is re-validated against the current run's
+#' own automatic classification. If the automatic classifier's logic changes
+#' between the run that produced a decision and a later run, the saved
+#' decision still overwrites whatever the newer automatic classification
+#' would have said, silently.
 #'
 #' @param occurrence_data Data frame from
 #'   \code{\link{flag_habitat_inconsistencies}} (carries \code{point_id},

@@ -85,3 +85,34 @@ test_that("a reassignment survives a later review that left it in place", {
   dec <- readRDS(path)
   expect_true(dec$habitat_reassigned[dec$point_id == "p3"])
 })
+
+test_that("save_spatial_review_decisions warns when before is NULL and habitats would be frozen (2026-09-13)", {
+  path <- withr::local_tempfile(fileext = ".rds")
+  reviewed <- data.frame(
+    point_id = c("p1", "p2"),
+    spatial_flag = c("likely", "unlikely"),
+    main_habitat = c("Marine", NA_character_),
+    stringsAsFactors = FALSE
+  )
+  expect_warning(
+    suppressMessages(save_spatial_review_decisions(reviewed, path)),
+    "recorded as habitat REASSIGNMENTS"
+  )
+  out <- readRDS(path)
+  expect_equal(out$habitat_reassigned, c(TRUE, FALSE))
+
+  # With `before`, a merely CONFIRMED habitat is not a reassignment and no warning fires.
+  path2 <- withr::local_tempfile(fileext = ".rds")
+  before <- data.frame(point_id = c("p1", "p2"), main_habitat = c("Marine", "Lentic"),
+                       stringsAsFactors = FALSE)
+  expect_no_warning(suppressMessages(
+    save_spatial_review_decisions(reviewed, path2, before = before)
+  ))
+  expect_equal(readRDS(path2)$habitat_reassigned, c(FALSE, FALSE))
+
+  # No non-NA habitat at all: nothing to freeze, so no warning even without `before`.
+  path3 <- withr::local_tempfile(fileext = ".rds")
+  expect_no_warning(suppressMessages(save_spatial_review_decisions(
+    transform(reviewed, main_habitat = NA_character_), path3
+  )))
+})

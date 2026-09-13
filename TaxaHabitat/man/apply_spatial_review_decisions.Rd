@@ -40,6 +40,14 @@ many flagged points still need a reviewer. Call it on
 to re-review). A missing decisions file is not an error: nothing is
 applied and every flagged point is pending.
 }
+\details{
+A saved \code{spatial_flag} and a saved reassigned \code{main_habitat} are
+both re-applied AS-IS -- neither is re-validated against the current run's
+own automatic classification. If the automatic classifier's logic changes
+between the run that produced a decision and a later run, the saved
+decision still overwrites whatever the newer automatic classification
+would have said, silently.
+}
 \seealso{
 \code{\link{save_spatial_review_decisions}}
 }
