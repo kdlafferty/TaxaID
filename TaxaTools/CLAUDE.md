@@ -1,5 +1,28 @@
 # CLAUDE.md -- TaxaTools
-# 2026-09-12 (Fable 5.1): scientific_to_common() gains cache_dir + verbose, new
+# 2026-09-13, evening (Sonnet 5): ecosystem review Section L (J1/J1a) -- NEW
+# assign_sampling_group() + default_sampling_scheme(): an ordered, first-match-wins rule
+# list (overridable via scheme=), a kingdom guard returning NA rather than the catch-all
+# for a non-animal row, optional backbone harmonisation (off by default). Regression
+# against the full 2,185,193-row 18S checkpoint vs the inline classifier: 0 unexplained
+# differences. Found the FOURTH drift instance the new guard was built to catch:
+# Liliopsida (monocots) absent from the vascular-plant clause -- 114,744 records (5.25% of
+# the pool) falling into macroinvertebrates, second-largest miscount after the 484,072
+# fish; invisible because the seagrass rule catches monocot order Alismatales. VERIFIED
+# LIVE vs GBIF: Zostera/Phyllospadix/Posidonia carry class Liliopsida AND order
+# Alismatales, so first-match-wins is load-bearing and adding the class steals nothing.
+# Also "Zygnemophyceae" matched NOTHING in GBIF's backbone (dead entry since written);
+# accepted class is "Zygnematophyceae". After both fixes: 0 ungrouped of 2,185,193. Full
+# ecosystem findings: ecosystem_docs/fable_ecosystem_review_2026-09-13.md Section L.
+# Previous update, 2026-09-13 (Sonnet 5): ecosystem review "easy batch" (A6): common_names.R
+# .parse_one_batch() now sets llm_parsed = !is.na(idx) per row instead of one value for the
+# whole batch, so an LLM-omitted name is no longer cached as a parsed "no common name" --
+# it is left unparsed and re-asked. New regression test added. Roxygen on
+# scientific_to_common() corrected: documents the use_llm default, the 20-name batch size,
+# and that an omitted name is not cached. Also: README fixes (change_backbone attribution,
+# the azure provider, the key list), INTRO.md "four"->"nine" packages, inst/CITATION ->
+# 0.1.0 + github.com/DOI-USGS/TaxaID. devtools::test() 933/0. devtools::check() 0 errors / 0 warnings on all 8 touched packages (4 top-level-file NOTEs, all from README.md.bak_* files, now .Rbuildignored in every package); all 9 packages reinstalled 2026-09-13 18:14 UTC to ~/Library/R/4.0/library; not yet
+# reinstalled. Full ecosystem findings: ecosystem_docs/fable_ecosystem_review_2026-09-13.md.
+# Previous update, 2026-09-12 (Fable 5.1): scientific_to_common() gains cache_dir + verbose, new
 # taxatools_clear_cache(). The real PtCon 18S run's Step 10 sent 1,151 consensus taxa to
 # the LLM in 58 sequential batches of 20 with NO output (read as a hang) and would repeat
 # every call on every re-run. Cache: one small .rds per (name, backbone_id, location),
@@ -264,6 +287,8 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 | `format_dwc()` | Apply per-column DarwinCore formatting rules | Planned | — |
 | `validate_dwc()` | Read-only QC after formatting | Planned | — |
 | `dwc_map()` | Compare input column names against full DarwinCore term list; propose `col_map` via fuzzy matching or LLM API | Planned | — |
+| `default_sampling_scheme()` | Package-level, ordered (first-match-wins) sampling-group classification scheme, ported clause-for-clause from `PtConceptionWorkflow_18S_2_single_site.R`'s inline `case_when()` -- the shared-effort-denominator/kernel-fit-group/dark-diversity-floor classifier that had drifted three times as duplicated workflow code (fishes 2026-09-03, Phaeophyceae/Dinophyceae 2026-09-06, Bacillariophyceae/Copepoda 2026-09-13). Each rule is `list(group=, when=list(<clause>, ...))`; clauses within `when` are OR'd, ranks within a clause are AND'd, a literal `NA` value means "this rank is missing." Carries `catch_all` (`"macroinvertebrates"`) and `kingdom_guard_vocabulary` (`c("Animalia","Metazoa")`). | Complete (2026-09-13) | R/sampling_group.R |
+| `assign_sampling_group()` | Classifies a taxonomy table's kingdom/phylum/class/order into `sampling_group` using `default_sampling_scheme()` (or a caller-supplied scheme). `kingdom_guard = TRUE` (default) sends a catch-all row whose kingdom is not animal-vocabulary to `NA` instead of the catch-all -- closes the open-ended non-animal tail in one stroke. `harmonise = TRUE` (opt-in, costs one `verify_taxon_names()` lookup per unique finest-rank name) converts an NCBI-backbone input to the scheme's GBIF vocabulary first via `verify_taxon_names()`/`change_backbone()`; `harmonise = FALSE` (default) instead does a cheap static check and warns once on a likely mismatch. Regression-validated against the real `PtCon18SSchulte_occurrences_clean.rds` checkpoint (2,185,193 rows): 2,070,407 exact agreements with the ported inline `case_when()`, 35 intended-fix disagreements (Copepoda -> zooplankton), 114,751 kingdom-guard disagreements (kingdom `Plantae` rows the inline classifier silently drops into `"macroinvertebrates"` -- overwhelmingly class `Liliopsida`, 114,744 rows, a real, previously-undetected gap in the live workflow's own plant-class list, flagged here but NOT fixed in this scheme per this task's scope), 0 unexplained. | Complete (2026-09-13) | R/sampling_group.R |
 
 ### Cache utilities (2026-09-04)
 

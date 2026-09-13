@@ -9,3 +9,4 @@
 ^\.DS_Store$
 ^DISCLAIMER\.md$
 ^\.lintr$
+^.*\.bak_.*$

@@ -441,8 +441,10 @@ common_to_scientific <- function(common_names,
       # TRUE when the batch parsed: a NULL common name from a parsed batch is
       # the LLM's real answer ("no common name exists"), a NULL from an
       # unparseable batch is not an answer at all. The caller's cache keeps
-      # only the former.
-      llm_parsed               = TRUE,
+      # only the former. Per row, not per batch (2026-09-13): a name the LLM
+      # OMITTED, truncated or respelled in an otherwise-parsed batch (idx NA)
+      # was being cached as a permanent "no common name".
+      llm_parsed               = !is.na(idx),
       stringsAsFactors         = FALSE
     )
   }
@@ -541,10 +543,10 @@ taxatools_clear_cache <- function(cache_dir, older_than_days = NULL, dry_run = F
 #'
 #' Looks up English common names for a character vector of scientific names.
 #' By default queries the GBIF vernacular names database (\code{backbone_id = 11})
-#' or ITIS (\code{backbone_id = 3}), falling back to an LLM when a backbone
-#' returns no results (\code{use_llm = TRUE}, the default).  Set
-#' \code{backbone_id = NULL} to use the LLM for all names without a backbone
-#' query.
+#' or ITIS (\code{backbone_id = 3}); a backbone miss is left as \code{NA} unless
+#' \code{use_llm = TRUE} is explicitly requested (the default is \code{FALSE},
+#' not \code{TRUE}).  Set \code{backbone_id = NULL} to use the LLM for all
+#' names without a backbone query.
 #'
 #' @details
 #' Backbone sources return structured, curated common names and are preferred
@@ -574,8 +576,12 @@ taxatools_clear_cache <- function(cache_dir, older_than_days = NULL, dry_run = F
 #'   Biases the LLM toward regionally appropriate common names.  Has no effect
 #'   on backbone-sourced results.  Default \code{NULL}.
 #' @param use_llm Logical.  If \code{TRUE}, taxa with no backbone result are
-#'   sent to the LLM in a single batched call.  Default \code{FALSE}: returns
-#'   \code{NA} for unresolved taxa without an LLM call.
+#'   sent to the LLM in batches of 20 names (one progress line per batch when
+#'   \code{verbose}).  Default \code{FALSE}: returns \code{NA} for unresolved
+#'   taxa without an LLM call.  A name the LLM omits from its batch response
+#'   is NOT cached (per-row \code{llm_parsed}, 2026-09-13) -- it is re-asked
+#'   on a later call rather than silently treated as a confirmed "no common
+#'   name" answer.
 #' @param llm_fn Function with signature \code{function(prompt, ...) ->
 #'   character(1)}.  Required when \code{use_llm = TRUE} or
 #'   \code{backbone_id} is unsupported / \code{NULL}.  Default

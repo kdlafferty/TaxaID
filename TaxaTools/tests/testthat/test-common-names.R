@@ -457,6 +457,27 @@ test_that("cache_dir: a parsed 'no common name' answer is cached, an unparseable
   expect_length(list.files(cache_dir2, pattern = "_common_name\\.rds$"), 0L)
 })
 
+test_that("cache_dir: a name the LLM omits from a parsed batch is NOT cached as 'no common name'", {
+  # 2026-09-13: llm_parsed used to be TRUE for every row of a parsed batch, so an
+  # omitted/respelled name was cached permanently with source "none".
+  cache_dir <- withr::local_tempdir()
+  # The mock only answers for Salmo salar; Oncorhynchus mykiss is omitted from the JSON.
+  llm <- .make_counting_llm("Salmo salar")
+  out <- suppressMessages(scientific_to_common(c("Salmo salar", "Oncorhynchus mykiss"),
+    backbone_id = NULL, llm_fn = llm$fn, cache_dir = cache_dir
+  ))
+  expect_equal(out$common_name[out$scientific_name == "Salmo salar"], "salmo common")
+  expect_true(is.na(out$common_name[out$scientific_name == "Oncorhynchus mykiss"]))
+  expect_length(list.files(cache_dir, pattern = "_common_name\\.rds$"), 1L)
+  # A later call must re-ask for the omitted name (cache miss), not replay "none".
+  llm2 <- .make_counting_llm(c("Salmo salar", "Oncorhynchus mykiss"))
+  out2 <- suppressMessages(scientific_to_common(c("Salmo salar", "Oncorhynchus mykiss"),
+    backbone_id = NULL, llm_fn = llm2$fn, cache_dir = cache_dir
+  ))
+  expect_equal(llm2$calls$n, 1L)
+  expect_equal(out2$common_name[out2$scientific_name == "Oncorhynchus mykiss"], "oncorhynchus common")
+})
+
 test_that("cache_dir: a backbone miss on a use_llm = FALSE call is not cached", {
   cache_dir <- withr::local_tempdir()
   local_mocked_bindings(.gbif_common_names = function(name) NULL, .package = "TaxaTools")

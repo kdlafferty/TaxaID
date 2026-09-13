@@ -29,8 +29,12 @@ Biases the LLM toward regionally appropriate common names.  Has no effect
 on backbone-sourced results.  Default \code{NULL}.}
 
 \item{use_llm}{Logical.  If \code{TRUE}, taxa with no backbone result are
-sent to the LLM in a single batched call.  Default \code{FALSE}: returns
-\code{NA} for unresolved taxa without an LLM call.}
+sent to the LLM in batches of 20 names (one progress line per batch when
+\code{verbose}).  Default \code{FALSE}: returns \code{NA} for unresolved
+taxa without an LLM call.  A name the LLM omits from its batch response
+is NOT cached (per-row \code{llm_parsed}, 2026-09-13) -- it is re-asked
+on a later call rather than silently treated as a confirmed "no common
+name" answer.}
 
 \item{llm_fn}{Function with signature \code{function(prompt, ...) ->
 character(1)}.  Required when \code{use_llm = TRUE} or
@@ -71,10 +75,10 @@ or no-result rows.}
 \description{
 Looks up English common names for a character vector of scientific names.
 By default queries the GBIF vernacular names database (\code{backbone_id = 11})
-or ITIS (\code{backbone_id = 3}), falling back to an LLM when a backbone
-returns no results (\code{use_llm = TRUE}, the default).  Set
-\code{backbone_id = NULL} to use the LLM for all names without a backbone
-query.
+or ITIS (\code{backbone_id = 3}); a backbone miss is left as \code{NA} unless
+\code{use_llm = TRUE} is explicitly requested (the default is \code{FALSE},
+not \code{TRUE}).  Set \code{backbone_id = NULL} to use the LLM for all
+names without a backbone query.
 }
 \details{
 Backbone sources return structured, curated common names and are preferred

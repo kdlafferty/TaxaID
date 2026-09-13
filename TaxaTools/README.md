@@ -22,7 +22,7 @@ downstream package needs solved consistently:
     species differently, encode binomials as `Genus_epithet`, attach
     author citations, or use a synonym one backbone has since retired.
     For these reasons, `verify_taxon_names()`, `clean_taxon_names()`,
-    and `convert_taxonomy_backbone()`'s companion functions reconcile
+    and `change_backbone()`'s companion functions reconcile
     names against a chosen taxonomic backbone (GBIF; NCBI, the National
     Center for Biotechnology Information, U.S. National Library of
     Medicine, National Institutes of Health, Bethesda, Maryland; WoRMS,
@@ -38,8 +38,8 @@ downstream package needs solved consistently:
     LLM-shortcut pipeline, and TaxaFlag's expert review all submit
     custom prompts to a language model and none of them should have to
     know which provider is configured. `call_api()` dispatches to
-    Anthropic Claude, Google Gemini, OpenAI, or a local Ollama model
-    behind one signature, auto-detected from whichever API key is
+    Anthropic Claude, Google Gemini, OpenAI, Azure OpenAI, or a local
+    Ollama model behind one signature, auto-detected from whichever API key is
     present in `~/.Renviron`. Because these LLMs are constantly
     evolving, this aspect of the package is designed to be neutral with
     respect to model names as much as possible, but with the advent of
@@ -74,7 +74,7 @@ downstream package needs solved consistently:
 | Function | Purpose |
 |---------------------------|------------------------------------------------------------|
 | `call_api()` | Generic dispatcher: one prompt string (plus optional images) to whichever provider is configured. Handles Anthropic, Gemini, and any OpenAI-compatible endpoint (OpenAI, Ollama). Attaches token-usage and provider/model attributes to the response. |
-| `call_anthropic_api()`, `call_gemini_api()`, `call_openai_api()`, `call_ollama_api()` | Thin provider-specific wrappers around `call_api()`, kept for direct use. |
+| `call_anthropic_api()`, `call_gemini_api()`, `call_openai_api()`, `call_azure_openai_api()`, `call_ollama_api()` | Thin provider-specific wrappers around `call_api()`, kept for direct use. |
 | `prompt_api()` | Multi-chunk prompt dispatcher; default `llm_fn` read from `getOption("TaxaID.llm_fn")`. |
 | `prompt_manual()` / `read_llm_response()` | Write a prompt to a file for manual submission via a web interface, then read the saved response back in -- for workflows without a paid API key. |
 | `token_usage()` / `reset_token_usage()` | Per-call, per-function, per-provider, or per-session token accounting; optional cost estimate. |
@@ -135,7 +135,8 @@ Verifier API, barcode/rank utilities). Two categories of function need one:
     LLM-calling function across the ecosystem) need a key from at least
     one provider: Anthropic Claude (`ANTHROPIC_API_KEY`, the default),
     Google Gemini (`GEMINI_API_KEY`, has a free tier), OpenAI
-    (`OPENAI_API_KEY`), or none at all if you run a local Ollama model.
+    (`OPENAI_API_KEY`), Azure OpenAI (`AZURE_OPENAI_API_KEY`, DOI
+    employees only), or none at all if you run a local Ollama model.
 -   **NCBI-backed functions** (`verify_taxon_names(backbone_id = 4)`, and
     downstream in TaxaLikely/TaxaMatch) work without a key but raise
     NCBI's rate limit from 3 to 10 requests/second with one
