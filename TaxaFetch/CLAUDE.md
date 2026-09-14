@@ -1,5 +1,31 @@
 # CLAUDE.md -- TaxaFetch
-# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (A4) --
+# Last updated: 2026-09-14 (Opus 5): cache policy review P3 + two real cache bugs
+# (ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md).
+#
+# GEOMETRY KEY COLLISION, FIXED. .gbif_dl_meta_path() keyed geometry as
+# nchar(geometry), not its content -- so editing a bbox coordinate from -122.385 to
+# -122.386 preserves the length, giving a cache HIT that serves the WRONG REGION's
+# occurrences. GreatLakes and 12S were shielded by their own workflow-level .cache_ok()
+# gates; any other caller was exposed. download_gbif_occurrences() now records the full
+# geometry in its cached metadata and VERIFIES it on read; a mismatch is a cache miss
+# rather than a wrong-region hit. The KEY itself is deliberately unchanged -- widening it
+# would orphan every cached zip. Legacy entries warn.
+#
+# ZIP SIDECARS WERE INVISIBLE TO EVERY CLEAR FUNCTION. The cache pattern was "\.zip$",
+# so a bad download renamed out of the way by hand (0002305-...zip.truncated_20260905,
+# 122 MB -- three quarters of that cache) matched nothing and could not be reached at
+# all. New .taxafetch_is_zip_like() recognises X.zip.<suffix>; since metadata only ever
+# names X.zip, a sidecar is unreferenced BY CONSTRUCTION and is always targeted by
+# orphans_only, while a referenced zip stays untouched.
+#
+# P3 -- all 6 download_gbif_occurrences() call sites now pass cache_dir =
+# CACHE_DIR_GBIF_GLOBAL (12S, 18S, Mugu, CaliforniaIntertidal, GreatLakes, Template; the
+# constant was added to the Template, which lacked it). The PACKAGE default is left alone
+# on purpose -- the review recommends against a blanket cache_dir = NULL sweep across 26
+# files, which would change 11 functions' default behaviour at once mid-project.
+# devtools::test() 810 pass / 2 fail, both PRE-EXISTING in test-filter_gbif_quality.R
+# (CoordinateCleaner, unrelated to any cache work -- do not chase them). check() 0/0/0.
+# Previous update: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (A4) --
 # RESOLVED, was OPEN below. A dead pending GBIF key is now cleared and a fresh request
 # submitted in the SAME call (download_gbif_occurrences.R:425-438, :803, :1440-1446); new
 # pending_max_age_days = 30 abandons a stale key without polling forever.

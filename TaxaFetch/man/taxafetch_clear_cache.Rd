@@ -24,7 +24,8 @@ older than this many days (by modification time) are targeted.
 \code{cache_dir}.}
 
 \item{orphans_only}{Logical. If \code{TRUE}, targets only GBIF download
-zips that are no longer referenced by any current
+zips (and zip sidecars -- see below) that are no longer referenced by
+any current
 \code{download_gbif_occurrences()} metadata file in \code{cache_dir} --
 i.e. zips superseded by a later \code{overwrite = TRUE} run before this
 package's 2026-09-03 orphan-cleanup fix. The zip each metadata file
@@ -33,11 +34,14 @@ metadata file itself, every \code{fetch_gbif_occurrences()} checkpoint,
 and every iNaturalist range file are left untouched -- this is the
 "keep the most recent cache per query, remove only stale leftovers"
 mode. Default \code{FALSE} (target everything recognized, the same as
-before this parameter existed).}
+before this parameter existed). Since a metadata file only ever names
+\code{X.zip}, a \code{X.zip.<suffix>} sidecar -- a partial transfer, or
+a bad download renamed out of the way by hand -- is unreferenced by
+construction and is always targeted here.}
 
 \item{zips_only}{Logical. If \code{TRUE}, targets only the downloaded GBIF
-\code{.zip} files, leaving every metadata file and \code{.rds} checkpoint
-in place. This is usually the setting you want for reclaiming space: the
+\code{.zip} files and their sidecars, leaving every metadata file and
+\code{.rds} checkpoint in place. This is usually the setting you want for reclaiming space: the
 zips are the cache in practice (38 of them held 17 GB on one real machine,
 against 52 MB for every \code{.rds} combined), they are pure redundancy
 once imported, and keeping their metadata means a later identical call

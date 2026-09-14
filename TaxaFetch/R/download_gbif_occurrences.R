@@ -465,6 +465,7 @@ download_gbif_occurrences <- function(
     cache_dir, keys, geometry, year_range,
     basis_keep, exclude_absent
   )
+  meta <- NULL # set by the cached-metadata read below, if any
   dl_key <- NULL
   zip_path <- NULL
   old_zip_path <- NULL
@@ -475,6 +476,34 @@ download_gbif_occurrences <- function(
 
   if (!is.null(meta_path) && file.exists(meta_path)) {
     meta <- readRDS(meta_path)
+
+    # Guard the nchar(geometry) key collision documented in
+    # .gbif_dl_meta_path(): the key cannot distinguish two equal-length
+    # polygons, so the geometry is verified against what the cache actually
+    # holds. A mismatch is a cache MISS, not a wrong-region cache hit.
+    if (!is.null(meta$geometry)) {
+      if (!identical(meta$geometry, geometry)) {
+        message(
+          "download_gbif_occurrences: cached download was made for a DIFFERENT ",
+          "geometry of the same string length (cache-key collision) -- ignoring ",
+          "it and requesting a fresh download."
+        )
+        meta <- NULL
+      }
+    } else if (!is.null(geometry)) {
+      warning(
+        "download_gbif_occurrences: this cached download predates geometry ",
+        "recording, so it cannot be verified against the geometry you passed. ",
+        "The cache key encodes only the geometry's string LENGTH, so an edited ",
+        "coordinate of equal length would reuse it silently. If you have ",
+        "changed the search polygon since this cache was written, delete ",
+        normalizePath(meta_path, mustWork = FALSE), " to force a fresh download.",
+        call. = FALSE
+      )
+    }
+  }
+
+  if (!is.null(meta_path) && file.exists(meta_path) && !is.null(meta)) {
     cached_zip_exists <- file.exists(meta$zip_path)
 
     if (isTRUE(meta$pending)) {
@@ -784,7 +813,8 @@ download_gbif_occurrences <- function(
         old_zip_path <- NULL
         .served_from_cache_after_failure <- TRUE
       } else {
-        .gbif_record_pending_key(meta_path, dl_key, dest_dir_for = cache_dir)
+        .gbif_record_pending_key(meta_path, dl_key, dest_dir_for = cache_dir,
+                                   geometry = geometry)
         stop(sprintf(
           paste0(
             "download_gbif_occurrences: GBIF accepted download key %s but its status could not be ",
@@ -906,7 +936,8 @@ download_gbif_occurrences <- function(
           old_zip_path <- NULL
           .served_from_cache_after_failure <- TRUE
         } else {
-          .gbif_record_pending_key(meta_path, dl_key, dest_dir_for = cache_dir)
+          .gbif_record_pending_key(meta_path, dl_key, dest_dir_for = cache_dir,
+                                   geometry = geometry)
           stop(sprintf(
             paste0(
               "download_gbif_occurrences: the GBIF zip for key %s could not be downloaded ",
@@ -939,7 +970,12 @@ download_gbif_occurrences <- function(
     # verified cached zip was used as a fallback: its metadata is already right).
     if (!is.null(meta_path) && !isTRUE(.served_from_cache_after_failure)) {
       saveRDS(
-        list(dl_key = dl_key, zip_path = zip_path, timestamp = Sys.time()),
+        list(
+          dl_key = dl_key, zip_path = zip_path, timestamp = Sys.time(),
+          # Recorded so the nchar()-only key cannot serve another polygon's
+          # download; verified on read above.
+          geometry = geometry
+        ),
         meta_path
       )
       message(
@@ -1224,6 +1260,17 @@ download_gbif_occurrences <- function(
     return(NULL)
   }
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  # WARNING (2026-09-14): `geometry` enters this key only as nchar(), NOT as
+  # its content, so two different polygons of equal WKT string length collide.
+  # That is not hypothetical -- editing one bbox coordinate from "-122.385" to
+  # "-122.386" preserves the length exactly, and the cache would then serve the
+  # WRONG REGION'S occurrences under the same key. The key itself is left
+  # alone deliberately: adding a geometry hash would orphan every existing
+  # GBIF zip at once (163 MB here, and 17-23 GB in this project's history),
+  # which is the growth mechanism the cache-policy review's P5 exists to stop.
+  # Instead the full geometry is stored INSIDE the cached metadata and verified
+  # on read -- see the `meta$geometry` check in download_gbif_occurrences().
+  # See ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md.
   basis_tag <- if (!is.null(basis_keep)) paste0("_b", sum(nchar(basis_keep))) else ""
   absent_tag <- if (isTRUE(exclude_absent)) "_pres" else ""
   sig <- sprintf(
@@ -1647,7 +1694,8 @@ download_gbif_occurrences <- function(
 #' re-fetches this key instead of submitting a new request. A successful
 #' download overwrites this record with the normal one.
 #' @noRd
-.gbif_record_pending_key <- function(meta_path, dl_key, dest_dir_for) {
+.gbif_record_pending_key <- function(meta_path, dl_key, dest_dir_for,
+                                     geometry = NULL) {
   if (is.null(meta_path) || is.null(dl_key)) {
     return(invisible(NULL))
   }
@@ -1656,7 +1704,7 @@ download_gbif_occurrences <- function(
   tryCatch(
     saveRDS(
       list(dl_key = dl_key, zip_path = file.path(dest, paste0(dl_key, ".zip")),
-           timestamp = Sys.time(), pending = TRUE),
+           timestamp = Sys.time(), pending = TRUE, geometry = geometry),
       meta_path
     ),
     error = function(e) invisible(NULL)

@@ -20,9 +20,24 @@
 #' file shape if a caller points it at a shared cache directory).
 #' @noRd
 .taxafetch_cache_patterns <- c(
-  "\\.zip$", "^gbif_dl_.*_meta\\.rds$", "^gbif_fetch_.*\\.rds$",
+  "\\.zip($|\\.)", "^gbif_dl_.*_meta\\.rds$", "^gbif_fetch_.*\\.rds$",
   "\\.geojson$", "^openalex_cache_.*\\.rds$"
 )
+
+
+#' Is this a GBIF download zip, or something derived from one?
+#'
+#' \code{X.zip} is the cache entry proper. \code{X.zip.<suffix>} is a
+#' sidecar: a partial transfer, or a bad download renamed out of the way by
+#' hand so the next run would re-fetch it. A sidecar can never be referenced
+#' by a metadata file -- the metadata only ever names \code{X.zip} -- so it
+#' is dead by construction, and the largest one on the development machine
+#' held 122 MB, three quarters of that cache, while matching no pattern and
+#' therefore reachable by no clear function at all (found 2026-09-14).
+#' @noRd
+.taxafetch_is_zip_like <- function(paths) {
+  grepl("\\.zip($|\\.)", basename(paths))
+}
 
 
 #' Report and clear TaxaFetch's on-disk cache
@@ -44,7 +59,8 @@
 #'   \code{NULL} (default) targets every recognized cache file in
 #'   \code{cache_dir}.
 #' @param orphans_only Logical. If \code{TRUE}, targets only GBIF download
-#'   zips that are no longer referenced by any current
+#'   zips (and zip sidecars -- see below) that are no longer referenced by
+#'   any current
 #'   \code{download_gbif_occurrences()} metadata file in \code{cache_dir} --
 #'   i.e. zips superseded by a later \code{overwrite = TRUE} run before this
 #'   package's 2026-09-03 orphan-cleanup fix. The zip each metadata file
@@ -53,10 +69,13 @@
 #'   and every iNaturalist range file are left untouched -- this is the
 #'   "keep the most recent cache per query, remove only stale leftovers"
 #'   mode. Default \code{FALSE} (target everything recognized, the same as
-#'   before this parameter existed).
+#'   before this parameter existed). Since a metadata file only ever names
+#'   \code{X.zip}, a \code{X.zip.<suffix>} sidecar -- a partial transfer, or
+#'   a bad download renamed out of the way by hand -- is unreferenced by
+#'   construction and is always targeted here.
 #' @param zips_only Logical. If \code{TRUE}, targets only the downloaded GBIF
-#'   \code{.zip} files, leaving every metadata file and \code{.rds} checkpoint
-#'   in place. This is usually the setting you want for reclaiming space: the
+#'   \code{.zip} files and their sidecars, leaving every metadata file and
+#'   \code{.rds} checkpoint in place. This is usually the setting you want for reclaiming space: the
 #'   zips are the cache in practice (38 of them held 17 GB on one real machine,
 #'   against 52 MB for every \code{.rds} combined), they are pure redundancy
 #'   once imported, and keeping their metadata means a later identical call
@@ -104,8 +123,7 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
     # and the small metadata files are deliberately LEFT BEHIND, so each
     # query's download key survives and a later identical call re-fetches that
     # same prepared file rather than queueing a new request.
-    is_zip <- grepl("\\.zip$", basename(inv$path))
-    inv <- inv[is_zip, , drop = FALSE]
+    inv <- inv[.taxafetch_is_zip_like(inv$path), , drop = FALSE]
     if (nrow(inv) == 0L) {
       message("taxafetch_clear_cache: no cached zips found.")
       return(invisible(inv))
@@ -118,8 +136,10 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
 
   if (isTRUE(orphans_only)) {
     referenced <- basename(.taxafetch_referenced_zips(cache_dir))
-    is_zip <- grepl("\\.zip$", basename(inv$path))
-    inv <- inv[is_zip & !(basename(inv$path) %in% referenced), , drop = FALSE]
+    inv <- inv[
+      .taxafetch_is_zip_like(inv$path) & !(basename(inv$path) %in% referenced), ,
+      drop = FALSE
+    ]
     if (nrow(inv) == 0L) {
       message(
         "taxafetch_clear_cache: no orphaned zips found -- every cached zip ",
