@@ -921,3 +921,27 @@ release.
 - `stack_occurrences`
 - `taxafetch_clear_cache`
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- `download_gbif_occurrences()` records the full search geometry in its cached
+  metadata and verifies it on read. Previously only the geometry's character
+  length was compared, so a different region of the same string length could
+  be served from cache as a hit. A mismatch is now a miss. The cache key is
+  untouched, so no existing archive is orphaned.
+- `.taxafetch_is_zip_like()` -- zip sidecar files are now recognised, so
+  `taxafetch_clear_cache()` can see and treat them as orphans by construction
+  rather than leaving them to accumulate unmanaged.
+- A download key left in a dead pending state no longer loops forever; it is
+  cleared and resubmitted within the same call.
+- Style only, to satisfy this package's own lint configuration: one over-long
+  local variable name shortened and two long lines wrapped. The user-facing
+  `served_from_cache_after_failure` attribute is deliberately unchanged.

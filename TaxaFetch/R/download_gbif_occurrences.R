@@ -472,7 +472,7 @@ download_gbif_occurrences <- function(
   redownload_key <- NULL # a prepared GBIF key whose local zip was unusable
   .poll_failed <- NULL
   .pending_key <- FALSE
-  .served_from_cache_after_failure <- FALSE
+  .served_from_cache_fallback <- FALSE
 
   if (!is.null(meta_path) && file.exists(meta_path)) {
     meta <- readRDS(meta_path)
@@ -531,7 +531,10 @@ download_gbif_occurrences <- function(
         redownload_key <- meta$dl_key
         .pending_key <- TRUE
         message(sprintf(
-          "download_gbif_occurrences: a previous run left download key %s prepared but never fetched; re-fetching it (no new request).",
+          paste0(
+            "download_gbif_occurrences: a previous run left download key %s ",
+            "prepared but never fetched; re-fetching it (no new request)."
+          ),
           meta$dl_key
         ))
       }
@@ -752,7 +755,7 @@ download_gbif_occurrences <- function(
             dl_key <- meta$dl_key
             zip_path <- .fallback_zip
             old_zip_path <- NULL # it is the live zip again; nothing to clean up
-            .served_from_cache_after_failure <- TRUE
+            .served_from_cache_fallback <- TRUE
           } else {
             stop(sprintf(
               paste0(
@@ -761,7 +764,12 @@ download_gbif_occurrences <- function(
                 "check https://www.gbif.org/health for outages."
               ),
               dl_req$attempts, .err,
-              if (is.null(.fallback_zip)) " -- and no verified cached zip for this exact query exists to fall back on" else ""
+              if (is.null(.fallback_zip)) {
+                paste0(" -- and no verified cached zip for this exact ",
+                       "query exists to fall back on")
+              } else {
+                ""
+              }
             ), call. = FALSE)
           }
         } else {
@@ -811,7 +819,7 @@ download_gbif_occurrences <- function(
         dl_key <- meta$dl_key
         zip_path <- .fallback_zip
         old_zip_path <- NULL
-        .served_from_cache_after_failure <- TRUE
+        .served_from_cache_fallback <- TRUE
       } else {
         .gbif_record_pending_key(meta_path, dl_key, dest_dir_for = cache_dir,
                                    geometry = geometry)
@@ -827,7 +835,7 @@ download_gbif_occurrences <- function(
       }
     }
 
-    if (!isTRUE(.served_from_cache_after_failure)) {
+    if (!isTRUE(.served_from_cache_fallback)) {
     # Download zip to cache_dir (or tempdir if caching disabled)
     dest_dir <- if (!is.null(cache_dir)) {
       dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -934,7 +942,7 @@ download_gbif_occurrences <- function(
           dl_key <- meta$dl_key
           zip_path <- .fallback_zip
           old_zip_path <- NULL
-          .served_from_cache_after_failure <- TRUE
+          .served_from_cache_fallback <- TRUE
         } else {
           .gbif_record_pending_key(meta_path, dl_key, dest_dir_for = cache_dir,
                                    geometry = geometry)
@@ -953,7 +961,7 @@ download_gbif_occurrences <- function(
           ), call. = FALSE)
         }
       }
-      if (!isTRUE(.served_from_cache_after_failure)) message(sprintf(
+      if (!isTRUE(.served_from_cache_fallback)) message(sprintf(
         "  Zip saved to: %s (verified%s)", zip_path,
         if (is.null(.expected)) {
           " structurally"
@@ -968,7 +976,7 @@ download_gbif_occurrences <- function(
 
     # Save metadata -- only ever AFTER verification passes (and never when the
     # verified cached zip was used as a fallback: its metadata is already right).
-    if (!is.null(meta_path) && !isTRUE(.served_from_cache_after_failure)) {
+    if (!is.null(meta_path) && !isTRUE(.served_from_cache_fallback)) {
       saveRDS(
         list(
           dl_key = dl_key, zip_path = zip_path, timestamp = Sys.time(),
@@ -988,7 +996,7 @@ download_gbif_occurrences <- function(
       file.remove(old_zip_path)
       message(sprintf("  Removed previous cached zip: %s", old_zip_path))
     }
-    } # end !.served_from_cache_after_failure
+    } # end !.served_from_cache_fallback
   }
 
   # --- Import -----------------------------------------------------------------
@@ -1120,7 +1128,7 @@ download_gbif_occurrences <- function(
 
   # --- Attributes -------------------------------------------------------------
   attr(raw, "download_key") <- dl_key %||% NA_character_
-  attr(raw, "served_from_cache_after_failure") <- isTRUE(.served_from_cache_after_failure)
+  attr(raw, "served_from_cache_after_failure") <- isTRUE(.served_from_cache_fallback)
   attr(raw, "capped_keys") <- capped_keys
   attr(raw, "report_params") <- list(
     source     = "GBIF (async download)",

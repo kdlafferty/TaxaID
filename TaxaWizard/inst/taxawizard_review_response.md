@@ -354,3 +354,24 @@ release.
 - `.widget_code`
 - `workflow_engine`
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- Generated workflows no longer reproduce defects that were already fixed in
+  the packages they call. The affected snippets were regenerated against
+  current signatures, and an evidence block was added behind a placeholder so
+  a generated script can include or omit it.
+- A structural guard now runs at test time: every function named in a snippet
+  or in a workflow-graph edge must be a real export of the package it names.
+  This is the check that catches the next drift automatically.
+- `.extract_param_docs()` reads `doc$inputs`, the field the metadata actually
+  uses. It had been reading `doc$params`, which matched nothing, so every
+  generated parameter block had read "(no params)".

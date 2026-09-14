@@ -233,3 +233,32 @@ release.
 - `resolve_barcode_primers`
 - `verify_taxon_names`
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- `cache_ok(path, inputs)` -- **new export.** The staleness primitive: a cache
+  is rejected when any file it declares as an input is newer. Lifted verbatim
+  from three duplicated copies that had been pasted into individual workflows.
+- `taxaid_cache_report(extra_dirs, warn_gb)` -- **new export.** A
+  whole-machine view of every TaxaID cache, sorted by size, flagging large
+  stores and stores whose file count dwarfs their apparent size. It reports
+  and never deletes.
+- `list_cache_files(recursive = FALSE)` -- new argument, so a nested store can
+  be seen. It now also drops directories, which the previous code would have
+  handed to `file.remove()`.
+- `assign_sampling_group()` and `default_sampling_scheme()` -- **new exports.**
+  The detection-process classifier moved out of individual workflow files,
+  where each site's copy had drifted independently and produced the same class
+  of bug four separate times. A kingdom guard is the default. Two real gaps in
+  the shipped rules were fixed: `Liliopsida` was absent from the vascular-plant
+  clause, and `Zygnemophyceae` had never matched anything in the GBIF backbone.
+- `scientific_to_common()` caches `llm_parsed` per row, so a name the model
+  omits is no longer cached as "no common name" for every subsequent run.

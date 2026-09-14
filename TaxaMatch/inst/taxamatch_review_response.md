@@ -651,3 +651,16 @@ release.
 - `verify_local_corroborations`
 - `verify_removal_candidates`
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- `verify_removal_candidates()` roxygen corrected so the documented behaviour
+  matches the code. No behavioural change.

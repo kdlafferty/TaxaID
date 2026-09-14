@@ -674,3 +674,25 @@ release.
 - `suggest_unreferenced_species`
 - `update_prior_from_consensus`
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- `compute_group_priors(exclude_named_evidence = TRUE)` excludes rows carrying
+  a named evidence source from the group-level plausibility denominator. An
+  earlier form of this filter keyed on `prior_branch` and over-reached,
+  discarding the anonymous dark-diversity mirrors as well; it was corrected to
+  key on `evidence_sources` after a fast-workflow arm caught the regression.
+- `posterior_consensus(downrank_requires_candidate = TRUE)` refuses to narrow
+  a consensus to a taxon that is not in the observation's own candidate set.
+  Across four sites, 35 of 150 downranked rows had named a taxon outside it.
+- `combine_multisite_priors()` guards against differing presence-mixture
+  parameters across a group's site rows, blanking them with a warning that
+  names the affected candidates rather than silently picking one.

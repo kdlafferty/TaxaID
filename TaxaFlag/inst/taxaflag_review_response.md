@@ -511,3 +511,20 @@ release.
 - `review_spatial_context`
 - `taxaflag_clear_cache`
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- `check_gbif_tile_range(cache_dir = )` caches its verdicts, keyed on the
+  taxon key, rounded coordinates, buffer, zoom, escalation settings and base
+  URL. There is deliberately no expiry, since a range verdict does not spoil;
+  the cache age is reported instead via an attribute.
+- `taxaflag_clear_cache()` now covers both of this package's caches rather
+  than only the review-assignment cache.

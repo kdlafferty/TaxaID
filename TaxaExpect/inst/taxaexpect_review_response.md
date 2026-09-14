@@ -857,3 +857,21 @@ release.
 - `train_biodiversity_model`
 - `train_biodiversity_model_by_group`
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- `generate_domestic_food_priors()`'s internal `.norm_kingdom()` returns `NA`
+  for superkingdom-level values, so `Eukaryota`, `Bacteria` and `Archaea` no
+  longer register as a cross-kingdom homonym mismatch and silently discard a
+  candidate's local-evidence boost.
+- `generate_regional_proximity_evidence()` passes a tile-cache directory
+  through to the underlying GBIF tile-range check, so repeated runs reuse
+  verdicts instead of re-querying.

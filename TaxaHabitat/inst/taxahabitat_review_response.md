@@ -721,3 +721,20 @@ release.
 
 - `report_habitat`
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- `save_spatial_review_decisions()` warns when it is called with
+  `before = NULL` while non-NA habitats would be recorded as reassignments.
+  Called that way, it can freeze a habitat that no reviewer ever chose. A
+  survey of all four real call sites found none currently affected (0 frozen
+  habitats across 244,860 seeded decisions), so this is a guard against the
+  footgun rather than a fix for observed damage.

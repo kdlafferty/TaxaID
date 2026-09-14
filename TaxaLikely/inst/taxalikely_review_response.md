@@ -960,3 +960,47 @@ it still lists `compute_likelihoods`/`model_likelihoods` as live exported functi
 which is no longer accurate. See `TaxaLikely/CLAUDE.md`'s own Function Inventory and its
 2026-09-09 top session note for the current, living record.
 
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-13 / 2026-09-14)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. These changes were made in two concurrent sessions: a
+whole-ecosystem pre-publication review, and a cache-policy review. Per-change
+reasoning and verification status are recorded in this package's own
+`CLAUDE.md` and `NEWS.md`.
+
+- **Bimodal-H1 diagnostic added, then corrected the same day.** The first
+  version fired on real production data and was a false positive: percent
+  identity on a short fixed-length amplicon is discrete, so the distribution
+  is a comb of spikes at integer mismatch counts and a two-component Gaussian
+  always wins on BIC. The check now estimates the identity-per-mismatch
+  quantum from the data (`.estimate_score_quantum()`), smooths over it
+  deterministically before fitting (`.smooth_comb()`), requires the minority
+  component to carry at least 0.15 of the weight, and scales its separation
+  requirement to three quanta. The smoothing is confined to the diagnostic's
+  own model comparison and never reaches the likelihood model, so the real
+  perfect-match spike at 100 is preserved everywhere it matters.
+- `fetch_ncbi_reference_sequences()` gains `count_attempts` (retry with
+  backoff) and `on_count_failure` (`"warn"` or `"error"`), plus a
+  `count_failures` attribute on every return path. A failed NCBI count query
+  used to remove a taxon from the reference database silently; on one real run
+  this cost seven genera their entire reference representation and left 352
+  species-level calls resting on no reference data of their own. In `"error"`
+  mode the message states the consequence and prints numbered instructions.
+- Cache-before-count and FASTA caching: cached taxa are served before the
+  count loop runs; `.fetch_fasta_cached()` adds a per-accession FASTA store;
+  `.ref_cache_file()`/`.ref_cache_stem()`/`.ref_cache_stem_of()` make the
+  cache key a single source of truth; `.ref_cache_grammar()` states the
+  eviction rule as one regular expression;
+  `.ref_cache_unreachable()`/`.ref_cache_evict()` and
+  `evict_unreachable_cache` add write-path eviction;
+  `taxalikely_evict_unreachable_cache()` is a new export, dry-run by default;
+  `taxalikely_clear_cache()` is recursive and can finally reach the nested
+  store.
+- A dead singleton self-match branch and its warning were removed.
+- A correction worth recording: a check reported here as verifying that
+  certain genera had no species-specific H1 entries had read a column that
+  does not exist, so it returned zero for every genus. The conclusion happened
+  to be right; the evidence was not.
