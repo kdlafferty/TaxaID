@@ -24,10 +24,22 @@
 # differing presence-mixture pricing, everything else about them left real.
 # Arm D runs against the full real 2,185,193-row occurrence checkpoint at the
 # repo root (read-only). Arm E runs the real trained model against real match
-# data for as many of the three named sites as have a real priors fixture to
-# feed identify_confident_observations() -- GreatLakes and PtCon 12S do not
-# (only PtCon 18S has a taxaexpect_priors fixture in this directory), so both
-# are SKIPPED, loudly, rather than fed a fabricated priors table.
+# data for as many named sites as have a real priors fixture to feed
+# identify_confident_observations() -- PtCon 18S and (added 2026-09-13, later
+# the same day) PtCon 12S run-2 both do; GreatLakes does not and is SKIPPED,
+# loudly, rather than fed a fabricated priors table.
+#
+# ADDED 2026-09-13, later the same day: a SECOND downranking arm ("ARM B, 12S
+# REDISCOVERY") and PtCon 12S run-2's own Arm E entry, both built on NEW
+# ptcon12s_r2_fast_* fixtures (a different, later, real PtConception 12S run
+# than the pre-existing ptcon12s_fast_* fixtures -- see README.md's file table)
+# curated specifically around the 11 observations that genuinely downranked in
+# that real run. The 18S downranking arm above is a real, honest null on its
+# OWN fixture (species_reference OLD==NEW there); the new 12S arm below is
+# where the OLD-vs-NEW species_reference distinction is actually exercised on
+# real data, and surfaces a genuine FINDING about what this fast-check's
+# simplified Stage 0-1 pipeline can and cannot reproduce -- see that arm's own
+# header comment.
 # ==============================================================================
 
 t0 <- Sys.time()
@@ -348,6 +360,249 @@ add_summary(sprintf(
 ))
 
 # ==============================================================================
+# ARM B, 12S REDISCOVERY -- the SAME downranking gate, exercised against REAL
+# PtConception 12S run-2 (2026-09-13) data instead of the 18S fixture above.
+# 18S's own species_reference happened to be OLD==NEW (every resident_undetected
+# row there is anonymous), so the branch-filter half of the fix was never
+# actually exercised by the arm above. PtCon 12S run-2's real priors DO carry a
+# real named-evidence/anonymous-mirror split (258 vs 37), so this arm can
+# finally test the OLD-vs-NEW species_reference distinction on real data, using
+# fixtures built specifically to guarantee the 11 observations that genuinely
+# downranked in that real run are present (ptcon12s_r2_fast_*, new prefix --
+# distinct from the pre-existing ptcon12s_fast_* fixtures/numbers). Runs its
+# OWN Stage 0-1 (a second, real, ~226-name live NCBI backbone call inside this
+# join_priors() -- larger than the 18S Stage 0-1's ~10-name call above, still
+# comfortably fast).
+# ==============================================================================
+cat("\n=== ARM B, 12S REDISCOVERY: downranking gate on REAL PtCon 12S run-2 fixtures ===\n")
+
+p12r2_match_path  <- file.path(FW_DIR, "ptcon12s_r2_fast_match_obj.rds")
+p12r2_lik_path    <- file.path(FW_DIR, "ptcon12s_r2_fast_lik_model_calibrated.rds")
+p12r2_priors_path <- file.path(FW_DIR, "ptcon12s_r2_fast_taxaexpect_priors.rds")
+stopifnot(file.exists(p12r2_match_path), file.exists(p12r2_lik_path), file.exists(p12r2_priors_path))
+
+p12r2_match  <- readRDS(p12r2_match_path)
+p12r2_lik    <- readRDS(p12r2_lik_path)
+p12r2_priors <- readRDS(p12r2_priors_path)
+
+cat(sprintf(
+  "Fixture: %d observation(s), %d match row(s); %d prior row(s) (prior_branch: %s)\n",
+  length(unique(p12r2_match$observation_id)), nrow(p12r2_match), nrow(p12r2_priors),
+  paste(sprintf("%s=%d", names(table(p12r2_priors$prior_branch)),
+                as.integer(table(p12r2_priors$prior_branch))), collapse = ", ")
+))
+
+# The 11 observation_ids known (from the real production consensus checkpoint,
+# PtConMifishSchulte_consensus_final.rds, 2026-09-13) to be the ONLY 11
+# downranking events in the whole 13,440-observation run. 2 are known-bad
+# (the gate must block them); 9 are legitimate regression-guard cases (the
+# gate must NOT over-block these).
+P12R2_REQUIRED_IDS <- c(
+  "ESV_010679", "ESV_011685", "ESV_019487", "ESV_024690", "ESV_054140",
+  "ESV_079119", "ESV_088840", "ESV_109571", "ESV_109591", "ESV_109598",
+  "ESV_113285"
+)
+P12R2_BAD_IDS  <- c("ESV_054140", "ESV_109598")  # Sardinops sagax / Oncorhynchus genus, must be BLOCKED
+P12R2_GOOD_IDS <- setdiff(P12R2_REQUIRED_IDS, P12R2_BAD_IDS)  # Bison + Gasterosteus x6 + Fundulus x2
+
+p12r2_likelihoods <- TaxaLikely::evaluate_likelihoods(
+  match_df     = p12r2_match,
+  model_params = p12r2_lik,
+  rank_system  = c("family", "genus", "species"),
+  n_sims       = 0L
+)$likelihoods
+cat(sprintf("evaluate_likelihoods(): %d row(s)\n", nrow(p12r2_likelihoods)))
+
+p12r2_focal_grid <- unique(stats::na.omit(p12r2_priors$grid_id))
+stopifnot(length(p12r2_focal_grid) == 1L)
+p12r2_site <- list(grid_id = p12r2_focal_grid, main_habitat = "Marine")
+
+p12r2_joined <- TaxaAssign::join_priors(
+  likelihoods       = p12r2_likelihoods,
+  taxaexpect_priors = p12r2_priors,
+  site              = p12r2_site,
+  rank_system       = c("order", "family", "genus", "species"),
+  backbone_id       = 4L
+)
+cat(sprintf("join_priors(): %d row(s)\n", nrow(p12r2_joined)))
+
+p12r2_posterior_df <- TaxaAssign::compute_posterior(p12r2_joined, n_sims = 0)
+cat(sprintf("compute_posterior(): %d row(s)\n", nrow(p12r2_posterior_df)))
+
+# species_reference OLD (every row with a real taxon_name) vs NEW (exclude
+# rows with a real evidence_sources value) -- matches what production
+# workflows now do: verified directly against this real priors table that
+# every one of the 258 named-evidence rows is prior_branch ==
+# "resident_undetected", and the other 37 resident_undetected rows are
+# already anonymous (taxon_name = NA) -- so filtering on evidence_sources here
+# is equivalent, on this real data, to production's own prior_branch %in%
+# c("resident_observed","transport") filter.
+p12r2_hier_cols <- intersect(c("taxon_name", "genus", "family", "order", "class"), names(p12r2_priors))
+p12r2_species_ref_old <- unique(p12r2_priors[!is.na(p12r2_priors$taxon_name), p12r2_hier_cols, drop = FALSE])
+.p12r2_has_evidence <- !is.na(p12r2_priors$evidence_sources) & nzchar(as.character(p12r2_priors$evidence_sources))
+p12r2_species_ref_new <- unique(
+  p12r2_priors[!.p12r2_has_evidence & !is.na(p12r2_priors$taxon_name), p12r2_hier_cols, drop = FALSE]
+)
+cat(sprintf(
+  "species_reference rows -- OLD (every named row): %d; NEW (evidence_sources excluded): %d\n",
+  nrow(p12r2_species_ref_old), nrow(p12r2_species_ref_new)
+))
+
+p12r2_rank_lookup <- p12r2_priors[!is.na(p12r2_priors$taxon_name), p12r2_hier_cols, drop = FALSE]
+p12r2_rank_lookup <- p12r2_rank_lookup[!duplicated(p12r2_rank_lookup$taxon_name), , drop = FALSE]
+rownames(p12r2_rank_lookup) <- p12r2_rank_lookup$taxon_name
+
+.p12r2_get_rank_value <- function(taxon, rank) {
+  if (rank == "species" || is.na(taxon)) return(taxon)
+  val <- if (taxon %in% rownames(p12r2_rank_lookup)) p12r2_rank_lookup[taxon, rank] else NA_character_
+  if ((is.null(val) || is.na(val)) && rank == "genus") val <- sub(" .*", "", taxon)
+  val
+}
+.p12r2_count_outside <- function(consensus_df, finest_rank = "species") {
+  dr <- which(consensus_df$downranked %in% TRUE)
+  if (length(dr) == 0L) return(0L)
+  n_outside <- 0L
+  for (i in dr) {
+    ct <- consensus_df$consensus_taxon[i]
+    cr <- consensus_df$consensus_rank[i]
+    plaus <- consensus_df$plausible_taxa[[i]]
+    plaus <- if (is.null(plaus)) character(0) else as.character(plaus)
+    plaus <- plaus[!is.na(plaus) & nzchar(plaus)]
+    if (ct %in% plaus) next
+    if (!is.na(cr) && cr != finest_rank) {
+      plaus_rank_vals <- vapply(plaus, .p12r2_get_rank_value, character(1), rank = cr)
+      if (ct %in% plaus_rank_vals) next
+    }
+    n_outside <- n_outside + 1L
+  }
+  n_outside
+}
+
+p12r2_grid <- expand.grid(
+  species_ref_label = c("OLD (every row)", "NEW (evidence_sources excluded)"),
+  downrank_requires_candidate = c(FALSE, TRUE),
+  stringsAsFactors = FALSE
+)
+p12r2_grid$n_downranked <- NA_integer_
+p12r2_grid$n_outside    <- NA_integer_
+p12r2_cons_by_combo <- vector("list", nrow(p12r2_grid))
+
+for (i in seq_len(nrow(p12r2_grid))) {
+  sref <- if (p12r2_grid$species_ref_label[i] == "OLD (every row)") p12r2_species_ref_old else p12r2_species_ref_new
+  cons <- TaxaAssign::posterior_consensus(
+    p12r2_posterior_df,
+    rank_system                 = RANK_SYSTEM,
+    species_reference           = sref,
+    downrank_requires_candidate = p12r2_grid$downrank_requires_candidate[i]
+  )
+  p12r2_grid$n_downranked[i] <- sum(cons$downranked %in% TRUE)
+  p12r2_grid$n_outside[i]    <- .p12r2_count_outside(cons)
+  p12r2_cons_by_combo[[i]]   <- cons
+}
+
+cat("\nFour-arm table (species_reference x downrank_requires_candidate), PtCon 12S run-2:\n")
+print(p12r2_grid, row.names = FALSE)
+
+p12r2_new_true_idx <- which(
+  p12r2_grid$species_ref_label == "NEW (evidence_sources excluded)" &
+    p12r2_grid$downrank_requires_candidate == TRUE
+)
+p12r2_recommended <- p12r2_cons_by_combo[[p12r2_new_true_idx]]
+p12r2_tracked <- p12r2_recommended[
+  p12r2_recommended$observation_id %in% P12R2_REQUIRED_IDS,
+  c("observation_id", "consensus_taxon", "consensus_rank", "downranked")
+]
+p12r2_tracked <- p12r2_tracked[order(p12r2_tracked$observation_id), ]
+cat("\nStatus of the 11 real-run-2 downranked observations under NEW+TRUE (recommended):\n")
+print(p12r2_tracked, row.names = FALSE)
+
+p12r2_bad_downranked  <- sum(p12r2_tracked$observation_id %in% P12R2_BAD_IDS  & p12r2_tracked$downranked %in% TRUE)
+p12r2_good_downranked <- sum(p12r2_tracked$observation_id %in% P12R2_GOOD_IDS & p12r2_tracked$downranked %in% TRUE)
+
+cat(sprintf(
+  "\nExpectation: with the gate ON (NEW+TRUE), the 2 known-bad cases (%s) should be BLOCKED\n(stay at genus, downranked=FALSE) while the 9 legitimate cases (%s) should still downrank.\n",
+  paste(P12R2_BAD_IDS, collapse = ", "), paste(P12R2_GOOD_IDS, collapse = ", ")
+))
+cat(sprintf(
+  "Observed: %d/%d known-bad cases still downranked (want 0); %d/%d known-good cases downranked (want %d).\n",
+  p12r2_bad_downranked, length(P12R2_BAD_IDS), p12r2_good_downranked, length(P12R2_GOOD_IDS), length(P12R2_GOOD_IDS)
+))
+
+# PRIMARY assertion is on the AGGREGATE, not on the 11 curated ids.
+#
+# Chasing those ids turned out to be the wrong target, for a reason worth
+# recording: ESV_054140's candidates in this run's own lik_result are
+# Spratelloides / Clupeidae / S. delicatulus -- no Sardinops anywhere -- yet its
+# final consensus IS Sardinops sagax. The candidate set that produced the real
+# downranks is therefore NOT recoverable from any saved checkpoint: the stage
+# that created it sits between lik_result and consensus and is not itself
+# checkpointed. No reconstruction from saved artefacts can reproduce those rows,
+# so an id-level assertion here could only ever fail.
+#
+# What this fixture CAN do, and does, is exercise the gate on the real
+# downranking events that the reconstructable pipeline does produce. Three
+# clauses, the first of which stops the test passing vacuously:
+#   (1) the fixture must actually CONTAIN the failure mode -- some rows narrow
+#       outside their own candidate set before the fix;
+#   (2) with the NEW reference and the gate ON, that count must be 0;
+#   (3) the gate must not achieve (2) by simply blocking everything -- the bulk
+#       of legitimate downranks must survive.
+.is_old <- grepl("^OLD", as.character(p12r2_grid$species_ref_label))
+.gate   <- as.logical(p12r2_grid$downrank_requires_candidate)
+p12r2_out_old_false <- p12r2_grid$n_outside[   .is_old & !.gate][1]
+p12r2_out_new_true  <- p12r2_grid$n_outside[  !.is_old &  .gate][1]
+p12r2_dr_old_false  <- p12r2_grid$n_downranked[.is_old & !.gate][1]
+p12r2_dr_new_true   <- p12r2_grid$n_downranked[!.is_old &  .gate][1]
+
+p12r2_contains_failure <- p12r2_out_old_false > 0L
+p12r2_failure_closed   <- p12r2_out_new_true == 0L
+p12r2_kept_legit       <- p12r2_dr_new_true >= 0.75 * p12r2_dr_old_false
+
+p12r2_assertion_holds <- p12r2_contains_failure && p12r2_failure_closed && p12r2_kept_legit
+
+cat(sprintf(
+  "\nPRIMARY (aggregate) check on %d real observations:\n  fixture contains the failure mode (outside > 0 before the fix): %s (%d)\n  gate closes it (outside == 0 after):                          %s (%d)\n  legitimate downranks retained (>= 75%% of %d):                 %s (%d)\n",
+  length(unique(p12r2_posterior_df$observation_id)),
+  p12r2_contains_failure, p12r2_out_old_false,
+  p12r2_failure_closed,   p12r2_out_new_true,
+  p12r2_dr_old_false, p12r2_kept_legit, p12r2_dr_new_true
+))
+
+if (p12r2_bad_downranked != 0L || p12r2_good_downranked != length(P12R2_GOOD_IDS)) {
+  cat(
+    "\nWhy the 11 curated ids are NOT the assertion (structural, not a defect): directly\n",
+    "verified against match_obj_restored that ESV_054140's own raw candidate rows are\n",
+    "BOTH 'Spratelloides delicatulus' (85.4/84.8% score) and ESV_109598's are 'Salmo salar'/\n",
+    "'Salvelinus leucomaenis' -- NEITHER Sardinops NOR Oncorhynchus appears ANYWHERE in\n",
+    "match_obj_restored for these two observations. The real production run's wrong\n",
+    "Sardinops sagax / Oncorhynchus-genus downrank could therefore NOT have originated in\n",
+    "this Arm's Stage 0-1 pipeline (evaluate_likelihoods -> join_priors ->\n",
+    "compute_posterior) at all -- those genera only ever entered as hypotheses in the real\n",
+    "production run via restore_suppressed_candidates() and/or\n",
+    "expand_unreferenced_hypotheses() (later production stages that need a seq_matrix/\n",
+    "model_params, or a constructed unreferenced_df, that this fast-check deliberately\n",
+    "does not fabricate). Most of the 9 'legitimate' cases likely fail to reach a downrank\n",
+    "event here for the SAME structural reason -- their real production downrank source is\n",
+    "one of those same later stages, not this Arm's own simplified 3-function pipeline. The\n",
+    "downrank_requires_candidate gate mechanism itself IS still exercised and behaves as\n",
+    "designed in aggregate on this fixture (see the four-arm n_outside column above, which\n",
+    "the gate drives toward 0) -- just not attributably to these 11 specific\n",
+    "observation_ids under this Arm's reduced pipeline. This is a genuine limitation of\n",
+    "reconstructing only Stage 0-1 (matching the existing 18S Arm B's own documented\n",
+    "'real, honest null' precedent above), not a defect in the gate itself.\n",
+    sep = ""
+  )
+}
+
+arm_b_r2_status <- if (p12r2_assertion_holds) "PASS" else "FINDING"
+add_summary(sprintf(
+  "ARM B, 12S REAL DATA (downranking gate): %s -- narrowed-outside-candidates %d -> %d with the fix, while %d of %d downranks are retained; species_reference OLD=%d rows vs NEW=%d rows. (The 11 curated ids are NOT reproducible from saved checkpoints -- see the note above; the assertion is on the aggregate.)",
+  arm_b_r2_status, p12r2_out_old_false, p12r2_out_new_true,
+  p12r2_dr_new_true, p12r2_dr_old_false,
+  nrow(p12r2_species_ref_old), nrow(p12r2_species_ref_new)
+))
+
+# ==============================================================================
 # ARM C -- multi-site presence-mixture guard (combine_multisite_priors()),
 # new 2026-09-13. SEMI-SYNTHETIC: this fixture has no prior_mix_* columns
 # (predates curve pricing at this site), so real candidate rows from `joined`
@@ -546,26 +801,28 @@ arm_e_ptcon18s <- run_bimodality_arm("PtCon 18S (REAL priors fixture available)"
 
 gl_match_path <- file.path(FW_DIR, "greatlakes_fast_match_obj.rds")
 gl_model_path <- file.path(FW_DIR, "greatlakes_fast_lik_model_calibrated.rds")
-p12_match_path <- file.path(FW_DIR, "ptcon12s_fast_match_obj.rds")
-p12_model_path <- file.path(FW_DIR, "ptcon12s_fast_lik_model_calibrated.rds")
 
 cat("\n--- GreatLakes ---\n")
 cat("SKIPPED: no taxaexpect_priors fixture exists for GreatLakes in diagnostics/fast_workflows.\n")
 cat("calibrate_query_noise() requires a real priors data frame (taxon_name/taxon_name_rank/theta_mean)\n")
 cat("to call identify_confident_observations() -- fabricating one would defeat the point of this check.\n")
 
-cat("\n--- PtCon 12S ---\n")
-cat("SKIPPED: no taxaexpect_priors fixture exists for PtCon 12S in diagnostics/fast_workflows\n")
-cat("(README.md: this fixture predates real priors -- run_fast_smoketest.R uses a flat placeholder,\n")
-cat("which calibrate_query_noise() cannot honestly stand in for).\n")
+# PtCon 12S run-2: unblocked 2026-09-13 via the same ptcon12s_r2_fast_* fixtures
+# built for Arm B, 12S REDISCOVERY above (real taxaexpect_priors, 783 rows,
+# 258 named-evidence + 37 anonymous-mirror). p12r2_match/p12r2_lik/p12r2_priors
+# were already loaded there and are reused here unchanged, matching this
+# arm's own "never fabricate a priors table" rule -- this one is real.
+arm_e_ptcon12s_r2 <- run_bimodality_arm("PtCon 12S run-2 (REAL priors fixture available, 2026-09-13)",
+                                         p12r2_match, p12r2_lik, p12r2_priors)
 
 arm_e_note <- if (isTRUE(arm_e_ptcon18s$n_confident_obs < 30L)) {
   " (fixture too small for the bimodality check to run at all -- calibrate_query_noise() needs >=30 confident observations)"
 } else ""
-arm_e_status <- if (isTRUE(arm_e_ptcon18s$flagged)) "FINDING" else "PASS"
+arm_e_status <- if (isTRUE(arm_e_ptcon18s$flagged) || isTRUE(arm_e_ptcon12s_r2$flagged)) "FINDING" else "PASS"
 add_summary(sprintf(
-  "ARM E (bimodal-H1 diagnostic): %s -- PtCon 18S n_confident_obs=%s, flagged=%s%s; GreatLakes SKIPPED (no priors fixture); PtCon 12S SKIPPED (no priors fixture)",
-  arm_e_status, arm_e_ptcon18s$n_confident_obs, arm_e_ptcon18s$flagged, arm_e_note
+  "ARM E (bimodal-H1 diagnostic): %s -- PtCon 18S n_confident_obs=%s, flagged=%s%s; PtCon 12S run-2 n_confident_obs=%s, flagged=%s; GreatLakes SKIPPED (no priors fixture)",
+  arm_e_status, arm_e_ptcon18s$n_confident_obs, arm_e_ptcon18s$flagged, arm_e_note,
+  arm_e_ptcon12s_r2$n_confident_obs, arm_e_ptcon12s_r2$flagged
 ))
 
 # ==============================================================================

@@ -732,3 +732,52 @@ placeholders are substituted (30 snippets, 0 failures). The existing guard
 proves the functions named in a snippet are real; it does not prove the
 template emits valid R, which is what a user actually runs -- and the new
 evidence block is the largest snippet in the set at 17 placeholders.
+
+---
+
+## N. Arms B and E now have a fixture that exercises them (2026-09-13, late)
+
+Section M closed with "a fixture that can exercise B and E is the obvious next
+addition". Built from the completed PtConception 12S run 2 (read-only, files
+many hours stable), with a new `ptcon12s_r2_fast_` prefix so the existing
+fixtures and their documented numbers are untouched: a 400-observation /
+3,488-row match subset (78.7 KB), the real 783-row priors copied whole (32.5 KB
+-- its 258 named-evidence + 37 anonymous-mirror mix is the point), and the
+calibrated model from that same run.
+
+**ARM B now measures the fix on 400 real observations:**
+
+| species_reference | gate | downranked | narrowed outside their own candidates |
+|---|---|---|---|
+| OLD (every row) | off | 21 | **5** |
+| NEW (evidence excluded) | off | 21 | 1 |
+| OLD | on | 16 | 0 |
+| NEW | on | **20** | **0** |
+
+The two changes together remove all five mis-narrowings while retaining 20 of
+21 legitimate downranks. The assertion is three-clause and deliberately cannot
+pass vacuously: the fixture must CONTAIN the failure mode (outside > 0 before),
+the fix must close it (outside == 0 after), and it must not do so by blocking
+everything (>= 75% of downranks retained).
+
+**A structural finding, recorded because it bounds what any fast check here can
+validate.** The 11 observations that actually downranked in the real run were
+curated into the fixture, and they cannot be reproduced. In that run's own
+`lik_result`, ESV_054140's candidates are *Spratelloides* / *Clupeidae* /
+*S. delicatulus* -- no *Sardinops* anywhere -- yet its final consensus IS
+*Sardinops sagax*. The candidate set that produced the real downranks is
+therefore not recoverable from any saved artefact: the stage that creates it
+sits between `lik_result` and the consensus and is not checkpointed. An
+id-level assertion could only ever fail, which is why the assertion is on the
+aggregate. Anyone reconstructing production behaviour from checkpoints should
+know this boundary exists.
+
+**ARM E now runs for real:** PtCon 12S run 2 yields 181 confident observations
+(18 genera), comfortably past the 30 the check requires, and the bimodality
+diagnostic does NOT flag. That is the negative control worth having -- real
+single-platform Illumina 12S data reads unimodal, so the diagnostic is not
+firing on ordinary production data. The Nanopore case that motivated it remains
+untested here; the CaliforniaIntertidal data is where that lives.
+
+Arm E also surfaced the expected, separate `offset_form` fallback from linear to
+constant, consistent with Section 0.4's detection-floor note.
