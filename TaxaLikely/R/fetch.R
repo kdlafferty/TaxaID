@@ -215,6 +215,20 @@ utils::globalVariables(c(
       dplyr::bind_rows(lapply(summ, function(x) {
         data.frame(
           acc = as.character(if (is.null(x$caption)) NA else x$caption),
+          # acc_version: the SAME accession WITH its version suffix
+          # ("AB000667.1" where `caption` gives "AB000667"). Live-verified
+          # on this same already-batched ESummary call -- zero extra NCBI
+          # round trips, exactly like create_date below.
+          #
+          # `acc` deliberately stays the UNVERSIONED caption: it is what
+          # composite_id is derived from, what .fetch_locations_batched()
+          # must be joined on (GBSeq_primary-accession carries no version),
+          # and what the accession dedupe just above relies on to collapse
+          # two revisions of one record. acc_version exists solely to key
+          # the FASTA store -- see .fetch_fasta_cached().
+          acc_version = as.character(
+            if (is.null(x$accessionversion)) NA else x$accessionversion
+          ),
           title = as.character(if (is.null(x$title)) NA else x$title),
           taxid = as.character(if (is.null(x$taxid)) NA else x$taxid),
           slen = as.numeric(if (is.null(x$slen)) NA else x$slen),
@@ -296,6 +310,244 @@ utils::globalVariables(c(
 }
 
 
+#' Selection parameters that shape a cached object but are NOT in its key
+#'
+#' (2026-09-14.) The reference-cache key captures everything that decides
+#' which sequences are FETCHED (barcode_term, length and date bounds,
+#' rank_system, the out-of-range flags) but not everything that decides
+#' which are KEPT. The cached object is written after blacklist filtering
+#' and after \code{slice_sample()} downsampling (\code{fetch.R}, "Blacklist
+#' filter" and the \code{max_per_species}/\code{max_per_genus} block), so a
+#' cache built with \code{max_per_species = 10} would be served unchanged to
+#' a later call asking for 50 -- silently under-filled, the same class of
+#' quiet degradation as the \code{barcode_term} and \code{rank_system} gaps
+#' that were previously fixed by widening the key.
+#'
+#' Widening the key again would orphan all ~3,516 existing cache files at
+#' once, which is the growth mechanism P5's eviction exists to stop. So
+#' instead these parameters are STORED INSIDE the cached object and verified
+#' on read: a mismatch is a cache miss, and nothing is orphaned. A legacy
+#' file written before this attribute existed cannot be verified; it is
+#' accepted, with one warning per call naming how many.
+#' @noRd
+.sel_params <- function(max_per_species, max_per_genus, blacklist_regex) {
+  list(
+    max_per_species = max_per_species,
+    max_per_genus = max_per_genus,
+    blacklist_regex = blacklist_regex
+  )
+}
+
+#' Is a cached object's stored selection parameters compatible with this call?
+#'
+#' Returns "ok", "legacy" (no attribute -- unverifiable, accepted) or
+#' "mismatch" (re-fetch).
+#' @noRd
+.sel_params_status <- function(meta, current) {
+  stored <- attr(meta, "sel_params")
+  if (is.null(stored)) {
+    return("legacy")
+  }
+  if (identical(stored, current)) "ok" else "mismatch"
+}
+
+
+#' The invariant head of a reference-cache file name: prefix + taxon + barcode
+#'
+#' Everything before the first key component that has ever been added,
+#' removed or made conditional. Two files share a stem exactly when they are
+#' successive cache generations for the SAME taxon and the SAME barcode, so
+#' this is what scopes eviction to one taxon rather than prefix-matching,
+#' which would let \code{Abudefduf_} also match \code{Abudefduf_saxatilis_}.
+#' @noRd
+.ref_cache_stem <- function(name, barcode_term, prefix = "") {
+  paste0(
+    prefix,
+    gsub("[^A-Za-z0-9]", "_", name), "_",
+    gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
+  )
+}
+
+
+#' Build the cache-file path for one taxon's reference metadata
+#'
+#' Single source of truth for the reference-cache key, so the priority and
+#' broad-search paths cannot drift apart, and so the key can be computed
+#' BEFORE the count query that used to gate it (see the "cache before
+#' count" note in \code{fetch_ncbi_reference_sequences()}).
+#'
+#' Every argument that shapes the CONTENT of the cached object is part of
+#' the key. The history here is a series of real staleness crashes, each
+#' fixed by widening the key: \code{barcode_term} (Session 159),
+#' \code{rank_system} (the cached object is post-taxonomy-merge, so a
+#' narrower rank_system's cache hard-crashes a wider call at the
+#' \code{keep_cols} subset), \code{keep_out_of_range} (the cached object is
+#' fully post-filter, so a cache built with FALSE genuinely lacks
+#' out-of-range rows), and the length and date bounds. Do not drop a
+#' component without re-reading those notes.
+#' @noRd
+.ref_cache_file <- function(cache_dir, name, barcode_term, min_len, max_len,
+                            min_date, max_date, keep_out_of_range,
+                            max_out_of_range_per_species,
+                            max_out_of_range_len, rank_system, prefix = "") {
+  if (is.null(cache_dir)) {
+    return(NULL)
+  }
+  stem <- .ref_cache_stem(name, barcode_term, prefix)
+  date_sfx <- gsub("[^0-9]", "", paste0(
+    if (is.null(min_date)) "X" else min_date, "_",
+    if (is.null(max_date)) "X" else max_date
+  ))
+  oor_sfx <- if (keep_out_of_range) {
+    sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len)
+  } else {
+    ""
+  }
+  rank_sfx <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
+  file.path(
+    cache_dir,
+    paste0(
+      stem,
+      "_l", min_len, "_", max_len,
+      "_d", date_sfx, oor_sfx, rank_sfx, "_meta.rds"
+    )
+  )
+}
+
+
+#' Every file name `.ref_cache_file()` can produce, as one regular expression
+#'
+#' (2026-09-14 cache policy, P5.) Content-keyed caching with no eviction does
+#' not REPLACE a generation when the key changes -- it DOUBLES it. Every
+#' widening above was correct and was made in response to a real staleness
+#' crash, and every one silently orphaned the entire previous generation:
+#' 1,584 of 3,517 meta files on the development machine (45%) predate the
+#' \code{rank_sfx} widening.
+#'
+#' This is the eviction primitive, and it is a PROOF rather than a
+#' heuristic. \code{rank_sfx} is appended unconditionally, so no argument
+#' combination can produce a name lacking \code{_rk-}; more generally, a
+#' file whose name this grammar does not match cannot be produced by the
+#' current \code{.ref_cache_file()} for ANY arguments, and therefore can
+#' never be hit again. That is what makes deleting it safe.
+#'
+#' \strong{Keep this in lockstep with \code{.ref_cache_file()}.} A widening
+#' that is not reflected here leaves the superseded generation on disk
+#' forever; a widening reflected here but not in the key would delete LIVE
+#' files. \code{test-fetch-cache-eviction.R} pins the two together by
+#' generating names over a grid of argument combinations and asserting every
+#' one matches.
+#'
+#' Note what it deliberately does NOT cover: two files differing only in
+#' their length bounds (\code{_l100_600} vs \code{_l100_5000}) are different
+#' QUERIES, not successive generations, and a caller may legitimately want
+#' both. Same for two different \code{rank_system} sets -- both are in live
+#' use here (12S/18S use family-genus-species, GreatLakes the seven-rank
+#' system). Only an unproducible SHAPE is evictable.
+#' @noRd
+.ref_cache_grammar <- function() {
+  paste0(
+    "^.+", # stem: prefix + sanitised taxon + sanitised barcode
+    "_l[0-9]+_[0-9]+", # length window
+    "_d[0-9]*", # date bounds; digits only, empty when both are NULL
+    "(_oor[0-9]+_l[0-9]+)?", # out-of-range settings, only when kept
+    "_rk-[a-z0-9-]*", # rank_system -- UNCONDITIONAL, hence the proof
+    "_meta\\.rds$"
+  )
+}
+
+
+#' Reference-cache files in `cache_dir` that no call can ever hit again
+#'
+#' Non-recursive by design: the \code{fasta/} store is a different
+#' file-per-key cache with a different key, and nothing here can reason
+#' about it.
+#'
+#' @param cache_dir Directory to scan.
+#' @param stem Optional. When supplied, restrict the result to files sharing
+#'   this \code{.ref_cache_stem()} -- i.e. the same taxon and barcode. This
+#'   is the scoping used by the automatic write-path eviction; the explicit
+#'   whole-store sweep passes \code{NULL}.
+#' @return Character vector of full paths, possibly empty.
+#' @noRd
+.ref_cache_unreachable <- function(cache_dir, stem = NULL) {
+  if (is.null(cache_dir) || !dir.exists(cache_dir)) {
+    return(character(0L))
+  }
+  f <- list.files(cache_dir, pattern = "_meta\\.rds$", full.names = TRUE)
+  if (length(f) == 0L) {
+    return(character(0L))
+  }
+  f <- f[!grepl(.ref_cache_grammar(), basename(f))]
+  if (length(f) == 0L || is.null(stem)) {
+    return(f)
+  }
+  f[.ref_cache_stem_of(basename(f)) == stem]
+}
+
+
+#' Recover the stem from an existing cache-file name
+#'
+#' Parses right-to-left, because the stem itself can contain underscores
+#' (a taxon name with a space, a multi-term barcode) while every key
+#' component appended after it cannot.
+#' @noRd
+.ref_cache_stem_of <- function(basenames) {
+  x <- sub("_meta\\.rds$", "", basenames)
+  x <- sub("_rk-[a-z0-9-]*$", "", x)
+  x <- sub("_oor[0-9]+_l[0-9]+$", "", x)
+  x <- sub("_d[0-9]*$", "", x)
+  sub("_l[0-9]+_[0-9]+$", "", x)
+}
+
+
+#' Largest file the automatic write-path eviction will delete without asking
+#'
+#' Part 5 decision 3 (2026-09-14): auto-evict the small metadata \code{.rds}
+#' files; anything large reports and waits for an explicit call. A meta file
+#' is ~1 KB, so in practice this never fires -- it is a structural guard, so
+#' that a future cache object growing by three orders of magnitude cannot
+#' quietly turn an automatic sweep into a multi-gigabyte deletion.
+#' @noRd
+.REF_CACHE_AUTO_EVICT_MAX_MB <- 5
+
+
+#' Delete the unreachable cache files for one taxon, and say what went
+#'
+#' Called from the cache WRITE path only: a run that writes a new generation
+#' for a taxon is exactly the moment the old generation for that taxon
+#' becomes dead weight, which is what turns a future key widening from
+#' "doubles the cache" into "replaces it". Scoped to one stem and to the
+#' provable case; the whole-store sweep is the explicit, dry-run-by-default
+#' \code{taxalikely_evict_unreachable_cache()}.
+#' @noRd
+.ref_cache_evict <- function(cache_dir, stem) {
+  dead <- .ref_cache_unreachable(cache_dir, stem = stem)
+  if (length(dead) == 0L) {
+    return(invisible(0L))
+  }
+  mb <- file.size(dead) / 1024^2
+  big <- !is.na(mb) & mb > .REF_CACHE_AUTO_EVICT_MAX_MB
+  if (any(big)) {
+    message(sprintf(
+      "  Cache: %d unreachable file(s) over %g MB left in place; remove with taxalikely_evict_unreachable_cache().",
+      sum(big), .REF_CACHE_AUTO_EVICT_MAX_MB
+    ))
+    dead <- dead[!big]
+    mb <- mb[!big]
+  }
+  if (length(dead) == 0L) {
+    return(invisible(0L))
+  }
+  gone <- file.remove(dead)
+  message(sprintf(
+    "  Cache: evicted %d superseded file(s) (%.0f KB) for this taxon -- older key shape, unreachable.",
+    sum(gone), sum(mb[gone]) * 1024
+  ))
+  invisible(sum(gone))
+}
+
+
 #' Download FASTA sequences in batches
 #' @noRd
 .fetch_fasta_batched <- function(accessions, batch_size = 200L) {
@@ -314,6 +566,130 @@ utils::globalVariables(c(
   }
 
   paste(chunks[nchar(chunks) > 0L], collapse = "\n")
+}
+
+
+#' Choose the accession string the FASTA store is keyed on
+#'
+#' (2026-09-14.) The FASTA cache was keyed on \code{meta$acc}, which comes
+#' from ESummary's \code{caption} field and carries NO version suffix --
+#' while \code{.fetch_fasta_cached()}'s own documentation claimed the
+#' opposite. Confirmed on disk: 0 of 4,061 cached files carried a version.
+#'
+#' The consequence is narrow but real. When a taxon's metadata is REFRESHED
+#' and GenBank has revised a record since, an unversioned key is a cache
+#' HIT, so the superseded sequence is served under the new metadata. The
+#' download and parse paths were already written for versioned input (the
+#' parser strips versions from FASTA headers, and the write-back maps those
+#' stripped ids back to the string that was requested) -- only the input was
+#' wrong.
+#'
+#' \strong{Why a legacy cached object correctly keeps the old key.} A meta
+#' file written before \code{acc_version} existed cannot supply a version,
+#' and it also cannot NOTICE one: its accession list is frozen at the moment
+#' it was cached, so no revision is visible from it in the first place. A
+#' cache key should be exactly as fresh as the metadata it was derived from,
+#' and falling back to \code{acc} is that. This is not a partial fix: the
+#' protection engages precisely when a version bump first becomes
+#' detectable, which is the re-fetch that rewrites the meta.
+#'
+#' Coalesces per ROW, so one record missing \code{accessionversion} costs
+#' only its own version check rather than the whole taxon's.
+#'
+#' @param meta A combined metadata frame with an \code{acc} column and,
+#'   when written by a current fetch, an \code{acc_version} column.
+#' @return Character vector of cache/request accessions, one per row of
+#'   \code{meta}, carrying an integer \code{n_legacy} attribute counting the
+#'   rows that fell back to the unversioned form.
+#' @noRd
+.fasta_cache_keys <- function(meta) {
+  acc <- as.character(meta$acc)
+  ver <- if ("acc_version" %in% names(meta)) {
+    as.character(meta$acc_version)
+  } else {
+    rep(NA_character_, length(acc))
+  }
+  ver <- rep(ver, length.out = length(acc))
+  usable <- !is.na(ver) & nzchar(ver)
+  out <- ifelse(usable, ver, acc)
+  attr(out, "n_legacy") <- sum(!usable)
+  out
+}
+
+
+#' Fetch FASTA for a set of accessions, reusing a per-accession cache
+#'
+#' (2026-09-14 cache policy, P2.) The FASTA download was the largest
+#' uncached cost in \code{fetch_ncbi_reference_sequences()} -- 3,983
+#' sequences on a routine PtConception 12S run, re-downloaded in full every
+#' time even when all 222 taxa' metadata came straight off disk.
+#'
+#' Keyed on the accession AS SUPPLIED by the caller, which is what decides
+#' whether a GenBank version bump is caught -- see \code{.fasta_cache_keys()}
+#' directly above for how that vector is chosen, and why a legacy cached
+#' object correctly cannot do better than the unversioned accession.
+#' Requesting the same string it keys on means the record NCBI returns is
+#' the record the key names.
+#'
+#' One small .rds per accession under a \code{fasta/} subdirectory of
+#' \code{cache_dir}, matching the file-per-key shape the rest of this
+#' ecosystem uses (and therefore \code{TaxaTools::list_cache_files()}, which
+#' since 2026-09-14 scans recursively and so can finally see this store).
+#' A sequence that fails to download is simply not written, so the next run
+#' retries it -- which is also what happens if a requested version has since
+#' been replaced, since NCBI returns no record for a superseded version
+#' rather than erroring (live-verified 2026-09-14).
+#' @noRd
+.fetch_fasta_cached <- function(accessions, cache_dir, batch_size = 200L) {
+  empty <- data.frame(
+    composite_id = character(0L), sequence = character(0L),
+    stringsAsFactors = FALSE
+  )
+  if (length(accessions) == 0L) {
+    return(empty)
+  }
+  if (is.null(cache_dir)) {
+    return(.parse_fasta_text(.fetch_fasta_batched(accessions, batch_size)))
+  }
+
+  fasta_dir <- file.path(cache_dir, "fasta")
+  if (!dir.exists(fasta_dir)) dir.create(fasta_dir, recursive = TRUE)
+  key <- function(a) file.path(fasta_dir, paste0(gsub("[^A-Za-z0-9]", "_", a), "_seq.rds"))
+  paths <- key(accessions)
+
+  hit <- file.exists(paths)
+  cached_rows <- lapply(which(hit), function(k) {
+    tryCatch(readRDS(paths[k]), error = function(e) NULL)
+  })
+  cached_rows <- cached_rows[!vapply(cached_rows, is.null, logical(1L))]
+
+  if (any(hit)) {
+    message(sprintf(
+      "  FASTA cache: %s of %s sequence(s) already on disk; downloading %s.",
+      format(sum(hit), big.mark = ","),
+      format(length(accessions), big.mark = ","),
+      format(sum(!hit), big.mark = ",")
+    ))
+  }
+
+  fresh <- empty
+  if (any(!hit)) {
+    want <- accessions[!hit]
+    fresh <- .parse_fasta_text(.fetch_fasta_batched(want, batch_size))
+    if (nrow(fresh) > 0L) {
+      # The parser returns version-STRIPPED ids; map each back to the full
+      # accession it was requested under so the cache key stays versioned.
+      stripped <- sub("\\.[0-9]+$", "", want)
+      for (k in seq_len(nrow(fresh))) {
+        j <- which(stripped == fresh$composite_id[k])
+        if (length(j) == 0L) next
+        saveRDS(fresh[k, c("composite_id", "sequence"), drop = FALSE], key(want[j[1L]]))
+      }
+    }
+  }
+
+  out <- do.call(rbind, c(cached_rows, list(fresh)))
+  if (is.null(out)) empty else out
 }
 
 
@@ -660,6 +1036,19 @@ utils::globalVariables(c(
 #'   message, because the original per-taxon warnings went unnoticed in a
 #'   17,000-line log. Use `"error"` for an unattended production run where a
 #'   silently degraded reference database is worse than a failed run.
+#' @param evict_unreachable_cache Logical (default `TRUE`). When a taxon's
+#'   cache file is WRITTEN, also delete that same taxon's cache files whose
+#'   names the current key cannot produce for any arguments -- superseded
+#'   generations left behind by an earlier key widening. This is the only
+#'   part of this function that deletes anything, and it is deliberately
+#'   narrow: the test is a proof, not a heuristic (see
+#'   `.ref_cache_grammar()`), it is scoped to the one taxon just rewritten,
+#'   it never touches a file over 5 MB, and it says what it removed. Two
+#'   files that differ only in a key VALUE -- different length bounds, a
+#'   different `rank_system` -- are different queries, not generations, and
+#'   are never touched. Set `FALSE` to keep every historical generation.
+#'   The whole-store equivalent is [taxalikely_evict_unreachable_cache()],
+#'   which reports rather than deletes unless asked.
 #'
 #' @return A data frame (`reference_df`), carrying a `count_failures`
 #'   attribute (always present, possibly zero-length) naming any taxa dropped
@@ -724,8 +1113,13 @@ fetch_ncbi_reference_sequences <- function(taxa,
                                            max_out_of_range_per_species = 2L,
                                            max_out_of_range_len = 200000L,
                                            count_attempts = 3L,
-                                           on_count_failure = c("warn", "error")) {
+                                           on_count_failure = c("warn", "error"),
+                                           evict_unreachable_cache = TRUE) {
   on_count_failure <- match.arg(on_count_failure)
+  if (!is.logical(evict_unreachable_cache) ||
+    length(evict_unreachable_cache) != 1L || is.na(evict_unreachable_cache)) {
+    stop("evict_unreachable_cache must be TRUE or FALSE")
+  }
   if (!is.numeric(count_attempts) || length(count_attempts) != 1L ||
     is.na(count_attempts) || count_attempts < 1L) {
     stop("count_attempts must be a single positive integer")
@@ -773,6 +1167,99 @@ fetch_ncbi_reference_sequences <- function(taxa,
     if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
   }
 
+  # --- Step 0: Serve from cache BEFORE issuing any count query ---------------
+  # (2026-09-14 cache policy, P1.) The count loop below used to run
+  # unconditionally for every taxon, ahead of the per-taxon cache check far
+  # further down. That ordering -- an uncached, network-dependent query
+  # gating an already-cached payload -- is what cost seven genera their
+  # entire reference representation on the 2026-09-14 PtConception 12S run.
+  # Medialuna, Zalophus, Tursiops, Symphurus, Apodichthys, Cymatogaster and
+  # Delphinus all had valid cached metadata on disk from 2026-08-29; a
+  # transient count failure set retmax_cap to 0 and dropped each of them
+  # before the cache was ever consulted. A cached taxon now issues no count
+  # query at all, so it cannot be lost that way.
+  #
+  # Cached taxa are also excluded from `counts`, and so from the
+  # max_sequences budget below. Deliberate: the budget caps what this call
+  # FETCHES, and a cached taxon fetches nothing. The previous behaviour let
+  # cached taxa consume budget they never spent, starving the taxa actually
+  # being downloaded.
+  #
+  # Ages are reported, not enforced. This cache has no TTL by decision
+  # (ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md, Part 5): staleness
+  # against a remote source has no local mtime to compare against, so the
+  # policy is to make age visible rather than expire silently.
+  cached_meta <- vector("list", length(taxa))
+  is_cached <- rep(FALSE, length(taxa))
+  cache_files <- rep(NA_character_, length(taxa))
+  sel_now <- .sel_params(max_per_species, max_per_genus, blacklist_regex)
+  n_legacy <- 0L
+  n_mismatch <- 0L
+
+  if (!is.null(cache_dir)) {
+    for (i in seq_along(taxa)) {
+      cache_files[i] <- .ref_cache_file(
+        cache_dir, taxa[i], barcode_term, eff_min_len, eff_max_len,
+        min_date, max_date, keep_out_of_range,
+        max_out_of_range_per_species, max_out_of_range_len, rank_system
+      )
+      if (file.exists(cache_files[i])) {
+        loaded <- tryCatch(readRDS(cache_files[i]), error = function(e) NULL)
+        if (!is.null(loaded)) {
+          status <- .sel_params_status(loaded, sel_now)
+          if (identical(status, "mismatch")) {
+            # Built under different max_per_species/max_per_genus/blacklist:
+            # re-fetch rather than serve a silently under-filled set.
+            n_mismatch <- n_mismatch + 1L
+            next
+          }
+          if (identical(status, "legacy")) n_legacy <- n_legacy + 1L
+          cached_meta[[i]] <- loaded
+          is_cached[i] <- TRUE
+        }
+      }
+    }
+  }
+
+  if (n_mismatch > 0L) {
+    message(sprintf(
+      paste0(
+        "  %d cached taxon/taxa rejected: built under different selection ",
+        "settings (max_per_species / max_per_genus / blacklist_regex). ",
+        "Re-fetching those."
+      ), n_mismatch
+    ))
+  }
+  if (n_legacy > 0L) {
+    message(sprintf(
+      paste0(
+        "  %d of those predate selection-parameter recording, so they cannot ",
+        "be verified against this call's max_per_species (%s) / max_per_genus ",
+        "(%s) / blacklist_regex; used as-is. If you have CHANGED any of those ",
+        "since they were written, delete them to force a refetch. (A cache ",
+        "hit never rewrites the file, so this note persists until they are.)"
+      ),
+      n_legacy,
+      if (is.null(max_per_species)) "NULL" else format(max_per_species),
+      if (is.null(max_per_genus)) "NULL" else format(max_per_genus)
+    ))
+  }
+
+  if (any(is_cached)) {
+    mtimes <- file.mtime(cache_files[is_cached])
+    ages <- as.numeric(difftime(Sys.time(), mtimes, units = "days"))
+    message(sprintf(
+      paste0(
+        "Cache: %d of %d taxon/taxa served from disk (no count query issued).\n",
+        "  Location: %s\n",
+        "  Age %.1f-%.1f days (oldest written %s). No TTL by policy -- to ",
+        "refresh, delete those files or pass cache_dir = NULL."
+      ),
+      sum(is_cached), length(taxa), cache_dir,
+      min(ages), max(ages), format(min(mtimes), "%Y-%m-%d")
+    ))
+  }
+
   # --- Step 1: Count-first estimation ----------------------------------------
   message("Estimating search size...")
   counts <- integer(length(taxa))
@@ -794,6 +1281,9 @@ fetch_ncbi_reference_sequences <- function(taxa,
   )
 
   for (i in seq_along(taxa)) {
+    # Served from cache in Step 0 -- no count query, so no way to lose it to
+    # a transient NCBI failure.
+    if (is_cached[i]) next
     term <- .build_search_term(taxa[i], barcode_term, min_date, max_date)
     for (attempt in seq_len(count_attempts)) {
       ok <- tryCatch(
@@ -820,14 +1310,18 @@ fetch_ncbi_reference_sequences <- function(taxa,
     Sys.sleep(delay)
   }
 
-  n_failed_counts <- sum(is.na(counts))
-  failed_taxa <- taxa[is.na(counts)]
+  # A cached taxon issued no count query, so its NA count is not a failure
+  # and must not reach the count-failure warning or count_failures attribute.
+  n_failed_counts <- sum(is.na(counts) & !is_cached)
+  failed_taxa <- taxa[is.na(counts) & !is_cached]
   total <- sum(counts, na.rm = TRUE)
   message(sprintf("NCBI hit counts by taxon (%d total):", total))
   for (i in seq_along(taxa)) {
     message(sprintf(
       "  %s: %s", taxa[i],
-      if (is.na(counts[i])) {
+      if (is_cached[i]) {
+        sprintf("cached (%s row(s))", format(nrow(cached_meta[[i]]), big.mark = ","))
+      } else if (is.na(counts[i])) {
         "error"
       } else {
         format(counts[i], big.mark = ",")
@@ -906,7 +1400,11 @@ fetch_ncbi_reference_sequences <- function(taxa,
     message("\n!! ", what_happened, "\n")
   }
 
-  if (total == 0L) {
+  # `total` counts only taxa that were actually queried. When every taxon
+  # was served from cache it is legitimately 0, and returning the empty
+  # reference_df here would discard a complete cached reference set -- the
+  # very class of silent loss this policy work exists to stop.
+  if (total == 0L && !any(is_cached)) {
     message("No sequences found. Check taxon names and barcode_term.")
     return(.with_count_failures(
       .empty_reference_df(rank_system, include_location), failed_taxa
@@ -1023,42 +1521,29 @@ fetch_ncbi_reference_sequences <- function(taxa,
     for (sp in names(priority_counts)) {
       if (priority_counts[[sp]] == 0L) next
 
-      # Check cache
-      p_cache_file <- NULL
-      if (!is.null(cache_dir)) {
-        safe_name <- gsub("[^A-Za-z0-9]", "_", sp)
-        safe_bc <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
-        date_sfx <- gsub("[^0-9]", "", paste0(
-          if (is.null(min_date)) "X" else min_date, "_",
-          if (is.null(max_date)) "X" else max_date
-        ))
-        # oor_sfx (keep_out_of_range) included since the cached object is the
-        # FULLY post-filter/post-downsample result, not raw summaries -- a
-        # stale cache built with keep_out_of_range = FALSE genuinely lacks
-        # out-of-range rows, so a later TRUE call must not silently reuse it.
-        oor_sfx <- if (keep_out_of_range) {
-          sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len)
-        } else {
-          ""
-        }
-        # rank_sfx: the cached object is post-taxonomy-merge (see the
-        # non-priority cache_file's identical comment below for the full
-        # reasoning) -- must be part of the key or a stale cache built under a
-        # narrower rank_system hard-crashes a later, wider rank_system call
-        # ("undefined columns selected" at the keep_cols subset below).
-        rank_sfx <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
-        p_cache_file <- file.path(
-          cache_dir,
-          paste0(
-            "priority_", safe_name, "_", safe_bc,
-            "_l", eff_min_len, "_", eff_max_len,
-            "_d", date_sfx, oor_sfx, rank_sfx, "_meta.rds"
-          )
-        )
+      # Check cache. The key (and the reasoning behind every component of
+      # it) now lives in .ref_cache_file(); this path differs from the broad
+      # search only by its "priority_" prefix.
+      #
+      # NOTE: unlike the broad path, the priority path still counts before
+      # it checks the cache. It is only reachable when total > max_sequences
+      # AND priority_taxa was supplied, which no production workflow does,
+      # so the P1 reordering was not extended here rather than restructuring
+      # a budget-driven loop that nothing exercises.
+      p_cache_file <- .ref_cache_file(
+        cache_dir, sp, barcode_term, eff_min_len, eff_max_len,
+        min_date, max_date, keep_out_of_range,
+        max_out_of_range_per_species, max_out_of_range_len, rank_system,
+        prefix = "priority_"
+      )
+      if (!is.null(p_cache_file)) {
         if (file.exists(p_cache_file)) {
           message(sprintf("  %s: loading from cache", sp))
-          priority_meta[[sp]] <- readRDS(p_cache_file)
-          next
+          p_reloaded <- readRDS(p_cache_file)
+          if (!identical(.sel_params_status(p_reloaded, sel_now), "mismatch")) {
+            priority_meta[[sp]] <- p_reloaded
+            next
+          }
         }
       }
 
@@ -1076,7 +1561,15 @@ fetch_ncbi_reference_sequences <- function(taxa,
           meta <- .fetch_summaries_batched(search_obj)
           if (!is.null(meta) && nrow(meta) > 0L) {
             priority_meta[[sp]] <- meta
-            if (!is.null(p_cache_file)) saveRDS(meta, p_cache_file)
+            if (!is.null(p_cache_file)) {
+              attr(meta, "sel_params") <- sel_now
+              saveRDS(meta, p_cache_file)
+              if (isTRUE(evict_unreachable_cache)) {
+                .ref_cache_evict(
+                  cache_dir, .ref_cache_stem(sp, barcode_term, prefix = "priority_")
+                )
+              }
+            }
           }
         },
         error = function(e) {
@@ -1092,54 +1585,31 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   # --- Step 2b: Broader family/genus fetch ------------------------------------
   message("\nFetching broader taxonomic context...")
-  all_meta <- vector("list", length(taxa))
+  all_meta <- cached_meta # pre-populated by the Step 0 cache pass
 
   for (i in seq_along(taxa)) {
     if (is.na(counts[i]) || counts[i] == 0L) next
 
-    # Check cache
-    cache_file <- NULL
-    if (!is.null(cache_dir)) {
-      safe_name <- gsub("[^A-Za-z0-9]", "_", taxa[i])
-      safe_bc <- gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
-      date_sfx2 <- gsub("[^0-9]", "", paste0(
-        if (is.null(min_date)) "X" else min_date, "_",
-        if (is.null(max_date)) "X" else max_date
-      ))
-      # See the priority-path's identical p_cache_file comment above for why
-      # keep_out_of_range must be part of this key.
-      oor_sfx2 <- if (keep_out_of_range) {
-        sprintf("_oor%d_l%d", max_out_of_range_per_species, max_out_of_range_len)
-      } else {
-        ""
-      }
-      # rank_sfx2: `meta` is cached AFTER the taxonomy merge (line ~919 below:
-      # `meta <- merge(meta, tax_map, ...)` runs before `saveRDS(meta,
-      # cache_file)`), so the cached object's own columns are exactly whatever
-      # rank_system was in force when it was written -- NOT re-derived from
-      # the caller's current rank_system on load. Without this in the key, a
-      # user who already ran a fetch (e.g. audit_reference_database()'s own
-      # narrower historical default, or any other caller) against the same
-      # taxon/barcode/length/date combo with a narrower rank_system hits a
-      # hard crash the first time a wider rank_system reuses that stale
-      # cache: `keep_cols <- c("composite_id", rank_cols, ...)` further below
-      # subsets combined_meta for columns (e.g. "phylum") that simply were
-      # never fetched into the cached object -- "undefined columns selected".
-      # Same failure class already documented for Session 159's barcode_term
-      # cache-staleness issue.
-      rank_sfx2 <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
-      cache_file <- file.path(
-        cache_dir,
-        paste0(
-          safe_name, "_", safe_bc,
-          "_l", eff_min_len, "_", eff_max_len,
-          "_d", date_sfx2, oor_sfx2, rank_sfx2, "_meta.rds"
-        )
+    # Cache path. The Step 0 pass above already served every existing hit,
+    # so this is normally a miss; it is kept for the case where the file
+    # appeared mid-run. The key itself lives in .ref_cache_file().
+    cache_file <- if (!is.na(cache_files[i])) {
+      cache_files[i]
+    } else {
+      .ref_cache_file(
+        cache_dir, taxa[i], barcode_term, eff_min_len, eff_max_len,
+        min_date, max_date, keep_out_of_range,
+        max_out_of_range_per_species, max_out_of_range_len, rank_system
       )
+    }
+    if (!is.null(cache_file)) {
       if (file.exists(cache_file)) {
-        message(sprintf("  %s: loading from cache", taxa[i]))
-        all_meta[[i]] <- readRDS(cache_file)
-        next
+        reloaded <- readRDS(cache_file)
+        if (!identical(.sel_params_status(reloaded, sel_now), "mismatch")) {
+          message(sprintf("  %s: loading from cache", taxa[i]))
+          all_meta[[i]] <- reloaded
+          next
+        }
       }
     }
 
@@ -1298,7 +1768,14 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
         # Cache intermediate result
         if (!is.null(cache_file)) {
+          # Record the selection settings this object was built under, so a
+          # later call with different ones re-fetches instead of silently
+          # inheriting an under-filled set. See .sel_params().
+          attr(meta, "sel_params") <- sel_now
           saveRDS(meta, cache_file)
+          if (isTRUE(evict_unreachable_cache)) {
+            .ref_cache_evict(cache_dir, .ref_cache_stem(taxa[i], barcode_term))
+          }
         }
       },
       error = function(e) {
@@ -1435,8 +1912,25 @@ fetch_ncbi_reference_sequences <- function(taxa,
   message(sprintf("\nFetching FASTA for %d sequences...", nrow(combined_meta)))
 
   # --- Step 3: Fetch FASTA sequences ------------------------------------------
-  fasta_text <- .fetch_fasta_batched(combined_meta$acc)
-  fasta_df <- .parse_fasta_text(fasta_text)
+  # Key (and request) the versioned accession where the metadata carries one,
+  # so a revised GenBank record is a cache MISS rather than a silent hit on
+  # the superseded sequence. A taxon served from a pre-2026-09-14 meta file
+  # has no version to offer and cannot see a revision anyway -- it falls back
+  # to the unversioned accession, and is reported rather than left implicit.
+  fasta_keys <- .fasta_cache_keys(combined_meta)
+  n_legacy <- attr(fasta_keys, "n_legacy")
+  if (!is.null(n_legacy) && n_legacy > 0L) {
+    message(sprintf(
+      paste0(
+        "  FASTA cache: %s of %s accession(s) have no recorded version ",
+        "(metadata cached before versions were kept); keyed on the bare ",
+        "accession, so a GenBank revision cannot be detected for them."
+      ),
+      format(n_legacy, big.mark = ","),
+      format(length(fasta_keys), big.mark = ",")
+    ))
+  }
+  fasta_df <- .fetch_fasta_cached(fasta_keys, cache_dir)
 
   if (nrow(fasta_df) == 0L) {
     warning("FASTA download returned no sequences")

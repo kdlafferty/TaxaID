@@ -30,15 +30,20 @@ Invisibly, a data frame of the targeted files (\code{path},
 \description{
 \code{fetch_ncbi_reference_sequences()} caches one small file per
 (taxon, barcode_term, length window, date range, out-of-range settings,
-rank_system) combination it has ever been asked for; \code{audit_barcode_
-coverage()} caches one checkpoint per (rank, marker, params) combination
-it has run. Both cache under a persistent, user-level directory and
-neither expires automatically -- unlike TaxaFetch's GBIF download cache,
-there is no known duplicate/orphan-accumulation mechanism here (each
-query maps to exactly one deterministic file, with no "overwrite" concept
-to leave a stale copy behind), so this is purely a reporting/size-cap
-tool, not a bug fix. This function reports how much space the cache is
-using and, unless \code{dry_run = TRUE}, removes it.
+rank_system) combination it has ever been asked for, plus one file per
+accession under \code{fasta/}; \code{audit_barcode_coverage()} caches one
+checkpoint per (rank, marker, params) combination it has run. All cache
+under a persistent, user-level directory and none expires automatically.
+This function reports how much space the cache is using and, unless
+\code{dry_run = TRUE}, removes it.
+}
+\details{
+It is the blunt instrument: it targets EVERY recognized cache file,
+whether or not a later call could still hit it. To remove only the files
+that are provably dead -- generations superseded by a cache-key widening,
+45\% of the meta store as measured on 2026-09-14 -- use
+\code{\link{taxalikely_evict_unreachable_cache}()} instead, which leaves
+every reachable file in place and reports rather than deletes by default.
 }
 \examples{
 \dontrun{

@@ -26,7 +26,8 @@ fetch_ncbi_reference_sequences(
   max_out_of_range_per_species = 2L,
   max_out_of_range_len = 200000L,
   count_attempts = 3L,
-  on_count_failure = c("warn", "error")
+  on_count_failure = c("warn", "error"),
+  evict_unreachable_cache = TRUE
 )
 }
 \arguments{
@@ -169,6 +170,20 @@ but reports the affected taxa by name in one consolidated warning and
 message, because the original per-taxon warnings went unnoticed in a
 17,000-line log. Use \code{"error"} for an unattended production run where a
 silently degraded reference database is worse than a failed run.}
+
+\item{evict_unreachable_cache}{Logical (default \code{TRUE}). When a taxon's
+cache file is WRITTEN, also delete that same taxon's cache files whose
+names the current key cannot produce for any arguments -- superseded
+generations left behind by an earlier key widening. This is the only
+part of this function that deletes anything, and it is deliberately
+narrow: the test is a proof, not a heuristic (see
+\code{.ref_cache_grammar()}), it is scoped to the one taxon just rewritten,
+it never touches a file over 5 MB, and it says what it removed. Two
+files that differ only in a key VALUE -- different length bounds, a
+different \code{rank_system} -- are different queries, not generations, and
+are never touched. Set \code{FALSE} to keep every historical generation.
+The whole-store equivalent is \code{\link[=taxalikely_evict_unreachable_cache]{taxalikely_evict_unreachable_cache()}},
+which reports rather than deletes unless asked.}
 }
 \value{
 A data frame (\code{reference_df}), carrying a \code{count_failures}
