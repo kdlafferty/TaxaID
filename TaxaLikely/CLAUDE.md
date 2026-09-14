@@ -1,5 +1,52 @@
 # CLAUDE.md -- TaxaLikely
-# Last updated: 2026-09-14 (Opus 5): the bimodal-H1 diagnostic added the evening before
+# Last updated: 2026-09-14, later (Opus 5): fetch_ncbi_reference_sequences() no longer
+# lets a failed NCBI count query SILENTLY delete a taxon from the reference database.
+# MECHANISM: a failed count sets counts[i] <- NA; the budget step's `valid <- !is.na(counts)
+# & counts > 0L` excludes it; `retmax_cap[!valid] <- 0L` then fetches ZERO sequences for it.
+# One warning per taxon, nothing else. REAL DAMAGE, 2026-09-14 PtConception 12S run: 7 taxa
+# failed (Medialuna, Zalophus, Tursiops, Symphurus, Apodichthys, Cymatogaster, Delphinus --
+# the FIRST 7 queried, after which every remaining query succeeded) and 352 species-level
+# consensus rows ended up resting on no reference data of their own, including Medialuna
+# californiensis (36 rows), Zalophus californianus (68), Apodichthys flavidus (198),
+# Cymatogaster aggregata (27), Tursiops truncatus (18). All 7 had ZERO species-specific H1
+# entries, so they fell back to global parameters. Model cost: 691 -> 679 species, 550 ->
+# 536 singletons, 336 -> 330 anchors, AIC -10125.4 -> -10108.0. Output cost was small
+# (9115 -> 9114 species-resolved, same 150 unique taxa) because the calls still happened,
+# just uncalibrated.
+# NOT A REGRESSION, verified before patching (the user explicitly asked for a deliberate
+# re-assessment rather than a reflexive fix): the count loop and the silent-zero line both
+# date to the 2026-05-20 initial commit, with only a 2026-09-07 styler pass since; THREE
+# runs are appended in that one log and the two earlier ones executed the identical path
+# with ZERO failures (102,619 / 102,621 / 102,148 hits counted); and re-issuing all 7
+# queries afterwards returned real counts (Symphurus 64, Apodichthys 7, Cymatogaster 10,
+# Delphinus 100). So: transient NCBI throttling landing on a four-month-old latent gap.
+# FIX: new `count_attempts` (default 3L) retries each count with exponential backoff, which
+# addresses the actual cause; new `on_count_failure` ("warn" default, or "error") decides
+# what happens if a count still fails -- "warn" now reports every affected taxon BY NAME in
+# ONE consolidated warning AND message stating the CONSEQUENCE, because the original design
+# emitted one warning per taxon and seven of them went unnoticed in a 17,000-line log (the
+# failure mode is silence-by-dilution, not an absent warning); "error" suits an unattended
+# run where a silently degraded reference database is worse than a failed run. Every return
+# path now carries attr(x, "count_failures") via the new .with_count_failures() helper, so a
+# workflow can assert on it instead of parsing a log. Param shape follows the existing
+# ecosystem precedent (TaxaFetch's on_cap= / on_submit_failure=).
+# DELIBERATELY NOT CHANGED: sampling semantics. A taxon whose count is unknown is still
+# EXCLUDED rather than fetched under a guessed cap. Whether an unknown count should instead
+# fall back to min_per_taxon is a real design question, left open rather than decided inside
+# a bug fix.
+# Tests: 4 new offline tests (mocked rentrez) pinning retry, naming, "error" mode and input
+# validation. devtools::test() 1190/0 (was 1183). Recovery verified live: re-fetching just
+# those 7 genera returns 78 sequences / 17 species including every species currently being
+# called without references.
+# RELATED, opened not implemented: ecosystem_docs/REENTRY_PROMPT_cache_policy_review.md.
+# This incident is NOT a cache bug, but investigating it showed the reference fetch has NO
+# cache at all by deliberate 2026-07-13 decision (a stale reference_df had silently dropped
+# every Girella row, and caching was REMOVED rather than given a staleness check), so every
+# run re-issues ~214 NCBI count queries -- which is the exposure that made this incident
+# possible. The staleness primitive that would have allowed keeping the cache, .cache_ok(
+# inputs=), was built in September and never applied back here.
+#
+# Previous update: 2026-09-14 (Opus 5): the bimodal-H1 diagnostic added the evening before
 # FIRED ON REAL DATA and was WRONG -- fixed the same day. The overnight PtConception 12S
 # production run warned "H1 scores look bimodal: 4% near 95.4 (sd 3.0) and 96% near 98.8
 # (sd 0.4), delta BIC 8297". False positive. CAUSE: percent identity on a short

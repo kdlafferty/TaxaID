@@ -639,8 +639,33 @@ utils::globalVariables(c(
 #'   chloroplast genome (~120-160kb) with margin, while excluding genome/
 #'   scaffold-scale sequences by orders of magnitude. Ignored when
 #'   `keep_out_of_range = FALSE`.
+#' @param count_attempts Integer (default `3L`). How many times to try each
+#'   per-taxon NCBI count query before giving up on it. A count query can
+#'   fail transiently, typically NCBI throttling, which `rentrez` often
+#'   surfaces as the unhelpful message `"subscript out of bounds"`. Retries
+#'   use exponential backoff on top of the usual inter-request delay.
+#' @param on_count_failure One of `"warn"` (default) or `"error"`. What to do
+#'   when a taxon's count query still fails after `count_attempts` tries.
+#'   **This is not a cosmetic condition.** A failed count is excluded from the
+#'   sequence budget, which sets that taxon's fetch cap to zero, so the taxon
+#'   contributes NO reference sequences at all and any species-level call
+#'   within it later rests on no reference data of its own. Observed for real
+#'   on the 2026-09-14 PtConception 12S run: 7 taxa failed (the first 7
+#'   queried, after which every remaining query succeeded), silently costing
+#'   352 species-level consensus rows their own reference data, including
+#'   *Medialuna californiensis*, *Zalophus californianus* and *Tursiops
+#'   truncatus*. Re-issuing the identical queries afterwards succeeded for all
+#'   7, confirming the failures were transient. `"warn"` keeps the run alive
+#'   but reports the affected taxa by name in one consolidated warning and
+#'   message, because the original per-taxon warnings went unnoticed in a
+#'   17,000-line log. Use `"error"` for an unattended production run where a
+#'   silently degraded reference database is worse than a failed run.
 #'
-#' @return A data frame (`reference_df`) with columns:
+#' @return A data frame (`reference_df`), carrying a `count_failures`
+#'   attribute (always present, possibly zero-length) naming any taxa dropped
+#'   because their count query failed -- check it with
+#'   `attr(reference_df, "count_failures")` rather than reading the log.
+#'   Columns:
 #'   \describe{
 #'     \item{`composite_id`}{NCBI accession (version suffix stripped).}
 #'     \item{`sequence`}{DNA sequence string.}
@@ -697,7 +722,15 @@ fetch_ncbi_reference_sequences <- function(taxa,
                                            include_location = FALSE,
                                            keep_out_of_range = FALSE,
                                            max_out_of_range_per_species = 2L,
-                                           max_out_of_range_len = 200000L) {
+                                           max_out_of_range_len = 200000L,
+                                           count_attempts = 3L,
+                                           on_count_failure = c("warn", "error")) {
+  on_count_failure <- match.arg(on_count_failure)
+  if (!is.numeric(count_attempts) || length(count_attempts) != 1L ||
+    is.na(count_attempts) || count_attempts < 1L) {
+    stop("count_attempts must be a single positive integer")
+  }
+  count_attempts <- as.integer(count_attempts)
   # --- Validate inputs --------------------------------------------------------
   if (!requireNamespace("rentrez", quietly = TRUE)) {
     stop("fetch_ncbi_reference_sequences requires the 'rentrez' package. Install with: install.packages('rentrez')")
@@ -745,25 +778,50 @@ fetch_ncbi_reference_sequences <- function(taxa,
   counts <- integer(length(taxa))
   names(counts) <- taxa
 
+  # A count query can fail transiently (NCBI throttling or a malformed response
+  # that rentrez surfaces as "subscript out of bounds"). A failure here is NOT
+  # cosmetic: an NA count is excluded from the budget below and the taxon's
+  # retmax_cap becomes 0, so the taxon contributes NO reference sequences at
+  # all. Observed for real on the 2026-09-14 PtConception 12S run -- 7 taxa
+  # (the first 7 queried, then it recovered) silently left the reference
+  # database, costing 352 species-level consensus rows their own reference
+  # data, including Medialuna californiensis, Zalophus californianus and
+  # Tursiops truncatus. Re-issuing the identical queries afterwards succeeded
+  # for all 7, confirming the failures were transient. Hence: retry with
+  # backoff, and never let a survivor pass unannounced (see below).
+  count_errors <- stats::setNames(
+    rep(NA_character_, length(taxa)), taxa
+  )
+
   for (i in seq_along(taxa)) {
     term <- .build_search_term(taxa[i], barcode_term, min_date, max_date)
-    tryCatch(
-      {
-        res <- rentrez::entrez_search(db = "nucleotide", term = term, retmax = 0L)
-        counts[i] <- as.integer(res$count)
-      },
-      error = function(e) {
-        warning(sprintf(
-          "Count query failed for '%s': %s", taxa[i],
-          conditionMessage(e)
-        ))
-        counts[i] <<- NA_integer_
+    for (attempt in seq_len(count_attempts)) {
+      ok <- tryCatch(
+        {
+          res <- rentrez::entrez_search(
+            db = "nucleotide", term = term, retmax = 0L
+          )
+          counts[i] <- as.integer(res$count)
+          count_errors[i] <- NA_character_
+          TRUE
+        },
+        error = function(e) {
+          counts[i] <<- NA_integer_
+          count_errors[i] <<- conditionMessage(e)
+          FALSE
+        }
+      )
+      if (isTRUE(ok)) break
+      # Back off before retrying; the last attempt is not followed by a wait.
+      if (attempt < count_attempts) {
+        Sys.sleep(delay * (2^attempt))
       }
-    )
+    }
     Sys.sleep(delay)
   }
 
   n_failed_counts <- sum(is.na(counts))
+  failed_taxa <- taxa[is.na(counts)]
   total <- sum(counts, na.rm = TRUE)
   message(sprintf("NCBI hit counts by taxon (%d total):", total))
   for (i in seq_along(taxa)) {
@@ -781,9 +839,36 @@ fetch_ncbi_reference_sequences <- function(taxa,
     stop("All NCBI count queries failed. Check your internet connection and NCBI API key.")
   }
 
+  # One consolidated, named report. Seven individual per-taxon warnings were
+  # emitted on the 2026-09-14 run and went unnoticed in a 17,000-line log, so
+  # the failure mode here is silence-by-dilution, not absence of a warning.
+  # State the CONSEQUENCE, not just the cause.
+  if (n_failed_counts > 0L) {
+    msg <- sprintf(
+      paste0(
+        "%d of %d taxa could not be counted after %d attempt(s) and will ",
+        "contribute ZERO reference sequences: %s. Their likelihood model will ",
+        "fall back to global parameters, and any species-level call in these ",
+        "taxa will rest on no reference data of its own. This is usually ",
+        "transient NCBI throttling -- re-running the fetch normally recovers ",
+        "them. Last error: %s"
+      ),
+      n_failed_counts, length(taxa), count_attempts,
+      paste(failed_taxa, collapse = ", "),
+      count_errors[is.na(counts)][[1L]]
+    )
+    if (identical(on_count_failure, "error")) {
+      stop(msg)
+    }
+    warning(msg, call. = FALSE)
+    message("\n!! ", msg, "\n")
+  }
+
   if (total == 0L) {
     message("No sequences found. Check taxon names and barcode_term.")
-    return(.empty_reference_df(rank_system, include_location))
+    return(.with_count_failures(
+      .empty_reference_df(rank_system, include_location), failed_taxa
+    ))
   }
 
   # --- Priority species + proportional subsampling when over budget --------
@@ -1298,7 +1383,9 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   if (is.null(combined_meta) || nrow(combined_meta) == 0L) {
     message("No sequences passed all filters across all taxa.")
-    return(.empty_reference_df(rank_system, include_location))
+    return(.with_count_failures(
+      .empty_reference_df(rank_system, include_location), failed_taxa
+    ))
   }
 
   # Deduplicate by accession (priority sequences take precedence)
@@ -1311,7 +1398,9 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   if (nrow(fasta_df) == 0L) {
     warning("FASTA download returned no sequences")
-    return(.empty_reference_df(rank_system, include_location))
+    return(.with_count_failures(
+      .empty_reference_df(rank_system, include_location), failed_taxa
+    ))
   }
 
   # Strip version suffix from accessions in metadata for joining
@@ -1359,7 +1448,23 @@ fetch_ncbi_reference_sequences <- function(taxa,
     dplyr::n_distinct(reference_df[[finest_rank]]),
     finest_rank
   ))
-  reference_df
+  .with_count_failures(reference_df, failed_taxa)
+}
+
+
+#' Attach the count-failure audit trail to a reference table
+#'
+#' Records which taxa were dropped because their NCBI count query failed, so a
+#' caller can check programmatically rather than reading the log.
+#'
+#' @param x A reference data frame.
+#' @param failed_taxa Character vector of taxa whose count query failed.
+#' @return `x`, with a `count_failures` attribute (always present, possibly
+#'   a zero-length character vector).
+#' @noRd
+.with_count_failures <- function(x, failed_taxa) {
+  attr(x, "count_failures") <- as.character(failed_taxa)
+  x
 }
 
 

@@ -24,7 +24,9 @@ fetch_ncbi_reference_sequences(
   include_location = FALSE,
   keep_out_of_range = FALSE,
   max_out_of_range_per_species = 2L,
-  max_out_of_range_len = 200000L
+  max_out_of_range_len = 200000L,
+  count_attempts = 3L,
+  on_count_failure = c("warn", "error")
 )
 }
 \arguments{
@@ -144,9 +146,36 @@ The default comfortably covers any real animal mitogenome or plant
 chloroplast genome (~120-160kb) with margin, while excluding genome/
 scaffold-scale sequences by orders of magnitude. Ignored when
 \code{keep_out_of_range = FALSE}.}
+
+\item{count_attempts}{Integer (default \code{3L}). How many times to try each
+per-taxon NCBI count query before giving up on it. A count query can
+fail transiently, typically NCBI throttling, which \code{rentrez} often
+surfaces as the unhelpful message \code{"subscript out of bounds"}. Retries
+use exponential backoff on top of the usual inter-request delay.}
+
+\item{on_count_failure}{One of \code{"warn"} (default) or \code{"error"}. What to do
+when a taxon's count query still fails after \code{count_attempts} tries.
+\strong{This is not a cosmetic condition.} A failed count is excluded from the
+sequence budget, which sets that taxon's fetch cap to zero, so the taxon
+contributes NO reference sequences at all and any species-level call
+within it later rests on no reference data of its own. Observed for real
+on the 2026-09-14 PtConception 12S run: 7 taxa failed (the first 7
+queried, after which every remaining query succeeded), silently costing
+352 species-level consensus rows their own reference data, including
+\emph{Medialuna californiensis}, \emph{Zalophus californianus} and \emph{Tursiops
+truncatus}. Re-issuing the identical queries afterwards succeeded for all
+7, confirming the failures were transient. \code{"warn"} keeps the run alive
+but reports the affected taxa by name in one consolidated warning and
+message, because the original per-taxon warnings went unnoticed in a
+17,000-line log. Use \code{"error"} for an unattended production run where a
+silently degraded reference database is worse than a failed run.}
 }
 \value{
-A data frame (\code{reference_df}) with columns:
+A data frame (\code{reference_df}), carrying a \code{count_failures}
+attribute (always present, possibly zero-length) naming any taxa dropped
+because their count query failed -- check it with
+\code{attr(reference_df, "count_failures")} rather than reading the log.
+Columns:
 \describe{
 \item{\code{composite_id}}{NCBI accession (version suffix stripped).}
 \item{\code{sequence}}{DNA sequence string.}

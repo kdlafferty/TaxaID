@@ -1,5 +1,40 @@
 # TaxaLikely (development version)
 
+## 2026-09-14, later
+
+* `fetch_ncbi_reference_sequences()` no longer lets a failed NCBI count query
+  silently remove a taxon from the reference database. A count failure sets
+  that taxon's count to `NA`, which the sequence-budget step excludes, which
+  sets its fetch cap to zero -- so the taxon contributed NO reference
+  sequences while emitting only one easily-missed warning. Found on the real
+  2026-09-14 PtConception 12S run: 7 taxa failed (the first 7 queried, after
+  which every remaining query succeeded) and 352 species-level consensus rows
+  were left resting on no reference data of their own, including
+  *Medialuna californiensis*, *Zalophus californianus*, *Tursiops truncatus*,
+  *Apodichthys flavidus* and *Cymatogaster aggregata*. Re-issuing the
+  identical queries afterwards succeeded for all 7, and two earlier runs in
+  the same log had executed the identical code path with zero failures, so
+  the failures were transient NCBI throttling rather than anything to do with
+  the taxa or the search terms. The vulnerable code dates to 2026-05-20; this
+  was a latent gap, not a recent regression.
+* New `count_attempts` (default `3L`) retries each count query with
+  exponential backoff, which addresses the actual transient cause.
+* New `on_count_failure` (`"warn"`, the default, or `"error"`) decides what
+  happens when a count still fails after every attempt. `"warn"` now reports
+  every affected taxon BY NAME in a single consolidated warning and message
+  that states the consequence rather than just the cause -- the original
+  design emitted one warning per taxon, and seven of them went unnoticed in a
+  17,000-line log, so the failure mode was silence-by-dilution rather than an
+  absent warning. `"error"` suits an unattended production run, where a
+  silently degraded reference database is worse than a failed run.
+* The returned `reference_df` now always carries a `count_failures` attribute
+  naming any dropped taxa, so a workflow can assert on
+  `attr(reference_df, "count_failures")` instead of parsing the log.
+* Sampling semantics are deliberately unchanged: a taxon whose count is
+  unknown is still excluded rather than fetched under a guessed cap. Whether
+  an unknown count should instead fall back to `min_per_taxon` is a real
+  design question, left open rather than decided as part of a bug fix.
+
 ## 2026-09-14
 
 * Fixes a false positive in the 2026-09-13 bimodality diagnostic
