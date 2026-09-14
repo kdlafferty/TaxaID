@@ -11,7 +11,14 @@
   which every remaining query succeeded) and 352 species-level consensus rows
   were left resting on no reference data of their own, including
   *Medialuna californiensis*, *Zalophus californianus*, *Tursiops truncatus*,
-  *Apodichthys flavidus* and *Cymatogaster aggregata*. Re-issuing the
+  *Apodichthys flavidus* and *Cymatogaster aggregata*. (Correction, same day:
+  an earlier note here claimed those genera were verified to have zero
+  species-specific H1 entries. They necessarily did, since a genus with no
+  sequences cannot appear in `H1_Lookup`, but the check used to "verify" it
+  read a `species` column that does not exist -- the column is `lookup_key` --
+  so it returned zero for every genus including well-referenced ones and
+  proved nothing. After recovery those 7 genera carry 12 species-level
+  entries between them.) Re-issuing the
   identical queries afterwards succeeded for all 7, and two earlier runs in
   the same log had executed the identical code path with zero failures, so
   the failures were transient NCBI throttling rather than anything to do with

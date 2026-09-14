@@ -8,8 +8,13 @@
 # the FIRST 7 queried, after which every remaining query succeeded) and 352 species-level
 # consensus rows ended up resting on no reference data of their own, including Medialuna
 # californiensis (36 rows), Zalophus californianus (68), Apodichthys flavidus (198),
-# Cymatogaster aggregata (27), Tursiops truncatus (18). All 7 had ZERO species-specific H1
-# entries, so they fell back to global parameters. Model cost: 691 -> 679 species, 550 ->
+# Cymatogaster aggregata (27), Tursiops truncatus (18). CORRECTED 2026-09-14, later: I also
+# claimed all 7 had ZERO species-specific H1 entries and had "verified" it -- the claim is
+# true by construction (a genus with no sequences cannot appear in H1_Lookup) but the check
+# was WORTHLESS: it read h1$species, and the column is `lookup_key`, so it returned 0 for
+# every genus including well-referenced ones. Measure H1_Lookup by `lookup_key`, not
+# `species`. After recovery the 7 genera carry 12 species-level entries between them.
+# Model cost: 691 -> 679 species, 550 ->
 # 536 singletons, 336 -> 330 anchors, AIC -10125.4 -> -10108.0. Output cost was small
 # (9115 -> 9114 species-resolved, same 150 unique taxa) because the calls still happened,
 # just uncalibrated.
