@@ -27,6 +27,12 @@
   17,000-line log, so the failure mode was silence-by-dilution rather than an
   absent warning. `"error"` suits an unattended production run, where a
   silently degraded reference database is worse than a failed run.
+* In `"error"` mode the message is actionable, not just descriptive: it names
+  the affected taxa, states the consequence, and prints a numbered WHAT TO DO
+  block covering retrying after a wait, a copy-pasteable `rentrez` call to
+  test NCBI directly, whether an `ENTREZ_KEY` is set (3 versus 10 requests per
+  second), a concrete larger `count_attempts` value, and how to proceed anyway
+  by switching to `"warn"`.
 * The returned `reference_df` now always carries a `count_failures` attribute
   naming any dropped taxa, so a workflow can assert on
   `attr(reference_df, "count_failures")` instead of parsing the log.

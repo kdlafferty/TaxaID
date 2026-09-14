@@ -71,43 +71,41 @@ Programming Interface (API) key (see below).
 
 Automated classifiers for DNA, sound, and image data produce taxonomic
 assignments with systematic errors that are often difficult to detect.
-False presences are frequent enough in eDNA metabarcoding that presence
-must be estimated across replicates rather than read directly off a
-single detection (Ficetola et al. 2015). In a replicated eDNA study from
-the California rocky intertidal, about 28% of the species detected could
-not be confirmed as occurring in the California Current System (Shea and
-Boehm 2024). Auto-classified camera trap images carry error rates near
-10% even at well-studied sites (Henrich et al. 2026), and acoustic
-classifier precision is highly sensitive to confidence threshold
-settings (Thompson et al. 2025; Fairbairn et al. 2025). Raw classifier
-scores mimic probabilities but are uncalibrated; 95% score does not mean
-95% confidence (Dussert et al. 2025), and the same match percentage can
-be diagnostic for one taxon group but ambiguous for another (Pappalardo
-et al. 2025). These errors fall into three categories: false positives
-(FP; wrong taxon assigned, or overly confident in), false negatives (FN;
-correct taxon missed or underestimated), and combined errors where one
-taxon's false positive is another's false negative. FP/FN labels below
-mark which category each error mechanism produces.
+False presences are frequent in eDNA metabarcoding (Ficetola et al.
+2015). In a replicated eDNA study from the California rocky intertidal,
+about 28% of the species detected could not be confirmed as occurring in
+the California Current System (Shea and Boehm 2024). Auto-classified
+camera trap images carry error rates near 10% even at well-studied sites
+(Henrich et al. 2026), and acoustic classifier precision is highly
+sensitive to confidence threshold settings (Thompson et al. 2025;
+Fairbairn et al. 2025). Raw classifier scores mimic probabilities but
+are uncalibrated; 95% score does not mean 95% confidence (Dussert et al.
+2025), and the same match percentage can be diagnostic for one taxon
+group but ambiguous for another (Pappalardo et al. 2025). These errors
+fall into three categories: false positives (FP; wrong taxon assigned,
+or overly confident in), false negatives (FN; correct taxon missed or
+underestimated), and combined errors where one taxon's false positive is
+another's false negative. FP/FN labels below mark which category each
+error mechanism produces.
 
 #### Reference database quality
 
 **Reference mislabeling** (FP). Mislabeled sequences or images already
-present in the reference database can lead to confident wrong
-assignments that propagate to every query matching that reference.
+present in the reference database can lead to false positives.
 *TaxaMatch* can check if accessions might be mislabeled so they can be
-removed before training models and generating consensus taxonomies.
-This generally follows three steps:
-*corroborate_references_locally()* is a relatively fast initial check
-for whether a reference has internal consistency within the data (i.e.,
-a reference is similar to other same-named references). If internal
-consistency cannot be verified, DNA sequences can be more extensively
-evaluated with *evaluate_reference_accessions()*. This step does a BLAST
-search to see if an accession matches taxa related to its label. This
-makes it possible to find gross label errors that could mess with
-statistical models or give incorrect matches. *review_flagged_accessions()*
-gives flagged/borderline accessions a real LLM second look;
-*resolve_review_overrides()* turns that into the specific accessions
-that should survive an otherwise-automatic removal.
+removed before training models and generating consensus taxonomies. This
+generally follows three steps: *corroborate_references_locally()* is a
+relatively fast initial check for whether a reference has internal
+consistency within the data (i.e., a reference is similar to other
+same-named references). However, being overly cautious (removing correct
+references that don't match well) biases the reference library (most
+suspicious references are correct). This merits a more extensive
+evaluation of suspect references. For sequences, TaxaMatch uses
+*evaluate_reference_accessions()* using a BLAST search to see if an
+accession matches taxa related to its label, and
+*review_flagged_accessions()* gives flagged/borderline accessions a
+third look from an LLM; after which *resolve_review_overrides()* double
+checks if flagged accessions should be kept or removed.
 
 **Missing reference redirect** (FP + FN). The reference database itself
 is usually incomplete: when the true species has no entry in the
@@ -177,7 +175,8 @@ devices or captive animals.
 2.  **TaxaFetch** acquires species occurrence records from GBIF, DataONE
     (Data Observation Network for Earth; University of New Mexico,
     Albuquerque, New Mexico), BioTIME (University of St Andrews, St
-    Andrews, Scotland, United Kingdom), and published literature.
+    Andrews, Scotland, United Kingdom), and published literature
+    (including from PDFs).
 3.  **TaxaHabitat** classifies taxa into habitat categories using
     LLM-based biological consensus and flags spatial outliers.
 4.  **TaxaMatch** standardizes match tables from external tools (BLAST,
@@ -191,8 +190,8 @@ devices or captive animals.
     library, trimming poor-fitting matches during training and auditing
     references for coverage gaps.
 6.  **TaxaExpect** builds spatially explicit Bayesian priors by modeling
-    expected species composition -- each taxon's relative share of the
-    detections at a site -- from observation records, incorporating
+    expected species composition (each taxon's relative share of the
+    detections at a site) from observation records, incorporating
     habitat and spatial autocorrelation.
 7.  **TaxaAssign** computes posterior probabilities from likelihoods and
     priors, generates consensus taxonomy, and produces publication-ready
@@ -204,6 +203,8 @@ devices or captive animals.
     generates a complete R script, methods section, or Shiny
     application.
 
+See the Readme.md file for each package for more details.
+
 ### Dependency Chain (import order)
 
 ```         
@@ -212,9 +213,8 @@ TaxaMatch -> TaxaLikely -> TaxaAssign -> TaxaFlag
 TaxaWizard (standalone; generates scripts that call the other packages)
 ```
 
-The diagram below shows the same chain at the level of real data
-handoffs between packages, rather than just import order: external data
-sources (parallelograms), external reference/occurrence databases
+The diagram below shows how information flows among packages: external
+data sources (parallelograms), external reference/occurrence databases
 (cylinders), the nine packages (rectangles), and final outputs (rounded
 terminals). `TaxaTools` is a cross-cutting utility (name cleaning,
 backbone conversion, LLM calls) rather than a single pipeline step,
@@ -290,15 +290,13 @@ flowchart TD
     class TaxaWizard wizard;
 ```
 
-This diagram is a package-level collapse of the same underlying graph
-`TaxaWizard` walks to generate scripts
-(`TaxaWizard/inst/graph/workflow_graph.json`), so it can't drift far
-from what the functions actually do; see the *Pipeline Overview* section
-below for the finer-grained, object-level version of the same flow.
+`TaxaWizard` uses this flowchart to help users generate scripts
+(`TaxaWizard/inst/graph/workflow_graph.json`); see the *Pipeline
+Overview* section below for the finer-grained, object-level version.
 
 # Citation
 
-Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
+Lafferty, K.D., 2026, TaxaID: A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
 
@@ -322,27 +320,30 @@ distributions that bundle glmmTMB may be subject to GPL terms.
 
 # Use of Large Language Models
 
-TaxaID uses large language models in two distinct ways, and they should not be
-confused.
+TaxaID uses large language models in two distinct ways, and they should
+not be confused.
 
-**In the software.** Several functions call an LLM as part of the analysis:
-TaxaHabitat assigns habitat categories by biological consensus, TaxaFlag reviews
-assignments for ecological plausibility, TaxaAssign offers an LLM-elicited
-alternative to the modelled prior, and TaxaWizard generates workflow scripts. All
-of these route through a common provider interface (`TaxaTools::call_api()`), so
-any supported provider can be used, and every one of them except TaxaWizard has a
-non-LLM alternative. Functions that make billed API calls cache their results to
-disk, so re-running a workflow does not pay for the same call twice.
+**In the software.** Several functions call an LLM as part of the
+analysis: TaxaHabitat assigns habitat categories by biological
+consensus, TaxaFlag reviews assignments for ecological plausibility,
+TaxaAssign offers an LLM-elicited alternative to the modelled prior, and
+TaxaWizard generates workflow scripts. All of these route through a
+common provider interface (`TaxaTools::call_api()`), so any supported
+provider can be used, and every one of them except TaxaWizard has a
+non-LLM alternative. Functions that make billed API calls cache their
+results to disk, so re-running a workflow does not pay for the same call
+twice.
 
-**In writing the code.** The TaxaID source code was written with the assistance of
-Anthropic Claude models, used through Claude Code. Claude Sonnet did the bulk of
-the development; Claude Opus and Claude Fable were used more recently. Because
-this assistance was continuous rather than confined to particular functions,
-per-function annotation would imply a precision that does not exist, so this
-repository-level statement is the annotation. All of it was reviewed and tested
-before release: every package carries a `testthat` suite, and each was checked
-with `R CMD check` before release. The author reviewed the code and takes
-responsibility for it.
+**In writing the code.** The TaxaID source code was written with the
+assistance of Anthropic Claude models, used through Claude Code. Claude
+Sonnet did the bulk of the development; Claude Opus and Claude Fable
+were used more recently. Because this assistance was continuous rather
+than confined to particular functions, per-function annotation would
+imply a precision that does not exist, so this repository-level
+statement is the annotation. All of it was reviewed and tested before
+release: every package carries a `testthat` suite, and each was checked
+with `R CMD check` before release. The author reviewed the code and
+takes responsibility for it.
 
 # Related Software
 
@@ -458,18 +459,19 @@ TaxaMatch, then `unreferenced_candidates()` + `assign_scores()` convert
 classifier confidence scores to likelihoods (no separate
 reference-building step required).
 
-InsectNet (Chiranjeevi et al. 2025) is a notable recent advance for invertebrate
-specialists, achieving 96.4% top-1 accuracy across 2,526 species in 17
-insect orders. Its standout methodological innovation is replacing point
-confidence scores with **conformal prediction sets**: rather than a
-single species estimate, the model returns a set of candidate species
-guaranteed to contain the true species with ≥97.5% probability, backed
-by an energy-based out-of-distribution score that flags images outside
-the training distribution. The conformal guarantee is conceptually
-related to TaxaID's H1/H2/H3 framework; the true species is either in
-the candidate set (H1/H2) or flagged as OOD (H3 analog). The outputs are
-not directly compatible with `train_likelihood_model()`, however, given
-the lack of access to InsectNet's underlying softmax scores.
+InsectNet (Chiranjeevi et al. 2025) is a notable recent advance for
+invertebrate specialists, achieving 96.4% top-1 accuracy across 2,526
+species in 17 insect orders. Its standout methodological innovation is
+replacing point confidence scores with **conformal prediction sets**:
+rather than a single species estimate, the model returns a set of
+candidate species guaranteed to contain the true species with ≥97.5%
+probability, backed by an energy-based out-of-distribution score that
+flags images outside the training distribution. The conformal guarantee
+is conceptually related to TaxaID's H1/H2/H3 framework; the true species
+is either in the candidate set (H1/H2) or flagged as OOD (H3 analog).
+The outputs are not directly compatible with `train_likelihood_model()`,
+however, given the lack of access to InsectNet's underlying softmax
+scores.
 
 For contamination detection, the R package decontam (Davis et al. 2018)
 uses DNA concentration and prevalence to identify contaminants at the
@@ -785,10 +787,10 @@ run can resume from where it left off instead of restarting from
 scratch.
 
 **Getting help.** If none of the above resolves it, please open an issue
-at <https://github.com/DOI-USGS/TaxaID/issues> with your R version,
-the exact error message, and a minimal reproducible example if possible
--- this helps other users hitting the same issue find the answer too,
-and keeps a public record other than a private email thread.
+at <https://github.com/DOI-USGS/TaxaID/issues> with your R version, the
+exact error message, and a minimal reproducible example if possible --
+this helps other users hitting the same issue find the answer too, and
+keeps a public record other than a private email thread.
 
 # Data Outputs and Results
 
@@ -828,9 +830,9 @@ The TaxaID ecosystem produces outputs at each stage of the pipeline:
 -   **Site-centered kernel estimation** (current recommended path)
     predicting each taxon's expected share of the detections at a focal
     site from a distance-weighted (geo x optional-covariate) kernel over
-    nearby occurrence records, with bandwidth chosen by leave-one-block-out
-    composition prediction (`estimate_kernel_priors()`,
-    `calibrate_kernel_bandwidth()`).
+    nearby occurrence records, with bandwidth chosen by
+    leave-one-block-out composition prediction
+    (`estimate_kernel_priors()`, `calibrate_kernel_bandwidth()`).
 -   **Beta priors** (alpha, beta) for every taxon at the focal site,
     including undetected diversity estimates (Good-Turing/Chao-anchored)
     for plausible but unobserved species

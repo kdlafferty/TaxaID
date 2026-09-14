@@ -844,24 +844,66 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # the failure mode here is silence-by-dilution, not absence of a warning.
   # State the CONSEQUENCE, not just the cause.
   if (n_failed_counts > 0L) {
-    msg <- sprintf(
+    last_err <- count_errors[is.na(counts)][[1L]]
+    have_key <- nzchar(Sys.getenv("ENTREZ_KEY")) || !is.null(ncbi_api_key)
+
+    what_happened <- sprintf(
       paste0(
-        "%d of %d taxa could not be counted after %d attempt(s) and will ",
-        "contribute ZERO reference sequences: %s. Their likelihood model will ",
-        "fall back to global parameters, and any species-level call in these ",
-        "taxa will rest on no reference data of its own. This is usually ",
-        "transient NCBI throttling -- re-running the fetch normally recovers ",
-        "them. Last error: %s"
+        "NCBI count queries failed for %d of %d taxa after %d attempt(s): %s.\n",
+        "These taxa contribute ZERO reference sequences: a failed count is ",
+        "excluded from the sequence budget, which sets their fetch cap to 0. ",
+        "Their likelihood parameters fall back to the global values, so any ",
+        "species-level call within them rests on no reference data of its own.\n",
+        "Last error: %s"
       ),
       n_failed_counts, length(taxa), count_attempts,
-      paste(failed_taxa, collapse = ", "),
-      count_errors[is.na(counts)][[1L]]
+      paste(failed_taxa, collapse = ", "), last_err
     )
+
+    # An error is only useful if it says what to do next. Keep this list
+    # ordered by what actually resolved the real 2026-09-14 occurrence.
+    what_to_do <- paste0(
+      "\nWHAT TO DO\n",
+      "  1. Most likely transient NCBI throttling. Wait a few minutes and\n",
+      "     re-run this step. When this last happened (2026-09-14), all 7\n",
+      "     affected taxa returned real counts on a later attempt with no\n",
+      "     change to the query.\n",
+      "  2. Check NCBI is reachable and healthy:\n",
+      "     https://www.ncbi.nlm.nih.gov/  and\n",
+      "     rentrez::entrez_search(db = \"nucleotide\", term = \"",
+      failed_taxa[[1L]], "[Organism]\", retmax = 0L)\n",
+      if (have_key) {
+        "  3. An API key is set, which allows 10 requests/second.\n"
+      } else {
+        paste0(
+          "  3. NO NCBI API key detected. Without one you are limited to 3\n",
+          "     requests/second, which makes throttling far more likely on a\n",
+          "     large taxon list. Get a free key from your NCBI account and\n",
+          "     set ENTREZ_KEY in ~/.Renviron, then restart R.\n"
+        )
+      },
+      sprintf(
+        paste0(
+          "  4. Raise the retry budget: count_attempts = %d (currently %d).\n"
+        ),
+        max(5L, count_attempts * 2L), count_attempts
+      ),
+      "  5. To proceed anyway and ACCEPT a degraded reference database, set\n",
+      "     on_count_failure = \"warn\". The affected taxa are then named in a\n",
+      "     warning and in attr(reference_df, \"count_failures\"), so you can\n",
+      "     check them rather than discover them later.\n"
+    )
+
     if (identical(on_count_failure, "error")) {
-      stop(msg)
+      stop(paste0(what_happened, "\n", what_to_do), call. = FALSE)
     }
-    warning(msg, call. = FALSE)
-    message("\n!! ", msg, "\n")
+    warning(paste0(
+      what_happened,
+      "\nRe-running this step normally recovers them. Set ",
+      "on_count_failure = \"error\" to stop instead of continuing with a ",
+      "degraded reference database."
+    ), call. = FALSE)
+    message("\n!! ", what_happened, "\n")
   }
 
   if (total == 0L) {
