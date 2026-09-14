@@ -31,7 +31,13 @@ patched mid-flight.
 Work these in order. Each one's output can change the next, which is why the
 order is not arbitrary.
 
-1. `REENTRY_PROMPT_unreviewed_rows_silently_dropped.md`
+1. ~~`REENTRY_PROMPT_unreviewed_rows_silently_dropped.md`~~ -- DONE 2026-09-14
+   (commits 72c9d2b / 95d9bee). The doc is retired; see TaxaFlag's
+   `@section Unreviewed rows`. Re-run outcome: 20 unreviewed rows -> 0, but
+   the export is unchanged at 224 OTUs, because the recovered units are now
+   rated geographically unlikely by the skepticism gate despite the
+   reviewer's own prose calling them Point Conception natives. That
+   calibration question is open and is NOT tracked elsewhere.
 2. `REENTRY_PROMPT_resident_observed_evidence_gate.md`
 3. `REENTRY_PROMPT_cache_policy_P5_eviction.md`
 4. `REENTRY_PROMPT_cache_policy_review.md`
@@ -46,9 +52,6 @@ checklist, not a work order. Use it as reference during steps 5 and 7.
 
 ## Must be resolved or consciously deferred first
 
-- `REENTRY_PROMPT_unreviewed_rows_silently_dropped.md` -- observations vanish
-  from the final export when the review model omits them. This is silent data
-  loss and should not ship undecided.
 - `REENTRY_PROMPT_resident_observed_evidence_gate.md` -- a label asserting
   evidence it does not test, with 25.7% of rows resting on under 0.01
   effective records. It feeds the published plausibility categories.
