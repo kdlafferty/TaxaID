@@ -191,14 +191,29 @@
 #'   isn't resolving truncation warnings for your data -- e.g. a long,
 #'   multi-marker \code{marker} string can inflate per-taxon response length
 #'   enough that even the smallest retry sub-batch still truncates.
-#' @param max_retries Integer. When a batch's LLM response is truncated,
-#'   empty, or unparseable, the batch is automatically split in half and
-#'   retried -- a smaller batch requests a proportionally shorter response,
-#'   directly relieving token-budget pressure -- up to \code{max_retries}
-#'   times before falling back to \code{NA} defaults for whatever's still
-#'   missing. Does not apply to a hard \code{llm_fn} error (e.g. network/auth
-#'   failure): a smaller batch can't fix that, so it is reported immediately
-#'   without retrying. Default \code{2L}.
+#' @param max_retries Integer. The per-batch retry budget, shared by two
+#'   mechanisms. (1) When a batch's LLM response is truncated, empty, or
+#'   unparseable, the batch is automatically split in half and retried -- a
+#'   smaller batch requests a proportionally shorter response, directly
+#'   relieving token-budget pressure. (2) When a response parses cleanly and is
+#'   the right shape but simply OMITS specific taxa, those taxa (and only
+#'   those) are re-asked in a follow-up call. The second case is not
+#'   truncation, so the halving retry never fires for it; before 2026-09-14
+#'   there was no retry at all and the run gave up on those taxa permanently
+#'   -- see \code{@section Unreviewed rows}. Both stop after
+#'   \code{max_retries} attempts and fall back to \code{NA} defaults for
+#'   whatever is still missing. Neither applies to a hard \code{llm_fn} error
+#'   (e.g. network/auth failure): a smaller or narrower batch can't fix that,
+#'   so it is reported immediately without retrying. \code{0L} means exactly
+#'   one call per batch, as before either mechanism existed. Default
+#'   \code{2L}.
+#' @param on_unreviewed Character. What to do when taxa still have no verdict
+#'   after the re-asks: \code{"warn"} (default) reports them and continues,
+#'   \code{"error"} stops the run, \code{"ignore"} is silent. The residue is
+#'   recorded on the result either way (see \code{@section Unreviewed rows}).
+#'   Production workflows pass \code{"error"}: an unreviewed row is dropped
+#'   by the usual export filters, so a run with residue produces a species
+#'   list that is silently short.
 #' @param pause_seconds Numeric. Seconds to pause between LLM calls.
 #'   Default \code{1}.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
@@ -234,12 +249,50 @@
 #'     deterministic column rather than relying on \code{review_comment}
 #'     alone.}
 #' }
+#' Also carries \code{"unreviewed_taxa"} (character vector, possibly empty --
+#' the taxon/candidate-set labels the LLM never returned a verdict for) and
+#' \code{"n_unreviewed_rows"} (integer -- input rows left with \code{NA} in
+#' every \code{llm_} column) attributes; both are ALWAYS present. See
+#' \code{@section Unreviewed rows}. Attributes do not survive a \code{dplyr}
+#' verb, so read them immediately after the call.
+#'
 #' Also carries an \code{"llm_prompts"} attribute -- a named list of the
 #' exact prompt string sent for each LLM call (named by batch number, with
 #' an \code{"a"}/\code{"b"} suffix per retry sub-batch split, e.g.
 #' \code{"2b"}). Inspect via \code{attr(reviewed, "llm_prompts")} to see
 #' precisely what the LLM was asked, e.g. before trusting an unexpected
 #' result or when tuning \code{context}/\code{target_group}/\code{marker}.
+#'
+#' @section Unreviewed rows (2026-09-14):
+#' An LLM response can parse cleanly, be the right length, and still leave
+#' specific taxa out -- consistently the long compound slash labels, i.e. the
+#' hardest rows, not random ones. That is not truncation, so the halving retry
+#' never fired for it, and before this date the run gave up on those taxa
+#' permanently: \code{NA} was filled in for all four \code{llm_} columns and
+#' the omission was warned about and then forgotten. Because every production
+#' workflow's export chain filters with \code{!= "unlikely"}, which
+#' \strong{discards \code{NA}}, the observation was removed from the final
+#' species list without a word -- the same class of loss as the 2026-09-04
+#' grass-carp incident. Found on the PtConception 12S production run, by a
+#' diagnostic that had itself been failing silently since it was written.
+#'
+#' Three changes close it. (1) Omitted taxa are \strong{re-asked}, alone, up
+#' to \code{max_retries} times; the cost is bounded and pay-per-failure,
+#' since it only fires when the model omits, and it stops early when a re-ask
+#' recovers nothing. (2) An unreviewed taxon is \strong{never cached} -- and a
+#' cached entry from before this date holding no verdict is treated as a MISS,
+#' so an existing cache heals itself rather than serving the omission forever.
+#' (3) Whatever residue survives is \strong{loud}: named in
+#' \code{attr(result, "unreviewed_taxa")}, counted in
+#' \code{attr(result, "n_unreviewed_rows")}, and escalated per
+#' \code{on_unreviewed}. A workflow should not have to run a hand-written
+#' diagnostic to discover that rows went missing.
+#'
+#' The export filters themselves are deliberately UNCHANGED (still
+#' \code{!= "unlikely"}, still dropping \code{NA}). Keeping an unreviewed row
+#' in a species list would put an unvetted taxon in the output distinguishable
+#' only by its \code{NA}s; stopping the run instead makes the decision
+#' per-run and explicit.
 #'
 #' @section Column naming (2026-09-06):
 #' \code{habitat_plausibility}/\code{geographic_plausibility}/
@@ -412,7 +465,9 @@ review_assignments <- function(input_df,
                                max_retries = 2L,
                                pause_seconds = 1,
                                cache_dir = NULL,
+                               on_unreviewed = c("warn", "error", "ignore"),
                                verbose = TRUE) {
+  on_unreviewed <- match.arg(on_unreviewed)
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
@@ -751,12 +806,27 @@ review_assignments <- function(input_df,
 
     hit_rows <- integer(0)
     hit_list <- list()
+    n_stale_na <- 0L
     for (i in seq_along(cache_paths)) {
       ent <- .review_cache_read(cache_paths[i], cache_keys[i])
+      # A cached entry with no verdict at all is a cached NON-ANSWER -- written
+      # by a run that predates the omitted-taxa re-ask (2026-09-14), when an
+      # NA-filled row was persisted like any other. Treat it as a MISS so the
+      # taxon is asked again, rather than serving the omission forever.
+      if (!is.null(ent) && .is_unreviewed_row(ent)) {
+        n_stale_na <- n_stale_na + 1L
+        ent <- NULL
+      }
       if (!is.null(ent)) {
         hit_rows <- c(hit_rows, i)
         hit_list[[length(hit_list) + 1L]] <- ent
       }
+    }
+    if (n_stale_na > 0L && verbose) {
+      message(sprintf(
+        "  cache: %d entr%s held no verdict (unreviewed) and will be re-asked.",
+        n_stale_na, if (n_stale_na == 1L) "y" else "ies"
+      ))
     }
     if (length(hit_rows) > 0L) {
       cache_hits <- do.call(rbind, hit_list)
@@ -815,10 +885,24 @@ review_assignments <- function(input_df,
 
   review_df <- do.call(rbind, batch_results)
 
+  # Labels the LLM never returned a verdict for, even after re-asking. Collected
+  # from the batch attributes rather than re-derived, so a label that IS present
+  # but legitimately all-NA for another reason is not conflated with one that
+  # was never answered.
+  unreviewed_taxa <- unique(unlist(
+    lapply(batch_results, function(b) attr(b, "missing_taxa")),
+    use.names = FALSE
+  ))
+  unreviewed_taxa <- as.character(unreviewed_taxa %||% character(0))
+
   # Persist the freshly obtained verdicts, then fold the cached ones back in.
+  # An unreviewed row is NEVER cached: caching a non-answer makes the omission
+  # permanent, since every later run is then a cache HIT on a row of NAs and
+  # the re-ask above never gets a chance to fire.
   if (!is.null(cache_dir) && !is.null(review_df) && nrow(review_df) > 0L) {
     pos <- match(review_df$taxon_name, taxa_info$taxon_name)
     for (k in which(!is.na(pos))) {
+      if (review_df$taxon_name[k] %in% unreviewed_taxa) next
       .review_cache_write(
         cache_paths[pos[k]], cache_keys[pos[k]],
         review_df[k, , drop = FALSE]
@@ -923,7 +1007,79 @@ review_assignments <- function(input_df,
   # see @return below.
   attr(result, "llm_prompts") <- as.list(prompt_log)
 
+  # --- Unreviewed residue (2026-09-14) --------------------------------------
+  # A row the model never answered about carries NA in all four llm_ columns,
+  # and every production workflow's export chain filters with != "unlikely",
+  # which DISCARDS NA -- so the observation leaves the final species list
+  # without a word. Same class of loss as the 2026-09-04 grass-carp incident.
+  # The count is returned as an attribute (always present, possibly empty),
+  # modelled on fetch_ncbi_reference_sequences()'s count_failures, so a
+  # workflow can check it programmatically instead of hand-writing a
+  # diagnostic. NOTE: attributes do not survive a dplyr verb -- check this
+  # immediately after the call, before any join/mutate.
+  n_unreviewed_rows <- sum(is.na(result$llm_habitat_plausibility) &
+    is.na(result$llm_geographic_plausibility) &
+    is.na(result$llm_contamination_risk) &
+    is.na(result$review_confidence))
+  attr(result, "unreviewed_taxa") <- unreviewed_taxa
+  attr(result, "n_unreviewed_rows") <- n_unreviewed_rows
+
+  if (length(unreviewed_taxa) > 0L && !identical(on_unreviewed, "ignore")) {
+    what_happened <- sprintf(paste0(
+      "%d %s have NO LLM verdict, after re-asking (max_retries = %d):\n  %s\n",
+      "%d input row(s) carry NA in every llm_ column as a result."
+    ),
+    length(unreviewed_taxa),
+    if (use_candidates) "candidate set(s)" else "taxon/taxa",
+    max_retries,
+    paste(utils::head(unreviewed_taxa, 10L), collapse = "\n  "),
+    n_unreviewed_rows
+    )
+    if (length(unreviewed_taxa) > 10L) {
+      what_happened <- paste0(
+        what_happened,
+        sprintf("\n  ... and %d more", length(unreviewed_taxa) - 10L)
+      )
+    }
+    what_to_do <- paste0(
+      "\nThese rows are DROPPED by the usual export filters, which test\n",
+      "  llm_* != \"unlikely\" and so discard NA. Re-running normally recovers\n",
+      "  them (an unreviewed taxon is never cached). To continue anyway and\n",
+      "  accept the loss, set on_unreviewed = \"warn\"; the affected taxa are\n",
+      "  then named here and in attr(result, \"unreviewed_taxa\")."
+    )
+    if (identical(on_unreviewed, "error")) {
+      stop(paste0(what_happened, what_to_do), call. = FALSE)
+    }
+    warning(paste0(what_happened, what_to_do), call. = FALSE)
+    message("\n!! ", what_happened, "\n")
+  }
+
   result
+}
+
+
+#' Is This Review Row an Unreviewed Non-Answer?
+#'
+#' TRUE when every field the LLM is asked to fill is \code{NA} -- the shape
+#' \code{.parse_review_response()}'s \code{make_default()} produces for a
+#' taxon the model omitted. Deliberately ignores \code{scope_plausibility}
+#' (legitimately \code{NA} for every taxon when \code{target_group} is not
+#' supplied) and \code{review_lower_hypotheses} (legitimately \code{NA} on
+#' the whole candidate-set path), so a real verdict is never mistaken for a
+#' non-answer.
+#' @noRd
+.is_unreviewed_row <- function(ent) {
+  cols <- c(
+    "habitat_plausibility", "geographic_plausibility",
+    "contamination_risk", "review_confidence",
+    "review_alternatives", "review_comment"
+  )
+  cols <- cols[cols %in% names(ent)]
+  if (length(cols) == 0L) {
+    return(FALSE)
+  }
+  all(vapply(cols, function(cl) all(is.na(ent[[cl]])), logical(1L)))
 }
 
 
@@ -1601,13 +1757,135 @@ review_assignments <- function(input_df,
       max_tokens, taxon_rank_col, verbose, pause_seconds,
       paste0(batch_label, "b"), max_retries, depth + 1L, prompt_log
     )
-    return(rbind(left_result, right_result))
+    # Each half has already re-asked for its own omissions at its leaf, so
+    # the residue attributes just need unioning -- rbind() would drop them.
+    return(.rbind_reviews(left_result, right_result))
   }
 
   for (w in pending) warning(w, call. = FALSE)
+
+  # --- Re-ask for taxa the model simply omitted -----------------------------
+  # A batch can come back well-formed, the right length, and parse cleanly
+  # while still leaving out specific taxa -- consistently the long compound
+  # slash labels, i.e. the hardest rows, not random ones. That is NOT
+  # truncation, so `status` is "complete" and the halving retry above never
+  # fires; before 2026-09-14 the run gave up on them permanently, filled NA,
+  # and the workflows' `!= "unlikely"` export filters (which discard NA)
+  # removed those observations from the final species list without a word.
+  # Same class of loss as the 2026-09-04 grass-carp incident.
+  #
+  # Cost is bounded and pay-per-failure: this fires only when the model
+  # omits, asks for the omitted taxa ONLY, and shares the `max_retries`
+  # budget with the halving retry (so max_retries = 0 still means exactly one
+  # call per batch, as it always has).
+  missing <- attr(parsed, "missing_taxa")
+  attempt <- 0L
+  while (length(missing) > 0L && attempt < max_retries) {
+    attempt <- attempt + 1L
+    sub_batch <- taxa_batch[taxa_batch$taxon_name %in% missing, , drop = FALSE]
+    if (nrow(sub_batch) == 0L) break
+
+    if (verbose) {
+      message(sprintf(
+        "  Batch %s: LLM omitted %d %s -- re-asking (attempt %d/%d)...",
+        batch_label, nrow(sub_batch),
+        if (use_candidates) "candidate set(s)" else "taxon/taxa",
+        attempt, max_retries
+      ))
+    }
+
+    Sys.sleep(pause_seconds)
+    reask_label <- paste0(batch_label, "r", attempt)
+    reask_prompt <- .build_review_prompt(
+      sub_batch, ctx, target_group, marker, data_type, use_candidates
+    )
+    if (!is.null(prompt_log)) assign(reask_label, reask_prompt, envir = prompt_log)
+
+    reask_error <- NULL
+    reask_raw <- tryCatch(
+      if (is.null(max_tokens)) {
+        llm_fn(reask_prompt)
+      } else {
+        llm_fn(reask_prompt, max_tokens = max_tokens)
+      },
+      error = function(e) {
+        reask_error <<- conditionMessage(e)
+        NULL
+      }
+    )
+    # A hard llm_fn error (network/auth) will not be fixed by asking again --
+    # stop re-asking and let the residue be reported, exactly as the halving
+    # retry declines to retry a broken call.
+    if (!is.null(reask_error)) {
+      warning(sprintf(
+        "Re-ask for omitted taxa failed for batch %s: %s. Leaving %d unreviewed.",
+        batch_label, reask_error, length(missing)
+      ), call. = FALSE)
+      break
+    }
+
+    reask <- .parse_review_response(
+      reask_raw, sub_batch, target_group, taxon_rank_col, use_candidates
+    )
+    still_missing <- attr(reask, "missing_taxa")
+    recovered <- setdiff(missing, still_missing)
+    if (length(recovered) > 0L) {
+      keep <- reask$taxon_name %in% recovered
+      parsed <- rbind(
+        parsed[!parsed$taxon_name %in% recovered, , drop = FALSE],
+        reask[keep, , drop = FALSE]
+      )
+      if (verbose) {
+        message(sprintf(
+          "    recovered %d of %d on re-ask.", length(recovered), length(missing)
+        ))
+      }
+    }
+    # No progress means asking a third time is unlikely to help either.
+    if (length(still_missing) == length(missing)) {
+      missing <- still_missing
+      break
+    }
+    missing <- still_missing
+  }
+
+  if (length(missing) > 0L && verbose) {
+    # A message, not a warning: .parse_review_response() has already warned
+    # per batch and review_assignments() summarises the whole run's residue
+    # at the end -- three warnings for one omission is noise, not signal.
+    message(sprintf(
+      "  Batch %s: %d still unreviewed after %d re-ask attempt(s): %s",
+      batch_label, length(missing), attempt, paste(missing, collapse = ", ")
+    ))
+  }
+
+  # Restore the batch's original taxon order so the result is deterministic
+  # regardless of how many rows the re-ask moved to the bottom.
+  parsed <- parsed[order(match(parsed$taxon_name, taxa_batch$taxon_name)), ,
+    drop = FALSE
+  ]
+  rownames(parsed) <- NULL
+
   attr(parsed, "status") <- NULL
   attr(parsed, "pending_warnings") <- NULL
+  attr(parsed, "missing_taxa") <- as.character(missing)
   parsed
+}
+
+
+#' rbind Two Review Results, Preserving the Unreviewed Residue
+#'
+#' \code{rbind()} on data frames drops attributes, so the retry recursion's
+#' \code{missing_taxa} residue has to be unioned explicitly or the top-level
+#' count silently reports zero unreviewed taxa for a run that had some.
+#' @noRd
+.rbind_reviews <- function(a, b) {
+  out <- rbind(a, b)
+  attr(out, "missing_taxa") <- union(
+    attr(a, "missing_taxa") %||% character(0),
+    attr(b, "missing_taxa") %||% character(0)
+  )
+  out
 }
 
 
@@ -1640,16 +1918,25 @@ review_assignments <- function(input_df,
     )
   }
 
-  .with_status <- function(result, status, pending_warnings = character(0)) {
+  .with_status <- function(result, status, pending_warnings = character(0),
+                           missing_taxa = character(0)) {
     attr(result, "status") <- status
     attr(result, "pending_warnings") <- pending_warnings
+    # Which expected taxa carry NA-filled defaults rather than a real verdict.
+    # Exposed (rather than only warned about) so .review_batch_with_retry()
+    # can RE-ASK for exactly these, and so review_assignments() can report the
+    # residue that survives. Before 2026-09-14 the omission was warned about
+    # and then forgotten, and the workflows' `!= "unlikely"` export filters
+    # dropped the NA rows without a word.
+    attr(result, "missing_taxa") <- as.character(missing_taxa)
     result
   }
 
   if (is.null(response) || !nzchar(trimws(response))) {
     return(.with_status(
       make_default(), "failed",
-      "Empty LLM response. Returning NA defaults."
+      "Empty LLM response. Returning NA defaults.",
+      missing_taxa = expected_taxa
     ))
   }
 
@@ -1690,7 +1977,7 @@ review_assignments <- function(input_df,
     return(.with_status(make_default(), "failed", sprintf(
       "Could not parse LLM response as JSON. Returning NA defaults.\n  Response length: %d chars; ends with: ...%s",
       n, tail_str
-    )))
+    ), missing_taxa = expected_taxa))
   }
 
   pending <- character(0)
@@ -1709,7 +1996,8 @@ review_assignments <- function(input_df,
   if (!"taxon_name" %in% names(parsed)) {
     return(.with_status(
       make_default(), "failed",
-      "LLM response missing 'taxon_name' field. Returning NA defaults."
+      "LLM response missing 'taxon_name' field. Returning NA defaults.",
+      missing_taxa = expected_taxa
     ))
   }
 
@@ -1821,7 +2109,7 @@ review_assignments <- function(input_df,
 
   result <- result[result$taxon_name %in% expected_taxa, , drop = FALSE]
 
-  .with_status(result, status, pending)
+  .with_status(result, status, pending, missing_taxa)
 }
 
 

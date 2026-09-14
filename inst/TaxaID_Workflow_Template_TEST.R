@@ -1556,6 +1556,12 @@ reviewed_assignments <- TaxaFlag::review_assignments(
   # real production workflow has this; without it a review is not
   # reproducible across re-runs on identical input.
   cache_dir        = file.path(OUT_DIR, paste0(OUT_PREFIX, "_review_assignments_cache")),
+  # 2026-09-14: any taxon the LLM never answered about aborts the run rather
+  # than reaching an export filter that tests != "unlikely" and so DISCARDS
+  # NA -- an unreviewed observation would leave the species list without a
+  # word (the 2026-09-04 grass-carp failure mode). Re-running normally
+  # recovers it; an unreviewed taxon is never cached.
+  on_unreviewed    = "error",
   llm_fn           = getOption("TaxaID.llm_fn", TaxaTools::call_anthropic_api)
 )
 .save(reviewed_assignments, "reviewed_assignments")

@@ -1,7 +1,55 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-14, later (Opus 5 -- CACHE POLICY REVIEW FULLY IMPLEMENTED, branch
+# Last updated: 2026-09-14, later still (Opus 5 -- SILENT DATA LOSS IN THE LLM REVIEW CLOSED.
+# ecosystem_docs/REENTRY_PROMPT_unreviewed_rows_silently_dropped.md is RESOLVED; read its
+# Resolution section, not just its problem statement (item 4 of its own "what to do" list is
+# a FALSE premise -- see below).
+#
+# THE LOSS: an LLM review response can parse cleanly, be the right length, and still omit
+# specific taxa -- consistently the long compound slash labels, i.e. the hardest rows, not
+# random ones. That is not truncation, so review_assignments()'s status stays "complete" and
+# the halving retry never fires; the taxon was NA-filled and forgotten. Because every
+# production export chain filters `!= "unlikely"`, which DISCARDS NA, the observation left
+# the final species list without a word. Third instance of this exact shape after the
+# 2026-09-04 grass carp and the 113/885 GreatLakes slash taxa. Measured on the real PtCon 12S
+# run: 20 observations, 3 biological units, ALL of them plausible local fishes.
+#
+# FIXED IN TaxaFlag::review_assignments(): (1) omitted taxa are RE-ASKED, alone, bounded by
+# max_retries, at the terminal path of every batch -- so it also covers the halving retry's
+# leaves and the size-1 batch, where halving structurally cannot fire; stops early on no
+# progress; max_retries = 0 still means exactly one call per batch. (2) A SECOND DEFECT the
+# prompt had not spotted: the NA row was being CACHED, so every later run was a cache HIT on
+# a row of NAs and the omission was PERMANENT -- re-running could not have recovered it, and
+# the new retry would never have got a chance to fire. An unreviewed taxon is now never
+# written, and a cached non-answer is treated as a MISS, so existing caches heal themselves.
+# (3) The residue is LOUD: attr(result, "unreviewed_taxa") / attr(, "n_unreviewed_rows"),
+# always present (the count_failures pattern), plus on_unreviewed = c("warn","error",
+# "ignore").
+#
+# USER DECISION on the filter semantics: hard-stop. The six export filters stay
+# `!= "unlikely"` (unchanged), and all five production workflows + both templates now pass
+# on_unreviewed = "error" -- a run with residue aborts BEFORE the export chain rather than
+# producing a species list that is silently short. Keeping an unreviewed row would put an
+# unvetted taxon in the output distinguishable only by its NAs; stopping makes the call
+# per-run and explicit.
+#
+# THE PROMPT'S OWN ITEM 4 WAS WRONG, and checking it before implementing mattered: sorting
+# the slash label would have BROKEN a deliberate design. .make_slash_name() is
+# posterior-ordered by design (primary_taxon reads the first element), and
+# review_assignments() has joined on the SORTED candidate set since 2026-09-04. The real
+# data settles it -- the 20 affected rows carry 4 display labels but only 3 CANONICAL SETS;
+# the two Scorpaenichthys orderings are one set, sent to the LLM once, omitted once. Both
+# labels went NA because they SHARE one verdict, not because the review was split. A
+# regression test now pins the order-invariance nothing had asserted.
+#
+# VERIFIED LIVE (no NCBI needed, which is why this was workable while throttled): the 20
+# unreviewed rows of PtConMifishSchulte_reviewed.rds re-run through the fixed function =
+# 3 candidate sets, 1 LLM call, all 20 recovered, all three units passing the export
+# filters. TaxaFlag devtools::test() 530/0 (was 495), check() 0/0/0, reinstalled. The
+# workflow edits are UNCOMMITTED in both workflow repos (which already carried other
+# uncommitted changes).
+# Previous update: 2026-09-14, later (Opus 5 -- CACHE POLICY REVIEW FULLY IMPLEMENTED, branch
 # cache-policy-p1-p2. ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md Parts 8-11 have the
 # record; every decided item from Part 5 is now built across three sessions.
 #
@@ -3978,4 +4026,5 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-09-14 (Opus 5) | `fetch_ncbi_reference_sequences()`: cache is checked BEFORE the count query; `evict_unreachable_cache = TRUE` added; FASTA cached per accession | TaxaLikely | **Behavioral, plus one additive param** (cache policy P1/P2/P5). A cached taxon now issues NO count query, is excluded from the `max_sequences` budget (it fetches nothing), and is reported as `cached (n rows)` rather than mis-counted as a count failure -- closing the mechanism that silently deleted 7 genera (78 sequences, 17 species) from a real 12S run when transient NCBI failures hit taxa that had valid cached metadata on disk. The `total == 0L` early return is now guarded on `!any(is_cached)`; without it, an all-cached call returned an EMPTY `reference_df`. One consequence worth knowing: an uncached taxon now gets a LARGER `retmax_cap` (cached taxa no longer dilute the budget) -- that direction adds sequences, never removes, so it cannot cause silent under-fill. `evict_unreachable_cache` deletes, on the WRITE path only, that same taxon's cache files whose names the current key cannot produce for any arguments; scoped to one taxon, capped at 5 MB/file, and it says what it removed. Set `FALSE` to keep every historical generation. Warm Step 7a measured ~36 min -> 3 s on 221 genera, identical output. |
 | 2026-09-14 (Opus 5) | `taxalikely_evict_unreachable_cache()` added; `taxalikely_clear_cache()` now scans recursively and recognises `_seq\.rds$` | TaxaLikely | **New function + a real behavioral widening.** The new function removes ONLY files the current key construction cannot produce for ANY arguments (1,584 of 3,517 on the development machine, 45%, orphaned by past key widenings) and leaves every reachable file alone; **`dry_run = TRUE` by DEFAULT**, deliberately unlike every sibling `<pkg>_clear_cache()` -- those are told what to delete, this one decides for itself. Two files differing only in a key VALUE (`_l100_600` vs `_l100_5000`, or the two `rank_system` sets, both in live use) are different QUERIES and are never targeted. Separately, `taxalikely_clear_cache()` now reaches the per-accession `fasta/` store added by P2 the same day -- 4,061 files that, lacking both a pattern and a recursive scan, were invisible to every clear function in the ecosystem. **A caller who previously ran it with no arguments now also clears that store.** Its own docs' claim that "no orphan/duplicate mechanism exists here" was false and is corrected: the mechanism is key widening, not overwriting. |
 | 2026-09-14 (Opus 5) | `.fetch_summaries_batched()` gains `acc_version`; the `fasta/` cache is keyed on the versioned accession | TaxaLikely | **Behavioral, no signature change, nothing orphaned.** `.fetch_fasta_cached()`'s documentation claimed it was "keyed on the FULL accession including its version suffix"; it was keyed on `meta$acc`, which comes from ESummary's `caption` and carries NO version (confirmed on disk: 0 of 4,061 cached files had one). Consequence: when a taxon's metadata is REFRESHED and GenBank has revised a record since, an unversioned key is a cache HIT, so the superseded sequence is served under the new metadata. The download and parse paths were already written for versioned input (the parser strips versions from headers; the write-back maps stripped ids to the requested string) -- both silent no-ops on unversioned input, which is why it stayed invisible. `acc_version` comes from `x$accessionversion` on the SAME batched ESummary call (zero extra NCBI round trips, like `create_date`); new `.fasta_cache_keys()` coalesces it over `acc` PER ROW and the call site keys AND requests that string. **`acc` deliberately stays unversioned** -- `composite_id` derives from it, `.fetch_locations_batched()` returns `GBSeq_primary-accession` (no version) and joins on it, and the accession dedupe relies on it to collapse two revisions of one record. No meta cache key was widened: a meta file cached before `acc_version` existed cannot supply a version and cannot NOTICE one either (its accession list is frozen), so falling back to the bare accession is correct rather than a gap. Cost: a re-fetched taxon re-downloads its sequences once, since its new versioned keys miss the old unversioned files. |
+| 2026-09-14 (Opus 5) | `review_assignments()` re-asks for omitted taxa; never caches a non-answer; new `on_unreviewed = c("warn","error","ignore")` and `unreviewed_taxa`/`n_unreviewed_rows` attributes | TaxaFlag | **Additive signature, but a real behaviour change on three axes, and it INVALIDATES some cached rows on purpose.** (1) A batch whose response parses cleanly and is the right length can still OMIT taxa -- not truncation, so the halving retry never fired and the taxon was NA-filled permanently. Those taxa are now re-asked, alone, sharing the `max_retries` budget (so `max_retries = 0` still means exactly one call per batch, as before). Fires only when the model omits. (2) An unreviewed taxon is no longer WRITTEN to `cache_dir`, and a cached entry holding no verdict at all is now read as a MISS and re-asked -- so a cache written before today loses its NA rows and costs one re-ask each, by design: caching a non-answer made the omission permanent. (3) `attr(result, "unreviewed_taxa")`/`attr(, "n_unreviewed_rows")` are always present (the `count_failures` pattern); `on_unreviewed` defaults to `"warn"`, so no existing caller's control flow changes. Every production workflow + both templates pass `"error"` (user decision) -- the export filters stay `!= "unlikely"` and a run with residue now ABORTS instead of exporting a silently short species list. Real cost on PtCon 12S: 20 observations of three plausible local fishes, recovered in 1 LLM call. The prompt's suggested companion fix (sort the slash label) was checked and REJECTED -- the label is posterior-ordered by design and the review already deduplicates on the sorted set; see `ecosystem_docs/REENTRY_PROMPT_unreviewed_rows_silently_dropped.md`. `devtools::test()` 530/0, `check()` 0/0/0. |
 | 2026-09-14 (Opus 5) | `download_gbif_occurrences()` records and verifies the full `geometry` in its cached metadata; zip SIDECARS are now recognised as cache files | TaxaFetch | **Behavioral bug fix + a widening of what the clear functions target.** `.gbif_dl_meta_path()` keyed geometry as `nchar(geometry)`, not its content -- editing a bbox coordinate from `-122.385` to `-122.386` preserves the length, so the cache HIT served the WRONG REGION's occurrences. GreatLakes and 12S were shielded by their own workflow-level `.cache_ok()` gates; any other caller was exposed. The full geometry is now stored in the cached metadata and verified on read; a mismatch is a cache MISS. The KEY is deliberately unchanged (widening it would orphan every cached zip); legacy entries warn. Separately, the cache pattern `\.zip$` could not see a bad download renamed out of the way by hand (`X.zip.truncated_20260905` -- 122 MB, three quarters of that cache), so no clear function could reach it; `X.zip.<suffix>` sidecars are now recognised and, since metadata only ever names `X.zip`, are unreferenced by construction and always targeted by `orphans_only`. |

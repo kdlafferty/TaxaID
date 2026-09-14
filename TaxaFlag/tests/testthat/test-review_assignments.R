@@ -667,3 +667,290 @@ test_that(".parse_json_text() refuses to treat a model reply as a URL or file pa
   )
   expect_null(TaxaFlag:::.parse_json_text("This is not JSON at all"))
 })
+
+
+
+# ===========================================================================
+# Omitted taxa: re-ask, residue reporting, and the cache's role
+# (2026-09-14 -- see review_assignments()'s @section Unreviewed rows)
+# ===========================================================================
+
+.CANNED <- list(
+  "Carcharhinus melanopterus" = '{"taxon_name": "Carcharhinus melanopterus", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Homo sapiens" = '{"taxon_name": "Homo sapiens", "habitat_plausibility": "unlikely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Gobiidae" = '{"taxon_name": "Gobiidae", "habitat_plausibility": "likely", "geographic_plausibility": "likely", "scope_plausibility": null, "contamination_risk": "low", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "moderate", "review_comment": null}',
+  "Salmo salar" = '{"taxon_name": "Salmo salar", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": null, "contamination_risk": "moderate", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}',
+  "Bos taurus" = '{"taxon_name": "Bos taurus", "habitat_plausibility": "unlikely", "geographic_plausibility": "unlikely", "scope_plausibility": null, "contamination_risk": "high", "review_alternatives": null, "review_lower_hypotheses": null, "review_confidence": "high", "review_comment": null}'
+)
+
+# The real failure mode this whole mechanism exists for: a response that
+# parses cleanly and returns the RIGHT NUMBER of objects while substituting
+# something else for one expected taxon. n_recovered == n_expected keeps the
+# status "complete", so the halving retry never fires -- before 2026-09-14
+# nothing asked again and the taxon was NA-filled for good. (A response that
+# is simply SHORT reads as truncation and does trigger halving, which is why
+# the omission has to be answered separately rather than folded into it.)
+.omitting_llm <- function(omit = "Bos taurus", answer_from_call = Inf) {
+  calls <- 0L
+  prompts <- character(0)
+  fn <- function(prompt_str, ...) {
+    calls <<- calls + 1L
+    prompts <<- c(prompts, prompt_str)
+    asked <- names(.CANNED)[vapply(
+      names(.CANNED), function(nm) grepl(nm, prompt_str, fixed = TRUE),
+      logical(1L)
+    )]
+    objs <- unlist(.CANNED[asked], use.names = FALSE)
+    if (omit %in% asked && calls < answer_from_call) {
+      objs[match(omit, asked)] <- sub(
+        '"taxon_name": "[^"]*"',
+        '"taxon_name": "Fictus imaginarius"',
+        .CANNED[[omit]]
+      )
+    }
+    paste0("[", paste(objs, collapse = ",\n"), "]")
+  }
+  list(
+    fn = fn,
+    calls = function() calls,
+    prompts = function() prompts
+  )
+}
+
+test_that("an omitted taxon is re-asked and recovered, not left NA", {
+  m <- .omitting_llm(answer_from_call = 2L)
+
+  result <- review_assignments(
+    input_df = mock_consensus,
+    taxon_col = "consensus_taxon",
+    context = mock_context,
+    llm_fn = m$fn,
+    pause_seconds = 0,
+    verbose = FALSE
+  )
+
+  bt <- result[result$consensus_taxon == "Bos taurus", ]
+  expect_equal(bt$llm_habitat_plausibility, "unlikely")
+  expect_length(attr(result, "unreviewed_taxa"), 0L)
+  expect_equal(attr(result, "n_unreviewed_rows"), 0L)
+  # One batch call plus exactly one re-ask: pay-per-failure, not a doubled run.
+  expect_equal(m$calls(), 2L)
+})
+
+test_that("the re-ask asks for the omitted taxon ONLY", {
+  m <- .omitting_llm(answer_from_call = 2L)
+  review_assignments(
+    input_df = mock_consensus, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = m$fn, pause_seconds = 0, verbose = FALSE
+  )
+
+  expect_equal(length(m$prompts()), 2L)
+  block <- sub("(?s).*TAXA TO REVIEW:", "", m$prompts()[[2L]], perl = TRUE)
+  expect_true(grepl("Bos taurus", block, fixed = TRUE))
+  expect_false(grepl("Homo sapiens", block, fixed = TRUE))
+  expect_false(grepl("Gobiidae", block, fixed = TRUE))
+})
+
+test_that("a persistently omitted taxon is reported, not silently dropped", {
+  m <- .omitting_llm()
+
+  # capture_warnings(), not expect_warning(): the parser's own per-batch
+  # "LLM omitted ..." warning fires first, and the summary is the one that
+  # matters here.
+  warns <- testthat::capture_warnings(
+    result <- review_assignments(
+      input_df = mock_consensus, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = m$fn, pause_seconds = 0, verbose = FALSE
+    )
+  )
+  expect_match(warns, "NO LLM verdict", all = FALSE)
+
+  expect_equal(attr(result, "unreviewed_taxa"), "Bos taurus")
+  expect_equal(attr(result, "n_unreviewed_rows"), 1L)
+  bt <- result[result$consensus_taxon == "Bos taurus", ]
+  expect_true(is.na(bt$llm_habitat_plausibility))
+  # Stops once a re-ask recovers nothing, rather than burning the whole budget
+  # on a model that will not answer.
+  expect_equal(m$calls(), 2L)
+})
+
+test_that("a single-taxon batch is re-asked too -- halving cannot help there", {
+  # With one taxon in the batch there is nothing to halve, so before the
+  # re-ask this case had no retry of any kind.
+  calls <- 0L
+  fn <- function(prompt_str, ...) {
+    calls <<- calls + 1L
+    if (calls == 1L) "[]" else .CANNED[["Bos taurus"]] |> (\(x) paste0("[", x, "]"))()
+  }
+  df <- mock_consensus[mock_consensus$consensus_taxon == "Bos taurus", ]
+
+  result <- suppressWarnings(review_assignments(
+    input_df = df, taxon_col = "consensus_taxon", context = mock_context,
+    llm_fn = fn, pause_seconds = 0, verbose = FALSE
+  ))
+
+  expect_equal(calls, 2L)
+  expect_equal(result$llm_habitat_plausibility, "unlikely")
+  expect_length(attr(result, "unreviewed_taxa"), 0L)
+})
+
+test_that("on_unreviewed = 'error' stops the run rather than exporting short", {
+  m <- .omitting_llm()
+  expect_error(
+    suppressWarnings(review_assignments(
+      input_df = mock_consensus, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = m$fn, pause_seconds = 0,
+      on_unreviewed = "error", verbose = FALSE
+    )),
+    "Bos taurus"
+  )
+})
+
+test_that("on_unreviewed = 'ignore' is silent but still records the residue", {
+  m <- .omitting_llm()
+  result <- suppressWarnings(review_assignments(
+    input_df = mock_consensus, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = m$fn, pause_seconds = 0,
+    on_unreviewed = "ignore", verbose = FALSE
+  ))
+  expect_equal(attr(result, "unreviewed_taxa"), "Bos taurus")
+  expect_equal(attr(result, "n_unreviewed_rows"), 1L)
+})
+
+test_that("the residue attributes are always present, even with nothing missing", {
+  result <- review_assignments(
+    input_df = mock_consensus, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = mock_llm_fn, verbose = FALSE
+  )
+  expect_identical(attr(result, "unreviewed_taxa"), character(0))
+  expect_equal(attr(result, "n_unreviewed_rows"), 0L)
+})
+
+test_that("max_retries = 0 still means exactly one call per batch", {
+  m <- .omitting_llm()
+  warns <- testthat::capture_warnings(
+    result <- review_assignments(
+      input_df = mock_consensus, taxon_col = "consensus_taxon",
+      context = mock_context, llm_fn = m$fn, max_retries = 0L,
+      pause_seconds = 0, verbose = FALSE
+    )
+  )
+  expect_match(warns, "NO LLM verdict", all = FALSE)
+  expect_equal(m$calls(), 1L)
+  expect_equal(attr(result, "unreviewed_taxa"), "Bos taurus")
+})
+
+test_that("an unreviewed taxon is never written to the cache", {
+  cache_dir <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+  m <- .omitting_llm()
+
+  suppressWarnings(review_assignments(
+    input_df = mock_consensus, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = m$fn, pause_seconds = 0,
+    cache_dir = cache_dir, verbose = FALSE
+  ))
+
+  # Four answered taxa cached; the omitted one is not -- caching a non-answer
+  # would make the omission permanent on every later run.
+  cached <- list.files(cache_dir, pattern = "_review\\.rds$", full.names = TRUE)
+  expect_length(cached, 4L)
+  names_cached <- vapply(cached, function(p) readRDS(p)$row$taxon_name, character(1L))
+  expect_false("Bos taurus" %in% names_cached)
+})
+
+test_that("a cached non-answer from an older run is re-asked, not served", {
+  cache_dir <- file.path(tempdir(), paste0("flagcache_", as.integer(runif(1, 1, 1e8))))
+
+  # Seed the cache the way a pre-2026-09-14 run would have: every taxon
+  # cached, one of them holding NA in every field.
+  review_assignments(
+    input_df = mock_consensus, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = mock_llm_fn, pause_seconds = 0,
+    cache_dir = cache_dir, verbose = FALSE
+  )
+  files <- list.files(cache_dir, pattern = "_review\\.rds$", full.names = TRUE)
+  hit <- Filter(
+    function(p) identical(readRDS(p)$row$taxon_name, "Bos taurus"), files
+  )
+  expect_length(hit, 1L)
+  ent <- readRDS(hit[[1L]])
+  for (cl in setdiff(names(ent$row), "taxon_name")) ent$row[[cl]] <- NA_character_
+  saveRDS(ent, hit[[1L]])
+
+  m <- .omitting_llm(answer_from_call = 1L)
+  result <- review_assignments(
+    input_df = mock_consensus, taxon_col = "consensus_taxon",
+    context = mock_context, llm_fn = m$fn, pause_seconds = 0,
+    cache_dir = cache_dir, verbose = FALSE
+  )
+
+  # One call, for the one taxon whose cached entry held no verdict.
+  expect_equal(m$calls(), 1L)
+  bt <- result[result$consensus_taxon == "Bos taurus", ]
+  expect_equal(bt$llm_habitat_plausibility, "unlikely")
+  expect_length(attr(result, "unreviewed_taxa"), 0L)
+})
+
+
+# ===========================================================================
+# One biological unit is reviewed once, whatever order its label renders in
+# ===========================================================================
+
+test_that("a candidate set arriving in two posterior orders is reviewed once", {
+  # add_slash_taxon() orders the display label by posterior (what
+  # primary_taxon reads), so one unit legitimately carries "A + B/C" on one
+  # observation and "A + C/B" on another. Reviewing by label would ask twice
+  # and leave one of them unmatched; the review joins on the SORTED set.
+  df <- data.frame(
+    observation_id = c("o1", "o2"),
+    consensus_taxon = "Perciformes",
+    consensus_OTU = c(
+      "Scorpaenichthys marmoratus + Hexagrammos lagocephalus/decagrammus",
+      "Scorpaenichthys marmoratus + Hexagrammos decagrammus/lagocephalus"
+    ),
+    irreducible_consensus = TRUE,
+    stringsAsFactors = FALSE
+  )
+  df$plausible_taxa <- list(
+    c(
+      "Scorpaenichthys marmoratus", "Hexagrammos lagocephalus",
+      "Hexagrammos decagrammus"
+    ),
+    c(
+      "Scorpaenichthys marmoratus", "Hexagrammos decagrammus",
+      "Hexagrammos lagocephalus"
+    )
+  )
+
+  n_calls <- 0L
+  labels_asked <- character(0)
+  fn <- function(prompt_str, ...) {
+    n_calls <<- n_calls + 1L
+    lab <- df$consensus_OTU[vapply(
+      df$consensus_OTU, function(x) grepl(x, prompt_str, fixed = TRUE),
+      logical(1L)
+    )]
+    labels_asked <<- c(labels_asked, lab)
+    paste0(
+      '[{"taxon_name":"', lab[[1L]], '","habitat_plausibility":"likely",',
+      '"geographic_plausibility":"likely","scope_plausibility":null,',
+      '"contamination_risk":"low","review_alternatives":null,',
+      '"review_lower_hypotheses":null,"review_confidence":"high",',
+      '"review_comment":null}]'
+    )
+  }
+
+  out <- review_assignments(
+    df,
+    plausible_taxa_col = "plausible_taxa",
+    context = list(geography = "Point Conception", habitat = "rocky reef"),
+    llm_fn = fn, pause_seconds = 0, verbose = FALSE
+  )
+
+  expect_equal(n_calls, 1L)
+  expect_length(labels_asked, 1L)
+  # Both orderings of the one unit get the verdict, and neither is left NA.
+  expect_equal(nrow(out), 2L)
+  expect_equal(out$llm_habitat_plausibility, c("likely", "likely"))
+  expect_length(attr(out, "unreviewed_taxa"), 0L)
+})

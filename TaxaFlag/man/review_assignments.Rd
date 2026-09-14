@@ -32,6 +32,7 @@ review_assignments(
   max_retries = 2L,
   pause_seconds = 1,
   cache_dir = NULL,
+  on_unreviewed = c("warn", "error", "ignore"),
   verbose = TRUE
 )
 }
@@ -209,14 +210,22 @@ isn't resolving truncation warnings for your data -- e.g. a long,
 multi-marker \code{marker} string can inflate per-taxon response length
 enough that even the smallest retry sub-batch still truncates.}
 
-\item{max_retries}{Integer. When a batch's LLM response is truncated,
-empty, or unparseable, the batch is automatically split in half and
-retried -- a smaller batch requests a proportionally shorter response,
-directly relieving token-budget pressure -- up to \code{max_retries}
-times before falling back to \code{NA} defaults for whatever's still
-missing. Does not apply to a hard \code{llm_fn} error (e.g. network/auth
-failure): a smaller batch can't fix that, so it is reported immediately
-without retrying. Default \code{2L}.}
+\item{max_retries}{Integer. The per-batch retry budget, shared by two
+mechanisms. (1) When a batch's LLM response is truncated, empty, or
+unparseable, the batch is automatically split in half and retried -- a
+smaller batch requests a proportionally shorter response, directly
+relieving token-budget pressure. (2) When a response parses cleanly and is
+the right shape but simply OMITS specific taxa, those taxa (and only
+those) are re-asked in a follow-up call. The second case is not
+truncation, so the halving retry never fires for it; before 2026-09-14
+there was no retry at all and the run gave up on those taxa permanently
+-- see \code{@section Unreviewed rows}. Both stop after
+\code{max_retries} attempts and fall back to \code{NA} defaults for
+whatever is still missing. Neither applies to a hard \code{llm_fn} error
+(e.g. network/auth failure): a smaller or narrower batch can't fix that,
+so it is reported immediately without retrying. \code{0L} means exactly
+one call per batch, as before either mechanism existed. Default
+\code{2L}.}
 
 \item{pause_seconds}{Numeric. Seconds to pause between LLM calls.
 Default \code{1}.}
@@ -236,6 +245,14 @@ candidate-set path -- so changing any of them is correctly a miss. Manage
 it with \code{\link[=taxaflag_clear_cache]{taxaflag_clear_cache()}}, which uses the same
 \code{\link[TaxaTools:list_cache_files]{TaxaTools::list_cache_files()}} engine as the other packages' cache
 helpers, so it does not accumulate unmanaged.}
+
+\item{on_unreviewed}{Character. What to do when taxa still have no verdict
+after the re-asks: \code{"warn"} (default) reports them and continues,
+\code{"error"} stops the run, \code{"ignore"} is silent. The residue is
+recorded on the result either way (see \code{@section Unreviewed rows}).
+Production workflows pass \code{"error"}: an unreviewed row is dropped
+by the usual export filters, so a run with residue produces a species
+list that is silently short.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
@@ -271,6 +288,13 @@ code-computed, not an LLM output: fires whenever
 deterministic column rather than relying on \code{review_comment}
 alone.}
 }
+Also carries \code{"unreviewed_taxa"} (character vector, possibly empty --
+the taxon/candidate-set labels the LLM never returned a verdict for) and
+\code{"n_unreviewed_rows"} (integer -- input rows left with \code{NA} in
+every \code{llm_} column) attributes; both are ALWAYS present. See
+\code{@section Unreviewed rows}. Attributes do not survive a \code{dplyr}
+verb, so read them immediately after the call.
+
 Also carries an \code{"llm_prompts"} attribute -- a named list of the
 exact prompt string sent for each LLM call (named by batch number, with
 an \code{"a"}/\code{"b"} suffix per retry sub-batch split, e.g.
@@ -306,6 +330,39 @@ observation and "B/A" on another; joining on the label left one of them
 unmatched and therefore unscored. Sets are also deduplicated canonically, so
 a unit that previously appeared under two orderings is now reviewed once
 rather than twice. Display labels are unchanged. (2026-09-04.)
+}
+
+\section{Unreviewed rows (2026-09-14)}{
+
+An LLM response can parse cleanly, be the right length, and still leave
+specific taxa out -- consistently the long compound slash labels, i.e. the
+hardest rows, not random ones. That is not truncation, so the halving retry
+never fired for it, and before this date the run gave up on those taxa
+permanently: \code{NA} was filled in for all four \code{llm_} columns and
+the omission was warned about and then forgotten. Because every production
+workflow's export chain filters with \code{!= "unlikely"}, which
+\strong{discards \code{NA}}, the observation was removed from the final
+species list without a word -- the same class of loss as the 2026-09-04
+grass-carp incident. Found on the PtConception 12S production run, by a
+diagnostic that had itself been failing silently since it was written.
+
+Three changes close it. (1) Omitted taxa are \strong{re-asked}, alone, up
+to \code{max_retries} times; the cost is bounded and pay-per-failure,
+since it only fires when the model omits, and it stops early when a re-ask
+recovers nothing. (2) An unreviewed taxon is \strong{never cached} -- and a
+cached entry from before this date holding no verdict is treated as a MISS,
+so an existing cache heals itself rather than serving the omission forever.
+(3) Whatever residue survives is \strong{loud}: named in
+\code{attr(result, "unreviewed_taxa")}, counted in
+\code{attr(result, "n_unreviewed_rows")}, and escalated per
+\code{on_unreviewed}. A workflow should not have to run a hand-written
+diagnostic to discover that rows went missing.
+
+The export filters themselves are deliberately UNCHANGED (still
+\code{!= "unlikely"}, still dropping \code{NA}). Keeping an unreviewed row
+in a species list would put an unvetted taxon in the output distinguishable
+only by its \code{NA}s; stopping the run instead makes the decision
+per-run and explicit.
 }
 
 \section{Column naming (2026-09-06)}{
