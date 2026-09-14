@@ -183,3 +183,23 @@ gate's specific behavior on the named `Sardinops`/`Oncorhynchus` cases would req
 either a `seq_matrix` fixture (to run `restore_suppressed_candidates()` for real) or a
 constructed `unreferenced_df` -- neither built here, left as a real, scoped-out next
 step rather than faked to make the arm report PASS.
+
+## Posterior-stage checkpoints (added 2026-09-13) unblock a REAL posterior fixture
+
+The ESV_054140 case directly above is exactly the gap that motivated adding three new
+checkpoints to the posterior stage of every production workflow (`expanded_likelihoods`,
+`likelihoods_ready`, `posteriors_updated` -- see each workflow's own inline comment at the
+save points, and `ecosystem_docs/REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md`'s
+new "Posterior-stage checkpoints" subsection for the full list). Once a workflow has been
+RE-RUN under this change, `<PREFIX>_posteriors_updated.rds` -- the exact input to the final
+`posterior_consensus()` call -- is a real, fully-computed `compute_posterior()`-shaped
+output, the same status `mugu12s_fast_posterior_df.rds` already has (real kernel-priors-
+derived `prior_mean`/`prior_alpha`/`prior_beta`, not a placeholder). That means a
+`ptconXXs_fast_posteriors_updated.rds`-style fixture built from it, subset the same way
+`build_fast_fixture.R` already subsets posterior-shaped checkpoints, could let Arm B of
+`run_review_fixes_fast_check.R` assert `downrank_requires_candidate`'s effect at the
+OBSERVATION level (e.g. directly on ESV_054140/ESV_109598 once a run post-dating the fix
+exists) instead of only on the aggregate `n_outside` count the way the current 12S run-2
+Arm B rediscovery is scoped. Not built yet -- no PtConception run has been re-executed
+since these checkpoints were added, and none of the existing `ptcon12s_fast_*`/
+`ptcon12s_r2_fast_*`/`ptcon18s_fast_*` fixtures here carry it (all predate 2026-09-13).

@@ -564,3 +564,44 @@ likelihoods 16 min. Warnings: the domestic-priors Eukaryota/Animalia kingdom
 mismatch (9 taxa; review-prompt loose end) and "541 singleton reference(s)
 ... lacks self-matches" -- benign and pre-existing: build_sequence_matrix()
 never emits self-pairs, so that branch fires on every run.
+
+## Posterior-stage checkpoints (added 2026-09-13)
+
+Motivated directly by this run: `lik_result` and `consensus_final` are both saved, but
+five intermediate objects between them were not, so the candidate set that actually
+produced a given consensus call was unrecoverable after the run finished. Concretely,
+for **ESV_054140** in this run, `lik_result` holds candidates *Spratelloides* /
+*Clupeidae* / *S. delicatulus* with no *Sardinops* anywhere, yet the final consensus for
+that observation is *Sardinops sagax* -- and because none of the intervening stages were
+saved, which stage introduced *Sardinops* is unknowable from saved artefacts alone (a
+fast-workflow check built to reproduce the row, `run_review_fixes_fast_check.R`'s Arm B
+12S rediscovery above, could not reproduce it for the identical reason -- see that arm's
+own writeup in `diagnostics/fast_workflows/README.md`).
+
+Three new checkpoints now close this gap, saved at the analogous point in every
+production workflow and the shared template (`PtConceptionWorkflow_12S_single_site.R`,
+`_18S_2_single_site.R`, `_12S_multi_site_FAST.R`, `GreatLakes2023_ConsensusWorkflow.R`,
+`MuguFishWorkflow.R` [marker-qualified, e.g. `_expanded_likelihoods_coi.rds`], and
+`TaxaID_eDNA_Workflow_Template.R`):
+
+- **`expanded_likelihoods`** -- output of `expand_unreferenced_hypotheses()`. Lets a
+  reviewer tell a hypothesis added at THIS stage apart from one manufactured later by
+  `join_priors()`'s own coarse-rank expansion.
+- **`likelihoods_ready`** -- output of `join_priors()` (in the multi-site FAST workflow,
+  the object AFTER `combine_multisite_priors()`, since that is what actually enters the
+  posterior). The final candidate set with priors attached.
+- **`posteriors_updated`** -- output of `update_prior_from_consensus()`, i.e. the exact
+  input to the FINAL `posterior_consensus()` call. This is the one that makes a
+  consensus variant re-runnable (e.g. testing `downrank_requires_candidate` against a
+  real candidate set) without re-running the whole pipeline. GreatLakes already saved
+  this object before 2026-09-13 (its own `.save(posteriors_updated, ...)` predates this
+  change); the other five files gained it new.
+
+**Runs completed BEFORE 2026-09-13 -- including every run tabulated in this document, and
+the ESV_054140/ESV_109598 case above -- do NOT have these three checkpoints.** Any
+attempt to reconstruct what happened to a specific observation in one of those runs from
+saved `.rds` files alone will still hit the same wall this section describes; only a
+run executed after this change carries the full span. See
+`diagnostics/fast_workflows/README.md`'s own "Posterior-stage checkpoints" subsection for
+how `posteriors_updated` specifically upgrades the fast-workflow-check tooling once a
+real post-2026-09-13 run exists.
