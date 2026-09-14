@@ -678,7 +678,7 @@ sigma^2/N)` with `tau^2` estimated per dimension, replacing the fixed `N/(N+prio
 for the means only (`"fixed"` restores it; variances unchanged). Validated on the real
 GreatLakes workflow code path against Lamar: co-detections 593 -> 798, precision 0.805 ->
 0.818, 29 -> 41 of 61 species, none lost. See TaxaLikely/CLAUDE.md 2026-09-10 (later) and
-`ecosystem_docs/REENTRY_PROMPT_h1_foreign_coverage_floor.md`.
+`ecosystem_docs/RECORD_h1_foreign_coverage_floor.md`.
 
 ### tansform.R [sic -- transform.R]
 

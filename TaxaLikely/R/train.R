@@ -620,7 +620,7 @@ utils::globalVariables(c(
 #' (foreign side only): global expected gap -0.010 -> +0.122, near-ties
 #' 728 -> 295, and the top H1 candidate agrees with a unique >= 99.5% best
 #' BLAST hit in 244/326 cases vs 178/326.  Full record:
-#' `ecosystem_docs/REENTRY_PROMPT_h1_foreign_coverage_floor.md`.
+#' `ecosystem_docs/RECORD_h1_foreign_coverage_floor.md`.
 #'
 #' @section No built-in reference-quality screening (2026-09-08):
 #' This function does NOT screen `raw_df` for mislabeled/contaminated

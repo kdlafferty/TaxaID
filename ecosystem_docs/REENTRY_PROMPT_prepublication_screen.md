@@ -26,6 +26,24 @@ patched mid-flight.
    distinguished from real defects while it is not.
 5. **The open items below are closed or explicitly deferred in writing.**
 
+## Agreed running order (set by the user, 2026-09-14)
+
+Work these in order. Each one's output can change the next, which is why the
+order is not arbitrary.
+
+1. `REENTRY_PROMPT_unreviewed_rows_silently_dropped.md`
+2. `REENTRY_PROMPT_resident_observed_evidence_gate.md`
+3. `REENTRY_PROMPT_cache_policy_P5_eviction.md`
+4. `REENTRY_PROMPT_cache_policy_review.md`
+5. `REENTRY_PROMPT_taxawizard_audit_and_fast_workflows.md`
+6. `REENTRY_PROMPT_workflow_structure_audit.md`
+7. `REENTRY_PROMPT_ptcon_18S_rerun.md`
+8. `REENTRY_PROMPT_kernel_budget_pricing_and_scope.md` (decisions 1 and 3)
+9. this document
+
+`REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md` is a run
+checklist, not a work order. Use it as reference during steps 5 and 7.
+
 ## Must be resolved or consciously deferred first
 
 - `REENTRY_PROMPT_unreviewed_rows_silently_dropped.md` -- observations vanish
@@ -38,10 +56,11 @@ patched mid-flight.
   drift and no knowledge of caching.
 - `REENTRY_PROMPT_cache_policy_review.md` and
   `CACHE_POLICY_REVIEW_2026_09_14.md` -- whatever remains unimplemented.
-- **PtConception 18S has never been re-run** under the corrected
-  sampling-group classifier. Its per-group numbers are labelled stale in this
-  directory and in `fable_ecosystem_review_2026-09-13.md`. Publishing stale
-  numbers is the specific risk.
+- `REENTRY_PROMPT_ptcon_18S_rerun.md` -- PtConception 18S has never been
+  re-run under the corrected sampling-group classifier. Its per-group numbers
+  are labelled stale in this directory and in
+  `fable_ecosystem_review_2026-09-13.md`. Publishing stale numbers is the
+  specific risk.
 - **pkgdown**: no `_pkgdown.yml` exists for any package, and the manuscript
   plan requires a working site per package before submission.
 
