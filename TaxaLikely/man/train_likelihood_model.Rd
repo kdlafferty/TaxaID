@@ -223,9 +223,13 @@ percent identity, real within-species pairs only -- computed
 BEFORE any \code{anchor_perfect} pseudo-observations are appended, so
 a synthetic anchor spike can never manufacture a false second
 mode). A list with \code{n}, \code{bic_1}, \code{bic_2}, \code{delta_bic}, \code{weights},
-\code{means}, \code{sds}, \code{flag}, and \code{explanation} -- see that function's
-own docs and \code{calibrate_query_noise()}'s "Bimodality diagnostic"
-\verb{@section} for the full mechanism and thresholds. This function
+\code{means}, \code{sds}, \code{quantum} (2026-09-14: the estimated
+identity-per-mismatch spacing, or \code{NA} when the scores don't
+look discretely comb-shaped), \code{flag}, and \code{explanation} -- see
+that function's own docs and \code{calibrate_query_noise()}'s
+"Bimodality diagnostic" and "Percent identity is discrete, not
+continuous" \verb{@section}s for the full mechanism and thresholds.
+This function
 only RECORDS the result on the model, it does not warn -- see
 \verb{@section H1 bimodality (recorded, not warned)} below.}
 }
@@ -447,17 +451,49 @@ longer a parameter here to pass a bad-accession list through.
 
 \code{Stats$h1_bimodality} runs the same two-component-normal-vs-BIC check
 \code{calibrate_query_noise()} uses (see that function's own "Bimodality
-diagnostic" section for the full method, the thresholds, and why a
-bimodality-coefficient test was rejected instead) against this model's
-OWN real H1 training scores, so a saved \code{lik_model} carries the evidence
-regardless of whether/when \code{calibrate_query_noise()} is ever called on it.
-This function deliberately does NOT \code{warning()} when the check flags
-bimodal training data -- \code{calibrate_query_noise()} is the one place a
-single offset/line is actually about to be applied to inference-time
-scores, so that is where the warning belongs (per the user's explicit
-direction); warning in both places for the same underlying fact would be
-redundant, not more informative. \strong{This is a diagnostic only}: it never
-changes H1's fitted mean/sigma, and training is never refused when
+diagnostic" and "Percent identity is discrete, not continuous" sections
+for the full method, the thresholds, and why a bimodality-coefficient
+test was rejected instead) against this model's OWN real H1 training
+scores, so a saved \code{lik_model} carries the evidence regardless of
+whether/when \code{calibrate_query_noise()} is ever called on it. \strong{Percent
+identity is discrete, not continuous} -- confirmed as a real false
+positive on the 2026-09-14 PtConception 12S production run:
+\code{Stats$h1_bimodality} reported weights 0.323/0.677, means 98.3/100, sds
+3.26/0.0202 -- the "second component" was just the perfect-match spike,
+a STRUCTURAL feature of every reference-based dataset (every reference
+matching itself, or an identical duplicate deposit, scores at or near
+100\% identity), not evidence of a second population on its own.
+\code{.bimodality_check()} now estimates a quantum directly from the data and
+smooths over it before fitting, requires the minority component to hold
+real mass, and requires the two fitted means to be separated by more
+than a few quanta -- see that function's own docs for the exact
+thresholds and mechanism. \strong{This model's OWN H1 training scores are a
+structurally different dataset from \code{calibrate_query_noise()}'s
+confident-observation query scores}, and the fix's benefit differs
+correspondingly: query scores share one fixed query length, so they land
+on one clean, consistent quantum grid (\code{0.6} on the real motivating run)
+that the smoothing closes cleanly; H1 training pairs come from
+\code{build_sequence_matrix()}'s reference-vs-reference alignment, whose
+length varies pair to pair, so the "grid" is really many different,
+overlaid quanta -- the quantum this function's own diagnostic estimates
+for real H1 training data is correspondingly much finer (measured
+\code{~0.01} on that same real run, versus the query side's \code{0.6}), and the
+quanta-separation guard built for a single consistent grid does little
+to rescue this specific case: \code{Stats$h1_bimodality$flag} can still read
+\code{TRUE} for real H1 training data with this exact "spike at 100" shape,
+verified directly against the real run above. Recording rather than
+warning is exactly why this residual case is safe to leave as-is: the
+evidence (including the estimated \code{quantum} field, small here as a
+visible signal that the flagged split may be exactly this artifact) is
+preserved for an analyst to inspect, and no automatic action is ever
+taken on it here. This function deliberately does NOT \code{warning()} when
+the check flags bimodal training data -- \code{calibrate_query_noise()} is
+the one place a single offset/line is actually about to be applied to
+inference-time scores, so that is where the warning belongs (per the
+user's explicit direction); warning
+in both places for the same underlying fact would be redundant, not more
+informative. \strong{This is a diagnostic only}: it never changes H1's fitted
+mean/sigma, and training is never refused when
 \code{Stats$h1_bimodality$flag} is \code{TRUE}. The remedy for genuinely mixed
 sequencing platforms or markers is to train/calibrate them separately --
 this package does not do that for you.

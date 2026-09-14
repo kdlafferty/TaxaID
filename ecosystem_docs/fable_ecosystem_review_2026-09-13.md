@@ -781,3 +781,121 @@ untested here; the CaliforniaIntertidal data is where that lives.
 
 Arm E also surfaced the expected, separate `offset_form` fallback from linear to
 constant, consistent with Section 0.4's detection-floor note.
+
+## O. The bimodality diagnostic fired on real data, and was wrong (2026-09-14)
+
+**What happened.** The overnight PtConception 12S production run (2026-09-14,
+23:33-01:26) exercised the new bimodal-H1 diagnostic on real data for the first
+time at full scale. It warned:
+
+> H1 scores look bimodal: 4% near 95.4 (sd 3.0) and 96% near 98.8 (sd 0.4),
+> delta BIC 8297
+
+That is a **false positive**, and the cause is a property of the measurement
+I did not account for when building the check.
+
+**Percent identity on a short fixed-length amplicon is DISCRETE.** The MiFish
+amplicon here is ~167 bp, so identity can only take values spaced by one
+mismatch's worth. Measured on that run's own match object:
+
+| quantity | value |
+|---|---|
+| rows | 47,347 |
+| distinct score values | 219 |
+| most common value | 98.8 (38.2%) |
+| second | 99.4 (14.4%) |
+| third | 98.2 (13.8%) |
+| spacing between them | 0.6 |
+
+The distribution is a **comb** of spikes at integer mismatch counts, not a
+continuous density. A two-component Gaussian always beats one component on
+comb-like data, which is where the enormous delta BIC comes from, and the
+density-valley guard I had added passes because there genuinely ARE valleys --
+between the comb's teeth.
+
+The same defect shows from the other end in `train_likelihood_model()`'s own
+recorded `Stats$h1_bimodality` for that run: weights 0.323/0.677, means
+98.285/99.999, sds 3.26/0.0202. The second "component" is just the point mass
+at exactly 100.0, the perfect self-match spike, which is a structural feature
+of every reference-based dataset.
+
+**Recording the mistake plainly, since it is the useful part.** I anticipated
+one false-positive class and guarded against it: H1 scores are ceiling-skewed
+by construction, so a skew-based bimodality coefficient would misfire, and the
+design notes say so and reject that test for exactly that reason. I did not
+anticipate discreteness, and the delta-BIC-plus-valley design I chose instead
+is, if anything, MORE vulnerable to it. Left alone, this warning would fire on
+essentially every eDNA barcode run and become noise people learn to ignore --
+worse than not having the check.
+
+**Why the fast check did not catch it.** Section N records that Arm E ran on
+181 confident observations and the diagnostic did not flag, and reads that as
+a reassuring negative control. It was not. The fixture was too small and too
+narrow to build a comb dense enough to win on BIC. A diagnostic whose failure
+mode depends on sample size and on the granularity of the measurement cannot
+be validated on a downsampled fixture. That is a real limit on what the fast
+workflows can certify, alongside the Section N candidate-set boundary.
+
+### The fix (user's decision, implemented 2026-09-14)
+
+Four changes in `TaxaLikely/R/bimodality.R`, all inside the existing check:
+
+1. **Estimate the quantum from the data.** New `.estimate_score_quantum()`
+   takes the smallest set of distinct values, by observation count descending,
+   whose cumulative share reaches 80% of the sample -- the comb's dominant
+   teeth -- and returns the median gap between them, sorted. It returns `NA`
+   for genuinely continuous data, and the check then behaves exactly as before.
+   The continuous-data guard is scoped to the WHOLE sample's repetition rate
+   (`n_distinct/n > 0.3`), not to the dominant subset's own size. That scoping
+   is load-bearing: a first version keyed on the subset wrongly declared a real
+   9-value comb continuous, because 5 of its 9 values were needed to reach 80%
+   of the mass. Whole-sample repetition separates a 9-value comb (ratio 0.0045)
+   from a real spike-on-continuum mixture such as the Nanopore case (0.798).
+2. **Smooth over the quantum before fitting.** New `.smooth_comb()` spreads
+   each tied group evenly across its own quantum-wide cell, which is a
+   deterministic continuity correction equivalent to convolving with a
+   `Uniform(-q/2, q/2)` kernel. No RNG, so repeat runs agree exactly. It runs
+   before anything else is computed, so the one-component fit, the
+   two-component fit and the valley check all see the same smoothed data.
+3. **Require the minority component to carry real mass**, at least 0.15. That
+   sits between the real false positive's 4% and the real genuine Nanopore
+   case's 20.3%.
+4. **Scale the separation requirement by the quantum**, to
+   `max(1.0, 3 x quantum)`. The old absolute 1.0 is under two mismatches on a
+   167 bp amplicon, which is not a separation at all.
+
+All four conditions still apply on top of the original delta-BIC, separation
+and density-valley gates. `train_likelihood_model()` continues to RECORD the
+result in `Stats$h1_bimodality` either way; only the WARNING is gated.
+
+### Verification
+
+Independently re-run, not taken from the implementing agent's report.
+
+| check | result |
+|---|---|
+| estimated quantum on the real 12S match object | 0.6, matching the hand-measured mismatch spacing |
+| `calibrate_query_noise()` on the real pipeline path | **0 bimodality warnings** (was 1) |
+| `devtools::test("TaxaLikely")` | 1183 passing, 0 failures (baseline 1147) |
+
+Fixture behaviour, all as required: the genuinely bimodal Nanopore fixture
+still flags; the existing unimodal and ceiling-skewed fixtures still do not;
+a new explicit-comb regression fixture (quantized Gaussian, single population,
+built to the shape found today) does not flag.
+
+### Residual, recorded rather than papered over
+
+`train_likelihood_model()`'s `Stats$h1_bimodality` **still flags on the
+training-side distribution**, and this fix does not change that. The training
+H1 population is reference-vs-reference alignments of variable length, so its
+quantum is far finer (~0.01, not 0.6) and smoothing at that scale leaves the
+point mass at exactly 100.0 intact as a genuine sharp spike carrying 67.7% of
+the weight. The minority component is 32.3%, well clear of the 0.15 floor.
+
+This is arguably a true statement about that distribution -- it really is a
+perfect-match point mass plus a spread component -- but it is a structural
+feature of every reference-based dataset, so it carries no information about
+the mixed sequencing platforms the diagnostic exists to detect. It raises no
+warning and never has. Anyone reading that recorded field should treat a `TRUE`
+there as near-uninformative; the field worth reading is the one behind
+`calibrate_query_noise()`'s warning, on query scores.

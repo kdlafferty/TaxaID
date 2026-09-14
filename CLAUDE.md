@@ -1,7 +1,44 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-13, evening (Sonnet 5 -- SECOND PASS: user went through
+# Last updated: 2026-09-14 (Opus 5 -- OVERNIGHT PtConception 12S PRODUCTION RUN, then one
+# real bug it surfaced, fixed same day. THE RUN: 23:33-01:26, 1h53m (vs 290 min budgeted),
+# no errors; 536 institution records auto-accepted with 0 removed; spatial gadget skipped;
+# sentinels held at 175/0/2; all three new posterior-stage checkpoints written. BOTH
+# ecosystem-review fixes CONFIRMED ON REAL DATA: downranks 11 -> 8 with ESV_054140 ->
+# Sardinops (genus) and ESV_109598 -> Salmonidae (family) blocked exactly as designed;
+# consensus-scope unprecedented 10 -> 73 and unexpected 116 -> 54, with exactly the taxa
+# predicted (Platygobio gracilis 17, Cervus elaphus 9, Paracheirodon innesi 6). Reports
+# regenerated: unique taxa 147 -> 150, AIC -9937.3 -> -10125.4.
+#
+# THE BUG: the bimodal-H1 diagnostic built the evening before FIRED, and was a FALSE
+# POSITIVE. Percent identity on a short fixed-length amplicon is DISCRETE -- 219 distinct
+# score values in 47,347 rows, top three 98.8/99.4/98.2 spaced 0.6 apart, i.e. one mismatch
+# on a ~167 bp amplicon. The distribution is a COMB, a 2-component Gaussian always beats 1
+# component on comb data, and the density-valley guard passes because the valleys between
+# comb teeth are real. I had guarded against the ceiling-skew false positive and not
+# against discreteness. FIXED in TaxaLikely/R/bimodality.R, four parts, all on top of the
+# existing gates: estimate the quantum from the data (NEW .estimate_score_quantum(), NA for
+# continuous data), smooth over it deterministically before any fit (NEW .smooth_comb(), no
+# RNG), require minority weight >= 0.15, and require separation > max(1.0, 3 x quantum).
+# train_likelihood_model() still RECORDS Stats$h1_bimodality either way; only the WARNING is
+# gated. VERIFIED independently: quantum 0.6 on the real match object, 0 bimodality warnings
+# from calibrate_query_noise() on the real pipeline path (was 1), devtools::test() 1183/0
+# (baseline 1147). The genuinely bimodal Nanopore fixture still flags; a NEW comb fixture
+# does not. RESIDUAL, recorded not papered over: Stats$h1_bimodality still flags on the
+# TRAINING-side distribution, where the quantum is ~0.01 and the point mass at exactly 100.0
+# survives smoothing holding 67.7% of the weight -- structural to every reference-based
+# dataset, informative about nothing, warns nobody. LESSON: fast-workflow Arm E's "no flag"
+# was read as a negative control and was not one -- the fixture was too small to build a
+# comb dense enough to win on BIC. Full record: ecosystem_docs/
+# fable_ecosystem_review_2026-09-13.md Section O.
+#
+# eDNA repo committed (7c4d431): CaliforniaIntertidal multi-marker workflow + scope
+# classifier + validator, and the regenerated PtCon 12S reports. STILL OPEN: re-run PtCon
+# 18S under the corrected sampling_group classifier (its per-group numbers are labelled
+# stale in two documents); decide the fate of the untracked "misc review docs/"; pkgdown
+# hosting.
+# Previous update: 2026-09-13, evening (Sonnet 5 -- SECOND PASS: user went through
 # ecosystem_docs/fable_ecosystem_review_2026-09-13.md Sections A-K item by item; every
 # item was decided in sequence, then built, tested and installed the same session. Full
 # record (decision + measured outcome per item): the review doc's new Section L.

@@ -1,5 +1,69 @@
 # TaxaLikely (development version)
 
+## 2026-09-14
+
+* Fixes a false positive in the 2026-09-13 bimodality diagnostic
+  (`R/bimodality.R`), found on the real PtConception 12S production run:
+  percent identity on a short, fixed-length amplicon is DISCRETE, not
+  continuous (a ~167bp amplicon can only take values spaced by roughly one
+  mismatch's worth of identity -- measured `0.6` apart on that run, e.g.
+  98.8/99.4/98.2). Real match-score data therefore forms a "comb" of spikes
+  at each mismatch count with LITERAL zero density in the gaps between
+  teeth, which the pre-existing density-valley guard read as a genuine
+  antimode between two populations, and a 2-component Gaussian mixture
+  always wins by a wide margin on comb-like data (`delta_bic` in the
+  thousands was routine). `calibrate_query_noise()` warned "H1 scores look
+  bimodal: 4% near 95.4 (sd 3.0) and 96% near 98.8 (sd 0.4), delta BIC 8297"
+  on data that was genuinely unimodal, and `train_likelihood_model()`'s own
+  `Stats$h1_bimodality` independently flagged the identical artifact from
+  the training side (weights 0.323/0.677, means 98.3/100, sds 3.26/0.0202 --
+  the "second component" was just the reference-matches-itself spike at
+  exactly 100, a structural feature of every reference-based dataset).
+* New internal `.estimate_score_quantum()` estimates the identity-per-
+  mismatch spacing directly from the data (median gap between the
+  dominant, by-count, distinct values), returning `NA` -- i.e. "behave
+  exactly as before" -- whenever the data don't look discretely comb-shaped
+  at all (most continuous data, including a genuine platform mixture,
+  estimates no quantum).
+* New internal `.smooth_comb()` deterministically smooths a comb-shaped
+  vector at its estimated quantum before fitting, by spreading each tied
+  group of observations evenly across its own quantum-wide cell -- a
+  dependency-free continuity correction (Sheppard's-correction-style
+  convolution with a `Uniform(-quantum/2, quantum/2)` kernel) that closes
+  the literal zero-density gaps between comb teeth without disturbing a
+  real, multi-quantum gap between two genuinely separate populations.
+  Deterministic by construction (no `runif()`/`sample()`/`jitter()`): two
+  calls on the same input always agree exactly.
+* `.bimodality_check()` now additionally requires (on top of the unchanged
+  delta-BIC, mean-separation and density-valley conditions from
+  2026-09-13): the minority fitted component to hold at least
+  `min_minority_weight` (default `0.15`) of the mass -- "a thin tail cannot
+  be called a mode," and this alone rejects the real 4%-minority false
+  positive above -- and the two fitted means to be separated by more than
+  `quanta_separation_multiplier` (default `3`) quanta when a quantum was
+  found, not just the flat `1.0` percentage point (which is under two
+  mismatches on a 167bp amplicon), rejecting the real 1.7-point/2.83-quanta
+  `train_likelihood_model()` false positive above. `.bimodality_check()`'s
+  return value gains a `quantum` field.
+* Validated: the genuinely bimodal fixture (a real measured Nanopore shape,
+  20.3% spike at exactly 100 on an otherwise-continuous population -- itself
+  discrete at the spike, the real test of whether this fix throws the baby
+  out) still flags, byte-identically to before this fix, since it estimates
+  no quantum at all; the existing unimodal and ceiling-skewed-unimodal
+  fixtures still do not flag; a new explicit-comb fixture (scores only at
+  integer-mismatch positions with a realistic decaying frequency profile and
+  no second population) does not flag; and the exact real false-positive
+  shapes from both `calibrate_query_noise()` and `train_likelihood_model()`
+  are reproduced as synthetic combs and confirmed not to flag, including an
+  end-to-end reproduction through `calibrate_query_noise()`'s real call path
+  against the actual PtConception 12S checkpoints that produced the original
+  warning. `train_likelihood_model()` keeps recording `Stats$h1_bimodality`
+  either way -- only the warning is gated by the stricter rule.
+* Roxygen on both `calibrate_query_noise()` (new "Percent identity is
+  discrete, not continuous" `@section`) and `train_likelihood_model()`
+  (updated "H1 bimodality (recorded, not warned)" `@section`) now states the
+  discreteness problem and the fix plainly.
+
 ## 2026-09-13
 
 * New bimodality diagnostic for H1 (known-species) scores (`R/bimodality.R`):

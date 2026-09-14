@@ -1,5 +1,56 @@
 # CLAUDE.md -- TaxaLikely
-# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (J3) -- NEW
+# Last updated: 2026-09-14 (Opus 5): the bimodal-H1 diagnostic added the evening before
+# FIRED ON REAL DATA and was WRONG -- fixed the same day. The overnight PtConception 12S
+# production run warned "H1 scores look bimodal: 4% near 95.4 (sd 3.0) and 96% near 98.8
+# (sd 0.4), delta BIC 8297". False positive. CAUSE: percent identity on a short
+# fixed-length amplicon is DISCRETE. On a ~167 bp MiFish amplicon the real match object
+# holds only 219 distinct score values in 47,347 rows, and the three most common are 98.8
+# (38.2%) / 99.4 (14.4%) / 98.2 (13.8%) -- spaced 0.6 apart, exactly one mismatch. The
+# distribution is a COMB of spikes at integer mismatch counts, a 2-component Gaussian
+# always beats 1 component on comb data (hence delta BIC 8297), and the density-valley
+# guard added the evening before PASSES because there are real valleys -- between the
+# comb's teeth. I had anticipated the ceiling-skew false positive and guarded against it;
+# I did not anticipate discreteness, and delta-BIC-plus-valley is if anything MORE exposed
+# to it. FIX (user's decision, all four parts, in R/bimodality.R): (1) NEW
+# .estimate_score_quantum() estimates the identity-per-mismatch quantum from the data --
+# the dominant comb teeth are the smallest set of distinct values by count reaching 80% of
+# the mass, and the quantum is the median gap between them; returns NA for continuous data
+# (then the check behaves exactly as before). Its continuous-data guard is scoped to the
+# WHOLE sample's repetition rate (n_distinct/n > 0.3), NOT the dominant subset's own size
+# -- LOAD-BEARING: a first version keyed on the subset wrongly called a real 9-value comb
+# continuous because 5 of 9 values were needed to reach 80% mass; whole-sample repetition
+# separates a 9-value comb (0.0045) from a real spike-on-continuum Nanopore mixture
+# (0.798). (2) NEW .smooth_comb() spreads each tied group evenly across its own
+# quantum-wide cell before ANY fit -- a deterministic continuity correction equivalent to
+# convolving with Uniform(-q/2, q/2), no RNG, so repeat runs agree; the 1-component fit,
+# the 2-component fit and the valley check all see the same smoothed data. (3) minimum
+# minority weight 0.15, between the real false positive's 4% and the real Nanopore case's
+# 20.3%. (4) separation must clear max(1.0, 3 x quantum) -- the old absolute 1.0 is under
+# two mismatches on a 167 bp amplicon. All four sit ON TOP of the original delta-BIC,
+# separation and valley gates. train_likelihood_model() still RECORDS Stats$h1_bimodality
+# either way; only the WARNING is gated. VERIFIED independently (not from the implementing
+# agent's report): estimated quantum on the real match object = 0.6, matching the
+# hand-measured spacing; calibrate_query_noise() on the real pipeline path now raises 0
+# bimodality warnings (was 1); devtools::test() 1183 passing / 0 failures (baseline 1147).
+# Fixtures: the genuinely bimodal Nanopore fixture STILL flags; the unimodal and
+# ceiling-skewed fixtures still do not; a NEW explicit-comb regression fixture (quantized
+# Gaussian, single population, built to the shape found today) does not flag.
+# RESIDUAL, not fixed and recorded honestly: Stats$h1_bimodality STILL flags on the
+# TRAINING-side distribution (weights 0.323/0.677, means 98.285/99.999, sds 3.26/0.0202).
+# Those are reference-vs-reference alignments of variable length, so the quantum there is
+# ~0.01 not 0.6, and smoothing at that scale leaves the point mass at exactly 100.0 intact
+# as a real sharp spike holding 67.7% of the weight. That is a structural feature of every
+# reference-based dataset, so it says nothing about the mixed sequencing platforms the
+# diagnostic exists to detect -- treat a TRUE in that recorded field as near-uninformative
+# and read the query-score check behind calibrate_query_noise()'s warning instead.
+# ALSO LEARNED: the fast-workflow Arm E "negative control" (181 confident observations, no
+# flag) did NOT catch this and should not have been read as reassurance -- the fixture was
+# too small to build a comb dense enough to win on BIC. A diagnostic whose failure mode
+# depends on sample size and on measurement granularity cannot be validated on a
+# downsampled fixture. Full record: ecosystem_docs/fable_ecosystem_review_2026-09-13.md
+# Section O.
+#
+# Previous update: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (J3) -- NEW
 # bimodal-H1 diagnostic: a deterministic base-R 2-component normal-mixture EM compared to
 # a 1-component fit by BIC, PLUS a required density-valley condition between the fitted
 # means -- delta_bic > 10 + mean-separation alone false-positived on the ceiling-skewed

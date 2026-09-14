@@ -115,6 +115,15 @@ test_that(".bimodality_check: a two-platform sample built to the real measured s
   # near 97 with enough spread that the whole sample's 10th percentile lands
   # close to the real measured value (~94.1) -- see this session's own
   # calibration of the generating sd against that target.
+  #
+  # 2026-09-14 ACCEPTANCE TEST (b): this fixture is ALSO discrete at the
+  # spike (n_spike observations tied at exactly 100), so it is the real test
+  # of whether the 2026-09-14 comb-awareness fix throws the baby out. It
+  # does not: .estimate_score_quantum() correctly returns NA for this data
+  # (the spike is far too small a share of the sample's total distinct-value
+  # count once the hundreds of essentially-unique continuum values are
+  # counted too -- see that function's own docs), so no smoothing is ever
+  # applied here and this fixture is evaluated exactly as before the fix.
   set.seed(2026)
   n_total <- 1000L
   n_spike <- round(0.203 * n_total)
@@ -137,6 +146,201 @@ test_that(".bimodality_check: a two-platform sample built to the real measured s
   expect_equal(res$means, c(true_mean_rest, 100), tolerance = 0.5)
   expect_equal(res$weights, c(1 - true_weight_spike, true_weight_spike), tolerance = 0.05)
   expect_lt(abs(diff(res$means)), 5) # sanity: not a wild, implausible split
+
+  # 2026-09-14: this genuinely bimodal case estimates no quantum at all
+  # (confirms the "throws the baby out" risk above didn't materialize).
+  expect_true(is.na(res$quantum))
+})
+
+# =============================================================================
+# .estimate_score_quantum() -- 2026-09-14
+# =============================================================================
+
+test_that(".estimate_score_quantum: recovers the real 0.6-spaced quantum from a realistic comb", {
+  # Quantized-Gaussian fixture: draw a continuous "true identity" and round
+  # to the nearest 0.6-quantum grid point -- exactly what a discretely
+  # scored fixed-length amplicon does in practice (each additional mismatch
+  # costs a fixed slice of identity). No second population; a single,
+  # realistic decaying frequency profile falls out automatically from the
+  # rounding.
+  set.seed(4242)
+  raw <- rnorm(2000, mean = 98.8, sd = 1.0)
+  x <- pmin(round(raw / 0.6) * 0.6, 100)
+  expect_equal(.estimate_score_quantum(x), 0.6, tolerance = 1e-8)
+})
+
+test_that(".estimate_score_quantum: recovers the real quantum from the actual 2026-09-14 PtConception spacing", {
+  # Directly mirrors the real run's own top values (98.8/99.4/98.2, each
+  # 0.6 apart) at roughly their real relative shares, plus enough smaller
+  # teeth to be a realistic comb, not just three points.
+  teeth <- seq(100, 100 - 0.6 * 12, by = -0.6)
+  weights <- c(0.05, 0.144, 0.382, 0.138, 0.08, 0.05, 0.03, 0.02, 0.01, 0.005, 0.005, 0.005, 0.005)
+  weights <- weights / sum(weights)
+  n <- 6596L
+  counts <- round(weights * n)
+  x <- rep(teeth, times = counts)
+  expect_equal(.estimate_score_quantum(x), 0.6, tolerance = 1e-8)
+})
+
+test_that(".estimate_score_quantum: returns NA for genuinely continuous data (no meaningful repetition)", {
+  set.seed(55)
+  x <- rnorm(500, mean = 97, sd = 1.5)
+  expect_true(is.na(.estimate_score_quantum(x)))
+})
+
+test_that(".estimate_score_quantum: returns NA for a real spike sitting on an otherwise-continuous population", {
+  # The genuinely-bimodal Nanopore shape: this must NOT be read as a comb,
+  # or the spike itself would get smoothed away and the real second mode
+  # could be lost (see the acceptance-test note on the fixture above).
+  set.seed(2026)
+  n_total <- 1000L
+  n_spike <- round(0.203 * n_total)
+  x <- c(rep(100, n_spike), rnorm(n_total - n_spike, mean = 97, sd = 2.2))
+  expect_true(is.na(.estimate_score_quantum(x)))
+})
+
+test_that(".estimate_score_quantum: returns NA below min_n, below min_unique, or with too few positive gaps", {
+  expect_true(is.na(.estimate_score_quantum(rep(98.8, 5))))
+  expect_true(is.na(.estimate_score_quantum(c(rep(98.8, 30), rep(99.4, 30)))))
+  expect_true(is.na(.estimate_score_quantum(numeric(0))))
+  expect_true(is.na(.estimate_score_quantum(c(NA_real_, NA_real_, Inf, -Inf))))
+})
+
+test_that(".estimate_score_quantum: never errors on pathological input", {
+  expect_no_error(.estimate_score_quantum(numeric(0)))
+  expect_no_error(.estimate_score_quantum(c(1, NA, Inf, -Inf, NaN, 2, 3)))
+  expect_no_error(.estimate_score_quantum(rep(5, 100)))
+})
+
+# =============================================================================
+# .smooth_comb() -- 2026-09-14
+# =============================================================================
+
+test_that(".smooth_comb: returns x unchanged when quantum is NA/non-finite/non-positive", {
+  x <- c(1, 2, 2, 3, 3, 3)
+  expect_identical(.smooth_comb(x, NA_real_), x)
+  expect_identical(.smooth_comb(x, NaN), x)
+  expect_identical(.smooth_comb(x, Inf), x)
+  expect_identical(.smooth_comb(x, 0), x)
+  expect_identical(.smooth_comb(x, -0.5), x)
+})
+
+test_that(".smooth_comb: spreads a tied group evenly inside its own quantum-wide cell, preserving order/length/mean", {
+  x <- c(5, 98.8, 98.8, 98.8, 98.8, 98.8, 10)
+  out <- .smooth_comb(x, 0.6)
+
+  expect_length(out, length(x))
+  # Untied values pass through unchanged.
+  expect_equal(out[c(1, 7)], x[c(1, 7)])
+  # The tied group is no longer a single repeated value...
+  tied_out <- out[2:6]
+  expect_equal(length(unique(tied_out)), 5L)
+  # ...but stays centred on the original value and strictly inside its cell.
+  expect_equal(mean(tied_out), 98.8, tolerance = 1e-8)
+  expect_true(all(tied_out > 98.8 - 0.3 & tied_out < 98.8 + 0.3))
+})
+
+test_that(".smooth_comb: deterministic across repeated calls (no randomness)", {
+  x <- c(rep(98.8, 20), rep(99.4, 15), rep(98.2, 10), 97.0)
+  out_a <- .smooth_comb(x, 0.6)
+  out_b <- .smooth_comb(x, 0.6)
+  expect_identical(out_a, out_b)
+})
+
+test_that(".smooth_comb: adjacent teeth become contiguous (no zero-density gap left between them)", {
+  x <- c(rep(98.2, 50), rep(98.8, 50))
+  out <- sort(.smooth_comb(x, 0.6))
+  gaps <- diff(out)
+  # No gap in the smoothed data should exceed the within-cell spacing by
+  # much -- in particular there must be no single large jump straddling
+  # the old boundary between the two teeth.
+  expect_lt(max(gaps), 0.6 / 49 * 3)
+})
+
+test_that(".smooth_comb: preserves non-finite values in their original positions", {
+  x <- c(1, NA, 2, 2, Inf, 2)
+  out <- .smooth_comb(x, 0.5)
+  expect_true(is.na(out[2]))
+  expect_true(is.infinite(out[5]))
+  expect_equal(out[1], 1)
+})
+
+# =============================================================================
+# .bimodality_check() -- 2026-09-14 comb-awareness: acceptance test (d)
+# =============================================================================
+
+test_that(".bimodality_check: an explicit comb with a realistic decaying frequency profile and no second population does NOT flag", {
+  # Regression guard for exactly the false positive found on the real
+  # 2026-09-14 PtConception 12S production run: scores fall ONLY at
+  # integer-mismatch positions (100, 99.4, 98.8, 98.2, ... 0.6 apart), with
+  # a realistic decaying frequency profile (a quantized Gaussian -- the
+  # natural shape a continuous identity distribution takes once rounded to
+  # discrete mismatch counts) and no second population at all.
+  set.seed(4242)
+  raw <- rnorm(2000, mean = 98.8, sd = 1.0)
+  x_comb <- pmin(round(raw / 0.6) * 0.6, 100)
+
+  # Confirms this really is a comb (few distinct values, no exact
+  # continuum) before trusting the non-flag result below.
+  expect_lt(length(unique(x_comb)), 20L)
+
+  res <- .bimodality_check(x_comb)
+  expect_false(res$flag)
+  expect_equal(res$quantum, 0.6, tolerance = 1e-8)
+})
+
+test_that(".bimodality_check: the actual real-run false-positive shape (4%/96% split, quantized 0.6 apart) does NOT flag", {
+  # Directly mirrors the real calibrate_query_noise() warning this fix
+  # exists for: "H1 scores look bimodal: 4% near 95.4 (sd 3.0) and 96% near
+  # 98.8 (sd 0.4), delta BIC 8297" -- reproduced here as a synthetic comb
+  # (quantum 0.6, the run's own measured spacing) with a thin low-identity
+  # tail, rather than a real second population.
+  set.seed(9911)
+  n <- 6596L
+  n_tail <- round(0.04 * n)
+  n_bulk <- n - n_tail
+  bulk <- rnorm(n_bulk, mean = 98.8, sd = 0.5)
+  tail_part <- rnorm(n_tail, mean = 95.4, sd = 3.0)
+  x <- pmin(round(c(bulk, tail_part) / 0.6) * 0.6, 100)
+
+  res <- .bimodality_check(x)
+  expect_false(res$flag)
+})
+
+test_that(".bimodality_check: min_minority_weight alone rejects a thin-tail comb even if separation/valley would otherwise pass", {
+  # A comb where the two-component fit could plausibly find a real interior
+  # dip and a separation of several quanta, but the "minority" side holds
+  # only a token few percent of the mass -- must not be called bimodal.
+  set.seed(321)
+  n <- 2000L
+  n_minor <- round(0.03 * n)
+  x <- pmin(round(c(
+    rnorm(n - n_minor, mean = 98.8, sd = 0.4),
+    rnorm(n_minor, mean = 90.0, sd = 0.4)
+  ) / 0.6) * 0.6, 100)
+
+  res <- .bimodality_check(x)
+  if (isTRUE(res$delta_bic > 10) && isTRUE(abs(diff(res$means)) > 1.8)) {
+    # Only a meaningful test of the weight guard if the other three
+    # conditions would otherwise have passed.
+    expect_lt(min(res$weights), 0.15)
+  }
+  expect_false(res$flag)
+})
+
+test_that(".bimodality_check: quanta_separation_multiplier rejects a same-quantum-neighbor false split (train_likelihood_model's own h1_bimodality shape)", {
+  # Mirrors the real Stats$h1_bimodality false positive from the same
+  # 2026-09-14 run: weights 0.323/0.677, means 98.3/100 (separation 1.7,
+  # under 3 quanta at a 0.6 quantum) -- the reference-matches-itself spike
+  # at exactly 100, not a real second population.
+  set.seed(707)
+  n <- 1500L
+  n_spike <- round(0.323 * n)
+  bulk <- rnorm(n - n_spike, mean = 98.3, sd = 0.6)
+  x <- c(rep(100, n_spike), pmin(round(bulk / 0.6) * 0.6, 100))
+
+  res <- .bimodality_check(x)
+  expect_false(res$flag)
 })
 
 test_that(".bimodality_check: min_n and the no-variance case return flag = FALSE without error", {
@@ -193,6 +397,38 @@ test_that("calibrate_query_noise: emits exactly one warning naming the fitted st
 
   # The diagnostic is informational only -- calibration still completes and
   # produces an ordinary Query_Calibration slot.
+  expect_false(is.null(out$Query_Calibration))
+})
+
+test_that("calibrate_query_noise: does NOT warn about bimodality on a comb-shaped (discrete percent-identity) score vector -- 2026-09-14 regression", {
+  # End-to-end reproduction, through the real calibrate_query_noise() call
+  # path (not just .bimodality_check() directly), of the false positive
+  # found on the real 2026-09-14 PtConception 12S run: "H1 scores look
+  # bimodal: 4% near 95.4 (sd 3.0) and 96% near 98.8 (sd 0.4), delta BIC
+  # 8297" -- reproduced as a synthetic comb (quantum 0.6, this run's own
+  # measured spacing) with a thin low-identity tail, no real second
+  # population.
+  set.seed(9911)
+  n <- 200L
+  n_tail <- round(0.04 * n)
+  n_bulk <- n - n_tail
+  bulk <- rnorm(n_bulk, mean = 98.8, sd = 0.5)
+  tail_part <- rnorm(n_tail, mean = 95.4, sd = 3.0)
+  scores <- pmin(round(c(bulk, tail_part) / 0.6) * 0.6, 100)
+  fx <- .make_bimodality_calib_fixture(scores)
+
+  warnings_seen <- character(0)
+  withCallingHandlers(
+    out <- calibrate_query_noise(fx$params, fx$match_df, fx$priors,
+      offset_form = "constant", min_confident_obs = 30L, verbose = FALSE
+    ),
+    warning = function(w) {
+      warnings_seen[[length(warnings_seen) + 1L]] <<- conditionMessage(w)
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  expect_length(grep("bimodal", warnings_seen, value = TRUE), 0L)
   expect_false(is.null(out$Query_Calibration))
 })
 

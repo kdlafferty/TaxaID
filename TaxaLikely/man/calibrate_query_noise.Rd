@@ -273,12 +273,54 @@ vector (\code{p_norm * 100}, i.e. raw percent identity, computed before the
 bimodality only when a 2-component fit beats a 1-component fit by
 \code{delta_bic > 10} (Kass & Raftery 1995's "very strong" evidence band -- see
 \code{.bimodality_check()}'s own docs for the verified citation) AND the two
-fitted component means are separated by more than 1 percentage point --
-both conditions guard against a false positive from ordinary,
+fitted component means are separated by more than 1 percentage point (or
+further, on discrete data -- see the next section) AND the fitted mixture
+has a genuine density dip between the two means AND the smaller component
+holds real mass -- all four guard against a false positive from ordinary,
 ceiling-skewed-but-genuinely-unimodal H1 data (the reason a simpler
 bimodality-coefficient test was explicitly rejected for this diagnostic:
 H1 scores pile up near 100\% identity by construction, and a
 skewness/kurtosis-based test would flag that shape on its own).
+}
+
+\section{Percent identity is discrete, not continuous (2026-09-14)}{
+
+A second, structurally different false positive was found on the real
+PtConception 12S production run of 2026-09-14: this function warned "H1
+scores look bimodal: 4\% near 95.4 (sd 3.0) and 96\% near 98.8 (sd 0.4),
+delta BIC 8297" on data that is genuinely unimodal. The cause is that
+percent identity on a short, fixed-length amplicon is DISCRETE -- a
+~167bp amplicon can only take values spaced by roughly one mismatch's
+worth of identity (measured \code{0.6} apart on that run: the three most
+common of 219 distinct raw match-object values were 98.8/99.4/98.2,
+exactly \code{0.6} apart, i.e. one mismatch). Real match-score data therefore
+forms a "comb" of spikes at each mismatch count, not a continuum, and a
+comb has LITERAL zero density in the gaps between teeth -- not a real
+valley between two populations, just quantization. A two-component
+Gaussian mixture always beats one component on comb-like data (hence a
+\code{delta_bic} in the thousands), and the pre-existing valley guard, built
+to reject a smoothly ceiling-skewed unimodal shape, PASSES on a comb
+precisely because a real (if spurious) dip genuinely sits between the
+teeth there.
+
+\code{.bimodality_check()} now (1) estimates the identity-per-mismatch
+quantum directly from the data (\code{NA} when the data don't look
+comb-shaped at all -- most continuous data, including a genuine
+Nanopore-vs-Illumina platform mixture, estimates no quantum and is
+checked exactly as before); (2) when a quantum is found, deterministically
+smooths the comb before fitting (spreading each tied group of
+observations evenly across its own quantum-wide cell -- a dependency-free
+continuity correction, closing the literal zero-density gaps between
+teeth without disturbing a real multi-quantum gap between two genuinely
+separate populations); (3) requires the minority component to hold real
+mass (\verb{>= 15\%}) before calling it a mode -- a thin tail is not a second
+population, and this alone rejects the real 2026-09-14 false positive
+above (its minority component held only 4\%); and (4) requires the two
+fitted means to be separated by more than a few QUANTA, not just the
+flat \code{1.0} percentage point, since \code{1.0} is under two mismatches on a
+167bp amplicon. See \code{.estimate_score_quantum()}, \code{.smooth_comb()}, and
+\code{.bimodality_check()}'s own docs for the full mechanism and the exact
+thresholds, each justified against this run's own real numbers.
 
 When the check fires, this function emits exactly ONE \code{warning()} naming
 the fitted structure in plain numbers (component weights, means, sds, and
