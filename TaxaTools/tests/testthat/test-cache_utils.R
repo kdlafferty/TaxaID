@@ -141,3 +141,159 @@ test_that("report_and_clear_cache reports 'no cache files match' when older_than
   )
   expect_equal(nrow(out), 0L)
 })
+
+
+# --- cache_ok() -------------------------------------------------------------
+# Lifted 2026-09-14 from three identical workflow-script copies; these tests
+# pin the behaviour those copies had, so the lift cannot drift.
+
+test_that("cache_ok returns FALSE for a file that does not exist", {
+  expect_false(cache_ok(tempfile()))
+})
+
+test_that("cache_ok returns TRUE when no inputs are declared", {
+  f <- tempfile()
+  writeLines("x", f)
+  expect_true(cache_ok(f))
+  expect_true(cache_ok(f, inputs = NULL))
+})
+
+test_that("cache_ok rejects a cache older than a declared input", {
+  cached <- tempfile()
+  writeLines("cached", cached)
+  Sys.setFileTime(cached, Sys.time() - 60)
+  upstream <- tempfile()
+  writeLines("upstream", upstream)
+
+  expect_message(
+    expect_false(cache_ok(cached, inputs = upstream)),
+    "STALE CACHE"
+  )
+})
+
+test_that("cache_ok accepts a cache newer than every declared input", {
+  upstream <- tempfile()
+  writeLines("upstream", upstream)
+  Sys.setFileTime(upstream, Sys.time() - 60)
+  cached <- tempfile()
+  writeLines("cached", cached)
+
+  expect_true(cache_ok(cached, inputs = upstream))
+})
+
+test_that("cache_ok ignores NA and non-existent inputs", {
+  cached <- tempfile()
+  writeLines("cached", cached)
+  # A caller passing an optional upstream should not need to branch.
+  expect_true(cache_ok(cached, inputs = c(NA_character_, tempfile())))
+})
+
+test_that("cache_ok rejects when ANY of several inputs is newer", {
+  old <- tempfile()
+  writeLines("old", old)
+  Sys.setFileTime(old, Sys.time() - 120)
+  cached <- tempfile()
+  writeLines("cached", cached)
+  Sys.setFileTime(cached, Sys.time() - 60)
+  new <- tempfile()
+  writeLines("new", new)
+
+  expect_message(
+    expect_false(cache_ok(cached, inputs = c(old, new))),
+    "STALE CACHE"
+  )
+})
+
+
+# --- taxaid_cache_report() --------------------------------------------------
+# The ecosystem-level view that was missing while it accumulated 23 GB and
+# then 17 GB unnoticed. Reports, never deletes.
+
+test_that("taxaid_cache_report returns one row per cache and never deletes", {
+  d <- tempfile()
+  dir.create(d)
+  writeLines("x", file.path(d, "a.rds"))
+  writeLines("y", file.path(d, "b.rds"))
+
+  out <- suppressMessages(taxaid_cache_report(extra_dirs = d))
+
+  expect_s3_class(out, "data.frame")
+  expect_true(all(c("cache", "path", "exists", "n_files", "size_mb",
+                    "oldest", "newest") %in% names(out)))
+  row <- out[out$path == d, ]
+  expect_equal(nrow(row), 1L)
+  expect_equal(row$n_files, 2L)
+  expect_true(row$exists)
+  # Nothing removed.
+  expect_equal(length(list.files(d)), 2L)
+})
+
+test_that("taxaid_cache_report counts nested cache subdirectories", {
+  # TaxaLikely keeps its per-accession FASTA store in a fasta/ subdirectory;
+  # a non-recursive scan would report it as empty.
+  d <- tempfile()
+  dir.create(file.path(d, "fasta"), recursive = TRUE)
+  writeLines("x", file.path(d, "top.rds"))
+  writeLines("y", file.path(d, "fasta", "nested.rds"))
+
+  out <- suppressMessages(taxaid_cache_report(extra_dirs = d))
+  expect_equal(out[out$path == d, ]$n_files, 2L)
+})
+
+test_that("taxaid_cache_report reports a missing directory rather than dropping it", {
+  missing <- file.path(tempdir(), "definitely_not_here_xyz")
+  out <- suppressMessages(taxaid_cache_report(extra_dirs = missing))
+  row <- out[out$path == missing, ]
+  expect_equal(nrow(row), 1L) # a typo stays visible
+  expect_false(row$exists)
+  expect_equal(row$n_files, 0L)
+})
+
+test_that("taxaid_cache_report validates its arguments", {
+  expect_error(taxaid_cache_report(extra_dirs = 1), "character vector")
+  expect_error(taxaid_cache_report(warn_gb = "big"), "single number")
+})
+
+
+# --- list_cache_files(recursive=) (2026-09-14, P5) ----------------------------
+# TaxaLikely's per-accession fasta/ store (P2) lives in a subdirectory, so
+# while this argument did not exist its 4,061 files were invisible to every
+# clear function in the ecosystem.
+
+test_that("list_cache_files() is non-recursive by default", {
+  d <- tempfile()
+  dir.create(file.path(d, "sub"), recursive = TRUE)
+  writeLines("x", file.path(d, "top_meta.rds"))
+  writeLines("x", file.path(d, "sub", "nested_meta.rds"))
+
+  out <- list_cache_files(d, "_meta\\.rds$")
+  expect_identical(basename(out$path), "top_meta.rds")
+})
+
+test_that("list_cache_files(recursive = TRUE) reaches nested stores", {
+  d <- tempfile()
+  dir.create(file.path(d, "fasta"), recursive = TRUE)
+  writeLines("x", file.path(d, "top_meta.rds"))
+  writeLines("x", file.path(d, "fasta", "AB000667_seq.rds"))
+
+  out <- list_cache_files(d, c("_meta\\.rds$", "_seq\\.rds$"), recursive = TRUE)
+  expect_setequal(basename(out$path), c("top_meta.rds", "AB000667_seq.rds"))
+})
+
+test_that("list_cache_files() never returns a directory as a cache file", {
+  d <- tempfile()
+  # A directory whose own name matches the pattern would otherwise be
+  # reported (and then handed to file.remove()).
+  dir.create(file.path(d, "decoy_meta.rds"), recursive = TRUE)
+  writeLines("x", file.path(d, "real_meta.rds"))
+
+  out <- list_cache_files(d, "_meta\\.rds$")
+  expect_identical(basename(out$path), "real_meta.rds")
+})
+
+test_that("list_cache_files() validates 'recursive'", {
+  d <- tempfile()
+  dir.create(d)
+  expect_error(list_cache_files(d, "x$", recursive = NA), "TRUE or FALSE")
+  expect_error(list_cache_files(d, "x$", recursive = "yes"), "TRUE or FALSE")
+})

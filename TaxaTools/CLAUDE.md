@@ -1,5 +1,21 @@
 # CLAUDE.md -- TaxaTools
-# 2026-09-13, evening (Sonnet 5): ecosystem review Section L (J1/J1a) -- NEW
+# 2026-09-14 (Opus 5): cache policy review P4/P6/P5 (ecosystem_docs/
+# CACHE_POLICY_REVIEW_2026_09_14.md). NEW cache_ok() -- the ecosystem's staleness
+# primitive, lifted verbatim from three byte-identical copies pasted into workflow
+# scripts so the 26 package files taking a cache_dir can reach it. NEW
+# taxaid_cache_report() -- the missing whole-machine view (this ecosystem accumulated a
+# 23 GB and then a 17 GB cache without anyone noticing); reports, never deletes.
+# list_cache_files() gains recursive = FALSE: while that argument did not exist,
+# TaxaLikely's per-accession fasta/ store (4,061 files, added the same day by P2) was
+# invisible to EVERY clear function in the ecosystem -- a store with no way to see or
+# prune it. It also now drops directories, which the old code would have handed to
+# file.remove() if one ever matched a pattern. TRAP WORTH KEEPING: taxaid_cache_report()
+# nearly shipped UNEXPORTED -- a helper inserted between its roxygen block and its
+# function definition stole the @export (the helper carried @noRd), and
+# devtools::document() reported nothing wrong. Put internal helpers ABOVE the documented
+# function's roxygen block, and verify with getNamespaceExports() after installing.
+# devtools::test() 992/0 (was 950), check() 0/0/0.
+# Previous update, # 2026-09-13, evening (Sonnet 5): ecosystem review Section L (J1/J1a) -- NEW
 # assign_sampling_group() + default_sampling_scheme(): an ordered, first-match-wins rule
 # list (overridable via scheme=), a kingdom guard returning NA rather than the catch-all
 # for a non-animal row, optional backbone harmonisation (off by default). Regression
@@ -294,8 +310,11 @@ standardizing taxon name lists, resolving synonyms, and querying taxonomic hiera
 
 | Function | Purpose | Status | Source file |
 |---|---|---|---|
-| `list_cache_files()` | Scan `cache_dir` and return every file whose basename matches any of `patterns` (regex, OR'd), with `path`/`size_mb`/`mtime` -- the generic building block behind a downstream package's own `<pkg>_clear_cache()` helper. Zero rows if `cache_dir` has no matching files or doesn't exist. | Complete | R/cache_utils.R |
+| `list_cache_files()` | Scan `cache_dir` and return every file whose basename matches any of `patterns` (regex, OR'd), with `path`/`size_mb`/`mtime` -- the generic building block behind a downstream package's own `<pkg>_clear_cache()` helper. Zero rows if `cache_dir` has no matching files or doesn't exist. **2026-09-14**: gains `recursive = FALSE` (default preserves every pre-existing caller). Pass `TRUE` for a store keeping part of itself in a subdirectory -- TaxaLikely's per-accession `fasta/` cache is one, and while this argument did not exist its 4,061 files were unreachable by any clear function in the ecosystem. Patterns still match the BASENAME, so a recursive scan needs a pattern identifying the file, not its directory. Also now drops directories from the result, which the old code would have passed to `file.remove()` if one ever matched a pattern. | Complete | R/cache_utils.R |
 | `report_and_clear_cache()` | Shared "apply an age filter, print a summary, delete or dry-run report" engine, given an already-built `inv` (typically from `list_cache_files()`, with any package-specific pre-filtering already applied -- e.g. TaxaFetch's own orphan detection). `label` names the calling function in every message. Used by `TaxaFetch::taxafetch_clear_cache()` and `TaxaLikely::taxalikely_clear_cache()`; deliberately fits only the "directory of many small, deterministically-keyed files" cache shape, not TaxaMatch's cumulative row-level-TTL reference-evaluation cache (checked directly, left untouched). | Complete | R/cache_utils.R |
+
+| `cache_ok()` | **2026-09-14, new (cache policy P4).** The ecosystem's staleness primitive: a cache file is usable only if it EXISTS and is not older than any of the artifacts it derives from (`inputs=`, a character vector; missing/`NA` entries ignored so a caller can pass an optional upstream without branching). A rejection names the culprit. Lifted verbatim from three byte-identical copies pasted into `PtConceptionWorkflow_12S_single_site.R`, `_18S_2_single_site.R` and `GreatLakes2023_ConsensusWorkflow.R` -- done before they drifted, not after; behaviour unchanged from those copies, which now read `.cache_ok <- TaxaTools::cache_ok`. Declare `inputs` when a cache derives from a file the caller itself writes (a checkpoint, a bbox, an upstream `.rds`). It does NOT help where the upstream is a remote service -- an NCBI or GBIF query has no local mtime -- and that staleness axis is time, whose policy here is to report the cache's AGE at load rather than expire it silently. | Complete | R/cache_utils.R |
+| `taxaid_cache_report()` | **2026-09-14, new (cache policy P6).** The missing ecosystem-level view: sums all six package cache directories plus any project-local ones passed via `extra_dirs`, recursively (so nested stores such as TaxaLikely's `fasta/` are counted), sorted by size, flagging stores at/above `warn_gb` and stores where file COUNT dwarfs apparent size. Built because five separate `<pkg>_clear_cache()` functions existed with no way to see the whole picture -- which is how this ecosystem accumulated a 23 GB and then a 17 GB cache unnoticed (38 GBIF zips at 17.0 GB against 52 MB for every other cache file combined). `size_mb` is APPARENT size; a store of thousands of ~1 KB files occupies far more on disk, hence the file-count flag. **Reports only, never deletes** -- deliberately, because the caches do not share one shape: the file-per-key ones are served by `report_and_clear_cache()`, while TaxaMatch's is row-level and TTL'd, so deleting at file granularity would discard live rows (that absence is correct by design, not a gap -- checked and confirmed 2026-09-14). | Complete | R/cache_utils.R |
 
 ### Rank and barcode utilities (Sessions 56-57)
 
