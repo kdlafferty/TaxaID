@@ -58,20 +58,32 @@
 #'   auto-derived as `taxon_col`'s own identity when `taxonomy_map` has no
 #'   explicit `"species"` column.
 #'
-#' @param allowed_branches Character vector or `NULL`. Which `prior_branch`
-#'   values count as an occurrence record when summing a group's theta. Default
-#'   `c("resident_observed", "transport")`: kernel residents and the named
-#'   domestic/food rows. Rows on every other branch -- the `resident_undetected`
-#'   evidence rows (regional proximity, watch list, iNat range) and, since curve
-#'   pricing, the distance-clamp row every zero-record BLAST candidate carries --
-#'   are excluded, because "has a row in the priors table" stopped meaning "known
-#'   locally" on 2026-08-31. Measured on the PtCon 12S run of 2026-09-13: without
-#'   this filter 256 of 264 winner-scope `unprecedented` rows read `expected` or
-#'   `unexpected` at consensus scope, 75 of them on nothing but a clamp or
-#'   evidence row (a neon tetra, a plains minnow, a red deer at a marine site),
-#'   so `TaxaFlag::review_assignments()`'s skepticism gate never saw them.
-#'   `NULL` disables the filter. Ignored, with the pre-2026-09-13 behaviour, when
-#'   `taxaexpect_priors` has no `prior_branch` column (GLMM-era tables).
+#' @param exclude_named_evidence Logical, default `TRUE`. Drop rows that make a
+#'   presence claim about a NAMED species with no local occurrence record --
+#'   i.e. rows carrying a real `evidence_sources` value (`distance_clamp`,
+#'   `regional_proximity`, `invasive_watch`, `inat_range`). Since curve pricing
+#'   every zero-record BLAST candidate has a clamp row, so "has a row in the
+#'   priors table" stopped meaning "known locally" on 2026-08-31. Measured on
+#'   the PtCon 12S run of 2026-09-13: without this filter, 256 of 264
+#'   winner-scope `unprecedented` rows read `expected` or `unexpected` at
+#'   consensus scope, 75 of them on nothing but a clamp or evidence row (a neon
+#'   tetra, a plains minnow, a red deer at a marine site), so
+#'   `TaxaFlag::review_assignments()`'s skepticism gate never saw them.
+#'
+#'   Deliberately keyed on `evidence_sources`, NOT on `prior_branch`. The
+#'   `resident_undetected` branch holds two different things: those named
+#'   evidence rows (258 of 295 at PtCon 12S), and the ANONYMOUS
+#'   dark-diversity mirrors (`undetected_type` `singleton_mirror`/
+#'   `global_floor`, `taxon_name` `NA`, keyed by genus -- 37 rows there). A
+#'   mirror exists precisely BECAUSE the group has local records, via
+#'   Good-Turing on its own singletons, so it is legitimate group support and
+#'   is kept. Filtering by branch would discard it: at PtCon 18S the resident
+#'   rows carry no genus/family at all, so the mirrors are the dominant source
+#'   of genus- and family-level group mass.
+#'
+#'   `FALSE` restores the pre-2026-09-13 behaviour. Ignored, with that same
+#'   behaviour, when `taxaexpect_priors` has no `evidence_sources` column
+#'   (GLMM-era tables, and sites that predate curve pricing).
 #' @return A data frame with one row per (rank, taxon) group actually
 #'   present in the data: `rank` (the `rank_cols` value, e.g. `"genus"`),
 #'   `taxon` (the group's name at that rank), `theta_sum` (sum of `theta_col`
@@ -104,7 +116,7 @@ compute_group_priors <- function(taxaexpect_priors,
                                  taxon_col = "taxon_name",
                                  theta_col = "theta_mean",
                                  rank_cols = c("species", "genus", "family"),
-                                 allowed_branches = c("resident_observed", "transport")) {
+                                 exclude_named_evidence = TRUE) {
   if (!is.data.frame(taxaexpect_priors)) {
     cli::cli_abort("{.arg taxaexpect_priors} must be a data frame.")
   }
@@ -134,14 +146,17 @@ compute_group_priors <- function(taxaexpect_priors,
     )
   }
 
-  # Branch filter (2026-09-13): only rows on an allowed branch may support a
-  # group. Skipped when the table predates prior_branch (GLMM schema).
-  if (!is.null(allowed_branches) && "prior_branch" %in% names(taxaexpect_priors)) {
-    if (!is.character(allowed_branches)) {
-      cli::cli_abort("{.arg allowed_branches} must be a character vector or NULL.")
-    }
-    keep_branch <- taxaexpect_priors$prior_branch %in% allowed_branches
-    taxaexpect_priors <- taxaexpect_priors[keep_branch, , drop = FALSE]
+  # Named-evidence filter (2026-09-13). A row that names a species with no
+  # local record must not support that species' genus/family; an anonymous
+  # dark-diversity mirror, derived from the group's OWN local records, must.
+  # Both sit on prior_branch == "resident_undetected", which is why this keys
+  # on evidence_sources instead -- see the @param note.
+  if (isTRUE(exclude_named_evidence) && "evidence_sources" %in% names(taxaexpect_priors)) {
+    drop_named <- !is.na(taxaexpect_priors$evidence_sources) &
+      nzchar(as.character(taxaexpect_priors$evidence_sources))
+    taxaexpect_priors <- taxaexpect_priors[!drop_named, , drop = FALSE]
+  } else if (!is.logical(exclude_named_evidence) || length(exclude_named_evidence) != 1L) {
+    cli::cli_abort("{.arg exclude_named_evidence} must be a single TRUE or FALSE.")
   }
 
   priors_slim <- taxaexpect_priors[, c(taxon_col, theta_col), drop = FALSE]

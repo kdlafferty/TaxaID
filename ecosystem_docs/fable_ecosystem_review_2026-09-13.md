@@ -673,3 +673,62 @@ nine packages; all nine reinstalled; the eight pkgdown sites rebuilt.
 - CaliforniaIntertidal keeps its own classifier; converging it onto a `scheme =` object is a decision for that project, with its own before/after comparison.
 - Per-platform likelihood calibration (the real remedy behind J3) is not designed.
 - Nothing committed in any of the three repositories.
+
+---
+
+## M. Fast-workflow validation, and a correction to A3 (2026-09-13, late)
+
+The four existing smoke tests were re-run first: all pass, PtCon 18S reproduces
+`irreducible_consensus` 82 FALSE / 112 TRUE exactly as on 2026-09-07, and Mugu
+still resolves *Fundulus parvipinnis* at 0.999. Those fixtures predate today's
+work, so they prove nothing BROKE -- not that the new code works.
+
+NEW `diagnostics/fast_workflows/run_review_fixes_fast_check.R` exercises the
+changes themselves, in before/after arms, on real fixtures. ~46 s.
+
+**It immediately caught a real over-reach in A3, which has been corrected.**
+`resident_undetected` is not one population. At PtCon 12S it splits:
+
+| Sub-population | Rows | `taxon_name` | What it is |
+|---|---|---|---|
+| `evidence_blend` with an `evidence_sources` value | 258 | named | a named foreign species elevated by a clamp, regional record, watch list or iNat range |
+| `singleton_mirror`/`global_floor`, no evidence source | 37 | NA, keyed by genus | Good-Turing dark-diversity mass, derived FROM that group's own local records |
+
+The first version of the fix filtered on `prior_branch`, which discarded BOTH.
+Only the first is spurious: a singleton mirror exists precisely BECAUSE the
+group has local records. At PtCon 18S the resident rows carry no genus/family
+at all, so those anonymous mirrors are the DOMINANT source of genus- and
+family-level group mass -- filtering by branch would have removed it.
+
+Corrected: `compute_group_priors(exclude_named_evidence = TRUE)`, keyed on
+`evidence_sources`, not on `prior_branch`. Measured on the real 12S priors
+(783 rows): 258 named-evidence rows excluded, 37 mirrors kept; group rows
+genus 161 -> 43, family 66 -> 30, species 744 -> 486; 412 groups lose support
+entirely and the examples are exactly right -- *Abudefduf hoefleri*,
+*Acanthopsetta nadeshnyi*, *Anas poecilorhyncha*, *Arabitragus jayakari* (a
+Middle Eastern tahr). The six workflow comments naming the old argument were
+updated; no workflow ever passed it. TaxaAssign 789 tests, check 0/0/0.
+
+**Arm results.** A: real 12S as above; a no-op on the 18S fixture, correctly,
+since that table predates curve pricing and has no `evidence_sources` column.
+C: the mismatched-mixture warning fires, the columns blank, alpha/beta stay
+finite, the identical-mixture control passes through untouched (semi-synthetic,
+labelled as such). D: 0 ungrouped of 2,185,193.
+
+**Two honest nulls, worth recording so they are not mistaken for coverage.**
+B: the 18S fixture's 238 `resident_undetected` rows are all anonymous
+(`taxon_name` NA), so they were never eligible as a `species_reference` row
+under either construction -- OLD and NEW are byte-identical there, only 1
+downranking occurs in 194 observations and it is already legitimate. The
+downranking gate is covered by unit tests and by the 35-of-150 production
+measurement, NOT by this fixture. E: `calibrate_query_noise()` needs >= 30
+confident observations and the 18S fixture yields 1, so the bimodality check
+never executes; GreatLakes and PtCon 12S have no priors fixture in that
+directory at all. **A fixture that can exercise B and E is the obvious next
+addition to that directory.**
+
+Also added: a standing test that every TaxaWizard snippet still PARSES once its
+placeholders are substituted (30 snippets, 0 failures). The existing guard
+proves the functions named in a snippet are real; it does not prove the
+template emits valid R, which is what a user actually runs -- and the new
+evidence block is the largest snippet in the set at 17 placeholders.

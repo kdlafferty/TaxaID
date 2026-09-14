@@ -391,3 +391,33 @@ test_that("every Pkg::fn() call in inst/graph/snippets/ is a real export of that
     info = paste(c("Offending snippet calls:", unique(offenders)), collapse = "\n")
   )
 })
+
+test_that("every snippet still parses once its placeholders are substituted", {
+  # The existence guard above proves each `Pkg::fn` named in a snippet is real.
+  # It does NOT prove the TEMPLATE produces valid R once filled, which is what
+  # a user actually runs -- an unbalanced brace or a stray comma inside a
+  # {{placeholder}} expression would only surface at generation time, in front
+  # of the user, with the LLM blamed for it. Substituting a syntactically valid
+  # dummy token for every placeholder and parsing is a cheap standing check.
+  # Added 2026-09-13 alongside the curve-pricing evidence block, the largest
+  # snippet in the set (17 placeholders).
+  snippet_dir <- testthat::test_path("..", "..", "inst", "graph", "snippets")
+  skip_if_not(dir.exists(snippet_dir), "snippet directory not available")
+  files <- list.files(snippet_dir, pattern = "[.]R$", full.names = TRUE)
+  expect_gt(length(files), 0L)
+
+  failures <- character(0)
+  for (f in files) {
+    txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
+    filled <- gsub("\\{\\{[A-Za-z0-9_]+\\}\\}", ".dummy_value", txt)
+    err <- tryCatch({ parse(text = filled); NULL },
+                    error = function(e) conditionMessage(e))
+    if (!is.null(err)) {
+      failures <- c(failures, sprintf("%s: %s", basename(f), substr(err, 1L, 120L)))
+    }
+  }
+  expect_equal(
+    failures, character(0),
+    info = paste0("snippets that do not parse when filled:\n", paste(failures, collapse = "\n"))
+  )
+})

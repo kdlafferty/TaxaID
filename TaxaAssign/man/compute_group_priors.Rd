@@ -10,7 +10,7 @@ compute_group_priors(
   taxon_col = "taxon_name",
   theta_col = "theta_mean",
   rank_cols = c("species", "genus", "family"),
-  allowed_branches = c("resident_observed", "transport")
+  exclude_named_evidence = TRUE
 )
 }
 \arguments{
@@ -36,20 +36,32 @@ aggregate by (default \code{c("species", "genus", "family")}). See
 auto-derived as \code{taxon_col}'s own identity when \code{taxonomy_map} has no
 explicit \code{"species"} column.}
 
-\item{allowed_branches}{Character vector or \code{NULL}. Which \code{prior_branch}
-values count as an occurrence record when summing a group's theta. Default
-\code{c("resident_observed", "transport")}: kernel residents and the named
-domestic/food rows. Rows on every other branch -- the \code{resident_undetected}
-evidence rows (regional proximity, watch list, iNat range) and, since curve
-pricing, the distance-clamp row every zero-record BLAST candidate carries --
-are excluded, because "has a row in the priors table" stopped meaning "known
-locally" on 2026-08-31. Measured on the PtCon 12S run of 2026-09-13: without
-this filter 256 of 264 winner-scope \code{unprecedented} rows read \code{expected} or
-\code{unexpected} at consensus scope, 75 of them on nothing but a clamp or
-evidence row (a neon tetra, a plains minnow, a red deer at a marine site),
-so \code{TaxaFlag::review_assignments()}'s skepticism gate never saw them.
-\code{NULL} disables the filter. Ignored, with the pre-2026-09-13 behaviour, when
-\code{taxaexpect_priors} has no \code{prior_branch} column (GLMM-era tables).}
+\item{exclude_named_evidence}{Logical, default \code{TRUE}. Drop rows that make a
+presence claim about a NAMED species with no local occurrence record --
+i.e. rows carrying a real \code{evidence_sources} value (\code{distance_clamp},
+\code{regional_proximity}, \code{invasive_watch}, \code{inat_range}). Since curve pricing
+every zero-record BLAST candidate has a clamp row, so "has a row in the
+priors table" stopped meaning "known locally" on 2026-08-31. Measured on
+the PtCon 12S run of 2026-09-13: without this filter, 256 of 264
+winner-scope \code{unprecedented} rows read \code{expected} or \code{unexpected} at
+consensus scope, 75 of them on nothing but a clamp or evidence row (a neon
+tetra, a plains minnow, a red deer at a marine site), so
+\code{TaxaFlag::review_assignments()}'s skepticism gate never saw them.
+
+Deliberately keyed on \code{evidence_sources}, NOT on \code{prior_branch}. The
+\code{resident_undetected} branch holds two different things: those named
+evidence rows (258 of 295 at PtCon 12S), and the ANONYMOUS
+dark-diversity mirrors (\code{undetected_type} \code{singleton_mirror}/
+\code{global_floor}, \code{taxon_name} \code{NA}, keyed by genus -- 37 rows there). A
+mirror exists precisely BECAUSE the group has local records, via
+Good-Turing on its own singletons, so it is legitimate group support and
+is kept. Filtering by branch would discard it: at PtCon 18S the resident
+rows carry no genus/family at all, so the mirrors are the dominant source
+of genus- and family-level group mass.
+
+\code{FALSE} restores the pre-2026-09-13 behaviour. Ignored, with that same
+behaviour, when \code{taxaexpect_priors} has no \code{evidence_sources} column
+(GLMM-era tables, and sites that predate curve pricing).}
 }
 \value{
 A data frame with one row per (rank, taxon) group actually

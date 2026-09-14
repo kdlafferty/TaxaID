@@ -97,35 +97,36 @@ test_that("stops on missing required columns", {
 })
 
 
-test_that("allowed_branches excludes clamp/evidence rows from group support (2026-09-13)", {
+test_that("named-evidence rows are excluded but anonymous dark-diversity mirrors are kept (2026-09-13)", {
   pri <- data.frame(
-    taxon_name = c("Sebastes miniatus", "Sebastes mystinus", "Cervus elaphus", "Bos taurus", "Umbra limi"),
-    theta_mean = c(0.02, 0.01, 1e-6, 5e-4, 2e-8),
-    prior_branch = c("resident_observed", "resident_observed", "resident_undetected", "transport", "resident_undetected"),
+    taxon_name = c("Sebastes miniatus", "Sebastes mystinus", "Cervus elaphus", "Bos taurus", NA),
+    theta_mean = c(0.02, 0.01, 1e-6, 5e-4, 3e-6),
+    prior_branch = c("resident_observed", "resident_observed", "resident_undetected",
+                     "transport", "resident_undetected"),
+    evidence_sources = c(NA, NA, "regional_proximity", NA, NA),
+    undetected_type = c(NA, NA, "evidence_blend", NA, "singleton_mirror"),
+    genus = c("Sebastes", "Sebastes", "Cervus", "Bos", "Citharichthys"),
+    family = c("Sebastidae", "Sebastidae", "Cervidae", "Bovidae", "Paralichthyidae"),
     stringsAsFactors = FALSE
   )
-  tax <- data.frame(
-    taxon_name = pri$taxon_name,
-    genus  = c("Sebastes", "Sebastes", "Cervus", "Bos", "Umbra"),
-    family = c("Sebastidae", "Sebastidae", "Cervidae", "Bovidae", "Umbridae"),
-    stringsAsFactors = FALSE
-  )
+  tax <- pri[, c("taxon_name", "genus", "family")]
   gp <- compute_group_priors(pri, tax)
   # residents and transport survive
   expect_true("Sebastes" %in% gp$taxon[gp$rank == "genus"])
   expect_true("Bos taurus" %in% gp$taxon[gp$rank == "species"])
-  # evidence-only and clamp-only rows do not support any rank
-  expect_false("Cervus elaphus" %in% gp$taxon)
+  # a NAMED evidence row does not support its genus/family
+  expect_false("Cervus" %in% gp$taxon)
   expect_false("Cervidae" %in% gp$taxon)
-  expect_false("Umbra" %in% gp$taxon)
-  # NULL restores the old branch-blind behaviour
-  gp_all <- compute_group_priors(pri, tax, allowed_branches = NULL)
+  # the ANONYMOUS dark-diversity mirror DOES: it exists because the group has
+  # local records, so its mass is legitimate group support
+  expect_true("Citharichthys" %in% gp$taxon[gp$rank == "genus"])
+  expect_true("Paralichthyidae" %in% gp$taxon[gp$rank == "family"])
+  # opting out restores the pre-2026-09-13 behaviour
+  gp_all <- compute_group_priors(pri, tax, exclude_named_evidence = FALSE)
   expect_true("Cervidae" %in% gp_all$taxon)
-  # stricter choice: resident only drops transport too
-  gp_res <- compute_group_priors(pri, tax, allowed_branches = "resident_observed")
-  expect_false("Bos taurus" %in% gp_res$taxon)
-  # a table without prior_branch is untouched
-  gp_legacy <- compute_group_priors(pri[, c("taxon_name", "theta_mean")], tax)
+  # a table with no evidence_sources column is untouched
+  gp_legacy <- compute_group_priors(pri[, setdiff(names(pri), "evidence_sources")], tax)
   expect_true("Cervidae" %in% gp_legacy$taxon)
-  expect_error(compute_group_priors(pri, tax, allowed_branches = 1), "allowed_branches")
+  expect_error(compute_group_priors(pri, tax, exclude_named_evidence = "yes"),
+               "exclude_named_evidence")
 })
