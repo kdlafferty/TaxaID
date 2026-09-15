@@ -59,6 +59,24 @@
 # ZERO order-rank consensus rows so the rank fix cannot be acting through its intended
 # mechanism there. Re-running the fastpath warm would separate the two if it ever matters.
 # TaxaExpect 649/0, TaxaAssign 806/0, TaxaWizard 641/0; check() 0/0/0 both changed packages.
+# ALSO 2026-09-15: cache-policy items 3 and 4 of the running order CLOSED. Both sweeps RUN,
+# user-approved -- 168.1 MB -> 45.0 MB, 7,588 -> 6,002 files. TaxaFetch lost exactly its two
+# orphans (the 127,733,417-byte truncated download hand-quarantined 2026-09-05, and a 0-byte
+# zip); both surviving zips still have their metadata, checked after. TaxaLikely evicted
+# 1,584 of 3,517 meta files (1,933 live); the 4,061 fasta/ files were untouched, as the
+# grammar predicted. The fasta/ VERSIONED-KEY fix is now live-verified (NCBI recovered): a
+# cold fetch wrote 4 of 4 versioned filenames vs 0 of 4,061 in the pre-fix cache -- and note
+# the version is separated by an UNDERSCORE, so grepl("\\.[0-9]+") reports zero on files that
+# are correctly versioned; match ^[A-Z]+[0-9]+_[0-9]+_seq\\.rds$.
+#
+# REENTRY_PROMPT_cache_policy_review.md retired: it was SUPERSEDED by the review it
+# commissioned, and its "OPEN, nothing implemented" header was stale. Two of its proposals
+# were deliberately DECIDED AGAINST and should not be revived without new argument: a blanket
+# cache_dir = NULL sweep (11 functions changing default behaviour at once, for workflows that
+# already pass explicit dirs), and mandatory inputs= on every cache (the per-taxon caches
+# derive from NCBI, not a local artifact -- their staleness axis is TIME, i.e. a TTL). An
+# ecosystem-level cache CLEAR was likewise not built, on purpose: the five caches do not share
+# one shape and TaxaMatch's is row-level and TTL'd. taxaid_cache_report() reports only.
 # Previous update: 2026-09-14, later still (Opus 5 -- SILENT DATA LOSS IN THE LLM REVIEW CLOSED.
 # ecosystem_docs/REENTRY_PROMPT_unreviewed_rows_silently_dropped.md is RESOLVED; read its
 # Resolution section, not just its problem statement (item 4 of its own "what to do" list is

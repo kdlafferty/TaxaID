@@ -66,8 +66,41 @@ order is not arbitrary.
    cannot be acting there through its intended mechanism. Clean test if it
    ever matters: re-run the fastpath now that the regional-proximity cache is
    warm; any remaining difference is then code, not data.
-3. `REENTRY_PROMPT_cache_policy_P5_eviction.md`
-4. `REENTRY_PROMPT_cache_policy_review.md`
+3. ~~`REENTRY_PROMPT_cache_policy_P5_eviction.md`~~ -- DONE 2026-09-15
+   (commits 2d31cca / 05add25). Doc kept: it is the open-items list for a
+   built feature, not a work order, and its two "traps worth carrying
+   forward" are still live guidance. Both sweeps run, user-approved:
+   **168.1 MB -> 45.0 MB**, 7,588 -> 6,002 files. TaxaFetch lost exactly its
+   two orphans (the 127,733,417-byte truncated download quarantined
+   2026-09-05, and a 0-byte zip); both surviving zips still have metadata.
+   TaxaLikely evicted 1,584 of 3,517 meta files, 1,933 live, `fasta/`
+   untouched. The `fasta/` versioned-key item was live-verified once NCBI
+   recovered: a cold fetch wrote 4 of 4 versioned filenames against 0 of
+   4,061 in the pre-fix cache. Legacy notes left alone by decision.
+4. ~~`REENTRY_PROMPT_cache_policy_review.md`~~ -- CLOSED 2026-09-15, doc
+   retired. **Superseded by the review it commissioned**
+   (`CACHE_POLICY_REVIEW_2026_09_14.md`), which assessed its candidate scope
+   and deliberately narrowed it. Its "Status: OPEN, nothing implemented" was
+   stale. Reconciled item by item:
+   - one documented policy -> BUILT (that 768-line review)
+   - `cache_dir = NULL` as uniform default -> **DECIDED AGAINST**: 11
+     functions would change behaviour at once mid-project, and the workflows
+     already pass explicit dirs nearly everywhere. P3 fixed the two genuine
+     offenders instead.
+   - mandatory `inputs=` on every cache -> **DECIDED AGAINST as a blanket**:
+     the per-taxon caches derive from NCBI, not a local artifact, so they
+     have no `inputs` to declare -- their staleness axis is time, i.e. a TTL.
+     Applied where it does belong; 4 workflow files now use `cache_ok()`.
+   - ecosystem report/clear -> `TaxaTools::taxaid_cache_report()` BUILT and
+     exported (with `warn_gb`); an ecosystem-level CLEAR deliberately NOT
+     built, because the five caches do not share one shape and TaxaMatch's is
+     row-level and TTL'd.
+   - size budget -> BUILT (`warn_gb`).
+   - re-examine the 2026-07-13 cache removal -> DONE. P1 reordered the fetch
+     so the cache is consulted BEFORE the count query (the actual cause of
+     the incident); the single-site `reference_df` read stays unbuilt on
+     measurement -- warm Step 7a is 3 seconds.
+   The three questions it posed are answered in that review's Parts 9-11.
 5. `REENTRY_PROMPT_taxawizard_audit_and_fast_workflows.md`
 6. `REENTRY_PROMPT_workflow_structure_audit.md`
 7. `REENTRY_PROMPT_ptcon_18S_rerun.md`
