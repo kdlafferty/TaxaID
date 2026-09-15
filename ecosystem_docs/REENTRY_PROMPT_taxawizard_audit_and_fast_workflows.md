@@ -1,6 +1,6 @@
 # TaxaWizard audit, and a fast-workflow re-run
 
-**Status: PARTS 1-4 DONE 2026-09-15. Part 5 partly covered. Part 3 measured and OPEN (the
+**Status: PARTS 1-5 DONE 2026-09-15. Part 3 measured and OPEN (the
 snippets, not the metadata). Part 5 partly covered. TaxaWizard 643 tests, 0
 failures; check() 0/0/0 (plus the usual timestamp note).**
 
@@ -107,9 +107,51 @@ is a per-edge design decision rather than a mechanical edit.
 Verified in real generated output, not just by reading the diff: a generated
 script was produced and its preamble confirmed to carry the cli line.
 
-**Part 5 -- partly covered.** Script and app GENERATION are exercised by the
-suite (it writes real app.R files during the run). A generated app has still
-not been launched and clicked through.
+**Part 5 -- DONE 2026-09-15. A generated app was built, launched and attacked.**
+
+Built from a TaxaWizard-shaped script (5 parameters, 2 steps) -> `app.R`, 343
+lines, parses, 5 inputs rendered. Launched on `127.0.0.1:8731`: **HTTP 200,
+12,231 bytes in 0.03 s**. The served HTML carries every parameter as a real
+control -- `param_taxa_file` (upload, with progress), `param_backbone_id`,
+`param_gbif_limit`, `param_year_range`, `param_llm_fn` (a 6-choice provider
+dropdown) -- plus `run_btn`.
+
+**The 2026-08-09 `eval(parse())` allow-list fix was attacked at runtime, not
+just read.** The guard was lifted out of the generated app and driven with
+hostile input:
+
+| input | result |
+|---|---|
+| `TaxaTools::call_anthropic_api` | ACCEPTED -> function |
+| `system` | REJECTED |
+| `base::system` | REJECTED |
+| `c("TaxaTools::call_api", "base::system")` | REJECTED |
+| `'quote(system("id"))'` | REJECTED |
+| `NA_character_` | REJECTED |
+| `character(0)` | REJECTED |
+
+The length-2 vector is the case the fix was specifically written for -- a bare
+`%in%` test passes on its first element -- and it is rejected. The guard never
+parses client text at all; it resolves by `getExportedValue()` after an exact
+membership test.
+
+### Two things found while doing it, worth knowing
+
+**1. `workflow_app()` needs REAL step markers, not just the comment.** A step
+is detected by `^\w+\s*<-\s*\.run_step\(`, i.e. the
+`out <- .run_step(1, "desc", quote({ ... }))` wrapper that `.generate_script()`
+emits. A script carrying only `# --- Step 1: ... ---` comments parses to ZERO
+steps. Parameters likewise come only from a `# --- User Parameters ---`
+section. Hand-written scripts therefore need `annotate = "self"`/`"llm"`.
+
+**2. `workflow_app(annotate = "auto")` -- the DEFAULT -- calls `readline()`.**
+In a non-interactive session that returns `""`, which is treated as cancel, so
+the call prints "Cancelled." and returns `NULL` having written nothing. A
+batch script calling `workflow_app(script)` silently produces no app. This is
+the same `readline()`/`menu()` hazard already documented in this ecosystem
+(the 2026-09-04 incident where a cache prompt consumed ~600 lines of a sourced
+workflow as menu answers). Pass `annotate = "none"` in any non-interactive
+context so it errors loudly instead.
 
 
 ## 1. TaxaWizard does not know about caches at all
