@@ -1,8 +1,92 @@
 # TaxaWizard audit, and a fast-workflow re-run
 
-**Status: OPEN. TaxaWizard's own suite is green (641 tests, 0 failures,
-2026-09-14), so this is not a firefight. It is the overdue question of whether
-the package still describes the ecosystem it generates code for.**
+**Status: PARTS 1, 2 and 4 DONE 2026-09-15. Part 3 measured and OPEN (the
+snippets, not the metadata). Part 5 partly covered. TaxaWizard 643 tests, 0
+failures; check() 0/0/0 (plus the usual timestamp note).**
+
+## 2026-09-15 progress
+
+**Part 2 -- the decision, made: metadata must cover what real workflows
+CALL.** Not "every export" and not a hand-curated list. The criterion is
+computed from the workflow corpus, so it cannot drift the way a curated list
+did.
+
+That reframed the size of the problem. Of the 105 missing exports, only **45
+were called by any real workflow**; the other 60 are never called anywhere
+(prompt builders, response parsers, provider-registry internals) and are out
+legitimately. The metadata was also **not wrong** -- 0 stale entries, nothing
+naming a function that does not exist. The drift was purely one-directional.
+
+**Part 1 -- DONE. 50 entries added, gap now 0.** Generated from each
+function's own installed `.Rd` (title -> description, `\arguments` -> input
+descriptions, formals -> required/default), so the text is the real
+documentation rather than invented prose. All 12 cache-management functions
+are now present, along with core pipeline steps that had been missing:
+`calibrate_query_noise`, `restore_suppressed_candidates`,
+`expand_unreferenced_hypotheses`, `get_gbif_occurrences`,
+`apply_coverage_constraints`, `unreferenced_candidates`, `assign_scores`, and
+every `report_*`.
+
+Trap worth recording: evaluating a default like
+`tools::R_user_dir("TaxaFlag", "cache")` bakes THIS machine's absolute path
+into shipped metadata. Literal defaults are recorded as `default`; anything
+else as `default_expr`, the deparsed call. The files were checked for
+`/Users/` afterwards -- clean.
+
+**The guard: `TaxaWizard/tests/testthat/test-metadata-covers-workflow-functions.R`.**
+It scans the in-repo corpus and asserts every ecosystem function called there
+has a metadata entry. Verified to actually FAIL (not skip) when an entry is
+removed -- checked by deleting `calibrate_query_noise` and confirming
+1 failure, 0 skips. It covers the in-repo corpus only, because the production
+site workflows live outside this repository and cannot be a test dependency;
+the metadata deliberately covers a superset.
+
+The pre-existing structural guard tests the OTHER direction (every function
+NAMED in a snippet must be a real export), which is why this drift was
+invisible: nothing could see an omission.
+
+**Part 4 -- DONE, all five fast workflows green** (NCBI healthy again):
+
+```
+run_fast_smoketest.R             OK   6.0s
+run_greatlakes_fast_smoketest.R  OK   5.0s
+run_mugu_fast_smoketest.R        OK   0.1s
+run_ptcon18s_fast_smoketest.R    OK  36.1s
+run_review_fixes_fast_check.R    OK  63.2s
+```
+
+Mugu's 0.1s is real work, not a skip: 75 observations, the *Fundulus
+lima/parvipinnis* edge case, and `irreducible_consensus` 69 TRUE / 6 FALSE --
+the 2026-09-04 order-invariance bug would have made every row FALSE.
+
+NOTE for the next reader: these scripts resolve paths relative to the PROJECT
+ROOT (`file.path("diagnostics", "fast_workflows", ...)`). Running them with
+the working directory set to their own folder fails instantly on
+`file.exists(fixture_path)` and looks like missing fixtures. The fixtures are
+present and committed.
+
+**Part 3 -- MEASURED, and the gap is in the SNIPPETS, not the metadata.**
+Metadata coverage no longer implies generated workflows use these
+conventions. Of 30 snippets:
+
+| convention | snippets carrying it |
+|---|---|
+| `cache_dir` | 3 of 30 |
+| `on_count_failure` / `count_attempts` | **0** |
+| `cache_ok()` staleness gate | **0** |
+| `options(cli.progress_show_after = Inf)` | **0** |
+
+So a generated workflow still writes to the hidden per-user cache defaults,
+has no staleness gate, and -- most seriously -- carries no count-failure
+guard, the absence of which cost seven genera their entire reference
+representation on 2026-09-14 and started this whole thread. Fixing this means
+editing snippets, each edit a judgement about what generated code should look
+like. NOT started.
+
+**Part 5 -- partly covered.** Script and app GENERATION are exercised by the
+suite (it writes real app.R files during the run). A generated app has still
+not been launched and clicked through.
+
 
 ## 1. TaxaWizard does not know about caches at all
 

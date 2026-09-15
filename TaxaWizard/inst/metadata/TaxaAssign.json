@@ -290,7 +290,10 @@
           "name": "consensus_mode",
           "type": "character",
           "required": false,
-          "default": ["gap", "bracket"],
+          "default": [
+            "gap",
+            "bracket"
+          ],
           "description": "'gap' (default) is the generic fixed-threshold/LCA convention: min_score floor -> max_gap window -> LCA over the distinct retained taxa. Do NOT describe 'gap' mode as the GITA/Jonah Ventures convention -- that attribution was a documented false attribution corrected 2026-09-12. 'bracket' implements Jonah Ventures' own published rule instead: a 1% bracket (bracket_width) anchored at the ESV's top score, in which a taxon is reported at a rank only when it holds >= agreement_fraction (JV uses 0.9, i.e. >=90%) of the HITS in that bracket (not distinct taxa -- JV's rule counts hits), widened to a 2% bracket (via bracket_fallback) when a 97%-or-better match still returns no family-level name. max_gap is ignored in 'bracket' mode; bracket_width/bracket_fallback are ignored in 'gap' mode."
         },
         {
@@ -698,6 +701,53 @@
       },
       "scaling": "linear",
       "scaling_note": "Fast; pure R computation over already-fetched inat_range data"
+    },
+    {
+      "name": "report_assign",
+      "description": "Generate a Report Section for Taxonomic Assignment",
+      "inputs": [
+        {
+          "name": "result",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Data frame or NULL. Posterior output from compute_posterior or assign_taxa_llm. Required for posterior-based consensus. Pass NULL for score-based."
+        },
+        {
+          "name": "consensus",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Output from posterior_consensus or score_consensus."
+        },
+        {
+          "name": "data_type",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL. One of \"eDNA\", \"image\", \"acoustic\"."
+        },
+        {
+          "name": "workflow",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL. One of \"bayesian\" or \"llm\" -- overrides the auto-detected workflow used to select Methods-text wording (same auto-detection caveat as generate_report's workflow argument: reliable for this package's own pipeline output, but can misclassify a hand-built or third-party result). Igno"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. Print summary messages. Default FALSE."
+        }
+      ],
+      "output": "See ?TaxaAssign::report_assign (@return)"
+    },
+    {
+      "name": "suggest_unreferenced_species",
+      "description": "Suggest Unreferenced Species Using an LLM (deprecated -- moved to TaxaLikely)",
+      "inputs": [],
+      "output": "See ?TaxaAssign::suggest_unreferenced_species (@return)"
     }
   ]
 }

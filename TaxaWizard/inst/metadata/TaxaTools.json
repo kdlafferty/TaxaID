@@ -250,6 +250,599 @@
       },
       "scaling": "api_limited",
       "scaling_note": "Backbone lookups are fast; use_llm=TRUE adds one LLM call per batch of 20 unresolved names. cache_dir makes repeat calls on the same names free"
+    },
+    {
+      "name": "assemble_report",
+      "description": "Assemble Multiple Report Sections into a Unified Report",
+      "inputs": [
+        {
+          "name": "title",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL. Optional report title."
+        },
+        {
+          "name": "study_description",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL. Optional study description paragraph inserted before the Methods sections."
+        }
+      ],
+      "output": "See ?TaxaTools::assemble_report (@return)"
+    },
+    {
+      "name": "assign_sampling_group",
+      "description": "Assign Sampling Groups from Taxonomic Rank Columns",
+      "inputs": [
+        {
+          "name": "taxonomy",
+          "type": "character",
+          "required": true,
+          "description": "A data frame (or tibble) with at least some of the columns named in rank_cols. Returned as-is with a new sampling_group column added."
+        },
+        {
+          "name": "scheme",
+          "type": "character",
+          "required": false,
+          "default_expr": "default_sampling_scheme()",
+          "description": "A sampling-group scheme object; see default_sampling_scheme for the required shape. Supply a custom scheme (e.g. default_sampling_scheme() with an appended or edited rule) to override the default classification -- the whole rules/catch_all/kingdom_guard_vocabulary object is used exactly as supplied,"
+        },
+        {
+          "name": "rank_cols",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"kingdom\", \"phylum\", \"class\", \"order\")",
+          "description": "Character vector of taxonomic rank columns to read, in COARSE-TO-FINE order. Default c(\"kingdom\", \"phylum\", \"class\", \"order\") -- the four ranks every rule in default_sampling_scheme() reads. A column absent from taxonomy is treated as entirely NA (never an error), so a taxonomy table missing e.g. or"
+        },
+        {
+          "name": "kingdom_guard",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical, default TRUE. When a row reaches the catch-all (scheme$catch_all, normally \"macroinvertebrates\") and its kingdom is NOT one of scheme$kingdom_guard_vocabulary (default c(\"Animalia\", \"Metazoa\")), the row's sampling_group is set to NA instead of the catch-all. This is the single mechanism tha"
+        },
+        {
+          "name": "harmonise",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical, default FALSE. When TRUE, taxonomy is harmonised to scheme's backbone BEFORE classification, via verify_taxon_names(backbone_id = backbone_id) -> change_backbone() -- the same idiom CaliforniaIntertidal/scope_classifier.R's harmonize_ranks_to_gbif() documents, and the one PtConceptionWorkfl"
+        },
+        {
+          "name": "backbone_id",
+          "type": "numeric",
+          "required": false,
+          "default": 11,
+          "description": "Integer backbone ID passed to verify_taxon_names when harmonise = TRUE. Default 11L (GBIF), matching default_sampling_scheme()'s own vocabulary. Ignored when harmonise = FALSE."
+        },
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional directory for a persistent, content-keyed cache of the harmonisation lookup (one .rds file, keyed on the sorted unique rank names actually resolved) -- only used, and only relevant, when harmonise = TRUE. NULL (default) does no caching, so every call re-resolves every unique name."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical, default TRUE. Print one table of the resulting sampling_group counts (including the NA count) after classification, and progress messages during harmonisation."
+        }
+      ],
+      "output": "See ?TaxaTools::assign_sampling_group (@return)"
+    },
+    {
+      "name": "cache_ok",
+      "description": "Is a cache file usable, given the inputs it derives from?",
+      "inputs": [
+        {
+          "name": "path",
+          "type": "character",
+          "required": true,
+          "description": "Character. Path to the candidate cache file."
+        },
+        {
+          "name": "inputs",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector or NULL. Paths this cache was derived FROM. Missing and NA entries are ignored, so a caller can pass an optional upstream without branching. If any surviving input is newer than path, the cache is rejected."
+        }
+      ],
+      "output": "See ?TaxaTools::cache_ok (@return)"
+    },
+    {
+      "name": "call_api",
+      "description": "Call Any Configured LLM with a Single Prompt String",
+      "inputs": [
+        {
+          "name": "prompt_str",
+          "type": "character",
+          "required": true,
+          "description": "Character. A length-1 string containing the complete prompt to submit."
+        },
+        {
+          "name": "provider",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character. Provider name: \"anthropic\", \"gemini\", \"openai\", \"azure_openai\", \"ollama\", or any name registered with register_provider. Default NULL uses options(\"TaxaID.provider\"), which is set automatically by library(TaxaTools) based on detected API keys."
+        },
+        {
+          "name": "tier",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"mid\", \"fast\", \"top\")",
+          "description": "Character. Capability tier when model = NULL: \"fast\" (cheapest/smallest), \"mid\" (balanced, default), or \"top\" (most capable). Ignored when model is specified. Tier-to-model mapping is discovered live from the provider's /models endpoint (see list_models)."
+        },
+        {
+          "name": "model",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character. Exact model identifier. Overrides tier resolution. Use to pin a specific version for reproducibility."
+        },
+        {
+          "name": "max_tokens",
+          "type": "numeric",
+          "required": false,
+          "default": 3000,
+          "description": "Integer. Maximum tokens in the response (default 3000). The correct request body field for the provider (max_tokens vs max_completion_tokens) is read from the registry automatically."
+        },
+        {
+          "name": "api_key",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character. API key override. Default NULL reads the key from the environment variable named in the provider's registry entry (e.g. ANTHROPIC_API_KEY). Keyless providers (Ollama) ignore this."
+        },
+        {
+          "name": "base_url",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character. Base URL override for OpenAI-compatible providers (OpenAI, Azure, Ollama, custom registered providers). Default NULL uses the provider's registered endpoint. For Ollama: change the host/port, e.g. base_url = \"http://remote-server:11434\". For OpenAI-compatible proxies: supply the proxy bas"
+        },
+        {
+          "name": "images",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Named list of base64-encoded PNG strings, as returned by .render_pdf_pages() in the TaxaFetch PDF pipeline. Default NULL (text-only call). When supplied, the prompt and images are sent as a multi-modal message using the provider's vision format: Anthropic image content blocks, Gemini inlineData part"
+        },
+        {
+          "name": "show_tokens",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. When TRUE, prints a message after each call reporting the provider, model, and token counts (e.g. \"Tokens used [anthropic / claude-sonnet-4-6] — input: 312, output: 87\"). Default FALSE to avoid output in non-interactive workflows. Token counts are retrieved from the provider's response body"
+        },
+        {
+          "name": "max_input_tokens",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Integer or NULL. When non-NULL, estimates the prompt length as ceiling(nchar(prompt_str) / 3.5) (a conservative characters-per-token heuristic) and stops with an informative error before making the HTTP request if the estimate exceeds the limit. Use this as a pre-flight guard against accidentally se"
+        },
+        {
+          "name": "timeout",
+          "type": "numeric",
+          "required": false,
+          "default": 120,
+          "description": "Numeric. Request timeout in seconds, passed to httr2::req_timeout(). Default 120. Raise this for a slow provider/model (e.g. a large local Ollama model) or a large multi-image PDF-vision call that can legitimately take longer than two minutes."
+        }
+      ],
+      "output": "See ?TaxaTools::call_api (@return)"
+    },
+    {
+      "name": "change_backbone",
+      "description": "Translate Taxon Names Between Taxonomic Backbones",
+      "inputs": [
+        {
+          "name": "input_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "A dataframe returned by verify_taxon_names, containing at minimum: user_supplied_name, matched_name, classification_path, and classification_ranks."
+        },
+        {
+          "name": "input_col",
+          "type": "character",
+          "required": true,
+          "description": "Character. The name of the column in input_df holding the original (source backbone) names. Typically \"user_supplied_name\"."
+        },
+        {
+          "name": "old_backbone_label",
+          "type": "character",
+          "required": false,
+          "default": "source_name",
+          "description": "Character. The label to assign to the source-name column in the output (e.g., \"NCBI\" or \"GBIF\"). Default is \"source_name\"."
+        },
+        {
+          "name": "new_backbone_label",
+          "type": "character",
+          "required": false,
+          "default": "translated_name",
+          "description": "Character. The label to assign to the translated-name column in the output (e.g., \"GBIF\" or \"NCBI\"). Default is \"translated_name\"."
+        },
+        {
+          "name": "keep_unmatched",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. When TRUE (the default), names for which the target backbone returns no match are retained by copying the original source name into the translated-name column rather than leaving it NA. Set to FALSE to keep NA for unmatched names (original behaviour)."
+        }
+      ],
+      "output": "See ?TaxaTools::change_backbone (@return)"
+    },
+    {
+      "name": "default_sampling_scheme",
+      "description": "Default Sampling-Group Classification Scheme",
+      "inputs": [],
+      "output": "See ?TaxaTools::default_sampling_scheme (@return)"
+    },
+    {
+      "name": "define_search_polygon",
+      "description": "Define a Search Polygon Interactively",
+      "inputs": [
+        {
+          "name": "lat",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Numeric. Latitude of the centre point in decimal degrees (WGS 84). Ignored when init_polygon is supplied (the centre is derived from the polygon instead). Required otherwise."
+        },
+        {
+          "name": "lon",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Numeric. Longitude of the centre point in decimal degrees (WGS 84). Ignored when init_polygon is supplied. Required otherwise."
+        },
+        {
+          "name": "radius_deg",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Numeric. Half-width of the initial square in decimal degrees. For reference: 1 degree ~= 111 km. Ignored when init_polygon is supplied. Required otherwise."
+        },
+        {
+          "name": "tile",
+          "type": "character",
+          "required": false,
+          "default": "Esri.OceanBasemap",
+          "description": "Character. Leaflet tile provider name. Default \"Esri.OceanBasemap\". Any string accepted by leaflet::addProviderTiles() works (e.g. \"OpenStreetMap\", \"Esri.WorldImagery\")."
+        },
+        {
+          "name": "points",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Data frame of observation coordinates to overlay on the map as small, non-interactive reference markers (does not affect the returned polygon). Must have lat and lng columns. Useful for seeing the actual data cloud while drawing a group or search-area boundary around it. Default NULL (no overlay)."
+        },
+        {
+          "name": "group_col",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character. Optional column name in points used to color the reference markers by group (e.g. an already-assigned spatial_group_id), with a legend. Lets a user drawing a broader search area see which points already belong to which group. Default NULL (all markers drawn in one flat color)."
+        },
+        {
+          "name": "init_polygon",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character. An existing WKT POLYGON string (as returned by a previous call to this function) to reopen for editing, instead of starting from a fresh square. Its own vertices become the initial draggable markers. When supplied, lat/lon/ radius_deg are not required and are ignored if given."
+        },
+        {
+          "name": "title",
+          "type": "character",
+          "required": false,
+          "default": "Define Search Polygon",
+          "description": "Character. Gadget title bar text. Default \"Define Search Polygon\". Callers embedding this gadget in a larger workflow (e.g. group_observations_by_bbox) should pass something identifying what this particular call is for (e.g. which spatial group or search area is being drawn) -- session experience sh"
+        },
+        {
+          "name": "done_label",
+          "type": "character",
+          "required": false,
+          "default": "Done",
+          "description": "Character. Label for the primary (right-hand) title bar button. Default \"Done\". Override with a verb describing what clicking it actually does in the calling context (e.g. \"Group These Points\") -- generic \"Done\" reads as \"confirm and proceed,\" which does not by itself convey that clicking it before "
+        },
+        {
+          "name": "cancel_label",
+          "type": "character",
+          "required": false,
+          "default": "Cancel",
+          "description": "Character. Label for the title bar's cancel button (returns NULL). Default \"Cancel\". Override with wording describing what not drawing anything means in the calling context (e.g. \"No More Groups\")."
+        },
+        {
+          "name": "viewer",
+          "type": "character",
+          "required": false,
+          "default_expr": "shiny::paneViewer(minHeight = 500)",
+          "description": "A shiny gadget viewer, passed to runGadget. Default shiny::paneViewer(minHeight = 500) (renders in RStudio's own Viewer pane) -- matches the viewer style already used by this ecosystem's other interactive mapping gadgets (TaxaHabitat::review_spatial_flags()), so all mapping interactions look and fee"
+        }
+      ],
+      "output": "See ?TaxaTools::define_search_polygon (@return)"
+    },
+    {
+      "name": "detect_ranks",
+      "description": "Detect Rank Columns Present in a Data Frame",
+      "inputs": [
+        {
+          "name": "input_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "A data frame whose column names may include taxonomy ranks."
+        },
+        {
+          "name": "rank_system",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector of rank names (coarse to fine), or NULL to auto-detect from standard_ranks."
+        },
+        {
+          "name": "warn",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical (default TRUE). If TRUE, emits a warning when auto-detection finds no standard rank columns and falls back to the minimum set."
+        }
+      ],
+      "output": "See ?TaxaTools::detect_ranks (@return)"
+    },
+    {
+      "name": "escalate_taxonomic_rank",
+      "description": "Escalate a Taxon to the Next Coarser Rank",
+      "inputs": [
+        {
+          "name": "taxon_name",
+          "type": "character",
+          "required": true,
+          "description": "Character scalar. The taxon name currently being queried."
+        },
+        {
+          "name": "current_rank",
+          "type": "character",
+          "required": true,
+          "description": "Character scalar. The rank taxon_name is at; must be present in rank_system."
+        },
+        {
+          "name": "rank_system",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "standard_ranks",
+          "description": "Character vector of rank names, coarse to fine (see standard_ranks). Default standard_ranks."
+        },
+        {
+          "name": "max_levels",
+          "type": "numeric",
+          "required": false,
+          "default": 2,
+          "description": "Integer. Maximum number of rank levels to walk up from current_rank in a single call. Default 2L (e.g. genus -> family -> order)."
+        },
+        {
+          "name": "backbone_id",
+          "type": "numeric",
+          "required": false,
+          "default": 4,
+          "description": "Integer. Primary backbone for the classification lookup. Default 4L (NCBI). Set NULL to skip straight to fallback_backbone_id."
+        },
+        {
+          "name": "fallback_backbone_id",
+          "type": "numeric",
+          "required": false,
+          "default": 11,
+          "description": "Integer. Secondary backbone tried if the primary backbone doesn't resolve taxon_name. Default 11L (GBIF). Set NULL or equal to backbone_id to skip."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. Print progress messages. Default TRUE."
+        }
+      ],
+      "output": "See ?TaxaTools::escalate_taxonomic_rank (@return)"
+    },
+    {
+      "name": "fill_higher_ranks",
+      "description": "Fill Higher Taxonomic Ranks from Local Data and Backbone APIs",
+      "inputs": [
+        {
+          "name": "taxon_names",
+          "type": "character",
+          "required": true,
+          "description": "Character vector of taxon names. Binomial species names are expected; genus is extracted as the first word. Single-word names (genus only) are accepted and returned as-is in the genus column."
+        },
+        {
+          "name": "local_sources",
+          "type": "character",
+          "required": false,
+          "default_expr": "list()",
+          "description": "List of data frames to consult before any API call. Each element must contain at least genus and family columns; elements lacking those columns are silently skipped. Sources are consulted in order; the first non-NA family for each genus wins."
+        },
+        {
+          "name": "backbone_id",
+          "type": "numeric",
+          "required": false,
+          "default": 4,
+          "description": "Integer. Primary backbone for API fallback. Default 4L (NCBI). Set NULL to skip the API entirely."
+        },
+        {
+          "name": "fallback_backbone_id",
+          "type": "numeric",
+          "required": false,
+          "default": 11,
+          "description": "Integer. Secondary backbone used when backbone_id returns no match. Default 11L (GBIF). Set NULL or equal to backbone_id to skip."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. Print progress messages for API lookups. Default TRUE."
+        }
+      ],
+      "output": "See ?TaxaTools::fill_higher_ranks (@return)"
+    },
+    {
+      "name": "is_plausible_binomial",
+      "description": "Test Whether Strings Are Plausible Species Binomials",
+      "inputs": [
+        {
+          "name": "x",
+          "type": "data.frame",
+          "required": true,
+          "description": "Character vector of taxon name strings."
+        }
+      ],
+      "output": "See ?TaxaTools::is_plausible_binomial (@return)"
+    },
+    {
+      "name": "prompt_api",
+      "description": "Submit a Multi-Chunk LLM Prompt to Any Provider",
+      "inputs": [
+        {
+          "name": "prompt",
+          "type": "character",
+          "required": true,
+          "description": "An llm_prompt object (e.g. from build_habitat_prompt() (TaxaHabitat))."
+        },
+        {
+          "name": "llm_fn",
+          "type": "character",
+          "required": false,
+          "default_expr": "getOption(\"TaxaID.llm_fn\", call_api)",
+          "description": "Function. A provider function that accepts a single character string (the prompt) and returns a single character string (the response). Default: call_api (uses options(\"TaxaID.provider\")). Built-in alternatives: call_anthropic_api, call_gemini_api, call_openai_api, call_ollama_api. To use a non-defa"
+        },
+        {
+          "name": "pause_seconds",
+          "type": "numeric",
+          "required": false,
+          "default": 1,
+          "description": "Numeric. Seconds to pause between chunks to avoid rate limits. Default 1."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. Print progress per chunk. Default TRUE."
+        }
+      ],
+      "output": "See ?TaxaTools::prompt_api (@return)"
+    },
+    {
+      "name": "reset_token_usage",
+      "description": "Reset the LLM Token Usage Ledger",
+      "inputs": [],
+      "output": "See ?TaxaTools::reset_token_usage (@return)"
+    },
+    {
+      "name": "resolve_barcode_lengths",
+      "description": "Resolve Barcode Length Bounds from a Barcode Term",
+      "inputs": [
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": true,
+          "description": "Character vector of barcode marker names (e.g. \"MiFishU\", \"COI\", c(\"12S\", \"16S\"))."
+        },
+        {
+          "name": "min_len",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional integer overrides. When non-NULL, replace the auto-detected bound."
+        },
+        {
+          "name": "max_len",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional integer overrides. When non-NULL, replace the auto-detected bound."
+        }
+      ],
+      "output": "See ?TaxaTools::resolve_barcode_lengths (@return)"
+    },
+    {
+      "name": "resolve_barcode_marker",
+      "description": "Resolve a Primer-Variant Barcode Term to the Marker It Amplifies",
+      "inputs": [
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": true,
+          "description": "Character vector of barcode/marker/primer-variant names."
+        }
+      ],
+      "output": "See ?TaxaTools::resolve_barcode_marker (@return)"
+    },
+    {
+      "name": "resolve_barcode_primers",
+      "description": "Resolve Primer Sequences from a Barcode/Primer-Set Term",
+      "inputs": [
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": true,
+          "description": "Character scalar naming a specific primer set (e.g. \"MiFishU\", \"mifish-e\"). Matching is case-insensitive and ignores -/_/space separators."
+        }
+      ],
+      "output": "See ?TaxaTools::resolve_barcode_primers (@return)"
+    },
+    {
+      "name": "taxaid_cache_report",
+      "description": "Report every TaxaID cache on this machine",
+      "inputs": [
+        {
+          "name": "extra_dirs",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector of additional cache directories to include -- typically the project-local ones a workflow passes as cache_dir. Non-existent paths are reported as missing rather than dropped, so a typo is visible."
+        },
+        {
+          "name": "warn_gb",
+          "type": "numeric",
+          "required": false,
+          "default": 1,
+          "description": "Numeric. Directories at or above this size are flagged in the printed output. Default 1. Set NULL to disable flagging."
+        }
+      ],
+      "output": "See ?TaxaTools::taxaid_cache_report (@return)"
+    },
+    {
+      "name": "token_usage",
+      "description": "Summarise LLM Token Usage for the Current Session",
+      "inputs": [
+        {
+          "name": "by",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"call\", \"function\", \"provider\", \"session\")",
+          "description": "Character. How to aggregate: \"call\"One row per individual API call (default). Includes timestamp, caller function, provider, model, and token counts. \"function\"Totals per caller function. \"provider\"Totals per provider. \"session\"Single-row grand total for the session."
+        },
+        {
+          "name": "cost_per_1k_input",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Numeric or NULL. If supplied, adds a cost_usd column estimated as (input * cost_per_1k_input + output * cost_per_1k_output) / 1000. Default NULL (no cost column)."
+        },
+        {
+          "name": "cost_per_1k_output",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Numeric or NULL. Output cost rate. Used only when cost_per_1k_input is non-NULL. Default NULL (same rate as input)."
+        }
+      ],
+      "output": "See ?TaxaTools::token_usage (@return)"
     }
   ]
 }

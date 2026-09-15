@@ -296,7 +296,7 @@
           "type": "character",
           "required": false,
           "default": "eDNA",
-          "description": "'eDNA', 'acoustic', or 'image' \u2014 switches contaminant guidance in the LLM prompt"
+          "description": "'eDNA', 'acoustic', or 'image' — switches contaminant guidance in the LLM prompt"
         },
         {
           "name": "llm_fn",
@@ -475,7 +475,7 @@
         "description": "Input with 5 columns appended: primary_plausibility/consensus_plausibility ('expected'/'unexpected'/'unprecedented'/'not_modeled'), primary_discrimination/consensus_discrimination ('discriminating'/'weak'/'indistinguishable'/'not_modeled'), and domestic_prior_caveat (logical)"
       },
       "scaling": "linear",
-      "scaling_note": "Fast; vectorised lookup \u2014 runs on full consensus_df before filtering for review"
+      "scaling_note": "Fast; vectorised lookup — runs on full consensus_df before filtering for review"
     },
     {
       "name": "flag_watch_candidates",
@@ -948,6 +948,54 @@
       },
       "scaling": "api_limited",
       "scaling_note": "Interactive; GBIF tile fetches and optional live iNat checks per taxon selected. LLM review only when 'Run AI Review' is clicked"
+    },
+    {
+      "name": "report_flags",
+      "description": "Generate a Report Section for Quality Flagging",
+      "inputs": [
+        {
+          "name": "flagged_data",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Assignment data with flag columns from flag_contaminant, flag_handler, and/or review_assignments."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. Print summary messages. Default FALSE."
+        }
+      ],
+      "output": "See ?TaxaFlag::report_flags (@return)"
+    },
+    {
+      "name": "taxaflag_clear_cache",
+      "description": "Report and clear TaxaFlag's on-disk caches",
+      "inputs": [
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": false,
+          "default_expr": "tools::R_user_dir(\"TaxaFlag\", \"cache\")",
+          "description": "Character. The directory passed to review_assignments()'s or check_gbif_tile_range()'s cache_dir (each function's cache lives in its own directory, so point this at whichever one you want to inspect/clear). Defaults to tools::R_user_dir(\"TaxaFlag\", \"cache\"), matching the sibling packages; workflows "
+        },
+        {
+          "name": "older_than_days",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional numeric. Delete only entries older than this many days. NULL (default) considers every entry."
+        },
+        {
+          "name": "dry_run",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. TRUE reports what would be deleted without deleting it."
+        }
+      ],
+      "output": "See ?TaxaFlag::taxaflag_clear_cache (@return)"
     }
   ]
 }

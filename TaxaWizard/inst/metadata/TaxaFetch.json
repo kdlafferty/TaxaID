@@ -357,6 +357,431 @@
       },
       "scaling": "api_limited",
       "scaling_note": "GBIF API; only species below min_local_n trigger an extra global fetch"
+    },
+    {
+      "name": "check_inat_range",
+      "description": "Check whether taxa fall within iNaturalist range polygons",
+      "inputs": [
+        {
+          "name": "taxon_names",
+          "type": "character",
+          "required": true,
+          "description": "Character vector of species names to check."
+        },
+        {
+          "name": "lat",
+          "type": "character",
+          "required": true,
+          "description": "Numeric. Latitude of the query point in decimal degrees."
+        },
+        {
+          "name": "lng",
+          "type": "character",
+          "required": true,
+          "description": "Numeric. Longitude of the query point in decimal degrees."
+        },
+        {
+          "name": "api_token",
+          "type": "character",
+          "required": false,
+          "default_expr": "Sys.getenv(\"INAT_API_TOKEN\")",
+          "description": "Character. iNaturalist API token for taxon name resolution. Defaults to the INAT_API_TOKEN environment variable. Generate a token at https://www.inaturalist.org/users/api_token (requires a free iNaturalist account; log in, then visit that URL to get a token good for 24 hours) and store it via Sys.se"
+        },
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character. Optional path to a directory for caching downloaded GeoJSON files. Speeds up repeated calls for the same taxa."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. If TRUE, prints progress for each taxon. Default FALSE."
+        }
+      ],
+      "output": "See ?TaxaFetch::check_inat_range (@return)"
+    },
+    {
+      "name": "download_gbif_occurrences",
+      "description": "Download GBIF Occurrence Records via the Async Download API",
+      "inputs": [
+        {
+          "name": "keys",
+          "type": "character",
+          "required": true,
+          "description": "Integer or numeric vector. GBIF taxon usage keys. Typically the output of get_keys_from_context or rgbif::name_backbone(). Duplicates are removed before processing."
+        },
+        {
+          "name": "geometry",
+          "type": "character",
+          "required": true,
+          "description": "Character or NULL. A WKT polygon string defining the geographic search area. Use make_bbox_wkt to generate from a centre lat/lon and radius. Note: GBIF requires counter-clockwise winding order; make_bbox_wkt produces the correct winding order automatically. NULL issues an UNRESTRICTED global downloa"
+        },
+        {
+          "name": "year_range",
+          "type": "character",
+          "required": false,
+          "default_expr": ".gbif_default_year_range()",
+          "description": "Character. Year range formatted as \"YYYY,YYYY\", e.g. \"2000,2024\". Passed to GBIF as year >= and year <= predicates. Default \"2000\" through the current year, computed at call time -- not a fixed year that would silently go stale."
+        },
+        {
+          "name": "limit",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Integer or NULL. Maximum records to retain per taxon key after import, matching the per-key semantics of fetch_gbif_occurrences. Records are kept in GBIF's return order; a message reports how many keys were truncated. NULL (default) retains all records for every key. When taxonKey is absent from the"
+        },
+        {
+          "name": "on_cap",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"warn\", \"error\")",
+          "description": "Character. What to do when limit actually truncates a taxon key. \"warn\" (default) raises a warning naming the affected keys and records them in attr(result, \"capped_keys\"); \"error\" stops. Truncation keeps GBIF's return order -- a non-random prefix -- so both abundance and spatial pattern become unre"
+        },
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": false,
+          "default_expr": "tools::R_user_dir(\"TaxaFetch\", \"cache\")",
+          "description": "Character or NULL. Directory for the downloaded zip file and a small metadata file. Defaults to a persistent user-level cache directory. Re-running with the same arguments reuses the cached zip and skips the GBIF download entirely. Set to NULL to disable caching."
+        },
+        {
+          "name": "overwrite",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. If FALSE (default), an existing cached zip is reused. Set to TRUE to force a fresh download from GBIF -- in an interactive session this asks for confirmation first (showing the cached zip's date and size) before deleting it; a non-interactive session proceeds straight to a fresh download. E"
+        },
+        {
+          "name": "pending_max_age_days",
+          "type": "numeric",
+          "required": false,
+          "default": 30,
+          "description": "Numeric or NULL (default 30). A download key recorded in the cache metadata as pending (see GBIF outages below) is normally polled and re-fetched on the next call. When that record is older than this many days, it is instead abandoned WITHOUT polling it -- a message names the key and its age -- and "
+        },
+        {
+          "name": "submit_attempts",
+          "type": "numeric",
+          "required": false,
+          "default": 4,
+          "description": "Integer (default 4). How many times the download request is submitted (and, separately, how many times the prepared file is fetched) before giving up when GBIF answers with a transient server-side failure (HTTP 5xx such as \"503 Backend fetch failed\", gateway errors, timeouts). Non-transient errors ("
+        },
+        {
+          "name": "submit_wait",
+          "type": "numeric",
+          "required": false,
+          "default_expr": "c(15, 30, 60)",
+          "description": "Numeric vector of seconds (default c(15, 30, 60)) slept between submission attempts; the last value repeats if submit_attempts exceeds its length."
+        },
+        {
+          "name": "on_submit_failure",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"use_cache\", \"error\")",
+          "description": "\"use_cache\" (default) or \"error\". What to do when every submission attempt -- or every attempt to fetch the prepared file (curl timeouts, resets, truncated transfers) -- fails AND a verified cached zip for this exact query exists (only possible with overwrite = TRUE, since the default already reuses"
+        },
+        {
+          "name": "prompt_mb",
+          "type": "numeric",
+          "required": false,
+          "default": 50,
+          "description": "Numeric. In an INTERACTIVE session, a prepared download at least this many MB triggers a summary (size, record count, whether a zip for this exact query is already cached, what the cache holds now and will hold afterwards) and a choice: use the cache, download and replace it, or abort to narrow the "
+        },
+        {
+          "name": "cache_prompt_mb",
+          "type": "numeric",
+          "required": false,
+          "default": 5120,
+          "description": "Numeric. After a run, if the cache directory exceeds this many MB, an interactive session is offered a choice to free space (leave it; remove OTHER downloads but keep this query's zip; remove everything). A non-interactive session only reports. Default 5120 (5 GB); Inf disables the prompt while keep"
+        },
+        {
+          "name": "allow_prompts",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical, default FALSE. Whether this function may BLOCK on an interactive utils::menu(). Off by default because a blocking prompt inside a function that is called from a script is unsafe: when RStudio runs or sources a script it queues the remaining lines as console input, and menu() consumes those "
+        },
+        {
+          "name": "keep_zip",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical, default TRUE. Whether to retain the downloaded zip in cache_dir after a successful import. The zip is pure redundancy once imported -- its only value is avoiding a re-download -- and it is by far the largest thing this package writes: on one real machine 38 zips accounted for 17 GB of a 17."
+        },
+        {
+          "name": "status_ping",
+          "type": "numeric",
+          "required": false,
+          "default": 15,
+          "description": "Numeric. Seconds between download-status polls while waiting for GBIF to prepare the file. Default 15. Minimum enforced by rgbif is 3."
+        },
+        {
+          "name": "exclude_absent",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. When TRUE (default), adds a server-side occurrenceStatus = PRESENT predicate, excluding explicit absence records before the file is built by GBIF. Systematic surveys (e.g., eBird, iNaturalist) can contribute large numbers of ABSENT rows that inflate the download size without providing prese"
+        },
+        {
+          "name": "basis_keep",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector or NULL. When not NULL, adds a server-side basisOfRecord predicate to the GBIF download request, reducing the size of the downloaded zip. Only occurrence records with a basisOfRecord value in this vector are included. Typical values: \"HUMAN_OBSERVATION\", \"MACHINE_OBSERVATION\", \"LIVI"
+        },
+        {
+          "name": "select_cols",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"kingdom\", \"phylum\", \"class\", \"order\", \"family\", \"genus\", \"species\",      \"infraspecificEpithet\", \"taxonRank\", \"scientificName\", \"taxonKey\",      \"speciesKey\", \"decimalLatitude\", \"decimalLongitude\", \"coordinateUncertaintyInMeters\",      \"countryCode\", \"stateProvince\", \"year\", \"month\", \"day\", \"basisOfRecord\",      \"issue\", \"occurrenceStatus\", \"samplingProtocol\", \"occurrenceRemarks\",      \"preparations\", \"gbifID\", \"datasetKey\", \"license\")",
+          "description": "Character vector or NULL. Columns to retain after import. Uses data.table::fread's select argument so only the named columns are read into memory, which is much faster for large files. Does not reduce the downloaded zip size; use basis_keep for that. NULL loads all columns. The default is a set of ~"
+        },
+        {
+          "name": "gbif_user",
+          "type": "character",
+          "required": false,
+          "default_expr": "Sys.getenv(\"GBIF_USER\")",
+          "description": "Character. GBIF username. Defaults to the GBIF_USER environment variable; see Details for setup."
+        },
+        {
+          "name": "gbif_pwd",
+          "type": "character",
+          "required": false,
+          "default_expr": "Sys.getenv(\"GBIF_PWD\")",
+          "description": "Character. GBIF password. Defaults to the GBIF_PWD environment variable."
+        },
+        {
+          "name": "gbif_email",
+          "type": "character",
+          "required": false,
+          "default_expr": "Sys.getenv(\"GBIF_EMAIL\")",
+          "description": "Character. GBIF registered email address. Defaults to the GBIF_EMAIL environment variable."
+        },
+        {
+          "name": "beep",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. If TRUE and the beepr package is available, plays a sound on completion. Falls back to a system bell character if beepr is absent. Default FALSE."
+        }
+      ],
+      "output": "See ?TaxaFetch::download_gbif_occurrences (@return)"
+    },
+    {
+      "name": "fetch_occurrences_by_taxon",
+      "description": "Fetch GBIF Occurrences Grouped by Taxon Key",
+      "inputs": [
+        {
+          "name": "taxon_geometry_map",
+          "type": "character",
+          "required": true,
+          "description": "A data frame with (at least) columns taxon_key (integer or numeric GBIF usage key) and geometry (character, one WKT polygon per row -- see make_bbox_wkt / define_search_polygon). One row per (site, candidate taxon) pair: the same taxon_key may appear in multiple rows (different sites where that taxo"
+        },
+        {
+          "name": "year_range",
+          "type": "character",
+          "required": false,
+          "default_expr": ".gbif_default_year_range()",
+          "description": "Forwarded to get_gbif_occurrences. year_range defaults to \"2000\" through the current year, computed at call time."
+        },
+        {
+          "name": "limit",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Forwarded to get_gbif_occurrences. year_range defaults to \"2000\" through the current year, computed at call time."
+        },
+        {
+          "name": "combine_shared_geometry",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. Default TRUE. After unioning each taxon key's own geometry, taxon keys whose resulting unioned geometry is identical are combined into a single multi-key call -- different taxa over the same search area is a clean win to combine (no wasted download volume either way, just one fewer round tr"
+        }
+      ],
+      "output": "See ?TaxaFetch::fetch_occurrences_by_taxon (@return)"
+    },
+    {
+      "name": "get_gbif_occurrences",
+      "description": "Fetch GBIF Occurrences -- Unified Entry Point",
+      "inputs": [
+        {
+          "name": "keys",
+          "type": "character",
+          "required": true,
+          "description": "Integer or numeric vector. GBIF taxon usage keys, typically from get_keys_from_context. Duplicates are removed before the key count is compared to key_threshold."
+        },
+        {
+          "name": "geometry",
+          "type": "character",
+          "required": true,
+          "description": "Character. WKT polygon (see make_bbox_wkt)."
+        },
+        {
+          "name": "year_range",
+          "type": "character",
+          "required": false,
+          "default_expr": ".gbif_default_year_range()",
+          "description": "Character. \"YYYY,YYYY\". Default \"2000\" through the current year, computed at call time."
+        },
+        {
+          "name": "limit",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Integer or NULL. Per-key record cap, forwarded as-is. NULL (default) means \"retain all records\" on the download path (its own default); on the fetch path, NULL is translated to that function's own default (10000L) since it does not accept NULL directly."
+        },
+        {
+          "name": "key_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 50,
+          "description": "Integer. Number of distinct keys at or above which download_gbif_occurrences is used instead of fetch_gbif_occurrences. Default 50L, matching both functions' own documented guidance. Lower it if the fetch path is hitting HTTP 429 rate limits below 50 keys; raise it if you would rather have the fetch"
+        },
+        {
+          "name": "rank_filter",
+          "type": "character",
+          "required": false,
+          "default": "species",
+          "description": "Character or FALSE/NULL. \"species\" (default) keeps only records where taxonRank exactly equals this value (case-insensitive) -- occurrences above species rank (family/genus-only identifications) are not usable by downstream taxon-level modelling (TaxaHabitat / TaxaExpect) and every existing caller a"
+        },
+        {
+          "name": "columns",
+          "type": "character",
+          "required": false,
+          "default": "standard",
+          "description": "Character. \"standard\" (default) trims and reorders the output to a curated column set covering the spatial / temporal / taxonomic / quality fields used by filter_gbif_quality and stack_occurrences -- see filter_gbif_quality and Details below for the exact list and a known asymmetry. \"all\" skips trim"
+        },
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": false,
+          "default_expr": "tools::R_user_dir(\"TaxaFetch\", \"cache\")",
+          "description": "Character or NULL. Forwarded to whichever backend fires. Default tools::R_user_dir(\"TaxaFetch\", \"cache\")."
+        },
+        {
+          "name": "overwrite",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. Forwarded to download_gbif_occurrences only (no zip cache to overwrite on the fetch path). Default FALSE."
+        },
+        {
+          "name": "exclude_absent",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Forwarded to download_gbif_occurrences when that path fires; see its own documentation. Ignored on the fetch path."
+        },
+        {
+          "name": "basis_keep",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Forwarded to download_gbif_occurrences when that path fires; see its own documentation. Ignored on the fetch path."
+        },
+        {
+          "name": "status_ping",
+          "type": "numeric",
+          "required": false,
+          "default": 15,
+          "description": "Forwarded to download_gbif_occurrences when that path fires; see its own documentation. Ignored on the fetch path."
+        },
+        {
+          "name": "gbif_user",
+          "type": "character",
+          "required": false,
+          "default_expr": "Sys.getenv(\"GBIF_USER\")",
+          "description": "Forwarded to download_gbif_occurrences when that path fires; see its own documentation. Ignored on the fetch path."
+        },
+        {
+          "name": "gbif_pwd",
+          "type": "character",
+          "required": false,
+          "default_expr": "Sys.getenv(\"GBIF_PWD\")",
+          "description": "Forwarded to download_gbif_occurrences when that path fires; see its own documentation. Ignored on the fetch path."
+        },
+        {
+          "name": "gbif_email",
+          "type": "character",
+          "required": false,
+          "default_expr": "Sys.getenv(\"GBIF_EMAIL\")",
+          "description": "Forwarded to download_gbif_occurrences when that path fires; see its own documentation. Ignored on the fetch path."
+        },
+        {
+          "name": "chunk_size",
+          "type": "numeric",
+          "required": false,
+          "default": 20,
+          "description": "Forwarded to fetch_gbif_occurrences when that path fires; see its own documentation. Ignored on the download path."
+        },
+        {
+          "name": "pause_seconds",
+          "type": "numeric",
+          "required": false,
+          "default": 2,
+          "description": "Forwarded to fetch_gbif_occurrences when that path fires; see its own documentation. Ignored on the download path."
+        },
+        {
+          "name": "pause_between_keys",
+          "type": "numeric",
+          "required": false,
+          "default": 0.5,
+          "description": "Forwarded to fetch_gbif_occurrences when that path fires; see its own documentation. Ignored on the download path."
+        },
+        {
+          "name": "max_retries",
+          "type": "numeric",
+          "required": false,
+          "default": 4,
+          "description": "Forwarded to fetch_gbif_occurrences when that path fires; see its own documentation. Ignored on the download path."
+        },
+        {
+          "name": "on_cap",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"warn\", \"escalate\", \"error\")",
+          "description": "Character. What to do when any taxon key returns exactly the per-key limit -- i.e. was TRUNCATED. Truncated records are GBIF's own return order, a non-random prefix, so abundance and spatial pattern both become unreliable for those taxa. \"warn\" (default) warns and records the keys in attr(result, \"c"
+        },
+        {
+          "name": "beep",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. Forwarded to whichever backend fires. Default FALSE."
+        }
+      ],
+      "output": "See ?TaxaFetch::get_gbif_occurrences (@return)"
+    },
+    {
+      "name": "report_fetch",
+      "description": "Generate a Report Section for Data Acquisition",
+      "inputs": [
+        {
+          "name": "occurrences",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Stacked occurrence records, typically the output of stack_occurrences. Must contain at least scientificName. Optionally contains bibliographicCitation, decimalLatitude, decimalLongitude, year, datasetID."
+        },
+        {
+          "name": "study_area",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL. Plain-language description of the study area (e.g. \"Southern California coast\"). If NULL, the geographic extent is described from coordinate ranges."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. Print summary messages. Default FALSE."
+        }
+      ],
+      "output": "See ?TaxaFetch::report_fetch (@return)"
     }
   ]
 }

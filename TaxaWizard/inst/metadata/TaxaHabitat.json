@@ -532,6 +532,137 @@
       },
       "scaling": "linear",
       "scaling_note": "Fast; small file read + vectorised join"
+    },
+    {
+      "name": "build_iucn_scheme",
+      "description": "Build a Habitat Scheme from the IUCN Red List Classification",
+      "inputs": [
+        {
+          "name": "realm",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL. Filter to one ecological realm: \"marine\", \"freshwater\", \"terrestrial\", \"artificial\", or NULL (all realms, default). Realm groupings: \"marine\": Marine Neritic, Marine Oceanic, Marine Deep Ocean Floor, Marine Intertidal, Marine Coastal/Supratidal \"freshwater\": Wetlands (inland) \"ter"
+        },
+        {
+          "name": "l1",
+          "type": "character",
+          "required": false,
+          "default": "all",
+          "description": "Character, \"all\", or \"none\". Which Level 1 groups to include in the scheme. \"all\" (default) includes all L1 groups in the selected realm as single-level categories. \"none\" excludes all L1 groups (only L2 subcategories will be present; requires l2 to be non-\"none\"). A character vector of L1 group nam"
+        },
+        {
+          "name": "l2",
+          "type": "character",
+          "required": false,
+          "default": "none",
+          "description": "Character, \"all\", or \"none\". Which Level 2 subcategories to include. \"none\" (default) produces a single-level scheme using only L1 group names. \"all\" adds all L2 subcategories under the selected L1 groups. A character vector of specific L2 names adds only those subcategories; their L1 parent groups "
+        }
+      ],
+      "output": "See ?TaxaHabitat::build_iucn_scheme (@return)"
+    },
+    {
+      "name": "report_habitat",
+      "description": "Generate a Report Section for Habitat Assignment",
+      "inputs": [
+        {
+          "name": "habitat_data",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Output of assign_habitat_biological or the raw habitat weights from parse_hierarchical_habitat_response. Must contain at least one numeric habitat weight column."
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "scientificName",
+          "description": "Character. Column name containing taxon names. Default \"scientificName\"."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. Print summary messages. Default FALSE."
+        }
+      ],
+      "output": "See ?TaxaHabitat::report_habitat (@return)"
+    },
+    {
+      "name": "review_institution_flags",
+      "description": "Review Institution-Proximity Flags Interactively",
+      "inputs": [
+        {
+          "name": "occurrence_data",
+          "type": "data.frame",
+          "required": true,
+          "description": "A dataframe, typically the output of flag_institution_candidates. Must contain institution_flag, institution_suspicion, institution_name, institution_type, institution_dist_m, institution_lon, institution_lat, and coordinate columns."
+        },
+        {
+          "name": "lat_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLatitude",
+          "description": "Character. The record's own coordinate columns (not the institution's). Default \"decimalLatitude\"/ \"decimalLongitude\" (GBIF standard names)."
+        },
+        {
+          "name": "lon_col",
+          "type": "character",
+          "required": false,
+          "default": "decimalLongitude",
+          "description": "Character. The record's own coordinate columns (not the institution's). Default \"decimalLatitude\"/ \"decimalLongitude\" (GBIF standard names)."
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "species",
+          "description": "Character or NULL. Column for the species label shown in tooltips. Default \"species\"."
+        },
+        {
+          "name": "tile",
+          "type": "character",
+          "required": false,
+          "default": "Esri.OceanBasemap",
+          "description": "Character. Leaflet tile provider. Default \"Esri.OceanBasemap\"."
+        },
+        {
+          "name": "point_radius",
+          "type": "numeric",
+          "required": false,
+          "default": 7,
+          "description": "Numeric. Base circle marker radius in pixels. Occurrence markers are drawn at point_radius * 0.75; institution reference markers at point_radius * 0.5 (smaller and a distinct blue, so they provide spatial context without obscuring nearby occurrence points). Default 7."
+        }
+      ],
+      "output": "See ?TaxaHabitat::review_institution_flags (@return)"
+    },
+    {
+      "name": "taxahabitat_clear_cache",
+      "description": "Report and clear TaxaHabitat's on-disk habitat-verdict cache",
+      "inputs": [
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": false,
+          "default_expr": "tools::R_user_dir(\"TaxaHabitat\", \"cache\")",
+          "description": "Character. The directory passed to build_habitat_lookup()'s cache_dir. Defaults to tools::R_user_dir(\"TaxaHabitat\", \"cache\"), matching the sibling packages; workflows that pass a project-local directory should pass the same one here."
+        },
+        {
+          "name": "older_than_days",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional numeric. Delete only entries older than this many days. NULL (default) considers every entry."
+        },
+        {
+          "name": "dry_run",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. TRUE reports what would be deleted without deleting it."
+        }
+      ],
+      "output": "See ?TaxaHabitat::taxahabitat_clear_cache (@return)"
     }
   ]
 }

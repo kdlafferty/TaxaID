@@ -408,6 +408,781 @@
       },
       "scaling": "api_limited",
       "scaling_note": "LLM calls + optional NCBI verification; ~2-5 min"
+    },
+    {
+      "name": "apply_coverage_constraints",
+      "description": "Apply taxonomic completeness constraints to likelihood results",
+      "inputs": [
+        {
+          "name": "likelihood_df",
+          "type": "character",
+          "required": true,
+          "description": "Data frame returned by evaluate_likelihoods()."
+        },
+        {
+          "name": "census_result",
+          "type": "character",
+          "required": true,
+          "description": "Data frame with columns taxon_name (the group name, e.g. genus label), rank (e.g. \"genus\"), and status (\"complete\" or \"closed\" for fully-sampled groups; any other value leaves the hypothesis untouched). To build this from audit_barcode_coverage(): html<div class=\"sourceCode r\">cov <- audit_barcode_c"
+        },
+        {
+          "name": "penalty_factor",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Numeric in [0, 1] (default 0.0). Multiplier applied to score_likelihood and score_likelihood_mean for constrained hypotheses when constraint_behavior = \"zero\". Ignored when constraint_behavior = \"relabel\" (the default)."
+        },
+        {
+          "name": "constraint_behavior",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"relabel\", \"zero\")",
+          "description": "Character scalar: \"relabel\" (default) or \"zero\". See Details above and \"Census confidence\" below."
+        }
+      ],
+      "output": "See ?TaxaLikely::apply_coverage_constraints (@return)"
+    },
+    {
+      "name": "assign_scores",
+      "description": "Assign score_likelihood values to a hypotheses data frame",
+      "inputs": [
+        {
+          "name": "hypotheses_df",
+          "type": "character",
+          "required": true,
+          "description": "Data frame produced by unreferenced_candidates(). Must contain observation_id and hypothesis_type. For all score_type values except \"none\", must also contain the column named by score_col for \"specific_candidate\" rows."
+        },
+        {
+          "name": "score_type",
+          "type": "character",
+          "required": true,
+          "description": "Character scalar. One of \"none\", \"direct\", \"probability\", \"similarity_softmax\", or \"similarity\"."
+        },
+        {
+          "name": "score_col",
+          "type": "character",
+          "required": false,
+          "default": "score_original",
+          "description": "Character. Name of the raw score column in hypotheses_df (default \"score_original\"). Ignored when score_type = \"none\"."
+        },
+        {
+          "name": "score_sharpness",
+          "type": "numeric",
+          "required": false,
+          "default": 0.1,
+          "description": "Positive numeric (default 0.1). Exponent scaling factor for score_type = \"similarity_softmax\" only. Larger values create sharper discrimination between candidates; smaller values produce more uniform likelihoods."
+        }
+      ],
+      "output": "See ?TaxaLikely::assign_scores (@return)"
+    },
+    {
+      "name": "audit_barcode_coverage",
+      "description": "Identify unreferenced species for barcode-based taxonomic assignment",
+      "inputs": [
+        {
+          "name": "match_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame with at least a target_rank column (e.g. \"genus\") and a \"species\" column. Species present in match_df are treated as a skip-list: they have reference sequences by definition and are excluded from the barcode-count queries. Pass the actual match object (e.g. match_obj / match_obj_restored "
+        },
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": true,
+          "description": "Character scalar or vector. One or more marker search terms (e.g. \"12S\", c(\"12S\", \"MiFish\")). Multiple terms are OR-ed."
+        },
+        {
+          "name": "species_list",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional character vector of binomial species names. If supplied, used instead of the NCBI taxonomy query to determine which species exist in each genus. Useful when GBIF, FishBase, or WoRMS provides more complete coverage than NCBI taxonomy for your taxon group. Invalid names (sp., cf., uncultured,"
+        },
+        {
+          "name": "min_len",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Integer or NULL. Minimum sequence length (SLEN filter). NULL uses a barcode-specific default (see Details)."
+        },
+        {
+          "name": "max_len",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Integer or NULL. Maximum sequence length. NULL uses the barcode-specific default."
+        },
+        {
+          "name": "max_date",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional character scalar. Restricts unreferenced species detection to sequences present in NCBI on or before this date, embedded as a [PDAT] range in the query term. Format: \"YYYY\", \"YYYY/MM\", or \"YYYY/MM/DD\". NULL uses the current state of GenBank. Set this to match the build date of your referenc"
+        },
+        {
+          "name": "target_rank",
+          "type": "character",
+          "required": false,
+          "default": "genus",
+          "description": "Character scalar. Rank column in match_df (default \"genus\")."
+        },
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": false,
+          "default_expr": "tools::R_user_dir(\"TaxaLikely\", \"cache\")",
+          "description": "Directory for per-genus checkpoints. Default: tools::R_user_dir(\"TaxaLikely\", \"cache\"). Pass NULL to disable checkpointing. If a checkpoint from a previous interrupted run is found (matched by call signature), processing resumes automatically from where it stopped. The checkpoint is deleted on clean"
+        },
+        {
+          "name": "ncbi_api_key",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional NCBI API key. Raises the rate limit from 3 to 10 requests per second. Can also be set via ENTREZ_KEY environment variable (Sys.setenv(ENTREZ_KEY = \"your_key\"); confirm with Sys.getenv(\"ENTREZ_KEY\"))."
+        },
+        {
+          "name": "max_nuccore",
+          "type": "numeric",
+          "required": false,
+          "default": 5000,
+          "description": "Integer. Maximum NCBI nucleotide IDs fetched per genus for the reverse barcode check. Default 5000; increase for extremely sequence-rich genera if some represented species are suspected to be missed."
+        },
+        {
+          "name": "exclude_predicted",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. If TRUE (default), computationally predicted sequences (NCBI title prefix \"PREDICTED:\", typically XR_ and XM_ RefSeq accessions) are excluded from the barcode check. Predicted sequences are absent from curated databases (SILVA, PR2, MIDORI) used by metabarcoding labs and do not represent ex"
+        }
+      ],
+      "output": "See ?TaxaLikely::audit_barcode_coverage (@return)"
+    },
+    {
+      "name": "audit_reference_coverage",
+      "description": "Audit reference database taxonomic completeness via NCBI taxonomy",
+      "inputs": [
+        {
+          "name": "reference_df",
+          "type": "character",
+          "required": true,
+          "description": "Data frame containing at least two columns: one named target_rank (e.g., \"genus\") and one named \"species\"."
+        },
+        {
+          "name": "target_rank",
+          "type": "character",
+          "required": false,
+          "default": "genus",
+          "description": "Character scalar -- the rank to audit (default \"genus\"). Must be a column in reference_df."
+        },
+        {
+          "name": "ncbi_api_key",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Optional NCBI API key string (increases rate limit from 3 to 10 requests/second). Can also be set via the ENTREZ_KEY environment variable before calling this function."
+        }
+      ],
+      "output": "See ?TaxaLikely::audit_reference_coverage (@return)"
+    },
+    {
+      "name": "calibrate_query_noise",
+      "description": "Calibrate a trained likelihood model to real query-vs-reference behavior",
+      "inputs": [
+        {
+          "name": "model_params",
+          "type": "character",
+          "required": true,
+          "description": "Object of class \"taxa_model_params\" from train_likelihood_model()."
+        },
+        {
+          "name": "match_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame. Canonical match object for the same dataset model_params was trained for (e.g. match_obj_restored). Must contain observation_id, genus, and a score column."
+        },
+        {
+          "name": "priors",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Occurrence-based priors for the same dataset (e.g. TaxaExpect output), with taxon_name, taxon_name_rank, and theta_mean."
+        },
+        {
+          "name": "plausibility_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 0.001,
+          "description": "Numeric (default 1e-3). Passed to identify_confident_observations()."
+        },
+        {
+          "name": "min_confident_obs",
+          "type": "numeric",
+          "required": false,
+          "default": 30,
+          "description": "Integer (default 30L). Minimum number of confident observations required to compute an offset. Below this, the function warns and returns model_params unchanged (offset = 0, sigma ratio = 1)."
+        },
+        {
+          "name": "offset_form",
+          "type": "character_vector",
+          "required": false,
+          "default_expr": "c(\"linear\", \"constant\")",
+          "description": "Character (default \"linear\"). \"linear\" remaps each H1 mean through a robustly-fit line intercept + slope * trained_mean (fit on per-species medians) -- a level-aware calibration that estimates, rather than assumes, how much per-species reference-scale structure transfers to the inference scale, and "
+        },
+        {
+          "name": "min_calib_species",
+          "type": "numeric",
+          "required": false,
+          "default": 8,
+          "description": "Integer (default 8L). Minimum number of distinct confident species (spanning a range of trained means) required to fit the offset_form = \"linear\" line. Ignored when offset_form = \"constant\"."
+        },
+        {
+          "name": "calibrate_sigma",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical (default FALSE). Also apply the MAD-based variance-scale correction described in the Sigma correction section below. Empirically made results worse on the one real dataset this was tested against -- read that section before enabling."
+        },
+        {
+          "name": "evidence_col",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL (default NULL). Name of a column in match_df giving each observation's raw evidence quantity (e.g. DNA read depth, image detection count, acoustic recording duration). When supplied, the median of this quantity across the confident observations is stored as reference_evidence in th"
+        },
+        {
+          "name": "logit_epsilon",
+          "type": "numeric",
+          "required": false,
+          "default": 0.0001,
+          "description": "Logit clipping value (default 1e-4), matching evaluate_likelihoods()'s own default."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical (default TRUE). Print the estimated offset and how many confident observations/genera it was based on."
+        }
+      ],
+      "output": "See ?TaxaLikely::calibrate_query_noise (@return)"
+    },
+    {
+      "name": "check_cross_genus_sampling_noise",
+      "description": "How Much Does the Random Cross-Genus Draw Move the Estimate?",
+      "inputs": [
+        {
+          "name": "reference_df",
+          "type": "character",
+          "required": true,
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "rank_system",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "max_dist",
+          "type": "numeric",
+          "required": false,
+          "default": 0.25,
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "min_seq_len",
+          "type": "numeric",
+          "required": false,
+          "default": 100,
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "max_seq_len",
+          "type": "numeric",
+          "required": false,
+          "default": 2000,
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "filter_unnamed",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "max_seqs_per_taxon",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "max_foreign_reps_per_genus",
+          "type": "numeric",
+          "required": false,
+          "default": 20,
+          "description": "Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate."
+        },
+        {
+          "name": "n_replicates",
+          "type": "numeric",
+          "required": false,
+          "default": 5,
+          "description": "Integer (default 5L). How many independent random representative draws to compare. Each draw consumes the caller's RNG state (sample(), same convention as max_seqs_per_taxon) -- do NOT call set.seed() between replicates, or every \"replicate\" would be identical."
+        }
+      ],
+      "output": "See ?TaxaLikely::check_cross_genus_sampling_noise (@return)"
+    },
+    {
+      "name": "compute_rank_thresholds",
+      "description": "Derive marker-specific rank_thresholds via per-rank Youden's J",
+      "inputs": [
+        {
+          "name": "seq_matrix",
+          "type": "character",
+          "required": true,
+          "description": "Data frame of pairwise match scores, as returned by build_sequence_matrix(), for the SAME marker/reference database score_consensus() will be scoring against. Every pair must have known taxonomy on both sides (species/genus/family), which is exactly what build_sequence_matrix() already produces."
+        },
+        {
+          "name": "rank_system",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector of rank names, coarse to fine, e.g. c(\"family\", \"genus\", \"species\"). Default NULL auto-detects from .x-suffixed columns in seq_matrix (same convention as train_likelihood_model())."
+        },
+        {
+          "name": "prior_weight",
+          "type": "numeric",
+          "required": false,
+          "default": 10,
+          "description": "Numeric. Empirical Bayes shrinkage weight for the per-genus/per-family curves (default 10.0, matching train_likelihood_model()'s own default)."
+        },
+        {
+          "name": "threshold_grid",
+          "type": "numeric",
+          "required": false,
+          "default_expr": "seq(0, 100, by = 1)",
+          "description": "Numeric vector of percent-identity thresholds to search over. Default seq(0, 100, by = 1)."
+        }
+      ],
+      "output": "See ?TaxaLikely::compute_rank_thresholds (@return)"
+    },
+    {
+      "name": "correct_training_bias",
+      "description": "Correct classifier scores for training-database representation bias",
+      "inputs": [
+        {
+          "name": "scored_df",
+          "type": "character",
+          "required": true,
+          "description": "Data frame of raw classifier output, one row per candidate species per observation. Must contain score_col."
+        },
+        {
+          "name": "count_col",
+          "type": "character",
+          "required": true,
+          "description": "Character scalar. Name of the column holding each candidate's training-database representation count (e.g. \"n_observations\" for iNaturalist CV output, \"n_recordings\" for BirdNET/Xeno-canto output after joining audit_acoustic_coverage(xc_recordings = TRUE)'s census onto scored_df by taxon). If absent"
+        },
+        {
+          "name": "score_col",
+          "type": "character",
+          "required": false,
+          "default": "score_original",
+          "description": "Character scalar (default \"score_original\", matching assign_scores()'s default score_col). Name of the raw score column to correct."
+        },
+        {
+          "name": "tau",
+          "type": "numeric",
+          "required": false,
+          "default": 0,
+          "description": "Non-negative numeric scalar (default 0, changed from 1.0 in Session 151 -- see \"Default changed\" in Details). Global exponent applied to every candidate's count (see Details) -- tau = 0 disables correction entirely (returns scores unchanged); tau = 1 is the theoretically Fisher-consistent full corre"
+        }
+      ],
+      "output": "See ?TaxaLikely::correct_training_bias (@return)"
+    },
+    {
+      "name": "detect_suppressed_candidates",
+      "description": "Detect pipeline rules that suppress candidate rows in a match object",
+      "inputs": [
+        {
+          "name": "match_obj",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Standardised match object containing at least observation_id_col. score_col is optional; Rules 1 and 2 are skipped when it is absent."
+        },
+        {
+          "name": "score_col",
+          "type": "character",
+          "required": false,
+          "default": "score_original",
+          "description": "Character. Name of the score column (default \"score_original\")."
+        },
+        {
+          "name": "observation_id_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Character. Name of the observation ID column (default \"observation_id\")."
+        },
+        {
+          "name": "perfect_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 100,
+          "description": "Numeric. Score at or above which a candidate is considered a \"perfect\" match for Rule 1 detection (default 100). Set to 95 for pipelines that enforce a 95-percent identity floor, for example."
+        },
+        {
+          "name": "purity_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 0.99,
+          "description": "Numeric in (0, 1]. Fraction of qualifying observations that must exhibit the pattern for the rule to be flagged (default 0.99). A high value reduces false positives from rounding artefacts."
+        },
+        {
+          "name": "singleton_threshold",
+          "type": "numeric",
+          "required": false,
+          "default": 0.98,
+          "description": "Numeric in (0, 1]. Fraction of all observations that must be singletons (1 row) for Rule 3 to be flagged (default 0.98)."
+        }
+      ],
+      "output": "See ?TaxaLikely::detect_suppressed_candidates (@return)"
+    },
+    {
+      "name": "expand_unreferenced_hypotheses",
+      "description": "Expand unreferenced hypotheses from genus/family level to named species",
+      "inputs": [
+        {
+          "name": "likelihood_df",
+          "type": "character",
+          "required": true,
+          "description": "Data frame -- the $likelihoods component returned by evaluate_likelihoods(). Must contain observation_id, taxon_name, taxon_name_rank, hypothesis_type, score_likelihood, score_likelihood_mean, score_likelihood_sd."
+        },
+        {
+          "name": "unreferenced_df",
+          "type": "character",
+          "required": true,
+          "description": "Data frame of unreferenced but plausible species. Must contain columns species (binomial name), genus, and family. Built from TaxaExpect rows confirmed as unreferenced by audit_barcode_coverage(). May optionally contain an observation_id column (Session 159): a row with NA (or when the column is abs"
+        }
+      ],
+      "output": "See ?TaxaLikely::expand_unreferenced_hypotheses (@return)"
+    },
+    {
+      "name": "infer_exclude_predicted",
+      "description": "Infer whether predicted sequences were excluded from the BLAST reference",
+      "inputs": [
+        {
+          "name": "match_obj",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. A standardised match object as produced by TaxaMatch::standardize_match_data() or a compatible user-supplied table. Must contain an accession column."
+        },
+        {
+          "name": "accession_col",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character scalar or NULL. Name of the accession column. If NULL (default) the function auto-detects a column named \"accession\", \"Accession\", \"acc\", or \"accno\"."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. If TRUE (default), emits a message explaining the inference and its basis."
+        }
+      ],
+      "output": "See ?TaxaLikely::infer_exclude_predicted (@return)"
+    },
+    {
+      "name": "report_likelihood",
+      "description": "Generate a Report Section for Likelihood Estimation",
+      "inputs": [
+        {
+          "name": "model",
+          "type": "character",
+          "required": true,
+          "description": "A taxa_model_params object from train_likelihood_model."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. Print summary messages. Default FALSE."
+        }
+      ],
+      "output": "See ?TaxaLikely::report_likelihood (@return)"
+    },
+    {
+      "name": "restore_suppressed_candidates",
+      "description": "Restore candidates suppressed by upstream pipeline rules",
+      "inputs": [
+        {
+          "name": "match_obj",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Standardised match object."
+        },
+        {
+          "name": "reference_df",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Reference database (output of fetch_ncbi_reference_sequences(), read_reference_fasta(), or read_crabs_output()). Must contain the same genus/species columns as match_obj."
+        },
+        {
+          "name": "rank_system",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector or NULL. Rank columns coarse-to-fine (e.g. c(\"family\",\"genus\",\"species\")). Auto-detected when NULL."
+        },
+        {
+          "name": "score_col",
+          "type": "character",
+          "required": false,
+          "default": "score_original",
+          "description": "Character. Score column name (default \"score_original\")."
+        },
+        {
+          "name": "observation_id_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Character. Observation ID column name (default \"observation_id\")."
+        },
+        {
+          "name": "delta",
+          "type": "numeric",
+          "required": false,
+          "default": 0.5,
+          "description": "Numeric. Only used by the no-score pathway (see @details) -- score gap between H1's synthetic 1.0 and a restored row's synthetic score (default 0.5, on the 0-100 scale; used as delta / 100 against the 1.0 baseline). Has no effect when match_obj carries real scores -- restored rows there get a real, "
+        },
+        {
+          "name": "max_per_obs",
+          "type": "numeric",
+          "required": false,
+          "default": 10,
+          "description": "Integer. Maximum restored candidates per observation (default 10L), applied to the final admitted set (after Purpose A/B gating), not to the raw congener list."
+        },
+        {
+          "name": "model_params",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "A taxa_model_params object (output of train_likelihood_model()) or NULL (default). Used two ways: (1) Purpose A's outlier test needs the anchor species' own sigma (H1_Lookup, floored at H1_Sigma[1,1], matching evaluate_likelihoods()'s own convention) -- Purpose A never admits any candidate when this"
+        },
+        {
+          "name": "alpha",
+          "type": "numeric",
+          "required": false,
+          "default": 0.001,
+          "description": "Numeric (default 0.001). Purpose A's outlier-test p-value cutoff -- identical parameter and identical test to evaluate_likelihoods()'s own alpha, reused rather than inventing a second calibrated constant for the same question."
+        },
+        {
+          "name": "max_dist",
+          "type": "numeric",
+          "required": false,
+          "default": 0.25,
+          "description": "Numeric (default 0.25). Purpose B's admission floor, on the same distance (1 - p_match) scale as build_sequence_matrix()'s own max_dist -- reuse the same value passed there for consistency."
+        },
+        {
+          "name": "check_regional_overlap",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical (default FALSE). When TRUE, enables the score-sourcing hierarchy's Level 4 (live Tier 2 pairwise alignment, @section Score-sourcing hierarchy) for candidates that Levels 1-3 can't resolve for free -- without it, such candidates simply get no score and are never restored. Requires accession_c"
+        },
+        {
+          "name": "seq_matrix",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Data frame or NULL. Output of build_sequence_matrix() (needs id_x/id_y/p_match/ coverage), the source for Levels 1-3 of the score-sourcing hierarchy and Level 4's Tier 1 lookup. Restoration is a no-op for the scored pathway when this is NULL and check_regional_overlap = FALSE -- there is no free evi"
+        },
+        {
+          "name": "min_regional_coverage",
+          "type": "numeric",
+          "required": false,
+          "default": 0.5,
+          "description": "Numeric in (0, 1]. Minimum alignment coverage required for Level 4's live Tier 2 alignment to accept a congener as overlapping (default 0.5). Only used when check_regional_overlap = TRUE."
+        },
+        {
+          "name": "accession_col",
+          "type": "character",
+          "required": false,
+          "default": "accession",
+          "description": "Character. Column in match_obj naming each row's own reference accession (default \"accession\")."
+        },
+        {
+          "name": "sequence_col",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL (default NULL). Column in match_obj carrying each observation's own raw query DNA sequence, enabling Level 4's Tier 2b fallback (see @section Score-sourcing hierarchy) for match objects with no live BLAST alignment coordinates at all. NULL means only Tier 1/2a run."
+        },
+        {
+          "name": "candidate_species_filter",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector or NULL (default NULL). Two roles, both cost- or plausibility-related, never a correctness gate on the free hierarchy levels: (1) defines Purpose B's plausible-candidate set; (2) is Level 4's own default cost gate (@section Level 4 cost control, revised 2026-07-18) -- a candidate no"
+        },
+        {
+          "name": "taxaexpect_priors",
+          "type": "data.frame",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Data frame or NULL (default NULL). A plain data frame -- this package has no dependency on TaxaExpect and never calls into it; the name and default taxon_col/ grid_col/theta_col column names are simply chosen to match TaxaExpect::estimate_kernel_priors()'s own $priors output shape (the current recom"
+        },
+        {
+          "name": "grid_id_col",
+          "type": "character",
+          "required": false,
+          "default": "grid_id",
+          "description": "Character. Column in match_obj naming each observation's own grid cell (default \"grid_id\"), looked up against taxaexpect_priors' grid column. Only used when taxaexpect_priors is supplied."
+        },
+        {
+          "name": "taxon_col",
+          "type": "character",
+          "required": false,
+          "default": "taxon_name",
+          "description": "Character. Column names within taxaexpect_priors for the species/grid/prior-mean columns (defaults \"taxon_name\", \"grid_id\", \"theta_mean\")."
+        },
+        {
+          "name": "grid_col",
+          "type": "character",
+          "required": false,
+          "default": "grid_id",
+          "description": "Character. Column names within taxaexpect_priors for the species/grid/prior-mean columns (defaults \"taxon_name\", \"grid_id\", \"theta_mean\")."
+        },
+        {
+          "name": "theta_col",
+          "type": "character",
+          "required": false,
+          "default": "theta_mean",
+          "description": "Character. Column names within taxaexpect_priors for the species/grid/prior-mean columns (defaults \"taxon_name\", \"grid_id\", \"theta_mean\")."
+        },
+        {
+          "name": "budget_ratio_cap",
+          "type": "numeric",
+          "required": false,
+          "default": 19,
+          "description": "Numeric (default 19). Derived, not an arbitrary tuning knob: from posterior_consensus()'s min_posterior default of 0.05 and a same-or-worse-than- anchor likelihood bound (@section Level 4 cost control)."
+        },
+        {
+          "name": "max_level4_per_anchor",
+          "type": "numeric",
+          "required": false,
+          "default": 10,
+          "description": "Numeric (default 10L, use Inf to disable). Hard backstop cap on how many distinct candidates get a live Level 4 alignment attempt per anchor accession, independent of candidate_species_filter/taxaexpect_priors -- insurance against a large or absent filter (or a permissive ratio) still forcing an unb"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical. Emit summary messages (default TRUE)."
+        }
+      ],
+      "output": "See ?TaxaLikely::restore_suppressed_candidates (@return)"
+    },
+    {
+      "name": "trim_to_amplicon",
+      "description": "Extract the amplicon region from over-length reference sequences (in-silico PCR)",
+      "inputs": [
+        {
+          "name": "reference_df",
+          "type": "character",
+          "required": true,
+          "description": "Data frame with at least composite_id and sequence columns (the same object produced by fetch_ncbi_reference_sequences() / read_reference_fasta() and consumed by build_sequence_matrix())."
+        },
+        {
+          "name": "primer_fwd",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character scalars: forward and reverse primer sequences, 5' to 3', IUPAC-degenerate bases allowed. Supply both, or neither (to look up barcode_term in TaxaTools::barcode_primer_defaults instead)."
+        },
+        {
+          "name": "primer_rev",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character scalars: forward and reverse primer sequences, 5' to 3', IUPAC-degenerate bases allowed. Supply both, or neither (to look up barcode_term in TaxaTools::barcode_primer_defaults instead)."
+        },
+        {
+          "name": "barcode_term",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character scalar naming a registered primer set (e.g. \"MiFishU\"), resolved via TaxaTools::resolve_barcode_primers(). Also used to auto-resolve min_len/max_len via TaxaTools::resolve_barcode_lengths() when those are not supplied directly."
+        },
+        {
+          "name": "min_len",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Integer. Governs which sequences are left untouched as already barcode-length (<= max_len) versus checked for the amplicon region. Default NULL auto-resolves both from barcode_term via TaxaTools::resolve_barcode_lengths() -- in that case, the FINAL plausibility check on a matched amplicon span inste"
+        },
+        {
+          "name": "max_len",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Integer. Governs which sequences are left untouched as already barcode-length (<= max_len) versus checked for the amplicon region. Default NULL auto-resolves both from barcode_term via TaxaTools::resolve_barcode_lengths() -- in that case, the FINAL plausibility check on a matched amplicon span inste"
+        },
+        {
+          "name": "max_mismatch_rate",
+          "type": "numeric",
+          "required": false,
+          "default": 0.15,
+          "description": "Numeric in [0, 1) (default 0.15). Maximum fraction of primer positions allowed to mismatch the sequence at the binding site (rounded down to an integer count of bases per primer). Accounts for real SNP variation at primer-binding sites; degenerate IUPAC bases in the primer itself are handled separat"
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical (default TRUE). Print progress/summary messages."
+        }
+      ],
+      "output": "See ?TaxaLikely::trim_to_amplicon (@return)"
+    },
+    {
+      "name": "unreferenced_candidates",
+      "description": "Add unreferenced taxon placeholder rows to a match object",
+      "inputs": [
+        {
+          "name": "match_df",
+          "type": "data.frame",
+          "required": true,
+          "description": "Data frame. Canonical match object from TaxaMatch::standardize_match_data() or equivalent. Must contain observation_id, taxon_name, and taxon_name_rank. Taxonomy columns matching rank_system (e.g., family, genus, species) are used to derive H2/H3 taxon names. A score_original column is optional; whe"
+        },
+        {
+          "name": "rank_system",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector of rank names coarse to fine (e.g., c(\"family\", \"genus\", \"species\")). When NULL (default), auto-detected from column names using TaxaTools::extended_ranks. At least two ranks are required."
+        },
+        {
+          "name": "include_unreferenced_family",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical (default FALSE). When TRUE, one \"unreferenced_family\" catch-all row is added per observation with all taxonomy columns set to NA. Use when running assign_scores() without TaxaExpect priors (e.g., the LLM shortcut pathway) to absorb posterior mass from taxa outside all represented families. D"
+        }
+      ],
+      "output": "See ?TaxaLikely::unreferenced_candidates (@return)"
     }
   ]
 }

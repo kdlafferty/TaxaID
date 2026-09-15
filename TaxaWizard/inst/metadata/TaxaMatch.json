@@ -1307,6 +1307,136 @@
       },
       "scaling": "linear",
       "scaling_note": "Fast; iterates over already-cached pair data, no new BLAST calls"
+    },
+    {
+      "name": "add_lowest_consistent_rank",
+      "description": "Add lowest consistent rank to a match object",
+      "inputs": [
+        {
+          "name": "match_obj",
+          "type": "character",
+          "required": true,
+          "description": "Data frame. Standardised match object containing at least observation_id_col and the rank columns named in rank_system."
+        },
+        {
+          "name": "rank_system",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector or NULL. Rank columns to check, ordered coarse-to-fine (e.g. c(\"order\",\"family\",\"genus\",\"species\")). Auto-detected when NULL by matching column names against TaxaTools::extended_ranks."
+        },
+        {
+          "name": "observation_id_col",
+          "type": "character",
+          "required": false,
+          "default": "observation_id",
+          "description": "Character. Name of the observation identifier column (default \"observation_id\")."
+        },
+        {
+          "name": "na_as_inconsistent",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. When TRUE, blank (\"\") and NA values count as a distinct category: a rank is flagged inconsistent when some candidates have no value and others do. Default FALSE: blanks and NAs are ignored and only non-blank values are compared."
+        },
+        {
+          "name": "majority_threshold",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Numeric in (0, 1] or NULL (default). When supplied, switches to majority mode: a rank is treated as consistent if the single most-common non-blank value accounts for at least this fraction of all non-blank candidate values. A value of 0.8 requires 4 of 5 candidates to agree. Values \\le 0.5 are techn"
+        }
+      ],
+      "output": "See ?TaxaMatch::add_lowest_consistent_rank (@return)"
+    },
+    {
+      "name": "migrate_reference_cache",
+      "description": "Migrate a Reference-Accession Cache to a New params_key",
+      "inputs": [
+        {
+          "name": "cache_dir",
+          "type": "character",
+          "required": true,
+          "description": "Character. The directory holding reference_accession_cache.rds."
+        },
+        {
+          "name": "to_key",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character or NULL (default). The params_key to migrate to. NULL uses the key evaluate_reference_accessions()'s own current defaults produce (built by the same internal code the function uses). If you screen with non-default verdict-affecting arguments (top_n, max_hits, ...), pass the key your call p"
+        },
+        {
+          "name": "from_key",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character vector or NULL (default). Which existing keys to migrate from. NULL means every key other than to_key."
+        },
+        {
+          "name": "verbose",
+          "type": "logical",
+          "required": false,
+          "default": true,
+          "description": "Logical (default TRUE). Print the counts."
+        }
+      ],
+      "output": "See ?TaxaMatch::migrate_reference_cache (@return)"
+    },
+    {
+      "name": "score_image_inat",
+      "description": "Score images using the iNaturalist Computer Vision API",
+      "inputs": [
+        {
+          "name": "image_path",
+          "type": "character",
+          "required": true,
+          "description": "Character. Path to a single JPEG or PNG image file, a character vector of image file paths, or a path to a directory. When a directory is given, all .jpg, .jpeg, and .png files are processed -- non-recursively by default; set recursive = TRUE to scan subdirectories. recursive is silently ignored whe"
+        },
+        {
+          "name": "lat",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Numeric. Latitude in decimal degrees (optional). When supplied, this value is used for all images and overrides any EXIF-derived latitude. Must be supplied together with lng."
+        },
+        {
+          "name": "lng",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Numeric. Longitude in decimal degrees (optional). When supplied, this value is used for all images and overrides any EXIF-derived longitude. Must be supplied together with lat."
+        },
+        {
+          "name": "observed_on",
+          "type": "character",
+          "required": false,
+          "default_expr": "NULL",
+          "description": "Character. Observation date in \"YYYY-MM-DD\" format (optional). When supplied, used for all images and overrides EXIF-derived dates."
+        },
+        {
+          "name": "top_n",
+          "type": "numeric",
+          "required": false,
+          "default": 10,
+          "description": "Integer. Number of top taxon suggestions to return per image. Default 10L."
+        },
+        {
+          "name": "recursive",
+          "type": "logical",
+          "required": false,
+          "default": false,
+          "description": "Logical. When image_path is a directory, also scan subdirectories recursively. Default FALSE."
+        },
+        {
+          "name": "api_token",
+          "type": "character",
+          "required": false,
+          "default_expr": "Sys.getenv(\"INAT_API_TOKEN\")",
+          "description": "Character. iNaturalist API token. Defaults to the INAT_API_TOKEN environment variable. Obtain a token by visiting https://www.inaturalist.org/users/api_token while logged in."
+        }
+      ],
+      "output": "See ?TaxaMatch::score_image_inat (@return)"
     }
   ]
 }
