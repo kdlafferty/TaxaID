@@ -39,10 +39,25 @@
 # named EXPLICITLY is still an error. Verified on real data: Perciformes now resolves,
 # theta_sum 0.116 across 27 members (9 order-rank consensus rows in that run).
 #
-# STILL TO DO, and the fix does not take effect without it: all 5 production call sites pass
-# rank_cols = c("species","genus","family") EXPLICITLY and build taxonomy_map from
-# expansion_taxonomy, which carries no order/class column. Adding those ranks per workflow
-# changes real plausibility counts and wants the Lamar re-check. NOT done here.
+# WIRED AND VALIDATED 2026-09-15 (this was listed as still-to-do when the note above was
+# written; it is now done). All 6 call sites propagate order/class via FAMILY -- one family,
+# one order, so it reaches every taxon with a known family (61% of PtCon priors taxa vs 14%
+# by direct name join) -- and pass the widened rank_cols.
+#   PtCon 12S: the Perciformes unit went unprecedented -> not_modeled, its review verdict
+#   unlikely -> likely, and 3 of the 4 lost units reached the export (the 4th is blocked by
+#   the export's own !is.na(consensus_taxon) filter, a different gate). Zero unreviewed rows.
+#   Species 159 -> 154 is NARROWING not loss: all 11 Chinook rows went from a 3-way
+#   mykiss/nerka/tshawytscha set to 8 rows calling O. tshawytscha outright; the rest is
+#   Sebastes re-slicing, which the user confirms is honest (Sebastes are hard to discern).
+#   Independent corroboration from the regenerated reports: llm_geographic_plausibility
+#   flags 306 -> 261, i.e. the skepticism gate firing less, which is the mechanism.
+#   GreatLakes: species-level precision 840/(840+123) = 0.8723 vs the 0.872 benchmark,
+#   species intersection 42/61 vs 42/61. NO REGRESSION.
+# UNATTRIBUTED, recorded rather than glossed: GreatLakes also moved species-resolved
+# 694 -> 686 and unexpected 1 -> 18. The fastpath regenerated priors with a LIVE GBIF pass
+# over 372 taxa, so drift since 2026-09-11 is confounded with the code change, and GL has
+# ZERO order-rank consensus rows so the rank fix cannot be acting through its intended
+# mechanism there. Re-running the fastpath warm would separate the two if it ever matters.
 # TaxaExpect 649/0, TaxaAssign 806/0, TaxaWizard 641/0; check() 0/0/0 both changed packages.
 # Previous update: 2026-09-14, later still (Opus 5 -- SILENT DATA LOSS IN THE LLM REVIEW CLOSED.
 # ecosystem_docs/REENTRY_PROMPT_unreviewed_rows_silently_dropped.md is RESOLVED; read its

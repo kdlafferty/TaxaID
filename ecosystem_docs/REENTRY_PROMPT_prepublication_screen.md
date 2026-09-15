@@ -38,7 +38,34 @@ order is not arbitrary.
    rated geographically unlikely by the skepticism gate despite the
    reviewer's own prose calling them Point Conception natives. That
    calibration question is open and is NOT tracked elsewhere.
-2. `REENTRY_PROMPT_resident_observed_evidence_gate.md`
+2. ~~`REENTRY_PROMPT_resident_observed_evidence_gate.md`~~ -- DONE 2026-09-15
+   (commits c493117 / 42bb24e / cae94e9 / c609398 / ba422f4). Doc retired.
+   Decision: rename `resident_observed` -> `kernel_estimated` plus an explicit
+   evidence knob (`posterior_consensus(min_effective_records=)`, default 0);
+   NO gate, because effective_records is continuous over ~10 orders of
+   magnitude with no valley to cut at. The group-prior rank-coverage defect
+   was folded in (rank_cols now reaches order/class).
+   VALIDATED on both sites:
+   - PtCon 12S: 0 unreviewed rows; the Perciformes unit went
+     unprecedented -> not_modeled, its review verdict unlikely -> likely, and
+     3 of the 4 previously-lost units reached the export. The 4th is blocked
+     by the export's own `!is.na(consensus_taxon)` filter, not by the gate.
+     Species count 159 -> 154 is NARROWING, not loss: all 11 Chinook rows went
+     from a 3-way `mykiss/nerka/tshawytscha` set to 8 rows calling
+     `O. tshawytscha` outright. Remaining churn is Sebastes re-slicing, which
+     the user confirms is honest -- Sebastes are genuinely hard to discern.
+     Regenerated reports corroborate independently:
+     llm_geographic_plausibility flags 306 -> 261.
+   - GreatLakes: species-level precision 840/(840+123) = 0.8723 against the
+     0.872 benchmark, species intersection 42/61 against 42/61. No regression.
+   RESIDUAL, minor and NOT tracked elsewhere: GreatLakes also moved
+   species-resolved 694 -> 686 and unexpected 1 -> 18, which cannot be
+   attributed -- the fastpath regenerated priors with a LIVE GBIF pass over
+   372 taxa, so data drift since 2026-09-11 is confounded with the code
+   change. GreatLakes has zero order-rank consensus rows, so the rank fix
+   cannot be acting there through its intended mechanism. Clean test if it
+   ever matters: re-run the fastpath now that the regional-proximity cache is
+   warm; any remaining difference is then code, not data.
 3. `REENTRY_PROMPT_cache_policy_P5_eviction.md`
 4. `REENTRY_PROMPT_cache_policy_review.md`
 5. `REENTRY_PROMPT_taxawizard_audit_and_fast_workflows.md`
@@ -52,9 +79,6 @@ checklist, not a work order. Use it as reference during steps 5 and 7.
 
 ## Must be resolved or consciously deferred first
 
-- `REENTRY_PROMPT_resident_observed_evidence_gate.md` -- a label asserting
-  evidence it does not test, with 25.7% of rows resting on under 0.01
-  effective records. It feeds the published plausibility categories.
 - `REENTRY_PROMPT_taxawizard_audit_and_fast_workflows.md` -- 51% metadata
   drift and no knowledge of caching.
 - `REENTRY_PROMPT_cache_policy_review.md` and
