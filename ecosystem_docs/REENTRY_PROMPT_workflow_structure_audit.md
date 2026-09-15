@@ -15,11 +15,19 @@ the human-facing templates and TaxaWizard's machine-facing graph.
 
 These are the ecosystem's only real, currently-running end-to-end pipelines. Everything
 else in this monorepo (9 packages, ~60 statistical components) exists to serve them, but
-none of the workflow scripts themselves are under version control (confirmed: `git status`
-in `~/My Drive/Rscripts/eDNA/` and `~/My Drive/Stats and Data/GreatLakes data/` -- neither
-is a git repo), and each has been patched ad hoc, in place, across dozens of sessions
-spanning many months. TaxaID/CLAUDE.md's own multi-hundred-entry session log is effectively
-the only audit trail these files have. That makes them exactly the kind of asset where
+each of the workflow scripts has been patched ad hoc, in place, across dozens of
+sessions spanning many months.
+
+**CORRECTED 2026-09-15:** this paragraph used to say the scripts are "not under version
+control (confirmed: `git status` ... neither is a git repo)" and that CLAUDE.md's session
+log "is effectively the only audit trail these files have". Both claims are now false.
+`~/My Drive/Rscripts/eDNA/` and `~/My Drive/Stats and Data/GreatLakes data/` ARE git
+repositories (since 2026-09-13), and every workflow edit since has been committed with a
+message explaining the change and its evidence. Use `git log -p` on those repos for the
+audit trail -- far better evidence than a session note. The drift risk described below is
+still real; the forensics are much easier now.
+
+That makes these files exactly the kind of asset where
 drift accumulates invisibly: a fix applied to one site during a live-debugging session
 doesn't automatically propagate to its siblings (this has already happened at least twice
 this project -- see `[[project_workflow_propagation_list]]` and the Session 153

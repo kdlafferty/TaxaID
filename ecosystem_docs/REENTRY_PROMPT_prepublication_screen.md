@@ -145,6 +145,49 @@ checklist, not a work order. Use it as reference during steps 5 and 7.
 - **pkgdown**: no `_pkgdown.yml` exists for any package, and the manuscript
   plan requires a working site per package before submission.
 
+## Baseline as of 2026-09-15 (carry into the screen)
+
+**All nine packages green: 7,394 tests, 0 failures; `check()` clean on every
+one** (bar the usual unverifiable-timestamp NOTE). That includes TaxaFetch,
+which had carried 2 failures since 2026-08-08 labelled "pre-existing
+CoordinateCleaner environment failures, unrelated". **They were neither.**
+`cc_zero(buffer=)` changed from degrees to metres in CoordinateCleaner 3.x
+while its default stayed `0.5`, so `filter_gbif_quality()`'s null-island check
+had silently become a no-op. Fixed; 812/0. No result changed (0 of 3.75 M real
+GBIF rows are within 55 km of (0,0)), so nothing needed re-running.
+
+Carry the lesson into the screen, not just the fix: **a test failing for a
+month is evidence, not furniture.** Three package CLAUDE.mds and a reentry
+prompt repeated the "environmental" label, and one of them instructed readers
+not to investigate. When a dependency is involved, call the dependency
+directly with the test's own fixture before accepting that explanation.
+
+**pkgdown is OUT of scope** for this release by user decision (2026-09-15) and
+has been removed from the running order. The "Must be resolved" bullet below
+still lists it; treat that as superseded.
+
+**Two properties to REPORT rather than fix**, both measured this session and
+both liable to confuse a reviewer comparing tables:
+
+- The Axis-1 `expected`/`unexpected` boundary is
+  `median(taxaexpect_priors$theta_mean)`, computed from the very table being
+  classified, so it FLOATS with the data. At GreatLakes, refreshing only the
+  evidence rows moved it 11.7x and took `unexpected` from 1 to 18 with no code
+  change. An `unexpected` count is not comparable across runs or sites unless
+  the threshold is reported with it.
+- `prior_branch` says which GENERATOR produced a prior row, never how much
+  evidence stands behind it. Within the one kernel branch, `effective_records`
+  spans ~10 orders of magnitude: 44.9% of PtCon 12S rows, 64.9% of PtCon 18S
+  and 18.9% of GreatLakes sit under one Kish effective record. No gate is
+  applied by default.
+
+**The pipeline is deterministic.** Two full GreatLakes runs on identical
+inputs produced byte-identical consensus rows (0 of 885 differing), despite
+1,000-draw Monte Carlo in `compute_posterior()` and
+`update_prior_from_consensus()` and no `set.seed()` anywhere -- the consensus
+reads `posterior_point_est`, the deterministic estimate. Worth stating
+explicitly in a methods section; a reader will otherwise assume otherwise.
+
 ## What the screen itself should cover
 
 1. **Reproducibility from a clean checkout.** Clone to a fresh directory,

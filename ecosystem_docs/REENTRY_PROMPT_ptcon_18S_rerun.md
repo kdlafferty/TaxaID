@@ -1,8 +1,13 @@
 # Re-run PtConception 18S under the corrected sampling-group classifier
 
-**Status: OPEN, not started. Scheduled by the user to run AFTER
-`REENTRY_PROMPT_workflow_structure_audit.md` and before
-`REENTRY_PROMPT_prepublication_screen.md`.**
+**Status: OPEN, not started. READY TO RUN as of 2026-09-15 -- see "Prep" below.**
+
+Originally scheduled after `REENTRY_PROMPT_workflow_structure_audit.md`; the
+user has chosen to run it earlier, in its own session, because it needs a
+multi-hour block. That is safe: the structure audit is a
+comparison-and-documentation pass whose previous round produced only
+comment/heading changes, so it is not expected to alter 18S output. If it
+ever does propagate a substantive fix to this workflow, re-run then.
 
 Given its own file on 2026-09-14 because it had been tracked only as prose
 inside two other documents and is the last item keeping the 2026-09-13
@@ -41,6 +46,107 @@ The per-group numbers for 18S are **labelled stale** in
 `REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md` and in
 `fable_ecosystem_review_2026-09-13.md`. Both labels should be removed by
 whoever completes this run, and replaced with the new numbers.
+
+## Prep (verified 2026-09-15, before you start)
+
+**1. Nothing needs installing. Do not install anything.**
+All nine packages are installed and current -- no package's source is newer
+than its build:
+
+```
+TaxaTools   2026-09-14 21:16   TaxaExpect  2026-09-15 00:11
+TaxaFetch   2026-09-15 10:50   TaxaAssign  2026-09-15 00:11
+TaxaHabitat 2026-09-14 21:16   TaxaFlag    2026-09-14 23:08
+TaxaMatch   2026-09-14 21:16   TaxaWizard  2026-09-15 11:48
+TaxaLikely  2026-09-14 21:16
+```
+
+**2. Start from a RESTARTED R session, and do not install during the run.**
+This is not boilerplate. On 2026-09-14 a package was reinstalled while a
+workflow session had it loaded; the session had the old `.rdb`
+memory-mapped, the install replaced the file underneath it, and the run died
+mid-Step-5 with
+
+```
+lazy-load database '.../TaxaExpect/R/TaxaExpect.rdb' is corrupt
+```
+
+Nothing was actually broken on disk -- a restart alone fixed it -- but the
+run was lost. So: `.rs.restartR()`, then confirm what you are about to run
+against:
+
+```r
+library(TaxaTools); library(TaxaFetch); library(TaxaHabitat)
+library(TaxaMatch); library(TaxaLikely); library(TaxaExpect)
+library(TaxaAssign); library(TaxaFlag)
+packageDescription("TaxaExpect")$Built   # expect 2026-09-15 00:11 or later
+packageDescription("TaxaFlag")$Built     # expect 2026-09-14 23:08 or later
+```
+
+**3. NCBI is healthy** -- checked 2026-09-15, `esearch` HTTP 200 in 0.31 s.
+The precondition below is satisfied. Re-check if you start much later.
+
+**4. Decide `SCREENS_FROM_CHECKPOINT` deliberately** (see Preconditions).
+
+**5. Expect a long run and do not interrupt it.** The comparable PtCon 12S
+full run took ~1 h 53 m cold. 18S is larger.
+
+## What changed under this workflow since it last ran (2026-09-15)
+
+The script itself was edited three times this session. All three are in the
+eDNA repo's history; none should need your attention unless something fails.
+
+- `review_assignments(..., on_unreviewed = "error")`. An LLM review can parse
+  cleanly, return the right number of objects and still OMIT taxa; those rows
+  get `NA` in every `llm_` column and the export filters discard `NA`. The run
+  now STOPS rather than exporting a silently short species list. **If it stops
+  with "N candidate set(s) have NO LLM verdict", that is this guard, not a
+  crash -- re-run and it recovers, because unreviewed taxa are never cached.**
+- `prior_branch` now reads `%in% c("kernel_estimated", "resident_observed",
+  ...)` in three places. `TaxaExpect` renamed the branch; both names are
+  accepted permanently. A bare equality would have matched ZERO rows on the
+  next fresh priors run while looking fine against every cached table.
+- Group priors gained ORDER and CLASS coverage. `compute_group_priors()`'s
+  `rank_cols` stopped at family, so a consensus resolving at order rank found
+  no group row, read `consensus_has_occurrence_record = FALSE` and was
+  reported `"unprecedented"` from that gap alone. **This one CHANGES NUMBERS.**
+  At PtCon 12S it recovered a 20-observation unit that the skepticism gate had
+  been rating geographically "unlikely" against its own review comment.
+
+Also relevant, though neither should change 18S output:
+`filter_gbif_quality()` gained `near_zero_buffer_m` (the null-island check had
+become a no-op after CoordinateCleaner changed that buffer's units from
+degrees to metres) -- 0 of 3.75 M real GBIF rows at any site were affected.
+
+## Extra things to check on THIS run
+
+Beyond the five checks below, which all still apply:
+
+6. **Order-rank consensus rows.** New this session. Check
+   `table(consensus_final$consensus_rank)` for an `order` entry, and whether
+   those rows now read `not_modeled` rather than `unprecedented`. Note
+   `expected_theta_threshold` has no `"order"` entry, so an order-rank call
+   correctly reports `not_modeled` -- that is honest, and it is enough to stop
+   the skepticism gate firing. Adding an order threshold is a scientific
+   choice nobody has made yet.
+7. **`prior_branch` should read `kernel_estimated`** in freshly generated
+   priors. If it still reads `resident_observed`, the kernel fit came from a
+   cache written before the rename -- which is fine and expected, and is
+   exactly why both names are accepted.
+8. **Compare per-group numbers against a threshold, not across runs.** The
+   Axis-1 `expected`/`unexpected` boundary is
+   `median(taxaexpect_priors$theta_mean)`, computed from the very table being
+   classified, so it FLOATS with the data. At GreatLakes, refreshing only the
+   evidence rows moved that median 11.7x and took `unexpected` from 1 row to
+   18 with no code change and nothing wrong. Report the threshold alongside
+   any `unexpected` count.
+9. **18S's branch composition is worth a look on its own.** Of its 1,521
+   `resident_observed` rows measured 2026-09-14, **987 (64.9%) rested on under
+   one Kish effective record** -- the highest of any site (PtCon 12S 44.9%,
+   GreatLakes 18.9%). That is why the branch was renamed. No gate is applied
+   by default (`posterior_consensus(min_effective_records = 0)`), so this
+   changes nothing automatically, but it is the site where an evidence
+   threshold would bite hardest if one is ever adopted.
 
 ## Preconditions
 
