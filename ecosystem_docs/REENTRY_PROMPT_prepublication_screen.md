@@ -88,9 +88,9 @@ order is not arbitrary.
        tolerance that cached fit would have dropped silently out of every
        downstream filter.
 3. ~~`REENTRY_PROMPT_cache_policy_P5_eviction.md`~~ -- DONE 2026-09-15
-   (commits 2d31cca / 05add25). Doc kept: it is the open-items list for a
-   built feature, not a work order, and its two "traps worth carrying
-   forward" are still live guidance. Both sweeps run, user-approved:
+   (commits 2d31cca / 05add25). Doc RETIRED 2026-09-15 once both sweeps had run and the
+   fasta/ item was verified; its two traps moved to CLAUDE.md's Known R
+   Footguns. Both sweeps run, user-approved:
    **168.1 MB -> 45.0 MB**, 7,588 -> 6,002 files. TaxaFetch lost exactly its
    two orphans (the 127,733,417-byte truncated download quarantined
    2026-09-05, and a 0-byte zip); both surviving zips still have metadata.
@@ -122,7 +122,14 @@ order is not arbitrary.
      the incident); the single-site `reference_df` read stays unbuilt on
      measurement -- warm Step 7a is 3 seconds.
    The three questions it posed are answered in that review's Parts 9-11.
-5. `REENTRY_PROMPT_taxawizard_audit_and_fast_workflows.md`
+5. ~~`REENTRY_PROMPT_taxawizard_audit_and_fast_workflows.md`~~ -- DONE
+   2026-09-15 (commits fadf4c6 / 0b333b3 / fdc28ab). Doc retired. Metadata now
+   covers every function a real workflow calls, guarded by a computed test
+   that was verified to fail rather than skip; generated workflows carry
+   on_count_failure, on_unreviewed, cache_dir and cli suppression; all five
+   fast workflows green; a generated Shiny app was launched (HTTP 200) and its
+   eval(parse()) allow-list attacked with 6 hostile inputs, all rejected. The
+   one residual is listed under "Carried forward from retired prompts".
 6. `REENTRY_PROMPT_workflow_structure_audit.md`
 7. `REENTRY_PROMPT_ptcon_18S_rerun.md`
 8. `REENTRY_PROMPT_kernel_budget_pricing_and_scope.md` (decisions 1 and 3)
@@ -144,6 +151,25 @@ checklist, not a work order. Use it as reference during steps 5 and 7.
   specific risk.
 - **pkgdown**: no `_pkgdown.yml` exists for any package, and the manuscript
   plan requires a working site per package before submission.
+
+## Carried forward from retired prompts (2026-09-15)
+
+The TaxaWizard audit and the cache-policy P5 prompts were completed and
+deleted. One genuinely open item survives them, small but real:
+
+- **`cache_ok()` staleness gates are not in TaxaWizard's snippets.** Generated
+  workflows now carry `on_count_failure`, `on_unreviewed`, `cache_dir` and the
+  cli suppression (commit 0b333b3), but no staleness gate. Adding one needs
+  each graph edge to declare which artifacts its output derives from -- a
+  per-edge design decision, not a mechanical edit. Decide whether a generated
+  workflow should ship with staleness detection before release, or whether
+  that stays a hand-written-workflow feature.
+
+Everything else from those two prompts is closed. Their traps worth carrying
+are now in `TaxaID/CLAUDE.md`'s Known R Footguns (the
+`.ref_cache_grammar()`/key lockstep rule was already there; the stolen
+`@export` and the `workflow_app()` `readline()` hazards were added when they
+were retired).
 
 ## Baseline as of 2026-09-15 (carry into the screen)
 

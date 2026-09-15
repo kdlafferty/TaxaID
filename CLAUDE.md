@@ -3820,6 +3820,32 @@ every run via `.bbox_report()` so each run's scope appears in its own log.
 The general rule: anything a human draws, types, or curates is an input to
 be versioned, not an intermediate to be regenerated.
 
+### An exported function can ship UNEXPORTED (found 2026-09-14)
+A helper placed BETWEEN a roxygen block and the `function` definition it
+documents steals that block's `@export`, and `devtools::document()` says
+nothing at all. Put internal helpers ABOVE the documented function's roxygen
+block, and verify after installing rather than after documenting:
+
+```r
+"your_fn" %in% getNamespaceExports("TaxaLikely")
+```
+
+### workflow_app()'s DEFAULT calls readline(), so a batch call writes nothing (found 2026-09-15)
+`TaxaWizard::workflow_app(annotate = "auto")` -- the default -- asks
+"Annotate interactively?" via `readline()`. In a non-interactive session that
+returns `""`, which is treated as cancel, so the call prints "Cancelled.",
+returns `NULL`, and writes NO app while looking like it ran. Pass
+`annotate = "none"` in any script or batch context so it errors loudly
+instead. Same family as the `menu()` hazard that consumed ~600 lines of a
+sourced workflow as menu answers on 2026-09-04: an interactive prompt in
+non-interactive code fails quietly, not loudly.
+
+Related, from the same session: `workflow_app()` detects a step by the
+`out <- .run_step(n, "desc", quote({` wrapper that `.generate_script()`
+emits, NOT by the `# --- Step n: ... ---` comment above it, and reads
+parameters only from a `# --- User Parameters ---` section. A hand-written
+script carrying just the comments parses to ZERO steps and zero parameters.
+
 ### A dependency can silently change a parameter's UNITS (found 2026-09-15)
 `CoordinateCleaner::cc_zero(buffer = )` was DEGREES in the 2.x series and is
 METRES in 3.x, but its default stayed `0.5` -- a number that only ever made
