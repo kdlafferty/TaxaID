@@ -58,14 +58,35 @@ order is not arbitrary.
      llm_geographic_plausibility flags 306 -> 261.
    - GreatLakes: species-level precision 840/(840+123) = 0.8723 against the
      0.872 benchmark, species intersection 42/61 against 42/61. No regression.
-   RESIDUAL, minor and NOT tracked elsewhere: GreatLakes also moved
-   species-resolved 694 -> 686 and unexpected 1 -> 18, which cannot be
-   attributed -- the fastpath regenerated priors with a LIVE GBIF pass over
-   372 taxa, so data drift since 2026-09-11 is confounded with the code
-   change. GreatLakes has zero order-rank consensus rows, so the rank fix
-   cannot be acting there through its intended mechanism. Clean test if it
-   ever matters: re-run the fastpath now that the regional-proximity cache is
-   warm; any remaining difference is then code, not data.
+   RESIDUAL -- now ATTRIBUTED (2026-09-15), it was DATA, not the code.
+   GreatLakes moved species-resolved 694 -> 686 and unexpected 1 -> 18. A
+   two-arm test settled it:
+     run 1 vs a second identical run   0 of 885 rows differ  (deterministic)
+     run 1 vs the 2026-09-11 baseline  8 of 885 rows differ
+   The pipeline is reproducible, so the 8 rows are the refreshed data. Cause
+   traced precisely: the fastpath re-fetched regional-proximity evidence
+   (the zero_bbox_taxa set had changed, so the cache key missed), which moved
+   theta on 346 resident_undetected rows and ONLY those -- the priors were
+   otherwise structurally identical (same 483 rows, 467 taxa, branch counts
+   90/388/5, transport unchanged). That dragged
+   median(taxaexpect_priors$theta_mean) from 1.72e-07 to 1.48e-08, an 11.7x
+   shift in the Axis-1 species threshold, reclassifying 17 rows.
+   The code is exonerated independently too: GreatLakes has zero order-rank
+   consensus rows, and the genus/family thresholds are computed with explicit
+   per-rank filters, so adding order/class rows to group_priors cannot touch
+   them.
+   TWO FINDINGS KEPT FROM THIS, both publication-relevant:
+   (a) The expected/unexpected boundary FLOATS with the data, because the
+       workflows derive it from the table being classified. It is a
+       within-run relative judgement, so `unexpected` counts are not
+       comparable across runs or sites unless the threshold is reported
+       alongside. Now documented in add_posthoc_assessment()'s
+       expected_theta_threshold roxygen.
+   (b) The prior_branch legacy-string tolerance earned itself within a day:
+       run 1's priors still read "resident_observed" because the kernel fit
+       came from an .fp_cache written before the rename. Without the
+       tolerance that cached fit would have dropped silently out of every
+       downstream filter.
 3. ~~`REENTRY_PROMPT_cache_policy_P5_eviction.md`~~ -- DONE 2026-09-15
    (commits 2d31cca / 05add25). Doc kept: it is the open-items list for a
    built feature, not a work order, and its two "traps worth carrying

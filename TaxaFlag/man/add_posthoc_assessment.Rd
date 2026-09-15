@@ -124,7 +124,7 @@ universal safe value (mirrors \code{TaxaAssign::join_priors()}'s
 \code{backbone_id} / \code{TaxaAssign::score_consensus()}'s
 \code{rank_thresholds}, both required for the same reason). Names must
 be rank labels (e.g. \code{c(species = ..., genus = ..., family =
-...)}); \code{"species"} is required, since \code{primary_plausibility}
+  ...)}); \code{"species"} is required, since \code{primary_plausibility}
 always compares against it (see @section Occurrence plausibility). A
 recorded taxon at or above the threshold for ITS OWN rank is
 \code{"expected"}; below it, \code{"unexpected"}; a rank with no entry
@@ -135,7 +135,28 @@ rank from \code{TaxaAssign::compute_group_priors()} (species from
 since \code{compute_group_priors()} is only built for genus/family) --
 an "at least as expected as a typical local taxon at this rank"
 reading, avoiding a fitted or absolute cutoff. See @section Occurrence
-plausibility.}
+plausibility.
+
+\strong{If you derive it that way, the boundary FLOATS with the data}
+(recorded 2026-09-15). The recommendation above computes the threshold
+from the very table being classified, so it is a within-run RELATIVE
+judgement, not a fixed criterion, and two runs of the same site can
+classify differently with no code change and nothing wrong. Measured at
+GreatLakes: re-running only the prior side four days later refreshed 346
+\code{resident_undetected} evidence rows (the priors were otherwise
+structurally identical -- same 483 rows, same 467 taxa, same branch
+counts), which moved \code{median(theta_mean)} from 1.72e-07 to
+1.48e-08, an 11.7x shift in the species threshold, and \code{unexpected}
+went from 1 row to 18. The pipeline itself is deterministic: two runs on
+identical inputs produced byte-identical consensus rows.
+
+This is a property to REPORT, not a defect to patch. Wherever these
+categories are published, say what the threshold was and that it is
+assemblage-relative; a reader comparing \code{unexpected} counts across
+runs or sites is otherwise comparing two different questions. Pass a
+fixed vector instead if you need a criterion stable across runs -- at the
+cost of the "typical local taxon" reading that makes the data-derived
+version meaningful in the first place.}
 }
 \value{
 \code{consensus_df} with five columns appended:
