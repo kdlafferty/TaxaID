@@ -20,8 +20,22 @@ reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   max_sequences   = {{max_sequences}},
   max_per_species = {{max_per_species}},
   max_date        = {{max_date}},
+  # Stop rather than silently ship a degraded reference database -- see
+  # taxa_to_refs.R for the 2026-09-14 incident this guards (seven genera lost
+  # their entire reference representation to transient NCBI count failures,
+  # on a run that finished looking healthy). "warn" accepts the degradation
+  # knowingly; the affected taxa are then in attr(, "count_failures").
+  on_count_failure = "error",
+  # Project-local per-taxon cache. A cached taxon issues NO count query, which
+  # is what removes the exposure in the first place.
+  cache_dir       = {{reference_cache_dir}},
   ncbi_api_key    = {{ncbi_api_key}}
 )
+
+if (length(attr(reference_df, "count_failures"))) {
+  message("  !! count_failures: ",
+          paste(attr(reference_df, "count_failures"), collapse = ", "))
+}
 
 if (nrow(reference_df) == 0L) {
   stop(
@@ -33,7 +47,8 @@ if (nrow(reference_df) == 0L) {
 }
 
 ref_coverage     <- TaxaLikely::audit_barcode_coverage(
-  reference_df, barcode_term = {{barcode_term}}
+  reference_df, barcode_term = {{barcode_term}},
+  cache_dir = {{reference_cache_dir}}   # shares the fetch's cache; same NCBI queries
 )
 ref_census       <- ref_coverage$census
 ref_unreferenced <- ref_coverage$unreferenced

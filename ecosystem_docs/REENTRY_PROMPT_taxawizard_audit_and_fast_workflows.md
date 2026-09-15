@@ -1,6 +1,6 @@
 # TaxaWizard audit, and a fast-workflow re-run
 
-**Status: PARTS 1, 2 and 4 DONE 2026-09-15. Part 3 measured and OPEN (the
+**Status: PARTS 1-4 DONE 2026-09-15. Part 5 partly covered. Part 3 measured and OPEN (the
 snippets, not the metadata). Part 5 partly covered. TaxaWizard 643 tests, 0
 failures; check() 0/0/0 (plus the usual timestamp note).**
 
@@ -76,12 +76,36 @@ conventions. Of 30 snippets:
 | `cache_ok()` staleness gate | **0** |
 | `options(cli.progress_show_after = Inf)` | **0** |
 
-So a generated workflow still writes to the hidden per-user cache defaults,
-has no staleness gate, and -- most seriously -- carries no count-failure
-guard, the absence of which cost seven genera their entire reference
-representation on 2026-09-14 and started this whole thread. Fixing this means
-editing snippets, each edit a judgement about what generated code should look
-like. NOT started.
+That was fixed the same day. Generated workflows now carry, with the reason
+stated inline in each case so the next reader knows why it is there:
+
+| change | where |
+|---|---|
+| `on_count_failure = "error"` + `count_failures` check | `taxa_to_refs.R`, `taxa_to_site_refs.R` |
+| `on_unreviewed = "error"` + residue check | `consensus_to_reviewed.R` |
+| `cache_dir` on the NCBI reference fetch and coverage audit | `taxa_to_refs.R`, `taxa_to_site_refs.R`, `taxa_refs_to_gaps.R` |
+| `cache_dir` on the GBIF fetch and outlier check | `taxa_to_occ.R`, `taxa_to_occ_checked.R` |
+| GBIF `limit` truncation warning | both GBIF snippets |
+| `options(cli.progress_show_after = Inf)` | the generated script PREAMBLE (`R/output.R`), not a snippet |
+
+Two of these are guards against incidents this ecosystem has already suffered:
+seven genera losing their entire reference representation to transient NCBI
+count failures, and 20 observations vanishing from a species list because the
+review model omitted them. A generated workflow previously reproduced both.
+
+The GBIF `limit` warning is a comment, not a parameter change, because
+`fetch_gbif_occurrences()` has no `on_cap` guard -- only
+`get_gbif_occurrences()` does, and that routes to the download API above 50
+keys, which needs a GBIF account a generated demo may not have. The comment
+carries the measured evidence (45 of 231 Mugu taxa and 110 of 666 PtCon taxa
+at the cap, every capped taxon sharing an identical spatial distribution).
+
+STILL NOT DONE from this part: `cache_ok()` staleness gates in snippets. That
+needs each snippet to declare which artifacts its output derives from, which
+is a per-edge design decision rather than a mechanical edit.
+
+Verified in real generated output, not just by reading the diff: a generated
+script was produced and its preamble confirmed to carry the cli line.
 
 **Part 5 -- partly covered.** Script and app GENERATION are exercised by the
 suite (it writes real app.R files during the run). A generated app has still

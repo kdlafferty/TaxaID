@@ -19,7 +19,24 @@ reviewed <- TaxaFlag::review_assignments(
   target_group   = {{target_group}},
   marker         = {{marker}},
   llm_fn         = {{llm_fn}},
-  cache_dir      = {{review_cache_dir}}
+  cache_dir      = {{review_cache_dir}},
+  # Abort rather than export a silently short species list. An LLM review can
+  # parse cleanly, return the right number of objects, and still OMIT specific
+  # taxa -- consistently the long compound slash labels, i.e. the hardest
+  # rows. Those get NA in every llm_ column, and the usual export filters
+  # (`llm_* != "unlikely"`) DISCARD NA, so the observation leaves the final
+  # species list without a word. Measured on a real PtConception 12S run:
+  # 20 observations across 3 plausible local fishes, gone. review_assignments()
+  # now re-asks for omitted taxa; "error" makes any residue that survives the
+  # re-ask stop the run instead of reaching the filters below.
+  on_unreviewed  = "error"
 )
 message("Reviewed ", nrow(reviewed), " assignments")
+
+# Always check: attributes do NOT survive a dplyr verb, so read this before
+# any join or mutate.
+if (length(attr(reviewed, "unreviewed_taxa"))) {
+  message("  !! unreviewed: ",
+          paste(attr(reviewed, "unreviewed_taxa"), collapse = ", "))
+}
 reviewed

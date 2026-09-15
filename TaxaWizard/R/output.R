@@ -153,7 +153,17 @@
   for (pkg in packages) {
     lines <- c(lines, sprintf("library(%s)", pkg))
   }
-  lines <- c(lines, "")
+  lines <- c(
+    lines, "",
+    "# --- Console output ---",
+    "# cli's progress bars redraw with a carriage return, which a logged or",
+    "# non-interactive run records as thousands of separate lines rather than",
+    "# one bar redrawing in place: 45,991 carriage returns and 223 progress",
+    "# lines per audit in one real 2026-09-14 log. A progress bar is worthless",
+    "# in a batch run anyway. Set to 2 (cli's default) to get them back.",
+    "options(cli.progress_show_after = Inf)",
+    ""
+  )
 
   # --- Debug mode ---
   lines <- c(

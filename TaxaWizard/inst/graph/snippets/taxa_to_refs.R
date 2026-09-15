@@ -30,8 +30,29 @@ message("Priority species from match data: ", length(.priority_species))
 reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   taxa           = ref_families,
   barcode_term   = .barcode_term,
-  priority_taxa  = if (length(.priority_species) > 0L) .priority_species else NULL
+  priority_taxa  = if (length(.priority_species) > 0L) .priority_species else NULL,
+  # STOP rather than silently ship a degraded reference database. On
+  # 2026-09-14 seven genera had their NCBI count query fail transiently on a
+  # real PtConception run; each was dropped, taking its entire reference
+  # representation with it (78 sequences, 17 species), and the run continued
+  # to a finished-looking result. Every production workflow sets "error" for
+  # this reason. Use "warn" only when you have decided to accept a degraded
+  # database -- the affected taxa are then named in the warning and in
+  # attr(reference_df, "count_failures"), checked just below.
+  on_count_failure = "error",
+  # Per-taxon cache, project-local so it is visible beside the checkpoints it
+  # feeds rather than in the hidden tools::R_user_dir() default. A cached
+  # taxon issues NO count query at all, which is also what removes the
+  # exposure that caused the incident above.
+  cache_dir      = {{reference_cache_dir}}
 )
+
+# Always look: a non-empty count_failures means taxa are MISSING from the
+# reference database even though the fetch returned rows.
+if (length(attr(reference_df, "count_failures"))) {
+  message("  !! count_failures: ",
+          paste(attr(reference_df, "count_failures"), collapse = ", "))
+}
 
 if (nrow(reference_df) == 0L) {
   stop(
