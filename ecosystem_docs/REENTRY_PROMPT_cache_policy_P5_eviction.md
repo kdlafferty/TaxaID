@@ -7,9 +7,11 @@ what was built, what it deliberately does not touch, and why.
 
 ## State of the tree
 
-- Branch **`cache-policy-p1-p2`**, **UNCOMMITTED**. P1, P2, P3, P4, P5, P6,
-  P7, the GBIF geometry fix and the two gaps P5 turned up are all in the
-  working tree. Ask before committing; the user has not requested it.
+- **COMMITTED AND MERGED 2026-09-15.** The line above said UNCOMMITTED; that
+  is stale. P1-P7, the GBIF geometry fix and the two gaps P5 turned up are on
+  **`main`** (the `cache-policy-p1-p2` branch was fast-forwarded into it, 28
+  commits, no conflicts). The branch ref still exists and can be deleted
+  whenever the user wants.
 - Packages changed and reinstalled: **TaxaTools**, **TaxaLikely**,
   **TaxaFetch**.
 - **Test baselines.** TaxaTools 992 / 0 fail. TaxaLikely 1,256 / 0.
@@ -35,7 +37,26 @@ The second now sees the 122 MB `.truncated_20260905` quarantine file and the
 before dropping `dry_run`. **Do not clear anything while a workflow is
 running.**
 
-**2. The `fasta/` key — FIXED, see Part 11.** It now keys (and requests) the
+**2. The `fasta/` key — FIXED AND NOW LIVE-VERIFIED (2026-09-15). CLOSED.**
+The end-to-end run this item was waiting on has been done, NCBI being healthy
+again (esearch HTTP 200 in 0.31 s). A cold `fetch_ncbi_reference_sequences()`
+for *Leptocottus* into a throwaway `cache_dir` wrote **4 of 4** `fasta/` files
+with a version segment -- `LC091930_1_seq.rds`, i.e. `LC091930.1` with the dot
+sanitised to an underscore. The contrast with the production cache, written
+before the fix, is total: **0 of 4,061** files there carry a version segment
+(4,027 are bare `<ACCESSION>_seq.rds`).
+
+Note when reading filenames: the version is separated by an UNDERSCORE, not a
+dot, so a `grepl("\\.[0-9]+", f)` test reports zero on correctly-versioned
+files. Match `^[A-Z]+[0-9]+_[0-9]+_seq\\.rds$` instead.
+
+Consequence, expected and documented: the 4,061 existing bare-accession files
+will MISS under the new versioned keys, so a re-fetched taxon re-downloads its
+sequences once. They are NOT evicted by P5 -- the current key construction can
+still produce a bare-accession name (when `acc_version` is `NA`), so they
+remain reachable by grammar.
+
+Original text follows for the record. **2. The `fasta/` key — FIXED, see Part 11.** It now keys (and requests) the
 versioned accession via a new `acc_version` column and `.fasta_cache_keys()`.
 No meta key was widened and nothing was orphaned: a meta file cached before
 `acc_version` existed cannot see a GenBank revision anyway, so it correctly
