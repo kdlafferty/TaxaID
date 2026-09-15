@@ -637,6 +637,9 @@
 # already covered) were re-`document()`ed, reinstalled, and re-tested to confirm the
 # doc-only cross-reference edits introduced no regressions: TaxaAssign 675/0 (`check()`
 # 0/0/1), TaxaFetch 750/2 (both pre-existing, unrelated CoordinateCleaner/terra environment
+
+**CORRECTED 2026-09-15:** those 2 failures were NOT environmental. `cc_zero(buffer=)` changed from degrees to metres in CoordinateCleaner 3.x while its default stayed `0.5`, so `filter_gbif_quality()`'s null-island check had become a no-op. Fixed in 6c3e986 (new `near_zero_buffer_m`, default 5000); TaxaFetch is now 812 / 0. No result changed -- 0 of 3.75 M real GBIF rows fall within 55 km of (0,0).
+
 # failures in `test-filter_gbif_quality.R`, confirmed via direct inspection to be about
 # `cc_equ`/`cc_zero` record-count assertions, nothing this session touched; `check()`
 # 0/0/1), TaxaLikely 1082/0 (`check()` 0/0/1), TaxaTools 906/0 (`check()` 0/0/1), TaxaHabitat

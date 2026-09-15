@@ -25,6 +25,9 @@
 # files, which would change 11 functions' default behaviour at once mid-project.
 # devtools::test() 810 pass / 2 fail, both PRE-EXISTING in test-filter_gbif_quality.R
 # (CoordinateCleaner, unrelated to any cache work -- do not chase them). check() 0/0/0.
+
+**CORRECTED 2026-09-15:** those 2 failures were NOT environmental. `cc_zero(buffer=)` changed from degrees to metres in CoordinateCleaner 3.x while its default stayed `0.5`, so `filter_gbif_quality()`'s null-island check had become a no-op. Fixed in 6c3e986 (new `near_zero_buffer_m`, default 5000); TaxaFetch is now 812 / 0. No result changed -- 0 of 3.75 M real GBIF rows fall within 55 km of (0,0).
+
 # Previous update: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (A4) --
 # RESOLVED, was OPEN below. A dead pending GBIF key is now cleared and a fresh request
 # submitted in the SAME call (download_gbif_occurrences.R:425-438, :803, :1440-1446); new

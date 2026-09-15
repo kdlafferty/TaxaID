@@ -15,9 +15,14 @@ what was built, what it deliberately does not touch, and why.
 - Packages changed and reinstalled: **TaxaTools**, **TaxaLikely**,
   **TaxaFetch**.
 - **Test baselines.** TaxaTools 992 / 0 fail. TaxaLikely 1,256 / 0.
-  **TaxaFetch 810 / 2 FAIL, and those 2 are PRE-EXISTING** in
-  `test-filter_gbif_quality.R` (CoordinateCleaner, unrelated to cache work).
-  Do not spend time on them thinking you broke something.
+  **TaxaFetch 812 / 0.** This line used to read "810 / 2 FAIL, and those 2
+  are PRE-EXISTING ... do not spend time on them thinking you broke
+  something." That instruction was wrong and is withdrawn. The 2 failures
+  were not environmental and not unrelated: `cc_zero(buffer=)` went from
+  degrees to metres in CoordinateCleaner 3.x while its default stayed `0.5`,
+  so `filter_gbif_quality()`'s null-island check had silently become a no-op.
+  Fixed 2026-09-15 in 6c3e986. They had been failing since 2026-08-08, being
+  waved through on this label the whole time.
 - Reinstall with `devtools::install("<pkg>", quick = TRUE, upgrade = FALSE)`
   — `upgrade = FALSE`, not `"never"`, which this devtools rejects.
 
