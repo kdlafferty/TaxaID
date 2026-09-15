@@ -17,6 +17,7 @@ filter_gbif_quality(
   require_species = FALSE,
   exclude_equal_coords = TRUE,
   exclude_near_zero = TRUE,
+  near_zero_buffer_m = 5000,
   exclude_near_gbif_hq = TRUE,
   exclude_country_centroid = TRUE,
   exclude_capital = TRUE,
@@ -96,6 +97,25 @@ the (0, 0) "Null Island" point are removed
 default buffer. This catches near-zero coordinates that fall short of
 GBIF's own exact-zero \code{ZERO_COORDINATE} issue flag. Skipped with a
 message if \code{CoordinateCleaner} is not installed.}
+
+\item{near_zero_buffer_m}{Numeric. Radius in METRES around (0, 0) within
+which a record counts as a null-island artifact. Default \code{5000}.
+
+This is passed explicitly and must stay that way.
+\code{CoordinateCleaner::cc_zero()}'s own default is \code{0.5}, which only made
+sense when its \code{buffer} was in DEGREES; in CoordinateCleaner 3.x the
+units are METRES, so relying on that default silently reduces this
+check to "within half a metre of (0,0)" and it stops catching anything.
+Verified against CoordinateCleaner 3.0.1: a record at (0.02, 0.01), about
+2.5 km from null island, survives at \code{buffer = 0.5} and at \code{1000}, and is
+only caught at \code{5000}. Every other \verb{cc_*} function this function calls
+already defaults in metres (\code{cc_gbif} 1000, \code{cc_cen} 1000, \code{cc_cap}
+10000, \code{cc_inst} 100), so \code{cc_zero} is the outlier.
+
+\code{5000} is chosen to catch (0,0) itself plus the coordinate-rounding and
+truncation noise that produces most null-island records, while staying
+small enough not to discard genuine records from the Gulf of Guinea,
+which is real ocean and a legitimate sampling location.}
 
 \item{exclude_near_gbif_hq}{Logical. If \code{TRUE} (default), records
 near GBIF's Copenhagen headquarters are removed

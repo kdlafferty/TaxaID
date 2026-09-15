@@ -3820,6 +3820,35 @@ every run via `.bbox_report()` so each run's scope appears in its own log.
 The general rule: anything a human draws, types, or curates is an input to
 be versioned, not an intermediate to be regenerated.
 
+### A dependency can silently change a parameter's UNITS (found 2026-09-15)
+`CoordinateCleaner::cc_zero(buffer = )` was DEGREES in the 2.x series and is
+METRES in 3.x, but its default stayed `0.5` -- a number that only ever made
+sense as degrees. Relying on that default therefore reduces the null-island
+check to "within half a metre of (0, 0)", which catches nothing. Confirmed on
+CoordinateCleaner 3.0.1: a record at `(0.02, 0.01)`, about 2.5 km from (0,0)
+and unambiguously the artifact the check exists for, survives at `buffer =
+0.5` AND at `1000`, and is only caught at `5000`. Every sibling already
+defaults in metres (`cc_gbif` 1000, `cc_cen` 1000, `cc_cap` 10000, `cc_inst`
+100), so the broken one is invisible next to five that look identical.
+
+`TaxaFetch::filter_gbif_quality()` now passes `near_zero_buffer_m` (default
+5000) explicitly and documents why it must never be dropped.
+
+**The part worth carrying is how long it hid.** The two tests that caught this
+had been failing since 2026-08-08 and were labelled, in this file and in three
+package CLAUDE.mds, as "2 pre-existing CoordinateCleaner environment
+failures, unrelated" -- and every session since, including two earlier today,
+repeated that label and moved on. `REENTRY_PROMPT_cache_policy_P5_eviction.md`
+even instructs the reader not to spend time on them. They were not
+environmental. They were correctly reporting that a documented, default-ON
+quality filter had become a no-op. A test that has been failing for a month is
+evidence, not furniture: when a dependency is involved, call the dependency
+directly with the test's own fixture before accepting "environmental".
+
+No result changed -- 0 records within 55 km of (0,0) across 3.75 M real GBIF
+rows at all three sites -- so this was an inert safety net, not bad output,
+and nothing needs re-running.
+
 ### Split-string sprintf bug (recurring)
 `sprintf()` does NOT concatenate multiple string arguments.
 ```r

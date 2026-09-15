@@ -85,6 +85,24 @@ utils::globalVariables(c(
 #'   default buffer. This catches near-zero coordinates that fall short of
 #'   GBIF's own exact-zero \code{ZERO_COORDINATE} issue flag. Skipped with a
 #'   message if \code{CoordinateCleaner} is not installed.
+#' @param near_zero_buffer_m Numeric. Radius in METRES around (0, 0) within
+#'   which a record counts as a null-island artifact. Default `5000`.
+#'
+#'   This is passed explicitly and must stay that way.
+#'   `CoordinateCleaner::cc_zero()`'s own default is `0.5`, which only made
+#'   sense when its `buffer` was in DEGREES; in CoordinateCleaner 3.x the
+#'   units are METRES, so relying on that default silently reduces this
+#'   check to "within half a metre of (0,0)" and it stops catching anything.
+#'   Verified against CoordinateCleaner 3.0.1: a record at (0.02, 0.01), about
+#'   2.5 km from null island, survives at `buffer = 0.5` and at `1000`, and is
+#'   only caught at `5000`. Every other `cc_*` function this function calls
+#'   already defaults in metres (`cc_gbif` 1000, `cc_cen` 1000, `cc_cap`
+#'   10000, `cc_inst` 100), so `cc_zero` is the outlier.
+#'
+#'   `5000` is chosen to catch (0,0) itself plus the coordinate-rounding and
+#'   truncation noise that produces most null-island records, while staying
+#'   small enough not to discard genuine records from the Gulf of Guinea,
+#'   which is real ocean and a legitimate sampling location.
 #' @param exclude_near_gbif_hq Logical. If \code{TRUE} (default), records
 #'   near GBIF's Copenhagen headquarters are removed
 #'   (\code{CoordinateCleaner::cc_gbif()}), using that function's own
@@ -267,6 +285,7 @@ filter_gbif_quality <- function(
   require_species = FALSE,
   exclude_equal_coords = TRUE,
   exclude_near_zero = TRUE,
+  near_zero_buffer_m = 5000,
   exclude_near_gbif_hq = TRUE,
   exclude_country_centroid = TRUE,
   exclude_capital = TRUE,
@@ -508,8 +527,19 @@ filter_gbif_quality <- function(
         )
       }
       if (exclude_near_zero) {
+        # buffer MUST be passed explicitly. CoordinateCleaner's own default is
+        # 0.5, a value that only made sense when the buffer was DEGREES; in
+        # 3.x it is METRES, so the default flags nothing beyond half a metre
+        # of (0,0) and this check is a silent no-op. Confirmed against
+        # CoordinateCleaner 3.0.1: a record at (0.02, 0.01) -- ~2.5 km from
+        # null island, unambiguously the artifact this check exists for --
+        # passes at buffer = 0.5 and at 1000, and is only caught at 5000.
+        # Every other cc_* function used here already defaults in metres
+        # (cc_gbif 1000, cc_cen 1000, cc_cap 10000, cc_inst 100), so this one
+        # default is the outlier, not the convention.
         cc_results[["near_zero"]] <- CoordinateCleaner::cc_zero(
           x = data, lon = "decimalLongitude", lat = "decimalLatitude",
+          buffer = near_zero_buffer_m,
           value = "flagged", verbose = FALSE
         )
       }
