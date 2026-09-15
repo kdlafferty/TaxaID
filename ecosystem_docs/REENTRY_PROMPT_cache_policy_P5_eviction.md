@@ -23,7 +23,23 @@ what was built, what it deliberately does not touch, and why.
 
 ## Open — decisions for the user, not tasks to start
 
-**1. Nothing has actually been deleted yet.** By design: the sweep defaults
+**1. DONE 2026-09-15 -- both sweeps run, user-approved. CLOSED.**
+
+```
+                     before                after
+  TaxaFetch          163.4 MB   6 files    41.6 MB   4 files
+  TaxaLikely           4.7 MB 7581 files    3.4 MB 5997 files
+  TOTAL              168.1 MB 7588 files   45.0 MB 6002 files
+```
+
+TaxaFetch removed exactly the two orphans: the 127,733,417-byte truncated
+download hand-quarantined on 2026-09-05, and a 0-byte zip. Both surviving
+zips still have their metadata file, verified after the sweep. TaxaLikely
+evicted 1,584 of 3,517 meta files, keeping 1,933 live; the 4,061 `fasta/`
+files were untouched, as predicted -- the current key construction can still
+produce a bare-accession name, so they remain reachable by grammar.
+
+Original text follows for the record. **1. Nothing has actually been deleted yet.** By design: the sweep defaults
 to a dry run and the zips need an explicit call. The two commands, when the
 user wants them:
 
