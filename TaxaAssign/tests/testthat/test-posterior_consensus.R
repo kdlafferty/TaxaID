@@ -1118,3 +1118,77 @@ test_that("the candidate gate does not fire when plausible_taxa is empty or abse
   out <- TaxaAssign:::.downrank_consensus(stripped, ref2, c("genus", "species"))
   expect_equal(out$consensus_taxon, "Sardinops sagax")
 })
+
+
+# ===========================================================================
+# prior_branch rename + the evidence gate (2026-09-14)
+# ===========================================================================
+
+.branch_post <- function(branch, eff = NA_real_) {
+  data.frame(
+    observation_id = "o1",
+    taxon_name = "Aus bus",
+    taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate",
+    genus = "Aus", family = "Aidae", species = "Aus bus",
+    posterior_mean = 1, posterior_point_est = 1,
+    prior_branch = branch,
+    effective_records = eff,
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("the pre-rename branch string still counts as an occurrence record", {
+  # Every prior table checkpointed before 2026-09-14 carries the old string,
+  # across four sites and several expensive-to-regenerate objects. A reader
+  # that recognised only the new name would silently reclassify all of them
+  # -- the exact failure this rename exists to stop.
+  new <- posterior_consensus(.branch_post("kernel_estimated", 100), min_posterior = 0)
+  old <- posterior_consensus(.branch_post("resident_observed", 100), min_posterior = 0)
+  expect_true(new$winner_has_occurrence_record)
+  expect_true(old$winner_has_occurrence_record)
+})
+
+test_that("a non-kernel branch still reads FALSE", {
+  for (b in c("resident_undetected", "transport")) {
+    out <- posterior_consensus(.branch_post(b, 100), min_posterior = 0)
+    expect_false(out$winner_has_occurrence_record)
+  }
+})
+
+test_that("min_effective_records defaults to 0, i.e. no behaviour change", {
+  # The whole point of the default: the rename is truthful, not behavioural.
+  thin <- .branch_post("kernel_estimated", 0.0001)
+  expect_true(posterior_consensus(thin, min_posterior = 0)$winner_has_occurrence_record)
+})
+
+test_that("min_effective_records gates a thin row when asked to", {
+  thin <- .branch_post("kernel_estimated", 0.0001)
+  rich <- .branch_post("kernel_estimated", 3663)
+  expect_false(
+    posterior_consensus(thin, min_posterior = 0,
+                        min_effective_records = 1)$winner_has_occurrence_record
+  )
+  expect_true(
+    posterior_consensus(rich, min_posterior = 0,
+                        min_effective_records = 1)$winner_has_occurrence_record
+  )
+})
+
+test_that("a legacy table with no effective_records is not silently demoted", {
+  # "Cannot answer the question" must not read as "no evidence" -- that would
+  # flip every row of a pre-kernel table to unprecedented in one step.
+  legacy <- .branch_post("resident_observed")
+  legacy$effective_records <- NULL
+  expect_true(
+    posterior_consensus(legacy, min_posterior = 0,
+                        min_effective_records = 1)$winner_has_occurrence_record
+  )
+})
+
+test_that("min_effective_records is validated", {
+  p <- .branch_post("kernel_estimated", 1)
+  expect_error(posterior_consensus(p, min_effective_records = -1), "non-negative")
+  expect_error(posterior_consensus(p, min_effective_records = NA), "non-negative")
+  expect_error(posterior_consensus(p, min_effective_records = c(1, 2)), "non-negative")
+})

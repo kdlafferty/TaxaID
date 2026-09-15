@@ -9,7 +9,7 @@ compute_group_priors(
   taxonomy_map,
   taxon_col = "taxon_name",
   theta_col = "theta_mean",
-  rank_cols = c("species", "genus", "family"),
+  rank_cols = c("species", "genus", "family", "order", "class"),
   exclude_named_evidence = TRUE
 )
 }
@@ -111,12 +111,32 @@ entry, every species-level \code{consensus_taxon} finds nothing in
 the vast majority of real observations, purely from this gap -- confirmed
 on real production data (504 of 616 real Mugu observations misread
 "unprecedented"). \code{rank_cols} therefore defaults to
-\code{c("species", "genus", "family")}; when \code{taxonomy_map} has no explicit
+\code{c("species", "genus", "family", "order", "class")}; when \code{taxonomy_map} has no explicit
 \code{"species"} column, one is auto-derived as \code{taxon_col}'s own values
 (identity: a species' "group sum" is just its own \code{theta_col}, \code{n_members}
 = 1). Supply an explicit \code{"species"} column in \code{taxonomy_map} to override
 this (e.g. a backbone-resolved name differing from \code{taxon_col}), or omit
 \code{"species"} from \code{rank_cols} to disable it entirely.
+
+\strong{The same gap exists at every rank the map does not cover}
+(2026-09-14). The default stopped at \code{"family"}, so a consensus resolving
+at ORDER rank found nothing, read \code{consensus_has_occurrence_record = FALSE}
+and was reported \code{"unprecedented"} -- identically to the species-rank bug
+above, just coarser, and for the same reason. Found on the real
+PtConception 12S run: the \verb{Scorpaenichthys marmoratus + Hexagrammos lagocephalus/decagrammus} unit (20 observations) resolves at order rank as
+\code{Perciformes}, was auto-flagged unprecedented, and
+\code{TaxaFlag::review_assignments()}'s consensus-scope skepticism gate then
+required the reviewer to rate it geographically \code{"unlikely"} -- which it
+did, while its own \code{review_comment} called the candidates "very common at
+Pt. Conception". The export filters then dropped all 20 rows. Cabezon and
+kelp greenling are Point Conception natives; nothing about the science was
+in doubt, only the rank coverage of this lookup.
+
+The default now reaches \code{"order"} and \code{"class"}. Ranks in the DEFAULT that
+\code{taxonomy_map} does not carry are skipped with a message rather than an
+error, so existing callers whose maps stop at family are unaffected;
+ranks you name EXPLICITLY are still an error when absent, because you
+asked for them.
 }
 
 \examples{

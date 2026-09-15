@@ -14,7 +14,8 @@ posterior_consensus(
   backbone_id = NULL,
   species_reference = NULL,
   downrank_requires_candidate = TRUE,
-  group_priors = NULL
+  group_priors = NULL,
+  min_effective_records = 0
 )
 }
 \arguments{
@@ -122,6 +123,32 @@ column's own docs below for the full reasoning). Default \code{NULL}:
 \code{consensus_prior} is \code{NA} for every row -- there is no fallback
 computation (removed 2026-07-30; the previous candidate-scoped MAX was a
 real underestimate, not a safe approximation).}
+
+\item{min_effective_records}{Numeric, >= 0. Minimum \code{effective_records} a
+winning row must carry before \code{winner_has_occurrence_record} is allowed
+to read \code{TRUE}. Default \code{0} -- branch membership alone, which is exactly
+the pre-2026-09-14 behaviour, so no existing caller's output moves.
+
+Why this exists: \code{TaxaExpect::estimate_kernel_priors()} writes
+\code{prior_branch} as a CONSTANT on every row it emits, so the branch records
+which generator made the row, never how much evidence stands behind it.
+Within that one branch \code{effective_records} spans roughly ten orders of
+magnitude -- on the real PtConception 12S priors, 215 of 479 labelled
+rows (44.9\%) carried under one Kish effective record, minimum 0.0000; at
+18S, 987 of 1521 (64.9\%); at GreatLakes only 17 of 90 (18.9\%). Reading
+the label as an evidence claim therefore reports a quarter to two thirds
+of rows as having a local occurrence record on effectively no records at
+all, and that verdict feeds the published Axis-1 plausibility categories
+via \code{TaxaFlag::add_posthoc_assessment()}.
+
+No threshold is defaulted ON because there is no natural one: the
+distribution is continuous with no valley, so any cutoff is a judgment
+call that moves rows between plausibility categories and must be
+validated before it is trusted. One Kish effective record is the
+defensible starting point if you want one. Changing it from \code{0} WILL
+move \code{winner_has_occurrence_record}, and therefore the plausibility
+counts -- re-run the held-out GreatLakes/Lamar check (current benchmark:
+precision 0.872) before relying on the result.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -293,7 +320,8 @@ rather than inferred from a low prior.
 \code{winner_has_occurrence_record} is \code{TRUE} when the winning
 hypothesis carries a real occurrence record. When \code{posterior_df}
 has a \code{prior_branch} column (kernel-priors schema, 2026-08-31) this
-means \code{prior_branch == "resident_observed"} -- a kernel estimate
+means \code{prior_branch} is \code{"kernel_estimated"} (or its pre-2026-09-14
+name \code{"resident_observed"}) -- a kernel estimate
 from real in-habitat local evidence; \code{resident_undetected}
 (evidence-elevated species with zero local records) and
 \code{transport} (domestic/food) winners read \code{FALSE}, with a transport

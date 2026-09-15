@@ -33,12 +33,33 @@
 #' the vast majority of real observations, purely from this gap -- confirmed
 #' on real production data (504 of 616 real Mugu observations misread
 #' "unprecedented"). `rank_cols` therefore defaults to
-#' `c("species", "genus", "family")`; when `taxonomy_map` has no explicit
+#' `c("species", "genus", "family", "order", "class")`; when `taxonomy_map` has no explicit
 #' `"species"` column, one is auto-derived as `taxon_col`'s own values
 #' (identity: a species' "group sum" is just its own `theta_col`, `n_members`
 #' = 1). Supply an explicit `"species"` column in `taxonomy_map` to override
 #' this (e.g. a backbone-resolved name differing from `taxon_col`), or omit
 #' `"species"` from `rank_cols` to disable it entirely.
+#'
+#' \strong{The same gap exists at every rank the map does not cover}
+#' (2026-09-14). The default stopped at `"family"`, so a consensus resolving
+#' at ORDER rank found nothing, read `consensus_has_occurrence_record = FALSE`
+#' and was reported `"unprecedented"` -- identically to the species-rank bug
+#' above, just coarser, and for the same reason. Found on the real
+#' PtConception 12S run: the `Scorpaenichthys marmoratus + Hexagrammos
+#' lagocephalus/decagrammus` unit (20 observations) resolves at order rank as
+#' `Perciformes`, was auto-flagged unprecedented, and
+#' `TaxaFlag::review_assignments()`'s consensus-scope skepticism gate then
+#' required the reviewer to rate it geographically `"unlikely"` -- which it
+#' did, while its own `review_comment` called the candidates "very common at
+#' Pt. Conception". The export filters then dropped all 20 rows. Cabezon and
+#' kelp greenling are Point Conception natives; nothing about the science was
+#' in doubt, only the rank coverage of this lookup.
+#'
+#' The default now reaches `"order"` and `"class"`. Ranks in the DEFAULT that
+#' `taxonomy_map` does not carry are skipped with a message rather than an
+#' error, so existing callers whose maps stop at family are unaffected;
+#' ranks you name EXPLICITLY are still an error when absent, because you
+#' asked for them.
 #'
 #' @param taxaexpect_priors Data frame. The full local occurrence-prior
 #'   table (e.g. `TaxaExpect::generate_full_priors()`'s output, or the
@@ -115,7 +136,9 @@ compute_group_priors <- function(taxaexpect_priors,
                                  taxonomy_map,
                                  taxon_col = "taxon_name",
                                  theta_col = "theta_mean",
-                                 rank_cols = c("species", "genus", "family"),
+                                 rank_cols = c(
+                                   "species", "genus", "family", "order", "class"
+                                 ),
                                  exclude_named_evidence = TRUE) {
   if (!is.data.frame(taxaexpect_priors)) {
     cli::cli_abort("{.arg taxaexpect_priors} must be a data frame.")
@@ -139,11 +162,34 @@ compute_group_priors <- function(taxaexpect_priors,
     taxonomy_map$species <- taxonomy_map[[taxon_col]]
   }
 
+  # A rank the caller ASKED for and cannot be served is an error; a rank that
+  # is merely part of the default and happens to be absent from this
+  # taxonomy_map is not. Without this split, widening the default (2026-09-14,
+  # to cover order/class) would break every existing caller whose
+  # taxonomy_map stops at family -- which is most of them.
   missing_rank_cols <- setdiff(rank_cols, names(taxonomy_map))
   if (length(missing_rank_cols) > 0) {
-    cli::cli_abort(
-      "{.arg rank_cols} not found in {.arg taxonomy_map}: {.field {missing_rank_cols}}."
-    )
+    if (missing(rank_cols)) {
+      rank_cols <- intersect(rank_cols, names(taxonomy_map))
+      if (length(rank_cols) == 0L) {
+        cli::cli_abort(c(
+          "None of the default {.arg rank_cols} are present in {.arg taxonomy_map}.",
+          "i" = "Supply {.arg rank_cols} naming columns it does have."
+        ))
+      }
+      cli::cli_inform(c(
+        "i" = "Default {.arg rank_cols} not in {.arg taxonomy_map}, skipped: \\
+        {.field {missing_rank_cols}}.",
+        "!" = "A consensus resolving at a skipped rank reads \\
+        {.code consensus_has_occurrence_record = FALSE} and is reported \\
+        {.val unprecedented}, from this gap alone -- add the column to \\
+        {.arg taxonomy_map} if that rank occurs in your consensus."
+      ))
+    } else {
+      cli::cli_abort(
+        "{.arg rank_cols} not found in {.arg taxonomy_map}: {.field {missing_rank_cols}}."
+      )
+    }
   }
 
   # Named-evidence filter (2026-09-13). A row that names a species with no

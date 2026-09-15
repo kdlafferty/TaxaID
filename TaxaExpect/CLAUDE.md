@@ -1,4 +1,19 @@
 # CLAUDE.md -- TaxaExpect
+# Last updated: 2026-09-15 (Opus 5): estimate_kernel_priors() emits
+# prior_branch = "kernel_estimated", renamed from "resident_observed". The old name asserted
+# an evidence claim this function never tests -- it writes the label as a CONSTANT on every
+# row, whatever stands behind it. Measured on real priors: within this one branch
+# effective_records spans ~10 orders of magnitude, and 215 of 479 PtCon 12S rows (44.9%) sit
+# under ONE Kish effective record with a minimum of 0.0000; PtCon 18S 987/1521 (64.9%);
+# GreatLakes 17/90 (18.9%). Two consumers were reading the label as real evidence
+# (TaxaAssign::posterior_consensus()'s winner_has_occurrence_record, which feeds the published
+# Axis-1 plausibility categories, and join_priors()'s promotion gate). NOTHING MOVES: the
+# rename is truthful, not behavioural, and every reader accepts the old string permanently
+# (checkpointed prior tables across four sites carry it). Consumers wanting an evidence claim
+# threshold effective_records themselves -- posterior_consensus(min_effective_records=),
+# default 0. No threshold is defaulted on: the distribution is continuous with no valley, so
+# any cutoff is a judgment call that moves plausibility categories and needs the held-out
+# Lamar re-check (benchmark 0.872) first. 649 tests / 0 failures, check() 0/0/0.
 # 2026-09-13, evening (Sonnet 5): ecosystem review Section L (G-C2) -- NEW
 # generate_regional_proximity_evidence(tile_cache_dir=), wired to TaxaFlag's new
 # check_gbif_tile_range() no-expiry tile cache. Prints one summary line per call: "N from
@@ -40,7 +55,7 @@
 # narrowed a genus LCA to a distance-clamp-only species at Mugu (Pseudotolithus senegallus,
 # posterior 0.009, reported at the genus's 0.89) -- fixed in the workflows by excluding
 # clamp-only rows from the reference; see TaxaID/CLAUDE.md.
-# Last updated: 2026-09-09, FINAL (Sonnet 5 -- re-archives `create_sites_from_grid()` and
+# Previous update 2026-09-09, FINAL (Sonnet 5 -- re-archives `create_sites_from_grid()` and
 # `compute_adaptive_sampling_groups()` for the THIRD time in one day, reversing the
 # restoration directly below. This is the final decision on this pair -- not expected to
 # reverse again. The restoration's own reasoning (an automatic classifier is a reasonable

@@ -102,7 +102,11 @@ test_that("schema carries prior_branch and effective_records, habitat stratifies
     "effective_records"
   ) %in% names(kp$priors)))
   expect_false("Z" %in% kp$priors$taxon_name) # wrong habitat excluded
-  expect_true(all(kp$priors$prior_branch == "resident_observed"))
+  # Renamed 2026-09-14 from "resident_observed": that name asserted an
+  # evidence claim this estimator never tests -- it writes the label as a
+  # constant, and within it effective_records spans ~10 orders of magnitude.
+  expect_true(all(kp$priors$prior_branch == "kernel_estimated"))
+  expect_false(any(kp$priors$prior_branch == "resident_observed"))
   expect_true(all(kp$priors$grid_id == "BurnsTest"))
   expect_true(all(kp$priors$effective_records > 0))
 })

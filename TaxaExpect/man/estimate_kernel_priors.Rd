@@ -198,10 +198,23 @@ computationally infeasible at many-species scale.
 \section{Output schema (kernel-priors redesign)}{
 
 The returned \verb{$priors} table uses the post-redesign schema: \code{prior_branch}
-(here always \code{"resident_observed"}: species with real local evidence in
-the focal habitat) and \code{effective_records} (the species' kernel-effective
-record count \code{c_i * n_eff / W}, in units of records) replace the retired
-\code{model_tier} tier1/tier2 vocabulary. Undetected/evidence/domestic rows
+(here always \code{"kernel_estimated"} -- renamed from \code{"resident_observed"}
+on 2026-09-14, see below) and \code{effective_records} (the species'
+kernel-effective record count \code{c_i * n_eff / W}, in units of records)
+replace the retired \code{model_tier} tier1/tier2 vocabulary.
+
+\code{prior_branch} is written as a CONSTANT on every row this function emits.
+It records which generator produced the row, not how much evidence stands
+behind it -- that is \code{effective_records}, and it spans roughly ten orders
+of magnitude within this one branch, continuously and with no natural
+break. The old name \code{"resident_observed"} asserted an evidence claim that
+was never tested: on the real PtConception 12S priors 44.9\% of labelled
+rows carried under one effective record (64.9\% at 18S), yet every one of
+them read as an observed resident downstream. Consumers that need an
+evidence claim must threshold \code{effective_records} themselves; see
+\code{\link[TaxaAssign:posterior_consensus]{TaxaAssign::posterior_consensus()}}'s \code{min_effective_records}. Every
+reader in this ecosystem still accepts \code{"resident_observed"}, so tables
+checkpointed before the rename keep working. Undetected/evidence/domestic rows
 belong to other branches and are appended by their own generators, not
 this function. A species whose nearby records are all classified to a
 habitat other than \code{site_habitat} yields NO resident row here at all and

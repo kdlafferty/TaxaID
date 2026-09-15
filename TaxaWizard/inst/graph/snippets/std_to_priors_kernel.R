@@ -48,7 +48,7 @@ priors <- dplyr::bind_rows(kernel_priors_fit$priors, priors_undetected) |>
 
 message(sprintf(
   "Generated priors for %d resident taxa + %d undetected/dark-diversity row(s) (kernel n_eff = %.0f)",
-  sum(priors$prior_branch == "resident_observed", na.rm = TRUE),
+  sum(priors$prior_branch %in% c("kernel_estimated", "resident_observed"), na.rm = TRUE),
   sum(priors$prior_branch == "resident_undetected", na.rm = TRUE),
   kernel_priors_fit$n_eff
 ))

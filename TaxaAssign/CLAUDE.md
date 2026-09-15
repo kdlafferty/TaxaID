@@ -1,4 +1,22 @@
 # CLAUDE.md -- TaxaAssign
+# Last updated: 2026-09-15 (Opus 5): consumes TaxaExpect's renamed prior_branch, and closes
+# the rank-coverage half of the same defect. NEW R/kernel_branch.R -- .KERNEL_BRANCH /
+# .is_kernel_branch() is the ONE place that knows which branch values mean "kernel-estimated
+# resident", and it accepts both "kernel_estimated" and the pre-2026-09-14
+# "resident_observed" permanently (every prior table on disk carries the old string; a reader
+# knowing only the new one would silently reclassify four sites' worth of checkpoints).
+# posterior_consensus() and join_priors() both read it. posterior_consensus() also gains
+# min_effective_records (default 0 = branch-only = unchanged) because the branch is written
+# as a CONSTANT upstream and cannot carry an evidence claim: 44.9% of real PtCon 12S rows in
+# that branch sit under one Kish effective record. join_priors() is deliberately NOT gated on
+# evidence -- promotion only lifts to singleton parity, and a thin row's theta is already
+# ~13,000x below a well-evidenced one's (1.5e-08 vs 1.9e-04, real PtCon medians).
+# compute_group_priors(): default rank_cols now c("species","genus","family","order","class").
+# A DEFAULT rank absent from taxonomy_map is skipped with a message; a rank named EXPLICITLY
+# is still an error. Closes the same gap the "Why species is in the default rank_cols" section
+# already documented at species rank -- an order-rank consensus read "unprecedented" from the
+# gap alone, which cost the real PtCon Perciformes unit (20 observations) its place in the
+# export. 806 tests / 0 failures, check() 0/0/0.
 # 2026-09-13, evening (Sonnet 5): ecosystem review Section L, THREE ITEMS BUILT (resolves
 # A3/C2/C3 below, now closed). compute_group_priors(allowed_branches=) makes the
 # group-scope plausibility check branch-blind no longer: default
@@ -93,7 +111,7 @@
 # of the sites' own) only when the logit rule underflows. Also documented: presence-mixture
 # columns (prior_mix_*) are inherited from the first site row, not recombined. 4 new tests,
 # check 0/0/0, reinstalled.
-# Last updated: 2026-09-08, later (Sonnet 5 -- `suggest_unreferenced_species()` MOVED to
+# Previous update 2026-09-08, later (Sonnet 5 -- `suggest_unreferenced_species()` MOVED to
 # TaxaLikely (package-placement fix, no math/behavior change) -- prompted by the user asking
 # whether the same duplicate-mechanism pattern found in the `flag_reference_errors()`
 # retirement (this file's own entry directly below) also applied to "unreferenced species"

@@ -1239,13 +1239,22 @@ join_priors <- function(likelihoods,
         !result$model_tier %in% c("tier_undetected_evidence", "tier_domestic_food"))
   }
   # Kernel-priors schema (2026-08-31): when prior_branch is present, only
-  # "resident_observed" rows are promotion-eligible -- every other branch's
-  # magnitude (evidence blends, transport/domestic, undetected floors) is its
-  # design, not a habitat-extrapolation artifact. Subsumes the model_tier
-  # value checks above once that column is retired.
+  # kernel-estimated resident rows are promotion-eligible -- every other
+  # branch's magnitude (evidence blends, transport/domestic, undetected
+  # floors) is its design, not a habitat-extrapolation artifact. Subsumes the
+  # model_tier value checks above once that column is retired.
+  #
+  # 2026-09-14: reads .KERNEL_BRANCH rather than the bare string, so the
+  # pre-rename "resident_observed" still qualifies. Deliberately NOT gated on
+  # effective_records as well: promotion only ever lifts a row to singleton
+  # parity, and a low-evidence row's theta is already ~13,000x below a
+  # well-evidenced one's (real PtCon 12S medians, 1.5e-08 vs 1.9e-04), so
+  # there is no case here of a thin row being promoted to prominence. The
+  # evidence question binds on the PLAUSIBILITY claim instead -- see
+  # posterior_consensus(min_effective_records=).
   if ("prior_branch" %in% names(result)) {
     not_evidence_row <- not_evidence_row &
-      (is.na(result$prior_branch) | result$prior_branch == "resident_observed")
+      (is.na(result$prior_branch) | .is_kernel_branch(result$prior_branch))
   }
 
   habitat_mismatch <- if ("observed_in_habitat" %in% names(result)) {

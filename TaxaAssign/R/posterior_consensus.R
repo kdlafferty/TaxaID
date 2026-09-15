@@ -148,6 +148,31 @@
 #'   `consensus_prior` is `NA` for every row -- there is no fallback
 #'   computation (removed 2026-07-30; the previous candidate-scoped MAX was a
 #'   real underestimate, not a safe approximation).
+#' @param min_effective_records Numeric, >= 0. Minimum `effective_records` a
+#'   winning row must carry before `winner_has_occurrence_record` is allowed
+#'   to read `TRUE`. Default `0` -- branch membership alone, which is exactly
+#'   the pre-2026-09-14 behaviour, so no existing caller's output moves.
+#'
+#'   Why this exists: `TaxaExpect::estimate_kernel_priors()` writes
+#'   `prior_branch` as a CONSTANT on every row it emits, so the branch records
+#'   which generator made the row, never how much evidence stands behind it.
+#'   Within that one branch `effective_records` spans roughly ten orders of
+#'   magnitude -- on the real PtConception 12S priors, 215 of 479 labelled
+#'   rows (44.9%) carried under one Kish effective record, minimum 0.0000; at
+#'   18S, 987 of 1521 (64.9%); at GreatLakes only 17 of 90 (18.9%). Reading
+#'   the label as an evidence claim therefore reports a quarter to two thirds
+#'   of rows as having a local occurrence record on effectively no records at
+#'   all, and that verdict feeds the published Axis-1 plausibility categories
+#'   via `TaxaFlag::add_posthoc_assessment()`.
+#'
+#'   No threshold is defaulted ON because there is no natural one: the
+#'   distribution is continuous with no valley, so any cutoff is a judgment
+#'   call that moves rows between plausibility categories and must be
+#'   validated before it is trusted. One Kish effective record is the
+#'   defensible starting point if you want one. Changing it from `0` WILL
+#'   move `winner_has_occurrence_record`, and therefore the plausibility
+#'   counts -- re-run the held-out GreatLakes/Lamar check (current benchmark:
+#'   precision 0.872) before relying on the result.
 #' @details
 #' \strong{Threshold interaction:}
 #' \code{min_posterior} and \code{cumulative_threshold} work together:
@@ -358,7 +383,8 @@
 #'       `winner_has_occurrence_record` is `TRUE` when the winning
 #'       hypothesis carries a real occurrence record. When `posterior_df`
 #'       has a `prior_branch` column (kernel-priors schema, 2026-08-31) this
-#'       means `prior_branch == "resident_observed"` -- a kernel estimate
+#'       means `prior_branch` is `"kernel_estimated"` (or its pre-2026-09-14
+#'       name `"resident_observed"`) -- a kernel estimate
 #'       from real in-habitat local evidence; `resident_undetected`
 #'       (evidence-elevated species with zero local records) and
 #'       `transport` (domestic/food) winners read `FALSE`, with a transport
@@ -431,7 +457,15 @@ posterior_consensus <- function(posterior_df,
                                 backbone_id = NULL,
                                 species_reference = NULL,
                                 downrank_requires_candidate = TRUE,
-                                group_priors = NULL) {
+                                group_priors = NULL,
+                                min_effective_records = 0) {
+  if (!is.numeric(min_effective_records) ||
+    length(min_effective_records) != 1L ||
+    is.na(min_effective_records) || min_effective_records < 0) {
+    cli::cli_abort(
+      "{.arg min_effective_records} must be a single non-negative number."
+    )
+  }
   # --- Input validation -------------------------------------------------------
   required <- c(
     "observation_id", "taxon_name", "taxon_name_rank",
@@ -568,7 +602,7 @@ posterior_consensus <- function(posterior_df,
     .consensus_one_observation(
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
-      group_priors
+      group_priors, min_effective_records
     )
   })
 
@@ -612,7 +646,8 @@ posterior_consensus <- function(posterior_df,
 #' @noRd
 .consensus_one_observation <- function(chunk, sid, rank_system,
                                        cumulative_threshold, min_posterior,
-                                       posterior_col, group_priors = NULL) {
+                                       posterior_col, group_priors = NULL,
+                                       min_effective_records = 0) {
   # All named hypotheses contribute to LCA; only the unreferenced_family catch-all
   # is excluded (taxon_name = NA; represents uncharacterised diversity with no name).
   # named_all is kept before any filtering for consensus_posterior computation.
@@ -837,8 +872,28 @@ posterior_consensus <- function(posterior_df,
   # GreatLakes B8 run: 873/885 "unprecedented"). A transport winner's
   # interpretation is carried separately by add_posthoc_assessment()'s
   # domestic_prior_caveat, which is the designed pairing.
+  # 2026-09-14: the branch test reads .KERNEL_BRANCH (so the pre-rename
+  # "resident_observed" still qualifies), and is optionally ALSO gated on how
+  # much evidence stands behind the row. The branch alone cannot carry that
+  # claim -- TaxaExpect writes it as a constant, and within it
+  # effective_records spans ~10 orders of magnitude. min_effective_records
+  # defaults to 0, i.e. branch-only, which is byte-identical to the previous
+  # behaviour; raise it to require real local evidence before a winner counts
+  # as having an occurrence record.
   winner_has_occurrence_record <- if (has_branch) {
-    isTRUE(winner_row$prior_branch[[1L]] == "resident_observed")
+    ok <- .is_kernel_branch(winner_row$prior_branch[[1L]])
+    if (isTRUE(ok) && min_effective_records > 0) {
+      er <- if ("effective_records" %in% names(winner_row)) {
+        winner_row$effective_records[[1L]]
+      } else {
+        NA_real_
+      }
+      # No effective_records column means the table predates the kernel
+      # schema and cannot answer the question. Leave the branch verdict
+      # standing rather than silently demoting every row of a legacy table.
+      ok <- if (is.na(er)) ok else er >= min_effective_records
+    }
+    isTRUE(ok)
   } else if (has_tier) {
     !is.na(winner_row$model_tier[[1L]])
   } else {

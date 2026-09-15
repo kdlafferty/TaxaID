@@ -42,10 +42,23 @@
 #'
 #' @section Output schema (kernel-priors redesign):
 #' The returned `$priors` table uses the post-redesign schema: `prior_branch`
-#' (here always `"resident_observed"`: species with real local evidence in
-#' the focal habitat) and `effective_records` (the species' kernel-effective
-#' record count `c_i * n_eff / W`, in units of records) replace the retired
-#' `model_tier` tier1/tier2 vocabulary. Undetected/evidence/domestic rows
+#' (here always `"kernel_estimated"` -- renamed from `"resident_observed"`
+#' on 2026-09-14, see below) and `effective_records` (the species'
+#' kernel-effective record count `c_i * n_eff / W`, in units of records)
+#' replace the retired `model_tier` tier1/tier2 vocabulary.
+#'
+#' `prior_branch` is written as a CONSTANT on every row this function emits.
+#' It records which generator produced the row, not how much evidence stands
+#' behind it -- that is `effective_records`, and it spans roughly ten orders
+#' of magnitude within this one branch, continuously and with no natural
+#' break. The old name `"resident_observed"` asserted an evidence claim that
+#' was never tested: on the real PtConception 12S priors 44.9% of labelled
+#' rows carried under one effective record (64.9% at 18S), yet every one of
+#' them read as an observed resident downstream. Consumers that need an
+#' evidence claim must threshold `effective_records` themselves; see
+#' [TaxaAssign::posterior_consensus()]'s `min_effective_records`. Every
+#' reader in this ecosystem still accepts `"resident_observed"`, so tables
+#' checkpointed before the rename keep working. Undetected/evidence/domestic rows
 #' belong to other branches and are appended by their own generators, not
 #' this function. A species whose nearby records are all classified to a
 #' habitat other than `site_habitat` yields NO resident row here at all and
@@ -510,7 +523,22 @@ estimate_kernel_priors <- function(occurrence_data,
     beta = beta,
     theta_mean = theta,
     theta_sd = theta_sd,
-    prior_branch = "resident_observed",
+    # 2026-09-14: renamed from "resident_observed". That name asserted an
+    # evidence claim this function never tested -- it is written as a
+    # CONSTANT on every row the estimator emits, whatever stands behind it.
+    # Measured on the real PtConception 12S priors, 215 of 479 labelled rows
+    # (44.9%) rested on under ONE Kish effective record and the minimum was
+    # 0.0000; at 18S it was 987 of 1521 (64.9%). Two consumers read the label
+    # as a real claim about local evidence (TaxaAssign::posterior_consensus()'s
+    # winner_has_occurrence_record, which feeds the published Axis-1
+    # plausibility categories, and join_priors()'s promotion gate), so the
+    # name was making a statement the data did not support. "kernel_estimated"
+    # says what the row IS: a kernel estimate. How much evidence stands behind
+    # it is `effective_records`, right here, for a consumer to threshold --
+    # which is now what posterior_consensus(min_effective_records=) does.
+    # The old string is still accepted everywhere it is read, so prior tables
+    # checkpointed before today keep working unchanged.
+    prior_branch = "kernel_estimated",
     effective_records = c_eff,
     # TRUE by construction (records are stratified to the focal habitat before
     # weighting) -- and load-bearing downstream: TaxaAssign::join_priors()'s

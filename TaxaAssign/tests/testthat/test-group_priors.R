@@ -91,9 +91,41 @@ test_that("stops on missing required columns", {
   p <- .priors()
   p$theta_mean <- NULL
   expect_error(compute_group_priors(p, .taxonomy()), "theta_mean")
+  # A rank named EXPLICITLY and absent is still an error -- you asked for it.
   t <- .taxonomy()
   t$genus <- NULL
-  expect_error(compute_group_priors(.priors(), t), "genus")
+  expect_error(
+    compute_group_priors(.priors(), t, rank_cols = c("species", "genus")),
+    "genus"
+  )
+})
+
+test_that("a DEFAULT rank absent from taxonomy_map is skipped, not an error", {
+  # 2026-09-14: the default widened to reach order/class, so it can no longer
+  # abort on a rank the caller never asked for -- most real taxonomy_maps stop
+  # at family. Explicit requests stay strict (test above); defaults adapt.
+  t <- .taxonomy()
+  t$genus <- NULL
+  expect_message(
+    gp <- compute_group_priors(.priors(), t),
+    "skipped"
+  )
+  expect_false("genus" %in% gp$rank)
+  expect_true("family" %in% gp$rank)
+})
+
+test_that("order-rank groups are produced when taxonomy_map carries them", {
+  # The real defect this closes: a consensus resolving at ORDER rank found no
+  # group row, read consensus_has_occurrence_record = FALSE and was reported
+  # "unprecedented" from the rank gap alone. Real case, PtConception 12S --
+  # the Perciformes unit (Scorpaenichthys + Hexagrammos), 20 observations,
+  # dropped from the export after the skepticism gate acted on that flag.
+  t <- .taxonomy()
+  t$order <- "Perciformes"
+  gp <- suppressMessages(compute_group_priors(.priors(), t))
+  expect_true("order" %in% gp$rank)
+  expect_true("Perciformes" %in% gp$taxon[gp$rank == "order"])
+  expect_gt(gp$theta_sum[gp$rank == "order" & gp$taxon == "Perciformes"], 0)
 })
 
 

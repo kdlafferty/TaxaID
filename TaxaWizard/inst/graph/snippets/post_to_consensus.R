@@ -38,7 +38,7 @@ group_priors_obj <- if (isTRUE({{include_group_priors}})) {
 # TaxaAssign::compute_group_priors(allowed_branches=) now applies at group scope.
 # Set {{include_downranking}} to FALSE to skip entirely.
 species_reference_df <- if (isTRUE({{include_downranking}})) {
-  .not_clamp <- if ("prior_branch" %in% names({{taxaexpect_priors_var}})) {{taxaexpect_priors_var}}$prior_branch %in% c("resident_observed", "transport") else if ("evidence_sources" %in% names({{taxaexpect_priors_var}})) !({{taxaexpect_priors_var}}$evidence_sources %in% "distance_clamp") else rep(TRUE, nrow({{taxaexpect_priors_var}}))
+  .not_clamp <- if ("prior_branch" %in% names({{taxaexpect_priors_var}})) {{taxaexpect_priors_var}}$prior_branch %in% c("kernel_estimated", "resident_observed", "transport") else if ("evidence_sources" %in% names({{taxaexpect_priors_var}})) !({{taxaexpect_priors_var}}$evidence_sources %in% "distance_clamp") else rep(TRUE, nrow({{taxaexpect_priors_var}}))
   {{taxaexpect_priors_var}}[.not_clamp, , drop = FALSE] |>
     dplyr::filter(!is.na(taxon_name)) |>
     dplyr::distinct(taxon_name) |>
