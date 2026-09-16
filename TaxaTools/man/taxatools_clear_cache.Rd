@@ -2,13 +2,14 @@
 % Please edit documentation in R/common_names.R
 \name{taxatools_clear_cache}
 \alias{taxatools_clear_cache}
-\title{Report and clear the scientific_to_common() cache}
+\title{Report and clear the TaxaTools on-disk caches}
 \usage{
 taxatools_clear_cache(cache_dir, older_than_days = NULL, dry_run = FALSE)
 }
 \arguments{
 \item{cache_dir}{Character. The directory passed to
-\code{scientific_to_common(cache_dir = )}.}
+\code{scientific_to_common(cache_dir = )} or
+\code{fetch_worms_attributes(cache_dir = )}.}
 
 \item{older_than_days}{Numeric or \code{NULL}. Only files older than this
 many days are targeted; \code{NULL} (default) targets every file.}
@@ -20,12 +21,19 @@ Invisibly, the data frame of targeted files (see
 \code{\link{list_cache_files}}).
 }
 \description{
-\code{scientific_to_common(cache_dir = )} keeps one small \code{.rds} per
-looked-up name. This helper reports what the directory holds and deletes
-it (optionally only files older than \code{older_than_days}), via the
-shared \code{\link{report_and_clear_cache}} engine -- the same shape as
+Covers both of the package's file-per-key caches:
+\code{scientific_to_common(cache_dir = )} (one \code{.rds} per looked-up
+name) and \code{\link{fetch_worms_attributes}(cache_dir = )} (one
+\code{.rds} per looked-up taxon). This helper reports what the directory
+holds and deletes it (optionally only files older than
+\code{older_than_days}), via the shared
+\code{\link{report_and_clear_cache}} engine -- the same shape as
 \code{TaxaFetch::taxafetch_clear_cache()} and
 \code{TaxaFlag::taxaflag_clear_cache()}.
+}
+\details{
+Note that WoRMS attributes carry no TTL because they are curated and do not
+drift between runs; clearing them is how you pick up a WoRMS revision.
 }
 \examples{
 \dontrun{

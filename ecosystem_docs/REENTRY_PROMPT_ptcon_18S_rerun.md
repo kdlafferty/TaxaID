@@ -1,6 +1,42 @@
 # Re-run PtConception 18S under the corrected sampling-group classifier
 
-**Status: OPEN, not started. READY TO RUN as of 2026-09-15 -- see "Prep" below.**
+**Status: RUN 2026-09-15 AND CLOSED for its stated purpose.** The code changes
+under test are confirmed working (see "Outcome" immediately below). Two things
+are NOT finished and are tracked elsewhere: both NCBI reference screens are
+incomplete (NCBI BLAST throttling), and the `XML_PARSE_HUGE` bug the run
+exposed has its own file, `REENTRY_PROMPT_xml_parse_huge_reference_fetch.md`.
+
+## Outcome (2026-09-15)
+
+Run took **8 h 34 m** and halted at the end of Step 9 on
+`on_unreviewed = "error"` -- the guard firing correctly, not a crash. Step 9 was
+resumed from `consensus_final.rds` at `taxa_per_call = 4L` (0 unreviewed,
+19/19 batches clean) and Step 10 re-run. All outputs exist.
+
+**Confirmed working:**
+
+| Change | Verdict |
+|---|---|
+| `TaxaTools::assign_sampling_group()` | YES -- catch-all audit clean (0 non-Animalia in `macroinvertebrates`); diatoms 2,773 -> phytoplankton; copepods 75 rows; kingdom guard routed 100 protist rows to `NA` |
+| Phytoplankton floor consequence | YES -- 1,203 -> 3,977 records (3.31x), price 2.39e-03 -> 7.09e-04 |
+| `on_unreviewed = "error"` | YES -- it fired, catching 75 unreviewed sets / 123 NA rows. Non-answers confirmed not cached |
+| `prior_branch` rename | YES for the new name (1,511 `kernel_estimated`, zero `resident_observed`). The backward-compat branch was NOT exercised |
+| Group priors ORDER/CLASS coverage | YES where data exists -- 6 of 103 order-rank rows classified `expected`, impossible before the fix |
+| `filter_gbif_quality(near_zero_buffer_m)` | Exercised, 0 rows affected, as predicted |
+
+**Six claims in this document were WRONG and are corrected inline below:**
+items 1 and 3 (ungrouped/protist counts), item 6 (`not_modeled` premise),
+item 5 (unreachable check), prep item 4 (nonexistent knob), and precondition 3
+(wrong NCBI service). Each is marked `** CORRECTED 2026-09-15 **`.
+
+**Fixes applied to the workflow the same day:** F5 (Step 10 `sampling_group`,
+was a known open finding in `fable_ecosystem_review_2026-09-13.md`),
+`taxa_per_call` 10L -> 4L, and `SCREENS_FROM_CHECKPOINT` ported from the 12S
+sibling.
+
+---
+
+**Original prompt follows, with corrections marked.**
 
 Originally scheduled after `REENTRY_PROMPT_workflow_structure_audit.md`; the
 user has chosen to run it earlier, in its own session, because it needs a
@@ -47,6 +83,12 @@ The per-group numbers for 18S are **labelled stale** in
 `fable_ecosystem_review_2026-09-13.md`. Both labels should be removed by
 whoever completes this run, and replaced with the new numbers.
 
+> **DONE 2026-09-15.** Both labels removed and replaced with measured numbers.
+> Also corrected there: the `Liliopsida` correction is INERT at this site (all
+> 2,125 records are Alismatales, already caught by the seagrass rule), and
+> `Zygnematophyceae` has zero records either spelling -- so the entire
+> phytoplankton move is the diatom fix alone.
+
 ## Prep (verified 2026-09-15, before you start)
 
 **1. Nothing needs installing. Do not install anything.**
@@ -86,7 +128,21 @@ packageDescription("TaxaFlag")$Built     # expect 2026-09-14 23:08 or later
 **3. NCBI is healthy** -- checked 2026-09-15, `esearch` HTTP 200 in 0.31 s.
 The precondition below is satisfied. Re-check if you start much later.
 
+> ** CORRECTED 2026-09-15 ** This checks the WRONG SERVICE. `esearch` is eutils;
+> the expensive dependency in the screens is NCBI **BLAST**
+> (`blast.ncbi.nlm.nih.gov`), a separate service with separate load. On the real
+> run eutils stayed fast all day -- the 21,899-sequence reference fetch sailed
+> through -- while BLAST returned 0 bytes after 30 min and tripped both breakers.
+> A healthy eutils says nothing about BLAST queue depth. Probe the BLAST URL API
+> instead, or accept that the screens may not complete.
+
 **4. Decide `SCREENS_FROM_CHECKPOINT` deliberately** (see Preconditions).
+
+> ** CORRECTED 2026-09-15 ** This knob DID NOT EXIST in the 18S script -- it was
+> only ever in `PtConceptionWorkflow_12S_single_site.R:48`. The screens therefore
+> ran for real, and NCBI BLAST throttling tripped the circuit breaker on both.
+> The gate has since been ported to the 18S script (defaulting TRUE, matching the
+> 12S sibling), so this item is actionable from now on.
 
 **5. Expect a long run and do not interrupt it.** The comparable PtCon 12S
 full run took ~1 h 53 m cold. 18S is larger.
@@ -129,6 +185,35 @@ Beyond the five checks below, which all still apply:
    correctly reports `not_modeled` -- that is honest, and it is enough to stop
    the skepticism gate firing. Adding an order threshold is a scientific
    choice nobody has made yet.
+
+   > ** CORRECTED 2026-09-15 ** The premise is wrong. `not_modeled` is NOT the
+   > fallback for a rank lacking an `expected_theta_threshold` entry -- it is
+   > reached ONLY when `consensus_has_occurrence_record` is `NA`. The
+   > classification is driven entirely by that one column:
+   >
+   > | `consensus_has_occurrence_record` | expected | not_modeled | unexpected | unprecedented |
+   > |---|---|---|---|---|
+   > | FALSE | 0 | 0 | 0 | 9544 |
+   > | TRUE | 1042 | 0 | 381 | 0 |
+   > | NA | 0 | 1 | 0 | 0 |
+   >
+   > A `FALSE` short-circuits to `unprecedented` at EVERY rank, order included.
+   > Measured: 103 order-rank rows, of which **6 read `expected`** (each needed an
+   > order-rank group row, which was impossible before the ORDER/CLASS fix -- so
+   > the fix demonstrably works where the data exists) and **97 read
+   > `unprecedented`**, having no order-rank occurrence record at all.
+   >
+   > This reconciles with the PtCon 12S case cited above: there the recovered
+   > 20-observation unit HAD an occurrence record at order rank, escaped
+   > `unprecedented`, and only then hit the missing-threshold branch. This
+   > document generalised from that single case. **The reassurance does not
+   > transfer**: whatever the skepticism gate does with `unprecedented`, it will
+   > still do for these 97 rows.
+   >
+   > Context: 9,544 of 10,968 rows (87%) are `unprecedented` across ALL ranks,
+   > which is not order-specific -- it reflects this workflow's own documented
+   > warning that the family-based GBIF search misses marine planktonic/algal
+   > taxa. For an 18S assay most detected diversity has no regional record.
 7. **`prior_branch` should read `kernel_estimated`** in freshly generated
    priors. If it still reads `resident_observed`, the kernel fit came from a
    cache written before the rename -- which is fine and expected, and is
@@ -163,13 +248,29 @@ Beyond the five checks below, which all still apply:
 1. **Ungrouped rows: expect zero.** Any non-zero count means the scheme needs
    another clause, and the kingdom guard should have routed it to `NA` rather
    than into a stratum.
+
+   > ** CORRECTED 2026-09-15 ** Expect **100 `NA`**, not zero, and that is the
+   > CORRECT outcome -- it is the protist tail of item 3, which this document
+   > wrongly predicted would be absent from this pool. All 100 carry kingdom
+   > Chromista (80) or Protozoa (20), so the kingdom guard routed every one to
+   > `NA` rather than into a stratum, exactly as designed. The real check is
+   > that NONE landed in a stratum -- confirmed, 0 non-Animalia rows in
+   > `macroinvertebrates`. The "0 ungrouped of 2,185,193" figure belongs to the
+   > classifier's validation pool, not to PtCon 18S's 1,372,777.
 2. **Per-group record counts and dark-diversity floors**, against the numbers
    above. Phytoplankton is the one to watch.
 3. **The residual protist tail.** `Myzozoa`, `Conoidasida`, `Foraminifera`,
    `Radiolaria`, `Cercozoa`, `Oomycota`, `Haptophyta` and `Cryptophyta` are
    deliberately NOT named in the default scheme. They resolve to `NA` via the
    kingdom guard, which is the safe failure, and there are zero such records
-   in the GBIF occurrence pool. They would matter on the MATCH side, where an
+   in the GBIF occurrence pool.
+   ** CORRECTED 2026-09-15: there are 100, not zero ** -- Foraminifera 56,
+   Oomycota 18, Cercozoa 12, Euglenozoa 8, Ochrophyta 6. The MECHANISM worked
+   exactly as described (all resolved to `NA` via the kingdom guard); only the
+   count was wrong. But see the `__ungrouped__` note in
+   `REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md`: `NA` is NOT the
+   end of the story downstream -- `estimate_kernel_priors()` gathers those rows
+   into their own stratum. They would matter on the MATCH side, where an
    18S assay is full of protists, which is exactly why
    `CaliforniaIntertidal/scope_classifier.R` keeps its own divergent
    classifier and was deliberately not migrated.
@@ -177,6 +278,13 @@ Beyond the five checks below, which all still apply:
    attribute and named in the log. Expect empty.
 5. **The unreviewed-rows check**, if that fix has landed by then:
    `sum(is.na(reviewed$llm_habitat_plausibility))` should be zero.
+
+   > ** CORRECTED 2026-09-15 ** This check CANNOT reach zero and is the wrong
+   > measure. It counts 1 on a clean run -- `ESV_016168` has `consensus_taxon`,
+   > `most_likely_slash` and `consensus_rank` all `NA` and `plausible_taxa` empty,
+   > so there was no taxon to review. It is a taxonless observation, not an
+   > unreviewed one. Use the guard's own measure instead:
+   > `length(attr(reviewed, "unreviewed_taxa"))`, which IS 0.
 
 ## Risk to remember
 

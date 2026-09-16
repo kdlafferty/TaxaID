@@ -391,15 +391,53 @@ Step 10's `any_of("sampling_group")` split is dead code at this site.
 Cosmetic: 9 `Unknown or uninitialised column: usageKey/rank` warnings from
 `get_keys_from_context()`'s rank-recovery fallback at Step 3.
 
-**2026-09-13 correction note:** this run's numbers were computed under the
-pre-2026-09-13 inline `sampling_group` classifier. The corrected scheme (now
-`TaxaTools::assign_sampling_group()`, wired into this workflow the same day)
-moves 114,744 Liliopsida records out of `macroinvertebrates` into
-`other_vascular_plants`, and adds 2,773 diatoms + 66 copepods + 7
-Zygnematophyceae records to their proper strata. Every per-group quantity
-built on this run's `occurrences_clean` -- shared-effort denominators,
-per-group Good-Turing budgets, each stratum's dark-diversity floor -- is
-stale until 18S is re-run.
+**2026-09-13 correction note -- RESOLVED 2026-09-15.** This run's numbers were
+computed under the pre-2026-09-13 inline `sampling_group` classifier. 18S has
+now been re-run under `TaxaTools::assign_sampling_group()`; the numbers below
+are the measured replacements and are no longer stale.
+
+Measured on the 2026-09-15 rerun (`occurrences_clean`, 1,372,777 records --
+note this pool is NOT the 2,185,193 the classifier was validated against, so
+the record counts predicted there do not transfer):
+
+| group | records | Good-Turing price | basis |
+|---|---|---|---|
+| macroinvertebrates | 1,271,334 | 4.31e-06 | own_group |
+| other_vascular_plants | 64,523 | 4.04e-06 | pooled (borrowed) |
+| zooplankton | 4,476 | 2.91e-03 | own_group |
+| phytoplankton | 3,977 | 7.09e-04 | own_group |
+| macroalgae | 25,836 | 3.67e-04 | own_group |
+| sea_grasses | 2,125 | 4.04e-06 | pooled (borrowed) |
+| fishes | 392 | 4.04e-06 | pooled (borrowed) |
+| parasites | 9 | 4.04e-06 | pooled (borrowed) |
+| terrestrial_arthropods | 4 | 4.04e-06 | pooled (borrowed) |
+| meiofauna | 1 | -- | kernel fit skipped, no usable Marine record |
+| `__ungrouped__` | 100 | 4.04e-06 | pooled (borrowed) |
+
+Of the four gaps the corrected scheme fixed, only TWO bite at this site:
+**diatoms** (2,773 `Bacillariophyceae`, all to `phytoplankton`) and **copepods**
+(75 `Copepoda`, 66 zooplankton + 9 parasites). **`Liliopsida` is inert here** --
+all 2,125 records are Alismatales and the seagrass rule already caught them, so
+they land in `sea_grasses`, not `other_vascular_plants`; the 114,744 figure is
+from the validation pool, not this one. **`Zygnematophyceae` has zero records**
+either spelling, so it cannot be tested here.
+
+The phytoplankton move is therefore ENTIRELY the diatom fix: 1,203 -> 3,977
+records (3.31x), price 2.39e-03 -> 7.09e-04. The pre-fix 1,203 is exactly
+Dinophyceae 1,193 + Trebouxiophyceae 8 + Chlorophyceae 3, all of which were
+already landing correctly.
+
+Note the direction: a LARGER sample shrinks Good-Turing missing mass, so
+undetected phytoplankton taxa are now priced as LESS likely to be
+present-but-undetected, not more.
+
+**`__ungrouped__` is real and new.** `estimate_kernel_priors()` does not drop
+NA-`sampling_group` rows -- it collects them into an `__ungrouped__` stratum
+with its own budget. Here that is the 100-record protist tail, and its own
+`theta_present` (0.2398 on n_eff 5.66, f1=1, f2=0) was the HIGHEST of any
+group, i.e. pure noise. `apply_undetected_evidence()`'s guards rejected it and
+substituted the pooled fallback, so nothing unsound reached the priors -- but
+the guard, not the kingdom guard, is what protects this.
 
 Console log: every message after the first (primer) crash is missing while
 prints kept arriving -- the handlers were gone but the sink was not (a mid-run

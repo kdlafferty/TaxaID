@@ -1,4 +1,63 @@
 # CLAUDE.md -- TaxaTools
+# 2026-09-15 (Opus 5): NEW fetch_worms_attributes() -- deliverable 1 of
+# ecosystem_docs/REENTRY_PROMPT_worms_marine_filter.md. A by-NAME WoRMS taxon-attribute
+# lookup; the ecosystem had none. It is in TaxaTools, not TaxaFetch as the prompt said,
+# because it is a name->attribute lookup in the shape of verify_taxon_names()/
+# change_backbone(), not an occurrence fetch -- TaxaFetch's own DESCRIPTION scopes it to
+# occurrence data and TaxaTools' already names WoRMS as a backbone. GBIF remains the
+# single occurrence source; the two OBIS functions stay declined.
+#
+# WHY IT EXISTS: TaxaHabitat::build_habitat_lookup() asks an LLM to pick ONE of four
+# EXCLUSIVE habitat categories, so intertidal foragers that stand on rock come back
+# Terrestrial (381 of 578 PtCon birds). WoRMS is MULTI-LABEL -- the black oystercatcher is
+# marine AND terrestrial -- which is the representation the scheme could not express. The
+# rule is keep if is_marine OR is_brackish, NEVER "drop if terrestrial", and it handles
+# diadromy with no special case (O. mykiss / A. sapidissima: M+B+F, terrestrial FALSE).
+# Apply it at ESV level, dropping an observation only when NO candidate is in scope.
+#
+# FOUR CLAIMS IN THE PROMPT WERE CHECKED AGAINST THE LIVE API AND TWO WERE WRONG.
+#   (1) "Cervus elaphus, Homo sapiens, Sus scrofa, Bos taurus, Gallus gallus are not in
+#   the register at all. Absence is the filter." FALSE for four of the five -- Homo sapiens
+#   (1455977), Sus scrofa (1469456), Bos taurus (1506698) and Gallus gallus (1463738) are
+#   ALL in WoRMS now. The outcome is unchanged (they cut on marine=0/NULL) but the
+#   MECHANISM is flags, not absence, so a filter written to trust absence is resting on a
+#   claim that has already moved once.
+#   (2) The `wrims` column is NOT a WoRMS field. It came from the OBIS checklist, which is
+#   declined. There is no introduced/alien key among the 42 public AphiaAttributeKeys and
+#   Carcinus maenas -- a flagship WRiMS species -- carries none. It is DERIVED here from
+#   AphiaDistributionsByAphiaID establishmentMeans == "Alien" (verified: C. maenas TRUE,
+#   O. mykiss TRUE, Megastraea undosa FALSE, Homo sapiens FALSE). ~70 KB/taxon, so opt-in.
+#   (3) "scope_filter_esvs() takes a per-taxon logical vector, so a WoRMS verdict drops
+#   straight in with no change" -- it takes `group` + `keep_groups`, i.e. a CHARACTER
+#   vector. Trivial to adapt (group = ifelse(keep, "marine", "out")), but not a no-op.
+#   (4) Confirmed as stated: the shorebird verdicts, the diadromous verdicts, ncbi_id
+#   coverage, and Teleostei as a working class (293496) where GBIF has no node.
+#
+# THREE THINGS THE FLAGS DO THAT A NAIVE READING MISSES. WoRMS sends `null`, not 0, for a
+# realm it has not assessed -- NOT the same claim, so the four is_* columns are logical
+# WITH NA and marine_scope (never NA, `%in% TRUE` not `|`) is the column to filter on; an
+# NA keep-vector neither keeps nor drops. A name can match SEVERAL exact records ("Ficus"
+# is a marine gastropod genus AND the fig genus), so homonyms are ORed rather than
+# resolved, with worms_ambiguous/habitat_conflict marking them. And a fuzzy match is not
+# treated as a match by default (accept_fuzzy=FALSE): "Mytilus edulus" resolves
+# phonetically, and the same machinery would hand a terrestrial homonym's flags to a
+# marine name. Dreissena polymorpha (M=0,B=1,F=1) is KEPT by the brackish clause -- the
+# clause diadromous fish need also retains brackish-tolerant freshwater invasives.
+#
+# CACHE: one .rds per (name, accept_fuzzy), the scientific_to_common()/review_assignments()
+# file-per-key shape; taxatools_clear_cache() now matches BOTH patterns. No TTL (curated,
+# does not drift). The file records WHICH extras were answered, so widening extras later
+# re-fetches only the missing one and a row whose ncbi_id is NA because it was never ASKED
+# FOR is not cached as "WoRMS has none" -- that cached-non-answer shape is what cost 20
+# PtCon 12S observations in the LLM review. A failed request is never cached and is
+# reported SEPARATELY from an absence (attr "request_failed_taxa"), because a 500 reported
+# as "not in WoRMS" reads as a real verdict to drop the taxon. A warm run rewrites nothing,
+# so it cannot reset the mtimes taxatools_clear_cache(older_than_days=) prunes on.
+# devtools::test() 1097/0 (was 992), check() 0/0/0. NOT reinstalled, NOT committed.
+# DELIVERABLE 2 OF THE PROMPT IS NOT DONE: no workflow wires the filter in yet, and none of
+# the four MUST-VALIDATE steps (run against real PtCon 12S/18S match objects, check
+# removals against current consensus, check the unreferenced/expanded hypotheses, quantify
+# the saving on top of the taxonomic filter) has been run.
 # 2026-09-14 (Opus 5): cache policy review P4/P6/P5 (ecosystem_docs/
 # CACHE_POLICY_REVIEW_2026_09_14.md). NEW cache_ok() -- the ecosystem's staleness
 # primitive, lifted verbatim from three byte-identical copies pasted into workflow

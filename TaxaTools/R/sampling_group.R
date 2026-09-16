@@ -352,7 +352,10 @@ default_sampling_scheme <- function() {
 #'   because of this cost -- most callers already have GBIF-vocabulary
 #'   taxonomy and gain nothing from paying it. A rank name that fails to
 #'   resolve keeps its ORIGINAL value rather than becoming \code{NA} (matches
-#'   the source and never silently loses taxonomy).
+#'   the source and never silently loses taxonomy), and so does one the
+#'   backbone resolves at the WRONG RANK -- see the \emph{Rank agreement}
+#'   section, which is what stops a homonym at another rank from overwriting
+#'   the row's whole lineage.
 #' @param backbone_id Integer backbone ID passed to
 #'   \code{\link{verify_taxon_names}} when \code{harmonise = TRUE}. Default
 #'   \code{11L} (GBIF), matching \code{default_sampling_scheme()}'s own
@@ -406,6 +409,85 @@ default_sampling_scheme <- function() {
 #' staying silent -- but it is a heuristic, not exhaustive, and passing
 #' \code{harmonise = TRUE} (or verifying the input's backbone directly) is
 #' the reliable fix, not a substitute for reading the warning.
+#'
+#' @section Rank agreement (\code{harmonise = TRUE}):
+#' The harmoniser resolves each row's finest available rank NAME and then
+#' overwrites \code{kingdom}/\code{phylum}/\code{class}/\code{order} from the
+#' lineage the backbone returns. That is only safe if the backbone's answer is
+#' about the SAME TAXON the probe column named, so a resolution is accepted
+#' only when one of two things holds:
+#' \enumerate{
+#'   \item \code{\link{verify_taxon_names}}'s \code{matched_rank} equals the
+#'     rank of the probe column. This is the ordinary case, and it is also what
+#'     keeps SYNONYM resolution working -- an outdated spelling resolves to the
+#'     backbone's accepted name, which is by definition not the name that was
+#'     asked about, so only the rank can vouch for it.
+#'   \item The rank differs, but the returned lineage carries the probe name
+#'     ITSELF at the probe's own rank. That is a same-clade duplication rather
+#'     than a homonym: GBIF holds a genus \emph{Spionidae} inside family
+#'     Spionidae and a genus \emph{Arthropoda} inside phylum Arthropoda, so the
+#'     terminal match is a genus while every rank above it is exactly the
+#'     lineage the row already had.
+#' }
+#' A row failing both keeps its ORIGINAL taxonomy -- the same fallback an
+#' unresolved name gets -- and is named in a warning.
+#'
+#' The case that forced this: GBIF's backbone contains a tachinid \strong{fly
+#' genus} named \emph{Polychaeta}
+#' (\code{Animalia|Arthropoda|Insecta|Diptera|Tachinidae|Polychaeta}, verified
+#' live). Without the gate, a row whose \code{class} column reads
+#' \code{"Polychaeta"} -- the annelid class, correct in NCBI -- was matched
+#' against that genus and had its whole lineage overwritten
+#' (\code{Annelida} -> \code{Arthropoda}, \code{Polychaeta} ->
+#' \code{Insecta}, and a fabricated \code{order = "Diptera"}). On the
+#' 2026-09-15 PtConception 18S run that hit 7 marine polychaete taxa across 17
+#' rows, grouping every one of them as \code{terrestrial_arthropods} and --
+#' because a downstream marine filter reads the harmonised phylum/class --
+#' dropping them from the species list entirely, silently.
+#'
+#' \strong{And \emph{Polychaeta} was not alone.} Scanning every
+#' (name, rank) pair in that run's NCBI-side taxonomy against GBIF -- 288
+#' pairs -- found 15 rank disagreements. Rule 2 rescues 8 of them (the
+#' \emph{Arthropoda} and polychaete-family duplications above). Of the 7 the
+#' gate rejects, five are genuine cross-lineage homonyms that would each have
+#' rewritten a whole lineage into an unrelated one:
+#' \tabular{lll}{
+#'   \strong{name} \tab \strong{column rank} \tab \strong{what GBIF matched} \cr
+#'   Polychaeta \tab class \tab a tachinid fly genus (Insecta|Diptera) \cr
+#'   Ctenophora \tab phylum \tab a crane-fly genus (Insecta|Diptera) \cr
+#'   Ciliophora \tab phylum \tab a FUNGUS genus (Fungi|Ascomycota) \cr
+#'   Appendicularia \tab class \tab a flowering-plant genus (Plantae|Myrtales) \cr
+#'   Pilidiophora \tab class \tab a gregarine genus (Chromista|Myzozoa) \cr
+#' }
+#' Only \emph{Polychaeta}'s taxa happened to be noticed, because they were
+#' dropped; a corrupted lineage that stays marine is silent. The remaining two
+#' rejections, \code{"Bacillariophyta"} (NCBI phylum, GBIF class
+#' \code{Bacillariophyceae}) and \code{"Bigyra"} (NCBI class, GBIF phylum), are
+#' genuine NCBI-vs-GBIF rank-assignment differences for the same clade rather
+#' than homonyms. Rejecting them is harmless: the row keeps its NCBI value, the
+#' diatom rule here is class-level by design, and
+#' \code{classify_18S_functional()} keys diatoms on the class
+#' (\code{Bacillariophyceae}), never on that phylum value.
+#'
+#' A looser third rule -- accept a rank-mismatched match whose lineage contains
+#' ANY of the row's original rank values -- was considered and rejected. It
+#' rescues nothing rule 2 does not (NCBI gives diatoms no \code{kingdom} at
+#' all, so a bare \code{"Bacillariophyta"} row has no other value to test), and
+#' letting a \code{kingdom} match carry the test would re-admit
+#' \emph{Polychaeta} for any caller whose input already says
+#' \code{"Animalia"} rather than NCBI's \code{"Metazoa"}.
+#'
+#' \strong{Net effect on the real 18S run}: of the 97 unique names it resolves,
+#' 90 agree on rank outright, 6 get no GBIF match (already handled by the
+#' original-value fallback), and \emph{Polychaeta} is the single rejection --
+#' recovering all 7 taxa and 17 rows as \code{macroinvertebrates}, all passing
+#' the marine filter, with the phytoplankton, macroalgae and zooplankton counts
+#' unchanged.
+#'
+#' Because a cache written before this gate existed carries no
+#' \code{matched_rank} and so cannot be checked, such a cache is discarded and
+#' re-resolved rather than trusted -- re-running with an old \code{cache_dir}
+#' is exactly when a silent re-admission would be least likely to be noticed.
 #'
 #' @seealso \code{\link{default_sampling_scheme}}
 #' @export
@@ -570,7 +652,9 @@ assign_sampling_group <- function(taxonomy,
 #' Resolves each row's finest available rank NAME (within `rank_cols`) via
 #' verify_taxon_names()/change_backbone(), then overwrites kingdom/phylum/
 #' class/order with the resolved values. Falls back to the row's original
-#' values wherever nothing resolves.
+#' values wherever nothing resolves, OR where the backbone resolved the name
+#' at a rank other than the probe column's own rank (the homonym gate -- see
+#' the "Rank agreement" roxygen section on assign_sampling_group()).
 #' @noRd
 .harmonise_taxonomy_to_backbone <- function(taxonomy, rank_cols, backbone_id,
                                              cache_dir, verbose) {
@@ -587,13 +671,17 @@ assign_sampling_group <- function(taxonomy,
   }
 
   # Finest-first cascade: rank_cols is coarse-to-fine, so reverse it.
+  # probe_rank records WHICH column each probe name came from -- the rank the
+  # backbone's answer must agree with (see .rank_agreement_mask()).
   cascade <- rev(present)
   n <- nrow(taxonomy)
   probe_name <- rep(NA_character_, n)
+  probe_rank <- rep(NA_character_, n)
   for (r in cascade) {
     v <- norm(taxonomy[[r]])
     fill <- is.na(probe_name) & !is.na(v)
     probe_name[fill] <- v[fill]
+    probe_rank[fill] <- r
   }
 
   need <- sort(unique(stats::na.omit(probe_name)))
@@ -612,13 +700,28 @@ assign_sampling_group <- function(taxonomy,
     cache_path <- file.path(cache_dir, "sampling_group_harmonise_cache.rds")
     if (file.exists(cache_path)) {
       lookup <- readRDS(cache_path)
-      cached_n <- length(intersect(need, lookup$source_name))
-      need <- setdiff(need, lookup$source_name)
-      if (verbose) {
-        message(sprintf(
-          "assign_sampling_group: harmonise cache hit for %d name(s); %d to resolve.",
-          cached_n, length(need)
-        ))
+      # Caches written before the rank-agreement gate carry no matched_rank,
+      # so their entries CANNOT be checked. Silently reusing one would let the
+      # exact homonym this gate exists to stop (GBIF's fly genus "Polychaeta")
+      # back in through the cache on the very re-runs the gate was added for.
+      # Discard it -- re-resolving is one cheap API pass, a wrong lineage is
+      # not.
+      if (!"matched_rank" %in% names(lookup)) {
+        if (verbose) {
+          message("assign_sampling_group: harmonise cache predates the ",
+                  "rank-agreement check (no matched_rank column) and cannot ",
+                  "be verified; discarding it and re-resolving.")
+        }
+        lookup <- NULL
+      } else {
+        cached_n <- length(intersect(need, lookup$source_name))
+        need <- setdiff(need, lookup$source_name)
+        if (verbose) {
+          message(sprintf(
+            "assign_sampling_group: harmonise cache hit for %d name(s); %d to resolve.",
+            cached_n, length(need)
+          ))
+        }
       }
     }
   }
@@ -638,14 +741,33 @@ assign_sampling_group <- function(taxonomy,
       new_backbone_label = "resolved_name",
       keep_unmatched = TRUE
     )
-    keep_cols <- c("source_name", intersect(c("kingdom", "phylum", "class", "order"), names(fresh)))
+    # matched_rank is the rank the backbone ACTUALLY resolved the name at, and
+    # is taken from verify_taxon_names()'s own output rather than from
+    # change_backbone()'s pass-through, so it survives regardless of what that
+    # function chooses to keep. Without it the gate below cannot run.
+    fresh$matched_rank <- if ("matched_rank" %in% names(verified)) {
+      as.character(verified$matched_rank)[match(fresh$source_name,
+                                                verified$user_supplied_name)]
+    } else {
+      NA_character_
+    }
+    # Keep every rank the cascade can probe at (not just the four the scheme
+    # reads), because the gate below checks the returned lineage AT THE PROBE'S
+    # OWN RANK and cannot do that for a rank it did not keep.
+    keep_cols <- c("source_name", "matched_rank",
+                   intersect(unique(c("kingdom", "phylum", "class", "order", rank_cols)),
+                             names(fresh)))
     fresh <- fresh[, keep_cols, drop = FALSE]
     fresh <- fresh[!duplicated(fresh$source_name), , drop = FALSE]
 
     lookup <- if (is.null(lookup)) {
       fresh
     } else {
-      merged <- rbind(lookup[, intersect(names(lookup), names(fresh)), drop = FALSE], fresh)
+      # Take the columns the two frames share, on BOTH sides -- subsetting only
+      # `lookup` leaves the frames with different widths whenever a later batch
+      # resolves a rank the cached one never carried, and rbind() then errors.
+      shared <- intersect(names(lookup), names(fresh))
+      merged <- rbind(lookup[, shared, drop = FALSE], fresh[, shared, drop = FALSE])
       merged[!duplicated(merged$source_name), , drop = FALSE]
     }
 
@@ -661,6 +783,71 @@ assign_sampling_group <- function(taxonomy,
   }
 
   idx <- match(probe_name, lookup$source_name)
+
+  # --- Rank-agreement gate ------------------------------------------------
+  # Reject a resolution whose matched rank is not the rank of the column the
+  # probe name came from. See the roxygen section of the same name for why
+  # this is the whole check, and for the two real cases it was verified on.
+  matched_rank <- if ("matched_rank" %in% names(lookup)) {
+    tolower(trimws(as.character(lookup$matched_rank)[idx]))
+  } else {
+    rep(NA_character_, n)
+  }
+  resolved_at_all <- !is.na(idx) & !is.na(probe_name)
+
+  # Rule 1: the backbone resolved the name at the probe column's own rank.
+  # This is the ordinary case and the one that keeps SYNONYM resolution
+  # working -- an outdated spelling resolves to the accepted name, which is
+  # not the probe name, so only the rank can vouch for it.
+  rank_agrees <- !is.na(matched_rank) & matched_rank == tolower(probe_rank)
+
+  # Rule 2: the rank differs, but the returned lineage carries the probe name
+  # ITSELF at the probe's own rank. That is a same-clade duplication, not a
+  # homonym -- GBIF holds a genus Spionidae inside family Spionidae, and a
+  # genus Arthropoda inside phylum Arthropoda, so the terminal match is a
+  # genus while the lineage above it is exactly the one the row already had.
+  # Verified on the real 18S export: this rescues 8 of the 15 rank
+  # disagreements (Arthropoda + 7 polychaete family names) without admitting
+  # a single cross-lineage homonym.
+  lineage_at_probe_rank <- rep(NA_character_, n)
+  for (r in unique(stats::na.omit(probe_rank))) {
+    if (!r %in% names(lookup)) next
+    at_r <- probe_rank == r & !is.na(probe_rank)
+    lineage_at_probe_rank[at_r] <- as.character(lookup[[r]])[idx[at_r]]
+  }
+  lineage_agrees <- !is.na(lineage_at_probe_rank) &
+    lineage_at_probe_rank == probe_name
+
+  rank_disagrees <- resolved_at_all & !is.na(matched_rank) &
+    !rank_agrees & !lineage_agrees
+
+  if (any(rank_disagrees)) {
+    bad <- unique(data.frame(
+      name         = probe_name[rank_disagrees],
+      column_rank  = probe_rank[rank_disagrees],
+      matched_rank = matched_rank[rank_disagrees],
+      stringsAsFactors = FALSE
+    ))
+    bad <- bad[order(bad$name), , drop = FALSE]
+    warning(
+      "assign_sampling_group: harmonise = TRUE rejected ", nrow(bad),
+      " backbone match(es) resolved at the wrong rank (",
+      sum(rank_disagrees), " row(s)); these rows keep their ORIGINAL ",
+      "taxonomy: ",
+      paste(sprintf("%s (%s column, backbone matched a %s)",
+                    bad$name, bad$column_rank, bad$matched_rank),
+            collapse = "; "),
+      ". A name that resolves at a different rank is usually a homonym in a ",
+      "different lineage (e.g. GBIF's backbone holds a FLY GENUS named ",
+      "\"Polychaeta\"), and accepting it would overwrite the whole row's ",
+      "lineage with that other taxon's.",
+      call. = FALSE
+    )
+  }
+  # Drop the rejected matches the same way an unresolved name is dropped: the
+  # coalesce() below then falls back to the row's original values.
+  idx[rank_disagrees] <- NA_integer_
+
   out <- taxonomy
   for (r in c("kingdom", "phylum", "class", "order")) {
     if (r %in% names(lookup)) {

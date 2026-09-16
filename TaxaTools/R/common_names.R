@@ -506,17 +506,24 @@ common_to_scientific <- function(common_names,
 }
 
 
-#' Report and clear the scientific_to_common() cache
+#' Report and clear the TaxaTools on-disk caches
 #'
-#' \code{scientific_to_common(cache_dir = )} keeps one small \code{.rds} per
-#' looked-up name. This helper reports what the directory holds and deletes
-#' it (optionally only files older than \code{older_than_days}), via the
-#' shared \code{\link{report_and_clear_cache}} engine -- the same shape as
+#' Covers both of the package's file-per-key caches:
+#' \code{scientific_to_common(cache_dir = )} (one \code{.rds} per looked-up
+#' name) and \code{\link{fetch_worms_attributes}(cache_dir = )} (one
+#' \code{.rds} per looked-up taxon). This helper reports what the directory
+#' holds and deletes it (optionally only files older than
+#' \code{older_than_days}), via the shared
+#' \code{\link{report_and_clear_cache}} engine -- the same shape as
 #' \code{TaxaFetch::taxafetch_clear_cache()} and
 #' \code{TaxaFlag::taxaflag_clear_cache()}.
 #'
+#' Note that WoRMS attributes carry no TTL because they are curated and do not
+#' drift between runs; clearing them is how you pick up a WoRMS revision.
+#'
 #' @param cache_dir Character. The directory passed to
-#'   \code{scientific_to_common(cache_dir = )}.
+#'   \code{scientific_to_common(cache_dir = )} or
+#'   \code{fetch_worms_attributes(cache_dir = )}.
 #' @param older_than_days Numeric or \code{NULL}. Only files older than this
 #'   many days are targeted; \code{NULL} (default) targets every file.
 #' @param dry_run Logical. If \code{TRUE}, reports without deleting.
@@ -528,7 +535,7 @@ common_to_scientific <- function(common_names,
 #' taxatools_clear_cache("my_run_common_name_cache", dry_run = TRUE)
 #' }
 taxatools_clear_cache <- function(cache_dir, older_than_days = NULL, dry_run = FALSE) {
-  inv <- list_cache_files(cache_dir, "_common_name\\.rds$")
+  inv <- list_cache_files(cache_dir, c("_common_name\\.rds$", "_worms_attr\\.rds$"))
   report_and_clear_cache(inv, "taxatools_clear_cache", cache_dir,
     older_than_days = older_than_days, dry_run = dry_run
   )

@@ -248,3 +248,213 @@ test_that("the dead Zygnemophyceae spelling is gone from the default scheme", {
   expect_true("Zygnematophyceae" %in% classes)
   expect_true("Liliopsida" %in% classes)
 })
+
+# =============================================================================
+# harmonise = TRUE: the rank-agreement gate
+# =============================================================================
+# These stay offline by mocking verify_taxon_names() only. change_backbone()
+# runs for real, so the classification_path parsing is genuinely exercised.
+# Every row of the fixture below is a VERIFIED live GBIF answer, captured
+# 2026-09-15 against backbone 11 -- including the one that motivated the gate:
+# GBIF's backbone holds a tachinid FLY GENUS named "Polychaeta", so the annelid
+# class name resolves into Insecta|Diptera.
+
+.gbif_fixture <- data.frame(
+  user_supplied_name = c("Polychaeta", "Phyllodocida", "Thalassiosirales",
+                         "Calanoida", "Bacillariophyta", "Terebellida",
+                         "Ciliophora", "Arthropoda"),
+  matched_name = c("Polychaeta", "Phyllodocida", "Thalassiosirales",
+                   "Calanoida", "Bacillariophyceae", NA_character_,
+                   "Ciliophora", "Arthropoda"),
+  matched_rank = c("genus", "order", "order", "order", "class", NA_character_,
+                   "genus", "genus"),
+  is_synonym = FALSE,
+  classification_path = c(
+    "Animalia|Arthropoda|Insecta|Diptera|Tachinidae|Polychaeta",
+    "Animalia|Annelida|Polychaeta|Phyllodocida",
+    "Chromista|Ochrophyta|Bacillariophyceae|Thalassiosirales",
+    "Animalia|Arthropoda|Copepoda|Calanoida",
+    "Chromista|Ochrophyta|Bacillariophyceae",
+    NA_character_,
+    "Fungi|Ascomycota|Ciliophora",
+    "Animalia|Arthropoda|Arthropoda"
+  ),
+  classification_ranks = c(
+    "kingdom|phylum|class|order|family|genus",
+    "kingdom|phylum|class|order",
+    "kingdom|phylum|class|order",
+    "kingdom|phylum|class|order",
+    "kingdom|phylum|class",
+    NA_character_,
+    "kingdom|phylum|genus",
+    "kingdom|phylum|genus"
+  ),
+  score = c(0.9, 0.9, 0.9, 0.9, 0.9, NA_real_, 0.9, 0.9),
+  verified = TRUE,
+  stringsAsFactors = FALSE
+)
+
+.mock_verify <- function(names, backbone_id = 11L, ...) {
+  .gbif_fixture[match(names, .gbif_fixture$user_supplied_name), , drop = FALSE]
+}
+
+test_that("a backbone match at the wrong rank is rejected and warns", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  tx <- data.frame(kingdom = "Metazoa", phylum = "Annelida",
+                   class = "Polychaeta", order = NA_character_,
+                   stringsAsFactors = FALSE)
+  expect_warning(
+    out <- assign_sampling_group(tx, harmonise = TRUE, verbose = FALSE),
+    "resolved at the wrong rank"
+  )
+  # The whole row keeps its ORIGINAL taxonomy -- not just the class column.
+  expect_equal(out$kingdom, "Metazoa")
+  expect_equal(out$phylum, "Annelida")
+  expect_equal(out$class, "Polychaeta")
+  expect_true(is.na(out$order))
+  expect_equal(out$sampling_group, "macroinvertebrates")
+})
+
+test_that("the warning names the taxon, its column rank and the matched rank", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  tx <- data.frame(kingdom = "Metazoa", phylum = "Annelida",
+                   class = "Polychaeta", order = NA_character_,
+                   stringsAsFactors = FALSE)
+  w <- tryCatch(assign_sampling_group(tx, harmonise = TRUE, verbose = FALSE),
+                warning = conditionMessage)
+  expect_match(w, "Polychaeta \\(class column, backbone matched a genus\\)")
+})
+
+test_that("rank-agreeing matches still harmonise NCBI vocabulary to GBIF", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  tx <- data.frame(
+    kingdom = c(NA_character_, "Metazoa", "Metazoa"),
+    phylum  = c("Bacillariophyta", "Arthropoda", "Annelida"),
+    # Thalassiosirophyceae and Copepoda are NCBI-flavoured class names the
+    # GBIF-vocabulary scheme cannot read; harmonising is the point of the flag.
+    class   = c("Thalassiosirophyceae", "Copepoda", "Polychaeta"),
+    order   = c("Thalassiosirales", "Calanoida", "Phyllodocida"),
+    stringsAsFactors = FALSE
+  )
+  out <- expect_no_warning(
+    assign_sampling_group(tx, harmonise = TRUE, verbose = FALSE)
+  )
+  expect_equal(out$class, c("Bacillariophyceae", "Copepoda", "Polychaeta"))
+  expect_equal(out$phylum, c("Ochrophyta", "Arthropoda", "Annelida"))
+  expect_equal(out$sampling_group,
+               c("phytoplankton", "zooplankton", "macroinvertebrates"))
+})
+
+test_that("a name with no backbone match keeps its original value, silently", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  tx <- data.frame(kingdom = "Metazoa", phylum = "Annelida",
+                   class = "Polychaeta", order = "Terebellida",
+                   stringsAsFactors = FALSE)
+  # No match is not a rank disagreement, so the gate must stay quiet.
+  out <- expect_no_warning(
+    suppressMessages(assign_sampling_group(tx, harmonise = TRUE, verbose = FALSE))
+  )
+  expect_equal(out$order, "Terebellida")
+  expect_equal(out$phylum, "Annelida")
+  expect_equal(out$sampling_group, "macroinvertebrates")
+})
+
+test_that("a rank-mismatched match is rejected even coming from the cache", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  cd <- withr::local_tempdir()
+  tx <- data.frame(kingdom = "Metazoa", phylum = "Annelida",
+                   class = "Polychaeta", order = NA_character_,
+                   stringsAsFactors = FALSE)
+  suppressWarnings(assign_sampling_group(tx, harmonise = TRUE,
+                                         cache_dir = cd, verbose = FALSE))
+  lookup <- readRDS(file.path(cd, "sampling_group_harmonise_cache.rds"))
+  expect_true("matched_rank" %in% names(lookup))
+
+  # Second call is served entirely from the cache -- the gate must still fire.
+  expect_warning(
+    out <- assign_sampling_group(tx, harmonise = TRUE, cache_dir = cd,
+                                 verbose = FALSE),
+    "resolved at the wrong rank"
+  )
+  expect_equal(out$class, "Polychaeta")
+  expect_equal(out$sampling_group, "macroinvertebrates")
+})
+
+test_that("a cache written before the gate is discarded, not trusted", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  cd <- withr::local_tempdir()
+  # Exactly what the 2026-09-15 PtConception run left on disk: the corrupted
+  # fly-genus lineage, and no matched_rank column to catch it with.
+  saveRDS(
+    data.frame(source_name = "Polychaeta", kingdom = "Animalia",
+               phylum = "Arthropoda", class = "Insecta", order = "Diptera",
+               stringsAsFactors = FALSE),
+    file.path(cd, "sampling_group_harmonise_cache.rds")
+  )
+  tx <- data.frame(kingdom = "Metazoa", phylum = "Annelida",
+                   class = "Polychaeta", order = NA_character_,
+                   stringsAsFactors = FALSE)
+  expect_warning(
+    out <- assign_sampling_group(tx, harmonise = TRUE, cache_dir = cd,
+                                 verbose = FALSE),
+    "resolved at the wrong rank"
+  )
+  expect_equal(out$phylum, "Annelida")
+  expect_equal(out$class, "Polychaeta")
+  expect_equal(out$sampling_group, "macroinvertebrates")
+})
+
+test_that("merging a fresh batch into a narrower cache does not error", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  cd <- withr::local_tempdir()
+  # A cached frame carrying FEWER rank columns than the fresh batch will: the
+  # old rbind() subset only the cached side and blew up on the width mismatch.
+  saveRDS(
+    data.frame(source_name = "Bacillariophyta", matched_rank = "class",
+               kingdom = "Chromista", phylum = "Ochrophyta",
+               stringsAsFactors = FALSE),
+    file.path(cd, "sampling_group_harmonise_cache.rds")
+  )
+  tx <- data.frame(kingdom = c(NA_character_, "Metazoa"),
+                   phylum = c("Bacillariophyta", "Arthropoda"),
+                   class = c(NA_character_, "Copepoda"),
+                   order = c(NA_character_, "Calanoida"),
+                   stringsAsFactors = FALSE)
+  out <- expect_no_error(
+    suppressWarnings(assign_sampling_group(tx, harmonise = TRUE,
+                                           cache_dir = cd, verbose = FALSE))
+  )
+  expect_equal(out$sampling_group[2], "zooplankton")
+})
+
+test_that("a same-clade duplication at a finer rank is ACCEPTED (rule 2)", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  # GBIF holds a GENUS Arthropoda inside phylum Arthropoda. matched_rank is
+  # "genus" against a phylum column, so rule 1 fails -- but the returned
+  # lineage carries "Arthropoda" at PHYLUM rank, which is the row's own clade,
+  # so the harmonisation is sound and must not be thrown away.
+  tx <- data.frame(kingdom = "Metazoa", phylum = "Arthropoda",
+                   class = NA_character_, order = NA_character_,
+                   stringsAsFactors = FALSE)
+  out <- expect_no_warning(
+    assign_sampling_group(tx, harmonise = TRUE, verbose = FALSE)
+  )
+  expect_equal(out$kingdom, "Animalia")
+  expect_equal(out$phylum, "Arthropoda")
+})
+
+test_that("a cross-lineage homonym at a finer rank is still REJECTED", {
+  local_mocked_bindings(verify_taxon_names = .mock_verify)
+  # GBIF holds a FUNGUS genus named Ciliophora. Same rank shape as Arthropoda
+  # above (phylum column -> genus match), but the lineage at phylum rank reads
+  # "Ascomycota", not "Ciliophora" -- so rule 2 must not rescue it.
+  tx <- data.frame(kingdom = "Chromista", phylum = "Ciliophora",
+                   class = NA_character_, order = NA_character_,
+                   stringsAsFactors = FALSE)
+  expect_warning(
+    out <- assign_sampling_group(tx, harmonise = TRUE, verbose = FALSE),
+    "Ciliophora \\(phylum column, backbone matched a genus\\)"
+  )
+  expect_equal(out$kingdom, "Chromista")
+  expect_equal(out$phylum, "Ciliophora")
+})
