@@ -5,8 +5,12 @@ were executed. Evidence for everything below:
 `WORKFLOW_STRUCTURE_AUDIT_RESULTS_2026_09_15.md` (+ the raw
 `workflow_structure_outlines_2026_09_15.txt`). That prompt's steps 1-3 are DONE and its
 two "real findings" are CLOSED; step 4a (retire the generic template) is DONE. What is
-left is below, ordered cheapest-first, with an honest cost estimate for each -- the
-session that wrote this was near a token limit and stopped here deliberately.
+left is below, ordered cheapest-first, with an honest cost estimate for each.
+
+**A and B were completed 2026-09-15** (commits `01c0d7f`, `d33487b` in the GreatLakes
+repo); neither has been RUN yet, so the next real GreatLakes run is their first
+verification. **C onward are open.** The session that wrote this was near a token limit
+and stopped after the two cheap items deliberately.
 
 Reproduce any outline with the extractor described in the results doc: banner sections
 are a `# ===` / `# N.  TITLE` / `# ===` **triple** (requiring the closing rule is what
@@ -15,7 +19,7 @@ against the union of the nine `NAMESPACE`s.
 
 ---
 
-## A. GreatLakes has no token accounting (CHEAP -- one file, ~30 min)
+## A. GreatLakes has no token accounting -- DONE 2026-09-15 (commit 01c0d7f)
 
 `GreatLakes2023_ConsensusWorkflow.R` makes **12** LLM calls (`call_anthropic_api`,
 `assign_habitat_biological`, `review_assignments`, `assign_taxa_llm`) and calls
@@ -23,13 +27,25 @@ against the union of the nine `NAMESPACE`s.
 in Sections 4, 9 and 10 and stores it in session metadata, so GreatLakes runs carry no
 cost record at all.
 
+**Resolved:** five reporting-only additions -- `reset_token_usage()` at load, a report
+after the habitat LLM and after `review_assignments()`, a whole-run total beside the
+elapsed-time line, and the captured text into `session_meta$token_usage`. Parses cleanly,
+**not yet run**. Original note follows.
+
 Copy the pattern from `PtConceptionWorkflow_12S_single_site.R` (Section 4 tail, Section 9
 tail, Section 10's `session_meta`). 18S additionally calls `reset_token_usage()` in
 Section 0 -- worth adopting so a re-run in a warm session does not inherit the previous
 run's counter. Purely additive; no result changes. Verify with `parse()` and one cheap
 warm section, not a full run.
 
-## B. `flag_incongruent_references` missing from GreatLakes (CHEAP to decide, ~20 min)
+## B. `flag_incongruent_references` missing from GreatLakes -- DONE 2026-09-15 (commit d33487b)
+
+**Resolved: a real propagation miss, not deliberate.** Checked first, since this audit
+had already been wrong about a GreatLakes "gap" once. The surrounding comments explain
+the removal and override logic in detail and never mention the annotation step, and no
+site would want less provenance than its siblings. `flag_incongruent_references()` added
+after `remove_incongruent_references()`; additive, drops no row, changes no removal
+decision. Parses cleanly, **not yet run**. Original note follows.
 
 12S and 18S both call it; GreatLakes runs the rest of the reference screen
 (`evaluate_reference_accessions`, `verify_removal_candidates`,
