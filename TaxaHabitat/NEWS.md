@@ -1,5 +1,46 @@
 # TaxaHabitat 0.1.0
 
+## Bug fixes (2026-09-15)
+
+* `flag_habitat_inconsistencies()`: **two independent defects in
+  `dist_to_coast_km`**, both of which silently produced distances that were too
+  large. The code change landed in commit `69e4df0`, whose message describes
+  unrelated work -- this entry is the record of what it contained.
+
+  1. **Missing island coastlines.** The coastline came from
+     `rnaturalearth::ne_coastline(scale = "large")` alone, which omits smaller
+     islands. Measured on real PtConception occurrence data: **Anacapa**
+     (72,685 records) scored a minimum of 8.79 km from "the coast" and
+     **Santa Barbara Island** (3,119 records) 46.67 km, instead of ~0. Six of
+     the eight California Channel Islands were already present and unaffected.
+     Fixed by unioning in the Natural Earth 10m `minor_islands_coastline`;
+     Anacapa now reads 0.08 km and Santa Barbara Island 0.19 km. If that layer
+     cannot be downloaded the function warns explicitly rather than silently
+     scoring islands against the mainland.
+
+  2. **Web Mercator distance inflation.** Both the coastal buffer and the
+     distance were computed in `EPSG:3857`, which inflates true ground distance
+     by `1 / cos(latitude)`. Measured 2026-09-15: the 3857/geodesic ratio is
+     **1.212** at Point Conception against a predicted `1 / cos(34.25) = 1.210`.
+     The error grows with latitude -- roughly **21% at 34 deg, 35% at 42 deg,
+     47% at 47 deg** -- so **GreatLakes was affected more than PtConception**.
+     A true 4.1 km read as 4.97 km, meaning a `< 5 km` filter was behaving as a
+     `< 4.1 km` filter. Fixed with a new internal `.utm_crs_for()` that selects
+     the local UTM zone from the data centroid (UPS above 84 deg, warning above
+     a 12 deg longitude span); UTM matches geodesic to within 0.1%.
+
+  **This changes existing outputs.** Every `dist_to_coast_km` previously
+  produced was too large, so past runs were *conservative*: re-running admits
+  records that were previously excluded. Any threshold tuned against the old
+  numbers -- `marine_questionable_km`, the depth-covariate work, a study's
+  distance filter -- was tuned against inflated values. Habitat caches keyed on
+  taxon name are unaffected; anything storing a distance is not.
+
+  Regression tests added for UTM zone selection, geodesic agreement, and the
+  presence of both islands in the minor-islands layer (`devtools::test()`
+  322 passing / 0 failing, baseline 315).
+
+
 ## New features (2026-09-12)
 
 * `save_spatial_review_decisions()` / `apply_spatial_review_decisions()`:
