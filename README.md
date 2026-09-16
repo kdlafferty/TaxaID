@@ -658,15 +658,22 @@ to a row below:
 | Expert/morphological IDs with no match scores at all | `TaxaLikely::unreferenced_candidates()` + `assign_scores(score_type = "none")` |
 | Just a list of taxon names and site coordinates (no observation data yet) | Fetch occurrences (e.g. `TaxaFetch::get_gbif_occurrences()`), then `TaxaExpect::estimate_kernel_priors()` -- see `TaxaExpect/README.md`'s Quick Start. |
 
-A genuinely runnable, self-contained worked example that exercises the
-full pipeline end to end -- no external data files, though it does need
-`DECIPHER`/`rentrez` installed and at least one LLM API key set, since
-it makes real BLAST/GBIF/NCBI/LLM calls -- lives at
-[`inst/TaxaID_Workflow_Template_TEST.R`](inst/TaxaID_Workflow_Template_TEST.R).
-It bundles its own tiny 3-ASV fixture, so `source()`-ing it (or stepping
-through it interactively) requires no data preparation at all -- a good
-way to confirm your installation and API keys work before pointing the
-same pipeline at your own data.
+For a worked example of a single pipeline stage, see that package's own
+`inst/workflows/*.R` scripts and its vignette -- e.g.
+`TaxaLikely/inst/workflows/sequence_likelihood_workflow.R`,
+`TaxaMatch/inst/workflows/blast_sequences_workflow.R`,
+`TaxaAssign/inst/workflows/compute_posteriors_workflow.R`.
+
+To build a complete workflow for a new site, start from
+`TaxaID_eDNA_Workflow_Template.R` (in the separate `eDNA` repository, at
+`eDNA/PtConception/`) -- the template the three PtConception production
+workflows were built from.
+
+**Note:** this package no longer bundles an end-to-end runnable example.
+`inst/TaxaID_Workflow_Template_TEST.R` previously filled that role and was
+retired on 2026-09-15: its Section 5 called seven functions archived with the
+GLMM prior-fitting chain on 2026-09-09, so it had not been runnable for some
+time. See `archive_retired_workflow_template_2026_09_15/README.md`.
 
 ## Getting Started
 

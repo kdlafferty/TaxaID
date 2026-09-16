@@ -60,7 +60,7 @@ SeqMatch2.png
 # ── TaxaWizard transient state ──────────────────
 # Generated filenames are always taxaid_workflow_YYYYMMDD.R / taxaid_methods_YYYYMMDD.md
 # (TaxaWizard/R/output.R). Anchored on a leading digit after the underscore so this
-# doesn't also match hand-maintained templates like inst/TaxaID_Workflow_Template_TEST.R
+# doesn't also match hand-maintained scripts like inst/screen_training_references_standalone.R
 # on case-insensitive filesystems (core.ignorecase=true) -- confirmed via
 # `git check-ignore` that the old unanchored *.R glob did exactly that.
 .workflow_checkpoints/
@@ -100,3 +100,6 @@ README.html
 
 # ── Ad-hoc session outputs ──────────────────────
 Claude outputs/
+
+# Retired scripts (see each archive dir's README); matches TaxaExpect/archive_glmm_prior_pipeline
+archive_retired_workflow_template_2026_09_15/

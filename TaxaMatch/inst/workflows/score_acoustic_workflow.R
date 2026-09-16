@@ -201,9 +201,10 @@ message(sprintf(
 # ==============================================================================
 # read_birdnet_output()'s output carries NO site metadata at all -- only
 # `source_file` (which recording a detection window came from). Unlike the
-# DNA/BLAST pathway (see TaxaID_Workflow_Template_TEST.R's Section 2.5, which
-# now wires this via TaxaMatch::join_event_site_metadata() against a real
-# sample-to-site lookup table), this tutorial's real BirdNET data has no
+# DNA/BLAST pathway (see eDNA/PtConception/TaxaID_eDNA_Workflow_Template.R,
+# which wires this via TaxaMatch::join_event_site_metadata() against a real
+# sample-to-site lookup table -- TaxaID_Workflow_Template_TEST.R held this
+# example until it was retired 2026-09-15), this tutorial's real BirdNET data has no
 # corresponding site-metadata table to join -- these are Xeno-canto downloads
 # from scattered, uncontrolled real-world recording locations, not a
 # systematic multi-site deployment, so there's nothing honest to attach.

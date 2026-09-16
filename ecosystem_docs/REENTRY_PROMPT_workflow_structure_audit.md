@@ -1,5 +1,13 @@
 # Re-entry prompt — Production workflow structural audit
 
+> **STATUS 2026-09-15: steps 1-3 EXECUTED.** See
+> `WORKFLOW_STRUCTURE_AUDIT_RESULTS_2026_09_15.md` (+ the raw
+> `workflow_structure_outlines_2026_09_15.txt`). Both "real findings" below are
+> closed, the file inventory below is stale (two files retired, two added), and
+> `TaxaID_Workflow_Template_TEST.R` was **RETIRED 2026-09-15** (step 4a) to
+> `archive_retired_workflow_template_2026_09_15/`. Step 4b (a Mugu-family template)
+> and 4c (the TaxaWizard graph) remain open.
+
 **Written 2026-09-06.** Follow-on from the `TaxaFlag::review_assignments()` rename work
 (same day -- see `TaxaFlag/CLAUDE.md`'s and `TaxaID/CLAUDE.md`'s top session notes). The
 user asked, after that rename sweep turned up one missed file (GreatLakes) and a handful of
@@ -96,7 +104,11 @@ already-audited graph on the strength of an unverified new artifact.
     orphaned markers. If you re-run a structural grep for this work, use a regex that
     tolerates a decimal or lettered sub-number (e.g. `^# [0-9]+[a-z0-9.]*\s`).
 
-## Two real findings, deliberately NOT fixed here
+## Two real findings, deliberately NOT fixed here — BOTH CLOSED 2026-09-15
+
+Finding 1 needed no fix (one file retired, the other already corrected); finding 2 now
+has decisive evidence -- 8 nonexistent `TaxaExpect::` calls, unguarded -- and is the one
+open decision. Details in the results doc, §2 and §4. Kept below for context.
 
 Both are more than cosmetic (they touch actual filter logic / actual missing structure),
 so they were left for an explicit decision rather than folded into the "trivial" pass:
@@ -147,14 +159,19 @@ so they were left for an explicit decision rather than folded into the "trivial"
    documented canonical one (with the generic one archived or pointed at it)? Don't decide
    this unilaterally -- ask.
 
-## The file inventory (as surveyed 2026-09-06)
+## The file inventory (as surveyed 2026-09-06 — SUPERSEDED)
+
+**Stale as of 2026-09-15.** `PtConceptionWorkflow_12S_multi_site.R` (commit `1bba8c5`)
+and `MuguWilderFishWorkflow.R` (archived) are retired; `_12S_multi_site_FAST.R` and
+`CaliforniaIntertidalWorkflow_multi_marker.R` were added; every surviving file grew
+15-30%. Use the table in `WORKFLOW_STRUCTURE_AUDIT_RESULTS_2026_09_15.md` §1 instead.
 
 | File | Location | Lines | Numbering family | Notes |
 |---|---|---|---|---|
 | `TaxaID_Workflow_Template_TEST.R` | `TaxaID/inst/` | 1,345 | Generic, 8 labeled sections (0, 2-8; no explicit "1") | Likely stale -- see finding 2 above |
 | `TaxaID_eDNA_Workflow_Template.R` | `eDNA/PtConception/` | 1,333 | 0-10 (single-marker) | The template the 3 PtCon scripts below were actually built from |
 | `PtConceptionWorkflow_12S_single_site.R` | `eDNA/PtConception/` | 2,150 (+6 this session) | 0-10 | |
-| `PtConceptionWorkflow_18S_2_single_site.R` | `eDNA/PtConception/` | 2,340 | 0-10, but **no numbered Section 6** (jumps 5→7) -- not yet explained, worth checking | |
+| `PtConceptionWorkflow_18S_2_single_site.R` | `eDNA/PtConception/` | 2,340 | ~~no numbered Section 6~~ -- RESOLVED: Section 6 exists (labelled 2026-09-07); the original survey regex missed it | |
 | `PtConceptionWorkflow_12S_multi_site.R` | `eDNA/PtConception/` | 1,771 (+6 this session) | 0-10 | Has the `lab_contaminant_risk` finding above |
 | `ReviewedESVs.R` | `eDNA/PtConception/` | 21 | N/A -- not a workflow | A tiny post-hoc taxon-filter script, not part of the structural audit |
 | `MuguFishWorkflow.R` | `eDNA/SepulvedaMugu/` | 2,100 | 0-11 (multi-marker) | Loads pre-built per-marker match objects (its own Step 1) |
@@ -198,18 +215,20 @@ update in the other).
 
 ## Safety notes (read before touching anything)
 
-- **None of these 9 files are under git.** `cp file.R file.R.bak_<description>` before any
-  edit, every time, no exceptions -- this project's own established convention for exactly
-  this reason. Never batch multiple files' backups under one generic suffix if the edits
-  differ in kind (this session used `.bak_pre_llm_column_rename` for the rename and a
-  separate `.bak_pre_section_heading_cleanup` for the heading work, so each backup names
-  what it precedes).
+- **CORRECTED 2026-09-15: all of these files ARE under git.** This bullet used to say
+  "None of these 9 files are under git" and mandated `.bak_` copies before every edit.
+  That is false in three repos now -- `eDNA/`, `Stats and Data/GreatLakes data/`, and the
+  `TaxaID/` monorepo itself (which holds `inst/TaxaID_Workflow_Template_TEST.R`). Commit
+  before and after instead, with a message naming the change and its evidence; `git
+  log -p` and `git diff` replace the `.bak_` convention entirely. Note `eDNA/.gitignore`
+  tracks only `*.R`/`*.md` and excludes `_archive*/`, `*cache*/` and `*.bak*`, so a script
+  moved into an `_archive*/` directory silently leaves version control.
 - **Verify with `Rscript -e "parse('file.R')"` after every edit**, not just at the end of a
   batch -- cheap, catches a broken edit immediately rather than after several more changes
   have piled on top of it.
 - **A full renumbering or terminology rewrite across these files is explicitly out of
   scope** unless separately agreed with the user after the outline exists -- these are
-  live, unversioned production scripts with real checkpointed `.rds` state; a mass edit
+  live production scripts (versioned since 2026-09-13) with real checkpointed `.rds` state; a mass edit
   that looks safe in a diff can still silently break a downstream `readRDS()` call keyed on
   an exact variable/column name introduced or renamed along the way.
 - **This whole document describes an audit, not a mandate.** The user's own framing was
