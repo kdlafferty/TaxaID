@@ -48,3 +48,33 @@ stopifnot(isTRUE(st$subset), st$seed == 20260917L); cat("   PASS stamp on checkp
 SUBSET <- FALSE; .save(a, "probe2")
 stopifnot(is.null(attr(readRDS(file.path(OUT_DIR,"TEST_sub_probe2.rds")), "taxaid_subset")))
 cat("   PASS no stamp on a full run\n")
+
+cat("\n-- list-shaped pipeline objects (evaluate_likelihoods() output) --\n")
+# REGRESSION: lik_result is list(likelihoods=, unresolved=), not a data frame.
+# The first version asserted obs_col %in% names(x) and died on the real
+# PtConception checkpoint at the one line that matters. Both frames must be cut
+# to the SAME observation set, or they diverge.
+SUBSET <- TRUE
+lst <- list(likelihoods = x,
+            unresolved  = x[x$observation_id %in% head(unique(x$observation_id), 40), ],
+            model_note  = "not a data frame -- must pass through untouched")
+out <- .subset_obs(lst)
+stopifnot(identical(names(out), names(lst)))
+stopifnot(is.character(out$model_note))
+k1 <- unique(out$likelihoods$observation_id); k2 <- unique(out$unresolved$observation_id)
+stopifnot(all(k2 %in% k1))                       # consistent, never divergent
+stopifnot(length(k1) < length(unique(x$observation_id)))
+cat(sprintf("   PASS both frames cut to one set (%d obs; unresolved %d -> %d rows)\n",
+            length(k1), nrow(lst$unresolved), nrow(out$unresolved)))
+
+cat("\n-- a zero-row frame in the list must not error --\n")
+lst0 <- list(likelihoods = x, unresolved = x[0, ])
+out0 <- .subset_obs(lst0)
+stopifnot(nrow(out0$unresolved) == 0L); cat("   PASS\n")
+
+cat("\n-- a list with no observation_id anywhere must fail LOUDLY --\n")
+bad <- tryCatch({ .subset_obs(list(a = data.frame(z = 1))); FALSE },
+                error = function(e) TRUE)
+stopifnot(bad); cat("   PASS errors rather than silently returning everything\n")
+
+cat("\nAll checks passed.\n")

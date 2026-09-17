@@ -83,3 +83,43 @@ a bare `set.seed()` inside the subsetter reseeds the whole session, so
 a full run for a reason unrelated to subsetting -- destroying the very
 comparison the mechanism exists to support. The helper now seeds locally and
 restores `.Random.seed`.
+
+### First real exercise, 2026-09-17 (PtConception 12S)
+
+Run against the completed `PtConMifishSchulte_*` checkpoints (2026-09-14/15),
+with those files SYMLINKED into a scratch `OUT_DIR` so that any write violating
+Rule 1 would go through to the real file and show up in its mtime.
+
+| | full run | subset |
+|---|---:|---:|
+| observations | 13,440 | 365 (2.7%) |
+| `$likelihoods` rows | 63,703 | 4,281 (15x less) |
+| candidates/observation, median / max | 4 / 79 | 4 / 79 |
+
+- **Rule 1 held**: not one reuse-prefix mtime changed, and `.reuse_path()`
+  appears only inside `readRDS()`. Nothing was written into the project
+  directory.
+- Every one of the 175 `Girella nigricans` observations was retained, and all
+  40 of the widest candidate sets. Max candidates is unchanged at 79, so the
+  hard cases -- the ones that exercise consensus, irreducibility and slash
+  naming -- survive the cut rather than being sampled away.
+
+**Two bugs this exercise found, both in the block itself, neither visible on
+review:**
+
+1. `lik_result` is `list(likelihoods=, unresolved=)`, not a data frame. The
+   first version asserted `obs_col %in% names(x)` and died at the single line
+   that matters. The helper is now polymorphic and cuts every frame in a list to
+   ONE observation set, so the frames cannot diverge. Pinned by two regression
+   tests.
+2. A bare `set.seed()` reseeded the whole session, so `compute_posterior()`'s
+   1,000 Monte Carlo draws would have differed between subset and full runs for
+   a reason unrelated to subsetting. Now seeded locally with `.Random.seed`
+   restored.
+
+**Tuning note.** With `SUBSET_ALWAYS_TAXA = SENTINEL_TAXA`, the sentinel took
+175 of the 365 observations -- 48% of the subset was one taxon, because
+*Girella nigricans* is heavily detected at this site. That is the mechanism
+working as designed (guaranteed means guaranteed), but if a sentinel is common
+it will crowd out the random stratum. Either raise `SUBSET_N` or point
+`SUBSET_ALWAYS_TAXA` at a narrower list than the full sentinel set.
