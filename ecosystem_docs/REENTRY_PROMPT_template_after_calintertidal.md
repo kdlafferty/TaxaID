@@ -59,29 +59,47 @@ acoustic) but the numbered-section convention barely reaches the non-sequence wo
 If you want it to be true, that is its own task — structure those three — and it is
 bigger than it sounds.
 
-## Task 2 — decide whether a multi-stream template is wanted at all (item E)
+## Task 2 — ONE template. Decided 2026-09-17. The question is now approachability.
 
-Not "build it". **Decide.** The honest options:
+**The user has decided: one template, with a multi-stream variant block.** Reason, in
+their words: *"Just to get users started (not frightened)."* So Task 2 is no longer
+"decide whether" — it is "add the variant without making the file hostile to a newcomer."
 
-1. **A second template.** A `TaxaID_multistream_Workflow_Template.R` alongside the
-   single-marker one. **Read the counter-evidence before choosing this**: two templates is
-   exactly the configuration that produced this entire thread. `inst/TaxaID_Workflow_Template_TEST.R`
-   and the PtCon template coexisted, broadcast patches hit one and missed the other, and
-   BOTH ended up unrunnable — the first was retired 2026-09-15, the second repaired
-   2026-09-17. A second template needs a mechanism that stops that recurring, not just
-   good intentions. The drift checks in `diagnostics/workflow_checks/` are that mechanism's
-   beginning; run them on BOTH, in CI or a pre-run hook, or expect the same outcome.
-2. **One template with a multi-stream variant block**, like the existing Variant A/B
-   split for narrow vs broad markers. Keeps one file and one set of broadcast patches.
-   Risk: the user's own condition was "must not overly complicate the template", and the
-   file is already ~2,000 lines.
-3. **No template; document the pattern instead.** Write up what CalIntertidal and Mugu
-   have in common as a section in `ecosystem_docs/`, and let the two real scripts be the
-   reference. Cheapest, and may be sufficient with only two instances.
+That decision is BETTER than the recommendation this document originally carried (which
+was to document the pattern and build no template). It removes the exact failure this
+whole thread came from: two coexisting templates, broadcast patches hitting one and
+missing the other, both ending up unrunnable. One file means one set of patches. Do not
+reopen that; the reasoning below is what replaces it.
 
-Recommendation, weakly held: option 3 until there is a THIRD multi-stream site. Two
-instances do not establish a pattern, and a template is a maintenance liability that has
-already cost this project real money twice.
+**But it creates a real and opposite tension, which is the actual work here.** The
+template is ~2,000 lines. "Comprehensive" and "not frightening" pull in opposite
+directions, and a multi-stream variant makes it longer. Treat approachability as a
+requirement of Task 2, not a nicety:
+
+1. **Add a QUICKSTART block at the very top** naming the handful of lines a newcomer must
+   edit (DATA_DIR, OUT_DIR, OUT_PREFIX, STUDY_LAT/LON, SITE_HABITAT, BARCODE_TERM,
+   BLANKS_*) and, explicitly, which sections they can ignore on a first pass. Right now a
+   reader meets ~180 lines of configuration before anything happens. This is the cheapest
+   large win and should come first.
+2. **Make the multi-stream variant a clearly-fenced block**, the way Variant A/B already
+   is, so a single-marker user can see at a glance that it does not apply to them. The
+   user's own condition was that it "can easily be scaled back to a single-marker".
+3. **Do not let the variant duplicate the single-marker chain.** If the multi-stream path
+   needs its own copy of Steps 6-8, that is two templates again wearing one filename, and
+   the drift returns with the patches.
+4. **Keep the strata and the abstraction data-type neutral.** The subset block already
+   keys only on observation_id and candidate-set width, which works for sequences,
+   acoustic detection windows and image detections alike. Name the axis EVIDENCE STREAM
+   rather than "marker" in anything new -- the user asked for this specifically, noting
+   the project's tendency to drift toward sequences.
+
+**A newcomer's first run is where a latent break costs most.** On 2026-09-17 a single
+real subset run found FOUR bugs in this template that neither parsing, nor the dead-call
+sweep, nor the argument checker could reach -- including `flag_watch_candidates()`
+rejecting the shipped `INVASIVE_TAXA <- character(0)` default, which would have stopped a
+new user at Step 8g on their first attempt with nothing wrong in their own edits. Before
+calling the multi-stream variant done, RUN IT, on a subset, using the mechanism in
+Task 3. "Parses cleanly" has been wrong about this file four times.
 
 ## Task 3 — consider rolling the subset convention outward
 
