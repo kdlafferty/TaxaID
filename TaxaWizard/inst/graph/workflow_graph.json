@@ -129,6 +129,11 @@
         "id": "likelihood_df",
         "label": "Likelihood Table",
         "description": "Per-hypothesis likelihood estimates saved as RDS, ready for TaxaAssign or standalone analysis"
+      },
+      {
+        "id": "report",
+        "label": "Pipeline Report",
+        "description": "Per-stage markdown report for the whole run: each package reports on its own stage and assemble_report() stitches them into one document, with generate_report() adding an LLM-written Results narrative. This is how a run becomes reproducible prose rather than a pile of .rds files."
       }
     ]
   },
@@ -154,7 +159,10 @@
         "flag_incongruent_references",
         "review_flagged_accessions",
         "resolve_review_overrides",
-        "remove_incongruent_references"
+        "remove_incongruent_references",
+        "match_driving_accessions",
+        "verify_removal_candidates",
+        "add_lowest_consistent_rank"
       ],
       "snippet": "seq_to_match.R",
       "time_estimate": "10-60 min (depends on BLAST method and number of sequences)"
@@ -172,7 +180,8 @@
       ],
       "functions": [
         "build_site_table",
-        "group_observations_by_bbox"
+        "group_observations_by_bbox",
+        "join_event_site_metadata"
       ],
       "snippet": "match_to_site_table.R",
       "time_estimate": "1-15 min (interactive polygon drawing, or seconds if group_col already known)"
@@ -203,13 +212,16 @@
       "label": "Fetch occurrence records from GBIF",
       "description": "Resolve taxon names to GBIF keys, query occurrences within a bounding box, filter for quality, deduplicate",
       "packages": [
-        "TaxaFetch"
+        "TaxaFetch",
+        "TaxaTools"
       ],
       "functions": [
         "get_keys_from_context",
         "fetch_gbif_occurrences",
         "filter_gbif_quality",
-        "dedupe_occurrences"
+        "dedupe_occurrences",
+        "download_gbif_occurrences",
+        "define_search_polygon"
       ],
       "snippet": "taxa_to_occ.R",
       "time_estimate": "1-5 min (depends on number of taxa and GBIF response)"
@@ -223,14 +235,17 @@
       "label": "Fetch occurrence records from GBIF, with geographic-outlier screening",
       "description": "Same as the standard GBIF fetch, plus a geographic-outlier check: for species with few local records, fetches that species' global GBIF distribution and flags/removes local records that are outliers against it (e.g. a single mis-georeferenced citizen-science record from the wrong continent). Slower and needs the CoordinateCleaner package -- use this when the study includes citizen-science-heavy sources or unfamiliar taxa where a mis-ID/mis-georeference is a real risk; skip it for a small, well-curated species list.",
       "packages": [
-        "TaxaFetch"
+        "TaxaFetch",
+        "TaxaTools"
       ],
       "functions": [
         "get_keys_from_context",
         "fetch_gbif_occurrences",
         "filter_gbif_quality",
         "dedupe_occurrences",
-        "check_geographic_outliers"
+        "check_geographic_outliers",
+        "download_gbif_occurrences",
+        "define_search_polygon"
       ],
       "snippet": "taxa_to_occ_checked.R",
       "time_estimate": "3-15 min (extra global GBIF fetch per rare-locally species)"
@@ -254,7 +269,16 @@
         "flag_institution_candidates",
         "build_habitat_lookup",
         "assign_habitat_biological",
-        "call_anthropic_api"
+        "call_anthropic_api",
+        "clean_taxon_names",
+        "find_taxonomy_conflicts",
+        "assign_sampling_group",
+        "is_plausible_binomial",
+        "flag_habitat_inconsistencies",
+        "review_institution_flags",
+        "review_spatial_flags",
+        "save_spatial_review_decisions",
+        "apply_spatial_review_decisions"
       ],
       "snippet": "occ_to_std.R",
       "time_estimate": "1-3 min (LLM call for habitat)"
@@ -308,7 +332,8 @@
         "build_habitat_lookup",
         "check_inat_range",
         "generate_domestic_food_priors",
-        "plot_theta_surface"
+        "plot_theta_surface",
+        "generate_invasive_watch_evidence"
       ],
       "snippet": "std_to_priors_kernel.R",
       "time_estimate": "seconds to ~1 min (offline; no live network calls unless domestic priors are included)"
@@ -395,7 +420,10 @@
         "TaxaLikely"
       ],
       "functions": [
-        "train_likelihood_model"
+        "train_likelihood_model",
+        "calibrate_query_noise",
+        "interpret_model",
+        "compute_rank_thresholds"
       ],
       "snippet": "matrix_to_model.R",
       "time_estimate": "seconds to 1 min"
@@ -418,7 +446,10 @@
         "filter_top_hypotheses",
         "expand_unreferenced_hypotheses",
         "apply_coverage_constraints",
-        "fill_higher_ranks"
+        "fill_higher_ranks",
+        "detect_suppressed_candidates",
+        "restore_suppressed_candidates",
+        "infer_exclude_predicted"
       ],
       "snippet": "model_match_to_lik.R",
       "time_estimate": "seconds to 1 min"
@@ -520,7 +551,8 @@
       "functions": [
         "run_llm_pipeline",
         "detect_ranks",
-        "create_taxon_names"
+        "create_taxon_names",
+        "assign_taxa_llm"
       ],
       "wrapper": true,
       "snippet": "match_to_consensus_llm.R",
@@ -573,11 +605,12 @@
     {
       "id": "consensus_to_flagged",
       "from": [
-        "consensus"
+        "consensus",
+        "match_df"
       ],
       "to": "flagged",
       "label": "Flag contamination and handler artifacts",
-      "description": "Compare detections against control samples and/or check temporal proximity to handler presence",
+      "description": "Flag probable contaminants from blank/control samples, optionally flag handler (human/domestic) contamination, add the two post-hoc assessment axes, and raise the watch-list surveillance caveat. Requires match_df as well as consensus: flag_watch_candidates() fires from RAW match scores, not from the posterior, so it takes the match object as its second argument (2026-09-17 -- the edge previously declared only 'consensus' and so under-stated its own inputs). flag_watch_candidates() also REJECTS an empty watch_taxa, so guard the call when the watch list may be empty.",
       "packages": [
         "TaxaFlag"
       ],
@@ -770,6 +803,41 @@
       "wrapper": false,
       "snippet": "taxa_to_site_refs.R",
       "time_estimate": "5-30 min (NCBI fetch + coverage audit)"
+    },
+    {
+      "id": "run_to_report",
+      "from": [
+        "std_occurrences",
+        "priors",
+        "model_params",
+        "posteriors",
+        "consensus",
+        "reviewed"
+      ],
+      "to": "report",
+      "label": "Assemble the per-stage pipeline report",
+      "description": "Each package reports on its own stage -- report_fetch() on the occurrence pull, report_habitat() on habitat assignment, report_priors() on the site priors, report_likelihood() on the trained model, report_assign() on posteriors and consensus, report_flags() on the review -- and assemble_report() stitches them into one markdown document. generate_report() then writes the Results narrative, with llm_fn = NULL for a template-only bullet list that costs no tokens. Every production workflow does this; it is the last step before session metadata.",
+      "packages": [
+        "TaxaFetch",
+        "TaxaHabitat",
+        "TaxaExpect",
+        "TaxaLikely",
+        "TaxaAssign",
+        "TaxaFlag",
+        "TaxaTools"
+      ],
+      "functions": [
+        "report_fetch",
+        "report_habitat",
+        "report_priors",
+        "report_likelihood",
+        "report_assign",
+        "report_flags",
+        "assemble_report",
+        "generate_report"
+      ],
+      "snippet": "run_to_report.R",
+      "time_estimate": "seconds, or ~1 minute when generate_report() calls an LLM"
     }
   ]
 }
