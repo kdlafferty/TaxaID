@@ -12,6 +12,31 @@ running, and it is legacy (`MuguWilderFishWorkflow.R` was archived 2026-09-12).
 Generalising a template from one scaffold plus one legacy script would bake in guesses,
 which is why this waits.
 
+## STATUS 2026-09-17 (later) — everything that does NOT need CalIntertidal is DONE
+
+Worked through in one pass: Task 2 item 1 (QUICKSTART), Task 3 (subset rollout, all but
+Mugu), and both graph loose ends. The model-string loose end was checked live and closed
+with no change. Commits: eDNA `dad49e5` `c65cc49`, GreatLakes `fd32bcb`, TaxaID `2b97fc9`
+`2539efb`.
+
+**What is genuinely left, and all of it is blocked on CalIntertidal:**
+
+1. **Task 1** — ratify or revise item F once CalIntertidal has really run.
+2. **Task 2 items 2-4** — the multi-stream variant block. Note item 4's instruction to RUN
+   it on a subset before calling it done; that is now cheap everywhere, which was the point
+   of Task 3.
+3. **Item E itself** — the multi-stream template.
+4. **Mugu's subset call site** — excluded from Task 3 because its per-marker loop makes
+   "one observation set across markers" a design question rather than a port. Same question
+   as E; do it with E.
+5. **The three unstructured non-sequence workflows** (`score_acoustic_workflow.R` 2 numbered
+   sections, `score_image_workflow.R` 5, `image_acoustic_likelihood_workflow.R` none) — F's
+   data-type-neutral wording is aspirational until these are structured. Its own task,
+   bigger than it sounds, and NOT blocked on CalIntertidal if someone wants it sooner.
+
+Re-verified on disk 2026-09-17: CalIntertidal has still never run (its `OUT_DIR` holds no
+`CalIntertidal_*` output) and its `## STUB` count is still **31**.
+
 ## DO NOT START UNTIL
 
 1. CalIntertidal has **actually run end to end** on real data, not just parsed. A
@@ -109,11 +134,40 @@ new user at Step 8g on their first attempt with nothing wrong in their own edits
 calling the multi-stream variant done, RUN IT, on a subset, using the mechanism in
 Task 3. "Parses cleanly" has been wrong about this file four times.
 
-## Task 3 — consider rolling the subset convention outward
+## Task 3 — roll the subset convention outward — **DONE 2026-09-17, except Mugu**
 
-The SUBSET/REUSE block is currently **template-only**, by explicit choice (2026-09-17) —
-the six live workflows are untouched. See `diagnostics/workflow_checks/README.md` for the
-two rules and the real-data baseline.
+No longer template-only. The precondition (survive a real template run) was met by
+TaxaID `7d6d07b`, so it moved outward the same day: eDNA `c65cc49`, GreatLakes `fd32bcb`.
+
+| Workflow | What it got | Why |
+|---|---|---|
+| PtCon 12S single-site | full block + call site | had no mechanism |
+| PtCon 18S single-site | full block + call site | had no mechanism; **different insertion point**, see below |
+| GreatLakes | full block + call site | had no mechanism |
+| PtCon 12S multi-site FAST | **stamping only** | already had RULE 1 and better strata; reconciled, not layered |
+| MuguFishWorkflow | **nothing** | per-marker loop, see below |
+| CaliforniaIntertidal | nothing | blocked scaffold, never run |
+
+Defaults are `SUBSET <- FALSE` / `REUSE_PREFIX <- NULL`, so nothing about a normal run
+changed. Verified by EXECUTING the installed block in each file rather than parsing it:
+no-op when off; when on it cuts rows, keeps sentinel taxa, is reproducible, preserves the
+global RNG stream, and stamps checkpoints. All three blocks are byte-identical to the
+template's, and the symbols they need (`SENTINEL_TAXA`, `OUT_DIR`, `OUT_PREFIX`) were
+confirmed defined earlier in each file.
+
+**18S needed a different insertion point, and this is what a broadcast patch would have
+got wrong.** It re-reads `lik_result` from disk *inside* Step 8. Putting the subset call
+just after the section banner, where it goes in the other two, would have let that
+`readRDS()` silently undo the subset and hand a full-size object to a run that believed it
+was subsetting — a wrong NUMBER, not an error. The call goes after the re-read instead.
+
+**Mugu is deliberately excluded.** Its `evaluate_likelihoods()` runs inside a per-marker
+loop, so a per-call `.subset_obs()` would choose a DIFFERENT observation set per marker and
+quietly invalidate the cross-marker comparison the workflow exists for. Choosing one set
+across markers is a design question, not a port — and it is the same multi-stream question
+item E is deferred for, so it belongs with E, after CalIntertidal.
+
+See `diagnostics/workflow_checks/README.md` for the two rules and the real-data baseline.
 
 It is worth rolling into the live workflows once it has survived a real template run,
 because testing is this project's biggest cost. Two workflows already have ancestors of
@@ -135,20 +189,37 @@ layer — a second subset mechanism in the same file is worse than none.
 
 ## Open loose ends, each small and each real
 
-- **`consensus_to_flagged`'s `from` is arguably incomplete.** `flag_watch_candidates()`
-  takes the match object as well as the consensus, but that graph edge reads
-  `from: ['consensus']`. Extending it adds a required input to a hand-audited edge and
-  changes what TaxaWizard can generate, so it was left for its own decision
-  (TaxaID `bc350bb`).
-- **31 other graph functions are still uncovered.** The eight universal ones were placed
-  2026-09-17; the rest are used by 3-4 of 5 workflows (the reference-screen chain, the
-  report-assembly chain, the spatial-review trio, the evidence generators). Regenerate the
-  list from `workflow_structure_outlines_2026_09_15.txt` rather than trusting it — it will
-  have moved.
-- **`.llm_fn_` in the template and in PtCon 12S both request `model = "claude-sonnet-4-6"`.**
-  Not touched, because 12S ran successfully with it on 2026-09-14 so it evidently resolves
-  in this environment — but it is not in the current Claude 5 model list, so check it
-  before a long run rather than discovering it 40 minutes in.
+- ~~**`consensus_to_flagged`'s `from` is arguably incomplete.**~~ **DONE 2026-09-17**
+  (TaxaID `2539efb`). It now declares `['consensus', 'match_df']`. The path tests arbitrated
+  the risk and all pass, because every path that reaches `consensus` already passes through
+  `match_df`.
+- ~~**31 other graph functions are still uncovered.**~~ **DONE 2026-09-17** (TaxaID
+  `2539efb`). The list was regenerated from the live workflow files and had indeed moved —
+  34, not 31. Now **3**, and those three are deliberate: `%||%` is an infix operator, not a
+  pipeline step (the metadata guard excludes `^%` for the same reason), and
+  `token_usage()`/`reset_token_usage()` are run instrumentation, not node-to-node
+  transforms. **Do not "fix" them in a later audit.**
+  The big find was that the whole report-assembly chain had no edge at all — it spans seven
+  packages, which is why it fitted none of the existing ones — so a generated workflow could
+  not express it. It is now the `run_to_report` edge, with a `report` output node and a
+  snippet.
+- ~~**`.llm_fn_` ... `model = "claude-sonnet-4-6"`**~~ **CHECKED 2026-09-17 — no change
+  needed, and the count in this bullet was wrong.** It is SIX call sites across FIVE files
+  (template, PtCon 12S, PtCon 18S, Mugu twice, GreatLakes), not two, and the same names are
+  also the `mid`/`top` fallbacks in `TaxaTools/inst/model_tiers.json`.
+  Tested live against the API: `claude-sonnet-4-6`, `claude-opus-4-7` AND `claude-sonnet-5`
+  all resolve and reply. So the feared 40-minutes-in failure does not exist.
+  Two further facts worth keeping: (1) the bundled `model_tiers.json` is stamped
+  `2026-05-23` and still names the 4-series, but the local cache
+  (`~/Library/Caches/.../TaxaTools/model_cache.json`, stamped `2026-09-01`) overlays it with
+  `claude-sonnet-5`/`claude-opus-5`, which is why `list_models()` disagrees with the file on
+  disk; the overlay expires at 90 days. (2) NOTHING in this project resolves an LLM by tier
+  — every workflow passes an explicit `model =`, and every `tier` hit in a workflow is
+  `model_tier` or `model_fit$tiers`, which are unrelated. So the stale bundled fallbacks are
+  latent, not live.
+  **Left pinned deliberately.** Moving to Claude 5 would change habitat assignment and
+  assignment-review outputs and so break comparability with every prior run. That is a
+  user decision, not a maintenance fix.
 - **A subset whose `SUBSET_ALWAYS_TAXA` names a common taxon crowds out the random
   stratum** — the sentinel took 175 of 365 observations (48%) on the real PtCon exercise.
   Working as designed; tune `SUBSET_N` or narrow the list.
