@@ -1,7 +1,51 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-17 (Opus 5): THE CANONICAL WORKFLOW TEMPLATE WAS ALSO
+# Last updated: 2026-09-17 (Opus 5, later): SUBSET/REUSE CONVENTION added to the canonical
+# template, and item F adopted as a provisional documentation-only rule. The template is
+# the only file touched (the user's choice); the six live workflows are unchanged.
+#
+# WHY: testing a workflow end to end is the single biggest cost on this project, by the
+# user's own account and this file's own earlier testimony. Two partial mechanisms already
+# existed and neither was named or inherited -- PtConceptionWorkflow_12S_multi_site_FAST.R
+# (its own OUT_PREFIX, a read-only REUSE_PREFIX, a seeded stratified FAST_SUBSET, an
+# HONEST LIMITS header, and the reused checkpoints' mtimes in its session metadata) and
+# diagnostics/fast_workflows/ (real fixtures plus ~7 s smoke tests). The template now
+# carries the generalised convention; diagnostics/workflow_checks/README.md documents it.
+#
+# TWO RULES, both load-bearing. RULE 1: a test run writes to its own OUT_PREFIX and only
+# ever READS REUSE_PREFIX, via .reuse_path(). This is a rule, not a habit, because
+# re-saving a shared upstream object bumps its mtime and the staleness gates key on mtime
+# -- one such re-save cost a 2h47m recompute. Content-keyed `cache_dir` caches are the
+# deliberate exception and SHOULD be shared. RULE 2: a subset exercises CODE PATHS, never
+# produces NUMBERS -- the Good-Turing budget (quadratic in f1), the LOBO bandwidth,
+# Empirical-Bayes tau2, calibrate_query_noise()'s confident-species floor,
+# compute_group_priors()'s compositional theta_sum and flag_contaminant()'s read-count
+# shrinkage are all whole-pool and are quietly wrong on a subset. Reuse them from a full
+# run rather than recomputing them.
+#
+# THE DANGEROUS CASE IS A NEGATIVE RESULT: a subset that raises no warning looks like
+# evidence of no problem, which has already happened here (the bimodality diagnostic's
+# "no flag" on a fast fixture was read as a negative control and was not one -- the
+# fixture was too small to build a comb dense enough to win on BIC). So subset status is
+# STAMPED into every checkpoint via attr(x, "taxaid_subset"), into the exported CSV as
+# subset_run, and into session_metadata.rds together with the reused checkpoints' mtimes.
+# A console line does not survive to whoever opens the .rds three weeks later.
+#
+# Applied at ONE point, entering Step 8: everything upstream is whole-pool, everything
+# downstream is per-observation and is where the time goes. Strata are data-type neutral
+# (observation_id + candidate-set width), so they work for sequences, acoustic detection
+# windows or image detections unchanged.
+#
+# A REAL BUG THE TEST CAUGHT, not the code review: a bare set.seed() inside the subsetter
+# reseeds the whole session, so compute_posterior()'s 1,000 Monte Carlo draws would differ
+# between a subset run and a full run for a reason unrelated to subsetting -- destroying
+# the very comparison the mechanism exists to support. It now seeds locally and restores
+# .Random.seed. diagnostics/workflow_checks/test_subset_helper.R pins all seven properties.
+# Item E (a Mugu-family template) stays DEFERRED, on the user's own reasoning: CalIntertidal
+# is the only multi-stream instance in flux, so templating now would bake in guesses.
+#
+# Previous update, 2026-09-17 (Opus 5): THE CANONICAL WORKFLOW TEMPLATE WAS ALSO
 # UNRUNNABLE, and the 2026-09-15 audit's own method is why it was missed. Items A-D, G
 # and H of ecosystem_docs/REENTRY_PROMPT_workflow_audit_followups.md are CLOSED; F is a
 # recorded recommendation awaiting a yes (see the NUMBERING FAMILIES note below); E
@@ -161,8 +205,17 @@
 # but lacks flag_incongruent_references, which 12S and 18S both have. Neither fixed -- see
 # the follow-ups prompt.
 #
-# NUMBERING FAMILIES -- RECOMMENDATION RECORDED 2026-09-17, NOT YET RATIFIED (item F).
-# Proposed convention: CalIntertidal's is the one to adopt for multi-marker work --
+# NUMBERING FAMILIES -- RULE ADOPTED 2026-09-17 (item F), PROVISIONAL BY THE USER'S OWN
+# CONDITION: CalIntertidal is still being built, so revisit this once it is finished.
+# DOCUMENTATION ONLY -- no code changed, and the template stays single-marker 0-10.
+# Stated data-type neutrally on request: the axis is EVIDENCE STREAMS per observation, of
+# which a marker is the eDNA instance, a classifier the image one and a detector the
+# acoustic one. Honest scope limit, so this is not over-claimed: the numbered-section
+# convention barely reaches the non-sequence workflows today -- score_acoustic_workflow.R
+# has 2 numbered sections, score_image_workflow.R has 5 and
+# image_acoustic_likelihood_workflow.R has NONE -- so neutral wording is aspirational for
+# those until someone structures them that way.
+# The convention: CalIntertidal's is the one to adopt for multi-stream work --
 # collapse the cross-marker trio into a single Section 8 so that Steps 9 and 10 mean
 # TaxaFlag review and filter/output in EVERY family. That makes "Step 9" unambiguous in
 # three of the four workflow shapes, and the single-marker 0-10 scheme stays canonical
@@ -4414,3 +4467,4 @@ Add new rows here as breaking changes land; archive + clear again once this grow
 | 2026-09-14 (Opus 5) | `review_assignments()` re-asks for omitted taxa; never caches a non-answer; new `on_unreviewed = c("warn","error","ignore")` and `unreviewed_taxa`/`n_unreviewed_rows` attributes | TaxaFlag | **Additive signature, but a real behaviour change on three axes, and it INVALIDATES some cached rows on purpose.** (1) A batch whose response parses cleanly and is the right length can still OMIT taxa -- not truncation, so the halving retry never fired and the taxon was NA-filled permanently. Those taxa are now re-asked, alone, sharing the `max_retries` budget (so `max_retries = 0` still means exactly one call per batch, as before). Fires only when the model omits. (2) An unreviewed taxon is no longer WRITTEN to `cache_dir`, and a cached entry holding no verdict at all is now read as a MISS and re-asked -- so a cache written before today loses its NA rows and costs one re-ask each, by design: caching a non-answer made the omission permanent. (3) `attr(result, "unreviewed_taxa")`/`attr(, "n_unreviewed_rows")` are always present (the `count_failures` pattern); `on_unreviewed` defaults to `"warn"`, so no existing caller's control flow changes. Every production workflow + both templates pass `"error"` (user decision) -- the export filters stay `!= "unlikely"` and a run with residue now ABORTS instead of exporting a silently short species list. Real cost on PtCon 12S: 20 observations of three plausible local fishes, recovered in 1 LLM call. The prompt's suggested companion fix (sort the slash label) was checked and REJECTED -- the label is posterior-ordered by design and the review already deduplicates on the sorted set; see `ecosystem_docs/REENTRY_PROMPT_unreviewed_rows_silently_dropped.md`. `devtools::test()` 530/0, `check()` 0/0/0. |
 | 2026-09-14 (Opus 5) | `download_gbif_occurrences()` records and verifies the full `geometry` in its cached metadata; zip SIDECARS are now recognised as cache files | TaxaFetch | **Behavioral bug fix + a widening of what the clear functions target.** `.gbif_dl_meta_path()` keyed geometry as `nchar(geometry)`, not its content -- editing a bbox coordinate from `-122.385` to `-122.386` preserves the length, so the cache HIT served the WRONG REGION's occurrences. GreatLakes and 12S were shielded by their own workflow-level `.cache_ok()` gates; any other caller was exposed. The full geometry is now stored in the cached metadata and verified on read; a mismatch is a cache MISS. The KEY is deliberately unchanged (widening it would orphan every cached zip); legacy entries warn. Separately, the cache pattern `\.zip$` could not see a bad download renamed out of the way by hand (`X.zip.truncated_20260905` -- 122 MB, three quarters of that cache), so no clear function could reach it; `X.zip.<suffix>` sidecars are now recognised and, since metadata only ever names `X.zip`, are unreferenced by construction and always targeted by `orphans_only`. |
 | 2026-09-15 (Opus 5) | `fetch_worms_attributes()` added; `taxatools_clear_cache()` now also targets `_worms_attr.rds` | TaxaTools | **Additive, new exported function** -- deliverable 1 of `ecosystem_docs/REENTRY_PROMPT_worms_marine_filter.md`. A by-NAME WoRMS taxon-attribute lookup (multi-label marine/brackish/freshwater/terrestrial flags, AphiaID, accepted name, WoRMS classification, optional curated `ncbi_id` and a derived `wrims` introduced-species flag). It is in TaxaTools, not `TaxaFetch::` as the prompt specified, because it is a name->attribute lookup in the shape of `verify_taxon_names()`/`change_backbone()`, not an occurrence fetch; GBIF remains the single occurrence source and the two OBIS functions stay declined. **Why it exists:** `TaxaHabitat::build_habitat_lookup()` asks an LLM to pick ONE of four EXCLUSIVE habitat categories, so intertidal foragers that stand on rock come back Terrestrial (381 of 578 PtCon birds); WoRMS is MULTI-LABEL, so the black oystercatcher is marine AND terrestrial. Filter rule is **keep if `is_marine` OR `is_brackish`**, never "drop if terrestrial", and it handles diadromy with no special case. Apply at **ESV level** -- drop an observation only when NO candidate is in scope; note `scope_filter_esvs()` takes `group` + `keep_groups` (character), not a logical, contra the prompt. **Three API facts the prompt got wrong, verified live 2026-09-15:** (a) "the taxa to cut are simply absent" is FALSE for four of its five examples -- *Homo sapiens* (1455977), *Sus scrofa*, *Bos taurus*, *Canis lupus* and *Gallus gallus* ARE in WoRMS and are cut on their flags, not on absence (only *Cervus elaphus* is genuinely absent); (b) `wrims` is NOT a WoRMS field (it came from the declined OBIS checklist; no introduced/alien key exists among the 42 public `AphiaAttributeKeys`, and *Carcinus maenas* carries none) -- it is DERIVED from `AphiaDistributionsByAphiaID` `establishmentMeans == "Alien"`, ~70 KB/taxon, hence opt-in; (c) WoRMS sends `null`, not `0`, for an unassessed realm, so the four `is_*` columns are logical WITH `NA` and a separate never-`NA` `marine_scope` column is what a filter reads (`TRUE \| NA` is `TRUE` but `FALSE \| NA` is `NA`, and an `NA` keep-vector neither keeps nor drops). Homonyms are ORed rather than resolved ("Ficus" is a marine gastropod genus AND the fig genus) with `worms_ambiguous`/`habitat_conflict` marking them; a fuzzy match is not a match unless `accept_fuzzy = TRUE`. Per-name `.rds` cache, no TTL, recording WHICH `extras` were answered so widening later re-fetches only the missing one and a never-asked-for `NA` is not cached as "WoRMS has none"; a failed request is never cached and is reported SEPARATELY from an absence (`attr(, "request_failed_taxa")`), and a warm run rewrites nothing so it cannot reset the mtimes `older_than_days` prunes on. **Deliverable 2 is NOT done** -- no workflow wires the filter in, and none of the four MUST-VALIDATE steps has been run. `devtools::test()` 1097/0 (was 992), `check()` 0/0/0. |
+| 2026-09-17 (Opus 5) | `build_review_covariates()` gains `site_col`; adds `n_sites_detected`/`prop_sites_detected`/`max_site_detection_freq`/`mean_site_detection_freq`/`n_replicates_at_max_site` | TaxaFlag | **Additive, default `NULL` = byte-identical prior behaviour** (asserted in a test: `expect_identical(base, with_site[, names(base)])`). Prompted by a comparison against BIOWATCH (Pearman et al. 2026, *BMC Bioinformatics* 27:147), whose Replication tab shows within-site replicate detection frequency -- the one thing in that app with no TaxaID counterpart. `prop_samples_detected` pools over the whole dataset and so cannot distinguish a taxon saturating one site from the same count scattered as singletons. Two design points worth keeping: (1) each site's replicate roster (the DENOMINATOR) is built from ALL taxa's rows at that site, not the focal taxon's -- using the focal taxon's rows would make every frequency exactly 1; controls are excluded from the roster, and a test asserts a blank sitting at a site does not inflate it. (2) `n_replicates_at_max_site` exists because 1/1 and 4/4 both give a frequency of 1 and are not equal evidence (BIOWATCH requires >=3 replicates before treating a high frequency as strong); on a frequency tie it reports the site with the LARGER roster, never the first site name -- the alphabetical-tie failure mode of `[[project_focal_grid_alphabetical_bug]]`. Rows with `NA` site are dropped from the site columns ONLY, with a warning, and still count toward every other covariate. `testthat::test_local()` 554 passed / 0 failed / 0 errors (68 in `test-build_review_covariates.R`, up from 30). Reinstalled. |

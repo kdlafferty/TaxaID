@@ -172,23 +172,22 @@ devices or captive animals.
     Catalogue of Life, hosted by Naturalis Biodiversity Center, Leiden,
     Netherlands) and provides a unified interface for calling LLMs from
     within the package.
-2.  **TaxaFetch** acquires species occurrence records from GBIF, DataONE
-    (Data Observation Network for Earth; University of New Mexico,
-    Albuquerque, New Mexico), BioTIME (University of St Andrews, St
-    Andrews, Scotland, United Kingdom), and published literature
-    (including from PDFs).
-3.  **TaxaHabitat** classifies taxa into habitat categories using
-    LLM-based biological consensus and flags spatial outliers.
-4.  **TaxaMatch** standardizes match tables from external tools (BLAST,
+2.  **TaxaMatch** standardizes match tables from external tools (BLAST,
     the Basic Local Alignment Search Tool -- Altschul et al. 1990,
     hosted by NCBI; camera-trap classifiers; acoustic detectors) into a
     common format, and screens reference accessions for mislabels via
     independent BLAST-based taxonomic congruence checking before the
     reference set is used for model training.
-5.  **TaxaLikely** converts match scores into calibrated likelihoods
-    using a hierarchical Bayesian model trained on the reference
-    library, trimming poor-fitting matches during training and auditing
-    references for coverage gaps.
+3.  **TaxaLikely** converts match scores into calibrated likelihoods
+    using a hierarchical Bayesian model trained on the reference library
+    and auditing references for coverage gaps.
+4.  **TaxaFetch** acquires species occurrence records from GBIF, DataONE
+    (Data Observation Network for Earth; University of New Mexico,
+    Albuquerque, New Mexico), BioTIME (University of St Andrews, St
+    Andrews, Scotland, United Kingdom), and published literature
+    (including from PDFs).
+5.  **TaxaHabitat** classifies taxa into habitat categories using
+    LLM-based biological consensus and flags spatial outliers.
 6.  **TaxaExpect** builds spatially explicit Bayesian priors by modeling
     expected species composition (each taxon's relative share of the
     detections at a site) from observation records, incorporating
@@ -416,6 +415,55 @@ quality-grade filtering threshold from it existed in TaxaLikely through
 gain came with a real coverage cost (see TaxaLikely's own README and
 CLAUDE.md) -- a threshold can still be applied directly against the
 recorded quality-grade column before model training.
+
+A parallel line of work addresses a different need: making metabarcoding
+output interpretable for managers and other non-specialist stakeholders
+through graphical interfaces. TaxonTableTools (Macher et al. 2021)
+provides platform-independent exploration and visualization of
+metabarcoding tables. The Pest Alert Tool (Zaiko et al. 2023) and
+BIOWATCH (Pearman et al. 2026) are targeted screening applications: both
+compare query sequences against a curated database of species of
+interest -- non-indigenous, pathogenic, endangered, or commercially
+important taxa -- and report which of those species appear in a dataset.
+BIOWATCH generalizes the Pest Alert Tool's fixed Aotearoa-New Zealand
+marine list to user-defined species lists, markers, and regions,
+assembling custom BLAST databases with CRABS (Jeunen et al. 2023) and
+adding control- and replicate-based checks alongside spatio-temporal
+display of accumulated detections.
+
+Several BIOWATCH steps have direct TaxaID counterparts: region-scoped
+species lists drawn from a map polygon
+(`TaxaTools::define_search_polygon()` with TaxaFetch), reference
+retrieval and in-silico amplicon trimming
+(`TaxaLikely::fetch_ncbi_reference_sequences()`,
+`fetch_bold_reference_sequences()`, `trim_to_amplicon()`; CRABS output
+itself is read by `TaxaLikely::read_crabs_output()`), database
+completeness auditing (`TaxaLikely::audit_barcode_coverage()`),
+control-based contaminant screening (`TaxaFlag::flag_contaminant()`),
+and watch-list surveillance (`TaxaFlag::flag_watch_candidates()`,
+`TaxaExpect::generate_invasive_watch_evidence()`). The substantive
+difference lies in how detection confidence is expressed. These tools
+resolve a detection into ordinal tiers -- BIOWATCH labels a detection
+*Likely* when a single species uniquely holds the top percent identity
+within a bit-score window, and *Putative* when several species tie --
+which is a uniqueness heuristic applied to raw scores rather than a
+probability, and Pearman et al. (2026) identify probabilistic confidence
+metrics as future work. That is what TaxaID supplies: a calibrated
+likelihood combined with a spatially explicit prior yields a posterior
+probability for each candidate.
+
+The two designs also differ in their exposure to reference-database
+gaps. A screening database restricted to target species plus their
+congeners guarantees that every query returns a best hit from within
+that restricted set, so a sequence from a taxon with no representation
+at all can still be reported against a target -- the missing-reference
+redirect described above, and the reason TaxaID treats the
+absent-species response (H3) as an explicitly modeled hypothesis rather
+than a filtering threshold. Conversely, TaxaID has no counterpart to
+BIOWATCH's long-term detection ledger, which accumulates detections with
+sampling metadata across years for spatio-temporal display. TaxaID's
+scope ends at the assignment; analysis of the resulting detections is
+left to dedicated occupancy and trend tools.
 
 **Table 1b.** Comparison of TaxaID (image path) with standalone image
 classifiers. TaxaID converts raw classifier confidence scores into
@@ -669,11 +717,11 @@ To build a complete workflow for a new site, start from
 `eDNA/PtConception/`) -- the template the three PtConception production
 workflows were built from.
 
-**To confirm your installation works**, run one of the fast smoke tests. Each
-chains `evaluate_likelihoods()` -> `compute_posterior()` ->
-`posterior_consensus()` -> `add_slash_taxon()` against a small *real* fixture
-extracted from a completed production run, in a few seconds, with no network
-calls and no API key:
+**To confirm your installation works**, run one of the fast smoke tests.
+Each chains `evaluate_likelihoods()` -\> `compute_posterior()` -\>
+`posterior_consensus()` -\> `add_slash_taxon()` against a small *real*
+fixture extracted from a completed production run, in a few seconds,
+with no network calls and no API key:
 
 ``` r
 # from the repository root -- the fixture paths are relative to it
@@ -682,19 +730,19 @@ source("diagnostics/fast_workflows/run_greatlakes_fast_smoketest.R") # ~6 s
 ```
 
 Both print warnings about hypotheses below `min_posterior` and about
-genus-level names in `plausible_taxa`. Those are expected: the fixtures use a
-flat placeholder prior, which is loudly labelled in each script. See
-`diagnostics/fast_workflows/README.md`.
+genus-level names in `plausible_taxa`. Those are expected: the fixtures
+use a flat placeholder prior, which is loudly labelled in each script.
+See `diagnostics/fast_workflows/README.md`.
 
-**Note:** this package deliberately bundles no end-to-end runnable example.
-`inst/TaxaID_Workflow_Template_TEST.R` filled that role until 2026-09-15, when
-it was retired: its Section 5 called seven functions archived with the GLMM
-prior-fitting chain on 2026-09-09, so it had not been runnable for months while
-still receiving patches. A second in-package copy of a workflow is how that
-happened, so it was not replaced with another one -- the canonical template is
-the single copy in the `eDNA` repository, and the smoke tests above are what
-verifies an install. See
-`archive_retired_workflow_template_2026_09_15/README.md`.
+**Note:** this package deliberately bundles no end-to-end runnable
+example. `inst/TaxaID_Workflow_Template_TEST.R` filled that role until
+2026-09-15, when it was retired: its Section 5 called seven functions
+archived with the GLMM prior-fitting chain on 2026-09-09, so it had not
+been runnable for months while still receiving patches. A second
+in-package copy of a workflow is how that happened, so it was not
+replaced with another one -- the canonical template is the single copy
+in the `eDNA` repository, and the smoke tests above are what verifies an
+install. See `archive_retired_workflow_template_2026_09_15/README.md`.
 
 ## Getting Started
 
@@ -986,9 +1034,19 @@ M. (2026). Camera traps and deep learning enable efficient large-scale
 density estimation of wildlife in temperate forest ecosystems. *Remote
 Sensing in Ecology and Conservation*, 12(1), 148--163.
 
+Jeunen, G.-J., Dowle, E., Edgecombe, J., von Ammon, U., Gemmell, N.J.
+and Cross, H. (2023). crabs -- A software program to generate curated
+reference databases for metabarcoding sequencing data. *Molecular
+Ecology Resources*, 23(3), 725--738.
+
 Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
+
+Macher, T.-H., Beermann, A.J. and Leese, F. (2021). TaxonTableTools: a
+comprehensive, platform-independent graphical user interface software to
+explore and visualise DNA metabarcoding data. *Molecular Ecology
+Resources*, 21(5), 1705--1714.
 
 Marques, V., Milhau, T., Albouy, C., Dejean, T., Manel, S., Mouillot, D.
 and Juhel, J.-B. (2021). GAPeDNA: assessing and mapping global species
@@ -1009,6 +1067,11 @@ Pappalardo, P., Hemmi, J.M., Machida, R.J., Leray, M., Collins, A.G. and
 Osborn, K.J. (2025). Taxon-specific BLAST percent identity thresholds
 for identification of unknown sequences using metabarcoding. *Methods in
 Ecology and Evolution*, 16(10), 2380--2394.
+
+Pearman, J.K., Aylagas, E. and Carvalho, S. (2026). BIOWATCH: a R shiny
+application for the detection of species of interest in metabarcoding
+datasets. *BMC Bioinformatics*, 27, 147.
+<https://doi.org/10.1186/s12859-026-06468-2>
 
 R Core Team (2025). *R: A Language and Environment for Statistical
 Computing*. Version 4.5.2. R Foundation for Statistical Computing,
@@ -1049,6 +1112,15 @@ Wilkinson, S.P., Davy, S.K., Bunce, M. and Stat, M. (2018). Taxonomic
 identification of environmental DNA with informatic sequence
 classification trees. *PeerJ Preprints*, 6, e26812v1.
 <https://doi.org/10.7287/peerj.preprints.26812v1>
+
+Zaiko, A., Greenfield, P., Abbott, C., von Ammon, U., Bilewitch, J.,
+Bunce, M., Cristescu, M.E., Chariton, A., Dowle, E., Geller, J.,
+Ardura Gutierrez, A., Hajibabaei, M., Haggard, E., Inglis, G.J.,
+Lavery, S.D., Samuiloviene, A., Simpson, T., Stat, M., Stephenson, S.,
+Sutherland, J., Thakur, V., Westfall, K., Wood, S.A., Wright, M.,
+Zhang, G. and Pochon, X. (2023). Pest Alert Tool: a web-based
+application for flagging species of concern in metabarcoding datasets.
+*Nucleic Acids Research*, 51(W1), W438--W442.
 
 Zito, A., Rigon, T. and Dunson, D.B. (2023). Inferring taxonomic
 placement from DNA barcoding aiding in discovery of new taxa. *Methods

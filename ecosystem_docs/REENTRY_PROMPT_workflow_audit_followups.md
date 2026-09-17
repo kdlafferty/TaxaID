@@ -7,7 +7,24 @@ were executed. Evidence for everything below:
 two "real findings" are CLOSED; step 4a (retire the generic template) is DONE. What is
 left is below, ordered cheapest-first, with an honest cost estimate for each.
 
-## STATUS 2026-09-17: A-D, G and H are CLOSED. F awaits one yes/no; E not started.
+## STATUS 2026-09-17 (later): A-D, F, G and H CLOSED. Only E remains, deliberately.
+
+F was answered: **adopt CalIntertidal's numbering, documentation-only, and revisit once
+CalIntertidal is finished.** Recorded in `CLAUDE.md`, stated data-type neutrally (the axis
+is EVIDENCE STREAMS -- marker for eDNA, classifier for image, detector for acoustic) with
+the honest scope limit that the numbered-section convention barely reaches the
+non-sequence workflows today (2, 5 and 0 numbered sections respectively). No code changed.
+
+E stays deferred on the user's own reasoning: CalIntertidal is the only multi-stream
+instance and it is still being built, so templating now would bake in guesses. Finish it,
+then template what was actually learned.
+
+**NEW, same session: a SUBSET/REUSE convention in the canonical template** -- see
+`diagnostics/workflow_checks/README.md` for the two rules and
+`test_subset_helper.R` for the seven properties it pins. Template only; the six live
+workflows are untouched by choice. It generalises two mechanisms that already existed and
+were never named: `PtConceptionWorkflow_12S_multi_site_FAST.R`'s two-prefix design and
+`diagnostics/fast_workflows/`' fixtures.
 
 | Item | State |
 |---|---|

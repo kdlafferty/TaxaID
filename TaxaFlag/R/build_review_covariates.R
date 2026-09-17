@@ -1,6 +1,7 @@
 utils::globalVariables(c(
   "n_reads", "seq_length", "min_reads", "max_reads", "quantile_reads",
-  "total_reads", "n_samples_detected"
+  "total_reads", "n_samples_detected",
+  ".taxon", ".site", "n_detected", "n_replicates", "site_freq"
 ))
 
 #' Build per-observation covariates for modelling a review classification
@@ -21,6 +22,27 @@ utils::globalVariables(c(
 #' anywhere in \code{reads_df} -- not just among samples where the
 #' observation itself occurs -- so it is genuinely relative to sampling
 #' effort.
+#'
+#' \strong{Site-level detection frequency:} \code{prop_samples_detected}
+#' pools across the whole dataset, which hides where the detections sit: a
+#' taxon in 30\% of samples overall might be in every replicate at one site
+#' and absent everywhere else, and that is much stronger evidence than 30\%
+#' scattered as singletons. Supplying \code{site_col} adds the within-site
+#' view -- for each site, what fraction of that site's replicates the
+#' observation was detected in -- summarised per observation as
+#' \code{max_site_detection_freq} (its best site) and
+#' \code{mean_site_detection_freq}. This mirrors the replicate-frequency
+#' display in BIOWATCH (Pearman et al. 2026), where a species found in >75\%
+#' of a site's replicates reads very differently from one found in <50\%.
+#'
+#' \strong{Read the frequency together with its denominator:} a 1/1 site and
+#' a 4/4 site both give \code{max_site_detection_freq = 1}, and they are not
+#' equivalent evidence. \code{n_replicates_at_max_site} carries the
+#' denominator so a downstream rule can require a minimum replicate count
+#' (BIOWATCH requires at least three before treating a high frequency as
+#' strong). Where several sites tie on frequency, the reported denominator is
+#' from the tied site with the MOST replicates -- the strongest of the tied
+#' cases -- never whichever site sorts first by name.
 #'
 #' \strong{Blank frequency:} rather than recompute a raw blank-detection
 #' proportion, this function joins in \code{\link{flag_contaminant}}'s own
@@ -53,6 +75,17 @@ utils::globalVariables(c(
 #'   equally well here).
 #' @param event_col Character. Sample/event identifier column in
 #'   \code{reads_df} (default \code{"event_id"}).
+#' @param site_col Character or \code{NULL} (default). Site identifier column
+#'   in \code{reads_df} grouping events into sites, where the events sharing
+#'   a site are that site's replicates (e.g. the \code{site_id} carried by
+#'   \code{TaxaMatch::build_site_table()}). \code{NULL} omits the four
+#'   site-level columns entirely and leaves every other column unchanged.
+#'   Each site's replicate roster -- the denominator -- is every distinct
+#'   field event appearing at that site anywhere in \code{reads_df}, across
+#'   all taxa, matching the effort-relative convention
+#'   \code{prop_samples_detected} already uses. Rows with a missing
+#'   \code{site_col} value are excluded from the site-level columns only
+#'   (with a warning); they still contribute to every other covariate.
 #' @param reads_col Character. Read-count column in \code{reads_df} (default
 #'   \code{"n_reads"}).
 #' @param sequence_col Character or \code{NULL}. Sequence column in
@@ -136,6 +169,25 @@ utils::globalVariables(c(
 #'     \code{reads_col > 0} for this observation.}
 #'   \item{\code{prop_samples_detected}}{\code{n_samples_detected} divided by
 #'     the total distinct field samples in \code{reads_df}.}
+#'   \item{\code{n_sites_detected}}{Count of distinct field sites with at
+#'     least one detection (present only when \code{site_col} is supplied,
+#'     as for the three below).}
+#'   \item{\code{prop_sites_detected}}{\code{n_sites_detected} divided by
+#'     the total distinct field sites in \code{reads_df}.}
+#'   \item{\code{max_site_detection_freq}}{The observation's highest
+#'     within-site detection frequency: over field sites, the maximum of
+#'     (replicates detected at that site) / (that site's replicate roster).
+#'     \code{1} means every replicate at its best site detected it.}
+#'   \item{\code{mean_site_detection_freq}}{The mean of that same
+#'     within-site frequency, taken over the sites where the observation was
+#'     detected at all -- "when present at a site, how consistently" -- so it
+#'     is not diluted by sites the taxon never reached. \code{NA} when there
+#'     are no field detections.}
+#'   \item{\code{n_replicates_at_max_site}}{The replicate roster size of the
+#'     site behind \code{max_site_detection_freq} -- the denominator that
+#'     frequency was computed from. \code{NA} when there are no field
+#'     detections. See the \verb{Read the frequency together with its
+#'     denominator} section.}
 #'   \item{\code{contaminant_cols}}{Whichever \code{contaminant_df} columns
 #'     were requested, present only when \code{contaminant_df} is supplied.}
 #' }
@@ -163,6 +215,14 @@ utils::globalVariables(c(
 #' )
 #' build_review_covariates(reads, cls, control_samples = "blank1")
 #'
+#' # With sites: s1 and s2 are replicates of site "A", so ESV_1 was detected
+#' # in both of that site's replicates while ESV_2 was detected in one.
+#' reads$site_id <- c("A", "A", "A", "A", "A")
+#' build_review_covariates(
+#'   reads, cls,
+#'   site_col = "site_id", control_samples = "blank1"
+#' )
+#'
 #' @seealso \code{\link{add_posthoc_assessment}}, \code{\link{flag_contaminant}}
 #' @importFrom dplyr filter group_by summarise ungroup n_distinct left_join
 #' @export
@@ -172,6 +232,7 @@ build_review_covariates <- function(reads_df,
                                     classification_taxon_col = "observation_id",
                                     classification_col = "primary_plausibility",
                                     event_col = "event_id",
+                                    site_col = NULL,
                                     reads_col = "n_reads",
                                     sequence_col = "sequence",
                                     control_samples = NULL,
@@ -201,6 +262,18 @@ build_review_covariates <- function(reads_df,
   for (col in c(classification_taxon_col, classification_col, extra_covariate_cols)) {
     if (!col %in% names(classification_df)) {
       stop(sprintf("build_review_covariates: column '%s' not found in classification_df.", col),
+        call. = FALSE
+      )
+    }
+  }
+  if (!is.null(site_col)) {
+    if (!is.character(site_col) || length(site_col) != 1L || is.na(site_col)) {
+      stop("build_review_covariates: 'site_col' must be a single column name or NULL.",
+        call. = FALSE
+      )
+    }
+    if (!site_col %in% names(reads_df)) {
+      stop(sprintf("build_review_covariates: column '%s' not found in reads_df.", site_col),
         call. = FALSE
       )
     }
@@ -243,6 +316,63 @@ build_review_covariates <- function(reads_df,
   field_agg$prop_samples_detected <-
     if (n_field_samples > 0L) field_agg$n_samples_detected / n_field_samples else NA_real_
 
+  # ---- site-level within-site replicate detection frequency ---------------
+  # Only the field rows matter here: field_df has already dropped controls and
+  # (via reads_df) zero-read rows, so every remaining row is a real detection.
+  if (!is.null(site_col)) {
+    site_field <- field_df[!is.na(field_df[[site_col]]), , drop = FALSE]
+    n_dropped <- nrow(field_df) - nrow(site_field)
+    if (n_dropped > 0L) {
+      warning(sprintf(
+        "build_review_covariates: %d field row(s) had a missing '%s' value and were excluded from the site-level covariates only.",
+        n_dropped, site_col
+      ), call. = FALSE)
+    }
+
+    # The replicate roster is built from ALL taxa's rows at a site, not just
+    # the focal taxon's -- otherwise the denominator would be the number of
+    # replicates the taxon was found in, making every frequency exactly 1.
+    rep_roster <- unique(data.frame(
+      .site = as.character(site_field[[site_col]]),
+      .event = as.character(site_field[[event_col]]),
+      stringsAsFactors = FALSE
+    ))
+    site_n_rep <- dplyr::count(rep_roster, .site, name = "n_replicates")
+    n_field_sites <- nrow(site_n_rep)
+
+    det <- unique(data.frame(
+      .taxon = as.character(site_field[[taxon_col]]),
+      .site = as.character(site_field[[site_col]]),
+      .event = as.character(site_field[[event_col]]),
+      stringsAsFactors = FALSE
+    ))
+    det_n <- dplyr::count(det, .taxon, .site, name = "n_detected")
+    det_n <- dplyr::left_join(det_n, site_n_rep, by = ".site")
+    det_n$site_freq <- det_n$n_detected / det_n$n_replicates
+
+    site_agg <- det_n |>
+      dplyr::group_by(.taxon) |>
+      dplyr::summarise(
+        n_sites_detected = dplyr::n_distinct(.site),
+        mean_site_detection_freq = mean(site_freq),
+        max_site_detection_freq = max(site_freq),
+        # Denominator behind max_site_detection_freq. order() breaks a
+        # frequency tie by the LARGER replicate roster (the strongest of the
+        # tied sites) rather than by whatever site name happens to sort
+        # first -- the alphabetical-tie failure mode this ecosystem has hit
+        # before.
+        n_replicates_at_max_site = n_replicates[order(-site_freq, -n_replicates)][1L],
+        .groups = "drop"
+      )
+    site_agg$prop_sites_detected <-
+      if (n_field_sites > 0L) site_agg$n_sites_detected / n_field_sites else NA_real_
+    site_agg <- site_agg[, c(
+      ".taxon", "n_sites_detected", "prop_sites_detected",
+      "max_site_detection_freq", "mean_site_detection_freq",
+      "n_replicates_at_max_site"
+    )]
+  }
+
   # ---- sequence length (one value per taxon; warn if inconsistent) --------
   if (!is.null(sequence_col)) {
     seq_agg <- reads_df |>
@@ -280,6 +410,9 @@ build_review_covariates <- function(reads_df,
       by = c("observation_id" = taxon_col)
     )
   }
+  if (!is.null(site_col)) {
+    result <- dplyr::left_join(result, site_agg, by = c("observation_id" = ".taxon"))
+  }
 
   # "No field detections" (n_samples_detected NA after the left_join) is a
   # legitimate, common, NON-alarming outcome -- e.g. a taxon present only in
@@ -306,6 +439,18 @@ build_review_covariates <- function(reads_df,
   result$n_samples_detected[no_field] <- 0L
   result$prop_samples_detected[no_field] <- 0
   result$total_reads[no_field] <- 0
+
+  # Same zero-vs-NA split on the site side: counts and the "best site"
+  # frequency are real zeros (detected in no replicate at any site), while
+  # mean_site_detection_freq (a mean over detected sites, of which there are
+  # none) and n_replicates_at_max_site (no site attained the max) have no
+  # defined value and stay NA.
+  if (!is.null(site_col)) {
+    no_site <- is.na(result$n_sites_detected)
+    result$n_sites_detected[no_site] <- 0L
+    result$prop_sites_detected[no_site] <- 0
+    result$max_site_detection_freq[no_site] <- 0
+  }
 
   # ---- join in blank-frequency covariates from flag_contaminant() ---------
   if (!is.null(contaminant_df)) {
