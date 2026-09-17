@@ -88,9 +88,9 @@ order is not arbitrary.
        tolerance that cached fit would have dropped silently out of every
        downstream filter.
 3. ~~`REENTRY_PROMPT_cache_policy_P5_eviction.md`~~ -- DONE 2026-09-15
-   (commits 2d31cca / 05add25). Doc kept: it is the open-items list for a
-   built feature, not a work order, and its two "traps worth carrying
-   forward" are still live guidance. Both sweeps run, user-approved:
+   (commits 2d31cca / 05add25). Doc RETIRED 2026-09-15 once both sweeps had run and the
+   fasta/ item was verified; its two traps moved to CLAUDE.md's Known R
+   Footguns. Both sweeps run, user-approved:
    **168.1 MB -> 45.0 MB**, 7,588 -> 6,002 files. TaxaFetch lost exactly its
    two orphans (the 127,733,417-byte truncated download quarantined
    2026-09-05, and a 0-byte zip); both surviving zips still have metadata.
@@ -122,7 +122,14 @@ order is not arbitrary.
      the incident); the single-site `reference_df` read stays unbuilt on
      measurement -- warm Step 7a is 3 seconds.
    The three questions it posed are answered in that review's Parts 9-11.
-5. `REENTRY_PROMPT_taxawizard_audit_and_fast_workflows.md`
+5. ~~`REENTRY_PROMPT_taxawizard_audit_and_fast_workflows.md`~~ -- DONE
+   2026-09-15 (commits fadf4c6 / 0b333b3 / fdc28ab). Doc retired. Metadata now
+   covers every function a real workflow calls, guarded by a computed test
+   that was verified to fail rather than skip; generated workflows carry
+   on_count_failure, on_unreviewed, cache_dir and cli suppression; all five
+   fast workflows green; a generated Shiny app was launched (HTTP 200) and its
+   eval(parse()) allow-list attacked with 6 hostile inputs, all rejected. The
+   one residual is listed under "Carried forward from retired prompts".
 6. `REENTRY_PROMPT_workflow_structure_audit.md`
 7. `REENTRY_PROMPT_ptcon_18S_rerun.md`
 8. `REENTRY_PROMPT_kernel_budget_pricing_and_scope.md` (decisions 1 and 3)
@@ -144,6 +151,68 @@ checklist, not a work order. Use it as reference during steps 5 and 7.
   specific risk.
 - **pkgdown**: no `_pkgdown.yml` exists for any package, and the manuscript
   plan requires a working site per package before submission.
+
+## Carried forward from retired prompts (2026-09-15)
+
+The TaxaWizard audit and the cache-policy P5 prompts were completed and
+deleted. One genuinely open item survives them, small but real:
+
+- **`cache_ok()` staleness gates are not in TaxaWizard's snippets.** Generated
+  workflows now carry `on_count_failure`, `on_unreviewed`, `cache_dir` and the
+  cli suppression (commit 0b333b3), but no staleness gate. Adding one needs
+  each graph edge to declare which artifacts its output derives from -- a
+  per-edge design decision, not a mechanical edit. Decide whether a generated
+  workflow should ship with staleness detection before release, or whether
+  that stays a hand-written-workflow feature.
+
+Everything else from those two prompts is closed. Their traps worth carrying
+are now in `TaxaID/CLAUDE.md`'s Known R Footguns (the
+`.ref_cache_grammar()`/key lockstep rule was already there; the stolen
+`@export` and the `workflow_app()` `readline()` hazards were added when they
+were retired).
+
+## Baseline as of 2026-09-15 (carry into the screen)
+
+**All nine packages green: 7,394 tests, 0 failures; `check()` clean on every
+one** (bar the usual unverifiable-timestamp NOTE). That includes TaxaFetch,
+which had carried 2 failures since 2026-08-08 labelled "pre-existing
+CoordinateCleaner environment failures, unrelated". **They were neither.**
+`cc_zero(buffer=)` changed from degrees to metres in CoordinateCleaner 3.x
+while its default stayed `0.5`, so `filter_gbif_quality()`'s null-island check
+had silently become a no-op. Fixed; 812/0. No result changed (0 of 3.75 M real
+GBIF rows are within 55 km of (0,0)), so nothing needed re-running.
+
+Carry the lesson into the screen, not just the fix: **a test failing for a
+month is evidence, not furniture.** Three package CLAUDE.mds and a reentry
+prompt repeated the "environmental" label, and one of them instructed readers
+not to investigate. When a dependency is involved, call the dependency
+directly with the test's own fixture before accepting that explanation.
+
+**pkgdown is OUT of scope** for this release by user decision (2026-09-15) and
+has been removed from the running order. The "Must be resolved" bullet below
+still lists it; treat that as superseded.
+
+**Two properties to REPORT rather than fix**, both measured this session and
+both liable to confuse a reviewer comparing tables:
+
+- The Axis-1 `expected`/`unexpected` boundary is
+  `median(taxaexpect_priors$theta_mean)`, computed from the very table being
+  classified, so it FLOATS with the data. At GreatLakes, refreshing only the
+  evidence rows moved it 11.7x and took `unexpected` from 1 to 18 with no code
+  change. An `unexpected` count is not comparable across runs or sites unless
+  the threshold is reported with it.
+- `prior_branch` says which GENERATOR produced a prior row, never how much
+  evidence stands behind it. Within the one kernel branch, `effective_records`
+  spans ~10 orders of magnitude: 44.9% of PtCon 12S rows, 64.9% of PtCon 18S
+  and 18.9% of GreatLakes sit under one Kish effective record. No gate is
+  applied by default.
+
+**The pipeline is deterministic.** Two full GreatLakes runs on identical
+inputs produced byte-identical consensus rows (0 of 885 differing), despite
+1,000-draw Monte Carlo in `compute_posterior()` and
+`update_prior_from_consensus()` and no `set.seed()` anywhere -- the consensus
+reads `posterior_point_est`, the deterministic estimate. Worth stating
+explicitly in a methods section; a reader will otherwise assume otherwise.
 
 ## What the screen itself should cover
 

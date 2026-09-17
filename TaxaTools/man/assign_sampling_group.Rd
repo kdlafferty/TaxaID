@@ -74,7 +74,10 @@ from a prior run). \code{harmonise} is OFF by default specifically
 because of this cost -- most callers already have GBIF-vocabulary
 taxonomy and gain nothing from paying it. A rank name that fails to
 resolve keeps its ORIGINAL value rather than becoming \code{NA} (matches
-the source and never silently loses taxonomy).}
+the source and never silently loses taxonomy), and so does one the
+backbone resolves at the WRONG RANK -- see the \emph{Rank agreement}
+section, which is what stops a homonym at another rank from overwriting
+the row's whole lineage.}
 
 \item{backbone_id}{Integer backbone ID passed to
 \code{\link{verify_taxon_names}} when \code{harmonise = TRUE}. Default
@@ -145,6 +148,87 @@ exists to end, so this check errs toward naming what it saw rather than
 staying silent -- but it is a heuristic, not exhaustive, and passing
 \code{harmonise = TRUE} (or verifying the input's backbone directly) is
 the reliable fix, not a substitute for reading the warning.
+}
+
+\section{Rank agreement (\code{harmonise = TRUE})}{
+
+The harmoniser resolves each row's finest available rank NAME and then
+overwrites \code{kingdom}/\code{phylum}/\code{class}/\code{order} from the
+lineage the backbone returns. That is only safe if the backbone's answer is
+about the SAME TAXON the probe column named, so a resolution is accepted
+only when one of two things holds:
+\enumerate{
+\item \code{\link{verify_taxon_names}}'s \code{matched_rank} equals the
+rank of the probe column. This is the ordinary case, and it is also what
+keeps SYNONYM resolution working -- an outdated spelling resolves to the
+backbone's accepted name, which is by definition not the name that was
+asked about, so only the rank can vouch for it.
+\item The rank differs, but the returned lineage carries the probe name
+ITSELF at the probe's own rank. That is a same-clade duplication rather
+than a homonym: GBIF holds a genus \emph{Spionidae} inside family
+Spionidae and a genus \emph{Arthropoda} inside phylum Arthropoda, so the
+terminal match is a genus while every rank above it is exactly the
+lineage the row already had.
+}
+A row failing both keeps its ORIGINAL taxonomy -- the same fallback an
+unresolved name gets -- and is named in a warning.
+
+The case that forced this: GBIF's backbone contains a tachinid \strong{fly
+genus} named \emph{Polychaeta}
+(\code{Animalia|Arthropoda|Insecta|Diptera|Tachinidae|Polychaeta}, verified
+live). Without the gate, a row whose \code{class} column reads
+\code{"Polychaeta"} -- the annelid class, correct in NCBI -- was matched
+against that genus and had its whole lineage overwritten
+(\code{Annelida} -> \code{Arthropoda}, \code{Polychaeta} ->
+\code{Insecta}, and a fabricated \code{order = "Diptera"}). On the
+2026-09-15 PtConception 18S run that hit 7 marine polychaete taxa across 17
+rows, grouping every one of them as \code{terrestrial_arthropods} and --
+because a downstream marine filter reads the harmonised phylum/class --
+dropping them from the species list entirely, silently.
+
+\strong{And \emph{Polychaeta} was not alone.} Scanning every
+(name, rank) pair in that run's NCBI-side taxonomy against GBIF -- 288
+pairs -- found 15 rank disagreements. Rule 2 rescues 8 of them (the
+\emph{Arthropoda} and polychaete-family duplications above). Of the 7 the
+gate rejects, five are genuine cross-lineage homonyms that would each have
+rewritten a whole lineage into an unrelated one:
+\tabular{lll}{
+\strong{name} \tab \strong{column rank} \tab \strong{what GBIF matched} \cr
+Polychaeta \tab class \tab a tachinid fly genus (Insecta|Diptera) \cr
+Ctenophora \tab phylum \tab a crane-fly genus (Insecta|Diptera) \cr
+Ciliophora \tab phylum \tab a FUNGUS genus (Fungi|Ascomycota) \cr
+Appendicularia \tab class \tab a flowering-plant genus (Plantae|Myrtales) \cr
+Pilidiophora \tab class \tab a gregarine genus (Chromista|Myzozoa) \cr
+}
+Only \emph{Polychaeta}'s taxa happened to be noticed, because they were
+dropped; a corrupted lineage that stays marine is silent. The remaining two
+rejections, \code{"Bacillariophyta"} (NCBI phylum, GBIF class
+\code{Bacillariophyceae}) and \code{"Bigyra"} (NCBI class, GBIF phylum), are
+genuine NCBI-vs-GBIF rank-assignment differences for the same clade rather
+than homonyms. Rejecting them is harmless: the row keeps its NCBI value, the
+diatom rule here is class-level by design, and
+\code{classify_18S_functional()} keys diatoms on the class
+(\code{Bacillariophyceae}), never on that phylum value.
+
+A looser third rule -- accept a rank-mismatched match whose lineage contains
+ANY of the row's original rank values -- was considered and rejected. It
+rescues nothing rule 2 does not (NCBI gives diatoms no \code{kingdom} at
+all, so a bare \code{"Bacillariophyta"} row has no other value to test), and
+letting a \code{kingdom} match carry the test would re-admit
+\emph{Polychaeta} for any caller whose input already says
+\code{"Animalia"} rather than NCBI's \code{"Metazoa"}.
+
+\strong{Net effect on the real 18S run}: of the 97 unique names it resolves,
+90 agree on rank outright, 6 get no GBIF match (already handled by the
+original-value fallback), and \emph{Polychaeta} is the single rejection --
+recovering all 7 taxa and 17 rows as \code{macroinvertebrates}, all passing
+the marine filter, with the phytoplankton, macroalgae and zooplankton counts
+unchanged.
+
+Because a cache written before this gate existed carries no
+\code{matched_rank} and so cannot be checked, such a cache is discarded and
+re-resolved rather than trusted -- re-running with an old \code{cache_dir}
+is exactly when a silent re-admission would be least likely to be noticed.
 }
 
 \examples{

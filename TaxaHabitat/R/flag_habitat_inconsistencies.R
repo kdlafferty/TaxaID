@@ -261,16 +261,52 @@ flag_habitat_inconsistencies <- function(
 
   if (verbose) message("  Building coastal buffer...")
 
+  # ne_coastline() alone OMITS smaller islands. In the California Channel
+  # Islands it contains Santa Cruz, Santa Rosa, San Miguel, San Nicolas,
+  # Catalina and San Clemente but NOT Anacapa or Santa Barbara Island, which
+  # then score 8.8 km and 46.7 km from "the coast" instead of ~0 (measured on
+  # real PtConception occurrence data, 2026-09-15). Union in the 10m
+  # minor-islands coastline so island records are scored against their own
+  # shoreline. ne_download() is cached by rnaturalearth after first use; if it
+  # is unreachable we fall back to the main coastline and warn rather than fail.
   coast_sf <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf")
+  minor_sf <- tryCatch(
+    rnaturalearth::ne_download(
+      scale = 10, type = "minor_islands_coastline",
+      category = "physical", returnclass = "sf"
+    ),
+    error = function(e) NULL
+  )
+  if (is.null(minor_sf)) {
+    warning(
+      "flag_habitat_inconsistencies(): could not obtain the Natural Earth ",
+      "minor-islands coastline; small islands (e.g. Anacapa, Santa Barbara ",
+      "Island) will be scored against the mainland and their ",
+      "dist_to_coast_km will be far too large.",
+      call. = FALSE
+    )
+    coast_all <- sf::st_geometry(sf::st_make_valid(coast_sf))
+  } else {
+    coast_all <- c(
+      sf::st_geometry(sf::st_make_valid(coast_sf)),
+      sf::st_geometry(sf::st_make_valid(minor_sf))
+    )
+  }
   coast_crop <- suppressWarnings(tryCatch(
-    sf::st_crop(sf::st_make_valid(coast_sf), bbox_poly),
-    error = function(e) sf::st_make_valid(coast_sf)
+    sf::st_crop(coast_all, bbox_poly),
+    error = function(e) coast_all
   ))
 
-  # Buffer in metres using projected CRS, then reproject back to WGS84
-  coast_merc_buf <- sf::st_transform(sf::st_geometry(coast_crop), crs = 3857L)
+  # Buffer in metres using a LOCAL equal-distance projection. EPSG:3857 (Web
+  # Mercator) was used here previously and inflates distance by 1/cos(lat) --
+  # 21% at 34 degrees N, 35% at 42 degrees N, 47% at 47 degrees N -- so both
+  # the buffer and dist_to_coast_km were systematically too large, worsening
+  # with latitude (measured 2026-09-15: 3857/geodesic ratio 1.212 vs
+  # 1/cos(34.25) = 1.210; UTM matches geodesic to 0.1%).
+  utm_crs <- .utm_crs_for(pts_sf)
+  coast_utm_buf <- sf::st_transform(coast_crop, crs = utm_crs)
   coast_buffer_geom <- sf::st_make_valid(
-    sf::st_union(sf::st_buffer(coast_merc_buf, dist = coast_buffer_m))
+    sf::st_union(sf::st_buffer(coast_utm_buf, dist = coast_buffer_m))
   )
   coast_buffer_geom <- sf::st_transform(coast_buffer_geom, crs = 4326L)
 
@@ -285,10 +321,11 @@ flag_habitat_inconsistencies <- function(
 
   if (verbose) message("  Computing distance to coastline...")
 
-  pts_merc <- sf::st_transform(pts_sf, crs = 3857L)
-  coast_merc <- sf::st_transform(coast_crop, crs = 3857L)
+  # Distance in the same local projection as the buffer above -- NOT EPSG:3857.
+  pts_utm <- sf::st_transform(pts_sf, crs = utm_crs)
+  coast_utm <- sf::st_transform(coast_crop, crs = utm_crs)
 
-  dist_m <- sf::st_distance(pts_merc, coast_merc)
+  dist_m <- sf::st_distance(pts_utm, coast_utm)
   pts_unique$dist_to_coast_km <- round(
     as.numeric(apply(dist_m, 1L, min)) / 1000,
     2L

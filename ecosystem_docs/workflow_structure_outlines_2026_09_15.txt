@@ -1,0 +1,414 @@
+====================================================================================================
+TaxaID_Workflow_Template_TEST.R (1635 lines)
+====================================================================================================
+
+[L   61] # 0  CONFIGURATION  (edit this section only)   (262 lines)
+          fns: TaxaMatch::blast_sequences, TaxaMatch::standardize_match_data, TaxaTools::create_taxon_names, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names, TaxaTools::find_taxonomy_conflicts
+          sav: obj(saveRDS), obj, BLAST_annotated_ASV_table_full
+
+[L  323] # 2  CONTAMINANT DETECTION (TaxaFlag)   (91 lines)
+          fns: TaxaFlag::flag_contaminant
+
+[L  414] # 2.5  SPATIAL GROUPING (TaxaMatch)   (63 lines)
+          fns: TaxaMatch::join_event_site_metadata, TaxaMatch::build_site_table, TaxaMatch::group_observations_by_bbox
+          sav: site_table
+
+[L  477] # 3  OCCURRENCE DATA (TaxaFetch)   (380 lines)
+          fns: TaxaTools::define_search_polygon, TaxaFetch::make_bbox_wkt, TaxaFetch::get_keys_from_context, TaxaFetch::fetch_occurrences_by_taxon, TaxaTools::escalate_taxonomic_rank, TaxaFetch::filter_gbif_quality, TaxaFetch::check_geographic_outliers, TaxaHabitat::flag_institution_candidates, TaxaHabitat::review_institution_flags, TaxaFetch::stack_occurrences, TaxaFetch::dedupe_occurrences, TaxaTools::create_taxon_names, TaxaTools::clean_taxon_names
+          sav: gbif_occurrences, all_occurrences
+
+[L  857] # 4  HABITAT ASSIGNMENT (TaxaHabitat)   (76 lines)
+          fns: TaxaTools::call_anthropic_api, TaxaHabitat::build_habitat_lookup, TaxaHabitat::assign_habitat_biological, TaxaHabitat::flag_habitat_inconsistencies, TaxaHabitat::apply_spatial_review_decisions, TaxaHabitat::review_spatial_flags, TaxaHabitat::save_spatial_review_decisions
+          sav: habitat_lookup, occurrences_clean
+
+[L  933] # 5  TAXAEXPECT — SPECIES DISTRIBUTION MODEL + PRIORS   (208 lines)
+          fns: TaxaExpect::optimize_grid_size, TaxaExpect::create_sites_from_grid, TaxaExpect::prepare_model_dataframe, TaxaExpect::compute_moran_basis, TaxaExpect::screen_spatial_formula, TaxaExpect::generate_undetected_diversity, TaxaExpect::generate_full_priors, TaxaExpect::plot_theta_map_interactive
+
+[L 1141] # 6  LIKELIHOOD MODEL (TaxaLikely)   (275 lines)
+          fns: TaxaLikely::fetch_ncbi_reference_sequences, TaxaLikely::build_sequence_matrix, TaxaTools::find_taxonomy_conflicts, TaxaTools::clean_taxon_names, TaxaLikely::detect_suppressed_candidates, TaxaLikely::restore_suppressed_candidates, TaxaMatch::convert_taxonomy_backbone, TaxaLikely::train_likelihood_model, TaxaLikely::interpret_model, TaxaLikely::calibrate_query_noise, TaxaLikely::evaluate_likelihoods, TaxaLikely::infer_exclude_predicted, TaxaLikely::audit_barcode_coverage
+          sav: seq_matrix, reference_df, lik_model, lik_result, census_result, coverage
+
+[L 1416] # 7  POSTERIOR ASSIGNMENT (TaxaAssign)   (123 lines)
+          fns: TaxaAssign::join_priors, TaxaAssign::combine_multisite_priors, TaxaAssign::compute_posterior, TaxaAssign::posterior_consensus, TaxaAssign::update_prior_from_consensus, TaxaFlag::add_posthoc_assessment, TaxaAssign::add_slash_taxon, TaxaTools::scientific_to_common
+          sav: likelihoods_w_prior, likelihoods_w_prior_combined, posterior_df, posterior_df_refined, taxaassign_consensus
+
+[L 1539] # 8  QUALITY REVIEW (TaxaFlag)   (98 lines)
+          fns: TaxaFlag::review_assignments, TaxaFlag::report_flags
+          sav: reviewed_assignments
+====================================================================================================
+TaxaID_eDNA_Workflow_Template.R (1506 lines)
+====================================================================================================
+
+[L   24] # 0  CONFIGURATION  (edit this section only)   (156 lines)
+          sav: obj(saveRDS)
+
+[L  180] # 1  LOAD INPUT DATA   (30 lines)
+          msg: Step 1: Loading input data
+          fns: TaxaTools::create_taxon_names, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names
+
+[L  210] # 2  CONTAMINANT DETECTION (TaxaFlag)   (51 lines)
+          msg: Step 2: Flagging contaminants
+          fns: TaxaFlag::flag_contaminant
+          sav: contaminant_flags
+
+[L  261] # 3  OCCURRENCE DATA (TaxaFetch)   (244 lines)
+          msg: Step 3: Fetching occurrence data
+          fns: TaxaTools::define_search_polygon, TaxaFetch::get_keys_from_context, TaxaFetch::download_gbif_occurrences, TaxaFetch::filter_gbif_quality, TaxaFetch::check_geographic_outliers, TaxaHabitat::flag_institution_candidates, TaxaHabitat::review_institution_flags, TaxaTools::create_taxon_names, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names, TaxaTools::find_taxonomy_conflicts, TaxaFetch::stack_occurrences
+          sav: valid_keys, raw_gbif
+
+[L  505] # 4  HABITAT ASSIGNMENT (TaxaHabitat)   (79 lines)
+          msg: Step 4: Assigning habitat via LLM
+          fns: TaxaTools::call_anthropic_api, TaxaHabitat::build_habitat_lookup, TaxaHabitat::assign_habitat_biological, TaxaHabitat::flag_habitat_inconsistencies, TaxaHabitat::apply_spatial_review_decisions, TaxaHabitat::review_spatial_flags, TaxaHabitat::save_spatial_review_decisions, TaxaTools::token_usage
+          sav: habitat_lookup, occurrences_clean
+
+[L  584] # 5  TAXAEXPECT — BIODIVERSITY MODEL + PRIORS   (192 lines)
+          msg: Step 5: TaxaExpect
+          fns: TaxaExpect::generate_undetected_diversity
+          sav: taxaexpect_priors
+
+[L  776] # 6  MATCH STANDARDISATION (TaxaMatch)   (48 lines)
+          msg: Step 6: Standardising match object
+          fns: TaxaMatch::standardize_match_data, TaxaTools::clean_taxon_names
+          sav: match_obj
+
+[L  824] # 7  LIKELIHOOD MODEL (TaxaLikely)   (192 lines)
+          msg: Step 7: TaxaLikely
+          fns: TaxaLikely::build_sequence_matrix, TaxaTools::find_taxonomy_conflicts, TaxaTools::clean_taxon_names, TaxaLikely::detect_suppressed_candidates, TaxaLikely::restore_suppressed_candidates, TaxaMatch::convert_taxonomy_backbone, TaxaLikely::train_likelihood_model, TaxaLikely::interpret_model, TaxaLikely::evaluate_likelihoods, TaxaLikely::infer_exclude_predicted, TaxaLikely::audit_barcode_coverage
+          sav: seq_matrix, lik_model, lik_result, census_result, coverage
+
+[L 1016] # 8  BAYESIAN ASSIGNMENT (TaxaAssign)   (311 lines)
+          msg: Step 8: TaxaAssign
+          fns: TaxaLikely::filter_top_hypotheses, TaxaTools::fill_higher_ranks, TaxaFetch::check_inat_range, TaxaLikely::expand_unreferenced_hypotheses, TaxaLikely::apply_coverage_constraints, TaxaAssign::join_priors, TaxaAssign::adjust_inat_range_priors, TaxaAssign::compute_posterior, TaxaAssign::posterior_consensus, TaxaAssign::update_prior_from_consensus, TaxaAssign::add_slash_taxon, TaxaFlag::add_posthoc_assessment, TaxaAssign::score_consensus
+          sav: inat_range, expanded_likelihoods, likelihoods_ready, posteriors_updated, consensus_final
+
+[L 1327] # 9  TAXAFLAG — ASSIGNMENT REVIEW (LLM)   (83 lines)
+          msg: Step 9: TaxaFlag review_assignments
+          fns: TaxaFlag::review_assignments, TaxaTools::scientific_to_common, TaxaTools::token_usage
+          sav: reviewed
+
+[L 1410] # 10  FILTER + OUTPUT   (98 lines)
+          msg: Step 10: Final filtered output
+          fns: TaxaTools::scientific_to_common, TaxaTools::verify_taxon_names, TaxaTools::token_usage
+====================================================================================================
+PtConceptionWorkflow_12S_single_site.R (2735 lines)
+====================================================================================================
+
+[L   16] # 0  LIBRARIES + USER INPUTS  (edit this section only)   (261 lines)
+          sav: obj(saveRDS)
+
+[L  277] # 1  LOAD INPUT DATA   (13 lines)
+          msg: Step 1: Loading input data
+
+[L  290] # 2  CONTAMINANT DETECTION (TaxaFlag)   (113 lines)
+          msg: Step 2: Flagging contaminants
+          fns: TaxaFlag::flag_contaminant, TaxaTools::create_taxon_names, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names
+          sav: contaminant_flags
+
+[L  403] # 3  GBIF OCCURRENCE FETCH (TaxaFetch)   (218 lines)
+          msg: Step 3: Fetching GBIF occurrences
+          fns: TaxaTools::define_search_polygon, TaxaFetch::get_keys_from_context, TaxaFetch::download_gbif_occurrences, TaxaFetch::filter_gbif_quality, TaxaFetch::check_geographic_outliers, TaxaHabitat::flag_institution_candidates, TaxaHabitat::review_institution_flags, TaxaTools::create_taxon_names, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names, TaxaTools::find_taxonomy_conflicts, TaxaFetch::stack_occurrences
+          sav: bbox, valid_keys, raw_gbif, gbif_occurrences, all_occurrences
+
+[L  621] # 4  HABITAT ASSIGNMENT (TaxaHabitat)   (89 lines)
+          msg: Step 4: Assigning habitat via LLM
+          fns: TaxaTools::call_anthropic_api, TaxaHabitat::build_habitat_lookup, TaxaHabitat::assign_habitat_biological, TaxaHabitat::flag_habitat_inconsistencies, TaxaHabitat::apply_spatial_review_decisions, TaxaHabitat::review_spatial_flags, TaxaHabitat::save_spatial_review_decisions, TaxaTools::token_usage
+          sav: habitat_lookup, occurrences_clean
+
+[L  710] # 5  TAXAEXPECT — BIODIVERSITY MODEL + PRIORS   (267 lines)
+          msg: Step 5: TaxaExpect
+          fns: TaxaExpect::calibrate_kernel_bandwidth, TaxaExpect::estimate_kernel_priors, TaxaExpect::generate_undetected_diversity, TaxaExpect::plot_theta_surface
+          sav: taxaexpect_priors, model_fit
+
+[L  977] # 6  MATCH STANDARDISATION (TaxaMatch)   (60 lines)
+          msg: Step 6: Standardising match object
+          fns: TaxaMatch::standardize_match_data, TaxaTools::clean_taxon_names
+          sav: match_obj
+
+[L 1037] # 7  LIKELIHOOD MODEL (TaxaLikely)   (883 lines)
+          msg: Step 7: TaxaLikely
+          fns: TaxaLikely::fetch_ncbi_reference_sequences, TaxaLikely::build_sequence_matrix, TaxaTools::clean_taxon_names, TaxaTools::find_taxonomy_conflicts, TaxaLikely::detect_suppressed_candidates, TaxaLikely::restore_suppressed_candidates, TaxaMatch::convert_taxonomy_backbone, TaxaMatch::corroborate_references_locally, TaxaMatch::match_driving_accessions, TaxaMatch::evaluate_reference_accessions, TaxaMatch::review_flagged_accessions, TaxaMatch::resolve_review_overrides, TaxaMatch::verify_removal_candidates, TaxaMatch::remove_incongruent_references, TaxaMatch::flag_incongruent_references, TaxaLikely::train_likelihood_model, TaxaLikely::interpret_model, TaxaExpect::generate_domestic_food_priors, TaxaHabitat::build_habitat_lookup, TaxaExpect::condition_evidence_on_habitat, TaxaExpect::generate_regional_proximity_evidence, TaxaExpect::generate_presence_curve_evidence, TaxaExpect::apply_undetected_evidence, TaxaFetch::check_inat_range, TaxaExpect::generate_inat_range_evidence, TaxaExpect::generate_invasive_watch_evidence, TaxaLikely::calibrate_query_noise, TaxaLikely::evaluate_likelihoods, TaxaLikely::infer_exclude_predicted, TaxaLikely::audit_barcode_coverage
+          sav: seq_matrix, reference_df, match_eval, match_review, removal_audit, match_obj_restored, ref_eval, lik_model, taxaexpect_priors, lik_result, census_result, coverage
+
+[L 1920] # 8  BAYESIAN ASSIGNMENT (TaxaAssign)   (437 lines)
+          msg: Step 8: TaxaAssign
+          fns: TaxaLikely::filter_top_hypotheses, TaxaTools::fill_higher_ranks, TaxaAssign::compute_group_priors, TaxaFetch::check_inat_range, TaxaLikely::expand_unreferenced_hypotheses, TaxaLikely::apply_coverage_constraints, TaxaAssign::join_priors, TaxaAssign::adjust_inat_range_priors, TaxaAssign::compute_posterior, TaxaAssign::posterior_consensus, TaxaAssign::update_prior_from_consensus, TaxaAssign::add_slash_taxon, TaxaFlag::add_posthoc_assessment, TaxaFlag::flag_watch_candidates, TaxaAssign::score_consensus
+          sav: inat_range, expanded_likelihoods, likelihoods_ready, posteriors_updated, consensus_final
+
+[L 2357] # 9  TAXAFLAG — ASSIGNMENT REVIEW   (178 lines)
+          msg: Step 9: TaxaFlag review_assignments
+          fns: TaxaFlag::review_assignments, TaxaTools::token_usage, TaxaTools::scientific_to_common, TaxaTools::verify_taxon_names
+          sav: reviewed
+
+[L 2535] # 10  FILTER + OUTPUT   (202 lines)
+          msg: Step 10: Final filtered output
+          fns: TaxaTools::token_usage, TaxaFetch::report_fetch, TaxaHabitat::report_habitat, TaxaExpect::report_priors, TaxaLikely::report_likelihood, TaxaAssign::report_assign, TaxaFlag::report_flags, TaxaTools::assemble_report, TaxaAssign::generate_report
+          sav: session_meta(saveRDS)
+====================================================================================================
+PtConceptionWorkflow_18S_2_single_site.R (2937 lines)
+====================================================================================================
+
+[L   22] # 0  LIBRARIES + USER INPUTS  (edit this section only)   (252 lines)
+          fns: TaxaTools::reset_token_usage
+          sav: obj(saveRDS)
+
+[L  274] # 1  LOAD INPUT DATA   (65 lines)
+          msg: Step 1: Loading input data
+          fns: TaxaMatch::standardize_match_data, TaxaMatch::convert_taxonomy_backbone, TaxaMatch::add_lowest_consistent_rank, TaxaMatch::filter_redundant_hypotheses
+
+[L  339] # 2  CONTAMINANT DETECTION (TaxaFlag)   (81 lines)
+          msg: Step 2: Flagging contaminants
+          fns: TaxaFlag::flag_contaminant
+          sav: contaminant_flags
+
+[L  420] # 3  GBIF OCCURRENCE FETCH (TaxaFetch)   (352 lines)
+          msg: Step 3: Fetching GBIF occurrences
+          fns: TaxaTools::define_search_polygon, TaxaFetch::get_keys_from_context, TaxaFetch::download_gbif_occurrences, TaxaFetch::filter_gbif_quality, TaxaFetch::check_geographic_outliers, TaxaHabitat::flag_institution_candidates, TaxaHabitat::review_institution_flags, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names, TaxaTools::create_taxon_names, TaxaFetch::stack_occurrences, TaxaTools::find_taxonomy_conflicts
+          sav: silva_df, bbox, valid_keys, raw_gbif, gbif_occurrences, occurrences_std
+
+[L  772] # 4  HABITAT ASSIGNMENT (TaxaHabitat)   (100 lines)
+          msg: Step 4: Assigning habitat via LLM
+          fns: TaxaTools::call_anthropic_api, TaxaHabitat::build_habitat_lookup, TaxaHabitat::assign_habitat_biological, TaxaHabitat::flag_habitat_inconsistencies, TaxaTools::assign_sampling_group, TaxaTools::token_usage
+          sav: habitat_lookup, occurrences_clean
+
+[L  872] # 5  TAXAEXPECT — BIODIVERSITY MODEL + PRIORS   (577 lines)
+          msg: Step 5: TaxaExpect
+          fns: TaxaExpect::calibrate_kernel_bandwidth, TaxaExpect::estimate_kernel_priors, TaxaExpect::generate_undetected_diversity, TaxaExpect::generate_domestic_food_priors, TaxaExpect::generate_presence_curve_evidence, TaxaExpect::apply_undetected_evidence, TaxaFetch::check_inat_range, TaxaExpect::generate_inat_range_evidence, TaxaExpect::plot_theta_surface, TaxaExpect::generate_invasive_watch_evidence
+          sav: kernel_grouped_fit, kernel_fits, model_fits, taxaexpect_priors
+
+[L 1449] # 6  MATCH STANDARDISATION (TaxaMatch)   (43 lines)
+          msg: Step 6: Match standardisation (carried out at Step 1; provenance/sequence joins only)
+          sav: match_obj
+
+[L 1492] # 7  LIKELIHOOD MODEL (TaxaLikely)   (536 lines)
+          msg: Step 7: TaxaLikely
+          fns: TaxaLikely::fetch_ncbi_reference_sequences, TaxaLikely::build_sequence_matrix, TaxaTools::clean_taxon_names, TaxaLikely::detect_suppressed_candidates, TaxaLikely::restore_suppressed_candidates, TaxaMatch::convert_taxonomy_backbone, TaxaMatch::corroborate_references_locally, TaxaMatch::match_driving_accessions, TaxaMatch::evaluate_reference_accessions, TaxaMatch::review_flagged_accessions, TaxaMatch::resolve_review_overrides, TaxaMatch::verify_removal_candidates, TaxaMatch::remove_incongruent_references, TaxaMatch::flag_incongruent_references, TaxaLikely::train_likelihood_model, TaxaLikely::interpret_model, TaxaLikely::calibrate_query_noise, TaxaLikely::evaluate_likelihoods, TaxaTools::is_plausible_binomial, TaxaLikely::infer_exclude_predicted, TaxaLikely::audit_barcode_coverage
+          sav: seq_matrix, reference_df, match_eval, match_review, removal_audit, match_obj, ref_eval, lik_model, lik_result, census_result
+
+[L 2028] # 8  BAYESIAN ASSIGNMENT (TaxaAssign)   (505 lines)
+          msg: Step 8: TaxaAssign
+          fns: TaxaLikely::filter_top_hypotheses, TaxaTools::fill_higher_ranks, TaxaAssign::compute_group_priors, TaxaFetch::check_inat_range, TaxaLikely::expand_unreferenced_hypotheses, TaxaLikely::apply_coverage_constraints, TaxaAssign::join_priors, TaxaAssign::adjust_inat_range_priors, TaxaAssign::compute_posterior, TaxaAssign::posterior_consensus, TaxaAssign::update_prior_from_consensus, TaxaAssign::add_slash_taxon, TaxaFlag::add_posthoc_assessment, TaxaFlag::flag_watch_candidates, TaxaAssign::score_consensus
+          sav: inat_range, expanded_likelihoods, likelihoods_ready, posteriors_updated, consensus_final
+
+[L 2533] # 9  TAXAFLAG — ASSIGNMENT REVIEW   (110 lines)
+          msg: Step 9: TaxaFlag review_assignments
+          fns: TaxaFlag::review_assignments, TaxaTools::token_usage
+          sav: reviewed
+
+[L 2643] # 10  FILTER + OUTPUT   (296 lines)
+          msg: Step 10: Final filtered output
+          fns: TaxaTools::scientific_to_common, TaxaTools::verify_taxon_names, TaxaTools::assign_sampling_group, TaxaTools::token_usage, TaxaFetch::report_fetch, TaxaHabitat::report_habitat, TaxaExpect::report_priors, TaxaLikely::report_likelihood, TaxaAssign::report_assign, TaxaFlag::report_flags, TaxaTools::assemble_report, TaxaAssign::generate_report
+          sav: session_meta(saveRDS)
+====================================================================================================
+PtConceptionWorkflow_12S_multi_site_FAST.R (781 lines)
+====================================================================================================
+
+[L   58] # 0  CONFIGURATION   (202 lines)
+          msg: Step 1: -2: Loading input data; reusing the single-site contaminant flags
+          fns: TaxaTools::call_anthropic_api
+          sav: obj(saveRDS)
+
+[L  260] # 2.5  SPATIAL GROUPING -- real per-Location site table (BioD / Cojo / Jalama)   (90 lines)
+          msg: Step 2.5: Site table from sample metadata
+          fns: TaxaMatch::join_event_site_metadata, TaxaMatch::build_site_table
+          sav: site_table
+
+[L  350] # 5  PER-LOCATION KERNEL PRIORS   (66 lines)
+          msg: Step 5: one kernel prior per Location
+          fns: TaxaExpect::estimate_kernel_priors, TaxaExpect::generate_undetected_diversity
+          sav: kernel_fits, taxaexpect_priors
+
+[L  416] # 5.5  SUBSET OF SEQUENCES (FAST_SUBSET)   (29 lines)
+
+[L  445] # 8  BAYESIAN ASSIGNMENT -- the multi-site path   (223 lines)
+          msg: Step 8: TaxaAssign, multi-site
+          fns: TaxaLikely::filter_top_hypotheses, TaxaTools::fill_higher_ranks, TaxaAssign::compute_group_priors, TaxaLikely::expand_unreferenced_hypotheses, TaxaLikely::apply_coverage_constraints, TaxaAssign::join_priors, TaxaAssign::combine_multisite_priors, TaxaAssign::adjust_inat_range_priors, TaxaAssign::compute_posterior, TaxaAssign::posterior_consensus, TaxaAssign::update_prior_from_consensus, TaxaAssign::add_slash_taxon, TaxaFlag::add_posthoc_assessment, TaxaFlag::flag_watch_candidates
+          sav: expanded_likelihoods, likelihoods_ready, posteriors_updated, consensus_final, .cmp
+
+[L  668] # 9  TAXAFLAG REVIEW (cached) + common names (cached)   (46 lines)
+          msg: Step 9: TaxaFlag review_assignments
+          fns: TaxaFlag::review_assignments, TaxaTools::scientific_to_common, TaxaTools::verify_taxon_names
+          sav: reviewed
+
+[L  714] # 10  FINAL FILTERED OUTPUT + SESSION METADATA   (69 lines)
+          msg: Step 10: Final filtered output
+          fns: TaxaTools::token_usage
+          sav: session_meta(saveRDS)
+====================================================================================================
+GreatLakes2023_ConsensusWorkflow.R (2419 lines)
+====================================================================================================
+
+[L   23] # 0  LIBRARIES + USER INPUTS  (edit this section only)   (287 lines)
+          sav: obj(saveRDS)
+
+[L  310] # 1  LOAD MERGED + BLASTED DATA  (match_obj + reads_long)   (60 lines)
+          msg: Step 1: Loading merged + BLASTed match data
+
+[L  370] # 1.5  TAXONOMIC SCOPE FILTER — fish only   (51 lines)
+          sav: reads_long
+
+[L  421] # 2  CONTAMINANT DETECTION (TaxaFlag)   (61 lines)
+          msg: Step 2: Flagging contaminants
+          fns: TaxaFlag::flag_contaminant, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names
+          sav: contaminant_flags
+
+[L  482] # 3  GBIF OCCURRENCE FETCH (TaxaFetch)   (186 lines)
+          msg: Step 3: Fetching GBIF occurrences
+          fns: TaxaTools::define_search_polygon, TaxaFetch::get_keys_from_context, TaxaFetch::download_gbif_occurrences, TaxaFetch::filter_gbif_quality, TaxaFetch::check_geographic_outliers, TaxaHabitat::flag_institution_candidates, TaxaHabitat::review_institution_flags, TaxaTools::create_taxon_names, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names, TaxaTools::find_taxonomy_conflicts, TaxaFetch::stack_occurrences, TaxaFetch::dedupe_occurrences
+          sav: bbox, valid_keys, raw_gbif, gbif_occurrences, all_occurrences
+
+[L  668] # 4  HABITAT ASSIGNMENT (TaxaHabitat)   (149 lines)
+          msg: Step 4: Assigning habitat via LLM
+          fns: TaxaTools::call_anthropic_api, TaxaHabitat::build_habitat_lookup, TaxaHabitat::assign_habitat_biological, TaxaHabitat::flag_habitat_inconsistencies, TaxaHabitat::apply_spatial_review_decisions, TaxaHabitat::review_spatial_flags, TaxaHabitat::save_spatial_review_decisions
+          sav: habitat_lookup, occurrences_clean
+
+[L  817] # 5  TAXAEXPECT — BIODIVERSITY MODEL + PRIORS   (197 lines)
+          msg: Step 5: TaxaExpect
+          fns: TaxaExpect::calibrate_kernel_bandwidth, TaxaExpect::estimate_kernel_priors, TaxaExpect::generate_undetected_diversity, TaxaExpect::plot_theta_surface
+          sav: model_fit, taxaexpect_priors
+
+[L 1014] # 6  MATCH STANDARDISATION (TaxaMatch)   (15 lines)
+          msg: Step 6: Joining contaminant flags for provenance
+          sav: match_obj
+
+[L 1029] # 7  LIKELIHOOD MODEL (TaxaLikely)   (577 lines)
+          msg: Step 7: TaxaLikely
+          fns: TaxaLikely::fetch_ncbi_reference_sequences, TaxaLikely::build_sequence_matrix, TaxaTools::clean_taxon_names, TaxaTools::find_taxonomy_conflicts, TaxaLikely::detect_suppressed_candidates, TaxaLikely::restore_suppressed_candidates, TaxaMatch::convert_taxonomy_backbone, TaxaMatch::corroborate_references_locally, TaxaMatch::match_driving_accessions, TaxaMatch::evaluate_reference_accessions, TaxaMatch::review_flagged_accessions, TaxaMatch::resolve_review_overrides, TaxaMatch::verify_removal_candidates, TaxaMatch::remove_incongruent_references, TaxaLikely::train_likelihood_model, TaxaLikely::interpret_model, TaxaExpect::generate_domestic_food_priors, TaxaHabitat::build_habitat_lookup, TaxaExpect::condition_evidence_on_habitat, TaxaExpect::generate_regional_proximity_evidence, TaxaExpect::generate_presence_curve_evidence, TaxaExpect::apply_undetected_evidence, TaxaFetch::check_inat_range, TaxaExpect::generate_inat_range_evidence, TaxaExpect::generate_invasive_watch_evidence, TaxaLikely::calibrate_query_noise, TaxaLikely::evaluate_likelihoods, TaxaLikely::infer_exclude_predicted, TaxaLikely::audit_barcode_coverage
+          sav: seq_matrix, reference_df, match_eval, match_review, removal_audit, match_obj_restored, ref_eval, lik_model, taxaexpect_priors, lik_result, census_result, coverage
+
+[L 1606] # 8  BAYESIAN ASSIGNMENT (TaxaAssign)   (302 lines)
+          msg: Step 8: TaxaAssign
+          fns: TaxaLikely::filter_top_hypotheses, TaxaTools::fill_higher_ranks, TaxaAssign::compute_group_priors, TaxaFetch::check_inat_range, TaxaLikely::expand_unreferenced_hypotheses, TaxaLikely::apply_coverage_constraints, TaxaAssign::join_priors, TaxaAssign::adjust_inat_range_priors, TaxaAssign::compute_posterior, TaxaAssign::posterior_consensus, TaxaAssign::update_prior_from_consensus, TaxaAssign::add_slash_taxon, TaxaFlag::add_posthoc_assessment, TaxaFlag::flag_watch_candidates
+          sav: inat_range, expanded_likelihoods, likelihoods_ready, posteriors_updated, consensus_final
+
+[L 1908] # 8j  SCORE-BASED CONSENSUS — comparison against Bayesian (expanded scope)   (156 lines)
+          fns: TaxaLikely::compute_rank_thresholds, TaxaAssign::score_consensus
+          sav: score_con_results, score_con_comparisons, score_con_method_axes
+
+[L 2064] # 8k  LLM-SHORTCUT CONSENSUS — comparison against Bayesian   (69 lines)
+          fns: TaxaAssign::assign_taxa_llm, TaxaAssign::build_context, TaxaAssign::posterior_consensus, TaxaAssign::add_slash_taxon
+          sav: llm_posteriors, llm_consensus, llm_comparison
+
+[L 2133] # 9  TAXAFLAG — ASSIGNMENT REVIEW   (85 lines)
+          msg: Step 9: TaxaFlag review_assignments
+          fns: TaxaFlag::review_assignments, TaxaTools::scientific_to_common, TaxaTools::verify_taxon_names
+          sav: reviewed
+
+[L 2218] # 10  FILTER + OUTPUT   (203 lines)
+          msg: Step 10: Final filtered output
+          fns: TaxaFetch::report_fetch, TaxaHabitat::report_habitat, TaxaExpect::report_priors, TaxaLikely::report_likelihood, TaxaAssign::report_assign, TaxaFlag::report_flags, TaxaTools::assemble_report, TaxaAssign::generate_report
+          sav: session_meta(saveRDS), reads_with_taxonomy(saveRDS)
+====================================================================================================
+MuguFishWorkflow.R (2425 lines)
+====================================================================================================
+
+[L   34] # 0  LIBRARIES + USER INPUTS  (edit this section only)   (274 lines)
+          fns: TaxaTools::reset_token_usage, TaxaTools::call_anthropic_api
+          sav: obj(saveRDS)
+
+[L  308] # 1  LOAD MATCH OBJECTS   (33 lines)
+
+[L  341] # 2  CONTAMINANT DETECTION (TaxaFlag)   (75 lines)
+          msg: Step 2: Flagging contaminants
+          fns: TaxaFlag::flag_contaminant
+          sav: contaminant_flags
+
+[L  416] # 3  GBIF OCCURRENCE FETCH (TaxaFetch)   (187 lines)
+          msg: Step 3: Fetching GBIF occurrences
+          fns: TaxaTools::define_search_polygon, TaxaFetch::get_keys_from_context, TaxaFetch::download_gbif_occurrences, TaxaFetch::filter_gbif_quality, TaxaFetch::check_geographic_outliers, TaxaHabitat::flag_institution_candidates, TaxaHabitat::review_institution_flags, TaxaTools::create_taxon_names, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names, TaxaTools::find_taxonomy_conflicts, TaxaFetch::stack_occurrences
+          sav: bbox, valid_keys, raw_gbif, gbif_occurrences
+
+[L  603] # 4  HABITAT ASSIGNMENT (TaxaHabitat)   (96 lines)
+          msg: Step 4: Assigning habitat via LLM
+          fns: TaxaTools::call_anthropic_api, TaxaHabitat::build_habitat_lookup, TaxaHabitat::assign_habitat_biological, TaxaTools::token_usage, TaxaHabitat::flag_habitat_inconsistencies, TaxaHabitat::apply_spatial_review_decisions, TaxaHabitat::review_spatial_flags, TaxaHabitat::save_spatial_review_decisions
+          sav: habitat_lookup, occurrences_clean
+
+[L  699] # 5  TAXAEXPECT — BIODIVERSITY MODEL + PRIORS   (525 lines)
+          msg: Step 5: TaxaExpect
+          fns: TaxaExpect::calibrate_kernel_bandwidth, TaxaExpect::estimate_kernel_priors, TaxaExpect::generate_undetected_diversity, TaxaExpect::generate_domestic_food_priors, TaxaHabitat::build_habitat_lookup, TaxaExpect::condition_evidence_on_habitat, TaxaExpect::generate_regional_proximity_evidence, TaxaExpect::generate_presence_curve_evidence, TaxaExpect::apply_undetected_evidence, TaxaExpect::add_pca_covariates, TaxaExpect::generate_invasive_watch_evidence, TaxaExpect::plot_theta_surface, TaxaTools::fill_higher_ranks, TaxaAssign::compute_group_priors
+          sav: taxaexpect_priors, model_fit
+
+[L 1224] # 6  SCORED LIKELIHOODS (per marker)   (488 lines)
+          msg: Step 6: Scored likelihoods (per marker)
+          fns: TaxaLikely::fetch_ncbi_reference_sequences, TaxaTools::clean_taxon_names, TaxaTools::create_taxon_names, TaxaMatch::convert_taxonomy_backbone, TaxaLikely::build_sequence_matrix, TaxaLikely::compute_rank_thresholds, TaxaLikely::train_likelihood_model, TaxaLikely::detect_suppressed_candidates, TaxaLikely::restore_suppressed_candidates, TaxaMatch::corroborate_references_locally, TaxaMatch::match_driving_accessions, TaxaMatch::evaluate_reference_accessions, TaxaMatch::review_flagged_accessions, TaxaTools::call_anthropic_api, TaxaMatch::resolve_review_overrides, TaxaMatch::verify_removal_candidates, TaxaMatch::remove_incongruent_references, TaxaMatch::flag_incongruent_references, TaxaLikely::calibrate_query_noise, TaxaLikely::evaluate_likelihoods, TaxaLikely::infer_exclude_predicted, TaxaLikely::audit_barcode_coverage
+          sav: reference_df(saveRDS), seq_matrix(saveRDS), rank_thresholds(saveRDS), lik_model(saveRDS), match_eval(saveRDS), removal_audit(saveRDS), coverage(saveRDS), lik_coi, lik_12s, lik_16s
+
+[L 1712] # 7  ROUND 1 BAYESIAN ASSIGNMENT (per marker)   (199 lines)
+          msg: Step 7: Round 1 Bayesian assignment (per marker)
+          fns: TaxaFetch::check_inat_range, TaxaLikely::filter_top_hypotheses, TaxaTools::fill_higher_ranks, TaxaLikely::expand_unreferenced_hypotheses, TaxaLikely::apply_coverage_constraints, TaxaAssign::join_priors, TaxaAssign::adjust_inat_range_priors, TaxaAssign::compute_posterior, TaxaAssign::posterior_consensus
+          sav: inat_range, expanded_liks, liks_ready, r1_coi, r1_12s, r1_16s
+
+[L 1911] # 8  CROSS-MARKER PRIOR UPDATE   (54 lines)
+          msg: Step 8: Cross-marker prior update
+          fns: TaxaAssign::update_prior_from_consensus
+          sav: all_posteriors_r2
+
+[L 1965] # 9  ROUND 2 BAYESIAN ASSIGNMENT (pooled all markers)   (130 lines)
+          msg: Step 9: Round 2 consensus
+          fns: TaxaAssign::posterior_consensus, TaxaAssign::add_slash_taxon, TaxaFlag::add_posthoc_assessment, TaxaFlag::flag_watch_candidates, TaxaAssign::score_consensus
+          sav: consensus_final
+
+[L 2095] # 10  TAXAFLAG — ASSIGNMENT REVIEW   (69 lines)
+          msg: Step 10: TaxaFlag review_assignments
+          fns: TaxaFlag::review_assignments, TaxaTools::token_usage
+          sav: reviewed
+
+[L 2164] # 11  FILTER + OUTPUT   (263 lines)
+          msg: Step 11: Final filtered output
+          fns: TaxaTools::scientific_to_common, TaxaTools::clean_taxon_names, TaxaTools::verify_taxon_names, TaxaTools::token_usage
+          sav: Reviewed_Mugu_Fish_BLASTED, Reviewed_Mugu_Fish_Aggregated, Reviewed_Mugu_Fish_Aggregated_Plausible, list(saveRDS)
+====================================================================================================
+CaliforniaIntertidalWorkflow_multi_marker.R (835 lines)
+====================================================================================================
+
+[L   64] # 0  LIBRARIES + USER INPUTS  (edit this section only)   (205 lines)
+          fns: TaxaTools::call_anthropic_api, TaxaTools::reset_token_usage
+          sav: obj(saveRDS)
+
+[L  269] # 1  LOAD MATCH OBJECTS  (per marker) + NAMESPACE observation_id   (33 lines)
+          msg: Step 1: Load match objects
+
+[L  302] # 1.5  TAXONOMIC SCOPE FILTER  (per marker, ESV-level)   (63 lines)
+          msg: Step 1.5: Taxonomic scope filter
+          sav: matches
+
+[L  365] # 2  CONTAMINANT DETECTION (TaxaFlag)  -- on the union   (16 lines)
+          msg: Step 2: Contaminant detection
+
+[L  381] # 2.4  COORDINATE QC  -- run BEFORE site_table is built   (50 lines)
+          msg: Step 2.4: Coordinate QC
+
+[L  431] # 2.5  SPATIAL GROUPING -- site_table across ALL markers   (58 lines)
+          msg: Step 2.5: Site table
+
+[L  489] # 3  GBIF OCCURRENCE FETCH (TaxaFetch)  -- ONCE, union of families   (52 lines)
+          msg: Step 3: GBIF occurrence fetch
+          fns: TaxaTools::define_search_polygon, TaxaFetch::get_keys_from_context, TaxaFetch::download_gbif_occurrences
+          sav: occurrences_std
+
+[L  541] # 4  HABITAT ASSIGNMENT (TaxaHabitat) + sampling_group   (22 lines)
+          msg: Step 4: Habitat assignment
+          fns: TaxaHabitat::build_habitat_lookup
+          sav: occurrences_clean
+
+[L  563] # 5  KERNEL PRIORS -- one fit PER SITE (shared across markers)   (49 lines)
+          msg: Step 5: Per-site kernel priors
+          fns: TaxaExpect::estimate_kernel_priors, TaxaExpect::generate_undetected_diversity
+          sav: kernel_fits
+
+[L  612] # 6  MATCH STANDARDISATION (TaxaMatch)   (7 lines)
+          msg: Step 6: Match standardisation
+
+[L  619] # 7  SCORED LIKELIHOODS  (PER MARKER -- nothing here is shared)   (91 lines)
+          msg: Step 7: Scored likelihoods (per marker x platform)
+          fns: TaxaLikely::fetch_ncbi_reference_sequences
+
+[L  710] # 8  BAYESIAN ASSIGNMENT -- multi-site AND multi-marker   (108 lines)
+          msg: Step 8: Bayesian assignment
+          fns: TaxaLikely::filter_top_hypotheses, TaxaAssign::join_priors, TaxaAssign::combine_multisite_priors, TaxaAssign::compute_posterior, TaxaAssign::posterior_consensus, TaxaAssign::update_prior_from_consensus
+          sav: all_posteriors_r2, consensus_r2
+
+[L  818] # 9  TAXAFLAG -- ASSIGNMENT REVIEW   (11 lines)
+          msg: Step 9: Assignment review
+
+[L  829] # 10  FILTER + OUTPUT   (8 lines)
+          msg: Step 10: Final filtered output

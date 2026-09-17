@@ -242,3 +242,137 @@ test_that("errors when read_quantile is out of (0, 1]", {
     "'read_quantile' must be a single number in \\(0, 1\\]"
   )
 })
+
+# ---------------------------------------------------------------------------
+# site_col: within-site replicate detection frequency
+# ---------------------------------------------------------------------------
+# Site A has a 4-replicate roster (a1-a4) and site B a 2-replicate roster
+# (b1, b2). blank1 sits at site A but is a control, so it must never enter
+# A's roster -- if it did, A's denominator would be 5 and ESV_1's best-site
+# frequency would read 0.8 instead of 1.
+.make_site_reads <- function() {
+  data.frame(
+    ESVId = c(rep("ESV_1", 5), rep("ESV_2", 2), "ESV_3", rep("ESV_4", 6)),
+    sequence = c(rep("ACGTACGT", 5), rep("ACGT", 2), "AACC", rep("TTTT", 6)),
+    event_id = c(
+      "a1", "a2", "a3", "a4", "b1", "b1", "b2", "blank1",
+      "a1", "a2", "a3", "a4", "b1", "b2"
+    ),
+    site_id = c("A", "A", "A", "A", "B", "B", "B", "A", "A", "A", "A", "A", "B", "B"),
+    n_reads = c(100, 50, 40, 30, 20, 10, 10, 5, 9, 9, 9, 9, 9, 9),
+    stringsAsFactors = FALSE
+  )
+}
+
+.make_site_cls <- function() {
+  data.frame(
+    observation_id = c("ESV_1", "ESV_2", "ESV_3", "ESV_4"),
+    primary_plausibility = c("expected", "expected", "unexpected", "expected"),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("site_col = NULL leaves the output completely unchanged", {
+  reads <- .make_site_reads()
+  cls <- .make_site_cls()
+  base <- build_review_covariates(reads, cls, control_samples = "blank1")
+  with_site <- build_review_covariates(reads, cls,
+    site_col = "site_id", control_samples = "blank1"
+  )
+
+  expect_false(any(c(
+    "n_sites_detected", "prop_sites_detected", "max_site_detection_freq",
+    "mean_site_detection_freq", "n_replicates_at_max_site"
+  ) %in% names(base)))
+  # the site columns are purely additive: every pre-existing column is identical
+  expect_identical(base, with_site[, names(base)])
+})
+
+test_that("within-site detection frequency uses the full replicate roster", {
+  out <- build_review_covariates(
+    .make_site_reads(), .make_site_cls(),
+    site_col = "site_id", control_samples = "blank1"
+  )
+  g <- function(id, col) out[[col]][out$observation_id == id]
+
+  # ESV_1: 4/4 at A, 1/2 at B
+  expect_equal(g("ESV_1", "n_sites_detected"), 2L)
+  expect_equal(g("ESV_1", "prop_sites_detected"), 1)
+  expect_equal(g("ESV_1", "max_site_detection_freq"), 1)
+  expect_equal(g("ESV_1", "mean_site_detection_freq"), 0.75)
+  expect_equal(g("ESV_1", "n_replicates_at_max_site"), 4L)
+
+  # ESV_2: 2/2 at B, absent from A. Same best-site frequency as ESV_1, on a
+  # roster half the size -- the case n_replicates_at_max_site exists for.
+  expect_equal(g("ESV_2", "n_sites_detected"), 1L)
+  expect_equal(g("ESV_2", "prop_sites_detected"), 0.5)
+  expect_equal(g("ESV_2", "max_site_detection_freq"), 1)
+  expect_equal(g("ESV_2", "n_replicates_at_max_site"), 2L)
+
+  # the pooled view cannot distinguish these two: ESV_1 is in 5/6 samples,
+  # but "5/6" says nothing about it saturating one site and half-filling another
+  expect_equal(g("ESV_1", "prop_samples_detected"), 5 / 6)
+})
+
+test_that("a frequency tie reports the larger replicate roster, not the first site name", {
+  out <- build_review_covariates(
+    .make_site_reads(), .make_site_cls(),
+    site_col = "site_id", control_samples = "blank1"
+  )
+  # ESV_4 is 4/4 at A and 2/2 at B -- tied at 1.0. Site "A" also happens to
+  # sort first, so assert on a case where the two rules disagree instead.
+  reads <- .make_site_reads()
+  reads$site_id[reads$site_id == "A"] <- "Zed"
+  out2 <- build_review_covariates(
+    reads, .make_site_cls(),
+    site_col = "site_id", control_samples = "blank1"
+  )
+  expect_equal(
+    out$n_replicates_at_max_site[out$observation_id == "ESV_4"], 4L
+  )
+  expect_equal(
+    out2$n_replicates_at_max_site[out2$observation_id == "ESV_4"], 4L
+  )
+})
+
+test_that("observations with no field detections get zeros for counts and NA where undefined", {
+  out <- build_review_covariates(
+    .make_site_reads(), .make_site_cls(),
+    site_col = "site_id", control_samples = "blank1"
+  )
+  i <- which(out$observation_id == "ESV_3") # blank-only
+
+  expect_equal(out$n_sites_detected[i], 0L)
+  expect_equal(out$prop_sites_detected[i], 0)
+  expect_equal(out$max_site_detection_freq[i], 0)
+  expect_true(is.na(out$mean_site_detection_freq[i]))
+  expect_true(is.na(out$n_replicates_at_max_site[i]))
+})
+
+test_that("rows with a missing site are dropped from site covariates only, with a warning", {
+  reads <- .make_site_reads()
+  reads$site_id[reads$event_id == "b2"] <- NA
+
+  expect_warning(
+    out <- build_review_covariates(
+      reads, .make_site_cls(),
+      site_col = "site_id", control_samples = "blank1"
+    ),
+    "missing 'site_id' value"
+  )
+  # B's roster is now b1 alone, so ESV_2 reads 1/1 there ...
+  expect_equal(out$n_replicates_at_max_site[out$observation_id == "ESV_2"], 1L)
+  # ... but the non-site covariates still see both of its samples
+  expect_equal(out$n_samples_detected[out$observation_id == "ESV_2"], 2L)
+})
+
+test_that("site_col validates against reads_df", {
+  expect_error(
+    build_review_covariates(.make_site_reads(), .make_site_cls(), site_col = "nope"),
+    "column 'nope' not found in reads_df"
+  )
+  expect_error(
+    build_review_covariates(.make_site_reads(), .make_site_cls(), site_col = c("a", "b")),
+    "'site_col' must be a single column name or NULL"
+  )
+})

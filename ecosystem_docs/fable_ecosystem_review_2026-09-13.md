@@ -282,7 +282,7 @@ caller-supplied, source-agnostic), `score_consensus`, `verify_removal_candidates
 | Domestic priors Eukaryota/Animalia | Live bug, A5. |
 | `combine_multisite_priors()` prior_mix inheritance | Latent defect with a consumer, B1. |
 | `get_keys_from_context()` warnings | A14. |
-| PtCon 18S Step 10 per-`sampling_group` CSVs | Confirmed dead (F5): `sampling_group` exists only on `occurrences_clean` (E:802); `any_of()` at E:2646 drops it; loop at E:2658-2666 runs zero times. |
+| PtCon 18S Step 10 per-`sampling_group` CSVs | Confirmed dead (F5): `sampling_group` exists only on `occurrences_clean` (E:802); `any_of()` at E:2646 drops it; loop at E:2658-2666 runs zero times. **FIXED 2026-09-15** -- `assign_sampling_group(harmonise = TRUE)` added before `classify_18S_functional()`, `any_of` -> `all_of`. 5 per-group CSVs now written. |
 | TEST template lacks `species_reference`; PtCon template old pattern | First confirmed; second not found (C3). Both templates call archived GLMM functions unguarded (F7). |
 | Retire `PtConceptionWorkflow_12S_multi_site.R` | Yes (F2). |
 | Mugu W_CLAMP "borrowed" | Premise wrong (0.6.1); the hard-coded literal is A7. |
@@ -358,7 +358,7 @@ Tier 1 = a generated workflow would break or silently reproduce a fixed defect.
 | F2 | **Retire `PtConceptionWorkflow_12S_multi_site.R`.** Not run since 2026-07-13; blend-only pricing; A10; a hard-coded cross-workflow `readRDS(".../PtCon18SSchulte_bbox.rds")` with no guard (M:477). It does carry sentinels, log, conditioning, decisions cache, so it is superseded rather than missing features. | F:8 header; `PtConMifishSchulteMulti_*` mtimes | Move to `_archive_retired_scripts_2026_09_1x/` with a README, as for WilderFish. |
 | F3 | **PtCon 18S has no habitat conditioning and no spatial-review step.** Domestic/watch/GISD/iNat evidence is priced (E:1080-1208) without `H_site`; GISD is not distance-gated (Rapana venosa at 3,933 km, E:1126-1127). `review_spatial_flags()` is commented out (E:785-788); `filter(spatial_flag == "likely")` runs unreviewed with no decisions cache. May be deliberate marker choices; confirm rather than fix silently. | grep: zero hits for `.habitat_condition`/`W_CLAMP` in E | User decision. |
 | F4 | `MuguFishWorkflow.R` re-saves `lik_result` unconditionally after a cache hit, so the mtime `.match_src_newer` compares no longer means "last recomputed". Mugu also has no INCOMPLETE banner and no session metadata; `RUN_ACCESSION_SCREEN <- FALSE` is the committed default, so likelihoods train on unscreened references with one console line. | U:1613-1615, U:1523-1524, U:240, U:1474-1477 | Gate the save; add the banner/metadata block. |
-| F5 | 18S Step 10 dead code (D-C). | E:802, E:2646, E:2658-2666 | Recompute `sampling_group` on `accurate_precise_consensus`'s own taxonomy (the `case_when` at E:803-887) or delete the loop. |
+| F5 | 18S Step 10 dead code (D-C). **DONE 2026-09-15.** | E:802, E:2646, E:2658-2666 | Recompute `sampling_group` on `accurate_precise_consensus`'s own taxonomy (the `case_when` at E:803-887) or delete the loop. **Implemented as the first option, via `TaxaTools::assign_sampling_group(harmonise = TRUE, backbone_id = 11L)` rather than a local `case_when` -- the export's taxonomy is NCBI (`verify_taxon_names(backbone_id = 4)`) while the scheme is GBIF-tuned, so harmonisation is required. Side effect worth knowing: harmonise rewrites kingdom/phylum/class/order to GBIF vocabulary, which resolved 508 previously-NA phyla and let the GBIF-based `classify_18S_functional()` retain 376 more rows (1,580 -> 1,956).** |
 | F6 | `SCREENS_FROM_CHECKPOINT <- TRUE` is S's committed default (S:48): a fresh run freezes the 1,866-pending training screen rather than chipping at it. Porting to GL/E/M is near copy-paste (checkpoint paths exist at GL:1072-1189, M:1115-1250, E:1731-1870); Mugu needs per-marker adaptation. | | Decide the default; port after. |
 | F7 | Both templates call archived GLMM functions unguarded (`optimize_grid_size`, `create_sites_from_grid`, `prepare_model_dataframe`, `plot_theta_map_interactive`; TA:939-1137, TB:600-672) and hard-code `YEAR_RANGE <- "1995,2025"` (TA:163, TB:61). | | Wrap in the production `USE_KERNEL_PRIORS` notice or delete; compute the end year. |
 | F8 | 18S `SENTINEL_TAXA` is `character(0)` (E:47). No taxon in the script's own text qualifies; the two highest species-rank taxa of the 2026-09-12 run's consensus table are the natural candidates, chosen from the run record not the script. | | User picks. |
@@ -566,8 +566,24 @@ review bundle, the archive list) to take.
    in the same phylum (Ochrophyta) as the kelps, so the rule must be class-level.
    (2026-09-13, later: fixed via `TaxaTools::assign_sampling_group()`, now wired
    into the 18S workflow -- also adds a 114,744-record Liliopsida correction found
-   the same day. Every per-group number above is from the pre-fix run and is
-   stale until 18S is re-run.)
+   the same day.)
+   **2026-09-15, RE-RUN AND CONFIRMED -- no longer stale.** Measured, not
+   predicted: phytoplankton 1,203 -> **3,977** records (3.31x), group price
+   2.39e-03 -> 7.09e-04. The ~3,982 estimate was right. Diatoms: exactly 2,773,
+   all to phytoplankton. Copepods: 75 rows (66 zooplankton, 9 parasites) -- the
+   `Copepoda` spelling fix works. **The Liliopsida correction is INERT at this
+   site**: all 2,125 Liliopsida records are Alismatales, already caught by the
+   seagrass rule, so they land in `sea_grasses`; the 114,744 figure belongs to
+   the validation pool (2,185,193), not PtCon 18S's (1,372,777).
+   `Zygnematophyceae` has zero records either spelling and cannot be tested here.
+   So the entire phytoplankton move is the diatom fix alone -- the pre-fix 1,203
+   is exactly Dinophyceae 1,193 + Trebouxiophyceae 8 + Chlorophyceae 3.
+   Catch-all audit clean: 0 non-Animalia rows in `macroinvertebrates`. The
+   protist tail is 100 rows (Foraminifera 56, Oomycota 18, Cercozoa 12,
+   Euglenozoa 8, Ochrophyta 6), all routed to `NA` by the kingdom guard -- but
+   see the `__ungrouped__` note in
+   `REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md`: those rows are
+   NOT dropped downstream, they become their own kernel stratum.
 3. **A bimodal-H1 diagnostic.** `train_likelihood_model()` and
    `calibrate_query_noise(offset_form = "linear")` assume a unimodal H1 score
    distribution. A Nanopore top-hit distribution measured today has a 20.3% spike

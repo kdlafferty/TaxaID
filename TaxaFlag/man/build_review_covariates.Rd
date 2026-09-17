@@ -11,6 +11,7 @@ build_review_covariates(
   classification_taxon_col = "observation_id",
   classification_col = "primary_plausibility",
   event_col = "event_id",
+  site_col = NULL,
   reads_col = "n_reads",
   sequence_col = "sequence",
   control_samples = NULL,
@@ -49,6 +50,18 @@ equally well here).}
 
 \item{event_col}{Character. Sample/event identifier column in
 \code{reads_df} (default \code{"event_id"}).}
+
+\item{site_col}{Character or \code{NULL} (default). Site identifier column
+in \code{reads_df} grouping events into sites, where the events sharing
+a site are that site's replicates (e.g. the \code{site_id} carried by
+\code{TaxaMatch::build_site_table()}). \code{NULL} omits the four
+site-level columns entirely and leaves every other column unchanged.
+Each site's replicate roster -- the denominator -- is every distinct
+field event appearing at that site anywhere in \code{reads_df}, across
+all taxa, matching the effort-relative convention
+\code{prop_samples_detected} already uses. Rows with a missing
+\code{site_col} value are excluded from the site-level columns only
+(with a warning); they still contribute to every other covariate.}
 
 \item{reads_col}{Character. Read-count column in \code{reads_df} (default
 \code{"n_reads"}).}
@@ -141,6 +154,25 @@ detected in.}
 \code{reads_col > 0} for this observation.}
 \item{\code{prop_samples_detected}}{\code{n_samples_detected} divided by
 the total distinct field samples in \code{reads_df}.}
+\item{\code{n_sites_detected}}{Count of distinct field sites with at
+least one detection (present only when \code{site_col} is supplied,
+as for the three below).}
+\item{\code{prop_sites_detected}}{\code{n_sites_detected} divided by
+the total distinct field sites in \code{reads_df}.}
+\item{\code{max_site_detection_freq}}{The observation's highest
+within-site detection frequency: over field sites, the maximum of
+(replicates detected at that site) / (that site's replicate roster).
+\code{1} means every replicate at its best site detected it.}
+\item{\code{mean_site_detection_freq}}{The mean of that same
+within-site frequency, taken over the sites where the observation was
+detected at all -- "when present at a site, how consistently" -- so it
+is not diluted by sites the taxon never reached. \code{NA} when there
+are no field detections.}
+\item{\code{n_replicates_at_max_site}}{The replicate roster size of the
+site behind \code{max_site_detection_freq} -- the denominator that
+frequency was computed from. \code{NA} when there are no field
+detections. See the \verb{Read the frequency together with its
+    denominator} section.}
 \item{\code{contaminant_cols}}{Whichever \code{contaminant_df} columns
 were requested, present only when \code{contaminant_df} is supplied.}
 }
@@ -174,6 +206,27 @@ anywhere in \code{reads_df} -- not just among samples where the
 observation itself occurs -- so it is genuinely relative to sampling
 effort.
 
+\strong{Site-level detection frequency:} \code{prop_samples_detected}
+pools across the whole dataset, which hides where the detections sit: a
+taxon in 30\\% of samples overall might be in every replicate at one site
+and absent everywhere else, and that is much stronger evidence than 30\\%
+scattered as singletons. Supplying \code{site_col} adds the within-site
+view -- for each site, what fraction of that site's replicates the
+observation was detected in -- summarised per observation as
+\code{max_site_detection_freq} (its best site) and
+\code{mean_site_detection_freq}. This mirrors the replicate-frequency
+display in BIOWATCH (Pearman et al. 2026), where a species found in >75\\%
+of a site's replicates reads very differently from one found in <50\\%.
+
+\strong{Read the frequency together with its denominator:} a 1/1 site and
+a 4/4 site both give \code{max_site_detection_freq = 1}, and they are not
+equivalent evidence. \code{n_replicates_at_max_site} carries the
+denominator so a downstream rule can require a minimum replicate count
+(BIOWATCH requires at least three before treating a high frequency as
+strong). Where several sites tie on frequency, the reported denominator is
+from the tied site with the MOST replicates -- the strongest of the tied
+cases -- never whichever site sorts first by name.
+
 \strong{Blank frequency:} rather than recompute a raw blank-detection
 proportion, this function joins in \code{\link{flag_contaminant}}'s own
 \code{control_rate} (and any other columns requested via
@@ -195,6 +248,14 @@ cls <- data.frame(
   primary_plausibility = c("expected", "unexpected")
 )
 build_review_covariates(reads, cls, control_samples = "blank1")
+
+# With sites: s1 and s2 are replicates of site "A", so ESV_1 was detected
+# in both of that site's replicates while ESV_2 was detected in one.
+reads$site_id <- c("A", "A", "A", "A", "A")
+build_review_covariates(
+  reads, cls,
+  site_col = "site_id", control_samples = "blank1"
+)
 
 }
 \seealso{
