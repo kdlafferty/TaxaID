@@ -253,7 +253,8 @@
         "stack_occurrences",
         "flag_institution_candidates",
         "build_habitat_lookup",
-        "assign_habitat_biological"
+        "assign_habitat_biological",
+        "call_anthropic_api"
       ],
       "snippet": "occ_to_std.R",
       "time_estimate": "1-3 min (LLM call for habitat)"
@@ -409,11 +410,15 @@
       "label": "Evaluate likelihoods from trained model",
       "description": "Apply model to match data: compute H1/H2/H3 likelihoods per sample x taxon. Optionally filter to top hypotheses.",
       "packages": [
-        "TaxaLikely"
+        "TaxaLikely",
+        "TaxaTools"
       ],
       "functions": [
         "evaluate_likelihoods",
-        "filter_top_hypotheses"
+        "filter_top_hypotheses",
+        "expand_unreferenced_hypotheses",
+        "apply_coverage_constraints",
+        "fill_higher_ranks"
       ],
       "snippet": "model_match_to_lik.R",
       "time_estimate": "seconds to 1 min"
@@ -432,7 +437,8 @@
       ],
       "functions": [
         "join_priors",
-        "compute_posterior"
+        "compute_posterior",
+        "adjust_inat_range_priors"
       ],
       "snippet": "lik_prior_to_post.R",
       "time_estimate": "seconds to 1 min"
@@ -453,7 +459,8 @@
       "functions": [
         "join_priors",
         "combine_multisite_priors",
-        "compute_posterior"
+        "compute_posterior",
+        "adjust_inat_range_priors"
       ],
       "snippet": "lik_prior_to_post_multisite.R",
       "time_estimate": "seconds to 1 min"
@@ -552,10 +559,13 @@
       "label": "LLM expert review of assignments",
       "description": "Send consensus taxa to LLM for structured review: habitat fit, geographic plausibility, contaminant risk, alternatives",
       "packages": [
-        "TaxaFlag"
+        "TaxaFlag",
+        "TaxaTools"
       ],
       "functions": [
-        "review_assignments"
+        "review_assignments",
+        "scientific_to_common",
+        "call_anthropic_api"
       ],
       "snippet": "consensus_to_reviewed.R",
       "time_estimate": "1-5 min (LLM calls)"
@@ -573,7 +583,9 @@
       ],
       "functions": [
         "flag_contaminant",
-        "flag_handler"
+        "flag_handler",
+        "add_posthoc_assessment",
+        "flag_watch_candidates"
       ],
       "snippet": "consensus_to_flagged.R",
       "time_estimate": "seconds"
