@@ -76,11 +76,19 @@ template is ~2,000 lines. "Comprehensive" and "not frightening" pull in opposite
 directions, and a multi-stream variant makes it longer. Treat approachability as a
 requirement of Task 2, not a nicety:
 
-1. **Add a QUICKSTART block at the very top** naming the handful of lines a newcomer must
-   edit (DATA_DIR, OUT_DIR, OUT_PREFIX, STUDY_LAT/LON, SITE_HABITAT, BARCODE_TERM,
-   BLANKS_*) and, explicitly, which sections they can ignore on a first pass. Right now a
-   reader meets ~180 lines of configuration before anything happens. This is the cheapest
-   large win and should come first.
+1. ~~**Add a QUICKSTART block at the very top**~~ **DONE 2026-09-17**, uncommitted. It
+   replaced the old 17-line HOW TO USE header and names the must-edit settings by the
+   `--- ... ---` heading they live under rather than by line number (the line numbers in
+   this bullet had already drifted -- Section 0 is ~320 lines, not ~180). It also lists
+   what to IGNORE on a first pass, the three environment variables (`ANTHROPIC_API_KEY`
+   Steps 4/9, `ENTREZ_KEY` Step 7, `INAT_API_TOKEN` Step 8c) whose absence otherwise
+   fails a run partway through rather than at the top, and points at SUBSET before a
+   full run. All 24 cited variable names were verified to exist; +58/-10 lines, comments
+   only, no logic touched; parses, and all three checks re-run clean on all seven files.
+   **One real bug fixed in passing:** `STUDY_RADIUS`'s comment read `~330 km per degree`
+   -- a porting slip from 12S single-site's correct `decimal degrees (~330 km)` for a
+   radius of 3. Left alone it would have had a newcomer size their GBIF search polygon
+   3x too large. Corrected in the template; the QUICKSTART agrees with it.
 2. **Make the multi-stream variant a clearly-fenced block**, the way Variant A/B already
    is, so a single-marker user can see at a glance that it does not apply to them. The
    user's own condition was that it "can easily be scaled back to a single-marker".
