@@ -7,10 +7,43 @@ were executed. Evidence for everything below:
 two "real findings" are CLOSED; step 4a (retire the generic template) is DONE. What is
 left is below, ordered cheapest-first, with an honest cost estimate for each.
 
-**A and B were completed 2026-09-15** (commits `01c0d7f`, `d33487b` in the GreatLakes
-repo); neither has been RUN yet, so the next real GreatLakes run is their first
-verification. **C onward are open.** The session that wrote this was near a token limit
-and stopped after the two cheap items deliberately.
+## STATUS 2026-09-17: A-D, G and H are CLOSED. F awaits one yes/no; E not started.
+
+| Item | State |
+|---|---|
+| A GreatLakes token accounting | DONE `01c0d7f` (GreatLakes repo) |
+| B flag_incongruent_references | DONE `d33487b` (GreatLakes repo) |
+| C evidence-block placement | DONE `7e92325` -- and it was ABSENT from the template, not misplaced |
+| D canonical template current | DONE `5b91fa4` + `d77bc65` -- and the template was UNRUNNABLE, not merely behind |
+| E Mugu-family template | NOT STARTED, and see F first |
+| F numbering families | Recommendation recorded in `CLAUDE.md`; **needs the user's yes** |
+| G TaxaWizard graph coverage | DONE `bc350bb` |
+| H bundled runnable example | CLOSED -- answered by `diagnostics/fast_workflows/`, README updated |
+
+**None of the workflow edits has been RUN.** They parse, the argument validator is
+clean, and the dead-call sweep is clean, but the first real exercise of any of them is a
+user-triggered run.
+
+### The audit's own method had a blind spot, now closed
+
+Two checks were added on 2026-09-17 and should be re-run after any workflow edit:
+
+1. **Dead-call sweep.** Collect every function name defined under any
+   `Taxa*/archive_*/` directory, subtract anything still exported, then grep each
+   workflow for those names on non-comment lines. The 2026-09-15 namespace sweep
+   validated `Pkg::fun()` against NAMESPACE but resolved BARE calls only positively,
+   against the live export list -- so a bare call to an archived function vanished from
+   the outline instead of being flagged. That is exactly how the canonical template's
+   dead Section 5 passed.
+2. **Argument-level validator.** Walk each file's AST, and for every call to an exported
+   ecosystem function compare its named arguments against the installed function's
+   formals. This found three hard breaks in the template that no amount of reading
+   section structure would have surfaced.
+
+Run both against all seven live workflow files, not just the one you edited. On
+2026-09-17 all six production workflows were clean on both and only the template was
+broken -- every dead call in the production scripts sits inside the `else` of a
+hardcoded `USE_KERNEL_PRIORS <- TRUE` behind an explicit ARCHIVED PATHWAY NOTICE.
 
 Reproduce any outline with the extractor described in the results doc: banner sections
 are a `# ===` / `# N.  TITLE` / `# ===` **triple** (requiring the closing rule is what
@@ -118,6 +151,16 @@ CalIntertidal's convention makes "Step 9" mean TaxaFlag review in three of four 
 shapes. That is arguably right, but Mugu is then the odd one out and nothing says whether
 that is intended or drift. Settle this BEFORE E -- a Mugu-family template bakes one
 answer in.
+
+**RECOMMENDATION (2026-09-17, recorded in `CLAUDE.md`, awaiting a yes):** adopt
+CalIntertidal's. Single-marker 0-10 stays canonical and is what the template defines;
+multi-marker collapses the cross-marker trio into one Section 8 so Steps 9 and 10 mean
+the same thing everywhere. `MuguFishWorkflow.R` becomes a documented legacy outlier and
+is NOT renumbered -- it is live with real checkpointed state, and nothing is keyed on a
+step number, so the only cost of leaving it is that a reader must check. **No code
+changes under this recommendation.** Say yes and it becomes the documented rule; say no
+and the alternative is to renumber CalIntertidal onto Mugu's scheme, which is the more
+invasive direction and buys less.
 
 ## G. TaxaWizard graph coverage (MEDIUM; the graph itself is correct, do not rush)
 

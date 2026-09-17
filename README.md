@@ -669,11 +669,32 @@ To build a complete workflow for a new site, start from
 `eDNA/PtConception/`) -- the template the three PtConception production
 workflows were built from.
 
-**Note:** this package no longer bundles an end-to-end runnable example.
-`inst/TaxaID_Workflow_Template_TEST.R` previously filled that role and was
-retired on 2026-09-15: its Section 5 called seven functions archived with the
-GLMM prior-fitting chain on 2026-09-09, so it had not been runnable for some
-time. See `archive_retired_workflow_template_2026_09_15/README.md`.
+**To confirm your installation works**, run one of the fast smoke tests. Each
+chains `evaluate_likelihoods()` -> `compute_posterior()` ->
+`posterior_consensus()` -> `add_slash_taxon()` against a small *real* fixture
+extracted from a completed production run, in a few seconds, with no network
+calls and no API key:
+
+``` r
+# from the repository root -- the fixture paths are relative to it
+source("diagnostics/fast_workflows/run_fast_smoketest.R")            # ~7 s
+source("diagnostics/fast_workflows/run_greatlakes_fast_smoketest.R") # ~6 s
+```
+
+Both print warnings about hypotheses below `min_posterior` and about
+genus-level names in `plausible_taxa`. Those are expected: the fixtures use a
+flat placeholder prior, which is loudly labelled in each script. See
+`diagnostics/fast_workflows/README.md`.
+
+**Note:** this package deliberately bundles no end-to-end runnable example.
+`inst/TaxaID_Workflow_Template_TEST.R` filled that role until 2026-09-15, when
+it was retired: its Section 5 called seven functions archived with the GLMM
+prior-fitting chain on 2026-09-09, so it had not been runnable for months while
+still receiving patches. A second in-package copy of a workflow is how that
+happened, so it was not replaced with another one -- the canonical template is
+the single copy in the `eDNA` repository, and the smoke tests above are what
+verifies an install. See
+`archive_retired_workflow_template_2026_09_15/README.md`.
 
 ## Getting Started
 

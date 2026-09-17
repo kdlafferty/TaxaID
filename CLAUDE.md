@@ -1,7 +1,90 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
-# Last updated: 2026-09-15 (Opus 5): PRODUCTION WORKFLOW STRUCTURAL AUDIT executed
+# Last updated: 2026-09-17 (Opus 5): THE CANONICAL WORKFLOW TEMPLATE WAS ALSO
+# UNRUNNABLE, and the 2026-09-15 audit's own method is why it was missed. Items A-D, G
+# and H of ecosystem_docs/REENTRY_PROMPT_workflow_audit_followups.md are CLOSED; F is a
+# recorded recommendation awaiting a yes (see the NUMBERING FAMILIES note below); E
+# (a Mugu-family template) is not started.
+#
+# THE MISS, and the lesson worth keeping. The 2026-09-15 audit reported
+# eDNA/PtConception/TaxaID_eDNA_Workflow_Template.R as "behind on four subsystems". Its
+# Section 5 was in fact the ARCHIVED GLMM chain -- optimize_grid_size(),
+# create_sites_from_grid(), prepare_model_dataframe(), compute_moran_basis(),
+# generate_full_priors(), plot_theta_map_interactive() -- with no
+# if (USE_KERNEL_PRIORS) branch, so the archived code was its LIVE path and it stopped at
+# L939. Identical defect to the one that retired inst/TaxaID_Workflow_Template_TEST.R two
+# days earlier. It passed because the audit validated `Pkg::fun()` calls against NAMESPACE
+# but resolved BARE calls only POSITIVELY, against the live export list: a bare call to an
+# archived function vanished from the outline instead of being flagged. The TEST template's
+# calls were namespaced and were caught; this one's are bare and were not. A checker that
+# can only confirm what exists cannot report what is missing.
+#
+# TWO CHECKS NOW EXIST, in diagnostics/workflow_checks/ with a README: check_dead_calls.sh
+# (every name defined under any Taxa*/archive_*/ and not re-exported, on non-comment lines)
+# and check_stale_arguments.R (walks each file's AST and compares named arguments against
+# the installed function's formals). RUN BOTH ON ALL SEVEN LIVE WORKFLOW FILES after any
+# workflow edit -- the failure mode is a broadcast fix reaching some files and not others.
+# Baseline 2026-09-17: all six production workflows clean on both; only the template was
+# broken. Every dead call in the production scripts is inside a hardcoded
+# USE_KERNEL_PRIORS <- TRUE else-branch behind an ARCHIVED PATHWAY NOTICE -- documented
+# dead code, correctly left alone.
+#
+# THE ARGUMENT CHECKER FOUND THREE MORE HARD BREAKS in the template that no amount of
+# reading section structure would surface, spanning two months of broadcast fixes that
+# reached the production scripts and skipped it:
+#   assign_habitat_biological(data=)         -> occurrence_data=          (2026-08-01)
+#   restore_suppressed_candidates(detected=) -> removed in the redesign   (2026-07-18)
+#   add_posthoc_assessment(tiers=)           -> expected_theta_threshold= (2026-07-30)
+# Plus two silent ones: convert_taxonomy_backbone() still targeted GBIF (reversed to NCBI
+# 2026-07-30), and the summary block read consensus_final$posthoc_assessment, a column
+# replaced 2026-07-30 by primary_/consensus_plausibility and _discrimination -- NULL, so
+# it printed nothing rather than erroring.
+#
+# A FIFTH MISSING SUBSYSTEM, recorded in the audit's section diff but not named in its
+# summary: the template had NO occurrence-side evidence generators at all. Not misplaced --
+# absent. Without them every taxon the regional GBIF pool never recorded gets exactly the
+# dark-diversity floor, the same number a genuinely absent species gets, so the entire
+# graded design was unreachable from anything built off this template.
+#
+# THE TEMPLATE IS NOW CURRENT (1,506 -> ~2,000 lines, commits 5b91fa4, d77bc65, 7e92325 in
+# the eDNA repo): Section 5 rebuilt on the kernel path with NO dead else-branch (a template
+# is copied, so dead code in it propagates), the covariate opt-in and OFF with the reason
+# (reusing the 4 arc-min elevation_m that flag_habitat_inconsistencies() already writes is
+# the tempting shortcut and it is wrong -- it reads a median +48 m for Marine records),
+# Variant B on estimate_kernel_priors(sampling_group_col=); the reference fetch moved off a
+# hand-rolled rentrez loop to fetch_ncbi_reference_sequences(); the full reference screen;
+# calibrate_query_noise(); compute_group_priors() with the species identity row AND
+# order/class via family; flag_watch_candidates(); the evidence generators with habitat
+# conditioning; report assembly plus session_metadata.rds; and the export filter relaxed
+# from == "likely" to != "unlikely" (2026-09-04). MORAN_K, SD_THRESHOLD and the hardcoded
+# SITE_GRID_ID retire with the GLMM chain. NOT RUN -- it makes real BLAST/GBIF/NCBI/LLM
+# calls, so its first real exercise is a user-triggered run.
+#
+# EVIDENCE-BLOCK PLACEMENT SETTLED (item C): Section 7, on a dependency rather than a
+# majority vote -- every generator needs match_list_taxa, which only exists once the match
+# object has been restored and screened in Step 7, so a Step 5 placement forces the priors
+# section to reach forward into match data. PtCon 18S keeps its Section 5 placement and is
+# the documented outlier; it is NOT renumbered (live script, real checkpointed state).
+#
+# TAXAWIZARD GRAPH (item G, commit bc350bb): the eight functions every running workflow
+# calls are now placed on the edges that call them. Only `functions`/`packages` changed --
+# nodes and every from/to are untouched, because the topology is the hand-audited part.
+# One loose end recorded rather than guessed: flag_watch_candidates() also takes the match
+# object, so consensus_to_flagged's from = ['consensus'] is arguably incomplete; extending
+# it changes what TaxaWizard can generate, so it needs its own decision. 73 functions named,
+# 0 invalid; TaxaWizard test 643/0, check 0/0/1 (the pre-existing environmental NOTE).
+#
+# THE BUNDLED-EXAMPLE GAP IS CLOSED (item H) and the answer was already on disk:
+# diagnostics/fast_workflows/ holds real fixtures from completed production runs plus smoke
+# tests that chain evaluate_likelihoods() -> compute_posterior() -> posterior_consensus() ->
+# add_slash_taxon() in ~7 s with NO network and NO API key. Verified working this session.
+# They must be run FROM THE REPOSITORY ROOT -- the fixture paths are relative to it, and
+# running from the script's own directory fails with "file.exists(fixture_path) is not
+# TRUE". Root README now points at them. Deliberately NOT replaced with another in-package
+# template copy: a second half-maintained copy is exactly how the retired one rotted.
+#
+# Previous update, 2026-09-15 (Opus 5): PRODUCTION WORKFLOW STRUCTURAL AUDIT executed
 # (steps 1-3 of ecosystem_docs/REENTRY_PROMPT_workflow_structure_audit.md), and
 # inst/TaxaID_Workflow_Template_TEST.R RETIRED. Results:
 # ecosystem_docs/WORKFLOW_STRUCTURE_AUDIT_RESULTS_2026_09_15.md + the raw
@@ -77,6 +160,18 @@
 # every sibling reports it in Sections 4/9/10; and it runs the rest of the reference screen
 # but lacks flag_incongruent_references, which 12S and 18S both have. Neither fixed -- see
 # the follow-ups prompt.
+#
+# NUMBERING FAMILIES -- RECOMMENDATION RECORDED 2026-09-17, NOT YET RATIFIED (item F).
+# Proposed convention: CalIntertidal's is the one to adopt for multi-marker work --
+# collapse the cross-marker trio into a single Section 8 so that Steps 9 and 10 mean
+# TaxaFlag review and filter/output in EVERY family. That makes "Step 9" unambiguous in
+# three of the four workflow shapes, and the single-marker 0-10 scheme stays canonical
+# and is what the template defines. MuguFishWorkflow.R (0-11) then becomes a documented
+# legacy outlier rather than a second standard; it is NOT being renumbered -- it is live,
+# with real checkpointed .rds state, and no variable, column or cache filename is keyed
+# on a step number, so the only cost of leaving it is that a reader must check. Nothing
+# in code changes under this recommendation; it needs the user's yes to become the
+# documented rule. Details below.
 #
 # THERE ARE NOW THREE NUMBERING FAMILIES, not the two this file previously recorded.
 # CaliforniaIntertidal is multi-marker but numbered like the single-marker family (it
