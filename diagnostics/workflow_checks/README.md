@@ -123,3 +123,67 @@ review:**
 working as designed (guaranteed means guaranteed), but if a sentinel is common
 it will crowd out the random stratum. Either raise `SUBSET_N` or point
 `SUBSET_ALWAYS_TAXA` at a narrower list than the full sentinel set.
+
+### First END-TO-END subset run, 2026-09-17 (PtConception 12S, Steps 8-10)
+
+Reused the completed `PtConMifishSchulte_*` checkpoints read-only; wrote only under
+`PtConMifishSchulteSub_*` in a scratch `OUT_DIR`.
+
+**Rule 1 held across three runs.** Every reuse-prefix checkpoint still carries its
+2026-09-14 mtime, the real 977-entry review cache is still 977 entries, and no subset
+artifact was written into the project directory.
+
+**Result:** 365 observations -> 3,551 posterior rows -> 365 consensus rows -> 45 unique
+candidate sets reviewed, 0 unreviewed residue -> 363 rows surviving the plausibility
+filters, 28 unique taxa, exported with `subset_run = TRUE` in the CSV and a six-field
+`taxaid_subset` stamp on the checkpoint.
+
+| stage | cold | warm (identical inputs) |
+|---|---:|---:|
+| `review_assignments()` | 151 s, ~19,900 tokens, 5 LLM calls | **0.0 s, 0 tokens, 45/45 cache hits** |
+| `scientific_to_common()` | 2,207 tokens | cached |
+
+#### A correction worth carrying: when the review cache actually hits
+
+It was claimed earlier in this work that pointing a subset run at a full run's review
+cache would make the review "near-free". **That is wrong as stated.** The first subset run
+got **0 of 45 hits** against a copied 977-entry cache.
+
+`review_assignments()` builds its key from a `.shared` prefix -- `target_group`, `marker`,
+`data_type`, `use_candidates`, and the context's NAMES AND VALUES -- plus EVERY column of
+`taxa_info` for that row. So a cache entry is reused only when the review context and the
+consensus row are both identical. A subset run that RECOMPUTES consensus from reused
+likelihoods will not generally reproduce the full run's `taxa_info`, and any difference in
+`REVIEW_CONTEXT` (even a field renamed `site` -> `geography`) changes every key. That is
+correct behaviour -- context changes the verdict -- not a bug.
+
+**To actually get a free review in a subset run**, reuse the CONSENSUS as well as the
+likelihoods and keep the context byte-identical:
+
+```r
+consensus_final <- readRDS(.reuse_path("consensus_final"))   # not recomputed
+# ... identical REVIEW_CONTEXT, target_group, marker, data_type ...
+```
+
+Otherwise budget ~5 LLM calls per ~45 candidate sets (~20k tokens for 365 observations),
+which is cheap but is not zero.
+
+#### Four template bugs this run found
+
+None was reachable by parsing, by the dead-call sweep, or by the argument checker.
+
+1. `flag_watch_candidates()` rejects an empty `watch_taxa`, and `INVASIVE_TAXA` ships as
+   `character(0)` -- an unguarded call stopped the run at Step 8g. A NEW USER would hit
+   this on their first attempt with nothing wrong in their own edits.
+2. Step 9's overview selected `reviewed[, c(..., "posthoc_assessment", ...)]`, a column
+   replaced 2026-07-30. Selecting a missing column with `[` is a HARD error.
+3. Step 10 recomputed common names in a block that was broken three ways: it passed the
+   whole `REVIEW_CONTEXT` list to `location` (error), would have collided into
+   `common_name.x/.y` if fixed, and re-spent tokens on what Step 9 already had. Removed.
+4. Neither `review_assignments()` nor `scientific_to_common()` passed `llm_fn`, relying on
+   auto-detection that does not fire in a plain `Rscript` session -- this ecosystem's own
+   documented footgun. Both now pass `.llm_fn_` explicitly.
+
+Bugs 1 and 3 share a shape the argument checker CANNOT catch: the argument NAME is valid
+and only the VALUE is wrong. A value-level checker is the obvious next tool; the cheaper
+answer is that a template has to be RUN.
