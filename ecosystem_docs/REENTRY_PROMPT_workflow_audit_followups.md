@@ -17,7 +17,10 @@ non-sequence workflows today (2, 5 and 0 numbered sections respectively). No cod
 
 E stays deferred on the user's own reasoning: CalIntertidal is the only multi-stream
 instance and it is still being built, so templating now would bake in guesses. Finish it,
-then template what was actually learned.
+then template what was actually learned. **Picked up by
+`REENTRY_PROMPT_template_after_calintertidal.md`**, which carries E, F's ratification,
+the subset-convention rollout and the remaining loose ends, with explicit preconditions
+(do not start until CalIntertidal has actually RUN and its `## STUB` count is 0).
 
 **NEW, same session: a SUBSET/REUSE convention in the canonical template** -- see
 `diagnostics/workflow_checks/README.md` for the two rules and

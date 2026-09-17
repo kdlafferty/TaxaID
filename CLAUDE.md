@@ -44,6 +44,13 @@
 # .Random.seed. diagnostics/workflow_checks/test_subset_helper.R pins all seven properties.
 # Item E (a Mugu-family template) stays DEFERRED, on the user's own reasoning: CalIntertidal
 # is the only multi-stream instance in flux, so templating now would bake in guesses.
+# Picked up by ecosystem_docs/REENTRY_PROMPT_template_after_calintertidal.md -- E, F's
+# ratification, the subset rollout and the loose ends, gated on CalIntertidal having
+# actually RUN with 0 remaining ## STUBs. Its own recommendation, weakly held, is that a
+# SECOND template is the configuration that produced this entire thread (two coexisting
+# templates, broadcast patches hitting one and missing the other, BOTH ending up
+# unrunnable) and that documenting the pattern beats templating it until a third
+# multi-stream site exists.
 #
 # Previous update, 2026-09-17 (Opus 5): THE CANONICAL WORKFLOW TEMPLATE WAS ALSO
 # UNRUNNABLE, and the 2026-09-15 audit's own method is why it was missed. Items A-D, G
