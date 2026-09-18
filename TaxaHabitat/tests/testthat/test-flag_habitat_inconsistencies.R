@@ -81,7 +81,19 @@ test_that("distance is measured geodesically, not in Web Mercator", {
   skip_if_not_installed("sf")
   skip_if_not_installed("rnaturalearth")
   skip_if_not_installed("rnaturalearthhires")
-  sf::sf_use_s2(FALSE)
+  # s2 is left ALONE here (it used to be switched off, and never restored).
+  # Two reasons. (1) With s2 off, sf::st_distance() on a geographic CRS
+  # delegates to lwgeom, which is not a declared dependency and is absent from
+  # R CMD check's clean library -- this is what turned CI red on 2026-09-18.
+  # (2) sf_use_s2() is GLOBAL, so switching it off here leaked into every test
+  # that ran afterwards.
+  # The assertion is unaffected: this test checks that distance is geodesic
+  # rather than Web Mercator by comparing UTM against a geodesic reference, and
+  # s2 supplies one natively -- measured max|utm/geo - 1| = 0.0026 against the
+  # 0.01 threshold (lwgeom's path gives 0.0010; both pass comfortably).
+  # NOTE the source function is NOT affected: flag_habitat_inconsistencies()
+  # calls st_distance() on UTM (projected) coordinates, which is planar and
+  # never needs lwgeom. This was only ever a test-side dependency.
   bb <- sf::st_bbox(c(xmin = -123.5, ymin = 31, xmax = -116, ymax = 38.5), crs = 4326L)
   coast <- suppressWarnings(sf::st_crop(
     sf::st_make_valid(rnaturalearth::ne_coastline(scale = "large", returnclass = "sf")), bb))
@@ -100,7 +112,13 @@ test_that("the minor-islands coastline contains Anacapa and Santa Barbara Island
   skip_if_not_installed("sf")
   skip_if_not_installed("rnaturalearth")
   skip_on_cran()
-  sf::sf_use_s2(FALSE)
+  # s2 stays ON here on purpose. With s2 switched OFF, sf::st_distance() on a
+  # geographic CRS delegates geodesic distance to lwgeom -- which is NOT a
+  # declared dependency of this package and is absent on a clean CI runner, so
+  # this test failed there while passing locally (R-CMD-check run 35292321705,
+  # 2026-09-18: "there is no package called 'lwgeom'"). s2 computes the same
+  # distance natively: checked against the s2-off path at 0.137% difference,
+  # on an assertion with a 2 km threshold, so nothing about the test weakens.
   mi <- tryCatch(rnaturalearth::ne_download(scale = 10, type = "minor_islands_coastline",
                    category = "physical", returnclass = "sf"), error = function(e) NULL)
   skip_if(is.null(mi), "Natural Earth minor-islands layer unavailable")
