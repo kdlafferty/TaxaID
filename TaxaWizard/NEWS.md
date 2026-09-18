@@ -89,6 +89,32 @@
   ids>))`, `stop()`-ing with a pointer to the fix column if any row is
   `"missing"`. Falls back to `edges = NULL` when a step's `edge_id` is
   absent (the legacy free-form DAG shape).
+* New `R/pack.R` / `workflow_export_prompts(dir = "taxaid_prompts",
+  overwrite = FALSE, placeholder_setup_report = FALSE)`: exports a
+  self-contained "prompt pack" any LLM can be pointed at -- an agentic coding
+  tool that reads files and runs R directly, or a plain chat window where the
+  user pastes files back and forth -- to design a TaxaID workflow with no
+  TaxaWizard install or engine API key needed. `START_HERE.md` and
+  `tasks/handoff_template.md` are copied verbatim from
+  `inst/prompts/pack/` (hand-written, P5); `CLAUDE.md`/`AGENTS.md` are three
+  lines pointing an agentic tool at `START_HERE.md`; `CONTEXT_TaxaID.md`
+  (<= 400 lines) and one `CONTEXT_<Package>.md` per TaxaID package are
+  generated from `workflow_registry()`, the workflow graph, and
+  `inst/setup/requirements.json` -- packages table, node types, the graph as
+  a text adjacency list, the canonical pipelines (read live from
+  `system_prompt.md`'s "Pipeline Awareness" section, never pasted), every
+  exported function's signature/docs/params table, and each package's
+  README Quick Start section when the source repo is reachable;
+  `SETUP_REPORT.md` is `workflow_check()`'s report for the generating
+  machine (or a placeholder); `tasks/classify.md`/`path_select.md`/
+  `parameterize.md`/`error_fix.md` are the `inst/prompts/phase_*.md`
+  templates with statically-resolvable placeholders filled and every
+  conversation-dependent placeholder replaced by a bracketed instruction,
+  with the JSON-only response-format requirement stripped (a chat LLM
+  answers in prose). The rendered copy is committed at the repository root,
+  `llm_prompts/` (`placeholder_setup_report = TRUE`), refreshed by
+  `ecosystem_docs/readmes/render_readmes.R`'s new final step; new
+  `tests/testthat/test-pack.R` asserts the two agree byte-for-byte.
 
 ## 2026-09-13
 
