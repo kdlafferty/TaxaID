@@ -267,7 +267,7 @@ test_that(".generate_app falls back to a placeholder when no script is available
 
 test_that(".widen_step0_edges() adds the extension's edges to the existing check", {
   out <- .widen_step0_edges(.p6_script('c("birdnet_to_match")'), .p6_dag("match_to_taxa"))
-  line <- grep("workflow_check", out, value = TRUE)
+  line <- grep("^\\.setup <- TaxaWizard::workflow_check\\(", out, value = TRUE)
 
   expect_length(line, 1L)                       # never a SECOND Step 0
   expect_match(line, "birdnet_to_match", fixed = TRUE)  # original kept
@@ -276,7 +276,7 @@ test_that(".widen_step0_edges() adds the extension's edges to the existing check
 
 test_that(".widen_step0_edges() does not duplicate an edge already listed", {
   out <- .widen_step0_edges(.p6_script('c("birdnet_to_match")'), .p6_dag("birdnet_to_match"))
-  line <- grep("workflow_check", out, value = TRUE)
+  line <- grep("^\\.setup <- TaxaWizard::workflow_check\\(", out, value = TRUE)
   expect_equal(lengths(regmatches(line, gregexpr("birdnet_to_match", line, fixed = TRUE))), 1L)
 })
 
@@ -294,4 +294,58 @@ test_that(".widen_step0_edges() does not inject Step 0 into a script that has no
 test_that(".widen_step0_edges() leaves a script alone when the dag carries no edge ids", {
   before <- .p6_script('c("birdnet_to_match")')
   expect_identical(.widen_step0_edges(before, list(steps = list(list(package = "TaxaMatch")))), before)
+})
+
+
+# --- P7(a) finding: an LLM-invented edge id must not reach Step 0 -------------
+
+test_that(".keep_known_edges() drops ids that are not in the graph", {
+  # P7(a)'s console dry run produced edge_id "load_match_df" for its
+  # data-loading step. No such edge exists; workflow_check() ignored it with a
+  # message, so the script still ran -- but a fabricated identifier had reached
+  # a line the user reads.
+  expect_warning(
+    kept <- .keep_known_edges(c("match_to_consensus_score", "load_match_df")),
+    "not in the workflow graph"
+  )
+  expect_equal(kept, "match_to_consensus_score")
+})
+
+test_that(".keep_known_edges() is silent when every id is real", {
+  expect_silent(kept <- .keep_known_edges("match_to_consensus_score"))
+  expect_equal(kept, "match_to_consensus_score")
+})
+
+test_that("a dag whose edge ids are ALL invented falls back to edges = NULL", {
+  # Dropping every id must not produce edges = c() -- an empty vector would
+  # make workflow_check() check nothing, which looks like a pass. NULL checks
+  # the whole ecosystem, which is the safe direction.
+  dag <- list(
+    parameters = list(),
+    steps = list(list(
+      step_id = 1, edge_id = "not_a_real_edge", package = "TaxaTools",
+      function_name = "detect_ranks", description = "invented step",
+      code = "x <- 1", inputs = list(), output_var = "x"
+    ))
+  )
+  out_dir <- tempfile("p7a_fallback_"); dir.create(out_dir)
+  on.exit(unlink(out_dir, recursive = TRUE), add = TRUE)
+
+  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = out_dir, trial = FALSE))
+  script <- list.files(out_dir, pattern = "\\.R$", full.names = TRUE)[1]
+  line <- grep("^\\.setup <- TaxaWizard::workflow_check\\(", readLines(script, warn = FALSE), value = TRUE)
+
+  expect_length(line, 1L)
+  expect_match(line, "edges = NULL", fixed = TRUE)
+  expect_false(grepl("not_a_real_edge", line, fixed = TRUE))
+})
+
+test_that(".widen_step0_edges() does not append an invented edge id", {
+  before <- .p6_script('c("birdnet_to_match")')
+  suppressWarnings(
+    out <- .widen_step0_edges(before, .p6_dag(c("match_to_taxa", "totally_made_up")))
+  )
+  line <- grep("^\\.setup <- TaxaWizard::workflow_check\\(", out, value = TRUE)
+  expect_match(line, "match_to_taxa", fixed = TRUE)
+  expect_false(grepl("totally_made_up", line, fixed = TRUE))
 })

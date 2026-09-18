@@ -91,7 +91,15 @@ if (nzchar(code)) {
           if (!"..." %in% formals_ok) stale <<- c(stale, paste0(pkg, "::", fn, "(", setdiff(given, formals_ok), ")")[length(setdiff(given, formals_ok)) > 0])
         }
       }
-      for (a in as.list(x)[-1]) if (!identical(a, quote(expr = ))) walk(a)
+      # Index into the list rather than `for (a in ...)`: binding a loop
+      # variable to an EMPTY argument (as in df[, 1]) creates a missing-arg
+      # binding, and merely testing it with identical() forces it and throws
+      # "argument \"a\" is missing". List extraction is safe.
+      rest <- as.list(x)[-1]
+      for (.i in seq_along(rest)) {
+        if (identical(rest[[.i]], quote(expr = ))) next
+        walk(rest[[.i]])
+      }
     }
   }
   if (!is.null(exprs)) for (e in exprs) walk(e) else stale <- "PARSE ERROR in generated code"

@@ -251,6 +251,7 @@
   # than silently omitting the check.
   step_edge_ids <- unique(vapply(dag$steps, function(s) as.character(s$edge_id %||% ""), ""))
   step_edge_ids <- step_edge_ids[nzchar(step_edge_ids)]
+  step_edge_ids <- .keep_known_edges(step_edge_ids, context = "generated script Step 0")
   edges_arg <- if (length(step_edge_ids) > 0L) {
     sprintf(
       "c(%s)",
@@ -664,6 +665,7 @@
 .widen_step0_edges <- function(lines, dag) {
   new_edges <- unique(vapply(dag$steps, function(s) as.character(s$edge_id %||% ""), ""))
   new_edges <- new_edges[nzchar(new_edges)]
+  new_edges <- .keep_known_edges(new_edges, context = "appended Step 0")
   if (length(new_edges) == 0L) {
     return(lines)
   }
@@ -693,4 +695,41 @@
     paste(vapply(merged, .r_string, ""), collapse = ", ")
   )
   lines
+}
+
+
+#' Keep Only Edge Ids That Exist in the Workflow Graph
+#'
+#' A DAG's \code{edge_id} values come from the LLM, and an LLM will happily
+#' invent one for a step the graph has no edge for -- P7(a)'s console dry run
+#' produced \code{"load_match_df"} for its data-loading step, which is not an
+#' edge at all. \code{workflow_check()} ignores an unknown id with a message,
+#' so the generated script still RAN, but it shipped a fabricated identifier in
+#' a line the user reads and may copy. Filter at the point of writing.
+#'
+#' Unknown ids are dropped with a warning rather than silently, because a
+#' fabricated edge id usually means the LLM invented a STEP the graph does not
+#' model -- worth seeing, even though it is not fatal.
+#'
+#' @param ids Character vector of candidate edge ids.
+#' @param context Character. Where this is happening, for the warning text.
+#' @return \code{ids} with unknown entries removed (possibly empty).
+#' @noRd
+.keep_known_edges <- function(ids, context = "Step 0") {
+  if (length(ids) == 0L) {
+    return(ids)
+  }
+  graph <- tryCatch(.load_graph(), error = function(e) NULL)
+  if (is.null(graph) || is.null(graph$edges)) {
+    return(ids)
+  }
+  known <- vapply(graph$edges, function(e) as.character(e$id %||% ""), "")
+  unknown <- setdiff(ids, known)
+  if (length(unknown) > 0L) {
+    warning(sprintf(
+      "TaxaWizard (%s): dropping %d edge id(s) not in the workflow graph: %s",
+      context, length(unknown), paste(unknown, collapse = ", ")
+    ), call. = FALSE)
+  }
+  ids[ids %in% known]
 }
