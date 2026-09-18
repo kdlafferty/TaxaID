@@ -4,7 +4,7 @@
 
 Assigns habitat classifications to taxonomic occurrence records using LLM prompts and performs spatial quality control. Receives occurrence data from TaxaFetch and produces habitat-annotated, spatially screened records for input to TaxaExpect. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-15 11:58:29 UTC; unix). 16 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-18 20:14:04 UTC; unix). 16 exported function(s).
 
 ## Functions
 
@@ -220,7 +220,7 @@ Opens a Shiny gadget for reviewing records 'TaxaFetch:: filter_gbif_quality()' f
 
 **Value:** 'occurrence_data' with one additional column, 'institution_decision': '"keep"' or '"remove"' for every record that had 'institution_flag = TRUE'; 'NA' for every other record (never shown to the reviewer, never touched). Returns 'NULL' if the user clicks Cancel.
 
-### review_spatial_flags(occurrence_data, habitat_col = "main_habitat", lat_col = "decimalLatitude", lon_col = "decimalLongitude", taxon_col = "taxon_name", colors = NULL, tile = "Esri.OceanBasemap", point_radius = 6, viewer = shiny::paneViewer(minHeight = 450))
+### review_spatial_flags(occurrence_data, habitat_col = "main_habitat", lat_col = "decimalLatitude", lon_col = "decimalLongitude", taxon_col = "taxon_name", colors = NULL, tile = "Esri.OceanBasemap", point_radius = 6, bulk_confirm_threshold = 10000L, bulk_max = 100000L, viewer = shiny::paneViewer(minHeight = 450))
 
 Review and Correct Spatial Flags Interactively
 
@@ -236,6 +236,8 @@ Opens a Shiny gadget for reviewing the 'spatial_flag' column added by 'flag_habi
 | colors | no | NULL | Named character vector mapping habitat labels to colours. NULL uses the standard ecological palette. |
 | tile | no | "Esri.OceanBasemap" | Character. Leaflet tile provider. Default "Esri.OceanBasemap". |
 | point_radius | no | 6 | Numeric. Circle marker radius in pixels. Default 6. |
+| bulk_confirm_threshold | no | 10000L | Integer. A rectangle/polygon selection larger than this asks for confirmation, reporting the exact point count, before the action is applied. Default 10000L. Set to Inf to never ask. |
+| bulk_max | no | 100000L | Integer. Hard ceiling: a selection larger than this is refused outright rather than applied, and the reviewer is asked to split the shape. Default 100000L. |
 | viewer | no | shiny::paneViewer(minHeight = 450) | Shiny viewer function passed through to runGadget. Default shiny::paneViewer(minHeight = 450) (RStudio's embedded Viewer pane). Some RStudio configurations have been observed to silently swallow leaflet-map click events inside the Viewer pane; pass shiny::browserViewer() to force the gadget into a real browser tab as a workaround/diagnostic if map clicks appear unresponsive. |
 
 **Value:** The input 'occurrence_data' dataframe with 'spatial_flag', 'spatial_flag_reason', and 'main_habitat' updated where changed. Returns 'NULL' if the user clicks Cancel. Filter to keep confirmed records: reviewed <- review_spatial_flags(occurrences_flagged) occurrences_clean <- dplyr::filter(reviewed, spatial_flag == "likely")

@@ -2,6 +2,26 @@
 
 ## 2026-09-18
 
+* The workflow interview now consumes the setup checker. `workflow_create()`
+  runs `workflow_check()` before the conversation starts and shows you anything
+  missing; the classify prompt receives that report (`{{SETUP_STATUS}}`) and, for
+  any path in your message that exists on disk, a `sniff_input()` result
+  (`{{SNIFF_RESULT}}`); the parameterize prompt receives
+  `workflow_check(edges = <selected path>)` (`{{PATH_REQUIREMENTS}}`) so the
+  assistant can tell you what to set up in the same reply as the workflow. Only
+  rows needing attention are rendered, and key rows report set/unset, never a
+  value.
+* Appending to an existing generated script now widens that script's Step 0
+  `workflow_check(edges = ...)` call to the union of the old and new edges,
+  rather than leaving it stale or writing a second check block
+  (`.widen_step0_edges()`).
+* Fixed: `.pack_render_task()` skipped the bracketed-placeholder map for the
+  classify phase, so a newly added classify placeholder shipped as a raw
+  `{{TOKEN}}` in the exported pack.
+* Fixed: registry text varied with the global `useFancyQuotes` option, which
+  meant an ambient setting could decide whether the pack's byte-for-byte
+  equality test passed. Pinned off while rendering Rd; `REGISTRY_SCHEMA` is
+  now 3.
 * `R/registry.R` parses Rd `\arguments` structurally (new internal
   `.rd_arguments()` / `.rd_text()`) instead of re-parsing `tools::Rd2txt()`
   output. `Rd2txt()` right-aligns argument terms into a column, and the

@@ -503,3 +503,58 @@ test_that("every snippet still parses once its placeholders are substituted", {
     info = paste0("snippets that do not parse when filled:\n", paste(failures, collapse = "\n"))
   )
 })
+
+
+# --- P6: the engine fills the setup/sniff placeholders ------------------------
+
+test_that("the classify prompt has no unfilled placeholder left in it", {
+  prompt <- .build_phase_prompt("classify", context = list(user_text = "hello"))
+  expect_false(grepl("\\{\\{[A-Z_]+\\}\\}", prompt))
+})
+
+test_that("the classify prompt carries the machine's setup state", {
+  prompt <- .build_phase_prompt(
+    "classify",
+    context = list(setup_text = "2 ok, 0 warn, 1 missing.\n- bin:blastn [missing]: not on PATH")
+  )
+  expect_match(prompt, "bin:blastn [missing]", fixed = TRUE)
+  expect_match(prompt, "THE USER'S MACHINE", fixed = TRUE)
+})
+
+test_that("the classify prompt sniffs a path the user actually names", {
+  f <- tempfile(fileext = ".csv")
+  writeLines(c(
+    "Start (s),End (s),Scientific name,Common name,Confidence",
+    "0.0,3.0,Catharus ustulatus,Swainson's Thrush,0.81"
+  ), f)
+  on.exit(unlink(f), add = TRUE)
+
+  prompt <- .build_phase_prompt(
+    "classify",
+    context = list(user_text = sprintf('my data is at "%s"', f))
+  )
+  expect_match(prompt, "sniff_input() inspected", fixed = TRUE)
+  expect_match(prompt, f, fixed = TRUE)
+})
+
+test_that("the classify prompt says nothing was inspected when no path exists", {
+  prompt <- .build_phase_prompt(
+    "classify",
+    context = list(user_text = "I have BirdNET output somewhere on my laptop")
+  )
+  expect_match(prompt, "No path in the user's message was found on disk", fixed = TRUE)
+})
+
+test_that("the parameterize prompt carries the selected path's requirements", {
+  skip_if_not_installed("TaxaMatch")
+  prompt <- .build_phase_prompt(
+    "parameterize",
+    context = list(
+      input_type = "birdnet_detections",
+      output_type = "match_df",
+      selected_path = "birdnet_to_match"
+    )
+  )
+  expect_false(grepl("\\{\\{[A-Z_]+\\}\\}", prompt))
+  expect_match(prompt, "WHAT THIS PATH REQUIRES", fixed = TRUE)
+})

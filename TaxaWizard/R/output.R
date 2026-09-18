@@ -485,6 +485,17 @@
     new_param_lines <- c(new_param_lines, "")
   }
 
+  # --- Step 0: widen the EXISTING check, never write a second one ---
+  # P6. An appended stage can need things the original path did not (a BLAST
+  # binary, an NCBI key). The script's Step 0 is at the top and has already
+  # run by the time those steps execute, so leaving it alone would let the
+  # script sail past a requirement it is about to need and fail deep in a
+  # stage instead of before step 1. Re-deriving Step 0 is equally wrong: a
+  # second check block would either duplicate the first or silently narrow it
+  # to the extension's edges, dropping the original path's requirements. So
+  # the existing line is widened in place, to the union.
+  existing_lines <- .widen_step0_edges(existing_lines, dag)
+
   # --- Build new step lines ---
   new_step_lines <- c(
     "",
@@ -630,4 +641,56 @@
   filepath <- file.path(output_dir, "app.R")
   writeLines(lines, filepath)
   filepath
+}
+
+
+#' Widen an Existing Generated Script's Step 0 Edge List
+#'
+#' Finds the \code{workflow_check(edges = ...)} line a previous
+#' \code{.generate_script()} wrote and rewrites it to the union of the edges
+#' already listed and the edges of \code{dag}'s steps. Used when APPENDING to
+#' a script, where writing a fresh Step 0 would either duplicate the existing
+#' one or narrow it to only the new steps' requirements.
+#'
+#' Leaves the script untouched when there is nothing to do: no Step 0 line (a
+#' hand-written or legacy script -- inserting a check into someone else's
+#' script is not this function's business), an \code{edges = NULL} check
+#' (already the widest possible), or no new edge ids.
+#'
+#' @param lines Character vector. The existing script's lines.
+#' @param dag The DAG being appended.
+#' @return \code{lines}, with at most one line changed.
+#' @noRd
+.widen_step0_edges <- function(lines, dag) {
+  new_edges <- unique(vapply(dag$steps, function(s) as.character(s$edge_id %||% ""), ""))
+  new_edges <- new_edges[nzchar(new_edges)]
+  if (length(new_edges) == 0L) {
+    return(lines)
+  }
+
+  idx <- grep("^\\.setup <- TaxaWizard::workflow_check\\(edges = ", lines)
+  if (length(idx) == 0L) {
+    return(lines)
+  }
+  idx <- idx[1L]
+  line <- lines[idx]
+
+  # edges = NULL already checks the whole ecosystem: nothing to widen.
+  if (grepl("edges = NULL", line, fixed = TRUE)) {
+    return(lines)
+  }
+
+  existing_edges <- unlist(regmatches(line, gregexpr('"[^"]*"', line)))
+  existing_edges <- gsub('"', "", existing_edges, fixed = TRUE)
+
+  merged <- unique(c(existing_edges, new_edges))
+  if (setequal(merged, existing_edges)) {
+    return(lines)
+  }
+
+  lines[idx] <- sprintf(
+    ".setup <- TaxaWizard::workflow_check(edges = c(%s), verbose = TRUE)",
+    paste(vapply(merged, .r_string, ""), collapse = ", ")
+  )
+  lines
 }

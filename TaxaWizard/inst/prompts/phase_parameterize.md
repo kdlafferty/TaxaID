@@ -12,6 +12,19 @@ The user has selected a workflow path. Your job is to collect the parameter valu
 
 {{EDGE_DESCRIPTIONS}}
 
+# WHAT THIS PATH REQUIRES ON THE USER'S MACHINE
+
+{{PATH_REQUIREMENTS}}
+
+These are the requirements of the STEPS YOU ARE ABOUT TO WRITE, checked on the
+user's actual machine. If any row is `missing`, tell the user what to set up and
+give the fix line in your message, in the same reply as the workflow -- the
+generated script's Step 0 will stop on exactly these rows, and it is better that
+the user hears it from you now than from a stopped script later. Do not omit a
+step because a requirement is missing, and do not silently substitute a
+different function to route around it.
+
+
 # CODE SNIPPETS
 
 These are the pre-validated code templates for each step. Replace `{{placeholder}}` values with the user's actual values. Do NOT modify the function calls, add extra parameters, or change the code structure.

@@ -1,5 +1,44 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-18 (Opus 5, work package P6 of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, branch p6-engine):
+# the engine now CONSUMES what P3 built. Three placeholders P3 deliberately left
+# unwired are filled in R/graph.R's .build_phase_prompt(): {{SETUP_STATUS}} (classify;
+# full workflow_check(), cached per session by .session_setup_check() and seeded by
+# workflow_create() so the user is shown the SAME report the model gets),
+# {{SNIFF_RESULT}} (classify; sniff_input() over .detect_paths_in_text() of the user's
+# latest message), {{PATH_REQUIREMENTS}} (parameterize; workflow_check(edges =
+# selected_path)). New internal helpers live in R/setup.R: .session_setup_check(),
+# .format_check_block(), .detect_paths_in_text(), .format_sniff_block(). WHY only
+# non-ok rows are rendered: an edges-scoped check still returns every base row (R
+# version, the 8 packages, cache) -- 26 rows for a 1-edge path -- so injecting the
+# whole table spends ~26 lines saying "fine" and buries the one line that is not.
+# WHY paths must EXIST before being sniffed: a path typed from memory, or an example
+# path lifted out of the prompt pack, must never be reported to the model as though it
+# had been inspected; the prompt also frames a sniff as EVIDENCE, not a decision, so a
+# sniff that contradicts the user produces a question rather than a silent override.
+# SECURITY: key rows are set/unset only, never a value, and there is a test with a
+# canary key value asserting it never reaches the prompt. R/output.R gains
+# .widen_step0_edges(): appending a stage can require a BLAST binary or an NCBI key the
+# original path did not, and Step 0 has ALREADY RUN by the time those steps execute, so
+# the existing check line is rewritten to the UNION -- not re-derived (a second block
+# would duplicate the first, or narrow it to the extension's edges and drop the original
+# path's requirements) and not skipped (the script would sail past a requirement it is
+# about to need). A script with no Step 0, or an edges = NULL check, is left alone.
+# TWO REAL DEFECTS FOUND WHILE WIRING THIS, both now tested: (1) .pack_render_task()
+# special-cased classify PAST the bracket map on the assumption {{NODE_TYPES}} was its
+# only placeholder -- false as soon as P6 added two more, and the exported pack shipped a
+# raw {{SETUP_STATUS}} token; the map now applies to every phase. (2) Registry text
+# depended on the GLOBAL useFancyQuotes option -- the same Rd yielded 'x' or fancy-quoted
+# x -- so an ambient setting decided whether the pack's byte-for-byte equality test
+# passed, and it did: the committed pack was generated under FALSE and a refresh under
+# the default TRUE rewrote every description. useFancyQuotes is now pinned off during Rd
+# rendering and REGISTRY_SCHEMA is 3 to evict caches holding either form. VERIFIED: 1009
+# tests pass, 0 failures, 0 skips; devtools::check() 0/0/0; llm_prompts/ regenerated
+# (CONTEXT_TaxaHabitat.md also picked up review_spatial_flags()'s new
+# bulk_confirm_threshold/bulk_max args, because that package was reinstalled by another
+# session mid-task -- the pack derives from what is INSTALLED, by design).
+#
 # Last updated: 2026-09-18 (Opus 5, work package P1b of
 # ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, branch p1b-rd-parse):
 # R/registry.R now parses Rd \arguments STRUCTURALLY, via new `.rd_arguments(args_tag)`

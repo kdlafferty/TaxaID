@@ -430,6 +430,10 @@
 #' @noRd
 .pack_task_bracket_map <- function() {
   list(
+    classify = c(
+      "{{SETUP_STATUS}}" = "[the user's own setup report. Ask them to run `TaxaWizard::workflow_check()` in R and paste the output, or to paste the SETUP_REPORT.md from this pack if they generated it on their machine. You cannot run it yourself in a chat. Until you have it, do not assert that anything is installed or configured.]",
+      "{{SNIFF_RESULT}}" = "[you cannot read the user's disk from a chat. Ask them to run `TaxaWizard::sniff_input(\"<their path>\")` and paste the result (it prints a node_id, a confidence, and the evidence). Use that as evidence, not as a decision: if it disagrees with what they told you, say so and ask which is right.]"
+    ),
     path_select = c(
       "{{INPUT_TYPE}}" = "[the input node id you and the user agreed on -- see CONTEXT_TaxaID.md's Node types]",
       "{{OUTPUT_TYPE}}" = "[the output node id you and the user agreed on -- see CONTEXT_TaxaID.md's Node types]",
@@ -443,7 +447,8 @@
       "{{EDGE_DESCRIPTIONS}}" = "[the selected path's steps, one line each: step number, edge id, label -- from tasks/path_select.md's chosen route]",
       "{{SNIPPETS}}" = "[the prompt pack does not ship a pre-validated code-snippet library. Write each step's R code yourself, one function call per step, strictly from the signature and docs in the relevant CONTEXT_<Package>.md file -- named arguments only, never a parameter name that isn't in that file's params table.]",
       "{{PARAM_DOCS}}" = "[the params tables for every function used in the selected path, copied from the relevant CONTEXT_<Package>.md file(s)]",
-      "{{SELECTED_PATH_JSON}}" = "[the selected edge ids, in order]"
+      "{{SELECTED_PATH_JSON}}" = "[the selected edge ids, in order]",
+      "{{PATH_REQUIREMENTS}}" = "[the `requires` tokens of the selected path's edges, read from CONTEXT_TaxaID.md's \"Workflow graph\" section, checked against the setup report the user pasted. List anything the path needs that their report does not show as present, with the fix line from their report.]"
     ),
     error_fix = c(
       "{{STEP_NUMBER}}" = "[the step number the user reports failing]",
@@ -504,13 +509,18 @@
 .pack_render_task <- function(phase, graph) {
   text <- .pack_read_template(phase)
 
+  # {{NODE_TYPES}} is the one placeholder the pack can fill for real, because
+  # the graph ships with the package. Everything else needs a live conversation
+  # and gets a bracketed instruction instead. The bracket map is applied to
+  # EVERY phase: classify used to be special-cased past it on the assumption
+  # that NODE_TYPES was its only placeholder, which stopped being true when P6
+  # added {{SETUP_STATUS}} and {{SNIFF_RESULT}} to that template.
   if (identical(phase, "classify")) {
     text <- sub("{{NODE_TYPES}}", .describe_node_types(graph), text, fixed = TRUE)
-  } else {
-    bracket_map <- .pack_task_bracket_map()[[phase]]
-    for (ph in names(bracket_map)) {
-      text <- gsub(ph, bracket_map[[ph]], text, fixed = TRUE)
-    }
+  }
+  bracket_map <- .pack_task_bracket_map()[[phase]]
+  for (ph in names(bracket_map)) {
+    text <- gsub(ph, bracket_map[[ph]], text, fixed = TRUE)
   }
 
   .pack_strip_json_format(text)

@@ -373,3 +373,22 @@ test_that("the registry cache key carries the schema version", {
   expect_equal(length(files), 1L)
   expect_match(files[1L], sprintf("_v%d\\.rds$", TaxaWizard:::REGISTRY_SCHEMA))
 })
+
+test_that("registry text does not depend on the global useFancyQuotes option", {
+  # The pack has a byte-for-byte equality test, and Rd2txt renders \code{} via
+  # R's quoting, which honours this option. Before it was pinned, whether that
+  # test passed depended on an ambient setting rather than on the packages.
+  skip_if_not_installed("TaxaTools")
+
+  old <- options(useFancyQuotes = TRUE)
+  on.exit(options(old), add = TRUE)
+  a <- TaxaWizard:::.build_package_registry("TaxaTools", "0.1.0", "test")
+
+  options(useFancyQuotes = FALSE)
+  b <- TaxaWizard:::.build_package_registry("TaxaTools", "0.1.0", "test")
+
+  expect_identical(a, b)
+  # And the surviving form is ASCII, which is what the committed pack holds.
+  descs <- paste(vapply(a$functions, function(f) f$description %||% "", ""), collapse = " ")
+  expect_false(grepl("‘|’", descs))
+})
