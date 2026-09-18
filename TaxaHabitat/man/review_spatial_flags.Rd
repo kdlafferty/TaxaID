@@ -13,6 +13,8 @@ review_spatial_flags(
   colors = NULL,
   tile = "Esri.OceanBasemap",
   point_radius = 6,
+  bulk_confirm_threshold = 10000L,
+  bulk_max = 100000L,
   viewer = shiny::paneViewer(minHeight = 450)
 )
 }
@@ -40,6 +42,15 @@ species display. Default \code{"taxon_name"}.}
 
 \item{point_radius}{Numeric. Circle marker radius in pixels. Default
 \code{6}.}
+
+\item{bulk_confirm_threshold}{Integer. A rectangle/polygon selection larger
+than this asks for confirmation, reporting the exact point count, before
+the action is applied. Default \code{10000L}. Set to \code{Inf} to never
+ask.}
+
+\item{bulk_max}{Integer. Hard ceiling: a selection larger than this is
+refused outright rather than applied, and the reviewer is asked to split
+the shape. Default \code{100000L}.}
 
 \item{viewer}{Shiny viewer function passed through to
 \code{\link[shiny]{runGadget}}. Default
@@ -108,12 +119,38 @@ the dataset is added to the palette and the Habitats sidebar filter
 immediately, without disturbing any existing habitat's colour.
 }
 
+\section{Bulk selection (rectangle or polygon)}{
+
+The map's draw toolbar offers a \strong{rectangle} and a \strong{polygon}.
+Both select every visible point of the current view that falls inside the
+drawn shape; the polygon exists because real selection boundaries (a
+coastline, a lake shore, a basin) are rarely rectangular, and approximating
+one with repeated rectangles multiplies the number of review rounds.
+In \strong{Flag} mode the shape applies immediately; in
+\strong{Reassign Habitat} mode it selects, and \strong{Confirm} applies.
+
+Selection size is gated, never truncated -- a partially applied selection
+would leave the un-applied points scattered through the drawn shape and
+drawn identically to points that were never selected, which is invisible
+to the reviewer and indistinguishable in the output. Instead: at or below
+\code{bulk_confirm_threshold} the action applies straight away; above it a
+dialog reports the exact count and requires an explicit \strong{Apply};
+above \code{bulk_max} the action is refused with a message.
+
+Each bulk action is recorded as ONE entry, so \strong{Undo Last} reverses
+an entire selection in a single click.
+
+The polygon test uses an even-odd ray cast in Web Mercator (matching the
+straight-line edges leaflet actually draws) and does not support a shape
+crossing the antimeridian.
+}
+
 \section{Habitat filter}{
 
 The sidebar \strong{Habitats} panel lists every habitat present in the
 dataset (plus any added mid-session via a habitat reassignment) as a
 colour-coded checkbox. Unchecking a habitat hides those points from the
-map and excludes them from rectangle drag-selection and click actions.
+map and excludes them from shape selection and click actions.
 Use \strong{All} / \strong{None} to select or clear all at once.
 }
 

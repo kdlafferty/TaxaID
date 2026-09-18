@@ -40,6 +40,67 @@
   `unknown` by design; they are now *reported* rather than silently absorbed,
   and `habitat_scheme=` with a `realm` column resolves them explicitly.
 
+## New features (2026-09-18)
+
+* `review_spatial_flags()`: **polygon (lasso) selection**, alongside the
+  existing rectangle. Real selection boundaries -- a coastline, a lake shore, a
+  basin -- are rarely rectangular, and approximating one with repeated
+  rectangles multiplied the number of review rounds. Both shapes arrive through
+  the same `map_draw_new_feature` input as a GeoJSON ring, so a rectangle is
+  now just the axis-aligned special case; a bounding box prefilters candidates
+  and `.points_in_polygon()` does an even-odd ray cast on the survivors
+  (5,000 candidates against a 60-vertex ring: **13 ms**). The cast runs in Web
+  Mercator, matching the straight-line edges leaflet actually draws, so the
+  selection agrees with the shape on screen. An axis-aligned rectangle skips
+  the cast entirely and costs exactly what it did before. No new dependency:
+  `sf`'s lon/lat predicates go through `sf_use_s2()`, which is global state an
+  interactive gadget must not mutate mid-review.
+
+* `review_spatial_flags()`: **selection size gate**, `bulk_confirm_threshold`
+  (default `10000L`) and `bulk_max` (default `100000L`). At or below the
+  threshold a bulk action applies straight away; above it a dialog reports the
+  exact point count and requires an explicit Apply; above `bulk_max` it is
+  refused. The gate deliberately **never truncates** -- a partially applied
+  selection would leave the un-applied points scattered through the drawn
+  shape, rendered identically to points that were never selected, invisible to
+  the reviewer and indistinguishable in the output.
+
+* `review_spatial_flags()`: **grouped undo**. Each bulk action is recorded as
+  one history entry covering every point it touched, so **Undo Last** reverses
+  a whole selection in a single click. Previously a 5,000-point action needed
+  5,000 undo clicks, or Cancel -- which discards the entire review session. A
+  single-point click is simply a one-element group. The sidebar now reports
+  both counts ("N override(s) in M action(s)").
+
+## Performance (2026-09-18)
+
+* `review_spatial_flags()`: four loops that scaled badly with selection size
+  were vectorised. These were **latent before polygon selection existed** -- a
+  rectangle dragged over the whole map hit them too -- but polygon selection
+  makes large selections routine rather than rare.
+
+  1. **Done handler.** Writing reassigned habitats back looped over changed
+     points, scanning every row and copying the whole habitat column each time
+     (`O(n_changed * nrow)`). Measured on a 2,185,193-row input with 5,000
+     changed points: **~2 minutes, reduced to 0.033 s** by a single `match()`
+     pass. This was by far the most expensive thing in the gadget. It now also
+     uses `which()`, so an `NA` comparison drops out instead of indexing with
+     `NA`.
+  2. **Marker redraw.** Bulk flag and habitat actions issued `removeMarker()`
+     and `addCircleMarkers()` **per point** -- two queued websocket messages
+     each, so a 5,000-point action queued 10,000. Now one vectorised
+     `removeMarker()` plus one `addCircleMarkers()` per distinct habitat.
+     `.add_habitat_marker()` accepts one or many rows.
+  3. **Per-point row lookup.** `pts[pts$point_id == pid, ]` inside the loop was
+     a full linear scan per point; replaced with one `match()`.
+  4. **History growth.** `c(hist, list(...))` inside the loop copied the
+     growing list on every iteration (`O(k^2)`); now one append per action.
+
+* `review_spatial_flags()`: markers render with `preferCanvas = TRUE`. SVG
+  markers stop being usable in the tens of thousands; canvas markers keep
+  going well past that. This matters because the production workflows pass the
+  **whole** flagged dataset in -- 1,092,230 unique points for PtCon 18S.
+
 ## Bug fixes (2026-09-15)
 
 * `flag_habitat_inconsistencies()`: **two independent defects in

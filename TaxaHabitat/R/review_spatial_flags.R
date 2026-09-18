@@ -44,11 +44,35 @@
 #' the dataset is added to the palette and the Habitats sidebar filter
 #' immediately, without disturbing any existing habitat's colour.
 #'
+#' @section Bulk selection (rectangle or polygon):
+#' The map's draw toolbar offers a \strong{rectangle} and a \strong{polygon}.
+#' Both select every visible point of the current view that falls inside the
+#' drawn shape; the polygon exists because real selection boundaries (a
+#' coastline, a lake shore, a basin) are rarely rectangular, and approximating
+#' one with repeated rectangles multiplies the number of review rounds.
+#' In \strong{Flag} mode the shape applies immediately; in
+#' \strong{Reassign Habitat} mode it selects, and \strong{Confirm} applies.
+#'
+#' Selection size is gated, never truncated -- a partially applied selection
+#' would leave the un-applied points scattered through the drawn shape and
+#' drawn identically to points that were never selected, which is invisible
+#' to the reviewer and indistinguishable in the output. Instead: at or below
+#' \code{bulk_confirm_threshold} the action applies straight away; above it a
+#' dialog reports the exact count and requires an explicit \strong{Apply};
+#' above \code{bulk_max} the action is refused with a message.
+#'
+#' Each bulk action is recorded as ONE entry, so \strong{Undo Last} reverses
+#' an entire selection in a single click.
+#'
+#' The polygon test uses an even-odd ray cast in Web Mercator (matching the
+#' straight-line edges leaflet actually draws) and does not support a shape
+#' crossing the antimeridian.
+#'
 #' @section Habitat filter:
 #' The sidebar \strong{Habitats} panel lists every habitat present in the
 #' dataset (plus any added mid-session via a habitat reassignment) as a
 #' colour-coded checkbox. Unchecking a habitat hides those points from the
-#' map and excludes them from rectangle drag-selection and click actions.
+#' map and excludes them from shape selection and click actions.
 #' Use \strong{All} / \strong{None} to select or clear all at once.
 #'
 #' @section Point Info panel:
@@ -76,6 +100,13 @@
 #'   \code{"Esri.OceanBasemap"}.
 #' @param point_radius Numeric. Circle marker radius in pixels. Default
 #'   \code{6}.
+#' @param bulk_confirm_threshold Integer. A rectangle/polygon selection larger
+#'   than this asks for confirmation, reporting the exact point count, before
+#'   the action is applied. Default \code{10000L}. Set to \code{Inf} to never
+#'   ask.
+#' @param bulk_max Integer. Hard ceiling: a selection larger than this is
+#'   refused outright rather than applied, and the reviewer is asked to split
+#'   the shape. Default \code{100000L}.
 #' @param viewer Shiny viewer function passed through to
 #'   \code{\link[shiny]{runGadget}}. Default
 #'   \code{shiny::paneViewer(minHeight = 450)} (RStudio's embedded Viewer
@@ -96,7 +127,7 @@
 #' @seealso \code{\link{flag_habitat_inconsistencies}}
 #'
 #' @importFrom stats setNames
-#' @importFrom leaflet.extras addDrawToolbar drawRectangleOptions drawShapeOptions removeDrawToolbar
+#' @importFrom leaflet.extras addDrawToolbar drawRectangleOptions drawPolygonOptions drawShapeOptions removeDrawToolbar
 #' @export
 #'
 #' @examples
@@ -116,6 +147,8 @@ review_spatial_flags <- function(
   colors = NULL,
   tile = "Esri.OceanBasemap",
   point_radius = 6,
+  bulk_confirm_threshold = 10000L,
+  bulk_max = 100000L,
   viewer = shiny::paneViewer(minHeight = 450)
 ) {
   # --------------------------------------------------------------------------
@@ -137,6 +170,7 @@ review_spatial_flags <- function(
   if (!is.data.frame(occurrence_data)) {
     stop("review_spatial_flags: 'occurrence_data' must be a dataframe.")
   }
+  .check_bulk_args(bulk_confirm_threshold, bulk_max)
   for (col in c(
     habitat_col, lat_col, lon_col, "spatial_flag",
     "spatial_flag_reason", "point_id"
@@ -401,6 +435,11 @@ review_spatial_flags <- function(
                 "Likely \u2192 Questionable<br/>",
                 "Unlikely \u2192 Questionable<br/>",
                 "Questionable \u2192 Likely"
+              ),
+              shiny::br(),
+              shiny::HTML(
+                "<span style='color:#666;'>Draw a rectangle or polygon ",
+                "to apply to many points at once.</span>"
               )
             )
           ),
@@ -413,7 +452,10 @@ review_spatial_flags <- function(
               ),
               shiny::strong("Click a point to reassign its habitat."),
               shiny::br(),
-              shiny::HTML("All rows at that location will be updated.")
+              shiny::HTML(
+                "All rows at that location will be updated.<br/>",
+                "Draw a <b>rectangle</b> or <b>polygon</b> to select many at once."
+              )
             ),
             shiny::uiOutput("habitat_reassign_panel")
           ),
@@ -450,7 +492,14 @@ review_spatial_flags <- function(
       rectangleOptions = leaflet.extras::drawRectangleOptions(
         shapeOptions = leaflet.extras::drawShapeOptions(fillOpacity = 0.1, color = "#333", weight = 1)
       ),
-      polylineOptions = FALSE, polygonOptions = FALSE,
+      # A rectangle is a 5-vertex ring and a polygon an n-vertex one; both
+      # arrive through the SAME map_draw_new_feature input and are handled by
+      # the same point-in-polygon code path below. Keeping the rectangle is
+      # deliberate -- it stays the cheap, one-drag common case.
+      polygonOptions = leaflet.extras::drawPolygonOptions(
+        shapeOptions = leaflet.extras::drawShapeOptions(fillOpacity = 0.1, color = "#333", weight = 1)
+      ),
+      polylineOptions = FALSE,
       circleOptions = FALSE, markerOptions = FALSE,
       circleMarkerOptions = FALSE, editOptions = FALSE
     )
@@ -461,7 +510,15 @@ review_spatial_flags <- function(
     .add_draw_toolbar(proxy)
   }
 
+  # Accepts ONE OR MANY rows: addCircleMarkers() is already vectorised, so a
+  # bulk redraw is a single proxy message instead of one per point. The old
+  # per-point loop queued 2 websocket messages per selected point, which is
+  # what made a large selection unsafe (see this function's @section Bulk
+  # selection note). Single-row callers (undo) pass a 1-row data frame.
   .add_habitat_marker <- function(target, row, color, group) {
+    if (nrow(row) == 0L) {
+      return(target)
+    }
     leaflet::addCircleMarkers(
       target,
       lng = row$lon,
@@ -473,7 +530,7 @@ review_spatial_flags <- function(
       fillOpacity = 0.8,
       opacity = 0.9,
       weight = 1,
-      label = shiny::HTML(row$tooltip),
+      label = lapply(row$tooltip, shiny::HTML),
       labelOptions = leaflet::labelOptions(
         style     = list("font-size" = "12px", "padding" = "4px 6px"),
         direction = "auto",
@@ -626,7 +683,13 @@ review_spatial_flags <- function(
       sub_pts <- pts[pts$point_id %in% show_ids, ]
       sub_pts$habitat <- habs_now[sub_pts$point_id]
 
-      m <- leaflet::leaflet() |>
+      # preferCanvas: render markers into a single <canvas> rather than one SVG
+      # DOM node each. This is what makes a large flagged set openable at all --
+      # SVG markers stop being usable in the tens of thousands, canvas markers
+      # keep going well past that.
+      m <- leaflet::leaflet(
+        options = leaflet::leafletOptions(preferCanvas = TRUE)
+      ) |>
         leaflet::addProviderTiles(tile) |>
         leaflet::fitBounds(
           full_bounds$lng1, full_bounds$lat1,
@@ -785,6 +848,107 @@ review_spatial_flags <- function(
     # Hidden-habitat points excluded from selection in both modes.
     # --------------------------------------------------------------------------
 
+    # Holds a bulk action awaiting confirmation. See .gate_bulk() below.
+    pending_bulk <- shiny::reactiveVal(NULL)
+
+    # --------------------------------------------------------------------------
+    # .gate_bulk() -- size gate for any bulk action.
+    #
+    # NEVER truncates. A partial application would leave the un-applied points
+    # scattered through the drawn shape, rendered identically to points the
+    # reviewer never selected -- a silent, invisible half-done reassignment.
+    # Instead: apply, or ask, or refuse.
+    #   n <= bulk_confirm_threshold : apply straight away
+    #   n <= bulk_max               : show the real count, require an Apply click
+    #   n >  bulk_max               : refuse outright, tell them to split the shape
+    # --------------------------------------------------------------------------
+
+    .gate_bulk <- function(n, what, fn) {
+      decision <- .bulk_gate_decision(n, bulk_confirm_threshold, bulk_max)
+      if (decision == "none") {
+        return(invisible(NULL))
+      }
+      if (decision == "refuse") {
+        shiny::showNotification(
+          sprintf(
+            paste0(
+              "Selection of %s points exceeds the %s-point limit -- nothing was applied. ",
+              "Zoom in, hide some habitats, or split the shape into smaller pieces."
+            ),
+            format(n, big.mark = ","), format(bulk_max, big.mark = ",")
+          ),
+          type = "error", duration = 12
+        )
+        return(invisible(NULL))
+      }
+      if (decision == "confirm") {
+        pending_bulk(list(fn = fn, n = n, what = what))
+        shiny::showModal(shiny::modalDialog(
+          title = "Confirm bulk action",
+          shiny::HTML(sprintf(
+            paste0(
+              "<p>This will <b>%s</b> for <b>%s</b> points.</p>",
+              "<p style='color:#666;font-size:12px;'>Applied as a single step -- ",
+              "one click of Undo Last reverses all of it.</p>"
+            ),
+            .he(what), format(n, big.mark = ",")
+          )),
+          footer = shiny::tagList(
+            # A real actionButton, not modalButton(): dismissing the dialog MUST
+            # clear pending_bulk(). See the confirm_bulk observer below for why
+            # a stale pending action is dangerous.
+            shiny::actionButton("cancel_bulk", "Cancel"),
+            shiny::actionButton(
+              "confirm_bulk", "Apply",
+              style = "background:#2196F3;color:white;border:none;"
+            )
+          ),
+          easyClose = FALSE
+        ))
+        return(invisible(NULL))
+      }
+      fn()
+    }
+
+    # Re-showing a modal re-creates its buttons, and a re-created actionButton
+    # can report 0 again -- which is a CHANGE from its previous value and so can
+    # fire this observer without anyone clicking Apply. Belt and braces: ignore
+    # the initial/zero value, and clear pending_bulk() on every exit path
+    # (including Cancel) so a spurious fire has nothing left to run.
+    shiny::observeEvent(input$confirm_bulk,
+      {
+        if (is.null(input$confirm_bulk) || input$confirm_bulk == 0L) {
+          return()
+        }
+        pb <- pending_bulk()
+        shiny::removeModal()
+        pending_bulk(NULL)
+        if (!is.null(pb)) pb$fn()
+      },
+      ignoreInit = TRUE
+    )
+
+    shiny::observeEvent(input$cancel_bulk, {
+      pending_bulk(NULL)
+      shiny::removeModal()
+      # The drawn shape is still on the map after a declined bulk action; clear
+      # it so the next draw starts from a clean toolbar.
+      .reset_draw_toolbar(leaflet::leafletProxy("map"))
+      selected_point(NULL)
+      selected_points(NULL)
+    })
+
+    # --------------------------------------------------------------------------
+    # Draw rectangle OR polygon -- bulk Flag OR bulk Reassign Habitat.
+    #
+    # Both shapes arrive here as a GeoJSON coordinate ring, so a rectangle is
+    # simply a 4-vertex special case. A bounding box prefilters the candidate
+    # set (cheap, vectorised) and .points_in_polygon() then does the real
+    # even-odd test on just those candidates -- which is what lets a reviewer
+    # trace a coastline instead of approximating it with repeated rectangles.
+    # Hidden-habitat points excluded from selection in both modes.
+    # --------------------------------------------------------------------------
+
     shiny::observeEvent(input$map_draw_new_feature, {
       message("[review_spatial_flags DEBUG] map_draw_new_feature fired")
       feat <- input$map_draw_new_feature
@@ -800,7 +964,7 @@ review_spatial_flags <- function(
           NULL
         }
       )
-      if (is.null(coords)) {
+      if (is.null(coords) || length(coords) < 3L) {
         return()
       }
 
@@ -812,12 +976,15 @@ review_spatial_flags <- function(
         message("[review_spatial_flags DEBUG] error extracting lats: ", conditionMessage(e))
         NA_real_
       })
+      if (anyNA(lons) || anyNA(lats)) {
+        return()
+      }
       xmin <- min(lons)
       xmax <- max(lons)
       ymin <- min(lats)
       ymax <- max(lats)
       message(sprintf(
-        "[review_spatial_flags DEBUG] box = lon[%.6f, %.6f] lat[%.6f, %.6f], n_coord_pts=%d",
+        "[review_spatial_flags DEBUG] ring bbox = lon[%.6f, %.6f] lat[%.6f, %.6f], n_vertices=%d",
         xmin, xmax, ymin, ymax, length(coords)
       ))
 
@@ -830,49 +997,76 @@ review_spatial_flags <- function(
         length(fl), sum(fl == view_lc, na.rm = TRUE)
       ))
 
-      in_box_ids <- pts$point_id[
+      # Step 1: bounding-box prefilter (identical to the old rectangle test).
+      cand <- which(
         pts$point_id %in% names(fl)[fl == view_lc] &
           pts$habitat %in% vis_hab &
           pts$lon >= xmin & pts$lon <= xmax &
           pts$lat >= ymin & pts$lat <= ymax
-      ]
+      )
+
+      # Step 2: exact even-odd test on the survivors. Skipped for a ring that
+      # IS its own bounding box (an axis-aligned rectangle), where step 1 is
+      # already exact -- so the rectangle path costs exactly what it did before.
+      is_bbox <- length(unique(round(lons, 10L))) <= 2L &&
+        length(unique(round(lats, 10L))) <= 2L
+      if (length(cand) > 0L && !is_bbox) {
+        cand <- cand[.points_in_polygon(pts$lon[cand], pts$lat[cand], lons, lats)]
+      }
+      in_box_ids <- pts$point_id[cand]
       message(sprintf(
-        "[review_spatial_flags DEBUG] in_box_ids length = %d", length(in_box_ids)
+        "[review_spatial_flags DEBUG] is_bbox=%s, selected ids = %d",
+        is_bbox, length(in_box_ids)
       ))
 
       if (input$action_mode == "Flag") {
         if (length(in_box_ids) == 0L) {
-          message("[review_spatial_flags DEBUG] Flag mode, in_box_ids empty, returning (no-op)")
+          message("[review_spatial_flags DEBUG] Flag mode, selection empty, returning (no-op)")
+          .reset_draw_toolbar(leaflet::leafletProxy("map"))
           return()
         }
 
-        rs <- cur_reasons()
         new_flag <- if (view_lc %in% c("likely", "unlikely")) "questionable" else "likely"
-        ts <- format(Sys.time(), "%Y-%m-%d %H:%M")
-        flag_hist <- history()
 
-        for (pid in in_box_ids) {
-          flag_hist <- c(flag_hist, list(list(
-            point_id    = pid,
-            old_flag    = fl[[pid]],
-            old_reason  = rs[[pid]],
-            old_habitat = NA_character_
-          )))
-          rs[[pid]] <- paste0(
-            rs[[pid]],
-            sprintf(" [%s \u2192 %s, %s]", fl[[pid]], new_flag, ts)
-          )
-          fl[[pid]] <- new_flag
-        }
-        history(flag_hist)
-        cur_flags(fl)
-        cur_reasons(rs)
+        .gate_bulk(
+          length(in_box_ids),
+          sprintf("change the flag to %s", new_flag),
+          function() {
+            fl <- cur_flags()
+            rs <- cur_reasons()
+            ts <- format(Sys.time(), "%Y-%m-%d %H:%M")
 
-        proxy <- leaflet::leafletProxy("map")
-        for (pid in in_box_ids) proxy <- leaflet::removeMarker(proxy, layerId = pid)
+            old_flags <- unname(fl[in_box_ids])
+            old_reasons <- unname(rs[in_box_ids])
 
-        .reset_draw_toolbar(leaflet::leafletProxy("map"))
+            # ONE grouped history entry for the whole action, so Undo Last
+            # reverses the entire selection in a single click.
+            history(c(history(), list(list(
+              point_id    = in_box_ids,
+              old_flag    = old_flags,
+              old_reason  = old_reasons,
+              old_habitat = rep(NA_character_, length(in_box_ids))
+            ))))
+
+            rs[in_box_ids] <- paste0(
+              old_reasons,
+              sprintf(" [%s \u2192 %s, %s]", old_flags, new_flag, ts)
+            )
+            fl[in_box_ids] <- new_flag
+            cur_flags(fl)
+            cur_reasons(rs)
+
+            # One vectorised proxy call, not one per point.
+            proxy <- leaflet::removeMarker(
+              leaflet::leafletProxy("map"),
+              layerId = in_box_ids
+            )
+            .reset_draw_toolbar(proxy)
+          }
+        )
       } else {
+        # Reassign mode: drawing only SELECTS. The size gate fires on Confirm,
+        # where the irreversible work actually happens.
         selected_point(NULL)
         selected_points(if (length(in_box_ids) > 0L) in_box_ids else NULL)
       }
@@ -913,6 +1107,7 @@ review_spatial_flags <- function(
           sprintf(" [%s \u2192 %s, %s]", old_flag, new_flag, ts)
         )
 
+        # A single click is just a one-element group (see Undo Last).
         flag_hist <- history()
         history(c(flag_hist, list(list(
           point_id    = pid,
@@ -940,7 +1135,7 @@ review_spatial_flags <- function(
       pids <- selected_points()
 
       if (is.null(pid) && is.null(pids)) {
-        return(shiny::p("(click a point or draw a rectangle)",
+        return(shiny::p("(click a point, or draw a rectangle/polygon)",
           style = "font-size:11px;color:#999;margin:4px 0;"
         ))
       }
@@ -1012,81 +1207,94 @@ review_spatial_flags <- function(
       pid <- selected_point()
       pids <- selected_points()
       target_ids <- if (!is.null(pids)) pids else if (!is.null(pid)) pid else return()
+      was_bulk <- !is.null(pids)
 
-      habs <- cur_habitats()
-      fl <- cur_flags()
-      rs <- cur_reasons()
-      ts <- format(Sys.time(), "%Y-%m-%d %H:%M")
-      flag_hist <- history()
-      pal_now <- pal_rv()
-      new_col <- if (new_hab %in% names(pal_now)) pal_now[[new_hab]] else "#aaaaaa"
-      view_lc <- tolower(input$view_mode)
-      proxy <- leaflet::leafletProxy("map")
+      # Drop no-ops up front (points already carrying the target habitat) so the
+      # confirmation count is the number of points that will actually change.
+      habs0 <- cur_habitats()
+      old_habs0 <- unname(habs0[target_ids])
+      keep <- !is.na(old_habs0) & old_habs0 != new_hab
+      target_ids <- target_ids[keep]
 
-      for (pid_i in target_ids) {
-        old_hab <- habs[[pid_i]]
-        old_flag <- fl[[pid_i]]
-        old_reason <- rs[[pid_i]]
+      if (length(target_ids) == 0L) {
+        if (was_bulk) .reset_draw_toolbar(leaflet::leafletProxy("map"))
+        selected_point(NULL)
+        selected_points(NULL)
+        return()
+      }
 
-        if (identical(old_hab, new_hab)) next
+      .gate_bulk(
+        length(target_ids),
+        sprintf("reassign the habitat to %s", new_hab),
+        function() {
+          habs <- cur_habitats()
+          fl <- cur_flags()
+          rs <- cur_reasons()
+          ts <- format(Sys.time(), "%Y-%m-%d %H:%M")
+          pal_now <- pal_rv()
+          new_col <- if (new_hab %in% names(pal_now)) pal_now[[new_hab]] else "#aaaaaa"
+          view_lc <- tolower(input$view_mode)
 
-        flag_hist <- c(flag_hist, list(list(
-          point_id    = pid_i,
-          old_flag    = old_flag,
-          old_reason  = old_reason,
-          old_habitat = old_hab
-        )))
+          old_habs <- unname(habs[target_ids])
+          old_flags <- unname(fl[target_ids])
+          old_reasons <- unname(rs[target_ids])
 
-        # A reviewer reassigning habitat WHILE ALREADY reviewing a
-        # Questionable point has, by construction, just made a spatially-
-        # informed judgment call -- treat that as a resolution (-> Likely)
-        # rather than resetting back to Questionable for a second round of
-        # review. Any other source flag (Likely/Unlikely) now KEEPS its
-        # existing flag instead of being pushed into Questionable for a
-        # second look (changed 2026-08-02, at the user's request): forcing
-        # every Likely/Unlikely habitat reassignment through a second
-        # Questionable-view round trip doubled the reviewer's workload and
-        # inflated the Questionable view specifically -- the one view where
-        # bulk Flag-mode rectangle actions have repeatedly proven fragile at
-        # scale (see this function's own multi-round debugging history in
-        # the project memory system). The reviewer is now trusted to have
-        # made a spatially-informed call at the moment of reassignment,
-        # matching how the Questionable case already worked.
-        new_flag <- if (identical(old_flag, "questionable")) "likely" else old_flag
+          # A reviewer reassigning habitat WHILE ALREADY reviewing a
+          # Questionable point has, by construction, just made a spatially-
+          # informed judgment call -- treat that as a resolution (-> Likely)
+          # rather than resetting back to Questionable for a second round of
+          # review. Any other source flag (Likely/Unlikely) now KEEPS its
+          # existing flag instead of being pushed into Questionable for a
+          # second look (changed 2026-08-02, at the user's request): forcing
+          # every Likely/Unlikely habitat reassignment through a second
+          # Questionable-view round trip doubled the reviewer's workload and
+          # inflated the Questionable view specifically -- the one view where
+          # bulk Flag-mode actions have repeatedly proven fragile at scale
+          # (see this function's own multi-round debugging history in the
+          # project memory system). The reviewer is now trusted to have made a
+          # spatially-informed call at the moment of reassignment, matching how
+          # the Questionable case already worked.
+          new_flags <- ifelse(old_flags == "questionable", "likely", old_flags)
 
-        habs[[pid_i]] <- new_hab
-        fl[[pid_i]] <- new_flag
-        rs[[pid_i]] <- paste0(
-          old_reason,
-          sprintf(
-            " [habitat: %s \u2192 %s, %s]",
-            old_hab, new_hab, ts
+          # ONE grouped history entry for the whole action (see Undo Last).
+          history(c(history(), list(list(
+            point_id    = target_ids,
+            old_flag    = old_flags,
+            old_reason  = old_reasons,
+            old_habitat = old_habs
+          ))))
+
+          habs[target_ids] <- new_hab
+          fl[target_ids] <- new_flags
+          rs[target_ids] <- paste0(
+            old_reasons,
+            sprintf(" [habitat: %s \u2192 %s, %s]", old_habs, new_hab, ts)
           )
-        )
+          cur_habitats(habs)
+          cur_flags(fl)
+          cur_reasons(rs)
 
-        row <- pts[pts$point_id == pid_i, ][1L, ]
-        proxy <- leaflet::removeMarker(proxy, layerId = pid_i)
-        if (identical(new_flag, view_lc)) {
-          # Still belongs in the view currently on screen -- recolour in place.
-          proxy <- .add_habitat_marker(proxy, row, new_col, new_hab)
+          # Two vectorised proxy calls total, regardless of selection size.
+          proxy <- leaflet::removeMarker(
+            leaflet::leafletProxy("map"),
+            layerId = target_ids
+          )
+          # Points whose flag moved to a view other than the one on screen stay
+          # removed, same as the "Flag" action mode already does.
+          stay <- target_ids[new_flags == view_lc]
+          if (length(stay) > 0L) {
+            proxy <- .add_habitat_marker(
+              proxy, pts[match(stay, pts$point_id), , drop = FALSE],
+              new_col, new_hab
+            )
+          }
+
+          if (was_bulk) .reset_draw_toolbar(proxy)
+
+          selected_point(NULL)
+          selected_points(NULL)
         }
-        # Otherwise the point's flag changed to a view other than the one
-        # displayed (e.g. Questionable -> Likely) -- leave it removed, same
-        # as the "Flag" action mode already does when a flag change moves a
-        # point out of the current view.
-      }
-
-      history(flag_hist)
-      cur_habitats(habs)
-      cur_flags(fl)
-      cur_reasons(rs)
-
-      if (!is.null(pids)) {
-        .reset_draw_toolbar(leaflet::leafletProxy("map"))
-      }
-
-      selected_point(NULL)
-      selected_points(NULL)
+      )
     })
 
     # --------------------------------------------------------------------------
@@ -1099,44 +1307,42 @@ review_spatial_flags <- function(
         return()
       }
 
+      # Each entry is a GROUP: parallel vectors covering every point touched by
+      # one action. A single click undoes a whole polygon selection, which is
+      # what makes a large bulk reassignment safe to attempt -- previously a
+      # 5,000-point action needed 5,000 undo clicks, or Cancel (which discards
+      # the entire review session).
       last <- flag_hist[[length(flag_hist)]]
       history(flag_hist[-length(flag_hist)])
 
-      fl <- cur_flags()
-      rs <- cur_reasons()
-      habs <- cur_habitats()
-
-      fl[[last$point_id]] <- last$old_flag
-      rs[[last$point_id]] <- last$old_reason
-      cur_flags(fl)
-      cur_reasons(rs)
+      ids <- last$point_id
+      restored <- .undo_group_state(cur_flags(), cur_reasons(), cur_habitats(), last)
+      cur_flags(restored$fl)
+      cur_reasons(restored$rs)
+      if (any(!is.na(last$old_habitat))) {
+        cur_habitats(restored$habs)
+      }
 
       # A restored flag may not match the currently displayed view (e.g. an
       # undone reassignment's old_flag was "likely" but the reviewer is now
-      # looking at Questionable) -- only re-add a marker when it actually
-      # belongs in what's on screen, mirroring confirm_habitat's own view_lc
-      # check. Previously this always re-added the marker regardless of view,
-      # a latent bug this fix's questionable->likely transition made more
-      # reachable (more undos now cross views than before).
+      # looking at Questionable) -- only re-add markers that actually belong in
+      # what's on screen, mirroring confirm_habitat's own view_lc check.
       view_lc <- tolower(input$view_mode)
-      belongs_in_view <- identical(last$old_flag, view_lc)
       pal_now <- pal_rv()
+      proxy <- leaflet::removeMarker(leaflet::leafletProxy("map"), layerId = ids)
 
-      if (!is.na(last$old_habitat)) {
-        habs[[last$point_id]] <- last$old_habitat
-        cur_habitats(habs)
-
-        proxy <- leaflet::removeMarker(leaflet::leafletProxy("map"), layerId = last$point_id)
-        if (belongs_in_view) {
-          old_col <- if (last$old_habitat %in% names(pal_now)) pal_now[[last$old_habitat]] else "#aaaaaa"
-          row <- pts[pts$point_id == last$point_id, ][1L, ]
-          .add_habitat_marker(proxy, row, old_col, last$old_habitat)
+      restore_ids <- ids[last$old_flag == view_lc]
+      if (length(restore_ids) > 0L) {
+        rows <- pts[match(restore_ids, pts$point_id), , drop = FALSE]
+        draw_hab <- unname(cur_habitats()[restore_ids])
+        draw_hab[is.na(draw_hab)] <- "Unknown"
+        # One proxy call per distinct habitat (bounded by the scheme size),
+        # not one per point.
+        for (h in unique(draw_hab)) {
+          sel <- draw_hab == h
+          col <- if (h %in% names(pal_now)) pal_now[[h]] else "#aaaaaa"
+          proxy <- .add_habitat_marker(proxy, rows[sel, , drop = FALSE], col, h)
         }
-      } else if (belongs_in_view) {
-        row <- pts[pts$point_id == last$point_id, ][1L, ]
-        cur_hab_val <- habs[[last$point_id]] %||% row$habitat
-        cur_col <- if (cur_hab_val %in% names(pal_now)) pal_now[[cur_hab_val]] else "#aaaaaa"
-        .add_habitat_marker(leaflet::leafletProxy("map"), row, cur_col, cur_hab_val)
       }
     })
 
@@ -1145,14 +1351,21 @@ review_spatial_flags <- function(
     # --------------------------------------------------------------------------
 
     output$override_summary <- shiny::renderUI({
-      n_total <- length(history())
-      if (n_total == 0L) {
+      hist_now <- history()
+      n_actions <- length(hist_now)
+      if (n_actions == 0L) {
         return(shiny::p("No overrides yet.", style = "font-size:11px;color:#999;margin:0;"))
       }
+      # history() entries are GROUPS, so count points and actions separately.
+      n_total <- length(unlist(lapply(hist_now, `[[`, "point_id"), use.names = FALSE))
       fl <- cur_flags()
       shiny::div(
         style = "font-size:11px;color:#444;",
-        shiny::p(sprintf("%d override(s) this session", n_total),
+        shiny::p(
+          sprintf(
+            "%s override(s) in %d action(s)",
+            format(n_total, big.mark = ","), n_actions
+          ),
           style = "margin:0 0 4px 0;font-weight:bold;"
         ),
         shiny::p(shiny::HTML(sprintf(
@@ -1199,17 +1412,25 @@ review_spatial_flags <- function(
       result <- occurrence_data
       result$spatial_flag <- fl[result$point_id]
 
-      overridden_ids <- unique(vapply(history(), `[[`, character(1L), "point_id"))
+      overridden_ids <- unique(unlist(
+        lapply(history(), `[[`, "point_id"),
+        use.names = FALSE
+      ))
       if (length(overridden_ids) > 0L) {
         rows <- result$point_id %in% overridden_ids
         result$spatial_flag_reason[rows] <- rs[result$point_id[rows]]
       }
 
-      hab_changed_ids <- names(habs)[habs != pts_hab_init[names(habs)]]
+      # ONE pass over result, not one per changed point. The old loop scanned
+      # every row and copied the whole habitat column per changed point --
+      # O(n_changed * nrow), which on a 2.2M-row input made a large bulk
+      # reassignment the single most expensive thing in the gadget. which()
+      # also drops any NA comparison rather than indexing with NA.
+      hab_changed_ids <- names(habs)[which(habs != pts_hab_init[names(habs)])]
       if (length(hab_changed_ids) > 0L) {
-        for (pid in hab_changed_ids) {
-          result[[habitat_col]][result$point_id == pid] <- habs[[pid]]
-        }
+        m <- match(result$point_id, hab_changed_ids)
+        hit <- !is.na(m)
+        result[[habitat_col]][hit] <- unname(habs[hab_changed_ids])[m[hit]]
       }
 
       shiny::stopApp(returnValue = result)

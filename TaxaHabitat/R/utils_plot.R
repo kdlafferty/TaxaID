@@ -226,6 +226,177 @@
 }
 
 # ------------------------------------------------------------------------------
+# Point-in-polygon for interactive lasso selection
+# ------------------------------------------------------------------------------
+
+#' Web Mercator y for a vector of latitudes
+#'
+#' leaflet.draw's polygon edges are straight lines in SCREEN space, i.e. in Web
+#' Mercator -- not in raw latitude. Ray-casting in raw lat therefore tests a
+#' slightly different boundary than the one the reviewer actually drew and can
+#' see. Projecting latitude to Mercator y before the cast makes the test agree
+#' with the drawn shape exactly. Longitude needs no transform (Mercator x is
+#' linear in longitude).
+#'
+#' @param lat Numeric vector of latitudes in degrees.
+#' @return Numeric vector of Mercator y values.
+#' @noRd
+.mercator_y <- function(lat) {
+  # Clamp at the Mercator poles; leaflet cannot display beyond ~85 anyway.
+  lat <- pmax(pmin(as.numeric(lat), 89.9), -89.9)
+  log(tan((45 + lat / 2) * pi / 180))
+}
+
+#' Vectorised even-odd point-in-polygon test
+#'
+#' Ray casting (even-odd / crossing-number rule), vectorised over POINTS and
+#' looping over the polygon's EDGES -- so cost is O(n_points * n_vertices) with
+#' the inner work done in compiled vector ops. A 10,000-point selection against
+#' a 60-vertex hand-drawn coastline is ~600k arithmetic operations, i.e.
+#' milliseconds. Callers should bbox-prefilter first so n_points is the
+#' candidate set, not the whole dataset.
+#'
+#' No external geometry dependency on purpose: \pkg{sf}'s lon/lat predicates go
+#' through \code{sf_use_s2()}, which is GLOBAL state, and an interactive gadget
+#' must not mutate a session-wide setting mid-review.
+#'
+#' Does not handle a polygon crossing the antimeridian (+/-180). Selections
+#' there would need the ring split; no TaxaID study area is affected.
+#'
+#' @param lon,lat Numeric vectors of point coordinates (same length).
+#' @param poly_lon,poly_lat Numeric vectors of polygon ring vertices. A repeated
+#'   closing vertex is optional and is dropped if present.
+#' @return Logical vector, one per point, \code{TRUE} when inside the ring.
+#' @noRd
+.points_in_polygon <- function(lon, lat, poly_lon, poly_lat) {
+  n <- length(lon)
+  if (n == 0L) {
+    return(logical(0L))
+  }
+
+  nv <- length(poly_lon)
+  if (nv != length(poly_lat)) {
+    return(rep(FALSE, n))
+  }
+  # Drop the repeated closing vertex GeoJSON rings carry.
+  if (nv > 1L &&
+    isTRUE(poly_lon[[1L]] == poly_lon[[nv]]) &&
+    isTRUE(poly_lat[[1L]] == poly_lat[[nv]])) {
+    poly_lon <- poly_lon[-nv]
+    poly_lat <- poly_lat[-nv]
+    nv <- nv - 1L
+  }
+  if (nv < 3L) {
+    return(rep(FALSE, n))
+  }
+
+  py <- .mercator_y(poly_lat)
+  y <- .mercator_y(lat)
+
+  inside <- logical(n)
+  j <- nv
+  for (i in seq_len(nv)) {
+    yi <- py[[i]]
+    yj <- py[[j]]
+    # An edge only matters if it straddles the point's horizontal ray. When
+    # yi == yj (a horizontal edge) this is FALSE everywhere, which is also what
+    # keeps the (yj - yi) division below from ever seeing a zero denominator.
+    straddle <- (yi > y) != (yj > y)
+    if (any(straddle)) {
+      xi <- poly_lon[[i]]
+      xj <- poly_lon[[j]]
+      x_int <- xi + (y[straddle] - yi) * (xj - xi) / (yj - yi)
+      inside[straddle] <- xor(inside[straddle], lon[straddle] < x_int)
+    }
+    j <- i
+  }
+
+  inside
+}
+
+#' Validate review_spatial_flags()'s bulk-selection size gate arguments
+#'
+#' Split out of \code{review_spatial_flags()} so it is reachable from tests --
+#' the function itself refuses to run outside an interactive session, which
+#' would otherwise mask every argument error behind that guard.
+#'
+#' @param bulk_confirm_threshold,bulk_max See \code{\link{review_spatial_flags}}.
+#' @return \code{TRUE}, invisibly. Called for its side effect of erroring.
+#' @noRd
+.check_bulk_args <- function(bulk_confirm_threshold, bulk_max) {
+  if (!is.numeric(bulk_confirm_threshold) || length(bulk_confirm_threshold) != 1L ||
+    is.na(bulk_confirm_threshold) || bulk_confirm_threshold < 1) {
+    stop("review_spatial_flags: 'bulk_confirm_threshold' must be a single number >= 1.")
+  }
+  if (!is.numeric(bulk_max) || length(bulk_max) != 1L ||
+    is.na(bulk_max) || bulk_max < 1) {
+    stop("review_spatial_flags: 'bulk_max' must be a single number >= 1.")
+  }
+  if (bulk_max < bulk_confirm_threshold) {
+    stop(sprintf(
+      paste0(
+        "review_spatial_flags: 'bulk_max' (%s) is below 'bulk_confirm_threshold' (%s).\n",
+        "  Every selection past the threshold would be refused rather than",
+        " offered for confirmation."
+      ),
+      format(bulk_max), format(bulk_confirm_threshold)
+    ))
+  }
+  invisible(TRUE)
+}
+
+#' Decide what a bulk selection of n points should do
+#'
+#' Split out of \code{review_spatial_flags()}'s \code{.gate_bulk()} so the
+#' threshold logic is reachable from tests without a Shiny session. The gate
+#' NEVER truncates -- see \code{review_spatial_flags()}'s "Bulk selection"
+#' section for why a partial application is the one unacceptable outcome.
+#'
+#' @param n Integer. Points the action would touch.
+#' @param threshold,max See \code{review_spatial_flags()}'s
+#'   \code{bulk_confirm_threshold} / \code{bulk_max}.
+#' @return One of \code{"none"}, \code{"apply"}, \code{"confirm"},
+#'   \code{"refuse"}.
+#' @noRd
+.bulk_gate_decision <- function(n, threshold, max) {
+  if (n == 0L) {
+    return("none")
+  }
+  if (n > max) {
+    return("refuse")
+  }
+  if (n > threshold) {
+    return("confirm")
+  }
+  "apply"
+}
+
+#' Reverse one grouped history entry
+#'
+#' Split out of \code{review_spatial_flags()}'s Undo Last observer so grouped
+#' undo is testable without a Shiny session. Each history entry covers EVERY
+#' point touched by one action (a whole polygon selection), which is what lets
+#' one click reverse the lot.
+#'
+#' @param fl,rs,habs Named character vectors keyed on \code{point_id}:
+#'   current flags, reasons and habitats.
+#' @param entry One history entry: parallel vectors \code{point_id},
+#'   \code{old_flag}, \code{old_reason}, \code{old_habitat} (the last being
+#'   \code{NA} for a flag-only change).
+#' @return A list with the restored \code{fl}, \code{rs}, \code{habs}.
+#' @noRd
+.undo_group_state <- function(fl, rs, habs, entry) {
+  ids <- entry$point_id
+  fl[ids] <- entry$old_flag
+  rs[ids] <- entry$old_reason
+  had_hab <- !is.na(entry$old_habitat)
+  if (any(had_hab)) {
+    habs[ids[had_hab]] <- entry$old_habitat[had_hab]
+  }
+  list(fl = fl, rs = rs, habs = habs)
+}
+
+# ------------------------------------------------------------------------------
 # Habitat-realm name patterns (see flag_habitat_inconsistencies()'s .realm())
 # ------------------------------------------------------------------------------
 

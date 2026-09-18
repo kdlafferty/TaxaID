@@ -15,6 +15,21 @@
 # above 50%). devtools::test() 377+, check() clean. Found while building a gadget test fixture:
 # three attempts to produce questionable/unlikely points all failed, and the reason WAS the bug.
 # -- TaxaHabitat
+# 2026-09-18 (Opus 5): review_spatial_flags() gains POLYGON (lasso) selection beside the
+# rectangle, a never-truncating size gate (bulk_confirm_threshold=10000L / bulk_max=100000L),
+# and GROUPED UNDO (one history entry per bulk action). The polygon itself was the cheap part --
+# both shapes already arrived through the same map_draw_new_feature GeoJSON ring, which the old
+# code collapsed to a bbox. The real work was four loops that scaled badly with selection size
+# and were ALREADY latent (a whole-map rectangle hit them too): the Done handler's habitat
+# write-back was O(n_changed * nrow) and measured ~2 MINUTES for 5,000 changed points over
+# 2,185,193 rows, now 0.033 s; per-point removeMarker/addCircleMarkers queued 2 websocket
+# messages per point; a per-point linear scan of pts; and O(k^2) history growth. Also
+# preferCanvas=TRUE. devtools::test() 351/0, check() 0 errors / 0 warnings / 0 notes.
+# (An earlier run of the same check showed a "checking for future file timestamps ... unable
+# to verify current time" NOTE; that is R failing to reach its time server and is transient --
+# it did not reproduce. Not a package problem, don't chase it.) Reinstalled. Branch
+# polygon-select-review-spatial-flags, based on main, NOT COMMITTED. See "Open Questions" for
+# the PtCon 18S finding this turned up. -- TaxaHabitat
 # 2026-09-13, evening (Sonnet 5): ecosystem review Section L (D-A1) -- RESOLVED, was OPEN
 # below. save_spatial_review_decisions() now warns, naming the count, when before = NULL
 # would record habitats as reassignments -- i.e. freeze automatic classifications with no
@@ -250,6 +265,24 @@ but it means a wrong verdict persists until someone clears it
 ---
 
 ## Open Questions
+
+- **PtConception 18S is running with NO spatial review at all.** Found
+  2026-09-18 while sizing the polygon-selection work.
+  `PtConceptionWorkflow_18S_2_single_site.R:961` has the call commented out and
+  replaced with a bare filter:
+  ```r
+  #reviewed_spatial    <- review_spatial_flags(occurrences_flagged)
+  occurrences_clean <- occurrences_flagged %>% filter(spatial_flag=="likely")
+  ```
+  That dataset is 2,185,193 rows / **1,092,230 unique points**, and the
+  workflows pass the WHOLE flagged table to the gadget -- nothing prefilters to
+  pending points. With SVG markers that could not have opened, which is the
+  most likely reason it was commented out. `preferCanvas = TRUE` (2026-09-18)
+  raises the marker ceiling by roughly an order of magnitude but has NOT been
+  tested against this dataset, and rendering only pending points -- the deeper
+  fix -- was explicitly deferred by the user as a behaviour change. Do not
+  assume the 18S call can simply be uncommented; measure first.
+
 
 - **The original "many Questionable points, Flag-mode does nothing" symptom
   is NOT definitively closed.** A large, unrelated map-rendering regression
