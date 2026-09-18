@@ -143,6 +143,31 @@ sniff_input("my_data.csv")
 | `workflow_engine()`           | Stateless LLM engine (advanced / programmatic use)             |
 | `workflow_registry()`         | Introspect the installed TaxaID packages' functions (advanced) |
 
+## What the interview knows about your machine
+
+`workflow_create()` runs `workflow_check()` before the conversation starts, and
+the assistant is given the result. That means it can tell you that a path needs
+a BLAST binary or an NCBI key *while you are choosing the path*, rather than
+leaving you to discover it when the generated script stops at its own Step 0.
+
+Three things follow from this:
+
+- **Statuses only.** The report says whether a key is set, never what it is. No
+  key value is ever placed in a prompt, and the assistant is told not to ask you
+  to paste one.
+- **Requirements are scoped to the path you pick.** Once a route through the
+  graph is chosen, the assistant sees `workflow_check(edges = <that path>)` --
+  the requirements of the steps it is about to write, not the whole ecosystem's.
+- **If you name a file that exists, it gets looked at.** `sniff_input()` runs on
+  paths in your message that are really on disk, and the result is given to the
+  assistant as evidence. If it disagrees with what you said, the assistant is
+  told to ask rather than to quietly overrule you. A path that does not exist is
+  not sniffed and is not described as though it had been.
+
+When you extend an existing script, the Step 0 check already at the top is
+widened to cover the new steps' requirements too, instead of a second check
+block being added below it.
+
 ## Using TaxaID with any LLM
 
 TaxaWizard's own interview (`workflow_create()`) needs an API key and this

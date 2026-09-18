@@ -232,3 +232,48 @@ test_that("generated pack equals the committed llm_prompts/ copy byte-for-byte",
     )
   }
 })
+
+
+# --- P6: phase templates live in ONE place -----------------------------------
+
+test_that("the pack's tasks are rendered from inst/prompts, not a second copy", {
+  # The spec's no-duplication requirement. If someone ever hand-writes a task
+  # file, this catches it: every tasks/<phase>.md must still be recognisably
+  # the inst/prompts/phase_<phase>.md file it is rendered from.
+  root <- TaxaWizard:::.pack_find_repo_root()
+  skip_if(is.null(root), "repo root not found")
+  committed <- file.path(root, "llm_prompts", "tasks")
+  skip_if(!dir.exists(committed), "committed pack not present")
+
+  graph <- TaxaWizard:::.load_graph()
+  for (phase in c("classify", "path_select", "parameterize", "error_fix")) {
+    template_path <- system.file("prompts", sprintf("phase_%s.md", phase),
+      package = "TaxaWizard"
+    )
+    skip_if(!nzchar(template_path), "prompt templates not installed")
+
+    rendered <- TaxaWizard:::.pack_render_task(phase, graph)
+    on_disk <- paste(
+      readLines(file.path(committed, paste0(phase, ".md")), warn = FALSE),
+      collapse = "\n"
+    )
+    expect_equal(
+      on_disk, rendered,
+      info = sprintf(
+        "llm_prompts/tasks/%s.md is not what .pack_render_task() produces from inst/prompts/phase_%s.md -- regenerate the pack rather than editing the task file",
+        phase, phase
+      )
+    )
+  }
+})
+
+test_that("no rendered task file leaks an unfilled placeholder", {
+  graph <- TaxaWizard:::.load_graph()
+  for (phase in c("classify", "path_select", "parameterize", "error_fix")) {
+    txt <- TaxaWizard:::.pack_render_task(phase, graph)
+    expect_false(
+      grepl("\\{\\{[A-Z_]+\\}\\}", txt),
+      info = sprintf("tasks/%s.md still contains a {{PLACEHOLDER}}", phase)
+    )
+  }
+})

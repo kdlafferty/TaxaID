@@ -413,3 +413,84 @@ test_that("all node ids sniff_input() can return are real input node ids in the 
     }
   }
 })
+
+
+# --- P6: rendering setup state into prompts -----------------------------------
+
+test_that(".format_check_block() reports only rows that need attention", {
+  chk <- data.frame(
+    component = c("R version", "key:ENTREZ_KEY", "bin:blastn"),
+    category  = c("r", "key", "binary"),
+    status    = c("ok", "warn", "missing"),
+    detail    = c("4.5.2", "unset", "not on PATH"),
+    fix       = c("", "add ENTREZ_KEY=...", "install BLAST+"),
+    stringsAsFactors = FALSE
+  )
+  txt <- .format_check_block(chk)
+
+  expect_match(txt, "1 ok, 1 warn, 1 missing.", fixed = TRUE)
+  # The two non-ok rows appear, with their fixes.
+  expect_match(txt, "key:ENTREZ_KEY", fixed = TRUE)
+  expect_match(txt, "install BLAST+", fixed = TRUE)
+  # The ok row does not: it is not something the model can act on, and an
+  # edges-scoped check is mostly ok rows.
+  expect_false(grepl("R version", txt, fixed = TRUE))
+})
+
+test_that(".format_check_block() says so when nothing needs attention", {
+  chk <- data.frame(
+    component = "R version", category = "r", status = "ok",
+    detail = "4.5.2", fix = "", stringsAsFactors = FALSE
+  )
+  expect_match(.format_check_block(chk, all_ok_note = "All good."), "All good.", fixed = TRUE)
+})
+
+test_that("a real workflow_check() never renders a key VALUE into the prompt", {
+  # Statuses only. If a key is set, its value must not reach the model.
+  withr_key <- Sys.getenv("ENTREZ_KEY", unset = NA)
+  Sys.setenv(ENTREZ_KEY = "SECRET-CANARY-VALUE-123")
+  on.exit({
+    if (is.na(withr_key)) Sys.unsetenv("ENTREZ_KEY") else Sys.setenv(ENTREZ_KEY = withr_key)
+  }, add = TRUE)
+
+  txt <- .format_check_block(workflow_check(verbose = FALSE))
+  expect_false(grepl("SECRET-CANARY-VALUE-123", txt, fixed = TRUE))
+})
+
+test_that(".detect_paths_in_text() returns only paths that exist", {
+  real <- tempfile(fileext = ".csv")
+  writeLines("a,b\n1,2", real)
+  on.exit(unlink(real), add = TRUE)
+
+  msg <- sprintf('My data is at "%s" and maybe at "%s".', real, "/no/such/place/fake.csv")
+  found <- .detect_paths_in_text(msg)
+
+  expect_true(real %in% found)
+  expect_false("/no/such/place/fake.csv" %in% found)
+})
+
+test_that(".detect_paths_in_text() finds nothing in prose with no path", {
+  expect_equal(
+    .detect_paths_in_text("I have some BirdNET results from three recorders."),
+    character(0)
+  )
+})
+
+test_that(".format_sniff_block() tells the model to ask when no path was found", {
+  txt <- .format_sniff_block(character(0))
+  expect_match(txt, "Ask the user for the path", fixed = TRUE)
+})
+
+test_that(".format_sniff_block() reports what sniff_input() found", {
+  f <- tempfile(fileext = ".csv")
+  writeLines(c(
+    "Start (s),End (s),Scientific name,Common name,Confidence",
+    "0.0,3.0,Catharus ustulatus,Swainson's Thrush,0.81"
+  ), f)
+  on.exit(unlink(f), add = TRUE)
+
+  txt <- .format_sniff_block(f)
+  expect_match(txt, "sniff_input() inspected", fixed = TRUE)
+  expect_match(txt, f, fixed = TRUE)
+  expect_match(txt, "node_id", fixed = TRUE)
+})
