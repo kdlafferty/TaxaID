@@ -2,6 +2,17 @@
 
 ## 2026-09-18
 
+* `R/registry.R` parses Rd `\arguments` structurally (new internal
+  `.rd_arguments()` / `.rd_text()`) instead of re-parsing `tools::Rd2txt()`
+  output. `Rd2txt()` right-aligns argument terms into a column, and the
+  previous parser treated a leading-whitespace chunk as a continuation of
+  the item above it, so every term narrower than the widest one lost its
+  documentation and had its text appended to its neighbour's. Across the
+  eight installed packages this affected 318 of 1387 parameters (no doc at
+  all) plus 233 survivors carrying a lost neighbour's text; argument doc
+  coverage is now 1387/1387. New `REGISTRY_SCHEMA` constant is part of the
+  registry cache file name, so a future parsing change invalidates caches
+  that the package version and `Built` date alone would not.
 * New (internal) `.validate_snippets()` in `R/validate.R`: AST-walks every
   `inst/graph/snippets/*.R` template against the installed TaxaID packages
   and reports `not_exported` (a `Pkg::fn()` call where `fn` is not exported

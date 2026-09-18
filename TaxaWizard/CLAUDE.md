@@ -1,5 +1,40 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-18 (Opus 5, work package P1b of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, branch p1b-rd-parse):
+# R/registry.R now parses Rd \arguments STRUCTURALLY, via new `.rd_arguments(args_tag)`
+# and `.rd_text(node)` (both internal), replacing the P1 approach of rendering
+# \arguments with tools::Rd2txt() and re-parsing the plain text. WHY: Rd2txt lays its
+# output out for a HUMAN READER -- it RIGHT-ALIGNS each argument term into a column, so
+# every term narrower than the widest one is emitted with leading whitespace. The P1
+# text parser's only rule for distinguishing a continuation paragraph from a new item
+# was "does this chunk begin with whitespace", so a right-aligned term was read as a
+# continuation of the item above it: that parameter got NO doc, and its text was glued
+# onto its neighbour's. MEASURED across the 8 installed packages (1387 formals on
+# documented exports): 318 parameters (22.9%) had no doc at all, and 233 of the 1069
+# survivors carried a lost neighbour's text. TaxaTools::call_anthropic_api() is the
+# clean example -- model, tier and api_key all vanished, and prompt_str's doc grew from
+# its true 70 characters to 456 by absorbing model's and tier's. This was not cosmetic:
+# the registry feeds {{PARAM_DOCS}} to the LLM, and in the committed llm_prompts/ pack
+# prompt_api()'s `llm_fn` had an EMPTY doc cell while its real text sat on `prompt`.
+# HOW IT WORKS NOW: inside \arguments every parameter is an \item node with exactly two
+# children (term, description); .rd_arguments() reads those two directly, so none of the
+# text-shape heuristics exist to be wrong. VERIFIED that assumption holds for all 1317
+# \item nodes across the 8 packages before relying on it; an \item that does not have
+# two children is skipped, not guessed at. .rd_text() flattens an Rd fragment to plain
+# text over the 19 tags that actually occur inside \item here, treating \eqn{latex}{ascii}
+# and \if{format}{text} as two-argument macros (render ONE child, never both) and
+# dropping COMMENT/\out. \title, \description and \value still go through Rd2txt --
+# they are prose, and survive it. CACHE: registry entries are keyed on package version
+# and Built date, NEITHER of which moves when TaxaWizard's own parser changes, so a
+# parser fix would never have reached anyone with a warm cache; new REGISTRY_SCHEMA
+# constant (now 2L) is part of the cache file name, and the pre-existing stale-file
+# sweep deletes the v1 files. VERIFIED: argument docs now cover 1387/1387 parameters
+# (was 1069); regenerating llm_prompts/ changed 987 doc cells, added 318 that were
+# empty, and lost 0; 971 tests pass, 0 failures. Tests in test-registry.R use synthetic
+# .Rd files parsed with tools::parse_Rd() (offline) for the four failure shapes, plus a
+# live guard that names any documented parameter missing a doc.
+#
 # Last updated: 2026-09-18 (Sonnet 5, work package P2 of
 # ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, worktree p2-validate --
 # built on top of the already-merged P1 (registry.R) and P3 (setup.R) work in this
