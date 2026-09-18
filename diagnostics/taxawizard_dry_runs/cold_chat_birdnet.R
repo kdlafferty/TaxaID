@@ -45,7 +45,7 @@ out <- c()
 for (i in seq_along(user_turns)) {
   transcript <- paste0(transcript, "USER: ", user_turns[i], "\n\nASSISTANT: ")
   reply <- TaxaTools::call_api(paste0(system_block, transcript), provider = "anthropic",
-                               tier = tier, max_tokens = 1800L)
+                               tier = tier, max_tokens = 6000L)
   transcript <- paste0(transcript, reply, "\n\n")
   out <- c(out, sprintf("---------------- TURN %d (user) ----------------\n%s\n\n---------------- TURN %d (assistant, tier=%s) ----------------\n%s\n",
                         i, user_turns[i], i, tier, reply))
