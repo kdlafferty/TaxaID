@@ -85,6 +85,9 @@ offline.
 1. Find the input node and output node in `CONTEXT_TaxaID.md`, then list the edge
    sequences that connect them. Prefer the shortest path that meets the user's needs,
    and prefer a wrapper edge over a manual multi-step edge when defaults are fine.
+   Every step in your plan must carry an edge id copied from `CONTEXT_TaxaID.md`.
+   A step you cannot attach an edge id to is not something the graph provides; say
+   so rather than describing it in prose as if it existed.
 2. For each edge on the chosen path, copy its `requires` list and compare against the
    setup report. Anything `missing` must be fixed before the user runs the step; say
    so up front, with the fix text from the report.
@@ -117,7 +120,15 @@ not rely on the next chat remembering anything else.
 ## Step 5: build each stage
 
 For the stage you are on, load only the CONTEXT files of the packages that stage
-uses. In chat mode, ask for them one at a time.
+uses. In chat mode, ask for them one at a time, and do not write any code for the
+stage until you have them. Two rules here are absolute:
+
+- **Edge ids are step names, not R functions.** `birdnet_to_match` is an edge; the
+  functions it uses are listed under it in `CONTEXT_TaxaID.md` and documented in the
+  package CONTEXT file. Never write `Package::edge_id()`.
+- **Never call a function whose signature you have not seen** in a CONTEXT file
+  provided in this conversation. If you have not been given the package file yet,
+  your only move is to ask for it.
 
 Then follow `tasks/parameterize.md` for the code rules. The rules that matter most:
 
@@ -127,8 +138,9 @@ Then follow `tasks/parameterize.md` for the code rules. The rules that matter mo
 - Put every file path and site parameter at the top of the script. Never inline them.
 - Make Step 0 of every script `TaxaWizard::workflow_check(edges = c(...))` for the
   edges the script uses, and stop if anything is missing.
-- Save each step's result to an `.rds` checkpoint and skip the step when the file
-  exists. Long steps fetch from GBIF or NCBI and should never be run twice.
+- Save each step's result to an `.rds` checkpoint, and at the top of the step read
+  the checkpoint and skip the work when the file already exists. Long steps fetch
+  from GBIF or NCBI and should never be run twice.
 - Run on a subset first. A subset exercises code paths; it does not produce final
   numbers. Say that in the script header.
 - One thing per step. If a step fails, only that step should need fixing.

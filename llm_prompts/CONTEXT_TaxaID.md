@@ -46,69 +46,103 @@ manual multi-step equivalent when defaults are acceptable. `requires`
 lists the setup tokens (see "Setup requirements summary" below) that
 edge's step needs -- check them against SETUP_REPORT.md before running.
 
+Edge ids are STEP NAMES, not R functions. The R functions a step calls are
+listed on the `functions:` line beneath it, with the package CONTEXT file
+that documents their signatures.
+
 ### -> match_df (Match Data)
 - `seq_to_match`: sequences -> `match_df` -- BLAST sequences against reference database (requires: net:ncbi, key:ENTREZ_KEY, bin:blastn, pkg:rBLAST)
+  functions: read_sequence_table, filter_sequences, blast_sequences, standardize_match_data, filter_redundant_hypotheses, evaluate_reference_accessions, flag_incongruent_references, review_flagged_accessions, ... and 5 more (see CONTEXT_TaxaMatch.md)
 - `birdnet_to_match`: birdnet_detections -> `match_df` -- Standardize BirdNET detections to match format (requires: none)
+  functions: read_birdnet_output, standardize_match_data, filter_redundant_hypotheses (see CONTEXT_TaxaMatch.md, CONTEXT_TaxaTools.md)
 - `image_to_match`: image_classifier_output -> `match_df` -- Standardize image classifier output to match format (requires: none)
+  functions: read_animl_output, read_inaturalist_cv_output, read_speciesnet_output, standardize_match_data, filter_redundant_hypotheses (see CONTEXT_TaxaMatch.md, CONTEXT_TaxaTools.md)
 
 ### -> taxa (Taxon List)
 - `match_to_taxa`: match_df -> `taxa` -- Extract unique taxa from match data (requires: none)
+  functions: create_taxon_names (see CONTEXT_TaxaTools.md)
 - `consensus_df_to_taxa`: consensus_df -> `taxa` -- Extract unique taxa from consensus table (requires: none)
+  functions: create_taxon_names (see CONTEXT_TaxaTools.md)
 
 ### -> reference_df (Reference Sequences)
 - `taxa_to_refs`: taxa -> `reference_df` -- Fetch reference sequences from NCBI (requires: net:ncbi, key:ENTREZ_KEY)
+  functions: fetch_ncbi_reference_sequences (see CONTEXT_TaxaLikely.md)
 - `local_fasta_to_refs`: local_fasta -> `reference_df` -- Load local reference database (CRABS or FASTA) (requires: none)
+  functions: read_crabs_output, read_reference_fasta (see CONTEXT_TaxaLikely.md)
 - `taxa_to_site_refs`: taxa -> `reference_df` -- Build site-specific reference library (recommended for eDNA) (requires: net:ncbi, key:ENTREZ_KEY, key:XC_API_KEY)
+  functions: fetch_ncbi_reference_sequences, audit_barcode_coverage, write_reference_fasta (see CONTEXT_TaxaLikely.md)
 
 ### -> occurrences (Occurrence Data)
 - `taxa_to_occ`: taxa -> `occurrences` -- Fetch occurrence records from GBIF (requires: net:gbif, key:gbif)
+  functions: get_keys_from_context, fetch_gbif_occurrences, filter_gbif_quality, dedupe_occurrences, download_gbif_occurrences, define_search_polygon (see CONTEXT_TaxaFetch.md, CONTEXT_TaxaTools.md)
 - `taxa_to_occ_checked`: taxa -> `occurrences` -- Fetch occurrence records from GBIF, with geographic-outlier screening (requires: net:gbif, key:gbif)
+  functions: get_keys_from_context, fetch_gbif_occurrences, filter_gbif_quality, dedupe_occurrences, check_geographic_outliers, download_gbif_occurrences, define_search_polygon (see CONTEXT_TaxaFetch.md, CONTEXT_TaxaTools.md)
 
 ### -> std_occurrences (Standardized Occurrences)
 - `occ_to_std`: occurrences -> `std_occurrences` -- Standardize occurrences and assign habitat (requires: key:llm)
+  functions: rename_cols, stack_occurrences, flag_institution_candidates, build_habitat_lookup, assign_habitat_biological, call_anthropic_api, clean_taxon_names, find_taxonomy_conflicts, ... and 7 more (see CONTEXT_TaxaTools.md, CONTEXT_TaxaFetch.md, CONTEXT_TaxaHabitat.md)
 
 ### -> reference_matrix (Reference Matrix (DNA))
 - `refs_to_matrix`: reference_df -> `reference_matrix` -- Build pairwise distance matrix (requires: pkg:Biostrings, pkg:DECIPHER)
+  functions: build_sequence_matrix (see CONTEXT_TaxaLikely.md)
 
 ### -> clean_refs (Cleaned References)
 - `matrix_to_clean`: reference_matrix + reference_df -> `clean_refs` -- Screen and remove mislabeled references (requires: net:ncbi, bin:blastn, pkg:rBLAST)
+  functions: corroborate_references_locally, evaluate_reference_accessions (see CONTEXT_TaxaMatch.md)
 
 ### -> model_params (Likelihood Model)
 - `matrix_to_model`: reference_matrix -> `model_params` -- Train likelihood model (requires: none)
+  functions: train_likelihood_model, calibrate_query_noise, interpret_model, compute_rank_thresholds (see CONTEXT_TaxaLikely.md)
 
 ### -> likelihoods (Likelihoods)
 - `model_match_to_lik`: match_df + model_params -> `likelihoods` -- Evaluate likelihoods from trained model (requires: none)
+  functions: evaluate_likelihoods, filter_top_hypotheses, expand_unreferenced_hypotheses, apply_coverage_constraints, fill_higher_ranks, detect_suppressed_candidates, restore_suppressed_candidates, infer_exclude_predicted (see CONTEXT_TaxaLikely.md, CONTEXT_TaxaTools.md)
 
 ### -> context_df (Ecological Context)
 - `taxa_to_context`: taxa -> `context_df` -- Infer ecological context via LLM (requires: key:llm)
+  functions: build_context (see CONTEXT_TaxaAssign.md)
 
 ### -> priors (Prior Probabilities)
 - `dist_to_priors_by_group`: std_occurrences -> `priors` -- Build priors from standardized occurrences, grouped by sampling/detection process (kernel path) (requires: key:INAT_API_TOKEN)
+  functions: calibrate_kernel_bandwidth, estimate_kernel_priors, generate_undetected_diversity, generate_domestic_food_priors, verify_taxon_names, convert_taxonomy_backbone (see CONTEXT_TaxaExpect.md, CONTEXT_TaxaTools.md, CONTEXT_TaxaMatch.md)
 - `std_to_priors_kernel`: std_occurrences -> `priors` -- Build priors via site-centered kernel estimation (2026-08-30/31 redesign) (requires: net:gbif, key:INAT_API_TOKEN)
+  functions: calibrate_kernel_bandwidth, estimate_kernel_priors, generate_undetected_diversity, generate_regional_proximity_evidence, generate_presence_curve_evidence, generate_inat_range_evidence, apply_undetected_evidence, condition_evidence_on_habitat, ... and 5 more (see CONTEXT_TaxaExpect.md, CONTEXT_TaxaHabitat.md, CONTEXT_TaxaFetch.md)
 
 ### -> posteriors (Posterior Probabilities)
 - `lik_prior_to_post`: likelihoods + priors -> `posteriors` -- Join priors and compute Bayesian posteriors (single site) (requires: none)
+  functions: join_priors, compute_posterior, adjust_inat_range_priors (see CONTEXT_TaxaAssign.md)
 - `lik_prior_to_post_multisite`: likelihoods + priors + site_table -> `posteriors` -- Join priors and compute Bayesian posteriors (multi-site) (requires: none)
+  functions: join_priors, combine_multisite_priors, compute_posterior, adjust_inat_range_priors (see CONTEXT_TaxaAssign.md)
 
 ### -> site_table (Site Table)
 - `match_to_site_table`: match_df -> `site_table` -- Build a multi-site table and group observations spatially (requires: none)
+  functions: build_site_table, group_observations_by_bbox, join_event_site_metadata (see CONTEXT_TaxaMatch.md)
 
 ### -> consensus (Consensus Taxonomy)
 - `post_to_consensus`: posteriors -> `consensus` -- Posterior consensus via LCA (requires: none)
+  functions: posterior_consensus, update_prior_from_consensus, compute_group_priors, add_slash_taxon (see CONTEXT_TaxaAssign.md)
 - `match_to_consensus_score`: match_df -> `consensus` -- Score-based consensus (simplest, no model/priors) (requires: none)
+  functions: score_consensus, detect_ranks, create_taxon_names (see CONTEXT_TaxaAssign.md, CONTEXT_TaxaTools.md)
 - `match_to_consensus_llm`: match_df -> `consensus` -- LLM-shortcut pipeline (wrapper, recommended for quick results) [wrapper] (requires: key:llm)
+  functions: run_llm_pipeline, detect_ranks, create_taxon_names, assign_taxa_llm (see CONTEXT_TaxaAssign.md, CONTEXT_TaxaTools.md)
 - `match_to_consensus_bayes`: match_df + model_params + priors -> `consensus` -- Full Bayesian pipeline (wrapper) [wrapper] (requires: none)
+  functions: run_bayesian_pipeline, detect_ranks, create_taxon_names (see CONTEXT_TaxaAssign.md, CONTEXT_TaxaTools.md)
 
 ### -> reviewed (Reviewed Consensus)
 - `consensus_to_reviewed`: consensus + context_df -> `reviewed` -- LLM expert review of assignments (requires: key:llm)
+  functions: review_assignments, scientific_to_common, call_anthropic_api (see CONTEXT_TaxaFlag.md, CONTEXT_TaxaTools.md)
 - `consensus_df_to_reviewed`: consensus_df + context_df -> `reviewed` -- LLM expert review of existing consensus (requires: key:llm)
+  functions: review_assignments (see CONTEXT_TaxaFlag.md)
 
 ### -> flagged (Flagged Consensus)
 - `consensus_to_flagged`: consensus + match_df -> `flagged` -- Flag contamination and handler artifacts (requires: none)
+  functions: flag_contaminant, flag_handler, add_posthoc_assessment, flag_watch_candidates (see CONTEXT_TaxaFlag.md)
 - `consensus_df_to_flagged`: consensus_df -> `flagged` -- Flag contamination and handler artifacts in existing consensus (requires: none)
+  functions: flag_contaminant, flag_handler (see CONTEXT_TaxaFlag.md)
 
 ### -> ref_gaps (Reference Gaps)
 - `taxa_refs_to_gaps`: taxa + reference_df -> `ref_gaps` -- Audit reference database coverage (requires: net:ncbi, key:ENTREZ_KEY, key:XC_API_KEY)
+  functions: audit_barcode_coverage (see CONTEXT_TaxaLikely.md)
 
 ### -> prior_map (Prior Map)
 - `priors_to_map`: priors -> `prior_map` -- Save prior probability table to disk (requires: none)
@@ -118,6 +152,7 @@ edge's step needs -- check them against SETUP_REPORT.md before running.
 
 ### -> report (Pipeline Report)
 - `run_to_report`: std_occurrences + priors + model_params + posteriors + consensus + reviewed -> `report` -- Assemble the per-stage pipeline report (requires: none)
+  functions: report_fetch, report_habitat, report_priors, report_likelihood, report_assign, report_flags, assemble_report, generate_report (see CONTEXT_TaxaFetch.md, CONTEXT_TaxaHabitat.md, CONTEXT_TaxaExpect.md, CONTEXT_TaxaLikely.md, CONTEXT_TaxaAssign.md, CONTEXT_TaxaFlag.md, CONTEXT_TaxaTools.md)
 
 ## Canonical pipelines
 

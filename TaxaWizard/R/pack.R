@@ -190,7 +190,12 @@
   )
   to_ids <- intersect(order_ids, names(by_to))
 
-  lines <- character(0)
+  lines <- c(
+    "Edge ids are STEP NAMES, not R functions. The R functions a step calls are",
+    "listed on the `functions:` line beneath it, with the package CONTEXT file",
+    "that documents their signatures.",
+    ""
+  )
   for (to_id in to_ids) {
     lines <- c(lines, sprintf("### -> %s", node_label(to_id)))
     for (e in by_to[[to_id]]) {
@@ -200,6 +205,22 @@
         "- `%s`: %s -> `%s` -- %s%s (requires: %s)",
         e$id, paste(unlist(e$from), collapse = " + "), e$to, e$label, wrap, req
       ))
+      # The functions this edge's step calls, and the package CONTEXT file(s)
+      # that document them. Listed so an LLM never mistakes the edge id for a
+      # function name (a cold-chat dry run on 2026-09-18 produced
+      # `TaxaMatch::birdnet_to_match()`, which does not exist).
+      fns <- unlist(e$functions)
+      pkgs <- unlist(e$packages)
+      if (length(fns) > 0L) {
+        shown <- if (length(fns) > 8L) {
+          c(fns[1:8], sprintf("... and %d more", length(fns) - 8L))
+        } else fns
+        lines <- c(lines, sprintf(
+          "  functions: %s (see CONTEXT_%s.md)",
+          paste(shown, collapse = ", "),
+          paste(pkgs, collapse = ".md, CONTEXT_")
+        ))
+      }
     }
     lines <- c(lines, "")
   }
