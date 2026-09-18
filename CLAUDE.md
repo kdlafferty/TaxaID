@@ -4186,6 +4186,53 @@ No result changed -- 0 records within 55 km of (0,0) across 3.75 M real GBIF
 rows at all three sites -- so this was an inert safety net, not bad output,
 and nothing needs re-running.
 
+### TeX refuses to write dot-files, so a dot-prefixed job name fails (found 2026-09-17)
+A temp file hidden with a leading dot is the obvious way to keep a render's
+scratch markdown out of sight inside a package directory. TeX will not compile
+it: `openout_any = p` (the default) forbids writing to a name beginning with a
+dot, so xelatex dies at `\begin{document}` -- not at the point the file is
+named -- with
+
+```
+! I can't write on file `.render_TaxaExpect_README.aux'.
+! xelatex: Not writing to .render_TaxaExpect_README.aux (openout_any = p; no extended check).
+```
+
+The message names the `.aux` file, so it reads as a permissions or disk problem
+rather than a naming rule, and the same directory is perfectly writable for any
+non-dotted name. `ecosystem_docs/readmes/render_readmes.R` therefore names its
+per-package scratch files `render_tmp_<pkg>_README.md` and removes them via
+`on.exit()`. If you need a hidden intermediate for a LaTeX-producing render,
+hide it in a subdirectory, not behind a dot.
+
+### Pandoc's warnings come from a SUBPROCESS, so R cannot capture them (found 2026-09-17)
+`rmarkdown::render()` shells out to pandoc, whose stderr goes straight to the R
+process's own stderr file descriptor -- it never passes through R's condition
+system, so there is no R-level way to intercept it. All four obvious attempts
+were tested directly against a real missing-image render: the warning printed to
+the terminal every time, and `capture.output(type = "message")` returned 0 lines,
+`sink(type = "message")` captured 0 lines, `withCallingHandlers(warning=, message=)`
+saw 0 conditions, and `suppressWarnings()` suppressed nothing. Do not spend time
+looking for the right handler -- there isn't one short of `system2()`-ing pandoc
+yourself.
+
+This matters because several real pandoc problems are WARNINGS, not errors, so
+the render "succeeds" with the output quietly wrong. The one that bit here:
+
+```
+[WARNING] Could not fetch resource USGS_logo_green.png
+```
+
+`html_document` is self-contained, so a missing local image is simply absent
+from an 800 KB page that still has every heading, table and code block -- it
+passed every element-count check and cost only ~12% of the file size, under a
+20% size-drop guard. **Check the OUTPUT for the thing that should be there, not
+the log for a complaint.** Here the signal is exact: a successfully embedded
+image becomes `src="data:image/...`, while one that failed to load keeps its
+original relative path, so the check is "does the output still reference this
+file by path". Same shape as the `.xc_recording_count()` silent-`NA` entry
+below -- a legitimate-looking result standing in for a failure.
+
 ### Split-string sprintf bug (recurring)
 `sprintf()` does NOT concatenate multiple string arguments.
 ```r
