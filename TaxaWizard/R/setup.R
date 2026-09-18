@@ -932,3 +932,150 @@ sniff_input <- function(path) {
     }
   )
 }
+
+
+# ==============================================================================
+# P6: rendering setup state into LLM prompts
+#
+# The LLM never sees a taxaid_check data.frame; it sees the text these build.
+# Two rules shape them. (1) Only non-ok rows carry information the model can
+# act on -- an edges-scoped check still returns every base row (R version, the
+# eight packages, cache), so injecting the whole table would spend ~26 lines to
+# say "fine" and bury the one line that is not. (2) Statuses are reported, never
+# secrets: a key row says "set / unset", never the value.
+# ==============================================================================
+
+#' Session Cache for the Full Setup Check
+#'
+#' \code{workflow_check()} re-reads requirements.json, the graph, and the
+#' environment on every call. The classify phase needs the same full report on
+#' every turn of a conversation, so it is computed once per session here.
+#' \code{workflow_create()} seeds this cache, which is also why the user sees
+#' the same report the LLM is being given rather than a second, separate run.
+#'
+#' @noRd
+.setup_cache <- new.env(parent = emptyenv())
+
+#' @param refresh Logical. Recompute even if cached.
+#' @return A \code{taxaid_check} data.frame.
+#' @noRd
+.session_setup_check <- function(refresh = FALSE) {
+  if (isTRUE(refresh) || is.null(.setup_cache$full)) {
+    .setup_cache$full <- workflow_check(verbose = FALSE)
+  }
+  .setup_cache$full
+}
+
+
+#' Render a Setup Check as Prompt Text
+#'
+#' @param chk A \code{taxaid_check} data.frame from \code{workflow_check()}.
+#' @param all_ok_note Character. Text to emit when nothing needs attention.
+#' @return Character string.
+#' @noRd
+.format_check_block <- function(chk, all_ok_note = "Everything this workflow needs is present.") {
+  if (is.null(chk) || !is.data.frame(chk) || nrow(chk) == 0L) {
+    return("(setup was not checked)")
+  }
+
+  n_missing <- sum(chk$status == "missing")
+  n_warn <- sum(chk$status == "warn")
+  n_ok <- sum(chk$status == "ok")
+  summary_line <- sprintf(
+    "%d ok, %d warn, %d missing.", n_ok, n_warn, n_missing
+  )
+
+  notable <- chk[chk$status %in% c("missing", "warn"), , drop = FALSE]
+  if (nrow(notable) == 0L) {
+    return(paste(summary_line, all_ok_note))
+  }
+
+  rows <- vapply(seq_len(nrow(notable)), function(i) {
+    fix <- notable$fix[i]
+    fix <- if (is.na(fix) || !nzchar(fix)) "" else paste0(" -- fix: ", fix)
+    sprintf(
+      "- %s [%s]: %s%s",
+      notable$component[i], notable$status[i],
+      if (is.na(notable$detail[i]) || !nzchar(notable$detail[i])) "(no detail)" else notable$detail[i],
+      fix
+    )
+  }, "")
+
+  paste0(summary_line, "\n", paste(rows, collapse = "\n"))
+}
+
+
+#' Find Existing Paths Mentioned in a User Message
+#'
+#' Only paths that EXIST are returned: the point is to sniff real data, and a
+#' path the user typed from memory (or an example path out of the prompt pack)
+#' must not be reported to the model as though it had been inspected. Quoted
+#' strings are preferred because they are unambiguous; bare tokens are accepted
+#' when they look like a path and resolve.
+#'
+#' @param txt Character. One user message.
+#' @param max_paths Integer. Cap on how many paths to report.
+#' @return Character vector of existing paths (possibly empty).
+#' @noRd
+.detect_paths_in_text <- function(txt, max_paths = 3L) {
+  if (!is.character(txt) || length(txt) != 1L || is.na(txt) || !nzchar(txt)) {
+    return(character(0))
+  }
+
+  quoted <- unlist(regmatches(txt, gregexpr('"[^"]+"|\'[^\']+\'', txt)))
+  quoted <- gsub('^["\']|["\']$', "", quoted)
+
+  # Bare tokens that look like a path: contain a separator or a known data
+  # extension, and no whitespace.
+  bare <- unlist(regmatches(
+    txt,
+    gregexpr("[^\\s\"',;()]*(?:/|\\\\)[^\\s\"',;()]*|[^\\s\"',;()]+\\.(?:csv|tsv|txt|fa|fasta|fna|rds|xlsx)", txt, perl = TRUE)
+  ))
+
+  candidates <- unique(c(quoted, bare))
+  candidates <- candidates[nzchar(candidates)]
+  if (length(candidates) == 0L) {
+    return(character(0))
+  }
+
+  expanded <- suppressWarnings(path.expand(candidates))
+  exists <- vapply(expanded, function(p) {
+    isTRUE(tryCatch(file.exists(p), error = function(e) FALSE))
+  }, TRUE)
+
+  out <- unique(expanded[exists])
+  utils::head(out, max_paths)
+}
+
+
+#' Render sniff_input() Results for the Classify Prompt
+#'
+#' @param paths Character vector of existing paths.
+#' @return Character string.
+#' @noRd
+.format_sniff_block <- function(paths) {
+  if (length(paths) == 0L) {
+    return(paste(
+      "No path in the user's message was found on disk, so nothing was inspected.",
+      "Ask the user for the path rather than guessing the input type from prose."
+    ))
+  }
+
+  rows <- vapply(paths, function(p) {
+    s <- sniff_input(p)
+    node <- s$node_id
+    if (is.null(node) || is.na(node)) {
+      sprintf("- `%s`: could not be classified (%s)", p, s$evidence %||% "no evidence")
+    } else {
+      sprintf(
+        "- `%s` -> node_id `%s` (confidence: %s; evidence: %s)",
+        p, node, s$confidence %||% "unknown", s$evidence %||% ""
+      )
+    }
+  }, "")
+
+  paste0(
+    "sniff_input() inspected the path(s) the user named:\n",
+    paste(rows, collapse = "\n")
+  )
+}

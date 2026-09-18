@@ -34,9 +34,11 @@ TAXAID_PACKAGES <- c(
 #' the cache would never see the fix). Part of the cache file name.
 #'
 #' 2: structural \arguments parsing (was: re-parsed Rd2txt output).
+#' 3: useFancyQuotes pinned off, so Rd text no longer varies with a
+#'    global option (cached v2 entries may hold either form).
 #'
 #' @noRd
-REGISTRY_SCHEMA <- 2L
+REGISTRY_SCHEMA <- 3L
 
 
 #' Build the Introspected Function Registry
@@ -290,6 +292,17 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
   }
   for (i in seq_along(doc)) attr(doc[[i]], "Rd_tag") <- doc_tags[i]
   class(doc) <- "Rd"
+
+  # Rd2txt renders \code{x} through R's quoting, which honours the GLOBAL
+  # useFancyQuotes option: the same Rd yields 'x' or ‘x’ depending on an
+  # ambient setting the caller controls. The registry is cached to disk and
+  # rendered into a pack that has a byte-for-byte equality test, so that option
+  # would decide whether the test passes -- and it did: the committed pack was
+  # generated under FALSE, and a later refresh under the default TRUE rewrote
+  # every description. Pin it, so registry text depends only on the installed
+  # packages. ASCII is also the better choice for text going into an LLM prompt.
+  old_quotes <- options(useFancyQuotes = FALSE)
+  on.exit(options(old_quotes), add = TRUE)
 
   rd_lines <- tryCatch(
     withCallingHandlers(

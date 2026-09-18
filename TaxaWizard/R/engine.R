@@ -125,6 +125,15 @@ workflow_engine <- function(history,
   phase_info <- NULL
   if (is.null(system_prompt)) {
     phase_info <- .detect_phase(history)
+
+    # P6: the classify prompt sniffs any path the user named, so it needs the
+    # user's own words. .detect_phase() returns classify from several branches;
+    # attaching the message here covers all of them, and only classify reads it.
+    if (identical(phase_info$phase, "classify")) {
+      phase_info$context$user_text <-
+        phase_info$context$user_text %||% .last_message_by_role(history, "user")
+    }
+
     system_prompt <- .build_phase_prompt(
       phase = phase_info$phase,
       context = phase_info$context,

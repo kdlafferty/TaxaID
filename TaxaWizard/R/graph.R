@@ -567,6 +567,22 @@
         prompt,
         fixed = TRUE
       )
+
+      # P6: the state of the user's machine, and anything sniff_input() could
+      # learn from a path they named. Both are computed here rather than by the
+      # caller so every entry point (workflow_create(), the CLI, a direct
+      # workflow_engine() call) gets them; workflow_create() seeds the cache so
+      # the user is shown the same report the model receives.
+      setup_text <- context$setup_text %||%
+        .format_check_block(
+          .session_setup_check(),
+          all_ok_note = "Nothing is missing; the user's machine is ready."
+        )
+      prompt <- sub("{{SETUP_STATUS}}", setup_text, prompt, fixed = TRUE)
+
+      sniff_text <- context$sniff_text %||%
+        .format_sniff_block(.detect_paths_in_text(context$user_text %||% ""))
+      prompt <- sub("{{SNIFF_RESULT}}", sniff_text, prompt, fixed = TRUE)
       # Continuation context: when extending a completed workflow
       prior_out <- context$prior_output_type
       if (!is.null(prior_out) && nzchar(prior_out)) {
@@ -669,6 +685,16 @@
       prompt <- sub("{{EDGE_DESCRIPTIONS}}", edge_desc, prompt, fixed = TRUE)
       prompt <- sub("{{SNIPPETS}}", snippet_block, prompt, fixed = TRUE)
       prompt <- sub("{{PARAM_DOCS}}", path_ctx$param_docs, prompt, fixed = TRUE)
+
+      # P6: requirements of the SELECTED path only, so the model can tell the
+      # user what to set up in the same reply as the workflow -- the generated
+      # script's Step 0 stops on exactly these rows.
+      path_req <- context$path_requirements_text %||%
+        .format_check_block(
+          workflow_check(edges = selected_path, verbose = FALSE),
+          all_ok_note = "Nothing is missing for this path."
+        )
+      prompt <- sub("{{PATH_REQUIREMENTS}}", path_req, prompt, fixed = TRUE)
       prompt <- sub("{{SELECTED_PATH_JSON}}",
         jsonlite::toJSON(selected_path, auto_unbox = FALSE),
         prompt,

@@ -81,6 +81,22 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
     stop("workflow_create() requires an interactive R session.", call. = FALSE)
   }
 
+  # P6: check the machine BEFORE the conversation starts, and show the user the
+  # same report the LLM is about to be given -- .session_setup_check() caches it,
+  # so the classify prompt reuses this exact result rather than re-running it.
+  # This is deliberately not fatal: a missing requirement may belong to a path
+  # the user is not going to take, and the generated script's Step 0 stops on
+  # the ones that actually matter for the path they do take.
+  setup <- .session_setup_check(refresh = TRUE)
+  n_missing <- sum(setup$status == "missing")
+  if (n_missing > 0L) {
+    message(
+      sprintf("Setup check: %d requirement(s) missing. ", n_missing),
+      "The chat will tell you which ones matter for the workflow you choose."
+    )
+    print(setup[setup$status == "missing", , drop = FALSE])
+  }
+
   # Auto-detect: use viewer if RStudio is available, else console
 
   if (mode == "auto") {
