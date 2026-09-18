@@ -224,3 +224,28 @@
   x <- gsub("\"", "&quot;", x, fixed = TRUE)
   x
 }
+
+# ------------------------------------------------------------------------------
+# Habitat-realm name patterns (see flag_habitat_inconsistencies()'s .realm())
+# ------------------------------------------------------------------------------
+
+#' Word-boundary patterns for marine / freshwater habitat names
+#'
+#' Kept as package constants rather than inline literals so the two stay
+#' visibly SYMMETRIC. They were not, once: marine terms were "^"-anchored and
+#' freshwater terms were not, which silently exempted 529,488 real Mugu rows
+#' from spatial QC. Any edit to one should be weighed against the other.
+#'
+#' Inflections are enumerated instead of using bare prefixes, so a terrestrial
+#' name cannot collide by accident ("Ponderosa Pine" must not match "pond").
+#' @noRd
+.marine_name_pattern <- paste0(
+  "\\b(marine|ocean|oceanic|pelagic|neritic|intertidal|subtidal|",
+  "littoral|reef|reefs|kelp|seagrass|estuary|estuarine|estuaries)\\b"
+)
+
+#' @noRd
+.freshwater_name_pattern <- paste0(
+  "\\b(freshwater|wetland|wetlands|aquatic|lake|lakes|river|rivers|riverine|",
+  "stream|streams|pond|ponds|marsh|marshes|bog|bogs|fen|fens|riparian)\\b"
+)

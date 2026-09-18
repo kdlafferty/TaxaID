@@ -1,4 +1,20 @@
 # CLAUDE.md
+# 2026-09-18, later (Opus 5): flag_habitat_inconsistencies() REALM BUG FIXED. The marine and
+# freshwater name patterns were ASYMMETRIC -- marine "^"-anchored, freshwater unanchored -- so
+# any habitat not STARTING with a marine word fell through to the freshwater test, and
+# freshwater is exempt from spatial verification BY DESIGN. Real Mugu: 531,063 of 531,596 rows
+# (99.9%) never spatially validated, 529,488 of them "Coastal-Marine-Estuary-Stream" (marine
+# name, matched freshwater on "Stream"). After the fix: 1,067 rows (0.2%) unverified, 529,996
+# newly verified; on a 2,982-point sample 163 points (5.5%) come back UNLIKELY -- real errors
+# that were invisible before. Same change fixed two more: every example_habitat_scheme name
+# ("Rocky Intertidal", "Shallow Kelp Forest (<10m)", "Coastal Pelagic" ...) was "unknown" and
+# skipped, and the unanchored freshwater pattern matched TERRESTRIAL names by accident
+# ("Ponderosa Pine" -> "pond", "Fenced Grassland" -> "fen"). Patterns now live side by side as
+# .marine_name_pattern/.freshwater_name_pattern with a test asserting neither uses "^".
+# flag_habitat_inconsistencies() now also REPORTS what it did not check (names + counts, warns
+# above 50%). devtools::test() 377+, check() clean. Found while building a gadget test fixture:
+# three attempts to produce questionable/unlikely points all failed, and the reason WAS the bug.
+# -- TaxaHabitat
 # 2026-09-13, evening (Sonnet 5): ecosystem review Section L (D-A1) -- RESOLVED, was OPEN
 # below. save_spatial_review_decisions() now warns, naming the count, when before = NULL
 # would record habitats as reassignments -- i.e. freeze automatic classifications with no
@@ -146,6 +162,33 @@ but it means a wrong verdict persists until someone clears it
 `list(key, row)` .rds and can be inspected directly.
 
 ## Known Footguns
+
+- **`flag_habitat_inconsistencies()` reports "likely" for points it never
+  checked.** Freshwater is exempt from spatial verification by design (to avoid
+  false positives), and an unrecognised habitat name is skipped entirely. BOTH
+  return `flag = "likely"` with a reason that reads like a pass
+  (`"freshwater habitat not spatially verified"`,
+  `"habitat '<x>' not found in habitat scheme -- skipped"`). A site can
+  therefore pass QC almost untouched and look fine -- Mugu did, at 99.9%, for
+  months. The function now names the skipped habitats and their counts every
+  run and warns above 50%, but **read that report**: "0 unlikely" means
+  "nothing was wrong" only if the verified share was high. When adding a new
+  habitat vocabulary, pass `habitat_scheme=` with a `realm` column rather than
+  relying on name matching.
+
+
+- **A bulk gadget action must never silently truncate its selection.** The
+  obvious cap for a large lasso selection -- "apply to the first N" -- is
+  wrong here: `pts` is ordered by the occurrence data's own row order
+  (taxon/accession), not spatially, so "the first N" inside a drawn shape is an
+  arbitrary SCATTERED subset of it. The un-applied points stay on the map in
+  their old colour, interleaved with the applied ones and visually identical to
+  points that were never selected, and the reviewer has no way to see which is
+  which. `review_spatial_flags()` therefore gates by size (apply / confirm /
+  refuse) and never truncates. Rejected 2026-09-18 after the user proposed the
+  first-N form; the reasoning applies to any future bulk action in any gadget
+  in this ecosystem.
+
 
 - **`leaflet`'s own `data` parameter can collide with an ecosystem-wide
   rename sweep.** When `assign_habitat_biological()` et al.'s `data` param

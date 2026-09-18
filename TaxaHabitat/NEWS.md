@@ -1,5 +1,45 @@
 # TaxaHabitat 0.1.0
 
+## Bug fixes (2026-09-18)
+
+* `flag_habitat_inconsistencies()`: **the two habitat-realm name patterns were
+  asymmetric, and it silently exempted the majority of at least one real site
+  from spatial QC.** Marine terms were `^`-anchored; freshwater terms matched
+  anywhere in the name. Any habitat whose name did not *start* with a marine
+  word therefore fell through to the freshwater test -- and freshwater is
+  deliberately exempt from spatial verification -- so those points left QC
+  carrying `"freshwater habitat not spatially verified"`, a reason that reads
+  like a pass.
+
+  Measured on the real `MuguWilderFish_blast_occurrences_clean.rds`:
+  **531,063 of 531,596 rows (99.9%) were never spatially validated**, of which
+  529,488 were `Coastal-Marine-Estuary-Stream` -- a *Coastal-Marine-Estuary*
+  habitat classified freshwater because the anchored marine pattern could not
+  see `Marine` or `Estuary` mid-name while the unanchored freshwater pattern
+  matched `Stream`. After the fix the same data is 1,067 rows (0.2%)
+  unverified; **529,996 rows newly enter spatial verification.**
+
+  Both patterns are now word-boundary matched and live side by side as
+  `.marine_name_pattern` / `.freshwater_name_pattern` so the symmetry is
+  visible, with marine tested first so a genuinely multi-realm name is
+  validated rather than exempted.
+
+  Two further defects fell out of the same change. The anchored marine pattern
+  also failed on every habitat name `example_habitat_scheme` itself teaches --
+  `Rocky Intertidal`, `Rocky Subtidal`, `Sandy Subtidal`,
+  `Shallow Kelp Forest (<10m)`, `Coastal Pelagic` were all `unknown` and
+  skipped. And the unanchored freshwater pattern matched *terrestrial* names by
+  accident: `Ponderosa Pine Forest` matched `pond`, `Fenced Grassland` matched
+  `fen`. Inflections are now enumerated rather than matched as bare prefixes.
+
+* `flag_habitat_inconsistencies()`: **reports what it did NOT check.** Every run
+  now names the habitats exempted (freshwater) or unrecognised (`unknown`) with
+  point counts, and warns when they are the majority. A checker that only
+  reports what it examined cannot tell you what it skipped -- which is precisely
+  how the defect above went unnoticed. Note `Deepwater` and `Terrestrial` remain
+  `unknown` by design; they are now *reported* rather than silently absorbed,
+  and `habitat_scheme=` with a `realm` column resolves them explicitly.
+
 ## Bug fixes (2026-09-15)
 
 * `flag_habitat_inconsistencies()`: **two independent defects in
