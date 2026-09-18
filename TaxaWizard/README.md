@@ -100,16 +100,47 @@ annotate_script("my_analysis.R")
 workflow_app("my_analysis.R")
 ```
 
+## Checking your setup
+
+``` r
+# Is this machine ready to run TaxaID workflows? R version, the 8 TaxaID
+# packages (+ Bioconductor/optional extras), package caches, and -- narrowed
+# to a specific path through the workflow graph -- the API keys, network
+# services, and binaries that path needs.
+workflow_check()
+
+# Narrow to what one workflow step actually needs (e.g. only the BLAST/NCBI
+# requirements, not GBIF's):
+workflow_check(edges = "seq_to_match")
+```
+
+Every generated script starts with the same check as its "Step 0" and stops
+before running anything if a required key/package/binary is missing --
+`workflow_check()`'s `fix` column says exactly what to do. Key checks report
+set/unset only; a key's value is never printed, logged, or returned. Set
+`options(TaxaWizard.offline = TRUE)` to skip the live network checks (e.g. in
+a script that must not depend on connectivity at generation time).
+
+``` r
+# What input-graph node does this file look like? (FASTA, a DADA2 seqtab
+# .rds, BirdNET/Animl/iNaturalist-CV/SpeciesNet output, a CRABS or
+# FASTA+taxonomy reference database, an occurrence/match/taxon/consensus
+# table, ...)
+sniff_input("my_data.csv")
+```
+
 ## Key Functions
 
-| Function            | Purpose                                            |
-|---------------------|----------------------------------------------------|
-| `workflow_create()`  | Launch interactive interview (main entry point)    |
-| `workflow_fix()`     | Resume after script error with diagnostic context  |
-| `workflow_app()`     | Convert generated script to Shiny app              |
-| `annotate_script()`  | Annotate generic R scripts for Shiny conversion    |
-| `workflow_engine()`  | Stateless LLM engine (advanced / programmatic use) |
-| `workflow_registry()`| Introspect installed TaxaID packages' functions (advanced / programmatic use) |
+| Function             | Purpose                                                        |
+|----------------------|----------------------------------------------------------------|
+| `workflow_create()`  | Launch interactive interview (main entry point)                |
+| `workflow_fix()`     | Resume after script error with diagnostic context              |
+| `workflow_app()`     | Convert generated script to Shiny app                          |
+| `annotate_script()`  | Annotate generic R scripts for Shiny conversion                |
+| `workflow_check()`   | Report setup readiness: R, packages, keys, network, cache, binaries |
+| `sniff_input()`      | Guess which workflow-graph input node a file looks like        |
+| `workflow_engine()`  | Stateless LLM engine (advanced / programmatic use)             |
+| `workflow_registry()`| Introspect the installed TaxaID packages' functions (advanced) |
 
 ## Part of TaxaID
 

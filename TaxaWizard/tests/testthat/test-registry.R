@@ -207,3 +207,20 @@ test_that("phase_parameterize.md's teaching example uses only real registry name
   expect_true(all(c("min_score", "max_gap", "rank_thresholds") %in% sc_params))
   expect_true(all(c("geographic_hint", "llm_fn") %in% bc_params))
 })
+
+testthat::test_that("every registry function has a title and description (Rd parsing invariant)", {
+  for (p in TAXAID_PACKAGES) testthat::skip_if_not_installed(p)
+  reg <- workflow_registry()
+  missing_docs <- character()
+  for (pkg in reg) {
+    for (fn in pkg$functions) {
+      if (!nzchar(fn$title %||% "") || !nzchar(fn$description %||% "")) {
+        missing_docs <- c(missing_docs, paste0(pkg$package, "::", fn$name))
+      }
+    }
+  }
+  # 0 of 204 exports lacked docs on 2026-09-18; a regression here means the
+  # Rd parser broke (e.g. the blank-line-after-header truncation bug), not
+  # that a package lost its documentation.
+  testthat::expect_length(missing_docs, 0)
+})

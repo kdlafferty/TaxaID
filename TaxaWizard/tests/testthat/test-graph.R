@@ -169,6 +169,8 @@ test_that(".get_path_context() param_docs are populated from the registry", {
   # model that an unlisted parameter does not exist. 2026-09-18: those hand-kept
   # JSON files were deleted and replaced by the introspected registry (workflow_registry());
   # this test now guards the registry-reading path instead.
+  testthat::skip_if_not_installed("TaxaAssign")
+  testthat::skip_if_not_installed("TaxaTools")
   .graph_env$graph <- NULL
   ctx <- TaxaWizard:::.get_path_context(c("match_to_consensus_score"))
   docs <- ctx$param_docs

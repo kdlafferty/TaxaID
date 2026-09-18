@@ -165,7 +165,13 @@
         "add_lowest_consistent_rank"
       ],
       "snippet": "seq_to_match.R",
-      "time_estimate": "10-60 min (depends on BLAST method and number of sequences)"
+      "time_estimate": "10-60 min (depends on BLAST method and number of sequences)",
+      "requires": [
+        "net:ncbi",
+        "key:ENTREZ_KEY",
+        "bin:blastn",
+        "pkg:rBLAST"
+      ]
     },
     {
       "id": "match_to_site_table",
@@ -184,7 +190,8 @@
         "join_event_site_metadata"
       ],
       "snippet": "match_to_site_table.R",
-      "time_estimate": "1-15 min (interactive polygon drawing, or seconds if group_col already known)"
+      "time_estimate": "1-15 min (interactive polygon drawing, or seconds if group_col already known)",
+      "requires": []
     },
     {
       "id": "match_to_taxa",
@@ -201,7 +208,8 @@
         "create_taxon_names"
       ],
       "snippet": "match_to_taxa.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "taxa_to_occ",
@@ -224,7 +232,11 @@
         "define_search_polygon"
       ],
       "snippet": "taxa_to_occ.R",
-      "time_estimate": "1-5 min (depends on number of taxa and GBIF response)"
+      "time_estimate": "1-5 min (depends on number of taxa and GBIF response)",
+      "requires": [
+        "net:gbif",
+        "key:gbif"
+      ]
     },
     {
       "id": "taxa_to_occ_checked",
@@ -248,7 +260,11 @@
         "define_search_polygon"
       ],
       "snippet": "taxa_to_occ_checked.R",
-      "time_estimate": "3-15 min (extra global GBIF fetch per rare-locally species)"
+      "time_estimate": "3-15 min (extra global GBIF fetch per rare-locally species)",
+      "requires": [
+        "net:gbif",
+        "key:gbif"
+      ]
     },
     {
       "id": "occ_to_std",
@@ -281,7 +297,10 @@
         "apply_spatial_review_decisions"
       ],
       "snippet": "occ_to_std.R",
-      "time_estimate": "1-3 min (LLM call for habitat)"
+      "time_estimate": "1-3 min (LLM call for habitat)",
+      "requires": [
+        "key:llm"
+      ]
     },
     {
       "id": "dist_to_priors_by_group",
@@ -305,7 +324,10 @@
         "convert_taxonomy_backbone"
       ],
       "snippet": "dist_to_priors_by_group.R",
-      "time_estimate": "seconds to ~1 min (offline; no live network calls unless domestic priors are included)"
+      "time_estimate": "seconds to ~1 min (offline; no live network calls unless domestic priors are included)",
+      "requires": [
+        "key:INAT_API_TOKEN"
+      ]
     },
     {
       "id": "std_to_priors_kernel",
@@ -336,7 +358,11 @@
         "generate_invasive_watch_evidence"
       ],
       "snippet": "std_to_priors_kernel.R",
-      "time_estimate": "seconds to ~1 min (offline; no live network calls unless domestic priors are included)"
+      "time_estimate": "seconds to ~1 min (offline; no live network calls unless domestic priors are included)",
+      "requires": [
+        "net:gbif",
+        "key:INAT_API_TOKEN"
+      ]
     },
     {
       "id": "taxa_to_context",
@@ -353,7 +379,10 @@
         "build_context"
       ],
       "snippet": "taxa_to_context.R",
-      "time_estimate": "30 sec (1-2 LLM calls)"
+      "time_estimate": "30 sec (1-2 LLM calls)",
+      "requires": [
+        "key:llm"
+      ]
     },
     {
       "id": "taxa_to_refs",
@@ -370,7 +399,11 @@
         "fetch_ncbi_reference_sequences"
       ],
       "snippet": "taxa_to_refs.R",
-      "time_estimate": "5-30 min (depends on number of taxa and NCBI availability)"
+      "time_estimate": "5-30 min (depends on number of taxa and NCBI availability)",
+      "requires": [
+        "net:ncbi",
+        "key:ENTREZ_KEY"
+      ]
     },
     {
       "id": "refs_to_matrix",
@@ -387,7 +420,11 @@
         "build_sequence_matrix"
       ],
       "snippet": "refs_to_matrix.R",
-      "time_estimate": "1-10 min (depends on number of sequences)"
+      "time_estimate": "1-10 min (depends on number of sequences)",
+      "requires": [
+        "pkg:Biostrings",
+        "pkg:DECIPHER"
+      ]
     },
     {
       "id": "matrix_to_clean",
@@ -406,7 +443,12 @@
         "evaluate_reference_accessions"
       ],
       "snippet": "matrix_to_clean.R",
-      "time_estimate": "seconds to hours (BLAST only for accessions the free local check can't resolve)"
+      "time_estimate": "seconds to hours (BLAST only for accessions the free local check can't resolve)",
+      "requires": [
+        "net:ncbi",
+        "bin:blastn",
+        "pkg:rBLAST"
+      ]
     },
     {
       "id": "matrix_to_model",
@@ -426,7 +468,8 @@
         "compute_rank_thresholds"
       ],
       "snippet": "matrix_to_model.R",
-      "time_estimate": "seconds to 1 min"
+      "time_estimate": "seconds to 1 min",
+      "requires": []
     },
     {
       "id": "model_match_to_lik",
@@ -452,7 +495,8 @@
         "infer_exclude_predicted"
       ],
       "snippet": "model_match_to_lik.R",
-      "time_estimate": "seconds to 1 min"
+      "time_estimate": "seconds to 1 min",
+      "requires": []
     },
     {
       "id": "lik_prior_to_post",
@@ -472,7 +516,8 @@
         "adjust_inat_range_priors"
       ],
       "snippet": "lik_prior_to_post.R",
-      "time_estimate": "seconds to 1 min"
+      "time_estimate": "seconds to 1 min",
+      "requires": []
     },
     {
       "id": "lik_prior_to_post_multisite",
@@ -494,7 +539,8 @@
         "adjust_inat_range_priors"
       ],
       "snippet": "lik_prior_to_post_multisite.R",
-      "time_estimate": "seconds to 1 min"
+      "time_estimate": "seconds to 1 min",
+      "requires": []
     },
     {
       "id": "post_to_consensus",
@@ -514,7 +560,8 @@
         "add_slash_taxon"
       ],
       "snippet": "post_to_consensus.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "match_to_consensus_score",
@@ -534,7 +581,8 @@
         "create_taxon_names"
       ],
       "snippet": "match_to_consensus_score.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "match_to_consensus_llm",
@@ -556,7 +604,10 @@
       ],
       "wrapper": true,
       "snippet": "match_to_consensus_llm.R",
-      "time_estimate": "2-10 min (LLM calls)"
+      "time_estimate": "2-10 min (LLM calls)",
+      "requires": [
+        "key:llm"
+      ]
     },
     {
       "id": "match_to_consensus_bayes",
@@ -579,7 +630,8 @@
       ],
       "wrapper": true,
       "snippet": "match_to_consensus_bayes.R",
-      "time_estimate": "1-5 min"
+      "time_estimate": "1-5 min",
+      "requires": []
     },
     {
       "id": "consensus_to_reviewed",
@@ -600,7 +652,10 @@
         "call_anthropic_api"
       ],
       "snippet": "consensus_to_reviewed.R",
-      "time_estimate": "1-5 min (LLM calls)"
+      "time_estimate": "1-5 min (LLM calls)",
+      "requires": [
+        "key:llm"
+      ]
     },
     {
       "id": "consensus_to_flagged",
@@ -621,7 +676,8 @@
         "flag_watch_candidates"
       ],
       "snippet": "consensus_to_flagged.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "taxa_refs_to_gaps",
@@ -639,7 +695,12 @@
         "audit_barcode_coverage"
       ],
       "snippet": "taxa_refs_to_gaps.R",
-      "time_estimate": "1-10 min (NCBI API queries per genus)"
+      "time_estimate": "1-10 min (NCBI API queries per genus)",
+      "requires": [
+        "net:ncbi",
+        "key:ENTREZ_KEY",
+        "key:XC_API_KEY"
+      ]
     },
     {
       "id": "priors_to_map",
@@ -654,7 +715,8 @@
       ],
       "functions": [],
       "snippet": "priors_to_map.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "likelihoods_to_save",
@@ -669,7 +731,8 @@
       ],
       "functions": [],
       "snippet": "likelihoods_to_save.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "consensus_df_to_taxa",
@@ -686,7 +749,8 @@
         "create_taxon_names"
       ],
       "snippet": "consensus_df_to_taxa.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "consensus_df_to_reviewed",
@@ -704,7 +768,10 @@
         "review_assignments"
       ],
       "snippet": "consensus_to_reviewed.R",
-      "time_estimate": "1-5 min (LLM calls)"
+      "time_estimate": "1-5 min (LLM calls)",
+      "requires": [
+        "key:llm"
+      ]
     },
     {
       "id": "consensus_df_to_flagged",
@@ -722,7 +789,8 @@
         "flag_handler"
       ],
       "snippet": "consensus_to_flagged.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "birdnet_to_match",
@@ -742,7 +810,8 @@
         "filter_redundant_hypotheses"
       ],
       "snippet": "birdnet_to_match.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "image_to_match",
@@ -764,7 +833,8 @@
         "filter_redundant_hypotheses"
       ],
       "snippet": "image_to_match.R",
-      "time_estimate": "seconds"
+      "time_estimate": "seconds",
+      "requires": []
     },
     {
       "id": "local_fasta_to_refs",
@@ -782,7 +852,8 @@
         "read_reference_fasta"
       ],
       "snippet": "local_fasta_to_refs.R",
-      "time_estimate": "seconds to 1 min (I/O bound)"
+      "time_estimate": "seconds to 1 min (I/O bound)",
+      "requires": []
     },
     {
       "id": "taxa_to_site_refs",
@@ -802,7 +873,12 @@
       ],
       "wrapper": false,
       "snippet": "taxa_to_site_refs.R",
-      "time_estimate": "5-30 min (NCBI fetch + coverage audit)"
+      "time_estimate": "5-30 min (NCBI fetch + coverage audit)",
+      "requires": [
+        "net:ncbi",
+        "key:ENTREZ_KEY",
+        "key:XC_API_KEY"
+      ]
     },
     {
       "id": "run_to_report",
@@ -837,7 +913,8 @@
         "generate_report"
       ],
       "snippet": "run_to_report.R",
-      "time_estimate": "seconds, or ~1 minute when generate_report() calls an LLM"
+      "time_estimate": "seconds, or ~1 minute when generate_report() calls an LLM",
+      "requires": []
     }
   ]
 }
