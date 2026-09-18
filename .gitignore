@@ -98,6 +98,14 @@ pkgdown_sites/
 *.bak_*
 README.html
 
+# ── Rendered README output: build artifacts of ecosystem_docs/readmes/render_readmes.R ──
+# Untracked 2026-09-17. That script rebuilds all ten PDFs on every run, so tracking
+# them meant ten modified binaries in git status whenever any one README changed.
+# Regenerate with: Rscript ecosystem_docs/readmes/render_readmes.R
+ecosystem_docs/readmes/*.pdf
+ecosystem_docs/readmes/*.tex
+ecosystem_docs/readmes/*.log
+
 # ── Ad-hoc session outputs ──────────────────────
 Claude outputs/
 
