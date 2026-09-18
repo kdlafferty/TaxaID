@@ -144,9 +144,11 @@ test_that(".get_path_context() returns snippets and docs", {
   ctx <- TaxaWizard:::.get_path_context(c("seq_to_match", "match_to_consensus_score"))
 
   expect_type(ctx, "list")
-  expect_named(ctx, c("snippets", "edge_labels", "packages", "functions", "param_docs"),
-    ignore.order = TRUE
-  )
+  expect_named(ctx, c(
+    "snippets", "edge_labels", "packages", "functions", "param_docs",
+    "unvalidated_edges"
+  ), ignore.order = TRUE)
+  expect_equal(ctx$unvalidated_edges, character(0))
 
   # Snippets should be loaded
 
@@ -198,6 +200,74 @@ test_that(".get_path_context() param_docs are populated from the registry", {
 test_that(".get_path_context() errors on unknown edge", {
   .graph_env$graph <- NULL
   expect_error(.get_path_context(c("nonexistent_edge")), "Unknown edge ID")
+})
+
+# ---------------------------------------------------------------------------
+# P2 Tier-B fallback: an edge whose snippet fails .validate_snippets() gets
+# a GENERATED documentation block instead of its (broken) snippet, and the
+# path that carries it is labeled. A bogus edge is injected here (pointing
+# at a temp-file snippet, never a real inst/graph/snippets/ file) so this
+# never depends on -- or risks corrupting -- a real snippet.
+# ---------------------------------------------------------------------------
+
+.tw_bogus_fallback_edge <- function(edge_id, code, packages = list("TaxaAssign"),
+                                    functions = list("score_consensus"), label = "Bogus edge",
+                                    description = "A deliberately broken edge for testing Tier-B.") {
+  snippet_path <- tempfile(fileext = ".R")
+  writeLines(code, snippet_path)
+  list(
+    id = edge_id, from = list("match_df"), to = "consensus",
+    label = label, description = description,
+    packages = packages, functions = functions,
+    snippet = snippet_path, time_estimate = "unknown", requires = list()
+  )
+}
+
+test_that(".get_path_context() falls back to a generated Tier-B block for an edge that fails validation", {
+  skip_if_not(requireNamespace("TaxaAssign", quietly = TRUE))
+  bogus_edge <- .tw_bogus_fallback_edge(
+    "bogus_fallback_edge",
+    "x <- TaxaAssign::this_function_does_not_exist(y = 1)\nx"
+  )
+  graph <- list(edges = list(bogus_edge))
+
+  ctx <- TaxaWizard:::.get_path_context("bogus_fallback_edge", graph = graph)
+
+  expect_equal(ctx$unvalidated_edges, "bogus_fallback_edge")
+  block <- ctx$snippets[["bogus_fallback_edge"]]
+  expect_true(grepl("No validated snippet exists for this step", block, fixed = TRUE))
+  expect_true(grepl("validated: false", block, fixed = TRUE))
+  # The edge's declared functions[] docs are present (score_consensus)
+  expect_true(grepl("score_consensus", block, fixed = TRUE))
+  # The broken code itself must NOT leak into the fallback block
+  expect_false(grepl("this_function_does_not_exist", block, fixed = TRUE))
+})
+
+test_that(".get_path_context() leaves a clean edge's real snippet untouched", {
+  .graph_env$graph <- NULL
+  ctx <- TaxaWizard:::.get_path_context(c("match_to_consensus_score"))
+  expect_equal(ctx$unvalidated_edges, character(0))
+})
+
+test_that(".describe_paths() labels a path carrying an unvalidated step", {
+  skip_if_not(requireNamespace("TaxaAssign", quietly = TRUE))
+  bogus_edge <- .tw_bogus_fallback_edge(
+    "bogus_describe_edge",
+    "x <- TaxaAssign::this_function_does_not_exist(y = 1)\nx",
+    functions = list()
+  )
+  graph <- list(edges = list(bogus_edge))
+  paths <- list(list(edges = "bogus_describe_edge", uses_wrapper = FALSE, time_estimate = "unknown"))
+
+  desc <- TaxaWizard:::.describe_paths(paths, graph = graph)
+  expect_true(grepl("(one or more unvalidated steps)", desc, fixed = TRUE))
+})
+
+test_that(".describe_paths() does not label a path whose edges all validate", {
+  .graph_env$graph <- NULL
+  paths <- .compute_paths("match_df", "consensus")
+  desc <- TaxaWizard:::.describe_paths(paths)
+  expect_false(grepl("unvalidated steps", desc, fixed = TRUE))
 })
 
 test_that(".list_node_types() returns inputs and outputs", {

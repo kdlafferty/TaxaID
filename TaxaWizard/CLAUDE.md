@@ -1,5 +1,77 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-18 (Sonnet 5, work package P2 of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, worktree p2-validate --
+# built on top of the already-merged P1 (registry.R) and P3 (setup.R) work in this
+# worktree): new R/validate.R, `.validate_snippets(graph=, registry=, edge_ids=)`
+# (internal). AST-walks every inst/graph/snippets/*.R file (after substituting
+# {{placeholder}} tokens with a syntactically valid dummy identifier) and reports
+# not_exported (Pkg::fn() where fn isn't an export of Pkg, Pkg being a TAXAID_PACKAGES
+# member), stale_argument (a named argument absent from the installed function's real
+# formals -- read from the registry's params list, i.e. names(formals(fn)); skipped for
+# any function whose formals include ...), parse_error (doesn't parse even after
+# placeholder substitution), or unknown_bare_call (a bare, un-namespaced call that
+# resolves to neither base/utils/stats nor any TaxaID export -- reported at warn severity,
+# NOT counted toward the drift test). A snippet's own locally-defined helper
+# (`.foo <- function(...) ...` used later in the same file, e.g. std_to_priors_kernel.R's
+# `.habitat_condition`) is recognized and excluded from bare-call resolution -- the first
+# version without this flagged every such helper as unknown_bare_call. WHY: ports
+# diagnostics/workflow_checks/check_stale_arguments.R's AST-walk (previously a standalone
+# Rscript run by hand over production workflow FILES) into an in-package, registry-backed
+# check run over the snippet TEMPLATES themselves, so drift between a snippet and an
+# installed package's real signature is caught by `devtools::test()` instead of at
+# script-generation time in front of a user. RAN FOR REAL against all 33 real snippets:
+# found and fixed ONE genuine drift, in inst/graph/snippets/dist_to_priors_by_group.R --
+# `TaxaTools::verify_taxon_names(priors, taxon_col = "taxon_name")` no longer matches that
+# function's real formals (name_list, backbone_id, batch_size, timeout_sec,
+# fallback_backbone_id: a signature change this snippet never picked up), AND it silently
+# discarded `priors` by reassigning it to the verification result instead of the intended
+# data. Fixed to call with named `name_list =`/`backbone_id =` and to no longer clobber
+# `priors`. Second finding (std_to_priors_kernel.R's `.habitat_condition`) was a FALSE
+# POSITIVE in the validator's first draft, not a snippet bug -- fixed the validator, not
+# the snippet (see above). Tier-B fallback (spec P2, second half): `.get_path_context()`
+# (R/graph.R) now validates the selected path's own edges and, for any edge that fails,
+# substitutes a generated block -- the edge's label/description + `.registry_docs()` for
+# every function in that edge's `functions` array AND every export of its `packages` +
+# the spec's fixed instruction to write the step from that documentation with named
+# arguments only and mark it `validated: false` -- in place of the (broken) snippet.
+# `.describe_paths()` appends "(one or more unvalidated steps)" to a path's header when
+# any of its edges would trigger the fallback. `phase_parameterize.md`'s DAG step schema
+# gains an optional `validated` field (rule 7, default true) -- renumbered rules 7-21 to
+# 8-23 to make room without colliding. `R/output.R` `.generate_script()` (fresh scripts)
+# and `.append_to_script()` (extensions) both print
+# "# WARNING: this step was generated without a validated snippet; review before running"
+# directly above any step with `validated: FALSE`. VERIFIED HOW: on the real installed
+# packages, `.validate_snippets()` returns 0 rows across all 33 snippets (0
+# not_exported/stale_argument/parse_error/unknown_bare_call) after the fix above. Tier-B
+# fallback tested by INJECTING a bogus in-memory edge pointing at a temp-file snippet that
+# calls a nonexistent TaxaAssign function -- never touches a real snippet -- and asserting
+# the fallback block appears (with the edge's real functions[] docs, without the broken
+# code leaking through) and that `.describe_paths()` labels the path; the WARNING banner
+# tested the same way via `.make_dag()`'s existing test fixture in test-output.R, for both
+# a fresh script and an `.append_to_script()` extension. `devtools::test()` 865/0/0 (was
+# 826/0/0 immediately before this session, confirmed by `git stash`; net +39 assertions).
+# `devtools::check()` 0 errors/0 warnings/0 notes. DEVIATIONS FROM THE SPEC WORTH KNOWING:
+# (1) the validator's data.frame column is `` `function` ``, exactly as the spec names it
+# -- R's `data.frame()` mangles the reserved word "function" to "function." under its
+# default `check.names = TRUE`, so every constructor in R/validate.R passes
+# `check.names = FALSE` to keep the literal column name the spec's deliverable requires.
+# (2) The spec's problem list for `.validate_snippets()` names only `not_exported` and
+# `stale_argument`; `parse_error` and `unknown_bare_call` are both called out later in the
+# same spec section's prose ("Handle snippets that are not fully parseable...report
+# parse_error", "...anything else bare is unknown_bare_call at warn severity") and are
+# implemented as additional `problem` values, not a separate return structure -- the
+# drift test only asserts zero of the three failing kinds, per the spec's own instruction
+# ("this is the in-package drift test" refers to not_exported/stale_argument;
+# unknown_bare_call is reported but does not fail it). (3) `validate_snippets()` (the
+# internal `.validate_snippets()`) is NOT exported -- per the work order, kept internal
+# for now; it would be a reasonable user-facing function (an ecosystem drift linter
+# runnable standalone, similar in spirit to `workflow_check()`) if a future session wants
+# a public entry point. NOT DONE: `R/registry.R`, `R/setup.R`, `R/create.R`, `R/engine.R`,
+# `R/cli.R` untouched (P1/P3's own files, already merged into this worktree, not part of
+# this work package's scope). Full record: ecosystem_docs/SPEC_taxawizard_derived_context_
+# 2026_09_18.md, "P2" section.
+#
 # Last updated: 2026-09-18 (Sonnet 5, work package P1 of
 # ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md): inst/metadata/*.json
 # (94 hand-maintained function-signature entries across 8 files) DELETED, along with

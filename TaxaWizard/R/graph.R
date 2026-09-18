@@ -285,6 +285,18 @@
 
   edge_index <- stats::setNames(graph$edges, vapply(graph$edges, `[[`, "", "id"))
 
+  # Which edges currently fail snippet validation, so a path that would rely
+  # on the Tier-B fallback (.get_path_context()) can be labeled here too --
+  # the LLM should know BEFORE picking a path that one of its steps has no
+  # validated snippet. Never let a validation failure break path listing.
+  failing_edges <- tryCatch(
+    {
+      v <- .validate_snippets(graph = graph)
+      unique(v$edge_id[v$problem %in% c("not_exported", "stale_argument", "parse_error")])
+    },
+    error = function(e) character(0)
+  )
+
   descriptions <- vapply(seq_along(paths), function(i) {
     path <- paths[[i]]
     edges <- edge_index[path$edges]
@@ -299,9 +311,15 @@
       )
     }, "")
 
+    unvalidated_note <- if (any(path$edges %in% failing_edges)) {
+      " (one or more unvalidated steps)"
+    } else {
+      ""
+    }
     header <- sprintf(
-      "Path %d%s", i,
-      if (path$uses_wrapper) " (uses wrapper -- recommended)" else ""
+      "Path %d%s%s", i,
+      if (path$uses_wrapper) " (uses wrapper -- recommended)" else "",
+      unvalidated_note
     )
     time_line <- sprintf("  Time: %s", path$time_estimate)
     edge_ids_line <- sprintf(
@@ -328,12 +346,22 @@
 #'
 #' @return A list with:
 #' \describe{
-#'   \item{\code{snippets}}{Named list of code snippet strings, keyed by edge_id.}
+#'   \item{\code{snippets}}{Named list of code snippet strings, keyed by edge_id.
+#'     For an edge whose snippet FAILS validation (\code{.validate_snippets()}),
+#'     this is instead a generated Tier-B fallback block: the edge's label/
+#'     description, full registry documentation for every function the edge's
+#'     \code{functions} array names and every export of the edge's
+#'     \code{packages}, and an instruction to write the step from that
+#'     documentation and mark it \code{validated: false} (see the SPEC's "P2
+#'     Snippet validator + Tier-B fallback" section).}
 #'   \item{\code{edge_labels}}{Named character vector of edge labels.}
 #'   \item{\code{packages}}{Character vector of all packages involved.}
 #'   \item{\code{functions}}{Named list of function names per edge.}
 #'   \item{\code{param_docs}}{Character string: compressed parameter docs for
 #'     all functions in the path.}
+#'   \item{\code{unvalidated_edges}}{Character vector (possibly empty) of
+#'     edge ids from \code{edge_ids} whose snippet failed validation and was
+#'     replaced by the Tier-B fallback block.}
 #' }
 #' @noRd
 .get_path_context <- function(edge_ids, graph = NULL, registry = NULL) {
@@ -342,10 +370,25 @@
 
   edge_index <- stats::setNames(graph$edges, vapply(graph$edges, `[[`, "", "id"))
 
+  # Validate only the edges actually in this path -- cheap, and lets a path
+  # that never touches a broken snippet skip the fallback entirely.
+  validation <- tryCatch(
+    .validate_snippets(graph = graph, registry = registry, edge_ids = edge_ids),
+    error = function(e) {
+      data.frame(
+        edge_id = character(), problem = character(),
+        stringsAsFactors = FALSE
+      )
+    }
+  )
+  failing_problems <- c("not_exported", "stale_argument", "parse_error")
+  failing_edges <- unique(validation$edge_id[validation$problem %in% failing_problems])
+
   snippets <- list()
   edge_labels <- character(0)
   all_packages <- character(0)
   all_functions <- list()
+  unvalidated_edges <- character(0)
 
   for (eid in edge_ids) {
     edge <- edge_index[[eid]]
@@ -353,16 +396,23 @@
       stop("Unknown edge ID: ", eid, call. = FALSE)
     }
 
-    # Load snippet
-    snippet_file <- system.file("graph", "snippets", edge$snippet,
-      package = "TaxaWizard"
-    )
-    if (nzchar(snippet_file)) {
-      snippets[[eid]] <- paste(readLines(snippet_file, warn = FALSE),
-        collapse = "\n"
-      )
+    if (eid %in% failing_edges) {
+      # Tier-B fallback: no validated snippet, so hand the LLM the full
+      # registry documentation for this step instead and tell it to write
+      # the code itself, marking the step unvalidated.
+      unvalidated_edges <- c(unvalidated_edges, eid)
+      snippets[[eid]] <- .build_fallback_snippet_block(edge, registry)
     } else {
-      snippets[[eid]] <- sprintf("# Snippet not found: %s", edge$snippet)
+      snippet_file <- system.file("graph", "snippets", edge$snippet,
+        package = "TaxaWizard"
+      )
+      if (nzchar(snippet_file)) {
+        snippets[[eid]] <- paste(readLines(snippet_file, warn = FALSE),
+          collapse = "\n"
+        )
+      } else {
+        snippets[[eid]] <- sprintf("# Snippet not found: %s", edge$snippet)
+      }
     }
 
     edge_labels[eid] <- edge$label
@@ -376,11 +426,70 @@
   param_docs <- .extract_param_docs(all_functions, all_packages, registry)
 
   list(
-    snippets    = snippets,
-    edge_labels = edge_labels,
-    packages    = all_packages,
-    functions   = all_functions,
-    param_docs  = param_docs
+    snippets          = snippets,
+    edge_labels       = edge_labels,
+    packages          = all_packages,
+    functions         = all_functions,
+    param_docs        = param_docs,
+    unvalidated_edges = unvalidated_edges
+  )
+}
+
+
+#' Build the Tier-B Fallback Block for an Edge with No Validated Snippet
+#'
+#' Substitutes for a failing edge's snippet code: the edge's own label and
+#' description, followed by full registry documentation (title, description,
+#' every parameter's required/default/doc text) for every function named in
+#' the edge's \code{functions} array AND every export of the edge's
+#' \code{packages} -- so the LLM has everything it would need to write the
+#' step correctly without a hand-curated template -- and the fixed
+#' instruction from the spec telling it to do exactly that.
+#'
+#' @param edge One edge definition (a list) from the workflow graph.
+#' @param registry Named list from \code{workflow_registry()}.
+#' @return Character string: the fallback block, formatted like a snippet so
+#'   it can be embedded in the same \verb{### edge_id: label\n```r\n...\n```}
+#'   wrapper \code{.build_phase_prompt()}'s \code{parameterize} branch uses
+#'   for every other snippet.
+#' @noRd
+.build_fallback_snippet_block <- function(edge, registry) {
+  fn_names <- unique(unlist(edge$functions))
+  pkg_names <- unique(unlist(edge$packages))
+
+  pkg_export_names <- character(0)
+  for (p in pkg_names) {
+    pkg_entry <- registry[[p]]
+    if (!is.null(pkg_entry)) {
+      pkg_export_names <- c(
+        pkg_export_names,
+        vapply(pkg_entry$functions, `[[`, "", "name")
+      )
+    }
+  }
+
+  all_names <- unique(c(fn_names, pkg_export_names))
+  docs <- if (length(all_names) > 0L) {
+    .registry_docs(registry, all_names, packages = pkg_names)
+  } else {
+    "(no registry documentation is available for this step's package(s))"
+  }
+
+  label <- edge$label %||% edge$id
+  description <- edge$description %||% ""
+
+  paste(
+    c(
+      sprintf("# %s", label),
+      if (nzchar(description)) sprintf("# %s", description) else NULL,
+      "",
+      docs,
+      "",
+      "# No validated snippet exists for this step. Write it from the",
+      "# documentation above, use named arguments only, and mark the step",
+      "# `validated: false`."
+    ),
+    collapse = "\n"
   )
 }
 

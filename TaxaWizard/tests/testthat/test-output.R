@@ -174,6 +174,65 @@ test_that(".generate_script falls back to edges = NULL when steps carry no edge_
   expect_length(setup_call_idx, 1L)
 })
 
+# ---------------------------------------------------------------------------
+# P2 Tier-B fallback: a step marked `validated: FALSE` (the DAG schema's new
+# optional field -- set by the engine when .get_path_context() substituted a
+# generated documentation block for a step with no validated snippet) gets a
+# WARNING banner printed directly above it in the generated script.
+# ---------------------------------------------------------------------------
+
+test_that(".generate_script prints a WARNING banner above an unvalidated step, and not above a validated one", {
+  dir <- .tw_test_dir()
+  dag <- .make_dag(2)
+  dag$steps[[2]]$validated <- FALSE
+
+  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  lines <- readLines(path)
+
+  warn_idx <- grep("^# WARNING: this step was generated without a validated snippet", lines)
+  expect_length(warn_idx, 1L)
+
+  step2_idx <- grep("--- Step 2: Step 2 description ---", lines, fixed = TRUE)
+  expect_length(step2_idx, 1L)
+  expect_equal(warn_idx + 1L, step2_idx)
+
+  # Step 1 (validated defaults TRUE / field omitted) has no banner anywhere
+  # near its own header.
+  step1_idx <- grep("--- Step 1: Step 1 description ---", lines, fixed = TRUE)
+  expect_false(grepl("WARNING", lines[step1_idx - 1L]))
+})
+
+test_that(".generate_script omits the WARNING banner when validated is TRUE or absent", {
+  dir <- .tw_test_dir()
+  dag <- .make_dag(1)
+  dag$steps[[1]]$validated <- TRUE
+
+  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  lines <- readLines(path)
+  expect_length(grep("WARNING: this step was generated", lines), 0L)
+})
+
+test_that(".append_to_script prints a WARNING banner above an unvalidated extension step", {
+  dir <- .tw_test_dir()
+  dag1 <- .make_dag(1)
+  path1 <- TaxaWizard:::.generate_script(dag1, dir, trial = FALSE)
+
+  dag2 <- .make_dag(1)
+  dag2$steps[[1]]$description <- "Extension step"
+  dag2$steps[[1]]$output_var <- "ext_out"
+  dag2$steps[[1]]$validated <- FALSE
+
+  path2 <- TaxaWizard:::.generate_script(dag2, dir, trial = FALSE)
+  expect_equal(path1, path2) # appended, not a new file
+
+  lines <- readLines(path2)
+  warn_idx <- grep("^# WARNING: this step was generated without a validated snippet", lines)
+  expect_length(warn_idx, 1L)
+  ext_step_idx <- grep("--- Step 2: Extension step ---", lines, fixed = TRUE)
+  expect_length(ext_step_idx, 1L)
+  expect_equal(warn_idx + 1L, ext_step_idx)
+})
+
 test_that(".generate_app falls back to a placeholder when no script is available", {
   dir <- .tw_test_dir()
   dag <- .make_dag(1)

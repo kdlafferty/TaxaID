@@ -276,9 +276,20 @@
     # Wrap the LLM-generated code in the checkpoint/error-catch helper.
     # Uses quote({...}) so code is evaluated in the calling environment,
     # giving access to all variables from prior steps.
+    step_header <- sprintf("# --- Step %d: %s ---", i, desc)
+    if (isFALSE(step$validated)) {
+      # Tier-B fallback (.get_path_context()): no validated snippet existed
+      # for this step, so the LLM wrote it from registry documentation
+      # alone. Flag it above the step so it is impossible to miss before
+      # running the generated script.
+      step_header <- c(
+        "# WARNING: this step was generated without a validated snippet; review before running",
+        step_header
+      )
+    }
     lines <- c(
       lines,
-      sprintf("# --- Step %d: %s ---", i, desc),
+      step_header,
       sprintf(
         "%s <- .run_step(%d, %s, quote({",
         output_var, i, .r_string(desc)
@@ -492,10 +503,18 @@
     desc <- step$description %||% step$function_name
     output_var <- step$output_var %||% sprintf("step_%d_result", step_num)
 
+    step_header <- sprintf("# --- Step %d: %s ---", step_num, desc)
+    if (isFALSE(step$validated)) {
+      step_header <- c(
+        "# WARNING: this step was generated without a validated snippet; review before running",
+        step_header
+      )
+    }
+
     new_step_lines <- c(
       new_step_lines,
       "",
-      sprintf("# --- Step %d: %s ---", step_num, desc),
+      step_header,
       sprintf(
         "%s <- .run_step(%d, %s, quote({",
         output_var, step_num, .r_string(desc)

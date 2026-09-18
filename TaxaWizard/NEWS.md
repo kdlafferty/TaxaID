@@ -2,6 +2,35 @@
 
 ## 2026-09-18
 
+* New (internal) `.validate_snippets()` in `R/validate.R`: AST-walks every
+  `inst/graph/snippets/*.R` template against the installed TaxaID packages
+  and reports `not_exported` (a `Pkg::fn()` call where `fn` is not exported
+  by `Pkg`), `stale_argument` (a named argument absent from the installed
+  function's real formals, skipped for functions taking `...`),
+  `parse_error` (a snippet that does not parse once its `{{placeholder}}`
+  tokens are substituted), or `unknown_bare_call` (a bare call that resolves
+  to neither base/utils/stats nor a TaxaID export -- reported at warn
+  severity, not a drift failure). New `test-validate.R` asserts zero
+  `not_exported`/`stale_argument`/`parse_error` across every real snippet --
+  found and fixed one real drift: `dist_to_priors_by_group.R` called
+  `TaxaTools::verify_taxon_names(priors, taxon_col = "taxon_name")`, a
+  signature that no longer exists (real formals are `name_list`,
+  `backbone_id`, ...); it also discarded `priors` by reassigning it to the
+  verification result. Fixed to call with `name_list`/`backbone_id` and no
+  longer clobber `priors`.
+* Tier-B fallback: `.get_path_context()` now runs `.validate_snippets()`
+  over the selected path's edges and substitutes, for any edge whose
+  snippet fails validation, a generated block (the edge's label/description
+  plus full registry documentation for that edge's `functions` and every
+  export of its `packages`) ending in the instruction to write the step
+  from that documentation, named arguments only, and mark it
+  `validated: false`. `.describe_paths()` appends
+  "(one or more unvalidated steps)" to a path header when any of its edges
+  would trigger the fallback. The DAG step schema (`phase_parameterize.md`)
+  gains an optional `validated` boolean (default `true`); `.generate_script()`
+  (fresh scripts and `.append_to_script()` extensions) prints
+  `# WARNING: this step was generated without a validated snippet; review
+  before running` directly above any step with `validated: false`.
 * `inst/metadata/*.json` (94 hand-maintained function-signature entries) and
   `R/metadata.R` deleted. New `R/registry.R` / `workflow_registry()`
   introspects the installed TaxaID packages at runtime (`getNamespaceExports()`

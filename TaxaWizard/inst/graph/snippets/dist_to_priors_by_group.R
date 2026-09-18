@@ -99,7 +99,22 @@ if (isTRUE({{include_domestic_priors}})) {
   message("Added ", nrow(domestic_priors), " domestic/food-species prior row(s)")
 }
 
-priors <- TaxaTools::verify_taxon_names(priors, taxon_col = "taxon_name")
+# 2026-09-18 (P2 snippet validator): verify_taxon_names()'s real formals are
+# (name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id) --
+# this call previously passed the whole `priors` data frame positionally as
+# `name_list` (wrong type: a character vector is expected) and a `taxon_col`
+# argument that has never existed, then discarded `priors` by reassigning it
+# to the verification result. Fixed to verify the taxon names informationally
+# without clobbering `priors`.
+taxon_verification <- TaxaTools::verify_taxon_names(
+  name_list   = unique(priors$taxon_name),
+  backbone_id = {{target_backbone_id}}
+)
+message(sprintf(
+  "Taxon-name verification: %d of %d unique taxon name(s) did not verify against backbone %s",
+  sum(!taxon_verification$verified, na.rm = TRUE), nrow(taxon_verification),
+  {{target_backbone_id}}
+))
 priors <- TaxaMatch::convert_taxonomy_backbone(
   priors,
   target_backbone_id = {{target_backbone_id}},
