@@ -139,6 +139,41 @@ test_that(".generate_outputs's known_script_path makes same-session continuation
   expect_equal(attr(generated2, "script_path"), script_path)
 })
 
+test_that(".generate_script emits a Step 0 setup check with the dag's edge ids", {
+  dir <- .tw_test_dir()
+  dag <- .make_dag(2)
+  dag$steps[[1]]$edge_id <- "seq_to_match"
+  dag$steps[[2]]$edge_id <- "match_to_consensus_score"
+
+  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  lines <- readLines(path)
+
+  step0_idx <- grep("^# --- Step 0: setup check", lines)
+  expect_length(step0_idx, 1L)
+  setup_call_idx <- grep("^\\.setup <- TaxaWizard::workflow_check\\(edges = c\\(", lines)
+  expect_length(setup_call_idx, 1L)
+  expect_true(grepl('"seq_to_match"', lines[setup_call_idx], fixed = TRUE))
+  expect_true(grepl('"match_to_consensus_score"', lines[setup_call_idx], fixed = TRUE))
+  stop_idx <- grep('stop\\("Setup incomplete', lines)
+  expect_length(stop_idx, 1L)
+
+  # Step 0 comes before Step 1 in the file.
+  step1_idx <- grep("--- Step 1:", lines, fixed = TRUE)
+  expect_true(step0_idx < step1_idx[1L])
+})
+
+test_that(".generate_script falls back to edges = NULL when steps carry no edge_id", {
+  dir <- .tw_test_dir()
+  dag <- .make_dag(1)
+  dag$steps[[1]]$edge_id <- NULL # legacy free-form dag shape
+
+  path <- TaxaWizard:::.generate_script(dag, dir, trial = FALSE)
+  lines <- readLines(path)
+
+  setup_call_idx <- grep("^\\.setup <- TaxaWizard::workflow_check\\(edges = NULL", lines)
+  expect_length(setup_call_idx, 1L)
+})
+
 test_that(".generate_app falls back to a placeholder when no script is available", {
   dir <- .tw_test_dir()
   dag <- .make_dag(1)

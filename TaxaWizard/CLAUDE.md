@@ -1,6 +1,60 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (E1), FULL
+# Last updated: 2026-09-18 (Sonnet 5, P3 of the SPEC_taxawizard_derived_context work
+# package, worktree p3-setup -- concurrent with P1's registry.R/metadata.R removal in a
+# separate worktree, NOT merged here): new R/setup.R exports workflow_check() (+
+# print.taxaid_check()) and sniff_input(). WHAT: workflow_check(edges=NULL) checks R
+# version, the 8 TaxaID packages + Biostrings/DECIPHER/rBLAST/shiny, each package's
+# tools::R_user_dir() cache, and -- narrowed to a set of graph edge ids -- the API keys/
+# network targets/binaries those edges' `requires` tokens name; returns a "taxaid_check"
+# data.frame (component/category/status/detail/fix). sniff_input(path) guesses which
+# workflow_graph.json input node a file is, from the REAL header signatures read by
+# TaxaMatch::read_sequence_table()/read_birdnet_output()/read_animl_output()/
+# read_inaturalist_cv_output()/read_speciesnet_output() and TaxaLikely::read_crabs_output()/
+# read_reference_fasta() (read their source, not guessed). WHY: the 3 hand-maintained
+# knowledge layers (metadata/snippets/graph) had already drifted twice with no automated
+# way to tell a user (or the chat engine) whether their *environment* -- not just the
+# workflow graph -- was ready to run a given path; this closes that gap without touching
+# engine.R/graph.R/create.R (P1's concurrent files) or inst/prompts/ (P6's wiring job).
+# VERIFIED HOW: devtools::test() 760/0/0 (was 644 before this session; +116 new tests in
+# tests/testthat/test-setup.R plus 2 in test-output.R for the new Step 0). devtools::check()
+# 0 errors/0 warnings/0 notes. Ran workflow_check() for real on this machine (network ON,
+# real keys present) and workflow_check(edges="seq_to_match") -- confirmed it shows
+# net:ncbi/key:ENTREZ_KEY/bin:blastn and NOT net:gbif/key:gbif, and the reverse for
+# edges="taxa_to_occ". Ran sniff_input() on 12 tiny in-test fixtures (FASTA, FASTA+
+# composite_id-TSV sibling, headerless 11-col CRABS TSV, a DADA2 seqtab .rds, canonical
+# and R-mangled BirdNET CSV headers, Animl CSV, iNaturalist-CV JSON, SpeciesNet JSON, a
+# lat/lon CSV, a score+rank CSV, a single-name-column CSV, a rank-only+observation_id CSV)
+# and on diagnostics/fast_workflows/*.R (all 6 correctly NA -- see below, this caught a
+# real bug). REAL BUG FOUND AND FIXED while checking sniff_input() against
+# diagnostics/fast_workflows/ per the spec's acceptance criterion: that directory holds
+# only *.R driver scripts, no data fixtures, and the first version of sniff_input()
+# confidently (medium confidence) misread every one of them as a single-column "taxa"
+# list, because its generic CSV/TSV fallback branch fired on ANY text file whose first
+# line had no comma/tab -- extension was never checked. Fixed by gating that fallback to
+# a small set of plausible tabular extensions (csv/tsv/txt/tab/dat, or none); added a
+# regression test. DECISIONS/DEVIATIONS FROM THE SPEC WORTH KNOWING: (1) `requires` is
+# edge-granularity, not sub-step granularity -- where a snippet gates an optional call
+# behind an `{{include_*}}` flag (std_to_priors_kernel's evidence block, dist_to_priors_
+# by_group's domestic-priors block), the token is included only when the edge's OWN
+# description frames it as a headline feature, judgment calls documented inline in the
+# Python script that wrote workflow_graph.json's `requires` (see git history/PR). (2) key:
+# llm/key:gbif are GROUPS (any one member key satisfies), with the group's own "missing"
+# vs "warn" level living in a `groups` object I added to requirements.json -- the spec's
+# own JSON example was elided ("...") and didn't show how a *group's* level differs from
+# an individual key's, so key:gbif is "warn" (GBIF search works without credentials; only
+# the download API needs them) while key:llm is "missing". (3) "network" status is never
+# "missing", only "ok"/"warn"/"skip" -- an unreachable HEAD request is often transient and
+# Step 0 in generated scripts only stop()s on "missing", so a flaky network shouldn't hard-
+# block a script from even starting. (4) TAXAID_PACKAGES is NOT reused from P1's
+# R/registry.R (different worktree, not present here) -- defined locally as a private
+# .taxaid_packages() function (not a bare object, to avoid any name collision at merge)
+# with the identical literal vector from the spec's Constants section. NOT DONE (by
+# design, per spec's "Do NOT (in P3)"): engine.R/graph.R/create.R untouched; no
+# {{SETUP_STATUS}}/{{PATH_REQUIREMENTS}}/{{SNIFF_RESULT}} prompt wiring (P6). Full record:
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, "P3" section.
+#
+# Previous update, 2026-09-13, evening (Sonnet 5): ecosystem review Section L (E1), FULL
 # option -- resolves most gaps listed as NOT fixed below. Three Tier-1 snippets fixed:
 # cached build_habitat_lookup(), species_reference + add_slash_taxon(),
 # review_assignments (cache_dir=). The curve-pricing EVIDENCE BLOCK ported behind
