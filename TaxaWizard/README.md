@@ -131,16 +131,38 @@ sniff_input("my_data.csv")
 
 ## Key Functions
 
-| Function             | Purpose                                                        |
-|----------------------|----------------------------------------------------------------|
-| `workflow_create()`  | Launch interactive interview (main entry point)                |
-| `workflow_fix()`     | Resume after script error with diagnostic context              |
-| `workflow_app()`     | Convert generated script to Shiny app                          |
-| `annotate_script()`  | Annotate generic R scripts for Shiny conversion                |
-| `workflow_check()`   | Report setup readiness: R, packages, keys, network, cache, binaries |
-| `sniff_input()`      | Guess which workflow-graph input node a file looks like        |
-| `workflow_engine()`  | Stateless LLM engine (advanced / programmatic use)             |
-| `workflow_registry()`| Introspect the installed TaxaID packages' functions (advanced) |
+| Function                    | Purpose                                                        |
+|------------------------------|----------------------------------------------------------------|
+| `workflow_create()`          | Launch interactive interview (main entry point)                |
+| `workflow_fix()`              | Resume after script error with diagnostic context              |
+| `workflow_app()`              | Convert generated script to Shiny app                          |
+| `annotate_script()`           | Annotate generic R scripts for Shiny conversion                |
+| `workflow_check()`            | Report setup readiness: R, packages, keys, network, cache, binaries |
+| `sniff_input()`               | Guess which workflow-graph input node a file looks like        |
+| `workflow_export_prompts()`   | Export a portable prompt pack for use with any LLM (no TaxaWizard install needed) |
+| `workflow_engine()`           | Stateless LLM engine (advanced / programmatic use)             |
+| `workflow_registry()`         | Introspect the installed TaxaID packages' functions (advanced) |
+
+## Using TaxaID with any LLM
+
+TaxaWizard's own interview (`workflow_create()`) needs an API key and this
+package installed. If you want to design a workflow with a different LLM --
+a plain chat window, someone else's agentic coding tool, a colleague with no
+R environment set up -- export a portable prompt pack instead:
+
+``` r
+workflow_export_prompts("taxaid_prompts")
+```
+
+This writes a self-contained folder (packages, function signatures, the
+workflow graph, setup requirements -- all generated from the TaxaID packages
+installed on your machine, never hand-typed) that any LLM can be pointed at.
+Give the folder to an agentic tool (Claude Code, Cursor, a Copilot agent) and
+tell it to start with `START_HERE.md`; for a plain chat window, paste
+`START_HERE.md` and `CONTEXT_TaxaID.md` in first. A ready-to-use copy (with a
+placeholder setup report, since it isn't any one machine) ships at the
+repository root in
+[`llm_prompts/`](https://github.com/DOI-USGS/TaxaID/tree/main/llm_prompts).
 
 ## Part of TaxaID
 

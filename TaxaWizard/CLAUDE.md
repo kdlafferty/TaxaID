@@ -1,5 +1,59 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
+# Last updated: 2026-09-18 (Sonnet 5, work package P4 of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, worktree p4-pack, after
+# P1/P3/P5 merged into this branch): new R/pack.R exports workflow_export_prompts(dir =
+# "taxaid_prompts", overwrite = FALSE, placeholder_setup_report = FALSE) -- a portable
+# prompt pack any LLM (agentic tool or plain chat) can be pointed at to design a TaxaID
+# workflow, no TaxaWizard install or engine API key required. WHAT: START_HERE.md and
+# tasks/handoff_template.md are copied verbatim from inst/prompts/pack/ (P5, untouched);
+# CLAUDE.md/AGENTS.md are 3 lines pointing an agentic tool at START_HERE.md;
+# CONTEXT_TaxaID.md (<= 400 lines; 189 lines as built) and one CONTEXT_<Package>.md per
+# TaxaID package are generated from workflow_registry()/.load_graph()/
+# .load_requirements() -- packages table, .describe_node_types() output, the graph as a
+# text adjacency list (edge id, from -> to, label, [wrapper] tag, requires), the
+# canonical pipelines read LIVE from system_prompt.md's "## Pipeline Awareness" section
+# (never pasted), a setup-requirements summary (ids/purpose/level, never values), every
+# export's DESCRIPTION Title/Description + signature + title/description + params table
+# + value, and the package README's "## Quick Start" section when one exists AND the
+# source repo is reachable (see TAXAID_ROOT below); SETUP_REPORT.md is workflow_check()'s
+# report for the generating machine, or (placeholder_setup_report = TRUE) a placeholder;
+# tasks/classify.md|path_select.md|parameterize.md|error_fix.md are inst/prompts/
+# phase_*.md with statically-resolvable placeholders filled ({{NODE_TYPES}}, via the
+# existing .describe_node_types()) and every conversation-dependent placeholder
+# ({{PATH_OPTIONS}}, {{SNIPPETS}}, {{PARAM_DOCS}}, {{ERROR_MESSAGE}}, etc.) replaced by a
+# bracketed instruction, with the "# RESPONSE FORMAT" JSON-only-response section
+# mechanically stripped and replaced by a short prose instruction (a documented
+# post-processing pass in .pack_strip_json_format(), not a second hand-edited template).
+# The committed copy lives at the repo root's llm_prompts/ (placeholder_setup_report =
+# TRUE, since it isn't any one contributor's machine); ecosystem_docs/readmes/
+# render_readmes.R gained a final tryCatch'd step that regenerates it via
+# devtools::load_all() and reports PASS/FAIL in the same summary table as the READMEs.
+# DELIBERATE DEVIATION FROM THE SPEC: the pack's tasks/*.md are NOT rendered by calling
+# .build_phase_prompt() (graph.R) directly, even for the fully-static classify phase --
+# that function unconditionally appends .format_corrections_for_prompt() (context.R), a
+# per-machine log of mistakes learned from THIS installation's own past chat sessions,
+# which would make the pack non-reproducible (and inappropriate to hand to a stranger's
+# LLM). Instead pack.R reads the SAME template file .build_phase_prompt() reads (identical
+# system.file("prompts", ...) path) and substitutes independently -- the spec's "same code
+# path or a thin wrapper, never a second copy of the template text" is satisfied at the
+# template-file level, not by calling that specific function. Documented in pack.R's file
+# header and .pack_read_template()'s roxygen. Quick Start sections and the byte-for-byte
+# committed-copy test both need the source repo (sibling READMEs / llm_prompts/ itself),
+# which an ordinary TaxaWizard install does not carry: .pack_find_repo_root() checks
+# TAXAID_ROOT then walks up from getwd() for TaxaWizard/DESCRIPTION, and both features
+# degrade gracefully (Quick Start omitted; test skipped with a clear message) rather than
+# erroring when it's not found -- expected under R CMD check. VERIFIED HOW: devtools::
+# document() clean (NAMESPACE +workflow_export_prompts, +man/workflow_export_prompts.Rd);
+# devtools::test() 914/0/0 (was 826/0 before this session on this same merged P1+P3+P5
+# checkout -- net +88 assertions in the new tests/testthat/test-pack.R, no drop elsewhere);
+# devtools::check() 0 errors / 0 warnings (NOTEs, if any, in the session's own report).
+# Generated the committed llm_prompts/ copy for real via devtools::load_all() (not the
+# installed TaxaWizard) and reran the full suite, including the byte-for-byte comparison
+# test, which now runs (not skipped) and passes. Did not touch R/graph.R's
+# .get_path_context()/.describe_paths(), R/output.R, or R/validate.R (P2's concurrent
+# worktree). Full record in the session's own report to the P0 coordinator.
+#
 # Last updated: 2026-09-18 (Sonnet 5, work package P1 of
 # ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md): inst/metadata/*.json
 # (94 hand-maintained function-signature entries across 8 files) DELETED, along with
