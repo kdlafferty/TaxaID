@@ -224,3 +224,152 @@ testthat::test_that("every registry function has a title and description (Rd par
   # that a package lost its documentation.
   testthat::expect_length(missing_docs, 0)
 })
+
+
+# --- P1b: structural \arguments parsing ---------------------------------------
+# The parser these cover replaced one that rendered \arguments with Rd2txt()
+# and re-parsed the text. Rd2txt RIGHT-ALIGNS argument terms into a column, so
+# any term shorter than the widest was emitted with leading whitespace and read
+# as a continuation of the item above it: its doc was lost and glued onto its
+# neighbour. Measured at the time: 318 of 1387 parameters had no doc, and 233
+# survivors carried a lost neighbour's text.
+
+# Parse a literal .Rd source string into the tree tools::Rd_db() would yield.
+.test_rd <- function(txt) {
+  f <- tempfile(fileext = ".Rd")
+  on.exit(unlink(f), add = TRUE)
+  writeLines(txt, f)
+  tools::parse_Rd(f)
+}
+
+.test_args_node <- function(rd) {
+  tags <- vapply(rd, function(x) attr(x, "Rd_tag") %||% "", character(1))
+  rd[[which(tags == "\\arguments")[1L]]]
+}
+
+test_that(".rd_arguments() finds every term regardless of its width", {
+  # `q` and `mid` are narrower than `a_very_wide_parameter`, which is exactly
+  # the shape that made Rd2txt right-align them into a leading-whitespace
+  # column. All four must come back, each with its OWN text.
+  rd <- .test_rd(c(
+    "\\name{widths}", "\\title{Widths}",
+    "\\arguments{",
+    "  \\item{a_very_wide_parameter}{The widest term, flush left.}",
+    "  \\item{q}{A one-letter term.}",
+    "  \\item{mid}{A middling term.}",
+    "  \\item{another_extremely_wide_one}{The widest of all.}",
+    "}"
+  ))
+  args <- TaxaWizard:::.rd_arguments(.test_args_node(rd))
+
+  expect_setequal(
+    names(args),
+    c("a_very_wide_parameter", "q", "mid", "another_extremely_wide_one")
+  )
+  expect_equal(args[["q"]], "A one-letter term.")
+  expect_equal(args[["mid"]], "A middling term.")
+  # The narrow terms' text must NOT have been absorbed by the wide one.
+  expect_false(grepl("one-letter", args[["a_very_wide_parameter"]], fixed = TRUE))
+})
+
+test_that(".rd_arguments() keeps a multi-paragraph description as ONE parameter", {
+  # A continuation paragraph containing a colon is what made the old
+  # text-based parser invent a bogus parameter.
+  rd <- .test_rd(c(
+    "\\name{multi}", "\\title{Multi}",
+    "\\arguments{",
+    "  \\item{bracket_fallback}{First paragraph of the description.",
+    "",
+    "    Second paragraph. Note: this colon used to start a bogus parameter.}",
+    "  \\item{after}{Follows the multi-paragraph item.}",
+    "}"
+  ))
+  args <- TaxaWizard:::.rd_arguments(.test_args_node(rd))
+
+  expect_setequal(names(args), c("bracket_fallback", "after"))
+  expect_match(args[["bracket_fallback"]], "First paragraph")
+  expect_match(args[["bracket_fallback"]], "Second paragraph")
+  expect_equal(args[["after"]], "Follows the multi-paragraph item.")
+})
+
+test_that(".rd_arguments() documents every name sharing one \\item", {
+  rd <- .test_rd(c(
+    "\\name{shared}", "\\title{Shared}",
+    "\\arguments{",
+    "  \\item{lat_col, lon_col}{Coordinate column names.}",
+    "}"
+  ))
+  args <- TaxaWizard:::.rd_arguments(.test_args_node(rd))
+
+  expect_setequal(names(args), c("lat_col", "lon_col"))
+  expect_equal(args[["lat_col"]], args[["lon_col"]])
+})
+
+test_that(".rd_text() renders markup as text and drops non-visible nodes", {
+  rd <- .test_rd(c(
+    "\\name{markup}", "\\title{Markup}",
+    "\\arguments{",
+    "  \\item{styled}{Use \\code{NULL} or \\emph{other}, see \\link{elsewhere}.}",
+    "  \\item{mathy}{Weight \\eqn{\\lambda}{lambda} applies.}",
+    "  \\item{branchy}{Kept \\if{latex}{in latex} always.}",
+    "}"
+  ))
+  args <- TaxaWizard:::.rd_arguments(.test_args_node(rd))
+
+  expect_equal(args[["styled"]], "Use NULL or other, see elsewhere.")
+  # \eqn{latex}{ascii}: the ASCII branch, never the LaTeX source.
+  expect_equal(args[["mathy"]], "Weight lambda applies.")
+  expect_false(grepl("\\lambda", args[["mathy"]], fixed = TRUE))
+  # \if{format}{text}: the text, never the bare format name.
+  expect_equal(args[["branchy"]], "Kept in latex always.")
+  expect_false(grepl("latex}", args[["branchy"]], fixed = TRUE))
+})
+
+test_that("every documented parameter of every installed export carries a doc", {
+  # The live guard. Scoped to the PARSER, not to the sibling packages' doc
+  # hygiene: a formal only has to have a doc when the Rd actually documents a
+  # term of that name. Offenders are named, because a count alone would not
+  # say which function to go and look at.
+  reg <- workflow_registry()
+  skip_if(length(reg) == 0L, "no TaxaID packages installed")
+
+  offenders <- character()
+  for (pkg in names(reg)) {
+    rd_db <- tryCatch(tools::Rd_db(pkg), error = function(e) NULL)
+    if (is.null(rd_db)) next
+    alias_map <- TaxaWizard:::.rd_alias_map(rd_db)
+
+    for (fn in reg[[pkg]]$functions) {
+      rd_entry <- alias_map[[fn$name]]
+      if (is.null(rd_entry)) next
+      tags <- vapply(rd_entry, function(x) attr(x, "Rd_tag") %||% "", character(1))
+      if (!any(tags == "\\arguments")) next
+
+      documented <- names(TaxaWizard:::.rd_arguments(rd_entry[[which(tags == "\\arguments")[1L]]]))
+      for (p in fn$params) {
+        if (p$name %in% documented && (is.null(p$doc) || !nzchar(p$doc))) {
+          offenders <- c(offenders, paste0(pkg, "::", fn$name, "(", p$name, ")"))
+        }
+      }
+    }
+  }
+
+  expect_equal(
+    offenders, character(),
+    info = paste("documented parameters with no doc in the registry:",
+                 paste(offenders, collapse = ", "))
+  )
+})
+
+test_that("the registry cache key carries the schema version", {
+  # Package version and Built date do not move when TaxaWizard's own parsing
+  # changes, so without this a parser fix never reaches a warm cache.
+  skip_if_not_installed("TaxaFlag")
+  cache_dir <- file.path(tools::R_user_dir("TaxaWizard", "cache"), "registry")
+
+  workflow_registry(packages = "TaxaFlag", refresh = TRUE)
+  files <- list.files(cache_dir, pattern = "^TaxaFlag_.*\\.rds$")
+
+  expect_equal(length(files), 1L)
+  expect_match(files[1L], sprintf("_v%d\\.rds$", TaxaWizard:::REGISTRY_SCHEMA))
+})

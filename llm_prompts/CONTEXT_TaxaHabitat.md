@@ -16,8 +16,8 @@ Overwrites 'spatial_flag' on every row whose 'point_id' has a saved decision (an
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| occurrence_data | yes |  | Data frame from 'flag_habitat_inconsistencies' (carries 'point_id', 'spatial_flag', 'spatial_flag_reason', 'main_habitat'). path: Character. The decisions file written by 'save_spatial_review_decisions'. |
-| path | yes |  |  |
+| occurrence_data | yes |  | Data frame from flag_habitat_inconsistencies (carries point_id, spatial_flag, spatial_flag_reason, main_habitat). |
+| path | yes |  | Character. The decisions file written by save_spatial_review_decisions. |
 | point_id_col | no | "point_id" | Column names. |
 | flag_col | no | "spatial_flag" | Column names. |
 | reason_col | no | "spatial_flag_reason" | Column names. |
@@ -33,14 +33,14 @@ Infers the habitat of each sampling point from the weighted habitat affinities o
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| occurrence_data | yes |  | A dataframe of occurrence records. Must contain columns named by 'point_id_col' and 'taxon_col'. |
-| habitats_df | yes |  | A dataframe giving habitat weights for each species. Must contain a column named by 'taxon_col', one numeric column per habitat in the scheme, and optionally 'Other_weight' and 'habitat_best_guess'. Produced by 'parse_hierarchical_habitat_response'. |
-| habitat_cols | no | NULL | Character vector naming the habitat weight columns in 'habitats_df'. If 'NULL' (default), all numeric columns other than 'taxon_col' are used. Supply explicitly when the dataframe contains non-habitat numeric columns. '"Other_weight"' is always treated as a valid habitat column and propagated to 'main_habitat' when it wins the consensus vote. |
-| point_id_col | no | "point_id" | Character. Name of the point identifier column in 'occurrence_data'. Default '"point_id"'. |
-| taxon_col | no | "taxon_name" | Character. Name of the taxon name column in both 'occurrence_data' and 'habitats_df'. Default '"taxon_name"'. |
-| weight_by_abundance | no | FALSE | Logical. If 'FALSE' (default), each species contributes equally to the point score regardless of how many occurrence records it has at that point. If 'TRUE', species are weighted by their record count at the point, so abundant species have more influence. Default 'FALSE' is recommended because record abundance in occurrence datasets is strongly influenced by sampling effort rather than true ecological dominance. |
-| threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant at a point. At 0.3, a habitat must receive at least 30\ be assigned. Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default '0.3'. Points where no habitat reaches the threshold receive 'main_habitat = NA'. Note: the default is lower than in the single-habitat version because weight is now spread across multiple habitats per species; a threshold of 0.5 may be too strict for generalist communities. |
-| min_species_weight | no | 0 | Numeric in '[0, 1)'. Per-species weight floor. Any weight assigned to a habitat column by a species that is greater than zero but less than this value is set to zero before the consensus calculation. Default '0.0' (no floor, all weights used). Set to e.g. '0.1' to suppress LLM hedging weights - small non-zero values the LLM assigns to vaguely plausible habitats that dilute the signal from the species' actual primary habitat(s). Has no effect when using the two-stage IUCN pipeline with the commit-at-confident-level prompt, which already discourages sub-0.1 weights by instruction. |
+| occurrence_data | yes |  | A dataframe of occurrence records. Must contain columns named by point_id_col and taxon_col. |
+| habitats_df | yes |  | A dataframe giving habitat weights for each species. Must contain a column named by taxon_col, one numeric column per habitat in the scheme, and optionally Other_weight and habitat_best_guess. Produced by parse_hierarchical_habitat_response. |
+| habitat_cols | no | NULL | Character vector naming the habitat weight columns in habitats_df. If NULL (default), all numeric columns other than taxon_col are used. Supply explicitly when the dataframe contains non-habitat numeric columns. "Other_weight" is always treated as a valid habitat column and propagated to main_habitat when it wins the consensus vote. |
+| point_id_col | no | "point_id" | Character. Name of the point identifier column in occurrence_data. Default "point_id". |
+| taxon_col | no | "taxon_name" | Character. Name of the taxon name column in both occurrence_data and habitats_df. Default "taxon_name". |
+| weight_by_abundance | no | FALSE | Logical. If FALSE (default), each species contributes equally to the point score regardless of how many occurrence records it has at that point. If TRUE, species are weighted by their record count at the point, so abundant species have more influence. Default FALSE is recommended because record abundance in occurrence datasets is strongly influenced by sampling effort rather than true ecological dominance. |
+| threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant at a point. At 0.3, a habitat must receive at least 30\ be assigned. Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default 0.3. Points where no habitat reaches the threshold receive main_habitat = NA. Note: the default is lower than in the single-habitat version because weight is now spread across multiple habitats per species; a threshold of 0.5 may be too strict for generalist communities. |
+| min_species_weight | no | 0 | Numeric in [0, 1). Per-species weight floor. Any weight assigned to a habitat column by a species that is greater than zero but less than this value is set to zero before the consensus calculation. Default 0.0 (no floor, all weights used). Set to e.g. 0.1 to suppress LLM hedging weights -- small non-zero values the LLM assigns to vaguely plausible habitats that dilute the signal from the species' actual primary habitat(s). Has no effect when using the two-stage IUCN pipeline with the commit-at-confident-level prompt, which already discourages sub-0.1 weights by instruction. |
 
 **Value:** The input 'occurrence_data' with two additional columns: main_habitat Character. The winning habitat label at each point, or 'NA' if no habitat reached 'threshold'. '"Other"' appears here when the 'Other_weight' column wins, signalling that the community at this point does not fit the scheme. habitat_best_guess Character. Non-empty only when 'main_habitat = "Other"' (or when the leading habitat is
 
@@ -53,15 +53,15 @@ One call that does what the three-step pattern 'build_habitat_prompt()' -> 'Taxa
 | Param | Required | Default | Doc |
 |---|---|---|---|
 | taxon_list | yes |  | Character vector of taxon names. |
-| habitat_scheme | no | NULL | Passed to 'build_habitat_prompt()': 'NULL' (the three-realm default), '"IUCN_L1"', or a scheme data frame. llm_fn: Passed to 'TaxaTools::prompt_api()'. Defaults to the 'TaxaID.llm_fn' option, else 'TaxaTools::call_api'. |
-| llm_fn | no | getOption("TaxaID.llm_fn", TaxaTools::call_api) |  |
-| cache_dir | no | NULL | Character or 'NULL' (default). Directory for the per-taxon cache. 'NULL' disables caching entirely (identical to the uncached three-step pattern). Workflows should pass a project-local directory, e.g. 'file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_cache"))'. |
-| extra_covariates | no | character(0) | Passed to 'build_habitat_prompt()'. |
-| chunk_size | no | 60L | Passed to 'build_habitat_prompt()'. |
-| geographic_context | no | NULL | Passed to 'build_habitat_prompt()'. |
-| cache_tag | no | "" | Character (default '""'). Free-text component of the cache key; change it to force fresh verdicts (e.g. after a model change). |
-| pause_seconds | no | 1 | Passed to 'TaxaTools::prompt_api()'. |
-| verbose | no | TRUE | Passed to 'TaxaTools::prompt_api()'. |
+| habitat_scheme | no | NULL | Passed to build_habitat_prompt(): NULL (the three-realm default), "IUCN_L1", or a scheme data frame. |
+| llm_fn | no | getOption("TaxaID.llm_fn", TaxaTools::call_api) | Passed to TaxaTools::prompt_api(). Defaults to the TaxaID.llm_fn option, else TaxaTools::call_api. |
+| cache_dir | no | NULL | Character or NULL (default). Directory for the per-taxon cache. NULL disables caching entirely (identical to the uncached three-step pattern). Workflows should pass a project-local directory, e.g. file.path(OUT_DIR, paste0(OUT_PREFIX, "_habitat_cache")). |
+| extra_covariates | no | character(0) | Passed to build_habitat_prompt(). |
+| chunk_size | no | 60L | Passed to build_habitat_prompt(). |
+| geographic_context | no | NULL | Passed to build_habitat_prompt(). |
+| cache_tag | no | "" | Character (default ""). Free-text component of the cache key; change it to force fresh verdicts (e.g. after a model change). |
+| pause_seconds | no | 1 | Passed to TaxaTools::prompt_api(). |
+| verbose | no | TRUE | Passed to TaxaTools::prompt_api(). |
 
 **Value:** A data frame with one row per unique taxon in 'taxon_list' (the same shape 'parse_hierarchical_habitat_response()' returns), in 'taxon_list' order, with a 'cache_summary' attribute: 'n_total', 'n_from_cache', 'n_called', 'n_cached_new'.
 
@@ -74,10 +74,10 @@ Creates a 'habitat_prompt' object containing one or more LLM prompt strings for 
 | Param | Required | Default | Doc |
 |---|---|---|---|
 | taxon_list | yes |  | Character vector of scientific names. |
-| extra_covariates | no | character(0) | Character vector of additional binary (0/1) covariate names to request from the LLM alongside habitat weights. Default 'character(0)' (no extra covariates). Provide a character vector (e.g. 'c("Invasive", "Migratory")') only when you intend to use the trait information downstream; extra covariates add tokens and output columns that are ignored by the rest of the habitat pipeline. |
+| extra_covariates | no | character(0) | Character vector of additional binary (0/1) covariate names to request from the LLM alongside habitat weights. Default character(0) (no extra covariates). Provide a character vector (e.g. c("Invasive", "Migratory")) only when you intend to use the trait information downstream; extra covariates add tokens and output columns that are ignored by the rest of the habitat pipeline. |
 | chunk_size | no | 60L | Integer. Maximum taxa per prompt chunk. Default 60. Larger lists are split into multiple chunks automatically. Reduce if your LLM has a small context window; increase cautiously for APIs with large windows. |
-| habitat_scheme | no | NULL | A dataframe defining the habitat classification to use, the string '"IUCN_L1"', or 'NULL'. 'NULL' (default) uses a simple three-category scheme: Marine, Freshwater, Terrestrial. This is always a valid starting point and is always interpretable in a model. '"IUCN_L1"' uses the 18 IUCN Level 1 group names as a single-level scheme. Pass a dataframe for a custom scheme (must contain 'l1_name'; optional: 'l2_name', 'l2_code', 'realm'). To generate a scheme automatically from the taxon list, use 'build_scheme_prompt' + 'parse_scheme_response' first, then pass the result here. See 'example_habitat_scheme' for a dataframe template. |
-| geographic_context | no | NULL | Optional character string describing the geographic region where these species were observed (e.g. '"Southern California"', '"Chesapeake Bay watershed"'). When non-NULL, the prompt includes a geographic context block and requests an additional 'ecoregion_best_guess' column from the LLM. Default 'NULL' (no geographic context). |
+| habitat_scheme | no | NULL | A dataframe defining the habitat classification to use, the string "IUCN_L1", or NULL. NULL (default) uses a simple three-category scheme: Marine, Freshwater, Terrestrial. This is always a valid starting point and is always interpretable in a model. "IUCN_L1" uses the 18 IUCN Level 1 group names as a single-level scheme. Pass a dataframe for a custom scheme (must contain l1_name; optional: l2_name, l2_code, realm). To generate a scheme automatically from the taxon list, use build_scheme_prompt + parse_scheme_response first, then pass the result here. See example_habitat_scheme for a dataframe template. |
+| geographic_context | no | NULL | Optional character string describing the geographic region where these species were observed (e.g. "Southern California", "Chesapeake Bay watershed"). When non-NULL, the prompt includes a geographic context block and requests an additional ecoregion_best_guess column from the LLM. Default NULL (no geographic context). |
 
 **Value:** An object of class 'c("habitat_prompt", "llm_prompt")', which is a named list: prompts List of character strings, one per chunk. taxa Character vector of deduplicated, trimmed taxon names. chunks List of character vectors, taxa per chunk. scheme The validated habitat scheme dataframe. habitat_cols Character vector of habitat column names the LLM will produce (the scheme's working habitat names, in
 
@@ -89,9 +89,9 @@ Constructs a 'habitat_scheme' dataframe by subsetting the IUCN Red List Habitat 
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| realm | no | NULL | Character or 'NULL'. Filter to one ecological realm: '"marine"', '"freshwater"', '"terrestrial"', '"artificial"', or 'NULL' (all realms, default). Realm groupings: • '"marine"': Marine Neritic, Marine Oceanic, Marine Deep Ocean Floor, Marine Intertidal, Marine Coastal/Supratidal • '"freshwater"': Wetlands (inland) • '"terrestrial"': Forest, Savanna, Shrubland, Grassland, Rocky Areas (inland), Caves and Subterranean Habitats, Desert, Introduced Vegetation • '"artificial"': Artificial - Terrestrial, Artificial - Aquatic '"Other"' and '"Unknown"' are excluded from all realm filters and must be requested explicitly via 'l1'. l1: Character, '"all"', or '"none"'. Which Level 1 groups to include in the scheme. '"all"' (default) includes all L1 groups in the selected realm as single-level categories. '"none"' excludes all L1 groups (only L2 subcategories will be present; requires 'l2' to be non-'"none"'). A character vector of L1 group names includes only those groups as fallback L1 columns alongside any L2 subcategories requested. Names are validated against the filtered lookup and a helpful error is given for unrecognised values. l2: Character, '"all"', or '"none"'. Which Level 2 subcategories to include. '"none"' (default) produces a single-level scheme using only L1 group names. '"all"' adds all L2 subcategories under the selected L1 groups. A character vector of specific L2 names adds only those subcategories; their L1 parent groups are automatically added as fallback columns unless 'l1 = "none"'. Names are validated and an error lists the correct L1 parent for any unrecognised value. |
-| l1 | no | "all" |  |
-| l2 | no | "none" |  |
+| realm | no | NULL | Character or NULL. Filter to one ecological realm: "marine", "freshwater", "terrestrial", "artificial", or NULL (all realms, default). Realm groupings: "marine": Marine Neritic, Marine Oceanic, Marine Deep Ocean Floor, Marine Intertidal, Marine Coastal/Supratidal "freshwater": Wetlands (inland) "terrestrial": Forest, Savanna, Shrubland, Grassland, Rocky Areas (inland), Caves and Subterranean Habitats, Desert, Introduced Vegetation "artificial": Artificial - Terrestrial, Artificial - Aquatic "Other" and "Unknown" are excluded from all realm filters and must be requested explicitly via l1. |
+| l1 | no | "all" | Character, "all", or "none". Which Level 1 groups to include in the scheme. "all" (default) includes all L1 groups in the selected realm as single-level categories. "none" excludes all L1 groups (only L2 subcategories will be present; requires l2 to be non-"none"). A character vector of L1 group names includes only those groups as fallback L1 columns alongside any L2 subcategories requested. Names are validated against the filtered lookup and a helpful error is given for unrecognised values. |
+| l2 | no | "none" | Character, "all", or "none". Which Level 2 subcategories to include. "none" (default) produces a single-level scheme using only L1 group names. "all" adds all L2 subcategories under the selected L1 groups. A character vector of specific L2 names adds only those subcategories; their L1 parent groups are automatically added as fallback columns unless l1 = "none". Names are validated and an error lists the correct L1 parent for any unrecognised value. |
 
 **Value:** A 'habitat_scheme' data.frame with columns 'l1_name', 'l2_name', 'l2_code', and 'realm', ready for 'build_habitat_prompt'. Rows with 'l2_name = NA' are L1-only entries (single-level fallback); rows with non-NA 'l2_name' are L2 entries. Print the result to inspect the scheme before use.
 
@@ -104,9 +104,9 @@ Asks an LLM to propose a compact, ecologically appropriate set of habitat catego
 | Param | Required | Default | Doc |
 |---|---|---|---|
 | taxon_list | yes |  | Character vector of scientific names. |
-| min_habitats | no | 2L | Integer. Minimum number of habitat categories to generate. Default '2L'. |
-| max_habitats | no | 10L | Integer. Maximum number of habitat categories to generate. Default '10L'. Reduce to force coarser resolution; increase if the LLM is merging ecologically distinct habitats. realm: Character or 'NULL'. Optional hint to constrain the scheme to a single ecological realm: '"marine"', '"freshwater"', or '"terrestrial"'. Use when all taxa are known to belong to one realm and you want to prevent the LLM from generating irrelevant cross-realm categories. Default 'NULL' (no constraint; the LLM infers realm from the taxon list). |
-| realm | no | NULL |  |
+| min_habitats | no | 2L | Integer. Minimum number of habitat categories to generate. Default 2L. |
+| max_habitats | no | 10L | Integer. Maximum number of habitat categories to generate. Default 10L. Reduce to force coarser resolution; increase if the LLM is merging ecologically distinct habitats. |
+| realm | no | NULL | Character or NULL. Optional hint to constrain the scheme to a single ecological realm: "marine", "freshwater", or "terrestrial". Use when all taxa are known to belong to one realm and you want to prevent the LLM from generating irrelevant cross-realm categories. Default NULL (no constraint; the LLM infers realm from the taxon list). |
 
 **Value:** An object of class 'c("scheme_prompt", "llm_prompt")' with elements: prompts List of length 1 containing the prompt string. taxa The deduplicated taxon list. chunks List of length 1. min_habitats The minimum supplied. max_habitats The maximum supplied. realm The realm hint supplied (or 'NULL'). n_chunks Always '1L'. n_items Number of taxa. Pass to 'prompt_api' or 'prompt_manual', then pass the raw
 
@@ -118,10 +118,10 @@ Summarises per-species habitat weights into a single consensus habitat (and opti
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| habitats_df | yes |  | A dataframe of per-species habitat weights, as produced by 'parse_hierarchical_habitat_response'. Must contain a column named by 'taxon_col' and one or more numeric habitat weight columns. |
-| habitat_cols | no | NULL | Character vector naming the habitat weight columns. If 'NULL' (default), auto-detected (all numeric columns except 'taxon_col' and text columns). |
-| taxon_col | no | "taxon_name" | Character. Name of the taxon name column. Default '"taxon_name"'. |
-| threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant. At 0.3, a habitat must receive at least 30\ Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default '0.3'. |
+| habitats_df | yes |  | A dataframe of per-species habitat weights, as produced by parse_hierarchical_habitat_response. Must contain a column named by taxon_col and one or more numeric habitat weight columns. |
+| habitat_cols | no | NULL | Character vector naming the habitat weight columns. If NULL (default), auto-detected (all numeric columns except taxon_col and text columns). |
+| taxon_col | no | "taxon_name" | Character. Name of the taxon name column. Default "taxon_name". |
+| threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant. At 0.3, a habitat must receive at least 30\ Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default 0.3. |
 
 **Value:** A one-row data frame with columns: main_habitat Character. The consensus habitat, or 'NA' if none reached 'threshold'. ecoregion Character. The modal 'ecoregion_best_guess' value across species, or 'NA' if the column is absent. habitat_best_guess Character. Concatenated free-text guesses when '"Other"' wins, otherwise 'NA'. The full habitat proportion vector is attached as 'attr(result, "habitat_p
 
@@ -133,17 +133,17 @@ For each unique occurrence point, derives the physical spatial zone (inland, coa
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| occurrence_data | yes |  | A dataframe, typically 'occurrences_with_habitat' from the TaxaExpect workflow. Must contain latitude, longitude, and habitat columns. lat_col: Character. Latitude column name. Default '"decimalLatitude"'. lon_col: Character. Longitude column name. Default '"decimalLongitude"'. |
-| lat_col | no | "decimalLatitude" |  |
-| lon_col | no | "decimalLongitude" |  |
-| habitat_col | no | "main_habitat" | Character. Habitat assignment column name. Default '"main_habitat"'. |
-| coast_buffer_m | no | 1000 | Numeric. Buffer distance (metres) around coastlines for habitat classification. Points within this buffer are not flagged as marine/freshwater inconsistencies. The 1 km default accounts for GPS coordinate uncertainty, tidal zones, and coastal habitat gradients. Default '1000'. |
-| marine_questionable_km | no | 0 | Numeric. If greater than zero, marine species within this distance (km) of the coastline are flagged as '"questionable"' rather than '"likely"', on the grounds that very nearshore points may warrant visual verification. Default '0' (disabled) - all marine species in ocean are '"likely"' regardless of distance to shore. Set e.g. '0.1' to flag points within 100 m of the shoreline. |
-| depth_neritic_m | no | 200 | Numeric. Depth threshold (metres) defining the neritic (continental shelf) zone. Points shallower than this are classified as nearshore. The 200 m convention follows the standard oceanographic definition of the continental shelf edge. Default '200'. |
-| depth_oceanic_m | no | 4000 | Numeric. Depth threshold (metres) defining the boundary between bathyal and abyssal zones. Follows the standard oceanographic depth zonation. Default '4000'. |
-| resolution | no | 4L | Integer. Bathymetry resolution in arc-minutes for the NOAA GEBCO download. Used only for depth classification of confirmed marine points - does not affect land/ocean classification. Default '4'. verbose: Logical. Print progress messages. Default 'TRUE'. |
-| verbose | no | TRUE |  |
-| habitat_scheme | no | NULL | Optional. A 'habitat_prompt' object or habitat scheme dataframe used to resolve habitat names for depth/distance checks. If 'NULL', checks rely on the 'habitat_col' values directly. |
+| occurrence_data | yes |  | A dataframe, typically occurrences_with_habitat from the TaxaExpect workflow. Must contain latitude, longitude, and habitat columns. |
+| lat_col | no | "decimalLatitude" | Character. Latitude column name. Default "decimalLatitude". |
+| lon_col | no | "decimalLongitude" | Character. Longitude column name. Default "decimalLongitude". |
+| habitat_col | no | "main_habitat" | Character. Habitat assignment column name. Default "main_habitat". |
+| coast_buffer_m | no | 1000 | Numeric. Buffer distance (metres) around coastlines for habitat classification. Points within this buffer are not flagged as marine/freshwater inconsistencies. The 1 km default accounts for GPS coordinate uncertainty, tidal zones, and coastal habitat gradients. Default 1000. |
+| marine_questionable_km | no | 0 | Numeric. If greater than zero, marine species within this distance (km) of the coastline are flagged as "questionable" rather than "likely", on the grounds that very nearshore points may warrant visual verification. Default 0 (disabled) -- all marine species in ocean are "likely" regardless of distance to shore. Set e.g. 0.1 to flag points within 100 m of the shoreline. |
+| depth_neritic_m | no | 200 | Numeric. Depth threshold (metres) defining the neritic (continental shelf) zone. Points shallower than this are classified as nearshore. The 200 m convention follows the standard oceanographic definition of the continental shelf edge. Default 200. |
+| depth_oceanic_m | no | 4000 | Numeric. Depth threshold (metres) defining the boundary between bathyal and abyssal zones. Follows the standard oceanographic depth zonation. Default 4000. |
+| resolution | no | 4L | Integer. Bathymetry resolution in arc-minutes for the NOAA GEBCO download. Used only for depth classification of confirmed marine points -- does not affect land/ocean classification. Default 4. |
+| verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
+| habitat_scheme | no | NULL | Optional. A habitat_prompt object or habitat scheme dataframe used to resolve habitat names for depth/distance checks. If NULL, checks rely on the habitat_col values directly. |
 
 **Value:** The input 'occurrence_data' dataframe with four additional columns: elevation_m Numeric. GEBCO value at the point: negative values are ocean depth in metres; positive values are approximate land elevation. Diagnostic only - land/ocean classification uses vector polygons, not this value. dist_to_coast_km Numeric. Distance in kilometres to the nearest coastline, rounded to 2 decimal places. spatial_
 
@@ -155,9 +155,9 @@ Classification stage for the records 'TaxaFetch::filter_gbif_quality()' flags as
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| occurrence_data | yes |  | A dataframe, typically the output of 'TaxaFetch::filter_gbif_quality()'. Must contain 'institution_flag' and 'institution_type' (both added by that function when 'flag_institution = TRUE', its default). |
-| kingdom_col | no | "kingdom" | Character. Column holding each record's kingdom. Default '"kingdom"' (GBIF's standard column name). |
-| suspicion_rules | no | NULL | A dataframe with columns 'institution_type', 'kingdom', 'suspicion' ('"high"' or '"low"') used to classify flagged records. 'kingdom = NA' in a rule means "any kingdom for this institution type." A flagged record whose ('institution_type', 'kingdom') combination doesn't match any rule - including every '"Museum"', '"University"', and '"Research_centre"' match by default, since none are listed below - gets '"ambiguous"'. Default rules (a first-pass heuristic, not a settled taxonomy - override freely): institution_type kingdom suspicion Herbarium Plantae high Herbarium Fungi high Herbarium <NA> low Botanic_garden Plantae high Botanic_garden <NA> low Zoo Animalia high Zoo <NA> low '"Museum"'/'"University"'/'"Research_centre"' are deliberately absent from the default rules - real institutions of these types range from pure specimen archives to active field stations sited at the exact habitat they study (e.g. a marine lab on its own shoreline), and 'institution_type' alone cannot tell those apart. That's exactly the case 'review_institution_flags' exists for. |
+| occurrence_data | yes |  | A dataframe, typically the output of TaxaFetch::filter_gbif_quality(). Must contain institution_flag and institution_type (both added by that function when flag_institution = TRUE, its default). |
+| kingdom_col | no | "kingdom" | Character. Column holding each record's kingdom. Default "kingdom" (GBIF's standard column name). |
+| suspicion_rules | no | NULL | A dataframe with columns institution_type, kingdom, suspicion ("high" or "low") used to classify flagged records. kingdom = NA in a rule means "any kingdom for this institution type." A flagged record whose (institution_type, kingdom) combination doesn't match any rule -- including every "Museum", "University", and "Research_centre" match by default, since none are listed below -- gets "ambiguous". Default rules (a first-pass heuristic, not a settled taxonomy -- override freely): institution_type kingdom suspicion Herbarium Plantae high Herbarium Fungi high Herbarium <NA> low Botanic_garden Plantae high Botanic_garden <NA> low Zoo Animalia high Zoo <NA> low "Museum"/"University"/"Research_centre" are deliberately absent from the default rules -- real institutions of these types range from pure specimen archives to active field stations sited at the exact habitat they study (e.g. a marine lab on its own shoreline), and institution_type alone cannot tell those apart. That's exactly the case review_institution_flags exists for. |
 
 **Value:** 'occurrence_data' with one additional column, 'institution_suspicion': '"high"', '"low"', or '"ambiguous"' for a flagged record ('institution_flag = TRUE'); 'NA' for every other record (never checked - mirrors 'flag_habitat_inconsistencies''s convention of never conflating "not evaluated" with a real category).
 
@@ -171,8 +171,8 @@ Parses the raw text returned by any LLM in response to a 'build_habitat_prompt' 
 |---|---|---|---|
 | raw_text | yes |  | Character. Length-1 string containing the LLM response. Markdown code fences, leading/trailing preamble, and postamble text are handled automatically. |
 | taxon_list | yes |  | Character vector. Species submitted in the prompt. Used to detect taxa missing from the response. |
-| habitat_scheme | no | NULL | A 'habitat_prompt' object from 'build_habitat_prompt'. *Always supply this* - its '$habitat_cols' element is used to identify and validate the weight columns, and its '$scheme' drives IUCN vs. custom mode. 'NULL' triggers legacy IUCN mode (deprecated; IUCN output is also now wide-weighted). |
-| extra_covariates | no | NULL | Character vector. Names of any additional binary covariate columns to retain from the parsed output. Default 'NULL' (no extra columns retained). Ignored when no matching columns are found. |
+| habitat_scheme | no | NULL | A habitat_prompt object from build_habitat_prompt. Always supply this -- its $habitat_cols element is used to identify and validate the weight columns, and its $scheme drives IUCN vs. custom mode. NULL triggers legacy IUCN mode (deprecated; IUCN output is also now wide-weighted). |
+| extra_covariates | no | NULL | Character vector. Names of any additional binary covariate columns to retain from the parsed output. Default NULL (no extra columns retained). Ignored when no matching columns are found. |
 
 **Value:** A data.frame with one row per species and the following columns: taxon_name Character. Species name as returned by the LLM. Numeric. One column per habitat in the scheme, named exactly as in 'prompt$habitat_cols'. Values are 0.0-1.0. Other_weight Numeric. Weight assigned to habitats outside the scheme. 0 for specialists that fit the scheme. habitat_best_guess Character. Free-text description of th
 
@@ -184,8 +184,8 @@ Parses the raw CSV text returned by an LLM in response to a 'build_scheme_prompt
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| raw_text | yes |  | Character. Raw LLM response from 'prompt_api' or 'read_llm_response'. |
-| scheme_prompt | no | NULL | A 'scheme_prompt' object from 'build_scheme_prompt'. Used to validate the response against the requested min/max habitat counts. If 'NULL', validation is skipped. |
+| raw_text | yes |  | Character. Raw LLM response from prompt_api or read_llm_response. |
+| scheme_prompt | no | NULL | A scheme_prompt object from build_scheme_prompt. Used to validate the response against the requested min/max habitat counts. If NULL, validation is skipped. |
 
 **Value:** A 'habitat_scheme' data.frame with columns 'l1_name' and 'realm', suitable for passing directly to 'build_habitat_prompt' as 'habitat_scheme'. The 'l2_name' and 'l2_code' columns are set to 'NA' (single-level scheme). Print the result to inspect and verify the suggested categories before proceeding.
 
@@ -197,9 +197,9 @@ Summarizes the habitat assignment produced by TaxaHabitat into a structured 'rep
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| habitat_data | yes |  | Data frame. Output of 'assign_habitat_biological' or the raw habitat weights from 'parse_hierarchical_habitat_response'. Must contain at least one numeric habitat weight column. |
-| taxon_col | no | "scientificName" | Character. Column name containing taxon names. Default '"scientificName"'. verbose: Logical. Print summary messages. Default 'FALSE'. |
-| verbose | no | FALSE |  |
+| habitat_data | yes |  | Data frame. Output of assign_habitat_biological or the raw habitat weights from parse_hierarchical_habitat_response. Must contain at least one numeric habitat weight column. |
+| taxon_col | no | "scientificName" | Character. Column name containing taxon names. Default "scientificName". |
+| verbose | no | FALSE | Logical. Print summary messages. Default FALSE. |
 
 **Value:** A 'report_section' object with: methods Template text describing habitat assignment approach. results Template text summarizing habitat assignments. params Named list of habitat parameters. statistics Named list of summary counts.
 
@@ -211,12 +211,12 @@ Opens a Shiny gadget for reviewing records 'TaxaFetch:: filter_gbif_quality()' f
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| occurrence_data | yes |  | A dataframe, typically the output of 'flag_institution_candidates'. Must contain 'institution_flag', 'institution_suspicion', 'institution_name', 'institution_type', 'institution_dist_m', 'institution_lon', 'institution_lat', and coordinate columns. |
-| lat_col | no | "decimalLatitude" | Character. The record's own coordinate columns (not the institution's). Default '"decimalLatitude"'/ '"decimalLongitude"' (GBIF standard names). |
-| lon_col | no | "decimalLongitude" | Character. The record's own coordinate columns (not the institution's). Default '"decimalLatitude"'/ '"decimalLongitude"' (GBIF standard names). |
-| taxon_col | no | "species" | Character or 'NULL'. Column for the species label shown in tooltips. Default '"species"'. tile: Character. Leaflet tile provider. Default '"Esri.OceanBasemap"'. |
-| tile | no | "Esri.OceanBasemap" |  |
-| point_radius | no | 7 | Numeric. Base circle marker radius in pixels. Occurrence markers are drawn at 'point_radius * 0.75'; institution reference markers at 'point_radius * 0.5' (smaller and a distinct blue, so they provide spatial context without obscuring nearby occurrence points). Default '7'. |
+| occurrence_data | yes |  | A dataframe, typically the output of flag_institution_candidates. Must contain institution_flag, institution_suspicion, institution_name, institution_type, institution_dist_m, institution_lon, institution_lat, and coordinate columns. |
+| lat_col | no | "decimalLatitude" | Character. The record's own coordinate columns (not the institution's). Default "decimalLatitude"/ "decimalLongitude" (GBIF standard names). |
+| lon_col | no | "decimalLongitude" | Character. The record's own coordinate columns (not the institution's). Default "decimalLatitude"/ "decimalLongitude" (GBIF standard names). |
+| taxon_col | no | "species" | Character or NULL. Column for the species label shown in tooltips. Default "species". |
+| tile | no | "Esri.OceanBasemap" | Character. Leaflet tile provider. Default "Esri.OceanBasemap". |
+| point_radius | no | 7 | Numeric. Base circle marker radius in pixels. Occurrence markers are drawn at point_radius * 0.75; institution reference markers at point_radius * 0.5 (smaller and a distinct blue, so they provide spatial context without obscuring nearby occurrence points). Default 7. |
 
 **Value:** 'occurrence_data' with one additional column, 'institution_decision': '"keep"' or '"remove"' for every record that had 'institution_flag = TRUE'; 'NA' for every other record (never shown to the reviewer, never touched). Returns 'NULL' if the user clicks Cancel.
 
@@ -228,15 +228,15 @@ Opens a Shiny gadget for reviewing the 'spatial_flag' column added by 'flag_habi
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| occurrence_data | yes |  | A dataframe output of 'flag_habitat_inconsistencies'. Must contain 'spatial_flag', 'spatial_flag_reason', 'point_id', and coordinate columns. |
-| habitat_col | no | "main_habitat" | Character. Habitat column for point colouring. Default '"main_habitat"'. lat_col: Character. Latitude column. Default '"decimalLatitude"'. lon_col: Character. Longitude column. Default '"decimalLongitude"'. |
-| lat_col | no | "decimalLatitude" |  |
-| lon_col | no | "decimalLongitude" |  |
-| taxon_col | no | "taxon_name" | Character or 'NULL'. Taxon column for the Point Info species display. Default '"taxon_name"'. colors: Named character vector mapping habitat labels to colours. 'NULL' uses the standard ecological palette. tile: Character. Leaflet tile provider. Default '"Esri.OceanBasemap"'. |
-| colors | no | NULL |  |
-| tile | no | "Esri.OceanBasemap" |  |
-| point_radius | no | 6 | Numeric. Circle marker radius in pixels. Default '6'. viewer: Shiny viewer function passed through to 'runGadget'. Default 'shiny::paneViewer(minHeight = 450)' (RStudio's embedded Viewer pane). Some RStudio configurations have been observed to silently swallow leaflet-map click events inside the Viewer pane; pass 'shiny::browserViewer()' to force the gadget into a real browser tab as a workaround/diagnostic if map clicks appear unresponsive. |
-| viewer | no | shiny::paneViewer(minHeight = 450) |  |
+| occurrence_data | yes |  | A dataframe output of flag_habitat_inconsistencies. Must contain spatial_flag, spatial_flag_reason, point_id, and coordinate columns. |
+| habitat_col | no | "main_habitat" | Character. Habitat column for point colouring. Default "main_habitat". |
+| lat_col | no | "decimalLatitude" | Character. Latitude column. Default "decimalLatitude". |
+| lon_col | no | "decimalLongitude" | Character. Longitude column. Default "decimalLongitude". |
+| taxon_col | no | "taxon_name" | Character or NULL. Taxon column for the Point Info species display. Default "taxon_name". |
+| colors | no | NULL | Named character vector mapping habitat labels to colours. NULL uses the standard ecological palette. |
+| tile | no | "Esri.OceanBasemap" | Character. Leaflet tile provider. Default "Esri.OceanBasemap". |
+| point_radius | no | 6 | Numeric. Circle marker radius in pixels. Default 6. |
+| viewer | no | shiny::paneViewer(minHeight = 450) | Shiny viewer function passed through to runGadget. Default shiny::paneViewer(minHeight = 450) (RStudio's embedded Viewer pane). Some RStudio configurations have been observed to silently swallow leaflet-map click events inside the Viewer pane; pass shiny::browserViewer() to force the gadget into a real browser tab as a workaround/diagnostic if map clicks appear unresponsive. |
 
 **Value:** The input 'occurrence_data' dataframe with 'spatial_flag', 'spatial_flag_reason', and 'main_habitat' updated where changed. Returns 'NULL' if the user clicks Cancel. Filter to keep confirmed records: reviewed <- review_spatial_flags(occurrences_flagged) occurrences_clean <- dplyr::filter(reviewed, spatial_flag == "likely")
 
@@ -248,12 +248,12 @@ Extracts one row per 'point_id' from 'review_spatial_flags()''s output - the rev
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| reviewed | yes |  | Data frame returned by 'review_spatial_flags' (must carry 'point_id', 'spatial_flag', 'main_habitat'). path: Character. The '.rds' decisions file, one per site. before: Optional data frame: the table the gadget was opened on ('flag_habitat_inconsistencies()''s output). When supplied, a point's habitat is recorded as a reviewer REASSIGNMENT only where it differs from 'before'; otherwise the habitat is treated as the automatic assignment of the day and is NOT frozen for later runs. *Without 'before', this function cannot tell an automatic habitat from a reviewer reassignment at all*: every non-'NA' 'main_habitat' in 'reviewed' is recorded as a reassignment (the conservative reading) and will be re-applied VERBATIM by 'apply_spatial_review_decisions' on every later run - freezing that point's habitat at whatever the automatic classifier happened to say the day it was reviewed, even if the classifier's own logic later changes for the better. Pass 'before' whenever the pre-review table is available to avoid this. |
-| path | yes |  |  |
-| before | no | NULL |  |
-| point_id_col | no | "point_id" | Column names. Defaults match 'review_spatial_flags()''s output. |
-| flag_col | no | "spatial_flag" | Column names. Defaults match 'review_spatial_flags()''s output. |
-| habitat_col | no | "main_habitat" | Column names. Defaults match 'review_spatial_flags()''s output. |
+| reviewed | yes |  | Data frame returned by review_spatial_flags (must carry point_id, spatial_flag, main_habitat). |
+| path | yes |  | Character. The .rds decisions file, one per site. |
+| before | no | NULL | Optional data frame: the table the gadget was opened on (flag_habitat_inconsistencies()'s output). When supplied, a point's habitat is recorded as a reviewer REASSIGNMENT only where it differs from before; otherwise the habitat is treated as the automatic assignment of the day and is NOT frozen for later runs. Without before, this function cannot tell an automatic habitat from a reviewer reassignment at all: every non-NA main_habitat in reviewed is recorded as a reassignment (the conservative reading) and will be re-applied VERBATIM by apply_spatial_review_decisions on every later run -- freezing that point's habitat at whatever the automatic classifier happened to say the day it was reviewed, even if the classifier's own logic later changes for the better. Pass before whenever the pre-review table is available to avoid this. |
+| point_id_col | no | "point_id" | Column names. Defaults match review_spatial_flags()'s output. |
+| flag_col | no | "spatial_flag" | Column names. Defaults match review_spatial_flags()'s output. |
+| habitat_col | no | "main_habitat" | Column names. Defaults match review_spatial_flags()'s output. |
 
 **Value:** Invisibly, the merged decisions table ('point_id', 'spatial_flag', 'main_habitat', 'habitat_reassigned', 'decided_at').
 
@@ -265,9 +265,9 @@ Lists, and optionally deletes, the per-taxon files written by 'build_habitat_loo
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| cache_dir | no | tools::R_user_dir("TaxaHabitat", "cache") | Character. The directory passed to 'build_habitat_lookup()''s 'cache_dir'. Defaults to 'tools::R_user_dir("TaxaHabitat", "cache")', matching the sibling packages; workflows that pass a project-local directory should pass the same one here. |
-| older_than_days | no | NULL | Optional numeric. Delete only entries older than this many days. 'NULL' (default) considers every entry. dry_run: Logical. 'TRUE' reports what would be deleted without deleting it. |
-| dry_run | no | FALSE |  |
+| cache_dir | no | tools::R_user_dir("TaxaHabitat", "cache") | Character. The directory passed to build_habitat_lookup()'s cache_dir. Defaults to tools::R_user_dir("TaxaHabitat", "cache"), matching the sibling packages; workflows that pass a project-local directory should pass the same one here. |
+| older_than_days | no | NULL | Optional numeric. Delete only entries older than this many days. NULL (default) considers every entry. |
+| dry_run | no | FALSE | Logical. TRUE reports what would be deleted without deleting it. |
 
 **Value:** Invisibly, the inventory data frame ('TaxaTools::list_cache_files()' output) of the files considered.
 
