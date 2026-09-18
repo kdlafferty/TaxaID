@@ -162,24 +162,34 @@ test_that(".get_path_context() returns snippets and docs", {
   expect_true("TaxaAssign" %in% ctx$packages)
 })
 
-test_that(".get_path_context() param_docs are populated from the metadata 'inputs' key", {
+test_that(".get_path_context() param_docs are populated from the registry", {
   # 2026-09-13: .extract_param_docs() read doc$params / doc$parameters, neither of
-  # which any inst/metadata/*.json uses (the key is "inputs"), so every function
-  # rendered as "(no params)" while phase_parameterize.md told the model that an
-  # unlisted parameter does not exist.
+  # which the old per-package metadata JSON files used (the key was "inputs"), so
+  # every function rendered as "(no params)" while phase_parameterize.md told the
+  # model that an unlisted parameter does not exist. 2026-09-18: those hand-kept
+  # JSON files were deleted and replaced by the introspected registry (workflow_registry());
+  # this test now guards the registry-reading path instead.
   .graph_env$graph <- NULL
   ctx <- TaxaWizard:::.get_path_context(c("match_to_consensus_score"))
   docs <- ctx$param_docs
   expect_true(grepl("score_consensus", docs, fixed = TRUE))
   expect_true(grepl("- match_df:", docs, fixed = TRUE))
   expect_true(grepl("(REQUIRED)", docs, fixed = TRUE))
-  # Every function that HAS a metadata entry must list at least one parameter.
-  meta <- TaxaWizard:::.load_metadata()
-  documented <- unlist(lapply(meta, function(m) vapply(m$functions, function(f) f$name, "")))
+  # Every exported function with at least one formal argument must list at
+  # least one parameter (an export with genuinely zero formals is exempt).
+  reg <- TaxaWizard::workflow_registry()
+  has_params <- unlist(lapply(reg, function(pkg) {
+    vapply(pkg$functions, function(f) length(f$params) > 0L, logical(1))
+  }))
+  fn_names_with_params <- unlist(lapply(reg, function(pkg) {
+    vapply(pkg$functions, function(f) f$name, "")
+  }))[has_params]
   blocks <- strsplit(docs, "\n## ")[[1]]
   for (b in blocks[-1]) {
     fn <- sub("^[^:]*::", "", strsplit(b, "\n")[[1]][1])
-    if (fn %in% documented) expect_false(grepl("(no params)", b, fixed = TRUE), info = fn)
+    if (fn %in% fn_names_with_params) {
+      expect_false(grepl("(no params)", b, fixed = TRUE), info = fn)
+    }
   }
 })
 
