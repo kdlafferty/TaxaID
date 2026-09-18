@@ -92,30 +92,21 @@ High-level wrappers (`run_llm_pipeline()`, `run_bayesian_pipeline()`) should be 
 
 ## CRITICAL: Parameter and Package Validation
 
-Before returning any DAG, mentally verify EACH function call against the FUNCTION REGISTRY:
+Before returning any DAG, mentally verify EACH function call against the FUNCTION REGISTRY.
 
-1. **Parameter names**: Only use parameter names that appear in the registry for that function. If a parameter name is not listed, it does NOT exist -- passing it will cause an "unused argument" error. Common mistakes to avoid:
-   - `create_taxon_names()` takes `df` and `rank_system`, NOT `rank_columns` or `rank_order`
-   - `review_assignments()` takes `df`, `taxon_col`, `taxon_rank_col`, `context`, `target_group`, `marker`, `llm_fn`, `taxa_per_call`, `pause_seconds`, `verbose`. It does NOT have `rank_col`, `event_col`, `score_col`, or `geographic_hint` params. Geographic info goes INSIDE the `context` object.
-   - `build_context()` takes `taxon_names`, `geographic_hint`, `date`, `llm_fn`, `habitat_scheme` -- NOT `marker`
-   - `rename_cols()` takes `df`, `col_map`, `strict` -- NOT `drop_unmatched` or `data`
+**The FUNCTION REGISTRY below is generated from the installed packages at run time and is the ONLY authority on function names, packages, and parameter names.** It is not a curated summary -- it is read directly from each package's real function signatures, so it cannot go stale the way hand-typed documentation can. Never rely on prior knowledge of a TaxaID function's parameters; always check the registry entry for the exact function you are about to call.
 
-2. **Package attribution**: Check which package each function belongs to:
-   - `build_context()` is in TaxaAssign, NOT TaxaFlag
-   - `review_assignments()` is in TaxaFlag
-   - `rename_cols()` and `create_taxon_names()` are in TaxaTools
-   - `score_consensus()` and `posterior_consensus()` are in TaxaAssign
+1. **Parameter names**: Only use parameter names that appear in the registry entry for that specific function. If a parameter name is not listed there, it does NOT exist -- passing it will cause an "unused argument" error. This is the single most common source of generated-script errors.
 
-3. **Parameter TYPES**: Pay attention to types in the registry:
-   - `habitat_scheme` is a CHARACTER STRING ("IUCN_L1", "IUCN_L2", or NULL). Do NOT try to load it as a data frame or object.
-   - `context` for `review_assignments()` is the output of `build_context()` -- pass the result object directly.
-   - `llm_fn` is a FUNCTION reference like `TaxaTools::call_api`, not a string. Valid options: `TaxaTools::call_api` (recommended — auto-selects provider), `TaxaTools::call_anthropic_api`, `TaxaTools::call_gemini_api`, `TaxaTools::call_openai_api`, `TaxaTools::call_azure_api`, `TaxaTools::call_ollama_api`. Do NOT invent other names.
+2. **Package attribution**: Call every function as `Package::function_name()`, using the package that the registry lists that function under. Never guess or assume a function lives in the package that seems most natural -- confirm it against the registry.
 
-4. **If a function doesn't do what you need**: Use base R instead. For example, to rename a column, use `names(df)[names(df) == "old"] <- "new"` rather than inventing parameters for `rename_cols()`.
+3. **Argument values**: Match each argument's type and shape to what its registry description says. Arguments named `llm_fn` take a function such as `TaxaTools::call_api` (a function reference, never a string).
+
+4. **If a function doesn't do what you need**: Use base R instead. For example, to rename a column, use `names(df)[names(df) == "old"] <- "new"` rather than inventing parameters for a rename function.
 
 5. **Keep steps atomic**: Each step should do ONE thing. Do not collapse the entire workflow into a single monolithic step -- that defeats checkpoint/resume. If a step fails, only that step needs fixing.
 
-6. **Do NOT create steps to load built-in data objects**: There is no need to load habitat schemes, rank systems, or other package-internal data in a separate step. Just pass the string value directly to the function that needs it (e.g., `habitat_scheme = "IUCN_L1"` or `habitat_scheme = NULL`).
+6. **Do NOT create steps to load built-in data objects**: There is no need to load habitat schemes, rank systems, or other package-internal data in a separate step. Just pass the value directly to the function that needs it.
 
 ## Error Handling
 

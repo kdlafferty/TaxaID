@@ -104,17 +104,18 @@ workflow_app("my_analysis.R")
 
 | Function            | Purpose                                            |
 |---------------------|----------------------------------------------------|
-| `workflow_create()` | Launch interactive interview (main entry point)    |
-| `workflow_fix()`    | Resume after script error with diagnostic context  |
-| `workflow_app()`    | Convert generated script to Shiny app              |
-| `annotate_script()` | Annotate generic R scripts for Shiny conversion    |
-| `workflow_engine()` | Stateless LLM engine (advanced / programmatic use) |
+| `workflow_create()`  | Launch interactive interview (main entry point)    |
+| `workflow_fix()`     | Resume after script error with diagnostic context  |
+| `workflow_app()`     | Convert generated script to Shiny app              |
+| `annotate_script()`  | Annotate generic R scripts for Shiny conversion    |
+| `workflow_engine()`  | Stateless LLM engine (advanced / programmatic use) |
+| `workflow_registry()`| Introspect installed TaxaID packages' functions (advanced / programmatic use) |
 
 ## Part of TaxaID
 
-TaxaWizard sits outside the TaxaID dependency chain. It reads package
-metadata files and generates scripts that call the other TaxaID packages
--- it does not import them directly.
+TaxaWizard sits outside the TaxaID dependency chain. It introspects the
+other TaxaID packages' installed functions (see `workflow_registry()`)
+and generates scripts that call them -- it does not import them directly.
 
 See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.

@@ -19,9 +19,9 @@
 #'   (\code{"user"} or \code{"assistant"}) and \code{content} (character).
 #'   Assistant content should be the full JSON response string (not just
 #'   the message text) so phase detection works correctly.
-#' @param metadata Named list of package metadata from
-#'   \code{.load_metadata()}. When \code{NULL} (default), loads all
-#'   available TaxaID package metadata automatically.
+#' @param registry Named list from \code{\link{workflow_registry}}. When
+#'   \code{NULL} (default), introspects all available TaxaID packages
+#'   automatically (results are cached -- see \code{\link{workflow_registry}}).
 #' @param model Character. LLM model ID. Default \code{"claude-sonnet-4-6"}.
 #' @param api_key Character or NULL. Anthropic API key. Ignored when
 #'   \code{llm_fn} is supplied.
@@ -30,6 +30,7 @@
 #'   for the required function signature.
 #' @param system_prompt Character or NULL. Custom system prompt override.
 #'   When \code{NULL} (default), builds phase-specific prompt automatically.
+#' @param metadata Deprecated. Use \code{registry} instead.
 #'
 #' @return A list with components:
 #' \describe{
@@ -59,17 +60,37 @@
 #' cat(result$message)
 #' }
 workflow_engine <- function(history,
-                            metadata = NULL,
+                            registry = NULL,
                             model = "claude-sonnet-4-6",
                             api_key = NULL,
                             llm_fn = NULL,
-                            system_prompt = NULL) {
+                            system_prompt = NULL,
+                            metadata = NULL) {
+  # Deprecation path: `metadata` was the pre-2026-09-18 argument name (the
+  # hand-maintained per-package JSON metadata registry). Anything passed
+  # there (named OR the old 2nd positional slot, which is structurally
+  # identical) is honored as `registry` after a warning.
+  if (!is.null(metadata)) {
+    if (requireNamespace("lifecycle", quietly = TRUE)) {
+      lifecycle::deprecate_warn(
+        "0.1.0", "workflow_engine(metadata = )", "workflow_engine(registry = )"
+      )
+    } else {
+      warning(
+        "`metadata` is deprecated as of TaxaWizard 0.1.0 and will be removed ",
+        "in a future release; use `registry` instead.",
+        call. = FALSE
+      )
+    }
+    if (is.null(registry)) registry <- metadata
+  }
+
   # Wrap the engine body in a tryCatch so that any unexpected
 
   # NULL/NA-in-if errors produce a recoverable response instead of crashing.
   tryCatch(
     .workflow_engine_impl(
-      history, metadata, model, api_key, llm_fn,
+      history, registry, model, api_key, llm_fn,
       system_prompt
     ),
     error = function(e) {
@@ -93,11 +114,11 @@ workflow_engine <- function(history,
 
 #' Internal engine implementation
 #' @noRd
-.workflow_engine_impl <- function(history, metadata, model, api_key, llm_fn,
+.workflow_engine_impl <- function(history, registry, model, api_key, llm_fn,
                                   system_prompt) {
-  # --- Load metadata ---
-  if (is.null(metadata)) {
-    metadata <- .load_metadata()
+  # --- Load the introspected registry ---
+  if (is.null(registry)) {
+    registry <- workflow_registry()
   }
 
   # --- Detect phase and build prompt ---
@@ -107,7 +128,7 @@ workflow_engine <- function(history,
     system_prompt <- .build_phase_prompt(
       phase = phase_info$phase,
       context = phase_info$context,
-      metadata = metadata
+      registry = registry
     )
   }
 
@@ -428,13 +449,13 @@ workflow_engine <- function(history,
 #' Load and Assemble the Legacy System Prompt
 #'
 #' Reads the system prompt template from \code{inst/prompts/system_prompt.md}
-#' and injects the compressed metadata registry. Kept for backward
+#' and injects the compressed function registry. Kept for backward
 #' compatibility; the phase-based engine uses \code{.build_phase_prompt()}.
 #'
-#' @param metadata Named list from \code{.load_metadata()}.
+#' @param registry Named list from \code{workflow_registry()}.
 #' @return Character string: the full system prompt.
 #' @noRd
-.load_system_prompt <- function(metadata, output_dir = ".") {
+.load_system_prompt <- function(registry, output_dir = ".") {
   prompt_path <- system.file("prompts", "system_prompt.md",
     package = "TaxaWizard"
   )
@@ -445,9 +466,9 @@ workflow_engine <- function(history,
   }
 
   template <- paste(readLines(prompt_path, warn = FALSE), collapse = "\n")
-  registry_text <- .compress_metadata(metadata)
+  registry_text <- .compress_registry(registry)
 
-  # Replace placeholder with compressed metadata
+  # Replace placeholder with compressed registry
   prompt <- sub("{{FUNCTION_REGISTRY}}", registry_text, template, fixed = TRUE)
 
   # Inject per-user corrections (learned from previous errors)

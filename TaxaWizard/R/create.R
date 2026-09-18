@@ -135,7 +135,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
 
 #' @noRd
 .create_console <- function(model, api_key, llm_fn, output_dir, trial) {
-  metadata <- .load_metadata()
+  registry <- workflow_registry()
   history <- list()
 
   # Check for saved context from a previous session
@@ -192,7 +192,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
       explicit_prompt <- .build_phase_prompt(
         phase    = "classify",
         context  = list(saved_context_text = .format_context_for_prompt(saved_ctx)),
-        metadata = metadata
+        registry = registry
       )
       saved_ctx <- NULL # only inject on this first turn
     }
@@ -200,7 +200,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
     result <- tryCatch(
       workflow_engine(
         history       = history,
-        metadata      = metadata,
+        registry      = registry,
         model         = model,
         api_key       = api_key,
         llm_fn        = llm_fn,
@@ -307,7 +307,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
         for (f in generated) cat(sprintf("  %s\n", f))
 
         # Save conversation state for workflow_fix()
-        .save_session(history, metadata, model, api_key, llm_fn, output_dir, trial)
+        .save_session(history, registry, model, api_key, llm_fn, output_dir, trial)
         if (is_extension) {
           cat("\nNew steps appended to the existing script.\n")
           cat("Re-source it to run the full pipeline (earlier steps load from cache).\n")
@@ -336,7 +336,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
 #' @noRd
 .create_viewer <- function(model, api_key, llm_fn, output_dir, trial,
                            use_browser = FALSE) {
-  metadata <- .load_metadata()
+  registry <- workflow_registry()
 
   # --- UI ---
   # Layout: fixed title + scrollable chat log + fixed input row.
@@ -482,7 +482,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
       result <- tryCatch(
         workflow_engine(
           history  = hist,
-          metadata = metadata,
+          registry = registry,
           model    = model,
           api_key  = api_key,
           llm_fn   = llm_fn
@@ -530,7 +530,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
         result <- tryCatch(
           workflow_engine(
             history  = hist,
-            metadata = metadata,
+            registry = registry,
             model    = model,
             api_key  = api_key,
             llm_fn   = llm_fn
@@ -574,7 +574,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
         session_script_path <<- attr(generated, "script_path") %||% session_script_path
 
         # Save session for workflow_fix()
-        .save_session(hist, metadata, model, api_key, llm_fn, output_dir, trial)
+        .save_session(hist, registry, model, api_key, llm_fn, output_dir, trial)
 
         file_list <- paste(generated, collapse = "\n  ")
         is_extension <- isTRUE(attr(generated, "appended"))

@@ -324,7 +324,7 @@
 #'
 #' @param edge_ids Character vector of edge IDs defining the selected path.
 #' @param graph Optional graph object from \code{.load_graph()}.
-#' @param metadata Optional metadata from \code{.load_metadata()}.
+#' @param registry Optional registry from \code{workflow_registry()}.
 #'
 #' @return A list with:
 #' \describe{
@@ -336,9 +336,9 @@
 #'     all functions in the path.}
 #' }
 #' @noRd
-.get_path_context <- function(edge_ids, graph = NULL, metadata = NULL) {
+.get_path_context <- function(edge_ids, graph = NULL, registry = NULL) {
   if (is.null(graph)) graph <- .load_graph()
-  if (is.null(metadata)) metadata <- .load_metadata()
+  if (is.null(registry)) registry <- workflow_registry()
 
   edge_index <- stats::setNames(graph$edges, vapply(graph$edges, `[[`, "", "id"))
 
@@ -372,8 +372,8 @@
 
   all_packages <- unique(all_packages)
 
-  # Build parameter docs from metadata for functions in this path
-  param_docs <- .extract_param_docs(all_functions, all_packages, metadata)
+  # Build parameter docs from the registry for functions in this path
+  param_docs <- .extract_param_docs(all_functions, all_packages, registry)
 
   list(
     snippets    = snippets,
@@ -387,76 +387,31 @@
 
 #' Extract Parameter Documentation for Path Functions
 #'
-#' Pulls parameter signatures and descriptions from metadata JSON for
-#' all functions used in a path. Returns a compact text block.
+#' Pulls parameter signatures and descriptions from the introspected
+#' registry (\code{workflow_registry()}) for all functions used in a path,
+#' in first-use order. Thin wrapper around \code{.registry_docs()}, which
+#' does the actual lookup/formatting -- this function's job is only to
+#' flatten \code{functions_by_edge} into a deduplicated, ordered name list.
 #'
 #' @param functions_by_edge Named list of function name vectors.
-#' @param packages Character vector of package names.
-#' @param metadata Named list of package metadata.
+#' @param packages Character vector of package names to restrict the
+#'   registry search to.
+#' @param registry Named list from \code{workflow_registry()}.
 #' @return Character string of formatted parameter docs.
 #' @noRd
-.extract_param_docs <- function(functions_by_edge, packages, metadata) {
-  lines <- character(0)
+.extract_param_docs <- function(functions_by_edge, packages, registry) {
   seen_fns <- character(0)
+  ordered_fns <- character(0)
 
   for (eid in names(functions_by_edge)) {
-    fn_names <- functions_by_edge[[eid]]
-    for (fn_name in fn_names) {
+    for (fn_name in functions_by_edge[[eid]]) {
       if (fn_name %in% seen_fns) next
       seen_fns <- c(seen_fns, fn_name)
-
-      # Search across relevant packages
-      doc <- NULL
-      for (pkg in packages) {
-        pkg_meta <- metadata[[pkg]]
-        if (is.null(pkg_meta)) next
-        fns <- pkg_meta$functions
-        if (is.null(fns)) next
-        # Find matching function
-        for (fn_def in fns) {
-          if (identical(fn_def$name, fn_name)) {
-            doc <- fn_def
-            break
-          }
-        }
-        if (!is.null(doc)) break
-      }
-
-      if (is.null(doc)) {
-        lines <- c(lines, sprintf("## %s\n(no metadata available)\n", fn_name))
-        next
-      }
-
-      # Format parameter list
-      param_lines <- character(0)
-      # The metadata JSON files store parameters under "inputs" (every file in
-      # inst/metadata/ uses that key and only that key). Until 2026-09-13 this
-      # read `doc$params %||% doc$parameters`, neither of which exists, so every
-      # function rendered as "(no params)" while phase_parameterize.md told the
-      # model "if a parameter is not listed, it does NOT exist".
-      params <- doc$inputs %||% doc$params %||% doc$parameters
-      if (!is.null(params)) {
-        for (p in params) {
-          req <- if (isTRUE(p$required)) " (REQUIRED)" else ""
-          def <- if (!is.null(p$default)) sprintf(" [default: %s]", p$default) else ""
-          desc <- p$description %||% ""
-          param_lines <- c(
-            param_lines,
-            sprintf("  - %s: %s%s%s", p$name, desc, req, def)
-          )
-        }
-      }
-
-      lines <- c(
-        lines,
-        sprintf("## %s::%s", doc$package %||% "?", fn_name),
-        if (length(param_lines) > 0) param_lines else "  (no params)",
-        ""
-      )
+      ordered_fns <- c(ordered_fns, fn_name)
     }
   }
 
-  paste(lines, collapse = "\n")
+  .registry_docs(registry, ordered_fns, packages = packages)
 }
 
 
@@ -479,12 +434,13 @@
 #'       \code{step_description}, \code{error_message}, \code{step_code}}
 #'   }
 #' @param graph Optional graph object.
-#' @param metadata Optional metadata (only needed for parameterize/error_fix).
+#' @param registry Optional registry from \code{workflow_registry()} (only
+#'   needed for parameterize/error_fix).
 #'
 #' @return Character string: the assembled system prompt.
 #' @noRd
 .build_phase_prompt <- function(phase, context = list(), graph = NULL,
-                                metadata = NULL) {
+                                registry = NULL) {
   if (is.null(graph)) graph <- .load_graph()
 
   template_file <- sprintf("phase_%s.md", phase)
@@ -579,8 +535,8 @@
       output_type <- context$output_type
       selected_path <- context$selected_path
 
-      if (is.null(metadata)) metadata <- .load_metadata()
-      path_ctx <- .get_path_context(selected_path, graph, metadata)
+      if (is.null(registry)) registry <- workflow_registry()
+      path_ctx <- .get_path_context(selected_path, graph, registry)
 
       # Format snippets
       snippet_text <- vapply(names(path_ctx$snippets), function(eid) {
@@ -626,7 +582,7 @@
       }
     },
     error_fix = {
-      if (is.null(metadata)) metadata <- .load_metadata()
+      if (is.null(registry)) registry <- workflow_registry()
 
       step_number <- context$step_number %||% "?"
       edge_id <- context$edge_id %||% "unknown"
@@ -643,7 +599,7 @@
       if (!is.null(edge)) {
         fn_list <- list()
         fn_list[[edge_id]] <- unlist(edge$functions)
-        docs <- .extract_param_docs(fn_list, unlist(edge$packages), metadata)
+        docs <- .extract_param_docs(fn_list, unlist(edge$packages), registry)
       } else {
         docs <- "(edge not found in graph)"
       }

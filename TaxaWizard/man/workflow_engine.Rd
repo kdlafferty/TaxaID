@@ -6,11 +6,12 @@
 \usage{
 workflow_engine(
   history,
-  metadata = NULL,
+  registry = NULL,
   model = "claude-sonnet-4-6",
   api_key = NULL,
   llm_fn = NULL,
-  system_prompt = NULL
+  system_prompt = NULL,
+  metadata = NULL
 )
 }
 \arguments{
@@ -19,9 +20,9 @@ workflow_engine(
 Assistant content should be the full JSON response string (not just
 the message text) so phase detection works correctly.}
 
-\item{metadata}{Named list of package metadata from
-\code{.load_metadata()}. When \code{NULL} (default), loads all
-available TaxaID package metadata automatically.}
+\item{registry}{Named list from \code{\link{workflow_registry}}. When
+\code{NULL} (default), introspects all available TaxaID packages
+automatically (results are cached -- see \code{\link{workflow_registry}}).}
 
 \item{model}{Character. LLM model ID. Default \code{"claude-sonnet-4-6"}.}
 
@@ -34,6 +35,8 @@ for the required function signature.}
 
 \item{system_prompt}{Character or NULL. Custom system prompt override.
 When \code{NULL} (default), builds phase-specific prompt automatically.}
+
+\item{metadata}{Deprecated. Use \code{registry} instead.}
 }
 \value{
 A list with components:

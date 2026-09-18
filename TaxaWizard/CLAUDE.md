@@ -1,6 +1,45 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (E1), FULL
+# Last updated: 2026-09-18 (Sonnet 5, work package P1 of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md): inst/metadata/*.json
+# (94 hand-maintained function-signature entries across 8 files) DELETED, along with
+# R/metadata.R and diagnostics/taxawizard_metadata_audit.R. New R/registry.R /
+# workflow_registry() introspects the 8 installed TaxaID packages at runtime
+# (getNamespaceExports()/formals()/tools::Rd_db()) -- 204 exported functions found, ALL
+# with real Rd docs (0 with no title/description/value). Cached under
+# tools::R_user_dir("TaxaWizard","cache")/registry/<pkg>_<version>_<built-digits>.rds,
+# keyed on packageVersion() AND packageDescription()$Built (every package reports 0.1.0,
+# so version alone can't tell a stale build from a fresh one); refresh=TRUE evicts stale
+# files for that package. WHY: the old metadata had already drifted twice (see memory:
+# project-taxawizard-metadata-drift) because nothing forced it to track real signatures;
+# introspection cannot drift by construction. Every .load_metadata() call site rewired to
+# workflow_registry() (create.R x2, engine.R, graph.R x3, cli.R's saved-session field
+# renamed metadata -> registry). workflow_engine(metadata=) renamed to
+# workflow_engine(registry=); metadata still accepted with a deprecation warning
+# (lifecycle::deprecate_warn() if installed, else plain warning() -- lifecycle added to
+# Suggests). inst/prompts/system_prompt.md and phase_parameterize.md: deleted every
+# sentence that hand-enumerated a specific function's parameters or package (the "Common
+# mistakes to avoid" list, "Package attribution" list, habitat_scheme/context/taxon_col/
+# col_map/rank_system/barcode_term/target_backbone_id specifics); kept one teaching
+# example (score_consensus()/build_context() "reference parameter variables, don't
+# hardcode" illustration) and added a test (test-registry.R) confirming its function and
+# parameter names are still real. Both prompts now state the FUNCTION REGISTRY / PARAMETER
+# DOCUMENTATION block is the ONLY authority; llm_fn guidance reduced to the generic form
+# the spec requires. tests/testthat/test-metadata-covers-workflow-functions.R replaced by
+# test-registry.R (registry non-empty per package; every snippet/edge function has a
+# registry entry; .compress_registry() has no line for a non-export; cache round-trip +
+# stale-file eviction; uninstalled-package skip; the phase_parameterize.md teaching-example
+# guard above). VERIFIED: devtools::document() regenerated NAMESPACE (+workflow_registry)
+# and man/; devtools::test() 709/0 (was 644/0 on this same commit before the change -- net
+# +65 assertions, no drop); devtools::check() 0 errors / 0 warnings (NOTEs listed in the
+# session's own report). Compressed registry for all 8 packages: 49.2 KB (<< the ~60 KB
+# acceptance ceiling). `grep -rn "load_metadata|inst/metadata" TaxaWizard/` returns nothing
+# outside this file's own OLDER session notes below (preserved as history, per this file's
+# own convention -- not rewritten) and inside this note's own prose (both expected).
+# R/output.R, inst/graph/workflow_graph.json, and inst/graph/snippets/ were NOT touched
+# (P3 was editing them concurrently in a sibling worktree). Full record in the session's
+# own report to the P0 coordinator.
+# Previous update, 2026-09-13, evening (Sonnet 5): ecosystem review Section L (E1), FULL
 # option -- resolves most gaps listed as NOT fixed below. Three Tier-1 snippets fixed:
 # cached build_habitat_lookup(), species_reference + add_slash_taxon(),
 # review_assignments (cache_dir=). The curve-pricing EVIDENCE BLOCK ported behind
@@ -667,10 +706,12 @@ about their data, goals, and parameters via an LLM-powered chat interface, then
 generates a self-contained .R script, .md methods text, or Shiny application.
 
 Sits outside the TaxaID dependency chain -- depends on all TaxaID packages
-(via metadata), but no TaxaID package depends on it.
+(via the introspected registry, `workflow_registry()`), but no TaxaID
+package depends on it.
 
 **Status: Graph-based engine implemented. 0 errors, 0 warnings, 0 notes on devtools::check().
-Metadata JSONs fully audited. First full code + domain review complete (2026-08-09, see
+Function registry introspected from installed packages at runtime (2026-09-18,
+replaced the old hand-maintained metadata JSONs). First full code + domain review complete (2026-08-09, see
 inst/taxawizard_review.Rmd); first human-authored review response complete (2026-08-11, see
 inst/taxawizard_review_response.md). 721 tests passing.**
 
@@ -727,7 +768,7 @@ Example: `sequences -> consensus` yields 6 paths (score-only, LLM wrapper,
 full Bayesian manual, full Bayesian wrapper, stepwise Bayesian manual/wrapper).
 
 ### Stateless Engine
-`workflow_engine(history, metadata) -> JSON` is the core. Phase detection from
+`workflow_engine(history, registry) -> JSON` is the core. Phase detection from
 history, phase-specific prompt assembly, LLM call, response parsing. No state
 between calls.
 
@@ -788,7 +829,10 @@ A single interview produces one or more outputs:
 
 ### Trial Mode
 Generated scripts can include a trial-mode subset for performance estimation.
-Metadata includes per-function `scaling` and `scaling_note` fields.
+The LLM sets a `scaling` value (`linear | quadratic | api_limited`) per step
+in the generated DAG JSON itself (see `phase_parameterize.md`'s response
+schema); this is not sourced from the function registry, which does not
+carry a scaling field.
 
 ---
 
@@ -799,7 +843,8 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 | Function | Purpose | Source file |
 |---|---|---|
 | `workflow_create()` | Main entry point: interview + script generation (mode = auto/browser/viewer/console) | R/create.R |
-| `workflow_engine()` | Stateless core: history + metadata -> JSON response | R/engine.R |
+| `workflow_engine()` | Stateless core: history + registry -> JSON response | R/engine.R |
+| `workflow_registry()` | Introspect installed TaxaID packages into the function registry (cached) | R/registry.R |
 | `workflow_fix()` | Resume conversation after script error | R/cli.R |
 | `workflow_app()` | Convert any R script to standalone Shiny app (auto/self/llm/none annotation) | R/shiny.R |
 | `annotate_script()` | Guided annotation of generic R scripts for Shiny conversion (self/llm modes) | R/shiny.R |
@@ -817,7 +862,7 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 | `.list_node_types()` | Return input/output node IDs |
 | `.cartesian_plans()` | Cartesian product of sub-path plans for multi-input edges |
 | `.topo_sort_edges()` | Topologically sort edge set for dependency-correct execution order |
-| `.extract_param_docs()` | Pull parameter docs from metadata for path functions |
+| `.extract_param_docs()` | Pull parameter docs from the registry for path functions (delegates to `.registry_docs()`) |
 | `.build_adjacency()` | Forward adjacency list from edges |
 | `.graph_cache()` / `.graph_env` | Mutable cache for loaded graph |
 
@@ -831,15 +876,18 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 | `.looks_like_error()` | Pattern-match error text to trigger error_fix phase |
 | `.load_system_prompt()` | Legacy monolithic prompt builder (kept for backward compat) |
 
-### Internal helpers -- API + metadata
+### Internal helpers -- API + registry
 
 | Function | Purpose | Source file |
 |---|---|---|
 | `.call_llm()` | httr2 wrapper for Anthropic API | R/api.R |
 | `.parse_engine_response()` | Extract + validate JSON from LLM response | R/api.R |
 | `%\|\|%` | Null-coalescing operator | R/api.R |
-| `.load_metadata()` | Load per-package JSON from inst/metadata/ | R/metadata.R |
-| `.compress_metadata()` | Convert metadata to token-efficient prompt text | R/metadata.R |
+| `.build_package_registry()` | Introspect one installed package into its registry entry | R/registry.R |
+| `.rd_alias_map()` / `.rd_sections()` / `.parse_rd_txt()` / `.parse_rd_arguments()` | `tools::Rd_db()` parsing -> title/description/value/per-argument doc text | R/registry.R |
+| `.registry_cache_dir()` | `tools::R_user_dir("TaxaWizard", "cache")/registry` | R/registry.R |
+| `.compress_registry()` | Convert the registry to token-efficient `{{FUNCTION_REGISTRY}}` prompt text | R/registry.R |
+| `.registry_docs()` | Per-function parameter doc block for a set of function names | R/registry.R |
 
 ### Internal helpers -- Output + CLI
 
@@ -864,35 +912,50 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 
 ---
 
-## Metadata Schema
+## Registry Schema
 
-Per-package JSON files in `inst/metadata/`. Each file contains:
+`workflow_registry(packages = NULL, refresh = FALSE)` (R/registry.R) replaced
+`inst/metadata/*.json` on 2026-09-18. DERIVE, DON'T DECLARE: nothing here is
+hand-typed -- every field is introspected from the installed package via
+`getNamespaceExports()`, `formals()`, and `tools::Rd_db()`, so it cannot drift
+out of sync with the real function signatures the way hand-typed JSON could.
+Returns a named list, one element per installed package:
 
-```json
-{
-  "package": "PackageName",
-  "description": "One-line package description",
-  "functions": [
-    {
-      "name": "function_name",
-      "description": "What it does",
-      "inputs": [
-        {"name": "arg", "type": "type_name", "required": true, "default": "value", "description": "..."}
-      ],
-      "output": {"type": "type_name", "description": "..."},
-      "scaling": "linear | quadratic | api_limited",
-      "scaling_note": "Human-readable timing estimate"
-    }
-  ]
-}
+```r
+list(
+  package  = "PackageName",
+  version  = "0.1.0",                       # packageVersion()
+  built    = "R 4.5.2; ...; unix",           # packageDescription()$Built
+  functions = list(                          # one per export, alphabetical
+    list(
+      name        = "function_name",
+      title       = "<Rd \\title>",
+      description = "<Rd \\description first paragraph, <= 600 chars>",
+      params      = list(                     # in formals() order
+        list(name = "arg", required = TRUE, default = NULL, doc = "<Rd \\arguments text>")
+      ),
+      value       = "<Rd \\value text, <= 400 chars, or NULL>"
+    )
+  )
+)
 ```
 
-Type names create the compatibility matrix: a function that outputs `match_df`
-feeds into any function that accepts `match_df` as input.
+No `type` field -- the old metadata's per-parameter `type` (`data.frame`,
+`character`, ...) is gone; a parameter's expected shape now lives only in its
+`doc` prose (the real Rd argument text), which the LLM reads directly rather
+than through a hand-typed type tag.
 
-**CRITICAL**: Parameter names in metadata must exactly match actual function signatures.
-A full audit was performed Session 68 against all 8 packages. If function signatures
-change upstream, metadata must be updated here.
+Cached per package under `tools::R_user_dir("TaxaWizard", "cache")/registry/
+<pkg>_<version>_<built-digits>.rds`, keyed on version AND `Built` (every
+TaxaID package currently reports version 0.1.0, so version alone cannot tell
+a stale build from a fresh one). `refresh = TRUE` forces a rebuild and evicts
+any other cached file for that package.
+
+A package export with no `\alias` in any Rd file still gets a registry entry
+(required/default status is always known from `formals()`); its
+title/description/value/per-argument doc are `NULL`. As of 2026-09-18, every
+export across all 8 TaxaID packages (204 functions) has real Rd documentation
+-- there are currently none of these.
 
 ---
 
@@ -901,11 +964,13 @@ change upstream, metadata must be updated here.
 | Package | Role | In |
 |---|---|---|
 | httr2 | Anthropic API calls | Imports |
-| jsonlite | JSON parse/write for metadata + engine responses | Imports |
+| jsonlite | JSON parse/write for the graph + engine responses | Imports |
 | shiny | Gadget + Shiny chat UI | Suggests |
+| lifecycle | `workflow_engine(metadata = )` deprecation warning (falls back to a plain `warning()` if absent) | Suggests |
 
-No TaxaID packages in Imports or Suggests -- the metadata JSON files are the
-interface, not runtime dependencies.
+No TaxaID packages in Imports or Suggests -- `workflow_registry()` reads them
+via base R (`getNamespaceExports()`, `tools::Rd_db()`) against whatever is
+installed in the library at call time, not as a declared dependency.
 
 ---
 
@@ -942,9 +1007,13 @@ docs for just the failing function. The prompt instructs the LLM to request
 LLM is told to be conservative (only fix confident errors like wrong parameter
 names).
 
-### Compressed metadata registry (legacy, still used in error_fix)
-One flat table of function signatures. Full details injected only for functions
-in the selected path. Keeps token budget manageable.
+### Compressed function registry
+`.compress_registry()` renders one flat table of real call signatures (from
+`formals()`, no per-parameter type column) for the legacy monolithic prompt
+(`.load_system_prompt()`, kept for backward compatibility). The active
+phase-based engine instead injects full per-function docs via
+`.registry_docs()`, but only for functions in the selected path -- keeps
+token budget manageable either way.
 
 ### LLM model for the engine
 Default: `claude-sonnet-4-6`. Configurable via `model` param. Sonnet is faster
