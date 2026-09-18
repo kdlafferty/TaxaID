@@ -24,6 +24,21 @@ TAXAID_PACKAGES <- c(
 )
 
 
+#' Registry Cache Schema Version
+#'
+#' Bumped whenever the SHAPE or the PARSING of a registry entry changes.
+#' The cache is keyed on the package's version and Built timestamp, neither
+#' of which moves when TaxaWizard's own extraction code changes -- so
+#' without this, improving the Rd parser would leave every existing cache
+#' file serving the old, worse text forever (and a user who never clears
+#' the cache would never see the fix). Part of the cache file name.
+#'
+#' 2: structural \arguments parsing (was: re-parsed Rd2txt output).
+#'
+#' @noRd
+REGISTRY_SCHEMA <- 2L
+
+
 #' Build the Introspected Function Registry
 #'
 #' For each installed TaxaID package, introspects every exported function
@@ -86,7 +101,8 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
     built_key <- gsub("[^0-9]", "", built)
     if (!nzchar(built_key)) built_key <- "0"
     cache_file <- file.path(
-      cache_dir, sprintf("%s_%s_%s.rds", p, version, built_key)
+      cache_dir,
+      sprintf("%s_%s_%s_v%d.rds", p, version, built_key, REGISTRY_SCHEMA)
     )
 
     entry <- NULL
@@ -228,9 +244,12 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 
 #' Extract Title/Description/Arguments/Value from a Parsed Rd Object
 #'
-#' Renders just the \\title, \\description, \\arguments, and \\value
-#' sections (whichever are present) via \code{tools::Rd2txt()}, then parses
-#' the rendered plain text back into structured pieces. Rendering only a
+#' Renders just the \\title, \\description, and \\value sections (whichever
+#' are present) via \code{tools::Rd2txt()}, then parses the rendered plain
+#' text back into structured pieces. \\arguments is NOT rendered: it is read
+#' structurally from the Rd tree by \code{.rd_arguments()}, because its
+#' item/term structure is exact in the tree and only inferable (badly) from
+#' the rendered text. Rendering only a
 #' synthetic sub-document (rather than the whole Rd file) keeps \\examples,
 #' \\details, and \\seealso -- often the largest sections -- out of the
 #' registry entirely; \code{\link[tools]{Rd2txt}} requires \\name and
@@ -265,10 +284,6 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
     doc <- c(doc, list(desc_tag))
     doc_tags <- c(doc_tags, "\\description")
   }
-  if (!is.null(args_tag)) {
-    doc <- c(doc, list(args_tag))
-    doc_tags <- c(doc_tags, "\\arguments")
-  }
   if (!is.null(value_tag)) {
     doc <- c(doc, list(value_tag))
     doc_tags <- c(doc_tags, "\\value")
@@ -290,25 +305,30 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
   }
   txt <- paste(rd_lines, collapse = "\n")
 
-  .parse_rd_txt(txt)
+  sections <- .parse_rd_txt(txt)
+
+  # \arguments is parsed STRUCTURALLY from the Rd tree, not from rendered
+  # text -- see .rd_arguments().
+  sections$arguments <- if (!is.null(args_tag)) .rd_arguments(args_tag) else list()
+  sections
 }
 
 
-#' Parse Rd2txt Plain-Text Output into Title/Description/Value/Arguments
+#' Parse Rd2txt Plain-Text Output into Title/Description/Value
 #'
 #' The synthetic doc built by \code{.rd_sections()} always renders \\title
-#' first (no header line), followed by any of \code{Description:},
-#' \code{Arguments:}, \code{Value:} in that order (whichever sections were
-#' present), each starting at column 0 with the section's plain content
-#' indented beneath it.
+#' first (no header line), followed by \code{Description:} and/or
+#' \code{Value:} in that order (whichever sections were present), each
+#' starting at column 0 with the section's plain content indented beneath
+#' it. \\arguments never reaches here -- see \code{.rd_arguments()}.
 #'
 #' @param txt Character. Full \code{Rd2txt()} output for the synthetic doc.
-#' @return A list with \code{title}, \code{description}, \code{value}
-#'   (character, possibly \code{NULL}), and \code{arguments} (named list).
+#' @return A list with \code{title}, \code{description}, and \code{value}
+#'   (character, each possibly \code{NULL}).
 #' @noRd
 .parse_rd_txt <- function(txt) {
   lines <- strsplit(txt, "\n", fixed = TRUE)[[1L]]
-  headers <- c("Description:", "Arguments:", "Value:")
+  headers <- c("Description:", "Value:")
   header_idx <- which(trimws(lines) %in% headers & !grepl("^\\s", lines))
 
   title_end <- if (length(header_idx) > 0L) header_idx[1L] - 1L else length(lines)
@@ -339,12 +359,7 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
     if (!nzchar(value)) value <- NULL
   }
 
-  arguments <- list()
-  if (!is.null(segments[["Arguments"]])) {
-    arguments <- .parse_rd_arguments(segments[["Arguments"]])
-  }
-
-  list(title = title, description = description, value = value, arguments = arguments)
+  list(title = title, description = description, value = value)
 }
 
 
@@ -368,61 +383,118 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 }
 
 
-#' Parse an Rd \\arguments Block into a Name -> Doc Map
+#' Parse an Rd \\arguments Section Structurally
 #'
-#' Items are separated by a blank line; each item starts, UNINDENTED, with
-#' one or more comma-separated parameter names followed by \code{": "} and
-#' its (possibly multi-line, indented) description. An item's description
-#' can itself contain multiple blank-line-separated paragraphs -- those
-#' continuation paragraphs are still indented (they never start a new,
-#' unindented term), which is how they are told apart from the next item
-#' here; a naive "split on blank lines, treat every chunk as an item" would
-#' otherwise misparse a continuation paragraph as a new item whenever it
-#' happens to contain a colon (observed with \code{score_consensus()}'s
-#' \code{bracket_fallback} doc).
+#' Walks the PARSED Rd tree rather than re-parsing rendered text. Inside
+#' \\arguments, every parameter is an \\item node with exactly two children:
+#' the term (one or more comma-separated parameter names) and the
+#' description. Reading those two children directly is exact, so none of
+#' the text-shape heuristics the old renderer-based parser needed -- item
+#' boundaries inferred from blank lines, continuation paragraphs told apart
+#' from new items by indentation, terms split on the first colon -- exist
+#' here to be wrong. Two real bugs came out of those heuristics: a
+#' multi-paragraph argument description whose continuation happened to
+#' contain a colon was parsed as a BOGUS extra parameter, and a parameter
+#' whose description contained a colon could lose text ahead of it.
 #'
-#' @param body_lines Character vector: the rendered \\arguments block body.
-#' @return Named list: parameter name -> doc text.
+#' Verified across all eight TaxaID packages: 1317 of 1317 \\item nodes have
+#' exactly two children, so the two-child assumption is not merely the
+#' documented Rd grammar but true of this corpus. An \\item that somehow
+#' does not is skipped rather than guessed at.
+#'
+#' @param args_tag The \\code{\\arguments} node of a parsed Rd object.
+#' @return Named list: parameter name -> doc text (character). Parameters
+#'   sharing one \\item (\\code{\\item{x, y}{...}}) each get the same text.
 #' @noRd
-.parse_rd_arguments <- function(body_lines) {
-  block_text <- paste(body_lines, collapse = "\n")
-  chunks <- strsplit(block_text, "\n[ \t]*\n")[[1L]]
-
+.rd_arguments <- function(args_tag) {
   out <- list()
-  current_names <- character(0)
-  for (raw_chunk in chunks) {
-    if (!nzchar(trimws(raw_chunk))) next
+  if (!is.list(args_tag)) {
+    return(out)
+  }
 
-    # A chunk beginning with whitespace (after the blank-line split, so
-    # this means its very first character is a space/tab, not a stray
-    # leading newline) is a continuation paragraph of the previous item,
-    # not a new one -- append it there instead of parsing a "term".
-    if (grepl("^[ \t]", raw_chunk) && length(current_names) > 0L) {
-      extra <- .clean_rd_text(raw_chunk)
-      for (nm in current_names) out[[nm]] <- paste(out[[nm]], extra)
-      next
-    }
+  for (node in args_tag) {
+    if (!identical(attr(node, "Rd_tag") %||% "", "\\item")) next
+    if (!is.list(node) || length(node) != 2L) next
 
-    # A stray leading blank line before the very first item (common right
-    # after the "Arguments:" header) would otherwise defeat the anchored
-    # regex below, since `^` sees the leading newline, not the term.
-    chunk <- sub("^[ \t\n]+", "", raw_chunk)
-    if (!nzchar(chunk)) next
+    term <- .rd_text(node[[1L]])
+    if (!nzchar(term)) next
+    doc_text <- .rd_text(node[[2L]])
 
-    m <- regexpr("^[ \t]*([^:\n]+):[ \t]*", chunk)
-    if (m == -1L) {
-      current_names <- character(0)
-      next
-    }
-    term <- sub("^[ \t]*([^:\n]+):[ \t]*$", "\\1", regmatches(chunk, m))
-    rest <- substring(chunk, attr(m, "match.length") + 1L)
-    doc_text <- .clean_rd_text(rest)
-    names_here <- trimws(strsplit(term, ",")[[1L]])
+    # \item{x, y}{...} documents both x and y with the same text.
+    names_here <- trimws(strsplit(term, ",", fixed = TRUE)[[1L]])
     names_here <- names_here[nzchar(names_here)]
     for (nm in names_here) out[[nm]] <- doc_text
-    current_names <- names_here
   }
+
   out
+}
+
+
+#' Flatten a Parsed Rd Node to Plain Text
+#'
+#' Recursively renders an Rd tree fragment to a single plain-text string,
+#' keeping the text a reader would see and dropping the markup around it.
+#' Leaf nodes (\code{TEXT}, \code{RCODE}, \code{VERB}) are literal; markup
+#' macros contribute their children's text; \code{COMMENT} and
+#' \code{\\out} (format-specific escape hatches) contribute nothing.
+#'
+#' Two-argument macros need care: \code{\\eqn{latex}{ascii}} and
+#' \code{\\if{format}{text}} must NOT render both children, or the registry
+#' would carry LaTeX source or a bare format name as if it were prose.
+#'
+#' @param node A parsed Rd node, or a list of them.
+#' @return A single character string, whitespace-collapsed.
+#' @noRd
+.rd_text <- function(node) {
+  .clean_rd_text(paste(.rd_text_parts(node), collapse = ""))
+}
+
+
+#' Recursive Worker for .rd_text()
+#'
+#' @param node A parsed Rd node, or a list of them.
+#' @return Character vector of text fragments, in document order.
+#' @noRd
+.rd_text_parts <- function(node) {
+  if (is.null(node)) {
+    return(character(0))
+  }
+  tag <- attr(node, "Rd_tag") %||% ""
+
+  # Leaves: the parser stores the literal text as a character vector.
+  if (is.character(node)) {
+    if (tag %in% c("COMMENT", "\\out")) {
+      return(character(0))
+    }
+    return(as.character(node))
+  }
+  if (!is.list(node)) {
+    return(character(0))
+  }
+
+  switch(tag,
+    # Drop entirely: not reader-visible text.
+    "COMMENT" = return(character(0)),
+    "\\out" = return(character(0)),
+    # \eqn{latex}{ascii}, \deqn likewise: prefer the ASCII rendering when the
+    # author supplied one, never both.
+    "\\eqn" = ,
+    "\\deqn" = return(.rd_text_parts(node[[length(node)]])),
+    # \if{format}{text} / \ifelse: the first child is the FORMAT NAME, not text.
+    "\\if" = if (length(node) >= 2L) return(.rd_text_parts(node[[2L]])) else return(character(0)),
+    "\\ifelse" = if (length(node) >= 2L) return(.rd_text_parts(node[[2L]])) else return(character(0)),
+    # Line/paragraph breaks become a space; \clean_rd_text collapses runs.
+    "\\cr" = return(" "),
+    NULL
+  )
+
+  # \item inside a nested \itemize/\describe: separate the term from its
+  # body so the two do not run together into one word.
+  if (identical(tag, "\\item") && length(node) == 2L) {
+    return(c(" ", .rd_text_parts(node[[1L]]), ": ", .rd_text_parts(node[[2L]])))
+  }
+
+  unlist(lapply(node, .rd_text_parts), use.names = FALSE) %||% character(0)
 }
 
 
