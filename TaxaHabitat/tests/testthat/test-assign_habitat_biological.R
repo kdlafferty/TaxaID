@@ -828,3 +828,68 @@ test_that("assign_habitat_biological refuses a colliding scheme", {
     "reserved"
   )
 })
+
+# ==============================================================================
+# Sentinel-aware diagnostics (2026-09-19)
+# ==============================================================================
+
+# The message this function prints is the diagnostic a reader uses to decide
+# whether `threshold` is doing anything, and it is how the habitat_breadth
+# type-scan collision was caught. Once the unassigned value became the string
+# "Uncertain", a bare !is.na() count would report every unassigned point as
+# ASSIGNED and "0 site(s) left Uncertain" -- a confident, wrong summary of a
+# result that is itself correct. Assert the counts, not just the sentinel.
+test_that("the assignment count excludes Uncertain points", {
+  w <- data.frame(
+    taxon_name = c("Generalist sp.", "Specialist sp."),
+    Marine = c(0.34, 1.0),
+    Freshwater = c(0.33, 0.0),
+    Estuarine = c(0.33, 0.0),
+    Other_weight = c(0, 0),
+    habitat_best_guess = c("", ""),
+    stringsAsFactors = FALSE
+  )
+  occ <- make_occ(
+    c("P_uncertain", "P_assigned"),
+    c("Generalist sp.", "Specialist sp.")
+  )
+
+  msgs <- character(0)
+  res <- withCallingHandlers(
+    assign_habitat_biological(occ, w, threshold = 0.5),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+
+  # Ground truth from the result itself, not from the message.
+  expect_equal(sum(.is_habitat_unassigned(res$main_habitat)), 1L)
+  expect_equal(res$main_habitat[res$point_id == "P_uncertain"], "Uncertain")
+
+  summary_msg <- grep("site\\(s\\) assigned a habitat", msgs, value = TRUE)
+  expect_length(summary_msg, 1L)
+  expect_match(summary_msg, "1 of 2 site\\(s\\) assigned a habitat", fixed = FALSE)
+  expect_match(summary_msg, "1 site\\(s\\) left 'Uncertain'", fixed = FALSE)
+})
+
+# consensus_habitat() deliberately keeps NA where assign_habitat_biological()
+# uses the sentinel: it is a site-level scalar for TaxaAssign::build_context(),
+# whose synthesis fallback writes the value straight into ctx$main_habitat and
+# on into a prompt and .resolve_site(). A literal "Uncertain" there would
+# resolve a site against an Uncertain stratum. If this test ever fails,
+# build_context()'s fallback must change in the same commit.
+test_that("consensus_habitat() keeps NA, not the Uncertain sentinel", {
+  w <- data.frame(
+    taxon_name = c("A sp.", "B sp.", "C sp."),
+    Marine = c(1, 0, 0),
+    Freshwater = c(0, 1, 0),
+    Estuarine = c(0, 0, 1),
+    Other_weight = c(0, 0, 0),
+    habitat_best_guess = c("", "", ""),
+    stringsAsFactors = FALSE
+  )
+  out <- consensus_habitat(w, threshold = 0.5)
+  expect_true(is.na(out$main_habitat))
+  expect_false(identical(out$main_habitat, .HABITAT_UNCERTAIN))
+})

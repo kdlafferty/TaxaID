@@ -53,7 +53,9 @@ be assigned. Lower values include more marginal habitats; higher values
 restrict assignment to clearly dominant habitats. For transitional areas
 (e.g., estuaries), a lower threshold (0.2) may better capture mixed
 habitats. Default \code{0.3}. Points where no habitat reaches the
-threshold receive \code{main_habitat = NA}. Note: the default is lower
+threshold receive \code{main_habitat = "Uncertain"} -- a named sentinel,
+not \code{NA}; see the \code{main_habitat} entry under Value. Note: the
+default is lower
 than in the single-habitat version because weight is now spread across
 multiple habitats per species; a threshold of 0.5 may be too strict
 for generalist communities.}

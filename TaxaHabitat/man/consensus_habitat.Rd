@@ -35,7 +35,10 @@ Default \code{0.3}.}
 A one-row data frame with columns:
 \describe{
 \item{main_habitat}{Character. The consensus habitat, or \code{NA} if none
-reached \code{threshold}.}
+reached \code{threshold}. \strong{Deliberately \code{NA}, and
+deliberately unlike \code{\link{assign_habitat_biological}}}, which
+returns the sentinel \code{"Uncertain"} for the same condition. See
+Details.}
 \item{ecoregion}{Character. The modal \code{ecoregion_best_guess} value
 across species, or \code{NA} if the column is absent.}
 \item{habitat_best_guess}{Character. Concatenated free-text guesses when
@@ -49,6 +52,31 @@ Summarises per-species habitat weights into a single consensus habitat (and
 optionally ecoregion) for the entire assemblage. Each species contributes
 equally. Useful for inferring site-level habitat context from a list of
 candidate taxon names when occurrence records or spatial data are unavailable.
+}
+\details{
+\strong{Why this returns \code{NA} when
+\code{\link{assign_habitat_biological}} returns \code{"Uncertain"}.}
+The two functions compute the same quantity at different scales, and only
+one of them feeds the occurrence table. \code{assign_habitat_biological()}
+labels \emph{occurrence points}, where \code{NA} was already taken: on the
+prior side \code{NA} in a \code{main_habitat} column means
+\emph{habitat-agnostic, matches any habitat} (the domestic/food wildcard
+tier built by \code{TaxaExpect::generate_domestic_food_priors()} and read by
+\code{TaxaAssign::join_priors()}). A point whose habitat could not be
+determined is not habitat-agnostic, so it needed its own sentinel.
+
+\code{consensus_habitat()} returns a \emph{site-level scalar} consumed by
+\code{TaxaAssign::build_context()}, which never reaches the prior join and
+so never had the collision. Changing it would not fix a bug; it would
+introduce one. \code{build_context()} tests its LLM synthesis result with a
+bare \code{is.na()} and falls back to this function's value when synthesis
+fails, then writes the result into \code{ctx$main_habitat}, which is
+rendered into a prompt and used to resolve a site. Were this function to
+return \code{"Uncertain"}, that fallback would hand the literal string to
+all of it, and a site would be resolved against an "Uncertain" stratum.
+
+So the divergence is load-bearing, not an oversight. Anyone changing it must
+change \code{TaxaAssign::build_context()}'s fallback in the same commit.
 }
 \examples{
 hab_weights <- data.frame(

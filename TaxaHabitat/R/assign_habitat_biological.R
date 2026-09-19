@@ -39,7 +39,9 @@
 #'   restrict assignment to clearly dominant habitats. For transitional areas
 #'   (e.g., estuaries), a lower threshold (0.2) may better capture mixed
 #'   habitats. Default \code{0.3}. Points where no habitat reaches the
-#'   threshold receive \code{main_habitat = NA}. Note: the default is lower
+#'   threshold receive \code{main_habitat = "Uncertain"} -- a named sentinel,
+#'   not \code{NA}; see the \code{main_habitat} entry under Value. Note: the
+#'   default is lower
 #'   than in the single-habitat version because weight is now spread across
 #'   multiple habitats per species; a threshold of 0.5 may be too strict
 #'   for generalist communities.
@@ -447,8 +449,15 @@ assign_habitat_biological <- function(occurrence_data,
   attr(result, "habitat_proportions") <- prop_out
 
   n_sites <- dplyr::n_distinct(occurrence_data[[point_id_col]])
+  # .is_habitat_unassigned(), NOT !is.na(). This function's own sentinel is the
+  # string "Uncertain", which passes !is.na() -- so a bare NA test would count
+  # every unassigned point as ASSIGNED and report "0 site(s) unassigned" while
+  # the result held Uncertain rows. This line is how a reader learns whether
+  # the threshold is doing anything, so a wrong count here is worse than no
+  # count: it is the diagnostic that was trusted to catch the last two bugs in
+  # this function.
   n_assigned <- dplyr::n_distinct(
-    result[[point_id_col]][!is.na(result[["main_habitat"]])]
+    result[[point_id_col]][!.is_habitat_unassigned(result[["main_habitat"]])]
   )
   n_unassigned <- n_sites - n_assigned
   n_other <- dplyr::n_distinct(
@@ -460,10 +469,10 @@ assign_habitat_biological <- function(occurrence_data,
   message(sprintf(
     paste0(
       "assign_habitat_biological: %d of %d site(s) assigned a habitat ",
-      "(threshold = %.2f). %d site(s) received NA. %d site(s) assigned 'Other' ",
+      "(threshold = %.2f). %d site(s) left '%s'. %d site(s) assigned 'Other' ",
       "(scheme may need extending -- check habitat_best_guess column)."
     ),
-    n_assigned, n_sites, threshold, n_unassigned, n_other
+    n_assigned, n_sites, threshold, n_unassigned, .HABITAT_UNCERTAIN, n_other
   ))
 
   result
@@ -600,7 +609,10 @@ assign_habitat_biological <- function(occurrence_data,
 #' @return A one-row data frame with columns:
 #' \describe{
 #'   \item{main_habitat}{Character. The consensus habitat, or \code{NA} if none
-#'     reached \code{threshold}.}
+#'     reached \code{threshold}. \strong{Deliberately \code{NA}, and
+#'     deliberately unlike \code{\link{assign_habitat_biological}}}, which
+#'     returns the sentinel \code{"Uncertain"} for the same condition. See
+#'     Details.}
 #'   \item{ecoregion}{Character. The modal \code{ecoregion_best_guess} value
 #'     across species, or \code{NA} if the column is absent.}
 #'   \item{habitat_best_guess}{Character. Concatenated free-text guesses when
@@ -608,6 +620,31 @@ assign_habitat_biological <- function(occurrence_data,
 #' }
 #' The full habitat proportion vector is attached as
 #' \code{attr(result, "habitat_proportions")}.
+#'
+#' @details
+#' \strong{Why this returns \code{NA} when
+#' \code{\link{assign_habitat_biological}} returns \code{"Uncertain"}.}
+#' The two functions compute the same quantity at different scales, and only
+#' one of them feeds the occurrence table. \code{assign_habitat_biological()}
+#' labels \emph{occurrence points}, where \code{NA} was already taken: on the
+#' prior side \code{NA} in a \code{main_habitat} column means
+#' \emph{habitat-agnostic, matches any habitat} (the domestic/food wildcard
+#' tier built by \code{TaxaExpect::generate_domestic_food_priors()} and read by
+#' \code{TaxaAssign::join_priors()}). A point whose habitat could not be
+#' determined is not habitat-agnostic, so it needed its own sentinel.
+#'
+#' \code{consensus_habitat()} returns a \emph{site-level scalar} consumed by
+#' \code{TaxaAssign::build_context()}, which never reaches the prior join and
+#' so never had the collision. Changing it would not fix a bug; it would
+#' introduce one. \code{build_context()} tests its LLM synthesis result with a
+#' bare \code{is.na()} and falls back to this function's value when synthesis
+#' fails, then writes the result into \code{ctx$main_habitat}, which is
+#' rendered into a prompt and used to resolve a site. Were this function to
+#' return \code{"Uncertain"}, that fallback would hand the literal string to
+#' all of it, and a site would be resolved against an "Uncertain" stratum.
+#'
+#' So the divergence is load-bearing, not an oversight. Anyone changing it must
+#' change \code{TaxaAssign::build_context()}'s fallback in the same commit.
 #'
 #' @seealso \code{\link{assign_habitat_biological}},
 #'   \code{\link{parse_hierarchical_habitat_response}},
@@ -665,6 +702,14 @@ consensus_habitat <- function(habitats_df,
   } else {
     props <- col_sums / total
     best_idx <- which.max(props)
+    # NA here, NOT .HABITAT_UNCERTAIN, and that asymmetry with
+    # assign_habitat_biological() is deliberate -- see @details. This value is a
+    # SITE-LEVEL scalar for TaxaAssign::build_context(), not an occurrence
+    # label, so it never meets the prior-side wildcard meaning of NA that forced
+    # the sentinel there. build_context() falls back to this value when its LLM
+    # synthesis fails and writes it straight into ctx$main_habitat; returning a
+    # literal "Uncertain" would make a site resolve against an Uncertain
+    # stratum. Change this only together with that fallback.
     main_habitat <- if (props[best_idx] >= threshold) {
       habitat_cols[best_idx]
     } else {

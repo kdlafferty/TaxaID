@@ -44,6 +44,27 @@
   equality, so those points stay excluded exactly as before. Verified
   empirically, not reasoned: identical stratum selection on both vocabularies.
 
+  **Follow-up the same day, caught by a peer session reading the diff:** the
+  function's own summary message still counted assigned points with
+  `!is.na(main_habitat)`, so it reported "2 of 2 site(s) assigned a habitat, 0
+  site(s) received NA" on a result that held an `Uncertain` row. The result was
+  right; the diagnostic describing it was wrong. That message is how a reader
+  decides whether `threshold` is doing anything, and it is how the
+  `habitat_breadth` type-scan collision was found -- so a wrong count there is
+  worse than none. Now uses the predicate, with a regression test asserting the
+  counts against the result rather than against the message.
+
+  **`consensus_habitat()` deliberately keeps `NA`.** It is in the same file and
+  computes the same quantity, but at site scale for
+  `TaxaAssign::build_context()`, which never reaches the prior join and so never
+  had the collision. `build_context()` tests its LLM synthesis with a bare
+  `is.na()` and falls back to this value, writing it into `ctx$main_habitat` and
+  on into a prompt and `.resolve_site()`; returning the literal `"Uncertain"`
+  would resolve a site against an Uncertain stratum. The divergence is
+  load-bearing and is now documented in both functions, at the roxygen and at
+  the code site, with a test that fails if someone "finishes the job" without
+  changing that fallback in the same commit.
+
   Production decision files remapped (backed up first; GreatLakes had never had
   a backup): PtConception 31,383 rows, Mugu 127, GreatLakes 472.
 
