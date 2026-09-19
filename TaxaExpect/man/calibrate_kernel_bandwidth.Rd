@@ -14,6 +14,8 @@ calibrate_kernel_bandwidth(
   lambda_latitude_grid = NULL,
   block_size_deg = 0.5,
   min_block_records = 20L,
+  sampling_group_col = NULL,
+  min_group_records = NULL,
   smoothing = 0.5,
   taxon_col = "taxon_name",
   lat_col = "decimalLatitude",
@@ -49,6 +51,21 @@ sweep so the no-factor case competes on equal footing -- a best row with
 
 \item{min_block_records}{Integer, default \code{20L}.}
 
+\item{sampling_group_col}{Optional column naming a detection-process
+grouping (e.g. \code{"sampling_group"}) -- the same column passed to
+\code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}. \code{NULL} (default) scores ONE pooled
+composition, which reproduces the pre-2026-09-19 behaviour exactly.
+\strong{Pass it whenever the estimator will be given it.} See
+\verb{Why pooling the groups fits the wrong lambda}.}
+
+\item{min_group_records}{Minimum records a group must contribute to a block
+before that (block, group) cell is scored. \code{NULL} (default) follows
+\code{min_block_records}, which makes this function's stratified fit agree on
+block eligibility with the other way of fitting per group -- subsetting to
+one group and calling this function on each subset. Lower it to admit
+sparse cells; a thin group's loss curve will flatten when you do. Ignored
+without \code{sampling_group_col}.}
+
 \item{smoothing}{Laplace pseudo-count added to every species when forming
 a predicted composition, so held-out species never score \code{-Inf}
 (default \code{0.5}).}
@@ -62,6 +79,11 @@ mean over blocks),
 \code{weighted_logloss} (record-weighted), \code{blocks_beating_nearest}.}
 \item{best}{The row minimizing \code{weighted_logloss} among kernel rows.}
 \item{n_blocks}{Number of scored blocks.}
+\item{by_group}{\code{NULL} without \code{sampling_group_col}, or with a single
+group. Otherwise one row per group: \code{sampling_group}, \code{n_records},
+\code{n_blocks_scored}, that group's own optimal \code{lambda_km},
+\code{lambda_covariate}, \code{lambda_latitude}, \code{m}, and its
+\code{weighted_logloss}. Read it before trusting \code{best}.}
 }
 }
 \description{
@@ -81,6 +103,41 @@ The spatial blocks are a cross-validation device only -- they impose no
 structure on the estimator being calibrated (this is the one place a grid
 survives the kernel redesign, and the only job it keeps).
 }
+\section{Why pooling the groups fits the wrong lambda}{
+
+Composition is a share WITHIN a detection process. With one pooled
+composition, a block's log-loss is dominated by whichever group contributed
+the most records, so lambda is fitted to that group and then handed to
+every group by \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}. \strong{It does not announce itself:
+the fit succeeds and returns a plausible number}, just the wrong one for
+every group but the dominant one.
+
+With \code{sampling_group_col} set, each (block, group) cell is scored against
+that group's own composition, over that group's own species universe, and
+the cells are combined weighting each group by the target records it
+contributed. A record counts once, so a group's influence is its share of
+the data -- not one-group-one-vote, which would let a 20-record group
+outvote a 200,000-record one.
+
+Two details that are easy to get wrong and are handled here. The species
+universe is per group: smoothing a group's composition over the FULL
+species set would put \code{smoothing} mass on every species that group can
+never contain, shrinking its real probabilities by the ratio of the two set
+sizes -- an invisible, group-size-dependent penalty. And a (block, group)
+cell is skipped when the group has fewer than 2 target records there or no
+held-out records at all, since a 1-record target is a degenerate
+composition; the count of skipped cells is reported.
+
+\strong{One lambda is still one lambda.} \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} takes a
+scalar \code{lambda_km}, so this function cannot give each group its own. What it
+can do is say whether that is defensible: \verb{$by_group} reports each group's
+own optimum, and a warning fires when they differ by 2x or more. On a
+fixture with 4 km patches in one group and 55 km patches in another, the
+groups chose 5 km and 25 km and the record-weighted compromise was 5 km --
+correct for the dominant group, 5x too narrow for the other. Treat that
+warning as a prompt to fit the groups separately, not as noise.
+}
+
 \seealso{
 \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}
 }
