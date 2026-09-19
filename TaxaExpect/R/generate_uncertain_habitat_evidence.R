@@ -12,10 +12,31 @@ utils::globalVariables(c("taxon_name"))
 #' \strong{The gap this closes.} \code{\link{estimate_kernel_priors}} keeps
 #' only records whose point carries \code{site_habitat}
 #' (\code{keep <- !is.na(hab) & hab == site_habitat}). A point the habitat
-#' consensus could not place fails that test under either vocabulary -- as
-#' \code{NA} because it fails \code{!is.na()}, as \code{"Uncertain"} because
-#' it fails the equality -- so a taxon whose nearby records all sit at such
-#' points yields no resident row.
+#' consensus could not place fails that test whatever it is labelled -- as
+#' \code{NA} because it fails \code{!is.na()}, as any other non-matching
+#' string because it fails the equality -- so a taxon whose nearby records all
+#' sit at such points yields no resident row.
+#'
+#' \strong{Why \code{habitat_levels} rather than a list of sentinels.} This
+#' function has to tell an UNPLACEABLE point (recoverable) from one placed in a
+#' DIFFERENT habitat (correctly excluded, not this function's business). The
+#' obvious way is to test against the producer's sentinels -- \code{NA},
+#' \code{""}, \code{"Uncertain"}. That makes this package responsible for
+#' tracking a vocabulary it does not own: add a sentinel in the habitat
+#' producer and the test here keeps returning \code{FALSE} for it, silently,
+#' with nothing failing. Note also that the producer may not be
+#' \code{TaxaHabitat} at all -- a habitat column can come from a polygon
+#' layer, which is why TaxaExpect only \emph{Suggests} that package.
+#'
+#' So the test is CLOSED-WORLD instead: unassigned is anything that is not one
+#' of the scheme's own declared habitats, which the caller already has in hand
+#' (\code{simple_scheme$l1_name} in the standard workflows). \code{NA} and
+#' \code{""} fall out for free, any sentinel invented later is caught without
+#' a code change, and so is a typo. The failure mode moves from silent
+#' under-recovery to a warning: a label that is neither a declared habitat nor
+#' a recognisable no-verdict marker would be RECOVERED as evidence -- the
+#' unsafe direction -- so the function names those labels rather than acting on
+#' them quietly.
 #'
 #' Downstream, the standard workflow builds its evidence candidate list as
 #' \code{setdiff(match_list, taxaexpect_priors$taxon_name)}: every taxon with
@@ -80,7 +101,14 @@ utils::globalVariables(c("taxon_name"))
 #' @param site_lat,site_lon Numeric scalars. Sampling site coordinates.
 #' @param site_habitat Character scalar. The focal habitat. A taxon with ANY
 #'   record in this stratum is excluded: it already has a resident prior, and
-#'   adding evidence would double-count it.
+#'   adding evidence would double-count it. Must be one of
+#'   \code{habitat_levels}.
+#' @param habitat_levels Character vector of the scheme's real habitat names --
+#'   in the standard workflows, \code{simple_scheme$l1_name}. Everything in
+#'   \code{habitat_col} that is not one of these is treated as unassigned.
+#'   \strong{No default, deliberately}: a default would be a copy of some
+#'   producer's sentinel vocabulary living at this function's declaration site,
+#'   which is the coupling the closed-world test exists to avoid. See Details.
 #' @param taxa Optional character vector restricting the result to taxa of
 #'   interest (e.g. the marker's match list). \code{NULL} (default) considers
 #'   every taxon in \code{occurrence_data}.
@@ -125,14 +153,18 @@ utils::globalVariables(c("taxon_name"))
 #'   main_habitat     = c("Marine", "Uncertain", NA)
 #' )
 #' # Sebastes has a Marine record (resident prior exists) and is excluded;
-#' # the other two are known only from unplaceable points.
+#' # the other two are known only from unplaceable points. "Uncertain" and NA
+#' # are both unassigned because neither is in habitat_levels -- the function
+#' # is never told what the sentinels are.
 #' generate_uncertain_habitat_evidence(
-#'   occ, site_lat = 34.4, site_lon = -120.4, site_habitat = "Marine"
+#'   occ, site_lat = 34.4, site_lon = -120.4, site_habitat = "Marine",
+#'   habitat_levels = c("Marine", "Estuarine", "Freshwater", "Terrestrial")
 #' )
 generate_uncertain_habitat_evidence <- function(occurrence_data,
                                                 site_lat,
                                                 site_lon,
                                                 site_habitat,
+                                                habitat_levels,
                                                 taxa = NULL,
                                                 d_half = 150,
                                                 w_scale = 1,
@@ -160,9 +192,15 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
   if (!is.character(site_habitat) || length(site_habitat) != 1L || is.na(site_habitat)) {
     stop("generate_uncertain_habitat_evidence: `site_habitat` must be a single non-NA habitat name.", call. = FALSE)
   }
-  if (.is_habitat_unassigned(site_habitat)) {
-    stop("generate_uncertain_habitat_evidence: `site_habitat` is itself an unassigned-habitat sentinel ('",
-         site_habitat, "'). A site must have a declared habitat.", call. = FALSE)
+  if (missing(habitat_levels) || !is.character(habitat_levels) ||
+      length(habitat_levels) == 0L || anyNA(habitat_levels) ||
+      !all(nzchar(trimws(habitat_levels)))) {
+    stop("generate_uncertain_habitat_evidence: `habitat_levels` must be the scheme's real habitat names, e.g. simple_scheme$l1_name. It has no default on purpose -- see Details.", call. = FALSE)
+  }
+  habitat_levels <- unique(as.character(habitat_levels))
+  if (!site_habitat %in% habitat_levels) {
+    stop(sprintf("generate_uncertain_habitat_evidence: `site_habitat` ('%s') is not one of `habitat_levels` (%s). A site must be declared as one of the scheme's own habitats.",
+                 site_habitat, paste(habitat_levels, collapse = ", ")), call. = FALSE)
   }
   if (!is.numeric(d_half) || length(d_half) != 1L || is.na(d_half) || d_half <= 0) {
     stop("generate_uncertain_habitat_evidence: `d_half` must be a single positive number.", call. = FALSE)
@@ -193,17 +231,36 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
   usable <- !is.na(tx) & !is.na(la) & !is.na(lo)
 
   # A taxon with ANY record in the focal stratum already has a resident row.
-  in_stratum <- usable & !.is_habitat_unassigned(hab) & hab == site_habitat
+  # CLOSED-WORLD test. "Unassigned" is anything that is not one of the scheme's
+  # declared habitats -- not a list of sentinel spellings this package has to
+  # keep in step with whoever produced the column. NA and "" fall out for free
+  # (`%in%` is FALSE for NA), and so does any sentinel invented later.
+  hab_chr <- as.character(hab)
+  unassigned <- !(hab_chr %in% habitat_levels)
+
+  # A label that is neither a declared habitat nor a recognisable "no verdict"
+  # marker is almost always a typo or a scheme the caller forgot to widen --
+  # and it would be silently RECOVERED as evidence, which is the unsafe
+  # direction. Say so rather than let it through quietly.
+  .odd <- setdiff(unique(hab_chr[unassigned & !is.na(hab_chr)]), c("", "Uncertain"))
+  .odd <- .odd[nzchar(trimws(.odd))]
+  if (length(.odd)) {
+    warning(sprintf(
+      "generate_uncertain_habitat_evidence: %d habitat label(s) are not in `habitat_levels` and are being treated as UNASSIGNED: %s. If any of these is a real habitat, add it to `habitat_levels` -- otherwise its records are recovered as evidence.",
+      length(.odd), paste(utils::head(.odd, 10), collapse = ", ")), call. = FALSE)
+  }
+
+  in_stratum <- usable & hab_chr == site_habitat & !is.na(hab_chr)
   resident_taxa <- unique(tx[in_stratum])
 
-  cand <- usable & .is_habitat_unassigned(hab) & !(tx %in% resident_taxa)
+  cand <- usable & unassigned & !(tx %in% resident_taxa)
   if (!is.null(taxa)) cand <- cand & tx %in% as.character(taxa)
 
   if (!any(cand)) {
     if (isTRUE(verbose)) {
       message(sprintf(
         "generate_uncertain_habitat_evidence: no qualifying taxa -- %d record(s) at unassigned-habitat points, all belonging to taxa that already have '%s' records.",
-        sum(usable & .is_habitat_unassigned(hab)), site_habitat
+        sum(usable & unassigned), site_habitat
       ))
     }
     return(.empty)

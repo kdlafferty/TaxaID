@@ -44,29 +44,3 @@
 #' historically used.
 #' @noRd
 .dark_diversity_rank_cols <- c("genus", "family", "order", "class", "phylum")
-
-#' Is an occurrence point's habitat unassigned?
-#'
-#' Mirrors \code{TaxaHabitat}'s own predicate. TRUE for \code{NA}, for an
-#' empty/whitespace string, and for the \code{"Uncertain"} sentinel that
-#' \code{TaxaHabitat::assign_habitat_biological()} has written since
-#' 2026-09-19 where no habitat reaches \code{threshold}.
-#'
-#' Reimplemented here rather than called from TaxaHabitat because TaxaExpect
-#' only \emph{Suggests} that package -- an occurrence table can reach these
-#' functions from anywhere, and a hard Import for a three-line predicate
-#' would invert the dependency between the habitat producer and the prior
-#' consumer.
-#'
-#' \strong{Both vocabularies must keep working.} Every occurrence table and
-#' decision file written before 2026-09-19 stores \code{NA}, and they are read
-#' by the same code as tables written after it. A bare \code{is.na()} or a
-#' bare \code{== "Uncertain"} is wrong in one direction or the other; this is
-#' the only safe test.
-#' @param x Character vector (or coercible) of habitat labels.
-#' @return Logical vector, same length as \code{x}.
-#' @noRd
-.is_habitat_unassigned <- function(x) {
-  x <- as.character(x)
-  is.na(x) | !nzchar(trimws(x)) | x == "Uncertain"
-}

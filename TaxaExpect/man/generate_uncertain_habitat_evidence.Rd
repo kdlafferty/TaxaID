@@ -9,6 +9,7 @@ generate_uncertain_habitat_evidence(
   site_lat,
   site_lon,
   site_habitat,
+  habitat_levels,
   taxa = NULL,
   d_half = 150,
   w_scale = 1,
@@ -30,7 +31,15 @@ records (one row per record) -- the same table given to
 
 \item{site_habitat}{Character scalar. The focal habitat. A taxon with ANY
 record in this stratum is excluded: it already has a resident prior, and
-adding evidence would double-count it.}
+adding evidence would double-count it. Must be one of
+\code{habitat_levels}.}
+
+\item{habitat_levels}{Character vector of the scheme's real habitat names --
+in the standard workflows, \code{simple_scheme$l1_name}. Everything in
+\code{habitat_col} that is not one of these is treated as unassigned.
+\strong{No default, deliberately}: a default would be a copy of some
+producer's sentinel vocabulary living at this function's declaration site,
+which is the coupling the closed-world test exists to avoid. See Details.}
 
 \item{taxa}{Optional character vector restricting the result to taxa of
 interest (e.g. the marker's match list). \code{NULL} (default) considers
@@ -81,10 +90,31 @@ as present in the region instead of vanishing.
 \strong{The gap this closes.} \code{\link{estimate_kernel_priors}} keeps
 only records whose point carries \code{site_habitat}
 (\code{keep <- !is.na(hab) & hab == site_habitat}). A point the habitat
-consensus could not place fails that test under either vocabulary -- as
-\code{NA} because it fails \code{!is.na()}, as \code{"Uncertain"} because
-it fails the equality -- so a taxon whose nearby records all sit at such
-points yields no resident row.
+consensus could not place fails that test whatever it is labelled -- as
+\code{NA} because it fails \code{!is.na()}, as any other non-matching
+string because it fails the equality -- so a taxon whose nearby records all
+sit at such points yields no resident row.
+
+\strong{Why \code{habitat_levels} rather than a list of sentinels.} This
+function has to tell an UNPLACEABLE point (recoverable) from one placed in a
+DIFFERENT habitat (correctly excluded, not this function's business). The
+obvious way is to test against the producer's sentinels -- \code{NA},
+\code{""}, \code{"Uncertain"}. That makes this package responsible for
+tracking a vocabulary it does not own: add a sentinel in the habitat
+producer and the test here keeps returning \code{FALSE} for it, silently,
+with nothing failing. Note also that the producer may not be
+\code{TaxaHabitat} at all -- a habitat column can come from a polygon
+layer, which is why TaxaExpect only \emph{Suggests} that package.
+
+So the test is CLOSED-WORLD instead: unassigned is anything that is not one
+of the scheme's own declared habitats, which the caller already has in hand
+(\code{simple_scheme$l1_name} in the standard workflows). \code{NA} and
+\code{""} fall out for free, any sentinel invented later is caught without
+a code change, and so is a typo. The failure mode moves from silent
+under-recovery to a warning: a label that is neither a declared habitat nor
+a recognisable no-verdict marker would be RECOVERED as evidence -- the
+unsafe direction -- so the function names those labels rather than acting on
+them quietly.
 
 Downstream, the standard workflow builds its evidence candidate list as
 \code{setdiff(match_list, taxaexpect_priors$taxon_name)}: every taxon with
@@ -151,9 +181,12 @@ occ <- data.frame(
   main_habitat     = c("Marine", "Uncertain", NA)
 )
 # Sebastes has a Marine record (resident prior exists) and is excluded;
-# the other two are known only from unplaceable points.
+# the other two are known only from unplaceable points. "Uncertain" and NA
+# are both unassigned because neither is in habitat_levels -- the function
+# is never told what the sentinels are.
 generate_uncertain_habitat_evidence(
-  occ, site_lat = 34.4, site_lon = -120.4, site_habitat = "Marine"
+  occ, site_lat = 34.4, site_lon = -120.4, site_habitat = "Marine",
+  habitat_levels = c("Marine", "Estuarine", "Freshwater", "Terrestrial")
 )
 }
 \seealso{
