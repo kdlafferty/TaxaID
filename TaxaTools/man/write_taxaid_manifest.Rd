@@ -17,6 +17,18 @@ The manifest, invisibly.
 \description{
 Write a TaxaID Build Manifest
 }
+\examples{
+\dontrun{
+# In a workflow preamble: record the current library once, then check it on
+# every later run.
+manifest <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_build_manifest.rds"))
+if (!file.exists(manifest)) {
+  write_taxaid_manifest(manifest)
+} else {
+  check_taxaid_manifest(manifest)
+}
+}
+}
 \seealso{
 \code{\link[=check_taxaid_manifest]{check_taxaid_manifest()}}
 }

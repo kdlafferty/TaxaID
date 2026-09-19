@@ -115,6 +115,38 @@ downstream function needs its own provider-detection logic.
 | `list_cache_files()` / `report_and_clear_cache()` | Shared engine behind a downstream package's own `<pkg>_clear_cache()` helper (e.g. `TaxaFetch::taxafetch_clear_cache()`, `TaxaLikely::taxalikely_clear_cache()`) -- scans a cache directory, reports age/size, and deletes or dry-run-reports what's stale. |
 | `define_search_polygon()` | Interactive Shiny/leaflet gadget: drag corner markers to define a custom search polygon, returned as a WKT string. Shared by `TaxaFetch`'s search-area fetches and `TaxaMatch::group_observations_by_bbox()`'s spatial grouping. |
 
+### Build provenance
+
+| Function | Purpose |
+|---------------------------|------------------------------------------------------------|
+| `taxaid_build_manifest()` | Version, `Built` timestamp and a hash of the installed code for each TaxaID package. |
+| `write_taxaid_manifest()` | Record that manifest beside a run's outputs. |
+| `check_taxaid_manifest()` | Compare the current library against a recorded manifest; errors by default. |
+
+Every TaxaID package sits at version 0.1.0 and is reinstalled constantly
+during development, so a version string cannot tell you whether the
+library a run used is the library you think it used -- two runs a week
+apart can report identical versions and have executed materially
+different code.
+
+The signal is a **hash of the installed code**, not the `Built`
+timestamp. Rebuilding identical source moves `Built` and changes nothing
+that matters, so a `Built`-based check would fire on every harmless
+reinstall -- and a guard that cries wolf is a guard someone switches off.
+Internals are hashed as well as exports, because a behaviour change need
+not touch an exported signature.
+
+A package named in the manifest but **missing** from the library is
+reported first, and packages that are not installed are kept as rows
+rather than dropped: a checker that only compares what it finds on both
+sides cannot report what is gone.
+
+``` r
+# in a workflow preamble
+manifest <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_build_manifest.rds"))
+if (!file.exists(manifest)) write_taxaid_manifest(manifest) else check_taxaid_manifest(manifest)
+```
+
 ## Installation
 
 TaxaTools has no dependency on any other TaxaID package, so it should be

@@ -107,6 +107,17 @@ taxaid_build_manifest <- function(packages = NULL) {
 #' @return The manifest, invisibly.
 #' @seealso [check_taxaid_manifest()]
 #' @export
+#' @examples
+#' \dontrun{
+#' # In a workflow preamble: record the current library once, then check it on
+#' # every later run.
+#' manifest <- file.path(OUT_DIR, paste0(OUT_PREFIX, "_build_manifest.rds"))
+#' if (!file.exists(manifest)) {
+#'   write_taxaid_manifest(manifest)
+#' } else {
+#'   check_taxaid_manifest(manifest)
+#' }
+#' }
 write_taxaid_manifest <- function(path, packages = NULL) {
   m <- taxaid_build_manifest(packages)
   saveRDS(m, path)

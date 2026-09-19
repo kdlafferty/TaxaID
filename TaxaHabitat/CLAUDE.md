@@ -1,4 +1,22 @@
 # CLAUDE.md
+# 2026-09-19 (Opus 5): POLYGON SELECTION shipped in review_spatial_flags(), plus everything the
+# task turned up. Polygon + rectangle share one GeoJSON ring path; even-odd ray cast in WEB
+# MERCATOR (matching leaflet's drawn edges), bbox prefilter, rectangle skips the cast entirely.
+# Size gate that NEVER truncates (bulk_confirm_threshold=10000L / bulk_max=100000L), grouped
+# undo, preferCanvas. Four loops vectorised -- all LATENT before polygons; the Done handler's
+# habitat write-back was O(n_changed * nrow), ~2 MINUTES -> 0.033 s on 2,185,193 rows.
+# UNASSIGNED POINTS are now labelled by the habitats in contention ("Estuarine | Freshwater |
+# Marine") instead of one undifferentiated "Unknown", making them a filterable, selectable
+# GROUP -- 646 points -> 12 named groups on the PtCon demo. DISPLAY ONLY: main_habitat stays NA
+# until actually reassigned (verified: 5,625 NA rows in -> 5,625 out, 0 signature strings).
+# Reassign dropdown offers only what a point hypothesises (cumulative-mass rule at 0.8, mean
+# 2.91 candidates vs 3.98 for a 0.05 cutoff); Habitats filter shows per-view counts, emptied
+# categories greyed not removed. User verified the gadget live. Commits 5836c66, c71ebbc,
+# 947180a, 20802af, 099024b. devtools::test() 517/0, check() 0/0/0. -- TaxaHabitat
+# Same day, found BY the polygon work and fixed: the habitat-realm asymmetry (c1fd1a1, see
+# below), report_habitat()'s type scan (d3584a7), drop_stale_seeded_decisions() (c3b752c),
+# habitat_breadth + declared habitat_cols (ec70aa1), point-level consensus diagnostics
+# (c71ebbc). Review-response file updated with all of it.
 # 2026-09-18, later (Opus 5): flag_habitat_inconsistencies() REALM BUG FIXED. The marine and
 # freshwater name patterns were ASYMMETRIC -- marine "^"-anchored, freshwater unanchored -- so
 # any habitat not STARTING with a marine word fell through to the freshwater test, and
@@ -102,7 +120,8 @@ TaxaHabitat depends on TaxaTools for LLM provider functions
 | `assign_habitat_biological()` | R/assign_habitat_biological.R | Complete | Join habitat weights to occurrence data (per-point consensus). Param is `occurrence_data`, not `data` — see Known Footguns. |
 | `consensus_habitat()` | R/assign_habitat_biological.R | Complete | Assemblage-level consensus habitat from per-species weights; modal ecoregion extraction. Returns one-row data frame. |
 | `flag_habitat_inconsistencies()` | R/flag_habitat_inconsistencies.R | Complete | Flag occurrences inconsistent with habitat. |
-| `review_spatial_flags()` | R/review_spatial_flags.R | Complete | Interactive Shiny review of spatial flags. Wired into 5 real production workflows. |
+| `review_spatial_flags()` | R/review_spatial_flags.R | Complete | Interactive Shiny review of spatial flags. Wired into 6 real production workflows (PtCon 18S re-enabled 2026-09-19). **Polygon (lasso) selection** beside the rectangle; size gate `bulk_confirm_threshold`/`bulk_max` that NEVER truncates; grouped undo; `preferCanvas`. With a `"habitat_proportions"` attribute present, unassigned points are labelled by the habitats in contention (display only -- `main_habitat` stays NA) and the Reassign dropdown offers only what the point hypothesises (`candidate_mass`, default 0.8). Habitats filter shows per-view point counts. |
+| `drop_stale_seeded_decisions()` | R/spatial_review_decisions.R | Complete (2026-09-19) | Removes SEEDED review decisions the automatic classifier has since overtaken, so they stop masking new verdicts. Real reviewer decisions are never dropped. `dry_run = TRUE` default, backs up before writing. All three production decision files were 100% seeded (244,860 decisions, 0 real reviews) when audited. |
 | `flag_institution_candidates()` | R/flag_institution_candidates.R | Complete | Classification stage for `TaxaFetch::filter_gbif_quality()`'s `institution_flag` column — tiers "high"/"low"/"ambiguous" by crossing matched institution `type` against record `kingdom`. Pure function, no interaction, no removal (mirrors `flag_habitat_inconsistencies()`). |
 | `review_institution_flags()` | R/review_institution_flags.R | Complete | Interactive Shiny/leaflet review of `flag_institution_candidates()`'s tiers — click a flagged record to toggle Keep/Remove, matched institution shown as a second map layer. Deliberately scoped down from `review_spatial_flags()` (single view, no bulk-select, single-level undo) given real datasets here are small. Every record starts "keep." Wired into all 5 real production workflow scripts (2 Mugu + 3 PtConception). |
 | (plot helpers) | R/utils_plot.R | Complete | Internal plotting utilities. |
