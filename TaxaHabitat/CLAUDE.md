@@ -2,8 +2,9 @@
 # 2026-09-18, later (Opus 5): flag_habitat_inconsistencies() REALM BUG FIXED. The marine and
 # freshwater name patterns were ASYMMETRIC -- marine "^"-anchored, freshwater unanchored -- so
 # any habitat not STARTING with a marine word fell through to the freshwater test, and
-# freshwater is exempt from spatial verification BY DESIGN. Real Mugu: 531,063 of 531,596 rows
-# (99.9%) never spatially validated, 529,488 of them "Coastal-Marine-Estuary-Stream" (marine
+# freshwater is exempt from spatial verification BY DESIGN. Real Mugu: 530,558 of 531,596 rows
+# (99.80%) never spatially validated -- 530,259 freshwater-exempt + 75 unknown-realm + 224
+# missing habitat, only 1,038 rows actually checked -- 529,488 of them "Coastal-Marine-Estuary-Stream" (marine
 # name, matched freshwater on "Stream"). After the fix: 1,067 rows (0.2%) unverified, 529,996
 # newly verified; on a 2,982-point sample 163 points (5.5%) come back UNLIKELY -- real errors
 # that were invisible before. Same change fixed two more: every example_habitat_scheme name

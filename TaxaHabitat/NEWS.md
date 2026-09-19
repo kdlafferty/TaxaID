@@ -12,8 +12,9 @@
   like a pass.
 
   Measured on the real `MuguWilderFish_blast_occurrences_clean.rds`:
-  **531,063 of 531,596 rows (99.9%) were never spatially validated**, of which
-  529,488 were `Coastal-Marine-Estuary-Stream` -- a *Coastal-Marine-Estuary*
+  **530,558 of 531,596 rows (99.80%) were never spatially validated** -- 530,259
+  freshwater-exempt, 75 unknown-realm, 224 missing habitat, leaving only 1,038
+  rows actually checked. Of the exempted, 529,488 were `Coastal-Marine-Estuary-Stream` -- a *Coastal-Marine-Estuary*
   habitat classified freshwater because the anchored marine pattern could not
   see `Marine` or `Estuary` mid-name while the unanchored freshwater pattern
   matched `Stream`. After the fix the same data is 1,067 rows (0.2%)
