@@ -42,10 +42,22 @@ containing per-sample read counts to sum for total abundance. If
 are auto-detected against an internal exclusion list (case-insensitive
 exact match against standard taxonomy ranks plus common ID/score column
 names -- see \code{.non_abundance_col_names} in the package source for
-the exact list). If no abundance columns are found, abundance is set
-to 1 per row. A \code{message()} reports which columns were summed (or
-that none were found), so unexpected auto-detection results can be
-diagnosed without inspecting the code.}
+the exact list) and whose VALUES look like counts (non-negative and
+whole). If no abundance columns are found, abundance is set to 1 per row.
+A \code{message()} reports which columns were summed and which numeric
+columns were skipped by name; a \code{warning()} names any skipped on
+their values.
+
+\strong{Auto-detection cannot be made complete, so prefer
+\code{abundance_cols}.} Name-based exclusion misses a provider's own
+column naming, and value-based screening cannot distinguish a read count
+from any other non-negative integer -- a BLAST \code{bitscore} passes it.
+Demonstrated on a three-row table: a true abundance of 13/7/5 came back as
+562/404/607 once \code{pident}, \code{bitscore} and \code{evalue} were
+summed in. Both screens are now applied and both those columns are excluded
+by name, but an integer metric under an unrecognised name would still be
+summed. Passing \code{abundance_cols} explicitly is the only way to be
+certain.}
 
 \item{taxonomy}{Optional data frame with taxonomy for each sequence. Must
 contain a column named \code{"sequence"} (for DADA2/DNAStringSet input,
