@@ -44,6 +44,30 @@
 #' the dataset is added to the palette and the Habitats sidebar filter
 #' immediately, without disturbing any existing habitat's colour.
 #'
+#' @section Habitat candidates for reassignment:
+#' When \code{occurrence_data} carries a \code{"habitat_proportions"} attribute
+#' -- which \code{\link{assign_habitat_biological}} attaches and
+#' \code{\link{flag_habitat_inconsistencies}} preserves -- the Reassign Habitat
+#' dropdown offers \strong{what the point's own assemblage hypothesises},
+#' ordered by proportion and labelled with it, rather than the whole scheme. A
+#' point reading Freshwater 0.35 / Marine 0.30 / Estuarine 0.25 / Terrestrial
+#' 0.10 offers the first three at \code{candidate_mass = 0.8}.
+#'
+#' A cumulative-mass rule is used rather than a fixed proportion cutoff because
+#' a cutoff barely reduces anything in practice: the LLM emits round numbers, so
+#' the 5th percentile of non-zero proportions is already 0.10 and a 0.05 cutoff
+#' takes a 5-habitat scheme only to 3.98 candidates. Measured across the 31,383
+#' unassigned PtConception 12S points, \code{candidate_mass = 0.8} gives a mean
+#' of 2.91 candidates and a median of 3, with 90% of points landing on exactly
+#' three.
+#'
+#' The point's current habitat is always offered, even when it falls outside the
+#' mass, so a reassignment can be undone by hand. \strong{Other} (free text) is
+#' always offered. A \strong{Show all habitats} checkbox restores the full
+#' scheme and names how many were hidden -- use it when the consensus itself is
+#' what you are disputing. With no attribute present the dropdown behaves
+#' exactly as before, offering everything.
+#'
 #' @section Bulk selection (rectangle or polygon):
 #' The map's draw toolbar offers a \strong{rectangle} and a \strong{polygon}.
 #' Both select every visible point of the current view that falls inside the
@@ -100,6 +124,12 @@
 #'   \code{"Esri.OceanBasemap"}.
 #' @param point_radius Numeric. Circle marker radius in pixels. Default
 #'   \code{6}.
+#' @param candidate_mass Numeric in (0, 1]. When \code{occurrence_data} carries
+#'   a \code{"habitat_proportions"} attribute (from
+#'   \code{\link{assign_habitat_biological}}), the Reassign Habitat dropdown
+#'   offers only the habitats that together account for this much of the
+#'   selection's own consensus vector, highest first. Default \code{0.8}.
+#'   Set to \code{1} to offer every habitat with a non-zero proportion.
 #' @param bulk_confirm_threshold Integer. A rectangle/polygon selection larger
 #'   than this asks for confirmation, reporting the exact point count, before
 #'   the action is applied. Default \code{10000L}. Set to \code{Inf} to never
@@ -149,6 +179,7 @@ review_spatial_flags <- function(
   point_radius = 6,
   bulk_confirm_threshold = 10000L,
   bulk_max = 100000L,
+  candidate_mass = 0.8,
   viewer = shiny::paneViewer(minHeight = 450)
 ) {
   # --------------------------------------------------------------------------
@@ -171,6 +202,26 @@ review_spatial_flags <- function(
     stop("review_spatial_flags: 'occurrence_data' must be a dataframe.")
   }
   .check_bulk_args(bulk_confirm_threshold, bulk_max)
+  if (!is.numeric(candidate_mass) || length(candidate_mass) != 1L ||
+    is.na(candidate_mass) || candidate_mass <= 0 || candidate_mass > 1) {
+    stop("review_spatial_flags: 'candidate_mass' must be a single number in (0, 1].")
+  }
+
+  # Per-point consensus vector from assign_habitat_biological(), when present.
+  # It survives flag_habitat_inconsistencies(), so the production workflows need
+  # no change: occurrences_flagged still carries it. Absent (a hand-built table,
+  # or an older checkpoint) the Reassign dropdown simply offers the full scheme,
+  # exactly as it did before.
+  hab_props <- attr(occurrence_data, "habitat_proportions")
+  if (!is.null(hab_props) &&
+    (!is.data.frame(hab_props) || !"point_id" %in% names(hab_props))) {
+    hab_props <- NULL
+  }
+  prop_cols <- if (is.null(hab_props)) {
+    character(0L)
+  } else {
+    setdiff(names(hab_props), "point_id")
+  }
   for (col in c(
     habitat_col, lat_col, lon_col, "spatial_flag",
     "spatial_flag_reason", "point_id"
@@ -1151,7 +1202,59 @@ review_spatial_flags <- function(
         )
       }
 
-      hab_choices <- c(sort(hab_levels_rv()), "Other")
+      # ------------------------------------------------------------------
+      # Candidate habitats: what the point's own assemblage actually
+      # hypothesises, rather than the whole scheme.
+      #
+      # For the selection, sum the consensus vectors and keep the habitats
+      # covering `candidate_mass` of the total, highest first. A fixed
+      # proportion cutoff was measured and rejected: the LLM emits round
+      # numbers, so 0.05 drops a 5-habitat scheme only to 3.98 candidates,
+      # whereas mass 0.8 gives mean 2.91 (median 3) on the real 31,383
+      # unassigned PtConception 12S points.
+      #
+      # The point's CURRENT habitat is always offered even when it falls
+      # outside the mass -- otherwise reassigning away and back would be
+      # impossible. "Other" (free text) is always offered. "Show all" is the
+      # escape when the consensus itself is what the reviewer disputes.
+      # ------------------------------------------------------------------
+      full_choices <- c(sort(hab_levels_rv()), "Other")
+      sel_ids <- if (!is.null(pids)) pids else pid
+      cand <- character(0L)
+      cand_props <- numeric(0L)
+      if (length(prop_cols) > 0L && !isTRUE(input$show_all_habitats)) {
+        rows <- hab_props[match(sel_ids, hab_props$point_id), prop_cols, drop = FALSE]
+        rows <- rows[stats::complete.cases(rows) | rowSums(!is.na(rows)) > 0, , drop = FALSE]
+        if (nrow(rows) > 0L) {
+          tot <- colSums(as.matrix(rows), na.rm = TRUE)
+          if (sum(tot, na.rm = TRUE) > 0) {
+            tot <- tot / sum(tot)
+            cand <- .candidate_habitats(tot, candidate_mass)
+            cand_props <- tot[cand]
+          }
+        }
+      }
+
+      if (length(cand) > 0L) {
+        keep <- unique(c(cand, if (!is.na(cur_hab) && nzchar(cur_hab)) cur_hab))
+        labels <- vapply(keep, function(k) {
+          if (k %in% names(cand_props)) {
+            sprintf("%s  (%.2f)", k, cand_props[[k]])
+          } else {
+            sprintf("%s  (current)", k)
+          }
+        }, character(1L))
+        hab_choices <- stats::setNames(as.list(c(keep, "Other")), c(labels, "Other"))
+        n_hidden <- length(setdiff(full_choices, c(keep, "Other")))
+      } else {
+        hab_choices <- stats::setNames(as.list(full_choices), full_choices)
+        n_hidden <- 0L
+      }
+      default_sel <- if (!is.na(cur_hab) && cur_hab %in% unlist(hab_choices)) {
+        cur_hab
+      } else {
+        unlist(hab_choices)[[1]]
+      }
 
       shiny::div(
         style = "margin-top:6px;",
@@ -1162,9 +1265,22 @@ review_spatial_flags <- function(
           inputId  = "new_habitat_choice",
           label    = NULL,
           choices  = hab_choices,
-          selected = if (!is.na(cur_hab) && cur_hab %in% hab_choices) cur_hab else hab_choices[[1]],
+          selected = default_sel,
           width    = "100%"
         ),
+        if (n_hidden > 0L || isTRUE(input$show_all_habitats)) {
+          shiny::div(
+            style = "font-size:10px;color:#666;margin:-4px 0 6px 0;",
+            shiny::checkboxInput(
+              "show_all_habitats",
+              label = shiny::HTML(sprintf(
+                "<span style='font-size:10px;color:#666;'>Show all habitats%s</span>",
+                if (n_hidden > 0L) sprintf(" (%d hidden)", n_hidden) else ""
+              )),
+              value = isTRUE(input$show_all_habitats)
+            )
+          )
+        },
         shiny::conditionalPanel(
           condition = "input.new_habitat_choice == 'Other'",
           shiny::textInput(

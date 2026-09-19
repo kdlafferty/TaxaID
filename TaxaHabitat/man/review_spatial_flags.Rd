@@ -15,6 +15,7 @@ review_spatial_flags(
   point_radius = 6,
   bulk_confirm_threshold = 10000L,
   bulk_max = 100000L,
+  candidate_mass = 0.8,
   viewer = shiny::paneViewer(minHeight = 450)
 )
 }
@@ -51,6 +52,13 @@ ask.}
 \item{bulk_max}{Integer. Hard ceiling: a selection larger than this is
 refused outright rather than applied, and the reviewer is asked to split
 the shape. Default \code{100000L}.}
+
+\item{candidate_mass}{Numeric in (0, 1]. When \code{occurrence_data} carries
+a \code{"habitat_proportions"} attribute (from
+\code{\link{assign_habitat_biological}}), the Reassign Habitat dropdown
+offers only the habitats that together account for this much of the
+selection's own consensus vector, highest first. Default \code{0.8}.
+Set to \code{1} to offer every habitat with a non-zero proportion.}
 
 \item{viewer}{Shiny viewer function passed through to
 \code{\link[shiny]{runGadget}}. Default
@@ -117,6 +125,32 @@ Every change appends a timestamped note to \code{spatial_flag_reason}.
 A habitat value typed via \strong{Other} that doesn't already appear in
 the dataset is added to the palette and the Habitats sidebar filter
 immediately, without disturbing any existing habitat's colour.
+}
+
+\section{Habitat candidates for reassignment}{
+
+When \code{occurrence_data} carries a \code{"habitat_proportions"} attribute
+-- which \code{\link{assign_habitat_biological}} attaches and
+\code{\link{flag_habitat_inconsistencies}} preserves -- the Reassign Habitat
+dropdown offers \strong{what the point's own assemblage hypothesises},
+ordered by proportion and labelled with it, rather than the whole scheme. A
+point reading Freshwater 0.35 / Marine 0.30 / Estuarine 0.25 / Terrestrial
+0.10 offers the first three at \code{candidate_mass = 0.8}.
+
+A cumulative-mass rule is used rather than a fixed proportion cutoff because
+a cutoff barely reduces anything in practice: the LLM emits round numbers, so
+the 5th percentile of non-zero proportions is already 0.10 and a 0.05 cutoff
+takes a 5-habitat scheme only to 3.98 candidates. Measured across the 31,383
+unassigned PtConception 12S points, \code{candidate_mass = 0.8} gives a mean
+of 2.91 candidates and a median of 3, with 90\% of points landing on exactly
+three.
+
+The point's current habitat is always offered, even when it falls outside the
+mass, so a reassignment can be undone by hand. \strong{Other} (free text) is
+always offered. A \strong{Show all habitats} checkbox restores the full
+scheme and names how many were hidden -- use it when the consensus itself is
+what you are disputing. With no attribute present the dropdown behaves
+exactly as before, offering everything.
 }
 
 \section{Bulk selection (rectangle or polygon)}{

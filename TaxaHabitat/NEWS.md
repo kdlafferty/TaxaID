@@ -1,5 +1,33 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-19, later still)
+
+* `review_spatial_flags()` gains **`candidate_mass`** (default `0.8`): the
+  Reassign Habitat dropdown now offers what the selected point's own assemblage
+  hypothesises, rather than the whole scheme.
+
+  When `occurrence_data` carries a `"habitat_proportions"` attribute -- which
+  `assign_habitat_biological()` attaches and `flag_habitat_inconsistencies()`
+  preserves, so production workflows need no change -- the dropdown lists the
+  habitats covering `candidate_mass` of the consensus vector, highest first and
+  labelled with their proportions. A bulk selection sums its points' vectors
+  first.
+
+  A cumulative-mass rule rather than a fixed proportion cutoff, because the
+  cutoff was measured and rejected: the LLM emits round numbers, so the 5th
+  percentile of non-zero proportions is already 0.10 and a 0.05 cutoff takes a
+  5-habitat scheme only to 3.98 candidates. Across the 31,383 unassigned
+  PtConception 12S points, `candidate_mass = 0.8` gives **mean 2.91 candidates,
+  median 3**, with 90% of points landing on exactly three -- and it adapts:
+  a river-mouth point reading Freshwater 0.45 / Marine 0.40 is offered only
+  those two, because they already cover 0.85.
+
+  The point's current habitat is always offered even when outside the mass, so
+  a reassignment can be undone by hand; **Other** (free text) is always offered;
+  and a **Show all habitats (N hidden)** checkbox restores the full scheme for
+  when the consensus itself is what the reviewer disputes. With no attribute
+  present the dropdown behaves exactly as before.
+
 ## New features (2026-09-19, later)
 
 * `assign_habitat_biological()` gains **`main_habitat_prop`** and

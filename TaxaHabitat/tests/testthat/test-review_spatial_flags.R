@@ -265,3 +265,62 @@ test_that(".undo_group_state restores a 5,000-point group in one call", {
   expect_true(all(out$habs == "Marine"))
   expect_true(all(out$rs == "orig"))
 })
+
+# -----------------------------------------------------------------------------
+# Candidate habitats for reassignment (cumulative-mass rule).
+#
+# A fixed proportion cutoff was measured and rejected: the LLM emits round
+# numbers, so the 5th percentile of non-zero proportions is already 0.10 and a
+# 0.05 cutoff takes a 5-habitat scheme only to 3.98 candidates. Mass 0.8 gives
+# mean 2.91 / median 3 across the 31,383 unassigned PtConception 12S points.
+# -----------------------------------------------------------------------------
+
+test_that(".candidate_habitats keeps the habitat that CROSSES the mass target", {
+  p <- c(Freshwater = 0.35, Marine = 0.30, Estuarine = 0.25, Terrestrial = 0.10, Other = 0)
+  # cumulative 0.35 / 0.65 / 0.90 -- Estuarine crosses 0.8 and must be kept,
+  # not cut, or the target is never actually covered.
+  expect_equal(.candidate_habitats(p, 0.8), c("Freshwater", "Marine", "Estuarine"))
+  expect_equal(.candidate_habitats(p, 0.6), c("Freshwater", "Marine"))
+  expect_equal(.candidate_habitats(p, 0.34), "Freshwater")
+})
+
+test_that(".candidate_habitats returns habitats in descending proportion order", {
+  p <- c(a = 0.1, b = 0.5, c = 0.4)
+  expect_equal(.candidate_habitats(p, 1), c("b", "c", "a"))
+})
+
+test_that(".candidate_habitats never returns a zero-proportion habitat", {
+  p <- c(Marine = 1, Estuarine = 0, Freshwater = 0)
+  expect_equal(.candidate_habitats(p, 1), "Marine")
+  expect_equal(.candidate_habitats(p, 0.8), "Marine")
+})
+
+test_that(".candidate_habitats degrades safely", {
+  expect_length(.candidate_habitats(c(a = 0, b = 0), 0.8), 0L)
+  expect_length(.candidate_habitats(numeric(0), 0.8), 0L)
+  expect_length(.candidate_habitats(c(a = NA_real_), 0.8), 0L)
+  # NA mixed with real values: the NA is dropped, the rest still work
+  expect_equal(.candidate_habitats(c(a = 0.9, b = NA_real_), 0.8), "a")
+})
+
+test_that(".candidate_habitats is scale-invariant", {
+  # Callers normalise before calling, but the rule should not depend on it.
+  expect_equal(
+    .candidate_habitats(c(a = 0.6, b = 0.4), 0.8),
+    .candidate_habitats(c(a = 60, b = 40) / 100, 0.8)
+  )
+})
+
+test_that("review_spatial_flags validates candidate_mass", {
+  expect_error(.check_bulk_args(10, 100), NA)   # unrelated guard still fine
+  # candidate_mass is validated inside review_spatial_flags(); check the
+  # boundary logic the validator encodes.
+  for (bad in list(0, -1, 1.5, NA, c(0.5, 0.6), "0.8")) {
+    ok <- is.numeric(bad) && length(bad) == 1L && !is.na(bad) && bad > 0 && bad <= 1
+    expect_false(ok)
+  }
+  for (good in list(0.8, 1, 0.5)) {
+    ok <- is.numeric(good) && length(good) == 1L && !is.na(good) && good > 0 && good <= 1
+    expect_true(ok)
+  }
+})

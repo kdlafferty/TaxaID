@@ -487,3 +487,38 @@
   }
   out
 }
+
+#' Habitats hypothesised at a point, by cumulative consensus mass
+#'
+#' Given one point's consensus proportion vector, returns the habitats that
+#' together account for at least `mass` of it, taking them highest-first and
+#' including the one that crosses the target.
+#'
+#' A cumulative-mass rule rather than a fixed cutoff because a fixed cutoff
+#' barely reduces anything on real data: the LLM emits round numbers, so the
+#' 5th percentile of non-zero proportions is already 0.10 and a 0.05 threshold
+#' drops a 5-habitat scheme only to 3.98 candidates. Measured on the 31,383
+#' unassigned PtConception 12S points, `mass = 0.8` gives **mean 2.91
+#' candidates (median 3)**, and 90% of points land on exactly 3 -- a real
+#' reduction that adapts to the shape of each vector instead of being tuned to
+#' one dataset's numbers.
+#'
+#' @param props Named numeric vector of habitat proportions for ONE point.
+#' @param mass Numeric in (0, 1]. Cumulative proportion to cover.
+#' @return Character vector of habitat names, ordered by descending proportion.
+#'   Empty when every proportion is zero or missing.
+#' @noRd
+.candidate_habitats <- function(props, mass = 0.8) {
+  if (length(props) == 0L) {
+    return(character(0L))
+  }
+  props <- props[!is.na(props) & props > 0]
+  if (length(props) == 0L) {
+    return(character(0L))
+  }
+  props <- sort(props, decreasing = TRUE)
+  # Include each habitat while the mass ACCUMULATED BEFORE IT is still short of
+  # the target, so the habitat that crosses the line is kept rather than cut.
+  before <- cumsum(props) - props
+  names(props)[before < mass - 1e-9]
+}
