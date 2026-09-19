@@ -69,7 +69,7 @@ two-stage IUCN pipeline with the commit-at-confident-level prompt, which
 already discourages sub-0.1 weights by instruction.}
 }
 \value{
-The input \code{occurrence_data} with two additional columns:
+The input \code{occurrence_data} with four additional columns:
 \describe{
 \item{main_habitat}{Character. The winning habitat label at each point,
 or \code{NA} if no habitat reached \code{threshold}.
@@ -81,7 +81,19 @@ but Other_weight is substantial). Concatenates the unique
 \code{habitat_best_guess} values from all species at the point that
 contributed weight to \code{Other_weight}, separated by \code{"; "}.
 Use this to decide whether the habitat scheme needs extending.}
+\item{main_habitat_prop}{Numeric, 0 to 1. The proportion attained by the
+leading habitat at that point. Populated \strong{regardless of}
+\code{threshold}, so it is defined for points where
+\code{main_habitat} is \code{NA} -- which is what makes it useful.}
+\item{main_habitat_breadth}{Numeric. Levins' niche breadth of the point's
+consensus vector, in effective number of habitats: \code{1} is an
+unambiguous point, higher means a genuinely mixed assemblage.
+\code{"Other"} is excluded from the calculation. See Details.}
 }
+
+The full per-point consensus vector is attached as
+\code{attr(result, "habitat_proportions")}: one row per point, one column
+per habitat (including \code{Other}).
 }
 \description{
 Infers the habitat of each sampling point from the weighted habitat
@@ -92,6 +104,17 @@ provided it meets a minimum consensus threshold.
 }
 \details{
 This is a fallback method for when spatial polygon layers are unavailable.
+
+\strong{Reading an NA habitat:} two very different points used to come back
+identically as \code{main_habitat = NA} -- one clearly Marine at 0.28, just
+under a 0.3 threshold, and one genuinely mixed at 0.35 / 0.33 / 0.32. The
+first has an unambiguous signal the threshold rejected; the second has no
+signal to have. \code{main_habitat_prop} separates them and
+\code{main_habitat_breadth} quantifies the spread, both defined for points
+the threshold rejected. A point with a high \code{main_habitat_prop} and a
+breadth near 1 is a candidate for a lower \code{threshold}; a point with
+breadth near the number of habitats is genuinely ambiguous and wants a
+reviewer, not a different cutoff.
 
 \strong{How weighted consensus works:}
 For each point, the function joins occurrence records to the habitat weight

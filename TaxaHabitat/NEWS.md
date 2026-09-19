@@ -1,5 +1,37 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-19, later)
+
+* `assign_habitat_biological()` gains **`main_habitat_prop`** and
+  **`main_habitat_breadth`**, and attaches the full per-point consensus vector
+  as **`attr(result, "habitat_proportions")`**.
+
+  The function already computed the winning proportion and the whole proportion
+  matrix, then discarded both -- so two very different points came back
+  identically as `main_habitat = NA`: one clearly Marine at 0.48 just under a
+  0.5 threshold, and one genuinely mixed at 0.35/0.33/0.32. `main_habitat_prop`
+  separates them and `main_habitat_breadth` (Levins' B, effective number of
+  habitats) quantifies the spread. Both are populated **regardless of**
+  `threshold`, so they describe exactly the points the threshold rejected --
+  which is the purpose.
+
+  Measured on the real PtConception 12S data at the workflow's own
+  `threshold = 0.5`, reproducing its saved output exactly (495,014 NA rows /
+  31,383 NA points): **89% of NA points are genuinely mixed (breadth >= 3.0,
+  median 3.57) and NONE are high-proportion near-misses.** Lowering the
+  threshold would not rescue them -- there is no population of unambiguous
+  points being wrongly rejected. They need a reviewer choosing among the
+  habitats actually hypothesised there, not a different cutoff.
+
+  `"Other"` is excluded from the breadth calculation, matching the taxon-level
+  `habitat_breadth`: it measures failure to place taxa in the scheme, not a
+  genuinely broad assemblage. It IS retained in the proportions attribute,
+  which is the raw consensus vector.
+
+  The proportions are an attribute rather than columns because they are one
+  value per habitat per point while the result is one row per occurrence;
+  widening them would repeat the same vector across every record at a location.
+
 ## New features (2026-09-19)
 
 * **`drop_stale_seeded_decisions()`** -- removes seeded spatial-review decisions

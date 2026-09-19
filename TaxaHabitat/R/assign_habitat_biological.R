@@ -53,7 +53,7 @@
 #'   two-stage IUCN pipeline with the commit-at-confident-level prompt, which
 #'   already discourages sub-0.1 weights by instruction.
 #'
-#' @return The input \code{occurrence_data} with two additional columns:
+#' @return The input \code{occurrence_data} with four additional columns:
 #' \describe{
 #'   \item{main_habitat}{Character. The winning habitat label at each point,
 #'     or \code{NA} if no habitat reached \code{threshold}.
@@ -65,9 +65,32 @@
 #'     \code{habitat_best_guess} values from all species at the point that
 #'     contributed weight to \code{Other_weight}, separated by \code{"; "}.
 #'     Use this to decide whether the habitat scheme needs extending.}
+#'   \item{main_habitat_prop}{Numeric, 0 to 1. The proportion attained by the
+#'     leading habitat at that point. Populated \strong{regardless of}
+#'     \code{threshold}, so it is defined for points where
+#'     \code{main_habitat} is \code{NA} -- which is what makes it useful.}
+#'   \item{main_habitat_breadth}{Numeric. Levins' niche breadth of the point's
+#'     consensus vector, in effective number of habitats: \code{1} is an
+#'     unambiguous point, higher means a genuinely mixed assemblage.
+#'     \code{"Other"} is excluded from the calculation. See Details.}
 #' }
 #'
+#' The full per-point consensus vector is attached as
+#' \code{attr(result, "habitat_proportions")}: one row per point, one column
+#' per habitat (including \code{Other}).
+#'
 #' @details
+#' \strong{Reading an NA habitat:} two very different points used to come back
+#' identically as \code{main_habitat = NA} -- one clearly Marine at 0.28, just
+#' under a 0.3 threshold, and one genuinely mixed at 0.35 / 0.33 / 0.32. The
+#' first has an unambiguous signal the threshold rejected; the second has no
+#' signal to have. \code{main_habitat_prop} separates them and
+#' \code{main_habitat_breadth} quantifies the spread, both defined for points
+#' the threshold rejected. A point with a high \code{main_habitat_prop} and a
+#' breadth near 1 is a candidate for a lower \code{threshold}; a point with
+#' breadth near the number of habitats is genuinely ambiguous and wants a
+#' reviewer, not a different cutoff.
+#'
 #' \strong{How weighted consensus works:}
 #' For each point, the function joins occurrence records to the habitat weight
 #' table. Each matched species contributes its full weight vector (one value
@@ -313,9 +336,32 @@ assign_habitat_biological <- function(occurrence_data,
   # Apply threshold
   best_hab[is.na(best_prop) | best_prop < threshold] <- NA_character_
 
+  # ---------------------------------------------------------------------------
+  # Point-level consensus diagnostics.
+  #
+  # best_prop and prop_mat were previously computed and thrown away, which meant
+  # two very different points came back identically as main_habitat = NA:
+  #   - "clearly Marine at 0.28" -- an unambiguous signal just under threshold
+  #   - "genuinely mixed 0.35 / 0.33 / 0.32" -- no signal to have
+  # main_habitat_prop separates them, and main_habitat_breadth says how spread
+  # the point's assemblage is. BOTH are populated regardless of the threshold,
+  # so they describe points the threshold rejected -- that is the point of them.
+  #
+  # "Other" is excluded from the breadth calculation for the same reason
+  # Other_weight is excluded at taxon level: it measures failure to place taxa
+  # in the scheme, not a genuinely broad assemblage. It IS retained in the
+  # habitat_proportions attribute, which is the raw consensus vector.
+  # ---------------------------------------------------------------------------
+  breadth_cols <- setdiff(habitat_cols, "Other")
+  prop_df <- as.data.frame(prop_mat, stringsAsFactors = FALSE)
+  names(prop_df) <- habitat_cols
+  site_breadth <- .compute_habitat_breadth(prop_df, breadth_cols)
+
   site_habitats <- data.frame(
     point_id_col_placeholder = point_sums[[point_id_col]],
     main_habitat             = best_hab,
+    main_habitat_prop        = as.numeric(best_prop),
+    main_habitat_breadth     = site_breadth,
     stringsAsFactors         = FALSE
   )
   names(site_habitats)[1] <- point_id_col
@@ -362,8 +408,25 @@ assign_habitat_biological <- function(occurrence_data,
   # Drop any pre-existing main_habitat / habitat_best_guess columns in occurrence_data
   occurrence_data[["main_habitat"]] <- NULL
   occurrence_data[["habitat_best_guess"]] <- NULL
+  occurrence_data[["main_habitat_prop"]] <- NULL
+  occurrence_data[["main_habitat_breadth"]] <- NULL
 
   result <- merge(occurrence_data, site_habitats, by = point_id_col, all.x = TRUE)
+
+  # Full per-point consensus vector, one row per point. Kept as an attribute
+  # rather than columns because it is one value PER HABITAT per point and the
+  # result is one row per OCCURRENCE -- widening it would repeat the same vector
+  # across every record at a location. review_spatial_flags() reads this to
+  # offer a reviewer only the habitats actually hypothesised at the point being
+  # reviewed, rather than the whole scheme.
+  prop_out <- cbind(
+    stats::setNames(
+      data.frame(point_sums[[point_id_col]], stringsAsFactors = FALSE),
+      point_id_col
+    ),
+    prop_df
+  )
+  attr(result, "habitat_proportions") <- prop_out
 
   n_sites <- dplyr::n_distinct(occurrence_data[[point_id_col]])
   n_assigned <- dplyr::n_distinct(

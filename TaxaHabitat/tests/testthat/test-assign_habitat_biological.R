@@ -676,3 +676,88 @@ test_that(".compute_habitat_breadth is scale-invariant and handles bad input", {
   expect_length(.compute_habitat_breadth(data.frame(a = numeric(0), b = numeric(0)), hc), 0L)
   expect_true(is.na(.compute_habitat_breadth(data.frame(a = 1, b = 1), character(0))))
 })
+
+# -----------------------------------------------------------------------------
+# Point-level consensus diagnostics.
+#
+# best_prop and the proportion matrix were computed and discarded, so two very
+# different points came back identically as main_habitat = NA: one clearly
+# Marine just under threshold, one genuinely mixed. Measured on the real
+# PtConception 12S data at the workflow's own threshold = 0.5, 89% of the
+# 31,383 NA points are genuinely mixed (breadth >= 3.0) and NONE are
+# high-proportion near-misses -- so a lower cutoff would not rescue them.
+# -----------------------------------------------------------------------------
+
+.pl_lookup <- data.frame(
+  taxon_name   = c("spec", "mix1", "mix2", "mix3", "mix4"),
+  Marine       = c(1, 1, 0, 0, 0),
+  Estuarine    = c(0, 0, 1, 0, 0),
+  Freshwater   = c(0, 0, 0, 1, 0),
+  Terrestrial  = c(0, 0, 0, 0, 1),
+  Other_weight = 0,
+  habitat_best_guess = "",
+  Habitat = c("Marine", "Marine", "Estuarine", "Freshwater", "Terrestrial"),
+  stringsAsFactors = FALSE
+)
+.pl_occ <- function(taxa, pid) data.frame(
+  point_id = pid, decimalLatitude = 34, decimalLongitude = -120,
+  taxon_name = taxa, stringsAsFactors = FALSE
+)
+
+test_that("an unambiguous point reads breadth 1 and prop 1", {
+  r <- suppressMessages(assign_habitat_biological(.pl_occ("spec", "p1"), .pl_lookup))
+  expect_equal(r$main_habitat[1], "Marine")
+  expect_equal(r$main_habitat_prop[1], 1)
+  expect_equal(r$main_habitat_breadth[1], 1)
+})
+
+test_that("a perfectly mixed point reads breadth = n and is NA at any sane threshold", {
+  occ <- .pl_occ(c("mix1", "mix2", "mix3", "mix4"), "p1")
+  r <- suppressMessages(assign_habitat_biological(occ, .pl_lookup, threshold = 0.5))
+  expect_true(is.na(r$main_habitat[1]))
+  # Four habitats at 0.25 each: top proportion 0.25, breadth 4.
+  expect_equal(r$main_habitat_prop[1], 0.25)
+  expect_equal(r$main_habitat_breadth[1], 4)
+})
+
+test_that("prop and breadth are populated even when main_habitat is NA", {
+  # This is the whole purpose: they must describe the points the threshold
+  # REJECTED, or they cannot distinguish a near-miss from a mixed point.
+  occ <- .pl_occ(c("mix1", "mix2", "mix3", "mix4"), "p1")
+  r <- suppressMessages(assign_habitat_biological(occ, .pl_lookup, threshold = 0.9))
+  expect_true(is.na(r$main_habitat[1]))
+  expect_false(is.na(r$main_habitat_prop[1]))
+  expect_false(is.na(r$main_habitat_breadth[1]))
+})
+
+test_that("a near-miss is distinguishable from a genuinely mixed point", {
+  # near miss: 3 of 4 species Marine -> prop 0.75, breadth low
+  near <- suppressMessages(assign_habitat_biological(
+    .pl_occ(c("spec", "mix1", "mix2"), "p1"), .pl_lookup, threshold = 0.9))
+  # mixed: one species per habitat -> prop 0.25, breadth 4
+  mixed <- suppressMessages(assign_habitat_biological(
+    .pl_occ(c("mix1", "mix2", "mix3", "mix4"), "p2"), .pl_lookup, threshold = 0.9))
+  expect_true(is.na(near$main_habitat[1]) && is.na(mixed$main_habitat[1]))
+  expect_gt(near$main_habitat_prop[1], mixed$main_habitat_prop[1])
+  expect_lt(near$main_habitat_breadth[1], mixed$main_habitat_breadth[1])
+})
+
+test_that("habitat_proportions attribute is one row per point and sums to 1", {
+  occ <- rbind(.pl_occ(c("mix1", "mix2"), "p1"), .pl_occ("spec", "p2"))
+  r <- suppressMessages(assign_habitat_biological(occ, .pl_lookup))
+  pr <- attr(r, "habitat_proportions")
+  expect_s3_class(pr, "data.frame")
+  expect_equal(nrow(pr), 2L)
+  expect_true("point_id" %in% names(pr))
+  num <- pr[, setdiff(names(pr), "point_id"), drop = FALSE]
+  expect_equal(unname(rowSums(num, na.rm = TRUE)), c(1, 1))
+})
+
+test_that("pre-existing diagnostic columns are replaced, not duplicated", {
+  occ <- .pl_occ("spec", "p1")
+  occ$main_habitat_prop <- 999
+  occ$main_habitat_breadth <- 999
+  r <- suppressMessages(assign_habitat_biological(occ, .pl_lookup))
+  expect_equal(sum(names(r) == "main_habitat_prop"), 1L)
+  expect_equal(r$main_habitat_prop[1], 1)
+})
