@@ -46,9 +46,7 @@
 #'
 #' @section What resolves, and what does not:
 #' \describe{
-#'   \item{ocean}{Only a marine, non-estuarine candidate. Measured on a
-#'     6,523-point PtConception extract: 201 of 646 unassigned points sit over
-#'     open ocean and every one carries `Marine`, so all 201 resolve.}
+#'   \item{ocean}{Only a marine, non-estuarine candidate.}
 #'   \item{inland}{Any non-marine candidate. Resolves only when one such
 #'     candidate exists -- a `Freshwater | Terrestrial` point inland stays
 #'     ambiguous, because without a lake or river layer the map cannot tell a
@@ -56,9 +54,28 @@
 #'   \item{coastal}{Nothing. Every habitat is admissible within
 #'     `coast_buffer_m` of the shore, so geography discriminates nothing.}
 #' }
-#' On that same extract the rule resolved 221 of 646 (34%) -- 201 Marine, 17
-#' Freshwater, 3 Terrestrial -- leaving 384 coastal and 41 inland genuinely
-#' ambiguous.
+#' **Measured on the full production PtConception 12S pool** (220,311 points,
+#' 31,383 unassigned): **6,222 points resolved, 20%** -- 2,940 ocean, 3,282
+#' inland -- leaving 25,161 where geography discriminates nothing. 5.9 seconds.
+#'
+#' A 6,523-point coastal extract of the same site gave 34% (221 of 646), and
+#' that figure was previously quoted here. It is **not representative**: the
+#' extract is coastal-heavy, and its unassigned points are Cottidae, whereas
+#' production's are 97%-by-record birds (Laridae, Anatidae, Gaviidae). Quote
+#' the production number. The general lesson is that a fixture chosen for
+#' convenience validated the mechanism without exercising the case that
+#' matters.
+#'
+#' What it resolves in production is itself worth knowing: **27,400 records, of
+#' which 97% are birds** -- Laridae 17,737, Anatidae 3,095, Gaviidae 2,399,
+#' Phalacrocoracidae 2,004. Those records are currently excluded from the
+#' resident prior only because their habitat is unassigned, which is an
+#' accident rather than a scope decision. If birds are out of scope for the
+#' marker, filter families before the fetch; do not rely on this function
+#' declining to resolve them. Note also that the remaining 467,614 unassigned
+#' records stay unassigned -- most bird records sit at coastal points, where
+#' nothing resolves -- so the volume entering the prior is far smaller than the
+#' unassigned pool's size suggests.
 #'
 #' @section Provenance:
 #' A resolved point gets `habitat_source = "geography"`; a point the consensus

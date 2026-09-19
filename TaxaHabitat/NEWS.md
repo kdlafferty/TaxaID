@@ -25,11 +25,17 @@
   | `inland` | non-marine (so not Estuarine either) |
   | `coastal` | everything -- geography discriminates nothing at the shore |
 
-  Only points with exactly **one** admissible candidate resolve. Measured on a
-  6,523-point PtConception extract: **221 of 646 unassigned points (34%)** --
-  201 ocean, 20 inland -- leaving 384 coastal and 41 inland genuinely
-  ambiguous. The inland residue is mostly `Freshwater | Terrestrial`, which
-  needs a lake layer to separate a pond from a hillside.
+  Only points with exactly **one** admissible candidate resolve. Measured on
+  the **full production PtConception 12S pool** (220,311 points, 31,383
+  unassigned): **6,222 points resolved, 20%** -- 2,940 ocean, 3,282 inland --
+  leaving 25,161 where geography discriminates nothing, in 5.9 seconds. The
+  residue is mostly coastal, plus inland `Freshwater | Terrestrial` points that
+  need a lake layer to separate a pond from a hillside.
+
+  An earlier figure of 34% quoted here came from a 6,523-point coastal extract
+  and was **not representative** -- that extract's unassigned points are
+  Cottidae, whereas production's are 97%-by-record birds. The fixture validated
+  the mechanism without exercising the case that matters.
 
   A resolved point gets `habitat_source = "geography"`; one the consensus had
   already settled keeps `"consensus"`. That is a weaker claim feeding
