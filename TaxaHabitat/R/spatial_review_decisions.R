@@ -71,9 +71,14 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
       stop("save_spatial_review_decisions: `before` must be a data frame with the point_id and habitat columns.", call. = FALSE)
     }
     bh <- as.character(before[[habitat_col]])[match(new$point_id, as.character(before[[point_id_col]]))]
-    new$habitat_reassigned <- !is.na(new$main_habitat) & (is.na(bh) | bh != new$main_habitat)
+    # .is_habitat_unassigned(), not !is.na(): an "Uncertain" point is NOT a
+    # reviewer reassignment, and testing NA alone would record every unplaceable
+    # point as one. The predicate also keeps files written before 2026-09-19,
+    # which store NA, reading correctly.
+    new$habitat_reassigned <- !.is_habitat_unassigned(new$main_habitat) &
+      (.is_habitat_unassigned(bh) | bh != new$main_habitat)
   } else {
-    new$habitat_reassigned <- !is.na(new$main_habitat)
+    new$habitat_reassigned <- !.is_habitat_unassigned(new$main_habitat)
     # Without `before` there is no way to tell a point whose habitat the
     # reviewer CHANGED from one they merely confirmed, so every non-NA
     # habitat is recorded as a reassignment and will be re-applied verbatim
@@ -95,13 +100,17 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
     }
   }
   old <- if (file.exists(path)) readRDS(path) else new[0, ]
-  if (!"habitat_reassigned" %in% names(old)) old$habitat_reassigned <- !is.na(old$main_habitat)
+  # Kept correct for OLD files, which store NA and may predate the column.
+  if (!"habitat_reassigned" %in% names(old)) {
+    old$habitat_reassigned <- !.is_habitat_unassigned(old$main_habitat)
+  }
   # A reassignment recorded earlier survives a later review that left it in place
   # (the gadget was opened on the already-applied table, so "unchanged" there
   # means "still the reassigned value", not "back to automatic").
   oi <- match(new$point_id, old$point_id)
   keep_old <- !is.na(oi) & old$habitat_reassigned[ifelse(is.na(oi), 1L, oi)] %in% TRUE &
-    !is.na(new$main_habitat) & new$main_habitat == old$main_habitat[ifelse(is.na(oi), 1L, oi)]
+    !.is_habitat_unassigned(new$main_habitat) &
+    new$main_habitat == old$main_habitat[ifelse(is.na(oi), 1L, oi)]
   new$habitat_reassigned[keep_old] <- TRUE
   old <- old[!old$point_id %in% new$point_id, , drop = FALSE]
   out <- rbind(old[, names(new), drop = FALSE], new)
@@ -162,7 +171,9 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
     idx <- match(pid, dec$point_id)
     hit <- !is.na(idx)
     if (any(hit)) {
-      if (!"habitat_reassigned" %in% names(dec)) dec$habitat_reassigned <- !is.na(dec$main_habitat)
+      if (!"habitat_reassigned" %in% names(dec)) {
+        dec$habitat_reassigned <- !.is_habitat_unassigned(dec$main_habitat)
+      }
       reassign <- hit & dec$habitat_reassigned[ifelse(is.na(idx), 1L, idx)] %in% TRUE
       .ne <- function(a, b) (is.na(a) != is.na(b)) | (!is.na(a) & !is.na(b) & a != b)
       changed <- (hit & .ne(occurrence_data[[flag_col]], dec$spatial_flag[idx])) |

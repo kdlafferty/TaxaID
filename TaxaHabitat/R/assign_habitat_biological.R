@@ -56,7 +56,15 @@
 #' @return The input \code{occurrence_data} with four additional columns:
 #' \describe{
 #'   \item{main_habitat}{Character. The winning habitat label at each point,
-#'     or \code{NA} if no habitat reached \code{threshold}.
+#'     or \code{"Uncertain"} if no habitat reached \code{threshold}.
+#'     \strong{Not \code{NA}}: \code{NA} in a \code{main_habitat} column
+#'     already means \emph{habitat-agnostic, matches any habitat} on the prior
+#'     side, where \code{TaxaExpect::generate_domestic_food_priors()} sets it
+#'     deliberately and \code{TaxaAssign::join_priors()} reads it to build the
+#'     wildcard tier for domestic and food taxa. An unplaceable occurrence
+#'     would otherwise be indistinguishable from a chicken and inherit those
+#'     semantics by accident, rather than being routed to the evidence branch
+#'     and still counted as regionally present.
 #'     \code{"Other"} appears here when the \code{Other_weight} column wins,
 #'     signalling that the community at this point does not fit the scheme.}
 #'   \item{habitat_best_guess}{Character. Non-empty only when
@@ -143,7 +151,7 @@
 #' )
 #'
 #' # Points with no consensus
-#' result[is.na(result$main_habitat), "point_id"]
+#' result[result$main_habitat == "Uncertain", "point_id"]
 #'
 #' \dontrun{
 #' # Points where the scheme did not fit (dplyr shown for real workflows)
@@ -333,8 +341,16 @@ assign_habitat_biological <- function(occurrence_data,
   best_prop <- prop_mat[cbind(seq_len(nrow(prop_mat)), best_idx)]
   best_hab <- habitat_cols[best_idx]
 
-  # Apply threshold
-  best_hab[is.na(best_prop) | best_prop < threshold] <- NA_character_
+  # Apply threshold.
+  #
+  # The unassigned value is the NAMED sentinel, not NA. NA in a main_habitat
+  # column already means "habitat-agnostic, matches ANY habitat" on the prior
+  # side -- generate_domestic_food_priors() sets it deliberately and
+  # join_priors() reads it to build the wildcard tier for domestic and food
+  # taxa. Leaving occurrence-side NA here made an unplaceable point
+  # indistinguishable from a chicken, so it inherited the wildcard semantics by
+  # accident instead of being routed to the evidence branch.
+  best_hab[is.na(best_prop) | best_prop < threshold] <- .HABITAT_UNCERTAIN
 
   # ---------------------------------------------------------------------------
   # Point-level consensus diagnostics.
@@ -352,6 +368,8 @@ assign_habitat_biological <- function(occurrence_data,
   # in the scheme, not a genuinely broad assemblage. It IS retained in the
   # habitat_proportions attribute, which is the raw consensus vector.
   # ---------------------------------------------------------------------------
+  .check_habitat_sentinel_free(habitat_cols, "assign_habitat_biological")
+
   breadth_cols <- setdiff(habitat_cols, "Other")
   prop_df <- as.data.frame(prop_mat, stringsAsFactors = FALSE)
   names(prop_df) <- habitat_cols

@@ -72,7 +72,15 @@ already discourages sub-0.1 weights by instruction.}
 The input \code{occurrence_data} with four additional columns:
 \describe{
 \item{main_habitat}{Character. The winning habitat label at each point,
-or \code{NA} if no habitat reached \code{threshold}.
+or \code{"Uncertain"} if no habitat reached \code{threshold}.
+\strong{Not \code{NA}}: \code{NA} in a \code{main_habitat} column
+already means \emph{habitat-agnostic, matches any habitat} on the prior
+side, where \code{TaxaExpect::generate_domestic_food_priors()} sets it
+deliberately and \code{TaxaAssign::join_priors()} reads it to build the
+wildcard tier for domestic and food taxa. An unplaceable occurrence
+would otherwise be indistinguishable from a chicken and inherit those
+semantics by accident, rather than being routed to the evidence branch
+and still counted as regionally present.
 \code{"Other"} appears here when the \code{Other_weight} column wins,
 signalling that the community at this point does not fit the scheme.}
 \item{habitat_best_guess}{Character. Non-empty only when
@@ -162,7 +170,7 @@ result <- assign_habitat_biological(
 )
 
 # Points with no consensus
-result[is.na(result$main_habitat), "point_id"]
+result[result$main_habitat == "Uncertain", "point_id"]
 
 \dontrun{
 # Points where the scheme did not fit (dplyr shown for real workflows)

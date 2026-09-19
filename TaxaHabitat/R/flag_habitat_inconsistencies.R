@@ -207,7 +207,15 @@ flag_habitat_inconsistencies <- function(
     stringsAsFactors = FALSE
   )
 
-  complete_rows <- !is.na(pts_all$lon) & !is.na(pts_all$lat) & !is.na(pts_all$habitat)
+  # .is_habitat_unassigned(), not !is.na(): since 2026-09-19 an unplaceable
+  # point carries the "Uncertain" sentinel rather than NA, and it must be
+  # excluded from spatial validation for the same reason NA was -- there is no
+  # habitat to check the geography against. Testing NA alone would send
+  # "Uncertain" through .realm(), which would report it as
+  # "habitat 'Uncertain' not found in habitat scheme" and count it among the
+  # genuinely unrecognised vocabulary, hiding it in the wrong bucket.
+  complete_rows <- !is.na(pts_all$lon) & !is.na(pts_all$lat) &
+    !.is_habitat_unassigned(pts_all$habitat)
   pts_unique <- unique(pts_all[complete_rows, c("lon", "lat", "habitat")])
   n_pts <- nrow(pts_unique)
 
@@ -668,7 +676,7 @@ flag_habitat_inconsistencies <- function(
   # explicit flag rather than NA, so downstream functions see only valid values.
   na_flag <- is.na(occurrence_data$spatial_flag)
   if (any(na_flag)) {
-    na_hab <- is.na(occurrence_data[[habitat_col]])
+    na_hab <- .is_habitat_unassigned(occurrence_data[[habitat_col]])
     na_coord <- is.na(occurrence_data[[lon_col]]) | is.na(occurrence_data[[lat_col]])
     occurrence_data$spatial_flag[na_flag] <- "likely"
     occurrence_data$spatial_flag_reason[na_flag] <- ifelse(
@@ -676,7 +684,7 @@ flag_habitat_inconsistencies <- function(
       "missing coordinates -- not spatially validated",
       ifelse(
         na_hab[na_flag],
-        "missing habitat -- not spatially validated",
+        "habitat uncertain -- not spatially validated",
         "not spatially validated"
       )
     )

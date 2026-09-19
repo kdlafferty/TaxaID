@@ -64,7 +64,7 @@
   # to click at all. Reassigning an "Unknown" point to a real habitat via
   # review_spatial_flags()'s existing Reassign Habitat mode also now doubles
   # as a manual fix path for these classification gaps.
-  pts$habitat[is.na(pts$habitat) | !nzchar(pts$habitat)] <- "Unknown"
+  pts$habitat[.is_habitat_unassigned(pts$habitat)] <- "Unknown"
 
   # Drop only genuinely unmappable rows (no coordinates or no point identity).
   keep <- !is.na(pts$lon) & !is.na(pts$lat) & !is.na(pts$point_id)
@@ -604,4 +604,69 @@
   }
   h <- habs[ids]
   as.integer(table(factor(unname(h), levels = levels)))
+}
+
+# ==============================================================================
+# The unassigned-habitat sentinel
+# ==============================================================================
+
+#' The value `main_habitat` carries when a point's habitat could not be decided
+#'
+#' `NA` used to mean this, and still does in data written before 2026-09-19 --
+#' but `NA` in a `main_habitat` column means something ELSE on the prior side of
+#' the pipeline. `TaxaExpect::generate_domestic_food_priors()` sets it
+#' deliberately (its own comment: "intentionally set to NA (never a real habitat
+#' value)") to mean **habitat-agnostic, matches any habitat**, and
+#' `TaxaAssign::join_priors()` reads it that way to build the wildcard tier for
+#' domestic and food taxa.
+#'
+#' So one sentinel in one column name carried two decisions that route
+#' oppositely: a chicken should match every habitat, while a point whose habitat
+#' could not be determined should be routed to the evidence branch and still
+#' appear as regionally present. Naming the occurrence-side case separates them.
+#'
+#' @noRd
+.HABITAT_UNCERTAIN <- "Uncertain"
+
+#' Is this habitat value "we could not decide"?
+#'
+#' Deliberately a predicate rather than a bare `== .HABITAT_UNCERTAIN`, because
+#' both vocabularies have to work at once: every decision file and every saved
+#' occurrence table written before 2026-09-19 stores `NA`, and those files are
+#' read by the same code paths as new ones. Treating only the new sentinel would
+#' silently reclassify 31,982 stored rows as *assigned*.
+#'
+#' @param x Character vector of habitat values.
+#' @return Logical vector: `TRUE` where the habitat is unassigned, by either
+#'   vocabulary.
+#' @noRd
+.is_habitat_unassigned <- function(x) {
+  x <- as.character(x)
+  is.na(x) | !nzchar(trimws(x)) | x == .HABITAT_UNCERTAIN
+}
+
+#' Refuse a habitat scheme that would collide with the sentinel
+#'
+#' `"Uncertain"` must never also be a real habitat in someone's scheme, or an
+#' unassigned point and a genuinely-Uncertain-habitat point become
+#' indistinguishable -- reintroducing exactly the collision this replaces.
+#'
+#' @param hab_levels Character vector of habitat names.
+#' @param caller Name used in the error message.
+#' @return `TRUE` invisibly; errors on collision.
+#' @noRd
+.check_habitat_sentinel_free <- function(hab_levels, caller) {
+  bad <- hab_levels[!is.na(hab_levels) &
+    tolower(trimws(hab_levels)) == tolower(.HABITAT_UNCERTAIN)]
+  if (length(bad) > 0L) {
+    stop(sprintf(
+      paste0(
+        "%s: '%s' is reserved -- it is the value main_habitat carries when a\n",
+        "  point's habitat could not be decided, so a scheme cannot also use it\n",
+        "  as a real habitat. Rename that habitat in the scheme."
+      ),
+      caller, bad[[1]]
+    ), call. = FALSE)
+  }
+  invisible(TRUE)
 }

@@ -276,7 +276,7 @@ report_habitat <- function(habitat_data,
     nrow(habitat_data)
   }
 
-  mh <- habitat_data$main_habitat[!is.na(habitat_data$main_habitat)]
+  mh <- habitat_data$main_habitat[!.is_habitat_unassigned(habitat_data$main_habitat)]
   # First-appearance order, not table()'s alphabetical default -- a scheme
   # string should read in the order categories actually occur, not shuffle
   # depending on which letters the LLM's own labels happen to start with.

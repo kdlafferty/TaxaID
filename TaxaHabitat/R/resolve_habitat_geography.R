@@ -136,10 +136,12 @@ resolve_habitat_by_geography <- function(occurrence_data,
 
   hab <- as.character(occurrence_data[[habitat_col]])
   if (!"habitat_source" %in% names(occurrence_data)) {
-    occurrence_data[["habitat_source"]] <- ifelse(is.na(hab), NA_character_, "consensus")
+    occurrence_data[["habitat_source"]] <- ifelse(
+      .is_habitat_unassigned(hab), NA_character_, "consensus"
+    )
   }
 
-  unresolved <- unique(occurrence_data[["point_id"]][is.na(hab)])
+  unresolved <- unique(occurrence_data[["point_id"]][.is_habitat_unassigned(hab)])
   if (length(unresolved) == 0L) {
     if (verbose) message("resolve_habitat_by_geography: nothing unassigned.")
     return(occurrence_data)

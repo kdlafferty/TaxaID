@@ -1,5 +1,52 @@
 # TaxaHabitat 0.1.0
 
+## Breaking change (2026-09-19): unassigned habitat is "Uncertain", not NA
+
+* `assign_habitat_biological()` now sets `main_habitat = "Uncertain"` where no
+  habitat reaches `threshold`, instead of `NA`.
+
+  **Why:** `NA` in a `main_habitat` column already meant something else on the
+  prior side. `TaxaExpect::generate_domestic_food_priors()` sets it
+  deliberately -- its own comment reads "intentionally set to NA (never a real
+  habitat value)" -- to mean *habitat-agnostic, matches any habitat*, and
+  `TaxaAssign::join_priors()` reads it to build the wildcard tier for domestic
+  and food taxa. One sentinel in one column name therefore carried two
+  decisions that route oppositely: a chicken should match every habitat, while
+  a point whose habitat could not be determined should be routed to the
+  evidence branch and still appear as regionally present. The second inherited
+  the first's semantics by accident.
+
+  **`.is_habitat_unassigned()` accepts both vocabularies.** Every decision file
+  and saved occurrence table written before this change stores `NA`, and the
+  same code paths read them; treating only the new sentinel would have silently
+  reclassified 31,982 stored rows as *assigned*. Consumers use the predicate,
+  not a bare comparison.
+
+  **The one that would have been silent:** `spatial_review_decisions.R` decided
+  "was this reassigned?" with `!is.na(main_habitat)`. Under the new sentinel
+  that is `TRUE`, so every unplaceable point would have been recorded as a
+  reviewer reassignment it never was -- the same failure class as the seeded
+  decisions cleaned up earlier the same day, re-created by its own fix. Now the
+  predicate, with a dry run proving `habitat_reassigned` stays 0 across all
+  three production decision files.
+
+  **A scheme may no longer use "Uncertain" as a real habitat.**
+  `assign_habitat_biological()` errors on collision, because otherwise an
+  unassigned point and a genuinely-Uncertain-habitat point become
+  indistinguishable and the collision reappears in a new costume.
+
+  **Scope is occurrence-side only.** All 26 `is.na()` habitat sites were
+  traced: `TaxaAssign::join_priors()` (94, 842, 1021) and `site_utils.R:341`
+  read `taxaexpect_priors$main_habitat` and are **untouched**; TaxaFlag's two
+  and `TaxaExpect::apply_undetected_evidence()`'s are site-context scalars, not
+  occurrence data. TaxaExpect's three `keep <- !is.na(hab) & hab ==
+  site_habitat` need no change -- `"Uncertain"` passes `!is.na()` but fails the
+  equality, so those points stay excluded exactly as before. Verified
+  empirically, not reasoned: identical stratum selection on both vocabularies.
+
+  Production decision files remapped (backed up first; GreatLakes had never had
+  a backup): PtConception 31,383 rows, Mugu 127, GreatLakes 472.
+
 ## New features (2026-09-19, geography resolves unassigned habitats)
 
 * **`resolve_habitat_by_geography()`** -- fills in `main_habitat` for points

@@ -348,7 +348,7 @@ review_spatial_flags <- function(
   if (length(prop_cols) > 0L) {
     .orig_hab <- as.character(occurrence_data[[habitat_col]])
     .unassigned <- unique(occurrence_data[["point_id"]][
-      is.na(.orig_hab) | !nzchar(trimws(.orig_hab))
+      .is_habitat_unassigned(.orig_hab)
     ])
     .unassigned <- intersect(.unassigned, pts$point_id)
     if (length(.unassigned) > 0L) {
