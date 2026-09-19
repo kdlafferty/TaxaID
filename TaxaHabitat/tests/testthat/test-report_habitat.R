@@ -305,3 +305,68 @@ test_that("an explicitly named, present taxon_col still wins over taxon_name (20
   expect_equal(report_habitat(df)$statistics$n_taxa, 3L)
   expect_equal(report_habitat(df, taxon_col = "taxon_name")$statistics$n_taxa, 1L)
 })
+
+# -----------------------------------------------------------------------------
+# report_habitat() is the SECOND consumer of the habitat weight table, and it
+# inferred the weight set by scanning column types exactly as
+# .detect_habitat_cols() did. Reproduced on the real PtConception 12S lookup
+# once habitat_breadth existed: "across 5 categories. Dominant habitat: Marine
+# (mean weight 58%)" became "across 6 categories. Dominant habitat:
+# habitat_breadth" -- Methods/Results text headed for a manuscript.
+# -----------------------------------------------------------------------------
+
+.rh_weights <- function(with_breadth, with_attr) {
+  h <- data.frame(
+    taxon_name = c("sp1", "sp2", "sp3"),
+    Marine      = c(0.90, 0.30, 0.10),
+    Estuarine   = c(0.05, 0.20, 0.10),
+    Freshwater  = c(0.05, 0.30, 0.70),
+    Terrestrial = c(0.00, 0.20, 0.10),
+    Other_weight = 0,
+    habitat_best_guess = "",
+    Habitat = c("Marine", "Marine", "Freshwater"),
+    stringsAsFactors = FALSE
+  )
+  if (with_breadth) {
+    h$habitat_breadth <- .compute_habitat_breadth(
+      h, c("Marine", "Estuarine", "Freshwater", "Terrestrial")
+    )
+  }
+  if (with_attr) {
+    attr(h, "habitat_cols") <- c(
+      "Marine", "Estuarine", "Freshwater", "Terrestrial", "Other_weight"
+    )
+  }
+  h
+}
+
+test_that("report_habitat() never reports habitat_breadth as a habitat", {
+  for (with_attr in c(TRUE, FALSE)) {
+    r <- report_habitat(.rh_weights(TRUE, with_attr), taxon_col = "taxon_name")
+    txt <- paste(unlist(r), collapse = " ")
+    expect_false(grepl("habitat_breadth", txt), info = paste("attr:", with_attr))
+    expect_false(grepl("6 categories", txt), info = paste("attr:", with_attr))
+  }
+})
+
+test_that("adding habitat_breadth does not change report_habitat()'s output", {
+  # The column must be genuinely additive for the reporting path, both when the
+  # table declares its weight columns and when it does not.
+  for (with_attr in c(TRUE, FALSE)) {
+    a <- report_habitat(.rh_weights(FALSE, with_attr), taxon_col = "taxon_name")
+    b <- report_habitat(.rh_weights(TRUE, with_attr), taxon_col = "taxon_name")
+    expect_equal(unlist(a), unlist(b), info = paste("attr:", with_attr))
+  }
+})
+
+test_that(".candidate_habitat_cols prefers the declared columns", {
+  h <- .rh_weights(TRUE, TRUE)
+  cc <- .candidate_habitat_cols(h, "taxon_name")
+  expect_false("habitat_breadth" %in% cc)
+  expect_true(all(c("Marine", "Estuarine", "Freshwater", "Terrestrial") %in% cc))
+  # A stale declaration naming no present column falls back to the scan
+  attr(h, "habitat_cols") <- "NoSuchColumn"
+  cc2 <- .candidate_habitat_cols(h, "taxon_name")
+  expect_false("habitat_breadth" %in% cc2)
+  expect_true("Marine" %in% cc2)
+})
