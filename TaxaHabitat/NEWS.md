@@ -1,5 +1,46 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-19, geography resolves unassigned habitats)
+
+* **`resolve_habitat_by_geography()`** -- fills in `main_habitat` for points
+  the assemblage consensus could not resolve, by asking where the point
+  actually is.
+
+  A taxon whose weights span freshwater, estuarine and marine is not uncertain
+  about its habitat -- it uses all three -- so over open ocean it is marine,
+  and inland it is not. The consensus threshold cannot express that because it
+  never sees the location, and `flag_habitat_inconsistencies()` never gets the
+  chance because it drops NA-habitat rows before computing any geography.
+
+  Admissibility is decided at **habitat** level, not realm level. A gull's
+  candidates are typically `Estuarine | Freshwater | Marine`; over open ocean
+  both Estuarine and Marine are "marine realm", so a realm rule finds two
+  matches and gives up when the answer is plainly Marine. Estuarine is a
+  transitional coastal habitat and does not occur in open water -- nor,
+  symmetrically, 50 km inland.
+
+  | zone | admissible |
+  |---|---|
+  | `ocean` | marine and **not** estuarine |
+  | `inland` | non-marine (so not Estuarine either) |
+  | `coastal` | everything -- geography discriminates nothing at the shore |
+
+  Only points with exactly **one** admissible candidate resolve. Measured on a
+  6,523-point PtConception extract: **221 of 646 unassigned points (34%)** --
+  201 ocean, 20 inland -- leaving 384 coastal and 41 inland genuinely
+  ambiguous. The inland residue is mostly `Freshwater | Terrestrial`, which
+  needs a lake layer to separate a pond from a hillside.
+
+  A resolved point gets `habitat_source = "geography"`; one the consensus had
+  already settled keeps `"consensus"`. That is a weaker claim feeding
+  habitat-stratified priors, so it is recorded rather than inferred. The
+  point's `habitat_proportions` vector is **not** rewritten -- the taxon really
+  does use those habitats; only `main_habitat` is decided. (This differs from
+  the reviewer case, where one-hotting is right because a human decision is a
+  fact.)
+
+  Opt-in: no workflow calls it yet.
+
 ## New features (2026-09-19, instructions and provenance)
 
 * `review_spatial_flags()` gains an **Instructions dialog**, shown on open and
