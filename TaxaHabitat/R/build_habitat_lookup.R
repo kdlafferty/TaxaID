@@ -212,6 +212,20 @@ build_habitat_lookup <- function(taxon_list,
   } else {
     out <- out[order(match(out$taxon_name, taxon_list)), , drop = FALSE]
     rownames(out) <- NULL
+    # habitat_breadth is DERIVED from the weight columns, never stored, so it is
+    # recomputed here for every row rather than read back. Entries cached before
+    # the column existed carry the weights but not the breadth, and bind_rows()
+    # would fill those with NA -- silently, and permanently for any taxon whose
+    # verdict is already cached. Deriving it instead means no cache-key bump and
+    # no re-running the LLM over thousands of already-settled taxa.
+    out[["habitat_breadth"]] <- .compute_habitat_breadth(out, probe$habitat_cols)
+    # Declare the weight columns (see parse_hierarchical_habitat_response()).
+    # bind_rows() drops attributes, so this is set after the combine, not
+    # inherited from either input.
+    attr(out, "habitat_cols") <- c(
+      probe$habitat_cols,
+      if ("Other_weight" %in% names(out)) "Other_weight"
+    )
   }
   attr(out, "cache_summary") <- list(
     n_total = length(taxon_list),

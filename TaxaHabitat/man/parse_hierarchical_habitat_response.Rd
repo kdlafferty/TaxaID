@@ -46,6 +46,13 @@ with the highest weight (argmax). \code{"Other"} when
 \code{Other_weight} is the largest. Used by downstream functions
 (\code{\link{assign_habitat_biological}}) that expect a single primary
 habitat label per species.}
+\item{habitat_breadth}{Numeric. Levins' niche breadth,
+\code{B = 1 / sum(p^2)}, over the scheme's habitat columns with the
+weights renormalised to sum to 1, in units of \strong{effective number
+of habitats}: \code{1} is a pure specialist and the maximum is the
+number of habitat columns. \code{NA} when all scheme weights are zero.
+See Details for why it exists and how to read it with
+\code{Other_weight}.}
 }
 }
 \description{
@@ -60,6 +67,29 @@ and manually saved response files (\code{\link[TaxaTools]{read_llm_response}}).
 \strong{Multi-chunk responses:} If \code{raw_text} contains multiple CSV
 blocks (one per chunk from \code{\link[TaxaTools]{prompt_api}}), duplicate
 header rows are stripped automatically before combining.
+
+\strong{Habitat breadth:} \code{Habitat} is an argmax, so it renders a
+near-uniform weight vector and a decisive one as the same confident-looking
+string. On the real PtConception 12S lookup, \emph{Larus delawarensis} and
+\emph{Chroicocephalus philadelphia} carry identical weights (Marine 0.30,
+Estuarine 0.20, Freshwater 0.30, Terrestrial 0.20) and both read
+\code{"Marine"}, while \emph{Gelochelidon nilotica} (0.20/0.20/0.30/0.30)
+reads \code{"Freshwater"} -- the label is decided by column order.
+\code{habitat_breadth} recovers what the argmax discards. Standardise it to
+0-1 with \code{(B - 1) / (n - 1)} if needed.
+
+\code{Other_weight} is deliberately excluded from the breadth calculation:
+it measures the model failing to place a taxon in the scheme at all, which is
+a different quantity from a taxon that genuinely spans habitats. Read the two
+together -- high breadth with low \code{Other_weight} is a real generalist,
+whereas high \code{Other_weight} means the verdict itself is weak.
+
+\strong{Declared weight columns:} the returned data frame carries an
+\code{"habitat_cols"} attribute naming the weight columns, and
+\code{\link{assign_habitat_biological}} prefers it over scanning for numeric
+columns. Do not add a numeric column to this table without checking that
+attribute is set: the type scan is the fallback, and it would absorb the new
+column as an extra habitat weight.
 
 \strong{Weight normalisation:} Weights are NOT renormalised. A warning is
 emitted for any row where weights deviate more than 0.05 from 1.0.

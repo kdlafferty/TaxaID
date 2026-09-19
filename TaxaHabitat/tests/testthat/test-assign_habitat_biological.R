@@ -572,3 +572,107 @@ test_that("zero-match path preserves all original columns", {
   )
   expect_true(all(c("lat", "lon") %in% names(result)))
 })
+
+# -----------------------------------------------------------------------------
+# Declared habitat weight columns.
+#
+# .detect_habitat_cols() used to infer the weight set by scanning for numeric
+# columns, which silently absorbs any numeric column added to the table later.
+# habitat_breadth is numeric, lives on the same table, and is on the scale
+# "effective number of habitats" (up to ~n) rather than 0-1 -- so it outweighs
+# every real habitat and WINS the argmax. Reproduced before the fix:
+# main_habitat came back as "habitat_breadth", with no error.
+# -----------------------------------------------------------------------------
+
+.brd_lookup <- function(with_attr) {
+  h <- data.frame(
+    taxon_name = "Larus delawarensis",
+    Marine = 0.30, Estuarine = 0.20, Freshwater = 0.30, Terrestrial = 0.20,
+    Other_weight = 0, habitat_best_guess = "", Habitat = "Marine",
+    habitat_breadth = 3.846,
+    stringsAsFactors = FALSE
+  )
+  if (with_attr) {
+    attr(h, "habitat_cols") <- c(
+      "Marine", "Estuarine", "Freshwater", "Terrestrial", "Other_weight"
+    )
+  }
+  h
+}
+.brd_occ <- data.frame(
+  point_id = "p1", decimalLatitude = 34, decimalLongitude = -120,
+  taxon_name = "Larus delawarensis", stringsAsFactors = FALSE
+)
+
+test_that("habitat_breadth is never treated as a habitat weight (declared path)", {
+  res <- suppressMessages(assign_habitat_biological(.brd_occ, .brd_lookup(TRUE)))
+  expect_false(identical(res$main_habitat[1], "habitat_breadth"))
+  expect_equal(res$main_habitat[1], "Marine")
+})
+
+test_that("habitat_breadth is never treated as a habitat weight (fallback path)", {
+  # A hand-assembled table carries no attribute, so the type scan still runs --
+  # it must exclude habitat_breadth by name.
+  res <- suppressMessages(assign_habitat_biological(.brd_occ, .brd_lookup(FALSE)))
+  expect_false(identical(res$main_habitat[1], "habitat_breadth"))
+  expect_equal(res$main_habitat[1], "Marine")
+})
+
+test_that("the declared-columns attribute does NOT silently drop Other", {
+  # Whether "Other" belongs in the weight set is an open scope decision
+  # elsewhere in the ecosystem. Recording the declared columns must preserve
+  # today's behaviour exactly, not quietly decide it.
+  d <- .detect_habitat_cols(.brd_lookup(TRUE), NULL, "taxon_name", "test")
+  expect_true("Other" %in% d$habitat_cols)
+  expect_false("habitat_breadth" %in% d$habitat_cols)
+  scan <- .detect_habitat_cols(.brd_lookup(FALSE), NULL, "taxon_name", "test")
+  expect_setequal(d$habitat_cols, scan$habitat_cols)
+})
+
+test_that("an explicit habitat_cols argument still wins over the attribute", {
+  d <- .detect_habitat_cols(
+    .brd_lookup(TRUE), c("Marine", "Freshwater"), "taxon_name", "test"
+  )
+  expect_equal(d$habitat_cols, c("Marine", "Freshwater"))
+})
+
+test_that("a stale attribute naming absent columns falls back to scanning", {
+  h <- .brd_lookup(TRUE)
+  attr(h, "habitat_cols") <- c("Marine", "NoSuchColumn")
+  d <- suppressMessages(.detect_habitat_cols(h, NULL, "taxon_name", "test"))
+  expect_false("NoSuchColumn" %in% d$habitat_cols)
+  expect_true("Estuarine" %in% d$habitat_cols)
+  expect_false("habitat_breadth" %in% d$habitat_cols)
+})
+
+# -----------------------------------------------------------------------------
+# .compute_habitat_breadth() -- Levins' B, in effective-habitat units
+# -----------------------------------------------------------------------------
+
+test_that(".compute_habitat_breadth measures effective number of habitats", {
+  hc <- c("a", "b", "c", "d")
+  df <- data.frame(
+    a = c(1,  0.25, 0.30, 0,   0.5),
+    b = c(0,  0.25, 0.20, 0,   0.5),
+    c = c(0,  0.25, 0.30, 0,   0),
+    d = c(0,  0.25, 0.20, 0,   0)
+  )
+  b <- .compute_habitat_breadth(df, hc)
+  expect_equal(b[1], 1)              # pure specialist
+  expect_equal(b[2], 4)              # perfectly even over 4 habitats
+  expect_true(b[3] > 3.8 && b[3] < 4) # the real Larus delawarensis case
+  expect_true(is.na(b[4]))           # all zero -> nothing to measure
+  expect_equal(b[5], 2)              # even over 2 of 4
+})
+
+test_that(".compute_habitat_breadth is scale-invariant and handles bad input", {
+  hc <- c("a", "b")
+  expect_equal(
+    .compute_habitat_breadth(data.frame(a = 1, b = 1), hc),
+    .compute_habitat_breadth(data.frame(a = 50, b = 50), hc)
+  )
+  # NA and negative weights are treated as zero, never propagated
+  expect_equal(.compute_habitat_breadth(data.frame(a = c(1, 1), b = c(NA, -3)), hc), c(1, 1))
+  expect_length(.compute_habitat_breadth(data.frame(a = numeric(0), b = numeric(0)), hc), 0L)
+  expect_true(is.na(.compute_habitat_breadth(data.frame(a = 1, b = 1), character(0))))
+})

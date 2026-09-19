@@ -420,3 +420,53 @@
   "\\b(freshwater|wetland|wetlands|aquatic|lake|lakes|river|rivers|riverine|",
   "stream|streams|pond|ponds|marsh|marshes|bog|bogs|fen|fens|riparian)\\b"
 )
+
+# ------------------------------------------------------------------------------
+# Habitat breadth (Levins' B) from a weight table
+# ------------------------------------------------------------------------------
+
+#' Levins' niche breadth over a set of habitat weight columns
+#'
+#' `Habitat` is an argmax, so it renders a near-uniform weight vector and a
+#' decisive one as the same confident-looking string. Measured on real
+#' PtConception 12S data, *Larus delawarensis* reads `"Marine"` off weights of
+#' Marine 0.30 / Estuarine 0.20 / Freshwater 0.30 / Terrestrial 0.20 -- a tie
+#' broken arbitrarily by column order. This recovers the information the argmax
+#' discards.
+#'
+#' Levins' B = 1 / sum(p^2) over the scheme's habitat columns, with the weights
+#' renormalised to sum to 1 first. Units are **effective number of habitats**:
+#' 1.0 is a pure specialist, and the maximum is the number of habitat columns
+#' (perfectly even use of all of them). Standardise to 0-1 if needed with
+#' (B - 1) / (n - 1).
+#'
+#' `Other_weight` is deliberately EXCLUDED. It measures the LLM failing to place
+#' a taxon in the scheme at all, which is a different thing from a taxon that
+#' genuinely spans habitats -- "no information" versus "broad niche". Read the
+#' two columns together: high breadth with low `Other_weight` is a real
+#' generalist; high `Other_weight` means the verdict itself is weak.
+#'
+#' @param df Data frame containing the habitat weight columns.
+#' @param hab_cols Character. The scheme's habitat column names, excluding
+#'   `Other_weight`.
+#' @return Numeric vector, one per row. `NA` where the scheme weights are all
+#'   zero or missing (nothing to measure breadth over).
+#' @noRd
+.compute_habitat_breadth <- function(df, hab_cols) {
+  hab_cols <- intersect(hab_cols, names(df))
+  n <- nrow(df)
+  if (n == 0L || length(hab_cols) == 0L) {
+    return(rep(NA_real_, n))
+  }
+  w <- as.matrix(df[, hab_cols, drop = FALSE])
+  storage.mode(w) <- "double"
+  w[is.na(w) | w < 0] <- 0
+  tot <- rowSums(w)
+  out <- rep(NA_real_, n)
+  ok <- tot > 0
+  if (any(ok)) {
+    p <- w[ok, , drop = FALSE] / tot[ok]
+    out[ok] <- 1 / rowSums(p^2)
+  }
+  out
+}

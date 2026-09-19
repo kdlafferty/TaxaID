@@ -422,6 +422,30 @@ assign_habitat_biological <- function(occurrence_data,
         paste(missing_hc, collapse = ", ")
       )
     }
+  } else if (!is.null(attr(habitats_df, "habitat_cols")) &&
+    all(sub("^Other_weight$", "Other", attr(habitats_df, "habitat_cols")) %in%
+      names(habitats_df))) {
+    # DECLARED weight columns, recorded by the function that built this table.
+    #
+    # Preferred over scanning column types, because scanning silently absorbs any
+    # numeric column added later. That is not hypothetical: `habitat_breadth` is
+    # numeric, on the same table, and on the scale of "effective number of
+    # habitats" (up to ~4) rather than 0-1 -- so it outweighs every real habitat
+    # and wins the argmax. A generalist would be assigned
+    # main_habitat = "habitat_breadth", with no error and a plausible-looking
+    # result. Caught before release by a peer session reading its own run log.
+    habitat_cols <- sub(
+      "^Other_weight$", "Other",
+      attr(habitats_df, "habitat_cols")
+    )
+    habitat_cols <- intersect(habitat_cols, names(habitats_df))
+    message(sprintf(
+      paste0(
+        "%s: using the %d declared habitat weight column(s) recorded on ",
+        "'habitats_df': %s."
+      ),
+      caller, length(habitat_cols), paste(habitat_cols, collapse = ", ")
+    ))
   } else {
     exclude_cols <- c(
       taxon_col,
@@ -429,7 +453,11 @@ assign_habitat_biological <- function(occurrence_data,
       if ("ecoregion_best_guess" %in% names(habitats_df)) {
         "ecoregion_best_guess"
       },
-      "Habitat"
+      "Habitat",
+      # Derived diagnostics that live alongside the weights but are NOT weights.
+      # A hand-assembled table carries no declared-columns attribute, so this
+      # fallback still has to exclude them by name.
+      "habitat_breadth"
     )
     numeric_cols <- names(habitats_df)[
       vapply(habitats_df, is.numeric, logical(1))

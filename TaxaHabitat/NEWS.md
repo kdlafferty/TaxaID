@@ -1,5 +1,58 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-18, later)
+
+* `parse_hierarchical_habitat_response()` and `build_habitat_lookup()` gain a
+  **`habitat_breadth`** column: Levins' niche breadth, `B = 1/sum(p^2)`,
+  over the scheme's habitat columns, in units of **effective number of
+  habitats** (1 = pure specialist, maximum = number of habitat columns).
+
+  `Habitat` is an argmax, so it renders a near-uniform weight vector and a
+  decisive one as the same confident-looking string. On the real PtConception
+  12S lookup, *Larus delawarensis* and *Chroicocephalus philadelphia* carry
+  identical weights (Marine 0.30 / Estuarine 0.20 / Freshwater 0.30 /
+  Terrestrial 0.20) and both read `"Marine"`, while *Gelochelidon nilotica*
+  (0.20/0.20/0.30/0.30) reads `"Freshwater"` -- the label is decided by column
+  order. Of 681 taxa, 16 have breadth >= 3.5 (near-uniform across all four
+  habitats) and 425 have breadth <= 1.2; the broad ones are gulls, terns and
+  cormorants, exactly the taxa a single-label scheme cannot represent.
+
+  `Other_weight` is deliberately excluded from the calculation. It measures the
+  model failing to place a taxon in the scheme at all -- "no information" --
+  which is a different quantity from a taxon that genuinely spans habitats.
+  Read the two together.
+
+  The column is **derived, never stored**, and is recomputed in
+  `build_habitat_lookup()` after the cache combine. Entries cached before it
+  existed carry the weights but not the breadth, and `bind_rows()` would have
+  filled those with `NA` silently and permanently for every already-cached
+  taxon. Deriving it means no cache-key bump and no re-running the LLM over
+  thousands of settled taxa.
+
+* `parse_hierarchical_habitat_response()` and `build_habitat_lookup()` now
+  record an **`"habitat_cols"` attribute** naming the weight columns, and
+  `assign_habitat_biological()` prefers it over scanning for numeric columns.
+
+  This was not optional. `.detect_habitat_cols()` inferred the weight set by
+  column type, excluding only `taxon_col`, `habitat_best_guess`,
+  `ecoregion_best_guess` and `Habitat` -- so adding a numeric `habitat_breadth`
+  column made it a sixth habitat weight. Because breadth is on the scale
+  "effective number of habitats" (up to ~4) rather than 0-1, it outweighs every
+  real weight and **always** wins the argmax: reproduced before the fix, a
+  generalist came back with `main_habitat = "habitat_breadth"`, no error and a
+  plausible-looking result. The taxa the column exists to identify were exactly
+  the ones it would have corrupted.
+
+  The declared set is `c(<scheme habitat cols>, "Other_weight")` -- precisely
+  what the type scan picks up today, with a test asserting the two paths agree,
+  so recording the contract does not quietly change it. The fallback scan also
+  excludes `habitat_breadth` by name, so a hand-assembled table with no
+  attribute is safe. A stale attribute naming absent columns falls back to
+  scanning rather than silently narrowing the weight set.
+
+  Caught before release by a peer session that recognised the collision in its
+  own run log.
+
 ## Bug fixes (2026-09-18)
 
 * `flag_habitat_inconsistencies()`: **the two habitat-realm name patterns were
