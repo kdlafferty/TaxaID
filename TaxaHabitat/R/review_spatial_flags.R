@@ -44,6 +44,23 @@
 #' the dataset is added to the palette and the Habitats sidebar filter
 #' immediately, without disturbing any existing habitat's colour.
 #'
+#' @section What the reviewer is deciding:
+#' Two decisions drive this gadget, and neither is visible from the map, so an
+#' \strong{Instructions} dialog states both on open (re-openable from the
+#' sidebar).
+#' \enumerate{
+#'   \item \strong{Which points are trusted.} \code{likely} points are kept
+#'     for analysis; \code{questionable} and \code{unlikely} are excluded as
+#'     probable errors. Anything left in the Questionable view is therefore
+#'     dropped, which is why that view is worth inspecting.
+#'   \item \strong{Which points get modelled.} A point with no single
+#'     \code{main_habitat} still counts as regionally present but is
+#'     \strong{not modelled as resident}:
+#'     \code{TaxaExpect::estimate_kernel_priors()} requires a non-\code{NA}
+#'     habitat, so those taxa fall through to the weaker regional-proximity
+#'     evidence instead. Resolving a point's habitat promotes it.
+#' }
+#'
 #' @section Composite categories for unassigned points:
 #' A point whose consensus reached no verdict (\code{main_habitat} \code{NA})
 #' used to appear as a single undifferentiated \strong{Unknown}. Every
@@ -593,6 +610,14 @@ review_spatial_flags <- function(
           ),
           shiny::hr(style = "margin:8px 0;"),
 
+          shiny::actionButton(
+            "show_instructions", "What am I deciding?",
+            style = paste0(
+              "width:100%;font-size:11px;padding:3px 8px;margin-bottom:8px;",
+              "background:#eef4fb;border:1px solid #c5d9ef;border-radius:3px;color:#2c5d8f;"
+            )
+          ),
+
           # ---- Session overrides -------------------------------------------
           shiny::h4("Session overrides",
             style = "margin-top:0;margin-bottom:4px;font-size:13px;"
@@ -1081,6 +1106,67 @@ review_spatial_flags <- function(
     # fire this observer without anyone clicking Apply. Belt and braces: ignore
     # the initial/zero value, and clear pending_bulk() on every exit path
     # (including Cancel) so a spurious fire has nothing left to run.
+    # ------------------------------------------------------------------------
+    # Instructions.
+    #
+    # The two decisions this gadget actually drives are not visible from the
+    # map, and both change what reaches the model -- so they are stated
+    # explicitly rather than left to be inferred from colours and button
+    # labels. Shown once on open, and re-openable from the sidebar.
+    # ------------------------------------------------------------------------
+    .instructions <- function() {
+      shiny::modalDialog(
+        title = "What you are deciding",
+        easyClose = TRUE,
+        size = "l",
+        footer = shiny::modalButton("Start reviewing"),
+        shiny::div(
+          style = "font-size:13px;line-height:1.5;",
+          shiny::h4("1. Which points are trusted", style = "margin-top:0;font-size:14px;"),
+          shiny::HTML(paste0(
+            "<p><b>Likely</b> points are <b>kept</b> for analysis. ",
+            "<b>Questionable</b> and <b>Unlikely</b> points are <b>excluded</b> ",
+            "as probable errors.</p>",
+            "<p>So the <b>Questionable</b> view is worth inspecting: anything you ",
+            "leave there is dropped. Use <b>Action &rarr; Flag</b> to move a point ",
+            "between views (Questionable &rarr; Likely rescues it).</p>"
+          )),
+          shiny::hr(),
+          shiny::h4("2. Which points get modelled", style = "font-size:14px;"),
+          shiny::HTML(paste0(
+            "<p>A point with no single main habitat is still counted as ",
+            "<b>regionally present</b>, but it is <b>not modelled</b> as resident ",
+            "&mdash; the habitat-stratified prior requires a habitat, so these ",
+            "points fall through to the weaker regional-proximity evidence.</p>",
+            "<p>So it is worth resolving them. They appear under composite ",
+            "categories naming the habitats in contention, such as ",
+            "<code>Estuarine | Freshwater | Marine</code>, with a point count. ",
+            "Use <b>Action &rarr; Reassign Habitat</b>; the dropdown offers only ",
+            "the habitats that point's own assemblage supports, with their ",
+            "proportions.</p>"
+          )),
+          shiny::hr(),
+          shiny::h4("Working efficiently", style = "font-size:14px;"),
+          shiny::HTML(paste0(
+            "<ul style='margin:0;padding-left:18px;'>",
+            "<li><b>Habitats panel</b> &mdash; untick everything but one category, ",
+            "then work it to zero. The count beside each name tells you how big ",
+            "the job is.</li>",
+            "<li><b>Draw a rectangle or polygon</b> (toolbar, top-left of the map) ",
+            "to select many points at once. The polygon follows a coastline; ",
+            "hidden habitats are never selected.</li>",
+            "<li><b>Undo Last</b> reverses a whole bulk action in one click.</li>",
+            "<li>A selection of more than ", format(bulk_confirm_threshold, big.mark = ","),
+            " points asks for confirmation first; nothing is ever partly applied.</li>",
+            "<li><b>Done</b> returns your decisions; <b>Cancel</b> discards them all.</li>",
+            "</ul>"
+          ))
+        )
+      )
+    }
+    shiny::showModal(.instructions())
+    shiny::observeEvent(input$show_instructions, shiny::showModal(.instructions()))
+
     shiny::observeEvent(input$confirm_bulk,
       {
         if (is.null(input$confirm_bulk) || input$confirm_bulk == 0L) {
@@ -1663,6 +1749,54 @@ review_spatial_flags <- function(
         hit <- !is.na(m)
         result[[habitat_col]][hit] <- unname(habs[hab_changed_ids])[m[hit]]
       }
+
+      # ----------------------------------------------------------------
+      # Carry the per-point consensus vector out, and keep it HONEST.
+      #
+      # Two defects this closes, both found by a downstream session reading
+      # this code rather than by anything failing:
+      #
+      # 1. This function READ attr(occurrence_data, "habitat_proportions")
+      #    and never re-attached it, so the gadget's own output silently
+      #    lost the vector it had just used.
+      #
+      # 2. Worse: a reviewer's reassignment changes main_habitat and leaves
+      #    the vector untouched, so a consumer reading the vector would
+      #    SILENTLY OVERRULE THE REVIEWER -- a point resolved to Marine
+      #    still reading Marine 0.58 / Terrestrial 0.20 / ...
+      #
+      # The vector is therefore rewritten to one-hot for every point the
+      # reviewer actually decided. A reviewed point's habitat is a fact, not
+      # a distribution, and making the data self-consistent beats adding a
+      # flag every consumer must remember to check. habitat_reviewed is
+      # recorded as well, so the distinction is queryable rather than
+      # inferred, and the original ambiguity survives in
+      # spatial_flag_reason's audit text.
+      # ----------------------------------------------------------------
+      props_out <- hab_props
+      decided <- unique(unlist(lapply(history(), `[[`, "point_id"), use.names = FALSE))
+      result[["habitat_reviewed"]] <- result[["point_id"]] %in% decided
+
+      if (!is.null(props_out) && length(prop_cols) > 0L && length(decided) > 0L) {
+        ri <- match(decided, props_out$point_id)
+        keep <- !is.na(ri)
+        if (any(keep)) {
+          # Via a matrix rather than data-frame indexing: props_out carries
+          # point_id as its first column, so a column index taken from
+          # prop_cols is off by one against the data frame itself.
+          pm <- as.matrix(props_out[, prop_cols, drop = FALSE])
+          rows <- ri[keep]
+          final_hab <- unname(habs[decided[keep]])
+          pm[rows, ] <- 0
+          hit <- match(final_hab, prop_cols)
+          ok <- !is.na(hit)
+          if (any(ok)) {
+            pm[cbind(rows[ok], hit[ok])] <- 1
+          }
+          props_out[, prop_cols] <- as.data.frame(pm)
+        }
+      }
+      attr(result, "habitat_proportions") <- props_out
 
       shiny::stopApp(returnValue = result)
     })

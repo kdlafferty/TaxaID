@@ -1,5 +1,46 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-19, instructions and provenance)
+
+* `review_spatial_flags()` gains an **Instructions dialog**, shown on open and
+  re-openable from a "What am I deciding?" sidebar button. It states the two
+  decisions the gadget actually drives, neither of which is visible from the
+  map:
+
+  1. **Which points are trusted** -- `likely` is kept for analysis;
+     `questionable` and `unlikely` are excluded as probable errors, so anything
+     left in the Questionable view is dropped.
+  2. **Which points get modelled** -- a point with no single `main_habitat` is
+     counted as regionally present but is *not modelled as resident*, because
+     `TaxaExpect::estimate_kernel_priors()` requires a non-`NA` habitat
+     (verified at `estimate_kernel_priors.R:278`); those taxa fall through to
+     the weaker regional-proximity evidence instead.
+
+  Plus a short section on working efficiently: filter to one category and work
+  it to zero, draw a rectangle or polygon, Undo Last reverses a bulk action,
+  and large selections confirm first.
+
+## Bug fixes (2026-09-19, habitat_proportions contract)
+
+* **`habitat_proportions` survived by accident, not by contract.**
+  `review_spatial_flags()` read the attribute and never re-attached it to its
+  return, and `flag_habitat_inconsistencies()` did not mention it at all -- it
+  persisted only because R copies attributes through some operations (`[` and
+  `dplyr::filter` keep it; `merge()` and `summarise()` drop it). Both now
+  preserve it explicitly, with tests.
+
+* **The vector went stale after a reassignment and would have overruled the
+  reviewer.** A point resolved to `Marine` still carried
+  `Marine 0.58 / Terrestrial 0.20 / ...`, so a consumer reading the weights
+  would contradict the human decision. A reviewed point's vector is now
+  rewritten **one-hot** on its final habitat, and a `habitat_reviewed` column
+  records which points were decided. Making the data self-consistent beats a
+  flag every consumer must remember to check; the original ambiguity survives
+  in `spatial_flag_reason`'s audit text.
+
+  Both found by a downstream session reading this code, not by anything
+  failing.
+
 ## New features (2026-09-19, filter counts)
 
 * `review_spatial_flags()`: every entry in the **Habitats** sidebar filter now

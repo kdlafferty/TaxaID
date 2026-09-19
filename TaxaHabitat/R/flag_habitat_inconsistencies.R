@@ -151,6 +151,10 @@ flag_habitat_inconsistencies <- function(
   # 0. Validate inputs
   # --------------------------------------------------------------------------
 
+  # Captured here because the reshaping below can drop it; re-attached at the
+  # return. See the note there for why this must be explicit.
+  .props_in <- attr(occurrence_data, "habitat_proportions")
+
   for (col in c(lat_col, lon_col, habitat_col)) {
     if (!col %in% names(occurrence_data)) {
       stop(sprintf("Column '%s' not found in occurrence_data.", col))

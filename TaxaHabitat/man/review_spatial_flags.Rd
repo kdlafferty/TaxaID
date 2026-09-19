@@ -127,6 +127,25 @@ the dataset is added to the palette and the Habitats sidebar filter
 immediately, without disturbing any existing habitat's colour.
 }
 
+\section{What the reviewer is deciding}{
+
+Two decisions drive this gadget, and neither is visible from the map, so an
+\strong{Instructions} dialog states both on open (re-openable from the
+sidebar).
+\enumerate{
+\item \strong{Which points are trusted.} \code{likely} points are kept
+for analysis; \code{questionable} and \code{unlikely} are excluded as
+probable errors. Anything left in the Questionable view is therefore
+dropped, which is why that view is worth inspecting.
+\item \strong{Which points get modelled.} A point with no single
+\code{main_habitat} still counts as regionally present but is
+\strong{not modelled as resident}:
+\code{TaxaExpect::estimate_kernel_priors()} requires a non-\code{NA}
+habitat, so those taxa fall through to the weaker regional-proximity
+evidence instead. Resolving a point's habitat promotes it.
+}
+}
+
 \section{Composite categories for unassigned points}{
 
 A point whose consensus reached no verdict (\code{main_habitat} \code{NA})

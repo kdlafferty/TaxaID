@@ -435,3 +435,85 @@ test_that(".habitat_choice_html escapes the habitat label", {
   h <- .habitat_choice_html("<script>x</script>", "#000000", 1L)
   expect_false(grepl("<script>", as.character(h), fixed = TRUE))
 })
+
+# -----------------------------------------------------------------------------
+# habitat_proportions: contractual preservation, and honesty after review.
+#
+# Two defects found by a downstream session reading the code, not by anything
+# failing. (a) review_spatial_flags() READ the attribute and never re-attached
+# it, so the gadget's own output lost the vector it had just used; and the
+# attribute survived flag_habitat_inconsistencies() only because R copies
+# attributes through SOME operations -- `[` and dplyr::filter keep it, merge()
+# and summarise() drop it. (b) A reviewer's reassignment changed main_habitat
+# and left the vector untouched, so a consumer reading the vector would
+# silently OVERRULE the reviewer.
+# -----------------------------------------------------------------------------
+
+test_that("flag_habitat_inconsistencies preserves habitat_proportions explicitly", {
+  skip_if_not_installed("rnaturalearth")
+  occ <- data.frame(
+    point_id = c("p1", "p2"), decimalLatitude = c(34, 34.5),
+    decimalLongitude = c(-120, -120.5), taxon_name = c("a", "b"),
+    main_habitat = c("Marine", "Marine"), stringsAsFactors = FALSE
+  )
+  attr(occ, "habitat_proportions") <- data.frame(
+    point_id = c("p1", "p2"), Marine = c(1, 0.6), Estuarine = c(0, 0.4),
+    stringsAsFactors = FALSE
+  )
+  f <- suppressMessages(suppressWarnings(flag_habitat_inconsistencies(occ)))
+  expect_false(is.null(attr(f, "habitat_proportions")))
+  expect_equal(nrow(attr(f, "habitat_proportions")), 2L)
+})
+
+test_that("an input with no habitat_proportions does not gain one", {
+  skip_if_not_installed("rnaturalearth")
+  occ <- data.frame(
+    point_id = "p1", decimalLatitude = 34, decimalLongitude = -120,
+    taxon_name = "a", main_habitat = "Marine", stringsAsFactors = FALSE
+  )
+  f <- suppressMessages(suppressWarnings(flag_habitat_inconsistencies(occ)))
+  expect_null(attr(f, "habitat_proportions"))
+})
+
+test_that("a reviewed point's proportion vector is one-hot on its final habitat", {
+  # Replicates the Done handler's rewrite. A reviewed point's habitat is a
+  # fact, not a distribution -- making the data self-consistent beats adding a
+  # flag every consumer has to remember to check.
+  props <- data.frame(
+    point_id = c("p1", "p2"),
+    Marine = c(0.58, 0.9), Estuarine = c(0.12, 0.1),
+    Freshwater = c(0.10, 0), Terrestrial = c(0.20, 0),
+    stringsAsFactors = FALSE
+  )
+  prop_cols <- setdiff(names(props), "point_id")
+  decided <- "p1"
+  habs <- c(p1 = "Marine", p2 = "Marine")
+
+  pm <- as.matrix(props[, prop_cols, drop = FALSE])
+  rows <- match(decided, props$point_id)
+  pm[rows, ] <- 0
+  hit <- match(unname(habs[decided]), prop_cols)
+  pm[cbind(rows, hit)] <- 1
+  props[, prop_cols] <- as.data.frame(pm)
+
+  expect_equal(unname(unlist(props[1, prop_cols])), c(1, 0, 0, 0))
+  # the untouched point keeps its real vector
+  expect_equal(unname(unlist(props[2, prop_cols])), c(0.9, 0.1, 0, 0))
+})
+
+test_that("the one-hot rewrite indexes the right columns", {
+  # Regression: props carries point_id as column 1, so a column index taken
+  # from prop_cols is off by one against the data frame. Indexing the data
+  # frame directly produced an all-zero row -- a vector claiming the point has
+  # NO habitat, which is worse than the stale vector it replaced.
+  props <- data.frame(point_id = "p1", Marine = 0.5, Estuarine = 0.5,
+                      stringsAsFactors = FALSE)
+  prop_cols <- c("Marine", "Estuarine")
+  pm <- as.matrix(props[, prop_cols, drop = FALSE])
+  pm[1, ] <- 0
+  pm[cbind(1L, match("Estuarine", prop_cols))] <- 1
+  props[, prop_cols] <- as.data.frame(pm)
+  expect_equal(props$Marine, 0)
+  expect_equal(props$Estuarine, 1)
+  expect_false(all(unlist(props[1, prop_cols]) == 0))
+})
