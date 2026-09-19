@@ -377,3 +377,61 @@ test_that("a signature never becomes a habitat in the returned data", {
   expect_equal(changed2, "p1")
   expect_false(any(grepl(" | ", habs2[changed2], fixed = TRUE)))
 })
+
+# -----------------------------------------------------------------------------
+# Habitats filter counts.
+#
+# A reviewer working through composite categories needs to know whether ticking
+# one means 5 points or 5,000, and needs to see when a category has been
+# emptied by reassignment. Counted in the VIEW ON SCREEN, since that is what
+# ticking the box would actually show.
+# -----------------------------------------------------------------------------
+
+test_that(".habitat_view_counts counts only the view on screen", {
+  fl <- c(a = "likely", b = "likely", c = "questionable", d = "unlikely")
+  habs <- c(a = "Marine", b = "Marine", c = "Marine", d = "Estuarine")
+  lv <- c("Estuarine", "Marine")
+  expect_equal(.habitat_view_counts(fl, habs, "likely", lv), c(0L, 2L))
+  expect_equal(.habitat_view_counts(fl, habs, "questionable", lv), c(0L, 1L))
+  expect_equal(.habitat_view_counts(fl, habs, "unlikely", lv), c(1L, 0L))
+})
+
+test_that(".habitat_view_counts returns a zero per level for an empty view", {
+  fl <- c(a = "likely")
+  habs <- c(a = "Marine")
+  lv <- c("Estuarine", "Marine", "Freshwater")
+  expect_equal(.habitat_view_counts(fl, habs, "unlikely", lv), c(0L, 0L, 0L))
+})
+
+test_that(".habitat_view_counts keeps levels in the order given", {
+  fl <- c(a = "likely", b = "likely")
+  habs <- c(a = "Zebra", b = "Alpha")
+  expect_equal(.habitat_view_counts(fl, habs, "likely", c("Zebra", "Alpha")), c(1L, 1L))
+  expect_equal(.habitat_view_counts(fl, habs, "likely", c("Alpha", "Zebra")), c(1L, 1L))
+})
+
+test_that("a level with no points counts zero rather than being dropped", {
+  # The count has to be reportable for an EMPTY category, or the sidebar cannot
+  # show that a group was cleared -- which is the accounting this exists for.
+  fl <- c(a = "likely")
+  habs <- c(a = "Marine")
+  n <- .habitat_view_counts(fl, habs, "likely", c("Marine", "Estuarine | Marine"))
+  expect_equal(n, c(1L, 0L))
+})
+
+test_that(".habitat_choice_html shows the count and marks an empty category", {
+  full <- as.character(.habitat_choice_html("Marine", "#1f77b4", 2709L))
+  empty <- as.character(.habitat_choice_html("Marine | Terrestrial", "#1f77b4", 0L))
+  expect_match(full, "2,709", fixed = TRUE)
+  expect_false(grepl("line-through", full))
+  # Emptied: struck through and greyed, but still PRESENT -- removing it would
+  # make the list jump and erase the evidence the group existed.
+  expect_match(empty, "line-through")
+  expect_match(empty, "(0)", fixed = TRUE)
+  expect_match(empty, "Marine | Terrestrial", fixed = TRUE)
+})
+
+test_that(".habitat_choice_html escapes the habitat label", {
+  h <- .habitat_choice_html("<script>x</script>", "#000000", 1L)
+  expect_false(grepl("<script>", as.character(h), fixed = TRUE))
+})

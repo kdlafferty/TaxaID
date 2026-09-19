@@ -1,5 +1,23 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-19, filter counts)
+
+* `review_spatial_flags()`: every entry in the **Habitats** sidebar filter now
+  shows how many points it holds **in the view on screen** -- so a reviewer
+  knows before ticking whether a category means 5 points or 5,000, and can see
+  when one has been emptied by reassignment.
+
+  A category reduced to zero is **greyed and struck through, not removed**.
+  Removing entries mid-session would make the list jump under the cursor while
+  the reviewer is working down it, and would erase the evidence that the group
+  ever existed -- which is the accounting the count exists to provide. A
+  category at `(0)` is visibly finished; an absent row is indistinguishable
+  from one that was never there.
+
+  Counts are per view, so switching Likely -> Questionable re-counts. On the
+  PtConception demo the Questionable view holds only Terrestrial, so most
+  categories correctly read `(0)` there.
+
 ## New features (2026-09-19, composite categories)
 
 * `review_spatial_flags()`: **an unassigned point is no longer a single

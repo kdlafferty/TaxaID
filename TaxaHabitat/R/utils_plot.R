@@ -550,3 +550,58 @@
   }
   paste(sort(k), collapse = " | ")
 }
+
+#' Sidebar checkbox label for one habitat, with its remaining point count
+#'
+#' The count is what makes the Habitats filter usable for accounting: a
+#' reviewer working through composite categories needs to know whether ticking
+#' one means 5 points or 5,000, and needs to see when a category has been
+#' emptied by reassignment.
+#'
+#' A zero-count category is greyed and struck through rather than REMOVED.
+#' Removing it mid-session would make the list jump under the cursor and would
+#' erase the evidence that the group ever existed -- which is exactly the
+#' accounting the count is there to provide.
+#'
+#' @param h Habitat label.
+#' @param colour Hex colour for the dot.
+#' @param n Integer count of points currently in this habitat, in the view on
+#'   screen.
+#' @return A `shiny::HTML` string.
+#' @noRd
+.habitat_choice_html <- function(h, colour, n) {
+  empty <- isTRUE(n == 0L)
+  shiny::HTML(sprintf(
+    paste0(
+      '<span style="display:inline-flex;align-items:center;gap:5px;">',
+      '<span style="display:inline-block;width:10px;height:10px;',
+      'border-radius:50%%;background:%s;flex-shrink:0;%s"></span>',
+      '<span style="font-size:11px;%s">%s</span>',
+      '<span style="font-size:10px;color:%s;">(%s)</span>',
+      "</span>"
+    ),
+    colour,
+    if (empty) "opacity:0.35;" else "",
+    if (empty) "color:#aaa;text-decoration:line-through;" else "",
+    .he(h),
+    if (empty) "#bbb" else "#777",
+    format(n, big.mark = ",")
+  ))
+}
+
+#' Points per habitat in the view currently on screen
+#'
+#' @param fl Named character vector of flags, keyed on `point_id`.
+#' @param habs Named character vector of habitats, keyed on `point_id`.
+#' @param view_lc The lower-case flag name currently displayed.
+#' @param levels Habitat levels, in the order the sidebar lists them.
+#' @return Integer vector, one per level.
+#' @noRd
+.habitat_view_counts <- function(fl, habs, view_lc, levels) {
+  ids <- names(fl)[!is.na(fl) & fl == view_lc]
+  if (length(ids) == 0L) {
+    return(rep(0L, length(levels)))
+  }
+  h <- habs[ids]
+  as.integer(table(factor(unname(h), levels = levels)))
+}

@@ -213,7 +213,12 @@ crossing the antimeridian.
 The sidebar \strong{Habitats} panel lists every habitat present in the
 dataset (plus any added mid-session via a habitat reassignment) as a
 colour-coded checkbox. Unchecking a habitat hides those points from the
-map and excludes them from shape selection and click actions.
+map and excludes them from shape selection and click actions. Each entry
+carries the number of points it currently holds \strong{in the view on
+screen}, so a category's size is visible before it is ticked and an emptied
+one is obvious; a category reduced to zero by reassignment is greyed and
+struck through rather than removed, so the list does not jump and the
+evidence that the group existed is preserved.
 Use \strong{All} / \strong{None} to select or clear all at once.
 }
 

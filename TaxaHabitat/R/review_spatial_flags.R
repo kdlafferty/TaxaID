@@ -123,7 +123,12 @@
 #' The sidebar \strong{Habitats} panel lists every habitat present in the
 #' dataset (plus any added mid-session via a habitat reassignment) as a
 #' colour-coded checkbox. Unchecking a habitat hides those points from the
-#' map and excludes them from shape selection and click actions.
+#' map and excludes them from shape selection and click actions. Each entry
+#' carries the number of points it currently holds \strong{in the view on
+#' screen}, so a category's size is visible before it is ticked and an emptied
+#' one is obvious; a category reduced to zero by reassignment is greyed and
+#' struck through rather than removed, so the list does not jump and the
+#' evidence that the group existed is preserved.
 #' Use \strong{All} / \strong{None} to select or clear all at once.
 #'
 #' @section Point Info panel:
@@ -443,17 +448,15 @@ review_spatial_flags <- function(
   # 3. Habitat checkbox HTML (coloured dot + label) for sidebar filter
   # --------------------------------------------------------------------------
 
-  hab_choice_names <- lapply(hab_levels, function(h) {
-    shiny::HTML(sprintf(
-      paste0(
-        '<span style="display:inline-flex;align-items:center;gap:5px;">',
-        '<span style="display:inline-block;width:10px;height:10px;',
-        'border-radius:50%%;background:%s;flex-shrink:0;"></span>',
-        '<span style="font-size:11px;">%s</span>',
-        "</span>"
-      ),
-      pal[[h]], .he(h)
-    ))
+  # Initial labels carry the same counts the observer maintains, so the filter
+  # is informative on the very first render rather than only after something
+  # changes. Counted in the Likely view, which is what opens.
+  .init_flags <- stats::setNames(flag_tbl$spatial_flag, flag_tbl$point_id)
+  .init_habs <- stats::setNames(pts$habitat, pts$point_id)
+  .init_habs <- .init_habs[!duplicated(names(.init_habs))]
+  .init_counts <- .habitat_view_counts(.init_flags, .init_habs, "likely", hab_levels)
+  hab_choice_names <- lapply(seq_along(hab_levels), function(i) {
+    .habitat_choice_html(hab_levels[[i]], pal[[hab_levels[[i]]]], .init_counts[[i]])
   })
 
   # --------------------------------------------------------------------------
@@ -750,6 +753,40 @@ review_spatial_flags <- function(
       )
       invisible(NULL)
     }
+
+    # ------------------------------------------------------------------------
+    # Keep the Habitats filter's counts current.
+    #
+    # Re-renders the checkbox labels whenever the habitats, the flags or the
+    # view change, so each category shows how many points it still holds IN THE
+    # VIEW ON SCREEN -- the number that tells a reviewer whether ticking it
+    # means 5 points or 5,000, and shows when a composite group has been
+    # emptied by reassignment.
+    #
+    # The selection is read with isolate(): updateCheckboxGroupInput() writes
+    # to input$visible_habitats, which feeds visible_habitats_rv(), so taking a
+    # reactive dependency on it here would loop.
+    # ------------------------------------------------------------------------
+    shiny::observe({
+      levels_now <- hab_levels_rv()
+      if (length(levels_now) == 0L) {
+        return()
+      }
+      pal_now <- pal_rv()
+      n <- .habitat_view_counts(
+        cur_flags(), cur_habitats(), tolower(input$view_mode), levels_now
+      )
+      shiny::updateCheckboxGroupInput(
+        session, "visible_habitats",
+        choiceNames = lapply(seq_along(levels_now), function(i) {
+          h <- levels_now[[i]]
+          col <- if (h %in% names(pal_now)) pal_now[[h]] else "#aaaaaa"
+          .habitat_choice_html(h, col, n[[i]])
+        }),
+        choiceValues = levels_now,
+        selected = shiny::isolate(visible_habitats_rv())
+      )
+    })
 
     visible_habitats <- shiny::reactive({
       visible_habitats_rv()
