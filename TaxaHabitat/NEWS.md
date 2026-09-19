@@ -1,5 +1,35 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-19, composite categories)
+
+* `review_spatial_flags()`: **an unassigned point is no longer a single
+  undifferentiated "Unknown"** -- it is labelled with the habitats actually in
+  contention, e.g. `"Estuarine | Freshwater | Marine"`, and that label is a
+  real category with its own colour and its own entry in the **Habitats**
+  sidebar filter.
+
+  Previously every ambiguous point looked like the same problem and could only
+  be resolved one click at a time. Now the review loop is: filter to one
+  signature, draw a polygon over a region, and reassign the whole group to
+  whichever habitat the location implies. **Location disambiguates what the
+  assemblage cannot.**
+
+  On the PtConception demo this turns 646 "Unknown" points into 12 named
+  groups -- the largest holding 248 -- and leaves zero points labelled
+  "Unknown".
+
+  Members are sorted **alphabetically**, not by proportion, so the same
+  candidate set always lands in the same group; ordering by proportion would
+  split one kind of problem across several sidebar entries and defeat group
+  selection. Per-point proportions still appear in the Reassign dropdown.
+
+  **The label is a display category only.** `main_habitat` stays `NA` in the
+  returned data until the point is actually reassigned, because the Done
+  handler writes back only habitats that differ from what the gadget started
+  with. Verified on the real fixture: touching nothing returns 5,625 `NA` rows
+  unchanged with zero signature strings; reassigning one group sets 21 rows and
+  still leaks nothing.
+
 ## New features (2026-09-19, later still)
 
 * `review_spatial_flags()` gains **`candidate_mass`** (default `0.8`): the

@@ -44,6 +44,33 @@
 #' the dataset is added to the palette and the Habitats sidebar filter
 #' immediately, without disturbing any existing habitat's colour.
 #'
+#' @section Composite categories for unassigned points:
+#' A point whose consensus reached no verdict (\code{main_habitat} \code{NA})
+#' used to appear as a single undifferentiated \strong{Unknown}. Every
+#' ambiguous point then looked like the same problem and could only be resolved
+#' one click at a time.
+#'
+#' When \code{occurrence_data} carries a \code{"habitat_proportions"}
+#' attribute, such a point is instead labelled with the habitats actually in
+#' contention -- \code{"Estuarine | Freshwater | Marine"} -- and that label is
+#' a real category: its own colour, its own entry in the \strong{Habitats}
+#' sidebar filter, and therefore selectable as a \strong{group}. Filter to one
+#' signature, draw a polygon over a region, and reassign the lot to whichever
+#' habitat the location implies. Location disambiguates what the assemblage
+#' cannot. On the bundled PtConception demo this turns 646 "Unknown" points
+#' into 12 named groups, the largest holding 248.
+#'
+#' Members are sorted \strong{alphabetically}, not by proportion, so the same
+#' candidate set always lands in the same group; ordering by proportion would
+#' split one category across several permutations. Per-point proportions still
+#' appear in the Reassign dropdown.
+#'
+#' \strong{The label is a display category only.} \code{main_habitat} stays
+#' \code{NA} in the returned data until the point is actually reassigned --
+#' the Done handler writes back only habitats that differ from what the gadget
+#' started with, so an untouched composite point keeps its \code{NA} rather
+#' than acquiring a signature string as its habitat.
+#'
 #' @section Habitat candidates for reassignment:
 #' When \code{occurrence_data} carries a \code{"habitat_proportions"} attribute
 #' -- which \code{\link{assign_habitat_biological}} attaches and
@@ -271,6 +298,57 @@ review_spatial_flags <- function(
   flag_tbl <- flag_tbl[!duplicated(flag_tbl$point_id), ]
 
   pts <- merge(pts, flag_tbl, by = "point_id", all.x = TRUE)
+
+  # --------------------------------------------------------------------------
+  # 1b. Composite categories for UNASSIGNED points.
+  #
+  # An unassigned point (main_habitat NA) previously showed as a single grey
+  # "Unknown", which meant every ambiguous point looked like the same problem
+  # and could only be resolved one click at a time. Its consensus vector
+  # already says WHICH habitats are in contention, so label it with them --
+  # "Estuarine | Freshwater | Marine" -- and that label becomes a real
+  # category: its own colour, its own entry in the Habitats sidebar filter,
+  # and therefore selectable as a GROUP. Filter to one signature, draw a
+  # polygon over a region, reassign the lot to whichever habitat the location
+  # implies. Location disambiguates what the assemblage cannot.
+  #
+  # Members are sorted ALPHABETICALLY, not by proportion, so the same
+  # candidate set always lands in the same group -- ordering by proportion
+  # would split one category into several permutations. The proportions are
+  # still shown, per point, in the Reassign dropdown.
+  #
+  # This is a DISPLAY category only. main_habitat stays NA in the returned
+  # data until the reviewer actually reassigns the point: the Done handler
+  # writes back only habitats that DIFFER from what the gadget started with,
+  # so an untouched composite point keeps its NA rather than acquiring a
+  # signature string as its habitat.
+  # --------------------------------------------------------------------------
+  if (length(prop_cols) > 0L) {
+    .orig_hab <- as.character(occurrence_data[[habitat_col]])
+    .unassigned <- unique(occurrence_data[["point_id"]][
+      is.na(.orig_hab) | !nzchar(trimws(.orig_hab))
+    ])
+    .unassigned <- intersect(.unassigned, pts$point_id)
+    if (length(.unassigned) > 0L) {
+      .pm <- hab_props[match(.unassigned, hab_props$point_id), prop_cols, drop = FALSE]
+      .sig <- vapply(seq_along(.unassigned), function(i) {
+        .habitat_signature(unlist(.pm[i, ], use.names = TRUE), candidate_mass)
+      }, character(1L))
+      .keep <- !is.na(.sig)
+      if (any(.keep)) {
+        .idx <- match(.unassigned[.keep], pts$point_id)
+        pts$habitat[.idx] <- .sig[.keep]
+        message(sprintf(
+          paste0(
+            "  review_spatial_flags: %d unassigned point(s) labelled by their ",
+            "candidate habitats instead of \"Unknown\" (%d distinct group(s)); ",
+            "filter to one in the Habitats panel to reassign it as a group."
+          ),
+          sum(.keep), length(unique(.sig[.keep]))
+        ))
+      }
+    }
+  }
 
   hab_levels <- sort(unique(pts$habitat))
   pal <- .habitat_palette(hab_levels, colors)

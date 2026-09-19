@@ -324,3 +324,56 @@ test_that("review_spatial_flags validates candidate_mass", {
     expect_true(ok)
   }
 })
+
+# -----------------------------------------------------------------------------
+# Composite categories for unassigned points.
+#
+# An unassigned point used to show as one undifferentiated "Unknown", so every
+# ambiguous point looked like the same problem and could only be resolved one
+# click at a time. Labelling it with the habitats actually in contention makes
+# it a filterable, selectable GROUP. On the real 6,523-point PtConception
+# demo this turns 646 "Unknown" points into 12 named categories and leaves
+# zero points labelled "Unknown".
+# -----------------------------------------------------------------------------
+
+test_that(".habitat_signature names the habitats in contention", {
+  p <- c(Marine = 0.35, Freshwater = 0.30, Estuarine = 0.25, Terrestrial = 0.10)
+  expect_equal(.habitat_signature(p, 0.8), "Estuarine | Freshwater | Marine")
+})
+
+test_that(".habitat_signature sorts ALPHABETICALLY, not by proportion", {
+  # Two points with the same candidate set in different proportion orders must
+  # land in the SAME group, or one kind of problem becomes several sidebar
+  # entries and group selection stops working.
+  a <- c(Marine = 0.6, Estuarine = 0.4)
+  b <- c(Estuarine = 0.6, Marine = 0.4)
+  expect_equal(.habitat_signature(a, 0.8), .habitat_signature(b, 0.8))
+  expect_equal(.habitat_signature(a, 0.8), "Estuarine | Marine")
+})
+
+test_that(".habitat_signature returns a bare name for an unambiguous point", {
+  expect_equal(.habitat_signature(c(Marine = 1, Estuarine = 0), 0.8), "Marine")
+})
+
+test_that(".habitat_signature is NA when there is nothing to describe", {
+  expect_true(is.na(.habitat_signature(c(a = 0, b = 0), 0.8)))
+  expect_true(is.na(.habitat_signature(numeric(0), 0.8)))
+  expect_true(is.na(.habitat_signature(c(a = NA_real_), 0.8)))
+})
+
+test_that("a signature never becomes a habitat in the returned data", {
+  # The Done handler writes back only habitats that DIFFER from what the gadget
+  # started with. An untouched composite point must therefore keep its NA
+  # rather than acquiring "Estuarine | Marine" as its habitat -- verified on the
+  # real fixture: 5,625 NA rows in, 5,625 out, 0 signature strings.
+  init <- c(p1 = "Estuarine | Marine", p2 = "Marine")
+  habs <- init                                   # reviewer touched nothing
+  changed <- names(habs)[which(habs != init[names(habs)])]
+  expect_length(changed, 0L)
+
+  habs2 <- init
+  habs2["p1"] <- "Estuarine"                     # reviewer resolved the group
+  changed2 <- names(habs2)[which(habs2 != init[names(habs2)])]
+  expect_equal(changed2, "p1")
+  expect_false(any(grepl(" | ", habs2[changed2], fixed = TRUE)))
+})

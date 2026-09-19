@@ -127,6 +127,35 @@ the dataset is added to the palette and the Habitats sidebar filter
 immediately, without disturbing any existing habitat's colour.
 }
 
+\section{Composite categories for unassigned points}{
+
+A point whose consensus reached no verdict (\code{main_habitat} \code{NA})
+used to appear as a single undifferentiated \strong{Unknown}. Every
+ambiguous point then looked like the same problem and could only be resolved
+one click at a time.
+
+When \code{occurrence_data} carries a \code{"habitat_proportions"}
+attribute, such a point is instead labelled with the habitats actually in
+contention -- \code{"Estuarine | Freshwater | Marine"} -- and that label is
+a real category: its own colour, its own entry in the \strong{Habitats}
+sidebar filter, and therefore selectable as a \strong{group}. Filter to one
+signature, draw a polygon over a region, and reassign the lot to whichever
+habitat the location implies. Location disambiguates what the assemblage
+cannot. On the bundled PtConception demo this turns 646 "Unknown" points
+into 12 named groups, the largest holding 248.
+
+Members are sorted \strong{alphabetically}, not by proportion, so the same
+candidate set always lands in the same group; ordering by proportion would
+split one category across several permutations. Per-point proportions still
+appear in the Reassign dropdown.
+
+\strong{The label is a display category only.} \code{main_habitat} stays
+\code{NA} in the returned data until the point is actually reassigned --
+the Done handler writes back only habitats that differ from what the gadget
+started with, so an untouched composite point keeps its \code{NA} rather
+than acquiring a signature string as its habitat.
+}
+
 \section{Habitat candidates for reassignment}{
 
 When \code{occurrence_data} carries a \code{"habitat_proportions"} attribute

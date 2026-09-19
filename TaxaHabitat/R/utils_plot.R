@@ -522,3 +522,31 @@
   before <- cumsum(props) - props
   names(props)[before < mass - 1e-9]
 }
+
+#' Composite category label for an unassigned point
+#'
+#' Names the habitats in contention at a point whose consensus reached no
+#' verdict, e.g. `"Estuarine | Freshwater | Marine"`. Used by
+#' [review_spatial_flags()] in place of a single undifferentiated `"Unknown"`,
+#' so ambiguous points become filterable, selectable GROUPS rather than
+#' individually-clickable mysteries.
+#'
+#' Members are sorted ALPHABETICALLY, deliberately. Ordering by proportion
+#' would be more informative per point but would split one candidate set across
+#' several permutations -- `"Marine | Estuarine"` and `"Estuarine | Marine"`
+#' would be different sidebar entries for the same kind of problem, which
+#' defeats the purpose. Per-point proportions are shown in the Reassign
+#' dropdown instead.
+#'
+#' @param props Named numeric vector of habitat proportions for ONE point.
+#' @param mass Cumulative proportion to cover; see [.candidate_habitats()].
+#' @return A single string, or `NA_character_` when there is no vector to
+#'   describe (all proportions zero or missing).
+#' @noRd
+.habitat_signature <- function(props, mass = 0.8) {
+  k <- .candidate_habitats(props, mass)
+  if (length(k) == 0L) {
+    return(NA_character_)
+  }
+  paste(sort(k), collapse = " | ")
+}
