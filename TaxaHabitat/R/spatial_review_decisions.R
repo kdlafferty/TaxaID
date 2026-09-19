@@ -188,3 +188,170 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
     if (is.null(dec)) 0L else nrow(dec), n_applied, length(pending)))
   occurrence_data
 }
+
+
+#' Drop Seeded Review Decisions That the Automatic Classifier Has Since Overtaken
+#'
+#' A decision file seeded with `before = NULL` records "accept the automatic
+#' classification" for every point, with `decided_at` set to a
+#' `"seeded from ..."` string rather than a timestamp. Those are not reviewer
+#' judgements. When the automatic classifier later changes its mind about a
+#' point -- because a bug was fixed, a habitat vocabulary was extended, or a
+#' threshold moved -- the seeded verdict silently overrides the new one, and
+#' [apply_spatial_review_decisions()] reports `n_pending_review = 0`. The site
+#' then looks fully reviewed while carrying the old classifier's answer.
+#'
+#' This function removes exactly those entries: **seeded** decisions whose
+#' automatic verdict has changed. They return to the pending pool and the review
+#' gadget asks about them.
+#'
+#' @section Why real decisions are never dropped:
+#' A reviewer who marked a point `likely` when the classifier said `unlikely`
+#' did so deliberately, and a later change of the classifier's mind must not
+#' erase that. Only rows whose `decided_at` matches `seeded_pattern` are
+#' eligible, so a genuine review is preserved even when the automatic verdict
+#' moves underneath it. Measured on the three production files on 2026-09-19,
+#' **all 244,860 decisions were seeded and none were real** -- so on those files
+#' every changed point is eligible, which is the situation this exists for.
+#'
+#' @param occurrence_data A dataframe freshly returned by
+#'   [flag_habitat_inconsistencies()] -- i.e. carrying the CURRENT automatic
+#'   `spatial_flag`, before any decisions are applied.
+#' @param path Character. Path to the `*_spatial_review_decisions.rds` file.
+#' @param seeded_pattern Character regex identifying seeded rows by their
+#'   `decided_at` value. Default `"^seeded from"`, which is what
+#'   [save_spatial_review_decisions()] writes.
+#' @param dry_run Logical. When `TRUE` (default) nothing is written; the
+#'   function reports what it would drop. Set `FALSE` to rewrite the file.
+#' @param backup Logical. When writing, first copy the existing file to
+#'   `<path>.bak_<timestamp>`. Default `TRUE`.
+#'
+#' @return Invisibly, a list with `n_decisions`, `n_seeded`, `n_real`,
+#'   `n_stale`, `stale_point_ids` and `path`. Called for its message output and,
+#'   when `dry_run = FALSE`, its side effect.
+#'
+#' @seealso [save_spatial_review_decisions()], [apply_spatial_review_decisions()]
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' flagged <- flag_habitat_inconsistencies(occurrences_with_habitat)
+#' # look first
+#' drop_stale_seeded_decisions(flagged, "Site_spatial_review_decisions.rds")
+#' # then act
+#' drop_stale_seeded_decisions(flagged, "Site_spatial_review_decisions.rds",
+#'                             dry_run = FALSE)
+#' }
+drop_stale_seeded_decisions <- function(occurrence_data,
+                                        path,
+                                        seeded_pattern = "^seeded from",
+                                        dry_run = TRUE,
+                                        backup = TRUE) {
+  if (!is.data.frame(occurrence_data)) {
+    stop("drop_stale_seeded_decisions: 'occurrence_data' must be a dataframe.")
+  }
+  for (col in c("point_id", "spatial_flag")) {
+    if (!col %in% names(occurrence_data)) {
+      stop(sprintf(
+        paste0(
+          "drop_stale_seeded_decisions: column '%s' not found.\n",
+          "  Pass the output of flag_habitat_inconsistencies(), before decisions are applied."
+        ),
+        col
+      ))
+    }
+  }
+  if (!is.character(path) || length(path) != 1L || is.na(path)) {
+    stop("drop_stale_seeded_decisions: 'path' must be a single file path.")
+  }
+  if (!file.exists(path)) {
+    stop("drop_stale_seeded_decisions: decision file not found: ", path)
+  }
+
+  dec <- readRDS(path)
+  if (!all(c("point_id", "spatial_flag") %in% names(dec))) {
+    stop("drop_stale_seeded_decisions: '", basename(path),
+         "' is not a spatial review decisions file.")
+  }
+
+  # Current automatic verdict, one row per point.
+  auto <- occurrence_data[!duplicated(occurrence_data$point_id),
+    c("point_id", "spatial_flag"),
+    drop = FALSE
+  ]
+  names(auto)[2] <- ".auto_flag"
+
+  seeded <- if ("decided_at" %in% names(dec)) {
+    grepl(seeded_pattern, as.character(dec$decided_at))
+  } else {
+    # No decided_at column at all: an older file that can only be seeded.
+    rep(TRUE, nrow(dec))
+  }
+
+  idx <- match(dec$point_id, auto$point_id)
+  auto_flag <- auto$.auto_flag[idx]
+  # Unmatched points (no longer in the data) are left alone: absence from this
+  # run is not evidence the verdict changed.
+  changed <- !is.na(auto_flag) & auto_flag != dec$spatial_flag
+  stale <- seeded & changed
+
+  res <- list(
+    n_decisions = nrow(dec),
+    n_seeded = sum(seeded),
+    n_real = sum(!seeded),
+    n_stale = sum(stale),
+    stale_point_ids = dec$point_id[stale],
+    path = path
+  )
+
+  message(sprintf(
+    paste0(
+      "drop_stale_seeded_decisions: %s decision(s) on file -- %s seeded, %s real reviewer decision(s).\n",
+      "  %s seeded decision(s) are STALE (the automatic verdict has changed since seeding).\n",
+      "  %s real decision(s) are left untouched regardless of any classifier change."
+    ),
+    format(res$n_decisions, big.mark = ","), format(res$n_seeded, big.mark = ","),
+    format(res$n_real, big.mark = ","), format(res$n_stale, big.mark = ","),
+    format(res$n_real, big.mark = ",")
+  ))
+
+  if (res$n_stale > 0L) {
+    tb <- table(
+      seeded_said = dec$spatial_flag[stale],
+      classifier_now_says = auto_flag[stale]
+    )
+    message("  Transitions being re-opened for review:")
+    for (i in seq_len(nrow(tb))) {
+      for (j in seq_len(ncol(tb))) {
+        if (tb[i, j] > 0L) {
+          message(sprintf(
+            "      %s -> %s : %s point(s)",
+            rownames(tb)[i], colnames(tb)[j], format(tb[i, j], big.mark = ",")
+          ))
+        }
+      }
+    }
+  }
+
+  if (dry_run) {
+    message("  dry_run = TRUE -- nothing written. Re-run with dry_run = FALSE to apply.")
+    return(invisible(res))
+  }
+  if (res$n_stale == 0L) {
+    message("  Nothing to drop; file left unchanged.")
+    return(invisible(res))
+  }
+
+  if (isTRUE(backup)) {
+    bak <- paste0(path, ".bak_", format(Sys.time(), "%Y%m%d_%H%M%S"))
+    file.copy(path, bak, overwrite = FALSE)
+    message("  Backup written: ", basename(bak))
+  }
+  saveRDS(dec[!stale, , drop = FALSE], path)
+  message(sprintf(
+    "  Wrote %s remaining decision(s) to %s. Those %s point(s) will be asked again.",
+    format(sum(!stale), big.mark = ","), basename(path),
+    format(res$n_stale, big.mark = ",")
+  ))
+  invisible(res)
+}

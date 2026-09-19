@@ -42,10 +42,10 @@ scheme. 0 for specialists that fit the scheme.}
 habitat for species with non-zero \code{Other_weight}. Empty string
 otherwise.}
 \item{Habitat}{Character. Convenience column: name of the habitat column
-with the highest weight (argmax). \code{"Other"} when
-\code{Other_weight} is the largest. Used by downstream functions
-(\code{\link{assign_habitat_biological}}) that expect a single primary
-habitat label per species.}
+with the highest weight (argmax), ties broken by column order.
+\code{"Other"} when \code{Other_weight} is the largest, \code{NA} when
+all weights are zero. \strong{Diagnostic only} -- see Details; nothing in
+the pipeline consumes it as a habitat assignment.}
 \item{habitat_breadth}{Numeric. Levins' niche breadth,
 \code{B = 1 / sum(p^2)}, over the scheme's habitat columns with the
 weights renormalised to sum to 1, in units of \strong{effective number
@@ -67,6 +67,19 @@ and manually saved response files (\code{\link[TaxaTools]{read_llm_response}}).
 \strong{Multi-chunk responses:} If \code{raw_text} contains multiple CSV
 blocks (one per chunk from \code{\link[TaxaTools]{prompt_api}}), duplicate
 header rows are stripped automatically before combining.
+
+\strong{The \code{Habitat} column is diagnostic only.} It previously
+claimed to be "used by downstream functions
+(\code{assign_habitat_biological}) that expect a single primary habitat
+label per species", which was false:
+\code{\link{assign_habitat_biological}} sums each species' full WEIGHT
+VECTOR per point and never reads it. Audited across all nine TaxaID
+packages, its only functional consumer is
+\code{\link{build_habitat_lookup}}, which uses \code{!is.na(Habitat)} to
+decide whether a verdict is resolved enough to cache. Do not build on it as
+a habitat assignment: for a per-taxon habitat use the weight columns, for a
+per-location one use \code{main_habitat}, and to judge how meaningful the
+label is for a given taxon read \code{habitat_breadth} beside it.
 
 \strong{Habitat breadth:} \code{Habitat} is an argmax, so it renders a
 near-uniform weight vector and a decisive one as the same confident-looking

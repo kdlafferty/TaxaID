@@ -412,13 +412,30 @@
 #' @noRd
 .marine_name_pattern <- paste0(
   "\\b(marine|ocean|oceanic|pelagic|neritic|intertidal|subtidal|",
-  "littoral|reef|reefs|kelp|seagrass|estuary|estuarine|estuaries)\\b"
+  "littoral|reef|reefs|kelp|seagrass|estuary|estuarine|estuaries|",
+  # "deepwater" is a REALM term, not a depth term. Mugu's own scheme lists
+  # Pelagic and Deepwater as separate categories and is right to: the taxa
+  # carrying it there are demersal -- Microstomus pacificus, Xeneretmus
+  # ritteri, Bathyagonus pentacanthus, Icelinus spp., on the bottom between
+  # -798 m and the shelf. Mapping it to Pelagic would assert a water-column
+  # position these species do not occupy. Classifying it MARINE and letting
+  # the bathymetry zones (marine_shallow / marine_deep / marine_abyssal,
+  # cut at depth_neritic_m and depth_oceanic_m) carry the depth dimension
+  # keeps the two axes separate, which is what they are.
+  "deepwater|deep-water)\\b"
 )
 
 #' @noRd
 .freshwater_name_pattern <- paste0(
   "\\b(freshwater|wetland|wetlands|aquatic|lake|lakes|river|rivers|riverine|",
-  "stream|streams|pond|ponds|marsh|marshes|bog|bogs|fen|fens|riparian)\\b"
+  "stream|streams|pond|ponds|marsh|marshes|bog|bogs|fen|fens|riparian|",
+  # Lentic (standing water) and lotic (flowing water) are the standard
+  # limnological terms and are what the GreatLakes sites actually use. Without
+  # them BOTH GreatLakes plates classified 100% of points as realm "unknown"
+  # and were skipped entirely -- 6,217 and 11,154 rows, every run, reported as
+  # "habitat 'Lentic' not found in habitat scheme -- skipped". Verified against
+  # both saved occurrences_clean checkpoints on 2026-09-19.
+  "lentic|lotic)\\b"
 )
 
 # ------------------------------------------------------------------------------

@@ -195,7 +195,23 @@ test_that("previously-correct classifications are unchanged", {
   expect_equal(.realm_of("Pelagic"), "marine")
   expect_equal(.realm_of("Freshwater"), "freshwater")
   # Not in either vocabulary -- must stay unknown so it gets REPORTED rather
-  # than silently absorbed into an exempt realm.
+  # than silently absorbed into an exempt realm. (Note "Terrestrial" only
+  # reaches the name patterns when no scheme is supplied; the DEFAULT scheme's
+  # l1_name matches it first and resolves it to the terrestrial realm.)
   expect_equal(.realm_of("Terrestrial"), "unknown")
-  expect_equal(.realm_of("Deepwater"), "unknown")
+})
+
+test_that("'Deepwater' is MARINE, not pelagic and not unknown", {
+  # Decided 2026-09-19. Deepwater is a realm term, not a depth term, and not a
+  # water-column position. At Mugu it carries demersal taxa -- Microstomus
+  # pacificus, Xeneretmus ritteri, Bathyagonus pentacanthus, Icelinus spp. --
+  # sitting on the bottom between -798 m and the shelf. Mapping it to Pelagic
+  # would assert a water-column position those species do not occupy; leaving
+  # it unknown left 72 real marine rows unverified. Depth is carried separately
+  # by the bathymetry zones (marine_shallow / marine_deep / marine_abyssal).
+  expect_equal(.realm_of("Deepwater"), "marine")
+  expect_equal(.realm_of("Deep-water"), "marine")
+  # Pelagic remains its own marine term; the two must not collapse into one
+  # another, because Mugu's scheme deliberately distinguishes them.
+  expect_equal(.realm_of("Pelagic"), "marine")
 })

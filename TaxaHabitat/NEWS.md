@@ -1,5 +1,66 @@
 # TaxaHabitat 0.1.0
 
+## New features (2026-09-19)
+
+* **`drop_stale_seeded_decisions()`** -- removes seeded spatial-review decisions
+  that the automatic classifier has since overtaken.
+
+  A decisions file seeded with `before = NULL` records "accept the automatic
+  classification" for every point, with `decided_at` set to a `"seeded from ..."`
+  string rather than a timestamp. When the classifier later changes its mind --
+  a bug fixed, a vocabulary extended, a threshold moved -- the seeded verdict
+  silently overrides the new one and `apply_spatial_review_decisions()` reports
+  `n_pending_review = 0`. The site looks fully reviewed while carrying the old
+  classifier's answer.
+
+  Audited on 2026-09-19: **all three production decision files were 100% seeded
+  -- 244,860 decisions, zero real reviews**, all from runs of 2026-09-11. Two
+  were masking live changes: Mugu 1,044 points (`likely` -> `unlikely`, from the
+  realm fix in c1fd1a1) and PtConception 12S 2,000 points (`likely` ->
+  `questionable`, predating that work -- terrestrial points sitting at 0.8-1.0 km
+  against a 1 km coastal buffer, tipped across by a `dist_to_coast_km` change
+  since seeding). GreatLakes had none.
+
+  Only **seeded** decisions are eligible. A real reviewer decision survives a
+  classifier change, because the reviewer overrode the classifier deliberately
+  and a later change of its mind must not erase that judgement. `dry_run = TRUE`
+  is the default and the file is backed up before any write.
+
+## Bug fixes (2026-09-19)
+
+* `flag_habitat_inconsistencies()`: **`Lentic` and `Lotic` are now recognised as
+  freshwater.** They are the standard limnological terms for standing and
+  flowing water and are what the GreatLakes sites actually use -- and neither was
+  in the vocabulary, so **both GreatLakes plates classified 100% of points as
+  realm `unknown` and were skipped entirely**: 6,217 and 11,154 rows, every run,
+  reported as `habitat 'Lentic' not found in habitat scheme -- skipped`.
+  Verified against both saved `occurrences_clean` checkpoints.
+
+  Note this makes GreatLakes *correctly classified*, not *verified*: freshwater
+  is exempt from spatial verification by design, so those points remain
+  unchecked -- now for a stated reason that appears in the exemption report
+  rather than as an unrecognised name.
+
+* `flag_habitat_inconsistencies()`: **`Deepwater` is now recognised as marine.**
+  It is a realm term, not a depth term and not a water-column position. At Mugu
+  it carries demersal taxa -- *Microstomus pacificus*, *Xeneretmus ritteri*,
+  *Bathyagonus pentacanthus*, *Icelinus* spp. -- on the bottom between -798 m and
+  the shelf, so mapping it to `Pelagic` would assert a position those species do
+  not occupy. Depth is carried separately by the bathymetry zones
+  (`marine_shallow` / `marine_deep` / `marine_abyssal`). 72 previously
+  unverified Mugu rows now enter spatial verification.
+
+* `parse_hierarchical_habitat_response()`: the `Habitat` column's documentation
+  claimed it was "used by downstream functions (`assign_habitat_biological`)
+  that expect a single primary habitat label per species". **That was false** --
+  `assign_habitat_biological()` sums each species' full weight vector per point
+  and never reads it. Audited across all nine packages, its only functional
+  consumer is `build_habitat_lookup()`, which uses `!is.na(Habitat)` to decide
+  cacheability. Now documented as diagnostic only, with a pointer to the weight
+  columns, `main_habitat` and `habitat_breadth` instead. A doc asserting a
+  contract the code does not honour is worse than no doc, because it invites
+  someone to build on it.
+
 ## New features (2026-09-18, later)
 
 * `parse_hierarchical_habitat_response()` and `build_habitat_lookup()` gain a
