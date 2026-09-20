@@ -120,6 +120,23 @@ contamination. The taxa it surfaced were the study's own target community
 (*Sardinops sagax*, *Engraulis mordax*, *Clinocottus recalvus* -- a tidepool
 sculpin), while the genuine contaminants were a rounding error beside them.
 
+#### Never filter on `validity_flag != "valid"`
+
+A fragile idiom before, and **catastrophic** under
+`require_control_evidence = TRUE`. The honest-unknown state
+`no_control_evidence` is not `"valid"`, and it is normally the overwhelming
+majority -- on a real 12S run 16,695 of 16,826 ESVs (99.2%), on COI 32,162 of
+34,899 (92.2%). A `!= "valid"` filter would delete nearly the entire dataset.
+`carryover` is also not `"valid"`, and it exists precisely to mean *do not remove
+this*.
+
+``` r
+# correct
+to_remove <- startsWith(flagged$validity_flag, "invalid_")
+# WRONG, and much worse with the evidence gate on
+to_remove <- flagged$validity_flag != "valid"
+```
+
 #### Evidence-gated states, and site breadth
 
 `require_control_evidence = TRUE` replaces the score bands with states that say

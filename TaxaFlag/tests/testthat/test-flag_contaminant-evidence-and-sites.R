@@ -104,3 +104,22 @@ test_that("site_col is validated and min_sites_systemic is honoured", {
                         verbose = FALSE)
   expect_identical(r$validity_flag[r$taxon_name == "SYSTEMIC"], "invalid_lab_contaminant")
 })
+
+test_that("the invalid_ prefix is the removal predicate, not !=\"valid\"", {
+  df <- .mk3()
+  r <- flag_contaminant(df, control_samples = .ctls, site_col = "site",
+                        require_control_evidence = TRUE, verbose = FALSE)
+  # the states that must NOT be removed are also not "valid", which is why the
+  # negation idiom is wrong under the gate
+  keep_but_not_valid <- r$validity_flag %in% c("no_control_evidence", "carryover")
+  expect_true(any(keep_but_not_valid))
+  expect_false(any(startsWith(r$validity_flag[keep_but_not_valid], "invalid_")))
+  # and the prefix selects the control-enriched taxa. Note `filler` belongs here
+  # too and that is correct, not an artefact of the fixture: it takes 0.33 of a
+  # control's reads against 0.09 of a sample's, at all three sites, so it IS
+  # control-enriched and systemic by the definition under test.
+  inv <- r$taxon_name[startsWith(r$validity_flag, "invalid_")]
+  expect_true("SYSTEMIC" %in% inv)
+  expect_false("CLEAN" %in% inv)
+  expect_false("THIN" %in% inv)
+})
