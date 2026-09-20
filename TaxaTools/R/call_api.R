@@ -354,10 +354,35 @@
   }
   body <- httr2::resp_body_json(resp)
   text_blocks <- Filter(function(b) identical(b$type, "text"), body$content)
+  block_types <- vapply(body$content, function(b) b$type %||% "?", "")
+  hit_cap <- identical(body$stop_reason, "max_tokens")
   if (length(text_blocks) == 0L) {
-    stop(sprintf("call_api (%s): response contained no text blocks.", provider),
+    # 2026-09-18: Claude 4.6+/5 models run adaptive thinking by default and
+    # return `thinking` blocks BEFORE any text. With a small max_tokens the
+    # reasoning can consume the whole allowance, leaving no text block at all
+    # (seen with claude-sonnet-5, max_tokens = 1800, an ~12k-token prompt).
+    # Say so, instead of the bare "no text blocks".
+    hint <- if (hit_cap && "thinking" %in% block_types) {
+      sprintf(paste0(
+        " The model stopped at max_tokens after %d output tokens, still thinking (content blocks: %s). ",
+        "Increase max_tokens, or lower the reasoning effort for this call."),
+        body$usage$output_tokens %||% NA_integer_, paste(block_types, collapse = ", "))
+    } else if (identical(body$stop_reason, "refusal")) {
+      " The model refused the request (stop_reason = \"refusal\")."
+    } else {
+      sprintf(" stop_reason = %s; content blocks: %s.",
+              body$stop_reason %||% "NA", paste(block_types, collapse = ", "))
+    }
+    stop(sprintf("call_api (%s): response contained no text blocks.%s", provider, hint),
       call. = FALSE
     )
+  }
+  if (hit_cap) {
+    warning(sprintf(paste0(
+      "call_api (%s): response was truncated at max_tokens (%d output tokens, ",
+      "content blocks: %s). The text may be incomplete; increase max_tokens."),
+      provider, body$usage$output_tokens %||% NA_integer_,
+      paste(block_types, collapse = ", ")), call. = FALSE)
   }
   list(
     text = text_blocks[[1L]]$text,

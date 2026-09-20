@@ -89,7 +89,7 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
     .build_phase_prompt(
       phase    = "error_fix",
       context  = error_context,
-      metadata = session$metadata
+      registry = session$registry
     ),
     error = function(e) NULL
   )
@@ -109,7 +109,7 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
   result <- tryCatch(
     workflow_engine(
       history       = history,
-      metadata      = session$metadata,
+      registry      = session$registry,
       model         = session$model,
       api_key       = session$api_key,
       llm_fn        = session$llm_fn,
@@ -176,7 +176,7 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
 
   # Save updated state
   .save_session(
-    history, session$metadata, session$model,
+    history, session$registry, session$model,
     session$api_key, session$llm_fn, session$output_dir, session$trial
   )
 
@@ -248,11 +248,11 @@ workflow_fix <- function(error_text, context = NULL, auto = FALSE) {
 #' be a closure capturing a provider API key) -- both are secrets, so the
 #' file is written with owner-only permissions immediately after creation.
 #' @noRd
-.save_session <- function(history, metadata, model, api_key, llm_fn,
+.save_session <- function(history, registry, model, api_key, llm_fn,
                           output_dir, trial) {
   session <- list(
     history    = history,
-    metadata   = metadata,
+    registry   = registry,
     model      = model,
     api_key    = api_key,
     llm_fn     = llm_fn,

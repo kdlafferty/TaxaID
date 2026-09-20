@@ -14,15 +14,54 @@ std_occurrences <- {{input_var}}
 # Step 1: calibrate the kernel bandwidth via leave-one-block-out composition
 # prediction (this path's replacement for the GLMM path's AIC formula
 # screening). Seconds, offline, no live network calls.
+# lambda_grid spans 1-100 km deliberately. A grid that cannot express its own
+# answer reports a boundary warning pointing the wrong way: PtConception 12S
+# measured its optimum at 10 km, INTERIOR, only once 1/2/5 were offered -- the
+# old c(25, 50, 100, 200) could not represent 10 at all and would have invited
+# widening UPWARD. Keep this in step with the canonical workflow template.
+#
+# This edge is the SINGLE-group path: there is no sampling_group_col here, so
+# the pooled calibration is correct. When a pool genuinely has several
+# detection processes, use the dist_to_priors_by_group edge, which passes
+# sampling_group_col to BOTH the calibration and the estimator.
 kernel_cal <- TaxaExpect::calibrate_kernel_bandwidth(
   std_occurrences,
   site_habitat = {{site_habitat}},
-  lambda_grid  = c(25, 50, 100, 200)
+  lambda_grid  = c(1, 2, 5, 10, 25, 50, 100)
 )
 message(sprintf(
   "Calibrated kernel bandwidth: lambda = %g km (LOBO loss %.3f)",
   kernel_cal$best$lambda_km, kernel_cal$best$weighted_logloss
 ))
+
+# Is the kernel worth having at all? An interior optimum says only "best
+# bandwidth offered", never that the kernel beats NOT having one. $results
+# carries `regional` and `nearest_block` reference rows, by row name.
+.k_loss   <- kernel_cal$best$weighted_logloss
+.reg_loss <- kernel_cal$results["regional", "weighted_logloss"]
+.nb_loss  <- kernel_cal$results["nearest_block", "weighted_logloss"]
+message(sprintf(
+  "LOBO log-loss: kernel %.4f | regional %.4f | nearest_block %.4f",
+  .k_loss, .reg_loss, .nb_loss
+))
+.gain <- .reg_loss - .k_loss
+.pct  <- 100 * .gain / .reg_loss
+if (!is.na(.gain) && .gain <= 0) {
+  warning(sprintf(
+    paste0("kernel does NOT beat regional (%.4f vs %.4f). The answer is not a ",
+           "different lambda but a smaller block_size_deg."),
+    .k_loss, .reg_loss
+  ), call. = FALSE)
+} else {
+  message(sprintf("kernel beats regional by %.4f (%.2f%%)", .gain, .pct))
+  if (!is.na(.pct) && .pct < 1) {
+    warning(sprintf(
+      paste0("kernel margin over regional is only %.2f%% -- lambda may be an ",
+             "artifact of the CV block geometry rather than a real length scale."),
+      .pct
+    ), call. = FALSE)
+  }
+}
 
 # Step 2: estimate site priors from the calibrated bandwidth.
 kernel_priors_fit <- TaxaExpect::estimate_kernel_priors(

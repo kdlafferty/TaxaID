@@ -144,9 +144,11 @@ test_that(".get_path_context() returns snippets and docs", {
   ctx <- TaxaWizard:::.get_path_context(c("seq_to_match", "match_to_consensus_score"))
 
   expect_type(ctx, "list")
-  expect_named(ctx, c("snippets", "edge_labels", "packages", "functions", "param_docs"),
-    ignore.order = TRUE
-  )
+  expect_named(ctx, c(
+    "snippets", "edge_labels", "packages", "functions", "param_docs",
+    "unvalidated_edges"
+  ), ignore.order = TRUE)
+  expect_equal(ctx$unvalidated_edges, character(0))
 
   # Snippets should be loaded
 
@@ -162,30 +164,110 @@ test_that(".get_path_context() returns snippets and docs", {
   expect_true("TaxaAssign" %in% ctx$packages)
 })
 
-test_that(".get_path_context() param_docs are populated from the metadata 'inputs' key", {
+test_that(".get_path_context() param_docs are populated from the registry", {
   # 2026-09-13: .extract_param_docs() read doc$params / doc$parameters, neither of
-  # which any inst/metadata/*.json uses (the key is "inputs"), so every function
-  # rendered as "(no params)" while phase_parameterize.md told the model that an
-  # unlisted parameter does not exist.
+  # which the old per-package metadata JSON files used (the key was "inputs"), so
+  # every function rendered as "(no params)" while phase_parameterize.md told the
+  # model that an unlisted parameter does not exist. 2026-09-18: those hand-kept
+  # JSON files were deleted and replaced by the introspected registry (workflow_registry());
+  # this test now guards the registry-reading path instead.
+  testthat::skip_if_not_installed("TaxaAssign")
+  testthat::skip_if_not_installed("TaxaTools")
   .graph_env$graph <- NULL
   ctx <- TaxaWizard:::.get_path_context(c("match_to_consensus_score"))
   docs <- ctx$param_docs
   expect_true(grepl("score_consensus", docs, fixed = TRUE))
   expect_true(grepl("- match_df:", docs, fixed = TRUE))
   expect_true(grepl("(REQUIRED)", docs, fixed = TRUE))
-  # Every function that HAS a metadata entry must list at least one parameter.
-  meta <- TaxaWizard:::.load_metadata()
-  documented <- unlist(lapply(meta, function(m) vapply(m$functions, function(f) f$name, "")))
+  # Every exported function with at least one formal argument must list at
+  # least one parameter (an export with genuinely zero formals is exempt).
+  reg <- TaxaWizard::workflow_registry()
+  has_params <- unlist(lapply(reg, function(pkg) {
+    vapply(pkg$functions, function(f) length(f$params) > 0L, logical(1))
+  }))
+  fn_names_with_params <- unlist(lapply(reg, function(pkg) {
+    vapply(pkg$functions, function(f) f$name, "")
+  }))[has_params]
   blocks <- strsplit(docs, "\n## ")[[1]]
   for (b in blocks[-1]) {
     fn <- sub("^[^:]*::", "", strsplit(b, "\n")[[1]][1])
-    if (fn %in% documented) expect_false(grepl("(no params)", b, fixed = TRUE), info = fn)
+    if (fn %in% fn_names_with_params) {
+      expect_false(grepl("(no params)", b, fixed = TRUE), info = fn)
+    }
   }
 })
 
 test_that(".get_path_context() errors on unknown edge", {
   .graph_env$graph <- NULL
   expect_error(.get_path_context(c("nonexistent_edge")), "Unknown edge ID")
+})
+
+# ---------------------------------------------------------------------------
+# P2 Tier-B fallback: an edge whose snippet fails .validate_snippets() gets
+# a GENERATED documentation block instead of its (broken) snippet, and the
+# path that carries it is labeled. A bogus edge is injected here (pointing
+# at a temp-file snippet, never a real inst/graph/snippets/ file) so this
+# never depends on -- or risks corrupting -- a real snippet.
+# ---------------------------------------------------------------------------
+
+.tw_bogus_fallback_edge <- function(edge_id, code, packages = list("TaxaAssign"),
+                                    functions = list("score_consensus"), label = "Bogus edge",
+                                    description = "A deliberately broken edge for testing Tier-B.") {
+  snippet_path <- tempfile(fileext = ".R")
+  writeLines(code, snippet_path)
+  list(
+    id = edge_id, from = list("match_df"), to = "consensus",
+    label = label, description = description,
+    packages = packages, functions = functions,
+    snippet = snippet_path, time_estimate = "unknown", requires = list()
+  )
+}
+
+test_that(".get_path_context() falls back to a generated Tier-B block for an edge that fails validation", {
+  skip_if_not(requireNamespace("TaxaAssign", quietly = TRUE))
+  bogus_edge <- .tw_bogus_fallback_edge(
+    "bogus_fallback_edge",
+    "x <- TaxaAssign::this_function_does_not_exist(y = 1)\nx"
+  )
+  graph <- list(edges = list(bogus_edge))
+
+  ctx <- TaxaWizard:::.get_path_context("bogus_fallback_edge", graph = graph)
+
+  expect_equal(ctx$unvalidated_edges, "bogus_fallback_edge")
+  block <- ctx$snippets[["bogus_fallback_edge"]]
+  expect_true(grepl("No validated snippet exists for this step", block, fixed = TRUE))
+  expect_true(grepl("validated: false", block, fixed = TRUE))
+  # The edge's declared functions[] docs are present (score_consensus)
+  expect_true(grepl("score_consensus", block, fixed = TRUE))
+  # The broken code itself must NOT leak into the fallback block
+  expect_false(grepl("this_function_does_not_exist", block, fixed = TRUE))
+})
+
+test_that(".get_path_context() leaves a clean edge's real snippet untouched", {
+  .graph_env$graph <- NULL
+  ctx <- TaxaWizard:::.get_path_context(c("match_to_consensus_score"))
+  expect_equal(ctx$unvalidated_edges, character(0))
+})
+
+test_that(".describe_paths() labels a path carrying an unvalidated step", {
+  skip_if_not(requireNamespace("TaxaAssign", quietly = TRUE))
+  bogus_edge <- .tw_bogus_fallback_edge(
+    "bogus_describe_edge",
+    "x <- TaxaAssign::this_function_does_not_exist(y = 1)\nx",
+    functions = list()
+  )
+  graph <- list(edges = list(bogus_edge))
+  paths <- list(list(edges = "bogus_describe_edge", uses_wrapper = FALSE, time_estimate = "unknown"))
+
+  desc <- TaxaWizard:::.describe_paths(paths, graph = graph)
+  expect_true(grepl("(one or more unvalidated steps)", desc, fixed = TRUE))
+})
+
+test_that(".describe_paths() does not label a path whose edges all validate", {
+  .graph_env$graph <- NULL
+  paths <- .compute_paths("match_df", "consensus")
+  desc <- TaxaWizard:::.describe_paths(paths)
+  expect_false(grepl("unvalidated steps", desc, fixed = TRUE))
 })
 
 test_that(".list_node_types() returns inputs and outputs", {
@@ -420,4 +502,59 @@ test_that("every snippet still parses once its placeholders are substituted", {
     failures, character(0),
     info = paste0("snippets that do not parse when filled:\n", paste(failures, collapse = "\n"))
   )
+})
+
+
+# --- P6: the engine fills the setup/sniff placeholders ------------------------
+
+test_that("the classify prompt has no unfilled placeholder left in it", {
+  prompt <- .build_phase_prompt("classify", context = list(user_text = "hello"))
+  expect_false(grepl("\\{\\{[A-Z_]+\\}\\}", prompt))
+})
+
+test_that("the classify prompt carries the machine's setup state", {
+  prompt <- .build_phase_prompt(
+    "classify",
+    context = list(setup_text = "2 ok, 0 warn, 1 missing.\n- bin:blastn [missing]: not on PATH")
+  )
+  expect_match(prompt, "bin:blastn [missing]", fixed = TRUE)
+  expect_match(prompt, "THE USER'S MACHINE", fixed = TRUE)
+})
+
+test_that("the classify prompt sniffs a path the user actually names", {
+  f <- tempfile(fileext = ".csv")
+  writeLines(c(
+    "Start (s),End (s),Scientific name,Common name,Confidence",
+    "0.0,3.0,Catharus ustulatus,Swainson's Thrush,0.81"
+  ), f)
+  on.exit(unlink(f), add = TRUE)
+
+  prompt <- .build_phase_prompt(
+    "classify",
+    context = list(user_text = sprintf('my data is at "%s"', f))
+  )
+  expect_match(prompt, "sniff_input() inspected", fixed = TRUE)
+  expect_match(prompt, f, fixed = TRUE)
+})
+
+test_that("the classify prompt says nothing was inspected when no path exists", {
+  prompt <- .build_phase_prompt(
+    "classify",
+    context = list(user_text = "I have BirdNET output somewhere on my laptop")
+  )
+  expect_match(prompt, "No path in the user's message was found on disk", fixed = TRUE)
+})
+
+test_that("the parameterize prompt carries the selected path's requirements", {
+  skip_if_not_installed("TaxaMatch")
+  prompt <- .build_phase_prompt(
+    "parameterize",
+    context = list(
+      input_type = "birdnet_detections",
+      output_type = "match_df",
+      selected_path = "birdnet_to_match"
+    )
+  )
+  expect_false(grepl("\\{\\{[A-Z_]+\\}\\}", prompt))
+  expect_match(prompt, "WHAT THIS PATH REQUIRES", fixed = TRUE)
 })

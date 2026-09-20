@@ -1,6 +1,300 @@
 # CLAUDE.md -- TaxaWizard (formerly TaxaWorkflow)
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-13, evening (Sonnet 5): ecosystem review Section L (E1), FULL
+# Last updated: 2026-09-18 (Opus 5, work package P6 of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, branch p6-engine):
+# the engine now CONSUMES what P3 built. Three placeholders P3 deliberately left
+# unwired are filled in R/graph.R's .build_phase_prompt(): {{SETUP_STATUS}} (classify;
+# full workflow_check(), cached per session by .session_setup_check() and seeded by
+# workflow_create() so the user is shown the SAME report the model gets),
+# {{SNIFF_RESULT}} (classify; sniff_input() over .detect_paths_in_text() of the user's
+# latest message), {{PATH_REQUIREMENTS}} (parameterize; workflow_check(edges =
+# selected_path)). New internal helpers live in R/setup.R: .session_setup_check(),
+# .format_check_block(), .detect_paths_in_text(), .format_sniff_block(). WHY only
+# non-ok rows are rendered: an edges-scoped check still returns every base row (R
+# version, the 8 packages, cache) -- 26 rows for a 1-edge path -- so injecting the
+# whole table spends ~26 lines saying "fine" and buries the one line that is not.
+# WHY paths must EXIST before being sniffed: a path typed from memory, or an example
+# path lifted out of the prompt pack, must never be reported to the model as though it
+# had been inspected; the prompt also frames a sniff as EVIDENCE, not a decision, so a
+# sniff that contradicts the user produces a question rather than a silent override.
+# SECURITY: key rows are set/unset only, never a value, and there is a test with a
+# canary key value asserting it never reaches the prompt. R/output.R gains
+# .widen_step0_edges(): appending a stage can require a BLAST binary or an NCBI key the
+# original path did not, and Step 0 has ALREADY RUN by the time those steps execute, so
+# the existing check line is rewritten to the UNION -- not re-derived (a second block
+# would duplicate the first, or narrow it to the extension's edges and drop the original
+# path's requirements) and not skipped (the script would sail past a requirement it is
+# about to need). A script with no Step 0, or an edges = NULL check, is left alone.
+# TWO REAL DEFECTS FOUND WHILE WIRING THIS, both now tested: (1) .pack_render_task()
+# special-cased classify PAST the bracket map on the assumption {{NODE_TYPES}} was its
+# only placeholder -- false as soon as P6 added two more, and the exported pack shipped a
+# raw {{SETUP_STATUS}} token; the map now applies to every phase. (2) Registry text
+# depended on the GLOBAL useFancyQuotes option -- the same Rd yielded 'x' or fancy-quoted
+# x -- so an ambient setting decided whether the pack's byte-for-byte equality test
+# passed, and it did: the committed pack was generated under FALSE and a refresh under
+# the default TRUE rewrote every description. useFancyQuotes is now pinned off during Rd
+# rendering and REGISTRY_SCHEMA is 3 to evict caches holding either form. VERIFIED: 1009
+# tests pass, 0 failures, 0 skips; devtools::check() 0/0/0; llm_prompts/ regenerated
+# (CONTEXT_TaxaHabitat.md also picked up review_spatial_flags()'s new
+# bulk_confirm_threshold/bulk_max args, because that package was reinstalled by another
+# session mid-task -- the pack derives from what is INSTALLED, by design).
+#
+# Last updated: 2026-09-18 (Opus 5, work package P1b of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, branch p1b-rd-parse):
+# R/registry.R now parses Rd \arguments STRUCTURALLY, via new `.rd_arguments(args_tag)`
+# and `.rd_text(node)` (both internal), replacing the P1 approach of rendering
+# \arguments with tools::Rd2txt() and re-parsing the plain text. WHY: Rd2txt lays its
+# output out for a HUMAN READER -- it RIGHT-ALIGNS each argument term into a column, so
+# every term narrower than the widest one is emitted with leading whitespace. The P1
+# text parser's only rule for distinguishing a continuation paragraph from a new item
+# was "does this chunk begin with whitespace", so a right-aligned term was read as a
+# continuation of the item above it: that parameter got NO doc, and its text was glued
+# onto its neighbour's. MEASURED across the 8 installed packages (1387 formals on
+# documented exports): 318 parameters (22.9%) had no doc at all, and 233 of the 1069
+# survivors carried a lost neighbour's text. TaxaTools::call_anthropic_api() is the
+# clean example -- model, tier and api_key all vanished, and prompt_str's doc grew from
+# its true 70 characters to 456 by absorbing model's and tier's. This was not cosmetic:
+# the registry feeds {{PARAM_DOCS}} to the LLM, and in the committed llm_prompts/ pack
+# prompt_api()'s `llm_fn` had an EMPTY doc cell while its real text sat on `prompt`.
+# HOW IT WORKS NOW: inside \arguments every parameter is an \item node with exactly two
+# children (term, description); .rd_arguments() reads those two directly, so none of the
+# text-shape heuristics exist to be wrong. VERIFIED that assumption holds for all 1317
+# \item nodes across the 8 packages before relying on it; an \item that does not have
+# two children is skipped, not guessed at. .rd_text() flattens an Rd fragment to plain
+# text over the 19 tags that actually occur inside \item here, treating \eqn{latex}{ascii}
+# and \if{format}{text} as two-argument macros (render ONE child, never both) and
+# dropping COMMENT/\out. \title, \description and \value still go through Rd2txt --
+# they are prose, and survive it. CACHE: registry entries are keyed on package version
+# and Built date, NEITHER of which moves when TaxaWizard's own parser changes, so a
+# parser fix would never have reached anyone with a warm cache; new REGISTRY_SCHEMA
+# constant (now 2L) is part of the cache file name, and the pre-existing stale-file
+# sweep deletes the v1 files. VERIFIED: argument docs now cover 1387/1387 parameters
+# (was 1069); regenerating llm_prompts/ changed 987 doc cells, added 318 that were
+# empty, and lost 0; 971 tests pass, 0 failures. Tests in test-registry.R use synthetic
+# .Rd files parsed with tools::parse_Rd() (offline) for the four failure shapes, plus a
+# live guard that names any documented parameter missing a doc.
+#
+# Last updated: 2026-09-18 (Sonnet 5, work package P2 of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, worktree p2-validate --
+# built on top of the already-merged P1 (registry.R) and P3 (setup.R) work in this
+# worktree): new R/validate.R, `.validate_snippets(graph=, registry=, edge_ids=)`
+# (internal). AST-walks every inst/graph/snippets/*.R file (after substituting
+# {{placeholder}} tokens with a syntactically valid dummy identifier) and reports
+# not_exported (Pkg::fn() where fn isn't an export of Pkg, Pkg being a TAXAID_PACKAGES
+# member), stale_argument (a named argument absent from the installed function's real
+# formals -- read from the registry's params list, i.e. names(formals(fn)); skipped for
+# any function whose formals include ...), parse_error (doesn't parse even after
+# placeholder substitution), or unknown_bare_call (a bare, un-namespaced call that
+# resolves to neither base/utils/stats nor any TaxaID export -- reported at warn severity,
+# NOT counted toward the drift test). A snippet's own locally-defined helper
+# (`.foo <- function(...) ...` used later in the same file, e.g. std_to_priors_kernel.R's
+# `.habitat_condition`) is recognized and excluded from bare-call resolution -- the first
+# version without this flagged every such helper as unknown_bare_call. WHY: ports
+# diagnostics/workflow_checks/check_stale_arguments.R's AST-walk (previously a standalone
+# Rscript run by hand over production workflow FILES) into an in-package, registry-backed
+# check run over the snippet TEMPLATES themselves, so drift between a snippet and an
+# installed package's real signature is caught by `devtools::test()` instead of at
+# script-generation time in front of a user. RAN FOR REAL against all 33 real snippets:
+# found and fixed ONE genuine drift, in inst/graph/snippets/dist_to_priors_by_group.R --
+# `TaxaTools::verify_taxon_names(priors, taxon_col = "taxon_name")` no longer matches that
+# function's real formals (name_list, backbone_id, batch_size, timeout_sec,
+# fallback_backbone_id: a signature change this snippet never picked up), AND it silently
+# discarded `priors` by reassigning it to the verification result instead of the intended
+# data. Fixed to call with named `name_list =`/`backbone_id =` and to no longer clobber
+# `priors`. Second finding (std_to_priors_kernel.R's `.habitat_condition`) was a FALSE
+# POSITIVE in the validator's first draft, not a snippet bug -- fixed the validator, not
+# the snippet (see above). Tier-B fallback (spec P2, second half): `.get_path_context()`
+# (R/graph.R) now validates the selected path's own edges and, for any edge that fails,
+# substitutes a generated block -- the edge's label/description + `.registry_docs()` for
+# every function in that edge's `functions` array AND every export of its `packages` +
+# the spec's fixed instruction to write the step from that documentation with named
+# arguments only and mark it `validated: false` -- in place of the (broken) snippet.
+# `.describe_paths()` appends "(one or more unvalidated steps)" to a path's header when
+# any of its edges would trigger the fallback. `phase_parameterize.md`'s DAG step schema
+# gains an optional `validated` field (rule 7, default true) -- renumbered rules 7-21 to
+# 8-23 to make room without colliding. `R/output.R` `.generate_script()` (fresh scripts)
+# and `.append_to_script()` (extensions) both print
+# "# WARNING: this step was generated without a validated snippet; review before running"
+# directly above any step with `validated: FALSE`. VERIFIED HOW: on the real installed
+# packages, `.validate_snippets()` returns 0 rows across all 33 snippets (0
+# not_exported/stale_argument/parse_error/unknown_bare_call) after the fix above. Tier-B
+# fallback tested by INJECTING a bogus in-memory edge pointing at a temp-file snippet that
+# calls a nonexistent TaxaAssign function -- never touches a real snippet -- and asserting
+# the fallback block appears (with the edge's real functions[] docs, without the broken
+# code leaking through) and that `.describe_paths()` labels the path; the WARNING banner
+# tested the same way via `.make_dag()`'s existing test fixture in test-output.R, for both
+# a fresh script and an `.append_to_script()` extension. `devtools::test()` 865/0/0 (was
+# 826/0/0 immediately before this session, confirmed by `git stash`; net +39 assertions).
+# `devtools::check()` 0 errors/0 warnings/0 notes. DEVIATIONS FROM THE SPEC WORTH KNOWING:
+# (1) the validator's data.frame column is `` `function` ``, exactly as the spec names it
+# -- R's `data.frame()` mangles the reserved word "function" to "function." under its
+# default `check.names = TRUE`, so every constructor in R/validate.R passes
+# `check.names = FALSE` to keep the literal column name the spec's deliverable requires.
+# (2) The spec's problem list for `.validate_snippets()` names only `not_exported` and
+# `stale_argument`; `parse_error` and `unknown_bare_call` are both called out later in the
+# same spec section's prose ("Handle snippets that are not fully parseable...report
+# parse_error", "...anything else bare is unknown_bare_call at warn severity") and are
+# implemented as additional `problem` values, not a separate return structure -- the
+# drift test only asserts zero of the three failing kinds, per the spec's own instruction
+# ("this is the in-package drift test" refers to not_exported/stale_argument;
+# unknown_bare_call is reported but does not fail it). (3) `validate_snippets()` (the
+# internal `.validate_snippets()`) is NOT exported -- per the work order, kept internal
+# for now; it would be a reasonable user-facing function (an ecosystem drift linter
+# runnable standalone, similar in spirit to `workflow_check()`) if a future session wants
+# a public entry point. NOT DONE: `R/registry.R`, `R/setup.R`, `R/create.R`, `R/engine.R`,
+# `R/cli.R` untouched (P1/P3's own files, already merged into this worktree, not part of
+# this work package's scope). Full record: ecosystem_docs/SPEC_taxawizard_derived_context_
+# 2026_09_18.md, "P2" section.
+#
+# Last updated: 2026-09-18 (Sonnet 5, work package P4 of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, worktree p4-pack, after
+# P1/P3/P5 merged into this branch): new R/pack.R exports workflow_export_prompts(dir =
+# "taxaid_prompts", overwrite = FALSE, placeholder_setup_report = FALSE) -- a portable
+# prompt pack any LLM (agentic tool or plain chat) can be pointed at to design a TaxaID
+# workflow, no TaxaWizard install or engine API key required. WHAT: START_HERE.md and
+# tasks/handoff_template.md are copied verbatim from inst/prompts/pack/ (P5, untouched);
+# CLAUDE.md/AGENTS.md are 3 lines pointing an agentic tool at START_HERE.md;
+# CONTEXT_TaxaID.md (<= 400 lines; 189 lines as built) and one CONTEXT_<Package>.md per
+# TaxaID package are generated from workflow_registry()/.load_graph()/
+# .load_requirements() -- packages table, .describe_node_types() output, the graph as a
+# text adjacency list (edge id, from -> to, label, [wrapper] tag, requires), the
+# canonical pipelines read LIVE from system_prompt.md's "## Pipeline Awareness" section
+# (never pasted), a setup-requirements summary (ids/purpose/level, never values), every
+# export's DESCRIPTION Title/Description + signature + title/description + params table
+# + value, and the package README's "## Quick Start" section when one exists AND the
+# source repo is reachable (see TAXAID_ROOT below); SETUP_REPORT.md is workflow_check()'s
+# report for the generating machine, or (placeholder_setup_report = TRUE) a placeholder;
+# tasks/classify.md|path_select.md|parameterize.md|error_fix.md are inst/prompts/
+# phase_*.md with statically-resolvable placeholders filled ({{NODE_TYPES}}, via the
+# existing .describe_node_types()) and every conversation-dependent placeholder
+# ({{PATH_OPTIONS}}, {{SNIPPETS}}, {{PARAM_DOCS}}, {{ERROR_MESSAGE}}, etc.) replaced by a
+# bracketed instruction, with the "# RESPONSE FORMAT" JSON-only-response section
+# mechanically stripped and replaced by a short prose instruction (a documented
+# post-processing pass in .pack_strip_json_format(), not a second hand-edited template).
+# The committed copy lives at the repo root's llm_prompts/ (placeholder_setup_report =
+# TRUE, since it isn't any one contributor's machine); ecosystem_docs/readmes/
+# render_readmes.R gained a final tryCatch'd step that regenerates it via
+# devtools::load_all() and reports PASS/FAIL in the same summary table as the READMEs.
+# DELIBERATE DEVIATION FROM THE SPEC: the pack's tasks/*.md are NOT rendered by calling
+# .build_phase_prompt() (graph.R) directly, even for the fully-static classify phase --
+# that function unconditionally appends .format_corrections_for_prompt() (context.R), a
+# per-machine log of mistakes learned from THIS installation's own past chat sessions,
+# which would make the pack non-reproducible (and inappropriate to hand to a stranger's
+# LLM). Instead pack.R reads the SAME template file .build_phase_prompt() reads (identical
+# system.file("prompts", ...) path) and substitutes independently -- the spec's "same code
+# path or a thin wrapper, never a second copy of the template text" is satisfied at the
+# template-file level, not by calling that specific function. Documented in pack.R's file
+# header and .pack_read_template()'s roxygen. Quick Start sections and the byte-for-byte
+# committed-copy test both need the source repo (sibling READMEs / llm_prompts/ itself),
+# which an ordinary TaxaWizard install does not carry: .pack_find_repo_root() checks
+# TAXAID_ROOT then walks up from getwd() for TaxaWizard/DESCRIPTION, and both features
+# degrade gracefully (Quick Start omitted; test skipped with a clear message) rather than
+# erroring when it's not found -- expected under R CMD check. VERIFIED HOW: devtools::
+# document() clean (NAMESPACE +workflow_export_prompts, +man/workflow_export_prompts.Rd);
+# devtools::test() 914/0/0 (was 826/0 before this session on this same merged P1+P3+P5
+# checkout -- net +88 assertions in the new tests/testthat/test-pack.R, no drop elsewhere);
+# devtools::check() 0 errors / 0 warnings (NOTEs, if any, in the session's own report).
+# Generated the committed llm_prompts/ copy for real via devtools::load_all() (not the
+# installed TaxaWizard) and reran the full suite, including the byte-for-byte comparison
+# test, which now runs (not skipped) and passes. Did not touch R/graph.R's
+# .get_path_context()/.describe_paths(), R/output.R, or R/validate.R (P2's concurrent
+# worktree). Full record in the session's own report to the P0 coordinator.
+#
+# Last updated: 2026-09-18 (Sonnet 5, work package P1 of
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md): inst/metadata/*.json
+# (94 hand-maintained function-signature entries across 8 files) DELETED, along with
+# R/metadata.R and diagnostics/taxawizard_metadata_audit.R. New R/registry.R /
+# workflow_registry() introspects the 8 installed TaxaID packages at runtime
+# (getNamespaceExports()/formals()/tools::Rd_db()) -- 204 exported functions found, ALL
+# with real Rd docs (0 with no title/description/value). Cached under
+# tools::R_user_dir("TaxaWizard","cache")/registry/<pkg>_<version>_<built-digits>.rds,
+# keyed on packageVersion() AND packageDescription()$Built (every package reports 0.1.0,
+# so version alone can't tell a stale build from a fresh one); refresh=TRUE evicts stale
+# files for that package. WHY: the old metadata had already drifted twice (see memory:
+# project-taxawizard-metadata-drift) because nothing forced it to track real signatures;
+# introspection cannot drift by construction. Every .load_metadata() call site rewired to
+# workflow_registry() (create.R x2, engine.R, graph.R x3, cli.R's saved-session field
+# renamed metadata -> registry). workflow_engine(metadata=) renamed to
+# workflow_engine(registry=); metadata still accepted with a deprecation warning
+# (lifecycle::deprecate_warn() if installed, else plain warning() -- lifecycle added to
+# Suggests). inst/prompts/system_prompt.md and phase_parameterize.md: deleted every
+# sentence that hand-enumerated a specific function's parameters or package (the "Common
+# mistakes to avoid" list, "Package attribution" list, habitat_scheme/context/taxon_col/
+# col_map/rank_system/barcode_term/target_backbone_id specifics); kept one teaching
+# example (score_consensus()/build_context() "reference parameter variables, don't
+# hardcode" illustration) and added a test (test-registry.R) confirming its function and
+# parameter names are still real. Both prompts now state the FUNCTION REGISTRY / PARAMETER
+# DOCUMENTATION block is the ONLY authority; llm_fn guidance reduced to the generic form
+# the spec requires. tests/testthat/test-metadata-covers-workflow-functions.R replaced by
+# test-registry.R (registry non-empty per package; every snippet/edge function has a
+# registry entry; .compress_registry() has no line for a non-export; cache round-trip +
+# stale-file eviction; uninstalled-package skip; the phase_parameterize.md teaching-example
+# guard above). VERIFIED: devtools::document() regenerated NAMESPACE (+workflow_registry)
+# and man/; devtools::test() 709/0 (was 644/0 on this same commit before the change -- net
+# +65 assertions, no drop); devtools::check() 0 errors / 0 warnings (NOTEs listed in the
+# session's own report). Compressed registry for all 8 packages: 49.2 KB (<< the ~60 KB
+# acceptance ceiling). `grep -rn "load_metadata|inst/metadata" TaxaWizard/` returns nothing
+# outside this file's own OLDER session notes below (preserved as history, per this file's
+# own convention -- not rewritten) and inside this note's own prose (both expected).
+# R/output.R, inst/graph/workflow_graph.json, and inst/graph/snippets/ were NOT touched
+# (P3 was editing them concurrently in a sibling worktree). Full record in the session's
+# own report to the P0 coordinator.
+#
+# Last updated: 2026-09-18 (Sonnet 5, P3 of the SPEC_taxawizard_derived_context work
+# package, worktree p3-setup -- concurrent with P1's registry.R/metadata.R removal in a
+# separate worktree, NOT merged here): new R/setup.R exports workflow_check() (+
+# print.taxaid_check()) and sniff_input(). WHAT: workflow_check(edges=NULL) checks R
+# version, the 8 TaxaID packages + Biostrings/DECIPHER/rBLAST/shiny, each package's
+# tools::R_user_dir() cache, and -- narrowed to a set of graph edge ids -- the API keys/
+# network targets/binaries those edges' `requires` tokens name; returns a "taxaid_check"
+# data.frame (component/category/status/detail/fix). sniff_input(path) guesses which
+# workflow_graph.json input node a file is, from the REAL header signatures read by
+# TaxaMatch::read_sequence_table()/read_birdnet_output()/read_animl_output()/
+# read_inaturalist_cv_output()/read_speciesnet_output() and TaxaLikely::read_crabs_output()/
+# read_reference_fasta() (read their source, not guessed). WHY: the 3 hand-maintained
+# knowledge layers (metadata/snippets/graph) had already drifted twice with no automated
+# way to tell a user (or the chat engine) whether their *environment* -- not just the
+# workflow graph -- was ready to run a given path; this closes that gap without touching
+# engine.R/graph.R/create.R (P1's concurrent files) or inst/prompts/ (P6's wiring job).
+# VERIFIED HOW: devtools::test() 760/0/0 (was 644 before this session; +116 new tests in
+# tests/testthat/test-setup.R plus 2 in test-output.R for the new Step 0). devtools::check()
+# 0 errors/0 warnings/0 notes. Ran workflow_check() for real on this machine (network ON,
+# real keys present) and workflow_check(edges="seq_to_match") -- confirmed it shows
+# net:ncbi/key:ENTREZ_KEY/bin:blastn and NOT net:gbif/key:gbif, and the reverse for
+# edges="taxa_to_occ". Ran sniff_input() on 12 tiny in-test fixtures (FASTA, FASTA+
+# composite_id-TSV sibling, headerless 11-col CRABS TSV, a DADA2 seqtab .rds, canonical
+# and R-mangled BirdNET CSV headers, Animl CSV, iNaturalist-CV JSON, SpeciesNet JSON, a
+# lat/lon CSV, a score+rank CSV, a single-name-column CSV, a rank-only+observation_id CSV)
+# and on diagnostics/fast_workflows/*.R (all 6 correctly NA -- see below, this caught a
+# real bug). REAL BUG FOUND AND FIXED while checking sniff_input() against
+# diagnostics/fast_workflows/ per the spec's acceptance criterion: that directory holds
+# only *.R driver scripts, no data fixtures, and the first version of sniff_input()
+# confidently (medium confidence) misread every one of them as a single-column "taxa"
+# list, because its generic CSV/TSV fallback branch fired on ANY text file whose first
+# line had no comma/tab -- extension was never checked. Fixed by gating that fallback to
+# a small set of plausible tabular extensions (csv/tsv/txt/tab/dat, or none); added a
+# regression test. DECISIONS/DEVIATIONS FROM THE SPEC WORTH KNOWING: (1) `requires` is
+# edge-granularity, not sub-step granularity -- where a snippet gates an optional call
+# behind an `{{include_*}}` flag (std_to_priors_kernel's evidence block, dist_to_priors_
+# by_group's domestic-priors block), the token is included only when the edge's OWN
+# description frames it as a headline feature, judgment calls documented inline in the
+# Python script that wrote workflow_graph.json's `requires` (see git history/PR). (2) key:
+# llm/key:gbif are GROUPS (any one member key satisfies), with the group's own "missing"
+# vs "warn" level living in a `groups` object I added to requirements.json -- the spec's
+# own JSON example was elided ("...") and didn't show how a *group's* level differs from
+# an individual key's, so key:gbif is "warn" (GBIF search works without credentials; only
+# the download API needs them) while key:llm is "missing". (3) "network" status is never
+# "missing", only "ok"/"warn"/"skip" -- an unreachable HEAD request is often transient and
+# Step 0 in generated scripts only stop()s on "missing", so a flaky network shouldn't hard-
+# block a script from even starting. (4) TAXAID_PACKAGES is NOT reused from P1's
+# R/registry.R (different worktree, not present here) -- defined locally as a private
+# .taxaid_packages() function (not a bare object, to avoid any name collision at merge)
+# with the identical literal vector from the spec's Constants section. NOT DONE (by
+# design, per spec's "Do NOT (in P3)"): engine.R/graph.R/create.R untouched; no
+# {{SETUP_STATUS}}/{{PATH_REQUIREMENTS}}/{{SNIFF_RESULT}} prompt wiring (P6). Full record:
+# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, "P3" section.
+#
+# Previous update, 2026-09-13, evening (Sonnet 5): ecosystem review Section L (E1), FULL
 # option -- resolves most gaps listed as NOT fixed below. Three Tier-1 snippets fixed:
 # cached build_habitat_lookup(), species_reference + add_slash_taxon(),
 # review_assignments (cache_dir=). The curve-pricing EVIDENCE BLOCK ported behind
@@ -667,10 +961,12 @@ about their data, goals, and parameters via an LLM-powered chat interface, then
 generates a self-contained .R script, .md methods text, or Shiny application.
 
 Sits outside the TaxaID dependency chain -- depends on all TaxaID packages
-(via metadata), but no TaxaID package depends on it.
+(via the introspected registry, `workflow_registry()`), but no TaxaID
+package depends on it.
 
 **Status: Graph-based engine implemented. 0 errors, 0 warnings, 0 notes on devtools::check().
-Metadata JSONs fully audited. First full code + domain review complete (2026-08-09, see
+Function registry introspected from installed packages at runtime (2026-09-18,
+replaced the old hand-maintained metadata JSONs). First full code + domain review complete (2026-08-09, see
 inst/taxawizard_review.Rmd); first human-authored review response complete (2026-08-11, see
 inst/taxawizard_review_response.md). 721 tests passing.**
 
@@ -727,7 +1023,7 @@ Example: `sequences -> consensus` yields 6 paths (score-only, LLM wrapper,
 full Bayesian manual, full Bayesian wrapper, stepwise Bayesian manual/wrapper).
 
 ### Stateless Engine
-`workflow_engine(history, metadata) -> JSON` is the core. Phase detection from
+`workflow_engine(history, registry) -> JSON` is the core. Phase detection from
 history, phase-specific prompt assembly, LLM call, response parsing. No state
 between calls.
 
@@ -788,7 +1084,10 @@ A single interview produces one or more outputs:
 
 ### Trial Mode
 Generated scripts can include a trial-mode subset for performance estimation.
-Metadata includes per-function `scaling` and `scaling_note` fields.
+The LLM sets a `scaling` value (`linear | quadratic | api_limited`) per step
+in the generated DAG JSON itself (see `phase_parameterize.md`'s response
+schema); this is not sourced from the function registry, which does not
+carry a scaling field.
 
 ---
 
@@ -799,7 +1098,8 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 | Function | Purpose | Source file |
 |---|---|---|
 | `workflow_create()` | Main entry point: interview + script generation (mode = auto/browser/viewer/console) | R/create.R |
-| `workflow_engine()` | Stateless core: history + metadata -> JSON response | R/engine.R |
+| `workflow_engine()` | Stateless core: history + registry -> JSON response | R/engine.R |
+| `workflow_registry()` | Introspect installed TaxaID packages into the function registry (cached) | R/registry.R |
 | `workflow_fix()` | Resume conversation after script error | R/cli.R |
 | `workflow_app()` | Convert any R script to standalone Shiny app (auto/self/llm/none annotation) | R/shiny.R |
 | `annotate_script()` | Guided annotation of generic R scripts for Shiny conversion (self/llm modes) | R/shiny.R |
@@ -817,7 +1117,7 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 | `.list_node_types()` | Return input/output node IDs |
 | `.cartesian_plans()` | Cartesian product of sub-path plans for multi-input edges |
 | `.topo_sort_edges()` | Topologically sort edge set for dependency-correct execution order |
-| `.extract_param_docs()` | Pull parameter docs from metadata for path functions |
+| `.extract_param_docs()` | Pull parameter docs from the registry for path functions (delegates to `.registry_docs()`) |
 | `.build_adjacency()` | Forward adjacency list from edges |
 | `.graph_cache()` / `.graph_env` | Mutable cache for loaded graph |
 
@@ -831,15 +1131,18 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 | `.looks_like_error()` | Pattern-match error text to trigger error_fix phase |
 | `.load_system_prompt()` | Legacy monolithic prompt builder (kept for backward compat) |
 
-### Internal helpers -- API + metadata
+### Internal helpers -- API + registry
 
 | Function | Purpose | Source file |
 |---|---|---|
 | `.call_llm()` | httr2 wrapper for Anthropic API | R/api.R |
 | `.parse_engine_response()` | Extract + validate JSON from LLM response | R/api.R |
 | `%\|\|%` | Null-coalescing operator | R/api.R |
-| `.load_metadata()` | Load per-package JSON from inst/metadata/ | R/metadata.R |
-| `.compress_metadata()` | Convert metadata to token-efficient prompt text | R/metadata.R |
+| `.build_package_registry()` | Introspect one installed package into its registry entry | R/registry.R |
+| `.rd_alias_map()` / `.rd_sections()` / `.parse_rd_txt()` / `.parse_rd_arguments()` | `tools::Rd_db()` parsing -> title/description/value/per-argument doc text | R/registry.R |
+| `.registry_cache_dir()` | `tools::R_user_dir("TaxaWizard", "cache")/registry` | R/registry.R |
+| `.compress_registry()` | Convert the registry to token-efficient `{{FUNCTION_REGISTRY}}` prompt text | R/registry.R |
+| `.registry_docs()` | Per-function parameter doc block for a set of function names | R/registry.R |
 
 ### Internal helpers -- Output + CLI
 
@@ -864,35 +1167,50 @@ Metadata includes per-function `scaling` and `scaling_note` fields.
 
 ---
 
-## Metadata Schema
+## Registry Schema
 
-Per-package JSON files in `inst/metadata/`. Each file contains:
+`workflow_registry(packages = NULL, refresh = FALSE)` (R/registry.R) replaced
+`inst/metadata/*.json` on 2026-09-18. DERIVE, DON'T DECLARE: nothing here is
+hand-typed -- every field is introspected from the installed package via
+`getNamespaceExports()`, `formals()`, and `tools::Rd_db()`, so it cannot drift
+out of sync with the real function signatures the way hand-typed JSON could.
+Returns a named list, one element per installed package:
 
-```json
-{
-  "package": "PackageName",
-  "description": "One-line package description",
-  "functions": [
-    {
-      "name": "function_name",
-      "description": "What it does",
-      "inputs": [
-        {"name": "arg", "type": "type_name", "required": true, "default": "value", "description": "..."}
-      ],
-      "output": {"type": "type_name", "description": "..."},
-      "scaling": "linear | quadratic | api_limited",
-      "scaling_note": "Human-readable timing estimate"
-    }
-  ]
-}
+```r
+list(
+  package  = "PackageName",
+  version  = "0.1.0",                       # packageVersion()
+  built    = "R 4.5.2; ...; unix",           # packageDescription()$Built
+  functions = list(                          # one per export, alphabetical
+    list(
+      name        = "function_name",
+      title       = "<Rd \\title>",
+      description = "<Rd \\description first paragraph, <= 600 chars>",
+      params      = list(                     # in formals() order
+        list(name = "arg", required = TRUE, default = NULL, doc = "<Rd \\arguments text>")
+      ),
+      value       = "<Rd \\value text, <= 400 chars, or NULL>"
+    )
+  )
+)
 ```
 
-Type names create the compatibility matrix: a function that outputs `match_df`
-feeds into any function that accepts `match_df` as input.
+No `type` field -- the old metadata's per-parameter `type` (`data.frame`,
+`character`, ...) is gone; a parameter's expected shape now lives only in its
+`doc` prose (the real Rd argument text), which the LLM reads directly rather
+than through a hand-typed type tag.
 
-**CRITICAL**: Parameter names in metadata must exactly match actual function signatures.
-A full audit was performed Session 68 against all 8 packages. If function signatures
-change upstream, metadata must be updated here.
+Cached per package under `tools::R_user_dir("TaxaWizard", "cache")/registry/
+<pkg>_<version>_<built-digits>.rds`, keyed on version AND `Built` (every
+TaxaID package currently reports version 0.1.0, so version alone cannot tell
+a stale build from a fresh one). `refresh = TRUE` forces a rebuild and evicts
+any other cached file for that package.
+
+A package export with no `\alias` in any Rd file still gets a registry entry
+(required/default status is always known from `formals()`); its
+title/description/value/per-argument doc are `NULL`. As of 2026-09-18, every
+export across all 8 TaxaID packages (204 functions) has real Rd documentation
+-- there are currently none of these.
 
 ---
 
@@ -901,11 +1219,13 @@ change upstream, metadata must be updated here.
 | Package | Role | In |
 |---|---|---|
 | httr2 | Anthropic API calls | Imports |
-| jsonlite | JSON parse/write for metadata + engine responses | Imports |
+| jsonlite | JSON parse/write for the graph + engine responses | Imports |
 | shiny | Gadget + Shiny chat UI | Suggests |
+| lifecycle | `workflow_engine(metadata = )` deprecation warning (falls back to a plain `warning()` if absent) | Suggests |
 
-No TaxaID packages in Imports or Suggests -- the metadata JSON files are the
-interface, not runtime dependencies.
+No TaxaID packages in Imports or Suggests -- `workflow_registry()` reads them
+via base R (`getNamespaceExports()`, `tools::Rd_db()`) against whatever is
+installed in the library at call time, not as a declared dependency.
 
 ---
 
@@ -942,9 +1262,13 @@ docs for just the failing function. The prompt instructs the LLM to request
 LLM is told to be conservative (only fix confident errors like wrong parameter
 names).
 
-### Compressed metadata registry (legacy, still used in error_fix)
-One flat table of function signatures. Full details injected only for functions
-in the selected path. Keeps token budget manageable.
+### Compressed function registry
+`.compress_registry()` renders one flat table of real call signatures (from
+`formals()`, no per-parameter type column) for the legacy monolithic prompt
+(`.load_system_prompt()`, kept for backward compatibility). The active
+phase-based engine instead injects full per-function docs via
+`.registry_docs()`, but only for functions in the selected path -- keeps
+token budget manageable either way.
 
 ### LLM model for the engine
 Default: `claude-sonnet-4-6`. Configurable via `model` param. Sonnet is faster

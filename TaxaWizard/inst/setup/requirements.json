@@ -1,0 +1,172 @@
+{
+  "_comment": "Hand-kept setup requirements table for TaxaWizard::workflow_check(). Source material: TaxaTools/vignettes/api-setup.Rmd, root README.md 'API Keys' and 'Troubleshooting' sections, TaxaWizard/R/zzz.R, grep -rn 'Sys.getenv' Taxa*/R. 'level' is 'missing' (blocks; default when omitted) or 'warn' (recommended, non-blocking). Groups (llm, gbif) are satisfied when ANY one member key is set; their own 'level' lives under 'groups', not on the individual key entries.",
+  "keys": [
+    {
+      "id": "key:ANTHROPIC_API_KEY",
+      "env": "ANTHROPIC_API_KEY",
+      "group": "llm",
+      "purpose": "LLM provider (any ONE of the LLM keys suffices). Anthropic/Claude is the ecosystem default provider.",
+      "fix": "usethis::edit_r_environ(); add a line ANTHROPIC_API_KEY=sk-ant-...; save; restart R",
+      "docs": "TaxaTools vignette api-setup; README.md#api-keys"
+    },
+    {
+      "id": "key:GEMINI_API_KEY",
+      "env": "GEMINI_API_KEY",
+      "group": "llm",
+      "purpose": "LLM provider (any ONE of the LLM keys suffices). Free tier available.",
+      "fix": "usethis::edit_r_environ(); add a line GEMINI_API_KEY=...; save; restart R",
+      "docs": "TaxaTools vignette api-setup; README.md#api-keys"
+    },
+    {
+      "id": "key:OPENAI_API_KEY",
+      "env": "OPENAI_API_KEY",
+      "group": "llm",
+      "purpose": "LLM provider (any ONE of the LLM keys suffices). Paid.",
+      "fix": "usethis::edit_r_environ(); add a line OPENAI_API_KEY=sk-...; save; restart R",
+      "docs": "TaxaTools vignette api-setup; README.md#api-keys"
+    },
+    {
+      "id": "key:AZURE_OPENAI_API_KEY",
+      "env": "AZURE_OPENAI_API_KEY",
+      "group": "llm",
+      "purpose": "LLM provider (any ONE of the LLM keys suffices). DOI employees only; DOI network/VPN required.",
+      "fix": "usethis::edit_r_environ(); add a line AZURE_OPENAI_API_KEY=...; save; restart R",
+      "docs": "README.md#api-keys"
+    },
+    {
+      "id": "key:ENTREZ_KEY",
+      "env": ["ENTREZ_KEY", "NCBI_API_KEY"],
+      "group": null,
+      "level": "warn",
+      "purpose": "Raises the NCBI Entrez rate limit from 3/s to 10/s (ENTREZ_KEY, or its alias NCBI_API_KEY, either satisfies this). NCBI calls (fetch_ncbi_reference_sequences, audit_barcode_coverage, blast_sequences, verify_taxon_names backbone_id=4) work without it, just slower.",
+      "fix": "usethis::edit_r_environ(); add a line ENTREZ_KEY=...; save; restart R. Get one at https://www.ncbi.nlm.nih.gov/account/settings/",
+      "docs": "TaxaTools vignette api-setup"
+    },
+    {
+      "id": "key:GBIF_USER",
+      "env": "GBIF_USER",
+      "group": "gbif",
+      "purpose": "GBIF download-API credentials (download_gbif_occurrences()). GBIF search (fetch_gbif_occurrences()) works without any credentials.",
+      "fix": "usethis::edit_r_environ(); add a line GBIF_USER=...; save; restart R. Register at https://www.gbif.org/user/profile",
+      "docs": "TaxaTools vignette api-setup; README.md#api-keys"
+    },
+    {
+      "id": "key:GBIF_PWD",
+      "env": "GBIF_PWD",
+      "group": "gbif",
+      "purpose": "GBIF download-API credentials (download_gbif_occurrences()).",
+      "fix": "usethis::edit_r_environ(); add a line GBIF_PWD=...; save; restart R",
+      "docs": "TaxaTools vignette api-setup"
+    },
+    {
+      "id": "key:GBIF_EMAIL",
+      "env": "GBIF_EMAIL",
+      "group": "gbif",
+      "purpose": "GBIF download-API credentials (download_gbif_occurrences()).",
+      "fix": "usethis::edit_r_environ(); add a line GBIF_EMAIL=you@example.com; save; restart R",
+      "docs": "TaxaTools vignette api-setup"
+    },
+    {
+      "id": "key:INAT_API_TOKEN",
+      "env": "INAT_API_TOKEN",
+      "group": null,
+      "level": "warn",
+      "purpose": "iNaturalist computer-vision and range-check calls (check_inat_range(), score_image_inat(), generate_domestic_food_priors()'s iNat step, the optional iNat-range evidence sub-step of std_to_priors_kernel). Those specific calls hard-error without it, but each is an optional sub-step of its edge.",
+      "fix": "Register at https://www.inaturalist.org/ and create a JWT token, then usethis::edit_r_environ(); add INAT_API_TOKEN=...; restart R",
+      "docs": "TaxaFetch::check_inat_range() docs"
+    },
+    {
+      "id": "key:OPENALEX_API_KEY",
+      "env": "OPENALEX_API_KEY",
+      "group": null,
+      "level": "warn",
+      "purpose": "OpenAlex literature search (TaxaFetch::search_literature()). Works without a key at lower, polled rate limits; a key has been required since Feb 2026 per OpenAlex policy.",
+      "fix": "usethis::edit_r_environ(); add a line OPENALEX_API_KEY=...; save; restart R. Register at https://openalex.org/settings/api",
+      "docs": "TaxaTools vignette api-setup; README.md#api-keys"
+    },
+    {
+      "id": "key:XC_API_KEY",
+      "env": "XC_API_KEY",
+      "group": null,
+      "level": "warn",
+      "purpose": "Xeno-canto v3 acoustic-coverage lookups inside TaxaLikely::audit_barcode_coverage(). Silently skipped (a warning() and NULL) when unset -- not a hard stop.",
+      "fix": "Register at https://xeno-canto.org/explore/api, then usethis::edit_r_environ(); add XC_API_KEY=...; restart R",
+      "docs": "TaxaLikely R/coverage.R"
+    },
+    {
+      "id": "key:XAI_API_KEY",
+      "env": "XAI_API_KEY",
+      "group": null,
+      "level": "warn",
+      "purpose": "xAI/Grok via TaxaTools::register_provider() -- an example third-party OpenAI-compatible provider. Not part of the default provider auto-detection in zzz.R, so it never satisfies the key:llm group on its own.",
+      "fix": "usethis::edit_r_environ(); add a line XAI_API_KEY=...; save; restart R; then call TaxaTools::register_provider() with it",
+      "docs": "TaxaTools R/model_registry.R, R/llm_api_utils.R"
+    }
+  ],
+  "packages": [
+    {
+      "id": "pkg:Biostrings",
+      "package": "Biostrings",
+      "install": "if (!requireNamespace(\"BiocManager\", quietly = TRUE)) install.packages(\"BiocManager\"); BiocManager::install(\"Biostrings\")",
+      "level": "missing",
+      "purpose": "Bioconductor. Required for TaxaLikely::build_sequence_matrix() (DECIPHER alignment of reference sequences)."
+    },
+    {
+      "id": "pkg:DECIPHER",
+      "package": "DECIPHER",
+      "install": "if (!requireNamespace(\"BiocManager\", quietly = TRUE)) install.packages(\"BiocManager\"); BiocManager::install(\"DECIPHER\")",
+      "level": "missing",
+      "purpose": "Bioconductor. Required for TaxaLikely::build_sequence_matrix() (pairwise distance matrix from DNA alignment)."
+    },
+    {
+      "id": "pkg:rBLAST",
+      "package": "rBLAST",
+      "install": "if (!requireNamespace(\"BiocManager\", quietly = TRUE)) install.packages(\"BiocManager\"); BiocManager::install(\"rBLAST\")",
+      "level": "warn",
+      "purpose": "Optional. Only needed for TaxaMatch::blast_sequences(method = \"local\") / local BLAST screening; the default method = \"remote\" needs no local package or binary."
+    },
+    {
+      "id": "pkg:shiny",
+      "package": "shiny",
+      "install": "install.packages(\"shiny\")",
+      "level": "warn",
+      "purpose": "Optional. Only needed for TaxaWizard's Shiny chat interface and workflow_app()/\"app\" output; the console/CLI interface and script/methods outputs do not need it."
+    }
+  ],
+  "binaries": [
+    {
+      "id": "bin:blastn",
+      "binary": "blastn",
+      "install": "https://blast.ncbi.nlm.nih.gov/doc/blast-help/downloadblastdata.html, or skip entirely by using TaxaMatch::blast_sequences(method = \"remote\") (the default -- no binary needed)",
+      "level": "warn",
+      "purpose": "Local BLAST+ binary on PATH. Only needed for method = \"local\" in blast_sequences()/evaluate_reference_accessions(); the default remote method needs no binary."
+    }
+  ],
+  "network": [
+    {
+      "id": "net:gbif",
+      "url": "https://api.gbif.org/v1/",
+      "purpose": "GBIF occurrence search/download (TaxaFetch)."
+    },
+    {
+      "id": "net:ncbi",
+      "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/einfo.fcgi",
+      "purpose": "NCBI Entrez/BLAST (TaxaLikely, TaxaMatch, TaxaTools verify_taxon_names backbone_id=4)."
+    },
+    {
+      "id": "net:llm",
+      "url": null,
+      "purpose": "The currently configured LLM provider (getOption(\"TaxaID.provider\")); url resolved at check time from the provider registry, so no fixed url is given here."
+    }
+  ],
+  "groups": {
+    "llm": {
+      "level": "missing",
+      "purpose": "Any one of the LLM provider keys (ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, AZURE_OPENAI_API_KEY) satisfies this. Used by any TaxaTools::call_api()/llm_fn-accepting step."
+    },
+    "gbif": {
+      "level": "warn",
+      "purpose": "GBIF_USER + GBIF_PWD + GBIF_EMAIL are only needed for the GBIF download API (download_gbif_occurrences()); the search API (fetch_gbif_occurrences()) needs no credentials, so this is recommended, not blocking."
+    }
+  }
+}

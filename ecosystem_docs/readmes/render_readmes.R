@@ -262,6 +262,40 @@ ok <- tryCatch({
 })
 
 # ---------------------------------------------------------------------------
+# llm_prompts/ -- the committed copy of TaxaWizard::workflow_export_prompts()
+# ---------------------------------------------------------------------------
+# Per ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md (P4,
+# decision 4): the prompt pack is BOTH generated on demand AND committed as a
+# rendered copy at the repository root, refreshed by this same script, with a
+# test (TaxaWizard/tests/testthat/test-pack.R) that the two agree byte-for-
+# byte. Loaded from the TaxaWizard SOURCE directory (devtools::load_all()),
+# never the installed package, so this always reflects the code in the repo
+# being rendered -- consistent with how the README PDFs above are rendered
+# from source, not from an installed copy. placeholder_setup_report = TRUE
+# because the committed copy isn't any one contributor's machine; a real
+# SETUP_REPORT.md is only ever meaningful for the machine that generated it.
+
+message("Regenerating llm_prompts/ (TaxaWizard::workflow_export_prompts())...")
+
+llm_prompts_out <- file.path(project_root, "llm_prompts")
+
+ok <- tryCatch({
+  suppressMessages(devtools::load_all(file.path(project_root, "TaxaWizard"), quiet = TRUE))
+  written <- TaxaWizard::workflow_export_prompts(
+    llm_prompts_out,
+    overwrite = TRUE,
+    placeholder_setup_report = TRUE
+  )
+  record("llm_prompts/", "PASS", llm_prompts_out,
+         sprintf("%d file(s) written", length(written)))
+  TRUE
+}, error = function(e) {
+  message("    FAILED: ", conditionMessage(e))
+  record("llm_prompts/", "FAIL", llm_prompts_out, gsub("[\r\n]+", " ", conditionMessage(e)))
+  FALSE
+})
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 
