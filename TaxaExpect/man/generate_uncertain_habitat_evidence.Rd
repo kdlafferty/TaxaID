@@ -168,7 +168,7 @@ can only ever fail to rescue a taxon, never inflate one. Read the returned
 row count as a lower bound on the affected population, not the whole of it.
 
 \strong{Scale.} On PtConception 12S this population was 31,383 unassigned
-points before a pre-fetch scope filter and 145 after it -- 99.9\\% of the
+points before a pre-fetch scope filter and 145 after it -- 99.9\% of the
 records that motivated this function were out-of-scope birds that should
 never have been fetched. Expect a small residual, and treat a large one as
 a scope-filter problem first.

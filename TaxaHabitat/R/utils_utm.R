@@ -12,8 +12,8 @@
 #' @details
 #' Distances and buffers must not be computed in EPSG:3857 (Web Mercator):
 #' Mercator inflates true ground distance by \code{1 / cos(latitude)}, which is
-#' 21\% at 34 degrees, 35\% at 42 degrees and 47\% at 47 degrees. UTM matches
-#' geodesic distance to within ~0.1\% inside its own zone, so a study area that
+#' 21% at 34 degrees, 35% at 42 degrees and 47% at 47 degrees. UTM matches
+#' geodesic distance to within ~0.1% inside its own zone, so a study area that
 #' fits within a zone or two is measured essentially exactly.
 #'
 #' For data spanning many zones a single UTM is imperfect, but it remains far

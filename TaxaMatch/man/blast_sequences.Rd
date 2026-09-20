@@ -51,7 +51,7 @@ when this isn't set explicitly -- a fast, greedy algorithm tuned to find
 \emph{a} highly-similar hit quickly, not to exhaustively return every
 equally-good one. Confirmed on real data: a query with five reference
 sequences from one species and five from a second, genuinely tied at
-100\\% identity over the full alignment, returned only a single hit from
+100\% identity over the full alignment, returned only a single hit from
 one species and none from the other under the implicit (megablast)
 default -- silently dropping a real, exactly-tied congener before
 \code{score_range} filtering ever had a chance to keep it. Set
@@ -316,7 +316,7 @@ This step checks the length of the \strong{aligned region} (the BLAST
 \code{length} field), not the reference accession's own total sequence
 length. Confirmed as a real, not cosmetic, distinction on real Great Lakes
 Ameiurus (bullhead catfish) data: a query's raw BLAST hits included two
-\emph{Ameiurus melas} references at 100\\% identity and 100\\% query
+\emph{Ameiurus melas} references at 100\% identity and 100\% query
 coverage over the full amplicon -- a genuine, exactly-tied congener match
 -- but both were deposited as long mitogenome/partial-genome records
 (672bp and 960bp), so checking the \emph{subject's own length} against a
@@ -326,7 +326,7 @@ that happened to be the only reference short enough to survive -- not
 because it was the best match, but because it was the only
 correctly-sized \emph{record}. The aligned region itself, in every one of
 these mitogenome-embedded hits, was the correct barcode window (full
-query length, 100\\% coverage) -- exactly the case this filter should
+query length, 100\% coverage) -- exactly the case this filter should
 retain, not the "wrong genomic region of the same gene" case
 (\code{TaxaLikely}'s documented "Paralabrax footgun") it exists to catch.
 Checking aligned length rather than raw subject length fixes this while
@@ -352,17 +352,17 @@ matrix, and asking how often a congener outscores the sequence's own true
 species, and by how much --
 \itemize{
 \item \strong{Sebastes} (54 species, real MiFish-window 12S data):
-3/113 (2.7\\%) queries had a congener score higher than the true
+3/113 (2.7\%) queries had a congener score higher than the true
 species, but only by 0.6 points each -- none would have been dropped
 even at the old \code{score_range = 2} default.
-\item \strong{Chromis} (26 species): 3/33 (9.1\\%) queries had this
+\item \strong{Chromis} (26 species): 3/33 (9.1\%) queries had this
 happen, by 4.7-7.1 points -- \emph{all three} would have been
 silently dropped at \code{score_range = 2}.
 \item \strong{A real 6-genus PtConception 12S set} (Clinocottus,
-Gibbonsia, Oligocottus, Embiotoca, Phanerodon): 1/11 (9.1\\%) queries,
+Gibbonsia, Oligocottus, Embiotoca, Phanerodon): 1/11 (9.1\%) queries,
 by 2.5 points -- would also have been dropped at the old default.
 }
-Pooling all three: 4 of 7 real congener-outscoring events (57\\%) exceeded
+Pooling all three: 4 of 7 real congener-outscoring events (57\%) exceeded
 the old \code{score_range = 2} default and would have silently excluded
 the true species from every downstream step. The new default (\code{8})
 comfortably covers every gap actually observed in this check (worst case

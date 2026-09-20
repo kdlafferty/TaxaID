@@ -242,7 +242,7 @@ detect_suppressed_candidates <- function(match_obj,
 #'     candidate admission): the candidate is on \code{candidate_species_filter}
 #'     (or no filter was supplied at all) and its hierarchy-resolved score
 #'     clears \code{build_sequence_matrix()}'s own \code{max_dist} sanity
-#'     floor (default \code{0.25}, ~75\% identity) -- a much wider bar than
+#'     floor (default \code{0.25}, ~75% identity) -- a much wider bar than
 #'     Purpose A's, since local occurrence plausibility substitutes for some
 #'     of the score-closeness Purpose A needs on its own.
 #'   \item \strong{\code{"both"}} when a candidate clears both gates (the wide
@@ -493,7 +493,7 @@ detect_suppressed_candidates <- function(match_obj,
 #' per anchor down to 1 (\code{F. parvipinnis}, still correctly rejected on
 #' position grounds); Girella goes from 8 wasted alignments down to 0,
 #' keeping the 1 that matters (\code{G. nigricans}, still correctly admitted
-#' at its real ~98\% score). \code{max_level4_per_anchor} (default
+#' at its real ~98% score). \code{max_level4_per_anchor} (default
 #' \code{10L}) is a separate, independent hard cap on top of both -- insurance
 #' against a large/absent filter or a permissive ratio still admitting an
 #' unbounded number of candidates for one anchor.

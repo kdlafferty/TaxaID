@@ -34,7 +34,7 @@
 #'   ecological dominance.
 #' @param threshold Numeric in (0, 1]. Minimum habitat weight fraction for
 #'   a habitat to be classified as biologically relevant at a point. At 0.3,
-#'   a habitat must receive at least 30\% of the species-weighted votes to
+#'   a habitat must receive at least 30% of the species-weighted votes to
 #'   be assigned. Lower values include more marginal habitats; higher values
 #'   restrict assignment to clearly dominant habitats. For transitional areas
 #'   (e.g., estuaries), a lower threshold (0.2) may better capture mixed
@@ -118,7 +118,7 @@
 #' effective species count, making consensus harder to reach. Check coverage
 #' before running:
 #' \preformatted{
-#' mean(unique(occurrence_data$taxon_name) \%in\% habitats_df$taxon_name)
+#' mean(unique(occurrence_data$taxon_name) %in% habitats_df$taxon_name)
 #' }
 #'
 #' @seealso \code{\link{parse_hierarchical_habitat_response}},
@@ -600,7 +600,7 @@ assign_habitat_biological <- function(occurrence_data,
 #'   \code{"taxon_name"}.
 #' @param threshold Numeric in (0, 1]. Minimum habitat weight fraction for
 #'   a habitat to be classified as biologically relevant. At 0.3, a habitat
-#'   must receive at least 30\% of the species-weighted votes to be assigned.
+#'   must receive at least 30% of the species-weighted votes to be assigned.
 #'   Lower values include more marginal habitats; higher values restrict
 #'   assignment to clearly dominant habitats. For transitional areas (e.g.,
 #'   estuaries), a lower threshold (0.2) may better capture mixed habitats.

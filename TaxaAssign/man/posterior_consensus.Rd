@@ -396,7 +396,7 @@ negligible posterior mass), then \code{cumulative_threshold} selects the
 plausible set from the remainder. Setting \code{min_posterior = 0} disables
 noise filtering; setting it too high (e.g. 0.3) may exclude genuine
 competing hypotheses. \code{cumulative_threshold = 0.9} is analogous to a
-90\\% credible interval; increase toward 0.95--0.99 for more conservative
+90\% credible interval; increase toward 0.95--0.99 for more conservative
 assignments (more upranking to genus/family); decrease to 0.8 for more
 aggressive species-level calls.
 
@@ -410,7 +410,7 @@ in place. The two interact sharply only in the unrealistic combination of
 \code{min_posterior = 0} with a very high \code{cumulative_threshold}.
 This sweep measures resolution \emph{rate}, not \emph{accuracy} -- no
 ground-truth-validated observation set was available, so a higher
-resolved-\\% is not itself evidence those calls are correct.
+resolved-\% is not itself evidence those calls are correct.
 
 \strong{LCA method:}
 Lowest Common Ancestor is the standard conservative consensus method in

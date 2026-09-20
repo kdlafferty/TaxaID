@@ -122,7 +122,7 @@ the default was \code{NULL} (all time) on the reasoning that record age is
 the signal the \code{p_conc} discount reads out -- but that discount only
 narrows a row's CONFIDENCE, never its weight: a 1929 preserved specimen of
 a captive siamang 74 km from Point Conception still lifted that species'
-prior 480x above the zero-record floor and turned an 82\\%-identity family-
+prior 480x above the zero-record floor and turned an 82\%-identity family-
 level call into a species call. \code{NULL} restores the all-time fetch.}
 
 \item{cache_dir}{Character or \code{NULL}. Forwarded to the Stage 2 fetch

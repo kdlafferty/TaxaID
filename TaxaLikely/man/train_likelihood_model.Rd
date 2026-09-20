@@ -271,9 +271,9 @@ delta shrinkage" section below.
 \section{Marker validation scope}{
 
 The continuous bivariate-normal form above (as opposed to a discrete
-"100\\% match or nothing" rule) was empirically validated against real
+"100\% match or nothing" rule) was empirically validated against real
 PtConception data for the 12S and 18S markers only (see the "Framing B
-verdict" project notes) -- 100\\% rules were shown unreliable at the
+verdict" project notes) -- 100\% rules were shown unreliable at the
 congeneric level, and the bivariate-normal form captured the real score
 distribution well for those two markers specifically. Nothing in this
 function checks that the same form fits a different marker (e.g. COI,

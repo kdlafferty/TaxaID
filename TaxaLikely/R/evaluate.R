@@ -1031,7 +1031,7 @@ utils::globalVariables(c(
 #'   `coverage` column can be added to any match object via the `coverage_col`
 #'   parameter of `TaxaMatch::standardize_match_data()`.
 #'
-#'   Typical values: `0.8` (80\% query coverage) for DNA BLAST results.
+#'   Typical values: `0.8` (80% query coverage) for DNA BLAST results.
 #'   `NA` coverage values are always retained (treated as fully covered).
 #'   When `coverage` is absent from `match_df`, this parameter is silently
 #'   ignored.
@@ -1041,7 +1041,7 @@ utils::globalVariables(c(
 #'   that observation is routed to `$unresolved` (with a named warning)
 #'   instead of erroring -- the same degrade-gracefully convention already
 #'   used for the coarser-than-`rank_system` case above. Confirmed to hit
-#'   195/800 (24.4\%) of real test queries in a real production A/B
+#'   195/800 (24.4%) of real test queries in a real production A/B
 #'   comparison at a Youden's-J-calibrated `min_coverage`; before this fix,
 #'   any such observation crashed the whole call with `"replacement has 1
 #'   row, data has 0"`. Re-run `evaluate_likelihoods()` on `$unresolved` with

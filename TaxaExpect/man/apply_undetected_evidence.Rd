@@ -298,7 +298,7 @@ and every failure below was measured on that real data, not imagined:
 \item \emph{No anchor.} 3 of 10 groups had \code{f1 = 0} -- no budget at
 all, since \code{theta_present = missing_mass / f1} is undefined there.
 \item \emph{Too thin to trust.} A group with 24 effective records priced a
-single unseen species at \code{0.755} -- 75\\% of its own community.
+single unseen species at \code{0.755} -- 75\% of its own community.
 \code{min_group_n_eff}/\code{min_group_f1} exclude these.
 }
 (A third guard, capping a group's price at its own singleton mean, existed
