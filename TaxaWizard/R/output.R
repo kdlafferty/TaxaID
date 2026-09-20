@@ -189,14 +189,65 @@
       n_steps
     ),
     "",
+    "# Checkpoint signatures.",
+    "#",
+    "# A checkpoint keyed on the step NUMBER alone answers \"has step N run?\",",
+    "# never \"has step N run with THESE inputs?\". That matters here because the",
+    "# parameters above are meant to be edited: change one, re-run, and a",
+    "# number-keyed cache replays every step and prints the OLD answer under the",
+    "# NEW parameters, silently. It also defeats content-addressed caches further",
+    "# down -- TaxaFetch keys its GBIF checkpoints on the query itself, and an",
+    "# outer existence check short-circuits before that can notice the query",
+    "# changed, downgrading a good cache to a worse one.",
+    "#",
+    "# So each step stores a signature beside its result: a digest of the step's",
+    "# own code plus the values of the parameters that step actually reads. A",
+    "# checkpoint is reused only when that signature still matches.",
+    ".taxaid_digest <- function(x) {",
+    "  tf <- tempfile()",
+    "  on.exit(unlink(tf), add = TRUE)",
+    "  writeLines(as.character(x), tf)",
+    "  unname(tools::md5sum(tf))",
+    "}",
+    ".taxaid_step_signature <- function(code_expr, env) {",
+    "  code_txt <- paste(deparse(code_expr), collapse = \"\\n\")",
+    "  # Only the parameters this step REFERENCES, so editing an unrelated",
+    "  # parameter does not needlessly invalidate it.",
+    "  used <- sort(intersect(all.vars(code_expr), .workflow_params))",
+    "  vals <- vapply(used, function(nm) {",
+    "    v <- tryCatch(get(nm, envir = env), error = function(e) NULL)",
+    "    paste0(nm, \" = \", paste(deparse(v), collapse = \" \"))",
+    "  }, character(1))",
+    "  .taxaid_digest(c(code_txt, vals))",
+    "}",
+    "# A step whose inputs changed invalidates every LATER step too: their own",
+    "# signatures may be unchanged, but they were computed from this step's old",
+    "# output, which they reference by variable name rather than by parameter.",
+    ".taxaid_clear_steps_after <- function(step_id) {",
+    '  f <- list.files(checkpoint_dir, pattern = "^step_[0-9]+\\\\.(rds|sig)$", full.names = TRUE)',
+    '  n <- suppressWarnings(as.integer(sub("^step_0*([0-9]+)\\\\..*$", "\\\\1", basename(f))))',
+    "  stale <- f[!is.na(n) & n > step_id]",
+    "  if (length(stale) > 0L) {",
+    "    unlink(stale)",
+    '    message(sprintf("  (cleared %d later checkpoint(s), which were built on the old result)", length(stale) / 2L))',
+    "  }",
+    "}",
+    "",
     "# Helper: run a step with checkpoint and auto-fix on error.",
     "# Code is evaluated in the CALLING environment so all variables created",
     "# by prior steps (e.g. consensus_df, context_df) remain visible.",
     ".run_step <- function(step_id, description, code_expr, env = parent.frame()) {",
     '  cache_file <- file.path(checkpoint_dir, sprintf("step_%02d.rds", step_id))',
+    '  sig_file   <- file.path(checkpoint_dir, sprintf("step_%02d.sig", step_id))',
+    "  sig <- .taxaid_step_signature(code_expr, env)",
     "  if (file.exists(cache_file)) {",
-    '    message(sprintf("Step %d: %s [cached, skipping]", step_id, description))',
-    "    return(readRDS(cache_file))",
+    "    prev <- if (file.exists(sig_file)) readLines(sig_file, warn = FALSE)[1L] else NA_character_",
+    "    if (identical(prev, sig)) {",
+    '      message(sprintf("Step %d: %s [cached, skipping]", step_id, description))',
+    "      return(readRDS(cache_file))",
+    "    }",
+    '    message(sprintf("Step %d: %s [inputs changed since the cached run -- recomputing]", step_id, description))',
+    "    .taxaid_clear_steps_after(step_id)",
     "  }",
     '  message(sprintf("Step %d/%d: %s", step_id, total_steps, description))',
     "  result <- tryCatch(",
@@ -228,6 +279,7 @@
     "    }",
     "  )",
     "  saveRDS(result, cache_file)",
+    "  writeLines(sig, sig_file)",
     "  result",
     "}",
     ""
@@ -241,6 +293,21 @@
     }
     lines <- c(lines, "")
   }
+
+  # The names .taxaid_step_signature() digests. Emitted unconditionally, so a
+  # DAG with no parameters still defines it rather than erroring at step 1.
+  param_names <- vapply(dag$parameters %||% list(), function(p) as.character(p$name %||% ""), "")
+  param_names <- param_names[nzchar(param_names)]
+  lines <- c(
+    lines,
+    "# Parameters whose values are part of each step's checkpoint signature.",
+    if (length(param_names) > 0L) {
+      sprintf(".workflow_params <- c(%s)", paste(vapply(param_names, .r_string, ""), collapse = ", "))
+    } else {
+      ".workflow_params <- character(0)"
+    },
+    ""
+  )
 
   # --- Step 0: setup check ---
   # Only when the dag's steps carry edge_id (the graph-engine DAG shape
@@ -496,6 +563,7 @@
   # to the extension's edges, dropping the original path's requirements. So
   # the existing line is widened in place, to the union.
   existing_lines <- .widen_step0_edges(existing_lines, dag)
+  existing_lines <- .widen_workflow_params(existing_lines, dag)
 
   # --- Build new step lines ---
   new_step_lines <- c(
@@ -732,4 +800,47 @@
     ), call. = FALSE)
   }
   ids[ids %in% known]
+}
+
+
+#' Add an Extension's Parameters to an Existing Script's Signature List
+#'
+#' Appended steps bring their own parameters, and a parameter absent from
+#' \code{.workflow_params} is invisible to \code{.taxaid_step_signature()} --
+#' so editing it would not invalidate the step that reads it, which is the
+#' exact defect signatures exist to prevent. Widen the list in place, the same
+#' way \code{.widen_step0_edges()} widens the setup check.
+#'
+#' A script with no \code{.workflow_params} line is left alone: it predates
+#' signatures entirely, and injecting the name list without the helpers that
+#' consume it would achieve nothing.
+#'
+#' @param lines Character vector. The existing script's lines.
+#' @param dag The DAG being appended.
+#' @return \code{lines}, with at most one line changed.
+#' @noRd
+.widen_workflow_params <- function(lines, dag) {
+  new_params <- vapply(dag$parameters %||% list(), function(p) as.character(p$name %||% ""), "")
+  new_params <- new_params[nzchar(new_params)]
+  if (length(new_params) == 0L) {
+    return(lines)
+  }
+
+  idx <- grep("^\\.workflow_params <- ", lines)
+  if (length(idx) == 0L) {
+    return(lines)
+  }
+  idx <- idx[1L]
+
+  existing <- gsub('"', "", unlist(regmatches(lines[idx], gregexpr('"[^"]*"', lines[idx]))), fixed = TRUE)
+  merged <- unique(c(existing, new_params))
+  if (setequal(merged, existing)) {
+    return(lines)
+  }
+
+  lines[idx] <- sprintf(
+    ".workflow_params <- c(%s)",
+    paste(vapply(merged, .r_string, ""), collapse = ", ")
+  )
+  lines
 }

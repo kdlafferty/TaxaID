@@ -156,7 +156,7 @@ if (nzchar(existing)) {
   ok <- check_script(existing, "match_to_consensus_score")
   report("existing script", ok)
   cat("\n  --- EXECUTING ---\n")
-  res <- system2("Rscript", shQuote(existing), stdout = TRUE, stderr = TRUE)
+  res <- system2(file.path(R.home("bin"), "Rscript"), shQuote(existing), stdout = TRUE, stderr = TRUE)
   st <- attr(res, "status") %||% 0L
   writeLines(res, file.path(out_dir, "p7a_run_score_only.log"))
   cat(sprintf("    exit status: %s\n", st))
@@ -196,7 +196,7 @@ if (!is.null(script1)) {
   pass1 <- report("ARM 1 script", ok1)
 
   cat("\n  --- EXECUTING the generated script ---\n")
-  res <- system2("Rscript", shQuote(script1), stdout = TRUE, stderr = TRUE)
+  res <- system2(file.path(R.home("bin"), "Rscript"), shQuote(script1), stdout = TRUE, stderr = TRUE)
   status <- attr(res, "status") %||% 0L
   writeLines(res, file.path(out_dir, "p7a_run_score_only.log"))
   cat(sprintf("    exit status: %s  (log: %s)\n", status,
