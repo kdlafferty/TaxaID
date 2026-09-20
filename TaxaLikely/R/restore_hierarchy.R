@@ -38,7 +38,7 @@
 #' Build (once per align_cache) an accession-indexed lookup of seq_matrix
 #' pairs.
 #'
-#' Found necessary 2026-07-19, live-testing the redesign against the real
+#' Found necessary while live-testing the redesign against the real
 #' PtConception 12S dataset (13,442 observations, 226 genera present, some
 #' (e.g. Sebastes) with 100+ reference species, seq_matrix ~3M rows): every
 #' naive per-candidate lookup (`id_x == acc & id_y %in% ...`) is an
@@ -110,7 +110,7 @@
 #' F. lima case), Levels 1-3 are all provably futile, not just unlucky, so
 #' the caller should route straight to Level 4. Cached per accession set per
 #' align_cache since the same anchor species is often shared across many
-#' observations (Session 159's own align_cache precedent).
+#' observations.
 #' @noRd
 .has_seq_matrix_presence <- function(accessions, seq_matrix, align_cache) {
   accessions <- accessions[!is.na(accessions)]
@@ -292,7 +292,7 @@
 #' Compute-budget mechanism (Section 3b): should Level 4 (live Tier 2
 #' alignment) be attempted for this specific anchor/candidate pair?
 #'
-#' Revised 2026-07-18 after live-testing against two real motivating cases
+#' Revised after live-testing against two real motivating cases
 #' (Mugu `Fundulus lima`/`parvipinnis`, PtConception `Girella simplicidens`/
 #' `nigricans`) found the original ratio-only design had a real hole: BOTH
 #' real anchors are themselves absent from `taxaexpect_priors` (correctly --
@@ -357,7 +357,7 @@
   isTRUE(ratio <= budget_ratio_cap)
 }
 
-#' Option C backstop (2026-07-18): a hard cap on how many DISTINCT candidates
+#' Option C backstop: a hard cap on how many DISTINCT candidates
 #' get a live Level 4 alignment attempt per anchor accession, independent of
 #' `.worth_level4_check()`'s plausibility-filter/ratio gate -- insurance
 #' against a large or absent `candidate_species_filter` (or a

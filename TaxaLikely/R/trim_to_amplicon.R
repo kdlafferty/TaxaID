@@ -84,12 +84,10 @@ utils::globalVariables(c("sequence"))
 #'   derived from the registered primer pair's own `amplicon_range` (the
 #'   literature-reported variable-region length) plus each primer's length,
 #'   since `min_len`/`max_len` alone describe a general marker-length window,
-#'   not a primer-inclusive matched span (a real, fixed 2026-08-10 bug: the
-#'   old behavior rejected every genuine MiFish-U hit as "implausible" by
-#'   ~11bp -- see this package's own Known Footguns entry). If you supply
+#'   not a primer-inclusive matched span (reusing them directly would reject
+#'   every genuine MiFish-U hit as "implausible" by ~11bp). If you supply
 #'   `min_len`/`max_len` explicitly, that choice is used as-is for BOTH the
-#'   over-length decision and the final plausibility check, unchanged from
-#'   prior behavior.
+#'   over-length decision and the final plausibility check.
 #' @param max_mismatch_rate Numeric in `[0, 1)` (default `0.15`). Maximum
 #'   fraction of primer positions allowed to mismatch the sequence at the
 #'   binding site (rounded down to an integer count of bases per primer).
@@ -230,22 +228,18 @@ trim_to_amplicon <- function(reference_df,
   # primer span. `primer_info$amplicon_range` (from TaxaTools::
   # barcode_primer_defaults, only available when a registered barcode_term
   # resolved the primers) is the literature-reported *variable region* length,
-  # i.e. EXCLUDING primers -- confirmed empirically 2026-08-10, two real fish
+  # i.e. EXCLUDING primers -- confirmed empirically: two real fish
   # mitogenomes (Danio rerio, Cyprinus carpio) fetched live from NCBI both gave
   # an identical real full span of 221bp for MiFish-U; MiFish-U's registered
   # amplicon_range is 163-185bp, and 221 minus the 48bp of combined primer
   # length lands at 173bp, squarely inside that range. Using min_len/max_len
-  # directly (130-210bp for MiFish-U) rejected every real, correctly-found hit
-  # as "implausible" (221 > 210) -- a systematic ~11bp miscalibration, not real
-  # primer absence, and the root cause of a real 0/107 Sebastes and 0/22
-  # Paralabrax rescue failure this package's own Known Footguns entry
-  # previously (and incompletely) attributed entirely to off-target NCBI
-  # search hits lacking the primer site at all -- see that entry's own
-  # amendment. Only applied when min_len/max_len were AUTO-resolved from
-  # barcode_term (`!len_user_supplied`) -- a caller who explicitly passes
+  # directly (130-210bp for MiFish-U) would reject every real, correctly-found
+  # hit as "implausible" (221 > 210) -- a systematic ~11bp miscalibration, not
+  # real primer absence. Only applied when min_len/max_len were AUTO-resolved
+  # from barcode_term (`!len_user_supplied`) -- a caller who explicitly passes
   # min_len/max_len is exercising their own documented right to set the
   # plausibility bound directly (`@param min_len,max_len`), and that choice is
-  # respected as-is, exactly as before this fix.
+  # respected as-is.
   if (!len_user_supplied && !is.null(primer_amplicon_range)) {
     primer_total_len <- nchar(primer_fwd) + nchar(primer_rev)
     span_min <- primer_amplicon_range[1] + primer_total_len
