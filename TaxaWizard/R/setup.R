@@ -1022,18 +1022,50 @@ sniff_input <- function(path) {
     return(character(0))
   }
 
+  candidates <- character(0)
+
+  # (1) Quoted strings are unambiguous -- take them whole, spaces and all.
   quoted <- unlist(regmatches(txt, gregexpr('"[^"]+"|\'[^\']+\'', txt)))
-  quoted <- gsub('^["\']|["\']$', "", quoted)
+  candidates <- c(candidates, gsub('^["\']|["\']$', "", quoted))
 
-  # Bare tokens that look like a path: contain a separator or a known data
-  # extension, and no whitespace.
-  bare <- unlist(regmatches(
+  # (2) Bare tokens containing no whitespace. This was the ONLY rule until
+  # 2026-09-20 and is kept because it catches directories and extensionless
+  # paths that (3) does not.
+  candidates <- c(candidates, unlist(regmatches(
     txt,
-    gregexpr("[^\\s\"',;()]*(?:/|\\\\)[^\\s\"',;()]*|[^\\s\"',;()]+\\.(?:csv|tsv|txt|fa|fasta|fna|rds|xlsx)", txt, perl = TRUE)
-  ))
+    gregexpr("[^\\s\"',;()]*(?:/|\\\\)[^\\s\"',;()]*", txt, perl = TRUE)
+  )))
 
-  candidates <- unique(c(quoted, bare))
-  candidates <- candidates[nzchar(candidates)]
+  # (3) Paths CONTAINING SPACES. A no-whitespace rule silently missed almost
+  # every real path on this machine: Google Drive's own folder is "My Drive",
+  # and an unquoted path through it was never sniffed, so {{SNIFF_RESULT}}
+  # degraded to "nothing was inspected" while the file sat right there. Found
+  # by the P7(a) console dry run, which passed a real unquoted fixture path and
+  # got back "wasn't found in the inspection step".
+  #
+  # Anchor on a data-file extension, then offer EVERY plausible start ('/' or
+  # '~') at or before it as a candidate, longest first. Generous candidates,
+  # strict filter: file.exists() below is what actually adjudicates, so an
+  # over-long candidate that swallowed preceding prose simply fails to exist.
+  ext_re <- "\\.(?:csv|tsv|txt|fa|fasta|fna|rds|rdata|xlsx)"
+  ends <- gregexpr(ext_re, txt, perl = TRUE, ignore.case = TRUE)[[1L]]
+  if (ends[1L] != -1L) {
+    lens <- attr(ends, "match.length")
+    starts <- gregexpr("[~/]", txt, perl = TRUE)[[1L]]
+    if (starts[1L] != -1L) {
+      for (i in seq_along(ends)) {
+        stop_at <- ends[i] + lens[i] - 1L
+        for (st in starts[starts <= stop_at]) {
+          candidates <- c(candidates, substr(txt, st, stop_at))
+        }
+      }
+    }
+  }
+
+  # (4) Trailing sentence punctuation is not part of a filename.
+  candidates <- c(candidates, sub("[.,;:!?)\\]]+$", "", candidates))
+
+  candidates <- unique(candidates[nzchar(candidates)])
   if (length(candidates) == 0L) {
     return(character(0))
   }
@@ -1044,6 +1076,9 @@ sniff_input <- function(path) {
   }, TRUE)
 
   out <- unique(expanded[exists])
+  # Longest first: a real path beats a suffix of itself that also happens to
+  # exist (e.g. "/Users" inside "/Users/x/My Data.rds").
+  out <- out[order(nchar(out), decreasing = TRUE)]
   utils::head(out, max_paths)
 }
 

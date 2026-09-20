@@ -494,3 +494,59 @@ test_that(".format_sniff_block() reports what sniff_input() found", {
   expect_match(txt, f, fixed = TRUE)
   expect_match(txt, "node_id", fixed = TRUE)
 })
+
+
+# --- Paths containing spaces -------------------------------------------------
+# Until 2026-09-20 .detect_paths_in_text() matched only whitespace-free tokens,
+# so an unquoted path through a folder with a space in its name was never
+# sniffed and {{SNIFF_RESULT}} degraded to "nothing was inspected" while the
+# file sat right there. That is not an exotic case: Google Drive's own folder
+# is "My Drive", and this project lives under it. Found by the P7(a) console
+# dry run, which passed a real unquoted fixture path and was told it could not
+# be found.
+
+test_that(".detect_paths_in_text() finds an UNQUOTED path containing a space", {
+  d <- file.path(tempdir(), "My Drive"); dir.create(d, showWarnings = FALSE)
+  f <- file.path(d, "match obj.rds"); saveRDS(1, f)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+
+  expect_true(f %in% .detect_paths_in_text(sprintf("my data is at %s ok", f)))
+})
+
+test_that(".detect_paths_in_text() strips trailing sentence punctuation", {
+  d <- file.path(tempdir(), "My Drive"); dir.create(d, showWarnings = FALSE)
+  f <- file.path(d, "match obj.rds"); saveRDS(1, f)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+
+  expect_true(f %in% .detect_paths_in_text(sprintf("my data is at %s.", f)))
+})
+
+test_that(".detect_paths_in_text() still handles the cases it always did", {
+  # The space rule is ADDITIVE -- quoted paths, whitespace-free paths and
+  # directories must keep working.
+  f <- file.path(tempdir(), "plain_data.csv"); writeLines("a,b", f)
+  d <- file.path(tempdir(), "birdnet_out"); dir.create(d, showWarnings = FALSE)
+  on.exit({ unlink(f); unlink(d, recursive = TRUE) }, add = TRUE)
+
+  expect_true(f %in% .detect_paths_in_text(sprintf("data at %s ok", f)))
+  expect_true(f %in% .detect_paths_in_text(sprintf('data at "%s" ok', f)))
+  expect_true(length(.detect_paths_in_text(sprintf("my CSVs are in %s/", d))) > 0L)
+})
+
+test_that(".detect_paths_in_text() does not invent paths from prose", {
+  # The other half of the proof. Being generous with CANDIDATES is only safe
+  # because file.exists() adjudicates; a detector that reported a path the
+  # user never gave would be worse than one that reported none.
+  expect_equal(.detect_paths_in_text("I have BirdNET output from three recorders."), character(0))
+  expect_equal(.detect_paths_in_text("data at /no/such/dir/My File.rds ok"), character(0))
+  expect_equal(.detect_paths_in_text("the split was 3/4 of samples."), character(0))
+})
+
+test_that(".detect_paths_in_text() returns the whole path, not a suffix of it", {
+  d <- file.path(tempdir(), "My Drive"); dir.create(d, showWarnings = FALSE)
+  f <- file.path(d, "obj.rds"); saveRDS(1, f)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+
+  found <- .detect_paths_in_text(sprintf("see %s now", f))
+  expect_equal(found[1L], f)
+})
