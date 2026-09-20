@@ -349,3 +349,140 @@ test_that(".widen_step0_edges() does not append an invented edge id", {
   expect_match(line, "match_to_taxa", fixed = TRUE)
   expect_false(grepl("totally_made_up", line, fixed = TRUE))
 })
+
+
+# --- Checkpoints must key on inputs, not just on the step number -------------
+# A checkpoint keyed on step number alone answers "has step N run?", never
+# "has step N run with THESE inputs?" -- so editing a parameter and re-running
+# replayed the old result under the new parameters, silently. It also
+# short-circuited content-addressed caches further down (TaxaFetch keys its
+# GBIF checkpoints on the query itself).
+
+.ck_dag <- function() list(
+  parameters = list(list(name = "multiplier", value = "2"),
+                    list(name = "unrelated", value = "99")),
+  steps = list(
+    list(step_id = 1, edge_id = "match_to_consensus_score", package = "TaxaTools",
+         function_name = "f", description = "make a number",
+         code = "value <- 10 * multiplier\nvalue", inputs = list(), output_var = "value"),
+    list(step_id = 2, edge_id = "match_to_consensus_score", package = "TaxaTools",
+         function_name = "g", description = "use it",
+         code = "doubled <- value * 2\ndoubled", inputs = list(), output_var = "doubled")
+  )
+)
+
+# These four are INTEGRATION tests: they execute the generated script in a
+# fresh R process, which therefore has to be able to load TaxaWizard itself.
+# That holds under devtools::test() against the user library, but not
+# necessarily under R CMD check, where the package lives in a temporary check
+# library the subprocess does not inherit. Check the precondition rather than
+# assuming it -- a test that cannot run should say so, not fail.
+.ck_rscript <- function() file.path(R.home("bin"), "Rscript")
+
+# The precondition is NOT "can the subprocess load TaxaWizard" -- that was a
+# proxy, and it passed under R CMD check while the test still failed. The
+# generated script opens with Step 0, workflow_check(), which correctly refuses
+# to run when the ecosystem packages are missing; under check the subprocess
+# sees only a temporary library, reports 7 missing, and halts exactly as it is
+# designed to. So the real precondition is that a fresh process can load the
+# whole ecosystem, and that is what this asks.
+.ck_subprocess_can_load <- function() {
+  expr <- sprintf(
+    "cat(all(vapply(c(%s), requireNamespace, logical(1), quietly = TRUE)))",
+    paste(sprintf('"%s"', c("TaxaWizard", TaxaWizard:::TAXAID_PACKAGES)), collapse = ", ")
+  )
+  out <- suppressWarnings(system2(
+    .ck_rscript(), c("-e", shQuote(expr)), stdout = TRUE, stderr = TRUE
+  ))
+  any(grepl("TRUE", out, fixed = TRUE))
+}
+
+.ck_generate <- function() {
+  d <- tempfile("ck_"); dir.create(d)
+  suppressWarnings(.generate_outputs(dag = .ck_dag(), outputs = "script",
+                                     output_dir = d, trial = FALSE))
+  list(dir = d, script = list.files(d, pattern = "\\.R$", full.names = TRUE)[1])
+}
+
+test_that("a generated script declares the parameters its signatures digest", {
+  g <- .ck_generate(); on.exit(unlink(g$dir, recursive = TRUE), add = TRUE)
+  line <- grep("^\\.workflow_params <- ", readLines(g$script, warn = FALSE), value = TRUE)
+
+  expect_length(line, 1L)
+  expect_match(line, "multiplier", fixed = TRUE)
+  expect_match(line, "unrelated", fixed = TRUE)
+})
+
+test_that("a DAG with no parameters still defines .workflow_params", {
+  # Otherwise the first .run_step() call errors on an undefined object.
+  d <- tempfile("ck0_"); dir.create(d); on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  dag <- .ck_dag(); dag$parameters <- list()
+  suppressWarnings(.generate_outputs(dag = dag, outputs = "script", output_dir = d, trial = FALSE))
+  script <- list.files(d, pattern = "\\.R$", full.names = TRUE)[1]
+
+  expect_match(
+    grep("^\\.workflow_params <- ", readLines(script, warn = FALSE), value = TRUE),
+    "character(0)", fixed = TRUE
+  )
+})
+
+test_that("editing a parameter a step reads invalidates it AND every later step", {
+  skip_on_cran()
+  skip_if_not(.ck_subprocess_can_load(),
+              "a fresh R process cannot load TaxaWizard (e.g. under R CMD check)")
+  g <- .ck_generate(); on.exit(unlink(g$dir, recursive = TRUE), add = TRUE)
+  run <- function() paste(system2(.ck_rscript(), shQuote(g$script), stdout = TRUE, stderr = TRUE),
+                          collapse = "\n")
+
+  run()                                   # cold
+  reuse <- run()                          # nothing changed
+  expect_match(reuse, "Step 1: make a number [cached, skipping]", fixed = TRUE)
+  expect_match(reuse, "Step 2: use it [cached, skipping]", fixed = TRUE)
+
+  txt <- readLines(g$script, warn = FALSE)
+  txt[txt == "multiplier <- 2"] <- "multiplier <- 5"
+  writeLines(txt, g$script)
+  changed <- run()
+
+  expect_match(changed, "inputs changed since the cached run", fixed = TRUE)
+  expect_match(changed, "cleared 1 later checkpoint", fixed = TRUE)
+  # and the RESULT is recomputed, not the stale one: 10 * 5 * 2
+  expect_equal(readRDS(file.path(g$dir, ".workflow_checkpoints", "step_02.rds")), 100)
+})
+
+test_that("editing a parameter NO step reads does not invalidate anything", {
+  # The other half of the proof: a signature that fires on every edit would be
+  # switched off within a week.
+  skip_on_cran()
+  skip_if_not(.ck_subprocess_can_load(),
+              "a fresh R process cannot load TaxaWizard (e.g. under R CMD check)")
+  g <- .ck_generate(); on.exit(unlink(g$dir, recursive = TRUE), add = TRUE)
+  run <- function() paste(system2(.ck_rscript(), shQuote(g$script), stdout = TRUE, stderr = TRUE),
+                          collapse = "\n")
+  run()
+
+  txt <- readLines(g$script, warn = FALSE)
+  txt[txt == "unrelated <- 99"] <- "unrelated <- 123"
+  writeLines(txt, g$script)
+  out <- run()
+
+  expect_match(out, "Step 1: make a number [cached, skipping]", fixed = TRUE)
+  expect_match(out, "Step 2: use it [cached, skipping]", fixed = TRUE)
+  expect_false(grepl("inputs changed", out, fixed = TRUE))
+})
+
+test_that(".widen_workflow_params() adds an extension's parameters to the list", {
+  lines <- c("# x", '.workflow_params <- c("a", "b")', "# y")
+  dag <- list(parameters = list(list(name = "b", value = "1"), list(name = "c", value = "2")))
+  out <- .widen_workflow_params(lines, dag)
+  line <- grep("^\\.workflow_params <- ", out, value = TRUE)
+
+  expect_match(line, '"c"', fixed = TRUE)
+  expect_equal(lengths(regmatches(line, gregexpr('"b"', line, fixed = TRUE))), 1L)
+})
+
+test_that(".widen_workflow_params() leaves a script without that line alone", {
+  legacy <- c("# hand-written", "library(TaxaMatch)")
+  dag <- list(parameters = list(list(name = "c", value = "2")))
+  expect_identical(.widen_workflow_params(legacy, dag), legacy)
+})
