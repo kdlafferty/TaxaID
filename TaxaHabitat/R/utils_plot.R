@@ -64,7 +64,7 @@
   # to click at all. Reassigning an "Unknown" point to a real habitat via
   # review_spatial_flags()'s existing Reassign Habitat mode also now doubles
   # as a manual fix path for these classification gaps.
-  pts$habitat[is.na(pts$habitat) | !nzchar(pts$habitat)] <- "Unknown"
+  pts$habitat[.is_habitat_unassigned(pts$habitat)] <- "Unknown"
 
   # Drop only genuinely unmappable rows (no coordinates or no point identity).
   keep <- !is.na(pts$lon) & !is.na(pts$lat) & !is.na(pts$point_id)
@@ -223,4 +223,450 @@
   x <- gsub(">", "&gt;", x, fixed = TRUE)
   x <- gsub("\"", "&quot;", x, fixed = TRUE)
   x
+}
+
+# ------------------------------------------------------------------------------
+# Point-in-polygon for interactive lasso selection
+# ------------------------------------------------------------------------------
+
+#' Web Mercator y for a vector of latitudes
+#'
+#' leaflet.draw's polygon edges are straight lines in SCREEN space, i.e. in Web
+#' Mercator -- not in raw latitude. Ray-casting in raw lat therefore tests a
+#' slightly different boundary than the one the reviewer actually drew and can
+#' see. Projecting latitude to Mercator y before the cast makes the test agree
+#' with the drawn shape exactly. Longitude needs no transform (Mercator x is
+#' linear in longitude).
+#'
+#' @param lat Numeric vector of latitudes in degrees.
+#' @return Numeric vector of Mercator y values.
+#' @noRd
+.mercator_y <- function(lat) {
+  # Clamp at the Mercator poles; leaflet cannot display beyond ~85 anyway.
+  lat <- pmax(pmin(as.numeric(lat), 89.9), -89.9)
+  log(tan((45 + lat / 2) * pi / 180))
+}
+
+#' Vectorised even-odd point-in-polygon test
+#'
+#' Ray casting (even-odd / crossing-number rule), vectorised over POINTS and
+#' looping over the polygon's EDGES -- so cost is O(n_points * n_vertices) with
+#' the inner work done in compiled vector ops. A 10,000-point selection against
+#' a 60-vertex hand-drawn coastline is ~600k arithmetic operations, i.e.
+#' milliseconds. Callers should bbox-prefilter first so n_points is the
+#' candidate set, not the whole dataset.
+#'
+#' No external geometry dependency on purpose: \pkg{sf}'s lon/lat predicates go
+#' through \code{sf_use_s2()}, which is GLOBAL state, and an interactive gadget
+#' must not mutate a session-wide setting mid-review.
+#'
+#' Does not handle a polygon crossing the antimeridian (+/-180). Selections
+#' there would need the ring split; no TaxaID study area is affected.
+#'
+#' @param lon,lat Numeric vectors of point coordinates (same length).
+#' @param poly_lon,poly_lat Numeric vectors of polygon ring vertices. A repeated
+#'   closing vertex is optional and is dropped if present.
+#' @return Logical vector, one per point, \code{TRUE} when inside the ring.
+#' @noRd
+.points_in_polygon <- function(lon, lat, poly_lon, poly_lat) {
+  n <- length(lon)
+  if (n == 0L) {
+    return(logical(0L))
+  }
+
+  nv <- length(poly_lon)
+  if (nv != length(poly_lat)) {
+    return(rep(FALSE, n))
+  }
+  # Drop the repeated closing vertex GeoJSON rings carry.
+  if (nv > 1L &&
+    isTRUE(poly_lon[[1L]] == poly_lon[[nv]]) &&
+    isTRUE(poly_lat[[1L]] == poly_lat[[nv]])) {
+    poly_lon <- poly_lon[-nv]
+    poly_lat <- poly_lat[-nv]
+    nv <- nv - 1L
+  }
+  if (nv < 3L) {
+    return(rep(FALSE, n))
+  }
+
+  py <- .mercator_y(poly_lat)
+  y <- .mercator_y(lat)
+
+  inside <- logical(n)
+  j <- nv
+  for (i in seq_len(nv)) {
+    yi <- py[[i]]
+    yj <- py[[j]]
+    # An edge only matters if it straddles the point's horizontal ray. When
+    # yi == yj (a horizontal edge) this is FALSE everywhere, which is also what
+    # keeps the (yj - yi) division below from ever seeing a zero denominator.
+    straddle <- (yi > y) != (yj > y)
+    if (any(straddle)) {
+      xi <- poly_lon[[i]]
+      xj <- poly_lon[[j]]
+      x_int <- xi + (y[straddle] - yi) * (xj - xi) / (yj - yi)
+      inside[straddle] <- xor(inside[straddle], lon[straddle] < x_int)
+    }
+    j <- i
+  }
+
+  inside
+}
+
+#' Validate review_spatial_flags()'s bulk-selection size gate arguments
+#'
+#' Split out of \code{review_spatial_flags()} so it is reachable from tests --
+#' the function itself refuses to run outside an interactive session, which
+#' would otherwise mask every argument error behind that guard.
+#'
+#' @param bulk_confirm_threshold,bulk_max See \code{\link{review_spatial_flags}}.
+#' @return \code{TRUE}, invisibly. Called for its side effect of erroring.
+#' @noRd
+.check_bulk_args <- function(bulk_confirm_threshold, bulk_max) {
+  if (!is.numeric(bulk_confirm_threshold) || length(bulk_confirm_threshold) != 1L ||
+    is.na(bulk_confirm_threshold) || bulk_confirm_threshold < 1) {
+    stop("review_spatial_flags: 'bulk_confirm_threshold' must be a single number >= 1.")
+  }
+  if (!is.numeric(bulk_max) || length(bulk_max) != 1L ||
+    is.na(bulk_max) || bulk_max < 1) {
+    stop("review_spatial_flags: 'bulk_max' must be a single number >= 1.")
+  }
+  if (bulk_max < bulk_confirm_threshold) {
+    stop(sprintf(
+      paste0(
+        "review_spatial_flags: 'bulk_max' (%s) is below 'bulk_confirm_threshold' (%s).\n",
+        "  Every selection past the threshold would be refused rather than",
+        " offered for confirmation."
+      ),
+      format(bulk_max), format(bulk_confirm_threshold)
+    ))
+  }
+  invisible(TRUE)
+}
+
+#' Decide what a bulk selection of n points should do
+#'
+#' Split out of \code{review_spatial_flags()}'s \code{.gate_bulk()} so the
+#' threshold logic is reachable from tests without a Shiny session. The gate
+#' NEVER truncates -- see \code{review_spatial_flags()}'s "Bulk selection"
+#' section for why a partial application is the one unacceptable outcome.
+#'
+#' @param n Integer. Points the action would touch.
+#' @param threshold,max See \code{review_spatial_flags()}'s
+#'   \code{bulk_confirm_threshold} / \code{bulk_max}.
+#' @return One of \code{"none"}, \code{"apply"}, \code{"confirm"},
+#'   \code{"refuse"}.
+#' @noRd
+.bulk_gate_decision <- function(n, threshold, max) {
+  if (n == 0L) {
+    return("none")
+  }
+  if (n > max) {
+    return("refuse")
+  }
+  if (n > threshold) {
+    return("confirm")
+  }
+  "apply"
+}
+
+#' Reverse one grouped history entry
+#'
+#' Split out of \code{review_spatial_flags()}'s Undo Last observer so grouped
+#' undo is testable without a Shiny session. Each history entry covers EVERY
+#' point touched by one action (a whole polygon selection), which is what lets
+#' one click reverse the lot.
+#'
+#' @param fl,rs,habs Named character vectors keyed on \code{point_id}:
+#'   current flags, reasons and habitats.
+#' @param entry One history entry: parallel vectors \code{point_id},
+#'   \code{old_flag}, \code{old_reason}, \code{old_habitat} (the last being
+#'   \code{NA} for a flag-only change).
+#' @return A list with the restored \code{fl}, \code{rs}, \code{habs}.
+#' @noRd
+.undo_group_state <- function(fl, rs, habs, entry) {
+  ids <- entry$point_id
+  fl[ids] <- entry$old_flag
+  rs[ids] <- entry$old_reason
+  had_hab <- !is.na(entry$old_habitat)
+  if (any(had_hab)) {
+    habs[ids[had_hab]] <- entry$old_habitat[had_hab]
+  }
+  list(fl = fl, rs = rs, habs = habs)
+}
+
+# ------------------------------------------------------------------------------
+# Habitat-realm name patterns (see flag_habitat_inconsistencies()'s .realm())
+# ------------------------------------------------------------------------------
+
+#' Word-boundary patterns for marine / freshwater habitat names
+#'
+#' Kept as package constants rather than inline literals so the two stay
+#' visibly SYMMETRIC. They were not, once: marine terms were "^"-anchored and
+#' freshwater terms were not, which silently exempted 529,488 real Mugu rows
+#' from spatial QC. Any edit to one should be weighed against the other.
+#'
+#' Inflections are enumerated instead of using bare prefixes, so a terrestrial
+#' name cannot collide by accident ("Ponderosa Pine" must not match "pond").
+#' @noRd
+.marine_name_pattern <- paste0(
+  "\\b(marine|ocean|oceanic|pelagic|neritic|intertidal|subtidal|",
+  "littoral|reef|reefs|kelp|seagrass|estuary|estuarine|estuaries|",
+  # "deepwater" is a REALM term, not a depth term. Mugu's own scheme lists
+  # Pelagic and Deepwater as separate categories and is right to: the taxa
+  # carrying it there are demersal -- Microstomus pacificus, Xeneretmus
+  # ritteri, Bathyagonus pentacanthus, Icelinus spp., on the bottom between
+  # -798 m and the shelf. Mapping it to Pelagic would assert a water-column
+  # position these species do not occupy. Classifying it MARINE and letting
+  # the bathymetry zones (marine_shallow / marine_deep / marine_abyssal,
+  # cut at depth_neritic_m and depth_oceanic_m) carry the depth dimension
+  # keeps the two axes separate, which is what they are.
+  "deepwater|deep-water)\\b"
+)
+
+#' @noRd
+.freshwater_name_pattern <- paste0(
+  "\\b(freshwater|wetland|wetlands|aquatic|lake|lakes|river|rivers|riverine|",
+  "stream|streams|pond|ponds|marsh|marshes|bog|bogs|fen|fens|riparian|",
+  # Lentic (standing water) and lotic (flowing water) are the standard
+  # limnological terms and are what the GreatLakes sites actually use. Without
+  # them BOTH GreatLakes plates classified 100% of points as realm "unknown"
+  # and were skipped entirely -- 6,217 and 11,154 rows, every run, reported as
+  # "habitat 'Lentic' not found in habitat scheme -- skipped". Verified against
+  # both saved occurrences_clean checkpoints on 2026-09-19.
+  "lentic|lotic)\\b"
+)
+
+# ------------------------------------------------------------------------------
+# Habitat breadth (Levins' B) from a weight table
+# ------------------------------------------------------------------------------
+
+#' Levins' niche breadth over a set of habitat weight columns
+#'
+#' `Habitat` is an argmax, so it renders a near-uniform weight vector and a
+#' decisive one as the same confident-looking string. Measured on real
+#' PtConception 12S data, *Larus delawarensis* reads `"Marine"` off weights of
+#' Marine 0.30 / Estuarine 0.20 / Freshwater 0.30 / Terrestrial 0.20 -- a tie
+#' broken arbitrarily by column order. This recovers the information the argmax
+#' discards.
+#'
+#' Levins' B = 1 / sum(p^2) over the scheme's habitat columns, with the weights
+#' renormalised to sum to 1 first. Units are **effective number of habitats**:
+#' 1.0 is a pure specialist, and the maximum is the number of habitat columns
+#' (perfectly even use of all of them). Standardise to 0-1 if needed with
+#' (B - 1) / (n - 1).
+#'
+#' `Other_weight` is deliberately EXCLUDED. It measures the LLM failing to place
+#' a taxon in the scheme at all, which is a different thing from a taxon that
+#' genuinely spans habitats -- "no information" versus "broad niche". Read the
+#' two columns together: high breadth with low `Other_weight` is a real
+#' generalist; high `Other_weight` means the verdict itself is weak.
+#'
+#' @param df Data frame containing the habitat weight columns.
+#' @param hab_cols Character. The scheme's habitat column names, excluding
+#'   `Other_weight`.
+#' @return Numeric vector, one per row. `NA` where the scheme weights are all
+#'   zero or missing (nothing to measure breadth over).
+#' @noRd
+.compute_habitat_breadth <- function(df, hab_cols) {
+  hab_cols <- intersect(hab_cols, names(df))
+  n <- nrow(df)
+  if (n == 0L || length(hab_cols) == 0L) {
+    return(rep(NA_real_, n))
+  }
+  w <- as.matrix(df[, hab_cols, drop = FALSE])
+  storage.mode(w) <- "double"
+  w[is.na(w) | w < 0] <- 0
+  tot <- rowSums(w)
+  out <- rep(NA_real_, n)
+  ok <- tot > 0
+  if (any(ok)) {
+    p <- w[ok, , drop = FALSE] / tot[ok]
+    out[ok] <- 1 / rowSums(p^2)
+  }
+  out
+}
+
+#' Habitats hypothesised at a point, by cumulative consensus mass
+#'
+#' Given one point's consensus proportion vector, returns the habitats that
+#' together account for at least `mass` of it, taking them highest-first and
+#' including the one that crosses the target.
+#'
+#' A cumulative-mass rule rather than a fixed cutoff because a fixed cutoff
+#' barely reduces anything on real data: the LLM emits round numbers, so the
+#' 5th percentile of non-zero proportions is already 0.10 and a 0.05 threshold
+#' drops a 5-habitat scheme only to 3.98 candidates. Measured on the 31,383
+#' unassigned PtConception 12S points, `mass = 0.8` gives **mean 2.91
+#' candidates (median 3)**, and 90% of points land on exactly 3 -- a real
+#' reduction that adapts to the shape of each vector instead of being tuned to
+#' one dataset's numbers.
+#'
+#' @param props Named numeric vector of habitat proportions for ONE point.
+#' @param mass Numeric in (0, 1]. Cumulative proportion to cover.
+#' @return Character vector of habitat names, ordered by descending proportion.
+#'   Empty when every proportion is zero or missing.
+#' @noRd
+.candidate_habitats <- function(props, mass = 0.8) {
+  if (length(props) == 0L) {
+    return(character(0L))
+  }
+  props <- props[!is.na(props) & props > 0]
+  if (length(props) == 0L) {
+    return(character(0L))
+  }
+  props <- sort(props, decreasing = TRUE)
+  # Include each habitat while the mass ACCUMULATED BEFORE IT is still short of
+  # the target, so the habitat that crosses the line is kept rather than cut.
+  before <- cumsum(props) - props
+  names(props)[before < mass - 1e-9]
+}
+
+#' Composite category label for an unassigned point
+#'
+#' Names the habitats in contention at a point whose consensus reached no
+#' verdict, e.g. `"Estuarine | Freshwater | Marine"`. Used by
+#' [review_spatial_flags()] in place of a single undifferentiated `"Unknown"`,
+#' so ambiguous points become filterable, selectable GROUPS rather than
+#' individually-clickable mysteries.
+#'
+#' Members are sorted ALPHABETICALLY, deliberately. Ordering by proportion
+#' would be more informative per point but would split one candidate set across
+#' several permutations -- `"Marine | Estuarine"` and `"Estuarine | Marine"`
+#' would be different sidebar entries for the same kind of problem, which
+#' defeats the purpose. Per-point proportions are shown in the Reassign
+#' dropdown instead.
+#'
+#' @param props Named numeric vector of habitat proportions for ONE point.
+#' @param mass Cumulative proportion to cover; see [.candidate_habitats()].
+#' @return A single string, or `NA_character_` when there is no vector to
+#'   describe (all proportions zero or missing).
+#' @noRd
+.habitat_signature <- function(props, mass = 0.8) {
+  k <- .candidate_habitats(props, mass)
+  if (length(k) == 0L) {
+    return(NA_character_)
+  }
+  paste(sort(k), collapse = " | ")
+}
+
+#' Sidebar checkbox label for one habitat, with its remaining point count
+#'
+#' The count is what makes the Habitats filter usable for accounting: a
+#' reviewer working through composite categories needs to know whether ticking
+#' one means 5 points or 5,000, and needs to see when a category has been
+#' emptied by reassignment.
+#'
+#' A zero-count category is greyed and struck through rather than REMOVED.
+#' Removing it mid-session would make the list jump under the cursor and would
+#' erase the evidence that the group ever existed -- which is exactly the
+#' accounting the count is there to provide.
+#'
+#' @param h Habitat label.
+#' @param colour Hex colour for the dot.
+#' @param n Integer count of points currently in this habitat, in the view on
+#'   screen.
+#' @return A `shiny::HTML` string.
+#' @noRd
+.habitat_choice_html <- function(h, colour, n) {
+  empty <- isTRUE(n == 0L)
+  shiny::HTML(sprintf(
+    paste0(
+      '<span style="display:inline-flex;align-items:center;gap:5px;">',
+      '<span style="display:inline-block;width:10px;height:10px;',
+      'border-radius:50%%;background:%s;flex-shrink:0;%s"></span>',
+      '<span style="font-size:11px;%s">%s</span>',
+      '<span style="font-size:10px;color:%s;">(%s)</span>',
+      "</span>"
+    ),
+    colour,
+    if (empty) "opacity:0.35;" else "",
+    if (empty) "color:#aaa;text-decoration:line-through;" else "",
+    .he(h),
+    if (empty) "#bbb" else "#777",
+    format(n, big.mark = ",")
+  ))
+}
+
+#' Points per habitat in the view currently on screen
+#'
+#' @param fl Named character vector of flags, keyed on `point_id`.
+#' @param habs Named character vector of habitats, keyed on `point_id`.
+#' @param view_lc The lower-case flag name currently displayed.
+#' @param levels Habitat levels, in the order the sidebar lists them.
+#' @return Integer vector, one per level.
+#' @noRd
+.habitat_view_counts <- function(fl, habs, view_lc, levels) {
+  ids <- names(fl)[!is.na(fl) & fl == view_lc]
+  if (length(ids) == 0L) {
+    return(rep(0L, length(levels)))
+  }
+  h <- habs[ids]
+  as.integer(table(factor(unname(h), levels = levels)))
+}
+
+# ==============================================================================
+# The unassigned-habitat sentinel
+# ==============================================================================
+
+#' The value `main_habitat` carries when a point's habitat could not be decided
+#'
+#' `NA` used to mean this, and still does in data written before 2026-09-19 --
+#' but `NA` in a `main_habitat` column means something ELSE on the prior side of
+#' the pipeline. `TaxaExpect::generate_domestic_food_priors()` sets it
+#' deliberately (its own comment: "intentionally set to NA (never a real habitat
+#' value)") to mean **habitat-agnostic, matches any habitat**, and
+#' `TaxaAssign::join_priors()` reads it that way to build the wildcard tier for
+#' domestic and food taxa.
+#'
+#' So one sentinel in one column name carried two decisions that route
+#' oppositely: a chicken should match every habitat, while a point whose habitat
+#' could not be determined should be routed to the evidence branch and still
+#' appear as regionally present. Naming the occurrence-side case separates them.
+#'
+#' @noRd
+.HABITAT_UNCERTAIN <- "Uncertain"
+
+#' Is this habitat value "we could not decide"?
+#'
+#' Deliberately a predicate rather than a bare `== .HABITAT_UNCERTAIN`, because
+#' both vocabularies have to work at once: every decision file and every saved
+#' occurrence table written before 2026-09-19 stores `NA`, and those files are
+#' read by the same code paths as new ones. Treating only the new sentinel would
+#' silently reclassify 31,982 stored rows as *assigned*.
+#'
+#' @param x Character vector of habitat values.
+#' @return Logical vector: `TRUE` where the habitat is unassigned, by either
+#'   vocabulary.
+#' @noRd
+.is_habitat_unassigned <- function(x) {
+  x <- as.character(x)
+  is.na(x) | !nzchar(trimws(x)) | x == .HABITAT_UNCERTAIN
+}
+
+#' Refuse a habitat scheme that would collide with the sentinel
+#'
+#' `"Uncertain"` must never also be a real habitat in someone's scheme, or an
+#' unassigned point and a genuinely-Uncertain-habitat point become
+#' indistinguishable -- reintroducing exactly the collision this replaces.
+#'
+#' @param hab_levels Character vector of habitat names.
+#' @param caller Name used in the error message.
+#' @return `TRUE` invisibly; errors on collision.
+#' @noRd
+.check_habitat_sentinel_free <- function(hab_levels, caller) {
+  bad <- hab_levels[!is.na(hab_levels) &
+    tolower(trimws(hab_levels)) == tolower(.HABITAT_UNCERTAIN)]
+  if (length(bad) > 0L) {
+    stop(sprintf(
+      paste0(
+        "%s: '%s' is reserved -- it is the value main_habitat carries when a\n",
+        "  point's habitat could not be decided, so a scheme cannot also use it\n",
+        "  as a real habitat. Rename that habitat in the scheme."
+      ),
+      caller, bad[[1]]
+    ), call. = FALSE)
+  }
+  invisible(TRUE)
 }

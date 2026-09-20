@@ -1,4 +1,37 @@
-# TaxaTools (development version)
+# TaxaTools (development)
+
+## New features (2026-09-19)
+
+* **`taxaid_build_manifest()`, `write_taxaid_manifest()`,
+  `check_taxaid_manifest()`** -- record which TaxaID code a run actually used,
+  and stop a workflow whose library has drifted.
+
+  Every TaxaID package sits at version 0.1.0 and is reinstalled constantly, so
+  the version string is silent by construction and "what was installed" is a
+  memory rather than a fact. Two runs a week apart can report identical
+  versions and have executed materially different code.
+
+  **The signal is a hash of the installed code, not the `Built` timestamp.**
+  That distinction is what makes the check survivable, and it was verified
+  against real installs rather than simulated hashes: rebuilding TaxaFlag with
+  no source change moved `Built` from 05:56:58 to 05:59:33 and left the hash at
+  `2f88726842e6...`, while adding a single function moved it to
+  `93bd9e9905c8...`; reverting restored the original. A `Built`-based check
+  would have fired on the harmless rebuild, and a guard that cries wolf is a
+  guard someone switches off. The hash is also stable across separate R
+  processes. Internals are included in the hash, because a behaviour change
+  need not touch an exported signature -- all three column-inference bugs fixed
+  the same day lived in internal helpers.
+
+  **Absence is reported first.** A package named in the manifest but missing
+  from the library is listed ahead of CHANGED and EXTRA, and packages that are
+  not installed are kept as rows with `installed = FALSE` rather than dropped:
+  a checker that only compares what it finds on both sides cannot report what
+  is gone.
+
+  Wired into `PtConceptionWorkflow_12S_single_site.R` as the reference
+  implementation -- writes the manifest on first run, checks it thereafter, and
+  errors before any result exists.
 
 ## 2026-09-13
 

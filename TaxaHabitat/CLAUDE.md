@@ -1,4 +1,54 @@
 # CLAUDE.md
+# 2026-09-19 (Opus 5): POLYGON SELECTION shipped in review_spatial_flags(), plus everything the
+# task turned up. Polygon + rectangle share one GeoJSON ring path; even-odd ray cast in WEB
+# MERCATOR (matching leaflet's drawn edges), bbox prefilter, rectangle skips the cast entirely.
+# Size gate that NEVER truncates (bulk_confirm_threshold=10000L / bulk_max=100000L), grouped
+# undo, preferCanvas. Four loops vectorised -- all LATENT before polygons; the Done handler's
+# habitat write-back was O(n_changed * nrow), ~2 MINUTES -> 0.033 s on 2,185,193 rows.
+# UNASSIGNED POINTS are now labelled by the habitats in contention ("Estuarine | Freshwater |
+# Marine") instead of one undifferentiated "Unknown", making them a filterable, selectable
+# GROUP -- 646 points -> 12 named groups on the PtCon demo. DISPLAY ONLY: main_habitat stays NA
+# until actually reassigned (verified: 5,625 NA rows in -> 5,625 out, 0 signature strings).
+# Reassign dropdown offers only what a point hypothesises (cumulative-mass rule at 0.8, mean
+# 2.91 candidates vs 3.98 for a 0.05 cutoff); Habitats filter shows per-view counts, emptied
+# categories greyed not removed. User verified the gadget live. Commits 5836c66, c71ebbc,
+# 947180a, 20802af, 099024b. devtools::test() 517/0, check() 0/0/0. -- TaxaHabitat
+# Same day, found BY the polygon work and fixed: the habitat-realm asymmetry (c1fd1a1, see
+# below), report_habitat()'s type scan (d3584a7), drop_stale_seeded_decisions() (c3b752c),
+# habitat_breadth + declared habitat_cols (ec70aa1), point-level consensus diagnostics
+# (c71ebbc). Review-response file updated with all of it.
+# 2026-09-18, later (Opus 5): flag_habitat_inconsistencies() REALM BUG FIXED. The marine and
+# freshwater name patterns were ASYMMETRIC -- marine "^"-anchored, freshwater unanchored -- so
+# any habitat not STARTING with a marine word fell through to the freshwater test, and
+# freshwater is exempt from spatial verification BY DESIGN. Real Mugu: 530,558 of 531,596 rows
+# (99.80%) never spatially validated -- 530,259 freshwater-exempt + 75 unknown-realm + 224
+# missing habitat, only 1,038 rows actually checked -- 529,488 of them "Coastal-Marine-Estuary-Stream" (marine
+# name, matched freshwater on "Stream"). After the fix: 1,067 rows (0.2%) unverified, 529,996
+# newly verified; on a 2,982-point sample 163 points (5.5%) come back UNLIKELY -- real errors
+# that were invisible before. Same change fixed two more: every example_habitat_scheme name
+# ("Rocky Intertidal", "Shallow Kelp Forest (<10m)", "Coastal Pelagic" ...) was "unknown" and
+# skipped, and the unanchored freshwater pattern matched TERRESTRIAL names by accident
+# ("Ponderosa Pine" -> "pond", "Fenced Grassland" -> "fen"). Patterns now live side by side as
+# .marine_name_pattern/.freshwater_name_pattern with a test asserting neither uses "^".
+# flag_habitat_inconsistencies() now also REPORTS what it did not check (names + counts, warns
+# above 50%). devtools::test() 377+, check() clean. Found while building a gadget test fixture:
+# three attempts to produce questionable/unlikely points all failed, and the reason WAS the bug.
+# -- TaxaHabitat
+# 2026-09-18 (Opus 5): review_spatial_flags() gains POLYGON (lasso) selection beside the
+# rectangle, a never-truncating size gate (bulk_confirm_threshold=10000L / bulk_max=100000L),
+# and GROUPED UNDO (one history entry per bulk action). The polygon itself was the cheap part --
+# both shapes already arrived through the same map_draw_new_feature GeoJSON ring, which the old
+# code collapsed to a bbox. The real work was four loops that scaled badly with selection size
+# and were ALREADY latent (a whole-map rectangle hit them too): the Done handler's habitat
+# write-back was O(n_changed * nrow) and measured ~2 MINUTES for 5,000 changed points over
+# 2,185,193 rows, now 0.033 s; per-point removeMarker/addCircleMarkers queued 2 websocket
+# messages per point; a per-point linear scan of pts; and O(k^2) history growth. Also
+# preferCanvas=TRUE. devtools::test() 351/0, check() 0 errors / 0 warnings / 0 notes.
+# (An earlier run of the same check showed a "checking for future file timestamps ... unable
+# to verify current time" NOTE; that is R failing to reach its time server and is transient --
+# it did not reproduce. Not a package problem, don't chase it.) Reinstalled. Branch
+# polygon-select-review-spatial-flags, based on main, NOT COMMITTED. See "Open Questions" for
+# the PtCon 18S finding this turned up. -- TaxaHabitat
 # 2026-09-13, evening (Sonnet 5): ecosystem review Section L (D-A1) -- RESOLVED, was OPEN
 # below. save_spatial_review_decisions() now warns, naming the count, when before = NULL
 # would record habitats as reassignments -- i.e. freeze automatic classifications with no
@@ -70,7 +120,8 @@ TaxaHabitat depends on TaxaTools for LLM provider functions
 | `assign_habitat_biological()` | R/assign_habitat_biological.R | Complete | Join habitat weights to occurrence data (per-point consensus). Param is `occurrence_data`, not `data` — see Known Footguns. |
 | `consensus_habitat()` | R/assign_habitat_biological.R | Complete | Assemblage-level consensus habitat from per-species weights; modal ecoregion extraction. Returns one-row data frame. |
 | `flag_habitat_inconsistencies()` | R/flag_habitat_inconsistencies.R | Complete | Flag occurrences inconsistent with habitat. |
-| `review_spatial_flags()` | R/review_spatial_flags.R | Complete | Interactive Shiny review of spatial flags. Wired into 5 real production workflows. |
+| `review_spatial_flags()` | R/review_spatial_flags.R | Complete | Interactive Shiny review of spatial flags. Wired into 6 real production workflows (PtCon 18S re-enabled 2026-09-19). **Polygon (lasso) selection** beside the rectangle; size gate `bulk_confirm_threshold`/`bulk_max` that NEVER truncates; grouped undo; `preferCanvas`. With a `"habitat_proportions"` attribute present, unassigned points are labelled by the habitats in contention (display only -- `main_habitat` stays NA) and the Reassign dropdown offers only what the point hypothesises (`candidate_mass`, default 0.8). Habitats filter shows per-view point counts. |
+| `drop_stale_seeded_decisions()` | R/spatial_review_decisions.R | Complete (2026-09-19) | Removes SEEDED review decisions the automatic classifier has since overtaken, so they stop masking new verdicts. Real reviewer decisions are never dropped. `dry_run = TRUE` default, backs up before writing. All three production decision files were 100% seeded (244,860 decisions, 0 real reviews) when audited. |
 | `flag_institution_candidates()` | R/flag_institution_candidates.R | Complete | Classification stage for `TaxaFetch::filter_gbif_quality()`'s `institution_flag` column — tiers "high"/"low"/"ambiguous" by crossing matched institution `type` against record `kingdom`. Pure function, no interaction, no removal (mirrors `flag_habitat_inconsistencies()`). |
 | `review_institution_flags()` | R/review_institution_flags.R | Complete | Interactive Shiny/leaflet review of `flag_institution_candidates()`'s tiers — click a flagged record to toggle Keep/Remove, matched institution shown as a second map layer. Deliberately scoped down from `review_spatial_flags()` (single view, no bulk-select, single-level undo) given real datasets here are small. Every record starts "keep." Wired into all 5 real production workflow scripts (2 Mugu + 3 PtConception). |
 | (plot helpers) | R/utils_plot.R | Complete | Internal plotting utilities. |
@@ -147,6 +198,33 @@ but it means a wrong verdict persists until someone clears it
 
 ## Known Footguns
 
+- **`flag_habitat_inconsistencies()` reports "likely" for points it never
+  checked.** Freshwater is exempt from spatial verification by design (to avoid
+  false positives), and an unrecognised habitat name is skipped entirely. BOTH
+  return `flag = "likely"` with a reason that reads like a pass
+  (`"freshwater habitat not spatially verified"`,
+  `"habitat '<x>' not found in habitat scheme -- skipped"`). A site can
+  therefore pass QC almost untouched and look fine -- Mugu did, at 99.9%, for
+  months. The function now names the skipped habitats and their counts every
+  run and warns above 50%, but **read that report**: "0 unlikely" means
+  "nothing was wrong" only if the verified share was high. When adding a new
+  habitat vocabulary, pass `habitat_scheme=` with a `realm` column rather than
+  relying on name matching.
+
+
+- **A bulk gadget action must never silently truncate its selection.** The
+  obvious cap for a large lasso selection -- "apply to the first N" -- is
+  wrong here: `pts` is ordered by the occurrence data's own row order
+  (taxon/accession), not spatially, so "the first N" inside a drawn shape is an
+  arbitrary SCATTERED subset of it. The un-applied points stay on the map in
+  their old colour, interleaved with the applied ones and visually identical to
+  points that were never selected, and the reviewer has no way to see which is
+  which. `review_spatial_flags()` therefore gates by size (apply / confirm /
+  refuse) and never truncates. Rejected 2026-09-18 after the user proposed the
+  first-N form; the reasoning applies to any future bulk action in any gadget
+  in this ecosystem.
+
+
 - **`leaflet`'s own `data` parameter can collide with an ecosystem-wide
   rename sweep.** When `assign_habitat_biological()` et al.'s `data` param
   was renamed to `occurrence_data` (2026-08-01), a find/replace also touched
@@ -207,6 +285,24 @@ but it means a wrong verdict persists until someone clears it
 ---
 
 ## Open Questions
+
+- **PtConception 18S is running with NO spatial review at all.** Found
+  2026-09-18 while sizing the polygon-selection work.
+  `PtConceptionWorkflow_18S_2_single_site.R:961` has the call commented out and
+  replaced with a bare filter:
+  ```r
+  #reviewed_spatial    <- review_spatial_flags(occurrences_flagged)
+  occurrences_clean <- occurrences_flagged %>% filter(spatial_flag=="likely")
+  ```
+  That dataset is 2,185,193 rows / **1,092,230 unique points**, and the
+  workflows pass the WHOLE flagged table to the gadget -- nothing prefilters to
+  pending points. With SVG markers that could not have opened, which is the
+  most likely reason it was commented out. `preferCanvas = TRUE` (2026-09-18)
+  raises the marker ceiling by roughly an order of magnitude but has NOT been
+  tested against this dataset, and rendering only pending points -- the deeper
+  fix -- was explicitly deferred by the user as a behaviour change. Do not
+  assume the 18S call can simply be uncommented; measure first.
+
 
 - **The original "many Questionable points, Flag-mode does nothing" symptom
   is NOT definitively closed.** A large, unrelated map-rendering regression

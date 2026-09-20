@@ -549,6 +549,74 @@ GreatLakes run). Same per-taxon file-per-key cache design as
 `TaxaFlag::review_assignments(cache_dir=)`; unresolved verdicts are never cached; 8 tests,
 no LLM call in tests. See TaxaHabitat/CLAUDE.md's "The habitat LLM step MUST be cached".
 
+### review_spatial_flags.R -- bulk selection and composite categories (added 2026-09-19, after this review)
+
+Not part of the reviewed code. The gadget gained polygon (lasso) selection alongside the
+existing rectangle, because real selection boundaries follow a coastline and approximating
+one with repeated rectangles multiplied the number of review rounds. Both shapes arrive
+through the same `map_draw_new_feature` GeoJSON ring, so a rectangle is now the
+axis-aligned special case and still skips the exact point-in-polygon test; the cast runs in
+Web Mercator so the selection agrees with the edges leaflet actually draws, and uses no new
+dependency (`sf`'s lon/lat predicates go through `sf_use_s2()`, which is global state an
+interactive gadget must not mutate mid-review).
+
+Three things were added with it that bear on the review's own concerns:
+
+- **Selection size is gated, never truncated** (`bulk_confirm_threshold`, `bulk_max`). A
+  partially applied selection would leave the un-applied points scattered through the drawn
+  shape, rendered identically to points that were never selected -- invisible to the
+  reviewer and indistinguishable in the output. Grouped undo makes one bulk action one
+  history entry, so `Undo Last` reverses a whole selection.
+
+- **Four loops that scaled badly with selection size were vectorised.** All were latent
+  before polygons existed -- a whole-map rectangle hit them too. The worst, the Done
+  handler's habitat write-back, was `O(n_changed * nrow)`: measured on the real
+  2,185,193-row PtConception 18S data with 5,000 changed points, ~2 minutes reduced to
+  0.033 s. Markers now render to a canvas rather than one SVG node each.
+
+- **Unassigned points are labelled by the habitats in contention** rather than a single
+  undifferentiated "Unknown", making them a filterable, selectable group
+  (`"Estuarine | Freshwater | Marine"`). This is a display category only -- `main_habitat`
+  stays `NA` in the returned data until the point is actually reassigned. The Habitats
+  filter also shows each category's remaining point count.
+
+This partly supersedes the review's question about the free-text "Other" box: the Reassign
+dropdown now offers, by default, only the habitats that point's own consensus vector
+hypothesises, ordered by proportion, with a "Show all habitats" escape. Free text remains
+for the case the reviewer is correcting a scheme-incomplete classification, as argued above.
+
+### assign_habitat_biological.R -- declared weight columns (added 2026-09-19, after this review)
+
+Not part of the reviewed code, but it closes a real defect in reviewed code.
+`.detect_habitat_cols()` inferred the habitat weight set by scanning for numeric columns
+minus a small exclusion list. Adding any numeric column to the weight table therefore made
+it a habitat weight: a new `habitat_breadth` diagnostic, on the scale "effective number of
+habitats" (up to ~4) rather than 0-1, outweighed every real weight and **always** won the
+argmax -- reproduced before the fix, a generalist came back with
+`main_habitat = "habitat_breadth"`, no error and a plausible-looking result.
+
+Fixed at the class rather than the instance: the producers now record an
+`attr(x, "habitat_cols")` declaration and the consumer prefers it over type-scanning, with
+the scan retained as a fallback for hand-assembled tables. `report_habitat()` was a second
+consumer of the same table with the same defect and was fixed the same way. A third instance
+of the family was found by `grep -rn "is.numeric"` across all nine packages and fixed in
+TaxaMatch. The type scan was itself a proxy for a contract nobody had written down.
+
+### drop_stale_seeded_decisions.R -- new (added 2026-09-19, after this review)
+
+Not part of the reviewed code. A decisions file seeded with `before = NULL` records "accept
+the automatic classification" for every point, with `decided_at` set to a `"seeded from ..."`
+string rather than a timestamp. When the classifier later changes its mind, that seed
+silently overrides the new verdict and `apply_spatial_review_decisions()` reports
+`n_pending_review = 0` -- the site looks fully reviewed while carrying the old answer. This
+is the failure the existing `save_spatial_review_decisions()` guard warned about, observed
+happening: an audit on 2026-09-19 found all three production decision files 100% seeded
+(244,860 decisions, zero real reviews), two of them masking live changes.
+
+Only **seeded** decisions are eligible for dropping. A real reviewer decision survives a
+classifier change, because the reviewer overrode the classifier deliberately. `dry_run =
+TRUE` is the default and the file is backed up before any write.
+
 ### report_habitat.R
 
 - **Example not runnable as-is:** Noted, not actioned. The example is already inside

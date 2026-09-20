@@ -228,6 +228,55 @@ are colored by habitat category, clicking one shows its species list,
 and the sidebar's Flag / Reassign Habitat controls let you correct a
 misclassified point without leaving the map.
 
+### Reviewing at scale
+
+Real selection boundaries follow coastlines, lake shores and basins, so
+the draw toolbar offers a **polygon** as well as a rectangle. Both select
+every visible point of the current view inside the shape; in Flag mode
+the shape applies immediately, in Reassign Habitat mode it selects and
+**Confirm** applies. Each bulk action is one entry in the undo history,
+so **Undo Last** reverses a whole selection in a single click.
+
+Selection size is **gated, never truncated**. At or below
+`bulk_confirm_threshold` (default 10,000) an action applies straight
+away; above it a dialog reports the exact count and requires an explicit
+Apply; above `bulk_max` (default 100,000) it is refused. A partially
+applied selection would leave the un-applied points scattered through the
+drawn shape and drawn identically to points that were never selected --
+invisible to the reviewer and indistinguishable in the output.
+
+Markers render to a canvas rather than one SVG node each, which is what
+makes a large flagged set openable at all.
+
+### Unassigned points are grouped by what is in contention
+
+When the input carries a `"habitat_proportions"` attribute -- which
+`assign_habitat_biological()` attaches and `flag_habitat_inconsistencies()`
+preserves -- a point whose consensus reached no verdict is no longer a
+single undifferentiated **Unknown**. It is labelled with the habitats
+actually in contention, `"Estuarine | Freshwater | Marine"`, and that
+label is a real category: its own colour, its own entry in the Habitats
+filter, and therefore selectable as a **group**.
+
+That turns the review loop from one click per point into: filter to one
+signature, draw a polygon over a region, reassign the group to whichever
+habitat the location implies. Location disambiguates what the assemblage
+cannot. On a 6,523-point PtConception extract this turns 646 "Unknown"
+points into 12 named groups, the largest holding 248.
+
+The label is a **display category only** -- `main_habitat` stays `NA` in
+the returned data until the point is actually reassigned.
+
+Each Habitats filter entry also shows how many points it currently holds
+in the view on screen, so a category's size is visible before it is
+ticked; one emptied by reassignment is greyed and struck through rather
+than removed, so the list does not jump and the evidence that the group
+existed is preserved.
+
+The Reassign dropdown offers only the habitats that point actually
+hypothesises, ordered by proportion and labelled with it, with a **Show
+all habitats** escape.
+
 ## LLM Integration
 
 TaxaHabitat uses the `llm_fn` pattern from TaxaTools. The default

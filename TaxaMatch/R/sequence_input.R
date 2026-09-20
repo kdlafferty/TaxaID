@@ -11,8 +11,49 @@
   TaxaTools::standard_ranks,
   "sequence", "esv", "asv", "asv_id", "esv_id", "observation_id", "accession",
   "identifier", "pctmatch", "percmatch", "score", "numspp", "testid",
-  "taxon_name", "taxon_name_rank"
+  "taxon_name", "taxon_name_rank",
+  # Alignment and classifier metrics. A BLAST-annotated ESV table carries
+  # these alongside the sample columns, and they are numeric, so the auto
+  # detector summed them into abundance. Demonstrated on a 3-row table:
+  # true abundance 13/7/5 came back as 562/404/607 because pident, bitscore
+  # and evalue were added in. bitscore in particular is a NON-NEGATIVE
+  # INTEGER, so no value-based plausibility test catches it -- only the name
+  # does, which is why this list still has to exist alongside
+  # .looks_like_counts().
+  "length", "seq_length", "pident", "percent_identity", "percentidentity",
+  "perc_identity", "evalue", "e_value", "bitscore", "bit_score",
+  "mismatch", "mismatches", "gapopen", "gaps",
+  "qstart", "qend", "sstart", "send", "qlen", "slen",
+  "qcovs", "qcovhsp", "coverage", "pct_coverage",
+  "bootstrap", "boot", "confidence", "support", "posterior",
+  "latitude", "longitude", "decimallatitude", "decimallongitude", "year"
 )
+
+#' Does a column look like read counts?
+#'
+#' Positive test rather than an exclusion: read counts are non-negative and
+#' whole-numbered. Used to screen AUTO-DETECTED abundance columns, so a numeric
+#' metric that escaped \code{.non_abundance_col_names} (a provider's own column
+#' naming, a new tool's output) is rejected on its values instead of silently
+#' summed into abundance.
+#'
+#' It is deliberately NOT sufficient on its own -- a BLAST bitscore is a
+#' non-negative integer and passes. The name list and this test cover different
+#' failure modes and are both needed.
+#'
+#' @param x A column.
+#' @return \code{TRUE} when every non-missing value is non-negative and whole.
+#' @noRd
+.looks_like_counts <- function(x) {
+  if (!is.numeric(x)) {
+    return(FALSE)
+  }
+  v <- x[!is.na(x)]
+  if (length(v) == 0L) {
+    return(FALSE)
+  }
+  all(v >= 0) && all(abs(v - round(v)) < 1e-8)
+}
 
 #' Generate zero-padded ASV identifiers
 #'
@@ -91,10 +132,22 @@
 #'   are auto-detected against an internal exclusion list (case-insensitive
 #'   exact match against standard taxonomy ranks plus common ID/score column
 #'   names -- see \code{.non_abundance_col_names} in the package source for
-#'   the exact list). If no abundance columns are found, abundance is set
-#'   to 1 per row. A \code{message()} reports which columns were summed (or
-#'   that none were found), so unexpected auto-detection results can be
-#'   diagnosed without inspecting the code.
+#'   the exact list) and whose VALUES look like counts (non-negative and
+#'   whole). If no abundance columns are found, abundance is set to 1 per row.
+#'   A \code{message()} reports which columns were summed and which numeric
+#'   columns were skipped by name; a \code{warning()} names any skipped on
+#'   their values.
+#'
+#'   \strong{Auto-detection cannot be made complete, so prefer
+#'   \code{abundance_cols}.} Name-based exclusion misses a provider's own
+#'   column naming, and value-based screening cannot distinguish a read count
+#'   from any other non-negative integer -- a BLAST \code{bitscore} passes it.
+#'   Demonstrated on a three-row table: a true abundance of 13/7/5 came back as
+#'   562/404/607 once \code{pident}, \code{bitscore} and \code{evalue} were
+#'   summed in. Both screens are now applied and both those columns are excluded
+#'   by name, but an integer metric under an unrecognised name would still be
+#'   summed. Passing \code{abundance_cols} explicitly is the only way to be
+#'   certain.
 #' @param taxonomy Optional data frame with taxonomy for each sequence. Must
 #'   contain a column named \code{"sequence"} (for DADA2/DNAStringSet input,
 #'   matched against the sequence itself) or \code{"accession"} (for FASTA
@@ -252,15 +305,48 @@ read_sequence_table <- function(input_data,
     # Auto-detect: numeric columns not in the known non-abundance set
     # (.non_abundance_col_names, module-level -- see its own definition for
     # the maintenance note on extending it for new provider formats)
+    .is_num <- vapply(esv_df, is.numeric, logical(1L))
     abund_idx <- which(
-      vapply(esv_df, is.numeric, logical(1L)) &
+      .is_num &
         !lc_names %in% .non_abundance_col_names &
         !seq_along(lc_names) %in% c(seq_idx)
     )
+    # Numeric columns excluded because their NAME is known not to be a count.
+    # Reported below so the whole auto-detection decision is visible, not just
+    # its positive half.
+    skipped_by_name <- orig_names[which(
+      .is_num & lc_names %in% .non_abundance_col_names
+    )]
     # Also exclude the observation_id column if provided
     if (!is.null(observation_id_col)) {
       id_idx_val <- match(tolower(observation_id_col), lc_names)
       abund_idx <- setdiff(abund_idx, id_idx_val)
+    }
+
+    # Second screen, on VALUES rather than names: read counts are non-negative
+    # whole numbers. This catches a metric column whose name is not in the list
+    # -- a provider's own naming, a new tool's output -- which name-based
+    # exclusion alone can never be complete about.
+    #
+    # Rejections are WARNED, not messaged. The old behaviour named the summed
+    # columns in a message(), which is technically visible and in practice
+    # invisible inside a long workflow log; a table containing numeric
+    # non-count columns is exactly the case where auto-detection should not be
+    # trusted, and the caller should pass abundance_cols= explicitly.
+    if (length(abund_idx) > 0L) {
+      plausible <- vapply(esv_df[abund_idx], .looks_like_counts, logical(1L))
+      if (any(!plausible)) {
+        warning(sprintf(
+          paste0(
+            "read_sequence_table: ignoring %d numeric column(s) that do not look ",
+            "like read counts (negative or non-integer values): %s.\n",
+            "  Abundance was auto-detected. Pass abundance_cols= explicitly to ",
+            "silence this and to be certain which columns are summed."
+          ),
+          sum(!plausible), paste(orig_names[abund_idx[!plausible]], collapse = ", ")
+        ), call. = FALSE)
+        abund_idx <- abund_idx[plausible]
+      }
     }
   }
 
@@ -268,8 +354,16 @@ read_sequence_table <- function(input_data,
   if (length(abund_idx) > 0L) {
     abundances <- as.integer(rowSums(esv_df[, abund_idx, drop = FALSE], na.rm = TRUE))
     message(sprintf(
-      "Summed abundance across %d sample column(s): %s",
-      length(abund_idx), paste(orig_names[abund_idx], collapse = ", ")
+      "Summed abundance across %d sample column(s): %s%s",
+      length(abund_idx), paste(orig_names[abund_idx], collapse = ", "),
+      if (is.null(abundance_cols) && length(skipped_by_name) > 0L) {
+        sprintf(
+          "\n  (skipped %d numeric column(s) by name: %s)",
+          length(skipped_by_name), paste(skipped_by_name, collapse = ", ")
+        )
+      } else {
+        ""
+      }
     ))
   } else {
     abundances <- rep(1L, nrow(esv_df))

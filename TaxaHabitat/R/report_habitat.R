@@ -276,7 +276,7 @@ report_habitat <- function(habitat_data,
     nrow(habitat_data)
   }
 
-  mh <- habitat_data$main_habitat[!is.na(habitat_data$main_habitat)]
+  mh <- habitat_data$main_habitat[!.is_habitat_unassigned(habitat_data$main_habitat)]
   # First-appearance order, not table()'s alphabetical default -- a scheme
   # string should read in the order categories actually occur, not shuffle
   # depending on which letters the LLM's own labels happen to start with.
@@ -319,9 +319,31 @@ report_habitat <- function(habitat_data,
 #' value (e.g. floating-point overshoot) is never silently dropped.
 #' @noRd
 .candidate_habitat_cols <- function(habitat_data, taxon_col) {
+  # DECLARED weight columns win, exactly as in .detect_habitat_cols().
+  #
+  # This is the second consumer of the same table, and it had the same defect:
+  # inferring the weight set by scanning column types absorbs any numeric column
+  # added later. Reproduced on the real PtConception 12S lookup once
+  # habitat_breadth existed -- report_habitat() went from
+  #   "across 5 categories. Dominant habitat: Marine (mean weight 58%)"
+  # to
+  #   "across 6 categories. Dominant habitat: habitat_breadth"
+  # which is Methods/Results text headed for a manuscript.
+  #
+  # The denylist below is the fragile complement of type-scanning: it has to be
+  # updated for every new non-habitat numeric column, forever. It stays only as
+  # the fallback for hand-assembled tables that carry no declaration.
+  declared <- attr(habitat_data, "habitat_cols")
+  if (!is.null(declared)) {
+    declared <- intersect(declared, names(habitat_data))
+    if (length(declared) > 0L) {
+      return(declared)
+    }
+  }
   exclude_cols <- c(
     taxon_col, "habitat_best_guess", "ecoregion_best_guess",
-    "Habitat", "main_habitat"
+    "Habitat", "main_habitat",
+    "habitat_breadth"
   )
   numeric_cols <- names(habitat_data)[
     vapply(habitat_data, is.numeric, logical(1L))

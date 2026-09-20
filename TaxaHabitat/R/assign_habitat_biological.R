@@ -39,7 +39,9 @@
 #'   restrict assignment to clearly dominant habitats. For transitional areas
 #'   (e.g., estuaries), a lower threshold (0.2) may better capture mixed
 #'   habitats. Default \code{0.3}. Points where no habitat reaches the
-#'   threshold receive \code{main_habitat = NA}. Note: the default is lower
+#'   threshold receive \code{main_habitat = "Uncertain"} -- a named sentinel,
+#'   not \code{NA}; see the \code{main_habitat} entry under Value. Note: the
+#'   default is lower
 #'   than in the single-habitat version because weight is now spread across
 #'   multiple habitats per species; a threshold of 0.5 may be too strict
 #'   for generalist communities.
@@ -53,10 +55,18 @@
 #'   two-stage IUCN pipeline with the commit-at-confident-level prompt, which
 #'   already discourages sub-0.1 weights by instruction.
 #'
-#' @return The input \code{occurrence_data} with two additional columns:
+#' @return The input \code{occurrence_data} with four additional columns:
 #' \describe{
 #'   \item{main_habitat}{Character. The winning habitat label at each point,
-#'     or \code{NA} if no habitat reached \code{threshold}.
+#'     or \code{"Uncertain"} if no habitat reached \code{threshold}.
+#'     \strong{Not \code{NA}}: \code{NA} in a \code{main_habitat} column
+#'     already means \emph{habitat-agnostic, matches any habitat} on the prior
+#'     side, where \code{TaxaExpect::generate_domestic_food_priors()} sets it
+#'     deliberately and \code{TaxaAssign::join_priors()} reads it to build the
+#'     wildcard tier for domestic and food taxa. An unplaceable occurrence
+#'     would otherwise be indistinguishable from a chicken and inherit those
+#'     semantics by accident, rather than being routed to the evidence branch
+#'     and still counted as regionally present.
 #'     \code{"Other"} appears here when the \code{Other_weight} column wins,
 #'     signalling that the community at this point does not fit the scheme.}
 #'   \item{habitat_best_guess}{Character. Non-empty only when
@@ -65,9 +75,32 @@
 #'     \code{habitat_best_guess} values from all species at the point that
 #'     contributed weight to \code{Other_weight}, separated by \code{"; "}.
 #'     Use this to decide whether the habitat scheme needs extending.}
+#'   \item{main_habitat_prop}{Numeric, 0 to 1. The proportion attained by the
+#'     leading habitat at that point. Populated \strong{regardless of}
+#'     \code{threshold}, so it is defined for points where
+#'     \code{main_habitat} is \code{NA} -- which is what makes it useful.}
+#'   \item{main_habitat_breadth}{Numeric. Levins' niche breadth of the point's
+#'     consensus vector, in effective number of habitats: \code{1} is an
+#'     unambiguous point, higher means a genuinely mixed assemblage.
+#'     \code{"Other"} is excluded from the calculation. See Details.}
 #' }
 #'
+#' The full per-point consensus vector is attached as
+#' \code{attr(result, "habitat_proportions")}: one row per point, one column
+#' per habitat (including \code{Other}).
+#'
 #' @details
+#' \strong{Reading an NA habitat:} two very different points used to come back
+#' identically as \code{main_habitat = NA} -- one clearly Marine at 0.28, just
+#' under a 0.3 threshold, and one genuinely mixed at 0.35 / 0.33 / 0.32. The
+#' first has an unambiguous signal the threshold rejected; the second has no
+#' signal to have. \code{main_habitat_prop} separates them and
+#' \code{main_habitat_breadth} quantifies the spread, both defined for points
+#' the threshold rejected. A point with a high \code{main_habitat_prop} and a
+#' breadth near 1 is a candidate for a lower \code{threshold}; a point with
+#' breadth near the number of habitats is genuinely ambiguous and wants a
+#' reviewer, not a different cutoff.
+#'
 #' \strong{How weighted consensus works:}
 #' For each point, the function joins occurrence records to the habitat weight
 #' table. Each matched species contributes its full weight vector (one value
@@ -120,7 +153,7 @@
 #' )
 #'
 #' # Points with no consensus
-#' result[is.na(result$main_habitat), "point_id"]
+#' result[result$main_habitat == "Uncertain", "point_id"]
 #'
 #' \dontrun{
 #' # Points where the scheme did not fit (dplyr shown for real workflows)
@@ -310,12 +343,45 @@ assign_habitat_biological <- function(occurrence_data,
   best_prop <- prop_mat[cbind(seq_len(nrow(prop_mat)), best_idx)]
   best_hab <- habitat_cols[best_idx]
 
-  # Apply threshold
-  best_hab[is.na(best_prop) | best_prop < threshold] <- NA_character_
+  # Apply threshold.
+  #
+  # The unassigned value is the NAMED sentinel, not NA. NA in a main_habitat
+  # column already means "habitat-agnostic, matches ANY habitat" on the prior
+  # side -- generate_domestic_food_priors() sets it deliberately and
+  # join_priors() reads it to build the wildcard tier for domestic and food
+  # taxa. Leaving occurrence-side NA here made an unplaceable point
+  # indistinguishable from a chicken, so it inherited the wildcard semantics by
+  # accident instead of being routed to the evidence branch.
+  best_hab[is.na(best_prop) | best_prop < threshold] <- .HABITAT_UNCERTAIN
+
+  # ---------------------------------------------------------------------------
+  # Point-level consensus diagnostics.
+  #
+  # best_prop and prop_mat were previously computed and thrown away, which meant
+  # two very different points came back identically as main_habitat = NA:
+  #   - "clearly Marine at 0.28" -- an unambiguous signal just under threshold
+  #   - "genuinely mixed 0.35 / 0.33 / 0.32" -- no signal to have
+  # main_habitat_prop separates them, and main_habitat_breadth says how spread
+  # the point's assemblage is. BOTH are populated regardless of the threshold,
+  # so they describe points the threshold rejected -- that is the point of them.
+  #
+  # "Other" is excluded from the breadth calculation for the same reason
+  # Other_weight is excluded at taxon level: it measures failure to place taxa
+  # in the scheme, not a genuinely broad assemblage. It IS retained in the
+  # habitat_proportions attribute, which is the raw consensus vector.
+  # ---------------------------------------------------------------------------
+  .check_habitat_sentinel_free(habitat_cols, "assign_habitat_biological")
+
+  breadth_cols <- setdiff(habitat_cols, "Other")
+  prop_df <- as.data.frame(prop_mat, stringsAsFactors = FALSE)
+  names(prop_df) <- habitat_cols
+  site_breadth <- .compute_habitat_breadth(prop_df, breadth_cols)
 
   site_habitats <- data.frame(
     point_id_col_placeholder = point_sums[[point_id_col]],
     main_habitat             = best_hab,
+    main_habitat_prop        = as.numeric(best_prop),
+    main_habitat_breadth     = site_breadth,
     stringsAsFactors         = FALSE
   )
   names(site_habitats)[1] <- point_id_col
@@ -362,12 +428,36 @@ assign_habitat_biological <- function(occurrence_data,
   # Drop any pre-existing main_habitat / habitat_best_guess columns in occurrence_data
   occurrence_data[["main_habitat"]] <- NULL
   occurrence_data[["habitat_best_guess"]] <- NULL
+  occurrence_data[["main_habitat_prop"]] <- NULL
+  occurrence_data[["main_habitat_breadth"]] <- NULL
 
   result <- merge(occurrence_data, site_habitats, by = point_id_col, all.x = TRUE)
 
+  # Full per-point consensus vector, one row per point. Kept as an attribute
+  # rather than columns because it is one value PER HABITAT per point and the
+  # result is one row per OCCURRENCE -- widening it would repeat the same vector
+  # across every record at a location. review_spatial_flags() reads this to
+  # offer a reviewer only the habitats actually hypothesised at the point being
+  # reviewed, rather than the whole scheme.
+  prop_out <- cbind(
+    stats::setNames(
+      data.frame(point_sums[[point_id_col]], stringsAsFactors = FALSE),
+      point_id_col
+    ),
+    prop_df
+  )
+  attr(result, "habitat_proportions") <- prop_out
+
   n_sites <- dplyr::n_distinct(occurrence_data[[point_id_col]])
+  # .is_habitat_unassigned(), NOT !is.na(). This function's own sentinel is the
+  # string "Uncertain", which passes !is.na() -- so a bare NA test would count
+  # every unassigned point as ASSIGNED and report "0 site(s) unassigned" while
+  # the result held Uncertain rows. This line is how a reader learns whether
+  # the threshold is doing anything, so a wrong count here is worse than no
+  # count: it is the diagnostic that was trusted to catch the last two bugs in
+  # this function.
   n_assigned <- dplyr::n_distinct(
-    result[[point_id_col]][!is.na(result[["main_habitat"]])]
+    result[[point_id_col]][!.is_habitat_unassigned(result[["main_habitat"]])]
   )
   n_unassigned <- n_sites - n_assigned
   n_other <- dplyr::n_distinct(
@@ -379,10 +469,10 @@ assign_habitat_biological <- function(occurrence_data,
   message(sprintf(
     paste0(
       "assign_habitat_biological: %d of %d site(s) assigned a habitat ",
-      "(threshold = %.2f). %d site(s) received NA. %d site(s) assigned 'Other' ",
+      "(threshold = %.2f). %d site(s) left '%s'. %d site(s) assigned 'Other' ",
       "(scheme may need extending -- check habitat_best_guess column)."
     ),
-    n_assigned, n_sites, threshold, n_unassigned, n_other
+    n_assigned, n_sites, threshold, n_unassigned, .HABITAT_UNCERTAIN, n_other
   ))
 
   result
@@ -422,6 +512,30 @@ assign_habitat_biological <- function(occurrence_data,
         paste(missing_hc, collapse = ", ")
       )
     }
+  } else if (!is.null(attr(habitats_df, "habitat_cols")) &&
+    all(sub("^Other_weight$", "Other", attr(habitats_df, "habitat_cols")) %in%
+      names(habitats_df))) {
+    # DECLARED weight columns, recorded by the function that built this table.
+    #
+    # Preferred over scanning column types, because scanning silently absorbs any
+    # numeric column added later. That is not hypothetical: `habitat_breadth` is
+    # numeric, on the same table, and on the scale of "effective number of
+    # habitats" (up to ~4) rather than 0-1 -- so it outweighs every real habitat
+    # and wins the argmax. A generalist would be assigned
+    # main_habitat = "habitat_breadth", with no error and a plausible-looking
+    # result. Caught before release by a peer session reading its own run log.
+    habitat_cols <- sub(
+      "^Other_weight$", "Other",
+      attr(habitats_df, "habitat_cols")
+    )
+    habitat_cols <- intersect(habitat_cols, names(habitats_df))
+    message(sprintf(
+      paste0(
+        "%s: using the %d declared habitat weight column(s) recorded on ",
+        "'habitats_df': %s."
+      ),
+      caller, length(habitat_cols), paste(habitat_cols, collapse = ", ")
+    ))
   } else {
     exclude_cols <- c(
       taxon_col,
@@ -429,7 +543,11 @@ assign_habitat_biological <- function(occurrence_data,
       if ("ecoregion_best_guess" %in% names(habitats_df)) {
         "ecoregion_best_guess"
       },
-      "Habitat"
+      "Habitat",
+      # Derived diagnostics that live alongside the weights but are NOT weights.
+      # A hand-assembled table carries no declared-columns attribute, so this
+      # fallback still has to exclude them by name.
+      "habitat_breadth"
     )
     numeric_cols <- names(habitats_df)[
       vapply(habitats_df, is.numeric, logical(1))
@@ -491,7 +609,10 @@ assign_habitat_biological <- function(occurrence_data,
 #' @return A one-row data frame with columns:
 #' \describe{
 #'   \item{main_habitat}{Character. The consensus habitat, or \code{NA} if none
-#'     reached \code{threshold}.}
+#'     reached \code{threshold}. \strong{Deliberately \code{NA}, and
+#'     deliberately unlike \code{\link{assign_habitat_biological}}}, which
+#'     returns the sentinel \code{"Uncertain"} for the same condition. See
+#'     Details.}
 #'   \item{ecoregion}{Character. The modal \code{ecoregion_best_guess} value
 #'     across species, or \code{NA} if the column is absent.}
 #'   \item{habitat_best_guess}{Character. Concatenated free-text guesses when
@@ -499,6 +620,31 @@ assign_habitat_biological <- function(occurrence_data,
 #' }
 #' The full habitat proportion vector is attached as
 #' \code{attr(result, "habitat_proportions")}.
+#'
+#' @details
+#' \strong{Why this returns \code{NA} when
+#' \code{\link{assign_habitat_biological}} returns \code{"Uncertain"}.}
+#' The two functions compute the same quantity at different scales, and only
+#' one of them feeds the occurrence table. \code{assign_habitat_biological()}
+#' labels \emph{occurrence points}, where \code{NA} was already taken: on the
+#' prior side \code{NA} in a \code{main_habitat} column means
+#' \emph{habitat-agnostic, matches any habitat} (the domestic/food wildcard
+#' tier built by \code{TaxaExpect::generate_domestic_food_priors()} and read by
+#' \code{TaxaAssign::join_priors()}). A point whose habitat could not be
+#' determined is not habitat-agnostic, so it needed its own sentinel.
+#'
+#' \code{consensus_habitat()} returns a \emph{site-level scalar} consumed by
+#' \code{TaxaAssign::build_context()}, which never reaches the prior join and
+#' so never had the collision. Changing it would not fix a bug; it would
+#' introduce one. \code{build_context()} tests its LLM synthesis result with a
+#' bare \code{is.na()} and falls back to this function's value when synthesis
+#' fails, then writes the result into \code{ctx$main_habitat}, which is
+#' rendered into a prompt and used to resolve a site. Were this function to
+#' return \code{"Uncertain"}, that fallback would hand the literal string to
+#' all of it, and a site would be resolved against an "Uncertain" stratum.
+#'
+#' So the divergence is load-bearing, not an oversight. Anyone changing it must
+#' change \code{TaxaAssign::build_context()}'s fallback in the same commit.
 #'
 #' @seealso \code{\link{assign_habitat_biological}},
 #'   \code{\link{parse_hierarchical_habitat_response}},
@@ -556,6 +702,14 @@ consensus_habitat <- function(habitats_df,
   } else {
     props <- col_sums / total
     best_idx <- which.max(props)
+    # NA here, NOT .HABITAT_UNCERTAIN, and that asymmetry with
+    # assign_habitat_biological() is deliberate -- see @details. This value is a
+    # SITE-LEVEL scalar for TaxaAssign::build_context(), not an occurrence
+    # label, so it never meets the prior-side wildcard meaning of NA that forced
+    # the sentinel there. build_context() falls back to this value when its LLM
+    # synthesis fails and writes it straight into ctx$main_habitat; returning a
+    # literal "Uncertain" would make a site resolve against an Uncertain
+    # stratum. Change this only together with that fallback.
     main_habitat <- if (props[best_idx] >= threshold) {
       habitat_cols[best_idx]
     } else {

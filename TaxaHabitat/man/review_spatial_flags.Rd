@@ -13,6 +13,9 @@ review_spatial_flags(
   colors = NULL,
   tile = "Esri.OceanBasemap",
   point_radius = 6,
+  bulk_confirm_threshold = 10000L,
+  bulk_max = 100000L,
+  candidate_mass = 0.8,
   viewer = shiny::paneViewer(minHeight = 450)
 )
 }
@@ -40,6 +43,22 @@ species display. Default \code{"taxon_name"}.}
 
 \item{point_radius}{Numeric. Circle marker radius in pixels. Default
 \code{6}.}
+
+\item{bulk_confirm_threshold}{Integer. A rectangle/polygon selection larger
+than this asks for confirmation, reporting the exact point count, before
+the action is applied. Default \code{10000L}. Set to \code{Inf} to never
+ask.}
+
+\item{bulk_max}{Integer. Hard ceiling: a selection larger than this is
+refused outright rather than applied, and the reviewer is asked to split
+the shape. Default \code{100000L}.}
+
+\item{candidate_mass}{Numeric in (0, 1]. When \code{occurrence_data} carries
+a \code{"habitat_proportions"} attribute (from
+\code{\link{assign_habitat_biological}}), the Reassign Habitat dropdown
+offers only the habitats that together account for this much of the
+selection's own consensus vector, highest first. Default \code{0.8}.
+Set to \code{1} to offer every habitat with a non-zero proportion.}
 
 \item{viewer}{Shiny viewer function passed through to
 \code{\link[shiny]{runGadget}}. Default
@@ -108,12 +127,117 @@ the dataset is added to the palette and the Habitats sidebar filter
 immediately, without disturbing any existing habitat's colour.
 }
 
+\section{What the reviewer is deciding}{
+
+Two decisions drive this gadget, and neither is visible from the map, so an
+\strong{Instructions} dialog states both on open (re-openable from the
+sidebar).
+\enumerate{
+\item \strong{Which points are trusted.} \code{likely} points are kept
+for analysis; \code{questionable} and \code{unlikely} are excluded as
+probable errors. Anything left in the Questionable view is therefore
+dropped, which is why that view is worth inspecting.
+\item \strong{Which points get modelled.} A point with no single
+\code{main_habitat} still counts as regionally present but is
+\strong{not modelled as resident}:
+\code{TaxaExpect::estimate_kernel_priors()} requires a non-\code{NA}
+habitat, so those taxa fall through to the weaker regional-proximity
+evidence instead. Resolving a point's habitat promotes it.
+}
+}
+
+\section{Composite categories for unassigned points}{
+
+A point whose consensus reached no verdict (\code{main_habitat} \code{NA})
+used to appear as a single undifferentiated \strong{Unknown}. Every
+ambiguous point then looked like the same problem and could only be resolved
+one click at a time.
+
+When \code{occurrence_data} carries a \code{"habitat_proportions"}
+attribute, such a point is instead labelled with the habitats actually in
+contention -- \code{"Estuarine | Freshwater | Marine"} -- and that label is
+a real category: its own colour, its own entry in the \strong{Habitats}
+sidebar filter, and therefore selectable as a \strong{group}. Filter to one
+signature, draw a polygon over a region, and reassign the lot to whichever
+habitat the location implies. Location disambiguates what the assemblage
+cannot. On the bundled PtConception demo this turns 646 "Unknown" points
+into 12 named groups, the largest holding 248.
+
+Members are sorted \strong{alphabetically}, not by proportion, so the same
+candidate set always lands in the same group; ordering by proportion would
+split one category across several permutations. Per-point proportions still
+appear in the Reassign dropdown.
+
+\strong{The label is a display category only.} \code{main_habitat} stays
+\code{NA} in the returned data until the point is actually reassigned --
+the Done handler writes back only habitats that differ from what the gadget
+started with, so an untouched composite point keeps its \code{NA} rather
+than acquiring a signature string as its habitat.
+}
+
+\section{Habitat candidates for reassignment}{
+
+When \code{occurrence_data} carries a \code{"habitat_proportions"} attribute
+-- which \code{\link{assign_habitat_biological}} attaches and
+\code{\link{flag_habitat_inconsistencies}} preserves -- the Reassign Habitat
+dropdown offers \strong{what the point's own assemblage hypothesises},
+ordered by proportion and labelled with it, rather than the whole scheme. A
+point reading Freshwater 0.35 / Marine 0.30 / Estuarine 0.25 / Terrestrial
+0.10 offers the first three at \code{candidate_mass = 0.8}.
+
+A cumulative-mass rule is used rather than a fixed proportion cutoff because
+a cutoff barely reduces anything in practice: the LLM emits round numbers, so
+the 5th percentile of non-zero proportions is already 0.10 and a 0.05 cutoff
+takes a 5-habitat scheme only to 3.98 candidates. Measured across the 31,383
+unassigned PtConception 12S points, \code{candidate_mass = 0.8} gives a mean
+of 2.91 candidates and a median of 3, with 90\% of points landing on exactly
+three.
+
+The point's current habitat is always offered, even when it falls outside the
+mass, so a reassignment can be undone by hand. \strong{Other} (free text) is
+always offered. A \strong{Show all habitats} checkbox restores the full
+scheme and names how many were hidden -- use it when the consensus itself is
+what you are disputing. With no attribute present the dropdown behaves
+exactly as before, offering everything.
+}
+
+\section{Bulk selection (rectangle or polygon)}{
+
+The map's draw toolbar offers a \strong{rectangle} and a \strong{polygon}.
+Both select every visible point of the current view that falls inside the
+drawn shape; the polygon exists because real selection boundaries (a
+coastline, a lake shore, a basin) are rarely rectangular, and approximating
+one with repeated rectangles multiplies the number of review rounds.
+In \strong{Flag} mode the shape applies immediately; in
+\strong{Reassign Habitat} mode it selects, and \strong{Confirm} applies.
+
+Selection size is gated, never truncated -- a partially applied selection
+would leave the un-applied points scattered through the drawn shape and
+drawn identically to points that were never selected, which is invisible
+to the reviewer and indistinguishable in the output. Instead: at or below
+\code{bulk_confirm_threshold} the action applies straight away; above it a
+dialog reports the exact count and requires an explicit \strong{Apply};
+above \code{bulk_max} the action is refused with a message.
+
+Each bulk action is recorded as ONE entry, so \strong{Undo Last} reverses
+an entire selection in a single click.
+
+The polygon test uses an even-odd ray cast in Web Mercator (matching the
+straight-line edges leaflet actually draws) and does not support a shape
+crossing the antimeridian.
+}
+
 \section{Habitat filter}{
 
 The sidebar \strong{Habitats} panel lists every habitat present in the
 dataset (plus any added mid-session via a habitat reassignment) as a
 colour-coded checkbox. Unchecking a habitat hides those points from the
-map and excludes them from rectangle drag-selection and click actions.
+map and excludes them from shape selection and click actions. Each entry
+carries the number of points it currently holds \strong{in the view on
+screen}, so a category's size is visible before it is ticked and an emptied
+one is obvious; a category reduced to zero by reassignment is greyed and
+struck through rather than removed, so the list does not jump and the
+evidence that the group existed is preserved.
 Use \strong{All} / \strong{None} to select or clear all at once.
 }
 

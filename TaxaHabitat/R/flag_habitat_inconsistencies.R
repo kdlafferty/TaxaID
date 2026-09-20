@@ -151,6 +151,10 @@ flag_habitat_inconsistencies <- function(
   # 0. Validate inputs
   # --------------------------------------------------------------------------
 
+  # Captured here because the reshaping below can drop it; re-attached at the
+  # return. See the note there for why this must be explicit.
+  .props_in <- attr(occurrence_data, "habitat_proportions")
+
   for (col in c(lat_col, lon_col, habitat_col)) {
     if (!col %in% names(occurrence_data)) {
       stop(sprintf("Column '%s' not found in occurrence_data.", col))
@@ -203,7 +207,15 @@ flag_habitat_inconsistencies <- function(
     stringsAsFactors = FALSE
   )
 
-  complete_rows <- !is.na(pts_all$lon) & !is.na(pts_all$lat) & !is.na(pts_all$habitat)
+  # .is_habitat_unassigned(), not !is.na(): since 2026-09-19 an unplaceable
+  # point carries the "Uncertain" sentinel rather than NA, and it must be
+  # excluded from spatial validation for the same reason NA was -- there is no
+  # habitat to check the geography against. Testing NA alone would send
+  # "Uncertain" through .realm(), which would report it as
+  # "habitat 'Uncertain' not found in habitat scheme" and count it among the
+  # genuinely unrecognised vocabulary, hiding it in the wrong bucket.
+  complete_rows <- !is.na(pts_all$lon) & !is.na(pts_all$lat) &
+    !.is_habitat_unassigned(pts_all$habitat)
   pts_unique <- unique(pts_all[complete_rows, c("lon", "lat", "habitat")])
   n_pts <- nrow(pts_unique)
 
@@ -445,17 +457,31 @@ flag_habitat_inconsistencies <- function(
       }
     }
 
-    # Fall back to name-pattern matching (works for IUCN and sensibly named custom schemes)
-    if (grepl("^marine|^ocean|^pelagic|^neritic|^intertidal|^subtidal|^littoral|^reef|^kelp|^seagrass|^estuar",
-      hab_lc,
-      perl = TRUE
-    )) {
+    # Fall back to name-pattern matching (works for IUCN and sensibly named
+    # custom schemes).
+    #
+    # These two patterns used to be ASYMMETRIC: marine terms were anchored with
+    # "^" while freshwater terms matched anywhere in the name. Any habitat whose
+    # name did not START with a marine word therefore fell through to the
+    # freshwater test -- and freshwater is deliberately exempt from spatial
+    # verification (see the "Freshwater habitats" section), so those points left
+    # QC silently, carrying a reason string that reads like a pass.
+    #
+    # Measured on the real Mugu output before the fix: 529,488 rows of
+    # "Coastal-Marine-Estuary-Stream" were classified FRESHWATER -- because the
+    # anchored marine pattern could not see "Marine" or "Estuary" mid-name while
+    # the unanchored freshwater pattern matched "Stream" -- and were never
+    # spatially validated. 99.8% of that site's rows went unchecked.
+    #
+    # Both patterns are now word-boundary matched, so a realm term is found
+    # anywhere in the name, and MARINE IS TESTED FIRST so a genuinely
+    # multi-realm name (coastal/estuarine/stream systems) is validated rather
+    # than exempted. Inflections are listed explicitly rather than using a bare
+    # prefix, so "Ponderosa Pine" cannot match "pond".
+    if (grepl(.marine_name_pattern, hab_lc, perl = TRUE)) {
       return("marine")
     }
-    if (grepl("freshwater|wetland|aquatic|lake|river|stream|pond|marsh|bog|fen|riparian",
-      hab_lc,
-      perl = TRUE
-    )) {
+    if (grepl(.freshwater_name_pattern, hab_lc, perl = TRUE)) {
       return("freshwater")
     }
 
@@ -479,6 +505,50 @@ flag_habitat_inconsistencies <- function(
   }
 
   pts_unique$habitat_realm <- vapply(pts_unique$habitat, .realm, character(1L))
+
+  # --------------------------------------------------------------------------
+  # 7b. Report what will NOT be spatially verified.
+  #
+  # A checker that only reports what it CHECKED cannot tell you what it skipped.
+  # Freshwater is exempt by design and an unrecognised name is skipped entirely
+  # -- both return flag = "likely" with a reason that reads like a pass, so a
+  # site can go through QC almost untouched and look fine. That is exactly how
+  # 529,488 Mugu rows (99.8% of the site) were exempted unnoticed. Name the
+  # habitats and the counts, every run, and warn when the skipped share is the
+  # majority.
+  # --------------------------------------------------------------------------
+
+  .unverified <- pts_unique$habitat_realm %in% c("freshwater", "unknown")
+  if (any(.unverified)) {
+    .tab <- sort(table(pts_unique$habitat[.unverified]), decreasing = TRUE)
+    .pct <- 100 * sum(.unverified) / nrow(pts_unique)
+    .lines <- paste0(
+      "      ", format(as.integer(.tab), big.mark = ","), "  ", names(.tab),
+      " (", pts_unique$habitat_realm[match(names(.tab), pts_unique$habitat)], ")"
+    )
+    .msg <- sprintf(
+      paste0(
+        "%d of %d point(s) (%.1f%%) will NOT be spatially verified:\n%s"
+      ),
+      sum(.unverified), nrow(pts_unique), .pct, paste(.lines, collapse = "\n")
+    )
+    if (isTRUE(verbose)) message("  ", .msg)
+    if (.pct > 50) {
+      warning(
+        sprintf(
+          paste0(
+            "flag_habitat_inconsistencies: %.1f%% of points are exempt from spatial ",
+            "verification.\n  A habitat named for more than one realm (e.g. ",
+            "'Coastal-Marine-Estuary-Stream') is matched MARINE first; a name matching ",
+            "neither vocabulary is skipped entirely.\n  Pass habitat_scheme= with a ",
+            "'realm' column to classify these explicitly rather than by name."
+          ),
+          .pct
+        ),
+        call. = FALSE
+      )
+    }
+  }
 
   # --------------------------------------------------------------------------
   # 8. Flag each point
@@ -606,7 +676,7 @@ flag_habitat_inconsistencies <- function(
   # explicit flag rather than NA, so downstream functions see only valid values.
   na_flag <- is.na(occurrence_data$spatial_flag)
   if (any(na_flag)) {
-    na_hab <- is.na(occurrence_data[[habitat_col]])
+    na_hab <- .is_habitat_unassigned(occurrence_data[[habitat_col]])
     na_coord <- is.na(occurrence_data[[lon_col]]) | is.na(occurrence_data[[lat_col]])
     occurrence_data$spatial_flag[na_flag] <- "likely"
     occurrence_data$spatial_flag_reason[na_flag] <- ifelse(
@@ -614,7 +684,7 @@ flag_habitat_inconsistencies <- function(
       "missing coordinates -- not spatially validated",
       ifelse(
         na_hab[na_flag],
-        "missing habitat -- not spatially validated",
+        "habitat uncertain -- not spatially validated",
         "not spatially validated"
       )
     )

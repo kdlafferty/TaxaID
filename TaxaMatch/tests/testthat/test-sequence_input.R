@@ -322,3 +322,87 @@ test_that("barcode length defaults resolve correctly via TaxaTools", {
   result <- TaxaTools::resolve_barcode_lengths("COI", NULL, NULL)
   expect_equal(unname(result), c(300L, 900L))
 })
+
+# -----------------------------------------------------------------------------
+# Abundance auto-detection.
+#
+# It inferred the abundance columns by type -- numeric, minus a name denylist --
+# so any numeric column the list did not know about was summed into abundance.
+# Demonstrated on a 3-row table: true abundance 13/7/5 came back as 562/404/607
+# because pident, bitscore and evalue were added in. Same failure family as the
+# habitat weight-column detectors in TaxaHabitat; found by grepping for
+# is.numeric across the ecosystem.
+# -----------------------------------------------------------------------------
+
+.ab_df <- function(...) data.frame(
+  sequence = c("ACGT", "TTGA", "GGCA"),
+  SampleA  = c(10L, 0L, 5L),
+  SampleB  = c(3L, 7L, 0L),
+  ...,
+  stringsAsFactors = FALSE
+)
+
+test_that("BLAST metric columns are not summed into abundance", {
+  df <- .ab_df(
+    pident   = c(99.2, 87.4, 100.0),
+    bitscore = c(450L, 310L, 502L),
+    evalue   = c(1e-50, 2e-20, 0)
+  )
+  r <- suppressWarnings(suppressMessages(read_sequence_table(df)))
+  expect_equal(r$abundance, c(13L, 7L, 5L))
+})
+
+test_that("a sequence-length column is not summed into abundance", {
+  # The function RETURNS a length column, so an input one is sequence length.
+  df <- .ab_df(length = c(120L, 118L, 121L))
+  r <- suppressWarnings(suppressMessages(read_sequence_table(df)))
+  expect_equal(r$abundance, c(13L, 7L, 5L))
+})
+
+test_that("a non-integer metric under an unknown name is rejected, with a warning", {
+  # Name lists cannot be complete; the value screen is the second net.
+  df <- .ab_df(weird_provider_metric = c(0.93, 0.71, 0.55))
+  expect_warning(
+    r <- suppressMessages(read_sequence_table(df)),
+    "do not look like read counts"
+  )
+  expect_equal(r$abundance, c(13L, 7L, 5L))
+})
+
+test_that("a negative-valued column is rejected", {
+  df <- .ab_df(delta = c(-3L, 4L, 1L))
+  r <- suppressWarnings(suppressMessages(read_sequence_table(df)))
+  expect_equal(r$abundance, c(13L, 7L, 5L))
+})
+
+test_that("explicit abundance_cols always wins and warns about nothing", {
+  df <- .ab_df(pident = c(99.2, 87.4, 100.0), mystery_int = c(400L, 300L, 100L))
+  expect_silent(
+    r <- suppressMessages(read_sequence_table(df, abundance_cols = c("SampleA", "SampleB")))
+  )
+  expect_equal(r$abundance, c(13L, 7L, 5L))
+})
+
+test_that("genuine multi-sample count columns are all summed", {
+  df <- data.frame(
+    sequence = c("ACGT", "TTGA"),
+    S1 = c(1L, 2L), S2 = c(3L, 4L), S3 = c(5L, 6L),
+    stringsAsFactors = FALSE
+  )
+  r <- suppressWarnings(suppressMessages(read_sequence_table(df)))
+  expect_equal(r$abundance, c(9L, 12L))
+})
+
+test_that(".looks_like_counts is a POSITIVE test, and is not sufficient alone", {
+  expect_true(.looks_like_counts(c(0L, 5L, 100L)))
+  expect_true(.looks_like_counts(c(0, 5, 100)))        # whole-valued doubles
+  expect_true(.looks_like_counts(c(1L, NA, 3L)))
+  expect_false(.looks_like_counts(c(99.2, 87.4)))      # non-integer
+  expect_false(.looks_like_counts(c(-1L, 5L)))         # negative
+  expect_false(.looks_like_counts(character(3)))
+  expect_false(.looks_like_counts(NA_real_))
+  # The honest limit: a BLAST bitscore passes the value test, which is why the
+  # name list still has to exist. If this ever becomes FALSE, the name list
+  # could be reconsidered -- until then, both screens are load-bearing.
+  expect_true(.looks_like_counts(c(450L, 310L, 502L)))
+})

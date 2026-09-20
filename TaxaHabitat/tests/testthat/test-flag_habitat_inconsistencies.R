@@ -128,3 +128,90 @@ test_that("the minor-islands coastline contains Anacapa and Santa Barbara Island
   d <- suppressWarnings(as.numeric(sf::st_distance(pts, sf::st_union(sf::st_geometry(mi)))))
   expect_true(all(d / 1000 < 2))   # both within 2 km of a mapped island shore
 })
+
+# -----------------------------------------------------------------------------
+# Habitat-realm name patterns.
+#
+# Regression tests for the asymmetry that exempted 529,488 real Mugu rows from
+# spatial QC: marine terms were "^"-anchored, freshwater terms were not, so any
+# name not STARTING with a marine word fell through to freshwater -- which is
+# exempt from verification by design.
+# -----------------------------------------------------------------------------
+
+.realm_of <- function(h) {
+  h <- tolower(trimws(h))
+  if (grepl(.marine_name_pattern, h, perl = TRUE)) {
+    "marine"
+  } else if (grepl(.freshwater_name_pattern, h, perl = TRUE)) {
+    "freshwater"
+  } else {
+    "unknown"
+  }
+}
+
+test_that("a multi-realm habitat name resolves MARINE, not freshwater", {
+  # The exact name that slipped through on real Mugu data.
+  expect_equal(.realm_of("Coastal-Marine-Estuary-Stream"), "marine")
+  expect_equal(.realm_of("Estuarine Stream"), "marine")
+  # A name with no marine term is still freshwater.
+  expect_equal(.realm_of("Coastal-Stream"), "freshwater")
+  expect_equal(.realm_of("Lake"), "freshwater")
+})
+
+test_that("marine terms are found ANYWHERE in the name, not only at the start", {
+  # Every one of these was "unknown" under the anchored pattern, and therefore
+  # skipped. They are the vocabulary example_habitat_scheme itself teaches.
+  for (h in c(
+    "Rocky Intertidal", "Rocky Subtidal", "Sandy Subtidal",
+    "Shallow Kelp Forest (<10m)", "Coastal Pelagic", "Deep Kelp Forest (>10m)",
+    "Estuarine Open Water", "Muddy Subtidal", "Offshore Pelagic"
+  )) {
+    expect_equal(.realm_of(h), "marine", info = h)
+  }
+})
+
+test_that("the freshwater pattern no longer matches terrestrial names by accident", {
+  # "pond" inside "Ponderosa" and "fen" inside "Fenced" both matched under the
+  # old unanchored pattern, classifying dry-land habitats as freshwater.
+  expect_equal(.realm_of("Ponderosa Pine Forest"), "unknown")
+  expect_equal(.realm_of("Fenced Grassland"), "unknown")
+  # Genuine freshwater inflections must still match.
+  for (h in c("Wetlands", "Riverine Forest", "Marshes", "Bogs", "Fens", "Ponds")) {
+    expect_equal(.realm_of(h), "freshwater", info = h)
+  }
+})
+
+test_that("the two realm patterns stay symmetric", {
+  # The defect was structural: one anchored, one not. Neither may use "^".
+  expect_false(grepl("\\^", .marine_name_pattern))
+  expect_false(grepl("\\^", .freshwater_name_pattern))
+  expect_true(grepl("\\\\b", .marine_name_pattern))
+  expect_true(grepl("\\\\b", .freshwater_name_pattern))
+})
+
+test_that("previously-correct classifications are unchanged", {
+  expect_equal(.realm_of("Marine"), "marine")
+  expect_equal(.realm_of("Estuarine"), "marine")
+  expect_equal(.realm_of("Pelagic"), "marine")
+  expect_equal(.realm_of("Freshwater"), "freshwater")
+  # Not in either vocabulary -- must stay unknown so it gets REPORTED rather
+  # than silently absorbed into an exempt realm. (Note "Terrestrial" only
+  # reaches the name patterns when no scheme is supplied; the DEFAULT scheme's
+  # l1_name matches it first and resolves it to the terrestrial realm.)
+  expect_equal(.realm_of("Terrestrial"), "unknown")
+})
+
+test_that("'Deepwater' is MARINE, not pelagic and not unknown", {
+  # Decided 2026-09-19. Deepwater is a realm term, not a depth term, and not a
+  # water-column position. At Mugu it carries demersal taxa -- Microstomus
+  # pacificus, Xeneretmus ritteri, Bathyagonus pentacanthus, Icelinus spp. --
+  # sitting on the bottom between -798 m and the shelf. Mapping it to Pelagic
+  # would assert a water-column position those species do not occupy; leaving
+  # it unknown left 72 real marine rows unverified. Depth is carried separately
+  # by the bathymetry zones (marine_shallow / marine_deep / marine_abyssal).
+  expect_equal(.realm_of("Deepwater"), "marine")
+  expect_equal(.realm_of("Deep-water"), "marine")
+  # Pelagic remains its own marine term; the two must not collapse into one
+  # another, because Mugu's scheme deliberately distinguishes them.
+  expect_equal(.realm_of("Pelagic"), "marine")
+})

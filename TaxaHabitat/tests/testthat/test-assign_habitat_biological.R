@@ -256,7 +256,7 @@ test_that("threshold above winning proportion -> NA assigned", {
   # Generalist: Ocean = 0.5, Freshwater = 0.5 -- neither exceeds 0.9
   occ <- make_occ("pt1", "Oncorhynchus mykiss")
   result <- assign_habitat_biological(occ, make_weights_generalist(), threshold = 0.9)
-  expect_true(is.na(result$main_habitat[1]))
+  expect_true(.is_habitat_unassigned(result$main_habitat[1]))
 })
 
 test_that("point with no matched species gets NA and empty best_guess", {
@@ -264,7 +264,7 @@ test_that("point with no matched species gets NA and empty best_guess", {
   result <- suppressWarnings(
     assign_habitat_biological(occ, make_weights_specialist())
   )
-  expect_true(is.na(result$main_habitat[1]))
+  expect_true(.is_habitat_unassigned(result$main_habitat[1]))
   # habitat_best_guess should be NA or "" (not populated since no Other match)
   expect_true(is.na(result$habitat_best_guess[1]) ||
     result$habitat_best_guess[1] == "")
@@ -485,7 +485,7 @@ test_that("explicit habitat_cols restricts which columns are used", {
     threshold = 0.3
   )
   # Sebastes has 0 weight in Rocky -> no consensus
-  expect_true(is.na(result$main_habitat[1]))
+  expect_true(.is_habitat_unassigned(result$main_habitat[1]))
 })
 
 test_that("explicit habitat_cols with Other_weight translated from Other_weight", {
@@ -553,7 +553,7 @@ test_that("zero-match path returns data with NA main_habitat and NA habitat_best
   result <- suppressWarnings(
     assign_habitat_biological(occ, make_weights_specialist())
   )
-  expect_true(is.na(result$main_habitat[1]))
+  expect_true(.is_habitat_unassigned(result$main_habitat[1]))
   # NA or empty string -- both acceptable on the zero-match path
   expect_true(is.na(result$habitat_best_guess[1]) ||
     result$habitat_best_guess[1] == "")
@@ -571,4 +571,325 @@ test_that("zero-match path preserves all original columns", {
     assign_habitat_biological(occ, make_weights_specialist())
   )
   expect_true(all(c("lat", "lon") %in% names(result)))
+})
+
+# -----------------------------------------------------------------------------
+# Declared habitat weight columns.
+#
+# .detect_habitat_cols() used to infer the weight set by scanning for numeric
+# columns, which silently absorbs any numeric column added to the table later.
+# habitat_breadth is numeric, lives on the same table, and is on the scale
+# "effective number of habitats" (up to ~n) rather than 0-1 -- so it outweighs
+# every real habitat and WINS the argmax. Reproduced before the fix:
+# main_habitat came back as "habitat_breadth", with no error.
+# -----------------------------------------------------------------------------
+
+.brd_lookup <- function(with_attr) {
+  h <- data.frame(
+    taxon_name = "Larus delawarensis",
+    Marine = 0.30, Estuarine = 0.20, Freshwater = 0.30, Terrestrial = 0.20,
+    Other_weight = 0, habitat_best_guess = "", Habitat = "Marine",
+    habitat_breadth = 3.846,
+    stringsAsFactors = FALSE
+  )
+  if (with_attr) {
+    attr(h, "habitat_cols") <- c(
+      "Marine", "Estuarine", "Freshwater", "Terrestrial", "Other_weight"
+    )
+  }
+  h
+}
+.brd_occ <- data.frame(
+  point_id = "p1", decimalLatitude = 34, decimalLongitude = -120,
+  taxon_name = "Larus delawarensis", stringsAsFactors = FALSE
+)
+
+test_that("habitat_breadth is never treated as a habitat weight (declared path)", {
+  res <- suppressMessages(assign_habitat_biological(.brd_occ, .brd_lookup(TRUE)))
+  expect_false(identical(res$main_habitat[1], "habitat_breadth"))
+  expect_equal(res$main_habitat[1], "Marine")
+})
+
+test_that("habitat_breadth is never treated as a habitat weight (fallback path)", {
+  # A hand-assembled table carries no attribute, so the type scan still runs --
+  # it must exclude habitat_breadth by name.
+  res <- suppressMessages(assign_habitat_biological(.brd_occ, .brd_lookup(FALSE)))
+  expect_false(identical(res$main_habitat[1], "habitat_breadth"))
+  expect_equal(res$main_habitat[1], "Marine")
+})
+
+test_that("the declared-columns attribute does NOT silently drop Other", {
+  # Whether "Other" belongs in the weight set is an open scope decision
+  # elsewhere in the ecosystem. Recording the declared columns must preserve
+  # today's behaviour exactly, not quietly decide it.
+  d <- .detect_habitat_cols(.brd_lookup(TRUE), NULL, "taxon_name", "test")
+  expect_true("Other" %in% d$habitat_cols)
+  expect_false("habitat_breadth" %in% d$habitat_cols)
+  scan <- .detect_habitat_cols(.brd_lookup(FALSE), NULL, "taxon_name", "test")
+  expect_setequal(d$habitat_cols, scan$habitat_cols)
+})
+
+test_that("an explicit habitat_cols argument still wins over the attribute", {
+  d <- .detect_habitat_cols(
+    .brd_lookup(TRUE), c("Marine", "Freshwater"), "taxon_name", "test"
+  )
+  expect_equal(d$habitat_cols, c("Marine", "Freshwater"))
+})
+
+test_that("a stale attribute naming absent columns falls back to scanning", {
+  h <- .brd_lookup(TRUE)
+  attr(h, "habitat_cols") <- c("Marine", "NoSuchColumn")
+  d <- suppressMessages(.detect_habitat_cols(h, NULL, "taxon_name", "test"))
+  expect_false("NoSuchColumn" %in% d$habitat_cols)
+  expect_true("Estuarine" %in% d$habitat_cols)
+  expect_false("habitat_breadth" %in% d$habitat_cols)
+})
+
+# -----------------------------------------------------------------------------
+# .compute_habitat_breadth() -- Levins' B, in effective-habitat units
+# -----------------------------------------------------------------------------
+
+test_that(".compute_habitat_breadth measures effective number of habitats", {
+  hc <- c("a", "b", "c", "d")
+  df <- data.frame(
+    a = c(1,  0.25, 0.30, 0,   0.5),
+    b = c(0,  0.25, 0.20, 0,   0.5),
+    c = c(0,  0.25, 0.30, 0,   0),
+    d = c(0,  0.25, 0.20, 0,   0)
+  )
+  b <- .compute_habitat_breadth(df, hc)
+  expect_equal(b[1], 1)              # pure specialist
+  expect_equal(b[2], 4)              # perfectly even over 4 habitats
+  expect_true(b[3] > 3.8 && b[3] < 4) # the real Larus delawarensis case
+  expect_true(is.na(b[4]))           # all zero -> nothing to measure
+  expect_equal(b[5], 2)              # even over 2 of 4
+})
+
+test_that(".compute_habitat_breadth is scale-invariant and handles bad input", {
+  hc <- c("a", "b")
+  expect_equal(
+    .compute_habitat_breadth(data.frame(a = 1, b = 1), hc),
+    .compute_habitat_breadth(data.frame(a = 50, b = 50), hc)
+  )
+  # NA and negative weights are treated as zero, never propagated
+  expect_equal(.compute_habitat_breadth(data.frame(a = c(1, 1), b = c(NA, -3)), hc), c(1, 1))
+  expect_length(.compute_habitat_breadth(data.frame(a = numeric(0), b = numeric(0)), hc), 0L)
+  expect_true(is.na(.compute_habitat_breadth(data.frame(a = 1, b = 1), character(0))))
+})
+
+# -----------------------------------------------------------------------------
+# Point-level consensus diagnostics.
+#
+# best_prop and the proportion matrix were computed and discarded, so two very
+# different points came back identically as main_habitat = NA: one clearly
+# Marine just under threshold, one genuinely mixed. Measured on the real
+# PtConception 12S data at the workflow's own threshold = 0.5, 89% of the
+# 31,383 NA points are genuinely mixed (breadth >= 3.0) and NONE are
+# high-proportion near-misses -- so a lower cutoff would not rescue them.
+# -----------------------------------------------------------------------------
+
+.pl_lookup <- data.frame(
+  taxon_name   = c("spec", "mix1", "mix2", "mix3", "mix4"),
+  Marine       = c(1, 1, 0, 0, 0),
+  Estuarine    = c(0, 0, 1, 0, 0),
+  Freshwater   = c(0, 0, 0, 1, 0),
+  Terrestrial  = c(0, 0, 0, 0, 1),
+  Other_weight = 0,
+  habitat_best_guess = "",
+  Habitat = c("Marine", "Marine", "Estuarine", "Freshwater", "Terrestrial"),
+  stringsAsFactors = FALSE
+)
+.pl_occ <- function(taxa, pid) data.frame(
+  point_id = pid, decimalLatitude = 34, decimalLongitude = -120,
+  taxon_name = taxa, stringsAsFactors = FALSE
+)
+
+test_that("an unambiguous point reads breadth 1 and prop 1", {
+  r <- suppressMessages(assign_habitat_biological(.pl_occ("spec", "p1"), .pl_lookup))
+  expect_equal(r$main_habitat[1], "Marine")
+  expect_equal(r$main_habitat_prop[1], 1)
+  expect_equal(r$main_habitat_breadth[1], 1)
+})
+
+test_that("a perfectly mixed point reads breadth = n and is NA at any sane threshold", {
+  occ <- .pl_occ(c("mix1", "mix2", "mix3", "mix4"), "p1")
+  r <- suppressMessages(assign_habitat_biological(occ, .pl_lookup, threshold = 0.5))
+  expect_true(.is_habitat_unassigned(r$main_habitat[1]))
+  # Four habitats at 0.25 each: top proportion 0.25, breadth 4.
+  expect_equal(r$main_habitat_prop[1], 0.25)
+  expect_equal(r$main_habitat_breadth[1], 4)
+})
+
+test_that("prop and breadth are populated even when main_habitat is NA", {
+  # This is the whole purpose: they must describe the points the threshold
+  # REJECTED, or they cannot distinguish a near-miss from a mixed point.
+  occ <- .pl_occ(c("mix1", "mix2", "mix3", "mix4"), "p1")
+  r <- suppressMessages(assign_habitat_biological(occ, .pl_lookup, threshold = 0.9))
+  expect_true(.is_habitat_unassigned(r$main_habitat[1]))
+  expect_false(is.na(r$main_habitat_prop[1]))
+  expect_false(is.na(r$main_habitat_breadth[1]))
+})
+
+test_that("a near-miss is distinguishable from a genuinely mixed point", {
+  # near miss: 3 of 4 species Marine -> prop 0.75, breadth low
+  near <- suppressMessages(assign_habitat_biological(
+    .pl_occ(c("spec", "mix1", "mix2"), "p1"), .pl_lookup, threshold = 0.9))
+  # mixed: one species per habitat -> prop 0.25, breadth 4
+  mixed <- suppressMessages(assign_habitat_biological(
+    .pl_occ(c("mix1", "mix2", "mix3", "mix4"), "p2"), .pl_lookup, threshold = 0.9))
+  expect_true(.is_habitat_unassigned(near$main_habitat[1]) &&
+    .is_habitat_unassigned(mixed$main_habitat[1]))
+  expect_gt(near$main_habitat_prop[1], mixed$main_habitat_prop[1])
+  expect_lt(near$main_habitat_breadth[1], mixed$main_habitat_breadth[1])
+})
+
+test_that("habitat_proportions attribute is one row per point and sums to 1", {
+  occ <- rbind(.pl_occ(c("mix1", "mix2"), "p1"), .pl_occ("spec", "p2"))
+  r <- suppressMessages(assign_habitat_biological(occ, .pl_lookup))
+  pr <- attr(r, "habitat_proportions")
+  expect_s3_class(pr, "data.frame")
+  expect_equal(nrow(pr), 2L)
+  expect_true("point_id" %in% names(pr))
+  num <- pr[, setdiff(names(pr), "point_id"), drop = FALSE]
+  expect_equal(unname(rowSums(num, na.rm = TRUE)), c(1, 1))
+})
+
+test_that("pre-existing diagnostic columns are replaced, not duplicated", {
+  occ <- .pl_occ("spec", "p1")
+  occ$main_habitat_prop <- 999
+  occ$main_habitat_breadth <- 999
+  r <- suppressMessages(assign_habitat_biological(occ, .pl_lookup))
+  expect_equal(sum(names(r) == "main_habitat_prop"), 1L)
+  expect_equal(r$main_habitat_prop[1], 1)
+})
+
+# -----------------------------------------------------------------------------
+# The unassigned sentinel.
+#
+# NA in a main_habitat column already meant "habitat-agnostic, matches ANY
+# habitat" on the PRIOR side -- generate_domestic_food_priors() sets it
+# deliberately ("intentionally set to NA (never a real habitat value)") and
+# join_priors() reads it to build the wildcard tier for domestic and food taxa.
+# So an unplaceable occurrence was indistinguishable from a chicken and
+# inherited the wildcard semantics by accident instead of being routed to the
+# evidence branch. Naming the occurrence-side case separates the two.
+# -----------------------------------------------------------------------------
+
+test_that("an unresolved point carries the sentinel, not NA", {
+  h <- data.frame(
+    taxon_name = c("a", "b"), Marine = c(1, 0), Estuarine = c(0, 1),
+    Other_weight = 0, habitat_best_guess = "",
+    Habitat = c("Marine", "Estuarine"), stringsAsFactors = FALSE
+  )
+  occ <- data.frame(
+    point_id = c("p1", "p1"), decimalLatitude = 34, decimalLongitude = -120,
+    taxon_name = c("a", "b"), stringsAsFactors = FALSE
+  )
+  r <- suppressMessages(assign_habitat_biological(occ, h, threshold = 0.9))
+  expect_equal(r$main_habitat[1], "Uncertain")
+  expect_false(is.na(r$main_habitat[1]))
+})
+
+test_that(".is_habitat_unassigned accepts BOTH vocabularies", {
+  # Every decision file and saved occurrence table written before 2026-09-19
+  # stores NA, and the same code paths read them. Treating only the new
+  # sentinel would silently reclassify stored rows as assigned.
+  expect_equal(
+    .is_habitat_unassigned(c(NA, "Uncertain", "Marine", "", "  ")),
+    c(TRUE, TRUE, FALSE, TRUE, TRUE)
+  )
+})
+
+test_that("a scheme cannot reuse the sentinel as a real habitat", {
+  # Otherwise an unassigned point and a genuinely-Uncertain-habitat point
+  # become indistinguishable, reintroducing the collision this replaces.
+  expect_error(
+    .check_habitat_sentinel_free(c("Marine", "Uncertain"), "test"),
+    "reserved"
+  )
+  expect_error(
+    .check_habitat_sentinel_free(c("Marine", "uncertain"), "test"),
+    "reserved"
+  )
+  expect_true(.check_habitat_sentinel_free(c("Marine", "Estuarine"), "test"))
+})
+
+test_that("assign_habitat_biological refuses a colliding scheme", {
+  h <- data.frame(
+    taxon_name = "a", Marine = 1, Uncertain = 0, Other_weight = 0,
+    habitat_best_guess = "", Habitat = "Marine", stringsAsFactors = FALSE
+  )
+  occ <- data.frame(
+    point_id = "p1", decimalLatitude = 34, decimalLongitude = -120,
+    taxon_name = "a", stringsAsFactors = FALSE
+  )
+  expect_error(
+    suppressMessages(assign_habitat_biological(occ, h)),
+    "reserved"
+  )
+})
+
+# ==============================================================================
+# Sentinel-aware diagnostics (2026-09-19)
+# ==============================================================================
+
+# The message this function prints is the diagnostic a reader uses to decide
+# whether `threshold` is doing anything, and it is how the habitat_breadth
+# type-scan collision was caught. Once the unassigned value became the string
+# "Uncertain", a bare !is.na() count would report every unassigned point as
+# ASSIGNED and "0 site(s) left Uncertain" -- a confident, wrong summary of a
+# result that is itself correct. Assert the counts, not just the sentinel.
+test_that("the assignment count excludes Uncertain points", {
+  w <- data.frame(
+    taxon_name = c("Generalist sp.", "Specialist sp."),
+    Marine = c(0.34, 1.0),
+    Freshwater = c(0.33, 0.0),
+    Estuarine = c(0.33, 0.0),
+    Other_weight = c(0, 0),
+    habitat_best_guess = c("", ""),
+    stringsAsFactors = FALSE
+  )
+  occ <- make_occ(
+    c("P_uncertain", "P_assigned"),
+    c("Generalist sp.", "Specialist sp.")
+  )
+
+  msgs <- character(0)
+  res <- withCallingHandlers(
+    assign_habitat_biological(occ, w, threshold = 0.5),
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
+  )
+
+  # Ground truth from the result itself, not from the message.
+  expect_equal(sum(.is_habitat_unassigned(res$main_habitat)), 1L)
+  expect_equal(res$main_habitat[res$point_id == "P_uncertain"], "Uncertain")
+
+  summary_msg <- grep("site\\(s\\) assigned a habitat", msgs, value = TRUE)
+  expect_length(summary_msg, 1L)
+  expect_match(summary_msg, "1 of 2 site\\(s\\) assigned a habitat", fixed = FALSE)
+  expect_match(summary_msg, "1 site\\(s\\) left 'Uncertain'", fixed = FALSE)
+})
+
+# consensus_habitat() deliberately keeps NA where assign_habitat_biological()
+# uses the sentinel: it is a site-level scalar for TaxaAssign::build_context(),
+# whose synthesis fallback writes the value straight into ctx$main_habitat and
+# on into a prompt and .resolve_site(). A literal "Uncertain" there would
+# resolve a site against an Uncertain stratum. If this test ever fails,
+# build_context()'s fallback must change in the same commit.
+test_that("consensus_habitat() keeps NA, not the Uncertain sentinel", {
+  w <- data.frame(
+    taxon_name = c("A sp.", "B sp.", "C sp."),
+    Marine = c(1, 0, 0),
+    Freshwater = c(0, 1, 0),
+    Estuarine = c(0, 0, 1),
+    Other_weight = c(0, 0, 0),
+    habitat_best_guess = c("", "", ""),
+    stringsAsFactors = FALSE
+  )
+  out <- consensus_habitat(w, threshold = 0.5)
+  expect_true(is.na(out$main_habitat))
+  expect_false(identical(out$main_habitat, .HABITAT_UNCERTAIN))
 })

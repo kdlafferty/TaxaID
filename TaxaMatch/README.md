@@ -73,7 +73,13 @@ match_df <- filter_redundant_hypotheses(match_df)
 ## Key Functions
 
 -   `read_sequence_table()` -- ingest DADA2 seqtab matrix, FASTA, or
-    DNAStringSet
+    DNAStringSet. When reading a data frame it auto-detects the
+    abundance columns, screening them both by name and by value (read
+    counts are non-negative and whole) so a BLAST-annotated table's
+    `pident`/`bitscore`/`evalue` are not summed into abundance.
+    Auto-detection cannot be made complete -- an integer metric under an
+    unrecognised name would still be summed -- so pass `abundance_cols`
+    explicitly when you need certainty.
 -   `filter_sequences()` -- filter ASVs by length range and minimum
     abundance
 -   `blast_sequences()` -- remote NCBI BLAST or local rBLAST with score

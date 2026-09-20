@@ -53,16 +53,59 @@
 #'     habitat for species with non-zero \code{Other_weight}. Empty string
 #'     otherwise.}
 #'   \item{Habitat}{Character. Convenience column: name of the habitat column
-#'     with the highest weight (argmax). \code{"Other"} when
-#'     \code{Other_weight} is the largest. Used by downstream functions
-#'     (\code{\link{assign_habitat_biological}}) that expect a single primary
-#'     habitat label per species.}
+#'     with the highest weight (argmax), ties broken by column order.
+#'     \code{"Other"} when \code{Other_weight} is the largest, \code{NA} when
+#'     all weights are zero. \strong{Diagnostic only} -- see Details; nothing in
+#'     the pipeline consumes it as a habitat assignment.}
+#'   \item{habitat_breadth}{Numeric. Levins' niche breadth,
+#'     \code{B = 1 / sum(p^2)}, over the scheme's habitat columns with the
+#'     weights renormalised to sum to 1, in units of \strong{effective number
+#'     of habitats}: \code{1} is a pure specialist and the maximum is the
+#'     number of habitat columns. \code{NA} when all scheme weights are zero.
+#'     See Details for why it exists and how to read it with
+#'     \code{Other_weight}.}
 #' }
 #'
 #' @details
 #' \strong{Multi-chunk responses:} If \code{raw_text} contains multiple CSV
 #' blocks (one per chunk from \code{\link[TaxaTools]{prompt_api}}), duplicate
 #' header rows are stripped automatically before combining.
+#'
+#' \strong{The \code{Habitat} column is diagnostic only.} It previously
+#' claimed to be "used by downstream functions
+#' (\code{assign_habitat_biological}) that expect a single primary habitat
+#' label per species", which was false:
+#' \code{\link{assign_habitat_biological}} sums each species' full WEIGHT
+#' VECTOR per point and never reads it. Audited across all nine TaxaID
+#' packages, its only functional consumer is
+#' \code{\link{build_habitat_lookup}}, which uses \code{!is.na(Habitat)} to
+#' decide whether a verdict is resolved enough to cache. Do not build on it as
+#' a habitat assignment: for a per-taxon habitat use the weight columns, for a
+#' per-location one use \code{main_habitat}, and to judge how meaningful the
+#' label is for a given taxon read \code{habitat_breadth} beside it.
+#'
+#' \strong{Habitat breadth:} \code{Habitat} is an argmax, so it renders a
+#' near-uniform weight vector and a decisive one as the same confident-looking
+#' string. On the real PtConception 12S lookup, \emph{Larus delawarensis} and
+#' \emph{Chroicocephalus philadelphia} carry identical weights (Marine 0.30,
+#' Estuarine 0.20, Freshwater 0.30, Terrestrial 0.20) and both read
+#' \code{"Marine"}, while \emph{Gelochelidon nilotica} (0.20/0.20/0.30/0.30)
+#' reads \code{"Freshwater"} -- the label is decided by column order.
+#' \code{habitat_breadth} recovers what the argmax discards. Standardise it to
+#' 0-1 with \code{(B - 1) / (n - 1)} if needed.
+#'
+#' \code{Other_weight} is deliberately excluded from the breadth calculation:
+#' it measures the model failing to place a taxon in the scheme at all, which is
+#' a different quantity from a taxon that genuinely spans habitats. Read the two
+#' together -- high breadth with low \code{Other_weight} is a real generalist,
+#' whereas high \code{Other_weight} means the verdict itself is weak.
+#'
+#' \strong{Declared weight columns:} the returned data frame carries an
+#' \code{"habitat_cols"} attribute naming the weight columns, and
+#' \code{\link{assign_habitat_biological}} prefers it over scanning for numeric
+#' columns. Do not add a numeric column to this table without checking that
+#' attribute is set: the type scan is the fallback, and it would absorb the new
+#' column as an extra habitat weight.
 #'
 #' \strong{Weight normalisation:} Weights are NOT renormalised. A warning is
 #' emitted for any row where weights deviate more than 0.05 from 1.0.
@@ -365,6 +408,15 @@ parse_hierarchical_habitat_response <- function(raw_text,
   parsed[["Habitat"]][rowSums(weight_mat) == 0] <- NA_character_
 
   # ---------------------------------------------------------------------------
+  # Habitat breadth: what the argmax above throws away.
+  #
+  # Levins' B over the SCHEME columns only (Other_weight excluded -- it measures
+  # failure to place the taxon, not a broad niche). Units are effective number
+  # of habitats: 1.0 = pure specialist, max = length(pure_hab_cols).
+  # ---------------------------------------------------------------------------
+  parsed[["habitat_breadth"]] <- .compute_habitat_breadth(parsed, pure_hab_cols)
+
+  # ---------------------------------------------------------------------------
   # Warn on missing taxa
   # ---------------------------------------------------------------------------
   parsed <- .warn_missing_taxa(
@@ -388,9 +440,19 @@ parse_hierarchical_habitat_response <- function(raw_text,
     "taxon_name", pure_hab_cols, "Other_weight",
     "habitat_best_guess",
     if (has_ecoregion_guess) "ecoregion_best_guess",
-    "Habitat", covariate_keep
+    "Habitat", "habitat_breadth", covariate_keep
   )
-  parsed[, intersect(col_order, names(parsed)), drop = FALSE]
+  out <- parsed[, intersect(col_order, names(parsed)), drop = FALSE]
+
+  # Declare which columns ARE the weights, so downstream consumers do not have
+  # to infer it from column types. Includes Other_weight, matching exactly what
+  # .detect_habitat_cols()'s type scan would have picked up -- this records the
+  # existing contract, it does not change it.
+  attr(out, "habitat_cols") <- c(
+    pure_hab_cols,
+    if ("Other_weight" %in% names(out)) "Other_weight"
+  )
+  out
 }
 
 
