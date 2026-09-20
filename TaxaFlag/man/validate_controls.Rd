@@ -101,6 +101,11 @@ may be a mislabelled control), \code{"untestable"} (no null available), or
 \code{confidence} is \code{"low"} wherever the site's power is not
 \code{"ok"}; filter on it, because a verdict from a wide null is weak
 evidence and must not read like one from a tight null.
+
+\strong{A site with two samples and a site with twenty both return "nothing
+flagged".} Only one of those is evidence. \code{power},
+\code{null_n_pairs} and \code{confidence} are what separate them, and the
+function says so on the console as well as here.
 }
 \description{
 Tests whether each column labelled a control is compositionally consistent

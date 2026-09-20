@@ -110,6 +110,11 @@ utils::globalVariables(c(
 #'   \code{"ok"}; filter on it, because a verdict from a wide null is weak
 #'   evidence and must not read like one from a tight null.
 #'
+#'   \strong{A site with two samples and a site with twenty both return "nothing
+#'   flagged".} Only one of those is evidence. \code{power},
+#'   \code{null_n_pairs} and \code{confidence} are what separate them, and the
+#'   function says so on the console as well as here.
+#'
 #' @section Before trusting a negative result:
 #' Prove both directions on your own data, as with any guard: relabel a known
 #' field sample as a control and confirm it is flagged, and confirm a clean
@@ -283,10 +288,18 @@ validate_controls <- function(input_df,
     message(sprintf("validate_controls: %d column(s) across %d site(s); %d control(s).",
                     nrow(res), nrow(sp), n_ctl))
     print(table(res$label, res$verdict))
-    if (any(sp$power != "ok"))
+    if (any(sp$power != "ok")) {
       message(sprintf("  %d of %d site(s) have reduced or no power: %s",
                       sum(sp$power != "ok"), nrow(sp),
                       paste(unique(sp$power[sp$power != "ok"]), collapse = ", ")))
+      # Say this at RUN TIME, not only in the manual page. A clean-looking result
+      # from a site that cannot test anything is the failure mode most likely to
+      # be believed, and nobody reads ?validate_controls before reading the
+      # console.
+      message("  A SITE WITH TWO SAMPLES AND A SITE WITH TWENTY BOTH PRINT ",
+              "'nothing flagged'. Read site_power and the per-row `confidence` ",
+              "before treating a clean result as evidence of clean labels.")
+    }
     if (sum(res$verdict == "untestable"))
       message(sprintf("  %d column(s) UNTESTABLE -- absence of a flag there is not ",
                       sum(res$verdict == "untestable")), "evidence of a clean label.")

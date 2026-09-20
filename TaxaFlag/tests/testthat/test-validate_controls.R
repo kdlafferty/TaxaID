@@ -178,3 +178,13 @@ test_that("the threshold can never leave Bray-Curtis's range", {
                                               paste(round(thr,3), collapse=",")))
   }
 })
+
+test_that("reduced power is announced at RUN TIME, not only in the manual", {
+  # A clean-looking result from a site that cannot test anything is the failure
+  # mode most likely to be believed, and nobody reads the help page first.
+  df <- .mk(n_sites = 1, n_samp = 2, n_ctl = 1)
+  expect_message(
+    validate_controls(df, site_col = "site", control_samples = .ctl_ids(df),
+                      min_samples_per_site = 3L, verbose = TRUE),
+    "BOTH PRINT")
+})
