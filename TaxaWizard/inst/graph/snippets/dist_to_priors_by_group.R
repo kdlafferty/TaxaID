@@ -25,18 +25,76 @@
 
 std_occurrences <- {{input_var}}
 
-# Step 1: calibrate the kernel bandwidth once, on the POOLED data -- lambda_km
-# describes spatial decay, not detection-process membership, so one bandwidth
-# applies across every group.
+# Step 1: calibrate the kernel bandwidth with the SAME sampling_group_col the
+# estimator uses below.
+#
+# (Corrected 2026-09-19. This comment previously asserted the opposite -- that
+# lambda_km "describes spatial decay, not detection-process membership, so one
+# bandwidth applies across every group" -- and the code calibrated on pooled
+# data. lambda_km IS spatial decay, but the quantity MINIMISED to estimate it
+# is a multinomial composition log-loss, and a composition is a share WITHIN a
+# detection process. Pooling therefore lets the largest group choose the
+# bandwidth for all of them. It does not announce itself: the fit succeeds and
+# returns a plausible number that is simply wrong for every group but the
+# dominant one. On a real fixture with 4 km patches in one group and 55 km in
+# another, the groups wanted 5 km and 25 km.)
+#
+# lambda_grid spans 1-100 km deliberately. A grid that cannot express its own
+# answer reports a boundary warning pointing the wrong way: PtConception 12S
+# measured its optimum at 10 km, INTERIOR, only once 1/2/5 were offered -- the
+# old c(25, 50, 100, 200) could not represent 10 at all and would have invited
+# widening UPWARD. Keep this in step with the canonical workflow template.
 kernel_cal <- TaxaExpect::calibrate_kernel_bandwidth(
   std_occurrences,
-  site_habitat = {{site_habitat}},
-  lambda_grid  = c(25, 50, 100, 200)
+  site_habitat       = {{site_habitat}},
+  lambda_grid        = c(1, 2, 5, 10, 25, 50, 100),
+  sampling_group_col = {{sampling_group_col}}
 )
 message(sprintf(
   "Calibrated kernel bandwidth: lambda = %g km (LOBO loss %.3f)",
   kernel_cal$best$lambda_km, kernel_cal$best$weighted_logloss
 ))
+
+# Step 1b: is the kernel worth having at all? An interior optimum says only
+# "best bandwidth offered", never that the kernel beats NOT having one.
+# $results carries `regional` and `nearest_block` reference rows, by row name.
+.k_loss   <- kernel_cal$best$weighted_logloss
+.reg_loss <- kernel_cal$results["regional", "weighted_logloss"]
+.nb_loss  <- kernel_cal$results["nearest_block", "weighted_logloss"]
+message(sprintf(
+  "LOBO log-loss: kernel %.4f | regional %.4f | nearest_block %.4f",
+  .k_loss, .reg_loss, .nb_loss
+))
+.gain <- .reg_loss - .k_loss
+.pct  <- 100 * .gain / .reg_loss
+if (!is.na(.gain) && .gain <= 0) {
+  warning(sprintf(
+    paste0("kernel does NOT beat regional (%.4f vs %.4f). The answer is not a ",
+           "different lambda but a smaller block_size_deg."),
+    .k_loss, .reg_loss
+  ), call. = FALSE)
+} else {
+  message(sprintf("kernel beats regional by %.4f (%.2f%%)", .gain, .pct))
+  if (!is.na(.pct) && .pct < 1) {
+    warning(sprintf(
+      paste0("kernel margin over regional is only %.2f%% -- lambda may be an ",
+             "artifact of the CV block geometry rather than a real length scale."),
+      .pct
+    ), call. = FALSE)
+  }
+}
+
+# Step 1c: estimate_kernel_priors() takes a SCALAR lambda_km, so it can only
+# REPORT a per-group disagreement, never act on one. Read $by_group before
+# trusting $best -- calibrate_kernel_bandwidth() warns at >= 2x disagreement.
+if (!is.null(kernel_cal$by_group)) {
+  message("Per-group optimal lambda (the scalar above is a compromise across these):")
+  print(kernel_cal$by_group[
+    , intersect(c("sampling_group", "n_records", "n_blocks_scored",
+                  "lambda_km", "weighted_logloss"),
+                names(kernel_cal$by_group))
+  ])
+}
 
 # Step 2: estimate site priors, computing composition AND the Good-Turing
 # budget WITHIN each sampling_group_col value rather than pooled. With more
