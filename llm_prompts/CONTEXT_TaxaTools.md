@@ -4,7 +4,7 @@
 
 Provides helper functions for cleaning, verifying, and standardizing taxonomic names across multiple backbones. Capabilities include spell-checking and correcting species names, translating names between taxonomic backbones (e.g., GBIF, NCBI, WoRMS), retrieving classification hierarchies via API, and creating standardized taxon labels at any rank. Also provides LLM provider functions for calling Anthropic, OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for drafting methods and results sections. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-15 23:42:44 UTC; unix). 49 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-19 06:01:48 UTC; unix). 52 exported function(s).
 
 ## Functions
 
@@ -220,6 +220,20 @@ Post-processes the output of 'verify_taxon_names' to (1) rename the source and t
 | keep_unmatched | no | TRUE | Logical. When TRUE (the default), names for which the target backbone returns no match are retained by copying the original source name into the translated-name column rather than leaving it NA. Set to FALSE to keep NA for unmatched names (original behaviour). |
 
 **Value:** A dataframe with: '<old_backbone_label>' Original names (renamed from 'input_col'). '<new_backbone_label>' Translated names (renamed from 'matched_name'). 'backbone_matched' Logical. 'TRUE' when the target backbone returned a genuine match; 'FALSE' when no match was found (the source name was retained due to 'keep_unmatched = TRUE', or left 'NA' when 'keep_unmatched = FALSE'). Always 'TRUE' when '
+
+### check_taxaid_manifest(path, packages = NULL, on_mismatch = c("error", "warning", "message", "silent"))
+
+Check the Installed TaxaID Code Against a Recorded Manifest
+
+Compares the library this session is using against a manifest written by 'write_taxaid_manifest()', and by default *errors* on any difference. Put it in a workflow preamble so drift stops a run at the top rather than producing results nobody can attribute afterwards.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| path | yes |  | Path to a manifest written by write_taxaid_manifest(). |
+| packages | no | NULL | Restrict the comparison. Default: every package named in the manifest or in the standard TaxaID set. |
+| on_mismatch | no | c("error", "warning", "message", "silent") | One of "error" (default), "warning", "message", "silent". |
+
+**Value:** Invisibly, a list with 'ok', 'missing', 'changed', 'extra' and 'manifest' (the freshly built one).
 
 ### clean_taxon_names(name_vec, remove_abbr = NULL, strip_modifiers = NULL)
 
@@ -674,6 +688,18 @@ Overrides dynamic tier resolution for the current R session. Use at the top of a
 
 **Value:** The model string invisibly.
 
+### taxaid_build_manifest(packages = NULL)
+
+Record Which TaxaID Code a Run Is Using
+
+Captures, for each TaxaID package, its version, 'Built' timestamp and a hash of its installed code. Save it beside a run's outputs and every result becomes traceable to the exact build that produced it.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| packages | no | NULL | Character vector of package names. Defaults to the nine TaxaID packages. |
+
+**Value:** A data frame with columns 'package', 'version', 'built', 'code_hash', 'installed'. Packages that are NOT installed appear with 'installed = FALSE' rather than being dropped - absence has to be representable for 'check_taxaid_manifest()' to report it.
+
 ### taxaid_cache_report(extra_dirs = NULL, warn_gb = 1)
 
 Report every TaxaID cache on this machine
@@ -745,6 +771,19 @@ Checks a vector of taxon names against a target taxonomic backbone using the Glo
 | fallback_backbone_id | no | 11L | Integer. Only used when backbone_id = 4 (NCBI). NCBI's direct lookup is an exact string search with no typo tolerance -- a single misspelled letter returns zero hits even via its own synonym fallback. When that happens, this backbone's Global Names Verifier API is queried instead purely to suggest a corrected spelling, which is then re-resolved through NCBI itself (the correction is never accepted from this backbone directly, so NCBI's own classification -- the reason the direct bypass exists at all -- is preserved). Default 11 (GBIF). Must not be 4. |
 
 **Value:** A tibble with one row per input name and the following columns: user_supplied_name The original name as supplied. matched_name The best-matched name at whatever rank the backbone actually resolved it to (authorship strings stripped; a genus-only match returns a bare genus, a subspecies-level match returns the full trinomial), or 'NA' if no match was found. When the backbone itself flags the match 
+
+### write_taxaid_manifest(path, packages = NULL)
+
+Write a TaxaID Build Manifest
+
+Write a TaxaID Build Manifest
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| path | yes |  | File path to write (.rds). |
+| packages | no | NULL | Passed to taxaid_build_manifest(). |
+
+**Value:** The manifest, invisibly.
 
 ## Quick Start
 

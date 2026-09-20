@@ -4,7 +4,7 @@
 
 Assigns habitat classifications to taxonomic occurrence records using LLM prompts and performs spatial quality control. Receives occurrence data from TaxaFetch and produces habitat-annotated, spatially screened records for input to TaxaExpect. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-18 21:14:50 UTC; unix). 16 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-19 22:45:47 UTC; unix). 18 exported function(s).
 
 ## Functions
 
@@ -39,10 +39,10 @@ Infers the habitat of each sampling point from the weighted habitat affinities o
 | point_id_col | no | "point_id" | Character. Name of the point identifier column in occurrence_data. Default "point_id". |
 | taxon_col | no | "taxon_name" | Character. Name of the taxon name column in both occurrence_data and habitats_df. Default "taxon_name". |
 | weight_by_abundance | no | FALSE | Logical. If FALSE (default), each species contributes equally to the point score regardless of how many occurrence records it has at that point. If TRUE, species are weighted by their record count at the point, so abundant species have more influence. Default FALSE is recommended because record abundance in occurrence datasets is strongly influenced by sampling effort rather than true ecological dominance. |
-| threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant at a point. At 0.3, a habitat must receive at least 30\ be assigned. Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default 0.3. Points where no habitat reaches the threshold receive main_habitat = NA. Note: the default is lower than in the single-habitat version because weight is now spread across multiple habitats per species; a threshold of 0.5 may be too strict for generalist communities. |
+| threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant at a point. At 0.3, a habitat must receive at least 30\ be assigned. Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default 0.3. Points where no habitat reaches the threshold receive main_habitat = "Uncertain" -- a named sentinel, not NA; see the main_habitat entry under Value. Note: the default is lower than in the single-habitat version because weight is now spread across multiple habitats per species; a threshold of 0.5 may be too strict for generalist communities. |
 | min_species_weight | no | 0 | Numeric in [0, 1). Per-species weight floor. Any weight assigned to a habitat column by a species that is greater than zero but less than this value is set to zero before the consensus calculation. Default 0.0 (no floor, all weights used). Set to e.g. 0.1 to suppress LLM hedging weights -- small non-zero values the LLM assigns to vaguely plausible habitats that dilute the signal from the species' actual primary habitat(s). Has no effect when using the two-stage IUCN pipeline with the commit-at-confident-level prompt, which already discourages sub-0.1 weights by instruction. |
 
-**Value:** The input 'occurrence_data' with two additional columns: main_habitat Character. The winning habitat label at each point, or 'NA' if no habitat reached 'threshold'. '"Other"' appears here when the 'Other_weight' column wins, signalling that the community at this point does not fit the scheme. habitat_best_guess Character. Non-empty only when 'main_habitat = "Other"' (or when the leading habitat is
+**Value:** The input 'occurrence_data' with four additional columns: main_habitat Character. The winning habitat label at each point, or '"Uncertain"' if no habitat reached 'threshold'. *Not 'NA'*: 'NA' in a 'main_habitat' column already means _habitat-agnostic, matches any habitat_ on the prior side, where 'TaxaExpect::generate_domestic_food_priors()' sets it deliberately and 'TaxaAssign::join_priors()' rea
 
 ### build_habitat_lookup(taxon_list, habitat_scheme = NULL, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), cache_dir = NULL, extra_covariates = character(0), chunk_size = 60L, geographic_context = NULL, cache_tag = "", pause_seconds = 1, verbose = TRUE)
 
@@ -123,7 +123,23 @@ Summarises per-species habitat weights into a single consensus habitat (and opti
 | taxon_col | no | "taxon_name" | Character. Name of the taxon name column. Default "taxon_name". |
 | threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant. At 0.3, a habitat must receive at least 30\ Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default 0.3. |
 
-**Value:** A one-row data frame with columns: main_habitat Character. The consensus habitat, or 'NA' if none reached 'threshold'. ecoregion Character. The modal 'ecoregion_best_guess' value across species, or 'NA' if the column is absent. habitat_best_guess Character. Concatenated free-text guesses when '"Other"' wins, otherwise 'NA'. The full habitat proportion vector is attached as 'attr(result, "habitat_p
+**Value:** A one-row data frame with columns: main_habitat Character. The consensus habitat, or 'NA' if none reached 'threshold'. *Deliberately 'NA', and deliberately unlike 'assign_habitat_biological'*, which returns the sentinel '"Uncertain"' for the same condition. See Details. ecoregion Character. The modal 'ecoregion_best_guess' value across species, or 'NA' if the column is absent. habitat_best_guess C
+
+### drop_stale_seeded_decisions(occurrence_data, path, seeded_pattern = "^seeded from", dry_run = TRUE, backup = TRUE)
+
+Drop Seeded Review Decisions That the Automatic Classifier Has Since Overtaken
+
+A decision file seeded with 'before = NULL' records "accept the automatic classification" for every point, with 'decided_at' set to a '"seeded from ..."' string rather than a timestamp. Those are not reviewer judgements. When the automatic classifier later changes its mind about a point - because a bug was fixed, a habitat vocabulary was extended, or a threshold moved - the seeded verdict silently overrides the new one, and 'apply_spatial_review_decisions()' reports 'n_pending_review = 0'. The site then looks fully reviewed while carrying the old classifier's answer.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| occurrence_data | yes |  | A dataframe freshly returned by flag_habitat_inconsistencies() -- i.e. carrying the CURRENT automatic spatial_flag, before any decisions are applied. |
+| path | yes |  | Character. Path to the *_spatial_review_decisions.rds file. |
+| seeded_pattern | no | "^seeded from" | Character regex identifying seeded rows by their decided_at value. Default "^seeded from", which is what save_spatial_review_decisions() writes. |
+| dry_run | no | TRUE | Logical. When TRUE (default) nothing is written; the function reports what it would drop. Set FALSE to rewrite the file. |
+| backup | no | TRUE | Logical. When writing, first copy the existing file to <path>.bak_<timestamp>. Default TRUE. |
+
+**Value:** Invisibly, a list with 'n_decisions', 'n_seeded', 'n_real', 'n_stale', 'stale_point_ids' and 'path'. Called for its message output and, when 'dry_run = FALSE', its side effect.
 
 ### flag_habitat_inconsistencies(occurrence_data, lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", coast_buffer_m = 1000, marine_questionable_km = 0, depth_neritic_m = 200, depth_oceanic_m = 4000, resolution = 4L, verbose = TRUE, habitat_scheme = NULL)
 
@@ -203,6 +219,24 @@ Summarizes the habitat assignment produced by TaxaHabitat into a structured 'rep
 
 **Value:** A 'report_section' object with: methods Template text describing habitat assignment approach. results Template text summarizing habitat assignments. params Named list of habitat parameters. statistics Named list of summary counts.
 
+### resolve_habitat_by_geography(occurrence_data, habitat_col = "main_habitat", lat_col = "decimalLatitude", lon_col = "decimalLongitude", candidate_mass = 0.8, coast_buffer_m = 1000, verbose = TRUE)
+
+Resolve Unassigned Habitats From Point Geography
+
+Fills in 'main_habitat' for points the assemblage consensus could not resolve, by asking where the point actually is. A taxon whose weights span freshwater, estuarine and marine is not uncertain about its habitat - it uses all three - so over open ocean it is marine, and inland it is not. The consensus threshold cannot express that, because it never sees the location.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| occurrence_data | yes |  | Output of assign_habitat_biological(), carrying a "habitat_proportions" attribute. Without it nothing can be resolved and the input is returned unchanged with a message. |
+| habitat_col | no | "main_habitat" | Column names. |
+| lat_col | no | "decimalLatitude" | Column names. |
+| lon_col | no | "decimalLongitude" | Column names. |
+| candidate_mass | no | 0.8 | Passed to the candidate rule; see review_spatial_flags(). |
+| coast_buffer_m | no | 1000 | Half-width of the coastal band, in metres. Points within it are treated as shoreline and left unresolved. Default 1000, matching flag_habitat_inconsistencies(). |
+| verbose | no | TRUE | Logical. Report what was resolved. |
+
+**Value:** 'occurrence_data' with 'main_habitat' filled in where geography was decisive, plus a 'habitat_source' column. The '"habitat_proportions"' attribute is preserved.
+
 ### review_institution_flags(occurrence_data, lat_col = "decimalLatitude", lon_col = "decimalLongitude", taxon_col = "species", tile = "Esri.OceanBasemap", point_radius = 7)
 
 Review Institution-Proximity Flags Interactively
@@ -220,7 +254,7 @@ Opens a Shiny gadget for reviewing records 'TaxaFetch:: filter_gbif_quality()' f
 
 **Value:** 'occurrence_data' with one additional column, 'institution_decision': '"keep"' or '"remove"' for every record that had 'institution_flag = TRUE'; 'NA' for every other record (never shown to the reviewer, never touched). Returns 'NULL' if the user clicks Cancel.
 
-### review_spatial_flags(occurrence_data, habitat_col = "main_habitat", lat_col = "decimalLatitude", lon_col = "decimalLongitude", taxon_col = "taxon_name", colors = NULL, tile = "Esri.OceanBasemap", point_radius = 6, bulk_confirm_threshold = 10000L, bulk_max = 100000L, viewer = shiny::paneViewer(minHeight = 450))
+### review_spatial_flags(occurrence_data, habitat_col = "main_habitat", lat_col = "decimalLatitude", lon_col = "decimalLongitude", taxon_col = "taxon_name", colors = NULL, tile = "Esri.OceanBasemap", point_radius = 6, bulk_confirm_threshold = 10000L, bulk_max = 100000L, candidate_mass = 0.8, viewer = shiny::paneViewer(minHeight = 450))
 
 Review and Correct Spatial Flags Interactively
 
@@ -238,6 +272,7 @@ Opens a Shiny gadget for reviewing the 'spatial_flag' column added by 'flag_habi
 | point_radius | no | 6 | Numeric. Circle marker radius in pixels. Default 6. |
 | bulk_confirm_threshold | no | 10000L | Integer. A rectangle/polygon selection larger than this asks for confirmation, reporting the exact point count, before the action is applied. Default 10000L. Set to Inf to never ask. |
 | bulk_max | no | 100000L | Integer. Hard ceiling: a selection larger than this is refused outright rather than applied, and the reviewer is asked to split the shape. Default 100000L. |
+| candidate_mass | no | 0.8 | Numeric in (0, 1]. When occurrence_data carries a "habitat_proportions" attribute (from assign_habitat_biological), the Reassign Habitat dropdown offers only the habitats that together account for this much of the selection's own consensus vector, highest first. Default 0.8. Set to 1 to offer every habitat with a non-zero proportion. |
 | viewer | no | shiny::paneViewer(minHeight = 450) | Shiny viewer function passed through to runGadget. Default shiny::paneViewer(minHeight = 450) (RStudio's embedded Viewer pane). Some RStudio configurations have been observed to silently swallow leaflet-map click events inside the Viewer pane; pass shiny::browserViewer() to force the gadget into a real browser tab as a workaround/diagnostic if map clicks appear unresponsive. |
 
 **Value:** The input 'occurrence_data' dataframe with 'spatial_flag', 'spatial_flag_reason', and 'main_habitat' updated where changed. Returns 'NULL' if the user clicks Cancel. Filter to keep confirmed records: reviewed <- review_spatial_flags(occurrences_flagged) occurrences_clean <- dplyr::filter(reviewed, spatial_flag == "likely")

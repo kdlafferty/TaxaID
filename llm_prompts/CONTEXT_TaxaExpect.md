@@ -4,7 +4,7 @@
 
 Generates theta priors (occupancy x detectability) for taxonomic assignment from occurrence data (see TaxaFetch). Occurrence data are first summarized at the grid level. At this scale, the user is able to apply spatial models that generate estimates of theta along with expected error. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-15 11:58:44 UTC; unix). 15 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-19 22:45:44 UTC; unix). 16 exported function(s).
 
 ## Functions
 
@@ -30,7 +30,7 @@ Elevate the dark-diversity floor prior for species with external occurrence-plau
 
 **Value:** A tibble with one row per eligible taxon named in 'evidence': taxon_name The real taxon name. taxon_name_rank Always '"species"' - required for the row to match 'TaxaAssign::join_priors()''s composite join key. grid_id, main_habitat As supplied ('main_habitat' omitted entirely when 'model_obj' has no habitat concept). alpha, beta Beta(alpha, beta) prior parameters. theta_mean, theta_sd Derived fro
 
-### calibrate_kernel_bandwidth(occurrence_data, site_habitat, lambda_grid = c(10, 25, 50, 100, 200), m_grid = 1, covariate_col = NULL, lambda_covariate_grid = NULL, lambda_latitude_grid = NULL, block_size_deg = 0.5, min_block_records = 20L, smoothing = 0.5, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat")
+### calibrate_kernel_bandwidth(occurrence_data, site_habitat, lambda_grid = c(10, 25, 50, 100, 200), m_grid = 1, covariate_col = NULL, lambda_covariate_grid = NULL, lambda_latitude_grid = NULL, block_size_deg = 0.5, min_block_records = 20L, sampling_group_col = NULL, min_group_records = NULL, smoothing = 0.5, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat")
 
 Calibrate kernel bandwidths by leave-one-block-out composition prediction
 
@@ -47,13 +47,15 @@ Chooses 'lambda_km' (and optionally the covariate bandwidth and the back-off mas
 | lambda_latitude_grid | no | NULL | Optional numeric vector: candidate bandwidths (km) for estimate_kernel_priors()'s climate-similarity factor on the absolute-latitude difference. Inf (factor off) is always added to the sweep so the no-factor case competes on equal footing -- a best row with lambda_latitude = Inf means the data rejected the factor. NULL (default) omits the dimension entirely. |
 | block_size_deg | no | 0.5 | Numeric scalar: CV block size in degrees (default 0.5). A block enters scoring only if it holds at least min_block_records records. |
 | min_block_records | no | 20L | Integer, default 20L. |
+| sampling_group_col | no | NULL | Optional column naming a detection-process grouping (e.g. "sampling_group") -- the same column passed to estimate_kernel_priors(). NULL (default) scores ONE pooled composition, which reproduces the pre-2026-09-19 behaviour exactly. Pass it whenever the estimator will be given it. See Why pooling the groups fits the wrong lambda. |
+| min_group_records | no | NULL | Minimum records a group must contribute to a block before that (block, group) cell is scored. NULL (default) follows min_block_records, which makes this function's stratified fit agree on block eligibility with the other way of fitting per group -- subsetting to one group and calling this function on each subset. Lower it to admit sparse cells; a thin group's loss curve will flatten when you do. Ignored without sampling_group_col. |
 | smoothing | no | 0.5 | Laplace pseudo-count added to every species when forming a predicted composition, so held-out species never score -Inf (default 0.5). |
 | taxon_col | no | "taxon_name" | As in estimate_kernel_priors(). |
 | lat_col | no | "decimalLatitude" | As in estimate_kernel_priors(). |
 | lon_col | no | "decimalLongitude" | As in estimate_kernel_priors(). |
 | habitat_col | no | "main_habitat" | As in estimate_kernel_priors(). |
 
-**Value:** A list with results Data frame: one row per parameter combination plus the 'regional' and 'nearest_block' references; columns 'lambda_km', 'lambda_covariate', 'lambda_latitude', 'm', 'mean_logloss' (simple mean over blocks), 'weighted_logloss' (record-weighted), 'blocks_beating_nearest'. best The row minimizing 'weighted_logloss' among kernel rows. n_blocks Number of scored blocks.
+**Value:** A list with results Data frame: one row per parameter combination plus the 'regional' and 'nearest_block' references; columns 'lambda_km', 'lambda_covariate', 'lambda_latitude', 'm', 'mean_logloss' (simple mean over blocks), 'weighted_logloss' (record-weighted), 'blocks_beating_nearest'. best The row minimizing 'weighted_logloss' among kernel rows. n_blocks Number of scored blocks. by_group 'NULL'
 
 ### condition_evidence_on_habitat(evidence, habitat_lookup, site_habitat, w_floor = 0, verbose = TRUE)
 
@@ -216,6 +218,32 @@ A thin, two-stage evidence generator for 'apply_undetected_evidence': for each t
 | verbose | no | FALSE | Logical. Print per-taxon Stage 1/Stage 2 progress. Default FALSE. |
 
 **Value:** A tibble with one row per taxon that cleared both stages: 'taxon_name', 'weight', 'p_conc', 'source' (always '"regional_proximity"') - matches the evidence-table schema 'apply_undetected_evidence' expects - plus audit columns 'distance_km', 'record_year', 'age_years' ('NA' when the matched record had no usable year), 'tile_zoom_used'. Empty tibble (correct schema, zero rows) when nothing in 'zero_
+
+### generate_uncertain_habitat_evidence(occurrence_data, site_lat, site_lon, site_habitat, habitat_levels, taxa = NULL, d_half = 150, w_scale = 1, year_col = NULL, age_half = 15, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", verbose = TRUE)
+
+Presence Evidence From Records Whose Habitat Could Not Be Resolved
+
+Prices the taxa that the kernel estimator cannot see: those with records near the site, all of them at points whose habitat is unassigned, and none in the site's habitat stratum. Returns a standard evidence table for 'apply_undetected_evidence', so these taxa appear in the priors as present in the region instead of vanishing.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| occurrence_data | yes |  | Data frame of cleaned, habitat-labelled occurrence records (one row per record) -- the same table given to estimate_kernel_priors. |
+| site_lat | yes |  | Numeric scalars. Sampling site coordinates. |
+| site_lon | yes |  | Numeric scalars. Sampling site coordinates. |
+| site_habitat | yes |  | Character scalar. The focal habitat. A taxon with ANY record in this stratum is excluded: it already has a resident prior, and adding evidence would double-count it. Must be one of habitat_levels. |
+| habitat_levels | yes |  | Character vector of the scheme's real habitat names -- in the standard workflows, simple_scheme$l1_name. Everything in habitat_col that is not one of these is treated as unassigned. No default, deliberately: a default would be a copy of some producer's sentinel vocabulary living at this function's declaration site, which is the coupling the closed-world test exists to avoid. See Details. |
+| taxa | no | NULL | Optional character vector restricting the result to taxa of interest (e.g. the marker's match list). NULL (default) considers every taxon in occurrence_data. |
+| d_half | no | 150 | Numeric > 0. Distance (km) at which the weight is half w_scale. Default 150, matching generate_regional_proximity_evidence. Pass the run's own value so the two sources are priced on one scale. |
+| w_scale | no | 1 | Numeric in (0, 1]. Weight at zero distance. Default 1. Pass the run's own value. |
+| year_col | no | NULL | Optional column of record years. When supplied, p_conc = exp(-age_years / age_half) from the nearest record's year, matching the regional-proximity generator. NULL (default) leaves p_conc = 1. |
+| age_half | no | 15 | Numeric > 0. Age (years) at which p_conc halves. Default 15. Ignored when year_col is NULL. |
+| taxon_col | no | "taxon_name" | Column names in occurrence_data. Defaults "taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat". |
+| lat_col | no | "decimalLatitude" | Column names in occurrence_data. Defaults "taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat". |
+| lon_col | no | "decimalLongitude" | Column names in occurrence_data. Defaults "taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat". |
+| habitat_col | no | "main_habitat" | Column names in occurrence_data. Defaults "taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat". |
+| verbose | no | TRUE | Logical. Report counts. Default TRUE. |
+
+**Value:** A data frame, one row per qualifying taxon, with the evidence schema 'apply_undetected_evidence' expects - 'taxon_name', 'weight', 'p_conc', 'source' (always '"uncertain_habitat_proximity"') - plus audit columns 'distance_km' (to the nearest unassigned-habitat record), 'n_records_unassigned' (how many such records the taxon has) and 'record_year'/'age_years' ('NA' without 'year_col'). Zero rows wi
 
 ### generate_undetected_diversity(model_obj, jeffreys_threshold = 2L, singleton_ess = 2L, taxonomy = NULL)
 
