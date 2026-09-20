@@ -1308,9 +1308,8 @@ apply_coverage_constraints <- function(likelihood_df,
 #' body). Xeno-canto v3 requires an application-scoped API key (register at
 #' xeno-canto.org/explore/api) via the \code{XC_API_KEY} environment variable,
 #' and tag-based query syntax (\code{gen:Genus sp:species type:call}) rather
-#' than v2's free-text query. The v2 endpoint this previously called
-#' (\code{api/2/recordings}) is fully removed (404 unconditionally) -- see
-#' \code{ecosystem_docs/REENTRY_PROMPT_session124_image_acoustic_workflows.md}.
+#' than v2's free-text query. Xeno-canto's v2 endpoint
+#' (\code{api/2/recordings}) is fully removed (404 unconditionally).
 #' @noRd
 .xc_recordings_raw <- function(species_name) {
   if (!requireNamespace("httr2", quietly = TRUE)) {
