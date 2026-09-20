@@ -375,3 +375,81 @@ reasoning and verification status are recorded in this package's own
 - `.extract_param_docs()` reads `doc$inputs`, the field the metadata actually
   uses. It had been reading `doc$params`, which matched nothing, so every
   generated parameter block had read "(no params)".
+
+------------------------------------------------------------------------
+
+## Changes since this review (2026-09-18 to 2026-09-20)
+
+Listed so a reviewer re-reading this document is not surprised by code that
+postdates it. This is the largest block of change since the review: the
+package's context layer was replaced outright. Per-change reasoning and
+verification status are in this package's `CLAUDE.md` and `NEWS.md`; the
+contract they were built against is
+`ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md`.
+
+**The hand-maintained metadata is gone.** `inst/metadata/*.json` (94 typed
+function-signature entries) and `R/metadata.R` were deleted. `R/registry.R`
+now introspects the installed packages at run time via
+`getNamespaceExports()`, `formals()` and `tools::Rd_db()`. Nothing about a
+sibling package's interface is typed by hand in this package any more, so the
+class of defect where a JSON entry silently disagreed with the installed
+function cannot recur. Cached per package and keyed on version, `Built` date
+and a schema constant.
+
+**New exported functions**, all documented in `README.md`:
+
+- `workflow_check()` -- reports whether this machine can run a given path
+  (R, packages, keys, network, binaries, cache), scoped to a set of edge ids.
+- `sniff_input()` -- classifies a file or directory against the workflow
+  graph's input nodes.
+- `workflow_registry()` -- the introspected registry described above.
+- `workflow_export_prompts()` -- writes a portable prompt pack for use with an
+  LLM that has no TaxaWizard installation.
+
+`workflow_engine(metadata =)` is deprecated in favour of `registry =`.
+
+**New internal machinery**: `R/validate.R` (`.validate_snippets()`, an AST walk
+asserting every snippet's calls and named arguments exist in the installed
+packages), `R/setup.R`, `R/pack.R`, and a Tier-B fallback that substitutes
+generated documentation for any snippet failing validation.
+
+**Defects found and fixed during this work**, recorded because each is a class
+a reviewer may want to probe elsewhere:
+
+- Rd argument parsing read `Rd2txt()`'s *rendered* output, where terms are
+  right-aligned into a column; the parser read that leading whitespace as a
+  line continuation. 318 of 1387 parameters had no documentation and 233 more
+  carried a neighbouring parameter's text. Now parsed structurally from the Rd
+  tree; coverage is 1387/1387.
+- Generated scripts cached each step on its step NUMBER alone, so editing a
+  parameter and re-running replayed the old result under the new parameters.
+  Steps now carry a signature over their code and the parameters they read.
+- `.detect_paths_in_text()` matched only whitespace-free tokens, so an
+  unquoted path containing a space was never inspected.
+- An LLM-invented edge id reached a generated script's Step 0, which then
+  reported a requirement check it had not performed.
+- Two graph snippets calibrated a kernel bandwidth on pooled data and then
+  estimated per group.
+
+**Verification.** 1044 tests pass; `devtools::check()` reports 0 errors, 0
+warnings, 0 notes. Two dry runs exercise the package end to end and are kept
+in `diagnostics/taxawizard_dry_runs/`: a cold chat given only the exported
+pack, and a console run that drives the real engine to a generated script and
+executes it against a fixture. The console arm is what found the invented edge
+id and the path-with-spaces defect.
+
+**Known gaps, stated rather than left to be discovered.**
+
+- The Bayesian arm of the console dry run is not built. Every Bayesian route
+  costs 30-60 minutes with live NCBI and GBIF calls. A design is written up in
+  `ecosystem_docs/REENTRY_PROMPT_p7_bayesian_dry_run.md`.
+- `.validate_snippets()` checks the *shape* of a call -- that the function and
+  its argument names exist. It cannot catch a semantically wrong call whose
+  arguments are all real, which is how the pooled-lambda snippet defect
+  survived it.
+- The dry-run checks parse `Pkg::fn` tokens, so a package named only in prose
+  is never validated.
+- Non-ASCII characters remain in several `R/` files (em-dashes and arrows in
+  comments and roxygen, all predating this review). `Encoding: UTF-8` is
+  declared and `R CMD check --as-cran` is clean, so these are a house-style
+  item rather than a defect.

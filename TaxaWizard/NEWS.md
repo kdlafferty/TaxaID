@@ -1,5 +1,43 @@
 # TaxaWizard 0.1.0
 
+## 2026-09-19 / 2026-09-20
+
+* Generated scripts no longer replay a stale result when you edit a parameter.
+  Each step now stores a signature beside its checkpoint -- a digest of the
+  step's own code plus the values of the parameters that step actually reads --
+  and a checkpoint is reused only when that signature still matches. A step
+  whose inputs changed also clears every later checkpoint, since those were
+  computed from its old output. Previously the cache was keyed on the step
+  NUMBER alone, so editing a parameter and re-running printed the old answer
+  under the new parameters with no warning, and the outer existence check also
+  short-circuited `TaxaFetch`'s content-addressed GBIF cache before it could
+  notice the query had changed. `.append_to_script()` widens the new
+  `.workflow_params` list the same way it widens Step 0.
+* `sniff_input()` now runs on paths containing spaces. `.detect_paths_in_text()`
+  matched only whitespace-free tokens, so an unquoted path through a folder
+  such as `My Drive` was never inspected and `{{SNIFF_RESULT}}` silently
+  degraded to "nothing was inspected". Detection now also anchors on a
+  data-file extension and allows interior spaces, and trims trailing sentence
+  punctuation; `file.exists()` still adjudicates, so prose is not mistaken for
+  a path.
+* An edge id invented by the LLM no longer reaches a generated script's Step 0.
+  `.generate_script()` and `.widen_step0_edges()` filter through
+  `.keep_known_edges()`, which warns rather than dropping silently and falls
+  back to `edges = NULL` when every id is dropped -- an empty `c()` would check
+  nothing while looking like a pass.
+* `inst/graph/snippets/dist_to_priors_by_group.R` calibrated the kernel
+  bandwidth on POOLED occurrences and then passed `sampling_group_col` to a
+  per-group `estimate_kernel_priors()`, so lambda was fitted on one pooled
+  composition and handed to a per-group estimate. Both calls now receive the
+  same `sampling_group_col`. Both kernel snippets also widen `lambda_grid` to
+  `c(1, 2, 5, 10, 25, 50, 100)` -- the previous `c(25, 50, 100, 200)` could not
+  represent the 10 km optimum production measured -- and now report the
+  kernel's margin over the `regional` and `nearest_block` references, so a
+  reader can see whether the kernel beats not having one.
+* The prompt pack's equality test no longer compares the pack's own generation
+  DATE bytewise, which made it fail every day on the clock alone. The stamp is
+  normalised out of the comparison and asserted separately to still be present.
+
 ## 2026-09-18
 
 * The workflow interview now consumes the setup checker. `workflow_create()`

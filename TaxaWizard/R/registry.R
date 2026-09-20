@@ -294,8 +294,8 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
   class(doc) <- "Rd"
 
   # Rd2txt renders \code{x} through R's quoting, which honours the GLOBAL
-  # useFancyQuotes option: the same Rd yields 'x' or ‘x’ depending on an
-  # ambient setting the caller controls. The registry is cached to disk and
+  # useFancyQuotes option: the same Rd yields plain or fancy-quoted x depending
+  # on an ambient setting the caller controls. The registry is cached to disk and
   # rendered into a pack that has a byte-for-byte equality test, so that option
   # would decide whether the test passes -- and it did: the committed pack was
   # generated under FALSE, and a later refresh under the default TRUE rewrote

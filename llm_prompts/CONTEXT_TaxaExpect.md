@@ -4,7 +4,7 @@
 
 Generates theta priors (occupancy x detectability) for taxonomic assignment from occurrence data (see TaxaFetch). Occurrence data are first summarized at the grid level. At this scale, the user is able to apply spatial models that generate estimates of theta along with expected error. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-19 22:45:44 UTC; unix). 16 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-20 17:03:52 UTC; unix). 16 exported function(s).
 
 ## Functions
 

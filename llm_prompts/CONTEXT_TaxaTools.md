@@ -4,7 +4,7 @@
 
 Provides helper functions for cleaning, verifying, and standardizing taxonomic names across multiple backbones. Capabilities include spell-checking and correcting species names, translating names between taxonomic backbones (e.g., GBIF, NCBI, WoRMS), retrieving classification hierarchies via API, and creating standardized taxon labels at any rank. Also provides LLM provider functions for calling Anthropic, OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for drafting methods and results sections. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-19 06:01:48 UTC; unix). 52 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-20 17:03:49 UTC; unix). 52 exported function(s).
 
 ## Functions
 
