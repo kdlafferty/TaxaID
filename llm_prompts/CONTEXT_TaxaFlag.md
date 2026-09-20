@@ -4,7 +4,7 @@
 
 Identifies and flags anomalous detections in taxonomic assignment results from biological surveys. Detects laboratory and field contamination by comparing read proportions against control samples, flags handler-related artifacts near equipment setup or collection events, and provides LLM-based expert review of habitat fit, geographic plausibility, contaminant risk, and taxonomic scope. Operates on consensus data frames and appends categorical flag columns for user-driven filtering. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-19 06:00:01 UTC; unix). 11 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-20 20:40:31 UTC; unix). 12 exported function(s).
 
 ## Functions
 
@@ -100,7 +100,7 @@ For each taxon in 'taxon_names', finds the nearest record of that taxon already 
 
 **Value:** A data frame, one row per unique entry in 'taxon_names': taxon_name As supplied. n_local_records Count of 'occurrence_data' rows for this taxon with non-missing coordinates. '0' for a taxon with no local record at all - for a genuinely unprecedented taxon this IS the answer, not a failure to find one. dist_nearest_km Geodesic (great-circle) distance in km from the query point to the nearest such r
 
-### flag_contaminant(input_df, event_col = "event_id", taxon_col = "taxon_name", reads_col = "n_reads", control_samples = NULL, sample_type_col = NULL, control_types = NULL, exclude_samples = NULL, contaminant_type = "lab_contaminant", score_thresholds = c(0.5, 0.9), prior_weight = 20, verbose = TRUE)
+### flag_contaminant(input_df, event_col = "event_id", taxon_col = "taxon_name", reads_col = "n_reads", control_samples = NULL, sample_type_col = NULL, control_types = NULL, exclude_samples = NULL, contaminant_type = "lab_contaminant", score_thresholds = c(0.5, 0.9), prior_weight = 20, require_control_evidence = FALSE, site_col = NULL, min_sites_systemic = 2L, verbose = TRUE)
 
 Flag Potential Contaminants by Comparison to Control Samples
 
@@ -119,6 +119,9 @@ Compares read proportions between field samples and control samples (negative co
 | contaminant_type | no | "lab_contaminant" | Character. Label for the type of contamination being assessed, embedded in validity_flag's values (e.g. "invalid_lab_contaminant") -- see @return below. Does NOT change output column NAMES (2026-07-24 -- see Details); those are now fixed (observation_validity/validity_flag/ validity_reason) so every TaxaFlag flag_*() mechanism shares one schema. Common values: "lab_contaminant", "field_contaminant", "positive_control". Default "lab_contaminant". |
 | score_thresholds | no | c(0.5, 0.9) | Numeric vector of length 2. Thresholds for converting observation_validity to validity_flag. Values at or below the first are "invalid_{contaminant_type}" (probable contaminant); at or below the second, "questionable_{contaminant_type}"; higher values are "valid" (likely a genuine detection). Default c(0.5, 0.9). |
 | prior_weight | no | 20 | Numeric (default 20). Empirical Bayes shrinkage strength, in units of "equivalent reads" (Session 152 -- see .compute_contaminant_scores()'s own documentation for why this changed from "equivalent samples" in Session 151). Controls how strongly the final field-vs-control ratio is pulled toward 0.5 (maximally uncertain) when a taxon has little total read support overall. Higher values shrink harder (more conservative, less willing to call a thinly-supported taxon confidently clean or contaminated); 0 disables shrinkage entirely, restoring the raw depth-weighted ratio. |
+| require_control_evidence | no | FALSE | Logical. When TRUE, an ESV that was never detected in ANY control is labelled "no_control_evidence" instead of being scored, and ESVs that ARE seen in a control are split by DIRECTION. Default FALSE for backward compatibility, but TRUE is the defensible setting for new work and FALSE now warns. Why: the shrunken score is driven by READ DEPTH when control detections are rare, so it assigns a contamination verdict to ESVs with no contamination evidence at all. Measured on a real 12S run: of 13,597 ESVs only 43 were ever detected in a single control, yet 10,300 were labelled questionable_lab_contaminant -- the whole middle tier had ZERO blank evidence, and the rate was 75-81\ because it reflects the read-depth distribution rather than contamination. DIRECTION IS THE POINT. Contamination flows control -> sample; CARRYOVER flows sample -> control, which is what happens when a blank picks up a little of an abundant local taxon. The first must be filtered and the second must not, and a symmetric score cannot tell them apart. |
+| site_col | no | NULL | Character or NULL. Column giving each event's site. When supplied, site breadth is computed per taxon and used as a DISCRIMINANT, not merely as extra power: a systemic contaminant (reagent, water supply) appears in controls at MANY sites regardless of which sites' samples carry it, whereas a carryover appears in controls at the ONE site whose samples are full of it. This is what dissolves the pooling-versus-pairing dilemma -- pooling controls buys power but lets one trip's contamination speak for another's, while pairing by event buys specificity at the cost of power (on real data, event-paired controls emptied the invalid tier completely: 0 ESVs, against 43 and 323 in pooled runs). Using the cross-site PATTERN keeps both. |
+| min_sites_systemic | no | 2L | Integer. How many distinct sites must show a control detection before it counts as systemic rather than local. Default 2. Only used when site_col is supplied. |
 | verbose | no | TRUE | Logical. Print summary messages. Default TRUE. |
 
 **Value:** A data frame with one row per taxon, sorted by 'observation_validity' (most likely contaminants first). Columns: '{taxon_col}' Taxon identifier (from input). 'observation_validity' Numeric 0-1. Empirical Bayes-shrunk ratio of the depth-weighted field rate to the total (field + control) rate. Higher = more likely a real, genuine detection; lower = more likely a contaminant. Approaches, but does not
@@ -264,13 +267,54 @@ Lists, and optionally deletes, the per-key files written by 'review_assignments(
 
 **Value:** Invisibly, the inventory data frame ('TaxaTools::list_cache_files()' output) of the files considered.
 
+### validate_controls(input_df, event_col = "event_id", taxon_col = "taxon_name", reads_col = "n_reads", control_samples, site_col = NULL, min_samples_per_site = 3L, headroom_fraction = 0.5, headroom_limit = 0.98, max_null_pairs = 500L, verbose = TRUE)
+
+Validate That Control Samples Actually Look Like Controls
+
+Tests whether each column labelled a control is compositionally consistent with being one, and - in the other direction - whether any column labelled a field sample looks like a control. Mislabelling runs both ways, and a mislabelled field sample sitting in the control set is the more damaging of the two: it makes the real community look like contamination, so 'flag_contaminant' then filters genuine signal.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| input_df | yes |  | Long-format data frame: one row per taxon x column observation, carrying at least event_col, taxon_col and reads_col. |
+| event_col | no | "event_id" | Character. Column identifying the sequenced column (filter, bottle, replicate). Default "event_id". |
+| taxon_col | no | "taxon_name" | Character. Column identifying the feature to compare compositions on -- an ESV/ASV id is preferable to a taxon name, because it does not depend on assignment succeeding. Default "taxon_name". |
+| reads_col | no | "n_reads" | Character. Read-count column. Default "n_reads". |
+| control_samples | yes |  | Character vector of event_col values that are labelled controls. |
+| site_col | no | NULL | Character or NULL. Column grouping columns into sites. When NULL every column is treated as one site, which makes the null a whole-study one and weakens the test; a warning says so. |
+| min_samples_per_site | no | 3L | Integer. Below this many field samples a site cannot form its own null. Default 3. |
+| headroom_fraction | no | 0.5 | Numeric in (0, 1). A control is consistent with being a control when its median distance to the site's samples is at least this far along the room remaining above the sample median: threshold = median(null) + headroom_fraction * (1 - median(null)). Default 0.5, i.e. halfway between "as distant as the samples are from each other" and "completely disjoint". THIS FORM WAS ARRIVED AT BY FAILING TWICE ON REAL DATA, and both failures are worth knowing because each looked reasonable: A high QUANTILE of the null (0.90) is in-range but not robust. A control mislabelled as a sample sits inside the sample set and inflates the very null it is tested against -- with 8 samples plus one disjoint hidden control, 22\ quantile into the contaminated tail. It also has no headroom at heterogeneous sites: a real site with 1,151 samples had a 0.90-quantile of exactly 1.000, so nothing could pass. An additive robust fence, median + 3 * MAD, is robust but LEAVES THE METRIC'S RANGE. Bray-Curtis is bounded at 1, and on real sites this produced thresholds of 1.54 and 1.62, after which the headroom guard fired on 59 of 84 controls. Robustness is not worth an impossible cutoff. Scaling into the remaining headroom is bounded by construction (it can never exceed 1) and depends only on the median, so it keeps the 50\ that made MAD attractive. |
+| headroom_limit | no | 0.98 | Numeric. If a site's null threshold reaches this value the test has no headroom above the samples and cannot pass anything: a control would have to be MORE disjoint than the samples already are from each other. Such columns are reported "untestable_no_headroom" rather than given a confident verdict. Found on real data: a site with 1,151 samples had a null 0.90-quantile of exactly 1.000, which flagged genuine 6-taxon controls as resembling 34-taxon samples. Default 0.98. |
+| max_null_pairs | no | 500L | Integer. Cap on the number of sample-pair distances used to estimate a site's null. The null is O(n^2) in samples, and a real site here had 213 samples = 22,578 pairs, which made the first version of this function unusable (still running after 19 minutes). A few hundred pairs estimate a median and a 0.90 quantile perfectly well, so pairs are sampled at random above this cap and null_n_pairs records how many were actually used. Default 500. |
+| verbose | no | TRUE | Logical. Print a summary. Default TRUE. |
+
+**Value:** A data frame, one row per sequenced column, with the column id, its site, its label, 'n_taxa', 'n_reads', the test statistic 'd_to_samples', the site null ('null_median', 'null_threshold', 'null_n_pairs'), a 'power' verdict and a 'verdict'. Attribute '"site_power"' carries the per-site table. 'verdict' takes: '"consistent_with_control"', '"RESEMBLES_SAMPLE"' (a control that may be a mislabelled sa
+
 ## Quick Start
 
-### Flag contamination from lab blanks
+### Check that the blanks really are blanks (do this first)
 
 ``` r
 library(TaxaFlag)
 
+checked <- validate_controls(
+  input_df        = reads_long,
+  event_col       = "event_id",
+  taxon_col       = "ESVId",     # an ESV id beats a taxon name: it does not
+  reads_col       = "n_reads",   # depend on assignment having succeeded
+  control_samples = blank_ids,
+  site_col        = "Site"       # supply this if you have it; the null is per site
+)
+
+# controls that look like field samples, and samples that look like controls
+checked[checked$verdict %in% c("RESEMBLES_SAMPLE", "RESEMBLES_CONTROL"), ]
+
+# and read the power before believing a clean result
+attr(checked, "site_power")
+```
+
+### Flag contamination from lab blanks
+
+``` r
 flagged <- flag_contaminant(
   input_df               = reads_long,
   taxon_col        = "taxon_name",
@@ -283,6 +327,27 @@ flagged <- flag_contaminant(
 # Output adds: observation_validity, validity_flag, validity_reason
 # Filter to invalid taxa (probable contaminants)
 flagged[flagged$validity_flag == "invalid_lab_contaminant", ]
+```
+
+For new work, gate on evidence and use site breadth:
+
+``` r
+gated <- flag_contaminant(
+  input_df                 = reads_long,
+  taxon_col                = "ESVId",
+  reads_col                = "n_reads",
+  event_col                = "event_id",
+  control_samples          = blank_ids,
+  require_control_evidence = TRUE,   # no verdict without a control detection
+  site_col                 = "Site"  # systemic vs local carryover
+)
+
+# what to actually remove
+gated[gated$validity_flag == "invalid_lab_contaminant", ]
+# what NOT to remove, though the ungated path would have
+gated[gated$validity_flag == "carryover", ]
+# and what simply cannot be assessed
+table(gated$validity_flag)
 ```
 
 ### Flag handler artifacts (camera traps)
