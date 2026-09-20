@@ -81,6 +81,58 @@ utils::globalVariables(c(
 #'   schema. Common values: \code{"lab_contaminant"},
 #'   \code{"field_contaminant"}, \code{"positive_control"}. Default
 #'   \code{"lab_contaminant"}.
+#' @section Evidence-gated states (require_control_evidence = TRUE):
+#' \code{validity_flag} takes these values instead of the score bands:
+#' \itemize{
+#'   \item \code{"no_control_evidence"} -- never detected in any control, so no
+#'     assessment is possible. An honest unknown, and expected to be the large
+#'     majority: on a real 12S run 13,554 of 13,597 taxa were in this state.
+#'   \item \code{"invalid_{contaminant_type}"} -- control rate above sample rate.
+#'     The name is kept so existing downstream filters on \code{invalid_*} keep
+#'     working.
+#'   \item \code{"carryover"} -- present in a control but at or below its sample
+#'     rate. Signal leaking sample -> control, the OPPOSITE direction of travel.
+#'     Must not be filtered; this is the state the score-band design could not
+#'     express, and it is what made abundant local taxa look like contaminants.
+#'   \item \code{"questionable_{contaminant_type}"} -- present in a control with
+#'     rates that do not separate.
+#' }
+#' With \code{site_col}, three columns are added --
+#' \code{site_breadth_control}, \code{site_breadth_sample},
+#' \code{control_sites_shared} -- and a control-enriched taxon confined to ONE
+#' site whose samples also carry it is downgraded to \code{"carryover"}.
+#'
+#' @param require_control_evidence Logical. When TRUE, an ESV that was never
+#'   detected in ANY control is labelled \code{"no_control_evidence"} instead of
+#'   being scored, and ESVs that ARE seen in a control are split by DIRECTION.
+#'   Default FALSE for backward compatibility, but TRUE is the defensible setting
+#'   for new work and FALSE now warns.
+#'
+#'   Why: the shrunken score is driven by READ DEPTH when control detections are
+#'   rare, so it assigns a contamination verdict to ESVs with no contamination
+#'   evidence at all. Measured on a real 12S run: of 13,597 ESVs only 43 were ever
+#'   detected in a single control, yet 10,300 were labelled
+#'   \code{questionable_lab_contaminant} -- the whole middle tier had ZERO blank
+#'   evidence, and the rate was 75-81\% in every marker and workflow checked
+#'   because it reflects the read-depth distribution rather than contamination.
+#'
+#'   DIRECTION IS THE POINT. Contamination flows control -> sample; CARRYOVER flows
+#'   sample -> control, which is what happens when a blank picks up a little of an
+#'   abundant local taxon. The first must be filtered and the second must not, and
+#'   a symmetric score cannot tell them apart.
+#' @param site_col Character or NULL. Column giving each event's site. When
+#'   supplied, site breadth is computed per taxon and used as a DISCRIMINANT, not
+#'   merely as extra power: a systemic contaminant (reagent, water supply) appears
+#'   in controls at MANY sites regardless of which sites' samples carry it, whereas
+#'   a carryover appears in controls at the ONE site whose samples are full of it.
+#'   This is what dissolves the pooling-versus-pairing dilemma -- pooling controls
+#'   buys power but lets one trip's contamination speak for another's, while
+#'   pairing by event buys specificity at the cost of power (on real data,
+#'   event-paired controls emptied the invalid tier completely: 0 ESVs, against 43
+#'   and 323 in pooled runs). Using the cross-site PATTERN keeps both.
+#' @param min_sites_systemic Integer. How many distinct sites must show a control
+#'   detection before it counts as systemic rather than local. Default 2. Only
+#'   used when \code{site_col} is supplied.
 #' @param score_thresholds Numeric vector of length 2. Thresholds for
 #'   converting \code{observation_validity} to \code{validity_flag}. Values
 #'   at or below the first are \code{"invalid_{contaminant_type}"} (probable
@@ -191,6 +243,9 @@ flag_contaminant <- function(input_df,
                              contaminant_type = "lab_contaminant",
                              score_thresholds = c(0.5, 0.9),
                              prior_weight = 20,
+                             require_control_evidence = FALSE,
+                             site_col = NULL,
+                             min_sites_systemic = 2L,
                              verbose = TRUE) {
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
@@ -229,6 +284,12 @@ flag_contaminant <- function(input_df,
     }
   }
 
+  if (!is.null(site_col) && !site_col %in% names(input_df)) {
+    stop(sprintf("Column '%s' not found in input_df.", site_col), call. = FALSE)
+  }
+  if (!is.numeric(min_sites_systemic) || min_sites_systemic < 1) {
+    stop("'min_sites_systemic' must be an integer >= 1.", call. = FALSE)
+  }
   if (!is.numeric(score_thresholds) || length(score_thresholds) != 2L) {
     stop("'score_thresholds' must be a numeric vector of length 2.", call. = FALSE)
   }
@@ -305,6 +366,59 @@ flag_contaminant <- function(input_df,
     TRUE ~ "valid"
   )
 
+  # --- Q3: site breadth as a DISCRIMINANT (opt-in via site_col) --------------
+  if (!is.null(site_col)) {
+    .sb <- unique(data.frame(
+      taxon = as.character(input_df[[taxon_col]]),
+      site  = as.character(input_df[[site_col]]),
+      is_ctl = input_df[[event_col]] %in% control_ids,
+      stringsAsFactors = FALSE))
+    .ctl_sites <- unique(.sb[.sb$is_ctl, c("taxon", "site")])
+    .sam_sites <- unique(.sb[!.sb$is_ctl, c("taxon", "site")])
+    .n_ctl <- table(.ctl_sites$taxon); .n_sam <- table(.sam_sites$taxon)
+    # how many of a taxon's CONTROL sites are also sites where SAMPLES have it:
+    # high concordance means the control detections track the samples, i.e. the
+    # signature of carryover rather than of a systemic source
+    .both <- merge(.ctl_sites, .sam_sites, by = c("taxon", "site"))
+    .n_both <- table(.both$taxon)
+    scores$site_breadth_control <- as.integer(.n_ctl[scores$taxon]); scores$site_breadth_control[is.na(scores$site_breadth_control)] <- 0L
+    scores$site_breadth_sample  <- as.integer(.n_sam[scores$taxon]); scores$site_breadth_sample[is.na(scores$site_breadth_sample)]  <- 0L
+    scores$control_sites_shared <- as.integer(.n_both[scores$taxon]); scores$control_sites_shared[is.na(scores$control_sites_shared)] <- 0L
+  }
+
+  # --- Q2: evidence gate, then direction (opt-in) ----------------------------
+  if (require_control_evidence) {
+    .seen   <- scores$n_controls_present > 0
+    .enrich <- scores$control_rate > scores$field_rate
+    scores$flag <- ifelse(
+      !.seen, "no_control_evidence",
+      ifelse(.enrich, invalid_label,
+             ifelse(scores$control_rate < scores$field_rate, "carryover",
+                    questionable_label)))
+    # Q3 refinement: a control-enriched taxon seen at only ONE site whose samples
+    # also carry it is local carryover, not a systemic contaminant. Downgrading
+    # here is the whole value of having more than one site with controls.
+    if (!is.null(site_col)) {
+      .local <- scores$flag == invalid_label &
+                scores$site_breadth_control < min_sites_systemic &
+                scores$control_sites_shared >= scores$site_breadth_control
+      scores$flag[.local] <- "carryover"
+    }
+  }
+
+  # Warn only where this actually bites, and report the real count -- a blanket
+  # warning on every call is noise, and noise gets switched off.
+  if (!require_control_evidence) {
+    .no_ev_flagged <- sum(scores$n_controls_present == 0 & scores$flag != "valid")
+    if (.no_ev_flagged > 0)
+      warning(sprintf(paste0("flag_contaminant: %d of %d taxa received a ",
+        "contamination verdict WITHOUT EVER BEING DETECTED IN A CONTROL -- they are ",
+        "scored on read-depth shrinkage alone. On a real 12S run this labelled ",
+        "10,300 of 13,597 taxa questionable when only 43 had ever appeared in a ",
+        "control. Set require_control_evidence = TRUE to report those as ",
+        "'no_control_evidence' instead."), .no_ev_flagged, nrow(scores)), call. = FALSE)
+  }
+
   # --- Build reason strings ---
   # Reports the depth-weighted rates that actually drive observation_validity
   # (Session 151), not the old unweighted mean_prop_field/mean_prop_control
@@ -325,12 +439,14 @@ flag_contaminant <- function(input_df,
   # arguments here (taxon_col/score_col/etc. are runtime strings, not syntactic
   # names), so a select-then-rename via names<- is the direct way to do this in
   # base R -- stats::setNames() would be equivalent, not simpler.
+  .extra <- intersect(c("site_breadth_control", "site_breadth_sample",
+                        "control_sites_shared"), names(scores))
   result <- scores[, c(
     "taxon", "contaminant_score", "flag", "reason",
     "mean_prop_field", "mean_prop_control",
     "field_rate", "control_rate",
     "n_field_present", "n_controls_present", "n_controls_total",
-    "n_reads_total"
+    "n_reads_total", .extra
   ), drop = FALSE]
   flag_col <- "validity_flag"
   score_col <- "observation_validity"
@@ -340,7 +456,7 @@ flag_contaminant <- function(input_df,
     "mean_prop_field", "mean_prop_control",
     "field_rate", "control_rate",
     "n_field_present", "n_controls_present", "n_controls_total",
-    "n_reads_total"
+    "n_reads_total", .extra
   )
 
   # Sort by score (most likely contaminants first)

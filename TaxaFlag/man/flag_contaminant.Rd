@@ -16,6 +16,9 @@ flag_contaminant(
   contaminant_type = "lab_contaminant",
   score_thresholds = c(0.5, 0.9),
   prior_weight = 20,
+  require_control_evidence = FALSE,
+  site_col = NULL,
+  min_sites_systemic = 2L,
   verbose = TRUE
 )
 }
@@ -75,6 +78,40 @@ uncertain) when a taxon has little total read support overall. Higher
 values shrink harder (more conservative, less willing to call a
 thinly-supported taxon confidently clean or contaminated); \code{0}
 disables shrinkage entirely, restoring the raw depth-weighted ratio.}
+
+\item{require_control_evidence}{Logical. When TRUE, an ESV that was never
+detected in ANY control is labelled \code{"no_control_evidence"} instead of
+being scored, and ESVs that ARE seen in a control are split by DIRECTION.
+Default FALSE for backward compatibility, but TRUE is the defensible setting
+for new work and FALSE now warns.
+
+Why: the shrunken score is driven by READ DEPTH when control detections are
+rare, so it assigns a contamination verdict to ESVs with no contamination
+evidence at all. Measured on a real 12S run: of 13,597 ESVs only 43 were ever
+detected in a single control, yet 10,300 were labelled
+\code{questionable_lab_contaminant} -- the whole middle tier had ZERO blank
+evidence, and the rate was 75-81\\% in every marker and workflow checked
+because it reflects the read-depth distribution rather than contamination.
+
+DIRECTION IS THE POINT. Contamination flows control -> sample; CARRYOVER flows
+sample -> control, which is what happens when a blank picks up a little of an
+abundant local taxon. The first must be filtered and the second must not, and
+a symmetric score cannot tell them apart.}
+
+\item{site_col}{Character or NULL. Column giving each event's site. When
+supplied, site breadth is computed per taxon and used as a DISCRIMINANT, not
+merely as extra power: a systemic contaminant (reagent, water supply) appears
+in controls at MANY sites regardless of which sites' samples carry it, whereas
+a carryover appears in controls at the ONE site whose samples are full of it.
+This is what dissolves the pooling-versus-pairing dilemma -- pooling controls
+buys power but lets one trip's contamination speak for another's, while
+pairing by event buys specificity at the cost of power (on real data,
+event-paired controls emptied the invalid tier completely: 0 ESVs, against 43
+and 323 in pooled runs). Using the cross-site PATTERN keeps both.}
+
+\item{min_sites_systemic}{Integer. How many distinct sites must show a control
+detection before it counts as systemic rather than local. Default 2. Only
+used when \code{site_col} is supplied.}
 
 \item{verbose}{Logical. Print summary messages. Default \code{TRUE}.}
 }
@@ -165,6 +202,29 @@ underlying score/threshold math -- this is a pure naming/schema change.
 to the two earlier naming eras it already supported) by inspecting
 \code{validity_flag}'s values, not just the column's presence, since the
 column name alone no longer identifies which check produced it.
+}
+
+\section{Evidence-gated states (require_control_evidence = TRUE)}{
+
+\code{validity_flag} takes these values instead of the score bands:
+\itemize{
+\item \code{"no_control_evidence"} -- never detected in any control, so no
+assessment is possible. An honest unknown, and expected to be the large
+majority: on a real 12S run 13,554 of 13,597 taxa were in this state.
+\item \code{"invalid_{contaminant_type}"} -- control rate above sample rate.
+The name is kept so existing downstream filters on \code{invalid_*} keep
+working.
+\item \code{"carryover"} -- present in a control but at or below its sample
+rate. Signal leaking sample -> control, the OPPOSITE direction of travel.
+Must not be filtered; this is the state the score-band design could not
+express, and it is what made abundant local taxa look like contaminants.
+\item \code{"questionable_{contaminant_type}"} -- present in a control with
+rates that do not separate.
+}
+With \code{site_col}, three columns are added --
+\code{site_breadth_control}, \code{site_breadth_sample},
+\code{control_sites_shared} -- and a control-enriched taxon confined to ONE
+site whose samples also carry it is downgraded to \code{"carryover"}.
 }
 
 \examples{
