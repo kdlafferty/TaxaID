@@ -19,6 +19,7 @@ flag_contaminant(
   require_control_evidence = FALSE,
   site_col = NULL,
   min_sites_systemic = 2L,
+  min_control_obs = 2L,
   verbose = TRUE
 )
 }
@@ -102,7 +103,7 @@ a symmetric score cannot tell them apart.}
 supplied, site breadth is computed per taxon and used as a DISCRIMINANT, not
 merely as extra power: a systemic contaminant (reagent, water supply) appears
 in controls at MANY sites regardless of which sites' samples carry it, whereas
-a carryover appears in controls at the ONE site whose samples are full of it.
+a local source appears in controls at the ONE site whose samples are full of it.
 This is what dissolves the pooling-versus-pairing dilemma -- pooling controls
 buys power but lets one trip's contamination speak for another's, while
 pairing by event buys specificity at the cost of power (on real data,
@@ -112,6 +113,20 @@ and 323 in pooled runs). Using the cross-site PATTERN keeps both.}
 \item{min_sites_systemic}{Integer. How many distinct sites must show a control
 detection before it counts as systemic rather than local. Default 2. Only
 used when \code{site_col} is supplied.}
+
+\item{min_control_obs}{Integer. Minimum number of distinct controls a taxon must
+appear in before the rate comparison is allowed to condemn it. Default 2.
+Only used when \code{require_control_evidence = TRUE}.
+
+This exists because the direction test is a BARE RATE INEQUALITY, and rates
+built on one observation are not comparable to rates built on hundreds: with
+91 controls against 1,052 samples, one stray read in one blank scores
+1/91 = 0.011 and outvotes two genuine detections at 2/1052 = 0.0019. On real
+data 55-63 per cent of everything the gate condemned rested on a single
+control observation, and the tail contained genuine organisms. Setting this to
+1 restores the unfloored behaviour; a proper one-sided significance test with
+a multiple-testing correction would be the principled replacement and is NOT
+implemented.}
 
 \item{verbose}{Logical. Print summary messages. Default \code{TRUE}.}
 }
@@ -214,8 +229,10 @@ overwhelming majority: on a real 12S run it covered 16,695 of 16,826 ESVs
 \code{validity_flag != "valid"} filter would therefore delete nearly the whole
 dataset, where before the gate it deleted a merely implausible 73\%.
 
-\code{"carryover"} is also not \code{"valid"}, and it is the state that exists
-precisely to say DO NOT REMOVE THIS.
+\code{"not_control_enriched"} and \code{"single_site_enriched"} are also not
+\code{"valid"}, and they are the states that exist precisely to say DO NOT
+REMOVE THIS. Neither is \code{"insufficient_control_evidence"}, which means the
+question was not answerable on the evidence available.
 
 The removal predicate is the \code{invalid_} prefix, never the negation of
 \code{"valid"}:
@@ -241,17 +258,28 @@ majority: on a real 12S run 13,554 of 13,597 taxa were in this state.
 \item \code{"invalid_{contaminant_type}"} -- control rate above sample rate.
 The name is kept so existing downstream filters on \code{invalid_*} keep
 working.
-\item \code{"carryover"} -- present in a control but at or below its sample
-rate. Signal leaking sample -> control, the OPPOSITE direction of travel.
-Must not be filtered; this is the state the score-band design could not
-express, and it is what made abundant local taxa look like contaminants.
+\item \code{"not_control_enriched"} -- present in a control but at or below
+its sample rate. Signal leaking sample -> control, the OPPOSITE direction of
+travel. Must not be filtered; this is the state the score-band design could
+not express, and it is what made abundant local taxa look like contaminants.
+Named for what was measured, not for a mechanism: it was formerly
+\code{"carryover"}, which asserted a direction of travel the rate
+comparison alone cannot establish.
+\item \code{"insufficient_control_evidence"} -- seen in at least one control
+but fewer than \code{min_control_obs}. Not assessable, because a rate built
+on one observation is not comparable to a rate built on hundreds.
+\item \code{"single_site_enriched"} -- control-enriched, but confined to one
+site whose samples also carry it. Local, not a systemic source. Distinct
+from \code{"not_control_enriched"}: this taxon IS enriched in controls, so
+the two labels make opposite claims and must not share a name.
 \item \code{"questionable_{contaminant_type}"} -- present in a control with
 rates that do not separate.
 }
 With \code{site_col}, three columns are added --
 \code{site_breadth_control}, \code{site_breadth_sample},
 \code{control_sites_shared} -- and a control-enriched taxon confined to ONE
-site whose samples also carry it is downgraded to \code{"carryover"}.
+site whose samples also carry it is downgraded to
+\code{"single_site_enriched"}.
 }
 
 \examples{

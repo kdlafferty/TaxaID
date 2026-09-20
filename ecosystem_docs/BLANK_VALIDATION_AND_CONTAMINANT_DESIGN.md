@@ -85,16 +85,16 @@ a state, not a score band:
     no_evidence    seen in 0 controls. Cannot be assessed. (Expected to be the large
                    majority. This is an honest "unknown", not a weak "suspect".)
     contaminant    present in controls at a rate ABOVE its rate in samples
-    carryover      present in controls at or BELOW its sample rate -- the blank caught
+    not_control_enriched   present in controls at or BELOW its sample rate -- the blank caught
                    a little of the local community. DO NOT FILTER: this is real signal
                    leaking into the control, the opposite direction of travel.
     ambiguous      present in controls, rates statistically indistinguishable
 
-The `carryover` state is the one the current design cannot express, and it is exactly
+The `not_control_enriched` state is the one the old design cannot express, and it is exactly
 what makes an abundant local taxon look like a contaminant.
 
 ### Direction is the whole game
-Contamination flows blank -> sample; carryover flows sample -> blank. The statistic
+Contamination flows blank -> sample; the reverse flows sample -> blank. The statistic
 must be directional (rate in controls vs rate in samples, with the comparison's
 uncertainty), not a symmetric "how associated is this ESV with controls".
 
@@ -158,7 +158,8 @@ dependency.
         -> per-column verdict + per-site power, two-sided
 
     flag_contaminant(..., require_control_evidence = TRUE, site_col = NULL)
-        -> adds the no_evidence / carryover states and the site-breadth discriminant,
+        -> adds the no_evidence / not_control_enriched / single_site_enriched /
+           insufficient_control_evidence states and the site-breadth discriminant,
            with the evidence columns carried through
 
 `require_control_evidence` defaults FALSE for backward compatibility but should be
@@ -172,3 +173,28 @@ Prove BOTH directions on real data, as with every other guard in this project:
   - it STAYS SILENT on a clean control set
 A check that only demonstrates the first is half-tested, and the half it skips is the
 one that gets it switched off.
+
+
+## Decided and built, 2026-09-20 (user decisions 1a and 5b)
+
+`carryover` SPLIT into two states rather than renamed to one, because the single
+state covered two cases making OPPOSITE claims about enrichment:
+
+    not_control_enriched    control rate at or below sample rate -- not enriched
+    single_site_enriched    control-ENRICHED, but at one site whose samples
+                            also carry it, so local rather than systemic
+
+A single name would have been false for whichever case it was not written for, and
+the old name additionally asserted a direction of travel that a rate comparison
+cannot establish.
+
+EVIDENCE FLOOR added: `min_control_obs` (default 2). The direction test is a bare
+rate inequality, and with 91 controls against 1,052 samples one stray read in one
+blank scores 1/91 = 0.011 and outvotes two genuine detections at 2/1052 = 0.0019.
+Measured: 55-63 per cent of everything the gate condemned rested on one control
+observation, and that tail held a tidepool sculpin, two red macroalgae and a sand
+dollar. Taxa below the floor report `insufficient_control_evidence`.
+
+STILL NOT BUILT, and it is the principled version: a one-sided significance test
+(Fisher or binomial) with a multiple-testing correction, replacing `>`. The floor
+is a targeted stopgap against single-observation evidence, not a general fix.

@@ -275,20 +275,46 @@ flag_habitat_inconsistencies <- function(
 
   # ne_coastline() alone OMITS smaller islands. In the California Channel
   # Islands it contains Santa Cruz, Santa Rosa, San Miguel, San Nicolas,
-  # Catalina and San Clemente but NOT Anacapa or Santa Barbara Island, which
-  # then score 8.8 km and 46.7 km from "the coast" instead of ~0 (measured on
-  # real PtConception occurrence data, 2026-09-15). Union in the 10m
-  # minor-islands coastline so island records are scored against their own
-  # shoreline. ne_download() is cached by rnaturalearth after first use; if it
-  # is unreachable we fall back to the main coastline and warn rather than fail.
+  # Catalina and San Clemente but NOT Anacapa or Santa Barbara Island. Union in
+  # the 10m minor-islands coastline so island records are scored against their
+  # own shoreline.
+  #
+  # MEASURED END TO END 2026-09-20 (distance from an island point to the
+  # coastline geometry, s2 on):
+  #
+  #                    mainland only   with minor islands
+  #   Anacapa              11.78 km          0.77 km
+  #   Santa Barbara I.     40.26 km          0.52 km
+  #
+  # Against the 1 km default `coast_buffer_m` both islands were previously well
+  # outside the coastal zone, so intertidal island records were scored as though
+  # they sat in open ocean.
+  #
+  # WHAT THIS DOES NOT FIX. Pacific-side Baja islands are already in the MAIN
+  # coastline and were never broken (Isla Guadalupe 1.42 km, Islas San Benito
+  # 0.30, Isla Natividad 0.26, Los Coronados 1.53, Isla Cedros 3.70). The known
+  # residual is ISLA TODOS SANTOS off Ensenada at 7.94 km from BOTH layers --
+  # absent from each, and outside a 1 km buffer. Records there are still
+  # mis-scored.
   coast_sf <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf")
-  minor_sf <- tryCatch(
+  # VENDORED FIRST, download second. Verified 2026-09-20: before vendoring there
+  # was no cached copy of this layer anywhere on the development machine, so the
+  # ne_download() branch had most likely never once succeeded and the tryCatch
+  # fallback below -- mainland coastline, plus a warning easy to lose in a long
+  # log -- was what actually ran. A patch that depends on a network call at
+  # analysis time is a patch that silently is not applied. The layer is 0.24 MB,
+  # so shipping it costs nothing next to being wrong by 40 km.
+  minor_sf <- tryCatch({
+    .v <- system.file("extdata", "ne_10m_minor_islands_coastline.rds",
+                      package = "TaxaHabitat")
+    if (nzchar(.v) && file.exists(.v)) readRDS(.v) else stop("not vendored")
+  }, error = function(e) tryCatch(
     rnaturalearth::ne_download(
       scale = 10, type = "minor_islands_coastline",
       category = "physical", returnclass = "sf"
     ),
-    error = function(e) NULL
-  )
+    error = function(e2) NULL
+  ))
   if (is.null(minor_sf)) {
     warning(
       "flag_habitat_inconsistencies(): could not obtain the Natural Earth ",

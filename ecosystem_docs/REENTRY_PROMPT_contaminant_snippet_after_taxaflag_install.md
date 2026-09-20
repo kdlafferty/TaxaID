@@ -64,11 +64,12 @@ downstream filtering `validity_flag != "valid"` sweeps the whole tier in.
 
 ## DO NOT WRITE "CARRYOVER" INTO USER-FACING TEXT YET
 
-The `carryover` state is being renamed. On the real archive it rescues some
+The `carryover` state WAS RENAMED, 2026-09-20 (see BLANK_VALIDATION_AND_CONTAMINANT_DESIGN.md). On the real archive it rescues some
 *Homo sapiens*, *Sus scrofa* and *Bos* ESVs -- field-handling contamination that is
 more abundant in samples than in controls, so it fails the control-enrichment test.
 The statistic is right; the label overclaims, because all it establishes is "not
-control-enriched" while "carryover" asserts a mechanism. A rename to
+control-enriched" while "carryover" asserted a mechanism. The rename landed as a SPLIT into `not_control_enriched` + `single_site_enriched`, plus a new `insufficient_control_evidence` state from the `min_control_obs` floor. Superseded text follows:
+> A rename to
 `not_control_enriched` was with the user as of 2026-09-20. **Check what it settled
 on before documenting this anywhere.**
 

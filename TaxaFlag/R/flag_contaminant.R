@@ -90,8 +90,10 @@ utils::globalVariables(c(
 #' \code{validity_flag != "valid"} filter would therefore delete nearly the whole
 #' dataset, where before the gate it deleted a merely implausible 73%.
 #'
-#' \code{"carryover"} is also not \code{"valid"}, and it is the state that exists
-#' precisely to say DO NOT REMOVE THIS.
+#' \code{"not_control_enriched"} and \code{"single_site_enriched"} are also not
+#' \code{"valid"}, and they are the states that exist precisely to say DO NOT
+#' REMOVE THIS. Neither is \code{"insufficient_control_evidence"}, which means the
+#' question was not answerable on the evidence available.
 #'
 #' The removal predicate is the \code{invalid_} prefix, never the negation of
 #' \code{"valid"}:
@@ -115,17 +117,28 @@ utils::globalVariables(c(
 #'   \item \code{"invalid_{contaminant_type}"} -- control rate above sample rate.
 #'     The name is kept so existing downstream filters on \code{invalid_*} keep
 #'     working.
-#'   \item \code{"carryover"} -- present in a control but at or below its sample
-#'     rate. Signal leaking sample -> control, the OPPOSITE direction of travel.
-#'     Must not be filtered; this is the state the score-band design could not
-#'     express, and it is what made abundant local taxa look like contaminants.
+#'   \item \code{"not_control_enriched"} -- present in a control but at or below
+#'     its sample rate. Signal leaking sample -> control, the OPPOSITE direction of
+#'     travel. Must not be filtered; this is the state the score-band design could
+#'     not express, and it is what made abundant local taxa look like contaminants.
+#'     Named for what was measured, not for a mechanism: it was formerly
+#'     \code{"carryover"}, which asserted a direction of travel the rate
+#'     comparison alone cannot establish.
+#'   \item \code{"insufficient_control_evidence"} -- seen in at least one control
+#'     but fewer than \code{min_control_obs}. Not assessable, because a rate built
+#'     on one observation is not comparable to a rate built on hundreds.
+#'   \item \code{"single_site_enriched"} -- control-enriched, but confined to one
+#'     site whose samples also carry it. Local, not a systemic source. Distinct
+#'     from \code{"not_control_enriched"}: this taxon IS enriched in controls, so
+#'     the two labels make opposite claims and must not share a name.
 #'   \item \code{"questionable_{contaminant_type}"} -- present in a control with
 #'     rates that do not separate.
 #' }
 #' With \code{site_col}, three columns are added --
 #' \code{site_breadth_control}, \code{site_breadth_sample},
 #' \code{control_sites_shared} -- and a control-enriched taxon confined to ONE
-#' site whose samples also carry it is downgraded to \code{"carryover"}.
+#' site whose samples also carry it is downgraded to
+#' \code{"single_site_enriched"}.
 #'
 #' @param require_control_evidence Logical. When TRUE, an ESV that was never
 #'   detected in ANY control is labelled \code{"no_control_evidence"} instead of
@@ -149,7 +162,7 @@ utils::globalVariables(c(
 #'   supplied, site breadth is computed per taxon and used as a DISCRIMINANT, not
 #'   merely as extra power: a systemic contaminant (reagent, water supply) appears
 #'   in controls at MANY sites regardless of which sites' samples carry it, whereas
-#'   a carryover appears in controls at the ONE site whose samples are full of it.
+#'   a local source appears in controls at the ONE site whose samples are full of it.
 #'   This is what dissolves the pooling-versus-pairing dilemma -- pooling controls
 #'   buys power but lets one trip's contamination speak for another's, while
 #'   pairing by event buys specificity at the cost of power (on real data,
@@ -158,6 +171,19 @@ utils::globalVariables(c(
 #' @param min_sites_systemic Integer. How many distinct sites must show a control
 #'   detection before it counts as systemic rather than local. Default 2. Only
 #'   used when \code{site_col} is supplied.
+#' @param min_control_obs Integer. Minimum number of distinct controls a taxon must
+#'   appear in before the rate comparison is allowed to condemn it. Default 2.
+#'   Only used when \code{require_control_evidence = TRUE}.
+#'
+#'   This exists because the direction test is a BARE RATE INEQUALITY, and rates
+#'   built on one observation are not comparable to rates built on hundreds: with
+#'   91 controls against 1,052 samples, one stray read in one blank scores
+#'   1/91 = 0.011 and outvotes two genuine detections at 2/1052 = 0.0019. On real
+#'   data 55-63 per cent of everything the gate condemned rested on a single
+#'   control observation, and the tail contained genuine organisms. Setting this to
+#'   1 restores the unfloored behaviour; a proper one-sided significance test with
+#'   a multiple-testing correction would be the principled replacement and is NOT
+#'   implemented.
 #' @param score_thresholds Numeric vector of length 2. Thresholds for
 #'   converting \code{observation_validity} to \code{validity_flag}. Values
 #'   at or below the first are \code{"invalid_{contaminant_type}"} (probable
@@ -271,6 +297,7 @@ flag_contaminant <- function(input_df,
                              require_control_evidence = FALSE,
                              site_col = NULL,
                              min_sites_systemic = 2L,
+                             min_control_obs = 2L,
                              verbose = TRUE) {
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
@@ -311,6 +338,9 @@ flag_contaminant <- function(input_df,
 
   if (!is.null(site_col) && !site_col %in% names(input_df)) {
     stop(sprintf("Column '%s' not found in input_df.", site_col), call. = FALSE)
+  }
+  if (!is.numeric(min_control_obs) || min_control_obs < 1) {
+    stop("'min_control_obs' must be an integer >= 1.", call. = FALSE)
   }
   if (!is.numeric(min_sites_systemic) || min_sites_systemic < 1) {
     stop("'min_sites_systemic' must be an integer >= 1.", call. = FALSE)
@@ -403,7 +433,7 @@ flag_contaminant <- function(input_df,
     .n_ctl <- table(.ctl_sites$taxon); .n_sam <- table(.sam_sites$taxon)
     # how many of a taxon's CONTROL sites are also sites where SAMPLES have it:
     # high concordance means the control detections track the samples, i.e. the
-    # signature of carryover rather than of a systemic source
+    # signature of a LOCAL source rather than of a systemic one
     .both <- merge(.ctl_sites, .sam_sites, by = c("taxon", "site"))
     .n_both <- table(.both$taxon)
     scores$site_breadth_control <- as.integer(.n_ctl[scores$taxon]); scores$site_breadth_control[is.na(scores$site_breadth_control)] <- 0L
@@ -414,20 +444,36 @@ flag_contaminant <- function(input_df,
   # --- Q2: evidence gate, then direction (opt-in) ----------------------------
   if (require_control_evidence) {
     .seen   <- scores$n_controls_present > 0
+    # EVIDENCE FLOOR. The direction test below is a bare rate inequality, and
+    # rates built on ONE control observation are not comparable to rates built on
+    # hundreds of samples: with 91 controls against 1,052 field samples, a single
+    # stray read in a single blank gives 1/91 = 0.011 and beats two genuine
+    # detections at 2/1052 = 0.0019. Measured on the California Intertidal
+    # archive, 55-63 per cent of everything the gate condemned rested on exactly
+    # one control observation, and the tail included real organisms -- a tidepool
+    # sculpin, two red macroalgae, a sand dollar. Taxa below the floor are
+    # reported as untested rather than condemned on one observation.
+    .thin   <- .seen & scores$n_controls_present < min_control_obs
     .enrich <- scores$control_rate > scores$field_rate
     scores$flag <- ifelse(
       !.seen, "no_control_evidence",
-      ifelse(.enrich, invalid_label,
-             ifelse(scores$control_rate < scores$field_rate, "carryover",
-                    questionable_label)))
+      ifelse(.thin, "insufficient_control_evidence",
+        ifelse(.enrich, invalid_label,
+               ifelse(scores$control_rate < scores$field_rate,
+                      "not_control_enriched", questionable_label))))
     # Q3 refinement: a control-enriched taxon seen at only ONE site whose samples
-    # also carry it is local carryover, not a systemic contaminant. Downgrading
-    # here is the whole value of having more than one site with controls.
+    # also carry it is LOCAL, not a systemic source. Downgrading here is the whole
+    # value of having more than one site with controls.
+    #
+    # This gets its own label rather than sharing one with the rate-based state
+    # above. The two mean opposite things about enrichment -- "not enriched in
+    # controls" versus "enriched, but at a single site" -- so one name covering
+    # both would be false for whichever case it was not written for.
     if (!is.null(site_col)) {
       .local <- scores$flag == invalid_label &
                 scores$site_breadth_control < min_sites_systemic &
                 scores$control_sites_shared >= scores$site_breadth_control
-      scores$flag[.local] <- "carryover"
+      scores$flag[.local] <- "single_site_enriched"
     }
   }
 

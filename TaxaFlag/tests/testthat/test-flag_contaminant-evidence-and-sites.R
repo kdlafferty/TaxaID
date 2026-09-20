@@ -1,17 +1,33 @@
 # Q2 (evidence gate + direction) and Q3 (site breadth as a discriminant) from
 # ecosystem_docs/BLANK_VALIDATION_AND_CONTAMINANT_DESIGN.md.
 
-# 3 sites, 2 samples + 1 control each, carrying three taxa by design:
-#   SYSTEMIC  in the control at EVERY site, absent from samples  -> contaminant
-#   LOCAL     in the control at ONE site whose samples are full of it -> carryover
-#   CLEAN     only ever in samples                               -> no evidence
+# 3 sites, 2 samples each; site1 has TWO controls, sites 2-3 one each. Taxa:
+#   SYSTEMIC   in a control at EVERY site, absent from samples -> contaminant
+#   LOCAL      in BOTH controls at ONE site whose samples are full of it
+#              -> single_site_enriched
+#   CLEAN      only ever in samples                            -> no evidence
+#   ONEBLANK   control-enriched but in exactly ONE control      -> below the
+#              evidence floor, so untested rather than condemned
+#
+# site1 deliberately carries two controls so the EVIDENCE FLOOR and the SITE
+# BREADTH discriminant can be tested independently. With one control at site1,
+# LOCAL would fall below the floor and never reach the breadth rule at all -- the
+# breadth test would then pass for the wrong reason.
 .mk3 <- function() {
   rows <- list(); add <- function(...) rows[[length(rows) + 1L]] <<- data.frame(..., stringsAsFactors = FALSE)
   for (s in 1:3) {
     ctl <- sprintf("B%d", s)
     add(event_id = ctl, site = paste0("site", s), taxon_name = "SYSTEMIC", n_reads = 100)
     add(event_id = ctl, site = paste0("site", s), taxon_name = "filler",   n_reads = 50)
-    if (s == 1) add(event_id = ctl, site = "site1", taxon_name = "LOCAL", n_reads = 200)
+    if (s == 1) {
+      add(event_id = ctl, site = "site1", taxon_name = "LOCAL", n_reads = 200)
+      # second control at site1: LOCAL clears the floor, still at ONE site
+      add(event_id = "B1b", site = "site1", taxon_name = "LOCAL",    n_reads = 200)
+      add(event_id = "B1b", site = "site1", taxon_name = "SYSTEMIC", n_reads = 100)
+      add(event_id = "B1b", site = "site1", taxon_name = "filler",  n_reads = 50)
+      # ONEBLANK: strongly control-enriched on a SINGLE control observation
+      add(event_id = ctl,   site = "site1", taxon_name = "ONEBLANK", n_reads = 400)
+    }
     for (i in 1:2) {
       sm <- sprintf("S%d_%d", s, i)
       add(event_id = sm, site = paste0("site", s), taxon_name = "CLEAN", n_reads = 9000)
@@ -19,12 +35,15 @@
       # THIN: never in a control, but so few reads that shrinkage drags its score
       # below the 'valid' band -- a verdict on no evidence, which is the defect
       add(event_id = sm, site = paste0("site", s), taxon_name = "THIN", n_reads = 2)
-      if (s == 1) add(event_id = sm, site = "site1", taxon_name = "LOCAL", n_reads = 100)
+      if (s == 1) {
+        add(event_id = sm, site = "site1", taxon_name = "LOCAL", n_reads = 100)
+        add(event_id = sm, site = "site1", taxon_name = "ONEBLANK", n_reads = 3)
+      }
     }
   }
   do.call(rbind, rows)
 }
-.ctls <- c("B1", "B2", "B3")
+.ctls <- c("B1", "B1b", "B2", "B3")
 
 test_that("Q2: a taxon never seen in a control gets no_control_evidence, not a verdict", {
   df <- .mk3()
@@ -35,7 +54,7 @@ test_that("Q2: a taxon never seen in a control gets no_control_evidence, not a v
   expect_identical(clean$validity_flag, "no_control_evidence")
 })
 
-test_that("Q2: direction separates contamination from carryover", {
+test_that("Q2: direction separates contamination from non-enrichment", {
   df <- .mk3()
   r <- flag_contaminant(df, control_samples = .ctls, require_control_evidence = TRUE,
                         verbose = FALSE)
@@ -72,14 +91,16 @@ test_that("Q3: a control detection at ONE site whose samples carry it is downgra
   expect_identical(q3$validity_flag[q3$taxon_name == "SYSTEMIC"], "invalid_lab_contaminant")
   # LOCAL is local: one control site, and that site's samples have it
   expect_equal(q3$control_sites_shared[q3$taxon_name == "LOCAL"], 1L)
-  expect_identical(q3$validity_flag[q3$taxon_name == "LOCAL"], "carryover")
+  expect_identical(q3$validity_flag[q3$taxon_name == "LOCAL"], "single_site_enriched")
 })
 
 test_that("the default is unchanged, and warns with a COUNT when it matters", {
   df <- .mk3()
   old <- suppressWarnings(flag_contaminant(df, control_samples = .ctls, verbose = FALSE))
   # legacy vocabulary only -- none of the new states appear
-  expect_false(any(c("no_control_evidence", "carryover") %in% old$validity_flag))
+  expect_false(any(c("no_control_evidence", "not_control_enriched",
+                     "single_site_enriched", "insufficient_control_evidence")
+                   %in% old$validity_flag))
   # THIN has NO control evidence yet is given a contamination verdict anyway,
   # purely because shrinkage pulls a low-read taxon out of the valid band. That is
   # the defect, and the warning must quantify it rather than fire on every call.
@@ -111,7 +132,8 @@ test_that("the invalid_ prefix is the removal predicate, not !=\"valid\"", {
                         require_control_evidence = TRUE, verbose = FALSE)
   # the states that must NOT be removed are also not "valid", which is why the
   # negation idiom is wrong under the gate
-  keep_but_not_valid <- r$validity_flag %in% c("no_control_evidence", "carryover")
+  keep_but_not_valid <- r$validity_flag %in% c("no_control_evidence",
+    "not_control_enriched", "single_site_enriched", "insufficient_control_evidence")
   expect_true(any(keep_but_not_valid))
   expect_false(any(startsWith(r$validity_flag[keep_but_not_valid], "invalid_")))
   # and the prefix selects the control-enriched taxa. Note `filler` belongs here
@@ -122,4 +144,42 @@ test_that("the invalid_ prefix is the removal predicate, not !=\"valid\"", {
   expect_true("SYSTEMIC" %in% inv)
   expect_false("CLEAN" %in% inv)
   expect_false("THIN" %in% inv)
+})
+
+
+test_that("the evidence floor refuses to condemn on a single control observation", {
+  df <- .mk3()
+  # ONEBLANK is control-enriched by any rate comparison: 400 reads in one control
+  # against 3 reads in each of two samples. The ONLY thing wrong with the evidence
+  # is that there is one observation of it.
+  r <- flag_contaminant(df, control_samples = .ctls, site_col = "site",
+                        require_control_evidence = TRUE, verbose = FALSE)
+  expect_equal(r$n_controls_present[r$taxon_name == "ONEBLANK"], 1)
+  expect_identical(r$validity_flag[r$taxon_name == "ONEBLANK"],
+                   "insufficient_control_evidence")
+  expect_false(startsWith(r$validity_flag[r$taxon_name == "ONEBLANK"], "invalid_"))
+
+  # min_control_obs = 1 restores the unfloored behaviour, so the floor is provably
+  # the thing doing the work here and not some other part of the gate.
+  r1 <- flag_contaminant(df, control_samples = .ctls, site_col = "site",
+                         require_control_evidence = TRUE, min_control_obs = 1L,
+                         verbose = FALSE)
+  expect_true(r1$validity_flag[r1$taxon_name == "ONEBLANK"] %in%
+                c("invalid_lab_contaminant", "single_site_enriched"))
+
+  # and the floor must NOT swallow a taxon with real breadth
+  expect_identical(r$validity_flag[r$taxon_name == "SYSTEMIC"], "invalid_lab_contaminant")
+})
+
+test_that("not_control_enriched and single_site_enriched are distinct states", {
+  df <- .mk3()
+  r <- flag_contaminant(df, control_samples = .ctls, site_col = "site",
+                        require_control_evidence = TRUE, verbose = FALSE)
+  # LOCAL is ENRICHED in controls (200 vs 100 reads) and confined to one site.
+  # Labelling it "not_control_enriched" would state the opposite of what was
+  # measured, which is why the rename did not simply collapse the two.
+  expect_identical(r$validity_flag[r$taxon_name == "LOCAL"], "single_site_enriched")
+  expect_gt(r$control_rate[r$taxon_name == "LOCAL"],
+            r$field_rate[r$taxon_name == "LOCAL"])
+  expect_false("carryover" %in% r$validity_flag)
 })

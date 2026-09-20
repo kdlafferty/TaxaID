@@ -127,8 +127,9 @@ A fragile idiom before, and **catastrophic** under
 `no_control_evidence` is not `"valid"`, and it is normally the overwhelming
 majority -- on a real 12S run 16,695 of 16,826 ESVs (99.2%), on COI 32,162 of
 34,899 (92.2%). A `!= "valid"` filter would delete nearly the entire dataset.
-`carryover` is also not `"valid"`, and it exists precisely to mean *do not remove
-this*.
+`not_control_enriched` and `single_site_enriched` are also not `"valid"`, and they
+exist precisely to mean *do not remove this*. Nor is
+`insufficient_control_evidence`, which means the question was not answerable.
 
 ``` r
 # correct
@@ -145,22 +146,47 @@ what the evidence actually supports:
 | state | meaning |
 |-----------------------------|----------------------------------------------|
 | `no_control_evidence` | never detected in a control -- an honest unknown, and normally the large majority |
-| `invalid_{type}` | control rate **above** sample rate. Name retained so existing `invalid_*` filters keep working |
-| `carryover` | in a control at or **below** its sample rate: signal leaking sample → control. **Do not filter** |
+| `invalid_{type}` | control rate **above** sample rate, on at least `min_control_obs` controls, at `min_sites_systemic` or more sites. Name retained so existing `invalid_*` filters keep working |
+| `insufficient_control_evidence` | in fewer than `min_control_obs` controls (default 2). Not assessable. **Do not filter** |
+| `not_control_enriched` | in a control at or **below** its sample rate: signal leaking sample → control. **Do not filter** |
+| `single_site_enriched` | control-enriched, but at one site whose samples also carry it: local, not systemic. **Do not filter** |
 | `questionable_{type}` | in a control, rates do not separate |
 
-**Direction is the point.** Contamination flows control → sample; carryover flows
-sample → control, which is what happens when a blank picks up a little of an
-abundant local taxon. A symmetric score cannot tell them apart, and `carryover`
-is the state the score-band design could not express.
+**Direction is the point.** Contamination flows control → sample; the reverse flow
+is what happens when a blank picks up a little of an abundant local taxon. A
+symmetric score cannot tell them apart, and `not_control_enriched` is the state the
+score-band design could not express.
+
+**Two states rather than one, deliberately.** `not_control_enriched` and
+`single_site_enriched` were a single `carryover` state until 2026-09-20. They make
+*opposite* claims about enrichment -- one is not enriched in controls, the other is
+enriched but only at one site -- so a shared name was false for whichever case it
+was not written for. The old name also asserted a direction of travel that a rate
+comparison cannot establish.
+
+**The evidence floor, and the limitation behind it.** The direction test is a bare
+rate inequality, so rates built on one observation are not comparable to rates
+built on hundreds: with 91 controls against 1,052 samples, one stray read in one
+blank scores 1/91 = 0.011 and outvotes two genuine detections at 2/1052 = 0.0019.
+On a real archive 55-63 per cent of everything the gate condemned rested on a
+single control observation, and that tail contained genuine organisms -- a tidepool
+sculpin, two red macroalgae, a sand dollar. `min_control_obs` (default 2) refuses
+to condemn on one observation. A one-sided significance test with a
+multiple-testing correction is the principled replacement and is **not
+implemented**; `min_control_obs = 1L` restores the unfloored behaviour.
+
+**Useful check before trusting the tier:** a genuine contaminant usually appears in
+**no field sample at all**. On real data 85-97 per cent of removals had
+`n_field_present == 0`. Inspect the names, and check at family level rather than
+ESV level if a downstream step consumes families.
 
 Supplying `site_col` adds `site_breadth_control`, `site_breadth_sample` and
 `control_sites_shared`, and uses site multiplicity as a **discriminant rather
 than merely as extra power**: a systemic contaminant (reagent, water supply)
 appears in controls at many sites regardless of which sites' samples carry it,
-whereas a carryover appears in controls at the one site whose samples are full of
-it. A control-enriched taxon confined to a single site that also has it in
-samples is downgraded to `carryover`.
+whereas a local source appears in controls at the one site whose samples are full
+of it. A control-enriched taxon confined to a single site that also has it in
+samples is downgraded to `single_site_enriched`.
 
 This dissolves a real dilemma rather than picking a side. Pooling controls buys
 power but lets one trip's contamination speak for another's; pairing controls by
@@ -262,13 +288,14 @@ gated <- flag_contaminant(
   event_col                = "event_id",
   control_samples          = blank_ids,
   require_control_evidence = TRUE,   # no verdict without a control detection
-  site_col                 = "Site"  # systemic vs local carryover
+  site_col                 = "Site", # systemic vs local
+  min_control_obs          = 2L     # don't condemn on ONE blank observation
 )
 
 # what to actually remove
 gated[gated$validity_flag == "invalid_lab_contaminant", ]
 # what NOT to remove, though the ungated path would have
-gated[gated$validity_flag == "carryover", ]
+gated[gated$validity_flag == "not_control_enriched", ]
 # and what simply cannot be assessed
 table(gated$validity_flag)
 ```
