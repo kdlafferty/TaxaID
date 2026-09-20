@@ -107,7 +107,7 @@ NULL
 #' @param max_batch_bp Numeric. Remote BLAST only. Default \code{100000L}.
 #'   Cumulative-length (bp) cap per submission batch, applied ALONGSIDE
 #'   \code{batch_size} -- a batch closes when EITHER the count or the bp
-#'   limit is reached, whichever comes first. Added 2026-09-01: a long
+#'   limit is reached, whichever comes first. A long
 #'   query (e.g. one of several full mitogenomes sharing a batch with mostly
 #'   short amplicons) consumes vastly more server CPU than its count-based
 #'   "1 of \code{batch_size}" share suggests -- one expensive query can doom
@@ -118,8 +118,8 @@ NULL
 #'   at or above half of \code{max_batch_bp} rides ALONE in its own batch
 #'   (closing whatever batch was already accumulating first, if any) --
 #'   isolating it this way guarantees a doomed batch only ever costs that
-#'   ONE query's own progress. \code{Inf} disables the bp cap entirely,
-#'   fully restoring the old count-only \code{batch_size} behavior. See
+#'   ONE query's own progress. \code{Inf} disables the bp cap entirely, so
+#'   batches close on \code{batch_size} count alone. See
 #'   \code{.split_batches_by_length()} for the implementation. Most calls at
 #'   the default \code{batch_size}/typical amplicon lengths never approach
 #'   \code{100000L} bp per batch, so this is a no-op for ordinary data --
@@ -144,9 +144,9 @@ NULL
 #'   full nucleotide record; neither fetch gives you the other.
 #' @param poll_max_wait Numeric. Remote BLAST only. Seconds to keep polling
 #'   NCBI for a submitted batch's results before giving up on it (default
-#'   \code{1800}, i.e. 30 minutes). Raised from an earlier hardcoded
-#'   \code{600} (2026-08-09) after a real, large (1,183-accession) remote-
-#'   BLAST run observed sustained per-batch queue waits exceeding 600s.
+#'   \code{1800}, i.e. 30 minutes). The default accommodates sustained
+#'   per-batch queue waits exceeding 600s, observed in a real, large
+#'   (1,183-accession) remote-BLAST run.
 #'   A batch that still exceeds this window (even after the existing
 #'   halved-batch-size retry), OR that NCBI reports \code{Status=READY} for
 #'   but has actually aborted server-side for exceeding a CPU-time fair-use
@@ -230,7 +230,7 @@ NULL
 #'   \code{\link{report_match}}.
 #'
 #'   \code{attr(out, "failed_query_ids")} (character vector, \code{NULL} if
-#'   none) -- remote BLAST only, added 2026-08-09: \code{asv_id}s whose
+#'   none) -- remote BLAST only: \code{asv_id}s whose
 #'   search never completed (submission or poll failure, even after the
 #'   automatic halved-batch-size retry) -- distinct from a query that
 #'   completed and genuinely found nothing, which simply has no rows in
@@ -1167,20 +1167,20 @@ blast_sequences <- function(seq_df,
 
 #' Detect NCBI's server-side CPU-usage-limit rejection
 #'
-#' Found 2026-08-09 on a real, large (1,183-accession) remote-BLAST run:
 #' NCBI's remote BLAST service can report a batch's search as
 #' \code{Status=READY} (a real, successfully-retrieved XML document, not a
 #' poll timeout) while having actually ABORTED the computation server-side
 #' for exceeding a CPU-time fair-use budget -- confirmed via a real captured
-#' response for a 20-query batch of mostly full-mitogenome-length sequences
+#' response, on a large (1,183-accession) remote-BLAST run, for a 20-query
+#' batch of mostly full-mitogenome-length sequences
 #' (16.5kb each) against \code{nt}, every \code{<Iteration>} carrying two
 #' \code{<Iteration_message>} entries: \code{"Searches from this IP address
 #' have consumed a large amount of server CPU time..."} and
 #' \code{"[blastsrv4.REAL]: Error: CPU usage limit was exceeded, resulting
-#' in SIGXCPU (24)."}. \code{.parse_blast_xml()} never checked
-#' \code{Iteration_message} at all -- a rejected batch silently parsed to
-#' zero hit rows, indistinguishable from a real "searched everything,
-#' found nothing" result, and (before this fix) would have been cached by
+#' in SIGXCPU (24)."}. \code{.parse_blast_xml()} does not check
+#' \code{Iteration_message} on its own -- without this check, a rejected
+#' batch silently parses to zero hit rows, indistinguishable from a real
+#' "searched everything, found nothing" result, and would be cached by
 #' \code{evaluate_reference_accessions()} as a false
 #' \code{"insufficient_independent_evidence"} verdict for every accession
 #' in the batch, exactly like an undetected poll timeout.
@@ -1756,11 +1756,9 @@ blast_sequences <- function(seq_df,
 #' \code{"36.789 N 121.947 W"} (degrees, hemisphere letter, repeated for
 #' longitude). Returns \code{c(lat = NA_real_, lon = NA_real_)} on any
 #' missing/unparseable input. Deliberately duplicated from TaxaLikely's
-#' identical internal helper rather than shared across packages -- matches
-#' this ecosystem's existing pre-manuscript stance on NCBI-fetcher overlap
-#' (see `ecosystem_docs` / TaxaLikely's Session 115 note: the only real
-#' cross-package overlap is small taxid/qualifier parsing, not worth
-#' abstracting before manuscript review).
+#' identical internal helper rather than shared across packages -- the only
+#' real cross-package overlap is small taxid/qualifier parsing, not worth
+#' abstracting into a shared dependency (see `ecosystem_docs`).
 #' @noRd
 .parse_lat_lon <- function(x) {
   empty <- c(lat = NA_real_, lon = NA_real_)
