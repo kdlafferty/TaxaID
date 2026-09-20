@@ -158,11 +158,11 @@ symmetric score cannot tell them apart, and `not_control_enriched` is the state 
 score-band design could not express.
 
 **Two states rather than one, deliberately.** `not_control_enriched` and
-`single_site_enriched` were a single `carryover` state until 2026-09-20. They make
-*opposite* claims about enrichment -- one is not enriched in controls, the other is
-enriched but only at one site -- so a shared name was false for whichever case it
-was not written for. The old name also asserted a direction of travel that a rate
-comparison cannot establish.
+`single_site_enriched` make *opposite* claims about enrichment -- one is not
+enriched in controls, the other is enriched but only at one site -- so a single
+name covering both would be false for whichever case it was not written for.
+Neither asserts a direction of travel, because a rate comparison cannot establish
+one.
 
 **The evidence floor, and the limitation behind it.** The direction test is a bare
 rate inequality, so rates built on one observation are not comparable to rates
