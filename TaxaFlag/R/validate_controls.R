@@ -67,7 +67,7 @@ utils::globalVariables(c(
 #'     \item A high QUANTILE of the null (0.90) is in-range but not robust. A
 #'       control mislabelled as a sample sits inside the sample set and inflates
 #'       the very null it is tested against -- with 8 samples plus one disjoint
-#'       hidden control, 22 per cent of sample-pair distances go to ~1.0 and drag the
+#'       hidden control, 22% of sample-pair distances go to ~1.0 and drag the
 #'       quantile into the contaminated tail. It also has no headroom at
 #'       heterogeneous sites: a real site with 1,151 samples had a 0.90-quantile of
 #'       exactly 1.000, so nothing could pass.
@@ -77,7 +77,7 @@ utils::globalVariables(c(
 #'       fired on 59 of 84 controls. Robustness is not worth an impossible cutoff.
 #'   }
 #'   Scaling into the remaining headroom is bounded by construction (it can never
-#'   exceed 1) and depends only on the median, so it keeps the 50 per cent breakdown point
+#'   exceed 1) and depends only on the median, so it keeps the 50% breakdown point
 #'   that made MAD attractive.
 #' @param headroom_limit Numeric. If a site's null threshold reaches this value
 #'   the test has no headroom above the samples and cannot pass anything: a

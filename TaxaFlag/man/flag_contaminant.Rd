@@ -90,7 +90,7 @@ rare, so it assigns a contamination verdict to ESVs with no contamination
 evidence at all. Measured on a real 12S run: of 13,597 ESVs only 43 were ever
 detected in a single control, yet 10,300 were labelled
 \code{questionable_lab_contaminant} -- the whole middle tier had ZERO blank
-evidence, and the rate was 75-81 per cent in every marker and workflow checked
+evidence, and the rate was 75-81\% in every marker and workflow checked
 because it reflects the read-depth distribution rather than contamination.
 
 DIRECTION IS THE POINT. Contamination flows control -> sample; CARRYOVER flows
@@ -210,9 +210,9 @@ This was always a fragile idiom and \code{require_control_evidence = TRUE}
 makes it catastrophic. Under the gate the honest-unknown state
 \code{"no_control_evidence"} is not \code{"valid"}, and it is normally the
 overwhelming majority: on a real 12S run it covered 16,695 of 16,826 ESVs
-(99.2 per cent) and on COI 32,162 of 34,899 (92.2 per cent). A downstream
+(99.2\%) and on COI 32,162 of 34,899 (92.2\%). A downstream
 \code{validity_flag != "valid"} filter would therefore delete nearly the whole
-dataset, where before the gate it deleted a merely implausible 73 per cent.
+dataset, where before the gate it deleted a merely implausible 73\%.
 
 \code{"carryover"} is also not \code{"valid"}, and it is the state that exists
 precisely to say DO NOT REMOVE THIS.

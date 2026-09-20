@@ -19,7 +19,7 @@
 #' \code{"vague_rank"} -- returned for EVERY row whose \code{consensus_rank}
 #' was not \code{"species"}, short-circuiting classification entirely rather
 #' than reporting a coarser-but-still-informative answer. Measured on a real
-#' 616-observation Mugu dataset: 109 observations (17.7\%) got
+#' 616-observation Mugu dataset: 109 observations (17.7%) got
 #' \code{"vague_rank"} and were never assessed at all. This is exactly the
 #' failure mode the Axis 1/Axis 2 redesign replaces it with: both axes are
 #' computed at whatever rank the data actually resolved to, reported
@@ -138,7 +138,7 @@
 #' Neither substitutes for the other. This design is deliberately additive
 #' rather than a recomputing/overriding mechanism -- the cautionary
 #' precedent is the \code{trusted_rank} ladder-walk (built 2026-07-19,
-#' removed 2026-07-20 after a real ~30\% likelihood/posterior-winner
+#' removed 2026-07-20 after a real ~30% likelihood/posterior-winner
 #' mismatch plus a downranking-cancellation bug -- see
 #' \code{[[project_rank_trust_mechanism_removed]]} in the TaxaID memory
 #' system).

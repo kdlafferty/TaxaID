@@ -25,15 +25,15 @@ utils::globalVariables(c(
 #'
 #' \strong{Site-level detection frequency:} \code{prop_samples_detected}
 #' pools across the whole dataset, which hides where the detections sit: a
-#' taxon in 30\% of samples overall might be in every replicate at one site
-#' and absent everywhere else, and that is much stronger evidence than 30\%
+#' taxon in 30% of samples overall might be in every replicate at one site
+#' and absent everywhere else, and that is much stronger evidence than 30%
 #' scattered as singletons. Supplying \code{site_col} adds the within-site
 #' view -- for each site, what fraction of that site's replicates the
 #' observation was detected in -- summarised per observation as
 #' \code{max_site_detection_freq} (its best site) and
 #' \code{mean_site_detection_freq}. This mirrors the replicate-frequency
-#' display in BIOWATCH (Pearman et al. 2026), where a species found in >75\%
-#' of a site's replicates reads very differently from one found in <50\%.
+#' display in BIOWATCH (Pearman et al. 2026), where a species found in >75%
+#' of a site's replicates reads very differently from one found in <50%.
 #'
 #' \strong{Read the frequency together with its denominator:} a 1/1 site and
 #' a 4/4 site both give \code{max_site_detection_freq = 1}, and they are not
