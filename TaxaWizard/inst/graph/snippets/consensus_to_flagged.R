@@ -33,6 +33,20 @@
 # evidence at all. The evidence columns are printed beside the verdict on purpose
 # -- a count of flagged taxa with no evidence next to it is the shape of number
 # that gets misread.
+#
+#   3. INSPECT WHAT `invalid_` NAMES BEFORE TRUSTING IT. The verdict is a bare
+#      rate inequality, so a single stray read in ONE blank can outvote several
+#      detections across all field samples -- with 91 controls against 1,052
+#      samples on one real archive, that produced a small false-positive tail of
+#      genuine organisms at ESV resolution (a tidepool sculpin, a red macroalga,
+#      a sand dollar). It did not matter there because those families survived
+#      via other ESVs, but anyone filtering AT ESV RESOLUTION would lose real
+#      taxa. The removable list is printed below for that reason.
+#
+#      The signature of a genuine contaminant is that it appears in NO field
+#      sample at all: on that archive 85-97 per cent of removals did. A taxon
+#      marked invalid_ that IS present in your field samples deserves a look
+#      before you delete it.
 
 flagged <- TaxaFlag::flag_contaminant(
   input_df        = {{input_var}},
@@ -65,4 +79,18 @@ message(sprintf(
 ))
 message("  remove with: flagged[!startsWith(flagged$validity_flag, \"invalid_\"), ] -- ",
         "every other state, including no_control_evidence, must be KEPT.")
+
+# Name what would be deleted. A bare count invites trust; a list invites a look,
+# and the false positives here are recognisable on sight to anyone who knows the
+# system (a fish, an alga, an echinoderm among reagent bacteria).
+if (.n_removable > 0L) {
+  .removable <- unique(flagged[[{{taxon_col}}]][startsWith(flagged$validity_flag, "invalid_")])
+  message(sprintf("  taxa marked removable (%d): %s%s",
+                  length(.removable),
+                  paste(utils::head(.removable, 15L), collapse = ", "),
+                  if (length(.removable) > 15L) ", ..." else ""))
+  message("  Check these before deleting: a genuine contaminant normally appears in NO ",
+          "field sample, so anything here you recognise as part of the target community ",
+          "is worth investigating rather than removing.")
+}
 flagged
