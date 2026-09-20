@@ -72,6 +72,7 @@ test_that("resolve_habitat_by_geography validates its inputs", {
 
 test_that("a resolved point is marked as geography, not consensus", {
   skip_if_not_installed("rnaturalearth")
+  skip_if_not_installed("rnaturalearthhires")
   # Two points: one far offshore (ocean), one already settled by consensus.
   occ <- data.frame(
     point_id = c("sea", "known"),

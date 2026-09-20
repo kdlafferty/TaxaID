@@ -451,6 +451,7 @@ test_that(".habitat_choice_html escapes the habitat label", {
 
 test_that("flag_habitat_inconsistencies preserves habitat_proportions explicitly", {
   skip_if_not_installed("rnaturalearth")
+  skip_if_not_installed("rnaturalearthhires")
   occ <- data.frame(
     point_id = c("p1", "p2"), decimalLatitude = c(34, 34.5),
     decimalLongitude = c(-120, -120.5), taxon_name = c("a", "b"),
@@ -467,6 +468,7 @@ test_that("flag_habitat_inconsistencies preserves habitat_proportions explicitly
 
 test_that("an input with no habitat_proportions does not gain one", {
   skip_if_not_installed("rnaturalearth")
+  skip_if_not_installed("rnaturalearthhires")
   occ <- data.frame(
     point_id = "p1", decimalLatitude = 34, decimalLongitude = -120,
     taxon_name = "a", main_habitat = "Marine", stringsAsFactors = FALSE

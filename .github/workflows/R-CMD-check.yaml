@@ -100,6 +100,21 @@ jobs:
           message("Installing CRAN deps for target: ", target)
           remotes::install_deps(target, dependencies = TRUE, upgrade = "never")
 
+          # rnaturalearthhires is a Suggests of TaxaHabitat but is NOT on CRAN
+          # (too large), so remotes::install_deps() above cannot get it and
+          # fails silently. The tests that reach flag_habitat_inconsistencies()
+          # then skip -- and the coastline logic, which has produced real bugs
+          # before, would never be exercised in CI. Install it from the same
+          # repo the package's own error message tells users to use.
+          # Non-fatal: if r-universe is unreachable the tests skip rather than
+          # the build failing on someone else's infrastructure.
+          if (!requireNamespace("rnaturalearthhires", quietly = TRUE)) {
+            try(install.packages("rnaturalearthhires",
+                                 repos = "https://ropensci.r-universe.dev"))
+          }
+          message("rnaturalearthhires available: ",
+                  requireNamespace("rnaturalearthhires", quietly = TRUE))
+
       - name: Check package
         shell: Rscript {0}
         run: |
