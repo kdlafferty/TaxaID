@@ -62,16 +62,43 @@ only step 2, stop and re-read this section.
 
 ## PRECEDENCE — scope filter before any of this
 
-The user confirmed: **always scope filter first.** This is not stylistic. Measured on the real
-PtConception 12S pool (1,817,982 records, 194,463 points, 2026-09-19):
+The user confirmed: **always scope filter first.** This is not stylistic — an unscoped
+12S fish pool was dominated by birds, and habitat NA-dropping was the only thing
+keeping them out of the resident prior.
 
-- 495,014 records (27.2%) currently carry `main_habitat = NA` and are dropped by both live
-  consumers.
-- **546 points — 1.7% of the NA points — hold 419,034 of those records, 85% of the loss.**
-- Their taxonomy: Anatidae 219,403, Laridae 105,097, Hirundinidae 30,848, Gaviidae 21,533,
-  Phalacrocoracidae 12,856. Birds, at dense coastal-wetland localities.
-- The assigned-Marine pool for contrast: Sebastidae 235,135, Embiotocidae 150,336,
-  Hexagrammidae 50,435. Fish.
+> ⚠️ **EVERY POOL-DERIVED NUMBER PREVIOUSLY IN THIS SECTION IS VOID.** They were
+> measured on `PtConMifishSchulte_raw_gbif.rds`, which the workflow guards with
+> `file.exists()` ALONE — no input check — so it was never re-fetched when the family
+> list or `YEAR_RANGE` changed. Its zip is not even in `cache_gbif_global`; the only
+> pre-existing entry there is the GLOBAL geo-outlier fetch (53 species, `g0` = no
+> geometry, 2000–2026). A like-for-like fetch on 2026-09-19 returned **8,109,892**
+> raw records where that artifact held 2,014,584, and Sebastidae alone went
+> **235,135 → 2,182,813**. The pool was not merely stale in composition; it was
+> roughly **4× under-fetched**. Do not resurrect those figures from git history.
+>
+> Void: 1,817,982 records / 194,463 points / 674 taxa; 495,014 NA records (27.2%);
+> 31,383 NA points; the 546-point / 419,034-record / 85% concentration; Anatidae
+> 219,403, Laridae 105,097, Hirundinidae 30,848, Gaviidae 21,533,
+> Phalacrocoracidae 12,856; Sebastidae 235,135 / Embiotocidae 150,336 /
+> Hexagrammidae 50,435; records_post 1,071,874; the 145 residual; the six recovered
+> fishes and their distances; the 79-taxa pre-filter figure.
+
+**Re-measured against a real fetch (2026-09-19, sections A and B of
+`eDNA/PtConception/VALIDATE_scope_filter_and_uncertain_ptcon12S.R`):**
+
+- 100 families in the ESV list, **69 kept / 31 dropped**, 0 ungrouped taxa, all 69
+  keys resolved at FAMILY rank.
+- **8,109,892 raw → 8,098,865 post-quality records, 100% `sampling_group == "fishes"`.**
+  Zero birds. The filter does what it was built to do.
+- 35,326 distinct points at species level, against 194,463 in the old pool — **3.9×
+  the rows but 0.18× the points**, because bird records are one-per-locality and
+  marine fish data is surveys hitting the same stations repeatedly.
+- Rank parsing on the live path is sound: kingdom 0.0% NA (so the kingdom guard can
+  fire), class 73.1% NA (the known "GBIF has no class node for ray-finned fishes"
+  quirk, harmless — the classifier keys on order and phylum too).
+- `Cyprinidae` resolves to **KINGDOM** via `name_backbone` and is recovered to FAMILY
+  key 7336 via `name_lookup`. That guard inside `get_keys_from_context()` is the only
+  thing between this fetch and a kingdom-wide pull. Do not remove it.
 
 **Dropping NA is currently acting, by accident, as a scope filter on a 12S fish marker.** Any
 change that resolves or routes those records — this work, or
@@ -133,6 +160,15 @@ inspected on 2026-09-19:**
 | `Rscripts/eDNA/SepulvedaMugu/MuguWilderFish_…` | 18,461 | present | 127 | **0** |
 | `Stats and Data/GreatLakes data/GreatLakes2023BurnsHarbor_…` | 5,044 | present | 472 | **0** |
 
+**Those 31,383 rows are a coincidence worth not tripping over.** The decision file
+carries exactly as many `"Uncertain"` rows as the stale pool had NA points, because
+the decisions were seeded from that pool. The count is a true description of the
+file (verified by reading it), but it is not a fact about the data any more: a
+re-fetch yields 35,326 points where the old pool had 194,463, so most stored
+decisions are now orphans keyed to `point_id`s that no longer occur. Harmless —
+`apply_spatial_review_decisions()` joins on `point_id` and simply finds no match —
+but do not read the file's row count as a measure of how much is unassigned today.
+
 Consequences, against `spatial_review_decisions.R`:
 
 - **Line 98** (`if (!"habitat_reassigned" %in% names(old)) old$habitat_reassigned <- !is.na(old$main_habitat)`)
@@ -184,16 +220,34 @@ regardless.
 - `.habitat_signature()` exists (`utils_plot.R:546`) and is tested.
 - `habitat_candidates` does **not** exist as a column anywhere.
 
-## MEASUREMENTS TO CARRY FORWARD (pre-scope-filter, PtCon 12S)
+## MEASUREMENTS TO CARRY FORWARD
 
-- 31,383 NA points / 495,014 records (27.2%).
-- **Every** NA point is genuinely mixed: median Levins breadth 3.57 of a possible 4, 5th
-  percentile 2.67. **Zero** under-threshold near-misses at `threshold = 0.5` — the
-  "unambiguous signal the threshold rejected" case in `assign_habitat_biological()`'s own docs
-  does not occur on this data.
-- 76.3% of NA points hold exactly one species, where the consensus vector is that taxon's own
-  weights copied over and the location contributes nothing. Geography is the only thing that
-  can resolve those.
+**Read the void notice in PRECEDENCE first.** What follows is split by whether it
+rests on an argument about code (durable) or on a count from the stale pool (gone).
+That split is the day's lesson: every conclusion resting on an argument survived, and
+every one resting on a count from the artifact did not.
+
+**Durable — properties of the code, not of any pool:**
+
+- `main_habitat = NA` means "could not place this point" in an OCCURRENCE table and
+  "matches ANY habitat" in a PRIOR table (`join_priors.R:1021`). That collision is
+  structural and is what this work exists to fix.
+- Kish `n_eff = W^2/sum(w^2)` is **scale-invariant**: 2,000 records at pi=0.3 give
+  `n_eff = 2000` and the same prior SD (0.00670) as 2,000 certain records. Soft
+  habitat weights would change *what* the model believes, not *how strongly*. Any
+  uncertainty discount must be built deliberately (raise `m`, or discount `n_eff`) —
+  it is not inherited from the weights.
+- A cache guarded by `file.exists()` alone answers "is there an artifact?", never "is
+  this artifact still the answer to the question I am now asking?". Both inputs
+  moved and nothing noticed. `raw_gbif_path` is the instance; assume siblings exist.
+
+**Void — re-measure before quoting.** The NA-pool characterisations all came from the
+stale pool: 31,383 NA points, the "every NA point is genuinely mixed" breadth figures
+(median 3.57, 5th percentile 2.67, zero under-threshold near-misses), and the 76.3%
+single-species share. The *qualitative* claims may well survive re-measurement — a
+single-species point's consensus vector really is that taxon's own weights copied
+over, which is an argument, not a count — but no number here should be reused.
+Sections C and D of the VALIDATE script produce the replacements.
 - Kish `n_eff = W^2/sum(w^2)` is **scale-invariant**: 2,000 records at pi=0.3 give
   `n_eff = 2000` and the same prior SD (0.00670) as 2,000 certain records. Soft habitat
   weights would change *what* the model believes, not *how strongly*. Any uncertainty discount
