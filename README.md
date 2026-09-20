@@ -531,6 +531,38 @@ after assignment: temporal proximity analysis, LLM expert review, and a
 combined view that rejoins the earlier contaminant flags against the
 final assignments.
 
+Two further differences are worth stating, because both address gaps that
+are not specific to this software.
+
+First, **decontam assumes the control labels are correct, and nothing in
+the conventional toolkit checks them.** A field sample mislabelled as a
+blank makes the real community look like contamination, so any
+control-comparison method then filters genuine signal. Its frequency
+method also requires DNA concentration, which many eDNA workflows do not
+record, leaving only the prevalence method. `validate_controls()` tests
+the labels themselves, in both directions, on the principle that a
+control is defined by what it *lacks* rather than by what it contains: it
+compares each control's compositional distance to the field samples it
+sits with against the null of sample-to-sample distance at that same
+site. It therefore uses no taxonomy, no habitat model and no assumption
+about the blank medium, and it reports its own statistical power so that
+"nothing flagged" can be distinguished from "nothing testable".
+
+Second, a prevalence or proportion score answers *how associated is this
+sequence with the controls*, which is symmetric, whereas the question is
+directional: contamination flows control → sample, while **carryover**
+flows sample → control when a blank picks up a little of an abundant
+local taxon. The first should be removed and the second must not be.
+`flag_contaminant(require_control_evidence = TRUE)` separates them, and
+declines to assign any contamination verdict to a sequence that was never
+detected in a control. With `site_col`, site multiplicity becomes a
+discriminant rather than merely extra power: a systemic contaminant
+appears in controls across many sites irrespective of which sites'
+samples carry it, whereas carryover concentrates at the one site whose
+samples are full of it. That distinction resolves the usual trade-off
+between pooling controls for power and pairing them per collection event
+for specificity.
+
 # Data and Hardware Requirements {#data-and-hardware-requirements}
 
 -   **Internet access** is required for GBIF queries, NCBI BLAST, and

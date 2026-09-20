@@ -32,6 +32,7 @@ three independent post-hoc checks:
 
 | Method | Function | Data needed |
 |------------------------|------------------------|------------------------|
+| **Control validation** | `validate_controls()` | Read counts + control labels (+ site, ideally) |
 | **Contamination** | `flag_contaminant()` | Read counts + control samples |
 | **Handler artifacts** | `flag_handler()` | Timestamps + setup/retrieval times |
 | **Expert review** | `review_assignments()` | Assignments + LLM API key |
@@ -44,6 +45,47 @@ allochthonous transport (e.g., eDNA carried by currents from outside the
 sampling area), and other ecologically implausible detections.
 
 ## Methods
+
+### Control Validation
+
+**Do this before contamination screening, not after.** A field sample
+mislabelled as a blank makes the real community look like contamination, so
+`flag_contaminant()` then filters genuine signal. Nothing conventional checks
+this: `decontam` assumes the labels are correct, and its frequency method needs
+DNA concentration that many eDNA workflows do not record.
+
+`validate_controls()` tests the labels on the principle that **a control is
+defined by what it LACKS, not by what it contains.** Whatever the medium --
+tapwater, sterilised seawater, molecular-grade water -- a control's defining
+property is that its composition is not drawn from the sampled habitat. So the
+test uses **no taxonomy at all**: it compares each control's median Bray-Curtis
+distance to the field samples it sits with, against the null distribution of
+sample-to-sample distance *at that same site*.
+
+The reference must come from the data. On one real COI study the within-site
+sample-vs-sample median ranged from **0.145 to 0.890 across sites in that single
+dataset**, so any fixed cutoff would be simultaneously too strict and too loose
+within one run. Drawing the null from each site's own samples self-calibrates to
+marker diversity, habitat and sampling design.
+
+It is **two-sided**, because mislabelling runs both ways:
+
+| verdict | meaning |
+|-----------------------------|----------------------------------------------|
+| `consistent_with_control` | outside the sample null, as a blank should be |
+| `RESEMBLES_SAMPLE` | a control inside the sample null -- possibly a mislabelled sample |
+| `consistent_with_sample` | an ordinary field sample |
+| `RESEMBLES_CONTROL` | a sample that is an outlier *and* closer to the controls |
+| `untestable` | the site cannot form a null |
+| `untestable_no_headroom` | the null reaches the metric's ceiling, so nothing can exceed it |
+
+**Power is reported, not assumed.** A site with many samples and a tight null
+gives a real negative result; a site with two samples, or a null spanning most of
+the range, has no power at all -- and both would otherwise print as "nothing
+flagged". Every site carries its null, its pair count, its spread and a `power`
+verdict, and each row carries a `confidence` derived from it. If *every* testable
+control resembles a sample, the function warns that the control set is
+compromised rather than returning a verdict list.
 
 ### Contamination Scoring
 
@@ -60,13 +102,55 @@ score = mean_prop_field / (mean_prop_field + mean_prop_control)
 ```
 
 Scores range from 0 (taxon found only in controls) to 1 (taxon found
-only in field samples). Taxa absent from controls receive a score of
-1.0; taxa absent from field samples receive 0.0. Default thresholds
-classify scores as `"high"` risk (score ≤ 0.5, probable contaminant),
-`"moderate"` risk (0.5 \< score ≤ 0.9, ambiguous), or `"low"` risk
-(score \> 0.9, likely genuine detection). For positive controls, the
-interpretation inverts: taxa from positive controls appearing in field
-samples indicate cross-contamination.
+only in field samples). Default thresholds classify scores as `"high"` risk
+(score ≤ 0.5, probable contaminant), `"moderate"` risk (0.5 \< score ≤ 0.9,
+ambiguous), or `"low"` risk (score \> 0.9, likely genuine detection). For
+positive controls, the interpretation inverts: taxa from positive controls
+appearing in field samples indicate cross-contamination.
+
+**The score is SHRUNK, so a taxon absent from controls does NOT receive 1.0**, and
+this matters more than it sounds. Because the shrinkage is measured in reads, a
+low-read taxon that never appeared in any control is still pulled down out of the
+`"low"` risk band. Measured on a real 12S run: of 13,597 ESVs **only 43 were ever
+detected in a single control**, yet 10,300 were labelled
+`questionable_lab_contaminant` -- the entire middle tier had *no control evidence
+whatsoever*, and the same 75-81% rate appeared in every marker and workflow
+checked, because it reflects the read-depth distribution rather than
+contamination. The taxa it surfaced were the study's own target community
+(*Sardinops sagax*, *Engraulis mordax*, *Clinocottus recalvus* -- a tidepool
+sculpin), while the genuine contaminants were a rounding error beside them.
+
+#### Evidence-gated states, and site breadth
+
+`require_control_evidence = TRUE` replaces the score bands with states that say
+what the evidence actually supports:
+
+| state | meaning |
+|-----------------------------|----------------------------------------------|
+| `no_control_evidence` | never detected in a control -- an honest unknown, and normally the large majority |
+| `invalid_{type}` | control rate **above** sample rate. Name retained so existing `invalid_*` filters keep working |
+| `carryover` | in a control at or **below** its sample rate: signal leaking sample → control. **Do not filter** |
+| `questionable_{type}` | in a control, rates do not separate |
+
+**Direction is the point.** Contamination flows control → sample; carryover flows
+sample → control, which is what happens when a blank picks up a little of an
+abundant local taxon. A symmetric score cannot tell them apart, and `carryover`
+is the state the score-band design could not express.
+
+Supplying `site_col` adds `site_breadth_control`, `site_breadth_sample` and
+`control_sites_shared`, and uses site multiplicity as a **discriminant rather
+than merely as extra power**: a systemic contaminant (reagent, water supply)
+appears in controls at many sites regardless of which sites' samples carry it,
+whereas a carryover appears in controls at the one site whose samples are full of
+it. A control-enriched taxon confined to a single site that also has it in
+samples is downgraded to `carryover`.
+
+This dissolves a real dilemma rather than picking a side. Pooling controls buys
+power but lets one trip's contamination speak for another's; pairing controls by
+event buys specificity at the cost of power -- on real data, event-paired controls
+emptied the `invalid` tier completely (0 ESVs, against 43 and 323 in pooled runs),
+so the only tier resting on evidence vanished. Using the cross-site *pattern*
+keeps both.
 
 ### Handler Artifact Detection
 
@@ -113,11 +197,30 @@ devtools::install("path/to/TaxaFlag")
 
 ## Quick Start
 
-### Flag contamination from lab blanks
+### Check that the blanks really are blanks (do this first)
 
 ``` r
 library(TaxaFlag)
 
+checked <- validate_controls(
+  input_df        = reads_long,
+  event_col       = "event_id",
+  taxon_col       = "ESVId",     # an ESV id beats a taxon name: it does not
+  reads_col       = "n_reads",   # depend on assignment having succeeded
+  control_samples = blank_ids,
+  site_col        = "Site"       # supply this if you have it; the null is per site
+)
+
+# controls that look like field samples, and samples that look like controls
+checked[checked$verdict %in% c("RESEMBLES_SAMPLE", "RESEMBLES_CONTROL"), ]
+
+# and read the power before believing a clean result
+attr(checked, "site_power")
+```
+
+### Flag contamination from lab blanks
+
+``` r
 flagged <- flag_contaminant(
   input_df               = reads_long,
   taxon_col        = "taxon_name",
@@ -130,6 +233,27 @@ flagged <- flag_contaminant(
 # Output adds: observation_validity, validity_flag, validity_reason
 # Filter to invalid taxa (probable contaminants)
 flagged[flagged$validity_flag == "invalid_lab_contaminant", ]
+```
+
+For new work, gate on evidence and use site breadth:
+
+``` r
+gated <- flag_contaminant(
+  input_df                 = reads_long,
+  taxon_col                = "ESVId",
+  reads_col                = "n_reads",
+  event_col                = "event_id",
+  control_samples          = blank_ids,
+  require_control_evidence = TRUE,   # no verdict without a control detection
+  site_col                 = "Site"  # systemic vs local carryover
+)
+
+# what to actually remove
+gated[gated$validity_flag == "invalid_lab_contaminant", ]
+# what NOT to remove, though the ungated path would have
+gated[gated$validity_flag == "carryover", ]
+# and what simply cannot be assessed
+table(gated$validity_flag)
 ```
 
 ### Flag handler artifacts (camera traps)
