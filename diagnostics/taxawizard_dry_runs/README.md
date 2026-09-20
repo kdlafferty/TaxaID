@@ -84,6 +84,8 @@ clean.
 Only the score-only arm is executed. Every Bayesian route from `match_df` in the
 graph passes through `taxa_to_refs`/`refs_to_matrix`/`matrix_to_model` -- 5-30
 minutes of live NCBI plus a GBIF fetch -- which is not a fast-fixture dry run.
-The spec asked for a Bayesian arm too; it is **not** covered here, and running
-one needs either a longer budget or a mid-pipeline entry node the graph does not
-currently offer.
+The spec asked for a Bayesian arm too; it is **not** covered here. A design for
+it -- cheaper than the spec implies, and explicit about what it would and would
+not prove -- is written up in
+`ecosystem_docs/REENTRY_PROMPT_p7_bayesian_dry_run.md`. Keep that document and
+this section consistent if either changes.
