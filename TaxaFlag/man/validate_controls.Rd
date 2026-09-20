@@ -12,7 +12,9 @@ validate_controls(
   control_samples,
   site_col = NULL,
   min_samples_per_site = 3L,
-  quantile_threshold = 0.9,
+  headroom_fraction = 0.5,
+  headroom_limit = 0.98,
+  max_null_pairs = 500L,
   verbose = TRUE
 )
 }
@@ -40,9 +42,47 @@ whole-study one and weakens the test; a warning says so.}
 \item{min_samples_per_site}{Integer. Below this many field samples a site
 cannot form its own null. Default 3.}
 
-\item{quantile_threshold}{Numeric in (0, 1). A control is consistent with
-being a control when its median distance to the site's samples is at or
-above this quantile of the site's sample-to-sample null. Default 0.90.}
+\item{headroom_fraction}{Numeric in (0, 1). A control is consistent with being
+a control when its median distance to the site's samples is at least this
+far along the room remaining above the sample median:
+\code{threshold = median(null) + headroom_fraction * (1 - median(null))}.
+Default 0.5, i.e. halfway between "as distant as the samples are from each
+other" and "completely disjoint".
+
+THIS FORM WAS ARRIVED AT BY FAILING TWICE ON REAL DATA, and both failures are
+worth knowing because each looked reasonable:
+\itemize{
+\item A high QUANTILE of the null (0.90) is in-range but not robust. A
+control mislabelled as a sample sits inside the sample set and inflates
+the very null it is tested against -- with 8 samples plus one disjoint
+hidden control, 22\\% of sample-pair distances go to ~1.0 and drag the
+quantile into the contaminated tail. It also has no headroom at
+heterogeneous sites: a real site with 1,151 samples had a 0.90-quantile of
+exactly 1.000, so nothing could pass.
+\item An additive robust fence, \code{median + 3 * MAD}, is robust but
+LEAVES THE METRIC'S RANGE. Bray-Curtis is bounded at 1, and on real sites
+this produced thresholds of 1.54 and 1.62, after which the headroom guard
+fired on 59 of 84 controls. Robustness is not worth an impossible cutoff.
+}
+Scaling into the remaining headroom is bounded by construction (it can never
+exceed 1) and depends only on the median, so it keeps the 50\\% breakdown point
+that made MAD attractive.}
+
+\item{headroom_limit}{Numeric. If a site's null threshold reaches this value
+the test has no headroom above the samples and cannot pass anything: a
+control would have to be MORE disjoint than the samples already are from
+each other. Such columns are reported \code{"untestable_no_headroom"}
+rather than given a confident verdict. Found on real data: a site with 1,151
+samples had a null 0.90-quantile of exactly 1.000, which flagged genuine
+6-taxon controls as resembling 34-taxon samples. Default 0.98.}
+
+\item{max_null_pairs}{Integer. Cap on the number of sample-pair distances used
+to estimate a site's null. The null is O(n^2) in samples, and a real site
+here had 213 samples = 22,578 pairs, which made the first version of this
+function unusable (still running after 19 minutes). A few hundred pairs
+estimate a median and a 0.90 quantile perfectly well, so pairs are sampled
+at random above this cap and \code{null_n_pairs} records how many were
+actually used. Default 500.}
 
 \item{verbose}{Logical. Print a summary. Default TRUE.}
 }
@@ -56,7 +96,11 @@ site, its label, \code{n_taxa}, \code{n_reads}, the test statistic
 \code{verdict} takes: \code{"consistent_with_control"},
 \code{"RESEMBLES_SAMPLE"} (a control that may be a mislabelled sample),
 \code{"consistent_with_sample"}, \code{"RESEMBLES_CONTROL"} (a sample that
-may be a mislabelled control), or \code{"untestable"}.
+may be a mislabelled control), \code{"untestable"} (no null available), or
+\code{"untestable_no_headroom"} (the null reaches the metric's ceiling).
+\code{confidence} is \code{"low"} wherever the site's power is not
+\code{"ok"}; filter on it, because a verdict from a wide null is weak
+evidence and must not read like one from a tight null.
 }
 \description{
 Tests whether each column labelled a control is compositionally consistent

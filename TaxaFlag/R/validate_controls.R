@@ -54,9 +54,45 @@ utils::globalVariables(c(
 #'   whole-study one and weakens the test; a warning says so.
 #' @param min_samples_per_site Integer. Below this many field samples a site
 #'   cannot form its own null. Default 3.
-#' @param quantile_threshold Numeric in (0, 1). A control is consistent with
-#'   being a control when its median distance to the site's samples is at or
-#'   above this quantile of the site's sample-to-sample null. Default 0.90.
+#' @param headroom_fraction Numeric in (0, 1). A control is consistent with being
+#'   a control when its median distance to the site's samples is at least this
+#'   far along the room remaining above the sample median:
+#'   \code{threshold = median(null) + headroom_fraction * (1 - median(null))}.
+#'   Default 0.5, i.e. halfway between "as distant as the samples are from each
+#'   other" and "completely disjoint".
+#'
+#'   THIS FORM WAS ARRIVED AT BY FAILING TWICE ON REAL DATA, and both failures are
+#'   worth knowing because each looked reasonable:
+#'   \itemize{
+#'     \item A high QUANTILE of the null (0.90) is in-range but not robust. A
+#'       control mislabelled as a sample sits inside the sample set and inflates
+#'       the very null it is tested against -- with 8 samples plus one disjoint
+#'       hidden control, 22\% of sample-pair distances go to ~1.0 and drag the
+#'       quantile into the contaminated tail. It also has no headroom at
+#'       heterogeneous sites: a real site with 1,151 samples had a 0.90-quantile of
+#'       exactly 1.000, so nothing could pass.
+#'     \item An additive robust fence, \code{median + 3 * MAD}, is robust but
+#'       LEAVES THE METRIC'S RANGE. Bray-Curtis is bounded at 1, and on real sites
+#'       this produced thresholds of 1.54 and 1.62, after which the headroom guard
+#'       fired on 59 of 84 controls. Robustness is not worth an impossible cutoff.
+#'   }
+#'   Scaling into the remaining headroom is bounded by construction (it can never
+#'   exceed 1) and depends only on the median, so it keeps the 50\% breakdown point
+#'   that made MAD attractive.
+#' @param headroom_limit Numeric. If a site's null threshold reaches this value
+#'   the test has no headroom above the samples and cannot pass anything: a
+#'   control would have to be MORE disjoint than the samples already are from
+#'   each other. Such columns are reported \code{"untestable_no_headroom"}
+#'   rather than given a confident verdict. Found on real data: a site with 1,151
+#'   samples had a null 0.90-quantile of exactly 1.000, which flagged genuine
+#'   6-taxon controls as resembling 34-taxon samples. Default 0.98.
+#' @param max_null_pairs Integer. Cap on the number of sample-pair distances used
+#'   to estimate a site's null. The null is O(n^2) in samples, and a real site
+#'   here had 213 samples = 22,578 pairs, which made the first version of this
+#'   function unusable (still running after 19 minutes). A few hundred pairs
+#'   estimate a median and a 0.90 quantile perfectly well, so pairs are sampled
+#'   at random above this cap and \code{null_n_pairs} records how many were
+#'   actually used. Default 500.
 #' @param verbose Logical. Print a summary. Default TRUE.
 #'
 #' @return A data frame, one row per sequenced column, with the column id, its
@@ -68,7 +104,11 @@ utils::globalVariables(c(
 #'   \code{verdict} takes: \code{"consistent_with_control"},
 #'   \code{"RESEMBLES_SAMPLE"} (a control that may be a mislabelled sample),
 #'   \code{"consistent_with_sample"}, \code{"RESEMBLES_CONTROL"} (a sample that
-#'   may be a mislabelled control), or \code{"untestable"}.
+#'   may be a mislabelled control), \code{"untestable"} (no null available), or
+#'   \code{"untestable_no_headroom"} (the null reaches the metric's ceiling).
+#'   \code{confidence} is \code{"low"} wherever the site's power is not
+#'   \code{"ok"}; filter on it, because a verdict from a wide null is weak
+#'   evidence and must not read like one from a tight null.
 #'
 #' @section Before trusting a negative result:
 #' Prove both directions on your own data, as with any guard: relabel a known
@@ -87,7 +127,9 @@ validate_controls <- function(input_df,
                               control_samples,
                               site_col = NULL,
                               min_samples_per_site = 3L,
-                              quantile_threshold = 0.90,
+                              headroom_fraction = 0.5,
+                              headroom_limit = 0.98,
+                              max_null_pairs = 500L,
                               verbose = TRUE) {
 
   stopifnot(is.data.frame(input_df))
@@ -103,8 +145,8 @@ validate_controls <- function(input_df,
     stop("validate_controls: control_samples is required and must be non-empty. ",
          "With no controls there is nothing to validate -- that is an ",
          "'unassessed' state, not a clean one.", call. = FALSE)
-  if (!is.numeric(quantile_threshold) || quantile_threshold <= 0 || quantile_threshold >= 1)
-    stop("validate_controls: quantile_threshold must be in (0, 1).", call. = FALSE)
+  if (!is.numeric(headroom_fraction) || headroom_fraction <= 0 || headroom_fraction >= 1)
+    stop("validate_controls: headroom_fraction must be in (0, 1).", call. = FALSE)
 
   d <- data.frame(
     ..column_id = as.character(input_df[[event_col]]),
@@ -127,21 +169,28 @@ validate_controls <- function(input_df,
   # consulted anywhere, which is what makes this marker-independent.
   tot <- stats::aggregate(list(t = d$..reads), by = list(c = d$..column_id), FUN = sum)
   d$..prop <- d$..reads / tot$t[match(d$..column_id, tot$c)]
-  by_col <- split(d[, c("..taxon", "..prop")], d$..column_id)
-
   # Bray-Curtis on relative abundance: 1 - sum of shared minima. 0 identical,
   # 1 disjoint. Implemented directly to avoid a vegan dependency.
-  .bray <- function(a, b) {
-    m <- merge(a, b, by = "..taxon", all = TRUE)
-    x <- m$..prop.x; y <- m$..prop.y
-    x[is.na(x)] <- 0; y[is.na(y)] <- 0
-    1 - sum(pmin(x, y))
+  #
+  # Computed from a per-site taxon x column MATRIX rather than by merging each
+  # pair. The merge-per-pair version was correct but unusably slow: a real site
+  # with 213 samples needs 22,578 pair distances and the function was still
+  # running after 19 minutes. Aligning taxa once per site turns each distance
+  # into a single vectorised pmin(), which is what makes this tractable.
+  .site_mat <- function(ids) {
+    sub <- d[d$..column_id %in% ids, , drop = FALSE]
+    tx  <- sort(unique(sub$..taxon))
+    m   <- matrix(0, nrow = length(tx), ncol = length(ids),
+                  dimnames = list(tx, ids))
+    m[cbind(match(sub$..taxon, tx), match(sub$..column_id, ids))] <- sub$..prop
+    m
   }
-  .med_to <- function(id, others) {
+  .bray_m <- function(m, a, b) 1 - sum(pmin(m[, a], m[, b]))
+  .med_to_m <- function(m, id, others) {
     others <- setdiff(others, id)
     if (!length(others)) return(NA_real_)
-    stats::median(vapply(others, function(o) .bray(by_col[[id]], by_col[[o]]),
-                         numeric(1)), na.rm = TRUE)
+    stats::median(vapply(others, function(o) .bray_m(m, id, o), numeric(1)),
+                  na.rm = TRUE)
   }
 
   meta <- unique(d[, c("..column_id", "..site", "..is_control")])
@@ -154,35 +203,49 @@ validate_controls <- function(input_df,
     sam <- ms$..column_id[!ms$..is_control]
     ctl <- ms$..column_id[ ms$..is_control]
 
+    M <- .site_mat(ms$..column_id)
     if (length(sam) >= min_samples_per_site && length(sam) >= 2L) {
-      nullv <- c()
-      for (i in seq_along(sam)) for (j in seq_along(sam)) if (i < j)
-        nullv <- c(nullv, .bray(by_col[[sam[i]]], by_col[[sam[j]]]))
+      pr <- utils::combn(length(sam), 2L)
+      if (ncol(pr) > max_null_pairs)
+        pr <- pr[, sample.int(ncol(pr), max_null_pairs), drop = FALSE]
+      nullv <- vapply(seq_len(ncol(pr)),
+                      function(k) .bray_m(M, sam[pr[1, k]], sam[pr[2, k]]),
+                      numeric(1))
       null_med <- stats::median(nullv, na.rm = TRUE)
-      null_thr <- as.numeric(stats::quantile(nullv, quantile_threshold, na.rm = TRUE))
+      null_mad <- stats::mad(nullv, na.rm = TRUE)
+      # Bounded by construction: scales into the room left above the sample
+      # median, so it can never exceed 1 however heterogeneous the site is.
+      null_thr <- null_med + headroom_fraction * (1 - null_med)
       null_n   <- length(nullv)
       spread   <- diff(as.numeric(stats::quantile(nullv, c(.05, .95), na.rm = TRUE)))
       # A null spanning most of [0,1] cannot separate anything. Say so rather
       # than emitting confident verdicts from it.
       pw <- if (spread > 0.6) "low_wide_null" else "ok"
     } else {
-      null_med <- NA_real_; null_thr <- NA_real_; null_n <- 0L; spread <- NA_real_
+      null_med <- NA_real_; null_mad <- NA_real_; null_thr <- NA_real_
+      null_n <- 0L; spread <- NA_real_
       pw <- "none_too_few_samples"
     }
     site_power[[length(site_power) + 1L]] <- data.frame(
       site = st, n_samples = length(sam), n_controls = length(ctl),
-      null_median = null_med, null_threshold = null_thr,
+      null_median = null_med, null_mad = null_mad, null_threshold = null_thr,
       null_n_pairs = null_n, null_spread_90 = spread, power = pw,
       stringsAsFactors = FALSE)
 
     for (k in seq_len(nrow(ms))) {
       id <- ms$..column_id[k]
-      d_s <- .med_to(id, sam)
+      d_s <- .med_to_m(M, id, sam)
       d_c <- if (length(ctl) > 1L || (!ms$..is_control[k] && length(ctl) >= 1L))
-               .med_to(id, ctl) else NA_real_
+               .med_to_m(M, id, ctl) else NA_real_
       verdict <-
         if (pw == "none_too_few_samples" || is.na(d_s)) {
           "untestable"
+        } else if (!is.na(null_thr) && null_thr >= headroom_limit) {
+          # No headroom: the samples are already as dissimilar from each other as
+          # the metric allows, so nothing can sit above them. Reporting
+          # RESEMBLES_SAMPLE here would be an artefact of the threshold, not a
+          # finding about the column.
+          "untestable_no_headroom"
         } else if (ms$..is_control[k]) {
           if (d_s >= null_thr) "consistent_with_control" else "RESEMBLES_SAMPLE"
         } else {
@@ -199,7 +262,12 @@ validate_controls <- function(input_df,
         n_taxa = ms$n_taxa[k], n_reads = ms$n_reads[k],
         d_to_samples = d_s, d_to_controls = d_c,
         null_median = null_med, null_threshold = null_thr, null_n_pairs = null_n,
-        power = pw, verdict = verdict, stringsAsFactors = FALSE)
+        power = pw,
+        # A verdict from a wide null is weak evidence, and must not read the same
+        # as one from a tight null. Callers should filter on this, not just on
+        # verdict.
+        confidence = if (pw == "ok") "ok" else "low",
+        verdict = verdict, stringsAsFactors = FALSE)
     }
   }
 
@@ -225,7 +293,8 @@ validate_controls <- function(input_df,
   }
   # If every testable control looks like a sample, the control set is compromised
   # and any contaminant list built on it would filter real signal.
-  testable <- res$label == "control" & res$verdict != "untestable"
+  testable <- res$label == "control" &
+              !res$verdict %in% c("untestable", "untestable_no_headroom")
   if (sum(testable) && all(res$verdict[testable] == "RESEMBLES_SAMPLE"))
     warning("validate_controls: EVERY testable control resembles a field sample. ",
             "Treat the control set as compromised and do not build a contaminant ",

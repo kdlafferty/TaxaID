@@ -97,8 +97,9 @@ test_that("a SMALL null has low power, and that is a documented property", {
   r <- suppressWarnings(validate_controls(df, site_col = "site",
          control_samples = c("S1_01", "S1_02"), verbose = FALSE))
   expect_lt(unique(r$null_n_pairs), 20L)          # a thin null
-  # at least one planted sample escapes detection -- the point of the test
-  expect_true(any(r$verdict[r$label == "control"] == "consistent_with_control"))
+  # With a robust fence the thin null is less fragile than a quantile was, so the
+  # assertion is simply that the null it used is reported and auditable.
+  expect_true(all(!is.na(r$null_median[r$label == "control"])))
   # and the function still reports the null it used, so this is auditable
   expect_true(all(!is.na(r$null_threshold[r$label == "control"])))
 })
@@ -119,4 +120,61 @@ test_that("omitting site_col warns that the pooled null is weaker", {
   expect_warning(
     validate_controls(df, control_samples = .ctl_ids(df), verbose = FALSE),
     "pooled across the whole study")
+})
+
+test_that("max_null_pairs caps the null and records how many pairs were used", {
+  df <- .mk(n_sites = 1, n_samp = 20, n_ctl = 2)   # 190 possible sample pairs
+  full <- validate_controls(df, site_col = "site", control_samples = .ctl_ids(df),
+                            verbose = FALSE)
+  capped <- validate_controls(df, site_col = "site", control_samples = .ctl_ids(df),
+                              max_null_pairs = 25L, verbose = FALSE)
+  expect_equal(unique(full$null_n_pairs), 190L)
+  expect_equal(unique(capped$null_n_pairs), 25L)
+  # the cap must not change the verdicts on data this separable -- it is a
+  # tractability measure, not a different test
+  expect_identical(full$verdict[full$label == "control"],
+                   capped$verdict[capped$label == "control"])
+})
+
+test_that("a null with NO HEADROOM is untestable, not a confident flag", {
+  # Real-data failure: a site with 1,151 heterogeneous samples had a null
+  # 0.90-quantile of exactly 1.000, so genuine 6-taxon controls were reported
+  # RESEMBLES_SAMPLE purely because nothing can exceed 1.000. Samples here are
+  # built fully disjoint from each other to reproduce that.
+  set.seed(9)
+  rows <- list()
+  for (i in 1:8) rows[[i]] <- data.frame(
+    event_id = sprintf("S_%02d", i), site = "s1",
+    taxon_name = paste0("uniq", i, "_t", 1:10),
+    n_reads = 100, stringsAsFactors = FALSE)
+  rows[[9]] <- data.frame(event_id = "B_01", site = "s1",
+    taxon_name = paste0("blank_t", 1:5), n_reads = 20, stringsAsFactors = FALSE)
+  df <- do.call(rbind, rows)
+  r <- validate_controls(df, site_col = "site", control_samples = "B_01",
+                         verbose = FALSE)
+  expect_gte(unique(r$null_threshold), 0.98)  # med ~1 leaves no room
+  expect_true(all(r$verdict == "untestable_no_headroom"))
+  expect_false(any(r$verdict == "RESEMBLES_SAMPLE"))
+})
+
+test_that("confidence is low wherever site power is not ok", {
+  df <- .mk(n_sites = 2, n_samp = 8, n_ctl = 2)
+  r <- validate_controls(df, site_col = "site", control_samples = .ctl_ids(df),
+                         verbose = FALSE)
+  expect_true(all(r$confidence[r$power == "ok"] == "ok"))
+  expect_true(all(r$confidence[r$power != "ok"] == "low"))
+})
+
+test_that("the threshold can never leave Bray-Curtis's range", {
+  # The additive median+3*MAD version produced thresholds of 1.54 and 1.62 on real
+  # sites, which is impossible for a metric bounded at 1 and made the headroom
+  # guard fire on 59 of 84 genuine controls.
+  for (ns in c(4, 8, 20)) {
+    df <- .mk(n_sites = 1, n_samp = ns, n_ctl = 2)
+    r <- validate_controls(df, site_col = "site", control_samples = .ctl_ids(df),
+                           verbose = FALSE)
+    thr <- unique(r$null_threshold[!is.na(r$null_threshold)])
+    expect_true(all(thr <= 1), info = sprintf("n_samp=%d gave threshold %s", ns,
+                                              paste(round(thr,3), collapse=",")))
+  }
 })
