@@ -130,6 +130,14 @@ Two things the retirement itself turned up:
 example. The canonical template lives in the separate `eDNA` repo and is itself
 behind on the four subsystems in §3.
 
+> **CLOSED 2026-09-20.** `inst/TaxaID_Workflow_Template.R` now fills the role,
+> GENERATED from the graph's snippets by `diagnostics/build_workflow_template.R`
+> and guarded by `TaxaWizard/tests/testthat/test-workflow-template.R`, which
+> regenerates it and fails on any difference. The §3 staleness no longer applies
+> to it: it cannot fall behind the snippets, because it is built from them. The
+> retirement decision above is unchanged -- the old template was dead code and
+> had to go; what was missing was a template that could not rot, not a template.
+
 ## 5. Real structural divergences within the single-marker family
 
 Everything below is a genuine difference, not a regex artifact. Most have a

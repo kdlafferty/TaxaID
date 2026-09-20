@@ -734,15 +734,45 @@ genus-level names in `plausible_taxa`. Those are expected: the fixtures
 use a flat placeholder prior, which is loudly labelled in each script.
 See `diagnostics/fast_workflows/README.md`.
 
-**Note:** this package deliberately bundles no end-to-end runnable
-example. `inst/TaxaID_Workflow_Template_TEST.R` filled that role until
-2026-09-15, when it was retired: its Section 5 called seven functions
-archived with the GLMM prior-fitting chain on 2026-09-09, so it had not
-been runnable for months while still receiving patches. A second
-in-package copy of a workflow is how that happened, so it was not
-replaced with another one -- the canonical template is the single copy
-in the `eDNA` repository, and the smoke tests above are what verifies an
-install. See `archive_retired_workflow_template_2026_09_15/README.md`.
+### The workflow template
+
+`inst/TaxaID_Workflow_Template.R` is a single-site template covering the
+canonical path from raw sequences to reviewed assignments. Edit its
+Section 0, supply your own input, and run it top to bottom. It carries no
+study's data and no real paths.
+
+**It is generated, not written.** `diagnostics/build_workflow_template.R`
+assembles it from the workflow graph's own snippets -- the same files
+TaxaWizard generates scripts from -- resolving each step's inputs from the
+graph's edge wiring and each parameter from one configuration table.
+
+That indirection is the point, and it is worth explaining because this
+package spent a long time on the other approach.
+`inst/TaxaID_Workflow_Template_TEST.R` filled this role until 2026-09-15,
+when it was retired: its Section 5 called seven functions archived with the
+GLMM prior-fitting chain on 2026-09-09, so it had not been runnable for
+months while still receiving patches. The canonical template in the `eDNA`
+repository had independently fallen behind on four subsystems. Two
+hand-maintained templates, both stale, both looking maintained.
+
+The conclusion drawn at the time was that a second in-package copy of a
+workflow is what caused it, so the template was not replaced. That was the
+right diagnosis of the wrong unit: the problem is not a second copy, it is
+a second copy that nothing compares to the first. This one is compared.
+`TaxaWizard/tests/testthat/test-workflow-template.R` regenerates it and
+fails if the committed file differs, and separately asserts that it parses,
+that every `Pkg::fn` it calls is a real export, and that every named
+argument is a real formal. A snippet change that never reached the template
+breaks the build rather than quietly making the template wrong.
+
+To update it after changing a snippet:
+
+```bash
+Rscript diagnostics/build_workflow_template.R
+```
+
+See `archive_retired_workflow_template_2026_09_15/README.md` for the
+retired one.
 
 ## Getting Started
 
