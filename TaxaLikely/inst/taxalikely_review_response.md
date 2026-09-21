@@ -904,7 +904,6 @@ on functions this document already covers above.
   eviction rule as one regular expression;
   `.ref_cache_unreachable()`/`.ref_cache_evict()` and
   `evict_unreachable_cache` add write-path eviction;
-  `taxalikely_evict_unreachable_cache()` is a new export, dry-run by default;
   `taxalikely_clear_cache()` is recursive and can finally reach the nested
   store.
 - A dead singleton self-match branch and its warning were removed.
