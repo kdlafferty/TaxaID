@@ -86,6 +86,30 @@ test_that("a reassignment survives a later review that left it in place", {
   expect_true(dec$habitat_reassigned[dec$point_id == "p3"])
 })
 
+test_that("apply_spatial_review_decisions is idempotent: applying twice does not compound spatial_flag_reason and n_applied is 0 the second time (2026-09-21)", {
+  path <- file.path(withr::local_tempdir(), "dec.rds")
+  reviewed <- .flagged()
+  reviewed$spatial_flag[reviewed$point_id == "p1"] <- "likely"
+  suppressMessages(save_spatial_review_decisions(reviewed, path, before = .flagged()))
+
+  once <- suppressMessages(apply_spatial_review_decisions(.flagged(), path))
+  expect_true(attr(once, "n_applied") > 0L)
+  expect_match(once$spatial_flag_reason[once$point_id == "p1"][1], "^reviewer decision \\(.*\\); auto: r1$")
+
+  twice <- suppressMessages(apply_spatial_review_decisions(once, path))
+  expect_equal(attr(twice, "n_applied"), 0L)
+  # Same flag/habitat/reason content as after the first apply -- no compounding.
+  expect_equal(twice[, c("spatial_flag", "main_habitat", "spatial_flag_reason")],
+              once[, c("spatial_flag", "main_habitat", "spatial_flag_reason")])
+  expect_false(grepl("reviewer decision.*reviewer decision", twice$spatial_flag_reason[twice$point_id == "p1"][1]))
+
+  # A third application, for good measure -- the marker must not grow.
+  thrice <- suppressMessages(apply_spatial_review_decisions(twice, path))
+  expect_equal(attr(thrice, "n_applied"), 0L)
+  expect_equal(thrice[, c("spatial_flag", "main_habitat", "spatial_flag_reason")],
+              twice[, c("spatial_flag", "main_habitat", "spatial_flag_reason")])
+})
+
 test_that("a malformed decisions file raises a named, caught error instead of a cryptic base-R one", {
   # A bare atomic vector -- e.g. the path was accidentally overwritten.
   path1 <- withr::local_tempfile(fileext = ".rds")

@@ -40,6 +40,21 @@
   habitat_reassigned = "logical"
 )
 
+# Strips a leading "reviewer decision (TIMESTAMP); auto: " marker (possibly
+# several, if a file written before this fix already compounded them) so a
+# fresh marker can be prepended without ever growing without bound.
+# apply_spatial_review_decisions() calls this before every rewrite, which is
+# what makes calling it twice on the same data idempotent -- see D3.
+.strip_decision_marker <- function(x) {
+  pat <- "^reviewer decision \\([^()]*\\); auto: "
+  for (i in seq_len(50L)) {
+    y <- sub(pat, "", x)
+    if (identical(y, x)) break
+    x <- y
+  }
+  x
+}
+
 .read_decisions_file <- function(path, caller) {
   if (!file.exists(path)) return(NULL)
   dec <- readRDS(path)
@@ -238,9 +253,15 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
       occurrence_data[[flag_col]][hit] <- dec$spatial_flag[idx[hit]]
       occurrence_data[[habitat_col]][reassign] <- dec$main_habitat[idx[reassign]]
       if (reason_col %in% names(occurrence_data)) {
+        # Strip any marker this function already wrote before re-prepending,
+        # so re-applying the SAME saved decision to output that already
+        # carries it reproduces the identical string rather than compounding
+        # "reviewer decision (...); auto: reviewer decision (...); auto: ..."
+        # forever. n_applied (below) is unaffected by this -- it only counts
+        # a genuine flag/habitat change, not a reason-string rewrite.
         occurrence_data[[reason_col]][hit] <- paste0(
           "reviewer decision (", dec$decided_at[idx[hit]], "); auto: ",
-          occurrence_data[[reason_col]][hit])
+          .strip_decision_marker(occurrence_data[[reason_col]][hit]))
       }
       n_applied <- sum(changed, na.rm = TRUE)
     }
