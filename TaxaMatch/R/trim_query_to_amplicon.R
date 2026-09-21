@@ -560,13 +560,13 @@
         # this guard the clamp below silently degrades to
         # substr(seq_i, 1, seq_len), i.e. returns the input unchanged while
         # still counting itself a "rescue": the mechanism reported rescuing
-        # 40 of 40 queries it had not touched (found 2026-09-02 in a real run
+        # 40 of 40 queries it had not touched (found in a real run
         # log). Refusing here keeps the count honest.
         if (span_hi > seq_len) {
           return(list(sequence = NULL, reason = "span_unusable"))
         }
         # Bounds guard before substr(), same convention as
-        # .extract_amplicon_one_tm()'s own 2026-08-30 fix: an inverted or
+        # .extract_amplicon_one_tm()'s own bounds guard: an inverted or
         # out-of-range span degrades to "not rescued" rather than producing
         # a nonsensical (or, for substr(), silently empty/truncated) result.
         from <- max(1L, span_lo - margin)
