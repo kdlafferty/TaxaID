@@ -1,7 +1,7 @@
 # Tests for read_biotime_study()
 # Run with devtools::test() from the TaxaFetch project root.
 
-# ── shared helper ─────────────────────────────────────────────────────────────
+# -- shared helper -------------------------------------------------------------
 
 #' Write a minimal BioTime per-study CSV to a temp file and return its path.
 #' @param filename  Name for the temp file (used to test study_id inference).
@@ -57,7 +57,7 @@
 }
 
 
-# ── input validation ──────────────────────────────────────────────────────────
+# -- input validation ----------------------------------------------------------
 
 test_that("read_biotime_study() errors when file not found", {
   expect_error(
@@ -104,7 +104,7 @@ test_that("read_biotime_study() errors in non-interactive session when local_pat
 })
 
 
-# ── study_id inference ────────────────────────────────────────────────────────
+# -- study_id inference --------------------------------------------------------
 
 test_that("read_biotime_study() infers study_id from standard filename", {
   tmp <- .bt_tmp(filename = "raw_data_595.csv")
@@ -138,7 +138,7 @@ test_that("read_biotime_study() accepts string study_id", {
 })
 
 
-# ── DwC column contract ───────────────────────────────────────────────────────
+# -- DwC column contract -------------------------------------------------------
 
 test_that("read_biotime_study() returns expected DwC columns", {
   tmp <- .bt_tmp()
@@ -189,11 +189,11 @@ test_that("read_biotime_study() works when SAMPLE_DESC column is absent", {
   tmp <- .bt_tmp(omit_sample_desc = TRUE)
   on.exit(unlink(tmp))
   expect_no_error(result <- read_biotime_study(tmp, verbose = FALSE))
-  expect_false("eventID" %in% names(result)) # absent in source → not added
+  expect_false("eventID" %in% names(result)) # absent in source -> not added
 })
 
 
-# ── type coercion ─────────────────────────────────────────────────────────────
+# -- type coercion -------------------------------------------------------------
 
 test_that("read_biotime_study() coerces decimalLatitude and decimalLongitude to numeric", {
   tmp <- .bt_tmp()
@@ -227,7 +227,7 @@ test_that("read_biotime_study() coerces biotime_biomass to numeric", {
 })
 
 
-# ── derived columns ───────────────────────────────────────────────────────────
+# -- derived columns -----------------------------------------------------------
 
 test_that("read_biotime_study() sets organismQuantityType to 'abundance'", {
   tmp <- .bt_tmp()
@@ -332,7 +332,7 @@ test_that("read_biotime_study() reports unknown-status row count when verbose", 
 })
 
 
-# ── coordinate handling ───────────────────────────────────────────────────────
+# -- coordinate handling -------------------------------------------------------
 
 test_that("read_biotime_study() drops rows with missing coordinates", {
   tmp <- .bt_tmp(include_na_coords = TRUE)
@@ -343,7 +343,7 @@ test_that("read_biotime_study() drops rows with missing coordinates", {
 })
 
 
-# ── return type ───────────────────────────────────────────────────────────────
+# -- return type ---------------------------------------------------------------
 
 test_that("read_biotime_study() returns a tibble", {
   tmp <- .bt_tmp()

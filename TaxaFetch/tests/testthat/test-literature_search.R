@@ -1,18 +1,18 @@
-test_that("search_literature: input validation — empty taxon_scope", {
+test_that("search_literature: input validation -- empty taxon_scope", {
   expect_error(
     search_literature(taxon_scope = "", bbox = NULL, api_key = "fake"),
     "'taxon_scope' must be a non-empty character string"
   )
 })
 
-test_that("search_literature: input validation — NA taxon_scope", {
+test_that("search_literature: input validation -- NA taxon_scope", {
   expect_error(
     search_literature(taxon_scope = NA_character_, bbox = NULL, api_key = "fake"),
     "'taxon_scope' must be a non-empty character string"
   )
 })
 
-test_that("search_literature: input validation — bad bbox", {
+test_that("search_literature: input validation -- bad bbox", {
   expect_error(
     search_literature("gobies", bbox = c(-120, -117), api_key = "fake"),
     "'bbox' must be a numeric vector of length 4"
@@ -23,7 +23,7 @@ test_that("search_literature: input validation — bad bbox", {
   )
 })
 
-test_that("search_literature: input validation — missing API key", {
+test_that("search_literature: input validation -- missing API key", {
   # Only fires when api_key is empty string (env var not set)
   expect_error(
     search_literature("gobies", api_key = ""),
@@ -50,14 +50,14 @@ test_that(".decode_openalex_abstract: handles numeric (non-list) positions", {
   expect_equal(result, "hello world")
 })
 
-test_that("search_literature: geo_scope validation — empty string rejected", {
+test_that("search_literature: geo_scope validation -- empty string rejected", {
   expect_error(
     search_literature("gobies", geo_scope = "", api_key = "fake"),
     "geo_scope.*non-empty character string"
   )
 })
 
-test_that("search_literature: geo_scope validation — NA rejected", {
+test_that("search_literature: geo_scope validation -- NA rejected", {
   expect_error(
     search_literature("gobies", geo_scope = NA_character_, api_key = "fake"),
     "geo_scope.*non-empty character string"
@@ -76,14 +76,14 @@ test_that(".query_hash: returns different strings for different inputs", {
   expect_false(identical(h1, h2))
 })
 
-test_that("download_literature_pdfs: input validation — not a data frame", {
+test_that("download_literature_pdfs: input validation -- not a data frame", {
   expect_error(
     download_literature_pdfs("not_a_df", output_dir = tempdir()),
     "'catalog' must be a data frame"
   )
 })
 
-test_that("download_literature_pdfs: input validation — missing columns", {
+test_that("download_literature_pdfs: input validation -- missing columns", {
   bad_catalog <- data.frame(title = "Test", stringsAsFactors = FALSE)
   expect_error(
     download_literature_pdfs(bad_catalog, output_dir = tempdir()),

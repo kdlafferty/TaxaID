@@ -1,4 +1,4 @@
-# Tests for stack_occurrences() — Session 25 changes:
+# Tests for stack_occurrences() -- Session 25 changes:
 #   - list input pattern
 #   - single-frame input (no error)
 #   - NULL filtering

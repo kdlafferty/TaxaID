@@ -1,9 +1,9 @@
 # test-dataone_standardize.R
 # Tests for DataONE pipeline internals in dataone_standardize.R and
-# dataone_geo_screening.R. All pure — no network calls or mocking required.
+# dataone_geo_screening.R. All pure -- no network calls or mocking required.
 #
 # Covers:
-#   .map_columns_to_dwc()     column name → DwC term mapping
+#   .map_columns_to_dwc()     column name -> DwC term mapping
 #   .classify_entity()        entity category from mapping
 #   .find_site_code_column()  overlap-based site code column detection
 #   .attempt_odm_join()       ODM observation+location+taxon join
@@ -193,7 +193,7 @@ test_that("maps taxon_name to scientificName", {
   expect_equal(unname(m["taxon_name"]), "scientificName")
 })
 
-test_that("first match wins — earlier pattern takes priority", {
+test_that("first match wins -- earlier pattern takes priority", {
   # genus_name should map to genus, not be caught by scientificName pattern
   m <- TaxaFetch:::.map_columns_to_dwc(
     "genus_name",
@@ -281,7 +281,7 @@ test_that("returns 'unknown' for empty mapping", {
 })
 
 test_that("requires both lat AND lon for spatial classification", {
-  # lat only → not spatial_only
+  # lat only -> not spatial_only
   m <- c(lat = "decimalLatitude", x = NA_character_)
   expect_equal(TaxaFetch:::.classify_entity(m), "no_coords_no_species")
 })
@@ -527,13 +527,13 @@ test_that("prefers exact entity name match over partial (obs vs observation_anci
     ei_with_anc, TaxaFetch:::.default_dwc_map, meta, .sbc_bbox_list,
     verbose = FALSE, odm_variable = "DENSITY"
   )
-  # Should still work — exact "observation" preferred over "observation_ancillary"
+  # Should still work -- exact "observation" preferred over "observation_ancillary"
   expect_true(is.data.frame(result))
 })
 
 
 # =============================================================================
-# build_geo_prompt — scope_lookup shortcut logic
+# build_geo_prompt -- scope_lookup shortcut logic
 # =============================================================================
 
 test_that("scope_lookup = NULL sends all candidates to LLM", {
@@ -567,7 +567,7 @@ test_that("scope_lookup rejects non-overlapping scope", {
   cat <- .make_catalog()
   bbox <- .sbc_bbox # Santa Barbara
 
-  # FCE LTER is in Florida — no overlap with SBC bbox
+  # FCE LTER is in Florida -- no overlap with SBC bbox
   sl <- data.frame(
     scope = "knb-lter-fce",
     west = -81.2, east = -80.4, south = 25.1, north = 25.8,
@@ -579,7 +579,7 @@ test_that("scope_lookup rejects non-overlapping scope", {
   expect_false("other.1.1" %in% gp$shortcut_accepted)
 })
 
-test_that("scope_lookup handles multiple rows — accept some, reject others", {
+test_that("scope_lookup handles multiple rows -- accept some, reject others", {
   cat <- .make_catalog()
   bbox <- .sbc_bbox
 
@@ -599,7 +599,7 @@ test_that("packages with NA geographicdescription are always excluded from LLM",
   cat <- .make_catalog()
   gp <- build_geo_prompt(cat, .sbc_bbox, scope_lookup = NULL, verbose = FALSE)
 
-  # nodesc.1.1 has NA description — should not appear in LLM descriptions
+  # nodesc.1.1 has NA description -- should not appear in LLM descriptions
   expect_false(any(grepl("nodesc", unlist(gp$desc_to_ids))))
 })
 
@@ -612,7 +612,7 @@ test_that("deduplication: identical descriptions sent to LLM only once", {
   sbc_descs <- cat$geographicdescription[cat$scope == "knb-lter-sbc" &
     !is.na(cat$geographicdescription)]
   n_unique_sbc <- length(unique(sbc_descs))
-  # The two SBC packages share one description → deduplicated to 1 LLM call
+  # The two SBC packages share one description -> deduplicated to 1 LLM call
   expect_equal(n_unique_sbc, 1L)
   # That one description maps to both IDs
   shared_desc <- unique(sbc_descs)[1L]

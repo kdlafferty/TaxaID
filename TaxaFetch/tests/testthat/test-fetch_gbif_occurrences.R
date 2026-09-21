@@ -144,7 +144,7 @@ test_that("returns rows from all keys combined", {
     keys = c(1L, 2L, 3L), geometry = .bbox,
     pause_seconds = 0
   )
-  expect_gte(nrow(out), 9L) # 3 rows × 3 keys
+  expect_gte(nrow(out), 9L) # 3 rows x 3 keys
 })
 
 test_that("warns and returns empty tibble when no records pass", {
