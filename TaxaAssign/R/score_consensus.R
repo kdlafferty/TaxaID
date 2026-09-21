@@ -157,7 +157,7 @@ utils::globalVariables(c("score_val"))
 #'   minimum scores, e.g. `c(species = 97, genus = 95, family = 90)`.  After
 #'   the LCA is computed, the consensus is capped at the finest rank whose
 #'   threshold the top score meets.  If the top score fails all thresholds, the
-#'   sample is unresolvable.  Applied independently of the LCA — so even if all
+#'   sample is unresolvable.  Applied independently of the LCA -- so even if all
 #'   hits agree on species, the consensus is demoted to genus if the top score
 #'   is below the species threshold.
 #'   **No default -- errors if omitted.** This function has no
@@ -908,7 +908,7 @@ score_consensus <- function(match_df,
     return(list(taxon = vals[[1L]], rank = allowed_rank))
   }
 
-  # Multiple values at allowed_rank — walk coarser to find agreement
+  # Multiple values at allowed_rank -- walk coarser to find agreement
   allowed_idx_in_sys <- match(allowed_rank, rank_system)
   if (is.na(allowed_idx_in_sys) || allowed_idx_in_sys <= 1L) {
     return(list(taxon = NA_character_, rank = NA_character_))

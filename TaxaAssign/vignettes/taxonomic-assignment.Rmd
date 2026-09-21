@@ -80,7 +80,7 @@ top_lik <- filter_top_hypotheses(lik_result$likelihoods)
 
 ### Step 2: Handle unreferenced species
 
-Unreferenced species — described taxa with no barcode reference — can never
+Unreferenced species -- described taxa with no barcode reference -- can never
 appear as named matches. Expand generic H2/H3 rows into named species.
 
 ```{r step2}

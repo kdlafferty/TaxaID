@@ -134,7 +134,7 @@ test_that("consensus_posterior sums only the winning LCA taxon's mass across all
 # LCA logic
 # ==============================================================================
 
-test_that("two species in same genus → LCA at genus (derived from binomial)", {
+test_that("two species in same genus -> LCA at genus (derived from binomial)", {
   df <- make_posterior(
     observation_id = c("s1", "s1"),
     taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
@@ -148,7 +148,7 @@ test_that("two species in same genus → LCA at genus (derived from binomial)", 
   expect_false(out$is_resolved)
 })
 
-test_that("two species in different genera → LCA at family (explicit column)", {
+test_that("two species in different genera -> LCA at family (explicit column)", {
   df <- make_posterior(
     observation_id = c("s1", "s1"),
     taxon_name = c("Fundulus parvipinnis", "Gobiosoma bosc"),
@@ -157,14 +157,14 @@ test_that("two species in different genera → LCA at family (explicit column)",
     posterior_mean = c(0.55, 0.45),
     family = c("Fundulidae", "Gobiidae")
   )
-  # Same family → LCA = family
+  # Same family -> LCA = family
   df$family <- c("Gobiidae", "Gobiidae") # force same family
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_rank, "family")
   expect_false(out$is_resolved)
 })
 
-test_that("species in different families with no shared rank → NA", {
+test_that("species in different families with no shared rank -> NA", {
   df <- make_posterior(
     observation_id = c("s1", "s1"),
     taxon_name = c("Fundulus parvipinnis", "Gobiosoma bosc"),
@@ -184,7 +184,7 @@ test_that("species in different families with no shared rank → NA", {
 # ==============================================================================
 
 test_that("cumulative_threshold limits included hypotheses", {
-  # First species alone accounts for 0.91 of named mass → only 1 included
+  # First species alone accounts for 0.91 of named mass -> only 1 included
   df <- make_posterior(
     observation_id = c("s1", "s1", "s1"),
     taxon_name = c("Fundulus parvipinnis", "Fundulus catus", "Fundulus nottii"),
@@ -209,7 +209,7 @@ test_that("lower cumulative_threshold can resolve to species from two-way tie", 
     hypothesis_type = rep("specific_candidate", 2),
     posterior_mean = c(0.8, 0.2)
   )
-  # With threshold 0.75, only the top species (0.8/1.0 = 80% ≥ 75%) is included
+  # With threshold 0.75, only the top species (0.8/1.0 = 80% >= 75%) is included
   out <- posterior_consensus(df,
     rank_system = c("genus", "species"),
     cumulative_threshold = 0.75
@@ -224,7 +224,7 @@ test_that("lower cumulative_threshold can resolve to species from two-way tie", 
 # ==============================================================================
 
 test_that("hypotheses below min_posterior are excluded before LCA", {
-  # Second species is 0.03 < 0.05 → excluded → single species resolves
+  # Second species is 0.03 < 0.05 -> excluded -> single species resolves
   df <- make_posterior(
     observation_id = c("s1", "s1"),
     taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
@@ -240,7 +240,7 @@ test_that("hypotheses below min_posterior are excluded before LCA", {
   expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
 })
 
-test_that("all hypotheses below min_posterior → empty row", {
+test_that("all hypotheses below min_posterior -> empty row", {
   df <- make_posterior(
     observation_id = c("s1", "s1"),
     taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
@@ -274,7 +274,7 @@ test_that("unreferenced_family rows are excluded from LCA", {
     )
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
-  # Only Fundulus parvipinnis contributes → single species resolved
+  # Only Fundulus parvipinnis contributes -> single species resolved
   expect_equal(out$n_plausible, 1L)
   expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
   expect_true(out$is_resolved)
@@ -294,7 +294,7 @@ test_that("unreferenced_genus named species are included in LCA", {
     )
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
-  # Different genera → LCA cannot resolve at genus → NA (no shared family column)
+  # Different genera -> LCA cannot resolve at genus -> NA (no shared family column)
   expect_equal(out$n_plausible, 2L)
 })
 
@@ -327,7 +327,7 @@ test_that("unreferenced_species rows are included in LCA", {
     )
   )
   out <- posterior_consensus(df, rank_system = c("genus", "species"))
-  # Both are Fundulus → LCA at genus
+  # Both are Fundulus -> LCA at genus
   expect_equal(out$consensus_rank, "genus")
   expect_equal(out$consensus_taxon, "Fundulus")
   expect_equal(out$n_plausible, 2L)
@@ -335,10 +335,10 @@ test_that("unreferenced_species rows are included in LCA", {
 
 
 # ==============================================================================
-# No named hypotheses → empty row
+# No named hypotheses -> empty row
 # ==============================================================================
 
-test_that("sample with only unreferenced_family → empty row", {
+test_that("sample with only unreferenced_family -> empty row", {
   df <- make_posterior(
     "s1", NA_character_, NA_character_,
     "unreferenced_family", 1.0

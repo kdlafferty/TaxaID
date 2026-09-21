@@ -74,7 +74,7 @@ test_that("add_slash_taxon: downranked=FALSE, mixed-genus slash name kept regard
   expect_equal(result$slash_taxon_name, "Salmo salar + Salvelinus leucomaenis")
 })
 
-test_that("add_slash_taxon: posterior ordering — same-genus, highest posterior first", {
+test_that("add_slash_taxon: posterior ordering -- same-genus, highest posterior first", {
   df <- data.frame(
     observation_id = "obs1",
     consensus_taxon = "Oncorhynchus",
@@ -86,7 +86,7 @@ test_that("add_slash_taxon: posterior ordering — same-genus, highest posterior
   expect_equal(result$slash_taxon_name, "Oncorhynchus tshawytscha/kisutch")
 })
 
-test_that("add_slash_taxon: posterior ordering — mixed-genus, highest posterior first", {
+test_that("add_slash_taxon: posterior ordering -- mixed-genus, highest posterior first", {
   df <- data.frame(
     observation_id = "obs1",
     consensus_taxon = "Salmonidae",

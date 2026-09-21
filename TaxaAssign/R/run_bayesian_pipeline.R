@@ -25,7 +25,7 @@ utils::globalVariables(c("taxon_name", "group", "is_complete"))
 #'   \code{build_priors()}'s output if you have one cached -- the
 #'   \code{$priors} element is extracted automatically either way).
 #' @param site Site context for prior joining, including habitat.
-#'   \code{main_habitat} is always required — the function does not guess
+#'   \code{main_habitat} is always required -- the function does not guess
 #'   which habitat your observations came from. Accepted formats:
 #'   \describe{
 #'     \item{Named list with lat/lon}{\code{list(lat = 34.1, lon = -119.1,
@@ -320,7 +320,7 @@ run_bayesian_pipeline <- function(
   .msg(sprintf("  %d top-hypothesis rows.", nrow(top_likelihoods)))
 
   # =========================================================================
-  # Stage 1b: GBIF genus census — three-tier H2 logic
+  # Stage 1b: GBIF genus census -- three-tier H2 logic
   # =========================================================================
   gbif_census <- attr(taxaexpect_priors, "gbif_genus_census")
 

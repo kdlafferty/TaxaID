@@ -279,7 +279,7 @@ test_that("expansion_min_prior floor removes low-probability species", {
   etax <- .make_expansion_taxonomy()
 
   # With expansion_min_prior = 0.15, all three species have norm_prior <= 0.10
-  # for flavimanus and ios — both are excluded; only mirabilis (0.80) survives
+  # for flavimanus and ios -- both are excluded; only mirabilis (0.80) survives
   out <- suppressMessages(
     join_priors(lik, pri,
       site = site, expansion_taxonomy = etax,
@@ -334,7 +334,7 @@ test_that("expansion falls back to dark floor when family absent from priors", {
   etax <- .make_expansion_taxonomy() # has Gobiidae species
 
   # The priors grid/habitat don't match either, but even if we use a compatible
-  # site, Gobiidae is absent from .make_priors() → fallback
+  # site, Gobiidae is absent from .make_priors() -> fallback
   pri_gobiidae_site <- tibble(
     taxon_name = NA_character_, taxon_name_rank = "species",
     grid_id = NA_character_, main_habitat = NA_character_,
@@ -354,7 +354,7 @@ test_that("expansion falls back to dark floor when family absent from priors", {
     )
   )
 
-  # Gobiidae expansion finds no species in pri_estuarine → dark floor on family row
+  # Gobiidae expansion finds no species in pri_estuarine -> dark floor on family row
   expect_equal(nrow(out), 1L)
   expect_equal(out$taxon_name_rank, "family")
   expect_true(!is.na(out$prior_mean))

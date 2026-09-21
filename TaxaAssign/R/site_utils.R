@@ -60,7 +60,7 @@
 .beta_mean <- function(a, b) a / (a + b)
 
 
-#' Resolve llm_fn default: NULL → TaxaTools::call_api with clear error
+#' Resolve llm_fn default: NULL -> TaxaTools::call_api with clear error
 #'
 #' Known footgun: TaxaTools'
 #' provider auto-detection (`options(TaxaID.llm_fn = ...)`) is set by
@@ -153,7 +153,7 @@
 #' Parse grid_id strings back to lat/lon coordinates
 #' @noRd
 .parse_grid_ids <- function(grid_ids) {
-  # Grid_34p1_m119p1 → lat = 34.1, lon = -119.1
+  # Grid_34p1_m119p1 -> lat = 34.1, lon = -119.1
   stripped <- sub("^Grid_", "", grid_ids)
   parts <- strsplit(stripped, "_")
   lat_str <- vapply(parts, `[`, character(1L), 1L)
@@ -201,13 +201,13 @@
 #' Resolve `site` parameter to a standardized event_meta data frame
 #'
 #' Accepts multiple formats:
-#'   - list(grid_id, main_habitat) — existing single-site
-#'   - list(lat, lon) — auto-derive grid_id + auto-select best habitat from priors
-#'   - list(lat, lon, main_habitat) — auto-derive grid_id, use specified habitat
+#'   - list(grid_id, main_habitat) -- existing single-site
+#'   - list(lat, lon) -- auto-derive grid_id + auto-select best habitat from priors
+#'   - list(lat, lon, main_habitat) -- auto-derive grid_id, use specified habitat
 #'     (falls back to auto-select if habitat not available at resolved grid)
-#'   - data.frame(observation_id, grid_id, main_habitat) — existing multi-site
-#'   - data.frame(observation_id, lat, lon) — auto-derive per row
-#'   - data.frame(observation_id, lat, lon, main_habitat) — auto-derive with hint
+#'   - data.frame(observation_id, grid_id, main_habitat) -- existing multi-site
+#'   - data.frame(observation_id, lat, lon) -- auto-derive per row
+#'   - data.frame(observation_id, lat, lon, main_habitat) -- auto-derive with hint
 #'
 #' @return data.frame with observation_id, grid_id, main_habitat
 #' @noRd
