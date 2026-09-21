@@ -66,9 +66,8 @@ workflow_engine <- function(history,
                             llm_fn = NULL,
                             system_prompt = NULL,
                             metadata = NULL) {
-  # Deprecation path: `metadata` was the pre-2026-09-18 argument name (the
-  # hand-maintained per-package JSON metadata registry). Anything passed
-  # there (named OR the old 2nd positional slot, which is structurally
+  # `metadata` is a deprecated alias for `registry`. Anything passed there
+  # (named, or as the second positional argument, which is structurally
   # identical) is honored as `registry` after a warning.
   if (!is.null(metadata)) {
     if (requireNamespace("lifecycle", quietly = TRUE)) {
@@ -77,7 +76,7 @@ workflow_engine <- function(history,
       )
     } else {
       warning(
-        "`metadata` is deprecated as of TaxaWizard 0.1.0 and will be removed ",
+        "`metadata` is deprecated and will be removed ",
         "in a future release; use `registry` instead.",
         call. = FALSE
       )
