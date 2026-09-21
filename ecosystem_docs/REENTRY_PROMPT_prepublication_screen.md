@@ -360,6 +360,19 @@ ten names, eleven rules), 1 STYLE (`write_taxaid_manifest()` validates
 nothing). Positive: `assign_sampling_group()` and `fetch_worms_attributes()`
 are the best-documented, best-tested code reviewed -- every domain rule has a
 cited real case and a fixture test reproducing it.
+TaxaExpect done -- 1 DEFECT, reproduced: the equirectangular distance
+formula (`111 * sqrt(dlat^2 + (dlon * cos(lat))^2)`, naive `lon1 - lon2`)
+does not wrap at the antimeridian; a site at 179.9 with records at -179.9
+(22 km) got theta 1e-33 while records 2,000 km away got 1.0. The formula is
+copy-pasted in FOUR files (`estimate_kernel_priors`, `calibrate_kernel_
+bandwidth`, `plot_theta_surface`, `generate_uncertain_habitat_evidence`);
+fix = one internal helper with longitude normalisation, all four call it.
+No current site is affected. 6 RISK (unvalidated numeric params in
+`generate_regional_proximity_evidence()`, a hard-coded 0.05 veto bound, a
+comment overclaiming a circularity guard, no Inf guard on `distance_km`),
+3 DOC, 2 STYLE. Every checked formula -- Kish n_eff, Beta variance, Chao1,
+presence-mixture moments, log-link curve fit, FFT lattice -- matches its
+roxygen; `plot_theta_surface()`'s site-identity invariant verified live.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
