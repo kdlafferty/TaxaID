@@ -323,9 +323,14 @@ placeholder_setup_report = TRUE)` rather than merging it by hand.
    opens with its own 2026-07-28 review-prep pass; others describe
    "reorganised since the review").
 5. **WERC release review**: write the response that `usgs_release_review/
-   README.md` says does not exist; *decide* its three open items (`CLAUDE.md`
-   placement, linking `ECOSYSTEM_WORKFLOW.md`, folding `DESCRIPTION.md`); keep
-   the push-back on deleting tests, confirmed with the reviewer.
+   README.md` says does not exist; its three open items are DECIDED
+   (user, 2026-09-21): `CLAUDE.md` files stay where they are (agent-context
+   for maintainers, `.Rbuildignore`d, never in the built package);
+   `ECOSYSTEM_WORKFLOW.md` linked from the root README (already is, line
+   ~878); `PACKAGE_SETUP.md` and `DESCRIPTION.md` no longer exist on `main`,
+   so the response records them as retired with their content in the root
+   README's installation and package sections. Keep the push-back on
+   deleting tests, confirmed with the reviewer.
 **Done when** every response has the section, none narrates self-review, and
 the release-review response exists in that folder.
 
