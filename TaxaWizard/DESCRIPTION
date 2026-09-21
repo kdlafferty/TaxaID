@@ -20,6 +20,13 @@ Imports:
     jsonlite
 Suggests:
     shiny,
+    TaxaAssign,
+    TaxaExpect,
+    TaxaFetch,
+    TaxaFlag,
+    TaxaHabitat,
+    TaxaLikely,
+    TaxaMatch,
     TaxaTools,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

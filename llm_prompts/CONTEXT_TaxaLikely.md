@@ -4,7 +4,7 @@
 
 Trains a hierarchical Bayesian model on reference-vs-reference match scores (DNA percent identity, image similarity, acoustic scores) and uses it to convert per-observation match scores into likelihoods. For each observation (observation_id), produces score_likelihood, score_likelihood_mean, and score_likelihood_sd across candidate taxa - the columns required by TaxaAssign. Also provides reference database quality tools: detecting mislabeled references and auditing taxonomic completeness. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 22:07:45 UTC; unix). 31 exported function(s).
+Version 0.1.0. 31 exported function(s).
 
 ## Functions
 

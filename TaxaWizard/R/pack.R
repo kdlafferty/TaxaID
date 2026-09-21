@@ -155,7 +155,13 @@
 
 #' @noRd
 .pack_packages_table <- function(registry) {
-  lines <- c("| Package | Purpose | Version | Built |", "|---|---|---|---|")
+  # No Built column: packageDescription()$Built is a per-install wall-clock
+  # timestamp (second precision), not a version -- carrying it here made the
+  # committed pack churn on every reinstall even when nothing about the
+  # package actually changed. The registry's own use of Built (registry.R) is
+  # a cache key and is unaffected by this -- only the pack's rendered text
+  # drops it.
+  lines <- c("| Package | Purpose | Version |", "|---|---|---|")
   for (pkg in names(registry)) {
     desc <- tryCatch(utils::packageDescription(pkg), error = function(e) NULL)
     title <- if (!is.null(desc) && !is.na(desc$Title %||% NA)) {
@@ -164,9 +170,9 @@
       ""
     }
     lines <- c(lines, sprintf(
-      "| %s | %s | %s | %s |",
+      "| %s | %s | %s |",
       pkg, gsub("\\|", "\\\\|", title),
-      registry[[pkg]]$version %||% "?", registry[[pkg]]$built %||% "?"
+      registry[[pkg]]$version %||% "?"
     ))
   }
   paste(lines, collapse = "\n")
@@ -357,8 +363,8 @@
     description,
     "",
     sprintf(
-      "Version %s (built %s). %d exported function(s).",
-      entry$version %||% "?", entry$built %||% "?", length(entry$functions)
+      "Version %s. %d exported function(s).",
+      entry$version %||% "?", length(entry$functions)
     ),
     "",
     "## Functions",
