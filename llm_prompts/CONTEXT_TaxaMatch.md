@@ -22,13 +22,13 @@ For each observation, finds the finest taxonomic rank that has a single unambigu
 | na_as_inconsistent | no | FALSE | Logical. When TRUE, blank ("") and NA values count as a distinct category: a rank is flagged inconsistent when some candidates have no value and others do. Default FALSE: blanks and NAs are ignored and only non-blank values are compared. |
 | majority_threshold | no | NULL | Numeric in (0, 1] or NULL (default). When supplied, switches to majority mode: a rank is treated as consistent if the single most-common non-blank value accounts for at least this fraction of all non-blank candidate values. A value of 0.8 requires 4 of 5 candidates to agree. Values \le 0.5 are technically valid but semantically unusual (the "minority" would qualify as the majority). |
 
-**Value:** 'match_obj' with one new column in strict mode, or four new columns in majority mode: 'lowest_consistent_rank' Character. The finest rank for which the consistency criterion is satisfied. 'NA' when no rank passes. 'rank_majority_value' (_majority mode only_) Character. The majority value at 'lowest_consistent_rank' for the observation. 'NA' when 'lowest_consistent_rank' is 'NA'. 'rank_majority_fra
+**Value:** 'match_obj' with one new column in strict mode, or four new columns in majority mode: 'lowest_consistent_rank' Character. The finest rank for which the consistency criterion is satisfied. 'NA' when no rank passes. 'rank_majority_value' (_majority mode only_) Character. The majority value at 'lowest_consistent_rank' for the observation. 'NA' when 'lowest_consistent_rank' is 'NA'. ...
 
 ### assign_spatial_group(sites, observation_ids, spatial_group_id, id_col = "observation_id")
 
 Manually Assign a Spatial Group to a Set of Observations
 
-Sets 'spatial_group_id' directly for a named set of observations - for a study where the grouping is already known from metadata, or to hand-correct a few observations after 'group_observations_by_bbox''s interactive step - without drawing boxes. Guards against the one way this could silently corrupt an existing group: if 'spatial_group_id' is already in use by an observation *not* named in this call, that would silently expand an unrelated group's membership the next time anyone counts by 'spatial_group_id'. This function stops instead, so the caller can either include that observation explic
+Sets 'spatial_group_id' directly for a named set of observations - for a study where the grouping is already known from metadata, or to hand-correct a few observations after 'group_observations_by_bbox''s interactive step - without drawing boxes. Guards against the one way this could silently corrupt an existing group: if 'spatial_group_id' is already in use by an observation *not* named in this call, that would silently expand an unrelated group's membership the next time anyone counts by 'spatial_group_id'. This function stops instead, so the caller can either include that observation ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -71,7 +71,7 @@ Searches query sequences against NCBI nucleotide (remote) or a local BLAST datab
 | max_consecutive_batch_failures | no | 3L | Integer. Remote BLAST only. Default 3L. A circuit breaker, distinct from poll_max_wait -- that parameter bounds how long ONE batch is allowed to take; this bounds how many CONSECUTIVE batches are allowed to fail before concluding the problem is systemic (sustained NCBI rate-limiting or CPU-budget throttling), not one unlucky batch, and stopping rather than continuing to submit batches that are likely doomed too. Without this, a sustained throttling episode means every remaining batch still pays its own full poll_max_wait before giving up -- for a large run (e.g. 60 batches at the default batch_size), that is many hours of guaranteed-doomed work before the function ever returns. A .blast_server_rejected() rejection counts double toward this threshold (a real, unambiguous throttle signal from NCBI itself); a plain poll timeout or submission failure counts once (could just be one slow/large batch). The counter resets to 0 on any batch that completes normally (including a real zero-hit result). When tripped: no further batches are submitted, every not-yet-attempted batch's queries are added to failed_query_ids (see below) alongside whatever had already failed, and the halved-batch-size retry pass is skipped entirely (retrying under a confirmed-systemic throttle wastes real NCBI time on batches already judged doomed). Set to Inf to disable and restore the old unconditional-retry-every-batch behavior. |
 | verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
 
-**Value:** A data frame with one row per query x hit, containing: observation_id Query identifier (from 'asv_id') accession Subject accession score Percent identity (0-100 scale), computed as 'round(100 * identity / align_len, 2)' from HSP fields (the standard NCBI definition). This is _alignment_ identity over the aligned region, not sequence identity over the full query length. For multi-HSP alignments onl
+**Value:** A data frame with one row per query x hit, containing: observation_id Query identifier (from 'asv_id') accession Subject accession score Percent identity (0-100 scale), computed as 'round(100 * identity / align_len, 2)' from HSP fields (the standard NCBI definition). This is _alignment_ identity over the aligned region, not sequence identity over the full query length. For multi-HSP ...
 
 ### build_site_table(match_df, site_df = NULL, id_col = "observation_id")
 
@@ -85,13 +85,13 @@ Produces one standardized site table - 'observation_id', 'lat', 'lon', 'observed
 | site_df | no | NULL | Data frame with (at minimum) id_col, lat, and lon columns, required when match_df has no embedded lat/lng. Optional observed_on column. May have more than one row per id_col value -- this is the correct shape for a sequence ASV genuinely detected at several real sample sites (the same observation_id legitimately gets one row per site); do not pre-collapse to one row per observation before calling. Ignored (with a warning) when match_df already carries embedded site info. |
 | id_col | no | "observation_id" | Character. Observation ID column name, present in both match_df and site_df. Default "observation_id". |
 
-**Value:** A tibble in long format: one row per '(observation_id, site)' pair actually present in 'match_df', with columns 'id_col', 'lat', 'lon', 'observed_on' ('NA' where unknown), 'spatial_group_id', 'spatial_group_N', and 'is_default_group'. 'spatial_group_id' defaults to '"spatial_group_<n>"', grouping rows that share an *exact* '(lat, lon)' pair (see Details), and 'spatial_group_N' to the count of rows
+**Value:** A tibble in long format: one row per '(observation_id, site)' pair actually present in 'match_df', with columns 'id_col', 'lat', 'lon', 'observed_on' ('NA' where unknown), 'spatial_group_id', 'spatial_group_N', and 'is_default_group'. 'spatial_group_id' defaults to '"spatial_group_<n>"', grouping rows that share an *exact* '(lat, lon)' pair (see Details), and 'spatial_group_N' to the count of ...
 
 ### check_marker_mismatch(accessions, expected_marker, ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), verbose = TRUE)
 
 Cross-Check a Reference Accession's Own Annotated Gene/Product Against an Expected Marker
 
-Before investigating a flagged accession as a possible SPECIES mislabel (see 'investigate_flagged_accession()'), this does a single cheap GBSeq XML fetch and checks the record's own /gene or /product feature-table qualifier against the marker an evaluation was scoped to (e.g. does a "12S"-scoped audit's flagged record actually say /product="16S ribosomal RNA"?). No BLAST, no alignment - much cheaper than 'investigate_flagged_accession()''s deep dive, and meant to route a flagged accession to a completely different, simpler resolution path (correct the marker label, or exclude the accession fro
+Before investigating a flagged accession as a possible SPECIES mislabel (see 'investigate_flagged_accession()'), this does a single cheap GBSeq XML fetch and checks the record's own /gene or /product feature-table qualifier against the marker an evaluation was scoped to (e.g. does a "12S"-scoped audit's flagged record actually say /product="16S ribosomal RNA"?). No BLAST, no alignment - much cheaper than 'investigate_flagged_accession()''s deep dive, and meant to route a flagged accession to a completely different, simpler resolution path (correct the marker label, or exclude the ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -100,7 +100,7 @@ Before investigating a flagged accession as a possible SPECIES mislabel (see 'in
 | ncbi_api_key | no | Sys.getenv("NCBI_API_KEY", unset = "") | As in evaluate_reference_accessions(). |
 | verbose | no | TRUE | As in evaluate_reference_accessions(). |
 
-**Value:** A data frame, one row per unique input accession: 'accession' As supplied. 'expected_marker' As supplied. 'annotated_genes' Semicolon-joined, deduplicated /gene qualifier values found anywhere in the record's feature table. 'NA' if none were found (may still have /product annotation). 'annotated_products' Same, for /product. 'marker_match' 'TRUE' if ANY annotated /gene or /product text matches 'ex
+**Value:** A data frame, one row per unique input accession: 'accession' As supplied. 'expected_marker' As supplied. 'annotated_genes' Semicolon-joined, deduplicated /gene qualifier values found anywhere in the record's feature table. 'NA' if none were found (may still have /product annotation). 'annotated_products' Same, for /product. 'marker_match' 'TRUE' if ANY annotated /gene or /product text ...
 
 ### convert_taxonomy_backbone(match_df, target_backbone_id, source_backbone_id = NULL, rank_system = c("order", "family", "genus", "species"), taxon_col = "taxon_name", update_taxon_name = TRUE, original_col = "taxon_name_original", backbone_col = "taxonomy_backbone", collision_col = "taxonomy_collision", verify_fn = TaxaTools::verify_taxon_names, verbose = TRUE)
 
@@ -122,7 +122,7 @@ Looks up each unique taxon name in 'match_df[[taxon_col]]' against a target taxo
 | verify_fn | no | TaxaTools::verify_taxon_names | Function. The name verification function to call. Must accept a character vector as its first argument and a backbone_id argument; must return a data frame with columns user_supplied_name, matched_name, classification_path, classification_ranks, and verified (logical: TRUE when the name resolved in the target backbone, FALSE/NA otherwise). An optional matched_rank column (the rank matched_name actually resolved at) enables the rank correction described below; a verify_fn without it is still fully supported, just without that correction. Default: TaxaTools::verify_taxon_names. Override for offline testing via dependency injection. The call is wrapped in tryCatch(); a failure (e.g. network unavailable, API rate-limited) raises a clear error naming the likely cause rather than propagating whatever uninformative error the API layer produced. |
 | verbose | no | TRUE | Logical. Print the backbone column mapping summary message at the end. Default TRUE. warning()s for inconsistent taxonomy are always issued regardless of this setting. |
 
-**Value:** 'match_df' with rank columns potentially updated, plus 'backbone_col', 'collision_col', and (when 'update_taxon_name = TRUE') 'original_col' columns added - 'backbone_col'/'collision_col' are created if absent and left unchanged (not overwritten) if already present, which matters for iterative/multi-pass pipeline use. The attribute 'backbone_cols' is set: a named list mapping '"backbone_N_cols"' t
+**Value:** 'match_df' with rank columns potentially updated, plus 'backbone_col', 'collision_col', and (when 'update_taxon_name = TRUE') 'original_col' columns added - 'backbone_col'/'collision_col' are created if absent and left unchanged (not overwritten) if already present, which matters for iterative/multi-pass pipeline use. The attribute 'backbone_cols' is set: a named list mapping ...
 
 ### corroborate_references_locally(seq_matrix, reference_meta, min_overlap = 0.8, min_pident = 0.99, submission_window = 5L)
 
@@ -138,7 +138,7 @@ For each reference accession, asks whether an INDEPENDENT conspecific in the cal
 | min_pident | no | 0.99 | Numeric in (0, 1] (default 0.99). Minimum identity of the best independent conspecific for local_tier = "corroborated". |
 | submission_window | no | 5L | Integer (default 5L). As in evaluate_reference_accessions(); pass the same value used there. |
 
-**Value:** A data frame, one row per accession (version suffix stripped) in the union of 'reference_meta' and 'seq_matrix': 'accession' Version-stripped id. 'species' From 'reference_meta$species' when present, else the accession's 'species.x' in 'seq_matrix'. 'n_conspecific' Distinct conspecific partners at 'coverage >= min_overlap', any batch. 'n_independent_conspecific' Of those, from a different submissi
+**Value:** A data frame, one row per accession (version suffix stripped) in the union of 'reference_meta' and 'seq_matrix': 'accession' Version-stripped id. 'species' From 'reference_meta$species' when present, else the accession's 'species.x' in 'seq_matrix'. 'n_conspecific' Distinct conspecific partners at 'coverage >= min_overlap', any batch. 'n_independent_conspecific' Of those, from a different ...
 
 ### evaluate_reference_accessions(accessions, cache_dir = tools::R_user_dir("TaxaMatch", "cache"), insufficient_evidence_ttl_days = 180, incongruent_ttl_days = 30, top_n = 5L, min_congruent_rank = "family", hierarchy_incongruent_threshold = 0.5, min_independent_partners = 3L, submission_window = 5L, method = c("remote", "local"), database = "nt", score_range = 8, min_score = 70, max_hits = 20L, ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), poll_max_wait = 1800, barcode_term = NULL, query_span = c("amplicon", "primer_inclusive"), chunk_size = 200L, max_consecutive_batch_failures = 3L, max_query_len = NULL, max_batch_bp = 100000L, prioritize_uncached = TRUE, retry_insufficient = TRUE, local_corroboration = NULL, skip_locally_corroborated = TRUE, verbose = TRUE)
 
@@ -176,7 +176,7 @@ For each accession, BLASTs its own sequence against a broad, *unrestricted* data
 | skip_locally_corroborated | no | TRUE | Logical (default TRUE). FALSE sends locally-corroborated accessions to BLAST like any other, and also re-evaluates any row previously cached as "locally_corroborated" (that flag records a decision not to evaluate, not an evaluation). Not part of params_key. |
 | verbose | no | TRUE | Logical (default TRUE). Print progress messages. |
 
-**Value:** A data frame, one row per unique input accession: 'accession' Exactly as supplied by the caller. 'listed_taxon' The accession's own labeled organism (from its real GenBank record). 'n_independent_top_matches' Independent BLAST hits actually used for the verdict (<= top_n). Also excludes any hit whose OWN listed species isn't itself resolved to species level - see @section Species-resolved comparis
+**Value:** A data frame, one row per unique input accession: 'accession' Exactly as supplied by the caller. 'listed_taxon' The accession's own labeled organism (from its real GenBank record). 'n_independent_top_matches' Independent BLAST hits actually used for the verdict (<= top_n). Also excludes any hit whose OWN listed species isn't itself resolved to species level - see @section Species-resolved ...
 
 ### filter_redundant_hypotheses(match_df, rank_system = c("kingdom", "phylum", "class", "order", "family", "genus", "species"))
 
@@ -218,13 +218,13 @@ The RECOMMENDED default consumer of 'evaluate_reference_accessions()' - left-joi
 | match_df | yes |  | Data frame. A standardized match object (from standardize_match_data()) containing an accession column. |
 | evaluation | yes |  | Data frame. Output of evaluate_reference_accessions(). |
 
-**Value:** 'match_df' with 'hierarchy_flag', 'finest_common_rank', 'frac_independent_below_min_congruent_rank', 'n_independent_top_matches', 'n_top_matches_available', 'best_hit_pident', 'best_agreeing_pident', 'best_disagreeing_pident', 'congruent_evidence_exists_anywhere', and 'congruent_evidence_best_pident' joined on, plus 'label_confidence', 'label_identity_margin', 'reference_action' and 'listed_taxon_
+**Value:** 'match_df' with 'hierarchy_flag', 'finest_common_rank', 'frac_independent_below_min_congruent_rank', 'n_independent_top_matches', 'n_top_matches_available', 'best_hit_pident', 'best_agreeing_pident', 'best_disagreeing_pident', 'congruent_evidence_exists_anywhere', and 'congruent_evidence_best_pident' joined on, plus 'label_confidence', 'label_identity_margin', 'reference_action' and ...
 
 ### group_observations_by_bbox(sites, id_col = "observation_id", lat_col = "lat", lon_col = "lon", tile = "Esri.OceanBasemap")
 
 Group Observations by User-Drawn Bounding Boxes
 
-Plots all observations' site coordinates and lets the user draw one or more bounding-box polygons (via repeated calls to 'define_search_polygon') to define spatial groups. Observations whose coordinates fall within a drawn box share a 'spatial_group_id' and can use one pooled, community-level occurrence/reference fetch (the existing clustered pipeline design). Observations that never fall inside any drawn box - including every observation, if the user draws no box at all - are *not dropped*: they are left at their existing 'spatial_group_id' (by default, from 'build_site_table', a grid-snapped
+Plots all observations' site coordinates and lets the user draw one or more bounding-box polygons (via repeated calls to 'define_search_polygon') to define spatial groups. Observations whose coordinates fall within a drawn box share a 'spatial_group_id' and can use one pooled, community-level occurrence/reference fetch (the existing clustered pipeline design). Observations that never fall inside any drawn box - including every observation, if the user draws no box at all - are *not dropped*: they are left at their existing 'spatial_group_id' (by default, from 'build_site_table', a ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -234,7 +234,7 @@ Plots all observations' site coordinates and lets the user draw one or more boun
 | lon_col | no | "lon" | Character. Latitude/longitude column names. Default "lat" / "lon". |
 | tile | no | "Esri.OceanBasemap" | Character. Leaflet tile provider, passed to define_search_polygon. Default "Esri.OceanBasemap". |
 
-**Value:** 'sites' with 'spatial_group_id'/'spatial_group_N'/ 'is_default_group' updated in place: observations captured by a drawn box (in draw order; an observation falling inside more than one box gets the *most recently drawn* one, with a warning - see Details) get '"spatial_group_1"', '"spatial_group_2"', ..., 'spatial_group_N' equal to that group's member count, and 'is_default_group = FALSE'. Observat
+**Value:** 'sites' with 'spatial_group_id'/'spatial_group_N'/ 'is_default_group' updated in place: observations captured by a drawn box (in draw order; an observation falling inside more than one box gets the *most recently drawn* one, with a warning - see Details) get '"spatial_group_1"', '"spatial_group_2"', ..., 'spatial_group_N' equal to that group's member count, and 'is_default_group = FALSE'. ...
 
 ### investigate_flagged_accession(accession, species = NULL, max_related = 30L, method = c("remote", "local"), database = "nt", score_range = 8, min_score = 70, max_hits = 20L, submission_window = 5L, min_coverage = 0.5, max_length_ratio = 3, cache_dir = tools::R_user_dir("TaxaMatch", "cache"), inconclusive_ttl_days = 30, ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), verbose = TRUE)
 
@@ -260,13 +260,13 @@ For ONE accession 'evaluate_reference_accessions()' flagged (typically '"incongr
 | ncbi_api_key | no | Sys.getenv("NCBI_API_KEY", unset = "") | As in evaluate_reference_accessions(). |
 | verbose | no | TRUE | As in evaluate_reference_accessions(). |
 
-**Value:** A list: 'accession', 'listed_species' As given/discovered. 'conspecific_comparison' data.frame(accession, pident, coverage, meets_min_coverage, create_date) - one row per real conspecific accession BLAST actually returned a hit for. ALWAYS check 'coverage'/'meets_min_coverage' before trusting 'pident' - a high 'pident' at low coverage is not meaningful evidence of anything, see 'min_coverage' abov
+**Value:** A list: 'accession', 'listed_species' As given/discovered. 'conspecific_comparison' data.frame(accession, pident, coverage, meets_min_coverage, create_date) - one row per real conspecific accession BLAST actually returned a hit for. ALWAYS check 'coverage'/'meets_min_coverage' before trusting 'pident' - a high 'pident' at low coverage is not meaningful evidence of anything, see 'min_coverage' ...
 
 ### investigate_flagged_accessions(accessions, species = NULL, max_related = 30L, method = c("remote", "local"), database = "nt", score_range = 8, min_score = 70, max_hits = 20L, submission_window = 5L, min_coverage = 0.5, max_length_ratio = 3, cache_dir = tools::R_user_dir("TaxaMatch", "cache"), inconclusive_ttl_days = 30, ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""), verbose = TRUE)
 
 Deep-Dive Verification for a Batch of Flagged Reference Accessions
 
-The natural 'investigate_flagged_accessions()' (plural) batch wrapper 'investigate_flagged_accession()''s own docs point at (Question 3, item 2): runs the identical per-accession investigation over a whole list, but shares a single in-memory NCBI-search lookup across the batch (so a 'listed_species' or 'disagreeing_taxon' repeated across several independently-flagged accessions is only fetched from NCBI once, not once per accession) and shares the same persistent cache 'investigate_flagged_accession()' itself uses - calling this after already having called 'investigate_flagged_accession()' on 
+The natural 'investigate_flagged_accessions()' (plural) batch wrapper 'investigate_flagged_accession()''s own docs point at (Question 3, item 2): runs the identical per-accession investigation over a whole list, but shares a single in-memory NCBI-search lookup across the batch (so a 'listed_species' or 'disagreeing_taxon' repeated across several independently-flagged accessions is only fetched from NCBI once, not once per accession) and shares the same persistent cache 'investigate_flagged_accession()' itself uses - calling this after already having called ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -305,7 +305,7 @@ Produces a 'site_df' suitable for 'build_site_table' from any event-level detect
 | observed_on_col | no | "observed_on" | Character. Collection-date column name in site_metadata, or NULL if not available. Default "observed_on". |
 | control_samples | no | NULL | Character vector of event_col values to exclude before joining (blanks/controls are not real site detections). Default NULL (no exclusion). |
 
-**Value:** A tibble in the long-format shape 'build_site_table''s 'site_df' argument expects: 'id_col', 'lat', 'lon', 'observed_on' ('NA' if 'observed_on_col = NULL'), plus 'event_col' retained for traceability. May have more than one row per 'id_col' value - this is the correct shape for an 'id_col' value (e.g. a sequence ASV) genuinely detected at more than one real event's site. Rows whose 'event_col' val
+**Value:** A tibble in the long-format shape 'build_site_table''s 'site_df' argument expects: 'id_col', 'lat', 'lon', 'observed_on' ('NA' if 'observed_on_col = NULL'), plus 'event_col' retained for traceability. May have more than one row per 'id_col' value - this is the correct shape for an 'id_col' value (e.g. a sequence ASV) genuinely detected at more than one real event's site. Rows whose ...
 
 ### match_driving_accessions(match_df, score_col = "score_original", obs_col = "observation_id", species_col = "species", accession_col = "accession")
 
@@ -356,7 +356,7 @@ Reads one or more Animl (MegaDetector + SpeciesNet) result CSV files and returns
 | top_n | no | NULL | Integer or NULL. If supplied, only the top n candidates (by confidence) within each image are retained. Default NULL (keep all). |
 | bbox_cols | no | NULL | Character vector of length 2 or NULL. Names of the bounding-box width and height columns (normalized 0--1, as output by MegaDetector). Supply as a named vector c(w = "bbox_w", h = "bbox_h") or positionally c("bbox_w", "bbox_h"). When provided, coverage = bbox_w * bbox_h is computed and added to the output; this area fraction serves as an image-quality analog to BLAST qcovs and is accepted by TaxaLikely::evaluate_likelihoods(min_coverage=). Default NULL (no coverage column). |
 
-**Value:** A data frame with one row per image × candidate species, containing: 'observation_id' Unique identifier derived from the image filename stem (path stripped, extension(s) stripped). Multiple rows with the same 'observation_id' represent alternative species candidates for the same image/crop — analogous to multiple BLAST hits per eDNA query or multiple BirdNET candidates per time window. 'score' Ani
+**Value:** A data frame with one row per image × candidate species, containing: 'observation_id' Unique identifier derived from the image filename stem (path stripped, extension(s) stripped). Multiple rows with the same 'observation_id' represent alternative species candidates for the same image/crop — analogous to multiple BLAST hits per eDNA query or multiple BirdNET candidates per time window. ...
 
 ### read_birdnet_output(files, min_confidence = 0, top_n = NULL)
 
@@ -370,7 +370,7 @@ Reads one or more BirdNET-Analyzer result CSV files and returns a tidy data fram
 | min_confidence | no | 0 | Numeric. Detections below this confidence are dropped. Default 0 (keep all). BirdNET's own default threshold is 0.1. |
 | top_n | no | NULL | Integer or NULL. If supplied, only the top n detections (by confidence) within each time window are retained. Default NULL (keep all detections per window). Setting top_n = 1 retains only the best species per window; top_n = 3 reproduces BirdNET's default output when the tool is run with --top_n 3. |
 
-**Value:** A data frame with one row per file × time-window × detected species, containing: 'observation_id' Unique identifier combining file stem and time window: '"{file_stem}_{start_s}-{end_s}"', with 'start_s'/'end_s' formatted to a fixed 1 decimal place so the same window produces the same ID across platforms/R versions. Pass as 'observation_id_col' to 'standardize_match_data()'. 'score' BirdNET confide
+**Value:** A data frame with one row per file × time-window × detected species, containing: 'observation_id' Unique identifier combining file stem and time window: '"{file_stem}_{start_s}-{end_s}"', with 'start_s'/'end_s' formatted to a fixed 1 decimal place so the same window produces the same ID across platforms/R versions. Pass as 'observation_id_col' to 'standardize_match_data()'. 'score' BirdNET ...
 
 ### read_inaturalist_cv_output(files, score_type = c("combined_score", "score"), min_confidence = 0, top_n = NULL)
 
@@ -385,7 +385,7 @@ Reads one or more saved JSON files from the iNaturalist computer vision API and 
 | min_confidence | no | 0 | Numeric. Detections below this score are dropped. Default 0 (keep all). |
 | top_n | no | NULL | Integer or NULL. If supplied, only the top n candidates (by score) within each image are retained. Default NULL (keep all). |
 
-**Value:** A data frame with one row per image x candidate taxon, containing: 'observation_id' Unique identifier derived from the JSON filename stem (the name you gave the saved response file, ideally the image filename stem). 'score' iNaturalist CV score, passed through unchanged from the saved JSON's 'score_type' field. The live API returns scores on iNaturalist's 0-100 softmax convention (candidates for o
+**Value:** A data frame with one row per image x candidate taxon, containing: 'observation_id' Unique identifier derived from the JSON filename stem (the name you gave the saved response file, ideally the image filename stem). 'score' iNaturalist CV score, passed through unchanged from the saved JSON's 'score_type' field. The live API returns scores on iNaturalist's 0-100 softmax convention (candidates ...
 
 ### read_sequence_table(input_data, sequence_col = "sequence", observation_id_col = NULL, abundance_cols = NULL, taxonomy = NULL, header_format = "none", id_prefix = "ASV")
 
@@ -403,7 +403,7 @@ Converts a DADA2 sequence table (matrix), a FASTA file, or a data frame (e.g., f
 | header_format | no | "none" | For FASTA input only: how to parse taxonomy from sequence headers. "semicolon" expects accession;kingdom;phylum;class;order;family;genus;species. "none" (default) does not parse headers. |
 | id_prefix | no | "ASV" | Character prefix for generated ASV identifiers. Default "ASV". |
 
-**Value:** A data frame with columns: asv_id Unique identifier (e.g., "ASV_001") sequence DNA sequence string length Sequence length in base pairs abundance Total read count across all samples If taxonomy is provided (via 'taxonomy' argument, parsed from FASTA headers, or present in a data frame input), taxonomy columns are appended. For FASTA/'DNAStringSet' input with 'header_format = "none"' (the default),
+**Value:** A data frame with columns: asv_id Unique identifier (e.g., "ASV_001") sequence DNA sequence string length Sequence length in base pairs abundance Total read count across all samples If taxonomy is provided (via 'taxonomy' argument, parsed from FASTA headers, or present in a data frame input), taxonomy columns are appended. For FASTA/'DNAStringSet' input with 'header_format = "none"' (the ...
 
 ### read_speciesnet_output(files, min_confidence = 0, top_n = NULL, include_coverage = FALSE, min_detection_conf = 0)
 
@@ -419,7 +419,7 @@ Reads one or more real SpeciesNet CLI ('google/cameratrapai', python -m speciesn
 | include_coverage | no | FALSE | Logical. If TRUE, adds a coverage column (bounding-box area fraction, bbox_w * bbox_h) and a detection_conf column, taken from the image's highest-confidence MegaDetector "animal" detection (SpeciesNet detection category "1") -- an image-quality analog to BLAST qcovs, matching read_animl_output()'s bbox_cols convention. NA for images with no qualifying detection. Default FALSE. |
 | min_detection_conf | no | 0 | Numeric. Only used when include_coverage = TRUE: detections below this MegaDetector confidence are not eligible to be the representative detection. Default 0. |
 
-**Value:** A data frame with one row per image x candidate species, containing: 'observation_id' Unique identifier derived from the image filename stem ('filepath', path stripped, extension(s) stripped). 'score' SpeciesNet classifier confidence (0-1) for this candidate, from the RAW top-5 'classifications' block - pre-geofencing, pre-taxonomic-rollup. This is deliberately NOT the same as 'ensemble_prediction
+**Value:** A data frame with one row per image x candidate species, containing: 'observation_id' Unique identifier derived from the image filename stem ('filepath', path stripped, extension(s) stripped). 'score' SpeciesNet classifier confidence (0-1) for this candidate, from the RAW top-5 'classifications' block - pre-geofencing, pre-taxonomic-rollup. This is deliberately NOT the same as ...
 
 ### refine_reference_verdicts(evaluation, cache_dir = NULL, pair_table = NULL, rank_system = TaxaTools::standard_ranks, min_congruent_rank = "family", top_n = 5L, hierarchy_incongruent_threshold = 0.5, min_independent_partners = 3L, min_partner_weight = 0, max_iter = 10L, tol = 1e-04, verbose = TRUE, local_corroboration = NULL, ...)
 
@@ -444,7 +444,7 @@ Re-run Reference Verdicts With Each Partner Weighted by Its Own Trustworthiness
 | local_corroboration | no | NULL | Data frame or NULL (default). Forwarded to score_reference_labels(); the same veto (a locally-corroborated "remove" becomes "inspect") is applied to reference_action_trust. |
 | ... | yes |  | Passed to score_reference_labels() (margin_scale, margin_cap, the three action thresholds) -- use the SAME values here as anywhere else in a pipeline, or the refined and unrefined columns are not comparable. |
 
-**Value:** 'evaluation' with these columns added: 'hierarchy_flag_trust', 'label_confidence_trust', 'reference_action_trust', 'frac_below_min_congruent_rank_trust', 'n_effective_partners' (the weighted partner count, which is what 'min_independent_partners' is now compared against), and 'trust_refined' (logical - 'FALSE' where no pair data existed, in which case the *_trust columns simply repeat the unrefine
+**Value:** 'evaluation' with these columns added: 'hierarchy_flag_trust', 'label_confidence_trust', 'reference_action_trust', 'frac_below_min_congruent_rank_trust', 'n_effective_partners' (the weighted partner count, which is what 'min_independent_partners' is now compared against), and 'trust_refined' (logical - 'FALSE' where no pair data existed, in which case the *_trust columns simply repeat the ...
 
 ### remove_incongruent_references(match_df, evaluation, remove_insufficient_evidence = FALSE, override_accessions = NULL, gate = c("action", "flag"))
 
@@ -474,7 +474,7 @@ Summarizes the match data produced by TaxaMatch into a structured 'report_sectio
 | data_type | no | NULL | Character or NULL. One of "eDNA", "image", "acoustic". If NULL, auto-detected as "eDNA" when match_data has an accession or alignment_length column (both BLAST-specific); otherwise stays NULL and the methods/results text uses generic wording. There is currently no auto-detection for "image"/"acoustic" -- pass these explicitly. data_type also controls whether the results text formats scores as a percentage (see @return's results entry). |
 | verbose | no | FALSE | Logical. Print summary messages. Default FALSE. |
 
-**Value:** A 'report_section' object with: methods Template text describing matching approach. results Template text summarizing match statistics, or 'NULL' when 'match_data' has neither 'score_original' nor a taxon-name column to summarize. Scores are formatted as a percentage only when 'data_type == "eDNA"' (percent identity is always 0-100 for BLAST); for '"image"'/'"acoustic"' (whose score scale varies b
+**Value:** A 'report_section' object with: methods Template text describing matching approach. results Template text summarizing match statistics, or 'NULL' when 'match_data' has neither 'score_original' nor a taxon-name column to summarize. Scores are formatted as a percentage only when 'data_type == "eDNA"' (percent identity is always 0-100 for BLAST); for '"image"'/'"acoustic"' (whose score scale ...
 
 ### resolve_review_overrides(review_result, keep_explanations = c("poor_marker_resolution", "sister_family_thin_coverage", "hybrid_or_specimen_code_artifact"), min_confidence = c("high", "moderate"))
 
@@ -494,7 +494,7 @@ Bridges 'review_flagged_accessions()''s LLM-based second-look verdicts to 'remov
 
 LLM Second-Look Review of Flagged Reference Accessions
 
-Sends 'evaluate_reference_accessions()''s flagged/borderline rows to an LLM for a free-text second look - the same "narrative-judgment layer added ON TOP of statistical flags, never replacing them, never auto-acting" pattern 'TaxaFlag::review_assignments()' already established for posterior taxonomic assignments (implements Question 2 of 'ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md'). The LLM never re-decides 'hierarchy_flag' - it adds what the statistical check structurally cannot: recognizing a known hybrid-cross name (e.g. '"Ctenopharyngodon idella x Megalobrama amblyceph
+Sends 'evaluate_reference_accessions()''s flagged/borderline rows to an LLM for a free-text second look - the same "narrative-judgment layer added ON TOP of statistical flags, never replacing them, never auto-acting" pattern 'TaxaFlag::review_assignments()' already established for posterior taxonomic assignments (implements Question 2 of 'ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md'). The LLM never re-decides 'hierarchy_flag' - it adds what the statistical check structurally cannot: recognizing a known hybrid-cross name (e.g. '"Ctenopharyngodon idella x Megalobrama ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -510,7 +510,7 @@ Sends 'evaluate_reference_accessions()''s flagged/borderline rows to an LLM for 
 | verbose | no | TRUE | Logical (default TRUE). Print progress messages. |
 | local_min_overlap | no | NULL | Numeric in (0, 1] or NULL (default). The min_overlap corroborate_references_locally() was run with, quoted in the prompt's local-corroboration line ("best identity X% over >= 80% of the amplicon"). NULL reads it from attr(evaluated_df, "local_corroboration_params") when score_reference_labels() left one there, and otherwise words the line without a number. Only matters when evaluated_df carries local_n_independent_conspecific/local_best_independent_pident. |
 
-**Value:** 'evaluated_df' with 4 columns appended ('NA' for out-of-scope rows): 'accession_likely_explanation' One of '"genuine_mislabel"', '"poor_marker_resolution"', '"sister_family_thin_coverage"', '"hybrid_or_specimen_code_artifact"', '"uncertain"' - the LLM's own categorization of WHY the accession was flagged, never a re-decided 'hierarchy_flag'. 'accession_review_confidence' '"high"' / '"moderate"' / 
+**Value:** 'evaluated_df' with 4 columns appended ('NA' for out-of-scope rows): 'accession_likely_explanation' One of '"genuine_mislabel"', '"poor_marker_resolution"', '"sister_family_thin_coverage"', '"hybrid_or_specimen_code_artifact"', '"uncertain"' - the LLM's own categorization of WHY the accession was flagged, never a re-decided 'hierarchy_flag'. 'accession_review_confidence' '"high"' / ...
 
 ### score_image_inat(image_path, lat = NULL, lng = NULL, observed_on = NULL, top_n = 10L, recursive = FALSE, api_token = Sys.getenv("INAT_API_TOKEN"))
 
@@ -528,13 +528,13 @@ Submits one or more images to the iNaturalist CV API and returns a tidy match ob
 | recursive | no | FALSE | Logical. When image_path is a directory, also scan subdirectories recursively. Default FALSE. |
 | api_token | no | Sys.getenv("INAT_API_TOKEN") | Character. iNaturalist API token. Defaults to the INAT_API_TOKEN environment variable. Obtain a token by visiting https://www.inaturalist.org/users/api_token while logged in. |
 
-**Value:** A tibble with up to 'top_n' rows per image (one per candidate taxon; some images may return fewer when the API has fewer suggestions), containing: 'observation_id' (image filename stem), 'taxon_name', 'taxon_name_rank', 'score_original' (identical to 'combined_score'; kept under the canonical pipeline name for compatibility with 'evaluate_likelihoods()'), 'genus', 'common_name', 'iconic_taxon_name
+**Value:** A tibble with up to 'top_n' rows per image (one per candidate taxon; some images may return fewer when the API has fewer suggestions), containing: 'observation_id' (image filename stem), 'taxon_name', 'taxon_name_rank', 'score_original' (identical to 'combined_score'; kept under the canonical pipeline name for compatibility with 'evaluate_likelihoods()'), 'genus', 'common_name', ...
 
 ### score_reference_labels(evaluation, margin_scale = 1, margin_cap = 5, action_remove_below = 0.05, action_inspect_below = 0.25, action_caution_below = 0.75, overwrite = FALSE, local_corroboration = NULL)
 
 Score Reference Labels: a Numeric Label Confidence and a Categorical Action
 
-Adds two derived columns to an 'evaluate_reference_accessions()' result: 'label_confidence' (numeric, high = the listed label is more likely CORRECT) and 'reference_action' ('"keep"'/'"caution"'/'"inspect"'/ '"remove"'/'"untested"'). Evidence and action are deliberately separate columns - the same split this ecosystem already uses for 'TaxaFlag::observation_validity' (numeric) vs 'validity_flag' (categorical), and for 'TaxaHabitat::flag_institution_candidates()''s classify-then-review shape. The numeric grades the evidence; the categorical is for humans and for 'remove_incongruent_references()
+Adds two derived columns to an 'evaluate_reference_accessions()' result: 'label_confidence' (numeric, high = the listed label is more likely CORRECT) and 'reference_action' ('"keep"'/'"caution"'/'"inspect"'/ '"remove"'/'"untested"'). Evidence and action are deliberately separate columns - the same split this ecosystem already uses for 'TaxaFlag::observation_validity' (numeric) vs 'validity_flag' (categorical), and for 'TaxaHabitat::flag_institution_candidates()''s classify-then-review shape. The numeric grades the evidence; the categorical is for humans and for ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -547,7 +547,7 @@ Adds two derived columns to an 'evaluate_reference_accessions()' result: 'label_
 | overwrite | no | FALSE | Logical (default FALSE). TRUE recomputes and replaces label_confidence/label_identity_margin/reference_action (and the local-corroboration columns) if they are already present; FALSE errors instead, so a second call with different parameters can't silently produce a mixed-provenance table. |
 | local_corroboration | no | NULL | Data frame or NULL (default). Output of corroborate_references_locally(). Joined by version-stripped accession. See @section Local corroboration. |
 
-**Value:** 'evaluation' with seven columns added: 'label_confidence' Numeric in (0, 1). 'NA' for a row with no computed congruence at all ('"not_evaluated_oversized"', '"not_evaluated_wrong_marker"', or a fetch failure). *Named contract (2026-09-05 critical-fix-review finding C): this value CANNOT REACH 1*, by construction - the Jeffreys smoothing floors the disagreement fraction at '0.5/(n+1)', so even a pe
+**Value:** 'evaluation' with seven columns added: 'label_confidence' Numeric in (0, 1). 'NA' for a row with no computed congruence at all ('"not_evaluated_oversized"', '"not_evaluated_wrong_marker"', or a fetch failure). *Named contract (2026-09-05 critical-fix-review finding C): this value CANNOT REACH 1*, by construction - the Jeffreys smoothing floors the disagreement fraction at '0.5/(n+1)', so even ...
 
 ### standardize_match_data(data = NULL, observation_id_col, score_col, rank_system = NULL, coverage_col = NULL, col_map = NULL, lowercase_names = TRUE)
 
@@ -565,13 +565,13 @@ Reads raw match data (from a data frame or file), renames the observation identi
 | col_map | no | NULL | Optional named character vector of additional column renames applied before the core standardisation step, via TaxaTools::rename_cols(). Format: c("OldName" = "new_name"). Useful when source files use non-standard column names that are not auto-detected. |
 | lowercase_names | no | TRUE | Logical. When TRUE (default), all column names in the output are converted to lowercase as the final step. This produces a fully consistent canonical object (e.g. kingdom, testid, accession) and avoids case-sensitivity surprises in downstream joins. Set to FALSE to preserve original column name casing. |
 
-**Value:** A data frame with at minimum: 'observation_id' Unique query identifier (renamed from 'observation_id_col'). 'score_original' Raw match score (renamed from 'score_col'). Preserved unchanged throughout the pipeline; downstream functions add 'score_norm', 'score_softmax', and 'score_likelihood' columns as transformations are applied. 'taxon_name' Most specific non-NA taxon name (derived). 'taxon_name
+**Value:** A data frame with at minimum: 'observation_id' Unique query identifier (renamed from 'observation_id_col'). 'score_original' Raw match score (renamed from 'score_col'). Preserved unchanged throughout the pipeline; downstream functions add 'score_norm', 'score_softmax', and 'score_likelihood' columns as transformations are applied. 'taxon_name' Most specific non-NA taxon name (derived). ...
 
 ### verify_local_corroborations(cache_dir, max_corroborators = 2L, verbose = TRUE)
 
 Audit thin locally-corroborated rows against their own corroborator's verdict
 
-'"locally_corroborated"' (2026-09-03) skips BLASTing an accession entirely when the caller's own reference set already has an independent conspecific deposit for it - cached with TTL 'Inf' and exempt from 'refine_reference_verdicts()''s trust-weighted refinement, since the MATCH itself, once observed, is permanent. But the _corroborator's own label_ is exactly as falsifiable as any other accession's (this is the same 'KJ135626'/'MZ605481' shape 'verify_removal_candidates()' closed for the removal veto, showing up in a different, larger population). Nothing today ever asks whether a corroborato
+'"locally_corroborated"' (2026-09-03) skips BLASTing an accession entirely when the caller's own reference set already has an independent conspecific deposit for it - cached with TTL 'Inf' and exempt from 'refine_reference_verdicts()''s trust-weighted refinement, since the MATCH itself, once observed, is permanent. But the _corroborator's own label_ is exactly as falsifiable as any other accession's (this is the same 'KJ135626'/'MZ605481' shape 'verify_removal_candidates()' closed for the removal veto, showing up in a different, larger population). Nothing today ever asks whether a ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -579,7 +579,7 @@ Audit thin locally-corroborated rows against their own corroborator's verdict
 | max_corroborators | no | 2L | Integer (default 2L). A "locally_corroborated" row resting on more than this many independent corroborators is left out of the audit entirely -- many independent partners all being wrong the same way is implausible, matching verify_removal_candidates()'s identical threshold. |
 | verbose | no | TRUE | Logical (default TRUE). |
 
-**Value:** A data frame, one row per thin '"locally_corroborated"' accession: 'accession', 'listed_taxon', 'n_corroborators', 'local_corroborator_accession', 'corroborator_reference_action', 'corroborator_hierarchy_flag', and 'status' ('"flagged"' - the corroborator's own evidence reads something other than a clean '"keep"' or '"untested"'; '"clean"' - the corroborator has a real '"keep"' verdict; '"unchecke
+**Value:** A data frame, one row per thin '"locally_corroborated"' accession: 'accession', 'listed_taxon', 'n_corroborators', 'local_corroborator_accession', 'corroborator_reference_action', 'corroborator_hierarchy_flag', and 'status' ('"flagged"' - the corroborator's own evidence reads something other than a clean '"keep"' or '"untested"'; '"clean"' - the corroborator has a real '"keep"' verdict; ...
 
 ### verify_removal_candidates(evaluation, ..., audit_max_hits = 100L, cache_dir = NULL, screen_corroborators = TRUE, verbose = TRUE)
 
@@ -596,7 +596,7 @@ Re-evaluates ONLY the accessions an evaluation would actually remove, at a large
 | screen_corroborators | no | TRUE | Logical (default TRUE). For a row spared on 1-2 corroborators (see the section below), also check those corroborators' OWN label via evaluate_reference_accessions() -- reusing an accession already present in evaluation for free where possible -- and surface a corroborator whose own reference_action is neither "keep" NOR "untested" (i.e. "caution"/"inspect"/ "remove") as a stronger, separate warning; an "untested" corroborator is deliberately NOT flagged -- no usable evidence about it is not evidence AGAINST it. Never un-spares a row automatically; a flagged corroborator is reported for a human to look at, not acted on. Requires cache_dir -- with cache_dir = NULL nothing is screened (zero extra NCBI calls) and corroborator_flagged is NA for every row, regardless of this parameter's value. FALSE also skips this entirely (matching pre-2026-09-05 behavior). |
 | verbose | no | TRUE | Logical (default TRUE). |
 
-**Value:** A data frame with one row per removal candidate: 'accession', 'listed_taxon', 'action_production'/'action_audit', 'anywhere_production'/'anywhere_audit', 'n_partners_production'/'n_partners_audit', 'n_hits_audit', 'still_saturated' (the audit itself hit 'audit_max_hits', so its own window is also truncated), 'spared' ('TRUE'/'FALSE', or 'NA' when the audit itself never completed - i.e. 'action_aud
+**Value:** A data frame with one row per removal candidate: 'accession', 'listed_taxon', 'action_production'/'action_audit', 'anywhere_production'/'anywhere_audit', 'n_partners_production'/'n_partners_audit', 'n_hits_audit', 'still_saturated' (the audit itself hit 'audit_max_hits', so its own window is also truncated), 'spared' ('TRUE'/'FALSE', or 'NA' when the audit itself never completed - i.e. ...
 
 ## Quick Start {#quick-start}
 

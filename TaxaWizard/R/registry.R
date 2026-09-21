@@ -37,7 +37,19 @@ TAXAID_PACKAGES <- c(
 #' vary with a global option.
 #'
 #' @noRd
-REGISTRY_SCHEMA <- 3L
+REGISTRY_SCHEMA <- 4L
+
+# Cut `x` to at most `n` characters at a word boundary and mark the cut with
+# " ...", so a registry field is never left ending mid-word. Anything of `n`
+# characters or more is treated as over the cap, which keeps the contract
+# simple: a field of length >= n always carries the marker.
+.truncate_at_word <- function(x, n) {
+  if (is.null(x) || is.na(x) || nchar(x) < n) return(x)
+  head <- substr(x, 1L, n - 4L)
+  cut <- regmatches(head, regexpr("^.*\\s", head))
+  if (length(cut) == 0L || !nzchar(trimws(cut))) cut <- head
+  paste0(trimws(cut), " ...")
+}
 
 
 #' Build the Introspected Function Registry
@@ -359,14 +371,14 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
   description <- NULL
   if (!is.null(segments[["Description"]])) {
     description <- .first_paragraph(segments[["Description"]])
-    if (nchar(description) > 600L) description <- substr(description, 1L, 600L)
+    description <- .truncate_at_word(description, 600L)
     if (!nzchar(description)) description <- NULL
   }
 
   value <- NULL
   if (!is.null(segments[["Value"]])) {
     value <- .clean_rd_text(paste(segments[["Value"]], collapse = " "))
-    if (nchar(value) > 400L) value <- substr(value, 1L, 400L)
+    value <- .truncate_at_word(value, 400L)
     if (!nzchar(value)) value <- NULL
   }
 

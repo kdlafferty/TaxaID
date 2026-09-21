@@ -42,7 +42,7 @@ Infers the habitat of each sampling point from the weighted habitat affinities o
 | threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant at a point. At 0.3, a habitat must receive at least 30% of the species-weighted votes to be assigned. Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default 0.3. Points where no habitat reaches the threshold receive main_habitat = "Uncertain" -- a named sentinel, not NA; see the main_habitat entry under Value. Note: the default is lower than in the single-habitat version because weight is now spread across multiple habitats per species; a threshold of 0.5 may be too strict for generalist communities. |
 | min_species_weight | no | 0 | Numeric in [0, 1). Per-species weight floor. Any weight assigned to a habitat column by a species that is greater than zero but less than this value is set to zero before the consensus calculation. Default 0.0 (no floor, all weights used). Set to e.g. 0.1 to suppress LLM hedging weights -- small non-zero values the LLM assigns to vaguely plausible habitats that dilute the signal from the species' actual primary habitat(s). Has no effect when using the two-stage IUCN pipeline with the commit-at-confident-level prompt, which already discourages sub-0.1 weights by instruction. |
 
-**Value:** The input 'occurrence_data' with four additional columns: main_habitat Character. The winning habitat label at each point, or '"Uncertain"' if no habitat reached 'threshold'. *Not 'NA'*: 'NA' in a 'main_habitat' column already means _habitat-agnostic, matches any habitat_ on the prior side, where 'TaxaExpect::generate_domestic_food_priors()' sets it deliberately and 'TaxaAssign::join_priors()' rea
+**Value:** The input 'occurrence_data' with four additional columns: main_habitat Character. The winning habitat label at each point, or '"Uncertain"' if no habitat reached 'threshold'. *Not 'NA'*: 'NA' in a 'main_habitat' column already means _habitat-agnostic, matches any habitat_ on the prior side, where 'TaxaExpect::generate_domestic_food_priors()' sets it deliberately and ...
 
 ### build_habitat_lookup(taxon_list, habitat_scheme = NULL, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), cache_dir = NULL, extra_covariates = character(0), chunk_size = 60L, geographic_context = NULL, cache_tag = "", pause_seconds = 1, verbose = TRUE)
 
@@ -79,7 +79,7 @@ Creates a 'habitat_prompt' object containing one or more LLM prompt strings for 
 | habitat_scheme | no | NULL | A dataframe defining the habitat classification to use, the string "IUCN_L1", or NULL. NULL (default) uses a simple three-category scheme: Marine, Freshwater, Terrestrial. This is always a valid starting point and is always interpretable in a model. "IUCN_L1" uses the 18 IUCN Level 1 group names as a single-level scheme. Pass a dataframe for a custom scheme (must contain l1_name; optional: l2_name, l2_code, realm). To generate a scheme automatically from the taxon list, use build_scheme_prompt + parse_scheme_response first, then pass the result here. See example_habitat_scheme for a dataframe template. |
 | geographic_context | no | NULL | Optional character string describing the geographic region where these species were observed (e.g. "Southern California", "Chesapeake Bay watershed"). When non-NULL, the prompt includes a geographic context block and requests an additional ecoregion_best_guess column from the LLM. Default NULL (no geographic context). |
 
-**Value:** An object of class 'c("habitat_prompt", "llm_prompt")', which is a named list: prompts List of character strings, one per chunk. taxa Character vector of deduplicated, trimmed taxon names. chunks List of character vectors, taxa per chunk. scheme The validated habitat scheme dataframe. habitat_cols Character vector of habitat column names the LLM will produce (the scheme's working habitat names, in
+**Value:** An object of class 'c("habitat_prompt", "llm_prompt")', which is a named list: prompts List of character strings, one per chunk. taxa Character vector of deduplicated, trimmed taxon names. chunks List of character vectors, taxa per chunk. scheme The validated habitat scheme dataframe. habitat_cols Character vector of habitat column names the LLM will produce (the scheme's working habitat ...
 
 ### build_iucn_scheme(realm = NULL, l1 = "all", l2 = "none")
 
@@ -108,7 +108,7 @@ Asks an LLM to propose a compact, ecologically appropriate set of habitat catego
 | max_habitats | no | 10L | Integer. Maximum number of habitat categories to generate. Default 10L. Reduce to force coarser resolution; increase if the LLM is merging ecologically distinct habitats. |
 | realm | no | NULL | Character or NULL. Optional hint to constrain the scheme to a single ecological realm: "marine", "freshwater", or "terrestrial". Use when all taxa are known to belong to one realm and you want to prevent the LLM from generating irrelevant cross-realm categories. Default NULL (no constraint; the LLM infers realm from the taxon list). |
 
-**Value:** An object of class 'c("scheme_prompt", "llm_prompt")' with elements: prompts List of length 1 containing the prompt string. taxa The deduplicated taxon list. chunks List of length 1. min_habitats The minimum supplied. max_habitats The maximum supplied. realm The realm hint supplied (or 'NULL'). n_chunks Always '1L'. n_items Number of taxa. Pass to 'prompt_api' or 'prompt_manual', then pass the raw
+**Value:** An object of class 'c("scheme_prompt", "llm_prompt")' with elements: prompts List of length 1 containing the prompt string. taxa The deduplicated taxon list. chunks List of length 1. min_habitats The minimum supplied. max_habitats The maximum supplied. realm The realm hint supplied (or 'NULL'). n_chunks Always '1L'. n_items Number of taxa. Pass to 'prompt_api' or 'prompt_manual', then pass ...
 
 ### consensus_habitat(habitats_df, habitat_cols = NULL, taxon_col = "taxon_name", threshold = 0.3)
 
@@ -123,7 +123,7 @@ Summarises per-species habitat weights into a single consensus habitat (and opti
 | taxon_col | no | "taxon_name" | Character. Name of the taxon name column. Default "taxon_name". |
 | threshold | no | 0.3 | Numeric in (0, 1]. Minimum habitat weight fraction for a habitat to be classified as biologically relevant. At 0.3, a habitat must receive at least 30% of the species-weighted votes to be assigned. Lower values include more marginal habitats; higher values restrict assignment to clearly dominant habitats. For transitional areas (e.g., estuaries), a lower threshold (0.2) may better capture mixed habitats. Default 0.3. |
 
-**Value:** A one-row data frame with columns: main_habitat Character. The consensus habitat, or 'NA' if none reached 'threshold'. *Deliberately 'NA', and deliberately unlike 'assign_habitat_biological'*, which returns the sentinel '"Uncertain"' for the same condition. See Details. ecoregion Character. The modal 'ecoregion_best_guess' value across species, or 'NA' if the column is absent. habitat_best_guess C
+**Value:** A one-row data frame with columns: main_habitat Character. The consensus habitat, or 'NA' if none reached 'threshold'. *Deliberately 'NA', and deliberately unlike 'assign_habitat_biological'*, which returns the sentinel '"Uncertain"' for the same condition. See Details. ecoregion Character. The modal 'ecoregion_best_guess' value across species, or 'NA' if the column is absent. ...
 
 ### drop_stale_seeded_decisions(occurrence_data, path, seeded_pattern = "^seeded from", dry_run = TRUE, backup = TRUE)
 
@@ -161,7 +161,7 @@ For each unique occurrence point, derives the physical spatial zone (inland, coa
 | verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
 | habitat_scheme | no | NULL | Optional. A habitat_prompt object or habitat scheme dataframe used to resolve habitat names for depth/distance checks. If NULL, checks rely on the habitat_col values directly. |
 
-**Value:** The input 'occurrence_data' dataframe with four additional columns: elevation_m Numeric. GEBCO value at the point: negative values are ocean depth in metres; positive values are approximate land elevation. Diagnostic only - land/ocean classification uses vector polygons, not this value. dist_to_coast_km Numeric. Distance in kilometres to the nearest coastline, rounded to 2 decimal places. spatial_
+**Value:** The input 'occurrence_data' dataframe with four additional columns: elevation_m Numeric. GEBCO value at the point: negative values are ocean depth in metres; positive values are approximate land elevation. Diagnostic only - land/ocean classification uses vector polygons, not this value. dist_to_coast_km Numeric. Distance in kilometres to the nearest coastline, rounded to 2 decimal places. ...
 
 ### flag_institution_candidates(occurrence_data, kingdom_col = "kingdom", suspicion_rules = NULL)
 
@@ -190,7 +190,7 @@ Parses the raw text returned by any LLM in response to a 'build_habitat_prompt' 
 | habitat_scheme | no | NULL | A habitat_prompt object from build_habitat_prompt. Always supply this -- its $habitat_cols element is used to identify and validate the weight columns, and its $scheme drives IUCN vs. custom mode. NULL triggers legacy IUCN mode (deprecated; IUCN output is also now wide-weighted). |
 | extra_covariates | no | NULL | Character vector. Names of any additional binary covariate columns to retain from the parsed output. Default NULL (no extra columns retained). Ignored when no matching columns are found. |
 
-**Value:** A data.frame with one row per species and the following columns: taxon_name Character. Species name as returned by the LLM. Numeric. One column per habitat in the scheme, named exactly as in 'prompt$habitat_cols'. Values are 0.0-1.0. Other_weight Numeric. Weight assigned to habitats outside the scheme. 0 for specialists that fit the scheme. habitat_best_guess Character. Free-text description of th
+**Value:** A data.frame with one row per species and the following columns: taxon_name Character. Species name as returned by the LLM. Numeric. One column per habitat in the scheme, named exactly as in 'prompt$habitat_cols'. Values are 0.0-1.0. Other_weight Numeric. Weight assigned to habitats outside the scheme. 0 for specialists that fit the scheme. habitat_best_guess Character. Free-text description ...
 
 ### parse_scheme_response(raw_text, scheme_prompt = NULL)
 

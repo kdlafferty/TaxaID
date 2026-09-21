@@ -122,7 +122,7 @@ Generic provider-neutral function. Resolves the provider, model, API key, and en
 | max_input_tokens | no | NULL | Integer or NULL. When non-NULL, estimates the prompt length as ceiling(nchar(prompt_str) / 3.5) (a conservative characters-per-token heuristic) and stops with an informative error before making the HTTP request if the estimate exceeds the limit. Use this as a pre-flight guard against accidentally sending very large prompts. Default NULL (no check performed). |
 | timeout | no | 120 | Numeric. Request timeout in seconds, passed to httr2::req_timeout(). Default 120. Raise this for a slow provider/model (e.g. a large local Ollama model) or a large multi-image PDF-vision call that can legitimately take longer than two minutes. |
 
-**Value:** A length-1 character string containing the model's response text. The following attributes are attached: '"model"' The resolved model identifier. '"provider"' The provider name used. '"tokens"' A named list with elements 'input' and 'output' (integers) giving the token counts reported by the provider. Both are 'NA_integer_' when the provider does not return usage information. Stops on any non-200 
+**Value:** A length-1 character string containing the model's response text. The following attributes are attached: '"model"' The resolved model identifier. '"provider"' The provider name used. '"tokens"' A named list with elements 'input' and 'output' (integers) giving the token counts reported by the provider. Both are 'NA_integer_' when the provider does not return usage information. Stops on any ...
 
 ### call_azure_openai_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), endpoint = NULL, max_completion_tokens = 3000L, api_key = Sys.getenv("AZURE_OPENAI_API_KEY"))
 
@@ -203,7 +203,7 @@ Queries the GBIF backbone taxonomy to enumerate all described species within eac
 | status_filter | no | "ACCEPTED" | Character vector of GBIF taxonomicStatus values to include. Default "ACCEPTED". Set to c("ACCEPTED", "DOUBTFUL") to include taxonomically uncertain species. |
 | verbose | no | TRUE | Logical. If TRUE (default), prints progress messages. |
 
-**Value:** A data frame with one row per queried taxon (genus or higher rank): group Character. Taxon name (genus/family/order). gbif_key Integer. GBIF usageKey used for the query. total_described Integer. Number of accepted species in GBIF backbone. in_reference Integer. Species found in 'match_species' (NA if 'match_species' not provided). n_missing Integer. 'total_described - in_reference' (NA if 'match_s
+**Value:** A data frame with one row per queried taxon (genus or higher rank): group Character. Taxon name (genus/family/order). gbif_key Integer. GBIF usageKey used for the query. total_described Integer. Number of accepted species in GBIF backbone. in_reference Integer. Species found in 'match_species' (NA if 'match_species' not provided). n_missing Integer. 'total_described - in_reference' (NA if ...
 
 ### change_backbone(input_df, input_col, old_backbone_label = "source_name", new_backbone_label = "translated_name", keep_unmatched = TRUE)
 
@@ -219,7 +219,7 @@ Post-processes the output of 'verify_taxon_names' to (1) rename the source and t
 | new_backbone_label | no | "translated_name" | Character. The label to assign to the translated-name column in the output (e.g., "GBIF" or "NCBI"). Default is "translated_name". |
 | keep_unmatched | no | TRUE | Logical. When TRUE (the default), names for which the target backbone returns no match are retained by copying the original source name into the translated-name column rather than leaving it NA. Set to FALSE to keep NA for unmatched names (original behaviour). |
 
-**Value:** A dataframe with: '<old_backbone_label>' Original names (renamed from 'input_col'). '<new_backbone_label>' Translated names (renamed from 'matched_name'). 'backbone_matched' Logical. 'TRUE' when the target backbone returned a genuine match; 'FALSE' when no match was found (the source name was retained due to 'keep_unmatched = TRUE', or left 'NA' when 'keep_unmatched = FALSE'). Always 'TRUE' when '
+**Value:** A dataframe with: '<old_backbone_label>' Original names (renamed from 'input_col'). '<new_backbone_label>' Translated names (renamed from 'matched_name'). 'backbone_matched' Logical. 'TRUE' when the target backbone returned a genuine match; 'FALSE' when no match was found (the source name was retained due to 'keep_unmatched = TRUE', or left 'NA' when 'keep_unmatched = FALSE'). Always 'TRUE' ...
 
 ### check_taxaid_manifest(path, packages = NULL, on_mismatch = c("error", "warning", "message", "silent"))
 
@@ -239,7 +239,7 @@ Compares the library this session is using against a manifest written by 'write_
 
 Extract and Clean Taxon Names from a Character Vector
 
-Cleans a character vector of taxon names by normalising whitespace, removing 'NA's, removing names that do not begin with a capital letter (e.g., codes, placeholders, artefacts), converting underscore-separated binomials to space-separated ones (e.g. '"Corallina_officinalis"' -> '"Corallina officinalis"', as produced by Jonah Ventures and SILVA pipelines), trimming abbreviated second words (sp., spp., etc.) to genus-only, stripping bracket artefacts, and stripping a single known leading breeding/ploidy-manipulation modifier word (e.g. '"androgenetic Carassius auratus"' -> '"Carassius auratus"'
+Cleans a character vector of taxon names by normalising whitespace, removing 'NA's, removing names that do not begin with a capital letter (e.g., codes, placeholders, artefacts), converting underscore-separated binomials to space-separated ones (e.g. '"Corallina_officinalis"' -> '"Corallina officinalis"', as produced by Jonah Ventures and SILVA pipelines), trimming abbreviated second words (sp., spp., etc.) to genus-only, stripping bracket artefacts, and stripping a single known leading breeding/ploidy-manipulation modifier word (e.g. '"androgenetic Carassius auratus"' -> '"Carassius ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -247,7 +247,7 @@ Cleans a character vector of taxon names by normalising whitespace, removing 'NA
 | remove_abbr | no | NULL | A character vector of second-word tokens that flag the name as genus-only (the abbreviation is dropped). Defaults to a standard list of common abbreviations and placeholder terms. Pass a custom vector to extend or replace the default list. |
 | strip_modifiers | no | NULL | A character vector of known leading modifier words (case-insensitive, matched against the FIRST whitespace-delimited token only, and only ever removed once per name -- never a repeated strip). Defaults to a curated list of real breeding/ploidy-manipulation terms found on real GenBank hybrid-cross records ("androgenetic", "gynogenetic", "autodiploid", "autotriploid", "autotetraploid", "allodiploid", "allotriploid", "allotetraploid", "diploid", "triploid", "tetraploid", "polyploid"). Deliberately does NOT include uncertainty-hedge words ("possible", "putative", "probable", "tentative", "presumed", etc.) or "hybrid"/"unidentified" themselves -- those genuinely change what the name means (a hedge should keep failing the capital- letter filter below, not get silently rescued into a confident binomial; "hybrid X x Y" with no named first parent has no real maternal-parent identity to recover). Pass a custom vector to extend or replace the default list; character(0) disables this step entirely (restores this function's pre-2026-08-11 behavior). |
 
-**Value:** A character vector the same length as 'name_vec'. Names that do not start with a capital letter, are 'NA', or consist only of an abbreviation are set to 'NA'. An R attribute 'collapsed_to_genus' (logical, same length) is also set: 'TRUE' for a row that HAD a real second token (an epithet-shaped string, e.g. an open-nomenclature label like '"Ictalurus cf. pricei USON-01120-1"') which was dropped be
+**Value:** A character vector the same length as 'name_vec'. Names that do not start with a capital letter, are 'NA', or consist only of an abbreviation are set to 'NA'. An R attribute 'collapsed_to_genus' (logical, same length) is also set: 'TRUE' for a row that HAD a real second token (an epithet-shaped string, e.g. an open-nomenclature label like '"Ictalurus cf. pricei USON-01120-1"') which was ...
 
 ### common_to_scientific(common_names, taxon_group = NULL, location = NULL, backbone_id = 11L, verify = TRUE, llm_fn = getOption("TaxaID.llm_fn"), ...)
 
@@ -265,7 +265,7 @@ Uses a large language model (LLM) to convert a character vector of common names 
 | llm_fn | no | getOption("TaxaID.llm_fn") | Function with signature function(prompt, ...) -> character(1). Default getOption("TaxaID.llm_fn"). |
 | ... | yes |  | Additional arguments passed to llm_fn. |
 
-**Value:** A data frame with one row per element of 'common_names': 'common_name' Input common name (character). 'scientific_name_llm' Scientific name suggested by the LLM, or 'NA' if ambiguous or unknown. 'scientific_name_verified' Backbone-verified scientific name (from 'verify_taxon_names'), or 'NA' if verification failed or 'verify = FALSE'. 'backbone_id' Backbone used for verification (integer). 'verifi
+**Value:** A data frame with one row per element of 'common_names': 'common_name' Input common name (character). 'scientific_name_llm' Scientific name suggested by the LLM, or 'NA' if ambiguous or unknown. 'scientific_name_verified' Backbone-verified scientific name (from 'verify_taxon_names'), or 'NA' if verification failed or 'verify = FALSE'. 'backbone_id' Backbone used for verification (integer). ...
 
 ### create_taxon_names(input_df, rank_system = NULL)
 
@@ -397,7 +397,7 @@ Looks up taxa in the World Register of Marine Species (WoRMS) *by name* and retu
 | delay | no | 0.5 | Numeric seconds between requests, default 0.5. Applies between name batches and between per-taxon extra calls. |
 | verbose | no | TRUE | Logical, default TRUE. Progress and a summary. |
 
-**Value:** A tibble, one row per unique non-'NA' input name: 'taxon_name' The name as supplied (whitespace trimmed). 'in_worms' Logical. A trusted match was found. 'aphia_id', 'accepted_name', 'accepted_aphia_id', 'taxonomic_status', 'worms_rank' From the representative record (the first 'accepted' match, else the first match). 'match_type' '"exact"', or the rejected match type(s) when 'fuzzy_rejected' is 'T
+**Value:** A tibble, one row per unique non-'NA' input name: 'taxon_name' The name as supplied (whitespace trimmed). 'in_worms' Logical. A trusted match was found. 'aphia_id', 'accepted_name', 'accepted_aphia_id', 'taxonomic_status', 'worms_rank' From the representative record (the first 'accepted' match, else the first match). 'match_type' '"exact"', or the rejected match type(s) when 'fuzzy_rejected' ...
 
 ### fill_higher_ranks(taxon_names, local_sources = list(), backbone_id = 4L, fallback_backbone_id = 11L, verbose = TRUE)
 
@@ -413,7 +413,7 @@ Given a character vector of taxon names (typically species binomials), derives '
 | fallback_backbone_id | no | 11L | Integer. Secondary backbone used when backbone_id returns no match. Default 11L (GBIF). Set NULL or equal to backbone_id to skip. |
 | verbose | no | TRUE | Logical. Print progress messages for API lookups. Default TRUE. |
 
-**Value:** A tibble with one row per element of 'taxon_names' (preserving duplicates and order), with columns: 'taxon_name' The original input name. 'genus' First word of 'taxon_name', EXCEPT when an API lookup resolved that genus to a backbone-flagged synonym at genus rank - in that case the backbone's own currently-accepted genus name is returned instead (2026-07-25; see @section Genus correction below). L
+**Value:** A tibble with one row per element of 'taxon_names' (preserving duplicates and order), with columns: 'taxon_name' The original input name. 'genus' First word of 'taxon_name', EXCEPT when an API lookup resolved that genus to a backbone-flagged synonym at genus rank - in that case the backbone's own currently-accepted genus name is returned instead (2026-07-25; see @section Genus correction ...
 
 ### find_taxonomy_conflicts(input_df, rank_system = NULL)
 
@@ -426,7 +426,7 @@ Detects higher-rank inconsistencies: cases where the same taxon name at one rank
 | input_df | yes |  | Data frame with taxonomy columns (e.g. family, genus, species). |
 | rank_system | no | NULL | Character vector of rank column names, coarse to fine. If NULL (default), auto-detected via detect_ranks(). |
 
-**Value:** A data frame of conflicts with columns: 'taxon_name' The taxon name that has conflicting higher-rank assignments. 'taxon_rank' The rank of the conflicting taxon (e.g. '"genus"'). 'parent_rank' The coarser rank where disagreement was found (e.g. '"family"'). 'parent_values' Semicolon-separated string of the distinct parent values found (e.g. '"Cottidae; Scorpaenidae"'). 'n_values' Number of distinc
+**Value:** A data frame of conflicts with columns: 'taxon_name' The taxon name that has conflicting higher-rank assignments. 'taxon_rank' The rank of the conflicting taxon (e.g. '"genus"'). 'parent_rank' The coarser rank where disagreement was found (e.g. '"family"'). 'parent_values' Semicolon-separated string of the distinct parent values found (e.g. '"Cottidae; Scorpaenidae"'). 'n_values' Number of ...
 
 ### is_plausible_binomial(x)
 
@@ -711,7 +711,7 @@ The ecosystem had five package-specific '<pkg>_clear_cache()' functions and no w
 | extra_dirs | no | NULL | Character vector of additional cache directories to include -- typically the project-local ones a workflow passes as cache_dir. Non-existent paths are reported as missing rather than dropped, so a typo is visible. |
 | warn_gb | no | 1 | Numeric. Directories at or above this size are flagged in the printed output. Default 1. Set NULL to disable flagging. |
 
-**Value:** Invisibly, a data frame with one row per directory: 'cache', 'path', 'exists', 'n_files', 'size_mb', 'oldest', 'newest'. 'size_mb' is APPARENT size (sum of file bytes). A cache of many tiny files occupies substantially more than that on disk, because each file takes at least one filesystem block - TaxaLikely's per-taxon and per-accession stores are thousands of ~1 KB files, so their real footprint
+**Value:** Invisibly, a data frame with one row per directory: 'cache', 'path', 'exists', 'n_files', 'size_mb', 'oldest', 'newest'. 'size_mb' is APPARENT size (sum of file bytes). A cache of many tiny files occupies substantially more than that on disk, because each file takes at least one filesystem block - TaxaLikely's per-taxon and per-accession stores are thousands of ~1 KB files, so their real ...
 
 ### taxatools_clear_cache(cache_dir, older_than_days = NULL, dry_run = FALSE)
 
@@ -770,7 +770,7 @@ Checks a vector of taxon names against a target taxonomic backbone using the Glo
 | timeout_sec | no | 30 | Integer. Seconds to wait before the API request times out. Default is 30. |
 | fallback_backbone_id | no | 11L | Integer. Only used when backbone_id = 4 (NCBI). NCBI's direct lookup is an exact string search with no typo tolerance -- a single misspelled letter returns zero hits even via its own synonym fallback. When that happens, this backbone's Global Names Verifier API is queried instead purely to suggest a corrected spelling, which is then re-resolved through NCBI itself (the correction is never accepted from this backbone directly, so NCBI's own classification -- the reason the direct bypass exists at all -- is preserved). Default 11 (GBIF). Must not be 4. |
 
-**Value:** A tibble with one row per input name and the following columns: user_supplied_name The original name as supplied. matched_name The best-matched name at whatever rank the backbone actually resolved it to (authorship strings stripped; a genus-only match returns a bare genus, a subspecies-level match returns the full trinomial), or 'NA' if no match was found. When the backbone itself flags the match 
+**Value:** A tibble with one row per input name and the following columns: user_supplied_name The original name as supplied. matched_name The best-matched name at whatever rank the backbone actually resolved it to (authorship strings stripped; a genus-only match returns a bare genus, a subspecies-level match returns the full trinomial), or 'NA' if no match was found. When the backbone itself flags the ...
 
 ### write_taxaid_manifest(path, packages = NULL)
 
