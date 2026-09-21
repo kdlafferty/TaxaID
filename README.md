@@ -904,6 +904,80 @@ library(TaxaWizard)
 workflow_create()
 ```
 
+# Caching and resources
+
+Complex workflows are only tractable because slow or metered steps --
+GBIF downloads, NCBI/BOLD fetches, BLAST calls, LLM calls -- are cached
+to disk and skipped on a repeat run. Caches differ in whether they are
+on by default, and in whether they're worth keeping between projects:
+
+| Package | Cached by default? | What's cached | Worth keeping? |
+|---|---|---|---|
+| TaxaFetch | Yes (`download_gbif_occurrences()`, `fetch_gbif_occurrences()`, `check_geographic_outliers()`) | GBIF occurrence downloads | No -- large and re-downloadable; this is the biggest cache in practice (multiple GB is normal) |
+| TaxaLikely | Yes (`fetch_ncbi_reference_sequences()`, `audit_barcode_coverage()`) | NCBI reference-sequence metadata + FASTA | Somewhat -- re-fetchable, but a large taxon list can take hours |
+| TaxaMatch | Yes (`evaluate_reference_accessions()`, `investigate_flagged_accession()`, `review_flagged_accessions()`) | Reference-accession mislabel-screen verdicts (BLAST + LLM review) | Yes -- expensive to rebuild, and it's row-level with its own TTLs, not a flat file store |
+| TaxaHabitat | No -- off unless you pass `cache_dir` (`build_habitat_lookup()`) | Per-taxon LLM habitat assignments | Yes -- an unstable verdict shifts which occurrence records count toward a site, so keeping it is what makes a re-run reproducible |
+| TaxaFlag | No -- off unless you pass `cache_dir` (`review_assignments()`, `check_gbif_tile_range()`) | LLM review verdicts / GBIF density-tile verdicts | Yes, for the same reproducibility reason as TaxaHabitat |
+| TaxaTools | Mixed | `refresh_models()`'s LLM model registry caches to a fixed, non-configurable path; `scientific_to_common()` and `fetch_worms_attributes()` default to **no** persistent cache (`cache_dir = NULL`) unless you supply one | Model registry: yes, tiny. Common-name/WoRMS lookups: worth turning on if you re-run over the same taxon list |
+| TaxaWizard | Yes, fixed path, not configurable | The introspected function/workflow registry (`workflow_registry()`) | Yes, but it's tiny and rebuilds itself when a package version changes |
+
+All of the "Yes" and "Mixed" defaults above use
+`tools::R_user_dir("<Package>", "cache")` -- a per-user directory
+outside your project, invisible unless you go looking for it. Where a
+function defaults to `cache_dir = NULL`, nothing is written to disk
+until you pass a directory; the production workflows pass one
+explicitly for exactly the functions listed above as "No."
+
+**See what's using space.**
+`TaxaTools::taxaid_cache_report(extra_dirs = NULL, warn_gb = 1)` prints
+every package cache's size, file count, and age, and flags anything at
+or above `warn_gb` gigabytes. It only reports -- nothing is deleted.
+Pass `extra_dirs` for any project-local cache directory a workflow used
+instead of the default. TaxaWizard's registry is not one of the
+directories it scans by default.
+
+**Clear a cache.** Every package with an on-disk, file-per-key cache has
+its own `<pkg>_clear_cache(cache_dir = <that package's default>,
+older_than_days = NULL, dry_run = FALSE)`: `taxafetch_clear_cache()`,
+`taxalikely_clear_cache()`, `taxahabitat_clear_cache()`,
+`taxaflag_clear_cache()`, `taxatools_clear_cache()` (this one has no
+default -- pass the same directory you gave the caching function).
+TaxaMatch has none: its cache is a few files holding many TTL'd rows
+each, not one file per key, so deleting by file would discard live
+verdicts. `TaxaLikely::taxalikely_evict_unreachable_cache()` is
+narrower and safer than a full clear: it removes only reference-cache
+entries that no current call could ever hit again (from an old cache-key
+scheme), defaults to a dry run, and leaves large files in place for you
+to confirm by hand. `TaxaTools::cache_ok(path, inputs)` checks a single
+cached file against the files it was derived from and reports it stale
+if any input is newer -- use it in your own scripts around a checkpoint
+`.rds`, not around a remote query (that has no local file to compare
+against).
+
+**Memory.** `TaxaFetch::filter_gbif_quality()` costs roughly 4 GB of RAM
+per million input rows and does not chunk internally -- it takes the
+whole data frame at once, so pre-split a very large fetch by taxon or
+region before filtering it. `download_gbif_occurrences()` already
+narrows columns by default (`select_cols`) and warns after a run if the
+cache directory exceeds `cache_prompt_mb` (default 5 GB). `TaxaLikely::
+build_sequence_matrix()` aligns the whole reference set in one pass by
+default; for a set spanning many genera, `by_genus = TRUE` replaces that
+with many small per-genus alignments, which scales far better.
+`TaxaMatch::evaluate_reference_accessions()` already submits BLAST in
+`chunk_size = 200`-accession batches and caches incrementally, so an
+interrupted run only loses the in-flight chunk. `TaxaExpect::
+estimate_kernel_priors()` holds the entire `occurrence_data` frame you
+pass it in memory for the call and does not chunk -- keep that input to
+what one site's kernel actually needs rather than the full pooled
+occurrence set.
+
+**Disk.** Point any `cache_dir` argument at a larger drive when your
+default (home) volume is small -- every cache above accepts one. A
+content-keyed cache (anything under `tools::R_user_dir()`, or any
+`cache_dir` you pass to a fetch/evaluate/review function) is meant to be
+reused across runs and projects; a workflow's own per-run output
+directory is not a cache and should not be treated as one.
+
 # Troubleshooting
 
 **"No LLM provider configured" or an LLM call silently returns a
@@ -943,10 +1017,12 @@ caching comments if a fix genuinely doesn't seem to be taking effect.
 **GBIF or NCBI calls are slow, throttled, or fail partway through a
 large fetch.** See the NCBI rate-limit note under [Data and Hardware
 Requirements](#data-and-hardware-requirements) -- functions that make
-many requests (`evaluate_reference_accessions()`, `blast_sequences()`,
-`download_gbif_occurrences()`) support `cache_dir`, so an interrupted
-run can resume from where it left off instead of restarting from
-scratch.
+many requests (`evaluate_reference_accessions()`,
+`download_gbif_occurrences()`, `fetch_ncbi_reference_sequences()`) support
+`cache_dir`, so an interrupted run can resume from where it left off
+instead of restarting from scratch. `blast_sequences()` itself has no
+cache; call it through `evaluate_reference_accessions()` when you need one
+(see [Caching and resources](#caching-and-resources)).
 
 **Getting help.** If none of the above resolves it, please open an issue
 at <https://github.com/DOI-USGS/TaxaID/issues> with your R version, the
