@@ -26,8 +26,8 @@
 #' rebuild, which is how a check gets switched off.
 #'
 #' Internals are included because a behaviour change need not touch an exported
-#' signature -- all three column-inference bugs fixed on 2026-09-19 lived in
-#' internal helpers.
+#' signature -- a column-inference bug can live entirely inside an internal
+#' helper.
 #'
 #' @param pkg Character package name.
 #' @return A 32-character md5 string, or `NA_character_` if not installed.
