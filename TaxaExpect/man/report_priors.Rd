@@ -10,14 +10,10 @@ report_priors(priors_output, verbose = FALSE)
 \item{priors_output}{Either:
 \itemize{
 \item A list with a \code{$priors} element (contains \code{$priors},
-\code{$model}, \code{$occurrences}, \code{$grid_result}) -- the
-shape produced by the archived \code{build_priors()} (GLMM chain,
-archived 2026-09-09, see \code{archive_glmm_prior_pipeline/}). Still
-accepted here so an OLD, already-computed \code{build_priors()}
-result cached on disk keeps working with this function.
+\code{$model}, \code{$occurrences}, \code{$grid_result}) -- accepted
+for a caller holding a cached, list-shaped priors result on disk.
 \item A data frame of priors directly -- the shape produced by
-\code{\link{estimate_kernel_priors}} (current recommended path) or,
-historically, the archived \code{generate_full_priors()}.
+\code{\link{estimate_kernel_priors}}.
 }}
 
 \item{verbose}{Logical. Print summary messages. Default \code{FALSE}.}

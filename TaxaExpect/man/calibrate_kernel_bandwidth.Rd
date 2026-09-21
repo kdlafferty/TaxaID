@@ -54,7 +54,7 @@ sweep so the no-factor case competes on equal footing -- a best row with
 \item{sampling_group_col}{Optional column naming a detection-process
 grouping (e.g. \code{"sampling_group"}) -- the same column passed to
 \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}}. \code{NULL} (default) scores ONE pooled
-composition, which reproduces the pre-2026-09-19 behaviour exactly.
+composition.
 \strong{Pass it whenever the estimator will be given it.} See
 \verb{Why pooling the groups fits the wrong lambda}.}
 
@@ -96,12 +96,12 @@ scored by per-record multinomial log-loss against the block's actual
 records. Two reference predictors are always scored alongside for
 context: \code{regional} (all held-out records, unweighted -- "is locality
 worth anything?") and \code{nearest_block} (the single nearest other block --
-the retired one-cell architecture).
+a single-cell prediction scheme).
 }
 \details{
 The spatial blocks are a cross-validation device only -- they impose no
 structure on the estimator being calibrated (this is the one place a grid
-survives the kernel redesign, and the only job it keeps).
+appears in the kernel estimator, and the only job it keeps).
 }
 \section{Why pooling the groups fits the wrong lambda}{
 

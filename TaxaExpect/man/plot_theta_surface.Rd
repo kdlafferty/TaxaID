@@ -215,28 +215,7 @@ Map one group at a time by fitting it on its own record subset (the shape
 the 18S workflow already uses) rather than passing a grouped fit here.
 }
 
-\section{Relationship to the retired plot_theta_map_interactive()}{
-
-The GLMM/grid prior-fitting chain's own visualization,
-\code{plot_theta_map_interactive()}, parsed \verb{Grid_<lat>_<lon>} identifiers out
-of a \code{grid_id} column to find grid-cell centroids to draw -- it depicted
-predictions already computed at a fixed set of grid cells. The
-kernel-priors path (\code{estimate_kernel_priors()}) has no grid: it returns
-ONE site row with an opaque \code{site_id} that encodes no spatial extent, so
-that function had nothing to parse and nothing to draw for it (this is
-why it was gated OFF on the kernel path in every production workflow).
-\code{plot_theta_surface()} replaces it for kernel priors by evaluating the
-estimator AT EVERY LATTICE POINT rather than relying on pre-computed
-per-cell predictions, so the map is the estimator evaluated continuously,
-not an interpolation between grid predictions. \verb{plot_theta_map_ interactive()} was archived 2026-09-09 along with the rest of the GLMM
-chain (see \verb{archive_glmm_prior_pipeline/} and TaxaExpect/CLAUDE.md's
-2026-09-09 session note) -- this function is now the only prior-field
-visualization in the package.
-}
-
 \seealso{
 \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} for the site-level estimator this
-function reproduces on a lattice. The GLMM/grid-cell equivalent,
-\code{plot_theta_map_interactive()}, was archived 2026-09-09 along with the
-rest of the GLMM prior-fitting chain (see \verb{archive_glmm_prior_pipeline/}).
+function reproduces on a lattice.
 }

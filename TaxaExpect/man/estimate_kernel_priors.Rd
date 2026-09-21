@@ -146,13 +146,11 @@ item) -- kept for the budget AUDIT
 \item{theta_present}{\code{missing_mass / f1}: the mean theta of the
 neighborhood's own observed singletons -- "a species we barely
 detect here" -- used by \code{\link{apply_undetected_evidence}}'s
-curve pricing. Deliberately NOT \code{missing_mass / chao_missing}
-(2026-09-05, open decision #1 of
-\code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved):
+curve pricing. Deliberately NOT \code{missing_mass / chao_missing}:
 \code{f1} is observed directly, while \code{chao_missing} divides by
 the doubleton count \code{f2}, which sits in the single digits and
 is radius-unstable (measured 4x-21x across a plausible counting-radius
-range on real data) -- instability the price no longer inherits.
+range on real data) -- instability this price avoids.
 \code{NA} when no singleton anchor exists (\code{f1 = 0}).}
 \item{regional_composition}{Named numeric: the unweighted
 habitat-stratified composition used for back-off.}
@@ -184,37 +182,35 @@ record count, and the singleton set to species seen exactly once.
 }
 \section{Why an estimator, not a spatial model}{
 
-Leave-one-cell-out validation on real Great Lakes data (2026-08-30 Phase 1
-diagnostic) found distance-kernel composition prediction beats both a
-single nearest cell (the previous architecture; worst of all options
-tested) and unweighted regional pooling, with an interior bandwidth
-optimum. The kernel runs in O(records) with no optimization step (~0.1 s
-at 1.8 million records), so cost is independent of species count. Do NOT
-replace this with per-species latent spatial fields (GP/SPDE/GAMM): that
-family was evaluated during the original model design and is
+Several modeling strategies were considered for pricing spatial priors,
+including grid-cell GLMM prediction and per-species latent spatial fields
+(GP/SPDE/GAMM); the kernel estimator was adopted because leave-one-cell-out
+validation on real Great Lakes data found distance-kernel composition
+prediction beats both single grid-cell GLMM prediction (the worst of the
+options tested) and unweighted regional pooling, with an interior
+bandwidth optimum, and because it runs in O(records) with no optimization
+step (~0.1 s at 1.8 million records), so cost is independent of species
+count -- unlike per-species latent spatial fields, which are
 computationally infeasible at many-species scale.
 }
 
-\section{Output schema (kernel-priors redesign)}{
+\section{Output schema}{
 
-The returned \verb{$priors} table uses the post-redesign schema: \code{prior_branch}
-(here always \code{"kernel_estimated"} -- renamed from \code{"resident_observed"}
-on 2026-09-14, see below) and \code{effective_records} (the species'
+The returned \verb{$priors} table's \code{prior_branch}
+(here always \code{"kernel_estimated"}) and \code{effective_records} (the species'
 kernel-effective record count \code{c_i * n_eff / W}, in units of records)
-replace the retired \code{model_tier} tier1/tier2 vocabulary.
+are its row-provenance and evidence-weight columns.
 
 \code{prior_branch} is written as a CONSTANT on every row this function emits.
 It records which generator produced the row, not how much evidence stands
 behind it -- that is \code{effective_records}, and it spans roughly ten orders
 of magnitude within this one branch, continuously and with no natural
-break. The old name \code{"resident_observed"} asserted an evidence claim that
-was never tested: on the real PtConception 12S priors 44.9\% of labelled
-rows carried under one effective record (64.9\% at 18S), yet every one of
-them read as an observed resident downstream. Consumers that need an
+break. The name \code{"kernel_estimated"} deliberately makes no evidence claim:
+on the real PtConception 12S priors 44.9\% of labelled
+rows carried under one effective record (64.9\% at 18S). Consumers that need an
 evidence claim must threshold \code{effective_records} themselves; see
-\code{\link[TaxaAssign:posterior_consensus]{TaxaAssign::posterior_consensus()}}'s \code{min_effective_records}. Every
-reader in this ecosystem still accepts \code{"resident_observed"}, so tables
-checkpointed before the rename keep working. Undetected/evidence/domestic rows
+\code{\link[TaxaAssign:posterior_consensus]{TaxaAssign::posterior_consensus()}}'s \code{min_effective_records}.
+Undetected/evidence/domestic rows
 belong to other branches and are appended by their own generators, not
 this function. A species whose nearby records are all classified to a
 habitat other than \code{site_habitat} yields NO resident row here at all and

@@ -71,8 +71,7 @@ budget's dependence on that boundary from every other modelling choice.
 largest group -- one doubleton entering or leaving the neighborhood moves
 the estimate by tens of percent. The \code{f2_min} column of \verb{$summary} is the
 number to look at first for that figure. \code{theta_present} is priced from
-\code{missing_mass / f1} (2026-09-05, open decision #1 of the kernel budget/
-pricing re-entry doc, resolved), so it no longer inherits \code{f2}'s
+\code{missing_mass / f1}, so it does not inherit \code{f2}'s
 instability -- but it still moves with the counting radius through \code{f1} and
 \code{missing_mass} themselves, which is what \code{theta_present_spread} reports.
 

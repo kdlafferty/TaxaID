@@ -42,15 +42,14 @@ is P(locally present) for a species whose nearest record sits just
 outside the study bbox but that has NO records inside it. The default 1
 is almost certainly too high for any real study -- a species with zero
 in-bbox records is usually genuinely absent even when nearby records
-exist. Calibrate against a local expert checklist: the GreatLakes2023
+exist. Calibrate against a local expert checklist: a Great Lakes
 test case found 0 of 110 zero-bbox candidates with records at 12-990 km
 on the site's 53-species checklist (Jeffreys 95 percent upper bounds:
 0.107 for the under-100 km bin, 0.027 pooled), and adopted
 \code{w_scale = 0.05} -- which also satisfies the dataset-independent
 ordering bound that an unobserved species should never veto a
 singleton-level observed native at likelihood parity (w below roughly
-1/19). See ecosystem_docs/
-REENTRY_PROMPT_undetected_evidence_mixture_redesign.md (D4/D5).}
+1/19).}
 
 \item{age_half}{Numeric > 0. Record age (years) at which \code{p_conc}
 decays to half its fresh-record value of 1 -- see
@@ -76,8 +75,9 @@ the nearest-point distance above: at least \code{near_occurrence_min_n}
 of a taxon's Stage-2-filtered records must fall within this many degrees
 of latitude of \code{lat} (proportional fallback when a taxon has fewer
 total filtered records than that -- see \code{near_occurrence_min_n}).
-Ported from \code{build_invasive_candidates.R}'s own identically-named
-safeguard (\code{ecosystem_docs/REENTRY_PROMPT_invasive_species_watch_list_priors.md}),
+Ported from the \code{build_invasive_candidates.R} diagnostic's (TaxaID_dev
+repository) own identically-named
+safeguard,
 built after a real GLANSIS benchmark comparison found the plain nearest-
 point test alone is precision-poor: several species passed it purely on
 the strength of ONE isolated occurrence record (a stray record, or a
@@ -117,13 +117,13 @@ to \code{TaxaFetch::get_gbif_occurrences()}'s Stage 2 fetch. Default:
 2000 to the current year, the same window every other GBIF fetcher in
 this ecosystem defaults to. PASS THE STUDY'S OWN WINDOW (the same
 \code{year_range} the main occurrence fetch used) so regional evidence
-and resident priors are judged on the same record set. Until 2026-09-12
-the default was \code{NULL} (all time) on the reasoning that record age is
-the signal the \code{p_conc} discount reads out -- but that discount only
-narrows a row's CONFIDENCE, never its weight: a 1929 preserved specimen of
-a captive siamang 74 km from Point Conception still lifted that species'
-prior 480x above the zero-record floor and turned an 82\%-identity family-
-level call into a species call. \code{NULL} restores the all-time fetch.}
+and resident priors are judged on the same record set. An unbounded
+window (\code{NULL}, all time) is available but not the default: record
+age is the signal the \code{p_conc} discount reads out, but that discount
+only narrows a row's CONFIDENCE, never its weight -- a 1929 preserved
+specimen of a captive siamang 74 km from Point Conception still lifted
+that species' prior 480x above the zero-record floor and turned an
+82\%-identity family-level call into a species call.}
 
 \item{cache_dir}{Character or \code{NULL}. Forwarded to the Stage 2 fetch
 for checkpointing. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.}
@@ -132,10 +132,10 @@ for checkpointing. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.}
 straight through to Stage 1's \code{TaxaFlag::check_gbif_tile_range(
 cache_dir = )} -- see that function's own \verb{Caching} section for the
 exact key/no-expiry/age-reporting design. \code{NULL} (the default)
-disables Stage 1 caching entirely, matching every prior release of this
-function: every zero-record taxon re-pays a live GBIF tile fetch on
+disables Stage 1 caching entirely:
+every zero-record taxon re-pays a live GBIF tile fetch on
 every call, which is exactly the cost this parameter exists to remove
-on a repeat run against unchanged data (the 2026-09-13 PtConception run
+on a repeat run against unchanged data (a real PtConception run
 spent 43 minutes here across 256 taxa). When supplied, this function
 also emits one summary line when it finishes: how many Stage 1 verdicts
 were served from cache, how many were freshly fetched, and the age in
@@ -162,8 +162,7 @@ A thin, two-stage evidence generator for
 occurrence record, cheaply checks whether GBIF has ANY record nearby at
 all (Stage 1), and only pays for a real, quality-screened fetch to find
 the actual nearest record and its age for the taxa where that cheap check
-finds something (Stage 2). Implements
-\code{ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_check.md}.
+finds something (Stage 2).
 }
 \section{Stage 1 -- cheap gate, no quality filtering possible}{
 
@@ -189,15 +188,15 @@ every other GBIF pull in this ecosystem gets, closing the exact gap Stage
 1 structurally cannot. A bad single record can trigger a wasted Stage 2
 fetch, but can never move a prior on its own, since only the filtered
 survivors ever produce an evidence row. \code{\link[TaxaFlag]{compute_local_occurrence_distance}}
-(extended this session with \code{date_col}) then gives the real distance
+(via its \code{date_col} argument) then gives the real distance
 AND the matched record's age from the filtered data.
 }
 
 \section{From distance/age to weight/p_conc -- deliberately NOT a connectivity check}{
 
-An earlier design explored a watershed/basin-connectivity gate (is the
-nearby record even in a hydrologically connected water body) before being
-explicitly dropped: this package needs to stay simple and generalize
+This deliberately does not implement a watershed/basin-connectivity gate
+(is the nearby record even in a hydrologically connected water body):
+this package needs to stay simple and generalize
 across a wide range of taxa and geographic settings, and hydrological
 connectivity is a specific-study solve, not a generalizable primitive.
 Raw distance is the only generic signal used. The geographic-plausibility
@@ -212,9 +211,9 @@ Weight (how far toward the singleton ceiling this pulls the prior's MEAN)
 is a saturating decay in distance: \code{weight = w_scale *
 exp(-distance_km / d_half)} -- read as P(locally present | nearest record
 at this distance, no in-bbox records)
-under the 2026-08-26 presence-mixture redesign. Presence-claim confidence
+in the presence-mixture framing. Presence-claim confidence
 (\code{p_conc}, how much weight the claim carries against future
-evidence -- NOT the static prior's concentration, which is now
+evidence -- NOT the static prior's concentration, which is
 moment-matched by \code{\link{apply_undetected_evidence}}) is a
 saturating decay in record age: \code{p_conc = exp(-age_years /
 age_half)} -- a fresh record counts as one pseudo-observation about
