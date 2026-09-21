@@ -2,12 +2,10 @@
 # registry.R
 # TaxaWizard -- introspected function registry
 #
-# Replaces the hand-maintained, per-package JSON metadata files (removed
-# 2026-09-18, see CLAUDE.md top note). Every function signature, parameter, title,
-# description, and return-value note is derived at runtime from the INSTALLED
-# TaxaID packages via getNamespaceExports()/formals()/tools::Rd_db() -- never
-# hand-typed here. DERIVE, DON'T DECLARE (see
-# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, section P1).
+# Every function signature, parameter, title, description, and return-value
+# note is derived at runtime from the INSTALLED TaxaID packages via
+# getNamespaceExports()/formals()/tools::Rd_db() -- never hand-typed here.
+# DERIVE, DON'T DECLARE.
 # ==============================================================================
 
 #' TaxaID Packages (Dependency Order)
@@ -30,12 +28,13 @@ TAXAID_PACKAGES <- c(
 #' The cache is keyed on the package's version and Built timestamp, neither
 #' of which moves when TaxaWizard's own extraction code changes -- so
 #' without this, improving the Rd parser would leave every existing cache
-#' file serving the old, worse text forever (and a user who never clears
+#' file serving stale text indefinitely (and a user who never clears
 #' the cache would never see the fix). Part of the cache file name.
 #'
-#' 2: structural \arguments parsing (was: re-parsed Rd2txt output).
-#' 3: useFancyQuotes pinned off, so Rd text no longer varies with a
-#'    global option (cached v2 entries may hold either form).
+#' Current schema (3): \arguments are parsed structurally (walking the
+#' parsed Rd tree rather than re-parsing rendered \code{Rd2txt()} output),
+#' and Rd text is rendered with useFancyQuotes pinned off so it does not
+#' vary with a global option.
 #'
 #' @noRd
 REGISTRY_SCHEMA <- 3L
@@ -47,10 +46,9 @@ REGISTRY_SCHEMA <- 3L
 #' (via \code{getNamespaceExports()}), its formal arguments (via
 #' \code{formals()}), and its documentation (via \code{tools::Rd_db()}) to
 #' build a registry the workflow engine can inject into LLM prompts and use
-#' to validate generated code. This REPLACES the old hand-maintained,
-#' per-package JSON metadata files -- the registry is always current with
-#' whatever is actually installed, because it is read from the installed
-#' packages themselves rather than typed by hand.
+#' to validate generated code. The registry is always current with whatever
+#' is actually installed, because it is read from the installed packages
+#' themselves rather than typed by hand.
 #'
 #' Results are cached per package under
 #' \code{tools::R_user_dir("TaxaWizard", "cache")}, keyed on both the
@@ -402,13 +400,13 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 #' \\arguments, every parameter is an \\item node with exactly two children:
 #' the term (one or more comma-separated parameter names) and the
 #' description. Reading those two children directly is exact, so none of
-#' the text-shape heuristics the old renderer-based parser needed -- item
+#' the text-shape heuristics a renderer-based parser would need -- item
 #' boundaries inferred from blank lines, continuation paragraphs told apart
-#' from new items by indentation, terms split on the first colon -- exist
-#' here to be wrong. Two real bugs came out of those heuristics: a
-#' multi-paragraph argument description whose continuation happened to
-#' contain a colon was parsed as a BOGUS extra parameter, and a parameter
-#' whose description contained a colon could lose text ahead of it.
+#' from new items by indentation, terms split on the first colon -- can go
+#' wrong here. Those heuristics have two known failure modes: a
+#' multi-paragraph argument description whose continuation happens to
+#' contain a colon parses as a BOGUS extra parameter, and a parameter whose
+#' description contains a colon can lose text ahead of it.
 #'
 #' Verified across all eight TaxaID packages: 1317 of 1317 \\item nodes have
 #' exactly two children, so the two-child assumption is not merely the
@@ -539,8 +537,8 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 #' block suitable for the \code{{{FUNCTION_REGISTRY}}} placeholder in the
 #' system prompt: one line per function, showing its real call signature
 #' (parameter names and defaults, in \code{formals()} order -- no type
-#' column, because the registry no longer carries per-parameter types) and
-#' its Rd title.
+#' column, since the registry does not carry per-parameter types) and its
+#' Rd title.
 #'
 #' @param registry Named list from \code{workflow_registry()}.
 #' @return Character string.
@@ -587,7 +585,7 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 #' @param registry Named list from \code{workflow_registry()}.
 #' @param functions Character vector of function names to document.
 #' @param packages Optional character vector restricting the search to
-#'   these packages (matches the old per-edge \code{packages} scoping).
+#'   these packages (matches an edge's own \code{packages} scoping).
 #'   Default \code{NULL} searches every package in \code{registry}.
 #' @return Character string.
 #' @noRd
