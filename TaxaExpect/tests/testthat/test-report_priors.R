@@ -6,7 +6,10 @@ test_that("report_priors works with build_priors list output", {
     grid_id = rep(c("G1", "G2"), each = 3),
     taxon_name = rep(c("Sp A", "Sp B", "Sp C"), 2),
     theta_mean = runif(6, 0.01, 0.5),
-    model_tier = c("tier1", "tier1", "tier2", "tier1", "tier3_undetected", "tier2"),
+    prior_branch = c(
+      "kernel_estimated", "kernel_estimated", "resident_undetected",
+      "kernel_estimated", "transport", "resident_undetected"
+    ),
     stringsAsFactors = FALSE
   )
 
@@ -37,7 +40,7 @@ test_that("report_priors works with raw data frame", {
     grid_id = rep("G1", 4),
     taxon_name = paste0("Sp ", LETTERS[1:4]),
     theta_mean = runif(4),
-    model_tier = c("tier1", "tier1", "tier2", "tier1"),
+    prior_branch = c("kernel_estimated", "kernel_estimated", "resident_undetected", "kernel_estimated"),
     stringsAsFactors = FALSE
   )
 
@@ -52,14 +55,17 @@ test_that("report_priors includes tier breakdown", {
     grid_id = rep("G1", 6),
     taxon_name = paste0("Sp", 1:6),
     theta_mean = runif(6),
-    model_tier = c("tier1", "tier1", "tier1", "tier2", "tier2", "tier3_undetected"),
+    prior_branch = c(
+      "kernel_estimated", "kernel_estimated", "kernel_estimated",
+      "resident_undetected", "resident_undetected", "transport"
+    ),
     stringsAsFactors = FALSE
   )
 
   sec <- report_priors(priors_df)
-  expect_true(grepl("tier1: 3", sec$results))
-  expect_true(grepl("tier2: 2", sec$results))
-  expect_true(grepl("tier3_undetected: 1", sec$results))
+  expect_true(grepl("kernel_estimated: 3", sec$results))
+  expect_true(grepl("resident_undetected: 2", sec$results))
+  expect_true(grepl("transport: 1", sec$results))
 })
 
 test_that("report_priors propagates citations from report_params", {
@@ -102,7 +108,7 @@ test_that("kernel tables report by prior_branch including resident rows (2026-09
     taxon_name = c("A a", "B b", "C c", "D d"),
     theta_mean = c(0.3, 0.2, 1e-4, 5e-4),
     prior_branch = c(
-      "resident_observed", "resident_observed",
+      "kernel_estimated", "kernel_estimated",
       "resident_undetected", "transport"
     ),
     model_tier = c(NA, NA, "tier_undetected_evidence", "tier_domestic_food"),
@@ -110,16 +116,22 @@ test_that("kernel tables report by prior_branch including resident rows (2026-09
   )
   sec <- report_priors(df)
   tb <- sec$statistics$tier_breakdown
-  expect_equal(tb$resident_observed, 2L) # legacy counting dropped these
+  expect_equal(tb$kernel_estimated, 2L) # model_tier-only counting would have dropped these
   expect_equal(tb$resident_undetected, 1L)
   expect_equal(tb$transport, 1L)
   expect_true(grepl("Prior branch breakdown", sec$results))
   expect_true(grepl("kernel estimation", sec$methods))
-  expect_false(grepl("hierarchical biodiversity model", sec$methods))
-  # legacy tables unchanged
-  df2 <- df
-  df2$prior_branch <- NULL
-  df2$model_tier <- c("tier1", "tier2", NA, NA)
-  sec2 <- report_priors(df2)
-  expect_true(grepl("hierarchical biodiversity model", sec2$methods))
+})
+
+test_that("a model_tier-only table (no prior_branch) is refused as the retired GLMM schema", {
+  # No 1.0 producer emits model_tier without prior_branch -- this is the
+  # schema of the retired GLMM/grid prior pipeline, which TaxaID 1.0 has no
+  # predecessor for and does not support.
+  df2 <- data.frame(
+    taxon_name = c("A a", "B b", "C c", "D d"),
+    theta_mean = c(0.3, 0.2, 1e-4, 5e-4),
+    model_tier = c("tier1", "tier2", NA, NA),
+    stringsAsFactors = FALSE
+  )
+  expect_error(report_priors(df2), regexp = "GLMM")
 })

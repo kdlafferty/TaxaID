@@ -4,11 +4,8 @@
 library(testthat)
 library(dplyr)
 
-.make_mock_model_obj <- function(habitat_col = "main_habitat") {
-  structure(
-    list(N_total = 1000L, meta = list(habitat_col = habitat_col)),
-    class = "biofreq_model"
-  )
+.make_mock_kernel_obj <- function() {
+  structure(list(), class = "taxaexpect_kernel_priors")
 }
 
 # A minimal, realistic taxaexpect_priors: one global_floor row, one
@@ -50,55 +47,44 @@ library(dplyr)
 # Input validation
 # =============================================================================
 
-test_that("stops when model_obj is not a biofreq_model", {
+test_that("stops when model_obj is not a taxaexpect_kernel_priors object", {
   expect_error(
     apply_undetected_evidence(.make_priors(), list(), .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic"),
-    regexp = "biofreq_model"
+    regexp = "taxaexpect_kernel_priors"
   )
 })
 
 test_that("stops when grid_id is missing/invalid", {
   expect_error(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence(), grid_id = NA_character_, main_habitat = "Lentic"),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence(), grid_id = NA_character_, main_habitat = "Lentic"),
     regexp = "grid_id"
   )
 })
 
-test_that("stops when main_habitat is missing but habitat_col is non-NULL", {
+test_that("stops when main_habitat is missing (kernel estimates are always habitat-stratified)", {
   expect_error(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence(), grid_id = "Grid_A"),
-    regexp = "main_habitat"
-  )
-})
-
-test_that("stops when main_habitat is supplied but habitat_col is NULL", {
-  expect_error(
-    apply_undetected_evidence(
-      .make_priors(habitat_col = NULL), .make_mock_model_obj(habitat_col = NULL),
-      .make_evidence(),
-      grid_id = "Grid_A", main_habitat = "Lentic"
-    ),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence(), grid_id = "Grid_A"),
     regexp = "main_habitat"
   )
 })
 
 test_that("stops when evidence is missing required columns", {
   expect_error(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), tibble::tibble(taxon_name = "X"), grid_id = "Grid_A", main_habitat = "Lentic"),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), tibble::tibble(taxon_name = "X"), grid_id = "Grid_A", main_habitat = "Lentic"),
     regexp = "evidence"
   )
 })
 
 test_that("stops when weight is out of [0,1]", {
   expect_error(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence(weight = 1.5), grid_id = "Grid_A", main_habitat = "Lentic"),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence(weight = 1.5), grid_id = "Grid_A", main_habitat = "Lentic"),
     regexp = "weight"
   )
 })
 
 test_that("stops when p_conc is non-positive", {
   expect_error(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence(p_conc = 0), grid_id = "Grid_A", main_habitat = "Lentic"),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence(p_conc = 0), grid_id = "Grid_A", main_habitat = "Lentic"),
     regexp = "p_conc"
   )
 })
@@ -106,7 +92,7 @@ test_that("stops when p_conc is non-positive", {
 test_that("stops when taxaexpect_priors has no global_floor row", {
   priors_no_floor <- .make_priors() |> dplyr::filter(undetected_type != "global_floor" | is.na(undetected_type))
   expect_error(
-    apply_undetected_evidence(priors_no_floor, .make_mock_model_obj(), .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic"),
+    apply_undetected_evidence(priors_no_floor, .make_mock_kernel_obj(), .make_evidence(), grid_id = "Grid_A", main_habitat = "Lentic"),
     regexp = "global_floor"
   )
 })
@@ -116,19 +102,19 @@ test_that("stops when taxaexpect_priors has no global_floor row", {
 # =============================================================================
 
 test_that("empty evidence returns an empty tibble with the documented schema", {
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), tibble::tibble(taxon_name = character(0), weight = numeric(0), p_conc = numeric(0), source = character(0)), grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), tibble::tibble(taxon_name = character(0), weight = numeric(0), p_conc = numeric(0), source = character(0)), grid_id = "Grid_A", main_habitat = "Lentic")
   expect_s3_class(out, "tbl_df")
   expect_equal(nrow(out), 0L)
   expect_true(all(c("taxon_name", "alpha", "beta", "undetected_type", "evidence_weight") %in% names(out)))
 })
 
 test_that("a taxon already modelled (Tier 1) is excluded, not elevated", {
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence("Perca flavescens"), grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence("Perca flavescens"), grid_id = "Grid_A", main_habitat = "Lentic")
   expect_equal(nrow(out), 0L)
 })
 
 test_that("a taxon that was a singleton (via source_taxon_name) is excluded, not elevated", {
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence("Sander vitreus"), grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence("Sander vitreus"), grid_id = "Grid_A", main_habitat = "Lentic")
   expect_equal(nrow(out), 0L)
 })
 
@@ -138,7 +124,7 @@ test_that("a taxon that was a singleton (via source_taxon_name) is excluded, not
 
 test_that("a genuinely unobserved taxon is elevated with the documented blend formula", {
   priors <- .make_priors()
-  out <- apply_undetected_evidence(priors, .make_mock_model_obj(), .make_evidence("Gymnocephalus cernua", weight = 0.5, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(priors, .make_mock_kernel_obj(), .make_evidence("Gymnocephalus cernua", weight = 0.5, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
   expect_equal(nrow(out), 1L)
 
   theta_floor <- 1 / 1000
@@ -165,12 +151,12 @@ test_that("a genuinely unobserved taxon is elevated with the documented blend fo
 })
 
 test_that("weight = 1 elevates exactly to the singleton-mirror ceiling, never beyond", {
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence("Gymnocephalus cernua", weight = 1, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence("Gymnocephalus cernua", weight = 1, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
   expect_equal(out$theta_mean, 0.025, tolerance = 1e-8)
 })
 
 test_that("weight = 0 leaves theta exactly at the floor", {
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence("Gymnocephalus cernua", weight = 0, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence("Gymnocephalus cernua", weight = 0, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
   expect_equal(out$theta_mean, 1 / 1000, tolerance = 1e-8)
 })
 
@@ -192,7 +178,7 @@ test_that("no singletons: ceiling falls back to the minimum modelled theta (site
       source_taxon_name = NA_character_, main_habitat = "Lentic"
     ))
   expect_message(
-    out <- apply_undetected_evidence(priors_no_singleton, .make_mock_model_obj(),
+    out <- apply_undetected_evidence(priors_no_singleton, .make_mock_kernel_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
       grid_id = "Grid_A", main_habitat = "Lentic"
     ),
@@ -209,7 +195,7 @@ test_that("no singletons and no modelled rows: ceiling falls back to 1/(median s
     dplyr::filter(undetected_type %in% "global_floor")
   floor_only$n_obs <- 49
   expect_message(
-    out <- apply_undetected_evidence(floor_only, .make_mock_model_obj(),
+    out <- apply_undetected_evidence(floor_only, .make_mock_kernel_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 1, p_conc = 4),
       grid_id = "Grid_A", main_habitat = "Lentic"
     ),
@@ -222,7 +208,7 @@ test_that("no singletons, no modelled rows, no effort: warns and pins theta to t
   floor_only <- .make_priors() |>
     dplyr::filter(undetected_type %in% "global_floor")
   expect_warning(
-    out <- apply_undetected_evidence(floor_only, .make_mock_model_obj(),
+    out <- apply_undetected_evidence(floor_only, .make_mock_kernel_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
       grid_id = "Grid_A", main_habitat = "Lentic"
     ),
@@ -245,7 +231,7 @@ test_that("ladder's modelled-theta rung ignores evidence/domestic named rows", {
       source_taxon_name = NA_character_, main_habitat = "Lentic"
     ))
   expect_warning(
-    out <- apply_undetected_evidence(pri, .make_mock_model_obj(),
+    out <- apply_undetected_evidence(pri, .make_mock_kernel_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
       grid_id = "Grid_A", main_habitat = "Lentic"
     ),
@@ -270,7 +256,7 @@ test_that("ladder's modelled-theta rung ignores evidence/domestic rows via prior
     ))
   pri$model_tier <- NULL
   expect_warning(
-    out <- apply_undetected_evidence(pri, .make_mock_model_obj(),
+    out <- apply_undetected_evidence(pri, .make_mock_kernel_obj(),
       .make_evidence("Gymnocephalus cernua", weight = 0.8, p_conc = 4),
       grid_id = "Grid_A", main_habitat = "Lentic"
     ),
@@ -288,7 +274,7 @@ test_that("two sources for the same taxon combine weight via probabilistic-OR an
     .make_evidence("Gymnocephalus cernua", weight = 0.5, p_conc = 4, source = "invasive_watch"),
     .make_evidence("Gymnocephalus cernua", weight = 0.3, p_conc = 2, source = "regional_proximity")
   )
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), ev, grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), ev, grid_id = "Grid_A", main_habitat = "Lentic")
   expect_equal(nrow(out), 1L)
 
   w_expected <- 1 - (1 - 0.5) * (1 - 0.3)
@@ -304,7 +290,7 @@ test_that("combined weight from two sources never exceeds 1 / the singleton ceil
     .make_evidence("Gymnocephalus cernua", weight = 0.9, p_conc = 4, source = "invasive_watch"),
     .make_evidence("Gymnocephalus cernua", weight = 0.9, p_conc = 2, source = "regional_proximity")
   )
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), ev, grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), ev, grid_id = "Grid_A", main_habitat = "Lentic")
   expect_lt(out$evidence_weight, 1)
   expect_lte(out$theta_mean, 0.025 + 1e-8)
 })
@@ -334,20 +320,9 @@ test_that("a site-specific singleton mean is preferred over the global one when 
   )
   priors <- dplyr::bind_rows(floor_row, singleton_site_a, singleton_site_b)
 
-  out <- apply_undetected_evidence(priors, .make_mock_model_obj(), .make_evidence("Gymnocephalus cernua", weight = 1, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
+  out <- apply_undetected_evidence(priors, .make_mock_kernel_obj(), .make_evidence("Gymnocephalus cernua", weight = 1, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic")
   # Should use Grid_A's own singleton (0.025), not Grid_B's (0.25) or a pooled mean.
   expect_equal(out$theta_mean, 0.025, tolerance = 1e-8)
-})
-
-# =============================================================================
-# habitat_col = NULL model
-# =============================================================================
-
-test_that("habitat_col = NULL model works with main_habitat = NULL and produces no habitat column", {
-  priors <- .make_priors(habitat_col = NULL)
-  out <- apply_undetected_evidence(priors, .make_mock_model_obj(habitat_col = NULL), .make_evidence("Gymnocephalus cernua", weight = 0.5, p_conc = 4), grid_id = "Grid_A")
-  expect_equal(nrow(out), 1L)
-  expect_false("main_habitat" %in% names(out))
 })
 
 # =============================================================================
@@ -356,27 +331,26 @@ test_that("habitat_col = NULL model works with main_habitat = NULL and produces 
 
 test_that("taxonomy join adds rank columns when supplied", {
   taxonomy <- tibble::tibble(taxon_name = "Gymnocephalus cernua", genus = "Gymnocephalus", family = "Percidae")
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), .make_evidence("Gymnocephalus cernua", weight = 0.5, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic", taxonomy = taxonomy)
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), .make_evidence("Gymnocephalus cernua", weight = 0.5, p_conc = 4), grid_id = "Grid_A", main_habitat = "Lentic", taxonomy = taxonomy)
   expect_equal(out$genus, "Gymnocephalus")
   expect_equal(out$family, "Percidae")
 })
 
-test_that("legacy n_eff column without p_conc errors with migration guidance", {
+test_that("an n_eff column on evidence is ignored, not rejected (no 1.0 evidence generator emits it)", {
   ev <- tibble::tibble(
     taxon_name = "Gymnocephalus cernua", weight = 0.5,
     n_eff = 4, source = "invasive_watch"
   )
-  expect_error(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(), ev,
-      grid_id = "Grid_A", main_habitat = "Lentic"
-    ),
-    regexp = "retired"
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(), ev,
+    grid_id = "Grid_A", main_habitat = "Lentic"
   )
+  expect_equal(nrow(out), 1L)
+  expect_false("n_eff" %in% names(out))
 })
 
 test_that("prints the dataset-specific veto bound (D4)", {
   msgs <- capture_messages(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(),
       .make_evidence(),
       grid_id = "Grid_A", main_habitat = "Lentic"
     )
@@ -392,14 +366,14 @@ test_that("warns when a supplied evidence weight exceeds the printed veto bound 
   # pre-calibration invasive-weight-vs-GreatLakes-bound miscalibration this
   # guard exists to catch generically, for any evidence source/weight.
   expect_warning(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(),
       .make_evidence(),
       grid_id = "Grid_A", main_habitat = "Lentic"
     ),
     "ABOVE the veto bound"
   )
   w <- tryCatch(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(),
       .make_evidence(),
       grid_id = "Grid_A", main_habitat = "Lentic"
     ),
@@ -411,7 +385,7 @@ test_that("warns when a supplied evidence weight exceeds the printed veto bound 
 test_that("no veto-bound warning when the evidence weight is comfortably below the bound", {
   ev_low <- .make_evidence(weight = 0.001) # well under the ~0.013 bound
   expect_no_warning(
-    apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+    apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(),
       ev_low,
       grid_id = "Grid_A", main_habitat = "Lentic"
     )
@@ -503,14 +477,14 @@ test_that("curve pricing prints f1 next to the price it produced", {
   expect_false(any(grepl("[Vv]eto bound", msgs)))
 })
 
-test_that("curve pricing refuses a GLMM model_obj or a no-singleton kernel fit", {
+test_that("curve pricing refuses a kernel fit with no theta_present or a no-singleton kernel fit", {
   priors <- .make_priors()
   ev <- data.frame(
     taxon_name = "X y", weight = 0.1, source = "s",
     stringsAsFactors = FALSE
   )
   expect_error(
-    apply_undetected_evidence(priors, .make_mock_model_obj(), ev,
+    apply_undetected_evidence(priors, .make_mock_kernel_obj(), ev,
       grid_id = "Grid_A", main_habitat = "Lentic",
       pricing = "curve"
     ),
@@ -872,9 +846,9 @@ test_that("the per-group budget table is printed with the price adopted for each
 
 test_that("the per-group printout names the fit's OWN grouping column (2026-09-07)", {
   # The column name has to be captured BEFORE model_obj is replaced by the
-  # GLMM-compat stub -- reading it at the printout got the stub's NULL, so
-  # every grouped fit printed the literal default "sampling_group" regardless
-  # of what its own column was called.
+  # habitat-only adapter -- reading it at the printout got the adapter's
+  # NULL, so every grouped fit printed the literal default "sampling_group"
+  # regardless of what its own column was called.
   occ <- .make_grouped_kernel_fit_data()
   names(occ)[names(occ) == "sampling_group"] <- "detection_process"
   kp <- suppressWarnings(estimate_kernel_priors(
@@ -892,7 +866,7 @@ test_that("the per-group printout names the fit's OWN grouping column (2026-09-0
 })
 
 test_that("blend mode gains no group columns", {
-  out <- apply_undetected_evidence(.make_priors(), .make_mock_model_obj(),
+  out <- apply_undetected_evidence(.make_priors(), .make_mock_kernel_obj(),
     .make_evidence(),
     grid_id = "Grid_A",
     main_habitat = "Lentic"

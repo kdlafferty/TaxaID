@@ -25,10 +25,10 @@ apply_undetected_evidence(
 both as the source of the floor/singleton anchors and to determine
 which evidence taxa are already observed.}
 
-\item{model_obj}{A biofreq_model object, used only for
-\code{meta$habitat_col} (to determine whether \code{main_habitat} is
-required) so output rows sit on the same schema as every other
-prior-generating function in this package.}
+\item{model_obj}{A \code{taxaexpect_kernel_priors} object (output of
+\code{\link{estimate_kernel_priors}}). Kernel estimates are always
+habitat-stratified, so output rows sit on the same schema as every
+other prior-generating function in this package.}
 
 \item{evidence}{Data frame (typically the row-bound output of one or more
 evidence-generating functions, e.g.
@@ -37,9 +37,9 @@ evidence-generating functions, e.g.
 source's probability of local presence), \code{source} (character, for
 audit only). Optional: \code{p_conc} (numeric, > 0; default 1) -- how
 much weight the presence claim carries against future evidence, in
-pseudo-observations. \code{n_eff} is not accepted (errors with
-guidance): the Beta concentration is moment-matched, not supplied.
-Additional source-specific columns are ignored by this function.}
+pseudo-observations -- the Beta concentration itself is always
+moment-matched, not caller-supplied. Additional source-specific
+columns are ignored by this function.}
 
 \item{grid_id}{Character. Single grid cell identifier this call applies
 to -- required, no default (mirrors
@@ -50,10 +50,8 @@ convention; a multi-site study calls this once per site).
 observations at this specific site.}
 
 \item{main_habitat}{Character. Single habitat category this call applies
-to. Required (no default) when \code{model_obj} was trained with a
-non-NULL \code{habitat_col}; must be omitted (\code{NULL}, the default)
-when \code{model_obj} was trained with \code{habitat_col = NULL}. There
-is no habitat-agnostic option here, unlike
+to. Always required -- kernel estimates are always habitat-stratified.
+There is no habitat-agnostic option here, unlike
 \code{generate_domestic_food_priors()}'s \code{main_habitat = NA} rows
 (which \code{join_priors()} now has a dedicated fallback tier for) --
 occurrence-plausibility evidence is deliberately habitat-AWARE, since a
@@ -116,14 +114,13 @@ A tibble with one row per eligible taxon named in \code{evidence}:
 \item{taxon_name}{The real taxon name.}
 \item{taxon_name_rank}{Always \code{"species"} -- required for the
 row to match \code{TaxaAssign::join_priors()}'s composite join key.}
-\item{grid_id, main_habitat}{As supplied (\code{main_habitat} omitted
-entirely when \code{model_obj} has no habitat concept).}
+\item{grid_id, main_habitat}{As supplied.}
 \item{alpha, beta}{Beta(alpha, beta) prior parameters.}
 \item{theta_mean, theta_sd}{Derived from alpha/beta.}
 \item{model_tier}{Always \code{"tier_undetected_evidence"}. Kernel-path
 output uses \code{prior_branch} + \code{effective_records} instead;
-this column is retained for compatibility with \code{biofreq_model}
-inputs (see \code{model_obj}).}
+this column is kept for schema parity with every other
+prior-generating function in this package.}
 \item{undetected_type}{Always \code{"evidence_blend"} -- a new value
 alongside \code{"singleton_mirror"}/\code{"global_floor"}.}
 \item{evidence_weight}{The combined \code{w_combined} for this taxon
