@@ -4,8 +4,8 @@
 #
 # .onAttach():  Detect available LLM API keys and set:
 #   options(TaxaID.provider)  -- provider name string, read by call_api()
-#   options(TaxaID.llm_fn)    -- set to call_api, for backward compat with
-#                                ecosystem functions that use llm_fn defaults
+#   options(TaxaID.llm_fn)    -- set to call_api, the default llm_fn used by
+#                                other TaxaID functions that take one
 # ==============================================================================
 
 
