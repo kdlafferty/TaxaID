@@ -5,23 +5,21 @@
 # Built on TaxaTools::list_cache_files()/report_and_clear_cache() (the shared
 # file-per-key cache engine also used by TaxaFetch::taxafetch_clear_cache()).
 #
-# CORRECTED 2026-09-14. This file used to claim there was "no known
-# duplicate/orphan-accumulation mechanism here" because each query maps to
-# one deterministic file with no overwrite concept. That is wrong, and the
-# measurement is in ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md: the
-# accumulation mechanism is not overwriting, it is KEY WIDENING. Every time
-# a real staleness crash was fixed by adding a component to the cache key,
-# the entire previous generation was silently orphaned rather than replaced
-# -- 1,584 of 3,517 meta files (45%) on the development machine. Hence
-# taxalikely_evict_unreachable_cache() below, and the automatic write-path
-# eviction in fetch.R.
+# Each query maps to one deterministic file with no overwrite concept, but
+# that does not mean there is no duplicate/orphan-accumulation mechanism:
+# the accumulation mechanism is KEY WIDENING. Every time
+# a real staleness crash is fixed by adding a component to the cache key,
+# the entire previous generation is silently orphaned rather than replaced
+# -- confirmed on a real cache directory, 1,584 of 3,517 meta files (45%).
+# Hence taxalikely_evict_unreachable_cache() below, and the automatic
+# write-path eviction in fetch.R.
 # ==============================================================================
 
 #' Recognized TaxaLikely cache file patterns
 #'
 #' Per-taxon reference-fetch metadata (\code{fetch_ncbi_reference_sequences()}),
 #' per-genus coverage checkpoints (\code{audit_barcode_coverage()}), and the
-#' per-accession FASTA store added by the 2026-09-14 cache policy (P2), which
+#' per-accession FASTA store, which
 #' lives in a \code{fasta/} SUBDIRECTORY and so needs a recursive scan --
 #' while it had neither a pattern nor a recursive scan, its 4,061 files were
 #' invisible to every clear function in the ecosystem.
@@ -43,7 +41,7 @@
 #' It is the blunt instrument: it targets EVERY recognized cache file,
 #' whether or not a later call could still hit it. To remove only the files
 #' that are provably dead -- generations superseded by a cache-key widening,
-#' 45% of the meta store as measured on 2026-09-14 -- use
+#' 45% of the meta store on a real cache directory -- use
 #' \code{\link{taxalikely_evict_unreachable_cache}()} instead, which leaves
 #' every reachable file in place and reports rather than deletes by default.
 #'
@@ -113,9 +111,9 @@ taxalikely_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaLikely", "
 #' @param dry_run Logical. If \code{TRUE} (the DEFAULT, unlike the sibling
 #'   clear functions), reports what would be removed without removing it.
 #' @param max_file_mb Numeric. Files larger than this are reported and left
-#'   in place even when \code{dry_run = FALSE}, per the 2026-09-14 policy
-#'   decision to auto-evict small metadata \code{.rds} files but to
-#'   report-and-confirm before deleting anything large. A meta file is about
+#'   in place even when \code{dry_run = FALSE}: small metadata \code{.rds}
+#'   files auto-evict, but anything large is report-and-confirm before
+#'   deleting. A meta file is about
 #'   1 KB, so this is a structural guard rather than an active filter.
 #'   \code{NULL} disables it.
 #' @return Invisibly, a data frame of the targeted files (\code{path},
