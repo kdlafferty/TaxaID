@@ -53,7 +53,7 @@
 #'   name for compatibility with \code{evaluate_likelihoods()}),
 #'   \code{genus}, \code{common_name}, \code{iconic_taxon_name},
 #'   \code{taxon_id}, \code{n_observations} (global iNat observation count for
-#'   the taxon — not location-filtered), \code{vision_score},
+#'   the taxon -- not location-filtered), \code{vision_score},
 #'   \code{combined_score}, \code{freq_score} (a thresholded presence
 #'   indicator from the iNaturalist geomodel, not a raw frequency; see
 #'   Details),
@@ -312,7 +312,7 @@ score_image_inat <- function(
 
   out <- dplyr::bind_rows(non_null)
 
-  # Canonical column ordering: match object core → taxonomy → scores → metadata
+  # Canonical column ordering: match object core -> taxonomy -> scores -> metadata
   core_cols <- c(
     "observation_id", "taxon_name", "taxon_name_rank",
     "score_original"
@@ -537,7 +537,7 @@ score_image_inat <- function(
 #'
 #' Takes the parsed JSON list returned by the iNaturalist CV API and returns
 #' a tibble with \code{top_n} rows (or fewer when the API returns fewer
-#' results). Does not attach \code{observation_id} — the caller adds that.
+#' results). Does not attach \code{observation_id} -- the caller adds that.
 #' @noRd
 .parse_inat_cv_response <- function(parsed, top_n) {
   results <- parsed[["results"]]

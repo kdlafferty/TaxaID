@@ -98,6 +98,14 @@ function's use become the only place the full \code{evaluation} object's signal
 is consulted.
 }
 
+\examples{
+\dontrun{
+ev <- evaluate_reference_accessions(unique(match_df$accession), cache_dir = "ref_eval_cache")
+cleaned <- remove_incongruent_references(match_df, ev)
+nrow(cleaned)
+}
+
+}
 \seealso{
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
 \code{\link[=resolve_review_overrides]{resolve_review_overrides()}}

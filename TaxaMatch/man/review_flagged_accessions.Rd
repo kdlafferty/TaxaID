@@ -194,6 +194,14 @@ design) -- an interruption partway through a large review run only loses
 whatever batch was still in flight, not every batch completed so far.
 }
 
+\examples{
+\dontrun{
+ev <- evaluate_reference_accessions(accs, cache_dir = "ref_eval_cache")
+reviewed <- review_flagged_accessions(ev, cache_dir = "ref_eval_cache")
+table(reviewed$accession_likely_explanation)
+}
+
+}
 \seealso{
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} for the columns this function
 reads, \code{TaxaFlag::review_assignments()} for the precedent this follows,

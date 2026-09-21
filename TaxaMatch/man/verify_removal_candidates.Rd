@@ -148,6 +148,14 @@ never automatically, only flagged, per this project's own "flag, don't
 auto-act" convention.
 }
 
+\examples{
+\dontrun{
+ev <- evaluate_reference_accessions(accs, cache_dir = "ref_eval_cache")
+ev <- score_reference_labels(ev)
+spared <- verify_removal_candidates(ev, cache_dir = "ref_eval_cache")
+table(spared$spared)
+}
+}
 \seealso{
 \code{\link[=remove_incongruent_references]{remove_incongruent_references()}}, \code{\link[=score_reference_labels]{score_reference_labels()}}
 }

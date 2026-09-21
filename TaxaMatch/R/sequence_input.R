@@ -1,5 +1,5 @@
 # ==============================================================================
-# read_sequence_table() — Ingest DADA2 sequence table or FASTA file
+# read_sequence_table() -- Ingest DADA2 sequence table or FASTA file
 # ==============================================================================
 
 # Non-abundance column names excluded from abundance_cols auto-detection.
@@ -538,7 +538,7 @@ read_sequence_table <- function(input_data,
 
 
 # ==============================================================================
-# filter_sequences() — Filter ASVs by length and abundance
+# filter_sequences() -- Filter ASVs by length and abundance
 # ==============================================================================
 
 #' Filter Sequences by Length and Abundance

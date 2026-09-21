@@ -66,9 +66,9 @@
 #' @param common_name_col Character or `NULL`. Name of a common name column,
 #'   if present. Default `NULL` (common name column set to `NA`).
 #' @param n_candidates Integer or `NULL`. If `NULL` (default), expects
-#'   **long format** — one row per image × candidate species, with `species_col`
+#'   **long format** -- one row per image x candidate species, with `species_col`
 #'   and `score_col` holding the prediction and confidence directly. If a
-#'   positive integer, expects **wide format** — one row per image crop with
+#'   positive integer, expects **wide format** -- one row per image crop with
 #'   candidate columns named `paste0(species_col, 1:n_candidates)` and
 #'   `paste0(score_col, 1:n_candidates)` (e.g., `pred1`/`score1` through
 #'   `pred3`/`score3`). The wide format is pivoted to long before filtering.
@@ -85,18 +85,18 @@
 #'   `qcovs` and is accepted by `TaxaLikely::evaluate_likelihoods(min_coverage=)`.
 #'   Default `NULL` (no coverage column).
 #'
-#' @return A data frame with one row per image × candidate species, containing:
+#' @return A data frame with one row per image x candidate species, containing:
 #'   \describe{
 #'     \item{`observation_id`}{Unique identifier derived from the image filename
 #'       stem (path stripped, extension(s) stripped). Multiple rows with the
 #'       same `observation_id` represent alternative species candidates for the
-#'       same image/crop — analogous to multiple BLAST hits per eDNA query or
+#'       same image/crop -- analogous to multiple BLAST hits per eDNA query or
 #'       multiple BirdNET candidates per time window.}
-#'     \item{`score`}{Animl classifier confidence (0–1). Pass as `score_col`
+#'     \item{`score`}{Animl classifier confidence (0-1). Pass as `score_col`
 #'       to [standardize_match_data()].}
 #'     \item{`species`}{Species prediction as reported by Animl. May be
 #'       `"empty"` (no animal detected), `"human"`, or `"vehicle"` for
-#'       non-wildlife detections — filter these out before proceeding.}
+#'       non-wildlife detections -- filter these out before proceeding.}
 #'     \item{`genus`}{Genus name (first word of `species`). `NA` for
 #'       non-binomial labels such as `"empty"`.}
 #'     \item{`common_name`}{Common name from `common_name_col`, or `NA` if
@@ -109,7 +109,7 @@
 #' (`animl` on CRAN; wraps MegaDetector + SpeciesNet) supports multiple export
 #' formats. Two are handled here:
 #'
-#' *Long format* (default, `n_candidates = NULL`): one row per image crop ×
+#' *Long format* (default, `n_candidates = NULL`): one row per image crop x
 #' candidate species. Columns: `FileName`, `prediction`, `confidence`. This
 #' is the format produced when you export classification results row-by-row.
 #'
@@ -935,6 +935,10 @@ read_speciesnet_output <- function(files,
     lon_val <- if (is.null(lon_val)) NA_real_ else as.numeric(lon_val)
     country_val <- p[["country"]]
     country_val <- if (is.null(country_val)) NA_character_ else as.character(country_val)
+    ens_score_val <- p[["prediction_score"]]
+    ens_score_val <- if (is.null(ens_score_val)) NA_real_ else as.numeric(ens_score_val)
+    ens_source_val <- p[["prediction_source"]]
+    ens_source_val <- if (is.null(ens_source_val)) NA_character_ else as.character(ens_source_val)
 
     df <- data.frame(
       .filepath = as.character(filepath),
@@ -948,8 +952,8 @@ read_speciesnet_output <- function(files,
       common_name = tax$common_name,
       taxon_rank = tax$taxon_rank,
       ensemble_prediction = ens_common,
-      ensemble_prediction_score = if (is.null(p[["prediction_score"]])) NA_real_ else as.numeric(p[["prediction_score"]]),
-      ensemble_prediction_source = if (is.null(p[["prediction_source"]])) NA_character_ else as.character(p[["prediction_source"]]),
+      ensemble_prediction_score = ens_score_val,
+      ensemble_prediction_source = ens_source_val,
       lat = lat_val,
       lon = lon_val,
       country = country_val,

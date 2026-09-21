@@ -1,6 +1,6 @@
 # ==============================================================================
 # standardize_match_data.R
-# TaxaMatch — Standardize raw match data to canonical match object
+# TaxaMatch -- Standardize raw match data to canonical match object
 #
 # Exported functions:
 #   standardize_match_data()      Rename/derive columns into the canonical match object
@@ -57,7 +57,7 @@
 #' The result is a canonical match object ready for input to TaxaLikely.
 #' One row per `observation_id` x reference match (e.g. one ESV x one accession
 #' hit). Sample context (site, date, replicate) is stored in a separate table
-#' and joined to the likelihood output downstream — it is not part of the match
+#' and joined to the likelihood output downstream -- it is not part of the match
 #' object.
 #'
 #' @param data A data frame, a file path (character string), or `NULL`. When
@@ -396,7 +396,7 @@ filter_redundant_hypotheses <- function(
 
     for (i in rows_in_sample) {
       ri <- rank_score[i]
-      if (is.na(ri)) next # unknown rank — keep
+      if (is.na(ri)) next # unknown rank -- keep
 
       # Candidate superseding rows: same sample, finer rank
       finer_idx <- rows_in_sample[!is.na(scores_in_sample) & scores_in_sample > ri]
@@ -416,7 +416,7 @@ filter_redundant_hypotheses <- function(
       # Check if any finer row shares all those values
       for (j in finer_idx) {
         vals_j <- unlist(match_df[j, cols_to_check, drop = FALSE])
-        # NA-safe comparison: NA in row i's lineage columns means unknown ancestor —
+        # NA-safe comparison: NA in row i's lineage columns means unknown ancestor --
         # do not treat as a match (conservative: retain the row)
         if (any(is.na(vals_i))) break
         if (identical(vals_i, vals_j)) {

@@ -14,7 +14,7 @@ encoding: "UTF-8"
 exclusions: list(
     # JSON literals inside @examples blocks that commented_code_linter's
     # heuristic misidentifies as commented-out R code.
-    "R/read_image_classifiers.R" = list(commented_code_linter = Inf, line_length_linter = c(956L, 957L)),
+    "R/read_image_classifiers.R" = list(commented_code_linter = Inf),
     # "# function_name()" section-header comments and file-path/prose
     # comments that happen to parse as valid R (division chains, etc.) --
     # this ecosystem's established false-positive class, not dead code.
@@ -42,18 +42,19 @@ exclusions: list(
       commented_code_linter = Inf,
       line_length_linter = Inf
     ),
-    "R/group_observations_by_bbox.R" = list(line_length_linter = c(306L)),
-    "R/investigate_flagged_accession.R" = list(line_length_linter = c(742L, 1065L)),
     "R/join_event_site_metadata.R" = list(line_length_linter = c(108L)),
-    "R/migrate_reference_cache.R" = list(line_length_linter = c(88L, 143L)),
+    # This @param tag documents 13 arguments shared with
+    # investigate_flagged_accession() via one comma-separated name list (no
+    # spaces allowed in the list itself, since roxygen2 splits @param content
+    # on the first whitespace to separate names from description) -- it
+    # cannot be wrapped without either renaming an argument (not permitted)
+    # or breaking roxygen2's parsing of the tag.
+    "R/investigate_flagged_accession.R" = list(line_length_linter = c(1063L)),
     "R/reference_label_verdict.R" = list(
       commented_code_linter = Inf,
       line_length_linter = Inf
     ),
-    "R/review_flagged_accessions.R" = list(
-      commented_code_linter = Inf,
-      line_length_linter = c(108L, 768L)
-    ),
+    "R/review_flagged_accessions.R" = list(commented_code_linter = Inf),
     "R/trim_query_to_amplicon.R" = list(line_length_linter = Inf),
     # search_calls <<- / call_log[[...]] <<- are closures mutating their own
     # enclosing test's call-counter/logger -- the standard, documented use
@@ -96,5 +97,9 @@ exclusions: list(
     "tests/testthat/test-blast.R" = list(commented_code_linter = Inf, line_length_linter = Inf),
     "tests/testthat/test-read_speciesnet.R" = list(line_length_linter = Inf),
     "tests/testthat/test-convert_taxonomy_backbone.R" = list(line_length_linter = Inf),
-    "tests/testthat/test-build_site_table.R" = list(line_length_linter = Inf)
+    "tests/testthat/test-build_site_table.R" = list(line_length_linter = Inf),
+    # Long, descriptive test_that() label strings -- same reasoning as the
+    # other test files above (a test's own name, not dead/commented code).
+    "tests/testthat/test-reference-label-verdict.R" = list(line_length_linter = c(1010L, 1041L, 1061L)),
+    "tests/testthat/test-vignette-calls.R" = list(line_length_linter = c(66L))
   )

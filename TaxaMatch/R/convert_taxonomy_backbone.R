@@ -1,6 +1,6 @@
 # ==============================================================================
 # convert_taxonomy_backbone.R
-# TaxaMatch — Convert match object taxonomy to a target backbone
+# TaxaMatch -- Convert match object taxonomy to a target backbone
 # NOTE: This is a generic utility that should eventually move to TaxaTools.
 #       Written here first because TaxaTools is under manuscript review.
 # ==============================================================================
@@ -331,9 +331,9 @@ convert_taxonomy_backbone <- function(
 
   # ---------------------------------------------------------------------------
   # Parse rank values from classification_path
-  # Split once per unique name; extract each rank by position — avoids
+  # Split once per unique name; extract each rank by position -- avoids
   # repeated strsplit calls that the previous mapply(parse_classification_path)
-  # approach incurred (one split per rank × per unique name).
+  # approach incurred (one split per rank x per unique name).
   # ---------------------------------------------------------------------------
   path_list <- strsplit(verified$classification_path, "|", fixed = TRUE)
   ranks_list <- strsplit(verified$classification_ranks, "|", fixed = TRUE)
@@ -386,7 +386,7 @@ convert_taxonomy_backbone <- function(
   lookup_idx <- match(match_df[[taxon_col]], verified$user_supplied_name)
 
   # A row is "found" when the API was reached (verified = TRUE).
-  # verified$verified[NA] returns NA; !is.na(NA) = FALSE → found_mask = FALSE
+  # verified$verified[NA] returns NA; !is.na(NA) = FALSE -> found_mask = FALSE
   # for rows with NA/empty taxon_name, as required.
   found_mask <- !is.na(lookup_idx) & verified$verified[lookup_idx]
 

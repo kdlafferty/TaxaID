@@ -81,7 +81,7 @@ and \code{taxon_name_rank} via \code{\link[TaxaTools:create_taxon_names]{TaxaToo
 The result is a canonical match object ready for input to TaxaLikely.
 One row per \code{observation_id} x reference match (e.g. one ESV x one accession
 hit). Sample context (site, date, replicate) is stored in a separate table
-and joined to the likelihood output downstream — it is not part of the match
+and joined to the likelihood output downstream -- it is not part of the match
 object.
 }
 \examples{

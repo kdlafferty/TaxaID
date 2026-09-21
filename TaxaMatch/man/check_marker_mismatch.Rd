@@ -69,6 +69,12 @@ record's own annotated gene/product metadata, not its taxonomic rank of
 disagreement -- this function checks that directly instead.
 }
 
+\examples{
+\dontrun{
+check_marker_mismatch("AY850362", expected_marker = "12S")
+}
+
+}
 \seealso{
 \code{\link[=investigate_flagged_accession]{investigate_flagged_accession()}}, \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}
 }

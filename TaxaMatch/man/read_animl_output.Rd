@@ -37,9 +37,9 @@ argument becomes the prefix (e.g., \code{"pred"} for \code{pred1}, \code{pred2},
 if present. Default \code{NULL} (common name column set to \code{NA}).}
 
 \item{n_candidates}{Integer or \code{NULL}. If \code{NULL} (default), expects
-\strong{long format} — one row per image × candidate species, with \code{species_col}
+\strong{long format} -- one row per image x candidate species, with \code{species_col}
 and \code{score_col} holding the prediction and confidence directly. If a
-positive integer, expects \strong{wide format} — one row per image crop with
+positive integer, expects \strong{wide format} -- one row per image crop with
 candidate columns named \code{paste0(species_col, 1:n_candidates)} and
 \code{paste0(score_col, 1:n_candidates)} (e.g., \code{pred1}/\code{score1} through
 \code{pred3}/\code{score3}). The wide format is pivoted to long before filtering.}
@@ -60,18 +60,18 @@ output; this area fraction serves as an image-quality analog to BLAST
 Default \code{NULL} (no coverage column).}
 }
 \value{
-A data frame with one row per image × candidate species, containing:
+A data frame with one row per image x candidate species, containing:
 \describe{
 \item{\code{observation_id}}{Unique identifier derived from the image filename
 stem (path stripped, extension(s) stripped). Multiple rows with the
 same \code{observation_id} represent alternative species candidates for the
-same image/crop — analogous to multiple BLAST hits per eDNA query or
+same image/crop -- analogous to multiple BLAST hits per eDNA query or
 multiple BirdNET candidates per time window.}
-\item{\code{score}}{Animl classifier confidence (0–1). Pass as \code{score_col}
+\item{\code{score}}{Animl classifier confidence (0-1). Pass as \code{score_col}
 to \code{\link[=standardize_match_data]{standardize_match_data()}}.}
 \item{\code{species}}{Species prediction as reported by Animl. May be
 \code{"empty"} (no animal detected), \code{"human"}, or \code{"vehicle"} for
-non-wildlife detections — filter these out before proceeding.}
+non-wildlife detections -- filter these out before proceeding.}
 \item{\code{genus}}{Genus name (first word of \code{species}). \code{NA} for
 non-binomial labels such as \code{"empty"}.}
 \item{\code{common_name}}{Common name from \code{common_name_col}, or \code{NA} if
@@ -89,7 +89,7 @@ returns a tidy data frame in match object format, ready for
 (\code{animl} on CRAN; wraps MegaDetector + SpeciesNet) supports multiple export
 formats. Two are handled here:
 
-\emph{Long format} (default, \code{n_candidates = NULL}): one row per image crop ×
+\emph{Long format} (default, \code{n_candidates = NULL}): one row per image crop x
 candidate species. Columns: \code{FileName}, \code{prediction}, \code{confidence}. This
 is the format produced when you export classification results row-by-row.
 

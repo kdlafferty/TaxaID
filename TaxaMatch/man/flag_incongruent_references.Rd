@@ -80,6 +80,14 @@ one) before joining, so every \code{match_df} row is matched to at most one
 below.
 }
 
+\examples{
+\dontrun{
+ev <- evaluate_reference_accessions(unique(match_df$accession), cache_dir = "ref_eval_cache")
+flagged <- flag_incongruent_references(match_df, ev)
+table(flagged$hierarchy_flag)
+}
+
+}
 \seealso{
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=remove_incongruent_references]{remove_incongruent_references()}}
 }
