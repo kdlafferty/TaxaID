@@ -37,9 +37,9 @@
 #'   `"year"` standard column). When supplied and present, the matched
 #'   nearest record's raw value is surfaced as `nearest_date` -- lets a
 #'   caller weigh a fresh vs. a decades-old nearest record differently
-#'   without a second lookup. Default `NULL` (no age column requested,
-#'   fully backward compatible -- `nearest_date` is simply absent from the
-#'   output). No parsing/normalization is done on the raw value; a `"year"`
+#'   without a second lookup. Default `NULL` (no age column requested;
+#'   `nearest_date` is simply absent from the output). No parsing/normalization
+#'   is done on the raw value; a `"year"`
 #'   column comes back as whatever numeric/character type it already was.
 #'
 #' @return A data frame, one row per unique entry in `taxon_names`:
