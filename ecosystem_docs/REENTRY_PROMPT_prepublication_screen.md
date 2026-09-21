@@ -752,6 +752,14 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   checksum shape. B4 runs one agent per package, two at a time, branch
   `stageb-b4-<Pkg>`; passes 1-6 executed, pass 3 report-only (no renames),
   7a light read of pre-review functions, 7b done by the A5 template review.
+  **TaxaMatch DONE** (`784adcf`): `check()` 0/0/0, 1,368 tests; 61
+  non-ASCII characters replaced; `@examples` added to the 10 exports that
+  had none (one draft example corrected -- `evaluate_reference_accessions()`
+  does not return `reference_action`); stale `.lintr` exclusions removed;
+  **`Depends: R (>= 4.1.0)` added** -- the package uses the native pipe but
+  declared no minimum R (check every package's DESCRIPTION for the same).
+  7a: no `system()`/`eval()`/`parse()` in pre-review code; the local-BLAST
+  argument string is built from numeric and literal-set values only.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
