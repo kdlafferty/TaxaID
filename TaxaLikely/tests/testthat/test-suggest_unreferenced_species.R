@@ -407,6 +407,139 @@ test_that("suggest_unreferenced_species() errors on invalid max_date format", {
   )
 })
 
+# ============================================================================
+# data_type = "acoustic" / "image" (non-eDNA) branches
+#
+# Previously ZERO tests exercised these branches at all (all other tests in
+# this file use data_type = "eDNA"), which is how the missing
+# reference_species-required validation shipped silently: with
+# reference_species left at its NULL default, ref_set was silently empty,
+# so nothing could ever match it, and every LLM-plausible candidate came
+# back "unreferenced" with no error or warning.
+# ============================================================================
+
+test_that("suggest_unreferenced_species() errors when reference_species is omitted for data_type = 'acoustic'", {
+  match_df <- make_spg_match_df()
+  expect_error(
+    suggest_unreferenced_species(
+      match_df,
+      data_type = "acoustic",
+      llm_fn = stub_plausible_llm
+    ),
+    regexp = "reference_species"
+  )
+})
+
+test_that("suggest_unreferenced_species() errors when reference_species is omitted for data_type = 'image'", {
+  match_df <- make_spg_match_df()
+  expect_error(
+    suggest_unreferenced_species(
+      match_df,
+      data_type = "image",
+      llm_fn = stub_plausible_llm
+    ),
+    regexp = "reference_species"
+  )
+})
+
+test_that("suggest_unreferenced_species() errors when reference_species is an empty character vector for data_type = 'acoustic'", {
+  match_df <- make_spg_match_df()
+  expect_error(
+    suggest_unreferenced_species(
+      match_df,
+      data_type = "acoustic",
+      llm_fn = stub_plausible_llm,
+      reference_species = character(0L)
+    ),
+    regexp = "reference_species"
+  )
+})
+
+test_that("suggest_unreferenced_species() error message names the argument, data_type, and what to pass", {
+  match_df <- make_spg_match_df()
+  err <- tryCatch(
+    suggest_unreferenced_species(
+      match_df,
+      data_type = "acoustic",
+      llm_fn = stub_plausible_llm
+    ),
+    error = function(e) conditionMessage(e)
+  )
+  expect_match(err, "reference_species")
+  expect_match(err, "acoustic")
+  expect_match(err, "species list")
+})
+
+test_that("suggest_unreferenced_species() does not flag reference_species members as unreferenced (acoustic, supplied)", {
+  match_df <- make_spg_match_df()
+  mock_llm <- function(prompt) {
+    '[{"genus":"Fundulus","plausible_species":["Fundulus parvipinnis","Fundulus notatus"]},{"genus":"Gambusia","plausible_species":["Gambusia mexicana"]}]'
+  }
+  result <- suggest_unreferenced_species(
+    match_df,
+    data_type = "acoustic",
+    llm_fn = mock_llm,
+    reference_species = c("Fundulus parvipinnis", "Gambusia mexicana"),
+    pause_seconds = 0
+  )
+  # In the acoustic reference list -> NOT unreferenced
+  expect_false("Fundulus parvipinnis" %in% result)
+  expect_false("Gambusia mexicana" %in% result)
+  # Absent from the acoustic reference list -> unreferenced
+  expect_true("Fundulus notatus" %in% result)
+})
+
+test_that("suggest_unreferenced_species() does not flag reference_species members as unreferenced (image, supplied)", {
+  match_df <- make_spg_match_df()
+  mock_llm <- function(prompt) {
+    '[{"genus":"Fundulus","plausible_species":["Fundulus parvipinnis","Fundulus notatus"]},{"genus":"Gambusia","plausible_species":["Gambusia mexicana"]}]'
+  }
+  result <- suggest_unreferenced_species(
+    match_df,
+    data_type = "image",
+    llm_fn = mock_llm,
+    reference_species = c("Fundulus parvipinnis", "Gambusia mexicana"),
+    pause_seconds = 0
+  )
+  expect_false("Fundulus parvipinnis" %in% result)
+  expect_false("Gambusia mexicana" %in% result)
+  expect_true("Fundulus notatus" %in% result)
+})
+
+test_that("suggest_unreferenced_species() builds a prompt mentioning the acoustic signal", {
+  match_df <- make_spg_match_df()
+  captured_prompt <- NULL
+  capturing_llm <- function(prompt) {
+    captured_prompt <<- prompt
+    stub_plausible_llm(prompt)
+  }
+  suggest_unreferenced_species(
+    match_df,
+    data_type = "acoustic",
+    llm_fn = capturing_llm,
+    reference_species = c("Fundulus parvipinnis"),
+    pause_seconds = 0
+  )
+  expect_true(grepl("acoustic", captured_prompt, ignore.case = TRUE))
+})
+
+test_that("suggest_unreferenced_species() builds a prompt mentioning the image signal", {
+  match_df <- make_spg_match_df()
+  captured_prompt <- NULL
+  capturing_llm <- function(prompt) {
+    captured_prompt <<- prompt
+    stub_plausible_llm(prompt)
+  }
+  suggest_unreferenced_species(
+    match_df,
+    data_type = "image",
+    llm_fn = capturing_llm,
+    reference_species = c("Fundulus parvipinnis"),
+    pause_seconds = 0
+  )
+  expect_true(grepl("image", captured_prompt, ignore.case = TRUE))
+})
+
 # ---- print.unreferenced_species_result -------------------------------------------------------
 
 test_that("print.unreferenced_species_result outputs invisibly and shows count", {

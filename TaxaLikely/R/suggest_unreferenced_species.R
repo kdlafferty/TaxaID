@@ -682,6 +682,16 @@ suggest_unreferenced_species <- function(match_df,
     !is.character(reference_species)) {
     cli::cli_abort("{.arg reference_species} must be a character vector or NULL.")
   }
+  if (data_type %in% c("acoustic", "image") &&
+    (is.null(reference_species) || length(reference_species) == 0L)) {
+    cli::cli_abort(c(
+      "{.arg reference_species} is required when {.arg data_type} = {.val {data_type}}.",
+      "i" = "Pass the {data_type} model's known-species list (e.g. the acoustic \\
+      model's or image classifier's training species list) as {.arg reference_species}.",
+      "i" = "Without it, every LLM-plausible candidate is classified as \\
+      unreferenced with no error or warning."
+    ))
+  }
 
   if (data_type == "eDNA") {
     if (!is.character(barcode_term) || length(barcode_term) == 0L ||
