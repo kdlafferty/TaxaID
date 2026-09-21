@@ -32,9 +32,9 @@
 
 # .default_exact_match_group_id()
 #
-# Session 139: spatial_group_id's default (before any interactive grouping)
-# used to be the row's own observation_id -- meaning a genuine multi-site
-# observation's own several sites all defaulted to ONE shared group, purely
+# Defaulting spatial_group_id (before any interactive grouping) to the row's
+# own observation_id would mean a genuine multi-site
+# observation's own several sites all default to ONE shared group, purely
 # because they belong to the same observation, regardless of whether they
 # are actually near each other. spatial_group_id is meant to be a LOCATION
 # property (do these coordinates belong to the same neighborhood?), not an
