@@ -278,7 +278,7 @@ distribution well for those two markers specifically. Nothing in this
 function checks that the same form fits a different marker (e.g. COI,
 16S, cytb, rbcL, matK, trnL -- all now trainable here via
 \code{trim_to_amplicon()}) before fitting it. Run
-\code{diagnostics/seq_matrix_score_distribution.R} on \code{build_sequence_matrix()}
+the \code{seq_matrix_score_distribution.R} diagnostic (TaxaID_dev repository) on \code{build_sequence_matrix()}
 output for a new marker before trusting this model there -- it checks
 logit-normality and the H1/H2 spike ratio, the two properties this
 function's Gaussian form assumes hold.

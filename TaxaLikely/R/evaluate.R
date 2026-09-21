@@ -147,9 +147,8 @@ utils::globalVariables(c(
   # check whether it should be retrained.
   if (is.null(model_params$Score_Transform)) {
     warning(paste0(
-      "model_params has no Score_Transform field -- this model predates ",
-      "score_transform tracking (added Session 158) and is being evaluated as ",
-      "\"logit\", its original and only behavior. logit's near-100%-identity region is ",
+      "model_params has no Score_Transform field -- the model is evaluated as ",
+      "\"logit\". logit's near-100%-identity region is ",
       "the fragile one (unbounded scale, position set by logit_epsilon rather than real ",
       "data -- see train_likelihood_model()'s \"Non-monotonic score->likelihood shape\" ",
       "section); if this model is stale, consider retraining with ",
@@ -1295,7 +1294,7 @@ utils::globalVariables(c(
 #' Empirical-Bayes-shrunk curves computed once by
 #' `train_likelihood_model()`, not recomputed here -- see that function's
 #' own `Confusion_Risk_Curves` documentation and
-#' `diagnostics/score_floor_roc_sweep.R`, the reference implementation these
+#' the `score_floor_roc_sweep.R` diagnostic (TaxaID_dev repository), the reference implementation these
 #' curves are built from).
 #'
 #' **Higher means MORE confusable, i.e. WEAKER evidence for the rank in
@@ -1491,7 +1490,7 @@ evaluate_likelihoods <- function(match_df,
   # a zero-row target ("replacement has 1 row, data has 0"), since `sid` has
   # length 1 and there are 0 rows to receive it. At the calibrated
   # min_coverage threshold used in a real production comparison
-  # (diagnostics/coverage_filter_ab_comparison.R), this hit 195/800 (24.4%)
+  # (coverage_filter_ab_comparison.R in the TaxaID_dev repository), this hit 195/800 (24.4%)
   # of real test queries. Routed to $unresolved instead, below -- the SAME
   # graceful-degrade convention this function already uses for the
   # coarser-than-rank_system NA-taxon-name case just below (not a new

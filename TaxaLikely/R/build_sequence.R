@@ -62,7 +62,7 @@ utils::globalVariables(c(
 #'   a broader per-gene range; a bare marker name (e.g. `"12S"`) only
 #'   guarantees "roughly the right marker," not amplicon-window
 #'   comparability, and does not by itself close this gap. See
-#'   `diagnostics/sebastes_chromis_confirmation.R` for the case this was
+#'   the `sebastes_chromis_confirmation.R` diagnostic (TaxaID_dev repository) for the case this was
 #'   found in.
 #' @param filter_unnamed Logical (default `TRUE`).  If `TRUE`, sequences whose
 #'   finest-rank taxonomy column (the last element of `rank_system`, typically

@@ -5,7 +5,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #
 # Shared machinery behind two consumers, both growing out of the same
 # design conversation and its reference implementation,
-# diagnostics/score_floor_roc_sweep.R:
+# score_floor_roc_sweep.R in the TaxaID_dev repository:
 #   1. evaluate_likelihoods()'s species_confusion_risk/genus_confusion_risk/
 #      family_confusion_risk columns (R/evaluate.R) -- a model-independent,
 #      score-only diagnostic of the risk that the raw match score is
@@ -51,7 +51,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #' error) when neither is available, since this is meant to degrade
 #' gracefully as one input among several to `train_likelihood_model()`.
 #'
-#' `pair_type` mirrors `diagnostics/score_floor_roc_sweep.R` exactly:
+#' `pair_type` mirrors the `score_floor_roc_sweep.R` diagnostic (TaxaID_dev repository) exactly:
 #' `"within-species"` (TP for the species tier), `"congeneric"` (same genus,
 #' different species -- FP for the species tier), `"confamilial"` (same
 #' family, different genus -- FP for the genus tier), `"cross-family"` (FP
@@ -93,7 +93,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #'       same-family); `fpr_pooled` from cross-family pairs -- a single
 #'       ungrouped rate (no rank above family to equal-weight by), matching
 #'       the structural ceiling documented in
-#'       `diagnostics/score_floor_roc_sweep.R`.}
+#'       the `score_floor_roc_sweep.R` diagnostic (TaxaID_dev repository).}
 #'   }
 #'
 #' @noRd
@@ -405,7 +405,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #' Derive marker-specific rank_thresholds via per-rank Youden's J
 #'
 #' A real, exported, marker-agnostic version of
-#' `diagnostics/score_floor_roc_sweep.R`'s per-rank Youden's J logic: given a
+#' the `score_floor_roc_sweep.R` diagnostic (TaxaID_dev repository)'s per-rank Youden's J logic: given a
 #' `build_sequence_matrix()`-style pairwise distance matrix for YOUR marker
 #' and reference database, returns the percent-identity threshold at each
 #' taxonomic rank (species/genus/family) that maximizes true-positive minus

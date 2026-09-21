@@ -371,7 +371,7 @@ in this training reference database? Read off
 Empirical-Bayes-shrunk curves computed once by
 \code{train_likelihood_model()}, not recomputed here -- see that function's
 own \code{Confusion_Risk_Curves} documentation and
-\code{diagnostics/score_floor_roc_sweep.R}, the reference implementation these
+the \code{score_floor_roc_sweep.R} diagnostic (TaxaID_dev repository), the reference implementation these
 curves are built from).
 
 \strong{Higher means MORE confusable, i.e. WEAKER evidence for the rank in

@@ -241,8 +241,8 @@ identify_confident_observations <- function(match_df,
 #' cross-species information anyway. Do not reuse an offset estimated on one
 #' marker (or one primer set) for another: the size of this gap has been found
 #' to vary by roughly an order of magnitude between markers of different
-#' length and quality (see `TaxaLikely/CLAUDE.md` for the 12S/18S comparison
-#' this function's design was validated against) and does not transfer as
+#' length and quality (a 12S/18S comparison validated this design) and does
+#' not transfer as
 #' either a fixed percentage or a fixed mismatch count. The same applies
 #' across `score_transform` values: the offset is estimated on
 #' whichever scale `model_params$Score_Transform` says the model was trained
@@ -386,9 +386,8 @@ identify_confident_observations <- function(match_df,
 #'   query's own evidence quantity by, at inference time, to scale H1 sigma
 #'   per-observation (more evidence than this baseline tightens sigma, less
 #'   widens it -- unlike the rejected flat `calibrate_sigma` correction above,
-#'   this is validated per-observation, not as one population-wide constant;
-#'   see `TaxaLikely/CLAUDE.md` for the within-species correlation this is
-#'   based on). Median chosen for the same robustness reason as the mean
+#'   this is validated per-observation, not as one population-wide constant,
+#'   based on the observed within-species correlation). Median chosen for the same robustness reason as the mean
 #'   offset (a real, right-skewed depth distribution can span 5+ orders of
 #'   magnitude). A **global** median across the whole confident set, not
 #'   per-species/genus -- per-observation evidence quantity already carries

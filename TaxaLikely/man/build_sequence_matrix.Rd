@@ -88,7 +88,7 @@ resolves to the literature-verified real PCR amplicon length rather than
 a broader per-gene range; a bare marker name (e.g. \code{"12S"}) only
 guarantees "roughly the right marker," not amplicon-window
 comparability, and does not by itself close this gap. See
-\code{diagnostics/sebastes_chromis_confirmation.R} for the case this was
+the \code{sebastes_chromis_confirmation.R} diagnostic (TaxaID_dev repository) for the case this was
 found in.}
 
 \item{verbose}{Logical (default \code{TRUE}).  Passed straight through to

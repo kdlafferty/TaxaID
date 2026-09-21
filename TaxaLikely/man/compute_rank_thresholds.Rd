@@ -38,7 +38,7 @@ if nothing is computable at all (fewer than 2 usable rank levels).
 }
 \description{
 A real, exported, marker-agnostic version of
-\code{diagnostics/score_floor_roc_sweep.R}'s per-rank Youden's J logic: given a
+the \code{score_floor_roc_sweep.R} diagnostic (TaxaID_dev repository)'s per-rank Youden's J logic: given a
 \code{build_sequence_matrix()}-style pairwise distance matrix for YOUR marker
 and reference database, returns the percent-identity threshold at each
 taxonomic rank (species/genus/family) that maximizes true-positive minus

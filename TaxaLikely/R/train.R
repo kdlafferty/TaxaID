@@ -242,9 +242,7 @@ utils::globalVariables(c(
   # so on (.generalize_ranks() above renames by position via rev(present)).
   # "Genus" here is a documented CONVENTION, not an enforced guarantee --
   # true whenever rank_system's finest two elements are ("...", "genus",
-  # "species"), which is this ecosystem's own standard rank_system (see
-  # Statistical Design Notes, "rank_system convention", in this package's
-  # CLAUDE.md) and how every real production workflow calls this package. A
+  # "species"), which is this ecosystem's own standard rank_system and how every real production workflow calls this package. A
   # caller supplying a non-standard rank_system whose second-finest rank
   # ISN'T genus (e.g. one ending "...genus, species, subspecies", finest =
   # subspecies) would silently get max_congener_score/H2_Lookup keyed on
@@ -388,7 +386,7 @@ utils::globalVariables(c(
 #' function checks that the same form fits a different marker (e.g. COI,
 #' 16S, cytb, rbcL, matK, trnL -- all now trainable here via
 #' `trim_to_amplicon()`) before fitting it. Run
-#' `diagnostics/seq_matrix_score_distribution.R` on `build_sequence_matrix()`
+#' the `seq_matrix_score_distribution.R` diagnostic (TaxaID_dev repository) on `build_sequence_matrix()`
 #' output for a new marker before trusting this model there -- it checks
 #' logit-normality and the H1/H2 spike ratio, the two properties this
 #' function's Gaussian form assumes hold.
@@ -908,7 +906,7 @@ train_likelihood_model <- function(raw_df,
 
   # ---- CONFUSION-RISK CURVES ---------------------------------------------
   # Genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank score curves
-  # (diagnostics/score_floor_roc_sweep.R's reference implementation, made
+  # (score_floor_roc_sweep.R in the TaxaID_dev repository's reference implementation, made
   # real via .compute_rank_score_curves()) -- computed once at training time
   # and stored below, not recomputed from a raw seq_matrix on every inference
   # call. Feeds evaluate_likelihoods()'s species_confusion_risk/

@@ -664,11 +664,9 @@ restore_suppressed_candidates <- function(match_obj,
     match_obj[[score_col]] <- 1.0
     if (verbose) {
       # sprintf() does not concatenate multiple format-string arguments --
-      # join with paste0() first, then sprintf() the single result (see
-      # TaxaID/CLAUDE.md's "Split-string sprintf bug" footgun). The prior
-      # form here silently dropped the whole "(H1 = 1.0, restored = ...)"
-      # clause and emitted an "arguments not used by format" warning on
-      # every verbose=TRUE call through this path.
+      # join with paste0() first, then sprintf() the single result ; a
+      # split format string silently drops later arguments and emits an
+      # "arguments not used by format" warning.
       message(sprintf(
         paste0(
           "restore_suppressed_candidates: no score column -- creating synthetic scores ",
