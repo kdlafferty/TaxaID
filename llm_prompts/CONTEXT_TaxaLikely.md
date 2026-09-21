@@ -4,7 +4,7 @@
 
 Trains a hierarchical Bayesian model on reference-vs-reference match scores (DNA percent identity, image similarity, acoustic scores) and uses it to convert per-observation match scores into likelihoods. For each observation (observation_id), produces score_likelihood, score_likelihood_mean, and score_likelihood_sd across candidate taxa - the columns required by TaxaAssign. Also provides reference database quality tools: detecting mislabeled references and auditing taxonomic completeness. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:44 UTC; unix). 31 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 22:07:45 UTC; unix). 31 exported function(s).
 
 ## Functions
 
@@ -480,7 +480,7 @@ A fast, LLM-first alternative to 'audit_barcode_coverage()' for unreferenced spe
 
 **Value:** A character vector of unreferenced species names with class 'c("unreferenced_species_result", "character")'. 'length()' returns the total number of unreferenced species (congener + family-level combined). Pass directly to 'TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)'.
 
-### taxalikely_clear_cache(cache_dir = tools::R_user_dir("TaxaLikely", "cache"), older_than_days = NULL, dry_run = FALSE)
+### taxalikely_clear_cache(cache_dir = tools::R_user_dir("TaxaLikely", "cache"), older_than_days = NULL, dry_run = FALSE, force = FALSE)
 
 Report and clear TaxaLikely's on-disk cache
 
@@ -491,6 +491,7 @@ Report and clear TaxaLikely's on-disk cache
 | cache_dir | no | tools::R_user_dir("TaxaLikely", "cache") | Character. Cache directory to inspect/clear. Defaults to tools::R_user_dir("TaxaLikely", "cache"), the same default used by fetch_ncbi_reference_sequences()/audit_barcode_coverage(). |
 | older_than_days | no | NULL | Numeric or NULL. When supplied, only files older than this many days (by modification time) are targeted. NULL (default) targets every recognized cache file in cache_dir. |
 | dry_run | no | FALSE | Logical. If TRUE, reports what would be removed without removing anything. Default FALSE. |
+| force | no | FALSE | Logical (default FALSE). Pass TRUE to clear a cache_dir that holds file(s) matching none of the recognized cache patterns -- see list_cache_files. |
 
 **Value:** Invisibly, a data frame of the targeted files ('path', 'size_mb', 'mtime'), possibly zero rows.
 

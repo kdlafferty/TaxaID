@@ -4,7 +4,7 @@
 
 Assigns habitat classifications to taxonomic occurrence records using LLM prompts and performs spatial quality control. Receives occurrence data from TaxaFetch and produces habitat-annotated, spatially screened records for input to TaxaExpect. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:47 UTC; unix). 17 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 22:07:49 UTC; unix). 17 exported function(s).
 
 ## Functions
 
@@ -280,7 +280,7 @@ Extracts one row per '(point_id, taxon_name)' from 'review_spatial_flags()''s ou
 
 **Value:** Invisibly, the merged decisions table ('point_id', 'taxon_name', 'spatial_flag', 'main_habitat', 'habitat_reassigned', 'decided_at').
 
-### taxahabitat_clear_cache(cache_dir = tools::R_user_dir("TaxaHabitat", "cache"), older_than_days = NULL, dry_run = FALSE)
+### taxahabitat_clear_cache(cache_dir = tools::R_user_dir("TaxaHabitat", "cache"), older_than_days = NULL, dry_run = FALSE, force = FALSE)
 
 Report and clear TaxaHabitat's on-disk habitat-verdict cache
 
@@ -291,6 +291,7 @@ Lists, and optionally deletes, the per-taxon files written by 'build_habitat_loo
 | cache_dir | no | tools::R_user_dir("TaxaHabitat", "cache") | Character. The directory passed to build_habitat_lookup()'s cache_dir. Defaults to tools::R_user_dir("TaxaHabitat", "cache"), matching the sibling packages; workflows that pass a project-local directory should pass the same one here. |
 | older_than_days | no | NULL | Optional numeric. Delete only entries older than this many days. NULL (default) considers every entry. |
 | dry_run | no | FALSE | Logical. TRUE reports what would be deleted without deleting it. |
+| force | no | FALSE | Logical (default FALSE). Pass TRUE to clear a cache_dir that holds file(s) matching none of the recognized cache patterns -- see TaxaTools::list_cache_files(). |
 
 **Value:** Invisibly, the inventory data frame ('TaxaTools::list_cache_files()' output) of the files considered.
 

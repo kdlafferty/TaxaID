@@ -4,7 +4,7 @@
 
 Identifies and flags anomalous detections in taxonomic assignment results from biological surveys. Detects laboratory and field contamination by comparing read proportions against control samples, flags handler-related artifacts near equipment setup or collection events, and provides LLM-based expert review of habitat fit, geographic plausibility, contaminant risk, and taxonomic scope. Operates on consensus data frames and appends categorical flag columns for user-driven filtering. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:58 UTC; unix). 11 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 22:07:59 UTC; unix). 11 exported function(s).
 
 ## Functions
 
@@ -229,7 +229,7 @@ Opens a Shiny gadget for scrolling through consensus taxa - grouped by plausibil
 
 **Value:** 'NULL' invisibly. The gadget is for interactive exploration only.
 
-### taxaflag_clear_cache(cache_dir = tools::R_user_dir("TaxaFlag", "cache"), older_than_days = NULL, dry_run = FALSE)
+### taxaflag_clear_cache(cache_dir = tools::R_user_dir("TaxaFlag", "cache"), older_than_days = NULL, dry_run = FALSE, force = FALSE)
 
 Report and clear TaxaFlag's on-disk caches
 
@@ -240,6 +240,7 @@ Lists, and optionally deletes, the per-key files written by 'review_assignments(
 | cache_dir | no | tools::R_user_dir("TaxaFlag", "cache") | Character. The directory passed to review_assignments()'s or check_gbif_tile_range()'s cache_dir (each function's cache lives in its own directory, so point this at whichever one you want to inspect/clear). Defaults to tools::R_user_dir("TaxaFlag", "cache"), matching the sibling packages; workflows that pass a project-local directory should pass the same one here. |
 | older_than_days | no | NULL | Optional numeric. Delete only entries older than this many days. NULL (default) considers every entry. |
 | dry_run | no | FALSE | Logical. TRUE reports what would be deleted without deleting it. |
+| force | no | FALSE | Logical (default FALSE). Pass TRUE to clear a cache_dir that holds file(s) matching none of the recognized cache patterns -- see TaxaTools::list_cache_files(). |
 
 **Value:** Invisibly, the inventory data frame ('TaxaTools::list_cache_files()' output) of the files considered.
 

@@ -4,7 +4,7 @@
 
 Provides tools for acquiring, combining, and preparing taxonomic occurrence data from multiple sources including GBIF and DataONE. The user specifies a spatial area and taxonomic group; TaxaFetch retrieves occurrence records and aligns column naming to DarwinCore conventions. Habitat assignment and spatial quality control are handled by TaxaHabitat. Output is a data frame of taxonomic occurrences at various locations and times. These data feed into TaxaHabitat and then TaxaExpect, which generates spatially explicit predictions of relative occurrence across taxa. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:39 UTC; unix). 30 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 22:07:40 UTC; unix). 30 exported function(s).
 
 ## Functions
 
@@ -537,7 +537,7 @@ Row-binds one or more occurrence data frames and adds a 'point_id' column constr
 
 **Value:** A single tibble containing all rows from every input frame with an additional 'point_id' column appended, formed by pasting 'lat_col' and 'lon_col' separated by '"_"'. No rows are removed - the row count is always the sum of the input frames' row counts.
 
-### taxafetch_clear_cache(cache_dir = tools::R_user_dir("TaxaFetch", "cache"), older_than_days = NULL, orphans_only = FALSE, zips_only = FALSE, dry_run = FALSE)
+### taxafetch_clear_cache(cache_dir = tools::R_user_dir("TaxaFetch", "cache"), older_than_days = NULL, orphans_only = FALSE, zips_only = FALSE, dry_run = FALSE, force = FALSE)
 
 Report and clear TaxaFetch's on-disk cache
 
@@ -550,6 +550,7 @@ TaxaFetch caches GBIF download zips ('download_gbif_occurrences()'), checkpoint 
 | orphans_only | no | FALSE | Logical. If TRUE, targets only GBIF download zips (and zip sidecars -- see below) that are no longer referenced by any current download_gbif_occurrences() metadata file in cache_dir -- i.e. zips superseded by a later overwrite = TRUE run. The zip each metadata file currently points to (its query's most recent cached download), every metadata file itself, every fetch_gbif_occurrences() checkpoint, and every iNaturalist range file are left untouched -- this is the "keep the most recent cache per query, remove only stale leftovers" mode. Default FALSE (target everything recognized). Since a metadata file only ever names X.zip, a X.zip.<suffix> sidecar -- a partial transfer, or a bad download renamed out of the way by hand -- is unreferenced by construction and is always targeted here. |
 | zips_only | no | FALSE | Logical. If TRUE, targets only the downloaded GBIF .zip files and their sidecars, leaving every metadata file and .rds checkpoint in place. This is usually the setting you want for reclaiming space: the zips are the cache in practice (38 of them held 17 GB on one real machine, against 52 MB for every .rds combined), they are pure redundancy once imported, and keeping their metadata means a later identical call re-fetches the same prepared GBIF key with no new request or queue wait. Unlike orphans_only this includes zips still referenced by current metadata -- those are exactly the large ones. Cannot be combined with orphans_only. |
 | dry_run | no | FALSE | Logical. If TRUE, reports what would be removed without removing anything. Default FALSE. |
+| force | no | FALSE | Logical (default FALSE). Pass TRUE to clear a cache_dir that holds file(s) matching none of the recognized cache patterns -- see list_cache_files. |
 
 **Value:** Invisibly, a data frame of the targeted files ('path', 'size_mb', 'mtime'), possibly zero rows.
 

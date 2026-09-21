@@ -4,7 +4,7 @@
 
 Stores and standardizes raw match data produced by external tools that compare biological observations (eDNA sequences, images, acoustic recordings) against reference databases. Outputs a canonical match object (one row per sample x reference match, with standard column names) for input to TaxaLikely. Match data sources include DNA barcode programs (e.g. MiFish), image classifiers, and acoustic recognizers. Also screens reference accessions for taxonomic mislabeling via independent BLAST-based congruence checking before the reference set is used for likelihood model training. Score-to-likelihood conversion itself lives in TaxaLikely. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:41 UTC; unix). 31 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 22:07:42 UTC; unix). 31 exported function(s).
 
 ## Functions
 
@@ -336,12 +336,12 @@ Reads one or more Animl (MegaDetector + SpeciesNet) result CSV files and returns
 | species_col | no | "prediction" | Character. Name of the column containing the species prediction (scientific name). Default "prediction". For wide-format outputs (multiple candidates per row), set n_candidates and this argument becomes the prefix (e.g., "pred" for pred1, pred2, ...). |
 | score_col | no | "confidence" | Character. Name of the confidence column. Default "confidence". For wide-format outputs, this is used as the prefix (e.g., "score" for score1, score2, ...). |
 | common_name_col | no | NULL | Character or NULL. Name of a common name column, if present. Default NULL (common name column set to NA). |
-| n_candidates | no | NULL | Integer or NULL. If NULL (default), expects long format — one row per image × candidate species, with species_col and score_col holding the prediction and confidence directly. If a positive integer, expects wide format — one row per image crop with candidate columns named paste0(species_col, 1:n_candidates) and paste0(score_col, 1:n_candidates) (e.g., pred1/score1 through pred3/score3). The wide format is pivoted to long before filtering. |
+| n_candidates | no | NULL | Integer or NULL. If NULL (default), expects long format -- one row per image x candidate species, with species_col and score_col holding the prediction and confidence directly. If a positive integer, expects wide format -- one row per image crop with candidate columns named paste0(species_col, 1:n_candidates) and paste0(score_col, 1:n_candidates) (e.g., pred1/score1 through pred3/score3). The wide format is pivoted to long before filtering. |
 | min_confidence | no | 0 | Numeric. Detections below this confidence are dropped. Default 0 (keep all). |
 | top_n | no | NULL | Integer or NULL. If supplied, only the top n candidates (by confidence) within each image are retained. Default NULL (keep all). |
 | bbox_cols | no | NULL | Character vector of length 2 or NULL. Names of the bounding-box width and height columns (normalized 0--1, as output by MegaDetector). Supply as a named vector c(w = "bbox_w", h = "bbox_h") or positionally c("bbox_w", "bbox_h"). When provided, coverage = bbox_w * bbox_h is computed and added to the output; this area fraction serves as an image-quality analog to BLAST qcovs and is accepted by TaxaLikely::evaluate_likelihoods(min_coverage=). Default NULL (no coverage column). |
 
-**Value:** A data frame with one row per image × candidate species, containing: 'observation_id' Unique identifier derived from the image filename stem (path stripped, extension(s) stripped). Multiple rows with the same 'observation_id' represent alternative species candidates for the same image/crop — analogous to multiple BLAST hits per eDNA query or multiple BirdNET candidates per time window. ...
+**Value:** A data frame with one row per image x candidate species, containing: 'observation_id' Unique identifier derived from the image filename stem (path stripped, extension(s) stripped). Multiple rows with the same 'observation_id' represent alternative species candidates for the same image/crop - analogous to multiple BLAST hits per eDNA query or multiple BirdNET candidates per time window. ...
 
 ### read_birdnet_output(files, min_confidence = 0, top_n = NULL)
 
@@ -355,7 +355,7 @@ Reads one or more BirdNET-Analyzer result CSV files and returns a tidy data fram
 | min_confidence | no | 0 | Numeric. Detections below this confidence are dropped. Default 0 (keep all). BirdNET's own default threshold is 0.1. |
 | top_n | no | NULL | Integer or NULL. If supplied, only the top n detections (by confidence) within each time window are retained. Default NULL (keep all detections per window). Setting top_n = 1 retains only the best species per window; top_n = 3 reproduces BirdNET's default output when the tool is run with --top_n 3. |
 
-**Value:** A data frame with one row per file × time-window × detected species, containing: 'observation_id' Unique identifier combining file stem and time window: '"{file_stem}_{start_s}-{end_s}"', with 'start_s'/'end_s' formatted to a fixed 1 decimal place so the same window produces the same ID across platforms/R versions. Pass as 'observation_id_col' to 'standardize_match_data()'. 'score' BirdNET ...
+**Value:** A data frame with one row per file x time-window x detected species, containing: 'observation_id' Unique identifier combining file stem and time window: '"{file_stem}_{start_s}-{end_s}"', with 'start_s'/'end_s' formatted to a fixed 1 decimal place so the same window produces the same ID across platforms/R versions. Pass as 'observation_id_col' to 'standardize_match_data()'. 'score' BirdNET ...
 
 ### read_inaturalist_cv_output(files, score_type = c("combined_score", "score"), min_confidence = 0, top_n = NULL)
 

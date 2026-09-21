@@ -4,7 +4,7 @@
 
 Provides helper functions for cleaning, verifying, and standardizing taxonomic names across multiple backbones. Capabilities include spell-checking and correcting species names, translating names between taxonomic backbones (e.g., GBIF, NCBI, WoRMS), retrieving classification hierarchies via API, and creating standardized taxon labels at any rank. Also provides LLM provider functions for calling Anthropic, OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for drafting methods and results sections. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:37 UTC; unix). 52 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 22:07:38 UTC; unix). 52 exported function(s).
 
 ## Functions
 
@@ -118,7 +118,7 @@ Generic provider-neutral function. Resolves the provider, model, API key, and en
 | api_key | no | NULL | Character. API key override. Default NULL reads the key from the environment variable named in the provider's registry entry (e.g. ANTHROPIC_API_KEY). Keyless providers (Ollama) ignore this. |
 | base_url | no | NULL | Character. Base URL override for OpenAI-compatible providers (OpenAI, Azure, Ollama, custom registered providers). Default NULL uses the provider's registered endpoint. For Ollama: change the host/port, e.g. base_url = "http://remote-server:11434". For OpenAI-compatible proxies: supply the proxy base URL. For Azure: replaces the host in the endpoint template while preserving the deployment path and API version. |
 | images | no | NULL | Named list of base64-encoded PNG strings, as returned by .render_pdf_pages() in the TaxaFetch PDF pipeline. Default NULL (text-only call). When supplied, the prompt and images are sent as a multi-modal message using the provider's vision format: Anthropic image content blocks, Gemini inlineData parts, or OpenAI image_url blocks. Requires a vision-capable model (e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o). |
-| show_tokens | no | FALSE | Logical. When TRUE, prints a message after each call reporting the provider, model, and token counts (e.g. "Tokens used [anthropic / claude-sonnet-4-6] — input: 312, output: 87"). Default FALSE to avoid output in non-interactive workflows. Token counts are retrieved from the provider's response body; NA is reported when a provider does not return usage information. |
+| show_tokens | no | FALSE | Logical. When TRUE, prints a message after each call reporting the provider, model, and token counts (e.g. "Tokens used [anthropic / claude-sonnet-4-6] -- input: 312, output: 87"). Default FALSE to avoid output in non-interactive workflows. Token counts are retrieved from the provider's response body; NA is reported when a provider does not return usage information. |
 | max_input_tokens | no | NULL | Integer or NULL. When non-NULL, estimates the prompt length as ceiling(nchar(prompt_str) / 3.5) (a conservative characters-per-token heuristic) and stops with an informative error before making the HTTP request if the estimate exceeds the limit. Use this as a pre-flight guard against accidentally sending very large prompts. Default NULL (no check performed). |
 | timeout | no | 120 | Numeric. Request timeout in seconds, passed to httr2::req_timeout(). Default 120. Raise this for a slow provider/model (e.g. a large local Ollama model) or a large multi-image PDF-vision call that can legitimately take longer than two minutes. |
 
@@ -587,7 +587,7 @@ Renames columns in a data frame using either a user-supplied explicit map or a s
 | Param | Required | Default | Doc |
 |---|---|---|---|
 | input_df | yes |  | A data frame whose columns are to be renamed. |
-| col_map | no | NULL | Named character vector or NULL. When supplied, each name is an existing column name in input_df and each value is the desired new name. Both must be quoted strings: col_map = c("Latitude" = "decimalLatitude", "Longitude" = "decimalLongitude", "SurveyDate" = "eventDate") When col_map is supplied it replaces the default pattern matching entirely — only the mappings you specify are applied. When NULL (default), the built-in regex patterns are used instead (see Details). |
+| col_map | no | NULL | Named character vector or NULL. When supplied, each name is an existing column name in input_df and each value is the desired new name. Both must be quoted strings: col_map = c("Latitude" = "decimalLatitude", "Longitude" = "decimalLongitude", "SurveyDate" = "eventDate") When col_map is supplied it replaces the default pattern matching entirely -- only the mappings you specify are applied. When NULL (default), the built-in regex patterns are used instead (see Details). |
 | strict | no | FALSE | Logical. Controls behaviour when a col_map key is not found in input_df. FALSE (default): warns about unmatched keys and renames whatever it can. Suitable when rename_cols() is applied to frames that may only contain some of the target columns. TRUE: stops with an error if any col_map key is absent from input_df. Use in scripts where all mappings must succeed. Has no effect when col_map = NULL (default patterns always skip non-matching columns silently). |
 
 **Value:** The input data frame with columns renamed as specified. Column types, row names, and all other attributes are preserved. Columns not mentioned in 'col_map' (or not matched by the default patterns) are left unchanged.

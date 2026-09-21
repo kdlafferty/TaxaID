@@ -4,7 +4,7 @@
 
 Estimates theta priors -- each taxon's expected share of the detections at a site -- for taxonomic assignment, from occurrence records (see TaxaFetch). A site-centered kernel estimator weights occurrence points by distance, with optional depth and habitat conditioning, and evidence layers add undetected diversity, regional proximity, iNaturalist ranges, invasive watch lists and domestic or food species. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:46 UTC; unix). 16 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 22:07:47 UTC; unix). 16 exported function(s).
 
 ## Functions
 
