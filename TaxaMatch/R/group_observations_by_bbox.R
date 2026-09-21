@@ -50,7 +50,8 @@
 #'   initialized first, with a message. If \code{sites} has
 #'   \code{spatial_group_id}/\code{spatial_group_N} but no
 #'   \code{is_default_group} (a site table built before this marker existed),
-#'   it is inferred from the old default convention, with a message.
+#'   it is inferred from the default convention (\code{spatial_group_id ==
+#'   observation_id} and \code{spatial_group_N == 1}), with a message.
 #' @param id_col Character. Column identifying each observation. Default
 #'   \code{"observation_id"}.
 #' @param lat_col,lon_col Character. Latitude/longitude column names. Default

@@ -328,8 +328,8 @@ read_sequence_table <- function(input_data,
     # -- a provider's own naming, a new tool's output -- which name-based
     # exclusion alone can never be complete about.
     #
-    # Rejections are WARNED, not messaged. The old behaviour named the summed
-    # columns in a message(), which is technically visible and in practice
+    # Rejections are WARNED, not messaged, because a message() is
+    # technically visible but in practice
     # invisible inside a long workflow log; a table containing numeric
     # non-count columns is exactly the case where auto-detection should not be
     # trusted, and the caller should pass abundance_cols= explicitly.

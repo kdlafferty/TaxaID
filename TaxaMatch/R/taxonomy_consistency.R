@@ -229,7 +229,7 @@ add_lowest_consistent_rank <- function(match_obj,
   # which(obs_ids == NA)'s existing behavior of never matching anything,
   # since NA == NA is NA, not TRUE): idx_list[[as.character(NA)]] is
   # therefore NULL, and subsetting by NULL below produces the same empty
-  # result as the old integer(0) from which().
+  # result as the integer(0) which() would give.
   idx_list <- split(seq_len(nrow(match_obj)), obs_ids)
 
   per_obs_list <- lapply(unique_ids, function(id) {

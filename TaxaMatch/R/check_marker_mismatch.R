@@ -169,7 +169,8 @@
               # onto the wrong name. Confirmed on real NCBI data
               # (NC_000932, Arabidopsis chloroplast): the rps12 gene/CDS
               # features carry a valueless `/trans_splicing` BEFORE `/product`,
-              # so the old parallel-vector read returned another qualifier's
+              # so a naive parallel-vector read would return another
+              # qualifier's
               # text as the product. xml_find_first() over the qualifier
               # nodeset returns one element per node (NA where the value is
               # absent), so the two vectors stay aligned by construction.

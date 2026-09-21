@@ -253,7 +253,8 @@ utils::globalVariables(c(
 #' `(k, n, finest_common_rank)`. Two real accessions
 #' (`Abylopsis eschscholtzii`, `KY594854`/`KX384617`) flagged `"incongruent"`
 #' with top hits all >=99% identity to a SISTER family within the same
-#' order -- indistinguishable, under the old columns, from a genuinely
+#' order -- indistinguishable, using `hierarchy_flag`/
+#' `finest_common_rank` alone, from a genuinely
 #' unrelated 99%-identity hit, which would be a much stronger mislabel
 #' signal. Both new pieces of information were already being computed and
 #' then discarded: `p_match` was used only to ORDER hits before being
