@@ -14,16 +14,39 @@
 # Write a cache file under exactly the key fetch_ncbi_reference_sequences()
 # will compute for these arguments. If the key format ever changes, these
 # tests fail loudly rather than silently testing a cache miss.
-write_cached_taxon <- function(cache_dir, taxon, accs) {
+#
+# Records sel_params matching fetch_ncbi_reference_sequences()'s own
+# defaults by default, so a plain write_cached_taxon() call produces a
+# genuinely CURRENT cache file -- most tests below are about the
+# cache-before-count short-circuit, not about sel_params verification, and
+# must not accidentally exercise a cache-miss path. Pass
+# `sel_params = NULL` for a test that specifically wants an unversioned
+# (pre-1.0-shaped) file.
+write_cached_taxon <- function(cache_dir, taxon, accs,
+                               sel_params = TaxaLikely:::.sel_params(
+                                 NULL, NULL,
+                                 paste0(
+                                   "uncultured|environmental|predicted|",
+                                   "vector|synthetic|unverified"
+                                 )
+                               )) {
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  # acc_version = accs (not left absent): these tests are about the
+  # cache-before-count short-circuit and the per-accession FASTA store, not
+  # about .fasta_cache_keys()'s unversioned-row handling -- a meta object
+  # with no acc_version column at all would make every FASTA key
+  # uncacheable (see test-fetch-fasta-versioned-key.R for that behavior on
+  # its own terms) and silently break the "not re-downloaded" assertions
+  # below.
   meta <- data.frame(
-    taxid = seq_along(accs), acc = accs,
+    taxid = seq_along(accs), acc = accs, acc_version = accs,
     title = paste(taxon, "12S ribosomal RNA gene"),
     slen = 400L, organism = paste(taxon, "sp."),
     create_date = "2026/08/29", in_barcode_range = TRUE,
     family = paste0(taxon, "idae"), genus = taxon,
     species = paste(taxon, "sp."), stringsAsFactors = FALSE
   )
+  if (!is.null(sel_params)) attr(meta, "sel_params") <- sel_params
   f <- file.path(cache_dir, sprintf(
     "%s_12S_l100_5000_d_rk-family-genus-species_meta.rds", taxon
   ))
@@ -282,28 +305,34 @@ test_that("a cache built under the SAME selection settings is reused", {
   expect_length(searched, 0L)
 })
 
-test_that("a legacy cache file (no recorded settings) is used, with a note", {
+test_that("a cache file with no recorded selection settings is a cache miss, re-fetched", {
   skip_if_not_installed("rentrez")
 
-  # write_cached_taxon() deliberately writes no sel_params attribute, which is
-  # exactly the shape of the ~3,516 files already on disk.
+  # sel_params = NULL: a pre-1.0 cache file with no recorded selection
+  # settings cannot be verified against this call's and so cannot be trusted
+  # as a hit; TaxaID 1.0 has no predecessor to silently accept this kind of
+  # file for.
   cache_dir <- tempfile("tl_sel_")
-  write_cached_taxon(cache_dir, "Sebastes", c("AB000001.1"))
+  write_cached_taxon(cache_dir, "Sebastes", c("AB000001.1"), sel_params = NULL)
 
+  searched <- character(0)
   testthat::local_mocked_bindings(
-    entrez_search = function(db, term, retmax, ...) stop("should not be called"),
+    entrez_search = function(db, term, retmax, ...) {
+      searched <<- c(searched, term)
+      list(count = "0")
+    },
     entrez_fetch = function(db, id, rettype, retmode, ...) fake_fasta(id),
     .package = "rentrez"
   )
 
   expect_message(
-    out <- fetch_ncbi_reference_sequences(
+    fetch_ncbi_reference_sequences(
       taxa = "Sebastes", barcode_term = "12S",
       min_len = 100L, max_len = 5000L, cache_dir = cache_dir
     ),
-    "predate selection-parameter recording"
+    "cache miss"
   )
-  expect_gt(nrow(out), 0L)
+  expect_true(any(grepl("Sebastes", searched)))
 })
 
 test_that("a freshly written cache file records its selection settings", {
@@ -338,8 +367,10 @@ test_that("a freshly written cache file records its selection settings", {
     ),
     "mismatch"
   )
+  # No sel_params attribute at all (a pre-1.0 cache file) is a mismatch --
+  # a cache miss -- exactly like one recorded under different settings.
   expect_equal(
     TaxaLikely:::.sel_params_status(data.frame(a = 1), TaxaLikely:::.sel_params(10L, NULL, "x")),
-    "legacy"
+    "mismatch"
   )
 })

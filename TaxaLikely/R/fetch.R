@@ -340,15 +340,16 @@ utils::globalVariables(c(
 
 #' Is a cached object's stored selection parameters compatible with this call?
 #'
-#' Returns "ok", "legacy" (no attribute -- unverifiable, accepted) or
-#' "mismatch" (re-fetch).
+#' Returns "ok" or "mismatch" (cache miss -- re-fetch). A cached object with
+#' no \code{sel_params} attribute at all -- one written before this
+#' attribute existed -- cannot be verified against the current call and is
+#' therefore a mismatch exactly like one recorded under different settings:
+#' neither can be trusted to reflect \code{current}, and there is no way to
+#' tell the two cases apart from the object alone, so they get the one
+#' honest answer both deserve.
 #' @noRd
 .sel_params_status <- function(meta, current) {
-  stored <- attr(meta, "sel_params")
-  if (is.null(stored)) {
-    return("legacy")
-  }
-  if (identical(stored, current)) "ok" else "mismatch"
+  if (identical(attr(meta, "sel_params"), current)) "ok" else "mismatch"
 }
 
 
@@ -575,31 +576,34 @@ utils::globalVariables(c(
 #' (confirmed on disk: cached files do not carry a version).
 #'
 #' The consequence is narrow but real. When a taxon's metadata is REFRESHED
-#' and GenBank has revised a record since, an unversioned key is a cache
-#' HIT, so the superseded sequence is served under the new metadata. The
-#' download and parse paths were already written for versioned input (the
-#' parser strips versions from FASTA headers, and the write-back maps those
-#' stripped ids back to the string that was requested) -- only the input was
-#' wrong.
+#' and GenBank has revised a record since, an unversioned key would be a
+#' cache HIT, silently serving the superseded sequence under the new
+#' metadata. The download and parse paths were already written for versioned
+#' input (the parser strips versions from FASTA headers, and the write-back
+#' maps those stripped ids back to the string that was requested) -- only the
+#' input was wrong.
 #'
-#' \strong{Why a cached object without \code{acc_version} correctly keeps the
-#' unversioned key.} A meta
-#' file with no \code{acc_version} column cannot supply a version,
-#' and it also cannot NOTICE one: its accession list is frozen at the moment
-#' it was cached, so no revision is visible from it in the first place. A
-#' cache key should be exactly as fresh as the metadata it was derived from,
-#' and falling back to \code{acc} is that. This is not a partial fix: the
-#' protection engages precisely when a version bump first becomes
-#' detectable, which is the re-fetch that rewrites the meta.
+#' \strong{A row with no usable \code{acc_version} is therefore never
+#' cacheable.} It cannot supply a version, and it also cannot NOTICE one: its
+#' accession list is frozen at the moment it was cached, so no revision is
+#' visible from it in the first place -- there is no key that would be safe
+#' to persist and reuse for it. \code{.fetch_fasta_cached()}'s
+#' \code{cacheable} argument (fed from this function's \code{cacheable}
+#' attribute) makes that row a cache MISS unconditionally: always
+#' downloaded fresh, never read from or written to the \code{fasta/} store.
+#' A row's own metadata cache entry catching up (a re-fetch that rewrites
+#' the meta with \code{acc_version} populated) is what turns it cacheable
+#' again -- nothing here special-cases it.
 #'
-#' Coalesces per ROW, so one record missing \code{accessionversion} costs
+#' Resolved per ROW, so one record missing \code{accessionversion} costs
 #' only its own version check rather than the whole taxon's.
 #'
 #' @param meta A combined metadata frame with an \code{acc} column and,
 #'   when written by a current fetch, an \code{acc_version} column.
 #' @return Character vector of cache/request accessions, one per row of
-#'   \code{meta}, carrying an integer \code{n_legacy} attribute counting the
-#'   rows that fell back to the unversioned form.
+#'   \code{meta}, carrying a logical \code{cacheable} attribute (\code{FALSE}
+#'   for rows with no usable version) and an integer \code{n_unversioned}
+#'   attribute counting how many that is.
 #' @noRd
 .fasta_cache_keys <- function(meta) {
   acc <- as.character(meta$acc)
@@ -611,7 +615,8 @@ utils::globalVariables(c(
   ver <- rep(ver, length.out = length(acc))
   usable <- !is.na(ver) & nzchar(ver)
   out <- ifelse(usable, ver, acc)
-  attr(out, "n_legacy") <- sum(!usable)
+  attr(out, "cacheable") <- usable
+  attr(out, "n_unversioned") <- sum(!usable)
   out
 }
 
@@ -625,9 +630,12 @@ utils::globalVariables(c(
 #'
 #' Keyed on the accession AS SUPPLIED by the caller, which is what decides
 #' whether a GenBank version bump is caught -- see \code{.fasta_cache_keys()}
-#' directly above for how that vector is chosen, and why a cached
-#' object without \code{acc_version} correctly cannot do better than the
-#' unversioned accession.
+#' directly above for how that vector is chosen. An accession with no
+#' recorded version has no key that would be safe to persist and reuse, so
+#' \code{cacheable} (aligned with \code{accessions}, from
+#' \code{.fasta_cache_keys()}'s own \code{cacheable} attribute) marks those
+#' as an unconditional cache MISS: never read from disk even if a stale
+#' file of that name exists, and never written back either.
 #' Requesting the same string it keys on means the record NCBI returns is
 #' the record the key names.
 #'
@@ -640,7 +648,8 @@ utils::globalVariables(c(
 #' been replaced, since NCBI returns no record for a superseded version
 #' rather than erroring (confirmed against a live NCBI query).
 #' @noRd
-.fetch_fasta_cached <- function(accessions, cache_dir, batch_size = 200L) {
+.fetch_fasta_cached <- function(accessions, cache_dir, batch_size = 200L,
+                                 cacheable = rep(TRUE, length(accessions))) {
   empty <- data.frame(
     composite_id = character(0L), sequence = character(0L),
     stringsAsFactors = FALSE
@@ -657,7 +666,7 @@ utils::globalVariables(c(
   key <- function(a) file.path(fasta_dir, paste0(gsub("[^A-Za-z0-9]", "_", a), "_seq.rds"))
   paths <- key(accessions)
 
-  hit <- file.exists(paths)
+  hit <- file.exists(paths) & cacheable
   cached_rows <- lapply(which(hit), function(k) {
     tryCatch(readRDS(paths[k]), error = function(e) NULL)
   })
@@ -675,6 +684,7 @@ utils::globalVariables(c(
   fresh <- empty
   if (any(!hit)) {
     want <- accessions[!hit]
+    want_cacheable <- cacheable[!hit]
     fresh <- .parse_fasta_text(.fetch_fasta_batched(want, batch_size))
     if (nrow(fresh) > 0L) {
       # The parser returns version-STRIPPED ids; map each back to the full
@@ -682,7 +692,7 @@ utils::globalVariables(c(
       stripped <- sub("\\.[0-9]+$", "", want)
       for (k in seq_len(nrow(fresh))) {
         j <- which(stripped == fresh$composite_id[k])
-        if (length(j) == 0L) next
+        if (length(j) == 0L || !want_cacheable[j[1L]]) next
         saveRDS(fresh[k, c("composite_id", "sequence"), drop = FALSE], key(want[j[1L]]))
       }
     }
@@ -1183,7 +1193,6 @@ fetch_ncbi_reference_sequences <- function(taxa,
   is_cached <- rep(FALSE, length(taxa))
   cache_files <- rep(NA_character_, length(taxa))
   sel_now <- .sel_params(max_per_species, max_per_genus, blacklist_regex)
-  n_legacy <- 0L
   n_mismatch <- 0L
 
   if (!is.null(cache_dir)) {
@@ -1196,14 +1205,15 @@ fetch_ncbi_reference_sequences <- function(taxa,
       if (file.exists(cache_files[i])) {
         loaded <- tryCatch(readRDS(cache_files[i]), error = function(e) NULL)
         if (!is.null(loaded)) {
-          status <- .sel_params_status(loaded, sel_now)
-          if (identical(status, "mismatch")) {
-            # Built under different max_per_species/max_per_genus/blacklist:
-            # re-fetch rather than serve a silently under-filled set.
+          if (identical(.sel_params_status(loaded, sel_now), "mismatch")) {
+            # Not verified against this call's selection settings -- either
+            # recorded under different ones, or (a cache MISS either way)
+            # recorded under none at all. Skipped rather than served; the
+            # normal fetch path below will overwrite this same file with a
+            # verified one on success.
             n_mismatch <- n_mismatch + 1L
             next
           }
-          if (identical(status, "legacy")) n_legacy <- n_legacy + 1L
           cached_meta[[i]] <- loaded
           is_cached[i] <- TRUE
         }
@@ -1214,24 +1224,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
   if (n_mismatch > 0L) {
     message(sprintf(
       paste0(
-        "  %d cached taxon/taxa rejected: built under different selection ",
-        "settings (max_per_species / max_per_genus / blacklist_regex). ",
-        "Re-fetching those."
+        "  %d cached taxon/taxa skipped (cache miss): not verified against ",
+        "this call's selection settings (max_per_species / max_per_genus / ",
+        "blacklist_regex) -- either recorded under different ones, or ",
+        "recorded before this was tracked at all. Re-fetching those; a ",
+        "successful re-fetch overwrites the file with a verified one."
       ), n_mismatch
-    ))
-  }
-  if (n_legacy > 0L) {
-    message(sprintf(
-      paste0(
-        "  %d of those predate selection-parameter recording, so they cannot ",
-        "be verified against this call's max_per_species (%s) / max_per_genus ",
-        "(%s) / blacklist_regex; used as-is. If you have CHANGED any of those ",
-        "since they were written, delete them to force a refetch. (A cache ",
-        "hit never rewrites the file, so this note persists until they are.)"
-      ),
-      n_legacy,
-      if (is.null(max_per_species)) "NULL" else format(max_per_species),
-      if (is.null(max_per_genus)) "NULL" else format(max_per_genus)
     ))
   }
 
@@ -1904,23 +1902,24 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # --- Step 3: Fetch FASTA sequences ------------------------------------------
   # Key (and request) the versioned accession where the metadata carries one,
   # so a revised GenBank record is a cache MISS rather than a silent hit on
-  # the superseded sequence. A taxon whose meta file has no acc_version
-  # has no version to offer and cannot see a revision anyway -- it falls back
-  # to the unversioned accession, and is reported rather than left implicit.
+  # the superseded sequence. A record whose metadata has no acc_version has
+  # no version to offer and cannot see a revision anyway -- it is a cache
+  # MISS unconditionally (see .fasta_cache_keys()/.fetch_fasta_cached()):
+  # downloaded fresh every time, never read from or written to the fasta/
+  # store, until a re-fetch of its metadata records a real version.
   fasta_keys <- .fasta_cache_keys(combined_meta)
-  n_legacy <- attr(fasta_keys, "n_legacy")
-  if (!is.null(n_legacy) && n_legacy > 0L) {
+  n_unversioned <- attr(fasta_keys, "n_unversioned")
+  if (!is.null(n_unversioned) && n_unversioned > 0L) {
     message(sprintf(
       paste0(
-        "  FASTA cache: %s of %s accession(s) have no recorded version ",
-        "(metadata cached before versions were kept); keyed on the bare ",
-        "accession, so a GenBank revision cannot be detected for them."
+        "  FASTA cache: %s of %s accession(s) have no recorded version and ",
+        "so cannot be cached; downloaded fresh (skipped as a cache miss)."
       ),
-      format(n_legacy, big.mark = ","),
+      format(n_unversioned, big.mark = ","),
       format(length(fasta_keys), big.mark = ",")
     ))
   }
-  fasta_df <- .fetch_fasta_cached(fasta_keys, cache_dir)
+  fasta_df <- .fetch_fasta_cached(fasta_keys, cache_dir, cacheable = attr(fasta_keys, "cacheable"))
 
   if (nrow(fasta_df) == 0L) {
     warning("FASTA download returned no sequences")

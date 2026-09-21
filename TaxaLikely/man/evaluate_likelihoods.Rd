@@ -350,7 +350,8 @@ evidence-adjusted point estimate already resolved (species floor +
 evidence gate, when applicable), so a low-depth candidate's evidence-widened
 sigma also widens its mean uncertainty here at no additional cost.
 Falls back to a score-resampling approach
-when \code{model_params$H1_Lookup} has no \code{n_obs_species} column.
+when \code{model_params$H1_Lookup} is empty or absent (no species-level
+training data).
 }
 \note{
 For a fully runnable, non-\verb{\dontrun{}} demonstration (including how

@@ -461,7 +461,18 @@ calibrate_query_noise <- function(model_params,
   # MAGNITUDE (the estimated offset itself) is marker/scale-specific and must be
   # (re-)estimated per model, never reused across markers OR across
   # transforms -- unchanged from this function's existing "Scope" guidance.
-  model_score_transform <- model_params$Score_Transform %||% "logit"
+  # train_likelihood_model() always records this field; a model_params
+  # object without it cannot be calibrated safely (guessing wrong here
+  # would silently mis-scale the noise estimate).
+  if (is.null(model_params$Score_Transform)) {
+    stop(paste0(
+      "calibrate_query_noise: model_params has no Score_Transform field. ",
+      "train_likelihood_model() always records which transform (\"logit\" ",
+      "or \"sqrt_mismatch\") the model was fit under, so this model_params ",
+      "object cannot be calibrated. Retrain with train_likelihood_model()."
+    ), call. = FALSE)
+  }
+  model_score_transform <- model_params$Score_Transform
 
   confident <- identify_confident_observations(
     match_df, priors,

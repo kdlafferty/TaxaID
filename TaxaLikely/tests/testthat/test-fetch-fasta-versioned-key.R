@@ -25,21 +25,25 @@ test_that(".fasta_cache_keys() prefers the versioned accession", {
   )
   k <- TaxaLikely:::.fasta_cache_keys(meta)
   expect_identical(as.character(k), c("AB000667.1", "AB018586.2"))
-  expect_identical(attr(k, "n_legacy"), 0L)
+  expect_identical(attr(k, "n_unversioned"), 0L)
+  expect_identical(attr(k, "cacheable"), c(TRUE, TRUE))
 })
 
-test_that(".fasta_cache_keys() falls back when the column is absent entirely", {
-  # A meta object cached before acc_version existed.
+test_that(".fasta_cache_keys() marks rows uncacheable when the column is absent entirely", {
+  # A meta object with no acc_version column at all (e.g. from a pre-1.0
+  # cache generation) can neither supply nor notice a GenBank revision, so
+  # none of its rows are safe to persist under the bare accession.
   meta <- data.frame(acc = c("AB000667", "AB018586"), stringsAsFactors = FALSE)
   k <- TaxaLikely:::.fasta_cache_keys(meta)
   expect_identical(as.character(k), c("AB000667", "AB018586"))
-  expect_identical(attr(k, "n_legacy"), 2L)
+  expect_identical(attr(k, "n_unversioned"), 2L)
+  expect_identical(attr(k, "cacheable"), c(FALSE, FALSE))
 })
 
-test_that(".fasta_cache_keys() coalesces per ROW, not per call", {
-  # dplyr::bind_rows() of a legacy meta and a fresh one yields exactly this:
-  # the column exists, but is NA for the legacy rows. One missing version must
-  # not drag the whole call back to unversioned keys.
+test_that(".fasta_cache_keys() resolves per ROW, not per call", {
+  # A record whose OWN accessionversion is genuinely absent (NCBI simply did
+  # not return one) costs only its own row -- this is a real, present-tense
+  # per-record possibility, not a whole-object schema gap.
   meta <- data.frame(
     acc = c("AB000667", "AB018586", "AB042345"),
     acc_version = c("AB000667.1", NA, ""),
@@ -47,7 +51,8 @@ test_that(".fasta_cache_keys() coalesces per ROW, not per call", {
   )
   k <- TaxaLikely:::.fasta_cache_keys(meta)
   expect_identical(as.character(k), c("AB000667.1", "AB018586", "AB042345"))
-  expect_identical(attr(k, "n_legacy"), 2L)
+  expect_identical(attr(k, "n_unversioned"), 2L)
+  expect_identical(attr(k, "cacheable"), c(TRUE, FALSE, FALSE))
 })
 
 test_that(".fasta_cache_keys() returns one key per row for a single-row meta", {
@@ -111,9 +116,14 @@ test_that("a versioned key hits its own versioned file on the second call", {
   expect_identical(second$composite_id, "AB000667")
 })
 
-test_that("an unversioned key still hits an unversioned file (legacy taxa)", {
-  # A taxon whose meta predates acc_version must keep getting cache hits --
-  # the fix must not quietly invalidate the whole existing store.
+test_that(".fetch_fasta_cached() is an ordinary keyed cache when cacheable is not restricted", {
+  # .fetch_fasta_cached() does not itself judge whether a key is safe to
+  # reuse -- that judgment (does the accession carry a real GenBank version)
+  # lives in .fasta_cache_keys(), and is threaded through via the
+  # `cacheable` argument at the one real call site in
+  # fetch_ncbi_reference_sequences(). Called directly with no `cacheable`
+  # argument it behaves as an ordinary file-per-key cache; see the next test
+  # for what happens when a caller marks a key uncacheable.
   d <- .fasta_tmpdir()
   dir.create(file.path(d, "fasta"))
   saveRDS(
@@ -122,12 +132,40 @@ test_that("an unversioned key still hits an unversioned file (legacy taxa)", {
   )
   local_mocked_bindings(
     .fetch_fasta_batched = function(accessions, batch_size = 200L) {
-      stop("must not download: the legacy file should have been a hit")
+      stop("must not download: the cached file should have been a hit")
     },
     .package = "TaxaLikely"
   )
   out <- suppressMessages(TaxaLikely:::.fetch_fasta_cached("AB000667", cache_dir = d))
   expect_identical(out$sequence, "TTTT")
+})
+
+test_that(".fetch_fasta_cached(cacheable = FALSE) never hits or writes disk", {
+  # An unversioned accession (per .fasta_cache_keys()'s cacheable attribute)
+  # is a cache MISS unconditionally: never served from a stale on-disk file
+  # of that name, and never written back either, so re-fetching one never
+  # recreates the very staleness risk this is meant to close.
+  d <- .fasta_tmpdir()
+  dir.create(file.path(d, "fasta"))
+  saveRDS(
+    data.frame(composite_id = "AB000667", sequence = "TTTT", stringsAsFactors = FALSE),
+    file.path(d, "fasta", "AB000667_seq.rds")
+  )
+  downloaded <- NULL
+  local_mocked_bindings(
+    .fetch_fasta_batched = function(accessions, batch_size = 200L) {
+      downloaded <<- accessions
+      paste0(">", accessions[1L], " fresh\nGGGG\n")
+    },
+    .package = "TaxaLikely"
+  )
+  out <- TaxaLikely:::.fetch_fasta_cached("AB000667", cache_dir = d, cacheable = FALSE)
+  expect_identical(downloaded, "AB000667")
+  expect_identical(out$sequence, "GGGG")
+  # The stale on-disk file is untouched -- not overwritten either.
+  expect_identical(
+    readRDS(file.path(d, "fasta", "AB000667_seq.rds"))$sequence, "TTTT"
+  )
 })
 
 test_that("a versioned request maps the stripped header id back to its key", {
@@ -203,7 +241,7 @@ test_that(".fetch_summaries_batched() carries the versioned accession", {
 
   keys <- TaxaLikely:::.fasta_cache_keys(out)
   expect_identical(as.character(keys), c("AB000667.1", "XM_079904330.1"))
-  expect_identical(attr(keys, "n_legacy"), 0L)
+  expect_identical(attr(keys, "n_unversioned"), 0L)
 })
 
 test_that(".fetch_summaries_batched() tolerates a record with no version", {
