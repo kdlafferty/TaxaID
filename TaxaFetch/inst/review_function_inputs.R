@@ -67,7 +67,7 @@ RUN_LLM_CALLS <- TRUE # screen_pdf_structure() / call_api_pdf() -- needs ANTHROP
 # ==============================================================================
 # SECTION 1 -- GBIF pipeline
 # make_bbox_wkt() -> get_keys_from_context() -> get_gbif_occurrences()
-#   (-> fetch_gbif_occurrences() / download_gbif_occurrences() / fetch_occurrences_by_taxon())
+#   (-> fetch_gbif_occurrences() / download_gbif_occurrences())
 #   -> filter_gbif_quality() -> stack_occurrences() -> dedupe_occurrences() -> report_fetch()
 # ==============================================================================
 
@@ -129,21 +129,6 @@ occ_unified <- get_gbif_occurrences(
   limit    = 20L
 )
 occ_unified
-
-## ---- fetch_occurrences_by_taxon() ---- NETWORK ------------------------------
-# Real bbox construction pattern from tests/testthat/test-fetch_occurrences_by_taxon.R
-box_a <- make_bbox_wkt(lat = 34.40, lon = -120.41, radius_deg = 0.05)
-box_b <- make_bbox_wkt(lat = 34.47, lon = -120.36, radius_deg = 0.05) # overlaps box_a
-taxon_geometry_map <- data.frame(
-  taxon_key = c(gbif_key_anchovy, gbif_key_anchovy),
-  geometry = c(box_a, box_b),
-  stringsAsFactors = FALSE
-)
-occ_by_taxon <- fetch_occurrences_by_taxon(
-  taxon_geometry_map = taxon_geometry_map,
-  limit = 20L
-)
-occ_by_taxon
 
 ## ---- filter_gbif_quality() ---- OFFLINE, pure function ----------------------
 # Fixture reused verbatim from tests/testthat/test-filter_gbif_quality.R
@@ -255,13 +240,11 @@ biotime_occ
 
 # ==============================================================================
 # SECTION 4 -- DataONE pipeline, offline half
-# build_geo_prompt() / parse_geo_screening_response() and
-# build_taxon_screen_prompt() / parse_taxon_screening_response() only need LLM
-# response TEXT, not a live LLM call -- both prompt builders and parsers are
+# build_geo_prompt() / parse_geo_screening_response() only need LLM response
+# TEXT, not a live LLM call -- both the prompt builder and the parser are
 # pure functions once you supply the raw_text yourself (as if copy-pasted from
-# an LLM chat). Fixtures reused verbatim from
-# tests/testthat/test-dataone_standardize.R and
-# tests/testthat/test-dataone_taxon_screening_geo.R.
+# an LLM chat). Fixture reused verbatim from
+# tests/testthat/test-dataone_standardize.R.
 # ==============================================================================
 
 ## ---- build_geo_prompt() ---- OFFLINE ----------------------------------------
@@ -299,37 +282,6 @@ geo_raw_text <- paste(
 )
 geo_screened <- parse_geo_screening_response(geo_raw_text, geo_prompt)
 geo_screened
-
-## ---- build_taxon_screen_prompt() ---- OFFLINE -------------------------------
-# Fixture reused from tests/testthat/test-dataone_taxon_screening_geo.R
-taxon_catalog <- tibble(
-  id = c("W1", "W2"),
-  title = c("Paper 1", "Paper 2"),
-  abstract = c(
-    "Abstract about fish species in California 1",
-    "Abstract about fish species in California 2"
-  ),
-  keywords = "fish; ecology; California",
-  doi = c("10.1234/test.1", "10.1234/test.2"),
-  pdf_url = NA_character_,
-  year = 2020L,
-  authors = "Smith J",
-  journal = "Test Journal",
-  geo_match = NA_character_,
-  taxon_match = NA_character_
-)
-taxon_prompt <- build_taxon_screen_prompt(
-  catalog     = taxon_catalog,
-  taxon_scope = "gobies",
-  geo_scope   = "southern California",
-  verbose     = FALSE
-)
-taxon_prompt # exercises print.taxon_prompt()
-
-## ---- parse_taxon_screening_response() ---- OFFLINE --------------------------
-taxon_raw_text <- "index,taxon_match,geo_match\n1,YES,YES\n2,NO,YES"
-taxon_screened <- parse_taxon_screening_response(taxon_raw_text, taxon_prompt)
-taxon_screened
 
 
 # ==============================================================================

@@ -24,7 +24,6 @@
 # Checkpoint files (all in the TaxaFetch project root):
 #   pasta_catalog.rds          — Stage 1 output (also the harvest cache)
 #   geo_screened.rds           — Stage 4 output: geo-screened tibble
-#   taxon_screened.rds         — Stage 6 output: taxon-screened tibble
 #   eml_screen.rds             — Stage 8 output: eml_screen tibble
 #
 # Pipeline:
@@ -34,12 +33,14 @@
 #   Stage 3  — Submit geo prompt to LLM
 #   Stage 4  — Parse geo response → save geo_screened.rds
 #   Stage 5  — Inspect geo-screened candidates
-#   Stage 6  — Build taxonomic screening prompt
-#   Stage 7  — Submit taxon prompt to LLM → save taxon_screened.rds
 #   Stage 8  — EML pre-screening → save eml_screen.rds
 #   Stage 9  — Preview datasets (optional scout)
 #   Stage 10 — Download occurrences
 #   Stage 11 — Diagnose missed datasets
+#
+# The taxonomic-screening stage (formerly Stage 6-7, build_taxon_screen_prompt()
+# + parse_taxon_screening_response()) has been removed along with those two
+# functions; this workflow now takes accepted_geo straight into EML screening.
 # ==============================================================================
 
 
@@ -156,55 +157,19 @@ accepted_geo |>
 
 
 # ==============================================================================
-# STAGE 6 — Build taxonomic screening prompt
-# Input:  accepted_geo (geo_match == TRUE subset of geo_screened)
-# Output: taxon_prompt object ready for LLM submission
+# Taxonomic screening (formerly Stage 6-7) has been removed: it called
+# build_taxon_screen_prompt() and parse_taxon_screening_response(), both
+# dropped from TaxaFetch's public API. Geo-accepted candidates now go
+# straight into EML screening below.
 # ==============================================================================
 
-taxon_prompt <- build_taxon_screen_prompt(
-  catalog     = accepted_geo,
-  taxon_scope = taxon_scope,
-  chunk_size  = 50L,
-  verbose     = TRUE
-)
-
-print(taxon_prompt)
-cat(taxon_prompt$prompts[[1]]) # inspect first chunk — check framing looks right
-
-
-# ==============================================================================
-# STAGE 7 — Submit taxon prompt to LLM → checkpoint
-# ==============================================================================
-
-# Stage 7a — Anthropic API:
-taxon_raw <- prompt_api(taxon_prompt, verbose = TRUE)
-cat(taxon_raw)
-
-# Stage 7b — Manual submission (alternative to 7a):
-# info      <- prompt_manual(taxon_prompt, out_dir = "taxon_screening",
-#                             prefix = "taxon")
-# taxon_raw <- read_llm_response(info$response_files)
-
-taxon_screened <- parse_taxon_screening_response(taxon_raw, taxon_prompt)
-saveRDS(taxon_screened, "taxon_screened.rds") # ← checkpoint
-
-table(taxon_screened$taxon_match)
-table(taxon_screened$taxon_source)
-
-accepted <- taxon_screened[taxon_screened$taxon_match, ]
+accepted <- accepted_geo
 nrow(accepted)
 
-# Spot-check rejections — verify the LLM is applying the right logic
-taxon_screened[!taxon_screened$taxon_match, ] |>
-  dplyr::filter(taxon_source == "llm_no") |>
-  dplyr::select(id, title) |>
-  dplyr::slice_sample(n = 10)
-
-# ── Resume here after rm(list=ls()) if Stage 7 already ran ───────────────────
+# ── Resume here after rm(list=ls()) if Stage 4 already ran ───────────────────
 # geo_screened   <- readRDS("geo_screened.rds")
 # accepted_geo   <- geo_screened[geo_screened$geo_match, ]
-# taxon_screened <- readRDS("taxon_screened.rds")
-# accepted       <- taxon_screened[taxon_screened$taxon_match, ]
+# accepted       <- accepted_geo
 
 
 # ==============================================================================
@@ -234,8 +199,7 @@ nrow(to_download)
 # ── Resume here after rm(list=ls()) if Stage 8 already ran ───────────────────
 # geo_screened   <- readRDS("geo_screened.rds")
 # accepted_geo   <- geo_screened[geo_screened$geo_match, ]
-# taxon_screened <- readRDS("taxon_screened.rds")
-# accepted       <- taxon_screened[taxon_screened$taxon_match, ]
+# accepted       <- accepted_geo
 # eml_screen     <- readRDS("eml_screen.rds")
 # to_download    <- accepted |>
 #   dplyr::inner_join(eml_screen[eml_screen$eml_pass, ], by = "id")
