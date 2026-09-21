@@ -56,6 +56,12 @@
 #' @return A data frame with columns \code{taxon_name}, \code{weight},
 #'   \code{p_conc}, \code{source}, \code{distance_km}, \code{k} -- ready for
 #'   [apply_undetected_evidence()].
+#' @examples
+#' generate_presence_curve_evidence(
+#'   taxon_names = c("Species_X", "Species_Y"),
+#'   w_scale = 0.05,
+#'   distance_km = c(Species_X = 40, Species_Y = 300)
+#' )
 #' @seealso [apply_undetected_evidence()] (use \code{pricing = "curve"}),
 #'   [generate_regional_proximity_evidence()],
 #'   [generate_user_specified_evidence()]
@@ -157,6 +163,8 @@ generate_presence_curve_evidence <- function(taxon_names,
 #'
 #' @return A data frame with columns \code{taxon_name}, \code{weight},
 #'   \code{p_conc}, \code{source} -- ready for [apply_undetected_evidence()].
+#' @examples
+#' generate_user_specified_evidence(c(Species_Z = 0.08))
 #' @seealso [generate_presence_curve_evidence()],
 #'   [apply_undetected_evidence()]
 #' @export

@@ -104,6 +104,25 @@
 #'     `lambda_covariate`, `lambda_latitude`, `m`, and its
 #'     `weighted_logloss`. Read it before trusting `best`.}
 #' }
+#' @examples
+#' set.seed(1)
+#' nsp <- 8
+#' sp <- paste0("sp", seq_len(nsp))
+#' cl <- seq(34.15, 35.85, length.out = nsp)
+#' co <- seq(-121.35, -119.65, length.out = nsp)
+#' i <- sample(nsp, 3000, TRUE)
+#' occ <- data.frame(
+#'   taxon_name = sp[i],
+#'   decimalLatitude = pmin(pmax(rnorm(3000, cl[i], 0.05), 34), 36),
+#'   decimalLongitude = pmin(pmax(rnorm(3000, co[i], 0.05), -121.5), -119.5),
+#'   main_habitat = "Marine",
+#'   stringsAsFactors = FALSE
+#' )
+#' fit <- calibrate_kernel_bandwidth(
+#'   occ, "Marine",
+#'   lambda_grid = c(10, 25, 50), block_size_deg = 0.5, min_block_records = 20L
+#' )
+#' fit$best
 #' @seealso [estimate_kernel_priors()]
 #' @export
 calibrate_kernel_bandwidth <- function(occurrence_data,
