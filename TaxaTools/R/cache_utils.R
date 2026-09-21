@@ -14,6 +14,50 @@
 # by its own package-specific mechanism instead.
 # ==============================================================================
 
+#' Refuse a cache_dir that is not really a dedicated cache directory
+#'
+#' Shared safety gate for every engine entry point that can delete files
+#' from \code{cache_dir}. A cache-file NAME PATTERN (e.g.
+#' \code{"_common_name\\.rds$"}) can coincidentally match a real, unrelated
+#' file that just happens to live wherever \code{cache_dir} points --
+#' reproduced: a plain \code{my_species_common_name.rds} data file, sitting
+#' in the CALLER'S OWN working directory, deleted by
+#' \code{taxatools_clear_cache(cache_dir = ".")} purely because its name
+#' happens to end in \code{_common_name.rds}. The working directory, the
+#' user's home directory, and a filesystem root are never acceptable cache
+#' directories, so this refuses all three outright, before anything is
+#' scanned or touched.
+#'
+#' @param cache_dir Character, the candidate directory (need not exist).
+#' @param label Character, the calling function's own name, for the error.
+#' @return Invisibly, the normalized (symlink-resolved) path -- callers that
+#'   also need to bound a recursive scan to `cache_dir` reuse this rather
+#'   than normalizing twice.
+#' @noRd
+.assert_cache_dir_is_dedicated <- function(cache_dir, label) {
+  norm <- suppressWarnings(normalizePath(cache_dir, mustWork = FALSE))
+  wd <- suppressWarnings(normalizePath(getwd(), mustWork = FALSE))
+  home <- suppressWarnings(normalizePath(path.expand("~"), mustWork = FALSE))
+  is_root <- identical(dirname(norm), norm)
+  reason <- if (is_root) {
+    "a filesystem root"
+  } else if (identical(norm, wd)) {
+    "the current working directory"
+  } else if (identical(norm, home)) {
+    "the user's home directory"
+  } else {
+    NA_character_
+  }
+  if (!is.na(reason)) {
+    stop(sprintf(
+      "%s: refusing to treat '%s' (resolves to '%s') as a cache directory -- it is %s, not a dedicated cache location. Point cache_dir at a real, dedicated cache directory.",
+      label, cache_dir, norm, reason
+    ), call. = FALSE)
+  }
+  invisible(norm)
+}
+
+
 #' List files in a directory matching cache-file patterns
 #'
 #' Generic building block for a package's own \code{<pkg>_clear_cache()}
@@ -22,6 +66,18 @@
 #' \code{TaxaFetch::taxafetch_clear_cache()}/
 #' \code{TaxaLikely::taxalikely_clear_cache()} for worked examples of a
 #' downstream package building on this.
+#'
+#' Three containment checks apply before anything is returned (all part of
+#' this shared engine, so every downstream \code{<pkg>_clear_cache()}
+#' inherits them): (1) \code{cache_dir} is refused outright if it resolves
+#' to the working directory, the user's home directory, or a filesystem
+#' root -- see \code{.assert_cache_dir_is_dedicated()}; (2) a directory
+#' holding any file that matches NONE of \code{patterns} is refused unless
+#' \code{force = TRUE} -- a real cache directory holds only cache files, so
+#' a mixed one is somebody's project, not a cache, even if some of its files
+#' happen to match; (3) under \code{recursive = TRUE}, a symlinked
+#' subdirectory (or file) that resolves outside \code{cache_dir} is never
+#' followed, so a scan cannot escape \code{cache_dir} via a symlink.
 #'
 #' @param cache_dir Character. Directory to scan.
 #' @param patterns Character vector of regular expressions matched against
@@ -34,6 +90,10 @@
 #'   \code{taxalikely_clear_cache()}. Patterns are still matched against the
 #'   BASENAME, so a recursive scan needs a pattern that identifies the file,
 #'   not its directory.
+#' @param force Logical (default \code{FALSE}). Pass \code{TRUE} to scan a
+#'   directory that holds files matching none of \code{patterns} anyway --
+#'   see containment check (2) above. Never needed for a directory that
+#'   holds only recognized cache files.
 #' @return A data frame with columns \code{path}, \code{size_mb},
 #'   \code{mtime} (zero rows if \code{cache_dir} has no matching files or
 #'   does not exist).
@@ -42,9 +102,8 @@
 #' d <- tempfile()
 #' dir.create(d)
 #' writeLines("x", file.path(d, "foo_meta.rds"))
-#' writeLines("x", file.path(d, "unrelated.txt"))
 #' list_cache_files(d, "_meta\\.rds$")
-list_cache_files <- function(cache_dir, patterns, recursive = FALSE) {
+list_cache_files <- function(cache_dir, patterns, recursive = FALSE, force = FALSE) {
   if (!is.character(cache_dir) || length(cache_dir) != 1L) {
     stop("list_cache_files: 'cache_dir' must be a single character string.")
   }
@@ -54,11 +113,16 @@ list_cache_files <- function(cache_dir, patterns, recursive = FALSE) {
   if (!is.logical(recursive) || length(recursive) != 1L || is.na(recursive)) {
     stop("list_cache_files: 'recursive' must be TRUE or FALSE.")
   }
+  if (!is.logical(force) || length(force) != 1L || is.na(force)) {
+    stop("list_cache_files: 'force' must be TRUE or FALSE.")
+  }
 
   empty <- data.frame(
     path = character(0), size_mb = numeric(0),
     mtime = as.POSIXct(character(0)), stringsAsFactors = FALSE
   )
+
+  norm_root <- .assert_cache_dir_is_dedicated(cache_dir, "list_cache_files")
 
   files <- list.files(cache_dir, full.names = TRUE, recursive = recursive)
   if (length(files) == 0L) {
@@ -69,7 +133,31 @@ list_cache_files <- function(cache_dir, patterns, recursive = FALSE) {
     return(empty)
   }
 
+  # Containment check (3): a symlinked subdirectory (recursive scan) or a
+  # symlinked file resolving OUTSIDE cache_dir is never followed -- compare
+  # each candidate's own normalized (symlink-resolved) path against the
+  # normalized cache_dir prefix, not the un-resolved listing path.
+  norm_files <- suppressWarnings(normalizePath(files, mustWork = FALSE))
+  inside <- norm_files == norm_root |
+    startsWith(norm_files, paste0(norm_root, .Platform$file.sep))
+  files <- files[inside]
+  if (length(files) == 0L) {
+    return(empty)
+  }
+
   keep <- Reduce(`|`, lapply(patterns, function(p) grepl(p, basename(files))))
+
+  # Containment check (2): a file matching none of the caller's own cache
+  # patterns means this directory holds something other than that cache --
+  # a real cache directory holds only cache files.
+  non_matching <- files[!keep]
+  if (length(non_matching) > 0L && !isTRUE(force)) {
+    stop(sprintf(
+      "list_cache_files: '%s' holds file(s) that match none of the given cache patterns -- a real cache directory holds only cache files, so this looks like a project directory rather than a dedicated cache. Non-matching file(s): %s. Pass force = TRUE if this really is the intended cache_dir.",
+      cache_dir, paste(basename(non_matching), collapse = ", ")
+    ), call. = FALSE)
+  }
+
   files <- files[keep]
   if (length(files) == 0L) {
     return(empty)
@@ -108,6 +196,15 @@ list_cache_files <- function(cache_dir, patterns, recursive = FALSE) {
 #'   without removing anything. Default \code{FALSE}.
 #' @return Invisibly, the (possibly \code{older_than_days}-filtered) subset
 #'   of \code{inv} that was targeted.
+#' @section Containment:
+#' \code{cache_dir} is refused outright (before anything is deleted, even
+#' under \code{dry_run = FALSE}) if it resolves to the working directory,
+#' the user's home directory, or a filesystem root -- the same check
+#' \code{list_cache_files()} applies, repeated here so a caller that builds
+#' \code{inv} some other way (not via \code{list_cache_files()}) still gets
+#' it. \code{inv} itself is used as-is and is not re-scanned or re-filtered
+#' against \code{cache_dir} -- a caller is trusted to have built it FROM
+#' \code{cache_dir}.
 #' @export
 #' @examples
 #' \dontrun{
@@ -134,6 +231,7 @@ report_and_clear_cache <- function(inv, label, cache_dir,
   if (!is.logical(dry_run) || length(dry_run) != 1L || is.na(dry_run)) {
     stop(sprintf("%s: 'dry_run' must be TRUE or FALSE.", label))
   }
+  .assert_cache_dir_is_dedicated(cache_dir, label)
 
   if (nrow(inv) == 0L) {
     message(sprintf("%s: no cache files found in %s.", label, cache_dir))

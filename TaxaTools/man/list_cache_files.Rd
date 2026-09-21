@@ -4,7 +4,7 @@
 \alias{list_cache_files}
 \title{List files in a directory matching cache-file patterns}
 \usage{
-list_cache_files(cache_dir, patterns, recursive = FALSE)
+list_cache_files(cache_dir, patterns, recursive = FALSE, force = FALSE)
 }
 \arguments{
 \item{cache_dir}{Character. Directory to scan.}
@@ -20,6 +20,11 @@ example; without it, files inside that subdirectory are invisible to
 \code{taxalikely_clear_cache()}. Patterns are still matched against the
 BASENAME, so a recursive scan needs a pattern that identifies the file,
 not its directory.}
+
+\item{force}{Logical (default \code{FALSE}). Pass \code{TRUE} to scan a
+directory that holds files matching none of \code{patterns} anyway --
+see containment check (2) above. Never needed for a directory that
+holds only recognized cache files.}
 }
 \value{
 A data frame with columns \code{path}, \code{size_mb},
@@ -34,10 +39,22 @@ matches any of \code{patterns}, with size and modification time. See
 \code{TaxaLikely::taxalikely_clear_cache()} for worked examples of a
 downstream package building on this.
 }
+\details{
+Three containment checks apply before anything is returned (all part of
+this shared engine, so every downstream \code{<pkg>_clear_cache()}
+inherits them): (1) \code{cache_dir} is refused outright if it resolves
+to the working directory, the user's home directory, or a filesystem
+root -- see \code{.assert_cache_dir_is_dedicated()}; (2) a directory
+holding any file that matches NONE of \code{patterns} is refused unless
+\code{force = TRUE} -- a real cache directory holds only cache files, so
+a mixed one is somebody's project, not a cache, even if some of its files
+happen to match; (3) under \code{recursive = TRUE}, a symlinked
+subdirectory (or file) that resolves outside \code{cache_dir} is never
+followed, so a scan cannot escape \code{cache_dir} via a symlink.
+}
 \examples{
 d <- tempfile()
 dir.create(d)
 writeLines("x", file.path(d, "foo_meta.rds"))
-writeLines("x", file.path(d, "unrelated.txt"))
 list_cache_files(d, "_meta\\\\.rds$")
 }

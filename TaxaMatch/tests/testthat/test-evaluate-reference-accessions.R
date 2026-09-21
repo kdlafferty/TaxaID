@@ -1803,6 +1803,37 @@ test_that("flag_incongruent_references() gives NA for an accession not in evalua
   expect_true(is.na(out$hierarchy_flag[out$accession == "ACC999"]))
 })
 
+test_that("flag_incongruent_references() does not multiply rows when evaluation holds two versions of one accession (regression, 2026-09-21)", {
+  match_df <- data.frame(
+    accession = c("AB123", "CD999"),
+    species = c("Sp a", "Sp b"),
+    stringsAsFactors = FALSE
+  )
+  evaluation <- data.frame(
+    accession = c("AB123.1", "AB123.2", "CD999"),
+    hierarchy_flag = c("congruent", "incongruent", "congruent"),
+    finest_common_rank = c("species", "species", "species"),
+    frac_independent_below_min_congruent_rank = c(0, 0.5, 0),
+    n_independent_top_matches = c(3L, 3L, 3L),
+    n_top_matches_available = c(3L, 3L, 3L),
+    best_hit_pident = c(99, 99, 99),
+    best_agreeing_pident = c(99, NA, 99),
+    best_disagreeing_pident = c(NA, 99, NA),
+    congruent_evidence_exists_anywhere = c(TRUE, FALSE, TRUE),
+    congruent_evidence_best_pident = c(99, NA, 99),
+    stringsAsFactors = FALSE
+  )
+  out <- flag_incongruent_references(match_df, evaluation)
+  # Row count and order are unchanged, per the documented contract.
+  expect_equal(nrow(out), nrow(match_df))
+  expect_equal(out$accession, match_df$accession)
+  # AB123.2 (the higher version suffix) is the row this function's
+  # documented rule selects, so AB123 reads "incongruent", not AB123.1's
+  # "congruent".
+  expect_equal(out$hierarchy_flag[out$accession == "AB123"], "incongruent")
+  expect_equal(out$hierarchy_flag[out$accession == "CD999"], "congruent")
+})
+
 test_that("flag_incongruent_references() warns and returns unchanged with no accession column", {
   match_df <- data.frame(observation_id = "O1", stringsAsFactors = FALSE)
   expect_warning(

@@ -1000,6 +1000,18 @@ refine_reference_verdicts <- function(evaluation,
     return(out)
   }
 
+  # The pair cache is a single file shared across every params_key
+  # generation this cache_dir has ever seen (see .load_reference_pair_cache()
+  # -- it is never itself params_key-filtered on load). Restricting to the
+  # SAME params_key(s) actually present in `audit` -- already computed above
+  # as `key` -- keeps a corroborator's rank/percent-identity numbers from a
+  # RETIRED parameter generation (e.g. a different min_congruent_rank, whose
+  # pair_finest_common_rank was computed against a different ladder cutoff)
+  # from being read as though it were current evidence.
+  if (length(key) > 0L) {
+    pairs <- pairs[pairs$params_key %in% key, , drop = FALSE]
+  }
+
   for (k in seq_along(accessions)) {
     pk <- pairs[pairs$id_x %in% accessions[[k]], , drop = FALSE]
     if (nrow(pk) == 0L) next
@@ -1464,6 +1476,19 @@ verify_removal_candidates <- function(evaluation, ...,
 #' to [evaluate_reference_accessions()] directly), not something this
 #' function does on your behalf.
 #'
+#' @section Only the current generation's corroborator verdict counts:
+#' A corroborator accession can appear in `cache_dir` more than once, if it
+#' was independently evaluated under an earlier `params_key` generation (a
+#' parameter change to [evaluate_reference_accessions()] since) as well as
+#' the current one. This function reads the corroborator's verdict only from
+#' rows stamped with the params_key [evaluate_reference_accessions()]'s OWN
+#' current defaults would produce -- an older-generation row (whatever it
+#' says) is never treated as the corroborator's status, and a corroborator
+#' with no row under the current generation reads `"unchecked"`, same as one
+#' never evaluated at all. When more than one row survives for an accession
+#' within that single current generation (a retry), the most recently
+#' `evaluated_at` one is used.
+#'
 #' @param cache_dir The same persistent cache directory
 #'   [evaluate_reference_accessions()] was called with. Required -- a
 #'   `"locally_corroborated"` verdict only ever exists inside a persistent
@@ -1543,10 +1568,29 @@ verify_local_corroborations <- function(cache_dir,
   }
   lc <- lc[thin, , drop = FALSE]
 
+  # A corroborator can have its OWN verdict recorded more than once in this
+  # cache -- across different params_key generations (a parameter change
+  # since it was first evaluated), or more than once within the same
+  # generation (a retry). match() picks whichever row sorts first, which
+  # under plain insertion order is typically the OLDEST -- so this must be
+  # narrowed to the CURRENT generation before matching, built the same way
+  # evaluate_reference_accessions() itself builds it
+  # (.default_params_key(): this function takes no BLAST parameters of its
+  # own to build one from any other way). Any accession still duplicated
+  # within that single generation (a same-key retry) keeps only its most
+  # recently evaluated_at row.
+  current <- scored[scored$params_key %in% .default_params_key(), , drop = FALSE]
+  if (nrow(current) > 0L) {
+    current <- current[order(
+      .strip_acc_version(current$accession), -as.numeric(current$evaluated_at)
+    ), , drop = FALSE]
+    current <- current[!duplicated(.strip_acc_version(current$accession)), , drop = FALSE]
+  }
+
   corrob_acc <- .strip_acc_version(lc$local_corroborator_accession)
-  j <- match(corrob_acc, .strip_acc_version(scored$accession))
-  corrob_action <- scored$reference_action[j]
-  corrob_hflag <- scored$hierarchy_flag[j]
+  j <- match(corrob_acc, .strip_acc_version(current$accession))
+  corrob_action <- current$reference_action[j]
+  corrob_hflag <- current$hierarchy_flag[j]
   # Same rule as verify_removal_candidates(screen_corroborators=): flagged is
   # anything other than a clean "keep", falling back to hierarchy_flag ==
   # "incongruent" only when reference_action itself is unavailable.

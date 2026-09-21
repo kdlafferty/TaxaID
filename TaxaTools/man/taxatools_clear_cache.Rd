@@ -4,7 +4,12 @@
 \alias{taxatools_clear_cache}
 \title{Report and clear the TaxaTools on-disk caches}
 \usage{
-taxatools_clear_cache(cache_dir, older_than_days = NULL, dry_run = FALSE)
+taxatools_clear_cache(
+  cache_dir,
+  older_than_days = NULL,
+  dry_run = FALSE,
+  force = FALSE
+)
 }
 \arguments{
 \item{cache_dir}{Character. The directory passed to
@@ -15,6 +20,15 @@ taxatools_clear_cache(cache_dir, older_than_days = NULL, dry_run = FALSE)
 many days are targeted; \code{NULL} (default) targets every file.}
 
 \item{dry_run}{Logical. If \code{TRUE}, reports without deleting.}
+
+\item{force}{Logical (default \code{FALSE}). \code{cache_dir} is refused
+if it holds any file matching neither cache pattern (a real cache
+directory holds only cache files) or if it resolves to the working
+directory, the user's home directory, or a filesystem root (that last
+refusal is never overridable by \code{force}) -- see
+\code{\link{list_cache_files}}'s own \code{@section} on this. Pass
+\code{TRUE} only for the first kind of refusal, and only once you have
+confirmed the non-matching file(s) named in the error are not real data.}
 }
 \value{
 Invisibly, the data frame of targeted files (see

@@ -2,6 +2,56 @@ utils::globalVariables(c(
   "..column_id", "..site", "..is_control", "..reads", "..taxon", "..prop"
 ))
 
+#' Bray-Curtis distance between two columns of a taxon x column matrix
+#'
+#' \code{1 - sum(pmin(m[, a], m[, b]))} on relative-abundance columns: 0
+#' identical, 1 disjoint. Lifted to package level (not a closure inside
+#' \code{\link{validate_controls}}) purely so \code{\link{.med_to_m}} below
+#' -- and this function's own correctness -- can be exercised directly by
+#' tests, without depending on anything \code{validate_controls()} captures
+#' in its own local environment; both are pure functions of their arguments.
+#' @param m Taxon x column matrix of relative abundances.
+#' @param a,b Column names (or indices) into \code{m}.
+#' @return Numeric scalar between 0 and 1.
+#' @noRd
+.bray_m <- function(m, a, b) 1 - sum(pmin(m[, a], m[, b]))
+
+#' id's median Bray-Curtis distance to a SET of other columns
+#'
+#' This is what determines every column's own verdict in
+#' \code{\link{validate_controls}}, so unlike that function's null estimate
+#' (capped at \code{max_null_pairs}, a coarser calibration statistic that can
+#' tolerate subsampling) it is never subsampled: every one of \code{others}
+#' is used, however many there are.
+#'
+#' Vectorised as ONE compositional-distance-to-many-columns matrix operation
+#' instead of a per-\code{other} loop over \code{\link{.bray_m}}: \code{id}'s
+#' own column is a length(taxa) vector, \code{others}' columns are a
+#' taxa x length(others) matrix, and \code{pmin()} recycles the vector down
+#' each column correctly (both are laid out taxon-major), so the whole set of
+#' pairwise minima-sums comes back from one \code{pmin()} + \code{colSums()}
+#' call. Mathematically identical to the per-pair loop (same additions, same
+#' summation order -- bit-identical, not just numerically close) but removes
+#' the O(n) R-level function-call overhead that made the loop version the
+#' actual bottleneck: measured 68.8 s at a real 1,151-sample site under the
+#' loop version, under 1 s vectorised on an equivalent synthetic case.
+#'
+#' @param m Taxon x column matrix of relative abundances.
+#' @param id Character. The column to measure distance FROM.
+#' @param others Character vector of column names to measure distance TO.
+#'   \code{id} itself is dropped if present.
+#' @return Numeric scalar between 0 and 1, or \code{NA_real_} if \code{others} is
+#'   empty once \code{id} is removed from it.
+#' @noRd
+.med_to_m <- function(m, id, others) {
+  others <- setdiff(others, id)
+  if (!length(others)) return(NA_real_)
+  sub <- m[, others, drop = FALSE]
+  pm  <- pmin(m[, id], sub)
+  dim(pm) <- dim(sub) # pmin() does not preserve the matrix's own dim
+  stats::median(1 - colSums(pm), na.rm = TRUE)
+}
+
 #' Validate That Control Samples Actually Look Like Controls
 #'
 #' Tests whether each column labelled a control is compositionally consistent
@@ -107,11 +157,20 @@ utils::globalVariables(c(
 #'   \code{verdict} takes: \code{"consistent_with_control"},
 #'   \code{"RESEMBLES_SAMPLE"} (a control that may be a mislabelled sample),
 #'   \code{"consistent_with_sample"}, \code{"RESEMBLES_CONTROL"} (a sample that
-#'   may be a mislabelled control), \code{"untestable"} (no null available), or
-#'   \code{"untestable_no_headroom"} (the null reaches the metric's ceiling).
-#'   \code{confidence} is \code{"low"} wherever the site's power is not
-#'   \code{"ok"}; filter on it, because a verdict from a wide null is weak
-#'   evidence and must not read like one from a tight null.
+#'   may be a mislabelled control), \code{"untestable"} (no null available),
+#'   \code{"untestable_no_headroom"} (the null reaches the metric's ceiling), or
+#'   \code{"no_detections"} (every read for this column is 0 or NA, so it has
+#'   no composition to compare against anything -- \code{d_to_samples}/
+#'   \code{d_to_controls} are \code{NA}, \code{power} reads
+#'   \code{"none_no_detections"}). \code{confidence} is \code{"low"} wherever
+#'   the site's power is not \code{"ok"}; filter on it, because a verdict from
+#'   a wide null is weak evidence and must not read like one from a tight
+#'   null.
+#'
+#'   A column with no positive reads at all still gets its own row here --
+#'   the "one row per sequenced column" contract above holds even for it --
+#'   rather than silently disappearing because there was nothing to compute a
+#'   distance from.
 #'
 #'   \strong{A site with two samples and a site with twenty both return "nothing
 #'   flagged".} Only one of those is evidence. \code{power},
@@ -185,6 +244,10 @@ validate_controls <- function(input_df,
     ..reads     = as.numeric(input_df[[count_col]]),
     stringsAsFactors = FALSE)
   d$..site <- if (is.null(site_col)) "__all__" else as.character(input_df[[site_col]])
+  # Site membership for EVERY column, read before the positive-reads filter
+  # below -- a column whose every read is 0 or NA has no row left in `d`
+  # afterward to read its own site from.
+  raw_id_site <- unique(d[, c("..column_id", "..site")])
   d <- d[!is.na(d$..reads) & d$..reads > 0, , drop = FALSE]
   if (!nrow(d))
     stop("validate_controls: no rows with positive reads.", call. = FALSE)
@@ -216,21 +279,42 @@ validate_controls <- function(input_df,
     m[cbind(match(sub$..taxon, tx), match(sub$..column_id, ids))] <- sub$..prop
     m
   }
-  .bray_m <- function(m, a, b) 1 - sum(pmin(m[, a], m[, b]))
-  .med_to_m <- function(m, id, others) {
-    others <- setdiff(others, id)
-    if (!length(others)) return(NA_real_)
-    stats::median(vapply(others, function(o) .bray_m(m, id, o), numeric(1)),
-                  na.rm = TRUE)
-  }
+  # .bray_m()/.med_to_m() are package-level (not closures here) -- see their
+  # own roxygen above, just above this function.
 
   meta <- unique(d[, c("..column_id", "..site", "..is_control")])
   meta$n_taxa  <- as.integer(table(d$..column_id)[meta$..column_id])
   meta$n_reads <- tot$t[match(meta$..column_id, tot$c)]
 
+  # Columns with no row surviving the positive-reads filter above (every read
+  # 0 or NA) are still a real sampled/observed unit and must not silently
+  # vanish from the output -- see the documented "one row per sampled unit"
+  # contract. They get their own zero_meta table (n_taxa = n_reads = 0,
+  # composition undefined) so the per-site loop below emits an explicit,
+  # untestable row for each rather than just omitting it.
+  zero_ids  <- setdiff(raw_id_site$..column_id, meta$..column_id)
+  # Always a data frame (0 rows when there is nothing to add), never NULL --
+  # nrow(NULL) is NULL, not 0, which would break seq_len(nrow(zms)) below for
+  # every site whenever there happened to be no zero-detection columns at
+  # all (i.e. almost always).
+  zero_meta <- if (length(zero_ids)) {
+    zm <- raw_id_site[match(zero_ids, raw_id_site$..column_id), , drop = FALSE]
+    data.frame(
+      ..column_id = zm$..column_id, ..site = zm$..site,
+      ..is_control = zm$..column_id %in% control_samples,
+      n_taxa = 0L, n_reads = 0,
+      stringsAsFactors = FALSE)
+  } else {
+    data.frame(
+      ..column_id = character(0), ..site = character(0),
+      ..is_control = logical(0), n_taxa = integer(0), n_reads = numeric(0),
+      stringsAsFactors = FALSE)
+  }
+
   out <- list(); site_power <- list()
-  for (st in unique(meta$..site)) {
+  for (st in union(unique(meta$..site), unique(zero_meta$..site))) {
     ms  <- meta[meta$..site == st, , drop = FALSE]
+    zms <- zero_meta[zero_meta$..site == st, , drop = FALSE]
     sam <- ms$..column_id[!ms$..is_control]
     ctl <- ms$..column_id[ ms$..is_control]
 
@@ -300,6 +384,23 @@ validate_controls <- function(input_df,
         confidence = if (pw == "ok") "ok" else "low",
         verdict = verdict, stringsAsFactors = FALSE)
     }
+
+    # A column with no positive reads at all has no composition to compare
+    # against anything -- d_to_samples/d_to_controls are NA by construction,
+    # never estimated as 0/identical. The site's own null (whatever was
+    # computed above from its real samples, if any) is still recorded
+    # alongside it for context, exactly as an "untestable" row above does.
+    for (k in seq_len(nrow(zms))) {
+      out[[length(out) + 1L]] <- data.frame(
+        column_id = zms$..column_id[k], site = st,
+        label = if (zms$..is_control[k]) "control" else "sample",
+        n_taxa = zms$n_taxa[k], n_reads = zms$n_reads[k],
+        d_to_samples = NA_real_, d_to_controls = NA_real_,
+        null_median = null_med, null_threshold = null_thr, null_n_pairs = null_n,
+        power = "none_no_detections",
+        confidence = "low",
+        verdict = "no_detections", stringsAsFactors = FALSE)
+    }
   }
 
   res <- do.call(rbind, out)
@@ -329,11 +430,18 @@ validate_controls <- function(input_df,
     if (sum(res$verdict == "untestable"))
       message(sprintf("  %d column(s) UNTESTABLE -- absence of a flag there is not ",
                       sum(res$verdict == "untestable")), "evidence of a clean label.")
+    if (sum(res$verdict == "no_detections"))
+      message(sprintf("  %d column(s) have NO DETECTIONS at all (every read 0 or NA) -- ",
+                      sum(res$verdict == "no_detections")),
+              "no composition to test; not evidence of a clean or contaminated label either way.")
   }
   # If every testable control looks like a sample, the control set is compromised
-  # and any contaminant list built on it would filter real signal.
+  # and any contaminant list built on it would filter real signal. A
+  # no-detections control is excluded from "testable" for the same reason
+  # untestable/untestable_no_headroom are: there is no evidence either way,
+  # so it must not silently count as "not RESEMBLES_SAMPLE" here.
   testable <- res$label == "control" &
-              !res$verdict %in% c("untestable", "untestable_no_headroom")
+              !res$verdict %in% c("untestable", "untestable_no_headroom", "no_detections")
   if (sum(testable) && all(res$verdict[testable] == "RESEMBLES_SAMPLE"))
     warning("validate_controls: EVERY testable control resembles a field sample. ",
             "Treat the control set as compromised and do not build a contaminant ",

@@ -524,7 +524,11 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   dj <- ((-(nx - 1L)):(nx - 1L)) * dlon
   delta_lat <- matrix(di, nrow = 2L * ny - 1L, ncol = 2L * nx - 1L)
   delta_lon <- matrix(dj, nrow = 2L * ny - 1L, ncol = 2L * nx - 1L, byrow = TRUE)
-  d_km <- 111 * sqrt(delta_lat^2 + (delta_lon * cos(site_lat * pi / 180))^2)
+  # delta_lat/delta_lon are already lattice-relative OFFSETS (0 - 0 vs.
+  # delta_lat/delta_lon), not two absolute coordinate pairs -- expressed as
+  # .approx_distance_km(delta_lat, delta_lon, 0, 0, site_lat) so this stays
+  # the one shared formula.
+  d_km <- .approx_distance_km(delta_lat, delta_lon, 0, 0, site_lat)
   K <- exp(-d_km / lambda_km)
   if (!is.null(lambda_latitude)) {
     K <- K * exp(-111 * abs(delta_lat) / lambda_latitude)

@@ -46,6 +46,7 @@ CONFIG <- list(
   marker            = list("MARKER",            '"MiFish-U"',        "Primer/marker name, as your lab records it"),
   barcode_term      = list("BARCODE_TERM",      '"12S"',             "NCBI barcode search term for this marker"),
   target_group      = list("TARGET_GROUP",      '"fish"',            "Free-text taxonomic scope of the assay"),
+  data_type         = list("DATA_TYPE",         '"eDNA"',            'Observation signal, passed to review_assignments()/review_spatial_context(); must be one of "eDNA", "acoustic" or "image"'),
   email             = list("NCBI_EMAIL",        'Sys.getenv("ENTREZ_EMAIL")', "Required by NCBI for Entrez queries"),
   lat               = list("SITE_LAT",          "0",                 "Site latitude, decimal degrees"),
   lon               = list("SITE_LON",          "0",                 "Site longitude, decimal degrees"),

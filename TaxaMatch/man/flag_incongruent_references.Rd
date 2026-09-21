@@ -63,6 +63,23 @@ function by default; reach for \code{\link[=remove_incongruent_references]{remov
 deliberately, after review, not as the default pipeline step.
 }
 
+\section{When \code{evaluation} carries more than one row per accession}{
+
+\code{evaluate_reference_accessions()} keys its own cache on the literal
+(version-suffixed) accession string, so two rows of \code{evaluation} can share
+the same version-stripped accession -- e.g. \code{"AB123.1"} and \code{"AB123.2"},
+evaluated independently. No other function in this package picks a single
+row among same-accession duplicates (\code{remove_incongruent_references()}
+removes a \code{match_df} row if ANY of its accession's evaluation rows was
+flagged, never selects one; \code{.local_corroboration_columns()} keeps
+whichever row happens to sort first). In the absence of an established
+rule, this function keeps the row with the HIGHEST numeric version
+suffix (an accession with no version suffix sorts below any versioned
+one) before joining, so every \code{match_df} row is matched to at most one
+\code{evaluation} row and row count/order are preserved exactly as documented
+below.
+}
+
 \seealso{
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=remove_incongruent_references]{remove_incongruent_references()}}
 }

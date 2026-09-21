@@ -217,7 +217,7 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
   names(species_by_g) <- grp_levels
 
   km <- function(la1, lo1, la2, lo2, ref_lat) {
-    111 * sqrt((la1 - la2)^2 + ((lo1 - lo2) * cos(ref_lat * pi / 180))^2)
+    .approx_distance_km(la1, lo1, la2, lo2, ref_lat)
   }
   logloss <- function(target_counts, w_held, taxa_held, g = "__all__") {
     sp_g <- species_by_g[[g]]

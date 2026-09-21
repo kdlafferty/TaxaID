@@ -99,11 +99,20 @@ site, its label, \code{n_taxa}, \code{n_reads}, the test statistic
 \code{verdict} takes: \code{"consistent_with_control"},
 \code{"RESEMBLES_SAMPLE"} (a control that may be a mislabelled sample),
 \code{"consistent_with_sample"}, \code{"RESEMBLES_CONTROL"} (a sample that
-may be a mislabelled control), \code{"untestable"} (no null available), or
-\code{"untestable_no_headroom"} (the null reaches the metric's ceiling).
-\code{confidence} is \code{"low"} wherever the site's power is not
-\code{"ok"}; filter on it, because a verdict from a wide null is weak
-evidence and must not read like one from a tight null.
+may be a mislabelled control), \code{"untestable"} (no null available),
+\code{"untestable_no_headroom"} (the null reaches the metric's ceiling), or
+\code{"no_detections"} (every read for this column is 0 or NA, so it has
+no composition to compare against anything -- \code{d_to_samples}/
+\code{d_to_controls} are \code{NA}, \code{power} reads
+\code{"none_no_detections"}). \code{confidence} is \code{"low"} wherever
+the site's power is not \code{"ok"}; filter on it, because a verdict from
+a wide null is weak evidence and must not read like one from a tight
+null.
+
+A column with no positive reads at all still gets its own row here --
+the "one row per sequenced column" contract above holds even for it --
+rather than silently disappearing because there was nothing to compute a
+distance from.
 
 \strong{A site with two samples and a site with twenty both return "nothing
 flagged".} Only one of those is evidence. \code{power},

@@ -43,6 +43,7 @@ SEQUENCES <- NULL   # e.g. readRDS("my_esv_table.rds")
 MARKER                     <- "MiFish-U"                             # Primer/marker name, as your lab records it
 BARCODE_TERM               <- "12S"                                  # NCBI barcode search term for this marker
 TARGET_GROUP               <- "fish"                                 # Free-text taxonomic scope of the assay
+DATA_TYPE                  <- "eDNA"                                 # Observation signal, passed to review_assignments()/review_spatial_context(); must be one of "eDNA", "acoustic" or "image"
 NCBI_EMAIL                 <- Sys.getenv("ENTREZ_EMAIL")             # Required by NCBI for Entrez queries
 SITE_LAT                   <- 0                                      # Site latitude, decimal degrees
 SITE_LON                   <- 0                                      # Site longitude, decimal degrees
@@ -834,7 +835,7 @@ context_df <- context_df
 # appeared in one exported species list and not the other. Force fresh
 # verdicts with TaxaFlag::taxaflag_clear_cache(<that directory>).
 reviewed <- TaxaFlag::review_assignments(
-  data_type = "eDNA",
+  data_type = DATA_TYPE,
   input_df       = consensus,
   taxon_col      = TAXON_COL,
   taxon_rank_col = TAXON_RANK_COL,

@@ -268,8 +268,7 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
 
   # Same cosine-corrected great-circle approximation as estimate_kernel_priors(),
   # so the two distance scales are the same quantity.
-  d_km <- 111 * sqrt((la[cand] - site_lat)^2 +
-                       ((lo[cand] - site_lon) * cos(site_lat * pi / 180))^2)
+  d_km <- .approx_distance_km(la[cand], lo[cand], site_lat, site_lon, site_lat)
   ctx  <- tx[cand]
   cyr  <- if (is.null(year_col)) rep(NA_real_, sum(cand)) else suppressWarnings(as.numeric(occurrence_data[[year_col]][cand]))
 

@@ -81,6 +81,21 @@ to \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}
 function does on your behalf.
 }
 
+\section{Only the current generation's corroborator verdict counts}{
+
+A corroborator accession can appear in \code{cache_dir} more than once, if it
+was independently evaluated under an earlier \code{params_key} generation (a
+parameter change to \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} since) as well as
+the current one. This function reads the corroborator's verdict only from
+rows stamped with the params_key \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}'s OWN
+current defaults would produce -- an older-generation row (whatever it
+says) is never treated as the corroborator's status, and a corroborator
+with no row under the current generation reads \code{"unchecked"}, same as one
+never evaluated at all. When more than one row survives for an accession
+within that single current generation (a retry), the most recently
+\code{evaluated_at} one is used.
+}
+
 \seealso{
 \code{\link[=verify_removal_candidates]{verify_removal_candidates()}}, \code{\link[=score_reference_labels]{score_reference_labels()}},
 \code{\link[=corroborate_references_locally]{corroborate_references_locally()}}
