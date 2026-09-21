@@ -37,7 +37,7 @@
 #' Build (once per align_cache) an accession-indexed lookup of seq_matrix
 #' pairs.
 #'
-#' Found necessary while live-testing the redesign against the real
+#' Found necessary while live-testing this mechanism against the real
 #' PtConception 12S dataset (13,442 observations, 226 genera present, some
 #' (e.g. Sebastes) with 100+ reference species, seq_matrix ~3M rows): every
 #' naive per-candidate lookup (`id_x == acc & id_y %in% ...`) is an
@@ -293,25 +293,24 @@
 #'
 #' Revised after live-testing against two real motivating cases
 #' (Mugu `Fundulus lima`/`parvipinnis`, PtConception `Girella simplicidens`/
-#' `nigricans`) found the original ratio-only design had a real hole: BOTH
+#' `nigricans`): BOTH
 #' real anchors are themselves absent from `taxaexpect_priors` (correctly --
 #' they're the occurrence-implausible species this whole mechanism exists to
-#' out-compete), which made `R = P_anchor / P_candidate` uncomputable and the
-#' old version skip Level 4 for EVERY candidate -- including the one that
-#' matters. Real cost measured on the Fundulus case: restoring one marker's
-#' 12S data went from a documented ~38s (pre-redesign, `candidate_species_
-#' filter`-gated) to ~276s, because Purpose A's genus-wide sweep sent every
+#' out-compete), which makes `R = P_anchor / P_candidate` uncomputable, so a
+#' ratio-only gate would skip Level 4 for EVERY candidate -- including the one
+#' that matters. Real cost measured on the Fundulus case: restoring one
+#' marker's 12S data goes from ~38s (`candidate_species_
+#' filter`-gated) to ~276s (unrestricted), because Purpose A's genus-wide sweep sends every
 #' one of Fundulus's 20 species to a live 16kb-mitogenome alignment.
 #'
-#' Two-tier gate now, cheapest/most-certain first:
+#' Two-tier gate, cheapest/most-certain first:
 #' \enumerate{
-#'   \item \strong{`candidate_species_filter` (default gate, restored from
-#'     the pre-redesign design):} a candidate on the caller-supplied
+#'   \item \strong{`candidate_species_filter` (default gate):} a candidate
+#'     on the caller-supplied
 #'     plausibility list -- or ANY candidate, when no filter was supplied at
 #'     all (`candidate_species_filter = NULL`, matching Purpose B's own
 #'     "no filter = unrestricted" convention) -- is always worth checking.
-#'     This is what `candidate_species_filter` did before the Purpose A/B
-#'     redesign, restored here specifically for Level 4 (the one expensive
+#'     Applied here specifically for Level 4 (the one expensive
 #'     step) -- Levels 1-3 remain fully filter-independent, so Purpose A's
 #'     free-tier genus-wide sweep is unaffected.
 #'   \item \strong{Floor-vs-documented ratio (fallback, only consulted for a

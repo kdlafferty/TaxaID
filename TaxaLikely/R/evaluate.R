@@ -373,11 +373,10 @@ utils::globalVariables(c(
       # (SE(logit(score)) propto 1/sqrt(N)), applied to N = evidentiary
       # quantity rather than alignment overlap fraction.
       #
-      # Crossover gate (replaces the previous unconditional rescale, which was
+      # Crossover gate: unconditional rescaling was
       # tested on real 12S data and found net negative even at this capped,
       # widen-only default -- 27 helped, 2053 hurt; see
-      # evaluate_likelihoods()'s own @details and the TaxaID memory system's
-      # evidence-ratio-sigma-reentry note for the full record). For a Gaussian
+      # evaluate_likelihoods()'s own @details for the full record. For a Gaussian
       # with variance V, rescaling V by a factor c (c > 1 widens, c < 1
       # tightens) changes the log-density at a point z = (x-mean)/sqrt(V)
       # standard deviations away by exactly:
@@ -391,8 +390,8 @@ utils::globalVariables(c(
       # tightening (c < 1, reachable only if a caller sets
       # evidence_max_ratio > 1), that is near the mean (z small) -- exactly
       # the region symmetric widening was missing sigma correction for, and
-      # exactly why the old unconditional version hurt the common case of a
-      # low-depth observation that is still a close, correct match: it paid
+      # exactly why unconditional rescaling hurts the common case of a
+      # low-depth observation that is still a close, correct match: it pays
       # the peak-lowering cost everywhere while only the tail region ever
       # benefits.
       #

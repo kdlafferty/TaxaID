@@ -590,7 +590,7 @@ build_sequence_matrix <- function(reference_df,
 #' subset reused across every genus, matter here: a single shared subset
 #' would mean every genus NOT in that subset gets zero foreign context at
 #' all under the cap, recreating exactly the "some sequences get zero
-#' cross-genus visibility" problem this whole redesign exists to fix, just
+#' cross-genus visibility" problem this whole mechanism exists to prevent, just
 #' shifted from "one sequence per genus" to "whole genera." Independent
 #' per-genus draws instead give every genus roughly the same expected share
 #' of appearances across all other genera's subsets (`cap / (n_genera - 1)`

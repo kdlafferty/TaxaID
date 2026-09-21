@@ -260,7 +260,7 @@ detect_suppressed_candidates <- function(match_obj,
 #' \code{match_obj} carries no usable \code{score_col} at all, there is no
 #' real evidence to source Purpose A/B from -- every same-genus congener
 #' (filtered by \code{candidate_species_filter} if supplied) is restored with
-#' a synthetic score exactly as before this redesign: original rows get
+#' a synthetic score: original rows get
 #' \code{1.0}, restored rows get \code{1.0 - delta / 100}. Pass the result to
 #' \code{assign_scores(score_type = "direct")} rather than the bivariate-
 #' normal pipeline. \code{restoration_basis} is \code{NA} for rows added this
@@ -393,7 +393,8 @@ detect_suppressed_candidates <- function(match_obj,
 #' @param verbose Logical. Emit summary messages (default \code{TRUE}).
 #'
 #' @section Score-sourcing hierarchy:
-#' Replaces the pre-redesign flat \code{anchor_score - delta} imputation.
+#' Provides a real, evidence-grounded score for a restored candidate, rather
+#' than a flat \code{anchor_score - delta} imputation.
 #' Cheapest/most-certain first, stopping at the first level that resolves a
 #' candidate; aggregated by \strong{median}, never max or a random pick, when
 #' more than one qualifying value exists at a level (max is an upward-biased
@@ -651,11 +652,11 @@ restore_suppressed_candidates <- function(match_obj,
   no_score_path <- FALSE
 
   if (!has_score || all(is.na(match_obj[[score_col]]))) {
-    # No-score pathway (Rule 3, unchanged by this redesign -- there is no
+    # No-score pathway (Rule 3 -- there is no
     # real score evidence to source Purpose A/B from at all): create a
     # synthetic score column and restore every same-genus congener
     # (filtered by candidate_species_filter, if supplied) with a flat
-    # synthetic gap, exactly as before this redesign.
+    # synthetic gap.
     no_score_path <- TRUE
     delta_01 <- delta / 100 # e.g. 0.5 -> 0.005
     if (!has_score) match_obj[[score_col]] <- NA_real_
@@ -759,8 +760,7 @@ restore_suppressed_candidates <- function(match_obj,
 
     if (no_score_path) {
       # No real evidence exists to source Purpose A/B from -- restore every
-      # (optionally filtered) congener with the flat synthetic gap, exactly
-      # as this pathway behaved before this redesign.
+      # (optionally filtered) congener with the flat synthetic gap.
       if (!is.null(no_score_target_species)) {
         other_species <- other_species[other_species %in% no_score_target_species]
       }
