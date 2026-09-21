@@ -284,7 +284,7 @@ isolated unit tests.
   unrelated signature change.
 - Gained a real, fast, non-`\dontrun{}` `@examples` block.
 
-Archived (moved to `archive_glmm_prior_pipeline/`): real, full-scale testing against a
+Archived (archived outside the package, in the TaxaID_dev repository): real, full-scale testing against a
 hand-built 9-group expert classification on the actual PtConception 18S occurrence
 checkpoint found this function answers the wrong question for the purpose it was kept
 for -- record-count adequacy, not shared detection process -- and can fragment or
@@ -330,7 +330,7 @@ fixes above.
 parameters -- see `optimize_grid_size.R`'s matching section below for the shared
 reasoning (this decision was made once and applies identically to both files).
 
-Archived (moved to `archive_glmm_prior_pipeline/`, alongside
+Archived (archived outside the package, in the TaxaID_dev repository, alongside
 `compute_adaptive_sampling_groups()`): this file's spatial-binning purpose existed only
 to feed `compute_adaptive_sampling_groups()`'s per-site effort measurement, which is
 itself archived (see that function's section above) -- the purpose this function was
@@ -543,7 +543,7 @@ kept alive for was never actually load-bearing.
 - **"Is having `train_biodiversity_model_by_group` worth having?"**: see that function's
   own section below (the identical question is asked there too).
 
-Archived (moved to `archive_glmm_prior_pipeline/`, along with the rest of the GLMM
+Archived (archived outside the package, in the TaxaID_dev repository, along with the rest of the GLMM
 grid/prior-fitting chain), once every real production workflow finished migrating to the
 kernel-priors path. The `habitat_col` design defense above remains an accurate record of
 why that choice was made and is not overturned -- it is simply no longer live code. The
@@ -665,7 +665,7 @@ anywhere; the one workflow its own roxygen called its "recommended entry point" 
 hand-rolls an equivalent per-group loop instead, one that turns out to be a strict
 superset of what this function did. So the two reasons given above for keeping this
 function separate from `train_biodiversity_model()` were sound architecture, but the
-function itself was never adopted. Archived (moved to `archive_glmm_prior_pipeline/`)
+function itself was never adopted. Archived (archived outside the package, in the TaxaID_dev repository)
 rather than deleted. Superseded by `estimate_kernel_priors(sampling_group_col=)` on the
 kernel path, which restores per-group/multi-detection-process stratification without a
 separate orchestrating wrapper.
