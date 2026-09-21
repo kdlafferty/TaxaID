@@ -21,11 +21,26 @@ test_that(".validate_snippets() returns zero rows for an empty graph", {
 # in loosening this assertion.
 # ---------------------------------------------------------------------------
 test_that("every real snippet is clean: zero not_exported/stale_argument/parse_error/package_unavailable", {
+  # This test validates the REAL snippet graph, which calls into every
+  # TAXAID_PACKAGES member -- it is only meaningful when all of them load, so
+  # a partial library (e.g. only TaxaTools resolvable, as under some check
+  # configurations) must skip, PROVABLY, naming what is missing, rather than
+  # run against an incomplete registry: that would flag every snippet that
+  # calls a package that happens to be absent as package_unavailable, which
+  # is the guard working correctly on an environment gap, not a real drift.
   pkgs <- TaxaWizard:::TAXAID_PACKAGES
-  installed <- pkgs[vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
-  skip_if(length(installed) == 0L, "no TaxaID packages installed")
+  available <- vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)
+  missing <- pkgs[!available]
+  skip_if(
+    length(missing) > 0L,
+    paste0(
+      "TaxaID package(s) not available in this test library -- the ",
+      "in-package drift test needs all of TAXAID_PACKAGES loadable to be ",
+      "meaningful: ", paste(missing, collapse = ", ")
+    )
+  )
 
-  result <- TaxaWizard:::.validate_snippets(registry = workflow_registry(packages = installed))
+  result <- TaxaWizard:::.validate_snippets(registry = workflow_registry(packages = pkgs))
   failing <- result[result$problem %in% c(
     "not_exported", "stale_argument", "parse_error", "package_unavailable"
   ), ]
