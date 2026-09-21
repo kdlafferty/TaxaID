@@ -133,10 +133,10 @@ reviewed <- review_assignments(
 ```
 
 Plausibility columns (`llm_habitat_plausibility`, `llm_geographic_plausibility`,
-`llm_scope_plausibility`) use `"likely"` / `"possible"` / `"unlikely"` — higher
+`llm_scope_plausibility`) use `"likely"` / `"possible"` / `"unlikely"` -- higher
 means more plausible as a genuine detection.
 
-`llm_contamination_risk` uses `"low"` / `"moderate"` / `"high"` — higher means
+`llm_contamination_risk` uses `"low"` / `"moderate"` / `"high"` -- higher means
 more concern about contamination.
 
 ## Combining Flags

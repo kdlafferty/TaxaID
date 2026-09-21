@@ -1075,7 +1075,7 @@ review_assignments <- function(input_df,
 #' Constructs a compact slash-species string from a sorted, deduplicated
 #' character vector of binomial names (length >= 2). Same-genus candidates
 #' are abbreviated; mixed-genus groups are joined with " + ".
-#' Mirrors TaxaAssign::.make_slash_name() — duplicated here to avoid a
+#' Mirrors TaxaAssign::.make_slash_name() -- duplicated here to avoid a
 #' dependency on TaxaAssign internals.
 #'
 #' @noRd
