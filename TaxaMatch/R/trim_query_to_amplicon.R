@@ -364,18 +364,19 @@
 #' `max_bp` therefore calls EVERY correctly-trimmed query over-length, 100%
 #' of the time.
 #'
-#' That exact miscalibration was already found and fixed once, inside
-#' `.trim_queries_to_amplicon()` itself (2026-08-10; see its own comment --
-#' it caused a real 92/92 extraction failure), and then reintroduced at a
-#' second site by the 2026-09-01 feature-table-fallback caller in
-#' `evaluate_reference_accessions()`, which had no way to know the two
-#' length conventions differed. This helper exists so there is ONE
+#' This exact miscalibration can recur at any site that tests a trimmed
+#' query against `max_bp` directly -- confirmed live inside
+#' `.trim_queries_to_amplicon()` itself (see its own comment --
+#' it caused a real 92/92 extraction failure), and separately in the
+#' feature-table-fallback caller in
+#' `evaluate_reference_accessions()`, which has no way to know the two
+#' length conventions differ on its own. This helper exists so there is ONE
 #' definition both sites read, rather than two places that must independently
 #' remember to add the primer lengths back on.
 #'
-#' 2026-09-03: `strip_primers` selects the matching bound for the
+#' `strip_primers` selects the matching bound for the
 #' primer-STRIPPED span `.trim_queries_to_amplicon(strip_primers = TRUE)`
-#' now returns -- the inclusive bound minus the two primer lengths. Still one
+#' returns -- the inclusive bound minus the two primer lengths. Still one
 #' definition: both the trimmer and `evaluate_reference_accessions()`'s
 #' feature-table-fallback caller read the bound for whichever `query_span`
 #' was chosen, so the two conventions cannot be crossed a third time. When
@@ -426,7 +427,7 @@
 #' `.MARKER_ANNOTATION_PATTERNS`) directly, per this feature's own design
 #' doc -- no second fetcher, no new qualifier vocabulary. `.
 #' fetch_marker_annotation()` batches its own `rentrez::entrez_fetch()`
-#' call across every accession passed to it in one round trip (2026-08-08),
+#' call across every accession passed to it in one round trip,
 #' so calling it once per chunk here (never per-accession) keeps this
 #' mechanism's real NCBI cost to one cheap `efetch`, nothing like BLAST.
 #'
@@ -442,8 +443,8 @@
 #' reported against (not consumed by anything in this package).
 #'
 #' Per-accession `tryCatch()` isolation, matching the same pattern
-#' `.trim_queries_to_amplicon()`'s own loop already established
-#' (2026-08-30) -- one accession's malformed interval data must never abort
+#' `.trim_queries_to_amplicon()`'s own loop already establishes
+#' -- one accession's malformed interval data must never abort
 #' the whole fallback pass.
 #'
 #' @param accessions Character vector of accessions still over-length after
