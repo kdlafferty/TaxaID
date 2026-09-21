@@ -3,8 +3,8 @@
 
 #' Evidence rows for species inside their iNaturalist range polygon
 #'
-#' The third evidence generator for \code{\link{apply_undetected_evidence}}
-#' (2026-08-26 mixture redesign, D6), alongside
+#' The third evidence generator for \code{\link{apply_undetected_evidence}},
+#' alongside
 #' \code{\link{generate_invasive_watch_evidence}} and
 #' \code{\link{generate_regional_proximity_evidence}}. Converts
 #' \code{TaxaFetch::check_inat_range()} output into presence-probability
@@ -18,25 +18,25 @@
 #' An in-range polygon with substantial observation coverage is close to
 #' observational evidence of regional presence -- much stronger than a lone
 #' distant GBIF record -- so its weight sits near the ceiling but at a
-#' deliberate "small disadvantage" (user design decision, 2026-08-26): the
+#' deliberate "small disadvantage": the
 #' default \code{weight = 0.8} reads as P(locally present | in range,
 #' well-observed), discounted below 1 because (a) a range polygon is regional,
 #' not site-scale, and (b) citizen-science identifications carry a real
 #' misidentification rate.
 #'
-#' @section Calibration status (2026-09-05 critical-fix-review, finding A2):
+#' @section Calibration status:
 #' Unlike \code{\link{generate_regional_proximity_evidence}}'s \code{w_scale}
 #' (checklist-calibrated against a real site species list) and
 #' \code{generate_invasive_watch_evidence()}'s weight (derived from the
 #' dataset-independent ordering bound), this function's \code{0.8} default is
-#' design intuition, not empirically calibrated -- it predates the checklist-
-#' calibration work by two days and was never re-examined against it. Under
+#' design intuition, not empirically calibrated. Under
 #' \code{pricing = "blend"} (see \code{\link{apply_undetected_evidence}}), the
 #' printed dataset-specific veto bound is often far below 0.8 (~0.05 on
-#' GreatLakes' own real anchors) -- a weight this high can block species-level
+#' a Great Lakes dataset's own real anchors) -- a weight this high can block
+#' species-level
 #' resolution of a genuinely observed singleton-level native, the exact
-#' failure the pre-calibration invasive weight (0.6) caused for yellow perch
-#' before it was cut to 0.05. \code{apply_undetected_evidence()} already warns
+#' failure an uncalibrated invasive weight (0.6) caused for yellow perch.
+#' \code{apply_undetected_evidence()} already warns
 #' generically whenever any evidence source's combined weight exceeds that
 #' bound in blend mode, so a blend-mode misuse of this default will not pass
 #' silently -- but the warning fires after the row is built, not before, and
@@ -58,7 +58,7 @@
 #' \code{name_match} is not \code{TRUE} are excluded by default
 #' (\code{require_name_match = TRUE}) and counted in a message. Requires
 #' \code{check_inat_range()} output that carries the \code{name_match}
-#' column (2026-08-28+); older cached tables lacking it are treated as
+#' column; cached tables lacking it are treated as
 #' unverified and excluded, with a message saying to re-run the check.
 #'
 #' @param inat_range Data frame from \code{TaxaFetch::check_inat_range()}.
@@ -122,7 +122,7 @@ generate_inat_range_evidence <- function(
     if (!"name_match" %in% names(inat_range)) {
       message(
         "generate_inat_range_evidence: `inat_range` has no name_match ",
-        "column (pre-2026-08-28 check_inat_range() output) -- every row ",
+        "column -- every row ",
         "is unverifiable against the fuzzy-match risk and is excluded. ",
         "Re-run TaxaFetch::check_inat_range() to get the column."
       )
