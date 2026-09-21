@@ -1,22 +1,11 @@
-# plot_theta_surface() -- the KDE prior-field map for the kernel-priors path
-# (2026-09-01, branch theta-surface). Design record:
-# ecosystem_docs/SPEC_plot_theta_surface.md, whose origin is the "Display
-# companion" clause of the Phase 1 spec in
-# ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md.
+# plot_theta_surface() -- the KDE prior-field map for the kernel-priors path.
 #
-# WHAT THIS REPLACES: plot_theta_map_interactive() rendered per-GRID-CELL
-# theta by parsing Grid_<lat>_<lon> identifiers into centroids. The
-# kernel-priors redesign (estimate_kernel_priors()) produces ONE site row
-# with an opaque site_id, so that function had nothing to draw on the kernel
-# path -- it was gated OFF (if (!USE_KERNEL_PRIORS)) in all five production
-# workflows. This function evaluates the SAME estimator formula on a
-# lattice of points instead of at one site, via binned FFT convolution
+# This function evaluates the SAME estimator formula
+# (estimate_kernel_priors()) at every point of a
+# lattice instead of at one site, via binned FFT convolution
 # (stats::fft, base R -- no new dependency), so the resulting map IS the
-# prior field, not a smoothed picture of something else.
-# plot_theta_map_interactive() and the rest of the GLMM/grid prior-fitting
-# chain were archived 2026-09-09 (see archive_glmm_prior_pipeline/ and
-# TaxaExpect/CLAUDE.md's 2026-09-09 session note) -- this function is now
-# the package's only prior-field visualization.
+# prior field, not a smoothed picture of something else. This is the
+# package's only prior-field visualization.
 
 #' Evaluate the kernel-prior estimator on a spatial lattice (KDE prior field)
 #'
@@ -101,24 +90,6 @@
 #' no equivalent split and would silently draw the pooled, ungrouped field.
 #' Map one group at a time by fitting it on its own record subset (the shape
 #' the 18S workflow already uses) rather than passing a grouped fit here.
-#'
-#' @section Relationship to the retired plot_theta_map_interactive():
-#' The GLMM/grid prior-fitting chain's own visualization,
-#' `plot_theta_map_interactive()`, parsed `Grid_<lat>_<lon>` identifiers out
-#' of a `grid_id` column to find grid-cell centroids to draw -- it depicted
-#' predictions already computed at a fixed set of grid cells. The
-#' kernel-priors path (`estimate_kernel_priors()`) has no grid: it returns
-#' ONE site row with an opaque `site_id` that encodes no spatial extent, so
-#' that function had nothing to parse and nothing to draw for it (this is
-#' why it was gated OFF on the kernel path in every production workflow).
-#' `plot_theta_surface()` replaces it for kernel priors by evaluating the
-#' estimator AT EVERY LATTICE POINT rather than relying on pre-computed
-#' per-cell predictions, so the map is the estimator evaluated continuously,
-#' not an interpolation between grid predictions. `plot_theta_map_
-#' interactive()` was archived 2026-09-09 along with the rest of the GLMM
-#' chain (see `archive_glmm_prior_pipeline/` and TaxaExpect/CLAUDE.md's
-#' 2026-09-09 session note) -- this function is now the only prior-field
-#' visualization in the package.
 #'
 #' @param kernel_fit A `taxaexpect_kernel_priors` object from
 #'   [estimate_kernel_priors()] -- the source of `lambda_km`, `m`,
@@ -206,9 +177,7 @@
 #'   Returned invisibly is never done here -- callers can inspect or
 #'   re-render `$surface` without recomputing.
 #' @seealso [estimate_kernel_priors()] for the site-level estimator this
-#'   function reproduces on a lattice. The GLMM/grid-cell equivalent,
-#'   `plot_theta_map_interactive()`, was archived 2026-09-09 along with the
-#'   rest of the GLMM prior-fitting chain (see `archive_glmm_prior_pipeline/`).
+#'   function reproduces on a lattice.
 #' @export
 plot_theta_surface <- function(kernel_fit,
                                occurrence_data,
@@ -243,7 +212,7 @@ plot_theta_surface <- function(kernel_fit,
   n_grid <- as.integer(round(n_grid))
 
   p <- kernel_fit$params
-  # estimate_kernel_priors() gained sampling_group_col on 2026-09-03: it splits
+  # estimate_kernel_priors()'s sampling_group_col splits
   # the stratum and computes n_eff and the regional back-off WITHIN each group.
   # This function has no such split -- it would pool every group and draw the
   # ungrouped field while still claiming, via the fit it was handed, to depict
@@ -321,7 +290,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   # Show the map. A function named plot_*() that prints only a text summary
   # is a trap: at the console the summary looks like success while nothing is
   # drawn, so a STALE object from an earlier call keeps displaying (exactly
-  # what happened on the 2026-09-01 click-through -- a three-species call
+  # what happened on a real click-through -- a three-species call
   # printed its summary while an earlier single-species object's map stayed
   # on screen, reading as "the selector is missing"). Printing the object now
   # prints the map too, so what you see is always the object you just built.
@@ -617,7 +586,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' plot itself, not merely messaged at construction. A console message is gone
 #' the moment the object is re-printed or the map is screenshotted into a talk;
 #' that is the same lesson as the stale-map trap fixed in
-#' print.taxaexpect_theta_surface() (2026-09-01 click-through).
+#' print.taxaexpect_theta_surface().
 #'
 #' The three states are deliberately DISTINCT, because the middle one is the
 #' trap: a fit that HAS a covariate but is drawn without it must say so
@@ -718,14 +687,14 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' n_grid) since a leaflet map with
 #' n_grid^2 rectangles is impractical in a browser.
 #'
-#' User-feedback round 2026-09-01 (first real click-through, GreatLakes):
-#' (1) the default pin marker covered the heat map exactly where the reader
-#' most needs it -- replaced with a small hollow circle; (2) no legend --
-#' added, per species and group-tied so it follows the layer selector;
-#' (3) no values on hover -- rectangles now carry a label with theta and the
-#' local effective sample size; (4) species selection is now a RADIO
-#' selector (baseGroups: one species at a time) rather than independent
-#' overlay checkboxes that stack unreadably.
+#' Design choices verified against real user feedback (a Great Lakes
+#' click-through): the site marker is a small hollow circle so it never
+#' covers the heat map where the reader most needs it; each species carries
+#' its own legend, tied to the layer selector so it follows species
+#' selection; rectangles carry a hover label with theta and the local
+#' effective sample size; and species selection is a RADIO selector
+#' (baseGroups: one species at a time) rather than independent overlay
+#' checkboxes, which stack unreadably.
 #' @noRd
 .theta_surface_plot_leaflet <- function(surf, site_lat, site_lon, site_id,
                                         alpha_by_n_eff, n_eff_floor,
@@ -784,7 +753,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   }
 
   # Site marker LAST so it draws above the surface, and small + hollow so it
-  # never hides the cell it marks (2026-09-01 user feedback).
+  # never hides the cell it marks.
   map <- leaflet::addCircleMarkers(
     map,
     lng = site_lon, lat = site_lat,
