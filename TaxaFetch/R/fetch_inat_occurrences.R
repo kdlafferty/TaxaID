@@ -49,6 +49,20 @@
 #' rate-limit/outage produces that outcome, it does not change what a
 #' persistent failure looks like to the caller.
 #'
+#' \strong{Omission implements "any":} \code{captive = "any"} and
+#' \code{quality_grade = "any"} are implemented by OMITTING the
+#' corresponding query parameter from the \code{/v1/observations} request
+#' entirely (see \code{.inat_observation_count()}), not by sending an
+#' explicit \code{captive=any}/\code{quality_grade=any} value. Verified
+#' against the live API (\emph{Turdus migratorius}, \code{per_page = 1}, so
+#' only \code{total_results} was compared): both parameters omitted returns
+#' \code{total_results = 470344}; adding \code{quality_grade=research}
+#' returns \code{434444} (omission is the strict superset, as "any" should
+#' be); and sending \code{captive=any} explicitly, with \code{quality_grade}
+#' still omitted, also returns \code{470344} -- identical to leaving
+#' \code{captive} out altogether. Omitting a parameter and sending it
+#' explicitly as \code{"any"} are the same query.
+#'
 #' @param taxon_names Character vector of species names to check.
 #' @param lat Numeric. Latitude of the query point in decimal degrees.
 #' @param lng Numeric. Longitude of the query point in decimal degrees.
