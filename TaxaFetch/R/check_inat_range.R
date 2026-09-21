@@ -140,11 +140,11 @@ check_inat_range <- function(
 
   out <- dplyr::bind_rows(results)
 
-  # ---- name_match (2026-08-28): derived at assembly time, never cached ------
+  # ---- name_match: derived at assembly time, never cached -------------------
   # iNaturalist's taxon search takes the single best TEXT match, so a query
   # can silently resolve to a DIFFERENT species (real case: Gasterosteus
   # gymnurus -> G. aculeatus, returning in_range = TRUE for the wrong
-  # organism -- see the review_assignments() caveat wiring, 2026-08-07).
+  # organism -- see the review_assignments() caveat wiring).
   # Every consumer that ELEVATES a prior on an in_range verdict must gate on
   # this column (see TaxaExpect::generate_inat_range_evidence() /
   # TaxaAssign::adjust_inat_range_priors(require_name_match=)). Computed from
