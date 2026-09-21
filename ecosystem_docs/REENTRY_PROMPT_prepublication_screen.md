@@ -732,6 +732,20 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   **Decision: the screen is OFF by default in the workflow template**
   (`SCREEN_REFERENCE_ACCESSIONS = FALSE`), on by flag, with its yield and
   NCBI cost stated beside the flag.
+  **PtCon 12S B2 run STAGED 2026-09-21** (awaiting the user's go): driver =
+  `TaxaID_dev/screen_records/.../b2_runs/PtCon12S_b2_workflow.R`, a copy of
+  `eDNA/PtConception/PtConceptionWorkflow_12S_single_site.R` differing in
+  ONE line (`OUT_PREFIX <- "PtConMifishSchulte_b2"`); `SUBSET = FALSE`,
+  `REUSE_PREFIX = NULL`, `SCREENS_FROM_CHECKPOINT = TRUE` with the three
+  production screen checkpoints (match_eval, ref_eval, removal_audit; Sep
+  11) copied under the b2 prefix so no BLAST runs; reference-sequence fetch
+  cold once; GBIF pool re-downloaded once under hashed names; LLM steps
+  warm where cached. Non-interactive stops: `apply_spatial_review_decisions()`
+  runs from the saved decisions file (and will report ambiguous points),
+  `review_spatial_flags()` and the `interactive()` block are skipped under
+  Rscript, `on_unreviewed = "error"` at Step 8 can halt the run. Launched as
+  a background Rscript against the installed library from `3909ae6`;
+  outputs land as `PtConMifishSchulte_b2_*` beside the production files.
 - **B3. The structural guards fire.** Break each deliberately and confirm it is
   caught: vignette-call checking, snippet/graph-edge export checking, the
   sampling-group kingdom guard, `cache_ok()` staleness inputs, `on_unreviewed
