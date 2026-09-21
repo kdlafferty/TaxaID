@@ -334,13 +334,15 @@ test_that("barcode length defaults resolve correctly via TaxaTools", {
 # is.numeric across the ecosystem.
 # -----------------------------------------------------------------------------
 
-.ab_df <- function(...) data.frame(
-  sequence = c("ACGT", "TTGA", "GGCA"),
-  SampleA  = c(10L, 0L, 5L),
-  SampleB  = c(3L, 7L, 0L),
-  ...,
-  stringsAsFactors = FALSE
-)
+.ab_df <- function(...) {
+  data.frame(
+    sequence = c("ACGT", "TTGA", "GGCA"),
+    SampleA  = c(10L, 0L, 5L),
+    SampleB  = c(3L, 7L, 0L),
+    ...,
+    stringsAsFactors = FALSE
+  )
+}
 
 test_that("BLAST metric columns are not summed into abundance", {
   df <- .ab_df(

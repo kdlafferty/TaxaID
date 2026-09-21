@@ -320,7 +320,10 @@ group_observations_by_bbox <- function(sites,
 
   if (length(target_idx) == 0L) {
     if (length(polygons) > 0L) {
-      message("group_observations_by_bbox: every observation is already part of a spatial group; nothing left to assign.")
+      message(
+        "group_observations_by_bbox: every observation is already part of a spatial group; ",
+        "nothing left to assign."
+      )
     }
     return(sites)
   }

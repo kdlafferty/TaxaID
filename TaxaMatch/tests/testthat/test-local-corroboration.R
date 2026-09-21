@@ -743,4 +743,3 @@ test_that("changing query_span invalidates a cached row (it is verdict-affecting
   ))
   expect_equal(fetch_calls, after_second)
 })
-

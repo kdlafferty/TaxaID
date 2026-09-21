@@ -935,6 +935,10 @@ read_speciesnet_output <- function(files,
     lon_val <- if (is.null(lon_val)) NA_real_ else as.numeric(lon_val)
     country_val <- p[["country"]]
     country_val <- if (is.null(country_val)) NA_character_ else as.character(country_val)
+    ens_score_val <- p[["prediction_score"]]
+    ens_score_val <- if (is.null(ens_score_val)) NA_real_ else as.numeric(ens_score_val)
+    ens_source_val <- p[["prediction_source"]]
+    ens_source_val <- if (is.null(ens_source_val)) NA_character_ else as.character(ens_source_val)
 
     df <- data.frame(
       .filepath = as.character(filepath),
@@ -948,8 +952,8 @@ read_speciesnet_output <- function(files,
       common_name = tax$common_name,
       taxon_rank = tax$taxon_rank,
       ensemble_prediction = ens_common,
-      ensemble_prediction_score = if (is.null(p[["prediction_score"]])) NA_real_ else as.numeric(p[["prediction_score"]]),
-      ensemble_prediction_source = if (is.null(p[["prediction_source"]])) NA_character_ else as.character(p[["prediction_source"]]),
+      ensemble_prediction_score = ens_score_val,
+      ensemble_prediction_source = ens_source_val,
       lat = lat_val,
       lon = lon_val,
       country = country_val,

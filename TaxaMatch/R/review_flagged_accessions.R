@@ -100,7 +100,11 @@
   missing_cols <- setdiff(names(empty), names(cached))
   if (length(missing_cols) > 0L) {
     warning(sprintf(
-      "review_flagged_accessions(): cache at %s predates this package version (missing column(s): %s) -- starting a fresh cache. Every previously-cached review will be recomputed once.",
+      paste0(
+        "review_flagged_accessions(): cache at %s predates this package version ",
+        "(missing column(s): %s) -- starting a fresh cache. Every previously-cached ",
+        "review will be recomputed once."
+      ),
       path, paste(missing_cols, collapse = ", ")
     ), call. = FALSE)
     return(empty)
@@ -764,7 +768,10 @@ review_flagged_accessions <- function(evaluated_df,
     n <- nchar(trimws(response))
     tail_str <- if (n > 200L) substr(trimws(response), max(1L, n - 200L), n) else trimws(response)
     return(.with_status(make_default(), "failed", sprintf(
-      "Could not parse LLM accession-review response as JSON. Returning NA defaults.\n  Response length: %d chars; ends with: ...%s",
+      paste0(
+        "Could not parse LLM accession-review response as JSON. Returning NA defaults.\n",
+        "  Response length: %d chars; ends with: ...%s"
+      ),
       n, tail_str
     )))
   }

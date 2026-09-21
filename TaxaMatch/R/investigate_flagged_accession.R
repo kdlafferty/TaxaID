@@ -737,7 +737,10 @@
   missing_cols <- setdiff(names(empty), names(cached))
   if (length(missing_cols) > 0L) {
     warning(sprintf(
-      "investigate_flagged_accession(): cache at %s predates this package version (missing column(s): %s) -- starting a fresh cache.",
+      paste0(
+        "investigate_flagged_accession(): cache at %s predates this package version ",
+        "(missing column(s): %s) -- starting a fresh cache."
+      ),
       path, paste(missing_cols, collapse = ", ")
     ), call. = FALSE)
     return(empty)

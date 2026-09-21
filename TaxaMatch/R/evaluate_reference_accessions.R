@@ -2963,4 +2963,3 @@ remove_incongruent_references <- function(match_df,
 
   result
 }
-
