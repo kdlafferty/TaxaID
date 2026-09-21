@@ -462,6 +462,23 @@ SKIPPING when a package fails to load (becomes a failure code). Verified
 clean: registry argument parsing (27-parameter function spot-checked live),
 cache key sufficient for reinstalls, no key value ever in a prompt or
 pack, `workflow_export_prompts()` cannot write outside `dir`.
+TaxaLikely done (last of eight) -- 2 DEFECTS, reproduced (branch
+`screen-a5-fixes-likely`): `suggest_unreferenced_species()` never checks
+that `reference_species` is present for acoustic/image data, so omitting it
+silently flags every LLM candidate as unreferenced (the non-eDNA branches
+had zero tests); its response parsers accept any two-word string under any
+genus ("Ignore priorinstructions" passed under Gadus). 1 RISK (genus column
+reaches the prompt unvalidated), 1 DOC (`n_cross_genus_pairs` reports
+2x the true count). `check_cross_genus_sampling_noise()`'s resampling and
+`taxalikely_clear_cache()`'s patterns verified live.
+**A5 first half MERGED (`24c6e5e`)**: catalogue at `inst/extra_functions_
+for_review.md`; every response file has its "Added after the review" table;
+conflicts with A8's pointer fixes resolved toward A5 (the passages were
+deleted), two lost pointer fixes re-applied.
+**Template-review tally, all eight packages: 16 reproduced defects in
+post-review code, every one fixed or being fixed on a branch; plus the
+ecosystem-wide cache-clear containment gap and the stalled template
+generator.**
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
