@@ -15,7 +15,7 @@ Taxonomic assignment matches observations to identifications, but
 samples often contain artifacts and uncertainties. TaxaFlag provides
 three independent post-hoc checks:
 
--   **Contamination screening** compares taxon read counts against
+-   **Contamination screening** compares taxon detection counts against
     control samples (lab blanks, field blanks, positive controls). For
     example, in metabarcoding, human and food-related sequences commonly
     appear, and their relative frequency in controls can justify
