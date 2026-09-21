@@ -693,8 +693,8 @@ utils::globalVariables(c(
   }
 
   # A cache file written by an OLDER package version can be missing columns
-  # this version expects (found live: a real cache from before the
-  # 2026-08-07 identity-diagnostics columns were added). params_key already
+  # this version expects (found live: a real cache missing columns added
+  # in a later version). params_key already
   # invalidates individual STALE ROWS on an internal-logic version bump
   # (.EVAL_REF_ACC_VERSION) -- but that can't rescue a file whose COLUMN
   # SCHEMA itself doesn't match, since `cache_hit_rows[, out_cols]` would
@@ -704,13 +704,13 @@ utils::globalVariables(c(
   # symmetric with how a params_key mismatch already discards individual
   # rows -- not a partial/patched read.
   #
-  # UPDATED 2026-09-04: a column listed in .ADDITIVE_CACHE_COLUMNS is
-  # NA-filled instead, because for those columns NA is the honest reading of
+  # A column listed in .ADDITIVE_CACHE_COLUMNS is instead
+  # NA-filled, because for those columns NA is the honest reading of
   # "this row was computed before we recorded that" and nothing turns it into
-  # a different decision. Discarding for those was costing a full re-BLAST of
+  # a different decision. Discarding for those would cost a full re-BLAST of
   # every cached row to add a diagnostic -- the same price this package
   # refuses to pay for a params_key change. Any OTHER missing column still
-  # discards the whole file, unchanged: that is the case where serving the
+  # discards the whole file: that is the case where serving the
   # row could silently change a verdict.
   missing_cols <- setdiff(names(empty), names(cached))
   hard_missing <- setdiff(missing_cols, .ADDITIVE_CACHE_COLUMNS)
@@ -913,16 +913,12 @@ utils::globalVariables(c(
     # .resolve_trimmed_span_max(), NOT resolve_barcode_lengths()$max_bp.
     # `.trim_queries_to_amplicon()` returns a primer-INCLUSIVE span
     # (211-233 bp for MiFish-U); max_bp reports the variable region
-    # EXCLUDING primers (130-210 bp). Those windows are disjoint, so the
-    # original test called every correctly-trimmed query "still over-length"
-    # -- 100% of them, by construction -- and sent each one through an extra
-    # NCBI annotation fetch that could not help it. Measured 2026-09-02 on a
-    # real run: "extracted the amplicon from 40 of 40" immediately followed
-    # by "feature-table fallback rescued 40 of 40 still-over-length", which
-    # cannot both be true. This is the same primer-length miscalibration
-    # `.trim_queries_to_amplicon()` was itself fixed for on 2026-08-10,
-    # reintroduced here; both sites now read one shared definition -- and,
-    # since 2026-09-03, the bound for whichever span (`query_span`) the
+    # EXCLUDING primers (130-210 bp). Those windows are disjoint, so using
+    # max_bp here would call every correctly-trimmed query "still
+    # over-length" -- 100% of them, by construction -- and send each one
+    # through an extra NCBI annotation fetch that could not help it. Both
+    # sites read one shared definition, using
+    # the bound for whichever span (`query_span`) the
     # trimmer was asked for.
     bt_max_len <- .resolve_trimmed_span_max(barcode_term, strip_primers = strip_primers)
     if (!is.na(bt_max_len)) {
@@ -965,7 +961,7 @@ utils::globalVariables(c(
     is_oversized <- !is.na(seq_lens) & seq_lens > max_query_len
     if (any(is_oversized)) {
       oversized_meta <- query_meta[is_oversized, , drop = FALSE]
-      # ---- Wrong marker, not wrong size (2026-09-04). An accession the
+      # ---- Wrong marker, not wrong size. An accession the
       # feature-table fallback declined with "marker_absent" HAS annotated
       # features and none of them is the marker `barcode_term` implies. Its
       # length is a symptom; the cause is that it does not belong in this
