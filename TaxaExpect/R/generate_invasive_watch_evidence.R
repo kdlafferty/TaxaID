@@ -11,11 +11,11 @@
 #' where the actual prior construction happens.
 #'
 #' @section Why no live query or region-scoping here:
-#' An earlier version of this mechanism queried the USGS NAS database live
-#' and scoped results by watershed (HUC8). That baked a narrow (aquatic-only,
+#' Querying the USGS NAS database live and scoping results by watershed
+#' (HUC8) would bake a narrow (aquatic-only,
 #' United-States-only) external data source and freshwater-specific
 #' watershed-connectivity logic into a package meant to stay generic across
-#' taxa and geography. Region-scoping now happens entirely on the caller's
+#' taxa and geography. Region-scoping instead happens entirely on the caller's
 #' side, in how \code{invasive_taxa} is built (e.g. filter a NAS pull to
 #' species actually relevant to your basin before calling this function) --
 #' this function only knows "is this taxon on the list," nothing else.
@@ -43,9 +43,9 @@
 #'   against future evidence (the confirmation update), in
 #'   pseudo-observations. Default 1 -- a curated listing counts as roughly
 #'   one direct observation about presence. Does NOT affect the static
-#'   prior's mean or concentration (both now derive from \code{weight} via
+#'   prior's mean or concentration (both derive from \code{weight} via
 #'   \code{\link{apply_undetected_evidence}}'s presence-mixture moment
-#'   matching -- the former \code{n_eff} knob is retired).
+#'   matching, not from a caller-supplied \code{n_eff}).
 #' @param match_list_taxa Optional character vector of taxa that actually
 #'   have a likelihood this run (e.g. \code{unique(match_obj$taxon_name)}).
 #'   When supplied, \code{invasive_taxa} is restricted to the intersection
