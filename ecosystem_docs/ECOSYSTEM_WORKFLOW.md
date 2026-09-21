@@ -1,21 +1,26 @@
 # TaxaID Ecosystem — Workflow Guide
 # Ordering, inputs, outputs, and save conventions across all packages
-# Last updated: 2026-04-01
 
 ---
 
 ## Overview
 
-The TaxaID ecosystem uses Baye's Theorem to assign a consensus taxon to a sample such as DNA sequence, sound or image for which there are several competing hypothesized matches.
-It can also clean taxonomic databases, reassign taxonomic backbones, generate species distributions models, check the completeness of reference libraries, and translate match scores into probabilities.
-The package currently does not calculate matches from a reference library. These are obtained elsewhere. Thus, the TaxaMatch package uploads a dataframe that contains a sample_id, a match score, and one or more reference taxa that closely match the sample. It then does some data standarization needed for other packages to process the data. 
-The Bayesian part of TaxaID is in the TaxaAssign package. This packages uses Baye's Theorem to multiply a likelihood that matches a sample to a reference by a prior expectation that the reference occurs at the sample location to generate a posterior probability that the sample was from a particular taxon. By comparing among these posterior probabilities, a user can estimate confidence in the various taxon or taxa hypothesized to have generated the sample. Notably, TaxaAssign also uses the process of elimination to hypothesize unreferenced taxa (taxa missing from a reference database). TaxaAssign does this with two separate worflows. Both approaches can use an api account with a large language model or can be operated through prompt generation (api strongly suggested).
+The TaxaID ecosystem uses Bayes' Theorem to assign a consensus taxon to a sample -- a DNA sequence, sound, or image -- for which there are several competing hypothesized matches.
+It can also clean taxonomic databases, reassign taxonomic backbones, generate species distribution priors, check the completeness of reference libraries, and translate match scores into probabilities.
+The ecosystem does not calculate matches from a reference library; those are obtained elsewhere. The TaxaMatch package ingests a data frame with a `sample_id`, a match score, and one or more reference taxa that closely match the sample, and standardizes it for other packages to process.
+The Bayesian part of TaxaID lives in TaxaAssign. It multiplies a likelihood -- how well a sample matches a reference -- by a prior expectation that the reference occurs at the sample location, to generate a posterior probability that the sample came from a particular taxon. Comparing among these posterior probabilities lets a user estimate confidence in the taxon or taxa hypothesized to have generated the sample. TaxaAssign also uses process of elimination to hypothesize unreferenced taxa (taxa missing from a reference database). It does this via two workflows, described below. Both can use an API account with a large language model, or operate through prompt generation for manual submission (an API is strongly recommended).
 
-## Fast and simple LLM Workflow
-The fastest workflow in TaxaAssign is to use a large language model to estimate priors for a stated habitat, location and taxonomic group. Then, with some simple assumptions about scores, and an exploration of the reference database for completeness (using an api), a consensus taxonomy can be generated with relatively little effort. It is almost always going to outperform other available consensus algorithms and is suitable for exploration and when reproducibility is not needed or time is short. 
+For the full multi-path pipeline diagram and function catalog, see the root [README.md](../README.md)'s "Pipeline Overview" and "Which Entry Point Do I Need?" sections. This document is the detailed, package-by-package walkthrough of the two most common complete paths: the fast LLM workflow and the thorough Bayesian workflow. `inst/TaxaID_Workflow_Template.R` at the repository root is a single-site template that runs the Bayesian path top to bottom with real function calls; it is generated from the same workflow graph this document describes, so its step order and argument names are the ground truth for that path.
+
+## Fast and Simple LLM Workflow
+
+The fastest workflow in TaxaAssign uses a large language model to estimate priors for a stated habitat, location, and taxonomic group. With a simple assumption about scores and an LLM-assisted check of the reference database's completeness, a consensus taxonomy can be generated with relatively little effort. It is suitable for exploration and for cases where reproducibility is not required or time is short.
+
 | Workflow | Likelihoods source | Priors source | Habitat input | TaxaLikely objects needed |
 |---|---|---|---|---|
-| LLM | TaxaLikely functions (called internally) | LLM judgement | User enters manually (location + habitat label) | None — TaxaLikely must be installed, not pre-run |
+| LLM | LLM-elicited scores, generated internally | LLM judgement | User enters manually (location + habitat label) | None |
+
+`TaxaAssign::run_llm_pipeline()` is the recommended single-call entry point: it standardizes `match_df`, infers ecological context, elicits priors and likelihoods from an LLM, and returns a consensus data frame in one call. `TaxaAssign::assign_taxa_llm()` is the lower-level function it wraps, for callers who want to control each step separately -- see `TaxaAssign/inst/TaxaAssign_llm_workflow.R` for a worked, step-by-step version of the same path.
 
 ## LLM Pipeline Map
 
@@ -25,34 +30,38 @@ The fastest workflow in TaxaAssign is to use a large language model to estimate 
     ┌────▼───────────────────────────────┐
     │         Match data input           │
     │           TaxaMatch                │
-    │   workflow_standardize.R           │
-    │   → match_obj.rds                  │
+    │   workflow_fastq_to_match.R        │
+    │   → match_df                       │
     └────────────────────────────────────┘
                     |
-    TaxaAssign (using functions from TaxaLikely)
+    TaxaAssign::run_llm_pipeline()
+    (habitat + location supplied manually;
+     likelihoods and priors both LLM-elicited)
                     │
-    TaxaAssign_llm_workflow.R
+    TaxaAssign/inst/TaxaAssign_llm_workflow.R
+                    │
+              → consensus
 ```
 
 ---
 
-## THOROUGH AND COMPLEX STATISTICAL WORKFLOW
-The more accurate workflow in TaxaAssign requires more use of api for downloading data from various sources. Notably, reference databases, and species distribution information. 
-It has two independent pipelines that both originate from TaxaMatch
-and converge at TaxaAssign:
+## Thorough and Complex Statistical Workflow
+
+The more accurate workflow in TaxaAssign makes more use of APIs, for downloading reference data and occurrence records.
+It has two independent pipelines that both originate from TaxaMatch and converge at TaxaAssign:
 - **Prior pipeline**: TaxaMatch → TaxaFetch → TaxaHabitat → TaxaExpect
 - **Likelihood pipeline**: TaxaMatch → TaxaLikely
 
-These pipelines are **fully independent** — they can run in any order, or separately,
+These pipelines are **fully independent** -- they can run in any order, or separately,
 after TaxaMatch. Users who only need priors (e.g., species distribution mapping) or
 only need likelihoods (e.g., reference quality auditing) need not run both.
 
 Users can also start from an **existing species list** rather than TaxaMatch output.
 Any vector of taxon names is a valid starting point for TaxaFetch or TaxaLikely.
 
-| Workflow | Likelihoods source | Priors source | Habitat input | TaxaLikely objects needed |
+| Workflow | Likelihoods source | Priors source | Habitat input | TaxaExpect objects needed |
 |---|---|---|---|---|
-| Bayesian | Pre-computed `real_likelihoods` | TaxaExpect priors | Via `sample_meta` (see below) | `real_model.rds`, `real_likelihoods.rds` |
+| Bayesian | `real_likelihoods` from `TaxaLikely::evaluate_likelihoods()` | `TaxaExpect::estimate_kernel_priors()` output, joined via `TaxaAssign::join_priors()` | Via `site` (see below) | `priors` (a kernel-priors data frame) |
 
 ---
 
@@ -64,8 +73,8 @@ Any vector of taxon names is a valid starting point for TaxaFetch or TaxaLikely.
     ┌────▼────────────────────────────────┐
     │         Match data input            │
     │           TaxaMatch                 │
-    │   workflow_standardize.R            │
-    │   → match_obj.rds                   │
+    │   workflow_fastq_to_match.R         │
+    │   → match_df                        │
     └────┬────────────────────────────────┘
          |
     ┌────┴───────────────────────┬──────────────────────────────────┐
@@ -73,30 +82,34 @@ Any vector of taxon names is a valid starting point for TaxaFetch or TaxaLikely.
     │   PRIOR PIPELINE           │   LIKELIHOOD PIPELINE            │
     │                            │                                  │
     │  TaxaFetch                 │  TaxaLikely                      │
-    │  (any combination):        │  TaxaLikely_workflow.R           │
-    │  - GBIF_workflow.R         │  → real_matrix.rds  (cached)     │
-    │  - Dataone_workflow.R      │  → real_model.rds               │
-    │  - pdf_workflow*.R         │  → real_likelihoods.rds          │
+    │  (any combination):        │  inst/workflows/1_fetch_...R     │
+    │  - GBIF_workflow.R         │  → 4_score_to_likelihood_...R    │
+    │  - Dataone_workflow.R      │  → real_likelihoods              │
+    │  - pdf_workflow*.R         │                                  │
     │  joined by:                │                                  │
     │  Merge_sources_workflow.R  │                                  │
     │  → occurrence_data         │                                  │
     │         |                  │                                  │
-    │  TaxaHabitat               │                                  │
+    │  TaxaHabitat                │                                 │
     │  assign_habitat_workflow.R │                                  │
-    │  → occurrences_with_habitat│                                  │
+    │  → std_occurrences         │                                  │
     │         |                  │                                  │
-    │  TaxaExpect                │                                  │
-    │  TaxaExpect_workflow.R     │                                  │
-    │  → taxaexpect_priors.rds   │                                  │
+    │  TaxaExpect (kernel path)  │                                  │
+    │  calibrate_kernel_bandwidth│                                  │
+    │  → estimate_kernel_priors  │                                  │
+    │  → generate_undetected_... │                                  │
+    │  → priors                  │                                  │
     └────────────┬───────────────┘
                  │                         │
                  └──────────┬───────────────┘
                             │
                        TaxaAssign
                 ──────────┴──────────┐
-                            │          
+                            │
                     Bayesian workflow
                     TaxaAssign_bayesian_workflow.R
+                    (join_priors → compute_posterior
+                     → posterior_consensus)
 ```
 
 ---
@@ -105,52 +118,57 @@ Any vector of taxon names is a valid starting point for TaxaFetch or TaxaLikely.
 
 ### STEP 0 — TaxaMatch
 
-**Script:** `TaxaMatch/inst/workflow_standardize.R`
+**Script:** `TaxaMatch/inst/workflow_fastq_to_match.R`
 
-**Inputs:** Raw match file (CSV); column names for sample ID and match score
+**Inputs:** Raw match file, or a sequence table/FASTA to BLAST; column names for sample ID and match score
 
 **Key functions:**
-- `standardize_match_data()` — standardises columns, detects taxonomy ranks
-- `TaxaTools::clean_taxon_names()` — strips authors, subspecies, brackets
-- `filter_redundant_hypotheses()` — drops higher-rank rows superseded by finer-rank rows within the same lineage and sample
+- `read_sequence_table()`, `filter_sequences()` -- ingest and quality-filter raw sequences before matching
+- `blast_sequences()` -- BLAST search (remote or local)
+- `standardize_match_data()` -- standardises columns, detects taxonomy ranks
+- `TaxaTools::clean_taxon_names()` -- strips authors, subspecies, brackets
+- `filter_redundant_hypotheses()` -- drops higher-rank rows superseded by finer-rank rows within the same lineage and sample
+- `evaluate_reference_accessions()` / `flag_incongruent_references()` / `review_flagged_accessions()` / `resolve_review_overrides()` / `remove_incongruent_references()` -- optional pre-training reference-accession screen: checks whether independent GenBank evidence agrees taxonomically with each reference accession a hypothesis rests on, gives borderline flags an LLM second look, and only removes rows on a separate, explicit opt-in
 
 **Outputs:**
 
-| Object | Description | Saved to |
+| Object | Description | Recommended path |
 |---|---|---|
-| `match_obj` | One row per `sample_id` × reference; standardised columns | `TaxaMatch/inst/match_obj.rds` ✓ |
+| `match_df` | One row per `sample_id`/`observation_id` × reference; standardised columns | `TaxaMatch/inst/match_obj.rds` |
 
-**Key columns:** `sample_id`, `score`, `taxon_name`, `taxon_name_rank`, `family`, `genus`, `species`, `accession`
+**Key columns:** `observation_id`, `score_original`, `taxon_name`, `taxon_name_rank`, `family`, `genus`, `species`, `accession`
+
+Non-DNA match data (camera-trap or acoustic classifier output) enters the same way via `TaxaMatch::read_animl_output()`, `read_inaturalist_cv_output()`, `read_speciesnet_output()`, or `read_birdnet_output()` -- see `TaxaMatch/inst/workflow_image_acoustic.R`.
 
 ---
 
-### PRIOR PIPELINE — Data Acquisition (TaxaFetch)
+### PRIOR PIPELINE -- Data Acquisition (TaxaFetch)
 
-Run **any combination** of the three acquisition workflows below. Each takes a vector
-of taxon names (from `match_obj` or user-supplied). Acquisition order does not matter.
+Run **any combination** of the acquisition workflows below. Each takes a vector
+of taxon names (from `match_df`/`taxa` or user-supplied). Acquisition order does not matter.
 Join all results with `Merge_sources_workflow.R` before proceeding.
 
 #### GBIF acquisition
 **Scripts:** `TaxaFetch/inst/Define_search_workflow.R` → `TaxaFetch/inst/GBIF_workflow.R`
 
-The Define script translates NCBI backbone names → GBIF backbone and identifies the
+The Define script translates NCBI backbone names to the GBIF backbone and identifies the
 higher-rank groups to query (e.g., all families in the sample). The GBIF script then
 fetches and quality-filters occurrence records.
 
-**Key functions:** `verify_taxon_names()`, `change_backbone()`, `get_keys_from_context()`,
-`make_bbox_wkt()`, `fetch_gbif_occurrences()`, `filter_gbif_quality()`
+**Key functions:** `TaxaTools::verify_taxon_names()`, `TaxaTools::change_backbone()`, `get_keys_from_context()`,
+`make_bbox_wkt()` or `define_search_polygon()`, `fetch_gbif_occurrences()` (or, for larger pulls, `download_gbif_occurrences()`), `filter_gbif_quality()`, `dedupe_occurrences()`
 
-**Outputs:** `gbif_occurrences`
+**Outputs:** `occurrences` (or `gbif_occurrences` before merging with other sources)
 
 #### DataOne acquisition
 **Script:** `TaxaFetch/inst/Dataone_workflow.R`
 
-**Outputs:** DataOne occurrence records (standardised via `dataone_standardize()`)
+**Outputs:** DataOne occurrence records (standardised via `stack_occurrences()`)
 
 #### PDF / literature acquisition
-**Script:** `TaxaFetch/inst/pdf_workflow*.R`
+**Script:** `TaxaFetch/inst/pdf_workflow_test_v4.R`
 
-See also: `TaxaFetch/inst/PDF_PIPELINE_DATAONE_PARALLEL.md` for parallel DataOne + PDF approach.
+See also: `TaxaFetch/inst/PDF_PIPELINE_DATAONE_PARALLEL.md` for a combined DataOne + PDF approach.
 
 **Outputs:** Literature-extracted occurrence records
 
@@ -159,124 +177,119 @@ See also: `TaxaFetch/inst/PDF_PIPELINE_DATAONE_PARALLEL.md` for parallel DataOne
 
 **Inputs:** Any combination of the above acquisition outputs
 
-**Key functions:** `create_taxon_names()`, `verify_taxon_names()`, `rename_cols()`, `stack_occurrences()`
+**Key functions:** `TaxaTools::create_taxon_names()`, `TaxaTools::verify_taxon_names()`, `rename_cols()`, `stack_occurrences()`
 
 **Outputs:**
 
-| Object | Description | Saved to |
+| Object | Description | Recommended path |
 |---|---|---|
-| `occurrence_data` | Combined, standardised occurrences; one `point_id` per lat/lon | *(add `saveRDS`)* |
+| `occurrence_data` | Combined, standardised occurrences; one `point_id` per lat/lon | `TaxaFetch/inst/occurrence_data.rds` |
 
 **Key columns:** `point_id`, `decimalLatitude`, `decimalLongitude`, `taxon_name`,
 `taxon_name_rank`, `datasource`, `eventDate`
 
 ---
 
-### PRIOR PIPELINE — Habitat Assignment (TaxaHabitat, via TaxaFetch)
+### PRIOR PIPELINE -- Habitat Assignment (TaxaHabitat, via TaxaFetch)
 
 **Script:** `TaxaHabitat/inst/workflows/assign_habitat_workflow.R`
 
 **Inputs:** `occurrence_data`
 
 **Key functions:**
-- `build_habitat_prompt()` — constructs LLM prompt for habitat assignment
-- `prompt_api()` — submits prompt (or `prompt_manual()` for manual submission)
-- `parse_hierarchical_habitat_response()` — parses LLM JSON → species × habitat weight table
-- `assign_habitat_biological()` — applies weights to occurrence records → `main_habitat` column
-- `flag_habitat_inconsistencies()`, `review_spatial_flags()` — spatial QAQC
+- `flag_institution_candidates()` -- tiers occurrence records flagged near a biodiversity institution (`institution_flag`, set by `TaxaFetch::filter_gbif_quality()`) into "high"/"low"/"ambiguous" suspicion for review; field stations and marine labs are often sited exactly where good habitat is, so these are never auto-removed
+- `build_habitat_lookup()` -- the recommended, cached one-call path to a species × habitat weight table: it wraps `build_habitat_prompt()` → an LLM call → `parse_hierarchical_habitat_response()`, serving a taxon already classified under the same scheme from `cache_dir` instead of re-asking. An uncached verdict can flip between runs, moving a species' records in or out of a site's habitat stratum and its kernel prior by orders of magnitude; force fresh verdicts with `taxahabitat_clear_cache(<cache_dir>)`.
+- `assign_habitat_biological()` -- applies the habitat lookup's weights to occurrence records, producing the `main_habitat` column, at a given `threshold`
+- `flag_habitat_inconsistencies()`, `review_spatial_flags()`, `save_spatial_review_decisions()`, `apply_spatial_review_decisions()` -- spatial QAQC and its reviewed-decision cache
+- `resolve_habitat_by_geography()` -- resolves a habitat verdict from geography alone when biological consensus is unavailable
+- `consensus_habitat()` -- combines multiple habitat-scheme votes into one consensus label
 
-**Note on habitat terminology:**
+**Habitat terminology:**
 - `habitat_lookup` contains **species-level** habitat weights: a species' affinity score
   for each habitat category. This is a property of the species, not the location.
-- `main_habitat` in `occurrences_with_habitat` is the **site-level** habitat: the
+- `main_habitat`, produced by `assign_habitat_biological()`, is the **site-level** habitat: the
   dominant habitat at a specific occurrence point, derived from species composition
-  at that location using `assign_habitat_biological()`.
-- These are distinct concepts — both terms are now used consistently throughout the ecosystem.
+  at that location. The same column name, `main_habitat`, carries this site-level meaning
+  everywhere downstream -- in `std_occurrences`, in `TaxaExpect`'s priors table, and in the
+  `site` argument to `TaxaAssign::join_priors()`.
+- These are distinct concepts: a species' own habitat affinity is never a location's habitat.
 
 **Outputs:**
 
-| Object | Description | Saved to |
+| Object | Description | Recommended path |
 |---|---|---|
-| `habitat_lookup` | Species × habitat weight table (LLM output, parsed) | *(add `saveRDS`)* |
-| `occurrences_with_habitat` | `occurrence_data` + `main_habitat` column | *(add `saveRDS`)* |
+| `habitat_lookup` | Species × habitat weight table (LLM output, parsed) | `TaxaHabitat/inst/habitat_lookup.rds` |
+| `std_occurrences` | `occurrence_data` + `main_habitat` column | `TaxaFetch/inst/std_occurrences.rds` |
 
 ---
 
-### PRIOR PIPELINE — Modelling and Prior Generation (TaxaExpect)
+### PRIOR PIPELINE -- Prior Generation (TaxaExpect, kernel path)
 
-> **Archived pathway (2026-09-09).** This whole document predates the kernel-priors
-> redesign and describes only the GLMM/grid pipeline below, which was archived
-> 2026-09-09 (source kept, unexecuted, at `TaxaExpect/archive_glmm_prior_pipeline/`)
-> once every real production workflow completed its migration to the kernel path.
-> None of `optimize_grid_size()`/`prepare_model_dataframe()`/`compute_moran_basis()`/
-> `screen_spatial_formula()`/`generate_full_priors()` is present in the installed
-> package any more. For the current pathway, see `TaxaExpect/README.md`'s Quick Start
-> (`estimate_kernel_priors()`/`calibrate_kernel_bandwidth()`); this section is kept as
-> a record of the superseded design, not updated in place.
+**Inputs:** `std_occurrences` (habitat-labelled occurrence records; no gridding step needed)
 
-**Script:** `TaxaExpect/inst/TaxaExpect_workflow.R`
-
-**Inputs:** `occurrences_with_habitat`
+TaxaExpect prices each species' prior as its kernel-weighted share of legitimate detections at the sampling site, directly from occurrence records: each record is weighted by its own distance from the site, so there is no intermediate grid cell to bin records into. Bandwidth is chosen by leave-one-block-out composition prediction rather than a formula. See `TaxaExpect/README.md`'s Quick Start and Key Functions sections for the full statistical description.
 
 **Steps:**
 
 | Step | Function | Output object | Notes |
 |---|---|---|---|
-| 1 | `optimize_grid_size()` | `grid_result` | Scores candidate resolutions; returns `$best_grid` |
-| 2 | `create_sites_from_grid()` | `occurrences_gridded` | Adds `grid_id`, `lat_r`, `lon_r` |
-| 3 | `prepare_model_dataframe()` | `model_data` | Species × site counts, zero-filled, covariates scaled |
-| 4 | `compute_moran_basis()` | `basis` | Moran eigenvectors; joined to `model_data` |
-| 5 | `screen_spatial_formula()` | `model_fit` | Selects parsimonious formula; returns `biofreq_model` |
-| 6 | `generate_full_priors()` | `priors_observed` | Beta(alpha, beta) per taxon × grid_id |
-| 7 | `generate_undetected_diversity()` | `priors_undetected` | Tier 3 proxies (singletons + global floor) |
-| 8 | `bind_rows()` | `priors_combined` | All tiers combined |
-| 9 | `verify_taxon_names()` + `change_backbone()` | `taxaexpect_priors` | NCBI backbone; ready for TaxaAssign |
+| 1 | `calibrate_kernel_bandwidth()` | `kernel_cal` | Chooses `lambda_km` (and the regional back-off `m`) by leave-one-block-out prediction. `kernel_cal$results["regional", ]` and `["nearest_block", ]` are reference rows -- compare `kernel_cal$best$weighted_logloss` against them to confirm the kernel actually beats a flat regional average before trusting it. `lambda_grid` should span a wide enough range that an interior optimum is possible in both directions. |
+| 2 | `estimate_kernel_priors()` | `kernel_priors_fit` | Site-centered kernel weighting of habitat-stratified occurrence records. `site_id` (default `"Site_<lat>_<lon>"`) is stamped onto the output's `grid_id` column, kept under that name for join compatibility with `TaxaAssign::join_priors()`; the value itself is opaque. |
+| 3 | `generate_undetected_diversity()` | `priors_undetected` | Good-Turing/Chao-based dark-diversity floor: singleton-mirror priors for neighborhood singletons, plus a global floor for the rest. |
+| 4 | `dplyr::bind_rows()` | `priors` | Combines resident (`kernel_estimated`) and undetected (`resident_undetected`) rows. |
+| 5 (optional) | `generate_domestic_food_priors()` | `domestic_priors`, added to `priors` | Named domestic/commensal-animal and food-species priors (`transport` branch) -- GBIF/occurrence data structurally under-counts these species. Priced on a pooled fit regardless of `sampling_group_col`, since a domestic/food species is not scoped to one detection process. |
+| 6 (optional) | `generate_regional_proximity_evidence()`, `generate_presence_curve_evidence()`, `generate_invasive_watch_evidence()`, `generate_inat_range_evidence()`, `generate_user_specified_evidence()`, each conditioned by `condition_evidence_on_habitat()` and folded in via `apply_undetected_evidence(pricing = "curve")` | evidence-blended rows added to `priors` | Elevates the dark-diversity floor for a zero-record candidate with a real regional GBIF record just outside the site, a named invasive/watch-listed species, a verified iNaturalist range, or a user-supplied weight, instead of leaving every such candidate at one flat clamp. `condition_evidence_on_habitat()` multiplies each evidence weight by the taxon's weight for the site habitat from the same `habitat_lookup` the resident priors use, so evidence obeys the same habitat stratification. |
+| 7 | `TaxaTools::verify_taxon_names()` + `TaxaMatch::convert_taxonomy_backbone()` | `priors` (backbone-converted) | Verifies taxon names and converts to the backbone `TaxaAssign::join_priors()` will be called with. |
+
+**Grouping by detection process:** when `std_occurrences` spans more than one detection process with different sampling effort (e.g. one pooled marker covering fish, birds, and phytoplankton via different methods), pass the same `sampling_group_col` to both `calibrate_kernel_bandwidth()` and `estimate_kernel_priors()`. Composition and the Good-Turing budget are then computed *within* each group instead of pooled -- pooling incomparable effort silently dilutes a detectable taxon's share and inflates a barely-sampled group's singleton counts. `kernel_priors_fit$by_group` and `$budget` carry the per-group detail; with more than one group the pooled scalars (`f1`, `f2`, `theta_present`, etc.) are `NA` by design, and `$budget` is authoritative. This grouping is a no-op for a taxonomically homogeneous pool and is orthogonal to grouping by physical site (`TaxaMatch::build_site_table()`, see the TaxaAssign section below).
+
+**Diagnostics:** `plot_theta_surface(kernel_fit, occurrence_data, taxon)` renders a continuous prior-field map for one taxon, evaluated from `kernel_priors_fit` itself (not the flattened `priors` table). `kernel_budget_sensitivity()` reports how the Good-Turing budget moves across counting-radius/bandwidth choices. `report_priors()` builds the priors section for `TaxaTools::assemble_report()`. `fit_regional_presence_curve()` recalibrates the presence-distance curve's `w_scale`/`d_half` from a local species checklist, in place of the package default used by `generate_presence_curve_evidence()`.
 
 **Outputs:**
 
-| Object | Description | Saved to |
+| Object | Description | Recommended path |
 |---|---|---|
-| `model_fit` | Fitted `biofreq_model`; needed to predict at new sites | *(add `saveRDS` → `TaxaExpect/inst/model_fit.rds`)* |
-| `grid_size` | Best grid resolution from `optimize_grid_size()` | *(embed in `model_fit` or save separately)* |
-| `taxaexpect_priors` | Prior table; NCBI backbone; input to TaxaAssign Bayesian | *(add `saveRDS` → `TaxaExpect/inst/taxaexpect_priors.rds`)* |
+| `kernel_priors_fit` | Fitted `taxaexpect_kernel_priors` object; needed to derive undetected/evidence rows or re-plot the prior field at this site | `TaxaExpect/inst/kernel_priors_fit.rds` |
+| `priors` | Prior table; backbone-converted; input to TaxaAssign's Bayesian workflow | `TaxaExpect/inst/priors.rds` |
 
-**Key columns in `taxaexpect_priors`:** `taxon_name`, `taxon_name_rank`, `grid_id`,
-`alpha`, `beta`, `theta_mean`, `theta_sd`, `model_tier`, `undetected_type`
+Neither the workflow template nor the package saves these to disk automatically -- add a `saveRDS()` call at whichever checkpoint you want to persist.
+
+**Key columns in `priors`:** `taxon_name`, `taxon_name_rank`, `grid_id`, `main_habitat`,
+`alpha`, `beta`, `theta_mean`, `theta_sd`, `prior_branch`, `effective_records`, `undetected_type`, `model_tier`.
+`prior_branch` records which generator produced a row (`kernel_estimated`, `resident_undetected`, `evidence_blend`, `transport`); it makes no claim about how much evidence stands behind the row -- `effective_records` does.
 
 ---
 
 ### LIKELIHOOD PIPELINE (TaxaLikely)
 
-**Script:** `TaxaLikely/inst/TaxaLikely_workflow.R`
-
-**Inputs:** `match_obj` (from TaxaMatch, or any conforming data frame)
+**Inputs:** `match_df` (from TaxaMatch, or any conforming data frame)
 
 **Stages:**
 
-| Stage | Functions | Output | Saved to |
+| Stage | Script | Functions | Output |
 |---|---|---|---|
-| A | Toy data — verify functions run | (no save needed) | — |
-| B1 | `build_sequence_matrix()` | `real_matrix` | `TaxaLikely/inst/real_matrix.rds` ✓ |
-| B2 | `train_likelihood_model()` | `real_model` | *(add `saveRDS` → `TaxaLikely/inst/real_model.rds`)* |
-| B3 | `evaluate_likelihoods()` | `real_likelihoods` | `TaxaLikely/inst/real_likelihoods.rds` ✓ |
-| C | `audit_barcode_coverage()` | `coverage` | *(optional; not passed to TaxaAssign directly)* |
+| 1 | `TaxaLikely/inst/workflows/1_fetch_references_workflow.R` | `fetch_ncbi_reference_sequences()` -- searches NCBI by family (not individual species) so the model has within-species variation and between-species distances; species present in `match_df` are prioritized so they are always fully represented under a download budget | `reference_df` |
+| 2 (optional) | `TaxaLikely/inst/workflows/2_flag_errors_workflow.R` | Reference-accession screening (see the TaxaMatch step above) | flagged `reference_df` |
+| 3 | `TaxaLikely/inst/workflows/3_train_model_workflow.R` | `build_sequence_matrix()` → `train_likelihood_model()` -- fits per-species score distributions with empirical Bayes shrinkage | `reference_matrix`, `model_params` |
+| 4 | `TaxaLikely/inst/workflows/4_score_to_likelihood_workflow.R` | `evaluate_likelihoods()` → `filter_top_hypotheses()` -- computes H1/H2/H3 likelihoods per sample × taxon | `likelihoods` (from `lik_result$likelihoods`) |
+| 5 (optional) | `TaxaLikely/inst/workflows/5_audit_coverage_workflow.R` | `audit_barcode_coverage()` -- audits reference-database coverage for the taxa in `match_df` | `coverage` (not passed to TaxaAssign directly) |
+| 6 (non-DNA alternative) | `TaxaLikely/inst/workflows/6_no_score_pathway_workflow.R` | `unreferenced_candidates()` + `assign_scores(score_type = "none")` -- for expert/morphological IDs with no match scores at all | `likelihoods` |
 
-**Note:** `real_likelihoods` is `lik_result$likelihoods` before `filter_top_hypotheses()`.
-The Bayesian workflow applies `filter_top_hypotheses()` as its first step.
+Non-DNA match data (image/acoustic classifier output) skips training and goes straight to `assign_scores()` -- see `TaxaLikely/inst/workflows/image_acoustic_likelihood_workflow.R`.
 
 **Outputs needed by TaxaAssign:**
 
-| Object | Description | Saved to |
+| Object | Description | Recommended path |
 |---|---|---|
-| `real_model` | Trained `taxa_model_params`; needed to re-evaluate at new queries | `TaxaLikely/inst/real_model.rds` *(TODO)* |
-| `real_likelihoods` | Raw evaluated likelihoods | `TaxaLikely/inst/real_likelihoods.rds` ✓ |
+| `model_params` | Trained `taxa_model_params`; needed to re-evaluate at new queries | `TaxaLikely/inst/model_params.rds` |
+| `likelihoods` | Evaluated, top-filtered likelihoods | `TaxaLikely/inst/real_likelihoods.rds` |
 
 ---
 
-### CONVERGENCE — TaxaAssign
+### CONVERGENCE -- TaxaAssign
 
 #### Option A: LLM workflow
-**Script:** `TaxaAssign/inst/TaxaAssign_llm_workflow.R`
+**Script:** `TaxaAssign/inst/TaxaAssign_llm_workflow.R`; recommended entry point `TaxaAssign::run_llm_pipeline()`.
 
 Does **not** require TaxaLikely or TaxaExpect objects. The LLM generates both
 likelihood judgements and prior context internally from the match data.
@@ -286,117 +299,78 @@ likelihood judgements and prior context internally from the match data.
 - A habitat label for the sampling site
 
 **Required inputs:**
-- `match_obj` — provides species candidates and match scores
+- `match_df` -- provides species candidates and match scores
 
 #### Option B: Bayesian workflow
 **Script:** `TaxaAssign/inst/TaxaAssign_bayesian_workflow.R`
 
-Combines TaxaLikely likelihoods with TaxaExpect priors. The user does **not** enter
-habitat manually — habitat context is embedded in `taxaexpect_priors` via `grid_id`.
+Combines TaxaLikely likelihoods with TaxaExpect priors via `TaxaAssign::join_priors()`.
 
 **Required inputs:**
 
 | Object | Source | Role |
 |---|---|---|
-| `match_obj` | TaxaMatch | Species list for unreferenced hypothesis expansion |
-| `real_likelihoods` (+ `real_model`) | TaxaLikely | Per-hypothesis likelihoods |
-| `taxaexpect_priors` | TaxaExpect | Per-taxon × grid_id prior probabilities |
-| `sample_meta` | User-supplied (see below) | Maps `sample_id` → `grid_id` |
+| `match_df` / `taxa` | TaxaMatch | Species list for unreferenced-hypothesis expansion and taxonomy fallback |
+| `likelihoods` (+ `model_params`) | TaxaLikely | Per-hypothesis likelihoods |
+| `priors` | TaxaExpect | Per-taxon × `grid_id` × `main_habitat` prior parameters |
+| `site` | User-supplied (see below) | Tells `join_priors()` which site/habitat each likelihood row belongs to |
 
-**`sample_meta`** is NOT generated by any TaxaID workflow. The user builds it from their
-experimental design (where samples were collected and what habitat was present).
-TaxaAssign uses it to attach spatial and habitat context to each likelihood row before
-joining to `taxaexpect_priors`.
-
-Required columns: `sample_id`, `grid_id`, `main_habitat`
-
-> **Superseded pattern (2026-09-09).** `create_sites_from_grid()` in the code
-> comment below is ARCHIVED (final, not committed to the live package) --
-> after a brief same-day archive/restore/archive-again history, it was
-> retired for good once its restoration's own justification was tested
-> against real evidence and refuted; see `TaxaExpect/CLAUDE.md`'s final
-> 2026-09-09 session note for the full record. That is not the only reason
-> the pattern below is superseded, though: on the kernel-priors path,
-> `estimate_kernel_priors()` returns one opaque `site_id` per call rather
-> than a grid of `grid_id`s, so this whole `create_sites_from_grid()`-keyed
-> `sample_meta` pattern is superseded for a reason unrelated to the
-> function's archival status too -- kept here as a record of the superseded
-> design.
+**The `site` argument** is what `join_priors()` uses to attach spatial and habitat context to
+each likelihood row before joining to `priors`. `main_habitat` is always required -- the
+function never guesses which habitat the observations came from. For a single-site study it
+is a named list:
 
 ```r
-# grid_id must use the SAME grid_size as the TaxaExpect model:
-#   sample_locations <- create_sites_from_grid(   # archived; this pattern is SUPERSEDED, see note above
-#     sample_lat_lon_df,            # user data: sample_id + decimalLatitude + decimalLongitude
-#     grid_size = grid_result$best_grid   # saved from TaxaExpect workflow
-#   )
-#   sample_meta <- sample_locations |>
-#     dplyr::select(sample_id, grid_id) |>
-#     dplyr::left_join(sample_habitat_notes, by = "sample_id")  # adds main_habitat
-#   # main_habitat can come from field notes or TaxaHabitat applied to sample locations
+site_spec <- list(lat = SITE_LAT, lon = SITE_LON, main_habitat = SITE_HABITAT)
 ```
 
-**Join sequence in TaxaAssign (Section 5):**
-1. `likelihoods |> left_join(sample_meta, by = "sample_id")` — adds `grid_id` + `main_habitat` to every likelihood row
-2. `|> left_join(taxaexpect_priors, by = c("taxon_name", "grid_id", "main_habitat"))` — attaches prior parameters
+which auto-resolves to the nearest `grid_id` in `priors` (or `list(grid_id = "...",
+main_habitat = "...")` directly, if known). For a study spanning multiple sites, `site` is
+instead a data frame with one row per `observation_id` (`observation_id`, `lat`, `lon`,
+`main_habitat`, or `grid_id` in place of `lat`/`lon`) -- built by joining
+`TaxaMatch::build_site_table()`'s output to a per-site habitat lookup, one row per
+`spatial_group_id`. `TaxaAssign::combine_multisite_priors()` then combines any duplicate
+`(observation_id, taxon_name)` rows produced by an observation detected at more than one
+site, via precision-weighted logit combination, before `compute_posterior()`.
+
+**Join sequence in `join_priors()`:**
+1. Resolve `site` to one `grid_id` + `main_habitat` per `observation_id` (nearest-site resolution for a named-list `site`, direct lookup for a data-frame `site`).
+2. Join `likelihoods` to `priors` on `taxon_name` (or, via `expansion_taxonomy`, an expanded set of species under a coarser-rank likelihood row) × `grid_id` × `main_habitat`, attaching `prior_mean`, `prior_alpha`, `prior_beta`.
 
 **Pipeline sections:**
 
 | Section | Action |
 |---|---|
-| 1 | Load likelihoods; apply `filter_top_hypotheses()` |
-| 2 | Load `taxaexpect_priors`; extract species list |
-| 3 | Identify unreferenced species; expand H2/H3 rows via `expand_unreferenced_hypotheses()` |
-| 4 | Apply coverage constraints: `apply_coverage_constraints()` |
-| 5 | Join likelihoods to priors on `taxon_name` + `grid_id` + `main_habitat` (via `sample_meta`) |
-| 6 | `compute_posterior()` |
-| 7 | `consensus_taxonomy()` — see `TaxaAssign_consensus_workflow.R` for full details |
+| 1 | Load likelihoods; apply `TaxaLikely::filter_top_hypotheses()` |
+| 2 | Load `priors`; extract species list |
+| 3 | Identify unreferenced species; expand H2/H3 rows via `TaxaLikely::expand_unreferenced_hypotheses()` |
+| 4 | Apply coverage constraints: `TaxaLikely::apply_coverage_constraints()` |
+| 5 | `TaxaAssign::join_priors()` -- see above |
+| 6 | `TaxaAssign::compute_posterior()` |
+| 7 | `TaxaAssign::posterior_consensus()`, optionally refined by `update_prior_from_consensus()` + a second `posterior_consensus()` call (empirical Bayes), then `add_slash_taxon()` |
+
+Both options converge on the same consensus schema and can be passed to `TaxaFlag::review_assignments()` for LLM expert review (habitat fit, geographic plausibility, contaminant risk, alternatives) -- see `TaxaFlag/inst/review_assignments_workflow.R`.
 
 ---
 
 ## Recommended Save Paths (all packages)
 
-| Object | Package | Path |
+Neither the generated workflow template nor the individual package scripts save these
+checkpoint objects to disk by default -- add a `saveRDS()` call yourself at whichever step
+you want to persist. Point `CACHE_ROOT`/`cache_dir` arguments at a durable, project-local
+directory rather than `tempdir()` for a real run; see the root README's "Caching and
+resources" section for the separate, query-level caches (GBIF downloads, NCBI fetches, LLM
+verdicts) that most of these steps also use.
+
+| Object | Package | Recommended path |
 |---|---|---|
-| `match_obj` | TaxaMatch | `TaxaMatch/inst/match_obj.rds` |
-| `occurrence_data` | TaxaFetch | `TaxaFetch/inst/occurrence_data.rds` *(TODO)* |
-| `occurrences_with_habitat` | TaxaHabitat | `TaxaFetch/inst/occurrences_with_habitat.rds` *(TODO)* |
-| `real_matrix` | TaxaLikely | `TaxaLikely/inst/real_matrix.rds` |
-| `real_model` | TaxaLikely | `TaxaLikely/inst/real_model.rds` *(TODO)* |
-| `real_likelihoods` | TaxaLikely | `TaxaLikely/inst/real_likelihoods.rds` |
-| `model_fit` | TaxaExpect | `TaxaExpect/inst/model_fit.rds` *(TODO)* |
-| `taxaexpect_priors` | TaxaExpect | `TaxaExpect/inst/taxaexpect_priors.rds` *(TODO)* |
-
----
-
-## Open Design Issues
-
-### `habitat` vs `main_habitat` — RESOLVED
-
-Two distinct concepts existed under overlapping names:
-- **Species-level**: habitat affinity weights in `habitat_lookup` — a property of the species (TaxaHabitat)
-- **Site-level**: `main_habitat` — dominant habitat at an occurrence point or grid cell
-
-`generate_full_priors()` and `generate_undetected_diversity()` were previously hardcoding
-the output column as `habitat` regardless of `habitat_col`. Fixed: both functions now
-respect `habitat_col` on output (default `"main_habitat"`). The Bayesian workflow join
-updated accordingly. `main_habitat` is now consistent throughout TaxaHabitat → TaxaExpect → TaxaAssign.
-
-### ⚠️ TaxaExpect workflow Section 7 (legacy code)
-
-Section 7 of `TaxaExpect_workflow.R` references `taxamatch_output` (the raw TaxaMatch
-object) and attempts to join likelihoods. This predates the TaxaLikely split and should
-be removed. TaxaExpect does not use likelihoods — that join happens in TaxaAssign.
-
-### ⚠️ `sample_meta` not generated by any workflow
-
-The Bayesian workflow needs `sample_id → grid_id` mapping. No existing script builds this.
-The grid_id must use the same `grid_size` as the TaxaExpect model. The `grid_size` should
-be stored in `model_fit$meta` (verify this is implemented) or saved separately alongside
-`taxaexpect_priors`.
-
-### Prior join dimension — RESOLVED
-
-`taxaexpect_priors` is indexed by `taxon_name × grid_id × main_habitat`. The Bayesian
-workflow joins on all three dimensions. `sample_meta` supplies `grid_id` and `main_habitat`
-per `sample_id`, so the join is fully determined. The join sequence is documented above
-under Option B.
+| `match_df` | TaxaMatch | `TaxaMatch/inst/match_obj.rds` |
+| `occurrence_data` | TaxaFetch | `TaxaFetch/inst/occurrence_data.rds` |
+| `habitat_lookup` | TaxaHabitat | `TaxaHabitat/inst/habitat_lookup.rds` |
+| `std_occurrences` | TaxaHabitat | `TaxaFetch/inst/std_occurrences.rds` |
+| `reference_matrix` | TaxaLikely | `TaxaLikely/inst/real_matrix.rds` |
+| `model_params` | TaxaLikely | `TaxaLikely/inst/model_params.rds` |
+| `likelihoods` | TaxaLikely | `TaxaLikely/inst/real_likelihoods.rds` |
+| `kernel_priors_fit` | TaxaExpect | `TaxaExpect/inst/kernel_priors_fit.rds` |
+| `priors` | TaxaExpect | `TaxaExpect/inst/priors.rds` |
+| `consensus` / `reviewed` | TaxaAssign / TaxaFlag | project-specific output directory |
