@@ -96,7 +96,7 @@ more than one option. Default \code{NULL} (no downranking). A narrowing must
 also survive \code{downrank_requires_candidate}. Callers
 building \code{species_reference} from a mix of observed and evidence-only
 rows should still exclude the evidence-only ones
-(\code{prior_branch != "resident_observed"}) before passing it in, so a
+(\code{prior_branch != "kernel_estimated"}) before passing it in, so a
 downrank reflects a species this observation could plausibly have
 produced, not merely one that is locally plausible in the abstract.}
 
@@ -287,10 +287,10 @@ a reference-database representation gap -- the locally plausible
 relatives were never in the candidate pool at all, so no threshold
 applied to the existing candidates could have caught it.
 "Plausible" means the candidate carries a real occurrence record,
-read off \code{model_tier} (supplied by \code{\link[=join_priors]{join_priors()}} from TaxaExpect
+read off \code{prior_branch} (supplied by \code{\link[=join_priors]{join_priors()}} from TaxaExpect
 priors) rather than off \code{prior_mean}'s value: a taxon never reported
-locally has \code{model_tier = NA}, while a genuine singleton has a real
-tier, even though both can share the same numeric floor prior.
+locally has \code{prior_branch = NA}, while a genuine singleton has a real
+branch, even though both can share the same numeric floor prior.
 Counted over every named hypothesis for the observation, before
 \code{min_posterior}/\code{cumulative_threshold} filtering (a candidate that
 competed and lost still competed), and EXCLUDING the row's own taxon
@@ -301,11 +301,13 @@ The \code{primary_} version counts rival taxa; the \code{consensus_} version
 counts distinct plausible groups at \code{consensus_rank} (rival genera
 when the LCA landed at genus, rival families at family), reducing to
 the \code{primary_} count at species rank. "Plausible" means "joined to
-a NAMED prior row": non-\code{NA} \code{prior_branch} when that column is
-present (kernel-priors schema -- any branch counts, resident,
-undetected-evidence, or transport), else non-\code{NA}
-\code{model_tier} (legacy GLMM tables). Both are \code{NA} when
-\code{posterior_df} carries neither column.}
+a NAMED prior row": non-\code{NA} \code{prior_branch} (any branch counts,
+resident, undetected-evidence, or transport). \code{NA} when
+\code{posterior_df} carries no \code{prior_branch} column at all -- i.e. no
+prior table was ever joined. A \code{model_tier} column with no
+\code{prior_branch} column is an error: it identifies a prior table
+predating the kernel-priors schema, which this function no longer
+reads.}
 \item{\code{winner_has_occurrence_record}, \code{consensus_prior},
 \code{consensus_has_occurrence_record}}{Support for the
 prior/occurrence-plausibility axis, answering what \code{winner_prior}'s
@@ -315,18 +317,15 @@ numeric prior (both land on the dark-diversity floor) while meaning
 opposite things, so presence is read off the prior row's provenance
 rather than inferred from a low prior.
 \code{winner_has_occurrence_record} is \code{TRUE} when the winning
-hypothesis carries a real occurrence record. When \code{posterior_df}
-has a \code{prior_branch} column (kernel-priors schema) this
-means \code{prior_branch} is \code{"kernel_estimated"} (or the also-accepted
-name \code{"resident_observed"}) -- a kernel estimate
-from real in-habitat local evidence; \code{resident_undetected}
-(evidence-elevated species with zero local records) and
-\code{transport} (domestic/food) winners read \code{FALSE}, with a transport
-winner's interpretation carried separately by
+hypothesis carries a real occurrence record: \code{prior_branch} is
+\code{"kernel_estimated"} -- a kernel estimate from real in-habitat local
+evidence; \code{resident_undetected} (evidence-elevated species with zero
+local records) and \code{transport} (domestic/food) winners read \code{FALSE},
+with a transport winner's interpretation carried separately by
 \code{TaxaFlag::add_posthoc_assessment()}'s \code{domestic_prior_caveat}.
-Legacy GLMM tables (no \code{prior_branch}) use the non-\code{NA}-\code{model_tier}
-reading described above instead; \code{NA} when \code{posterior_df} has
-neither column.
+\code{NA} when \code{posterior_df} carries no \code{prior_branch} column. A
+\code{model_tier} column with no \code{prior_branch} column is an error (see
+above).
 \code{consensus_prior} is a \code{theta_mean}-based group share, not
 \code{prior_mean}, because \code{prior_mean} can be inflated by the
 confirmation boost above, which would let one confirmed-elsewhere

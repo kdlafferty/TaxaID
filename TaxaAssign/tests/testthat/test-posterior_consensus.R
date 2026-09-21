@@ -602,10 +602,10 @@ test_that("invalid min_posterior raises error", {
 # ==============================================================================
 
 # Fixture: one observation, four species candidates across two genera in one
-# family. `model_tier` marks which candidates have a real local occurrence
+# family. `prior_branch` marks which candidates have a real local occurrence
 # record -- NA means "never reported here", which is what makes a candidate
 # implausible for these counts.
-make_competitor_df <- function(model_tier = c("tier1", "tier2", NA, NA),
+make_competitor_df <- function(prior_branch = c("kernel_estimated", "resident_undetected", NA, NA),
                                posterior_mean = c(0.55, 0.20, 0.15, 0.10)) {
   df <- data.frame(
     observation_id = rep("obs1", 4),
@@ -617,7 +617,7 @@ make_competitor_df <- function(model_tier = c("tier1", "tier2", NA, NA),
     genus = c("Aa", "Aa", "Bb", "Bb"),
     family = rep("Fam1", 4),
     species = c("Aa one", "Aa two", "Bb one", "Bb two"),
-    model_tier = model_tier,
+    prior_branch = prior_branch,
     species_confusion_risk = rep(0.10, 4),
     genus_confusion_risk = rep(0.30, 4),
     family_confusion_risk = rep(0.60, 4),
@@ -649,7 +649,7 @@ test_that("primary_n_plausible_competitors counts plausible RIVALS, excluding th
 
 test_that("a win with no plausible rival at all reports 0, not 1", {
   # Only the winner itself is plausible -> nothing to lose to.
-  out <- posterior_consensus(make_competitor_df(model_tier = c("tier1", NA, NA, NA)),
+  out <- posterior_consensus(make_competitor_df(prior_branch = c("kernel_estimated", NA, NA, NA)),
     rank_system = c("family", "genus", "species"),
     min_posterior = 0, cumulative_threshold = 1
   )
@@ -659,7 +659,7 @@ test_that("a win with no plausible rival at all reports 0, not 1", {
 test_that("an implausible winner still reports its plausible rivals (axes stay independent)", {
   # Winner "Aa one" is NOT plausible, but two rivals are. The count describes
   # the rivals, not the winner -- winner plausibility is winner_prior's job.
-  out <- posterior_consensus(make_competitor_df(model_tier = c(NA, "tier1", "tier2", NA)),
+  out <- posterior_consensus(make_competitor_df(prior_branch = c(NA, "kernel_estimated", "resident_undetected", NA)),
     rank_system = c("family", "genus", "species"),
     min_posterior = 0, cumulative_threshold = 1
   )
@@ -681,7 +681,7 @@ test_that("consensus_n_plausible_competitors counts rival GROUPS at the consensu
   # Force a genus-level LCA by making the two genera tie, and make one
   # candidate in each genus plausible -> exactly 1 rival genus.
   df <- make_competitor_df(
-    model_tier = c("tier1", NA, "tier1", NA),
+    prior_branch = c("kernel_estimated", NA, "kernel_estimated", NA),
     posterior_mean = c(0.30, 0.20, 0.30, 0.20)
   )
   out <- posterior_consensus(df,
@@ -714,13 +714,13 @@ test_that("consensus_confusion_risk is matched to consensus_rank, not the winner
   expect_equal(out_fam$winner_species_confusion_risk, 0.10) # unchanged
 })
 
-test_that("counts are NA (not 0) when posterior_df carries no model_tier column", {
+test_that("counts are NA (not 0) when posterior_df carries no prior_branch column", {
   df <- make_competitor_df(posterior_mean = c(0.97, 0.01, 0.01, 0.01))
-  df$model_tier <- NULL
+  df$prior_branch <- NULL
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_true(is.na(out$primary_n_plausible_competitors))
   expect_true(is.na(out$consensus_n_plausible_competitors))
-  # confusion risk is independent of model_tier and must still be reported
+  # confusion risk is independent of prior_branch and must still be reported
   expect_equal(out$consensus_rank, "species")
   expect_equal(out$consensus_confusion_risk, 0.10)
 })
@@ -735,6 +735,7 @@ test_that("counts are NA (not 0) when posterior_df carries no model_tier column"
 # reads winner_prior/consensus_prior interchangeably would fail loudly.
 
 make_theta_df <- function(model_tier = c("tier1", "tier2", NA, NA),
+                          prior_branch = ifelse(is.na(model_tier), NA_character_, "kernel_estimated"),
                           posterior_mean = c(0.55, 0.20, 0.15, 0.10),
                           prior_mean = c(0.99, 0.05, NA, NA),
                           theta_mean = c(0.02, 0.05, NA, NA)) {
@@ -751,6 +752,7 @@ make_theta_df <- function(model_tier = c("tier1", "tier2", NA, NA),
     family = rep("Fam1", 4),
     species = c("Aa one", "Aa two", "Bb one", "Bb two"),
     model_tier = model_tier,
+    prior_branch = prior_branch,
     stringsAsFactors = FALSE
   )
   df
@@ -788,33 +790,35 @@ test_that("winner_has_occurrence_record is unaffected by a boosted prior_mean", 
 })
 
 # ==============================================================================
-# Kernel-priors schema (2026-08-31): prior_branch supersedes model_tier.
-# Real-bug regression: kernel tables carry model_tier only as a legacy column
-# on their undetected/domestic rows (NA on every locally-evidenced resident
-# row), so the legacy non-NA-model_tier reading was exactly INVERTED on real
-# GreatLakes kernel output (873/885 winners read "unprecedented"; the only
-# TRUE rows were evidence-blend species with ZERO local records).
+# Kernel-priors schema: winner_has_occurrence_record and the
+# plausible-competitor counts read prior_branch; model_tier is never
+# consulted for either. Real-bug regression this prevents: kernel tables
+# carry model_tier only as a legacy column on their undetected/domestic rows
+# (NA on every locally-evidenced resident row), so reading model_tier in
+# prior_branch's place is exactly INVERTED (confirmed on real GreatLakes
+# kernel output: 873/885 winners read "unprecedented"; the only TRUE rows
+# were evidence-blend species with ZERO local records).
 # ==============================================================================
 
-test_that("winner_has_occurrence_record reads prior_branch when present (kernel schema)", {
-  # The kernel inversion in miniature: the resident winner carries legacy
-  # model_tier = NA; a losing evidence-blend row carries a non-NA legacy tier.
+test_that("winner_has_occurrence_record reads prior_branch, ignoring model_tier", {
+  # model_tier is set to the OPPOSITE of what prior_branch implies, so a test
+  # that accidentally read model_tier instead would fail loudly.
   df <- make_theta_df(
     model_tier = c(NA, "tier_undetected_evidence", NA, NA),
     posterior_mean = c(0.97, 0.01, 0.01, 0.01)
   )
-  df$prior_branch <- c("resident_observed", "resident_undetected", NA, NA)
+  df$prior_branch <- c("kernel_estimated", "resident_undetected", NA, NA)
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_equal(out$consensus_taxon, "Aa one")
-  expect_true(out$winner_has_occurrence_record) # legacy reading gave FALSE
+  expect_true(out$winner_has_occurrence_record)
 
   # An evidence-elevated winner (zero local records) reads FALSE, even though
-  # its legacy model_tier is non-NA (legacy reading gave TRUE).
+  # its model_tier is non-NA.
   df2 <- make_theta_df(
     model_tier = c("tier_undetected_evidence", NA, NA, NA),
     posterior_mean = c(0.97, 0.01, 0.01, 0.01)
   )
-  df2$prior_branch <- c("resident_undetected", "resident_observed", NA, NA)
+  df2$prior_branch <- c("resident_undetected", "kernel_estimated", NA, NA)
   out2 <- posterior_consensus(df2, rank_system = c("family", "genus", "species"))
   expect_equal(out2$consensus_taxon, "Aa one")
   expect_false(out2$winner_has_occurrence_record)
@@ -834,15 +838,22 @@ test_that("plausible-competitor counts read prior_branch when present", {
   # Winner Aa one (resident) + one named rival on any branch = 1 competitor;
   # the two floor rows (NA branch) never count.
   df <- make_theta_df(model_tier = c(NA, NA, NA, NA))
-  df$prior_branch <- c("resident_observed", "transport", NA, NA)
+  df$prior_branch <- c("kernel_estimated", "transport", NA, NA)
   out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
   expect_equal(out$primary_n_plausible_competitors, 1L)
 })
 
-test_that("legacy tables without prior_branch keep the model_tier reading", {
+test_that("a model_tier column with no prior_branch column is an error", {
+  # 1.0 has no predecessor: a prior table that predates the kernel-priors
+  # schema (model_tier without prior_branch) must fail loudly, not fall back
+  # to the model_tier reading -- see posterior_consensus.R's own docs on why
+  # that reading is exactly inverted on real kernel tables.
   df <- make_theta_df(model_tier = c("tier1", NA, NA, NA))
-  out <- posterior_consensus(df, rank_system = c("family", "genus", "species"))
-  expect_true(out$winner_has_occurrence_record)
+  df$prior_branch <- NULL
+  expect_error(
+    posterior_consensus(df, rank_system = c("family", "genus", "species")),
+    "model_tier.*prior_branch"
+  )
 })
 
 # ==============================================================================
@@ -1121,7 +1132,7 @@ test_that("the candidate gate does not fire when plausible_taxa is empty or abse
 
 
 # ===========================================================================
-# prior_branch rename + the evidence gate (2026-09-14)
+# prior_branch + the evidence gate
 # ===========================================================================
 
 .branch_post <- function(branch, eff = NA_real_) {
@@ -1138,15 +1149,23 @@ test_that("the candidate gate does not fire when plausible_taxa is empty or abse
   )
 }
 
-test_that("the pre-rename branch string still counts as an occurrence record", {
-  # Every prior table checkpointed before 2026-09-14 carries the old string,
-  # across four sites and several expensive-to-regenerate objects. A reader
-  # that recognised only the new name would silently reclassify all of them
-  # -- the exact failure this rename exists to stop.
+test_that("kernel_estimated counts as an occurrence record", {
   new <- posterior_consensus(.branch_post("kernel_estimated", 100), min_posterior = 0)
-  old <- posterior_consensus(.branch_post("resident_observed", 100), min_posterior = 0)
   expect_true(new$winner_has_occurrence_record)
-  expect_true(old$winner_has_occurrence_record)
+})
+
+test_that("an unrecognised prior_branch value stops, naming the value and the accepted set", {
+  # 1.0 has no predecessor: a pre-1.0 label on a cached prior table (e.g. the
+  # retired "resident_observed" alias) must error, not be silently read as
+  # "not a kernel-estimated row".
+  bad <- .branch_post("resident_observed", 100)
+  err <- tryCatch(
+    posterior_consensus(bad, min_posterior = 0),
+    error = function(e) e
+  )
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "resident_observed", fixed = TRUE)
+  expect_match(conditionMessage(err), "kernel_estimated", fixed = TRUE)
 })
 
 test_that("a non-kernel branch still reads FALSE", {
@@ -1175,14 +1194,15 @@ test_that("min_effective_records gates a thin row when asked to", {
   )
 })
 
-test_that("a legacy table with no effective_records is not silently demoted", {
-  # "Cannot answer the question" must not read as "no evidence" -- that would
-  # flip every row of a pre-kernel table to unprecedented in one step.
-  legacy <- .branch_post("resident_observed")
-  legacy$effective_records <- NULL
-  expect_true(
-    posterior_consensus(legacy, min_posterior = 0,
-                        min_effective_records = 1)$winner_has_occurrence_record
+test_that("min_effective_records > 0 with no effective_records column is an error", {
+  # A prior table missing effective_records cannot answer the evidence-gate
+  # question at all; silently leaving the branch verdict standing would
+  # misrepresent an unanswerable check as a passed one.
+  no_eff <- .branch_post("kernel_estimated")
+  no_eff$effective_records <- NULL
+  expect_error(
+    posterior_consensus(no_eff, min_posterior = 0, min_effective_records = 1),
+    "effective_records"
   )
 })
 
