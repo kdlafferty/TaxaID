@@ -8,10 +8,9 @@
 #
 # review_spatial_flags() is an interactive gadget whose output -- which flagged
 # points a reviewer confirmed, dismissed, or moved to another habitat -- is a
-# human decision, not a computed intermediate. Every production workflow used
-# to re-open the gadget on every run and overwrite the previous decisions
-# (found 2026-09-12; the same class of gap the search polygon had before it was
-# persisted). These two helpers keep one small table per site, keyed on
+# human decision, not a computed intermediate. Without persistence, every
+# production workflow run would re-open the gadget and overwrite the previous
+# decisions. These two helpers keep one small table per site, keyed on
 # point_id (TaxaFetch::stack_occurrences() builds point_id from the
 # coordinates, so it is stable across runs), and let a workflow open the
 # gadget only for flagged points that carry no decision yet.
@@ -73,8 +72,7 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
     bh <- as.character(before[[habitat_col]])[match(new$point_id, as.character(before[[point_id_col]]))]
     # .is_habitat_unassigned(), not !is.na(): an "Uncertain" point is NOT a
     # reviewer reassignment, and testing NA alone would record every unplaceable
-    # point as one. The predicate also keeps files written before 2026-09-19,
-    # which store NA, reading correctly.
+    # point as one.
     new$habitat_reassigned <- !.is_habitat_unassigned(new$main_habitat) &
       (.is_habitat_unassigned(bh) | bh != new$main_habitat)
   } else {
@@ -84,8 +82,7 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
     # habitat is recorded as a reassignment and will be re-applied verbatim
     # on every later run -- freezing whatever the automatic classifier said
     # the day of the review. Warn rather than let a seeding script do this
-    # silently (2026-09-13; the three seeded production files were checked
-    # and are clean, 0 of 244,860 rows frozen).
+    # silently.
     n_frozen <- sum(new$habitat_reassigned)
     if (n_frozen > 0L) {
       warning(sprintf(
@@ -221,7 +218,7 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
 #' did so deliberately, and a later change of the classifier's mind must not
 #' erase that. Only rows whose `decided_at` matches `seeded_pattern` are
 #' eligible, so a genuine review is preserved even when the automatic verdict
-#' moves underneath it. Measured on the three production files on 2026-09-19,
+#' moves underneath it. Measured on the three production files,
 #' **all 244,860 decisions were seeded and none were real** -- so on those files
 #' every changed point is eligible, which is the situation this exists for.
 #'
