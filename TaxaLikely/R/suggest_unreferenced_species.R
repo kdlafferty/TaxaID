@@ -108,6 +108,20 @@
 # Internal helpers for genus-level plausible species
 # ==============================================================================
 
+#' Test whether a string looks like a plausible genus name
+#'
+#' A single capitalised Latin word (e.g. "Gadus") -- no second word, no
+#' digits/punctuation, none of `is_plausible_binomial()`'s placeholder
+#' terms. TaxaTools has no equivalent helper for a bare genus (only
+#' [TaxaTools::is_plausible_binomial()], which requires two words), so this
+#' is a package-local strict regex.
+#' @noRd
+.is_plausible_genus <- function(x) {
+  grepl("^[A-Z][a-z]+$", x) &
+    !grepl("uncultured|environmental|metagenom", x, ignore.case = TRUE, perl = TRUE)
+}
+
+
 #' Build a plausible-species prompt for one batch of genera
 #' @noRd
 .build_plausible_prompt <- function(genera, ctx, data_type) {
@@ -596,8 +610,11 @@ print.unreferenced_species_result <- function(x, ...) {
 #'
 #' @param match_df Data frame.  Canonical match object from TaxaMatch (or
 #'   equivalent).  Required column: `taxon_name`.  Optional but strongly
-#'   recommended: `genus` (if absent, derived from `taxon_name`).  Required
-#'   for `expand_to_family = TRUE`: `family`.
+#'   recommended: `genus` (if absent, derived from `taxon_name`).  A `genus`
+#'   value that does not look like a plausible genus name (a single
+#'   capitalised word) is dropped with a `message()` rather than reaching
+#'   the LLM prompt verbatim.  Required for `expand_to_family = TRUE`:
+#'   `family`.
 #' @param context Optional named list or single-row data frame with location /
 #'   habitat context for the LLM.  Recognised fields: `ecoregion`, `lat`,
 #'   `lon`, `date`, `habitat`.  NULL (default) sends no context.
@@ -803,8 +820,29 @@ suggest_unreferenced_species <- function(match_df,
 
   # ---- Extract genera and build skip-list ------------------------------------
   if ("genus" %in% names(match_df)) {
-    genera <- unique(stats::na.omit(match_df$genus))
-    genera <- genera[nchar(trimws(genera)) > 0L]
+    genera_raw <- unique(trimws(as.character(stats::na.omit(match_df$genus))))
+    genera_raw <- genera_raw[nchar(genera_raw) > 0L]
+    # match_df$genus reaches the LLM prompt verbatim (both in the worked JSON
+    # example and the "Genera to assess" list), so it needs the same
+    # plausibility gate the no-genus-column fallback below already applies
+    # to taxon_name before deriving a genus from it -- otherwise this
+    # "recommended" input path (see @param match_df) is LESS validated than
+    # its own fallback. Not a taxonomic-authority check (no such check is
+    # available without a taxonomy lookup), just a shape gate against
+    # garbage/injected text landing in the prompt unescaped.
+    genus_ok <- .is_plausible_genus(genera_raw)
+    n_dropped_genus <- sum(!genus_ok)
+    if (n_dropped_genus > 0L) {
+      message(sprintf(
+        paste0(
+          "suggest_unreferenced_species: dropped %d value(s) from match_df$genus ",
+          "that do not look like a plausible genus name (a single capitalised ",
+          "word) and would otherwise reach the LLM prompt verbatim: %s"
+        ),
+        n_dropped_genus, paste(shQuote(genera_raw[!genus_ok]), collapse = ", ")
+      ))
+    }
+    genera <- genera_raw[genus_ok]
   } else {
     sp_names <- match_df$taxon_name[TaxaTools::is_plausible_binomial(match_df$taxon_name)]
     genera <- unique(sub(" .*", "", sp_names))
