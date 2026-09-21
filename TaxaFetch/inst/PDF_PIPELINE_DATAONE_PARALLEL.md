@@ -21,7 +21,7 @@ the DataONE pipeline stage-for-stage.
 | DataONE stage | DataONE function | PDF parallel | PDF function |
 |---|---|---|---|
 | Catalog harvest | `harvest_dataone_catalog()` | PDF file list / OpenAlex harvest | (future) |
-| Abstract screen | `build_taxon_screen_prompt()` + `parse_taxon_screening_response()` (removed from TaxaFetch's public API; no caller anywhere) | Stage 1 abstract screen | `build_pdf_screen_prompt()` + `parse_pdf_screen_response()` |
+| Abstract screen | `build_taxon_screen_prompt()` + `parse_taxon_screening_response()` | Stage 1 abstract screen | `build_pdf_screen_prompt()` + `parse_pdf_screen_response()` |
 | Structure/EML pre-screen | `screen_eml_columns()` | Stage 2 characterization | `screen_pdf_structure()` |
 | Preview | `preview_dataone_occurrences()` | (no PDF equivalent — Stage 2 serves this role) | — |
 | Download + standardize | `fetch_dataone_occurrences()` | Stage 3 extraction | `build_pdf_extract_prompt()` + `parse_pdf_extract_response()` |
@@ -221,6 +221,8 @@ Stage 1  — harvest_dataone_catalog()      → pasta_catalog.rds
 Stage 2  — build_geo_prompt()
 Stage 3  — prompt_anthropic_api()
 Stage 4  — parse_geo_screening_response() → geo_screened.rds
+Stage 6  — build_taxon_screen_prompt()
+Stage 7  — prompt_anthropic_api()         → taxon_screened.rds
 Stage 8  — screen_eml_columns()           → eml_screen.rds
 Stage 9  — preview_dataone_occurrences()
 Stage 10 — fetch_dataone_occurrences()    → dataone_occ

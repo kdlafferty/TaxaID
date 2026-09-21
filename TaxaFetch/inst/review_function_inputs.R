@@ -240,11 +240,13 @@ biotime_occ
 
 # ==============================================================================
 # SECTION 4 -- DataONE pipeline, offline half
-# build_geo_prompt() / parse_geo_screening_response() only need LLM response
-# TEXT, not a live LLM call -- both the prompt builder and the parser are
+# build_geo_prompt() / parse_geo_screening_response() and
+# build_taxon_screen_prompt() / parse_taxon_screening_response() only need LLM
+# response TEXT, not a live LLM call -- both prompt builders and parsers are
 # pure functions once you supply the raw_text yourself (as if copy-pasted from
-# an LLM chat). Fixture reused verbatim from
-# tests/testthat/test-dataone_standardize.R.
+# an LLM chat). Fixtures reused verbatim from
+# tests/testthat/test-dataone_standardize.R and
+# tests/testthat/test-dataone_taxon_screening_geo.R.
 # ==============================================================================
 
 ## ---- build_geo_prompt() ---- OFFLINE ----------------------------------------
@@ -282,6 +284,37 @@ geo_raw_text <- paste(
 )
 geo_screened <- parse_geo_screening_response(geo_raw_text, geo_prompt)
 geo_screened
+
+## ---- build_taxon_screen_prompt() ---- OFFLINE -------------------------------
+# Fixture reused from tests/testthat/test-dataone_taxon_screening_geo.R
+taxon_catalog <- tibble(
+  id = c("W1", "W2"),
+  title = c("Paper 1", "Paper 2"),
+  abstract = c(
+    "Abstract about fish species in California 1",
+    "Abstract about fish species in California 2"
+  ),
+  keywords = "fish; ecology; California",
+  doi = c("10.1234/test.1", "10.1234/test.2"),
+  pdf_url = NA_character_,
+  year = 2020L,
+  authors = "Smith J",
+  journal = "Test Journal",
+  geo_match = NA_character_,
+  taxon_match = NA_character_
+)
+taxon_prompt <- build_taxon_screen_prompt(
+  catalog     = taxon_catalog,
+  taxon_scope = "gobies",
+  geo_scope   = "southern California",
+  verbose     = FALSE
+)
+taxon_prompt # exercises print.taxon_prompt()
+
+## ---- parse_taxon_screening_response() ---- OFFLINE --------------------------
+taxon_raw_text <- "index,taxon_match,geo_match\n1,YES,YES\n2,NO,YES"
+taxon_screened <- parse_taxon_screening_response(taxon_raw_text, taxon_prompt)
+taxon_screened
 
 
 # ==============================================================================

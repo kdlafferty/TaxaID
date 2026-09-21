@@ -7,6 +7,7 @@
 #   Stage 1  — Define scope: taxon_scope, geo_scope, bbox
 #   Stage 2  — search_literature()            OpenAlex catalog harvest
 #   Stage 3  — Inspect catalog
+#   Stage 4  — [OPTIONAL] Combined taxon + geo screening
 #   Stage 5  — Inspect screened catalog; decide which papers to download
 #   Stage 6  — download_literature_pdfs()     fetch PDFs to local dir
 #   Stage 7  — extract_pdf_text()             section detection (no API)
@@ -25,6 +26,7 @@
 #
 # Checkpoint files written:
 #   openalex_catalog.rds      Stage 2  — refresh when scope/bbox changes
+#   taxon_screened.rds        Stage 4  — optional
 #   downloaded_catalog.rds    Stage 6
 #   pdf_structures.rds        Stage 8
 #   pdf_raw_responses.rds     Stage 11 (expensive — always checkpoint)
@@ -181,13 +183,83 @@ for (i in seq_len(nrow(openalex_catalog))) {
 
 
 # ==============================================================================
-# Combined taxon + geo screening (formerly Stage 4, [OPTIONAL]) has been
-# removed along with the functions it called, build_taxon_screen_prompt()
-# and parse_taxon_screening_response(). Review titles manually in Stage 3
-# instead; the full catalog is carried forward unfiltered.
+# STAGE 4 — [OPTIONAL] Combined taxon + geo screening
+#
+# Uses build_taxon_screen_prompt() with geo_scope to assess both taxon and
+# geographic relevance in a single LLM call. Returns taxon_match (logical)
+# and geo_match (logical) columns.
+#
+# For the literature path this replaces the separate build_geo_prompt() step,
+# which requires DataONE-specific columns not present in the OpenAlex catalog.
+#
+# When to run:
+#   - Catalog has >10 papers and titles suggest mixed relevance
+#   - Geo terms from Nominatim were absent (offshore bbox) so Stage 2 did
+#     no geographic pre-filtering
+#
+# When to skip (run_taxon_screen <- FALSE):
+#   - Catalog is small and you have reviewed all titles in Stage 3
+#   - taxon_scope was specific enough that results look clean
+#
+# DEBUGGING TIPS:
+#   cat(taxon_prompt$prompts[[1]])   — see full prompt sent to LLM
+#   cat(taxon_raw)                   — see raw LLM response before parsing
+#   print(taxon_screened[, c("title", "taxon_match", "geo_match")])
+#   If a relevant paper was rejected, the key species name may have appeared
+#   after the abstract_chars cutoff — increase abstract_chars and re-run.
 # ==============================================================================
 
-working_catalog <- openalex_catalog
+run_taxon_screen <- FALSE # set TRUE to enable
+
+if (run_taxon_screen) {
+  # Drop any stale screening columns left by a previous run
+  openalex_catalog <- openalex_catalog |>
+    dplyr::select(-dplyr::any_of(c("taxon_match", "taxon_source", "geo_match")))
+
+  taxon_prompt <- build_taxon_screen_prompt(
+    catalog        = openalex_catalog,
+    taxon_scope    = taxon_scope,
+    geo_scope      = geo_scope,
+    chunk_size     = 50L,
+    abstract_chars = 2000L, # higher than DataONE default — lit abstracts are long
+    verbose        = TRUE
+  )
+
+  # Uncomment to inspect the full prompt before submitting:
+  # cat(taxon_prompt$prompts[[1]])
+
+  taxon_raw <- prompt_api(taxon_prompt)
+
+  # Always inspect raw response — catches format problems before parse
+  cat("\n--- LLM RAW RESPONSE ---\n")
+  cat(taxon_raw, "\n")
+
+  taxon_screened <- parse_taxon_screening_response(taxon_raw, taxon_prompt)
+
+  saveRDS(taxon_screened, "taxon_screened.rds")
+  # taxon_screened <- readRDS("taxon_screened.rds")   # resume line
+
+  cat("\n--- SCREENING DECISIONS ---\n")
+  print(taxon_screened[, intersect(
+    c("title", "taxon_match", "geo_match", "taxon_source"),
+    names(taxon_screened)
+  )])
+
+  n_pass <- sum(taxon_screened$taxon_match & taxon_screened$geo_match,
+    na.rm = TRUE
+  )
+  message(sprintf(
+    "Screening: %d / %d passed (taxon AND geo match).",
+    n_pass, nrow(taxon_screened)
+  ))
+
+  working_catalog <- taxon_screened[
+    taxon_screened$taxon_match & taxon_screened$geo_match,
+  ]
+} else {
+  message("Stage 4: screening skipped — using full catalog.")
+  working_catalog <- openalex_catalog
+}
 
 
 # ==============================================================================
