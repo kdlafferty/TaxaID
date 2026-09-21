@@ -22,7 +22,7 @@ make_dada2_seqtab <- function(n_samples = 3, n_asvs = 5) {
 
 
 # ==============================================================================
-# read_sequence_table() — DADA2 matrix input
+# read_sequence_table() -- DADA2 matrix input
 # ==============================================================================
 
 test_that("read_sequence_table reads DADA2 matrix correctly", {
@@ -59,7 +59,7 @@ test_that("read_sequence_table errors on matrix without column names", {
 
 
 # ==============================================================================
-# read_sequence_table() — Input validation
+# read_sequence_table() -- Input validation
 # ==============================================================================
 
 test_that("read_sequence_table rejects invalid data types", {
@@ -85,7 +85,7 @@ test_that("read_sequence_table rejects invalid header_format", {
 
 
 # ==============================================================================
-# read_sequence_table() — Data frame input (provider ESV tables)
+# read_sequence_table() -- Data frame input (provider ESV tables)
 # ==============================================================================
 
 test_that("read_sequence_table reads data frame with sample abundance columns", {
@@ -166,7 +166,7 @@ test_that("read_sequence_table respects custom sequence_col name", {
 
 
 # ==============================================================================
-# read_sequence_table() — Taxonomy joining
+# read_sequence_table() -- Taxonomy joining
 # ==============================================================================
 
 test_that("read_sequence_table joins taxonomy by sequence", {
@@ -200,7 +200,7 @@ test_that("read_sequence_table warns when taxonomy has no joinable column", {
 
 
 # ==============================================================================
-# read_sequence_table() — FASTA file (requires Biostrings)
+# read_sequence_table() -- FASTA file (requires Biostrings)
 # ==============================================================================
 
 test_that("read_sequence_table reads FASTA file path", {
@@ -311,7 +311,7 @@ test_that("filter_sequences passes all when no filters specified", {
 
 
 # ==============================================================================
-# TaxaTools::resolve_barcode_lengths() — tested via TaxaTools; spot-check here
+# TaxaTools::resolve_barcode_lengths() -- tested via TaxaTools; spot-check here
 # ==============================================================================
 
 test_that("barcode length defaults resolve correctly via TaxaTools", {

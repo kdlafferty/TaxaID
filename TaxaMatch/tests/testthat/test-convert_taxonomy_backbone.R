@@ -10,9 +10,9 @@
 #
 #   Girella nigricans:  NCBI family=Girellidae, GBIF family=Kyphosidae
 #   Fundulus parvipinnis: NCBI order=Cyprinodontiformes,
-#                          GBIF order=Cyprinodontiformes (same — consistent)
+#                          GBIF order=Cyprinodontiformes (same -- consistent)
 #   Acanthogobius flavimanus: NCBI order=Gobiiformes,
-#                              GBIF order=Gobiiformes (same — consistent)
+#                              GBIF order=Gobiiformes (same -- consistent)
 #   Nonexistent taxon: not found in backbone (verified = FALSE)
 # ---------------------------------------------------------------------------
 

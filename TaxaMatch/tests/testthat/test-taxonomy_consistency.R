@@ -55,7 +55,7 @@ test_that("NA values ignored by default (na_as_inconsistent = FALSE)", {
     species = c("Amphibalanus improvisus", "Amphibalanus improvisus", NA)
   )
   out <- add_lowest_consistent_rank(m, rank_system = c("family", "genus", "species"))
-  # NAs ignored: all non-NA values identical → species is consistent
+  # NAs ignored: all non-NA values identical -> species is consistent
   expect_equal(unique(out$lowest_consistent_rank), "species")
 })
 
@@ -70,7 +70,7 @@ test_that("NA values inconsistent when na_as_inconsistent = TRUE", {
     rank_system = c("family", "genus", "species"),
     na_as_inconsistent = TRUE
   )
-  # NA treated as distinct: species and genus inconsistent; family has non-NA "Balanidae" + NA → inconsistent
+  # NA treated as distinct: species and genus inconsistent; family has non-NA "Balanidae" + NA -> inconsistent
   expect_true(is.na(unique(out$lowest_consistent_rank)))
 })
 
@@ -119,10 +119,10 @@ test_that("error when no rank_system columns found", {
 })
 
 # ==============================================================================
-# majority_threshold — majority mode
+# majority_threshold -- majority mode
 # ==============================================================================
 
-test_that("majority mode: 4/5 agree on family → family is consistent, outlier flagged", {
+test_that("majority mode: 4/5 agree on family -> family is consistent, outlier flagged", {
   m <- data.frame(
     observation_id = rep("obs1", 5),
     family = c("Balanidae", "Balanidae", "Balanidae", "Balanidae", "Chthamalidae"),
@@ -147,7 +147,7 @@ test_that("majority mode: 4/5 agree on family → family is consistent, outlier 
   expect_true(all(!out$is_rank_outlier[out$family == "Balanidae"]))
 })
 
-test_that("majority mode: 3/5 agree — below threshold 0.8, falls back to coarser rank", {
+test_that("majority mode: 3/5 agree -- below threshold 0.8, falls back to coarser rank", {
   m <- data.frame(
     observation_id = rep("obs1", 5),
     order = rep("Sessilia", 5),
@@ -159,12 +159,12 @@ test_that("majority mode: 3/5 agree — below threshold 0.8, falls back to coars
     rank_system        = c("order", "family", "genus"),
     majority_threshold = 0.8
   )
-  # 3/5 = 0.6 < 0.8 → family not consistent; order is consistent (100%)
+  # 3/5 = 0.6 < 0.8 -> family not consistent; order is consistent (100%)
   expect_equal(unique(out$lowest_consistent_rank), "order")
   expect_false(any(out$is_rank_outlier))
 })
 
-test_that("majority mode: unanimous agreement → is_rank_outlier all FALSE", {
+test_that("majority mode: unanimous agreement -> is_rank_outlier all FALSE", {
   m <- data.frame(
     observation_id = rep("obs1", 3),
     family = rep("Salmonidae", 3),
@@ -196,13 +196,13 @@ test_that("majority mode: NA rows are not flagged as outliers", {
     rank_system        = c("family", "genus", "species"),
     majority_threshold = 0.8
   )
-  # 4 non-NA values all agree → family consistent (4/4 = 1.0)
+  # 4 non-NA values all agree -> family consistent (4/4 = 1.0)
   expect_equal(unique(out$lowest_consistent_rank), "family")
-  # NA row has no value to contradict — not an outlier
+  # NA row has no value to contradict -- not an outlier
   expect_false(out$is_rank_outlier[is.na(m$family)])
 })
 
-test_that("majority mode: no consistent rank → is_rank_outlier all FALSE", {
+test_that("majority mode: no consistent rank -> is_rank_outlier all FALSE", {
   m <- data.frame(
     observation_id = rep("obs1", 4),
     family = c("Balanidae", "Balanidae", "Chthamalidae", "Chthamalidae"),
@@ -213,7 +213,7 @@ test_that("majority mode: no consistent rank → is_rank_outlier all FALSE", {
     rank_system        = c("family", "genus"),
     majority_threshold = 0.8
   )
-  # 2/4 = 0.5 < 0.8 at every rank → lowest_consistent_rank = NA
+  # 2/4 = 0.5 < 0.8 at every rank -> lowest_consistent_rank = NA
   expect_true(is.na(unique(out$lowest_consistent_rank)))
   expect_true(all(!out$is_rank_outlier))
   expect_true(all(is.na(out$rank_majority_value)))

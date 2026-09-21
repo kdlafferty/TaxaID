@@ -232,8 +232,8 @@ test_that("read_animl_output() handles wide-format with n_candidates", {
     n_candidates = 3L
   )
 
-  # 2 images × 3 candidates = 6, but "empty" rows have score < min_confidence
-  # if not filtered — with default min_confidence = 0, all 6 kept
+  # 2 images x 3 candidates = 6, but "empty" rows have score < min_confidence
+  # if not filtered -- with default min_confidence = 0, all 6 kept
   expect_equal(nrow(out), 6L)
   # Check wide-to-long mapping
   img1_rows <- out[out$observation_id == "img001", ]

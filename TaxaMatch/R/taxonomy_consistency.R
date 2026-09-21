@@ -1,6 +1,6 @@
 # ==============================================================================
 # taxonomy_consistency.R
-# TaxaMatch — Per-observation taxonomy consistency annotation
+# TaxaMatch -- Per-observation taxonomy consistency annotation
 # ==============================================================================
 
 
@@ -240,7 +240,7 @@ add_lowest_consistent_rank <- function(match_obj,
       n <- length(vals)
 
       if (n == 0L) {
-        # All blank/NA — no disagreement possible
+        # All blank/NA -- no disagreement possible
         return(list(
           consistent = TRUE,
           majority_val = NA_character_,

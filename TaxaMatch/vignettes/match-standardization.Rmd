@@ -113,7 +113,7 @@ match_df <- filter_redundant_hypotheses(match_df)
 
 | Parameter | Default | When to change |
 |---|---|---|
-| `barcode_term` | — | Must match your marker for length filtering |
+| `barcode_term` | -- | Must match your marker for length filtering |
 | `min_abundance` | 1 | Increase to drop rare/spurious ASVs |
 | `score_range` | 5 | Narrow for stricter hit selection |
 | `rank_system` | kpcofgs | Subset if your data has fewer ranks |

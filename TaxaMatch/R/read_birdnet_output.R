@@ -51,7 +51,7 @@
 #'   best species per window; `top_n = 3` reproduces BirdNET's default output
 #'   when the tool is run with `--top_n 3`.
 #'
-#' @return A data frame with one row per file × time-window × detected
+#' @return A data frame with one row per file x time-window x detected
 #'   species, containing:
 #'   \describe{
 #'     \item{`observation_id`}{Unique identifier combining file stem and time
@@ -59,7 +59,7 @@
 #'       formatted to a fixed 1 decimal place so the same window produces the
 #'       same ID across platforms/R versions. Pass as `observation_id_col` to
 #'       [standardize_match_data()].}
-#'     \item{`score`}{BirdNET confidence (0–1). Pass as `score_col` to
+#'     \item{`score`}{BirdNET confidence (0-1). Pass as `score_col` to
 #'       [standardize_match_data()].}
 #'     \item{`species`}{Full scientific binomial as reported by BirdNET.}
 #'     \item{`genus`}{Genus name (first word of `species`); `NA` for
@@ -111,7 +111,7 @@
 #' `observation_id`. Multiple detections within the same window share the
 #' same `observation_id` (analogous to multiple BLAST hits per eDNA query).
 #' The gap metric in TaxaLikely is computed as the difference between the
-#' top-1 and top-2 confidence scores within each window — so retaining
+#' top-1 and top-2 confidence scores within each window -- so retaining
 #' multiple detections per window is important for model training.
 #'
 #' **Taxonomy:** `genus` is derived as the first word of BirdNET's scientific
@@ -281,8 +281,8 @@ read_birdnet_output <- function(files,
 
   # Derive recording stem for observation_id.
   # Two supported formats:
-  #   CLI format  — one CSV per recording (no "File" column); stem from filename.
-  #   Combined format — single CSV covering multiple recordings, "File" column
+  #   CLI format  -- one CSV per recording (no "File" column); stem from filename.
+  #   Combined format -- single CSV covering multiple recordings, "File" column
   #                     holds the audio path (e.g. Gradio / web interface output).
   if ("File" %in% names(df)) {
     # Use audio filename stem from the "File" column, per row

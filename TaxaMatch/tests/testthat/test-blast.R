@@ -1,5 +1,5 @@
 # ==============================================================================
-# Tests for blast_sequences() — input validation and hit filtering
+# Tests for blast_sequences() -- input validation and hit filtering
 # ==============================================================================
 
 # --- Internal-function wrappers -----------------------------------------------
@@ -60,7 +60,7 @@ make_raw_hits <- function() {
 
 
 # ==============================================================================
-# blast_sequences() — Input validation
+# blast_sequences() -- Input validation
 # ==============================================================================
 
 test_that("blast_sequences rejects non-data-frame input", {
@@ -109,7 +109,7 @@ test_that("blast_sequences default score_range is 8 (widened from 2, soundness-r
 
 
 # ==============================================================================
-# .parse_lat_lon() — INSDC lat_lon qualifier parser
+# .parse_lat_lon() -- INSDC lat_lon qualifier parser
 # ==============================================================================
 
 test_that(".parse_lat_lon parses well-formed N/E coordinates", {
@@ -150,13 +150,13 @@ test_that(".resolve_locations_by_acc returns empty typed data frame for no acces
 
 
 # ==============================================================================
-# .filter_blast_hits() — Score window algorithm
+# .filter_blast_hits() -- Score window algorithm
 # ==============================================================================
 
 test_that("score window keeps hits within range of top hit", {
   hits <- make_raw_hits()
-  # ASV_1 top hit = 99, score_range = 2 → keep >= 97
-  # ASV_2 top hit = 98, score_range = 2 → keep >= 96
+  # ASV_1 top hit = 99, score_range = 2 -> keep >= 97
+  # ASV_2 top hit = 98, score_range = 2 -> keep >= 96
 
   result <- .filter_blast_hits(
     hits,
@@ -434,7 +434,7 @@ test_that("empty result has correct structure", {
 
 
 # ==============================================================================
-# .parse_blast_xml() — BLAST XML parsing
+# .parse_blast_xml() -- BLAST XML parsing
 # ==============================================================================
 
 test_that("parse_blast_xml extracts hits from BLAST XML", {
@@ -932,7 +932,7 @@ test_that("blast_sequences(max_batch_bp=) submits a long-query-isolating batch p
 
 
 # ==============================================================================
-# .parse_taxonomy_xml() — XML parsing
+# .parse_taxonomy_xml() -- XML parsing
 # ==============================================================================
 
 test_that("parse_taxonomy_xml extracts lineage correctly", {
