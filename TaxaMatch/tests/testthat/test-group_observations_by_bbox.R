@@ -233,3 +233,40 @@ test_that("errors on NA coordinates", {
   bad$lat[1] <- NA
   expect_error(group_observations_by_bbox(bad), "NA coordinates")
 })
+
+# =============================================================================
+# .normalize_sites_defaults(): recognized shapes only, no pre-1.0 inference
+# =============================================================================
+
+test_that(".normalize_sites_defaults() initializes singleton defaults when all three columns are absent", {
+  bare <- data.frame(observation_id = paste0("obs", 1:3), stringsAsFactors = FALSE)
+  expect_message(
+    out <- .normalize_sites_defaults(bare, "observation_id"),
+    "no spatial_group_id/spatial_group_N columns"
+  )
+  expect_equal(out$spatial_group_id, paste0("obs", 1:3))
+  expect_true(all(out$spatial_group_N == 1L))
+  expect_true(all(out$is_default_group))
+})
+
+test_that(".normalize_sites_defaults() passes through a table that already has all three columns", {
+  full <- .site_defaults(data.frame(observation_id = paste0("obs", 1:3), stringsAsFactors = FALSE))
+  out <- .normalize_sites_defaults(full, "observation_id")
+  expect_identical(out, full)
+})
+
+test_that(".normalize_sites_defaults() errors, not infers, when is_default_group is missing", {
+  # spatial_group_id/spatial_group_N without is_default_group is not a shape
+  # build_site_table() can produce -- it is not silently inferred from the
+  # spatial_group_id == observation_id convention.
+  partial <- data.frame(
+    observation_id = paste0("obs", 1:3),
+    spatial_group_id = paste0("obs", 1:3),
+    spatial_group_N = 1L,
+    stringsAsFactors = FALSE
+  )
+  expect_error(
+    .normalize_sites_defaults(partial, "observation_id"),
+    "no is_default_group column"
+  )
+})
