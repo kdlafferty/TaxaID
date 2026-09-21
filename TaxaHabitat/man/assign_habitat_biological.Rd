@@ -115,8 +115,8 @@ provided it meets a minimum consensus threshold.
 \details{
 This is a fallback method for when spatial polygon layers are unavailable.
 
-\strong{Reading an NA habitat:} two very different points used to come back
-identically as \code{main_habitat = NA} -- one clearly Marine at 0.28, just
+\strong{Reading an NA habitat:} two very different points can both come back
+as \code{main_habitat = NA} -- one clearly Marine at 0.28, just
 under a 0.3 threshold, and one genuinely mixed at 0.35 / 0.33 / 0.32. The
 first has an unambiguous signal the threshold rejected; the second has no
 signal to have. \code{main_habitat_prop} separates them and

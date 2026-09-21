@@ -207,9 +207,9 @@ flag_habitat_inconsistencies <- function(
     stringsAsFactors = FALSE
   )
 
-  # .is_habitat_unassigned(), not !is.na(): since 2026-09-19 an unplaceable
-  # point carries the "Uncertain" sentinel rather than NA, and it must be
-  # excluded from spatial validation for the same reason NA was -- there is no
+  # .is_habitat_unassigned(), not !is.na(): an unplaceable point carries the
+  # "Uncertain" sentinel, not NA, and it must be excluded from spatial
+  # validation for the same reason NA would be -- there is no
   # habitat to check the geography against. Testing NA alone would send
   # "Uncertain" through .realm(), which would report it as
   # "habitat 'Uncertain' not found in habitat scheme" and count it among the
@@ -279,16 +279,17 @@ flag_habitat_inconsistencies <- function(
   # the 10m minor-islands coastline so island records are scored against their
   # own shoreline.
   #
-  # MEASURED END TO END 2026-09-20 (distance from an island point to the
+  # MEASURED END TO END (distance from an island point to the
   # coastline geometry, s2 on):
   #
   #                    mainland only   with minor islands
   #   Anacapa              11.78 km          0.77 km
   #   Santa Barbara I.     40.26 km          0.52 km
   #
-  # Against the 1 km default `coast_buffer_m` both islands were previously well
-  # outside the coastal zone, so intertidal island records were scored as though
-  # they sat in open ocean.
+  # Against the 1 km default `coast_buffer_m`, mainland coastline alone puts
+  # both islands well outside the coastal zone, so without the minor-islands
+  # layer intertidal island records would be scored as though they sat in
+  # open ocean.
   #
   # WHAT THIS DOES NOT FIX. Pacific-side Baja islands are already in the MAIN
   # coastline and were never broken (Isla Guadalupe 1.42 km, Islas San Benito
@@ -297,13 +298,11 @@ flag_habitat_inconsistencies <- function(
   # absent from each, and outside a 1 km buffer. Records there are still
   # mis-scored.
   coast_sf <- rnaturalearth::ne_coastline(scale = "large", returnclass = "sf")
-  # VENDORED FIRST, download second. Verified 2026-09-20: before vendoring there
-  # was no cached copy of this layer anywhere on the development machine, so the
-  # ne_download() branch had most likely never once succeeded and the tryCatch
-  # fallback below -- mainland coastline, plus a warning easy to lose in a long
-  # log -- was what actually ran. A patch that depends on a network call at
-  # analysis time is a patch that silently is not applied. The layer is 0.24 MB,
-  # so shipping it costs nothing next to being wrong by 40 km.
+  # VENDORED FIRST, download second: a patch that depends on a network call
+  # at analysis time is a patch that can silently fail to apply, leaving the
+  # tryCatch fallback below -- mainland coastline, plus a warning easy to
+  # lose in a long log -- as what actually runs. The layer is 0.24 MB, so
+  # shipping it costs nothing next to being wrong by 40 km.
   minor_sf <- tryCatch({
     .v <- system.file("extdata", "ne_10m_minor_islands_coastline.rds",
                       package = "TaxaHabitat")
@@ -336,11 +335,11 @@ flag_habitat_inconsistencies <- function(
   ))
 
   # Buffer in metres using a LOCAL equal-distance projection. EPSG:3857 (Web
-  # Mercator) was used here previously and inflates distance by 1/cos(lat) --
-  # 21% at 34 degrees N, 35% at 42 degrees N, 47% at 47 degrees N -- so both
-  # the buffer and dist_to_coast_km were systematically too large, worsening
-  # with latitude (measured 2026-09-15: 3857/geodesic ratio 1.212 vs
-  # 1/cos(34.25) = 1.210; UTM matches geodesic to 0.1%).
+  # Mercator) inflates distance by 1/cos(lat) -- 21% at 34 degrees N, 35% at
+  # 42 degrees N, 47% at 47 degrees N -- which would make both the buffer and
+  # dist_to_coast_km systematically too large, worsening with latitude
+  # (3857/geodesic ratio 1.212 vs 1/cos(34.25) = 1.210; UTM matches geodesic
+  # to 0.1%).
   utm_crs <- .utm_crs_for(pts_sf)
   coast_utm_buf <- sf::st_transform(coast_crop, crs = utm_crs)
   coast_buffer_geom <- sf::st_make_valid(
@@ -486,24 +485,22 @@ flag_habitat_inconsistencies <- function(
     # Fall back to name-pattern matching (works for IUCN and sensibly named
     # custom schemes).
     #
-    # These two patterns used to be ASYMMETRIC: marine terms were anchored with
-    # "^" while freshwater terms matched anywhere in the name. Any habitat whose
-    # name did not START with a marine word therefore fell through to the
-    # freshwater test -- and freshwater is deliberately exempt from spatial
-    # verification (see the "Freshwater habitats" section), so those points left
-    # QC silently, carrying a reason string that reads like a pass.
-    #
-    # Measured on the real Mugu output before the fix: 529,488 rows of
-    # "Coastal-Marine-Estuary-Stream" were classified FRESHWATER -- because the
-    # anchored marine pattern could not see "Marine" or "Estuary" mid-name while
-    # the unanchored freshwater pattern matched "Stream" -- and were never
-    # spatially validated. 99.8% of that site's rows went unchecked.
-    #
-    # Both patterns are now word-boundary matched, so a realm term is found
-    # anywhere in the name, and MARINE IS TESTED FIRST so a genuinely
+    # Both patterns are word-boundary matched, so a realm term is found
+    # anywhere in the name, and MARINE IS TESTED FIRST so that a genuinely
     # multi-realm name (coastal/estuarine/stream systems) is validated rather
     # than exempted. Inflections are listed explicitly rather than using a bare
     # prefix, so "Ponderosa Pine" cannot match "pond".
+    #
+    # This matters because freshwater is deliberately exempt from spatial
+    # verification (see the "Freshwater habitats" section): if marine terms
+    # were anchored with "^" while freshwater terms matched anywhere in the
+    # name, any habitat whose name did not START with a marine word would
+    # fall through to the freshwater test and leave QC silently, carrying a
+    # reason string that reads like a pass. On the real Mugu output, an
+    # anchored marine pattern cannot see "Marine" or "Estuary" mid-name while
+    # an unanchored freshwater pattern matches "Stream", so 529,488 rows of
+    # "Coastal-Marine-Estuary-Stream" -- 99.8% of that site's rows -- would be
+    # classified FRESHWATER and never spatially validated under that scheme.
     if (grepl(.marine_name_pattern, hab_lc, perl = TRUE)) {
       return("marine")
     }

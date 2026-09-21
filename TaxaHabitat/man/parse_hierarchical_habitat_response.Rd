@@ -23,8 +23,9 @@ Used to detect taxa missing from the response.}
 \code{\link{build_habitat_prompt}}. \strong{Always supply this} --
 its \code{$habitat_cols} element is used to identify and validate
 the weight columns, and its \code{$scheme} drives IUCN vs. custom
-mode. \code{NULL} triggers legacy IUCN mode (deprecated; IUCN
-output is also now wide-weighted).}
+mode. \code{NULL} triggers a deprecated IUCN-only mode; passing a
+\code{habitat_prompt} object uses the current wide-weighted format
+instead.}
 
 \item{extra_covariates}{Character vector. Names of any additional binary
 covariate columns to retain from the parsed output. Default \code{NULL}
@@ -68,10 +69,7 @@ and manually saved response files (\code{\link[TaxaTools]{read_llm_response}}).
 blocks (one per chunk from \code{\link[TaxaTools]{prompt_api}}), duplicate
 header rows are stripped automatically before combining.
 
-\strong{The \code{Habitat} column is diagnostic only.} It previously
-claimed to be "used by downstream functions
-(\code{assign_habitat_biological}) that expect a single primary habitat
-label per species", which was false:
+\strong{The \code{Habitat} column is diagnostic only.}
 \code{\link{assign_habitat_biological}} sums each species' full WEIGHT
 VECTOR per point and never reads it. Audited across all nine TaxaID
 packages, its only functional consumer is

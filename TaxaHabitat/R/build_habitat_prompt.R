@@ -13,22 +13,11 @@
 #               scheme (Rocky Areas (inland), Introduced Vegetation, Other,
 #               Unknown)
 #
-# Audited row-by-row against the source document 2026-08-01 after a code
-# review flagged 1.3/3.3 as mislabeled "Subalpine" (should be "Subantarctic"/
-# "Boreal" respectively) and asked whether the pattern continued elsewhere.
-# It did: Shrubland's whole 3.1-3.3 order was wrong (real order is Subarctic/
-# Subantarctic/Boreal, not Forest's Boreal/Subarctic/Subantarctic order);
-# Grassland's 4.3 was "Subalpine/Alpine" instead of "Subantarctic"; the whole
-# Marine Neritic (9.x) block was scrambled with several fabricated entries;
-# Marine Deep Ocean Floor was missing "Seamount" (real 11.5) entirely and had
-# a wrong Hadal-zone depth threshold; Wetlands (Inland) had a fabricated 19th
-# entry and a fabricated 5.18; Artificial - Aquatic had three fabricated
-# entries (15.10-15.12) and was missing the real 15.13; Rocky Areas (inland),
-# Introduced Vegetation, Other, and Unknown all had fabricated L2
-# subcategories despite being L1-only in the real scheme. See each inline
-# comment below for the specific fix. Verified against the real IUCN Habitats
-# Classification Scheme v3.1 source document (fetched directly, not from
-# memory) before any value below was changed.
+# Audited row-by-row against the real IUCN Habitats Classification Scheme
+# v3.1 source document (fetched directly, not from memory). Shrubland's real
+# 3.1-3.3 order is Subarctic/Subantarctic/Boreal (not Forest's
+# Boreal/Subarctic/Subantarctic order). See each inline comment below for
+# further scheme-specific notes.
 # ==============================================================================
 
 .iucn_habitat_lookup <- data.frame(
@@ -153,11 +142,8 @@
     "Subtropical/Tropical Dry",
     "Subtropical/Tropical Seasonally Wet/Flooded",
     "Subtropical/Tropical High Altitude",
-    # Wetlands (inland) -- 18 real subcategories (5.1-5.18); a fabricated
-    # 19th entry ("Ephemeral Saline/Brackish/Alkaline Lakes") that does not
-    # exist in the real scheme has been removed, and the real 5.18 ("Karst
-    # and Other Subterranean Inland Aquatic Systems") restored in place of
-    # a fabricated "Rocky Freshwater Rivers (rapids, falls)".
+    # Wetlands (inland) -- 18 real subcategories (5.1-5.18); 5.18 is "Karst
+    # and Other Subterranean Inland Aquatic Systems".
     "Permanent Rivers/Streams/Creeks",
     "Seasonal/Intermittent Rivers/Streams/Creeks",
     "Shrub Dominated Wetlands",
@@ -178,21 +164,16 @@
     "Karst and Other Subterranean Inland Aquatic Systems",
     # Rocky Areas (inland) -- L1-only in the real scheme (no numbered L2
     # subcategories; the real document lists "inland cliffs, mountain
-    # peaks, talus, feldmark" only as prose examples). The two fabricated
-    # L2 rows previously here ("Inland Cliffs and Outcrops", "Scree and
-    # Talus") did not exist in the real scheme and have been removed.
+    # peaks, talus, feldmark" only as prose examples).
     NA_character_,
     # Caves
     "Dry Caves", "Other Dry Subterranean Habitats",
     # Desert
     "Hot", "Temperate", "Cold",
-    # Marine Neritic -- NOTE: this entire block was previously scrambled
-    # relative to the real 9.1-9.10 codes (verified directly against the
-    # IUCN source document), with several entries fabricated outright
-    # ("Subtidal Cave and Overhangs", "Pelagic (Supercolumnar)",
-    # "Seamounts and Knolls" -- Seamount is actually real code 11.5, under
-    # Marine Deep Ocean Floor, not Marine Neritic). Rebuilt in the real
-    # 9.1-9.10 order.
+    # Marine Neritic -- codes 9.1-9.10, verified directly against the IUCN
+    # source document. Note: Seamount is real code 11.5, under Marine Deep
+    # Ocean Floor, not Marine Neritic, despite the naming similarity to
+    # "Seamounts and Knolls".
     "Pelagic",
     "Subtidal Rock and Rocky Reefs",
     "Subtidal Loose Rock/Pebble/Gravel",
@@ -206,10 +187,9 @@
     # Marine Oceanic
     "Epipelagic (0-200m)", "Mesopelagic (200-1000m)",
     "Bathypelagic (1000-4000m)", "Abyssopelagic (4000-6000m)",
-    # Marine Deep Ocean Floor -- real 11.3 is "Abyssal Mountain/Hills", not
-    # "Seamounts and Knolls (bathyal)"; real 11.4 ("Hadal/Deep Sea Trench")
-    # starts at >6000m, not >4000m; "Seamount" is its own real code, 11.5,
-    # previously missing entirely.
+    # Marine Deep Ocean Floor -- real 11.3 is "Abyssal Mountain/Hills"; real
+    # 11.4 ("Hadal/Deep Sea Trench") starts at >6000m; "Seamount" is its own
+    # real code, 11.5.
     "Continental Slope/Bathyal Zone (200-4000m)",
     "Abyssal Plain",
     "Abyssal Mountain/Hills",
@@ -217,7 +197,7 @@
     "Seamount",
     "Deep Sea Vents (Rifts/Seeps)",
     # Marine Intertidal -- real 12.4 is "Mud Shoreline and Intertidal Mud
-    # Flats"; "Salt Flats" is not part of this real category.
+    # Flats".
     "Rocky Shoreline",
     "Sandy Shoreline and Beaches",
     "Shingle and Pebble Shoreline",
@@ -238,11 +218,7 @@
     "Arable Land", "Pastureland", "Plantations",
     "Rural Gardens", "Urban Areas",
     "Subtropical/Tropical Heavily Degraded Former Forest",
-    # Artificial - Aquatic -- real 15.10-15.12 were previously fabricated
-    # ("Marine and Freshwater (flooded mines)", "Marine - Littoral (Tidal)
-    # Areas", "Marinas, Harbours, Jetties"); real 15.13 ("Mari/Brackish-
-    # culture Ponds") was missing entirely. Rebuilt to match the real
-    # 15.1-15.13 codes.
+    # Artificial - Aquatic -- codes 15.1-15.13.
     "Water Storage Areas (>8ha)", "Ponds (<8ha)",
     "Aquaculture Ponds", "Salt Exploitation Sites",
     "Excavations (open)", "Wastewater Treatment Areas",
@@ -253,15 +229,11 @@
     "Mariculture Cages",
     "Mari/Brackish-culture Ponds",
     # Introduced Vegetation -- L1-only in the real scheme ("No type
-    # specified"). The two fabricated L2 rows previously here ("Planted
-    # Forest (monocultures)", "Other Managed/Introduced Vegetation") did
-    # not exist in the real scheme and have been removed.
+    # specified").
     NA_character_,
-    # Other -- L1-only in the real scheme; the fabricated "17.0"/"Other"
-    # L2 pseudo-row has been removed.
+    # Other -- L1-only in the real scheme.
     NA_character_,
-    # Unknown -- L1-only in the real scheme; the fabricated "18.0"/
-    # "Unknown" L2 pseudo-row has been removed.
+    # Unknown -- L1-only in the real scheme.
     NA_character_
   ),
   stringsAsFactors = FALSE
@@ -626,11 +598,11 @@ print.habitat_prompt <- function(x, ...) {
     # A mixed-scale scheme (e.g. from build_iucn_scheme() with both L1
     # fallback rows and L2 rows present) has l2_name = NA on its L1-only
     # rows -- display_name falls back to l1_name for those specific rows
-    # so the prompt shows the real group name instead of literal "NA"
-    # (confirmed as a real, reproducible bug: build_iucn_scheme(realm =
-    # "terrestrial", l2 = "Temperate") followed by build_habitat_prompt()
-    # previously sent "NA  [Forest]", "NA  [Savanna]", etc. to the LLM for
-    # every L1 fallback row).
+    # so the prompt shows the real group name instead of literal "NA".
+    # Without this fallback, build_iucn_scheme(realm = "terrestrial", l2 =
+    # "Temperate") followed by build_habitat_prompt() would send
+    # "NA  [Forest]", "NA  [Savanna]", etc. to the LLM for every L1 fallback
+    # row.
     display_name <- ifelse(is.na(scheme$l2_name), scheme$l1_name, scheme$l2_name)
     hab_block <- paste(
       sprintf(
@@ -753,18 +725,15 @@ print.habitat_prompt <- function(x, ...) {
 #' Checked by presence of an l2_code column populated with IUCN-style
 #' numeric codes ("9.1", "1.3", etc.).
 #'
-#' Previously also checked \code{identical(scheme, .iucn_habitat_lookup)}
-#' and required an \code{l1_code} column. Both were dead in practice: every
-#' scheme reaching this function has already passed through
-#' \code{.validate_habitat_scheme()}, which subsets to
-#' \code{c("l1_name", "l2_code", "l2_name", "realm")} and never preserves
-#' \code{l1_code} -- so \code{identical()} against the raw (differently-
-#' shaped) \code{.iucn_habitat_lookup} could never succeed, and the
-#' \code{l1_code} membership check could never be TRUE either. Confirmed via
+#' This single check is sufficient: every scheme reaching this function has
+#' already passed through \code{.validate_habitat_scheme()}, which subsets
+#' to \code{c("l1_name", "l2_code", "l2_name", "realm")} and never preserves
+#' an \code{l1_code} column, so neither an \code{identical()} comparison
+#' against the raw (differently-shaped) \code{.iucn_habitat_lookup} nor an
+#' \code{l1_code} membership check could ever succeed here. Confirmed via
 #' \code{build_iucn_scheme()}'s own \code{@return} (only
 #' \code{l1_name}/\code{l2_name}/\code{l2_code}/\code{realm}) and a grep of
-#' every call site. The \code{l2_code} pattern check below is the only part
-#' that was ever actually reachable.
+#' every call site.
 #' @noRd
 .is_iucn_scheme <- function(scheme) {
   all(c("l2_code", "l1_name", "l2_name") %in% names(scheme)) &&

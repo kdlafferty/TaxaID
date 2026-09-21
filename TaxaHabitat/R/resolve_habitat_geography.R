@@ -58,9 +58,9 @@
 #' 31,383 unassigned): **6,222 points resolved, 20%** -- 2,940 ocean, 3,282
 #' inland -- leaving 25,161 where geography discriminates nothing. 5.9 seconds.
 #'
-#' A 6,523-point coastal extract of the same site gave 34% (221 of 646), and
-#' that figure was previously quoted here. It is **not representative**: the
-#' extract is coastal-heavy, and its unassigned points are Cottidae, whereas
+#' A 6,523-point coastal extract of the same site gives 34% (221 of 646), but
+#' it is **not representative**: the extract is coastal-heavy, and its
+#' unassigned points are Cottidae, whereas
 #' production's are 97%-by-record birds (Laridae, Anatidae, Gaviidae). Quote
 #' the production number. The general lesson is that a fixture chosen for
 #' convenience validated the mechanism without exercising the case that

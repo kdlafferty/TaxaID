@@ -90,8 +90,8 @@
 #' per habitat (including \code{Other}).
 #'
 #' @details
-#' \strong{Reading an NA habitat:} two very different points used to come back
-#' identically as \code{main_habitat = NA} -- one clearly Marine at 0.28, just
+#' \strong{Reading an NA habitat:} two very different points can both come back
+#' as \code{main_habitat = NA} -- one clearly Marine at 0.28, just
 #' under a 0.3 threshold, and one genuinely mixed at 0.35 / 0.33 / 0.32. The
 #' first has an unambiguous signal the threshold rejected; the second has no
 #' signal to have. \code{main_habitat_prop} separates them and
@@ -357,8 +357,8 @@ assign_habitat_biological <- function(occurrence_data,
   # ---------------------------------------------------------------------------
   # Point-level consensus diagnostics.
   #
-  # best_prop and prop_mat were previously computed and thrown away, which meant
-  # two very different points came back identically as main_habitat = NA:
+  # main_habitat_prop and main_habitat_breadth exist so that two very
+  # different points do not come back identically as main_habitat = NA:
   #   - "clearly Marine at 0.28" -- an unambiguous signal just under threshold
   #   - "genuinely mixed 0.35 / 0.33 / 0.32" -- no signal to have
   # main_habitat_prop separates them, and main_habitat_breadth says how spread

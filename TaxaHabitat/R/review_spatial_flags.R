@@ -63,12 +63,12 @@
 #'
 #' @section Composite categories for unassigned points:
 #' A point whose consensus reached no verdict (\code{main_habitat} \code{NA})
-#' used to appear as a single undifferentiated \strong{Unknown}. Every
-#' ambiguous point then looked like the same problem and could only be resolved
+#' is not left as a single undifferentiated \strong{Unknown} -- which would
+#' make every ambiguous point look like the same problem, resolvable only
 #' one click at a time.
 #'
 #' When \code{occurrence_data} carries a \code{"habitat_proportions"}
-#' attribute, such a point is instead labelled with the habitats actually in
+#' attribute, such a point is labelled with the habitats actually in
 #' contention -- \code{"Estuarine | Freshwater | Marine"} -- and that label is
 #' a real category: its own colour, its own entry in the \strong{Habitats}
 #' sidebar filter, and therefore selectable as a \strong{group}. Filter to one
@@ -324,9 +324,9 @@ review_spatial_flags <- function(
   # --------------------------------------------------------------------------
   # 1b. Composite categories for UNASSIGNED points.
   #
-  # An unassigned point (main_habitat NA) previously showed as a single grey
-  # "Unknown", which meant every ambiguous point looked like the same problem
-  # and could only be resolved one click at a time. Its consensus vector
+  # An unassigned point (main_habitat NA) is not left as a single grey
+  # "Unknown" -- which would make every ambiguous point look like the same
+  # problem, resolvable only one click at a time. Its consensus vector
   # already says WHICH habitats are in contention, so label it with them --
   # "Estuarine | Freshwater | Marine" -- and that label becomes a real
   # category: its own colour, its own entry in the Habitats sidebar filter,
@@ -720,11 +720,7 @@ review_spatial_flags <- function(
     # in the input occurrence_data (typed via the "Other" text box below). Without this,
     # that new value has no palette entry (silently falls back to grey) and
     # is invisible to the sidebar's habitat-visibility checkboxes, which only
-    # ever iterate the ORIGINAL hab_levels -- found live reviewing the
-    # GreatLakes Lentic/Lotic reassignment case, where the region's initial
-    # LLM classification can itself skew to one level, same as the pattern
-    # that broke train_biodiversity_model()'s fixed effect for the same
-    # dataset.
+    # ever iterate the ORIGINAL hab_levels.
     hab_levels_rv <- shiny::reactiveVal(hab_levels)
     pal_rv <- shiny::reactiveVal(pal)
 
@@ -1517,8 +1513,9 @@ review_spatial_flags <- function(
 
       # Register BEFORE computing new_col: a value typed via "Other" has no
       # palette entry yet on first use this session (see .register_new_
-      # habitat()'s own comment for why this used to silently fall back to
-      # grey and stay invisible to the sidebar's visibility filter).
+      # habitat()'s own comment for why an unregistered value would silently
+      # fall back to grey and stay invisible to the sidebar's visibility
+      # filter).
       .register_new_habitat(new_hab)
 
       pid <- selected_point()
@@ -1560,17 +1557,15 @@ review_spatial_flags <- function(
           # Questionable point has, by construction, just made a spatially-
           # informed judgment call -- treat that as a resolution (-> Likely)
           # rather than resetting back to Questionable for a second round of
-          # review. Any other source flag (Likely/Unlikely) now KEEPS its
+          # review. Any other source flag (Likely/Unlikely) KEEPS its
           # existing flag instead of being pushed into Questionable for a
-          # second look (changed 2026-08-02, at the user's request): forcing
-          # every Likely/Unlikely habitat reassignment through a second
-          # Questionable-view round trip doubled the reviewer's workload and
-          # inflated the Questionable view specifically -- the one view where
-          # bulk Flag-mode actions have repeatedly proven fragile at scale
-          # (see this function's own multi-round debugging history in the
-          # project memory system). The reviewer is now trusted to have made a
+          # second look: forcing every Likely/Unlikely habitat reassignment
+          # through a second Questionable-view round trip would double the
+          # reviewer's workload and inflate the Questionable view
+          # specifically -- the one view where bulk Flag-mode actions are
+          # fragile at scale. The reviewer is trusted to have made a
           # spatially-informed call at the moment of reassignment, matching how
-          # the Questionable case already worked.
+          # the Questionable case already works.
           new_flags <- ifelse(old_flags == "questionable", "likely", old_flags)
 
           # ONE grouped history entry for the whole action (see Undo Last).
@@ -1626,9 +1621,9 @@ review_spatial_flags <- function(
 
       # Each entry is a GROUP: parallel vectors covering every point touched by
       # one action. A single click undoes a whole polygon selection, which is
-      # what makes a large bulk reassignment safe to attempt -- previously a
-      # 5,000-point action needed 5,000 undo clicks, or Cancel (which discards
-      # the entire review session).
+      # what makes a large bulk reassignment safe to attempt -- without this
+      # grouping, a 5,000-point action would need 5,000 undo clicks, or
+      # Cancel (which discards the entire review session).
       last <- flag_hist[[length(flag_hist)]]
       history(flag_hist[-length(flag_hist)])
 
