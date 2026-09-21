@@ -867,7 +867,9 @@ test_that("verify_removal_candidates() returns NA corroborator columns when no p
                            frac = NA_real_, best_agree = NA_real_,
                            best_disagree = NA_real_, anywhere = FALSE,
                            anywhere_pident = NA_real_,
-                           local_corroborator_accession = NA_character_) {
+                           local_corroborator_accession = NA_character_,
+                           params_key = .default_params_key(),
+                           evaluated_at = Sys.time()) {
   data.frame(
     accession = accession, listed_taxon = NA_character_,
     n_independent_top_matches = n_partners, n_top_matches_available = NA_integer_,
@@ -878,7 +880,7 @@ test_that("verify_removal_candidates() returns NA corroborator columns when no p
     congruent_evidence_exists_anywhere = anywhere,
     congruent_evidence_best_pident = anywhere_pident,
     hierarchy_flag = hierarchy_flag,
-    evaluated_at = Sys.time(), params_key = "k",
+    evaluated_at = evaluated_at, params_key = params_key,
     taxonomy_resolution_source = NA_character_,
     query_len_submitted = NA_integer_, query_trim_path = NA_character_,
     n_excluded_same_batch = NA_integer_, n_excluded_not_species_resolved = NA_integer_,
@@ -1003,6 +1005,57 @@ test_that("verify_local_corroborations() never flags an 'untested' corroborator"
   out <- suppressMessages(verify_local_corroborations(cache_dir))
   expect_equal(out$corroborator_reference_action, "untested")
   expect_equal(out$status, "clean")
+})
+
+test_that("verify_local_corroborations() reads the corroborator's CURRENT-generation verdict, not a stale older one (regression, 2026-09-21)", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  .write_raw_cache(cache_dir, list(
+    .raw_cache_row("THIN5", "locally_corroborated",
+      n_partners = 1L,
+      best_agree = 100, anywhere = TRUE,
+      local_corroborator_accession = "COR001"
+    ),
+    # COR001 was evaluated under an OLD params_key generation (before a
+    # parameter change) as clean/"congruent" ...
+    .raw_cache_row("COR001", "congruent",
+      n_partners = 5L, frac = 0.08333,
+      best_agree = 99.5, anywhere = TRUE, anywhere_pident = 99.5,
+      params_key = "old_generation_key",
+      evaluated_at = Sys.time() - 1000
+    ),
+    # ... and re-evaluated under the CURRENT generation as "incongruent" --
+    # this is the row match() must use.
+    .raw_cache_row("COR001", "incongruent",
+      n_partners = 3L, frac = 0.875,
+      best_disagree = 98.62, anywhere = FALSE,
+      evaluated_at = Sys.time()
+    )
+  ))
+  out <- suppressMessages(verify_local_corroborations(cache_dir))
+  expect_equal(out$status, "flagged")
+  expect_equal(out$corroborator_hierarchy_flag, "incongruent")
+  expect_equal(out$corroborator_reference_action, "remove")
+})
+
+test_that("verify_local_corroborations() reads 'unchecked' (not the old row) when the corroborator's ONLY verdict predates the current params_key generation", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  .write_raw_cache(cache_dir, list(
+    .raw_cache_row("THIN6", "locally_corroborated",
+      n_partners = 1L,
+      best_agree = 100, anywhere = TRUE,
+      local_corroborator_accession = "OLDONLY"
+    ),
+    .raw_cache_row("OLDONLY", "congruent",
+      n_partners = 5L, frac = 0.08333,
+      best_agree = 99.5, anywhere = TRUE, anywhere_pident = 99.5,
+      params_key = "old_generation_key"
+    )
+  ))
+  out <- suppressMessages(verify_local_corroborations(cache_dir))
+  expect_equal(out$status, "unchecked")
+  expect_true(is.na(out$corroborator_reference_action))
 })
 
 test_that("verify_local_corroborations() input validation", {
