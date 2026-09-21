@@ -22,9 +22,6 @@
 #'   \item \code{\link{add_posthoc_assessment}} -- occurrence plausibility
 #'     (Axis 1) and evidence discrimination (Axis 2) for a
 #'     \code{TaxaAssign::posterior_consensus()} output
-#'   \item \code{\link{build_review_covariates}} -- collapse a long-format
-#'     detections table into per-observation covariates for modelling how an
-#'     observation was classified
 #' }
 #'
 #' @section Spatial context:
