@@ -32,32 +32,30 @@ the same underlying detection and are identical across sites for a given
 candidate.
 }
 \description{
-Bridges \code{\link[=join_priors]{join_priors()}} (Session 138: now site-preserving, i.e. one row per
-\code{observation_id} x \code{taxon_name} x \code{taxon_name_rank} x \code{grid_id} x
-\code{main_habitat}) to \code{\link[=compute_posterior]{compute_posterior()}}, which expects exactly one row per
-candidate hypothesis per observation. When the same \code{observation_id} was
-detected at more than one site (e.g. the same eDNA ASV recovered from reads
-at two different sample sites), each candidate taxon otherwise arrives with
-one prior row per site. This function combines those rows into one.
+Bridges \code{\link[=join_priors]{join_priors()}} (site-preserving: one row per \code{observation_id} x
+\code{taxon_name} x \code{taxon_name_rank} x \code{grid_id} x \code{main_habitat}) to
+\code{\link[=compute_posterior]{compute_posterior()}}, which expects exactly one row per candidate
+hypothesis per observation. When the same \code{observation_id} was detected at
+more than one site (e.g. the same eDNA ASV recovered from reads at two
+different sample sites), each candidate taxon otherwise arrives with one
+prior row per site. This function combines those rows into one.
 }
 \details{
 \subsection{Why this function exists}{
 
-Before Session 138, \code{join_priors()}'s final deduplication step
-(\code{distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)})
-silently kept only the highest-\code{prior_mean} site per candidate -- each
-candidate ended up matched to \emph{its own} most favorable site rather than the
-site it was actually detected at, which could turn a confident, correct
-call into a nonsensical tie. \code{join_priors()} now preserves one row per site
-(its \code{distinct()} call additionally keys on \code{grid_id}/\code{main_habitat}); this
-function is the deliberate combination step that must run on that
-site-preserving output before \code{\link[=compute_posterior]{compute_posterior()}}.
+A naive \code{distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)} deduplication would silently keep only the highest-\code{prior_mean}
+site per candidate -- each candidate would end up matched to \emph{its own}
+most favorable site rather than the site it was actually detected at,
+which could turn a confident, correct call into a nonsensical tie.
+\code{\link[=join_priors]{join_priors()}} instead preserves one row per site (its \code{distinct()} call
+keys on \code{grid_id}/\code{main_habitat} as well); this function is the deliberate
+combination step that must run on that site-preserving output before
+\code{\link[=compute_posterior]{compute_posterior()}}.
 }
 
 \subsection{Combination rule: precision-weighted, not a plain product}{
 
-A simpler design (evaluated and rejected during Session 138 design review)
-would multiply each candidate's per-site \code{prior_mean} values together and
+A simpler design would multiply each candidate's per-site \code{prior_mean} values together and
 renormalize. That rule treats every site's point estimate as equally
 trustworthy regardless of how much occurrence data backs it -- a site with
 almost no data (small \code{prior_alpha + prior_beta}) counts exactly as much as
@@ -83,8 +81,8 @@ The logit-space rule assumes each site's Beta is reasonably concentrated.
 Where any site's prior is J-shaped -- the dark-diversity floor
 (\verb{alpha ~ 2e-6, beta ~ 2}), a singleton mirror, or an evidence-blend row --
 the logit moments are dominated by digamma's singularity at 0 and the
-back-transformed mean underflows to exactly 0 (NaN alpha, Inf beta; found
-on the first real multi-site run, 2026-09-12, on 349 of 4,469 rows). The
+back-transformed mean underflows to exactly 0 (NaN alpha, Inf beta; on a
+real multi-site run, 349 of 4,469 rows). The
 logit rule still applies whenever at least one site is informative: a
 J-shaped site's logit weight is about \code{alpha^2}, so it is ignored in favour
 of the site with data, as it should be (a floor prior is uninformed, not
@@ -109,7 +107,7 @@ pricing, or sites in different habitats after
 to \code{NA} on the combined row and a warning names the candidates, because
 \code{\link[=compute_posterior]{compute_posterior()}}'s Monte Carlo path would otherwise sample presence
 from one site's \code{prior_mix_w} alone while \code{posterior_point_est} used the
-recombined mean (2026-09-13). The recombined Beta is sampled instead.
+recombined mean. The recombined Beta is sampled instead.
 Recombining the mixture itself across sites is not implemented.
 }
 

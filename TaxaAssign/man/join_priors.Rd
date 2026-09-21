@@ -44,12 +44,10 @@ If \code{main_habitat} is omitted, the error message lists available
 habitats and row counts at the resolved grid cell.
 \code{list(main_habitat = "Marine")} alone (no \code{lat}/\code{lon}/
 \code{grid_id}) auto-fills coordinates from
-\code{attr(taxaexpect_priors, "search_center")} when present -- set by
-the archived \code{TaxaExpect::build_priors()} (GLMM chain, archived
-2026-09-09; only relevant for an old cached \code{build_priors()}
-result you still have on disk, since \code{estimate_kernel_priors()}
-does not set this attribute) -- \code{main_habitat} itself is
-never auto-filled or guessed.
+\code{attr(taxaexpect_priors, "search_center")} when present
+(\code{estimate_kernel_priors()}'s own output does not set this
+attribute) -- \code{main_habitat} itself is never auto-filled or
+guessed.
 See Details.}
 
 \item{taxonomy_lookup}{Optional data frame mapping \code{taxon_name} to
@@ -161,13 +159,13 @@ requires an exact \code{main_habitat} match, so such a row could never match a
 real observation's specific habitat on its own -- this function re-matches
 any row whose primary join failed on \verb{(taxon_name, taxon_name_rank, grid_id)} alone against habitat-agnostic (\code{main_habitat = NA})
 \code{taxaexpect_priors} rows, ranked below a real per-habitat match but above
-the dark-diversity/global-floor fallback below. Confirmed a real,
-previously-shipping gap on real data: a domestic-food prior row never
-matched a real observation under habitat-scoped priors, silently falling
-back to the generic floor instead of the tailored prior
-\code{generate_domestic_food_priors()} computed for it.
+the dark-diversity/global-floor fallback below. Confirmed on real data: a
+domestic-food prior row never matches a real observation under
+habitat-scoped priors alone, silently falling back to the generic floor
+instead of the tailored prior \code{generate_domestic_food_priors()} computed
+for it.
 
-\strong{Domestic/synanthropic species caveat (Session 149):} this fallback
+\strong{Domestic/synanthropic species caveat:} this fallback
 assumes unmodelled species are exchangeable draws from one detection
 process. Domestic/synanthropic species (pets, livestock) violate this in
 a known, systematic direction, since GBIF/iNaturalist under-index captive
@@ -184,7 +182,7 @@ After the join, rows are deduplicated on \code{observation_id} x
 \code{taxon_name} x \code{taxon_name_rank} x \code{grid_id} x \code{main_habitat}
 (keeping the highest \code{prior_mean} among same-site duplicates --
 e.g. artifacts of coarse-rank expansion). The \code{grid_id}/\code{main_habitat}
-keys (added Session 138) mean a genuine multi-site observation (the same
+keys mean a genuine multi-site observation (the same
 \code{observation_id} detected at more than one site) keeps one row per site
 per candidate rather than collapsing to a single site. Pass the result
 through \code{\link[=combine_multisite_priors]{combine_multisite_priors()}} before \code{\link[=compute_posterior]{compute_posterior()}} to
@@ -208,11 +206,10 @@ alone. Named evidence-derived rows (\code{undetected_type == "evidence_blend"},
 never promoted under any condition: their sub-singleton theta is the
 deliberate output of a graded evidence blend
 (\code{TaxaExpect::apply_undetected_evidence()}) or ESS-based domestic
-scale, and promotion would silently erase that gradation (the central
-finding of the 2026-08-26 upranking review -- see
-\code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}).
-When \code{taxaexpect_priors} carries no \code{observed_in_habitat} column, the
-pre-2026-08-26 blanket promotion is retained for modelled rows.
+scale, and promotion would silently erase that gradation.
+When \code{taxaexpect_priors} carries no \code{observed_in_habitat} column, every
+modelled row below the singleton-mirror mean is promoted -- the
+extrapolation check requires that column.
 }
 
 \section{Coarse-rank expansion}{

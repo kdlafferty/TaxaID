@@ -29,7 +29,8 @@ resolution when present; genus is always derivable from species binomials.}
 value are discarded before any other filtering.  Scale must match the
 \code{score_col} values (e.g. 97 for percent identity, 0.97 for proportion).
 Default \code{0} (no filtering). Note: an ROC-style sweep against real 12S
-reference data (\code{diagnostics/score_floor_roc_sweep.R}, 2026-07-09) found
+reference data (see the \code{score_floor_roc_sweep.R} diagnostic, TaxaID_dev
+repository) found
 that \code{min_score}/raw percent-identity alone cannot discriminate a true
 species from its closest congener at almost any real-world threshold
 (true-positive and congeneric-false-positive rates track each other
@@ -62,12 +63,11 @@ threshold the top score meets.  If the top score fails all thresholds, the
 sample is unresolvable.  Applied independently of the LCA — so even if all
 hits agree on species, the consensus is demoted to genus if the top score
 is below the species threshold.
-\strong{No default -- errors if omitted (2026-07-23).} This function has no
+\strong{No default -- errors if omitted.} This function has no
 way to know the marker or even whether \code{score_col} holds a DNA/image/
-acoustic score, so no single fixed threshold set is safe to assume for
-every caller (see Details for why the earlier GITA/Jonah Ventures
-default, \code{c(species = 98, genus = 95, family = 90, phylum = 85)}, was
-removed rather than kept as a default). Supply one of:
+acoustic score, so no single fixed threshold set (e.g. the GITA/Jonah
+Ventures convention, \code{c(species = 98, genus = 95, family = 90, phylum = 85)}) is safe to assume for
+every caller (see Details for the full reasoning). Supply one of:
 (1) your own thresholds, on whichever scale \code{score_col} uses (percent
 identity or 0-1 proportion -- see the auto-rescale note below), or
 (2) marker-specific thresholds derived from your own reference data via
@@ -81,7 +81,7 @@ informational message) -- pass your own already-scaled
 \code{rank_thresholds} to silence this.}
 
 \item{consensus_mode}{Character, one of \code{"gap"} (default) or \code{"bracket"}.
-\code{"gap"} is the pre-2026-09-12 behaviour exactly: \code{min_score} floor ->
+\code{"gap"} is: \code{min_score} floor ->
 \code{max_gap} window -> LCA over the \emph{distinct retained taxa}.  \code{"bracket"}
 selects the Jonah Ventures rule: \code{min_score} floor -> a \code{bracket_width}
 window anchored at the top score -> agreement rule over the \emph{retained
@@ -93,8 +93,8 @@ in \code{"bracket"} mode; \code{bracket_width}/\code{bracket_fallback} are ignor
 rank when it appears in at least this fraction of the retained rows.
 \code{1} (default) is strict unanimity, i.e. a classical LCA.  Jonah Ventures
 uses \code{0.9}.  Applies in \strong{both} modes: in \code{"gap"} mode it generalises
-the LCA step, and \code{agreement_fraction = 1} there is byte-for-byte the
-pre-2026-09-12 result.  The comparison is inclusive at the boundary
+the LCA step, and \code{agreement_fraction = 1} there reduces to a classical
+strict-unanimity LCA.  The comparison is inclusive at the boundary
 (9 of 10 rows resolves at \code{agreement_fraction = 0.9}), and is made with
 a small floating-point tolerance so that e.g. \code{27/30 >= 0.9} cannot fail
 on binary representation.  If two or more taxa clear the bar at the same
@@ -115,9 +115,10 @@ point), which is the default.  Hits scoring in
 \verb{(top - bracket_width, top]} are retained.  Only used when
 \code{consensus_mode = "bracket"}.
 
-\strong{The lower bound is exclusive, and Jonah Ventures' own is not} (found
-2026-09-12 while validating against their delivered Pt Conception MiFish
-taxonomy -- \code{diagnostics/jv_bracket_consensus_validation.R}).  Their
+\strong{The lower bound is exclusive, and Jonah Ventures' own is not} (confirmed
+while validating against their delivered Pt Conception MiFish
+taxonomy; see the \code{jv_bracket_consensus_validation.R} diagnostic,
+TaxaID_dev repository).  Their
 delivered detailed-hit tables do contain hits at exactly \code{top - 1}, and
 those hits demonstrably contributed to their published consensus, so
 their real interval is the closed \verb{[top - 1, top]}.  The exclusive bound
@@ -229,34 +230,32 @@ This function does not require a trained likelihood model or priors.  It is
 the conventional approach used in most metabarcoding and BLAST-based
 pipelines.
 
-\strong{Why \code{rank_thresholds} has no default (2026-07-23, supersedes the
-2026-07-09 GITA/Jonah Ventures default):}
+\strong{Why \code{rank_thresholds} has no default:}
 \code{min_score} and \code{max_gap} alone provide essentially no protection against
 confusing a species with its closest congener -- an ROC-style sweep against
 real 12S reference data found true-positive (within-species) and
 false-positive (congeneric) rates track almost identically up to a ~97
-percent-identity threshold (see \code{diagnostics/score_floor_roc_sweep.R}).
+percent-identity threshold (see the \code{score_floor_roc_sweep.R} diagnostic,
+TaxaID_dev repository).
 This is a real limitation of percent-identity thresholds generally --
 \code{rank_thresholds} is what does the real species-level discrimination this
-function offers, which is exactly why a caller getting NO thresholds at
-all (the pre-2026-07-09 \code{NULL} default) was a real gap.
+function offers, so a caller getting NO thresholds at all would have no
+real protection against that confusion.
 
-The 2026-07-09 fix picked ONE fixed threshold set (the conventional
-GITA/Jonah Ventures percent-identity convention) as the default. That
-default was itself later found unsafe to assume universally: this
+No single fixed threshold set (e.g. the conventional GITA/Jonah Ventures
+percent-identity convention) is safe to assume universally: this
 function has no way to know what marker \code{score_col} was scored against,
 or even whether the data is DNA, image, or acoustic evidence at all --
 the real, calibrated threshold for "98\% identity means species-level
 confidence" is a property of the SPECIFIC marker and reference database,
 not a universal constant (mirrors \code{TaxaAssign::join_priors()}'s
 \code{backbone_id} precedent: no safe default exists when the correct value
-depends on data the function itself cannot see). Rather than continue
-shipping a plausible-looking but potentially-wrong default, the function
-now requires the caller to make this choice explicitly -- either supplying
+depends on data the function itself cannot see). The function therefore
+requires the caller to make this choice explicitly -- either supplying
 real thresholds directly, or deriving marker-specific ones from real
 reference data via \code{TaxaLikely::compute_rank_thresholds()} (which uses
 the identical genus-/family-equal-weighted, Empirical-Bayes-shrunk
-per-rank Youden's J logic \code{diagnostics/score_floor_roc_sweep.R}
+per-rank Youden's J logic the \code{score_floor_roc_sweep.R} diagnostic
 prototyped). Pass \code{rank_thresholds = NULL} explicitly only if the specific
 pipeline you're mirroring genuinely has no rank-threshold step (rare).
 }
@@ -272,7 +271,7 @@ have called here, versus what does TaxaID's Bayesian pathway
 -- mirroring another pipeline's process so its output can be directly
 compared against TaxaID's.
 
-\strong{Which convention is reproduced (corrected 2026-09-12).} \code{"gap"} mode
+\strong{Which convention is reproduced.} \code{"gap"} mode
 reproduces the \strong{common fixed-threshold / LCA convention}: a fixed
 percent-identity floor, an optional gap window, per-rank thresholds, and a
 strict-unanimity LCA. \code{"bracket"} mode reproduces the
@@ -280,9 +279,8 @@ strict-unanimity LCA. \code{"bracket"} mode reproduces the
 Ventures}: a 1\%-wide bracket anchored at the ESV's top score, a taxon
 reported at a rank only when it holds at least 90\% of the hits in that
 bracket, \code{NA} at that rank otherwise, and a widen-to-2\% fallback when a
-match of 97\% or better still returns no family. Before 2026-09-12 this function's
-documentation attributed the gap-mode rule to "the GITA / Jonah Ventures
-convention"; that attribution was \strong{wrong} and has been removed. The
+match of 97\% or better still returns no family. \code{"gap"} mode is NOT "the
+GITA / Jonah Ventures convention" -- \code{"bracket"} mode is. The
 difference is not cosmetic for a published comparison: \strong{strict unanimity
 (\code{agreement_fraction = 1}) upranks more readily than a 90\% rule}, so a
 TaxaID-vs-\code{score_consensus()} comparison run in gap mode is biased toward

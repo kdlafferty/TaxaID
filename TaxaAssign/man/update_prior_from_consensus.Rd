@@ -20,9 +20,9 @@ Must contain: \code{observation_id}, \code{taxon_name}, \code{score_likelihood},
 \code{prior_alpha}/\code{prior_beta} (Beta shape parameters) are present, they are
 recomputed alongside \code{prior_mean} for boosted rows, preserving the
 original concentration (\code{alpha + beta}) so \code{\link[=compute_posterior]{compute_posterior()}}'s Monte
-Carlo path stays consistent with the boosted point estimate -- fixes a
-latent inconsistency in the previous design, where only \code{prior_mean} was
-rescaled and a stale Beta shape could be sampled from if \code{n_sims > 0}.}
+Carlo path stays consistent with the boosted point estimate -- rescaling
+only \code{prior_mean} would leave a stale Beta shape that could be sampled
+from if \code{n_sims > 0}.}
 
 \item{consensus}{Dataframe. Output of \code{\link[=posterior_consensus]{posterior_consensus()}} run on \code{result}.
 Must contain: \code{observation_id}, \code{consensus_taxon}, \code{is_resolved},
@@ -106,16 +106,17 @@ observation are used as evidence sources or receive a prior update;
 observations in a single-observation spatial group are always returned
 unchanged, exactly like already-resolved observations.
 }
-\section{Soft confirmation (2026-08-28 redesign, replaces the hard gate)}{
+\section{Soft confirmation}{
 
-The previous design counted an observation as a "donor" only when it
-resolved a species with \verb{consensus_posterior >=} a threshold (0.8) -- hard
-assignment in the sense of classification EM (Celeux & Govaert 1992,
-\emph{Computational Statistics & Data Analysis} 14:315-332). That made the
+A hard-gate donor definition -- counting an observation as a "donor" only
+when it resolves a species with \verb{consensus_posterior >=} a threshold
+(e.g. 0.8) -- is hard assignment in the sense of classification EM
+(Celeux & Govaert 1992, \emph{Computational Statistics & Data Analysis}
+14:315-332). That would make the
 dataset-level output discontinuous in per-observation inputs: one marginal
-competitor holding every observation of a species just below the bar meant
+competitor holding every observation of a species just below the bar means
 zero donors anywhere (a real case: 78 yellow-perch observations at ~0.69
-each -- no confirmation, dataset-wide). Now every observation's best
+each -- no confirmation, dataset-wide). Instead, every observation's best
 posterior for a species contributes fractionally (soft assignment, the
 one-iteration analog of a multi-scale occupancy update -- Dorazio &
 Erickson 2018, \emph{Molecular Ecology Resources} 18:368-380):
@@ -141,55 +142,18 @@ itself -- cross-observation support IS evidence about presence -- via
 a pseudo-observation update weighted by \code{prior_mix_p_conc}, with the
 Beta summary re-moment-matched. Never demoted.
 }
+
+A formally correct alternative to this quantile-based design would be a
+Beta-Binomial hierarchical model over species x observation within a
+site; the current design does not by itself distinguish "confidence
+earned by genuinely strong evidence" from "confidence attained despite
+thin/low-quality input" (e.g. a short, low-coverage sequence read
+producing a spurious high-identity match) -- that would need a quality
+covariate on the underlying scores, a separate, larger design question
+flagged for later rather than solved here.
 }
 
-\section{Historical}{
- confirmation-quantile design (Session 149, superseded):
-The previous design (a fixed \code{presence_multiplier}, e.g. x5) applied the
-same boost regardless of how many observations confirmed a species or how
-confident those confirmations were -- flagged as High priority in
-\code{ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md}. This design
-instead ties the boost directly to the strength of the confirming
-evidence:
-\enumerate{
-\item For each confirmed species, take the \code{confirmation_quantile}-th
-quantile (default 0.9) of \code{consensus_posterior} across all resolved
-"donor" observations naming it. A high quantile behaves like a
-near-maximum for a small donor pool (rewarding one strong,
-high-quality confirmation the way a single excellent frame in an
-otherwise-poor camera-trap burst should), but -- unlike a plain
-maximum -- it converges to a \emph{stable} population value as the donor
-pool grows, rather than drifting toward the degenerate ceiling of 1.0
-regardless of whether the evidence is real. This matters specifically
-for a pair of species a classifier cannot reliably separate: many
-weak, correlated (not independent) confirmations split between them
-would otherwise let a plain maximum -- or a probabilistic-OR
-combination across all of them -- manufacture unwarranted confidence
-for one or both, an effect that does not simply cancel out under
-renormalization once a third, unrelated candidate is also present.
-\item That quantile value is only used at all if it clears
-\code{min_confirmation_confidence} (default 0.8) -- a barely-resolved
-confirmation (e.g. just above whatever \code{posterior_consensus()}
-threshold marked it "resolved") should not be trusted to inject a
-large jump into an unrelated observation's prior.
-\item Even then, it only \emph{replaces} \code{prior_mean} where it exceeds the
-existing value (never-demote) -- a species already well-supported by
-occurrence data is left alone.
-}
-This is still a threshold-based design (the quantile level and the
-confidence floor are both free parameters), and it does not by itself
-distinguish "confidence earned by genuinely strong evidence" from
-"confidence attained despite thin/low-quality input" (e.g. a short,
-low-coverage sequence read producing a spurious high-identity match) --
-that would need a quality covariate on the underlying scores, a separate,
-larger design question flagged for later rather than solved here.
-A formally correct alternative would still be a Beta-Binomial
-hierarchical model over species x observation within a site; this
-quantile-based design is a more evidence-sensitive interim step than the
-old fixed multiplier, not a replacement for that.
-}
-
-\section{Rescaling onto the occurrence scale (2026-07-30)}{
+\section{Rescaling onto the occurrence scale}{
 
 \code{consensus_posterior} is P(hypothesis | evidence) \emph{within one
 observation} -- a probability over competing hypotheses. \code{prior_mean},
@@ -214,19 +178,18 @@ only the target scale moves -- so a stronger/more numerous confirmation
 observed maximum share rather than substituting a foreign-scale
 constant. When \code{result} has no \code{theta_mean} column (e.g. LLM-pathway
 priors from \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}, which are not occurrence-share-based to
-begin with), the previous direct-substitution behavior is used
-unchanged -- the units mismatch this section fixes is specific to
+begin with), direct substitution (without rescaling) is used
+instead -- the units mismatch this section fixes is specific to
 occurrence-model-sourced priors.
 }
 
-\section{Confirmed without an occurrence record (2026-07-30)}{
+\section{Confirmed without an occurrence record}{
 
 A taxon can be confidently identified elsewhere in the dataset while
 having no occurrence record at all (\code{theta_mean} \code{NA} for every row
 naming it) -- e.g. a real Mugu case, \emph{Oncorhynchus mykiss}, which has no
-row in \code{taxaexpect_priors} at all (see
-\verb{[[project_urolophus_synonym_join_bug]]} in the project memory system --
-this is a known, separate upstream join gap, not a sign the species is
+row in \code{taxaexpect_priors} at all (a known, separate upstream join gap,
+not a sign the species is
 actually rare). Such a row still gets boosted (the confirmation is real
 identification evidence, worth keeping) but is flagged via a new
 \code{confirmed_without_occurrence_record} column rather than silently

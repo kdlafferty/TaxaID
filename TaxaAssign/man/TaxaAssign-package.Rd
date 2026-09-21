@@ -39,9 +39,9 @@ Bayesian: \code{TaxaLikely::audit_barcode_coverage()} feeds
 \code{TaxaLikely::expand_unreferenced_hypotheses()} (models likelihoods for
 named unreferenced taxa). LLM-shortcut:
 \code{TaxaLikely::suggest_unreferenced_species()} (a fast, LLM-first
-alternative to \code{audit_barcode_coverage()}; moved here from this
-package in 2026-09-08) feeds \code{\link{assign_taxa_llm}}'s own
-\code{unreferenced_taxa} parameter directly.
+alternative to \code{audit_barcode_coverage()}) feeds
+\code{\link{assign_taxa_llm}}'s own \code{unreferenced_taxa} parameter
+directly.
 \itemize{
 \item \code{\link{suggest_unreferenced_species}} -- deprecated forwarding
 wrapper; call \code{TaxaLikely::suggest_unreferenced_species()} directly

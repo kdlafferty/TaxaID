@@ -28,10 +28,10 @@ Set higher for less-observed taxonomic groups. Taxa below this threshold
 are not elevated even if \code{in_range = TRUE}.}
 
 \item{require_name_match}{Logical, default \code{TRUE}. Exclude rows whose
-resolved iNat name (\code{name_match} column, \code{check_inat_range()}
-2026-08-28+) differs from the query or cannot be verified -- iNat's
-fuzzy text search can silently resolve a query to a different species,
-and an elevation must never ride on a misresolved name.}
+resolved iNat name (\code{name_match} column from
+\code{check_inat_range()}) differs from the query or cannot be verified
+-- iNat's fuzzy text search can silently resolve a query to a different
+species, and an elevation must never ride on a misresolved name.}
 
 \item{verbose}{Logical. If TRUE, reports the number of taxa and rows
 elevated. Default FALSE (a summary is always emitted via
@@ -51,13 +51,12 @@ iNaturalist observation coverage to treat the polygon as reliable, from its
 current group prior up to the Tier 2 singleton-mirror floor.
 }
 \details{
-\strong{Superseded for the mixture pathway (2026-08-28):} workflows using
-\code{TaxaExpect::apply_undetected_evidence()} should feed iNat evidence
-through \code{TaxaExpect::generate_inat_range_evidence()} instead, so it
-shares the anchors, moment-matched concentration, and multi-source
-combination of the other evidence channels rather than this function's
-post-join binary elevation. This function remains for workflows not yet on
-the shared applier.
+For workflows using \code{TaxaExpect::apply_undetected_evidence()}, feed
+iNat evidence through \code{TaxaExpect::generate_inat_range_evidence()}
+instead, so it shares the anchors, moment-matched concentration, and
+multi-source combination of the other evidence channels rather than this
+function's post-join binary elevation. This function is for workflows
+outside that shared mixture pathway.
 
 Evidence from the iNaturalist range polygon is asymmetric: \code{in_range =
 TRUE} is positive corroboration and warrants a prior boost; \code{in_range =
