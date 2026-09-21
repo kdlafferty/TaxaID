@@ -4,7 +4,7 @@
 
 Assigns habitat classifications to taxonomic occurrence records using LLM prompts and performs spatial quality control. Receives occurrence data from TaxaFetch and produces habitat-annotated, spatially screened records for input to TaxaExpect. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-20 22:00:00 UTC; unix). 18 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 14:57:47 UTC; unix). 17 exported function(s).
 
 ## Functions
 
@@ -125,22 +125,6 @@ Summarises per-species habitat weights into a single consensus habitat (and opti
 
 **Value:** A one-row data frame with columns: main_habitat Character. The consensus habitat, or 'NA' if none reached 'threshold'. *Deliberately 'NA', and deliberately unlike 'assign_habitat_biological'*, which returns the sentinel '"Uncertain"' for the same condition. See Details. ecoregion Character. The modal 'ecoregion_best_guess' value across species, or 'NA' if the column is absent. ...
 
-### drop_stale_seeded_decisions(occurrence_data, path, seeded_pattern = "^seeded from", dry_run = TRUE, backup = TRUE)
-
-Drop Seeded Review Decisions That the Automatic Classifier Has Since Overtaken
-
-A decision file seeded with 'before = NULL' records "accept the automatic classification" for every point, with 'decided_at' set to a '"seeded from ..."' string rather than a timestamp. Those are not reviewer judgements. When the automatic classifier later changes its mind about a point - because a bug was fixed, a habitat vocabulary was extended, or a threshold moved - the seeded verdict silently overrides the new one, and 'apply_spatial_review_decisions()' reports 'n_pending_review = 0'. The site then looks fully reviewed while carrying the old classifier's answer.
-
-| Param | Required | Default | Doc |
-|---|---|---|---|
-| occurrence_data | yes |  | A dataframe freshly returned by flag_habitat_inconsistencies() -- i.e. carrying the CURRENT automatic spatial_flag, before any decisions are applied. |
-| path | yes |  | Character. Path to the *_spatial_review_decisions.rds file. |
-| seeded_pattern | no | "^seeded from" | Character regex identifying seeded rows by their decided_at value. Default "^seeded from", which is what save_spatial_review_decisions() writes. |
-| dry_run | no | TRUE | Logical. When TRUE (default) nothing is written; the function reports what it would drop. Set FALSE to rewrite the file. |
-| backup | no | TRUE | Logical. When writing, first copy the existing file to <path>.bak_<timestamp>. Default TRUE. |
-
-**Value:** Invisibly, a list with 'n_decisions', 'n_seeded', 'n_real', 'n_stale', 'stale_point_ids' and 'path'. Called for its message output and, when 'dry_run = FALSE', its side effect.
-
 ### flag_habitat_inconsistencies(occurrence_data, lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", coast_buffer_m = 1000, marine_questionable_km = 0, depth_neritic_m = 200, depth_oceanic_m = 4000, resolution = 4L, verbose = TRUE, habitat_scheme = NULL)
 
 Flag Spatially Inconsistent Habitat Assignments
@@ -187,7 +171,7 @@ Parses the raw text returned by any LLM in response to a 'build_habitat_prompt' 
 |---|---|---|---|
 | raw_text | yes |  | Character. Length-1 string containing the LLM response. Markdown code fences, leading/trailing preamble, and postamble text are handled automatically. |
 | taxon_list | yes |  | Character vector. Species submitted in the prompt. Used to detect taxa missing from the response. |
-| habitat_scheme | no | NULL | A habitat_prompt object from build_habitat_prompt. Always supply this -- its $habitat_cols element is used to identify and validate the weight columns, and its $scheme drives IUCN vs. custom mode. NULL triggers legacy IUCN mode (deprecated; IUCN output is also now wide-weighted). |
+| habitat_scheme | no | NULL | A habitat_prompt object from build_habitat_prompt. Always supply this -- its $habitat_cols element is used to identify and validate the weight columns, and its $scheme drives IUCN vs. custom mode. NULL triggers a deprecated IUCN-only mode; passing a habitat_prompt object uses the current wide-weighted format instead. |
 | extra_covariates | no | NULL | Character vector. Names of any additional binary covariate columns to retain from the parsed output. Default NULL (no extra columns retained). Ignored when no matching columns are found. |
 
 **Value:** A data.frame with one row per species and the following columns: taxon_name Character. Species name as returned by the LLM. Numeric. One column per habitat in the scheme, named exactly as in 'prompt$habitat_cols'. Values are 0.0-1.0. Other_weight Numeric. Weight assigned to habitats outside the scheme. 0 for specialists that fit the scheme. habitat_best_guess Character. Free-text description ...
