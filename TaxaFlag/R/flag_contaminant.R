@@ -572,7 +572,7 @@ flag_contaminant <- function(input_df,
 #' read-depth-weighted rate per group (field vs. control), then an Empirical
 #' Bayes-shrunk score comparing them.
 #'
-#' @section Depth-weighting and shrinkage (soundness-review item 15):
+#' @section Depth-weighting and shrinkage:
 #' The naive version of this comparison -- an unweighted mean of each
 #' taxon's per-sample proportions -- lets a single shallow, noisy sample
 #' dominate the mean as much as a deep, well-supported one, and gives a hard
@@ -595,67 +595,66 @@ flag_contaminant <- function(input_df,
 #'     `n_reads_total` is the taxon's total READ count (summed across both
 #'     groups) -- the same Empirical Bayes form used throughout this
 #'     ecosystem (e.g. `TaxaLikely::train_likelihood_model()`'s per-species
-#'     shrinkage), but measured in reads, not samples (Session 152 -- see
-#'     below). A taxon with little total read support, however lopsided its
+#'     shrinkage), but measured in reads, not samples (see below). A taxon
+#'     with little total read support, however lopsided its
 #'     raw ratio, no longer gets an overconfident 0 or 1; a taxon with
 #'     substantial read support keeps close to its raw ratio regardless of
 #'     how few samples it came from.
 #' }
 #' Shrinkage is applied to the FINAL ratio, not to `field_rate`/
-#' `control_rate` individually toward some shared reference rate -- an
-#' earlier version of this fix tried shrinking each rate toward the taxon's
-#' own pooled (field+control) rate, which let a taxon's own field read
-#' volume leak into its control-side prior and systematically understated
-#' genuinely clean taxa's scores whenever field depth dominated control
-#' depth (re-introducing the exact group-depth-imbalance problem
-#' depth-weighting exists to avoid). `mean_prop_field`/`mean_prop_control`
-#' (the old, unweighted per-sample means) are still returned as
-#' informational diagnostics, but no longer feed `contaminant_score`.
+#' `control_rate` individually toward some shared reference rate: shrinking
+#' each rate toward the taxon's own pooled (field+control) rate would let a
+#' taxon's own field read volume leak into its control-side prior and would
+#' systematically understate genuinely clean taxa's scores whenever field
+#' depth dominated control depth (re-introducing the exact
+#' group-depth-imbalance problem depth-weighting exists to avoid).
+#' `mean_prop_field`/`mean_prop_control` (the unweighted per-sample means)
+#' are still returned as informational diagnostics, but do not feed
+#' `contaminant_score`.
 #'
-#' @section Reads, not samples, as the shrinkage denominator (Session 152):
-#' Session 151 shrunk by SAMPLE count (`n_field_present + n_controls_present`).
-#' Real PtConception data (both 12S and 18S) showed this conflates two very
-#' different evidence strengths: a taxon detected via 2 reads in one sample
-#' and a taxon detected via 500,000 reads in one sample were both treated as
-#' "n_present = 1" and shrunk identically -- capping BOTH at the same
-#' distance from 0.5 regardless of how much real evidence either one
-#' actually carries. With the Session 151 default (`prior_weight = 2`,
-#' sample-count shrinkage), no taxon detected in 1-8 total samples could
-#' ever reach the `"low"` risk tier even with overwhelming, unambiguous
-#' read support -- and the median real taxon in both PtConception datasets
-#' is detected in exactly 1 field sample, so this capped the vast majority
-#' of legitimately clean detections at `"moderate"` (12S: 97% of taxa,
-#' 18S: 88%) purely as an artifact of sample count, not evidence quality.
+#' @section Reads, not samples, as the shrinkage denominator:
+#' Shrinking by SAMPLE count (`n_field_present + n_controls_present`) instead
+#' of read count would conflate two very different evidence strengths: a
+#' taxon detected via 2 reads in one sample and a taxon detected via 500,000
+#' reads in one sample are both `n_present = 1` and would be shrunk
+#' identically -- capping BOTH at the same distance from 0.5 regardless of
+#' how much real evidence either one actually carries. Real PtConception
+#' data (both 12S and 18S) confirms this: at `prior_weight = 2` (the
+#' sample-count-shrinkage equivalent), no taxon detected in 1-8 total
+#' samples could reach the `"low"` risk tier even with overwhelming,
+#' unambiguous read support -- and the median real taxon in both
+#' PtConception datasets is detected in exactly 1 field sample, so
+#' sample-count shrinkage caps the vast majority of legitimately clean
+#' detections at `"moderate"` (12S: 97% of taxa, 18S: 88%) purely as an
+#' artifact of sample count, not evidence quality.
 #'
-#' Read count fixes this directly and needs no change to the 0.5 shrink
-#' target (already correct in depth-normalized rate space, per the
+#' Read count avoids this and needs no change to the 0.5 shrink target
+#' (already correct in depth-normalized rate space, per the
 #' Depth-weighting section above). A read-FRACTION-based alternative (shrink
 #' toward the study's own control:field depth ratio rather than 0.5) was
 #' also tried and rejected: it requires anchoring to that ratio explicitly
 #' and does not transfer across studies with very different ratios --
 #' verified directly against both real datasets, where it either missed or
-#' downgraded taxa the sample-count-based approach had correctly flagged
-#' `"high"`.
+#' downgraded taxa the read-count approach correctly flags `"high"`.
 #'
 #' Empirically validated against real PtConception 12S and 18S data at
-#' `prior_weight` (now read-equivalent units) of 20, 50, 100, and 500: the
-#' known `"high"`-risk taxa (stable across the pre-151 and Session-151
-#' formulas) are recovered with 100% sensitivity and zero false positives at
-#' every value tested, on both datasets, while a much larger fraction of
-#' well-supported clean detections correctly reach `"low"` instead of being
-#' capped at `"moderate"`. Default chosen: `prior_weight = 20` -- recovers
-#' the most `"low"`-tier informativeness of the values tested while still
-#' correctly keeping thin (~20-30 total read) single-detections at
-#' `"moderate"`, not `"low"` (a genuinely well-supported single-sample
-#' detection with tens of thousands of reads does reach `"low"`, as it
-#' should).
+#' `prior_weight` (read-equivalent units) of 20, 50, 100, and 500: the known
+#' `"high"`-risk taxa are recovered with 100% sensitivity and zero false
+#' positives at every value tested, on both datasets, while a much larger
+#' fraction of well-supported clean detections correctly reach `"low"`
+#' instead of being capped at `"moderate"`. Default chosen:
+#' `prior_weight = 20` -- recovers the most `"low"`-tier informativeness of
+#' the values tested while still correctly keeping thin (~20-30 total read)
+#' single-detections at `"moderate"`, not `"low"` (a genuinely
+#' well-supported single-sample detection with tens of thousands of reads
+#' does reach `"low"`, as it should).
 #'
 #' @param input_df Data frame in long format.
 #' @param event_col,taxon_col,count_col Column name strings.
 #' @param control_ids,field_ids Character vectors of sample IDs.
 #' @param prior_weight Numeric. Equivalent read count for shrinking the final
-#'   ratio toward 0.5 (Session 152 -- previously an equivalent sample count).
-#'   Higher values pull harder toward 0.5 for taxa with little total read
+#'   ratio toward 0.5. Higher values pull harder toward 0.5 for taxa with
+#'   little total read
 #'   support (field + control combined).
 #'
 #' @return Data frame with one row per taxon and columns: \code{taxon},
@@ -704,8 +703,8 @@ flag_contaminant <- function(input_df,
     field_rows <- tx_rows[!tx_rows$is_control, , drop = FALSE]
     control_rows <- tx_rows[tx_rows$is_control, , drop = FALSE]
 
-    # Informational only (Session 151): unweighted mean of per-sample
-    # proportions -- no longer feeds contaminant_score.
+    # Informational only: unweighted mean of per-sample proportions -- does
+    # not feed contaminant_score.
     mean_prop_field <- if (nrow(field_rows) > 0L) mean(field_rows$prop) else 0
     mean_prop_control <- if (nrow(control_rows) > 0L) mean(control_rows$prop) else 0
 
@@ -723,29 +722,27 @@ flag_contaminant <- function(input_df,
     field_rate <- if (field_depth > 0) taxon_field_reads / field_depth else 0
     control_rate <- if (control_depth > 0) taxon_control_reads / control_depth else 0
 
-    # Raw (un-shrunk) ratio, same structural form as the pre-Session-151
-    # formula, just with depth-weighted rates in place of unweighted
-    # per-sample-proportion means.
+    # Raw (un-shrunk) ratio: field_rate / (field_rate + control_rate), using
+    # depth-weighted rates in place of unweighted per-sample-proportion means.
     rate_sum <- field_rate + control_rate
     raw_score <- if (rate_sum > 0) field_rate / rate_sum else 0.5
 
     # Empirical Bayes shrinkage of the FINAL ratio toward 0.5 (maximally
     # uncertain), weighted by total READ count (n_reads_total summed across
     # both groups) -- w = n_reads_total / (n_reads_total + prior_weight).
-    # Session 152: this was sample count (n_field_present + n_controls_present)
-    # through Session 151, which conflated a 2-read detection with a
-    # 500,000-read detection whenever both happened to come from a single
-    # sample -- see this function's "Reads, not samples" roxygen section for
-    # the real-data evidence this was wrong. Shrinking the ratio itself,
-    # rather than shrinking field_rate/control_rate separately toward some
-    # shared reference rate, avoids a subtle bug: an early version of this
-    # fix shrunk each rate toward their taxon-specific pooled average, which
-    # let a taxon's own (usually much larger) field read volume leak into
-    # its control-side prior, systematically understating genuinely clean
-    # taxa's scores whenever field depth dominated control depth -- exactly
-    # the group-depth-imbalance problem depth-weighting was supposed to
-    # avoid. Shrinking the ratio by read count instead keeps the two groups'
-    # magnitudes fully independent, same as the sample-count version did.
+    # Read count rather than sample count, since sample count would conflate
+    # a 2-read detection with a 500,000-read detection whenever both happened
+    # to come from a single sample -- see this function's "Reads, not
+    # samples" roxygen section for the real-data evidence for this choice.
+    # Shrinking the ratio itself, rather than shrinking field_rate/
+    # control_rate separately toward some shared reference rate, avoids a
+    # subtle bug: shrinking each rate toward the taxon's own pooled
+    # (field+control) average would let a taxon's own (usually much larger)
+    # field read volume leak into its control-side prior, systematically
+    # understating genuinely clean taxa's scores whenever field depth
+    # dominated control depth -- exactly the group-depth-imbalance problem
+    # depth-weighting is meant to avoid. Shrinking the ratio by read count
+    # instead keeps the two groups' magnitudes fully independent.
     n_reads_total <- taxon_field_reads + taxon_control_reads
     w <- n_reads_total / (n_reads_total + prior_weight)
     score <- w * raw_score + (1 - w) * 0.5
