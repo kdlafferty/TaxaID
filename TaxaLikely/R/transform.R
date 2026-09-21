@@ -21,7 +21,7 @@
 #' data lives (few mismatches out of many aligned bases), for which
 #' square-root is the classical (Anscombe) variance-stabilizing transform;
 #' empirically it recovers the correct qualitative genus-tightness ordering
-#' where logit does not (Session 158). It is bounded to `[-1, 0]` rather than
+#' where logit does not. It is bounded to `[-1, 0]` rather than
 #' the whole real line -- a Gaussian fit to it is technically an
 #' approximation for that reason, but a mild one: real observations
 #' concentrate near 0 (good matches), far from the -1 end, so the boundary
