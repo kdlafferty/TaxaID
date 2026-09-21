@@ -763,7 +763,10 @@ test_that("with overwrite = TRUE and GBIF down, the verified cached zip is used 
   saveRDS(list(dl_key = "0000000-000000000000000", zip_path = old_zip, timestamp = Sys.time() - 3600), meta_path)
   calls <- 0L
   testthat::local_mocked_bindings(
-    occ_download = function(...) { calls <<- calls + 1L; .gbif_503() },
+    occ_download = function(...) {
+      calls <<- calls + 1L
+      .gbif_503()
+    },
     occ_download_meta = function(...) stop("offline"),
     occ_download_get = function(...) stop("must not download"),
     .package = "rgbif"
@@ -789,7 +792,9 @@ test_that("on_submit_failure = 'error' fails even with a verified cache; no cach
   dir.create(cache_dir, recursive = TRUE)
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
   old_zip <- .make_fake_gbif_zip(cache_dir)
-  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  keys <- 100L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  year_range <- "2000,2024"
   meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
   saveRDS(list(dl_key = "0000000-000000000000000", zip_path = old_zip, timestamp = Sys.time()), meta_path)
   testthat::local_mocked_bindings(
@@ -822,7 +827,10 @@ test_that("a non-transient submission error (bad credentials) is raised at once,
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
   calls <- 0L
   testthat::local_mocked_bindings(
-    occ_download = function(...) { calls <<- calls + 1L; stop("HTTP 401 Unauthorized") },
+    occ_download = function(...) {
+      calls <<- calls + 1L
+      stop("HTTP 401 Unauthorized")
+    },
     .package = "rgbif"
   )
   expect_error(
@@ -841,7 +849,9 @@ test_that("a thrown transfer error at occ_download_get() is retried, then falls 
   dir.create(cache_dir, recursive = TRUE)
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
   old_zip <- .make_fake_gbif_zip(cache_dir)
-  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  keys <- 100L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  year_range <- "2000,2024"
   meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)
   saveRDS(list(dl_key = "0000000-000000000000000", zip_path = old_zip, timestamp = Sys.time() - 3600), meta_path)
   gets <- 0L
@@ -849,7 +859,10 @@ test_that("a thrown transfer error at occ_download_get() is retried, then falls 
     occ_download = function(...) "3333333-999999999999999",
     occ_download_wait = function(...) invisible(NULL),
     occ_download_meta = function(...) stop("offline"),
-    occ_download_get = function(...) { gets <<- gets + 1L; stop("Timeout was reached [occurrence-download.gbif.org]: Connection timed out after 10002 milliseconds") },
+    occ_download_get = function(...) {
+      gets <<- gets + 1L
+      stop("Timeout was reached [occurrence-download.gbif.org]: Connection timed out after 10002 milliseconds")
+    },
     .package = "rgbif"
   )
   expect_warning(
@@ -897,9 +910,16 @@ test_that("a transient timeout while polling status is retried, then the downloa
   key <- "5555555-999999999999999"
   testthat::local_mocked_bindings(
     occ_download = function(...) key,
-    occ_download_wait = function(...) { polls <<- polls + 1L; if (polls < 3L) stop("Timeout was reached [api.gbif.org]: Connection timed out after 10003 milliseconds"); invisible(NULL) },
+    occ_download_wait = function(...) {
+      polls <<- polls + 1L
+      if (polls < 3L) stop("Timeout was reached [api.gbif.org]: Connection timed out after 10003 milliseconds")
+      invisible(NULL)
+    },
     occ_download_meta = function(...) stop("offline"),
-    occ_download_get = function(k, path, overwrite = TRUE) { .make_fake_gbif_zip_named(path, k); invisible(NULL) },
+    occ_download_get = function(k, path, overwrite = TRUE) {
+      .make_fake_gbif_zip_named(path, k)
+      invisible(NULL)
+    },
     .package = "rgbif"
   )
   out <- suppressMessages(download_gbif_occurrences(
@@ -915,11 +935,16 @@ test_that("a poll that never succeeds records the prepared key, and the re-run f
   cache_dir <- tempfile("gbif_pending_")
   dir.create(cache_dir, recursive = TRUE)
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
-  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  keys <- 100L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  year_range <- "2000,2024"
   key <- "6666666-999999999999999"
   requests <- 0L
   testthat::local_mocked_bindings(
-    occ_download = function(...) { requests <<- requests + 1L; key },
+    occ_download = function(...) {
+      requests <<- requests + 1L
+      key
+    },
     occ_download_wait = function(...) stop("Timeout was reached [api.gbif.org]"),
     occ_download_meta = function(...) stop("offline"),
     .package = "rgbif"
@@ -942,7 +967,10 @@ test_that("a poll that never succeeds records the prepared key, and the re-run f
     occ_download = function(...) stop("must not submit a new request"),
     occ_download_wait = function(...) invisible(NULL),
     occ_download_meta = function(...) stop("offline"),
-    occ_download_get = function(k, path, overwrite = TRUE) { .make_fake_gbif_zip_named(path, k); invisible(NULL) },
+    occ_download_get = function(k, path, overwrite = TRUE) {
+      .make_fake_gbif_zip_named(path, k)
+      invisible(NULL)
+    },
     .package = "rgbif"
   )
   out <- suppressMessages(download_gbif_occurrences(
@@ -959,11 +987,16 @@ test_that("a poll that never succeeds records the prepared key, and the re-run f
 # Dead pending keys (2026-09-13): clear and resubmit in the same call
 # =============================================================================
 
-test_that("a pending key whose poll dies non-transiently is cleared and a fresh request is submitted in the same call", {
+test_that(paste0(
+  "a pending key whose poll dies non-transiently is cleared and a fresh ",
+  "request is submitted in the same call"
+), {
   cache_dir <- tempfile("gbif_dead_pending_")
   dir.create(cache_dir, recursive = TRUE)
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
-  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  keys <- 100L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  year_range <- "2000,2024"
   dead_key <- "7777777-999999999999999"
   new_key <- "8888888-999999999999999"
 
@@ -1009,11 +1042,16 @@ test_that("a pending key whose poll dies non-transiently is cleared and a fresh 
   expect_gt(nrow(out), 0L)
 })
 
-test_that("a pending key older than pending_max_age_days is abandoned without polling it, and a fresh request is submitted", {
+test_that(paste0(
+  "a pending key older than pending_max_age_days is abandoned without ",
+  "polling it, and a fresh request is submitted"
+), {
   cache_dir <- tempfile("gbif_stale_pending_")
   dir.create(cache_dir, recursive = TRUE)
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
-  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  keys <- 100L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  year_range <- "2000,2024"
   old_key <- "9999999-999999999999999"
   new_key <- "1010101-999999999999999"
 
@@ -1063,7 +1101,9 @@ test_that("pending_max_age_days = NULL always polls a pending key first, no matt
   cache_dir <- tempfile("gbif_stale_pending_nullage_")
   dir.create(cache_dir, recursive = TRUE)
   on.exit(unlink(cache_dir, recursive = TRUE), add = TRUE)
-  keys <- 100L; geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"; year_range <- "2000,2024"
+  keys <- 100L
+  geometry <- "POLYGON((0 0,0 1,1 1,1 0,0 0))"
+  year_range <- "2000,2024"
   old_key <- "1212121-999999999999999"
 
   meta_path <- TaxaFetch:::.gbif_dl_meta_path(cache_dir, keys, geometry, year_range)

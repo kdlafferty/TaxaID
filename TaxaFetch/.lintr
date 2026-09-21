@@ -26,12 +26,12 @@ exclusions: list(
     "R/dataone_standardize.R" = list(commented_code_linter = c(28L)),
     # "# ID / citation" is a plain English label that happens to parse as a
     # division expression once the leading "#" is stripped -- not dead code.
-    "R/download_gbif_occurrences.R" = list(commented_code_linter = c(290L)),
-    "R/get_gbif_occurrences.R" = list(commented_code_linter = c(419L)),
-    "R/literature_search.R" = list(commented_code_linter = c(120L, 516L)),
-    "R/pdf_api.R" = list(commented_code_linter = c(40L, 156L)),
+    "R/download_gbif_occurrences.R" = list(commented_code_linter = c(366L)),
+    "R/get_gbif_occurrences.R" = list(commented_code_linter = c(420L)),
+    "R/literature_search.R" = list(commented_code_linter = c(128L, 524L)),
+    "R/pdf_api.R" = list(commented_code_linter = c(37L, 153L)),
     "R/pdf_characterize.R" = list(commented_code_linter = c(90L, 165L, 210L, 337L, 453L, 522L, 619L, 702L)),
-    "R/pdf_extract.R" = list(commented_code_linter = c(344L, 375L, 659L)),
+    "R/pdf_extract.R" = list(commented_code_linter = c(339L, 370L, 654L)),
     "R/pdf_text.R" = list(commented_code_linter = c(110L, 194L, 279L, 384L)),
     # Reviewer-facing runnable-example / workflow scripts, not shipped
     # package code -- commented_code_linter misfires on deliberate
@@ -73,12 +73,15 @@ exclusions: list(
     # rgbif's own real API parameter name, not a style violation.
     "tests/testthat/test-check_geographic_outliers.R" = list(object_name_linter = c(76L)),
     "tests/testthat/test-fetch_gbif_occurrences.R" = list(
-      object_name_linter = c(127L, 140L, 170L, 240L, 340L, 370L)
+      object_name_linter = c(127L, 140L, 170L, 271L, 371L, 401L)
     ),
     # Inline "what this mock stands in for" comments (e.g.
     # "# iconic_taxon_name = \"Aves\"") that parse as valid R assignments.
     "tests/testthat/test-check_inat_range.R" = list(commented_code_linter = c(448L)),
-    "tests/testthat/test-fetch_inat_occurrences.R" = list(commented_code_linter = c(84L)),
+    # 84L: inline "what this mock stands in for" comment (see above). 355L:
+    # "# .http_with_retry / .http_retry_wait" section-header comment, same
+    # established pattern.
+    "tests/testthat/test-fetch_inat_occurrences.R" = list(commented_code_linter = c(84L, 355L)),
     # "# .bbox_overlaps()" section-header comment, same established pattern.
     "tests/testthat/test-dataone_occurrence_search.R" = list(commented_code_linter = c(130L))
   )

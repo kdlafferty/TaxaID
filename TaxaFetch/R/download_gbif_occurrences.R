@@ -1603,11 +1603,12 @@ download_gbif_occurrences <- function(
 #' Is this error message a transient GBIF/network failure worth retrying?
 #' @noRd
 .gbif_transient_error <- function(msg) {
-  grepl(
-    "\\b50[0-9]\\b|Backend fetch|Service Unavailable|Gateway|Timeout|timed out|Could not resolve host|Connection reset|Empty reply|Failed to connect",
-    msg,
-    ignore.case = TRUE
+  transient_pattern <- paste0(
+    "\\b50[0-9]\\b|Backend fetch|Service Unavailable|Gateway|Timeout|",
+    "timed out|Could not resolve host|Connection reset|Empty reply|",
+    "Failed to connect"
   )
+  grepl(transient_pattern, msg, ignore.case = TRUE)
 }
 
 #' Submit a GBIF download request, retrying transient failures with backoff
@@ -1630,7 +1631,10 @@ download_gbif_occurrences <- function(
     msg <- gsub("\\s+", " ", conditionMessage(res))
     if (!.gbif_transient_error(msg)) {
       stop(sprintf(
-        "download_gbif_occurrences: GBIF rejected the download request and the error does not look transient, so it was not retried: %s",
+        paste0(
+          "download_gbif_occurrences: GBIF rejected the download request ",
+          "and the error does not look transient, so it was not retried: %s"
+        ),
         msg
       ), call. = FALSE)
     }

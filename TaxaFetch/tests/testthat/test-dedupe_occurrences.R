@@ -115,7 +115,10 @@ test_that("dedupe_occurrences: rows missing a key component are always kept", {
   expect_equal(nrow(result), 2L)
 })
 
-test_that("dedupe_occurrences: a per-row NA in an existing lat_col/lon_col keeps that row (columns present, values missing)", {
+test_that(paste0(
+  "dedupe_occurrences: a per-row NA in an existing lat_col/lon_col keeps ",
+  "that row (columns present, values missing)"
+), {
   # Distinct from the missing-COLUMN case above: lat_col/lon_col both exist,
   # but one row's coordinate value is NA -- that row is always kept, never
   # dropped, same as a per-row NA date.
