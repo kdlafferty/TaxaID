@@ -19,7 +19,7 @@ reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   max_per_species = {{max_per_species}},
   max_date        = {{max_date}},
   # Stop rather than silently ship a degraded reference database -- see
-  # taxa_to_refs.R for the 2026-09-14 incident this guards (seven genera lost
+  # taxa_to_refs.R for the real incident this guards (seven genera lost
   # their entire reference representation to transient NCBI count failures,
   # on a run that finished looking healthy). "warn" accepts the degradation
   # knowingly; the affected taxa are then in attr(, "count_failures").

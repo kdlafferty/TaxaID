@@ -10,12 +10,12 @@
 # production workflows that fetch/train on thousands of real sequences.
 # Modeled on TaxaFetch/inst/review_function_inputs.R (same monorepo).
 #
-# Three functions deliberately NOT covered here because they no longer exist:
-# fetch_reference_sequences() and audit_barcode_coverage_ncbi() were both
-# `.Deprecated()` forwarding aliases kept from earlier renames
+# Three functions deliberately NOT covered here because they are not part of
+# this package: fetch_reference_sequences() and audit_barcode_coverage_ncbi()
+# were both `.Deprecated()` forwarding aliases kept from earlier renames
 # (-> fetch_ncbi_reference_sequences() / audit_barcode_coverage());
-# expand_consensus_candidates() was a superseded design pathway (deprecated
-# Session 99, -> unreferenced_candidates() + assign_scores()), removed along
+# expand_consensus_candidates() was a superseded design pathway
+# (-> unreferenced_candidates() + assign_scores()), removed along
 # with its own dedicated teaching workflow (inst/workflows/
 # expand_consensus_demo.R). Since this package has no external users yet,
 # keeping (and reviewing/testing) migration paths nobody needs was pure
@@ -61,9 +61,8 @@
 # test-identify-confident-observations.R, test-infer-exclude-predicted.R).
 # This file's examples for those five are therefore drawn from the same
 # fixtures now backing real regression tests, not invented fresh for this
-# session. (calibrate_coverage_filter()/coverage_threshold()/test-calibrate.R
-# were later archived entirely, 2026-09-09 -- see the note above and
-# TaxaLikely/CLAUDE.md's top session note.)
+# file. (calibrate_coverage_filter()/coverage_threshold()/test-calibrate.R
+# are retired entirely -- see the note above.)
 # file alone. (A sixth, audit_barcode_coverage_ncbi(), was also closed this
 # way but the function itself was later deleted entirely -- see above.)
 #
@@ -224,8 +223,7 @@ nchar(ref_trimmed$sequence) # matches mf_amplicon's own length exactly
 # ==============================================================================
 # SECTION 2 -- Training (fit model on reference database)
 # build_sequence_matrix() -> train_likelihood_model()
-# Reference-quality screening (formerly flag_reference_errors(), retired
-# 2026-09-08) now lives in TaxaMatch -- see that package's own
+# Reference-quality screening lives in TaxaMatch -- see that package's own
 # corroborate_references_locally()/evaluate_reference_accessions().
 # ==============================================================================
 
@@ -233,9 +231,9 @@ nchar(ref_trimmed$sequence) # matches mf_amplicon's own length exactly
 # 5 synthetic sequences, 2 species in 2 genera. S3 is a truncated copy of S1
 # (60bp of a 120bp sequence) so DECIPHER's real alignment produces genuinely
 # varying `coverage` values -- deliberately NOT hand-set, so range(ref_matrix
-# $coverage) below is non-degenerate, not a single constant. (Previously also
-# fed Section 8's calibrate_coverage_filter()/coverage_threshold() demo;
-# that section was archived 2026-09-09 -- see below.)
+# $coverage) below is non-degenerate, not a single constant. (Also
+# once fed Section 8's calibrate_coverage_filter()/coverage_threshold() demo;
+# that section is retired -- see below.)
 seq_a <- paste(rep("ATGCATGCATGC", 10), collapse = "") # 120bp, species Aa
 seq_b <- paste(rep("ATGCATGCATGG", 10), collapse = "") # 120bp, species Aa
 seq_c_short <- substr(seq_a, 1, 60) # 60bp,  species Aa (truncated)
@@ -271,12 +269,12 @@ trained_model$Stats
 ## ---- train_likelihood_model(score_transform = "sqrt_mismatch") -------------
 # Demonstrates that train_likelihood_model() accepts ANY correctly-shaped
 # pairwise data frame (id_x/id_y/species.x/species.y/genus.x/genus.y/p_match),
-# not only build_sequence_matrix() output -- and shows the Session 158
+# not only build_sequence_matrix() output -- and shows the
 # per-genus H2_Lookup (genus-specific congener-divergence delta). Fixture
 # reused verbatim from tests/testthat/test-train.R's .make_genus_raw_df():
 # two real congener pairs of differing tightness (Fundulus: 0.90: Loose: 0.75)
 # plus a monotypic genus (Distant) whose only foreign matches are cross-genus
-# and must NOT contaminate the pooled H2 delta (Session 158 fix).
+# and must NOT contaminate the pooled H2 delta.
 make_genus_raw_df <- function() {
   ids <- c("L1", "L2", "M1", "M2", "A1", "A2", "B1", "B2", "D1", "D2")
   species_map <- c(
@@ -331,10 +329,8 @@ trained_model_sqrt$H2_Lookup # Fundulus's tighter delta vs. Loose's looser one
 # two-step assign_scores(score_type="similarity")/model_likelihoods() split.
 # unreferenced_candidates()/assign_scores() themselves are NOT archived --
 # both have real, direct callers (TaxaLikely's own inst/workflows/
-# image_acoustic_likelihood_workflow.R and 6_no_score_pathway_workflow.R,
-# plus TaxaAssign's inst/workflows/camera_trap_posterior_workflow.R) -- this
-# is the real, adopted no-score/non-sequence pathway the root CLAUDE.md's
-# "Ecosystem logic (no-score pathway)" section describes.
+# image_acoustic_likelihood_workflow.R and 6_no_score_pathway_workflow.R)
+# -- this is the real, adopted no-score/non-sequence pathway.
 # ==============================================================================
 
 ## ---- unreferenced_candidates() ---- OFFLINE ---------------------------------
@@ -409,7 +405,7 @@ scored <- data.frame(
 )
 corrected <- correct_training_bias(scored, count_col = "n_observations", tau = 1)
 corrected[, c("taxon_name", "score_uncorrected", "score_original", "n_used", "tau_used")]
-# Default tau = 0 (Session 151): every real calibration run so far (image,
+# Default tau = 0: every real calibration run so far (image,
 # acoustic) found tau ~= 0 optimal, so a caller who does nothing gets no
 # correction -- confirm this leaves scores unchanged:
 identical(
@@ -675,7 +671,7 @@ census_result <- data.frame(
   taxon_name = "Hybognathus", rank = "genus",
   status = "complete", stringsAsFactors = FALSE
 )
-# Default is "relabel" (non-destructive, Session 151) -- shown alongside the
+# Default is "relabel" (non-destructive) -- shown alongside the
 # opt-in "zero" mode used in the package's own demo workflow.
 constrained_relabel <- apply_coverage_constraints(likelihood_df, census_result)
 constrained_relabel[, c("taxon_name", "hypothesis_type", "score_likelihood", "constraint_applied")]
@@ -739,9 +735,9 @@ detected$rule_detected
 detected$rules
 
 ## ---- restore_suppressed_candidates() ---- OFFLINE ---------------------------
-# The package's own documented motivating case (Girella simplicidens, Session
-# 101/103): a 100%-rule BLAST pipeline suppresses referenced congeners,
-# leaving only one H1 candidate. Redesigned 2026-07-18 (see this function's
+# The package's own documented motivating case (Girella simplicidens):
+# a 100%-rule BLAST pipeline suppresses referenced congeners,
+# leaving only one H1 candidate (see this function's
 # own roxygen "Score-sourcing hierarchy"/"Level 4 cost control" sections for
 # the full design): admission now requires real evidence -- a bare call with
 # no seq_matrix/model_params/check_regional_overlap is correctly a NO-OP

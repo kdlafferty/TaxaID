@@ -3,9 +3,9 @@
 # TaxaID -- Extract a small, curated, real-data fixture from a full production
 # checkpoint, for minutes-not-hours debugging iteration.
 #
-# 2026-09-05: written in response to the user's own experience that testing
+# Written in response to the real experience that testing
 # against full real workflows (13k+ observations, live NCBI/GBIF/LLM calls)
-# has cost months of development time. This does NOT invent synthetic data --
+# costs months of development time. This does NOT invent synthetic data --
 # it subsets a REAL, already-computed checkpoint, so the fixture still
 # contains genuine edge cases (multi-candidate irreducibility stress rows,
 # flagged reference-quality verdicts, contaminant-flagged rows), just far
@@ -25,8 +25,8 @@
 #      caller-supplied "flagged" set (defaults below target the real
 #      reference-quality-screening + contaminant-flagging columns), OR whose
 #      total candidate count is >= high_candidate_threshold (stress-tests
-#      irreducibility/slash-taxon logic, which is exactly what the
-#      order-invariance bug -- see TaxaAssign/CLAUDE.md 2026-09-04 -- hid in).
+#      irreducibility/slash-taxon logic, which is exactly what a real
+#      order-invariance bug once hid in).
 #   2. "Baseline" observations: a reproducible stratified random sample of the
 #      remaining, ordinary rows, bucketed by candidate count, so the fixture
 #      still exercises the common case at realistic ratios, not just edge

@@ -123,7 +123,7 @@ print(filtered)
 
 match_obj <- readRDS("~/My Drive/Rscripts/projects/TaxaID/TaxaMatch/inst/match_obj.rds")
 
-# Normalize legacy column names (pre-Session 79/99 saved files)
+# Normalize legacy column names (older saved files)
 if (!"observation_id" %in% names(match_obj)) {
   old <- intersect(c("sample_id", "esvid", "esv_id", "asvid", "asv_id"), names(match_obj))[1]
   if (!is.na(old)) {

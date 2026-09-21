@@ -1,13 +1,13 @@
 # ==============================================================================
 # run_review_fixes_fast_check.R
-# TaxaID -- Fast check exercising FIVE of the 2026-09-13 ecosystem-review fixes
+# TaxaID -- Fast check exercising FIVE ecosystem-review fixes
 # against REAL data, in explicit before/after arms, printing the difference.
 #
 # Unlike the other four scripts in this directory (which regression-check that
 # nothing broke, against fixtures that PREDATE today's changes), this script's
 # whole point is to show today's changes actually DO something on real data.
 #
-# Packages were reinstalled 2026-09-13 23:16 UTC (all check 0/0/0). This script
+# This script
 # only READS fixtures in this directory (plus one real, read-only repo-root
 # file for Arm D) and PRINTS results -- it writes nothing anywhere.
 #
@@ -25,14 +25,14 @@
 # Arm D runs against the full real 2,185,193-row occurrence checkpoint at the
 # repo root (read-only). Arm E runs the real trained model against real match
 # data for as many named sites as have a real priors fixture to feed
-# identify_confident_observations() -- PtCon 18S and (added 2026-09-13, later
-# the same day) PtCon 12S run-2 both do; GreatLakes does not and is SKIPPED,
-# loudly, rather than fed a fabricated priors table.
+# identify_confident_observations() -- PtCon 18S and PtCon 12S run-2 both do;
+# GreatLakes does not and is SKIPPED, loudly, rather than fed a fabricated
+# priors table.
 #
-# ADDED 2026-09-13, later the same day: a SECOND downranking arm ("ARM B, 12S
-# REDISCOVERY") and PtCon 12S run-2's own Arm E entry, both built on NEW
+# A second downranking arm ("ARM B, 12S
+# REDISCOVERY") and PtCon 12S run-2's own Arm E entry are both built on
 # ptcon12s_r2_fast_* fixtures (a different, later, real PtConception 12S run
-# than the pre-existing ptcon12s_fast_* fixtures -- see README.md's file table)
+# than the ptcon12s_fast_* fixtures -- see README.md's file table)
 # curated specifically around the 11 observations that genuinely downranked in
 # that real run. The 18S downranking arm above is a real, honest null on its
 # OWN fixture (species_reference OLD==NEW there); the new 12S arm below is
@@ -123,7 +123,7 @@ RANK_SYSTEM <- c("genus", "species")
 
 # ==============================================================================
 # ARM A -- group-prior named-evidence filter
-# TaxaAssign::compute_group_priors(exclude_named_evidence=), new 2026-09-13.
+# TaxaAssign::compute_group_priors(exclude_named_evidence=).
 # ==============================================================================
 cat("\n=== ARM A: group-prior named-evidence filter (compute_group_priors exclude_named_evidence) ===\n")
 
@@ -239,7 +239,7 @@ add_summary(sprintf(
 
 # ==============================================================================
 # ARM B -- downranking (posterior_consensus(downrank_requires_candidate=) +
-# species_reference construction change), both new 2026-09-13.
+# species_reference construction change).
 # ==============================================================================
 cat("\n=== ARM B: downranking (species_reference branch filter x downrank_requires_candidate) ===\n")
 
@@ -345,8 +345,8 @@ if (isTRUE(all.equal(nrow(species_ref_old), nrow(species_ref_new))) &&
     "genus/family-only dark-diversity placeholder (taxon_name is NA for all 238 of them; see\n",
     "the fixture exploration above), so none of them was ever eligible to BE a species_reference\n",
     "row under either construction. The prior_branch fix's effect on species_reference is real\n",
-    "(confirmed in production: PtCon 18S Ulva lactuca x21, see TaxaAssign/CLAUDE.md's 2026-09-13\n",
-    "note) but is not exercised by THIS mechanism on this small fixture -- it shows up here\n",
+    "(confirmed in production: PtCon 18S Ulva lactuca x21)\n",
+    "but is not exercised by THIS mechanism on this small fixture -- it shows up here\n",
     "instead via Arm A's group_priors filter and via downrank_requires_candidate's own gate.\n",
     sep = ""
   )
@@ -365,7 +365,7 @@ add_summary(sprintf(
 
 # ==============================================================================
 # ARM B, 12S REDISCOVERY -- the SAME downranking gate, exercised against REAL
-# PtConception 12S run-2 (2026-09-13) data instead of the 18S fixture above.
+# PtConception 12S run-2 data instead of the 18S fixture above.
 # 18S's own species_reference happened to be OLD==NEW (every resident_undetected
 # row there is anonymous), so the branch-filter half of the fix was never
 # actually exercised by the arm above. PtCon 12S run-2's real priors DO carry a
@@ -397,7 +397,7 @@ cat(sprintf(
 ))
 
 # The 11 observation_ids known (from the real production consensus checkpoint,
-# PtConMifishSchulte_consensus_final.rds, 2026-09-13) to be the ONLY 11
+# PtConMifishSchulte_consensus_final.rds) to be the ONLY 11
 # downranking events in the whole 13,440-observation run. 2 are known-bad
 # (the gate must block them); 9 are legitimate regression-guard cases (the
 # gate must NOT over-block these).
@@ -607,8 +607,8 @@ add_summary(sprintf(
 ))
 
 # ==============================================================================
-# ARM C -- multi-site presence-mixture guard (combine_multisite_priors()),
-# new 2026-09-13. SEMI-SYNTHETIC: this fixture has no prior_mix_* columns
+# ARM C -- multi-site presence-mixture guard (combine_multisite_priors()).
+# SEMI-SYNTHETIC: this fixture has no prior_mix_* columns
 # (predates curve pricing at this site), so real candidate rows from `joined`
 # (Stage 0-1's join_priors() output) are duplicated across two SYNTHETIC
 # grid_ids and given differing presence-mixture pricing -- everything else
@@ -713,8 +713,7 @@ add_summary(sprintf(
 ))
 
 # ==============================================================================
-# ARM D -- sampling-group classifier (TaxaTools::assign_sampling_group()),
-# new 2026-09-13.
+# ARM D -- sampling-group classifier (TaxaTools::assign_sampling_group()).
 # ==============================================================================
 cat("\n=== ARM D: sampling-group classifier (TaxaTools::assign_sampling_group) ===\n")
 
@@ -761,8 +760,8 @@ if (!file.exists(occ_path)) {
 }
 
 # ==============================================================================
-# ARM E -- bimodal-H1 diagnostic (TaxaLikely::calibrate_query_noise()), new
-# 2026-09-13. Runs on all three named sites that have a matching REAL
+# ARM E -- bimodal-H1 diagnostic (TaxaLikely::calibrate_query_noise()).
+# Runs on all three named sites that have a matching REAL
 # calibrated model + match fixture; SKIPS a site if it lacks a fixture
 # calibrate_query_noise() actually needs (never fabricates one).
 # ==============================================================================
@@ -811,12 +810,12 @@ cat("SKIPPED: no taxaexpect_priors fixture exists for GreatLakes in TaxaWizard/i
 cat("calibrate_query_noise() requires a real priors data frame (taxon_name/taxon_name_rank/theta_mean)\n")
 cat("to call identify_confident_observations() -- fabricating one would defeat the point of this check.\n")
 
-# PtCon 12S run-2: unblocked 2026-09-13 via the same ptcon12s_r2_fast_* fixtures
+# PtCon 12S run-2 uses the same ptcon12s_r2_fast_* fixtures
 # built for Arm B, 12S REDISCOVERY above (real taxaexpect_priors, 783 rows,
 # 258 named-evidence + 37 anonymous-mirror). p12r2_match/p12r2_lik/p12r2_priors
 # were already loaded there and are reused here unchanged, matching this
 # arm's own "never fabricate a priors table" rule -- this one is real.
-arm_e_ptcon12s_r2 <- run_bimodality_arm("PtCon 12S run-2 (REAL priors fixture available, 2026-09-13)",
+arm_e_ptcon12s_r2 <- run_bimodality_arm("PtCon 12S run-2 (REAL priors fixture available)",
                                          p12r2_match, p12r2_lik, p12r2_priors)
 
 arm_e_note <- if (isTRUE(arm_e_ptcon18s$n_confident_obs < 30L)) {

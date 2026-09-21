@@ -425,11 +425,11 @@ pdf_text_result$n_pages
 
 ## ---- screen_pdf_structure() ---- LLM_CALL -----------------------------------
 if (RUN_LLM_CALLS) {
-  # TaxaFetch/CLAUDE.md's own documented footgun: library(TaxaTools) alone does
+  # A real footgun: library(TaxaTools) alone does
   # NOT activate provider auto-detection in a plain Rscript session (only in
   # RStudio) -- call_api()'s default llm_fn then errors "no LLM provider
   # configured" even with a real ANTHROPIC_API_KEY set. Verified live while
-  # preparing this file. Workaround per CLAUDE.md: pass an explicit provider.
+  # preparing this file. Workaround: pass an explicit provider.
   review_llm_fn <- function(prompt, ...) {
     TaxaTools::call_api(prompt, ..., provider = "anthropic")
   }

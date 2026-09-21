@@ -107,7 +107,7 @@ cat("\n", length(bad_accessions), "accession(s) recommended for removal.\n")
 if (length(bad_accessions) > 0) print(ref_labeled[ref_labeled$accession %in% bad_accessions, ])
 
 # ---- 6. Exclude bad accessions before training -------------------------------
-# This is what train_likelihood_model() no longer does for you automatically.
+# train_likelihood_model() does not do this for you automatically.
 
 reference_df_clean <- reference_df[!reference_df$composite_id %in% bad_accessions, ]
 cat(

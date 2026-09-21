@@ -2,14 +2,14 @@
 # Source: TaxaFlag/inst/contaminant_workflow.R
 # NOTE: When data comes from TaxaAssign, the taxon column is "consensus_taxon"
 #   and event column is "observation_id". For external data, use actual column names.
-# NOTE (2026-07-24 schema): output column NAMES are fixed regardless of
+# NOTE (schema): output column NAMES are fixed regardless of
 #   contaminant_type -- observation_validity (numeric 0-1, high = genuine),
 #   validity_flag ("valid" / "questionable_{contaminant_type}" /
-#   "invalid_{contaminant_type}"), validity_reason. contaminant_type no longer
-#   changes the column names themselves, only the qualifier embedded in
+#   "invalid_{contaminant_type}"), validity_reason. contaminant_type does not
+#   change the column names themselves, only the qualifier embedded in
 #   validity_flag's value.
 #
-# READING THE RESULT (2026-09-20). Two things about validity_flag that are easy
+# READING THE RESULT. Two things about validity_flag that are easy
 # to get wrong and expensive when you do:
 #
 #   1. REMOVE ON THE `invalid_` PREFIX, NEVER ON `!= "valid"`. Most taxa are not

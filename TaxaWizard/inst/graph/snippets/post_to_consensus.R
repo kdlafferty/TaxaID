@@ -1,7 +1,7 @@
 # Edge: posteriors -> consensus
 # Source: TaxaAssign/inst/TaxaAssign_bayesian_workflow.R
 
-# Optional: group-level occurrence priors (2026-07-30). consensus_prior
+# Optional: group-level occurrence priors. consensus_prior
 # becomes a real group-level SUM over every locally modelled member sharing
 # a rank, instead of a candidate-scoped max -- a materially stronger
 # occurrence-plausibility signal, since a single observation's own candidate
@@ -19,18 +19,18 @@ group_priors_obj <- if (isTRUE({{include_group_priors}})) {
   NULL
 }
 
-# Optional: species reference for posterior_consensus()'s downranking
-# (2026-09-12): a genus-level LCA is narrowed to a species only when the
-# reference lists exactly one species of that genus. Since curve pricing
-# (2026-08-31) the priors table also holds a distance-clamp row for EVERY
-# zero-record BLAST candidate, so "in the priors table" no longer means
+# Optional: species reference for posterior_consensus()'s downranking:
+# a genus-level LCA is narrowed to a species only when the
+# reference lists exactly one species of that genus. Because the
+# priors table also holds a distance-clamp row for EVERY
+# zero-record BLAST candidate, "in the priors table" does not mean
 # "known locally": at Mugu a genus consensus (Pseudotolithus, three
 # plausible congeners) was narrowed to P. senegallus, a West African croaker
 # with posterior 0.009 that was never among the plausible set, and reported
 # at the genus's 0.89. Clamp-only rows are therefore excluded here; resident,
 # singleton-mirror, domestic and real-evidence (regional/invasive/iNat) rows
 # stay.
-# 2026-09-13 (ecosystem review C3): the exclusion is by prior_branch, not by the
+# The exclusion is by prior_branch, not by the
 # clamp source string. Every non-resident evidence row (distance clamp, regional
 # proximity, watch list, iNat range) is resident_undetected and carries no local
 # record, so none may be the sole taxon that narrows a coarse consensus. Residents

@@ -26,7 +26,7 @@
 #                    structurally identical to evaluate_likelihoods() output;
 #                    pass directly to TaxaAssign::compute_posterior()
 #
-# Candidate construction (Session 99+):
+# Candidate construction:
 #   unreferenced_candidates() adds two placeholder rows per observation:
 #     H2 (unreferenced_species) -- same genus as the consensus taxon
 #     H3 (unreferenced_genus)   -- same family as the consensus taxon
@@ -80,7 +80,7 @@ if (!all(c("family", "genus", "species") %in% names(consensus_df))) {
   message("Joining taxonomy columns from match_df (family, genus, species not found in consensus_df)")
   match_df <- readRDS(file.choose()) # select the match_obj.rds used to generate the consensus
 
-  # Normalize legacy column names if needed (pre-Session 79/99 files)
+  # Normalize legacy column names if needed (older files)
   if (!"observation_id" %in% names(match_df)) {
     old <- intersect(c("sample_id", "esvid", "esv_id"), names(match_df))[1]
     if (!is.na(old)) names(match_df)[names(match_df) == old] <- "observation_id"

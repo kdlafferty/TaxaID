@@ -13,9 +13,8 @@
 #
 # WHERE THE REAL BirdNET CSVs CAME FROM: "we won't work directly from sound
 # files, instead we will use BirdNET to do the matching for us" -- this
-# ecosystem does not run classifiers itself (see TaxaMatch/CLAUDE.md's Design
-# notes for non-sequence data types: "no model fitting or classification
-# happens in TaxaMatch"). A companion Python script,
+# ecosystem does not run classifiers itself ("no model fitting or
+# classification happens in TaxaMatch"). A companion Python script,
 # sources/birdnet_csv_export.py (in the same project folder as the photos
 # used by score_image_workflow.R), downloads real Xeno-canto recordings for
 # three confusable Calidris sandpipers and runs the real BirdNET model
@@ -123,7 +122,7 @@ OUT_PREFIX <- "tutorial_sandpiper"
 # ==============================================================================
 # 1.  READ BirdNET OUTPUT
 # ==============================================================================
-# read_birdnet_output() already handles the Session 88 empty-CSV edge case
+# read_birdnet_output() already handles the empty-CSV edge case
 # gracefully (a recording with zero detections above BirdNET's internal
 # threshold produces an informational message, not an error) -- CONFIRMED BY
 # ACTUALLY RUNNING THIS SCRIPT: one of the 9 real recordings in this tutorial
@@ -202,8 +201,7 @@ message(sprintf(
 # `source_file` (which recording a detection window came from). Unlike the
 # DNA/BLAST pathway (see eDNA/PtConception/TaxaID_eDNA_Workflow_Template.R,
 # which wires this via TaxaMatch::join_event_site_metadata() against a real
-# sample-to-site lookup table -- TaxaID_Workflow_Template_TEST.R held this
-# example until it was retired 2026-09-15), this tutorial's real BirdNET data has no
+# sample-to-site lookup table), this tutorial's real BirdNET data has no
 # corresponding site-metadata table to join -- these are Xeno-canto downloads
 # from scattered, uncontrolled real-world recording locations, not a
 # systematic multi-site deployment, so there's nothing honest to attach.

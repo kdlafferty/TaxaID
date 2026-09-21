@@ -119,10 +119,9 @@
 #   1. A hard threshold filter applied before model fitting (excluding
 #      low-coverage cross-species pairs that inflate variance estimates and
 #      weaken H1/H2 discrimination). A dedicated calibration helper for this
-#      (calibrate_coverage_filter()/coverage_threshold()) existed here
-#      through 2026-09-09 and was archived after a real A/B test found the
-#      real accuracy win came with a real cost (see TaxaLikely/CLAUDE.md's
-#      top session note) -- training below uses the full, unfiltered matrix.
+#      (calibrate_coverage_filter()/coverage_threshold()) is retired: a real
+#      A/B test found the real accuracy win came with a real cost --
+#      training below uses the full, unfiltered matrix.
 #   2. Soft inflation at inference (Workflow 4): evaluate_likelihoods()
 #      produces score_likelihood_cov alongside score_likelihood, widening
 #      H1 sigma by 1/sqrt(coverage) for each candidate. This is a
@@ -164,14 +163,13 @@ saveRDS(ref_matrix, "ref_matrix.rds")
 # almost entirely cross-species comparisons.
 #
 # A calibrated coverage-threshold filter (calibrate_coverage_filter()/
-# coverage_threshold()) existed here through 2026-09-09 and was archived: a
+# coverage_threshold()) is retired: a
 # real A/B test found a real accuracy win on the queries it was willing to
 # answer, but also a real cost (~19% of species lost every training pair at
 # the calibrated threshold; ~25% of real evaluation queries ended up
 # unresolved) -- the same hard-exclusion-on-an-imperfect-proxy pattern this
-# ecosystem has already relearned twice elsewhere. See TaxaLikely/CLAUDE.md's
-# top session note for the full reasoning. Training below proceeds on the
-# full, unfiltered ref_matrix.
+# ecosystem has already relearned twice elsewhere. Training below proceeds
+# on the full, unfiltered ref_matrix.
 
 # Confirm coverage distribution
 cat("Coverage summary (all pairs):\n")
@@ -349,9 +347,8 @@ if (length(h1_low_cov_ids) > 0) {
 
 # ---- 8. Save model for Workflow 4 -------------------------------------------
 # No calibrated coverage_threshold.rds is produced -- calibrate_coverage_
-# filter()/coverage_threshold() were archived 2026-09-09 (see TaxaLikely/
-# CLAUDE.md's top session note). Workflow 4 already handles a missing
-# coverage_threshold.rds gracefully (min_coverage = NULL, no pre-filter).
+# filter()/coverage_threshold() are retired. Workflow 4 already handles a
+# missing coverage_threshold.rds gracefully (min_coverage = NULL, no pre-filter).
 saveRDS(model, "trained_model.rds")
 message("Saved trained_model.rds")
 

@@ -35,9 +35,8 @@
 #
 # WHY NEITHER PARAMETER IS SHARED ACROSS DATA TYPES: image (n_observations,
 # iNaturalist) and acoustic (n_recordings, Xeno-canto) are different count
-# sources with different noise/scale profiles -- Session 128 already found
-# tau=1.0 helped acoustic (88%->93%) while (before this session's bug fix)
-# appearing to hurt image. Run this script once per data type with COUNT_COL
+# sources with different noise/scale profiles -- tau=1.0 helps acoustic
+# (88%->93%) while barely affecting image. Run this script once per data type with COUNT_COL
 # and MATCH_OBJ changed; do not assume one (tau, score_sharpness) pair fits
 # both.
 #
@@ -169,8 +168,8 @@ message(sprintf(
   # true_species is already a passthrough column on lik (survives
   # unreferenced_candidates()/assign_scores() unchanged) -- do NOT re-join
   # true_lookup here, it duplicates the column into true_species.x/.y and
-  # breaks the bare reference below (same class of footgun as TaxaID/
-  # CLAUDE.md's documented taxon_match/geo_match .x/.y collision).
+  # breaks the bare reference below (the same class of footgun as a
+  # taxon_match/geo_match .x/.y collision).
   top1 <- lik |>
     dplyr::group_by(observation_id) |>
     dplyr::slice_max(score_likelihood, n = 1, with_ties = FALSE) |>
@@ -217,8 +216,8 @@ message(sprintf(
 ))
 
 # Log-loss minimized over score_sharpness at each tau -- shows tau's own
-# marginal effect once score_sharpness is no longer held at an untested
-# default, without needing the full 2D table to read that off.
+# marginal effect once score_sharpness is calibrated rather than held at an
+# untested default, without needing the full 2D table to read that off.
 .by_tau <- results |>
   dplyr::group_by(tau) |>
   dplyr::slice_min(mean_log_loss, n = 1, with_ties = FALSE) |>
@@ -262,7 +261,7 @@ message(sprintf(
   100 * results$accuracy[results$tau == 0 & results$score_sharpness == 0.1]
 ))
 message(sprintf(
-  "                  tau=1, score_sharpness=0.1 (Session 127 default before this fix): log-loss = %.4f, accuracy = %.0f%%",
+  "                  tau=1, score_sharpness=0.1 (the default before calibration): log-loss = %.4f, accuracy = %.0f%%",
   results$mean_log_loss[results$tau == 1 & results$score_sharpness == 0.1],
   100 * results$accuracy[results$tau == 1 & results$score_sharpness == 0.1]
 ))

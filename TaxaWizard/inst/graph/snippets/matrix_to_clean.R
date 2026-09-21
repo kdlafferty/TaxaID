@@ -1,6 +1,6 @@
 # Edge: reference_matrix + reference_df -> clean_refs
-# Source: TaxaLikely/inst/workflows/2_flag_errors_workflow.R (rewritten 2026-09-08
-# around TaxaMatch, after TaxaLikely::flag_reference_errors()'s retirement)
+# Source: TaxaLikely/inst/workflows/2_flag_errors_workflow.R (built
+# around TaxaMatch; TaxaLikely::flag_reference_errors() is retired)
 
 local_corr <- TaxaMatch::corroborate_references_locally(
   seq_matrix     = {{input_var}},

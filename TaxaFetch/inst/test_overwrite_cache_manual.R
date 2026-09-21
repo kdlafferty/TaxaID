@@ -1,7 +1,7 @@
 # ==============================================================================
 # test_overwrite_cache_manual.R
 # TaxaFetch -- manual, interactive live test of download_gbif_occurrences()'s
-# overwrite/cache mechanics (2026-09-03 orphan-cleanup + confirmation-prompt fix)
+# overwrite/cache mechanics (orphan-cleanup + confirmation-prompt behavior)
 #
 # RUN THIS FROM AN INTERACTIVE R SESSION (RStudio console, or
 # `source()`-ed from one) -- NOT via a bare `Rscript`. interactive() reflects

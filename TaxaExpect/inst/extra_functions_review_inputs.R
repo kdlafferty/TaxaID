@@ -50,7 +50,7 @@ library(TaxaExpect)
 ## ---- .beta_mean() ---- OFFLINE, new small synthetic input -------------------
 # No existing testthat coverage found for this name (grepped tests/testthat/
 # first, per this file's own header). .beta_mean(a, b) is just a/(a+b) --
-# consolidated here (code review response, 2026-08-04) from three places that
+# consolidated here (code review response) from three places that
 # each reimplemented it identically: generate_full_priors.R,
 # generate_undetected_diversity.R, generate_domestic_food_priors.R. A small
 # hand-picked (a, b) pair with an obvious expected answer (Beta(2, 8) has

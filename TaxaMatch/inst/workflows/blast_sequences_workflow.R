@@ -22,7 +22,7 @@
 # NO SYNTHETIC DATA: 5 real 12S MiFish amplicon sequences (~170bp) from the
 # user's own PtConception eDNA study (JVB3105-MiFishU-esv-data.csv), deposited
 # to NCBI under accessions OQ846539/OQ846195/OQ846544/OQ846550/OQ846725.
-# Field-tested in Session 115 (inst/test_blast_remote.R): all 5/5 top BLAST
+# Field-tested (inst/test_blast_remote.R): all 5/5 top BLAST
 # hits returned at >=98% identity to the correct species. This script
 # reproduces that field test in the Layer-1 workflow-script convention
 # (DEBUG_MODE tutorial data, explicit checkpoints, Output block) rather than
@@ -76,7 +76,7 @@ if (DEBUG_MODE) {
   # ---- live from NCBI by accession (not bundled -- these are short lookups) -
   message(
     "DEBUG_MODE = TRUE -- fetching 5 known real PtConception 12S MiFish ",
-    "sequences from NCBI by accession (field-tested Session 115: 5/5 ",
+    "sequences from NCBI by accession (field-tested: 5/5 ",
     "100% correct-species top hits)."
   )
 

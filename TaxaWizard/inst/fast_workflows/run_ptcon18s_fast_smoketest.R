@@ -4,17 +4,16 @@
 # -> consensus -> slash-taxon stage of the pipeline, against a real (curated,
 # small) PtConception 18S fixture built by build_fast_fixture.R.
 #
-# 2026-09-07: previously staged-but-blocked (see README.md's "PtConception 18S:
-# staged, blocked" section) -- the live 18S production run has now completed
+# The live 18S production run has completed
 # through train_likelihood_model()/calibrate_query_noise() (and, in fact, the
 # whole pipeline through review_assignments()), so a real
-# PtCon18SSchulte_lik_model_calibrated.rds now exists. Copied here (checked
-# stable, ~30+ hours old, not a live write) as
+# PtCon18SSchulte_lik_model_calibrated.rds exists. Copied here (checked
+# stable, not a live write) as
 # ptcon18s_fast_lik_model_calibrated.rds.
 #
 # Differs from run_fast_smoketest.R/run_greatlakes_fast_smoketest.R in one
 # structural way: this dataset already has a REAL taxaexpect_priors checkpoint
-# (ptcon18s_fast_taxaexpect_priors.rds, staged 2026-09-05, kernel-priors output
+# (ptcon18s_fast_taxaexpect_priors.rds, kernel-priors output
 # from a single-site kernel fit -- confirmed exactly 1 unique grid_id,
 # "Site_34.40_-120.40"), so Stage 2 here is a real join_priors() call, not the
 # flat 0.5 PLACEHOLDER the other two single-marker smoke tests need. Same
@@ -114,7 +113,7 @@ t5 <- Sys.time()
 slashed <- TaxaAssign::add_slash_taxon(consensus)
 cat(sprintf("add_slash_taxon(): %.1fs\n", as.numeric(Sys.time() - t5, units = "secs")))
 
-cat("\n--- irreducible_consensus (the 2026-09-04 order-invariance regression indicator) ---\n")
+cat("\n--- irreducible_consensus (the order-invariance regression indicator) ---\n")
 print(table(slashed$irreducible_consensus, useNA = "ifany"))
 
 cat(sprintf("\nTotal wall time: %.1fs\n", as.numeric(Sys.time() - t0, units = "secs")))

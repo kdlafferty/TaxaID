@@ -267,7 +267,7 @@ if (length(.orphaned) > 0L) {
 # ---- Honesty check: does the CV model's top candidate match ground truth? --
 # This is a real accuracy check on real data, not a synthetic sanity check --
 # useful to report even though it isn't part of the match object itself.
-# PRIOR RESULT (original 6-photo/5-species set, Session 124): 5/6 correct
+# PRIOR RESULT (original 6-photo/5-species set): 5/6 correct
 # with the real site lat/lng supplied. The one miss (coyote.JPG) was a
 # genuinely interesting real failure: name/geo-prior collision -- the top
 # candidate was Baccharis pilularis ("coyote brush"), a locally abundant

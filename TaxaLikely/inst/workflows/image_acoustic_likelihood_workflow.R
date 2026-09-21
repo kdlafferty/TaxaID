@@ -269,12 +269,12 @@ message(
 )
 
 # ==============================================================================
-# 2a. JOIN n_recordings + correct_training_bias() (Session 128)
+# 2a. JOIN n_recordings + correct_training_bias()
 # ==============================================================================
-# The join Session 125's reentry prompt flagged as never built: BirdNET has no
-# training-count field of its own, so audit_acoustic_coverage(xc_recordings =
-# TRUE)'s real Xeno-canto n_recordings census (fixed to the v3 API Session 125)
-# is queried for the species actually present in this match object and joined
+# BirdNET has no training-count field of its own, so
+# audit_acoustic_coverage(xc_recordings = TRUE)'s real Xeno-canto
+# n_recordings census is queried for the species actually present in this
+# match object and joined
 # back on by species. reference_species is passed as the SAME set of species
 # (not the full BirdNET species list) -- here we only need the n_recordings
 # column, not the in_reference/unreferenced coverage columns, which are a
@@ -313,7 +313,7 @@ message(sprintf(
 # ==============================================================================
 # Identical call shape to Section 1 (IMAGE) -- rank_system explicit, same
 # three columns TaxaMatch's script populated. This is the exact "acoustic and
-# image use the same pathway" property TaxaLikely/CLAUDE.md already documents.
+# image use the same pathway" property.
 # ==============================================================================
 
 message("\n--- Step 2b: unreferenced_candidates() ---")

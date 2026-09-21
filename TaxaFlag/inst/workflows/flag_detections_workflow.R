@@ -291,9 +291,9 @@ message(sprintf(
 # ==============================================================================
 # 2.  ADD POST-HOC ASSESSMENT -- OCCURRENCE PLAUSIBILITY x DISCRIMINATION (LIVE, OFFLINE)
 # ==============================================================================
-# Fully offline, two independent axes (2026-07-30 -- the earlier single
+# Fully offline, two independent axes (the earlier single
 # posthoc_assessment cross-tab, including its "vague_rank" short-circuit for
-# any non-species consensus_rank, was retired): Axis 1 (primary_plausibility/
+# any non-species consensus_rank, is retired): Axis 1 (primary_plausibility/
 # consensus_plausibility) asks whether the winning taxon's own occurrence
 # share (winner_theta_mean, already on taxaassign_consensus from TaxaAssign's
 # posterior_consensus()) is expected for this assemblage; Axis 2
@@ -383,25 +383,24 @@ message(sprintf(
 # Column Convention below.
 #
 # Algorithm (.compute_contaminant_scores(), one row per taxon in the output;
-# depth-weighting + shrinkage added Session 151, ecosystem soundness-review
-# item 15 -- see that function's own "Depth-weighting and shrinkage" roxygen
+# see that function's own "Depth-weighting and shrinkage" roxygen
 # section for the full real-world motivation):
 #   1. Depth-weighted rate per group: field_rate/control_rate =
 #      sum(taxon reads in group) / sum(total reads across samples in that
 #      group) -- a proportion from 500,000 reads now counts far more than
 #      one from 50 (fixes the old unweighted per-sample-proportion mean,
 #      still returned as mean_prop_field/mean_prop_control for reference
-#      but no longer driving the score).
+#      but not driving the score).
 #   2. Raw ratio: field_rate / (field_rate + control_rate)
 #   3. Shrunk toward 0.5 (maximally uncertain) with weight
 #      n_present / (n_present + prior_weight), n_present = total samples
 #      (field + control) where the taxon was actually detected -- default
-#      prior_weight = 2. A taxon absent from controls entirely no longer
-#      gets an automatic, unwarranted score = 1.0 when only a couple of
+#      prior_weight = 2. A taxon absent from controls entirely does not
+#      get an automatic, unwarranted score = 1.0 when only a couple of
 #      controls exist; more replication (either direction) shrinks less.
 #
-# FLAG COLUMN CONVENTION (the counterintuitive score/risk asymmetry -- see
-# TaxaFlag/CLAUDE.md's "Flag Column Convention" section): flag_contaminant()
+# FLAG COLUMN CONVENTION (the counterintuitive score/risk asymmetry):
+# flag_contaminant()
 # adds a triplet of columns named from `contaminant_type`:
 #   {contaminant_type}_risk   -- character: "high" (probable artifact) /
 #                                 "moderate" (uncertain) / "low" (likely
@@ -470,7 +469,7 @@ message(
 # compute_posteriors_workflow.R's Output block for the full base column set)
 # plus the following appended columns:
 #
-# From review_assignments() (Step 1) -- llm_ prefixed since 2026-09-06 (these
+# From review_assignments() (Step 1) -- llm_ prefixed (these
 # are independent LLM judgments, never derived from the pipeline's own
 # values -- see that function's own "Column naming" roxygen section):
 #   llm_habitat_plausibility -- character; "likely"/"possible"/"unlikely" --

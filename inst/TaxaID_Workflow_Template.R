@@ -117,8 +117,8 @@ match_df <- TaxaMatch::standardize_match_data(
 
 match_df <- TaxaMatch::filter_redundant_hypotheses(match_df)
 
-# Optional: BLAST-based reference-accession quality screening (2026-08-08
-# audit's recommended pre-training screen). For each reference accession a
+# Optional: BLAST-based reference-accession quality screening (the
+# recommended pre-training screen). For each reference accession a
 # hypothesis in match_df is based on, checks whether independent GenBank
 # evidence agrees taxonomically -- flags likely mislabeled/contaminated
 # reference submissions (hierarchy_flag = "incongruent") without discarding
@@ -139,8 +139,8 @@ if (isTRUE(SCREEN_REFERENCE_ACCESSIONS)) {
     " of ", nrow(match_df), " match rows rest on an incongruent reference accession"
   )
 
-  # Optional: LLM second-look review of flagged/borderline accessions (2026-08-13,
-  # TaxaMatch::review_flagged_accessions()). A raw "incongruent" verdict alone can't
+  # Optional: LLM second-look review of flagged/borderline accessions
+  # (TaxaMatch::review_flagged_accessions()). A raw "incongruent" verdict alone can't
   # distinguish a genuine mislabel from a correctly-labeled record with poor marker
   # resolving power or thin corroborating coverage -- this gives every flagged
   # accession a real LLM second look before anything is ever removed. Never
@@ -264,9 +264,9 @@ reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   taxa           = ref_families,
   barcode_term   = .barcode_term,
   priority_taxa  = if (length(.priority_species) > 0L) .priority_species else NULL,
-  # STOP rather than silently ship a degraded reference database. On
-  # 2026-09-14 seven genera had their NCBI count query fail transiently on a
-  # real PtConception run; each was dropped, taking its entire reference
+  # STOP rather than silently ship a degraded reference database. A real
+  # PtConception run had seven genera with an NCBI count query fail
+  # transiently; each was dropped, taking its entire reference
   # representation with it (78 sequences, 17 species), and the run continued
   # to a finished-looking result. Every production workflow sets "error" for
   # this reason. Use "warn" only when you have decided to accept a degraded
@@ -465,11 +465,11 @@ unique_taxa <- unique_taxa[!is.na(unique_taxa) & nzchar(unique_taxa)]
 # Step 2: Build the habitat lookup via the CACHED one-call path
 # (TaxaHabitat::build_habitat_lookup()), not the uncached
 # build_habitat_prompt() -> LLM_FN loop -> parse_hierarchical_habitat_response()
-# chain. All six production workflows moved to this on 2026-09-10: a taxon
+# chain. All six production workflows use this: a taxon
 # already classified under this scheme is served from cache_dir instead of
 # re-asked. Uncached, a habitat verdict could flip between runs, moving a
 # species' records in or out of the site's habitat stratum and its kernel
-# prior by orders of magnitude -- the 2026-09-10 GreatLakes run lost 0.05 of
+# prior by orders of magnitude -- a real GreatLakes run lost 0.05 of
 # Lamar precision to exactly this. Same design as review_assignments()'s
 # cache. Force fresh verdicts with TaxaHabitat::taxahabitat_clear_cache(<cache_dir>).
 habitat_lookup <- TaxaHabitat::build_habitat_lookup(
@@ -495,8 +495,8 @@ std_occurrences <- std_occurrences
 #   edge: dist_to_priors_by_group    std_occurrences -> priors
 # =============================================================================
 # Edge: std_occurrences -> priors (grouped by sampling/detection process, kernel path)
-# Source: TaxaExpect kernel-priors redesign (2026-08-30/31) + the 2026-09-03
-#   sampling_group_col restoration, e.g. PtConceptionWorkflow_18S_2_single_site.R
+# Source: TaxaExpect kernel-priors redesign + sampling_group_col support,
+#   e.g. PtConceptionWorkflow_18S_2_single_site.R
 # NOTE: SAMPLING_GROUP_COL identifies which DETECTION METHOD/PROCESS
 #   each row belongs to (e.g. "fish" vs "birds" vs "phytoplankton" surveyed
 #   with different effort) -- this is NOT the same thing as a physical site.
@@ -507,27 +507,24 @@ std_occurrences <- std_occurrences
 #   missing_mass). Use this path only when std_occurrences already has a column
 #   identifying detection group; otherwise use the plain std_to_priors_kernel
 #   path.
-# 2026-09-09: rewritten from the retired GLMM-path wrapper
+# Rewritten from the retired GLMM-path wrapper
 #   train_biodiversity_model_by_group() to the kernel-path equivalent. A
 #   single estimate_kernel_priors(sampling_group_col=) call handles every
 #   group at once (no per-group model-fitting loop needed) -- this snippet
 #   works directly on standardized occurrence data, no gridding step
 #   (create_sites_from_grid()/the old "distributions" intermediate) needed,
-#   so this edge's own `from` was corrected from "distributions" to
-#   "std_occurrences" the same session the whole GLMM chain (including
-#   "distributions"'s only other consumer, dist_to_priors) was archived --
-#   see TaxaExpect/archive_glmm_prior_pipeline/ and TaxaExpect/CLAUDE.md's
-#   2026-09-09 session note.
+#   so this edge's own `from` is "std_occurrences", not "distributions" --
+#   the whole GLMM chain, including "distributions"'s only other consumer,
+#   dist_to_priors, is retired.
 
 std_occurrences <- std_occurrences
 
 # Step 1: calibrate the kernel bandwidth with the SAME sampling_group_col the
 # estimator uses below.
 #
-# (Corrected 2026-09-19. This comment previously asserted the opposite -- that
-# lambda_km "describes spatial decay, not detection-process membership, so one
-# bandwidth applies across every group" -- and the code calibrated on pooled
-# data. lambda_km IS spatial decay, but the quantity MINIMISED to estimate it
+# (lambda_km does NOT describe spatial decay independent of detection-process
+# membership -- calibrating it on pooled data is a real, non-obvious trap.
+# lambda_km IS spatial decay, but the quantity MINIMISED to estimate it
 # is a multinomial composition log-loss, and a composition is a share WITHIN a
 # detection process. Pooling therefore lets the largest group choose the
 # bandwidth for all of them. It does not announce itself: the fit succeeds and
@@ -653,13 +650,13 @@ if (isTRUE(INCLUDE_DOMESTIC_PRIORS)) {
   message("Added ", nrow(domestic_priors), " domestic/food-species prior row(s)")
 }
 
-# 2026-09-18 (P2 snippet validator): verify_taxon_names()'s real formals are
+# verify_taxon_names()'s real formals are
 # (name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id) --
-# this call previously passed the whole `priors` data frame positionally as
+# passing the whole `priors` data frame positionally as
 # `name_list` (wrong type: a character vector is expected) and a `taxon_col`
-# argument that has never existed, then discarded `priors` by reassigning it
-# to the verification result. Fixed to verify the taxon names informationally
-# without clobbering `priors`.
+# argument that does not exist, then discarding `priors` by reassigning it
+# to the verification result, is a real trap. Verify the taxon names
+# informationally without clobbering `priors`.
 taxon_verification <- TaxaTools::verify_taxon_names(
   name_list   = unique(priors$taxon_name),
   backbone_id = TARGET_BACKBONE_ID
@@ -720,7 +717,7 @@ posteriors <- posteriors
 # Edge: posteriors -> consensus
 # Source: TaxaAssign/inst/TaxaAssign_bayesian_workflow.R
 
-# Optional: group-level occurrence priors (2026-07-30). consensus_prior
+# Optional: group-level occurrence priors. consensus_prior
 # becomes a real group-level SUM over every locally modelled member sharing
 # a rank, instead of a candidate-scoped max -- a materially stronger
 # occurrence-plausibility signal, since a single observation's own candidate
@@ -738,18 +735,18 @@ group_priors_obj <- if (isTRUE(INCLUDE_GROUP_PRIORS)) {
   NULL
 }
 
-# Optional: species reference for posterior_consensus()'s downranking
-# (2026-09-12): a genus-level LCA is narrowed to a species only when the
-# reference lists exactly one species of that genus. Since curve pricing
-# (2026-08-31) the priors table also holds a distance-clamp row for EVERY
-# zero-record BLAST candidate, so "in the priors table" no longer means
+# Optional: species reference for posterior_consensus()'s downranking:
+# a genus-level LCA is narrowed to a species only when the
+# reference lists exactly one species of that genus. Because the
+# priors table also holds a distance-clamp row for EVERY
+# zero-record BLAST candidate, "in the priors table" does not mean
 # "known locally": at Mugu a genus consensus (Pseudotolithus, three
 # plausible congeners) was narrowed to P. senegallus, a West African croaker
 # with posterior 0.009 that was never among the plausible set, and reported
 # at the genus's 0.89. Clamp-only rows are therefore excluded here; resident,
 # singleton-mirror, domestic and real-evidence (regional/invasive/iNat) rows
 # stay.
-# 2026-09-13 (ecosystem review C3): the exclusion is by prior_branch, not by the
+# The exclusion is by prior_branch, not by the
 # clamp source string. Every non-resident evidence row (distance clamp, regional
 # proximity, watch list, iNat range) is resident_undetected and carries no local
 # record, so none may be the sole taxon that narrows a coarse consensus. Residents
@@ -830,7 +827,7 @@ context_df <- context_df
 #   is "consensus_rank". For external data (e.g. user-supplied CSV), use the
 #   actual column names from the data.
 
-# cache_dir (2026-09-04): a per-taxon verdict cache, keyed on everything that
+# cache_dir: a per-taxon verdict cache, keyed on everything that
 # can move a verdict. Without it, the review is not reproducible -- two real
 # GreatLakes runs 50 minutes apart on identical input disagreed about a
 # species' geographic plausibility ("possible" then "unlikely"), so it
