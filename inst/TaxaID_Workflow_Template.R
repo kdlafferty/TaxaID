@@ -72,7 +72,7 @@ REVIEW_CACHE_DIR           <- file.path(CACHE_ROOT, "review")        # LLM revie
 INCLUDE_DOMESTIC_PRIORS    <- FALSE                                  # Add domestic/food-species priors
 INCLUDE_GROUP_PRIORS       <- TRUE                                   # Add group-level prior support
 INCLUDE_DOWNRANKING        <- TRUE                                   # Allow posterior downranking
-SCREEN_REFERENCE_ACCESSIONS <- TRUE                                   # Screen reference accessions for errors
+SCREEN_REFERENCE_ACCESSIONS <- FALSE                                  # Screen reference accessions for errors; off by default -- see the comment in Step 1 for why
 REVIEW_FLAGGED_REFERENCES  <- TRUE                                   # Send flagged accessions for LLM review
 REMOVE_INCONGRUENT_REFERENCES <- TRUE                                   # Drop references failing hierarchy congruence
 
@@ -118,16 +118,21 @@ match_df <- TaxaMatch::standardize_match_data(
 
 match_df <- TaxaMatch::filter_redundant_hypotheses(match_df)
 
-# Optional: BLAST-based reference-accession quality screening (the
-# recommended pre-training screen). For each reference accession a
-# hypothesis in match_df is based on, checks whether independent GenBank
-# evidence agrees taxonomically -- flags likely mislabeled/contaminated
-# reference submissions (hierarchy_flag = "incongruent") without discarding
-# them outright, since a flag can also mean "this marker has poor resolving
-# power here", not necessarily a genuine mislabel -- see
-# evaluate_reference_accessions()'s own documentation. Costly (one BLAST
-# round-trip per unique accession) -- set SCREEN_REFERENCE_ACCESSIONS to
-# FALSE to skip entirely.
+# Optional: BLAST-based reference-accession quality screening. For each
+# reference accession a hypothesis in match_df is based on, checks whether
+# independent GenBank evidence agrees taxonomically -- flags likely
+# mislabeled/contaminated reference submissions (hierarchy_flag =
+# "incongruent") without discarding them outright, since a flag can also
+# mean "this marker has poor resolving power here", not necessarily a
+# genuine mislabel -- see evaluate_reference_accessions()'s own
+# documentation.
+#
+# OFF by default: it BLASTs every candidate reference accession against
+# NCBI, one round-trip per unique accession, which trips NCBI rate limits
+# on a real taxon list. On a real 12S study it changed 6 of 13,442 hits.
+# Run it as a separate task when you need it -- set
+# SCREEN_REFERENCE_ACCESSIONS to TRUE here to fold it back into this
+# workflow instead.
 if (isTRUE(SCREEN_REFERENCE_ACCESSIONS)) {
   accession_eval <- TaxaMatch::evaluate_reference_accessions(
     accessions = unique(match_df$accession),

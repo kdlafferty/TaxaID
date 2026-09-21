@@ -29,16 +29,21 @@ match_df <- TaxaMatch::standardize_match_data(
 
 match_df <- TaxaMatch::filter_redundant_hypotheses(match_df)
 
-# Optional: BLAST-based reference-accession quality screening (the
-# recommended pre-training screen). For each reference accession a
-# hypothesis in match_df is based on, checks whether independent GenBank
-# evidence agrees taxonomically -- flags likely mislabeled/contaminated
-# reference submissions (hierarchy_flag = "incongruent") without discarding
-# them outright, since a flag can also mean "this marker has poor resolving
-# power here", not necessarily a genuine mislabel -- see
-# evaluate_reference_accessions()'s own documentation. Costly (one BLAST
-# round-trip per unique accession) -- set {{screen_reference_accessions}} to
-# FALSE to skip entirely.
+# Optional: BLAST-based reference-accession quality screening. For each
+# reference accession a hypothesis in match_df is based on, checks whether
+# independent GenBank evidence agrees taxonomically -- flags likely
+# mislabeled/contaminated reference submissions (hierarchy_flag =
+# "incongruent") without discarding them outright, since a flag can also
+# mean "this marker has poor resolving power here", not necessarily a
+# genuine mislabel -- see evaluate_reference_accessions()'s own
+# documentation.
+#
+# OFF by default: it BLASTs every candidate reference accession against
+# NCBI, one round-trip per unique accession, which trips NCBI rate limits
+# on a real taxon list. On a real 12S study it changed 6 of 13,442 hits.
+# Run it as a separate task when you need it -- set
+# {{screen_reference_accessions}} to TRUE here to fold it back into this
+# workflow instead.
 if (isTRUE({{screen_reference_accessions}})) {
   accession_eval <- TaxaMatch::evaluate_reference_accessions(
     accessions = unique(match_df$accession),
