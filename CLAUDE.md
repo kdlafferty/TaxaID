@@ -1,6 +1,20 @@
 # CLAUDE.md — TaxaID Ecosystem
 # Ecosystem-level context for Claude Code. Auto-loaded from any package subdirectory.
 # Package-specific context lives in each package's own CLAUDE.md.
+#
+# ===== RELEASE FREEZE PROTOCOL (2026-09-20, TaxaID 1.0 pre-publication screen) =====
+# Read ecosystem_docs/REENTRY_PROMPT_prepublication_screen.md sections 3 and 5 first.
+# 1. No new exports on `main` without discussing it with the user (a GUIDE, not a ban:
+#    splitting an overgrown function is fine). Fixes inside existing functions are fine.
+# 2. Work on a branch, commit as you go, merge to main only when the user says so.
+# 3. Write NO new dated, "Session N", "previously", "no longer", "renamed" or "legacy"
+#    text into roxygen, README, vignettes or NEWS: 1.0 has no predecessor. CLAUDE.md
+#    and inst/*_review_response.md may keep history. Rationale (why) is welcome; when.
+# 4. Never reinstall a package while another R session has it loaded.
+# 5. New/changed functions are found by `git log pre-1.0-freeze..main -- '*/R/'
+#    '*/NAMESPACE'`, not by announcement; each needs a test and one line in its
+#    package's inst/*_review_response.md "Added after the review" section.
+# ===================================================================================
 # Last updated: 2026-09-17 (Opus 5, later): SUBSET/REUSE CONVENTION added to the canonical
 # template, and item F adopted as a provisional documentation-only rule. The template is
 # the only file touched (the user's choice); the six live workflows are unchanged.
