@@ -904,6 +904,26 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   `on_unreviewed = "error"`, `on_count_failure`, cache-clear containment,
   the decision-file schema and ambiguity guards.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
+  **Checked 2026-09-21 against the tracked tree** (every row of
+  `RESPONSE_to_release_review.md` re-verified, not read): README title uses
+  the colon; `code.json` present, CC0-1.0, `status` Preliminary, version
+  0.1.0, `laborHours` 0, `repositoryURL` kdlafferty/TaxaID, lastModified
+  2026-06-27; zero LICENSE/DISCLAIMER files inside packages, zero
+  disclaimer mentions in package READMEs, one of each at the root; zero
+  tracked residue (renv, roadmap, TODO, git-setup, INTRO, qmd,
+  PACKAGE_SETUP, DESCRIPTION.md); ECOSYSTEM_WORKFLOW.md linked from the
+  README; CLAUDE.md in all nine `.Rbuildignore`s; 174 test files (response
+  corrected from 173, `f2c8e32`). **Two process facts from
+  `WERC_Software_Checklist.pdf` that bear on the tag**: (1) a PROVISIONAL
+  release "may not be cited or referenced by other official USGS
+  Information Products (e.g., manuscripts)" -- the PtCon 12S manuscript
+  cites TaxaID, so the manuscript needs the OFFICIAL release path (IPDS
+  record, reserved DOI, technical code + domain review, RM and CD
+  approval); (2) the official path wants a RELEASE-CANDIDATE BRANCH named
+  for the version (`1.0.0`), and WERC creates the immutable tag on their
+  GitLab, so the local step is "branch `1.0.0` from main" rather than
+  "tag `v1.0.0`" unless the user wants both. The official DISCLAIMER and
+  `code.json` `status` change only when that path completes.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
