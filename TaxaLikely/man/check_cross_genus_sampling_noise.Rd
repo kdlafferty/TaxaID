@@ -31,7 +31,10 @@ identical.}
 A list:
 \describe{
 \item{\code{replicates}}{Data frame, one row per replicate:
-\code{replicate}, \code{n_cross_genus_pairs}, \code{mean_p_match},
+\code{replicate}, \code{n_cross_genus_pairs} (the count of DISTINCT unordered
+cross-genus sequence pairs -- \code{.decipher_align_pairs()}'s underlying
+pair table carries both \verb{(i, j)} and \verb{(j, i)} for every pair, and
+this count de-duplicates that before reporting), \code{mean_p_match},
 \code{median_p_match}, \code{sd_p_match}.}
 \item{\code{summary}}{Named list: the range (min, max) and coefficient of
 variation (sd/mean) of \code{mean_p_match} across replicates -- the
