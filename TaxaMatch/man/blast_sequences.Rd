@@ -135,7 +135,7 @@ risk timeout on NCBI's server. NCBI handles multi-FASTA queries.}
 \item{max_batch_bp}{Numeric. Remote BLAST only. Default \code{100000L}.
 Cumulative-length (bp) cap per submission batch, applied ALONGSIDE
 \code{batch_size} -- a batch closes when EITHER the count or the bp
-limit is reached, whichever comes first. Added 2026-09-01: a long
+limit is reached, whichever comes first. A long
 query (e.g. one of several full mitogenomes sharing a batch with mostly
 short amplicons) consumes vastly more server CPU than its count-based
 "1 of \code{batch_size}" share suggests -- one expensive query can doom
@@ -146,8 +146,8 @@ query it was sharing with, not just the expensive one. A single query
 at or above half of \code{max_batch_bp} rides ALONE in its own batch
 (closing whatever batch was already accumulating first, if any) --
 isolating it this way guarantees a doomed batch only ever costs that
-ONE query's own progress. \code{Inf} disables the bp cap entirely,
-fully restoring the old count-only \code{batch_size} behavior. See
+ONE query's own progress. \code{Inf} disables the bp cap entirely, so
+batches close on \code{batch_size} count alone. See
 \code{.split_batches_by_length()} for the implementation. Most calls at
 the default \code{batch_size}/typical amplicon lengths never approach
 \code{100000L} bp per batch, so this is a no-op for ordinary data --
@@ -177,9 +177,9 @@ full nucleotide record; neither fetch gives you the other.}
 
 \item{poll_max_wait}{Numeric. Remote BLAST only. Seconds to keep polling
 NCBI for a submitted batch's results before giving up on it (default
-\code{1800}, i.e. 30 minutes). Raised from an earlier hardcoded
-\code{600} (2026-08-09) after a real, large (1,183-accession) remote-
-BLAST run observed sustained per-batch queue waits exceeding 600s.
+\code{1800}, i.e. 30 minutes). The default accommodates sustained
+per-batch queue waits exceeding 600s, observed in a real, large
+(1,183-accession) remote-BLAST run.
 A batch that still exceeds this window (even after the existing
 halved-batch-size retry), OR that NCBI reports \code{Status=READY} for
 but has actually aborted server-side for exceeding a CPU-time fair-use
@@ -266,7 +266,7 @@ An \code{attr(out, "report_params")} list (\code{method}, \code{database},
 \code{\link{report_match}}.
 
 \code{attr(out, "failed_query_ids")} (character vector, \code{NULL} if
-none) -- remote BLAST only, added 2026-08-09: \code{asv_id}s whose
+none) -- remote BLAST only: \code{asv_id}s whose
 search never completed (submission or poll failure, even after the
 automatic halved-batch-size retry) -- distinct from a query that
 completed and genuinely found nothing, which simply has no rows in

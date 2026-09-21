@@ -49,8 +49,7 @@ is absent from \code{evaluated_df}.}
 Persistent, accession-keyed cache of LLM reviews -- an accession already
 reviewed with UNCHANGED inputs (see \verb{@section Caching} below) is served
 from cache instead of making a real LLM call. Set \code{NULL} to disable
-caching entirely (every call re-reviews every in-scope accession, the
-pre-2026-08-14 behavior).}
+caching entirely (every call re-reviews every in-scope accession).}
 
 \item{llm_fn}{Function. LLM provider function with signature
 \verb{function(prompt_str, ...)}. Default \code{TaxaTools::call_api}.
@@ -142,11 +141,11 @@ A free-text \code{accession_review_comment} plus two small structured fields
 (\code{accession_likely_explanation}, \code{accession_review_confidence}) -- never a
 re-decided \code{hierarchy_flag}, and this function never calls
 \code{\link[=remove_incongruent_references]{remove_incongruent_references()}} or otherwise mutates the evaluation
-itself. This mirrors this ecosystem's own \code{trusted_rank} cautionary
-history (\code{TaxaLikely::evaluate_likelihoods()}, built 2026-07-19, removed
-2026-07-20 after a real ~30\% mismatch between the hypothesis it was
-computed for and the one that actually won downstream -- see
-\verb{[[project_rank_trust_mechanism_removed]]} in the project memory system):
+itself. This follows this ecosystem's own caution around a \code{trusted_rank}-
+style mechanism (\code{TaxaLikely::evaluate_likelihoods()}) that once
+recomputed/overrode an existing categorical verdict and was removed after
+a real ~30\% mismatch between the hypothesis it was
+computed for and the one that actually won downstream:
 a mechanism that recomputes/overrides an existing categorical verdict is
 exactly the shape that broke there. A human reads
 \code{accession_review_comment} before acting on it.

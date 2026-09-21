@@ -45,8 +45,8 @@ never removes an accession \code{hierarchy_flag} would otherwise have kept.}
 
 \item{gate}{Character, \code{"action"} (default) or \code{"flag"}. \code{"action"} removes
 accessions whose \code{reference_action} is \code{"remove"}; \code{"flag"} removes every
-accession whose \code{hierarchy_flag} is \code{"incongruent"}, the pre-2026-09-02
-behaviour. Under \code{"action"}, \code{reference_action} is computed on the fly
+accession whose \code{hierarchy_flag} is \code{"incongruent"}.
+Under \code{"action"}, \code{reference_action} is computed on the fly
 via \code{\link[=score_reference_labels]{score_reference_labels()}} if \code{evaluation} does not already carry it.}
 }
 \value{
@@ -62,16 +62,16 @@ only the confident \code{"incongruent"} verdict is dropped by default --
 sparsely-referenced region of the database, not a real problem) and is
 retained unless \code{remove_insufficient_evidence = TRUE}.
 }
-\section{Use \code{\link[=flag_incongruent_references]{flag_incongruent_references()}} first (2026-08-07)}{
+\section{Use \code{\link[=flag_incongruent_references]{flag_incongruent_references()}} first}{
 
-This function is no longer the recommended default pipeline step -- see
-\code{\link[=flag_incongruent_references]{flag_incongruent_references()}}'s own \verb{@section Why flag-by-default, not drop-by-default} for the real case that changed this. Reach for this
+This function is not the recommended default pipeline step -- see
+\code{\link[=flag_incongruent_references]{flag_incongruent_references()}}'s own \verb{@section Why flag-by-default, not drop-by-default} for the real case illustrating why. Reach for this
 function deliberately, after reviewing \code{hierarchy_flag} alongside the
 identity diagnostics (\code{best_agreeing_pident}/\code{best_disagreeing_pident}/
 \code{congruent_evidence_exists_anywhere}), not as an unreviewed default step.
 }
 
-\section{The evidence gate is now the default (2026-09-02)}{
+\section{The evidence gate is the default}{
 
 \code{gate = "action"} (the default) removes an accession only when
 \code{\link[=score_reference_labels]{score_reference_labels()}} resolved it to \code{reference_action == "remove"}
@@ -80,12 +80,11 @@ confidence threshold -- rather than on \code{hierarchy_flag == "incongruent"}
 alone. \code{hierarchy_flag} is a majority vote over the top-N neighbours in
 which percent identity never appears, so in a thinly-covered clade it
 fires on correct references by construction. Measured on the real
-995-accession PtConception screen: the old \code{gate = "flag"} behaviour would
-have removed 12 accessions behind 1,688 observations -- including cabezon
+995-accession PtConception screen: \code{gate = "flag"}
+removes 12 accessions behind 1,688 observations -- including cabezon
 (\code{OK172573}, 1,120 observations, agreeing hit at 100\%) -- to catch the 4
 (16 observations) that genuinely had no corroboration anywhere.
-\code{gate = "action"} removes exactly those 4. Pass \code{gate = "flag"} to get the
-pre-2026-09-02 behaviour back.
+\code{gate = "action"} removes exactly those 4.
 }
 
 \section{This is a blacklist decision, not the whole signal}{
@@ -94,8 +93,7 @@ Even under \code{gate = "action"} this function consumes only a yes/no removal
 decision. The continuous signal (\code{\link[=score_reference_labels]{score_reference_labels()}}'s
 \code{label_confidence}) travels separately, via
 \code{\link[=flag_incongruent_references]{flag_incongruent_references()}}, and is meant for review. A likelihood-model
-covariate driven by it was prototyped on 2026-09-02 and removed the same
-day -- see
+covariate driven by it was evaluated and found not to help -- see
 \code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}
 for what was measured, before proposing it again. Do not let this
 function's use become the only place the full \code{evaluation} object's signal

@@ -46,7 +46,7 @@ flagged corroborator is reported for a human to look at, not acted on.
 Requires \code{cache_dir} -- with \code{cache_dir = NULL} nothing is screened
 (zero extra NCBI calls) and \code{corroborator_flagged} is \code{NA} for every
 row, regardless of this parameter's value. \code{FALSE} also skips this
-entirely (matching pre-2026-09-05 behavior).}
+entirely.}
 
 \item{verbose}{Logical (default \code{TRUE}).}
 }
@@ -91,7 +91,7 @@ accession from \code{reference_action == "remove"} however low its
 in the top 20".
 
 That was measured, not suspected
-(\code{diagnostics/veto_truncation_probe.R}, 2026-09-04): at \code{max_hits = 100},
+(\code{diagnostics/veto_truncation_probe.R}): at \code{max_hits = 100},
 \code{congruent_evidence_exists_anywhere} flipped \code{FALSE} to \code{TRUE} for 8 of 15
 veto-critical accessions, and \code{OQ846263} (\emph{Rathbunella hypoplecta}) --
 one of only two accessions that PtConception run would have removed --
@@ -125,7 +125,7 @@ call fail, it makes the result mean nothing.
 \code{congruent_evidence_exists_anywhere} counts a corroborating partner
 without any notion of whether that partner's own label is trustworthy, so
 a mislabeled reference can be rescued by another instance of the SAME
-mislabel. This is not hypothetical -- it happened on this function's first
+mislabel. This is not hypothetical -- it has happened in
 real use. GreatLakes \code{KJ135626} (\emph{Pseudorasbora parva}) came back
 \code{spared = TRUE}, rescued by exactly one partner agreeing at species rank:
 \code{MZ605481}, which this project's own
@@ -142,8 +142,8 @@ that partner's OWN verdict, and a corroborator which is merely a BLAST hit
 Widening the window makes the exposure larger, not smaller, since it
 admits more potential bad corroborators. So treat \code{spared} as a prompt to
 look, not a conclusion: a row rescued by one or two partners gets an
-explicit warning naming them, and (\code{screen_corroborators = TRUE},
-2026-09-05) that corroborator's own label is now actually checked --
+explicit warning naming them, and (\code{screen_corroborators = TRUE})
+that corroborator's own label is checked --
 never automatically, only flagged, per this project's own "flag, don't
 auto-act" convention.
 }

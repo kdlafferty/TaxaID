@@ -21,7 +21,8 @@ flag_incongruent_references(match_df, evaluation)
 \code{label_identity_margin}, \code{reference_action} and \code{listed_taxon_is_species}
 whenever \code{evaluation} carries them (it always does when it came from
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} or \code{\link[=score_reference_labels]{score_reference_labels()}}; an
-\code{evaluation} read straight off a pre-2026-09-02 cache file will not).
+\code{evaluation} read straight off a cache file created before these
+columns existed will not).
 A row whose accession was not found in \code{evaluation} gets \code{NA} in all of
 these (not evaluated yet, not evidence of anything). Row count and order
 are unchanged.
@@ -34,26 +35,28 @@ left-joins its evaluation columns onto \code{match_df} by accession
 coverage diagnostics travel with the match object for review, without
 ever discarding a candidate taxon.
 }
-\section{Why flag-by-default, not drop-by-default (2026-08-07)}{
+\section{Why flag-by-default, not drop-by-default}{
 
-\code{\link[=remove_incongruent_references]{remove_incongruent_references()}} (below) was this session's first cut,
-and was the ONLY consumer until a real case
-(\verb{Abylopsis eschscholtzii}, \code{KY594854}/\code{KX384617}) showed why an
+A real case
+(\verb{Abylopsis eschscholtzii}, \code{KY594854}/\code{KX384617}) shows why an
 unreviewed hard drop is the wrong default: \code{hierarchy_flag = "incongruent"} cannot currently distinguish a genuine mislabel from
 "correct label, but this marker has poor resolving power at this rank
 for this clade and GenBank coverage is thin" -- see
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}'s own \verb{@section Identity diagnostics}.
 Dropping the accession destroys the candidate taxon entirely and
 irreversibly on the strength of a verdict that can be wrong in exactly
-this ambiguous way. This ecosystem has made and reverted this same
-mistake twice before with unrelated mechanisms, for the identical reason
--- \code{TaxaLikely::apply_coverage_constraints(constraint_behavior)}'s
-default changed \code{"zero"} -> \code{"relabel"} (a genus-completeness NCBI-query
-result treated as certain ground truth, permanently discarding a correct
-hypothesis with no way for downstream evidence to recover it), and
-\code{TaxaFetch::filter_gbif_quality()}'s \code{exclude_institution} ->
-\code{flag_institution} (real, correctly-labeled observations near a
-biodiversity institution were being auto-removed alongside real errors,
+this ambiguous way. The same pattern recurs elsewhere in this ecosystem
+with unrelated mechanisms, for the identical reason
+-- \code{TaxaLikely::apply_coverage_constraints(constraint_behavior)}
+defaults to \code{"relabel"} rather than \code{"zero"} (a genus-completeness
+NCBI-query result treated as certain ground truth would permanently
+discard a correct hypothesis with no way for downstream evidence to
+recover it), and
+\code{TaxaFetch::filter_gbif_quality()} defaults to
+\code{flag_institution} rather than \code{exclude_institution} (real,
+correctly-labeled observations near a
+biodiversity institution would otherwise be auto-removed alongside real
+errors,
 since proximity to an institution -- like thin reference coverage for a
 correctly-labeled clade -- is not itself proof of error). Use this
 function by default; reach for \code{\link[=remove_incongruent_references]{remove_incongruent_references()}}
