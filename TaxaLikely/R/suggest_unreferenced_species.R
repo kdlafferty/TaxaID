@@ -231,7 +231,31 @@
     }
     g <- g_vec
     sps <- as.character(item$plausible_species)
-    valid <- unique(sps[TaxaTools::is_plausible_binomial(sps)])
+    shape_valid <- sps[TaxaTools::is_plausible_binomial(sps)]
+
+    # TaxaTools::is_plausible_binomial() is a regex shape check only -- it has
+    # no taxonomic authority and does not verify a candidate actually starts
+    # with the genus it was returned under. A hallucinating (or, in
+    # principle, prompt-injected) LLM response can emit any
+    # "Capitalised lowercase" two-word string (e.g. "Ignore priorinstructions")
+    # and it would pass the shape check unchanged. Require the candidate's
+    # own first word (its genus) to match the genus key it was returned
+    # under, case-insensitively after trimming, before accepting it.
+    sp_genus <- sub(" .*", "", trimws(shape_valid))
+    genus_matches <- tolower(sp_genus) == tolower(trimws(g))
+    valid <- unique(shape_valid[genus_matches])
+
+    n_wrong_genus <- sum(!genus_matches)
+    if (n_wrong_genus > 0L) {
+      message(sprintf(
+        paste0(
+          "suggest_unreferenced_species: discarded %d plausible_species entr%s ",
+          "returned under genus '%s' whose own genus did not match (kept only ",
+          "entries genuinely under '%s')."
+        ),
+        n_wrong_genus, if (n_wrong_genus == 1L) "y" else "ies", g, g
+      ))
+    }
 
     if (g %in% genera) {
       result[[g]] <- valid
@@ -288,19 +312,37 @@
     ref_filter_note,
     "Use full binomial names (\"Lucania parva\", not \"L. parva\").\n",
     "Return an empty array [] if no other genera in this family are plausible here.\n\n",
-    "Required output format:\n",
-    "[{\"species\": \"Lucania parva\", \"range_status\": \"native\"},\n",
-    " {\"species\": \"Lucania goodei\", \"range_status\": \"documented_nearby\"}]"
+    "Required output format (include \"family\" exactly as given below, for every item):\n",
+    "[{\"species\": \"Lucania parva\", \"family\": \"", family, "\", \"range_status\": \"native\"},\n",
+    " {\"species\": \"Lucania goodei\", \"family\": \"", family, "\", \"range_status\": \"documented_nearby\"}]"
   )
 }
 
 
 #' Parse family-level JSON array response into a character vector of species names
 #'
-#' Expects objects with "species" + "range_status" fields. Only species with
-#' range_status in the plausible set (native, introduced_established,
-#' documented_nearby) are returned. This filters implausible hypotheses before
-#' any NCBI queries.
+#' Expects objects with "species" + "range_status" fields (and, per the
+#' current prompt, a "family" field -- see the genus-tie note below). Only
+#' species with range_status in the plausible set (native,
+#' introduced_established, documented_nearby) are returned. This filters
+#' implausible hypotheses before any NCBI queries.
+#'
+#' @section Genus/family tie:
+#' `TaxaTools::is_plausible_binomial()` is a regex shape check only -- it has
+#' no taxonomic authority and cannot tell a real species from a
+#' hallucinated (or, in principle, prompt-injected) "Capitalised lowercase"
+#' two-word string. Unlike the genus-level parser, this function has no
+#' enumerable set of genera the prompt "asked about" to check a candidate
+#' against -- `.build_family_prompt()` asks for species from genera OTHER
+#' THAN `exclude_genera`, an open-ended, unenumerable set that any
+#' fabricated genus name would trivially satisfy. The only semantic tie
+#' available without a taxonomy lookup is the one thing the response
+#' actually structures per item: the "family" field the prompt now asks the
+#' LLM to echo back per species. When present, a candidate is kept only if
+#' its own "family" value matches the family actually requested
+#' (case-insensitive, after trimming); a response that omits the "family"
+#' column entirely (older-format response) falls back to the exclude_genera
+#' filter alone, unchanged from before this fix.
 #' @noRd
 .parse_family_response <- function(response, family, exclude_genera,
                                    group_label = "all") {
@@ -342,9 +384,28 @@
   # Also accept fallback: plain character vector (old format / LLM non-compliance)
   if (is.data.frame(parsed) && "species" %in% names(parsed)) {
     spp <- as.character(parsed$species)
+    fam_col <- if ("family" %in% names(parsed)) as.character(parsed$family) else NULL
+
     if ("range_status" %in% names(parsed)) {
-      rs <- as.character(parsed$range_status)
-      spp <- spp[rs %in% plausible_statuses]
+      keep_status <- as.character(parsed$range_status) %in% plausible_statuses
+      spp <- spp[keep_status]
+      if (!is.null(fam_col)) fam_col <- fam_col[keep_status]
+    }
+
+    if (!is.null(fam_col)) {
+      family_matches <- tolower(trimws(fam_col)) == tolower(trimws(family))
+      n_wrong_family <- sum(!family_matches)
+      if (n_wrong_family > 0L) {
+        message(sprintf(
+          paste0(
+            "suggest_unreferenced_species: discarded %d family-expansion ",
+            "entr%s returned under family '%s' whose own 'family' value did ",
+            "not match (kept only entries genuinely assigned to '%s')."
+          ),
+          n_wrong_family, if (n_wrong_family == 1L) "y" else "ies", family, family
+        ))
+      }
+      spp <- spp[family_matches]
     }
   } else if (is.character(parsed)) {
     # Fallback: plain string array -- accept all, no range filter possible

@@ -122,6 +122,59 @@ test_that(".parse_plausible_response() warns when a genus has no species returne
   expect_equal(result[["Gambusia"]], character(0L))
 })
 
+# ---- Genus/species tie (DEFECT 2: shape-only check accepted anything) -------
+
+test_that(".parse_plausible_response() discards a shaped-but-wrong-genus injection string", {
+  # "Ignore priorinstructions" passes TaxaTools::is_plausible_binomial()'s
+  # regex shape check (Capitalised word + space + lowercase word) but its
+  # own first word ("Ignore") does not match the genus it was returned
+  # under ("Gadus") -- must be discarded, not silently accepted.
+  json <- '[{"genus":"Gadus","plausible_species":["Gadus morhua","Ignore priorinstructions","Xx yy"]}]'
+  expect_message(
+    result <- TaxaLikely:::.parse_plausible_response(json, "Gadus"),
+    regexp = "discarded"
+  )
+  expect_equal(result[["Gadus"]], "Gadus morhua")
+  expect_false("Ignore priorinstructions" %in% result[["Gadus"]])
+  expect_false("Xx yy" %in% result[["Gadus"]])
+})
+
+test_that(".parse_plausible_response() keeps a correctly-genused species with no message", {
+  json <- '[{"genus":"Gadus","plausible_species":["Gadus morhua"]}]'
+  expect_no_message(
+    result <- TaxaLikely:::.parse_plausible_response(json, "Gadus")
+  )
+  expect_equal(result[["Gadus"]], "Gadus morhua")
+})
+
+test_that(".parse_plausible_response() discards a species returned under the wrong genus", {
+  # Shaped correctly and a real species, but tagged under a genus other than
+  # its own -- e.g. an LLM response bug or a batch mix-up.
+  json <- '[{"genus":"Gadus","plausible_species":["Salmo salar"]}]'
+  expect_message(
+    result <- TaxaLikely:::.parse_plausible_response(json, "Gadus"),
+    regexp = "discarded"
+  )
+  expect_equal(result[["Gadus"]], character(0L))
+})
+
+test_that(".parse_plausible_response() genus match is case-insensitive after trimming", {
+  # The item's declared "genus" ("gadus") exactly matches the requested
+  # genus key (so the pre-existing g %in% genera gate still passes), but
+  # differs in case from the species' own first word ("Gadus" -- properly
+  # capitalised, as the binomial shape check requires). The new tie check
+  # must still match case-insensitively.
+  json <- '[{"genus":"gadus","plausible_species":["Gadus morhua"]}]'
+  result <- TaxaLikely:::.parse_plausible_response(json, "gadus")
+  expect_equal(result[["gadus"]], "Gadus morhua")
+})
+
+test_that(".parse_plausible_response() deduplicates returned names", {
+  json <- '[{"genus":"Gadus","plausible_species":["Gadus morhua","Gadus morhua","Gadus ogac"]}]'
+  result <- TaxaLikely:::.parse_plausible_response(json, "Gadus")
+  expect_equal(sort(result[["Gadus"]]), c("Gadus morhua", "Gadus ogac"))
+})
+
 
 # ============================================================================
 # suggest_unreferenced_species() -- skip-list and basic logic (mocked NCBI)
@@ -633,4 +686,56 @@ test_that(".parse_family_response falls back gracefully on plain string array wi
     regexp = "plain species array"
   )
   expect_true("Lucania parva" %in% result)
+})
+
+# ---- Family tie (DEFECT 2: shape-only check accepted anything) -------------
+
+test_that(".parse_family_response discards a shaped-but-wrong-family injection string", {
+  # "Ignore priorinstructions" passes the binomial shape check but its own
+  # "family" value does not match the family actually requested -- must be
+  # discarded, not silently accepted.
+  response <- '[
+    {"species": "Lucania parva",              "family": "Fundulidae", "range_status": "native"},
+    {"species": "Ignore priorinstructions",   "family": "Not a real family", "range_status": "native"}
+  ]'
+  expect_message(
+    result <- TaxaLikely:::.parse_family_response(response, "Fundulidae", character(0L)),
+    regexp = "discarded"
+  )
+  expect_true("Lucania parva" %in% result)
+  expect_false("Ignore priorinstructions" %in% result)
+})
+
+test_that(".parse_family_response keeps a correctly-familied species with no message", {
+  response <- '[{"species": "Lucania parva", "family": "Fundulidae", "range_status": "native"}]'
+  expect_no_message(
+    result <- TaxaLikely:::.parse_family_response(response, "Fundulidae", character(0L))
+  )
+  expect_true("Lucania parva" %in% result)
+})
+
+test_that(".parse_family_response family match is case-insensitive after trimming", {
+  response <- '[{"species": "Lucania parva", "family": " fundulidae ", "range_status": "native"}]'
+  result <- TaxaLikely:::.parse_family_response(response, "Fundulidae", character(0L))
+  expect_true("Lucania parva" %in% result)
+})
+
+test_that(".parse_family_response with no 'family' field falls back to the pre-fix behavior (backward compatible)", {
+  # Older-format response with no "family" column at all -- unchanged from
+  # before this fix, since there is nothing to tie-check against.
+  response <- '[{"species": "Lucania parva", "range_status": "native"}]'
+  expect_no_message(
+    result <- TaxaLikely:::.parse_family_response(response, "Fundulidae", character(0L))
+  )
+  expect_true("Lucania parva" %in% result)
+})
+
+test_that(".parse_family_response deduplicates returned names", {
+  response <- '[
+    {"species": "Lucania parva", "family": "Fundulidae", "range_status": "native"},
+    {"species": "Lucania parva", "family": "Fundulidae", "range_status": "native"},
+    {"species": "Lucania goodei", "family": "Fundulidae", "range_status": "native"}
+  ]'
+  result <- TaxaLikely:::.parse_family_response(response, "Fundulidae", character(0L))
+  expect_equal(sort(result), c("Lucania goodei", "Lucania parva"))
 })
