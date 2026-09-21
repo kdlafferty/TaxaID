@@ -4,7 +4,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 # TaxaLikely package
 #
 # Shared machinery behind two consumers, both growing out of the same
-# 2026-07-23 design conversation and its reference implementation,
+# design conversation and its reference implementation,
 # diagnostics/score_floor_roc_sweep.R:
 #   1. evaluate_likelihoods()'s species_confusion_risk/genus_confusion_risk/
 #      family_confusion_risk columns (R/evaluate.R) -- a model-independent,
@@ -12,15 +12,11 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #      equally explained by a confusable congener/confamilial/cross-family
 #      relative, evaluated against the FALSE-POSITIVE side of these curves
 #      (a genuine congener/confamilial/cross-family pair's own score
-#      distribution). Renamed 2026-07-23 (same day) from "*_support" after
-#      noticing the original name inverted the ecosystem's own convention:
-#      every other "_score"/"_risk" metric here (e.g. TaxaFlag::
-#      flag_contaminant()'s contaminant_score) already uses HIGH = MORE of
-#      the named concern; "_support" implied the opposite (high = backs up
-#      the claim) while the values themselves are P(a confusable relative
+#      distribution). The values are P(a confusable relative
 #      would score this high or higher) -- i.e. HIGH = MORE confusable =
-#      WEAKER evidence. "_confusion_risk" matches the established
-#      high=concern convention with no math change.
+#      WEAKER evidence, matching every other "_score"/"_risk" metric in this
+#      ecosystem (e.g. TaxaFlag::flag_contaminant()'s contaminant_score),
+#      where HIGH = MORE of the named concern.
 #   2. compute_rank_thresholds() (this file) -- a marker-agnostic Youden's-J
 #      threshold deriver for TaxaAssign::score_consensus()'s rank_thresholds,
 #      needing BOTH the true-positive and false-positive sides.
