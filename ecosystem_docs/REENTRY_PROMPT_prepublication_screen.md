@@ -442,6 +442,18 @@ The workflow chat must merge `main` into `workflow-ptcon-multisite` before
 further package edits; the untracked residue under `diagnostics/` and
 `ecosystem_docs/readmes/` in its checkout moves to `TaxaID_dev` then.
 
+**Verification of the merged tree (2026-09-21, fresh R per package,
+`load_all`, no install):** `document()` a no-op in all nine; tests green in
+eight -- TaxaTools 1,155, TaxaFetch 790, TaxaMatch 1,387, TaxaLikely 1,283,
+TaxaAssign 811, TaxaExpect 693, TaxaHabitat 545, TaxaFlag 550, zero failures.
+TaxaWizard 1,067 pass / 4 fail, both failing tests compare against the
+INSTALLED libraries (`test-pack`: generated pack vs committed `llm_prompts/`;
+`test-workflow-template`: committed template vs the generator's output) and
+five installed packages are stale relative to source (TaxaFetch 32 vs 30
+exports, TaxaLikely 33/31, TaxaAssign 16/15, TaxaHabitat 19/18, TaxaFlag
+12/11). Re-run both after the reinstall; they are not evidence against the
+merge until then.
+
 ## 7. Stage B -- verification (frozen tree, at `pre-1.0-freeze`)
 
 **Entry conditions -- all true, verified, before B1:**
