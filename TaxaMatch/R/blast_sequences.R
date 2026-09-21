@@ -694,7 +694,7 @@ blast_sequences <- function(seq_df,
     method    = if (method == "remote") "remote BLAST" else "local BLAST",
     database  = database,
     min_score = min_score,
-    # 2026-09-10: the coverage floor this match object was built under.
+    # The coverage floor this match object was built under.
     # TaxaLikely::train_likelihood_model(min_pair_coverage=) must match it
     # (as a fraction), and evaluate_likelihoods() reads it from here to check.
     min_query_coverage = min_query_coverage,
@@ -1048,9 +1048,10 @@ blast_sequences <- function(seq_df,
   # alignment against every matching record, not just whatever happens to
   # rank among the top hits of an otherwise-unrestricted search. See
   # `.blast_against_comparison_set()` (`R/investigate_flagged_accession.R`)
-  # for why this matters: a post-hoc top-N-then-filter approach was tried
-  # first and found live (2026-08-08, real MZ605481 case) to return ZERO
-  # matches even for accessions independently confirmed to exist, because
+  # for why this matters: a post-hoc top-N-then-filter approach can
+  # return ZERO
+  # matches even for accessions independently confirmed to exist (confirmed
+  # live, real MZ605481 case), because
   # the candidate accessions simply never appeared in the unrestricted
   # top-max_target_seqs hit list.
   params <- list(
@@ -1263,9 +1264,9 @@ blast_sequences <- function(seq_df,
       qfrom <- as.integer(.xt("./Hsp_query-from"))
       qto <- as.integer(.xt("./Hsp_query-to"))
       # Subject/hit-side alignment coordinates (Hsp_hit-from/-to) -- WHERE
-      # within the subject sequence this HSP actually aligns. Previously
-      # parsed nowhere in this function (only the query-side qfrom/qto were
-      # kept), even though BLAST already computes them -- needed so a
+      # within the subject sequence this HSP actually aligns. Parsed here
+      # alongside the query-side qfrom/qto,
+      # since BLAST already computes them -- needed so a
       # downstream consumer can tell whether two different queries' hits
       # against the SAME long subject (e.g. a complete mitogenome) actually
       # cover the same genomic region or two unrelated ones (see TaxaLikely's
@@ -1845,10 +1846,11 @@ blast_sequences <- function(seq_df,
             # one fewer value than names and shifts every subsequent value onto
             # the wrong name. Confirmed on real NCBI records (AVFR00000000,
             # AVFR01000001, AVFR01000002): `/environmental_sample` sits
-            # immediately before `/geo_loc_name` and `/lat_lon`, so the old
-            # parallel-vector read returned "2010-07-01" / "0 m" / "microbial
+            # immediately before `/geo_loc_name` and `/lat_lon`, so a naive
+            # parallel-vector read (two independent sweeps for names vs.
+            # values) would return "2010-07-01" / "0 m" / "microbial
             # mat metagenome" as the lat_lon string and .parse_lat_lon()
-            # correctly rejected each one -- real collection coordinates
+            # would correctly reject each one -- real collection coordinates
             # (41.5758 N 70.6392 W) silently lost, and `country` liable to
             # report a neighbouring qualifier's text instead. xml_find_first()
             # over the qualifier nodeset returns one element per node (NA where
