@@ -99,12 +99,12 @@
 #'   \code{.fetch_inat_points()}, internal) -- distinct from
 #'   \code{live_inat_check}'s range-polygon check, which has no radius
 #'   concept. Default \code{500} -- confirmed live this needs to be wide,
-#'   not just permissive: the individual-point map layer replaced an
-#'   earlier raster tile layer that always covered the full visible map
-#'   (continuous world density, like GBIF's own tiles), so a real
-#'   click-through correctly flagged a smaller default (50km, copied
-#'   unexamined from an unrelated function's own default) as confining
-#'   points to "a small region" compared to what the gadget used to show.
+#'   not just permissive: the individual-point map layer only shows points
+#'   within this radius, unlike a full-coverage density tile (continuous
+#'   world density, like GBIF's own tiles), so too small a radius can make
+#'   even a well-recorded taxon look confined to "a small region." A
+#'   smaller default (50km, copied unexamined from an unrelated function's
+#'   own default) was confirmed live to do exactly this.
 #'   A dashed circle of this exact radius is drawn on the map (grouped with
 #'   the iNat points layer, so toggling one toggles both) specifically so a
 #'   taxon with no visible points nearby doesn't read as "no iNat data
@@ -147,18 +147,17 @@
 #'   from real measurements against the SPARSE species this gadget is
 #'   actually meant to review (this thread's own real "unprecedented"
 #'   candidates, at the real zoom-7 study-site tile), not a common/
-#'   everywhere-present species -- an earlier, smaller default (64) was
-#'   revised after a real click-through reported no noticeable change,
-#'   which real measurement confirmed: for a real, genuinely sparse GBIF
-#'   record set at that exact tile, raw \code{.point} pixels covered under
-#'   0.1%; \code{squareSize=64} only reached ~1-2.5%, visually
-#'   indistinguishable from unbinned dots on a full map pane. \code{256}
+#'   everywhere-present species -- a smaller default (64) would look like no
+#'   noticeable change, which real measurement confirms: for a real,
+#'   genuinely sparse GBIF record set at that exact tile, raw \code{.point}
+#'   pixels covered under 0.1%; \code{squareSize=64} only reaches ~1-2.5%,
+#'   visually indistinguishable from unbinned dots on a full map pane. \code{256}
 #'   reaches ~10-15% coverage for the same real sparse species (a ~60-140x
 #'   increase over raw pixels) while a maximally common, everywhere-present
 #'   species (checked separately, not this gadget's typical use case) only
 #'   reaches ~26% -- visibly bigger without turning into a solid blob.
 #'   \code{NULL} disables binning entirely, reverting to \code{gbif_style}
-#'   exactly as supplied (the pre-2026-08-07 default behaviour).
+#'   exactly as supplied.
 #'   \code{".poly"}-suffixed styles combined with \code{gbif_bin_size =
 #'   NULL} (unbinned) can render as a completely EMPTY tile at a real
 #'   zoom/species combination that raw \code{.point} styles render
@@ -207,7 +206,21 @@
 #'     habitat = "harbor, standing water"
 #'   ),
 #'   target_group = "fish",
-#'   marker = "12S eDNA"
+#'   marker = "12S eDNA",
+#'   data_type = "eDNA"
+#' )
+#'
+#' # Non-sequencing example: the same gadget reviewing acoustic detections
+#' review_spatial_context(
+#'   input_df = consensus_final,
+#'   query_lat = STUDY_LAT, query_lon = STUDY_LON,
+#'   context = list(
+#'     geography = "Lake Michigan, Burns/Indiana Harbor",
+#'     habitat = "harbor, standing water"
+#'   ),
+#'   target_group = "birds",
+#'   marker = "autonomous recording unit",
+#'   data_type = "acoustic"
 #' )
 #' }
 #'
@@ -1004,11 +1017,11 @@ review_spatial_context <- function(input_df,
 #' pagination beyond one page, matching this gadget's "cheap map context,
 #' not a full census" scope. radius_km default 500 (not
 #' fetch_inat_occurrences()'s own 50km default) -- confirmed live this is
-#' needed, not just a bigger-for-its-own-sake choice: the raster tile layer
-#' this replaced always covered the FULL visible map regardless of any
-#' radius (it was rendering GBIF-style world density, not a fixed local
-#' search), so a real click-through correctly flagged 50km as "a small
-#' region" compared to what the gadget used to show -- confirmed live at
+#' needed, not just a bigger-for-its-own-sake choice: this point layer only
+#' shows observations within radius_km, unlike a full-coverage density tile
+#' (GBIF-style world density, not a fixed local search), so a real
+#' click-through correctly flagged 50km as confining results to "a small
+#' region." Confirmed live at
 #' 500km, real results genuinely spread across a wide area (Iowa/Indiana/
 #' Ontario/Wisconsin for a real Chicago-area test point) rather than
 #' clustering near the query point, since iNat's own default sort is
