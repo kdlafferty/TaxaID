@@ -86,6 +86,36 @@ test_that("a reassignment survives a later review that left it in place", {
   expect_true(dec$habitat_reassigned[dec$point_id == "p3"])
 })
 
+test_that("a malformed decisions file raises a named, caught error instead of a cryptic base-R one", {
+  # A bare atomic vector -- e.g. the path was accidentally overwritten.
+  path1 <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(1:5, path1)
+  expect_error(apply_spatial_review_decisions(.flagged(), path1), "not a data frame")
+  expect_error(suppressWarnings(save_spatial_review_decisions(.flagged(), path1)), "not a data frame")
+
+  # An empty list().
+  path2 <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(list(), path2)
+  expect_error(apply_spatial_review_decisions(.flagged(), path2), "not a data frame")
+  expect_error(suppressWarnings(save_spatial_review_decisions(.flagged(), path2)), "not a data frame")
+
+  # A data frame missing `point_id` -- previously silently treated as zero
+  # usable decisions, with no warning that the file's schema didn't match.
+  path3 <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(data.frame(spatial_flag = "likely", main_habitat = "Marine",
+                     decided_at = "x", habitat_reassigned = FALSE,
+                     stringsAsFactors = FALSE), path3)
+  expect_error(apply_spatial_review_decisions(.flagged(), path3), "missing required column.*point_id")
+  expect_error(suppressWarnings(save_spatial_review_decisions(.flagged(), path3)), "missing required column.*point_id")
+
+  # A data frame with the right columns but the wrong type.
+  path4 <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(data.frame(point_id = 1L, spatial_flag = "likely", main_habitat = "Marine",
+                     decided_at = "x", habitat_reassigned = "not_logical",
+                     stringsAsFactors = FALSE), path4)
+  expect_error(apply_spatial_review_decisions(.flagged(), path4), "wrong type")
+})
+
 test_that("save_spatial_review_decisions warns when before is NULL and habitats would be frozen (2026-09-13)", {
   path <- withr::local_tempfile(fileext = ".rds")
   reviewed <- data.frame(

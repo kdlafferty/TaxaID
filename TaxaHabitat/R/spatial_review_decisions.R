@@ -16,6 +16,72 @@
 # gadget only for flagged points that carry no decision yet.
 # ==============================================================================
 
+# A decisions file is not user-facing data -- it is only ever written by
+# save_spatial_review_decisions() and read back by itself and by
+# apply_spatial_review_decisions(). A file that is not a data frame, or is
+# missing a column either function relies on, is either corrupt, from an
+# incompatible package version, or accidentally overwritten by something
+# else writing to the same path. Reading it with a bare readRDS() degrades
+# to a cryptic base-R error (or, for a data frame missing just `point_id`,
+# no error at all -- every point silently reads as undecided). Route both
+# functions through this validator instead, so a bad file fails loudly and
+# names what is wrong.
+#
+# `taxon_name` is intentionally NOT required: every decisions file saved
+# before this validator existed lacks it (it keyed decisions on `point_id`
+# alone). Its presence is how the two functions tell an old-format file
+# from a new one -- see the (point_id, taxon_name) key discussion in
+# apply_spatial_review_decisions().
+.decisions_required_cols <- c(
+  point_id           = "character",
+  spatial_flag       = "character",
+  main_habitat       = "character",
+  decided_at         = "character",
+  habitat_reassigned = "logical"
+)
+
+.read_decisions_file <- function(path, caller) {
+  if (!file.exists(path)) return(NULL)
+  dec <- readRDS(path)
+  if (!is.data.frame(dec)) {
+    stop(sprintf(
+      paste0("%s: decisions file '%s' is not a data frame (found class %s). ",
+             "It may be corrupt, from an incompatible source, or overwritten ",
+             "by something else writing to this path."),
+      caller, path, paste(class(dec), collapse = "/")
+    ), call. = FALSE)
+  }
+  missing_cols <- setdiff(names(.decisions_required_cols), names(dec))
+  if (length(missing_cols) > 0L) {
+    stop(sprintf(
+      "%s: decisions file '%s' is missing required column(s): %s.",
+      caller, path, paste(missing_cols, collapse = ", ")
+    ), call. = FALSE)
+  }
+  bad_type <- character(0)
+  for (cc in names(.decisions_required_cols)) {
+    want <- .decisions_required_cols[[cc]]
+    ok <- switch(want,
+      character = is.character(dec[[cc]]) || is.factor(dec[[cc]]),
+      logical   = is.logical(dec[[cc]]),
+      TRUE
+    )
+    if (!ok) {
+      bad_type <- c(bad_type, sprintf("'%s' (expected %s, found %s)", cc, want, class(dec[[cc]])[1]))
+    }
+  }
+  if ("taxon_name" %in% names(dec) && !(is.character(dec$taxon_name) || is.factor(dec$taxon_name))) {
+    bad_type <- c(bad_type, sprintf("'taxon_name' (expected character, found %s)", class(dec$taxon_name)[1]))
+  }
+  if (length(bad_type) > 0L) {
+    stop(sprintf(
+      "%s: decisions file '%s' has column(s) with the wrong type: %s.",
+      caller, path, paste(bad_type, collapse = "; ")
+    ), call. = FALSE)
+  }
+  dec
+}
+
 #' Save a reviewer's spatial-flag decisions
 #'
 #' Extracts one row per \code{point_id} from \code{review_spatial_flags()}'s
@@ -96,11 +162,8 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
       ), call. = FALSE)
     }
   }
-  old <- if (file.exists(path)) readRDS(path) else new[0, ]
-  # Kept correct for OLD files, which store NA and may predate the column.
-  if (!"habitat_reassigned" %in% names(old)) {
-    old$habitat_reassigned <- !.is_habitat_unassigned(old$main_habitat)
-  }
+  old <- .read_decisions_file(path, "save_spatial_review_decisions")
+  if (is.null(old)) old <- new[0, ]
   # A reassignment recorded earlier survives a later review that left it in place
   # (the gadget was opened on the already-applied table, so "unchanged" there
   # means "still the reassigned value", not "back to automatic").
@@ -162,15 +225,12 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
   }
   if (!is.character(path) || length(path) != 1L || is.na(path)) stop("apply_spatial_review_decisions: `path` must be a single file path.", call. = FALSE)
   pid <- as.character(occurrence_data[[point_id_col]])
-  dec <- if (file.exists(path)) readRDS(path) else NULL
+  dec <- .read_decisions_file(path, "apply_spatial_review_decisions")
   n_applied <- 0L
   if (!is.null(dec) && nrow(dec) > 0L) {
     idx <- match(pid, dec$point_id)
     hit <- !is.na(idx)
     if (any(hit)) {
-      if (!"habitat_reassigned" %in% names(dec)) {
-        dec$habitat_reassigned <- !.is_habitat_unassigned(dec$main_habitat)
-      }
       reassign <- hit & dec$habitat_reassigned[ifelse(is.na(idx), 1L, idx)] %in% TRUE
       .ne <- function(a, b) (is.na(a) != is.na(b)) | (!is.na(a) & !is.na(b) & a != b)
       changed <- (hit & .ne(occurrence_data[[flag_col]], dec$spatial_flag[idx])) |
