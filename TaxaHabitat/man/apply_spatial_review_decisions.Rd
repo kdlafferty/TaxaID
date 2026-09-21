@@ -10,29 +10,37 @@ apply_spatial_review_decisions(
   point_id_col = "point_id",
   flag_col = "spatial_flag",
   reason_col = "spatial_flag_reason",
-  habitat_col = "main_habitat"
+  habitat_col = "main_habitat",
+  taxon_col = "taxon_name"
 )
 }
 \arguments{
 \item{occurrence_data}{Data frame from
 \code{\link{flag_habitat_inconsistencies}} (carries \code{point_id},
-\code{spatial_flag}, \code{spatial_flag_reason}, \code{main_habitat}).}
+\code{spatial_flag}, \code{spatial_flag_reason}, \code{main_habitat}, and
+ideally \code{taxon_col} -- see Details).}
 
 \item{path}{Character. The decisions file written by
 \code{\link{save_spatial_review_decisions}}.}
 
 \item{point_id_col, flag_col, reason_col, habitat_col}{Column names.}
+
+\item{taxon_col}{Character. Name of the taxon column in
+\code{occurrence_data}. Default \code{"taxon_name"}. Used to match a
+decision's saved \code{taxon_name} against the correct rows, and to
+detect an ambiguous point for an old-format decision (see Details).}
 }
 \value{
 \code{occurrence_data} with decisions applied and attributes
 \code{n_applied} (rows changed), \code{n_pending_review} (distinct
-points whose flag is not \code{"likely"} and that carry no decision) and
-\code{pending_point_ids}.
+points with at least one row whose flag is not \code{"likely"} and that
+was not resolved by a decision this call -- including a point left
+ambiguous, see Details) and \code{pending_point_ids}.
 }
 \description{
-Overwrites \code{spatial_flag} on every row whose \code{point_id} has a
-saved decision (and \code{main_habitat} where the decision was a reviewer
-reassignment), marks the reason, and reports how
+Overwrites \code{spatial_flag} on every row whose \code{(point_id,
+taxon_name)} has a saved decision (and \code{main_habitat} where the
+decision was a reviewer reassignment), marks the reason, and reports how
 many flagged points still need a reviewer. Call it on
 \code{\link{flag_habitat_inconsistencies}}'s output; open
 \code{\link{review_spatial_flags}} only when
@@ -48,6 +56,25 @@ between the run that produced a decision and a later run, the saved
 decision still overwrites whatever the newer automatic classification
 would have said, silently.
 }
+\section{Old-format decisions files (no \code{taxon_name})}{
+
+A decisions file saved before \code{\link{save_spatial_review_decisions}}
+started recording \code{taxon_name} has no way to say which taxon a
+decision was for. Applying it verbatim by \code{point_id} alone would risk
+handing one taxon's reviewer fix to a different taxon sharing the same
+coordinates -- so instead, a decision with no recorded taxon is applied
+\strong{only} where \code{point_id_col} identifies exactly one distinct
+\code{taxon_col} value in \code{occurrence_data}. Where the current data
+has more than one taxon at that point_id, \strong{nothing is applied}: the
+point is left pending (it will reappear in \code{pending_point_ids} and in
+\code{\link{review_spatial_flags}}), a single \code{warning()} reports how
+many such points there are (first 20 ids), and a \code{message()} explains
+that re-reviewing and re-saving those points writes the newer
+\code{(point_id, taxon_name)} key, after which this function applies them
+normally. The same rule applies to any individual decision row saved
+without taxon information, even inside an otherwise new-format file.
+}
+
 \seealso{
 \code{\link{save_spatial_review_decisions}}
 }

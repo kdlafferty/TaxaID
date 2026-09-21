@@ -10,12 +10,14 @@ save_spatial_review_decisions(
   before = NULL,
   point_id_col = "point_id",
   flag_col = "spatial_flag",
-  habitat_col = "main_habitat"
+  habitat_col = "main_habitat",
+  taxon_col = "taxon_name"
 )
 }
 \arguments{
 \item{reviewed}{Data frame returned by \code{\link{review_spatial_flags}}
-(must carry \code{point_id}, \code{spatial_flag}, \code{main_habitat}).}
+(must carry \code{point_id}, \code{spatial_flag}, \code{main_habitat};
+\code{taxon_name} is used when present, see Details).}
 
 \item{path}{Character. The \code{.rds} decisions file, one per site.}
 
@@ -32,22 +34,46 @@ habitat from a reviewer reassignment at all}: every non-\code{NA}
 freezing that point's habitat at whatever the automatic classifier
 happened to say the day it was reviewed, even if the classifier's own
 logic later changes for the better. Pass \code{before} whenever the
-pre-review table is available to avoid this.}
+pre-review table is available to avoid this. Matched on
+\code{(point_id, taxon_name)} when \code{before} carries \code{taxon_col}
+too, otherwise on \code{point_id} alone.}
 
 \item{point_id_col, flag_col, habitat_col}{Column names. Defaults match
 \code{review_spatial_flags()}'s output.}
+
+\item{taxon_col}{Character. Name of the taxon column in \code{reviewed}
+(and, if present, \code{before}). Default \code{"taxon_name"}. Absent
+from \code{reviewed}, every saved decision's \code{taxon_name} is
+\code{NA} -- see Details.}
 }
 \value{
 Invisibly, the merged decisions table (\code{point_id},
-\code{spatial_flag}, \code{main_habitat}, \code{habitat_reassigned},
-\code{decided_at}).
+\code{taxon_name}, \code{spatial_flag}, \code{main_habitat},
+\code{habitat_reassigned}, \code{decided_at}).
 }
 \description{
-Extracts one row per \code{point_id} from \code{review_spatial_flags()}'s
-output -- the reviewed \code{spatial_flag} and \code{main_habitat} -- and
-merges it into the decisions file at \code{path} (a newer decision for the
-same point replaces the older one).
+Extracts one row per \code{(point_id, taxon_name)} from
+\code{review_spatial_flags()}'s output -- the reviewed \code{spatial_flag}
+and \code{main_habitat} -- and merges it into the decisions file at
+\code{path} (a newer decision for the same point/taxon replaces the older
+one).
 }
+\section{Why the key includes \code{taxon_name}}{
+
+\code{point_id} identifies a coordinate, not an occurrence record -- it is
+routine for several taxa to share one in an eDNA occurrence table (a gull
+and a fish detected at the same sampling point). Keying decisions on
+\code{point_id} alone means two taxa at the same point can carry genuinely
+different \code{spatial_flag}/\code{main_habitat} values, and a decision
+saved for one would silently overwrite the file's only record for that
+point -- discarding whichever taxon's row was not kept. Decisions are
+therefore keyed on \code{(point_id, taxon_name)}. When \code{reviewed} has
+no \code{taxon_col} column, every decision's \code{taxon_name} is recorded
+as \code{NA} (an old-format, point-level decision); see
+\code{\link{apply_spatial_review_decisions}} for how such a decision is
+applied safely.
+}
+
 \seealso{
 \code{\link{apply_spatial_review_decisions}}
 }

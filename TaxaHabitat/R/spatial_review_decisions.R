@@ -99,13 +99,29 @@
 
 #' Save a reviewer's spatial-flag decisions
 #'
-#' Extracts one row per \code{point_id} from \code{review_spatial_flags()}'s
-#' output -- the reviewed \code{spatial_flag} and \code{main_habitat} -- and
-#' merges it into the decisions file at \code{path} (a newer decision for the
-#' same point replaces the older one).
+#' Extracts one row per \code{(point_id, taxon_name)} from
+#' \code{review_spatial_flags()}'s output -- the reviewed \code{spatial_flag}
+#' and \code{main_habitat} -- and merges it into the decisions file at
+#' \code{path} (a newer decision for the same point/taxon replaces the older
+#' one).
+#'
+#' @section Why the key includes \code{taxon_name}:
+#' \code{point_id} identifies a coordinate, not an occurrence record -- it is
+#' routine for several taxa to share one in an eDNA occurrence table (a gull
+#' and a fish detected at the same sampling point). Keying decisions on
+#' \code{point_id} alone means two taxa at the same point can carry genuinely
+#' different \code{spatial_flag}/\code{main_habitat} values, and a decision
+#' saved for one would silently overwrite the file's only record for that
+#' point -- discarding whichever taxon's row was not kept. Decisions are
+#' therefore keyed on \code{(point_id, taxon_name)}. When \code{reviewed} has
+#' no \code{taxon_col} column, every decision's \code{taxon_name} is recorded
+#' as \code{NA} (an old-format, point-level decision); see
+#' \code{\link{apply_spatial_review_decisions}} for how such a decision is
+#' applied safely.
 #'
 #' @param reviewed Data frame returned by \code{\link{review_spatial_flags}}
-#'   (must carry \code{point_id}, \code{spatial_flag}, \code{main_habitat}).
+#'   (must carry \code{point_id}, \code{spatial_flag}, \code{main_habitat};
+#'   \code{taxon_name} is used when present, see Details).
 #' @param path Character. The \code{.rds} decisions file, one per site.
 #' @param before Optional data frame: the table the gadget was opened on
 #'   (\code{flag_habitat_inconsistencies()}'s output). When supplied, a
@@ -120,37 +136,56 @@
 #'   freezing that point's habitat at whatever the automatic classifier
 #'   happened to say the day it was reviewed, even if the classifier's own
 #'   logic later changes for the better. Pass \code{before} whenever the
-#'   pre-review table is available to avoid this.
+#'   pre-review table is available to avoid this. Matched on
+#'   \code{(point_id, taxon_name)} when \code{before} carries \code{taxon_col}
+#'   too, otherwise on \code{point_id} alone.
 #' @param point_id_col,flag_col,habitat_col Column names. Defaults match
 #'   \code{review_spatial_flags()}'s output.
+#' @param taxon_col Character. Name of the taxon column in \code{reviewed}
+#'   (and, if present, \code{before}). Default \code{"taxon_name"}. Absent
+#'   from \code{reviewed}, every saved decision's \code{taxon_name} is
+#'   \code{NA} -- see Details.
 #' @return Invisibly, the merged decisions table (\code{point_id},
-#'   \code{spatial_flag}, \code{main_habitat}, \code{habitat_reassigned},
-#'   \code{decided_at}).
+#'   \code{taxon_name}, \code{spatial_flag}, \code{main_habitat},
+#'   \code{habitat_reassigned}, \code{decided_at}).
 #' @seealso \code{\link{apply_spatial_review_decisions}}
 #' @export
 save_spatial_review_decisions <- function(reviewed, path, before = NULL,
                                           point_id_col = "point_id",
                                           flag_col = "spatial_flag",
-                                          habitat_col = "main_habitat") {
+                                          habitat_col = "main_habitat",
+                                          taxon_col = "taxon_name") {
   if (!is.data.frame(reviewed)) stop("save_spatial_review_decisions: `reviewed` must be a data frame.", call. = FALSE)
   for (cc in c(point_id_col, flag_col, habitat_col)) {
     if (!cc %in% names(reviewed)) stop(sprintf("save_spatial_review_decisions: `reviewed` has no column '%s'.", cc), call. = FALSE)
   }
   if (!is.character(path) || length(path) != 1L || is.na(path)) stop("save_spatial_review_decisions: `path` must be a single file path.", call. = FALSE)
+  has_taxon <- taxon_col %in% names(reviewed)
   new <- data.frame(
     point_id     = as.character(reviewed[[point_id_col]]),
+    taxon_name   = if (has_taxon) as.character(reviewed[[taxon_col]]) else NA_character_,
     spatial_flag = as.character(reviewed[[flag_col]]),
     main_habitat = as.character(reviewed[[habitat_col]]),
     decided_at   = format(Sys.time(), "%Y-%m-%d %H:%M"),
     stringsAsFactors = FALSE
   )
   new <- new[!is.na(new$point_id) & !is.na(new$spatial_flag), , drop = FALSE]
-  new <- new[!duplicated(new$point_id), , drop = FALSE]
+  # Keyed on (point_id, taxon_name), not point_id alone -- see the "Why the
+  # key includes taxon_name" section above (D2). Without taxon info every
+  # row's taxon_name is NA, which still dedups to one row per point_id --
+  # the only case there was ever decision-worthy information for.
+  new <- new[!duplicated(paste(new$point_id, new$taxon_name, sep = "␟")), , drop = FALSE]
   if (!is.null(before)) {
     if (!is.data.frame(before) || !all(c(point_id_col, habitat_col) %in% names(before))) {
       stop("save_spatial_review_decisions: `before` must be a data frame with the point_id and habitat columns.", call. = FALSE)
     }
-    bh <- as.character(before[[habitat_col]])[match(new$point_id, as.character(before[[point_id_col]]))]
+    if (has_taxon && taxon_col %in% names(before)) {
+      bkey <- paste(as.character(before[[point_id_col]]), as.character(before[[taxon_col]]), sep = "␟")
+      nkey <- paste(new$point_id, new$taxon_name, sep = "␟")
+      bh <- as.character(before[[habitat_col]])[match(nkey, bkey)]
+    } else {
+      bh <- as.character(before[[habitat_col]])[match(new$point_id, as.character(before[[point_id_col]]))]
+    }
     # .is_habitat_unassigned(), not !is.na(): an "Uncertain" point is NOT a
     # reviewer reassignment, and testing NA alone would record every unplaceable
     # point as one.
@@ -179,10 +214,19 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
   }
   old <- .read_decisions_file(path, "save_spatial_review_decisions")
   if (is.null(old)) old <- new[0, ]
+  # An old-format file (saved before this fix) has no taxon_name column at
+  # all -- back-fill NA so it lines up with `new`'s key. Every old row at a
+  # point_id being resaved is dropped below regardless of taxon (`new`, from
+  # a full review_spatial_flags() table, already carries every taxon at
+  # every touched point), which is also how an old-format point-level
+  # decision gets superseded by taxon-specific ones the first time that
+  # point is reviewed again.
+  if (!"taxon_name" %in% names(old)) old$taxon_name <- NA_character_
   # A reassignment recorded earlier survives a later review that left it in place
   # (the gadget was opened on the already-applied table, so "unchanged" there
   # means "still the reassigned value", not "back to automatic").
-  oi <- match(new$point_id, old$point_id)
+  oi <- match(paste(new$point_id, new$taxon_name, sep = "␟"),
+              paste(old$point_id, old$taxon_name, sep = "␟"))
   keep_old <- !is.na(oi) & old$habitat_reassigned[ifelse(is.na(oi), 1L, oi)] %in% TRUE &
     !.is_habitat_unassigned(new$main_habitat) &
     new$main_habitat == old$main_habitat[ifelse(is.na(oi), 1L, oi)]
@@ -192,16 +236,16 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
   rownames(out) <- NULL
   dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
   saveRDS(out, path)
-  message(sprintf("save_spatial_review_decisions: %d point decision(s) saved (%d new or updated) to %s.",
+  message(sprintf("save_spatial_review_decisions: %d decision(s) saved (%d new or updated) to %s.",
                   nrow(out), nrow(new), basename(path)))
   invisible(out)
 }
 
 #' Apply saved spatial-flag decisions before (or instead of) the gadget
 #'
-#' Overwrites \code{spatial_flag} on every row whose \code{point_id} has a
-#' saved decision (and \code{main_habitat} where the decision was a reviewer
-#' reassignment), marks the reason, and reports how
+#' Overwrites \code{spatial_flag} on every row whose \code{(point_id,
+#' taxon_name)} has a saved decision (and \code{main_habitat} where the
+#' decision was a reviewer reassignment), marks the reason, and reports how
 #' many flagged points still need a reviewer. Call it on
 #' \code{\link{flag_habitat_inconsistencies}}'s output; open
 #' \code{\link{review_spatial_flags}} only when
@@ -217,33 +261,104 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
 #' decision still overwrites whatever the newer automatic classification
 #' would have said, silently.
 #'
+#' @section Old-format decisions files (no \code{taxon_name}):
+#' A decisions file saved before \code{\link{save_spatial_review_decisions}}
+#' started recording \code{taxon_name} has no way to say which taxon a
+#' decision was for. Applying it verbatim by \code{point_id} alone would risk
+#' handing one taxon's reviewer fix to a different taxon sharing the same
+#' coordinates -- so instead, a decision with no recorded taxon is applied
+#' \strong{only} where \code{point_id_col} identifies exactly one distinct
+#' \code{taxon_col} value in \code{occurrence_data}. Where the current data
+#' has more than one taxon at that point_id, \strong{nothing is applied}: the
+#' point is left pending (it will reappear in \code{pending_point_ids} and in
+#' \code{\link{review_spatial_flags}}), a single \code{warning()} reports how
+#' many such points there are (first 20 ids), and a \code{message()} explains
+#' that re-reviewing and re-saving those points writes the newer
+#' \code{(point_id, taxon_name)} key, after which this function applies them
+#' normally. The same rule applies to any individual decision row saved
+#' without taxon information, even inside an otherwise new-format file.
+#'
 #' @param occurrence_data Data frame from
 #'   \code{\link{flag_habitat_inconsistencies}} (carries \code{point_id},
-#'   \code{spatial_flag}, \code{spatial_flag_reason}, \code{main_habitat}).
+#'   \code{spatial_flag}, \code{spatial_flag_reason}, \code{main_habitat}, and
+#'   ideally \code{taxon_col} -- see Details).
 #' @param path Character. The decisions file written by
 #'   \code{\link{save_spatial_review_decisions}}.
 #' @param point_id_col,flag_col,reason_col,habitat_col Column names.
+#' @param taxon_col Character. Name of the taxon column in
+#'   \code{occurrence_data}. Default \code{"taxon_name"}. Used to match a
+#'   decision's saved \code{taxon_name} against the correct rows, and to
+#'   detect an ambiguous point for an old-format decision (see Details).
 #' @return \code{occurrence_data} with decisions applied and attributes
 #'   \code{n_applied} (rows changed), \code{n_pending_review} (distinct
-#'   points whose flag is not \code{"likely"} and that carry no decision) and
-#'   \code{pending_point_ids}.
+#'   points with at least one row whose flag is not \code{"likely"} and that
+#'   was not resolved by a decision this call -- including a point left
+#'   ambiguous, see Details) and \code{pending_point_ids}.
 #' @seealso \code{\link{save_spatial_review_decisions}}
 #' @export
 apply_spatial_review_decisions <- function(occurrence_data, path,
                                            point_id_col = "point_id",
                                            flag_col = "spatial_flag",
                                            reason_col = "spatial_flag_reason",
-                                           habitat_col = "main_habitat") {
+                                           habitat_col = "main_habitat",
+                                           taxon_col = "taxon_name") {
   if (!is.data.frame(occurrence_data)) stop("apply_spatial_review_decisions: `occurrence_data` must be a data frame.", call. = FALSE)
   for (cc in c(point_id_col, flag_col, habitat_col)) {
     if (!cc %in% names(occurrence_data)) stop(sprintf("apply_spatial_review_decisions: `occurrence_data` has no column '%s'.", cc), call. = FALSE)
   }
   if (!is.character(path) || length(path) != 1L || is.na(path)) stop("apply_spatial_review_decisions: `path` must be a single file path.", call. = FALSE)
   pid <- as.character(occurrence_data[[point_id_col]])
+  n_rows <- length(pid)
   dec <- .read_decisions_file(path, "apply_spatial_review_decisions")
   n_applied <- 0L
+  hit <- rep(FALSE, n_rows)
+  ambiguous_pids <- character(0)
   if (!is.null(dec) && nrow(dec) > 0L) {
-    idx <- match(pid, dec$point_id)
+    has_taxon_data <- taxon_col %in% names(occurrence_data)
+    taxon_vals <- if (has_taxon_data) as.character(occurrence_data[[taxon_col]]) else rep(NA_character_, n_rows)
+    dec_taxon <- if ("taxon_name" %in% names(dec)) as.character(dec$taxon_name) else rep(NA_character_, nrow(dec))
+    known <- !is.na(dec_taxon)
+    idx <- rep(NA_integer_, n_rows)
+
+    # 1) Decisions that know their taxon: exact (point_id, taxon_name) match.
+    #    A named taxon is matched precisely regardless of how many other
+    #    taxa share the point -- knowing WHICH taxon removes the ambiguity.
+    if (any(known) && has_taxon_data) {
+      key_data <- paste(pid, taxon_vals, sep = "␟")
+      key_dec  <- paste(dec$point_id[known], dec_taxon[known], sep = "␟")
+      m <- match(key_data, key_dec)
+      ok <- !is.na(m)
+      idx[ok] <- which(known)[m[ok]]
+    }
+
+    # 2) Decisions with no recorded taxon -- an old-format file, or an
+    #    individual row saved without taxon information. These can only be
+    #    applied where occurrence_data has exactly ONE distinct taxon at
+    #    that point_id; otherwise there is no way to tell which taxon the
+    #    decision was actually about, and guessing would risk silently
+    #    reassigning the wrong one's flag/habitat (D2). Ambiguous points are
+    #    left pending and reported instead of guessed.
+    unk <- which(!known)
+    if (length(unk) > 0L) {
+      dec_pid_unk <- dec$point_id[unk]
+      if (has_taxon_data) {
+        n_taxa_at_point <- tapply(taxon_vals, pid, function(v) length(unique(v[!is.na(v)])))
+        unambiguous_pid <- names(n_taxa_at_point)[n_taxa_at_point == 1L]
+      } else {
+        # occurrence_data itself has no taxon column: ambiguity cannot be
+        # ruled out for any point, so none of these decisions are applied.
+        unambiguous_pid <- character(0)
+      }
+      free <- is.na(idx)
+      apply_pid <- intersect(dec_pid_unk, unambiguous_pid)
+      hit_unk <- free & pid %in% apply_pid
+      if (any(hit_unk)) {
+        m2 <- match(pid[hit_unk], dec_pid_unk)
+        idx[hit_unk] <- unk[m2]
+      }
+      ambiguous_pids <- unique(intersect(setdiff(dec_pid_unk, unambiguous_pid), pid))
+    }
+
     hit <- !is.na(idx)
     if (any(hit)) {
       reassign <- hit & dec$habitat_reassigned[ifelse(is.na(idx), 1L, idx)] %in% TRUE
@@ -265,10 +380,32 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
       }
       n_applied <- sum(changed, na.rm = TRUE)
     }
+
+    if (length(ambiguous_pids) > 0L) {
+      warning(sprintf(
+        paste0(
+          "apply_spatial_review_decisions: %d point_id(s) in the decisions file carry no ",
+          "recorded taxon_name (an old-format file, or a decision saved without taxon ",
+          "information) and are shared by more than one taxon in the data being processed, ",
+          "so no decision was applied at these point(s) -- they remain pending review: %s%s"
+        ),
+        length(ambiguous_pids),
+        paste(utils::head(ambiguous_pids, 20L), collapse = ", "),
+        if (length(ambiguous_pids) > 20L) sprintf(" (and %d more)", length(ambiguous_pids) - 20L) else ""
+      ), call. = FALSE)
+      message(sprintf(
+        paste0(
+          "apply_spatial_review_decisions: %d point(s) need re-review because their saved ",
+          "decision does not record which taxon it was for. Re-open review_spatial_flags() ",
+          "for them and re-save with save_spatial_review_decisions() -- the new save writes ",
+          "the (point_id, taxon_name) key, and the next apply_spatial_review_decisions() call ",
+          "will then apply them correctly."
+        ), length(ambiguous_pids)
+      ))
+    }
   }
-  decided <- if (is.null(dec)) character(0) else dec$point_id
   pending <- unique(pid[!is.na(occurrence_data[[flag_col]]) &
-    occurrence_data[[flag_col]] != "likely" & !pid %in% decided])
+    occurrence_data[[flag_col]] != "likely" & !hit])
   attr(occurrence_data, "n_applied") <- n_applied
   attr(occurrence_data, "n_pending_review") <- length(pending)
   attr(occurrence_data, "pending_point_ids") <- pending
