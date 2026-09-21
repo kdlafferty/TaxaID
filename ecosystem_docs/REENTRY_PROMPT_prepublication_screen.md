@@ -373,6 +373,16 @@ comment overclaiming a circularity guard, no Inf guard on `distance_km`),
 3 DOC, 2 STYLE. Every checked formula -- Kish n_eff, Beta variance, Chao1,
 presence-mixture moments, log-link curve fit, FFT lattice -- matches its
 roxygen; `plot_theta_surface()`'s site-identity invariant verified live.
+TaxaFlag done -- 2 DEFECTS in `validate_controls()`, reproduced: an all-zero
+control column vanishes from the output (no row, no verdict) against its
+"one row per sampled unit" contract; the per-column distance loop is
+uncapped, 68.8 s at the 1,151-sample case its own roxygen cites. 3 RISK:
+the contaminant evidence gate is a count floor, not a significance test
+(honestly disclosed in the roxygen -- the open item from the 2026-09-20
+design); LLM prompt text is unescaped user data (bounded: nothing executes
+on the reply); returned categories not validated against the enum. API
+keys never enter TaxaFlag code; cache paths are hashes; the Shiny gadget
+has no `eval`/`parse`/`HTML()` sink.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
