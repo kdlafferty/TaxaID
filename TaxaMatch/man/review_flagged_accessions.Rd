@@ -49,8 +49,7 @@ is absent from \code{evaluated_df}.}
 Persistent, accession-keyed cache of LLM reviews -- an accession already
 reviewed with UNCHANGED inputs (see \verb{@section Caching} below) is served
 from cache instead of making a real LLM call. Set \code{NULL} to disable
-caching entirely (every call re-reviews every in-scope accession, the
-pre-2026-08-14 behavior).}
+caching entirely (every call re-reviews every in-scope accession).}
 
 \item{llm_fn}{Function. LLM provider function with signature
 \verb{function(prompt_str, ...)}. Default \code{TaxaTools::call_api}.
@@ -60,8 +59,7 @@ by TaxaTools's own \code{.onAttach()}, which only runs via
 everywhere, no \code{library()}) never triggers it, and \code{call_api()} silently
 falls back to degraded/uniform output rather than erroring. Pass
 \code{llm_fn} explicitly if every review comes back suspiciously uniform,
-e.g. \code{function(p) TaxaTools::call_api(p, provider = "anthropic")}. See
-\code{TaxaID/CLAUDE.md}'s "Known R Footguns" for the full record.}
+e.g. \code{function(p) TaxaTools::call_api(p, provider = "anthropic")}.}
 
 \item{taxa_per_call}{Integer. Maximum accessions per LLM call. Default
 \code{10L}.}
@@ -116,8 +114,7 @@ Sends \code{evaluate_reference_accessions()}'s flagged/borderline rows to an LLM
 for a free-text second look -- the same "narrative-judgment layer added ON
 TOP of statistical flags, never replacing them, never auto-acting" pattern
 \code{TaxaFlag::review_assignments()} already established for posterior
-taxonomic assignments (implements Question 2 of
-\code{ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md}). The LLM
+taxonomic assignments. The LLM
 never re-decides \code{hierarchy_flag} -- it adds what the statistical check
 structurally cannot: recognizing a known hybrid-cross name (e.g.
 \code{"Ctenopharyngodon idella x Megalobrama amblycephala"}, a known Chinese
@@ -142,11 +139,11 @@ A free-text \code{accession_review_comment} plus two small structured fields
 (\code{accession_likely_explanation}, \code{accession_review_confidence}) -- never a
 re-decided \code{hierarchy_flag}, and this function never calls
 \code{\link[=remove_incongruent_references]{remove_incongruent_references()}} or otherwise mutates the evaluation
-itself. This mirrors this ecosystem's own \code{trusted_rank} cautionary
-history (\code{TaxaLikely::evaluate_likelihoods()}, built 2026-07-19, removed
-2026-07-20 after a real ~30\% mismatch between the hypothesis it was
-computed for and the one that actually won downstream -- see
-\verb{[[project_rank_trust_mechanism_removed]]} in the project memory system):
+itself. This follows this ecosystem's own caution around a \code{trusted_rank}-
+style mechanism (\code{TaxaLikely::evaluate_likelihoods()}) that once
+recomputed/overrode an existing categorical verdict and was removed after
+a real ~30\% mismatch between the hypothesis it was
+computed for and the one that actually won downstream:
 a mechanism that recomputes/overrides an existing categorical verdict is
 exactly the shape that broke there. A human reads
 \code{accession_review_comment} before acting on it.

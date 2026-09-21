@@ -6,12 +6,7 @@
 #   read_animl_output()              Ingest Animl (camera trap) CSV results
 #   read_inaturalist_cv_output()     Ingest iNaturalist CV API JSON responses
 #   read_speciesnet_output()         Ingest real SpeciesNet CLI predictions_json
-#     NOTE (2026-07-23): replaces the removed read_wildlife_insights_output(),
-#     which targeted a dict-keyed-by-filename JSON shape that matched neither
-#     the real Wildlife Insights platform (bulk downloads are a CSV bundle,
-#     not JSON) nor the real current SpeciesNet CLI (google/cameratrapai;
-#     predictions is a LIST, not a dict) -- see TaxaMatch/CLAUDE.md's
-#     2026-07-23 note. Zero real callers existed at removal time.
+#     (google/cameratrapai; predictions is a LIST, not a dict)
 #
 # Internal helpers (@noRd):
 #   .parse_animl_file()              Read and validate a single Animl CSV

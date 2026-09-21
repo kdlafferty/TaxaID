@@ -36,7 +36,7 @@ Zero rows, and zero NCBI calls always, when the cache has no thin
 \code{"locally_corroborated"} rows.
 }
 \description{
-\code{"locally_corroborated"} (2026-09-03) skips BLASTing an accession entirely
+\code{"locally_corroborated"} skips BLASTing an accession entirely
 when the caller's own reference set already has an independent conspecific
 deposit for it -- cached with TTL \code{Inf} and exempt from
 \code{\link[=refine_reference_verdicts]{refine_reference_verdicts()}}'s trust-weighted refinement, since the MATCH

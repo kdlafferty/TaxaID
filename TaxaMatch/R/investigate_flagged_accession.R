@@ -2,9 +2,9 @@
 # investigate_flagged_accession() -- deep-dive verification for a single
 # flagged reference accession
 #
-# Prompted directly by the user after manually reviewing evaluate_reference_
-# accessions()'s real 2026-08-07 GreatLakes/PtConception results by hand (see
-# TaxaMatch/CLAUDE.md's own top session note): PV382872's raw top BLAST hits
+# Motivated by a real case found reviewing evaluate_reference_
+# accessions()'s GreatLakes/PtConception results by hand:
+# PV382872's raw top BLAST hits
 # looked alarming (an eel, a catfish, a parasitic isopod, all at ~99.5%
 # identity) until direct verification showed they were all from the SAME
 # real submission batch as the query itself -- evaluate_reference_
@@ -15,7 +15,7 @@
 # worth a closer look -- deliberately NOT meant to run at evaluate_reference_
 # accessions()'s own broad, unrestricted scale.
 #
-# Two comparisons, per the user's own suggestion ("blast Cephalopholis argus
+# Two comparisons (e.g. "blast Cephalopholis argus
 # to see how its other reference sequences look"):
 #   1. Self-consistency: how well does the flagged accession match OTHER
 #      real GenBank accessions of its own listed species? High identity
@@ -38,7 +38,7 @@
 #' `.resolve_taxonomy_by_acc()` already uses for the reverse direction
 #' (accession -> taxid).
 #'
-#' @section Length-ratio pre-filter (2026-08-08, Option B, now REQUIRED not optional):
+#' @section Length-ratio pre-filter (Option B, required, not optional):
 #' A plain `[Organism]` search has no gene/marker constraint at all. Live
 #' testing against the real `MZ605481` case (the motivating regression this
 #' whole file exists to fix -- see `.blast_against_comparison_set()`'s own
@@ -95,7 +95,7 @@
 
   # Length restriction happens SERVER-SIDE via NCBI's own `[SLEN]` Entrez
   # query field, not by fetching a wide net and filtering client-side.
-  # Found necessary live (2026-08-08): client-side widening (fetch up to
+  # Found necessary live: client-side widening (fetch up to
   # 500 `[Organism]`-search results, then filter by ESummary's `slen`)
   # returned ZERO usable candidates for `Cyprinus carpio` -- a species with
   # 67,744 total nuccore records, whose first 500 by NCBI's default sort
@@ -134,9 +134,9 @@
   }
 
   # entrez_summary() is still batched defensively (a real HTTP 414 "request
-  # too large" was hit live with 500 unbatched IDs during this fix's own
-  # development, before the server-side SLEN restriction above made a wide
-  # `retmax` unnecessary) -- the same 100-per-batch convention already used
+  # too large" occurs with 500 unbatched IDs without
+  # the server-side SLEN restriction above narrowing the candidate set) --
+  # the same 100-per-batch convention already used
   # elsewhere in this file (`.fetch_reference_accession_records()`).
   id_batches <- split(found$ids, ceiling(seq_along(found$ids) / 100L))
   summaries <- list()
@@ -218,9 +218,7 @@
 
 #' BLAST a flagged sequence against a specific comparison set of accessions
 #'
-#' Implements Option A of `ecosystem_docs/REENTRY_PROMPT_
-#' investigate_flagged_accession_prefilter_group_posthoc.md` (Question 1):
-#' replaces the original `pwalign::pairwiseAlignment(type = "local")`-based
+#' Replaces a `pwalign::pairwiseAlignment(type = "local")`-based
 #' comparison with `blast_sequences()`'s own underlying mechanism -- the
 #' SAME family of evidence that originally made `MZ605481` a confirmed
 #' `candidate_mislabel` in the first place (20 independent, coverage-safe
@@ -230,24 +228,24 @@
 #' spuriously-perfect local-alignment fragment) is exactly what BLAST's
 #' own `query_coverage` already guards against by construction.
 #'
-#' @section A real, live-found correction to the original design (2026-08-08):
-#' The FIRST version of this function was a post-hoc filter -- BLAST the
+#' @section Why the comparison-set search is scoped, not post-hoc filtered:
+#' A post-hoc filter -- BLAST the
 #' flagged sequence against the SAME unrestricted database
 #' `investigate_flagged_accession()` itself searches, take the top
 #' `max_hits` ranked hits, then keep only whichever happen to also be in
-#' `comparison_meta$accession`. A live test against the real `MZ605481`
+#' `comparison_meta$accession` -- fails on a real case. A live test against the real `MZ605481`
 #' case found this returns ZERO matches on both sides even though 30 real
 #' conspecific accessions were independently confirmed to exist -- the
 #' comparison-set accessions (found via `.search_species_accessions()`'s
 #' own, separate NCBI organism-name search) simply never appeared among
 #' BLAST's own top-ranked hits for this query, an independent sample from
-#' GenBank's full catalog with no guaranteed overlap. This is now fixed
-#' via NCBI's `ENTREZ_QUERY` mechanism (`method = "remote"` only): the
-#' BLAST search SPACE itself is restricted to exactly the comparison-set
+#' GenBank's full catalog with no guaranteed overlap. Instead, NCBI's
+#' `ENTREZ_QUERY` mechanism (`method = "remote"` only) restricts the
+#' BLAST search SPACE itself to exactly the comparison-set
 #' accessions, so BLAST computes a real alignment against every one of
 #' them directly, rather than hoping they surface unprompted in an
 #' unrestricted top-N. `method = "local"` has no `ENTREZ_QUERY`-equivalent
-#' restriction available via `rBLAST`, so it falls back to the original,
+#' restriction available via `rBLAST`, so it falls back to the
 #' weaker post-hoc-filter approach -- flagged in its own roxygen as a real,
 #' known limitation, not silently downgraded.
 #'
@@ -392,7 +390,7 @@
 #' `max_related` truncation both happen after the (possibly cached) fetch,
 #' cheaply, on the already-in-memory result.
 #'
-#' @section Cache key includes `reference_length` (2026-08-08):
+#' @section Cache key includes `reference_length`:
 #' Live testing (see `.search_species_accessions()`'s own `@section
 #' Length-ratio pre-filter`) found the length-ratio pre-filter is required
 #' for correctness, not optional -- but that filter depends on the CALLING
@@ -521,9 +519,9 @@
 
 #' Core investigation logic, shared by the single- and batch-accession entry points
 #'
-#' Identical to what `investigate_flagged_accession()`'s body used to do
-#' directly, extracted so `investigate_flagged_accessions()` (the batch
-#' wrapper) can drive it with a shared `shared_cache` environment for
+#' Shared by `investigate_flagged_accession()`'s own body and
+#' `investigate_flagged_accessions()` (the batch
+#' wrapper), so the latter can drive it with a shared `shared_cache` environment for
 #' cross-accession NCBI-search reuse, and so both entry points can wrap it
 #' with the identical persistent-cache read/write logic.
 #' @noRd
@@ -552,7 +550,7 @@
 
   # Length-ratio pre-filter reference point -- see .search_species_
   # accessions()'s own @section Length-ratio pre-filter for why this is
-  # required, not optional (found live 2026-08-08 against the real
+  # required, not optional (found live against the real
   # MZ605481 case: a plain [Organism] search can be dominated by whole-
   # genome-assembly records tens of millions of bp long for a species with
   # a published reference genome).
@@ -698,11 +696,11 @@
   # caller-visible parameter changing -- otherwise a cached row computed
   # under the OLD logic gets served as a "fresh" cache hit forever under an
   # unchanged params_key. Mirrors evaluate_reference_accessions()'s own
-  # .EVAL_REF_ACC_VERSION convention. Bumped 2026-08-08 (v1 -> v2): a real
-  # cache row computed under v1's logic could be a false
+  # .EVAL_REF_ACC_VERSION convention: without a bump, a stale
+  # cache row could read as a false
   # "inconclusive_length_mismatch" (the real MZ605481 bug -- see
   # .search_species_accessions()'s own @section Length-ratio pre-filter),
-  # which v1's own asymmetric TTL would otherwise have kept serving as a
+  # which the asymmetric TTL would otherwise keep serving as a
   # "fresh" cache hit for up to inconclusive_ttl_days.
   .INVESTIGATE_VERSION <- "v2_entrez_query_and_length_filter"
   paste(max_related, method, database, score_range, min_score, max_hits,
@@ -811,7 +809,7 @@
 #' the small subset a caller has already decided is worth a closer look,
 #' not at production scale.
 #'
-#' @section Why this exists (2026-08-07):
+#' @section Why this exists:
 #' Manually reviewing `evaluate_reference_accessions()`'s real flagged
 #' accessions by hand found that the raw top BLAST hits alone can be
 #' actively misleading -- `PV382872`'s top hits (an eel, a catfish, a
@@ -847,57 +845,49 @@
 #'     by hand at 100% identity across 20 independent real accessions).}
 #' }
 #'
-#' @section Both comparisons now run via BLAST, not pairwise alignment (2026-08-08):
-#' `MZ605481`'s own real motivating case came back inconclusive in BOTH
-#' directions the first time this function shipped: 0 of 30+ candidate
-#' accessions found via NCBI species search cleared a 50% coverage floor on
+#' @section Why both comparisons run via BLAST, not pairwise alignment:
+#' A pairwise-alignment approach to `MZ605481`'s own real motivating case
+#' comes back inconclusive in BOTH
+#' directions: 0 of 30+ candidate
+#' accessions found via NCBI species search would clear a 50% coverage floor on
 #' either side, because NCBI's `[Organism]`-based search returns records of
 #' ANY length (most real GenBank deposits for both *Pseudorasbora parva*
 #' and *Cyprinus carpio* are full ~16kb mitogenomes, against which a 173bp
 #' amplicon can only ever find a small, non-meaningful local-alignment
-#' fragment). The ORIGINAL evidence that made `MZ605481` a real
-#' `candidate_mislabel` in the first place was never a pairwise alignment
-#' at all -- it was a direct [blast_sequences()] call, which already
-#' enforces `min_query_coverage` internally and found 20 independent,
+#' fragment). The evidence that makes `MZ605481` a real
+#' `candidate_mislabel` is never a pairwise alignment
+#' at all -- it is a direct [blast_sequences()] call, which already
+#' enforces `min_query_coverage` internally and finds 20 independent,
 #' coverage-safe *Cyprinus carpio* hits at genuine 100% identity. Both
-#' comparisons here now reuse that proven mechanism (`.blast_against_
-#' comparison_set()`, internal) instead of a hand-rolled
-#' `pwalign::pairwiseAlignment()` loop -- see
-#' `ecosystem_docs/REENTRY_PROMPT_investigate_flagged_accession_prefilter_group_posthoc.md`,
-#' Question 1, Option A.
+#' comparisons here reuse that mechanism (`.blast_against_
+#' comparison_set()`, internal) rather than a hand-rolled
+#' `pwalign::pairwiseAlignment()` loop.
 #'
-#' @section Two more rounds of live testing found Option A alone still wasn't enough (2026-08-08, same day):
-#' The FIRST shipped version of `.blast_against_comparison_set()` was a
-#' post-hoc filter (unrestricted BLAST, then keep only hits that happen to
-#' match the comparison set) -- live-tested against the real `MZ605481`
-#' case and found to return ZERO matches on both sides, even though 30 real
-#' conspecific accessions were independently confirmed to exist. Fixed by
-#' switching to NCBI's `ENTREZ_QUERY` mechanism (`method = "remote"`),
-#' which restricts the BLAST search SPACE itself to the comparison-set
-#' accessions -- verified in isolation against one known-good accession
-#' (`OP739039`, 100% identity/coverage recovered correctly). Re-running the
-#' full `MZ605481` case with THAT fix still returned zero matches -- direct
+#' @section Why a length-ratio pre-filter is required alongside the scoped BLAST search:
+#' Even with the comparison-set search scoped via NCBI's `ENTREZ_QUERY`
+#' mechanism (see `.blast_against_comparison_set()`'s own `@section Why the
+#' comparison-set search is scoped, not post-hoc filtered`), the real
+#' `MZ605481` case can still return zero matches: direct
 #' inspection of the real candidate accessions (`.search_species_
-#' accessions("Pseudorasbora parva")`'s own output) found the root cause
-#' was one level further upstream than expected: 26 of 30 candidates were
+#' accessions("Pseudorasbora parva")`'s own output) shows the root cause
+#' is one level further upstream than the scoping alone can fix: 26 of 30 candidates are
 #' whole-chromosome shotgun-assembly records 60-80+ million bp long
 #' (`Pseudorasbora parva` has a published reference genome), and the one
-#' real short candidate that DID have usable sequence content was an
+#' real short candidate that does have usable sequence content is an
 #' entirely different gene (`COI`, not `12S`) -- neither BLAST restriction
 #' mechanism can find a meaningful alignment against a candidate that
 #' either isn't practically alignable at that scale or covers a
-#' non-overlapping genomic region entirely. This is exactly the reentry
-#' prompt's own originally-deferred "Option B" (length-ratio candidate
-#' pre-filtering) -- deferred at design time as "cheaper but doesn't fully
-#' solve the problem," now confirmed live to be a REQUIRED companion to
-#' Option A, not an alternative to it. Implemented in
-#' `.search_species_accessions()` (new `reference_length`/
+#' non-overlapping genomic region entirely. The length-ratio candidate
+#' pre-filter (the reentry prompt's own "Option B") is therefore a
+#' REQUIRED companion to the scoped BLAST search ("Option A"), not an
+#' alternative to it. Implemented in
+#' `.search_species_accessions()` (`reference_length`/
 #' `max_length_ratio` params, using NCBI's already-batched, free `slen`
 #' ESummary field to filter BEFORE ever fetching full sequence content --
 #' fetching a 70-million-bp record's full `GBSeq_sequence` is exactly what
-#' was silently failing/returning `NA` for those chromosome accessions).
+#' silently fails/returns `NA` for those chromosome accessions).
 #'
-#' @section Caching (2026-08-08):
+#' @section Caching:
 #' Implements Question 3, item 1: a persistent, cross-call cache keyed on
 #' `(accession, species override)`, mirroring
 #' `evaluate_reference_accessions()`'s own asymmetric-TTL philosophy. A
@@ -939,8 +929,7 @@
 #' @param max_length_ratio Numeric (default `3`). Passed to
 #'   `.search_species_accessions()` -- REQUIRED for correctness, not an
 #'   optional tuning knob (see that function's own `@section Length-ratio
-#'   pre-filter`, added 2026-08-08 after live testing against the real
-#'   `MZ605481` case found a plain NCBI organism-name search can be
+#'   pre-filter`: a plain NCBI organism-name search can be
 #'   dominated by whole-genome-assembly records for a species with a
 #'   published reference genome, leaving almost no length-comparable
 #'   candidates in the raw result at all).

@@ -11,10 +11,6 @@ utils::globalVariables(c(
 # reference_action, DERIVED from evaluate_reference_accessions()'s existing
 # output columns.
 #
-# Implements Thread 2 of
-# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md
-# (written 2026-09-02 after the first complete PtConception screen).
-#
 # Why this exists, in one paragraph: `hierarchy_flag` is a MAJORITY VOTE over
 # the top-N independent neighbours -- percent identity never enters it. In a
 # thinly-covered clade the top neighbours are cross-family by construction, so
@@ -26,8 +22,9 @@ utils::globalVariables(c(
 # 1,120 observations, agreeing hit at 100%, disagreeing at 96.79). The
 # identity diagnostics that separate those two groups
 # (`best_agreeing_pident`/`best_disagreeing_pident`/
-# `congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`) have
-# existed since 2026-08-07 but NOTHING consulted them. This file is what
+# `congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`)
+# already exist in `evaluate_reference_accessions()`'s own output columns.
+# This file is what
 # consults them.
 # ==============================================================================
 
@@ -108,7 +105,7 @@ utils::globalVariables(c(
   conf <- stats::plogis(stats::qlogis(p_vote) + shift)
   conf[is.na(frac)] <- NA_real_
 
-  # NO PARTNERS IS NOT A COIN FLIP (2026-09-04, user-approved).
+  # NO PARTNERS IS NOT A COIN FLIP.
   # With zero valid partners `frac` falls back to its 0.5 default and `d` is
   # NA, so this arithmetic returns EXACTLY 0.5 -- which lands in the
   # "caution" band and makes the screen assert concern earned by an absence.
@@ -185,7 +182,7 @@ utils::globalVariables(c(
 #' Some of these rows are a `max_hits` truncation artifact rather than a
 #' property of the accession -- re-running PtConception's 34 at
 #' `max_hits = 100` resolved 12, including 7 zero-partner rows that moved
-#' `"caution"` to `"keep"` (`diagnostics/insufficient_evidence_probe.R`). But
+#' `"caution"` to `"keep"` (the `insufficient_evidence_probe.R` diagnostic (TaxaID_dev repository)). But
 #' 21 of 34 gained no hits at all when the window quintupled, so most of the
 #' population is genuinely thin. `"untested"` is the honest reading either
 #' way: we do not know.
@@ -206,8 +203,7 @@ utils::globalVariables(c(
 #'
 #' `margin_scale` is the one free parameter: it says how many percent-identity
 #' points are worth one unit of log-odds. The default `1` is not fitted -- it
-#' is a stated convention, registered as such
-#' (`ecosystem_docs/arbitrariness_audit.md`'s subject matter), chosen because
+#' is a stated convention, chosen because
 #' at MiFish-U amplicon lengths (~170 bp) one percent identity is roughly 1.7
 #' nucleotide differences, the granularity at which this ecosystem already
 #' treats identity differences as discriminating at species level. What the
@@ -242,13 +238,13 @@ utils::globalVariables(c(
 #' `"incongruent"`. `"insufficient_independent_evidence"` is retryable, not
 #' removable (it may simply mean a sparsely-referenced region of the
 #' database), `"not_evaluated_oversized"` and
-#' `"not_evaluated_wrong_marker"` (2026-09-04) were never submitted to BLAST
-#' at all, and `"locally_corroborated"` (2026-09-03) was deliberately not
+#' `"not_evaluated_wrong_marker"` were never submitted to BLAST
+#' at all, and `"locally_corroborated"` was deliberately not
 #' submitted because the caller's own reference set already corroborates it
 #' -- it reads `"keep"` with `label_confidence = NA` (there is no BLAST
 #' evidence to grade).
 #'
-#' @section Local corroboration: provenance and the veto (2026-09-03):
+#' @section Local corroboration: provenance and the veto:
 #' When `local_corroboration` ([corroborate_references_locally()] output) is
 #' supplied, three things happen, and one deliberately does not.
 #' `corroboration_source` records where the corroboration for each label
@@ -296,7 +292,7 @@ utils::globalVariables(c(
 #'     \item{`label_confidence`}{Numeric in (0, 1). `NA` for a row with no
 #'       computed congruence at all (`"not_evaluated_oversized"`,
 #'       `"not_evaluated_wrong_marker"`, or a fetch failure). **Named
-#'       contract (2026-09-05 critical-fix-review finding C): this value
+#'       contract: this value
 #'       CANNOT REACH 1**, by construction -- the Jeffreys smoothing floors
 #'       the disagreement fraction at `0.5/(n+1)`, so even a perfectly
 #'       corroborated multi-partner accession tops out just under 1 (e.g.
@@ -304,11 +300,9 @@ utils::globalVariables(c(
 #'       this as a RATIO where 1 means "no adjustment needed" (e.g. a
 #'       likelihood-covariate-style rescale) must normalize by the per-row
 #'       achievable ceiling first, or it will silently adjust every
-#'       candidate in the dataset -- this is exactly the bug the one prior
+#'       candidate in the dataset -- this is exactly the bug a prior
 #'       attempt to use this column as a likelihood covariate hit before
-#'       being removed entirely (see `[[project_reference_quality_verdicts_
-#'       threads123]]` in the project memory system). Previously this
-#'       constraint was recorded only in a reentry doc, not here.}
+#'       being removed entirely.}
 #'     \item{`label_identity_margin`}{Numeric, the capped `d` in
 #'       percent-identity points. `NA` when the row carries no identity
 #'       information of any kind.}
@@ -318,8 +312,8 @@ utils::globalVariables(c(
 #'       never submitted to BLAST (`"not_evaluated_oversized"`,
 #'       `"not_evaluated_wrong_marker"`), or it was submitted and came back
 #'       with zero valid comparison partners
-#'       (`n_independent_top_matches == 0`; widened to include this case
-#'       2026-09-04 -- see `@section No partners is not a coin flip`).}
+#'       (`n_independent_top_matches == 0`; included in this case
+#'       -- see `@section No partners is not a coin flip`).}
 #'     \item{`action_reason`}{`"vetoed_by_local_corroboration"` where a
 #'       `"remove"` was downgraded to `"inspect"` by the local set,
 #'       `"locally_corroborated_not_blasted"` for a skipped row, `NA`
@@ -450,7 +444,7 @@ score_reference_labels <- function(evaluation,
     action_caution_below = action_caution_below
   )
 
-  # ---- Local corroboration: provenance + veto (2026-09-03) -----------------
+  # ---- Local corroboration: provenance + veto -------------------------------
   local <- .local_corroboration_columns(evaluation, local_corroboration)
   is_skipped <- evaluation$hierarchy_flag %in% "locally_corroborated"
   local_ok <- local$corroborated | is_skipped
@@ -594,7 +588,7 @@ score_reference_labels <- function(evaluation,
     !is.na(label_confidence) & label_confidence < action_remove_below
   action[removable] <- "remove"
 
-  # "not_evaluated_wrong_marker" (2026-09-04) reads "untested" alongside
+  # "not_evaluated_wrong_marker" reads "untested" alongside
   # "not_evaluated_oversized": no label evidence was gathered either way, and
   # the action vocabulary answers "what should happen to this LABEL", which is
   # a different question from "does this accession belong in this screen".
@@ -607,7 +601,7 @@ score_reference_labels <- function(evaluation,
       "not_evaluated_oversized",
       "not_evaluated_wrong_marker"
     )] <- "untested"
-  # "locally_corroborated" (2026-09-03): never BLASTed, so label_confidence
+  # "locally_corroborated": never BLASTed, so label_confidence
   # is NA -- but it is a positive verdict (an independent conspecific in the
   # caller's own reference set), not an untested one. Keep.
   action[hierarchy_flag %in% "locally_corroborated"] <- "keep"
@@ -667,14 +661,15 @@ score_reference_labels <- function(evaluation,
 #' as parallel `*_trust` columns beside the originals.
 #'
 #' @section What this needs, and what happens without it:
-#' The individual votes are not in the per-accession cache -- they never were,
-#' they were summarised and discarded. `evaluate_reference_accessions()`
-#' began persisting them to a sidecar `reference_pair_cache.rds` on
-#' 2026-09-02. An accession evaluated before that date, or with
-#' `cache_dir = NULL`, has no pair rows, so it CANNOT be refined: it keeps
+#' The individual votes are not in the per-accession cache -- they are
+#' summarised and discarded from it. `evaluate_reference_accessions()`
+#' persists them separately, to a sidecar `reference_pair_cache.rds`, whenever
+#' `cache_dir` is not `NULL`. An accession evaluated with
+#' `cache_dir = NULL` has no pair rows, so it CANNOT be refined: it keeps
 #' its original verdict, `trust_refined` reads `FALSE`, and a message says how
 #' many accessions that applied to. Re-running
-#' `evaluate_reference_accessions()` on those accessions is what builds their
+#' `evaluate_reference_accessions()` on those accessions with a `cache_dir`
+#' set is what builds their
 #' pair rows; there is no way to reconstruct them without a fresh BLAST.
 #'
 #' @section Determinism:
@@ -684,7 +679,7 @@ score_reference_labels <- function(evaluation,
 #' breaks percent-identity ties by `id_y` rather than by input order, for the
 #' same reason.
 #'
-#' @section What it did on real data (2026-09-02):
+#' @section What it does on real data:
 #' On the PtConception 12S screen the motivating case was `Askoldia
 #' variegata` (`MT627596`), the disagreeing partner in 4 of the 12
 #' `"incongruent"` verdicts. Its own row reads
@@ -1028,10 +1023,9 @@ refine_reference_verdicts <- function(evaluation,
       ),
       collapse = "; "
     )
-    # The actual accession IDs behind `who` -- .summarise_corroborators() had
-    # only ever built the formatted DISPLAY string, discarding the IDs
-    # themselves once printed. verify_removal_candidates(screen_corroborators=)
-    # (2026-09-05, critical-fix-review finding B5) needs the real IDs to
+    # The actual accession IDs behind `who`, kept alongside the formatted
+    # DISPLAY string rather than discarded once printed --
+    # verify_removal_candidates(screen_corroborators=) needs the real IDs to
     # actually go check them, not just show them to a human.
     out$accessions_list[[k]] <- top$id_y
   }
@@ -1056,7 +1050,7 @@ refine_reference_verdicts <- function(evaluation,
 #' in the top 20".
 #'
 #' That was measured, not suspected
-#' (`diagnostics/veto_truncation_probe.R`, 2026-09-04): at `max_hits = 100`,
+#' (the `veto_truncation_probe.R` diagnostic (TaxaID_dev repository)): at `max_hits = 100`,
 #' `congruent_evidence_exists_anywhere` flipped `FALSE` to `TRUE` for 8 of 15
 #' veto-critical accessions, and `OQ846263` (*Rathbunella hypoplecta*) --
 #' one of only two accessions that PtConception run would have removed --
@@ -1110,7 +1104,7 @@ refine_reference_verdicts <- function(evaluation,
 #'   Requires `cache_dir` -- with `cache_dir = NULL` nothing is screened
 #'   (zero extra NCBI calls) and `corroborator_flagged` is `NA` for every
 #'   row, regardless of this parameter's value. `FALSE` also skips this
-#'   entirely (matching pre-2026-09-05 behavior).
+#'   entirely.
 #' @param verbose Logical (default `TRUE`).
 #' @return A data frame with one row per removal candidate: `accession`,
 #'   `listed_taxon`, `action_production`/`action_audit`,
@@ -1138,11 +1132,11 @@ refine_reference_verdicts <- function(evaluation,
 #' `congruent_evidence_exists_anywhere` counts a corroborating partner
 #' without any notion of whether that partner's own label is trustworthy, so
 #' a mislabeled reference can be rescued by another instance of the SAME
-#' mislabel. This is not hypothetical -- it happened on this function's first
+#' mislabel. This is not hypothetical -- it has happened in
 #' real use. GreatLakes `KJ135626` (*Pseudorasbora parva*) came back
 #' `spared = TRUE`, rescued by exactly one partner agreeing at species rank:
 #' `MZ605481`, which this project's own
-#' `diagnostics/reference_accession_ground_truth.csv` records as a
+#' the `reference_accession_ground_truth.csv` diagnostic (TaxaID_dev repository) records as a
 #' `candidate_mislabel` whose real identity is *Cyprinus carpio*.
 #' `KJ135626`'s own best disagreeing hit is *Cyprinus carpio* at 100%. Two
 #' copies of one error agreeing with each other is not corroboration, and the
@@ -1155,8 +1149,8 @@ refine_reference_verdicts <- function(evaluation,
 #' Widening the window makes the exposure larger, not smaller, since it
 #' admits more potential bad corroborators. So treat `spared` as a prompt to
 #' look, not a conclusion: a row rescued by one or two partners gets an
-#' explicit warning naming them, and (`screen_corroborators = TRUE`,
-#' 2026-09-05) that corroborator's own label is now actually checked --
+#' explicit warning naming them, and (`screen_corroborators = TRUE`)
+#' that corroborator's own label is checked --
 #' never automatically, only flagged, per this project's own "flag, don't
 #' auto-act" convention.
 #' @seealso [remove_incongruent_references()], [score_reference_labels()]
@@ -1227,8 +1221,8 @@ verify_removal_candidates <- function(evaluation, ...,
     }
   }
 
-  # WHAT corroborated, not just THAT something did (2026-09-04). Added
-  # immediately after this function's first real use found a FALSE RESCUE:
+  # WHAT corroborated, not just THAT something did. A real
+  # motivating case found a FALSE RESCUE:
   # GreatLakes KJ135626 (Pseudorasbora parva) was reported spared because one
   # partner agreed at species rank -- and that partner was MZ605481, this
   # project's own documented candidate_mislabel, whose real identity is
@@ -1263,7 +1257,7 @@ verify_removal_candidates <- function(evaluation, ...,
   # weaker claim than one from a row with room to spare.
   out$still_saturated <- !is.na(out$n_hits_audit) &
     out$n_hits_audit >= as.integer(audit_max_hits) - 1L
-  # `spared` is a three-valued answer, not a boolean (2026-09-10): an audit
+  # `spared` is a three-valued answer, not a boolean: an audit
   # whose own BLAST never completed comes back `action_audit = "untested"`
   # (or NA), and that is NO evidence either way -- reporting it as
   # `spared = TRUE` would tell the caller a removal was overturned when
@@ -1284,7 +1278,7 @@ verify_removal_candidates <- function(evaluation, ...,
   # for its own warning before screen_corroborators existed.
   thin <- out$spared %in% TRUE & !is.na(out$n_corroborators) & out$n_corroborators <= 2L
 
-  # ---- Screen the corroborators themselves (2026-09-05, finding B5) --------
+  # ---- Screen the corroborators themselves ----------------------------------
   # `congruent_evidence_exists_anywhere` counts a corroborating partner with
   # no notion of whether THAT partner's own label is trustworthy --
   # `refine_reference_verdicts()` cannot close this, since a corroborator
@@ -1311,7 +1305,7 @@ verify_removal_candidates <- function(evaluation, ...,
       still_unknown <- setdiff(to_check, already_known$accession)
 
       # evaluate_reference_accessions() already runs score_reference_labels()
-      # on its own output (2026-09-03) -- calling it again here would error
+      # on its own output -- calling it again here would error
       # ("already has column(s) ... pass overwrite = TRUE").
       corr_eval <- if (length(still_unknown) > 0L) {
         if (verbose) {
@@ -1347,9 +1341,7 @@ verify_removal_candidates <- function(evaluation, ...,
       # computable for it -- e.g. a fetch failure) its own hierarchy_flag
       # itself reads "incongruent". "untested" is deliberately NOT "flagged"
       # -- no usable evidence about the corroborator is not evidence AGAINST
-      # it, the same distinction this package draws everywhere else. (A prior
-      # version of this line read `!corr_action %in% "keep"`, which flagged
-      # "untested" too -- contradicting this very comment. Fixed 2026-09-05.)
+      # it, the same distinction this package draws everywhere else.
       corr_action <- corr_lookup$reference_action[match(to_check, corr_lookup$accession)]
       corr_hflag <- corr_lookup$hierarchy_flag[match(to_check, corr_lookup$accession)]
       corr_bad <- ifelse(!is.na(corr_action), !corr_action %in% c("keep", "untested"),
@@ -1431,7 +1423,7 @@ verify_removal_candidates <- function(evaluation, ...,
 
 #' Audit thin locally-corroborated rows against their own corroborator's verdict
 #'
-#' `"locally_corroborated"` (2026-09-03) skips BLASTing an accession entirely
+#' `"locally_corroborated"` skips BLASTing an accession entirely
 #' when the caller's own reference set already has an independent conspecific
 #' deposit for it -- cached with TTL `Inf` and exempt from
 #' [refine_reference_verdicts()]'s trust-weighted refinement, since the MATCH

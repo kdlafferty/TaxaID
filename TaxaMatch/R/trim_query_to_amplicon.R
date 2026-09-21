@@ -9,7 +9,7 @@
 #' (`.parse_lat_lon()`, `.build_submission_batch_lookup()`/
 #' `.same_submission_batch()`).
 #'
-#' Added 2026-08-09 for `evaluate_reference_accessions(barcode_term =)`:
+#' Used by `evaluate_reference_accessions(barcode_term =)`:
 #' BLASTing a full-length over-length reference (e.g. a complete
 #' mitogenome, ~16.5kb) against `nt` is dramatically more CPU-expensive
 #' than BLASTing its short barcode region -- found to be the real root
@@ -34,7 +34,7 @@
 #'   says, so the two settings accept exactly the same primer matches.
 #' @param strip_primers Logical (default `FALSE`). `TRUE` returns the
 #'   region BETWEEN the two primer sites (`fwd_end + 1` to `rev_start - 1`)
-#'   instead of the primer-inclusive span. Added 2026-09-03 for
+#'   instead of the primer-inclusive span. Used by
 #'   `evaluate_reference_accessions(query_span = "amplicon")`: an
 #'   amplicon-only GenBank deposit is ~169 bp for MiFish-U and carries no
 #'   primer sequence, so a 217 bp primer-inclusive query out-scores it with
@@ -151,12 +151,12 @@
 #' @param barcode_term Character. Passed to `TaxaTools::resolve_barcode_primers()`
 #'   and `TaxaTools::resolve_barcode_lengths()`.
 #' @param max_mismatch_rate Numeric in `[0, 1)`, default `0.15`.
-#' @param strip_primers Logical (default `TRUE`, 2026-09-03). `TRUE` returns
+#' @param strip_primers Logical (default `TRUE`). `TRUE` returns
 #'   the primer-STRIPPED amplicon (the region between the two primer sites,
-#'   ~169 bp for MiFish-U); `FALSE` the primer-INCLUSIVE span (~217 bp), the
-#'   only behaviour before 2026-09-03. See `.extract_amplicon_one_tm()`'s
+#'   ~169 bp for MiFish-U); `FALSE` the primer-INCLUSIVE span (~217 bp).
+#'   See `.extract_amplicon_one_tm()`'s
 #'   own `@param strip_primers` for why the stripped form is what
-#'   `evaluate_reference_accessions()` now submits by default. A sequence
+#'   `evaluate_reference_accessions()` submits by default. A sequence
 #'   with no primer sites (an amplicon-only deposit is already primer-free)
 #'   is returned unchanged under either setting.
 #' @param verbose Logical, default `TRUE`.
@@ -179,9 +179,10 @@
   # this function's contract is "only ever shortens a query, never discards
   # or errors on one it can't trim". Return every sequence as deposited and
   # let the caller's feature-table fallback handle over-length records.
-  # Found 2026-09-12: the PtConception 18S screen (barcode_term = "18S")
-  # died on its first chunk, AFTER the NCBI fetch, because this call was
-  # unguarded -- and unlike TaxaTools::resolve_barcode_marker(), which passes
+  # A real case confirms this matters: the PtConception 18S screen
+  # (barcode_term = "18S") would die on its first chunk, AFTER the NCBI
+  # fetch, if this call were unguarded -- and unlike
+  # TaxaTools::resolve_barcode_marker(), which passes
   # an unrecognised term through, resolve_barcode_primers() errors on one.
   primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
     error = function(e) NULL
@@ -229,7 +230,7 @@
   # a general marker-length window meant for filtering raw sequence widths, not
   # primer-to-primer span. `primer_info$amplicon_range` (from
   # TaxaTools::barcode_primer_defaults) is the literature-reported *variable
-  # region* length, i.e. EXCLUDING primers (confirmed empirically 2026-08-10:
+  # region* length, i.e. EXCLUDING primers (confirmed empirically:
   # two real fish mitogenomes, both distinct species, both gave an identical
   # real full span of 221bp for MiFish-U -- primer_info$amplicon_range is
   # 163-185bp, 221bp minus the 48bp of primer length lands at 173bp, squarely
@@ -288,10 +289,10 @@
   }
 
   # Which sequences the primer match actually shortened, carried out per
-  # element rather than only tallied (2026-09-04). The counts below were
-  # already computed from this and then discarded -- the same
+  # element rather than only tallied. Without this, the counts below would be
+  # computed from this and then discarded -- the same
   # "already known, silently dropped" pattern .extract_feature_table_
-  # fallback()'s own decline_reason closed. evaluate_reference_accessions()
+  # fallback()'s own decline_reason closes. evaluate_reference_accessions()
   # reads it to record query_trim_path per accession.
   attr(out, "trimmed") <- trimmed_flag
 
@@ -307,8 +308,8 @@
     # from "non_iupac_dna_skipped"/"invalid_dna_string" (a data-quality
     # problem upstream of this function, e.g. non-ACGT characters slipping
     # through), which .extract_amplicon_one_tm() already distinguishes via
-    # its own `note` field but this wrapper previously discarded entirely --
-    # a 0-of-N result gave no way to tell which case was happening.
+    # its own `note` field -- without surfacing it here,
+    # a 0-of-N result would give no way to tell which case was happening.
     if (length(fail_notes) > 0L) {
       tally <- sort(table(fail_notes), decreasing = TRUE)
       message(sprintf(
@@ -364,18 +365,19 @@
 #' `max_bp` therefore calls EVERY correctly-trimmed query over-length, 100%
 #' of the time.
 #'
-#' That exact miscalibration was already found and fixed once, inside
-#' `.trim_queries_to_amplicon()` itself (2026-08-10; see its own comment --
-#' it caused a real 92/92 extraction failure), and then reintroduced at a
-#' second site by the 2026-09-01 feature-table-fallback caller in
-#' `evaluate_reference_accessions()`, which had no way to know the two
-#' length conventions differed. This helper exists so there is ONE
+#' This exact miscalibration can recur at any site that tests a trimmed
+#' query against `max_bp` directly -- confirmed live inside
+#' `.trim_queries_to_amplicon()` itself (see its own comment --
+#' it caused a real 92/92 extraction failure), and separately in the
+#' feature-table-fallback caller in
+#' `evaluate_reference_accessions()`, which has no way to know the two
+#' length conventions differ on its own. This helper exists so there is ONE
 #' definition both sites read, rather than two places that must independently
 #' remember to add the primer lengths back on.
 #'
-#' 2026-09-03: `strip_primers` selects the matching bound for the
+#' `strip_primers` selects the matching bound for the
 #' primer-STRIPPED span `.trim_queries_to_amplicon(strip_primers = TRUE)`
-#' now returns -- the inclusive bound minus the two primer lengths. Still one
+#' returns -- the inclusive bound minus the two primer lengths. Still one
 #' definition: both the trimmer and `evaluate_reference_accessions()`'s
 #' feature-table-fallback caller read the bound for whichever `query_span`
 #' was chosen, so the two conventions cannot be crossed a third time. When
@@ -426,7 +428,7 @@
 #' `.MARKER_ANNOTATION_PATTERNS`) directly, per this feature's own design
 #' doc -- no second fetcher, no new qualifier vocabulary. `.
 #' fetch_marker_annotation()` batches its own `rentrez::entrez_fetch()`
-#' call across every accession passed to it in one round trip (2026-08-08),
+#' call across every accession passed to it in one round trip,
 #' so calling it once per chunk here (never per-accession) keeps this
 #' mechanism's real NCBI cost to one cheap `efetch`, nothing like BLAST.
 #'
@@ -442,8 +444,8 @@
 #' reported against (not consumed by anything in this package).
 #'
 #' Per-accession `tryCatch()` isolation, matching the same pattern
-#' `.trim_queries_to_amplicon()`'s own loop already established
-#' (2026-08-30) -- one accession's malformed interval data must never abort
+#' `.trim_queries_to_amplicon()`'s own loop already establishes
+#' -- one accession's malformed interval data must never abort
 #' the whole fallback pass.
 #'
 #' @param accessions Character vector of accessions still over-length after
@@ -525,10 +527,9 @@
       # inside a bare tryCatch({...}) block (no enclosing function of its
       # own) would otherwise return from .extract_feature_table_fallback()
       # ITSELF, silently abandoning every remaining accession still to be
-      # processed in this loop. A real bug caught by this file's own tests
-      # (a "no match" or "out-of-bounds span" outcome for accession i was
-      # returning NULL for the WHOLE function instead of just leaving
-      # sequence i unrescued) before this fix.
+      # processed in this loop: a "no match" or "out-of-bounds span" outcome
+      # for accession i would return NULL for the WHOLE function instead of
+      # just leaving sequence i unrescued. Caught by this file's own tests.
       extract_one <- function() {
         sub_ann <- ann[!is.na(ann$accession) & ann$accession == acc &
           !is.na(ann$feature_from) & !is.na(ann$feature_to), , drop = FALSE]
@@ -558,13 +559,13 @@
         # this guard the clamp below silently degrades to
         # substr(seq_i, 1, seq_len), i.e. returns the input unchanged while
         # still counting itself a "rescue": the mechanism reported rescuing
-        # 40 of 40 queries it had not touched (found 2026-09-02 in a real run
+        # 40 of 40 queries it had not touched (found in a real run
         # log). Refusing here keeps the count honest.
         if (span_hi > seq_len) {
           return(list(sequence = NULL, reason = "span_unusable"))
         }
         # Bounds guard before substr(), same convention as
-        # .extract_amplicon_one_tm()'s own 2026-08-30 fix: an inverted or
+        # .extract_amplicon_one_tm()'s own bounds guard: an inverted or
         # out-of-range span degrades to "not rescued" rather than producing
         # a nonsensical (or, for substr(), silently empty/truncated) result.
         from <- max(1L, span_lo - margin)

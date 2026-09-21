@@ -35,9 +35,9 @@ Invisibly, a list: \code{to_key}, \code{n_carried_forward} (rows rewritten),
 \description{
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} stamps every cached row with one global
 \code{params_key} (its verdict-affecting arguments plus an internal cache
-version). Bumping that version -- as the 2026-09-03 switch to the
-primer-stripped \code{query_span = "amplicon"} did (\code{"v5_amplicon_query"}) --
-invalidates every existing row: ~3,000 real ones (PtConception 995;
+version). Bumping that version
+invalidates every existing row -- confirmed on a real migration
+affecting ~3,000 rows (PtConception 995;
 GreatLakes 1060 + 280 + 690). This helper rewrites the key on the rows the
 change cannot have altered, so only the rest re-BLAST.
 }
@@ -65,7 +65,7 @@ and a later re-evaluation replaces rather than duplicates them.
 The cache file is copied to
 \verb{reference_accession_cache.rds.bak_pre_<to-version>} (and the pair cache to
 \verb{reference_pair_cache.rds.bak_pre_<to-version>}) before anything is
-rewritten, following the 2026-08-11/13 \verb{.bak_pre_*} convention. An
+rewritten, following this ecosystem's own \verb{.bak_pre_*} backup convention. An
 existing backup of that name is never overwritten -- it holds the earliest
 pre-migration state, which is the one worth keeping.
 }

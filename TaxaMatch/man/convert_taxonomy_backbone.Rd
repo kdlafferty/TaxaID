@@ -134,24 +134,25 @@ blank, by the \code{nzchar()} checks used throughout (\code{nzchar(" ")} is \cod
 if this is a realistic data-quality issue for your input, \code{trimws()} your
 \code{taxon_col} before calling.
 }
-\section{Rank correction on fallback (2026-07-25)}{
+\section{Rank correction on fallback}{
 
 When a row's own \code{taxon_name_rank} has no matching target-backbone value
 at that same rank (e.g. a row claims \code{"species"} but the target only
 resolved this name to genus), \code{match_df[[taxon_col]]} falls back to the
 coarser resolved name -- and \code{taxon_name_rank} is now corrected to match
 it, using \code{verify_fn}'s \code{matched_rank} column when present (silently
-skipped for a \code{verify_fn} that predates it, e.g. injected for offline
-testing). Real motivating case: an informally-named NCBI reference
+skipped when \code{verify_fn}'s return value lacks that column, e.g. a
+custom function injected for offline testing). Real motivating case: an
+informally-named NCBI reference
 ("Inu sp. 1 sensu Shibukawa et al., 2020.") resolves against GBIF to the
 genus \code{Luciogobius} (a synonym relationship -- GBIF's own backbone
 considers \code{"Inu"} Snyder 1909 a synonym of \code{Luciogobius} Gill 1859; NCBI's
-own taxonomy does not) with no species-level entry to fill. Before this
-fix, \code{taxon_name} was correctly demoted to the genus but
-\code{taxon_name_rank} silently stayed \code{"species"} -- a downstream slash-name
-builder then treated the bare genus as if it were a complete binomial and
-manufactured a fabricated pseudo-binomial (\code{"Inu Inu"}) from it. Confirmed
-backbone-general, not GBIF-specific, before shipping -- see
+own taxonomy does not) with no species-level entry to fill. Demoting
+\code{taxon_name} to the genus without also correcting \code{taxon_name_rank} to
+match would leave a downstream slash-name builder treating the bare genus
+as if it were a complete binomial, manufacturing a fabricated
+pseudo-binomial (\code{"Inu Inu"}) from it. This is backbone-general, not
+GBIF-specific -- see
 \code{TaxaTools::verify_taxon_names()}'s own \verb{@section Synonym resolution and rank correctness}.
 
 \strong{Finer rank columns are also cleared on the same rows} (e.g. \code{species}
@@ -170,7 +171,7 @@ conversion") would otherwise see \code{species} still populated, apply
 "most specific non-NA rank wins", and silently undo the correction.
 }
 
-\section{Rank correction on a genus-collapsing name, any source (2026-08-21)}{
+\section{Rank correction on a genus-collapsing name, any source}{
 
 The \code{matched_rank}-driven correction above only fires when the target
 backbone's own reported rank disagrees with the row's claimed rank. A
@@ -184,9 +185,8 @@ fallback when its own rank had no target value; or a found row's own
 independently-discovered cases from GreatLakes2023 production data:
 (1) an open-nomenclature, specimen-voucher-tagged reference label (e.g.
 \code{"Ictalurus cf. pricei USON-01120-1"}) that never resolves in the target
-backbone at all (\code{found_mask = FALSE}); and (2), found only after
-verifying (1)'s original fix against a real re-run and still finding
-stale rows: NCBI's own taxonomy DB genuinely contains leaf-level nodes
+backbone at all (\code{found_mask = FALSE}); and (2) NCBI's own taxonomy DB
+genuinely contains leaf-level nodes
 for informally-named specimens (e.g. a real node literally named
 \code{"Ictalurus sp. UM 105-1789"}, ranked \code{"species"} by NCBI itself) -- here
 \code{found_mask = TRUE} and \code{matched_rank} genuinely IS \code{"species"}
@@ -195,9 +195,9 @@ does nothing), but the classification path's own species-rank VALUE is
 that same informal label, which collapses to genus-only when cleaned.
 No rank-MISMATCH-based correction can ever catch case (2) -- the
 backbone's own rank claim is genuinely self-consistent; only the collapse
-signal itself reveals the problem. Before this fix, \code{taxon_name_rank}
-stayed stale at whatever rank the row claimed before conversion,
-mislabeling a bare genus as if it were still species-level.
+signal itself reveals the problem. Without this correction,
+\code{taxon_name_rank} would stay stale at whatever rank the row claimed before
+conversion, mislabeling a bare genus as if it were still species-level.
 
 Deliberately tracks the actual collapse event through the pipeline (via
 \code{collapsed_to_genus}) rather than re-deriving the signal from the final
@@ -207,8 +207,9 @@ genus token, which a real hyphenated genus (e.g. \emph{Pseudo-nitzschia},
 already a real fixture elsewhere in this ecosystem's own test suite)
 fails, which would have wrongly demoted every hyphenated-genus species
 row. Requires \code{"genus"} to be present in \code{rank_system}; a no-op
-otherwise. Gracefully absent (no-op) for a \code{clean_taxon_names()}-alike
-that predates the \code{collapsed_to_genus} attribute. Rank columns finer than
+otherwise. A no-op when the input lacks the \code{collapsed_to_genus}
+attribute (e.g. from a \code{clean_taxon_names()}-alike that does not set it).
+Rank columns finer than
 the demoted rank are cleared, same as the \code{matched_rank}-driven
 correction above.
 
@@ -222,11 +223,11 @@ is also printed.
 When a taxon is not found in the target backbone, its original rank
 columns and \code{taxon_col} value are still run through
 \code{\link[TaxaTools:clean_taxon_names]{TaxaTools::clean_taxon_names()}} before being used as the output value --
-previously only target-backbone-matched values were cleaned, so an exotic
+without this, an exotic
 name that failed to resolve (e.g. a compound hybrid-formula name straight
 from a raw reference-database accession label,
 \code{"((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata"})
-passed through completely unmodified. This does NOT change which names are
+would pass through completely unmodified. This does NOT change which names are
 sent to \code{verify_fn} or which rows count as "found" -- only the fallback
 value's formatting.
 }

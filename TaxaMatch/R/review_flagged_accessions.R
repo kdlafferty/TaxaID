@@ -2,19 +2,14 @@
 # review_flagged_accessions() -- LLM second-look reviewer for
 # evaluate_reference_accessions()'s flagged/borderline output.
 #
-# Implements Question 2 of
-# ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md. See that
-# doc's own "Real design questions to resolve before writing code" for the
-# design answers this implementation follows (what the LLM sees, what it
+# Design answers this implementation follows (what the LLM sees, what it
 # outputs, cost/scale scoping, package placement) -- summarized in this
 # function's own roxygen below rather than re-derived here.
 #
-# 2026-08-14: gains a persistent, accession-keyed cache (same cache_dir
+# This function has a persistent, accession-keyed cache (same cache_dir
 # default/convention as evaluate_reference_accessions()/
-# investigate_flagged_accession()) -- prompted directly by the user after a
-# real evaluate_reference_accessions() run confirmed that function's own
-# rate-limit resilience, then noting this LLM-calling sibling had no such
-# protection: every call re-reviews its ENTIRE in-scope set from scratch,
+# investigate_flagged_accession()): without one, every call would re-review
+# its ENTIRE in-scope set from scratch,
 # including accessions already reviewed (a real, avoidable LLM API cost).
 # Keyed on accession + a content fingerprint of the review-relevant input
 # columns (not a TTL): unlike evaluate_reference_accessions()'s
@@ -39,7 +34,7 @@
   "frac_independent_below_min_congruent_rank"
 )
 
-#' Local-corroboration columns (2026-09-03) that also shape the prompt
+#' Local-corroboration columns that also shape the prompt
 #'
 #' Kept OUT of `.ACCESSION_REVIEW_RELEVANT_COLS` and folded into the
 #' fingerprint only where NON-NA, so an existing review cache built before
@@ -131,8 +126,7 @@
 #' for a free-text second look -- the same "narrative-judgment layer added ON
 #' TOP of statistical flags, never replacing them, never auto-acting" pattern
 #' `TaxaFlag::review_assignments()` already established for posterior
-#' taxonomic assignments (implements Question 2 of
-#' `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md`). The LLM
+#' taxonomic assignments. The LLM
 #' never re-decides `hierarchy_flag` -- it adds what the statistical check
 #' structurally cannot: recognizing a known hybrid-cross name (e.g.
 #' `"Ctenopharyngodon idella x Megalobrama amblycephala"`, a known Chinese
@@ -156,11 +150,11 @@
 #' (`accession_likely_explanation`, `accession_review_confidence`) -- never a
 #' re-decided `hierarchy_flag`, and this function never calls
 #' [remove_incongruent_references()] or otherwise mutates the evaluation
-#' itself. This mirrors this ecosystem's own `trusted_rank` cautionary
-#' history (`TaxaLikely::evaluate_likelihoods()`, built 2026-07-19, removed
-#' 2026-07-20 after a real ~30% mismatch between the hypothesis it was
-#' computed for and the one that actually won downstream -- see
-#' `[[project_rank_trust_mechanism_removed]]` in the project memory system):
+#' itself. This follows this ecosystem's own caution around a `trusted_rank`-
+#' style mechanism (`TaxaLikely::evaluate_likelihoods()`) that once
+#' recomputed/overrode an existing categorical verdict and was removed after
+#' a real ~30% mismatch between the hypothesis it was
+#' computed for and the one that actually won downstream:
 #' a mechanism that recomputes/overrides an existing categorical verdict is
 #' exactly the shape that broke there. A human reads
 #' `accession_review_comment` before acting on it.
@@ -223,8 +217,7 @@
 #'   Persistent, accession-keyed cache of LLM reviews -- an accession already
 #'   reviewed with UNCHANGED inputs (see `@section Caching` below) is served
 #'   from cache instead of making a real LLM call. Set `NULL` to disable
-#'   caching entirely (every call re-reviews every in-scope accession, the
-#'   pre-2026-08-14 behavior).
+#'   caching entirely (every call re-reviews every in-scope accession).
 #' @param llm_fn Function. LLM provider function with signature
 #'   `function(prompt_str, ...)`. Default `TaxaTools::call_api`.
 #'   \strong{Known footgun:} `call_api()`'s provider auto-detection is set up
@@ -233,8 +226,7 @@
 #'   everywhere, no `library()`) never triggers it, and `call_api()` silently
 #'   falls back to degraded/uniform output rather than erroring. Pass
 #'   `llm_fn` explicitly if every review comes back suspiciously uniform,
-#'   e.g. `function(p) TaxaTools::call_api(p, provider = "anthropic")`. See
-#'   `TaxaID/CLAUDE.md`'s "Known R Footguns" for the full record.
+#'   e.g. `function(p) TaxaTools::call_api(p, provider = "anthropic")`.
 #' @param taxa_per_call Integer. Maximum accessions per LLM call. Default
 #'   `10L`.
 #' @param max_tokens Integer or `NULL`. Forwarded as
@@ -569,9 +561,9 @@ review_flagged_accessions <- function(evaluated_df,
         "frac_independent_below_min_congruent_rank=%.2f"
       )
     )
-    # Local corroboration (2026-09-03): one additive line when the columns
+    # Local corroboration: one additive line when the columns
     # are present and populated -- the caller's own reference set is
-    # evidence the BLAST diagnostics above cannot see (the 2026-09-03
+    # evidence the BLAST diagnostics above cannot see (the
     # primer-inclusive blind spot).
     local_line <- NULL
     if (all(.ACCESSION_REVIEW_LOCAL_COLS %in% names(row)) &&
@@ -908,7 +900,7 @@ review_flagged_accessions <- function(evaluated_df,
 #' raw BLAST verdict can't distinguish from a genuine mislabel) or removing
 #' nothing until every flag has been manually reviewed.
 #'
-#' @section Real motivating case (2026-08-19):
+#' @section Real motivating case:
 #' A real GreatLakes match-candidate screen flagged `Stereolepis
 #' doederleini` (`LC649807`) `hierarchy_flag = "incongruent"`. A separate,
 #' earlier investigation into this exact accession found it is very likely

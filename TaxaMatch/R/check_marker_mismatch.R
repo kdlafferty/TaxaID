@@ -3,10 +3,9 @@
 # reference accession's own annotated gene/product against the marker an
 # evaluation was scoped to.
 #
-# Implements Question 2, item 4 of ecosystem_docs/REENTRY_PROMPT_
-# investigate_flagged_accession_prefilter_group_posthoc.md. Directly
+# Directly
 # grounded in a real, already-confirmed lesson from this ecosystem
-# (AY850362, GreatLakes 12S audit, 2026-08-06/07): a genuine 16S-vs-12S
+# (AY850362, GreatLakes 12S audit): a genuine 16S-vs-12S
 # MARKER mislabel, not a species mislabel -- what actually distinguished
 # it from a real species mislabel (e.g. MZ605481) was the record's own
 # annotated gene/product feature-table qualifier, NOT its taxonomic rank of
@@ -89,7 +88,7 @@
 #'   such feature at all still gets exactly one row, with
 #'   `feature_key`/`gene`/`product`/`feature_from`/`feature_to` all `NA` (so
 #'   a caller can distinguish "checked, no relevant annotation exists" from
-#'   "not fetched at all"). `feature_from`/`feature_to` (added 2026-09-01,
+#'   "not fetched at all"). `feature_from`/`feature_to` (present here
 #'   for `.extract_feature_table_fallback()` in
 #'   `R/trim_query_to_amplicon.R` -- the feature-table-guided extraction
 #'   fallback for a query too long to primer-trim) are the min/max of the
@@ -169,7 +168,8 @@
               # onto the wrong name. Confirmed on real NCBI data
               # (NC_000932, Arabidopsis chloroplast): the rps12 gene/CDS
               # features carry a valueless `/trans_splicing` BEFORE `/product`,
-              # so the old parallel-vector read returned another qualifier's
+              # so a naive parallel-vector read would return another
+              # qualifier's
               # text as the product. xml_find_first() over the qualifier
               # nodeset returns one element per node (NA where the value is
               # absent), so the two vectors stay aligned by construction.
@@ -232,7 +232,7 @@
   # NCBI's own `GBSeq_primary-accession` (which is always version-free). Both
   # consumers key on the requested string -- `check_marker_mismatch()` does
   # `ann$accession == acc`, `.extract_feature_table_fallback()` the same --
-  # so a versioned request ("NC_012920.1") previously matched nothing and
+  # so a versioned request ("NC_012920.1") would otherwise match nothing and
   # silently read as "this record has no annotation": `marker_match = NA`
   # instead of `TRUE`, and a declined feature-table rescue reported
   # "no_annotation" instead of the real reason. This is the same
@@ -259,10 +259,10 @@
 #' (correct the marker label, or exclude the accession from this marker's
 #' own reference set) before ever reaching it.
 #'
-#' @section Why this exists (2026-08-08):
-#' Directly grounded in a real, already-confirmed case from this ecosystem:
-#' `AY850362` (a real GreatLakes 12S reference-database audit accession,
-#' confirmed 2026-08-06/07) is a genuine 16S-vs-12S MARKER mislabel, not a
+#' @section Why this exists:
+#' Directly grounded in a real, confirmed case from this ecosystem:
+#' `AY850362` (a real GreatLakes 12S reference-database audit accession)
+#' is a genuine 16S-vs-12S MARKER mislabel, not a
 #' species mislabel. An earlier hypothesis -- that a disagreement resolved
 #' only at a coarse taxonomic rank (family/order/phylum) signals a
 #' marker/gene mislabel, while a disagreement at genus/species signals a

@@ -57,8 +57,7 @@ mean/range.}
 
 \item{max_length_ratio}{Numeric (default \code{3}). Passed to
 \code{.search_species_accessions()} -- REQUIRED for correctness, not an
-optional tuning knob (see that function's own \verb{@section Length-ratio pre-filter}, added 2026-08-08 after live testing against the real
-\code{MZ605481} case found a plain NCBI organism-name search can be
+optional tuning knob (see that function's own \verb{@section Length-ratio pre-filter}: a plain NCBI organism-name search can be
 dominated by whole-genome-assembly records for a species with a
 published reference genome, leaving almost no length-comparable
 candidates in the raw result at all).}
@@ -97,7 +96,7 @@ broad-scan function ever attempts -- deliberately meant to run only on
 the small subset a caller has already decided is worth a closer look,
 not at production scale.
 }
-\section{Why this exists (2026-08-07)}{
+\section{Why this exists}{
 
 Manually reviewing \code{evaluate_reference_accessions()}'s real flagged
 accessions by hand found that the raw top BLAST hits alone can be
@@ -137,59 +136,50 @@ by hand at 100\% identity across 20 independent real accessions).}
 }
 }
 
-\section{Both comparisons now run via BLAST, not pairwise alignment (2026-08-08)}{
+\section{Why both comparisons run via BLAST, not pairwise alignment}{
 
-\code{MZ605481}'s own real motivating case came back inconclusive in BOTH
-directions the first time this function shipped: 0 of 30+ candidate
-accessions found via NCBI species search cleared a 50\% coverage floor on
+A pairwise-alignment approach to \code{MZ605481}'s own real motivating case
+comes back inconclusive in BOTH
+directions: 0 of 30+ candidate
+accessions found via NCBI species search would clear a 50\% coverage floor on
 either side, because NCBI's \verb{[Organism]}-based search returns records of
 ANY length (most real GenBank deposits for both \emph{Pseudorasbora parva}
 and \emph{Cyprinus carpio} are full ~16kb mitogenomes, against which a 173bp
 amplicon can only ever find a small, non-meaningful local-alignment
-fragment). The ORIGINAL evidence that made \code{MZ605481} a real
-\code{candidate_mislabel} in the first place was never a pairwise alignment
-at all -- it was a direct \code{\link[=blast_sequences]{blast_sequences()}} call, which already
-enforces \code{min_query_coverage} internally and found 20 independent,
+fragment). The evidence that makes \code{MZ605481} a real
+\code{candidate_mislabel} is never a pairwise alignment
+at all -- it is a direct \code{\link[=blast_sequences]{blast_sequences()}} call, which already
+enforces \code{min_query_coverage} internally and finds 20 independent,
 coverage-safe \emph{Cyprinus carpio} hits at genuine 100\% identity. Both
-comparisons here now reuse that proven mechanism (\verb{.blast_against_ comparison_set()}, internal) instead of a hand-rolled
-\code{pwalign::pairwiseAlignment()} loop -- see
-\code{ecosystem_docs/REENTRY_PROMPT_investigate_flagged_accession_prefilter_group_posthoc.md},
-Question 1, Option A.
+comparisons here reuse that mechanism (\verb{.blast_against_ comparison_set()}, internal) rather than a hand-rolled
+\code{pwalign::pairwiseAlignment()} loop.
 }
 
-\section{Two more rounds of live testing found Option A alone still wasn't enough (2026-08-08, same day)}{
+\section{Why a length-ratio pre-filter is required alongside the scoped BLAST search}{
 
-The FIRST shipped version of \code{.blast_against_comparison_set()} was a
-post-hoc filter (unrestricted BLAST, then keep only hits that happen to
-match the comparison set) -- live-tested against the real \code{MZ605481}
-case and found to return ZERO matches on both sides, even though 30 real
-conspecific accessions were independently confirmed to exist. Fixed by
-switching to NCBI's \code{ENTREZ_QUERY} mechanism (\code{method = "remote"}),
-which restricts the BLAST search SPACE itself to the comparison-set
-accessions -- verified in isolation against one known-good accession
-(\code{OP739039}, 100\% identity/coverage recovered correctly). Re-running the
-full \code{MZ605481} case with THAT fix still returned zero matches -- direct
-inspection of the real candidate accessions (\verb{.search_species_ accessions("Pseudorasbora parva")}'s own output) found the root cause
-was one level further upstream than expected: 26 of 30 candidates were
+Even with the comparison-set search scoped via NCBI's \code{ENTREZ_QUERY}
+mechanism (see \code{.blast_against_comparison_set()}'s own \verb{@section Why the comparison-set search is scoped, not post-hoc filtered}), the real
+\code{MZ605481} case can still return zero matches: direct
+inspection of the real candidate accessions (\verb{.search_species_ accessions("Pseudorasbora parva")}'s own output) shows the root cause
+is one level further upstream than the scoping alone can fix: 26 of 30 candidates are
 whole-chromosome shotgun-assembly records 60-80+ million bp long
 (\verb{Pseudorasbora parva} has a published reference genome), and the one
-real short candidate that DID have usable sequence content was an
+real short candidate that does have usable sequence content is an
 entirely different gene (\code{COI}, not \verb{12S}) -- neither BLAST restriction
 mechanism can find a meaningful alignment against a candidate that
 either isn't practically alignable at that scale or covers a
-non-overlapping genomic region entirely. This is exactly the reentry
-prompt's own originally-deferred "Option B" (length-ratio candidate
-pre-filtering) -- deferred at design time as "cheaper but doesn't fully
-solve the problem," now confirmed live to be a REQUIRED companion to
-Option A, not an alternative to it. Implemented in
-\code{.search_species_accessions()} (new \code{reference_length}/
+non-overlapping genomic region entirely. The length-ratio candidate
+pre-filter (the reentry prompt's own "Option B") is therefore a
+REQUIRED companion to the scoped BLAST search ("Option A"), not an
+alternative to it. Implemented in
+\code{.search_species_accessions()} (\code{reference_length}/
 \code{max_length_ratio} params, using NCBI's already-batched, free \code{slen}
 ESummary field to filter BEFORE ever fetching full sequence content --
 fetching a 70-million-bp record's full \code{GBSeq_sequence} is exactly what
-was silently failing/returning \code{NA} for those chromosome accessions).
+silently fails/returns \code{NA} for those chromosome accessions).
 }
 
-\section{Caching (2026-08-08)}{
+\section{Caching}{
 
 Implements Question 3, item 1: a persistent, cross-call cache keyed on
 \verb{(accession, species override)}, mirroring

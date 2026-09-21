@@ -45,7 +45,7 @@ every flagged accession (including real, correctly-labeled records the
 raw BLAST verdict can't distinguish from a genuine mislabel) or removing
 nothing until every flag has been manually reviewed.
 }
-\section{Real motivating case (2026-08-19)}{
+\section{Real motivating case}{
 
 A real GreatLakes match-candidate screen flagged \verb{Stereolepis doederleini} (\code{LC649807}) \code{hierarchy_flag = "incongruent"}. A separate,
 earlier investigation into this exact accession found it is very likely

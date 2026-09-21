@@ -38,13 +38,13 @@ NULL
 #'   one species and none from the other under the implicit (megablast)
 #'   default -- silently dropping a real, exactly-tied congener before
 #'   \code{score_range} filtering ever had a chance to keep it. Set
-#'   \code{TRUE} to restore the old implicit (unspecified/megablast) behavior
+#'   \code{TRUE} for the greedy megablast behavior
 #'   for speed on very large batches; \code{FALSE} (classic blastn) is slower
 #'   but the only mode confirmed to return every near-identical reference,
 #'   which is what \code{score_range}'s own tie-detection depends on.
 #' @param score_range Numeric. Keep all hits within this many percent identity
-#'   points of each query's top hit (default \code{8}, widened from an
-#'   earlier default of \code{2} -- see "Score window validation" below).
+#'   points of each query's top hit (default \code{8} --
+#'   see "Score window validation" below).
 #'   For example, if the top hit is 99% identity, all hits at 91% or above
 #'   are retained. Wider ranges capture more taxonomic alternatives; narrower
 #'   ranges (e.g., 2) focus on the closest matches only but risk silently
@@ -107,7 +107,7 @@ NULL
 #' @param max_batch_bp Numeric. Remote BLAST only. Default \code{100000L}.
 #'   Cumulative-length (bp) cap per submission batch, applied ALONGSIDE
 #'   \code{batch_size} -- a batch closes when EITHER the count or the bp
-#'   limit is reached, whichever comes first. Added 2026-09-01: a long
+#'   limit is reached, whichever comes first. A long
 #'   query (e.g. one of several full mitogenomes sharing a batch with mostly
 #'   short amplicons) consumes vastly more server CPU than its count-based
 #'   "1 of \code{batch_size}" share suggests -- one expensive query can doom
@@ -118,8 +118,8 @@ NULL
 #'   at or above half of \code{max_batch_bp} rides ALONE in its own batch
 #'   (closing whatever batch was already accumulating first, if any) --
 #'   isolating it this way guarantees a doomed batch only ever costs that
-#'   ONE query's own progress. \code{Inf} disables the bp cap entirely,
-#'   fully restoring the old count-only \code{batch_size} behavior. See
+#'   ONE query's own progress. \code{Inf} disables the bp cap entirely, so
+#'   batches close on \code{batch_size} count alone. See
 #'   \code{.split_batches_by_length()} for the implementation. Most calls at
 #'   the default \code{batch_size}/typical amplicon lengths never approach
 #'   \code{100000L} bp per batch, so this is a no-op for ordinary data --
@@ -144,9 +144,9 @@ NULL
 #'   full nucleotide record; neither fetch gives you the other.
 #' @param poll_max_wait Numeric. Remote BLAST only. Seconds to keep polling
 #'   NCBI for a submitted batch's results before giving up on it (default
-#'   \code{1800}, i.e. 30 minutes). Raised from an earlier hardcoded
-#'   \code{600} (2026-08-09) after a real, large (1,183-accession) remote-
-#'   BLAST run observed sustained per-batch queue waits exceeding 600s.
+#'   \code{1800}, i.e. 30 minutes). The default accommodates sustained
+#'   per-batch queue waits exceeding 600s, observed in a real, large
+#'   (1,183-accession) remote-BLAST run.
 #'   A batch that still exceeds this window (even after the existing
 #'   halved-batch-size retry), OR that NCBI reports \code{Status=READY} for
 #'   but has actually aborted server-side for exceeding a CPU-time fair-use
@@ -185,7 +185,7 @@ NULL
 #'   already failed, and the halved-batch-size retry pass is skipped
 #'   entirely (retrying under a confirmed-systemic throttle wastes real NCBI
 #'   time on batches already judged doomed). Set to \code{Inf} to disable
-#'   and restore the old unconditional-retry-every-batch behavior.
+#'   the circuit breaker and retry every batch unconditionally.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
 #' @return A data frame with one row per query x hit, containing:
@@ -230,7 +230,7 @@ NULL
 #'   \code{\link{report_match}}.
 #'
 #'   \code{attr(out, "failed_query_ids")} (character vector, \code{NULL} if
-#'   none) -- remote BLAST only, added 2026-08-09: \code{asv_id}s whose
+#'   none) -- remote BLAST only: \code{asv_id}s whose
 #'   search never completed (submission or poll failure, even after the
 #'   automatic halved-batch-size retry) -- distinct from a query that
 #'   completed and genuinely found nothing, which simply has no rows in
@@ -295,13 +295,14 @@ NULL
 #'
 #' This filter decides which candidates ever reach TaxaLikely/TaxaAssign --
 #' a true species dropped here cannot be recovered downstream, no matter how
-#' good the likelihood model is. The original \code{score_range = 2} default
-#' was field-tested only on 5 easy PtConception queries with clear top hits
-#' at 98% identity or above; it was never stress-tested against a
+#' good the likelihood model is. A narrow \code{score_range} (e.g.
+#' \code{2}, adequate for an easy query with a clear top hit at 98% identity
+#' or above) is not safe in general: it is not
+#' stress-tested against a
 #' taxonomically dense genus where real congeneric divergence can be tight.
 #'
-#' A leave-one-out check (\code{diagnostics/score_window_leave_one_out.R} at
-#' the TaxaID root) against three independent real reference-vs-reference
+#' A leave-one-out check (the \code{score_window_leave_one_out.R} diagnostic, TaxaID_dev
+#' repository) against three independent real reference-vs-reference
 #' distance matrices found this risk is real, not hypothetical: treating each
 #' reference sequence as a query against every other sequence in the same
 #' matrix, and asking how often a congener outscores the sequence's own true
@@ -309,18 +310,18 @@ NULL
 #' \itemize{
 #'   \item \strong{Sebastes} (54 species, real MiFish-window 12S data):
 #'     3/113 (2.7%) queries had a congener score higher than the true
-#'     species, but only by 0.6 points each -- none would have been dropped
-#'     even at the old \code{score_range = 2} default.
+#'     species, but only by 0.6 points each -- none would be dropped
+#'     even at \code{score_range = 2}.
 #'   \item \strong{Chromis} (26 species): 3/33 (9.1%) queries had this
-#'     happen, by 4.7-7.1 points -- \emph{all three} would have been
+#'     happen, by 4.7-7.1 points -- \emph{all three} would be
 #'     silently dropped at \code{score_range = 2}.
 #'   \item \strong{A real 6-genus PtConception 12S set} (Clinocottus,
 #'     Gibbonsia, Oligocottus, Embiotoca, Phanerodon): 1/11 (9.1%) queries,
-#'     by 2.5 points -- would also have been dropped at the old default.
+#'     by 2.5 points -- would also be dropped at \code{score_range = 2}.
 #' }
-#' Pooling all three: 4 of 7 real congener-outscoring events (57%) exceeded
-#' the old \code{score_range = 2} default and would have silently excluded
-#' the true species from every downstream step. The new default (\code{8})
+#' Pooling all three: 4 of 7 real congener-outscoring events (57%) exceed
+#' a \code{score_range = 2} window and would silently exclude
+#' the true species from every downstream step. The default (\code{8})
 #' comfortably covers every gap actually observed in this check (worst case
 #' 7.1 points); it is an evidence-backed starting point given what has
 #' been measured so far, not a guarantee no real dataset will ever exceed it
@@ -694,7 +695,7 @@ blast_sequences <- function(seq_df,
     method    = if (method == "remote") "remote BLAST" else "local BLAST",
     database  = database,
     min_score = min_score,
-    # 2026-09-10: the coverage floor this match object was built under.
+    # The coverage floor this match object was built under.
     # TaxaLikely::train_likelihood_model(min_pair_coverage=) must match it
     # (as a fraction), and evaluate_likelihoods() reads it from here to check.
     min_query_coverage = min_query_coverage,
@@ -1048,9 +1049,10 @@ blast_sequences <- function(seq_df,
   # alignment against every matching record, not just whatever happens to
   # rank among the top hits of an otherwise-unrestricted search. See
   # `.blast_against_comparison_set()` (`R/investigate_flagged_accession.R`)
-  # for why this matters: a post-hoc top-N-then-filter approach was tried
-  # first and found live (2026-08-08, real MZ605481 case) to return ZERO
-  # matches even for accessions independently confirmed to exist, because
+  # for why this matters: a post-hoc top-N-then-filter approach can
+  # return ZERO
+  # matches even for accessions independently confirmed to exist (confirmed
+  # live, real MZ605481 case), because
   # the candidate accessions simply never appeared in the unrestricted
   # top-max_target_seqs hit list.
   params <- list(
@@ -1167,20 +1169,20 @@ blast_sequences <- function(seq_df,
 
 #' Detect NCBI's server-side CPU-usage-limit rejection
 #'
-#' Found 2026-08-09 on a real, large (1,183-accession) remote-BLAST run:
 #' NCBI's remote BLAST service can report a batch's search as
 #' \code{Status=READY} (a real, successfully-retrieved XML document, not a
 #' poll timeout) while having actually ABORTED the computation server-side
 #' for exceeding a CPU-time fair-use budget -- confirmed via a real captured
-#' response for a 20-query batch of mostly full-mitogenome-length sequences
+#' response, on a large (1,183-accession) remote-BLAST run, for a 20-query
+#' batch of mostly full-mitogenome-length sequences
 #' (16.5kb each) against \code{nt}, every \code{<Iteration>} carrying two
 #' \code{<Iteration_message>} entries: \code{"Searches from this IP address
 #' have consumed a large amount of server CPU time..."} and
 #' \code{"[blastsrv4.REAL]: Error: CPU usage limit was exceeded, resulting
-#' in SIGXCPU (24)."}. \code{.parse_blast_xml()} never checked
-#' \code{Iteration_message} at all -- a rejected batch silently parsed to
-#' zero hit rows, indistinguishable from a real "searched everything,
-#' found nothing" result, and (before this fix) would have been cached by
+#' in SIGXCPU (24)."}. \code{.parse_blast_xml()} does not check
+#' \code{Iteration_message} on its own -- without this check, a rejected
+#' batch silently parses to zero hit rows, indistinguishable from a real
+#' "searched everything, found nothing" result, and would be cached by
 #' \code{evaluate_reference_accessions()} as a false
 #' \code{"insufficient_independent_evidence"} verdict for every accession
 #' in the batch, exactly like an undetected poll timeout.
@@ -1263,9 +1265,9 @@ blast_sequences <- function(seq_df,
       qfrom <- as.integer(.xt("./Hsp_query-from"))
       qto <- as.integer(.xt("./Hsp_query-to"))
       # Subject/hit-side alignment coordinates (Hsp_hit-from/-to) -- WHERE
-      # within the subject sequence this HSP actually aligns. Previously
-      # parsed nowhere in this function (only the query-side qfrom/qto were
-      # kept), even though BLAST already computes them -- needed so a
+      # within the subject sequence this HSP actually aligns. Parsed here
+      # alongside the query-side qfrom/qto,
+      # since BLAST already computes them -- needed so a
       # downstream consumer can tell whether two different queries' hits
       # against the SAME long subject (e.g. a complete mitogenome) actually
       # cover the same genomic region or two unrelated ones (see TaxaLikely's
@@ -1756,11 +1758,9 @@ blast_sequences <- function(seq_df,
 #' \code{"36.789 N 121.947 W"} (degrees, hemisphere letter, repeated for
 #' longitude). Returns \code{c(lat = NA_real_, lon = NA_real_)} on any
 #' missing/unparseable input. Deliberately duplicated from TaxaLikely's
-#' identical internal helper rather than shared across packages -- matches
-#' this ecosystem's existing pre-manuscript stance on NCBI-fetcher overlap
-#' (see `ecosystem_docs` / TaxaLikely's Session 115 note: the only real
-#' cross-package overlap is small taxid/qualifier parsing, not worth
-#' abstracting before manuscript review).
+#' identical internal helper rather than shared across packages -- the only
+#' real cross-package overlap is small taxid/qualifier parsing, not worth
+#' abstracting into a shared dependency (see `ecosystem_docs`).
 #' @noRd
 .parse_lat_lon <- function(x) {
   empty <- c(lat = NA_real_, lon = NA_real_)
@@ -1847,10 +1847,11 @@ blast_sequences <- function(seq_df,
             # one fewer value than names and shifts every subsequent value onto
             # the wrong name. Confirmed on real NCBI records (AVFR00000000,
             # AVFR01000001, AVFR01000002): `/environmental_sample` sits
-            # immediately before `/geo_loc_name` and `/lat_lon`, so the old
-            # parallel-vector read returned "2010-07-01" / "0 m" / "microbial
+            # immediately before `/geo_loc_name` and `/lat_lon`, so a naive
+            # parallel-vector read (two independent sweeps for names vs.
+            # values) would return "2010-07-01" / "0 m" / "microbial
             # mat metagenome" as the lat_lon string and .parse_lat_lon()
-            # correctly rejected each one -- real collection coordinates
+            # would correctly reject each one -- real collection coordinates
             # (41.5758 N 70.6392 W) silently lost, and `country` liable to
             # report a neighbouring qualifier's text instead. xml_find_first()
             # over the qualifier nodeset returns one element per node (NA where

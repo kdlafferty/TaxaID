@@ -25,23 +25,24 @@
 #' A `taxonomy_backbone` column records which backbone the row's hierarchy
 #' was drawn from (`"backbone_N"` for found rows, source label for not-found rows).
 #'
-#' @section Rank correction on fallback (2026-07-25):
+#' @section Rank correction on fallback:
 #' When a row's own `taxon_name_rank` has no matching target-backbone value
 #' at that same rank (e.g. a row claims `"species"` but the target only
 #' resolved this name to genus), `match_df[[taxon_col]]` falls back to the
 #' coarser resolved name -- and `taxon_name_rank` is now corrected to match
 #' it, using `verify_fn`'s `matched_rank` column when present (silently
-#' skipped for a `verify_fn` that predates it, e.g. injected for offline
-#' testing). Real motivating case: an informally-named NCBI reference
+#' skipped when `verify_fn`'s return value lacks that column, e.g. a
+#' custom function injected for offline testing). Real motivating case: an
+#' informally-named NCBI reference
 #' ("Inu sp. 1 sensu Shibukawa et al., 2020.") resolves against GBIF to the
 #' genus `Luciogobius` (a synonym relationship -- GBIF's own backbone
 #' considers `"Inu"` Snyder 1909 a synonym of `Luciogobius` Gill 1859; NCBI's
-#' own taxonomy does not) with no species-level entry to fill. Before this
-#' fix, `taxon_name` was correctly demoted to the genus but
-#' `taxon_name_rank` silently stayed `"species"` -- a downstream slash-name
-#' builder then treated the bare genus as if it were a complete binomial and
-#' manufactured a fabricated pseudo-binomial (`"Inu Inu"`) from it. Confirmed
-#' backbone-general, not GBIF-specific, before shipping -- see
+#' own taxonomy does not) with no species-level entry to fill. Demoting
+#' `taxon_name` to the genus without also correcting `taxon_name_rank` to
+#' match would leave a downstream slash-name builder treating the bare genus
+#' as if it were a complete binomial, manufacturing a fabricated
+#' pseudo-binomial (`"Inu Inu"`) from it. This is backbone-general, not
+#' GBIF-specific -- see
 #' `TaxaTools::verify_taxon_names()`'s own `@section Synonym resolution and
 #' rank correctness`.
 #'
@@ -60,7 +61,7 @@
 #' conversion") would otherwise see `species` still populated, apply
 #' "most specific non-NA rank wins", and silently undo the correction.
 #'
-#' @section Rank correction on a genus-collapsing name, any source (2026-08-21):
+#' @section Rank correction on a genus-collapsing name, any source:
 #' The `matched_rank`-driven correction above only fires when the target
 #' backbone's own reported rank disagrees with the row's claimed rank. A
 #' second, independent mechanism corrects `taxon_name_rank` whenever the
@@ -73,9 +74,8 @@
 #' independently-discovered cases from GreatLakes2023 production data:
 #' (1) an open-nomenclature, specimen-voucher-tagged reference label (e.g.
 #' `"Ictalurus cf. pricei USON-01120-1"`) that never resolves in the target
-#' backbone at all (`found_mask = FALSE`); and (2), found only after
-#' verifying (1)'s original fix against a real re-run and still finding
-#' stale rows: NCBI's own taxonomy DB genuinely contains leaf-level nodes
+#' backbone at all (`found_mask = FALSE`); and (2) NCBI's own taxonomy DB
+#' genuinely contains leaf-level nodes
 #' for informally-named specimens (e.g. a real node literally named
 #' `"Ictalurus sp. UM 105-1789"`, ranked `"species"` by NCBI itself) -- here
 #' `found_mask = TRUE` and `matched_rank` genuinely IS `"species"`
@@ -84,9 +84,9 @@
 #' that same informal label, which collapses to genus-only when cleaned.
 #' No rank-MISMATCH-based correction can ever catch case (2) -- the
 #' backbone's own rank claim is genuinely self-consistent; only the collapse
-#' signal itself reveals the problem. Before this fix, `taxon_name_rank`
-#' stayed stale at whatever rank the row claimed before conversion,
-#' mislabeling a bare genus as if it were still species-level.
+#' signal itself reveals the problem. Without this correction,
+#' `taxon_name_rank` would stay stale at whatever rank the row claimed before
+#' conversion, mislabeling a bare genus as if it were still species-level.
 #'
 #' Deliberately tracks the actual collapse event through the pipeline (via
 #' `collapsed_to_genus`) rather than re-deriving the signal from the final
@@ -96,8 +96,9 @@
 #' already a real fixture elsewhere in this ecosystem's own test suite)
 #' fails, which would have wrongly demoted every hyphenated-genus species
 #' row. Requires `"genus"` to be present in `rank_system`; a no-op
-#' otherwise. Gracefully absent (no-op) for a `clean_taxon_names()`-alike
-#' that predates the `collapsed_to_genus` attribute. Rank columns finer than
+#' otherwise. A no-op when the input lacks the `collapsed_to_genus`
+#' attribute (e.g. from a `clean_taxon_names()`-alike that does not set it).
+#' Rank columns finer than
 #' the demoted rank are cleared, same as the `matched_rank`-driven
 #' correction above.
 #'
@@ -194,11 +195,11 @@
 #' When a taxon is not found in the target backbone, its original rank
 #' columns and `taxon_col` value are still run through
 #' [TaxaTools::clean_taxon_names()] before being used as the output value --
-#' previously only target-backbone-matched values were cleaned, so an exotic
+#' without this, an exotic
 #' name that failed to resolve (e.g. a compound hybrid-formula name straight
 #' from a raw reference-database accession label,
 #' `"((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata"`)
-#' passed through completely unmodified. This does NOT change which names are
+#' would pass through completely unmodified. This does NOT change which names are
 #' sent to `verify_fn` or which rows count as "found" -- only the fallback
 #' value's formatting.
 #'
@@ -405,13 +406,12 @@ convert_taxonomy_backbone <- function(
 
   # ---------------------------------------------------------------------------
   # Cleaned fallback values -- used whenever a row's taxon was NOT found in the
-  # target backbone (found_mask FALSE). Only the target-backbone-matched values
-  # (matched_name_clean, target_<rank>, above) were ever run through
-  # clean_taxon_names() before this fix -- a taxon that failed to resolve in the
+  # target backbone (found_mask FALSE). Without also cleaning this fallback,
+  # a taxon that failed to resolve in the
   # target backbone (e.g. a compound hybrid-formula name straight from a raw
   # reference-database accession label, such as
   # "((Citrus unshiu x Citrus sinensis) x Citrus reticulata) x Citrus reticulata")
-  # fell through with its messy original value untouched, purely because the
+  # would fall through with its messy original value untouched, purely because the
   # target backbone had nothing to offer for it. clean_taxon_names() is a no-op
   # on already-clean values, so this is safe for the common case too.
   # Deliberately does NOT change unique_names/verify_fn's input above -- the set
@@ -422,7 +422,7 @@ convert_taxonomy_backbone <- function(
   rank_clean_fallback <- lapply(original_ranks, TaxaTools::clean_taxon_names)
 
   # ---------------------------------------------------------------------------
-  # Second-pass verification of names that CLEANING CHANGED (2026-09-04).
+  # Second-pass verification of names that CLEANING CHANGED.
   #
   # clean_taxon_names() reduces a GenBank hybrid-formula label to its maternal
   # parent. That parent binomial has never itself been looked up, so it keeps
@@ -655,13 +655,13 @@ convert_taxonomy_backbone <- function(
     # column finer than matched_rank closes this regardless of what any
     # downstream code does with the result.
     #
-    # matched_rank (verify_taxon_names(), 2026-07-25) is the authoritative
+    # matched_rank (from verify_taxon_names()) is the authoritative
     # rank the match actually resolved at -- only used where the fallback
     # fired and a corrected rank is available, so a row whose own rank's
     # target value WAS found is left completely untouched by either half of
     # this block. Silently skipped (not an error) when verified lacks
     # matched_rank -- e.g. a custom verify_fn supplied for offline testing
-    # that predates it.
+    # that does not return it.
     # ---------------------------------------------------------------------
     if ("matched_rank" %in% names(verified)) {
       matched_ranks <- verified$matched_rank[lookup_idx]
@@ -684,11 +684,10 @@ convert_taxonomy_backbone <- function(
     # Correct taxon_name_rank whenever the value that ended up populating
     # taxon_name was produced by clean_taxon_names() COLLAPSING a real
     # second token to genus-only -- regardless of WHICH of the three
-    # possible sources produced it (2026-08-21). This is a genuinely
-    # different, unified successor to a narrower same-day fix that only
-    # covered the not-found path (see git history) -- kept as ONE
-    # mechanism, not three, specifically because a second real case was
-    # found the same day that the narrower fix could not catch:
+    # possible sources produced it. Kept as ONE
+    # mechanism, not three, because both of the real motivating cases below
+    # need the same correction and neither source alone is sufficient to
+    # catch both:
     #
     # Real motivating cases, both from GreatLakes2023 production data.
     # (1) Not-found path: TaxaLikely::restore_suppressed_candidates()
@@ -700,8 +699,7 @@ convert_taxonomy_backbone <- function(
     # (found_mask = FALSE); the not-found fallback's own
     # clean_taxon_names() call correctly collapses taxon_name to
     # "Ictalurus" (case C below).
-    # (2) Found path, discovered when case (1)'s original fix was verified
-    # against real re-run output and still found 33 stale rows: NCBI's own
+    # (2) Found path: NCBI's own
     # taxonomy DB genuinely contains leaf-level nodes for informally-named
     # specimens (e.g. a real node literally named
     # "Ictalurus sp. UM 105-1789", ranked "species" by NCBI itself, not a
@@ -721,8 +719,8 @@ convert_taxonomy_backbone <- function(
     #      target_collapsed_mat/rank_vals_collapsed).
     #   B. found_mask & no target value at that rank (used_fallback) ->
     #      matched_name_clean.
-    #   C. !found_mask -> taxon_col_clean_fallback (the original
-    #      not-found-only fix, now folded in as one case of this one).
+    #   C. !found_mask -> taxon_col_clean_fallback (the not-found path
+    #      handled above, folded in as one case of this mechanism).
     # Whichever source actually produced the value is the one whose own
     # collapsed_to_genus flag is consulted -- never mixed across cases.
     #

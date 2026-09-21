@@ -32,9 +32,9 @@
 
 # .default_exact_match_group_id()
 #
-# Session 139: spatial_group_id's default (before any interactive grouping)
-# used to be the row's own observation_id -- meaning a genuine multi-site
-# observation's own several sites all defaulted to ONE shared group, purely
+# Defaulting spatial_group_id (before any interactive grouping) to the row's
+# own observation_id would mean a genuine multi-site
+# observation's own several sites all default to ONE shared group, purely
 # because they belong to the same observation, regardless of whether they
 # are actually near each other. spatial_group_id is meant to be a LOCATION
 # property (do these coordinates belong to the same neighborhood?), not an
@@ -129,17 +129,17 @@
 #' uses.
 #'
 #' \strong{Why the default spatial_group_id is location-based, not
-#' observation-based (Session 139):} \code{spatial_group_id} is meant to
+#' observation-based:} \code{spatial_group_id} is meant to
 #' answer "do these coordinates belong to the same neighborhood," a property
 #' of \emph{location}, not of which observation happens to own a row.
-#' Defaulting it to \code{observation_id} (the pre-Session-139 behavior)
-#' meant a genuine multi-site observation's own several sites always
-#' defaulted to one shared group purely because they share an observation --
-#' regardless of whether those sites were actually near each other -- while
-#' two genuinely co-located observations were never grouped by default at
+#' Defaulting it to \code{observation_id} instead would mean a genuine
+#' multi-site observation's own several sites always
+#' default to one shared group purely because they share an observation --
+#' regardless of whether those sites are actually near each other -- while
+#' two genuinely co-located observations would never be grouped by default at
 #' all, contradicting this ecosystem's own stated design principle that
 #' clustering should be a geometric property of coordinates. The exact-match
-#' default fixes both: two of one observation's own sites at different real
+#' default handles both: two of one observation's own sites at different real
 #' coordinates now default to different groups (as they should), and two
 #' different observations sharing the exact same coordinate (typically
 #' because both were joined from the same site-metadata row -- e.g.
@@ -149,8 +149,8 @@
 #' more sensible default, not the only mechanism that ever creates a shared
 #' group.
 #'
-#' \strong{Why exact match, not grid-snapping/binning to a fixed resolution
-#' (also Session 139):} a grid-snapping design (rounding coordinates to a
+#' \strong{Why exact match, not grid-snapping/binning to a fixed
+#' resolution:} a grid-snapping design (rounding coordinates to a
 #' fixed bin size) was tried first and rejected after live testing against
 #' this ecosystem's own bundled example data. A 0.1-degree bin collapsed four
 #' genuinely distinct observations (a real sample coordinate and a

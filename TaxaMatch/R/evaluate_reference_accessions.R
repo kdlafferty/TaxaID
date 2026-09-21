@@ -14,7 +14,6 @@ utils::globalVariables(c(
 # evaluate_reference_accessions() -- per-accession BLAST-based reference
 # quality evaluation
 #
-# Implements ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md.
 # Supersedes the taxon-list-scoped DECIPHER whole-set alignment approach
 # (TaxaLikely::audit_reference_database()/classify_reference_accessions(),
 # archived at TaxaLikely/archive_decipher_reference_audit/) for the specific
@@ -30,31 +29,25 @@ utils::globalVariables(c(
 #' without any caller-visible parameter changing -- otherwise a cached row
 #' computed under the OLD logic is served as a "fresh" cache hit forever
 #' under an unchanged `params_key`. Cheap insurance, not something a caller
-#' ever sets directly. History:
-#' \itemize{
-#'   \item{`v4_hybrid_maternal_proxy` (2026-08-11) -- the 2026-08-13
-#'     `require_species_resolved_partner` fix deliberately did NOT bump it,
-#'     matching the 2026-08-11 modifier-prefix precedent: `params_key` is one
-#'     global string applied uniformly to every cached row, so a bump forces
-#'     a full re-BLAST of every real cached row, and that fix's effect was
-#'     narrow (the rows worth re-checking were removed from the real cache by
-#'     hand instead).}
-#'   \item{`v5_amplicon_query` (2026-09-03) -- the query submitted to BLAST
-#'     changed from the primer-INCLUSIVE trimmed span to the primer-STRIPPED
-#'     amplicon (`query_span = "amplicon"`), which changes what the hit list
-#'     can contain (see [evaluate_reference_accessions()]'s `@section Why the
-#'     query is the primer-stripped amplicon`). A bump IS warranted here, and
-#'     [migrate_reference_cache()] exists so the ~3,000 real cached rows are
-#'     not all re-BLASTed for it: `"congruent"` rows are carried forward
-#'     (stripping primers only ADDS short-deposit hits, it cannot withdraw a
-#'     match already observed), everything else re-evaluates.}
-#' }
+#' ever sets directly.
+#'
+#' `params_key` is one global string applied uniformly to every cached row,
+#' so a bump forces a full re-BLAST of every real cached row -- a change
+#' whose effect is narrow enough to check by hand does not need a bump; the
+#' affected rows can be removed from the real cache directly instead. A
+#' change that alters what is submitted to BLAST, and therefore what the hit
+#' list can contain, does warrant a bump (see [evaluate_reference_accessions()]'s
+#' `@section Why the query is the primer-stripped amplicon`); when it does,
+#' [migrate_reference_cache()] lets already-cached rows whose verdict cannot
+#' become newly falsified by the change (e.g. `"congruent"` rows, when the
+#' change can only ADD hits, never withdraw one already observed) carry
+#' forward instead of being re-BLASTed, while everything else re-evaluates.
 #' @noRd
 .EVAL_REF_ACC_VERSION <- "v5_amplicon_query"
 
 #' Build the one global params_key every cached row is stamped with
 #'
-#' Factored out of [evaluate_reference_accessions()] (2026-09-03) so
+#' Factored out of [evaluate_reference_accessions()] so
 #' [migrate_reference_cache()] can compute the key the current defaults
 #' would produce with the SAME code, rather than a second hand-maintained
 #' `paste()`. Every argument that affects the verdict itself is in the key;
@@ -63,7 +56,7 @@ utils::globalVariables(c(
 #' are deliberately NOT -- changing one must never invalidate a cache. See
 #' `@section Caching` in [evaluate_reference_accessions()].
 #'
-#' `query_span` (2026-09-03) IS in the key: it changes what is submitted to
+#' `query_span` IS in the key: it changes what is submitted to
 #' BLAST and therefore what the hit list can contain.
 #' @noRd
 .build_params_key <- function(top_n, min_congruent_rank, submission_window,
@@ -246,8 +239,8 @@ utils::globalVariables(c(
 #' different, broader comparison population, fed through the identical,
 #' already-validated congruence math unchanged.
 #'
-#' @section 2026-08-07 divergence from the archived TaxaLikely original:
-#' This copy is no longer byte-identical to the archived version -- it now
+#' @section Divergence from the archived TaxaLikely original:
+#' This copy is not byte-identical to the archived version -- it
 #' also computes percent-identity and "is there ANY corroborating evidence
 #' at all, even outside the top_n window" diagnostics (`best_hit_pident`,
 #' `best_agreeing_pident`, `best_disagreeing_pident`,
@@ -259,7 +252,8 @@ utils::globalVariables(c(
 #' `(k, n, finest_common_rank)`. Two real accessions
 #' (`Abylopsis eschscholtzii`, `KY594854`/`KX384617`) flagged `"incongruent"`
 #' with top hits all >=99% identity to a SISTER family within the same
-#' order -- indistinguishable, under the old columns, from a genuinely
+#' order -- indistinguishable, using `hierarchy_flag`/
+#' `finest_common_rank` alone, from a genuinely
 #' unrelated 99%-identity hit, which would be a much stronger mislabel
 #' signal. Both new pieces of information were already being computed and
 #' then discarded: `p_match` was used only to ORDER hits before being
@@ -271,7 +265,7 @@ utils::globalVariables(c(
 #' NOT updated to match -- it is dead code, kept for historical reference
 #' only, not a shared implementation to keep in sync.
 #'
-#' @section 2026-08-13 divergence, continued: gains
+#' @section Divergence, continued: gains
 #' `require_species_resolved_partner` (default `TRUE`) -- excludes a
 #' comparison partner whose own listed species isn't resolved to species
 #' level from the vote entirely (`is_valid_partner`, alongside the
@@ -280,7 +274,7 @@ utils::globalVariables(c(
 #' comparison partners` for the full real-data motivation and
 #' verification.
 #'
-#' @section 2026-08-13 divergence, continued further: gains
+#' @section Divergence, continued further: gains
 #' `best_disagreeing_taxon` -- the listed species of the same highest-
 #' identity independent hit `best_disagreeing_pident` is already computed
 #' from (both read off the same position in the same desc(p_match)-sorted
@@ -288,9 +282,10 @@ utils::globalVariables(c(
 #' reentry prompt's own Question 2 finding that a second-look reviewer
 #' (human or LLM) needs the disagreeing taxon's actual NAME, not just its
 #' identity percentage, to recognize e.g. a known hybrid-cross partner or an
-#' informal specimen code -- previously computed as part of the rank-
-#' agreement walk and then discarded, the same "already computed, silently
-#' dropped" pattern the 2026-08-07 identity diagnostics themselves were.
+#' informal specimen code -- computed as part of the rank-
+#' agreement walk that was already running, rather than discarding it, the
+#' same "already computed, don't silently drop it" pattern the identity
+#' diagnostics above follow.
 #' `NA` when no independent hit disagrees.
 #' @noRd
 .compute_hierarchy_congruence <- function(seq_matrix,
@@ -338,7 +333,7 @@ utils::globalVariables(c(
   # place of a genus, with an informal specimen code) isn't meaningful
   # evidence either way: whether it happens to "agree" or "disagree" with
   # the query's own rank columns says little when its own identity is
-  # itself only fuzzily determined. Found live, 2026-08-11/13, on the real
+  # itself only fuzzily determined. Found live on the real
   # GreatLakes Stereolepis doederleini case -- both real accessions of this
   # genuinely rare, taxonomically isolated species (Polyprionidae has only
   # 2 genera) read "incongruent" purely because the one real independent
@@ -368,7 +363,7 @@ utils::globalVariables(c(
   n_available <- sm |>
     dplyr::count(id_x, name = "n_top_matches_available")
 
-  # WHY a hit did not become a voting partner (2026-09-04). Every one of
+  # WHY a hit did not become a voting partner. Every one of
   # these numbers was already implicit in `sm` and then discarded, so a
   # zero-partner accession gave no way to tell "BLAST found nothing" from
   # "BLAST found twenty hits and every one was the accession's own
@@ -497,11 +492,10 @@ utils::globalVariables(c(
   # Per-partner pair table, carried out as an attribute rather than folded
   # into the returned per-accession frame (whose one-row-per-accession shape
   # every caller already depends on). This is the ONLY place the individual
-  # votes behind `frac_independent_below_min_congruent_rank` exist -- they
-  # were previously built, summarised, and discarded, so no verdict could
-  # ever be recomputed without a fresh BLAST. `refine_reference_verdicts()`
-  # (Thread 1 of REENTRY_PROMPT_reference_quality_verdicts_and_downstream_
-  # use.md) needs exactly these rows to re-run the vote with each partner
+  # votes behind `frac_independent_below_min_congruent_rank` exist -- without
+  # it they would be built, summarised, and discarded here, so no verdict
+  # could ever be recomputed without a fresh BLAST. `refine_reference_verdicts()`
+  # needs exactly these rows to re-run the vote with each partner
   # weighted by its own trustworthiness.
   #
   # `pair_finest_common_rank` is stored rather than the derived
@@ -698,8 +692,8 @@ utils::globalVariables(c(
   }
 
   # A cache file written by an OLDER package version can be missing columns
-  # this version expects (found live: a real cache from before the
-  # 2026-08-07 identity-diagnostics columns were added). params_key already
+  # this version expects (found live: a real cache missing columns added
+  # in a later version). params_key already
   # invalidates individual STALE ROWS on an internal-logic version bump
   # (.EVAL_REF_ACC_VERSION) -- but that can't rescue a file whose COLUMN
   # SCHEMA itself doesn't match, since `cache_hit_rows[, out_cols]` would
@@ -709,13 +703,13 @@ utils::globalVariables(c(
   # symmetric with how a params_key mismatch already discards individual
   # rows -- not a partial/patched read.
   #
-  # UPDATED 2026-09-04: a column listed in .ADDITIVE_CACHE_COLUMNS is
-  # NA-filled instead, because for those columns NA is the honest reading of
+  # A column listed in .ADDITIVE_CACHE_COLUMNS is instead
+  # NA-filled, because for those columns NA is the honest reading of
   # "this row was computed before we recorded that" and nothing turns it into
-  # a different decision. Discarding for those was costing a full re-BLAST of
+  # a different decision. Discarding for those would cost a full re-BLAST of
   # every cached row to add a diagnostic -- the same price this package
   # refuses to pay for a params_key change. Any OTHER missing column still
-  # discards the whole file, unchanged: that is the case where serving the
+  # discards the whole file: that is the case where serving the
   # row could silently change a verdict.
   missing_cols <- setdiff(names(empty), names(cached))
   hard_missing <- setdiff(missing_cols, .ADDITIVE_CACHE_COLUMNS)
@@ -824,19 +818,17 @@ utils::globalVariables(c(
 
 #' Evaluate One Chunk of Accessions -- Fetch, BLAST, Score
 #'
-#' Extracted from `evaluate_reference_accessions()`'s own body (2026-08-14,
-#' see `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md`'s
-#' chunking/circuit-breaker follow-on work) so the caller can run it once per
+#' Split out of `evaluate_reference_accessions()` so the caller can run it once per
 #' CHUNK of `needs_eval` accessions and write the persistent cache
 #' incrementally after each one, instead of once for the entire accession
 #' list at the very end -- see `evaluate_reference_accessions()`'s own
 #' `@section Chunked evaluation and NCBI rate-limiting resilience` for the
-#' full rationale. Byte-identical logic to what this function's body used to
-#' do inline; `chunk_acc` plays the role `needs_eval` used to play, scoped to
+#' full rationale. Logic here is identical to the corresponding step in
+#' `evaluate_reference_accessions()`'s own body; `chunk_acc` plays the role
+#' `needs_eval` plays there, scoped to
 #' one chunk instead of the whole call.
 #'
-#' `max_query_len`/`max_batch_bp` (2026-09-01, see
-#' `ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md`)
+#' `max_query_len`/`max_batch_bp`
 #' implement the hard submission cap and length-aware BLAST batching -- see
 #' `evaluate_reference_accessions()`'s own `@section Long-sequence
 #' robustness` for the full design.
@@ -917,16 +909,12 @@ utils::globalVariables(c(
     # .resolve_trimmed_span_max(), NOT resolve_barcode_lengths()$max_bp.
     # `.trim_queries_to_amplicon()` returns a primer-INCLUSIVE span
     # (211-233 bp for MiFish-U); max_bp reports the variable region
-    # EXCLUDING primers (130-210 bp). Those windows are disjoint, so the
-    # original test called every correctly-trimmed query "still over-length"
-    # -- 100% of them, by construction -- and sent each one through an extra
-    # NCBI annotation fetch that could not help it. Measured 2026-09-02 on a
-    # real run: "extracted the amplicon from 40 of 40" immediately followed
-    # by "feature-table fallback rescued 40 of 40 still-over-length", which
-    # cannot both be true. This is the same primer-length miscalibration
-    # `.trim_queries_to_amplicon()` was itself fixed for on 2026-08-10,
-    # reintroduced here; both sites now read one shared definition -- and,
-    # since 2026-09-03, the bound for whichever span (`query_span`) the
+    # EXCLUDING primers (130-210 bp). Those windows are disjoint, so using
+    # max_bp here would call every correctly-trimmed query "still
+    # over-length" -- 100% of them, by construction -- and send each one
+    # through an extra NCBI annotation fetch that could not help it. Both
+    # sites read one shared definition, using
+    # the bound for whichever span (`query_span`) the
     # trimmer was asked for.
     bt_max_len <- .resolve_trimmed_span_max(barcode_term, strip_primers = strip_primers)
     if (!is.na(bt_max_len)) {
@@ -969,7 +957,7 @@ utils::globalVariables(c(
     is_oversized <- !is.na(seq_lens) & seq_lens > max_query_len
     if (any(is_oversized)) {
       oversized_meta <- query_meta[is_oversized, , drop = FALSE]
-      # ---- Wrong marker, not wrong size (2026-09-04). An accession the
+      # ---- Wrong marker, not wrong size. An accession the
       # feature-table fallback declined with "marker_absent" HAS annotated
       # features and none of them is the marker `barcode_term` implies. Its
       # length is a symptom; the cause is that it does not belong in this
@@ -1066,7 +1054,7 @@ utils::globalVariables(c(
     query_meta$species.x <- query_meta$organism
 
     # ---- Hybrid-labeled accessions: NCBI's own taxonomy for a hybrid-cross
-    # organism is genuinely incomplete (confirmed live, 2026-08-10, against
+    # organism is genuinely incomplete (confirmed live against
     # real GreatLakes candidates -- lineage stops at "unclassified
     # Cyprinoidei", no family/genus/species) -- see this function's own
     # @section Hybrid-labeled accessions for the full mechanism and why
@@ -1084,7 +1072,7 @@ utils::globalVariables(c(
       needs_proxy <- is_hybrid_labeled & is.na(query_meta[["family.x"]])
 
       if (any(needs_proxy)) {
-        # TaxaTools::clean_taxon_names() (2026-08-11 onward) already strips
+        # TaxaTools::clean_taxon_names() already strips
         # a single leading breeding/ploidy-manipulation modifier word (e.g.
         # "androgenetic", "autodiploid", "autotetraploid" -- all found on
         # real GreatLakes Carassius/Megalobrama hybrid records) before its
@@ -1285,13 +1273,13 @@ utils::globalVariables(c(
     # rejection wave affecting an entire batch): query_meta itself was
     # already filtered to 0 rows above (via blast_failed_acc), so the
     # merge() just above also produces 0 rows. Building computed_rows in
-    # that case previously crashed the ENTIRE call (losing every accession
+    # that case would crash the ENTIRE call (losing every accession
     # successfully evaluated earlier in the SAME call, since the persistent
     # cache only writes once, at the very end) -- data.frame() does not
     # recycle a length-1 scalar column (evaluated_at/cache_hit/params_key)
     # down to 0 rows the way it recycles into a longer common length; it
-    # errors instead ("arguments imply differing number of rows"). Found
-    # live, 2026-08-10, on a real GreatLakes run where NCBI rejected every
+    # errors instead ("arguments imply differing number of rows"). Confirmed
+    # live on a real GreatLakes run where NCBI rejected every
     # single one of 414 remaining accessions.
     if (nrow(congruence) > 0L) {
       computed_rows <- data.frame(
@@ -1314,7 +1302,7 @@ utils::globalVariables(c(
         params_key = params_key,
         taxonomy_resolution_source =
           query_meta$taxonomy_resolution_source[match(congruence$id_x, query_meta$accession)],
-        # Audit trail (2026-09-04): what was actually submitted, and which
+        # Audit trail: what was actually submitted, and which
         # rescue produced it. Both are additive diagnostics -- see
         # .ADDITIVE_CACHE_COLUMNS.
         query_len_submitted =
@@ -1356,26 +1344,26 @@ utils::globalVariables(c(
 #' computes a Jeffreys-smoothed taxonomic-hierarchy congruence verdict --
 #' the same congruence math
 #' `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()`
-#' used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now
+#' computed from a narrow, taxon-list-scoped DECIPHER alignment (see that
+#' archived function's own roxygen for its full design), here
 #' fed from real, broad BLAST hits instead.
 #'
-#' @section Why this exists (and why the old approach was abandoned):
-#' The superseded approach's "among"/foreign comparison population for ANY
-#' accession was exactly and only whatever else got fetched under the
-#' caller's own `taxa` argument -- no broader NCBI comparison existed
+#' @section Why this exists:
+#' The archived approach's "among"/foreign comparison population for ANY
+#' accession is exactly and only whatever else got fetched under the
+#' caller's own `taxa` argument -- no broader NCBI comparison exists
 #' anywhere in that pipeline. This produces both false positives (real,
 #' correctly-labeled accessions read "incongruent" purely because nothing
 #' else from their own family happened to be in the caller's list) and false
 #' negatives (a mislabeled accession's true contaminating identity can only
 #' ever be caught if its genus happens to be on the caller's list too).
 #' BLASTing each accession against an unrestricted database removes the
-#' `taxa`-list dependency for both directions at once. See
-#' `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md` for the
-#' full real-data evidence (a real 6-genus GreatLakes 12S test flagged 15
+#' `taxa`-list dependency for both directions at once. The
+#' real-data evidence is direct (a real 6-genus GreatLakes 12S test flagged 15
 #' genuine, Smithsonian-vouchered `Menidia` accessions "incongruent" purely
 #' because `Menidia`'s family had no other representative on the list).
 #'
-#' @section Scoping a large marker's screen (2026-09-05):
+#' @section Scoping a large marker's screen:
 #' Per-accession remote BLAST does not scale to a large reference set under
 #' this ecosystem's own NCBI throttle -- confirmed directly: a 995-accession
 #' PtConception 12S run has already tripped it, and the 18S reference set
@@ -1411,21 +1399,23 @@ utils::globalVariables(c(
 #' leaving every other accession in a large reference set unscreened by
 #' default, not as an oversight but as the documented, correct scope.
 #'
-#' @section Why "incongruent" gained a TTL (2026-09-02):
-#' It was cached indefinitely on the reasoning that an accession's own
-#' sequence and label do not change once deposited. That is true and still
-#' irrelevant: the verdict is not a property of the accession, it is a
-#' property of what BLAST returned about the accession's NEIGHBOURHOOD, and
+#' @section Why "incongruent" carries a TTL:
+#' Caching this verdict indefinitely would rest on the reasoning that an
+#' accession's own sequence and label do not change once deposited. That is
+#' true and still irrelevant: the verdict is not a property of the
+#' accession, it is a
+#' property of what BLAST returns about the accession's NEIGHBOURHOOD, and
 #' that changes. Measured, not hypothesised: `OP056918`
-#' (`Cryptacanthodes maculatus`) read `"incongruent"` with no corroborating
-#' evidence anywhere on 2026-09-01, and `"congruent"` with four conspecific
-#' hits at 100% identity on 2026-09-02, under an IDENTICAL `params_key`.
-#' Under the old policy that first, wrong verdict would have been served from
+#' (`Cryptacanthodes maculatus`) reads `"incongruent"` with no corroborating
+#' evidence anywhere on one real fetch, and `"congruent"` with four
+#' conspecific hits at 100% identity on a later real fetch the next day,
+#' under an IDENTICAL `params_key`.
+#' Without a TTL that first, wrong verdict would be served from
 #' cache forever -- and it is the one verdict
 #' [remove_incongruent_references()] acts on destructively.
 #'
 #' What the flip was, established by
-#' `diagnostics/blast_verdict_repeatability_probe.R` the same day: NOT
+#' the `blast_verdict_repeatability_probe.R` diagnostic (TaxaID_dev repository): NOT
 #' instability. Three back-to-back replicates of all 12 PtConception
 #' `"incongruent"` accessions, each into a fresh cache, returned identical
 #' verdicts, identical diagnostics, and identical hit sets (Jaccard 1.000,
@@ -1437,7 +1427,7 @@ utils::globalVariables(c(
 #' since January need not be in the `nt` volume BLAST searches until a rebuild
 #' includes it.
 #'
-#' That reframes this TTL. The 09-02 verdict was not a correction of a
+#' That reframes this TTL. The later verdict was not a correction of a
 #' malfunction -- both verdicts were correct given the database each was
 #' computed against. What goes stale is the SNAPSHOT, which is exactly what a
 #' TTL is for -- and it is also what sets the right cadence for one. `nt`
@@ -1446,10 +1436,9 @@ utils::globalVariables(c(
 #' rebuild interval would keep serving a stale `"incongruent"` long after the
 #' evidence that overturns it became searchable, which is the exact failure
 #' this TTL exists to prevent. The recheck costs ~1% of an accession
-#' population. See
-#' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`.
+#' population.
 #'
-#' @section Coarse-rank diagnostic (2026-08-07):
+#' @section Coarse-rank diagnostic:
 #' `finest_common_rank` walks the FULL `kingdom`->`species` ladder
 #' (`TaxaTools::standard_ranks`), not just `min_congruent_rank` and finer.
 #' `hierarchy_flag`'s classification threshold is unaffected -- it still
@@ -1487,20 +1476,20 @@ utils::globalVariables(c(
 #'     evidence WAS FOUND, and nothing a later BLAST returns can withdraw a
 #'     match already observed; new deposits can only add more.}
 #'   \item{`"incongruent"` -- expires after `incongruent_ttl_days`
-#'     (default 30; **new 2026-09-02**, previously cached indefinitely). It
+#'     (default 30). It
 #'     asserts corroborating evidence was NOT found, which is a statement
 #'     about ABSENCE, and absence is exactly what later evidence overturns.
-#'     See `@section Why "incongruent" gained a TTL` below.}
-#'   \item{`"insufficient_independent_evidence"` (original),
-#'     `"not_evaluated_oversized"` (2026-09-01) and
-#'     `"not_evaluated_wrong_marker"` (2026-09-04) -- expire after
+#'     See `@section Why "incongruent" carries a TTL` below.}
+#'   \item{`"insufficient_independent_evidence"`,
+#'     `"not_evaluated_oversized"` and
+#'     `"not_evaluated_wrong_marker"` -- expire after
 #'     `insufficient_evidence_ttl_days` (default 180). All three explicitly
 #'     mean "we do not know yet": new NCBI deposits (for the first), a later
 #'     annotation/primer fix or a raised `max_query_len` (for the second), or
 #'     a corrected upstream annotation -- or simply a different
 #'     `barcode_term`, since the wrong-marker claim is relative to the marker
 #'     THIS call asked for (for the third).}
-#'   \item{`"locally_corroborated"` (2026-09-03) -- cached indefinitely,
+#'   \item{`"locally_corroborated"` -- cached indefinitely,
 #'     like `"congruent"`: it asserts corroborating evidence WAS found, in
 #'     the caller's own reference set. The one way it is re-evaluated is a
 #'     later call with `skip_locally_corroborated = FALSE`, which sends it
@@ -1508,9 +1497,10 @@ utils::globalVariables(c(
 #' }
 #' `retry_insufficient = FALSE` opts a single call out of retrying ANY
 #' expired row past its TTL, serving the stale row instead (see that param's
-#' own documentation; the name predates `"incongruent"` gaining a TTL).
-#' Setting `incongruent_ttl_days = Inf` restores the pre-2026-09-02 policy
-#' exactly. TTLs are deliberately NOT part of `params_key` -- changing one
+#' own documentation).
+#' Setting `incongruent_ttl_days = Inf` caches `"incongruent"` indefinitely,
+#' exactly like `"congruent"`. TTLs are deliberately NOT part of `params_key`
+#' -- changing one
 #' must not invalidate a cache. A cached row is also treated as stale (recomputed) if any
 #' parameter that affects the verdict itself (`top_n`, `min_congruent_rank`,
 #' `submission_window`, `hierarchy_incongruent_threshold`,
@@ -1520,9 +1510,8 @@ utils::globalVariables(c(
 #' `max_batch_bp`, `prioritize_uncached`, `retry_insufficient`,
 #' `local_corroboration` and `skip_locally_corroborated` are deliberately
 #' NOT in this list (see `@section Long-sequence robustness` below for
-#' why). The 2026-09-03 `query_span` change bumped the internal cache
-#' version to `"v5_amplicon_query"`, which invalidates every row cached
-#' before it; run [migrate_reference_cache()] on an existing cache directory
+#' why). If an existing cache directory was built under an earlier internal
+#' cache version, run [migrate_reference_cache()] on it
 #' first so its `"congruent"` rows are carried forward instead of re-BLASTed.
 #'
 #' @param accessions Character vector of NCBI accessions to evaluate.
@@ -1533,15 +1522,15 @@ utils::globalVariables(c(
 #' @param insufficient_evidence_ttl_days Numeric (default `180`). See
 #'   Caching above.
 #' @param incongruent_ttl_days Numeric (default `30`). Days after which an
-#'   `"incongruent"` cached verdict is re-evaluated. `Inf` restores the
-#'   pre-2026-09-02 behaviour (cached indefinitely). Much shorter than
+#'   `"incongruent"` cached verdict is re-evaluated. `Inf` caches it
+#'   indefinitely. Much shorter than
 #'   `insufficient_evidence_ttl_days` on purpose, for two compounding reasons:
 #'   `"incongruent"` is the only verdict that causes a reference to be
 #'   REMOVED, and the thing that goes stale underneath it -- NCBI's `nt`
 #'   snapshot -- is rebuilt on the order of days to weeks, not months. It is
 #'   also ~1% of a real accession population (12 of 995 on the PtConception
 #'   screen), so this is simultaneously the most valuable and the cheapest
-#'   recheck available. See `@section Why "incongruent" gained a TTL`.
+#'   recheck available. See `@section Why "incongruent" carries a TTL`.
 #' @param top_n Integer (default `5L`). Max independent BLAST hits ranked
 #'   per accession for the congruence verdict.
 #' @param min_congruent_rank Character (default `"family"`). Passed to the
@@ -1569,14 +1558,14 @@ utils::globalVariables(c(
 #'   halved-batch-size retry) is treated the same as one NCBI has no record
 #'   for at all -- excluded from this call's cache write and reported via
 #'   `$unresolved`-style warning, NOT scored as
-#'   `"insufficient_independent_evidence"` -- a real, previously-possible
-#'   silent-miscache risk found 2026-08-09 on a real, large (1,183-
+#'   `"insufficient_independent_evidence"` -- a real
+#'   silent-miscache risk confirmed on a real, large (1,183-
 #'   accession), multi-hour remote-BLAST run: sustained NCBI queue
-#'   congestion caused most batches after the first to time out at the old
-#'   hardcoded 600s ceiling, and every one of those accessions would
-#'   otherwise have been cached as a false `"insufficient_independent_
+#'   congestion can cause most batches after the first to time out, and
+#'   every one of those accessions would
+#'   otherwise be cached as a false `"insufficient_independent_
 #'   evidence"` verdict for up to `insufficient_evidence_ttl_days` (180 days
-#'   by default) -- masking the real infrastructure failure as if it were a
+#'   by default) -- masking a real infrastructure failure as if it were a
 #'   genuine evidentiary finding.
 #' @param barcode_term Character or `NULL` (default). When supplied, any
 #'   query sequence exceeding the marker's expected length (via
@@ -1587,37 +1576,36 @@ utils::globalVariables(c(
 #'   before being BLASTed, instead of submitting the full sequence.
 #'   BLASTing a full-length over-length reference (e.g. a complete
 #'   mitogenome, ~16.5kb) against a broad database is dramatically more
-#'   CPU-expensive than BLASTing its short barcode region, and was found
-#'   2026-08-09 to be the real cause of a live NCBI server-side CPU-budget
+#'   CPU-expensive than BLASTing its short barcode region, and is
+#'   confirmed to be the real cause of a live NCBI server-side CPU-budget
 #'   rejection on a real, large run whose queries were often full
 #'   mitogenomes (see `poll_max_wait`'s own documentation for the real
 #'   captured case) -- the accession's own species-identity signal lives in
 #'   the short barcode region regardless, so trimming answers the identical
 #'   question at a fraction of the cost. A sequence whose primer sites
 #'   can't be found is next tried against the record's own annotated
-#'   feature table (2026-09-01 -- see `@section Long-sequence robustness`
+#'   feature table (see `@section Long-sequence robustness`
 #'   below), then, if still over-length, subject to the `max_query_len`
 #'   hard cap -- never silently dropped or errored either way; at worst it
 #'   is deferred as `"not_evaluated_oversized"`, an explicit, labeled,
 #'   TTL-retryable non-result. `NULL` (default) submits every sequence at
-#'   full length, unchanged from prior behavior.
+#'   full length.
 #' @param query_span Character, `"amplicon"` (default) or
 #'   `"primer_inclusive"`. Which span of a `barcode_term`-trimmed query is
 #'   submitted to BLAST: the primer-STRIPPED amplicon (the region between the
 #'   two primer sites, ~169 bp for MiFish-U) or the primer-INCLUSIVE span
-#'   (~217 bp), the only behaviour before 2026-09-03. See `@section Why the
+#'   (~217 bp). See `@section Why the
 #'   query is the primer-stripped amplicon`. Verdict-affecting, so it is part
 #'   of `params_key`. Ignored when `barcode_term` is `NULL` (nothing is
 #'   trimmed), and moot for a marker with no registered primer pair in
 #'   `TaxaTools::barcode_primer_defaults` (e.g. `"18S"`, `"ITS"`): such
 #'   queries are submitted AS DEPOSITED with a one-line message, never
-#'   trimmed and never an error (2026-09-12; previously the whole screen
-#'   died on its first chunk for 18S). Over-length records still go to
+#'   trimmed and never an error. Over-length records still go to
 #'   the feature-table fallback.
 #' @param chunk_size Integer (default `200L`). Accessions needing real
 #'   evaluation are processed this many at a time, with the persistent
 #'   cache written after EACH chunk -- see `@section Chunked evaluation and
-#'   NCBI rate-limiting resilience` below. `Inf` restores the pre-2026-08-14
+#'   NCBI rate-limiting resilience` below. `Inf` gives
 #'   single-shot behavior (one chunk covering every accession, cache written
 #'   only once at the very end).
 #' @param max_consecutive_batch_failures Numeric (default `3L`). Forwarded
@@ -1635,7 +1623,7 @@ utils::globalVariables(c(
 #'   amplicon-length sequence, but small enough to exclude a full
 #'   mitogenome or larger record -- or a flat `5000` when it is not (no
 #'   marker-specific bound to derive one from). `Inf` disables the cap
-#'   entirely, restoring the pre-2026-09-01 behavior (an unrescuable
+#'   entirely (an unrescuable
 #'   over-length query is always BLASTed at full length). See `@section
 #'   Long-sequence robustness` below for the full mechanism and the new
 #'   `"not_evaluated_oversized"` verdict this produces.
@@ -1731,18 +1719,18 @@ utils::globalVariables(c(
 #'       `congruent_evidence_exists_anywhere` is `FALSE`.}
 #'     \item{`hierarchy_flag`}{`"congruent"`, `"incongruent"`,
 #'       `"insufficient_independent_evidence"`,
-#'       `"not_evaluated_oversized"` (added 2026-09-01 -- see `@section
+#'       `"not_evaluated_oversized"` (see `@section
 #'       Long-sequence robustness` below; the query was never submitted to
 #'       BLAST at all, so this is NOT evidence of anything, and downstream
 #'       consumers ([flag_incongruent_references()],
 #'       [remove_incongruent_references()]) never treat it as a flag),
-#'       `"not_evaluated_wrong_marker"` (added 2026-09-04 -- also never
+#'       `"not_evaluated_wrong_marker"` (also never
 #'       submitted, and also never a flag, but it names a CAUSE rather than a
 #'       symptom: the record's own GBSeq feature table carries annotated
 #'       features and none of them is the marker `barcode_term` implies, so
 #'       the accession does not belong in this screen's candidate set and no
 #'       `max_query_len` can rescue it), or
-#'       `"locally_corroborated"` (added 2026-09-03 -- skipped because an
+#'       `"locally_corroborated"` (skipped because an
 #'       independent conspecific in the caller's own reference set already
 #'       corroborates it; see `@section Local corroboration`. Treated like
 #'       `"congruent"` everywhere downstream: never a flag, never removable,
@@ -1751,8 +1739,7 @@ utils::globalVariables(c(
 #'       `warning()` is issued listing these; not cached, so a subsequent
 #'       call retries them).}
 #'     \item{`local_corroborator_accession`}{The specific accession vouching
-#'       for a `"locally_corroborated"` row (added 2026-09-05, critical-fix-
-#'       review finding B5) -- `NA` for every other `hierarchy_flag` value.
+#'       for a `"locally_corroborated"` row -- `NA` for every other `hierarchy_flag` value.
 #'       `"locally_corroborated"` is cached indefinitely and exempt from
 #'       [refine_reference_verdicts()]'s trust-weighted refinement (the
 #'       MATCH itself, once observed, is permanent) -- but the corroborator's
@@ -1795,7 +1782,7 @@ utils::globalVariables(c(
 #'   what happened this call -- see `@section Chunked evaluation and NCBI
 #'   rate-limiting resilience` below.
 #'
-#' @section Chunked evaluation and NCBI rate-limiting resilience (2026-08-14):
+#' @section Chunked evaluation and NCBI rate-limiting resilience:
 #' A large accession list is evaluated `chunk_size` accessions at a time,
 #' with the persistent cache written after EACH chunk rather than once at
 #' the very end. Combined with `blast_sequences()`'s own circuit breaker
@@ -1813,14 +1800,13 @@ utils::globalVariables(c(
 #' pause before calling `evaluate_reference_accessions()` again with the
 #' *same* accessions and `cache_dir` -- already-cached accessions are read
 #' straight from the cache (no re-BLAST), so a resumed call only pays for
-#' what's still genuinely outstanding. Before this existed, the documented
-#' workaround for a large real run (e.g.
-#' `AuditNCBI_Goal2_MatchCandidateScreen.R`, a real external GreatLakes
-#' workflow) was to manually pre-split the accession list into chunks of
-#' ~200 and call this function once per chunk -- `chunk_size` automates
-#' exactly that.
+#' what's still genuinely outstanding. `chunk_size` automates what would
+#' otherwise require manually pre-splitting the accession list into chunks
+#' of ~200 and calling this function once per chunk, as a large real run
+#' (e.g. `AuditNCBI_Goal2_MatchCandidateScreen.R`, a real external
+#' GreatLakes workflow) needs.
 #'
-#' @section Hybrid-labeled accessions (2026-08-10):
+#' @section Hybrid-labeled accessions:
 #' NCBI's own taxonomy entry for a hybrid-cross-labeled organism (e.g.
 #' `"Ctenopharyngodon idella x Megalobrama amblycephala"`) is genuinely
 #' incomplete -- confirmed live against several real GreatLakes candidates:
@@ -1858,7 +1844,7 @@ utils::globalVariables(c(
 #' this maternal-parent substitution, which would have no biological
 #' justification for a non-hybrid. A leading lowercase breeding/ploidy-
 #' manipulation modifier (e.g. `"androgenetic"`, `"autodiploid"`,
-#' `"autotetraploid"` -- all found on real GreatLakes records, 2026-08-11)
+#' `"autotetraploid"` -- all found on real GreatLakes records)
 #' is stripped before `clean_taxon_names()` runs, since the maternal-
 #' inheritance argument still holds (these manipulate the nuclear genome,
 #' not which egg's cytoplasm/mitochondria the offspring develops in). A
@@ -1867,14 +1853,14 @@ utils::globalVariables(c(
 #' own unresolved lineage, `taxonomy_resolution_source =
 #' "hybrid_unresolved"` -- an honest admission, not a guess.
 #'
-#' @section Species-resolved comparison partners (2026-08-13):
+#' @section Species-resolved comparison partners:
 #' A comparison partner (an independent BLAST hit) whose OWN listed species
 #' isn't resolved to species level (e.g. `"Serranidae sp. JL-2015"` -- a
 #' family name used in place of a genus, with an informal specimen code) is
 #' excluded from `n_independent_top_matches`/
 #' `frac_independent_below_min_congruent_rank` entirely, via
 #' `require_species_resolved_partner = TRUE` (default, not currently a
-#' caller-facing parameter). Found live, 2026-08-11/13, on the real
+#' caller-facing parameter). Found live on the real
 #' GreatLakes *Stereolepis doederleini* case: both real accessions of this
 #' genuinely isolated species (Polyprionidae has only 2 genera) read
 #' `"incongruent"` purely because the one real independent hit available in
@@ -1892,7 +1878,7 @@ utils::globalVariables(c(
 #' `listed_taxon_is_species` already applies to the QUERY side) applied to
 #' the HIT side's own resolved species name.
 #'
-#' @section Identity diagnostics (2026-08-07):
+#' @section Identity diagnostics:
 #' `hierarchy_flag`/`finest_common_rank` alone cannot distinguish a genuine
 #' mislabel from "the listed rank has no well-covered independent relative
 #' in GenBank at this marker" -- both produce identical rank-agreement
@@ -1903,16 +1889,15 @@ utils::globalVariables(c(
 #' family); a disagreeing hit at ~85-90% is unremarkable for a conserved
 #' marker (e.g. 18S) with poor resolving power at that rank. This does NOT
 #' resolve the ambiguity on its own -- it is a design-consult finding
-#' (2026-08-07, grounded in a real case: `Abylopsis eschscholtzii`,
+#' (grounded in a real case: `Abylopsis eschscholtzii`,
 #' `KY594854`/`KX384617`, both flagged `"incongruent"` with disagreeing
 #' hits at family that are consistently a SISTER family within the same
 #' order) that these columns give a caller genuinely new information to
 #' judge that question with, not a verdict. No classification threshold in
 #' this function reads these columns; they are informational only.
 #'
-#' @section Long-sequence robustness (2026-09-01):
-#' Implements `ecosystem_docs/REENTRY_PROMPT_
-#' eval_ref_accessions_long_sequence_robustness.md`. `barcode_term`
+#' @section Long-sequence robustness:
+#' `barcode_term`
 #' trimming already shortens an over-length query when the primer sites can
 #' be found; four further mechanisms address what happens when they
 #' CAN'T -- a full mitogenome (or larger) record submitted to remote BLAST
@@ -1935,7 +1920,7 @@ utils::globalVariables(c(
 #'     a silent drop. TTL-retryable like `"insufficient_independent_
 #'     evidence"` (see `@section Caching` above), so a later annotation fix,
 #'     primer update, or a raised `max_query_len` can rescue it.}
-#'   \item{Wrong marker, separated from wrong size (2026-09-04): when the
+#'   \item{Wrong marker, separated from wrong size: when the
 #'     feature-table fallback declined because the record HAS annotated
 #'     features and none is this marker, the deferred row reads
 #'     `"not_evaluated_wrong_marker"` instead. The distinction is
@@ -1967,10 +1952,10 @@ utils::globalVariables(c(
 #' work is submitted this call), not what verdict a given accession's
 #' evidence would produce, so changing them between calls never invalidates
 #' an already-`"congruent"`/`"incongruent"`-cached row. `.EVAL_REF_ACC_
-#' VERSION` was unchanged by that work (it was bumped on 2026-09-03 for
-#' `query_span`, see below).
+#' VERSION` is unaffected by these -- only `query_span` (see below) changes
+#' it.
 #'
-#' @section Why the query is the primer-stripped amplicon (2026-09-03):
+#' @section Why the query is the primer-stripped amplicon:
 #' The screen runs `blastn` (`megablast = FALSE`, +2 match / -3 mismatch).
 #' With the primer-INCLUSIVE 217 bp MiFish-U query, a 169 bp perfect
 #' conspecific amplicon-only deposit scores 338 raw, while every full-length
@@ -1982,21 +1967,22 @@ utils::globalVariables(c(
 #' screen: `KM057996` (*Zaniolepis frenata*) was actioned `"remove"` ("no
 #' conspecific evidence anywhere in nt") while the user's own reference set
 #' held `OQ846041`, a 169 bp *Z. frenata* deposit from 2023 at 100% identity
-#' over 97% overlap. A live probe (`diagnostics/blast_coverage_blindspot_
-#' probe.R`) confirmed the mechanism: the 217 bp query returns no
+#' over 97% overlap. A live probe (the `blast_coverage_blindspot_probe.R` diagnostic, TaxaID_dev
+#' repository) confirmed the mechanism: the 217 bp query returns no
 #' conspecific but itself among 100 hits; the same query with the primers
 #' stripped (169 bp) returns `OQ846041` at rank 2, score 100, coverage 100.
 #' Amplicon-only deposits are 33% of PtConception's references and 25% of
 #' GreatLakes', so the whole class was invisible as corroborators. With the
 #' stripped query both barriers vanish and `min_query_coverage` needs no
 #' change. Because this changes what is submitted, it is verdict-affecting:
-#' `query_span` is in `params_key` and the cache version was bumped to
-#' `"v5_amplicon_query"`; [migrate_reference_cache()] carries an existing
-#' cache's `"congruent"` rows forward (stripping primers only ADDS hits, it
+#' `query_span` is in `params_key`; an existing cache built under an earlier
+#' internal cache version should be run through
+#' [migrate_reference_cache()] first, which carries its
+#' `"congruent"` rows forward (stripping primers only ADDS hits, it
 #' cannot withdraw a match already observed) and leaves everything else to
 #' re-BLAST under the new query.
 #'
-#' @section Local corroboration (2026-09-03):
+#' @section Local corroboration:
 #' If an ASV matches several references of the same species that agree with
 #' each other, why BLAST any of them? [corroborate_references_locally()]
 #' answers that from the workflow's own `seq_matrix`, for free: a reference
@@ -2177,18 +2163,18 @@ evaluate_reference_accessions <- function(accessions,
   #
   #   "incongruent" asserts that corroborating evidence was NOT found -- a
   #     statement about ABSENCE, and absence is exactly what later evidence
-  #     overturns. Expires after incongruent_ttl_days (2026-09-02).
+  #     overturns. Expires after incongruent_ttl_days.
   #
-  #   "insufficient_independent_evidence" (original) and
-  #     "not_evaluated_oversized" (2026-09-01, never actually submitted to
+  #   "insufficient_independent_evidence" and
+  #     "not_evaluated_oversized" (never actually submitted to
   #     BLAST, so a later annotation/primer fix or a raised max_query_len
   #     could change the answer) are both explicitly "we do not know yet".
   #
-  # The incongruent TTL was added after a measured case, not on principle:
-  # OP056918 (Cryptacanthodes maculatus) read "incongruent" with no
-  # corroboration anywhere on 2026-09-01 and "congruent" with four
-  # conspecific hits at 100% on 2026-09-02, under an IDENTICAL params_key.
-  # Under the previous policy that first, wrong verdict would have been
+  # The incongruent TTL reflects a measured case, not just principle:
+  # OP056918 (Cryptacanthodes maculatus) can read "incongruent" with no
+  # corroboration anywhere on one fetch and "congruent" with four
+  # conspecific hits at 100% on a later fetch, under an IDENTICAL params_key.
+  # Without a TTL that first, wrong verdict would be
   # cached forever -- and "incongruent" is the only verdict that causes a
   # reference to be REMOVED (see remove_incongruent_references()), so a
   # permanently stale one is the most costly kind. The recheck is cheap:
@@ -2201,8 +2187,8 @@ evaluate_reference_accessions <- function(accessions,
   # purpose (see the note just below).
   #
   # WHAT GOES STALE IS NCBI'S `nt` SNAPSHOT, not the accession and not this
-  # package's math. Established 2026-09-02 by
-  # diagnostics/blast_verdict_repeatability_probe.R: three back-to-back
+  # package's math. Established by
+  # blast_verdict_repeatability_probe.R in the TaxaID_dev repository: three back-to-back
   # replicates of all 12 PtConception "incongruent" accessions returned
   # identical verdicts AND identical hit sets (Jaccard 1.000), so BLAST is
   # exactly reproducible at a fixed params_key; and the corroborating
@@ -2213,11 +2199,11 @@ evaluate_reference_accessions <- function(accessions,
   # was computed against -- which is precisely the situation a TTL exists
   # for.
   #
-  # "locally_corroborated" (2026-09-03) is Inf like "congruent" and for the
+  # "locally_corroborated" is Inf like "congruent" and for the
   # same reason: it asserts corroborating evidence WAS found (in the
   # caller's own reference set rather than in nt). Enumerated explicitly so
   # the next new flag value has to be placed here deliberately.
-  # "not_evaluated_wrong_marker" (2026-09-04) sits with the "we don't know
+  # "not_evaluated_wrong_marker" sits with the "we don't know
   # yet" flags at 180 days rather than with the permanent ones, and that is a
   # deliberate reading of what it claims: the accession's own annotation says
   # it carries a different marker, which is stable, but the CLAIM is relative
@@ -2277,7 +2263,7 @@ evaluate_reference_accessions <- function(accessions,
     needs_eval <- c(never_evaluated, intersect(needs_eval, retried_expired))
   }
 
-  # ---- Local corroboration skip (2026-09-03) --------------------------------
+  # ---- Local corroboration skip ---------------------------------------------
   # An accession that still needs a verdict but is independently corroborated
   # by a conspecific in the caller's OWN reference set (corroborate_
   # references_locally(): a different submission batch, identity >=
@@ -2322,7 +2308,7 @@ evaluate_reference_accessions <- function(accessions,
         query_trim_path = NA_character_, # never fetched, so never trimmed
         n_excluded_same_batch = NA_integer_,
         n_excluded_not_species_resolved = NA_integer_,
-        # Provenance (2026-09-05 critical-fix-review finding B5): WHICH
+        # Provenance: WHICH
         # accession is vouching for this one. A locally_corroborated verdict
         # is cached with TTL Inf and exempt from refine_reference_verdicts()'s
         # trust-weighted refinement -- reasonable for the MATCH itself (a
@@ -2375,19 +2361,19 @@ evaluate_reference_accessions <- function(accessions,
     "local_corroborator_accession"
   )
 
-  # No early return for a purely cache-served call (removed 2026-09-03): the
+  # There is no early return for a purely cache-served call: the
   # general path below handles an empty needs_eval (the chunk loop simply
   # does not run), and it is the only path that appends the post-hoc
   # listed_taxon_is_species / label_confidence / reference_action columns
-  # and the run_summary attribute -- the old early return silently omitted
+  # and the run_summary attribute -- an early return would silently omit
   # all of them from a fully-cached result, and could not carry the
   # locally-corroborated rows either.
 
   # ---- Chunked evaluation with incremental cache writes --------------------
   # needs_eval is processed chunk_size accessions at a time (default 200L,
-  # matching this ecosystem's own previously-manual chunking convention --
-  # see AuditNCBI_Goal2_MatchCandidateScreen.R's header comment, written
-  # before this was automated). The persistent cache is written after EACH
+  # matching this ecosystem's own manual chunking convention --
+  # see AuditNCBI_Goal2_MatchCandidateScreen.R's header comment -- that this
+  # automates). The persistent cache is written after EACH
   # chunk, not once at the very end -- an interruption (crash, Ctrl+C, lost
   # connection) after that point only loses whatever chunk was still in
   # flight, not every accession successfully evaluated earlier in the same
@@ -2518,8 +2504,8 @@ evaluate_reference_accessions <- function(accessions,
   # mislabeling (hierarchy_flag) and hybrid-labeling (taxonomy_resolution_
   # source) -- some real accessions are labeled at coarser-than-species
   # resolution to begin with (e.g. "Serranidae sp. JL-2015", a family name
-  # used in place of a genus plus an informal specimen code -- found live,
-  # 2026-08-11, GreatLakes population). Such a reference can't discriminate
+  # used in place of a genus plus an informal specimen code -- found live
+  # in the GreatLakes population). Such a reference can't discriminate
   # at species level regardless of whether it's internally self-consistent,
   # so it's worth surfacing even when hierarchy_flag itself reads
   # "congruent". Reuses TaxaTools::is_plausible_binomial() directly (no new
@@ -2548,7 +2534,7 @@ evaluate_reference_accessions <- function(accessions,
   # and cached values are untouched -- these are additive columns beside it,
   # not a redefinition of it. See score_reference_labels() for the formula,
   # its one free parameter, and why "remove" carries two hard vetoes.
-  # 2026-09-03: forward the caller's local-corroboration table so the veto
+  # Forward the caller's local-corroboration table so the veto
   # (remove -> inspect on an independently corroborated accession) and the
   # corroboration_source provenance are applied here, not only when a caller
   # remembers to call score_reference_labels() a second time.
@@ -2608,10 +2594,9 @@ evaluate_reference_accessions <- function(accessions,
 #' coverage diagnostics travel with the match object for review, without
 #' ever discarding a candidate taxon.
 #'
-#' @section Why flag-by-default, not drop-by-default (2026-08-07):
-#' [remove_incongruent_references()] (below) was this session's first cut,
-#' and was the ONLY consumer until a real case
-#' (`Abylopsis eschscholtzii`, `KY594854`/`KX384617`) showed why an
+#' @section Why flag-by-default, not drop-by-default:
+#' A real case
+#' (`Abylopsis eschscholtzii`, `KY594854`/`KX384617`) shows why an
 #' unreviewed hard drop is the wrong default: `hierarchy_flag =
 #' "incongruent"` cannot currently distinguish a genuine mislabel from
 #' "correct label, but this marker has poor resolving power at this rank
@@ -2619,15 +2604,18 @@ evaluate_reference_accessions <- function(accessions,
 #' [evaluate_reference_accessions()]'s own `@section Identity diagnostics`.
 #' Dropping the accession destroys the candidate taxon entirely and
 #' irreversibly on the strength of a verdict that can be wrong in exactly
-#' this ambiguous way. This ecosystem has made and reverted this same
-#' mistake twice before with unrelated mechanisms, for the identical reason
-#' -- `TaxaLikely::apply_coverage_constraints(constraint_behavior)`'s
-#' default changed `"zero"` -> `"relabel"` (a genus-completeness NCBI-query
-#' result treated as certain ground truth, permanently discarding a correct
-#' hypothesis with no way for downstream evidence to recover it), and
-#' `TaxaFetch::filter_gbif_quality()`'s `exclude_institution` ->
-#' `flag_institution` (real, correctly-labeled observations near a
-#' biodiversity institution were being auto-removed alongside real errors,
+#' this ambiguous way. The same pattern recurs elsewhere in this ecosystem
+#' with unrelated mechanisms, for the identical reason
+#' -- `TaxaLikely::apply_coverage_constraints(constraint_behavior)`
+#' defaults to `"relabel"` rather than `"zero"` (a genus-completeness
+#' NCBI-query result treated as certain ground truth would permanently
+#' discard a correct hypothesis with no way for downstream evidence to
+#' recover it), and
+#' `TaxaFetch::filter_gbif_quality()` defaults to
+#' `flag_institution` rather than `exclude_institution` (real,
+#' correctly-labeled observations near a
+#' biodiversity institution would otherwise be auto-removed alongside real
+#' errors,
 #' since proximity to an institution -- like thin reference coverage for a
 #' correctly-labeled clade -- is not itself proof of error). Use this
 #' function by default; reach for [remove_incongruent_references()]
@@ -2645,7 +2633,8 @@ evaluate_reference_accessions <- function(accessions,
 #'   `label_identity_margin`, `reference_action` and `listed_taxon_is_species`
 #'   whenever `evaluation` carries them (it always does when it came from
 #'   [evaluate_reference_accessions()] or [score_reference_labels()]; an
-#'   `evaluation` read straight off a pre-2026-09-02 cache file will not).
+#'   `evaluation` read straight off a cache file created before these
+#'   columns existed will not).
 #'   A row whose accession was not found in `evaluation` gets `NA` in all of
 #'   these (not evaluated yet, not evidence of anything). Row count and order
 #'   are unchanged.
@@ -2670,8 +2659,9 @@ flag_incongruent_references <- function(match_df, evaluation) {
   )
   missing_cols <- setdiff(c("accession", join_cols), names(evaluation))
   # Carried when present, not required: an `evaluation` read straight off a
-  # pre-2026-09-02 cache file has the diagnostics but not the derived
-  # verdict columns, and joining what exists beats erroring on what doesn't.
+  # cache file created before the derived
+  # verdict columns existed has the diagnostics but not those columns, and
+  # joining what exists beats erroring on what doesn't.
   optional_cols <- intersect(
     c(
       "label_confidence", "label_identity_margin", "reference_action",
@@ -2733,15 +2723,15 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' sparsely-referenced region of the database, not a real problem) and is
 #' retained unless `remove_insufficient_evidence = TRUE`.
 #'
-#' @section Use [flag_incongruent_references()] first (2026-08-07):
-#' This function is no longer the recommended default pipeline step -- see
+#' @section Use [flag_incongruent_references()] first:
+#' This function is not the recommended default pipeline step -- see
 #' [flag_incongruent_references()]'s own `@section Why flag-by-default, not
-#' drop-by-default` for the real case that changed this. Reach for this
+#' drop-by-default` for the real case illustrating why. Reach for this
 #' function deliberately, after reviewing `hierarchy_flag` alongside the
 #' identity diagnostics (`best_agreeing_pident`/`best_disagreeing_pident`/
 #' `congruent_evidence_exists_anywhere`), not as an unreviewed default step.
 #'
-#' @section The evidence gate is now the default (2026-09-02):
+#' @section The evidence gate is the default:
 #' `gate = "action"` (the default) removes an accession only when
 #' [score_reference_labels()] resolved it to `reference_action == "remove"`
 #' -- flagged `"incongruent"` AND uncorroborated anywhere AND below the
@@ -2749,22 +2739,18 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' alone. `hierarchy_flag` is a majority vote over the top-N neighbours in
 #' which percent identity never appears, so in a thinly-covered clade it
 #' fires on correct references by construction. Measured on the real
-#' 995-accession PtConception screen: the old `gate = "flag"` behaviour would
-#' have removed 12 accessions behind 1,688 observations -- including cabezon
+#' 995-accession PtConception screen: `gate = "flag"`
+#' removes 12 accessions behind 1,688 observations -- including cabezon
 #' (`OK172573`, 1,120 observations, agreeing hit at 100%) -- to catch the 4
 #' (16 observations) that genuinely had no corroboration anywhere.
-#' `gate = "action"` removes exactly those 4. Pass `gate = "flag"` to get the
-#' pre-2026-09-02 behaviour back.
+#' `gate = "action"` removes exactly those 4.
 #'
 #' @section This is a blacklist decision, not the whole signal:
 #' Even under `gate = "action"` this function consumes only a yes/no removal
 #' decision. The continuous signal ([score_reference_labels()]'s
 #' `label_confidence`) travels separately, via
 #' [flag_incongruent_references()], and is meant for review. A likelihood-model
-#' covariate driven by it was prototyped on 2026-09-02 and removed the same
-#' day -- see
-#' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`
-#' for what was measured, before proposing it again. Do not let this
+#' covariate driven by it was evaluated and found not to help. Do not let this
 #' function's use become the only place the full `evaluation` object's signal
 #' is consulted.
 #'
@@ -2773,8 +2759,8 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' @param evaluation Data frame. Output of [evaluate_reference_accessions()].
 #' @param gate Character, `"action"` (default) or `"flag"`. `"action"` removes
 #'   accessions whose `reference_action` is `"remove"`; `"flag"` removes every
-#'   accession whose `hierarchy_flag` is `"incongruent"`, the pre-2026-09-02
-#'   behaviour. Under `"action"`, `reference_action` is computed on the fly
+#'   accession whose `hierarchy_flag` is `"incongruent"`.
+#'   Under `"action"`, `reference_action` is computed on the fly
 #'   via [score_reference_labels()] if `evaluation` does not already carry it.
 #' @param remove_insufficient_evidence Logical (default `FALSE`). If `TRUE`,
 #'   also removes accessions flagged `"insufficient_independent_evidence"`.
@@ -2833,7 +2819,8 @@ remove_incongruent_references <- function(match_df,
   }
 
   if (gate == "action" && !"reference_action" %in% names(evaluation)) {
-    # An `evaluation` from a pre-2026-09-02 cache read straight off disk has
+    # An `evaluation` from a cache created before the derived-verdict
+    # columns existed, read straight off disk, has
     # the diagnostics but no derived verdict. Deriving it here (rather than
     # silently falling back to gate = "flag", which would remove ~3x more
     # accessions than the caller asked for) keeps the default meaningful;
@@ -2847,7 +2834,7 @@ remove_incongruent_references <- function(match_df,
             "gate = \"action\" needs `reference_action`, or the diagnostic columns ",
             "score_reference_labels() derives it from, and evaluation has neither ",
             "(%s).\n  Re-run evaluate_reference_accessions(), or pass gate = \"flag\" ",
-            "for the pre-2026-09-02 hierarchy_flag-only behaviour."
+            "to gate on hierarchy_flag alone."
           ),
           conditionMessage(e)
         ), call. = FALSE)
