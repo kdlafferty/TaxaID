@@ -424,13 +424,16 @@ identical(
 
 # ==============================================================================
 # SECTION 5 -- Query-side calibration
-# identify_confident_observations() -> calibrate_query_noise()
+# calibrate_query_noise()
 # ==============================================================================
 
-## ---- identify_confident_observations() ---- OFFLINE -------------------------
+## ---- calibrate_query_noise() fixtures ---------------------------------------
 # 40 confident observations at 95% identity, one genus with exactly one
 # locally-plausible species (the non-circular calibration set) -- fixture
 # reused verbatim from tests/testthat/test-calibrate_query_noise.R.
+# identify_confident_observations() (internal) is what turns these into the
+# confident set inside calibrate_query_noise(); it is exercised via that
+# call below, not directly.
 make_calib_match_df <- function() {
   data.frame(
     observation_id = paste0("Q", 1:40), genus = "Genusone",
@@ -443,8 +446,6 @@ make_calib_priors <- function() {
     theta_mean = 0.5, stringsAsFactors = FALSE
   )
 }
-confident_obs <- identify_confident_observations(make_calib_match_df(), make_calib_priors())
-nrow(confident_obs)
 
 ## ---- calibrate_query_noise() ---- OFFLINE -----------------------------------
 make_calib_model_params <- function(score_transform = "logit") {

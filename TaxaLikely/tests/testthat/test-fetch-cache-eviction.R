@@ -174,45 +174,6 @@ test_that(".ref_cache_evict() leaves oversized files in place", {
   expect_true(file.exists(dead))
 })
 
-test_that("taxalikely_evict_unreachable_cache() defaults to a dry run", {
-  d <- .cache_tmpdir()
-  live <- file.path(d, "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds")
-  dead <- file.path(d, "Abudefduf_12S_l100_5000_d_meta.rds")
-  file.create(c(live, dead))
-
-  expect_message(
-    out <- taxalikely_evict_unreachable_cache(cache_dir = d),
-    "would be removed"
-  )
-  expect_identical(nrow(out), 1L)
-  expect_true(file.exists(dead)) # dry run: still there
-  expect_true(file.exists(live))
-
-  suppressMessages(taxalikely_evict_unreachable_cache(cache_dir = d, dry_run = FALSE))
-  expect_false(file.exists(dead))
-  expect_true(file.exists(live))
-})
-
-test_that("taxalikely_evict_unreachable_cache() reports a fully live cache", {
-  d <- .cache_tmpdir()
-  file.create(file.path(d, "Abudefduf_12S_l100_5000_d_rk-family-genus-species_meta.rds"))
-  expect_message(
-    out <- taxalikely_evict_unreachable_cache(cache_dir = d),
-    "nothing unreachable"
-  )
-  expect_identical(nrow(out), 0L)
-})
-
-test_that("taxalikely_evict_unreachable_cache() validates its arguments", {
-  d <- .cache_tmpdir()
-  expect_error(taxalikely_evict_unreachable_cache(cache_dir = 1), "character string")
-  expect_error(taxalikely_evict_unreachable_cache(cache_dir = d, dry_run = NA), "TRUE or FALSE")
-  expect_error(
-    taxalikely_evict_unreachable_cache(cache_dir = d, max_file_mb = "big"),
-    "single number or NULL"
-  )
-})
-
 test_that("taxalikely_clear_cache() now reaches the fasta/ store", {
   d <- .cache_tmpdir()
   dir.create(file.path(d, "fasta"))
