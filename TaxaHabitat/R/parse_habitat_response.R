@@ -1,6 +1,6 @@
 # ==============================================================================
 # parse_habitat_response.R
-# TaxaHabitat — Parse LLM habitat response
+# TaxaHabitat -- Parse LLM habitat response
 #
 # Exported functions:
 #   parse_hierarchical_habitat_response()   Provider-neutral habitat response parser
@@ -277,9 +277,9 @@ parse_hierarchical_habitat_response <- function(raw_text,
   numeric_candidates <- setdiff(names(parsed), protected_cols)
 
   # A column is a weight col if:
-  #   (a) it is named in expected_hab_cols (explicit scheme) — always include, OR
+  #   (a) it is named in expected_hab_cols (explicit scheme) -- always include, OR
   #   (b) at least half its non-NA values parse as numeric (heuristic for NULL scheme), OR
-  #   (c) all its values are NA — plausibly numeric; will be coerced to 0.
+  #   (c) all its values are NA -- plausibly numeric; will be coerced to 0.
   # Case (c) matters for single-row inputs where the LLM wrote "NA" for a weight.
   is_weight_col <- vapply(numeric_candidates, function(col) {
     if (!is.null(expected_hab_cols) &&

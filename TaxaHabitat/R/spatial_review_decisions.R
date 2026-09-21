@@ -174,14 +174,14 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
   # key includes taxon_name" section above (D2). Without taxon info every
   # row's taxon_name is NA, which still dedups to one row per point_id --
   # the only case there was ever decision-worthy information for.
-  new <- new[!duplicated(paste(new$point_id, new$taxon_name, sep = "␟")), , drop = FALSE]
+  new <- new[!duplicated(paste(new$point_id, new$taxon_name, sep = "\x1f")), , drop = FALSE]
   if (!is.null(before)) {
     if (!is.data.frame(before) || !all(c(point_id_col, habitat_col) %in% names(before))) {
       stop("save_spatial_review_decisions: `before` must be a data frame with the point_id and habitat columns.", call. = FALSE)
     }
     if (has_taxon && taxon_col %in% names(before)) {
-      bkey <- paste(as.character(before[[point_id_col]]), as.character(before[[taxon_col]]), sep = "␟")
-      nkey <- paste(new$point_id, new$taxon_name, sep = "␟")
+      bkey <- paste(as.character(before[[point_id_col]]), as.character(before[[taxon_col]]), sep = "\x1f")
+      nkey <- paste(new$point_id, new$taxon_name, sep = "\x1f")
       bh <- as.character(before[[habitat_col]])[match(nkey, bkey)]
     } else {
       bh <- as.character(before[[habitat_col]])[match(new$point_id, as.character(before[[point_id_col]]))]
@@ -225,8 +225,8 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
   # A reassignment recorded earlier survives a later review that left it in place
   # (the gadget was opened on the already-applied table, so "unchanged" there
   # means "still the reassigned value", not "back to automatic").
-  oi <- match(paste(new$point_id, new$taxon_name, sep = "␟"),
-              paste(old$point_id, old$taxon_name, sep = "␟"))
+  oi <- match(paste(new$point_id, new$taxon_name, sep = "\x1f"),
+              paste(old$point_id, old$taxon_name, sep = "\x1f"))
   keep_old <- !is.na(oi) & old$habitat_reassigned[ifelse(is.na(oi), 1L, oi)] %in% TRUE &
     !.is_habitat_unassigned(new$main_habitat) &
     new$main_habitat == old$main_habitat[ifelse(is.na(oi), 1L, oi)]
@@ -324,8 +324,8 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
     #    A named taxon is matched precisely regardless of how many other
     #    taxa share the point -- knowing WHICH taxon removes the ambiguity.
     if (any(known) && has_taxon_data) {
-      key_data <- paste(pid, taxon_vals, sep = "␟")
-      key_dec  <- paste(dec$point_id[known], dec_taxon[known], sep = "␟")
+      key_data <- paste(pid, taxon_vals, sep = "\x1f")
+      key_dec  <- paste(dec$point_id[known], dec_taxon[known], sep = "\x1f")
       m <- match(key_data, key_dec)
       ok <- !is.na(m)
       idx[ok] <- which(known)[m[ok]]
