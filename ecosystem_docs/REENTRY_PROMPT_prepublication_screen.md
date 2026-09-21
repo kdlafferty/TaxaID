@@ -795,6 +795,15 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   Online name-verifier tests ran for real and passed. Not done, by
   judgement: dated comments in `tests/` (outside A1's scope; tests ship but
   are not user-facing prose) -- decide whether a tests/ sweep is wanted.
+  **TaxaLikely DONE** (`882c2cc`): `check()` 0/0/0, 1,335 tests. **It found
+  a check() ERROR introduced by A7**: `identify_confident_observations()`
+  became internal but its `@examples` still called it unqualified -- the
+  example run failed with "could not find function"; fixed with `:::`.
+  Lesson for any future internalisation: re-run the examples, not just the
+  tests. Also: an `@examples` block added to `check_cross_genus_sampling_
+  noise()`; drifted `.lintr` lines re-verified; 9 `object_usage_linter`
+  false positives confirmed with `codetools::checkUsage()` (cli glue). 7a:
+  cache filenames sanitised (`[^A-Za-z0-9]` -> `_`); no `system()`/`eval()`.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
