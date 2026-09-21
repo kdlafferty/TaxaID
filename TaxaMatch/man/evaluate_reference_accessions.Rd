@@ -342,9 +342,8 @@ else from their own family happened to be in the caller's list) and false
 negatives (a mislabeled accession's true contaminating identity can only
 ever be caught if its genus happens to be on the caller's list too).
 BLASTing each accession against an unrestricted database removes the
-\code{taxa}-list dependency for both directions at once. See
-\code{ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md} for the
-full real-data evidence (a real 6-genus GreatLakes 12S test flagged 15
+\code{taxa}-list dependency for both directions at once. The
+real-data evidence is direct (a real 6-genus GreatLakes 12S test flagged 15
 genuine, Smithsonian-vouchered \code{Menidia} accessions "incongruent" purely
 because \code{Menidia}'s family had no other representative on the list).
 }
@@ -403,7 +402,7 @@ cache forever -- and it is the one verdict
 \code{\link[=remove_incongruent_references]{remove_incongruent_references()}} acts on destructively.
 
 What the flip was, established by
-\code{diagnostics/blast_verdict_repeatability_probe.R}: NOT
+the \code{blast_verdict_repeatability_probe.R} diagnostic (TaxaID_dev repository): NOT
 instability. Three back-to-back replicates of all 12 PtConception
 \code{"incongruent"} accessions, each into a fresh cache, returned identical
 verdicts, identical diagnostics, and identical hit sets (Jaccard 1.000,
@@ -424,8 +423,7 @@ the 180 of the "we do not know yet" flags: a TTL much longer than the
 rebuild interval would keep serving a stale \code{"incongruent"} long after the
 evidence that overturns it became searchable, which is the exact failure
 this TTL exists to prevent. The recheck costs ~1\% of an accession
-population. See
-\code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}.
+population.
 }
 
 \section{Coarse-rank diagnostic}{
@@ -631,7 +629,7 @@ this function reads these columns; they are informational only.
 
 \section{Long-sequence robustness}{
 
-Implements \verb{ecosystem_docs/REENTRY_PROMPT_ eval_ref_accessions_long_sequence_robustness.md}. \code{barcode_term}
+\code{barcode_term}
 trimming already shortens an over-length query when the primer sites can
 be found; four further mechanisms address what happens when they
 CAN'T -- a full mitogenome (or larger) record submitted to remote BLAST
@@ -701,7 +699,8 @@ dropped it anyway (169/217 = 77.9\%). Found on the real PtConception
 screen: \code{KM057996} (\emph{Zaniolepis frenata}) was actioned \code{"remove"} ("no
 conspecific evidence anywhere in nt") while the user's own reference set
 held \code{OQ846041}, a 169 bp \emph{Z. frenata} deposit from 2023 at 100\% identity
-over 97\% overlap. A live probe (\verb{diagnostics/blast_coverage_blindspot_ probe.R}) confirmed the mechanism: the 217 bp query returns no
+over 97\% overlap. A live probe (the \code{blast_coverage_blindspot_probe.R} diagnostic, TaxaID_dev
+repository) confirmed the mechanism: the 217 bp query returns no
 conspecific but itself among 100 hits; the same query with the primers
 stripped (169 bp) returns \code{OQ846041} at rank 2, score 100, coverage 100.
 Amplicon-only deposits are 33\% of PtConception's references and 25\% of

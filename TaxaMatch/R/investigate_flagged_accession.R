@@ -218,9 +218,7 @@
 
 #' BLAST a flagged sequence against a specific comparison set of accessions
 #'
-#' Implements Option A of `ecosystem_docs/REENTRY_PROMPT_
-#' investigate_flagged_accession_prefilter_group_posthoc.md` (Question 1):
-#' replaces the original `pwalign::pairwiseAlignment(type = "local")`-based
+#' Replaces a `pwalign::pairwiseAlignment(type = "local")`-based
 #' comparison with `blast_sequences()`'s own underlying mechanism -- the
 #' SAME family of evidence that originally made `MZ605481` a confirmed
 #' `candidate_mislabel` in the first place (20 independent, coverage-safe
@@ -863,9 +861,7 @@
 #' coverage-safe *Cyprinus carpio* hits at genuine 100% identity. Both
 #' comparisons here reuse that mechanism (`.blast_against_
 #' comparison_set()`, internal) rather than a hand-rolled
-#' `pwalign::pairwiseAlignment()` loop -- see
-#' `ecosystem_docs/REENTRY_PROMPT_investigate_flagged_accession_prefilter_group_posthoc.md`,
-#' Question 1, Option A.
+#' `pwalign::pairwiseAlignment()` loop.
 #'
 #' @section Why a length-ratio pre-filter is required alongside the scoped BLAST search:
 #' Even with the comparison-set search scoped via NCBI's `ENTREZ_QUERY`

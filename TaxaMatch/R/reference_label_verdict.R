@@ -11,9 +11,6 @@ utils::globalVariables(c(
 # reference_action, DERIVED from evaluate_reference_accessions()'s existing
 # output columns.
 #
-# Implements Thread 2 of
-# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md.
-#
 # Why this exists, in one paragraph: `hierarchy_flag` is a MAJORITY VOTE over
 # the top-N independent neighbours -- percent identity never enters it. In a
 # thinly-covered clade the top neighbours are cross-family by construction, so
@@ -185,7 +182,7 @@ utils::globalVariables(c(
 #' Some of these rows are a `max_hits` truncation artifact rather than a
 #' property of the accession -- re-running PtConception's 34 at
 #' `max_hits = 100` resolved 12, including 7 zero-partner rows that moved
-#' `"caution"` to `"keep"` (`diagnostics/insufficient_evidence_probe.R`). But
+#' `"caution"` to `"keep"` (the `insufficient_evidence_probe.R` diagnostic (TaxaID_dev repository)). But
 #' 21 of 34 gained no hits at all when the window quintupled, so most of the
 #' population is genuinely thin. `"untested"` is the honest reading either
 #' way: we do not know.
@@ -206,8 +203,7 @@ utils::globalVariables(c(
 #'
 #' `margin_scale` is the one free parameter: it says how many percent-identity
 #' points are worth one unit of log-odds. The default `1` is not fitted -- it
-#' is a stated convention, registered as such
-#' (`ecosystem_docs/arbitrariness_audit.md`'s subject matter), chosen because
+#' is a stated convention, chosen because
 #' at MiFish-U amplicon lengths (~170 bp) one percent identity is roughly 1.7
 #' nucleotide differences, the granularity at which this ecosystem already
 #' treats identity differences as discriminating at species level. What the
@@ -306,8 +302,7 @@ utils::globalVariables(c(
 #'       achievable ceiling first, or it will silently adjust every
 #'       candidate in the dataset -- this is exactly the bug a prior
 #'       attempt to use this column as a likelihood covariate hit before
-#'       being removed entirely (see
-#'       `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`).}
+#'       being removed entirely.}
 #'     \item{`label_identity_margin`}{Numeric, the capped `d` in
 #'       percent-identity points. `NA` when the row carries no identity
 #'       information of any kind.}
@@ -1055,7 +1050,7 @@ refine_reference_verdicts <- function(evaluation,
 #' in the top 20".
 #'
 #' That was measured, not suspected
-#' (`diagnostics/veto_truncation_probe.R`): at `max_hits = 100`,
+#' (the `veto_truncation_probe.R` diagnostic (TaxaID_dev repository)): at `max_hits = 100`,
 #' `congruent_evidence_exists_anywhere` flipped `FALSE` to `TRUE` for 8 of 15
 #' veto-critical accessions, and `OQ846263` (*Rathbunella hypoplecta*) --
 #' one of only two accessions that PtConception run would have removed --
@@ -1141,7 +1136,7 @@ refine_reference_verdicts <- function(evaluation,
 #' real use. GreatLakes `KJ135626` (*Pseudorasbora parva*) came back
 #' `spared = TRUE`, rescued by exactly one partner agreeing at species rank:
 #' `MZ605481`, which this project's own
-#' `diagnostics/reference_accession_ground_truth.csv` records as a
+#' the `reference_accession_ground_truth.csv` diagnostic (TaxaID_dev repository) records as a
 #' `candidate_mislabel` whose real identity is *Cyprinus carpio*.
 #' `KJ135626`'s own best disagreeing hit is *Cyprinus carpio* at 100%. Two
 #' copies of one error agreeing with each other is not corroboration, and the

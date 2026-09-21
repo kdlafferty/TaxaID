@@ -58,8 +58,7 @@ likelihood-covariate-style rescale) must normalize by the per-row
 achievable ceiling first, or it will silently adjust every
 candidate in the dataset -- this is exactly the bug a prior
 attempt to use this column as a likelihood covariate hit before
-being removed entirely (see
-\code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}).}
+being removed entirely.}
 \item{\code{label_identity_margin}}{Numeric, the capped \code{d} in
 percent-identity points. \code{NA} when the row carries no identity
 information of any kind.}
@@ -136,7 +135,7 @@ would wrongly blank those too.
 Some of these rows are a \code{max_hits} truncation artifact rather than a
 property of the accession -- re-running PtConception's 34 at
 \code{max_hits = 100} resolved 12, including 7 zero-partner rows that moved
-\code{"caution"} to \code{"keep"} (\code{diagnostics/insufficient_evidence_probe.R}). But
+\code{"caution"} to \code{"keep"} (the \code{insufficient_evidence_probe.R} diagnostic (TaxaID_dev repository)). But
 21 of 34 gained no hits at all when the window quintupled, so most of the
 population is genuinely thin. \code{"untested"} is the honest reading either
 way: we do not know.
@@ -159,8 +158,7 @@ percent-identity margin the vote itself ignores:
 
 \code{margin_scale} is the one free parameter: it says how many percent-identity
 points are worth one unit of log-odds. The default \code{1} is not fitted -- it
-is a stated convention, registered as such
-(\code{ecosystem_docs/arbitrariness_audit.md}'s subject matter), chosen because
+is a stated convention, chosen because
 at MiFish-U amplicon lengths (~170 bp) one percent identity is roughly 1.7
 nucleotide differences, the granularity at which this ecosystem already
 treats identity differences as discriminating at species level. What the

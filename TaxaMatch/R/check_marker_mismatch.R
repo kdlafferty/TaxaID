@@ -3,8 +3,7 @@
 # reference accession's own annotated gene/product against the marker an
 # evaluation was scoped to.
 #
-# Implements Question 2, item 4 of ecosystem_docs/REENTRY_PROMPT_
-# investigate_flagged_accession_prefilter_group_posthoc.md. Directly
+# Directly
 # grounded in a real, already-confirmed lesson from this ecosystem
 # (AY850362, GreatLakes 12S audit): a genuine 16S-vs-12S
 # MARKER mislabel, not a species mislabel -- what actually distinguished

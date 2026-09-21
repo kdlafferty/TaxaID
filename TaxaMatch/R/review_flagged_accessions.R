@@ -2,10 +2,7 @@
 # review_flagged_accessions() -- LLM second-look reviewer for
 # evaluate_reference_accessions()'s flagged/borderline output.
 #
-# Implements Question 2 of
-# ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md. See that
-# doc's own "Real design questions to resolve before writing code" for the
-# design answers this implementation follows (what the LLM sees, what it
+# Design answers this implementation follows (what the LLM sees, what it
 # outputs, cost/scale scoping, package placement) -- summarized in this
 # function's own roxygen below rather than re-derived here.
 #
@@ -129,8 +126,7 @@
 #' for a free-text second look -- the same "narrative-judgment layer added ON
 #' TOP of statistical flags, never replacing them, never auto-acting" pattern
 #' `TaxaFlag::review_assignments()` already established for posterior
-#' taxonomic assignments (implements Question 2 of
-#' `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md`). The LLM
+#' taxonomic assignments. The LLM
 #' never re-decides `hierarchy_flag` -- it adds what the statistical check
 #' structurally cannot: recognizing a known hybrid-cross name (e.g.
 #' `"Ctenopharyngodon idella x Megalobrama amblycephala"`, a known Chinese
@@ -230,8 +226,7 @@
 #'   everywhere, no `library()`) never triggers it, and `call_api()` silently
 #'   falls back to degraded/uniform output rather than erroring. Pass
 #'   `llm_fn` explicitly if every review comes back suspiciously uniform,
-#'   e.g. `function(p) TaxaTools::call_api(p, provider = "anthropic")`. See
-#'   `TaxaID/CLAUDE.md`'s "Known R Footguns" for the full record.
+#'   e.g. `function(p) TaxaTools::call_api(p, provider = "anthropic")`.
 #' @param taxa_per_call Integer. Maximum accessions per LLM call. Default
 #'   `10L`.
 #' @param max_tokens Integer or `NULL`. Forwarded as

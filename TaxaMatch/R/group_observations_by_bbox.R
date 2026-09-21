@@ -173,7 +173,7 @@ group_observations_by_bbox <- function(sites,
     # working without needing to be rebuilt.
     message(
       "group_observations_by_bbox: 'sites' has no is_default_group column -- inferring it from ",
-      "the pre-Session-139 default convention (spatial_group_id == observation_id). Re-run ",
+      "the convention spatial_group_id == observation_id. Re-run ",
       "TaxaMatch::build_site_table() to get this column directly."
     )
     sites$is_default_group <- sites$spatial_group_id == as.character(sites[[id_col]]) &

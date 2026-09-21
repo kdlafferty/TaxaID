@@ -93,9 +93,7 @@ Even under \code{gate = "action"} this function consumes only a yes/no removal
 decision. The continuous signal (\code{\link[=score_reference_labels]{score_reference_labels()}}'s
 \code{label_confidence}) travels separately, via
 \code{\link[=flag_incongruent_references]{flag_incongruent_references()}}, and is meant for review. A likelihood-model
-covariate driven by it was evaluated and found not to help -- see
-\code{ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md}
-for what was measured, before proposing it again. Do not let this
+covariate driven by it was evaluated and found not to help. Do not let this
 function's use become the only place the full \code{evaluation} object's signal
 is consulted.
 }

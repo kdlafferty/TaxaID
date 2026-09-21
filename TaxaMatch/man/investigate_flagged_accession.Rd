@@ -152,9 +152,7 @@ at all -- it is a direct \code{\link[=blast_sequences]{blast_sequences()}} call,
 enforces \code{min_query_coverage} internally and finds 20 independent,
 coverage-safe \emph{Cyprinus carpio} hits at genuine 100\% identity. Both
 comparisons here reuse that mechanism (\verb{.blast_against_ comparison_set()}, internal) rather than a hand-rolled
-\code{pwalign::pairwiseAlignment()} loop -- see
-\code{ecosystem_docs/REENTRY_PROMPT_investigate_flagged_accession_prefilter_group_posthoc.md},
-Question 1, Option A.
+\code{pwalign::pairwiseAlignment()} loop.
 }
 
 \section{Why a length-ratio pre-filter is required alongside the scoped BLAST search}{

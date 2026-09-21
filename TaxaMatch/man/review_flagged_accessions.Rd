@@ -59,8 +59,7 @@ by TaxaTools's own \code{.onAttach()}, which only runs via
 everywhere, no \code{library()}) never triggers it, and \code{call_api()} silently
 falls back to degraded/uniform output rather than erroring. Pass
 \code{llm_fn} explicitly if every review comes back suspiciously uniform,
-e.g. \code{function(p) TaxaTools::call_api(p, provider = "anthropic")}. See
-\code{TaxaID/CLAUDE.md}'s "Known R Footguns" for the full record.}
+e.g. \code{function(p) TaxaTools::call_api(p, provider = "anthropic")}.}
 
 \item{taxa_per_call}{Integer. Maximum accessions per LLM call. Default
 \code{10L}.}
@@ -115,8 +114,7 @@ Sends \code{evaluate_reference_accessions()}'s flagged/borderline rows to an LLM
 for a free-text second look -- the same "narrative-judgment layer added ON
 TOP of statistical flags, never replacing them, never auto-acting" pattern
 \code{TaxaFlag::review_assignments()} already established for posterior
-taxonomic assignments (implements Question 2 of
-\code{ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md}). The LLM
+taxonomic assignments. The LLM
 never re-decides \code{hierarchy_flag} -- it adds what the statistical check
 structurally cannot: recognizing a known hybrid-cross name (e.g.
 \code{"Ctenopharyngodon idella x Megalobrama amblycephala"}, a known Chinese

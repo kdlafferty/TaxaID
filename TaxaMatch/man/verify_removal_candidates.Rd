@@ -91,7 +91,7 @@ accession from \code{reference_action == "remove"} however low its
 in the top 20".
 
 That was measured, not suspected
-(\code{diagnostics/veto_truncation_probe.R}): at \code{max_hits = 100},
+(the \code{veto_truncation_probe.R} diagnostic (TaxaID_dev repository)): at \code{max_hits = 100},
 \code{congruent_evidence_exists_anywhere} flipped \code{FALSE} to \code{TRUE} for 8 of 15
 veto-critical accessions, and \code{OQ846263} (\emph{Rathbunella hypoplecta}) --
 one of only two accessions that PtConception run would have removed --
@@ -129,7 +129,7 @@ mislabel. This is not hypothetical -- it has happened in
 real use. GreatLakes \code{KJ135626} (\emph{Pseudorasbora parva}) came back
 \code{spared = TRUE}, rescued by exactly one partner agreeing at species rank:
 \code{MZ605481}, which this project's own
-\code{diagnostics/reference_accession_ground_truth.csv} records as a
+the \code{reference_accession_ground_truth.csv} diagnostic (TaxaID_dev repository) records as a
 \code{candidate_mislabel} whose real identity is \emph{Cyprinus carpio}.
 \code{KJ135626}'s own best disagreeing hit is \emph{Cyprinus carpio} at 100\%. Two
 copies of one error agreeing with each other is not corroboration, and the

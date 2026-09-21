@@ -345,8 +345,8 @@ or above) is not safe in general: it is not
 stress-tested against a
 taxonomically dense genus where real congeneric divergence can be tight.
 
-A leave-one-out check (\code{diagnostics/score_window_leave_one_out.R} at
-the TaxaID root) against three independent real reference-vs-reference
+A leave-one-out check (the \code{score_window_leave_one_out.R} diagnostic, TaxaID_dev
+repository) against three independent real reference-vs-reference
 distance matrices found this risk is real, not hypothetical: treating each
 reference sequence as a query against every other sequence in the same
 matrix, and asking how often a congener outscores the sequence's own true

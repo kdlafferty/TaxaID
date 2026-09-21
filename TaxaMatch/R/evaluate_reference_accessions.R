@@ -14,7 +14,6 @@ utils::globalVariables(c(
 # evaluate_reference_accessions() -- per-accession BLAST-based reference
 # quality evaluation
 #
-# Implements ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md.
 # Supersedes the taxon-list-scoped DECIPHER whole-set alignment approach
 # (TaxaLikely::audit_reference_database()/classify_reference_accessions(),
 # archived at TaxaLikely/archive_decipher_reference_audit/) for the specific
@@ -496,8 +495,7 @@ utils::globalVariables(c(
   # votes behind `frac_independent_below_min_congruent_rank` exist -- without
   # it they would be built, summarised, and discarded here, so no verdict
   # could ever be recomputed without a fresh BLAST. `refine_reference_verdicts()`
-  # (Thread 1 of REENTRY_PROMPT_reference_quality_verdicts_and_downstream_
-  # use.md) needs exactly these rows to re-run the vote with each partner
+  # needs exactly these rows to re-run the vote with each partner
   # weighted by its own trustworthiness.
   #
   # `pair_finest_common_rank` is stored rather than the derived
@@ -820,9 +818,7 @@ utils::globalVariables(c(
 
 #' Evaluate One Chunk of Accessions -- Fetch, BLAST, Score
 #'
-#' Extracted from `evaluate_reference_accessions()`'s own body (see
-#' `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md`'s
-#' chunking/circuit-breaker design) so the caller can run it once per
+#' Split out of `evaluate_reference_accessions()` so the caller can run it once per
 #' CHUNK of `needs_eval` accessions and write the persistent cache
 #' incrementally after each one, instead of once for the entire accession
 #' list at the very end -- see `evaluate_reference_accessions()`'s own
@@ -832,8 +828,7 @@ utils::globalVariables(c(
 #' `needs_eval` plays there, scoped to
 #' one chunk instead of the whole call.
 #'
-#' `max_query_len`/`max_batch_bp` (see
-#' `ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md`)
+#' `max_query_len`/`max_batch_bp`
 #' implement the hard submission cap and length-aware BLAST batching -- see
 #' `evaluate_reference_accessions()`'s own `@section Long-sequence
 #' robustness` for the full design.
@@ -1363,9 +1358,8 @@ utils::globalVariables(c(
 #' negatives (a mislabeled accession's true contaminating identity can only
 #' ever be caught if its genus happens to be on the caller's list too).
 #' BLASTing each accession against an unrestricted database removes the
-#' `taxa`-list dependency for both directions at once. See
-#' `ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md` for the
-#' full real-data evidence (a real 6-genus GreatLakes 12S test flagged 15
+#' `taxa`-list dependency for both directions at once. The
+#' real-data evidence is direct (a real 6-genus GreatLakes 12S test flagged 15
 #' genuine, Smithsonian-vouchered `Menidia` accessions "incongruent" purely
 #' because `Menidia`'s family had no other representative on the list).
 #'
@@ -1421,7 +1415,7 @@ utils::globalVariables(c(
 #' [remove_incongruent_references()] acts on destructively.
 #'
 #' What the flip was, established by
-#' `diagnostics/blast_verdict_repeatability_probe.R`: NOT
+#' the `blast_verdict_repeatability_probe.R` diagnostic (TaxaID_dev repository): NOT
 #' instability. Three back-to-back replicates of all 12 PtConception
 #' `"incongruent"` accessions, each into a fresh cache, returned identical
 #' verdicts, identical diagnostics, and identical hit sets (Jaccard 1.000,
@@ -1442,8 +1436,7 @@ utils::globalVariables(c(
 #' rebuild interval would keep serving a stale `"incongruent"` long after the
 #' evidence that overturns it became searchable, which is the exact failure
 #' this TTL exists to prevent. The recheck costs ~1% of an accession
-#' population. See
-#' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`.
+#' population.
 #'
 #' @section Coarse-rank diagnostic:
 #' `finest_common_rank` walks the FULL `kingdom`->`species` ladder
@@ -1904,8 +1897,7 @@ utils::globalVariables(c(
 #' this function reads these columns; they are informational only.
 #'
 #' @section Long-sequence robustness:
-#' Implements `ecosystem_docs/REENTRY_PROMPT_
-#' eval_ref_accessions_long_sequence_robustness.md`. `barcode_term`
+#' `barcode_term`
 #' trimming already shortens an over-length query when the primer sites can
 #' be found; four further mechanisms address what happens when they
 #' CAN'T -- a full mitogenome (or larger) record submitted to remote BLAST
@@ -1975,8 +1967,8 @@ utils::globalVariables(c(
 #' screen: `KM057996` (*Zaniolepis frenata*) was actioned `"remove"` ("no
 #' conspecific evidence anywhere in nt") while the user's own reference set
 #' held `OQ846041`, a 169 bp *Z. frenata* deposit from 2023 at 100% identity
-#' over 97% overlap. A live probe (`diagnostics/blast_coverage_blindspot_
-#' probe.R`) confirmed the mechanism: the 217 bp query returns no
+#' over 97% overlap. A live probe (the `blast_coverage_blindspot_probe.R` diagnostic, TaxaID_dev
+#' repository) confirmed the mechanism: the 217 bp query returns no
 #' conspecific but itself among 100 hits; the same query with the primers
 #' stripped (169 bp) returns `OQ846041` at rank 2, score 100, coverage 100.
 #' Amplicon-only deposits are 33% of PtConception's references and 25% of
@@ -2196,7 +2188,7 @@ evaluate_reference_accessions <- function(accessions,
   #
   # WHAT GOES STALE IS NCBI'S `nt` SNAPSHOT, not the accession and not this
   # package's math. Established by
-  # diagnostics/blast_verdict_repeatability_probe.R: three back-to-back
+  # blast_verdict_repeatability_probe.R in the TaxaID_dev repository: three back-to-back
   # replicates of all 12 PtConception "incongruent" accessions returned
   # identical verdicts AND identical hit sets (Jaccard 1.000), so BLAST is
   # exactly reproducible at a fixed params_key; and the corroborating
@@ -2758,9 +2750,7 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' decision. The continuous signal ([score_reference_labels()]'s
 #' `label_confidence`) travels separately, via
 #' [flag_incongruent_references()], and is meant for review. A likelihood-model
-#' covariate driven by it was evaluated and found not to help -- see
-#' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`
-#' for what was measured, before proposing it again. Do not let this
+#' covariate driven by it was evaluated and found not to help. Do not let this
 #' function's use become the only place the full `evaluation` object's signal
 #' is consulted.
 #'
@@ -2844,7 +2834,7 @@ remove_incongruent_references <- function(match_df,
             "gate = \"action\" needs `reference_action`, or the diagnostic columns ",
             "score_reference_labels() derives it from, and evaluation has neither ",
             "(%s).\n  Re-run evaluate_reference_accessions(), or pass gate = \"flag\" ",
-            "for the pre-2026-09-02 hierarchy_flag-only behaviour."
+            "to gate on hierarchy_flag alone."
           ),
           conditionMessage(e)
         ), call. = FALSE)
