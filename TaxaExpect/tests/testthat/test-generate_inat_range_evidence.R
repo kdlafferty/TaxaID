@@ -65,9 +65,7 @@ test_that("evidence feeds apply_undetected_evidence end to end", {
     undetected_type = c("global_floor", "singleton_mirror"),
     source_taxon_name = NA_character_, main_habitat = c(NA, "Lentic")
   )
-  model_obj <- structure(list(N_total = 1000L, meta = list(habitat_col = "main_habitat")),
-    class = "biofreq_model"
-  )
+  model_obj <- structure(list(), class = "taxaexpect_kernel_priors")
   ev <- suppressMessages(generate_inat_range_evidence(.make_inat()))
   out <- suppressMessages(apply_undetected_evidence(
     priors, model_obj, ev,

@@ -202,8 +202,8 @@ back-off mass `m`) by leave-one-block-out composition prediction
 **Prior estimation:** - `estimate_kernel_priors()` -- site-centered
 kernel estimation of `kernel_estimated` priors (no grid, no model
 fit) - `generate_undetected_diversity()` -- singleton-mirror and
-global-floor `resident_undetected` priors (accepts a kernel or
-`biofreq_model` fit) - `generate_presence_curve_evidence()` /
+global-floor `resident_undetected` priors from a kernel fit -
+`generate_presence_curve_evidence()` /
 `generate_user_specified_evidence()` +
 `apply_undetected_evidence(pricing = "curve")` -- price named unobserved
 claimants (regional, watch-listed, or distance-clamped) on a shared

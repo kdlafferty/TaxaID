@@ -88,19 +88,26 @@ report_priors <- function(priors_output,
     NA_integer_
   }
 
-  # Tier/branch breakdown. prior_branch takes PRECEDENCE when present:
-  # kernel tables carry model_tier only on their
-  # undetected/domestic rows (NA on every resident row), so counting by
-  # model_tier there silently omits the resident majority -- found on a
-  # real kernel-path Great Lakes report (86 resident rows missing
-  # from a 467-taxon breakdown).
+  # Tier/branch breakdown, from prior_branch -- kernel tables carry
+  # model_tier only on their undetected/domestic rows (NA on every
+  # resident row), so counting by model_tier there silently omits the
+  # resident majority -- found on a real kernel-path Great Lakes report
+  # (86 resident rows missing from a 467-taxon breakdown).
   tier_breakdown <- NULL
-  kernel_schema <- "prior_branch" %in% names(priors_df) &&
+  has_prior_branch <- "prior_branch" %in% names(priors_df) &&
     any(!is.na(priors_df$prior_branch))
-  if (kernel_schema) {
+  if (has_prior_branch) {
     tier_breakdown <- as.list(table(priors_df$prior_branch))
-  } else if ("model_tier" %in% names(priors_df)) {
-    tier_breakdown <- as.list(table(priors_df$model_tier))
+  } else if ("model_tier" %in% names(priors_df) && any(!is.na(priors_df$model_tier))) {
+    stop(
+      "report_priors: `priors_output` carries a `model_tier` column with ",
+      "real values but no `prior_branch` values. That is the schema of ",
+      "TaxaExpect's retired GLMM/grid prior pipeline, which TaxaID 1.0 ",
+      "does not support. A 1.0 priors table (from estimate_kernel_priors() ",
+      "and its companion prior-generating functions) always carries ",
+      "`prior_branch` in c(\"kernel_estimated\", \"resident_undetected\", ",
+      "\"transport\")."
+    )
   }
 
   # --- Citations (propagated from occurrence data) ----------------------------
@@ -118,11 +125,7 @@ report_priors <- function(priors_output,
   if (!is.null(tier_breakdown)) statistics$tier_breakdown <- tier_breakdown
 
   # --- Params -----------------------------------------------------------------
-  params <- list(method = if (kernel_schema) {
-    "site-centered kernel estimation"
-  } else {
-    "hierarchical biodiversity model"
-  })
+  params <- list(method = "site-centered kernel estimation")
   if (!is.null(habitat_scheme)) params$habitat_scheme <- habitat_scheme
   if (!is.na(n_grid_cells)) params$n_grid_cells <- n_grid_cells
   if (!is.null(rp)) {
@@ -139,25 +142,13 @@ report_priors <- function(priors_output,
     ))
   }
 
-  if (kernel_schema) {
-    methods_text <- paste0(
-      methods_text,
-      " by site-centered kernel estimation (habitat-stratified,",
-      " distance-weighted record shares with a regional back-off;",
-      " unrecorded species priced as presence mixtures on a calibrated",
-      " presence-distance curve)"
-    )
-  } else {
-    methods_text <- paste0(
-      methods_text,
-      " using a hierarchical biodiversity model"
-    )
-    if (!is.na(n_grid_cells)) {
-      methods_text <- paste0(methods_text, sprintf(
-        " across %d spatial grid cells", n_grid_cells
-      ))
-    }
-  }
+  methods_text <- paste0(
+    methods_text,
+    " by site-centered kernel estimation (habitat-stratified,",
+    " distance-weighted record shares with a regional back-off;",
+    " unrecorded species priced as presence mixtures on a calibrated",
+    " presence-distance curve)"
+  )
   methods_text <- paste0(methods_text, ".")
 
   if (!is.null(habitat_scheme)) {
@@ -180,11 +171,7 @@ report_priors <- function(priors_output,
       sprintf("%s: %d", nm, tier_breakdown[[nm]])
     }, character(1L))
     results_parts <- c(results_parts, sprintf(
-      if (kernel_schema) {
-        "Prior branch breakdown: %s."
-      } else {
-        "Model tier breakdown: %s."
-      },
+      "Prior branch breakdown: %s.",
       paste(tier_strs, collapse = ", ")
     ))
   }

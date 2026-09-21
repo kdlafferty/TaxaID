@@ -197,10 +197,10 @@
 #'   \code{\link{generate_undetected_diversity}} (errors if absent). Used
 #'   both as the source of the floor/singleton anchors and to determine
 #'   which evidence taxa are already observed.
-#' @param model_obj A biofreq_model object, used only for
-#'   \code{meta$habitat_col} (to determine whether \code{main_habitat} is
-#'   required) so output rows sit on the same schema as every other
-#'   prior-generating function in this package.
+#' @param model_obj A \code{taxaexpect_kernel_priors} object (output of
+#'   \code{\link{estimate_kernel_priors}}). Kernel estimates are always
+#'   habitat-stratified, so output rows sit on the same schema as every
+#'   other prior-generating function in this package.
 #' @param evidence Data frame (typically the row-bound output of one or more
 #'   evidence-generating functions, e.g.
 #'   \code{\link{generate_invasive_watch_evidence}}). Required columns:
@@ -208,9 +208,9 @@
 #'   source's probability of local presence), \code{source} (character, for
 #'   audit only). Optional: \code{p_conc} (numeric, > 0; default 1) -- how
 #'   much weight the presence claim carries against future evidence, in
-#'   pseudo-observations. \code{n_eff} is not accepted (errors with
-#'   guidance): the Beta concentration is moment-matched, not supplied.
-#'   Additional source-specific columns are ignored by this function.
+#'   pseudo-observations -- the Beta concentration itself is always
+#'   moment-matched, not caller-supplied. Additional source-specific
+#'   columns are ignored by this function.
 #' @param grid_id Character. Single grid cell identifier this call applies
 #'   to -- required, no default (mirrors
 #'   \code{\link{generate_domestic_food_priors}}'s single-site-per-call
@@ -219,10 +219,8 @@
 #'   \code{grid_id} match, so the output rows are only usable for
 #'   observations at this specific site.
 #' @param main_habitat Character. Single habitat category this call applies
-#'   to. Required (no default) when \code{model_obj} was trained with a
-#'   non-NULL \code{habitat_col}; must be omitted (\code{NULL}, the default)
-#'   when \code{model_obj} was trained with \code{habitat_col = NULL}. There
-#'   is no habitat-agnostic option here, unlike
+#'   to. Always required -- kernel estimates are always habitat-stratified.
+#'   There is no habitat-agnostic option here, unlike
 #'   \code{generate_domestic_food_priors()}'s \code{main_habitat = NA} rows
 #'   (which \code{join_priors()} now has a dedicated fallback tier for) --
 #'   occurrence-plausibility evidence is deliberately habitat-AWARE, since a
@@ -279,14 +277,13 @@
 #'     \item{taxon_name}{The real taxon name.}
 #'     \item{taxon_name_rank}{Always \code{"species"} -- required for the
 #'       row to match \code{TaxaAssign::join_priors()}'s composite join key.}
-#'     \item{grid_id, main_habitat}{As supplied (\code{main_habitat} omitted
-#'       entirely when \code{model_obj} has no habitat concept).}
+#'     \item{grid_id, main_habitat}{As supplied.}
 #'     \item{alpha, beta}{Beta(alpha, beta) prior parameters.}
 #'     \item{theta_mean, theta_sd}{Derived from alpha/beta.}
 #'     \item{model_tier}{Always \code{"tier_undetected_evidence"}. Kernel-path
 #'       output uses \code{prior_branch} + \code{effective_records} instead;
-#'       this column is retained for compatibility with \code{biofreq_model}
-#'       inputs (see \code{model_obj}).}
+#'       this column is kept for schema parity with every other
+#'       prior-generating function in this package.}
 #'     \item{undetected_type}{Always \code{"evidence_blend"} -- a new value
 #'       alongside \code{"singleton_mirror"}/\code{"global_floor"}.}
 #'     \item{evidence_weight}{The combined \code{w_combined} for this taxon
@@ -371,6 +368,13 @@ apply_undetected_evidence <- function(
       stop("apply_undetected_evidence: `", .nm, "` must be a single non-negative number.")
     }
   }
+  if (!inherits(model_obj, "taxaexpect_kernel_priors")) {
+    stop(
+      "apply_undetected_evidence: `model_obj` must be a taxaexpect_kernel_priors ",
+      "object from estimate_kernel_priors(); got ",
+      if (is.object(model_obj)) paste(class(model_obj), collapse = "/") else typeof(model_obj), "."
+    )
+  }
   # Curve pricing: theta = w *
   # theta_present, with theta_present = missing_mass / f1 from the kernel fit
   # (the mean theta of the neighborhood's own observed singletons
@@ -379,8 +383,8 @@ apply_undetected_evidence <- function(
   # avoiding a floor term that would dominate every row).
   # Requires a kernel model_obj carrying a finite theta_present.
   kernel_theta_present <- NA_real_
-  # Captured HERE, not at the printout: `model_obj` is replaced by a stub
-  # further down (the biofreq_model-compat branch), so anything read off the kernel fit
+  # Captured HERE, not at the printout: `model_obj` is replaced by the
+  # habitat-only adapter further down, so anything read off the kernel fit
   # has to be taken before that point.
   kernel_f1 <- NA_integer_
   kernel_f2 <- NA_integer_
@@ -396,30 +400,28 @@ apply_undetected_evidence <- function(
   # are printed, and kernel_budget_sensitivity() is the tool for it).
   curve_groups <- NULL
   model_obj_group_label <- NA_character_
-  if (inherits(model_obj, "taxaexpect_kernel_priors")) {
-    # A one-group fit still has a group NAME when sampling_group_col was
-    # supplied; recorded so the output says which process it priced.
-    if (!is.null(model_obj$budget) && nrow(model_obj$budget) == 1L) {
-      model_obj_group_label <- as.character(model_obj$budget$sampling_group[1L])
-    }
-    kernel_theta_present <- model_obj$theta_present %||% NA_real_
-    kernel_f1 <- model_obj$f1 %||% NA_integer_
-    kernel_f2 <- model_obj$f2 %||% NA_integer_
-    kernel_group_col <- model_obj$params$sampling_group_col %||% NA_character_
-    if (pricing == "curve" && (model_obj$params$n_sampling_groups %||% 1L) > 1L) {
-      curve_groups <- .resolve_group_prices(
-        model_obj, min_group_n_eff, min_group_f1, group_fallback
+  # A one-group fit still has a group NAME when sampling_group_col was
+  # supplied; recorded so the output says which process it priced.
+  if (!is.null(model_obj$budget) && nrow(model_obj$budget) == 1L) {
+    model_obj_group_label <- as.character(model_obj$budget$sampling_group[1L])
+  }
+  kernel_theta_present <- model_obj$theta_present %||% NA_real_
+  kernel_f1 <- model_obj$f1 %||% NA_integer_
+  kernel_f2 <- model_obj$f2 %||% NA_integer_
+  kernel_group_col <- model_obj$params$sampling_group_col %||% NA_character_
+  if (pricing == "curve" && (model_obj$params$n_sampling_groups %||% 1L) > 1L) {
+    curve_groups <- .resolve_group_prices(
+      model_obj, min_group_n_eff, min_group_f1, group_fallback
+    )
+    if (curve_groups$n_qualifying == 0L) {
+      stop(
+        "apply_undetected_evidence: not one of this fit's ",
+        nrow(curve_groups$budget), " sampling groups clears the pricing ",
+        "guards (n_eff >= ", min_group_n_eff, ", f1 >= ", min_group_f1,
+        ", and a defined theta_present), so there is no trustworthy price ",
+        "anywhere in it. Inspect model_fit$budget, lower min_group_n_eff ",
+        "if you mean to, or use pricing = \"blend\"."
       )
-      if (curve_groups$n_qualifying == 0L) {
-        stop(
-          "apply_undetected_evidence: not one of this fit's ",
-          nrow(curve_groups$budget), " sampling groups clears the pricing ",
-          "guards (n_eff >= ", min_group_n_eff, ", f1 >= ", min_group_f1,
-          ", and a defined theta_present), so there is no trustworthy price ",
-          "anywhere in it. Inspect model_fit$budget, lower min_group_n_eff ",
-          "if you mean to, or use pricing = \"blend\"."
-        )
-      }
     }
   }
   if (pricing == "curve" && is.null(curve_groups) &&
@@ -433,18 +435,9 @@ apply_undetected_evidence <- function(
       "use pricing = \"blend\"."
     )
   }
-  if (inherits(model_obj, "taxaexpect_kernel_priors")) {
-    # Kernel-priors adapter: only the habitat concept is
-    # read from model_obj here; kernel estimates are always habitat-stratified.
-    model_obj <- list(meta = list(habitat_col = "main_habitat"))
-    class(model_obj) <- "biofreq_model_shim"
-  } else if (!inherits(model_obj, "biofreq_model")) {
-    stop(
-      "apply_undetected_evidence: model_obj must be a biofreq_model ",
-      "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
-      "object from estimate_kernel_priors()."
-    )
-  }
+  # Kernel-priors adapter: only the habitat concept is
+  # read from model_obj here; kernel estimates are always habitat-stratified.
+  model_obj <- list(meta = list(habitat_col = "main_habitat"))
   if (!is.data.frame(taxaexpect_priors)) {
     stop("apply_undetected_evidence: taxaexpect_priors must be a data frame.")
   }
@@ -453,20 +446,13 @@ apply_undetected_evidence <- function(
   }
 
   habitat_col <- model_obj$meta$habitat_col
-  if (!is.null(habitat_col)) {
-    if (is.null(main_habitat) || !is.character(main_habitat) ||
-      length(main_habitat) != 1L || is.na(main_habitat)) {
-      stop(
-        "apply_undetected_evidence: `main_habitat` is required (a single ",
-        "non-NA character value) because model_obj was trained with a ",
-        "non-NULL habitat_col. There is no habitat-agnostic option here -- ",
-        "occurrence-plausibility evidence is deliberately habitat-aware."
-      )
-    }
-  } else if (!is.null(main_habitat)) {
+  if (is.null(main_habitat) || !is.character(main_habitat) ||
+    length(main_habitat) != 1L || is.na(main_habitat)) {
     stop(
-      "apply_undetected_evidence: model_obj was trained with ",
-      "habitat_col = NULL, so `main_habitat` must be NULL too."
+      "apply_undetected_evidence: `main_habitat` is required (a single ",
+      "non-NA character value) -- kernel estimates are always ",
+      "habitat-stratified. There is no habitat-agnostic option here -- ",
+      "occurrence-plausibility evidence is deliberately habitat-aware."
     )
   }
 
@@ -475,16 +461,6 @@ apply_undetected_evidence <- function(
     stop(
       "apply_undetected_evidence: `evidence` must be a data frame with columns ",
       paste(required_evidence_cols, collapse = ", "), "."
-    )
-  }
-  if ("n_eff" %in% names(evidence) && !"p_conc" %in% names(evidence)) {
-    stop(
-      "apply_undetected_evidence: `evidence$n_eff` is not accepted. The ",
-      "elevated prior's Beta concentration is ",
-      "moment-matched from the presence mixture, not caller-chosen; supply ",
-      "`p_conc` (confidence in the presence probability itself, in ",
-      "pseudo-observations -- used by the confirmation update, not by the ",
-      "static prior) or omit both."
     )
   }
   if (nrow(evidence) == 0L) {

@@ -24,10 +24,10 @@ generate_domestic_food_priors(
 )
 }
 \arguments{
-\item{model_obj}{A biofreq_model object (output of
-\code{train_biodiversity_model()}), used only for its \code{N_total}
-and \code{meta$habitat_col} so these rows sit on the same theta scale
-as \code{generate_undetected_diversity()}'s output.}
+\item{model_obj}{A \code{taxaexpect_kernel_priors} object (output of
+\code{\link{estimate_kernel_priors}}), used only for its Kish
+effective sample size (as \code{N_total}) so these rows sit on the
+same theta scale as \code{generate_undetected_diversity()}'s output.}
 
 \item{lat, lng}{Numeric. Query site coordinates for the iNaturalist search.}
 
@@ -120,8 +120,8 @@ distinct from \code{"tier3_undetected"} so downstream code can
 tell a named domestic/food prior apart from an anonymous dark-
 diversity proxy. Kernel-path
 output uses \code{prior_branch} + \code{effective_records} instead;
-this column is retained for compatibility with \code{biofreq_model}
-inputs.}
+this column is kept for schema parity with every other
+prior-generating function in this package.}
 \item{prior_source_type}{One of \code{"domestic_animal"},
 \code{"food_species"}, \code{"domestic_plant"} -- the categorical
 column this function exists to add. \code{"domestic_plant"} is
@@ -155,7 +155,7 @@ normally if it's on a fixed list; only the extra confidence from a
 is detected (including when it can't be checked at all, e.g. no
 \code{taxonomy} kingdom column supplied).}
 }
-plus \code{<habitat_col>} (\code{NA}) when \code{model_obj} has one, and
+plus \code{main_habitat} (always \code{NA} -- see below) and
 taxonomy rank columns when \code{taxonomy} is supplied.
 }
 \description{

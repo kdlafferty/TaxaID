@@ -12,11 +12,10 @@ generate_undetected_diversity(
 )
 }
 \arguments{
-\item{model_obj}{A biofreq_model object (output of
-\code{train_biodiversity_model()}) or a taxaexpect_kernel_priors object
-(output of \code{estimate_kernel_priors()}): the
-same rules then run on kernel ingredients (N = Kish effective sample size,
-singletons = neighborhood singletons stamped with the site id).}
+\item{model_obj}{A \code{taxaexpect_kernel_priors} object (output of
+\code{\link{estimate_kernel_priors}}). N is its Kish effective sample
+size; singletons are its neighborhood singletons, stamped with the
+site id.}
 
 \item{jeffreys_threshold}{Integer. If N_total is below this value, use a
 Jeffreys prior Beta(0.5, 0.5) for the global floor instead of
@@ -45,8 +44,7 @@ A tibble with one row per undetected species proxy, containing:
 \item{grid_id}{Grid cell identifier inherited from singleton source, or
 NA for the global floor.}
 \item{habitat}{Habitat inherited from singleton source, or NA for
-global floor. Column absent entirely when \code{model_obj} was
-trained with \code{habitat_col = NULL}.}
+global floor.}
 \item{alpha}{Alpha parameter of Beta(alpha, beta) prior.}
 \item{beta}{Beta parameter of Beta(alpha, beta) prior.}
 \item{theta_mean}{Derived: alpha / (alpha + beta).}
@@ -55,8 +53,8 @@ trained with \code{habitat_col = NULL}.}
 for the global floor.}
 \item{model_tier}{Always "tier3_undetected". Kernel-path
 output uses \code{prior_branch} + \code{effective_records} instead;
-this column is retained for compatibility with \code{biofreq_model}
-inputs.}
+this column is kept for schema parity with every other
+prior-generating function in this package.}
 \item{undetected_type}{Character: "singleton_mirror" or
 "global_floor".}
 \item{source_taxon_name}{Taxon name of the singleton source, or NA for
@@ -102,10 +100,6 @@ Beta(1, N_total - 1) places the prior mean at 1/N_total, equivalent to
 the theta expected if an undetected species appeared exactly once across
 all sampling effort. This is always smaller than any singleton-derived
 theta in a well-sampled dataset.
-
-\strong{No habitat:} when \code{model_obj} was trained with
-\code{habitat_col = NULL} (see \code{train_biodiversity_model()}), no
-habitat column is added to the returned proxy rows.
 
 \strong{No singletons:}
 If the dataset contains no singletons (as is common when rare species
@@ -154,7 +148,7 @@ downstream) can correct on its own, since it has no way to distinguish
 source." \strong{If your study system includes domestic/synanthropic species
 that are plausible detections (e.g. camera-trap surveys near human
 habitation), augment your occurrence data with their known local presence
-before calling \code{train_biodiversity_model()}, rather than relying on
+before calling \code{estimate_kernel_priors()}, rather than relying on
 the automatic floor to represent them.} \code{TaxaFlag::
 add_posthoc_assessment(domestic_taxa = ...)} can flag the resulting
 low-prior-vs-strong-likelihood contrast for review if augmentation isn't

@@ -122,7 +122,7 @@ query site's own coordinates, focal habitat, and calibrated bandwidth.
 Records are restricted to `habitat_col == site_habitat` before the
 kernel is ever evaluated -- a species recorded only in a different
 habitat contributes zero weight to this site's estimate. Every
-`resident_observed` row therefore carries `observed_in_habitat = TRUE`
+`kernel_estimated` row therefore carries `observed_in_habitat = TRUE`
 by construction, because a row simply cannot exist otherwise -- there is
 no cross-habitat interpolation risk left to flag for these rows. The
 corresponding gap this stratification opens (a species genuinely present
@@ -243,7 +243,7 @@ record count in the stratum happens to be.
 The output table's schema reflects this directly, via two columns:
 
 -   **`prior_branch`** (character): which part of the framework a row
-    belongs to. `"resident_observed"` marks the kernel-fitted rows
+    belongs to. `"kernel_estimated"` marks the kernel-fitted rows
     described in this section; `"resident_undetected"` marks the
     floor/singleton/evidence rows described in Section 7; `"transport"`
     marks domestic/food rows (Section 7.4). `TaxaAssign::join_priors()`
@@ -255,10 +255,13 @@ The output table's schema reflects this directly, via two columns:
     with 4.3 effective records is priced continuously on that scale,
     rather than being binned into a discrete detection-count tier.
 
-`model_tier` survives only as a legacy column, on tables built before
-the GLMM prior-fitting pathway was archived and on a handful of
-downstream columns for backward compatibility, but carries no meaning on
-kernel-estimated rows.
+`model_tier` is a constant, schema-parity column: the resident/undetected/
+transport-generating functions (Section 7) still stamp it with a fixed
+value (e.g. `"tier3_undetected"`, `"tier_domestic_food"`) so every row in
+the assembled priors table shares the same columns, but it carries no
+evidence claim and `join_priors()` never reads it. `estimate_kernel_priors()`'s
+own `"kernel_estimated"` rows never carry it at all -- their branch
+designation lives entirely in `prior_branch`.
 
 ### 4.4. Computation
 
@@ -365,7 +368,7 @@ by this.)
 
 A species with a detection in the sequence (or image, or acoustic) data
 but no occurrence record anywhere in the focal-habitat stratum cannot
-receive a `resident_observed` row -- there is nothing local to weight.
+receive a `kernel_estimated` row -- there is nothing local to weight.
 `apply_undetected_evidence()`'s curve pricing prices such a candidate as
 a two-point presence mixture:
 
@@ -514,7 +517,7 @@ that belongs to species *i*. Only ratios reach posteriors -- per-
 observation renormalization is where probability actually binds.
 
 The community whose shares sum to 1 is the **resident community**:
-observed shares (`resident_observed` rows, Section 4) plus the Good-
+observed shares (`kernel_estimated` rows, Section 4) plus the Good-
 Turing unseen mass (Section 7.1-7.3), whose interior -- which
 unrecorded species, in what proportion -- is deliberately never
 enumerated by any single named row. Each named `resident_undetected`
@@ -560,7 +563,7 @@ in this order:
 2.  `calibrate_kernel_bandwidth()` -- choose `lambda_km` (and, if used,
     `lambda_covariate`, `lambda_latitude`, `m`) by leave-one-block-out
     prediction (Section 2).
-3.  `estimate_kernel_priors()` -- fit the `resident_observed` rows at
+3.  `estimate_kernel_priors()` -- fit the `kernel_estimated` rows at
     the study site (Sections 4, 6).
 4.  `generate_undetected_diversity()` -- `resident_undetected`
     floor/singleton rows from the same kernel object (Section 7.1): `N`
@@ -650,14 +653,14 @@ in Section 8:
 | `beta` | Beta distribution beta parameter |
 | `theta_mean` | Prior mean: alpha / (alpha + beta) |
 | `theta_sd` | Prior SD: sqrt(alpha*beta / ((alpha+beta)\^2*  (alpha+beta+1))) |
-| `prior_branch` | `"resident_observed"`, `"resident_undetected"`, or `"transport"` (replaces `model_tier`) |
-| `effective_records` | Kernel-effective record count backing a `resident_observed` row (replaces the tier1/tier2 split) |
-| `observed_in_habitat` | TRUE by construction for `resident_observed` rows |
+| `prior_branch` | `"kernel_estimated"`, `"resident_undetected"`, or `"transport"` (replaces `model_tier`) |
+| `effective_records` | Kernel-effective record count backing a `kernel_estimated` row (replaces the tier1/tier2 split) |
+| `observed_in_habitat` | TRUE by construction for `kernel_estimated` rows |
 | `undetected_type` | NA, `"singleton_mirror"`, `"global_floor"`, or `"evidence_blend"` (`resident_undetected` rows only) |
 | `evidence_weight`, `evidence_sources` | Audit columns on `evidence_blend` rows: the combined presence weight and contributing evidence sources |
 | `prior_mix_w`, `prior_mix_theta_present`, `prior_mix_theta_absent`, `prior_mix_p_conc` | The presence mixture itself, on `evidence_blend` rows, for `TaxaAssign::compute_posterior()`'s presence-draw sampler |
 | `prior_source_type` | Finer transport-branch provenance (`"domestic_animal"`, `"food_species"`, `"domestic_plant"`, etc.), `transport` rows only |
-| `model_tier` | Legacy column, present only on rows built by the GLMM prior-fitting pathway; carries no meaning on kernel-estimated rows |
+| `model_tier` | Constant, schema-parity column on `resident_undetected`/`transport` rows (e.g. `"tier3_undetected"`); absent from `estimate_kernel_priors()`'s own `kernel_estimated` rows; never read by `join_priors()` |
 
 `TaxaAssign::join_priors()` joins this table to likelihood output on the
 composite key `(taxon_name, taxon_name_rank, grid_id, main_habitat)` and
@@ -674,7 +677,7 @@ Carlo posterior estimation.
 | **kernel bandwidth** (`lambda_km`) | The geographic kernel's e-folding distance; chosen by leave-one-block-out composition prediction, never hand-set |
 | **Kish effective sample size** (`n_eff`) | `W^2 / sum(w_r^2)`: the design-effect-corrected effective count of the weighted neighborhood (Kish 1965) |
 | **effective_records** | Kernel-effective record count backing a species' estimate, in count units; replaces the discrete tier1/tier2 split |
-| **prior_branch** | Which part of the framework a row belongs to: `resident_observed`, `resident_undetected`, or `transport`; replaces `model_tier` |
+| **prior_branch** | Which part of the framework a row belongs to: `kernel_estimated`, `resident_undetected`, or `transport`; replaces `model_tier` |
 | **resident community** | The P=1 simplex: observed shares plus the Good-Turing unseen mass, whose interior is not enumerated |
 | **theta_present** | The Good-Turing missing mass divided by the Chao missing-species count: the typical unseen resident's share if present |
 | **presence-distance curve** | `w = w_scale * exp(-min(d,d_cap)/(k*d_half))`: prices an unobserved claimant's presence probability from its distance to the nearest occurrence record |
@@ -691,8 +694,8 @@ Carlo posterior estimation.
 | Function | Role in Pipeline |
 |---------------------------|---------------------------------------------|
 | `calibrate_kernel_bandwidth()` | Choose kernel bandwidths (and `m`) by leave-one-block-out composition prediction |
-| `estimate_kernel_priors()` | Site-centered kernel estimation of `resident_observed` priors |
-| `generate_undetected_diversity()` | Singleton-mirror and global-floor `resident_undetected` priors (kernel or GLMM ingredients) |
+| `estimate_kernel_priors()` | Site-centered kernel estimation of `kernel_estimated` priors |
+| `generate_undetected_diversity()` | Singleton-mirror and global-floor `resident_undetected` priors from a kernel fit |
 | `generate_presence_curve_evidence()` | Price unobserved claimants (regional, watch-lifted, or distance-clamped) on the shared presence-distance curve |
 | `generate_user_specified_evidence()` | Caller-asserted presence weights for named species, with dilution-threshold disclosure |
 | `apply_undetected_evidence()` | Combine evidence sources into elevated `resident_undetected` priors (`pricing = "blend"` or `"curve"`) |
@@ -712,7 +715,7 @@ TaxaHabitat (habitat assignment)
     v
 TaxaExpect (this package)
     |-- calibrate_kernel_bandwidth()               # choose lambda_km, m, ...
-    |-- estimate_kernel_priors()                    # resident_observed rows
+    |-- estimate_kernel_priors()                    # kernel_estimated rows
     |-- generate_undetected_diversity()             # resident_undetected floor/singleton rows
     |-- generate_presence_curve_evidence() /
     |     generate_user_specified_evidence() +
