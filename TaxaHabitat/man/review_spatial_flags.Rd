@@ -149,12 +149,12 @@ evidence instead. Resolving a point's habitat promotes it.
 \section{Composite categories for unassigned points}{
 
 A point whose consensus reached no verdict (\code{main_habitat} \code{NA})
-used to appear as a single undifferentiated \strong{Unknown}. Every
-ambiguous point then looked like the same problem and could only be resolved
+is not left as a single undifferentiated \strong{Unknown} -- which would
+make every ambiguous point look like the same problem, resolvable only
 one click at a time.
 
 When \code{occurrence_data} carries a \code{"habitat_proportions"}
-attribute, such a point is instead labelled with the habitats actually in
+attribute, such a point is labelled with the habitats actually in
 contention -- \code{"Estuarine | Freshwater | Marine"} -- and that label is
 a real category: its own colour, its own entry in the \strong{Habitats}
 sidebar filter, and therefore selectable as a \strong{group}. Filter to one

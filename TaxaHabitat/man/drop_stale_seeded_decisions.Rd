@@ -55,7 +55,7 @@ A reviewer who marked a point \code{likely} when the classifier said \code{unlik
 did so deliberately, and a later change of the classifier's mind must not
 erase that. Only rows whose \code{decided_at} matches \code{seeded_pattern} are
 eligible, so a genuine review is preserved even when the automatic verdict
-moves underneath it. Measured on the three production files on 2026-09-19,
+moves underneath it. Measured on the three production files,
 \strong{all 244,860 decisions were seeded and none were real} -- so on those files
 every changed point is eligible, which is the situation this exists for.
 }
