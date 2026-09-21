@@ -150,6 +150,23 @@
 #'   \code{habitat_reassigned}, \code{decided_at}).
 #' @seealso \code{\link{apply_spatial_review_decisions}}
 #' @export
+#'
+#' @examples
+#' before <- data.frame(
+#'   point_id     = c("p1", "p2"),
+#'   taxon_name   = c("Sebastes mystinus", "Larus occidentalis"),
+#'   main_habitat = c("Marine", "Terrestrial"),
+#'   spatial_flag = c("questionable", "likely")
+#' )
+#'
+#' # `reviewed` is normally review_spatial_flags()'s return value; a plain
+#' # data frame with the reviewer's updated columns works the same way.
+#' reviewed <- before
+#' reviewed$spatial_flag[1] <- "likely"
+#'
+#' path <- tempfile(fileext = ".rds")
+#' decisions <- save_spatial_review_decisions(reviewed, path, before = before)
+#' decisions
 save_spatial_review_decisions <- function(reviewed, path, before = NULL,
                                           point_id_col = "point_id",
                                           flag_col = "spatial_flag",
@@ -296,6 +313,25 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
 #'   ambiguous, see Details) and \code{pending_point_ids}.
 #' @seealso \code{\link{save_spatial_review_decisions}}
 #' @export
+#'
+#' @examples
+#' before <- data.frame(
+#'   point_id            = c("p1", "p2"),
+#'   taxon_name          = c("Sebastes mystinus", "Larus occidentalis"),
+#'   main_habitat         = c("Marine", "Terrestrial"),
+#'   spatial_flag         = c("questionable", "likely"),
+#'   spatial_flag_reason  = c("inland marine detection", "ok")
+#' )
+#'
+#' path <- tempfile(fileext = ".rds")
+#' reviewed <- before
+#' reviewed$spatial_flag[1] <- "likely"
+#' save_spatial_review_decisions(reviewed, path, before = before)
+#'
+#' # A later run re-applies the saved decision automatically.
+#' out <- apply_spatial_review_decisions(before, path)
+#' out$spatial_flag
+#' attr(out, "n_applied")
 apply_spatial_review_decisions <- function(occurrence_data, path,
                                            point_id_col = "point_id",
                                            flag_col = "spatial_flag",
