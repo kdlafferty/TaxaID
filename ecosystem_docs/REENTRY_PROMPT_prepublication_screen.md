@@ -772,6 +772,20 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   biased prior, never execution. Design note for 1.1: delimit free-text
   fields in LLM prompts consistently across TaxaAssign, TaxaFlag,
   TaxaLikely, TaxaHabitat.
+  **TaxaFetch DONE** (`14fea3f`): `check()` 0/0/0 (no NOTE), 840 tests;
+  `.gbif_checkpoint_path()` checksum -> `rlang::hash()` (old checkpoints
+  become misses); `Depends: R (>= 4.1.0)`; tests' non-ASCII fixed; drifted
+  `.lintr` lines re-verified one by one. 7a: every user-derived cache path
+  hashed or sanitised; URLs `URLencode`d; DataONE downloads gated by a host
+  allow-list. **One item for the pre-tag fix pass**: `.pasta_eml_url()`
+  (dataone_occurrence_search.R ~626) splices `dataset_id`'s dot-split
+  segments into a URL path with no character allow-list -- fixed host, so
+  not SSRF, but `/` or `..` in an id changes the requested path; apply the
+  `[A-Za-z0-9_-]` sanitiser used in `literature_search.R`.
+  **Template default MERGED (`ae25da1`)**: `SCREEN_REFERENCE_ACCESSIONS <-
+  FALSE` in the generated template, rationale in Step 1's comment (one BLAST
+  round-trip per accession trips NCBI; 6 of 13,442 hits changed on a real
+  12S study; run as a separate task).
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
