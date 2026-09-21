@@ -22,3 +22,4 @@ eml_xml <- fetch_dataone_eml("knb-lter-sbc.17.18")
 }
 
 }
+\keyword{internal}
