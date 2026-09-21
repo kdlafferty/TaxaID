@@ -29,10 +29,9 @@ For each installed TaxaID package, introspects every exported function
 (via \code{getNamespaceExports()}), its formal arguments (via
 \code{formals()}), and its documentation (via \code{tools::Rd_db()}) to
 build a registry the workflow engine can inject into LLM prompts and use
-to validate generated code. This REPLACES the old hand-maintained,
-per-package JSON metadata files -- the registry is always current with
-whatever is actually installed, because it is read from the installed
-packages themselves rather than typed by hand.
+to validate generated code. The registry is always current with whatever
+is actually installed, because it is read from the installed packages
+themselves rather than typed by hand.
 }
 \details{
 Results are cached per package under
