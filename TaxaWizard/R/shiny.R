@@ -193,9 +193,7 @@ workflow_app <- function(script_path,
 #' behind one explicit answer to what happens when the user just presses
 #' return: empty input means "no" (decline), matching every other confirm
 #' prompt in this package (\code{workflow_fix()}'s "Regenerate workflow?",
-#' \code{workflow_create()}'s "Generate workflow?"). One prompt in this file
-#' previously treated empty input as "yes" instead -- an isolated
-#' inconsistency flagged in code review; it now goes through this helper.
+#' \code{workflow_create()}'s "Generate workflow?").
 #'
 #' @param prompt Character. The question to display (without a trailing
 #'   "(y/n):" -- this is appended).

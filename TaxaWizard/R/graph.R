@@ -352,8 +352,7 @@
 #'     description, full registry documentation for every function the edge's
 #'     \code{functions} array names and every export of the edge's
 #'     \code{packages}, and an instruction to write the step from that
-#'     documentation and mark it \code{validated: false} (see the SPEC's "P2
-#'     Snippet validator + Tier-B fallback" section).}
+#'     documentation and mark it \code{validated: false}.}
 #'   \item{\code{edge_labels}}{Named character vector of edge labels.}
 #'   \item{\code{packages}}{Character vector of all packages involved.}
 #'   \item{\code{functions}}{Named list of function names per edge.}
@@ -443,8 +442,8 @@
 #' every parameter's required/default/doc text) for every function named in
 #' the edge's \code{functions} array AND every export of the edge's
 #' \code{packages} -- so the LLM has everything it would need to write the
-#' step correctly without a hand-curated template -- and the fixed
-#' instruction from the spec telling it to do exactly that.
+#' step correctly without a hand-curated template -- and a fixed
+#' instruction telling it to do exactly that.
 #'
 #' @param edge One edge definition (a list) from the workflow graph.
 #' @param registry Named list from \code{workflow_registry()}.
@@ -568,7 +567,7 @@
         fixed = TRUE
       )
 
-      # P6: the state of the user's machine, and anything sniff_input() could
+      # The state of the user's machine, and anything sniff_input() could
       # learn from a path they named. Both are computed here rather than by the
       # caller so every entry point (workflow_create(), the CLI, a direct
       # workflow_engine() call) gets them; workflow_create() seeds the cache so
@@ -686,7 +685,7 @@
       prompt <- sub("{{SNIPPETS}}", snippet_block, prompt, fixed = TRUE)
       prompt <- sub("{{PARAM_DOCS}}", path_ctx$param_docs, prompt, fixed = TRUE)
 
-      # P6: requirements of the SELECTED path only, so the model can tell the
+      # Requirements of the SELECTED path only, so the model can tell the
       # user what to set up in the same reply as the workflow -- the generated
       # script's Step 0 stops on exactly these rows.
       path_req <- context$path_requirements_text %||%

@@ -1,11 +1,11 @@
 # ==============================================================================
 # setup.R
-# TaxaWizard -- Setup checker, edge requirements, and input sniffer (P3)
+# TaxaWizard -- Setup checker, edge requirements, and input sniffer
 #
 # workflow_check() answers "is my machine ready to run this workflow?" --
 # base R + jsonlite + httr2 only, no network unless category == "network",
 # never prints or logs a key VALUE (set/unset only). Machine-readable: the
-# engine (P6) will inject its output into prompts, and the generated script's
+# engine injects its output into prompts, and the generated script's
 # Step 0 stops the run when any row is status == "missing".
 #
 # sniff_input() answers "what TaxaWizard input-graph node does this file
@@ -935,7 +935,7 @@ sniff_input <- function(path) {
 
 
 # ==============================================================================
-# P6: rendering setup state into LLM prompts
+# Rendering setup state into LLM prompts
 #
 # The LLM never sees a taxaid_check data.frame; it sees the text these build.
 # Two rules shape them. (1) Only non-ok rows carry information the model can
@@ -1028,20 +1028,18 @@ sniff_input <- function(path) {
   quoted <- unlist(regmatches(txt, gregexpr('"[^"]+"|\'[^\']+\'', txt)))
   candidates <- c(candidates, gsub('^["\']|["\']$', "", quoted))
 
-  # (2) Bare tokens containing no whitespace. This was the ONLY rule until
-  # 2026-09-20 and is kept because it catches directories and extensionless
-  # paths that (3) does not.
+  # (2) Bare tokens containing no whitespace -- catches directories and
+  # extensionless paths that (3) does not.
   candidates <- c(candidates, unlist(regmatches(
     txt,
     gregexpr("[^\\s\"',;()]*(?:/|\\\\)[^\\s\"',;()]*", txt, perl = TRUE)
   )))
 
-  # (3) Paths CONTAINING SPACES. A no-whitespace rule silently missed almost
-  # every real path on this machine: Google Drive's own folder is "My Drive",
-  # and an unquoted path through it was never sniffed, so {{SNIFF_RESULT}}
-  # degraded to "nothing was inspected" while the file sat right there. Found
-  # by the P7(a) console dry run, which passed a real unquoted fixture path and
-  # got back "wasn't found in the inspection step".
+  # (3) Paths CONTAINING SPACES. A no-whitespace rule alone silently misses
+  # almost every real path through a folder like Google Drive's default
+  # "My Drive": an unquoted path through it is never sniffed, so
+  # {{SNIFF_RESULT}} degrades to "nothing was inspected" while the file
+  # sits right there.
   #
   # Anchor on a data-file extension, then offer EVERY plausible start ('/' or
   # '~') at or before it as a candidate, longest first. Generous candidates,

@@ -1,6 +1,6 @@
 # ==============================================================================
 # validate.R
-# TaxaWizard -- snippet validator (P2)
+# TaxaWizard -- snippet validator
 #
 # .validate_snippets() AST-walks every `inst/graph/snippets/*.R` file and
 # reports two classes of drift against the INSTALLED TaxaID packages:
@@ -16,13 +16,9 @@
 # knowing about, but not a drift failure, since a snippet may legitimately
 # call a function from some other Imports/Suggests package bare.
 #
-# This is a straight port of diagnostics/workflow_checks/check_stale_
-# arguments.R's AST-walk logic (named args vs. formals) from a standalone
-# Rscript run over production workflow files to an in-package function run
-# over the snippet templates themselves, reading formals from the
-# introspected registry (R/registry.R) instead of re-loading every package
-# by hand. See ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md,
-# section "P2 Snippet validator + Tier-B fallback".
+# Compares each snippet's named arguments (AST-walked, not regex-matched)
+# against formals read from the introspected registry (R/registry.R)
+# rather than re-loading every package by hand.
 # ==============================================================================
 
 
