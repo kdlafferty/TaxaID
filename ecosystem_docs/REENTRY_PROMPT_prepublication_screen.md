@@ -400,6 +400,22 @@ A2 found TaxaExpect's using the retired `resident_observed` label as current
 11 times; A1 never covered `inst/`. Also `inst/TaxaExpect_workflow.R`, a
 self-labelled "ARCHIVED PATHWAY" script still shipped in `inst/` -> A4 move.
 **Done when** each hit is either verified or rewritten.
+**SCAN DONE 2026-09-21** (`scratchpad/A8_claims_scan.md`, read-only): ~85
+claims opened against code -- 5 FALSE, 4 UNVERIFIABLE (need a live run:
+GreatLakes/Lamar validation numbers, log-loss figures), ~76 verified.
+FALSE: root README cites `taxalikely_evict_unreachable_cache()` as callable
+(removed); TaxaAssign methods file says the forwarding wrapper "remains"
+(removed); TaxaLikely methods file presents `identify_confident_observations()`
+as public (internal); TaxaExpect methods file calls a 0-of-221 Jeffreys
+quantity "about 2.3e-3" an UPPER BOUND -- 2.3e-3 is the posterior MEAN
+(0.5/222, recomputed); the 95% upper bound is ~0.9%; root README Software
+Inventory stale in 6 of 9 rows. 12 dead file pointers in R/inst/vignettes/
+READMEs. 2 of 90 shipped `inst/` scripts call functions that no longer exist
+(`TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R` -> 7 archived
+GLMM functions; `TaxaExpect/inst/extra_functions_review_inputs.R` -> 2
+internals that never existed); 54 of 90 carry dated/session comments -- A1
+never covered `inst/`, so an **inst/ sweep** is a Stage A addition. Fixes
+apply on the post-merge branch.
 
 ### Merge order for the Stage A branches (decided by topology, 2026-09-20)
 
