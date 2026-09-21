@@ -419,6 +419,29 @@ is now vestigial except its "Pipeline Awareness" section (still read by
 `pack.R`) -- trim or leave; `inst/taxawizard_reviewer_demo.R` carries a dated
 "deprecated wrappers removed" note (inst/ was outside A1; A4 moves the demo).
 
+### Merge record
+
+**2026-09-21: all Stage A branches merged to `main` at `7b5b6f6`** (user
+go-ahead 2026-09-20 night), in the order above; 21 merges, one conflict set
+(`screen-a4-moves` vs the A1 branches, both editing the same roxygen pointer
+lines -- A1's stricter text kept, `man/` regenerated). Exports 225 -> 218
+(DataONE kept whole by user decision; `fetch_occurrences_by_taxon`,
+`build_review_covariates`, `drop_stale_seeded_decisions`,
+`taxalikely_evict_unreachable_cache`, TaxaAssign's forwarding wrapper gone;
+`identify_confident_observations` and `fetch_dataone_eml` internal).
+`migrate_reference_cache()` was RUN on all seven live caches first (every
+congruent verdict already current; 199 non-congruent rows left to
+re-evaluate; `.bak_pre_v5_amplicon_query` beside each) -- its deletion is
+now unblocked. Still to do on `main` (on a branch): delete
+`migrate_reference_cache()` per the checklist; the A3 follow-ups (remove
+`suggest_unreferenced_species(data_type=)`'s default; 16 prose leaks; the
+TaxaHabitat README line; image/acoustic examples for the generic layer);
+A5; A8. Deferred until no R session holds the packages: reinstall all nine,
+regenerate `llm_prompts/`, re-run TaxaWizard's `test-pack`/`test-validate`.
+The workflow chat must merge `main` into `workflow-ptcon-multisite` before
+further package edits; the untracked residue under `diagnostics/` and
+`ecosystem_docs/readmes/` in its checkout moves to `TaxaID_dev` then.
+
 ## 7. Stage B -- verification (frozen tree, at `pre-1.0-freeze`)
 
 **Entry conditions -- all true, verified, before B1:**
