@@ -9,7 +9,7 @@
 #' (`.parse_lat_lon()`, `.build_submission_batch_lookup()`/
 #' `.same_submission_batch()`).
 #'
-#' Added 2026-08-09 for `evaluate_reference_accessions(barcode_term =)`:
+#' Used by `evaluate_reference_accessions(barcode_term =)`:
 #' BLASTing a full-length over-length reference (e.g. a complete
 #' mitogenome, ~16.5kb) against `nt` is dramatically more CPU-expensive
 #' than BLASTing its short barcode region -- found to be the real root
@@ -34,7 +34,7 @@
 #'   says, so the two settings accept exactly the same primer matches.
 #' @param strip_primers Logical (default `FALSE`). `TRUE` returns the
 #'   region BETWEEN the two primer sites (`fwd_end + 1` to `rev_start - 1`)
-#'   instead of the primer-inclusive span. Added 2026-09-03 for
+#'   instead of the primer-inclusive span. Used by
 #'   `evaluate_reference_accessions(query_span = "amplicon")`: an
 #'   amplicon-only GenBank deposit is ~169 bp for MiFish-U and carries no
 #'   primer sequence, so a 217 bp primer-inclusive query out-scores it with
@@ -151,12 +151,12 @@
 #' @param barcode_term Character. Passed to `TaxaTools::resolve_barcode_primers()`
 #'   and `TaxaTools::resolve_barcode_lengths()`.
 #' @param max_mismatch_rate Numeric in `[0, 1)`, default `0.15`.
-#' @param strip_primers Logical (default `TRUE`, 2026-09-03). `TRUE` returns
+#' @param strip_primers Logical (default `TRUE`). `TRUE` returns
 #'   the primer-STRIPPED amplicon (the region between the two primer sites,
-#'   ~169 bp for MiFish-U); `FALSE` the primer-INCLUSIVE span (~217 bp), the
-#'   only behaviour before 2026-09-03. See `.extract_amplicon_one_tm()`'s
+#'   ~169 bp for MiFish-U); `FALSE` the primer-INCLUSIVE span (~217 bp).
+#'   See `.extract_amplicon_one_tm()`'s
 #'   own `@param strip_primers` for why the stripped form is what
-#'   `evaluate_reference_accessions()` now submits by default. A sequence
+#'   `evaluate_reference_accessions()` submits by default. A sequence
 #'   with no primer sites (an amplicon-only deposit is already primer-free)
 #'   is returned unchanged under either setting.
 #' @param verbose Logical, default `TRUE`.
