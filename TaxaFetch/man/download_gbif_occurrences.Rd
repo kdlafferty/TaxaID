@@ -117,8 +117,8 @@ the default already reuses such a zip without asking GBIF at all).
 \code{"use_cache"} imports that zip with a loud \code{warning()} naming
 the failure, the cache date and the download key, and sets
 \code{attr(result, "served_from_cache_after_failure") = TRUE}; the cached
-zip is kept as the live cache. \code{"error"} fails as before. With no
-usable cached zip the function always errors.}
+zip is kept as the live cache. \code{"error"} raises the failure instead.
+With no usable cached zip the function always errors.}
 
 \item{prompt_mb}{Numeric. In an INTERACTIVE session, a prepared download at
 least this many MB triggers a summary (size, record count, whether a zip
@@ -268,21 +268,17 @@ identified only to family level), not records of species within it.
 \code{taxonKey}, so records at all ranks within the queried taxa are
 returned.
 
-\strong{Cache invalidation:} A cache built by an older version of this
-function that queried \code{taxonKey} alone (not the OR predicate above)
-will silently omit records at other ranks. If in doubt, re-run with
-\code{overwrite = TRUE}.
-
 \strong{Hierarchy validation:} Each returned record is checked to confirm
 that one of its rank-specific key columns (\code{taxonKey},
 \code{familyKey}, \code{genusKey}, \code{speciesKey}, etc.) matches one
 of the requested keys. Off-target records are dropped with a diagnostic
 message.
 
-\strong{GBIF outages (2026-09-10/11):} a production run that re-requests its
-occurrences on every run (\code{overwrite = TRUE}) used to die at this step
-the moment GBIF's API returned a 5xx, even with a verified zip for the
-identical query already on disk. The request is now retried with backoff
+\strong{GBIF outages:} GBIF's API can return a 5xx during an outage. A
+production run that re-requests its occurrences on every run
+(\code{overwrite = TRUE}) would otherwise die at this step the moment that
+happens, even with a verified zip for the identical query already on disk.
+Instead the request is retried with backoff
 (\code{submit_attempts}/\code{submit_wait}), and if GBIF is still refusing,
 \code{on_submit_failure = "use_cache"} falls back to that zip -- with a
 warning, never silently -- so the run completes on data that differ from a
@@ -292,24 +288,21 @@ but the poll or fetch still fails and there is no cache to fall back on, the
 key is recorded in the cache metadata as \emph{pending}, and the next call
 re-fetches that prepared download instead of submitting a new request.
 
-\strong{Dead pending keys (2026-09-13):} nothing used to clear a pending
-record once written, so a key GBIF had itself killed, cancelled, failed, or
-purged server-side made every subsequent call fail identically forever --
-the poll retries on a transient error, but a prepared download that no
-longer exists server-side fails NON-transiently, and that used to be a hard
-\code{stop()} with no recovery except deleting the cache metadata by hand.
-Two fixes, per the decision to clear and resubmit within the same call:
-(1) a pending key older than \code{pending_max_age_days} is abandoned
-unpolled and a fresh request is submitted instead (see that parameter);
-(2) when the poll on a still-fresh pending key fails non-transiently, the
-dead record is cleared (the whole metadata file is removed when its zip
-was never obtained, the common case; otherwise the record is kept but
-marked no longer pending, so the real local zip is still served as an
-ordinary cache hit) and a fresh request is submitted automatically, in the
-same call -- no manual intervention needed. A brand-new key that itself
-fails to poll non-transiently is unaffected by this: that is still raised
-as an immediate error, since a first-time failure of that kind is a real
-problem worth surfacing, not a stale cache to route around.
+\strong{Dead pending keys:} a pending record is cleared automatically once
+it can no longer be honoured, rather than making every subsequent call fail
+identically forever against a key GBIF has itself killed, cancelled,
+failed, or purged server-side. Two mechanisms, both automatic: (1) a
+pending key older than \code{pending_max_age_days} is abandoned unpolled
+and a fresh request is submitted instead (see that parameter); (2) when the
+poll on a still-fresh pending key fails non-transiently, the dead record is
+cleared (the whole metadata file is removed when its zip was never
+obtained, the common case; otherwise the record is kept but marked no
+longer pending, so the real local zip is still served as an ordinary cache
+hit) and a fresh request is submitted automatically, in the same call -- no
+manual intervention needed. A brand-new key that itself fails to poll
+non-transiently is unaffected by this: that is still raised as an
+immediate error, since a first-time failure of that kind is a real problem
+worth surfacing, not a stale cache to route around.
 
 \strong{Concurrent download limits:} GBIF limits accounts to 3
 concurrent downloads (fewer for accounts with many prior downloads). If
@@ -318,11 +311,11 @@ a request is rejected, cancel in-progress downloads at
 }
 \section{Why nothing here blocks by default}{
 
-On 2026-09-05 a \code{utils::menu()} in this function consumed the ENTIRE
-remainder of a sourced workflow script as its answers -- roughly 600 lines,
-each rejected as an invalid selection, each therefore never executed. The
-GBIF download itself had succeeded; everything after it silently did not
-run. RStudio queues the rest of a script as pending console input, and
+A \code{utils::menu()} inside a function called from a sourced workflow
+script is dangerous: it can consume the ENTIRE remainder of the script as
+its answers -- every remaining line rejected as an invalid selection, each
+therefore never executed, even after the GBIF download itself has
+succeeded. RStudio queues the rest of a script as pending console input, and
 \code{menu()}/\code{readline()} read exactly that queue, so
 \code{interactive()} being \code{TRUE} says nothing about whether a human is
 waiting to type. This package already documented the same hazard for

@@ -68,9 +68,9 @@ fetch. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.}
 
 \item{candidate_taxa}{Optional character vector of taxa that can actually be
 ASSIGNED -- typically the species-level match candidates (e.g.
-\code{unique(match_obj$taxon_name)}). \code{NULL} (default) preserves the
-pre-2026-09-05 behaviour of checking every locally-rare species in the
-pool. Supplying it is strongly recommended for a family-derived occurrence
+\code{unique(match_obj$taxon_name)}). \code{NULL} (default) checks every
+locally-rare species in the pool. Supplying it is strongly recommended
+for a family-derived occurrence
 pool: at real PtConception 18S only 387 of 7,392 pool species (5.2\%) were
 match candidates, so 95\% of the per-species GBIF requests protected against
 a harm those species cannot cause. A species with 1-4 local records has a
@@ -153,7 +153,7 @@ than folding it into \code{"consistent"}, so a downstream consumer never
 mistakes "we couldn't check" for "we checked and it's fine."
 
 \strong{\code{cc_outl()} is called once per species, not once for the
-whole batch:} confirmed on real production data (2026-07-20) that its
+whole batch:} confirmed on real production data that its
 \code{"distance"} method silently switches EVERY species in a single call
 to a coarser raster approximation whenever ANY ONE species in that call
 has 10,000 or more records. A species rare in the local bbox can still be

@@ -27,14 +27,13 @@ older than this many days (by modification time) are targeted.
 zips (and zip sidecars -- see below) that are no longer referenced by
 any current
 \code{download_gbif_occurrences()} metadata file in \code{cache_dir} --
-i.e. zips superseded by a later \code{overwrite = TRUE} run before this
-package's 2026-09-03 orphan-cleanup fix. The zip each metadata file
-currently points to (its query's most recent cached download), every
-metadata file itself, every \code{fetch_gbif_occurrences()} checkpoint,
-and every iNaturalist range file are left untouched -- this is the
-"keep the most recent cache per query, remove only stale leftovers"
-mode. Default \code{FALSE} (target everything recognized, the same as
-before this parameter existed). Since a metadata file only ever names
+i.e. zips superseded by a later \code{overwrite = TRUE} run. The zip
+each metadata file currently points to (its query's most recent cached
+download), every metadata file itself, every
+\code{fetch_gbif_occurrences()} checkpoint, and every iNaturalist range
+file are left untouched -- this is the "keep the most recent cache per
+query, remove only stale leftovers" mode. Default \code{FALSE} (target
+everything recognized). Since a metadata file only ever names
 \code{X.zip}, a \code{X.zip.<suffix>} sidecar -- a partial transfer, or
 a bad download renamed out of the way by hand -- is unreferenced by
 construction and is always targeted here.}
