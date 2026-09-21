@@ -12,7 +12,7 @@ Version 0.1.0 (built R 4.5.2; ; 2026-09-20 21:06:26 UTC; unix). 16 exported func
 
 Elevate the dark-diversity floor prior for species with external occurrence-plausibility evidence
 
-'generate_undetected_diversity' treats every species with zero occurrence records identically - the generic global-floor 'Beta(1, N_total - 1)', regardless of whether it has never been recorded within a thousand kilometers, or has real external evidence (a documented invasion-front species, a corroborated nearby record just outside the study bbox) making it a materially more plausible detection. This function is the single, shared mechanism for elevating that floor for named species, given evidence from any number of independent sources - designed so multiple sources can be combined safely wit
+'generate_undetected_diversity' treats every species with zero occurrence records identically - the generic global-floor 'Beta(1, N_total - 1)', regardless of whether it has never been recorded within a thousand kilometers, or has real external evidence (a documented invasion-front species, a corroborated nearby record just outside the study bbox) making it a materially more plausible detection. This function is the single, shared mechanism for elevating that floor for named species, given evidence from any number of independent sources - designed so multiple sources can be combined ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -28,13 +28,13 @@ Elevate the dark-diversity floor prior for species with external occurrence-plau
 | min_group_n_eff | no | 100 | Support a sampling group must have before its own budget is trusted: at least this many effective records (default 100) and this many neighborhood singletons (default 1). Ignored for single-group fits. |
 | min_group_f1 | no | 1L | Support a sampling group must have before its own budget is trusted: at least this many effective records (default 100) and this many neighborhood singletons (default 1). Ignored for single-group fits. |
 
-**Value:** A tibble with one row per eligible taxon named in 'evidence': taxon_name The real taxon name. taxon_name_rank Always '"species"' - required for the row to match 'TaxaAssign::join_priors()''s composite join key. grid_id, main_habitat As supplied ('main_habitat' omitted entirely when 'model_obj' has no habitat concept). alpha, beta Beta(alpha, beta) prior parameters. theta_mean, theta_sd Derived fro
+**Value:** A tibble with one row per eligible taxon named in 'evidence': taxon_name The real taxon name. taxon_name_rank Always '"species"' - required for the row to match 'TaxaAssign::join_priors()''s composite join key. grid_id, main_habitat As supplied ('main_habitat' omitted entirely when 'model_obj' has no habitat concept). alpha, beta Beta(alpha, beta) prior parameters. theta_mean, theta_sd ...
 
 ### calibrate_kernel_bandwidth(occurrence_data, site_habitat, lambda_grid = c(10, 25, 50, 100, 200), m_grid = 1, covariate_col = NULL, lambda_covariate_grid = NULL, lambda_latitude_grid = NULL, block_size_deg = 0.5, min_block_records = 20L, sampling_group_col = NULL, min_group_records = NULL, smoothing = 0.5, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat")
 
 Calibrate kernel bandwidths by leave-one-block-out composition prediction
 
-Chooses 'lambda_km' (and optionally the covariate bandwidth and the back-off mass 'm') for 'estimate_kernel_priors()' empirically: records are partitioned into spatial blocks; each block's species composition is predicted from all records _outside_ it, using the same kernel machinery evaluated at the block's own data centroid; predictions are scored by per-record multinomial log-loss against the block's actual records. Two reference predictors are always scored alongside for context: 'regional' (all held-out records, unweighted - "is locality worth anything?") and 'nearest_block' (the single n
+Chooses 'lambda_km' (and optionally the covariate bandwidth and the back-off mass 'm') for 'estimate_kernel_priors()' empirically: records are partitioned into spatial blocks; each block's species composition is predicted from all records _outside_ it, using the same kernel machinery evaluated at the block's own data centroid; predictions are scored by per-record multinomial log-loss against the block's actual records. Two reference predictors are always scored alongside for context: 'regional' (all held-out records, unweighted - "is locality worth anything?") and 'nearest_block' (the ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -55,7 +55,7 @@ Chooses 'lambda_km' (and optionally the covariate bandwidth and the back-off mas
 | lon_col | no | "decimalLongitude" | As in estimate_kernel_priors(). |
 | habitat_col | no | "main_habitat" | As in estimate_kernel_priors(). |
 
-**Value:** A list with results Data frame: one row per parameter combination plus the 'regional' and 'nearest_block' references; columns 'lambda_km', 'lambda_covariate', 'lambda_latitude', 'm', 'mean_logloss' (simple mean over blocks), 'weighted_logloss' (record-weighted), 'blocks_beating_nearest'. best The row minimizing 'weighted_logloss' among kernel rows. n_blocks Number of scored blocks. by_group 'NULL'
+**Value:** A list with results Data frame: one row per parameter combination plus the 'regional' and 'nearest_block' references; columns 'lambda_km', 'lambda_covariate', 'lambda_latitude', 'm', 'mean_logloss' (simple mean over blocks), 'weighted_logloss' (record-weighted), 'blocks_beating_nearest'. best The row minimizing 'weighted_logloss' among kernel rows. n_blocks Number of scored blocks. by_group ...
 
 ### condition_evidence_on_habitat(evidence, habitat_lookup, site_habitat, w_floor = 0, verbose = TRUE)
 
@@ -99,7 +99,7 @@ Computes each species' expected share of legitimate detections at a sampling sit
 | sampling_group_col | no | NULL | Optional column naming a detection-process grouping (e.g. "sampling_group"). Default NULL: all taxa share one composition and one Good-Turing budget. This default is not a safe "do nothing" choice: with no sampling_group_col, every record is pooled regardless of detection process, with no warning or error, even when that means silently mixing genuinely incompatible processes (e.g. phytoplankton cell counts with bird point counts). Grouping is never inferred automatically from taxonomy or data -- this function has no way to know which taxa were sampled by a comparable process, so it never guesses. Supplying a correct sampling_group_col is the caller's responsibility, built BY HAND from real knowledge of detection methodology -- there is no automated way to detect "comparable method" from taxonomy or data alone (an LLM guess is not a substitute for real methodological knowledge either). This is not a burdensome ask: this function does NOT require pre-merged, sample-size-adequate groups for statistical adequacy -- it degrades gracefully, producing honestly wide uncertainty for a sparse group on its own (empirically confirmed on a real 9-group expert classification down to a single-taxon group, see README.md's "Shared detection effort" section) -- so classify at whatever granularity genuinely reflects distinct detection methods, without worrying whether each resulting group individually "has enough data." When supplied, theta AND the budget (f1, f2, missing_mass, chao_missing, theta_present) are computed WITHIN each group, because both are shared-denominator quantities that assume a common detection process. Pooling across processes dilutes a detectable taxon's share with records the assay could never amplify, and lets barely-sampled groups contribute singletons that inflate f1 -- and so chao_missing, quadratically -- while adding almost nothing to missing_mass, deflating theta_present (theta_present is priced from missing_mass / f1, so a diluted missing_mass still deflates it even though chao_missing no longer sits in that formula). Note this is a no-op for a taxonomically homogeneous pool (a fish assay whose occurrence pool is all fish), which is why it changes nothing at sites like GreatLakes; it matters for broad markers (18S) spanning groups with very different detection probabilities. With more than one group the pooled scalars are NA by design and $budget is authoritative -- a single number would be silently wrong. |
 | support_weight | no | exp(-3) | Numeric in (0, 1]. A record counts toward the discrete neighborhood-support statistics (singleton detection, record counts) when its total kernel weight is at least support_weight (default exp(-3), i.e. within ~3 bandwidths). Continuous quantities (theta, n_eff) always use all records. |
 
-**Value:** An object of class '"taxaexpect_kernel_priors"': a list with priors Data frame: 'taxon_name', 'grid_id', 'main_habitat', 'alpha', 'beta', 'theta_mean', 'theta_sd', 'prior_branch', 'effective_records'. n_eff Kish effective sample size at the site. W Total kernel weight. singletons Data frame of neighborhood singletons (species with exactly one supporting record): 'taxon_name', record 'lat'/'lon', '
+**Value:** An object of class '"taxaexpect_kernel_priors"': a list with priors Data frame: 'taxon_name', 'grid_id', 'main_habitat', 'alpha', 'beta', 'theta_mean', 'theta_sd', 'prior_branch', 'effective_records'. n_eff Kish effective sample size at the site. W Total kernel weight. singletons Data frame of neighborhood singletons (species with exactly one supporting record): 'taxon_name', record ...
 
 ### fit_regional_presence_curve(presence_df, bins = c(0, 100, 200, 400, 700, 1100))
 
@@ -139,13 +139,13 @@ Constructs Beta(alpha, beta) prior rows for named domestic/commensal animal spec
 | api_token | no | Sys.getenv("INAT_API_TOKEN") | Character. iNaturalist API token, forwarded to TaxaFetch::fetch_inat_occurrences(). Defaults to the INAT_API_TOKEN environment variable. |
 | verbose | no | FALSE | Logical. Print progress. Default FALSE. |
 
-**Value:** A tibble with one row per resolved domestic/food/plant taxon: taxon_name The real taxon name (never NA, unlike 'generate_undetected_diversity()''s anonymous proxies). taxon_name_rank Always '"species"' - every candidate channel here resolves to a real species-level name. Required for 'TaxaAssign::join_priors()''s composite-key join to ever match these rows at all (a previously-real gap: this colum
+**Value:** A tibble with one row per resolved domestic/food/plant taxon: taxon_name The real taxon name (never NA, unlike 'generate_undetected_diversity()''s anonymous proxies). taxon_name_rank Always '"species"' - every candidate channel here resolves to a real species-level name. Required for 'TaxaAssign::join_priors()''s composite-key join to ever match these rows at all (a previously-real gap: this ...
 
 ### generate_inat_range_evidence(inat_range, weight = 0.8, p_conc = 1, n_obs_threshold = 500L, require_name_match = TRUE)
 
 Evidence rows for species inside their iNaturalist range polygon
 
-The third evidence generator for 'apply_undetected_evidence' (2026-08-26 mixture redesign, D6), alongside 'generate_invasive_watch_evidence' and 'generate_regional_proximity_evidence'. Converts 'TaxaFetch::check_inat_range()' output into presence-probability evidence, replacing 'TaxaAssign::adjust_inat_range_priors()''s post-join binary elevation for the mixture pathway - so iNat evidence shares the same anchors, moment-matched concentration, and multi-source probabilistic-OR combination as every other evidence channel, instead of jumping rows straight to the singleton level outside the framew
+The third evidence generator for 'apply_undetected_evidence' (2026-08-26 mixture redesign, D6), alongside 'generate_invasive_watch_evidence' and 'generate_regional_proximity_evidence'. Converts 'TaxaFetch::check_inat_range()' output into presence-probability evidence, replacing 'TaxaAssign::adjust_inat_range_priors()''s post-join binary elevation for the mixture pathway - so iNat evidence shares the same anchors, moment-matched concentration, and multi-source probabilistic-OR combination as every other evidence channel, instead of jumping rows straight to the singleton level outside the ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -217,7 +217,7 @@ A thin, two-stage evidence generator for 'apply_undetected_evidence': for each t
 | tile_cache_dir | no | NULL | Character or NULL (default). Forwarded straight through to Stage 1's TaxaFlag::check_gbif_tile_range( cache_dir = ) -- see that function's own Caching section for the exact key/no-expiry/age-reporting design. NULL (the default) disables Stage 1 caching entirely, matching every prior release of this function: every zero-record taxon re-pays a live GBIF tile fetch on every call, which is exactly the cost this parameter exists to remove on a repeat run against unchanged data (the 2026-09-13 PtConception run spent 43 minutes here across 256 taxa). When supplied, this function also emits one summary line when it finishes: how many Stage 1 verdicts were served from cache, how many were freshly fetched, and the age in days of the oldest cache hit actually used -- so staleness (there is no TTL; see check_gbif_tile_range()) is visible to the caller rather than silent. |
 | verbose | no | FALSE | Logical. Print per-taxon Stage 1/Stage 2 progress. Default FALSE. |
 
-**Value:** A tibble with one row per taxon that cleared both stages: 'taxon_name', 'weight', 'p_conc', 'source' (always '"regional_proximity"') - matches the evidence-table schema 'apply_undetected_evidence' expects - plus audit columns 'distance_km', 'record_year', 'age_years' ('NA' when the matched record had no usable year), 'tile_zoom_used'. Empty tibble (correct schema, zero rows) when nothing in 'zero_
+**Value:** A tibble with one row per taxon that cleared both stages: 'taxon_name', 'weight', 'p_conc', 'source' (always '"regional_proximity"') - matches the evidence-table schema 'apply_undetected_evidence' expects - plus audit columns 'distance_km', 'record_year', 'age_years' ('NA' when the matched record had no usable year), 'tile_zoom_used'. Empty tibble (correct schema, zero rows) when nothing in ...
 
 ### generate_uncertain_habitat_evidence(occurrence_data, site_lat, site_lon, site_habitat, habitat_levels, taxa = NULL, d_half = 150, w_scale = 1, year_col = NULL, age_half = 15, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", verbose = TRUE)
 
@@ -243,7 +243,7 @@ Prices the taxa that the kernel estimator cannot see: those with records near th
 | habitat_col | no | "main_habitat" | Column names in occurrence_data. Defaults "taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat". |
 | verbose | no | TRUE | Logical. Report counts. Default TRUE. |
 
-**Value:** A data frame, one row per qualifying taxon, with the evidence schema 'apply_undetected_evidence' expects - 'taxon_name', 'weight', 'p_conc', 'source' (always '"uncertain_habitat_proximity"') - plus audit columns 'distance_km' (to the nearest unassigned-habitat record), 'n_records_unassigned' (how many such records the taxon has) and 'record_year'/'age_years' ('NA' without 'year_col'). Zero rows wi
+**Value:** A data frame, one row per qualifying taxon, with the evidence schema 'apply_undetected_evidence' expects - 'taxon_name', 'weight', 'p_conc', 'source' (always '"uncertain_habitat_proximity"') - plus audit columns 'distance_km' (to the nearest unassigned-habitat record), 'n_records_unassigned' (how many such records the taxon has) and 'record_year'/'age_years' ('NA' without 'year_col'). Zero ...
 
 ### generate_undetected_diversity(model_obj, jeffreys_threshold = 2L, singleton_ess = 2L, taxonomy = NULL)
 
@@ -258,7 +258,7 @@ Constructs Beta(alpha, beta) prior objects for species that are plausibly presen
 | singleton_ess | no | 2L | Integer. Effective sample size used for moment-matching singleton mirror priors. Controls how tightly the prior is concentrated around the observed singleton theta: alpha = theta_obs * singleton_ess, beta = (1 - theta_obs) * singleton_ess. A small value (default 2) produces a diffuse prior appropriate for a species seen exactly once. |
 | taxonomy | no | NULL | Optional data frame with columns taxon_name and any subset of genus, family, order, class, phylum. When supplied, singleton mirror rows are annotated with the full taxonomic hierarchy of their source_taxon_name via a left join on taxon_name. Typically built from occurrences_std (which carries the full GBIF hierarchy). Used by TaxaAssign::join_priors() for hierarchical dark diversity grouping (Issue 3). Global floor rows always receive NA for all taxonomy columns. Default NULL (taxonomy columns added as NA). |
 
-**Value:** A tibble with one row per undetected species proxy, containing: taxon_name Always NA - proxies have no taxonomic identity. grid_id Grid cell identifier inherited from singleton source, or NA for the global floor. habitat Habitat inherited from singleton source, or NA for global floor. Column absent entirely when 'model_obj' was trained with 'habitat_col = NULL'. alpha Alpha parameter of Beta(alpha
+**Value:** A tibble with one row per undetected species proxy, containing: taxon_name Always NA - proxies have no taxonomic identity. grid_id Grid cell identifier inherited from singleton source, or NA for the global floor. habitat Habitat inherited from singleton source, or NA for global floor. Column absent entirely when 'model_obj' was trained with 'habitat_col = NULL'. alpha Alpha parameter of ...
 
 ### generate_user_specified_evidence(taxon_weights, p_conc = 1)
 
@@ -287,7 +287,7 @@ Re-computes the $budget of a fitted 'estimate_kernel_priors()' object across a g
 | lambda_grid | no | NULL | Optional numeric vector of geographic bandwidths (km). NULL (default) sweeps only the counting radius, holding lambda_km at the fit's own value -- the cleaner diagnostic, since it moves one boundary and nothing else. Supply a grid to see the joint sensitivity. |
 | verbose | no | FALSE | Logical. Message each setting as it is computed. |
 
-**Value:** An object of class '"taxaexpect_kernel_budget_sensitivity"': a list with budget Long data frame, one row per (setting, sampling group): the $budget columns plus 'lambda_km', 'support_weight', 'radius_lambdas' ('-log(support_weight)') and 'radius_km'. summary One row per sampling group: the range of 'f1', 'f2', 'chao_missing' and 'theta_present' over the sweep, 'theta_present_spread' (max/min over 
+**Value:** An object of class '"taxaexpect_kernel_budget_sensitivity"': a list with budget Long data frame, one row per (setting, sampling group): the $budget columns plus 'lambda_km', 'support_weight', 'radius_lambdas' ('-log(support_weight)') and 'radius_km'. summary One row per sampling group: the range of 'f1', 'f2', 'chao_missing' and 'theta_present' over the sweep, 'theta_present_spread' (max/min ...
 
 ### plot_theta_surface(kernel_fit, occurrence_data, taxon, n_grid = 256L, bbox = NULL, m = NULL, covariate_at = NULL, alpha_by_n_eff = TRUE, n_eff_floor = NULL, mask = NULL, site_marker_radius = 5, hover_labels = TRUE, interactive = FALSE, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", ...)
 
@@ -316,7 +316,7 @@ Computes the SAME distance-kernel estimator 'estimate_kernel_priors()' applies a
 | habitat_col | no | "main_habitat" | Column names in occurrence_data (defaults matching estimate_kernel_priors(): "taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat"). kernel_fit does not carry these names, so they are supplied here with the same defaults the estimator uses. |
 | ... | yes |  | Passed to the static plot's underlying graphics::image() call (e.g. main) or, when interactive = TRUE, to leaflet::addRectangles(). |
 
-**Value:** An object of class '"taxaexpect_theta_surface"': a list with surface A list with 'lat_grid', 'lon_grid' (lattice coordinates), 'theta' (an 'n_grid' x 'n_grid' matrix for one taxon, or a named list of such matrices for several), 'n_eff', 'W' (Kish effective sample size and total kernel weight at every lattice point), 'regional_composition' (the 'p_i' used per requested taxon), and 'params' (the res
+**Value:** An object of class '"taxaexpect_theta_surface"': a list with surface A list with 'lat_grid', 'lon_grid' (lattice coordinates), 'theta' (an 'n_grid' x 'n_grid' matrix for one taxon, or a named list of such matrices for several), 'n_eff', 'W' (Kish effective sample size and total kernel weight at every lattice point), 'regional_composition' (the 'p_i' used per requested taxon), and 'params' ...
 
 ### report_priors(priors_output, verbose = FALSE)
 

@@ -22,7 +22,7 @@ Takes the full PASTA catalog (from 'harvest_dataone_catalog') and a target bound
 | chunk_size | no | 80L | Integer. Maximum descriptions per prompt chunk. Default 80L. |
 | verbose | no | TRUE | Logical. Report shortcut and dedup statistics. Default TRUE. |
 
-**Value:** An object of classes 'c("geo_prompt", "llm_prompt")', a named list with elements: prompts List of prompt strings, one per chunk. chunks List of character vectors of descriptions, one per chunk. n_chunks Integer. n_items Integer. Number of unique descriptions sent to the LLM. descriptions Character vector. All unique descriptions submitted (in order matching the LLM index column). desc_to_ids Named
+**Value:** An object of classes 'c("geo_prompt", "llm_prompt")', a named list with elements: prompts List of prompt strings, one per chunk. chunks List of character vectors of descriptions, one per chunk. n_chunks Integer. n_items Integer. Number of unique descriptions sent to the LLM. descriptions Character vector. All unique descriptions submitted (in order matching the LLM index column). desc_to_ids ...
 
 ### build_pdf_extract_prompt(pdf_structure, single_site_coords = NULL, dpi = 150L, chunk_pages = FALSE, verbose = TRUE)
 
@@ -38,7 +38,7 @@ Uses the five-axis classification in 'pdf_structure' to configure an extraction 
 | chunk_pages | no | FALSE | Logical. When TRUE and the number of send pages exceeds 25, split the pages into chunks of at most 25 and return one prompt string per chunk in $prompts. Set $n_chunks > 1 in the returned object. Default FALSE. |
 | verbose | no | TRUE | Logical. Print page-count and chunking information. Default TRUE. |
 
-**Value:** An S3 object of class 'c("pdf_extract_prompt", "llm_prompt")' with elements: • '$prompts' - character vector of prompt strings (length 1 normally; '>1' when 'chunk_pages = TRUE' and 'n_send > 25') • '$page_chunks' - list of integer vectors, one per prompt, giving the page numbers for each chunk • '$n_chunks' - integer; number of chunks • '$n_send' - integer; total pages flagged for sending • '$dpi
+**Value:** An S3 object of class 'c("pdf_extract_prompt", "llm_prompt")' with elements: • '$prompts' - character vector of prompt strings (length 1 normally; '>1' when 'chunk_pages = TRUE' and 'n_send > 25') • '$page_chunks' - list of integer vectors, one per prompt, giving the page numbers for each chunk • '$n_chunks' - integer; number of chunks • '$n_send' - integer; total pages flagged for sending • ...
 
 ### build_taxon_screen_prompt(catalog, taxon_scope, geo_scope = NULL, chunk_size = 50L, abstract_chars = 300L, verbose = TRUE)
 
@@ -55,7 +55,7 @@ Takes a geo-screened candidate tibble (or any catalog subset) and a plain- langu
 | abstract_chars | no | 300L | Integer. Maximum characters from the abstract to include per dataset. Default 300L. Set to 0L to omit abstracts entirely (faster, less accurate). |
 | verbose | no | TRUE | Logical. Report dataset counts and skipped entries. Default TRUE. |
 
-**Value:** An object of classes 'c("taxon_prompt", "llm_prompt")', a named list with elements: prompts List of prompt strings, one per chunk. chunks List of character vectors of dataset IDs, one per chunk. n_chunks Integer. n_items Integer. Number of datasets submitted to the LLM. ids Character vector. All dataset IDs submitted (in order matching the LLM index column). skipped_ids Character vector. Dataset I
+**Value:** An object of classes 'c("taxon_prompt", "llm_prompt")', a named list with elements: prompts List of prompt strings, one per chunk. chunks List of character vectors of dataset IDs, one per chunk. n_chunks Integer. n_items Integer. Number of datasets submitted to the LLM. ids Character vector. All dataset IDs submitted (in order matching the LLM index column). skipped_ids Character vector. ...
 
 ### call_api_pdf(prompt, pdf_path, sections = c("methods", "results", "appendix"), page_map = NULL, dpi = 150L, provider = NULL, tier = c("mid", "fast", "top"), model = NULL, max_tokens = 4000L, api_key = NULL, base_url = NULL, verbose = TRUE)
 
@@ -84,7 +84,7 @@ Renders selected pages of a PDF as PNG images and sends them to a vision-capable
 
 Flag Geographically Isolated Occurrence Records Against a Species' Global Range
 
-A bbox-scoped GBIF search (see 'get_gbif_occurrences') can return a single occurrence for a species that is genuinely absent from the study region - a misidentification, mislabeled specimen, or bad georeference elsewhere in GBIF, sitting far from that species' real range. This function targets exactly that case: for species with few local records, it fetches that species' unrestricted global GBIF occurrences ('geometry = NULL', see 'fetch_gbif_occurrences') and tests whether the local record(s) are geographic outliers against that global cloud, via 'CoordinateCleaner::cc_outl()'. Species with 
+A bbox-scoped GBIF search (see 'get_gbif_occurrences') can return a single occurrence for a species that is genuinely absent from the study region - a misidentification, mislabeled specimen, or bad georeference elsewhere in GBIF, sitting far from that species' real range. This function targets exactly that case: for species with few local records, it fetches that species' unrestricted global GBIF occurrences ('geometry = NULL', see 'fetch_gbif_occurrences') and tests whether the local record(s) are geographic outliers against that global cloud, via 'CoordinateCleaner::cc_outl()'. Species ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -101,7 +101,7 @@ A bbox-scoped GBIF search (see 'get_gbif_occurrences') can return a single occur
 | verdict_cache | no | TRUE | Logical, default TRUE. Cache the per-record VERDICTS rather than the global occurrence cloud. The cloud is reduced to one integer per species and one logical per local record and then discarded, so caching it stores millions of records to preserve a few thousand numbers. The verdict file is keyed on the species set and the cc_outl() parameters, so changing either recomputes. |
 | verbose | no | FALSE | Logical. Forwarded to cc_outl(). Default FALSE. |
 
-**Value:** 'local_occurrences' with three columns added: 'local_n' Number of records for this species in 'local_occurrences'. 'global_n_unique' Number of geographically unique global records found for this species. 'NA' for species never checked ('local_n >= min_local_n'). 'outlier_status' One of '"not_tested_sufficient_local_data"' (local_n >= min_local_n, never checked), '"insufficient_global_data"' (check
+**Value:** 'local_occurrences' with three columns added: 'local_n' Number of records for this species in 'local_occurrences'. 'global_n_unique' Number of geographically unique global records found for this species. 'NA' for species never checked ('local_n >= min_local_n'). 'outlier_status' One of '"not_tested_sufficient_local_data"' (local_n >= min_local_n, never checked), '"insufficient_global_data"' ...
 
 ### check_inat_range(taxon_names, lat, lng, api_token = Sys.getenv("INAT_API_TOKEN"), cache_dir = NULL, verbose = FALSE)
 
@@ -118,7 +118,7 @@ For each taxon name, resolves the iNaturalist taxon ID, downloads the correspond
 | cache_dir | no | NULL | Character. Optional path to a directory for caching downloaded GeoJSON files. Speeds up repeated calls for the same taxa. |
 | verbose | no | FALSE | Logical. If TRUE, prints progress for each taxon. Default FALSE. |
 
-**Value:** A tibble with columns 'taxon_name', 'taxon_id', 'matched_name', 'name_match' (does the resolved iNat name equal the query, case-insensitively - FALSE flags a fuzzy-match resolution to a DIFFERENT taxon, which must never drive a prior elevation), 'rank', 'iconic_taxon_name', 'inat_kingdom', 'n_observations', 'in_range', 'range_status'. 'inat_kingdom' is derived from 'iconic_taxon_name' via a fixed 
+**Value:** A tibble with columns 'taxon_name', 'taxon_id', 'matched_name', 'name_match' (does the resolved iNat name equal the query, case-insensitively - FALSE flags a fuzzy-match resolution to a DIFFERENT taxon, which must never drive a prior elevation), 'rank', 'iconic_taxon_name', 'inat_kingdom', 'n_observations', 'in_range', 'range_status'. 'inat_kingdom' is derived from 'iconic_taxon_name' via a ...
 
 ### dedupe_occurrences(occurrence_data, collapse_duplicate_occasions = TRUE, taxon_col = "scientificName", date_col = "eventDate", lat_col = "decimalLatitude", lon_col = "decimalLongitude", coord_precision = 3L)
 
@@ -204,7 +204,7 @@ Uses 'pdftools' to extract plain text from a PDF, detects section boundaries usi
 | truncate_at_boundary | no | TRUE | Logical. If TRUE (default), detect and remove back matter belonging to other articles in the same PDF (e.g. journal volume indices, symposium announcements) before section detection runs. Uses journal citation header repeat and banner line repeat as triggers. Set to FALSE only if the document genuinely spans multiple articles that should all be extracted. |
 | verbose | no | TRUE | Logical. Report detected sections and page counts. Default TRUE. |
 
-**Value:** A named list with elements: sections Named list of character strings, one per requested section. Each string is the concatenated text of all pages in that section. Sections not detected in the document are absent. page_map Named list mapping section labels to integer vectors of page numbers (1-based). has_headers Logical. TRUE if section headers were detected. FALSE means the document has no expli
+**Value:** A named list with elements: sections Named list of character strings, one per requested section. Each string is the concatenated text of all pages in that section. Sections not detected in the document are absent. page_map Named list mapping section labels to integer vectors of page numbers (1-based). has_headers Logical. TRUE if section headers were detected. FALSE means the document has no ...
 
 ### fetch_dataone_eml(dataset_id)
 
@@ -234,7 +234,7 @@ Given a vector of EDI PASTA dataset identifiers (from 'search_dataone'), fetches
 | odm_variable | no | "DENSITY" | Character. The variable_name value to filter on when joining LTER Observation Data Model (ODM) tables. Default "DENSITY". Other common values: "PERCENT_COVER", "DRY_GM2", "AFDM". Set to NULL to keep all variable rows (produces long-format output with one row per taxon x location x date x variable). |
 | verbose | no | TRUE | Logical. Print per-dataset and per-entity progress messages. Default TRUE. |
 
-**Value:** A tibble with standardized Darwin Core columns, or 'NULL' invisibly if no records survive all filters. Column order: 'occurrenceID', 'datasetID', 'datasetName', 'institutionCode', 'basisOfRecord', 'eventDate', 'year', 'month', 'day', 'decimalLatitude', 'decimalLongitude', 'coordinateUncertaintyInMeters', 'scientificName', 'genus', 'family', 'specificEpithet', 'vernacularName', 'individualCount', '
+**Value:** A tibble with standardized Darwin Core columns, or 'NULL' invisibly if no records survive all filters. Column order: 'occurrenceID', 'datasetID', 'datasetName', 'institutionCode', 'basisOfRecord', 'eventDate', 'year', 'month', 'day', 'decimalLatitude', 'decimalLongitude', 'coordinateUncertaintyInMeters', 'scientificName', 'genus', 'family', 'specificEpithet', 'vernacularName', ...
 
 ### fetch_gbif_occurrences(keys, geometry, year_range = .gbif_default_year_range(), limit = 10000L, chunk_size = 20L, pause_seconds = 2, pause_between_keys = 0.5, max_retries = 4L, cache_dir = tools::R_user_dir("TaxaFetch", "cache"), beep = FALSE)
 
@@ -274,13 +274,13 @@ For each taxon name, resolves the iNaturalist taxon ID and counts observations w
 | api_token | no | Sys.getenv("INAT_API_TOKEN") | Character. iNaturalist API token for taxon name resolution. Defaults to the INAT_API_TOKEN environment variable. |
 | verbose | no | FALSE | Logical. If TRUE, prints progress for each taxon. Default FALSE. |
 
-**Value:** A tibble with columns 'taxon_name', 'taxon_id', 'matched_name', 'inat_kingdom' (derived from iNaturalist's own 'iconic_taxon_name' via the same fixed lookup 'check_inat_range' uses - compare against your own candidate's kingdom before trusting a result: iNaturalist resolves names against its own curated taxonomy, not NCBI's or GBIF's, so a name that matches an unrelated homonym in a different king
+**Value:** A tibble with columns 'taxon_name', 'taxon_id', 'matched_name', 'inat_kingdom' (derived from iNaturalist's own 'iconic_taxon_name' via the same fixed lookup 'check_inat_range' uses - compare against your own candidate's kingdom before trusting a result: iNaturalist resolves names against its own curated taxonomy, not NCBI's or GBIF's, so a name that matches an unrelated homonym in a different ...
 
 ### fetch_occurrences_by_taxon(taxon_geometry_map, year_range = .gbif_default_year_range(), limit = NULL, combine_shared_geometry = TRUE, ...)
 
 Fetch GBIF Occurrences Grouped by Taxon Key
 
-Given a fetch scope expressed as one row per (site, candidate taxon) pair, unions the search geometry for each distinct taxon key and issues exactly one 'get_gbif_occurrences' call per taxon key (or per group of taxon keys that end up sharing an identical unioned geometry - see 'combine_shared_geometry'). This avoids two problems that arise when occurrence fetches are instead grouped by observation/site: (1) the same GBIF record can be counted twice if two separately-issued queries for the same taxon have overlapping search geometry, and (2) unrelated round trips are issued when several taxa s
+Given a fetch scope expressed as one row per (site, candidate taxon) pair, unions the search geometry for each distinct taxon key and issues exactly one 'get_gbif_occurrences' call per taxon key (or per group of taxon keys that end up sharing an identical unioned geometry - see 'combine_shared_geometry'). This avoids two problems that arise when occurrence fetches are instead grouped by observation/site: (1) the same GBIF record can be counted twice if two separately-issued queries for the same taxon have overlapping search geometry, and (2) unrelated round trips are issued when several ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -296,7 +296,7 @@ Given a fetch scope expressed as one row per (site, candidate taxon) pair, union
 
 Filter GBIF Occurrence Records by Quality
 
-Removes low-quality rows from a raw GBIF occurrence download. Applies up to twelve sequential filters: coordinate completeness, absent occurrences, basis of record, geospatial issue codes, coordinate uncertainty, coordinate decimal-place precision, eDNA/metabarcoding keyword removal, species-level requirement, and six 'CoordinateCleaner'-backed checks (identical lat/lon, near-zero coordinates, near GBIF headquarters, near a country/province centroid, near a national capital, near a biodiversity institution). Each filter is applied only when the relevant column (or package) is present; absent c
+Removes low-quality rows from a raw GBIF occurrence download. Applies up to twelve sequential filters: coordinate completeness, absent occurrences, basis of record, geospatial issue codes, coordinate uncertainty, coordinate decimal-place precision, eDNA/metabarcoding keyword removal, species-level requirement, and six 'CoordinateCleaner'-backed checks (identical lat/lon, near-zero coordinates, near GBIF headquarters, near a country/province centroid, near a national capital, near a biodiversity institution). Each filter is applied only when the relevant column (or package) is present; ...
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
@@ -316,7 +316,7 @@ Removes low-quality rows from a raw GBIF occurrence download. Applies up to twel
 | exclude_capital | no | TRUE | Logical. If TRUE (default), records near a national capital are removed (CoordinateCleaner::cc_cap()), using that function's own default buffer and bundled reference data -- a related, wider-radius version of the same coarse-georeferencing pathology exclude_country_centroid targets. Skipped with a message if CoordinateCleaner is not installed. |
 | flag_institution | no | TRUE | Logical. If TRUE (default), records near a biodiversity institution (museum, zoo, herbarium, university) are flagged, not removed (CoordinateCleaner::cc_inst()), using that function's own default buffer and bundled ~10,000-location reference table. Unlike every other CoordinateCleaner check in this function, proximity to an institution is not treated as an unambiguous error: field stations and marine labs are frequently sited exactly where good habitat is, so a nearby record may be a genuine wild observation, not an archived/captive specimen -- that judgment call needs a human (and often a map), not a silent drop. Adds six columns to the retained data (see Value): institution_flag, institution_name, institution_type, institution_dist_m, institution_lon, institution_lat (the matched institution's own location, distinct from the record's own coordinates -- lets a downstream map-review tool plot both together). Skipped with a message if CoordinateCleaner is not installed. |
 
-**Value:** The input data frame with low-quality rows removed. Column structure is unchanged. A summary message reports the number of records retained. Every removed record is also preserved, not just counted: 'attr(result, "removed_records")' is a data frame with the same columns as the input plus 'filter_reason', one row per removed record (always present, possibly zero rows - never 'NULL', so it can be in
+**Value:** The input data frame with low-quality rows removed. Column structure is unchanged. A summary message reports the number of records retained. Every removed record is also preserved, not just counted: 'attr(result, "removed_records")' is a data frame with the same columns as the input plus 'filter_reason', one row per removed record (always present, possibly zero rows - never 'NULL', so it can ...
 
 ### get_gbif_occurrences(keys, geometry, year_range = .gbif_default_year_range(), limit = NULL, key_threshold = 50L, rank_filter = "species", columns = "standard", cache_dir = tools::R_user_dir("TaxaFetch", "cache"), overwrite = FALSE, exclude_absent = TRUE, basis_keep = NULL, status_ping = 15, gbif_user = Sys.getenv("GBIF_USER"), gbif_pwd = Sys.getenv("GBIF_PWD"), gbif_email = Sys.getenv("GBIF_EMAIL"), chunk_size = 20L, pause_seconds = 2, pause_between_keys = 0.5, max_retries = 4L, on_cap = c("warn", "escalate", "error"), beep = FALSE)
 
@@ -360,7 +360,7 @@ Resolves a dataframe of scientific names to GBIF usage keys by supplying the ful
 |---|---|---|---|
 | hierarchy_df | yes |  | A dataframe. Each row is one taxon. Columns should be named for Linnaean ranks (case-insensitive): kingdom, phylum, class, order, family, genus, species. Not all ranks need to be present. For each row, the most specific rank provided is used as the lookup target; higher ranks are passed as disambiguation context. |
 
-**Value:** The input dataframe with three columns appended: usageKey Integer. GBIF usage key for the matched name, or 'NA' if no match was found. matchType Character. GBIF match quality: '"EXACT"', '"FUZZY"', '"HIGHERRANK"', '"LOOKUP_RECOVERED"' (a '"HIGHERRANK"' result recovered via a secondary 'name_lookup()' call - see '@details'), '"NONE"', '"NO_DATA"' (no rank columns present in this row), or '"ERROR"' 
+**Value:** The input dataframe with three columns appended: usageKey Integer. GBIF usage key for the matched name, or 'NA' if no match was found. matchType Character. GBIF match quality: '"EXACT"', '"FUZZY"', '"HIGHERRANK"', '"LOOKUP_RECOVERED"' (a '"HIGHERRANK"' result recovered via a secondary 'name_lookup()' call - see '@details'), '"NONE"', '"NO_DATA"' (no rank columns present in this row), or ...
 
 ### harvest_dataone_catalog(cache_file = "pasta_catalog.rds", max_age_days = 7, max_rows = Inf, page_size = 500L, exclude_noise = TRUE, pause_seconds = 0.5, verbose = TRUE)
 
@@ -405,7 +405,7 @@ Parses the raw text returned by an LLM in response to a 'build_geo_prompt' promp
 | raw_text | yes |  | Character. Length-1 string containing the LLM response (from prompt_api or read_llm_response). |
 | geo_prompt | yes |  | A geo_prompt object from build_geo_prompt. |
 
-**Value:** A tibble with all columns from the input catalog plus: geo_match Logical. 'TRUE' = LLM said YES (or shortcut accepted); 'FALSE' = LLM said NO (or shortcut rejected). geo_source Character. One of '"llm_yes"', '"llm_no"', '"shortcut_accepted"', '"shortcut_rejected"', '"no_description"', '"llm_no_response"'. The tibble includes ALL candidate packages - filter on 'geo_match == TRUE' to obtain the cand
+**Value:** A tibble with all columns from the input catalog plus: geo_match Logical. 'TRUE' = LLM said YES (or shortcut accepted); 'FALSE' = LLM said NO (or shortcut rejected). geo_source Character. One of '"llm_yes"', '"llm_no"', '"shortcut_accepted"', '"shortcut_rejected"', '"no_description"', '"llm_no_response"'. The tibble includes ALL candidate packages - filter on 'geo_match == TRUE' to obtain the ...
 
 ### parse_pdf_extract_response(raw_text, extract_prompt)
 
@@ -431,7 +431,7 @@ Parses the raw text returned by an LLM in response to a 'build_taxon_screen_prom
 | raw_text | yes |  | Character. Length-1 string containing the LLM response (from prompt_api or read_llm_response). |
 | taxon_prompt | yes |  | A taxon_prompt object from build_taxon_screen_prompt. |
 
-**Value:** A tibble with all columns from the input catalog plus: taxon_match Logical. 'TRUE' = LLM said YES for taxon; 'FALSE' = LLM said NO or no response received. taxon_source Character. One of '"llm_yes"', '"llm_no"', '"skipped"' (no metadata available), '"llm_no_response"' (index missing from LLM output). geo_match Logical. Only present when 'taxon_prompt' was built with a 'geo_scope' argument. 'TRUE' 
+**Value:** A tibble with all columns from the input catalog plus: taxon_match Logical. 'TRUE' = LLM said YES for taxon; 'FALSE' = LLM said NO or no response received. taxon_source Character. One of '"llm_yes"', '"llm_no"', '"skipped"' (no metadata available), '"llm_no_response"' (index missing from LLM output). geo_match Logical. Only present when 'taxon_prompt' was built with a 'geo_scope' argument. ...
 
 ### preview_dataone_occurrences(dataset_ids, bbox, n_rows = 20L, large_mb = 50, assume_mbps = 5, extra_dwc_map = NULL, verbose = TRUE)
 
@@ -449,7 +449,7 @@ For each PASTA dataset ID, fetches EML metadata (fast), issues HEAD requests to 
 | extra_dwc_map | no | NULL | A data.frame with columns pattern and dwc_term, prepended before the default map. NULL (default) uses the built-in map only. |
 | verbose | no | TRUE | Logical. Print per-dataset progress messages. Default TRUE. |
 
-**Value:** A tibble of class 'c("dataone_preview", "tbl_df", "tbl", "data.frame")' with one row per entity (or joinable pair) and columns: dataset_id PASTA identifier, e.g. '"edi.653.8"'. dataset_title Full dataset title (not truncated). entity_name Entity (table) name; for joinable pairs formatted as '"entity_A + entity_B"'. status One of '"ready"', '"large"', '"skip"', '"join_ready"', or '"join_large"'. Th
+**Value:** A tibble of class 'c("dataone_preview", "tbl_df", "tbl", "data.frame")' with one row per entity (or joinable pair) and columns: dataset_id PASTA identifier, e.g. '"edi.653.8"'. dataset_title Full dataset title (not truncated). entity_name Entity (table) name; for joinable pairs formatted as '"entity_A + entity_B"'. status One of '"ready"', '"large"', '"skip"', '"join_ready"', or ...
 
 ### read_biotime_study(local_path = NULL, study_id = NULL, verbose = TRUE)
 
@@ -463,7 +463,7 @@ Reads a single-study occurrence CSV downloaded from the BioTime database and ret
 | study_id | no | NULL | Character or integer scalar or NULL. The BioTime STUDY_ID for this file (e.g. 595L or "595"). Used to populate the datasetID column as "biotime:<study_id>". If NULL, the numeric portion of the filename is used when the filename matches the pattern raw_data_<id>.csv; otherwise datasetID is set to "biotime:unknown" with a warning. |
 | verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
 
-**Value:** A tibble with Darwin Core columns plus BioTime-specific passthroughs, compatible with 'stack_occurrences()': 'scientificName' Character. From 'valid_name'. 'decimalLatitude' Numeric. 'decimalLongitude' Numeric. 'year' Integer. 'month' Integer or NA. 'day' Integer or NA. 'occurrenceStatus' Character. '"present"', '"absent"', or 'NA' (neither 'ABUNDANCE' nor 'BIOMAS' parsed to a number for this row)
+**Value:** A tibble with Darwin Core columns plus BioTime-specific passthroughs, compatible with 'stack_occurrences()': 'scientificName' Character. From 'valid_name'. 'decimalLatitude' Numeric. 'decimalLongitude' Numeric. 'year' Integer. 'month' Integer or NA. 'day' Integer or NA. 'occurrenceStatus' Character. '"present"', '"absent"', or 'NA' (neither 'ABUNDANCE' nor 'BIOMAS' parsed to a number for this ...
 
 ### report_fetch(occurrences, study_area = NULL, verbose = FALSE)
 
@@ -492,7 +492,7 @@ For each candidate dataset ID (typically the output of 'parse_geo_screening_resp
 | pause_seconds | no | 0.5 | Numeric. Pause between EML requests. Default 0.5. |
 | verbose | no | TRUE | Logical. Print per-dataset progress. Default TRUE. |
 
-**Value:** A tibble with one row per input ID and columns: id Original dataset ID as supplied (2-part, e.g. '"edi.1835"'). Use this column to join back to 'accepted'. resolved_id Fully-qualified 3-part PASTA ID (e.g. '"edi.1835.3"'). Use this column when calling 'fetch_dataone_eml' or 'fetch_dataone_occurrences' directly. eml_bbox_ok Logical. 'TRUE' = EML bbox overlaps query; 'NA' = no bbox in EML (dataset r
+**Value:** A tibble with one row per input ID and columns: id Original dataset ID as supplied (2-part, e.g. '"edi.1835"'). Use this column to join back to 'accepted'. resolved_id Fully-qualified 3-part PASTA ID (e.g. '"edi.1835.3"'). Use this column when calling 'fetch_dataone_eml' or 'fetch_dataone_occurrences' directly. eml_bbox_ok Logical. 'TRUE' = EML bbox overlaps query; 'NA' = no bbox in EML ...
 
 ### screen_pdf_structure(pdf_content, use_llm = TRUE, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), model = "claude-sonnet-4-6", max_tokens = 400L, api_key = Sys.getenv("ANTHROPIC_API_KEY"), verbose = TRUE)
 
@@ -510,7 +510,7 @@ Stage 2 of the PDF occurrence pipeline. Reads section texts from a 'extract_pdf_
 | api_key | no | Sys.getenv("ANTHROPIC_API_KEY") | Character. API key passed to llm_fn when using the default call_anthropic_api. Reads from the ANTHROPIC_API_KEY environment variable. Ignored when a custom llm_fn is supplied. |
 | verbose | no | TRUE | Logical. Report progress. Default TRUE. |
 
-**Value:** An S3 object of class 'c("pdf_structure", "list")' with elements: observation_type Character. One of: '"field_survey"', '"compilation_review"', '"experimental_lab"', '"monitoring_time_series"', '"prevalence_abundance"'. 'NA' if classification failed. location_structure Character. One of: '"explicit_latlon"', '"named_localities"', '"split_tables"', '"single_site"'. 'NA' if classification failed. da
+**Value:** An S3 object of class 'c("pdf_structure", "list")' with elements: observation_type Character. One of: '"field_survey"', '"compilation_review"', '"experimental_lab"', '"monitoring_time_series"', '"prevalence_abundance"'. 'NA' if classification failed. location_structure Character. One of: '"explicit_latlon"', '"named_localities"', '"split_tables"', '"single_site"'. 'NA' if classification ...
 
 ### search_dataone(bbox, keywords = NULL, max_rows = 500L, exclude_noise = TRUE, min_bio_score = 1L, verbose = TRUE)
 

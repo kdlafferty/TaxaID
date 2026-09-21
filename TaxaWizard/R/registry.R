@@ -37,7 +37,19 @@ TAXAID_PACKAGES <- c(
 #' vary with a global option.
 #'
 #' @noRd
-REGISTRY_SCHEMA <- 3L
+REGISTRY_SCHEMA <- 4L
+
+# Cut `x` to at most `n` characters at a word boundary and mark the cut with
+# " ...", so a registry field is never left ending mid-word. Anything of `n`
+# characters or more is treated as over the cap, which keeps the contract
+# simple: a field of length >= n always carries the marker.
+.truncate_at_word <- function(x, n) {
+  if (is.null(x) || is.na(x) || nchar(x) < n) return(x)
+  head <- substr(x, 1L, n - 4L)
+  cut <- regmatches(head, regexpr("^.*\\s", head))
+  if (length(cut) == 0L || !nzchar(trimws(cut))) cut <- head
+  paste0(trimws(cut), " ...")
+}
 
 
 #' Build the Introspected Function Registry
@@ -359,14 +371,14 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
   description <- NULL
   if (!is.null(segments[["Description"]])) {
     description <- .first_paragraph(segments[["Description"]])
-    if (nchar(description) > 600L) description <- substr(description, 1L, 600L)
+    description <- .truncate_at_word(description, 600L)
     if (!nzchar(description)) description <- NULL
   }
 
   value <- NULL
   if (!is.null(segments[["Value"]])) {
     value <- .clean_rd_text(paste(segments[["Value"]], collapse = " "))
-    if (nchar(value) > 400L) value <- substr(value, 1L, 400L)
+    value <- .truncate_at_word(value, 400L)
     if (!nzchar(value)) value <- NULL
   }
 
@@ -531,35 +543,7 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 }
 
 
-#' Compress the Registry for Prompt Injection
-#'
-#' Converts the full introspected registry into a token-efficient text
-#' block suitable for the \code{{{FUNCTION_REGISTRY}}} placeholder in the
-#' system prompt: one line per function, showing its real call signature
-#' (parameter names and defaults, in \code{formals()} order -- no type
-#' column, since the registry does not carry per-parameter types) and its
-#' Rd title.
-#'
-#' @param registry Named list from \code{workflow_registry()}.
-#' @return Character string.
-#' @noRd
-.compress_registry <- function(registry) {
-  lines <- character(0)
-  for (pkg_name in names(registry)) {
-    pkg <- registry[[pkg_name]]
-    lines <- c(lines, sprintf("## %s", pkg_name))
-    for (fn in pkg$functions) {
-      sig <- .format_registry_signature(fn)
-      title <- fn$title %||% ""
-      lines <- c(lines, sprintf("- %s::%s(%s) | %s", pkg_name, fn$name, sig, title))
-    }
-    lines <- c(lines, "")
-  }
-  paste(lines, collapse = "\n")
-}
-
-
-#' Format One Function's Call Signature for the Compressed Registry
+#' Format One Function's Call Signature
 #' @noRd
 .format_registry_signature <- function(fn) {
   if (length(fn$params) == 0L) {

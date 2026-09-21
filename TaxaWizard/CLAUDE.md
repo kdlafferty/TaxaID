@@ -1129,7 +1129,6 @@ carry a scaling field.
 | `.last_assistant_state()` | Parse last assistant message JSON for phase fields |
 | `.last_message_by_role()` | Find last user or assistant message |
 | `.looks_like_error()` | Pattern-match error text to trigger error_fix phase |
-| `.load_system_prompt()` | Legacy monolithic prompt builder (kept for backward compat) |
 
 ### Internal helpers -- API + registry
 
@@ -1141,7 +1140,6 @@ carry a scaling field.
 | `.build_package_registry()` | Introspect one installed package into its registry entry | R/registry.R |
 | `.rd_alias_map()` / `.rd_sections()` / `.parse_rd_txt()` / `.parse_rd_arguments()` | `tools::Rd_db()` parsing -> title/description/value/per-argument doc text | R/registry.R |
 | `.registry_cache_dir()` | `tools::R_user_dir("TaxaWizard", "cache")/registry` | R/registry.R |
-| `.compress_registry()` | Convert the registry to token-efficient `{{FUNCTION_REGISTRY}}` prompt text | R/registry.R |
 | `.registry_docs()` | Per-function parameter doc block for a set of function names | R/registry.R |
 
 ### Internal helpers -- Output + CLI
@@ -1221,7 +1219,6 @@ export across all 8 TaxaID packages (204 functions) has real Rd documentation
 | httr2 | Anthropic API calls | Imports |
 | jsonlite | JSON parse/write for the graph + engine responses | Imports |
 | shiny | Gadget + Shiny chat UI | Suggests |
-| lifecycle | `workflow_engine(metadata = )` deprecation warning (falls back to a plain `warning()` if absent) | Suggests |
 
 No TaxaID packages in Imports or Suggests -- `workflow_registry()` reads them
 via base R (`getNamespaceExports()`, `tools::Rd_db()`) against whatever is
@@ -1261,14 +1258,6 @@ docs for just the failing function. The prompt instructs the LLM to request
 `str()` and `names()` diagnostics before attempting a fix. In auto mode, the
 LLM is told to be conservative (only fix confident errors like wrong parameter
 names).
-
-### Compressed function registry
-`.compress_registry()` renders one flat table of real call signatures (from
-`formals()`, no per-parameter type column) for the legacy monolithic prompt
-(`.load_system_prompt()`, kept for backward compatibility). The active
-phase-based engine instead injects full per-function docs via
-`.registry_docs()`, but only for functions in the selected path -- keeps
-token budget manageable either way.
 
 ### LLM model for the engine
 Default: `claude-sonnet-4-6`. Configurable via `model` param. Sonnet is faster

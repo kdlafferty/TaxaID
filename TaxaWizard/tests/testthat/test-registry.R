@@ -100,37 +100,26 @@ test_that("every function named in a snippet or an edge's functions[] has a regi
   )
 })
 
-test_that(".compress_registry() contains no line for a name that is not an export", {
+test_that("workflow_registry() never carries an entry for a name that is not an export", {
   pkgs <- TaxaWizard:::TAXAID_PACKAGES
   installed <- pkgs[vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   skip_if(length(installed) == 0L, "no TaxaID packages installed")
 
   reg <- workflow_registry(packages = installed)
-  compressed <- TaxaWizard:::.compress_registry(reg)
-
-  lines <- strsplit(compressed, "\n", fixed = TRUE)[[1]]
-  fn_lines <- lines[grepl("^- ", lines)]
 
   offenders <- character(0)
-  for (line in fn_lines) {
-    # "- Pkg::fn(...) | title"
-    m <- regmatches(line, regexec("^- ([A-Za-z][A-Za-z0-9._]*)::(\\S+?)\\(", line))[[1]]
-    if (length(m) < 3L) {
-      offenders <- c(offenders, paste("unparseable line:", line))
-      next
-    }
-    pkg <- m[2]
-    fn <- m[3]
-    if (!pkg %in% installed) next
-    exports <- getNamespaceExports(pkg)
-    if (!fn %in% exports) {
-      offenders <- c(offenders, sprintf("%s::%s is not an export of %s", pkg, fn, pkg))
+  for (pkg_name in names(reg)) {
+    exports <- getNamespaceExports(pkg_name)
+    for (fn in reg[[pkg_name]]$functions) {
+      if (!fn$name %in% exports) {
+        offenders <- c(offenders, sprintf("%s::%s is not an export of %s", pkg_name, fn$name, pkg_name))
+      }
     }
   }
 
   expect_true(
     length(offenders) == 0L,
-    info = paste(c("Compressed registry lines for non-exports:", offenders), collapse = "\n")
+    info = paste(c("Registry entries for non-exports:", offenders), collapse = "\n")
   )
 })
 
