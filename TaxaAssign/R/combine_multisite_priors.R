@@ -116,8 +116,9 @@ utils::globalVariables(c(
 #' `taxon_name` x `taxon_name_rank` x `grid_id` x `main_habitat`) to
 #' [compute_posterior()], which expects exactly one row per candidate
 #' hypothesis per observation. When the same `observation_id` was detected at
-#' more than one site (e.g. the same eDNA ASV recovered from reads at two
-#' different sample sites), each candidate taxon otherwise arrives with one
+#' more than one site (e.g. the same observation -- an eDNA ASV, an image, or
+#' an acoustic detection -- recorded at two different sample sites), each
+#' candidate taxon otherwise arrives with one
 #' prior row per site. This function combines those rows into one.
 #'
 #' ## Why this function exists

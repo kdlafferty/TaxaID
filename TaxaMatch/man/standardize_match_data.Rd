@@ -91,6 +91,13 @@ match_obj <- standardize_match_data(
   observation_id_col = "qseqid",
   score_col = "pident"
 )
+
+# A non-DNA classifier output standardizes the same way
+match_obj_acoustic <- standardize_match_data(
+  data = birdnet_results,
+  observation_id_col = "recording_id",
+  score_col = "confidence"
+)
 }
 
 }

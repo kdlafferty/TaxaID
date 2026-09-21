@@ -46,7 +46,7 @@ models from occupancy data.
 
 | Scheme | Categories | Use case |
 |----|----|----|
-| **3-category** (default) | Marine / Freshwater / Terrestrial | Most eDNA studies |
+| **3-category** (default) | Marine / Freshwater / Terrestrial | Most biodiversity surveys (eDNA, camera-trap, acoustic) |
 | **IUCN Level 1** | 18 IUCN habitat categories | Fine-grained habitat mapping |
 | **Custom** | User-defined | Specialized study designs |
 

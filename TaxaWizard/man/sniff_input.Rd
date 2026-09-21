@@ -42,6 +42,15 @@ tmp <- tempfile(fileext = ".fasta")
 writeLines(c(">ASV_001", "ACGTACGTACGT"), tmp)
 sniff_input(tmp)
 unlink(tmp)
+
+# A non-DNA input sniffs the same way (a BirdNET-Analyzer detections CSV)
+tmp_acoustic <- tempfile(fileext = ".csv")
+writeLines(c(
+  "Start (s),End (s),Scientific name,Common name,Confidence",
+  "0.0,3.0,Turdus migratorius,American Robin,0.87"
+), tmp_acoustic)
+sniff_input(tmp_acoustic)
+unlink(tmp_acoustic)
 }
 \seealso{
 \code{\link{workflow_check}}

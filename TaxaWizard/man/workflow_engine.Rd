@@ -77,5 +77,13 @@ history <- list(
 )
 result <- workflow_engine(history)
 cat(result$message)
+
+# A non-DNA signal routes through the same engine
+history_acoustic <- list(
+  list(role = "user", content = "I have BirdNET acoustic detections
+    from point counts and want species IDs.")
+)
+result_acoustic <- workflow_engine(history_acoustic)
+cat(result_acoustic$message)
 }
 }

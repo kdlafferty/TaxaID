@@ -1019,7 +1019,7 @@ utils::globalVariables(c(
 #'   sigma floor (see Details) ensures that well-sampled species with
 #'   artificially tight training distributions still clear this threshold at
 #'   realistic query scores, so the default `0.01` is appropriate for most
-#'   eDNA workflows.
+#'   sequence/image/acoustic workflows.
 #' @param min_match_threshold Minimum raw score to consider a candidate
 #'   (default `0.50`).  Queries whose best candidate scores below 50% identity
 #'   are considered unmatchable and routed to the `$unresolved` output for
@@ -1162,8 +1162,9 @@ utils::globalVariables(c(
 #' \code{H1_Sigma[1,1]}.  However, the per-species estimate can be
 #' artificially small for well-sampled species whose reference sequences are
 #' nearly identical (many NCBI accessions from the same voucher or
-#' population).  Such a tight distribution wrongly rejects realistic eDNA
-#' query scores that fall slightly below the near-perfect reference mean,
+#' population).  Such a tight distribution wrongly rejects realistic query
+#' scores of any kind (sequence, image, or acoustic) that fall slightly
+#' below the near-perfect reference mean,
 #' causing the species to receive a near-zero H1 likelihood and be silently
 #' dropped by \code{ratio_threshold}.  To prevent this,
 #' \code{evaluate_likelihoods()} floors the per-species sigma at the global

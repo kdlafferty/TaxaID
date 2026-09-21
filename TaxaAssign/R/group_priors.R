@@ -18,7 +18,7 @@
 #' `posterior_consensus()` only ever sees the candidate rows hypothesized for
 #' ONE observation, so it cannot compute a true group sum on its own -- a
 #' genus with 13 locally modelled species might have only 2-3 of them appear
-#' as candidates for any single BLAST hit. This function does the
+#' as candidates for any single detection. This function does the
 #' aggregation once, up front, over the full `taxaexpect_priors` table, so
 #' `posterior_consensus()` only needs a cheap lookup per observation.
 #'
@@ -83,7 +83,7 @@
 #'   presence claim about a NAMED species with no local occurrence record --
 #'   i.e. rows carrying a real `evidence_sources` value (`distance_clamp`,
 #'   `regional_proximity`, `invasive_watch`, `inat_range`). Curve pricing gives
-#'   every zero-record BLAST candidate a clamp row, so "has a row in the
+#'   every zero-record candidate a clamp row, so "has a row in the
 #'   priors table" no longer means "known locally". Measured on a PtCon 12S
 #'   run: without this filter, 256 of 264
 #'   winner-scope `unprecedented` rows read `expected` or `unexpected` at

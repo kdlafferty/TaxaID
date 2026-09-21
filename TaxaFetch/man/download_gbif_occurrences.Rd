@@ -183,7 +183,8 @@ values: \code{"HUMAN_OBSERVATION"}, \code{"MACHINE_OBSERVATION"},
 \code{"LIVING_SPECIMEN"}, \code{"PRESERVED_SPECIMEN"},
 \code{"MATERIAL_SAMPLE"}. \code{NULL} (default) requests all basis types.
 Changing this parameter changes the cache key and triggers a fresh
-download. For eDNA projects where you want only field observations, use
+download. For projects (eDNA, camera-trap, acoustic, etc.) where you
+want only field observations, use
 \code{c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION")}.}
 
 \item{select_cols}{Character vector or \code{NULL}. Columns to retain after
@@ -192,8 +193,8 @@ the named columns are read into memory, which is much faster for large
 files. Does not reduce the downloaded zip size; use \code{basis_keep} for
 that. \code{NULL} loads all columns. The default is a set of ~35 columns
 covering the full TaxaID pipeline (taxonomy, spatial, temporal, quality,
-eDNA filter, and backbone keys). Unrecognised column names are silently
-ignored.}
+the eDNA-detection exclusion filter, and backbone keys). Unrecognised
+column names are silently ignored.}
 
 \item{gbif_user}{Character. GBIF username. Defaults to the
 \code{GBIF_USER} environment variable; see Details for setup.}

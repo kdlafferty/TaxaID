@@ -44,9 +44,9 @@ qualifying taxa. Adds a logical column \code{inat_range_elevated} (TRUE
 for elevated rows, FALSE otherwise).
 }
 \description{
-For unobserved eDNA candidates (taxa detected by BLAST but absent from the
-regional occurrence database), promotes any taxon that (a) falls within its
-iNaturalist geomodel range polygon at the study site and (b) has sufficient
+For unobserved candidates (taxa detected by any matching method but absent
+from the regional occurrence database), promotes any taxon that (a) falls
+within its iNaturalist geomodel range polygon at the study site and (b) has sufficient
 iNaturalist observation coverage to treat the polygon as reliable, from its
 current group prior up to the Tier 2 singleton-mirror floor.
 }
