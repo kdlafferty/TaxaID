@@ -326,7 +326,7 @@ Summarizes the prior estimation produced by TaxaExpect into a structured 'report
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| priors_output | yes |  | Either: A list with a $priors element (contains $priors, $model, $occurrences, $grid_result) -- the shape produced by the archived build_priors() (GLMM chain, archived 2026-09-09, see archive_glmm_prior_pipeline/). Still accepted here so an OLD, already-computed build_priors() result cached on disk keeps working with this function. A data frame of priors directly -- the shape produced by estimate_kernel_priors (current recommended path) or, historically, the archived generate_full_priors(). |
+| priors_output | yes |  | Either: A list with a $priors element (contains $priors, $model, $occurrences, $grid_result) -- the shape produced by the archived build_priors() (GLMM chain, archived 2026-09-09, see TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/, a development repository not part of this package). Still accepted here so an OLD, already-computed build_priors() result cached on disk keeps working with this function. A data frame of priors directly -- the shape produced by estimate_kernel_priors (current recommended path) or, historically, the archived generate_full_priors(). |
 | verbose | no | FALSE | Logical. Print summary messages. Default FALSE. |
 
 **Value:** A 'report_section' object with: methods Template text describing prior estimation approach. results Template text summarizing prior coverage. citations Propagated from occurrence data if available. params Named list of prior parameters. statistics Named list of summary counts.

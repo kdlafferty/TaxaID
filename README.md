@@ -865,10 +865,9 @@ Detailed, runnable workflow scripts are provided in each package's
 | Score to likelihood (DNA) | TaxaLikely | `inst/workflows/4_score_to_likelihood_workflow.R` |
 | Audit reference coverage | TaxaLikely | `inst/workflows/5_audit_coverage_workflow.R` |
 | No-score pathway (morphology/expert IDs) | TaxaLikely | `inst/workflows/6_no_score_pathway_workflow.R` |
-| **Demo: local reference library** | TaxaLikely | `inst/workflows/local_reference_demo.R` |
 | Fetch occurrences | TaxaFetch | `inst/Merge_sources_workflow.R` |
 | Assign habitats | TaxaHabitat | `inst/workflows/assign_habitat_workflow.R` |
-| Build priors | TaxaExpect | `inst/TaxaExpect_workflow.R` |
+| Build priors | TaxaExpect | See TaxaExpect's [Quick Start](TaxaExpect/README.md#quick-start) (kernel-priors path; there is no longer a standalone `inst/` script) |
 | LLM assignment | TaxaAssign | `inst/TaxaAssign_llm_workflow.R` |
 | Bayesian assignment | TaxaAssign | `inst/TaxaAssign_bayesian_workflow.R` |
 

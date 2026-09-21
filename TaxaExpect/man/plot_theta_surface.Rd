@@ -229,7 +229,8 @@ why it was gated OFF on the kernel path in every production workflow).
 estimator AT EVERY LATTICE POINT rather than relying on pre-computed
 per-cell predictions, so the map is the estimator evaluated continuously,
 not an interpolation between grid predictions. \verb{plot_theta_map_ interactive()} was archived 2026-09-09 along with the rest of the GLMM
-chain (see \verb{archive_glmm_prior_pipeline/} and TaxaExpect/CLAUDE.md's
+chain (see \verb{TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/}, a
+development repository not part of this package, and TaxaExpect/CLAUDE.md's
 2026-09-09 session note) -- this function is now the only prior-field
 visualization in the package.
 }
@@ -238,5 +239,7 @@ visualization in the package.
 \code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} for the site-level estimator this
 function reproduces on a lattice. The GLMM/grid-cell equivalent,
 \code{plot_theta_map_interactive()}, was archived 2026-09-09 along with the
-rest of the GLMM prior-fitting chain (see \verb{archive_glmm_prior_pipeline/}).
+rest of the GLMM prior-fitting chain (see
+\verb{TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/}, a development
+repository not part of this package).
 }

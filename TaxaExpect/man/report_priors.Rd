@@ -12,7 +12,7 @@ report_priors(priors_output, verbose = FALSE)
 \item A list with a \code{$priors} element (contains \code{$priors},
 \code{$model}, \code{$occurrences}, \code{$grid_result}) -- the
 shape produced by the archived \code{build_priors()} (GLMM chain,
-archived 2026-09-09, see \code{archive_glmm_prior_pipeline/}). Still
+archived 2026-09-09, see \code{TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/} (development repository, not part of this package)). Still
 accepted here so an OLD, already-computed \code{build_priors()}
 result cached on disk keeps working with this function.
 \item A data frame of priors directly -- the shape produced by

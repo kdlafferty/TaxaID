@@ -16,7 +16,7 @@
 # -- both were used only by the GLMM grid/prior-fitting chain archived this
 # session (see TaxaExpect/CLAUDE.md's 2026-09-09 session note); with every
 # one of their callers gone, both were fully orphaned dead code. Moved intact
-# (not just deleted) as part of archive_glmm_prior_pipeline/'s own record --
+# (not just deleted) as part of TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/'s own record (development repository, not part of this package) --
 # see that directory's R/plot_theta_map_interactive.R and R/compute_moran_
 # basis.R for .parse_grid_id_coords()'s original callers, and any archived
 # chain file's .glmm_deprecation_notice("<fn_name>") call for that helper's.

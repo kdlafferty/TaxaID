@@ -68,7 +68,7 @@ for a sparse group (honestly wide uncertainty), so no automatic-merge
 fallback was ever actually necessary. See TaxaExpect/CLAUDE.md's
 2026-09-09 session notes for the full record, including the real Finding
 1-5 evidence. The rest of the chain's archive is kept, not committed, at
-\code{archive_glmm_prior_pipeline/}.
+\code{TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/} (development repository, not part of this package).
 }
 
 \section{Dark diversity}{

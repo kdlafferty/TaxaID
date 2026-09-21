@@ -14,7 +14,8 @@
 # (stats::fft, base R -- no new dependency), so the resulting map IS the
 # prior field, not a smoothed picture of something else.
 # plot_theta_map_interactive() and the rest of the GLMM/grid prior-fitting
-# chain were archived 2026-09-09 (see archive_glmm_prior_pipeline/ and
+# chain were archived 2026-09-09 (see TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/,
+# a development repository not part of this package, and
 # TaxaExpect/CLAUDE.md's 2026-09-09 session note) -- this function is now
 # the package's only prior-field visualization.
 
@@ -116,7 +117,8 @@
 #' per-cell predictions, so the map is the estimator evaluated continuously,
 #' not an interpolation between grid predictions. `plot_theta_map_
 #' interactive()` was archived 2026-09-09 along with the rest of the GLMM
-#' chain (see `archive_glmm_prior_pipeline/` and TaxaExpect/CLAUDE.md's
+#' chain (see `TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/`, a
+#' development repository not part of this package, and TaxaExpect/CLAUDE.md's
 #' 2026-09-09 session note) -- this function is now the only prior-field
 #' visualization in the package.
 #'
@@ -208,7 +210,9 @@
 #' @seealso [estimate_kernel_priors()] for the site-level estimator this
 #'   function reproduces on a lattice. The GLMM/grid-cell equivalent,
 #'   `plot_theta_map_interactive()`, was archived 2026-09-09 along with the
-#'   rest of the GLMM prior-fitting chain (see `archive_glmm_prior_pipeline/`).
+#'   rest of the GLMM prior-fitting chain (see
+#'   `TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/`, a development
+#'   repository not part of this package).
 #' @export
 plot_theta_surface <- function(kernel_fit,
                                occurrence_data,

@@ -132,7 +132,7 @@
 #' fixable by calling \code{train_biodiversity_model_by_group()} instead of
 #' \code{train_biodiversity_model()}, then calling this function once per
 #' returned \code{biofreq_model}. Both functions, and the rest of the GLMM
-#' prior-fitting chain, are archived at \code{archive_glmm_prior_pipeline/}
+#' prior-fitting chain, are archived at \code{TaxaID_dev/TaxaExpect/archive_glmm_prior_pipeline/} (development repository, not part of this package)
 #' (see \code{TaxaExpect/CLAUDE.md}'s 2026-09-09 session note) and no longer
 #' available at all.
 #' \strong{Fix, kernel path (current recommendation):}

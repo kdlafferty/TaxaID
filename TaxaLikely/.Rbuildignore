@@ -18,8 +18,4 @@
 ^\.lintr$
 ^DISCLAIMER\.md$
 ^GL_fish_errors\.csv$
-^archive_decipher_reference_audit$
-^archive_unused_likelihood_entrypoint$
-^archive_unused_reference_wrappers$
-^archive_unused_coverage_calibration$
 ^.*\.bak_.*$
