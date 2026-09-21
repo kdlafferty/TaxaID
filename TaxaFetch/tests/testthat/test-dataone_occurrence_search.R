@@ -137,3 +137,11 @@ test_that(".bbox_overlaps() detects overlap and non-overlap correctly", {
   expect_true(TaxaFetch:::.bbox_overlaps(overlapping, query))
   expect_false(TaxaFetch:::.bbox_overlaps(non_overlapping, query))
 })
+
+test_that(".pasta_eml_url() builds the path for a well-formed id and rejects path characters", {
+  ok <- TaxaFetch:::.pasta_eml_url("knb-lter-sbc.17.18")
+  expect_true(grepl("/knb-lter-sbc/17/18$", ok))
+  expect_error(TaxaFetch:::.pasta_eml_url("knb-lter-sbc/evil.17.18"), "characters outside")
+  expect_error(TaxaFetch:::.pasta_eml_url("knb-lter-sbc.17.18/../../x"), "characters outside")
+  expect_error(TaxaFetch:::.pasta_eml_url("knb-lter-sbc.17"), "cannot parse")
+})

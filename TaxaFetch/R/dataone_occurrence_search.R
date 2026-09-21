@@ -634,5 +634,18 @@ fetch_dataone_eml <- function(dataset_id) {
   rev <- parts[length(parts)]
   ident <- parts[length(parts) - 1L]
   scope <- paste(parts[seq_len(length(parts) - 2L)], collapse = ".")
+  # Each segment becomes a URL path component on a fixed host, so it is held
+  # to the same character allow-list the literature cache uses for ids: a
+  # "/" or ".." in a caller-supplied id must not change which path is asked
+  # for.
+  bad <- c(scope = scope, ident = ident, rev = rev)
+  bad <- bad[!grepl("^[A-Za-z0-9_.-]+$", bad) | grepl("\\.\\.", bad)]
+  if (length(bad)) {
+    stop(
+      sprintf(".pasta_eml_url: ID '%s' has a segment with characters outside ", dataset_id),
+      "[A-Za-z0-9_.-] (", paste(names(bad), collapse = ", "), "). ",
+      "Expected scope.identifier.revision (e.g. knb-lter-sbc.17.18)."
+    )
+  }
   paste(.pasta_meta_url, scope, ident, rev, sep = "/")
 }
