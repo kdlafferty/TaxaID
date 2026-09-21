@@ -470,6 +470,20 @@ exports, TaxaLikely 33/31, TaxaAssign 16/15, TaxaHabitat 19/18, TaxaFlag
 12/11). Re-run both after the reinstall; they are not evidence against the
 merge until then.
 
+**Reinstall DONE 2026-09-21 07:57** (window verified clear: RStudio's R
+session held no TaxaID package; no other R process). All nine installed from
+`b861dd7` (main after the post-merge fix branch) into
+`~/Library/R/4.0/library`; exports 56/30/31/31/16/18/15/11/9 = 217.
+`llm_prompts/` regenerated from that library (`d4bded6`); **TaxaWizard 1,070
+pass / 0 fail** -- both library-dependent tests now green. Trap hit once and
+recorded: `R --vanilla` ignores the user library, so a path lookup under
+`--vanilla` returns nothing; never use it to locate installed packages.
+Post-merge fix branch also landed: `migrate_reference_cache()` deleted,
+`suggest_unreferenced_species(data_type=)` required (callers updated in
+TaxaAssign, its vignettes and 13 tests; none external), 16 A3 rewordings,
+acoustic/image examples added to `score_consensus()`, `join_priors()`,
+`posterior_consensus()`, `workflow_engine()`, `sniff_input()`.
+
 ## 7. Stage B -- verification (frozen tree, at `pre-1.0-freeze`)
 
 **Entry conditions -- all true, verified, before B1:**
