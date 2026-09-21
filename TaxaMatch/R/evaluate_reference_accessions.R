@@ -333,7 +333,7 @@ utils::globalVariables(c(
   # place of a genus, with an informal specimen code) isn't meaningful
   # evidence either way: whether it happens to "agree" or "disagree" with
   # the query's own rank columns says little when its own identity is
-  # itself only fuzzily determined. Found live, 2026-08-11/13, on the real
+  # itself only fuzzily determined. Found live on the real
   # GreatLakes Stereolepis doederleini case -- both real accessions of this
   # genuinely rare, taxonomically isolated species (Polyprionidae has only
   # 2 genera) read "incongruent" purely because the one real independent
@@ -363,7 +363,7 @@ utils::globalVariables(c(
   n_available <- sm |>
     dplyr::count(id_x, name = "n_top_matches_available")
 
-  # WHY a hit did not become a voting partner (2026-09-04). Every one of
+  # WHY a hit did not become a voting partner. Every one of
   # these numbers was already implicit in `sm` and then discarded, so a
   # zero-partner accession gave no way to tell "BLAST found nothing" from
   # "BLAST found twenty hits and every one was the accession's own
@@ -492,9 +492,9 @@ utils::globalVariables(c(
   # Per-partner pair table, carried out as an attribute rather than folded
   # into the returned per-accession frame (whose one-row-per-accession shape
   # every caller already depends on). This is the ONLY place the individual
-  # votes behind `frac_independent_below_min_congruent_rank` exist -- they
-  # were previously built, summarised, and discarded, so no verdict could
-  # ever be recomputed without a fresh BLAST. `refine_reference_verdicts()`
+  # votes behind `frac_independent_below_min_congruent_rank` exist -- without
+  # it they would be built, summarised, and discarded here, so no verdict
+  # could ever be recomputed without a fresh BLAST. `refine_reference_verdicts()`
   # (Thread 1 of REENTRY_PROMPT_reference_quality_verdicts_and_downstream_
   # use.md) needs exactly these rows to re-run the vote with each partner
   # weighted by its own trustworthiness.
@@ -2733,15 +2733,15 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' sparsely-referenced region of the database, not a real problem) and is
 #' retained unless `remove_insufficient_evidence = TRUE`.
 #'
-#' @section Use [flag_incongruent_references()] first (2026-08-07):
-#' This function is no longer the recommended default pipeline step -- see
+#' @section Use [flag_incongruent_references()] first:
+#' This function is not the recommended default pipeline step -- see
 #' [flag_incongruent_references()]'s own `@section Why flag-by-default, not
-#' drop-by-default` for the real case that changed this. Reach for this
+#' drop-by-default` for the real case illustrating why. Reach for this
 #' function deliberately, after reviewing `hierarchy_flag` alongside the
 #' identity diagnostics (`best_agreeing_pident`/`best_disagreeing_pident`/
 #' `congruent_evidence_exists_anywhere`), not as an unreviewed default step.
 #'
-#' @section The evidence gate is now the default (2026-09-02):
+#' @section The evidence gate is the default:
 #' `gate = "action"` (the default) removes an accession only when
 #' [score_reference_labels()] resolved it to `reference_action == "remove"`
 #' -- flagged `"incongruent"` AND uncorroborated anywhere AND below the
@@ -2749,20 +2749,18 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' alone. `hierarchy_flag` is a majority vote over the top-N neighbours in
 #' which percent identity never appears, so in a thinly-covered clade it
 #' fires on correct references by construction. Measured on the real
-#' 995-accession PtConception screen: the old `gate = "flag"` behaviour would
-#' have removed 12 accessions behind 1,688 observations -- including cabezon
+#' 995-accession PtConception screen: `gate = "flag"`
+#' removes 12 accessions behind 1,688 observations -- including cabezon
 #' (`OK172573`, 1,120 observations, agreeing hit at 100%) -- to catch the 4
 #' (16 observations) that genuinely had no corroboration anywhere.
-#' `gate = "action"` removes exactly those 4. Pass `gate = "flag"` to get the
-#' pre-2026-09-02 behaviour back.
+#' `gate = "action"` removes exactly those 4.
 #'
 #' @section This is a blacklist decision, not the whole signal:
 #' Even under `gate = "action"` this function consumes only a yes/no removal
 #' decision. The continuous signal ([score_reference_labels()]'s
 #' `label_confidence`) travels separately, via
 #' [flag_incongruent_references()], and is meant for review. A likelihood-model
-#' covariate driven by it was prototyped on 2026-09-02 and removed the same
-#' day -- see
+#' covariate driven by it was evaluated and found not to help -- see
 #' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`
 #' for what was measured, before proposing it again. Do not let this
 #' function's use become the only place the full `evaluation` object's signal
@@ -2773,8 +2771,8 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #' @param evaluation Data frame. Output of [evaluate_reference_accessions()].
 #' @param gate Character, `"action"` (default) or `"flag"`. `"action"` removes
 #'   accessions whose `reference_action` is `"remove"`; `"flag"` removes every
-#'   accession whose `hierarchy_flag` is `"incongruent"`, the pre-2026-09-02
-#'   behaviour. Under `"action"`, `reference_action` is computed on the fly
+#'   accession whose `hierarchy_flag` is `"incongruent"`.
+#'   Under `"action"`, `reference_action` is computed on the fly
 #'   via [score_reference_labels()] if `evaluation` does not already carry it.
 #' @param remove_insufficient_evidence Logical (default `FALSE`). If `TRUE`,
 #'   also removes accessions flagged `"insufficient_independent_evidence"`.
