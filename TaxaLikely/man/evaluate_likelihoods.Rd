@@ -24,8 +24,8 @@ evaluate_likelihoods(
 \arguments{
 \item{match_df}{Data frame in the canonical match-object format (output of
 \code{TaxaMatch::standardize_match_data()} or user-supplied).  Must contain
-\code{observation_id}, \code{score_original} (or \code{p_match}; legacy \code{score} also
-accepted), \code{taxon_name}, \code{taxon_name_rank},
+\code{observation_id}, \code{score_original} (or \code{p_match} or \code{score}),
+\code{taxon_name}, \code{taxon_name_rank},
 and taxonomy columns matching \code{rank_system}.}
 
 \item{model_params}{Object of class \code{"taxa_model_params"} from
@@ -82,14 +82,14 @@ Typical values: \code{0.8} (80\% query coverage) for DNA BLAST results.
 When \code{coverage} is absent from \code{match_df}, this parameter is silently
 ignored.
 
-\strong{Every candidate below threshold (fixed 2026-09-09):} when
+\strong{Every candidate below threshold:} when
 \code{min_coverage} drops EVERY candidate row for a given \code{observation_id},
 that observation is routed to \verb{$unresolved} (with a named warning)
 instead of erroring -- the same degrade-gracefully convention already
 used for the coarser-than-\code{rank_system} case above. Confirmed to hit
 195/800 (24.4\%) of real test queries in a real production A/B
-comparison at a Youden's-J-calibrated \code{min_coverage}; before this fix,
-any such observation crashed the whole call with \code{"replacement has 1 row, data has 0"}. Re-run \code{evaluate_likelihoods()} on \verb{$unresolved} with
+comparison at a Youden's-J-calibrated \code{min_coverage}.
+Re-run \code{evaluate_likelihoods()} on \verb{$unresolved} with
 a lower (or \code{NULL}) \code{min_coverage} to resolve these queries.}
 
 \item{evidence_col}{Character or \code{NULL} (default \code{NULL}). Name of a column
@@ -243,10 +243,10 @@ absent or equals 1 for all candidates, \code{score_likelihood_cov} is identical 
 to identify queries where coverage meaningfully shifts the likelihood ratios.
 
 \strong{Evidence-based sigma rescaling (\code{score_likelihood_evidence}) and its
-crossover gate:} An earlier version of \code{evidence_col} rescaled every
-candidate's H1 \code{sigma_score} unconditionally whenever \code{evidence_ratio < 1}
+crossover gate:} Unconditionally rescaling every
+candidate's H1 \code{sigma_score} whenever \code{evidence_ratio < 1}
 (widening for low-evidence candidates, exactly like the coverage adjustment
-above). Tested against real 12S data, that version was net negative even
+above) tests net negative against real 12S data, even
 capped at \code{evidence_max_ratio = 1} (27 real observations helped, 2053 hurt;
 mean H1 relative likelihood 0.899 -> 0.884). The reason is a basic property
 of the normal density, not an implementation defect: because a Gaussian must
@@ -261,7 +261,7 @@ Because most low-evidence real observations are still decent, close-to-mean
 matches (small \eqn{z}), applying the widening formula to \emph{every}
 low-evidence candidate paid the peak-lowering cost far more often than it
 collected the tail-raising benefit -- exactly the pattern in the real-data
-result above. \code{evaluate_likelihoods()} now computes \eqn{\Delta} directly
+result above. \code{evaluate_likelihoods()} computes \eqn{\Delta} directly
 (using \eqn{z} standardized against whatever sigma is already in effect
 after the per-species floor and coverage inflation) and only applies the
 evidence rescale when \eqn{\Delta > 0} -- i.e., only where doing so is
@@ -276,11 +276,11 @@ crossover would also depend on the correlation term) -- deliberately
 consistent with the score-only outlier test described above rather than a
 new, unvalidated 2D derivation. For singleton (1D) queries, where the
 density actually evaluated is exactly this univariate form, the gate is
-exact, not an approximation. This replaces the unconditional version, and has
-been re-validated end to end against the same real 12S PtConception dataset
-the unconditional version was tested on: 163 helped / 3 hurt across 24,857
-real H1 rows (vs. 27 helped / 2053 hurt for the unconditional version), mean
-H1 relative likelihood 0.8014 -> 0.8016 (vs. the unconditional version's real
+exact, not an approximation. This is
+validated end to end against the same real 12S PtConception dataset
+used to test unconditional rescaling above: 163 helped / 3 hurt across 24,857
+real H1 rows (vs. 27 helped / 2053 hurt for unconditional rescaling), mean
+H1 relative likelihood 0.8014 -> 0.8016 (vs. unconditional rescaling's real
 regression 0.899 -> 0.884). The 3 residual hurt cases were traced directly
 (via \code{mvtnorm::dmvnorm} on the real fitted parameters) to this score-only
 marginal approximation: each sits right at the marginal gate's own decision
@@ -308,9 +308,9 @@ case where the true taxon's nearest relative in evidence space (visual or
 acoustic mimicry/convergence) is not its nearest phylogenetic relative --
 see \code{inst/TaxaLikely_supplemental_methods.md} for that limitation.
 
-\strong{H2/H3 mean anchor and genus-specific variance (Session 158):} H2's
+\strong{H2/H3 mean anchor and genus-specific variance:} H2's
 mean is \verb{(anchor candidate's own resolved species mean) - delta}, not
-\code{H1_Global_Mu - delta} as in earlier versions -- a referenced species
+\code{H1_Global_Mu - delta} -- a referenced species
 whose own trained mean sits above or below the population average is real
 information about how conserved or variable that lineage specifically is,
 and an unreferenced sister species should inherit it rather than being
@@ -320,12 +320,10 @@ is used for H2's sigma in place of the pooled global value -- genera whose
 species are hard to tell apart (small delta) also tend to show more
 \emph{consistent} divergence (lower variance), and genera whose species are
 easy to tell apart show more variable divergence; both the delta and the
-variance now reflect this per genus, on the same footing. Absent from
-\code{H2_Lookup} objects built before this session -- those fall back to the
-pooled global variance unchanged, exactly as before. See
-\code{train_likelihood_model()}'s \code{score_transform} documentation and
-\verb{[[project_job2_unreferenced_relatives]]} in the TaxaID memory system for
-why this required moving off the plain logit scale to be correctly
+variance now reflect this per genus, on the same footing. When absent from
+\code{H2_Lookup}, those fall back to the pooled global variance. See
+\code{train_likelihood_model()}'s \code{score_transform} documentation for
+why this requires moving off the plain logit scale to be correctly
 signed: on real 12S congener data, the raw match-proportion scale shows
 tight genera have lower variance as expected (Pearson r = -0.55), but
 logit reverses this (r = +0.47) because nearly all real matches sit near
@@ -351,9 +349,8 @@ mean rather than being directly observed -- are systematically wider than
 evidence-adjusted point estimate already resolved (species floor +
 evidence gate, when applicable), so a low-depth candidate's evidence-widened
 sigma also widens its mean uncertainty here at no additional cost.
-Backward compatible: falls back to the previous (score-resampling)
-behavior when \code{model_params$H1_Lookup} has no \code{n_obs_species} column
-(i.e., any model trained before this mechanism was added).
+Falls back to a score-resampling approach
+when \code{model_params$H1_Lookup} has no \code{n_obs_species} column.
 }
 \note{
 For a fully runnable, non-\verb{\dontrun{}} demonstration (including how
@@ -374,7 +371,7 @@ in this training reference database? Read off
 Empirical-Bayes-shrunk curves computed once by
 \code{train_likelihood_model()}, not recomputed here -- see that function's
 own \code{Confusion_Risk_Curves} documentation and
-\code{diagnostics/score_floor_roc_sweep.R}, the reference implementation these
+the \code{score_floor_roc_sweep.R} diagnostic (TaxaID_dev repository), the reference implementation these
 curves are built from).
 
 \strong{Higher means MORE confusable, i.e. WEAKER evidence for the rank in
@@ -388,10 +385,7 @@ score means a real congener would score this high 97\% of the time too --
 high confusion risk, weak evidence the species call is correct -- while
 \code{species_confusion_risk = 0.02} at the same score means a real congener
 almost never scores this high -- low confusion risk, strong evidence.
-(Renamed 2026-07-23 from \code{species_support}/etc. after noticing the
-original name inverted this convention -- "support" implied
-higher-is-better while the values themselves behave the opposite way;
-no math changed, only the name.) \code{family_confusion_risk} has no grouping
+\code{family_confusion_risk} has no grouping
 variable (a single, ungrouped cross-family rate) since no rank exists
 above family to equal-weight by. \code{own_rank_confusion_risk} is a
 convenience column pointing at whichever of the three matches this row's

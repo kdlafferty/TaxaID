@@ -1,8 +1,8 @@
 # ==============================================================================
 # .check_regional_overlap()
 # ==============================================================================
-# Internal helper for restore_suppressed_candidates()'s regional-overlap check
-# (Session 159): decides whether a same-genus congener actually has reference
+# Internal helper for restore_suppressed_candidates()'s regional-overlap
+# check: decides whether a same-genus congener actually has reference
 # evidence covering the SAME genomic window as a query's own top-hit
 # ("anchor") reference, rather than assuming any same-genus reference is a
 # valid competitor regardless of where in the marker it sits. Motivating real
@@ -47,14 +47,14 @@
 #     input is absent -- 2a is strictly cheaper when both happen to be
 #     available.
 #
-# Real design flaw caught before landing (Session 159): an early version of
-# Tier 2a checked only "does the candidate align anywhere in the anchor's
-# full sequence," which is nearly always true once the anchor is a whole
-# genome (it necessarily contains every sub-region of the gene). Confirmed
-# empirically on the real Fundulus case: F. parvipinnis's own real 12S
-# reference aligns to F. lima's mitogenome at position 319-486, which does
-# NOT overlap the real query's actual hit position (515-613) at all -- the
-# naive "any overlap" check got this wrong.
+# Checking only "does the candidate align anywhere in the anchor's
+# full sequence" would be unsafe: that is nearly always true once the anchor
+# is a whole genome (it necessarily contains every sub-region of the gene).
+# Confirmed empirically on the real Fundulus case: F. parvipinnis's own real
+# 12S reference aligns to F. lima's mitogenome at position 319-486, which
+# does NOT overlap the real query's actual hit position (515-613) at all --
+# a naive "any overlap" check would get this wrong, which is why Tier 2a
+# checks the SPECIFIC subject range instead.
 #
 # Returns NA (not FALSE) whenever no tier can produce any evidence at all
 # (e.g. the anchor's own sequence isn't available anywhere, or neither
@@ -64,11 +64,11 @@
 # alone the graceful, safe default: supplying neither anchor_subject_range
 # nor query_sequence simply means Tier 2 is never reached.
 #
-# Performance (Session 159, continued further): Tier 2's per-candidate
+# Performance: Tier 2's per-candidate
 # pairwise alignment (candidate sequence vs. the anchor's own, potentially a
 # ~16-20kb mitogenome) depends only on (anchor_accession, candidate
 # accession) -- NOT on anchor_subject_range or which observation is asking.
-# Once restore_suppressed_candidates()'s gating fix let this run across every
+# Because restore_suppressed_candidates() runs this across every
 # observation (not just ones matching a globally-detected suppression rule),
 # a real Mugu dataset surfaced a genuine cost problem: 401 observations
 # reduce to only 71 distinct anchor accessions (one anchor alone was reused
@@ -85,7 +85,7 @@
 # per-observation O(1) comparison, so nothing about the check's correctness
 # changes -- this is a memoization of the alignment step only.
 #
-# Performance (Session 159, PtConception rollout): Tier 2b's OWN alignment
+# Performance: Tier 2b's OWN alignment
 # (the query's raw sequence vs. the anchor, needed to derive
 # anchor_subject_range when no live BLAST step supplied it) has an identical
 # caching gap, one level up: it depends only on (anchor_accession,
@@ -97,16 +97,15 @@
 # once per candidate. Cached the same way, keyed on
 # (anchor_accession, query_sequence).
 #
-# return_detail (SPEC_restore_suppressed_candidates_redesign.md Section 3a,
-# Level 4): the plain logical/NA return above is the original, unchanged
-# contract every existing caller relies on. When TRUE, the function instead
-# returns a list(overlap = TRUE/FALSE/NA, pid = <median percent identity
-# across every candidate accession that passed the position-overlap check, or
-# NA_real_ if none did>) -- this is Level 4's score-sourcing output for a
-# restored candidate, aggregated the same median-not-max way as every other
-# hierarchy level (Section 4). `pid` comes from `pwalign::pid(aln)` (default
-# `PID1`, confirmed correct against the real F. parvipinnis/F. lima case --
-# see the spec's Level 4 entry) -- a free read of the alignment object Tier 2
+# return_detail (Level 4 score source): the plain logical/NA return above is
+# the standard contract every existing caller relies on. When TRUE, the
+# function instead returns a list(overlap = TRUE/FALSE/NA, pid = <median
+# percent identity across every candidate accession that passed the
+# position-overlap check, or NA_real_ if none did>) -- this is Level 4's
+# score-sourcing output for a restored candidate, aggregated the same
+# median-not-max way as every other hierarchy level. `pid` comes from
+# `pwalign::pid(aln)` (default `PID1`, confirmed correct against the real
+# F. parvipinnis/F. lima case) -- a free read of the alignment object Tier 2
 # already builds for the position check, no extra alignment work. Unlike the
 # logical-return mode, `return_detail = TRUE` does NOT short-circuit on the
 # first accepted candidate accession -- it must see every accepted pair to
@@ -137,15 +136,15 @@
   }
 
   # ---- Tier 1: seq_matrix lookup (free, already computed) --------------------
-  # Performance (Session 159, PtConception rollout): stripping id_x/id_y's
+  # Performance: stripping id_x/id_y's
   # version suffixes is, on its own, an O(nrow(seq_matrix)) regex pass --
   # cheap once, but seq_matrix is unchanged across every call in
   # restore_suppressed_candidates()'s loop (one call per candidate species per
   # observation), so recomputing it every call turned "Tier 1, free" into the
   # dominant real cost on real PtConception data (seq_matrix here has ~3M
   # rows; profiling showed >90% of total wall time in sub() alone, an order
-  # of magnitude more than the Tier 2 alignment work this session's other
-  # caching fixes target). Cached the same way anchor_seq/(anchor, candidate)
+  # of magnitude more than the Tier 2 alignment work the other
+  # caching above targets). Cached the same way anchor_seq/(anchor, candidate)
   # pairs already are, under a fixed key (safe -- see note above).
   if (!is.null(seq_matrix) && is.data.frame(seq_matrix) && nrow(seq_matrix) > 0L &&
     all(c("id_x", "id_y", "coverage") %in% names(seq_matrix))) {
@@ -166,9 +165,8 @@
       if (length(cov) > 0L && max(cov) >= min_coverage) {
         # Tier 1 has no pwalign alignment object to read a pid from -- a
         # seq_matrix coverage hit means Levels 1-3 of the score-sourcing
-        # hierarchy (SPEC_restore_suppressed_candidates_redesign.md Section
-        # 3a) would already have resolved this candidate's score directly
-        # from seq_matrix's own p_match column, so this branch is not
+        # hierarchy would already have resolved this candidate's score
+        # directly from seq_matrix's own p_match column, so this branch is not
         # actually reachable from that hierarchy's Level 4 call (which is
         # only ever attempted after Level 0 already confirmed the anchor has
         # NO seq_matrix presence at all). Handled defensively regardless.
@@ -229,7 +227,7 @@
   # the identical query-vs-anchor alignment N times. Cached the same way
   # anchor_seq/the (anchor, candidate) pairs already are, keyed on
   # (anchor_accession, query_sequence) -- confirmed a real, not just
-  # theoretical, cost on real PtConception data (Session 159 continuation).
+  # theoretical, cost on real PtConception data.
   if (!has_range && !is.null(query_sequence) && !is.na(query_sequence) &&
     nzchar(query_sequence)) {
     query_key <- if (use_cache) paste0("query::", anchor_accession, "::", query_sequence) else NULL
@@ -301,8 +299,7 @@
               subj_start = Biostrings::start(pwalign::subject(aln)),
               subj_end   = Biostrings::end(pwalign::subject(aln)),
               coverage   = if (min_len > 0L) overlap_width / min_len else 0,
-              # Level 4 score source (SPEC_restore_suppressed_candidates_
-              # redesign.md Section 3a): free read of a property `aln`
+              # Level 4 score source: free read of a property `aln`
               # already has, on the same 0-100 scale seq_matrix's p_match
               # uses (after /100). Default PID1 -- confirmed correct against
               # the real F. parvipinnis/F. lima case (96.43% at the

@@ -1,10 +1,9 @@
 # ==============================================================================
 # Score-sourcing hierarchy for restore_suppressed_candidates()
 # ==============================================================================
-# Implements SPEC_restore_suppressed_candidates_redesign.md Section 3a: a
-# cheap-to-expensive hierarchy that replaces the old flat `anchor_score -
-# delta` imputation with a real, evidence-grounded score for a restored
-# candidate. Levels 1-3 are free (already-computed seq_matrix/model lookups);
+# A cheap-to-expensive hierarchy providing a real, evidence-grounded score
+# for a restored candidate, rather than a flat `anchor_score - delta`
+# imputation. Levels 1-3 are free (already-computed seq_matrix/model lookups);
 # Level 4 (live Tier 2 pairwise alignment, via .check_regional_overlap()'s
 # return_detail = TRUE mode) is the only expensive step, gated by the caller
 # via check_regional_overlap/the compute-budget mechanism in
@@ -38,7 +37,7 @@
 #' Build (once per align_cache) an accession-indexed lookup of seq_matrix
 #' pairs.
 #'
-#' Found necessary 2026-07-19, live-testing the redesign against the real
+#' Found necessary while live-testing this mechanism against the real
 #' PtConception 12S dataset (13,442 observations, 226 genera present, some
 #' (e.g. Sebastes) with 100+ reference species, seq_matrix ~3M rows): every
 #' naive per-candidate lookup (`id_x == acc & id_y %in% ...`) is an
@@ -110,7 +109,7 @@
 #' F. lima case), Levels 1-3 are all provably futile, not just unlucky, so
 #' the caller should route straight to Level 4. Cached per accession set per
 #' align_cache since the same anchor species is often shared across many
-#' observations (Session 159's own align_cache precedent).
+#' observations.
 #' @noRd
 .has_seq_matrix_presence <- function(accessions, seq_matrix, align_cache) {
   accessions <- accessions[!is.na(accessions)]
@@ -191,8 +190,8 @@
   # source_accession: set ONLY when exactly one distinct candidate accession
   # contributed the value(s) behind p_match -- an unambiguous, directly-
   # screenable accession (see restore_suppressed_candidates()'s own
-  # `RESTORED_<accession>` provenance tag and the 2026-08-08 screenability
-  # discussion this field exists to support). NA whenever more than one
+  # `RESTORED_<accession>` provenance tag, which this field exists to
+  # support). NA whenever more than one
   # candidate accession contributed (the median then blends real evidence
   # from several accessions, none of which can honestly be singled out).
   if (!is.na(anchor_accession) && length(cand_accessions) > 0L) {
@@ -292,27 +291,26 @@
 #' Compute-budget mechanism (Section 3b): should Level 4 (live Tier 2
 #' alignment) be attempted for this specific anchor/candidate pair?
 #'
-#' Revised 2026-07-18 after live-testing against two real motivating cases
+#' Revised after live-testing against two real motivating cases
 #' (Mugu `Fundulus lima`/`parvipinnis`, PtConception `Girella simplicidens`/
-#' `nigricans`) found the original ratio-only design had a real hole: BOTH
+#' `nigricans`): BOTH
 #' real anchors are themselves absent from `taxaexpect_priors` (correctly --
 #' they're the occurrence-implausible species this whole mechanism exists to
-#' out-compete), which made `R = P_anchor / P_candidate` uncomputable and the
-#' old version skip Level 4 for EVERY candidate -- including the one that
-#' matters. Real cost measured on the Fundulus case: restoring one marker's
-#' 12S data went from a documented ~38s (pre-redesign, `candidate_species_
-#' filter`-gated) to ~276s, because Purpose A's genus-wide sweep sent every
+#' out-compete), which makes `R = P_anchor / P_candidate` uncomputable, so a
+#' ratio-only gate would skip Level 4 for EVERY candidate -- including the one
+#' that matters. Real cost measured on the Fundulus case: restoring one
+#' marker's 12S data goes from ~38s (`candidate_species_
+#' filter`-gated) to ~276s (unrestricted), because Purpose A's genus-wide sweep sends every
 #' one of Fundulus's 20 species to a live 16kb-mitogenome alignment.
 #'
-#' Two-tier gate now, cheapest/most-certain first:
+#' Two-tier gate, cheapest/most-certain first:
 #' \enumerate{
-#'   \item \strong{`candidate_species_filter` (default gate, restored from
-#'     the pre-redesign design):} a candidate on the caller-supplied
+#'   \item \strong{`candidate_species_filter` (default gate):} a candidate
+#'     on the caller-supplied
 #'     plausibility list -- or ANY candidate, when no filter was supplied at
 #'     all (`candidate_species_filter = NULL`, matching Purpose B's own
 #'     "no filter = unrestricted" convention) -- is always worth checking.
-#'     This is what `candidate_species_filter` did before the Purpose A/B
-#'     redesign, restored here specifically for Level 4 (the one expensive
+#'     Applied here specifically for Level 4 (the one expensive
 #'     step) -- Levels 1-3 remain fully filter-independent, so Purpose A's
 #'     free-tier genus-wide sweep is unaffected.
 #'   \item \strong{Floor-vs-documented ratio (fallback, only consulted for a
@@ -357,7 +355,7 @@
   isTRUE(ratio <= budget_ratio_cap)
 }
 
-#' Option C backstop (2026-07-18): a hard cap on how many DISTINCT candidates
+#' Option C backstop: a hard cap on how many DISTINCT candidates
 #' get a live Level 4 alignment attempt per anchor accession, independent of
 #' `.worth_level4_check()`'s plausibility-filter/ratio gate -- insurance
 #' against a large or absent `candidate_species_filter` (or a

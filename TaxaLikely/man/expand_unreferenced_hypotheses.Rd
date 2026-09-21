@@ -16,7 +16,7 @@ expand_unreferenced_hypotheses(likelihood_df, unreferenced_df)
 Must contain columns \code{species} (binomial name), \code{genus}, and \code{family}.
 Built from TaxaExpect rows confirmed as unreferenced by
 \code{\link[=audit_barcode_coverage]{audit_barcode_coverage()}}. May optionally contain an \code{observation_id}
-column (Session 159): a row with \code{NA} (or when the column is absent
+column: a row with \code{NA} (or when the column is absent
 entirely) applies to every observation sharing its genus/family, the
 original global-list behavior; a row with a real \code{observation_id}
 applies only to that one observation. This lets a caller inject a
@@ -39,7 +39,7 @@ value itself (identical across every expanded species under one generic
 row) rather than anything row-specific, so they are copied through too.
 }
 \description{
-Moved here from TaxaAssign (Session 150) -- this is the value-modeling half
+This is the value-modeling half
 of unreferenced-taxon handling ("borrow a likelihood from referenced
 relatives"), which belongs next to \code{\link[=unreferenced_candidates]{unreferenced_candidates()}} (the
 candidate-generation half) rather than in the posterior-computation

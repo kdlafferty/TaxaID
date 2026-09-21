@@ -23,12 +23,11 @@ knitr::opts_chunk$set(
 
 <!--
   EVERY chunk in this vignette carries `eval = FALSE, purl = FALSE` in its own
-  header, and that repetition is load-bearing (2026-09-10) -- do not DRY it up
+  header, and that repetition is load-bearing -- do not DRY it up
   into the setup chunk. R CMD check's "running R code from vignettes" step
   TANGLES the vignette with knitr::purl(), which does NOT execute the setup
   chunk, so an opts_chunk$set(purl = FALSE) there has no effect at tangle time
-  and every chunk is sourced. Same fix as TaxaExpect/vignettes/building-priors.Rmd
-  (2026-09-03).
+  and every chunk is sourced. Same fix as TaxaExpect/vignettes/building-priors.Rmd.
 -->
 
 ## Purpose

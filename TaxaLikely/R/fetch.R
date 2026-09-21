@@ -86,9 +86,8 @@ utils::globalVariables(c(
   # Resolve the variant to the marker it amplifies, then search as that marker.
   # The map lives in TaxaTools (resolve_barcode_marker) because the identical
   # silent failure reaches multiple call sites -- here, audit_barcode_coverage(),
-  # and suggest_unreferenced_species() (moved from TaxaAssign to this package
-  # 2026-09-08) -- and TaxaTools already owns the primer/length registries
-  # these terms come from.
+  # and suggest_unreferenced_species() -- and TaxaTools already owns the
+  # primer/length registries these terms come from.
   bc_parts <- vapply(barcode_term, function(bt) {
     key <- tolower(trimws(bt))
     resolved <- TaxaTools::resolve_barcode_marker(bt)
@@ -312,7 +311,7 @@ utils::globalVariables(c(
 
 #' Selection parameters that shape a cached object but are NOT in its key
 #'
-#' (2026-09-14.) The reference-cache key captures everything that decides
+#' The reference-cache key captures everything that decides
 #' which sequences are FETCHED (barcode_term, length and date bounds,
 #' rank_system, the out-of-range flags) but not everything that decides
 #' which are KEPT. The cached object is written after blacklist filtering
@@ -320,13 +319,14 @@ utils::globalVariables(c(
 #' filter" and the \code{max_per_species}/\code{max_per_genus} block), so a
 #' cache built with \code{max_per_species = 10} would be served unchanged to
 #' a later call asking for 50 -- silently under-filled, the same class of
-#' quiet degradation as the \code{barcode_term} and \code{rank_system} gaps
-#' that were previously fixed by widening the key.
+#' quiet degradation the \code{barcode_term} and \code{rank_system} fields in
+#' the cache key exist to prevent for those parameters.
 #'
-#' Widening the key again would orphan all ~3,516 existing cache files at
-#' once, which is the growth mechanism P5's eviction exists to stop. So
+#' Widening the key again would orphan every existing cache file at
+#' once, which is the growth mechanism the \code{.ref_cache_grammar()}-based
+#' eviction exists to stop. So
 #' instead these parameters are STORED INSIDE the cached object and verified
-#' on read: a mismatch is a cache miss, and nothing is orphaned. A legacy
+#' on read: a mismatch is a cache miss, and nothing is orphaned. A cached
 #' file written before this attribute existed cannot be verified; it is
 #' accepted, with one warning per call naming how many.
 #' @noRd
@@ -373,18 +373,17 @@ utils::globalVariables(c(
 #'
 #' Single source of truth for the reference-cache key, so the priority and
 #' broad-search paths cannot drift apart, and so the key can be computed
-#' BEFORE the count query that used to gate it (see the "cache before
+#' BEFORE the count query (see the "cache before
 #' count" note in \code{fetch_ncbi_reference_sequences()}).
 #'
 #' Every argument that shapes the CONTENT of the cached object is part of
-#' the key. The history here is a series of real staleness crashes, each
-#' fixed by widening the key: \code{barcode_term} (Session 159),
+#' the key -- dropping any of them can silently serve a stale cache:
+#' \code{barcode_term} (governs which sequences are fetched),
 #' \code{rank_system} (the cached object is post-taxonomy-merge, so a
 #' narrower rank_system's cache hard-crashes a wider call at the
 #' \code{keep_cols} subset), \code{keep_out_of_range} (the cached object is
 #' fully post-filter, so a cache built with FALSE genuinely lacks
-#' out-of-range rows), and the length and date bounds. Do not drop a
-#' component without re-reading those notes.
+#' out-of-range rows), and the length and date bounds.
 #' @noRd
 .ref_cache_file <- function(cache_dir, name, barcode_term, min_len, max_len,
                             min_date, max_date, keep_out_of_range,
@@ -417,12 +416,12 @@ utils::globalVariables(c(
 
 #' Every file name `.ref_cache_file()` can produce, as one regular expression
 #'
-#' (2026-09-14 cache policy, P5.) Content-keyed caching with no eviction does
+#' Content-keyed caching with no eviction does
 #' not REPLACE a generation when the key changes -- it DOUBLES it. Every
 #' widening above was correct and was made in response to a real staleness
 #' crash, and every one silently orphaned the entire previous generation:
-#' 1,584 of 3,517 meta files on the development machine (45%) predate the
-#' \code{rank_sfx} widening.
+#' confirmed on a real cache directory, 1,584 of 3,517 meta files (45%)
+#' predated the \code{rank_sfx} widening.
 #'
 #' This is the eviction primitive, and it is a PROOF rather than a
 #' heuristic. \code{rank_sfx} is appended unconditionally, so no argument
@@ -503,7 +502,7 @@ utils::globalVariables(c(
 
 #' Largest file the automatic write-path eviction will delete without asking
 #'
-#' Part 5 decision 3 (2026-09-14): auto-evict the small metadata \code{.rds}
+#' Auto-evicts the small metadata \code{.rds}
 #' files; anything large reports and waits for an explicit call. A meta file
 #' is ~1 KB, so in practice this never fires -- it is a structural guard, so
 #' that a future cache object growing by three orders of magnitude cannot
@@ -571,10 +570,9 @@ utils::globalVariables(c(
 
 #' Choose the accession string the FASTA store is keyed on
 #'
-#' (2026-09-14.) The FASTA cache was keyed on \code{meta$acc}, which comes
-#' from ESummary's \code{caption} field and carries NO version suffix --
-#' while \code{.fetch_fasta_cached()}'s own documentation claimed the
-#' opposite. Confirmed on disk: 0 of 4,061 cached files carried a version.
+#' The FASTA cache is keyed on \code{meta$acc}, which comes
+#' from ESummary's \code{caption} field and carries NO version suffix
+#' (confirmed on disk: cached files do not carry a version).
 #'
 #' The consequence is narrow but real. When a taxon's metadata is REFRESHED
 #' and GenBank has revised a record since, an unversioned key is a cache
@@ -584,8 +582,9 @@ utils::globalVariables(c(
 #' stripped ids back to the string that was requested) -- only the input was
 #' wrong.
 #'
-#' \strong{Why a legacy cached object correctly keeps the old key.} A meta
-#' file written before \code{acc_version} existed cannot supply a version,
+#' \strong{Why a cached object without \code{acc_version} correctly keeps the
+#' unversioned key.} A meta
+#' file with no \code{acc_version} column cannot supply a version,
 #' and it also cannot NOTICE one: its accession list is frozen at the moment
 #' it was cached, so no revision is visible from it in the first place. A
 #' cache key should be exactly as fresh as the metadata it was derived from,
@@ -619,26 +618,27 @@ utils::globalVariables(c(
 
 #' Fetch FASTA for a set of accessions, reusing a per-accession cache
 #'
-#' (2026-09-14 cache policy, P2.) The FASTA download was the largest
+#' The FASTA download is the largest
 #' uncached cost in \code{fetch_ncbi_reference_sequences()} -- 3,983
 #' sequences on a routine PtConception 12S run, re-downloaded in full every
 #' time even when all 222 taxa' metadata came straight off disk.
 #'
 #' Keyed on the accession AS SUPPLIED by the caller, which is what decides
 #' whether a GenBank version bump is caught -- see \code{.fasta_cache_keys()}
-#' directly above for how that vector is chosen, and why a legacy cached
-#' object correctly cannot do better than the unversioned accession.
+#' directly above for how that vector is chosen, and why a cached
+#' object without \code{acc_version} correctly cannot do better than the
+#' unversioned accession.
 #' Requesting the same string it keys on means the record NCBI returns is
 #' the record the key names.
 #'
 #' One small .rds per accession under a \code{fasta/} subdirectory of
 #' \code{cache_dir}, matching the file-per-key shape the rest of this
-#' ecosystem uses (and therefore \code{TaxaTools::list_cache_files()}, which
-#' since 2026-09-14 scans recursively and so can finally see this store).
+#' ecosystem uses, so \code{TaxaTools::list_cache_files()} (which
+#' scans recursively) can see this store too.
 #' A sequence that fails to download is simply not written, so the next run
 #' retries it -- which is also what happens if a requested version has since
 #' been replaced, since NCBI returns no record for a superseded version
-#' rather than erroring (live-verified 2026-09-14).
+#' rather than erroring (confirmed against a live NCBI query).
 #' @noRd
 .fetch_fasta_cached <- function(accessions, cache_dir, batch_size = 200L) {
   empty <- data.frame(
@@ -885,13 +885,6 @@ utils::globalVariables(c(
 
 #' Fetch reference sequences from NCBI for model building
 #'
-#' Renamed from `fetch_reference_sequences()` (Session 136) now that a second
-#' live-API reference source (`fetch_bold_reference_sequences()`, BOLD Systems)
-#' exists -- the old name didn't say NCBI anywhere, which stopped being safe
-#' once a second source existed. The deprecated `fetch_reference_sequences()`
-#' forwarding alias was removed entirely in a later session (no real callers
-#' remained; see NAME_CHANGE_HISTORY.md).
-#'
 #' Searches NCBI nucleotide by taxon name and barcode marker, retrieves full
 #' taxonomy via the NCBI taxonomy database, filters by sequence length and
 #' quality, optionally downsamples, and returns a `reference_df` ready for
@@ -1026,15 +1019,16 @@ utils::globalVariables(c(
 #'   sequence budget, which sets that taxon's fetch cap to zero, so the taxon
 #'   contributes NO reference sequences at all and any species-level call
 #'   within it later rests on no reference data of its own. Observed for real
-#'   on the 2026-09-14 PtConception 12S run: 7 taxa failed (the first 7
+#'   on a PtConception 12S run: 7 taxa failed (the first 7
 #'   queried, after which every remaining query succeeded), silently costing
 #'   352 species-level consensus rows their own reference data, including
 #'   *Medialuna californiensis*, *Zalophus californianus* and *Tursiops
 #'   truncatus*. Re-issuing the identical queries afterwards succeeded for all
 #'   7, confirming the failures were transient. `"warn"` keeps the run alive
 #'   but reports the affected taxa by name in one consolidated warning and
-#'   message, because the original per-taxon warnings went unnoticed in a
-#'   17,000-line log. Use `"error"` for an unattended production run where a
+#'   message, because per-taxon warnings are easy to miss in a large log (a
+#'   real 17,000-line log missed all 7). Use `"error"` for an unattended
+#'   production run where a
 #'   silently degraded reference database is worse than a failed run.
 #' @param evict_unreachable_cache Logical (default `TRUE`). When a taxon's
 #'   cache file is WRITTEN, also delete that same taxon's cache files whose
@@ -1168,27 +1162,23 @@ fetch_ncbi_reference_sequences <- function(taxa,
   }
 
   # --- Step 0: Serve from cache BEFORE issuing any count query ---------------
-  # (2026-09-14 cache policy, P1.) The count loop below used to run
-  # unconditionally for every taxon, ahead of the per-taxon cache check far
-  # further down. That ordering -- an uncached, network-dependent query
-  # gating an already-cached payload -- is what cost seven genera their
-  # entire reference representation on the 2026-09-14 PtConception 12S run.
-  # Medialuna, Zalophus, Tursiops, Symphurus, Apodichthys, Cymatogaster and
-  # Delphinus all had valid cached metadata on disk from 2026-08-29; a
-  # transient count failure set retmax_cap to 0 and dropped each of them
-  # before the cache was ever consulted. A cached taxon now issues no count
-  # query at all, so it cannot be lost that way.
+  # A cached taxon issues no count query at all, so a transient count-query
+  # failure cannot cost it its reference representation: an uncached,
+  # network-dependent count query gating an already-cached payload is a
+  # real risk -- on one real PtConception 12S run, seven genera with valid
+  # cached metadata (Medialuna, Zalophus, Tursiops, Symphurus, Apodichthys,
+  # Cymatogaster and Delphinus) were dropped when a transient count failure
+  # set retmax_cap to 0 before the cache was ever consulted.
   #
   # Cached taxa are also excluded from `counts`, and so from the
   # max_sequences budget below. Deliberate: the budget caps what this call
-  # FETCHES, and a cached taxon fetches nothing. The previous behaviour let
-  # cached taxa consume budget they never spent, starving the taxa actually
-  # being downloaded.
+  # FETCHES, and a cached taxon fetches nothing -- letting cached taxa
+  # consume budget they never spend would starve the taxa actually being
+  # downloaded.
   #
-  # Ages are reported, not enforced. This cache has no TTL by decision
-  # (ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md, Part 5): staleness
-  # against a remote source has no local mtime to compare against, so the
-  # policy is to make age visible rather than expire silently.
+  # Ages are reported, not enforced. This cache has no TTL by design:
+  # staleness against a remote source has no local mtime to compare against,
+  # so the policy is to make age visible rather than expire silently.
   cached_meta <- vector("list", length(taxa))
   is_cached <- rep(FALSE, length(taxa))
   cache_files <- rep(NA_character_, length(taxa))
@@ -1269,7 +1259,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # that rentrez surfaces as "subscript out of bounds"). A failure here is NOT
   # cosmetic: an NA count is excluded from the budget below and the taxon's
   # retmax_cap becomes 0, so the taxon contributes NO reference sequences at
-  # all. Observed for real on the 2026-09-14 PtConception 12S run -- 7 taxa
+  # all. Observed for real on a PtConception 12S run -- 7 taxa
   # (the first 7 queried, then it recovered) silently left the reference
   # database, costing 352 species-level consensus rows their own reference
   # data, including Medialuna californiensis, Zalophus californianus and
@@ -1333,10 +1323,10 @@ fetch_ncbi_reference_sequences <- function(taxa,
     stop("All NCBI count queries failed. Check your internet connection and NCBI API key.")
   }
 
-  # One consolidated, named report. Seven individual per-taxon warnings were
-  # emitted on the 2026-09-14 run and went unnoticed in a 17,000-line log, so
-  # the failure mode here is silence-by-dilution, not absence of a warning.
-  # State the CONSEQUENCE, not just the cause.
+  # One consolidated, named report -- per-taxon warnings are easy to miss in
+  # a large log (seven of them went unnoticed in a real 17,000-line log), so
+  # the failure mode would otherwise be silence-by-dilution, not absence of
+  # a warning. State the CONSEQUENCE, not just the cause.
   if (n_failed_counts > 0L) {
     last_err <- count_errors[is.na(counts)][[1L]]
     have_key <- nzchar(Sys.getenv("ENTREZ_KEY")) || !is.null(ncbi_api_key)
@@ -1355,13 +1345,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
     )
 
     # An error is only useful if it says what to do next. Keep this list
-    # ordered by what actually resolved the real 2026-09-14 occurrence.
+    # ordered by what actually resolved the real occurrence.
     what_to_do <- paste0(
       "\nWHAT TO DO\n",
       "  1. Most likely transient NCBI throttling. Wait a few minutes and\n",
-      "     re-run this step. When this last happened (2026-09-14), all 7\n",
-      "     affected taxa returned real counts on a later attempt with no\n",
-      "     change to the query.\n",
+      "     re-run this step; in practice the affected taxa return real counts\n",
+      "     on a later attempt with no change to the query.\n",
       "  2. Check NCBI is reachable and healthy:\n",
       "     https://www.ncbi.nlm.nih.gov/  and\n",
       "     rentrez::entrez_search(db = \"nucleotide\", term = \"",
@@ -1528,8 +1517,9 @@ fetch_ncbi_reference_sequences <- function(taxa,
       # NOTE: unlike the broad path, the priority path still counts before
       # it checks the cache. It is only reachable when total > max_sequences
       # AND priority_taxa was supplied, which no production workflow does,
-      # so the P1 reordering was not extended here rather than restructuring
-      # a budget-driven loop that nothing exercises.
+      # so the Step 0 cache-before-count reordering was not extended here
+      # rather than restructuring a budget-driven loop that nothing
+      # exercises.
       p_cache_file <- .ref_cache_file(
         cache_dir, sp, barcode_term, eff_min_len, eff_max_len,
         min_date, max_date, keep_out_of_range,
@@ -1882,7 +1872,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # site confirmed against a live ~1300-genus PtConception 18S fetch
   # ("Error in rbind(deparse.level, ...) : numbers of columns of arguments
   # do not match"): all_meta's per-genus data frames each go through their
-  # own independent taxonomy-merge/filter sequence (Sections 2026-07-19),
+  # own independent taxonomy-merge/filter sequence,
   # and real NCBI taxonomy XML is not perfectly uniform across genera (see
   # .fetch_taxonomy_map()'s own note above) -- any one genus with a
   # slightly different resolved column set was enough to hard-error the
@@ -1914,7 +1904,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # --- Step 3: Fetch FASTA sequences ------------------------------------------
   # Key (and request) the versioned accession where the metadata carries one,
   # so a revised GenBank record is a cache MISS rather than a silent hit on
-  # the superseded sequence. A taxon served from a pre-2026-09-14 meta file
+  # the superseded sequence. A taxon whose meta file has no acc_version
   # has no version to offer and cannot see a revision anyway -- it falls back
   # to the unversioned accession, and is reported rather than left implicit.
   fasta_keys <- .fasta_cache_keys(combined_meta)
@@ -2009,7 +1999,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
 # ==============================================================================
 # BOLD migrated to a new "v5" Data Portal API in 2024; the old v3/v4 endpoints
 # the (now CRAN-archived) `bold` R package targets are permanently retired --
-# confirmed directly, Session 136 (bold_seqspec()/bold_identify() both return
+# confirmed directly (bold_seqspec()/bold_identify() both return
 # a "BOLD Public Offline" page against the old API). This talks to the new,
 # live, documented API (https://portal.boldsystems.org/openapi.json) directly
 # via httr2, matching how this ecosystem already talks to NCBI (rentrez) and
@@ -2110,8 +2100,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
 #' Parse BOLD's bracketed \code{coord} field (\code{"[lat, lon]"}) into
 #' signed decimal degrees
 #'
-#' Confirmed format directly against real populated records (Session 136,
-#' e.g. \emph{Danaus plexippus} specimens) -- GenBank-mined BOLD records
+#' Confirmed format directly against real populated records (e.g.
+#' \emph{Danaus plexippus} specimens) -- GenBank-mined BOLD records
 #' (the majority) have \code{coord = NA}; field-vouchered specimens carry
 #' real values in this bracketed-array style.
 #' @noRd
@@ -2146,8 +2136,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
 #' triplet, \code{query} submits it and returns a \code{query_id}, and
 #' \code{documents/{query_id}/download} returns the matching records. No API
 #' key required. Confirmed live and documented directly against BOLD's own
-#' OpenAPI spec (\url{https://portal.boldsystems.org/openapi.json}), Session
-#' 136 -- this does NOT wrap the \code{bold} R package, whose
+#' OpenAPI spec (\url{https://portal.boldsystems.org/openapi.json}) --
+#' this does NOT wrap the \code{bold} R package, whose
 #' \code{bold_seqspec()}/\code{bold_identify()} target BOLD's now-retired
 #' v3/v4 API and no longer work.
 #'
@@ -2176,7 +2166,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
 #'   (default \code{c("family", "genus", "species")}). Resolved from BOLD's
 #'   own taxonomy columns (\code{kingdom}, \code{phylum}, \code{class},
 #'   \code{order}, \code{family}, \code{subfamily}, \code{genus},
-#'   \code{species}, \code{subspecies} -- confirmed live, Session 136).
+#'   \code{species}, \code{subspecies} -- confirmed against a live query).
 #' @param max_per_species Integer or \code{NULL} (default \code{NULL}).
 #'   Maximum sequences per species (stratified downsampling), matching
 #'   [fetch_ncbi_reference_sequences()]'s convention. Requires
@@ -2264,7 +2254,7 @@ fetch_bold_reference_sequences <- function(taxa,
   }
 
   # dplyr::bind_rows(), not rbind() -- BOLD's per-query TSV column set can
-  # differ across taxa (confirmed live, Session 136: some optional/flattened
+  # differ across taxa (confirmed live: some optional/flattened
   # columns only appear when populated for that result set), so a plain
   # rbind() errors on mismatched column counts.
   non_null_records <- Filter(Negate(is.null), all_records)
@@ -2277,9 +2267,7 @@ fetch_bold_reference_sequences <- function(taxa,
   # documentation for why: a bare 2-column frame makes a caller's ordinary
   # next step (clean_taxon_names(reference_df$species), a join on a rank
   # column) fail on NULL, burying this function's own correct explanation of
-  # why the result was empty. The NCBI path was fixed for exactly this on
-  # 2026-09-02; the BOLD path kept the bare frame, while its own @return
-  # documents the rank and lat/lon/country columns.
+  # why the result was empty.
   empty_out <- .empty_reference_df(rank_system, include_location)
 
   if (is.null(combined) || nrow(combined) == 0L) {
@@ -2357,7 +2345,7 @@ fetch_bold_reference_sequences <- function(taxa,
 
 #' PR2's fixed 9-level positional hierarchy
 #'
-#' Confirmed directly (Session 136) against a real PR2 v5.1.1 release file
+#' Confirmed directly against a real PR2 v5.1.1 release file
 #' (\code{pr2_version_5.1.1_SSU_mothur.tax.gz}, 240,201 records): every single
 #' record uses exactly this 9-level positional order, with no missing levels
 #' and no prefix codes -- e.g.
@@ -2397,7 +2385,7 @@ fetch_bold_reference_sequences <- function(taxa,
 #'     \code{Domain;Supergroup;Division;Subdivision;Class;Order;Family;Genus;Species}
 #'     shape (see \code{.pr2_hierarchy}) -- disambiguated from the 7-level
 #'     case purely by field count, confirmed uniform across a real PR2
-#'     release (Session 136).
+#'     release.
 #' }
 #' @noRd
 .parse_tax_string <- function(tax_string, rank_system) {

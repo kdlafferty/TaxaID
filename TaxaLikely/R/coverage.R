@@ -1144,8 +1144,8 @@ audit_acoustic_coverage <- function(plausible_species,
 #' likelihood mass, only changes how the hypothesis is labeled, so a
 #' mistaken census can, at worst, cost genus-level resolution rather than
 #' create a wrong answer with no exit. `run_bayesian_pipeline()` (TaxaAssign)
-#' has defaulted to `"relabel"` since it was written; this function's own
-#' default now matches it.
+#' also defaults to `"relabel"`; this function's own
+#' default matches it.
 #'
 #' @param likelihood_df Data frame returned by [evaluate_likelihoods()].
 #' @param census_result Data frame with columns `taxon_name` (the group name,
@@ -1308,9 +1308,8 @@ apply_coverage_constraints <- function(likelihood_df,
 #' body). Xeno-canto v3 requires an application-scoped API key (register at
 #' xeno-canto.org/explore/api) via the \code{XC_API_KEY} environment variable,
 #' and tag-based query syntax (\code{gen:Genus sp:species type:call}) rather
-#' than v2's free-text query. The v2 endpoint this previously called
-#' (\code{api/2/recordings}) is fully removed (404 unconditionally) -- see
-#' \code{ecosystem_docs/REENTRY_PROMPT_session124_image_acoustic_workflows.md}.
+#' than v2's free-text query. Xeno-canto's v2 endpoint
+#' (\code{api/2/recordings}) is fully removed (404 unconditionally).
 #' @noRd
 .xc_recordings_raw <- function(species_name) {
   if (!requireNamespace("httr2", quietly = TRUE)) {

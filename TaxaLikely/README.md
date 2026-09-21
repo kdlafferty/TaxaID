@@ -313,7 +313,6 @@ unreferenced species (borrowed from the generic H2/H3 values) and
 expands them so they can join TaxaExpect priors directly; requires a
 TaxaExpect- derived unreferenced-species list, so it runs after both
 TaxaLikely and TaxaExpect and before `TaxaAssign::compute_posterior()`
-(moved from TaxaAssign in September 2026)
 
 **Reference QC:** - `audit_barcode_coverage()` -- find unreferenced
 species (no barcode sequence; eDNA/DNA only) -
@@ -368,7 +367,7 @@ contribute a non-gap character, divided by the shorter unaligned
 sequence length. Values near 1.0 indicate nearly complete overlap;
 values near 0.0 indicate highly gappy or partial alignments.
 
-`train_likelihood_model()` uses that column itself (2026-09-10): its
+`train_likelihood_model()` uses that column itself: its
 `min_pair_coverage` floor (default `0.8`) decides which pairs may
 *define* a reference's best foreign, best congener and best conspecific
 match. It removes no pair from the data and drops no species -- a
@@ -541,8 +540,7 @@ hypothesis type:
     candidates before scoring. Acoustic and image data can supply a
     categorical quality column (e.g. Xeno-canto grade) encoded as an
     integer for the same pre-filter. See "Reference Coverage Quality
-    Filtering" above for the archival history of the dedicated
-    threshold-calibration helpers this section used to point at.
+    Filtering" above.
 
 -   **Coverage-adjusted likelihood (`score_likelihood_cov`):** When the
     match object contains a `coverage` column, `evaluate_likelihoods()`

@@ -82,9 +82,8 @@ slot -- the baseline \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}
 query's own evidence quantity by, at inference time, to scale H1 sigma
 per-observation (more evidence than this baseline tightens sigma, less
 widens it -- unlike the rejected flat \code{calibrate_sigma} correction above,
-this is validated per-observation, not as one population-wide constant;
-see \code{TaxaLikely/CLAUDE.md} for the within-species correlation this is
-based on). Median chosen for the same robustness reason as the mean
+this is validated per-observation, not as one population-wide constant,
+based on the observed within-species correlation). Median chosen for the same robustness reason as the mean
 offset (a real, right-skewed depth distribution can span 5+ orders of
 magnitude). A \strong{global} median across the whole confident set, not
 per-species/genus -- per-observation evidence quantity already carries
@@ -165,10 +164,10 @@ true population's variability, which includes rarer/lower-quality
 specimens that never qualify as "confident" in the first place -- so a
 sigma correction derived from it is too tight for the general population,
 triggering exactly the failure mode \code{evaluate_likelihoods()}'s existing
-per-species sigma floor (Session 121, see \code{TaxaLikely/CLAUDE.md}'s Known
-Footguns) was built to prevent, just at the global-model level instead of
-the per-species level. Left in as an opt-in, documented negative result
-rather than removed outright, since a smarter correction (e.g. shrinking
+per-species sigma floor was built to prevent, just at the global-model
+level instead of the per-species level. Left in as an opt-in, documented
+negative result rather than removed outright, since a smarter correction
+(e.g. shrinking
 toward the original reference-based sigma rather than fully replacing it)
 may be worth revisiting -- but do not enable it without validating on your
 own data first, the same way this was validated (and rejected) here.
@@ -242,10 +241,10 @@ coverage to support anything finer, and the confident set can never contain
 cross-species information anyway. Do not reuse an offset estimated on one
 marker (or one primer set) for another: the size of this gap has been found
 to vary by roughly an order of magnitude between markers of different
-length and quality (see \code{TaxaLikely/CLAUDE.md} for the 12S/18S comparison
-this function's design was validated against) and does not transfer as
+length and quality (a 12S/18S comparison validated this design) and does
+not transfer as
 either a fixed percentage or a fixed mismatch count. The same applies
-across \code{score_transform} values (Session 158): the offset is estimated on
+across \code{score_transform} values: the offset is estimated on
 whichever scale \code{model_params$Score_Transform} says the model was trained
 on (read automatically), but a \code{"logit"}-scale offset and a
 \code{"sqrt_mismatch"}-scale offset are different numbers in different units --
@@ -253,14 +252,14 @@ never reuse one for the other, and always recompute after retraining with
 a different \code{score_transform}.
 }
 
-\section{Bimodality diagnostic (2026-09-13)}{
+\section{Bimodality diagnostic}{
 
 \code{train_likelihood_model()} fits ONE Gaussian per species for H1, and this
 function's own \code{offset_form = "linear"} fits a single line across species
 -- both assume the underlying H1 score distribution is unimodal. Mixing
 sequencing platforms (or markers, or primer sets) inside one calibration
 run breaks that assumption silently: a real Nanopore top-hit distribution
-(measured 2026-09-13) had a 20.3\% spike at exactly 100 and a tail reaching
+had a 20.3\% spike at exactly 100 and a tail reaching
 94.1 at the 10th percentile, while Illumina data for the same marker was
 tight and unimodal. Fitting one Gaussian (or one line) across a mix like
 that lands the mean between the two modes, where almost nothing actually
@@ -283,10 +282,10 @@ H1 scores pile up near 100\% identity by construction, and a
 skewness/kurtosis-based test would flag that shape on its own).
 }
 
-\section{Percent identity is discrete, not continuous (2026-09-14)}{
+\section{Percent identity is discrete, not continuous}{
 
-A second, structurally different false positive was found on the real
-PtConception 12S production run of 2026-09-14: this function warned "H1
+A second, structurally different false positive was found on a real
+PtConception 12S production run: this function warned "H1
 scores look bimodal: 4\% near 95.4 (sd 3.0) and 96\% near 98.8 (sd 0.4),
 delta BIC 8297" on data that is genuinely unimodal. The cause is that
 percent identity on a short, fixed-length amplicon is DISCRETE -- a
@@ -314,7 +313,7 @@ continuity correction, closing the literal zero-density gaps between
 teeth without disturbing a real multi-quantum gap between two genuinely
 separate populations); (3) requires the minority component to hold real
 mass (\verb{>= 15\%}) before calling it a mode -- a thin tail is not a second
-population, and this alone rejects the real 2026-09-14 false positive
+population, and this alone rejects the false positive
 above (its minority component held only 4\%); and (4) requires the two
 fitted means to be separated by more than a few QUANTA, not just the
 flat \code{1.0} percentage point, since \code{1.0} is under two mismatches on a
@@ -329,8 +328,7 @@ markers separately, which this function does NOT do for you. \strong{This is a
 diagnostic only}: it never changes any fitted value (the offset,
 \code{offset_form}, slope/intercept, or sigma ratio are computed exactly as
 they always were) and calibration is never refused -- a caller who ignores
-the warning gets the same, still-computed-but-now-suspect single offset a
-pre-2026-09-13 version of this function would have silently returned.
+the warning still silently gets the same, now-suspect single offset back.
 \code{train_likelihood_model()} runs the identical check on its own H1 training
 scores and RECORDS the result in \code{Stats$h1_bimodality} (no warning there --
 this function is where the warning belongs, since it is the one place

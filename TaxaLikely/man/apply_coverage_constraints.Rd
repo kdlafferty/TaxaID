@@ -100,8 +100,8 @@ misassigned, with no way for downstream evidence to recover it. \code{"relabel"}
 likelihood mass, only changes how the hypothesis is labeled, so a
 mistaken census can, at worst, cost genus-level resolution rather than
 create a wrong answer with no exit. \code{run_bayesian_pipeline()} (TaxaAssign)
-has defaulted to \code{"relabel"} since it was written; this function's own
-default now matches it.
+also defaults to \code{"relabel"}; this function's own
+default matches it.
 }
 
 \examples{

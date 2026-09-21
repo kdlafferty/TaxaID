@@ -3,7 +3,7 @@ utils::globalVariables(c("hypothesis_type"))
 #' Expand unreferenced hypotheses from genus/family level to named species
 #'
 #' @description
-#' Moved here from TaxaAssign (Session 150) -- this is the value-modeling half
+#' This is the value-modeling half
 #' of unreferenced-taxon handling ("borrow a likelihood from referenced
 #' relatives"), which belongs next to [unreferenced_candidates()] (the
 #' candidate-generation half) rather than in the posterior-computation
@@ -77,7 +77,7 @@ utils::globalVariables(c("hypothesis_type"))
 #'   Must contain columns `species` (binomial name), `genus`, and `family`.
 #'   Built from TaxaExpect rows confirmed as unreferenced by
 #'   [audit_barcode_coverage()]. May optionally contain an `observation_id`
-#'   column (Session 159): a row with `NA` (or when the column is absent
+#'   column: a row with `NA` (or when the column is absent
 #'   entirely) applies to every observation sharing its genus/family, the
 #'   original global-list behavior; a row with a real `observation_id`
 #'   applies only to that one observation. This lets a caller inject a
@@ -169,7 +169,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   unref <- unreferenced_df
   unref$genus_lc <- tolower(trimws(unref$genus))
   unref$family_lc <- tolower(trimws(unref$family))
-  # Session 159: observation_id is optional. A row with NA (or an absent
+  # observation_id is optional. A row with NA (or an absent
   # column entirely) applies to every observation sharing its genus/family --
   # the original, global-unreferenced-species-list behavior. A row with a
   # real observation_id applies ONLY to that one observation. This is what

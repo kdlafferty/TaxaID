@@ -168,10 +168,10 @@ identify_confident_observations <- function(match_df,
 #' specimens that never qualify as "confident" in the first place -- so a
 #' sigma correction derived from it is too tight for the general population,
 #' triggering exactly the failure mode `evaluate_likelihoods()`'s existing
-#' per-species sigma floor (Session 121, see `TaxaLikely/CLAUDE.md`'s Known
-#' Footguns) was built to prevent, just at the global-model level instead of
-#' the per-species level. Left in as an opt-in, documented negative result
-#' rather than removed outright, since a smarter correction (e.g. shrinking
+#' per-species sigma floor was built to prevent, just at the global-model
+#' level instead of the per-species level. Left in as an opt-in, documented
+#' negative result rather than removed outright, since a smarter correction
+#' (e.g. shrinking
 #' toward the original reference-based sigma rather than fully replacing it)
 #' may be worth revisiting -- but do not enable it without validating on your
 #' own data first, the same way this was validated (and rejected) here.
@@ -241,23 +241,23 @@ identify_confident_observations <- function(match_df,
 #' cross-species information anyway. Do not reuse an offset estimated on one
 #' marker (or one primer set) for another: the size of this gap has been found
 #' to vary by roughly an order of magnitude between markers of different
-#' length and quality (see `TaxaLikely/CLAUDE.md` for the 12S/18S comparison
-#' this function's design was validated against) and does not transfer as
+#' length and quality (a 12S/18S comparison validated this design) and does
+#' not transfer as
 #' either a fixed percentage or a fixed mismatch count. The same applies
-#' across `score_transform` values (Session 158): the offset is estimated on
+#' across `score_transform` values: the offset is estimated on
 #' whichever scale `model_params$Score_Transform` says the model was trained
 #' on (read automatically), but a `"logit"`-scale offset and a
 #' `"sqrt_mismatch"`-scale offset are different numbers in different units --
 #' never reuse one for the other, and always recompute after retraining with
 #' a different `score_transform`.
 #'
-#' @section Bimodality diagnostic (2026-09-13):
+#' @section Bimodality diagnostic:
 #' `train_likelihood_model()` fits ONE Gaussian per species for H1, and this
 #' function's own `offset_form = "linear"` fits a single line across species
 #' -- both assume the underlying H1 score distribution is unimodal. Mixing
 #' sequencing platforms (or markers, or primer sets) inside one calibration
 #' run breaks that assumption silently: a real Nanopore top-hit distribution
-#' (measured 2026-09-13) had a 20.3% spike at exactly 100 and a tail reaching
+#' had a 20.3% spike at exactly 100 and a tail reaching
 #' 94.1 at the 10th percentile, while Illumina data for the same marker was
 #' tight and unimodal. Fitting one Gaussian (or one line) across a mix like
 #' that lands the mean between the two modes, where almost nothing actually
@@ -279,9 +279,9 @@ identify_confident_observations <- function(match_df,
 #' H1 scores pile up near 100% identity by construction, and a
 #' skewness/kurtosis-based test would flag that shape on its own).
 #'
-#' @section Percent identity is discrete, not continuous (2026-09-14):
-#' A second, structurally different false positive was found on the real
-#' PtConception 12S production run of 2026-09-14: this function warned "H1
+#' @section Percent identity is discrete, not continuous:
+#' A second, structurally different false positive was found on a real
+#' PtConception 12S production run: this function warned "H1
 #' scores look bimodal: 4% near 95.4 (sd 3.0) and 96% near 98.8 (sd 0.4),
 #' delta BIC 8297" on data that is genuinely unimodal. The cause is that
 #' percent identity on a short, fixed-length amplicon is DISCRETE -- a
@@ -309,7 +309,7 @@ identify_confident_observations <- function(match_df,
 #' teeth without disturbing a real multi-quantum gap between two genuinely
 #' separate populations); (3) requires the minority component to hold real
 #' mass (`>= 15%`) before calling it a mode -- a thin tail is not a second
-#' population, and this alone rejects the real 2026-09-14 false positive
+#' population, and this alone rejects the false positive
 #' above (its minority component held only 4%); and (4) requires the two
 #' fitted means to be separated by more than a few QUANTA, not just the
 #' flat `1.0` percentage point, since `1.0` is under two mismatches on a
@@ -324,8 +324,7 @@ identify_confident_observations <- function(match_df,
 #' diagnostic only**: it never changes any fitted value (the offset,
 #' `offset_form`, slope/intercept, or sigma ratio are computed exactly as
 #' they always were) and calibration is never refused -- a caller who ignores
-#' the warning gets the same, still-computed-but-now-suspect single offset a
-#' pre-2026-09-13 version of this function would have silently returned.
+#' the warning still silently gets the same, now-suspect single offset back.
 #' `train_likelihood_model()` runs the identical check on its own H1 training
 #' scores and RECORDS the result in `Stats$h1_bimodality` (no warning there --
 #' this function is where the warning belongs, since it is the one place
@@ -387,9 +386,8 @@ identify_confident_observations <- function(match_df,
 #'   query's own evidence quantity by, at inference time, to scale H1 sigma
 #'   per-observation (more evidence than this baseline tightens sigma, less
 #'   widens it -- unlike the rejected flat `calibrate_sigma` correction above,
-#'   this is validated per-observation, not as one population-wide constant;
-#'   see `TaxaLikely/CLAUDE.md` for the within-species correlation this is
-#'   based on). Median chosen for the same robustness reason as the mean
+#'   this is validated per-observation, not as one population-wide constant,
+#'   based on the observed within-species correlation). Median chosen for the same robustness reason as the mean
 #'   offset (a real, right-skewed depth distribution can span 5+ orders of
 #'   magnitude). A **global** median across the whole confident set, not
 #'   per-species/genus -- per-observation evidence quantity already carries
@@ -456,12 +454,11 @@ calibrate_query_noise <- function(model_params,
     )
   }
 
-  # Session 158: reads model_params$Score_Transform and applies the matching
+  # Reads model_params$Score_Transform and applies the matching
   # transform via .transform_p() (see below) -- the offset/residual/sigma-
   # ratio computation itself is scale-agnostic arithmetic (differences,
-  # medians, ratios), so no other part of this function needed to change.
-  # Only the reference-vs-reference-vs-real-query NOISE MAGNITUDE (the
-  # estimated offset itself) is marker/scale-specific and must be
+  # medians, ratios). Only the reference-vs-reference-vs-real-query NOISE
+  # MAGNITUDE (the estimated offset itself) is marker/scale-specific and must be
   # (re-)estimated per model, never reused across markers OR across
   # transforms -- unchanged from this function's existing "Scope" guidance.
   model_score_transform <- model_params$Score_Transform %||% "logit"
@@ -504,7 +501,7 @@ calibrate_query_noise <- function(model_params,
   p_norm <- if (max(p_raw, na.rm = TRUE) > 1) p_raw / 100 else p_raw
   observed_logit <- .transform_p(p_norm, model_score_transform, logit_epsilon)
 
-  # Bimodality diagnostic (2026-09-13, see @section Bimodality diagnostic
+  # Bimodality diagnostic (see @section Bimodality diagnostic
   # above) -- runs on the SAME confident-observation score vector the
   # calibration itself fits, on the raw percent-identity scale (p_norm * 100,
   # BEFORE the score_transform step) rather than the transformed

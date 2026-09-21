@@ -4,8 +4,6 @@
 #
 # Exported functions:
 #   report_likelihood()   -- generate report_section from trained model
-#
-# Session 65: initial implementation
 # ==============================================================================
 
 

@@ -1,16 +1,13 @@
 # suggest_unreferenced_species.R
 # TaxaLikely package
 #
-# Moved here from TaxaAssign on 2026-09-08 (package-placement fix, no behavior
-# change) -- this is a reference-coverage-auditing function (candidate
+# This is a reference-coverage-auditing function (candidate
 # generation: "which species are missing from my reference database"), the
 # same job audit_barcode_coverage()/audit_acoustic_coverage()/
 # audit_inat_coverage() already do in this file's own package, not a
-# posterior-computation one. Its own roxygen already self-described as "a
+# posterior-computation one. Its own roxygen already self-describes as "a
 # fast, LLM-first alternative to audit_barcode_coverage()" -- it belongs next
-# to the function it's an alternative to. TaxaAssign keeps a `.Deprecated()`
-# forwarding wrapper. See TaxaLikely/CLAUDE.md's 2026-09-08 top note and
-# ecosystem_docs/NAME_CHANGE_HISTORY.md for the full record.
+# to the function it's an alternative to.
 #
 # LLM-first unreferenced species detection for eDNA / barcode-based taxonomic assignment.
 # The LLM generates biogeographically plausible species per genus; NCBI barcode-count
@@ -36,10 +33,7 @@
 #   .new_unreferenced_species_result()           Construct unreferenced_species_result S3 object
 #   .resolve_llm_fn()           NULL-default llm_fn resolver (duplicated from TaxaAssign/R/
 #                               site_utils.R -- cross-package internal (`:::`) calls aren't
-#                               used in this codebase, same reasoning as the barcode-length
-#                               helpers this file used to duplicate the OTHER direction
-#                               before resolve_barcode_lengths()/resolve_barcode_marker()
-#                               became real exported TaxaTools functions)
+#                               used in this codebase)
 #   .build_context_block()     LLM prompt context-block formatter (duplicated from
 #                               TaxaAssign/R/site_utils.R, same reasoning)
 

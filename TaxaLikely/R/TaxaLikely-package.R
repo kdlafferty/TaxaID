@@ -33,8 +33,7 @@
 #'   \item \code{\link{unreferenced_candidates}} -- generate generic H2/H3
 #'     placeholder rows
 #'   \item \code{\link{expand_unreferenced_hypotheses}} -- model their
-#'     likelihoods and expand into named species (moved from TaxaAssign,
-#'     Session 150)
+#'     likelihoods and expand into named species
 #' }
 #'
 #' @section Reference quality:

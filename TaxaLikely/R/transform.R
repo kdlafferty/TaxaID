@@ -1,12 +1,11 @@
 # transform.R
-# Session 158: shared score-transform helpers, factored out so
+# Shared score-transform helpers, factored out so
 # train_likelihood_model()/.prep_training_data() (training) and
 # evaluate_likelihoods()/.evaluate_one_query() (inference) apply the exact
 # same transform -- H1/H2/H3 must be compared on one consistent scale, or
-# their relative densities are not a valid likelihood ratio (see
-# [[project_job2_unreferenced_relatives]] in the TaxaID memory system for the
-# full derivation of why this matters and why "logit" alone was found to give
-# qualitatively backwards behavior for cryptic/tightly-clustered genera).
+# their relative densities are not a valid likelihood ratio, and "logit"
+# alone gives qualitatively backwards behavior for cryptic/tightly-clustered
+# genera.
 
 #' Transform a raw match proportion onto a modeling scale
 #'
@@ -21,7 +20,7 @@
 #' data lives (few mismatches out of many aligned bases), for which
 #' square-root is the classical (Anscombe) variance-stabilizing transform;
 #' empirically it recovers the correct qualitative genus-tightness ordering
-#' where logit does not (Session 158). It is bounded to `[-1, 0]` rather than
+#' where logit does not. It is bounded to `[-1, 0]` rather than
 #' the whole real line -- a Gaussian fit to it is technically an
 #' approximation for that reason, but a mild one: real observations
 #' concentrate near 0 (good matches), far from the -1 end, so the boundary
