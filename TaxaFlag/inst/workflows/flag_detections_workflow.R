@@ -365,7 +365,7 @@ message(sprintf(
 #   flag_contaminant(df,
 #                     event_col        = "event_id",
 #                     taxon_col        = "taxon_name",
-#                     reads_col        = "n_reads",
+#                     count_col        = "n_reads",
 #                     control_samples  = NULL,
 #                     sample_type_col  = NULL,
 #                     control_types    = NULL,
@@ -375,7 +375,7 @@ message(sprintf(
 #                     verbose          = TRUE)
 #
 # `df` must be LONG-FORMAT: one row per sample (L1 collection event) x taxon,
-# with a numeric `reads_col` (default "n_reads"). `event_col` identifies the
+# with a numeric `count_col` (default "n_reads"). `event_col` identifies the
 # L1 collection event; `control_samples` (or `sample_type_col` +
 # `control_types`) identifies which events are blanks/controls versus field
 # samples. `contaminant_type` controls the output column PREFIX (e.g.
@@ -429,7 +429,7 @@ message(sprintf(
 #     input_df               = read_counts_long,
 #     event_col        = "event_id",
 #     taxon_col        = "taxon_name",
-#     reads_col        = "n_reads",
+#     count_col        = "n_reads",
 #     sample_type_col  = "sample_type",
 #     control_types    = c("extraction_blank", "pcr_blank"),
 #     contaminant_type = "lab_contaminant",

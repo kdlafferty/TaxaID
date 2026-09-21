@@ -837,6 +837,7 @@ context_df <- context_df
 # appeared in one exported species list and not the other. Force fresh
 # verdicts with TaxaFlag::taxaflag_clear_cache(<that directory>).
 reviewed <- TaxaFlag::review_assignments(
+  data_type = "eDNA",
   input_df       = consensus,
   taxon_col      = TAXON_COL,
   taxon_rank_col = TAXON_RANK_COL,

@@ -7,12 +7,12 @@
 build_review_covariates(
   reads_df,
   classification_df,
-  taxon_col = "ESVId",
+  taxon_col = "taxon_id",
   classification_taxon_col = "observation_id",
   classification_col = "primary_plausibility",
   event_col = "event_id",
   site_col = NULL,
-  reads_col = "n_reads",
+  count_col = "count",
   sequence_col = "sequence",
   control_samples = NULL,
   contaminant_df = NULL,
@@ -63,7 +63,7 @@ all taxa, matching the effort-relative convention
 \code{site_col} value are excluded from the site-level columns only
 (with a warning); they still contribute to every other covariate.}
 
-\item{reads_col}{Character. Read-count column in \code{reads_df} (default
+\item{count_col}{Character. Read-count column in \code{reads_df} (default
 \code{"n_reads"}).}
 
 \item{sequence_col}{Character or \code{NULL}. Sequence column in
@@ -151,7 +151,7 @@ without being as mechanically driven by how many samples it was
 detected in.}
 \item{\code{total_reads}}{Summed read count among field samples.}
 \item{\code{n_samples_detected}}{Count of distinct field samples with
-\code{reads_col > 0} for this observation.}
+\code{count_col > 0} for this observation.}
 \item{\code{prop_samples_detected}}{\code{n_samples_detected} divided by
 the total distinct field samples in \code{reads_df}.}
 \item{\code{n_sites_detected}}{Count of distinct field sites with at
@@ -241,7 +241,7 @@ reads <- data.frame(
   ESVId    = c("ESV_1", "ESV_1", "ESV_1", "ESV_2", "ESV_2"),
   sequence = c("ACGTACGT", "ACGTACGT", "ACGTACGT", "ACGT", "ACGT"),
   event_id = c("s1", "s2", "blank1", "s1", "s2"),
-  n_reads  = c(100, 50, 2, 5, 0)
+  count  = c(100, 50, 2, 5, 0)
 )
 cls <- data.frame(
   observation_id = c("ESV_1", "ESV_2"),

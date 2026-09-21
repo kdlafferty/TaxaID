@@ -86,7 +86,7 @@ utils::globalVariables(c(
 #'   \code{prop_samples_detected} already uses. Rows with a missing
 #'   \code{site_col} value are excluded from the site-level columns only
 #'   (with a warning); they still contribute to every other covariate.
-#' @param reads_col Character. Read-count column in \code{reads_df} (default
+#' @param count_col Character. Read-count column in \code{reads_df} (default
 #'   \code{"n_reads"}).
 #' @param sequence_col Character or \code{NULL}. Sequence column in
 #'   \code{reads_df}, used to derive \code{seq_length}. Set \code{NULL} to
@@ -166,7 +166,7 @@ utils::globalVariables(c(
 #'     detected in.}
 #'   \item{\code{total_reads}}{Summed read count among field samples.}
 #'   \item{\code{n_samples_detected}}{Count of distinct field samples with
-#'     \code{reads_col > 0} for this observation.}
+#'     \code{count_col > 0} for this observation.}
 #'   \item{\code{prop_samples_detected}}{\code{n_samples_detected} divided by
 #'     the total distinct field samples in \code{reads_df}.}
 #'   \item{\code{n_sites_detected}}{Count of distinct field sites with at
@@ -207,7 +207,7 @@ utils::globalVariables(c(
 #'   ESVId    = c("ESV_1", "ESV_1", "ESV_1", "ESV_2", "ESV_2"),
 #'   sequence = c("ACGTACGT", "ACGTACGT", "ACGTACGT", "ACGT", "ACGT"),
 #'   event_id = c("s1", "s2", "blank1", "s1", "s2"),
-#'   n_reads  = c(100, 50, 2, 5, 0)
+#'   count  = c(100, 50, 2, 5, 0)
 #' )
 #' cls <- data.frame(
 #'   observation_id = c("ESV_1", "ESV_2"),
@@ -228,12 +228,12 @@ utils::globalVariables(c(
 #' @export
 build_review_covariates <- function(reads_df,
                                     classification_df,
-                                    taxon_col = "ESVId",
+                                    taxon_col = "taxon_id",
                                     classification_taxon_col = "observation_id",
                                     classification_col = "primary_plausibility",
                                     event_col = "event_id",
                                     site_col = NULL,
-                                    reads_col = "n_reads",
+                                    count_col = "count",
                                     sequence_col = "sequence",
                                     control_samples = NULL,
                                     contaminant_df = NULL,
@@ -252,7 +252,7 @@ build_review_covariates <- function(reads_df,
   if (!is.data.frame(classification_df)) {
     stop("build_review_covariates: 'classification_df' must be a data frame.", call. = FALSE)
   }
-  for (col in c(taxon_col, event_col, reads_col)) {
+  for (col in c(taxon_col, event_col, count_col)) {
     if (!col %in% names(reads_df)) {
       stop(sprintf("build_review_covariates: column '%s' not found in reads_df.", col),
         call. = FALSE
@@ -297,7 +297,7 @@ build_review_covariates <- function(reads_df,
   }
 
   # ---- split field vs. control rows ----------------------------------------
-  reads_df <- reads_df[reads_df[[reads_col]] > 0, , drop = FALSE]
+  reads_df <- reads_df[reads_df[[count_col]] > 0, , drop = FALSE]
   field_df <- reads_df[!reads_df[[event_col]] %in% control_samples, , drop = FALSE]
 
   n_field_samples <- dplyr::n_distinct(field_df[[event_col]])
@@ -306,10 +306,10 @@ build_review_covariates <- function(reads_df,
   field_agg <- field_df |>
     dplyr::group_by(.data[[taxon_col]]) |>
     dplyr::summarise(
-      min_reads = min(.data[[reads_col]]),
-      max_reads = max(.data[[reads_col]]),
-      quantile_reads = stats::quantile(.data[[reads_col]], read_quantile, type = 7, names = FALSE),
-      total_reads = sum(.data[[reads_col]]),
+      min_reads = min(.data[[count_col]]),
+      max_reads = max(.data[[count_col]]),
+      quantile_reads = stats::quantile(.data[[count_col]], read_quantile, type = 7, names = FALSE),
+      total_reads = sum(.data[[count_col]]),
       n_samples_detected = dplyr::n_distinct(.data[[event_col]]),
       .groups = "drop"
     )

@@ -36,7 +36,7 @@ reads_long <- data.frame(
     "Homo sapiens", "Oncorhynchus mykiss",
     "Oncorhynchus mykiss", "Homo sapiens"
   ),
-  n_reads = c(50000, 20, 42000, 15, 8000, 5, 61000, 30),
+  count = c(50000, 20, 42000, 15, 8000, 5, 61000, 30),
   stringsAsFactors = FALSE
 )
 
@@ -107,10 +107,10 @@ stopifnot("primary_plausibility" %in% names(assessed))
 cat("\n--- 4. build_review_covariates() ---\n")
 
 reads_for_covariates <- data.frame(
-  ESVId = c("obs1", "obs1", "obs2", "obs2", "obs3"),
+  taxon_id = c("obs1", "obs1", "obs2", "obs2", "obs3"),
   sequence = c("ACGTACGT", "ACGTACGT", "ACGT", "ACGT", "ACGTACGTAC"),
   event_id = c("s1", "s2", "s1", "s2", "s3"),
-  n_reads = c(50000, 42000, 20, 15, 200),
+  count = c(50000, 42000, 20, 15, 200),
   stringsAsFactors = FALSE
 )
 cls_for_covariates <- data.frame(
@@ -198,6 +198,7 @@ cat("\n--- 8. review_assignments() ---\n")
 }
 
 reviewed <- review_assignments(
+  data_type = "eDNA",
   input_df     = consensus_df,
   taxon_col    = "consensus_taxon",
   context      = list(geography = "Lake Michigan, Illinois", habitat = "nearshore"),

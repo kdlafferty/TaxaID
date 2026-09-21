@@ -10,14 +10,14 @@
       k <- sample(site_taxa, 25)
       rows[[length(rows) + 1L]] <- data.frame(
         event_id = sprintf("S%d_%02d", s, i), site = sprintf("site%d", s),
-        taxon_name = k, n_reads = rpois(length(k), 400) + 50, stringsAsFactors = FALSE)
+        taxon_name = k, count = rpois(length(k), 400) + 50, stringsAsFactors = FALSE)
     }
     blank_taxa <- paste0("blank_t", 1:30)          # shared, non-habitat community
     for (i in seq_len(n_ctl)) {
       k <- sample(blank_taxa, 12)
       rows[[length(rows) + 1L]] <- data.frame(
         event_id = sprintf("B%d_%02d", s, i), site = sprintf("site%d", s),
-        taxon_name = k, n_reads = rpois(length(k), 60) + 5, stringsAsFactors = FALSE)
+        taxon_name = k, count = rpois(length(k), 60) + 5, stringsAsFactors = FALSE)
     }
   }
   do.call(rbind, rows)
@@ -146,9 +146,9 @@ test_that("a null with NO HEADROOM is untestable, not a confident flag", {
   for (i in 1:8) rows[[i]] <- data.frame(
     event_id = sprintf("S_%02d", i), site = "s1",
     taxon_name = paste0("uniq", i, "_t", 1:10),
-    n_reads = 100, stringsAsFactors = FALSE)
+    count = 100, stringsAsFactors = FALSE)
   rows[[9]] <- data.frame(event_id = "B_01", site = "s1",
-    taxon_name = paste0("blank_t", 1:5), n_reads = 20, stringsAsFactors = FALSE)
+    taxon_name = paste0("blank_t", 1:5), count = 20, stringsAsFactors = FALSE)
   df <- do.call(rbind, rows)
   r <- validate_controls(df, site_col = "site", control_samples = "B_01",
                          verbose = FALSE)

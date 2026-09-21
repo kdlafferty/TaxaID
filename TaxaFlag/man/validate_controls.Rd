@@ -8,7 +8,7 @@ validate_controls(
   input_df,
   event_col = "event_id",
   taxon_col = "taxon_name",
-  reads_col = "n_reads",
+  count_col = "count",
   control_samples,
   site_col = NULL,
   min_samples_per_site = 3L,
@@ -21,7 +21,7 @@ validate_controls(
 \arguments{
 \item{input_df}{Long-format data frame: one row per taxon x column
 observation, carrying at least \code{event_col}, \code{taxon_col} and
-\code{reads_col}.}
+\code{count_col}.}
 
 \item{event_col}{Character. Column identifying the sequenced column
 (filter, bottle, replicate). Default \code{"event_id"}.}
@@ -30,7 +30,7 @@ observation, carrying at least \code{event_col}, \code{taxon_col} and
 compositions on -- an ESV/ASV id is preferable to a taxon name, because it
 does not depend on assignment succeeding. Default \code{"taxon_name"}.}
 
-\item{reads_col}{Character. Read-count column. Default \code{"n_reads"}.}
+\item{count_col}{Character. Read-count column. Default \code{"n_reads"}.}
 
 \item{control_samples}{Character vector of \code{event_col} values that are
 labelled controls.}

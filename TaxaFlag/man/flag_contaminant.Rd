@@ -8,7 +8,7 @@ flag_contaminant(
   input_df,
   event_col = "event_id",
   taxon_col = "taxon_name",
-  reads_col = "n_reads",
+  count_col = "count",
   control_samples = NULL,
   sample_type_col = NULL,
   control_types = NULL,
@@ -34,7 +34,7 @@ identification, taxon identification, and read counts.}
 \item{taxon_col}{Character. Column name identifying taxa (species, ESV,
 ASV, etc.). Default \code{"taxon_name"}.}
 
-\item{reads_col}{Character. Column name with integer read counts. Default
+\item{count_col}{Character. Column name with integer read counts. Default
 \code{"n_reads"}.}
 
 \item{control_samples}{Character vector of sample IDs that are controls
@@ -293,7 +293,7 @@ reads_long <- data.frame(
     "Kyphosus vaigiensis", "Homo sapiens",
     "Kyphosus vaigiensis", "Homo sapiens"
   ),
-  n_reads = c(48000, 12, 51000, 8, 5, 4200)
+  count = c(48000, 12, 51000, 8, 5, 4200)
 )
 
 # Identify extraction control columns, flag contaminants

@@ -165,9 +165,10 @@
 #' @param marker Character or \code{NULL}. Molecular marker or detection
 #'   method (e.g., \code{"12S"}, \code{"COI"}, \code{"camera trap"}).
 #'   Provides contaminant context. Default \code{NULL}.
-#' @param data_type Character. Detection method. One of \code{"eDNA"} (default),
-#'   \code{"acoustic"}, or \code{"image"}. Controls the contaminant assessment
-#'   guidance in the LLM prompt.
+#' @param data_type Character. Detection method: one of \code{"eDNA"},
+#'   \code{"acoustic"} or \code{"image"}. REQUIRED -- there is no default,
+#'   because the value changes the contaminant-assessment guidance the LLM is
+#'   given, and a wrong assumption there is silent. State the method explicitly.
 #' @param llm_fn Function. LLM provider function with signature
 #'   \code{function(prompt_str, ...)}. Default
 #'   \code{TaxaTools::call_api}. \strong{Known footgun:} \code{call_api()}'s
@@ -458,7 +459,7 @@ review_assignments <- function(input_df,
                                context,
                                target_group = NULL,
                                marker = NULL,
-                               data_type = "eDNA",
+                               data_type,
                                llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
                                taxa_per_call = 15L,
                                max_tokens = NULL,
@@ -1431,7 +1432,7 @@ review_assignments <- function(input_df,
 #' Build Review Prompt for LLM
 #' @noRd
 .build_review_prompt <- function(taxa_batch, ctx, target_group, marker,
-                                 data_type = "eDNA", use_candidates = FALSE) {
+                                 data_type, use_candidates = FALSE) {
   # --- Context block ---
   context_lines <- character(0)
   if (!is.null(ctx$geography) && !is.na(ctx$geography)) {

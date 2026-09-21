@@ -395,7 +395,7 @@ library(TaxaFlag)
 flagged <- flag_contaminant(
   consensus_final,
   control_samples = c("blank_1", "blank_2"),
-  taxon_col = "consensus_taxon", reads_col = "n_reads",
+  taxon_col = "consensus_taxon", count_col = "n_reads",
   event_col = "event_id", contaminant_type = "lab"
 )
 

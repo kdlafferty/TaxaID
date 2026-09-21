@@ -8,10 +8,10 @@ library(testthat)
 
 .make_reads <- function() {
   data.frame(
-    ESVId = c("ESV_1", "ESV_1", "ESV_1", "ESV_2", "ESV_2", "ESV_3"),
+    taxon_id = c("ESV_1", "ESV_1", "ESV_1", "ESV_2", "ESV_2", "ESV_3"),
     sequence = c("ACGTACGT", "ACGTACGT", "ACGTACGT", "ACGT", "ACGT", "ACGTACGTAC"),
     event_id = c("s1", "s2", "blank1", "s1", "s2", "blank1"),
-    n_reads = c(100, 50, 2, 5, 0, 30),
+    count = c(100, 50, 2, 5, 0, 30),
     stringsAsFactors = FALSE
   )
 }
@@ -43,7 +43,7 @@ test_that("basic field-side aggregates and zero-fill are correct", {
   expect_equal(esv1$seq_length, 8L)
 
   esv2 <- out[out$observation_id == "ESV_2", ]
-  # s2 has n_reads = 0 for ESV_2 -- dropped before aggregation, so only s1 counts
+  # s2 has count = 0 for ESV_2 -- dropped before aggregation, so only s1 counts
   expect_equal(esv2$n_samples_detected, 1L)
   expect_equal(esv2$prop_samples_detected, 0.5)
 })
@@ -98,8 +98,8 @@ test_that("sequence_col = NULL omits seq_length entirely", {
 
 test_that("inconsistent sequence lengths within a taxon warn and use the first occurrence", {
   reads <- data.frame(
-    ESVId = c("ESV_1", "ESV_1"), sequence = c("ACGTACGT", "AC"),
-    event_id = c("s1", "s2"), n_reads = c(100, 50),
+    taxon_id = c("ESV_1", "ESV_1"), sequence = c("ACGTACGT", "AC"),
+    event_id = c("s1", "s2"), count = c(100, 50),
     stringsAsFactors = FALSE
   )
   cls <- data.frame(
@@ -116,8 +116,8 @@ test_that("inconsistent sequence lengths within a taxon warn and use the first o
 
 test_that("contaminant_df joins in requested columns and warns on unmatched rows", {
   reads <- data.frame(
-    ESVId = c("ESV_1", "ESV_1", "ESV_2"), sequence = c("ACGTACGT", "ACGTACGT", "ACGT"),
-    event_id = c("s1", "s2", "s1"), n_reads = c(100, 50, 5),
+    taxon_id = c("ESV_1", "ESV_1", "ESV_2"), sequence = c("ACGTACGT", "ACGTACGT", "ACGT"),
+    event_id = c("s1", "s2", "s1"), count = c(100, 50, 5),
     stringsAsFactors = FALSE
   )
   cls <- data.frame(
@@ -125,7 +125,7 @@ test_that("contaminant_df joins in requested columns and warns on unmatched rows
     primary_plausibility = c("expected", "unexpected"),
     stringsAsFactors = FALSE
   )
-  contam <- data.frame(ESVId = "ESV_1", control_rate = 0.01, stringsAsFactors = FALSE)
+  contam <- data.frame(taxon_id = "ESV_1", control_rate = 0.01, stringsAsFactors = FALSE)
 
   expect_warning(
     out <- build_review_covariates(reads, cls, contaminant_df = contam),
@@ -138,8 +138,8 @@ test_that("contaminant_df joins in requested columns and warns on unmatched rows
 
 test_that("extra_covariate_cols are passed through unchanged from classification_df", {
   reads <- data.frame(
-    ESVId = c("ESV_1", "ESV_2"), sequence = c("ACGTACGT", "ACGT"),
-    event_id = c("s1", "s1"), n_reads = c(100, 5),
+    taxon_id = c("ESV_1", "ESV_2"), sequence = c("ACGTACGT", "ACGT"),
+    event_id = c("s1", "s1"), count = c(100, 5),
     stringsAsFactors = FALSE
   )
   cls <- data.frame(
@@ -154,8 +154,8 @@ test_that("extra_covariate_cols are passed through unchanged from classification
 
 test_that("read_quantile = 1 reproduces max_reads", {
   reads <- data.frame(
-    ESVId = rep("ESV_1", 4), sequence = rep("ACGT", 4),
-    event_id = c("s1", "s2", "s3", "s4"), n_reads = c(10, 40, 20, 90),
+    taxon_id = rep("ESV_1", 4), sequence = rep("ACGT", 4),
+    event_id = c("s1", "s2", "s3", "s4"), count = c(10, 40, 20, 90),
     stringsAsFactors = FALSE
   )
   cls <- data.frame(
@@ -167,10 +167,10 @@ test_that("read_quantile = 1 reproduces max_reads", {
   expect_equal(out$max_reads, 90)
 })
 
-test_that("rows with n_reads = 0 are excluded before aggregation", {
+test_that("rows with count = 0 are excluded before aggregation", {
   reads <- data.frame(
-    ESVId = c("ESV_1", "ESV_1"), sequence = c("ACGT", "ACGT"),
-    event_id = c("s1", "s2"), n_reads = c(0, 25),
+    taxon_id = c("ESV_1", "ESV_1"), sequence = c("ACGT", "ACGT"),
+    event_id = c("s1", "s2"), count = c(0, 25),
     stringsAsFactors = FALSE
   )
   cls <- data.frame(
@@ -202,10 +202,10 @@ test_that("errors when classification_df is not a data frame", {
 
 test_that("errors when a required reads_df column is missing", {
   reads <- .make_reads()
-  reads$n_reads <- NULL
+  reads$count <- NULL
   expect_error(
     build_review_covariates(reads, .make_cls()),
-    "'n_reads' not found in reads_df"
+    "'count' not found in reads_df"
   )
 })
 
@@ -252,14 +252,14 @@ test_that("errors when read_quantile is out of (0, 1]", {
 # frequency would read 0.8 instead of 1.
 .make_site_reads <- function() {
   data.frame(
-    ESVId = c(rep("ESV_1", 5), rep("ESV_2", 2), "ESV_3", rep("ESV_4", 6)),
+    taxon_id = c(rep("ESV_1", 5), rep("ESV_2", 2), "ESV_3", rep("ESV_4", 6)),
     sequence = c(rep("ACGTACGT", 5), rep("ACGT", 2), "AACC", rep("TTTT", 6)),
     event_id = c(
       "a1", "a2", "a3", "a4", "b1", "b1", "b2", "blank1",
       "a1", "a2", "a3", "a4", "b1", "b2"
     ),
     site_id = c("A", "A", "A", "A", "B", "B", "B", "A", "A", "A", "A", "A", "B", "B"),
-    n_reads = c(100, 50, 40, 30, 20, 10, 10, 5, 9, 9, 9, 9, 9, 9),
+    count = c(100, 50, 40, 30, 20, 10, 10, 5, 9, 9, 9, 9, 9, 9),
     stringsAsFactors = FALSE
   )
 }

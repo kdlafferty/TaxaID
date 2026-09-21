@@ -17,27 +17,27 @@
   rows <- list(); add <- function(...) rows[[length(rows) + 1L]] <<- data.frame(..., stringsAsFactors = FALSE)
   for (s in 1:3) {
     ctl <- sprintf("B%d", s)
-    add(event_id = ctl, site = paste0("site", s), taxon_name = "SYSTEMIC", n_reads = 100)
-    add(event_id = ctl, site = paste0("site", s), taxon_name = "filler",   n_reads = 50)
+    add(event_id = ctl, site = paste0("site", s), taxon_name = "SYSTEMIC", count = 100)
+    add(event_id = ctl, site = paste0("site", s), taxon_name = "filler",   count = 50)
     if (s == 1) {
-      add(event_id = ctl, site = "site1", taxon_name = "LOCAL", n_reads = 200)
+      add(event_id = ctl, site = "site1", taxon_name = "LOCAL", count = 200)
       # second control at site1: LOCAL clears the floor, still at ONE site
-      add(event_id = "B1b", site = "site1", taxon_name = "LOCAL",    n_reads = 200)
-      add(event_id = "B1b", site = "site1", taxon_name = "SYSTEMIC", n_reads = 100)
-      add(event_id = "B1b", site = "site1", taxon_name = "filler",  n_reads = 50)
+      add(event_id = "B1b", site = "site1", taxon_name = "LOCAL",    count = 200)
+      add(event_id = "B1b", site = "site1", taxon_name = "SYSTEMIC", count = 100)
+      add(event_id = "B1b", site = "site1", taxon_name = "filler",  count = 50)
       # ONEBLANK: strongly control-enriched on a SINGLE control observation
-      add(event_id = ctl,   site = "site1", taxon_name = "ONEBLANK", n_reads = 400)
+      add(event_id = ctl,   site = "site1", taxon_name = "ONEBLANK", count = 400)
     }
     for (i in 1:2) {
       sm <- sprintf("S%d_%d", s, i)
-      add(event_id = sm, site = paste0("site", s), taxon_name = "CLEAN", n_reads = 9000)
-      add(event_id = sm, site = paste0("site", s), taxon_name = "filler", n_reads = 900)
+      add(event_id = sm, site = paste0("site", s), taxon_name = "CLEAN", count = 9000)
+      add(event_id = sm, site = paste0("site", s), taxon_name = "filler", count = 900)
       # THIN: never in a control, but so few reads that shrinkage drags its score
       # below the 'valid' band -- a verdict on no evidence, which is the defect
-      add(event_id = sm, site = paste0("site", s), taxon_name = "THIN", n_reads = 2)
+      add(event_id = sm, site = paste0("site", s), taxon_name = "THIN", count = 2)
       if (s == 1) {
-        add(event_id = sm, site = "site1", taxon_name = "LOCAL", n_reads = 100)
-        add(event_id = sm, site = "site1", taxon_name = "ONEBLANK", n_reads = 3)
+        add(event_id = sm, site = "site1", taxon_name = "LOCAL", count = 100)
+        add(event_id = sm, site = "site1", taxon_name = "ONEBLANK", count = 3)
       }
     }
   }
@@ -82,7 +82,7 @@ test_that("Q3: a control detection at ONE site whose samples carry it is downgra
   df <- .mk3()
   # Make LOCAL control-enriched enough to be flagged on Q2 alone, so the only
   # thing that can rescue it is the site-breadth discriminant.
-  df$n_reads[df$event_id == "B1" & df$taxon_name == "LOCAL"] <- 5000
+  df$count[df$event_id == "B1" & df$taxon_name == "LOCAL"] <- 5000
   q2 <- flag_contaminant(df, control_samples = .ctls, require_control_evidence = TRUE,
                          verbose = FALSE)
   q3 <- flag_contaminant(df, control_samples = .ctls, site_col = "site",
