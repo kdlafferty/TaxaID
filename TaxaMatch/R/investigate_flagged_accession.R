@@ -698,11 +698,11 @@
   # caller-visible parameter changing -- otherwise a cached row computed
   # under the OLD logic gets served as a "fresh" cache hit forever under an
   # unchanged params_key. Mirrors evaluate_reference_accessions()'s own
-  # .EVAL_REF_ACC_VERSION convention. Bumped 2026-08-08 (v1 -> v2): a real
-  # cache row computed under v1's logic could be a false
+  # .EVAL_REF_ACC_VERSION convention: without a bump, a stale
+  # cache row could read as a false
   # "inconclusive_length_mismatch" (the real MZ605481 bug -- see
   # .search_species_accessions()'s own @section Length-ratio pre-filter),
-  # which v1's own asymmetric TTL would otherwise have kept serving as a
+  # which the asymmetric TTL would otherwise keep serving as a
   # "fresh" cache hit for up to inconclusive_ttl_days.
   .INVESTIGATE_VERSION <- "v2_entrez_query_and_length_filter"
   paste(max_related, method, database, score_range, min_score, max_hits,
