@@ -123,12 +123,85 @@ test_that("the committed template is what the generator currently produces", {
 
   rscript <- file.path(R.home("bin"), "Rscript")
   res <- suppressWarnings(system2(rscript, shQuote(gen), stdout = TRUE, stderr = TRUE))
-  skip_if(!file.exists(out),
-          paste("generator could not run in a subprocess:", paste(utils::tail(res, 3), collapse = " | ")))
+  # A guard that cannot run must fail loudly, not disappear as a skip: this
+  # is the same class of failure as the generator erroring outright (e.g. on
+  # "Placeholders used by a snippet but absent from CONFIG/DATAFLOW"), and a
+  # silent skip here would have hidden exactly that error the last time it
+  # happened.
+  if (!file.exists(out)) {
+    fail(paste("generator could not run in a subprocess:", paste(utils::tail(res, 3), collapse = " | ")))
+  } else {
+    expect_identical(
+      paste(readLines(committed, warn = FALSE), collapse = "\n"),
+      paste(readLines(out, warn = FALSE), collapse = "\n"),
+      info = "template is stale -- run: Rscript TaxaWizard/inst/tools/build_workflow_template.R"
+    )
+  }
+})
 
-  expect_identical(
-    paste(readLines(committed, warn = FALSE), collapse = "\n"),
-    paste(readLines(out, warn = FALSE), collapse = "\n"),
-    info = "template is stale -- run: Rscript TaxaWizard/inst/tools/build_workflow_template.R"
+test_that("every {{placeholder}} used by a CANONICAL_PATH snippet is declared in CONFIG or DATAFLOW", {
+  # This is the generator's own build-time guard ("Placeholders used by a
+  # snippet but absent from CONFIG/DATAFLOW"), pinned as a real testthat
+  # assertion too, so drift is caught at `devtools::test()` time even if
+  # nobody happens to run the generator script by hand.
+  #
+  # Scoped to CANONICAL_PATH deliberately, not every snippet the graph has:
+  # CONFIG/DATAFLOW exist ONLY to deterministically fill the one canonical
+  # single-site template this generator produces. Every OTHER snippet (used
+  # by the interactive conversational assistant for a different route) has
+  # its `{{placeholder}}` tokens filled a completely different way -- shown
+  # to the LLM as reference text (see graph.R's "{{SNIPPETS}}" prompt-pack
+  # substitution) for it to write real values into during the conversation,
+  # never substituted by this package's own R code at all. Asserting
+  # CONFIG/DATAFLOW coverage over EVERY snippet would be checking an
+  # invariant that was never true by design (confirmed: dozens of
+  # legitimately-uncovered placeholders in birdnet_to_match.R,
+  # run_to_report.R, and others) -- not a drift to catch.
+  root <- TaxaWizard:::.pack_find_repo_root()
+  skip_if(is.null(root), "repo root not found")
+  gen <- file.path(root, "TaxaWizard", "inst", "tools", "build_workflow_template.R")
+  snippets_dir <- file.path(root, "TaxaWizard", "inst", "graph", "snippets")
+  skip_if(!file.exists(gen) || !dir.exists(snippets_dir), "generator or snippets dir not found")
+
+  # Extract CANONICAL_PATH/CONFIG/DATAFLOW straight from the generator's own
+  # source, without running its graph-walking/file-writing side effects:
+  # only the top-level assignment expressions that define them are
+  # evaluated.
+  gen_exprs <- parse(gen, keep.source = FALSE)
+  env <- new.env()
+  for (e in as.list(gen_exprs)) {
+    if (is.call(e) && identical(e[[1]], as.name("<-")) &&
+        is.name(e[[2]]) &&
+        as.character(e[[2]]) %in% c("CONFIG", "DATAFLOW", "CANONICAL_PATH")) {
+      eval(e, envir = env)
+    }
+  }
+  declared <- union(names(env$CONFIG), names(env$DATAFLOW))
+  expect_gt(length(declared), 0L) # sanity: the extraction above actually worked
+  expect_gt(length(env$CANONICAL_PATH), 0L)
+
+  snippet_files <- file.path(snippets_dir, paste0(env$CANONICAL_PATH, ".R"))
+  expect_true(all(file.exists(snippet_files)))
+
+  missing_by_file <- list()
+  for (f in snippet_files) {
+    txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
+    ph <- unique(gsub("[{}]", "", unlist(
+      regmatches(txt, gregexpr("\\{\\{[a-zA-Z_0-9]+\\}\\}", txt))
+    )))
+    missing <- setdiff(ph, declared)
+    if (length(missing) > 0L) {
+      missing_by_file[[basename(f)]] <- missing
+    }
+  }
+
+  expect_equal(missing_by_file, list(),
+    info = paste(
+      "CANONICAL_PATH snippet placeholder(s) missing from CONFIG/DATAFLOW:",
+      paste(sprintf(
+        "%s: %s", names(missing_by_file),
+        vapply(missing_by_file, paste, "", collapse = ", ")
+      ), collapse = "; ")
+    )
   )
 })
