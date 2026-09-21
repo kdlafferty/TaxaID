@@ -720,6 +720,18 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   NOW (tag after the user's README pass); runs launched by the coordinator
   as background Rscript with the user on call for interactive stops;
   version 1.0.0, tag `v1.0.0`.
+  **Revised 2026-09-21 (user):** GreatLakes is NOT in the manuscript; **PtCon
+  12S is**, and the user holds its numbers. B2's reproduction target is
+  therefore PtCon 12S (one run, isolated `OUT_PREFIX`, outputs saved);
+  GreatLakes and Mugu become SUBSET code-path runs under the FAST convention
+  (own `OUT_PREFIX`, read-only `REUSE_PREFIX`, no checkpoint of theirs ever
+  reused; content-keyed caches shared). The mislabel reference screen is
+  NOT re-run in B2: its verdict cache covers only a fraction of accessions,
+  so it trips NCBI limits regardless, and it changed 6 of 13,442 hits at
+  PtCon -- serve it from checkpoint (`SCREENS_FROM_CHECKPOINT`) or cap it.
+  **Decision: the screen is OFF by default in the workflow template**
+  (`SCREEN_REFERENCE_ACCESSIONS = FALSE`), on by flag, with its yield and
+  NCBI cost stated beside the flag.
 - **B3. The structural guards fire.** Break each deliberately and confirm it is
   caught: vignette-call checking, snippet/graph-edge export checking, the
   sampling-group kingdom guard, `cache_ok()` staleness inputs, `on_unreviewed
