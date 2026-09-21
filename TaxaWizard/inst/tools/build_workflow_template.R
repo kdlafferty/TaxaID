@@ -78,7 +78,7 @@ CONFIG <- list(
   include_group_priors    = list("INCLUDE_GROUP_PRIORS",    "TRUE",  "Add group-level prior support"),
   include_downranking     = list("INCLUDE_DOWNRANKING",     "TRUE",  "Allow posterior downranking"),
   include_evidence_block  = list("INCLUDE_EVIDENCE_BLOCK",  "FALSE", "Curve-priced evidence for unobserved taxa"),
-  screen_reference_accessions = list("SCREEN_REFERENCE_ACCESSIONS", "TRUE", "Screen reference accessions for errors"),
+  screen_reference_accessions = list("SCREEN_REFERENCE_ACCESSIONS", "FALSE", "Screen reference accessions for errors; off by default -- see the comment in Step 1 for why"),
   review_flagged_references   = list("REVIEW_FLAGGED_REFERENCES",   "TRUE", "Send flagged accessions for LLM review"),
   remove_incongruent_references = list("REMOVE_INCONGRUENT_REFERENCES", "TRUE", "Drop references failing hierarchy congruence"),
   invasive_taxa     = list("INVASIVE_TAXA",     "NULL",              "Watch-list taxon names, or NULL"),
