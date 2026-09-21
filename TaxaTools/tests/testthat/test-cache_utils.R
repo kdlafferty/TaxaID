@@ -21,7 +21,10 @@ test_that("list_cache_files matches basenames against any supplied pattern", {
   writeLines("x", file.path(d, "c_ckpt.rds"))
   writeLines("x", file.path(d, "not_matched.txt"))
 
-  inv <- list_cache_files(d, c("\\.zip$", "_meta\\.rds$"))
+  # c_ckpt.rds and not_matched.txt match neither pattern given here, so this
+  # is deliberately a mixed directory -- force = TRUE is required (see the
+  # containment-check tests below).
+  inv <- list_cache_files(d, c("\\.zip$", "_meta\\.rds$"), force = TRUE)
   expect_setequal(basename(inv$path), c("a.zip", "b_meta.rds"))
   expect_named(inv, c("path", "size_mb", "mtime"))
 })
@@ -296,4 +299,155 @@ test_that("list_cache_files() validates 'recursive'", {
   dir.create(d)
   expect_error(list_cache_files(d, "x$", recursive = NA), "TRUE or FALSE")
   expect_error(list_cache_files(d, "x$", recursive = "yes"), "TRUE or FALSE")
+})
+
+
+# =============================================================================
+# Containment checks (2026-09-21). Reproduced by a reviewer: in a tempdir
+# holding an unrelated "my_species_common_name.rds" data file,
+# taxatools_clear_cache(cache_dir = ".", dry_run = FALSE) deleted it, because
+# the working directory happened to be the tempdir and the file's basename
+# happened to match the cache pattern. Every <pkg>_clear_cache() is built on
+# list_cache_files()/report_and_clear_cache(), so the gap was ecosystem-wide.
+# =============================================================================
+
+# --- (a) refuse a cache_dir that is not a dedicated cache directory --------
+
+test_that("list_cache_files refuses a cache_dir that resolves to the working directory", {
+  d <- withr::local_tempdir()
+  writeLines("x", file.path(d, "a.zip"))
+  withr::local_dir(d)
+  expect_error(
+    list_cache_files(".", "\\.zip$"),
+    "current working directory"
+  )
+})
+
+test_that("list_cache_files refuses the user's home directory", {
+  expect_error(list_cache_files(path.expand("~"), "\\.zip$"), "home directory")
+})
+
+test_that("list_cache_files refuses a filesystem root", {
+  expect_error(list_cache_files("/", "\\.zip$"), "filesystem root")
+})
+
+test_that("list_cache_files refusing the working directory is not overridable by force", {
+  d <- withr::local_tempdir()
+  withr::local_dir(d)
+  expect_error(list_cache_files(".", "\\.zip$", force = TRUE), "current working directory")
+})
+
+test_that("report_and_clear_cache refuses a cache_dir that resolves to the working directory, even under dry_run = FALSE", {
+  d <- withr::local_tempdir()
+  writeLines("x", file.path(d, "a.zip"))
+  withr::local_dir(d)
+  inv <- data.frame(
+    path = file.path(d, "a.zip"), size_mb = 0.001,
+    mtime = Sys.time(), stringsAsFactors = FALSE
+  )
+  expect_error(
+    report_and_clear_cache(inv, "lbl", ".", dry_run = FALSE),
+    "current working directory"
+  )
+  expect_true(file.exists(file.path(d, "a.zip"))) # never reached file.remove()
+})
+
+test_that("report_and_clear_cache refuses a filesystem root", {
+  empty_inv <- data.frame(
+    path = character(0), size_mb = numeric(0),
+    mtime = as.POSIXct(character(0))
+  )
+  expect_error(report_and_clear_cache(empty_inv, "lbl", "/"), "filesystem root")
+})
+
+# --- (b) refuse a mixed directory unless force = TRUE ----------------------
+
+test_that("list_cache_files refuses a directory holding a non-matching file", {
+  d <- tempfile("cache_")
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  writeLines("x", file.path(d, "a.zip"))
+  writeLines("x", file.path(d, "my_project_notes.txt"))
+
+  expect_error(
+    list_cache_files(d, "\\.zip$"),
+    "my_project_notes\\.txt"
+  )
+})
+
+test_that("list_cache_files(force = TRUE) scans a mixed directory anyway", {
+  d <- tempfile("cache_")
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  writeLines("x", file.path(d, "a.zip"))
+  writeLines("x", file.path(d, "my_project_notes.txt"))
+
+  out <- list_cache_files(d, "\\.zip$", force = TRUE)
+  expect_identical(basename(out$path), "a.zip")
+})
+
+test_that("list_cache_files does not trip the mixed-directory guard on a directory holding only recognized cache files", {
+  d <- tempfile("cache_")
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  writeLines("x", file.path(d, "a.zip"))
+  writeLines("x", file.path(d, "b_meta.rds"))
+
+  out <- list_cache_files(d, c("\\.zip$", "_meta\\.rds$"))
+  expect_setequal(basename(out$path), c("a.zip", "b_meta.rds"))
+})
+
+test_that("taxatools_clear_cache(force=) threads through to list_cache_files()", {
+  d <- withr::local_tempdir()
+  writeLines("x", file.path(d, "a_common_name.rds"))
+  writeLines("x", file.path(d, "unrelated_data.rds"))
+  expect_error(
+    suppressMessages(taxatools_clear_cache(d, dry_run = TRUE)),
+    "unrelated_data\\.rds"
+  )
+  inv <- suppressMessages(taxatools_clear_cache(d, dry_run = TRUE, force = TRUE))
+  expect_identical(basename(inv$path), "a_common_name.rds")
+  expect_true(file.exists(file.path(d, "unrelated_data.rds"))) # dry_run: nothing deleted
+})
+
+# --- (c) never follow a symlink out of cache_dir ----------------------------
+
+test_that("list_cache_files(recursive = TRUE) does not follow a symlinked subdirectory out of cache_dir", {
+  skip_on_os("windows")
+  outside <- tempfile("outside_")
+  dir.create(outside)
+  on.exit(unlink(outside, recursive = TRUE), add = TRUE)
+  writeLines("x", file.path(outside, "escaped_meta.rds"))
+
+  d <- tempfile("cache_")
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  writeLines("x", file.path(d, "real_meta.rds"))
+  link <- file.path(d, "escaped_link")
+  ok <- tryCatch(file.symlink(outside, link), error = function(e) FALSE)
+  skip_if_not(isTRUE(ok), "symlinks not supported in this environment")
+
+  out <- list_cache_files(d, "_meta\\.rds$", recursive = TRUE)
+  expect_identical(basename(out$path), "real_meta.rds")
+  expect_false("escaped_meta.rds" %in% basename(out$path))
+})
+
+test_that("list_cache_files does not follow a symlinked FILE that resolves outside cache_dir", {
+  skip_on_os("windows")
+  outside <- tempfile("outside_")
+  dir.create(outside)
+  on.exit(unlink(outside, recursive = TRUE), add = TRUE)
+  target <- file.path(outside, "escaped_meta.rds")
+  writeLines("x", target)
+
+  d <- tempfile("cache_")
+  dir.create(d)
+  on.exit(unlink(d, recursive = TRUE), add = TRUE)
+  writeLines("x", file.path(d, "real_meta.rds"))
+  link <- file.path(d, "linked_meta.rds")
+  ok <- tryCatch(file.symlink(target, link), error = function(e) FALSE)
+  skip_if_not(isTRUE(ok), "symlinks not supported in this environment")
+
+  out <- list_cache_files(d, "_meta\\.rds$")
+  expect_identical(basename(out$path), "real_meta.rds")
 })

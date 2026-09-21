@@ -13,8 +13,10 @@ A sampling-group scheme object; see Shape above.
 Returns the package's default sampling-group scheme: an ORDERED list of
 rules (first-match-wins, exactly like the \code{dplyr::case_when()} it
 replaces) that classifies a taxon's kingdom/phylum/class/order into one of
-eleven detection-process groups, or a catch-all. See Details for
-clause-specific rationale.
+ten detection-process groups (encoded as eleven ordered rules --
+\code{"parasites"} has two, by design, since it is reached via two
+unrelated clauses), or a catch-all. See Details for clause-specific
+rationale.
 }
 \section{Shape}{
 

@@ -119,6 +119,9 @@ taxaid_build_manifest <- function(packages = NULL) {
 #' }
 #' }
 write_taxaid_manifest <- function(path, packages = NULL) {
+  if (!is.character(path) || length(path) != 1L || is.na(path)) {
+    stop("write_taxaid_manifest: 'path' must be a single file path.")
+  }
   m <- taxaid_build_manifest(packages)
   saveRDS(m, path)
   message(sprintf(

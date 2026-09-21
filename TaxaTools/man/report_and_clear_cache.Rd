@@ -42,6 +42,18 @@ ecosystem. A caller builds its own inventory first -- typically via
 TaxaFetch's own orphan detection) already applied -- and hands it to this
 function to do the rest.
 }
+\section{Containment}{
+
+\code{cache_dir} is refused outright (before anything is deleted, even
+under \code{dry_run = FALSE}) if it resolves to the working directory,
+the user's home directory, or a filesystem root -- the same check
+\code{list_cache_files()} applies, repeated here so a caller that builds
+\code{inv} some other way (not via \code{list_cache_files()}) still gets
+it. \code{inv} itself is used as-is and is not re-scanned or re-filtered
+against \code{cache_dir} -- a caller is trusted to have built it FROM
+\code{cache_dir}.
+}
+
 \examples{
 \dontrun{
 inv <- list_cache_files(cache_dir, c("\\\\.zip$", "_meta\\\\.rds$"))

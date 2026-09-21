@@ -102,6 +102,12 @@ test_that("on_mismatch controls severity without changing the verdict", {
   expect_false(r$ok)   # the verdict is the same; only the noise differs
 })
 
+test_that("write_taxaid_manifest validates its 'path' argument", {
+  expect_error(write_taxaid_manifest(123), "single file path")
+  expect_error(write_taxaid_manifest(NA_character_), "single file path")
+  expect_error(write_taxaid_manifest(c("a.rds", "b.rds")), "single file path")
+})
+
 test_that("check_taxaid_manifest validates its inputs", {
   expect_error(check_taxaid_manifest("no_such_file.rds"), "not found")
   p <- withr::local_tempfile(fileext = ".rds")
