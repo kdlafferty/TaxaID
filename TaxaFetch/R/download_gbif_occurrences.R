@@ -1137,10 +1137,13 @@ download_gbif_occurrences <- function(
   # session can make a lazy-load read of .taxafetch_cache_patterns fail
   # ("lazy-load database ... is corrupt"), which would throw away every
   # successfully imported row (1,717,250 in one real case) at the last step.
-  # A reporting convenience must never be able to lose the data.
+  # A reporting convenience must never be able to lose the data. force = TRUE
+  # for the same reason: this call only counts and reports, never deletes, so
+  # an unrelated file sitting in cache_dir (a stray non-cache leftover) must
+  # not turn a cosmetic report into a warning.
   .cache_report <- function() {
     if (!is.null(cache_dir)) {
-      inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns)
+      inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns, force = TRUE)
       if (nrow(inv) > 0L) {
         total_mb <- sum(inv$size_mb)
         # GB once past a gigabyte: "17123.7 MB" is a number people have to stop
@@ -1241,9 +1244,9 @@ download_gbif_occurrences <- function(
 
 #' Build the metadata RDS path for a download_gbif_occurrences call
 #'
-#' Encodes key count, key checksum, geometry length, and year range.
-#' Changing any parameter produces a different path and triggers a fresh
-#' download.
+#' Encodes key count, a content hash of the sorted key set, geometry length,
+#' and year range. Changing any parameter produces a different path and
+#' triggers a fresh download.
 #'
 #' @param cache_dir Character or NULL.
 #' @param keys Integer vector (deduped, NA-free).
@@ -1267,12 +1270,27 @@ download_gbif_occurrences <- function(
   # worth avoiding. Instead the full geometry is stored INSIDE the cached
   # metadata and verified on read -- see the `meta$geometry` check in
   # download_gbif_occurrences().
+  #
+  # The key-SET component, by contrast, previously WAS
+  # `as.integer(sum(as.numeric(keys)) %% 1e9)` -- a count-plus-checksum, not
+  # a hash, and the same collision-prone shape removed from
+  # check_geographic_outliers() for the same reason: two disjoint taxon-key
+  # sets can sum to the same value mod 1e9, producing the SAME filename for
+  # DIFFERENT taxa, so the second call would silently read the first call's
+  # download metadata. Unlike the geometry decision above, keeping this
+  # checksum bought nothing worth the risk, so it is replaced with
+  # `rlang::hash()` of the sorted key set (the ecosystem's real hashing
+  # convention -- see `.query_hash()` in literature_search.R and the
+  # verdict-cache key in check_geographic_outliers()). This changes every
+  # existing meta filename, so the on-disk GBIF download-zip cache is a
+  # total miss after this change and re-downloads; that cache is disposable
+  # by design (`taxafetch_clear_cache(zips_only = TRUE)`).
   basis_tag <- if (!is.null(basis_keep)) paste0("_b", sum(nchar(basis_keep))) else ""
   absent_tag <- if (isTRUE(exclude_absent)) "_pres" else ""
   sig <- sprintf(
-    "%dk_s%d_g%d_%s%s%s",
+    "%dk_s%s_g%d_%s%s%s",
     length(keys),
-    as.integer(sum(as.numeric(keys)) %% 1e9),
+    rlang::hash(sort(keys)),
     if (is.null(geometry)) 0L else nchar(geometry),
     gsub("[^0-9]", "", year_range),
     basis_tag,

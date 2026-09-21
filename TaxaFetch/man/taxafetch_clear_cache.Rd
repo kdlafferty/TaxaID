@@ -9,7 +9,8 @@ taxafetch_clear_cache(
   older_than_days = NULL,
   orphans_only = FALSE,
   zips_only = FALSE,
-  dry_run = FALSE
+  dry_run = FALSE,
+  force = FALSE
 )
 }
 \arguments{
@@ -51,6 +52,10 @@ metadata -- those are exactly the large ones. Cannot be combined with
 
 \item{dry_run}{Logical. If \code{TRUE}, reports what would be removed
 without removing anything. Default \code{FALSE}.}
+
+\item{force}{Logical (default \code{FALSE}). Pass \code{TRUE} to clear a
+\code{cache_dir} that holds file(s) matching none of the recognized
+cache patterns -- see \code{\link[TaxaTools]{list_cache_files}}.}
 }
 \value{
 Invisibly, a data frame of the targeted files (\code{path},

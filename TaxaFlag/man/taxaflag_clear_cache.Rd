@@ -7,7 +7,8 @@
 taxaflag_clear_cache(
   cache_dir = tools::R_user_dir("TaxaFlag", "cache"),
   older_than_days = NULL,
-  dry_run = FALSE
+  dry_run = FALSE,
+  force = FALSE
 )
 }
 \arguments{
@@ -24,6 +25,10 @@ this many days. \code{NULL} (default) considers every entry.}
 
 \item{dry_run}{Logical. \code{TRUE} reports what would be deleted without
 deleting it.}
+
+\item{force}{Logical (default \code{FALSE}). Pass \code{TRUE} to clear a
+\code{cache_dir} that holds file(s) matching none of the recognized cache
+patterns -- see \code{TaxaTools::list_cache_files()}.}
 }
 \value{
 Invisibly, the inventory data frame

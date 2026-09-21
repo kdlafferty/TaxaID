@@ -22,6 +22,29 @@ test_that("two equal-length geometries really do collide on the cache key", {
   expect_identical(pa, pb)
 })
 
+test_that("disjoint key sets that sum equal do not collide on the cache key", {
+  # Regression for the sum-mod-1e9 checksum bug: the key-SET component of
+  # this filename used to be `sum(as.numeric(keys)) %% 1e9` -- the same
+  # collision-prone shape removed from check_geographic_outliers() for the
+  # same reason. Two DISJOINT taxon-key sets with equal sums
+  # (100000001 + 100000002 == 100000000 + 100000003) produced the identical
+  # filename, so the second call would silently read the first call's
+  # download metadata. rlang::hash() of the sorted key set must give each
+  # set its own path.
+  keys_a <- c(100000001L, 100000002L)
+  keys_b <- c(100000000L, 100000003L)
+  expect_equal(sum(keys_a), sum(keys_b))
+  expect_false(any(keys_a %in% keys_b))
+
+  pa <- TaxaFetch:::.gbif_dl_meta_path(tempdir(), keys = keys_a,
+                                       geometry = "POLYGON((0 0,0 1,1 1,0 0))",
+                                       year_range = "2000,2024")
+  pb <- TaxaFetch:::.gbif_dl_meta_path(tempdir(), keys = keys_b,
+                                       geometry = "POLYGON((0 0,0 1,1 1,0 0))",
+                                       year_range = "2000,2024")
+  expect_false(identical(pa, pb))
+})
+
 test_that("a cached download records the geometry it was made for", {
   # Contract check on the metadata shape the reader verifies against.
   meta <- list(dl_key = "0001", zip_path = tempfile(), timestamp = Sys.time(),

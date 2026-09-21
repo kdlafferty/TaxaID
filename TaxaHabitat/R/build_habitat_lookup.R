@@ -252,6 +252,9 @@ build_habitat_lookup <- function(taxon_list,
 #'   this many days. `NULL` (default) considers every entry.
 #' @param dry_run Logical. `TRUE` reports what would be deleted without
 #'   deleting it.
+#' @param force Logical (default `FALSE`). Pass `TRUE` to clear a
+#'   `cache_dir` that holds file(s) matching none of the recognized cache
+#'   patterns -- see `TaxaTools::list_cache_files()`.
 #' @return Invisibly, the inventory data frame
 #'   (`TaxaTools::list_cache_files()` output) of the files considered.
 #' @seealso [build_habitat_lookup()], `TaxaTools::report_and_clear_cache()`,
@@ -263,8 +266,9 @@ build_habitat_lookup <- function(taxon_list,
 #' }
 taxahabitat_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaHabitat", "cache"),
                                     older_than_days = NULL,
-                                    dry_run = FALSE) {
-  inv <- TaxaTools::list_cache_files(cache_dir, .taxahabitat_cache_patterns)
+                                    dry_run = FALSE,
+                                    force = FALSE) {
+  inv <- TaxaTools::list_cache_files(cache_dir, .taxahabitat_cache_patterns, force = force)
   TaxaTools::report_and_clear_cache(
     inv,
     label = "taxahabitat_clear_cache", cache_dir = cache_dir,

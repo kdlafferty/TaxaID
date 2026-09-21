@@ -84,6 +84,9 @@
 #'   \code{orphans_only}.
 #' @param dry_run Logical. If \code{TRUE}, reports what would be removed
 #'   without removing anything. Default \code{FALSE}.
+#' @param force Logical (default \code{FALSE}). Pass \code{TRUE} to clear a
+#'   \code{cache_dir} that holds file(s) matching none of the recognized
+#'   cache patterns -- see \code{\link[TaxaTools]{list_cache_files}}.
 #' @return Invisibly, a data frame of the targeted files (\code{path},
 #'   \code{size_mb}, \code{mtime}), possibly zero rows.
 #' @export
@@ -99,7 +102,8 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
                                   older_than_days = NULL,
                                   orphans_only = FALSE,
                                   zips_only = FALSE,
-                                  dry_run = FALSE) {
+                                  dry_run = FALSE,
+                                  force = FALSE) {
   if (!is.logical(orphans_only) || length(orphans_only) != 1L || is.na(orphans_only)) {
     stop("taxafetch_clear_cache: 'orphans_only' must be TRUE or FALSE.")
   }
@@ -113,7 +117,7 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
     )
   }
 
-  inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns)
+  inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns, force = force)
 
   if (isTRUE(zips_only)) {
     # The zips ARE the cache, in practice: on one real machine 38 of them held

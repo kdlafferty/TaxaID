@@ -53,6 +53,9 @@
 #'   \code{cache_dir}.
 #' @param dry_run Logical. If \code{TRUE}, reports what would be removed
 #'   without removing anything. Default \code{FALSE}.
+#' @param force Logical (default \code{FALSE}). Pass \code{TRUE} to clear a
+#'   \code{cache_dir} that holds file(s) matching none of the recognized
+#'   cache patterns -- see \code{\link[TaxaTools]{list_cache_files}}.
 #' @return Invisibly, a data frame of the targeted files (\code{path},
 #'   \code{size_mb}, \code{mtime}), possibly zero rows.
 #' @export
@@ -64,10 +67,11 @@
 #' }
 taxalikely_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaLikely", "cache"),
                                    older_than_days = NULL,
-                                   dry_run = FALSE) {
+                                   dry_run = FALSE,
+                                   force = FALSE) {
   inv <- TaxaTools::list_cache_files(
     cache_dir, .taxalikely_cache_patterns,
-    recursive = TRUE
+    recursive = TRUE, force = force
   )
   TaxaTools::report_and_clear_cache(
     inv,
