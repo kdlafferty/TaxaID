@@ -3,7 +3,7 @@
 #
 # GENERATED FILE -- do not edit by hand.
 #   Source:    the workflow graph's own snippets (TaxaWizard/inst/graph/snippets/)
-#   Generator: diagnostics/build_workflow_template.R
+#   Generator: TaxaWizard/inst/tools/build_workflow_template.R
 #   Guarded by: TaxaWizard/tests/testthat/test-workflow-template.R, which
 #               regenerates this file and fails if it differs.
 #

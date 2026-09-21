@@ -1840,7 +1840,7 @@ ASVs detected at multiple real sites become the true analysis unit) remains open
 flagged in `ecosystem_docs/REENTRY_PROMPT_session134_single_observation_pipeline.md`
 as probably deserving its own session; unaffected by this session's `spatial_group_map` addition.
 
-Sessions 29–77 archived in ecosystem_docs/session_notes/TaxaAssign_sessions.md.
+Sessions 29–77 archived in TaxaID_dev/ecosystem_docs/session_notes/TaxaAssign_sessions.md.
 
 **Session 79 (2026-05-20)**
 - `sample_id` → `observation_id` rename across all 13 R source files, 12 test files, 2 vignettes,

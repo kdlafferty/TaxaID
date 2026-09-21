@@ -5,7 +5,7 @@
 # test-plot_theta_map_interactive.R). Fixtures are synthetic with
 # hand-computable or estimator-comparable answers -- the site-identity
 # reduction to estimate_kernel_priors() is the key invariant (spec:
-# ecosystem_docs/SPEC_plot_theta_surface.md).
+# TaxaID_dev/ecosystem_docs/SPEC_plot_theta_surface.md (sibling development repository)).
 
 .mk_occ <- function(taxa, lat, lon, habitat = "Marine", depth = NA_real_) {
   data.frame(

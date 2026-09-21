@@ -275,7 +275,7 @@ Searches BOLD's v5 Data Portal API by taxon name and returns a 'reference_df' re
 
 Fetch reference sequences from NCBI for model building
 
-Renamed from 'fetch_reference_sequences()' (Session 136) now that a second live-API reference source ('fetch_bold_reference_sequences()', BOLD Systems) exists - the old name didn't say NCBI anywhere, which stopped being safe once a second source existed. The deprecated 'fetch_reference_sequences()' forwarding alias was removed entirely in a later session (no real callers remained; see NAME_CHANGE_HISTORY.md).
+Renamed from 'fetch_reference_sequences()' (Session 136) now that a second live-API reference source ('fetch_bold_reference_sequences()', BOLD Systems) exists - the old name didn't say NCBI anywhere, which stopped being safe once a second source existed. The deprecated 'fetch_reference_sequences()' forwarding alias was removed entirely in a later session (no real callers remained; see TaxaID_dev/ecosystem_docs/NAME_CHANGE_HISTORY.md, sibling development repository).
 
 | Param | Required | Default | Doc |
 |---|---|---|---|

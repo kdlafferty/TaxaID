@@ -1,6 +1,6 @@
 # Tests for R/registry.R -- the introspected function registry that
 # replaced the old per-package metadata JSON files on 2026-09-18 (see
-# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, section P1).
+# TaxaID_dev/ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md (sibling development repository), section P1).
 #
 # These are offline: no network calls, no LLM calls. Every check reads the
 # TaxaID packages actually installed in the current library (getNamespace

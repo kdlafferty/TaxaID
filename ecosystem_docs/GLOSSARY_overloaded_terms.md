@@ -1,8 +1,9 @@
 # Glossary — overloaded terms across package boundaries
 
 **Written 2026-09-05**, closing finding C of
-`critical_fix_review_and_changelog_2026-09-05.md` (itself implementing
-`fable_ecosystem_review_2026-09-05.md`'s focus area 2, shared-concept drift). This is a
+`TaxaID_dev/ecosystem_docs/critical_fix_review_and_changelog_2026-09-05.md` (itself
+implementing `TaxaID_dev/ecosystem_docs/fable_ecosystem_review_2026-09-05.md`'s focus
+area 2, shared-concept drift; both in the sibling development repository). This is a
 flag-don't-rename doc: none of the terms below are being renamed. Each already means
 something well-defined and internally consistent at its own definition site — the risk
 is a reader (or a future consumer) assuming one package-qualified sense applies

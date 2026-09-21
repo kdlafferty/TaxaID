@@ -1,6 +1,6 @@
 # Tests for inst/TaxaID_Workflow_Template.R -- the repo's single-site workflow
 # template, GENERATED from the workflow graph's snippets by
-# diagnostics/build_workflow_template.R.
+# TaxaWizard/inst/tools/build_workflow_template.R.
 #
 # WHY THESE EXIST. TaxaID has had two hand-written workflow templates and both
 # sat unrunnable for months while looking maintained: the package-level one
@@ -94,10 +94,18 @@ test_that("the committed template is what the generator currently produces", {
   # previous template had.
   root <- TaxaWizard:::.pack_find_repo_root()
   skip_if(is.null(root), "repo root not found")
-  gen <- file.path(root, "diagnostics", "build_workflow_template.R")
+  gen <- file.path(root, "TaxaWizard", "inst", "tools", "build_workflow_template.R")
   committed <- file.path(root, "inst", "TaxaID_Workflow_Template.R")
-  skip_if(!file.exists(gen) || !file.exists(committed), "generator or template not found")
+  skip_if(!file.exists(committed), "template not found")
   skip_on_cran()
+  if (!file.exists(gen)) {
+    fail(paste0(
+      "generator script not found at ", gen, " -- it ships inside ",
+      "TaxaWizard/inst/tools/ and its absence here (with a repo root and a ",
+      "committed template both found) means something moved it or the ",
+      "package tree is broken, not that the check should be skipped."
+    ))
+  }
 
   out <- tempfile("tmpl_", fileext = ".R")
   on.exit(unlink(out), add = TRUE)
@@ -121,6 +129,6 @@ test_that("the committed template is what the generator currently produces", {
   expect_identical(
     paste(readLines(committed, warn = FALSE), collapse = "\n"),
     paste(readLines(out, warn = FALSE), collapse = "\n"),
-    info = "template is stale -- run: Rscript diagnostics/build_workflow_template.R"
+    info = "template is stale -- run: Rscript TaxaWizard/inst/tools/build_workflow_template.R"
   )
 })

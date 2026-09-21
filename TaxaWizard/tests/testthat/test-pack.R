@@ -1,5 +1,5 @@
 # Tests for R/pack.R -- workflow_export_prompts(), the prompt pack generator
-# (see ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, section
+# (see TaxaID_dev/ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md (sibling development repository), section
 # P4). Every call here uses placeholder_setup_report = TRUE, so none of these
 # tests run workflow_check()'s live network probes -- fully offline, like
 # test-setup.R's .tw_offline() pattern, just via the placeholder argument

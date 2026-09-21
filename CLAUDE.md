@@ -827,7 +827,7 @@
 # 2026-08-18/2026-09-07 entries below, which still narrate the old mechanism as live --
 # correct as a record of what was true then), taxalikely_review_response.md,
 # taxamatch_review_response.md, fable_ecosystem_review_2026-09-05.md,
-# ecosystem_docs/session_notes/TaxaLikely_sessions.md (archived past session notes),
+# TaxaID_dev/ecosystem_docs/session_notes/TaxaLikely_sessions.md (archived past session notes),
 # STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md/STATISTICAL_COMPONENT_CATALOG.md (point-in-
 # time audit snapshots, not living reference), DATA_TYPE_AUDIT_PLAN.md (a one-time,
 # already-frozen 2026-05-27 naming audit that itself still cites the already-renamed
