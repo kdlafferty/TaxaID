@@ -13,7 +13,7 @@
 #'     code snippets.
 #' }
 #'
-#' Phase detection is stateless — determined entirely from conversation history.
+#' Phase detection is stateless -- determined entirely from conversation history.
 #'
 #' @param history List of message objects, each with \code{role}
 #'   (\code{"user"} or \code{"assistant"}) and \code{content} (character).
@@ -227,7 +227,7 @@ workflow_engine <- function(history,
   # Check if the latest user message looks like an error report
   last_user <- .last_message_by_role(history, "user")
   if (!is.null(last_user) && .looks_like_error(last_user)) {
-    # Error fix mode — try to find context from previous assistant state
+    # Error fix mode -- try to find context from previous assistant state
     last_asst <- .last_assistant_state(history)
     return(list(
       phase = "error_fix",
@@ -290,7 +290,7 @@ workflow_engine <- function(history,
   }
 
   if (has_input && has_output) {
-    # Classified but no path selected → path_select
+    # Classified but no path selected -> path_select
     # Compute paths in R (the whole point: LLM doesn't invent these)
     graph <- .load_graph()
     paths <- .compute_paths(last_asst$input_type, last_asst$output_type, graph)
@@ -304,7 +304,7 @@ workflow_engine <- function(history,
     ))
   }
 
-  # Partial classification or no progress → stay in classify
+  # Partial classification or no progress -> stay in classify
   default
 }
 

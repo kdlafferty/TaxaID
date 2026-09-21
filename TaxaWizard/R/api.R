@@ -227,7 +227,7 @@ NULL
     }
   }
 
-  # All approaches failed — wrap plain text in a default response
+  # All approaches failed -- wrap plain text in a default response
   # This keeps the conversation flowing instead of crashing
   warning(
     "LLM returned plain text instead of JSON. Wrapping as incomplete response.",
