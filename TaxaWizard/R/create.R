@@ -81,7 +81,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
     stop("workflow_create() requires an interactive R session.", call. = FALSE)
   }
 
-  # P6: check the machine BEFORE the conversation starts, and show the user the
+  # Check the machine BEFORE the conversation starts, and show the user the
   # same report the LLM is about to be given -- .session_setup_check() caches it,
   # so the classify prompt reuses this exact result rather than re-running it.
   # This is deliberately not fatal: a missing requirement may belong to a path

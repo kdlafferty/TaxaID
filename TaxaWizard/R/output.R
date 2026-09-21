@@ -552,7 +552,7 @@
   }
 
   # --- Step 0: widen the EXISTING check, never write a second one ---
-  # P6. An appended stage can need things the original path did not (a BLAST
+  # An appended stage can need things the original path did not (a BLAST
   # binary, an NCBI key). The script's Step 0 is at the top and has already
   # run by the time those steps execute, so leaving it alone would let the
   # script sail past a requirement it is about to need and fail deep in a
@@ -767,7 +767,7 @@
 #' Keep Only Edge Ids That Exist in the Workflow Graph
 #'
 #' A DAG's \code{edge_id} values come from the LLM, and an LLM will happily
-#' invent one for a step the graph has no edge for -- P7(a)'s console dry run
+#' invent one for a step the graph has no edge for -- a console dry run once
 #' produced \code{"load_match_df"} for its data-loading step, which is not an
 #' edge at all. \code{workflow_check()} ignores an unknown id with a message,
 #' so the generated script still RAN, but it shipped a fabricated identifier in
