@@ -140,7 +140,7 @@ report_habitat <- function(habitat_data,
 #' report_habitat() accepts two documented shapes and must tell them apart from
 #' the data alone. Shape A -- parse_hierarchical_habitat_response()'s per-species
 #' weight table -- has one numeric column per habitat plus Other_weight,
-#' documented to hold values in [0, 1] and (its own @details) to sum to ~1.0
+#' documented to hold values in the interval 0 to 1 and (its own @details) to sum to ~1.0
 #' across a row within a tolerance of 0.05. Shape B --
 #' assign_habitat_biological()'s occurrence-level output -- adds only a
 #' categorical main_habitat winner per row and NO numeric weight columns at all,
@@ -169,7 +169,7 @@ report_habitat <- function(habitat_data,
 #'
 #' 1. at least one candidate column;
 #' 2. EVERY candidate column carries real data (at least one non-NA value) and
-#'    lies in [0, 1.05]. `all`, not `any`, because a genuine weight table has no
+#'    lies in the interval 0 to 1.05. `all`, not `any`, because a genuine weight table has no
 #'    non-weight numeric columns while an occurrence frame essentially always
 #'    carries at least one out-of-range one -- this closes hole 1 by making an
 #'    all-NA column a disqualifier rather than a free pass. The 0.05 upper slack

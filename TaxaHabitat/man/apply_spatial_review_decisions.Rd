@@ -75,6 +75,25 @@ normally. The same rule applies to any individual decision row saved
 without taxon information, even inside an otherwise new-format file.
 }
 
+\examples{
+before <- data.frame(
+  point_id            = c("p1", "p2"),
+  taxon_name          = c("Sebastes mystinus", "Larus occidentalis"),
+  main_habitat         = c("Marine", "Terrestrial"),
+  spatial_flag         = c("questionable", "likely"),
+  spatial_flag_reason  = c("inland marine detection", "ok")
+)
+
+path <- tempfile(fileext = ".rds")
+reviewed <- before
+reviewed$spatial_flag[1] <- "likely"
+save_spatial_review_decisions(reviewed, path, before = before)
+
+# A later run re-applies the saved decision automatically.
+out <- apply_spatial_review_decisions(before, path)
+out$spatial_flag
+attr(out, "n_applied")
+}
 \seealso{
 \code{\link{save_spatial_review_decisions}}
 }

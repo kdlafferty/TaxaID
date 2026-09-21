@@ -1,15 +1,17 @@
 # save_spatial_review_decisions() / apply_spatial_review_decisions() -- 2026-09-12
 
-.flagged <- function() data.frame(
-  point_id = c("p1", "p1", "p2", "p3", "p4"),
-  taxon_name = c("A", "B", "A", "C", "D"),
-  decimalLatitude = c(34.4, 34.4, 34.5, 34.6, 34.7),
-  decimalLongitude = -120.4,
-  main_habitat = c("Marine", "Marine", "Marine", "Terrestrial", "Marine"),
-  spatial_flag = c("questionable", "questionable", "likely", "unlikely", "questionable"),
-  spatial_flag_reason = c("r1", "r1", "ok", "r3", "r4"),
-  stringsAsFactors = FALSE
-)
+.flagged <- function() {
+  data.frame(
+    point_id = c("p1", "p1", "p2", "p3", "p4"),
+    taxon_name = c("A", "B", "A", "C", "D"),
+    decimalLatitude = c(34.4, 34.4, 34.5, 34.6, 34.7),
+    decimalLongitude = -120.4,
+    main_habitat = c("Marine", "Marine", "Marine", "Terrestrial", "Marine"),
+    spatial_flag = c("questionable", "questionable", "likely", "unlikely", "questionable"),
+    spatial_flag_reason = c("r1", "r1", "ok", "r3", "r4"),
+    stringsAsFactors = FALSE
+  )
+}
 
 test_that("no decisions file: nothing applied, every non-likely point is pending", {
   path <- file.path(withr::local_tempdir(), "dec.rds")
@@ -44,11 +46,16 @@ test_that("saved decisions are re-applied per point and pending drops to the und
 test_that("a new flagged point not on file is pending, and a newer decision replaces an older one", {
   path <- file.path(withr::local_tempdir(), "dec.rds")
   suppressMessages(save_spatial_review_decisions(.flagged(), path))
-  fresh <- rbind(.flagged(), data.frame(point_id = "p9", taxon_name = "Z", decimalLatitude = 35, decimalLongitude = -120.4,
-                                        main_habitat = "Marine", spatial_flag = "questionable", spatial_flag_reason = "new", stringsAsFactors = FALSE))
+  new_row <- data.frame(
+    point_id = "p9", taxon_name = "Z", decimalLatitude = 35, decimalLongitude = -120.4,
+    main_habitat = "Marine", spatial_flag = "questionable", spatial_flag_reason = "new",
+    stringsAsFactors = FALSE
+  )
+  fresh <- rbind(.flagged(), new_row)
   out <- suppressMessages(apply_spatial_review_decisions(fresh, path))
   expect_equal(attr(out, "pending_point_ids"), "p9")
-  later <- .flagged(); later$spatial_flag[later$point_id == "p4"] <- "likely"
+  later <- .flagged()
+  later$spatial_flag[later$point_id == "p4"] <- "likely"
   dec <- suppressMessages(save_spatial_review_decisions(later, path))
   expect_equal(dec$spatial_flag[dec$point_id == "p4"], "likely")
   expect_equal(nrow(dec), 5L)   # one row per (point_id, taxon_name): p1 has taxa A and B
@@ -65,7 +72,8 @@ test_that("inputs are validated", {
 test_that("an automatic habitat is not frozen: only a reviewer reassignment overrides today's assignment", {
   path <- file.path(withr::local_tempdir(), "dec.rds")
   suppressMessages(save_spatial_review_decisions(.flagged(), path, before = .flagged()))   # nothing reassigned
-  fresh <- .flagged(); fresh$main_habitat[fresh$point_id == "p2"] <- "Estuarine"   # today's automatic assignment moved
+  fresh <- .flagged()
+  fresh$main_habitat[fresh$point_id == "p2"] <- "Estuarine"   # today's automatic assignment moved
   out <- suppressMessages(apply_spatial_review_decisions(fresh, path))
   expect_equal(out$main_habitat[out$point_id == "p2"], "Estuarine")
   expect_equal(attr(out, "n_applied"), 0L)
@@ -78,7 +86,8 @@ test_that("an automatic habitat is not frozen: only a reviewer reassignment over
 
 test_that("a reassignment survives a later review that left it in place", {
   path <- file.path(withr::local_tempdir(), "dec.rds")
-  r1 <- .flagged(); r1$main_habitat[r1$point_id == "p3"] <- "Marine"
+  r1 <- .flagged()
+  r1$main_habitat[r1$point_id == "p3"] <- "Marine"
   suppressMessages(save_spatial_review_decisions(r1, path, before = .flagged()))
   applied <- suppressMessages(apply_spatial_review_decisions(.flagged(), path))   # p3 now reads Marine
   suppressMessages(save_spatial_review_decisions(applied, path, before = applied))  # reviewer changed nothing
@@ -126,7 +135,10 @@ test_that("two taxa sharing a point_id get their OWN decisions, not each other's
   expect_equal(attr(out, "n_pending_review"), 0L)
 })
 
-test_that("an old-format decisions file (no taxon_name) applies nothing at an ambiguous point and warns, but still applies at an unambiguous one (2026-09-21)", {
+test_that(paste(
+  "an old-format decisions file (no taxon_name) applies nothing at an ambiguous point and warns,",
+  "but still applies at an unambiguous one (2026-09-21)"
+), {
   flagged <- data.frame(
     point_id = c("p1", "p1", "p2"),
     taxon_name = c("gull", "salmon", "otter"),
@@ -167,7 +179,10 @@ test_that("an old-format decisions file (no taxon_name) applies nothing at an am
   expect_false("p2" %in% attr(out, "pending_point_ids"))
 })
 
-test_that("apply_spatial_review_decisions is idempotent: applying twice does not compound spatial_flag_reason and n_applied is 0 the second time (2026-09-21)", {
+test_that(paste(
+  "apply_spatial_review_decisions is idempotent: applying twice does not compound spatial_flag_reason",
+  "and n_applied is 0 the second time (2026-09-21)"
+), {
   path <- file.path(withr::local_tempdir(), "dec.rds")
   reviewed <- .flagged()
   reviewed$spatial_flag[reviewed$point_id == "p1"] <- "likely"
@@ -251,4 +266,3 @@ test_that("save_spatial_review_decisions warns when before is NULL and habitats 
     transform(reviewed, main_habitat = NA_character_), path3
   )))
 })
-

@@ -74,6 +74,23 @@ as \code{NA} (an old-format, point-level decision); see
 applied safely.
 }
 
+\examples{
+before <- data.frame(
+  point_id     = c("p1", "p2"),
+  taxon_name   = c("Sebastes mystinus", "Larus occidentalis"),
+  main_habitat = c("Marine", "Terrestrial"),
+  spatial_flag = c("questionable", "likely")
+)
+
+# `reviewed` is normally review_spatial_flags()'s return value; a plain
+# data frame with the reviewer's updated columns works the same way.
+reviewed <- before
+reviewed$spatial_flag[1] <- "likely"
+
+path <- tempfile(fileext = ".rds")
+decisions <- save_spatial_review_decisions(reviewed, path, before = before)
+decisions
+}
 \seealso{
 \code{\link{apply_spatial_review_decisions}}
 }

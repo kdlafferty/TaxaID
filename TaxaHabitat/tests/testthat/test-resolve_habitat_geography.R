@@ -88,7 +88,10 @@ test_that("a resolved point is marked as geography, not consensus", {
     resp$status_code < 500
   }, error = function(e) FALSE)
   if (!noaa_reachable) {
-    skip("NOAA bathymetry service (gis.ngdc.noaa.gov) is not reachable from this machine -- resolve_habitat_by_geography() cannot classify elevation without it.")
+    skip(paste(
+      "NOAA bathymetry service (gis.ngdc.noaa.gov) is not reachable from this machine --",
+      "resolve_habitat_by_geography() cannot classify elevation without it."
+    ))
   }
 
   # Two points: one far offshore (ocean), one already settled by consensus.

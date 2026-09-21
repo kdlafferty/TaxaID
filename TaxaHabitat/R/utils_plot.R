@@ -538,7 +538,7 @@
 #' dropdown instead.
 #'
 #' @param props Named numeric vector of habitat proportions for ONE point.
-#' @param mass Cumulative proportion to cover; see [.candidate_habitats()].
+#' @param mass Cumulative proportion to cover; see `.candidate_habitats()`.
 #' @return A single string, or `NA_character_` when there is no vector to
 #'   describe (all proportions zero or missing).
 #' @noRd

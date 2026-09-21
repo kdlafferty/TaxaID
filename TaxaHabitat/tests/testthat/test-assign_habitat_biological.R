@@ -699,10 +699,12 @@ test_that(".compute_habitat_breadth is scale-invariant and handles bad input", {
   Habitat = c("Marine", "Marine", "Estuarine", "Freshwater", "Terrestrial"),
   stringsAsFactors = FALSE
 )
-.pl_occ <- function(taxa, pid) data.frame(
-  point_id = pid, decimalLatitude = 34, decimalLongitude = -120,
-  taxon_name = taxa, stringsAsFactors = FALSE
-)
+.pl_occ <- function(taxa, pid) {
+  data.frame(
+    point_id = pid, decimalLatitude = 34, decimalLongitude = -120,
+    taxon_name = taxa, stringsAsFactors = FALSE
+  )
+}
 
 test_that("an unambiguous point reads breadth 1 and prop 1", {
   r <- suppressMessages(assign_habitat_biological(.pl_occ("spec", "p1"), .pl_lookup))
