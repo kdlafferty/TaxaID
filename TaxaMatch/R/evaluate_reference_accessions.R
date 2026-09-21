@@ -1486,20 +1486,20 @@ utils::globalVariables(c(
 #'     evidence WAS FOUND, and nothing a later BLAST returns can withdraw a
 #'     match already observed; new deposits can only add more.}
 #'   \item{`"incongruent"` -- expires after `incongruent_ttl_days`
-#'     (default 30; **new 2026-09-02**, previously cached indefinitely). It
+#'     (default 30). It
 #'     asserts corroborating evidence was NOT found, which is a statement
 #'     about ABSENCE, and absence is exactly what later evidence overturns.
-#'     See `@section Why "incongruent" gained a TTL` below.}
-#'   \item{`"insufficient_independent_evidence"` (original),
-#'     `"not_evaluated_oversized"` (2026-09-01) and
-#'     `"not_evaluated_wrong_marker"` (2026-09-04) -- expire after
+#'     See `@section Why "incongruent" carries a TTL` below.}
+#'   \item{`"insufficient_independent_evidence"`,
+#'     `"not_evaluated_oversized"` and
+#'     `"not_evaluated_wrong_marker"` -- expire after
 #'     `insufficient_evidence_ttl_days` (default 180). All three explicitly
 #'     mean "we do not know yet": new NCBI deposits (for the first), a later
 #'     annotation/primer fix or a raised `max_query_len` (for the second), or
 #'     a corrected upstream annotation -- or simply a different
 #'     `barcode_term`, since the wrong-marker claim is relative to the marker
 #'     THIS call asked for (for the third).}
-#'   \item{`"locally_corroborated"` (2026-09-03) -- cached indefinitely,
+#'   \item{`"locally_corroborated"` -- cached indefinitely,
 #'     like `"congruent"`: it asserts corroborating evidence WAS found, in
 #'     the caller's own reference set. The one way it is re-evaluated is a
 #'     later call with `skip_locally_corroborated = FALSE`, which sends it
@@ -1507,9 +1507,10 @@ utils::globalVariables(c(
 #' }
 #' `retry_insufficient = FALSE` opts a single call out of retrying ANY
 #' expired row past its TTL, serving the stale row instead (see that param's
-#' own documentation; the name predates `"incongruent"` gaining a TTL).
-#' Setting `incongruent_ttl_days = Inf` restores the pre-2026-09-02 policy
-#' exactly. TTLs are deliberately NOT part of `params_key` -- changing one
+#' own documentation).
+#' Setting `incongruent_ttl_days = Inf` caches `"incongruent"` indefinitely,
+#' exactly like `"congruent"`. TTLs are deliberately NOT part of `params_key`
+#' -- changing one
 #' must not invalidate a cache. A cached row is also treated as stale (recomputed) if any
 #' parameter that affects the verdict itself (`top_n`, `min_congruent_rank`,
 #' `submission_window`, `hierarchy_incongruent_threshold`,
@@ -1519,9 +1520,8 @@ utils::globalVariables(c(
 #' `max_batch_bp`, `prioritize_uncached`, `retry_insufficient`,
 #' `local_corroboration` and `skip_locally_corroborated` are deliberately
 #' NOT in this list (see `@section Long-sequence robustness` below for
-#' why). The 2026-09-03 `query_span` change bumped the internal cache
-#' version to `"v5_amplicon_query"`, which invalidates every row cached
-#' before it; run [migrate_reference_cache()] on an existing cache directory
+#' why). If an existing cache directory was built under an earlier internal
+#' cache version, run [migrate_reference_cache()] on it
 #' first so its `"congruent"` rows are carried forward instead of re-BLASTed.
 #'
 #' @param accessions Character vector of NCBI accessions to evaluate.
@@ -1532,15 +1532,15 @@ utils::globalVariables(c(
 #' @param insufficient_evidence_ttl_days Numeric (default `180`). See
 #'   Caching above.
 #' @param incongruent_ttl_days Numeric (default `30`). Days after which an
-#'   `"incongruent"` cached verdict is re-evaluated. `Inf` restores the
-#'   pre-2026-09-02 behaviour (cached indefinitely). Much shorter than
+#'   `"incongruent"` cached verdict is re-evaluated. `Inf` caches it
+#'   indefinitely. Much shorter than
 #'   `insufficient_evidence_ttl_days` on purpose, for two compounding reasons:
 #'   `"incongruent"` is the only verdict that causes a reference to be
 #'   REMOVED, and the thing that goes stale underneath it -- NCBI's `nt`
 #'   snapshot -- is rebuilt on the order of days to weeks, not months. It is
 #'   also ~1% of a real accession population (12 of 995 on the PtConception
 #'   screen), so this is simultaneously the most valuable and the cheapest
-#'   recheck available. See `@section Why "incongruent" gained a TTL`.
+#'   recheck available. See `@section Why "incongruent" carries a TTL`.
 #' @param top_n Integer (default `5L`). Max independent BLAST hits ranked
 #'   per accession for the congruence verdict.
 #' @param min_congruent_rank Character (default `"family"`). Passed to the
