@@ -43,33 +43,33 @@ utils::globalVariables(c(
 #'     \item{`genus`}{First word of `taxon_name`, EXCEPT when an API lookup
 #'       resolved that genus to a backbone-flagged synonym at genus rank --
 #'       in that case the backbone's own currently-accepted genus name is
-#'       returned instead (2026-07-25; see `@section Genus correction`
-#'       below). Local-source-only lookups (no API call needed) always keep
-#'       the locally-extracted genus unchanged.}
+#'       returned instead (see `@section Genus correction` below).
+#'       Local-source-only lookups (no API call needed) always keep the
+#'       locally-extracted genus unchanged.}
 #'     \item{`family`}{Looked-up family, or `NA` if unresolved.}
 #'   }
 #'   A warning is issued for any names whose family could not be resolved after
 #'   all fallbacks.
 #'
-#' @section Genus correction (2026-07-25):
-#' Before this fix, `genus` was always the locally-extracted first word of
-#' `taxon_name`, even when the API lookup showed that genus was a taxonomic
-#' synonym under the queried backbone -- e.g. an informally-named reference
-#' ("Inu sp. 1 sensu Shibukawa et al., 2020.") extracted `genus = "Inu"`,
-#' and stayed `"Inu"` even though GBIF's own backbone resolves it to the
-#' currently-accepted genus `"Luciogobius"`. This mattered beyond cosmetics:
+#' @section Genus correction:
+#' `genus` reflects the backbone's currently-accepted name whenever an API
+#' lookup resolves the locally-extracted genus to a taxonomic synonym at
+#' genus rank -- e.g. an informally-named reference ("Inu sp. 1 sensu
+#' Shibukawa et al., 2020.") extracts `genus = "Inu"`, but GBIF's own
+#' backbone resolves it to the currently-accepted genus `"Luciogobius"`, so
+#' `"Luciogobius"` is returned. This matters beyond cosmetics:
 #' `TaxaAssign::join_priors()` joins this function's `genus`/`family` output
 #' against a likelihood-side coarse-rank `taxon_name` (produced by
-#' `TaxaMatch::convert_taxonomy_backbone()`, which -- also as of 2026-07-25
-#' -- prefers the current name over a synonym) via an EXACT STRING match. If
-#' the two functions disagreed on which form to report for the same genus,
-#' that join silently failed and the observation lost its coarse-rank
-#' species expansion entirely, falling back to the dark-diversity floor
-#' instead of real occurrence-based priors. `genus` is now corrected to the
-#' backbone's resolved name whenever an API lookup found one cleanly at
-#' genus rank, keeping this function consistent with
-#' `convert_taxonomy_backbone()`. Verified backbone-general (both NCBI and
-#' GBIF checked live for the real "Inu" case) before shipping.
+#' `TaxaMatch::convert_taxonomy_backbone()`, which also prefers the current
+#' name over a synonym) via an EXACT STRING match. If the two functions
+#' disagreed on which form to report for the same genus, that join would
+#' silently fail and the observation would lose its coarse-rank species
+#' expansion entirely, falling back to the dark-diversity floor instead of
+#' real occurrence-based priors. `genus` is corrected to the backbone's
+#' resolved name whenever an API lookup finds one cleanly at genus rank,
+#' keeping this function consistent with `convert_taxonomy_backbone()`.
+#' Verified backbone-general: both NCBI and GBIF resolve the "Inu" case the
+#' same way.
 #'
 #' @details
 #' **Backbone queries are at genus level.**  `verify_taxon_names()` is called
@@ -362,17 +362,17 @@ parse_classification_path <- function(path, ranks, target_rank) {
 
   # Prefer the backbone's own resolved genus over the query genus when the
   # match cleanly resolved at genus rank -- keeps this function consistent
-  # with TaxaMatch::convert_taxonomy_backbone()'s own current-name preference
-  # (2026-07-25): a genus that is a taxonomic synonym under this backbone
-  # (confirmed real case: GBIF resolves "Inu" to "Luciogobius") is now
-  # reported the same way regardless of which function in the ecosystem
-  # touched it, instead of being split across two different labels depending
-  # on whether a taxon's genus was derived here or via convert_taxonomy_
-  # backbone() -- exactly the mismatch that silently broke
+  # with TaxaMatch::convert_taxonomy_backbone()'s own current-name
+  # preference: a genus that is a taxonomic synonym under this backbone
+  # (confirmed real case: GBIF resolves "Inu" to "Luciogobius") is reported
+  # the same way regardless of which function in the ecosystem touched it,
+  # rather than being split across two different labels depending on
+  # whether a taxon's genus was derived here or via convert_taxonomy_
+  # backbone() -- exactly the mismatch that would silently break
   # TaxaAssign::join_priors()'s exact-string genus/family match between the
-  # likelihood side and the priors side. `matched_rank` is present only from
-  # a `verify_taxon_names()` built 2026-07-25 or later; absent, this is a
-  # no-op and `genus` passes through unchanged, matching the old behavior.
+  # likelihood side and the priors side. `matched_rank` may be absent from
+  # `verified` depending on what `verify_taxon_names()` returns; when
+  # absent, this is a no-op and `genus` passes through unchanged.
   has_matched_rank <- "matched_rank" %in% names(verified)
   resolved_genus <- if (has_matched_rank) {
     ifelse(
