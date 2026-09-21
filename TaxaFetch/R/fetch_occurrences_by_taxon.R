@@ -4,8 +4,7 @@
 # scope by taxon key (instead of by observation/site) so that overlapping or
 # identical search areas for the same taxon are queried exactly once, and
 # different taxa sharing an identical search area are combined into one
-# call. See ecosystem_docs/REENTRY_PROMPT_session139_gbif_fetch_efficiency.md
-# for the design discussion this implements.
+# call.
 # ==============================================================================
 
 #' Fetch GBIF Occurrences Grouped by Taxon Key

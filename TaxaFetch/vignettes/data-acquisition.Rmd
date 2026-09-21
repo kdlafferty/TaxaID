@@ -14,7 +14,7 @@ vignette: >
   chunk, so an opts_chunk$set(purl = FALSE) written there has no effect at
   tangle time: every chunk still lands in the tangled .R and is sourced. This
   vignette is documentation-only (live GBIF calls), so a tangled chunk is a
-  guaranteed check ERROR. It was one until 2026-09-05.
+  guaranteed check ERROR.
 -->
 
 ```{r setup, include = FALSE, purl = FALSE}

@@ -9,13 +9,10 @@
 #   .render_pdf_pages()         Render page numbers to base64 PNG images
 #
 # Relationship to DataONE pipeline:
-#   Extends TaxaTools::call_api() (provider-general since Session 87 -- see
-#   that package's llm_api_utils.R; this file predates that
-#   generalization and was updated 2026-08 to stop naming Anthropic
-#   specifically, since the actual dispatch below has been provider-general
-#   for some time) to handle document input. call_api() handles
-#   text-in/text-out for any registered provider (Anthropic, Gemini,
-#   OpenAI, Ollama, ...). This function handles PDF-page-images-in/text-out
+#   Extends TaxaTools::call_api() (provider-general: dispatches to whichever
+#   provider is registered -- Anthropic, Gemini, OpenAI, Ollama, ...) to
+#   handle document input. call_api() handles text-in/text-out for any
+#   registered provider. This function handles PDF-page-images-in/text-out
 #   the same way. Both return a single character string suitable for
 #   passing to parse_*_response() functions.
 #

@@ -62,9 +62,9 @@ utils::globalVariables(c(
 #'   fetch. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.
 #' @param candidate_taxa Optional character vector of taxa that can actually be
 #'   ASSIGNED -- typically the species-level match candidates (e.g.
-#'   \code{unique(match_obj$taxon_name)}). \code{NULL} (default) preserves the
-#'   pre-2026-09-05 behaviour of checking every locally-rare species in the
-#'   pool. Supplying it is strongly recommended for a family-derived occurrence
+#'   \code{unique(match_obj$taxon_name)}). \code{NULL} (default) checks every
+#'   locally-rare species in the pool. Supplying it is strongly recommended
+#'   for a family-derived occurrence
 #'   pool: at real PtConception 18S only 387 of 7,392 pool species (5.2%) were
 #'   match candidates, so 95% of the per-species GBIF requests protected against
 #'   a harm those species cannot cause. A species with 1-4 local records has a
@@ -130,7 +130,7 @@ utils::globalVariables(c(
 #' mistakes "we couldn't check" for "we checked and it's fine."
 #'
 #' \strong{\code{cc_outl()} is called once per species, not once for the
-#' whole batch:} confirmed on real production data (2026-07-20) that its
+#' whole batch:} confirmed on real production data that its
 #' \code{"distance"} method silently switches EVERY species in a single call
 #' to a coarser raster approximation whenever ANY ONE species in that call
 #' has 10,000 or more records. A species rare in the local bbox can still be
@@ -228,7 +228,8 @@ check_geographic_outliers <- function(
   # "genus" (default when candidate_taxa is supplied) also keeps congeners,
   # because restore_suppressed_candidates()/expand_unreferenced_hypotheses()
   # can promote a congener of a match candidate into a named hypothesis --
-  # the same harm one step removed. "all" restores the pre-2026-09-05 sweep.
+  # the same harm one step removed. "all" checks every locally-rare species,
+  # ignoring candidate_taxa entirely.
   if (!is.null(candidate_taxa) && !identical(candidate_scope, "all")) {
     candidate_taxa <- unique(stats::na.omit(as.character(candidate_taxa)))
     keep_sp <- if (identical(candidate_scope, "species")) {
@@ -304,10 +305,10 @@ check_geographic_outliers <- function(
   }
 
   if (is.null(cached_verdicts)) {
-    # Routed through get_gbif_occurrences() (2026-09-05) so this inherits the
-    # backend switch: above key_threshold it uses the async download API (one
+    # Routed through get_gbif_occurrences() so this inherits the backend
+    # switch: above key_threshold it uses the async download API (one
     # request, one zip) instead of one HTTP request per key. The per-key path
-    # earned a GBIF rate-limit block at ~360 keys -- "Too many requests! To
+    # hits a GBIF rate-limit block at ~360 keys -- "Too many requests! To
     # download GBIF occurrence data in bulk, please use occ_download()" -- which
     # is GBIF telling us directly to do this. limit = NULL because the default
     # 10,000-per-key cap truncates by RETURN ORDER, and this cloud is the
@@ -318,12 +319,12 @@ check_geographic_outliers <- function(
       geometry = NULL,
       year_range = year_range,
       limit = NULL,
-      # rank_filter = NULL, NOT the wrapper's "species" default: the previous
-      # direct fetch_gbif_occurrences() call applied no rank filter, and this
-      # change is a BACKEND switch, not a change to which records qualify.
-      # (Genus-only records are excluded from the verdict anyway -- cc_outl() is
-      # run per `species`, so a blank species never forms a cloud.) Revisit
-      # deliberately if you want them dropped earlier.
+      # rank_filter = NULL, NOT the wrapper's "species" default: this call
+      # must apply no rank filter, since it only switches backend (one HTTP
+      # request per key vs the async bulk download), not which records
+      # qualify. (Genus-only records are excluded from the verdict anyway --
+      # cc_outl() is run per `species`, so a blank species never forms a
+      # cloud.) Revisit deliberately if you want them dropped earlier.
       rank_filter = NULL,
       cache_dir = cache_dir
     )
@@ -342,7 +343,7 @@ check_geographic_outliers <- function(
     ]
 
     # cc_outl() is called ONCE PER SPECIES, not once for the whole combined
-    # batch -- confirmed on real production data (2026-07-20) that its
+    # batch -- confirmed on real production data that its
     # "distance" method silently switches EVERY species in a single call to a
     # coarser raster approximation whenever ANY ONE species in that call has
     # >=10,000 records (CoordinateCleaner::cc_outl's own

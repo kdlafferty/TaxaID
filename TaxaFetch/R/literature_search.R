@@ -31,9 +31,6 @@
 #     Add OPENALEX_API_KEY=your_key to ~/.Renviron.
 #     $1 free usage per day covers all realistic TaxaFetch query volumes.
 #
-# See AI_CONTEXT.md for full design rationale and pipeline context.
-# Session 25: initial implementation; Nominatim geocoding removed in favour
-#   of user-supplied geo_scope parameter.
 # ==============================================================================
 
 

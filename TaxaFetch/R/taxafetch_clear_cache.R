@@ -31,9 +31,9 @@
 #' sidecar: a partial transfer, or a bad download renamed out of the way by
 #' hand so the next run would re-fetch it. A sidecar can never be referenced
 #' by a metadata file -- the metadata only ever names \code{X.zip} -- so it
-#' is dead by construction, and the largest one on the development machine
+#' is dead by construction, and the largest one found on one real machine
 #' held 122 MB, three quarters of that cache, while matching no pattern and
-#' therefore reachable by no clear function at all (found 2026-09-14).
+#' therefore reachable by no clear function at all.
 #' @noRd
 .taxafetch_is_zip_like <- function(paths) {
   grepl("\\.zip($|\\.)", basename(paths))
@@ -62,14 +62,13 @@
 #'   zips (and zip sidecars -- see below) that are no longer referenced by
 #'   any current
 #'   \code{download_gbif_occurrences()} metadata file in \code{cache_dir} --
-#'   i.e. zips superseded by a later \code{overwrite = TRUE} run before this
-#'   package's 2026-09-03 orphan-cleanup fix. The zip each metadata file
-#'   currently points to (its query's most recent cached download), every
-#'   metadata file itself, every \code{fetch_gbif_occurrences()} checkpoint,
-#'   and every iNaturalist range file are left untouched -- this is the
-#'   "keep the most recent cache per query, remove only stale leftovers"
-#'   mode. Default \code{FALSE} (target everything recognized, the same as
-#'   before this parameter existed). Since a metadata file only ever names
+#'   i.e. zips superseded by a later \code{overwrite = TRUE} run. The zip
+#'   each metadata file currently points to (its query's most recent cached
+#'   download), every metadata file itself, every
+#'   \code{fetch_gbif_occurrences()} checkpoint, and every iNaturalist range
+#'   file are left untouched -- this is the "keep the most recent cache per
+#'   query, remove only stale leftovers" mode. Default \code{FALSE} (target
+#'   everything recognized). Since a metadata file only ever names
 #'   \code{X.zip}, a \code{X.zip.<suffix>} sidecar -- a partial transfer, or
 #'   a bad download renamed out of the way by hand -- is unreferenced by
 #'   construction and is always targeted here.
@@ -163,8 +162,7 @@ taxafetch_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFetch", "ca
 #' collects the \code{zip_path} each one currently points to -- i.e. the
 #' single zip that IS the most recent cached download for that query
 #' signature. Any \code{.zip} file in \code{cache_dir} not in this set was
-#' superseded by a later run and never cleaned up (only possible from a
-#' run predating the 2026-09-03 orphan-cleanup fix).
+#' superseded by a later run and never cleaned up.
 #'
 #' @param cache_dir Character. Directory to scan.
 #' @return A character vector of referenced zip paths (possibly empty).

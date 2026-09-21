@@ -239,9 +239,10 @@ get_gbif_occurrences <- function(
   # canonical "issues" name to SIMPLE_CSV's actual "issue" column before
   # requesting it (see @details); everything else passes through unchanged.
   # Computed OUTSIDE the backend branch below because the download API is also
-  # reached from the FETCH path, via on_cap = "escalate"; defining it only in
-  # the download branch left that call referencing an undefined object, so
-  # every escalation failed at import -- after paying for the whole download.
+  # reached from the FETCH path, via on_cap = "escalate"; defining it only
+  # inside the download branch would leave that call referencing an undefined
+  # object, causing every escalation to fail at import -- after paying for
+  # the whole download.
   select_cols_dl <- if (is.null(want_cols)) {
     NULL
   } else {
@@ -305,8 +306,8 @@ get_gbif_occurrences <- function(
   # A key returning exactly `limit` records was almost certainly TRUNCATED,
   # and what is kept is GBIF's return order -- a non-random prefix, not a
   # sample. Left unreported this silently destroys the quantity an
-  # occurrence-composition prior is built from. Measured on real data
-  # (2026-09-02): 45 of Mugu's 231 taxa sat at a 10,000-record cap holding
+  # occurrence-composition prior is built from. Measured on real data:
+  # 45 of Mugu's 231 taxa sat at a 10,000-record cap holding
   # 95% of the pool, and all 45 came out with an IDENTICAL spatial
   # distribution (per-species median distance 104 km, IQR 104-104) because
   # the prefixes came from the same few large survey datasets -- so their

@@ -18,11 +18,6 @@
 #
 # Design: mirrors fetch_dataone_occurrences() output contract.
 # See PDF_PIPELINE_DATAONE_PARALLEL.md for full column contract.
-#
-# Session 24: initial implementation
-# Session 25: added dpi param to build_pdf_extract_prompt(); page-count guard
-#   (warn when n_send > 30 at dpi=150); chunk_pages param for prose-dense
-#   large PDFs; n_chunks stored in S3 object.
 # ==============================================================================
 
 utils::globalVariables(c(
@@ -34,8 +29,8 @@ utils::globalVariables(c(
 # Canonical DwC column order -- must match fetch_dataone_occurrences() output.
 # Also referenced directly (same literal vector, not duplicated) by
 # dataone_standardize.R's fetch_dataone_occurrences() for its own final
-# column ordering -- kept in one place since 2026-08 human review (both
-# files previously hand-copied the identical 20-column list).
+# column ordering -- kept in one place rather than hand-copied identically
+# in both files.
 # ------------------------------------------------------------------------------
 
 .pdf_dwc_cols <- c(
@@ -465,7 +460,7 @@ build_pdf_extract_prompt <- function(pdf_structure,
   n_send <- nrow(send_rows)
   send_pages <- sort(unique(send_rows$page))
 
-  # --- Page-count guard (Session 25) ---
+  # --- Page-count guard ---
   if (n_send > 30L && dpi >= 150L && !chunk_pages) {
     warning(
       sprintf(

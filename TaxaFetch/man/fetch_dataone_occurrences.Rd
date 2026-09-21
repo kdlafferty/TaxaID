@@ -89,15 +89,12 @@ normalized to ISO 8601 (\code{YYYY-MM-DD}). If absent but
 constructed from them.
 
 \strong{Cross-source deduplication:} this function does not dedupe against
-GBIF itself (a prior \code{gbif_snapshot_path} parameter that did this was
-removed 2026-07-23 -- it had zero real callers and was superseded by a
-safer, more general mechanism). If you combine this output with GBIF
-occurrences (e.g. via \code{\link{get_gbif_occurrences}}), pass both to
+GBIF itself. If you combine this output with GBIF occurrences (e.g. via
+\code{\link{get_gbif_occurrences}}), pass both to
 \code{\link{stack_occurrences}}, whose
 \code{collapse_duplicate_occasions} (default \code{TRUE}) collapses
 records describing the same species x date x location detection occasion
-across sources -- see that function's Details for why this is preferred
-over a static, separately-loaded GBIF snapshot file.
+across sources -- see that function's Details for the full rationale.
 }
 \examples{
 \dontrun{

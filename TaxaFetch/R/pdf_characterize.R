@@ -825,14 +825,6 @@ Respond with only the JSON object.',
 #'   \code{\link{call_api_pdf}},
 #'   \code{\link[TaxaTools]{call_anthropic_api}}
 #'
-#' @note \strong{Future task -- multi-provider support:} All LLM-calling
-#'   functions in TaxaFetch should follow the \code{llm_fn} parameter
-#'   pattern used here. Functions currently calling \code{call_anthropic_api}
-#'   directly (e.g. \code{prompt_anthropic_api}) should be refactored to
-#'   accept an \code{llm_fn} argument in a future session. New
-#'   provider-specific functions (\code{call_openai_api},
-#'   \code{call_ollama_api}) should be added to \code{llm_api_utils.R}.
-#'
 #' @importFrom TaxaTools call_anthropic_api
 #' @export
 #'

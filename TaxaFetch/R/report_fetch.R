@@ -4,8 +4,6 @@
 #
 # Exported functions:
 #   report_fetch()   -- generate report_section from stacked occurrence data
-#
-# Session 65: initial implementation
 # ==============================================================================
 
 
@@ -108,8 +106,7 @@ report_fetch <- function(occurrences,
   n_records <- nrow(occurrences)
   # Standardized occurrence frames carry taxon_name, raw GBIF frames carry
   # scientificName -- accept either (a bare $scientificName on a tibble
-  # missing the column warns and silently reports 0 taxa; found by the first
-  # real kernel-path GL report run, 2026-09-01).
+  # missing the column warns and silently reports 0 taxa).
   .taxon_col <- intersect(c("scientificName", "taxon_name"), names(occurrences))[1]
   n_taxa <- if (is.na(.taxon_col)) {
     0L
