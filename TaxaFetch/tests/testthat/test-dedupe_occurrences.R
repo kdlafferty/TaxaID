@@ -7,13 +7,16 @@ test_that("dedupe_occurrences: requires a data frame", {
 })
 
 test_that("dedupe_occurrences: duplicate gbifID rows are dropped, first kept", {
+  # collapse_duplicate_occasions = FALSE isolates the gbifID mechanism this
+  # test targets -- this fixture has no taxon_col/date_col, which the
+  # collapse step now requires (see the missing-key-column tests below).
   df <- tibble::tibble(
     gbifID           = c("1", "2", "2", "3"),
     decimalLatitude  = c(34.40, 34.41, 34.41, 34.47),
     decimalLongitude = c(-120.41, -120.40, -120.40, -120.36)
   )
   expect_message(
-    result <- dedupe_occurrences(df),
+    result <- dedupe_occurrences(df, collapse_duplicate_occasions = FALSE),
     "dropped 1 record"
   )
   expect_equal(nrow(result), 3L)
@@ -26,13 +29,18 @@ test_that("dedupe_occurrences: NA gbifID rows are never deduped against each oth
     decimalLatitude  = c(34.0, 34.1, 34.2),
     decimalLongitude = c(-119.0, -119.1, -119.2)
   )
-  result <- dedupe_occurrences(df)
+  result <- dedupe_occurrences(df, collapse_duplicate_occasions = FALSE)
   expect_equal(nrow(result), 3L)
 })
 
 test_that("dedupe_occurrences: no gbifID column -- that check is a silent no-op", {
+  # taxon_col/date_col/lat_col/lon_col are all present (distinct
+  # species/dates, so nothing collapses either) -- isolates the gbifID
+  # no-op from the (now loud) missing-key-column check below.
   df <- tibble::tibble(
     occurrenceID     = c("A1", "A2"),
+    scientificName   = c("Larus argentatus", "Buteo jamaicensis"),
+    eventDate        = c("2026-06-01", "2026-06-02"),
     decimalLatitude  = c(34.0, 34.1),
     decimalLongitude = c(-119.0, -119.1)
   )
@@ -107,6 +115,21 @@ test_that("dedupe_occurrences: rows missing a key component are always kept", {
   expect_equal(nrow(result), 2L)
 })
 
+test_that("dedupe_occurrences: a per-row NA in an existing lat_col/lon_col keeps that row (columns present, values missing)", {
+  # Distinct from the missing-COLUMN case above: lat_col/lon_col both exist,
+  # but one row's coordinate value is NA -- that row is always kept, never
+  # dropped, same as a per-row NA date.
+  df <- tibble::tibble(
+    occurrenceID     = c("A1", "A2"),
+    scientificName   = c("Larus argentatus", "Larus argentatus"),
+    eventDate        = c("2026-06-01", "2026-06-01"),
+    decimalLatitude  = c(34.400, NA_real_),
+    decimalLongitude = c(-119.850, -119.850)
+  )
+  result <- dedupe_occurrences(df)
+  expect_equal(nrow(result), 2L)
+})
+
 test_that("dedupe_occurrences: falls back to year/month/day when eventDate is absent (GBIF standard columns)", {
   df <- tibble::tibble(
     occurrenceID = c("gbif-1", "gbif-2"),
@@ -156,13 +179,46 @@ test_that("dedupe_occurrences: collapse_duplicate_occasions = FALSE preserves ev
   expect_equal(nrow(result), 2L)
 })
 
-test_that("dedupe_occurrences: missing taxon_col/date_col is a silent no-op (no rows dropped)", {
+test_that("dedupe_occurrences: missing taxon_col/date_col errors, naming what's missing and present", {
+  # Regression: this used to be a silent no-op; a missing lat_col/lon_col
+  # crashed several steps later inside round() with an opaque
+  # "non-numeric argument to mathematical function". Now every missing key
+  # column is a loud, named stop() at entry.
   df <- tibble::tibble(
     occurrenceID     = c("A1", "A2"),
     decimalLatitude  = c(34.400, 34.400),
     decimalLongitude = c(-119.850, -119.850)
   )
-  result <- dedupe_occurrences(df)
+  err <- tryCatch(dedupe_occurrences(df), error = function(e) e)
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "taxon_col")
+  expect_match(conditionMessage(err), "date_col")
+  expect_match(conditionMessage(err), "occurrenceID")
+})
+
+test_that("dedupe_occurrences: missing lat_col/lon_col errors instead of crashing in round()", {
+  # Reproduces the reviewer's fixture directly: taxon_col/date_col present,
+  # coordinate columns entirely absent.
+  df <- tibble::tibble(
+    occurrenceID   = c("A1", "A2", "A3"),
+    scientificName = c("Larus argentatus", "Larus argentatus", "Larus marinus"),
+    eventDate      = c("2026-06-01", "2026-06-01", "2026-06-02")
+  )
+  err <- tryCatch(dedupe_occurrences(df), error = function(e) e)
+  expect_s3_class(err, "error")
+  expect_match(conditionMessage(err), "lat_col")
+  expect_match(conditionMessage(err), "lon_col")
+  expect_no_match(conditionMessage(err), "non-numeric argument")
+})
+
+test_that("dedupe_occurrences: collapse_duplicate_occasions = FALSE tolerates missing key columns", {
+  # The key-column check only applies when the collapse step actually runs.
+  df <- tibble::tibble(
+    occurrenceID     = c("A1", "A2"),
+    decimalLatitude  = c(34.400, 34.400),
+    decimalLongitude = c(-119.850, -119.850)
+  )
+  result <- dedupe_occurrences(df, collapse_duplicate_occasions = FALSE)
   expect_equal(nrow(result), 2L)
 })
 
@@ -212,7 +268,7 @@ test_that("dedupe_occurrences: no report_params attribute -- output has none eit
     decimalLatitude  = 34.0,
     decimalLongitude = -119.0
   )
-  result <- dedupe_occurrences(df)
+  result <- dedupe_occurrences(df, collapse_duplicate_occasions = FALSE)
   expect_null(attr(result, "report_params"))
 })
 
@@ -222,6 +278,6 @@ test_that("dedupe_occurrences: returns a tibble", {
     decimalLatitude  = 34.0,
     decimalLongitude = -119.0
   )
-  result <- dedupe_occurrences(df)
+  result <- dedupe_occurrences(df, collapse_duplicate_occasions = FALSE)
   expect_s3_class(result, "tbl_df")
 })

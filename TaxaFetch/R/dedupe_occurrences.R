@@ -109,12 +109,34 @@
 #' instead (e.g. if you deliberately want observer-effort/reporting-volume as
 #' your own signal, rather than TaxaExpect's occupancy framing).
 #'
-#' \strong{Silent no-op on missing columns:} if \code{gbifID} is absent, that
-#' check is skipped with no message. If \code{taxon_col}/\code{date_col} (and
-#' no \code{year}/\code{month}/\code{day} triple) are absent,
-#' \code{collapse_duplicate_occasions} is skipped with no message. Neither
-#' condition is treated as an error -- a caller working with a data source
-#' that genuinely lacks these columns should not see noise on every call.
+#' \strong{Missing columns:} \code{occurrence_data} is a data table, and a
+#' missing key column is a data problem, not something to silently paper
+#' over. The two checks differ in what counts as "missing":
+#' \itemize{
+#'   \item \code{gbifID} is genuinely optional -- sources without it (e.g.
+#'     literature or DataONE occurrences) are expected, so when it is absent
+#'     that check is simply skipped, with no message.
+#'   \item When \code{collapse_duplicate_occasions = TRUE} (the default),
+#'     \code{taxon_col}, \code{date_col} (or a full
+#'     \code{year}/\code{month}/\code{day} triple), \code{lat_col}, and
+#'     \code{lon_col} are all required as columns -- they are named
+#'     parameters with documented defaults, not optional metadata. If any is
+#'     absent from \code{occurrence_data}, the function \code{stop()}s
+#'     immediately, naming the missing column(s) and the columns actually
+#'     present, rather than silently skipping the step (the previous
+#'     behavior) or failing several steps later with an opaque error (a
+#'     missing \code{lat_col}/\code{lon_col} used to surface as
+#'     \code{round()}'s "non-numeric argument to mathematical function",
+#'     which does not point back at the real cause). Set
+#'     \code{collapse_duplicate_occasions = FALSE} to skip this step
+#'     entirely on a source that genuinely lacks these columns.
+#' }
+#'
+#' \strong{Per-row \code{NA} in a present column} is a different case,
+#' unaffected by the check above: a row with a present-but-\code{NA} value
+#' in any key component (\code{taxon_col}, the resolved date, \code{lat_col},
+#' or \code{lon_col}) is always kept, never dropped -- see the
+#' key-completeness rule two paragraphs up.
 #'
 #' @seealso \code{\link{stack_occurrences}}, \code{\link{get_gbif_occurrences}},
 #'   \code{\link[TaxaExpect]{estimate_kernel_priors}}
@@ -143,6 +165,44 @@ dedupe_occurrences <- function(occurrence_data,
     stop("dedupe_occurrences: 'occurrence_data' must be a data frame.", call. = FALSE)
   }
 
+  # --- Validate key columns at entry (see @details, "Missing columns") --------
+  # occurrence_data is a data table: a missing key column is a data problem
+  # (a caller's select()/rename() dropped it, or a hand-assembled data frame
+  # never had it) and gets a loud, named error here -- not a silent skip
+  # (the previous behavior) and not an opaque downstream failure (a missing
+  # lat_col/lon_col used to surface several steps later as round()'s
+  # "non-numeric argument to mathematical function"). Only checked when
+  # collapse_duplicate_occasions = TRUE, since that is the only step that
+  # needs these columns; gbifID dedup below has its own, genuinely optional,
+  # no-op convention.
+  if (isTRUE(collapse_duplicate_occasions)) {
+    has_taxon <- taxon_col %in% names(occurrence_data)
+    has_ymd <- all(c("year", "month", "day") %in% names(occurrence_data))
+    has_date <- date_col %in% names(occurrence_data) || has_ymd
+    has_lat <- lat_col %in% names(occurrence_data)
+    has_lon <- lon_col %in% names(occurrence_data)
+
+    missing_key_cols <- c(
+      if (!has_taxon) sprintf("taxon_col ('%s')", taxon_col),
+      if (!has_date) sprintf(
+        "date_col ('%s') or a year/month/day triple", date_col
+      ),
+      if (!has_lat) sprintf("lat_col ('%s')", lat_col),
+      if (!has_lon) sprintf("lon_col ('%s')", lon_col)
+    )
+    if (length(missing_key_cols) > 0L) {
+      stop(
+        "dedupe_occurrences: collapse_duplicate_occasions = TRUE requires ",
+        "the following key column(s), missing from 'occurrence_data': ",
+        paste(missing_key_cols, collapse = "; "), ". Columns present: ",
+        paste(names(occurrence_data), collapse = ", "), ". Pass the correct ",
+        "column name(s), or set collapse_duplicate_occasions = FALSE to ",
+        "skip this step.",
+        call. = FALSE
+      )
+    }
+  }
+
   out <- occurrence_data
   n_gbifid_dup <- 0L
   n_occasion_dup <- 0L
@@ -167,66 +227,60 @@ dedupe_occurrences <- function(occurrence_data,
   # individual, or several iNaturalist uploads from one bioblitz. Content-based
   # match (species x date x coarse location), not an exact-ID match, so a row
   # missing any key component is always kept, never dropped on incomplete
-  # information.
+  # information. The key COLUMNS themselves are already validated above --
+  # taxon_col/date_col (or year/month/day)/lat_col/lon_col are guaranteed
+  # present here whenever this block runs.
   if (isTRUE(collapse_duplicate_occasions)) {
-    has_taxon <- taxon_col %in% names(out)
-    has_ymd <- all(c("year", "month", "day") %in% names(out))
-    has_date <- date_col %in% names(out) || has_ymd
+    date_key <- if (date_col %in% names(out)) {
+      as.character(out[[date_col]])
+    } else {
+      rep(NA_character_, nrow(out))
+    }
+    needs_ymd <- is.na(date_key) | !nzchar(date_key)
+    if (has_ymd && any(needs_ymd)) {
+      y <- as.integer(out$year[needs_ymd])
+      m <- as.integer(out$month[needs_ymd])
+      d <- as.integer(out$day[needs_ymd])
+      # An incomplete y/m/d triple must stay NA, not be pasted into a literal
+      # "2015-06-NA" (sprintf renders NA as text, not NA) -- such a string is
+      # non-NA and non-empty, so it would pass the key_complete test below and
+      # let two records with an UNKNOWN day collapse into one, exactly the
+      # drop-on-incomplete-information this function documents it never does.
+      built <- rep(NA_character_, length(y))
+      complete_ymd <- !is.na(y) & !is.na(m) & !is.na(d)
+      built[complete_ymd] <- sprintf(
+        "%04d-%02d-%02d",
+        y[complete_ymd], m[complete_ymd],
+        d[complete_ymd]
+      )
+      date_key[needs_ymd] <- built
+    }
 
-    # Silent no-op when the key columns simply aren't present -- matches the
-    # gbifID check's own convention (no message when that column is absent).
-    if (has_taxon && has_date) {
-      date_key <- if (date_col %in% names(out)) {
-        as.character(out[[date_col]])
-      } else {
-        rep(NA_character_, nrow(out))
-      }
-      needs_ymd <- is.na(date_key) | !nzchar(date_key)
-      if (has_ymd && any(needs_ymd)) {
-        y <- as.integer(out$year[needs_ymd])
-        m <- as.integer(out$month[needs_ymd])
-        d <- as.integer(out$day[needs_ymd])
-        # An incomplete y/m/d triple must stay NA, not be pasted into a literal
-        # "2015-06-NA" (sprintf renders NA as text, not NA) -- such a string is
-        # non-NA and non-empty, so it would pass the key_complete test below and
-        # let two records with an UNKNOWN day collapse into one, exactly the
-        # drop-on-incomplete-information this function documents it never does.
-        built <- rep(NA_character_, length(y))
-        complete_ymd <- !is.na(y) & !is.na(m) & !is.na(d)
-        built[complete_ymd] <- sprintf(
-          "%04d-%02d-%02d",
-          y[complete_ymd], m[complete_ymd],
-          d[complete_ymd]
-        )
-        date_key[needs_ymd] <- built
-      }
+    taxon_key <- tolower(trimws(as.character(out[[taxon_col]])))
+    lat_key <- round(out[[lat_col]], coord_precision)
+    lon_key <- round(out[[lon_col]], coord_precision)
 
-      taxon_key <- tolower(trimws(as.character(out[[taxon_col]])))
-      lat_key <- round(out[[lat_col]], coord_precision)
-      lon_key <- round(out[[lon_col]], coord_precision)
+    key_complete <- !is.na(taxon_key) & nzchar(taxon_key) &
+      !is.na(date_key) & nzchar(date_key) &
+      !is.na(lat_key) & !is.na(lon_key)
 
-      key_complete <- !is.na(taxon_key) & nzchar(taxon_key) &
-        !is.na(date_key) & nzchar(date_key) &
-        !is.na(lat_key) & !is.na(lon_key)
+    occasion_key <- paste(taxon_key, date_key, lat_key, lon_key, sep = "|")
+    is_dup_occasion <- rep(FALSE, nrow(out))
+    is_dup_occasion[key_complete] <- duplicated(occasion_key[key_complete])
 
-      occasion_key <- paste(taxon_key, date_key, lat_key, lon_key, sep = "|")
-      is_dup_occasion <- rep(FALSE, nrow(out))
-      is_dup_occasion[key_complete] <- duplicated(occasion_key[key_complete])
-
-      if (any(is_dup_occasion)) {
-        n_occasion_dup <- sum(is_dup_occasion)
-        message(sprintf(
-          paste0(
-            "dedupe_occurrences: collapsed %d record(s) describing a repeat ",
-            "report of the same species x date x location detection ",
-            "occasion (e.g. multiple observers at a bioblitz or rare-",
-            "species alert) -- see ?dedupe_occurrences, ",
-            "collapse_duplicate_occasions."
-          ),
-          n_occasion_dup
-        ))
-        out <- out[!is_dup_occasion, , drop = FALSE]
-      }
+    if (any(is_dup_occasion)) {
+      n_occasion_dup <- sum(is_dup_occasion)
+      message(sprintf(
+        paste0(
+          "dedupe_occurrences: collapsed %d record(s) describing a repeat ",
+          "report of the same species x date x location detection ",
+          "occasion (e.g. multiple observers at a bioblitz or rare-",
+          "species alert) -- see ?dedupe_occurrences, ",
+          "collapse_duplicate_occasions."
+        ),
+        n_occasion_dup
+      ))
+      out <- out[!is_dup_occasion, , drop = FALSE]
     }
   }
 
