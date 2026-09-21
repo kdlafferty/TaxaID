@@ -4,13 +4,12 @@
 # ==============================================================================
 
 #' Default \code{year_range} for GBIF fetch functions: 2000 through the
-#' current year, computed at call time (not a hardcoded literal year that
-#' silently goes stale). 2026-08 human review: a hardcoded
-#' \code{"2000,2024"} default (used identically across five functions in
-#' this package) meant every default-argument caller silently excluded all
-#' 2025+ GBIF occurrence data with no warning, an already-live data-
-#' completeness gap by the time of the review. Shared here so the fix and
-#' its rationale live in one place rather than five hand-copied literals.
+#' current year, computed at call time. A hardcoded literal year such as
+#' \code{"2000,2024"} would silently go stale, and if hand-copied across
+#' every function in this package that needs it, would silently exclude
+#' newer GBIF occurrence data from every default-argument caller with no
+#' warning -- a data-completeness gap. Shared here so the value and its
+#' rationale live in one place rather than several hand-copied literals.
 #' @noRd
 .gbif_default_year_range <- function() {
   sprintf("2000,%d", as.integer(format(Sys.Date(), "%Y")))
@@ -228,7 +227,7 @@ fetch_gbif_occurrences <- function(keys,
       # is used as-is rather than advanced by the chunk's full size, so the
       # whole chunk (including any keys that succeeded before the failure)
       # is re-attempted on resume. This avoids two real failure modes a
-      # naive "always advance by chunk size" count previously had: (1) an
+      # naive "always advance by chunk size" count would have: (1) an
       # incorrect "no checkpoint exists" message even when one legitimately
       # does (this chunk's global_pos coincidentally lands on length(keys));
       # (2) genuine silent data loss if the very FIRST chunk of a run
