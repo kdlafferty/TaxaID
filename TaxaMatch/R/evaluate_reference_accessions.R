@@ -97,6 +97,17 @@ utils::globalVariables(c(
 #' @noRd
 .strip_acc_version <- function(x) sub("\\.[0-9]+$", "", x)
 
+#' The numeric version suffix of a GenBank accession ("ACC.3" -> 3L), or -1L
+#' for an accession with no version suffix at all (sorts below any real
+#' version rather than colliding with a genuine ".0").
+#' @noRd
+.acc_version_num <- function(x) {
+  has_suffix <- grepl("\\.[0-9]+$", x)
+  v <- rep(-1L, length(x))
+  v[has_suffix] <- as.integer(sub("^.*\\.([0-9]+)$", "\\1", x[has_suffix]))
+  v
+}
+
 #' Cache columns that may be NA-filled rather than forcing a full discard
 #'
 #' `.load_reference_accession_cache()` discards an entire cache file whose
@@ -2637,6 +2648,21 @@ evaluate_reference_accessions <- function(accessions,
 #'   these (not evaluated yet, not evidence of anything). Row count and order
 #'   are unchanged.
 #'
+#' @section When `evaluation` carries more than one row per accession:
+#' `evaluate_reference_accessions()` keys its own cache on the literal
+#' (version-suffixed) accession string, so two rows of `evaluation` can share
+#' the same version-stripped accession -- e.g. `"AB123.1"` and `"AB123.2"`,
+#' evaluated independently. No other function in this package picks a single
+#' row among same-accession duplicates (`remove_incongruent_references()`
+#' removes a `match_df` row if ANY of its accession's evaluation rows was
+#' flagged, never selects one; `.local_corroboration_columns()` keeps
+#' whichever row happens to sort first). In the absence of an established
+#' rule, this function keeps the row with the HIGHEST numeric version
+#' suffix (an accession with no version suffix sorts below any versioned
+#' one) before joining, so every `match_df` row is matched to at most one
+#' `evaluation` row and row count/order are preserved exactly as documented
+#' below.
+#'
 #' @seealso [evaluate_reference_accessions()], [remove_incongruent_references()]
 #'
 #' @export
@@ -2694,10 +2720,21 @@ flag_incongruent_references <- function(match_df, evaluation) {
     ), call. = FALSE)
   }
 
-  match_df$.join_acc <- sub("\\.[0-9]+$", "", match_df$accession)
+  match_df$.join_acc <- .strip_acc_version(match_df$accession)
   match_df$.orig_order <- seq_len(nrow(match_df))
-  eval_join <- evaluation[!duplicated(evaluation$accession), c("accession", join_cols)]
-  eval_join$.join_acc <- sub("\\.[0-9]+$", "", eval_join$accession)
+
+  # Reduce evaluation to ONE row per version-stripped accession BEFORE the
+  # join -- deduping on the raw accession (as before) does nothing when the
+  # duplication is exactly across versions of the same accession, and a
+  # multi-row match here fans the join out, multiplying match_df rows. See
+  # this function's own `@section When evaluation carries more than one row
+  # per accession` for the highest-version-wins rule and why.
+  eval_join <- evaluation[, c("accession", join_cols), drop = FALSE]
+  eval_join$.join_acc <- .strip_acc_version(eval_join$accession)
+  eval_join$.version_num <- .acc_version_num(eval_join$accession)
+  eval_join <- eval_join[order(eval_join$.join_acc, -eval_join$.version_num), , drop = FALSE]
+  eval_join <- eval_join[!duplicated(eval_join$.join_acc), , drop = FALSE]
+  eval_join$.version_num <- NULL
   eval_join$accession <- NULL
 
   out <- merge(match_df, eval_join, by = ".join_acc", all.x = TRUE, sort = FALSE)
