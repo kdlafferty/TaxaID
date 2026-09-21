@@ -1,7 +1,7 @@
 # bimodality.R
-# 2026-09-13: bimodality diagnostic for TaxaLikely's H1 (known-species) score
-# distribution. Motivated by a real Nanopore top-hit distribution (measured
-# 2026-09-13) with a 20.3% spike at exactly 100 and a tail reaching 94.1 at
+# Bimodality diagnostic for TaxaLikely's H1 (known-species) score
+# distribution. Motivated by a real Nanopore top-hit distribution
+# with a 20.3% spike at exactly 100 and a tail reaching 94.1 at
 # the 10th percentile, alongside a tight, unimodal Illumina distribution for
 # the same marker -- mixing the two platforms and fitting one Gaussian (as
 # train_likelihood_model() does for H1, and as calibrate_query_noise()'s
@@ -18,8 +18,8 @@
 # that skew alone would false-positive a bimodality-coefficient test on
 # ordinary, genuinely unimodal single-platform data.
 #
-# 2026-09-14: a SECOND, structurally different false-positive class was found
-# on the real PtConception 12S production run (2026-09-14): percent identity
+# A SECOND, structurally different false-positive class was found
+# on the real PtConception 12S production run: percent identity
 # on a short fixed-length amplicon is DISCRETE, not continuous -- a ~167bp
 # amplicon only takes values spaced by one mismatch's worth of identity
 # (measured 0.6 apart on that run: 98.8/99.4/98.2/... are the three most
@@ -223,7 +223,7 @@
 #' amount of identity (`1/amplicon_length`, e.g. `~0.6` percentage points on
 #' a ~167bp MiFish amplicon). Real match-score vectors therefore pile up at a
 #' handful of dominant "teeth" spaced one quantum apart, not a continuum --
-#' and 2026-09-14's real false positive traced directly to that comb shape,
+#' and a real false positive traced directly to that comb shape,
 #' not a genuine second population (see this file's own header note). This
 #' function estimates that spacing directly from the data, so the caller can
 #' smooth over it (`.smooth_comb()`) and scale its own separation
@@ -333,7 +333,7 @@
 #' spreading each tied group of observations that share one quantized value
 #' evenly across that value's own quantum-wide cell. This closes the
 #' LITERAL zero-density gaps a comb has between adjacent teeth (the actual
-#' mechanism behind 2026-09-14's false positive: `.mixture_has_valley()`
+#' mechanism behind the real false positive this fixes: `.mixture_has_valley()`
 #' correctly finds a real dip in the fitted mixture density there, because
 #' raw comb data genuinely has none between quantized values -- an artifact
 #' of quantization, not evidence of two populations) while leaving a real,
@@ -398,7 +398,7 @@
 #' Fits a single normal and a 2-component normal mixture (`.fit_two_component_normal()`)
 #' to `x` -- SMOOTHED first over any detected quantization comb
 #' (`.estimate_score_quantum()` + `.smooth_comb()`, see this file's own
-#' 2026-09-14 header note) -- and flags `x` as bimodal only when ALL FOUR hold:
+#' header note) -- and flags `x` as bimodal only when ALL FOUR hold:
 #' \enumerate{
 #'   \item the 2-component fit wins by `delta_bic > 10` -- Kass & Raftery
 #'     (1995), "Bayes Factors," *JASA* 90(430):773-795, p.777's own Table:
@@ -434,13 +434,13 @@
 #' dip between the two means correctly leaves it unflagged while still
 #' flagging a real two-platform mixture.
 #'
-#' @section 2026-09-14: quantization comb-awareness:
+#' @section Quantization comb-awareness:
 #' Those three conditions alone are still not enough once `x` is genuinely
 #' discrete (percent identity on a fixed-length amplicon: identical
 #' sequences agree at exactly `1 - k/amplicon_length` for integer mismatch
 #' count `k`, so real data forms a "comb" of spikes, not a continuum) --
-#' confirmed as a real, not hypothetical, second false-positive class on the
-#' real 2026-09-14 PtConception 12S production run, in addition to the
+#' confirmed as a real, not hypothetical, second false-positive class on a
+#' real PtConception 12S production run, in addition to the
 #' ceiling-skew case above: a comb has LITERAL zero density in the gaps
 #' between teeth, so `.mixture_has_valley()` finds a genuine (if spurious)
 #' dip there, and a two-component fit routinely wins by thousands of BIC
@@ -453,11 +453,11 @@
 #'     comb's zero-density gaps. When the data don't look comb-shaped at
 #'     all (`.estimate_score_quantum()` returns `NA`), `x` passes through
 #'     completely unchanged and every downstream computation is exactly the
-#'     pre-2026-09-14 calculation -- confirmed by a dedicated regression
-#'     test that a genuinely bimodal, continuous two-population sample
-#'     (real measured Nanopore shape: a 20.3% spike at exactly 100 sitting
-#'     on an otherwise-continuous population) still flags after this
-#'     change, byte-identically to before it.
+#'     delta-BIC/separation/valley calculation alone -- confirmed by a
+#'     dedicated regression test that a genuinely bimodal, continuous
+#'     two-population sample (real measured Nanopore shape: a 20.3% spike at
+#'     exactly 100 sitting on an otherwise-continuous population) still
+#'     flags.
 #'   \item the minority-weight floor (condition 4 above,
 #'     `min_minority_weight`) is a second, independent guard: on the real
 #'     PtConception run this diagnostic was built to fix, smoothing alone
@@ -499,16 +499,15 @@
 #'   appropriate to that scale.
 #' @param min_minority_weight Numeric in `[0, 0.5]` (default `0.15`). The
 #'   smaller of the two fitted component weights must be at least this
-#'   large before `x` is flagged -- "a thin tail cannot be called a mode"
-#'   (2026-09-14 fix requirement 3). `0.15` was chosen from the two real
-#'   motivating numbers, not picked in the abstract: it sits comfortably
-#'   BELOW the real genuinely-bimodal Nanopore minority share (`20.3%`, so a
-#'   real second population is never at risk of being excluded by this
-#'   floor) and comfortably ABOVE the real false-positive minority share on
-#'   the 2026-09-14 PtConception run that this whole fix addresses (`4%`,
-#'   which this floor alone is enough to reject, independent of the
-#'   smoothing/quanta-separation changes below -- confirmed directly against
-#'   that run's own real data during development).
+#'   large before `x` is flagged -- "a thin tail cannot be called a mode".
+#'   `0.15` was chosen from two real motivating numbers, not picked in the
+#'   abstract: it sits comfortably BELOW the real genuinely-bimodal Nanopore
+#'   minority share (`20.3%`, so a real second population is never at risk
+#'   of being excluded by this floor) and comfortably ABOVE the real
+#'   false-positive minority share on the PtConception run this guards
+#'   against (`4%`, which this floor alone is enough to reject, independent
+#'   of the smoothing/quanta-separation mechanisms below -- confirmed
+#'   directly against that run's own real data).
 #' @param quantum_max_unique_frac Numeric in (0, 1] passed straight to
 #'   `.estimate_score_quantum(max_unique_frac = )` -- see that function's
 #'   own docs. Exposed here (rather than hardcoded) purely so a caller can
@@ -520,7 +519,7 @@
 #'   `min_separation`, since on a real amplicon `min_separation`'s own
 #'   default (`1.0` percentage point) is under two mismatches. `3` was
 #'   chosen because it is exactly what correctly separates the two real
-#'   motivating numbers from the same 2026-09-14 production run: the real
+#'   motivating numbers from the same production run: the real
 #'   FALSE-positive `train_likelihood_model()` `Stats$h1_bimodality` split
 #'   (means 98.3/100, separation `1.7`) sits at `2.83` quanta at this run's
 #'   own measured `0.6` quantum -- below a `3`-quanta floor (`1.8`), so it
@@ -572,7 +571,7 @@
     return(out)
   }
 
-  # Comb-awareness (2026-09-14): estimate the identity-per-mismatch quantum
+  # Comb-awareness: estimate the identity-per-mismatch quantum
   # and smooth over it BEFORE anything else is computed, so the 1-component
   # fit, the 2-component fit, and the valley check all see the same,
   # consistently-smoothed data. `x_fit` degrades to `x` unchanged whenever
