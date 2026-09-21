@@ -27,10 +27,18 @@ exclusions: list(
     "R/review_spatial_context.R" = list(line_length_linter = Inf),
     "R/flag_watch_candidates.R" = list(line_length_linter = Inf),
     "R/flag_contaminant.R" = list(line_length_linter = Inf),
-    "R/build_review_covariates.R" = list(line_length_linter = Inf),
-    "tests/testthat/test-review_assignments.R" = list(line_length_linter = Inf),
+    # assignment_linter <<- hits below are mock-closure call counters/accumulators
+    # in test helpers (e.g. an llm_fn mock counting invocations across calls) --
+    # the idiomatic pattern for that, not a real hard-to-predict-scope bug.
+    "tests/testthat/test-review_assignments.R" = list(
+      line_length_linter = Inf,
+      assignment_linter = c(714L, 715L, 802L)
+    ),
     "tests/testthat/test-check_gbif_tile_range.R" = list(line_length_linter = Inf),
     "tests/testthat/test-flag_contaminant.R" = list(line_length_linter = Inf),
     "tests/testthat/test-add_posthoc_assessment.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-validate_controls.R" = list(line_length_linter = c(215L)),
+    "tests/testthat/test-vignette-calls.R" = list(line_length_linter = c(66L)),
+    "tests/testthat/test-flag_contaminant-evidence-and-sites.R" = list(assignment_linter = c(18L)),
     "inst/workflows/flag_detections_workflow.R" = list(line_length_linter = c(146L))
   )

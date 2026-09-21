@@ -68,7 +68,7 @@ test_that("power is reported per site and a wide null is declared low-power", {
   r <- validate_controls(df, site_col = "site", control_samples = .ctl_ids(df),
                          verbose = FALSE)
   sp <- attr(r, "site_power")
-  expect_true(all(c("n_samples","null_median","null_threshold","null_n_pairs","power")
+  expect_true(all(c("n_samples", "null_median", "null_threshold", "null_n_pairs", "power")
                   %in% names(sp)))
   expect_equal(nrow(sp), 3L)
   expect_true(all(sp$n_samples == 8))
@@ -110,7 +110,7 @@ test_that("it refuses the states that must not look clean", {
                "control_samples is required")
   expect_error(validate_controls(df, site_col = "nope", control_samples = .ctl_ids(df)),
                "site_col")
-  expect_error(validate_controls(df[, c("event_id","site")], site_col = "site",
+  expect_error(validate_controls(df[, c("event_id", "site")], site_col = "site",
                                  control_samples = .ctl_ids(df)),
                "missing column")
 })
@@ -175,7 +175,7 @@ test_that("the threshold can never leave Bray-Curtis's range", {
                            verbose = FALSE)
     thr <- unique(r$null_threshold[!is.na(r$null_threshold)])
     expect_true(all(thr <= 1), info = sprintf("n_samp=%d gave threshold %s", ns,
-                                              paste(round(thr,3), collapse=",")))
+                                              paste(round(thr, 3), collapse = ",")))
   }
 })
 
