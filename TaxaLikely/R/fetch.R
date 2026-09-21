@@ -518,8 +518,7 @@ utils::globalVariables(c(
 #' for a taxon is exactly the moment the old generation for that taxon
 #' becomes dead weight, which is what turns a future key widening from
 #' "doubles the cache" into "replaces it". Scoped to one stem and to the
-#' provable case; the whole-store sweep is the explicit, dry-run-by-default
-#' \code{taxalikely_evict_unreachable_cache()}.
+#' provable case.
 #' @noRd
 .ref_cache_evict <- function(cache_dir, stem) {
   dead <- .ref_cache_unreachable(cache_dir, stem = stem)
@@ -530,7 +529,7 @@ utils::globalVariables(c(
   big <- !is.na(mb) & mb > .REF_CACHE_AUTO_EVICT_MAX_MB
   if (any(big)) {
     message(sprintf(
-      "  Cache: %d unreachable file(s) over %g MB left in place; remove with taxalikely_evict_unreachable_cache().",
+      "  Cache: %d unreachable file(s) over %g MB left in place; remove manually if needed.",
       sum(big), .REF_CACHE_AUTO_EVICT_MAX_MB
     ))
     dead <- dead[!big]
@@ -1051,8 +1050,6 @@ utils::globalVariables(c(
 #'   files that differ only in a key VALUE -- different length bounds, a
 #'   different `rank_system` -- are different queries, not generations, and
 #'   are never touched. Set `FALSE` to keep every historical generation.
-#'   The whole-store equivalent is [taxalikely_evict_unreachable_cache()],
-#'   which reports rather than deletes unless asked.
 #'
 #' @return A data frame (`reference_df`), carrying a `count_failures`
 #'   attribute (always present, possibly zero-length) naming any taxa dropped

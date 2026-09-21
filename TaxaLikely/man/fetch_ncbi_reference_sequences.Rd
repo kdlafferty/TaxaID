@@ -182,9 +182,7 @@ narrow: the test is a proof, not a heuristic (see
 it never touches a file over 5 MB, and it says what it removed. Two
 files that differ only in a key VALUE -- different length bounds, a
 different \code{rank_system} -- are different queries, not generations, and
-are never touched. Set \code{FALSE} to keep every historical generation.
-The whole-store equivalent is \code{\link[=taxalikely_evict_unreachable_cache]{taxalikely_evict_unreachable_cache()}},
-which reports rather than deletes unless asked.}
+are never touched. Set \code{FALSE} to keep every historical generation.}
 }
 \value{
 A data frame (\code{reference_df}), carrying a \code{count_failures}
