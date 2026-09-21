@@ -40,11 +40,11 @@
 #' this (e.g. a backbone-resolved name differing from `taxon_col`), or omit
 #' `"species"` from `rank_cols` to disable it entirely.
 #'
-#' \strong{The same gap exists at every rank the map does not cover}
-#' (2026-09-14). The default stopped at `"family"`, so a consensus resolving
-#' at ORDER rank found nothing, read `consensus_has_occurrence_record = FALSE`
-#' and was reported `"unprecedented"` -- identically to the species-rank bug
-#' above, just coarser, and for the same reason. Found on the real
+#' \strong{The same gap exists at every rank the map does not cover.}
+#' A default that stopped at `"family"` would mean a consensus resolving at
+#' ORDER rank finds nothing, reads `consensus_has_occurrence_record = FALSE`,
+#' and is reported `"unprecedented"` -- identically to the species-rank bug
+#' above, just coarser, and for the same reason. Real example, from the
 #' PtConception 12S run: the `Scorpaenichthys marmoratus + Hexagrammos
 #' lagocephalus/decagrammus` unit (20 observations) resolves at order rank as
 #' `Perciformes`, was auto-flagged unprecedented, and
@@ -55,11 +55,11 @@
 #' kelp greenling are Point Conception natives; nothing about the science was
 #' in doubt, only the rank coverage of this lookup.
 #'
-#' The default now reaches `"order"` and `"class"`. Ranks in the DEFAULT that
+#' The default reaches `"order"` and `"class"`. Ranks in the DEFAULT that
 #' `taxonomy_map` does not carry are skipped with a message rather than an
-#' error, so existing callers whose maps stop at family are unaffected;
-#' ranks you name EXPLICITLY are still an error when absent, because you
-#' asked for them.
+#' error, so a caller whose map stops at family doesn't error out; ranks you
+#' name EXPLICITLY are still an error when absent, because you asked for
+#' them.
 #'
 #' @param taxaexpect_priors Data frame. The full local occurrence-prior
 #'   table (e.g. `TaxaExpect::generate_full_priors()`'s output, or the
@@ -82,10 +82,10 @@
 #' @param exclude_named_evidence Logical, default `TRUE`. Drop rows that make a
 #'   presence claim about a NAMED species with no local occurrence record --
 #'   i.e. rows carrying a real `evidence_sources` value (`distance_clamp`,
-#'   `regional_proximity`, `invasive_watch`, `inat_range`). Since curve pricing
-#'   every zero-record BLAST candidate has a clamp row, so "has a row in the
-#'   priors table" stopped meaning "known locally" on 2026-08-31. Measured on
-#'   the PtCon 12S run of 2026-09-13: without this filter, 256 of 264
+#'   `regional_proximity`, `invasive_watch`, `inat_range`). Curve pricing gives
+#'   every zero-record BLAST candidate a clamp row, so "has a row in the
+#'   priors table" no longer means "known locally". Measured on a PtCon 12S
+#'   run: without this filter, 256 of 264
 #'   winner-scope `unprecedented` rows read `expected` or `unexpected` at
 #'   consensus scope, 75 of them on nothing but a clamp or evidence row (a neon
 #'   tetra, a plains minnow, a red deer at a marine site), so
@@ -102,9 +102,9 @@
 #'   rows carry no genus/family at all, so the mirrors are the dominant source
 #'   of genus- and family-level group mass.
 #'
-#'   `FALSE` restores the pre-2026-09-13 behaviour. Ignored, with that same
-#'   behaviour, when `taxaexpect_priors` has no `evidence_sources` column
-#'   (GLMM-era tables, and sites that predate curve pricing).
+#'   `FALSE` disables this filter, keeping rows with a real `evidence_sources`
+#'   value. Also ignored, with that same effect, when `taxaexpect_priors` has
+#'   no `evidence_sources` column at all.
 #' @return A data frame with one row per (rank, taxon) group actually
 #'   present in the data: `rank` (the `rank_cols` value, e.g. `"genus"`),
 #'   `taxon` (the group's name at that rank), `theta_sum` (sum of `theta_col`
@@ -164,9 +164,9 @@ compute_group_priors <- function(taxaexpect_priors,
 
   # A rank the caller ASKED for and cannot be served is an error; a rank that
   # is merely part of the default and happens to be absent from this
-  # taxonomy_map is not. Without this split, widening the default (2026-09-14,
-  # to cover order/class) would break every existing caller whose
-  # taxonomy_map stops at family -- which is most of them.
+  # taxonomy_map is not. Without this split, a default that covers
+  # order/class would break every caller whose taxonomy_map stops at
+  # family -- which is most of them.
   missing_rank_cols <- setdiff(rank_cols, names(taxonomy_map))
   if (length(missing_rank_cols) > 0) {
     if (missing(rank_cols)) {
@@ -192,7 +192,7 @@ compute_group_priors <- function(taxaexpect_priors,
     }
   }
 
-  # Named-evidence filter (2026-09-13). A row that names a species with no
+  # Named-evidence filter. A row that names a species with no
   # local record must not support that species' genus/family; an anonymous
   # dark-diversity mirror, derived from the group's OWN local records, must.
   # Both sit on prior_branch == "resident_undetected", which is why this keys
