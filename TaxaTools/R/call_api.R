@@ -712,6 +712,12 @@ call_api <- function(prompt_str,
     httr2::req_perform(req),
     error = function(e) {
       msg <- conditionMessage(e)
+      # Gemini sends api_key as a URL query param (req_url_query(key = ...)),
+      # so a curl/httr2 connection error can echo the full request URL back
+      # into this message. Strip the raw key before it reaches stop().
+      if (nzchar(api_key)) {
+        msg <- gsub(api_key, "***REDACTED***", msg, fixed = TRUE)
+      }
       if (grepl("Could not connect|Connection refused|Could not resolve",
         msg,
         ignore.case = TRUE
@@ -760,7 +766,7 @@ call_api <- function(prompt_str,
 
   if (isTRUE(show_tokens)) {
     message(sprintf(
-      "Tokens used [%s / %s] \u2014 input: %s, output: %s",
+      "Tokens used [%s / %s] -- input: %s, output: %s",
       provider,
       model %||% "unknown",
       if (is.na(tokens$input)) "NA" else as.character(tokens$input),
