@@ -1568,14 +1568,14 @@ utils::globalVariables(c(
 #'   halved-batch-size retry) is treated the same as one NCBI has no record
 #'   for at all -- excluded from this call's cache write and reported via
 #'   `$unresolved`-style warning, NOT scored as
-#'   `"insufficient_independent_evidence"` -- a real, previously-possible
-#'   silent-miscache risk found 2026-08-09 on a real, large (1,183-
+#'   `"insufficient_independent_evidence"` -- a real
+#'   silent-miscache risk confirmed on a real, large (1,183-
 #'   accession), multi-hour remote-BLAST run: sustained NCBI queue
-#'   congestion caused most batches after the first to time out at the old
-#'   hardcoded 600s ceiling, and every one of those accessions would
-#'   otherwise have been cached as a false `"insufficient_independent_
+#'   congestion can cause most batches after the first to time out, and
+#'   every one of those accessions would
+#'   otherwise be cached as a false `"insufficient_independent_
 #'   evidence"` verdict for up to `insufficient_evidence_ttl_days` (180 days
-#'   by default) -- masking the real infrastructure failure as if it were a
+#'   by default) -- masking a real infrastructure failure as if it were a
 #'   genuine evidentiary finding.
 #' @param barcode_term Character or `NULL` (default). When supplied, any
 #'   query sequence exceeding the marker's expected length (via
@@ -1586,37 +1586,36 @@ utils::globalVariables(c(
 #'   before being BLASTed, instead of submitting the full sequence.
 #'   BLASTing a full-length over-length reference (e.g. a complete
 #'   mitogenome, ~16.5kb) against a broad database is dramatically more
-#'   CPU-expensive than BLASTing its short barcode region, and was found
-#'   2026-08-09 to be the real cause of a live NCBI server-side CPU-budget
+#'   CPU-expensive than BLASTing its short barcode region, and is
+#'   confirmed to be the real cause of a live NCBI server-side CPU-budget
 #'   rejection on a real, large run whose queries were often full
 #'   mitogenomes (see `poll_max_wait`'s own documentation for the real
 #'   captured case) -- the accession's own species-identity signal lives in
 #'   the short barcode region regardless, so trimming answers the identical
 #'   question at a fraction of the cost. A sequence whose primer sites
 #'   can't be found is next tried against the record's own annotated
-#'   feature table (2026-09-01 -- see `@section Long-sequence robustness`
+#'   feature table (see `@section Long-sequence robustness`
 #'   below), then, if still over-length, subject to the `max_query_len`
 #'   hard cap -- never silently dropped or errored either way; at worst it
 #'   is deferred as `"not_evaluated_oversized"`, an explicit, labeled,
 #'   TTL-retryable non-result. `NULL` (default) submits every sequence at
-#'   full length, unchanged from prior behavior.
+#'   full length.
 #' @param query_span Character, `"amplicon"` (default) or
 #'   `"primer_inclusive"`. Which span of a `barcode_term`-trimmed query is
 #'   submitted to BLAST: the primer-STRIPPED amplicon (the region between the
 #'   two primer sites, ~169 bp for MiFish-U) or the primer-INCLUSIVE span
-#'   (~217 bp), the only behaviour before 2026-09-03. See `@section Why the
+#'   (~217 bp). See `@section Why the
 #'   query is the primer-stripped amplicon`. Verdict-affecting, so it is part
 #'   of `params_key`. Ignored when `barcode_term` is `NULL` (nothing is
 #'   trimmed), and moot for a marker with no registered primer pair in
 #'   `TaxaTools::barcode_primer_defaults` (e.g. `"18S"`, `"ITS"`): such
 #'   queries are submitted AS DEPOSITED with a one-line message, never
-#'   trimmed and never an error (2026-09-12; previously the whole screen
-#'   died on its first chunk for 18S). Over-length records still go to
+#'   trimmed and never an error. Over-length records still go to
 #'   the feature-table fallback.
 #' @param chunk_size Integer (default `200L`). Accessions needing real
 #'   evaluation are processed this many at a time, with the persistent
 #'   cache written after EACH chunk -- see `@section Chunked evaluation and
-#'   NCBI rate-limiting resilience` below. `Inf` restores the pre-2026-08-14
+#'   NCBI rate-limiting resilience` below. `Inf` gives
 #'   single-shot behavior (one chunk covering every accession, cache written
 #'   only once at the very end).
 #' @param max_consecutive_batch_failures Numeric (default `3L`). Forwarded
@@ -1634,7 +1633,7 @@ utils::globalVariables(c(
 #'   amplicon-length sequence, but small enough to exclude a full
 #'   mitogenome or larger record -- or a flat `5000` when it is not (no
 #'   marker-specific bound to derive one from). `Inf` disables the cap
-#'   entirely, restoring the pre-2026-09-01 behavior (an unrescuable
+#'   entirely (an unrescuable
 #'   over-length query is always BLASTed at full length). See `@section
 #'   Long-sequence robustness` below for the full mechanism and the new
 #'   `"not_evaluated_oversized"` verdict this produces.
