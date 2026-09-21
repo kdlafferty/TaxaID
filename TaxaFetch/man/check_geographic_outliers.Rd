@@ -94,8 +94,13 @@ already contains only candidate families, so it would restrict nothing.}
 VERDICTS rather than the global occurrence cloud. The cloud is reduced to
 one integer per species and one logical per local record and then
 discarded, so caching it stores millions of records to preserve a few
-thousand numbers. The verdict file is keyed on the species set and the
-\code{cc_outl()} parameters, so changing either recomputes.}
+thousand numbers. The verdict file is keyed on a content hash
+(\code{rlang::hash()}) of the sorted species-key set plus every
+parameter that changes the verdict (\code{year_range}, \code{method},
+\code{min_occs}, \code{tdi}, \code{mltpl}), so changing any of them
+recomputes. A loaded cache file that shares none of the current call's
+requested \code{gbifID}s (a stale or foreign file) is treated as a miss
+and recomputed, with a \code{message()} naming the skipped file.}
 
 \item{verbose}{Logical. Forwarded to \code{cc_outl()}. Default
 \code{FALSE}.}
@@ -116,7 +121,13 @@ cannot compute a reliable dispersion statistic),
 \code{"consistent"} (checked, not flagged). Never a bare logical --
 "not tested" and "tested and passed" are kept distinct throughout,
 mirroring \code{\link{check_inat_range}}'s \code{range_status}
-convention.}
+convention. \strong{Edge case:} a row whose \code{species} is
+\code{NA} can never match \code{rare_species} (\code{NA \%in\% x} is
+always \code{FALSE}), so it is left at its initial
+\code{"not_tested_sufficient_local_data"} value -- the same status a
+genuinely well-supported species gets. It means "unknown identity,
+never checked" here, not "checked and fine"; treat it as untestable
+for a different reason than a rare species, not as a passed check.}
 }
 }
 \description{

@@ -86,8 +86,13 @@ utils::globalVariables(c(
 #'   VERDICTS rather than the global occurrence cloud. The cloud is reduced to
 #'   one integer per species and one logical per local record and then
 #'   discarded, so caching it stores millions of records to preserve a few
-#'   thousand numbers. The verdict file is keyed on the species set and the
-#'   \code{cc_outl()} parameters, so changing either recomputes.
+#'   thousand numbers. The verdict file is keyed on a content hash
+#'   (\code{rlang::hash()}) of the sorted species-key set plus every
+#'   parameter that changes the verdict (\code{year_range}, \code{method},
+#'   \code{min_occs}, \code{tdi}, \code{mltpl}), so changing any of them
+#'   recomputes. A loaded cache file that shares none of the current call's
+#'   requested \code{gbifID}s (a stale or foreign file) is treated as a miss
+#'   and recomputed, with a \code{message()} naming the skipped file.
 #' @param verbose Logical. Forwarded to \code{cc_outl()}. Default
 #'   \code{FALSE}.
 #'
@@ -106,7 +111,13 @@ utils::globalVariables(c(
 #'       \code{"consistent"} (checked, not flagged). Never a bare logical --
 #'       "not tested" and "tested and passed" are kept distinct throughout,
 #'       mirroring \code{\link{check_inat_range}}'s \code{range_status}
-#'       convention.}
+#'       convention. \strong{Edge case:} a row whose \code{species} is
+#'       \code{NA} can never match \code{rare_species} (\code{NA \%in\% x} is
+#'       always \code{FALSE}), so it is left at its initial
+#'       \code{"not_tested_sufficient_local_data"} value -- the same status a
+#'       genuinely well-supported species gets. It means "unknown identity,
+#'       never checked" here, not "checked and fine"; treat it as untestable
+#'       for a different reason than a rare species, not as a passed check.}
 #'   }
 #'
 #' @details
@@ -280,26 +291,72 @@ check_geographic_outliers <- function(
   # species (global_n_unique) and one logical per local record (cc_pass) --
   # and then discarded. Caching the raw cloud therefore stores millions of
   # records to preserve a few thousand numbers. Cache the verdicts instead,
-  # keyed by the species set actually checked.
+  # keyed by a real content hash of the SORTED species-key set plus every
+  # parameter that changes the verdict (year_range shapes the global fetch;
+  # method/min_occs/tdi/mltpl shape cc_outl() itself). geometry/limit/
+  # rank_filter are NOT included -- this function always calls
+  # get_gbif_occurrences() with the same fixed values for those three
+  # (geometry = NULL, limit = NULL, rank_filter = NULL), so they can never
+  # differ between two calls of THIS function and including them would only
+  # add noise.
+  #
+  # Previously this filename was `sprintf("...%dsp_s%d...", length(rare_keys),
+  # sum(as.numeric(rare_keys)) %% 1e9)` -- a count-plus-checksum, not a hash.
+  # Two disjoint species-key sets of the same length can sum to the same value
+  # mod 1e9 (trivially, by construction), producing the SAME filename for
+  # DIFFERENT species. The second call would then read the first call's
+  # verdicts, match zero gbifIDs (different species essentially never share
+  # one), and silently report "insufficient_global_data" for every record --
+  # exactly the outlier-clearing failure this function exists to prevent, with
+  # no error or warning. rlang::hash() (already a hard dependency of this
+  # package; TaxaFetch's cache-keying convention elsewhere, see
+  # `.literature_cache_path()`/`.query_hash()` in literature_search.R) hashes
+  # the actual sorted key set plus every verdict-changing parameter, so two
+  # different inputs cannot collide in practice, and a stale filename scheme
+  # (like the old one) is simply never matched -- a miss, not a silent wrong
+  # read.
   .verdict_path <- if (isTRUE(verdict_cache) && !is.null(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    file.path(cache_dir, sprintf(
-      "gbif_outlier_verdicts_%dsp_s%d_%s_%s.rds",
-      length(rare_keys), as.integer(sum(as.numeric(rare_keys)) %% 1e9),
-      gsub("[^0-9]", "", year_range),
-      paste0(method, "_", min_occs, "_", tdi, "_", mltpl)
+    key_hash <- rlang::hash(list(
+      rare_keys  = sort(rare_keys),
+      year_range = year_range,
+      method     = method,
+      min_occs   = min_occs,
+      tdi        = tdi,
+      mltpl      = mltpl
     ))
+    file.path(cache_dir, sprintf("gbif_outlier_verdicts_%s.rds", key_hash))
   } else {
     NULL
   }
 
   cached_verdicts <- NULL
   if (!is.null(.verdict_path) && file.exists(.verdict_path)) {
-    cached_verdicts <- tryCatch(readRDS(.verdict_path), error = function(e) NULL)
-    if (!is.null(cached_verdicts)) {
+    loaded_verdicts <- tryCatch(readRDS(.verdict_path), error = function(e) NULL)
+    requested_gbif_ids <- local_occurrences$gbifID[is_rare_row]
+    # Defense-in-depth beyond the hash fix above: even a correctly-keyed
+    # cache file could be stale (hand-edited, copied from another project's
+    # cache_dir, or -- in the limit -- an undetected hash collision). A
+    # verdict file that shares NONE of this call's requested gbifIDs cannot
+    # possibly answer this call; reading it anyway is exactly how the old bug
+    # produced silent "insufficient_global_data" for every row. Treat that as
+    # a cache MISS and recompute rather than trusting it.
+    if (!is.null(loaded_verdicts) && is.data.frame(loaded_verdicts) &&
+        "gbifID" %in% names(loaded_verdicts) &&
+        any(requested_gbif_ids %in% loaded_verdicts$gbifID)) {
+      cached_verdicts <- loaded_verdicts
       message(sprintf(
         "check_geographic_outliers: reusing cached verdicts for %d species (%s). Delete to recompute.",
         length(rare_keys), basename(.verdict_path)
+      ))
+    } else if (!is.null(loaded_verdicts)) {
+      message(sprintf(
+        paste0(
+          "check_geographic_outliers: cache file %s matches this call's key ",
+          "but contains none of the requested gbifID(s) -- treating it as a ",
+          "stale or foreign cache and recomputing."
+        ),
+        basename(.verdict_path)
       ))
     }
   }
