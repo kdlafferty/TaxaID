@@ -108,7 +108,7 @@ utils::globalVariables(c(
   conf <- stats::plogis(stats::qlogis(p_vote) + shift)
   conf[is.na(frac)] <- NA_real_
 
-  # NO PARTNERS IS NOT A COIN FLIP (2026-09-04, user-approved).
+  # NO PARTNERS IS NOT A COIN FLIP.
   # With zero valid partners `frac` falls back to its 0.5 default and `d` is
   # NA, so this arithmetic returns EXACTLY 0.5 -- which lands in the
   # "caution" band and makes the screen assert concern earned by an absence.
@@ -449,7 +449,7 @@ score_reference_labels <- function(evaluation,
     action_caution_below = action_caution_below
   )
 
-  # ---- Local corroboration: provenance + veto (2026-09-03) -----------------
+  # ---- Local corroboration: provenance + veto -------------------------------
   local <- .local_corroboration_columns(evaluation, local_corroboration)
   is_skipped <- evaluation$hierarchy_flag %in% "locally_corroborated"
   local_ok <- local$corroborated | is_skipped
@@ -593,7 +593,7 @@ score_reference_labels <- function(evaluation,
     !is.na(label_confidence) & label_confidence < action_remove_below
   action[removable] <- "remove"
 
-  # "not_evaluated_wrong_marker" (2026-09-04) reads "untested" alongside
+  # "not_evaluated_wrong_marker" reads "untested" alongside
   # "not_evaluated_oversized": no label evidence was gathered either way, and
   # the action vocabulary answers "what should happen to this LABEL", which is
   # a different question from "does this accession belong in this screen".
@@ -606,7 +606,7 @@ score_reference_labels <- function(evaluation,
       "not_evaluated_oversized",
       "not_evaluated_wrong_marker"
     )] <- "untested"
-  # "locally_corroborated" (2026-09-03): never BLASTed, so label_confidence
+  # "locally_corroborated": never BLASTed, so label_confidence
   # is NA -- but it is a positive verdict (an independent conspecific in the
   # caller's own reference set), not an untested one. Keep.
   action[hierarchy_flag %in% "locally_corroborated"] <- "keep"
@@ -1056,7 +1056,7 @@ refine_reference_verdicts <- function(evaluation,
 #' in the top 20".
 #'
 #' That was measured, not suspected
-#' (`diagnostics/veto_truncation_probe.R`, 2026-09-04): at `max_hits = 100`,
+#' (`diagnostics/veto_truncation_probe.R`): at `max_hits = 100`,
 #' `congruent_evidence_exists_anywhere` flipped `FALSE` to `TRUE` for 8 of 15
 #' veto-critical accessions, and `OQ846263` (*Rathbunella hypoplecta*) --
 #' one of only two accessions that PtConception run would have removed --
@@ -1110,7 +1110,7 @@ refine_reference_verdicts <- function(evaluation,
 #'   Requires `cache_dir` -- with `cache_dir = NULL` nothing is screened
 #'   (zero extra NCBI calls) and `corroborator_flagged` is `NA` for every
 #'   row, regardless of this parameter's value. `FALSE` also skips this
-#'   entirely (matching pre-2026-09-05 behavior).
+#'   entirely.
 #' @param verbose Logical (default `TRUE`).
 #' @return A data frame with one row per removal candidate: `accession`,
 #'   `listed_taxon`, `action_production`/`action_audit`,
@@ -1138,7 +1138,7 @@ refine_reference_verdicts <- function(evaluation,
 #' `congruent_evidence_exists_anywhere` counts a corroborating partner
 #' without any notion of whether that partner's own label is trustworthy, so
 #' a mislabeled reference can be rescued by another instance of the SAME
-#' mislabel. This is not hypothetical -- it happened on this function's first
+#' mislabel. This is not hypothetical -- it has happened in
 #' real use. GreatLakes `KJ135626` (*Pseudorasbora parva*) came back
 #' `spared = TRUE`, rescued by exactly one partner agreeing at species rank:
 #' `MZ605481`, which this project's own
@@ -1155,8 +1155,8 @@ refine_reference_verdicts <- function(evaluation,
 #' Widening the window makes the exposure larger, not smaller, since it
 #' admits more potential bad corroborators. So treat `spared` as a prompt to
 #' look, not a conclusion: a row rescued by one or two partners gets an
-#' explicit warning naming them, and (`screen_corroborators = TRUE`,
-#' 2026-09-05) that corroborator's own label is now actually checked --
+#' explicit warning naming them, and (`screen_corroborators = TRUE`)
+#' that corroborator's own label is checked --
 #' never automatically, only flagged, per this project's own "flag, don't
 #' auto-act" convention.
 #' @seealso [remove_incongruent_references()], [score_reference_labels()]
