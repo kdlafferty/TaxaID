@@ -277,8 +277,7 @@ estimate_kernel_priors <- function(occurrence_data,
   taxa <- as.character(rec[[taxon_col]])
 
   # ---- kernel weights -------------------------------------------------------
-  d_km <- 111 * sqrt((rec[[lat_col]] - site_lat)^2 +
-    ((rec[[lon_col]] - site_lon) * cos(site_lat * pi / 180))^2)
+  d_km <- .approx_distance_km(rec[[lat_col]], rec[[lon_col]], site_lat, site_lon, site_lat)
   w <- exp(-d_km / lambda_km)
   if (use_cov) {
     cv <- rec[[covariate_col]]
