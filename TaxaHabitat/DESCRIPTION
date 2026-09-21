@@ -25,6 +25,7 @@ Imports:
     marmap,
     TaxaTools
 Suggests:
+    curl,
     knitr,
     rmarkdown,
     rnaturalearthdata,

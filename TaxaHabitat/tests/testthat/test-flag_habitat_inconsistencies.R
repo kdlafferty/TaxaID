@@ -77,6 +77,26 @@ test_that(".utm_crs_for() picks the right zone and hemisphere", {
     "span")
 })
 
+test_that(".utm_crs_for() unwraps the antimeridian instead of a false 358-degree span (D1, 2026-09-21)", {
+  skip_if_not_installed("sf")
+  # Two Aleutian-like stations at lon -179.5 and 179.5 -- ~1 degree apart on
+  # the globe, not the ~359 degrees a raw bbox reports. A naive bbox gives
+  # xmin=-179.5, xmax=179.5, centroid 0 -> EPSG:32631 (Greenwich), on the
+  # opposite side of the planet from the points, plus a false "358 degrees
+  # of longitude" warning. Unwrapped, the centroid sits AT the antimeridian
+  # (mean(180.5, 179.5) = 180); this function's convention keeps it as +180
+  # rather than folding it back to -180, which lands zone 60 (not zone 1) --
+  # see the zone formula: floor((180 + 180) / 6) + 1 = 61, capped at 60.
+  pts <- sf::st_sfc(sf::st_multipoint(rbind(c(-179.5, 52), c(179.5, 52))), crs = 4326L)
+  expect_no_warning(crs <- .utm_crs_for(pts))
+  expect_equal(crs, 32660L)   # zone 60, northern hemisphere
+
+  # A mid-longitude fixture (nowhere near the antimeridian) is unaffected by
+  # the unwrap logic -- same answer as before this fix.
+  mk <- function(lon, lat) sf::st_sfc(sf::st_point(c(lon, lat)), crs = 4326L)
+  expect_equal(.utm_crs_for(mk(-120, 34.4)), 32611L)
+})
+
 test_that("distance is measured geodesically, not in Web Mercator", {
   skip_if_not_installed("sf")
   skip_if_not_installed("rnaturalearth")
