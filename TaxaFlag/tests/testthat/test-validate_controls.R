@@ -188,3 +188,86 @@ test_that("reduced power is announced at RUN TIME, not only in the manual", {
                       min_samples_per_site = 3L, verbose = TRUE),
     "BOTH PRINT")
 })
+
+# ---- an all-zero-count column must not silently vanish (regression, 2026-09-21) --
+
+test_that("an all-zero-count CONTROL column gets its own row, not silence", {
+  df <- .mk()
+  zero_ctl <- "B1_01"
+  df$count[df$event_id == zero_ctl] <- 0
+  r <- suppressWarnings(validate_controls(
+    df, site_col = "site", control_samples = .ctl_ids(df), verbose = FALSE
+  ))
+  row <- r[r$column_id == zero_ctl, ]
+  expect_equal(nrow(row), 1L)
+  expect_identical(row$label, "control")
+  expect_identical(row$verdict, "no_detections")
+  expect_identical(row$power, "none_no_detections")
+  expect_identical(row$confidence, "low")
+  expect_true(is.na(row$d_to_samples))
+  expect_true(is.na(row$d_to_controls))
+  expect_identical(row$n_taxa, 0L)
+  expect_identical(row$n_reads, 0)
+  # It must count in the printed/returned summary too, not just avoid an error.
+  expect_true(zero_ctl %in% r$column_id)
+})
+
+test_that("an all-zero-count control does not falsely suppress or trigger the 'every control resembles a sample' warning", {
+  df <- .mk()
+  zero_ctl <- "B1_01"
+  df$count[df$event_id == zero_ctl] <- 0
+  # The remaining, real controls are genuinely clean, so with the
+  # no-detections column correctly excluded from "testable" there must be NO
+  # warning (a bug that counted it as "testable" and not RESEMBLES_SAMPLE
+  # would have masked a real compromised-control-set warning in the other
+  # direction; a bug that treated it as RESEMBLES_SAMPLE would fire one
+  # falsely here).
+  expect_warning(
+    validate_controls(df, site_col = "site", control_samples = .ctl_ids(df), verbose = FALSE),
+    regexp = NA
+  )
+})
+
+test_that("an all-zero-count SAMPLE column also gets its own row (symmetry: the bug was column-type-agnostic)", {
+  df <- .mk()
+  zero_samp <- "S1_01"
+  df$count[df$event_id == zero_samp] <- 0
+  r <- validate_controls(df, site_col = "site", control_samples = .ctl_ids(df), verbose = FALSE)
+  row <- r[r$column_id == zero_samp, ]
+  expect_equal(nrow(row), 1L)
+  expect_identical(row$label, "sample")
+  expect_identical(row$verdict, "no_detections")
+})
+
+# ---- .med_to_m() vectorisation (2026-09-21, performance fix) ---------------
+
+test_that(".med_to_m()'s vectorised distance-to-many-columns matches a hand loop exactly on a small fixture", {
+  set.seed(7)
+  taxa <- paste0("t", 1:12)
+  cols <- paste0("c", 1:15)
+  m <- matrix(runif(length(taxa) * length(cols)), length(taxa), length(cols),
+             dimnames = list(taxa, cols))
+  m <- sweep(m, 2, colSums(m), "/") # compositional, matching real usage
+
+  bray_m <- function(m, a, b) 1 - sum(pmin(m[, a], m[, b]))
+  med_to_m_loop <- function(m, id, others) {
+    others <- setdiff(others, id)
+    if (!length(others)) return(NA_real_)
+    stats::median(vapply(others, function(o) bray_m(m, id, o), numeric(1)), na.rm = TRUE)
+  }
+
+  for (id in cols) {
+    others <- setdiff(cols, id)[1:8] # an arbitrary, non-trivial "others" set
+    expect_equal(
+      TaxaFlag:::.med_to_m(m, id, others), med_to_m_loop(m, id, others),
+      tolerance = 0,
+      info = paste("mismatch for id =", id)
+    )
+  }
+})
+
+test_that(".bray_m() is unchanged (still the direct pairwise Bray-Curtis formula, used by the null estimate)", {
+  m <- matrix(c(0.5, 0.3, 0.2, 0.1, 0.6, 0.3), nrow = 3,
+             dimnames = list(c("t1", "t2", "t3"), c("a", "b")))
+  expect_equal(TaxaFlag:::.bray_m(m, "a", "b"), 1 - sum(pmin(m[, "a"], m[, "b"])))
+})
