@@ -1476,18 +1476,25 @@ verify_removal_candidates <- function(evaluation, ...,
 #' to [evaluate_reference_accessions()] directly), not something this
 #' function does on your behalf.
 #'
-#' @section Only the current generation's corroborator verdict counts:
+#' @section Only the audited run's own generation's corroborator verdict counts:
 #' A corroborator accession can appear in `cache_dir` more than once, if it
 #' was independently evaluated under an earlier `params_key` generation (a
 #' parameter change to [evaluate_reference_accessions()] since) as well as
-#' the current one. This function reads the corroborator's verdict only from
-#' rows stamped with the params_key [evaluate_reference_accessions()]'s OWN
-#' current defaults would produce -- an older-generation row (whatever it
-#' says) is never treated as the corroborator's status, and a corroborator
-#' with no row under the current generation reads `"unchecked"`, same as one
-#' never evaluated at all. When more than one row survives for an accession
-#' within that single current generation (a retry), the most recently
-#' `evaluated_at` one is used.
+#' the one the `"locally_corroborated"` rows being audited were themselves
+#' produced under. This function takes no BLAST parameters of its own, so it
+#' cannot rebuild that key the way [evaluate_reference_accessions()] builds
+#' its own -- instead it reads the `params_key` value(s) actually stamped on
+#' the audited rows (the same move `.summarise_corroborators()` already makes
+#' for [verify_removal_candidates()]) and reads a corroborator's verdict only
+#' from rows stamped with one of those keys. Only when the audited rows carry
+#' no `params_key` at all (a schema predating that column) does it fall back
+#' to the key [evaluate_reference_accessions()]'s own current defaults would
+#' produce, and it says which of the two it used via `message()`. An
+#' older-generation row (whatever it says) is never treated as the
+#' corroborator's status, and a corroborator with no row under the audited
+#' generation reads `"unchecked"`, same as one never evaluated at all. When
+#' more than one row survives for an accession within a single generation (a
+#' retry), the most recently `evaluated_at` one is used.
 #'
 #' @param cache_dir The same persistent cache directory
 #'   [evaluate_reference_accessions()] was called with. Required -- a
@@ -1573,13 +1580,32 @@ verify_local_corroborations <- function(cache_dir,
   # since it was first evaluated), or more than once within the same
   # generation (a retry). match() picks whichever row sorts first, which
   # under plain insertion order is typically the OLDEST -- so this must be
-  # narrowed to the CURRENT generation before matching, built the same way
-  # evaluate_reference_accessions() itself builds it
-  # (.default_params_key(): this function takes no BLAST parameters of its
-  # own to build one from any other way). Any accession still duplicated
+  # narrowed to the SAME generation the audited rows (`lc`) themselves carry,
+  # read off `lc$params_key` directly (the same move .summarise_corroborators()
+  # makes for verify_removal_candidates()) rather than rebuilt from this
+  # function's own defaults, since a run evaluated under non-default BLAST
+  # parameters has no OTHER way to be recognised here. Falling back to
+  # .default_params_key() only when the audited rows carry no params_key at
+  # all (a cache predating that column). Any accession still duplicated
   # within that single generation (a same-key retry) keeps only its most
   # recently evaluated_at row.
-  current <- scored[scored$params_key %in% .default_params_key(), , drop = FALSE]
+  key <- if ("params_key" %in% names(lc)) unique(stats::na.omit(lc$params_key)) else character(0L)
+  if (length(key) == 0L) {
+    key <- .default_params_key()
+    if (verbose) {
+      message(
+        "verify_local_corroborations(): audited rows carry no params_key -- ",
+        "falling back to evaluate_reference_accessions()'s current-defaults key: ",
+        key
+      )
+    }
+  } else if (verbose) {
+    message(sprintf(
+      "verify_local_corroborations(): matching corroborator verdicts against the audited run's own params_key(s): %s.",
+      paste(key, collapse = ", ")
+    ))
+  }
+  current <- scored[scored$params_key %in% key, , drop = FALSE]
   if (nrow(current) > 0L) {
     current <- current[order(
       .strip_acc_version(current$accession), -as.numeric(current$evaluated_at)

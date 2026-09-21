@@ -81,19 +81,26 @@ to \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}
 function does on your behalf.
 }
 
-\section{Only the current generation's corroborator verdict counts}{
+\section{Only the audited run's own generation's corroborator verdict counts}{
 
 A corroborator accession can appear in \code{cache_dir} more than once, if it
 was independently evaluated under an earlier \code{params_key} generation (a
 parameter change to \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} since) as well as
-the current one. This function reads the corroborator's verdict only from
-rows stamped with the params_key \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}'s OWN
-current defaults would produce -- an older-generation row (whatever it
-says) is never treated as the corroborator's status, and a corroborator
-with no row under the current generation reads \code{"unchecked"}, same as one
-never evaluated at all. When more than one row survives for an accession
-within that single current generation (a retry), the most recently
-\code{evaluated_at} one is used.
+the one the \code{"locally_corroborated"} rows being audited were themselves
+produced under. This function takes no BLAST parameters of its own, so it
+cannot rebuild that key the way \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}} builds
+its own -- instead it reads the \code{params_key} value(s) actually stamped on
+the audited rows (the same move \code{.summarise_corroborators()} already makes
+for \code{\link[=verify_removal_candidates]{verify_removal_candidates()}}) and reads a corroborator's verdict only
+from rows stamped with one of those keys. Only when the audited rows carry
+no \code{params_key} at all (a schema predating that column) does it fall back
+to the key \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}'s own current defaults would
+produce, and it says which of the two it used via \code{message()}. An
+older-generation row (whatever it says) is never treated as the
+corroborator's status, and a corroborator with no row under the audited
+generation reads \code{"unchecked"}, same as one never evaluated at all. When
+more than one row survives for an accession within a single generation (a
+retry), the most recently \code{evaluated_at} one is used.
 }
 
 \seealso{

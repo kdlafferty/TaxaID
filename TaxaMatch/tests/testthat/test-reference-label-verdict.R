@@ -1058,6 +1058,37 @@ test_that("verify_local_corroborations() reads 'unchecked' (not the old row) whe
   expect_true(is.na(out$corroborator_reference_action))
 })
 
+test_that("verify_local_corroborations() reads the corroborator's verdict under the AUDITED run's own non-default params_key, not evaluate_reference_accessions()'s current defaults", {
+  skip_if_not_installed("withr")
+  cache_dir <- withr::local_tempdir()
+  nondefault_key <- "nondefault|family|30|0.5|2|90-100|90|50|blastn|nt|full"
+  .write_raw_cache(cache_dir, list(
+    # THIN7 and its corroborator BADREF2 were both produced by a run that
+    # called evaluate_reference_accessions() with non-default BLAST
+    # parameters (e.g. a different max_hits/database) -- every row in this
+    # cache_dir carries that SAME non-default key, never
+    # .default_params_key(). Rebuilding .default_params_key() here (the old
+    # behaviour) would match neither row and BADREF2's real "remove"
+    # verdict would misread as "unchecked".
+    .raw_cache_row("THIN7", "locally_corroborated",
+      n_partners = 1L,
+      best_agree = 100, anywhere = TRUE,
+      local_corroborator_accession = "BADREF2",
+      params_key = nondefault_key
+    ),
+    .raw_cache_row("BADREF2", "incongruent",
+      n_partners = 3L, frac = 0.875,
+      best_disagree = 98.62, anywhere = FALSE,
+      params_key = nondefault_key
+    )
+  ))
+  msgs <- capture_messages(out <- verify_local_corroborations(cache_dir))
+  expect_equal(out$status, "flagged")
+  expect_equal(out$corroborator_hierarchy_flag, "incongruent")
+  expect_equal(out$corroborator_reference_action, "remove")
+  expect_true(any(grepl("audited run's own params_key", msgs)))
+})
+
 test_that("verify_local_corroborations() input validation", {
   expect_error(verify_local_corroborations(cache_dir = 1L), "single, non-NA path")
   expect_error(verify_local_corroborations(cache_dir = NA_character_), "single, non-NA path")
