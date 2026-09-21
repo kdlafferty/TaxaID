@@ -169,7 +169,7 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   unref <- unreferenced_df
   unref$genus_lc <- tolower(trimws(unref$genus))
   unref$family_lc <- tolower(trimws(unref$family))
-  # Session 159: observation_id is optional. A row with NA (or an absent
+  # observation_id is optional. A row with NA (or an absent
   # column entirely) applies to every observation sharing its genus/family --
   # the original, global-unreferenced-species-list behavior. A row with a
   # real observation_id applies ONLY to that one observation. This is what

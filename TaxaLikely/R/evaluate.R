@@ -1174,10 +1174,10 @@ utils::globalVariables(c(
 #' to identify queries where coverage meaningfully shifts the likelihood ratios.
 #'
 #' \strong{Evidence-based sigma rescaling (`score_likelihood_evidence`) and its
-#' crossover gate:} An earlier version of `evidence_col` rescaled every
-#' candidate's H1 `sigma_score` unconditionally whenever `evidence_ratio < 1`
+#' crossover gate:} Unconditionally rescaling every
+#' candidate's H1 `sigma_score` whenever `evidence_ratio < 1`
 #' (widening for low-evidence candidates, exactly like the coverage adjustment
-#' above). Tested against real 12S data, that version was net negative even
+#' above) tests net negative against real 12S data, even
 #' capped at `evidence_max_ratio = 1` (27 real observations helped, 2053 hurt;
 #' mean H1 relative likelihood 0.899 -> 0.884). The reason is a basic property
 #' of the normal density, not an implementation defect: because a Gaussian must
@@ -1192,7 +1192,7 @@ utils::globalVariables(c(
 #' matches (small \eqn{z}), applying the widening formula to \emph{every}
 #' low-evidence candidate paid the peak-lowering cost far more often than it
 #' collected the tail-raising benefit -- exactly the pattern in the real-data
-#' result above. `evaluate_likelihoods()` now computes \eqn{\Delta} directly
+#' result above. `evaluate_likelihoods()` computes \eqn{\Delta} directly
 #' (using \eqn{z} standardized against whatever sigma is already in effect
 #' after the per-species floor and coverage inflation) and only applies the
 #' evidence rescale when \eqn{\Delta > 0} -- i.e., only where doing so is
@@ -1280,9 +1280,8 @@ utils::globalVariables(c(
 #' evidence-adjusted point estimate already resolved (species floor +
 #' evidence gate, when applicable), so a low-depth candidate's evidence-widened
 #' sigma also widens its mean uncertainty here at no additional cost.
-#' Backward compatible: falls back to the previous (score-resampling)
-#' behavior when `model_params$H1_Lookup` has no `n_obs_species` column
-#' (i.e., any model trained before this mechanism was added).
+#' Falls back to a score-resampling approach
+#' when `model_params$H1_Lookup` has no `n_obs_species` column.
 #'
 #' @section Confusion risk:
 #' `species_confusion_risk`/`genus_confusion_risk`/`family_confusion_risk` are

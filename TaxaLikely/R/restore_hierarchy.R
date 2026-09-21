@@ -190,8 +190,8 @@
   # source_accession: set ONLY when exactly one distinct candidate accession
   # contributed the value(s) behind p_match -- an unambiguous, directly-
   # screenable accession (see restore_suppressed_candidates()'s own
-  # `RESTORED_<accession>` provenance tag and the 2026-08-08 screenability
-  # discussion this field exists to support). NA whenever more than one
+  # `RESTORED_<accession>` provenance tag, which this field exists to
+  # support). NA whenever more than one
   # candidate accession contributed (the median then blends real evidence
   # from several accessions, none of which can honestly be singled out).
   if (!is.na(anchor_accession) && length(cand_accessions) > 0L) {

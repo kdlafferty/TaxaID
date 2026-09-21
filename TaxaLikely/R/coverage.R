@@ -1144,8 +1144,8 @@ audit_acoustic_coverage <- function(plausible_species,
 #' likelihood mass, only changes how the hypothesis is labeled, so a
 #' mistaken census can, at worst, cost genus-level resolution rather than
 #' create a wrong answer with no exit. `run_bayesian_pipeline()` (TaxaAssign)
-#' has defaulted to `"relabel"` since it was written; this function's own
-#' default now matches it.
+#' also defaults to `"relabel"`; this function's own
+#' default matches it.
 #'
 #' @param likelihood_df Data frame returned by [evaluate_likelihoods()].
 #' @param census_result Data frame with columns `taxon_name` (the group name,
