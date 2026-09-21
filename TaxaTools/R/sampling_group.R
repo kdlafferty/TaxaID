@@ -3,23 +3,14 @@
 # =============================================================================
 #
 # `sampling_group` sets the shared-effort denominator, one kernel fit per
-# group, and each group's own dark-diversity floor (TaxaExpect). Before this
-# file existed, its definition was an inline dplyr::case_when() duplicated
-# across five workflow files (PtConception 18S, PtConception 12S, GreatLakes,
-# the shared template, and CaliforniaIntertidal), and it drifted three times
-# before this fix, each caught only by running real data: ray-finned fishes +
-# Elasmobranchii missing (2026-09-03, 484,072 records, 54% of the largest
-# group), Phaeophyceae missing (2026-09-06, 11,605 records), Dinophyceae
-# missing (2026-09-06, 1,192 records), and Bacillariophyceae + Copepoda
-# missing (2026-09-13, 2,773 + 66 records). This file exists to end that
-# pattern: ONE classifier, ONE scheme object, package-tested.
+# group, and each group's own dark-diversity floor (TaxaExpect). This file is
+# the single package-level home for that classification logic: ONE
+# classifier, ONE scheme object, package-tested, so every caller across
+# TaxaID gets the exact same rule set.
 #
-# The logic below is ported, clause for clause, from
-# PtConceptionWorkflow_18S_2_single_site.R's Step 4 case_when() (the fullest
-# inline version, with the comments explaining why each clause is written the
-# way it is) -- see that file's own comments for the fish/Elasmobranchii,
-# Phaeophyceae, and Dinophyceae discovery stories. Two additions are new here,
-# both dated 2026-09-13 -- see default_sampling_scheme()'s own comments.
+# The clauses below encode taxonomic quirks that are easy to get wrong
+# silently -- see default_sampling_scheme()'s own documentation for what
+# each one is guarding against.
 
 # =============================================================================
 # default_sampling_scheme()
@@ -30,10 +21,8 @@
 #' Returns the package's default sampling-group scheme: an ORDERED list of
 #' rules (first-match-wins, exactly like the \code{dplyr::case_when()} it
 #' replaces) that classifies a taxon's kingdom/phylum/class/order into one of
-#' eleven detection-process groups, or a catch-all. Ported clause-for-clause
-#' from \code{PtConceptionWorkflow_18S_2_single_site.R}'s Step 4 (the fullest,
-#' best-commented inline version of this classifier), with two 2026-09-13
-#' additions (see Details).
+#' eleven detection-process groups, or a catch-all. See Details for
+#' clause-specific rationale.
 #'
 #' @section Shape:
 #' The returned object is a list with three elements:
@@ -75,31 +64,26 @@
 #' specific rule and a later, broader one always takes the specific one), and
 #' \code{\link{assign_sampling_group}} preserves it exactly.
 #'
-#' @section The 2026-09-13 fixes:
-#' Two real gaps, found the same way as the three earlier drift incidents
-#' (running the classifier against real data and reading what fell through to
-#' the catch-all):
+#' @section Class-level vs. phylum-level rules:
+#' Two traps this scheme's clauses are written to avoid:
 #' \itemize{
-#'   \item \strong{Bacillariophyceae (diatoms) -> \code{"phytoplankton"}}
-#'     (2,773 real records). \strong{Trap}: GBIF places diatoms in phylum
-#'     \strong{Ochrophyta}, the SAME phylum as the kelps/rockweeds
-#'     (Phaeophyceae, classified as \code{"macroalgae"} above). A phylum-level
-#'     rule for either group would be wrong in one direction or the other --
-#'     it would either exclude the diatoms or admit the kelps into the wrong
-#'     group. This MUST be a class-level rule, and it is: the diatom clause
-#'     names \code{class = "Bacillariophyceae"} only, never
+#'   \item \strong{Bacillariophyceae (diatoms) -> \code{"phytoplankton"}}.
+#'     \strong{Trap}: GBIF places diatoms in phylum \strong{Ochrophyta}, the
+#'     SAME phylum as the kelps/rockweeds (Phaeophyceae, classified as
+#'     \code{"macroalgae"} above). A phylum-level rule for either group would
+#'     be wrong in one direction or the other -- it would either exclude the
+#'     diatoms or admit the kelps into the wrong group. This MUST be a
+#'     class-level rule, and it is: the diatom clause names
+#'     \code{class = "Bacillariophyceae"} only, never
 #'     \code{phylum = "Ochrophyta"}.
-#'   \item \strong{Copepoda -> \code{"zooplankton"}} (66 real records on the
-#'     dataset where this was found; 36 on the bundled regression checkpoint).
-#'     GBIF's current backbone names this class \code{"Hexanauplia"} (already
-#'     in the zooplankton clause, per the original 18S file); NCBI's backbone
-#'     names it \code{"Copepoda"}. Both spellings are added to the SAME
-#'     zooplankton clause, so the classifier works whichever backbone the
-#'     input taxonomy came from. Note \code{"Copepoda"} was ALSO found live in
-#'     real GBIF-backbone occurrence data (not just NCBI match objects) during
-#'     this fix's own regression check -- it is not purely an NCBI artifact,
-#'     which is why it is added to the rule directly rather than only handled
-#'     via \code{harmonise = TRUE}.
+#'   \item \strong{Copepoda -> \code{"zooplankton"}}. GBIF's current backbone
+#'     names this class \code{"Hexanauplia"}; NCBI's backbone names it
+#'     \code{"Copepoda"}. Both spellings are added to the SAME zooplankton
+#'     clause, so the classifier works whichever backbone the input taxonomy
+#'     came from. \code{"Copepoda"} is also found live in real GBIF-backbone
+#'     occurrence data, not only in NCBI match objects, which is why it is
+#'     added to the rule directly rather than only handled via
+#'     \code{harmonise = TRUE}.
 #' }
 #'
 #' @return A sampling-group scheme object; see Shape above.
@@ -119,25 +103,16 @@ default_sampling_scheme <- function() {
         when = list(list(order = "Alismatales"))
       ),
 
-      # Vascular & non-vascular land plants.
-      #
-      # "Liliopsida" (the monocots) added 2026-09-13 after the kingdom guard
-      # made the gap visible: 114,744 real records -- 5.25% of the Point
-      # Conception occurrence pool, the second-largest miscount found in this
-      # scheme's history -- were falling through every clause into the
-      # "macroinvertebrates" catch-all. It read as covered because the
-      # seagrass rule above catches the monocot order Alismatales, so the
-      # plant clause LOOKED like it handled monocots while listing only the
-      # dicots (Magnoliopsida), gymnosperms, ferns and bryophytes.
+      # Vascular & non-vascular land plants, including the monocots
+      # (Liliopsida) -- Poales (Poa, Carex), Arecales (Washingtonia) and the
+      # rest, not just the seagrass order Alismatales.
       #
       # ORDERING MATTERS AND IS LOAD-BEARING: a seagrass carries BOTH class
       # Liliopsida and order Alismatales (verified live against GBIF's
       # backbone for Zostera marina, Phyllospadix torreyi and Posidonia
       # oceanica), so it is only the first-match-wins contract that keeps
-      # seagrasses in "sea_grasses" rather than being swept in here. Do not
-      # reorder these two rules. The records this clause newly claims are the
-      # other monocot orders -- Poales (Poa, Carex), Arecales (Washingtonia)
-      # and the rest.
+      # seagrasses in "sea_grasses" rather than being swept in here by the
+      # Liliopsida clause below. Do not reorder these two rules.
       list(
         group = "other_vascular_plants",
         when = list(list(class = c(
@@ -149,10 +124,9 @@ default_sampling_scheme <- function() {
       ),
 
       # Macroalgae (benthic seaweeds -- red/green/charophyte/brown).
-      # "Phaeophyceae" (brown algae/kelp -- Ochrophyta under GBIF's current
-      # backbone, e.g. Sargassum/Undaria) was entirely absent from this
-      # clause until 2026-09-06, silently misclassifying 11,605 real records
-      # as "macroinvertebrates".
+      # "Phaeophyceae" (brown algae/kelp, e.g. Sargassum/Undaria) sits under
+      # phylum Ochrophyta in GBIF's current backbone but is classified here
+      # by class, alongside the other macroalgal classes.
       list(
         group = "macroalgae",
         when = list(list(class = c(
@@ -161,19 +135,15 @@ default_sampling_scheme <- function() {
         )))
       ),
 
-      # Phytoplankton / microalgae. "Dinophyceae" (dinoflagellates --
-      # Myzozoa under GBIF's current backbone) was entirely absent until
-      # 2026-09-06, silently misclassifying 1,192 real records.
+      # Phytoplankton / microalgae. "Dinophyceae" (dinoflagellates) sits
+      # under phylum Myzozoa in GBIF's current backbone but is classified
+      # here by class. "Bacillariophyceae" (diatoms) is included below.
       #
-      # "Bacillariophyceae" (diatoms) added 2026-09-13, 2,773 real records.
+      # GBIF's accepted class for this lineage is "Zygnematophyceae"
+      # (verified via Spirogyra communis -> class Zygnematophyceae, order
+      # Zygnematales); "Zygnemophyceae" matches nothing in GBIF's backbone
+      # and is not used here.
       #
-      # SPELLING CORRECTED 2026-09-13: this clause carried "Zygnemophyceae",
-      # which matches NOTHING in GBIF's backbone -- name_backbone() returns no
-      # match for it at all, so the entry had never caught a single record
-      # since it was written. GBIF's accepted class is "Zygnematophyceae"
-      # (verified live, and via Spirogyra communis -> class Zygnematophyceae,
-      # order Zygnematales). Replaced rather than listed alongside: the old
-      # string is not an alternative spelling in use anywhere, just a typo.
       # TRAP: GBIF places diatoms in phylum Ochrophyta -- the SAME phylum as
       # the kelps (Phaeophyceae, in "macroalgae" above) -- so this MUST stay
       # a class-level rule. A phylum-level Ochrophyta rule in either
@@ -188,18 +158,17 @@ default_sampling_scheme <- function() {
             "Coleochaetophyceae", "Chlorokybophyceae", "Mesostigmatophyceae",
             "Zygnematophyceae", "Dinophyceae"
           )),
-          list(class = "Bacillariophyceae") # 2026-09-13 fix
+          list(class = "Bacillariophyceae") # diatoms
         )
       ),
 
-      # Fishes. The original list ("Actinopteri", "Chondrichthyes", "Myxini")
-      # matched almost nothing: GBIF's backbone carries NO class at all for
-      # the ray-finned fishes (its Actinopterygii/Actinopteri node is not an
-      # accepted backbone class) and names the cartilaginous fishes
-      # "Elasmobranchii", not "Chondrichthyes". Fixed 2026-09-03 after
-      # measuring 484,072 of 903,412 "macroinvertebrates" records (54%) were
-      # fish. Tunicates (Ascidiacea), birds (Aves) and mammals (Mammalia) all
-      # DO carry a class, so the class-less-Chordata fallback below cannot
+      # Fishes. GBIF's backbone carries NO class at all for the ray-finned
+      # fishes (its Actinopterygii/Actinopteri node is not an accepted
+      # backbone class) and names the cartilaginous fishes "Elasmobranchii",
+      # not "Chondrichthyes" -- both are covered below, and the
+      # class-less-Chordata clause catches ray-finned fishes lacking a class.
+      # Tunicates (Ascidiacea), birds (Aves) and mammals (Mammalia) all DO
+      # carry a class, so the class-less-Chordata fallback below cannot
       # swallow them.
       list(
         group = "fishes",
@@ -237,10 +206,9 @@ default_sampling_scheme <- function() {
         )
       ),
 
-      # Zooplankton. "Copepoda" added 2026-09-13 alongside the existing
-      # "Hexanauplia" -- GBIF's current backbone calls this class
-      # Hexanauplia, NCBI's calls it Copepoda, and both spellings appear in
-      # real data, so both must map to the same group.
+      # Zooplankton. GBIF's current backbone calls this class Hexanauplia;
+      # NCBI's calls it Copepoda. Both spellings appear in real data, so
+      # both map to the same group.
       list(
         group = "zooplankton",
         when = list(
@@ -293,10 +261,8 @@ default_sampling_scheme <- function() {
 #' (the shared-effort denominator, kernel-fit group, and dark-diversity-floor
 #' group used throughout the TaxaID ecosystem) using an ordered,
 #' first-match-wins rule scheme -- see \code{\link{default_sampling_scheme}}.
-#' This is the single package-level home for logic that was previously an
-#' inline \code{dplyr::case_when()} duplicated across five workflow files,
-#' and had silently drifted three times before this fix (see
-#' \code{\link{default_sampling_scheme}}'s Details).
+#' This is the single package-level home for this classification logic, so
+#' every caller uses the exact same rule set.
 #'
 #' @param taxonomy A data frame (or tibble) with at least some of the columns
 #'   named in \code{rank_cols}. Returned as-is with a new \code{sampling_group}
@@ -330,16 +296,13 @@ default_sampling_scheme <- function() {
 #'   \code{NA} (missing) kingdom -- a row with no usable taxonomy at all is a
 #'   different problem (it may be genuinely novel), not something this
 #'   function should silently discard. Set \code{kingdom_guard = FALSE} to
-#'   restore the old case_when() behaviour, where every unmatched row (any
-#'   kingdom, including \code{NA}) becomes the catch-all.
+#'   make every unmatched row (any kingdom, including \code{NA}) become the
+#'   catch-all instead.
 #' @param harmonise Logical, default \code{FALSE}. When \code{TRUE},
 #'   \code{taxonomy} is harmonised to \code{scheme}'s backbone BEFORE
 #'   classification, via \code{\link{verify_taxon_names}(backbone_id =
-#'   backbone_id)} -> \code{\link{change_backbone}()} -- the same idiom
-#'   \code{CaliforniaIntertidal/scope_classifier.R}'s
-#'   \code{harmonize_ranks_to_gbif()} documents, and the one
-#'   \code{PtConceptionWorkflow_18S_2_single_site.R} already uses to fold in
-#'   an NCBI-backbone dataset. This lets an NCBI-backbone match object (e.g.
+#'   backbone_id)} -> \code{\link{change_backbone}()}. This lets an
+#'   NCBI-backbone match object (e.g.
 #'   one carrying \code{class = "Copepoda"}, \code{class =
 #'   "Thalassiosirophyceae"}, or kingdom \code{"Chromista"}/\code{"Protozoa"}
 #'   in vocabulary the default scheme does not otherwise recognise) be
@@ -393,22 +356,19 @@ default_sampling_scheme <- function() {
 #' (1) a \code{taxonomy_backbone} attribute on \code{taxonomy} that does not
 #' look like GBIF/backbone 11; (2) presence of a class value GBIF's backbone
 #' is confirmed NOT to carry --
-#' \code{"Thalassiosirophyceae"}/\code{"Bigyra"}/\code{"Phytomastigophora"}
-#' (per \code{scope_classifier.R}'s own verified BACKBONE TRAP comparison
-#' table). \strong{\code{"Copepoda"} is deliberately NOT used as a mismatch
-#' signal}, even though it is a genuinely NCBI-flavoured class name: this
-#' function's own regression check against real GBIF-backbone occurrence
-#' data (\code{PtCon18SSchulte_occurrences_clean.rds}) found \code{"Copepoda"}
-#' live in real GBIF output too, not only in NCBI match objects -- so it is
-#' handled directly in the zooplankton rule (see
-#' \code{\link{default_sampling_scheme}}'s 2026-09-13 notes) rather than
-#' treated as a mismatch symptom, which would have produced a false warning
-#' on perfectly correct GBIF input. Silent misclassification from an
-#' unnoticed backbone mismatch is the exact failure class this whole file
-#' exists to end, so this check errs toward naming what it saw rather than
-#' staying silent -- but it is a heuristic, not exhaustive, and passing
-#' \code{harmonise = TRUE} (or verifying the input's backbone directly) is
-#' the reliable fix, not a substitute for reading the warning.
+#' \code{"Thalassiosirophyceae"}/\code{"Bigyra"}/\code{"Phytomastigophora"}.
+#' \strong{\code{"Copepoda"} is deliberately NOT used as a mismatch signal},
+#' even though it is a genuinely NCBI-flavoured class name: it is also found
+#' live in real GBIF-backbone occurrence data, not only in NCBI match
+#' objects, so it is handled directly in the zooplankton rule (see
+#' \code{\link{default_sampling_scheme}}) rather than treated as a mismatch
+#' symptom, which would produce a false warning on perfectly correct GBIF
+#' input. Silent misclassification from an unnoticed backbone mismatch is
+#' the exact failure class this function exists to guard against, so this
+#' check errs toward naming what it saw rather than staying silent -- but it
+#' is a heuristic, not exhaustive, and passing \code{harmonise = TRUE} (or
+#' verifying the input's backbone directly) is the reliable fix, not a
+#' substitute for reading the warning.
 #'
 #' @section Rank agreement (\code{harmonise = TRUE}):
 #' The harmoniser resolves each row's finest available rank NAME and then
@@ -436,21 +396,17 @@ default_sampling_scheme <- function() {
 #' genus} named \emph{Polychaeta}
 #' (\code{Animalia|Arthropoda|Insecta|Diptera|Tachinidae|Polychaeta}, verified
 #' live). Without the gate, a row whose \code{class} column reads
-#' \code{"Polychaeta"} -- the annelid class, correct in NCBI -- was matched
-#' against that genus and had its whole lineage overwritten
+#' \code{"Polychaeta"} -- the annelid class, correct in NCBI -- would be
+#' matched against that genus and have its whole lineage overwritten
 #' (\code{Annelida} -> \code{Arthropoda}, \code{Polychaeta} ->
-#' \code{Insecta}, and a fabricated \code{order = "Diptera"}). On the
-#' 2026-09-15 PtConception 18S run that hit 7 marine polychaete taxa across 17
-#' rows, grouping every one of them as \code{terrestrial_arthropods} and --
-#' because a downstream marine filter reads the harmonised phylum/class --
-#' dropping them from the species list entirely, silently.
+#' \code{Insecta}, and a fabricated \code{order = "Diptera"}), grouping it as
+#' \code{terrestrial_arthropods} and -- because a downstream marine filter
+#' reads the harmonised phylum/class -- silently dropping it from the
+#' species list entirely.
 #'
-#' \strong{And \emph{Polychaeta} was not alone.} Scanning every
-#' (name, rank) pair in that run's NCBI-side taxonomy against GBIF -- 288
-#' pairs -- found 15 rank disagreements. Rule 2 rescues 8 of them (the
-#' \emph{Arthropoda} and polychaete-family duplications above). Of the 7 the
-#' gate rejects, five are genuine cross-lineage homonyms that would each have
-#' rewritten a whole lineage into an unrelated one:
+#' \strong{And \emph{Polychaeta} is not alone.} Scanning real NCBI-side
+#' taxonomy against GBIF turns up other genuine cross-lineage homonyms that
+#' would each rewrite a whole lineage into an unrelated one:
 #' \tabular{lll}{
 #'   \strong{name} \tab \strong{column rank} \tab \strong{what GBIF matched} \cr
 #'   Polychaeta \tab class \tab a tachinid fly genus (Insecta|Diptera) \cr
@@ -459,15 +415,13 @@ default_sampling_scheme <- function() {
 #'   Appendicularia \tab class \tab a flowering-plant genus (Plantae|Myrtales) \cr
 #'   Pilidiophora \tab class \tab a gregarine genus (Chromista|Myzozoa) \cr
 #' }
-#' Only \emph{Polychaeta}'s taxa happened to be noticed, because they were
-#' dropped; a corrupted lineage that stays marine is silent. The remaining two
-#' rejections, \code{"Bacillariophyta"} (NCBI phylum, GBIF class
-#' \code{Bacillariophyceae}) and \code{"Bigyra"} (NCBI class, GBIF phylum), are
-#' genuine NCBI-vs-GBIF rank-assignment differences for the same clade rather
-#' than homonyms. Rejecting them is harmless: the row keeps its NCBI value, the
-#' diatom rule here is class-level by design, and
-#' \code{classify_18S_functional()} keys diatoms on the class
-#' (\code{Bacillariophyceae}), never on that phylum value.
+#' A corrupted lineage that stays marine is silent -- only a dropped taxon
+#' tends to get noticed. Some rank disagreements are NOT homonyms:
+#' \code{"Bacillariophyta"} (NCBI phylum, GBIF class
+#' \code{Bacillariophyceae}) and \code{"Bigyra"} (NCBI class, GBIF phylum)
+#' are genuine NCBI-vs-GBIF rank-assignment differences for the same clade.
+#' Rejecting them is harmless: the row keeps its NCBI value, and the diatom
+#' rule in \code{\link{default_sampling_scheme}} is class-level by design.
 #'
 #' A looser third rule -- accept a rank-mismatched match whose lineage contains
 #' ANY of the row's original rank values -- was considered and rejected. It
@@ -477,17 +431,10 @@ default_sampling_scheme <- function() {
 #' \emph{Polychaeta} for any caller whose input already says
 #' \code{"Animalia"} rather than NCBI's \code{"Metazoa"}.
 #'
-#' \strong{Net effect on the real 18S run}: of the 97 unique names it resolves,
-#' 90 agree on rank outright, 6 get no GBIF match (already handled by the
-#' original-value fallback), and \emph{Polychaeta} is the single rejection --
-#' recovering all 7 taxa and 17 rows as \code{macroinvertebrates}, all passing
-#' the marine filter, with the phytoplankton, macroalgae and zooplankton counts
-#' unchanged.
-#'
 #' Because a cache written before this gate existed carries no
 #' \code{matched_rank} and so cannot be checked, such a cache is discarded and
-#' re-resolved rather than trusted -- re-running with an old \code{cache_dir}
-#' is exactly when a silent re-admission would be least likely to be noticed.
+#' re-resolved rather than trusted -- reusing an old \code{cache_dir} is
+#' exactly when a silent re-admission would be least likely to be noticed.
 #'
 #' @seealso \code{\link{default_sampling_scheme}}
 #' @export
@@ -618,8 +565,8 @@ assign_sampling_group <- function(taxonomy,
   }
 
   # Class values confirmed present in real NCBI match objects and confirmed
-  # ABSENT from real GBIF occurrence data (scope_classifier.R's BACKBONE TRAP
-  # table). Deliberately excludes "Copepoda" -- see roxygen above for why.
+  # ABSENT from real GBIF occurrence data. Deliberately excludes "Copepoda"
+  # -- see roxygen above for why.
   ncbi_only_classes <- c("Thalassiosirophyceae", "Bigyra", "Phytomastigophora")
   present <- intersect(rank_cols, names(taxonomy))
   hits <- character(0)
