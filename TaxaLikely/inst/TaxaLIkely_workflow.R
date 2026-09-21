@@ -51,9 +51,7 @@ toy_matrix <- data.frame(
 )
 rm(.seqs, .sp, .gen, .pm, idx)
 
-# NOTE: this stage previously included an "A1. Flag reference errors" step
-# (flag_reference_errors()), retired 2026-09-08 -- see NAME_CHANGE_HISTORY.md.
-# Reference-quality screening now lives in TaxaMatch
+# NOTE: reference-quality screening lives in TaxaMatch
 # (corroborate_references_locally() + evaluate_reference_accessions()), see
 # inst/workflows/2_flag_errors_workflow.R for the current pattern.
 

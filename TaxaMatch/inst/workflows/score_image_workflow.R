@@ -14,11 +14,10 @@
 #
 # THIS SCRIPT IS THE FIRST OF A TWO-PACKAGE MINI-CHAIN:
 #   TaxaMatch (this script) -> TaxaLikely (image_acoustic_likelihood_workflow.R)
-# It stops at TaxaLikely -- it does not continue to TaxaAssign/TaxaFlag. Item 4
-# of ecosystem_docs/REENTRY_PROMPT_session123_layer1_workflows.md scoped this
-# as "produce a real likelihood object", which is TaxaAssign's actual input;
-# building a full TaxaAssign run on top of these species would need real
-# occurrence-based priors for them, which is a separate task.
+# It stops at TaxaLikely -- it does not continue to TaxaAssign/TaxaFlag. The
+# scope here is to produce a real likelihood object, which is TaxaAssign's
+# actual input; building a full TaxaAssign run on top of these species would
+# need real occurrence-based priors for them, which is a separate task.
 #
 # NO SYNTHETIC DATA, AND OWNED BY THE USER: 52 real Bushnell trail-camera
 # photos (Central California coastal scrub habitat, 34.41 N / -119.86 W) of
@@ -33,9 +32,7 @@
 # diversity-only set specifically to get enough replicate photos per species
 # to move past a single-flip small-n result on whether
 # TaxaLikely::correct_training_bias() is safe to enable by default for the
-# image pathway (see ecosystem_docs/REENTRY_PROMPT_session128... and
-# TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R, which first
-# raised this on n=6).
+# image pathway, a question that first came up at n=6.
 #
 # These photos ARE bundled in inst/extdata/example_images/camera_trap_photos/
 # (unlike an earlier iteration of this script, which used bird photos of
@@ -96,9 +93,8 @@ TARGET_ICONIC_TAXA <- "Mammalia"
 # bundled trail-camera set: EXIF is absent entirely on these files), wrong for
 # a real multi-site study where photos carry real, differing per-photo EXIF
 # GPS that this override would silently stomp on. OVERRIDE_SITE_LATLNG makes
-# that choice explicit rather than hardcoding the override unconditionally --
-# see ecosystem_docs/REENTRY_PROMPT_session137_observation_pipeline_wiring.md,
-# Phase 3. Set FALSE for your own photos if they carry real per-photo EXIF GPS
+# that choice explicit rather than hardcoding the override unconditionally.
+# Set FALSE for your own photos if they carry real per-photo EXIF GPS
 # (score_image_inat() then reads it directly, one coordinate pair per photo).
 OVERRIDE_SITE_LATLNG <- TRUE
 
@@ -342,9 +338,8 @@ message(sprintf(
 # acoustic (see TaxaMatch::build_site_table()'s own docs). This script stops
 # at TaxaLikely (see header), so spatial_group_id isn't consumed downstream
 # here -- but it's exactly what a future TaxaAssign continuation for these
-# species would need (see ecosystem_docs/REENTRY_PROMPT_session137_
-# observation_pipeline_wiring.md, Phase 3), so it's produced and checkpointed
-# now rather than re-derived later.
+# species would need, so it's produced and checkpointed now rather than
+# re-derived later.
 # ==============================================================================
 
 image_site_table <- TaxaMatch::build_site_table(taxamatch_image_match_obj)

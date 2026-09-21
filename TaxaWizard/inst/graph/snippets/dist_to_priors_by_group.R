@@ -17,11 +17,9 @@
 #   group at once (no per-group model-fitting loop needed) -- this snippet
 #   works directly on standardized occurrence data, no gridding step
 #   (create_sites_from_grid()/the old "distributions" intermediate) needed,
-#   so this edge's own `from` was corrected from "distributions" to
-#   "std_occurrences" the same session the whole GLMM chain (including
-#   "distributions"'s only other consumer, dist_to_priors) was archived --
-#   see TaxaExpect/archive_glmm_prior_pipeline/ and TaxaExpect/CLAUDE.md's
-#   2026-09-09 session note.
+#   so this edge's own `from` is "std_occurrences", not "distributions" --
+#   the whole GLMM chain, including "distributions"'s only other consumer,
+#   dist_to_priors, is retired.
 
 std_occurrences <- {{input_var}}
 

@@ -378,14 +378,12 @@ reasoning and verification status are recorded in this package's own
 
 ------------------------------------------------------------------------
 
-## Changes since this review (2026-09-18 to 2026-09-20)
+## Changes since this review
 
 Listed so a reviewer re-reading this document is not surprised by code that
 postdates it. This is the largest block of change since the review: the
-package's context layer was replaced outright. Per-change reasoning and
-verification status are in this package's `CLAUDE.md` and `NEWS.md`; the
-contract they were built against is
-`ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md`.
+package's context layer was replaced outright. Per-change history is in this
+package's `NEWS.md`.
 
 **The hand-maintained metadata is gone.** `inst/metadata/*.json` (94 typed
 function-signature entries) and `R/metadata.R` were deleted. `R/registry.R`
@@ -441,8 +439,7 @@ id and the path-with-spaces defect.
 **Known gaps, stated rather than left to be discovered.**
 
 - The Bayesian arm of the console dry run is not built. Every Bayesian route
-  costs 30-60 minutes with live NCBI and GBIF calls. A design is written up in
-  `ecosystem_docs/REENTRY_PROMPT_p7_bayesian_dry_run.md`.
+  costs 30-60 minutes with live NCBI and GBIF calls.
 - `.validate_snippets()` checks the *shape* of a call -- that the function and
   its argument names exist. It cannot catch a semantically wrong call whose
   arguments are all real, which is how the pooled-lambda snippet defect

@@ -23,9 +23,8 @@
 #     scoring, persistent caches, hybrid-labeled-accession handling). See
 #     TaxaMatch/CLAUDE.md's many session notes on these three functions for
 #     the full design history.
-#   Cluster 3 -- LLM second-look reviewer (2026-08-13): review_flagged_
-#     accessions(), implementing Question 2 of ecosystem_docs/REENTRY_PROMPT_
-#     flagged_accession_second_look.md, plus the internal prompt-building/
+#   Cluster 3 -- LLM second-look reviewer: review_flagged_
+#     accessions(), plus the internal prompt-building/
 #     retry/parsing machinery behind it. Also demonstrates
 #     best_disagreeing_taxon, a new output column on
 #     evaluate_reference_accessions()/.compute_hierarchy_congruence() shipped
@@ -710,9 +709,8 @@ TaxaMatch:::.lookup_investigate_cache(
 
 
 # ==============================================================================
-# CLUSTER 3 -- LLM second-look reviewer (2026-08-13)
-# review_flagged_accessions(), implementing Question 2 of ecosystem_docs/
-# REENTRY_PROMPT_flagged_accession_second_look.md. Unlike Cluster 2, this
+# CLUSTER 3 -- LLM second-look reviewer
+# review_flagged_accessions(). Unlike Cluster 2, this
 # cluster makes NO network/NCBI/BLAST call of any kind -- every section below
 # passes a local stub function as `llm_fn` (a real, first-class parameter,
 # not a workaround; see TaxaFlag::review_assignments()'s identical

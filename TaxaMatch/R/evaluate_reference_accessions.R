@@ -16,7 +16,7 @@ utils::globalVariables(c(
 #
 # Supersedes the taxon-list-scoped DECIPHER whole-set alignment approach
 # (TaxaLikely::audit_reference_database()/classify_reference_accessions(),
-# archived at TaxaLikely/archive_decipher_reference_audit/) for the specific
+# now retired) for the specific
 # question this function answers: is a single accession's OWN listed taxon
 # congruent with what independent NCBI evidence actually says, evaluated
 # against the broadest comparison population BLAST can reach -- not just
@@ -154,8 +154,8 @@ utils::globalVariables(c(
 
 #' Per-accession attributes for the same-submission-batch independence rule
 #'
-#' Duplicated from `TaxaLikely::.build_submission_batch_lookup()`
-#' (`TaxaLikely/archive_decipher_reference_audit/R/hierarchy_congruence.R`) --
+#' Duplicated from `TaxaLikely::.build_submission_batch_lookup()`, part of
+#' TaxaLikely's retired DECIPHER-based reference audit --
 #' TaxaMatch must not depend on TaxaLikely (the ecosystem's documented
 #' dependency direction is TaxaMatch -> TaxaLikely, never the reverse), so
 #' this ~30-line helper is duplicated rather than reached for via `:::`.
@@ -223,13 +223,12 @@ utils::globalVariables(c(
 #' Compute per-accession taxonomic-hierarchy congruence against independent close matches
 #'
 #' Duplicated (math unchanged) from
-#' `TaxaLikely::.compute_hierarchy_congruence()` -- see that archived
-#' function's own roxygen
-#' (`TaxaLikely/archive_decipher_reference_audit/R/hierarchy_congruence.R`)
-#' for the full design rationale (why the independence filter exists, why a
+#' `TaxaLikely::.compute_hierarchy_congruence()`, part of TaxaLikely's
+#' retired DECIPHER-based reference audit --
+#' the full design rationale is why the independence filter exists, why a
 #' naive top-N nearest-neighbour check is defeated by the exact replicated-
-#' contamination case this mechanism exists to catch, why the fraction is
-#' Jeffreys-smoothed). What's genuinely adapted here, not duplicated, is the
+#' contamination case this mechanism exists to catch, and why the fraction is
+#' Jeffreys-smoothed. What's genuinely adapted here, not duplicated, is the
 #' CALLER (`evaluate_reference_accessions()`): the archived version always
 #' fed this function a `seq_matrix` built from one big DECIPHER whole-set
 #' alignment scoped to a caller's own `taxa` list; the caller here instead
@@ -259,8 +258,7 @@ utils::globalVariables(c(
 #' dropped; whether the listed rank is corroborated ANYWHERE in the full
 #' independence-filtered hit pool (not just the `top_n`-truncated slice) is
 #' free once the rank-agreement walk below runs over the untruncated pool
-#' instead of after truncating. The archived original at
-#' `TaxaLikely/archive_decipher_reference_audit/R/hierarchy_congruence.R` is
+#' instead of after truncating. The archived TaxaLikely original is
 #' NOT updated to match -- it is dead code, kept for historical reference
 #' only, not a shared implementation to keep in sync.
 #'

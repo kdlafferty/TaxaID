@@ -35,7 +35,7 @@
 #   FUTURE TASK: Add call_openai_api(), call_ollama_api() etc. to
 #   llm_api_utils.R so users have first-class alternatives without needing
 #   to write their own wrappers. All LLM-calling functions in TaxaFetch
-#   should follow this llm_fn pattern -- see AI_CONTEXT.md.
+#   should follow this llm_fn pattern.
 #
 # Dependencies:
 #   call_anthropic_api() from llm_api_utils.R (TaxaFetch Imports)

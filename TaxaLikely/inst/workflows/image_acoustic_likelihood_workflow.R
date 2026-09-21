@@ -61,14 +61,12 @@ message(
 )
 
 # ==============================================================================
-# 1a. correct_training_bias() -- FIRST TIME WIRED AGAINST REAL DATA (Session 128)
+# 1a. correct_training_bias(), wired against real data
 # ==============================================================================
 # score_image_inat()'s output already carries n_observations per candidate (no
 # extra API call needed -- see TaxaMatch::score_image_inat()'s own docs).
-# tau = 1.0 default (Menon et al. 2020 logit adjustment, TaxaLikely/CLAUDE.md's
-# Session 127 note) -- run at the theoretical default first, per
-# ecosystem_docs/REENTRY_PROMPT_session127..., before considering any
-# empirical retune.
+# tau = 1.0 default (Menon et al. 2020 logit adjustment) -- run at the
+# theoretical default first, before considering any empirical retune.
 # ==============================================================================
 
 message("\n--- Step 1a: correct_training_bias() (tau = 1.0) ---")
@@ -141,8 +139,8 @@ message(sprintf(
 ))
 
 # ---- Grounding-truth check: does correction help, hurt, or change nothing? --
-# First real look at correct_training_bias() against real classifier output
-# (ecosystem_docs/REENTRY_PROMPT_session127...). Rebuilds the SAME pipeline
+# A real look at correct_training_bias() against real classifier output.
+# Rebuilds the SAME pipeline
 # using score_uncorrected in place of the corrected score_original, so the
 # only difference between the two likelihood objects is the bias correction
 # itself -- isolates its effect on the winning candidate per photo.

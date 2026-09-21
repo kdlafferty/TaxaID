@@ -22,16 +22,13 @@
 # unreviewed surface -- all three removed entirely after confirming no real
 # production callers remained; fetch_reference_sequences() did have 4 real
 # in-monorepo callers (2 vignettes, 2 diagnostics/ scripts), all updated to
-# call the current name directly first. See NAME_CHANGE_HISTORY.md.
+# call the current name directly first.
 #
 # Two more, calibrate_coverage_filter() and coverage_threshold(), are also not
-# covered here: ARCHIVED 2026-09-09 (moved intact, not deleted, to
-# archive_unused_coverage_calibration/ alongside their own test file and demo
-# workflow) after a real A/B test found a real accuracy win on the queries the
-# filter is willing to answer, but also a real, quantified cost (~19% of
-# species lose every training pair at the calibrated threshold; ~25% of real
-# evaluation queries end up unresolved) -- see TaxaLikely/CLAUDE.md's top
-# session note for the full reasoning.
+# covered here: removed after a real A/B test found a real accuracy win on
+# the queries the filter is willing to answer, but also a real, quantified
+# cost (~19% of species lose every training pair at the calibrated
+# threshold; ~25% of real evaluation queries end up unresolved).
 #
 # Inputs are pulled from three sources, cheapest first:
 #   1. Existing testthat fixtures (already validated, fully offline) -- the
@@ -326,9 +323,8 @@ trained_model_sqrt$H2_Lookup # Fundulus's tighter delta vs. Loose's looser one
 # unreferenced_candidates() -> assign_scores()
 # ==============================================================================
 # model_likelihoods()/compute_likelihoods() (the orchestrating wrapper that
-# used to chain these two functions into the bivariate-normal "similarity"
-# pathway) were archived 2026-09-09 (see TaxaLikely/CLAUDE.md's top session
-# note and archive_unused_likelihood_entrypoint/) -- a bulk usage audit found
+# chained these two functions into the bivariate-normal "similarity"
+# pathway) are retired -- a bulk usage audit found
 # zero real callers anywhere for either function; every real production
 # workflow reaches the bivariate-normal model via train_likelihood_model() +
 # evaluate_likelihoods() directly (Section 6 below), never through this
@@ -715,16 +711,14 @@ expanded[, c("taxon_name", "taxon_name_rank", "hypothesis_type", "score_likeliho
 
 
 # ==============================================================================
-# SECTION 8 -- Coverage quality calibration -- ARCHIVED 2026-09-09
-# calibrate_coverage_filter() / coverage_threshold() no longer exist in the
+# SECTION 8 -- Coverage quality calibration -- RETIRED
+# calibrate_coverage_filter() / coverage_threshold() are not part of the
 # live package. A real A/B test on full-scale PtConception 12S data found a
 # real H1 win-rate improvement on the queries the filter is willing to answer,
 # but also a real, quantified cost (~19% of species lose every training pair
 # at the calibrated threshold; ~25% of real evaluation queries end up
 # unresolved) -- the same hard-exclusion-on-an-imperfect-proxy pattern this
-# ecosystem has already relearned twice elsewhere. Moved intact (source +
-# tests + demo workflow) to archive_unused_coverage_calibration/. See
-# TaxaLikely/CLAUDE.md's top session note for the full reasoning.
+# ecosystem has already relearned twice elsewhere.
 # ==============================================================================
 
 
@@ -822,13 +816,12 @@ restored[, c("species", "is_restored", "hypothesis_type", "restoration_basis", "
 # ==============================================================================
 # SECTION 10 -- Match object cleaning and export
 # write_reference_fasta()
-# Match-object cleaning against flagged reference accessions (formerly
-# remove_flagged_references(), retired 2026-09-08) now lives in TaxaMatch --
+# Match-object cleaning against flagged reference accessions
+# lives in TaxaMatch --
 # see TaxaMatch::remove_incongruent_references()/flag_incongruent_references().
-# build_site_reference() (the former fetch -> audit -> export wrapper around
-# write_reference_fasta()) was archived 2026-09-09 (zero real callers anywhere
-# in the monorepo) -- see TaxaLikely/archive_unused_reference_wrappers/ and
-# TaxaLikely/CLAUDE.md's 2026-09-09 session note. To build a site-specific
+# build_site_reference() (a fetch -> audit -> export wrapper around
+# write_reference_fasta()) is retired (zero real callers anywhere
+# in the monorepo). To build a site-specific
 # reference the manual way: fetch_ncbi_reference_sequences() -> audit_barcode_
 # coverage() -> write_reference_fasta() (see Workflow 1).
 # ==============================================================================

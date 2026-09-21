@@ -206,8 +206,7 @@ The prompt object is passed to `call_api_pdf()` (not
 
 `screen_pdf_structure()` accepts `llm_fn = call_anthropic_api`.
 `build_pdf_extract_prompt()` does not need `llm_fn` — it builds the prompt.
-The caller decides which API function to use. See AI_CONTEXT.md for
-the `llm_fn` pattern rationale.
+The caller decides which API function to use.
 
 
 ---

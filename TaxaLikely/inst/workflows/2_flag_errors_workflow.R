@@ -16,7 +16,7 @@
 #   in TaxaMatch (corroborate_references_locally() + evaluate_reference_
 #   accessions()), not in TaxaLikely -- TaxaLikely::train_likelihood_model()
 #   trains on whatever reference_df/ref_matrix it's given, with no built-in
-#   screening step (retired 2026-09-08; see NAME_CHANGE_HISTORY.md).
+#   screening step.
 #
 # Input: reference_df from Workflow 1
 # Output: reference_df with bad accessions excluded, ready for Workflow 3

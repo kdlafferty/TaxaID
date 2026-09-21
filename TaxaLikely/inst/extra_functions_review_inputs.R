@@ -12,8 +12,8 @@
 #   - .audit_barcode_coverage_impl()   (R/coverage.R)  -- backs audit_barcode_coverage()
 #   - .check_score_ratio_monotonicity() (R/train.R)     -- runs inside train_likelihood_model()
 # (A former Section 2 covered .compute_reference_qc_stats(), which backed
-# flag_reference_errors() -- both retired 2026-09-08, see
-# NAME_CHANGE_HISTORY.md; that section is removed, not renumbered around.)
+# flag_reference_errors() -- both retired; that section is removed, not
+# renumbered around.)
 #
 # ON CALLING INTERNALS VIA `TaxaLikely:::` -- expected, not a bug:
 # All three are unexported (@noRd) implementation details, not part of the

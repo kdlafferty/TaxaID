@@ -150,9 +150,9 @@ message(sprintf(
 # output has `species` (full binomial) and `genus`, but NOT `taxon_name` /
 # `taxon_name_rank` -- the two columns TaxaLikely::unreferenced_candidates()
 # actually requires. This is the SAME cross-script contract gap already
-# documented for TaxaFetch's output in the five-package Gadus chain (see
-# LAYER1_WORKFLOWS.md Bug #12) -- derive via TaxaTools::create_taxon_names()
-# rather than assuming the upstream reader's shape already matches.
+# documented for TaxaFetch's output in the five-package Gadus chain --
+# derive via TaxaTools::create_taxon_names() rather than assuming the
+# upstream reader's shape already matches.
 #
 # `family` is filled the same way as score_image_workflow.R's Step 2 (BirdNET
 # output has no family column either) -- reusing fill_higher_ranks() gives
@@ -196,8 +196,7 @@ message(sprintf(
 ))
 
 # ==============================================================================
-# NOT DONE HERE: site table / spatial grouping (Phase 4 of
-# ecosystem_docs/REENTRY_PROMPT_session137_observation_pipeline_wiring.md)
+# NOT DONE HERE: site table / spatial grouping
 # ==============================================================================
 # read_birdnet_output()'s output carries NO site metadata at all -- only
 # `source_file` (which recording a detection window came from). Unlike the

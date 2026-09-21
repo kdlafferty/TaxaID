@@ -274,9 +274,9 @@ message(sprintf(
 
 message(
   "\nWorkflow complete. Continue with TaxaLikely's sequence Layer-1 ",
-  "script (build_sequence_matrix() -> train_likelihood_model() -> ",
-  "evaluate_likelihoods()) once it exists -- see ecosystem_docs/",
-  "REENTRY_PROMPT_session124_image_acoustic_workflows.md, Stage 2."
+  "workflow (build_sequence_matrix() -> train_likelihood_model() -> ",
+  "evaluate_likelihoods()), TaxaLikely/inst/workflows/",
+  "sequence_likelihood_workflow.R."
 )
 
 # ==============================================================================

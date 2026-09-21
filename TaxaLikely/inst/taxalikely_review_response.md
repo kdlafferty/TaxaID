@@ -151,16 +151,14 @@ the whole DECIPHER-whole-set-alignment, taxon-list-scoped approach they implemen
 Smithsonian-vouchered `Menidia` accessions flagged `"incongruent"` purely because `Menidia`'s
 family had no other representative on a real 6-genus test's taxon list) and a structural
 false-negative gap (a mislabeled accession's true contaminating identity can never be
-detected if its genus isn't on the caller's own taxon list) -- see
-`ecosystem_docs/REENTRY_PROMPT_blast_based_reference_quality.md` for the full record. The
+detected if its genus isn't on the caller's own taxon list). The
 superseding design (BLAST against a broad, unrestricted database instead of a taxon-list-scoped
-one) is **not yet implemented** anywhere -- that reentry doc's own status line says so
-explicitly ("NOT YET IMPLEMENTED... only the archival step... done"). The archived source and
-tests still exist on disk, deliberately excluded from the package build, at
-`TaxaLikely/archive_decipher_reference_audit/` (confirmed present, gitignored via a
-2026-08-07 `.gitignore` entry with its own explanatory comment).
+one) lives in `TaxaMatch::evaluate_reference_accessions()` /
+`TaxaMatch::corroborate_references_locally()`, not in this package. The archived source and
+tests are excluded from the package build and do not live under this package
+directory.
 
-**The only real, actionable gap this surfaces**: `TaxaLikely/CLAUDE.md`'s own "Reference
+**The only real, actionable gap this surfaces**: TaxaLikely's own "Reference
 database auditing (Module B-QC2)" Function Inventory section and several of its 2026-08-04
 through 2026-08-06 session notes still describe `audit_reference_database()`/
 `classify_reference_accessions()`/`repair_thin_evidence()` as live, current, shipped
@@ -220,12 +218,10 @@ not evaluated this session (out of scope; the workflow lives outside this monore
 **Addendum, 2026-09-09:** `build_site_reference()` itself was archived this date -- a usage
 audit found zero real callers anywhere in the monorepo (every real production workflow builds
 its reference database by calling `fetch_ncbi_reference_sequences()` -> `audit_barcode_
-coverage()` -> `write_reference_fasta()` directly, not through this wrapper). Moved intact
-(source + tests) to `archive_unused_reference_wrappers/`, not deleted, matching this file's
+coverage()` -> `write_reference_fasta()` directly, not through this wrapper). Retired
+(source + tests excluded from the package build), not deleted, matching this file's
 own `clean.R`/`remove_flagged_references.R` precedent for "retired but kept as a record."
 The original review answer above is left as-is, a record of what was true at review time.
-See `TaxaLikely/CLAUDE.md`'s 2026-09-09 top session note and `ecosystem_docs/
-NAME_CHANGE_HISTORY.md` for the full record.
 
 ### calibrate.R
 
@@ -247,8 +243,8 @@ NAME_CHANGE_HISTORY.md` for the full record.
   hundreds to thousands of unique values). Added as an explicit comment at both of the two
   `<= 10L` checks in this file (`calibrate_coverage_filter()` and `coverage_threshold()`).
 
-**Addendum, 2026-09-09 -- both functions ARCHIVED (moved intact, not deleted, to
-`archive_unused_coverage_calibration/`).** The answers above remain a correct record of
+**Addendum -- both functions are retired (source and tests excluded from the package
+build, not deleted).** The answers above remain a correct record of
 this file's design as reviewed; they are not retracted. What changed is the decision on
 whether to keep the mechanism live, made with real evidence in hand rather than at review
 time: a real A/B test on full-scale PtConception 12S data
@@ -262,9 +258,7 @@ zero->relabel fix; `TaxaFetch::filter_gbif_quality()`'s exclude_institution->
 flag_institution fix). The one piece of genuinely separable value (the Youden's-J
 diagnostic on whether coverage predicts pair quality at all) is a fairly standard
 statistic that doesn't need a dedicated exported function -- and the exclusion-oriented
-framing around it is the specific part already known not to be trusted. See
-`TaxaLikely/CLAUDE.md`'s top session note and `ecosystem_docs/NAME_CHANGE_HISTORY.md` for
-the full record.
+framing around it is the specific part already known not to be trusted.
 
 ### clean.R -> renamed remove_flagged_references.R
 
@@ -542,9 +536,9 @@ the full record.
 ### score_collapse.R
 
 - **"Line 194: this markdown is not in this package."** **Fixed -- real doc-clarity gap.**
-  `ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md` lives at the monorepo root,
-  not inside the installed package -- an installed-package-only user has no way to find it.
-  Reworded to state plainly it's development-repository context, not shipped documentation.
+  The design doc this cited lives outside the installed package -- an installed-package-only
+  user has no way to find it. Reworded to state plainly it's development-repository context,
+  not shipped documentation.
 - **"Line 341: does `taxaexpect_priors` depend on TaxaExpect?"** **Answered, confirmed by
   investigation (no).** `taxaexpect_priors` is a plain data frame parameter; this package has no
   dependency on TaxaExpect anywhere (confirmed: absent from `DESCRIPTION` entirely) and never
@@ -677,8 +671,7 @@ Not a data filter (no pair removed, no species dropped -- this is the objection 
 sigma^2/N)` with `tau^2` estimated per dimension, replacing the fixed `N/(N+prior_weight)`
 for the means only (`"fixed"` restores it; variances unchanged). Validated on the real
 GreatLakes workflow code path against Lamar: co-detections 593 -> 798, precision 0.805 ->
-0.818, 29 -> 41 of 61 species, none lost. See TaxaLikely/CLAUDE.md 2026-09-10 (later) and
-`ecosystem_docs/RECORD_h1_foreign_coverage_floor.md`.
+0.818, 29 -> 41 of 61 species, none lost.
 
 ### tansform.R [sic -- transform.R]
 
@@ -943,9 +936,9 @@ didn't: `compute_likelihoods()` (documented at the time as "the recommended high
 entry point") had zero real callers anywhere in the monorepo, and `model_likelihoods()`'s
 only caller outside `compute_likelihoods()` itself was its own required demonstration
 section in `inst/review_function_inputs.R` (structurally guaranteed for every exported
-function, not evidence of real adoption). Both were archived intact (moved, not deleted)
-to `archive_unused_likelihood_entrypoint/`, following the same convention this package
-already used for `archive_decipher_reference_audit/`.
+function, not evidence of real adoption). Both are retired, source and tests
+excluded from the package build, not deleted -- the same convention this package
+already uses for its other retired-but-recorded functions.
 
 `unreferenced_candidates()`/`assign_scores()` -- the two functions this pipeline's first
 two stages named, also covered by this review's checklist above -- were investigated at
