@@ -97,7 +97,10 @@ test_that("the committed template is what the generator currently produces", {
   gen <- file.path(root, "TaxaWizard", "inst", "tools", "build_workflow_template.R")
   committed <- file.path(root, "inst", "TaxaID_Workflow_Template.R")
   skip_if(!file.exists(committed), "template not found")
-  skip_on_cran()
+  # Deliberately no skip_on_cran(): these packages are never submitted to
+  # CRAN, and this is the file's strongest guard -- a bare testthat::test_file()
+  # run (no NOT_CRAN env var set) would otherwise silently skip it instead of
+  # running or failing, exactly the failure mode this test exists to prevent.
   if (!file.exists(gen)) {
     fail(paste0(
       "generator script not found at ", gen, " -- it ships inside ",
