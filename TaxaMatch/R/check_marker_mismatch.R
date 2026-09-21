@@ -6,7 +6,7 @@
 # Implements Question 2, item 4 of ecosystem_docs/REENTRY_PROMPT_
 # investigate_flagged_accession_prefilter_group_posthoc.md. Directly
 # grounded in a real, already-confirmed lesson from this ecosystem
-# (AY850362, GreatLakes 12S audit, 2026-08-06/07): a genuine 16S-vs-12S
+# (AY850362, GreatLakes 12S audit): a genuine 16S-vs-12S
 # MARKER mislabel, not a species mislabel -- what actually distinguished
 # it from a real species mislabel (e.g. MZ605481) was the record's own
 # annotated gene/product feature-table qualifier, NOT its taxonomic rank of
@@ -232,7 +232,7 @@
   # NCBI's own `GBSeq_primary-accession` (which is always version-free). Both
   # consumers key on the requested string -- `check_marker_mismatch()` does
   # `ann$accession == acc`, `.extract_feature_table_fallback()` the same --
-  # so a versioned request ("NC_012920.1") previously matched nothing and
+  # so a versioned request ("NC_012920.1") would otherwise match nothing and
   # silently read as "this record has no annotation": `marker_match = NA`
   # instead of `TRUE`, and a declined feature-table rescue reported
   # "no_annotation" instead of the real reason. This is the same
