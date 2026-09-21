@@ -1,5 +1,4 @@
-# Tests for kernel_budget_sensitivity() -- open decision #4 of
-# ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md.
+# Tests for kernel_budget_sensitivity().
 
 .sens_pool <- function() {
   set.seed(7)

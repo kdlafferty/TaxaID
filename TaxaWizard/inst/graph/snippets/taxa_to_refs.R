@@ -31,9 +31,9 @@ reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   taxa           = ref_families,
   barcode_term   = .barcode_term,
   priority_taxa  = if (length(.priority_species) > 0L) .priority_species else NULL,
-  # STOP rather than silently ship a degraded reference database. On
-  # 2026-09-14 seven genera had their NCBI count query fail transiently on a
-  # real PtConception run; each was dropped, taking its entire reference
+  # STOP rather than silently ship a degraded reference database. A real
+  # PtConception run had seven genera with an NCBI count query fail
+  # transiently; each was dropped, taking its entire reference
   # representation with it (78 sequences, 17 species), and the run continued
   # to a finished-looking result. Every production workflow sets "error" for
   # this reason. Use "warn" only when you have decided to accept a degraded

@@ -6,10 +6,9 @@ written for two audiences at once:
 
 1. **A human reviewer** deciding whether a flagged reference accession should be trusted,
    corrected, excluded, or left alone.
-2. **The future LLM second-look reviewer function** (see
-   `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md`) -- whatever that function's
-   final design, it needs to reproduce the same reasoning a careful human reviewer already does
-   by hand, using exactly the columns documented here. Read this guide before designing that
+2. **`review_flagged_accessions()`**, the LLM second-look reviewer function -- it
+   reproduces the same reasoning a careful human reviewer already does by hand, using
+   exactly the columns documented here. Read this guide before changing that
    function's prompt/context.
 
 If you only remember one thing: **`hierarchy_flag` alone is not a verdict.** It is a coarse
@@ -282,10 +281,10 @@ Two things `label_confidence` is deliberately NOT:
 `flag_incongruent_references()` joins these columns onto a match object so they travel
 with it for review, and `remove_incongruent_references()` reads `reference_action`.
 
-A likelihood-model covariate built on `label_confidence` was prototyped in 2026-09-02
-and **removed the same day** -- it is not part of this package. See
-`ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md` for
-what was measured and why it was dropped, before proposing it again.
+A likelihood-model covariate built on `label_confidence` is not part of this
+package: a measured evaluation found it did not earn its complexity, and it was
+removed before shipping. Before proposing it again, re-measure rather than
+assume the earlier result still holds.
 
 ### Recursive screening: `refine_reference_verdicts()`
 
@@ -355,15 +354,14 @@ a given accession.
   `TaxaLikely::evaluate_likelihoods()` -- only the binary `hierarchy_flag` blacklist decision is
   consumed downstream today. Real, agreed-on future work, not yet designed.
 - It does not attempt to distinguish "genuine mislabel" from "poor marker resolving power" for
-  you automatically -- that judgment call is exactly what this guide (and, eventually, the LLM
-  second-look reviewer) exists to make from the diagnostic columns above.
+  you automatically -- that judgment call is exactly what this guide (and the LLM
+  second-look reviewer, `review_flagged_accessions()`) exists to make from the diagnostic
+  columns above.
 
 ## See also
 
 - `evaluate_reference_accessions()`'s own roxygen (`@return`, `@section Identity diagnostics`,
   `@section Hybrid-labeled accessions`, `@section Species-resolved comparison partners`) for the
   exact mechanics behind each column.
-- `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md` for the LLM second-look
-  reviewer design questions this guide is meant to inform.
-- `TaxaMatch/CLAUDE.md`'s session notes (search `evaluate_reference_accessions`) for the full
-  real-data history behind each of the worked examples above.
+- `review_flagged_accessions()`'s own roxygen for the LLM second-look reviewer
+  design this guide is meant to inform.

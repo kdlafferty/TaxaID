@@ -4,7 +4,7 @@
 # slash-taxon stage of the pipeline, against a real (curated, small) Mugu
 # 12S fixture built by build_fast_fixture.R.
 #
-# 2026-09-05: Mugu sibling of run_fast_smoketest.R (PtConception 12S) and
+# Mugu sibling of run_fast_smoketest.R (PtConception 12S) and
 # run_greatlakes_fast_smoketest.R. Structurally different from both: Mugu's
 # real production checkpoints (MuguWilderFish_blast_r1_12s.rds, a LIST with
 # $posteriors/$consensus, not a flat match object) don't expose a single
@@ -19,7 +19,7 @@
 #
 # Fixture built specifically to guarantee Fundulus lima vs. F. parvipinnis
 # coverage -- the single most-debugged real Mugu edge case in this
-# ecosystem's history (see e.g. TaxaID/CLAUDE.md's Session 158/159 entries) --
+# ecosystem's history --
 # via always_include_taxa at fixture-build time.
 # ==============================================================================
 
@@ -53,7 +53,7 @@ t5 <- Sys.time()
 slashed <- TaxaAssign::add_slash_taxon(consensus)
 cat(sprintf("add_slash_taxon(): %.1fs\n", as.numeric(Sys.time() - t5, units = "secs")))
 
-cat("\n--- irreducible_consensus (the 2026-09-04 order-invariance regression indicator) ---\n")
+cat("\n--- irreducible_consensus (the order-invariance regression indicator) ---\n")
 print(table(slashed$irreducible_consensus, useNA = "ifany"))
 
 cat("\n--- Fundulus lima / F. parvipinnis observations (the motivating real edge case) ---\n")
@@ -70,7 +70,7 @@ print(slashed[slashed$observation_id %in% fundulus_obs_ids,
 # admitted BOTH as competing hypotheses upstream of this posterior_df, not on
 # anything this smoke test's own stages (consensus/slash-taxon) do -- this
 # test only confirms those stages handle whatever came in without erroring
-# or silently dropping the observation (the exact 2026-09-04 regression
+# or silently dropping the observation (the exact regression
 # class add_slash_taxon()'s order-invariance fix targets).
 
 cat(sprintf("\nTotal wall time: %.1fs\n", as.numeric(Sys.time() - t0, units = "secs")))

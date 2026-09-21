@@ -945,11 +945,15 @@ older_than_days = NULL, dry_run = FALSE)`: `taxafetch_clear_cache()`,
 default -- pass the same directory you gave the caching function).
 TaxaMatch has none: its cache is a few files holding many TTL'd rows
 each, not one file per key, so deleting by file would discard live
-verdicts. `TaxaLikely::taxalikely_evict_unreachable_cache()` is
-narrower and safer than a full clear: it removes only reference-cache
-entries that no current call could ever hit again (from an old cache-key
-scheme), defaults to a dry run, and leaves large files in place for you
-to confirm by hand. `TaxaTools::cache_ok(path, inputs)` checks a single
+verdicts. `fetch_ncbi_reference_sequences(evict_unreachable_cache =
+TRUE)` (the default) is narrower and safer than a full clear: on every
+write it deletes that taxon's own cache files that no current cache key
+could ever produce again -- generations superseded by an earlier key
+widening -- leaves anything over 5 MB in place for you to remove by
+hand, and reports what it removed. It runs automatically on every fetch
+rather than as a function you call yourself; `taxalikely_clear_cache()`
+above is the blunt, whole-directory alternative when you want a full
+clear instead. `TaxaTools::cache_ok(path, inputs)` checks a single
 cached file against the files it was derived from and reports it stale
 if any input is newer -- use it in your own scripts around a checkpoint
 `.rds`, not around a remote query (that has no local file to compare
@@ -1107,15 +1111,15 @@ The TaxaID ecosystem produces outputs at each stage of the pipeline:
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 48                 | 23         | Yes      |
-| TaxaFetch   | 32                 | 25         | Yes      |
-| TaxaHabitat | 17                 | 7          | Yes      |
-| TaxaMatch   | 32                 | 21         | Yes      |
-| TaxaLikely  | 32                 | 24         | Yes      |
-| TaxaExpect  | 15                 | 12         | Yes      |
-| TaxaAssign  | 16                 | 16         | Yes      |
-| TaxaFlag    | 11                 | 10         | Yes      |
-| TaxaWizard  | 5                  | 4          | No       |
+| TaxaTools   | 56                 | 27         | Yes      |
+| TaxaFetch   | 30                 | 26         | Yes      |
+| TaxaHabitat | 18                 | 12         | Yes      |
+| TaxaMatch   | 31                 | 22         | Yes      |
+| TaxaLikely  | 31                 | 30         | Yes      |
+| TaxaExpect  | 16                 | 16         | Yes      |
+| TaxaAssign  | 15                 | 17         | Yes      |
+| TaxaFlag    | 11                 | 13         | Yes      |
+| TaxaWizard  | 9                  | 10         | No       |
 
 # U.S. Geological Survey Disclaimer
 

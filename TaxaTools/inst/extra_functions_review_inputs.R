@@ -1,12 +1,12 @@
 # ==============================================================================
 # extra_functions_review_inputs.R
-# TaxaTools -- small, ready-to-run inputs for functions written AFTER this
-# package's formal code review (reviewed 2026-06-27)
+# TaxaTools -- small, ready-to-run inputs for functions written after this
+# package's formal code review
 #
 # PURPOSE
 # -------
 # TaxaTools/inst/taxatools_review.Rmd + taxatools_review_response.md record the
-# 2026-06-27 code + domain review. Six functions were written after that
+# code + domain review. Six functions were written after that
 # review closed and so have never had a reviewer-facing runnable example:
 #   - .last_classification_rank()  (internal, R/verify_taxon_names.R)
 #   - .pts_to_wkt() / .wkt_to_pts() (internal, R/define_search_polygon.R)
@@ -27,9 +27,8 @@
 # ONE FUNCTION -- define_search_polygon() -- CANNOT BE EXERCISED HERE AT ALL.
 # It is a genuine interactive Shiny gadget (miniUI + leaflet map) that opens a
 # live viewer pane and blocks waiting for a real mouse click on Done/Cancel.
-# See TaxaTools/CLAUDE.md's "Known R Footguns" entry on dialogViewer() vs.
-# paneViewer() for this exact gadget's own documented interactive-viewer
-# quirk. Its section below deliberately does NOT fabricate a harness --  it
+# dialogViewer() vs. paneViewer() have a documented interactive-viewer
+# quirk for this exact gadget. Its section below deliberately does NOT fabricate a harness --  it
 # states the limitation plainly and points the reviewer at calling the
 # function directly in their own interactive RStudio session instead.
 #
@@ -38,8 +37,8 @@
 #      .pts_to_wkt()/.wkt_to_pts() inputs are lifted directly from
 #      tests/testthat/test-define_search_polygon.R.
 #   2. Existing roxygen @examples -- escalate_taxonomic_rank()'s own \dontrun
-#      example (Rhacochilus -> family Embiotocidae) is a real, previously
-#      live-verified case (see TaxaTools/CLAUDE.md's Session 137 note); this
+#      example (Rhacochilus -> family Embiotocidae) is a real,
+#      live-verified case; this
 #      file uses the same real-genus convention this ecosystem's own
 #      TaxaLikely/inst/review_function_inputs.R establishes (small, common,
 #      well-referenced genera -- Fundulus), rather than re-deriving a new
@@ -142,8 +141,8 @@ identical(round(parsed_pts$lat, 6), square_lat)   # TRUE
 # TO EXERCISE THIS FUNCTION FOR REAL: run the line below directly in your own
 # interactive RStudio session (not via Rscript, not via this file's own
 # batch execution). It uses the default viewer, shiny::paneViewer(minHeight =
-# 500) -- deliberately NOT shiny::dialogViewer(), which TaxaTools/CLAUDE.md's
-# own "Known R Footguns" section documents as silently swallowing this exact
+# 500) -- deliberately NOT shiny::dialogViewer(), which
+# silently swallows this exact
 # gadget's Done-button click on at least one real RStudio setup (a Leaflet/
 # embedded-dialog-webview interaction problem, not a bug in this function).
 # paneViewer() (the default) and browserViewer() are both confirmed working;

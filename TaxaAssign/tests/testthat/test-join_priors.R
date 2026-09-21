@@ -489,7 +489,6 @@ test_that("join_priors reports how many habitat-agnostic fallback rows were appl
 # sweep). Now: evidence-derived rows are never promoted; modelled rows are
 # promoted only on a genuine habitat mismatch (observed_in_habitat FALSE);
 # priors lacking observed_in_habitat entirely keep the old blanket behavior.
-# See ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md.
 
 .make_promo_lik <- function(taxa) {
   tibble(

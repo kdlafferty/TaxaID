@@ -1416,7 +1416,6 @@ test_that("evaluate_reference_accessions() validates incongruent_ttl_days", {
 
 # ------------------------------------------------------------------------------
 # Mechanism 2: max_query_len hard submission cap -- "not_evaluated_oversized"
-# (ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md)
 # ------------------------------------------------------------------------------
 
 test_that("evaluate_reference_accessions(max_query_len=) defers an unrescuable over-length query as not_evaluated_oversized, never BLASTed", {

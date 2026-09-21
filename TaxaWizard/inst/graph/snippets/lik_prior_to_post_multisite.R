@@ -1,6 +1,6 @@
 # Edge: likelihoods + priors + site_table -> posteriors (multi-site)
-# Source: TaxaAssign join_priors() (multi-site data-frame "site" path,
-#   TaxaAssign Session 138) + combine_multisite_priors() + compute_posterior()
+# Source: TaxaAssign join_priors() (multi-site data-frame "site" path)
+#   + combine_multisite_priors() + compute_posterior()
 # NOTE: {{backbone_id}} is required -- no default. Must match whichever
 #   taxonomic backbone the input taxonomy was verified against (e.g. 11
 #   for GBIF, 4 for NCBI).

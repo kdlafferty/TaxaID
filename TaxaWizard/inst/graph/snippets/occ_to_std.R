@@ -24,11 +24,11 @@ unique_taxa <- unique_taxa[!is.na(unique_taxa) & nzchar(unique_taxa)]
 # Step 2: Build the habitat lookup via the CACHED one-call path
 # (TaxaHabitat::build_habitat_lookup()), not the uncached
 # build_habitat_prompt() -> {{llm_fn}} loop -> parse_hierarchical_habitat_response()
-# chain. All six production workflows moved to this on 2026-09-10: a taxon
+# chain. All six production workflows use this: a taxon
 # already classified under this scheme is served from cache_dir instead of
 # re-asked. Uncached, a habitat verdict could flip between runs, moving a
 # species' records in or out of the site's habitat stratum and its kernel
-# prior by orders of magnitude -- the 2026-09-10 GreatLakes run lost 0.05 of
+# prior by orders of magnitude -- a real GreatLakes run lost 0.05 of
 # Lamar precision to exactly this. Same design as review_assignments()'s
 # cache. Force fresh verdicts with TaxaHabitat::taxahabitat_clear_cache(<cache_dir>).
 habitat_lookup <- TaxaHabitat::build_habitat_lookup(

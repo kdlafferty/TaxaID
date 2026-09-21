@@ -4,14 +4,14 @@
 # consensus -> slash-taxon stage of the pipeline, against a real (curated,
 # small) GreatLakes fixture built by build_fast_fixture.R.
 #
-# 2026-09-05: GreatLakes sibling of run_fast_smoketest.R (PtConception 12S).
+# GreatLakes sibling of run_fast_smoketest.R (PtConception 12S).
 # Same design and same caveats -- starts AFTER reference-quality screening
 # (this checkpoint doesn't even carry those columns -- see the fixture build
 # log, "reference_action"/"hierarchy_flag" not present) and stops before
 # priors/review_assignments() for the same reasons documented there. Built
 # specifically to guarantee Perca flavescens (Yellow Perch) coverage -- a
-# taxon this ecosystem has repeatedly had to debug (walleye/perch resolution,
-# see TaxaID/CLAUDE.md's 2026-08-20/26 entries) -- via
+# taxon this ecosystem has repeatedly had to debug (walleye/perch resolution)
+# -- via
 # always_include_taxa = "Perca flavescens" at fixture-build time.
 # ==============================================================================
 
@@ -69,7 +69,7 @@ t5 <- Sys.time()
 slashed <- TaxaAssign::add_slash_taxon(consensus)
 cat(sprintf("add_slash_taxon(): %.1fs\n", as.numeric(Sys.time() - t5, units = "secs")))
 
-cat("\n--- irreducible_consensus (the 2026-09-04 order-invariance regression indicator) ---\n")
+cat("\n--- irreducible_consensus (the order-invariance regression indicator) ---\n")
 print(table(slashed$irreducible_consensus, useNA = "ifany"))
 
 cat("\n--- Perca flavescens observations (regression indicator for the walleye/perch resolution history) ---\n")
@@ -85,6 +85,6 @@ print(slashed[slashed$observation_id %in% perca_obs_ids,
 # "Notes on warnings" section below and run_fast_smoketest.R's own header).
 # A real prior (occurrence-based, favoring the locally-established species)
 # would be needed to see this resolve the way real GreatLakes production runs
-# do (see TaxaID/CLAUDE.md's 2026-08-20/26 entries on yellow perch/walleye).
+# do.
 
 cat(sprintf("\nTotal wall time: %.1fs\n", as.numeric(Sys.time() - t0, units = "secs")))

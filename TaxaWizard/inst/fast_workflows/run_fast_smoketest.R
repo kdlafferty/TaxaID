@@ -4,13 +4,12 @@
 # consensus -> slash-taxon stage of the pipeline, against a real (curated,
 # small) fixture built by build_fast_fixture.R.
 #
-# 2026-09-05: first cut of the "fast test workflow" the user asked for. This
+# This
 # is deliberately narrower than a full production workflow -- it starts
 # AFTER reference-quality screening (already baked into the fixture) and
 # STOPS before priors/review_assignments(), because:
 #   - no cached real priors (TaxaExpect kernel/GLMM output) checkpoint exists
-#     for this dataset yet (checked 2026-09-05 -- see the CLAUDE.md note this
-#     script's own header points at). A real prior build needs a live GBIF
+#     for this dataset yet. A real prior build needs a live GBIF
 #     fetch, which defeats the point of a FAST test.
 #   - review_assignments() makes real, billed LLM calls -- never something
 #     to run automatically inside a smoke test.
@@ -18,8 +17,8 @@
 # What IS exercised here, on real data, in well under a minute:
 #   evaluate_likelihoods() -> a PLACEHOLDER uniform prior (NOT real ecology --
 #   see the loud warning below) -> compute_posterior() -> posterior_consensus()
-#   -> add_slash_taxon(). This is exactly the stage where the 2026-09-04
-#   order-invariance irreducibility bug lived (TaxaAssign::add_slash_taxon()),
+#   -> add_slash_taxon(). This is exactly the stage where an
+#   order-invariance irreducibility bug once lived (TaxaAssign::add_slash_taxon()),
 #   so this script's own output (irreducible_consensus counts) is a
 #   reasonable regression indicator for that class of bug even without real
 #   priors.
@@ -88,8 +87,7 @@ t4 <- Sys.time()
 # not gracefully handle a zero-rank-columns input (errors deep inside
 # .find_lca() with "subscript out of bounds" rather than falling back to the
 # genus/species-from-binomial derivation its own docs describe -- found
-# 2026-09-05 running this exact script; worth a look in the critical-review
-# pass, not fixed here). Real single-marker workflows hit this identically
+# running this exact script; a real gap, not fixed here). Real single-marker workflows hit this identically
 # and already pass rank_system explicitly for the same reason.
 consensus <- TaxaAssign::posterior_consensus(posterior_df, rank_system = c("genus", "species"))
 cat(sprintf("posterior_consensus(): %d observation(s), %.1fs\n",
@@ -100,7 +98,7 @@ t5 <- Sys.time()
 slashed <- TaxaAssign::add_slash_taxon(consensus)
 cat(sprintf("add_slash_taxon(): %.1fs\n", as.numeric(Sys.time() - t5, units = "secs")))
 
-cat("\n--- irreducible_consensus (the 2026-09-04 order-invariance regression indicator) ---\n")
+cat("\n--- irreducible_consensus (the order-invariance regression indicator) ---\n")
 print(table(slashed$irreducible_consensus, useNA = "ifany"))
 
 cat(sprintf("\nTotal wall time: %.1fs\n", as.numeric(Sys.time() - t0, units = "secs")))

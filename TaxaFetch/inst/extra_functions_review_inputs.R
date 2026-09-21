@@ -1,12 +1,12 @@
 # ==============================================================================
 # extra_functions_review_inputs.R
-# TaxaFetch -- small, ready-to-run inputs for the 10 functions written AFTER
-# this package's formal code review (reviewed 2026-07-09)
+# TaxaFetch -- small, ready-to-run inputs for the 10 functions written after
+# this package's formal code review
 #
 # PURPOSE
 # -------
 # A companion to review_function_inputs.R (which covers every function that
-# existed at the time of the 2026-07-09 review). A later audit found 10
+# existed at the time of that review). A later audit found 10
 # functions written after that review that have never had a reviewer-facing
 # runnable example: 7 internal (@noRd) helpers and 3 exported functions. This
 # file gives each one its own small section, in the same style/convention as
@@ -40,8 +40,8 @@
 #                    access (here: INAT_API_TOKEN)
 #
 # Two of the ten functions (check_geographic_outliers(), fetch_inat_
-# occurrences()) are documented in this package's CLAUDE.md as making real,
-# small NETWORK calls (GBIF/CoordinateCleaner and iNaturalist respectively).
+# occurrences()) make real, small NETWORK calls (GBIF/CoordinateCleaner and
+# iNaturalist respectively).
 # Both sections below use a small/fast real-taxon query, matching this
 # package's established convention (e.g. review_function_inputs.R's
 # fetch_gbif_occurrences() section, Section 1 there).
@@ -218,9 +218,8 @@ inat_occ_result
 # Fixture pattern reused from tests/testthat/test-filter_gbif_quality.R's own
 # institution tests: pulls a REAL institution coordinate live from
 # CoordinateCleaner's own bundled reference data (not a guessed/hand-typed
-# value -- this package's own Known Footguns/session notes record that
-# hand-replicating CoordinateCleaner's reference values previously produced
-# conflicting numbers). Purely offline: CoordinateCleaner::institutions is
+# value -- hand-replicating CoordinateCleaner's reference values is a known
+# way to get conflicting numbers). Purely offline: CoordinateCleaner::institutions is
 # bundled data, no network call.
 real_institution_row <- CoordinateCleaner::institutions[
   !is.na(CoordinateCleaner::institutions$decimalLongitude) &

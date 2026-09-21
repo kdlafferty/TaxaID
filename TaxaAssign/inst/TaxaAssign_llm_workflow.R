@@ -201,7 +201,7 @@ result <- assign_taxa_llm(
   unreferenced_taxa = unreferenced_species,
   taxa_per_call = 15, # taxa per LLM call (batches large taxon lists);
   # 30 truncated 4/5 real batches at call_api()'s default
-  # max_tokens=3000 (Session 145) -- see assign_taxa_llm()'s docs
+  # max_tokens=3000 -- see assign_taxa_llm()'s docs
   pause_seconds = 1, # delay between calls (rate limit buffer)
   prior_phi = c(high = 50, moderate = 10, low = 3),
   # Beta concentration by information_quality:
@@ -304,7 +304,7 @@ cat("Elapsed:", round(difftime(Sys.time(), t0, units = "secs"), 2), "sec\n")
 # Jonah Ventures pipeline):
 #   species >= 98%, genus >= 95%, family >= 90%, phylum >= 85%
 # (the 85% tier is phylum-level in the literature it's corroborated by, not
-# order-level -- corrected 2026-07-20, see score_consensus()'s own roxygen)
+# order-level -- see score_consensus()'s own roxygen)
 #
 # max_gap = 1: all hits within 1% of the top score contribute to the LCA.
 #   This is the "top-hit tie-breaking" logic used by most BLAST-LCA pipelines.

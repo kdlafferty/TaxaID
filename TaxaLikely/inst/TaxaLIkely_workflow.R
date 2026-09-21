@@ -51,9 +51,7 @@ toy_matrix <- data.frame(
 )
 rm(.seqs, .sp, .gen, .pm, idx)
 
-# NOTE: this stage previously included an "A1. Flag reference errors" step
-# (flag_reference_errors()), retired 2026-09-08 -- see NAME_CHANGE_HISTORY.md.
-# Reference-quality screening now lives in TaxaMatch
+# NOTE: reference-quality screening lives in TaxaMatch
 # (corroborate_references_locally() + evaluate_reference_accessions()), see
 # inst/workflows/2_flag_errors_workflow.R for the current pattern.
 
@@ -125,7 +123,7 @@ print(filtered)
 
 match_obj <- readRDS("~/My Drive/Rscripts/projects/TaxaID/TaxaMatch/inst/match_obj.rds")
 
-# Normalize legacy column names (pre-Session 79/99 saved files)
+# Normalize legacy column names (older saved files)
 if (!"observation_id" %in% names(match_obj)) {
   old <- intersect(c("sample_id", "esvid", "esv_id", "asvid", "asv_id"), names(match_obj))[1]
   if (!is.na(old)) {

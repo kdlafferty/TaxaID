@@ -29,8 +29,8 @@ match_df <- TaxaMatch::standardize_match_data(
 
 match_df <- TaxaMatch::filter_redundant_hypotheses(match_df)
 
-# Optional: BLAST-based reference-accession quality screening (2026-08-08
-# audit's recommended pre-training screen). For each reference accession a
+# Optional: BLAST-based reference-accession quality screening (the
+# recommended pre-training screen). For each reference accession a
 # hypothesis in match_df is based on, checks whether independent GenBank
 # evidence agrees taxonomically -- flags likely mislabeled/contaminated
 # reference submissions (hierarchy_flag = "incongruent") without discarding
@@ -51,8 +51,8 @@ if (isTRUE({{screen_reference_accessions}})) {
     " of ", nrow(match_df), " match rows rest on an incongruent reference accession"
   )
 
-  # Optional: LLM second-look review of flagged/borderline accessions (2026-08-13,
-  # TaxaMatch::review_flagged_accessions()). A raw "incongruent" verdict alone can't
+  # Optional: LLM second-look review of flagged/borderline accessions
+  # (TaxaMatch::review_flagged_accessions()). A raw "incongruent" verdict alone can't
   # distinguish a genuine mislabel from a correctly-labeled record with poor marker
   # resolving power or thin corroborating coverage -- this gives every flagged
   # accession a real LLM second look before anything is ever removed. Never

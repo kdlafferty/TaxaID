@@ -247,8 +247,8 @@ foreign pair above it is treated as having no foreign comparison, exactly as a
 reference with no foreign pair at all). `evaluate_likelihoods()` reads the
 floor the match object was built under and warns if it is lower than the
 model's. Validated on the real GreatLakes 12S workflow against the independent
-Lamar species list (2026-09-10): species co-detections 593 to 798, precision
-0.805 to 0.818, 29 to 41 of 61 species recovered, none lost.
+Lamar species list, an out-of-sample check: species co-detections 593 to 798,
+precision 0.805 to 0.818, 29 to 41 of 61 species recovered, none lost.
 
 ---
 
@@ -704,9 +704,10 @@ for classifier outputs (Platt 1999): a low-parameter map from the model's own sc
 the observed inference scale, estimated on held-out data and applied without
 re-estimating the underlying model. Two properties make the anchor set trustworthy.
 First, it is *non-circular*: we use only observations in genera where independent
-occurrence information confirms exactly one locally plausible species
-(`identify_confident_observations()`), so the true species is known without reference
-to the match scores or the likelihood model being calibrated. Second, calibration is
+occurrence information confirms exactly one locally plausible species -- the internal
+step of `calibrate_query_noise()` that builds this anchor set -- so the true species is
+known without reference to the match scores or the likelihood model being calibrated.
+Second, calibration is
 estimated in bulk and then *frozen* into the model, so scoring a single new observation
 later requires no re-calibration.
 
@@ -1009,7 +1010,7 @@ the boundary (Section 14). When the query scores originate from a different scor
 than the reference matrix (BLAST, or an externally supplied match table, rather than the
 training MSA), `calibrate_query_noise()` performs the post-hoc calibration of Section 11A,
 recalibrating the $H_1$ locations to the inference-time score scale against the non-circular
-anchor set returned by `identify_confident_observations()` — a constant additive offset by
+anchor set its internal `identify_confident_observations()` step returns — a constant additive offset by
 default, or the nested affine map (`offset_form = "linear"`) that estimates, rather than
 assumes, how much per-species location structure transfers. Finally, `evaluate_likelihoods()`
 applies the calibrated generative model (Section 11) together with the truncation correction

@@ -3,10 +3,10 @@
 #
 # The template is DERIVED, not written by hand.
 #
-# WHY. TaxaID has had two workflow templates and both sat unrunnable for months
-# while looking maintained: the package-level one called seven functions that
-# had been archived (retired 2026-09-15), and the canonical one fell behind on
-# four subsystems (repaired 2026-09-17). A hand-written template rots silently
+# WHY. This monorepo has had two workflow templates, and both have sat
+# unrunnable for months while looking maintained: the package-level one
+# called seven functions that are retired, and the canonical one fell
+# behind on four subsystems. A hand-written template rots silently
 # because nothing compares it to the code it claims to demonstrate.
 #
 # So this one is assembled from the workflow graph's own snippets -- the same

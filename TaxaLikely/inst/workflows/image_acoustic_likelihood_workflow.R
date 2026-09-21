@@ -61,14 +61,12 @@ message(
 )
 
 # ==============================================================================
-# 1a. correct_training_bias() -- FIRST TIME WIRED AGAINST REAL DATA (Session 128)
+# 1a. correct_training_bias(), wired against real data
 # ==============================================================================
 # score_image_inat()'s output already carries n_observations per candidate (no
 # extra API call needed -- see TaxaMatch::score_image_inat()'s own docs).
-# tau = 1.0 default (Menon et al. 2020 logit adjustment, TaxaLikely/CLAUDE.md's
-# Session 127 note) -- run at the theoretical default first, per
-# ecosystem_docs/REENTRY_PROMPT_session127..., before considering any
-# empirical retune.
+# tau = 1.0 default (Menon et al. 2020 logit adjustment) -- run at the
+# theoretical default first, before considering any empirical retune.
 # ==============================================================================
 
 message("\n--- Step 1a: correct_training_bias() (tau = 1.0) ---")
@@ -141,8 +139,8 @@ message(sprintf(
 ))
 
 # ---- Grounding-truth check: does correction help, hurt, or change nothing? --
-# First real look at correct_training_bias() against real classifier output
-# (ecosystem_docs/REENTRY_PROMPT_session127...). Rebuilds the SAME pipeline
+# A real look at correct_training_bias() against real classifier output.
+# Rebuilds the SAME pipeline
 # using score_uncorrected in place of the corrected score_original, so the
 # only difference between the two likelihood objects is the bias correction
 # itself -- isolates its effect on the winning candidate per photo.
@@ -271,12 +269,12 @@ message(
 )
 
 # ==============================================================================
-# 2a. JOIN n_recordings + correct_training_bias() (Session 128)
+# 2a. JOIN n_recordings + correct_training_bias()
 # ==============================================================================
-# The join Session 125's reentry prompt flagged as never built: BirdNET has no
-# training-count field of its own, so audit_acoustic_coverage(xc_recordings =
-# TRUE)'s real Xeno-canto n_recordings census (fixed to the v3 API Session 125)
-# is queried for the species actually present in this match object and joined
+# BirdNET has no training-count field of its own, so
+# audit_acoustic_coverage(xc_recordings = TRUE)'s real Xeno-canto
+# n_recordings census is queried for the species actually present in this
+# match object and joined
 # back on by species. reference_species is passed as the SAME set of species
 # (not the full BirdNET species list) -- here we only need the n_recordings
 # column, not the in_reference/unreferenced coverage columns, which are a
@@ -315,7 +313,7 @@ message(sprintf(
 # ==============================================================================
 # Identical call shape to Section 1 (IMAGE) -- rank_system explicit, same
 # three columns TaxaMatch's script populated. This is the exact "acoustic and
-# image use the same pathway" property TaxaLikely/CLAUDE.md already documents.
+# image use the same pathway" property.
 # ==============================================================================
 
 message("\n--- Step 2b: unreferenced_candidates() ---")

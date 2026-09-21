@@ -1,7 +1,7 @@
 # ==============================================================================
 # extra_functions_review_inputs.R
-# TaxaMatch -- small, ready-to-run inputs for 58 functions added AFTER the
-# package's formal code review (reviewed 2026-07-13; see
+# TaxaMatch -- small, ready-to-run inputs for 58 functions added after the
+# package's formal code review (see
 # inst/taxamatch_review.Rmd / inst/taxamatch_review_response.md)
 #
 # PURPOSE
@@ -12,20 +12,17 @@
 # rather than reverse-engineered from source. Modeled on
 # TaxaLikely/inst/review_function_inputs.R (same monorepo, same convention).
 #
-#   Cluster 1 -- utils_shared.R consolidation (2026-07-20): internal helpers
+#   Cluster 1 -- utils_shared.R consolidation: internal helpers
 #     shared across the read_*()/blast_sequences()/score_image_inat() ingest
 #     functions, plus read_speciesnet_output() (the one exported function
 #     from this cluster).
-#   Cluster 2 -- reference-quality / accession-investigation feature
-#     (2026-08-03 through 2026-08-11): evaluate_reference_accessions(),
+#   Cluster 2 -- reference-quality / accession-investigation feature:
+#     evaluate_reference_accessions(),
 #     investigate_flagged_accession(s)(), check_marker_mismatch(), and the
 #     large internal machinery behind them (BLAST-based hierarchy-congruence
-#     scoring, persistent caches, hybrid-labeled-accession handling). See
-#     TaxaMatch/CLAUDE.md's many session notes on these three functions for
-#     the full design history.
-#   Cluster 3 -- LLM second-look reviewer (2026-08-13): review_flagged_
-#     accessions(), implementing Question 2 of ecosystem_docs/REENTRY_PROMPT_
-#     flagged_accession_second_look.md, plus the internal prompt-building/
+#     scoring, persistent caches, hybrid-labeled-accession handling).
+#   Cluster 3 -- LLM second-look reviewer: review_flagged_
+#     accessions(), plus the internal prompt-building/
 #     retry/parsing machinery behind it. Also demonstrates
 #     best_disagreeing_taxon, a new output column on
 #     evaluate_reference_accessions()/.compute_hierarchy_congruence() shipped
@@ -78,9 +75,8 @@
 # NCBI BLAST job and poll for results -- a single call is realistically
 # 30-90+ seconds (submission + polling + an 11-second inter-batch NCBI
 # rate-limit sleep baked into blast_sequences() itself), and
-# TaxaMatch/CLAUDE.md documents a real NCBI server-side CPU-budget rejection
-# this ecosystem's own production use hit on a large real run the same week
-# these functions were written. Making this file's correctness depend on
+# this ecosystem's own production use has hit a real NCBI server-side
+# CPU-budget rejection on a large real run. Making this file's correctness depend on
 # NCBI's BLAST queue being fast and uncongested at review time would make it
 # fragile and slow to run for no real benefit -- the reviewer's goal here is
 # to see each function's real call SHAPE and output schema, which a mock
@@ -115,7 +111,7 @@ library(testthat) # local_mocked_bindings() -- OFFLINE(mock) sections only
 
 
 # ==============================================================================
-# CLUSTER 1 -- utils_shared.R consolidation (2026-07-20)
+# CLUSTER 1 -- utils_shared.R consolidation
 # Internal helpers shared across the read_*()/blast_sequences()/
 # score_image_inat() ingest functions, plus read_speciesnet_output().
 # ==============================================================================
@@ -255,9 +251,8 @@ unlink(speciesnet_json)
 
 # ==============================================================================
 # CLUSTER 2 -- reference-quality / accession-investigation feature
-# (2026-08-03 through 2026-08-11; see TaxaMatch/CLAUDE.md's many session
-# notes on evaluate_reference_accessions() / investigate_flagged_accession()
-# / check_marker_mismatch())
+# evaluate_reference_accessions() / investigate_flagged_accession()
+# / check_marker_mismatch()
 # ==============================================================================
 
 ## ---- .valid_reference_length() ---- OFFLINE -------------------------------------
@@ -316,7 +311,7 @@ congruence_out <- TaxaMatch:::.compute_hierarchy_congruence(
   top_n = 5L, min_congruent_rank = "family", submission_window = 5L
 )
 congruence_out
-# best_disagreeing_taxon (new 2026-08-13, Cluster 3): the listed species of
+# best_disagreeing_taxon (Cluster 3): the listed species of
 # the SAME highest-identity disagreeing hit best_disagreeing_pident is
 # already computed from -- here, HIT_D's "Sparus aurata" -- so a reviewer
 # (human or the new LLM second-look reviewer below) sees WHAT disagreed, not
@@ -325,7 +320,7 @@ congruence_out[, c("best_disagreeing_pident", "best_disagreeing_taxon")]
 
 ## ---- .blast_server_rejected() ---- OFFLINE ----------------------------------------
 # Real captured NCBI server-side CPU-budget rejection message text
-# (2026-08-09; see this function's own roxygen for the full incident) --
+# (see this function's own roxygen for the full incident) --
 # not a synthetic guess.
 real_rejection_msg <- paste0(
   "<Iteration_message>[blastsrv4.REAL]: Error: CPU usage limit was ",
@@ -710,9 +705,8 @@ TaxaMatch:::.lookup_investigate_cache(
 
 
 # ==============================================================================
-# CLUSTER 3 -- LLM second-look reviewer (2026-08-13)
-# review_flagged_accessions(), implementing Question 2 of ecosystem_docs/
-# REENTRY_PROMPT_flagged_accession_second_look.md. Unlike Cluster 2, this
+# CLUSTER 3 -- LLM second-look reviewer
+# review_flagged_accessions(). Unlike Cluster 2, this
 # cluster makes NO network/NCBI/BLAST call of any kind -- every section below
 # passes a local stub function as `llm_fn` (a real, first-class parameter,
 # not a workaround; see TaxaFlag::review_assignments()'s identical

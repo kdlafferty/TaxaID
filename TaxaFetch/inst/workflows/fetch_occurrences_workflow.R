@@ -244,10 +244,9 @@ message(sprintf("  %d occurrence records retained (Variant A).", nrow(all_occurr
 #      gbif_std's columns, and stacked alongside it.
 #
 # TODO: sampling_group assignment (grouping taxa for per-group modelling,
-#   e.g. macroalgae vs. zooplankton vs. fish) is being redesigned as a
-#   reusable classification step -- separate design thread, not part of this
-#   file. For now the broad-marker path stops after stack_occurrences().
-#   See memory/project_workflow_propagation_list.md for status.
+#   e.g. macroalgae vs. zooplankton vs. fish) is a reusable classification
+#   step -- separate design thread, not part of this file. For now the
+#   broad-marker path stops after stack_occurrences().
 
 # gbif_occurrences_b <- raw_gbif |>
 #   TaxaFetch::filter_gbif_quality(

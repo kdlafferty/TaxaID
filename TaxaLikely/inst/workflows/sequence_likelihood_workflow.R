@@ -162,13 +162,12 @@ ref_matrix <- TaxaLikely::build_sequence_matrix(
 message(sprintf("  %d pairwise comparison(s) built.", nrow(ref_matrix)))
 
 # ==============================================================================
-# 3.  (formerly: calibrate and apply a coverage filter)
+# 3.  (a calibrated coverage filter is not part of this pathway)
 # ==============================================================================
-# calibrate_coverage_filter()/coverage_threshold() were archived 2026-09-09 --
+# calibrate_coverage_filter()/coverage_threshold() are retired --
 # a real A/B test found the accuracy win on queries the filter is willing to
 # answer was real, but so was the cost (~19% of species lose every training
-# pair; ~25% of real queries end up unresolved). See TaxaLikely/CLAUDE.md's
-# top session note for the full reasoning. Training proceeds on the full,
+# pair; ~25% of real queries end up unresolved). Training proceeds on the full,
 # unfiltered ref_matrix below.
 # ==============================================================================
 
@@ -216,9 +215,9 @@ message(sprintf(
 # ==============================================================================
 # 5.  REMOVE FLAGGED REFERENCE ERRORS FROM THE QUERY MATCH OBJECT
 # ==============================================================================
-# train_likelihood_model() has no built-in reference-quality screening
-# (retired 2026-09-08 -- see NAME_CHANGE_HISTORY.md). Screen the query match
-# object's own accessions directly via TaxaMatch, using the SAME reference_df/
+# train_likelihood_model() has no built-in reference-quality screening.
+# Screen the query match object's own accessions directly via TaxaMatch,
+# using the SAME reference_df/
 # ref_matrix already built in Steps 1-2 for the free local-corroboration check.
 # ==============================================================================
 

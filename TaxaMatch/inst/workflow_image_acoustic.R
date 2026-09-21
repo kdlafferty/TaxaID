@@ -1,6 +1,6 @@
 # ==============================================================================
 # WORKFLOW: IMAGE AND ACOUSTIC IDENTIFICATION
-# TaxaMatch + TaxaLikely  — Session 119 functions
+# TaxaMatch + TaxaLikely
 # ==============================================================================
 # Purpose: Confirm that the image and acoustic ingestion functions work, then
 #   show how to audit coverage for image- and acoustic-based workflows.

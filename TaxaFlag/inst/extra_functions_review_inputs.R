@@ -1,15 +1,14 @@
 # ==============================================================================
 # extra_functions_review_inputs.R
-# TaxaFlag -- small, ready-to-run inputs for the 17 functions added AFTER this
-# package's formal code review (reviewed 2026-08-07)
+# TaxaFlag -- small, ready-to-run inputs for the 17 functions added after this
+# package's formal code review
 #
 # PURPOSE
 # -------
 # All 17 functions below belong to the review_spatial_context() feature (a
 # leaflet-based Shiny gadget showing GBIF occurrence-density tiles + iNat
 # points + a study's own occurrence data, for a reviewer inspecting a flagged
-# taxon) -- see TaxaFlag/CLAUDE.md's many 2026-08-07 session notes for the
-# full design history. None of them existed at the time of the package's
+# taxon). None of them existed at the time of the package's
 # review, so none has ever had a reviewer-facing runnable example. This file
 # is the companion to inst/... (there is no pre-existing
 # review_function_inputs.R in this package -- checked inst/ directly before
@@ -50,8 +49,8 @@
 #      several NETWORK examples below reuse the exact real taxon/coordinate
 #      pair (Neogobius melanostomus @ Burns Harbor, taxonKey 2379089) that
 #      those test files and check_gbif_tile_range()'s own roxygen @examples
-#      already use and that TaxaFlag/CLAUDE.md's session notes confirm was
-#      live-verified as "near-occupied" (dist 0.91km) during development.
+#      already use and was live-verified as "near-occupied" (dist 0.91km)
+#      during development.
 #   2. This package's own existing roxygen @examples (compute_local_
 #      occurrence_distance()'s example is reused verbatim below).
 #   3. New small synthetic inputs constructed for this file where neither
@@ -291,9 +290,9 @@ TaxaFlag:::.resolve_gbif_taxon_key("Neogobius melanostomus")
 ## ---- .fetch_inat_points() ---- NETWORK, small real iNat point fetch --------
 # American Robin (Turdus migratorius, iNat taxon_id 12727 -- a common,
 # fast-responding real iNat taxon already used elsewhere in this ecosystem's
-# own acoustic-calibration real-data work, see TaxaLikely/CLAUDE.md's Session
-# 133 note) near the same Chicago-area query point, capped small
-# (radius_km=25, per_page=5) to keep this a fast, bounded real call.
+# own acoustic-calibration real-data work) near the same Chicago-area query
+# point, capped small (radius_km=25, per_page=5) to keep this a fast,
+# bounded real call.
 inat_pts <- TaxaFlag:::.fetch_inat_points(
   taxon_id = 12727L, lat = 41.67, lng = -87.15, radius_km = 25, per_page = 5L
 )

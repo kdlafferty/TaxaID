@@ -1,5 +1,4 @@
-# Local corroboration + primer-stripped screen query (2026-09-03) --
-# ecosystem_docs/REENTRY_PROMPT_local_corroboration_and_primer_stripped_screen.md.
+# Local corroboration + primer-stripped screen query.
 # Everything here is offline. The fixtures are the three REAL PtConception
 # cases the design was built on (Zaniolepis, Jordania, Fundulus), with the
 # real identities, overlaps, dates and accession prefixes.

@@ -102,7 +102,7 @@ if (DEBUG_MODE) {
   )
 
   # CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: TaxaExpect's priors output --
-  # from the archived generate_full_priors() (GLMM path, archived 2026-09-09)
+  # from the archived generate_full_priors() (GLMM path)
   # or the current estimate_kernel_priors()$priors (kernel path) -- has
   # taxon_name but NOT taxon_name_rank, and join_priors() requires the
   # latter -- join_priors() errors outright ("missing required column(s):
@@ -424,7 +424,7 @@ message(sprintf(
 # ==============================================================================
 # 4.  ADD SLASH TAXON (compact reporting label + irreducibility flag)
 # ==============================================================================
-# Session 123's addition: appends slash_taxon_name + irreducible_consensus,
+# add_slash_taxon() appends slash_taxon_name + irreducible_consensus,
 # and (since consensus_taxon is present here) consensus_OTU + primary_taxon --
 # the single-reporting-label columns TaxaFlag expects downstream.
 
@@ -535,8 +535,8 @@ context <- tibble::tibble(main_habitat = SITE_HABITAT)
 # CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: leaving llm_fn at its default
 # (NULL) does NOT error -- it silently degrades to uniform priors. Root cause:
 # assign_taxa_llm()'s internal .resolve_llm_fn() falls back to
-# TaxaTools::call_api() (the generic multi-provider dispatcher, per Session 86
-# of TaxaAssign/CLAUDE.md), and call_api()'s own provider auto-detection
+# TaxaTools::call_api() (the generic multi-provider dispatcher), and
+# call_api()'s own provider auto-detection
 # requires TaxaTools to have been library()-attached (its .onAttach() hook is
 # what sets getOption("TaxaID.llm_fn") from detected API keys) -- see
 # TaxaTools/R/call_api.R's own comment: "this means .onAttach() hasn't run
@@ -655,10 +655,10 @@ message(
 #                               from add_slash_taxon()
 #   consensus_OTU           -- character; single reporting label -- slash_taxon_name
 #                               when non-NA, else consensus_taxon; from
-#                               add_slash_taxon() (Session 123)
+#                               add_slash_taxon()
 #   primary_taxon           -- character; consensus_OTU reduced to one taxon by
 #                               dropping everything after the first "/" or " + ";
-#                               from add_slash_taxon() (Session 123)
+#                               from add_slash_taxon()
 #
 # Consumer: TaxaFlag, which flags anomalous detections (contamination,
 #   allochthonous transport, taxonomic scope, handler artifacts) using

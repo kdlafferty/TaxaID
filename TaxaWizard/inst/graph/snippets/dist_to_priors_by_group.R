@@ -1,6 +1,6 @@
 # Edge: std_occurrences -> priors (grouped by sampling/detection process, kernel path)
-# Source: TaxaExpect kernel-priors redesign (2026-08-30/31) + the 2026-09-03
-#   sampling_group_col restoration, e.g. PtConceptionWorkflow_18S_2_single_site.R
+# Source: TaxaExpect kernel-priors redesign + sampling_group_col support,
+#   e.g. PtConceptionWorkflow_18S_2_single_site.R
 # NOTE: {{sampling_group_col}} identifies which DETECTION METHOD/PROCESS
 #   each row belongs to (e.g. "fish" vs "birds" vs "phytoplankton" surveyed
 #   with different effort) -- this is NOT the same thing as a physical site.
@@ -11,27 +11,24 @@
 #   missing_mass). Use this path only when {{input_var}} already has a column
 #   identifying detection group; otherwise use the plain std_to_priors_kernel
 #   path.
-# 2026-09-09: rewritten from the retired GLMM-path wrapper
+# Rewritten from the retired GLMM-path wrapper
 #   train_biodiversity_model_by_group() to the kernel-path equivalent. A
 #   single estimate_kernel_priors(sampling_group_col=) call handles every
 #   group at once (no per-group model-fitting loop needed) -- this snippet
 #   works directly on standardized occurrence data, no gridding step
 #   (create_sites_from_grid()/the old "distributions" intermediate) needed,
-#   so this edge's own `from` was corrected from "distributions" to
-#   "std_occurrences" the same session the whole GLMM chain (including
-#   "distributions"'s only other consumer, dist_to_priors) was archived --
-#   see TaxaExpect/archive_glmm_prior_pipeline/ and TaxaExpect/CLAUDE.md's
-#   2026-09-09 session note.
+#   so this edge's own `from` is "std_occurrences", not "distributions" --
+#   the whole GLMM chain, including "distributions"'s only other consumer,
+#   dist_to_priors, is retired.
 
 std_occurrences <- {{input_var}}
 
 # Step 1: calibrate the kernel bandwidth with the SAME sampling_group_col the
 # estimator uses below.
 #
-# (Corrected 2026-09-19. This comment previously asserted the opposite -- that
-# lambda_km "describes spatial decay, not detection-process membership, so one
-# bandwidth applies across every group" -- and the code calibrated on pooled
-# data. lambda_km IS spatial decay, but the quantity MINIMISED to estimate it
+# (lambda_km does NOT describe spatial decay independent of detection-process
+# membership -- calibrating it on pooled data is a real, non-obvious trap.
+# lambda_km IS spatial decay, but the quantity MINIMISED to estimate it
 # is a multinomial composition log-loss, and a composition is a share WITHIN a
 # detection process. Pooling therefore lets the largest group choose the
 # bandwidth for all of them. It does not announce itself: the fit succeeds and
@@ -157,13 +154,13 @@ if (isTRUE({{include_domestic_priors}})) {
   message("Added ", nrow(domestic_priors), " domestic/food-species prior row(s)")
 }
 
-# 2026-09-18 (P2 snippet validator): verify_taxon_names()'s real formals are
+# verify_taxon_names()'s real formals are
 # (name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id) --
-# this call previously passed the whole `priors` data frame positionally as
+# passing the whole `priors` data frame positionally as
 # `name_list` (wrong type: a character vector is expected) and a `taxon_col`
-# argument that has never existed, then discarded `priors` by reassigning it
-# to the verification result. Fixed to verify the taxon names informationally
-# without clobbering `priors`.
+# argument that does not exist, then discarding `priors` by reassigning it
+# to the verification result, is a real trap. Verify the taxon names
+# informationally without clobbering `priors`.
 taxon_verification <- TaxaTools::verify_taxon_names(
   name_list   = unique(priors$taxon_name),
   backbone_id = {{target_backbone_id}}

@@ -1,5 +1,5 @@
 # Edge: std_occurrences -> priors (kernel-based alternative to the GLMM/grid path)
-# Source: real production kernel-priors path (2026-08-30/31 redesign), e.g.
+# Source: real production kernel-priors path, e.g.
 # GreatLakes2023_ConsensusWorkflow.R / PtConceptionWorkflow_18S_2_single_site.R
 #
 # Site-centered distance-kernel estimation -- a genuinely different estimator
@@ -125,9 +125,9 @@ if (isTRUE({{include_evidence_block}})) {
   # (TaxaExpect::fit_regional_presence_curve()).
   # ==========================================================================
   W_SCALE <- 0.05; D_HALF <- 150; D_CAP <- 1000; K_LIFT <- 2
-  # The zero-evidence clamp -- DERIVED, never a literal (2026-09-13: a
-  # hardcoded 0.05 * exp(-1000/150) drifted out of sync with W_SCALE/D_CAP/
-  # D_HALF above on at least one production workflow before this fix).
+  # The zero-evidence clamp -- DERIVED, never a literal (a
+  # hardcoded 0.05 * exp(-1000/150) drifts out of sync with W_SCALE/D_CAP/
+  # D_HALF above; this is the real failure mode it guards against).
   W_CLAMP <- W_SCALE * exp(-D_CAP / D_HALF)
 
   # {{match_list_taxa}}: character vector of every candidate taxon this run
@@ -137,7 +137,7 @@ if (isTRUE({{include_evidence_block}})) {
   # Zero-record ("clamp") taxa = match-list taxa absent from the priors table.
   zero_bbox_taxa <- setdiff({{match_list_taxa}}, priors$taxon_name)
 
-  # --- Habitat conditioning of presence evidence (2026-09-12) ---------------
+  # --- Habitat conditioning of presence evidence ----------------------------
   # Evidence rows must obey the SAME habitat stratification the resident
   # priors already do (a record only enters the site pool when its point
   # carries the site habitat) -- otherwise a distant record of a species that
@@ -291,10 +291,10 @@ if (isTRUE({{include_evidence_block}})) {
   ))
 }
 
-# Optional: static KDE prior-field map for one focal taxon (2026-09-01,
-# TaxaExpect::plot_theta_surface()) -- the kernel path's own visualizer,
-# replacing the archived plot_theta_map_interactive() (GLMM/grid path,
-# archived 2026-09-09 -- it parsed Grid_<lat>_<lon> ids into centroids and
+# Optional: static KDE prior-field map for one focal taxon
+# (TaxaExpect::plot_theta_surface()) -- the kernel path's own visualizer,
+# replacing the retired plot_theta_map_interactive() (GLMM/grid path --
+# it parsed Grid_<lat>_<lon> ids into centroids and
 # had nothing to draw for a single opaque kernel site_id).
 # Needs kernel_priors_fit itself (not just the flattened priors table), so
 # this lives here rather than in the generic priors_to_map.R edge. Set

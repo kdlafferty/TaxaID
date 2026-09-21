@@ -1,12 +1,10 @@
 # Edge: taxa -> reference_df  (site reference builder, recommended for eDNA)
 # Source: TaxaLikely fetch_ncbi_reference_sequences() + audit_barcode_
 #         coverage() + write_reference_fasta()
-# NOTE (2026-09-09): this edge previously called TaxaLikely::build_site_
-# reference(), a one-call wrapper around the same three functions -- it was
-# archived (zero real callers anywhere in the monorepo; see TaxaLikely/
-# archive_unused_reference_wrappers/) and this snippet now chains the
-# component functions directly, exactly as build_site_reference() did
-# internally.
+# NOTE: TaxaLikely::build_site_reference(), a one-call wrapper around the same
+# three functions, is retired (zero real callers anywhere in the monorepo);
+# this snippet chains the component functions directly, exactly as
+# build_site_reference() did internally.
 # output_dir writes reference.fasta + reference_taxonomy.tsv to disk.
 # DNA / eDNA only. For acoustic, see taxa_to_acoustic_matrix.R.
 # NOTE: {{input_var}} should come from a TaxaExpect taxa list (unique genera or
@@ -21,7 +19,7 @@ reference_df <- TaxaLikely::fetch_ncbi_reference_sequences(
   max_per_species = {{max_per_species}},
   max_date        = {{max_date}},
   # Stop rather than silently ship a degraded reference database -- see
-  # taxa_to_refs.R for the 2026-09-14 incident this guards (seven genera lost
+  # taxa_to_refs.R for the real incident this guards (seven genera lost
   # their entire reference representation to transient NCBI count failures,
   # on a run that finished looking healthy). "warn" accepts the degradation
   # knowingly; the affected taxa are then in attr(, "count_failures").

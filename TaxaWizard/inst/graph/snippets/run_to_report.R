@@ -2,9 +2,9 @@
 # Source: eDNA/PtConception/TaxaID_eDNA_Workflow_Template.R, Step 10
 #
 # Each package reports on its own stage; assemble_report() stitches the sections
-# into one markdown document. Added 2026-09-17: the whole report-assembly chain
-# was called by three of the five running workflows and appeared in no graph
-# edge, so a generated workflow could not express it.
+# into one markdown document. The report-assembly chain is a real pattern
+# three of the five running workflows use, so this graph edge lets a
+# generated workflow express it.
 #
 # NOTE: report_assign() takes BOTH the posterior table and the consensus table --
 #   they are different objects and passing the consensus twice silently produces

@@ -1,8 +1,8 @@
 # ==============================================================================
 # extra_functions_review_inputs.R
 # TaxaLikely -- small, ready-to-run inputs for 3 internal functions written
-# AFTER the package's formal code review (reviewed 2026-07-30 / human review
-# 2026-08-08) that have never had a reviewer-facing runnable example.
+# after the package's formal code review, that have never had a
+# reviewer-facing runnable example.
 #
 # PURPOSE
 # -------
@@ -12,8 +12,8 @@
 #   - .audit_barcode_coverage_impl()   (R/coverage.R)  -- backs audit_barcode_coverage()
 #   - .check_score_ratio_monotonicity() (R/train.R)     -- runs inside train_likelihood_model()
 # (A former Section 2 covered .compute_reference_qc_stats(), which backed
-# flag_reference_errors() -- both retired 2026-09-08, see
-# NAME_CHANGE_HISTORY.md; that section is removed, not renumbered around.)
+# flag_reference_errors() -- both retired; that section is removed, not
+# renumbered around.)
 #
 # ON CALLING INTERNALS VIA `TaxaLikely:::` -- expected, not a bug:
 # All three are unexported (@noRd) implementation details, not part of the
@@ -101,9 +101,8 @@ length(coverage_impl$unreferenced)
 # ==============================================================================
 # SECTION 3 -- .check_score_ratio_monotonicity()  ---- OFFLINE -----------------
 # Runs automatically at the end of train_likelihood_model() (see that
-# function's own "Non-monotonic score->likelihood shape" @section and
-# TaxaLikely/CLAUDE.md's 2026-08-06 note on Stats$mlr_violations/
-# max_ceiling_z). Checks the monotone-likelihood-ratio (MLR) property that
+# function's own "Non-monotonic score->likelihood shape" @section for
+# Stats$mlr_violations/max_ceiling_z). Checks the monotone-likelihood-ratio (MLR) property that
 # actually matters for a Bayesian classifier: whether H1's evidence for the
 # known-species hypothesis, relative to its genus's H2 alternative, keeps
 # strengthening all the way to a perfect (100%) match -- NOT whether H1's own
@@ -169,7 +168,7 @@ mlr_clean$violations # character(0) -- no violation
 
 ## ---- .check_score_ratio_monotonicity() ---- OFFLINE, genus-specific H2 -----
 # H2_Lookup (a real per-genus shrunk delta/variance, see train_likelihood_
-# model()'s Session 151/158 notes) is preferred over the pooled H2 list when
+# model()'s own roxygen) is preferred over the pooled H2 list when
 # the species' own genus has an entry -- here the pooled list alone is set to
 # a SAFE (non-violating) shape, so a flagged violation confirms the
 # genus-specific row is what actually drove the result, not an unused pooled

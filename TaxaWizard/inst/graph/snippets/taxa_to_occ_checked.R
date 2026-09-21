@@ -42,8 +42,8 @@ occurrences <- TaxaFetch::check_geographic_outliers(
   local_occurrences = occurrences,
   year_range        = {{year_range}},
   # Caches the per-species VERDICT, not the global cloud. Without it every
-  # re-run re-fetches a global distribution per sparse species -- the pass
-  # that earned a GBIF rate-limit block at 360 of 829 keys on 2026-09-05.
+  # re-run re-fetches a global distribution per sparse species -- a pass
+  # like that has earned a GBIF rate-limit block at 360 of 829 keys.
   cache_dir         = {{gbif_cache_dir}}
 )
 n_outliers <- sum(occurrences$outlier_status == "outlier", na.rm = TRUE)

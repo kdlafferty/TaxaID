@@ -1,4 +1,4 @@
-# screen_training_references_standalone.R  (2026-09-11)
+# screen_training_references_standalone.R
 #
 # Run a site's TRAINING reference screen (workflow Step 7a.11) outside the
 # workflow, as a resumable job that keeps going until NCBI has answered for

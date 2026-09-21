@@ -1,8 +1,8 @@
 # ==============================================================================
 # extra_functions_review_inputs.R
 # TaxaAssign -- small, ready-to-run inputs for 3 internal (@noRd) helpers
-# written AFTER this package's formal code review (reviewed 2026-08-04/
-# 2026-08-07, see inst/taxaassign_review.Rmd / inst/taxaassign_review_response.md)
+# written after this package's formal code review (see
+# inst/taxaassign_review.Rmd / inst/taxaassign_review_response.md)
 # and so never had a reviewer-facing runnable example.
 #
 # PURPOSE

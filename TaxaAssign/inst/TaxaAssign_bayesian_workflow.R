@@ -254,7 +254,7 @@ consensus_final
 # Thresholds follow common eDNA conventions (GITA pipeline / Jonah Ventures):
 #   species >= 98%, genus >= 95%, family >= 90%, phylum >= 85%
 # (the 85% tier is phylum-level in the literature it's corroborated by, not
-# order-level -- corrected 2026-07-20, see score_consensus()'s own roxygen)
+# order-level -- see score_consensus()'s own roxygen)
 #
 # max_gap = 1: all hits within 1% of the top score contribute to the LCA.
 # Note: this call's rank_system (family/genus/species only) never reaches

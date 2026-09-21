@@ -61,7 +61,7 @@ reviewed <- review_assignments(
 )
 
 # --- 4. Inspect results ------------------------------------------------------
-# Output columns carry an llm_ prefix (2026-09-06) -- these are independent
+# Output columns carry an llm_ prefix -- these are independent
 # LLM judgments, never derived from the pipeline's own values.
 
 # Overview

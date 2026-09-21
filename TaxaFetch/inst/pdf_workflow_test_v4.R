@@ -38,7 +38,6 @@
 #   you want to redo those API calls.
 #
 # DataONE parallel reference: PDF_PIPELINE_DATAONE_PARALLEL.md
-# Session history: Session 25 (v4 — literature search integrated, bug fixes)
 # ==============================================================================
 
 

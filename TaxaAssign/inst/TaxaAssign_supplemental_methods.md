@@ -703,7 +703,7 @@ Within TaxaAssign:
 | `update_prior_from_consensus()` | Empirical Bayes: boost confirmed species in unresolved observations |
 | `run_bayesian_pipeline()` | High-level wrapper for full Bayesian workflow |
 | `run_llm_pipeline()` | High-level wrapper for LLM-shortcut workflow |
-| `TaxaLikely::suggest_unreferenced_species()` | LLM-first unreferenced species detection (moved from this package 2026-09-08; a deprecated forwarding wrapper remains here) |
+| `TaxaLikely::suggest_unreferenced_species()` | LLM-first unreferenced species detection (implemented in TaxaLikely; TaxaAssign calls it directly) |
 | `build_context()` | Auto-populate ecological context from taxon names via LLM |
 
 ------------------------------------------------------------------------
