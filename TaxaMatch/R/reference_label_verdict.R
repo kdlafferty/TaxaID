@@ -12,8 +12,7 @@ utils::globalVariables(c(
 # output columns.
 #
 # Implements Thread 2 of
-# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md
-# (written 2026-09-02 after the first complete PtConception screen).
+# ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md.
 #
 # Why this exists, in one paragraph: `hierarchy_flag` is a MAJORITY VOTE over
 # the top-N independent neighbours -- percent identity never enters it. In a
@@ -26,8 +25,9 @@ utils::globalVariables(c(
 # 1,120 observations, agreeing hit at 100%, disagreeing at 96.79). The
 # identity diagnostics that separate those two groups
 # (`best_agreeing_pident`/`best_disagreeing_pident`/
-# `congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`) have
-# existed since 2026-08-07 but NOTHING consulted them. This file is what
+# `congruent_evidence_exists_anywhere`/`congruent_evidence_best_pident`)
+# already exist in `evaluate_reference_accessions()`'s own output columns.
+# This file is what
 # consults them.
 # ==============================================================================
 
@@ -1028,10 +1028,9 @@ refine_reference_verdicts <- function(evaluation,
       ),
       collapse = "; "
     )
-    # The actual accession IDs behind `who` -- .summarise_corroborators() had
-    # only ever built the formatted DISPLAY string, discarding the IDs
-    # themselves once printed. verify_removal_candidates(screen_corroborators=)
-    # (2026-09-05, critical-fix-review finding B5) needs the real IDs to
+    # The actual accession IDs behind `who`, kept alongside the formatted
+    # DISPLAY string rather than discarded once printed --
+    # verify_removal_candidates(screen_corroborators=) needs the real IDs to
     # actually go check them, not just show them to a human.
     out$accessions_list[[k]] <- top$id_y
   }
@@ -1227,8 +1226,8 @@ verify_removal_candidates <- function(evaluation, ...,
     }
   }
 
-  # WHAT corroborated, not just THAT something did (2026-09-04). Added
-  # immediately after this function's first real use found a FALSE RESCUE:
+  # WHAT corroborated, not just THAT something did. A real
+  # motivating case found a FALSE RESCUE:
   # GreatLakes KJ135626 (Pseudorasbora parva) was reported spared because one
   # partner agreed at species rank -- and that partner was MZ605481, this
   # project's own documented candidate_mislabel, whose real identity is
@@ -1263,7 +1262,7 @@ verify_removal_candidates <- function(evaluation, ...,
   # weaker claim than one from a row with room to spare.
   out$still_saturated <- !is.na(out$n_hits_audit) &
     out$n_hits_audit >= as.integer(audit_max_hits) - 1L
-  # `spared` is a three-valued answer, not a boolean (2026-09-10): an audit
+  # `spared` is a three-valued answer, not a boolean: an audit
   # whose own BLAST never completed comes back `action_audit = "untested"`
   # (or NA), and that is NO evidence either way -- reporting it as
   # `spared = TRUE` would tell the caller a removal was overturned when
@@ -1284,7 +1283,7 @@ verify_removal_candidates <- function(evaluation, ...,
   # for its own warning before screen_corroborators existed.
   thin <- out$spared %in% TRUE & !is.na(out$n_corroborators) & out$n_corroborators <= 2L
 
-  # ---- Screen the corroborators themselves (2026-09-05, finding B5) --------
+  # ---- Screen the corroborators themselves ----------------------------------
   # `congruent_evidence_exists_anywhere` counts a corroborating partner with
   # no notion of whether THAT partner's own label is trustworthy --
   # `refine_reference_verdicts()` cannot close this, since a corroborator
@@ -1311,7 +1310,7 @@ verify_removal_candidates <- function(evaluation, ...,
       still_unknown <- setdiff(to_check, already_known$accession)
 
       # evaluate_reference_accessions() already runs score_reference_labels()
-      # on its own output (2026-09-03) -- calling it again here would error
+      # on its own output -- calling it again here would error
       # ("already has column(s) ... pass overwrite = TRUE").
       corr_eval <- if (length(still_unknown) > 0L) {
         if (verbose) {
@@ -1347,9 +1346,7 @@ verify_removal_candidates <- function(evaluation, ...,
       # computable for it -- e.g. a fetch failure) its own hierarchy_flag
       # itself reads "incongruent". "untested" is deliberately NOT "flagged"
       # -- no usable evidence about the corroborator is not evidence AGAINST
-      # it, the same distinction this package draws everywhere else. (A prior
-      # version of this line read `!corr_action %in% "keep"`, which flagged
-      # "untested" too -- contradicting this very comment. Fixed 2026-09-05.)
+      # it, the same distinction this package draws everywhere else.
       corr_action <- corr_lookup$reference_action[match(to_check, corr_lookup$accession)]
       corr_hflag <- corr_lookup$hierarchy_flag[match(to_check, corr_lookup$accession)]
       corr_bad <- ifelse(!is.na(corr_action), !corr_action %in% c("keep", "untested"),
@@ -1431,7 +1428,7 @@ verify_removal_candidates <- function(evaluation, ...,
 
 #' Audit thin locally-corroborated rows against their own corroborator's verdict
 #'
-#' `"locally_corroborated"` (2026-09-03) skips BLASTing an accession entirely
+#' `"locally_corroborated"` skips BLASTing an accession entirely
 #' when the caller's own reference set already has an independent conspecific
 #' deposit for it -- cached with TTL `Inf` and exempt from
 #' [refine_reference_verdicts()]'s trust-weighted refinement, since the MATCH
