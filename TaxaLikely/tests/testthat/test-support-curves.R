@@ -188,3 +188,15 @@ test_that(".compute_rank_score_curves() degrades gracefully on thin input", {
   fx$genus.x <- NULL
   expect_null(.compute_rank_score_curves(fx, .rs))
 })
+
+test_that(".compute_rank_score_curves() no longer recognizes 'raw_score'", {
+  # "raw_score" was the standalone Universal_Biological_Classifier scripts'
+  # column name, never produced by build_sequence_matrix(); p_match is the
+  # only current name. A raw_df with raw_score but no p_match degrades to
+  # NULL, same as any other missing required column -- not a name to fall
+  # back to.
+  fx <- .curve_fixture()
+  fx$raw_score <- fx$p_match
+  fx$p_match <- NULL
+  expect_null(.compute_rank_score_curves(fx, .rs))
+})
