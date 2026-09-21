@@ -760,6 +760,18 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   declared no minimum R (check every package's DESCRIPTION for the same).
   7a: no `system()`/`eval()`/`parse()` in pre-review code; the local-BLAST
   argument string is built from numeric and literal-set values only.
+  **TaxaAssign DONE** (`270337e`, `18c68f0`): `check()` 0/0/1 (timestamp
+  NOTE), 811 tests; 87 non-ASCII replaced; **50 auto-extracted scratch
+  files under `tests/testthat/_problems/` deleted** (called a helper that
+  exists nowhere; committed by accident in an earlier lint sweep); stale
+  `.lintr` exclusions for the moved `suggest_unreferenced_species` removed;
+  `Depends: R (>= 4.1.0)` added by the coordinator. 7a: no I/O of its own;
+  one `eval()` on a function's own default-argument expression, guarded;
+  LLM prompts take free text unescaped (same shape as TaxaFlag) but both
+  parsers treat the reply as typed data with fallbacks -- worst case a
+  biased prior, never execution. Design note for 1.1: delimit free-text
+  fields in LLM prompts consistently across TaxaAssign, TaxaFlag,
+  TaxaLikely, TaxaHabitat.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
