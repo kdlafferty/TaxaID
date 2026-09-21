@@ -33,6 +33,33 @@ used across `blast_sequences.R`, `read_birdnet_output.R`, `read_image_classifier
 
 ------------------------------------------------------------------------
 
+## Added after the review
+
+| Function | File | Purpose | Tests |
+|---|---|---|---|
+| `check_marker_mismatch()` | `R/check_marker_mismatch.R` | Cross-Check a Reference Accession's Own Annotated Gene/Product Against an Expected Marker | test-check-marker-mismatch.R |
+| `corroborate_references_locally()` | `R/local_corroboration.R` | Corroborate Reference Labels From the Local Reference Set, Without BLAST | test-local-corroboration.R |
+| `evaluate_reference_accessions()` | `R/evaluate_reference_accessions.R` | Evaluate Reference-Accession Quality via Unrestricted BLAST Comparison | test-evaluate-reference-accessions.R, test-local-corroboration.R, test-reference-label-verdict.R, test-trim-query-to-amplicon.R |
+| `flag_incongruent_references()` | `R/evaluate_reference_accessions.R` | Annotate a Match Object with Reference-Accession Quality, Without Removing Anything | test-evaluate-reference-accessions.R, test-local-corroboration.R |
+| `investigate_flagged_accession()` | `R/investigate_flagged_accession.R` | Deep-Dive Verification for a Single Flagged Reference Accession | test-check-marker-mismatch.R, test-investigate-flagged-accession.R |
+| `investigate_flagged_accessions()` | `R/investigate_flagged_accession.R` | Deep-Dive Verification for a Batch of Flagged Reference Accessions | test-investigate-flagged-accession.R |
+| `match_driving_accessions()` | `R/local_corroboration.R` | Which Reference Accessions Ever Drive a Likelihood? | test-local-corroboration.R |
+| `read_speciesnet_output()` | `R/read_image_classifiers.R` | Read SpeciesNet Batch Classification Results into a Match Object | test-read_speciesnet.R |
+| `refine_reference_verdicts()` | `R/reference_label_verdict.R` | Re-run Reference Verdicts With Each Partner Weighted by Its Own Trustworthiness | test-local-corroboration.R, test-reference-label-verdict.R |
+| `remove_incongruent_references()` | `R/evaluate_reference_accessions.R` | Remove Confidently-Incongruent Reference Accessions from a Match Object | test-evaluate-reference-accessions.R, test-local-corroboration.R, test-reference-label-verdict.R, test-review-flagged-accessions.R |
+| `resolve_review_overrides()` | `R/review_flagged_accessions.R` | Derive Removal Overrides from an LLM Second-Look Review | test-review-flagged-accessions.R |
+| `review_flagged_accessions()` | `R/review_flagged_accessions.R` | LLM Second-Look Review of Flagged Reference Accessions | test-review-flagged-accessions.R |
+| `score_reference_labels()` | `R/reference_label_verdict.R` | Score Reference Labels: a Numeric Label Confidence and a Categorical Action | test-evaluate-reference-accessions.R, test-local-corroboration.R, test-reference-label-verdict.R, test-review-flagged-accessions.R |
+| `verify_local_corroborations()` | `R/reference_label_verdict.R` | Audit thin locally-corroborated rows against their own corroborator's verdict | test-reference-label-verdict.R |
+| `verify_removal_candidates()` | `R/reference_label_verdict.R` | Verify Removal Candidates Against a Wider Evidence Window | test-reference-label-verdict.R |
+
+77 new internal helper functions have also been added since the review, mostly supporting
+the reference-accession-verification clusters above (`evaluate_reference_accessions.R`,
+`investigate_flagged_accession.R`, `reference_label_verdict.R`, `review_flagged_accessions.R`).
+`read_wildlife_insights_output()` was removed when SpeciesNet ingestion (above) replaced it.
+
+------------------------------------------------------------------------
+
 ## Live verification (two items the code alone couldn't settle)
 
 **iNaturalist CV API score scale.** The review flagged a real internal contradiction:
@@ -505,162 +532,10 @@ calls (iNaturalist CV API, `exiftool`) rather than assumed from documentation al
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
+## Behavior changes to already-reviewed functions
 
-## Functions added or modified since this review (through 2026-09-07)
-
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
-
-- `.accession_review_fingerprint`
-- `.align_to_cache_columns`
-- `.apply_local_veto`
-- `.apply_top_n`
-- `.attach_taxonomy`
-- `.blast_against_comparison_set`
-- `.blast_local`
-- `.blast_poll`
-- `.blast_rate_limit_sleep`
-- `.blast_remote`
-- `.blast_server_rejected`
-- `.blast_submit`
-- `.build_accession_review_prompt`
-- `.build_core_seq_df`
-- `.build_params_key`
-- `.build_submission_batch_lookup`
-- `.check_col_exists`
-- `.check_pkg`
-- `.check_rename_safe`
-- `.compute_hierarchy_congruence`
-- `.default_params_key`
-- `.detect_rank_cols`
-- `.empty_acc_taxonomy_result`
-- `.empty_animl_result`
-- `.empty_birdnet_result`
-- `.empty_blast_result`
-- `.empty_inat_result`
-- `.empty_raw_hits`
-- `.empty_reference_pair_cache`
-- `.empty_speciesnet_result`
-- `.evaluate_reference_accessions_chunk`
-- `.extract_amplicon_one_tm`
-- `.extract_exif_info`
-- `.extract_feature_table_fallback`
-- `.extract_genus`
-- `.fetch_marker_annotation`
-- `.fetch_reference_accession_records`
-- `.filter_and_cap_accessions`
-- `.filter_blast_hits`
-- `.fmt_time`
-- `.generate_asv_ids`
-- `.get_species_comparison_meta`
-- `.investigate_flagged_accession_core`
-- `.investigate_params_key`
-- `.investigate_verdict`
-- `.join_taxonomy`
-- `.label_confidence_from_evidence`
-- `.load_accession_review_cache`
-- `.load_investigate_cache`
-- `.load_reference_accession_cache`
-- `.load_reference_pair_cache`
-- `.local_corroboration_columns`
-- `.lookup_investigate_cache`
-- `.na_like`
-- `.parse_accession_review_response`
-- `.parse_animl_file`
-- `.parse_birdnet_df`
-- `.parse_birdnet_file`
-- `.parse_blast_xml`
-- `.parse_create_date`
-- `.parse_inat_cv_file`
-- `.parse_inat_cv_response`
-- `.parse_lat_lon`
-- `.parse_semicolon_headers`
-- `.parse_speciesnet_label`
-- `.parse_speciesnet_predictions`
-- `.parse_taxonomy_xml`
-- `.partner_trust_weight`
-- `.pivot_wide_animl`
-- `.print_investigation_summary`
-- `.read_dada2_matrix`
-- `.read_dna_stringset`
-- `.read_esv_dataframe`
-- `.read_fasta_file`
-- `.read_match_file`
-- `.recover_truncated_accession_json`
-- `.reference_action_from_confidence`
-- `.resolve_expected_marker`
-- `.resolve_image_files`
-- `.resolve_label_params`
-- `.resolve_locations_by_acc`
-- `.resolve_marker_pattern`
-- `.resolve_taxonomy`
-- `.resolve_taxonomy_by_acc`
-- `.resolve_trimmed_span_max`
-- `.review_accession_batch_with_retry`
-- `.same_submission_batch`
-- `.save_accession_review_cache`
-- `.save_investigate_cache`
-- `.save_reference_accession_cache`
-- `.save_reference_pair_cache`
-- `.search_species_accessions`
-- `.speciesnet_detection_coverage`
-- `.split_batches_by_length`
-- `.stop_missing_files`
-- `.store_investigate_result`
-- `.strip_acc_version`
-- `.summarise_corroborators`
-- `.trim_queries_to_amplicon`
-- `.valid_reference_length`
-- `.validate_min_conf_top_n`
-- `.validate_rank_system`
-- `.warn_duplicate_basenames`
-- `.warn_na_coercion`
-- `add_lowest_consistent_rank`
-- `blast_sequences`
-- `check_marker_mismatch`
-- `convert_taxonomy_backbone`
-- `corroborate_references_locally`
-- `evaluate_reference_accessions`
-- `filter_redundant_hypotheses`
-- `filter_sequences`
-- `flag_incongruent_references`
-- `investigate_flagged_accession`
-- `investigate_flagged_accessions`
-- `match_driving_accessions`
-- `migrate_reference_cache`
-- `read_animl_output`
-- `read_birdnet_output`
-- `read_inaturalist_cv_output`
-- `read_sequence_table`
-- `read_speciesnet_output`
-- `refine_reference_verdicts`
-- `remove_incongruent_references`
-- `report_match`
-- `resolve_review_overrides`
-- `review_flagged_accessions`
-- `score_image_inat`
-- `score_reference_labels`
-- `standardize_match_data`
-- `verify_flagged_references`
-- `verify_local_corroborations`
-- `verify_removal_candidates`
-
-
-------------------------------------------------------------------------
-
-## Changes since this review (2026-09-13 / 2026-09-14)
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
+Not new functions (see "Added after the review" near the top for those) -- new behavior
+on functions this document already covers above.
 
 - `verify_removal_candidates()` roxygen corrected so the documented behaviour
   matches the code. No behavioural change.

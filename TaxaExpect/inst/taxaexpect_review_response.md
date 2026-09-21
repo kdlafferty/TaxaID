@@ -11,11 +11,8 @@ This document responds to `inst/taxaexpect_review.Rmd`, which reviews 18 files
 `report_priors.R`, `screen_spatial_formula.R`, `TaxaExpect-package.R`,
 `train_biodiversity_model.R`, `train_biodiversity_model_by_group.R`, `utils_plot.R`) plus
 a set of ecosystem-wide general comments. Several line-number references in the review no
-longer match current line numbers -- this package has had substantial work land since the
-review was likely drafted (see `TaxaExpect/CLAUDE.md`'s session history) -- every finding
-below was re-verified against the current source before being fixed or declined, per this
-project's own "verify before fixing" convention (see `feedback_verify_purpose_before_flagging`
-in the memory system).
+longer match current line numbers; every finding below was re-verified against the current
+source before being fixed or declined.
 
 `devtools::document()` + `devtools::test()`: 555 expectations, 0 failures (up from 538).
 `devtools::check()`: 0 errors, 0 warnings, 0 notes. Reinstalled to
@@ -25,6 +22,29 @@ propagation chain (`create_sites_from_grid()` -> `prepare_model_dataframe()` ->
 `compute_moran_basis(coords = ...)` was run against real synthetic data outside the test
 suite to confirm the new attribute actually threads through in practice, not just in
 isolated unit tests.
+
+------------------------------------------------------------------------
+
+## Added after the review
+
+| Function | File | Purpose | Tests |
+|---|---|---|---|
+| `apply_undetected_evidence()` | `R/apply_undetected_evidence.R` | Elevate the dark-diversity floor prior for species with external occurrence-plausibility evidence | test-apply_undetected_evidence.R, test-condition_evidence_on_habitat.R, test-estimate_kernel_priors.R, test-generate_inat_range_evidence.R, test-generate_presence_curve_evidence.R, test-generate_uncertain_habitat_evidence.R |
+| `calibrate_kernel_bandwidth()` | `R/calibrate_kernel_bandwidth.R` | Calibrate kernel bandwidths by leave-one-block-out composition prediction | test-calibrate_kernel_bandwidth_groups.R, test-estimate_kernel_priors.R |
+| `condition_evidence_on_habitat()` | `R/condition_evidence_on_habitat.R` | Condition Presence Evidence on the Site Habitat | test-condition_evidence_on_habitat.R |
+| `estimate_kernel_priors()` | `R/estimate_kernel_priors.R` | Estimate site priors by distance-kernel weighting of occurrence records | test-apply_undetected_evidence.R, test-estimate_kernel_priors.R, test-generate_presence_curve_evidence.R, test-generate_uncertain_habitat_evidence.R, test-generate_undetected_diversity.R, test-kernel_budget_sensitivity.R, test-plot_theta_surface.R |
+| `fit_regional_presence_curve()` | `R/fit_regional_presence_curve.R` | Fit a distance-to-presence curve for regional-proximity weights | test-fit_regional_presence_curve.R |
+| `generate_inat_range_evidence()` | `R/generate_inat_range_evidence.R` | Evidence rows for species inside their iNaturalist range polygon | test-generate_inat_range_evidence.R |
+| `generate_invasive_watch_evidence()` | `R/generate_invasive_watch_evidence.R` | Evidence rows for a user-supplied invasive/nonindigenous watch list | test-generate_invasive_watch_evidence.R |
+| `generate_presence_curve_evidence()` | `R/generate_presence_curve_evidence.R` | Price unobserved candidates on the presence-distance curve | test-generate_presence_curve_evidence.R |
+| `generate_regional_proximity_evidence()` | `R/generate_regional_proximity_evidence.R` | Evidence rows for species with a real GBIF record just outside the study bbox | test-generate_regional_proximity_evidence.R, test-generate_uncertain_habitat_evidence.R |
+| `generate_uncertain_habitat_evidence()` | `R/generate_uncertain_habitat_evidence.R` | Presence Evidence From Records Whose Habitat Could Not Be Resolved | test-generate_uncertain_habitat_evidence.R |
+| `generate_user_specified_evidence()` | `R/generate_presence_curve_evidence.R` | User-specified presence evidence for species of special concern | test-generate_presence_curve_evidence.R |
+| `kernel_budget_sensitivity()` | `R/kernel_budget_sensitivity.R` | Sensitivity of a kernel Good-Turing budget to its counting radius | test-kernel_budget_sensitivity.R |
+| `plot_theta_surface()` | `R/plot_theta_surface.R` | Evaluate the kernel-prior estimator on a spatial lattice (KDE prior field) | test-plot_theta_surface.R |
+
+27 new internal helper functions have also been added since the review (most in
+`plot_theta_surface.R`'s rendering internals).
 
 ------------------------------------------------------------------------
 
@@ -264,54 +284,13 @@ isolated unit tests.
   unrelated signature change.
 - Gained a real, fast, non-`\dontrun{}` `@examples` block.
 
-**Addendum (does not rewrite the answer above):** archived,
-alongside `create_sites_from_grid()` (see that
-function's own section below). Confirmed via a fresh grep across the whole monorepo:
-still zero real callers anywhere -- the "never been wired into a production workflow"
-observation recorded above at review time remained true right up to archival.
-
-**Addendum, later still (does not rewrite the answers above):** the
-archival above is REVERSED -- this function is restored to `R/` and live again, moved
-back out of the archive. Not a re-litigation of the "zero real
-callers" finding above (still true) but a real, different consideration found while
-reviewing `TaxaExpect/README.md`: `estimate_kernel_priors(sampling_group_col = NULL)`
-has no guard at all against silently pooling data from genuinely incompatible detection
-processes (e.g. phytoplankton cell counts + bird point counts) -- confirmed directly in
-`R/estimate_kernel_priors.R`. The now-archived GLMM path had a hard `stop()` for this
-exact hazard (`train_biodiversity_model()`'s `sampling_group` multi-value check); the
-kernel path has no equivalent, and this is a real safety regression, not a hypothetical
-one. Auto-detecting the mixing was explicitly rejected (this codebase's established
-precedent, see `generate_invasive_watch_evidence()`'s own roxygen, is to never guess a
-domain classification a wrong guess could silently mis-price) -- the fix is making
-`sampling_group_col` unmissable in the docs and keeping a real tool available to
-discharge that responsibility, which is exactly what this function is. Also, TaxaID is
-headed for a USGS software release and an MEE manuscript -- an external user adopting
-this package won't have the domain depth the person who hand-built the real 18S
-workflow's 11-way classification did, which the original archival's "never actually
-needed" reasoning implicitly assumed.
-
-**Addendum, final (does not rewrite the answers above):** the
-restoration directly above is REVERSED, this time final -- this function is archived
-again. The restoration's own reasoning
-was tested against real evidence, not just re-argued, and refuted: run live against a
-real, full-scale, hand-built 9-group expert classification on the actual PtConception
-18S occurrence checkpoint (1,375,345 rows), `compute_adaptive_sampling_groups(min_n =
-100)` produced 37-58 automatic groups at three grid sizes against the expert's 10 --
-splitting the single largest real group (`macroinvertebrates`, 1.27M records, all
-genuinely detected by the same eDNA marker) into 28-39 separate automatic groups purely
-because each order individually clears the per-site record floor on its own. The
-algorithm also collapsed two taxa the expert had deliberately kept separate --
-`parasites` (n=9) and `terrestrial_arthropods` (n=3), almost certainly a real marine
-target vs. likely airborne contamination -- into one `phylum:Arthropoda` group, purely
-because neither cleared `min_n` even at the phylum ceiling. This is exactly the
-"combining taxa collected by incommensurable methods" failure the whole `sampling_group`
-mechanism exists to prevent, produced automatically by the tool meant to help avoid it.
-Separately, `estimate_kernel_priors(sampling_group_col=)` was run directly on the real,
-UNMERGED 9-group expert classification (no merge step at all) and succeeded with zero
-errors for every group, including the tiniest (`terrestrial_arthropods`, n_taxa=1;
-`parasites`, n_taxa=3) -- refuting the premise that a sample-size-adequate merge step was
-ever necessary before calling the estimator. See `TaxaExpect/CLAUDE.md`'s final
-2026-09-09 session note for the full evidence record (Findings 1-5).
+Archived (moved to `archive_glmm_prior_pipeline/`): real, full-scale testing against a
+hand-built 9-group expert classification on the actual PtConception 18S occurrence
+checkpoint found this function answers the wrong question for the purpose it was kept
+for -- record-count adequacy, not shared detection process -- and can fragment or
+falsely conflate real groups; `estimate_kernel_priors()` needs no pre-merged,
+sample-size-adequate groups at all. Superseded by the kernel-based estimator
+(`estimate_kernel_priors()`).
 
 ### `compute_moran_basis.R`
 
@@ -351,50 +330,11 @@ fixes above.
 parameters -- see `optimize_grid_size.R`'s matching section below for the shared
 reasoning (this decision was made once and applies identically to both files).
 
-**Addendum (does not rewrite the answer above):** archived,
-alongside `compute_adaptive_sampling_groups.R`. This
-function was deliberately kept live at the time of the main GLMM-chain
-archival, on the strength of its own roxygen's claim of one remaining independent
-purpose (spatial binning feeding `compute_adaptive_sampling_groups()`'s per-site
-effort measurement, ahead of `estimate_kernel_priors(sampling_group_col=)`). That
-justification was re-examined directly, later the same day, at the user's explicit
-prompt: a fresh grep confirmed zero calls in any of the 6 real production workflows,
-and the scenario it would justify keeping this pair for (taxonomic breadth too large
-to hand-classify into detection-process sampling groups) has never actually
-materialized in any real dataset this ecosystem has handled, including the
-taxonomically broadest one (PtConception 18S, ~10-11 groups, successfully
-hand-classified). The one remaining real caller,
-`diagnostics/kernel_budget_18S_sampling_groups.R`, is a frozen one-time
-analysis script and was left untouched, per this project's own convention for such
-scripts.
-
-**Addendum, later still (does not rewrite the answers above):** the
-archival above is REVERSED -- this function is restored to `R/` and live again, moved
-back out of the archive, alongside `compute_adaptive_sampling_
-groups()` (see that function's own addendum above). Real reason, not a re-litigation:
-a safety gap found reviewing `TaxaExpect/README.md` -- `estimate_kernel_priors(
-sampling_group_col = NULL)` silently pools incompatible detection processes with no
-guard, unlike the archived GLMM path's hard `stop()` for the same hazard. Auto-detection
-was rejected as out of character for this codebase (never guess a domain
-classification); the fix is an unmissable doc warning plus a real tool a user can reach
-for -- this function is that tool. Also weighed: TaxaID is headed for a USGS/MEE
-publication, and an external adopter won't have this project's own hand-built-11-way-
-classification domain depth, a genuinely different consideration from what was weighed
-at archival time.
-
-**Addendum, final (does not rewrite the answers above):** the
-restoration directly above is REVERSED, this time final -- this function is archived
-again, alongside `compute_adaptive_
-sampling_groups()` (see that function's own final addendum above for the full evidence
-record). In short: real, full-scale testing against a hand-built 9-group expert
-classification on the actual PtConception 18S occurrence checkpoint confirmed
-`compute_adaptive_sampling_groups()` (the function this file's own spatial-binning
-purpose exists to feed) answers the wrong question -- record-count adequacy, not shared
-detection process -- and can fragment or falsely conflate real groups. It also confirmed
-`estimate_kernel_priors()` needs no pre-merged, sample-size-adequate groups at all (it
-fits cleanly on the real unmerged classification down to a single-taxon group), so the
-spatial-binning purpose this function was kept alive for was never actually load-bearing.
-See `TaxaExpect/CLAUDE.md`'s final 2026-09-09 session note for the full record.
+Archived (moved to `archive_glmm_prior_pipeline/`, alongside
+`compute_adaptive_sampling_groups()`): this file's spatial-binning purpose existed only
+to feed `compute_adaptive_sampling_groups()`'s per-site effort measurement, which is
+itself archived (see that function's section above) -- the purpose this function was
+kept alive for was never actually load-bearing.
 
 ### `generate_domestic_food_priors.R`
 
@@ -603,15 +543,13 @@ See `TaxaExpect/CLAUDE.md`'s final 2026-09-09 session note for the full record.
 - **"Is having `train_biodiversity_model_by_group` worth having?"**: see that function's
   own section below (the identical question is asked there too).
 
-**Addendum:** `prepare_model_dataframe()` itself, along with the rest of the
-GLMM grid/prior-fitting chain, is retired (source + tests excluded from the package
-build) once every real production workflow finished migrating to
-the kernel-priors path (`estimate_kernel_priors()`). The `habitat_col` design defense
-above remains an accurate record of why that choice was made at the time and is not being
-revisited or overturned -- it is simply not live code. The kernel path's own
-`estimate_kernel_priors()` takes a required `site_habitat` argument instead (no `NULL`-
-means-opt-out convention, since the kernel estimator has no equivalent GLMM-contrasts
-failure mode to guard against).
+Archived (moved to `archive_glmm_prior_pipeline/`, along with the rest of the GLMM
+grid/prior-fitting chain), once every real production workflow finished migrating to the
+kernel-priors path. The `habitat_col` design defense above remains an accurate record of
+why that choice was made and is not overturned -- it is simply no longer live code. The
+kernel path's `estimate_kernel_priors()` takes a required `site_habitat` argument instead
+(no `NULL`-means-opt-out convention, since the kernel estimator has no equivalent
+GLMM-contrasts failure mode to guard against).
 
 ### `recover_demoted_species.R`
 
@@ -721,27 +659,16 @@ Not flagged with any file-specific comments in the review. No changes made.
 - **Example not runnable**: left `\dontrun{}` -- needs real occurrence data spanning
   multiple sampling groups.
 
-**Addendum, 2026-09-09:** the question this section opens with -- "Is having
-`train_biodiversity_model_by_group` worth having?" -- was answered concretely this
-session, not just argued through in the abstract. A full usage audit (bulk grep across
-every real production workflow and every cross-package/same-package R call, plus a
-targeted follow-up specifically checking whether `PtConceptionWorkflow_18S_2_single_site.R`
--- the exact "broad-marker data spanning multiple detection processes" scenario this
-function's own roxygen called its "recommended entry point" for -- actually calls it)
-found **zero real callers anywhere**, including in that one workflow: it hand-rolls its
-own per-group loop (`prepare_model_dataframe(sampling_group_col=)` then a manual loop
-calling `screen_spatial_formula()`/`train_biodiversity_model()` per group with its own
-`tryCatch()`), which turns out to be a strict superset of what this function did (it adds
-AIC-based formula screening this function had no equivalent for). So the two reasons given
-above for keeping this function separate from `train_biodiversity_model()` were sound
-architecture, but the function itself was built, never adopted, and its own target use case
-evolved past it before anyone ever called it. Archived (source + tests moved intact,
-DECIPHER-module retirement precedent) rather than deleted -- it remains fully functional
-GLMM-path infrastructure, just not live; the rest of the GLMM chain
-is retired too, excluded from the package build along with it. Superseded by
-`estimate_kernel_priors(sampling_group_col=)` on the kernel path, which provides
-per-group/multi-detection-process stratification without needing a separate
-orchestrating wrapper.
+The question this section opens with -- "Is having `train_biodiversity_model_by_group`
+worth having?" -- was answered concretely: a full usage audit found zero real callers
+anywhere; the one workflow its own roxygen called its "recommended entry point" for
+hand-rolls an equivalent per-group loop instead, one that turns out to be a strict
+superset of what this function did. So the two reasons given above for keeping this
+function separate from `train_biodiversity_model()` were sound architecture, but the
+function itself was never adopted. Archived (moved to `archive_glmm_prior_pipeline/`)
+rather than deleted. Superseded by `estimate_kernel_priors(sampling_group_col=)` on the
+kernel path, which restores per-group/multi-detection-process stratification without a
+separate orchestrating wrapper.
 
 ### `utils_plot.R`
 
@@ -777,88 +704,10 @@ errors, 0 warnings, 0 notes. Reinstalled to `~/Library/R/4.0/library`.
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
+## Behavior changes to already-reviewed functions
 
-## Functions added or modified since this review (through 2026-09-07)
-
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
-
-- `.beta_mean`
-- `.beta_sd`
-- `.empty_undetected_evidence_result`
-- `.glmm_deprecation_notice`
-- `.parse_grid_id_coords`
-- `.prepare_one_group`
-- `.resolve_evidence_groups`
-- `.resolve_gbif_taxon_key`
-- `.resolve_gbif_taxon_keys_batch`
-- `.resolve_group_prices`
-- `.score_one_resolution`
-- `.theta_surface_accumulate`
-- `.theta_surface_apply_mask`
-- `.theta_surface_axis`
-- `.theta_surface_bbox`
-- `.theta_surface_bin_index`
-- `.theta_surface_condition_label`
-- `.theta_surface_downsample`
-- `.theta_surface_downsample_matrix`
-- `.theta_surface_engine`
-- `.theta_surface_fft_convolve`
-- `.theta_surface_fft_convolve_batch`
-- `.theta_surface_in_polygon`
-- `.theta_surface_kernel`
-- `.theta_surface_plot_leaflet`
-- `.theta_surface_plot_static`
-- `.theta_surface_raster`
-- `.theta_surface_wkt_to_polys`
-- `.translate_to_gbif`
-- `add_pca_covariates`
-- `apply_undetected_evidence`
-- `build_priors`
-- `calibrate_kernel_bandwidth`
-- `compute_adaptive_sampling_groups`
-- `compute_moran_basis`
-- `create_sites_from_grid`
-- `estimate_kernel_priors`
-- `fit_regional_presence_curve`
-- `generate_domestic_food_priors`
-- `generate_full_priors`
-- `generate_inat_range_evidence`
-- `generate_invasive_watch_evidence`
-- `generate_presence_curve_evidence`
-- `generate_regional_proximity_evidence`
-- `generate_undetected_diversity`
-- `generate_user_specified_evidence`
-- `kernel_budget_sensitivity`
-- `optimize_grid_size`
-- `plot_theta_map_interactive`
-- `plot_theta_surface`
-- `prepare_model_dataframe`
-- `print.taxaexpect_kernel_budget_sensitivity`
-- `print.taxaexpect_kernel_priors`
-- `print.taxaexpect_theta_surface`
-- `report_priors`
-- `rewrite_habitat_formula`
-- `screen_spatial_formula`
-- `train_biodiversity_model`
-- `train_biodiversity_model_by_group`
-
-
-------------------------------------------------------------------------
-
-## Changes since this review (2026-09-13 / 2026-09-14)
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
+Not new functions (see "Added after the review" near the top for those) -- new behavior
+on functions this document already covers above.
 
 - `generate_domestic_food_priors()`'s internal `.norm_kingdom()` returns `NA`
   for superkingdom-level values, so `Eukaryota`, `Bacteria` and `Archaea` no

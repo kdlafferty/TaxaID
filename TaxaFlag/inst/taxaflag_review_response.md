@@ -9,11 +9,10 @@ This document responds to `inst/taxaflag_review.Rmd`, which reviews 10 files
 `report_flags.R`, `review_assignments.R`, `review_spatial_context.R`,
 `TaxaFlag-package.R`) plus a package-level Code/Domain checklist, following this
 ecosystem's TaxaMatch/TaxaLikely/TaxaFetch/TaxaAssign/TaxaHabitat review-response
-format. **Note on scope:** a 2026-08-07 session had already fixed two items from this
-same review (the `df` -> `input_df` rename and a broken `\link{}` in
-`build_review_covariates.R`) directly in `TaxaFlag/CLAUDE.md`'s session notes, but never
-produced this response document or worked through the remaining file-specific comments
--- this pass closes that gap. `devtools::test()`: 415 expectations, 0 failures (5
+format. **Note on scope:** two items from this same review (the `df` -> `input_df`
+rename and a broken `\link{}` in `build_review_covariates.R`) were already fixed before
+this response document was produced; this pass works through the remaining
+file-specific comments. `devtools::test()`: 415 expectations, 0 failures (5
 pre-existing `expect_warning()` tests, unchanged). `devtools::check()`: 0 errors, 0
 warnings, 0 notes. Reinstalled to `~/Library/R/4.0/library`.
 
@@ -30,6 +29,38 @@ things differently (e.g. `event_id` vs. `sample_id`, `taxon_name` vs. `species`)
 coding fixed column names would break interoperability with every non-default upstream
 caller for no safety benefit the existing existence-check doesn't already provide. Noted
 once here rather than repeated per file below.
+
+------------------------------------------------------------------------
+
+## Added after the review
+
+| Function | File | Purpose | Tests |
+|---|---|---|---|
+| `check_gbif_tile_range()` | `R/check_gbif_tile_range.R` | Spatial-isolation signal for a taxon from GBIF's occurrence-density map tiles | test-check_gbif_tile_range.R, test-check_gbif_tile_range_cache.R, test-review_spatial_context.R |
+| `compute_local_occurrence_distance()` | `R/compute_local_occurrence_distance.R` | Distance from a query point to the nearest already-fetched GBIF occurrence | test-compute_local_occurrence_distance.R, test-review_spatial_context.R |
+| `flag_watch_candidates()` | `R/flag_watch_candidates.R` | Flag observations where a watch-list species outscores the consensus winner | test-flag_watch_candidates.R |
+| `review_spatial_context()` | `R/review_spatial_context.R` | Interactive Spatial Review of Consensus Taxa | test-review_spatial_context.R |
+| `taxaflag_clear_cache()` | `R/taxaflag_clear_cache.R` | Report and clear TaxaFlag's on-disk caches | test-check_gbif_tile_range_cache.R, test-review_assignments.R |
+| `validate_controls()` | `R/validate_controls.R` | Validate That Control Samples Actually Look Like Controls | test-validate_controls.R |
+
+24 new internal helper functions have also been added since the review.
+
+Also since the review, `flag_contaminant()` (pre-existing, reviewed above) gained four
+arguments:
+- `require_control_evidence` makes the contamination verdict conditional on the taxon
+  having been seen in a control at all; a taxon never observed in any control otherwise
+  still receives a contamination verdict driven by read depth alone. Off by default.
+- `site_col` / `min_sites_systemic` use site breadth as a discriminant: a systemic
+  source appears in controls at many sites regardless of which sites' samples carry it,
+  a local one appears in controls at the single site whose samples are full of it, and
+  is reported `single_site_enriched`.
+- `min_control_obs` refuses to condemn a taxon on a single control observation (the
+  default direction test is a bare rate inequality that a single stray read can
+  outvote).
+
+Tests for `validate_controls()` are in `test-validate_controls.R`; tests for
+`flag_contaminant()`'s new arguments are in
+`test-flag_contaminant-evidence-and-sites.R`.
 
 ------------------------------------------------------------------------
 
@@ -216,16 +247,11 @@ once here rather than repeated per file below.
 
 ## `flag_handler.R`
 
-**2026-09-09 addendum:** revisited during an ecosystem-wide redundant/abandoned-function
-sweep -- confirmed this function still has only one real call site anywhere in the
-monorepo (its own vignette example), and, unlike a clean data-type exemption, is not even
-called by the one camera-trap-oriented workflow that exists (`TaxaAssign/inst/workflows/
-camera_trap_posterior_workflow.R`). Decided to keep it anyway, on the same grounds as
-`build_review_covariates.R`'s decision directly above: it's real, general-purpose,
-actively maintained infrastructure (the Session 151 `station_metadata` edge-anchoring
-feature was built specifically for it) for a data type (camera-trap/timestamped
-detections) this ecosystem's real production workflows don't currently include -- not
-neglected code, just not yet needed by any live pipeline. No code change.
+This function has only one real call site anywhere in the monorepo (its own vignette
+example); kept as real, general-purpose, actively maintained infrastructure for a data
+type (camera-trap/timestamped detections) this ecosystem's real production workflows
+don't currently include -- not neglected code, just not yet needed by any live
+pipeline. No code change.
 
 **Fixed:**
 - **"Example not runnable as-is":** added a small, self-contained synthetic
@@ -244,13 +270,10 @@ neglected code, just not yet needed by any live pipeline. No code change.
   current, installed function with exactly this scenario (a detection 15 minutes from a
   30-minute-interval edge): the real output is `"15.0 min from nearest edge; within
   30-min interval, score 0.500"` -- correctly `"within"`, not `"outside"`. The reviewer's
-  observed output does not reproduce against the current code; this class of "reviewer's
-  report doesn't match current behaviour" has come up before in this ecosystem
-  (see `TaxaID/CLAUDE.md`'s "Verify purpose before flagging a flaw" precedent) and here
-  traces to the same cause -- the file has been substantially rewritten since (the 2026-07-24
-  unified-validity-schema rename, the Session 151 edge-anchoring redesign) and the bug, if
-  it was ever real, no longer exists. No code change; confirmed via a live re-run, not
-  just re-reading source.
+  observed output does not reproduce against the current code -- the file has been
+  substantially rewritten since (a unified-validity-schema rename, an edge-anchoring
+  redesign) and the bug, if it was ever real, no longer exists. No code change;
+  confirmed via a live re-run, not just re-reading source.
 - "Line 185: do this first to avoid all the other date processing if it isn't needed":
   already correctly ordered -- `.parse_datetimes()` runs immediately after the cheap
   (O(1)) input-validation checks and its own failure (`all(is.na(parsed))`) is checked
@@ -459,110 +482,14 @@ set of changes, not piecemeal. `devtools::test()`: 415/415, 0 failures.
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
+## Behavior changes to already-reviewed functions
 
-## Functions added or modified since this review (through 2026-09-07)
+Not new functions (see "Added after the review" near the top for those) -- new behavior
+on functions this document already covers above.
 
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
-
-- `.build_candidate_label`
-- `.build_review_prompt`
-- `.build_spatial_context_server`
-- `.check_gbif_tile_range_at_zoom`
-- `.combine_notes`
-- `.compute_contaminant_scores`
-- `.dilate8`
-- `.fetch_gbif_tile_alpha`
-- `.fetch_inat_points`
-- `.fmt_pipeline_value`
-- `.gbif_legend_swatch`
-- `.gbif_tile_url`
-- `.grow_patch_size`
-- `.haversine_km`
-- `.lonlat_to_tile_pixel`
-- `.mercator_resolution_km`
-- `.normalise_context`
-- `.parse_json_text`
-- `.parse_review_response`
-- `.recover_truncated_json`
-- `.resolve_gbif_taxon_key`
-- `.review_batch_with_retry`
-- `.review_cache_hash`
-- `.review_cache_read`
-- `.review_cache_write`
-- `.review_spatial_context_impl`
-- `.summarise_candidate_weights`
-- `.summarise_pipeline_context`
-- `.summarise_spatial_context`
-- `add_posthoc_assessment`
-- `check_gbif_tile_range`
-- `compute_local_occurrence_distance`
-- `flag_contaminant`
-- `flag_handler`
-- `flag_watch_candidates`
-- `report_flags`
-- `review_assignments`
-- `review_spatial_context`
-- `taxaflag_clear_cache`
-
-
-------------------------------------------------------------------------
-
-## Changes since this review (2026-09-13 / 2026-09-14)
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
-
-- `check_gbif_tile_range(cache_dir = )` caches its verdicts, keyed on the
-  taxon key, rounded coordinates, buffer, zoom, escalation settings and base
-  URL. There is deliberately no expiry, since a range verdict does not spoil;
-  the cache age is reported instead via an attribute.
-- `taxaflag_clear_cache()` now covers both of this package's caches rather
-  than only the review-assignment cache.
-
-## Added after the review
-
-- `validate_controls()` (NEW export) answers whether a sample declared a control
-  is composed like one, by comparing each declared control against its own
-  site's sample-to-sample Bray-Curtis null. A bounded metric cannot take a
-  `median + 3*MAD` fence (that yields thresholds above 1), so the fence is
-  bounded headroom: `null_med + headroom_fraction * (1 - null_med)`. Verdicts
-  name the direction of the surprise (`RESEMBLES_SAMPLE` / `RESEMBLES_CONTROL`)
-  and `untestable` is reported explicitly, because a site with two samples and a
-  site with twenty otherwise both print "nothing flagged". Per-site power is
-  returned as `attr(res, "site_power")`. Tests in
-  `test-validate_controls.R`.
-- `flag_contaminant(require_control_evidence = )` makes the contamination
-  verdict conditional on the taxon having been seen in a control at all. The
-  default path scores every taxon, so a taxon never observed in any control
-  still receives a contamination verdict driven by read depth through the
-  shrinkage prior; on a real run that was 16,694 of 16,825 ESVs. Under the gate
-  such a taxon reports `no_control_evidence` instead. Off by default, so no
-  existing caller changes.
-- `flag_contaminant(site_col = , min_sites_systemic = )` uses site breadth as a
-  discriminant rather than as extra power: a systemic source appears in controls
-  at many sites regardless of which sites' samples carry it, whereas a local one
-  appears in controls at the single site whose samples are full of it, and is
-  reported `single_site_enriched`. This dissolves the choice between pooling
-  controls (power, but one trip's contamination speaks for another's) and
-  pairing them by event (specificity, but on real data event-paired controls
-  left the invalid tier empty and screened nothing).
-- `flag_contaminant(min_control_obs = )` refuses to condemn a taxon on a single
-  control observation. The direction test is a bare rate inequality, so with 91
-  controls against 1,052 samples one stray read in one blank scores 1/91 and
-  outvotes two genuine detections at 2/1052. A one-sided significance test with
-  a multiple-testing correction would be the principled replacement and is NOT
-  implemented; `min_control_obs = 1` restores the unfloored comparison.
-- Tests for all four arguments are in
-  `test-flag_contaminant-evidence-and-sites.R`, including one asserting that
-  `min_control_obs = 1` restores the prior behaviour, so the floor is provably
-  the mechanism under test.
+- `check_gbif_tile_range(cache_dir = )` caches its verdicts, keyed on the taxon key,
+  rounded coordinates, buffer, zoom, escalation settings and base URL. There is
+  deliberately no expiry, since a range verdict does not spoil; the cache age is
+  reported instead via an attribute.
+- `taxaflag_clear_cache()` now covers both of this package's caches rather than only
+  the review-assignment cache.

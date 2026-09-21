@@ -4,13 +4,27 @@
 **Response prepared by:** Claude Code (Sonnet 5), 2026-08-11, at K. D. Lafferty's request
 
 This document responds to `inst/taxawizard_review.Rmd` (Micah Wright's first human-authored
-code + domain review of this package, replacing the prior Claude-authored combined
-review+response of the same name from 2026-08-09). Every file was reviewed; the review's
+code + domain review of this package). Every file was reviewed; the review's
 own reported test failure was reproduced, root-caused, and fixed, along with three more
 instances of the same underlying bug the review didn't explicitly name. `devtools::test()`:
 721 expectations, 0 failures (up from 696). `devtools::check()`: 0 errors, 0 warnings, 0
 notes. `R CMD build`'s own auto-detected-dependency warning (the review's own reported
 R-version warning) is gone. Reinstalled to `~/Library/R/4.0/library`.
+
+------------------------------------------------------------------------
+
+## Added after the review
+
+| Function | File | Purpose | Tests |
+|---|---|---|---|
+| `sniff_input()` | `R/setup.R` | Guess Which Input Node a File Looks Like | test-graph.R, test-setup.R |
+| `workflow_check()` | `R/setup.R` | Check the Local TaxaID Setup | test-output.R, test-pack.R, test-setup.R |
+| `workflow_export_prompts()` | `R/pack.R` | Export a Portable TaxaID Prompt Pack | test-pack.R |
+| `workflow_registry()` | `R/registry.R` | Build the Introspected Function Registry | test-graph.R, test-pack.R, test-registry-invariants.R, test-registry.R, test-validate.R, test-workflow-template.R |
+
+72 new internal helper functions have also been added since the review, mostly the
+introspected-registry machinery (`registry.R`, `validate.R`, `setup.R`, `pack.R`) that
+replaced the earlier hand-maintained metadata JSON.
 
 ------------------------------------------------------------------------
 
@@ -129,7 +143,7 @@ user "Use previous session defaults? (yes/no)" -- but tracing where `saved_ctx` 
 that answer found it was **never actually used for anything except deciding whether to
 delete the file**. `.format_context_for_prompt()` (the function that turns saved parameters
 into prompt text) was still fully implemented and correct, but the only caller was
-`.load_system_prompt()` -- the legacy monolithic prompt builder the Session 69 graph-based
+`.load_system_prompt()` -- the legacy monolithic prompt builder the current graph-based
 engine replaced. The active 3-phase engine's `workflow_engine()` call in `.create_console()`
 never passed `saved_ctx` anywhere, so accepting "yes" and seeing "Using previous defaults"
 printed produced **no actual effect** on the conversation -- a silently orphaned feature,
@@ -312,58 +326,10 @@ not assumed fixed by inspection.
 
 ------------------------------------------------------------------------
 
-## Functions added or modified since this review (through 2026-09-07)
+## Behavior changes to already-reviewed functions, and new machinery
 
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
-
-- `.annotate_self`
-- `.app_server`
-- `.app_ui`
-- `.append_to_script`
-- `.build_phase_prompt`
-- `.call_fn_name`
-- `.call_llm`
-- `.confirm_yes`
-- `.create_console`
-- `.create_viewer`
-- `.extract_libraries`
-- `.generate_app`
-- `.generate_markdown`
-- `.generate_outputs`
-- `.generate_script`
-- `.is_library_call`
-- `.is_literal_value`
-- `.is_simple_assignment`
-- `.is_source_call`
-- `.last_assignment_var`
-- `.llm_provider_choices`
-- `.looks_like_error`
-- `.param_assembly_line`
-- `.parse_error_context`
-- `.parse_workflow_script`
-- `.r_string`
-- `.save_session`
-- `.segment_script`
-- `.subset_for_trial`
-- `.widget_code`
-- `workflow_engine`
-
-
-------------------------------------------------------------------------
-
-## Changes since this review (2026-09-13 / 2026-09-14)
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
+Not new functions (see "Added after the review" near the top for the new exports) -- new
+behavior on functions this document already covers above, and the machinery behind them.
 
 - Generated workflows no longer reproduce defects that were already fixed in
   the packages they call. The affected snippets were regenerated against
@@ -376,15 +342,6 @@ reasoning and verification status are recorded in this package's own
   uses. It had been reading `doc$params`, which matched nothing, so every
   generated parameter block had read "(no params)".
 
-------------------------------------------------------------------------
-
-## Changes since this review
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. This is the largest block of change since the review: the
-package's context layer was replaced outright. Per-change history is in this
-package's `NEWS.md`.
-
 **The hand-maintained metadata is gone.** `inst/metadata/*.json` (94 typed
 function-signature entries) and `R/metadata.R` were deleted. `R/registry.R`
 now introspects the installed packages at run time via
@@ -393,16 +350,6 @@ sibling package's interface is typed by hand in this package any more, so the
 class of defect where a JSON entry silently disagreed with the installed
 function cannot recur. Cached per package and keyed on version, `Built` date
 and a schema constant.
-
-**New exported functions**, all documented in `README.md`:
-
-- `workflow_check()` -- reports whether this machine can run a given path
-  (R, packages, keys, network, binaries, cache), scoped to a set of edge ids.
-- `sniff_input()` -- classifies a file or directory against the workflow
-  graph's input nodes.
-- `workflow_registry()` -- the introspected registry described above.
-- `workflow_export_prompts()` -- writes a portable prompt pack for use with an
-  LLM that has no TaxaWizard installation.
 
 `workflow_engine(metadata =)` is deprecated in favour of `registry =`.
 

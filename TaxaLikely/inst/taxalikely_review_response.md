@@ -3,15 +3,29 @@
 **Review date:** 2026-08-07 **Package version reviewed:** TaxaLikely 0.1.0 **Reviewer:** Micah Wright (human -- this is a genuine human-authored review, not a Claude-authored one; it replaces the prior Claude-authored review and its own response document) **Response prepared by:** Kevin Lafferty
 
 This document responds to every checklist item and every file-specific comment in
-`inst/taxalikely_review.Rmd`, in the review's own order. It **replaces** the previous
-`inst/taxalikely_review_response.md`, which responded to an earlier, Claude-authored review
-(lintr exclusions, `df` shadowing, duplicated NCBI enumeration blocks) -- a different review
-from a different reviewer, now stale.
+`inst/taxalikely_review.Rmd`, in the review's own order.
 
 Each item is marked **Fixed** (code changed, verified), **Not changed** (reasoning given),
 **Answered** (a real question, answered directly, no code change needed), or **Design
 decision** (a legitimate architectural point, deliberately not acted on this session, with
 the reasoning recorded for a future dedicated session).
+
+------------------------------------------------------------------------
+
+## Added after the review
+
+| Function | File | Purpose | Tests |
+|---|---|---|---|
+| `check_cross_genus_sampling_noise()` | `R/build_sequence.R` | How Much Does the Random Cross-Genus Draw Move the Estimate? | test-build.R |
+| `taxalikely_clear_cache()` | `R/taxalikely_clear_cache.R` | Report and clear TaxaLikely's on-disk cache | test-fetch-cache-eviction.R, test-taxalikely_clear_cache.R |
+
+23 new internal helper functions have also been added since the review (mostly in
+`fetch.R`'s reference-cache internals and `bimodality.R`).
+
+Not counted as new: `suggest_unreferenced_species()` (`R/suggest_unreferenced_species.R`)
+and its internal helpers were moved here from TaxaAssign, where the same code was already
+reviewed before TaxaAssign's own review pull -- see `inst/extra_functions_for_review.md`
+for the detail.
 
 ------------------------------------------------------------------------
 
@@ -140,35 +154,23 @@ place in the ecosystem's dependency chain, not removed.
 
 ## Note on a test-count discrepancy (resolved, not a data-loss finding)
 
-While reconciling test counts (see "Test results" below), this session initially found that
-`R/audit_reference_database.R`, `R/repair_thin_evidence.R`, and `.compute_hierarchy_congruence()`
--- documented in this package's own `CLAUDE.md` (2026-08-04 through 2026-08-06 session notes,
-"Reference database auditing (Module B-QC2)") -- are absent from `R/`, along with their three
-dedicated test files. **Investigated further and resolved: this is not data loss.** These files
-were **deliberately archived** on 2026-08-07, in an already-documented, already-completed step:
-the whole DECIPHER-whole-set-alignment, taxon-list-scoped approach they implemented was found
-(same session, real data) to have both a real false-positive failure mode (15 genuine,
-Smithsonian-vouchered `Menidia` accessions flagged `"incongruent"` purely because `Menidia`'s
-family had no other representative on a real 6-genus test's taxon list) and a structural
-false-negative gap (a mislabeled accession's true contaminating identity can never be
-detected if its genus isn't on the caller's own taxon list). The
-superseding design (BLAST against a broad, unrestricted database instead of a taxon-list-scoped
-one) lives in `TaxaMatch::evaluate_reference_accessions()` /
-`TaxaMatch::corroborate_references_locally()`, not in this package. The archived source and
-tests are excluded from the package build and do not live under this package
-directory.
+While reconciling test counts (see "Test results" below), `R/audit_reference_database.R`,
+`R/repair_thin_evidence.R`, and `.compute_hierarchy_congruence()` were found absent from
+`R/`, along with their three dedicated test files. **Investigated and resolved: this is
+not data loss.** These files were **deliberately archived**: the whole
+DECIPHER-whole-set-alignment, taxon-list-scoped approach they implemented was found (real
+data) to have both a real false-positive failure mode (15 genuine, Smithsonian-vouchered
+`Menidia` accessions flagged `"incongruent"` purely because `Menidia`'s family had no
+other representative on a real 6-genus test's taxon list) and a structural false-negative
+gap (a mislabeled accession's true contaminating identity can never be detected if its
+genus isn't on the caller's own taxon list). The superseding design (BLAST against a
+broad, unrestricted database instead of a taxon-list-scoped one) is **not yet implemented**
+anywhere. The archived source and tests still exist on disk, deliberately excluded from
+the package build, at `TaxaLikely/archive_decipher_reference_audit/`.
 
-**The only real, actionable gap this surfaces**: TaxaLikely's own "Reference
-database auditing (Module B-QC2)" Function Inventory section and several of its 2026-08-04
-through 2026-08-06 session notes still describe `audit_reference_database()`/
-`classify_reference_accessions()`/`repair_thin_evidence()` as live, current, shipped
-functions -- they are not, as of the 2026-08-07 archival. This is a real documentation-drift
-gap (not corrected in this session, since it's a large, multi-entry historical section and
-out of scope for a review-response pass) worth a dedicated cleanup pass whenever the
-BLAST-based replacement is actually built, so the two don't compound. If the external
-`AuditNCBI.R` GreatLakes workflow still calls the archived functions, it would need
-`TaxaLikely` reinstalled from a pre-archival state or updated once the replacement ships --
-not evaluated this session (out of scope; the workflow lives outside this monorepo).
+If the external `AuditNCBI.R` GreatLakes workflow still calls the archived functions, it
+would need `TaxaLikely` reinstalled from a pre-archival state or updated once the
+replacement ships -- not evaluated here (the workflow lives outside this monorepo).
 
 ------------------------------------------------------------------------
 
@@ -215,13 +217,12 @@ not evaluated this session (out of scope; the workflow lives outside this monore
   see "General comments" above** for the DECIPHER point. The TaxaLikely/TaxaAssign-merge
   suggestion is the same point as `assign_scores.R`'s above -- design decision, not changed.
 
-**Addendum, 2026-09-09:** `build_site_reference()` itself was archived this date -- a usage
-audit found zero real callers anywhere in the monorepo (every real production workflow builds
-its reference database by calling `fetch_ncbi_reference_sequences()` -> `audit_barcode_
-coverage()` -> `write_reference_fasta()` directly, not through this wrapper). Retired
-(source + tests excluded from the package build), not deleted, matching this file's
-own `clean.R`/`remove_flagged_references.R` precedent for "retired but kept as a record."
-The original review answer above is left as-is, a record of what was true at review time.
+`build_site_reference()` itself has since been archived -- a usage audit found zero real
+callers anywhere in the monorepo (every real production workflow builds its reference
+database by calling `fetch_ncbi_reference_sequences()` -> `audit_barcode_coverage()` ->
+`write_reference_fasta()` directly, not through this wrapper). Moved intact (source +
+tests) to `archive_unused_reference_wrappers/`, not deleted. The original review answer
+above is left as-is, a record of what was true at review time.
 
 ### calibrate.R
 
@@ -243,22 +244,15 @@ The original review answer above is left as-is, a record of what was true at rev
   hundreds to thousands of unique values). Added as an explicit comment at both of the two
   `<= 10L` checks in this file (`calibrate_coverage_filter()` and `coverage_threshold()`).
 
-**Addendum -- both functions are retired (source and tests excluded from the package
-build, not deleted).** The answers above remain a correct record of
-this file's design as reviewed; they are not retracted. What changed is the decision on
-whether to keep the mechanism live, made with real evidence in hand rather than at review
-time: a real A/B test on full-scale PtConception 12S data
-(`diagnostics/coverage_filter_ab_comparison.R`/`_v2.R`) found a real, reproduced H1
-win-rate improvement (54.9%->65.1%, then 55.1%->65.8%) on queries the calibrated filter is
-willing to answer, but also a real, quantified cost: 134 of 691 species (19.4%) lose every
-training pair at the calibrated threshold, and 25.1% of real evaluation queries end up
-unresolved rather than answered. This is the same hard-exclusion-on-an-imperfect-proxy
-shape this ecosystem has already relearned twice (`apply_coverage_constraints()`'s
-zero->relabel fix; `TaxaFetch::filter_gbif_quality()`'s exclude_institution->
-flag_institution fix). The one piece of genuinely separable value (the Youden's-J
-diagnostic on whether coverage predicts pair quality at all) is a fairly standard
-statistic that doesn't need a dedicated exported function -- and the exclusion-oriented
-framing around it is the specific part already known not to be trusted.
+Both functions have since been archived (moved intact, not deleted, to
+`archive_unused_coverage_calibration/`). The answers above remain a correct record of
+this file's design as reviewed; they are not retracted. A real A/B test on full-scale
+PtConception 12S data found a real, reproduced H1 win-rate improvement (54.9%->65.1%,
+then 55.1%->65.8%) on queries the calibrated filter is willing to answer, but also a
+real, quantified cost: 134 of 691 species (19.4%) lose every training pair at the
+calibrated threshold, and 25.1% of real evaluation queries end up unresolved rather than
+answered -- opt-in only, not a default, matching this package's flag-don't-exclude
+precedent for imperfect quality proxies.
 
 ### clean.R -> renamed remove_flagged_references.R
 
@@ -613,8 +607,8 @@ No comments in the review; nothing to do.
   nothing in this package does that. Only relevant if someone tried to directly compare/combine
   two different `model_params` objects' internal lookup keys, which no shipped code does.
 - **"Line 179: if `N_Obs` is unused, suggest removing."** **Answered, kept per the package's own
-  prior explicit decision.** Already investigated and documented in an earlier session (see
-  `CLAUDE.md`'s Session 151 note): `N_Obs` is a real pair-count diagnostic, confirmed unused by
+  prior explicit decision.** Already investigated and documented previously:
+  `N_Obs` is a real pair-count diagnostic, confirmed unused by
   any current shrinkage computation (the real shrinkage `N` is the per-*sequence* row count of
   this same data frame, computed separately) -- kept deliberately as a possible future
   pair-density diagnostic, at zero computational cost, per the user's own prior explicit choice.
@@ -659,19 +653,19 @@ No comments in the review; nothing to do.
   mean, never to any individual species' own shrunk estimate. Added this full derivation to
   `train_likelihood_model()`'s own `@section Pseudo-data anchoring`.
 
-**Addendum, 2026-09-10 -- two changes to `train_likelihood_model()` since this review.**
-(1) `min_pair_coverage` (default 0.8): a reference pair must meet the match object's own
-coverage floor before it may define a reference's best foreign/congener/conspecific match.
-Found on the first full GreatLakes run after the reference-screen rewiring: 86% of references'
-"best foreign match" was a 100%-identity, 4.6%-coverage short-overlap pair, so the trained
-gap was negative for 89% of references and the H1 likelihood was a near-tie on 82% of ASVs.
-Not a data filter (no pair removed, no species dropped -- this is the objection that archived
-`calibrate_coverage_filter()` on 2026-09-09, and it does not apply here). (2) `shrinkage =
+Two further changes to `train_likelihood_model()` since this review. (1)
+`min_pair_coverage` (default 0.8): a reference pair must meet the match object's own
+coverage floor before it may define a reference's best foreign/congener/conspecific
+match. Found on a real production run: 86% of references' "best foreign match" was a
+100%-identity, 4.6%-coverage short-overlap pair, so the trained gap was negative for 89%
+of references and the H1 likelihood was a near-tie on 82% of ASVs. Not a data filter (no
+pair removed, no species dropped -- this is the objection that led to archiving
+`calibrate_coverage_filter()` above, and it does not apply here). (2) `shrinkage =
 "empirical_bayes"` (default): the per-species mean weights are now `tau^2/(tau^2 +
 sigma^2/N)` with `tau^2` estimated per dimension, replacing the fixed `N/(N+prior_weight)`
-for the means only (`"fixed"` restores it; variances unchanged). Validated on the real
-GreatLakes workflow code path against Lamar: co-detections 593 -> 798, precision 0.805 ->
-0.818, 29 -> 41 of 61 species, none lost.
+for the means only (`"fixed"` restores it; variances unchanged). Validated on a real
+production workflow: co-detections 593 -> 798, precision 0.805 -> 0.818, 29 -> 41 of 61
+species, none lost.
 
 ### tansform.R [sic -- transform.R]
 
@@ -718,10 +712,10 @@ GreatLakes workflow code path against Lamar: co-detections 593 -> 798, precision
 
 No comments in the review; nothing to do.
 
-**Addendum, 2026-09-09:** `build_site_reference()` (`write_reference_fasta()`'s one internal
-caller) was archived this date (zero real callers anywhere in the monorepo -- see the
-`build_site_reference.R` section above). `write_reference_fasta()` itself was investigated in
-the same pass and deliberately KEPT live/exported, not archived alongside it: it's a generic,
+`build_site_reference()` (`write_reference_fasta()`'s one internal caller) has since been
+archived (zero real callers anywhere in the monorepo -- see the
+`build_site_reference.R` section above). `write_reference_fasta()` itself was
+investigated at the same time and deliberately KEPT live/exported, not archived alongside it: it's a generic,
 standalone, round-trippable (with `read_reference_fasta()`) FASTA-export utility with its own
 dedicated test coverage and README documentation independent of the wrapper, and this
 package's only reference-export capability -- archiving it too would have removed real,
@@ -859,110 +853,31 @@ Developer Environment convention.
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
+## Functions since retired
 
-## Functions added or modified since this review (through 2026-09-07)
+`compute_likelihoods()`/`model_likelihoods()` (this document's own "### compute_likelihoods.R"
+section above answered two documentation questions about them but did not question
+whether either had a real caller): a usage audit found zero real callers for
+`compute_likelihoods()` and none for `model_likelihoods()` outside `compute_likelihoods()`
+itself. Both archived intact (moved, not deleted) to
+`archive_unused_likelihood_entrypoint/`. `unreferenced_candidates()`/`assign_scores()` --
+the two functions this pipeline's first two stages named, also covered above -- were
+checked at the same time and found to have real, direct callers, and were NOT archived.
 
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
+`flag_reference_errors()`/`remove_flagged_references()` (see "### clean.R -> renamed
+remove_flagged_references.R" above) were later retired too, superseded by
+`TaxaMatch::corroborate_references_locally()` + `TaxaMatch::evaluate_reference_accessions()`.
 
-- `.align_pairs_by_genus`
-- `.audit_barcode_coverage_impl`
-- `.audit_one_genus_reverse`
-- `.build_restored_row`
-- `.build_search_term`
-- `.check_score_ratio_monotonicity`
-- `.compute_reference_qc_stats`
-- `.coverage_checkpoint_path`
-- `.decipher_align_pairs`
-- `.detect_finest_rank_col`
-- `.empty_reference_df`
-- `.evaluate_one_query`
-- `.fetch_locations_batched`
-- `.fetch_summaries_batched`
-- `.first_two_words`
-- `.genus_taxid`
-- `.has_seq_matrix_presence`
-- `.inat_species_info`
-- `.ncbi_species_enumerate`
-- `.normalize_scores`
-- `.parse_fasta_text`
-- `.parse_lat_lon`
-- `.prep_training_data`
-- `.resolve_hierarchy_score`
-- `.reverse_barcode_check`
-- `.transform_p`
-- `assign_scores`
-- `audit_acoustic_coverage`
-- `audit_barcode_coverage`
-- `audit_reference_coverage`
-- `build_sequence_matrix`
-- `calibrate_coverage_filter`
-- `check_cross_genus_sampling_noise`
-- `compute_likelihoods`
-- `coverage_threshold`
-- `detect_suppressed_candidates`
-- `evaluate_likelihoods`
-- `fetch_bold_reference_sequences`
-- `fetch_ncbi_reference_sequences`
-- `filter_top_hypotheses`
-- `flag_reference_errors`
-- `interpret_model`
-- `model_likelihoods`
-- `read_crabs_output`
-- `remove_flagged_references`
-- `restore_suppressed_candidates`
-- `subset_local_database`
-- `taxalikely_clear_cache`
-- `train_likelihood_model`
-- `trim_to_amplicon`
-
----
-
-## Addendum, 2026-09-09 (Sonnet 5 -- `compute_likelihoods.R` retirement, unrelated to any
-review item above but touching the same file this document's own "compute_likelihoods.R"
-section discusses)
-
-This review (above, "### compute_likelihoods.R") answered two documentation questions
-about `model_likelihoods()`/`compute_likelihoods()` (the broken example, the empty-
-`unresolved`-data.frame design choice) but never questioned whether either function had
-any real caller -- that wasn't in scope for this review. A later usage audit found they
-didn't: `compute_likelihoods()` (documented at the time as "the recommended high-level
-entry point") had zero real callers anywhere in the monorepo, and `model_likelihoods()`'s
-only caller outside `compute_likelihoods()` itself was its own required demonstration
-section in `inst/review_function_inputs.R` (structurally guaranteed for every exported
-function, not evidence of real adoption). Both are retired, source and tests
-excluded from the package build, not deleted -- the same convention this package
-already uses for its other retired-but-recorded functions.
-
-`unreferenced_candidates()`/`assign_scores()` -- the two functions this pipeline's first
-two stages named, also covered by this review's checklist above -- were investigated at
-the same time and found to have real, direct callers (`inst/workflows/
-image_acoustic_likelihood_workflow.R`, `inst/workflows/6_no_score_pathway_workflow.R`,
-and cross-package in `TaxaAssign/inst/workflows/camera_trap_posterior_workflow.R`) and
-were NOT archived.
-
-The Function Inventory checklist just above this addendum (and everywhere else in this
-frozen review-response document) is left as a record of what was true on 2026-08-07 --
-it still lists `compute_likelihoods`/`model_likelihoods` as live exported functions,
-which is no longer accurate. See `TaxaLikely/CLAUDE.md`'s own Function Inventory and its
-2026-09-09 top session note for the current, living record.
-
+The file-specific sections above still describe `compute_likelihoods`/`model_likelihoods`/
+`flag_reference_errors`/`remove_flagged_references` as live exported functions, which is no
+longer accurate; kept as a record of the review response, not amended in place.
 
 ------------------------------------------------------------------------
 
-## Changes since this review (2026-09-13 / 2026-09-14)
+## Behavior changes to already-reviewed functions
 
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
+Not new functions (see "Added after the review" near the top for those) -- new behavior
+on functions this document already covers above.
 
 - **Bimodal-H1 diagnostic added, then corrected the same day.** The first
   version fired on real production data and was a false positive: percent

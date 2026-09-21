@@ -6,6 +6,31 @@ This document responds to each comment in the TaxaTools code review. Changes wer
 
 ------------------------------------------------------------------------
 
+## Added after the review
+
+| Function | File | Purpose | Tests |
+|---|---|---|---|
+| `assign_sampling_group()` | `R/sampling_group.R` | Assign Sampling Groups from Taxonomic Rank Columns | test-sampling_group.R |
+| `cache_ok()` | `R/cache_utils.R` | Is a cache file usable, given the inputs it derives from? | test-cache_utils.R |
+| `check_taxaid_manifest()` | `R/build_manifest.R` | Check the Installed TaxaID Code Against a Recorded Manifest | test-build_manifest.R |
+| `default_sampling_scheme()` | `R/sampling_group.R` | Default Sampling-Group Classification Scheme | test-sampling_group.R |
+| `define_search_polygon()` | `R/define_search_polygon.R` | Define a Search Polygon Interactively | test-define_search_polygon.R |
+| `escalate_taxonomic_rank()` | `R/escalate_taxonomic_rank.R` | Escalate a Taxon to the Next Coarser Rank | test-escalate_taxonomic_rank.R |
+| `fetch_worms_attributes()` | `R/worms_attributes.R` | Fetch WoRMS Taxon Attributes by Name | test-worms_attributes.R |
+| `list_cache_files()` | `R/cache_utils.R` | List files in a directory matching cache-file patterns | test-cache_utils.R |
+| `report_and_clear_cache()` | `R/cache_utils.R` | Report and optionally delete a set of cache files | test-cache_utils.R |
+| `resolve_barcode_marker()` | `R/barcode_utils.R` | Resolve a Primer-Variant Barcode Term to the Marker It Amplifies | test-barcode_utils.R |
+| `resolve_barcode_primers()` | `R/barcode_utils.R` | Resolve Primer Sequences from a Barcode/Primer-Set Term | test-barcode_utils.R |
+| `taxaid_build_manifest()` | `R/build_manifest.R` | Record Which TaxaID Code a Run Is Using | test-build_manifest.R |
+| `taxaid_cache_report()` | `R/cache_utils.R` | Report every TaxaID cache on this machine | test-cache_utils.R |
+| `taxatools_clear_cache()` | `R/common_names.R` | Report and clear the TaxaTools on-disk caches | test-common-names.R, test-worms_attributes.R |
+| `write_taxaid_manifest()` | `R/build_manifest.R` | Write a TaxaID Build Manifest | test-build_manifest.R |
+
+25 new internal helper functions have also been added since the review (mostly in
+`worms_attributes.R`'s WoRMS-API internals and `common_names.R`'s cache internals).
+
+------------------------------------------------------------------------
+
 ## Checklist Items
 
 ### Automated tests — "testthat.R fails to run"
@@ -196,69 +221,13 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
+## Behavior changes to already-reviewed functions
 
-## Functions added or modified since this review (through 2026-09-07)
+Not new functions (see "Added after the review" near the top for those) -- new behavior
+on functions this document already covers above.
 
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
-
-- `.build_anthropic_request`
-- `.build_endpoint_url`
-- `.build_gemini_request`
-- `.build_genus_family_lookup`
-- `.build_openai_compat_request`
-- `.last_classification_rank`
-- `.lookup_family_from_backbone`
-- `.parse_openai_compat_response`
-- `.pts_to_wkt`
-- `.verify_via_ncbi`
-- `.wkt_to_pts`
-- `call_api`
-- `clean_taxon_names`
-- `define_search_polygon`
-- `draft_methods_text`
-- `escalate_taxonomic_rank`
-- `fill_higher_ranks`
-- `list_cache_files`
-- `print.report_context`
-- `report_and_clear_cache`
-- `resolve_barcode_lengths`
-- `resolve_barcode_marker`
-- `resolve_barcode_primers`
-- `verify_taxon_names`
-
-
-------------------------------------------------------------------------
-
-## Changes since this review (2026-09-13 / 2026-09-14)
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
-
-- `cache_ok(path, inputs)` -- **new export.** The staleness primitive: a cache
-  is rejected when any file it declares as an input is newer. Lifted verbatim
-  from three duplicated copies that had been pasted into individual workflows.
-- `taxaid_cache_report(extra_dirs, warn_gb)` -- **new export.** A
-  whole-machine view of every TaxaID cache, sorted by size, flagging large
-  stores and stores whose file count dwarfs their apparent size. It reports
-  and never deletes.
 - `list_cache_files(recursive = FALSE)` -- new argument, so a nested store can
   be seen. It now also drops directories, which the previous code would have
   handed to `file.remove()`.
-- `assign_sampling_group()` and `default_sampling_scheme()` -- **new exports.**
-  The detection-process classifier moved out of individual workflow files,
-  where each site's copy had drifted independently and produced the same class
-  of bug four separate times. A kingdom guard is the default. Two real gaps in
-  the shipped rules were fixed: `Liliopsida` was absent from the vascular-plant
-  clause, and `Zygnemophyceae` had never matched anything in the GBIF backbone.
 - `scientific_to_common()` caches `llm_parsed` per row, so a name the model
   omits is no longer cached as "no common name" for every subsequent run.

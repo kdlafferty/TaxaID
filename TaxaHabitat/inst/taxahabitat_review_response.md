@@ -3,11 +3,24 @@
 **Review date:** 2026-08-01 **Package version reviewed:** TaxaHabitat 0.1.0 **Response prepared by:** K. D. Lafferty
 
 This document responds to each comment in the TaxaHabitat code review (`inst/taxahabitat_review.Rmd`).
-The review's own line-number references had drifted from the current source (the codebase has
-been edited since the review was written, including an earlier 2026-07-28 review-prep pass
-against a different, no-longer-present review document, `inst/Code and Domain Review 2.Rmd` --
-see `TaxaHabitat/CLAUDE.md`). Every comment below was re-verified against the current source
-before being accepted or rejected, not answered from the review's own stale line numbers.
+The review's own line-number references had drifted from the current source. Every comment
+below was re-verified against the current source before being accepted or rejected, not
+answered from the review's own stale line numbers.
+
+------------------------------------------------------------------------
+
+## Added after the review
+
+| Function | File | Purpose | Tests |
+|---|---|---|---|
+| `apply_spatial_review_decisions()` | `R/spatial_review_decisions.R` | Apply saved spatial-flag decisions before (or instead of) the gadget | test-spatial_review_decisions.R |
+| `build_habitat_lookup()` | `R/build_habitat_lookup.R` | Build a per-taxon habitat lookup with an on-disk cache | test-build_habitat_lookup.R |
+| `resolve_habitat_by_geography()` | `R/resolve_habitat_geography.R` | Resolve Unassigned Habitats From Point Geography | test-resolve_habitat_geography.R |
+| `save_spatial_review_decisions()` | `R/spatial_review_decisions.R` | Save a reviewer's spatial-flag decisions | test-spatial_review_decisions.R |
+| `taxahabitat_clear_cache()` | `R/build_habitat_lookup.R` | Report and clear TaxaHabitat's on-disk habitat-verdict cache | test-build_habitat_lookup.R |
+
+22 new internal helper functions have also been added since the review (mostly in
+`utils_plot.R`'s gadget internals).
 
 ------------------------------------------------------------------------
 
@@ -455,8 +468,7 @@ removed entirely (see below), so this concern is moot for that specific function
   written against an earlier snapshot.
 
 - **Should this function live in TaxaFetch instead?** Restated from the existing documented
-  rationale (this exact question was worked through when the function was built, 2026-07-23 --
-  see `TaxaHabitat/CLAUDE.md`'s session note for that date): TaxaHabitat, not TaxaFetch, because
+  rationale, worked through when the function was built: TaxaHabitat, not TaxaFetch, because
   it sits in the same pipeline lane as the GBIF reference-occurrence data it classifies, and
   "archived specimen vs. wild observation" is fundamentally a habitat-context question, mirroring
   `flag_habitat_inconsistencies()`'s own classify-then-review role in this same package.
@@ -507,24 +519,24 @@ removed entirely (see below), so this concern is moot for that specific function
 
 - **What's the difference between `.validate_habitat_scheme_local`/`.validate_habitat_scheme` and
   `.is_two_level_local`/`.is_two_level`? Are both needed? Why is cross-file dependency an issue?**
-  Investigated. Note first: the earlier 2026-07-28 review-prep session already found and fixed a
-  *related but distinct* bug here -- a stale, buggy duplicate `.is_two_level()` definition that
-  used to live in this file (missing an empty-string guard `.is_two_level()` in
-  `build_habitat_prompt.R` already had) -- that duplicate was deleted, and this file's own
-  `.is_two_level_local()` (correctly named and scoped to this file's own bare-dataframe legacy
-  path) was left in place deliberately. Re-examined independently this session: `.validate_habitat_scheme_local()`/
-  `.is_two_level_local()` exist specifically for the one legacy code path in
-  `parse_hierarchical_habitat_response()` that accepts a *bare dataframe* as `habitat_scheme`
-  (not a `habitat_prompt` object) -- their own header comments say so explicitly ("kept local to
-  avoid cross-file dependency in this helper path"). The duplication is real but narrow (two
-  small functions, ~15 lines combined) and the cross-file-dependency concern is legitimate: this
-  file would otherwise need `build_habitat_prompt.R`'s internal (`.`-prefixed, `@noRd`) functions
-  to be loaded in a specific order, which R packages don't guarantee without an explicit
-  `Collate:` field this package doesn't use (and the 2026-07-28 session's own bug is a direct,
-  concrete demonstration of what goes wrong when two files silently drift on a shared internal
-  name). Kept as-is -- the duplication is small, intentional, and the alternative (a `Collate:`-
-  ordered shared helper) trades a minor DRY violation for a real ordering fragility this package
-  has already been bitten by once.
+  Investigated. Note first: an earlier pass already found and fixed a *related but distinct*
+  bug here -- a stale, buggy duplicate `.is_two_level()` definition that used to live in this
+  file (missing an empty-string guard `.is_two_level()` in `build_habitat_prompt.R` already
+  had) -- that duplicate was deleted, and this file's own `.is_two_level_local()` (correctly
+  named and scoped to this file's own bare-dataframe legacy path) was left in place
+  deliberately. `.validate_habitat_scheme_local()`/`.is_two_level_local()` exist specifically
+  for the one legacy code path in `parse_hierarchical_habitat_response()` that accepts a
+  *bare dataframe* as `habitat_scheme` (not a `habitat_prompt` object) -- their own header
+  comments say so explicitly ("kept local to avoid cross-file dependency in this helper
+  path"). The duplication is real but narrow (two small functions, ~15 lines combined) and
+  the cross-file-dependency concern is legitimate: this file would otherwise need
+  `build_habitat_prompt.R`'s internal (`.`-prefixed, `@noRd`) functions to be loaded in a
+  specific order, which R packages don't guarantee without an explicit `Collate:` field this
+  package doesn't use (and the duplicate-`.is_two_level()` bug above is a direct, concrete
+  demonstration of what goes wrong when two files silently drift on a shared internal name).
+  Kept as-is -- the duplication is small, intentional, and the alternative (a `Collate:`-
+  ordered shared helper) trades a minor DRY violation for a real ordering fragility this
+  package has already been bitten by once.
 
 - **Line 454 (original numbering): `%||%` not created here, but avoids duplication:**
   Acknowledged, no action needed -- correctly observed as already handled (imported from
@@ -539,17 +551,17 @@ removed entirely (see below), so this concern is moot for that specific function
   reason about independently; not worth the churn given everything else already changed in this
   file this pass.
 
-### build_habitat_lookup.R (added 2026-09-10, after this review)
+### build_habitat_lookup.R
 
 Not part of the reviewed code. Cached one-call wrapper over the reviewed three-step pattern
 (`build_habitat_prompt()` -> `prompt_api()` -> `parse_hierarchical_habitat_response()`),
 built because the uncached step made production priors irreproducible between runs (a
-verdict flip moved a species' kernel prior by orders of magnitude on the 2026-09-10
-GreatLakes run). Same per-taxon file-per-key cache design as
+verdict flip moved a species' kernel prior by orders of magnitude on a real production
+run). Same per-taxon file-per-key cache design as
 `TaxaFlag::review_assignments(cache_dir=)`; unresolved verdicts are never cached; 8 tests,
-no LLM call in tests. See TaxaHabitat/CLAUDE.md's "The habitat LLM step MUST be cached".
+no LLM call in tests.
 
-### review_spatial_flags.R -- bulk selection and composite categories (added 2026-09-19, after this review)
+### review_spatial_flags.R -- bulk selection and composite categories
 
 Not part of the reviewed code. The gadget gained polygon (lasso) selection alongside the
 existing rectangle, because real selection boundaries follow a coastline and approximating
@@ -585,7 +597,7 @@ dropdown now offers, by default, only the habitats that point's own consensus ve
 hypothesises, ordered by proportion, with a "Show all habitats" escape. Free text remains
 for the case the reviewer is correcting a scheme-incomplete classification, as argued above.
 
-### assign_habitat_biological.R -- declared weight columns (added 2026-09-19, after this review)
+### assign_habitat_biological.R -- declared weight columns
 
 Not part of the reviewed code, but it closes a real defect in reviewed code.
 `.detect_habitat_cols()` inferred the habitat weight set by scanning for numeric columns
@@ -602,7 +614,7 @@ consumer of the same table with the same defect and was fixed the same way. A th
 of the family was found by `grep -rn "is.numeric"` across all nine packages and fixed in
 TaxaMatch. The type scan was itself a proxy for a contract nobody had written down.
 
-### drop_stale_seeded_decisions.R -- new (added 2026-09-19, after this review)
+### drop_stale_seeded_decisions.R -- new
 
 Not part of the reviewed code. A decisions file seeded with `before = NULL` records "accept
 the automatic classification" for every point, with `decided_at` set to a `"seeded from ..."`
@@ -610,8 +622,8 @@ string rather than a timestamp. When the classifier later changes its mind, that
 silently overrides the new verdict and `apply_spatial_review_decisions()` reports
 `n_pending_review = 0` -- the site looks fully reviewed while carrying the old answer. This
 is the failure the existing `save_spatial_review_decisions()` guard warned about, observed
-happening: an audit on 2026-09-19 found all three production decision files 100% seeded
-(244,860 decisions, zero real reviews), two of them masking live changes.
+happening: a real audit found all three production decision files 100% seeded (244,860
+decisions, zero real reviews), two of them masking live changes.
 
 Only **seeded** decisions are eligible for dropping. A real reviewer decision survives a
 classifier change, because the reviewer overrode the classifier deliberately. `dry_run =
@@ -662,15 +674,13 @@ TRUE` is the default and the file is backed up before any write.
 - **Line 742 (original numbering): `hist` shadows `stats::hist()`, consider `flag_hist`:** Fixed,
   using the reviewer's own suggested name. Renamed the local undo-history variable `hist` ->
   `flag_hist` everywhere in the file (12 occurrences), matching this ecosystem's own established
-  precedent for base-R-shadowing local variable names (the 2026-07-28 session's `det`/`t` ->
-  `hab_cols_info`/`type` fix in `assign_habitat_biological.R`/`flag_institution_candidates.R`).
+  precedent for base-R-shadowing local variable names.
   `history()`, the unrelated `reactiveVal` accessor, was correctly left untouched.
 
 - **The bulk flag drawing option doesn't seem to be working:** **Investigated thoroughly, no new
   bug found, reported honestly rather than guessed at.** This exact complaint (a rectangle drawn
   in the gadget's default "Flag" action mode appearing to do nothing) was already investigated
-  across 6 rounds in an earlier session (see `TaxaHabitat/CLAUDE.md`'s top session note and the
-  `project_review_spatial_flags_habitat_reassign_gap` memory record): several real bugs were
+  across several rounds previously: several real bugs were
   found and fixed then (a view-membership bug, an `input$` race condition, an NA-habitat drop, and
   -- directly relevant here -- an unstable per-view auto-zoom bug whose fix is the `full_bounds`
   computation still present at the top of this file's server function). The specific "draws a
@@ -777,28 +787,10 @@ source("~/My Drive/Rscripts/projects/TaxaID/ecosystem_docs/install_all.R")
 
 ------------------------------------------------------------------------
 
-## Functions added or modified since this review (through 2026-09-07)
+## Behavior changes to already-reviewed functions
 
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
-
-- `report_habitat`
-
-
-------------------------------------------------------------------------
-
-## Changes since this review (2026-09-13 / 2026-09-14)
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
+Not new functions (see "Added after the review" near the top for those) -- new behavior
+on functions this document already covers above.
 
 - `save_spatial_review_decisions()` warns when it is called with
   `before = NULL` while non-NA habitats would be recorded as reassignments.
