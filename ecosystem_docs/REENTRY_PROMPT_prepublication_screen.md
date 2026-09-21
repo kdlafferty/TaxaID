@@ -847,6 +847,17 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   curly-quote left in `test-registry.R:382` on purpose: it is the pattern
   under test. Reinstall from `3909ae6` follows; TaxaWizard's test and
   `check()` are re-run against the fresh library as the B4 closing check.
+  **Third reinstall DONE (from `3909ae6`; pack regenerated `c9d42f2`):
+  TaxaWizard 1,107 / 0 -- the committed-template diff test passes against a
+  current library with no skip.** `check()` still shows ONE error, and it
+  is the B3 fix working: under `R CMD check`'s isolated library path the
+  snippet-drift test now reports `package_unavailable` for every sibling
+  TaxaID package instead of silently skipping. Diagnosis-and-fix in
+  progress: the honest outcome is a `skip()` only when `requireNamespace()`
+  provably fails, and a run (not a skip) whenever the siblings are present.
+  **B1 launched**: clean clone of `main`, fresh library first on `R_LIBS`,
+  install in dependency order, all nine suites, machine-path grep, the
+  README's smoke tests.
   **Pre-tag fix MERGED (`e9efe23`)**: `.pasta_eml_url()` holds each id
   segment to `[A-Za-z0-9_.-]` with no `..` (34 DataONE tests pass).
   **B3 launched** (scratch worktree, nothing committed): eleven guards each
