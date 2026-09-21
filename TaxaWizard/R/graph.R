@@ -442,8 +442,8 @@
 #' every parameter's required/default/doc text) for every function named in
 #' the edge's \code{functions} array AND every export of the edge's
 #' \code{packages} -- so the LLM has everything it would need to write the
-#' step correctly without a hand-curated template -- and the fixed
-#' instruction from the spec telling it to do exactly that.
+#' step correctly without a hand-curated template -- and a fixed
+#' instruction telling it to do exactly that.
 #'
 #' @param edge One edge definition (a list) from the workflow graph.
 #' @param registry Named list from \code{workflow_registry()}.
