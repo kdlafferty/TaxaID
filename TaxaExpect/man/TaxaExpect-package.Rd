@@ -4,9 +4,9 @@
 \name{TaxaExpect-package}
 \alias{TaxaExpect-package}
 \alias{TaxaExpect}
-\title{TaxaExpect: Estimate Bayesian Priors for Species Occurrence Using GBIF Data}
+\title{TaxaExpect: Kernel Priors for Expected Species Composition from Occurrence Data}
 \description{
-Generates theta priors (occupancy x detectability) for taxonomic assignment from occurrence data (see TaxaFetch). Occurrence data are first summarized at the grid level. At this scale, the user is able to apply spatial models that generate estimates of theta along with expected error. Part of the TaxaID ecosystem.
+Estimates theta priors -- each taxon's expected share of the detections at a site -- for taxonomic assignment, from occurrence records (see TaxaFetch). A site-centered kernel estimator weights occurrence points by distance, with optional depth and habitat conditioning, and evidence layers add undetected diversity, regional proximity, iNaturalist ranges, invasive watch lists and domestic or food species. Part of the TaxaID ecosystem.
 
 Generates theta priors (compositional shares) for taxonomic assignment
 from occurrence data, using a site-centered distance kernel that

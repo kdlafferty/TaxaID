@@ -75,10 +75,7 @@ the nearest-point distance above: at least \code{near_occurrence_min_n}
 of a taxon's Stage-2-filtered records must fall within this many degrees
 of latitude of \code{lat} (proportional fallback when a taxon has fewer
 total filtered records than that -- see \code{near_occurrence_min_n}).
-Ported from the \code{build_invasive_candidates.R} diagnostic's (TaxaID_dev
-repository) own identically-named
-safeguard,
-built after a real GLANSIS benchmark comparison found the plain nearest-
+Motivated by a real GLANSIS benchmark comparison, which found the plain nearest-
 point test alone is precision-poor: several species passed it purely on
 the strength of ONE isolated occurrence record (a stray record, or a
 real but climatically-artificial thermal-discharge refugium) while the
@@ -87,8 +84,8 @@ climate-implausible warm-water species were the dominant real pattern.
 Latitude (not full geodesic distance) is used deliberately as a cheap
 climate-tolerance proxy -- thermal/seasonal regime tracks latitude far
 more than longitude for a fixed distance budget. Default \code{6}
-(~660km, matching \code{build_invasive_candidates()}'s own tuned value --
-a tighter 3-degree pass there cost a real, well-documented invader whose
+(~660km, a value tuned on that benchmark --
+a tighter 3-degree pass cost a real, well-documented invader whose
 established population sat ~5 degrees of latitude from the study site
 despite being part of one connected system).}
 
@@ -102,7 +99,7 @@ records). Taxa with FEWER total Stage-2-filtered records than this
 threshold get a proportional fallback instead of an impossible bar: ALL
 of their (few) records must fall within \code{near_lat_tolerance_deg},
 rather than requiring an absolute count they structurally cannot reach --
-the real motivating case (\code{build_invasive_candidates()}'s own) is a
+the real motivating case is a
 species with exactly 1 occurrence record, genuinely close, that a flat
 count-of-3 test would otherwise always reject regardless of proximity.
 Set to \code{0} or \code{1} to disable this test and fall back to the
