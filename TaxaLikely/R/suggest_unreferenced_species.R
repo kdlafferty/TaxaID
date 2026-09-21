@@ -110,7 +110,7 @@
 
 #' Build a plausible-species prompt for one batch of genera
 #' @noRd
-.build_plausible_prompt <- function(genera, ctx, data_type = "eDNA") {
+.build_plausible_prompt <- function(genera, ctx, data_type) {
   ctx_block <- .build_context_block(ctx, habitat_field = "habitat")
 
   ex1 <- genera[[1L]]
@@ -256,7 +256,7 @@
 
 #' Build a plausible-species prompt for one family (excluding known genera)
 #' @noRd
-.build_family_prompt <- function(family, exclude_genera, ctx, data_type = "eDNA") {
+.build_family_prompt <- function(family, exclude_genera, ctx, data_type) {
   ctx_block <- .build_context_block(ctx, habitat_field = "habitat")
 
   ref_filter_note <- switch(data_type,
@@ -447,7 +447,7 @@
 #' print(unref)
 #'
 #' \dontrun{
-#' unref <- suggest_unreferenced_species(match_df, llm_fn = TaxaTools::call_api)
+#' unref <- suggest_unreferenced_species(match_df, data_type = "eDNA", llm_fn = TaxaTools::call_api)
 #' print(unref)
 #' }
 #' @export
@@ -566,8 +566,9 @@ print.unreferenced_species_result <- function(x, ...) {
 #' @param ncbi_api_key Optional NCBI API key.  Raises rate limit from 3 to 10
 #'   requests per second.  Can also be set via the `ENTREZ_KEY` environment
 #'   variable.
-#' @param data_type Character. One of `"eDNA"` (default), `"acoustic"`, or
-#'   `"image"`. Controls how "unreferenced" is defined: \cr
+#' @param data_type Character. One of `"eDNA"`, `"acoustic"`, or
+#'   `"image"`. No default -- the caller must state the signal. Controls how
+#'   "unreferenced" is defined: \cr
 #'   - `"eDNA"`: unreferenced = no NCBI barcode sequence for the target marker.
 #'     Uses NCBI nucleotide count queries. \cr
 #'   - `"acoustic"`: unreferenced = absent from the acoustic model training set
@@ -626,7 +627,7 @@ print.unreferenced_species_result <- function(x, ...) {
 #' # Genus-level unreferenced species only
 #' unref_names <- suggest_unreferenced_species(
 #'   match_df,
-#'   context = ctx, barcode_term = "12S",
+#'   context = ctx, barcode_term = "12S", data_type = "eDNA",
 #'   llm_fn = TaxaTools::call_api, max_date = "2024/12/31"
 #' )
 #' cat("Unreferenced taxa found:", length(unref_names), "\n")
@@ -634,7 +635,7 @@ print.unreferenced_species_result <- function(x, ...) {
 #' # With family-level expansion for genera with no local species
 #' unref_names <- suggest_unreferenced_species(
 #'   match_df,
-#'   context = ctx, barcode_term = "12S",
+#'   context = ctx, barcode_term = "12S", data_type = "eDNA",
 #'   expand_to_family = TRUE, max_date = "2024/12/31"
 #' )
 #' attr(unref_names, "family_census")
@@ -646,7 +647,7 @@ suggest_unreferenced_species <- function(match_df,
                                          context = NULL,
                                          barcode_term = "COI",
                                          llm_fn = NULL,
-                                         data_type = "eDNA",
+                                         data_type,
                                          reference_species = NULL,
                                          expand_to_family = FALSE,
                                          max_date = NULL,

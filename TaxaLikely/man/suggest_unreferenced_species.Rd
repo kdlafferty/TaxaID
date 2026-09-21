@@ -9,7 +9,7 @@ suggest_unreferenced_species(
   context = NULL,
   barcode_term = "COI",
   llm_fn = NULL,
-  data_type = "eDNA",
+  data_type,
   reference_species = NULL,
   expand_to_family = FALSE,
   max_date = NULL,
@@ -41,8 +41,9 @@ single character string response.  Default NULL resolves to
 \code{getOption("TaxaID.llm_fn")} when set, otherwise \code{TaxaTools::call_api}
 (requires TaxaTools).}
 
-\item{data_type}{Character. One of \code{"eDNA"} (default), \code{"acoustic"}, or
-\code{"image"}. Controls how "unreferenced" is defined: \cr
+\item{data_type}{Character. One of \code{"eDNA"}, \code{"acoustic"}, or
+\code{"image"}. No default -- the caller must state the signal. Controls how
+"unreferenced" is defined: \cr
 \itemize{
 \item \code{"eDNA"}: unreferenced = no NCBI barcode sequence for the target marker.
 Uses NCBI nucleotide count queries. \cr
@@ -168,7 +169,7 @@ ctx <- data.frame(
 # Genus-level unreferenced species only
 unref_names <- suggest_unreferenced_species(
   match_df,
-  context = ctx, barcode_term = "12S",
+  context = ctx, barcode_term = "12S", data_type = "eDNA",
   llm_fn = TaxaTools::call_api, max_date = "2024/12/31"
 )
 cat("Unreferenced taxa found:", length(unref_names), "\n")
@@ -176,7 +177,7 @@ cat("Unreferenced taxa found:", length(unref_names), "\n")
 # With family-level expansion for genera with no local species
 unref_names <- suggest_unreferenced_species(
   match_df,
-  context = ctx, barcode_term = "12S",
+  context = ctx, barcode_term = "12S", data_type = "eDNA",
   expand_to_family = TRUE, max_date = "2024/12/31"
 )
 attr(unref_names, "family_census")

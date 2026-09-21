@@ -143,6 +143,7 @@ unreferenced_species <- TaxaLikely::suggest_unreferenced_species(
   context          = ctx,
   barcode_term     = "12S", # adjust to your marker: "COI", "ITS2", etc.
   # barcode_term   = c("12S", "MiFish"),  # OR-ed; catches variant annotations
+  data_type        = "eDNA",
   llm_fn           = llm_fn,
   max_date         = "2024/12/31", # set to your reference library build date
   expand_to_family = TRUE,

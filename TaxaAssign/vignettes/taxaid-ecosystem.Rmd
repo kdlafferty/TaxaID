@@ -213,7 +213,7 @@ library(TaxaAssign)
 unreferenced <- TaxaLikely::suggest_unreferenced_species(
   match_df,
   llm_fn = TaxaTools::call_anthropic_api,
-  barcode_term = "MiFish"
+  barcode_term = "MiFish", data_type = "eDNA"
 )
 
 # Expand generic unreferenced rows into named species
