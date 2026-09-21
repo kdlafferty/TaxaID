@@ -240,8 +240,8 @@ utils::globalVariables(c(
 #' different, broader comparison population, fed through the identical,
 #' already-validated congruence math unchanged.
 #'
-#' @section 2026-08-07 divergence from the archived TaxaLikely original:
-#' This copy is no longer byte-identical to the archived version -- it now
+#' @section Divergence from the archived TaxaLikely original:
+#' This copy is not byte-identical to the archived version -- it
 #' also computes percent-identity and "is there ANY corroborating evidence
 #' at all, even outside the top_n window" diagnostics (`best_hit_pident`,
 #' `best_agreeing_pident`, `best_disagreeing_pident`,
@@ -265,7 +265,7 @@ utils::globalVariables(c(
 #' NOT updated to match -- it is dead code, kept for historical reference
 #' only, not a shared implementation to keep in sync.
 #'
-#' @section 2026-08-13 divergence, continued: gains
+#' @section Divergence, continued: gains
 #' `require_species_resolved_partner` (default `TRUE`) -- excludes a
 #' comparison partner whose own listed species isn't resolved to species
 #' level from the vote entirely (`is_valid_partner`, alongside the
@@ -274,7 +274,7 @@ utils::globalVariables(c(
 #' comparison partners` for the full real-data motivation and
 #' verification.
 #'
-#' @section 2026-08-13 divergence, continued further: gains
+#' @section Divergence, continued further: gains
 #' `best_disagreeing_taxon` -- the listed species of the same highest-
 #' identity independent hit `best_disagreeing_pident` is already computed
 #' from (both read off the same position in the same desc(p_match)-sorted
@@ -282,9 +282,10 @@ utils::globalVariables(c(
 #' reentry prompt's own Question 2 finding that a second-look reviewer
 #' (human or LLM) needs the disagreeing taxon's actual NAME, not just its
 #' identity percentage, to recognize e.g. a known hybrid-cross partner or an
-#' informal specimen code -- previously computed as part of the rank-
-#' agreement walk and then discarded, the same "already computed, silently
-#' dropped" pattern the 2026-08-07 identity diagnostics themselves were.
+#' informal specimen code -- computed as part of the rank-
+#' agreement walk that was already running, rather than discarding it, the
+#' same "already computed, don't silently drop it" pattern the identity
+#' diagnostics above follow.
 #' `NA` when no independent hit disagrees.
 #' @noRd
 .compute_hierarchy_congruence <- function(seq_matrix,
