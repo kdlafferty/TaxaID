@@ -24,6 +24,14 @@ reasoning from the code) -- see "Real bugs found" below.
 
 ------------------------------------------------------------------------
 
+## Added after the review
+
+No new exported functions since the review. 7 new internal helper functions have been
+added since (all in `site_utils.R`, `score_consensus.R`, `kernel_branch.R`, and
+`posterior_consensus.R`).
+
+------------------------------------------------------------------------
+
 ## Real bugs found and fixed
 
 **`update_prior_from_consensus()` silently discarded upstream `report_params`.**
@@ -96,7 +104,7 @@ exported utility wasn't judged worth it for this case specifically.
   package = "TaxaMatch")`, which does not exist anywhere in the monorepo (confirmed
   via `find`). Replaced with a fully self-contained, runnable example using a stub
   `llm_fn` (no network call), matching the shape of this file's own test fixtures.
-- The "Empirical sensitivity" `@details` block (Session 145's real parameter sweep)
+- The "Empirical sensitivity" `@details` block (a real parameter-sweep result)
   trimmed from ~40 lines to a ~10-line summary retaining the actionable findings --
   the review's own "consider whether this adds to the documentation for most users"
   point, applied.
@@ -233,8 +241,8 @@ to point at `TaxaLikely::expand_unreferenced_hypotheses()` directly.
 - **Default `rank_cols` changed from `c("genus", "family")` to
   `c("species", "genus", "family")`**, with `"species"` auto-derived as `taxon_col`'s
   own identity when `taxonomy_map` has no explicit `species` column. This directly
-  closes a real, already-documented production landmine (see this package's own
-  `CLAUDE.md` 2026-07-30 note): `posterior_consensus()`'s `group_priors` lookup is
+  closes a real, already-documented production landmine:
+  `posterior_consensus()`'s `group_priors` lookup is
   keyed on `(lca$rank, lca$taxon)`, and most real consensus calls resolve at species
   rank, but the old default produced zero `rank == "species"` rows -- so every
   species-level `consensus_taxon` found nothing in `group_priors`, and
@@ -623,76 +631,15 @@ as having caused a real problem once before).
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
+## Behavior changes to already-reviewed functions
 
-## Functions added or modified since this review (through 2026-09-07)
+Not new functions (see "Added after the review" above for those) -- new arguments and
+behavior on functions this document already covers above.
 
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
-
-- `.beta_mean`
-- `.build_citation_text`
-- `.build_methods_text`
-- `.cap_rank_by_threshold`
-- `.check_rank_system_order`
-- `.combine_one_multisite_group`
-- `.compute_dark_diversity_groups`
-- `.consensus_one_observation`
-- `.expand_coarse_rank_rows`
-- `.extract_rank_values`
-- `.find_nearest_grid`
-- `.latlon_to_grid`
-- `.make_slash_name`
-- `.merge_llm_priors`
-- `.new_unreferenced_species_result`
-- `.parse_grid_ids`
-- `.parse_plausible_response`
-- `.parse_taxa_response`
-- `.resolve_llm_fn`
-- `.row_col_or`
-- `.run_consensus_and_report`
-- `.score_consensus_one`
-- `add_slash_taxon`
-- `adjust_inat_range_priors`
-- `assign_taxa_llm`
-- `combine_multisite_priors`
-- `compute_group_priors`
-- `compute_posterior`
-- `generate_report`
-- `join_priors`
-- `posterior_consensus`
-- `print.unreferenced_species_result`
-- `report_assign`
-- `run_bayesian_pipeline`
-- `run_llm_pipeline`
-- `score_consensus`
-- `suggest_unreferenced_species`
-- `update_prior_from_consensus`
-
-
-------------------------------------------------------------------------
-
-## Changes since this review (2026-09-13 / 2026-09-14)
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
-
-- `compute_group_priors(exclude_named_evidence = TRUE)` excludes rows carrying
-  a named evidence source from the group-level plausibility denominator. An
-  earlier form of this filter keyed on `prior_branch` and over-reached,
-  discarding the anonymous dark-diversity mirrors as well; it was corrected to
-  key on `evidence_sources` after a fast-workflow arm caught the regression.
-- `posterior_consensus(downrank_requires_candidate = TRUE)` refuses to narrow
-  a consensus to a taxon that is not in the observation's own candidate set.
-  Across four sites, 35 of 150 downranked rows had named a taxon outside it.
-- `combine_multisite_priors()` guards against differing presence-mixture
-  parameters across a group's site rows, blanking them with a warning that
-  names the affected candidates rather than silently picking one.
+- `compute_group_priors(exclude_named_evidence = TRUE)` excludes rows carrying a named
+  evidence source from the group-level plausibility denominator.
+- `posterior_consensus(downrank_requires_candidate = TRUE)` refuses to narrow a
+  consensus to a taxon that is not in the observation's own candidate set.
+- `combine_multisite_priors()` guards against differing presence-mixture parameters
+  across a group's site rows, blanking them with a warning that names the affected
+  candidates rather than silently picking one.
