@@ -313,7 +313,6 @@ unreferenced species (borrowed from the generic H2/H3 values) and
 expands them so they can join TaxaExpect priors directly; requires a
 TaxaExpect- derived unreferenced-species list, so it runs after both
 TaxaLikely and TaxaExpect and before `TaxaAssign::compute_posterior()`
-(moved from TaxaAssign in September 2026)
 
 **Reference QC:** - `audit_barcode_coverage()` -- find unreferenced
 species (no barcode sequence; eDNA/DNA only) -
