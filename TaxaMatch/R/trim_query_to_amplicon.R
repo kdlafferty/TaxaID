@@ -179,9 +179,10 @@
   # this function's contract is "only ever shortens a query, never discards
   # or errors on one it can't trim". Return every sequence as deposited and
   # let the caller's feature-table fallback handle over-length records.
-  # Found 2026-09-12: the PtConception 18S screen (barcode_term = "18S")
-  # died on its first chunk, AFTER the NCBI fetch, because this call was
-  # unguarded -- and unlike TaxaTools::resolve_barcode_marker(), which passes
+  # A real case confirms this matters: the PtConception 18S screen
+  # (barcode_term = "18S") would die on its first chunk, AFTER the NCBI
+  # fetch, if this call were unguarded -- and unlike
+  # TaxaTools::resolve_barcode_marker(), which passes
   # an unrecognised term through, resolve_barcode_primers() errors on one.
   primer_info <- tryCatch(TaxaTools::resolve_barcode_primers(barcode_term),
     error = function(e) NULL
@@ -229,7 +230,7 @@
   # a general marker-length window meant for filtering raw sequence widths, not
   # primer-to-primer span. `primer_info$amplicon_range` (from
   # TaxaTools::barcode_primer_defaults) is the literature-reported *variable
-  # region* length, i.e. EXCLUDING primers (confirmed empirically 2026-08-10:
+  # region* length, i.e. EXCLUDING primers (confirmed empirically:
   # two real fish mitogenomes, both distinct species, both gave an identical
   # real full span of 221bp for MiFish-U -- primer_info$amplicon_range is
   # 163-185bp, 221bp minus the 48bp of primer length lands at 173bp, squarely
@@ -288,10 +289,10 @@
   }
 
   # Which sequences the primer match actually shortened, carried out per
-  # element rather than only tallied (2026-09-04). The counts below were
-  # already computed from this and then discarded -- the same
+  # element rather than only tallied. Without this, the counts below would be
+  # computed from this and then discarded -- the same
   # "already known, silently dropped" pattern .extract_feature_table_
-  # fallback()'s own decline_reason closed. evaluate_reference_accessions()
+  # fallback()'s own decline_reason closes. evaluate_reference_accessions()
   # reads it to record query_trim_path per accession.
   attr(out, "trimmed") <- trimmed_flag
 
@@ -307,8 +308,8 @@
     # from "non_iupac_dna_skipped"/"invalid_dna_string" (a data-quality
     # problem upstream of this function, e.g. non-ACGT characters slipping
     # through), which .extract_amplicon_one_tm() already distinguishes via
-    # its own `note` field but this wrapper previously discarded entirely --
-    # a 0-of-N result gave no way to tell which case was happening.
+    # its own `note` field -- without surfacing it here,
+    # a 0-of-N result would give no way to tell which case was happening.
     if (length(fail_notes) > 0L) {
       tally <- sort(table(fail_notes), decreasing = TRUE)
       message(sprintf(
