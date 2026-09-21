@@ -441,17 +441,17 @@ common_to_scientific <- function(common_names,
       # TRUE when the batch parsed: a NULL common name from a parsed batch is
       # the LLM's real answer ("no common name exists"), a NULL from an
       # unparseable batch is not an answer at all. The caller's cache keeps
-      # only the former. Per row, not per batch (2026-09-13): a name the LLM
+      # only the former. Computed per row, not per batch: a name the LLM
       # OMITTED, truncated or respelled in an otherwise-parsed batch (idx NA)
-      # was being cached as a permanent "no common name".
+      # would otherwise be cached as a permanent "no common name".
       llm_parsed               = !is.na(idx),
       stringsAsFactors         = FALSE
     )
   }
 
-  # Split into batches and combine. One message per batch (2026-09-12): the
-  # real PtConception 18S run sent 1,151 names in 58 sequential calls with
-  # no output at all, which read as a hung workflow.
+  # Split into batches and combine. One message per batch: a large name list
+  # split into many sequential API calls with no progress output at all
+  # reads as a hung workflow (e.g. 1,151 names as 58 sequential calls).
   n_batches <- ceiling(length(names) / batch_size)
   batches <- vector("list", n_batches)
   for (b in seq_len(n_batches)) {
@@ -586,9 +586,8 @@ taxatools_clear_cache <- function(cache_dir, older_than_days = NULL, dry_run = F
 #'   sent to the LLM in batches of 20 names (one progress line per batch when
 #'   \code{verbose}).  Default \code{FALSE}: returns \code{NA} for unresolved
 #'   taxa without an LLM call.  A name the LLM omits from its batch response
-#'   is NOT cached (per-row \code{llm_parsed}, 2026-09-13) -- it is re-asked
-#'   on a later call rather than silently treated as a confirmed "no common
-#'   name" answer.
+#'   is NOT cached -- it is re-asked on a later call rather than silently
+#'   treated as a confirmed "no common name" answer.
 #' @param llm_fn Function with signature \code{function(prompt, ...) ->
 #'   character(1)}.  Required when \code{use_llm = TRUE} or
 #'   \code{backbone_id} is unsupported / \code{NULL}.  Default
@@ -603,8 +602,8 @@ taxatools_clear_cache <- function(cache_dir, older_than_days = NULL, dry_run = F
 #'   will be re-asked), and neither is a backbone miss on a
 #'   \code{use_llm = FALSE} call (a later \code{use_llm = TRUE} call must
 #'   still be able to ask). Manage it with \code{\link{taxatools_clear_cache}}.
-#'   Added 2026-09-12: a real 18S workflow spent 58 silent LLM calls on
-#'   1,151 names, then repeated them on every re-run.
+#'   Without a cache, a large name list means one silent LLM call per batch on
+#'   every run, repeated on every re-run.
 #' @param verbose Logical (default \code{TRUE}). Print a one-line summary
 #'   (cache / backbone / LLM counts) and one line per LLM batch.
 #' @param ... Additional arguments passed to \code{llm_fn}.
