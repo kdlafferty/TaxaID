@@ -6,19 +6,17 @@
 # over the shared TaxaTools cache engine (matching TaxaFlag::taxaflag_clear_
 # cache() and the other sibling packages).
 #
-# WHY (2026-09-10): every production workflow re-asked the LLM for every
-# taxon's habitat on every run, with no cache. A verdict that flips between
-# runs (e.g. a river fish labelled Lotic one day and Lentic the next) moves
-# that species' occurrence records in or out of a habitat-stratified site,
-# which moves its kernel prior by orders of magnitude, which moves the
-# consensus call -- and the published taxon list was therefore not
-# reproducible across identical re-runs. The first full GreatLakes run after
-# the reference-screen rewiring lost 0.05 of Lamar precision to exactly this
-# (see TaxaHabitat/CLAUDE.md, 2026-09-10). TaxaFlag::review_assignments()
-# had the same problem and the same fix on 2026-09-04 (its cache_dir=); this
-# mirrors that design: one small .rds per taxon, named by a hash of the FULL
-# key, the full key verified on read so a hash collision is a miss, never a
-# wrong verdict.
+# WHY: every production workflow re-asks the LLM for every taxon's habitat
+# on every run, with no cache. A verdict that flips between runs (e.g. a
+# river fish labelled Lotic one day and Lentic the next) moves that species'
+# occurrence records in or out of a habitat-stratified site, which moves its
+# kernel prior by orders of magnitude, which moves the consensus call -- so
+# without caching, the published taxon list is not reproducible across
+# identical re-runs. A full GreatLakes run without this cache lost 0.05 of
+# Lamar precision to exactly this. TaxaFlag::review_assignments() has the
+# same problem and the same fix (its cache_dir=); this mirrors that design:
+# one small .rds per taxon, named by a hash of the FULL key, the full key
+# verified on read so a hash collision is a miss, never a wrong verdict.
 # ==============================================================================
 
 .taxahabitat_cache_patterns <- c("_habitat\\.rds$")
