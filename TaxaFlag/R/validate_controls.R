@@ -311,12 +311,13 @@ validate_controls <- function(input_df,
       stringsAsFactors = FALSE)
   }
 
-  out <- list(); site_power <- list()
+  out <- list()
+  site_power <- list()
   for (st in union(unique(meta$..site), unique(zero_meta$..site))) {
     ms  <- meta[meta$..site == st, , drop = FALSE]
     zms <- zero_meta[zero_meta$..site == st, , drop = FALSE]
     sam <- ms$..column_id[!ms$..is_control]
-    ctl <- ms$..column_id[ ms$..is_control]
+    ctl <- ms$..column_id[ms$..is_control]
 
     M <- .site_mat(ms$..column_id)
     if (length(sam) >= min_samples_per_site && length(sam) >= 2L) {
@@ -337,8 +338,11 @@ validate_controls <- function(input_df,
       # than emitting confident verdicts from it.
       pw <- if (spread > 0.6) "low_wide_null" else "ok"
     } else {
-      null_med <- NA_real_; null_mad <- NA_real_; null_thr <- NA_real_
-      null_n <- 0L; spread <- NA_real_
+      null_med <- NA_real_
+      null_mad <- NA_real_
+      null_thr <- NA_real_
+      null_n <- 0L
+      spread <- NA_real_
       pw <- "none_too_few_samples"
     }
     site_power[[length(site_power) + 1L]] <- data.frame(
@@ -410,7 +414,6 @@ validate_controls <- function(input_df,
   attr(res, "site_power") <- sp
 
   n_ctl <- sum(res$label == "control")
-  n_bad <- sum(res$verdict == "RESEMBLES_SAMPLE")
   if (verbose) {
     message(sprintf("validate_controls: %d column(s) across %d site(s); %d control(s).",
                     nrow(res), nrow(sp), n_ctl))

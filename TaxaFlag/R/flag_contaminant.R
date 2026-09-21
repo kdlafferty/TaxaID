@@ -448,15 +448,19 @@ flag_contaminant <- function(input_df,
       stringsAsFactors = FALSE))
     .ctl_sites <- unique(.sb[.sb$is_ctl, c("taxon", "site")])
     .sam_sites <- unique(.sb[!.sb$is_ctl, c("taxon", "site")])
-    .n_ctl <- table(.ctl_sites$taxon); .n_sam <- table(.sam_sites$taxon)
+    .n_ctl <- table(.ctl_sites$taxon)
+    .n_sam <- table(.sam_sites$taxon)
     # how many of a taxon's CONTROL sites are also sites where SAMPLES have it:
     # high concordance means the control detections track the samples, i.e. the
     # signature of a LOCAL source rather than of a systemic one
     .both <- merge(.ctl_sites, .sam_sites, by = c("taxon", "site"))
     .n_both <- table(.both$taxon)
-    scores$site_breadth_control <- as.integer(.n_ctl[scores$taxon]); scores$site_breadth_control[is.na(scores$site_breadth_control)] <- 0L
-    scores$site_breadth_sample  <- as.integer(.n_sam[scores$taxon]); scores$site_breadth_sample[is.na(scores$site_breadth_sample)]  <- 0L
-    scores$control_sites_shared <- as.integer(.n_both[scores$taxon]); scores$control_sites_shared[is.na(scores$control_sites_shared)] <- 0L
+    scores$site_breadth_control <- as.integer(.n_ctl[scores$taxon])
+    scores$site_breadth_control[is.na(scores$site_breadth_control)] <- 0L
+    scores$site_breadth_sample <- as.integer(.n_sam[scores$taxon])
+    scores$site_breadth_sample[is.na(scores$site_breadth_sample)] <- 0L
+    scores$control_sites_shared <- as.integer(.n_both[scores$taxon])
+    scores$control_sites_shared[is.na(scores$control_sites_shared)] <- 0L
   }
 
   # --- Evidence gate, then direction (opt-in) --------------------------------

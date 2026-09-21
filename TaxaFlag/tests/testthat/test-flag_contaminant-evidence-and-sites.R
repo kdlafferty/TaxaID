@@ -14,7 +14,8 @@
 # LOCAL would fall below the floor and never reach the breadth rule at all -- the
 # breadth test would then pass for the wrong reason.
 .mk3 <- function() {
-  rows <- list(); add <- function(...) rows[[length(rows) + 1L]] <<- data.frame(..., stringsAsFactors = FALSE)
+  rows <- list()
+  add <- function(...) rows[[length(rows) + 1L]] <<- data.frame(..., stringsAsFactors = FALSE)
   for (s in 1:3) {
     ctl <- sprintf("B%d", s)
     add(event_id = ctl, site = paste0("site", s), taxon_name = "SYSTEMIC", count = 100)

@@ -7,11 +7,11 @@ mock_camera <- data.frame(
     "2025-06-15 08:00:00", # setup time (min)
     "2025-06-15 08:05:00", # 5 min from start
     "2025-06-15 08:20:00", # 20 min from start
-    "2025-06-15 08:35:00", # 35 min — outside 30-min window
+    "2025-06-15 08:35:00", # 35 min -- outside 30-min window
     "2025-06-15 09:00:00", # well inside
     "2025-06-15 09:30:00",
     "2025-06-15 10:00:00",
-    "2025-06-15 10:30:00", # 30 min from end — edge
+    "2025-06-15 10:30:00", # 30 min from end -- edge
     "2025-06-15 10:55:00", # 5 min from end
     "2025-06-15 11:00:00" # retrieval time (max)
   )),
@@ -100,11 +100,11 @@ test_that("handler_taxa restricts flagging to specified taxa", {
     verbose = FALSE
   )
 
-  # Row 2 (Canis lupus, 5 min from start) — not a handler taxon
+  # Row 2 (Canis lupus, 5 min from start) -- not a handler taxon
   expect_equal(result$observation_validity[2], 1.0)
   expect_equal(result$validity_flag[2], "valid")
 
-  # Row 1 (Homo sapiens, at start) — handler taxon, still flagged
+  # Row 1 (Homo sapiens, at start) -- handler taxon, still flagged
   expect_equal(result$observation_validity[1], 0.0)
   expect_equal(result$validity_flag[1], "invalid_handling")
 })

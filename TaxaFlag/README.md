@@ -103,7 +103,7 @@ score = mean_prop_field / (mean_prop_field + mean_prop_control)
 
 Scores range from 0 (taxon found only in controls) to 1 (taxon found
 only in field samples). Default thresholds classify scores as `"high"` risk
-(score ≤ 0.5, probable contaminant), `"moderate"` risk (0.5 \< score ≤ 0.9,
+(score \<= 0.5, probable contaminant), `"moderate"` risk (0.5 \< score \<= 0.9,
 ambiguous), or `"low"` risk (score \> 0.9, likely genuine detection). For
 positive controls, the interpretation inverts: taxa from positive controls
 appearing in field samples indicate cross-contamination.
@@ -148,11 +148,11 @@ what the evidence actually supports:
 | `no_control_evidence` | never detected in a control -- an honest unknown, and normally the large majority |
 | `invalid_{type}` | control rate **above** sample rate, on at least `min_control_obs` controls, at `min_sites_systemic` or more sites. Name retained so existing `invalid_*` filters keep working |
 | `insufficient_control_evidence` | in fewer than `min_control_obs` controls (default 2). Not assessable. **Do not filter** |
-| `not_control_enriched` | in a control at or **below** its sample rate: signal leaking sample → control. **Do not filter** |
+| `not_control_enriched` | in a control at or **below** its sample rate: signal leaking sample -> control. **Do not filter** |
 | `single_site_enriched` | control-enriched, but at one site whose samples also carry it: local, not systemic. **Do not filter** |
 | `questionable_{type}` | in a control, rates do not separate |
 
-**Direction is the point.** Contamination flows control → sample; the reverse flow
+**Direction is the point.** Contamination flows control -> sample; the reverse flow
 is what happens when a blank picks up a little of an abundant local taxon. A
 symmetric score cannot tell them apart, and `not_control_enriched` is the state the
 score-band design could not express.

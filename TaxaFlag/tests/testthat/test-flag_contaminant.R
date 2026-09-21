@@ -373,7 +373,7 @@ test_that("taxa with zero reads are excluded from output", {
     verbose = FALSE
   )
 
-  # TaxonF has zero reads everywhere — should not appear in output
+  # TaxonF has zero reads everywhere -- should not appear in output
   expect_false("TaxonF" %in% result$taxon_name)
   # Original 5 taxa still present
   expect_equal(nrow(result), 5L)
