@@ -427,6 +427,17 @@ promise a no-op (fix: loud `stop()` naming the missing columns). 1 RISK:
 iNaturalist calls have no retry/backoff on 429/5xx (fix: reuse the GBIF
 retry engine). Open question for someone with API access: whether omitting
 iNat's `captive`/`quality_grade` params really means "no filter".
+**TaxaHabitat fixes MERGED (`9debda7`)**: decisions key on `(point_id,
+taxon_name)` -- `point_id` is a coordinate id from `stack_occurrences()`
+shared across taxa, so the collision was real; old-format files apply only
+to single-taxon points and ambiguous ones return for review with a
+warning; apply is idempotent; `.utm_crs_for()` wraps at the antimeridian
+(-179.5/179.5 -> zone 60); decision files are schema-validated; the
+geography test skips only when NOAA is provably unreachable. 580 tests,
+0 failures. **User-facing consequence**: the next real
+`apply_spatial_review_decisions()` run on the GreatLakes/PtCon/Mugu files
+reports how many points are ambiguous; re-saving from the review gadget
+writes the new key.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
