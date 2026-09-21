@@ -1729,18 +1729,18 @@ utils::globalVariables(c(
 #'       `congruent_evidence_exists_anywhere` is `FALSE`.}
 #'     \item{`hierarchy_flag`}{`"congruent"`, `"incongruent"`,
 #'       `"insufficient_independent_evidence"`,
-#'       `"not_evaluated_oversized"` (added 2026-09-01 -- see `@section
+#'       `"not_evaluated_oversized"` (see `@section
 #'       Long-sequence robustness` below; the query was never submitted to
 #'       BLAST at all, so this is NOT evidence of anything, and downstream
 #'       consumers ([flag_incongruent_references()],
 #'       [remove_incongruent_references()]) never treat it as a flag),
-#'       `"not_evaluated_wrong_marker"` (added 2026-09-04 -- also never
+#'       `"not_evaluated_wrong_marker"` (also never
 #'       submitted, and also never a flag, but it names a CAUSE rather than a
 #'       symptom: the record's own GBSeq feature table carries annotated
 #'       features and none of them is the marker `barcode_term` implies, so
 #'       the accession does not belong in this screen's candidate set and no
 #'       `max_query_len` can rescue it), or
-#'       `"locally_corroborated"` (added 2026-09-03 -- skipped because an
+#'       `"locally_corroborated"` (skipped because an
 #'       independent conspecific in the caller's own reference set already
 #'       corroborates it; see `@section Local corroboration`. Treated like
 #'       `"congruent"` everywhere downstream: never a flag, never removable,
@@ -1749,8 +1749,7 @@ utils::globalVariables(c(
 #'       `warning()` is issued listing these; not cached, so a subsequent
 #'       call retries them).}
 #'     \item{`local_corroborator_accession`}{The specific accession vouching
-#'       for a `"locally_corroborated"` row (added 2026-09-05, critical-fix-
-#'       review finding B5) -- `NA` for every other `hierarchy_flag` value.
+#'       for a `"locally_corroborated"` row -- `NA` for every other `hierarchy_flag` value.
 #'       `"locally_corroborated"` is cached indefinitely and exempt from
 #'       [refine_reference_verdicts()]'s trust-weighted refinement (the
 #'       MATCH itself, once observed, is permanent) -- but the corroborator's
