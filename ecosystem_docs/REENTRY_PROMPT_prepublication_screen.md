@@ -837,6 +837,16 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   a test asserted it, but the attribute survived only because `left_join`
   happens to preserve attributes on a plain data frame. NOAA and Natural
   Earth downloads ran live and passed.
+  **TaxaWizard DONE (`3909ae6`) -- B4 COMPLETE FOR ALL NINE.** 1,106 tests;
+  `check()` 0 warnings / 0 notes with one ERROR that is the installed-library
+  lag (the regenerated template was verified byte-identical against source
+  via `load_all()`); 31 lints -> 0 (prompt-pack literals and a generated
+  script line excluded with reasons); the two B3 gaps closed -- a direct
+  unit test of `.truncate_at_word()` pins the word-boundary property, and
+  `skip_on_cran()` is gone from the committed-template diff test. One
+  curly-quote left in `test-registry.R:382` on purpose: it is the pattern
+  under test. Reinstall from `3909ae6` follows; TaxaWizard's test and
+  `check()` are re-run against the fresh library as the B4 closing check.
   **Pre-tag fix MERGED (`e9efe23`)**: `.pasta_eml_url()` holds each id
   segment to `[A-Za-z0-9_.-]` with no `..` (34 DataONE tests pass).
   **B3 launched** (scratch worktree, nothing committed): eleven guards each
