@@ -223,7 +223,7 @@ test_that("an evidence-blend row (alpha ~ 6e-5, beta ~ 3e5) at three sites combi
   expect_equal(out$prior_mean, 2.420613e-10, tolerance = 1e-6)
 })
 
-test_that("one J-shaped site plus one moderate site: the logit rule ignores the uninformed floor and the confident site dominates", {
+test_that("J-shaped site plus moderate site: logit rule ignores the floor, confident site dominates", {
   df <- tibble(
     observation_id   = "obs1",
     taxon_name       = "X",
@@ -258,7 +258,8 @@ test_that("moderate priors still use the logit rule (worked numbers unchanged)",
     prior_mean       = c(0.8, 0.4, 0.2, 0.6)
   )
   out <- suppressMessages(combine_multisite_priors(df))
-  x <- out$prior_mean[out$taxon_name == "X"]; y <- out$prior_mean[out$taxon_name == "Y"]
+  x <- out$prior_mean[out$taxon_name == "X"]
+  y <- out$prior_mean[out$taxon_name == "Y"]
   expect_equal(x / (x + y), 0.785, tolerance = 0.01)
 })
 
@@ -281,8 +282,10 @@ test_that("presence-mixture columns that differ across sites are blanked with a 
   expect_warning(out <- combine_multisite_priors(joined), "DIFFER across sites")
   ce <- out[out$taxon_name == "Cervus elaphus", ]
   gm <- out[out$taxon_name == "Gadus morhua", ]
-  expect_equal(nrow(ce), 1L); expect_equal(nrow(gm), 1L)
-  expect_true(is.na(ce$prior_mix_w)); expect_true(is.na(ce$prior_mix_theta_present))
+  expect_equal(nrow(ce), 1L)
+  expect_equal(nrow(gm), 1L)
+  expect_true(is.na(ce$prior_mix_w))
+  expect_true(is.na(ce$prior_mix_theta_present))
   expect_true(is.finite(ce$prior_alpha) && ce$prior_alpha > 0)
   # identical mixture across sites is inherited unchanged, no warning
   expect_equal(gm$prior_mix_w, 0.2)

@@ -1399,9 +1399,11 @@ posterior_consensus <- function(posterior_df,
   }
 
   if (n_blocked > 0L) {
-    cli::cli_inform(
-      "posterior_consensus: {n_blocked} downranking step(s) blocked because the reference's only finer taxon was not among the observation's own candidates (see {.arg downrank_requires_candidate})."
-    )
+    cli::cli_inform(paste0(
+      "posterior_consensus: {n_blocked} downranking step(s) blocked because the ",
+      "reference's only finer taxon was not among the observation's own ",
+      "candidates (see {.arg downrank_requires_candidate})."
+    ))
   }
 
   consensus_df

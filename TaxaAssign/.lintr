@@ -21,21 +21,19 @@ exclusions: list(
     # interpolation -- a real, systematic false-positive class for this
     # package's messaging convention (lint_package()'s static analysis
     # doesn't trace {var} references inside string literals), confirmed by
-    # tracing each one to its actual usage before excluding.
-    "R/adjust_inat_range_priors.R" = list(object_usage_linter = c(190L), line_length_linter = Inf),
-    "R/assign_taxa_llm.R" = list(object_usage_linter = c(503L)),
-    "R/combine_multisite_priors.R" = list(object_usage_linter = c(209L), line_length_linter = Inf),
+    # tracing each one to its actual usage before excluding. Line numbers
+    # re-verified against a full, unfiltered lint_package() run (pre-review
+    # pass B4) after the surrounding files were edited.
+    "R/adjust_inat_range_priors.R" = list(object_usage_linter = c(189L), line_length_linter = Inf),
+    "R/assign_taxa_llm.R" = list(object_usage_linter = c(516L)),
+    "R/combine_multisite_priors.R" = list(object_usage_linter = c(296L, 305L), line_length_linter = Inf),
     "R/join_priors.R" = list(
-      object_usage_linter = c(1254L, 1358L),
+      object_usage_linter = c(1290L, 1396L),
       assignment_linter = c(348L, 349L, 350L, 351L, 352L),
       line_length_linter = Inf
     ),
-    "R/site_utils.R" = list(object_usage_linter = c(326L, 359L)),
-    "R/suggest_unreferenced_species.R" = list(
-      object_usage_linter = c(815L, 853L, 921L, 1056L, 1065L, 1066L, 1073L),
-      line_length_linter = Inf
-    ),
-    "R/update_prior_from_consensus.R" = list(object_usage_linter = c(285L)),
+    "R/site_utils.R" = list(object_usage_linter = c(327L, 360L)),
+    "R/update_prior_from_consensus.R" = list(object_usage_linter = c(256L)),
     # .synth_taxa/.synth_genus/.synth_family are top-level constants in this
     # demo/workflow script, referenced from inside a nested tibble::tibble()
     # call -- lint_package()'s per-function scoping doesn't see them, not a
@@ -56,7 +54,6 @@ exclusions: list(
     "R/generate_report.R" = list(line_length_linter = Inf),
     "R/compute_posterior.R" = list(line_length_linter = Inf),
     "R/build_context.R" = list(line_length_linter = Inf),
-    "tests/testthat/test-suggest_unreferenced_species.R" = list(line_length_linter = Inf),
     "tests/testthat/test-update_prior.R" = list(line_length_linter = Inf),
     "tests/testthat/test-posterior_consensus.R" = list(line_length_linter = Inf),
     "tests/testthat/test-join_priors.R" = list(line_length_linter = Inf),
