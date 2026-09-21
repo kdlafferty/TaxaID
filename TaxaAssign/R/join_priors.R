@@ -712,6 +712,34 @@ utils::globalVariables(c(
 #' )
 #' joined[, c("observation_id", "taxon_name", "prior_mean")]
 #'
+#' # A non-DNA likelihoods table (e.g. from an image or acoustic classifier)
+#' # joins the same way -- join_priors() reads taxon_name/taxon_name_rank,
+#' # never the evidence column the likelihoods were scored from.
+#' likelihoods_acoustic <- data.frame(
+#'   observation_id = c("REC_1", "REC_1"),
+#'   taxon_name = c("Turdus migratorius", "Turdus rufopalliatus"),
+#'   taxon_name_rank = "species",
+#'   genus = "Turdus",
+#'   family = "Turdidae",
+#'   stringsAsFactors = FALSE
+#' )
+#' taxaexpect_priors_acoustic <- data.frame(
+#'   taxon_name      = c("Turdus migratorius", "Turdus rufopalliatus"),
+#'   taxon_name_rank = "species",
+#'   grid_id         = "Grid_34p4_m119p8",
+#'   main_habitat    = "Terrestrial",
+#'   alpha           = c(25, 4),
+#'   beta            = c(15, 40),
+#'   undetected_type = NA_character_
+#' )
+#' joined_acoustic <- join_priors(
+#'   likelihoods       = likelihoods_acoustic,
+#'   taxaexpect_priors = taxaexpect_priors_acoustic,
+#'   site              = list(grid_id = "Grid_34p4_m119p8", main_habitat = "Terrestrial"),
+#'   backbone_id       = 11L
+#' )
+#' joined_acoustic[, c("observation_id", "taxon_name", "prior_mean")]
+#'
 #' @importFrom dplyr left_join distinct filter mutate select arrange
 #' @importFrom dplyr group_by summarise coalesce if_else desc na_if
 #' @importFrom rlang .data

@@ -443,6 +443,26 @@ consensus <- posterior_consensus(
 )
 consensus[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
 
+# A non-DNA posterior table (e.g. from an image classifier's candidates)
+# consensuses the same way -- there is no sequence/image/acoustic evidence
+# bearing on the LCA computation itself.
+posterior_df_image <- data.frame(
+  observation_id = c("IMG_1", "IMG_1"),
+  taxon_name = c("Puma concolor", "Lynx rufus"),
+  taxon_name_rank = "species",
+  hypothesis_type = "specific_candidate",
+  genus = c("Puma", "Lynx"),
+  family = "Felidae",
+  posterior_mean = c(0.85, 0.10),
+  posterior_point_est = c(0.85, 0.10)
+)
+consensus_image <- posterior_consensus(
+  posterior_df_image,
+  cumulative_threshold = 0.9,
+  min_posterior = 0.05
+)
+consensus_image[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
+
 }
 \seealso{
 \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}, \code{\link[=compute_posterior]{compute_posterior()}},

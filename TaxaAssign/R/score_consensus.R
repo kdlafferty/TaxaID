@@ -366,6 +366,22 @@ utils::globalVariables(c("score_val"))
 #'   "bracket_width_used"
 #' )]
 #'
+#' # A non-DNA score works the same way (BirdNET confidence, scaled to 0-100)
+#' acoustic_df <- data.frame(
+#'   observation_id  = c("R1", "R1"),
+#'   taxon_name      = c("Turdus migratorius", "Turdus"),
+#'   taxon_name_rank = c("species", "genus"),
+#'   score_original  = c(92, 78),
+#'   genus           = "Turdus",
+#'   family          = "Turdidae"
+#' )
+#' sc_acoustic <- score_consensus(
+#'   acoustic_df,
+#'   min_score       = 70,
+#'   rank_thresholds = c(species = 90, genus = 70, family = 50)
+#' )
+#' sc_acoustic[, c("observation_id", "consensus_taxon", "consensus_rank", "is_resolved")]
+#'
 #' @importFrom cli cli_abort cli_inform
 #' @importFrom dplyr bind_rows
 #'
