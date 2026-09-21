@@ -1,6 +1,6 @@
-# Companion to estimate_kernel_priors() (kernel-priors redesign, 2026-08-30).
-# Chooses the kernel tuning values by out-of-sample composition prediction --
-# the redesign's replacement for AIC-based formula screening.
+# Companion to estimate_kernel_priors().
+# Chooses the kernel tuning values by out-of-sample composition prediction,
+# rather than AIC-based formula screening.
 
 #' Calibrate kernel bandwidths by leave-one-block-out composition prediction
 #'
@@ -13,11 +13,11 @@
 #' records. Two reference predictors are always scored alongside for
 #' context: `regional` (all held-out records, unweighted -- "is locality
 #' worth anything?") and `nearest_block` (the single nearest other block --
-#' the retired one-cell architecture).
+#' a single-cell prediction scheme).
 #'
 #' The spatial blocks are a cross-validation device only -- they impose no
 #' structure on the estimator being calibrated (this is the one place a grid
-#' survives the kernel redesign, and the only job it keeps).
+#' appears in the kernel estimator, and the only job it keeps).
 #'
 #' @param occurrence_data,site_habitat,taxon_col,lat_col,lon_col,habitat_col
 #'   As in [estimate_kernel_priors()].
@@ -43,7 +43,7 @@
 #' @param sampling_group_col Optional column naming a detection-process
 #'   grouping (e.g. `"sampling_group"`) -- the same column passed to
 #'   [estimate_kernel_priors()]. `NULL` (default) scores ONE pooled
-#'   composition, which reproduces the pre-2026-09-19 behaviour exactly.
+#'   composition.
 #'   **Pass it whenever the estimator will be given it.** See
 #'   \verb{Why pooling the groups fits the wrong lambda}.
 #' @param min_group_records Minimum records a group must contribute to a block
@@ -184,8 +184,8 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
   # composition therefore fits lambda to whichever group contributes the most
   # records and hands that lambda to every group. It does not announce itself:
   # the fit succeeds and returns a number, just the wrong one for every group
-  # but the dominant one. NULL (default) = one group = the pre-2026-09-19
-  # behaviour, exactly (regression-tested).
+  # but the dominant one. NULL (default) = one group,
+  # exactly (regression-tested).
   grp <- if (is.null(sampling_group_col)) {
     rep("__all__", nrow(rec))
   } else {
@@ -385,13 +385,13 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
   )
   kernel_rows <- seq_len(n_par)
   best <- res[kernel_rows, ][which.min(res$weighted_logloss[kernel_rows]), ]
-  # Edge-of-grid check (2026-09-02). The radius of the occurrence fetch cannot
+  # Edge-of-grid check. The radius of the occurrence fetch cannot
   # be chosen from lambda a priori -- lambda is what this function estimates --
   # so the honest control is a POST-HOC one: if the best lambda sits at the
   # largest value offered, the optimum may lie outside the grid and the fetch
   # radius may be truncating real spatial structure. A lambda at the SMALLEST
   # value is reported too, since that usually means the neighbourhood is
-  # dominated by very local records (or, as at Mugu 2026-09-02, that per-key
+  # dominated by very local records (or, as at Mugu, that per-key
   # truncation made every species spatially identical).
   if (isTRUE(best$lambda_km >= max(lambda_grid))) {
     warning(sprintf(
