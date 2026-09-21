@@ -137,8 +137,8 @@ an "at least as expected as a typical local taxon at this rank"
 reading, avoiding a fitted or absolute cutoff. See @section Occurrence
 plausibility.
 
-\strong{If you derive it that way, the boundary FLOATS with the data}
-(recorded 2026-09-15). The recommendation above computes the threshold
+\strong{If you derive it that way, the boundary FLOATS with the data.}
+The recommendation above computes the threshold
 from the very table being classified, so it is a within-run RELATIVE
 judgement, not a fixed criterion, and two runs of the same site can
 classify differently with no code change and nothing wrong. Measured at
@@ -208,31 +208,30 @@ discrimination (Axis 2 -- \code{primary_discrimination}/
 \code{consensus_discrimination}, "could the evidence tell this taxon
 apart from a plausible relative?"). Neither axis gates or overrides the
 other, and neither is folded into a single combined categorical -- see
-\code{@section} below for both, and the "Retirement" section for why the
-earlier single-column \code{posthoc_assessment} design (with its
-\code{"vague_rank"} short-circuit for any non-species rank) was removed.
+\code{@section} below for both, and \strong{Why no rank-based
+short-circuit} for why a single combined column would need one and these
+two axes don't.
 }
-\section{Retirement of \code{posthoc_assessment} (2026-07-30)}{
+\section{Why no rank-based short-circuit}{
 
-The original design cross-tabulated sequence-match evidence against a
-taxon-tier lookup into one 9-category column, including
-\code{"vague_rank"} -- returned for EVERY row whose \code{consensus_rank}
-was not \code{"species"}, short-circuiting classification entirely rather
-than reporting a coarser-but-still-informative answer. Measured on a real
-616-observation Mugu dataset: 109 observations (17.7\%) got
-\code{"vague_rank"} and were never assessed at all. This is exactly the
-failure mode the Axis 1/Axis 2 redesign replaces it with: both axes are
-computed at whatever rank the data actually resolved to, reported
-alongside each other, with no rank at which classification simply stops.
-\code{posthoc_assessment}, \code{tiers}, \code{taxon_col}, \code{tier_col},
-and \code{finest_rank} are all removed -- there is no replacement for the
-3x2 tier-times-likelihood table itself, since \code{primary_plausibility}
-(occurrence side) and \code{primary_discrimination} (evidence side)
-already answer the same two questions without collapsing them into one
-column or gating either on rank.
+A single combined design that cross-tabulates sequence-match evidence
+against a taxon-tier lookup into one 9-category column would need a
+fallback for any row whose \code{consensus_rank} is coarser than species
+-- and a short-circuit value such as \code{"vague_rank"}, returned for
+EVERY such row, stops classification entirely rather than reporting a
+coarser-but-still-informative answer. Measured on a real 616-observation
+Mugu dataset: a rank-based short-circuit of that kind would leave 109
+observations (17.7\%) never assessed at all. Axis 1 and Axis 2 avoid this
+because both are computed at whatever rank the data actually resolved to,
+reported alongside each other, with no rank at which classification
+simply stops -- there is no separate 3x2 tier-times-likelihood table,
+since \code{primary_plausibility} (occurrence side) and
+\code{primary_discrimination} (evidence side) already answer the same two
+questions without collapsing them into one column or gating either on
+rank.
 }
 
-\section{Domestic/synanthropic species caveat (Session 149, redesigned 2026-07-30)}{
+\section{Domestic/synanthropic species caveat}{
 
 GBIF- and iNaturalist-derived occurrence priors structurally under-index
 captive/domestic organisms (pets, livestock) -- a data-curation property of
@@ -242,15 +241,14 @@ show \code{primary_plausibility = "unexpected"}/\code{"unprecedented"}
 image/acoustic evidence for it is strong, looking like a suspicious call
 when it is really just a database gap. Passing \code{domestic_taxa} flags
 exactly this combination (strong likelihood + low occurrence
-plausibility) via the new \code{domestic_prior_caveat} column, so a
+plausibility) via the \code{domestic_prior_caveat} column, so a
 reviewer sees "trust the ID, question the rarity" rather than treating
 the occurrence-implausibility flag at face value. This is deliberately
 conservative: it only fires when the prior is expected to be an
 under-count (see \code{domestic_prior_source}), never invents or elevates
-a prior itself, and -- unlike the retired \code{posthoc_assessment}
-design, which re-labelled the combined column in place -- is now its own
-small additive column, matching the axes' own "report alongside, never
-override" design. If your prior pipeline already augments occurrence data
+a prior itself, and is its own small additive column, matching the axes'
+own "report alongside, never override" design. If your prior pipeline
+already augments occurrence data
 with known local domestic/synanthropic presence (rather than relying on
 raw GBIF/iNat), set \code{domestic_prior_source = "augmented"} to disable
 this flag, since \code{primary_plausibility} is then informative on its
@@ -284,12 +282,11 @@ These are reported \strong{alongside} \code{primary_plausibility}/
 Axis 1 asks whether the taxon is expected to be here at all; Axis 2 asks
 whether the evidence could discriminate it from a plausible relative.
 Neither substitutes for the other. This design is deliberately additive
-rather than a recomputing/overriding mechanism -- the cautionary
-precedent is the \code{trusted_rank} ladder-walk (built 2026-07-19,
-removed 2026-07-20 after a real ~30\% likelihood/posterior-winner
-mismatch plus a downranking-cancellation bug -- see
-\code{[[project_rank_trust_mechanism_removed]]} in the TaxaID memory
-system).
+rather than a recomputing/overriding mechanism: a rank-trust mechanism
+that walks up the rank ladder recomputing or overriding lower-rank calls
+is the cautionary precedent here, since a real ~30\% likelihood/
+posterior-winner mismatch rate, plus a downranking-cancellation bug,
+showed that kind of design is unsafe.
 }
 
 \section{Occurrence plausibility (\code{primary_plausibility}/\code{consensus_plausibility})}{
@@ -297,15 +294,15 @@ system).
 An ordinal answer to "how expected is this taxon here?", reported for
 \code{primary_taxon} and \code{consensus_taxon} separately and computed
 at whatever rank the data actually resolved to -- never short-circuited
-for a coarser rank, the specific defect the retired \code{"vague_rank"}
-category had.
+for a coarser rank; see \strong{Why no rank-based short-circuit} above
+for the failure mode this avoids.
 
 \code{"unprecedented"} is driven by RECORD PRESENCE, never by a low value.
 A never-reported taxon and a genuine singleton can carry the same numeric
 value -- both land on the dark-diversity floor -- while meaning opposite
 things, so no threshold on the value can separate them.
 
-\strong{Reads \code{theta_mean}, not \code{prior_mean} (fixed 2026-07-30).}
+\strong{Reads \code{theta_mean}, not \code{prior_mean}.}
 \code{prior_mean} can be substantially inflated by
 \code{TaxaAssign::update_prior_from_consensus()}'s cross-observation
 confirmation boost, which has no gate on occurrence-record presence.
@@ -320,9 +317,9 @@ a compositional share of local records -- see
 occurrence scale" section) is immune to that boost by construction, since
 the boost only ever modifies \code{prior_mean}.
 
-A single absolute threshold (the previous design used \code{0.5} on the
-\code{prior_mean} scale) is also a unit mismatch on the \code{theta_mean}
-scale: \code{theta_mean} is a share of local records, not a presence
+A single absolute threshold, such as \code{0.5} on the \code{prior_mean}
+scale, is also a unit mismatch on the \code{theta_mean} scale:
+\code{theta_mean} is a share of local records, not a presence
 probability, so comparing it to "50/50 odds" is not a meaningful
 comparison. Beyond that, a SINGLE threshold applied at every rank is
 itself biased: a genus/family-level \code{consensus_prior} (the SUM of

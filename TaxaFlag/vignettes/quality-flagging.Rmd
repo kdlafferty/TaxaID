@@ -33,7 +33,7 @@ installed package instead.
 
 ## Contamination Flagging
 
-The `flag_contaminant()` function compares read proportions in your samples
+The `flag_contaminant()` function compares detection proportions in your samples
 against control samples (lab blanks, field blanks, or positive controls).
 
 ```{r contamination-example, eval = FALSE}

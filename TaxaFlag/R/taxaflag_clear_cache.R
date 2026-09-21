@@ -11,8 +11,7 @@
 #   1. review_assignments(cache_dir=)'s per-reviewed-taxon LLM verdict cache
 #      (files ending "_review.rds").
 #   2. check_gbif_tile_range(cache_dir=)'s per-(taxon, location, zoom, ...)
-#      GBIF density-tile verdict cache (files ending "_tile_range.rds"),
-#      added 2026-09-13.
+#      GBIF density-tile verdict cache (files ending "_tile_range.rds").
 # ==============================================================================
 
 .taxaflag_cache_patterns <- c("_review\\.rds$", "_tile_range\\.rds$")

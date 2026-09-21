@@ -24,7 +24,7 @@ build_review_covariates(
 }
 \arguments{
 \item{reads_df}{Long-format data frame: one row per taxon x sample, with
-a taxon identifier, a sample/event identifier, a read-count column, and
+a taxon identifier, a sample/event identifier, a count column, and
 (optionally) a sequence column. Matches the input shape of
 \code{\link{flag_contaminant}}.}
 
@@ -34,7 +34,7 @@ classification column to be modelled -- typically
 \code{\link{review_assignments}} output column.}
 
 \item{taxon_col}{Character. Taxon/observation identifier column in
-\code{reads_df} (default \code{"ESVId"}).}
+\code{reads_df} (default \code{"taxon_id"}).}
 
 \item{classification_taxon_col}{Character. Taxon/observation identifier
 column in \code{classification_df} (default \code{"observation_id"} --
@@ -44,9 +44,9 @@ than its read-count tables by convention).}
 \item{classification_col}{Character. Column in \code{classification_df}
 holding the categorical label to model (default
 \code{"primary_plausibility"} -- \code{add_posthoc_assessment()}'s
-retired \code{posthoc_assessment} column is no longer produced; any
-axis column, or a \code{review_assignments()} output column, works
-equally well here).}
+output does not include a \code{posthoc_assessment} column; any axis
+column, or a \code{review_assignments()} output column, works equally
+well here).}
 
 \item{event_col}{Character. Sample/event identifier column in
 \code{reads_df} (default \code{"event_id"}).}
@@ -63,8 +63,8 @@ all taxa, matching the effort-relative convention
 \code{site_col} value are excluded from the site-level columns only
 (with a warning); they still contribute to every other covariate.}
 
-\item{count_col}{Character. Read-count column in \code{reads_df} (default
-\code{"n_reads"}).}
+\item{count_col}{Character. Count column in \code{reads_df} (default
+\code{"count"}).}
 
 \item{sequence_col}{Character or \code{NULL}. Sequence column in
 \code{reads_df}, used to derive \code{seq_length}. Set \code{NULL} to
@@ -95,8 +95,8 @@ covariates. \code{NULL} omits these columns entirely.}
 \code{contaminant_df} to join onto the result (default
 \code{"control_rate"}). Common additions: \code{"field_rate"}, or
 \code{flag_contaminant()}'s own \code{"observation_validity"}/
-\code{"validity_flag"} columns (2026-07-24 -- fixed names now, no
-longer prefixed by \code{contaminant_type}; see that function's docs).}
+\code{"validity_flag"} columns (fixed names, not prefixed by
+\code{contaminant_type}; see that function's docs).}
 
 \item{extra_covariate_cols}{Character vector or \code{NULL} (default).
 Additional columns to carry through unchanged from
@@ -188,13 +188,13 @@ applies, separately, to rows absent from \code{contaminant_df} when it is
 supplied.
 }
 \description{
-Collapses a long-format reads table (one row per taxon x sample) to one
-row per observation, joined to a categorical classification column (e.g.
-\code{\link{add_posthoc_assessment}}'s \code{primary_plausibility}/
+Collapses a long-format detections table (one row per taxon x sample) to
+one row per observation, joined to a categorical classification column
+(e.g. \code{\link{add_posthoc_assessment}}'s \code{primary_plausibility}/
 \code{primary_discrimination}, or any \code{\link{review_assignments}}
-output column). Intended as the training-
-data step for a model relating observation-level attributes (sequence
-length, read depth, detection breadth, blank frequency) to how an
+output column). Intended as the training-data step for a model relating
+observation-level attributes (count magnitude, detection breadth, blank
+frequency, and -- where available -- sequence length) to how an
 observation was classified -- e.g. a simple classification tree or
 logistic regression fit directly on this function's output (no dedicated
 \code{model_review_classification()} wrapper exists in this package yet).
@@ -238,7 +238,7 @@ computing the same thing two different ways in two different places.
 }
 \examples{
 reads <- data.frame(
-  ESVId    = c("ESV_1", "ESV_1", "ESV_1", "ESV_2", "ESV_2"),
+  taxon_id = c("ESV_1", "ESV_1", "ESV_1", "ESV_2", "ESV_2"),
   sequence = c("ACGTACGT", "ACGTACGT", "ACGTACGT", "ACGT", "ACGT"),
   event_id = c("s1", "s2", "blank1", "s1", "s2"),
   count  = c(100, 50, 2, 5, 0)
@@ -255,6 +255,22 @@ reads$site_id <- c("A", "A", "A", "A", "A")
 build_review_covariates(
   reads, cls,
   site_col = "site_id", control_samples = "blank1"
+)
+
+# Non-sequencing example: camera-trap image detection counts (no
+# sequence column, so sequence_col is turned off)
+image_reads <- data.frame(
+  taxon_id = c("SpA", "SpA", "SpA", "SpB", "SpB"),
+  event_id = c("cam1", "cam2", "blank1", "cam1", "cam2"),
+  count    = c(40, 12, 1, 3, 0)
+)
+image_cls <- data.frame(
+  observation_id = c("SpA", "SpB"),
+  primary_plausibility = c("expected", "unexpected")
+)
+build_review_covariates(
+  image_reads, image_cls,
+  sequence_col = NULL, control_samples = "blank1"
 )
 
 }

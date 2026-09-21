@@ -37,9 +37,9 @@ giving the nearest record's collection date/year (e.g. GBIF's own
 \code{"year"} standard column). When supplied and present, the matched
 nearest record's raw value is surfaced as \code{nearest_date} -- lets a
 caller weigh a fresh vs. a decades-old nearest record differently
-without a second lookup. Default \code{NULL} (no age column requested,
-fully backward compatible -- \code{nearest_date} is simply absent from the
-output). No parsing/normalization is done on the raw value; a \code{"year"}
+without a second lookup. Default \code{NULL} (no age column requested;
+\code{nearest_date} is simply absent from the output). No parsing/normalization
+is done on the raw value; a \code{"year"}
 column comes back as whatever numeric/character type it already was.}
 }
 \value{

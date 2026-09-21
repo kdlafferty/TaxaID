@@ -15,7 +15,7 @@ Taxonomic assignment matches observations to identifications, but
 samples often contain artifacts and uncertainties. TaxaFlag provides
 three independent post-hoc checks:
 
--   **Contamination screening** compares taxon read counts against
+-   **Contamination screening** compares taxon detection counts against
     control samples (lab blanks, field blanks, positive controls). For
     example, in metabarcoding, human and food-related sequences commonly
     appear, and their relative frequency in controls can justify
@@ -32,8 +32,8 @@ three independent post-hoc checks:
 
 | Method | Function | Data needed |
 |------------------------|------------------------|------------------------|
-| **Control validation** | `validate_controls()` | Read counts + control labels (+ site, ideally) |
-| **Contamination** | `flag_contaminant()` | Read counts + control samples |
+| **Control validation** | `validate_controls()` | Detection counts + control labels (+ site, ideally) |
+| **Contamination** | `flag_contaminant()` | Detection counts + control samples |
 | **Handler artifacts** | `flag_handler()` | Timestamps + setup/retrieval times |
 | **Expert review** | `review_assignments()` | Assignments + LLM API key |
 
@@ -66,7 +66,7 @@ The reference must come from the data. On one real COI study the within-site
 sample-vs-sample median ranged from **0.145 to 0.890 across sites in that single
 dataset**, so any fixed cutoff would be simultaneously too strict and too loose
 within one run. Drawing the null from each site's own samples self-calibrates to
-marker diversity, habitat and sampling design.
+sampling method, habitat and sampling design.
 
 It is **two-sided**, because mislabelling runs both ways:
 
@@ -89,8 +89,8 @@ compromised rather than returning a verdict list.
 
 ### Contamination Scoring
 
-TaxaID can screen out contaminant DNA found disproportionately in blanks
-before that sequences enters a workflow. Specifically,
+TaxaID can screen out contaminant signal found disproportionately in blanks
+before it enters a workflow. Specifically,
 `flag_contaminant()` compares the relative abundance of each taxon in
 field samples versus control samples. Within each sample, read counts
 are first converted to proportions (reads for taxon / total reads),
@@ -178,7 +178,8 @@ implemented**; `min_control_obs = 1L` restores the unfloored behaviour.
 **Useful check before trusting the tier:** a genuine contaminant usually appears in
 **no field sample at all**. On real data 85-97 per cent of removals had
 `n_field_present == 0`. Inspect the names, and check at family level rather than
-ESV level if a downstream step consumes families.
+the finest candidate level (ESV/ASV for sequence data) if a downstream step
+consumes families.
 
 Supplying `site_col` adds `site_breadth_control`, `site_breadth_sample` and
 `control_sites_shared`, and uses site multiplicity as a **discriminant rather
@@ -248,9 +249,9 @@ library(TaxaFlag)
 checked <- validate_controls(
   input_df        = reads_long,
   event_col       = "event_id",
-  taxon_col       = "ESVId",     # an ESV id beats a taxon name: it does not
-  reads_col       = "n_reads",   # depend on assignment having succeeded
-  control_samples = blank_ids,
+  taxon_col       = "ESVId",     # a fine-grained candidate/detection ID beats
+  count_col       = "n_reads",   # a taxon name: it does not depend on
+  control_samples = blank_ids,   # assignment having succeeded
   site_col        = "Site"       # supply this if you have it; the null is per site
 )
 
@@ -267,7 +268,7 @@ attr(checked, "site_power")
 flagged <- flag_contaminant(
   input_df               = reads_long,
   taxon_col        = "taxon_name",
-  reads_col        = "n_reads",
+  count_col        = "n_reads",
   event_col        = "event_id",
   control_samples  = c("Blank_1", "Blank_2"),
   contaminant_type = "lab_contaminant"
@@ -284,7 +285,7 @@ For new work, gate on evidence and use site breadth:
 gated <- flag_contaminant(
   input_df                 = reads_long,
   taxon_col                = "ESVId",
-  reads_col                = "n_reads",
+  count_col                = "n_reads",
   event_col                = "event_id",
   control_samples          = blank_ids,
   require_control_evidence = TRUE,   # no verdict without a control detection

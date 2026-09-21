@@ -9,7 +9,7 @@
 #' time-stamped detection data. The datetime column is auto-parsed using
 #' \code{\link[base]{as.POSIXct}} with common format guessing.
 #'
-#' @section Edge anchoring (soundness-review item 16):
+#' @section Edge anchoring:
 #' By default (\code{station_metadata = NULL}), "deployment edges" are the
 #' detection data's own per-group minimum and maximum timestamps -- NOT true
 #' setup/pickup times. This means the very first and last GENUINE wildlife
@@ -64,19 +64,15 @@
 #'   the true equipment-retrieval timestamp. Default \code{"retrieve_time"}.
 #' @param verbose Logical. Print summary messages. Default \code{TRUE}.
 #'
-#' @section Unified validity schema (2026-07-24):
+#' @section Unified validity schema:
 #' Output column NAMES are fixed (\code{observation_validity}/
-#' \code{validity_flag}/\code{validity_reason}) rather than
-#' \code{flag_handler}/\code{flag_handler_score}/\code{flag_handler_reason}
-#' as in earlier versions -- matches \code{\link{flag_contaminant}}'s own
-#' same-day rename, so every TaxaFlag flag_*() mechanism shares one schema
-#' (the "one column, type-qualified values" pattern
-#' \code{\link{add_posthoc_assessment}} already used). No change to the
-#' underlying score/threshold math -- this is a pure naming/schema change.
-#' \code{report_flags()} was updated to auto-detect this schema (in addition
-#' to the naming era it already supported) by inspecting
+#' \code{validity_flag}/\code{validity_reason}), matching
+#' \code{\link{flag_contaminant}}'s own schema, so every TaxaFlag flag_*()
+#' mechanism shares one schema (the "one column, type-qualified values"
+#' pattern \code{\link{add_posthoc_assessment}} uses).
+#' \code{report_flags()} auto-detects this schema by inspecting
 #' \code{validity_flag}'s values, not just the column's presence, since the
-#' column name alone no longer identifies which check produced it.
+#' column name alone does not identify which check produced it.
 #'
 #' @return The input data frame with four columns appended:
 #' \describe{
@@ -292,8 +288,8 @@ flag_handler <- function(input_df,
   }
 
   # --- Assign flags ---
-  # Fixed column name + type-qualified values (2026-07-24) -- see
-  # @section Unified validity schema.
+  # Fixed column name + type-qualified values -- see @section Unified
+  # validity schema.
   input_df$validity_flag <- dplyr::case_when(
     is.na(input_df$handler_score) ~ NA_character_,
     input_df$handler_score >= 1.0 ~ "valid",

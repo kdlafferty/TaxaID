@@ -24,14 +24,14 @@
 #' the SORTED candidate set, not by the display label. The label
 #' (\code{consensus_OTU}) is ordered by posterior so the most-supported taxon
 #' reads first, which means one biological unit can carry "A/B" on one
-#' observation and "B/A" on another; joining on the label left one of them
-#' unmatched and therefore unscored. Sets are also deduplicated canonically, so
-#' a unit that previously appeared under two orderings is now reviewed once
-#' rather than twice. Display labels are unchanged. (2026-09-04.)
+#' observation and "B/A" on another; joining on the label would leave one of
+#' them unmatched and therefore unscored. Sets are also deduplicated
+#' canonically, so each unit is reviewed exactly once regardless of which
+#' ordering appears in the data. Display labels are unchanged.
 #'
 #' @param cache_dir Character or \code{NULL} (default). Directory for the
-#'   per-taxon review cache. \code{NULL} disables caching entirely, which is
-#'   the historical behaviour. Supplying a directory makes a re-run
+#'   per-taxon review cache. \code{NULL} disables caching entirely.
+#'   Supplying a directory makes a re-run
 #'   REPRODUCIBLE and stops it re-paying for verdicts already obtained: the
 #'   review is a judgement, and two GreatLakes runs 50 minutes apart on
 #'   identical input disagreed about \emph{Pimephales vigilax}
@@ -179,8 +179,7 @@
 #'   silently falls back to degraded/uniform output rather than erroring. If
 #'   every plausibility column comes back suspiciously uniform, pass
 #'   \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
-#'   provider = "anthropic")}. See \code{TaxaID/CLAUDE.md}'s "Known R
-#'   Footguns" for the full record.
+#'   provider = "anthropic")}.
 #' @param taxa_per_call Integer. Maximum taxa (or candidate sets) per LLM call.
 #'   Default \code{15L}. Candidate-set entries are longer than single taxon
 #'   names; consider reducing to 8--10 when using \code{plausible_taxa_col}.
@@ -199,15 +198,14 @@
 #'   relieving token-budget pressure. (2) When a response parses cleanly and is
 #'   the right shape but simply OMITS specific taxa, those taxa (and only
 #'   those) are re-asked in a follow-up call. The second case is not
-#'   truncation, so the halving retry never fires for it; before 2026-09-14
-#'   there was no retry at all and the run gave up on those taxa permanently
-#'   -- see \code{@section Unreviewed rows}. Both stop after
-#'   \code{max_retries} attempts and fall back to \code{NA} defaults for
-#'   whatever is still missing. Neither applies to a hard \code{llm_fn} error
-#'   (e.g. network/auth failure): a smaller or narrower batch can't fix that,
-#'   so it is reported immediately without retrying. \code{0L} means exactly
-#'   one call per batch, as before either mechanism existed. Default
-#'   \code{2L}.
+#'   truncation, so the halving retry never fires for it -- see
+#'   \code{@section Unreviewed rows} for how omitted taxa are recovered
+#'   instead. Both stop after \code{max_retries} attempts and fall back to
+#'   \code{NA} defaults for whatever is still missing. Neither applies to a
+#'   hard \code{llm_fn} error (e.g. network/auth failure): a smaller or
+#'   narrower batch can't fix that, so it is reported immediately without
+#'   retrying. \code{0L} disables both mechanisms, meaning exactly one call
+#'   per batch. Default \code{2L}.
 #' @param on_unreviewed Character. What to do when taxa still have no verdict
 #'   after the re-asks: \code{"warn"} (default) reports them and continues,
 #'   \code{"error"} stops the run, \code{"ignore"} is silent. The residue is
@@ -221,16 +219,13 @@
 #'
 #' @return The input data frame with 8 or 9 columns appended:
 #' \describe{
-#'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely.
-#'     Renamed from \code{habitat_plausibility} 2026-09-06 -- see
-#'     \code{@section Column naming} below.}
-#'   \item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.
-#'     Renamed from \code{geographic_plausibility}.}
+#'   \item{\code{llm_habitat_plausibility}}{likely / possible / unlikely. See
+#'     \code{@section Column naming} below for why this and the next three
+#'     columns carry an \code{llm_} prefix.}
+#'   \item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.}
 #'   \item{\code{llm_scope_plausibility}}{likely / possible / unlikely, or
-#'     \code{NA} if \code{target_group} not supplied. Renamed from
-#'     \code{scope_plausibility}.}
-#'   \item{\code{llm_contamination_risk}}{high / moderate / low. Renamed from
-#'     \code{contamination_risk}.}
+#'     \code{NA} if \code{target_group} not supplied.}
+#'   \item{\code{llm_contamination_risk}}{high / moderate / low.}
 #'   \item{\code{review_alternatives}}{Comma-separated plausible alternatives,
 #'     or \code{NA}}
 #'   \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa, or
@@ -264,24 +259,22 @@
 #' precisely what the LLM was asked, e.g. before trusting an unexpected
 #' result or when tuning \code{context}/\code{target_group}/\code{marker}.
 #'
-#' @section Unreviewed rows (2026-09-14):
+#' @section Unreviewed rows:
 #' An LLM response can parse cleanly, be the right length, and still leave
 #' specific taxa out -- consistently the long compound slash labels, i.e. the
 #' hardest rows, not random ones. That is not truncation, so the halving retry
-#' never fired for it, and before this date the run gave up on those taxa
-#' permanently: \code{NA} was filled in for all four \code{llm_} columns and
-#' the omission was warned about and then forgotten. Because every production
+#' alone would not catch it, and without a dedicated safeguard those taxa
+#' would be filled with \code{NA} in all four \code{llm_} columns and the
+#' omission warned about and then forgotten. Because every production
 #' workflow's export chain filters with \code{!= "unlikely"}, which
-#' \strong{discards \code{NA}}, the observation was removed from the final
-#' species list without a word -- the same class of loss as the 2026-09-04
-#' grass-carp incident. Found on the PtConception 12S production run, by a
-#' diagnostic that had itself been failing silently since it was written.
+#' \strong{discards \code{NA}}, an unreviewed observation would be silently
+#' removed from the final species list.
 #'
-#' Three changes close it. (1) Omitted taxa are \strong{re-asked}, alone, up
+#' Three mechanisms close this. (1) Omitted taxa are \strong{re-asked}, alone, up
 #' to \code{max_retries} times; the cost is bounded and pay-per-failure,
 #' since it only fires when the model omits, and it stops early when a re-ask
-#' recovers nothing. (2) An unreviewed taxon is \strong{never cached} -- and a
-#' cached entry from before this date holding no verdict is treated as a MISS,
+#' recovers nothing. (2) An unreviewed taxon is \strong{never cached} -- a
+#' cached entry holding no verdict is treated as a MISS,
 #' so an existing cache heals itself rather than serving the omission forever.
 #' (3) Whatever residue survives is \strong{loud}: named in
 #' \code{attr(result, "unreviewed_taxa")}, counted in
@@ -295,38 +288,31 @@
 #' only by its \code{NA}s; stopping the run instead makes the decision
 #' per-run and explicit.
 #'
-#' @section Column naming (2026-09-06):
-#' \code{habitat_plausibility}/\code{geographic_plausibility}/
-#' \code{scope_plausibility}/\code{contamination_risk} were renamed to
-#' \code{llm_habitat_plausibility}/\code{llm_geographic_plausibility}/
-#' \code{llm_scope_plausibility}/\code{llm_contamination_risk}. All four are
-#' independent LLM judgments -- by design, NOT derived from or gated by any
-#' pipeline-computed value (see \code{@section Pipeline context} below) -- and
-#' the old, unprefixed names read as if they might be pipeline output, which
-#' is exactly what confused a real user tracing a surprising
-#' \code{geographic_plausibility = "likely"} back through the pipeline before
-#' realising the number it appeared to contradict was never actually
-#' consulted to produce it. The LLM's own JSON response schema (what
+#' @section Column naming:
+#' The four independent LLM judgments (\code{llm_habitat_plausibility}/
+#' \code{llm_geographic_plausibility}/\code{llm_scope_plausibility}/
+#' \code{llm_contamination_risk}) all carry the \code{llm_} prefix precisely
+#' because they are independent LLM judgments -- by design, NOT derived from
+#' or gated by any pipeline-computed value (see \code{@section Pipeline
+#' context} below). An unprefixed name would read as if it might be pipeline
+#' output, which is exactly the trap a real user fell into: tracing a
+#' surprising \code{geographic_plausibility = "likely"} back through the
+#' pipeline before realising the number it appeared to contradict was never
+#' actually consulted to produce it. The prefix makes the provenance explicit
+#' at the column-name level. The LLM's own JSON response schema (what
 #' \code{.build_review_prompt()} asks for and \code{.parse_review_response()}
-#' parses) is UNCHANGED -- only the final output column names carry the
-#' prefix. Real callers (\code{report_flags()}, five external eDNA workflow
-#' scripts) were all updated the same session; \code{report_flags()}'s own
-#' contamination-column detection also still recognises the old bare
-#' \code{contamination_risk} name, for a data frame produced by a
-#' pre-2026-09-06 install.
+#' parses) uses the bare names internally -- only the final output column
+#' names carry the prefix.
 #'
-#' @section Skepticism gate (2026-09-06):
+#' @section Skepticism gate:
 #' A real case motivated this: an LLM rated a taxon
 #' \code{llm_geographic_plausibility = "likely"} despite the pipeline
 #' recording ZERO local occurrence records for it AND a near-total inability
 #' to discriminate it from a confusable relative on score alone -- explaining
 #' itself only with a general species-level range description, no evidence
 #' specific to the actual study site. Two independent responses, both real,
-#' both needed (a stronger prompt instruction is not sufficient on its own --
-#' see the reasoning in
-#' \code{[[project_rank_trust_mechanism_removed]]}/\code{[[project_verify_purpose_before_flagging]]}-adjacent
-#' precedent throughout this ecosystem: never trust an LLM alone to reliably
-#' self-flag its own uncertainty):
+#' both needed: a stronger prompt instruction alone is not sufficient, since
+#' an LLM cannot be trusted to reliably self-flag its own uncertainty:
 #' \enumerate{
 #'   \item{A GUIDELINES bullet (only added when at least one taxon in a
 #'     batch actually carries the flag -- see
@@ -384,9 +370,7 @@
 #'
 #' Deliberately facts-only in the per-taxon bracket -- no plausibility
 #' judgment is pre-computed or baked in server-side (the same design choice
-#' already made for \code{winner_rank_expanded}'s note above, and the reason
-#' the \code{trusted_rank} mechanism was removed from this ecosystem
-#' elsewhere -- see \code{TaxaLikely::evaluate_likelihoods()}'s history). Two
+#' already made for \code{winner_rank_expanded}'s note above). Two
 #' real caveats about how to weigh these facts are added as a GUIDELINES
 #' bullet instead (only when a batch has at least one such note), for the LLM
 #' to apply per case: (1) GBIF's density map is raw, unfiltered global data --
@@ -487,8 +471,9 @@ review_assignments <- function(input_df,
   # Pipeline-context column-name params are deliberately NOT validated for
   # presence in input_df -- unlike taxon_rank_col/plausible_taxa_col above, these
   # have non-NULL defaults matching TaxaAssign::posterior_consensus()'s own
-  # output names, so an explicit-presence check would break every existing
-  # caller whose input_df predates these columns. Silently skipped instead (see
+  # output names, so an explicit-presence check would break every caller
+  # whose input_df doesn't carry these columns (e.g. not built from
+  # posterior_consensus() at all). Silently skipped instead (see
   # .summarise_pipeline_context()); only the parameter TYPE is checked here.
   for (col_param in list(
     consensus_posterior_col, winner_prior_col,
@@ -614,9 +599,9 @@ review_assignments <- function(input_df,
       stringsAsFactors = FALSE
     )
     # Dedup on the canonical set, not the label: one review per biological
-    # unit. Where a unit previously appeared under two orderings it was
-    # reviewed twice, so this also removes a redundant LLM call rather than
-    # adding one.
+    # unit. Where a unit appears under two orderings, deduping on the label
+    # alone would review it twice, so this also removes a redundant LLM call
+    # rather than adding one.
     taxa_info <- taxa_info[!duplicated(taxa_info$.canon), , drop = FALSE]
     # ... and then once more on the LABEL, because a label is NOT guaranteed
     # unique across canonical sets in the other direction either:
@@ -715,8 +700,8 @@ review_assignments <- function(input_df,
     taxa_info$pipeline_note <- .combine_notes(.combine_notes(pn, wn), sn)
   }
 
-  # has_unprecedented/has_indistinguishable (2026-09-06): carried as their own
-  # LOGICAL columns on taxa_info (not just folded into pipeline_note's text),
+  # has_unprecedented/has_indistinguishable: carried as their own LOGICAL
+  # columns on taxa_info (not just folded into pipeline_note's text),
   # for two reasons. (1) .build_review_prompt() needs a real boolean to decide
   # whether to add the skepticism GUIDELINES bullet at all (matching
   # has_spatial_note's exact pattern) -- text alone can't be tested cheaply.
@@ -810,10 +795,10 @@ review_assignments <- function(input_df,
     n_stale_na <- 0L
     for (i in seq_along(cache_paths)) {
       ent <- .review_cache_read(cache_paths[i], cache_keys[i])
-      # A cached entry with no verdict at all is a cached NON-ANSWER -- written
-      # by a run that predates the omitted-taxa re-ask (2026-09-14), when an
-      # NA-filled row was persisted like any other. Treat it as a MISS so the
-      # taxon is asked again, rather than serving the omission forever.
+      # A cached entry with no verdict at all is a cached NON-ANSWER -- it
+      # should never be written now (see @section Unreviewed rows), but if
+      # one exists in the cache directory, treat it as a MISS so the taxon is
+      # asked again, rather than serving the omission forever.
       if (!is.null(ent) && .is_unreviewed_row(ent)) {
         n_stale_na <- n_stale_na + 1L
         ent <- NULL
@@ -928,19 +913,17 @@ review_assignments <- function(input_df,
   }
 
   # --- Join back to input by .join_key ---
-  # 2026-09-06: the four purely-LLM-sourced columns are named with an
-  # llm_ prefix (llm_habitat_plausibility/llm_geographic_plausibility/
-  # llm_scope_plausibility/llm_contamination_risk, were
-  # habitat_plausibility/geographic_plausibility/scope_plausibility/
-  # contamination_risk) -- so the SOURCE of a "likely"/"unlikely" verdict is
-  # legible from the column name alone, not just documentation. Prompted
-  # directly by a real case where a user traced a surprising
-  # "geographic_plausibility = likely" (despite a near-zero pipeline
-  # occurrence prior) all the way to this function before realising it was
-  # an independent LLM judgment, not a pipeline-derived value. The LLM's own
-  # JSON schema keys (habitat_plausibility, etc., in .build_review_prompt()/
-  # .parse_review_response()) are UNCHANGED -- only the final output column
-  # names carry the new prefix.
+  # The four purely-LLM-sourced columns are named with an llm_ prefix
+  # (llm_habitat_plausibility/llm_geographic_plausibility/
+  # llm_scope_plausibility/llm_contamination_risk) so the SOURCE of a
+  # "likely"/"unlikely" verdict is legible from the column name alone, not
+  # just documentation. An unprefixed name would read as pipeline-derived: a
+  # real case had a user trace a surprising "geographic_plausibility =
+  # likely" (despite a near-zero pipeline occurrence prior) all the way to
+  # this function before realising it was an independent LLM judgment, not a
+  # pipeline-derived value. The LLM's own JSON schema keys (habitat_plausibility,
+  # etc., in .build_review_prompt()/.parse_review_response()) use the bare
+  # names internally -- only the final output column names carry the prefix.
   flag_lookup <- taxa_info[, c("taxon_name", "has_unprecedented", "has_indistinguishable")]
   review_df <- merge(review_df, flag_lookup, by = "taxon_name", all.x = TRUE, sort = FALSE)
 
@@ -978,7 +961,7 @@ review_assignments <- function(input_df,
   result$.join_key <- NULL
   rownames(result) <- NULL
 
-  # --- Deterministic disagreement flag (2026-09-06) --------------------------
+  # --- Deterministic disagreement flag --------------------------------------
   # NOT computed from review_comment -- an LLM is not guaranteed to mention a
   # disagreement even when instructed to (see the skepticism GUIDELINES bullet
   # in .build_review_prompt()), so a reviewer who wants to reliably FIND every
@@ -1008,12 +991,11 @@ review_assignments <- function(input_df,
   # see @return below.
   attr(result, "llm_prompts") <- as.list(prompt_log)
 
-  # --- Unreviewed residue (2026-09-14) --------------------------------------
+  # --- Unreviewed residue ----------------------------------------------------
   # A row the model never answered about carries NA in all four llm_ columns,
   # and every production workflow's export chain filters with != "unlikely",
   # which DISCARDS NA -- so the observation leaves the final species list
-  # without a word. Same class of loss as the 2026-09-04 grass-carp incident.
-  # The count is returned as an attribute (always present, possibly empty),
+  # without a word. The count is returned as an attribute (always present, possibly empty),
   # modelled on fetch_ncbi_reference_sequences()'s count_failures, so a
   # workflow can check it programmatically instead of hand-writing a
   # diagnostic. NOTE: attributes do not survive a dplyr verb -- check this
@@ -1123,7 +1105,7 @@ review_assignments <- function(input_df,
 #' \code{sprintf("%.2f", v)} renders anything below 0.005 as the literal string
 #' "0.00" -- indistinguishable from a genuinely floor-level occurrence prior
 #' (e.g. 6.5e-6, "never recorded locally") to the LLM reading the prompt. Found
-#' 2026-09-06 on a real case where a user traced exactly this masking after
+#' on a real case where a user traced exactly this masking after
 #' noticing the LLM's own \code{review_comment} quoted "0.00" back verbatim.
 #' Below 0.01, switches to 2-significant-figure scientific notation (e.g.
 #' "6.50e-06") so the LLM sees the real order of magnitude; \code{0} itself
@@ -1153,7 +1135,7 @@ review_assignments <- function(input_df,
 #' \code{split()} (O(n)), not a per-label linear scan (O(n * unique labels)).
 #'
 #' \code{consensus_plausibility_col}/\code{consensus_discrimination_col}
-#' (2026-09-06) surface \code{TaxaFlag::add_posthoc_assessment()}'s own Axis 1
+#' surface \code{TaxaFlag::add_posthoc_assessment()}'s own Axis 1
 #' ("unprecedented" = no local occurrence record at all) and Axis 2
 #' ("indistinguishable" = a confusable relative could score just as well)
 #' verdicts as plain-text prompt context, AND as two logical columns
@@ -1163,10 +1145,8 @@ review_assignments <- function(input_df,
 #' recovered from \code{review_comment} alone (an LLM is not guaranteed to
 #' mention them, which is exactly the real case that prompted this: an LLM
 #' rated a taxon "likely" despite the pipeline recording zero local records
-#' for it, and the ecosystem's own house rule is to never trust an LLM to
-#' reliably self-flag its own disagreement -- see
-#' \code{[[project_rank_trust_mechanism_removed]]} for the same lesson learned
-#' elsewhere). \code{isTRUE(any(...))} per group, matching
+#' for it, and an LLM cannot be trusted to reliably self-flag its own
+#' disagreement). \code{isTRUE(any(...))} per group, matching
 #' \code{winner_rank_expanded}'s own existing any-row-flags-it convention just
 #' below -- if ANY observation sharing this label was found unprecedented/
 #' indistinguishable, the whole reviewed group is treated as warranting
@@ -1548,7 +1528,7 @@ review_assignments <- function(input_df,
     )
   )
 
-  # --- Skepticism guidance (2026-09-06; only when this batch has a real
+  # --- Skepticism guidance (only when this batch has a real
   # unprecedented/indistinguishable case) --------------------------------------
   # Real motivation, not hypothetical: an LLM rated a taxon "likely"
   # geographically plausible despite the pipeline recording ZERO local
@@ -1770,15 +1750,14 @@ review_assignments <- function(input_df,
   # while still leaving out specific taxa -- consistently the long compound
   # slash labels, i.e. the hardest rows, not random ones. That is NOT
   # truncation, so `status` is "complete" and the halving retry above never
-  # fires; before 2026-09-14 the run gave up on them permanently, filled NA,
-  # and the workflows' `!= "unlikely"` export filters (which discard NA)
-  # removed those observations from the final species list without a word.
-  # Same class of loss as the 2026-09-04 grass-carp incident.
+  # fires for it; without this re-ask, those taxa would be filled NA and the
+  # workflows' `!= "unlikely"` export filters (which discard NA) would remove
+  # those observations from the final species list without a word.
   #
   # Cost is bounded and pay-per-failure: this fires only when the model
   # omits, asks for the omitted taxa ONLY, and shares the `max_retries`
   # budget with the halving retry (so max_retries = 0 still means exactly one
-  # call per batch, as it always has).
+  # call per batch).
   missing <- attr(parsed, "missing_taxa")
   attempt <- 0L
   while (length(missing) > 0L && attempt < max_retries) {
@@ -1926,9 +1905,9 @@ review_assignments <- function(input_df,
     # Which expected taxa carry NA-filled defaults rather than a real verdict.
     # Exposed (rather than only warned about) so .review_batch_with_retry()
     # can RE-ASK for exactly these, and so review_assignments() can report the
-    # residue that survives. Before 2026-09-14 the omission was warned about
-    # and then forgotten, and the workflows' `!= "unlikely"` export filters
-    # dropped the NA rows without a word.
+    # residue that survives -- without this, the omission would only be
+    # warned about and then forgotten, and the workflows' `!= "unlikely"`
+    # export filters would drop the NA rows without a word.
     attr(result, "missing_taxa") <- as.character(missing_taxa)
     result
   }
@@ -2045,27 +2024,23 @@ review_assignments <- function(input_df,
   # normalised fallback: if a result name doesn't match any expected name
   # exactly but matches one after normalisation, remap it to the canonical
   # expected name and warn so the caller can inspect.
-  # Also strips a trailing "(rank: ...)" annotation -- taxa_batch's own prompt
-  # rendering shows each taxon as "- Cottus (rank: Cottus aleuticus)" when
-  # taxon_rank_col is supplied, and "taxon_name: the exact taxon name as
-  # provided" can lead the LLM to echo the whole displayed string back,
-  # including the parenthetical, rather than just the bare name. Confirmed as
-  # a real failure mode 2026-07-14: an entire batch's taxon_name values came
-  # back as "Cottus (rank: Cottus aleuticus)" etc., which the previous
-  # punctuation-only normalisation couldn't recover -- every taxon in the
-  # batch was wrongly treated as omitted and filled with NA, regardless of how
-  # easy the taxon itself was to assess.
-  # 2026-09-04: widened to the "(unresolved candidates; consensus rank: X)"
-  # form as well. .build_taxa_block() renders an UNRESOLVED candidate set as
-  # "- <label> (unresolved candidates; consensus rank: <rank>)", and the model
-  # echoes that whole decorated string back just as it does for "(rank: ...)".
-  # The old pattern required the parenthetical to begin with "rank:", so the
-  # unresolved form never normalised, every slash taxon was treated as omitted
-  # and filled with NA, and the workflows' export filters then dropped those
-  # rows without a word -- 113 of 885 on GreatLakes 2026-09-04, every one of
-  # them a multi-candidate set. Singletons were unaffected because their
-  # "(rank: ...)" annotation WAS handled, which is exactly why the loss looked
-  # like "coarse ranks are excluded on purpose".
+  # Also strips a trailing "(rank: ...)" or "(unresolved candidates;
+  # consensus rank: ...)" annotation. taxa_batch's own prompt rendering shows
+  # each taxon as "- Cottus (rank: Cottus aleuticus)" when taxon_rank_col is
+  # supplied, and an UNRESOLVED candidate set as "- <label> (unresolved
+  # candidates; consensus rank: <rank>)" (see .build_taxa_block());
+  # "taxon_name: the exact taxon name as provided" can lead the LLM to echo
+  # the whole displayed string back, including the parenthetical, rather
+  # than just the bare name.
+  #
+  # Both forms must be stripped: a normalisation that recognised only a
+  # parenthetical beginning with "rank:" would leave every multi-candidate
+  # slash taxon unrecognised, wrongly treated as omitted, filled with NA, and
+  # then dropped by the workflows' export filters without a word --
+  # confirmed on real data at 113 of 885 rows on GreatLakes, every one of
+  # them a multi-candidate set; singletons were unaffected because their
+  # "(rank: ...)" annotation WAS handled, which is exactly why the loss
+  # would look like "coarse ranks are excluded on purpose".
   .norm <- function(x) {
     x <- sub("(?i)\\s*\\(\\s*(?:unresolved candidates|rank\\s*:)[^)]*\\)\\s*$",
       "", trimws(x),

@@ -7,12 +7,13 @@ utils::globalVariables(c(
 
 #' Flag Potential Contaminants by Comparison to Control Samples
 #'
-#' Compares read proportions between field samples and control samples
+#' Compares detection proportions between field samples and control samples
 #' (negative controls or positive controls) to identify taxa that may be
-#' contaminants. Supports extraction controls, PCR controls, field controls,
-#' and positive controls.
+#' contaminants. Supports any labelled control samples (extraction, PCR, or
+#' field blanks; for non-sequence data, a blank photo/recording or a
+#' negative-control site) plus positive controls.
 #'
-#' The algorithm computes a read-depth-weighted detection rate per taxon in
+#' The algorithm computes a depth-weighted detection rate per taxon in
 #' field samples vs. controls, then an Empirical Bayes-shrunk score
 #' comparing them (\code{.compute_contaminant_scores()}'s own internal
 #' documentation has the full mechanism and the real-data motivation for
@@ -20,46 +21,41 @@ utils::globalVariables(c(
 #' scores (likely contaminants); taxa strongly favoring field samples
 #' receive scores approaching, but not reaching, 1.0 -- shrinkage means no
 #' taxon gets an absolute 0 or 1 score purely from having little total read
-#' support (Session 152 -- shrinkage strength is measured in reads, not
-#' samples; see \code{.compute_contaminant_scores()}'s documentation).
+#' support (shrinkage strength is measured in reads, not samples; see
+#' \code{.compute_contaminant_scores()}'s documentation).
 #'
 #' \strong{This score is a ranked screening statistic, not a calibrated
-#' probability.} Earlier versions of this documentation described it as
-#' "the probability the detection reflects true presence" -- it is not:
-#' no generative model of contamination is fit, and the score is not
-#' validated against known-true contamination status. Use it to rank taxa
-#' for review against \code{score_thresholds}, not as a literal posterior
-#' probability.
+#' probability}: no generative model of contamination is fit, and the score
+#' is not validated against known-true contamination status. Use it to rank
+#' taxa for review against \code{score_thresholds}, not as a literal
+#' posterior probability.
 #'
 #' For positive controls, the interpretation is inverted: taxa from the
 #' positive control appearing in field samples indicate cross-contamination.
 #'
-#' @section Unified validity schema (2026-07-24):
+#' @section Unified validity schema:
 #' Output column NAMES are fixed (\code{observation_validity}/
 #' \code{validity_flag}/\code{validity_reason}) rather than parameterized by
-#' \code{contaminant_type} as in earlier versions (which produced
-#' \code{{contaminant_type}_score}/\code{_risk}/\code{_reason}) -- every
-#' TaxaFlag flag_*() mechanism (see also \code{\link{flag_handler}}) now
-#' shares this one schema, matching the "one column, type-qualified values"
-#' pattern \code{\link{add_posthoc_assessment}} already used. The
-#' \code{contaminant_type} string still appears, just in \code{validity_flag}'s
+#' \code{contaminant_type} -- every TaxaFlag flag_*() mechanism (see also
+#' \code{\link{flag_handler}}) shares this one schema, matching the "one
+#' column, type-qualified values" pattern \code{\link{add_posthoc_assessment}}
+#' uses. The \code{contaminant_type} string appears in \code{validity_flag}'s
 #' VALUES (\code{"invalid_{contaminant_type}"}/\code{"questionable_
-#' {contaminant_type}"}) instead of in a column name. No change to the
-#' underlying score/threshold math -- this is a pure naming/schema change.
-#' \code{report_flags()} was updated to auto-detect this schema (in addition
-#' to the two earlier naming eras it already supported) by inspecting
+#' {contaminant_type}"}) instead of in a column name.
+#' \code{report_flags()} auto-detects this schema by inspecting
 #' \code{validity_flag}'s values, not just the column's presence, since the
-#' column name alone no longer identifies which check produced it.
+#' column name alone does not identify which check produced it.
 #'
 #' @param input_df Data frame in long format with at minimum columns for sample
-#'   identification, taxon identification, and read counts.
+#'   identification, taxon identification, and count data (e.g. read counts,
+#'   detection counts).
 #' @param event_col Character. Column name identifying collection events
 #'   (e.g., individual filters, bottles, or deployments). Default
 #'   \code{"event_id"}.
 #' @param taxon_col Character. Column name identifying taxa (species, ESV,
 #'   ASV, etc.). Default \code{"taxon_name"}.
-#' @param count_col Character. Column name with integer read counts. Default
-#'   \code{"n_reads"}.
+#' @param count_col Character. Column name with integer count data. Default
+#'   \code{"count"}.
 #' @param control_samples Character vector of sample IDs that are controls
 #'   (negative controls or positive controls). Mutually exclusive with
 #'   \code{sample_type_col}; at least one must be supplied.
@@ -75,8 +71,8 @@ utils::globalVariables(c(
 #' @param contaminant_type Character. Label for the type of contamination
 #'   being assessed, embedded in \code{validity_flag}'s values (e.g.
 #'   \code{"invalid_lab_contaminant"}) -- see \code{@return} below. Does NOT
-#'   change output column NAMES (2026-07-24 -- see Details); those are now
-#'   fixed (\code{observation_validity}/\code{validity_flag}/
+#'   change output column NAMES (see Details); those are fixed
+#'   (\code{observation_validity}/\code{validity_flag}/
 #'   \code{validity_reason}) so every TaxaFlag flag_*() mechanism shares one
 #'   schema. Common values: \code{"lab_contaminant"},
 #'   \code{"field_contaminant"}, \code{"positive_control"}. Default
@@ -88,7 +84,8 @@ utils::globalVariables(c(
 #' overwhelming majority: on a real 12S run it covered 16,695 of 16,826 ESVs
 #' (99.2%) and on COI 32,162 of 34,899 (92.2%). A downstream
 #' \code{validity_flag != "valid"} filter would therefore delete nearly the whole
-#' dataset, where before the gate it deleted a merely implausible 73%.
+#' dataset, where the same filter without the gate deletes a merely
+#' implausible 73%.
 #'
 #' \code{"not_control_enriched"} and \code{"single_site_enriched"} are also not
 #' \code{"valid"}, and they are the states that exist precisely to say DO NOT
@@ -143,8 +140,8 @@ utils::globalVariables(c(
 #' @param require_control_evidence Logical. When TRUE, an ESV that was never
 #'   detected in ANY control is labelled \code{"no_control_evidence"} instead of
 #'   being scored, and ESVs that ARE seen in a control are split by DIRECTION.
-#'   Default FALSE for backward compatibility, but TRUE is the defensible setting
-#'   for new work and FALSE now warns.
+#'   Default \code{FALSE}, which emits a warning when it bites (see below);
+#'   \code{TRUE} is the defensible setting for new work.
 #'
 #'   Why: the shrunken score is driven by READ DEPTH when control detections are
 #'   rare, so it assigns a contamination verdict to ESVs with no contamination
@@ -191,9 +188,9 @@ utils::globalVariables(c(
 #'   higher values are \code{"valid"} (likely a genuine detection). Default
 #'   \code{c(0.5, 0.9)}.
 #' @param prior_weight Numeric (default \code{20}). Empirical Bayes shrinkage
-#'   strength, in units of "equivalent reads" (Session 152 -- see
-#'   \code{.compute_contaminant_scores()}'s own documentation for why this
-#'   changed from "equivalent samples" in Session 151). Controls how strongly
+#'   strength, in units of "equivalent reads" (see
+#'   \code{.compute_contaminant_scores()}'s own documentation for why reads,
+#'   not samples). Controls how strongly
 #'   the final field-vs-control ratio is pulled toward 0.5 (maximally
 #'   uncertain) when a taxon has little total read support overall. Higher
 #'   values shrink harder (more conservative, less willing to call a
@@ -220,25 +217,24 @@ utils::globalVariables(c(
 #'   \item{\code{validity_reason}}{Character. Plain-English
 #'     explanation including depth-weighted rates and control detection counts.}
 #'   \item{\code{mean_prop_field}}{Informational only, does not drive the
-#'     score (Session 151): unweighted mean of within-sample proportions in
-#'     field samples.}
+#'     score: unweighted mean of within-sample proportions in field samples.}
 #'   \item{\code{mean_prop_control}}{Informational only, does not drive the
-#'     score (Session 151): unweighted mean of within-sample proportions in
-#'     control samples.}
+#'     score: unweighted mean of within-sample proportions in control
+#'     samples.}
 #'   \item{\code{field_rate}}{Depth-weighted detection rate in field samples
 #'     (taxon reads / total field sequencing depth), before shrinkage.}
 #'   \item{\code{control_rate}}{Depth-weighted detection rate in control
 #'     samples, before shrinkage.}
 #'   \item{\code{n_field_present}}{Number of field samples in which the taxon
-#'     was detected. Informational only since Session 152 -- does not drive
-#'     the shrinkage weight (see \code{n_reads_total}).}
+#'     was detected. Informational only -- does not drive the shrinkage
+#'     weight (see \code{n_reads_total}).}
 #'   \item{\code{n_controls_present}}{Number of controls in which the taxon was
-#'     detected. Informational only since Session 152.}
+#'     detected. Informational only.}
 #'   \item{\code{n_controls_total}}{Total number of controls.}
 #'   \item{\code{n_reads_total}}{Total reads for this taxon across field +
-#'     control samples combined (\code{Session 152}). This, not sample count,
-#'     is what the shrinkage weight (\code{prior_weight}) is measured
-#'     against -- see \code{.compute_contaminant_scores()} for why.}
+#'     control samples combined. This, not sample count, is what the
+#'     shrinkage weight (\code{prior_weight}) is measured against -- see
+#'     \code{.compute_contaminant_scores()} for why.}
 #' }
 #'
 #' @seealso \code{\link{flag_handler}}, \code{\link{review_assignments}}
@@ -279,6 +275,28 @@ utils::globalVariables(c(
 #'   control_samples = c("Palmyra32", "Palmyra64"),
 #'   exclude_samples = c("Palmyra30", "Palmyra31", "Palmyra62", "Palmyra63"),
 #'   contaminant_type = "positive_control"
+#' )
+#' }
+#'
+#' \dontrun{
+#' # Non-sequencing example: camera-trap image detection counts, with an
+#' # unbaited station standing in for a negative control
+#' image_counts <- data.frame(
+#'   event_id = c(
+#'     "StationA", "StationA", "StationB", "StationB",
+#'     "UnbaitedStation", "UnbaitedStation"
+#'   ),
+#'   taxon_name = c(
+#'     "Odocoileus hemionus", "Procyon lotor",
+#'     "Odocoileus hemionus", "Procyon lotor",
+#'     "Odocoileus hemionus", "Procyon lotor"
+#'   ),
+#'   count = c(340, 12, 298, 9, 1, 47)
+#' )
+#' flagged_images <- flag_contaminant(
+#'   input_df         = image_counts,
+#'   control_samples  = "UnbaitedStation",
+#'   contaminant_type = "lab_contaminant"
 #' )
 #' }
 #'
@@ -411,8 +429,8 @@ flag_contaminant <- function(input_df,
   # --- Apply thresholds to get validity levels ---
   # score = shrunk field rate / (shrunk field rate + shrunk control rate);
   # low score = probable contaminant = "invalid_{contaminant_type}". Type
-  # qualifier embedded in the VALUE (2026-07-24), not the column name -- see
-  # @section Unified validity schema.
+  # qualifier embedded in the VALUE, not the column name -- see @section
+  # Unified validity schema.
   invalid_label <- paste0("invalid_", contaminant_type)
   questionable_label <- paste0("questionable_", contaminant_type)
   scores$flag <- dplyr::case_when(
@@ -421,7 +439,7 @@ flag_contaminant <- function(input_df,
     TRUE ~ "valid"
   )
 
-  # --- Q3: site breadth as a DISCRIMINANT (opt-in via site_col) --------------
+  # --- Site breadth as a DISCRIMINANT (opt-in via site_col) ------------------
   if (!is.null(site_col)) {
     .sb <- unique(data.frame(
       taxon = as.character(input_df[[taxon_col]]),
@@ -441,7 +459,7 @@ flag_contaminant <- function(input_df,
     scores$control_sites_shared <- as.integer(.n_both[scores$taxon]); scores$control_sites_shared[is.na(scores$control_sites_shared)] <- 0L
   }
 
-  # --- Q2: evidence gate, then direction (opt-in) ----------------------------
+  # --- Evidence gate, then direction (opt-in) --------------------------------
   if (require_control_evidence) {
     .seen   <- scores$n_controls_present > 0
     # EVIDENCE FLOOR. The direction test below is a bare rate inequality, and
@@ -461,7 +479,7 @@ flag_contaminant <- function(input_df,
         ifelse(.enrich, invalid_label,
                ifelse(scores$control_rate < scores$field_rate,
                       "not_control_enriched", questionable_label))))
-    # Q3 refinement: a control-enriched taxon seen at only ONE site whose samples
+    # Site-breadth refinement: a control-enriched taxon seen at only ONE site whose samples
     # also carry it is LOCAL, not a systemic source. Downgrading here is the whole
     # value of having more than one site with controls.
     #
@@ -491,9 +509,9 @@ flag_contaminant <- function(input_df,
   }
 
   # --- Build reason strings ---
-  # Reports the depth-weighted rates that actually drive observation_validity
-  # (Session 151), not the old unweighted mean_prop_field/mean_prop_control
-  # (still returned, but purely informational -- see roxygen).
+  # Reports the depth-weighted rates that actually drive observation_validity,
+  # not the unweighted mean_prop_field/mean_prop_control (still returned, but
+  # purely informational -- see roxygen).
   scores$reason <- sprintf(
     "field rate %.5f, control rate %.5f (depth-weighted, shrunk by %d total read(s)), score %.3f; detected in %d field / %d/%d control sample(s)",
     scores$field_rate, scores$control_rate, scores$n_reads_total,
@@ -502,7 +520,7 @@ flag_contaminant <- function(input_df,
   )
 
   # --- Build per-taxon result ---
-  # Fixed column names (2026-07-24) -- see @section Unified validity schema.
+  # Fixed column names -- see @section Unified validity schema.
   # Selects straight out of `scores` (dropping only its internal `contaminant_score`/
   # `flag`/`reason` working names) rather than rebuilding every value by hand --
   # `.compute_contaminant_scores()`'s own output columns stay the single source
@@ -554,7 +572,7 @@ flag_contaminant <- function(input_df,
 #' read-depth-weighted rate per group (field vs. control), then an Empirical
 #' Bayes-shrunk score comparing them.
 #'
-#' @section Depth-weighting and shrinkage (soundness-review item 15):
+#' @section Depth-weighting and shrinkage:
 #' The naive version of this comparison -- an unweighted mean of each
 #' taxon's per-sample proportions -- lets a single shallow, noisy sample
 #' dominate the mean as much as a deep, well-supported one, and gives a hard
@@ -577,67 +595,66 @@ flag_contaminant <- function(input_df,
 #'     `n_reads_total` is the taxon's total READ count (summed across both
 #'     groups) -- the same Empirical Bayes form used throughout this
 #'     ecosystem (e.g. `TaxaLikely::train_likelihood_model()`'s per-species
-#'     shrinkage), but measured in reads, not samples (Session 152 -- see
-#'     below). A taxon with little total read support, however lopsided its
+#'     shrinkage), but measured in reads, not samples (see below). A taxon
+#'     with little total read support, however lopsided its
 #'     raw ratio, no longer gets an overconfident 0 or 1; a taxon with
 #'     substantial read support keeps close to its raw ratio regardless of
 #'     how few samples it came from.
 #' }
 #' Shrinkage is applied to the FINAL ratio, not to `field_rate`/
-#' `control_rate` individually toward some shared reference rate -- an
-#' earlier version of this fix tried shrinking each rate toward the taxon's
-#' own pooled (field+control) rate, which let a taxon's own field read
-#' volume leak into its control-side prior and systematically understated
-#' genuinely clean taxa's scores whenever field depth dominated control
-#' depth (re-introducing the exact group-depth-imbalance problem
-#' depth-weighting exists to avoid). `mean_prop_field`/`mean_prop_control`
-#' (the old, unweighted per-sample means) are still returned as
-#' informational diagnostics, but no longer feed `contaminant_score`.
+#' `control_rate` individually toward some shared reference rate: shrinking
+#' each rate toward the taxon's own pooled (field+control) rate would let a
+#' taxon's own field read volume leak into its control-side prior and would
+#' systematically understate genuinely clean taxa's scores whenever field
+#' depth dominated control depth (re-introducing the exact
+#' group-depth-imbalance problem depth-weighting exists to avoid).
+#' `mean_prop_field`/`mean_prop_control` (the unweighted per-sample means)
+#' are still returned as informational diagnostics, but do not feed
+#' `contaminant_score`.
 #'
-#' @section Reads, not samples, as the shrinkage denominator (Session 152):
-#' Session 151 shrunk by SAMPLE count (`n_field_present + n_controls_present`).
-#' Real PtConception data (both 12S and 18S) showed this conflates two very
-#' different evidence strengths: a taxon detected via 2 reads in one sample
-#' and a taxon detected via 500,000 reads in one sample were both treated as
-#' "n_present = 1" and shrunk identically -- capping BOTH at the same
-#' distance from 0.5 regardless of how much real evidence either one
-#' actually carries. With the Session 151 default (`prior_weight = 2`,
-#' sample-count shrinkage), no taxon detected in 1-8 total samples could
-#' ever reach the `"low"` risk tier even with overwhelming, unambiguous
-#' read support -- and the median real taxon in both PtConception datasets
-#' is detected in exactly 1 field sample, so this capped the vast majority
-#' of legitimately clean detections at `"moderate"` (12S: 97% of taxa,
-#' 18S: 88%) purely as an artifact of sample count, not evidence quality.
+#' @section Reads, not samples, as the shrinkage denominator:
+#' Shrinking by SAMPLE count (`n_field_present + n_controls_present`) instead
+#' of read count would conflate two very different evidence strengths: a
+#' taxon detected via 2 reads in one sample and a taxon detected via 500,000
+#' reads in one sample are both `n_present = 1` and would be shrunk
+#' identically -- capping BOTH at the same distance from 0.5 regardless of
+#' how much real evidence either one actually carries. Real PtConception
+#' data (both 12S and 18S) confirms this: at `prior_weight = 2` (the
+#' sample-count-shrinkage equivalent), no taxon detected in 1-8 total
+#' samples could reach the `"low"` risk tier even with overwhelming,
+#' unambiguous read support -- and the median real taxon in both
+#' PtConception datasets is detected in exactly 1 field sample, so
+#' sample-count shrinkage caps the vast majority of legitimately clean
+#' detections at `"moderate"` (12S: 97% of taxa, 18S: 88%) purely as an
+#' artifact of sample count, not evidence quality.
 #'
-#' Read count fixes this directly and needs no change to the 0.5 shrink
-#' target (already correct in depth-normalized rate space, per the
+#' Read count avoids this and needs no change to the 0.5 shrink target
+#' (already correct in depth-normalized rate space, per the
 #' Depth-weighting section above). A read-FRACTION-based alternative (shrink
 #' toward the study's own control:field depth ratio rather than 0.5) was
 #' also tried and rejected: it requires anchoring to that ratio explicitly
 #' and does not transfer across studies with very different ratios --
 #' verified directly against both real datasets, where it either missed or
-#' downgraded taxa the sample-count-based approach had correctly flagged
-#' `"high"`.
+#' downgraded taxa the read-count approach correctly flags `"high"`.
 #'
 #' Empirically validated against real PtConception 12S and 18S data at
-#' `prior_weight` (now read-equivalent units) of 20, 50, 100, and 500: the
-#' known `"high"`-risk taxa (stable across the pre-151 and Session-151
-#' formulas) are recovered with 100% sensitivity and zero false positives at
-#' every value tested, on both datasets, while a much larger fraction of
-#' well-supported clean detections correctly reach `"low"` instead of being
-#' capped at `"moderate"`. Default chosen: `prior_weight = 20` -- recovers
-#' the most `"low"`-tier informativeness of the values tested while still
-#' correctly keeping thin (~20-30 total read) single-detections at
-#' `"moderate"`, not `"low"` (a genuinely well-supported single-sample
-#' detection with tens of thousands of reads does reach `"low"`, as it
-#' should).
+#' `prior_weight` (read-equivalent units) of 20, 50, 100, and 500: the known
+#' `"high"`-risk taxa are recovered with 100% sensitivity and zero false
+#' positives at every value tested, on both datasets, while a much larger
+#' fraction of well-supported clean detections correctly reach `"low"`
+#' instead of being capped at `"moderate"`. Default chosen:
+#' `prior_weight = 20` -- recovers the most `"low"`-tier informativeness of
+#' the values tested while still correctly keeping thin (~20-30 total read)
+#' single-detections at `"moderate"`, not `"low"` (a genuinely
+#' well-supported single-sample detection with tens of thousands of reads
+#' does reach `"low"`, as it should).
 #'
 #' @param input_df Data frame in long format.
 #' @param event_col,taxon_col,count_col Column name strings.
 #' @param control_ids,field_ids Character vectors of sample IDs.
 #' @param prior_weight Numeric. Equivalent read count for shrinking the final
-#'   ratio toward 0.5 (Session 152 -- previously an equivalent sample count).
-#'   Higher values pull harder toward 0.5 for taxa with little total read
+#'   ratio toward 0.5. Higher values pull harder toward 0.5 for taxa with
+#'   little total read
 #'   support (field + control combined).
 #'
 #' @return Data frame with one row per taxon and columns: \code{taxon},
@@ -686,8 +703,8 @@ flag_contaminant <- function(input_df,
     field_rows <- tx_rows[!tx_rows$is_control, , drop = FALSE]
     control_rows <- tx_rows[tx_rows$is_control, , drop = FALSE]
 
-    # Informational only (Session 151): unweighted mean of per-sample
-    # proportions -- no longer feeds contaminant_score.
+    # Informational only: unweighted mean of per-sample proportions -- does
+    # not feed contaminant_score.
     mean_prop_field <- if (nrow(field_rows) > 0L) mean(field_rows$prop) else 0
     mean_prop_control <- if (nrow(control_rows) > 0L) mean(control_rows$prop) else 0
 
@@ -705,29 +722,27 @@ flag_contaminant <- function(input_df,
     field_rate <- if (field_depth > 0) taxon_field_reads / field_depth else 0
     control_rate <- if (control_depth > 0) taxon_control_reads / control_depth else 0
 
-    # Raw (un-shrunk) ratio, same structural form as the pre-Session-151
-    # formula, just with depth-weighted rates in place of unweighted
-    # per-sample-proportion means.
+    # Raw (un-shrunk) ratio: field_rate / (field_rate + control_rate), using
+    # depth-weighted rates in place of unweighted per-sample-proportion means.
     rate_sum <- field_rate + control_rate
     raw_score <- if (rate_sum > 0) field_rate / rate_sum else 0.5
 
     # Empirical Bayes shrinkage of the FINAL ratio toward 0.5 (maximally
     # uncertain), weighted by total READ count (n_reads_total summed across
     # both groups) -- w = n_reads_total / (n_reads_total + prior_weight).
-    # Session 152: this was sample count (n_field_present + n_controls_present)
-    # through Session 151, which conflated a 2-read detection with a
-    # 500,000-read detection whenever both happened to come from a single
-    # sample -- see this function's "Reads, not samples" roxygen section for
-    # the real-data evidence this was wrong. Shrinking the ratio itself,
-    # rather than shrinking field_rate/control_rate separately toward some
-    # shared reference rate, avoids a subtle bug: an early version of this
-    # fix shrunk each rate toward their taxon-specific pooled average, which
-    # let a taxon's own (usually much larger) field read volume leak into
-    # its control-side prior, systematically understating genuinely clean
-    # taxa's scores whenever field depth dominated control depth -- exactly
-    # the group-depth-imbalance problem depth-weighting was supposed to
-    # avoid. Shrinking the ratio by read count instead keeps the two groups'
-    # magnitudes fully independent, same as the sample-count version did.
+    # Read count rather than sample count, since sample count would conflate
+    # a 2-read detection with a 500,000-read detection whenever both happened
+    # to come from a single sample -- see this function's "Reads, not
+    # samples" roxygen section for the real-data evidence for this choice.
+    # Shrinking the ratio itself, rather than shrinking field_rate/
+    # control_rate separately toward some shared reference rate, avoids a
+    # subtle bug: shrinking each rate toward the taxon's own pooled
+    # (field+control) average would let a taxon's own (usually much larger)
+    # field read volume leak into its control-side prior, systematically
+    # understating genuinely clean taxa's scores whenever field depth
+    # dominated control depth -- exactly the group-depth-imbalance problem
+    # depth-weighting is meant to avoid. Shrinking the ratio by read count
+    # instead keeps the two groups' magnitudes fully independent.
     n_reads_total <- taxon_field_reads + taxon_control_reads
     w <- n_reads_total / (n_reads_total + prior_weight)
     score <- w * raw_score + (1 - w) * 0.5
