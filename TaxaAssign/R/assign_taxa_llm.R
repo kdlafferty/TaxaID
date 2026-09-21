@@ -1127,7 +1127,7 @@ assign_taxa_llm <- function(match_df,
     !all(c("taxon_name", "prior_weight") %in% names(parsed))) {
     # A response with no "]" at all almost always means the LLM's JSON array
     # was cut off mid-response by the token limit, not that it returned
-    # malformed JSON -- confirmed empirically (Session 145): 4/5 real
+    # malformed JSON -- confirmed empirically: 4/5 real
     # 30-taxon batches failed this way at call_api()'s default max_tokens =
     # 3000, while a 23-taxon batch succeeded. Give a specific, actionable
     # warning for this case instead of the generic parse-failure message.
