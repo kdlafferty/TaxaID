@@ -252,7 +252,7 @@ makes a large flagged set openable at all.
 
 When the input carries a `"habitat_proportions"` attribute -- which
 `assign_habitat_biological()` attaches and `flag_habitat_inconsistencies()`
-preserves -- a point whose consensus reached no verdict is no longer a
+preserves -- a point whose consensus reached no verdict is not left as a
 single undifferentiated **Unknown**. It is labelled with the habitats
 actually in contention, `"Estuarine | Freshwater | Marine"`, and that
 label is a real category: its own colour, its own entry in the Habitats
