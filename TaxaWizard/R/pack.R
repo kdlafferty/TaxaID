@@ -1,6 +1,6 @@
 # ==============================================================================
 # pack.R
-# TaxaWizard -- prompt pack generator (P4)
+# TaxaWizard -- prompt pack generator
 #
 # workflow_export_prompts() writes a self-contained folder any LLM -- a chat
 # window with no tools, or an agentic coding tool -- can be pointed at to
@@ -8,11 +8,9 @@
 # TaxaWizard's own engine. Every generated file is DERIVED from
 # workflow_registry() / .load_graph() / .load_requirements() / workflow_check(),
 # the SAME sources the live chat engine (engine.R/graph.R) reads, so the pack
-# and the chat engine cannot disagree (see
-# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, section P4,
-# decision 4: the pack is generated on demand AND committed as a rendered
-# copy, refreshed by the README render pipeline, with a test that the two
-# agree).
+# and the chat engine cannot disagree. The pack is generated on demand AND
+# committed as a rendered copy, refreshed by the README render pipeline,
+# with a test that the two agree.
 #
 # The four tasks/*.md files are the phase prompt templates
 # (inst/prompts/phase_*.md) with every placeholder that a LIVE conversation
@@ -207,7 +205,7 @@
       ))
       # The functions this edge's step calls, and the package CONTEXT file(s)
       # that document them. Listed so an LLM never mistakes the edge id for a
-      # function name (a cold-chat dry run on 2026-09-18 produced
+      # function name (a cold-chat dry run produced
       # `TaxaMatch::birdnet_to_match()`, which does not exist).
       fns <- unlist(e$functions)
       pkgs <- unlist(e$packages)
@@ -512,9 +510,8 @@
   # {{NODE_TYPES}} is the one placeholder the pack can fill for real, because
   # the graph ships with the package. Everything else needs a live conversation
   # and gets a bracketed instruction instead. The bracket map is applied to
-  # EVERY phase: classify used to be special-cased past it on the assumption
-  # that NODE_TYPES was its only placeholder, which stopped being true when P6
-  # added {{SETUP_STATUS}} and {{SNIFF_RESULT}} to that template.
+  # EVERY phase, including classify: NODE_TYPES is not classify's only
+  # placeholder -- its template also has {{SETUP_STATUS}} and {{SNIFF_RESULT}}.
   if (identical(phase, "classify")) {
     text <- sub("{{NODE_TYPES}}", .describe_node_types(graph), text, fixed = TRUE)
   }
@@ -645,7 +642,7 @@ workflow_export_prompts <- function(dir = "taxaid_prompts", overwrite = FALSE,
     written <<- c(written, full)
   }
 
-  # --- P5 files: hand-written, copied verbatim ----------------------------
+  # --- Hand-written files, copied verbatim --------------------------------
   start_here_src <- system.file("prompts", "pack", "START_HERE.md", package = "TaxaWizard")
   handoff_src <- system.file("prompts", "pack", "handoff_template.md", package = "TaxaWizard")
   if (!nzchar(start_here_src) || !nzchar(handoff_src)) {
