@@ -56,11 +56,11 @@ utils::globalVariables(c(
 #'
 #' @param frac,best_agree,best_disagree,anywhere,anywhere_pident The
 #'   correspondingly-named `evaluate_reference_accessions()` columns.
-#' @param n_partners Integer vector or `NULL` (default). The row's own
-#'   `n_independent_top_matches`. Where this is `0`, `confidence` is forced to
-#'   `NA` -- see the "no partners is not a coin flip" note in the body.
-#'   `NULL` skips the rule entirely, for a caller whose evaluation does not
-#'   carry the column.
+#' @param n_partners Integer vector or `NULL` (default, for testing this
+#'   function's own formula in isolation -- [score_reference_labels()] always
+#'   passes its evaluation's `n_independent_top_matches` column). Where this
+#'   is `0`, `confidence` is forced to `NA` -- see the "no partners is not a
+#'   coin flip" note in the body. `NULL` skips the rule entirely.
 #' @param margin_scale,margin_cap See [score_reference_labels()].
 #' @return List with `confidence` (numeric, in (0, 1), `NA` where `frac` is
 #'   `NA` or `n_partners` is `0`) and `margin` (the capped `d`, `NA` where no
@@ -398,7 +398,8 @@ score_reference_labels <- function(evaluation,
   needed <- c(
     "hierarchy_flag", "frac_independent_below_min_congruent_rank",
     "best_agreeing_pident", "best_disagreeing_pident",
-    "congruent_evidence_exists_anywhere", "congruent_evidence_best_pident"
+    "congruent_evidence_exists_anywhere", "congruent_evidence_best_pident",
+    "n_independent_top_matches"
   )
   missing_cols <- setdiff(needed, names(evaluation))
   if (length(missing_cols) > 0L) {
@@ -425,9 +426,7 @@ score_reference_labels <- function(evaluation,
     best_disagree   = evaluation$best_disagreeing_pident,
     anywhere        = evaluation$congruent_evidence_exists_anywhere,
     anywhere_pident = evaluation$congruent_evidence_best_pident,
-    # NULL when the caller's evaluation predates/omits the column -- the
-    # zero-partner rule is then skipped rather than guessed at.
-    n_partners      = evaluation[["n_independent_top_matches"]],
+    n_partners      = evaluation$n_independent_top_matches,
     margin_scale    = margin_scale,
     margin_cap      = margin_cap
   )

@@ -12,6 +12,7 @@
 #   group_observations_by_bbox()          Interactive multi-polygon grouping wrapper
 #
 # Internal helpers (@noRd):
+#   .normalize_sites_defaults()           Validate/initialize spatial-grouping columns
 #   .bbox_center_radius()                 Compute a centre/radius_deg view from points
 #   .assign_spatial_groups_from_polygons() Point-in-polygon spatial_group_id assignment
 #   .review_drawn_groups()                End-of-loop edit/delete review step
@@ -47,11 +48,10 @@
 #'   label happens to look like. If \code{sites} has no
 #'   \code{spatial_group_id}/\code{spatial_group_N} columns at all (i.e. it
 #'   did not come from \code{build_site_table()}), singleton defaults are
-#'   initialized first, with a message. If \code{sites} has
-#'   \code{spatial_group_id}/\code{spatial_group_N} but no
-#'   \code{is_default_group} (a site table built before this marker existed),
-#'   it is inferred from the default convention (\code{spatial_group_id ==
-#'   observation_id} and \code{spatial_group_N == 1}), with a message.
+#'   initialized first, with a message. \code{spatial_group_id}/
+#'   \code{spatial_group_N} without \code{is_default_group} is not a
+#'   recognized shape -- \code{\link{build_site_table}} always sets all
+#'   three together -- and stops with an error naming the missing column.
 #' @param id_col Character. Column identifying each observation. Default
 #'   \code{"observation_id"}.
 #' @param lat_col,lon_col Character. Latitude/longitude column names. Default
@@ -155,30 +155,7 @@ group_observations_by_bbox <- function(sites,
     stop("group_observations_by_bbox: must be run in an interactive R session.", call. = FALSE)
   }
 
-  if (!"spatial_group_id" %in% names(sites) || !"spatial_group_N" %in% names(sites)) {
-    message(
-      "group_observations_by_bbox: 'sites' has no spatial_group_id/spatial_group_N columns -- ",
-      "initializing single-observation defaults (run TaxaMatch::build_site_table() first to ",
-      "get grid-based defaults automatically)."
-    )
-    sites$spatial_group_id <- as.character(sites[[id_col]])
-    sites$spatial_group_N <- 1L
-    sites$is_default_group <- TRUE
-  } else if (!"is_default_group" %in% names(sites)) {
-    # Migration path for a site table with no is_default_group column
-    # (grid-based defaults + is_default_group marker): fall back to the
-    # heuristic
-    # (spatial_group_id == observation_id & spatial_group_N == 1) to infer
-    # which rows are still untouched, so older cached/saved site tables keep
-    # working without needing to be rebuilt.
-    message(
-      "group_observations_by_bbox: 'sites' has no is_default_group column -- inferring it from ",
-      "the convention spatial_group_id == observation_id. Re-run ",
-      "TaxaMatch::build_site_table() to get this column directly."
-    )
-    sites$is_default_group <- sites$spatial_group_id == as.character(sites[[id_col]]) &
-      sites$spatial_group_N == 1L
-  }
+  sites <- .normalize_sites_defaults(sites, id_col)
 
   still_default <- sites$is_default_group
 
@@ -246,6 +223,44 @@ group_observations_by_bbox <- function(sites,
   )
 }
 
+
+# ==============================================================================
+# Internal: .normalize_sites_defaults
+# ==============================================================================
+
+#' Validate/initialize a sites table's spatial-grouping columns
+#'
+#' Split out of \code{\link{group_observations_by_bbox}} so this validation is
+#' unit-testable without an interactive session (the caller itself requires
+#' one). Two, and only two, shapes are recognized: \code{sites} with none of
+#' \code{spatial_group_id}/\code{spatial_group_N}/\code{is_default_group}
+#' (singleton defaults are initialized, with a message), or \code{sites} with
+#' all three (used as-is). Any other combination -- in practice,
+#' \code{spatial_group_id}/\code{spatial_group_N} present without
+#' \code{is_default_group} -- is not a table \code{\link{build_site_table}}
+#' can have produced, since it always sets all three together, so this stops
+#' rather than guessing at which rows are still default.
+#' @noRd
+.normalize_sites_defaults <- function(sites, id_col) {
+  if (!"spatial_group_id" %in% names(sites) || !"spatial_group_N" %in% names(sites)) {
+    message(
+      "group_observations_by_bbox: 'sites' has no spatial_group_id/spatial_group_N columns -- ",
+      "initializing single-observation defaults (run TaxaMatch::build_site_table() first to ",
+      "get grid-based defaults automatically)."
+    )
+    sites$spatial_group_id <- as.character(sites[[id_col]])
+    sites$spatial_group_N <- 1L
+    sites$is_default_group <- TRUE
+  } else if (!"is_default_group" %in% names(sites)) {
+    stop(
+      "group_observations_by_bbox: 'sites' has spatial_group_id/spatial_group_N but no ",
+      "is_default_group column. build_site_table() always sets all three columns together ",
+      "(accepted: all three present, or none) -- rebuild 'sites' with build_site_table().",
+      call. = FALSE
+    )
+  }
+  sites
+}
 
 # ==============================================================================
 # Internal: .bbox_center_radius
