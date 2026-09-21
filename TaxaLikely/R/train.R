@@ -122,7 +122,7 @@ utils::globalVariables(c(
   score_col <- if ("p_match" %in% names(raw_df)) "p_match" else "raw_score"
   raw_df$p_norm <- .normalize_scores(raw_df[[score_col]], bounds = score_bounds)
 
-  # ---- ALIGNMENT-COVERAGE FLOOR ON PAIR SELECTION (2026-09-10) -------------
+  # ---- ALIGNMENT-COVERAGE FLOOR ON PAIR SELECTION --------------------------
   # pair_ok marks a pair as eligible to DEFINE a reference's best foreign /
   # congener / conspecific match. It never removes a pair from the data and
   # never removes a reference from training (see the self-side fallback in
@@ -327,10 +327,8 @@ utils::globalVariables(c(
 
   # Singletons are sequences absent from h1_pairs (no within-species
   # neighbours). No matrix builder in this ecosystem emits self-match rows
-  # (id_x == id_y): .decipher_align_pairs() drops the diagonal unconditionally,
-  # so the former "use self-match scores" branch was unreachable and its
-  # warning ("distance matrix lacks self-matches") fired on every real run.
-  # Removed 2026-09-13. Each singleton takes its best cross-species row; the
+  # (id_x == id_y): .decipher_align_pairs() drops the diagonal unconditionally.
+  # Each singleton takes its best cross-species row; the
   # mutate() below then anchors max_foreign_score to the noise-floor global
   # and the gap to max_gap_ceiling (rank_category "Singleton").
   df_singletons <- df_logit |>
@@ -572,8 +570,8 @@ utils::globalVariables(c(
 #'   observed point (a valid likelihood ratio requires one consistent scale;
 #'   mixing transforms across hypotheses would need an explicit
 #'   change-of-variables correction that this package does not implement).
-#'   `"logit"` (`log(p/(1-p))`) is the package's original scale. `"sqrt_mismatch"`
-#'   (`-sqrt(1-p)`) was added in Session 158 after real 12S congener data
+#'   `"logit"` (`log(p/(1-p))`) is a standard scale. `"sqrt_mismatch"`
+#'   (`-sqrt(1-p)`) exists because real 12S congener data
 #'   showed `"logit"` gives a genuinely backwards answer for one of the
 #'   package's more novel claims: whether a genus's species are hard to tell
 #'   apart (small, consistent divergence) or easy to tell apart (larger,
@@ -586,8 +584,7 @@ utils::globalVariables(c(
 #'   is actually in), for which square-root is the classical
 #'   variance-stabilizing transform; it recovers the correct qualitative
 #'   ordering where `"logit"` does not. See `evaluate_likelihoods()`'s own
-#'   documentation and `[[project_job2_unreferenced_relatives]]` in the
-#'   TaxaID memory system for the full empirical derivation, including why
+#'   documentation for the full empirical derivation, including why
 #'   several other standard transforms (probit, complementary log-log) were
 #'   checked and rejected. `"sqrt_mismatch"` is bounded to `[-1, 0]` rather
 #'   than unbounded like `"logit"` -- a Gaussian fit to it is technically an
@@ -598,7 +595,7 @@ utils::globalVariables(c(
 #'   all assume `"logit"` internally and will error rather than silently
 #'   produce wrong numbers if combined with a `"sqrt_mismatch"`-trained model.
 #'
-#' @section Alignment-coverage floor on pair selection (2026-09-10):
+#' @section Alignment-coverage floor on pair selection:
 #' The H1 gap feature is `score - max_foreign_score`, and `max_foreign_score`
 #' is taken over every cross-species pair a reference has.  A pairwise
 #' alignment between a short deposit and an unrelated sequence can be 100%
@@ -614,31 +611,27 @@ utils::globalVariables(c(
 #' `min_pair_coverage` restricts which pair may define the foreign, congener
 #' and conspecific maxima to pairs at or above the inference-side floor.
 #' It is train/inference distribution matching for one feature, not a data
-#' quality filter: the archived `calibrate_coverage_filter()` removed
-#' low-coverage pairs from everything and dropped species from training;
-#' this removes nothing and drops no species.  Measured on the same data
-#' (foreign side only): global expected gap -0.010 -> +0.122, near-ties
-#' 728 -> 295, and the top H1 candidate agrees with a unique >= 99.5% best
-#' BLAST hit in 244/326 cases vs 178/326.  Full record:
-#' `ecosystem_docs/RECORD_h1_foreign_coverage_floor.md`.
+#' quality filter: it removes no pair and drops no species.  Measured on the
+#' same data (foreign side only): global expected gap -0.010 -> +0.122,
+#' near-ties 728 -> 295, and the top H1 candidate agrees with a unique
+#' >= 99.5% best BLAST hit in 244/326 cases vs 178/326.
 #'
-#' @section No built-in reference-quality screening (2026-09-08):
+#' @section No built-in reference-quality screening:
 #' This function does NOT screen `raw_df` for mislabeled/contaminated
 #' reference accessions before fitting -- it trains on exactly what it's
-#' given. Earlier versions called an internal, free, within-reference-set
-#' heuristic (`flag_reference_errors()`, retired this date) unconditionally
-#' on every run; a 2026-08-08 audit found it roughly 6.7% precise against
+#' given. An internal, free, within-reference-set heuristic for this purpose
+#' measured only roughly 6.7% precise against
 #' `TaxaMatch::evaluate_reference_accessions()`'s BLAST-based screen (0 of 40
-#' randomly-sampled real flags confirmed as genuine mislabels on one real
-#' dataset), and a newer TaxaMatch mechanism
+#' randomly-sampled flags confirmed as genuine mislabels on one real
+#' dataset), and a TaxaMatch mechanism
 #' (`TaxaMatch::corroborate_references_locally()` +
 #' `TaxaMatch::evaluate_reference_accessions()`) already does the same job
 #' more precisely, for the same zero/low NCBI cost, directly on `reference_df`
 #' before it ever reaches `build_sequence_matrix()`. Screen there, exclude
 #' any accession `evaluate_reference_accessions()`/`score_reference_labels()`
 #' resolves to `reference_action == "remove"` from `reference_df` (or from
-#' `raw_df` by `id_x`/`id_y`) before calling this function -- there is no
-#' longer a parameter here to pass a bad-accession list through.
+#' `raw_df` by `id_x`/`id_y`) before calling this function -- there is
+#' no parameter here to pass a bad-accession list through.
 #'
 #' @return A named list (class `"taxa_model_params"`) with slots:
 #'   \describe{
@@ -658,8 +651,8 @@ utils::globalVariables(c(
 #'     \item{`H3`}{List with `delta` and `sigma` for the missing-genus
 #'       hypothesis.}
 #'     \item{`H2_Lookup`}{Data frame (or `NULL`) with per-genus `H2` delta and
-#'       variance estimates: `genus`, `n_pairs`, `delta_shrunk`, `var_shrunk`
-#'       (Session 158). See "Per-genus delta shrinkage" section below.}
+#'       variance estimates: `genus`, `n_pairs`, `delta_shrunk`, `var_shrunk`.
+#'       See "Per-genus delta shrinkage" section below.}
 #'     \item{`Confusion_Risk_Curves`}{List (or `NULL`) of genus-/family-equal-
 #'       weighted, Empirical-Bayes-shrunk per-rank score curves, read by
 #'       `evaluate_likelihoods()` to compute its `species_confusion_risk`/
@@ -733,12 +726,12 @@ utils::globalVariables(c(
 #'           perfect match and that species' own fitted score mean, and which
 #'           species it belongs to.}
 #'         \item{`h1_bimodality`}{The result of running `.bimodality_check()`
-#'           (2026-09-13) on this model's own real H1 training scores (raw
+#'           on this model's own real H1 training scores (raw
 #'           percent identity, real within-species pairs only -- computed
 #'           BEFORE any `anchor_perfect` pseudo-observations are appended, so
 #'           a synthetic anchor spike can never manufacture a false second
 #'           mode). A list with `n`, `bic_1`, `bic_2`, `delta_bic`, `weights`,
-#'           `means`, `sds`, `quantum` (2026-09-14: the estimated
+#'           `means`, `sds`, `quantum` (the estimated
 #'           identity-per-mismatch spacing, or `NA` when the scores don't
 #'           look discretely comb-shaped), `flag`, and `explanation` -- see
 #'           that function's own docs and `calibrate_query_noise()`'s
@@ -760,7 +753,7 @@ utils::globalVariables(c(
 #' scores, so a saved `lik_model` carries the evidence regardless of
 #' whether/when `calibrate_query_noise()` is ever called on it. **Percent
 #' identity is discrete, not continuous** -- confirmed as a real false
-#' positive on the 2026-09-14 PtConception 12S production run:
+#' positive on a PtConception 12S production run:
 #' `Stats$h1_bimodality` reported weights 0.323/0.677, means 98.3/100, sds
 #' 3.26/0.0202 -- the "second component" was just the perfect-match spike,
 #' a STRUCTURAL feature of every reference-based dataset (every reference
@@ -913,7 +906,7 @@ train_likelihood_model <- function(raw_df,
   # this function.
   raw_clean <- raw_df
 
-  # ---- CONFUSION-RISK CURVES (2026-07-23) ------------------------------------
+  # ---- CONFUSION-RISK CURVES ---------------------------------------------
   # Genus-/family-equal-weighted, Empirical-Bayes-shrunk per-rank score curves
   # (diagnostics/score_floor_roc_sweep.R's reference implementation, made
   # real via .compute_rank_score_curves()) -- computed once at training time
@@ -974,7 +967,7 @@ train_likelihood_model <- function(raw_df,
     ))
   }
 
-  # ---- BIMODALITY DIAGNOSTIC (2026-09-13) -----------------------------------
+  # ---- BIMODALITY DIAGNOSTIC ----------------------------------------------
   # Runs on h1_data$p_norm (raw percent identity, real pairs only) BEFORE the
   # pseudo-data anchor rows are appended below -- anchor rows are synthetic
   # perfect-match pseudo-observations with no p_norm value of their own, so
@@ -1147,32 +1140,24 @@ train_likelihood_model <- function(raw_df,
       # inverse-chi-squared posterior. Adequate for typical barcode reference
       # sizes (3-20 sequences per species).
       #
-      # Session 158 fix: this used to take sqrt() of the shrunk variance
-      # before storing it, producing an SD-shaped number in a slot
-      # (`H1_Lookup$sigma_score`) that every downstream consumer -- the
+      # shrunk_sigma stores the shrunk VARIANCE itself, with no sqrt() applied
+      # -- consistent with `global_var_score`/`H1_Sigma` (always true
+      # variances) and with every downstream consumer's own expectation: the
       # species floor comparison against `H1_Sigma` (a true covariance
-      # matrix, unaffected), the outlier chi-squared test, `dnorm(sd =
-      # sqrt(...))`, `dmvnorm(sigma = ...)` -- treats as a VARIANCE, applying
-      # its own sqrt() (or using it directly as a covariance diagonal entry)
-      # on top. Net effect: species-specific H1 candidates were evaluated
+      # matrix), the outlier chi-squared test, `dnorm(sd = sqrt(...))`, and
+      # `dmvnorm(sigma = ...)` all treat this slot as a VARIANCE and apply
+      # their own sqrt() (or use it directly as a covariance diagonal entry)
+      # on top. Storing an SD-shaped number here instead would be evaluated
       # against a variance equal to the FOURTH root of the intended shrunk
-      # variance, not its square root -- systematically tighter
-      # (overconfident) than the training data actually supports. This was
-      # invisible on the logit scale (shrunk variances ~1.5-2.5, where the
-      # extra sqrt is a ~15-25% correction, not obviously wrong-looking) and
-      # only became impossible to miss once Session 158's score_transform
-      # work put real variances on a much smaller natural scale (~0.01-0.1),
-      # where the same bug produces a 3-6x distortion. Confirmed directly:
-      # hand-reproduced this formula against real 12S training data and
-      # matched the shipped code's literal (buggy) output before concluding
-      # this was real, not a misreading. Fixed by storing the shrunk
-      # variance itself, with no extra sqrt -- consistent with
-      # `global_var_score`/`H1_Sigma` (always true variances) and with every
-      # downstream consumer's own expectation.
+      # variance -- systematically tighter (overconfident) than the training
+      # data actually supports, and the distortion is larger the smaller the
+      # natural scale of the variance (a ~3-6x effect at the ~0.01-0.1 scale
+      # `"sqrt_mismatch"` variances take, versus ~15-25% at the ~1.5-2.5 scale
+      # `"logit"` variances take).
       shrunk_sigma = w * score_logit_var + (1 - w) * global_var_score
     )
 
-  # ---- MEAN SHRINKAGE WEIGHTS (2026-09-10) ---------------------------------
+  # ---- MEAN SHRINKAGE WEIGHTS -----------------------------------------
   # "fixed": the original w = N / (N + prior_weight) for both dimensions.
   # "empirical_bayes": the normal-normal EB weight w_i = tau^2 / (tau^2 +
   # sigma^2 / n_i), with tau^2 (the real between-species variance of the
@@ -1239,15 +1224,13 @@ train_likelihood_model <- function(raw_df,
   # H2 delta AND variance are estimated from real CONGENER comparisons
   # (max_congener_score: same-genus, different-species matches) wherever
   # possible -- both the pooled default and the per-genus shrinkage below use
-  # this same, more specific population. (Session 158 fix: previously the
-  # pooled default alone used max_foreign_score -- matches to ANY other
-  # species in ANY genus -- a broader, noisier population than what the
-  # per-genus shrinkage was already comparing against, so a genus with NO
-  # congener data of its own fell back to a variance estimated from a subtly
-  # different, less relevant reference population than genera that DID have
-  # local data. Confirmed empirically to matter: the old pooled variance from
-  # max_foreign_score was 9.58 on real 12S data; the correctly-sourced
-  # congener-only pooled variance is 5.91.)
+  # this same, more specific population, rather than max_foreign_score
+  # (matches to ANY other species in ANY genus -- a broader, noisier
+  # population): a genus with NO congener data of its own would otherwise
+  # fall back to a variance estimated from a subtly different, less relevant
+  # reference population than genera that DID have local data. Confirmed
+  # empirically to matter: the congener-only pooled variance is 5.91 on real
+  # 12S data, versus 9.58 for a foreign-sourced pooled variance.
   # H3 delta = H2 delta + 2.0 (one additional rank step away, unscaled here --
   # see note at H3's own definition below for why this offset itself still
   # needs a transform-aware equivalent).
@@ -1366,21 +1349,17 @@ train_likelihood_model <- function(raw_df,
       # no lookup row and fall back to the pooled defaults unchanged -- there
       # is no local information to borrow, and none is invented.
       #
-      # Session 158: the genus-specific VARIANCE is new. Previously only the
-      # delta (mean shift) was genus-specific; the variance was always the
-      # single pooled value regardless of genus. Real data shows this
-      # matters directionally, not just in magnitude: on the raw match-
-      # proportion scale, a tight genus (species hard to tell apart, e.g.
-      # Sardinops: mean congener similarity 99.9%) has ~0 congener variance,
-      # while a loose genus (e.g. Symphurus: mean 90.5%) has real, much
-      # larger variance -- confirmed on real 12S congener data
-      # (Pearson r = -0.55 between per-genus mean similarity and variance).
-      # This is exactly why H2/H3 needed the score_transform fix above too:
-      # under plain logit, this relationship reverses sign (genuinely tight
-      # genera can appear MORE variable), an artifact of logit's diverging
-      # derivative near p=1 where nearly all real barcode matches sit -- see
-      # [[project_job2_unreferenced_relatives]] in the TaxaID memory system
-      # for the full empirical derivation.
+      # Genus-specific variance matters directionally, not just in
+      # magnitude: on the raw match-proportion scale, a tight genus (species
+      # hard to tell apart, e.g. Sardinops: mean congener similarity 99.9%)
+      # has ~0 congener variance, while a loose genus (e.g. Symphurus: mean
+      # 90.5%) has real, much larger variance -- confirmed on real 12S
+      # congener data (Pearson r = -0.55 between per-genus mean similarity
+      # and variance). This is exactly why H2/H3 rely on the score_transform
+      # choice above too: under plain logit, this relationship reverses sign
+      # (genuinely tight genera can appear MORE variable), an artifact of
+      # logit's diverging derivative near p=1 where nearly all real barcode
+      # matches sit.
       if ("rank_code_b" %in% names(h2_source_all)) {
         genus_h2 <- h2_source_all |>
           dplyr::filter(!is.na(rank_code_b), !is.na(max_congener_score)) |>
@@ -1433,21 +1412,19 @@ train_likelihood_model <- function(raw_df,
   H3 <- list(delta = h2_delta_val + 2.0 * unit_ratio, sigma = h3_sigma_mat)
 
   # ---- NON-MONOTONICITY / MONOTONE-LIKELIHOOD-RATIO DIAGNOSTIC --------------
-  # Added following a statistical-critique session prompted by a user
-  # observation that the fitted score->likelihood relationship can peak at an
-  # intermediate score rather than at a perfect (100%) match -- see this
-  # function's own "Non-monotonic score->likelihood shape" @section below for
-  # the full analysis and why a peaked-below-the-ceiling H1 DENSITY is
-  # expected and not itself a problem. What DOES matter for a Bayesian
-  # classifier is whether the H1-vs-H2 LIKELIHOOD RATIO stays monotone (a
-  # better score is never weaker evidence for the known-species hypothesis
-  # than a worse one) -- checked here directly rather than assumed, per-
-  # species, at the transformed value of a perfect match. Uses the SAME
-  # inference-time sigma floor evaluate_likelihoods() applies
-  # (max(sigma_species, global_sigma), Session 121) -- checking the raw,
-  # unfloored sigma_score overstates how severe any violation would actually
-  # be at inference time (this exact mistake was caught and corrected during
-  # the critique session that motivated this check).
+  # This check exists because the fitted score->likelihood relationship can
+  # peak at an intermediate score rather than at a perfect (100%) match --
+  # see this function's own "Non-monotonic score->likelihood shape" @section
+  # below for the full analysis and why a peaked-below-the-ceiling H1
+  # DENSITY is expected and not itself a problem. What DOES matter for a
+  # Bayesian classifier is whether the H1-vs-H2 LIKELIHOOD RATIO stays
+  # monotone (a better score is never weaker evidence for the known-species
+  # hypothesis than a worse one) -- checked here directly rather than
+  # assumed, per-species, at the transformed value of a perfect match. Uses
+  # the SAME inference-time sigma floor evaluate_likelihoods() applies
+  # (max(sigma_species, global_sigma)) -- checking the raw, unfloored
+  # sigma_score would overstate how severe any violation actually is at
+  # inference time.
   species_genus <- if ("rank_code_b" %in% names(h1_data)) {
     stats::setNames(h1_data$rank_code_b, h1_data$rank_code_a)
   } else {
