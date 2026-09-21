@@ -74,9 +74,6 @@ across rows do not affect the result. This matters because candidate order
 is POSTERIOR order (it is what \code{primary_taxon} reads), so one biological
 unit legitimately arrives in different orders on different observations.
 Irreducibility is a property of the SET, not of the ranking within it.
-Enforced and regression-tested since 2026-09-04; before that the signature
-was built from the unsorted vector, so two orderings of one set each marked
-the other reducible and every row of the unit went \code{FALSE}.
 }
 \note{
 \strong{Non-binomial names in \code{plausible_taxa}:} Entries that are not a
@@ -91,7 +88,7 @@ fallback hypotheses from the sequence/BLAST pathway (e.g.
 \code{TaxaMatch::convert_taxonomy_backbone()} fallback to a bare genus when no
 species-level match exists) -- this is expected, intended behavior for
 real production data with a genuinely thin reference database, not a
-data-quality problem to fix upstream (found 2026-09-05 on real
+data-quality problem to fix upstream (confirmed on real
 GreatLakes/PtConception 12S data: warnings fired on real genus-only
 candidates like \code{"Perca"}/\code{"Ictalurus"}/\code{"Fundulus"} with no GBIF
 involvement at all). This warning cannot distinguish the two causes --

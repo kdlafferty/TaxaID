@@ -54,14 +54,13 @@ correctly bounded on [0, 1].
 species with tiny but non-zero prior_mean would almost always lose to species
 with a well-concentrated prior at a lower mean. For these rows, the prior is
 treated as fixed at \code{prior_mean} in simulation rather than sampled, making the
-simulation consistent with the point-estimate path. (Widened from \verb{< 1} to
-\verb{<= 1} in Session 149 — \code{prior_alpha == 1} exactly is a real, common case,
-e.g. \code{TaxaExpect::generate_undetected_diversity()}'s global floor
-\code{Beta(1, N_total - 1)}, and was previously not caught. Whether the boundary
-should extend further, e.g. to \code{prior_alpha} moderately above 1 with high
-relative uncertainty, is still open — needs a larger real \code{prior_alpha}
-distribution than the small bundled fixtures to characterize; see
-\code{ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md}.)
+simulation consistent with the point-estimate path. (This threshold covers
+\code{prior_alpha == 1} exactly, a real, common case, e.g.
+\code{TaxaExpect::generate_undetected_diversity()}'s global floor
+\code{Beta(1, N_total - 1)}. Whether the boundary should extend further, e.g.
+to \code{prior_alpha} moderately above 1 with high relative uncertainty, is
+still open — it needs a larger real \code{prior_alpha} distribution than the
+small bundled fixtures to characterize.)
 Only runs when \code{n_sims > 0} AND at least one source of uncertainty exists
 (non-zero \code{score_likelihood_sd}, or \code{prior_alpha}/\code{prior_beta} columns present).
 }
@@ -101,7 +100,7 @@ taxa). The posterior probability for hypothesis \eqn{i} is:
 where \eqn{L} is the likelihood (from TaxaLikely or score-based proxy) and
 \eqn{\pi} is the prior (from TaxaExpect or LLM-based estimation).
 
-\strong{Presence-mixture priors (2026-08-26 mixture redesign):}
+\strong{Presence-mixture priors:}
 rows carrying non-NA \code{prior_mix_w}/\code{prior_mix_theta_present}/
 \code{prior_mix_theta_absent} (emitted by
 \code{TaxaExpect::apply_undetected_evidence()} for evidence-elevated
@@ -116,8 +115,7 @@ expresses. \code{posterior_mean} therefore integrates over presence
 states, and \code{confidence_score} reads as the fraction of presence
 states in which the hypothesis wins. The point-estimate path is unchanged:
 \code{prior_mean} equals the mixture's exact expectation by construction.
-Non-mixture rows are completely unaffected. See
-\code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}.
+Non-mixture rows are completely unaffected.
 
 \strong{Prior uncertainty (Beta distribution):}
 When \code{prior_alpha} and \code{prior_beta} columns are present, the prior

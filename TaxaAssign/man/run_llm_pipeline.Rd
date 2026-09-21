@@ -110,10 +110,9 @@ absent species. See \code{\link{assign_taxa_llm}} for details.}
 \item{absent_detection_prob}{Numeric. Detection probability for known-absent
 species. Default 0.80.}
 
-\item{taxa_per_call}{Integer. Maximum taxa per LLM call. Default 15
-(lowered from 30 on 2026-07-09 -- see \code{\link{assign_taxa_llm}}'s
-own \code{taxa_per_call} docs for the real truncation evidence behind
-this change).}
+\item{taxa_per_call}{Integer. Maximum taxa per LLM call. Default 15 --
+see \code{\link{assign_taxa_llm}}'s own \code{taxa_per_call} docs for
+the real truncation evidence behind this default.}
 
 \item{pause_seconds}{Numeric. Pause between LLM calls. Default 1.}
 

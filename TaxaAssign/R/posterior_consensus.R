@@ -78,15 +78,12 @@
 #'   hold at least 5% posterior probability to influence the consensus taxon.
 #'   Default 0.05. Set to 0 to disable.
 #' @param posterior_col Character. Name of the posterior column to rank
-#'   hypotheses by. Default `"posterior_point_est"` -- aligned (2026-08-28)
-#'   with `run_bayesian_pipeline()` and every production workflow, which had
-#'   always passed the point-estimate column explicitly while this function
-#'   alone defaulted to `"posterior_mean"` (undocumented drift; the
-#'   three-way operative-column experiment in
-#'   `ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md`
-#'   (D8) found the choice second-order and settled on point estimates: best
-#'   external corroboration, deterministic, and exactly auditable as
-#'   prior x likelihood products). Pass `"posterior_mean"` to rank by the
+#'   hypotheses by. Default `"posterior_point_est"`, matching
+#'   `run_bayesian_pipeline()` and every production workflow. An
+#'   operative-column comparison found the choice second-order for real
+#'   consensus results and settled on point estimates: best external
+#'   corroboration, deterministic, and exactly auditable as prior x
+#'   likelihood products. Pass `"posterior_mean"` to rank by the
 #'   Monte Carlo mean instead -- with presence-mixture priors that column
 #'   integrates over presence states (see `compute_posterior()`).
 #' @param lookup_missing_taxonomy Logical. If `TRUE`, calls
@@ -99,7 +96,8 @@
 #'   `lookup_missing_taxonomy = TRUE` -- no default, since the correct
 #'   backbone depends on which backbone your input taxonomy was verified
 #'   against, which varies by project. Common values: 1 = Catalogue of Life,
-#'   4 = NCBI, 9 = WoRMS, 11 = GBIF. See ecosystem CLAUDE.md for full list.
+#'   4 = NCBI, 9 = WoRMS, 11 = GBIF. See
+#'   `TaxaTools::verify_taxon_names()` for the full backbone list.
 #'   Ignored (may be left `NULL`) when `lookup_missing_taxonomy = FALSE`.
 #' @param species_reference Optional. A plausible-species reference used to
 #'   downrank unresolved coarse-rank consensus assignments. Accepts two forms:
@@ -121,8 +119,8 @@
 #'   the function looks up how many taxa at the next finer rank belong to the
 #'   consensus taxon. If exactly one, it downranks (recursively — e.g. family
 #'   to unique genus to unique species in one pass). Stops at any rank with
-#'   more than one option. Default `NULL` (no downranking). Since 2026-09-13
-#'   a narrowing must also survive `downrank_requires_candidate`. Callers
+#'   more than one option. Default `NULL` (no downranking). A narrowing must
+#'   also survive `downrank_requires_candidate`. Callers
 #'   building `species_reference` from a mix of observed and evidence-only
 #'   rows should still exclude the evidence-only ones
 #'   (`prior_branch != "resident_observed"`) before passing it in, so a
@@ -135,9 +133,9 @@
 #'   the candidates belong to it (family to genus *Ulva* when the candidates
 #'   are *Ulva* species), so this is a taxonomy test, not a string match. Rows
 #'   with no `plausible_taxa` column, or an empty one, are not gated. `FALSE`
-#'   restores the pre-2026-09-13 behaviour, where the reference alone decided.
-#'   Measured across four production sites before this gate: 35 of 150
-#'   downranked rows named a taxon outside their own candidate set.
+#'   disables this check, so the reference alone decides. Measured across
+#'   four production sites without this gate: 35 of 150 downranked rows
+#'   named a taxon outside their own candidate set.
 #' @param group_priors Optional data frame from [compute_group_priors()]
 #'   (`rank`/`taxon`/`theta_sum`/`n_members` columns), the SUM of
 #'   `theta_mean` over every locally modelled member of a genus or family --
@@ -146,12 +144,11 @@
 #'   exists for an observation's `consensus_rank`/`consensus_taxon` (see that
 #'   column's own docs below for the full reasoning). Default `NULL`:
 #'   `consensus_prior` is `NA` for every row -- there is no fallback
-#'   computation (removed 2026-07-30; the previous candidate-scoped MAX was a
-#'   real underestimate, not a safe approximation).
+#'   computation, since a candidate-scoped MAX would be a real underestimate,
+#'   not a safe approximation.
 #' @param min_effective_records Numeric, >= 0. Minimum `effective_records` a
 #'   winning row must carry before `winner_has_occurrence_record` is allowed
-#'   to read `TRUE`. Default `0` -- branch membership alone, which is exactly
-#'   the pre-2026-09-14 behaviour, so no existing caller's output moves.
+#'   to read `TRUE`. Default `0` -- branch membership alone decides.
 #'
 #'   Why this exists: `TaxaExpect::estimate_kernel_priors()` writes
 #'   `prior_branch` as a CONSTANT on every row it emits, so the branch records
@@ -186,7 +183,8 @@
 #' aggressive species-level calls.
 #'
 #' \strong{Parameter sensitivity:} a grid sweep against a real posterior
-#' dataset (see \code{diagnostics/posterior_threshold_sweep.R}) found the two
+#' dataset (see the \code{posterior_threshold_sweep.R} diagnostic, TaxaID_dev
+#' repository) found the two
 #' defaults are not equally load-bearing: \code{min_posterior} has a real,
 #' roughly linear effect on how often the pipeline resolves to the finest
 #' rank, while \code{cumulative_threshold} does comparatively little
@@ -368,8 +366,8 @@
 #'       when the LCA landed at genus, rival families at family), reducing to
 #'       the `primary_` count at species rank. "Plausible" means "joined to
 #'       a NAMED prior row": non-`NA` `prior_branch` when that column is
-#'       present (kernel-priors schema, 2026-08-31 -- any branch counts,
-#'       resident, undetected-evidence, or transport), else non-`NA`
+#'       present (kernel-priors schema -- any branch counts, resident,
+#'       undetected-evidence, or transport), else non-`NA`
 #'       `model_tier` (legacy GLMM tables). Both are `NA` when
 #'       `posterior_df` carries neither column.}
 #'     \item{`winner_has_occurrence_record`, `consensus_prior`,
@@ -382,23 +380,22 @@
 #'       rather than inferred from a low prior.
 #'       `winner_has_occurrence_record` is `TRUE` when the winning
 #'       hypothesis carries a real occurrence record. When `posterior_df`
-#'       has a `prior_branch` column (kernel-priors schema, 2026-08-31) this
-#'       means `prior_branch` is `"kernel_estimated"` (or its pre-2026-09-14
+#'       has a `prior_branch` column (kernel-priors schema) this
+#'       means `prior_branch` is `"kernel_estimated"` (or the also-accepted
 #'       name `"resident_observed"`) -- a kernel estimate
 #'       from real in-habitat local evidence; `resident_undetected`
 #'       (evidence-elevated species with zero local records) and
 #'       `transport` (domestic/food) winners read `FALSE`, with a transport
 #'       winner's interpretation carried separately by
 #'       `TaxaFlag::add_posthoc_assessment()`'s `domestic_prior_caveat`.
-#'       Legacy GLMM tables (no `prior_branch`) keep the original
-#'       non-`NA`-`model_tier` reading; `NA` when `posterior_df` has
+#'       Legacy GLMM tables (no `prior_branch`) use the non-`NA`-`model_tier`
+#'       reading described above instead; `NA` when `posterior_df` has
 #'       neither column.
-#'       `consensus_prior` is a \code{theta_mean}-based group share
-#'       (2026-07-30; previously \code{prior_mean} -- changed because
-#'       \code{prior_mean} can be inflated by the confirmation boost above,
-#'       which would let one confirmed-elsewhere candidate make its whole
-#'       group look occurrence-expected regardless of real occurrence
-#'       support). Requires `group_priors`: when supplied and it has a
+#'       `consensus_prior` is a \code{theta_mean}-based group share, not
+#'       \code{prior_mean}, because \code{prior_mean} can be inflated by the
+#'       confirmation boost above, which would let one confirmed-elsewhere
+#'       candidate make its whole group look occurrence-expected regardless
+#'       of real occurrence support. Requires `group_priors`: when supplied and it has a
 #'       matching (`rank`, `taxon`) row for `consensus_rank`/
 #'       `consensus_taxon`, this is the exact SUM of `theta_mean` across
 #'       EVERY locally modelled member of the consensus taxon (see
@@ -406,18 +403,18 @@
 #'       taxa, so this is the group's true share by finite additivity, no
 #'       independence assumption needed. `NA` when `group_priors` is not
 #'       supplied, or has no matching row. There is deliberately no fallback
-#'       to a candidate-scoped MAX (removed 2026-07-30) -- that value is a
+#'       to a candidate-scoped MAX -- that value is a
 #'       real underestimate on real data (e.g. Gobiidae: max 0.0164 vs. the
 #'       true group sum 0.0313), not a safe approximation to degrade to
 #'       silently.
-#'       `consensus_has_occurrence_record` (2026-07-30, new) is the
-#'       consensus-scope presence signal `consensus_prior`'s `NA` can no
-#'       longer safely double as (fixed a real bug: `consensus_prior` is
+#'       `consensus_has_occurrence_record` is the
+#'       consensus-scope presence signal that `consensus_prior`'s `NA` cannot
+#'       safely double as: `consensus_prior` is
 #'       `NA` for two DIFFERENT reasons -- `group_priors` genuinely found no
 #'       local member, OR `group_priors` was never supplied at all -- and a
 #'       downstream consumer inferring "never reported" from `NA` alone
 #'       could not tell them apart, misreading "not checked" as "confirmed
-#'       absent"). `TRUE`/`FALSE` mean a real lookup against `group_priors`
+#'       absent". `TRUE`/`FALSE` mean a real lookup against `group_priors`
 #'       was performed and found/didn't find a matching group; `NA` means
 #'       `group_priors` was not supplied (not checked at all).}
 #'   }
@@ -519,7 +516,6 @@ posterior_consensus <- function(posterior_df,
     # design) -- but .find_lca()/.build_species_ref() both index into
     # rank_system by position (rev(rank_system)[[1L]]) and error deep inside
     # with a cryptic "subscript out of bounds" rather than a clear message.
-    # Found 2026-09-05 building diagnostics/fast_workflows/run_fast_smoketest.R.
     cli::cli_abort(c(
       "posterior_consensus: could not auto-detect any rank columns in \\
       {.arg posterior_df}, and no {.arg rank_system} was supplied.",
@@ -716,7 +712,7 @@ posterior_consensus <- function(posterior_df,
   winner_prior <- .row_col_or(winner_row, "prior_mean")
   winner_likelihood <- .row_col_or(winner_row, "score_likelihood")
   winner_likelihood_cov <- .row_col_or(winner_row, "score_likelihood_cov")
-  # winner_theta_mean (2026-07-30): the winner's raw occurrence-model share
+  # winner_theta_mean: the winner's raw occurrence-model share
   # (TaxaExpect::prepare_model_dataframe()'s theta_mean = n_species /
   # n_total_at_site, a compositional share of local records), distinct from
   # winner_prior (prior_mean), which can be substantially inflated by
@@ -741,7 +737,7 @@ posterior_consensus <- function(posterior_df,
   winner_family_confusion_risk <- .row_col_or(winner_row, "family_confusion_risk")
   winner_own_rank_confusion_risk <- .row_col_or(winner_row, "own_rank_confusion_risk")
 
-  # winner_rank_expanded (Session 149): TRUE when the winning hypothesis came
+  # winner_rank_expanded: TRUE when the winning hypothesis came
   # from join_priors()'s coarse-rank expansion (.expand_coarse_rank_rows()),
   # i.e. every expanded candidate for that coarse-rank identification shares
   # one inherited, uninformative likelihood -- so this species-level winner
@@ -749,8 +745,7 @@ posterior_consensus <- function(posterior_df,
   # acoustic evidence discriminating between the candidates. This is
   # intentional, sound behavior (using priors to resolve an otherwise-coarse
   # ID), but a downstream consumer treating every species-level consensus_taxon
-  # as equally evidence-supported would be wrong to do so for these rows --
-  # see ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md.
+  # as equally evidence-supported would be wrong to do so for these rows.
   winner_hypothesis_type <- as.character(.row_col_or(winner_row, "hypothesis_type", NA_character_))
   winner_rank_expanded <- if (is.na(winner_hypothesis_type)) {
     NA
@@ -761,7 +756,7 @@ posterior_consensus <- function(posterior_df,
   # LCA among plausible hypotheses
   lca <- .find_lca(plausible, rank_system)
 
-  # --- Discrimination diagnostics (2026-07-27) ----------------------------
+  # --- Discrimination diagnostics ------------------------------------------
   # Two questions the winner_*_confusion_risk columns above cannot answer on
   # their own, because a confusion-risk value describes the marker's
   # discriminating power for that taxon in the abstract and never sees this
@@ -772,8 +767,7 @@ posterior_consensus <- function(posterior_df,
   # because nothing locally plausible was ever in the running" -- the latter
   # being a reference-database representation gap, not evidence of a good
   # match, and not something any threshold on the existing candidates can
-  # detect (see the Sciaenidae case in
-  # TaxaFlag/REENTRY_PROMPT_axis2_multifactor_diagnostic_redesign.md).
+  # detect.
   #
   # "Plausible" is read off `model_tier` (supplied upstream by join_priors()
   # from TaxaExpect priors), NOT off prior_mean's value: a taxon with no local
@@ -797,7 +791,7 @@ posterior_consensus <- function(posterior_df,
   # therefore means "nothing plausible to lose to", never "the winner is
   # implausible".
   has_tier <- "model_tier" %in% names(named_all)
-  # Kernel-priors schema (2026-08-31): `prior_branch` supersedes `model_tier`
+  # Kernel-priors schema: `prior_branch` supersedes `model_tier`
   # when present. "Plausible" here means "joined to a NAMED prior row" (any
   # branch -- resident, undetected-evidence, or transport); a row that fell
   # through to the anonymous dark-diversity floor has NA in both columns.
@@ -846,7 +840,7 @@ posterior_consensus <- function(posterior_df,
     NA_integer_
   }
 
-  # --- Occurrence-plausibility support (2026-07-28) -----------------------
+  # --- Occurrence-plausibility support -------------------------------------
   # Two columns supporting the prior/occurrence-plausibility axis, which asks
   # a question `winner_prior`'s VALUE cannot answer on its own: has this taxon
   # ever been reported here at all?
@@ -872,14 +866,13 @@ posterior_consensus <- function(posterior_df,
   # GreatLakes B8 run: 873/885 "unprecedented"). A transport winner's
   # interpretation is carried separately by add_posthoc_assessment()'s
   # domestic_prior_caveat, which is the designed pairing.
-  # 2026-09-14: the branch test reads .KERNEL_BRANCH (so the pre-rename
-  # "resident_observed" still qualifies), and is optionally ALSO gated on how
-  # much evidence stands behind the row. The branch alone cannot carry that
-  # claim -- TaxaExpect writes it as a constant, and within it
+  # The branch test reads .KERNEL_BRANCH (so both accepted prior_branch
+  # spellings qualify -- see kernel_branch.R), and is optionally ALSO gated
+  # on how much evidence stands behind the row. The branch alone cannot
+  # carry that claim -- TaxaExpect writes it as a constant, and within it
   # effective_records spans ~10 orders of magnitude. min_effective_records
-  # defaults to 0, i.e. branch-only, which is byte-identical to the previous
-  # behaviour; raise it to require real local evidence before a winner counts
-  # as having an occurrence record.
+  # defaults to 0, i.e. branch-only; raise it to require real local evidence
+  # before a winner counts as having an occurrence record.
   winner_has_occurrence_record <- if (has_branch) {
     ok <- .is_kernel_branch(winner_row$prior_branch[[1L]])
     if (isTRUE(ok) && min_effective_records > 0) {
@@ -903,7 +896,7 @@ posterior_consensus <- function(posterior_df,
   # not just its candidates. NA when nothing qualifies -- so NA doubles as
   # the consensus-scope "never reported" signal, needing no separate logical.
   #
-  # Reads `theta_mean`, NOT `prior_mean` (changed 2026-07-30). `prior_mean`
+  # Reads `theta_mean`, NOT `prior_mean`. `prior_mean`
   # can be substantially inflated by `update_prior_from_consensus()`'s
   # cross-observation confirmation boost -- confirmed on real Mugu data: all
   # 220 `prior_mean >= 0.5` rows in one real dataset were boosts, and the
@@ -913,7 +906,7 @@ posterior_consensus <- function(posterior_df,
   # whole consensus group look occurrence-expected regardless of any real
   # occurrence support. `theta_mean` is immune to that boost by construction.
   #
-  # Requires `group_priors` (2026-07-30, from `compute_group_priors()`): the
+  # Requires `group_priors` (from `compute_group_priors()`): the
   # exact SUM of `theta_mean` over every locally modelled member of the
   # consensus taxon at its own rank -- not just this observation's own
   # candidates, which is all a candidate-scoped MAX could ever see. Records
@@ -922,23 +915,22 @@ posterior_consensus <- function(posterior_df,
   # a noisy-OR combination, the wrong model for a compositional share).
   #
   # `NA` when `group_priors` is not supplied, or has no matching (rank,
-  # taxon) row -- deliberately NOT a silent fallback to the old
-  # candidate-scoped MAX (removed 2026-07-30): that value is a real
+  # taxon) row -- deliberately NOT a silent fallback to a
+  # candidate-scoped MAX: that value is a real
   # underestimate (confirmed on real data, e.g. Gobiidae max=0.0164 vs the
   # true group sum 0.0313), and returning it silently when the caller hasn't
   # supplied `group_priors` would misrepresent an incomplete computation as
   # a complete one.
   # `consensus_has_occurrence_record`: the consensus-scope analogue of
-  # `winner_has_occurrence_record`, and the fix for a real bug found
-  # 2026-07-30 -- `add_posthoc_assessment()` previously inferred "has a
-  # record" from whether `consensus_prior` was `NA`, which conflated two
+  # `winner_has_occurrence_record`. Inferring "has a record" from whether
+  # `consensus_prior` is `NA` alone would conflate two
   # different situations `consensus_prior` alone cannot distinguish:
   # `group_priors` was never supplied (unknown), vs. `group_priors` was
   # supplied and genuinely found no local member (confirmed absent). On real
   # production data (no workflow supplies `group_priors` yet),
-  # `consensus_prior` is `NA` for every row for the FIRST reason, and the old
-  # inference read every row as confirmed-absent ("unprecedented") --
-  # `consensus_plausibility` read `"unprecedented"` for all 616 real rows.
+  # `consensus_prior` is `NA` for every row for the FIRST reason, so that
+  # inference would read every row as confirmed-absent ("unprecedented") --
+  # `consensus_plausibility` would read `"unprecedented"` for all 616 real rows.
   # `NA` here means "not checked" (matches `winner_has_occurrence_record`'s
   # own `NA`-when-`model_tier`-absent convention); `TRUE`/`FALSE` mean a real
   # lookup was performed and found/didn't find a matching group.
@@ -1113,9 +1105,8 @@ posterior_consensus <- function(posterior_df,
 #'
 #' Uses an explicit column when present; derives genus from a species binomial
 #' when the genus column is absent, and derives species from `taxon_name`
-#' when the species column is absent (Session 152 -- see the species branch's
-#' own comment for why this was missing and what it silently broke). All
-#' other missing columns return NA.
+#' when the species column is absent (see the species branch's own comment
+#' for why this derivation matters). All other missing columns return NA.
 #' @noRd
 .extract_rank_values <- function(input_df, rank) {
   if (rank == "genus") {
@@ -1135,18 +1126,18 @@ posterior_consensus <- function(posterior_df,
     # Derive species from taxon_name as fallback for any NA values --
     # taxon_name IS the species-level value whenever taxon_name_rank ==
     # "species" (the binomial itself), mirroring the genus derivation above.
-    # Session 152: this branch was missing entirely (fell through to the
-    # generic "explicit column required" case below, returning all-NA
-    # whenever no literal "species" column existed) -- TaxaLikely's real
-    # sequence/BLAST pathway never produces one (only taxon_name/family/
-    # genus), so consensus_posterior/consensus_confidence_score silently
-    # computed to exactly 0 for every single-hypothesis resolved observation
+    # Without this branch, a caller whose data has no literal "species"
+    # column (e.g. TaxaLikely's real sequence/BLAST pathway, which only
+    # produces taxon_name/family/genus) would fall through to the generic
+    # "explicit column required" case below, returning all-NA --
+    # consensus_posterior/consensus_confidence_score would then silently
+    # compute to exactly 0 for every single-hypothesis resolved observation
     # on that pathway, even though the winning candidate's own posterior_mean
-    # was correctly high. consensus_taxon itself was unaffected (.find_lca()'s
+    # is correctly high. consensus_taxon itself is unaffected (.find_lca()'s
     # nrow(plausible) == 1 shortcut reads taxon_name/taxon_name_rank directly,
-    # bypassing this function), which is why the bug was invisible unless the
-    # confidence columns were checked specifically. Found via a real end-to-end
-    # Template run using this exact data shape.
+    # bypassing this function), which is why such a gap would be invisible
+    # unless the confidence columns were checked specifically. Verified
+    # against a real end-to-end Template run using this exact data shape.
     #
     # This trusts taxon_name_rank == "species" to mean taxon_name really is a
     # full binomial (not, say, a bare genus mislabeled "species"). That
@@ -1284,7 +1275,7 @@ posterior_consensus <- function(posterior_df,
 
   # Rank value(s) a plausible candidate takes at `rk` -- used to check that a
   # proposed narrowing lands at or above a taxon THIS observation actually
-  # scored (2026-09-13). species_ref is the first source; a binomial's own
+  # scored. species_ref is the first source; a binomial's own
   # first word is the genus fallback for a candidate the reference lacks.
   .cand_rank_values <- function(cand, rk) {
     if (length(cand) == 0L) {
@@ -1354,11 +1345,11 @@ posterior_consensus <- function(posterior_df,
 
       if (length(finer_vals) != 1L) break # 0 or >1 options — stop
 
-      # Candidate-set gate (2026-09-13). The reference knowing exactly one
+      # Candidate-set gate. The reference knowing exactly one
       # finer taxon is not enough: that taxon must also be at or above a
       # candidate this observation actually scored, or the row is relabelled
       # to something it has no evidence for while keeping the coarse rank's
-      # posterior mass. Measured across four sites before this gate existed:
+      # posterior mass. Measured across four sites without this gate:
       # 35 of 150 downranked rows narrowed outside their own candidate set
       # (PtCon 18S Ulva lactuca x21 over five other Ulva species; PtCon 12S
       # Sardinops sagax over three congeners; Mugu Pseudotolithus senegallus).

@@ -63,10 +63,9 @@
 #'   absent species. See \code{\link{assign_taxa_llm}} for details.
 #' @param absent_detection_prob Numeric. Detection probability for known-absent
 #'   species. Default 0.80.
-#' @param taxa_per_call Integer. Maximum taxa per LLM call. Default 15
-#'   (lowered from 30 on 2026-07-09 -- see \code{\link{assign_taxa_llm}}'s
-#'   own \code{taxa_per_call} docs for the real truncation evidence behind
-#'   this change).
+#' @param taxa_per_call Integer. Maximum taxa per LLM call. Default 15 --
+#'   see \code{\link{assign_taxa_llm}}'s own \code{taxa_per_call} docs for
+#'   the real truncation evidence behind this default.
 #' @param pause_seconds Numeric. Pause between LLM calls. Default 1.
 #' @param prior_phi Named numeric vector mapping \code{information_quality}
 #'   to Beta concentration. Default \code{c(high = 50, moderate = 10, low = 3)}.
@@ -203,13 +202,13 @@ run_llm_pipeline <- function(
   if (is.null(context) && auto_context) {
     .msg("run_llm_pipeline [1/4]: Auto-building context via build_context()...")
 
-    # score_original, NOT score: the score column was renamed
-    # score -> score_original ecosystem-wide (Session 99), and
-    # assign_taxa_llm() below already requires score_original. Reading the
-    # removed name gave match_df$score = NULL, so `NULL >= score_threshold`
-    # is logical(0), the subset is character(0), and build_context() aborted
-    # with "taxon_names must be a non-empty character vector" -- i.e. the
-    # default auto_context path failed on every real match_df.
+    # score_original, NOT score: assign_taxa_llm() below requires
+    # score_original, and match_df carries no `score` column. Reading a
+    # `score` column here gives match_df$score = NULL, so
+    # `NULL >= score_threshold` is logical(0), the subset is character(0),
+    # and build_context() aborts with "taxon_names must be a non-empty
+    # character vector" -- i.e. the default auto_context path fails on
+    # every real match_df.
     context <- build_context(
       taxon_names = unique(
         match_df$taxon_name[match_df$score_original >= score_threshold]
@@ -243,7 +242,7 @@ run_llm_pipeline <- function(
     if (!requireNamespace("TaxaLikely", quietly = TRUE)) {
       cli::cli_abort(c(
         "{.arg detect_unreferenced} = TRUE requires the TaxaLikely package \\
-        (suggest_unreferenced_species() moved there 2026-09-08).",
+        (suggest_unreferenced_species() lives there).",
         "i" = "Install TaxaLikely, or pass {.arg detect_unreferenced} = FALSE / \\
         supply {.arg unreferenced_taxa} directly."
       ))

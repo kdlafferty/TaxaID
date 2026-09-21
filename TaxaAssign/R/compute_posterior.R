@@ -1,21 +1,6 @@
 # compute_posterior.R
 # TaxaAssign package
-#
-# Renaming log:
-#   2026-02-19: calculate_final_posteriors() -> compute_posterior()
-#   2026-02-19: prior_df        -> likelihood_w_prior  (input dataframe)
-#   2026-02-19: Query_ID        -> observation_id
-#   2026-02-19: LR_PointEst     -> score_likelihood
-#   2026-02-19: LR_Mean         -> score_likelihood_mean
-#   2026-02-19: LR_SD           -> score_likelihood_sd
-#   2026-02-19: Prior_Prob      -> prior_mean
-#   2026-02-19: (new)           -> prior_sd  (optional, defaults to 0) [removed 2026-04-04]
-#   2026-02-19: Posterior_Mean  -> posterior_mean
-#   2026-02-19: Posterior_SD    -> posterior_sd
-#   2026-02-19: Posterior_PointEst -> posterior_point_est
-#   2026-02-19: Confidence_Score -> confidence_score
-#   2026-04-04: prior_sd replaced by prior_alpha + prior_beta (Beta-distributed priors)
-#
+
 #' Compute Bayesian Posterior Probabilities
 #'
 #' Performs the Bayesian update: Posterior ~ Likelihood * Prior.
@@ -37,14 +22,13 @@
 #'   species with tiny but non-zero prior_mean would almost always lose to species
 #'   with a well-concentrated prior at a lower mean. For these rows, the prior is
 #'   treated as fixed at `prior_mean` in simulation rather than sampled, making the
-#'   simulation consistent with the point-estimate path. (Widened from `< 1` to
-#'   `<= 1` in Session 149 — `prior_alpha == 1` exactly is a real, common case,
-#'   e.g. `TaxaExpect::generate_undetected_diversity()`'s global floor
-#'   `Beta(1, N_total - 1)`, and was previously not caught. Whether the boundary
-#'   should extend further, e.g. to `prior_alpha` moderately above 1 with high
-#'   relative uncertainty, is still open — needs a larger real `prior_alpha`
-#'   distribution than the small bundled fixtures to characterize; see
-#'   `ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`.)
+#'   simulation consistent with the point-estimate path. (This threshold covers
+#'   `prior_alpha == 1` exactly, a real, common case, e.g.
+#'   `TaxaExpect::generate_undetected_diversity()`'s global floor
+#'   `Beta(1, N_total - 1)`. Whether the boundary should extend further, e.g.
+#'   to `prior_alpha` moderately above 1 with high relative uncertainty, is
+#'   still open — it needs a larger real `prior_alpha` distribution than the
+#'   small bundled fixtures to characterize.)
 #'   Only runs when `n_sims > 0` AND at least one source of uncertainty exists
 #'   (non-zero `score_likelihood_sd`, or `prior_alpha`/`prior_beta` columns present).
 #'
@@ -105,7 +89,7 @@
 #' where \eqn{L} is the likelihood (from TaxaLikely or score-based proxy) and
 #' \eqn{\pi} is the prior (from TaxaExpect or LLM-based estimation).
 #'
-#' \strong{Presence-mixture priors (2026-08-26 mixture redesign):}
+#' \strong{Presence-mixture priors:}
 #' rows carrying non-NA \code{prior_mix_w}/\code{prior_mix_theta_present}/
 #' \code{prior_mix_theta_absent} (emitted by
 #' \code{TaxaExpect::apply_undetected_evidence()} for evidence-elevated
@@ -120,8 +104,7 @@
 #' states, and \code{confidence_score} reads as the fraction of presence
 #' states in which the hypothesis wins. The point-estimate path is unchanged:
 #' \code{prior_mean} equals the mixture's exact expectation by construction.
-#' Non-mixture rows are completely unaffected. See
-#' \code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}.
+#' Non-mixture rows are completely unaffected.
 #'
 #' \strong{Prior uncertainty (Beta distribution):}
 #' When \code{prior_alpha} and \code{prior_beta} columns are present, the prior
@@ -213,7 +196,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
     likelihood_w_prior$score_likelihood_sd[is.na(likelihood_w_prior$score_likelihood_sd)] <- 0
   }
 
-  # --- Detect presence-mixture rows (2026-08-26 mixture redesign, D8) --------
+  # --- Detect presence-mixture rows -------------------------------------
   # Rows carrying prior_mix_w / prior_mix_theta_present / prior_mix_theta_absent
   # (from TaxaExpect::apply_undetected_evidence()) are presence MIXTURES: with
   # probability w the species is locally present (theta at the ceiling-anchor
@@ -266,12 +249,11 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
   }
 
   # --- Helper: sample from Normal(mean, sd) truncated to [0, Inf) ---
-  # Exact inverse-CDF truncated-normal sampling (Session 149). Replaces the
-  # previous rnorm() + clamp-negative-to-0 approach, which manufactured a
-  # spurious point mass at exactly 0 not present in the modelled distribution
-  # (see ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md, row
-  # TaxaAssign::compute_posterior::mc_uncertainty_propagation). `mean`/`sd` are
-  # recycled to length `n`, matching rnorm()'s own recycling behavior. sd == 0
+  # Exact inverse-CDF truncated-normal sampling avoids manufacturing a
+  # spurious point mass at exactly 0 that is not present in the modelled
+  # distribution, which a naive rnorm() + clamp-negative-to-0 approach would
+  # do. `mean`/`sd` are recycled to length `n`, matching rnorm()'s own
+  # recycling behavior. sd == 0
   # is deterministic, matching rnorm(sd = 0) returning `mean` exactly.
   # `stdev` (not `sigma`) -- `stats::sigma()` is a real generic (residual SD
   # extractor for fitted models); a same-named local parameter is harmless
@@ -312,9 +294,9 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
 
       # --- Monte Carlo path ---
       if (run_sims) {
-        # Sample likelihoods: Normal(mean, sd) truncated at 0 (Session 149 —
-        # exact inverse-CDF sampling, not a post-hoc clamp; see
-        # rtruncnorm_at_zero() above for why the clamp was a real bug).
+        # Sample likelihoods: Normal(mean, sd) truncated at 0 (exact
+        # inverse-CDF sampling, not a post-hoc clamp; see
+        # rtruncnorm_at_zero() above for why a clamp would be a real bug).
         sim_lik <- matrix(
           rtruncnorm_at_zero(n_rows * n_sims, chunk$score_likelihood_mean, chunk$score_likelihood_sd),
           nrow = n_rows
@@ -327,12 +309,12 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
         # prior_mean = 6e-6 because its draws are almost always near 0. This
         # arises when theta is tiny (e.g. 0.034%) and the model has high
         # uncertainty (phi = alpha + beta is small).
-        # Fix: treat these rows as fixed at prior_mean in simulation.
-        # Session 149: widened from `< 1` to `<= 1` — `prior_alpha == 1`
-        # exactly (e.g. TaxaExpect's global-floor Beta(1, N_total - 1)) has
-        # the same "always decreasing away from 0" density shape and was
-        # previously missed. See compute_posterior()'s roxygen for the
-        # still-open question of whether this boundary should extend further.
+        # Fix: treat these rows as fixed at prior_mean in simulation. This
+        # threshold covers `prior_alpha == 1` exactly (e.g. TaxaExpect's
+        # global-floor Beta(1, N_total - 1)), which has the same "always
+        # decreasing away from 0" density shape. See compute_posterior()'s
+        # roxygen for the still-open question of whether this boundary
+        # should extend further.
         if (use_beta_prior) {
           sim_prior <- matrix(
             rbeta(n_rows * n_sims,
@@ -353,7 +335,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
           )
         }
 
-        # Presence-mixture rows (2026-08-26, D8): explicit Bernoulli presence
+        # Presence-mixture rows: explicit Bernoulli presence
         # draw overrides the Beta/J-guard handling above for exactly these
         # rows -- their alpha/beta summary is J-shaped by construction, so the
         # guard would otherwise pin them at the mean and erase the bimodality

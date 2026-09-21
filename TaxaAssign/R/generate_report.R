@@ -643,10 +643,9 @@ generate_report <- function(result,
   } else {
     # score_transform ("logit"/"sqrt_mismatch") comes from the trained model's
     # own Score_Transform field, threaded through via report_params (see
-    # run_bayesian_pipeline()'s own modifyList() call) -- NOT assumed. Absent
-    # for a report_params predating this fix (falls back to the historical
-    # "logit" default rather than erroring, since that was this package's own
-    # unconditional assumption until 2026-09-06).
+    # run_bayesian_pipeline()'s own modifyList() call) -- NOT assumed. Falls
+    # back to "logit" when report_params carries no score_transform field,
+    # rather than erroring.
     score_transform <- if (!is.null(params$score_transform)) params$score_transform else "logit"
     transform_desc <- switch(score_transform,
       "sqrt_mismatch" = "a square-root-mismatch-transformed (Anscombe-stabilized fraction of mismatched bases)",
@@ -723,7 +722,7 @@ generate_report <- function(result,
       }
     )
   } else if (kernel_priors) {
-    # Kernel-priors + curve-pricing architecture (2026-08-31 redesign),
+    # Kernel-priors + curve-pricing architecture,
     # detected from the result table's prior_branch column.
     prior_text <- paste0(
       "Prior probabilities were estimated from public occurrence records by ",

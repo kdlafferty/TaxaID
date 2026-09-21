@@ -24,8 +24,8 @@ utils::globalVariables(c(
 #   .score_to_likelihood()    Exponential-weight scores -> normalized likelihood proxy
 #   .merge_llm_priors()       Merge likelihoods + LLM priors, apply known_absent/unknown_lik_weight
 #                             rescaling, construct Beta prior_alpha/prior_beta from prior_phi.
-#                             Deterministic, no LLM calls -- factored out (Session 145) so it can
-#                             be re-run cheaply for a sensitivity sweep.
+#                             Deterministic, no LLM calls -- factored out so it can be re-run
+#                             cheaply for a sensitivity sweep.
 #   .build_group_map()        Map observation_ids to group labels via context_group columns
 #   .collect_unique_taxa()    Unique taxon data frame from a set of lik_dfs
 #   .get_group_context()      Context list for a representative observation in a group
@@ -162,16 +162,16 @@ utils::globalVariables(c(
 #' @param taxa_per_call Integer >= 1. Maximum number of unique taxa sent to the
 #'   LLM in a single call. When the unique taxon list for a group exceeds this
 #'   limit it is split into sequential batches; results are combined before
-#'   joining to observations. Default 15. Lowered from a prior default of 30
-#'   (2026-07-09) after a real batch of 30 taxa truncated 4 times out of 5 at
-#'   `call_api()`'s default `max_tokens` of 3000 (a 23-taxon batch succeeded
-#'   in the same run) -- see `.parse_taxa_response()`'s truncation-specific
-#'   warning. 15 also matches `TaxaFlag::review_assignments()`'s own default,
-#'   independently lowered from 30 to 15 for the identical failure mode in an
-#'   earlier session -- two independent real-data findings agreeing on the
-#'   same number. Still based on real trials rather than an exhaustive sweep
-#'   across response verbosity; if you still see truncation warnings, reduce
-#'   further or pass an `llm_fn` wrapper with a higher `max_tokens` (e.g.
+#'   joining to observations. Default 15: a real batch of 30 taxa truncated 4
+#'   times out of 5 at `call_api()`'s default `max_tokens` of 3000 (a
+#'   23-taxon batch succeeded in the same run) -- see
+#'   `.parse_taxa_response()`'s truncation-specific warning. 15 also matches
+#'   `TaxaFlag::review_assignments()`'s own default, which hit the identical
+#'   failure mode independently -- two independent real-data findings
+#'   agreeing on the same number. Still based on real trials rather than an
+#'   exhaustive sweep across response verbosity; if you still see truncation
+#'   warnings, reduce further or pass an `llm_fn` wrapper with a higher
+#'   `max_tokens` (e.g.
 #'   `function(prompt) TaxaTools::call_api(prompt, max_tokens = 8000L)`).
 #'   Increase if taxa are few and you prefer fewer API calls.
 #' @param pause_seconds Numeric. Seconds to pause between LLM calls (both
@@ -210,8 +210,9 @@ utils::globalVariables(c(
 #' @details
 #' \strong{Parameter sensitivity:} a sweep of `score_sharpness`,
 #' `unknown_lik_weight`, `prior_phi`, and `absent_detection_prob` against one
-#' real, fixed LLM response (see `diagnostics/llm_prior_shape_sweep.R`) found
-#' these four parameters mostly shape \emph{confidence}
+#' real, fixed LLM response (see the `llm_prior_shape_sweep.R` diagnostic,
+#' TaxaID_dev repository) found these four parameters mostly shape
+#' \emph{confidence}
 #' (`consensus_posterior`), not \emph{which} taxon wins. `unknown_lik_weight`
 #' has the largest effect (raising it toward 0.20 measurably lowers winning-
 #' hypothesis confidence); `score_sharpness` has almost none (the LLM-derived
@@ -779,8 +780,8 @@ assign_taxa_llm <- function(match_df,
 #' can be re-run cheaply against a fixed prior_tables/lik_list for a
 #' sensitivity sweep over unknown_lik_weight/absent_detection_prob/prior_phi
 #' (score_sharpness is consumed earlier, inside .score_to_likelihood(), and
-#' so is swept by rebuilding lik_list instead -- see
-#' diagnostics/llm_prior_shape_sweep.R).
+#' so is swept by rebuilding lik_list instead -- see the
+#' llm_prior_shape_sweep.R diagnostic, TaxaID_dev repository).
 #' @noRd
 .merge_llm_priors <- function(observation_ids, group_map, lik_list, prior_tables,
                               known_absent_df, unknown_lik_weight,
@@ -1126,7 +1127,7 @@ assign_taxa_llm <- function(match_df,
     !all(c("taxon_name", "prior_weight") %in% names(parsed))) {
     # A response with no "]" at all almost always means the LLM's JSON array
     # was cut off mid-response by the token limit, not that it returned
-    # malformed JSON -- confirmed empirically (Session 145): 4/5 real
+    # malformed JSON -- confirmed empirically: 4/5 real
     # 30-taxon batches failed this way at call_api()'s default max_tokens =
     # 3000, while a 23-taxon batch succeeded. Give a specific, actionable
     # warning for this case instead of the generic parse-failure message.

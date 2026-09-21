@@ -41,10 +41,10 @@ utils::globalVariables(c(
   # singular at 0, so a J-shaped prior (alpha << 1 -- the dark-diversity
   # floor gives alpha ~ 2e-6, an evidence-blend row ~ 6e-5) has a logit mean
   # near -1/alpha and plogis() of the combination underflows to exactly 0,
-  # from which phi = Inf and alpha = 0 * Inf = NaN. Found 2026-09-12 on the
-  # first real multi-site run (PtConception 12S): 349 of 4,469 candidate rows
-  # -- most unreferenced-species hypotheses -- came back NaN/Inf and
-  # compute_posterior() refused them. Such rows are the majority of real
+  # from which phi = Inf and alpha = 0 * Inf = NaN. On a real multi-site run
+  # (PtConception 12S), 349 of 4,469 candidate rows -- most
+  # unreferenced-species hypotheses -- come back NaN/Inf and
+  # compute_posterior() refuses them. Such rows are the majority of real
   # candidates, not an edge case. The logit rule is still right whenever at
   # least one site is informative: a J-shaped site's logit weight is ~alpha^2,
   # so it is correctly ignored in favour of the site with data (a near-zero
@@ -89,7 +89,7 @@ utils::globalVariables(c(
   template$n_sites_combined <- n
   template$combined_sites <- paste(sort(unique(rows$grid_id)), collapse = "|")
 
-  # Presence-mixture guard (2026-09-13). compute_posterior()'s Monte Carlo
+  # Presence-mixture guard. compute_posterior()'s Monte Carlo
   # path samples presence from prior_mix_w ALONE for any row carrying the
   # mixture columns, ignoring the recombined alpha/beta. Copying the first
   # site's mixture is exact only when every site row carries the same
@@ -112,28 +112,27 @@ utils::globalVariables(c(
 
 #' Combine Per-Site Priors for Multi-Site Observations
 #'
-#' Bridges [join_priors()] (Session 138: now site-preserving, i.e. one row per
-#' `observation_id` x `taxon_name` x `taxon_name_rank` x `grid_id` x
-#' `main_habitat`) to [compute_posterior()], which expects exactly one row per
-#' candidate hypothesis per observation. When the same `observation_id` was
-#' detected at more than one site (e.g. the same eDNA ASV recovered from reads
-#' at two different sample sites), each candidate taxon otherwise arrives with
-#' one prior row per site. This function combines those rows into one.
+#' Bridges [join_priors()] (site-preserving: one row per `observation_id` x
+#' `taxon_name` x `taxon_name_rank` x `grid_id` x `main_habitat`) to
+#' [compute_posterior()], which expects exactly one row per candidate
+#' hypothesis per observation. When the same `observation_id` was detected at
+#' more than one site (e.g. the same eDNA ASV recovered from reads at two
+#' different sample sites), each candidate taxon otherwise arrives with one
+#' prior row per site. This function combines those rows into one.
 #'
 #' ## Why this function exists
-#' Before Session 138, `join_priors()`'s final deduplication step
-#' (`distinct(observation_id, taxon_name, taxon_name_rank, .keep_all = TRUE)`)
-#' silently kept only the highest-`prior_mean` site per candidate -- each
-#' candidate ended up matched to *its own* most favorable site rather than the
-#' site it was actually detected at, which could turn a confident, correct
-#' call into a nonsensical tie. `join_priors()` now preserves one row per site
-#' (its `distinct()` call additionally keys on `grid_id`/`main_habitat`); this
-#' function is the deliberate combination step that must run on that
-#' site-preserving output before [compute_posterior()].
+#' A naive `distinct(observation_id, taxon_name, taxon_name_rank, .keep_all =
+#' TRUE)` deduplication would silently keep only the highest-`prior_mean`
+#' site per candidate -- each candidate would end up matched to *its own*
+#' most favorable site rather than the site it was actually detected at,
+#' which could turn a confident, correct call into a nonsensical tie.
+#' [join_priors()] instead preserves one row per site (its `distinct()` call
+#' keys on `grid_id`/`main_habitat` as well); this function is the deliberate
+#' combination step that must run on that site-preserving output before
+#' [compute_posterior()].
 #'
 #' ## Combination rule: precision-weighted, not a plain product
-#' A simpler design (evaluated and rejected during Session 138 design review)
-#' would multiply each candidate's per-site `prior_mean` values together and
+#' A simpler design would multiply each candidate's per-site `prior_mean` values together and
 #' renormalize. That rule treats every site's point estimate as equally
 #' trustworthy regardless of how much occurrence data backs it -- a site with
 #' almost no data (small `prior_alpha + prior_beta`) counts exactly as much as
@@ -157,8 +156,8 @@ utils::globalVariables(c(
 #' Where any site's prior is J-shaped -- the dark-diversity floor
 #' (`alpha ~ 2e-6, beta ~ 2`), a singleton mirror, or an evidence-blend row --
 #' the logit moments are dominated by digamma's singularity at 0 and the
-#' back-transformed mean underflows to exactly 0 (NaN alpha, Inf beta; found
-#' on the first real multi-site run, 2026-09-12, on 349 of 4,469 rows). The
+#' back-transformed mean underflows to exactly 0 (NaN alpha, Inf beta; on a
+#' real multi-site run, 349 of 4,469 rows). The
 #' logit rule still applies whenever at least one site is informative: a
 #' J-shaped site's logit weight is about `alpha^2`, so it is ignored in favour
 #' of the site with data, as it should be (a floor prior is uninformed, not
@@ -181,7 +180,7 @@ utils::globalVariables(c(
 #' to `NA` on the combined row and a warning names the candidates, because
 #' [compute_posterior()]'s Monte Carlo path would otherwise sample presence
 #' from one site's `prior_mix_w` alone while `posterior_point_est` used the
-#' recombined mean (2026-09-13). The recombined Beta is sampled instead.
+#' recombined mean. The recombined Beta is sampled instead.
 #' Recombining the mixture itself across sites is not implemented.
 #'
 #' ## Ecological independence assumption

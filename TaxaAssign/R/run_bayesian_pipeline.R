@@ -579,7 +579,7 @@ run_bayesian_pipeline <- function(
 
   # Fold in the trained model's own score_transform ("logit"/"sqrt_mismatch")
   # so generate_report()'s Methods text describes what was actually used
-  # instead of unconditionally assuming "logit" -- found stale 2026-09-06 on a
+  # instead of unconditionally assuming "logit" -- confirmed stale on a
   # real report generated from a score_transform = "sqrt_mismatch" model.
   # modifyList(), not a plain overwrite, so any report_params the caller
   # already supplied survive (same precedent as update_prior_from_consensus()'s

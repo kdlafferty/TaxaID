@@ -48,15 +48,12 @@ hold at least 5\% posterior probability to influence the consensus taxon.
 Default 0.05. Set to 0 to disable.}
 
 \item{posterior_col}{Character. Name of the posterior column to rank
-hypotheses by. Default \code{"posterior_point_est"} -- aligned (2026-08-28)
-with \code{run_bayesian_pipeline()} and every production workflow, which had
-always passed the point-estimate column explicitly while this function
-alone defaulted to \code{"posterior_mean"} (undocumented drift; the
-three-way operative-column experiment in
-\code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}
-(D8) found the choice second-order and settled on point estimates: best
-external corroboration, deterministic, and exactly auditable as
-prior x likelihood products). Pass \code{"posterior_mean"} to rank by the
+hypotheses by. Default \code{"posterior_point_est"}, matching
+\code{run_bayesian_pipeline()} and every production workflow. An
+operative-column comparison found the choice second-order for real
+consensus results and settled on point estimates: best external
+corroboration, deterministic, and exactly auditable as prior x
+likelihood products. Pass \code{"posterior_mean"} to rank by the
 Monte Carlo mean instead -- with presence-mixture priors that column
 integrates over presence states (see \code{compute_posterior()}).}
 
@@ -71,7 +68,8 @@ TaxaTools to be installed and may make network requests. Default \code{FALSE}.}
 \code{lookup_missing_taxonomy = TRUE} -- no default, since the correct
 backbone depends on which backbone your input taxonomy was verified
 against, which varies by project. Common values: 1 = Catalogue of Life,
-4 = NCBI, 9 = WoRMS, 11 = GBIF. See ecosystem CLAUDE.md for full list.
+4 = NCBI, 9 = WoRMS, 11 = GBIF. See
+\code{TaxaTools::verify_taxon_names()} for the full backbone list.
 Ignored (may be left \code{NULL}) when \code{lookup_missing_taxonomy = FALSE}.}
 
 \item{species_reference}{Optional. A plausible-species reference used to
@@ -94,8 +92,8 @@ For each unresolved row where \code{consensus_rank} is not the finest rank,
 the function looks up how many taxa at the next finer rank belong to the
 consensus taxon. If exactly one, it downranks (recursively — e.g. family
 to unique genus to unique species in one pass). Stops at any rank with
-more than one option. Default \code{NULL} (no downranking). Since 2026-09-13
-a narrowing must also survive \code{downrank_requires_candidate}. Callers
+more than one option. Default \code{NULL} (no downranking). A narrowing must
+also survive \code{downrank_requires_candidate}. Callers
 building \code{species_reference} from a mix of observed and evidence-only
 rows should still exclude the evidence-only ones
 (\code{prior_branch != "resident_observed"}) before passing it in, so a
@@ -109,9 +107,9 @@ at or above a taxon this observation actually scored (its
 the candidates belong to it (family to genus \emph{Ulva} when the candidates
 are \emph{Ulva} species), so this is a taxonomy test, not a string match. Rows
 with no \code{plausible_taxa} column, or an empty one, are not gated. \code{FALSE}
-restores the pre-2026-09-13 behaviour, where the reference alone decided.
-Measured across four production sites before this gate: 35 of 150
-downranked rows named a taxon outside their own candidate set.}
+disables this check, so the reference alone decides. Measured across
+four production sites without this gate: 35 of 150 downranked rows
+named a taxon outside their own candidate set.}
 
 \item{group_priors}{Optional data frame from \code{\link[=compute_group_priors]{compute_group_priors()}}
 (\code{rank}/\code{taxon}/\code{theta_sum}/\code{n_members} columns), the SUM of
@@ -121,13 +119,12 @@ surface. Drives \code{consensus_prior} when a matching (\code{rank}, \code{taxon
 exists for an observation's \code{consensus_rank}/\code{consensus_taxon} (see that
 column's own docs below for the full reasoning). Default \code{NULL}:
 \code{consensus_prior} is \code{NA} for every row -- there is no fallback
-computation (removed 2026-07-30; the previous candidate-scoped MAX was a
-real underestimate, not a safe approximation).}
+computation, since a candidate-scoped MAX would be a real underestimate,
+not a safe approximation.}
 
 \item{min_effective_records}{Numeric, >= 0. Minimum \code{effective_records} a
 winning row must carry before \code{winner_has_occurrence_record} is allowed
-to read \code{TRUE}. Default \code{0} -- branch membership alone, which is exactly
-the pre-2026-09-14 behaviour, so no existing caller's output moves.
+to read \code{TRUE}. Default \code{0} -- branch membership alone decides.
 
 Why this exists: \code{TaxaExpect::estimate_kernel_priors()} writes
 \code{prior_branch} as a CONSTANT on every row it emits, so the branch records
@@ -305,8 +302,8 @@ counts distinct plausible groups at \code{consensus_rank} (rival genera
 when the LCA landed at genus, rival families at family), reducing to
 the \code{primary_} count at species rank. "Plausible" means "joined to
 a NAMED prior row": non-\code{NA} \code{prior_branch} when that column is
-present (kernel-priors schema, 2026-08-31 -- any branch counts,
-resident, undetected-evidence, or transport), else non-\code{NA}
+present (kernel-priors schema -- any branch counts, resident,
+undetected-evidence, or transport), else non-\code{NA}
 \code{model_tier} (legacy GLMM tables). Both are \code{NA} when
 \code{posterior_df} carries neither column.}
 \item{\code{winner_has_occurrence_record}, \code{consensus_prior},
@@ -319,23 +316,22 @@ opposite things, so presence is read off the prior row's provenance
 rather than inferred from a low prior.
 \code{winner_has_occurrence_record} is \code{TRUE} when the winning
 hypothesis carries a real occurrence record. When \code{posterior_df}
-has a \code{prior_branch} column (kernel-priors schema, 2026-08-31) this
-means \code{prior_branch} is \code{"kernel_estimated"} (or its pre-2026-09-14
+has a \code{prior_branch} column (kernel-priors schema) this
+means \code{prior_branch} is \code{"kernel_estimated"} (or the also-accepted
 name \code{"resident_observed"}) -- a kernel estimate
 from real in-habitat local evidence; \code{resident_undetected}
 (evidence-elevated species with zero local records) and
 \code{transport} (domestic/food) winners read \code{FALSE}, with a transport
 winner's interpretation carried separately by
 \code{TaxaFlag::add_posthoc_assessment()}'s \code{domestic_prior_caveat}.
-Legacy GLMM tables (no \code{prior_branch}) keep the original
-non-\code{NA}-\code{model_tier} reading; \code{NA} when \code{posterior_df} has
+Legacy GLMM tables (no \code{prior_branch}) use the non-\code{NA}-\code{model_tier}
+reading described above instead; \code{NA} when \code{posterior_df} has
 neither column.
-\code{consensus_prior} is a \code{theta_mean}-based group share
-(2026-07-30; previously \code{prior_mean} -- changed because
-\code{prior_mean} can be inflated by the confirmation boost above,
-which would let one confirmed-elsewhere candidate make its whole
-group look occurrence-expected regardless of real occurrence
-support). Requires \code{group_priors}: when supplied and it has a
+\code{consensus_prior} is a \code{theta_mean}-based group share, not
+\code{prior_mean}, because \code{prior_mean} can be inflated by the
+confirmation boost above, which would let one confirmed-elsewhere
+candidate make its whole group look occurrence-expected regardless
+of real occurrence support. Requires \code{group_priors}: when supplied and it has a
 matching (\code{rank}, \code{taxon}) row for \code{consensus_rank}/
 \code{consensus_taxon}, this is the exact SUM of \code{theta_mean} across
 EVERY locally modelled member of the consensus taxon (see
@@ -343,18 +339,18 @@ EVERY locally modelled member of the consensus taxon (see
 taxa, so this is the group's true share by finite additivity, no
 independence assumption needed. \code{NA} when \code{group_priors} is not
 supplied, or has no matching row. There is deliberately no fallback
-to a candidate-scoped MAX (removed 2026-07-30) -- that value is a
+to a candidate-scoped MAX -- that value is a
 real underestimate on real data (e.g. Gobiidae: max 0.0164 vs. the
 true group sum 0.0313), not a safe approximation to degrade to
 silently.
-\code{consensus_has_occurrence_record} (2026-07-30, new) is the
-consensus-scope presence signal \code{consensus_prior}'s \code{NA} can no
-longer safely double as (fixed a real bug: \code{consensus_prior} is
+\code{consensus_has_occurrence_record} is the
+consensus-scope presence signal that \code{consensus_prior}'s \code{NA} cannot
+safely double as: \code{consensus_prior} is
 \code{NA} for two DIFFERENT reasons -- \code{group_priors} genuinely found no
 local member, OR \code{group_priors} was never supplied at all -- and a
 downstream consumer inferring "never reported" from \code{NA} alone
 could not tell them apart, misreading "not checked" as "confirmed
-absent"). \code{TRUE}/\code{FALSE} mean a real lookup against \code{group_priors}
+absent". \code{TRUE}/\code{FALSE} mean a real lookup against \code{group_priors}
 was performed and found/didn't find a matching group; \code{NA} means
 \code{group_priors} was not supplied (not checked at all).}
 }
@@ -401,7 +397,8 @@ assignments (more upranking to genus/family); decrease to 0.8 for more
 aggressive species-level calls.
 
 \strong{Parameter sensitivity:} a grid sweep against a real posterior
-dataset (see \code{diagnostics/posterior_threshold_sweep.R}) found the two
+dataset (see the \code{posterior_threshold_sweep.R} diagnostic, TaxaID_dev
+repository) found the two
 defaults are not equally load-bearing: \code{min_posterior} has a real,
 roughly linear effect on how often the pipeline resolves to the finest
 rank, while \code{cumulative_threshold} does comparatively little

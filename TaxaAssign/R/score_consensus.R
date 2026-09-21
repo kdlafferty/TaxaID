@@ -6,7 +6,7 @@ utils::globalVariables(c("score_val"))
 # Conventional score-based consensus taxonomy.  Works directly from raw match
 # scores (percent identity, similarity, etc.) without Bayesian machinery.
 #
-# Purpose (clarified Session 149; consensus_mode added 2026-09-12): this
+# Purpose: this
 # exists to REPRODUCE the consensus logic of conventional non-Bayesian
 # pipelines, so a user can compare TaxaID's own Bayesian pathway (TaxaLikely
 # -> compute_posterior() -> posterior_consensus()) against what a conventional
@@ -24,15 +24,12 @@ utils::globalVariables(c("score_val"))
 #              hits in that bracket is reported at its rank (NA otherwise),
 #              with an optional widen-the-bracket fallback.
 #
-# CORRECTION (2026-09-12): before this date the header and roxygen here
-# claimed the (single, gap-style) algorithm reproduced "the GITA / Jonah
-# Ventures convention".  That was wrong.  Jonah Ventures' documented rule is
-# the bracket/agreement-fraction rule now implemented as
-# consensus_mode = "bracket"; the gap-mode rule reproduces the generic
-# fixed-threshold/LCA convention, not theirs specifically.  The distinction
-# matters for published comparisons: strict unanimity upranks more readily
-# than a 90% agreement rule, so a TaxaID-vs-score_consensus() comparison run
-# in gap mode is biased toward TaxaID on resolution.
+# Jonah Ventures' documented rule is the bracket/agreement-fraction rule
+# implemented as consensus_mode = "bracket"; the gap-mode rule reproduces the
+# generic fixed-threshold/LCA convention, not theirs specifically.  The
+# distinction matters for published comparisons: strict unanimity upranks
+# more readily than a 90% agreement rule, so a TaxaID-vs-score_consensus()
+# comparison run in gap mode is biased toward TaxaID on resolution.
 #
 # Exported functions:
 #   score_consensus()        Score-based consensus from a match dataframe
@@ -98,7 +95,7 @@ utils::globalVariables(c("score_val"))
 #' -- mirroring another pipeline's process so its output can be directly
 #' compared against TaxaID's.
 #'
-#' **Which convention is reproduced (corrected 2026-09-12).** `"gap"` mode
+#' **Which convention is reproduced.** `"gap"` mode
 #' reproduces the **common fixed-threshold / LCA convention**: a fixed
 #' percent-identity floor, an optional gap window, per-rank thresholds, and a
 #' strict-unanimity LCA. `"bracket"` mode reproduces the
@@ -106,9 +103,8 @@ utils::globalVariables(c("score_val"))
 #' Ventures**: a 1%-wide bracket anchored at the ESV's top score, a taxon
 #' reported at a rank only when it holds at least 90% of the hits in that
 #' bracket, `NA` at that rank otherwise, and a widen-to-2% fallback when a
-#' match of 97% or better still returns no family. Before 2026-09-12 this function's
-#' documentation attributed the gap-mode rule to "the GITA / Jonah Ventures
-#' convention"; that attribution was **wrong** and has been removed. The
+#' match of 97% or better still returns no family. `"gap"` mode is NOT "the
+#' GITA / Jonah Ventures convention" -- `"bracket"` mode is. The
 #' difference is not cosmetic for a published comparison: **strict unanimity
 #' (`agreement_fraction = 1`) upranks more readily than a 90% rule**, so a
 #' TaxaID-vs-`score_consensus()` comparison run in gap mode is biased toward
@@ -145,7 +141,8 @@ utils::globalVariables(c("score_val"))
 #'   value are discarded before any other filtering.  Scale must match the
 #'   `score_col` values (e.g. 97 for percent identity, 0.97 for proportion).
 #'   Default `0` (no filtering). Note: an ROC-style sweep against real 12S
-#'   reference data (`diagnostics/score_floor_roc_sweep.R`, 2026-07-09) found
+#'   reference data (see the `score_floor_roc_sweep.R` diagnostic, TaxaID_dev
+#'   repository) found
 #'   that `min_score`/raw percent-identity alone cannot discriminate a true
 #'   species from its closest congener at almost any real-world threshold
 #'   (true-positive and congeneric-false-positive rates track each other
@@ -163,12 +160,12 @@ utils::globalVariables(c("score_val"))
 #'   sample is unresolvable.  Applied independently of the LCA — so even if all
 #'   hits agree on species, the consensus is demoted to genus if the top score
 #'   is below the species threshold.
-#'   **No default -- errors if omitted (2026-07-23).** This function has no
+#'   **No default -- errors if omitted.** This function has no
 #'   way to know the marker or even whether `score_col` holds a DNA/image/
-#'   acoustic score, so no single fixed threshold set is safe to assume for
-#'   every caller (see Details for why the earlier GITA/Jonah Ventures
-#'   default, `c(species = 98, genus = 95, family = 90, phylum = 85)`, was
-#'   removed rather than kept as a default). Supply one of:
+#'   acoustic score, so no single fixed threshold set (e.g. the GITA/Jonah
+#'   Ventures convention, `c(species = 98, genus = 95, family = 90,
+#'   phylum = 85)`) is safe to assume for
+#'   every caller (see Details for the full reasoning). Supply one of:
 #'   (1) your own thresholds, on whichever scale `score_col` uses (percent
 #'   identity or 0-1 proportion -- see the auto-rescale note below), or
 #'   (2) marker-specific thresholds derived from your own reference data via
@@ -191,7 +188,7 @@ utils::globalVariables(c("score_val"))
 #'   fine (e.g. `c("family", "genus", "species")`).  If `NULL` (default),
 #'   standard columns present in `match_df` are detected automatically.
 #' @param consensus_mode Character, one of `"gap"` (default) or `"bracket"`.
-#'   `"gap"` is the pre-2026-09-12 behaviour exactly: `min_score` floor ->
+#'   `"gap"` is: `min_score` floor ->
 #'   `max_gap` window -> LCA over the *distinct retained taxa*.  `"bracket"`
 #'   selects the Jonah Ventures rule: `min_score` floor -> a `bracket_width`
 #'   window anchored at the top score -> agreement rule over the *retained
@@ -202,8 +199,8 @@ utils::globalVariables(c("score_val"))
 #'   rank when it appears in at least this fraction of the retained rows.
 #'   `1` (default) is strict unanimity, i.e. a classical LCA.  Jonah Ventures
 #'   uses `0.9`.  Applies in **both** modes: in `"gap"` mode it generalises
-#'   the LCA step, and `agreement_fraction = 1` there is byte-for-byte the
-#'   pre-2026-09-12 result.  The comparison is inclusive at the boundary
+#'   the LCA step, and `agreement_fraction = 1` there reduces to a classical
+#'   strict-unanimity LCA.  The comparison is inclusive at the boundary
 #'   (9 of 10 rows resolves at `agreement_fraction = 0.9`), and is made with
 #'   a small floating-point tolerance so that e.g. `27/30 >= 0.9` cannot fail
 #'   on binary representation.  If two or more taxa clear the bar at the same
@@ -223,9 +220,10 @@ utils::globalVariables(c("score_val"))
 #'   `(top - bracket_width, top]` are retained.  Only used when
 #'   `consensus_mode = "bracket"`.
 #'
-#'   **The lower bound is exclusive, and Jonah Ventures' own is not** (found
-#'   2026-09-12 while validating against their delivered Pt Conception MiFish
-#'   taxonomy -- `diagnostics/jv_bracket_consensus_validation.R`).  Their
+#'   **The lower bound is exclusive, and Jonah Ventures' own is not** (confirmed
+#'   while validating against their delivered Pt Conception MiFish
+#'   taxonomy; see the `jv_bracket_consensus_validation.R` diagnostic,
+#'   TaxaID_dev repository).  Their
 #'   delivered detailed-hit tables do contain hits at exactly `top - 1`, and
 #'   those hits demonstrably contributed to their published consensus, so
 #'   their real interval is the closed `[top - 1, top]`.  The exclusive bound
@@ -250,34 +248,32 @@ utils::globalVariables(c("score_val"))
 #'   resolved -- `bracket_width_used` records which bracket produced the row.
 #'
 #' @details
-#' \strong{Why `rank_thresholds` has no default (2026-07-23, supersedes the
-#' 2026-07-09 GITA/Jonah Ventures default):}
+#' \strong{Why `rank_thresholds` has no default:}
 #' `min_score` and `max_gap` alone provide essentially no protection against
 #' confusing a species with its closest congener -- an ROC-style sweep against
 #' real 12S reference data found true-positive (within-species) and
 #' false-positive (congeneric) rates track almost identically up to a ~97
-#' percent-identity threshold (see `diagnostics/score_floor_roc_sweep.R`).
+#' percent-identity threshold (see the `score_floor_roc_sweep.R` diagnostic,
+#' TaxaID_dev repository).
 #' This is a real limitation of percent-identity thresholds generally --
 #' `rank_thresholds` is what does the real species-level discrimination this
-#' function offers, which is exactly why a caller getting NO thresholds at
-#' all (the pre-2026-07-09 `NULL` default) was a real gap.
+#' function offers, so a caller getting NO thresholds at all would have no
+#' real protection against that confusion.
 #'
-#' The 2026-07-09 fix picked ONE fixed threshold set (the conventional
-#' GITA/Jonah Ventures percent-identity convention) as the default. That
-#' default was itself later found unsafe to assume universally: this
+#' No single fixed threshold set (e.g. the conventional GITA/Jonah Ventures
+#' percent-identity convention) is safe to assume universally: this
 #' function has no way to know what marker `score_col` was scored against,
 #' or even whether the data is DNA, image, or acoustic evidence at all --
 #' the real, calibrated threshold for "98% identity means species-level
 #' confidence" is a property of the SPECIFIC marker and reference database,
 #' not a universal constant (mirrors `TaxaAssign::join_priors()`'s
 #' `backbone_id` precedent: no safe default exists when the correct value
-#' depends on data the function itself cannot see). Rather than continue
-#' shipping a plausible-looking but potentially-wrong default, the function
-#' now requires the caller to make this choice explicitly -- either supplying
+#' depends on data the function itself cannot see). The function therefore
+#' requires the caller to make this choice explicitly -- either supplying
 #' real thresholds directly, or deriving marker-specific ones from real
 #' reference data via `TaxaLikely::compute_rank_thresholds()` (which uses
 #' the identical genus-/family-equal-weighted, Empirical-Bayes-shrunk
-#' per-rank Youden's J logic `diagnostics/score_floor_roc_sweep.R`
+#' per-rank Youden's J logic the `score_floor_roc_sweep.R` diagnostic
 #' prototyped). Pass `rank_thresholds = NULL` explicitly only if the specific
 #' pipeline you're mirroring genuinely has no rank-threshold step (rare).
 #'
@@ -470,8 +466,8 @@ score_consensus <- function(match_df,
   # --- Auto-scale rank_thresholds if score_col looks like a 0-1 proportion --
   # A caller-supplied rank_thresholds is commonly written on the 0-100
   # percent-identity scale (e.g. the conventional GITA/Jonah Ventures
-  # thresholds species=98, genus=95, family=90, phylum=85; see
-  # TaxaAssign/CLAUDE.md). score_consensus() itself is scale-agnostic
+  # thresholds species=98, genus=95, family=90, phylum=85).
+  # score_consensus() itself is scale-agnostic
   # (min_score's own doc: "97 for percent identity, 0.97 for proportion"), so
   # applying 0-100-scale thresholds blindly to 0-1-scale data would silently
   # make every observation unresolvable (no score could ever clear a
@@ -637,7 +633,7 @@ score_consensus <- function(match_df,
     taxa_unique <- kept[!duplicated(kept$taxon_name), , drop = FALSE]
 
     # "gap" mode reaches its consensus over the DISTINCT retained taxa (this
-    # is the pre-2026-09-12 LCA behaviour and must not change).  "bracket"
+    # is the classical LCA behaviour and must not change).  "bracket"
     # mode counts HITS, because JV's rule is "taxonomy present in at least
     # 90% of the hits" -- a species backed by 8 accessions is 8 hits there,
     # not 1.
@@ -773,7 +769,7 @@ score_consensus <- function(match_df,
   # implements (including its single-row shortcut and its reason vocabulary).
   # Delegating rather than reimplementing is what guarantees that the default
   # path -- consensus_mode = "gap", agreement_fraction = 1 -- is bit-for-bit
-  # the pre-2026-09-12 behaviour.
+  # a classical strict-unanimity LCA.
   if (agreement_fraction >= 1) {
     out <- .find_lca(df, rank_system)
     out$agreement <- if (is.na(out$rank)) NA_real_ else 1

@@ -53,7 +53,7 @@
 #' TaxaAssign does not depend on TaxaExpect, and the formula is a one-liner
 #' used in only two places in this package (`adjust_inat_range_priors()`), so
 #' a cross-package exported utility was not judged worth the coordination
-#' cost. See TaxaAssign's code review response for the full reasoning.
+#' cost.
 #' @param a,b Numeric vectors. Beta shape parameters.
 #' @return Numeric vector.
 #' @noRd
@@ -62,7 +62,7 @@
 
 #' Resolve llm_fn default: NULL → TaxaTools::call_api with clear error
 #'
-#' Known footgun (see TaxaID/CLAUDE.md's "Known R Footguns"): TaxaTools'
+#' Known footgun: TaxaTools'
 #' provider auto-detection (`options(TaxaID.llm_fn = ...)`) is set by
 #' `TaxaTools::.onAttach()`, which only fires via `library(TaxaTools)` --
 #' never via a bare `TaxaTools::` namespace reference. A caller that never
@@ -114,14 +114,12 @@
 #' Build a "Context:" prompt block from a context list
 #'
 #' Shared context-formatting logic for LLM prompts. Used by
-#' `assign_taxa_llm()`'s `.build_taxa_prompt()` -- originally extracted
-#' (2026-08-04) as a DRY refactor shared with `suggest_unreferenced_species()`'s
-#' `.build_plausible_prompt()`/`.build_family_prompt()` too, which duplicated
-#' this block verbatim differing only in which field name in `ctx` holds the
-#' habitat value (`"main_habitat"` vs `"habitat"`); that function moved to
-#' TaxaLikely 2026-09-08 and took its own copy of this helper with it (see
-#' `TaxaLikely/R/suggest_unreferenced_species.R`'s own copy -- cross-package
-#' internal (`:::`) calls aren't used in this codebase).
+#' `assign_taxa_llm()`'s `.build_taxa_prompt()`.
+#' `TaxaLikely::suggest_unreferenced_species()` keeps its own copy of
+#' equivalent logic (`.build_plausible_prompt()`/`.build_family_prompt()`,
+#' differing only in which field name in `ctx` holds the habitat value --
+#' `"main_habitat"` vs `"habitat"`) rather than calling this one, since
+#' cross-package internal (`:::`) calls aren't used in this codebase.
 #' @noRd
 .build_context_block <- function(ctx, habitat_field = "main_habitat") {
   ctx_fields <- c("ecoregion", "lat", "lon", "date", habitat_field)

@@ -39,10 +39,10 @@ explicit \code{"species"} column.}
 \item{exclude_named_evidence}{Logical, default \code{TRUE}. Drop rows that make a
 presence claim about a NAMED species with no local occurrence record --
 i.e. rows carrying a real \code{evidence_sources} value (\code{distance_clamp},
-\code{regional_proximity}, \code{invasive_watch}, \code{inat_range}). Since curve pricing
-every zero-record BLAST candidate has a clamp row, so "has a row in the
-priors table" stopped meaning "known locally" on 2026-08-31. Measured on
-the PtCon 12S run of 2026-09-13: without this filter, 256 of 264
+\code{regional_proximity}, \code{invasive_watch}, \code{inat_range}). Curve pricing gives
+every zero-record BLAST candidate a clamp row, so "has a row in the
+priors table" no longer means "known locally". Measured on a PtCon 12S
+run: without this filter, 256 of 264
 winner-scope \code{unprecedented} rows read \code{expected} or \code{unexpected} at
 consensus scope, 75 of them on nothing but a clamp or evidence row (a neon
 tetra, a plains minnow, a red deer at a marine site), so
@@ -59,9 +59,9 @@ is kept. Filtering by branch would discard it: at PtCon 18S the resident
 rows carry no genus/family at all, so the mirrors are the dominant source
 of genus- and family-level group mass.
 
-\code{FALSE} restores the pre-2026-09-13 behaviour. Ignored, with that same
-behaviour, when \code{taxaexpect_priors} has no \code{evidence_sources} column
-(GLMM-era tables, and sites that predate curve pricing).}
+\code{FALSE} disables this filter, keeping rows with a real \code{evidence_sources}
+value. Also ignored, with that same effect, when \code{taxaexpect_priors} has
+no \code{evidence_sources} column at all.}
 }
 \value{
 A data frame with one row per (rank, taxon) group actually
@@ -118,11 +118,11 @@ on real production data (504 of 616 real Mugu observations misread
 this (e.g. a backbone-resolved name differing from \code{taxon_col}), or omit
 \code{"species"} from \code{rank_cols} to disable it entirely.
 
-\strong{The same gap exists at every rank the map does not cover}
-(2026-09-14). The default stopped at \code{"family"}, so a consensus resolving
-at ORDER rank found nothing, read \code{consensus_has_occurrence_record = FALSE}
-and was reported \code{"unprecedented"} -- identically to the species-rank bug
-above, just coarser, and for the same reason. Found on the real
+\strong{The same gap exists at every rank the map does not cover.}
+A default that stopped at \code{"family"} would mean a consensus resolving at
+ORDER rank finds nothing, reads \code{consensus_has_occurrence_record = FALSE},
+and is reported \code{"unprecedented"} -- identically to the species-rank bug
+above, just coarser, and for the same reason. Real example, from the
 PtConception 12S run: the \verb{Scorpaenichthys marmoratus + Hexagrammos lagocephalus/decagrammus} unit (20 observations) resolves at order rank as
 \code{Perciformes}, was auto-flagged unprecedented, and
 \code{TaxaFlag::review_assignments()}'s consensus-scope skepticism gate then
@@ -132,11 +132,11 @@ Pt. Conception". The export filters then dropped all 20 rows. Cabezon and
 kelp greenling are Point Conception natives; nothing about the science was
 in doubt, only the rank coverage of this lookup.
 
-The default now reaches \code{"order"} and \code{"class"}. Ranks in the DEFAULT that
+The default reaches \code{"order"} and \code{"class"}. Ranks in the DEFAULT that
 \code{taxonomy_map} does not carry are skipped with a message rather than an
-error, so existing callers whose maps stop at family are unaffected;
-ranks you name EXPLICITLY are still an error when absent, because you
-asked for them.
+error, so a caller whose map stops at family doesn't error out; ranks you
+name EXPLICITLY are still an error when absent, because you asked for
+them.
 }
 
 \examples{

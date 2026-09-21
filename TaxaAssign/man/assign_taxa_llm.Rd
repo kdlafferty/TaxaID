@@ -119,16 +119,16 @@ the default when \code{known_absent} is a character vector or when a row in a
 \item{taxa_per_call}{Integer >= 1. Maximum number of unique taxa sent to the
 LLM in a single call. When the unique taxon list for a group exceeds this
 limit it is split into sequential batches; results are combined before
-joining to observations. Default 15. Lowered from a prior default of 30
-(2026-07-09) after a real batch of 30 taxa truncated 4 times out of 5 at
-\code{call_api()}'s default \code{max_tokens} of 3000 (a 23-taxon batch succeeded
-in the same run) -- see \code{.parse_taxa_response()}'s truncation-specific
-warning. 15 also matches \code{TaxaFlag::review_assignments()}'s own default,
-independently lowered from 30 to 15 for the identical failure mode in an
-earlier session -- two independent real-data findings agreeing on the
-same number. Still based on real trials rather than an exhaustive sweep
-across response verbosity; if you still see truncation warnings, reduce
-further or pass an \code{llm_fn} wrapper with a higher \code{max_tokens} (e.g.
+joining to observations. Default 15: a real batch of 30 taxa truncated 4
+times out of 5 at \code{call_api()}'s default \code{max_tokens} of 3000 (a
+23-taxon batch succeeded in the same run) -- see
+\code{.parse_taxa_response()}'s truncation-specific warning. 15 also matches
+\code{TaxaFlag::review_assignments()}'s own default, which hit the identical
+failure mode independently -- two independent real-data findings
+agreeing on the same number. Still based on real trials rather than an
+exhaustive sweep across response verbosity; if you still see truncation
+warnings, reduce further or pass an \code{llm_fn} wrapper with a higher
+\code{max_tokens} (e.g.
 \code{function(prompt) TaxaTools::call_api(prompt, max_tokens = 8000L)}).
 Increase if taxa are few and you prefer fewer API calls.}
 
@@ -193,8 +193,9 @@ Assign Taxa Using an LLM-Approximated Bayesian Pipeline
 \details{
 \strong{Parameter sensitivity:} a sweep of \code{score_sharpness},
 \code{unknown_lik_weight}, \code{prior_phi}, and \code{absent_detection_prob} against one
-real, fixed LLM response (see \code{diagnostics/llm_prior_shape_sweep.R}) found
-these four parameters mostly shape \emph{confidence}
+real, fixed LLM response (see the \code{llm_prior_shape_sweep.R} diagnostic,
+TaxaID_dev repository) found these four parameters mostly shape
+\emph{confidence}
 (\code{consensus_posterior}), not \emph{which} taxon wins. \code{unknown_lik_weight}
 has the largest effect (raising it toward 0.20 measurably lowers winning-
 hypothesis confidence); \code{score_sharpness} has almost none (the LLM-derived
