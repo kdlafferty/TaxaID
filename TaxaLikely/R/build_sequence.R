@@ -814,7 +814,10 @@ build_sequence_matrix <- function(reference_df,
 #' @return A list:
 #'   \describe{
 #'     \item{`replicates`}{Data frame, one row per replicate:
-#'       `replicate`, `n_cross_genus_pairs`, `mean_p_match`,
+#'       `replicate`, `n_cross_genus_pairs` (the count of DISTINCT unordered
+#'       cross-genus sequence pairs -- `.decipher_align_pairs()`'s underlying
+#'       pair table carries both `(i, j)` and `(j, i)` for every pair, and
+#'       this count de-duplicates that before reporting), `mean_p_match`,
 #'       `median_p_match`, `sd_p_match`.}
 #'     \item{`summary`}{Named list: the range (min, max) and coefficient of
 #'       variation (sd/mean) of `mean_p_match` across replicates -- the
@@ -861,6 +864,7 @@ check_cross_genus_sampling_noise <- function(reference_df,
   }
 
   reps <- vector("list", n_replicates)
+  warned_single_genus <- FALSE
   for (i in seq_len(n_replicates)) {
     message(sprintf("check_cross_genus_sampling_noise: replicate %d/%d...", i, n_replicates))
     mat <- suppressMessages(do.call(build_sequence_matrix, bs_args))
@@ -871,9 +875,34 @@ check_cross_genus_sampling_noise <- function(reference_df,
       )
     }
     cross <- mat[mat$genus.x != mat$genus.y, , drop = FALSE]
+
+    # .decipher_align_pairs() (the shared alignment/distance-extraction
+    # helper) reports each unordered pair twice, once as (i, j) and once as
+    # (j, i), from the symmetric distance matrix. That duplication does not
+    # bias mean/median/sd_p_match (every value is duplicated exactly once,
+    # so the distribution's shape is unchanged), but it would double-count
+    # n_cross_genus_pairs. De-duplicate on an order-independent pair key
+    # before counting, rather than assuming a fixed 2x factor.
+    pair_key <- ifelse(
+      cross$id_x < cross$id_y,
+      paste(cross$id_x, cross$id_y, sep = "\r"),
+      paste(cross$id_y, cross$id_x, sep = "\r")
+    )
+    n_pairs <- length(unique(pair_key))
+
+    if (nrow(cross) == 0L && !warned_single_genus) {
+      warning(
+        "check_cross_genus_sampling_noise: no cross-genus pairs exist in this ",
+        "reference set (only 1 genus present) -- mean_p_match/median_p_match/",
+        "sd_p_match are NaN/NA/NA by design, not a computation error.",
+        call. = FALSE
+      )
+      warned_single_genus <- TRUE
+    }
+
     reps[[i]] <- data.frame(
       replicate = i,
-      n_cross_genus_pairs = nrow(cross),
+      n_cross_genus_pairs = n_pairs,
       mean_p_match = mean(cross$p_match),
       median_p_match = stats::median(cross$p_match),
       sd_p_match = stats::sd(cross$p_match)
