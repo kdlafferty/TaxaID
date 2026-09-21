@@ -894,7 +894,12 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   ZERO installed siblings. Fix: the seven added to `Suggests`; the skip is
   now per-package and names what is missing. Verified: with siblings
   present the drift test RUNS (1107/0, SKIP 0); with only TaxaTools
-  resolvable it skips provably (not fails); `check()` 0/0/0.
+  resolvable it skips provably (not fails); `check()` 0/0/0. **Built stamp
+  removed** from the pack (`b8ec71a`: packages table is Package | Purpose |
+  Version; each header reads "Version x. n exported function(s)."), pack
+  regenerated, 1107/0 with SKIP 0, `check()` 0/0/0. **Both MERGED to main
+  `c8d1e15`.** The installed TaxaWizard (3909ae6 build) is now behind main
+  in `R/pack.R` only; the pre-tag reinstall covers it.
   **Pre-tag fix MERGED (`e9efe23`)**: `.pasta_eml_url()` holds each id
   segment to `[A-Za-z0-9_.-]` with no `..` (34 DataONE tests pass).
   **B3 launched** (scratch worktree, nothing committed): eleven guards each
