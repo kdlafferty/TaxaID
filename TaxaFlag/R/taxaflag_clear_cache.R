@@ -39,6 +39,9 @@
 #'   this many days. `NULL` (default) considers every entry.
 #' @param dry_run Logical. `TRUE` reports what would be deleted without
 #'   deleting it.
+#' @param force Logical (default `FALSE`). Pass `TRUE` to clear a
+#'   `cache_dir` that holds file(s) matching none of the recognized cache
+#'   patterns -- see `TaxaTools::list_cache_files()`.
 #' @return Invisibly, the inventory data frame
 #'   ([TaxaTools::list_cache_files()] output) of the files considered.
 #' @seealso [review_assignments()], [check_gbif_tile_range()],
@@ -52,8 +55,9 @@
 #' }
 taxaflag_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFlag", "cache"),
                                  older_than_days = NULL,
-                                 dry_run = FALSE) {
-  inv <- TaxaTools::list_cache_files(cache_dir, .taxaflag_cache_patterns)
+                                 dry_run = FALSE,
+                                 force = FALSE) {
+  inv <- TaxaTools::list_cache_files(cache_dir, .taxaflag_cache_patterns, force = force)
   TaxaTools::report_and_clear_cache(
     inv,
     label = "taxaflag_clear_cache", cache_dir = cache_dir,
