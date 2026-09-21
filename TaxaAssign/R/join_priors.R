@@ -122,11 +122,11 @@ utils::globalVariables(c(
     c(
       "taxon_name", "taxon_name_rank", "alpha", "beta", "undetected_type",
       "model_tier", "observed_in_habitat",
-      # kernel-priors redesign (2026-08-31): branch label + effective evidence
-      # travel with expanded rows; prior_branch also gates the promotion below.
+      # branch label + effective evidence travel with expanded rows;
+      # prior_branch also gates the promotion below.
       "prior_branch", "effective_records",
-      # presence-mixture columns (2026-08-26 D8): expanded evidence rows keep
-      # their own mixture so compute_posterior()'s presence-draw sampler sees it
+      # presence-mixture columns: expanded evidence rows keep their own
+      # mixture so compute_posterior()'s presence-draw sampler sees it
       "prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent",
       "prior_mix_p_conc", tax_extra
     )
@@ -520,13 +520,13 @@ utils::globalVariables(c(
 #' any row whose primary join failed on `(taxon_name, taxon_name_rank,
 #' grid_id)` alone against habitat-agnostic (`main_habitat = NA`)
 #' `taxaexpect_priors` rows, ranked below a real per-habitat match but above
-#' the dark-diversity/global-floor fallback below. Confirmed a real,
-#' previously-shipping gap on real data: a domestic-food prior row never
-#' matched a real observation under habitat-scoped priors, silently falling
-#' back to the generic floor instead of the tailored prior
-#' `generate_domestic_food_priors()` computed for it.
+#' the dark-diversity/global-floor fallback below. Confirmed on real data: a
+#' domestic-food prior row never matches a real observation under
+#' habitat-scoped priors alone, silently falling back to the generic floor
+#' instead of the tailored prior `generate_domestic_food_priors()` computed
+#' for it.
 #'
-#' **Domestic/synanthropic species caveat (Session 149):** this fallback
+#' **Domestic/synanthropic species caveat:** this fallback
 #' assumes unmodelled species are exchangeable draws from one detection
 #' process. Domestic/synanthropic species (pets, livestock) violate this in
 #' a known, systematic direction, since GBIF/iNaturalist under-index captive
@@ -542,7 +542,7 @@ utils::globalVariables(c(
 #' `taxon_name` x `taxon_name_rank` x `grid_id` x `main_habitat`
 #' (keeping the highest `prior_mean` among same-site duplicates --
 #' e.g. artifacts of coarse-rank expansion). The `grid_id`/`main_habitat`
-#' keys (added Session 138) mean a genuine multi-site observation (the same
+#' keys mean a genuine multi-site observation (the same
 #' `observation_id` detected at more than one site) keeps one row per site
 #' per candidate rather than collapsing to a single site. Pass the result
 #' through [combine_multisite_priors()] before [compute_posterior()] to
@@ -576,12 +576,10 @@ utils::globalVariables(c(
 #'   habitats and row counts at the resolved grid cell.
 #'   \code{list(main_habitat = "Marine")} alone (no \code{lat}/\code{lon}/
 #'   \code{grid_id}) auto-fills coordinates from
-#'   \code{attr(taxaexpect_priors, "search_center")} when present -- set by
-#'   the archived \code{TaxaExpect::build_priors()} (GLMM chain, archived
-#'   2026-09-09; only relevant for an old cached \code{build_priors()}
-#'   result you still have on disk, since \code{estimate_kernel_priors()}
-#'   does not set this attribute) -- \code{main_habitat} itself is
-#'   never auto-filled or guessed.
+#'   \code{attr(taxaexpect_priors, "search_center")} when present
+#'   (\code{estimate_kernel_priors()}'s own output does not set this
+#'   attribute) -- \code{main_habitat} itself is never auto-filled or
+#'   guessed.
 #'   See Details.
 #' @param taxonomy_lookup Optional data frame mapping `taxon_name` to
 #'   taxonomy columns (e.g. `genus`, `family`). Used to fill taxonomy
@@ -644,11 +642,10 @@ utils::globalVariables(c(
 #' never promoted under any condition: their sub-singleton theta is the
 #' deliberate output of a graded evidence blend
 #' (\code{TaxaExpect::apply_undetected_evidence()}) or ESS-based domestic
-#' scale, and promotion would silently erase that gradation (the central
-#' finding of the 2026-08-26 upranking review -- see
-#' \code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}).
-#' When `taxaexpect_priors` carries no `observed_in_habitat` column, the
-#' pre-2026-08-26 blanket promotion is retained for modelled rows.
+#' scale, and promotion would silently erase that gradation.
+#' When `taxaexpect_priors` carries no `observed_in_habitat` column, every
+#' modelled row below the singleton-mirror mean is promoted -- the
+#' extrapolation check requires that column.
 #'
 #' @section Coarse-rank expansion:
 #' When a likelihood row has `taxon_name_rank` coarser than species (e.g.
@@ -975,9 +972,9 @@ join_priors <- function(likelihoods,
 
   # ---- Join likelihoods -> event_meta -> taxaexpect_priors ------------------
   # relationship = "many-to-many" on the first join is expected and intentional
-  # when an observation_id has multiple candidates AND multiple sites (Session
-  # 138 multi-site support): every candidate fans out against every site row,
-  # to be recombined downstream by combine_multisite_priors(). Declaring this
+  # when an observation_id has multiple candidates AND multiple sites: every
+  # candidate fans out against every site row, to be recombined downstream by
+  # combine_multisite_priors(). Declaring this
   # explicitly silences dplyr's precautionary warning, which would otherwise
   # fire on every genuinely multi-site, multi-candidate observation.
   result <- likelihoods |>
@@ -1122,10 +1119,10 @@ join_priors <- function(likelihoods,
     )
 
   # Singleton-mirror mean: used as the floor threshold for modelled-species
-  # prior promotion (Issue 2 fix -- dark diversity redesign, Session 117).
-  # Singleton mirrors represent the detection probability of species observed
-  # exactly once in training data -- the correct floor for a modelled species
-  # with genuine (but very low) theta. Using dark_mean (= mean of singleton
+  # prior promotion. Singleton mirrors represent the detection probability
+  # of species observed exactly once in training data -- the correct floor
+  # for a modelled species with genuine (but very low) theta. Using
+  # dark_mean (= mean of singleton
   # mirrors + global floor) was too aggressive: a Tier 2 species with genuine
   # small theta could be promoted to dark_mean even though dark_mean is pulled
   # down by the global floor, erasing the signal that the species was actually
@@ -1198,33 +1195,27 @@ join_priors <- function(likelihoods,
   # This inverts the intended ordering: unobserved species beat observed ones.
   # Fix: promote such rows to the singleton-mirror level. We use singleton_mean
   # (not dark_mean) because dark_mean is pulled down by the global floor.
-  # Issue 2 fix -- Session 117.
   #
-  # SCOPED BY CAUSE (2026-08-26 mixture redesign, D1 -- see ecosystem_docs/
-  # REENTRY_PROMPT_undetected_evidence_mixture_redesign.md). The original
-  # blanket `!is.na(alpha) & below-singleton` condition promoted far more than
-  # its motivating case:
+  # SCOPED BY CAUSE. A blanket `!is.na(alpha) & below-singleton` condition
+  # would promote far more than its motivating case:
   # (a) Named evidence-derived rows (undetected_type == "evidence_blend",
   #     model_tier tier_undetected_evidence/tier_domestic_food) sit below the
   #     singleton mean BY CONSTRUCTION -- their graded theta IS the design
   #     (TaxaExpect::apply_undetected_evidence()'s weighted blend,
   #     generate_domestic_food_priors()'s ESS-based scale). Promoting them to
-  #     exact singleton parity silently erased every weight/distance/age
-  #     gradation and converted the blend into a binary admission gate --
-  #     the central finding of the 2026-08-26 GreatLakes upranking review
-  #     (verified by ablation: byte-identical consensus output across a 4x
-  #     d_half sweep; 177 observations flipped species->coarser). Never
-  #     promoted, under any condition.
+  #     exact singleton parity would silently erase every weight/distance/age
+  #     gradation and convert the blend into a binary admission gate
+  #     (verified by ablation on GreatLakes data: byte-identical consensus
+  #     output across a 4x d_half sweep; 177 observations flipped
+  #     species->coarser). Never promoted, under any condition.
   # (b) Modelled rows whose low theta is a genuine, in-habitat estimate
   #     (observed_in_habitat TRUE) are data, not artifact -- promoting them
   #     discards real rarity signal. Only rows whose low prior is habitat
   #     EXTRAPOLATION (observed_in_habitat explicitly FALSE -- the species was
   #     never recorded in this habitat in training, the rule's actual
   #     motivating case) are promoted. When taxaexpect_priors carries no
-  #     observed_in_habitat column at all (priors not from
-  #     estimate_kernel_priors() or the archived generate_full_priors()),
-  #     the pre-redesign behavior is retained for modelled rows so older
-  #     callers are unaffected.
+  #     observed_in_habitat column at all, blanket promotion is retained for
+  #     modelled rows so such priors are not silently skipped.
   has_model <- !is.na(result$alpha)
   singleton_mean <- result$singleton_alpha / (result$singleton_alpha + result$singleton_beta)
 
@@ -1238,15 +1229,15 @@ join_priors <- function(likelihoods,
       (is.na(result$model_tier) |
         !result$model_tier %in% c("tier_undetected_evidence", "tier_domestic_food"))
   }
-  # Kernel-priors schema (2026-08-31): when prior_branch is present, only
-  # kernel-estimated resident rows are promotion-eligible -- every other
-  # branch's magnitude (evidence blends, transport/domestic, undetected
-  # floors) is its design, not a habitat-extrapolation artifact. Subsumes the
-  # model_tier value checks above once that column is retired.
+  # Kernel-priors schema: when prior_branch is present, only kernel-estimated
+  # resident rows are promotion-eligible -- every other branch's magnitude
+  # (evidence blends, transport/domestic, undetected floors) is its design,
+  # not a habitat-extrapolation artifact. Subsumes the model_tier value
+  # checks above once that column is retired.
   #
-  # 2026-09-14: reads .KERNEL_BRANCH rather than the bare string, so the
-  # pre-rename "resident_observed" still qualifies. Deliberately NOT gated on
-  # effective_records as well: promotion only ever lifts a row to singleton
+  # Reads .KERNEL_BRANCH rather than a bare string, so both accepted
+  # prior_branch spellings qualify (see kernel_branch.R). Deliberately NOT
+  # gated on effective_records as well: promotion only ever lifts a row to singleton
   # parity, and a low-evidence row's theta is already ~13,000x below a
   # well-evidenced one's (real PtCon 12S medians, 1.5e-08 vs 1.9e-04), so
   # there is no case here of a thin row being promoted to prominence. The
@@ -1275,7 +1266,7 @@ join_priors <- function(likelihoods,
     )
   }
 
-  # ---- Group-based dark diversity priors (Issue 3 fix, Session 117) ----------
+  # ---- Group-based dark diversity priors -------------------------------------
   # When singleton_taxonomy is supplied, replace the flat global-floor prior
   # for unmodelled candidates with mass-conserving hierarchical group priors.
   # See .compute_dark_diversity_groups() for the algorithm.
@@ -1300,8 +1291,7 @@ join_priors <- function(likelihoods,
     # Retrieve singleton mirror rows from taxaexpect_priors; join taxonomy via
     # source_taxon_name so we know which phylum/class/order/family/genus each
     # singleton proxy represents. (Taxonomy columns were stripped by
-    # estimate_kernel_priors()/the archived generate_full_priors()'s own
-    # select() -- must re-join here.)
+    # estimate_kernel_priors()'s own select() -- must re-join here.)
     if ("source_taxon_name" %in% names(taxaexpect_priors)) {
       sing_rows <- taxaexpect_priors[
         !is.na(taxaexpect_priors$undetected_type) &
@@ -1323,7 +1313,7 @@ join_priors <- function(likelihoods,
         "join_priors: singleton_taxonomy supplied but taxaexpect_priors lacks ",
         "'source_taxon_name'. Group dark diversity priors require ",
         "source_taxon_name in your priors table (present in ",
-        "TaxaExpect::generate_undetected_diversity() output since Session 117, ",
+        "TaxaExpect::generate_undetected_diversity() output ",
         "and in estimate_kernel_priors() output)."
       ))
     }
@@ -1417,9 +1407,9 @@ join_priors <- function(likelihoods,
   # keeps one row PER SITE per candidate, instead of collapsing to a single
   # highest-prior_mean site per candidate. Without this, each candidate would be
   # matched only to its own most favorable site, discarding the site it was
-  # actually detected at (Session 138 -- see combine_multisite_priors() roxygen
-  # for the full empirical repro). This still dedupes same-site duplicates from
-  # coarse-rank expansion, which is what this call originally existed for.
+  # actually detected at (see combine_multisite_priors() roxygen for the full
+  # empirical repro). This still dedupes same-site duplicates from coarse-rank
+  # expansion as well.
   result <- result |>
     dplyr::arrange(dplyr::desc(prior_mean)) |>
     dplyr::distinct(observation_id, taxon_name, taxon_name_rank, grid_id,
