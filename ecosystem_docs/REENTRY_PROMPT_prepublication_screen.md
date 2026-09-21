@@ -397,6 +397,25 @@ passes vacuously when resolution returns NA. Confirmed as documented:
 coastline/minor-islands/EPSG rule, UPS above 84 degrees, NA coordinates,
 on-coastline points, the occurrence-side vs taxon-side Uncertain routing,
 the LLM cache key.
+**Seven fixes MERGED 2026-09-21 (`dc820c6`)**: TaxaMatch row multiplication
+(highest numeric accession version wins, documented) and stale-generation
+corroborator verdicts (lookup restricted to the current params_key, newest
+`evaluated_at` wins -- CAVEAT: `verify_local_corroborations()` uses the
+DEFAULT params key because it receives no BLAST parameters; a run evaluated
+under non-default parameters reads every corroborator as "unchecked" --
+conservative, but a follow-up should let the caller pass the key or derive
+it from the audited run, as `.summarise_corroborators()` already does);
+cache-clear containment in the shared engine (refuse cwd/home/root, refuse
+mixed directories without `force = TRUE`, never follow symlinks out);
+antimeridian-safe `.approx_distance_km()` replacing four inline copies;
+template generator declares `data_type`, its diff test fails rather than
+skips, and a new test pins every canonical-path placeholder to CONFIG/
+DATAFLOW; `validate_controls()` gives all-zero columns an explicit
+`no_detections` row and its distance step is vectorised (1,151-sample case
+~16.5 s -> 1.3 s end-to-end, bit-identical). Tests: TaxaMatch 1,364,
+TaxaTools 1,174, TaxaExpect 701, TaxaFlag 580, all zero failures. One known
+gap until the next reinstall: TaxaWizard's committed-template diff test
+compares against the installed library, which predates today's inst/ edits.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
