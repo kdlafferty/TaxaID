@@ -9,12 +9,10 @@
 # outputs, cost/scale scoping, package placement) -- summarized in this
 # function's own roxygen below rather than re-derived here.
 #
-# 2026-08-14: gains a persistent, accession-keyed cache (same cache_dir
+# This function has a persistent, accession-keyed cache (same cache_dir
 # default/convention as evaluate_reference_accessions()/
-# investigate_flagged_accession()) -- prompted directly by the user after a
-# real evaluate_reference_accessions() run confirmed that function's own
-# rate-limit resilience, then noting this LLM-calling sibling had no such
-# protection: every call re-reviews its ENTIRE in-scope set from scratch,
+# investigate_flagged_accession()): without one, every call would re-review
+# its ENTIRE in-scope set from scratch,
 # including accessions already reviewed (a real, avoidable LLM API cost).
 # Keyed on accession + a content fingerprint of the review-relevant input
 # columns (not a TTL): unlike evaluate_reference_accessions()'s
@@ -568,9 +566,9 @@ review_flagged_accessions <- function(evaluated_df,
         "frac_independent_below_min_congruent_rank=%.2f"
       )
     )
-    # Local corroboration (2026-09-03): one additive line when the columns
+    # Local corroboration: one additive line when the columns
     # are present and populated -- the caller's own reference set is
-    # evidence the BLAST diagnostics above cannot see (the 2026-09-03
+    # evidence the BLAST diagnostics above cannot see (the
     # primer-inclusive blind spot).
     local_line <- NULL
     if (all(.ACCESSION_REVIEW_LOCAL_COLS %in% names(row)) &&
@@ -907,7 +905,7 @@ review_flagged_accessions <- function(evaluated_df,
 #' raw BLAST verdict can't distinguish from a genuine mislabel) or removing
 #' nothing until every flag has been manually reviewed.
 #'
-#' @section Real motivating case (2026-08-19):
+#' @section Real motivating case:
 #' A real GreatLakes match-candidate screen flagged `Stereolepis
 #' doederleini` (`LC649807`) `hierarchy_flag = "incongruent"`. A separate,
 #' earlier investigation into this exact accession found it is very likely
