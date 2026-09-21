@@ -819,18 +819,19 @@ utils::globalVariables(c(
 
 #' Evaluate One Chunk of Accessions -- Fetch, BLAST, Score
 #'
-#' Extracted from `evaluate_reference_accessions()`'s own body (2026-08-14,
-#' see `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md`'s
-#' chunking/circuit-breaker follow-on work) so the caller can run it once per
+#' Extracted from `evaluate_reference_accessions()`'s own body (see
+#' `ecosystem_docs/REENTRY_PROMPT_flagged_accession_second_look.md`'s
+#' chunking/circuit-breaker design) so the caller can run it once per
 #' CHUNK of `needs_eval` accessions and write the persistent cache
 #' incrementally after each one, instead of once for the entire accession
 #' list at the very end -- see `evaluate_reference_accessions()`'s own
 #' `@section Chunked evaluation and NCBI rate-limiting resilience` for the
-#' full rationale. Byte-identical logic to what this function's body used to
-#' do inline; `chunk_acc` plays the role `needs_eval` used to play, scoped to
+#' full rationale. Logic here is identical to the corresponding step in
+#' `evaluate_reference_accessions()`'s own body; `chunk_acc` plays the role
+#' `needs_eval` plays there, scoped to
 #' one chunk instead of the whole call.
 #'
-#' `max_query_len`/`max_batch_bp` (2026-09-01, see
+#' `max_query_len`/`max_batch_bp` (see
 #' `ecosystem_docs/REENTRY_PROMPT_eval_ref_accessions_long_sequence_robustness.md`)
 #' implement the hard submission cap and length-aware BLAST batching -- see
 #' `evaluate_reference_accessions()`'s own `@section Long-sequence
@@ -1351,13 +1352,14 @@ utils::globalVariables(c(
 #' computes a Jeffreys-smoothed taxonomic-hierarchy congruence verdict --
 #' the same congruence math
 #' `TaxaLikely::audit_reference_database()`/`classify_reference_accessions()`
-#' used to compute from a narrow, taxon-list-scoped DECIPHER alignment, now
+#' computed from a narrow, taxon-list-scoped DECIPHER alignment (see that
+#' archived function's own roxygen for its full design), here
 #' fed from real, broad BLAST hits instead.
 #'
-#' @section Why this exists (and why the old approach was abandoned):
-#' The superseded approach's "among"/foreign comparison population for ANY
-#' accession was exactly and only whatever else got fetched under the
-#' caller's own `taxa` argument -- no broader NCBI comparison existed
+#' @section Why this exists:
+#' The archived approach's "among"/foreign comparison population for ANY
+#' accession is exactly and only whatever else got fetched under the
+#' caller's own `taxa` argument -- no broader NCBI comparison exists
 #' anywhere in that pipeline. This produces both false positives (real,
 #' correctly-labeled accessions read "incongruent" purely because nothing
 #' else from their own family happened to be in the caller's list) and false
@@ -1370,7 +1372,7 @@ utils::globalVariables(c(
 #' genuine, Smithsonian-vouchered `Menidia` accessions "incongruent" purely
 #' because `Menidia`'s family had no other representative on the list).
 #'
-#' @section Scoping a large marker's screen (2026-09-05):
+#' @section Scoping a large marker's screen:
 #' Per-accession remote BLAST does not scale to a large reference set under
 #' this ecosystem's own NCBI throttle -- confirmed directly: a 995-accession
 #' PtConception 12S run has already tripped it, and the 18S reference set
@@ -1406,21 +1408,23 @@ utils::globalVariables(c(
 #' leaving every other accession in a large reference set unscreened by
 #' default, not as an oversight but as the documented, correct scope.
 #'
-#' @section Why "incongruent" gained a TTL (2026-09-02):
-#' It was cached indefinitely on the reasoning that an accession's own
-#' sequence and label do not change once deposited. That is true and still
-#' irrelevant: the verdict is not a property of the accession, it is a
-#' property of what BLAST returned about the accession's NEIGHBOURHOOD, and
+#' @section Why "incongruent" carries a TTL:
+#' Caching this verdict indefinitely would rest on the reasoning that an
+#' accession's own sequence and label do not change once deposited. That is
+#' true and still irrelevant: the verdict is not a property of the
+#' accession, it is a
+#' property of what BLAST returns about the accession's NEIGHBOURHOOD, and
 #' that changes. Measured, not hypothesised: `OP056918`
-#' (`Cryptacanthodes maculatus`) read `"incongruent"` with no corroborating
-#' evidence anywhere on 2026-09-01, and `"congruent"` with four conspecific
-#' hits at 100% identity on 2026-09-02, under an IDENTICAL `params_key`.
-#' Under the old policy that first, wrong verdict would have been served from
+#' (`Cryptacanthodes maculatus`) reads `"incongruent"` with no corroborating
+#' evidence anywhere on one real fetch, and `"congruent"` with four
+#' conspecific hits at 100% identity on a later real fetch the next day,
+#' under an IDENTICAL `params_key`.
+#' Without a TTL that first, wrong verdict would be served from
 #' cache forever -- and it is the one verdict
 #' [remove_incongruent_references()] acts on destructively.
 #'
 #' What the flip was, established by
-#' `diagnostics/blast_verdict_repeatability_probe.R` the same day: NOT
+#' `diagnostics/blast_verdict_repeatability_probe.R`: NOT
 #' instability. Three back-to-back replicates of all 12 PtConception
 #' `"incongruent"` accessions, each into a fresh cache, returned identical
 #' verdicts, identical diagnostics, and identical hit sets (Jaccard 1.000,
@@ -1432,7 +1436,7 @@ utils::globalVariables(c(
 #' since January need not be in the `nt` volume BLAST searches until a rebuild
 #' includes it.
 #'
-#' That reframes this TTL. The 09-02 verdict was not a correction of a
+#' That reframes this TTL. The later verdict was not a correction of a
 #' malfunction -- both verdicts were correct given the database each was
 #' computed against. What goes stale is the SNAPSHOT, which is exactly what a
 #' TTL is for -- and it is also what sets the right cadence for one. `nt`
@@ -1444,7 +1448,7 @@ utils::globalVariables(c(
 #' population. See
 #' `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`.
 #'
-#' @section Coarse-rank diagnostic (2026-08-07):
+#' @section Coarse-rank diagnostic:
 #' `finest_common_rank` walks the FULL `kingdom`->`species` ladder
 #' (`TaxaTools::standard_ranks`), not just `min_congruent_rank` and finer.
 #' `hierarchy_flag`'s classification threshold is unaffected -- it still
