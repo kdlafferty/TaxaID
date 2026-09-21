@@ -828,6 +828,14 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   a test asserted it, but the attribute survived only because `left_join`
   happens to preserve attributes on a plain data frame. NOAA and Natural
   Earth downloads ran live and passed.
+  **Pre-tag fix MERGED (`e9efe23`)**: `.pasta_eml_url()` holds each id
+  segment to `[A-Za-z0-9_.-]` with no `..` (34 DataONE tests pass).
+  **B3 launched** (scratch worktree, nothing committed): eleven guards each
+  broken deliberately and observed -- vignette-call checks, snippet export
+  validation, the placeholder-declaration and committed-template tests, the
+  registry invariants, the kingdom guard, `cache_ok()` staleness,
+  `on_unreviewed = "error"`, `on_count_failure`, cache-clear containment,
+  the decision-file schema and ambiguity guards.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
