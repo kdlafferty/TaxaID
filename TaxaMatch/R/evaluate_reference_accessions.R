@@ -2144,7 +2144,10 @@ evaluate_reference_accessions <- function(accessions,
   )
 
   cache <- .load_reference_accession_cache(cache_dir)
-  if (!"params_key" %in% names(cache)) cache$params_key <- NA_character_
+  # No `params_key` fallback here: .load_reference_accession_cache()'s own
+  # schema check already guarantees this column (it is not in
+  # .ADDITIVE_CACHE_COLUMNS, so a cache missing it is discarded wholesale,
+  # never returned).
 
   now <- Sys.time()
 
