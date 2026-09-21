@@ -1,15 +1,19 @@
 # condition_evidence_on_habitat() -- 2026-09-12
 
-.ev <- function() data.frame(
-  taxon_name = c("Oncorhynchus mykiss", "Cervus elaphus", "Sebastes alutus", "Unknownus taxus"),
-  weight     = c(0.046, 0.035, 0.026, 0.02),
-  source     = "regional_proximity", stringsAsFactors = FALSE
-)
-.hab <- function() data.frame(
-  taxon_name = c("Oncorhynchus mykiss", "Cervus elaphus", "Sebastes alutus"),
-  Marine = c(0.25, 0, 1), Freshwater = c(0.75, 0, 0), Terrestrial = c(0, 1, 0),
-  Habitat = c("Freshwater", "Terrestrial", "Marine"), stringsAsFactors = FALSE
-)
+.ev <- function() {
+  data.frame(
+    taxon_name = c("Oncorhynchus mykiss", "Cervus elaphus", "Sebastes alutus", "Unknownus taxus"),
+    weight     = c(0.046, 0.035, 0.026, 0.02),
+    source     = "regional_proximity", stringsAsFactors = FALSE
+  )
+}
+.hab <- function() {
+  data.frame(
+    taxon_name = c("Oncorhynchus mykiss", "Cervus elaphus", "Sebastes alutus"),
+    Marine = c(0.25, 0, 1), Freshwater = c(0.75, 0, 0), Terrestrial = c(0, 1, 0),
+    Habitat = c("Freshwater", "Terrestrial", "Marine"), stringsAsFactors = FALSE
+  )
+}
 
 test_that("weights are multiplied by the site-habitat weight and floored at w_floor", {
   out <- suppressMessages(condition_evidence_on_habitat(.ev(), .hab(), "Marine", w_floor = 6.4e-5))
@@ -32,7 +36,8 @@ test_that("the site habitat must be a column of the lookup; inputs are validated
   expect_error(condition_evidence_on_habitat(.ev(), .hab(), "Estuarine"), "no column 'Estuarine'")
   expect_error(condition_evidence_on_habitat(.ev()[, "taxon_name", drop = FALSE], .hab(), "Marine"), "weight")
   expect_error(condition_evidence_on_habitat(.ev(), .hab(), "Marine", w_floor = 1), "w_floor")
-  bad <- .hab(); bad$Marine[1] <- 1.5
+  bad <- .hab()
+  bad$Marine[1] <- 1.5
   expect_error(condition_evidence_on_habitat(.ev(), bad, "Marine"), "outside")
 })
 
@@ -49,5 +54,8 @@ test_that("the conditioned table is accepted by apply_undetected_evidence() unch
 })
 
 test_that("verbose reports counts", {
-  expect_message(condition_evidence_on_habitat(.ev(), .hab(), "Marine", w_floor = 6.4e-5), "4 row\\(s\\) conditioned on 'Marine' -- 2 unchanged .* 1 reduced, 1 floored")
+  expect_message(
+    condition_evidence_on_habitat(.ev(), .hab(), "Marine", w_floor = 6.4e-5),
+    "4 row\\(s\\) conditioned on 'Marine' -- 2 unchanged .* 1 reduced, 1 floored"
+  )
 })

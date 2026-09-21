@@ -37,6 +37,16 @@ exclusions: list(
     "R/generate_domestic_food_priors.R" = list(line_length_linter = Inf),
     "R/fit_regional_presence_curve.R" = list(line_length_linter = Inf),
     "tests/testthat/test-apply_undetected_evidence.R" = list(line_length_linter = Inf),
-    "tests/testthat/test-generate_regional_proximity_evidence.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-generate_regional_proximity_evidence.R" = list(
+      line_length_linter = Inf,
+      # `i <<- i + 1L` (line 716) increments a counter local to the enclosing
+      # mock-factory function .mock_tile_with_cache_age(), not a global --
+      # the idiomatic R closure-counter pattern, not the antipattern this
+      # linter targets. Verified by reading the enclosing function (`i` is
+      # declared with `<-` in the same scope one line above); left as <<-
+      # rather than switched to assign() per Pass 5's guidance not to
+      # restructure working code to dodge a linter artifact.
+      assignment_linter = 716L
+    ),
     "tests/testthat/test-generate_domestic_food_priors.R" = list(line_length_linter = Inf)
   )

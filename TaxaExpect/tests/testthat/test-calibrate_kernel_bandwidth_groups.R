@@ -1,7 +1,8 @@
 .patches <- function(g, nsp, n, sd_deg, seed) {
   set.seed(seed)
   sp <- paste0(g, "_sp", seq_len(nsp))
-  cl <- seq(34.15, 35.85, length.out = nsp); co <- seq(-121.35, -119.65, length.out = nsp)
+  cl <- seq(34.15, 35.85, length.out = nsp)
+  co <- seq(-121.35, -119.65, length.out = nsp)
   i <- sample(nsp, n, TRUE)
   data.frame(
     taxon_name       = sp[i],
@@ -12,15 +13,18 @@
     stringsAsFactors = FALSE
   )
 }
-.args <- function(d) list(d, "Marine", lambda_grid = c(5, 10, 25, 50, 100, 200),
-                          block_size_deg = 0.5, min_block_records = 20L)
+.args <- function(d) {
+  list(d, "Marine", lambda_grid = c(5, 10, 25, 50, 100, 200),
+       block_size_deg = 0.5, min_block_records = 20L)
+}
 
 test_that("sampling_group_col = NULL reproduces the ungrouped fit EXACTLY", {
   # The regression that matters: this function's default must not move. A
   # grouped code path that changes the pooled answer would silently
   # recalibrate every workflow that already shipped a lambda.
   d <- rbind(.patches("A", 12, 3000, 0.05, 1), .patches("B", 12, 1500, 0.30, 2))
-  one <- d; one$sampling_group <- "everything"
+  one <- d
+  one$sampling_group <- "everything"
   a <- suppressMessages(do.call(calibrate_kernel_bandwidth, .args(d)))
   b <- suppressMessages(do.call(calibrate_kernel_bandwidth,
                                 c(.args(one), list(sampling_group_col = "sampling_group"))))

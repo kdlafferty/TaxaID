@@ -13,6 +13,8 @@ Description: Estimates theta priors -- each taxon's expected share of the
 License: CC0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
 Imports:
     dplyr,
     grDevices,

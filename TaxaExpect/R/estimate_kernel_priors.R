@@ -182,6 +182,19 @@
 #'       habitat-stratified composition used for back-off.}
 #'     \item{params}{The call's tuning values, for provenance.}
 #'   }
+#' @examples
+#' set.seed(1)
+#' occ <- data.frame(
+#'   taxon_name = sample(c("Species_A", "Species_B", "Species_C"), 60, TRUE,
+#'     prob = c(0.5, 0.3, 0.2)
+#'   ),
+#'   decimalLatitude = 34 + rnorm(60, 0, 0.05),
+#'   decimalLongitude = -120 + rnorm(60, 0, 0.05),
+#'   main_habitat = "Marine",
+#'   stringsAsFactors = FALSE
+#' )
+#' kp <- estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 2, m = 0)
+#' kp$priors
 #' @seealso [calibrate_kernel_bandwidth()] to choose `lambda_km`,
 #'   `lambda_covariate`, and `m` by held-out prediction.
 #' @export

@@ -76,6 +76,13 @@ formula -- use that function when distances still need measuring
 in hand.
 }
 }
+\examples{
+generate_presence_curve_evidence(
+  taxon_names = c("Species_X", "Species_Y"),
+  w_scale = 0.05,
+  distance_km = c(Species_X = 40, Species_Y = 300)
+)
+}
 \seealso{
 \code{\link[=apply_undetected_evidence]{apply_undetected_evidence()}} (use \code{pricing = "curve"}),
 \code{\link[=generate_regional_proximity_evidence]{generate_regional_proximity_evidence()}},

@@ -34,6 +34,9 @@ unreachable for any \code{w <= 1} under curve pricing -- which is why
 it still prints a real, dataset-specific bound under
 \code{pricing = "blend"}.
 }
+\examples{
+generate_user_specified_evidence(c(Species_Z = 0.08))
+}
 \seealso{
 \code{\link[=generate_presence_curve_evidence]{generate_presence_curve_evidence()}},
 \code{\link[=apply_undetected_evidence]{apply_undetected_evidence()}}

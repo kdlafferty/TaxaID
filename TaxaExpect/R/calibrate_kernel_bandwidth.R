@@ -104,6 +104,25 @@
 #'     `lambda_covariate`, `lambda_latitude`, `m`, and its
 #'     `weighted_logloss`. Read it before trusting `best`.}
 #' }
+#' @examples
+#' set.seed(1)
+#' nsp <- 8
+#' sp <- paste0("sp", seq_len(nsp))
+#' cl <- seq(34.15, 35.85, length.out = nsp)
+#' co <- seq(-121.35, -119.65, length.out = nsp)
+#' i <- sample(nsp, 3000, TRUE)
+#' occ <- data.frame(
+#'   taxon_name = sp[i],
+#'   decimalLatitude = pmin(pmax(rnorm(3000, cl[i], 0.05), 34), 36),
+#'   decimalLongitude = pmin(pmax(rnorm(3000, co[i], 0.05), -121.5), -119.5),
+#'   main_habitat = "Marine",
+#'   stringsAsFactors = FALSE
+#' )
+#' fit <- calibrate_kernel_bandwidth(
+#'   occ, "Marine",
+#'   lambda_grid = c(10, 25, 50), block_size_deg = 0.5, min_block_records = 20L
+#' )
+#' fit$best
 #' @seealso [estimate_kernel_priors()]
 #' @export
 calibrate_kernel_bandwidth <- function(occurrence_data,
@@ -271,7 +290,8 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
     if (m_gi > 0) {
       sp_g <- species_by_g[[g]]
       cw <- tapply(w_g, taxa_g, sum)
-      p_reg <- table(taxa_g); p_reg <- p_reg / sum(p_reg)
+      p_reg <- table(taxa_g)
+      p_reg <- p_reg / sum(p_reg)
       q <- stats::setNames(rep(smoothing, length(sp_g)), sp_g)
       q[names(cw)] <- q[names(cw)] + cw
       Wb <- sum(w_g)
@@ -302,8 +322,9 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
     block_held <- block[held]
 
     # groups that can be scored in this block at all
-    gs <- grp_levels[vapply(grp_levels, function(g)
-      sum(in_b & grp == g) >= min_group_records && any(grp_held == g), logical(1))]
+    gs <- grp_levels[vapply(grp_levels, function(g) {
+      sum(in_b & grp == g) >= min_group_records && any(grp_held == g)
+    }, logical(1))]
     n_cells_skipped <- n_cells_skipped + (length(grp_levels) - length(gs))
     if (length(gs) == 0L) next
     for (g in gs) n_target_by_g[bi, g] <- sum(in_b & grp == g)
