@@ -814,6 +814,20 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   share one stash list and the agent popped the workflow chat's WIP stash
   by mistake (restored intact, verified); compare against a baseline with
   `git archive <commit> | tar -x` instead.
+  **TaxaFlag DONE** (`90dcf8a`): `check()` 0/0/0 (no NOTE), 580 tests;
+  8 non-ASCII fixed; dead `n_bad` removed; stale `.lintr` entry for the
+  removed `build_review_covariates.R` dropped; examples run explicitly.
+  7a: review cache keyed by hash with the full key re-verified on read; the
+  gadget renders via `shiny::p()` (auto-escaped), never `HTML()`.
+  **TaxaHabitat DONE**: `check()` 0/0/0 (no NOTE), 580 tests; the three
+  roxygen link warnings fixed; `@examples` added to `save_/apply_spatial_
+  review_decisions()`; a U+241F glyph used as an in-memory join delimiter
+  replaced by the ASCII `\x1f` control character (behaviour verified
+  identical); **`flag_habitat_inconsistencies()` now re-attaches the
+  `habitat_proportions` attribute explicitly** -- a comment promised it and
+  a test asserted it, but the attribute survived only because `left_join`
+  happens to preserve attributes on a plain data frame. NOAA and Natural
+  Earth downloads ran live and passed.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
