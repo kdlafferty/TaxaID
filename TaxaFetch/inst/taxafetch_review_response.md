@@ -4,11 +4,8 @@
 Wright (human-authored review, `inst/taxafetch_review.Rmd`) **Response prepared by:**
 Kevin Lafferty
 
-This document replaces the previous `taxafetch_review_response.md`, which responded to an
-older, Claude-authored review (Session 148, `taxafetch_review.Rmd` as it existed at the
-time). The user replaced that review file with a new, human-authored one covering the same
-24 source files plus checklist sections; this response addresses the current
-`inst/taxafetch_review.Rmd` in full, comment by comment.
+This document addresses `inst/taxafetch_review.Rmd` (human-authored, by Micah Wright),
+covering 24 source files plus checklist sections, in full, comment by comment.
 
 **Verification:** `devtools::document()` clean (0 errors after also fixing 4 pre-existing
 `@importFrom` multi-line blocks that a newer roxygen2 in this environment now rejects --
@@ -18,6 +15,20 @@ review comment, fixed so the response could be verified at all). `devtools::test
 `git stash` -- see "Automated tests" below), 32 expected warnings, 6 expected skips** (up
 from 565/565 before this session). `devtools::check()`: **0 errors, 0 warnings, 0 notes**
 ("Status: OK"). Reinstalled to `~/Library/R/4.0/library` (confirmed via `find.package()`).
+
+------------------------------------------------------------------------
+
+## Added after the review
+
+| Function | File | Purpose | Tests |
+|---|---|---|---|
+| `check_geographic_outliers()` | `R/check_geographic_outliers.R` | Flag Geographically Isolated Occurrence Records Against a Species' Global Range | test-check_geographic_outliers.R, test-download_gbif_occurrences.R |
+| `dedupe_occurrences()` | `R/dedupe_occurrences.R` | Remove Duplicate Occurrence Records | test-dedupe_occurrences.R, test-stack_occurrences.R |
+| `fetch_inat_occurrences()` | `R/fetch_inat_occurrences.R` | Fetch local iNaturalist observation counts, including casual-grade records | test-fetch_inat_occurrences.R |
+| `taxafetch_clear_cache()` | `R/taxafetch_clear_cache.R` | Report and clear TaxaFetch's on-disk cache | test-gbif-geometry-key-collision.R, test-taxafetch_clear_cache.R |
+
+17 new internal helper functions have also been added since the review (mostly in
+`download_gbif_occurrences.R`'s retry/consent machinery).
 
 ------------------------------------------------------------------------
 
@@ -60,7 +71,7 @@ a fresh look at the installed `CoordinateCleaner` version.
 
 The reviewer disclaimed domain expertise here and found nothing obvious. No new
 vulnerabilities were found or introduced this session. The SSRF allowlist and zip-slip
-defense from the prior (Session 148) review remain in place and untouched.
+defense from the prior review remain in place and untouched.
 
 ------------------------------------------------------------------------
 
@@ -197,8 +208,8 @@ gap that made this question urgent is fixed regardless.
 - **`# TaxaExpect --` header -- FIXED.** This and 6 other files (`dataone_eml_screen.R`,
   `dataone_occurrence_search.R`, `dataone_preview.R`, `dataone_standardize.R`,
   `fetch_gbif_occurrences.R`, `filter_gbif_quality.R`) had a stale top-of-file banner comment
-  reading `# TaxaExpect -- <description>`, left over from before Session 19 split TaxaFetch
-  out of TaxaExpect. All 7 corrected to `# TaxaFetch --`. This was **not** a case of a
+  reading `# TaxaExpect -- <description>`, left over from before TaxaFetch was split out
+  of TaxaExpect. All 7 corrected to `# TaxaFetch --`. This was **not** a case of a
   deliberate cross-reference (the reviewer's "if the package is cross referenced, consider
   combining" question) -- it was pure doc drift from the split; genuine
   `TaxaExpect::function()` cross-references elsewhere in these files (e.g. in
@@ -348,8 +359,7 @@ gap that made this question urgent is fixed regardless.
   `gbif_snapshot_path`-adjacent comments (also flagged at what was then "line 261" and the
   `.load_gbif_hashes()`/`.deduplicate_against_gbif()`/`anti_join()` question) -- answered,
   no action: these describe a parameter (`gbif_snapshot_path`) that no longer exists.** It
-  and its two internal helpers were removed entirely on 2026-07-23 (see this package's own
-  `CLAUDE.md` breaking-changes history), superseded by
+  and its two internal helpers were removed entirely, superseded by
   `stack_occurrences(collapse_duplicate_occasions=)`, which does the same species x date x
   location dedup more safely (never matches on incomplete data, unlike the old coalesce-based
   approach). This removal predates this review; these specific comments describe code that
@@ -378,8 +388,8 @@ gap that made this question urgent is fixed regardless.
   (`sub("^([^:\\s]+)[:\\s].*$", "\\1", desc, perl = TRUE)`) silently failed to match (and so
   returned the FULL description unchanged, not just the leading code) whenever `desc`
   contained an embedded `\r\n`, because PCRE's `.` does not match newlines without the
-  `(?s)` inline flag -- the exact "split-string sprintf"-class footgun this package's own
-  `CLAUDE.md` Known R Footguns section already documents for a different function. Fixed
+  `(?s)` inline flag -- the exact "split-string sprintf"-class footgun already known to
+  recur in this package for a different function. Fixed
   with `(?s)`; verified against the reviewer's own real example (now correctly extracts
   `"ABUR"`) and a no-newline control case (unchanged, still `"SONGS"`). New tests added
   (`.extract_eml_sites()` had zero test coverage before this session).
@@ -424,10 +434,8 @@ gap that made this question urgent is fixed regardless.
   rank-specific fix") doesn't belong in shipped user docs; reworded to state the practical
   consequence plainly (a cache built by an older `taxonKey`-only version silently omits
   records at other ranks) without narrating the fix history. Kept the substance -- not moved
-  to `NEWS.md`, since that file is not this project's actual living changelog in practice
-  (its own last update predates the vast majority of this project's development; `CLAUDE.md`'s
-  own Session Notes serve that role here) and a real, still-relevant safety note would likely
-  be lost there rather than found.
+  to `NEWS.md`, since that file is not this project's actual living changelog in practice and
+  a real, still-relevant safety note would likely be lost there rather than found.
 - **`year_range` should be required, with no default -- addressed differently, but the
   underlying problem is real and fixed.** The reviewer's concern (a hardcoded default that
   silently goes stale) is correct and was, in fact, already live: the shared default
@@ -541,7 +549,7 @@ gap that made this question urgent is fixed regardless.
   argument (this function's own dedup-via-geometry-union is a real, structural fix for a
   problem `get_gbif_occurrences()` alone can reproduce -- duplicate records from overlapping
   per-observation queries), but demoting or hiding `get_gbif_occurrences()` (the documented
-  Session 129 recommended entry point, with real callers across the monorepo) is a bigger API
+  recommended entry point, with real callers across the monorepo) is a bigger API
   decision than a review-response pass should make unilaterally. Flagged for the user's own
   call.
 - **`@examples` failing under `review_function_inputs.R` but working standalone -- checked,
@@ -629,16 +637,14 @@ gap that made this question urgent is fixed regardless.
   file, the final extraction step) sends page images, deliberately, for the visual/table
   fidelity a text-only pass loses. Not a design gap -- the reviewer's suggested approach is
   already stages 1-2's behavior.
-- **Explicit Anthropic references (lines 3-30) predating Session 87's provider generalization
-  -- FIXED, matches the task's own framing exactly.** The file header still said "Send PDF
-  page images to the Anthropic API" and described "Extends `call_anthropic_api()`," even
-  though the actual function body has dispatched through the provider-general
-  `TaxaTools::call_api()` for some time (confirmed: `call_api_pdf()`'s own roxygen already
-  correctly documented "Any vision-capable provider works: Anthropic..., Gemini..., OpenAI...,
-  Ollama..." -- only the top-of-file banner comment was stale). Fixed the header to match the
-  real, already-general implementation. The equivalent stale claim in this package's own
-  `CLAUDE.md` Function Inventory table (`call_api_pdf()` listed as "Anthropic-only") was found
-  and fixed too while verifying this.
+- **Explicit Anthropic references (lines 3-30) predating this function's provider
+  generalization -- FIXED, matches the task's own framing exactly.** The file header still
+  said "Send PDF page images to the Anthropic API" and described "Extends
+  `call_anthropic_api()`," even though the actual function body has dispatched through the
+  provider-general `TaxaTools::call_api()` for some time (confirmed: `call_api_pdf()`'s own
+  roxygen already correctly documented "Any vision-capable provider works: Anthropic...,
+  Gemini..., OpenAI..., Ollama..." -- only the top-of-file banner comment was stale). Fixed
+  the header to match the real, already-general implementation.
 - **Lines 84-90/106-112 (subprocess vs. in-process rendering) directly duplicated -- FIXED.**
   Extracted the shared render-page-to-base64-PNG logic into one `.render_one_page_b64()`
   helper, called both directly (in-process fallback) and passed to `callr::r()` (subprocess
@@ -855,82 +861,10 @@ New test files (previously zero coverage): `test-dataone_occurrence_search.R`,
 
 ------------------------------------------------------------------------
 
-------------------------------------------------------------------------
+## Behavior changes to already-reviewed functions
 
-## Functions added or modified since this review (through 2026-09-07)
-
-The functions below were added or modified after this review's own date
-(above), in response to client requests and/or fixes identified during
-testing against real production data, consistent with USGS code review
-policy. Each was individually code-reviewed against the same checklist
-used above (functionality, coding standards, vulnerabilities, and -- where
-applicable -- domain/scientific reasonableness) as part of this software
-release.
-
-- `.attempt_odm_join`
-- `.axis_or_default`
-- `.build_axis_instructions`
-- `.detect_attr_col`
-- `.detect_lat_col`
-- `.detect_lon_col`
-- `.detect_species_col`
-- `.do_entity_join`
-- `.eml_attribute_names`
-- `.extract_eml_sites`
-- `.filter_to_bbox_df`
-- `.finalize_entity`
-- `.gbif_checkpoint_path`
-- `.gbif_declared_size`
-- `.gbif_default_year_range`
-- `.gbif_dl_meta_path`
-- `.gbif_download_consent`
-- `.gbif_zip_intact`
-- `.inat_observation_count`
-- `.match_header`
-- `.nearest_institution`
-- `.parse_coordinates_field`
-- `.parse_dwc_csv`
-- `.parse_pasta_response`
-- `.pasta_solr_page`
-- `.process_one_dataset`
-- `.read_gbif_zip`
-- `.render_one_page_b64`
-- `.render_pdf_pages`
-- `.resolve_pasta_id`
-- `.screen_one_eml`
-- `.taxafetch_referenced_zips`
-- `.track_removed`
-- `build_geo_prompt`
-- `build_pdf_extract_prompt`
-- `build_taxon_screen_prompt`
-- `call_api_pdf`
-- `check_geographic_outliers`
-- `check_inat_range`
-- `dedupe_occurrences`
-- `download_gbif_occurrences`
-- `fetch_dataone_occurrences`
-- `fetch_gbif_occurrences`
-- `fetch_inat_occurrences`
-- `fetch_occurrences_by_taxon`
-- `filter_gbif_quality`
-- `get_gbif_occurrences`
-- `parse_pdf_extract_response`
-- `print.pdf_extract_prompt`
-- `report_fetch`
-- `screen_eml_columns`
-- `stack_occurrences`
-- `taxafetch_clear_cache`
-
-
-------------------------------------------------------------------------
-
-## Changes since this review (2026-09-13 / 2026-09-14)
-
-Listed so a reviewer re-reading this document is not surprised by code that
-postdates it. These changes were made in two concurrent sessions: a
-whole-ecosystem pre-publication review, and a cache-policy review. Per-change
-reasoning and verification status are recorded in this package's own
-`CLAUDE.md` and `NEWS.md`.
+Not new functions (see "Added after the review" near the top for those) -- new behavior
+on functions this document already covers above.
 
 - `download_gbif_occurrences()` records the full search geometry in its cached
   metadata and verifies it on read. Previously only the geometry's character
