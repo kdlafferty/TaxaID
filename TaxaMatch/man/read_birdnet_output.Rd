@@ -28,7 +28,7 @@ best species per window; \code{top_n = 3} reproduces BirdNET's default output
 when the tool is run with \verb{--top_n 3}.}
 }
 \value{
-A data frame with one row per file × time-window × detected
+A data frame with one row per file x time-window x detected
 species, containing:
 \describe{
 \item{\code{observation_id}}{Unique identifier combining file stem and time
@@ -36,7 +36,7 @@ window: \code{"{file_stem}_{start_s}-{end_s}"}, with \code{start_s}/\code{end_s}
 formatted to a fixed 1 decimal place so the same window produces the
 same ID across platforms/R versions. Pass as \code{observation_id_col} to
 \code{\link[=standardize_match_data]{standardize_match_data()}}.}
-\item{\code{score}}{BirdNET confidence (0–1). Pass as \code{score_col} to
+\item{\code{score}}{BirdNET confidence (0-1). Pass as \code{score_col} to
 \code{\link[=standardize_match_data]{standardize_match_data()}}.}
 \item{\code{species}}{Full scientific binomial as reported by BirdNET.}
 \item{\code{genus}}{Genus name (first word of \code{species}); \code{NA} for
@@ -93,7 +93,7 @@ BirdNET returns top-N results.
 \code{observation_id}. Multiple detections within the same window share the
 same \code{observation_id} (analogous to multiple BLAST hits per eDNA query).
 The gap metric in TaxaLikely is computed as the difference between the
-top-1 and top-2 confidence scores within each window — so retaining
+top-1 and top-2 confidence scores within each window -- so retaining
 multiple detections per window is important for model training.
 
 \strong{Taxonomy:} \code{genus} is derived as the first word of BirdNET's scientific

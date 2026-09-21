@@ -960,6 +960,12 @@
 #'
 #' @seealso [evaluate_reference_accessions()], [investigate_flagged_accessions()]
 #'
+#' @examples
+#' \dontrun{
+#' result <- investigate_flagged_accession("KM057996")
+#' result$disagreeing_taxon
+#' }
+#'
 #' @export
 investigate_flagged_accession <- function(accession,
                                           species = NULL,
@@ -1059,6 +1065,12 @@ investigate_flagged_accession <- function(accession,
 #'   each in the same shape [investigate_flagged_accession()] returns.
 #'
 #' @seealso [investigate_flagged_accession()], [evaluate_reference_accessions()]
+#'
+#' @examples
+#' \dontrun{
+#' results <- investigate_flagged_accessions(c("KM057996", "KM057967"))
+#' results[["KM057996"]]$disagreeing_taxon
+#' }
 #'
 #' @export
 investigate_flagged_accessions <- function(accessions,

@@ -63,6 +63,13 @@ the reentry prompt's Question 3, item 3) -- deliberately out of scope
 here.
 }
 
+\examples{
+\dontrun{
+results <- investigate_flagged_accessions(c("KM057996", "KM057967"))
+results[["KM057996"]]$disagreeing_taxon
+}
+
+}
 \seealso{
 \code{\link[=investigate_flagged_accession]{investigate_flagged_accession()}}, \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}
 }

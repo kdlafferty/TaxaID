@@ -301,6 +301,11 @@
 #'
 #' @seealso [investigate_flagged_accession()], [evaluate_reference_accessions()]
 #'
+#' @examples
+#' \dontrun{
+#' check_marker_mismatch("AY850362", expected_marker = "12S")
+#' }
+#'
 #' @export
 check_marker_mismatch <- function(accessions, expected_marker,
                                   ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),

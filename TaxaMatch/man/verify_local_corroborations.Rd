@@ -103,6 +103,12 @@ more than one row survives for an accession within a single generation (a
 retry), the most recently \code{evaluated_at} one is used.
 }
 
+\examples{
+\dontrun{
+thin <- verify_local_corroborations("ref_eval_cache")
+table(thin$status)
+}
+}
 \seealso{
 \code{\link[=verify_removal_candidates]{verify_removal_candidates()}}, \code{\link[=score_reference_labels]{score_reference_labels()}},
 \code{\link[=corroborate_references_locally]{corroborate_references_locally()}}

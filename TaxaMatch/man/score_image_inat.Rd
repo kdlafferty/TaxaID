@@ -53,7 +53,7 @@ containing: \code{observation_id} (image filename stem),
 name for compatibility with \code{evaluate_likelihoods()}),
 \code{genus}, \code{common_name}, \code{iconic_taxon_name},
 \code{taxon_id}, \code{n_observations} (global iNat observation count for
-the taxon — not location-filtered), \code{vision_score},
+the taxon -- not location-filtered), \code{vision_score},
 \code{combined_score}, \code{freq_score} (a thresholded presence
 indicator from the iNaturalist geomodel, not a raw frequency; see
 Details),

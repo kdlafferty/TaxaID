@@ -1165,6 +1165,13 @@ refine_reference_verdicts <- function(evaluation,
 #' never automatically, only flagged, per this project's own "flag, don't
 #' auto-act" convention.
 #' @seealso [remove_incongruent_references()], [score_reference_labels()]
+#' @examples
+#' \dontrun{
+#' ev <- evaluate_reference_accessions(accs, cache_dir = "ref_eval_cache")
+#' ev <- score_reference_labels(ev)
+#' spared <- verify_removal_candidates(ev, cache_dir = "ref_eval_cache")
+#' table(spared$spared)
+#' }
 #' @export
 verify_removal_candidates <- function(evaluation, ...,
                                       audit_max_hits = 100L,
@@ -1521,6 +1528,11 @@ verify_removal_candidates <- function(evaluation, ...,
 #'   `"locally_corroborated"` rows.
 #' @seealso [verify_removal_candidates()], [score_reference_labels()],
 #'   [corroborate_references_locally()]
+#' @examples
+#' \dontrun{
+#' thin <- verify_local_corroborations("ref_eval_cache")
+#' table(thin$status)
+#' }
 #' @export
 verify_local_corroborations <- function(cache_dir,
                                         max_corroborators = 2L,

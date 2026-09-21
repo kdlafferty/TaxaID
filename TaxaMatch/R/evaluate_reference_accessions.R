@@ -2010,6 +2010,15 @@ utils::globalVariables(c(
 #'   [corroborate_references_locally()], [match_driving_accessions()],
 #'   [blast_sequences()]
 #'
+#' @examples
+#' \dontrun{
+#' ev <- evaluate_reference_accessions(
+#'   c("OQ846539", "OQ846195"),
+#'   cache_dir = "ref_eval_cache"
+#' )
+#' table(ev$congruent_evidence_exists_anywhere)
+#' }
+#'
 #' @export
 evaluate_reference_accessions <- function(accessions,
                                           cache_dir = tools::R_user_dir("TaxaMatch", "cache"),
@@ -2665,6 +2674,13 @@ evaluate_reference_accessions <- function(accessions,
 #'
 #' @seealso [evaluate_reference_accessions()], [remove_incongruent_references()]
 #'
+#' @examples
+#' \dontrun{
+#' ev <- evaluate_reference_accessions(unique(match_df$accession), cache_dir = "ref_eval_cache")
+#' flagged <- flag_incongruent_references(match_df, ev)
+#' table(flagged$hierarchy_flag)
+#' }
+#'
 #' @export
 flag_incongruent_references <- function(match_df, evaluation) {
   if (!is.data.frame(match_df)) {
@@ -2826,6 +2842,13 @@ flag_incongruent_references <- function(match_df, evaluation) {
 #'
 #' @seealso [evaluate_reference_accessions()], [flag_incongruent_references()],
 #'   [resolve_review_overrides()]
+#'
+#' @examples
+#' \dontrun{
+#' ev <- evaluate_reference_accessions(unique(match_df$accession), cache_dir = "ref_eval_cache")
+#' cleaned <- remove_incongruent_references(match_df, ev)
+#' nrow(cleaned)
+#' }
 #'
 #' @export
 remove_incongruent_references <- function(match_df,

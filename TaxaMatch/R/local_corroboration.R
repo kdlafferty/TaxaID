@@ -309,6 +309,15 @@ corroborate_references_locally <- function(seq_matrix, reference_meta,
 #'
 #' @seealso [evaluate_reference_accessions()], [corroborate_references_locally()]
 #'
+#' @examples
+#' df <- data.frame(
+#'   observation_id = c("S1", "S1", "S2"),
+#'   species = c("Gobius paganellus", "Gobius paganellus", "Chthamalus fragilis"),
+#'   accession = c("AB111", "AB222", "AB333"),
+#'   score_original = c(99, 95, 88)
+#' )
+#' match_driving_accessions(df)
+#'
 #' @export
 match_driving_accessions <- function(match_df, score_col = "score_original",
                                      obs_col = "observation_id", species_col = "species",

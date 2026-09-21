@@ -282,6 +282,13 @@
 #'   `inst/reference_accession_evaluation_guide.md` for the full guide this
 #'   function's prompt is built from.
 #'
+#' @examples
+#' \dontrun{
+#' ev <- evaluate_reference_accessions(accs, cache_dir = "ref_eval_cache")
+#' reviewed <- review_flagged_accessions(ev, cache_dir = "ref_eval_cache")
+#' table(reviewed$accession_likely_explanation)
+#' }
+#'
 #' @export
 review_flagged_accessions <- function(evaluated_df,
                                       hierarchy_flags = c("incongruent", "insufficient_independent_evidence"),

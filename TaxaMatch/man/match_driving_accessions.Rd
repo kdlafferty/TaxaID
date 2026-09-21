@@ -41,6 +41,16 @@ keeps 709 of 995 candidate accessions.
 not GenBank records and cannot be screened. The Mugu workflow did this by
 hand at its call site; it is done here once.
 }
+\examples{
+df <- data.frame(
+  observation_id = c("S1", "S1", "S2"),
+  species = c("Gobius paganellus", "Gobius paganellus", "Chthamalus fragilis"),
+  accession = c("AB111", "AB222", "AB333"),
+  score_original = c(99, 95, 88)
+)
+match_driving_accessions(df)
+
+}
 \seealso{
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=corroborate_references_locally]{corroborate_references_locally()}}
 }

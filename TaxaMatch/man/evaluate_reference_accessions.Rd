@@ -733,6 +733,16 @@ of a different 12S region); it is a true singleton and its removal
 stands.
 }
 
+\examples{
+\dontrun{
+ev <- evaluate_reference_accessions(
+  c("OQ846539", "OQ846195"),
+  cache_dir = "ref_eval_cache"
+)
+table(ev$congruent_evidence_exists_anywhere)
+}
+
+}
 \seealso{
 \code{\link[=remove_incongruent_references]{remove_incongruent_references()}}, \code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
 \code{\link[=corroborate_references_locally]{corroborate_references_locally()}}, \code{\link[=match_driving_accessions]{match_driving_accessions()}},

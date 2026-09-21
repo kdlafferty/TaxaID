@@ -195,6 +195,13 @@ still prints the identical narrative summary a fresh call would (unless
 printed output. Set \code{cache_dir = NULL} to disable caching entirely.
 }
 
+\examples{
+\dontrun{
+result <- investigate_flagged_accession("KM057996")
+result$disagreeing_taxon
+}
+
+}
 \seealso{
 \code{\link[=evaluate_reference_accessions]{evaluate_reference_accessions()}}, \code{\link[=investigate_flagged_accessions]{investigate_flagged_accessions()}}
 }
