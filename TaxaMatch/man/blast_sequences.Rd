@@ -55,14 +55,14 @@ sequences from one species and five from a second, genuinely tied at
 one species and none from the other under the implicit (megablast)
 default -- silently dropping a real, exactly-tied congener before
 \code{score_range} filtering ever had a chance to keep it. Set
-\code{TRUE} to restore the old implicit (unspecified/megablast) behavior
+\code{TRUE} for the greedy megablast behavior
 for speed on very large batches; \code{FALSE} (classic blastn) is slower
 but the only mode confirmed to return every near-identical reference,
 which is what \code{score_range}'s own tie-detection depends on.}
 
 \item{score_range}{Numeric. Keep all hits within this many percent identity
-points of each query's top hit (default \code{8}, widened from an
-earlier default of \code{2} -- see "Score window validation" below).
+points of each query's top hit (default \code{8} --
+see "Score window validation" below).
 For example, if the top hit is 99\% identity, all hits at 91\% or above
 are retained. Wider ranges capture more taxonomic alternatives; narrower
 ranges (e.g., 2) focus on the closest matches only but risk silently
@@ -219,7 +219,7 @@ added to \code{failed_query_ids} (see below) alongside whatever had
 already failed, and the halved-batch-size retry pass is skipped
 entirely (retrying under a confirmed-systemic throttle wastes real NCBI
 time on batches already judged doomed). Set to \code{Inf} to disable
-and restore the old unconditional-retry-every-batch behavior.}
+the circuit breaker and retry every batch unconditionally.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
@@ -339,9 +339,10 @@ ever runs).
 
 This filter decides which candidates ever reach TaxaLikely/TaxaAssign --
 a true species dropped here cannot be recovered downstream, no matter how
-good the likelihood model is. The original \code{score_range = 2} default
-was field-tested only on 5 easy PtConception queries with clear top hits
-at 98\% identity or above; it was never stress-tested against a
+good the likelihood model is. A narrow \code{score_range} (e.g.
+\code{2}, adequate for an easy query with a clear top hit at 98\% identity
+or above) is not safe in general: it is not
+stress-tested against a
 taxonomically dense genus where real congeneric divergence can be tight.
 
 A leave-one-out check (\code{diagnostics/score_window_leave_one_out.R} at
@@ -353,18 +354,18 @@ species, and by how much --
 \itemize{
 \item \strong{Sebastes} (54 species, real MiFish-window 12S data):
 3/113 (2.7\%) queries had a congener score higher than the true
-species, but only by 0.6 points each -- none would have been dropped
-even at the old \code{score_range = 2} default.
+species, but only by 0.6 points each -- none would be dropped
+even at \code{score_range = 2}.
 \item \strong{Chromis} (26 species): 3/33 (9.1\%) queries had this
-happen, by 4.7-7.1 points -- \emph{all three} would have been
+happen, by 4.7-7.1 points -- \emph{all three} would be
 silently dropped at \code{score_range = 2}.
 \item \strong{A real 6-genus PtConception 12S set} (Clinocottus,
 Gibbonsia, Oligocottus, Embiotoca, Phanerodon): 1/11 (9.1\%) queries,
-by 2.5 points -- would also have been dropped at the old default.
+by 2.5 points -- would also be dropped at \code{score_range = 2}.
 }
-Pooling all three: 4 of 7 real congener-outscoring events (57\%) exceeded
-the old \code{score_range = 2} default and would have silently excluded
-the true species from every downstream step. The new default (\code{8})
+Pooling all three: 4 of 7 real congener-outscoring events (57\%) exceed
+a \code{score_range = 2} window and would silently exclude
+the true species from every downstream step. The default (\code{8})
 comfortably covers every gap actually observed in this check (worst case
 7.1 points); it is an evidence-backed starting point given what has
 been measured so far, not a guarantee no real dataset will ever exceed it
