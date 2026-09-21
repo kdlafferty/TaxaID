@@ -64,9 +64,9 @@ FALSE} is weak evidence (false negatives are common for aquatic taxa with low
 iNaturalist observer effort) and must NOT suppress priors. This function
 implements that asymmetry: only \code{in_range = TRUE} taxa are touched.
 
-The elevation target is the Tier 2 singleton-mirror floor — the mean
+The elevation target is the Tier 2 singleton-mirror floor -- the mean
 \code{alpha}/\code{beta} across singleton-mirror rows in
-\code{taxaexpect_priors} at the focal site × habitat. This is already
+\code{taxaexpect_priors} at the focal site x habitat. This is already
 computed by \code{join_priors()} and stored as \code{singleton_alpha} /
 \code{singleton_beta} columns in \code{likelihoods_ready}. The interpretation
 is: a range-supported unobserved taxon is treated as equivalent to a species
