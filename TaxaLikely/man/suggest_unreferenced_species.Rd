@@ -24,8 +24,11 @@ suggest_unreferenced_species(
 \arguments{
 \item{match_df}{Data frame.  Canonical match object from TaxaMatch (or
 equivalent).  Required column: \code{taxon_name}.  Optional but strongly
-recommended: \code{genus} (if absent, derived from \code{taxon_name}).  Required
-for \code{expand_to_family = TRUE}: \code{family}.}
+recommended: \code{genus} (if absent, derived from \code{taxon_name}).  A \code{genus}
+value that does not look like a plausible genus name (a single
+capitalised word) is dropped with a \code{message()} rather than reaching
+the LLM prompt verbatim.  Required for \code{expand_to_family = TRUE}:
+\code{family}.}
 
 \item{context}{Optional named list or single-row data frame with location /
 habitat context for the LLM.  Recognised fields: \code{ecoregion}, \code{lat},

@@ -727,6 +727,50 @@ test_that("check_cross_genus_sampling_noise: n_replicates non-numeric/NA errors"
   )
 })
 
+test_that("check_cross_genus_sampling_noise: n_cross_genus_pairs counts distinct unordered pairs, not 2x", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  # 3 genera, 1 sequence each -- deterministic (no random representative
+  # draw, since there is only one sequence per genus to pick from), so the
+  # true unordered cross-genus pair count is choose(3, 2) == 3. Before the
+  # fix, .decipher_align_pairs()'s (i, j) + (j, i) duplication made this 6.
+  df <- data.frame(
+    composite_id = c("S1", "S2", "S3"),
+    sequence = c(.seq_a, .seq_b, .seq_c),
+    genus = c("Aa", "Bb", "Cc"),
+    species = c("Aa bb", "Bb cc", "Cc dd"),
+    stringsAsFactors = FALSE
+  )
+  result <- suppressMessages(check_cross_genus_sampling_noise(
+    df,
+    rank_system = c("genus", "species"),
+    max_dist = 1.0, n_replicates = 2L
+  ))
+  expect_equal(result$replicates$n_cross_genus_pairs, c(3L, 3L))
+})
+
+test_that("check_cross_genus_sampling_noise: warns (not silent) on the single-genus NaN edge case", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  df <- data.frame(
+    composite_id = c("S1", "S2", "S3"),
+    sequence = c(.seq_a, .seq_b, .seq_c),
+    genus = c("Aa", "Aa", "Aa"),
+    species = c("Aa bb", "Aa bb", "Aa cc"),
+    stringsAsFactors = FALSE
+  )
+  expect_warning(
+    result <- suppressMessages(check_cross_genus_sampling_noise(
+      df,
+      rank_system = c("genus", "species"),
+      max_dist = 1.0, n_replicates = 2L
+    )),
+    "no cross-genus pairs"
+  )
+  expect_equal(result$replicates$n_cross_genus_pairs, c(0L, 0L))
+  expect_true(all(is.nan(result$replicates$mean_p_match)))
+})
+
 # ---- 2026-09-07 review regressions -------------------------------------------
 
 test_that("build_sequence_matrix: max_seqs_per_taxon keeps NA-species rows when filter_unnamed = FALSE", {
