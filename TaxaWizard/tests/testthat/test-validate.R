@@ -20,13 +20,15 @@ test_that(".validate_snippets() returns zero rows for an empty graph", {
 # SNIPPET (a named-argument fix against the real installed formals), never
 # in loosening this assertion.
 # ---------------------------------------------------------------------------
-test_that("every real snippet is clean: zero not_exported/stale_argument/parse_error", {
+test_that("every real snippet is clean: zero not_exported/stale_argument/parse_error/package_unavailable", {
   pkgs <- TaxaWizard:::TAXAID_PACKAGES
   installed <- pkgs[vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]
   skip_if(length(installed) == 0L, "no TaxaID packages installed")
 
   result <- TaxaWizard:::.validate_snippets(registry = workflow_registry(packages = installed))
-  failing <- result[result$problem %in% c("not_exported", "stale_argument", "parse_error"), ]
+  failing <- result[result$problem %in% c(
+    "not_exported", "stale_argument", "parse_error", "package_unavailable"
+  ), ]
 
   expect_equal(
     nrow(failing), 0L,
@@ -162,4 +164,38 @@ test_that(".validate_snippets() edge_ids= restricts validation to the requested 
     graph = graph, registry = reg, edge_ids = "good_edge"
   )
   expect_equal(nrow(result_restricted), 0L)
+})
+
+# ---------------------------------------------------------------------------
+# RISK-2 fix: a TaxaID package missing from the registry (failed to load)
+# must be reported, not silently skipped as though it were out of scope.
+# ---------------------------------------------------------------------------
+
+test_that(".validate_one_call() reports package_unavailable for a real TaxaID package missing from the registry", {
+  edge <- .tw_bogus_snippet_edge(
+    "x <- TaxaAssign::score_consensus(match_df = {{match_df}})\nx",
+    packages = "TaxaAssign", functions = "score_consensus"
+  )
+  graph <- list(edges = list(edge))
+  # An empty registry simulates every TaxaID package having failed
+  # requireNamespace() -- TaxaAssign is still a real TAXAID_PACKAGES member,
+  # so this must be flagged, never silently skipped as though it were an
+  # out-of-ecosystem call like dplyr::filter().
+  result <- TaxaWizard:::.validate_snippets(graph = graph, registry = list())
+
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$problem, "package_unavailable")
+  expect_true(grepl("TaxaAssign", result$detail))
+  expect_true(grepl("TaxaAssign::score_consensus", result$`function`))
+})
+
+test_that(".validate_one_call() still treats a genuinely non-TaxaID (fake) package as out of scope", {
+  edge <- .tw_bogus_snippet_edge(
+    "x <- ThisIsNotARealTaxaIDPackage::some_fn(y = 1)\nx",
+    packages = "ThisIsNotARealTaxaIDPackage", functions = "some_fn"
+  )
+  graph <- list(edges = list(edge))
+  result <- TaxaWizard:::.validate_snippets(graph = graph, registry = list())
+
+  expect_equal(nrow(result), 0L)
 })
