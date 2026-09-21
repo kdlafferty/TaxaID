@@ -124,8 +124,8 @@ taxon rather than fixing a typo.
 \section{Synonym resolution and rank correctness (backbone-general, not GBIF-specific)}{
 
 Verified directly against the live API across five backbones (Catalogue of
-Life, ITIS, NCBI, WoRMS, GBIF) with the same query before this section was
-written: \code{matched_rank} (derived from \code{classificationRanks}) and
+Life, ITIS, NCBI, WoRMS, GBIF) with the same query:
+\code{matched_rank} (derived from \code{classificationRanks}) and
 \code{isSynonym}/\code{currentName} (used to prefer the accepted name over
 a synonym) are fields the Global Names Verifier API itself normalises
 identically across every backbone it aggregates -- nothing here is

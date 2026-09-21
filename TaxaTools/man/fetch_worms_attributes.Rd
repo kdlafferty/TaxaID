@@ -115,9 +115,9 @@ NCBI taxon id and a derived introduced-species flag.
 \strong{Why this is not the habitat lookup you already have.}
 \code{TaxaHabitat::build_habitat_lookup()} asks an LLM to choose ONE of
 Marine / Estuarine / Freshwater / Terrestrial. Intertidal foragers that stand
-on rock come back Terrestrial -- measured 2026-09-15, the black oystercatcher
-(M 0.40 / T 0.50), sanderling (0.20 / 0.50), black turnstone (0.30 / 0.60)
-and whimbrel all did, and 381 of 578 PtConception birds went the same way.
+on rock come back Terrestrial -- the black oystercatcher (M 0.40 / T 0.50),
+sanderling (0.20 / 0.50), black turnstone (0.30 / 0.60) and whimbrel all do,
+and 381 of 578 PtConception birds go the same way.
 WoRMS records the oystercatcher as marine \emph{and} terrestrial. The two
 sources answer different questions and neither replaces the other.
 
@@ -165,12 +165,12 @@ case for review.
 \emph{Cervus elaphus} and \emph{Zea mays} are not in WoRMS at all, so there is
 no threshold to tune. But a genuinely marine taxon missing from the register
 is cut the same way. Every absent name is returned in the
-\code{"not_in_worms"} attribute -- read it before trusting a run. Note also
-that absence is a weaker filter than it was once described: verified
-2026-09-15, \emph{Homo sapiens} (1455977), \emph{Sus scrofa} (1469456),
-\emph{Bos taurus} (1506698), \emph{Canis lupus} (1506689) and \emph{Gallus
-gallus} (1463738) ARE all in the register now. They are cut on their flags
-(marine = FALSE / NA, terrestrial = TRUE), not on absence.
+\code{"not_in_worms"} attribute -- read it before trusting a run. Absence
+is a weaker filter than intuition suggests: \emph{Homo sapiens} (1455977),
+\emph{Sus scrofa} (1469456), \emph{Bos taurus} (1506698), \emph{Canis
+lupus} (1506689) and \emph{Gallus gallus} (1463738) are all in the
+register. They are cut on their flags (marine = FALSE / NA, terrestrial =
+TRUE), not on absence.
 
 \strong{Names are used as supplied}, apart from whitespace trimming. Pass
 names that have already been through \code{\link{clean_taxon_names}} if the

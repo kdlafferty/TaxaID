@@ -27,9 +27,9 @@ pin for reproducibility.}
 tiers currently map to the same DOI deployment; the param is accepted for
 interface consistency.}
 
-\item{endpoint}{Character. Full deployment URL override (backward-compatible
-escape hatch). When provided, the deployment name is extracted from the
-URL path and the host is used to override the default DOI endpoint.
+\item{endpoint}{Character. Full deployment URL override, for callers that
+already have one. When provided, the deployment name is extracted from
+the URL path and the host is used to override the default DOI endpoint.
 Default \code{NULL} builds the URL from the registry template and the
 resolved \code{model} name.}
 

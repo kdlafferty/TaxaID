@@ -31,7 +31,7 @@ letter filter below, not get silently rescued into a confident
 binomial; \code{"hybrid X x Y"} with no named first parent has no real
 maternal-parent identity to recover). Pass a custom vector to extend or
 replace the default list; \code{character(0)} disables this step
-entirely (restores this function's pre-2026-08-11 behavior).}
+entirely.}
 }
 \value{
 A character vector the same length as \code{name_vec}. Names that

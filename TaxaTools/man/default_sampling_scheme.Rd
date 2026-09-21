@@ -13,10 +13,8 @@ A sampling-group scheme object; see Shape above.
 Returns the package's default sampling-group scheme: an ORDERED list of
 rules (first-match-wins, exactly like the \code{dplyr::case_when()} it
 replaces) that classifies a taxon's kingdom/phylum/class/order into one of
-eleven detection-process groups, or a catch-all. Ported clause-for-clause
-from \code{PtConceptionWorkflow_18S_2_single_site.R}'s Step 4 (the fullest,
-best-commented inline version of this classifier), with two 2026-09-13
-additions (see Details).
+eleven detection-process groups, or a catch-all. See Details for
+clause-specific rationale.
 }
 \section{Shape}{
 
@@ -62,32 +60,27 @@ specific rule and a later, broader one always takes the specific one), and
 \code{\link{assign_sampling_group}} preserves it exactly.
 }
 
-\section{The 2026-09-13 fixes}{
+\section{Class-level vs. phylum-level rules}{
 
-Two real gaps, found the same way as the three earlier drift incidents
-(running the classifier against real data and reading what fell through to
-the catch-all):
+Two traps this scheme's clauses are written to avoid:
 \itemize{
-\item \strong{Bacillariophyceae (diatoms) -> \code{"phytoplankton"}}
-(2,773 real records). \strong{Trap}: GBIF places diatoms in phylum
-\strong{Ochrophyta}, the SAME phylum as the kelps/rockweeds
-(Phaeophyceae, classified as \code{"macroalgae"} above). A phylum-level
-rule for either group would be wrong in one direction or the other --
-it would either exclude the diatoms or admit the kelps into the wrong
-group. This MUST be a class-level rule, and it is: the diatom clause
-names \code{class = "Bacillariophyceae"} only, never
+\item \strong{Bacillariophyceae (diatoms) -> \code{"phytoplankton"}}.
+\strong{Trap}: GBIF places diatoms in phylum \strong{Ochrophyta}, the
+SAME phylum as the kelps/rockweeds (Phaeophyceae, classified as
+\code{"macroalgae"} above). A phylum-level rule for either group would
+be wrong in one direction or the other -- it would either exclude the
+diatoms or admit the kelps into the wrong group. This MUST be a
+class-level rule, and it is: the diatom clause names
+\code{class = "Bacillariophyceae"} only, never
 \code{phylum = "Ochrophyta"}.
-\item \strong{Copepoda -> \code{"zooplankton"}} (66 real records on the
-dataset where this was found; 36 on the bundled regression checkpoint).
-GBIF's current backbone names this class \code{"Hexanauplia"} (already
-in the zooplankton clause, per the original 18S file); NCBI's backbone
-names it \code{"Copepoda"}. Both spellings are added to the SAME
-zooplankton clause, so the classifier works whichever backbone the
-input taxonomy came from. Note \code{"Copepoda"} was ALSO found live in
-real GBIF-backbone occurrence data (not just NCBI match objects) during
-this fix's own regression check -- it is not purely an NCBI artifact,
-which is why it is added to the rule directly rather than only handled
-via \code{harmonise = TRUE}.
+\item \strong{Copepoda -> \code{"zooplankton"}}. GBIF's current backbone
+names this class \code{"Hexanauplia"}; NCBI's backbone names it
+\code{"Copepoda"}. Both spellings are added to the SAME zooplankton
+clause, so the classifier works whichever backbone the input taxonomy
+came from. \code{"Copepoda"} is also found live in real GBIF-backbone
+occurrence data, not only in NCBI match objects, which is why it is
+added to the rule directly rather than only handled via
+\code{harmonise = TRUE}.
 }
 }
 

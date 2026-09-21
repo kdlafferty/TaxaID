@@ -22,16 +22,8 @@ input is newer than \code{path}, the cache is rejected.}
 A cache gate that tests only \code{file.exists()} silently serves stale
 results. This is the ecosystem's staleness primitive: a cache is usable
 only if it exists AND is not older than any of the artifacts it was
-derived from.
-}
-\details{
-Lifted verbatim (2026-09-14) from three byte-identical copies that had
-been pasted into workflow scripts --
-\code{PtConceptionWorkflow_12S_single_site.R},
-\code{PtConceptionWorkflow_18S_2_single_site.R} and
-\code{GreatLakes2023_ConsensusWorkflow.R} -- so that the 26 package files
-that take a \code{cache_dir} can reach it too. Behaviour is unchanged
-from those copies.
+derived from. Every package file that takes a \code{cache_dir} argument
+shares this one implementation.
 }
 \section{When \code{inputs} applies}{
 
@@ -41,7 +33,7 @@ That is the case this function detects. It does NOT help for a cache
 whose upstream is a remote service (an NCBI or GBIF query has no local
 mtime to compare against); that staleness axis is time, and the policy
 for it is to report the cache's age at load rather than expire it
-silently. See \code{ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md}.
+silently.
 }
 
 \examples{

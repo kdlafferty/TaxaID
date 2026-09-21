@@ -107,8 +107,7 @@ plain character string.
 \details{
 Individual provider functions (\code{\link{call_anthropic_api}},
 \code{\link{call_gemini_api}}, etc.) are thin wrappers around this
-function and remain available for backward compatibility and for use as
-\code{llm_fn} arguments.
+function, useful directly or as \code{llm_fn} arguments.
 
 \strong{Adding a new provider:}
 Any provider that implements the OpenAI Chat Completions API can be added
