@@ -1,10 +1,7 @@
-# Phase 2 of the kernel-priors redesign (2026-08-30): site-centered
-# distance-kernel estimation of relative detection priors, replacing the
-# grid-cell GLMM prediction path. Design record:
-# ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md
-# ("PHASE 1 SPEC" + "Phase 2 verdicts" sections). Deliberately an ESTIMATOR,
-# never a latent spatial model -- per-species latent fields are the documented
-# hours-scale performance trap this design explicitly forbids.
+# Site-centered distance-kernel estimation of relative detection priors.
+# Deliberately an ESTIMATOR, never a latent spatial model -- per-species
+# latent fields are an hours-scale performance trap at many-species scale,
+# so this design forbids them.
 
 #' Estimate site priors by distance-kernel weighting of occurrence records
 #'
@@ -30,35 +27,33 @@
 #' record count, and the singleton set to species seen exactly once.
 #'
 #' @section Why an estimator, not a spatial model:
-#' Leave-one-cell-out validation on real Great Lakes data (2026-08-30 Phase 1
-#' diagnostic) found distance-kernel composition prediction beats both a
-#' single nearest cell (the previous architecture; worst of all options
-#' tested) and unweighted regional pooling, with an interior bandwidth
-#' optimum. The kernel runs in O(records) with no optimization step (~0.1 s
-#' at 1.8 million records), so cost is independent of species count. Do NOT
-#' replace this with per-species latent spatial fields (GP/SPDE/GAMM): that
-#' family was evaluated during the original model design and is
+#' Several modeling strategies were considered for pricing spatial priors,
+#' including grid-cell GLMM prediction and per-species latent spatial fields
+#' (GP/SPDE/GAMM); the kernel estimator was adopted because leave-one-cell-out
+#' validation on real Great Lakes data found distance-kernel composition
+#' prediction beats both single grid-cell GLMM prediction (the worst of the
+#' options tested) and unweighted regional pooling, with an interior
+#' bandwidth optimum, and because it runs in O(records) with no optimization
+#' step (~0.1 s at 1.8 million records), so cost is independent of species
+#' count -- unlike per-species latent spatial fields, which are
 #' computationally infeasible at many-species scale.
 #'
-#' @section Output schema (kernel-priors redesign):
-#' The returned `$priors` table uses the post-redesign schema: `prior_branch`
-#' (here always `"kernel_estimated"` -- renamed from `"resident_observed"`
-#' on 2026-09-14, see below) and `effective_records` (the species'
+#' @section Output schema:
+#' The returned `$priors` table's `prior_branch`
+#' (here always `"kernel_estimated"`) and `effective_records` (the species'
 #' kernel-effective record count `c_i * n_eff / W`, in units of records)
-#' replace the retired `model_tier` tier1/tier2 vocabulary.
+#' are its row-provenance and evidence-weight columns.
 #'
 #' `prior_branch` is written as a CONSTANT on every row this function emits.
 #' It records which generator produced the row, not how much evidence stands
 #' behind it -- that is `effective_records`, and it spans roughly ten orders
 #' of magnitude within this one branch, continuously and with no natural
-#' break. The old name `"resident_observed"` asserted an evidence claim that
-#' was never tested: on the real PtConception 12S priors 44.9% of labelled
-#' rows carried under one effective record (64.9% at 18S), yet every one of
-#' them read as an observed resident downstream. Consumers that need an
+#' break. The name `"kernel_estimated"` deliberately makes no evidence claim:
+#' on the real PtConception 12S priors 44.9% of labelled
+#' rows carried under one effective record (64.9% at 18S). Consumers that need an
 #' evidence claim must threshold `effective_records` themselves; see
-#' [TaxaAssign::posterior_consensus()]'s `min_effective_records`. Every
-#' reader in this ecosystem still accepts `"resident_observed"`, so tables
-#' checkpointed before the rename keep working. Undetected/evidence/domestic rows
+#' [TaxaAssign::posterior_consensus()]'s `min_effective_records`.
+#' Undetected/evidence/domestic rows
 #' belong to other branches and are appended by their own generators, not
 #' this function. A species whose nearby records are all classified to a
 #' habitat other than `site_habitat` yields NO resident row here at all and
@@ -177,13 +172,11 @@
 #'     \item{theta_present}{\code{missing_mass / f1}: the mean theta of the
 #'       neighborhood's own observed singletons -- "a species we barely
 #'       detect here" -- used by \code{\link{apply_undetected_evidence}}'s
-#'       curve pricing. Deliberately NOT \code{missing_mass / chao_missing}
-#'       (2026-09-05, open decision #1 of
-#'       \code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved):
+#'       curve pricing. Deliberately NOT \code{missing_mass / chao_missing}:
 #'       \code{f1} is observed directly, while \code{chao_missing} divides by
 #'       the doubleton count \code{f2}, which sits in the single digits and
 #'       is radius-unstable (measured 4x-21x across a plausible counting-radius
-#'       range on real data) -- instability the price no longer inherits.
+#'       range on real data) -- instability this price avoids.
 #'       \code{NA} when no singleton anchor exists (\code{f1 = 0}).}
 #'     \item{regional_composition}{Named numeric: the unweighted
 #'       habitat-stratified composition used for back-off.}
@@ -302,7 +295,7 @@ estimate_kernel_priors <- function(occurrence_data,
     # factor. lambda_latitude = NULL (default) disables it exactly.
     w <- w * exp(-111 * abs(abs(rec[[lat_col]]) - abs(site_lat)) / lambda_latitude)
   }
-  # Fetch-radius check (2026-09-02). A record at 6 lambda carries exp(-6) =
+  # Fetch-radius check. A record at 6 lambda carries exp(-6) =
   # 0.25% of the weight of one at the site, so if the record pool does not
   # reach ~6 lambda from the site, the kernel is being truncated by the FETCH
   # BOUNDARY rather than by distance -- the prior then reflects how far the
@@ -324,17 +317,14 @@ estimate_kernel_priors <- function(occurrence_data,
   # contributed by barely-sampled groups inflate f1 while adding almost
   # nothing to missing_mass, deflating theta_present (= missing_mass/f1)
   # directly; f1 also inflates chao_missing (the separate budget-AUDIT
-  # figure), quadratically. This is the same principle already adopted for
-  # the GLMM path's effort
-  # denominator (prepare_model_dataframe(sampling_group_col=), Session 149);
-  # the kernel rewrite dropped it, and this restores it. Build the column
+  # figure), quadratically. Build the column
   # yourself, BY HAND, from real knowledge of detection methodology -- this
   # parameter is optional but NOT inferred automatically, and omitting it
   # silently pools every detection process with no warning (see the @param
   # doc above for the full reasoning, including why an automatic classifier
-  # was tried and retired rather than recommended here).
-  # NULL (default) = one group over the whole stratum = the pre-2026-09-03
-  # behaviour, exactly (regression-tested).
+  # is not used here).
+  # NULL (default) = one group over the whole stratum,
+  # exactly (regression-tested).
   grp_all <- if (is.null(sampling_group_col)) {
     rep("__all__", nrow(rec))
   } else {
@@ -405,9 +395,8 @@ estimate_kernel_priors <- function(occurrence_data,
     # the budget AUDIT (sum(w) vs chao_missing, in apply_undetected_evidence()
     # -- an estimate of how many unseen species there are, never enforced).
     #
-    # theta_present is priced from mass/f1, NOT mass/chao_missing (2026-09-05,
-    # open decision #1 of REENTRY_PROMPT_kernel_budget_pricing_and_scope.md,
-    # resolved). mass/Chao answers "what does the average ANONYMOUS unseen
+    # theta_present is priced from mass/f1, NOT mass/chao_missing.
+    # mass/Chao answers "what does the average ANONYMOUS unseen
     # species share" -- correct for that question, but Chao is radius-unstable
     # (measured: 4x at Mugu, 21x at GreatLakes, moving only the f1/f2 counting
     # radius) because it divides by f2, which sits in the single digits and
@@ -444,7 +433,7 @@ estimate_kernel_priors <- function(occurrence_data,
   names(blocks) <- grp_levels
   grouped <- !is.null(sampling_group_col)
 
-  # Single-taxon-group warning (2026-09-09). A group with exactly one
+  # Single-taxon-group warning. A group with exactly one
   # distinct taxon gets theta_mean = 1.0, theta_sd = 0 for that taxon --
   # mathematically correct given the compositional framing (100% of a
   # group's share when the group has one member, by construction), but not
@@ -523,26 +512,24 @@ estimate_kernel_priors <- function(occurrence_data,
     beta = beta,
     theta_mean = theta,
     theta_sd = theta_sd,
-    # 2026-09-14: renamed from "resident_observed". That name asserted an
-    # evidence claim this function never tested -- it is written as a
-    # CONSTANT on every row the estimator emits, whatever stands behind it.
+    # "kernel_estimated" is written as a
+    # CONSTANT on every row the estimator emits, whatever stands behind it,
+    # and deliberately makes no evidence claim.
     # Measured on the real PtConception 12S priors, 215 of 479 labelled rows
     # (44.9%) rested on under ONE Kish effective record and the minimum was
     # 0.0000; at 18S it was 987 of 1521 (64.9%). Two consumers read the label
     # as a real claim about local evidence (TaxaAssign::posterior_consensus()'s
     # winner_has_occurrence_record, which feeds the published Axis-1
-    # plausibility categories, and join_priors()'s promotion gate), so the
-    # name was making a statement the data did not support. "kernel_estimated"
+    # plausibility categories, and join_priors()'s promotion gate).
+    # "kernel_estimated"
     # says what the row IS: a kernel estimate. How much evidence stands behind
     # it is `effective_records`, right here, for a consumer to threshold --
-    # which is now what posterior_consensus(min_effective_records=) does.
-    # The old string is still accepted everywhere it is read, so prior tables
-    # checkpointed before today keep working unchanged.
+    # which is what posterior_consensus(min_effective_records=) does.
     prior_branch = "kernel_estimated",
     effective_records = c_eff,
     # TRUE by construction (records are stratified to the focal habitat before
     # weighting) -- and load-bearing downstream: TaxaAssign::join_priors()'s
-    # habitat-mismatch promotion clause falls back to legacy blanket promotion
+    # habitat-mismatch promotion clause falls back to a blanket promotion
     # when this column is absent from the priors table.
     observed_in_habitat = TRUE,
     stringsAsFactors = FALSE
@@ -551,15 +538,13 @@ estimate_kernel_priors <- function(occurrence_data,
   if (grouped) priors$sampling_group <- grp_of_taxon
   priors <- priors[order(-priors$theta_mean), , drop = FALSE]
   rownames(priors) <- NULL
-  # Return a TIBBLE, matching generate_full_priors()'s own return class: this
-  # object is its drop-in replacement, and callers built against the GLMM path
-  # rely on tibble `[` semantics. A plain data.frame silently DROPS a
-  # single-column `[` selection to a bare vector (real breakage, found on the
-  # first Mugu kernel run 2026-09-01: `priors[rows, c("taxon_name")] |>
+  # Return a TIBBLE: a plain data.frame silently DROPS a
+  # single-column `[` selection to a bare vector (real breakage on real Mugu
+  # occurrence data: `priors[rows, c("taxon_name")] |>
   # left_join()` errored with "no applicable method for left_join applied to
   # an object of class character"). dplyr::bind_rows() also takes its output
   # class from its FIRST argument, so this keeps every assembled
-  # taxaexpect_priors table a tibble exactly as the GLMM path did.
+  # taxaexpect_priors table a tibble.
   priors <- tibble::as_tibble(priors)
   singletons <- tibble::as_tibble(singletons)
 
@@ -586,7 +571,7 @@ estimate_kernel_priors <- function(occurrence_data,
       lambda_covariate = lambda_covariate,
       lambda_latitude = lambda_latitude,
       support_weight = support_weight,
-      # Column names recorded 2026-09-03 so the fit can be
+      # Column names recorded so the fit can be
       # re-computed from its own provenance -- kernel_budget_
       # sensitivity() re-runs the estimator rather than
       # reconstructing its statistics, and needs them.
@@ -634,8 +619,8 @@ print.taxaexpect_kernel_priors <- function(x, ...) {
     print(b, row.names = FALSE)
   } else {
     # Print f1 and f2 with the budget they produce, ALWAYS -- not only in the
-    # grouped case. theta_present is priced from mass/f1 (2026-09-05, open
-    # decision #1, resolved), an OBSERVED quantity, so it no longer inherits
+    # grouped case. theta_present is priced from mass/f1, an OBSERVED
+    # quantity, so it does not inherit
     # chao_missing's own doubleton-count instability -- but chao_missing
     # itself still does (f1^2/(2 f2), hypersensitive to f2 in single digits),
     # and it still drives the separate budget AUDIT (sum(w) vs chao_missing
