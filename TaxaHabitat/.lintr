@@ -19,18 +19,24 @@ exclusions: list(
     # "# function_name()" / "# Section" section-header comments (this
     # ecosystem's established convention) parsing as bare calls/expressions
     # by coincidence, not dead code.
-    "R/assign_habitat_biological.R" = list(commented_code_linter = c(465L)),
-    "R/review_spatial_flags.R" = list(commented_code_linter = c(1191L)),
+    "R/assign_habitat_biological.R" = list(commented_code_linter = c(583L)),
+    "R/review_spatial_flags.R" = list(commented_code_linter = c(1716L)),
     # Inline hex-colour comments (e.g. "# deep blue -- Marine") read as
     # "commented code" by the linter's heuristic but are plain English
     # labels -- the same pattern already vetted in TaxaExpect's own
-    # utils_plot.R.
-    "R/utils_plot.R" = list(commented_code_linter = c(128L, 129L, 130L, 131L, 133L, 137L)),
+    # utils_plot.R. Also: a leading dot plus SCREAMING_SNAKE_CASE marks an
+    # internal sentinel constant (vs. an ordinary variable) at line 627 --
+    # same convention already vetted for inst/workflows/ top-level config
+    # constants.
+    "R/utils_plot.R" = list(
+      commented_code_linter = c(128L, 129L, 130L, 131L, 133L, 137L),
+      object_name_linter = c(627L)
+    ),
     # parse_hierarchical_habitat_response() is an exported, documented
     # function name -- not worth a breaking rename this late for a 30-char
     # style limit (matches TaxaLikely's own identify_confident_observations()
     # precedent).
-    "R/parse_habitat_response.R" = list(object_length_linter = c(100L)),
+    "R/parse_habitat_response.R" = list(object_length_linter = c(141L)),
     # Every test file's own "# tests/testthat/test-<name>.R" header comment
     # parses as valid R (division/subtraction of undefined objects) purely
     # by coincidence of the filename shape.
@@ -38,6 +44,12 @@ exclusions: list(
     "tests/testthat/test-consensus_habitat.R" = list(commented_code_linter = c(1L)),
     "tests/testthat/test-flag_institution_candidates.R" = list(commented_code_linter = c(1L)),
     "tests/testthat/test-build_habitat_prompt.R" = list(commented_code_linter = c(1L, 109L, 176L)),
+    # Line 158: a real R expression quoted verbatim inside a comment, showing
+    # the exact (buggy) dispatch line from a historical bug the tests below
+    # it were written to catch -- confirmed genuine documentation, not
+    # leftover dead code.
+    "tests/testthat/test-report_habitat.R" = list(commented_code_linter = c(159L)),
+    "tests/testthat/test-spatial_review_decisions.R" = list(commented_code_linter = c(1L)),
     # Inline "expected output" comment in a vignette code chunk (a common,
     # legitimate documentation convention) that parses as a valid R literal.
     "vignettes/habitat-assignment.Rmd" = list(commented_code_linter = c(55L))

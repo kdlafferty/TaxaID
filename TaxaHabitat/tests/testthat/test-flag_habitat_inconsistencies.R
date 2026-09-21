@@ -69,9 +69,9 @@ test_that(".utm_crs_for() picks the right zone and hemisphere", {
   skip_if_not_installed("sf")
   mk <- function(lon, lat) sf::st_sfc(sf::st_point(c(lon, lat)), crs = 4326L)
   expect_equal(.utm_crs_for(mk(-120,   34.4)), 32611L)  # Pt Conception
-  expect_equal(.utm_crs_for(mk( -87,   41.6)), 32616L)  # Great Lakes
-  expect_equal(.utm_crs_for(mk( -70,  -33.0)), 32719L)  # southern hemisphere
-  expect_equal(.utm_crs_for(mk(  10,   86.0)),  5041L)  # UPS North
+  expect_equal(.utm_crs_for(mk(-87, 41.6)), 32616L)  # Great Lakes
+  expect_equal(.utm_crs_for(mk(-70, -33.0)), 32719L)  # southern hemisphere
+  expect_equal(.utm_crs_for(mk(10, 86.0)), 5041L)  # UPS North
   expect_warning(.utm_crs_for(sf::st_sfc(
     sf::st_multipoint(rbind(c(-150, 10), c(150, 10))), crs = 4326L)),
     "span")

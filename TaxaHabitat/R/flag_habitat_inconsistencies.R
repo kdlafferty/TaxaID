@@ -307,13 +307,15 @@ flag_habitat_inconsistencies <- function(
     .v <- system.file("extdata", "ne_10m_minor_islands_coastline.rds",
                       package = "TaxaHabitat")
     if (nzchar(.v) && file.exists(.v)) readRDS(.v) else stop("not vendored")
-  }, error = function(e) tryCatch(
-    rnaturalearth::ne_download(
-      scale = 10, type = "minor_islands_coastline",
-      category = "physical", returnclass = "sf"
-    ),
-    error = function(e2) NULL
-  ))
+  }, error = function(e) {
+    tryCatch(
+      rnaturalearth::ne_download(
+        scale = 10, type = "minor_islands_coastline",
+        category = "physical", returnclass = "sf"
+      ),
+      error = function(e2) NULL
+    )
+  })
   if (is.null(minor_sf)) {
     warning(
       "flag_habitat_inconsistencies(): could not obtain the Natural Earth ",
@@ -720,6 +722,10 @@ flag_habitat_inconsistencies <- function(
   }
 
   if (verbose) message("--- flag_habitat_inconsistencies() complete ---\n")
+
+  # Explicit re-attachment, not reliance on the reshaping above happening to
+  # preserve it -- see the capture note near the top of this function.
+  if (!is.null(.props_in)) attr(occurrence_data, "habitat_proportions") <- .props_in
 
   occurrence_data
 }

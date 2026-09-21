@@ -174,9 +174,13 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
                                           taxon_col = "taxon_name") {
   if (!is.data.frame(reviewed)) stop("save_spatial_review_decisions: `reviewed` must be a data frame.", call. = FALSE)
   for (cc in c(point_id_col, flag_col, habitat_col)) {
-    if (!cc %in% names(reviewed)) stop(sprintf("save_spatial_review_decisions: `reviewed` has no column '%s'.", cc), call. = FALSE)
+    if (!cc %in% names(reviewed)) {
+      stop(sprintf("save_spatial_review_decisions: `reviewed` has no column '%s'.", cc), call. = FALSE)
+    }
   }
-  if (!is.character(path) || length(path) != 1L || is.na(path)) stop("save_spatial_review_decisions: `path` must be a single file path.", call. = FALSE)
+  if (!is.character(path) || length(path) != 1L || is.na(path)) {
+    stop("save_spatial_review_decisions: `path` must be a single file path.", call. = FALSE)
+  }
   has_taxon <- taxon_col %in% names(reviewed)
   new <- data.frame(
     point_id     = as.character(reviewed[[point_id_col]]),
@@ -194,7 +198,10 @@ save_spatial_review_decisions <- function(reviewed, path, before = NULL,
   new <- new[!duplicated(paste(new$point_id, new$taxon_name, sep = "\x1f")), , drop = FALSE]
   if (!is.null(before)) {
     if (!is.data.frame(before) || !all(c(point_id_col, habitat_col) %in% names(before))) {
-      stop("save_spatial_review_decisions: `before` must be a data frame with the point_id and habitat columns.", call. = FALSE)
+      stop(
+        "save_spatial_review_decisions: `before` must be a data frame with the point_id and habitat columns.",
+        call. = FALSE
+      )
     }
     if (has_taxon && taxon_col %in% names(before)) {
       bkey <- paste(as.character(before[[point_id_col]]), as.character(before[[taxon_col]]), sep = "\x1f")
@@ -338,11 +345,17 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
                                            reason_col = "spatial_flag_reason",
                                            habitat_col = "main_habitat",
                                            taxon_col = "taxon_name") {
-  if (!is.data.frame(occurrence_data)) stop("apply_spatial_review_decisions: `occurrence_data` must be a data frame.", call. = FALSE)
-  for (cc in c(point_id_col, flag_col, habitat_col)) {
-    if (!cc %in% names(occurrence_data)) stop(sprintf("apply_spatial_review_decisions: `occurrence_data` has no column '%s'.", cc), call. = FALSE)
+  if (!is.data.frame(occurrence_data)) {
+    stop("apply_spatial_review_decisions: `occurrence_data` must be a data frame.", call. = FALSE)
   }
-  if (!is.character(path) || length(path) != 1L || is.na(path)) stop("apply_spatial_review_decisions: `path` must be a single file path.", call. = FALSE)
+  for (cc in c(point_id_col, flag_col, habitat_col)) {
+    if (!cc %in% names(occurrence_data)) {
+      stop(sprintf("apply_spatial_review_decisions: `occurrence_data` has no column '%s'.", cc), call. = FALSE)
+    }
+  }
+  if (!is.character(path) || length(path) != 1L || is.na(path)) {
+    stop("apply_spatial_review_decisions: `path` must be a single file path.", call. = FALSE)
+  }
   pid <- as.character(occurrence_data[[point_id_col]])
   n_rows <- length(pid)
   dec <- .read_decisions_file(path, "apply_spatial_review_decisions")
@@ -446,7 +459,10 @@ apply_spatial_review_decisions <- function(occurrence_data, path,
   attr(occurrence_data, "n_pending_review") <- length(pending)
   attr(occurrence_data, "pending_point_ids") <- pending
   message(sprintf(
-    "apply_spatial_review_decisions: %d saved decision(s) on file; %d row(s) changed by them; %d flagged point(s) still need review.",
+    paste0(
+      "apply_spatial_review_decisions: %d saved decision(s) on file; %d row(s) changed by them; ",
+      "%d flagged point(s) still need review."
+    ),
     if (is.null(dec)) 0L else nrow(dec), n_applied, length(pending)))
   occurrence_data
 }
