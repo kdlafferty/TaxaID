@@ -16,7 +16,7 @@
 # snippet change that is not reflected here fails the build instead of quietly
 # making the template wrong.
 #
-# Run:  Rscript diagnostics/build_workflow_template.R
+# Run:  Rscript TaxaWizard/inst/tools/build_workflow_template.R
 # =============================================================================
 
 .libPaths(c(path.expand("~/Library/R/4.0/library"), .libPaths()))
@@ -142,7 +142,7 @@ for (i in seq_along(CANONICAL_PATH)) {
 if (length(missing_ph) > 0L) {
   stop("Placeholders used by a snippet but absent from CONFIG/DATAFLOW: ",
        paste(unique(missing_ph), collapse = ", "),
-       "\n  Add them to the CONFIG table in diagnostics/build_workflow_template.R.",
+       "\n  Add them to the CONFIG table in TaxaWizard/inst/tools/build_workflow_template.R.",
        call. = FALSE)
 }
 
@@ -167,7 +167,7 @@ header <- c(
   "#",
   "# GENERATED FILE -- do not edit by hand.",
   "#   Source:    the workflow graph's own snippets (TaxaWizard/inst/graph/snippets/)",
-  "#   Generator: diagnostics/build_workflow_template.R",
+  "#   Generator: TaxaWizard/inst/tools/build_workflow_template.R",
   "#   Guarded by: TaxaWizard/tests/testthat/test-workflow-template.R, which",
   "#               regenerates this file and fails if it differs.",
   "#",

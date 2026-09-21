@@ -50,17 +50,21 @@ suppressPackageStartupMessages({
   library(TaxaTools)
   library(TaxaLikely)
   library(TaxaAssign)
+  library(TaxaWizard)
 })
 
-# --- Path resolution (works whether launched from the repo root or from this
-#     directory directly) --------------------------------------------------
-if (basename(getwd()) == "fast_workflows") {
-  FW_DIR     <- getwd()
-  REPO_ROOT  <- normalizePath(file.path(getwd(), "..", ".."))
-} else {
-  FW_DIR     <- file.path("diagnostics", "fast_workflows")
-  REPO_ROOT  <- getwd()
-}
+# --- Path resolution -------------------------------------------------------
+# Fixtures live alongside this script at TaxaWizard/inst/fast_workflows/, so
+# FW_DIR is resolved via system.file() against the installed (or
+# devtools::load_all()'d) TaxaWizard package -- correct regardless of where
+# this script is launched from. REPO_ROOT (needed only for Arm D's
+# repo-root-relative PtCon18SSchulte_occurrences_clean.rds lookup, which
+# already tolerates that file being absent) is resolved the same way
+# TaxaWizard's own tests find the monorepo root.
+FW_DIR    <- system.file("fast_workflows", package = "TaxaWizard")
+REPO_ROOT <- TaxaWizard:::.pack_find_repo_root()
+if (!nzchar(FW_DIR)) stop("TaxaWizard's fast_workflows/ not found -- is TaxaWizard installed or load_all()'d?", call. = FALSE)
+if (is.null(REPO_ROOT)) REPO_ROOT <- getwd()
 
 fixture_path   <- file.path(FW_DIR, "ptcon18s_fast_match_obj.rds")
 lik_model_path <- file.path(FW_DIR, "ptcon18s_fast_lik_model_calibrated.rds")
@@ -803,7 +807,7 @@ gl_match_path <- file.path(FW_DIR, "greatlakes_fast_match_obj.rds")
 gl_model_path <- file.path(FW_DIR, "greatlakes_fast_lik_model_calibrated.rds")
 
 cat("\n--- GreatLakes ---\n")
-cat("SKIPPED: no taxaexpect_priors fixture exists for GreatLakes in diagnostics/fast_workflows.\n")
+cat("SKIPPED: no taxaexpect_priors fixture exists for GreatLakes in TaxaWizard/inst/fast_workflows.\n")
 cat("calibrate_query_noise() requires a real priors data frame (taxon_name/taxon_name_rank/theta_mean)\n")
 cat("to call identify_confident_observations() -- fabricating one would defeat the point of this check.\n")
 

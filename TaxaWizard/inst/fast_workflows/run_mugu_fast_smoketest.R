@@ -26,8 +26,9 @@
 t0 <- Sys.time()
 
 library(TaxaAssign)
+library(TaxaWizard)
 
-fixture_path <- file.path("diagnostics", "fast_workflows", "mugu12s_fast_posterior_df.rds")
+fixture_path <- system.file("fast_workflows", "mugu12s_fast_posterior_df.rds", package = "TaxaWizard")
 stopifnot(file.exists(fixture_path))
 
 posterior_df <- readRDS(fixture_path)

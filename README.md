@@ -780,15 +780,17 @@ fixture extracted from a completed production run, in a few seconds,
 with no network calls and no API key:
 
 ``` r
-# from the repository root -- the fixture paths are relative to it
-source("diagnostics/fast_workflows/run_fast_smoketest.R")            # ~7 s
-source("diagnostics/fast_workflows/run_greatlakes_fast_smoketest.R") # ~6 s
+# from the repository root -- fixture paths are resolved via system.file()
+# against the installed (or devtools::load_all()'d) TaxaWizard package
+library(TaxaWizard)
+source(system.file("fast_workflows", "run_fast_smoketest.R", package = "TaxaWizard"))            # ~7 s
+source(system.file("fast_workflows", "run_greatlakes_fast_smoketest.R", package = "TaxaWizard")) # ~6 s
 ```
 
 Both print warnings about hypotheses below `min_posterior` and about
 genus-level names in `plausible_taxa`. Those are expected: the fixtures
 use a flat placeholder prior, which is loudly labelled in each script.
-See `diagnostics/fast_workflows/README.md`.
+See `TaxaWizard/inst/fast_workflows/README.md`.
 
 ### The workflow template
 
@@ -797,7 +799,7 @@ canonical path from raw sequences to reviewed assignments. Edit its
 Section 0, supply your own input, and run it top to bottom. It carries no
 study's data and no real paths.
 
-**It is generated, not written.** `diagnostics/build_workflow_template.R`
+**It is generated, not written.** `TaxaWizard/inst/tools/build_workflow_template.R`
 assembles it from the workflow graph's own snippets -- the same files
 TaxaWizard generates scripts from -- resolving each step's inputs from the
 graph's edge wiring and each parameter from one configuration table.
@@ -824,11 +826,11 @@ breaks the build rather than quietly making the template wrong.
 To update it after changing a snippet:
 
 ```bash
-Rscript diagnostics/build_workflow_template.R
+Rscript TaxaWizard/inst/tools/build_workflow_template.R
 ```
 
-See `archive_retired_workflow_template_2026_09_15/README.md` for the
-retired one.
+See `TaxaID_dev/archive_retired_workflow_template_2026_09_15/README.md`
+(sibling development repository) for the retired one.
 
 ## Getting Started
 

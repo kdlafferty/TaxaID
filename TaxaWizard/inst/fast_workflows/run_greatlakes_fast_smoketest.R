@@ -19,9 +19,10 @@ t0 <- Sys.time()
 
 library(TaxaLikely)
 library(TaxaAssign)
+library(TaxaWizard)
 
-fixture_path   <- file.path("diagnostics", "fast_workflows", "greatlakes_fast_match_obj.rds")
-lik_model_path <- file.path("diagnostics", "fast_workflows", "greatlakes_fast_lik_model_calibrated.rds")
+fixture_path   <- system.file("fast_workflows", "greatlakes_fast_match_obj.rds", package = "TaxaWizard")
+lik_model_path <- system.file("fast_workflows", "greatlakes_fast_lik_model_calibrated.rds", package = "TaxaWizard")
 
 stopifnot(file.exists(fixture_path), file.exists(lik_model_path))
 

@@ -33,10 +33,11 @@ t0 <- Sys.time()
 
 library(TaxaLikely)
 library(TaxaAssign)
+library(TaxaWizard)
 
-fixture_path      <- file.path("diagnostics", "fast_workflows", "ptcon18s_fast_match_obj.rds")
-lik_model_path    <- file.path("diagnostics", "fast_workflows", "ptcon18s_fast_lik_model_calibrated.rds")
-priors_path       <- file.path("diagnostics", "fast_workflows", "ptcon18s_fast_taxaexpect_priors.rds")
+fixture_path      <- system.file("fast_workflows", "ptcon18s_fast_match_obj.rds", package = "TaxaWizard")
+lik_model_path    <- system.file("fast_workflows", "ptcon18s_fast_lik_model_calibrated.rds", package = "TaxaWizard")
+priors_path       <- system.file("fast_workflows", "ptcon18s_fast_taxaexpect_priors.rds", package = "TaxaWizard")
 
 stopifnot(file.exists(fixture_path), file.exists(lik_model_path), file.exists(priors_path))
 

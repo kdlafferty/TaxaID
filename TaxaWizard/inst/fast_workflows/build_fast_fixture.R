@@ -37,9 +37,9 @@
 #      reproducible via the fixed seed, not order-dependent.
 #
 # Usage:
-#   Rscript diagnostics/fast_workflows/build_fast_fixture.R \
+#   Rscript TaxaWizard/inst/fast_workflows/build_fast_fixture.R \
 #     --input  "~/My Drive/Rscripts/eDNA/PtConception/PtConMifishSchulte_match_obj_restored.rds" \
-#     --output "diagnostics/fast_workflows/ptcon12s_fast_match_obj.rds" \
+#     --output "TaxaWizard/inst/fast_workflows/ptcon12s_fast_match_obj.rds" \
 #     --max-observations 150
 #
 # Or call build_fast_fixture() directly from an R session (see below).

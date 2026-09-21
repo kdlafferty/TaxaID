@@ -22,6 +22,15 @@
 *.csv
 *.xlsx
 
+# ── Exceptions: real, load-bearing package data, not cache output ──
+# TaxaHabitat's coastline layer, loaded via system.file() in
+# flag_habitat_inconsistencies() -- a fresh clone needs this to work at all.
+!TaxaHabitat/inst/extdata/*.rds
+# TaxaWizard's fast-smoke-test fixtures -- small (~2 MB total), real,
+# curated subsets of production checkpoints, needed for the root README's
+# "confirm your installation works" step and TaxaWizard's own tests.
+!TaxaWizard/inst/fast_workflows/*.rds
+
 
 # ── Stray plot/output files ──────────────────────
 Rplots.pdf

@@ -30,12 +30,15 @@
 
 t0 <- Sys.time()
 
-# Run from the TaxaID project root (relative paths below assume this).
+# Fixture paths are resolved via system.file() against the installed (or
+# devtools::load_all()'d) TaxaWizard package, not a relative path -- this
+# script and its fixtures live at TaxaWizard/inst/fast_workflows/.
 library(TaxaLikely)
 library(TaxaAssign)
+library(TaxaWizard)
 
-fixture_path   <- file.path("diagnostics", "fast_workflows", "ptcon12s_fast_match_obj.rds")
-lik_model_path <- file.path("diagnostics", "fast_workflows", "ptcon12s_fast_lik_model_calibrated.rds")
+fixture_path   <- system.file("fast_workflows", "ptcon12s_fast_match_obj.rds", package = "TaxaWizard")
+lik_model_path <- system.file("fast_workflows", "ptcon12s_fast_lik_model_calibrated.rds", package = "TaxaWizard")
 
 stopifnot(file.exists(fixture_path), file.exists(lik_model_path))
 
