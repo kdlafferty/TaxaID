@@ -45,7 +45,8 @@ utils::globalVariables(c(
 #'   taxon_name_rank = "species",
 #'   theta_mean      = 0.5
 #' )
-#' identify_confident_observations(match_df, priors)
+#' # Internal, not exported -- qualified here so the example is runnable.
+#' TaxaLikely:::identify_confident_observations(match_df, priors)
 #'
 #' @importFrom dplyr filter mutate group_by summarise pull slice_max ungroup n
 #' @keywords internal

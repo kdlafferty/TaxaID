@@ -825,6 +825,19 @@ build_sequence_matrix <- function(reference_df,
 #'   }
 #'
 #' @seealso [build_sequence_matrix()], `TaxaExpect::kernel_budget_sensitivity()`
+#'
+#' @examples
+#' \dontrun{
+#' # Requires DECIPHER + Biostrings (Bioconductor); re-runs the full
+#' # by_genus = TRUE pipeline n_replicates times, so this is real compute.
+#' noise <- check_cross_genus_sampling_noise(
+#'   reference_df,
+#'   rank_system = c("family", "genus", "species"),
+#'   n_replicates = 5L
+#' )
+#' noise$summary
+#' }
+#'
 #' @export
 check_cross_genus_sampling_noise <- function(reference_df,
                                              rank_system = NULL,

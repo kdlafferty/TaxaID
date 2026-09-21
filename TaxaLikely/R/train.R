@@ -251,7 +251,8 @@ utils::globalVariables(c(
   # so on (.generalize_ranks() above renames by position via rev(present)).
   # "Genus" here is a documented CONVENTION, not an enforced guarantee --
   # true whenever rank_system's finest two elements are ("...", "genus",
-  # "species"), which is this ecosystem's own standard rank_system and how every real production workflow calls this package. A
+  # "species"), which is this ecosystem's own standard rank_system and how
+  # every real production workflow calls this package. A
   # caller supplying a non-standard rank_system whose second-finest rank
   # ISN'T genus (e.g. one ending "...genus, species, subspecies", finest =
   # subspecies) would silently get max_congener_score/H2_Lookup keyed on
@@ -951,7 +952,10 @@ train_likelihood_model <- function(raw_df,
   n_foreign_unqualified <- sum(train_df$n_foreign_unqualified %in% 1L)
   if (floor_applied) {
     message(sprintf(
-      "Pair-coverage floor %.2f: %d reference(s) had no qualifying foreign pair (noise floor); %d fell back to an unqualified conspecific pair (kept in training).",
+      paste0(
+        "Pair-coverage floor %.2f: %d reference(s) had no qualifying foreign pair ",
+        "(noise floor); %d fell back to an unqualified conspecific pair (kept in training)."
+      ),
       min_pair_coverage, n_foreign_unqualified, n_self_fallback
     ))
   }
@@ -1192,7 +1196,10 @@ train_likelihood_model <- function(raw_df,
     tau2_score <- es$tau2
     tau2_gap <- eg$tau2
     message(sprintf(
-      "Empirical Bayes mean shrinkage: tau/sigma = %.2f (score), %.2f (gap); species weight on own mean %.2f-%.2f (score), %.2f-%.2f (gap).",
+      paste0(
+        "Empirical Bayes mean shrinkage: tau/sigma = %.2f (score), %.2f (gap); ",
+        "species weight on own mean %.2f-%.2f (score), %.2f-%.2f (gap)."
+      ),
       sqrt(tau2_score / global_var_score), sqrt(tau2_gap / global_var_gap),
       min(es$w[sp_real]), max(es$w[sp_real]), min(eg$w[sp_real]), max(eg$w[sp_real])
     ))

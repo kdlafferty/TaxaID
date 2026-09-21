@@ -69,6 +69,19 @@ compute cost, not free; run it once when adopting \code{by_genus = TRUE} for a
 new marker, not on every training run.
 }
 
+\examples{
+\dontrun{
+# Requires DECIPHER + Biostrings (Bioconductor); re-runs the full
+# by_genus = TRUE pipeline n_replicates times, so this is real compute.
+noise <- check_cross_genus_sampling_noise(
+  reference_df,
+  rank_system = c("family", "genus", "species"),
+  n_replicates = 5L
+)
+noise$summary
+}
+
+}
 \seealso{
 \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}, \code{TaxaExpect::kernel_budget_sensitivity()}
 }

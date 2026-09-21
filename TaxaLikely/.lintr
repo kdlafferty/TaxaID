@@ -29,11 +29,20 @@ exclusions: list(
     # A roxygen @param tag documenting several params via one comma-list --
     # roxygen requires the param names on the same line as the tag, so this
     # isn't splittable without breaking the doc block.
-    "R/build_sequence.R" = list(line_length_linter = c(809L)),
+    "R/build_sequence.R" = list(line_length_linter = c(805L)),
     # gap_indistinct/gap_complex are used inside a dplyr::case_when() NSE
     # block further down -- lint_package()'s static analysis doesn't always
     # trace usage through case_when(), a false positive not dead code.
-    "R/interpret.R" = list(object_usage_linter = c(84L, 85L)),
+    "R/interpret.R" = list(object_usage_linter = c(94L, 95L)),
+    # term_str/type_label/empty_with_fam/n_fam_unref/n_genus_unref/n_seqgap/
+    # in_ref_label are each used only inside a cli::cli_inform() glue-style
+    # "{var}" interpolation -- lint_package()'s (and codetools::checkUsage's,
+    # verified directly against the loaded namespace) static analysis doesn't
+    # trace usage through cli's glue syntax, the same false-positive class as
+    # the case_when() one above, just a different NSE mechanism.
+    "R/suggest_unreferenced_species.R" = list(
+      object_usage_linter = c(1011L, 1049L, 1117L, 1252L, 1261L, 1262L, 1269L)
+    ),
     # .save_record()'s <<- mutates its enclosing function's own `records`
     # accumulator by design -- the standard, documented use case for <<-
     # (a closure updating enclosing-scope state), not the "reaching into an
@@ -52,6 +61,9 @@ exclusions: list(
     "tests/testthat/test-build.R" = list(line_length_linter = Inf),
     "tests/testthat/test-subset-local-database.R" = list(line_length_linter = Inf),
     "tests/testthat/test-read-crabs.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-bimodality.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-suggest_unreferenced_species.R" = list(line_length_linter = Inf),
+    "tests/testthat/test-vignette-calls.R" = list(line_length_linter = Inf),
     "inst/workflows/calibrate_training_bias_tau.R" = list(
       line_length_linter = Inf,
       object_usage_linter = Inf
