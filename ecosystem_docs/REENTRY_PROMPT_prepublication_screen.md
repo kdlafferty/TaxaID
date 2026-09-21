@@ -786,6 +786,15 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   FALSE` in the generated template, rationale in Step 1's comment (one BLAST
   round-trip per accession trips NCBI; 6 of 13,442 hits changed on a real
   12S study; run as a separate task).
+  **TaxaTools DONE** (`f097ece`): `check()` 0/0/0, 1,174 tests; 94 non-ASCII
+  lines fixed incl. an em-dash inside a live `message()` format string; two
+  never-read variables deleted; **security fix: Gemini's API key travels in
+  the request URL, and `call_api()`'s connection-error handler echoed the
+  raw message (URL included) through `stop()` -- the key is now redacted
+  before the error surfaces**; no key ever written to a manifest or cache.
+  Online name-verifier tests ran for real and passed. Not done, by
+  judgement: dated comments in `tests/` (outside A1's scope; tests ship but
+  are not user-facing prose) -- decide whether a tests/ sweep is wanted.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
