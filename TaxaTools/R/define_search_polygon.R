@@ -2,12 +2,11 @@
 # define_search_polygon.R
 # TaxaTools -- Interactive polygon tool, shared across packages
 #
-# Moved here from TaxaFetch (Session 134b): the only generalization needed for
-# this gadget to serve both a search-area purpose (TaxaFetch) and a
-# spatial-group purpose (TaxaMatch::group_observations_by_bbox()) was letting
-# the reference-point overlay be colored by an existing group column, and
-# letting a previously drawn polygon be reopened for reshaping -- neither
-# changes the core interaction model, so one shared gadget covers both.
+# Serves both a search-area purpose (TaxaFetch) and a spatial-group purpose
+# (TaxaMatch::group_observations_by_bbox()): the reference-point overlay can
+# be colored by an existing group column, and a previously drawn polygon can
+# be reopened for reshaping -- neither changes the core interaction model, so
+# one shared gadget covers both.
 # ==============================================================================
 
 #' Build a closed WKT POLYGON string from ordered (lng, lat) vectors

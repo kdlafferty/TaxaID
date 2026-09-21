@@ -5,24 +5,21 @@
 # WHY THIS EXISTS. The ecosystem's habitat signal is
 # TaxaHabitat::build_habitat_lookup(), an LLM verdict over four EXCLUSIVE
 # categories (Marine / Estuarine / Freshwater / Terrestrial). Forcing one
-# choice breaks on animals that use two realms: measured 2026-09-15, the black
-# oystercatcher, sanderling, black turnstone and whimbrel all came back
-# "Terrestrial" because they stand on rock, and 381 of 578 PtConception birds
-# went the same way. WoRMS is MULTI-LABEL -- the oystercatcher is marine = TRUE
-# AND terrestrial = TRUE -- which is the representation the four-category
-# scheme cannot express and the reason the LLM had to pick wrong.
+# choice breaks on animals that use two realms: the black oystercatcher,
+# sanderling, black turnstone and whimbrel all come back "Terrestrial"
+# because they stand on rock, and 381 of 578 PtConception birds go the same
+# way. WoRMS is MULTI-LABEL -- the oystercatcher is marine = TRUE AND
+# terrestrial = TRUE -- which is the representation the four-category
+# scheme cannot express and the reason the LLM picks wrong.
 #
 # It lives in TaxaTools, not TaxaFetch, because it is a by-NAME taxonomic
 # attribute lookup (the same shape as verify_taxon_names() / change_backbone())
 # and not an occurrence fetch. GBIF remains the single occurrence source for
-# every workflow; see ecosystem_docs/REENTRY_PROMPT_worms_marine_filter.md for
-# the decision to decline the two OBIS functions that were once proposed
-# alongside this one.
+# every workflow; OBIS integration was considered and declined.
 #
 # Internal helpers are deliberately placed ABOVE the exported function's roxygen
 # block: a helper inserted BETWEEN a roxygen block and its function definition
-# silently steals the @export, and devtools::document() reports nothing wrong
-# (see TaxaTools/CLAUDE.md, 2026-09-14).
+# silently steals the @export, and devtools::document() reports nothing wrong.
 
 .WORMS_REST <- "https://www.marinespecies.org/rest"
 
@@ -262,8 +259,8 @@
 
 # NCBI taxon id for one AphiaID. WoRMS curates this crosswalk; the ecosystem
 # otherwise recomputes it live through verify_taxon_names(backbone_id = 4),
-# which costs API calls and does not always resolve (33 of 803 higher-rank
-# names got no GBIF match on the 2026-09-13 scope-classifier run).
+# which costs API calls and does not always resolve (higher-rank names
+# sometimes get no GBIF match at all).
 # Returns list(ok, value). ok = FALSE means the request failed and must not
 # be cached; ok = TRUE with value = NA means "WoRMS has no NCBI id for this".
 #' @noRd
@@ -278,9 +275,9 @@
   list(ok = TRUE, value = as.character(res$body[[1L]]))
 }
 
-# Introduced-species flag, DERIVED. The `wrims` column in the superseded OBIS
-# checklist came from OBIS, which is declined; WoRMS exposes no equivalent
-# single field (checked 2026-09-15: the 42 public AphiaAttributeKeys contain no
+# Introduced-species flag, DERIVED, and named `wrims` after the WRiMS
+# (World Register of Introduced Marine Species) list. WoRMS exposes no
+# equivalent single field (the 42 public AphiaAttributeKeys contain no
 # introduced/alien key, and Carcinus maenas -- a flagship WRiMS species --
 # carries none). What WoRMS does expose is per-locality distributions with an
 # `establishmentMeans` of "Alien" / "Native" / "Native - Non-endemic", and
@@ -316,12 +313,11 @@
 # THE `resolved` FIELD IS LOAD-BEARING. A run with extras = character(0) writes
 # a row whose ncbi_id is NA because it was never asked for -- not because WoRMS
 # has none. Keying the file on `extras` instead would re-fetch the flags too;
-# caching the NA would make the omission permanent, which is precisely the
-# failure that cost 20 PtCon 12S observations in the LLM review (see
-# TaxaTools/CLAUDE.md, 2026-09-14). So the file records WHICH extras have
-# actually been answered, and a request for an unrecorded extra is a partial
-# hit: the flags are reused, only the missing extra is fetched, and the file is
-# rewritten. Existing caches heal themselves.
+# caching the NA would make the omission permanent, silently treating "never
+# asked" as "asked and absent" on every future read. So the file records
+# WHICH extras have actually been answered, and a request for an unrecorded
+# extra is a partial hit: the flags are reused, only the missing extra is
+# fetched, and the file is rewritten. Existing caches heal themselves.
 
 #' @noRd
 .worms_cache_key <- function(name, accept_fuzzy) {
@@ -372,9 +368,9 @@
 #' \strong{Why this is not the habitat lookup you already have.}
 #' \code{TaxaHabitat::build_habitat_lookup()} asks an LLM to choose ONE of
 #' Marine / Estuarine / Freshwater / Terrestrial. Intertidal foragers that stand
-#' on rock come back Terrestrial -- measured 2026-09-15, the black oystercatcher
-#' (M 0.40 / T 0.50), sanderling (0.20 / 0.50), black turnstone (0.30 / 0.60)
-#' and whimbrel all did, and 381 of 578 PtConception birds went the same way.
+#' on rock come back Terrestrial -- the black oystercatcher (M 0.40 / T 0.50),
+#' sanderling (0.20 / 0.50), black turnstone (0.30 / 0.60) and whimbrel all do,
+#' and 381 of 578 PtConception birds go the same way.
 #' WoRMS records the oystercatcher as marine \emph{and} terrestrial. The two
 #' sources answer different questions and neither replaces the other.
 #'
@@ -422,12 +418,12 @@
 #' \emph{Cervus elaphus} and \emph{Zea mays} are not in WoRMS at all, so there is
 #' no threshold to tune. But a genuinely marine taxon missing from the register
 #' is cut the same way. Every absent name is returned in the
-#' \code{"not_in_worms"} attribute -- read it before trusting a run. Note also
-#' that absence is a weaker filter than it was once described: verified
-#' 2026-09-15, \emph{Homo sapiens} (1455977), \emph{Sus scrofa} (1469456),
-#' \emph{Bos taurus} (1506698), \emph{Canis lupus} (1506689) and \emph{Gallus
-#' gallus} (1463738) ARE all in the register now. They are cut on their flags
-#' (marine = FALSE / NA, terrestrial = TRUE), not on absence.
+#' \code{"not_in_worms"} attribute -- read it before trusting a run. Absence
+#' is a weaker filter than intuition suggests: \emph{Homo sapiens} (1455977),
+#' \emph{Sus scrofa} (1469456), \emph{Bos taurus} (1506698), \emph{Canis
+#' lupus} (1506689) and \emph{Gallus gallus} (1463738) are all in the
+#' register. They are cut on their flags (marine = FALSE / NA, terrestrial =
+#' TRUE), not on absence.
 #'
 #' \strong{Names are used as supplied}, apart from whitespace trimming. Pass
 #' names that have already been through \code{\link{clean_taxon_names}} if the

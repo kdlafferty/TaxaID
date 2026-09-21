@@ -357,7 +357,7 @@
   block_types <- vapply(body$content, function(b) b$type %||% "?", "")
   hit_cap <- identical(body$stop_reason, "max_tokens")
   if (length(text_blocks) == 0L) {
-    # 2026-09-18: Claude 4.6+/5 models run adaptive thinking by default and
+    # Claude 4.6+/5 models run adaptive thinking by default and
     # return `thinking` blocks BEFORE any text. With a small max_tokens the
     # reasoning can consume the whole allowance, leaving no text block at all
     # (seen with claude-sonnet-5, max_tokens = 1800, an ~12k-token prompt).
@@ -491,8 +491,7 @@
 #'
 #' Individual provider functions (\code{\link{call_anthropic_api}},
 #' \code{\link{call_gemini_api}}, etc.) are thin wrappers around this
-#' function and remain available for backward compatibility and for use as
-#' \code{llm_fn} arguments.
+#' function, useful directly or as \code{llm_fn} arguments.
 #'
 #' @param prompt_str Character. A length-1 string containing the complete
 #'   prompt to submit.

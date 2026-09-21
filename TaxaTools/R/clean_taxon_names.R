@@ -44,7 +44,7 @@
 #'   binomial; \code{"hybrid X x Y"} with no named first parent has no real
 #'   maternal-parent identity to recover). Pass a custom vector to extend or
 #'   replace the default list; \code{character(0)} disables this step
-#'   entirely (restores this function's pre-2026-08-11 behavior).
+#'   entirely.
 #'
 #' @return A character vector the same length as \code{name_vec}. Names that
 #'   do not start with a capital letter, are \code{NA}, or consist only of an
@@ -111,9 +111,9 @@ clean_taxon_names <- function(name_vec, remove_abbr = NULL, strip_modifiers = NU
   x <- stringr::str_squish(x)
 
   # --- Strip a single leading breeding/ploidy-manipulation modifier word,
-  # ALSO before the capital-letter filter (found live, 2026-08-11, on real
-  # GenBank hybrid-cross records: "androgenetic Carassius auratus red var.
-  # x Megalobrama amblycephala" etc.) -- these terms describe a real,
+  # ALSO before the capital-letter filter (seen on real GenBank hybrid-cross
+  # records: "androgenetic Carassius auratus red var. x Megalobrama
+  # amblycephala" etc.) -- these terms describe a real,
   # confirmed genetic/breeding state, not uncertainty, so removing them is
   # safe in the same sense bracket-stripping is: it reveals the genuinely
   # intended name underneath, rather than rescuing a name that SHOULD stay

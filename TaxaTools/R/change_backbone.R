@@ -65,7 +65,7 @@ utils::globalVariables(c(
 #' @param keep_unmatched Logical. When \code{TRUE} (the default), names for which
 #'   the target backbone returns no match are retained by copying the original
 #'   source name into the translated-name column rather than leaving it \code{NA}.
-#'   Set to \code{FALSE} to keep \code{NA} for unmatched names (original behaviour).
+#'   Set to \code{FALSE} to keep \code{NA} for unmatched names instead.
 #'
 #' @return A dataframe with:
 #' \describe{

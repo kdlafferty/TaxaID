@@ -28,13 +28,12 @@
 #'   each file's basename (via \code{grepl()}); a file matching ANY pattern
 #'   is included.
 #' @param recursive Logical. Descend into subdirectories? Default
-#'   \code{FALSE}, which is what every caller predating 2026-09-14 assumed.
-#'   Pass \code{TRUE} for a store that keeps part of itself in a
-#'   subdirectory -- TaxaLikely's per-accession \code{fasta/} cache is one,
-#'   and while this argument did not exist it was silently unreachable by
-#'   \code{taxalikely_clear_cache()}: 4,061 files no clear function could
-#'   see. Patterns are still matched against the BASENAME, so a recursive
-#'   scan needs a pattern that identifies the file, not its directory.
+#'   \code{FALSE}. Pass \code{TRUE} for a store that keeps part of itself in
+#'   a subdirectory -- TaxaLikely's per-accession \code{fasta/} cache is one
+#'   example; without it, files inside that subdirectory are invisible to
+#'   \code{taxalikely_clear_cache()}. Patterns are still matched against the
+#'   BASENAME, so a recursive scan needs a pattern that identifies the file,
+#'   not its directory.
 #' @return A data frame with columns \code{path}, \code{size_mb},
 #'   \code{mtime} (zero rows if \code{cache_dir} has no matching files or
 #'   does not exist).
@@ -175,15 +174,8 @@ report_and_clear_cache <- function(inv, label, cache_dir,
 #' A cache gate that tests only \code{file.exists()} silently serves stale
 #' results. This is the ecosystem's staleness primitive: a cache is usable
 #' only if it exists AND is not older than any of the artifacts it was
-#' derived from.
-#'
-#' Lifted verbatim (2026-09-14) from three byte-identical copies that had
-#' been pasted into workflow scripts --
-#' \code{PtConceptionWorkflow_12S_single_site.R},
-#' \code{PtConceptionWorkflow_18S_2_single_site.R} and
-#' \code{GreatLakes2023_ConsensusWorkflow.R} -- so that the 26 package files
-#' that take a \code{cache_dir} can reach it too. Behaviour is unchanged
-#' from those copies.
+#' derived from. Every package file that takes a \code{cache_dir} argument
+#' shares this one implementation.
 #'
 #' @section When \code{inputs} applies:
 #' Declare \code{inputs} whenever a cache derives from a file the caller
@@ -192,7 +184,7 @@ report_and_clear_cache <- function(inv, label, cache_dir,
 #' whose upstream is a remote service (an NCBI or GBIF query has no local
 #' mtime to compare against); that staleness axis is time, and the policy
 #' for it is to report the cache's age at load rather than expire it
-#' silently. See \code{ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md}.
+#' silently.
 #'
 #' @param path Character. Path to the candidate cache file.
 #' @param inputs Character vector or \code{NULL}. Paths this cache was
@@ -240,11 +232,11 @@ cache_ok <- function(path, inputs = NULL) {
 
 #' Report every TaxaID cache on this machine
 #'
-#' The ecosystem had five package-specific \code{<pkg>_clear_cache()}
-#' functions and no way to see the whole picture, which is how it accumulated
-#' a 23 GB and then a 17 GB cache without anyone noticing (38 GBIF zips at
-#' 17.0 GB against 52 MB for every other cache file combined). This is the
-#' missing ecosystem-level view: it reports, and never deletes.
+#' Each package has its own \code{<pkg>_clear_cache()} function, but none of
+#' them shows the whole picture -- a handful of large GBIF zip files can
+#' dominate total cache size while every other cache file combined stays
+#' small, and that is invisible without an ecosystem-level view. This
+#' function is that view: it reports, and never deletes.
 #'
 #' Caches default to \code{tools::R_user_dir("<pkg>", "cache")}, a hidden
 #' per-user directory outside the project, so the sizes here are usually

@@ -29,11 +29,11 @@ alongside \code{size_mb}; the printed output flags stores where the two
 diverge.
 }
 \description{
-The ecosystem had five package-specific \code{<pkg>_clear_cache()}
-functions and no way to see the whole picture, which is how it accumulated
-a 23 GB and then a 17 GB cache without anyone noticing (38 GBIF zips at
-17.0 GB against 52 MB for every other cache file combined). This is the
-missing ecosystem-level view: it reports, and never deletes.
+Each package has its own \code{<pkg>_clear_cache()} function, but none of
+them shows the whole picture -- a handful of large GBIF zip files can
+dominate total cache size while every other cache file combined stays
+small, and that is invisible without an ecosystem-level view. This
+function is that view: it reports, and never deletes.
 }
 \details{
 Caches default to \code{tools::R_user_dir("<pkg>", "cache")}, a hidden

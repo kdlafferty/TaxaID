@@ -51,17 +51,14 @@ invertebrate. The guard deliberately does NOT fire on a row with a
 \code{NA} (missing) kingdom -- a row with no usable taxonomy at all is a
 different problem (it may be genuinely novel), not something this
 function should silently discard. Set \code{kingdom_guard = FALSE} to
-restore the old case_when() behaviour, where every unmatched row (any
-kingdom, including \code{NA}) becomes the catch-all.}
+make every unmatched row (any kingdom, including \code{NA}) become the
+catch-all instead.}
 
 \item{harmonise}{Logical, default \code{FALSE}. When \code{TRUE},
 \code{taxonomy} is harmonised to \code{scheme}'s backbone BEFORE
 classification, via \code{\link{verify_taxon_names}(backbone_id =
-backbone_id)} -> \code{\link{change_backbone}()} -- the same idiom
-\code{CaliforniaIntertidal/scope_classifier.R}'s
-\code{harmonize_ranks_to_gbif()} documents, and the one
-\code{PtConceptionWorkflow_18S_2_single_site.R} already uses to fold in
-an NCBI-backbone dataset. This lets an NCBI-backbone match object (e.g.
+backbone_id)} -> \code{\link{change_backbone}()}. This lets an
+NCBI-backbone match object (e.g.
 one carrying \code{class = "Copepoda"}, \code{class =
 "Thalassiosirophyceae"}, or kingdom \code{"Chromista"}/\code{"Protozoa"}
 in vocabulary the default scheme does not otherwise recognise) be
@@ -106,10 +103,8 @@ Classifies each row of a taxonomy table into a \code{sampling_group}
 (the shared-effort denominator, kernel-fit group, and dark-diversity-floor
 group used throughout the TaxaID ecosystem) using an ordered,
 first-match-wins rule scheme -- see \code{\link{default_sampling_scheme}}.
-This is the single package-level home for logic that was previously an
-inline \code{dplyr::case_when()} duplicated across five workflow files,
-and had silently drifted three times before this fix (see
-\code{\link{default_sampling_scheme}}'s Details).
+This is the single package-level home for this classification logic, so
+every caller uses the exact same rule set.
 }
 \section{Empty-string normalisation}{
 
@@ -132,22 +127,19 @@ vocabulary, and emits ONE warning (naming what it saw) if either fires:
 (1) a \code{taxonomy_backbone} attribute on \code{taxonomy} that does not
 look like GBIF/backbone 11; (2) presence of a class value GBIF's backbone
 is confirmed NOT to carry --
-\code{"Thalassiosirophyceae"}/\code{"Bigyra"}/\code{"Phytomastigophora"}
-(per \code{scope_classifier.R}'s own verified BACKBONE TRAP comparison
-table). \strong{\code{"Copepoda"} is deliberately NOT used as a mismatch
-signal}, even though it is a genuinely NCBI-flavoured class name: this
-function's own regression check against real GBIF-backbone occurrence
-data (\code{PtCon18SSchulte_occurrences_clean.rds}) found \code{"Copepoda"}
-live in real GBIF output too, not only in NCBI match objects -- so it is
-handled directly in the zooplankton rule (see
-\code{\link{default_sampling_scheme}}'s 2026-09-13 notes) rather than
-treated as a mismatch symptom, which would have produced a false warning
-on perfectly correct GBIF input. Silent misclassification from an
-unnoticed backbone mismatch is the exact failure class this whole file
-exists to end, so this check errs toward naming what it saw rather than
-staying silent -- but it is a heuristic, not exhaustive, and passing
-\code{harmonise = TRUE} (or verifying the input's backbone directly) is
-the reliable fix, not a substitute for reading the warning.
+\code{"Thalassiosirophyceae"}/\code{"Bigyra"}/\code{"Phytomastigophora"}.
+\strong{\code{"Copepoda"} is deliberately NOT used as a mismatch signal},
+even though it is a genuinely NCBI-flavoured class name: it is also found
+live in real GBIF-backbone occurrence data, not only in NCBI match
+objects, so it is handled directly in the zooplankton rule (see
+\code{\link{default_sampling_scheme}}) rather than treated as a mismatch
+symptom, which would produce a false warning on perfectly correct GBIF
+input. Silent misclassification from an unnoticed backbone mismatch is
+the exact failure class this function exists to guard against, so this
+check errs toward naming what it saw rather than staying silent -- but it
+is a heuristic, not exhaustive, and passing \code{harmonise = TRUE} (or
+verifying the input's backbone directly) is the reliable fix, not a
+substitute for reading the warning.
 }
 
 \section{Rank agreement (\code{harmonise = TRUE})}{
@@ -171,27 +163,26 @@ terminal match is a genus while every rank above it is exactly the
 lineage the row already had.
 }
 A row failing both keeps its ORIGINAL taxonomy -- the same fallback an
-unresolved name gets -- and is named in a warning.
+unresolved name gets -- and is named in a warning. Measured on a real 18S
+dataset: of 97 resolved names, 90 agree on rank outright and 6 have no GBIF
+match; the gate rejects the one remaining name (the fly genus below) and
+recovers 7 taxa (17 rows) as macroinvertebrates.
 
 The case that forced this: GBIF's backbone contains a tachinid \strong{fly
 genus} named \emph{Polychaeta}
 (\code{Animalia|Arthropoda|Insecta|Diptera|Tachinidae|Polychaeta}, verified
 live). Without the gate, a row whose \code{class} column reads
-\code{"Polychaeta"} -- the annelid class, correct in NCBI -- was matched
-against that genus and had its whole lineage overwritten
+\code{"Polychaeta"} -- the annelid class, correct in NCBI -- would be
+matched against that genus and have its whole lineage overwritten
 (\code{Annelida} -> \code{Arthropoda}, \code{Polychaeta} ->
-\code{Insecta}, and a fabricated \code{order = "Diptera"}). On the
-2026-09-15 PtConception 18S run that hit 7 marine polychaete taxa across 17
-rows, grouping every one of them as \code{terrestrial_arthropods} and --
-because a downstream marine filter reads the harmonised phylum/class --
-dropping them from the species list entirely, silently.
+\code{Insecta}, and a fabricated \code{order = "Diptera"}), grouping it as
+\code{terrestrial_arthropods} and -- because a downstream marine filter
+reads the harmonised phylum/class -- silently dropping it from the
+species list entirely.
 
-\strong{And \emph{Polychaeta} was not alone.} Scanning every
-(name, rank) pair in that run's NCBI-side taxonomy against GBIF -- 288
-pairs -- found 15 rank disagreements. Rule 2 rescues 8 of them (the
-\emph{Arthropoda} and polychaete-family duplications above). Of the 7 the
-gate rejects, five are genuine cross-lineage homonyms that would each have
-rewritten a whole lineage into an unrelated one:
+\strong{And \emph{Polychaeta} is not alone.} Scanning real NCBI-side
+taxonomy against GBIF turns up other genuine cross-lineage homonyms that
+would each rewrite a whole lineage into an unrelated one:
 \tabular{lll}{
 \strong{name} \tab \strong{column rank} \tab \strong{what GBIF matched} \cr
 Polychaeta \tab class \tab a tachinid fly genus (Insecta|Diptera) \cr
@@ -200,15 +191,13 @@ Ciliophora \tab phylum \tab a FUNGUS genus (Fungi|Ascomycota) \cr
 Appendicularia \tab class \tab a flowering-plant genus (Plantae|Myrtales) \cr
 Pilidiophora \tab class \tab a gregarine genus (Chromista|Myzozoa) \cr
 }
-Only \emph{Polychaeta}'s taxa happened to be noticed, because they were
-dropped; a corrupted lineage that stays marine is silent. The remaining two
-rejections, \code{"Bacillariophyta"} (NCBI phylum, GBIF class
-\code{Bacillariophyceae}) and \code{"Bigyra"} (NCBI class, GBIF phylum), are
-genuine NCBI-vs-GBIF rank-assignment differences for the same clade rather
-than homonyms. Rejecting them is harmless: the row keeps its NCBI value, the
-diatom rule here is class-level by design, and
-\code{classify_18S_functional()} keys diatoms on the class
-(\code{Bacillariophyceae}), never on that phylum value.
+A corrupted lineage that stays marine is silent -- only a dropped taxon
+tends to get noticed. Some rank disagreements are NOT homonyms:
+\code{"Bacillariophyta"} (NCBI phylum, GBIF class
+\code{Bacillariophyceae}) and \code{"Bigyra"} (NCBI class, GBIF phylum)
+are genuine NCBI-vs-GBIF rank-assignment differences for the same clade.
+Rejecting them is harmless: the row keeps its NCBI value, and the diatom
+rule in \code{\link{default_sampling_scheme}} is class-level by design.
 
 A looser third rule -- accept a rank-mismatched match whose lineage contains
 ANY of the row's original rank values -- was considered and rejected. It
@@ -218,17 +207,10 @@ letting a \code{kingdom} match carry the test would re-admit
 \emph{Polychaeta} for any caller whose input already says
 \code{"Animalia"} rather than NCBI's \code{"Metazoa"}.
 
-\strong{Net effect on the real 18S run}: of the 97 unique names it resolves,
-90 agree on rank outright, 6 get no GBIF match (already handled by the
-original-value fallback), and \emph{Polychaeta} is the single rejection --
-recovering all 7 taxa and 17 rows as \code{macroinvertebrates}, all passing
-the marine filter, with the phytoplankton, macroalgae and zooplankton counts
-unchanged.
-
 Because a cache written before this gate existed carries no
 \code{matched_rank} and so cannot be checked, such a cache is discarded and
-re-resolved rather than trusted -- re-running with an old \code{cache_dir}
-is exactly when a silent re-admission would be least likely to be noticed.
+re-resolved rather than trusted -- reusing an old \code{cache_dir} is
+exactly when a silent re-admission would be least likely to be noticed.
 }
 
 \examples{

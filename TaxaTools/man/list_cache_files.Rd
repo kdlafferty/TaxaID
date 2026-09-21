@@ -14,13 +14,12 @@ each file's basename (via \code{grepl()}); a file matching ANY pattern
 is included.}
 
 \item{recursive}{Logical. Descend into subdirectories? Default
-\code{FALSE}, which is what every caller predating 2026-09-14 assumed.
-Pass \code{TRUE} for a store that keeps part of itself in a
-subdirectory -- TaxaLikely's per-accession \code{fasta/} cache is one,
-and while this argument did not exist it was silently unreachable by
-\code{taxalikely_clear_cache()}: 4,061 files no clear function could
-see. Patterns are still matched against the BASENAME, so a recursive
-scan needs a pattern that identifies the file, not its directory.}
+\code{FALSE}. Pass \code{TRUE} for a store that keeps part of itself in
+a subdirectory -- TaxaLikely's per-accession \code{fasta/} cache is one
+example; without it, files inside that subdirectory are invisible to
+\code{taxalikely_clear_cache()}. Patterns are still matched against the
+BASENAME, so a recursive scan needs a pattern that identifies the file,
+not its directory.}
 }
 \value{
 A data frame with columns \code{path}, \code{size_mb},

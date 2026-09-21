@@ -32,9 +32,8 @@ on backbone-sourced results.  Default \code{NULL}.}
 sent to the LLM in batches of 20 names (one progress line per batch when
 \code{verbose}).  Default \code{FALSE}: returns \code{NA} for unresolved
 taxa without an LLM call.  A name the LLM omits from its batch response
-is NOT cached (per-row \code{llm_parsed}, 2026-09-13) -- it is re-asked
-on a later call rather than silently treated as a confirmed "no common
-name" answer.}
+is NOT cached -- it is re-asked on a later call rather than silently
+treated as a confirmed "no common name" answer.}
 
 \item{llm_fn}{Function with signature \code{function(prompt, ...) ->
 character(1)}.  Required when \code{use_llm = TRUE} or
@@ -51,8 +50,8 @@ answer); a name from a batch the LLM answered unparseably is NOT (it
 will be re-asked), and neither is a backbone miss on a
 \code{use_llm = FALSE} call (a later \code{use_llm = TRUE} call must
 still be able to ask). Manage it with \code{\link{taxatools_clear_cache}}.
-Added 2026-09-12: a real 18S workflow spent 58 silent LLM calls on
-1,151 names, then repeated them on every re-run.}
+Without a cache, a large name list means one silent LLM call per batch on
+every run, repeated on every re-run.}
 
 \item{verbose}{Logical (default \code{TRUE}). Print a one-line summary
 (cache / backbone / LLM counts) and one line per LLM batch.}
