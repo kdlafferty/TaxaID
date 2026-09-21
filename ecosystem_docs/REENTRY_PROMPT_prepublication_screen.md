@@ -862,6 +862,13 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   falls from 8,428,948 to 231,127; the inflation over distinct points from
   191x to 6.6x; one coordinate had filed 263,385 rows. Every published
   pool-size or n_eff figure must state whether it is occasions or reports.
+- **A workflow override discarded the reasoning a default carried** (same
+  chat, 2026-09-21): the pool build passed `threshold = 0.5` to
+  `assign_habitat_biological()` against its own roxygen warning; 15 habitat
+  generalists -- every one a land-sea or fresh-salt boundary species, the
+  wrong 15 for an intertidal study -- became unassignable. Restoring the
+  documented 0.3 took Uncertain points from 13,207 to 0. A methods section
+  should state every non-default argument a workflow passes.
 - A test failing for a month is evidence, not furniture (the CoordinateCleaner
   `cc_zero(buffer=)` unit change made a null-island check a no-op for weeks
   while labelled "environmental").
