@@ -67,7 +67,7 @@ RUN_LLM_CALLS <- TRUE # screen_pdf_structure() / call_api_pdf() -- needs ANTHROP
 # ==============================================================================
 # SECTION 1 -- GBIF pipeline
 # make_bbox_wkt() -> get_keys_from_context() -> get_gbif_occurrences()
-#   (-> fetch_gbif_occurrences() / download_gbif_occurrences() / fetch_occurrences_by_taxon())
+#   (-> fetch_gbif_occurrences() / download_gbif_occurrences())
 #   -> filter_gbif_quality() -> stack_occurrences() -> dedupe_occurrences() -> report_fetch()
 # ==============================================================================
 
@@ -129,21 +129,6 @@ occ_unified <- get_gbif_occurrences(
   limit    = 20L
 )
 occ_unified
-
-## ---- fetch_occurrences_by_taxon() ---- NETWORK ------------------------------
-# Real bbox construction pattern from tests/testthat/test-fetch_occurrences_by_taxon.R
-box_a <- make_bbox_wkt(lat = 34.40, lon = -120.41, radius_deg = 0.05)
-box_b <- make_bbox_wkt(lat = 34.47, lon = -120.36, radius_deg = 0.05) # overlaps box_a
-taxon_geometry_map <- data.frame(
-  taxon_key = c(gbif_key_anchovy, gbif_key_anchovy),
-  geometry = c(box_a, box_b),
-  stringsAsFactors = FALSE
-)
-occ_by_taxon <- fetch_occurrences_by_taxon(
-  taxon_geometry_map = taxon_geometry_map,
-  limit = 20L
-)
-occ_by_taxon
 
 ## ---- filter_gbif_quality() ---- OFFLINE, pure function ----------------------
 # Fixture reused verbatim from tests/testthat/test-filter_gbif_quality.R

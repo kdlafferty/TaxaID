@@ -336,7 +336,7 @@ search_dataone <- function(bbox,
 
 
 # ==============================================================================
-# Exported: fetch_dataone_eml
+# Internal: fetch_dataone_eml
 # ==============================================================================
 
 #' Fetch Raw EML XML for an EDI / PASTA Dataset
@@ -351,7 +351,7 @@ search_dataone <- function(bbox,
 #' }
 #'
 #' @importFrom httr2 request req_perform resp_body_string
-#' @export
+#' @keywords internal
 fetch_dataone_eml <- function(dataset_id) {
   if (!is.character(dataset_id) || length(dataset_id) != 1L ||
     !nzchar(dataset_id)) {
