@@ -490,9 +490,10 @@ test_that(".label_confidence_from_evidence() would return exactly 0.5 for a zero
   expect_true(is.na(with_rule$confidence))
 })
 
-test_that("the zero-partner rule is skipped when the evaluation has no partner-count column", {
-  # A caller whose evaluation predates the column must not have every row
-  # silently blanked; the rule is skipped, not guessed at.
+test_that("score_reference_labels() errors, not skips, when n_independent_top_matches is absent", {
+  # evaluate_reference_accessions() always includes this column; an
+  # evaluation without it is not a recognized input shape and must fail
+  # loudly, not silently skip the zero-partner rule.
   ev <- data.frame(
     accession = "A1",
     hierarchy_flag = "insufficient_independent_evidence",
@@ -502,9 +503,7 @@ test_that("the zero-partner rule is skipped when the evaluation has no partner-c
     congruent_evidence_best_pident = NA_real_,
     stringsAsFactors = FALSE
   )
-  s <- score_reference_labels(ev)
-  expect_equal(s$label_confidence, 0.5)
-  expect_equal(s$reference_action, "caution")
+  expect_error(score_reference_labels(ev), "n_independent_top_matches")
 })
 
 test_that("a zero-partner row is never removable, before or after the rule", {

@@ -26,11 +26,10 @@ the same way regardless of what \code{build_site_table()}'s default
 label happens to look like. If \code{sites} has no
 \code{spatial_group_id}/\code{spatial_group_N} columns at all (i.e. it
 did not come from \code{build_site_table()}), singleton defaults are
-initialized first, with a message. If \code{sites} has
-\code{spatial_group_id}/\code{spatial_group_N} but no
-\code{is_default_group} (a site table built before this marker existed),
-it is inferred from the default convention (\code{spatial_group_id ==
-observation_id} and \code{spatial_group_N == 1}), with a message.}
+initialized first, with a message. \code{spatial_group_id}/
+\code{spatial_group_N} without \code{is_default_group} is not a
+recognized shape -- \code{\link{build_site_table}} always sets all
+three together -- and stops with an error naming the missing column.}
 
 \item{id_col}{Character. Column identifying each observation. Default
 \code{"observation_id"}.}
