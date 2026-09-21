@@ -2605,10 +2605,9 @@ evaluate_reference_accessions <- function(accessions,
 #' coverage diagnostics travel with the match object for review, without
 #' ever discarding a candidate taxon.
 #'
-#' @section Why flag-by-default, not drop-by-default (2026-08-07):
-#' [remove_incongruent_references()] (below) was this session's first cut,
-#' and was the ONLY consumer until a real case
-#' (`Abylopsis eschscholtzii`, `KY594854`/`KX384617`) showed why an
+#' @section Why flag-by-default, not drop-by-default:
+#' A real case
+#' (`Abylopsis eschscholtzii`, `KY594854`/`KX384617`) shows why an
 #' unreviewed hard drop is the wrong default: `hierarchy_flag =
 #' "incongruent"` cannot currently distinguish a genuine mislabel from
 #' "correct label, but this marker has poor resolving power at this rank
@@ -2616,15 +2615,18 @@ evaluate_reference_accessions <- function(accessions,
 #' [evaluate_reference_accessions()]'s own `@section Identity diagnostics`.
 #' Dropping the accession destroys the candidate taxon entirely and
 #' irreversibly on the strength of a verdict that can be wrong in exactly
-#' this ambiguous way. This ecosystem has made and reverted this same
-#' mistake twice before with unrelated mechanisms, for the identical reason
-#' -- `TaxaLikely::apply_coverage_constraints(constraint_behavior)`'s
-#' default changed `"zero"` -> `"relabel"` (a genus-completeness NCBI-query
-#' result treated as certain ground truth, permanently discarding a correct
-#' hypothesis with no way for downstream evidence to recover it), and
-#' `TaxaFetch::filter_gbif_quality()`'s `exclude_institution` ->
-#' `flag_institution` (real, correctly-labeled observations near a
-#' biodiversity institution were being auto-removed alongside real errors,
+#' this ambiguous way. The same pattern recurs elsewhere in this ecosystem
+#' with unrelated mechanisms, for the identical reason
+#' -- `TaxaLikely::apply_coverage_constraints(constraint_behavior)`
+#' defaults to `"relabel"` rather than `"zero"` (a genus-completeness
+#' NCBI-query result treated as certain ground truth would permanently
+#' discard a correct hypothesis with no way for downstream evidence to
+#' recover it), and
+#' `TaxaFetch::filter_gbif_quality()` defaults to
+#' `flag_institution` rather than `exclude_institution` (real,
+#' correctly-labeled observations near a
+#' biodiversity institution would otherwise be auto-removed alongside real
+#' errors,
 #' since proximity to an institution -- like thin reference coverage for a
 #' correctly-labeled clade -- is not itself proof of error). Use this
 #' function by default; reach for [remove_incongruent_references()]
@@ -2642,7 +2644,8 @@ evaluate_reference_accessions <- function(accessions,
 #'   `label_identity_margin`, `reference_action` and `listed_taxon_is_species`
 #'   whenever `evaluation` carries them (it always does when it came from
 #'   [evaluate_reference_accessions()] or [score_reference_labels()]; an
-#'   `evaluation` read straight off a pre-2026-09-02 cache file will not).
+#'   `evaluation` read straight off a cache file created before these
+#'   columns existed will not).
 #'   A row whose accession was not found in `evaluation` gets `NA` in all of
 #'   these (not evaluated yet, not evidence of anything). Row count and order
 #'   are unchanged.
