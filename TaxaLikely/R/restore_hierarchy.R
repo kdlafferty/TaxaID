@@ -1,10 +1,9 @@
 # ==============================================================================
 # Score-sourcing hierarchy for restore_suppressed_candidates()
 # ==============================================================================
-# Implements SPEC_restore_suppressed_candidates_redesign.md Section 3a: a
-# cheap-to-expensive hierarchy that replaces the old flat `anchor_score -
-# delta` imputation with a real, evidence-grounded score for a restored
-# candidate. Levels 1-3 are free (already-computed seq_matrix/model lookups);
+# A cheap-to-expensive hierarchy providing a real, evidence-grounded score
+# for a restored candidate, rather than a flat `anchor_score - delta`
+# imputation. Levels 1-3 are free (already-computed seq_matrix/model lookups);
 # Level 4 (live Tier 2 pairwise alignment, via .check_regional_overlap()'s
 # return_detail = TRUE mode) is the only expensive step, gated by the caller
 # via check_regional_overlap/the compute-budget mechanism in
