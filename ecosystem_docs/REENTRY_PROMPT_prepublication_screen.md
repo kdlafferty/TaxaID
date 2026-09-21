@@ -349,6 +349,17 @@ from a STALE params_key generation because `match()` takes the first
 (oldest) cache row. 1 RISK (`.summarise_corroborators()` reads the pair
 cache without a params_key filter). Findings are FIXED in code (branch
 `screen-a5-fixes`), never narrated in the response files (rule c).
+TaxaTools done -- 1 DEFECT, reproduced: the shared cache-clearing engine
+(`report_and_clear_cache()`/`list_cache_files()`, used by every package's
+`*_clear_cache()`) has no containment check -- `taxatools_clear_cache(
+cache_dir = ".")` deletes a pattern-matching user file from the working
+directory. Fix in the engine: refuse cwd/home/root, refuse mixed directories
+without `force = TRUE`, do not follow symlinks out of `cache_dir`. 2 RISK
+(untrusted `readRDS()` of cache/manifest files), 1 DOC ("eleven groups" is
+ten names, eleven rules), 1 STYLE (`write_taxaid_manifest()` validates
+nothing). Positive: `assign_sampling_group()` and `fetch_worms_attributes()`
+are the best-documented, best-tested code reviewed -- every domain rule has a
+cited real case and a fixture test reproducing it.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
