@@ -26,12 +26,13 @@
 # fq=-scope:ecotrends         -- ONE fq per noise scope (must be separate params)
 # sort=pubdate,desc           -- ONE sort per param (comma-separated field,dir)
 #
-# -- Root causes of previous HTTP 500 -----------------------------------------
+# -- Solr/PASTA query shapes that trigger an HTTP 500 (avoid) -----------------
 # 1. fq="-scope:(ecotrends lter-landsat*)" as one param -> needs two fq params
 # 2. sort="score desc, pubdate desc" as one param -> needs two sort params
 # 3. subject:() syntax with parenthesised OR inside edismax can choke on
 #    special characters encoded by httr2 req_url_query
-# All three fixed: q=*:* + multiple fq via .multi="append" + two sort params.
+# The query patterns above avoid all three: q=*:* + multiple fq via
+# .multi="append" + two sort params.
 #
 # -- Bbox filtering ------------------------------------------------------------
 # PASTA's 'coordinates' is a plain multi-value TEXT field -- not a Solr spatial
@@ -420,13 +421,13 @@ fetch_dataone_eml <- function(dataset_id) {
     }
 
     # coordinates -- multi-value; collect all child text nodes.
-    # Confirmed real PASTA structure (2026-08 human review, live-verified
-    # against actual Solr output): coordinates is a single text node nested
-    # under <spatialCoverage>, holding a Solr "ENVELOPE(minX, maxX, maxY,
-    # minY)" string, e.g. "ENVELOPE(-119.74, -119.74, 34.40, 34.40)" --
-    # NOT a direct <coordinates>/<coordinate> child of <document> as
-    # originally guessed. Try the confirmed path first; keep the original
-    # guessed paths as fallbacks in case a different dataset shape uses them.
+    # Confirmed real PASTA structure, live-verified against actual Solr
+    # output: coordinates is a single text node nested under
+    # <spatialCoverage>, holding a Solr "ENVELOPE(minX, maxX, maxY, minY)"
+    # string, e.g. "ENVELOPE(-119.74, -119.74, 34.40, 34.40)" -- not a direct
+    # <coordinates>/<coordinate> child of <document>. The confirmed path is
+    # tried first, with two other candidate paths kept as fallbacks in case a
+    # different dataset shape uses them.
     coord_nodes <- xml2::xml_find_all(node, "coordinates/coordinate")
     if (length(coord_nodes) == 0L) {
       coord_nodes <- xml2::xml_find_all(node, "coordinate")
@@ -473,14 +474,14 @@ fetch_dataone_eml <- function(dataset_id) {
 #' Format 1  "ENVELOPE(-119.74, -119.74, 34.40, 34.40)"  (Solr ENVELOPE,
 #'   minX, maxX, maxY, minY == west, east, north, south -- the CONFIRMED
 #'   real format returned by \code{spatialCoverage/coordinates}, verified
-#'   2026-08 against live PASTA output; previously only guessed at)
+#'   against live PASTA output)
 #' Format 2  "N:35.0 S:33.5 E:-118.5 W:-121.0"  (key:value tokens)
 #' Format 3  "35.0|33.5|-118.5|-121.0"           (4 nums, NSEW order)
 #' Format 4  "+35.0 +33.5 -118.5 -121.0"         (4 space-sep nums, WESN order)
 #' Format 5  "35.0,-121.0|35.0,-118.5|..."        (lat,lon corner pairs)
 #'
-#' Formats 2-5 are unverified legacy guesses, kept as fallbacks for any
-#' dataset that doesn't use the confirmed ENVELOPE format.
+#' Formats 2-5 are unconfirmed, kept as fallbacks for any dataset that
+#' doesn't use the confirmed ENVELOPE format.
 #'
 #' @noRd
 .parse_coordinates_field <- function(raw) {
