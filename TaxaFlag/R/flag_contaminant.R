@@ -105,8 +105,8 @@ utils::globalVariables(c(
 #'   # WRONG, and much worse under require_control_evidence = TRUE
 #'   to_remove <- flagged$validity_flag != "valid"
 #' }
-#' Raised by lafferty-45, who pointed out that anything filtering on the negation
-#' sweeps the whole middle tier in whether or not it is ever printed.
+#' Anything filtering on the negation of \code{"valid"} sweeps the whole middle
+#' tier in whether or not that tier is ever printed.
 #'
 #' @section Evidence-gated states (require_control_evidence = TRUE):
 #' \code{validity_flag} takes these values instead of the score bands:
@@ -121,9 +121,9 @@ utils::globalVariables(c(
 #'     its sample rate. Signal leaking sample -> control, the OPPOSITE direction of
 #'     travel. Must not be filtered; this is the state the score-band design could
 #'     not express, and it is what made abundant local taxa look like contaminants.
-#'     Named for what was measured, not for a mechanism: it was formerly
-#'     \code{"carryover"}, which asserted a direction of travel the rate
-#'     comparison alone cannot establish.
+#'     Named for what was measured rather than for a mechanism: a rate
+#'     comparison alone cannot establish a direction of travel, so the label
+#'     states only that the taxon is not enriched in controls.
 #'   \item \code{"insufficient_control_evidence"} -- seen in at least one control
 #'     but fewer than \code{min_control_obs}. Not assessable, because a rate built
 #'     on one observation is not comparable to a rate built on hundreds.

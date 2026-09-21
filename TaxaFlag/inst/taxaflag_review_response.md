@@ -528,3 +528,41 @@ reasoning and verification status are recorded in this package's own
   the cache age is reported instead via an attribute.
 - `taxaflag_clear_cache()` now covers both of this package's caches rather
   than only the review-assignment cache.
+
+## Added after the review
+
+- `validate_controls()` (NEW export) answers whether a sample declared a control
+  is composed like one, by comparing each declared control against its own
+  site's sample-to-sample Bray-Curtis null. A bounded metric cannot take a
+  `median + 3*MAD` fence (that yields thresholds above 1), so the fence is
+  bounded headroom: `null_med + headroom_fraction * (1 - null_med)`. Verdicts
+  name the direction of the surprise (`RESEMBLES_SAMPLE` / `RESEMBLES_CONTROL`)
+  and `untestable` is reported explicitly, because a site with two samples and a
+  site with twenty otherwise both print "nothing flagged". Per-site power is
+  returned as `attr(res, "site_power")`. Tests in
+  `test-validate_controls.R`.
+- `flag_contaminant(require_control_evidence = )` makes the contamination
+  verdict conditional on the taxon having been seen in a control at all. The
+  default path scores every taxon, so a taxon never observed in any control
+  still receives a contamination verdict driven by read depth through the
+  shrinkage prior; on a real run that was 16,694 of 16,825 ESVs. Under the gate
+  such a taxon reports `no_control_evidence` instead. Off by default, so no
+  existing caller changes.
+- `flag_contaminant(site_col = , min_sites_systemic = )` uses site breadth as a
+  discriminant rather than as extra power: a systemic source appears in controls
+  at many sites regardless of which sites' samples carry it, whereas a local one
+  appears in controls at the single site whose samples are full of it, and is
+  reported `single_site_enriched`. This dissolves the choice between pooling
+  controls (power, but one trip's contamination speaks for another's) and
+  pairing them by event (specificity, but on real data event-paired controls
+  left the invalid tier empty and screened nothing).
+- `flag_contaminant(min_control_obs = )` refuses to condemn a taxon on a single
+  control observation. The direction test is a bare rate inequality, so with 91
+  controls against 1,052 samples one stray read in one blank scores 1/91 and
+  outvotes two genuine detections at 2/1052. A one-sided significance test with
+  a multiple-testing correction would be the principled replacement and is NOT
+  implemented; `min_control_obs = 1` restores the unfloored comparison.
+- Tests for all four arguments are in
+  `test-flag_contaminant-evidence-and-sites.R`, including one asserting that
+  `min_control_obs = 1` restores the prior behaviour, so the floor is provably
+  the mechanism under test.
