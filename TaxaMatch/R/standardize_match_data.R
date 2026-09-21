@@ -336,7 +336,7 @@ filter_redundant_hypotheses <- function(
     # needed (nothing is finer, so it can never be superseded), and no
     # coarser row's own comparison columns can include it either, since its
     # position in `rank_system` is always last. A missing column for it is
-    # therefore provably inert -- confirmed 2026-09-07 tracing the exact
+    # therefore provably inert -- confirmed by tracing the exact
     # comparison loop below, after this warning fired on every real
     # TaxaAssign::join_priors() call whose `likelihoods` input was
     # TaxaLikely::evaluate_likelihoods() output (which carries only
