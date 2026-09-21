@@ -30,31 +30,25 @@ utils::globalVariables(c(
 #' without any caller-visible parameter changing -- otherwise a cached row
 #' computed under the OLD logic is served as a "fresh" cache hit forever
 #' under an unchanged `params_key`. Cheap insurance, not something a caller
-#' ever sets directly. History:
-#' \itemize{
-#'   \item{`v4_hybrid_maternal_proxy` (2026-08-11) -- the 2026-08-13
-#'     `require_species_resolved_partner` fix deliberately did NOT bump it,
-#'     matching the 2026-08-11 modifier-prefix precedent: `params_key` is one
-#'     global string applied uniformly to every cached row, so a bump forces
-#'     a full re-BLAST of every real cached row, and that fix's effect was
-#'     narrow (the rows worth re-checking were removed from the real cache by
-#'     hand instead).}
-#'   \item{`v5_amplicon_query` (2026-09-03) -- the query submitted to BLAST
-#'     changed from the primer-INCLUSIVE trimmed span to the primer-STRIPPED
-#'     amplicon (`query_span = "amplicon"`), which changes what the hit list
-#'     can contain (see [evaluate_reference_accessions()]'s `@section Why the
-#'     query is the primer-stripped amplicon`). A bump IS warranted here, and
-#'     [migrate_reference_cache()] exists so the ~3,000 real cached rows are
-#'     not all re-BLASTed for it: `"congruent"` rows are carried forward
-#'     (stripping primers only ADDS short-deposit hits, it cannot withdraw a
-#'     match already observed), everything else re-evaluates.}
-#' }
+#' ever sets directly.
+#'
+#' `params_key` is one global string applied uniformly to every cached row,
+#' so a bump forces a full re-BLAST of every real cached row -- a change
+#' whose effect is narrow enough to check by hand does not need a bump; the
+#' affected rows can be removed from the real cache directly instead. A
+#' change that alters what is submitted to BLAST, and therefore what the hit
+#' list can contain, does warrant a bump (see [evaluate_reference_accessions()]'s
+#' `@section Why the query is the primer-stripped amplicon`); when it does,
+#' [migrate_reference_cache()] lets already-cached rows whose verdict cannot
+#' become newly falsified by the change (e.g. `"congruent"` rows, when the
+#' change can only ADD hits, never withdraw one already observed) carry
+#' forward instead of being re-BLASTed, while everything else re-evaluates.
 #' @noRd
 .EVAL_REF_ACC_VERSION <- "v5_amplicon_query"
 
 #' Build the one global params_key every cached row is stamped with
 #'
-#' Factored out of [evaluate_reference_accessions()] (2026-09-03) so
+#' Factored out of [evaluate_reference_accessions()] so
 #' [migrate_reference_cache()] can compute the key the current defaults
 #' would produce with the SAME code, rather than a second hand-maintained
 #' `paste()`. Every argument that affects the verdict itself is in the key;
@@ -63,7 +57,7 @@ utils::globalVariables(c(
 #' are deliberately NOT -- changing one must never invalidate a cache. See
 #' `@section Caching` in [evaluate_reference_accessions()].
 #'
-#' `query_span` (2026-09-03) IS in the key: it changes what is submitted to
+#' `query_span` IS in the key: it changes what is submitted to
 #' BLAST and therefore what the hit list can contain.
 #' @noRd
 .build_params_key <- function(top_n, min_congruent_rank, submission_window,
