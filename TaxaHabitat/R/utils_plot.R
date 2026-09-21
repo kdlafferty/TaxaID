@@ -431,10 +431,9 @@
   "stream|streams|pond|ponds|marsh|marshes|bog|bogs|fen|fens|riparian|",
   # Lentic (standing water) and lotic (flowing water) are the standard
   # limnological terms and are what the GreatLakes sites actually use. Without
-  # them BOTH GreatLakes plates classified 100% of points as realm "unknown"
-  # and were skipped entirely -- 6,217 and 11,154 rows, every run, reported as
-  # "habitat 'Lentic' not found in habitat scheme -- skipped". Verified against
-  # both saved occurrences_clean checkpoints on 2026-09-19.
+  # them BOTH GreatLakes plates classify 100% of points as realm "unknown"
+  # and are skipped entirely -- 6,217 and 11,154 rows, every run, reported as
+  # "habitat 'Lentic' not found in habitat scheme -- skipped".
   "lentic|lotic)\\b"
 )
 
@@ -612,18 +611,17 @@
 
 #' The value `main_habitat` carries when a point's habitat could not be decided
 #'
-#' `NA` used to mean this, and still does in data written before 2026-09-19 --
-#' but `NA` in a `main_habitat` column means something ELSE on the prior side of
-#' the pipeline. `TaxaExpect::generate_domestic_food_priors()` sets it
-#' deliberately (its own comment: "intentionally set to NA (never a real habitat
-#' value)") to mean **habitat-agnostic, matches any habitat**, and
+#' Not `NA`: `NA` in a `main_habitat` column already means something else on
+#' the prior side of the pipeline. `TaxaExpect::generate_domestic_food_priors()`
+#' sets it deliberately (its own comment: "intentionally set to NA (never a
+#' real habitat value)") to mean **habitat-agnostic, matches any habitat**, and
 #' `TaxaAssign::join_priors()` reads it that way to build the wildcard tier for
 #' domestic and food taxa.
 #'
-#' So one sentinel in one column name carried two decisions that route
-#' oppositely: a chicken should match every habitat, while a point whose habitat
-#' could not be determined should be routed to the evidence branch and still
-#' appear as regionally present. Naming the occurrence-side case separates them.
+#' One sentinel value cannot carry both meanings: a chicken should match every
+#' habitat, while a point whose habitat could not be determined should be
+#' routed to the evidence branch and still appear as regionally present.
+#' Naming the occurrence-side case separately keeps the two decisions apart.
 #'
 #' @noRd
 .HABITAT_UNCERTAIN <- "Uncertain"
@@ -631,10 +629,10 @@
 #' Is this habitat value "we could not decide"?
 #'
 #' Deliberately a predicate rather than a bare `== .HABITAT_UNCERTAIN`, because
-#' both vocabularies have to work at once: every decision file and every saved
-#' occurrence table written before 2026-09-19 stores `NA`, and those files are
-#' read by the same code paths as new ones. Treating only the new sentinel would
-#' silently reclassify 31,982 stored rows as *assigned*.
+#' both vocabularies have to work at once: some decision files and saved
+#' occurrence tables store `NA` rather than the sentinel, and those files are
+#' read by the same code paths as new ones. Treating only the sentinel would
+#' silently reclassify stored NA rows as *assigned*.
 #'
 #' @param x Character vector of habitat values.
 #' @return Logical vector: `TRUE` where the habitat is unassigned, by either
@@ -649,7 +647,8 @@
 #'
 #' `"Uncertain"` must never also be a real habitat in someone's scheme, or an
 #' unassigned point and a genuinely-Uncertain-habitat point become
-#' indistinguishable -- reintroducing exactly the collision this replaces.
+#' indistinguishable -- exactly the ambiguity a dedicated sentinel exists to
+#' avoid.
 #'
 #' @param hab_levels Character vector of habitat names.
 #' @param caller Name used in the error message.
