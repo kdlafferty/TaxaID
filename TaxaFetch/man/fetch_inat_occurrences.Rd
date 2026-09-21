@@ -12,6 +12,8 @@ fetch_inat_occurrences(
   captive = c("any", "true", "false"),
   quality_grade = c("any", "casual", "needs_id", "research"),
   api_token = Sys.getenv("INAT_API_TOKEN"),
+  retry_attempts = 4L,
+  retry_wait = c(15, 30, 60),
   verbose = FALSE
 )
 }
@@ -39,6 +41,19 @@ evidence is also casual grade. Use \code{captive}, not
 
 \item{api_token}{Character. iNaturalist API token for taxon name
 resolution. Defaults to the \code{INAT_API_TOKEN} environment variable.}
+
+\item{retry_attempts}{Integer (default \code{4L}). How many times the
+observation-count request is attempted in total before giving up when
+iNaturalist answers with a 429 (rate limit) or 5xx (server error).
+Matches \code{\link{download_gbif_occurrences}}'s
+\code{submit_attempts} convention. Any other status (including a
+success or a 401) is never retried.}
+
+\item{retry_wait}{Numeric vector of seconds (default \code{c(15, 30,
+60)}) slept between retry attempts when iNaturalist does not send a
+\code{Retry-After} header; the last value repeats if
+\code{retry_attempts} exceeds its length. A server-sent
+\code{Retry-After} value, when present, is honoured instead.}
 
 \item{verbose}{Logical. If TRUE, prints progress for each taxon. Default FALSE.}
 }
@@ -78,6 +93,15 @@ This function counts observations only -- it does not download individual
 records. The iNaturalist API returns \code{total_results} on every search
 response regardless of \code{per_page}, so a single lightweight request
 (\code{per_page = 1}) is sufficient per taxon.
+
+\strong{Retry/backoff:} a 429 (rate limit) or 5xx (server error) response
+from the observation-count request is retried up to 4 attempts total,
+honouring a server-sent \code{Retry-After} header when present and
+falling back to a 15/30/60 s backoff otherwise. Once every attempt is
+exhausted, that taxon's row still gets \code{query_status =
+"request_failed"} -- retrying only reduces how often a transient
+rate-limit/outage produces that outcome, it does not change what a
+persistent failure looks like to the caller.
 }
 \examples{
 \dontrun{

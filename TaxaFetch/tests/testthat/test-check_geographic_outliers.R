@@ -349,3 +349,156 @@ test_that("verdicts are cached, and the second call makes no GBIF request", {
   suppressMessages(do.call(check_geographic_outliers, args))
   expect_equal(n_calls$n, 1L) # served from the verdict cache
 })
+
+test_that("verdict cache filenames do not collide across disjoint species-key sets that sum equal", {
+  skip_if_not_installed("CoordinateCleaner")
+  # Regression for the sum-mod-1e9 checksum bug: two DISJOINT 2-species key
+  # sets with equal sums used to produce the identical cache filename, so the
+  # second call would silently read the first call's verdicts (all gbifID
+  # matches fail -> every record reported "insufficient_global_data" with no
+  # warning). rlang::hash() of the actual sorted key set must give each set
+  # its own file, and each call must produce a CORRECT verdict, not a
+  # collided one.
+  cd <- file.path(tempdir(), paste0("cgo_collide_", as.integer(runif(1, 1, 1e9))))
+  dir.create(cd, recursive = TRUE)
+
+  # Local occurrences for two disjoint species, sharing an equal-sum key pair
+  # (100000001 + 100000002 == 100000000 + 100000003) and the same shape
+  # (1 rare record each) so the OLD filename scheme collided exactly.
+  local_a <- data.frame(
+    gbifID = "a1",
+    species = "Species Alpha",
+    speciesKey = 100000001L,
+    decimalLatitude = 34.0,
+    decimalLongitude = -119.0,
+    stringsAsFactors = FALSE
+  )
+  local_b <- data.frame(
+    gbifID = "b1",
+    species = "Species Beta",
+    speciesKey = 100000000L,
+    decimalLatitude = 10.0,
+    decimalLongitude = 10.0,
+    stringsAsFactors = FALSE
+  )
+
+  # Species Alpha's global cloud: local point is an isolated outlier.
+  global_a <- data.frame(
+    gbifID = c("a1", paste0("ga", 1:8)),
+    species = "Species Alpha",
+    decimalLatitude = c(34.0, 5.0, 5.05, 5.1, 5.15, 5.2, 5.25, 5.3, 5.35),
+    decimalLongitude = c(-119.0, 5.0, 5.05, 5.1, 5.15, 5.2, 5.25, 5.3, 5.35),
+    stringsAsFactors = FALSE
+  )
+  # Species Beta's global cloud: local point sits inside a tight cluster --
+  # consistent, not an outlier.
+  global_b <- data.frame(
+    gbifID = c("b1", paste0("gb", 1:8)),
+    species = "Species Beta",
+    decimalLatitude = c(10.0, 10.0, 10.05, 10.1, 10.15, 10.2, 10.25, 10.3, 10.35),
+    decimalLongitude = c(10.0, 10.0, 10.05, 10.1, 10.15, 10.2, 10.25, 10.3, 10.35),
+    stringsAsFactors = FALSE
+  )
+
+  local_mocked_bindings(
+    get_gbif_occurrences = function(keys, ...) {
+      if (identical(as.integer(keys), 100000001L)) global_a else global_b
+    }
+  )
+
+  out_a <- suppressMessages(check_geographic_outliers(
+    local_a, min_local_n = 5L, cache_dir = cd, min_occs = 1L
+  ))
+  out_b <- suppressMessages(check_geographic_outliers(
+    local_b, min_local_n = 5L, cache_dir = cd, min_occs = 1L
+  ))
+
+  # Each call gets its own cache file -- no collision.
+  cache_files <- list.files(cd, pattern = "outlier_verdicts", full.names = TRUE)
+  expect_length(cache_files, 2L)
+
+  # Each call's verdict is correct, not garbage inherited from the other.
+  expect_equal(out_a$outlier_status, "outlier")
+  expect_equal(out_b$outlier_status, "consistent")
+})
+
+test_that("an identical repeat call still hits the verdict cache after the hash-keying fix", {
+  skip_if_not_installed("CoordinateCleaner")
+  cd <- file.path(tempdir(), paste0("cgo_repeat_", as.integer(runif(1, 1, 1e9))))
+  dir.create(cd, recursive = TRUE)
+
+  local <- data.frame(
+    gbifID = "z1",
+    species = "Species Zeta",
+    speciesKey = 555L,
+    decimalLatitude = 10.0,
+    decimalLongitude = 10.0,
+    stringsAsFactors = FALSE
+  )
+  global <- data.frame(
+    gbifID = c("z1", paste0("gz", 1:8)),
+    species = "Species Zeta",
+    decimalLatitude = c(10.0, 10.0, 10.05, 10.1, 10.15, 10.2, 10.25, 10.3, 10.35),
+    decimalLongitude = c(10.0, 10.0, 10.05, 10.1, 10.15, 10.2, 10.25, 10.3, 10.35),
+    stringsAsFactors = FALSE
+  )
+
+  n_calls <- new.env()
+  n_calls$n <- 0L
+  local_mocked_bindings(
+    get_gbif_occurrences = function(...) {
+      n_calls$n <- n_calls$n + 1L
+      global
+    }
+  )
+
+  args <- list(local, min_local_n = 5L, cache_dir = cd, min_occs = 1L)
+  out1 <- suppressMessages(do.call(check_geographic_outliers, args))
+  out2 <- suppressMessages(do.call(check_geographic_outliers, args))
+
+  expect_equal(n_calls$n, 1L)
+  expect_equal(out1$outlier_status, out2$outlier_status)
+})
+
+test_that("a verdict cache file matching this call's key but holding none of its gbifIDs is treated as a miss", {
+  skip_if_not_installed("CoordinateCleaner")
+  # Simulates a stale/foreign cache file surviving under a correctly-hashed
+  # name (e.g. hand-copied from another project's cache_dir): the read must
+  # be rejected and the call recomputed, with a message naming the skip --
+  # never a silent "insufficient_global_data" for every row.
+  cd <- file.path(tempdir(), paste0("cgo_stale_", as.integer(runif(1, 1, 1e9))))
+  dir.create(cd, recursive = TRUE)
+
+  local <- data.frame(
+    gbifID = "q1",
+    species = "Species Qux",
+    speciesKey = 999L,
+    decimalLatitude = 10.0,
+    decimalLongitude = 10.0,
+    stringsAsFactors = FALSE
+  )
+  global <- data.frame(
+    gbifID = c("q1", paste0("gq", 1:8)),
+    species = "Species Qux",
+    decimalLatitude = c(10.0, 10.0, 10.05, 10.1, 10.15, 10.2, 10.25, 10.3, 10.35),
+    decimalLongitude = c(10.0, 10.0, 10.05, 10.1, 10.15, 10.2, 10.25, 10.3, 10.35),
+    stringsAsFactors = FALSE
+  )
+  local_mocked_bindings(get_gbif_occurrences = function(...) global)
+
+  key_hash <- rlang::hash(list(
+    rare_keys = 999L, year_range = .gbif_default_year_range(),
+    method = "distance", min_occs = 1L, tdi = 1000, mltpl = 5
+  ))
+  stale_path <- file.path(cd, sprintf("gbif_outlier_verdicts_%s.rds", key_hash))
+  saveRDS(
+    data.frame(gbifID = "not-a-real-id", global_n_unique = 9L, cc_pass = TRUE),
+    stale_path
+  )
+
+  expect_message(
+    out <- check_geographic_outliers(local, min_local_n = 5L, cache_dir = cd, min_occs = 1L),
+    "stale or foreign cache"
+  )
+  expect_equal(out$outlier_status, "consistent")
+})

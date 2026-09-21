@@ -127,12 +127,34 @@ unlikely to be genuinely independent occasions. Set
 instead (e.g. if you deliberately want observer-effort/reporting-volume as
 your own signal, rather than TaxaExpect's occupancy framing).
 
-\strong{Silent no-op on missing columns:} if \code{gbifID} is absent, that
-check is skipped with no message. If \code{taxon_col}/\code{date_col} (and
-no \code{year}/\code{month}/\code{day} triple) are absent,
-\code{collapse_duplicate_occasions} is skipped with no message. Neither
-condition is treated as an error -- a caller working with a data source
-that genuinely lacks these columns should not see noise on every call.
+\strong{Missing columns:} \code{occurrence_data} is a data table, and a
+missing key column is a data problem, not something to silently paper
+over. The two checks differ in what counts as "missing":
+\itemize{
+\item \code{gbifID} is genuinely optional -- sources without it (e.g.
+literature or DataONE occurrences) are expected, so when it is absent
+that check is simply skipped, with no message.
+\item When \code{collapse_duplicate_occasions = TRUE} (the default),
+\code{taxon_col}, \code{date_col} (or a full
+\code{year}/\code{month}/\code{day} triple), \code{lat_col}, and
+\code{lon_col} are all required as columns -- they are named
+parameters with documented defaults, not optional metadata. If any is
+absent from \code{occurrence_data}, the function \code{stop()}s
+immediately, naming the missing column(s) and the columns actually
+present, rather than silently skipping the step (the previous
+behavior) or failing several steps later with an opaque error (a
+missing \code{lat_col}/\code{lon_col} used to surface as
+\code{round()}'s "non-numeric argument to mathematical function",
+which does not point back at the real cause). Set
+\code{collapse_duplicate_occasions = FALSE} to skip this step
+entirely on a source that genuinely lacks these columns.
+}
+
+\strong{Per-row \code{NA} in a present column} is a different case,
+unaffected by the check above: a row with a present-but-\code{NA} value
+in any key component (\code{taxon_col}, the resolved date, \code{lat_col},
+or \code{lon_col}) is always kept, never dropped -- see the
+key-completeness rule two paragraphs up.
 }
 \examples{
 \dontrun{
