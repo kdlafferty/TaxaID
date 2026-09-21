@@ -449,6 +449,19 @@ iNaturalist calls retry 429/5xx with bounded backoff honouring
 GBIF convention). 824 tests, 0 failures. iNat's omitted `captive`/
 `quality_grade` = no filter per the API's documented behaviour; not
 live-verified.
+TaxaWizard done -- 1 DEFECT, reproduced, CONFIDENTIALITY (branch
+`screen-a5-fixes-wizard`): the chat engine's auto-sniff
+(`.detect_paths_in_text()` -> `.format_sniff_block()`, graph.R ~583) reads
+ANY existing local file whose path is mentioned in chat text and injects
+its first line into the prompt sent to the LLM provider -- reproduced with
+`/etc/hosts` and a synthetic secret; `.rds` mentions are `readRDS()`'d with
+no size cap. Fix: data-extension allow-list, working-directory scope,
+never dotfiles/system paths, 1 MB cap for rds, summary-only (column names,
+never content) into the prompt. 4 RISK incl. `.validate_one_call()`
+SKIPPING when a package fails to load (becomes a failure code). Verified
+clean: registry argument parsing (27-parameter function spot-checked live),
+cache key sufficient for reinstalls, no key value ever in a prompt or
+pack, `workflow_export_prompts()` cannot write outside `dir`.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
