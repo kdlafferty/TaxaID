@@ -522,15 +522,18 @@ test_that(".detect_paths_in_text() strips trailing sentence punctuation", {
 })
 
 test_that(".detect_paths_in_text() still handles the cases it always did", {
-  # The space rule is ADDITIVE -- quoted paths, whitespace-free paths and
-  # directories must keep working.
+  # The space rule is ADDITIVE -- quoted paths and whitespace-free paths must
+  # keep working. A bare directory mention (no data-file extension) is no
+  # longer auto-sniffed as of the confidentiality fix: auto-sniffing is now
+  # gated on .SNIFF_DATA_EXTS, and a directory has no extension to check --
+  # see .sniff_path_allowed()'s docstring.
   f <- file.path(tempdir(), "plain_data.csv"); writeLines("a,b", f)
   d <- file.path(tempdir(), "birdnet_out"); dir.create(d, showWarnings = FALSE)
   on.exit({ unlink(f); unlink(d, recursive = TRUE) }, add = TRUE)
 
   expect_true(f %in% .detect_paths_in_text(sprintf("data at %s ok", f)))
   expect_true(f %in% .detect_paths_in_text(sprintf('data at "%s" ok', f)))
-  expect_true(length(.detect_paths_in_text(sprintf("my CSVs are in %s/", d))) > 0L)
+  expect_equal(.detect_paths_in_text(sprintf("my CSVs are in %s/", d)), character(0))
 })
 
 test_that(".detect_paths_in_text() does not invent paths from prose", {
@@ -549,4 +552,81 @@ test_that(".detect_paths_in_text() returns the whole path, not a suffix of it", 
 
   found <- .detect_paths_in_text(sprintf("see %s now", f))
   expect_equal(found[1L], f)
+})
+
+
+# ==============================================================================
+# Confidentiality gate on auto-sniffing (DEFECT-1 fix): a bare mention of an
+# existing file's path must not have its content read and injected into an
+# LLM prompt just because the message happened to contain that path.
+# ==============================================================================
+
+test_that(".detect_paths_in_text() does not auto-sniff a mentioned /etc/hosts", {
+  # /etc/hosts is a universally-present, non-crafted file -- this is the
+  # DEFECT-1 reproduction from the template review, run against the fix.
+  msg <- "not sure what to run, my config is at /etc/hosts I think"
+  expect_equal(.detect_paths_in_text(msg), character(0))
+
+  block <- .format_sniff_block(.detect_paths_in_text(msg))
+  expect_match(block, "nothing was inspected", fixed = TRUE)
+})
+
+test_that(".detect_paths_in_text() does not auto-sniff a mentioned dotfile, even with an allowed extension", {
+  dir <- file.path(tempdir(), sprintf("taxawizard-dot-%s", basename(tempfile())))
+  dir.create(dir, recursive = TRUE)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+
+  hidden <- file.path(dir, ".secret.csv")
+  writeLines(c("token", "AKIAFAKEACCESSKEY1234"), hidden)
+
+  # Quoted (an explicit act) AND inside the trusted tempdir() scratch space --
+  # the dot-segment rule must still block it on both counts.
+  msg <- sprintf('my config is at "%s" I think', hidden)
+  expect_equal(.detect_paths_in_text(msg), character(0))
+
+  block <- .format_sniff_block(.detect_paths_in_text(msg))
+  expect_false(grepl("AKIAFAKE", block, fixed = TRUE))
+})
+
+test_that(".detect_paths_in_text() DOES auto-sniff a data file under the working directory, and the block never carries a cell value", {
+  fname <- "tw_test_species_list.csv"
+  full <- file.path(getwd(), fname)
+  writeLines(c("species,family", "Eucyclogobius newberryi,Gobiidae"), full)
+  on.exit(unlink(full), add = TRUE)
+
+  msg <- sprintf("my species list is at %s please check it", full)
+  found <- .detect_paths_in_text(msg)
+  expect_true(full %in% found)
+
+  block <- .format_sniff_block(found)
+  expect_match(block, "species", fixed = TRUE) # column name surfaces
+  expect_match(block, "family", fixed = TRUE)
+  expect_false(grepl("newberryi", block, fixed = TRUE)) # never a cell VALUE
+})
+
+test_that("sniff_input() reports an oversized .rds by size only, never calling readRDS()", {
+  dir <- .tw_sniff_dir()
+  f <- file.path(dir, "big.rds")
+  # Padding to exceed the 1 MB cap without ever saveRDS()-ing a huge object.
+  writeBin(raw(TaxaWizard:::.SNIFF_SIZE_CAP + 100000L), f)
+
+  testthat::local_mocked_bindings(
+    readRDS = function(...) stop("readRDS() must not be called for an oversized .rds file"),
+    .package = "TaxaWizard"
+  )
+
+  out <- sniff_input(f)
+  expect_true(is.na(out$node_id))
+  expect_match(out$evidence, "MB", fixed = TRUE)
+  expect_match(out$evidence, "not loaded", fixed = TRUE)
+})
+
+test_that("sniff_input() never echoes raw file content for an unclassifiable/single-column file", {
+  dir <- .tw_sniff_dir()
+  f <- file.path(dir, "creds.txt")
+  writeLines("AKIAFAKEACCESSKEY1234 supersecretvalue==", f)
+
+  out <- sniff_input(f)
+  expect_false(grepl("AKIAFAKE", out$evidence, fixed = TRUE))
+  expect_false(grepl("supersecretvalue", out$evidence, fixed = TRUE))
 })

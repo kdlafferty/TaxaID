@@ -14,7 +14,11 @@
 # (no `Pkg::`) that resolves to neither base/utils/stats nor any TaxaID
 # export is reported as unknown_bare_call at "warn" severity -- worth
 # knowing about, but not a drift failure, since a snippet may legitimately
-# call a function from some other Imports/Suggests package bare.
+# call a function from some other Imports/Suggests package bare. A
+# `Pkg::fn()` call where `Pkg` is one of TAXAID_PACKAGES but is missing from
+# the registry (failed requireNamespace(), not just "not a TaxaID package")
+# is reported as package_unavailable, rather than silently skipped as if it
+# were out of scope -- see .validate_one_call().
 #
 # Compares each snippet's named arguments (AST-walked, not regex-matched)
 # against formals read from the introspected registry (R/registry.R)
@@ -27,7 +31,12 @@
 #' Walks the R AST of every code snippet referenced by the workflow graph's
 #' edges (or a subset of them, via \code{edge_ids}) and reports drift between
 #' what a snippet calls and what the installed TaxaID packages actually
-#' export/accept.
+#' export/accept. This is the snippet-code validator; it does not check
+#' anything about the local machine's setup (installed packages as a
+#' category, keys, network, binaries) -- that is \code{workflow_check()}'s
+#' job (\code{R/setup.R}), a separate, unrelated check. Called from
+#' \code{.describe_paths()} and \code{.get_path_context()} in
+#' \code{R/graph.R}.
 #'
 #' @param graph Optional graph object from \code{\link{.load_graph}}.
 #' @param registry Optional registry from \code{\link{workflow_registry}}.
@@ -39,8 +48,11 @@
 #'
 #' @return A data.frame with columns \code{edge_id}, \code{function},
 #'   \code{problem} (\code{"not_exported"}, \code{"stale_argument"},
-#'   \code{"parse_error"}, or \code{"unknown_bare_call"}), and
-#'   \code{detail}. Zero rows when nothing to report.
+#'   \code{"parse_error"}, \code{"unknown_bare_call"}, or
+#'   \code{"package_unavailable"} -- a \code{Pkg::fn()} call where
+#'   \code{Pkg} is one of \code{\link{TAXAID_PACKAGES}} but is not present
+#'   in the registry passed in, typically because it failed to install or
+#'   load), and \code{detail}. Zero rows when nothing to report.
 #' @noRd
 .validate_snippets <- function(graph = NULL, registry = NULL, edge_ids = NULL) {
   if (is.null(graph)) graph <- .load_graph()
@@ -210,6 +222,17 @@
 
 
 #' Validate a Single Call Node
+#'
+#' \code{taxaid_pkgs} (\code{names(registry)}) is the set of TaxaID packages
+#' that \code{workflow_registry()} successfully loaded -- a package that IS
+#' one of the ecosystem's \code{\link{TAXAID_PACKAGES}} but failed
+#' \code{requireNamespace()} (not installed, broken install, ...) is silently
+#' absent from it, exactly like a package that was never part of the
+#' ecosystem at all. Those two cases must not be treated the same: a call to
+#' \code{dplyr::filter()} is genuinely out of scope, but a call to
+#' \code{TaxaMatch::renamed_fn()} after \code{TaxaMatch} fails to install is
+#' precisely the drift this validator exists to catch, and skipping it would
+#' let it validate clean.
 #' @noRd
 .validate_one_call <- function(e, edge_id, fn_index, taxaid_pkgs, local_fns, add_row) {
   resolved <- .resolve_call_head(e[[1L]])
@@ -228,7 +251,16 @@
 
   if (!is.null(pkg_hint)) {
     if (!pkg_hint %in% taxaid_pkgs) {
-      return(invisible()) # not a TaxaID call -- out of scope
+      if (pkg_hint %in% TAXAID_PACKAGES) {
+        add_row(
+          edge_id, sprintf("%s::%s", pkg_hint, nm), "package_unavailable",
+          sprintf(
+            "%s is a TaxaID package but is not available in the registry (not installed, or failed to load) -- %s::%s could not be checked",
+            pkg_hint, pkg_hint, nm
+          )
+        )
+      }
+      return(invisible()) # not a TaxaID call at all -- genuinely out of scope
     }
     hits <- fn_index[[nm]]
     hit <- Find(function(m) identical(m$pkg, pkg_hint), hits)

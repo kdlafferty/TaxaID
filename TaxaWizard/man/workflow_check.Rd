@@ -27,15 +27,30 @@ columns \code{component}, \code{category} (one of \code{"r"},
 \code{"warn"}, \code{"skip"}), \code{detail}, and \code{fix}.
 }
 \description{
-Reports whether this machine is ready to run TaxaID workflows: R version,
-the 8 TaxaID packages (plus Bioconductor/optional extras), each package's
-on-disk cache, and -- narrowed to the given \code{edges} when supplied --
-the API keys, network services, and binaries those specific workflow steps
-need. Machine-readable: the same report is what the generated script's
-Step 0 uses to decide whether to stop before running anything, and what a
-future \code{workflow_engine()} will inject into its prompts.
+Reports whether this MACHINE is ready to run TaxaID workflows -- a
+stateless, local-only check of the environment, never of any particular
+snippet of generated code. Exactly six things are checked, one row each:
+\code{"r"} (R version and session type), \code{"package"} (the 8 TaxaID
+packages, plus Bioconductor/optional extras, each installed or not),
+\code{"cache"} (each package's on-disk cache directory exists and is
+writable), and -- narrowed to the given \code{edges} when supplied --
+\code{"key"} (API keys set/unset), \code{"network"} (service reachability),
+and \code{"binary"} (external binaries on \code{PATH}) for those specific
+workflow steps. Machine-readable: the same report is what the generated
+script's Step 0 uses to decide whether to stop before running anything, and
+what a future \code{workflow_engine()} will inject into its prompts.
 }
 \details{
+\strong{What this function does NOT check:} whether a generated code
+snippet actually calls a real, currently-exported function with valid
+arguments (a renamed function, a stale argument, a parse error, a call
+into a package that failed to install). That is a property of a specific
+snippet against the introspected registry, not of the machine, and is
+handled entirely separately by \code{.validate_snippets()}
+(\code{R/validate.R}), which is invoked from \code{.describe_paths()} and
+\code{.get_path_context()} in \code{R/graph.R} -- \code{workflow_check()}
+never calls it and vice versa.
+
 Key checks report set/unset only -- a key's \strong{value} is never
 printed, logged, or returned. All checks are local/no-network except the
 \code{"network"} category, which is skipped (\code{status = "skip"})

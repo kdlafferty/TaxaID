@@ -33,9 +33,31 @@ point at a path and get back which of \code{workflow_graph.json}'s input
 node ids it most likely is.
 }
 \details{
-Reads at most the first 50 lines / 1 MB of the file. Never errors on an
-unreadable, empty, or binary-garbage file -- it returns \code{node_id = NA}
-with an explanatory \code{evidence} string instead.
+Reads at most the first 50 lines / 1 MB of the file (\code{.SNIFF_SIZE_CAP}).
+A \code{.rds} file over that same cap is reported by its size and name
+only -- it is never deserialized, since \code{readRDS()} has no size limit
+of its own and is a known-risky operation on an untrusted file. Never
+errors on an unreadable, empty, or binary-garbage file -- it returns
+\code{node_id = NA} with an explanatory \code{evidence} string instead.
+\code{evidence} never contains a verbatim content sample: for a recognized
+schema it reports the matched column names (from a fixed, known
+vocabulary); for an unclassifiable or single-column file it reports the
+shape (column/value count) only, never the value, since for a file with no
+recognized header the "column" may just be that file's actual first line
+of content.
+
+Calling \code{sniff_input(path)} directly with a path you name is a
+deliberate act and is not further restricted. This is distinct from
+TaxaWizard's own automatic wiring of it into the chat engine's classify
+prompt (\code{.detect_paths_in_text()} + \code{.format_sniff_block()},
+\code{R/graph.R}), which scans raw, untrusted chat text for existing paths
+and must not auto-sniff just anything mentioned: it auto-sniffs only a
+path whose extension is on \code{.SNIFF_DATA_EXTS} (the formats this
+function actually understands), containing no dotfile/dotdir path segment,
+and either under the working directory/session \code{tempdir()} or
+explicitly quoted by the user and outside \code{/etc}, \code{/private},
+\code{/var}, \code{/usr}, \code{/System}, \code{/Library}, or the user's
+home directory itself -- see \code{.sniff_path_allowed()}.
 }
 \examples{
 tmp <- tempfile(fileext = ".fasta")

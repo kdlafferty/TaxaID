@@ -441,13 +441,28 @@
 
 #' Check the Local TaxaID Setup
 #'
-#' Reports whether this machine is ready to run TaxaID workflows: R version,
-#' the 8 TaxaID packages (plus Bioconductor/optional extras), each package's
-#' on-disk cache, and -- narrowed to the given \code{edges} when supplied --
-#' the API keys, network services, and binaries those specific workflow steps
-#' need. Machine-readable: the same report is what the generated script's
-#' Step 0 uses to decide whether to stop before running anything, and what a
-#' future \code{workflow_engine()} will inject into its prompts.
+#' Reports whether this MACHINE is ready to run TaxaID workflows -- a
+#' stateless, local-only check of the environment, never of any particular
+#' snippet of generated code. Exactly six things are checked, one row each:
+#' \code{"r"} (R version and session type), \code{"package"} (the 8 TaxaID
+#' packages, plus Bioconductor/optional extras, each installed or not),
+#' \code{"cache"} (each package's on-disk cache directory exists and is
+#' writable), and -- narrowed to the given \code{edges} when supplied --
+#' \code{"key"} (API keys set/unset), \code{"network"} (service reachability),
+#' and \code{"binary"} (external binaries on \code{PATH}) for those specific
+#' workflow steps. Machine-readable: the same report is what the generated
+#' script's Step 0 uses to decide whether to stop before running anything, and
+#' what a future \code{workflow_engine()} will inject into its prompts.
+#'
+#' \strong{What this function does NOT check:} whether a generated code
+#' snippet actually calls a real, currently-exported function with valid
+#' arguments (a renamed function, a stale argument, a parse error, a call
+#' into a package that failed to install). That is a property of a specific
+#' snippet against the introspected registry, not of the machine, and is
+#' handled entirely separately by \code{.validate_snippets()}
+#' (\code{R/validate.R}), which is invoked from \code{.describe_paths()} and
+#' \code{.get_path_context()} in \code{R/graph.R} -- \code{workflow_check()}
+#' never calls it and vice versa.
 #'
 #' Key checks report set/unset only -- a key's \strong{value} is never
 #' printed, logged, or returned. All checks are local/no-network except the
@@ -575,6 +590,47 @@ print.taxaid_check <- function(x, ...) {
 # sniff_input()
 # ==============================================================================
 
+#' Data-Format Extensions \code{sniff_input()} Actually Understands
+#'
+#' Single source of truth for what counts as a "data file" for auto-sniffing:
+#' every extension listed here has a real, content-aware branch in
+#' \code{.sniff_file()} (tabular / FASTA / \code{.rds} / JSON). Nothing else
+#' does -- an \code{.xlsx} or \code{.Rdata} mention, for instance, is NOT on
+#' this list, because \code{.sniff_file()} has no branch that actually parses
+#' either format (they fall through to the generic "not a recognized
+#' extension" result). \code{.detect_paths_in_text()}'s automatic scan of raw
+#' chat text uses this SAME constant to decide what even counts as a
+#' candidate for auto-sniffing, so the two can never drift apart.
+#' @noRd
+.SNIFF_DATA_EXTS <- c(
+  "csv", "tsv", "txt", "tab", "dat", # tabular, via .sniff_header_row()
+  "fasta", "fa", "fna", "fas", # FASTA
+  "rds", # DADA2 seqtab / data.frame -- size-capped, see .SNIFF_SIZE_CAP
+  "json" # SpeciesNet / iNaturalist CV
+)
+
+#' Byte Cap Shared by Every Content Peek
+#'
+#' Used both by \code{.peek_lines()} (text/CSV/JSON) and, for \code{.rds}
+#' files, as the \code{file.size()} gate checked BEFORE \code{readRDS()} is
+#' ever called -- \code{readRDS()} on an untrusted file has no size limit of
+#' its own and deserializes the whole object before anything can inspect it,
+#' so a file over this cap is described by size and name only, never loaded.
+#' @noRd
+.SNIFF_SIZE_CAP <- 1000000L
+
+#' Placeholder Binding So \code{readRDS()} Can Be Mocked in Tests
+#'
+#' \code{testthat::local_mocked_bindings()} can only replace a base function
+#' called unqualified from this package if the package namespace already has
+#' SOME binding of that name (it is locked once installed, so a new one can't
+#' be created at test time) -- a \code{NULL} binding is invisible to normal
+#' function-call lookup (R skips a non-function when resolving a call's
+#' head), so this has no effect outside a test that deliberately reassigns
+#' it. See testthat's "Base functions" mocking docs.
+#' @noRd
+readRDS <- NULL
+
 #' Does a character vector "look like" DNA sequence strings?
 #' @noRd
 .looks_like_dna <- function(x) {
@@ -587,7 +643,7 @@ print.taxaid_check <- function(x, ...) {
 
 #' Read up to 1 MB / 50 lines of a file as text, without erroring.
 #' @noRd
-.peek_lines <- function(path, n_lines = 50L, max_bytes = 1000000L) {
+.peek_lines <- function(path, n_lines = 50L, max_bytes = .SNIFF_SIZE_CAP) {
   tryCatch(
     {
       con <- file(path, open = "rb")
@@ -698,15 +754,22 @@ print.taxaid_check <- function(x, ...) {
   }
 
   if (length(header) == 1L) {
+    # A single "column" here may just as well be the file's first line of
+    # actual content (a headerless list, a credential, a config line) as a
+    # real column name -- .sniff_header_row() cannot tell the two apart, so
+    # the value itself is never echoed into evidence, only its shape.
     return(list(
       node_id = "taxa", confidence = "medium",
-      evidence = sprintf("single-column file ('%s') -- likely a plain taxon-name list", header[1])
+      evidence = "single-column file (value not shown) -- likely a plain taxon-name list"
     ))
   }
 
+  # Same reasoning: these "header" fields are unclassified and may be
+  # arbitrary file content, not column names -- report the count, never the
+  # values.
   list(
     node_id = NA_character_, confidence = "low",
-    evidence = sprintf("could not classify; header columns: %s", paste(header, collapse = ", "))
+    evidence = sprintf("could not classify; %d column(s) detected (values not shown)", length(header))
   )
 }
 
@@ -717,6 +780,22 @@ print.taxaid_check <- function(x, ...) {
 
   # --- .rds: DADA2 seqtab matrix, or fall through to the header sniffer for a data.frame ---
   if (identical(ext, "rds")) {
+    # Unlike every other branch (capped via .peek_lines()'s .SNIFF_SIZE_CAP),
+    # readRDS() has no built-in limit and deserializes the whole object
+    # before anything can inspect it -- readRDS() on an untrusted file is a
+    # known-risky operation (delayed-evaluation promises can run code when
+    # the deserialized object is later touched). A file over the cap is
+    # described by size and name only; it is never loaded.
+    fsize <- suppressWarnings(file.size(path))
+    if (!is.na(fsize) && fsize > .SNIFF_SIZE_CAP) {
+      return(list(
+        node_id = NA_character_, confidence = "low",
+        evidence = sprintf(
+          ".rds file '%s' is %.1f MB, over the %.0f KB inspection cap -- reported by size and name only, not loaded",
+          basename(path), fsize / 1024^2, .SNIFF_SIZE_CAP / 1024
+        )
+      ))
+    }
     obj <- tryCatch(readRDS(path), error = function(e) NULL)
     if (is.null(obj)) {
       return(list(node_id = NA_character_, confidence = "low", evidence = "not a readable .rds file"))
@@ -880,9 +959,31 @@ print.taxaid_check <- function(x, ...) {
 #' point at a path and get back which of \code{workflow_graph.json}'s input
 #' node ids it most likely is.
 #'
-#' Reads at most the first 50 lines / 1 MB of the file. Never errors on an
-#' unreadable, empty, or binary-garbage file -- it returns \code{node_id = NA}
-#' with an explanatory \code{evidence} string instead.
+#' Reads at most the first 50 lines / 1 MB of the file (\code{.SNIFF_SIZE_CAP}).
+#' A \code{.rds} file over that same cap is reported by its size and name
+#' only -- it is never deserialized, since \code{readRDS()} has no size limit
+#' of its own and is a known-risky operation on an untrusted file. Never
+#' errors on an unreadable, empty, or binary-garbage file -- it returns
+#' \code{node_id = NA} with an explanatory \code{evidence} string instead.
+#' \code{evidence} never contains a verbatim content sample: for a recognized
+#' schema it reports the matched column names (from a fixed, known
+#' vocabulary); for an unclassifiable or single-column file it reports the
+#' shape (column/value count) only, never the value, since for a file with no
+#' recognized header the "column" may just be that file's actual first line
+#' of content.
+#'
+#' Calling \code{sniff_input(path)} directly with a path you name is a
+#' deliberate act and is not further restricted. This is distinct from
+#' TaxaWizard's own automatic wiring of it into the chat engine's classify
+#' prompt (\code{.detect_paths_in_text()} + \code{.format_sniff_block()},
+#' \code{R/graph.R}), which scans raw, untrusted chat text for existing paths
+#' and must not auto-sniff just anything mentioned: it auto-sniffs only a
+#' path whose extension is on \code{.SNIFF_DATA_EXTS} (the formats this
+#' function actually understands), containing no dotfile/dotdir path segment,
+#' and either under the working directory/session \code{tempdir()} or
+#' explicitly quoted by the user and outside \code{/etc}, \code{/private},
+#' \code{/var}, \code{/usr}, \code{/System}, \code{/Library}, or the user's
+#' home directory itself -- see \code{.sniff_path_allowed()}.
 #'
 #' @param path Character scalar. Path to a file, or a directory (in which
 #'   case the first file inside -- preferring one that looks like a BirdNET
@@ -952,6 +1053,20 @@ sniff_input <- function(path) {
 # eight packages, cache), so injecting the whole table would spend ~26 lines to
 # say "fine" and bury the one line that is not. (2) Statuses are reported, never
 # secrets: a key row says "set / unset", never the value.
+#
+# A third rule governs the auto-sniff wiring below (.detect_paths_in_text() +
+# .format_sniff_block(), called from graph.R's classify-phase prompt): raw
+# chat text is untrusted input, so a bare mention of an existing path is NOT
+# by itself enough to have that file's content read and injected into the
+# prompt. Only a path whose extension is on .SNIFF_DATA_EXTS, containing no
+# dotfile/dotdir segment, and either under the working directory/tempdir() or
+# explicitly quoted (and outside .SNIFF_SYSTEM_ROOTS) is auto-sniffed -- see
+# .sniff_path_allowed(). What .format_sniff_block() then injects is
+# sniff_input()'s structural summary (node_id/confidence/evidence), never a
+# raw content sample: .sniff_header_row()'s single-column and
+# could-not-classify branches report shape only (column/value counts), never
+# the values themselves, because for an unrecognized file "the header" may
+# just be that file's actual first line of content.
 # ==============================================================================
 
 #' Session Cache for the Full Setup Check
@@ -1014,47 +1129,139 @@ sniff_input <- function(path) {
 }
 
 
+#' Is This Path's Extension One \code{sniff_input()} Actually Understands?
+#' @noRd
+.sniff_ext_allowed <- function(path) {
+  ext <- tolower(tools::file_ext(path))
+  nzchar(ext) && ext %in% .SNIFF_DATA_EXTS
+}
+
+#' Does Any Path Segment Start With "." (a Dotfile, or Inside a Dotdir)?
+#'
+#' Catches \code{.Renviron}, anything under \code{.ssh/}, \code{.aws/}, etc.
+#' @noRd
+.sniff_has_dot_segment <- function(path) {
+  segs <- strsplit(gsub("\\\\", "/", path), "/", fixed = TRUE)[[1]]
+  any(nzchar(segs) & startsWith(segs, "."))
+}
+
+#' Is \code{path} At or Below \code{root}? (Both Already Normalized)
+#' @noRd
+.sniff_path_under <- function(path, root) {
+  if (!nzchar(root)) {
+    return(FALSE)
+  }
+  path <- sub("/+$", "", path)
+  root <- sub("/+$", "", root)
+  identical(path, root) || startsWith(path, paste0(root, "/"))
+}
+
+#' System Roots an Auto-Sniffed Path Must Never Resolve Under
+#'
+#' Applies even to an explicitly quoted path -- quoting only exempts a path
+#' from the working-directory/tempdir() scoping requirement below, never
+#' from this list.
+#' @noRd
+.SNIFF_SYSTEM_ROOTS <- c("/etc", "/private", "/var", "/usr", "/System", "/Library")
+
+#' Confidentiality Gate for Auto-Sniffing a Path Found in Raw Chat Text
+#'
+#' This is a confidentiality boundary, not a false-positive filter: a bare
+#' mention of an existing file's path anywhere on disk must never have its
+#' content read and injected into an LLM prompt just because the text
+#' happened to contain that path. All of the following must hold:
+#' \enumerate{
+#'   \item its extension is on \code{.SNIFF_DATA_EXTS};
+#'   \item no path segment is a dotfile/dotdir;
+#'   \item it is not the user's home directory itself;
+#'   \item it is under the current working directory or R's own session
+#'     \code{tempdir()} (both are scratch space this session already
+#'     controls) -- OR it was named via an explicit quote/backtick (an
+#'     explicit act) AND does not resolve under \code{.SNIFF_SYSTEM_ROOTS}.
+#' }
+#'
+#' @param path An existing, already \code{path.expand()}-ed path.
+#' @param explicit Was this path named via a quote/backtick, as opposed to a
+#'   bare mention?
+#' @noRd
+.sniff_path_allowed <- function(path, explicit) {
+  if (!.sniff_ext_allowed(path)) {
+    return(FALSE)
+  }
+  if (.sniff_has_dot_segment(path)) {
+    return(FALSE)
+  }
+
+  norm_path <- suppressWarnings(normalizePath(path, winslash = "/", mustWork = FALSE))
+  norm_home <- suppressWarnings(normalizePath(path.expand("~"), winslash = "/", mustWork = FALSE))
+  if (identical(sub("/+$", "", norm_path), sub("/+$", "", norm_home))) {
+    return(FALSE)
+  }
+
+  cwd <- suppressWarnings(normalizePath(getwd(), winslash = "/", mustWork = FALSE))
+  tdir <- suppressWarnings(normalizePath(tempdir(), winslash = "/", mustWork = FALSE))
+  if (.sniff_path_under(norm_path, cwd) || .sniff_path_under(norm_path, tdir)) {
+    return(TRUE)
+  }
+
+  if (!isTRUE(explicit)) {
+    return(FALSE)
+  }
+  !any(vapply(.SNIFF_SYSTEM_ROOTS, function(r) .sniff_path_under(norm_path, r), logical(1)))
+}
+
 #' Find Existing Paths Mentioned in a User Message
 #'
 #' Only paths that EXIST are returned: the point is to sniff real data, and a
 #' path the user typed from memory (or an example path out of the prompt pack)
 #' must not be reported to the model as though it had been inspected. Quoted
-#' strings are preferred because they are unambiguous; bare tokens are accepted
-#' when they look like a path and resolve.
+#' strings (including backtick-quoted) are preferred because they are
+#' unambiguous and count as an explicit act; bare tokens are accepted when
+#' they look like a path and resolve.
+#'
+#' A path surviving the existence check must further pass
+#' \code{\link{.sniff_path_allowed}} -- see its docstring for the exact
+#' confidentiality rule (extension allow-list, no dotfiles/dotdirs, and
+#' scoped to the working directory/session tempdir, or an explicitly quoted
+#' path outside the system directories).
 #'
 #' @param txt Character. One user message.
 #' @param max_paths Integer. Cap on how many paths to report.
-#' @return Character vector of existing paths (possibly empty).
+#' @return Character vector of existing, in-scope paths (possibly empty).
 #' @noRd
 .detect_paths_in_text <- function(txt, max_paths = 3L) {
   if (!is.character(txt) || length(txt) != 1L || is.na(txt) || !nzchar(txt)) {
     return(character(0))
   }
 
-  candidates <- character(0)
+  explicit_cands <- character(0)
+  implicit_cands <- character(0)
 
-  # (1) Quoted strings are unambiguous -- take them whole, spaces and all.
-  quoted <- unlist(regmatches(txt, gregexpr('"[^"]+"|\'[^\']+\'', txt)))
-  candidates <- c(candidates, gsub('^["\']|["\']$', "", quoted))
+  # (1) Quoted / backtick-quoted strings are an explicit act -- unambiguous,
+  # take them whole, spaces and all.
+  quoted <- unlist(regmatches(txt, gregexpr('"[^"]+"|\'[^\']+\'|`[^`]+`', txt)))
+  explicit_cands <- c(explicit_cands, gsub('^["\'`]|["\'`]$', "", quoted))
 
-  # (2) Bare tokens containing no whitespace -- catches directories and
-  # extensionless paths that (3) does not.
-  candidates <- c(candidates, unlist(regmatches(
+  # (2) Bare tokens containing no whitespace -- catches extensionless/no-slash
+  # mentions; the extension allow-list in .sniff_path_allowed() is what
+  # actually adjudicates whether any of these are auto-sniffed.
+  implicit_cands <- c(implicit_cands, unlist(regmatches(
     txt,
     gregexpr("[^\\s\"',;()]*(?:/|\\\\)[^\\s\"',;()]*", txt, perl = TRUE)
   )))
 
-  # (3) Paths CONTAINING SPACES. A no-whitespace rule alone silently misses
-  # almost every real path through a folder like Google Drive's default
+  # (3) Paths CONTAINING SPACES, unquoted. A no-whitespace rule alone silently
+  # misses almost every real path through a folder like Google Drive's default
   # "My Drive": an unquoted path through it is never sniffed, so
   # {{SNIFF_RESULT}} degrades to "nothing was inspected" while the file
   # sits right there.
   #
-  # Anchor on a data-file extension, then offer EVERY plausible start ('/' or
-  # '~') at or before it as a candidate, longest first. Generous candidates,
-  # strict filter: file.exists() below is what actually adjudicates, so an
-  # over-long candidate that swallowed preceding prose simply fails to exist.
-  ext_re <- "\\.(?:csv|tsv|txt|fa|fasta|fna|rds|rdata|xlsx)"
+  # Anchor on an extension sniff_input() actually understands, then offer
+  # EVERY plausible start ('/' or '~') at or before it as a candidate,
+  # longest first. Generous candidates, strict filter: file.exists() below
+  # is what actually adjudicates, so an over-long candidate that swallowed
+  # preceding prose simply fails to exist.
+  ext_re <- paste0("\\.(?:", paste(.SNIFF_DATA_EXTS, collapse = "|"), ")")
   ends <- gregexpr(ext_re, txt, perl = TRUE, ignore.case = TRUE)[[1L]]
   if (ends[1L] != -1L) {
     lens <- attr(ends, "match.length")
@@ -1063,26 +1270,41 @@ sniff_input <- function(path) {
       for (i in seq_along(ends)) {
         stop_at <- ends[i] + lens[i] - 1L
         for (st in starts[starts <= stop_at]) {
-          candidates <- c(candidates, substr(txt, st, stop_at))
+          implicit_cands <- c(implicit_cands, substr(txt, st, stop_at))
         }
       }
     }
   }
 
   # (4) Trailing sentence punctuation is not part of a filename.
-  candidates <- c(candidates, sub("[.,;:!?)\\]]+$", "", candidates))
+  strip_trailing_punct <- function(x) sub("[.,;:!?)\\]]+$", "", x)
+  explicit_cands <- strip_trailing_punct(explicit_cands)
+  implicit_cands <- strip_trailing_punct(implicit_cands)
 
-  candidates <- unique(candidates[nzchar(candidates)])
-  if (length(candidates) == 0L) {
-    return(character(0))
+  existing_of <- function(cands) {
+    cands <- unique(cands[nzchar(cands)])
+    if (length(cands) == 0L) {
+      return(character(0))
+    }
+    expanded <- suppressWarnings(path.expand(cands))
+    exists <- vapply(expanded, function(p) {
+      isTRUE(tryCatch(file.exists(p), error = function(e) FALSE))
+    }, TRUE)
+    unique(expanded[exists])
   }
 
-  expanded <- suppressWarnings(path.expand(candidates))
-  exists <- vapply(expanded, function(p) {
-    isTRUE(tryCatch(file.exists(p), error = function(e) FALSE))
-  }, TRUE)
+  explicit_hits <- existing_of(explicit_cands)
+  implicit_hits <- existing_of(implicit_cands)
 
-  out <- unique(expanded[exists])
+  out <- character(0)
+  for (p in explicit_hits) {
+    if (.sniff_path_allowed(p, explicit = TRUE)) out <- c(out, p)
+  }
+  for (p in implicit_hits) {
+    if (!(p %in% out) && .sniff_path_allowed(p, explicit = FALSE)) out <- c(out, p)
+  }
+
+  out <- unique(out)
   # Longest first: a real path beats a suffix of itself that also happens to
   # exist (e.g. "/Users" inside "/Users/x/My Data.rds").
   out <- out[order(nchar(out), decreasing = TRUE)]
