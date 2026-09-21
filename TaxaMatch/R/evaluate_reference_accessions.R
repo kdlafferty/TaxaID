@@ -2511,8 +2511,8 @@ evaluate_reference_accessions <- function(accessions,
   # mislabeling (hierarchy_flag) and hybrid-labeling (taxonomy_resolution_
   # source) -- some real accessions are labeled at coarser-than-species
   # resolution to begin with (e.g. "Serranidae sp. JL-2015", a family name
-  # used in place of a genus plus an informal specimen code -- found live,
-  # 2026-08-11, GreatLakes population). Such a reference can't discriminate
+  # used in place of a genus plus an informal specimen code -- found live
+  # in the GreatLakes population). Such a reference can't discriminate
   # at species level regardless of whether it's internally self-consistent,
   # so it's worth surfacing even when hierarchy_flag itself reads
   # "congruent". Reuses TaxaTools::is_plausible_binomial() directly (no new
@@ -2541,7 +2541,7 @@ evaluate_reference_accessions <- function(accessions,
   # and cached values are untouched -- these are additive columns beside it,
   # not a redefinition of it. See score_reference_labels() for the formula,
   # its one free parameter, and why "remove" carries two hard vetoes.
-  # 2026-09-03: forward the caller's local-corroboration table so the veto
+  # Forward the caller's local-corroboration table so the veto
   # (remove -> inspect on an independently corroborated accession) and the
   # corroboration_source provenance are applied here, not only when a caller
   # remembers to call score_reference_labels() a second time.
@@ -2666,8 +2666,9 @@ flag_incongruent_references <- function(match_df, evaluation) {
   )
   missing_cols <- setdiff(c("accession", join_cols), names(evaluation))
   # Carried when present, not required: an `evaluation` read straight off a
-  # pre-2026-09-02 cache file has the diagnostics but not the derived
-  # verdict columns, and joining what exists beats erroring on what doesn't.
+  # cache file created before the derived
+  # verdict columns existed has the diagnostics but not those columns, and
+  # joining what exists beats erroring on what doesn't.
   optional_cols <- intersect(
     c(
       "label_confidence", "label_identity_margin", "reference_action",
@@ -2827,7 +2828,8 @@ remove_incongruent_references <- function(match_df,
   }
 
   if (gate == "action" && !"reference_action" %in% names(evaluation)) {
-    # An `evaluation` from a pre-2026-09-02 cache read straight off disk has
+    # An `evaluation` from a cache created before the derived-verdict
+    # columns existed, read straight off disk, has
     # the diagnostics but no derived verdict. Deriving it here (rather than
     # silently falling back to gate = "flag", which would remove ~3x more
     # accessions than the caller asked for) keeps the default meaningful;
