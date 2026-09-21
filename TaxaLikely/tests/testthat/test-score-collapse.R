@@ -1335,6 +1335,29 @@ test_that("restore_suppressed_candidates: without model_params, Purpose A never 
   expect_equal(restored$restoration_basis, "plausible_prior")
 })
 
+test_that("restore_suppressed_candidates: errors loudly when a SUPPLIED model_params has no Score_Transform", {
+  # model_params itself is optional (the previous test), but a supplied one
+  # missing Score_Transform is a pre-1.0 artifact -- train_likelihood_model()
+  # always records this field now, and guessing "logit" could silently
+  # mis-score a sqrt_mismatch-trained model.
+  ref <- make_ref(species = c("simplicidens", "nigricans"))
+  seq_matrix <- data.frame(
+    id_x = "ACC_simplicidens", id_y = "ACC_nigricans", p_match = 0.945, coverage = 1.0,
+    stringsAsFactors = FALSE
+  )
+  m <- make_match(score = 95)
+  bad_params <- .simple_model_params()
+  bad_params$Score_Transform <- NULL
+  expect_error(
+    restore_suppressed_candidates(
+      m, ref,
+      rank_system = c("family", "genus", "species"),
+      seq_matrix = seq_matrix, model_params = bad_params, verbose = FALSE
+    ),
+    "Score_Transform"
+  )
+})
+
 # ---- Level 0 precheck routing (design spec Section 3a) -----------------------
 
 test_that("restore_suppressed_candidates routes straight to Level 4 when the anchor species has zero seq_matrix presence anywhere", {

@@ -25,7 +25,8 @@
       H1_Sigma = sigma,
       H2 = list(delta = 3.0, sigma = h2s),
       H3 = list(delta = 5.0, sigma = h3s),
-      Stats = list(n_species = 2L, n_singletons = 0L)
+      Stats = list(n_species = 2L, n_singletons = 0L),
+      Score_Transform = "logit"
     ),
     class = "taxa_model_params"
   )
@@ -122,4 +123,14 @@ test_that("interpret_model: a logit model is unchanged by the transform dispatch
   h1 <- out$hypothesis_baselines[out$hypothesis_baselines$hypothesis ==
     "H1: known species", ]
   expect_equal(h1$expected_match_pct, round(stats::plogis(3.5) * 100, 2))
+})
+
+test_that("interpret_model: errors loudly when Score_Transform is absent from model_params", {
+  # A model_params object with no Score_Transform field predates
+  # train_likelihood_model() recording it and cannot be interpreted safely --
+  # guessing "logit" would silently mis-report a sqrt_mismatch-trained
+  # model's expected-match percentages.
+  mp <- .make_model_params_interp()
+  mp$Score_Transform <- NULL
+  expect_error(interpret_model(mp, print_report = FALSE), "Score_Transform")
 })
