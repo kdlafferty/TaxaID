@@ -290,7 +290,8 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
     if (m_gi > 0) {
       sp_g <- species_by_g[[g]]
       cw <- tapply(w_g, taxa_g, sum)
-      p_reg <- table(taxa_g); p_reg <- p_reg / sum(p_reg)
+      p_reg <- table(taxa_g)
+      p_reg <- p_reg / sum(p_reg)
       q <- stats::setNames(rep(smoothing, length(sp_g)), sp_g)
       q[names(cw)] <- q[names(cw)] + cw
       Wb <- sum(w_g)
@@ -321,8 +322,9 @@ calibrate_kernel_bandwidth <- function(occurrence_data,
     block_held <- block[held]
 
     # groups that can be scored in this block at all
-    gs <- grp_levels[vapply(grp_levels, function(g)
-      sum(in_b & grp == g) >= min_group_records && any(grp_held == g), logical(1))]
+    gs <- grp_levels[vapply(grp_levels, function(g) {
+      sum(in_b & grp == g) >= min_group_records && any(grp_held == g)
+    }, logical(1))]
     n_cells_skipped <- n_cells_skipped + (length(grp_levels) - length(gs))
     if (length(gs) == 0L) next
     for (g in gs) n_target_by_g[bi, g] <- sum(in_b & grp == g)

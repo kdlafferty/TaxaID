@@ -1,21 +1,23 @@
 # Fixture: one taxon per situation the function has to distinguish.
 .LEV <- c("Marine", "Estuarine", "Freshwater", "Terrestrial")
 
-.occ <- function() data.frame(
-  taxon_name = c(
-    "Resident",   "Resident",      # has a Marine record -> resident row exists
-    "UncertainA", "UncertainA",    # only unplaceable records
-    "LegacyNA",                    # only unplaceable records, OLD vocabulary
-    "MixedSentinel", "MixedSentinel", # both vocabularies, same taxon
-    "WrongHabitat"                 # habitat KNOWN and not the site's
-  ),
-  decimalLatitude  = c(34.40, 34.60, 34.45, 34.50, 34.50, 34.45, 34.80, 35.90),
-  decimalLongitude = c(-120.40, -120.40, -120.45, -120.45, -120.50, -120.45, -120.40, -121.50),
-  main_habitat     = c("Marine", "Uncertain", "Uncertain", "Uncertain", NA,
-                       "Uncertain", NA, "Freshwater"),
-  year             = c(2020, 2020, 2015, 2018, 2010, 2012, 2012, 2019),
-  stringsAsFactors = FALSE
-)
+.occ <- function() {
+  data.frame(
+    taxon_name = c(
+      "Resident",   "Resident",      # has a Marine record -> resident row exists
+      "UncertainA", "UncertainA",    # only unplaceable records
+      "LegacyNA",                    # only unplaceable records, OLD vocabulary
+      "MixedSentinel", "MixedSentinel", # both vocabularies, same taxon
+      "WrongHabitat"                 # habitat KNOWN and not the site's
+    ),
+    decimalLatitude  = c(34.40, 34.60, 34.45, 34.50, 34.50, 34.45, 34.80, 35.90),
+    decimalLongitude = c(-120.40, -120.40, -120.45, -120.45, -120.50, -120.45, -120.40, -121.50),
+    main_habitat     = c("Marine", "Uncertain", "Uncertain", "Uncertain", NA,
+                         "Uncertain", NA, "Freshwater"),
+    year             = c(2020, 2020, 2015, 2018, 2010, 2012, 2012, 2019),
+    stringsAsFactors = FALSE
+  )
+}
 
 test_that("only taxa with no resident row and unplaceable records are returned", {
   r <- generate_uncertain_habitat_evidence(.occ(), 34.4, -120.4, "Marine", .LEV, verbose = FALSE)
@@ -33,9 +35,11 @@ test_that("every non-habitat label is treated identically, old and new", {
   # points must be recovered exactly like one known only from "Uncertain".
   o <- .occ()
   r_mixed <- generate_uncertain_habitat_evidence(o, 34.4, -120.4, "Marine", .LEV, verbose = FALSE)
-  o_all_na <- o; o_all_na$main_habitat[o_all_na$main_habitat == "Uncertain"] <- NA
+  o_all_na <- o
+  o_all_na$main_habitat[o_all_na$main_habitat == "Uncertain"] <- NA
   r_na <- generate_uncertain_habitat_evidence(o_all_na, 34.4, -120.4, "Marine", .LEV, verbose = FALSE)
-  o_all_unc <- o; o_all_unc$main_habitat[is.na(o_all_unc$main_habitat)] <- "Uncertain"
+  o_all_unc <- o
+  o_all_unc$main_habitat[is.na(o_all_unc$main_habitat)] <- "Uncertain"
   r_unc <- generate_uncertain_habitat_evidence(o_all_unc, 34.4, -120.4, "Marine", .LEV, verbose = FALSE)
   # Resident still has its Marine record in all three, so the recovered set is
   # the same and every weight matches.
@@ -61,7 +65,8 @@ test_that("pricing matches generate_regional_proximity_evidence()'s curve", {
 })
 
 test_that("year_col produces the age decay, and a missing year stays neutral", {
-  o <- .occ(); o$year[o$taxon_name == "LegacyNA"] <- NA
+  o <- .occ()
+  o$year[o$taxon_name == "LegacyNA"] <- NA
   r <- generate_uncertain_habitat_evidence(o, 34.4, -120.4, "Marine", .LEV,
                                            year_col = "year", age_half = 15, verbose = FALSE)
   expect_equal(r$p_conc[r$taxon_name == "LegacyNA"], 1)   # unknown age != old
@@ -75,7 +80,8 @@ test_that("the schema apply_undetected_evidence() requires is always present", {
   expect_true(all(r$source == "uncertain_habitat_proximity"))
   # Zero rows must carry the SAME schema, not a bare data.frame: a workflow
   # row-binds this with other evidence and an absent column silently drops it.
-  o <- .occ(); o$main_habitat <- "Marine"
+  o <- .occ()
+  o$main_habitat <- "Marine"
   r0 <- generate_uncertain_habitat_evidence(o, 34.4, -120.4, "Marine", .LEV, verbose = FALSE)
   expect_equal(nrow(r0), 0L)
   expect_true(all(need %in% names(r0)))
@@ -108,14 +114,16 @@ test_that("a label outside habitat_levels that is not a no-verdict marker WARNS"
   # The unsafe direction: an unrecognised label is treated as unassigned and
   # its records are RECOVERED as evidence. A typo'd real habitat must not slip
   # through silently.
-  o <- .occ(); o$main_habitat[o$taxon_name == "WrongHabitat"] <- "Freshwatr"
+  o <- .occ()
+  o$main_habitat[o$taxon_name == "WrongHabitat"] <- "Freshwatr"
   expect_warning(
     r <- generate_uncertain_habitat_evidence(o, 34.4, -120.4, "Marine", .LEV, verbose = FALSE),
     regexp = "Freshwatr"
   )
   expect_true("WrongHabitat" %in% r$taxon_name)   # it really was recovered
   # NA, "" and "Uncertain" are recognised no-verdict markers and stay quiet.
-  o2 <- .occ(); o2$main_habitat[o2$taxon_name == "WrongHabitat"] <- ""
+  o2 <- .occ()
+  o2$main_habitat[o2$taxon_name == "WrongHabitat"] <- ""
   expect_no_warning(
     generate_uncertain_habitat_evidence(o2, 34.4, -120.4, "Marine", .LEV, verbose = FALSE))
 })
@@ -123,7 +131,8 @@ test_that("a label outside habitat_levels that is not a no-verdict marker WARNS"
 test_that("a sentinel this package has never heard of is still caught", {
   # The point of the closed-world test: no code change needed when the habitat
   # producer invents a new marker.
-  o <- .occ(); o$main_habitat[o$main_habitat == "Uncertain"] <- "NO_VERDICT_2027"
+  o <- .occ()
+  o$main_habitat[o$main_habitat == "Uncertain"] <- "NO_VERDICT_2027"
   r <- suppressWarnings(
     generate_uncertain_habitat_evidence(o, 34.4, -120.4, "Marine", .LEV, verbose = FALSE))
   expect_true(all(c("UncertainA", "LegacyNA", "MixedSentinel") %in% r$taxon_name))

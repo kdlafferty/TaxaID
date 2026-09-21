@@ -53,7 +53,10 @@ test_that(".approx_distance_km() wraps the antimeridian instead of measuring the
   expect_gt(naive, 39000)
 })
 
-test_that(".approx_distance_km() gives the same (small) answer regardless of which side of the antimeridian each point is measured from", {
+test_that(paste0(
+  ".approx_distance_km() gives the same (small) answer regardless of which ",
+  "side of the antimeridian each point is measured from"
+), {
   d1 <- TaxaExpect:::.approx_distance_km(10, 179.9, 10, -179.9, 10)
   d2 <- TaxaExpect:::.approx_distance_km(10, -179.9, 10, 179.9, 10)
   expect_equal(d1, d2, tolerance = 1e-9)
@@ -69,7 +72,10 @@ test_that(".approx_distance_km() gives the same (small) answer regardless of whi
   )
 }
 
-test_that("estimate_kernel_priors() at a site on the antimeridian: the truly-nearby records (other side of the dateline) dominate, not the far ones", {
+test_that(paste0(
+  "estimate_kernel_priors() at a site on the antimeridian: the truly-nearby ",
+  "records (other side of the dateline) dominate, not the far ones"
+), {
   # Site at lon 179.9. "A" records sit just across the dateline at -179.9
   # (~22 km away in reality). "B" records sit at +170 (~1,100 km away, no
   # wrap involved). Under the pre-fix naive formula, A's distance would

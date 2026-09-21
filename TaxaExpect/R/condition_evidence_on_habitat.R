@@ -67,10 +67,18 @@ utils::globalVariables(c("taxon_name"))
 condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat,
                                           w_floor = 0, verbose = TRUE) {
   if (!is.data.frame(evidence) || !all(c("taxon_name", "weight") %in% names(evidence))) {
-    stop("condition_evidence_on_habitat: `evidence` must be a data frame with `taxon_name` and `weight` columns.", call. = FALSE)
+    stop(
+      "condition_evidence_on_habitat: `evidence` must be a data frame with ",
+      "`taxon_name` and `weight` columns.",
+      call. = FALSE
+    )
   }
   if (!is.data.frame(habitat_lookup) || !"taxon_name" %in% names(habitat_lookup)) {
-    stop("condition_evidence_on_habitat: `habitat_lookup` must be a data frame with a `taxon_name` column.", call. = FALSE)
+    stop(
+      "condition_evidence_on_habitat: `habitat_lookup` must be a data frame ",
+      "with a `taxon_name` column.",
+      call. = FALSE
+    )
   }
   if (!is.character(site_habitat) || length(site_habitat) != 1L || is.na(site_habitat)) {
     stop("condition_evidence_on_habitat: `site_habitat` must be a single habitat name.", call. = FALSE)
@@ -102,7 +110,11 @@ condition_evidence_on_habitat <- function(evidence, habitat_lookup, site_habitat
   evidence$weight <- w1
   if (isTRUE(verbose)) {
     message(sprintf(
-      "condition_evidence_on_habitat: %d row(s) conditioned on '%s' -- %d unchanged (habitat weight 1 or unknown: %d unknown), %d reduced, %d floored at %.3g.",
+      paste0(
+        "condition_evidence_on_habitat: %d row(s) conditioned on '%s' -- ",
+        "%d unchanged (habitat weight 1 or unknown: %d unknown), %d reduced, ",
+        "%d floored at %.3g."
+      ),
       nrow(evidence), site_habitat,
       sum(is.na(h) | h >= 1), sum(is.na(h)), sum(!is.na(h) & h < 1 & !evidence$habitat_floored),
       sum(evidence$habitat_floored), w_floor

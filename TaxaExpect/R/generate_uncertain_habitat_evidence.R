@@ -180,7 +180,10 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
   }
   for (nm in c(taxon_col, lat_col, lon_col, habitat_col)) {
     if (!nm %in% names(occurrence_data)) {
-      stop(sprintf("generate_uncertain_habitat_evidence: `occurrence_data` is missing required column '%s'.", nm), call. = FALSE)
+      stop(sprintf(
+        "generate_uncertain_habitat_evidence: `occurrence_data` is missing required column '%s'.",
+        nm
+      ), call. = FALSE)
     }
   }
   for (nm in c("site_lat", "site_lon")) {
@@ -195,12 +198,23 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
   if (missing(habitat_levels) || !is.character(habitat_levels) ||
       length(habitat_levels) == 0L || anyNA(habitat_levels) ||
       !all(nzchar(trimws(habitat_levels)))) {
-    stop("generate_uncertain_habitat_evidence: `habitat_levels` must be the scheme's real habitat names, e.g. simple_scheme$l1_name. It has no default on purpose -- see Details.", call. = FALSE)
+    stop(
+      "generate_uncertain_habitat_evidence: `habitat_levels` must be the scheme's ",
+      "real habitat names, e.g. simple_scheme$l1_name. It has no default on ",
+      "purpose -- see Details.",
+      call. = FALSE
+    )
   }
   habitat_levels <- unique(as.character(habitat_levels))
   if (!site_habitat %in% habitat_levels) {
-    stop(sprintf("generate_uncertain_habitat_evidence: `site_habitat` ('%s') is not one of `habitat_levels` (%s). A site must be declared as one of the scheme's own habitats.",
-                 site_habitat, paste(habitat_levels, collapse = ", ")), call. = FALSE)
+    stop(sprintf(
+      paste0(
+        "generate_uncertain_habitat_evidence: `site_habitat` ('%s') is not one ",
+        "of `habitat_levels` (%s). A site must be declared as one of the ",
+        "scheme's own habitats."
+      ),
+      site_habitat, paste(habitat_levels, collapse = ", ")
+    ), call. = FALSE)
   }
   if (!is.numeric(d_half) || length(d_half) != 1L || is.na(d_half) || d_half <= 0) {
     stop("generate_uncertain_habitat_evidence: `d_half` must be a single positive number.", call. = FALSE)
@@ -210,7 +224,11 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
   }
   if (!is.null(year_col)) {
     if (!is.character(year_col) || length(year_col) != 1L || !year_col %in% names(occurrence_data)) {
-      stop("generate_uncertain_habitat_evidence: `year_col` must name a column of `occurrence_data`, or be NULL.", call. = FALSE)
+      stop(
+        "generate_uncertain_habitat_evidence: `year_col` must name a column ",
+        "of `occurrence_data`, or be NULL.",
+        call. = FALSE
+      )
     }
     if (!is.numeric(age_half) || length(age_half) != 1L || is.na(age_half) || age_half <= 0) {
       stop("generate_uncertain_habitat_evidence: `age_half` must be a single positive number.", call. = FALSE)
@@ -246,8 +264,14 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
   .odd <- .odd[nzchar(trimws(.odd))]
   if (length(.odd)) {
     warning(sprintf(
-      "generate_uncertain_habitat_evidence: %d habitat label(s) are not in `habitat_levels` and are being treated as UNASSIGNED: %s. If any of these is a real habitat, add it to `habitat_levels` -- otherwise its records are recovered as evidence.",
-      length(.odd), paste(utils::head(.odd, 10), collapse = ", ")), call. = FALSE)
+      paste0(
+        "generate_uncertain_habitat_evidence: %d habitat label(s) are not in ",
+        "`habitat_levels` and are being treated as UNASSIGNED: %s. If any of ",
+        "these is a real habitat, add it to `habitat_levels` -- otherwise its ",
+        "records are recovered as evidence."
+      ),
+      length(.odd), paste(utils::head(.odd, 10), collapse = ", ")
+    ), call. = FALSE)
   }
 
   in_stratum <- usable & hab_chr == site_habitat & !is.na(hab_chr)
@@ -259,7 +283,11 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
   if (!any(cand)) {
     if (isTRUE(verbose)) {
       message(sprintf(
-        "generate_uncertain_habitat_evidence: no qualifying taxa -- %d record(s) at unassigned-habitat points, all belonging to taxa that already have '%s' records.",
+        paste0(
+          "generate_uncertain_habitat_evidence: no qualifying taxa -- %d ",
+          "record(s) at unassigned-habitat points, all belonging to taxa ",
+          "that already have '%s' records."
+        ),
         sum(usable & unassigned), site_habitat
       ))
     }
@@ -270,7 +298,11 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
   # so the two distance scales are the same quantity.
   d_km <- .approx_distance_km(la[cand], lo[cand], site_lat, site_lon, site_lat)
   ctx  <- tx[cand]
-  cyr  <- if (is.null(year_col)) rep(NA_real_, sum(cand)) else suppressWarnings(as.numeric(occurrence_data[[year_col]][cand]))
+  cyr  <- if (is.null(year_col)) {
+    rep(NA_real_, sum(cand))
+  } else {
+    suppressWarnings(as.numeric(occurrence_data[[year_col]][cand]))
+  }
 
   ord <- order(ctx, d_km)
   first <- !duplicated(ctx[ord])
@@ -298,7 +330,12 @@ generate_uncertain_habitat_evidence <- function(occurrence_data,
 
   if (isTRUE(verbose)) {
     message(sprintf(
-      "generate_uncertain_habitat_evidence: %d taxon/taxa recovered from %d record(s) at unassigned-habitat points (nearest %.1f km, median %.1f km). These had NO resident row and would otherwise have been priced as zero-bbox.",
+      paste0(
+        "generate_uncertain_habitat_evidence: %d taxon/taxa recovered from %d ",
+        "record(s) at unassigned-habitat points (nearest %.1f km, median %.1f ",
+        "km). These had NO resident row and would otherwise have been priced ",
+        "as zero-bbox."
+      ),
       nrow(out), sum(cand), min(out$distance_km), stats::median(out$distance_km)
     ))
   }
