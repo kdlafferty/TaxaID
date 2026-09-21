@@ -438,6 +438,17 @@ geography test skips only when NOAA is provably unreachable. 580 tests,
 `apply_spatial_review_decisions()` run on the GreatLakes/PtCon/Mugu files
 reports how many points are ambiguous; re-saving from the review gadget
 writes the new key.
+**TaxaFetch fixes MERGED (`6a0b2da`)**: verdict cache keyed on
+`rlang::hash()` of the sorted species keys + `year_range`/`method`/
+`min_occs`/`tdi`/`mltpl`, with a read guard treating a file sharing none of
+the requested gbifIDs as a miss (note: `literature_search.R` uses its own
+`.query_hash()`, so the package now has two hashing conventions -- a
+1.1 tidy-up); `dedupe_occurrences()` stops naming missing key columns;
+iNaturalist calls retry 429/5xx with bounded backoff honouring
+`Retry-After` (new `retry_attempts`/`retry_wait` arguments, mirroring the
+GBIF convention). 824 tests, 0 failures. iNat's omitted `captive`/
+`quality_grade` = no filter per the API's documented behaviour; not
+live-verified.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
