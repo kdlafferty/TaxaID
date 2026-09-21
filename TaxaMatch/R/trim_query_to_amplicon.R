@@ -527,10 +527,9 @@
       # inside a bare tryCatch({...}) block (no enclosing function of its
       # own) would otherwise return from .extract_feature_table_fallback()
       # ITSELF, silently abandoning every remaining accession still to be
-      # processed in this loop. A real bug caught by this file's own tests
-      # (a "no match" or "out-of-bounds span" outcome for accession i was
-      # returning NULL for the WHOLE function instead of just leaving
-      # sequence i unrescued) before this fix.
+      # processed in this loop: a "no match" or "out-of-bounds span" outcome
+      # for accession i would return NULL for the WHOLE function instead of
+      # just leaving sequence i unrescued. Caught by this file's own tests.
       extract_one <- function() {
         sub_ann <- ann[!is.na(ann$accession) & ann$accession == acc &
           !is.na(ann$feature_from) & !is.na(ann$feature_to), , drop = FALSE]

@@ -134,9 +134,9 @@
   }
 
   # entrez_summary() is still batched defensively (a real HTTP 414 "request
-  # too large" was hit live with 500 unbatched IDs during this fix's own
-  # development, before the server-side SLEN restriction above made a wide
-  # `retmax` unnecessary) -- the same 100-per-batch convention already used
+  # too large" occurs with 500 unbatched IDs without
+  # the server-side SLEN restriction above narrowing the candidate set) --
+  # the same 100-per-batch convention already used
   # elsewhere in this file (`.fetch_reference_accession_records()`).
   id_batches <- split(found$ids, ceiling(seq_along(found$ids) / 100L))
   summaries <- list()
