@@ -479,6 +479,17 @@ deleted), two lost pointer fixes re-applied.
 post-review code, every one fixed or being fixed on a branch; plus the
 ecosystem-wide cache-clear containment gap and the stalled template
 generator.**
+**TaxaWizard fixes MERGED (`8853188`)**: auto-sniff requires a data
+extension from a single allow-list (csv/tsv/txt/tab/dat, fasta/fa/fna/fas,
+rds, json -- xlsx/rdata were never parsed and are no longer detected), no
+dot-segment, a location under the working directory or the session
+`tempdir()`, or an explicitly quoted path outside system directories;
+`.rds` is size-capped (1 MB) before `readRDS()`; only column names and
+counts reach the prompt, never a content line. `.validate_one_call()` now
+emits `package_unavailable` (a failure) instead of skipping an unloadable
+package; `workflow_check()`'s roxygen states exactly what it checks and
+where snippet validation actually lives. 1,084 pass; the one failing test
+is the committed-template diff against the stale installed library.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
