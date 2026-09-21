@@ -349,6 +349,16 @@ from a STALE params_key generation because `match()` takes the first
 (oldest) cache row. 1 RISK (`.summarise_corroborators()` reads the pair
 cache without a params_key filter). Findings are FIXED in code (branch
 `screen-a5-fixes`), never narrated in the response files (rule c).
+**WERC release-review response WRITTEN 2026-09-21**
+(`usgs_release_review/RESPONSE_to_release_review.md`), answering every
+request in the review's table with the three user decisions applied and the
+test-deletion push-back kept.
+**NEW FINDING (A8 follow-up, 2026-09-21): `ecosystem_docs/ECOSYSTEM_WORKFLOW.md`
+is a KEPT user-facing document, but its "PRIOR PIPELINE" section still
+describes the archived GLMM/grid design under a dated "Archived pathway"
+banner (~line 205 on). It must be rewritten to the kernel pipeline
+(`estimate_kernel_priors()` -> evidence layers -> `apply_undetected_evidence()`
+-> TaxaAssign), banner removed -- an agent task, queued.
 
 ### A6. Caching and resources, for users
 

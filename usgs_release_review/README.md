@@ -61,5 +61,5 @@ the reviewer before anything is deleted.
 - Each package's `inst/*_review_response.md` -- responses to that code review,
   not to this release review. They stay with their packages.
 
-No written response to *this* release review exists in the repository. If one
-was drafted elsewhere, it belongs here.
+The written response to this release review is `RESPONSE_to_release_review.md`
+in this folder.
