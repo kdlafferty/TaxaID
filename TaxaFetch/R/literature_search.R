@@ -10,7 +10,7 @@
 #   .decode_openalex_abstract()  -- decode inverted-index abstract to plain text
 #   .openalex_fetch_page()       -- single paginated OpenAlex request
 #   .literature_cache_path()     -- build cache filename from query hash
-#   .query_hash()                -- lightweight query fingerprint
+#   .query_hash()                -- query fingerprint, rlang::hash()-keyed
 #
 # Design:
 #   Output mirrors harvest_dataone_catalog() column structure so the entire
@@ -104,12 +104,23 @@
 }
 
 
-#' Lightweight query fingerprint (no digest dependency)
+#' Lightweight query fingerprint
+#'
+#' The literature cache is keyed by \code{rlang::hash()} -- the same
+#' cache-keying convention \code{check_geographic_outliers()} uses for its
+#' own verdict cache (rlang is already a hard Import; TaxaFetch has no other
+#' digest/checksum helper). This used to be a hand-rolled character-sum
+#' fingerprint truncated at 800 characters, which is a checksum, not a hash:
+#' two different query strings that happen to sum to the same value collide
+#' silently, producing the SAME cache filename for a DIFFERENT query and a
+#' wrong cached result served with no error. \code{rlang::hash()} makes that
+#' collision practically impossible, at the cost of every previously-written
+#' \code{openalex_cache_*.rds} file becoming an unreachable orphan -- those
+#' files are small and cheaply re-fetched from OpenAlex, so the fix is a
+#' plain cache miss, not a data-loss risk.
 #' @noRd
 .query_hash <- function(...) {
-  args <- paste(c(...), collapse = "|")
-  chars <- utf8ToInt(substr(args, 1L, 800L))
-  as.character(abs(sum(chars * seq_along(chars))))
+  rlang::hash(paste(c(...), collapse = "|"))
 }
 
 
