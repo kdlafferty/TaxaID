@@ -726,6 +726,20 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   = "error"`, `on_count_failure`.
 - **B4. Per-package checklist passes 1-7** (memory `pre-code-review-package-
   checklist`) on every package, including `/security-review`.
+  **Before B4 started (2026-09-21)**: the three post-screen follow-ups landed
+  (`verify_local_corroborations()` reads the audited run's key; the literature
+  cache's character-sum checksum is `rlang::hash()`; iNaturalist's omitted
+  `captive`/`quality_grade` verified live = "any": 470,344 / 470,344 /
+  434,444), plus `force=` on all five `*_clear_cache()` wrappers, the
+  clear-cache tests rewritten to the containment contract, and
+  `.gbif_dl_meta_path()`'s equal-sum checksum replaced by `rlang::hash()`
+  (existing GBIF download entries become misses; user's disposable-cache
+  decision). Real caches verified to PASS the containment check (TaxaFetch 20
+  files / 2.7 GB, TaxaLikely 27,881 files). Sibling to fix in TaxaFetch's B4:
+  `.gbif_checkpoint_path()` in `fetch_gbif_occurrences.R` has the same
+  checksum shape. B4 runs one agent per package, two at a time, branch
+  `stageb-b4-<Pkg>`; passes 1-6 executed, pass 3 report-only (no renames),
+  7a light read of pre-review functions, 7b done by the A5 template review.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
