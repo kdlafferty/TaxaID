@@ -804,6 +804,16 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   noise()`; drifted `.lintr` lines re-verified; 9 `object_usage_linter`
   false positives confirmed with `codetools::checkUsage()` (cli glue). 7a:
   cache filenames sanitised (`[^A-Za-z0-9]` -> `_`); no `system()`/`eval()`.
+  **TaxaExpect DONE** (`2658f3c`): `check()` 0/0/0 (no NOTE), 701 tests;
+  `@examples` added to the five exports that had none (all run under
+  `load_all()`); `Depends: R (>= 4.1.0)`; 32 lint findings fixed. Naming
+  inconsistencies REPORTED for 1.1, not fixed: `lat`/`lng` in the two
+  API-facing generators vs `site_lat`/`site_lon` in the kernel math;
+  `sampling_group` (a value) vs `sampling_group_col` (a column). **Process
+  rule learned: never `git stash` in a shared-repo worktree** -- worktrees
+  share one stash list and the agent popped the workflow chat's WIP stash
+  by mistake (restored intact, verified); compare against a baseline with
+  `git archive <commit> | tar -x` instead.
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
