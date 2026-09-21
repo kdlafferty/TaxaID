@@ -2,10 +2,10 @@
 # group_observations_by_bbox.R
 # TaxaMatch -- Automatic spatial grouping of observations
 #
-# Moved here from TaxaFetch (Session 134b): this operates on
+# This lives in TaxaMatch, not TaxaFetch: it operates on
 # build_site_table()'s output and is fundamentally a spatial-grouping concern,
-# not a fetch concern. TaxaTools::define_search_polygon() (also moved this
-# session) is the shared gadget both this function and TaxaFetch's search-area
+# not a fetch concern. TaxaTools::define_search_polygon() is the shared
+# gadget both this function and TaxaFetch's search-area
 # use call.
 #
 # Exported functions:
@@ -164,8 +164,9 @@ group_observations_by_bbox <- function(sites,
     sites$spatial_group_N <- 1L
     sites$is_default_group <- TRUE
   } else if (!"is_default_group" %in% names(sites)) {
-    # Migration path for a site table built before Session 139 (grid-based
-    # defaults + is_default_group marker): fall back to the old heuristic
+    # Migration path for a site table with no is_default_group column
+    # (grid-based defaults + is_default_group marker): fall back to the
+    # heuristic
     # (spatial_group_id == observation_id & spatial_group_N == 1) to infer
     # which rows are still untouched, so older cached/saved site tables keep
     # working without needing to be rebuilt.
