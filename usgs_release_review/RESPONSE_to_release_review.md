@@ -26,7 +26,7 @@ built package.
 
 ## On deleting test files
 
-The nine packages carry 173 test files (roughly 8,000 tests), run with
+The nine packages carry 174 test files (roughly 8,000 tests), run with
 `devtools::test()` and by `R CMD check`. They are how several real defects were
 caught during pre-publication review, and a standard R package ships its
 `tests/` directory so that `R CMD check` can exercise it on any machine. We
