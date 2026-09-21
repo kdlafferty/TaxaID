@@ -497,8 +497,24 @@ genus asked about, and family-level responses echo a `family` field that
 must match; the genus column is validated before it reaches the prompt;
 `n_cross_genus_pairs` counts unordered pairs; the single-genus case warns.
 1,325 tests, 0 failures. **Every A5 fix branch is now in `main`**; the
-16-defect tally is closed in code. Remaining on `main` before the final
-reinstall: the `ECOSYSTEM_WORKFLOW.md` rewrite (docs only).
+16-defect tally is closed in code.
+**`ECOSYSTEM_WORKFLOW.md` REWRITTEN and merged (`b5e547b`)**: 402 -> 376
+lines; the TaxaExpect section now describes the kernel pipeline as the
+template runs it; the TaxaAssign site/prior join describes `join_priors(
+site=)`; the "Open Design Issues" changelog is gone; all 81 function
+mentions verified against NAMESPACEs. The rewrite exposed a root-README
+contradiction (line ~772 pointed new users to a template in the separate
+`eDNA` repo; line ~797 named this repo's generated template canonical) and
+a history narrative in the README's template section -- both fixed on
+`main`, with two more dated passages (the Xeno-canto quality-grade helper's
+archival; "there is no longer a standalone inst/ script"). The root README
+was never inside an A1 package pass; it has now had the same treatment.
+**Second reinstall DONE 2026-09-21** (window verified: the peer's 30-second
+probe had finished; RStudio's session held no TaxaID package): nine packages
+from `83a3029`, exports 217, `llm_prompts/` regenerated (`0cd1b6c`),
+**TaxaWizard 1,093 pass / 0 fail / 0 skip** -- the committed-template diff
+test passes against a current library. Stage A is COMPLETE except the
+`.Rproj.user/` deletion (RStudio still open).
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the

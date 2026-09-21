@@ -419,12 +419,10 @@ third dimension in the likelihood model is a potential future
 enhancement. The analogous quality signal for acoustic reference data is
 the Xeno-canto (Xeno-canto Foundation, Netherlands, with support from
 Naturalis Biodiversity Center, Leiden; <https://xeno-canto.org/>)
-quality grade (A–E per recording); a dedicated helper for calibrating a
-quality-grade filtering threshold from it existed in TaxaLikely through
-2026-09-09 and was archived after a real A/B test found the accuracy
-gain came with a real coverage cost (see TaxaLikely's own README and
-CLAUDE.md) -- a threshold can still be applied directly against the
-recorded quality-grade column before model training.
+quality grade (A–E per recording); TaxaID does not filter on it by
+default, because an A/B test found the accuracy gain came with a real
+coverage cost -- a threshold can be applied directly against the recorded
+quality-grade column before model training.
 
 A parallel line of work addresses a different need: making metabarcoding
 output interpretable for managers and other non-specialist stakeholders
@@ -769,9 +767,8 @@ For a worked example of a single pipeline stage, see that package's own
 `TaxaAssign/inst/workflows/compute_posteriors_workflow.R`.
 
 To build a complete workflow for a new site, start from
-`TaxaID_eDNA_Workflow_Template.R` (in the separate `eDNA` repository, at
-`eDNA/PtConception/`) -- the template the three PtConception production
-workflows were built from.
+`inst/TaxaID_Workflow_Template.R` (see "The workflow template" below), or
+let TaxaWizard generate one for your data.
 
 **To confirm your installation works**, run one of the fast smoke tests.
 Each chains `evaluate_likelihoods()` -\> `compute_posterior()` -\>
@@ -804,19 +801,9 @@ assembles it from the workflow graph's own snippets -- the same files
 TaxaWizard generates scripts from -- resolving each step's inputs from the
 graph's edge wiring and each parameter from one configuration table.
 
-That indirection is the point, and it is worth explaining because this
-package spent a long time on the other approach.
-`inst/TaxaID_Workflow_Template_TEST.R` filled this role until 2026-09-15,
-when it was retired: its Section 5 called seven functions archived with the
-GLMM prior-fitting chain on 2026-09-09, so it had not been runnable for
-months while still receiving patches. The canonical template in the `eDNA`
-repository had independently fallen behind on four subsystems. Two
-hand-maintained templates, both stale, both looking maintained.
-
-The conclusion drawn at the time was that a second in-package copy of a
-workflow is what caused it, so the template was not replaced. That was the
-right diagnosis of the wrong unit: the problem is not a second copy, it is
-a second copy that nothing compares to the first. This one is compared.
+That indirection is the point: a hand-maintained template drifts from the
+code it demonstrates while still looking maintained, and nothing notices
+unless something compares the two. This one is compared.
 `TaxaWizard/tests/testthat/test-workflow-template.R` regenerates it and
 fails if the committed file differs, and separately asserts that it parses,
 that every `Pkg::fn` it calls is a real export, and that every named
@@ -828,9 +815,6 @@ To update it after changing a snippet:
 ```bash
 Rscript TaxaWizard/inst/tools/build_workflow_template.R
 ```
-
-See `TaxaID_dev/archive_retired_workflow_template_2026_09_15/README.md`
-(sibling development repository) for the retired one.
 
 ## Getting Started
 
@@ -869,7 +853,7 @@ Detailed, runnable workflow scripts are provided in each package's
 | No-score pathway (morphology/expert IDs) | TaxaLikely | `inst/workflows/6_no_score_pathway_workflow.R` |
 | Fetch occurrences | TaxaFetch | `inst/Merge_sources_workflow.R` |
 | Assign habitats | TaxaHabitat | `inst/workflows/assign_habitat_workflow.R` |
-| Build priors | TaxaExpect | See TaxaExpect's [Quick Start](TaxaExpect/README.md#quick-start) (kernel-priors path; there is no longer a standalone `inst/` script) |
+| Build priors | TaxaExpect | See TaxaExpect's [Quick Start](TaxaExpect/README.md#quick-start) (kernel-priors path) |
 | LLM assignment | TaxaAssign | `inst/TaxaAssign_llm_workflow.R` |
 | Bayesian assignment | TaxaAssign | `inst/TaxaAssign_bayesian_workflow.R` |
 
