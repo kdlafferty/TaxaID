@@ -1,16 +1,12 @@
 # suggest_unreferenced_species.R
 # TaxaAssign package
 #
-# suggest_unreferenced_species() moved to TaxaLikely on 2026-09-08 (package-
-# placement fix, no behavior change): it is a reference-coverage-auditing
-# function ("which species are missing from my reference database"), the same
-# job TaxaLikely::audit_barcode_coverage() already does -- its own roxygen
-# already self-described as "a fast, LLM-first alternative to
-# audit_barcode_coverage()", so it belongs next to the function it's an
-# alternative to, not in the posterior-computation package. This file is now
-# only a thin, deprecated forwarding wrapper. See TaxaAssign/CLAUDE.md's
-# 2026-09-08 top note and ecosystem_docs/NAME_CHANGE_HISTORY.md for the full
-# record.
+# suggest_unreferenced_species() lives in TaxaLikely: it is a
+# reference-coverage-auditing function ("which species are missing from my
+# reference database"), the same job TaxaLikely::audit_barcode_coverage()
+# does, so it belongs next to the function it's an alternative to, not in
+# this posterior-computation package. This file is only a thin, deprecated
+# forwarding wrapper for callers who reach for it here.
 
 #' Suggest Unreferenced Species Using an LLM (deprecated -- moved to TaxaLikely)
 #'
