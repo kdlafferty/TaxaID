@@ -710,6 +710,14 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   the consensus reads `posterior_point_est`. State this in Methods.
 - Kish `n_eff` is scale-invariant; down-weighting a group buys no uncertainty
   discount.
+- **A workflow written after a package split can silently inherit the old
+  behaviour the split warned about** (reported by the workflow chat,
+  2026-09-21): the PtCon multi-site occurrence pool never called
+  `dedupe_occurrences()`, so it counted reports rather than detection
+  occasions -- 21,652,448 rows collapse to 947,674; Kish n_eff at one site
+  falls from 8,428,948 to 231,127; the inflation over distinct points from
+  191x to 6.6x; one coordinate had filed 263,385 rows. Every published
+  pool-size or n_eff figure must state whether it is occasions or reports.
 - A test failing for a month is evidence, not furniture (the CoordinateCleaner
   `cc_zero(buffer=)` unit change made a null-island check a no-op for weeks
   while labelled "environmental").
