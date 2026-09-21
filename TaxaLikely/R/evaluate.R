@@ -131,21 +131,20 @@ utils::globalVariables(c(
     }
   }
 
-  # Score transform (Session 158): read from the model itself rather than
+  # Score transform: read from the model itself rather than
   # requiring the caller to track/re-supply it -- a model trained with
   # score_transform = "sqrt_mismatch" must be evaluated with the identical
   # transform, since H1/H2/H3 are compared via density ratios at one shared
   # point (see train_likelihood_model()'s own score_transform documentation).
-  # Absent for any model trained before this parameter existed -> "logit",
-  # its original and only behavior -- but a SILENT fallback here is exactly
-  # the mechanism that let a stale, undocumented-transform model object stay
-  # dangerous (found during the statistical-critique session that produced
-  # train_likelihood_model()'s "Non-monotonic score->likelihood shape"
-  # section: a real cached model with no Score_Transform field at all was
-  # silently read as "logit", the more fragile of the two transforms, with
-  # no signal to the caller that this had happened). Now warns instead of
-  # defaulting silently, so a caller inspecting an old/orphaned model_params
-  # object gets a visible prompt to check whether it should be retrained.
+  # Absent for any model trained without this parameter set -> "logit".
+  # A SILENT fallback here would let a stale, undocumented-transform model
+  # object stay dangerous: a cached model with no Score_Transform field
+  # would silently be read as "logit", the more fragile of the two
+  # transforms (see train_likelihood_model()'s "Non-monotonic
+  # score->likelihood shape" section), with no signal to the caller that
+  # this had happened. Warns instead of defaulting silently, so a caller
+  # inspecting an old/orphaned model_params object gets a visible prompt to
+  # check whether it should be retrained.
   if (is.null(model_params$Score_Transform)) {
     warning(paste0(
       "model_params has no Score_Transform field -- this model predates ",
@@ -253,7 +252,7 @@ utils::globalVariables(c(
   }
 
   # ---- 4. LIKELIHOOD CALCULATOR (shared by point-estimate and MC sims) ------
-  # mu_override/delta_override (Session 157): when supplied, replace the
+  # mu_override/delta_override: when supplied, replace the
   # trained H1 mean_score / H2 delta with a caller-supplied value for this
   # call only -- used by the Monte Carlo section below to resample the
   # TRAINED MEAN by its own estimation uncertainty (how much reference data
@@ -264,8 +263,8 @@ utils::globalVariables(c(
   # back exactly which values this call resolved -- letting the MC section
   # reuse the point-estimate pass's own resolution instead of re-deriving it.
   #
-  # used_tau_sq1/used_h2_tau_sq (variance of the trained mean / H2 delta,
-  # Session 157 continued): shrinkage-consistent, not naive sigma^2/n. When a
+  # used_tau_sq1/used_h2_tau_sq (variance of the trained mean / H2 delta):
+  # shrinkage-consistent, not naive sigma^2/n. When a
   # species/genus-specific estimate exists, it was itself computed as a
   # shrinkage blend `w*local + (1-w)*global`, `w = n/(n+prior_weight)` -- so
   # its own uncertainty is `w^2 * sigma^2/n`, NOT the naive `sigma^2/n` a
@@ -440,7 +439,7 @@ utils::globalVariables(c(
         }
       }
 
-      # Mean-uncertainty override (Session 157): substitutes a simulated draw
+      # Mean-uncertainty override: substitutes a simulated draw
       # of the trained mean for this candidate, used only by the Monte Carlo
       # section's resampling loop -- NULL (default) for the point estimate.
       if (!is.null(mu_override) && !is.na(mu_override[i])) {
@@ -455,25 +454,24 @@ utils::globalVariables(c(
       } else {
         x_pt <- c(s_vec[i], g_vec[i])
         # Outlier filter: ONE-SIDED (low side only) score-only normal test,
-        # calibrated against real 12S data in its original two-sided form
-        # (Session 121 -- see this parameter's own @param alpha docs for the
-        # real Cyprinidae/coastal-species numbers that calibration was based
-        # on) and made one-sided in the statistical-critique session that
-        # found the two-sided version incoherent for the high side: H2/H3's
+        # calibrated against real 12S data (see this parameter's own
+        # @param alpha docs for the real Cyprinidae/coastal-species numbers
+        # that calibration was based on). One-sided because a two-sided
+        # version is incoherent for the high side: H2/H3's
         # own means sit BELOW H1's by construction (they model a missing-
         # species/genus hypothesis via a leftward shift), so a query score
         # anomalously ABOVE H1's mean fits every available alternative
         # hypothesis strictly worse, not better -- there is nothing for a
         # rejected H1 to hand its likelihood mass to that explains a
-        # near-perfect match. The old two-sided test could hard-zero the
+        # near-perfect match. A two-sided test could hard-zero the
         # best-fitting hypothesis on exactly the evidence that most strongly
-        # supports it. Verified this never actually fired on any current
+        # supports it. Verified this never actually fires on any current
         # production model (see the model_params$Score_Transform docs above
         # and train_likelihood_model()'s own "Non-monotonic score->likelihood
         # shape" section for the full record), but is a real, structural gap
-        # independent of how rarely it fires in practice. Kept the identical
-        # z-score/alpha calibration on the low side -- only the high side's
-        # rejection is removed.
+        # independent of how rarely it fires in practice. The low side keeps
+        # the identical z-score/alpha calibration; the high side has no
+        # rejection at all.
         # The gap measures how well-separated
         # H1 is from alternatives -- a small gap (confusable congener
         # present) is correctly handled by the bivariate density below, which
@@ -527,9 +525,8 @@ utils::globalVariables(c(
           delta_source <- "genus_specific"
           h2_n_used <- model_params$H2_Lookup$n_pairs[gidx]
           h2_matched_local <- TRUE
-          # var_shrunk (Session 158) is absent from H2_Lookup objects built
-          # before this session -- fall back to the pooled global h2_sigma
-          # unchanged for those, exactly as before.
+          # When H2_Lookup lacks a var_shrunk column, fall back to the
+          # pooled global h2_sigma.
           if ("var_shrunk" %in% names(model_params$H2_Lookup)) {
             use_h2_sigma[1L, 1L] <- model_params$H2_Lookup$var_shrunk[gidx]
           }
@@ -560,7 +557,7 @@ utils::globalVariables(c(
     if (!is.null(delta_override)) use_h2_delta <- delta_override
     use_h3_delta <- use_h2_delta + (h3_delta - h2_delta)
 
-    # H2/H3 mean anchor (Session 158, "Effect 1"): anchored on the ANCHOR
+    # H2/H3 mean anchor: anchored on the ANCHOR
     # CANDIDATE'S OWN resolved species mean (used_mu1[best_i], the same value
     # H1's own density used for this candidate -- species floor already
     # applied, mu_override NOT yet applied at this point in the primary/
@@ -686,7 +683,7 @@ utils::globalVariables(c(
   # Re-derive taxon_name for H1 rows too (ensures consistency with TaxaTools)
   res <- TaxaTools::create_taxon_names(res, rank_cols)
 
-  # ---- CONFUSION-RISK COLUMNS (2026-07-23) -----------------------------------
+  # ---- CONFUSION-RISK COLUMNS ------------------------------------------------
   # species_confusion_risk/genus_confusion_risk/family_confusion_risk: a
   # model-independent, score-ONLY diagnostic of the risk that the raw match
   # score is equally well explained by a confusable relative at the rank a
@@ -887,9 +884,8 @@ utils::globalVariables(c(
         sim_mat[, sim_i] <- iter_liks / iter_max
       }
     } else {
-      # Legacy fallback (model_params trained before n_obs_species was
-      # retained in H1_Lookup): resample the observed score by the global
-      # population sigma, exactly as before this session.
+      # Without per-candidate n_obs_species information, resample the
+      # observed score by the global population sigma.
       for (sim_i in seq_len(n_sims)) {
         sim_scores <- stats::rnorm(nc, mean = cand$score_logit, sd = model_sd_score)
 
@@ -988,8 +984,8 @@ utils::globalVariables(c(
 #'
 #' @param match_df Data frame in the canonical match-object format (output of
 #'   `TaxaMatch::standardize_match_data()` or user-supplied).  Must contain
-#'   `observation_id`, `score_original` (or `p_match`; legacy `score` also
-#'   accepted), `taxon_name`, `taxon_name_rank`,
+#'   `observation_id`, `score_original` (or `p_match` or `score`),
+#'   `taxon_name`, `taxon_name_rank`,
 #'   and taxonomy columns matching `rank_system`.
 #' @param model_params Object of class `"taxa_model_params"` from
 #'   [train_likelihood_model()]. The scale H1/H2/H3 were trained on
@@ -1036,15 +1032,14 @@ utils::globalVariables(c(
 #'   When `coverage` is absent from `match_df`, this parameter is silently
 #'   ignored.
 #'
-#'   \strong{Every candidate below threshold (fixed 2026-09-09):} when
+#'   \strong{Every candidate below threshold:} when
 #'   `min_coverage` drops EVERY candidate row for a given `observation_id`,
 #'   that observation is routed to `$unresolved` (with a named warning)
 #'   instead of erroring -- the same degrade-gracefully convention already
 #'   used for the coarser-than-`rank_system` case above. Confirmed to hit
 #'   195/800 (24.4%) of real test queries in a real production A/B
-#'   comparison at a Youden's-J-calibrated `min_coverage`; before this fix,
-#'   any such observation crashed the whole call with `"replacement has 1
-#'   row, data has 0"`. Re-run `evaluate_likelihoods()` on `$unresolved` with
+#'   comparison at a Youden's-J-calibrated `min_coverage`.
+#'   Re-run `evaluate_likelihoods()` on `$unresolved` with
 #'   a lower (or `NULL`) `min_coverage` to resolve these queries.
 #' @param evidence_col Character or `NULL` (default `NULL`). Name of a column
 #'   in `match_df` giving each candidate's raw evidence quantity (e.g. DNA read
@@ -1244,9 +1239,9 @@ utils::globalVariables(c(
 #' acoustic mimicry/convergence) is not its nearest phylogenetic relative --
 #' see `inst/TaxaLikely_supplemental_methods.md` for that limitation.
 #'
-#' \strong{H2/H3 mean anchor and genus-specific variance (Session 158):} H2's
+#' \strong{H2/H3 mean anchor and genus-specific variance:} H2's
 #' mean is `(anchor candidate's own resolved species mean) - delta`, not
-#' `H1_Global_Mu - delta` as in earlier versions -- a referenced species
+#' `H1_Global_Mu - delta` -- a referenced species
 #' whose own trained mean sits above or below the population average is real
 #' information about how conserved or variable that lineage specifically is,
 #' and an unreferenced sister species should inherit it rather than being
@@ -1256,12 +1251,10 @@ utils::globalVariables(c(
 #' species are hard to tell apart (small delta) also tend to show more
 #' *consistent* divergence (lower variance), and genera whose species are
 #' easy to tell apart show more variable divergence; both the delta and the
-#' variance now reflect this per genus, on the same footing. Absent from
-#' `H2_Lookup` objects built before this session -- those fall back to the
-#' pooled global variance unchanged, exactly as before. See
-#' `train_likelihood_model()`'s `score_transform` documentation and
-#' `[[project_job2_unreferenced_relatives]]` in the TaxaID memory system for
-#' why this required moving off the plain logit scale to be correctly
+#' variance now reflect this per genus, on the same footing. When absent from
+#' `H2_Lookup`, those fall back to the pooled global variance. See
+#' `train_likelihood_model()`'s `score_transform` documentation for
+#' why this requires moving off the plain logit scale to be correctly
 #' signed: on real 12S congener data, the raw match-proportion scale shows
 #' tight genera have lower variance as expected (Pearson r = -0.55), but
 #' logit reverses this (r = +0.47) because nearly all real matches sit near
@@ -1318,10 +1311,7 @@ utils::globalVariables(c(
 #' high confusion risk, weak evidence the species call is correct -- while
 #' `species_confusion_risk = 0.02` at the same score means a real congener
 #' almost never scores this high -- low confusion risk, strong evidence.
-#' (Renamed 2026-07-23 from `species_support`/etc. after noticing the
-#' original name inverted this convention -- "support" implied
-#' higher-is-better while the values themselves behave the opposite way;
-#' no math changed, only the name.) `family_confusion_risk` has no grouping
+#' `family_confusion_risk` has no grouping
 #' variable (a single, ungrouped cross-family rate) since no rank exists
 #' above family to equal-weight by. `own_rank_confusion_risk` is a
 #' convenience column pointing at whichever of the three matches this row's
@@ -1416,7 +1406,7 @@ evaluate_likelihoods <- function(match_df,
     stop("model_params must be a 'taxa_model_params' object from train_likelihood_model()")
   }
 
-  # Train/inference coverage check (2026-09-10): the model's pair-coverage
+  # Train/inference coverage check: the model's pair-coverage
   # floor (train_likelihood_model(min_pair_coverage=)) must not be looser than
   # what the match object admits, or the gap feature is evaluated on hits the
   # model never saw the like of. The floor the match object was built under
@@ -1424,40 +1414,35 @@ evaluate_likelihoods <- function(match_df,
   # estimated as the observed minimum query_coverage.
   .check_pair_coverage_floor(match_df, model_params)
 
-  # Session 158, revised: evidence_col/min_coverage's sigma-modulation
-  # mechanisms (the crossover gate and the coverage inflation) were initially
-  # guarded here against score_transform = "sqrt_mismatch", on the
-  # (mistaken) assumption that their "SE propto 1/sqrt(N)" justification was
-  # logit-specific. Re-derived via the delta method and checked numerically:
+  # evidence_col/min_coverage's sigma-modulation
+  # mechanisms (the crossover gate and the coverage inflation) apply
+  # identically regardless of score_transform. Derived via the delta method
+  # and checked numerically:
   # for ANY reasonable transform of a binomial proportion, SE(transform(p_hat))
   # scales as 1/sqrt(N) with a p-dependent (not N-dependent) proportionality
-  # constant -- confirmed the ratio of logit's and sqrt_mismatch's own SE
+  # constant -- the ratio of logit's and sqrt_mismatch's own SE
   # formulas is exactly constant across N. The crossover gate's own math
   # (evaluate.R, "Evidence-based sigma rescaling") is already fully
   # scale-agnostic (pure Gaussian peak-vs-tail tradeoff on a standardized z),
-  # so nothing about either mechanism is actually logit-specific -- the guard
-  # was removed rather than kept out of unwarranted caution. The coverage
-  # inflation (`min_coverage`) remains an ungated, unconditional widen (never
-  # received the Session 156 crossover-gate treatment evidence_col did) --
+  # so neither mechanism is transform-specific. The coverage
+  # inflation (`min_coverage`) is an ungated, unconditional widen (unlike the
+  # crossover-gate treatment `evidence_col` gets) --
   # that is a separate, already-documented limitation
-  # ([[project_quality_covariate_deferred]]) equally present on both scales,
-  # not something new introduced here.
+  # equally present on both scales.
 
   # Auto-detect rank_system from match_df columns
   # This 14-rank ladder is deliberately NOT TaxaTools::standard_ranks (7
   # ranks -- too coarse, missing e.g. subphylum/superclass/suborder) or
   # TaxaTools::extended_ranks (21 ranks -- has domain/subkingdom/superorder/
   # superfamily/subfamily/tribe/subgenus/subspecies/variety/form instead of
-  # this function's infraclass/cohort/suborder/infraorder). Investigated
-  # during the human code review (2026-08) as a candidate for consolidation
-  # onto one shared TaxaTools constant -- not done, since the three lists
+  # this function's infraclass/cohort/suborder/infraorder). Not consolidated
+  # onto one shared TaxaTools constant, since the three lists
   # have genuinely different rank sets (not just duplicated identical
-  # values, unlike fetch.R's former .crabs_std_hierarchy, which WAS an
-  # exact duplicate of TaxaTools::standard_ranks and now aliases it
-  # directly). Reconciling all three into one canonical extended-rank list
+  # values, unlike fetch.R's `.crabs_std_hierarchy`, which aliases
+  # `TaxaTools::standard_ranks` directly). Reconciling all three into one
+  # canonical extended-rank list
   # would mean widening a shared, exported TaxaTools constant and checking
-  # every downstream consumer's auto-detection behavior for a change --
-  # flagged for a future dedicated cross-package session, not attempted here.
+  # every downstream consumer's auto-detection behavior for a change.
   if (is.null(rank_system)) {
     canonical <- c(
       "kingdom", "phylum", "subphylum", "superclass", "class",
@@ -1497,14 +1482,15 @@ evaluate_likelihoods <- function(match_df,
   start_time <- proc.time()[["elapsed"]]
   results <- vector("list", length(query_groups))
   n_failed <- 0L
-  # Session 2026-09-09 bug fix: observation_ids whose ENTIRE candidate set was
+  # observation_ids whose ENTIRE candidate set was
   # dropped by min_coverage (or any other upstream filter inside
-  # .evaluate_one_query()) before a single hypothesis could be evaluated.
-  # .evaluate_one_query() already degrades gracefully here -- it returns a
-  # correctly-shaped, zero-row data frame rather than erroring (see its own
-  # "if (nrow(cand) == 0L) return(...)" branch) -- but this wrapper used to
-  # then run `result$observation_id <- sid` unconditionally, which crashes on
-  # a zero-row target ("replacement has 1 row, data has 0") because `sid` has
+  # .evaluate_one_query()) before a single hypothesis could be evaluated need
+  # special handling here: .evaluate_one_query() already degrades gracefully
+  # -- it returns a correctly-shaped, zero-row data frame rather than
+  # erroring (see its own
+  # "if (nrow(cand) == 0L) return(...)" branch) -- but
+  # `result$observation_id <- sid` cannot be run unconditionally against
+  # a zero-row target ("replacement has 1 row, data has 0"), since `sid` has
   # length 1 and there are 0 rows to receive it. At the calibrated
   # min_coverage threshold used in a real production comparison
   # (diagnostics/coverage_filter_ab_comparison.R), this hit 195/800 (24.4%)
@@ -1583,7 +1569,7 @@ evaluate_likelihoods <- function(match_df,
 
   out <- dplyr::bind_rows(results)
   # `results` is a list of NULL entries whenever EVERY observation either
-  # errored or (Session 2026-09-09 fix) had every candidate row filtered out
+  # errored or had every candidate row filtered out
   # by min_coverage -- dplyr::bind_rows() on an all-NULL list returns a
   # 0-row, 0-column tibble, which the dplyr::select() call below cannot
   # operate on ("Column `taxon_name` doesn't exist"). Give it the same shape

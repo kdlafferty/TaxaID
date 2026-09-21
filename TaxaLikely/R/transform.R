@@ -1,12 +1,11 @@
 # transform.R
-# Session 158: shared score-transform helpers, factored out so
+# Shared score-transform helpers, factored out so
 # train_likelihood_model()/.prep_training_data() (training) and
 # evaluate_likelihoods()/.evaluate_one_query() (inference) apply the exact
 # same transform -- H1/H2/H3 must be compared on one consistent scale, or
-# their relative densities are not a valid likelihood ratio (see
-# [[project_job2_unreferenced_relatives]] in the TaxaID memory system for the
-# full derivation of why this matters and why "logit" alone was found to give
-# qualitatively backwards behavior for cryptic/tightly-clustered genera).
+# their relative densities are not a valid likelihood ratio, and "logit"
+# alone gives qualitatively backwards behavior for cryptic/tightly-clustered
+# genera.
 
 #' Transform a raw match proportion onto a modeling scale
 #'
