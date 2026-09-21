@@ -1931,7 +1931,7 @@ utils::globalVariables(c(
 #'     a silent drop. TTL-retryable like `"insufficient_independent_
 #'     evidence"` (see `@section Caching` above), so a later annotation fix,
 #'     primer update, or a raised `max_query_len` can rescue it.}
-#'   \item{Wrong marker, separated from wrong size (2026-09-04): when the
+#'   \item{Wrong marker, separated from wrong size: when the
 #'     feature-table fallback declined because the record HAS annotated
 #'     features and none is this marker, the deferred row reads
 #'     `"not_evaluated_wrong_marker"` instead. The distinction is
@@ -1963,10 +1963,10 @@ utils::globalVariables(c(
 #' work is submitted this call), not what verdict a given accession's
 #' evidence would produce, so changing them between calls never invalidates
 #' an already-`"congruent"`/`"incongruent"`-cached row. `.EVAL_REF_ACC_
-#' VERSION` was unchanged by that work (it was bumped on 2026-09-03 for
-#' `query_span`, see below).
+#' VERSION` is unaffected by these -- only `query_span` (see below) changes
+#' it.
 #'
-#' @section Why the query is the primer-stripped amplicon (2026-09-03):
+#' @section Why the query is the primer-stripped amplicon:
 #' The screen runs `blastn` (`megablast = FALSE`, +2 match / -3 mismatch).
 #' With the primer-INCLUSIVE 217 bp MiFish-U query, a 169 bp perfect
 #' conspecific amplicon-only deposit scores 338 raw, while every full-length
@@ -1986,13 +1986,14 @@ utils::globalVariables(c(
 #' GreatLakes', so the whole class was invisible as corroborators. With the
 #' stripped query both barriers vanish and `min_query_coverage` needs no
 #' change. Because this changes what is submitted, it is verdict-affecting:
-#' `query_span` is in `params_key` and the cache version was bumped to
-#' `"v5_amplicon_query"`; [migrate_reference_cache()] carries an existing
-#' cache's `"congruent"` rows forward (stripping primers only ADDS hits, it
+#' `query_span` is in `params_key`; an existing cache built under an earlier
+#' internal cache version should be run through
+#' [migrate_reference_cache()] first, which carries its
+#' `"congruent"` rows forward (stripping primers only ADDS hits, it
 #' cannot withdraw a match already observed) and leaves everything else to
 #' re-BLAST under the new query.
 #'
-#' @section Local corroboration (2026-09-03):
+#' @section Local corroboration:
 #' If an ASV matches several references of the same species that agree with
 #' each other, why BLAST any of them? [corroborate_references_locally()]
 #' answers that from the workflow's own `seq_matrix`, for free: a reference
