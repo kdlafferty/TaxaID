@@ -759,14 +759,14 @@ utils::globalVariables(c(
 #' a STRUCTURAL feature of every reference-based dataset (every reference
 #' matching itself, or an identical duplicate deposit, scores at or near
 #' 100% identity), not evidence of a second population on its own.
-#' `.bimodality_check()` now estimates a quantum directly from the data and
+#' `.bimodality_check()` estimates a quantum directly from the data and
 #' smooths over it before fitting, requires the minority component to hold
 #' real mass, and requires the two fitted means to be separated by more
 #' than a few quanta -- see that function's own docs for the exact
 #' thresholds and mechanism. **This model's OWN H1 training scores are a
 #' structurally different dataset from `calibrate_query_noise()`'s
-#' confident-observation query scores**, and the fix's benefit differs
-#' correspondingly: query scores share one fixed query length, so they land
+#' confident-observation query scores**, and the comb-smoothing's benefit
+#' differs correspondingly: query scores share one fixed query length, so they land
 #' on one clean, consistent quantum grid (`0.6` on the real motivating run)
 #' that the smoothing closes cleanly; H1 training pairs come from
 #' `build_sequence_matrix()`'s reference-vs-reference alignment, whose

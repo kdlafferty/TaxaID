@@ -1207,11 +1207,11 @@ utils::globalVariables(c(
 #' consistent with the score-only outlier test described above rather than a
 #' new, unvalidated 2D derivation. For singleton (1D) queries, where the
 #' density actually evaluated is exactly this univariate form, the gate is
-#' exact, not an approximation. This replaces the unconditional version, and has
-#' been re-validated end to end against the same real 12S PtConception dataset
-#' the unconditional version was tested on: 163 helped / 3 hurt across 24,857
-#' real H1 rows (vs. 27 helped / 2053 hurt for the unconditional version), mean
-#' H1 relative likelihood 0.8014 -> 0.8016 (vs. the unconditional version's real
+#' exact, not an approximation. This is
+#' validated end to end against the same real 12S PtConception dataset
+#' used to test unconditional rescaling above: 163 helped / 3 hurt across 24,857
+#' real H1 rows (vs. 27 helped / 2053 hurt for unconditional rescaling), mean
+#' H1 relative likelihood 0.8014 -> 0.8016 (vs. unconditional rescaling's real
 #' regression 0.899 -> 0.884). The 3 residual hurt cases were traced directly
 #' (via `mvtnorm::dmvnorm` on the real fitted parameters) to this score-only
 #' marginal approximation: each sits right at the marginal gate's own decision

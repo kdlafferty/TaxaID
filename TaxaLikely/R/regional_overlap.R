@@ -143,8 +143,8 @@
   # observation), so recomputing it every call turned "Tier 1, free" into the
   # dominant real cost on real PtConception data (seq_matrix here has ~3M
   # rows; profiling showed >90% of total wall time in sub() alone, an order
-  # of magnitude more than the Tier 2 alignment work this session's other
-  # caching fixes target). Cached the same way anchor_seq/(anchor, candidate)
+  # of magnitude more than the Tier 2 alignment work the other
+  # caching above targets). Cached the same way anchor_seq/(anchor, candidate)
   # pairs already are, under a fixed key (safe -- see note above).
   if (!is.null(seq_matrix) && is.data.frame(seq_matrix) && nrow(seq_matrix) > 0L &&
     all(c("id_x", "id_y", "coverage") %in% names(seq_matrix))) {
