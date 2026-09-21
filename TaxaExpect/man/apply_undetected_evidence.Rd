@@ -37,8 +37,8 @@ evidence-generating functions, e.g.
 source's probability of local presence), \code{source} (character, for
 audit only). Optional: \code{p_conc} (numeric, > 0; default 1) -- how
 much weight the presence claim carries against future evidence, in
-pseudo-observations. \code{n_eff} is retired (errors with migration
-guidance): the Beta concentration is now moment-matched, not supplied.
+pseudo-observations. \code{n_eff} is not accepted (errors with
+guidance): the Beta concentration is moment-matched, not supplied.
 Additional source-specific columns are ignored by this function.}
 
 \item{grid_id}{Character. Single grid cell identifier this call applies
@@ -67,26 +67,24 @@ any subset of \code{genus}, \code{family}, \code{order}, \code{class},
 \code{generate_undetected_diversity(taxonomy = ...)} does. Default
 \code{NULL}.}
 
-\item{pricing}{\code{"blend"} (default, the original floor-additive
+\item{pricing}{\code{"blend"} (default, a floor-additive
 presence mixture: \code{theta = floor + w*(ceiling - floor)}) or
-\code{"curve"} (unobserved-taxa redesign, 2026-08-31: \code{theta = w *
+\code{"curve"} (\code{theta = w *
 theta_present} with \code{theta_present = missing_mass / f1} from the
 kernel fit -- the mean theta of the neighborhood's own observed
-singletons -- and \code{theta_absent = 0}). \code{theta_present} was
-priced from \code{missing_mass / chao_missing} before 2026-09-05 (open
-decision #1, resolved): that made the branch's evidence total close
-exactly against \code{chao_missing} (\code{sum(w) = chao_missing}), but
-inherited \code{chao_missing}'s own radius-instability (4x-21x on real
-data, driven by dividing by a doubleton count that sits in the single
-digits). \code{chao_missing} remains available on the kernel fit as a
+singletons -- and \code{theta_absent = 0}). Pricing off \code{f1} rather
+than \code{chao_missing} avoids \code{chao_missing}'s own
+radius-instability (4x-21x on real data, driven by dividing by a
+doubleton count that sits in the single digits). \code{chao_missing}
+remains available on the kernel fit as a
 separate, reported-not-enforced budget AUDIT figure (\code{sum(w)} vs
 \code{chao_missing} -- an estimate of the total unseen-species count,
-not the price); it no longer feeds the price itself, and \code{sum(w)}
-is no longer expected to equal it exactly. Curve pricing removes the
-floor term that dominated every blended row. Requires a
+not the price); it does not feed the price itself, and \code{sum(w)}
+is not expected to equal it exactly. Curve pricing removes the
+floor term that dominates every blended row. Requires a
 \code{taxaexpect_kernel_priors} \code{model_obj} with a finite
-\code{theta_present} (at least one neighborhood singleton), or -- since
-2026-09-04 -- a multi-group fit, in which case each taxon is priced by its
+\code{theta_present} (at least one neighborhood singleton), or a
+multi-group fit, in which case each taxon is priced by its
 OWN sampling group's budget (see \verb{Per-group curve pricing}).}
 
 \item{sampling_group}{Which sampling group each evidence taxon belongs to.
@@ -122,11 +120,10 @@ row to match \code{TaxaAssign::join_priors()}'s composite join key.}
 entirely when \code{model_obj} has no habitat concept).}
 \item{alpha, beta}{Beta(alpha, beta) prior parameters.}
 \item{theta_mean, theta_sd}{Derived from alpha/beta.}
-\item{model_tier}{Always \code{"tier_undetected_evidence"}. Deprecated
-vocabulary (kernel-priors redesign, 2026-08-31): kernel-path
-output replaces \code{model_tier} with \code{prior_branch} +
-\code{effective_records}; this column is retained only while
-the GLMM path remains in use.}
+\item{model_tier}{Always \code{"tier_undetected_evidence"}. Kernel-path
+output uses \code{prior_branch} + \code{effective_records} instead;
+this column is retained for compatibility with \code{biofreq_model}
+inputs (see \code{model_obj}).}
 \item{undetected_type}{Always \code{"evidence_blend"} -- a new value
 alongside \code{"singleton_mirror"}/\code{"global_floor"}.}
 \item{evidence_weight}{The combined \code{w_combined} for this taxon
@@ -138,7 +135,7 @@ The presence mixture itself, consumed by
 (pseudo-observations) -- reserved for the confirmation update; does
 not affect the static prior's marginal moments.}
 \item{prior_mix_var_present, prior_mix_var_absent}{Within-state
-variance at the present/absent anchor (2026-09-05). Both exactly 0
+variance at the present/absent anchor. Both exactly 0
 under \code{pricing = "curve"} (point-mass states); under
 \code{"blend"}, the singleton-mirror/floor Beta variances that
 already enter this row's own \code{v_mix} above. Carried so a later
@@ -151,9 +148,9 @@ species-level resolution of a genuinely observed singleton-level
 native (the same bound printed above, at construction time). Only
 ever non-\code{NA} for \code{pricing = "blend"} rows -- under
 \code{"curve"} the bound is a fixed, always-unreachable constant
-(2026-09-05, removed; see \verb{The printed veto bound}), so there is
+(see \verb{The printed veto bound}), so there is
 nothing meaningful to cap against and this column is always
-\code{NA} there. Persisted (2026-09-05) so
+\code{NA} there. Persisted so
 \code{TaxaAssign::update_prior_from_consensus()}'s confirmation
 update -- which can independently push \code{prior_mix_w} past this
 bound via correlated cross-observation support -- can cap its own
@@ -182,14 +179,14 @@ duplicate, ambiguously-joinable rows for the same taxon.
 }
 \section{Why one shared function, not one per evidence source}{
 
-An earlier design had each evidence source (e.g. an invasive-species
-watch list, a regional-proximity check) independently construct and
-append its own finished \code{Beta(alpha, beta)} row to
-\code{taxaexpect_priors}. That breaks the moment a species qualifies
+If each evidence source (e.g. an invasive-species
+watch list, a regional-proximity check) independently constructed and
+appended its own finished \code{Beta(alpha, beta)} row to
+\code{taxaexpect_priors}, that would break the moment a species qualifies
 under more than one source at once: \code{TaxaAssign::join_priors()}
 joins on the composite key \code{(taxon_name, taxon_name_rank, grid_id,
 main_habitat)}, so two independently-appended rows sharing that key
-produce an ambiguous join -- silently picking one, fanning out into
+would produce an ambiguous join -- silently picking one, fanning out into
 duplicate hypotheses, or erroring, depending on row order. This function
 is the single place a new evidence-elevated row is ever created, so that
 collision is structurally impossible: every source's opinion about a
@@ -215,8 +212,8 @@ For each taxon in \code{evidence} that is genuinely unobserved (see
 \code{(alpha, beta)} is read directly out of \code{taxaexpect_priors}
 (not recomputed), and the site's own singleton-mirror mean is used as an
 upper anchor -- the two values \code{\link{generate_undetected_diversity}}
-already produces. The elevated prior is a PRESENCE MIXTURE (2026-08-26
-mixture redesign): with probability \code{w_combined} the species is
+already produces. The elevated prior is a PRESENCE MIXTURE: with
+probability \code{w_combined} the species is
 locally present (theta ~ the ceiling-anchor state), with probability
 \code{1 - w_combined} absent (theta ~ the floor state). The blended mean
 is that mixture's exact expectation, and the Beta summary's concentration
@@ -251,7 +248,7 @@ the minimum theta among genuinely modelled rows (site-scoped rows
 preferred; a mild, safe-direction overestimate, since a no-singleton
 dataset detected every species at least twice); (2) one detection per
 site effort, \code{1 / (median(n_obs) + 1)}; (3) only if neither is
-computable, the previous floor-equals-ceiling no-op with a warning.
+computable, a floor-equals-ceiling fallback with a warning.
 }
 
 \section{The printed veto bound (\code{pricing = "blend"} only)}{
@@ -263,28 +260,25 @@ consensus default \code{min_posterior = 0.05}). Choose watch-list weights
 BELOW this bound unless you deliberately intend elevated species to
 compete with observed ones.
 
-\code{pricing = "curve"} has no analogous veto bound (removed 2026-09-05,
-open decision #1 of
-\code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved): now
-that \code{theta_present} is priced from \code{mass/f1} (see
-\code{\link{estimate_kernel_priors}}'s own roxygen), it is pinned to
-exactly the neighborhood's own singleton mean, which makes the curve
-veto bound a fixed \code{((1-m)/m) = 19} at the default
-\code{min_posterior = 0.05} for every group, always -- unreachable for
-any admissible weight \code{<= 1} and therefore never informative. Under
-the retired \code{mass/chao_missing} pricing this bound could occasionally
-bind (Chao dividing by a thin doubleton count could push the price above
-the singleton mean), which is what the removed guard machinery existed
-to catch; that failure mode no longer exists once the price is pinned.
-Prints \code{f1} (and, for a multi-group fit, the whole per-group budget)
-next to the price for transparency, but names no bound.
+\code{pricing = "curve"} has no analogous veto bound: \code{theta_present}
+is priced from \code{mass/f1} (see \code{\link{estimate_kernel_priors}}'s
+own roxygen), pinned to exactly the neighborhood's own singleton mean,
+which makes the curve veto bound a fixed \code{((1-m)/m) = 19} at the
+default \code{min_posterior = 0.05} for every group, always -- unreachable
+for any admissible weight \code{<= 1} and therefore never informative.
+Pricing off \code{f1} rather than Chao (which can divide by a thin
+doubleton count and push the price above the singleton mean) is what keeps
+this bound unreachable. Prints \code{f1} (and, for a multi-group fit, the
+whole per-group budget) next to the price for transparency, but names no
+bound.
 }
 
 \section{Per-group curve pricing}{
 
 A \code{model_obj} fitted with \code{sampling_group_col} carries one
 Good-Turing budget PER GROUP, and those budgets are not interchangeable. On
-real PtConception 18S data (\code{diagnostics/kernel_budget_18S_sampling_groups.R})
+real PtConception 18S data (the \code{kernel_budget_18S_sampling_groups.R}
+diagnostic, TaxaID_dev repository)
 they span \strong{1859x} across the ten groups present -- 441x restricting
 to groups the assay can actually amplify, or to groups with at least 100
 effective records -- and the single pooled price sits BELOW all seven priced
@@ -301,12 +295,9 @@ all, since \code{theta_present = missing_mass / f1} is undefined there.
 single unseen species at \code{0.755} -- 75\% of its own community.
 \code{min_group_n_eff}/\code{min_group_f1} exclude these.
 }
-(A third guard, capping a group's price at its own singleton mean, existed
-under the retired \code{mass/chao_missing} pricing -- \code{mass/Chao}
-could exceed the singleton mean \code{mass/f1} whenever \code{f1 < 2*f2},
-real 18S zooplankton being one case. Removed 2026-09-05 alongside the price
-switch: \code{theta_present} now IS the singleton mean by construction, so
-there is nothing left for a cap to bound.)
+A third possible guard, capping a group's price at its own singleton mean,
+is unnecessary: \code{theta_present} IS the singleton mean by construction
+(\code{mass/f1}), so there is nothing left for a cap to bound.
 
 A group failing the guards is priced by \code{group_fallback}. The
 \code{"pooled_qualifying"} price combines the qualifying groups GROUP-WISE

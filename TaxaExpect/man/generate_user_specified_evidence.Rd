@@ -17,7 +17,7 @@ A data frame with columns \code{taxon_name}, \code{weight},
 \code{p_conc}, \code{source} -- ready for \code{\link[=apply_undetected_evidence]{apply_undetected_evidence()}}.
 }
 \description{
-The explicit policy knob from the unobserved-taxa redesign: a user may
+The explicit policy knob for unobserved taxa: a user may
 assert a presence probability \code{w} for particular species (raising a
 watch species' chance of \emph{resolving} in consensus -- detection itself
 is already guaranteed prior-free by
@@ -30,8 +30,8 @@ pricing's \code{theta_present} at the singleton scale, a weight above
 \code{~0.11} starts materially diluting a singleton-level observed
 native's posterior share at likelihood parity. The outright veto bound is
 unreachable for any \code{w <= 1} under curve pricing -- which is why
-\code{\link[=apply_undetected_evidence]{apply_undetected_evidence()}} stopped printing one for that mode
-(2026-09-05); it still prints a real, dataset-specific bound under
+\code{\link[=apply_undetected_evidence]{apply_undetected_evidence()}} does not print one for that mode;
+it still prints a real, dataset-specific bound under
 \code{pricing = "blend"}.
 }
 \seealso{

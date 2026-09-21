@@ -3,8 +3,7 @@
 
 #' Fit a distance-to-presence curve for regional-proximity weights
 #'
-#' The per-dataset, self-calibrating alternative (2026-08-26 mixture
-#' redesign, D5) to accepting
+#' The per-dataset, self-calibrating alternative to accepting
 #' \code{\link{generate_regional_proximity_evidence}}'s default
 #' \code{w_scale}/\code{d_half}: estimate P(locally present | nearest
 #' external record at distance d) from a study's own data and read the two

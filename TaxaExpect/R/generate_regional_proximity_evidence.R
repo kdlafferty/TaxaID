@@ -5,8 +5,7 @@
 #' occurrence record, cheaply checks whether GBIF has ANY record nearby at
 #' all (Stage 1), and only pays for a real, quality-screened fetch to find
 #' the actual nearest record and its age for the taxa where that cheap check
-#' finds something (Stage 2). Implements
-#' \code{ecosystem_docs/REENTRY_PROMPT_regional_proximity_prior_check.md}.
+#' finds something (Stage 2).
 #'
 #' @section Stage 1 -- cheap gate, no quality filtering possible:
 #' \code{\link[TaxaFlag]{check_gbif_tile_range}} reads presence/
@@ -29,13 +28,13 @@
 #' 1 structurally cannot. A bad single record can trigger a wasted Stage 2
 #' fetch, but can never move a prior on its own, since only the filtered
 #' survivors ever produce an evidence row. \code{\link[TaxaFlag]{compute_local_occurrence_distance}}
-#' (extended this session with \code{date_col}) then gives the real distance
+#' (via its \code{date_col} argument) then gives the real distance
 #' AND the matched record's age from the filtered data.
 #'
 #' @section From distance/age to weight/p_conc -- deliberately NOT a connectivity check:
-#' An earlier design explored a watershed/basin-connectivity gate (is the
-#' nearby record even in a hydrologically connected water body) before being
-#' explicitly dropped: this package needs to stay simple and generalize
+#' This deliberately does not implement a watershed/basin-connectivity gate
+#' (is the nearby record even in a hydrologically connected water body):
+#' this package needs to stay simple and generalize
 #' across a wide range of taxa and geographic settings, and hydrological
 #' connectivity is a specific-study solve, not a generalizable primitive.
 #' Raw distance is the only generic signal used. The geographic-plausibility
@@ -50,9 +49,9 @@
 #' is a saturating decay in distance: \code{weight = w_scale *
 #' exp(-distance_km / d_half)} -- read as P(locally present | nearest record
 #' at this distance, no in-bbox records)
-#' under the 2026-08-26 presence-mixture redesign. Presence-claim confidence
+#' in the presence-mixture framing. Presence-claim confidence
 #' (\code{p_conc}, how much weight the claim carries against future
-#' evidence -- NOT the static prior's concentration, which is now
+#' evidence -- NOT the static prior's concentration, which is
 #' moment-matched by \code{\link{apply_undetected_evidence}}) is a
 #' saturating decay in record age: \code{p_conc = exp(-age_years /
 #' age_half)} -- a fresh record counts as one pseudo-observation about
@@ -99,15 +98,14 @@
 #'   outside the study bbox but that has NO records inside it. The default 1
 #'   is almost certainly too high for any real study -- a species with zero
 #'   in-bbox records is usually genuinely absent even when nearby records
-#'   exist. Calibrate against a local expert checklist: the GreatLakes2023
+#'   exist. Calibrate against a local expert checklist: a Great Lakes
 #'   test case found 0 of 110 zero-bbox candidates with records at 12-990 km
 #'   on the site's 53-species checklist (Jeffreys 95 percent upper bounds:
 #'   0.107 for the under-100 km bin, 0.027 pooled), and adopted
 #'   \code{w_scale = 0.05} -- which also satisfies the dataset-independent
 #'   ordering bound that an unobserved species should never veto a
 #'   singleton-level observed native at likelihood parity (w below roughly
-#'   1/19). See ecosystem_docs/
-#'   REENTRY_PROMPT_undetected_evidence_mixture_redesign.md (D4/D5).
+#'   1/19).
 #' @param d_half Numeric > 0. Distance (km) at which \code{weight} decays to
 #'   half its maximum -- see \verb{Choosing d_half/age_half}. Default
 #'   \code{150}.
@@ -131,9 +129,7 @@
 #'   of a taxon's Stage-2-filtered records must fall within this many degrees
 #'   of latitude of \code{lat} (proportional fallback when a taxon has fewer
 #'   total filtered records than that -- see \code{near_occurrence_min_n}).
-#'   Ported from \code{build_invasive_candidates.R}'s own identically-named
-#'   safeguard (\code{ecosystem_docs/REENTRY_PROMPT_invasive_species_watch_list_priors.md}),
-#'   built after a real GLANSIS benchmark comparison found the plain nearest-
+#'   Motivated by a real GLANSIS benchmark comparison, which found the plain nearest-
 #'   point test alone is precision-poor: several species passed it purely on
 #'   the strength of ONE isolated occurrence record (a stray record, or a
 #'   real but climatically-artificial thermal-discharge refugium) while the
@@ -142,8 +138,8 @@
 #'   Latitude (not full geodesic distance) is used deliberately as a cheap
 #'   climate-tolerance proxy -- thermal/seasonal regime tracks latitude far
 #'   more than longitude for a fixed distance budget. Default \code{6}
-#'   (~660km, matching \code{build_invasive_candidates()}'s own tuned value --
-#'   a tighter 3-degree pass there cost a real, well-documented invader whose
+#'   (~660km, a value tuned on that benchmark --
+#'   a tighter 3-degree pass cost a real, well-documented invader whose
 #'   established population sat ~5 degrees of latitude from the study site
 #'   despite being part of one connected system).
 #' @param near_occurrence_min_n Integer >= 0. A taxon must have at least this
@@ -156,7 +152,7 @@
 #'   threshold get a proportional fallback instead of an impossible bar: ALL
 #'   of their (few) records must fall within \code{near_lat_tolerance_deg},
 #'   rather than requiring an absolute count they structurally cannot reach --
-#'   the real motivating case (\code{build_invasive_candidates()}'s own) is a
+#'   the real motivating case is a
 #'   species with exactly 1 occurrence record, genuinely close, that a flat
 #'   count-of-3 test would otherwise always reject regardless of proximity.
 #'   Set to \code{0} or \code{1} to disable this test and fall back to the
@@ -169,23 +165,23 @@
 #'   2000 to the current year, the same window every other GBIF fetcher in
 #'   this ecosystem defaults to. PASS THE STUDY'S OWN WINDOW (the same
 #'   \code{year_range} the main occurrence fetch used) so regional evidence
-#'   and resident priors are judged on the same record set. Until 2026-09-12
-#'   the default was \code{NULL} (all time) on the reasoning that record age is
-#'   the signal the \code{p_conc} discount reads out -- but that discount only
-#'   narrows a row's CONFIDENCE, never its weight: a 1929 preserved specimen of
-#'   a captive siamang 74 km from Point Conception still lifted that species'
-#'   prior 480x above the zero-record floor and turned an 82%-identity family-
-#'   level call into a species call. \code{NULL} restores the all-time fetch.
+#'   and resident priors are judged on the same record set. An unbounded
+#'   window (\code{NULL}, all time) is available but not the default: record
+#'   age is the signal the \code{p_conc} discount reads out, but that discount
+#'   only narrows a row's CONFIDENCE, never its weight -- a 1929 preserved
+#'   specimen of a captive siamang 74 km from Point Conception still lifted
+#'   that species' prior 480x above the zero-record floor and turned an
+#'   82%-identity family-level call into a species call.
 #' @param cache_dir Character or \code{NULL}. Forwarded to the Stage 2 fetch
 #'   for checkpointing. Default \code{tools::R_user_dir("TaxaFetch", "cache")}.
 #' @param tile_cache_dir Character or \code{NULL} (default). Forwarded
 #'   straight through to Stage 1's \code{TaxaFlag::check_gbif_tile_range(
 #'   cache_dir = )} -- see that function's own \verb{Caching} section for the
 #'   exact key/no-expiry/age-reporting design. \code{NULL} (the default)
-#'   disables Stage 1 caching entirely, matching every prior release of this
-#'   function: every zero-record taxon re-pays a live GBIF tile fetch on
+#'   disables Stage 1 caching entirely:
+#'   every zero-record taxon re-pays a live GBIF tile fetch on
 #'   every call, which is exactly the cost this parameter exists to remove
-#'   on a repeat run against unchanged data (the 2026-09-13 PtConception run
+#'   on a repeat run against unchanged data (a real PtConception run
 #'   spent 43 minutes here across 256 taxa). When supplied, this function
 #'   also emits one summary line when it finishes: how many Stage 1 verdicts
 #'   were served from cache, how many were freshly fetched, and the age in
@@ -282,8 +278,8 @@ generate_regional_proximity_evidence <- function(
 
   # ---------------------------------------------------------------------
   # Batch-resolve every taxon name to a GBIF key in ONE name_backbone_
-  # checklist() call, instead of one rgbif::name_backbone() call per taxon
-  # (2026-08-22). Verified against real GBIF (not assumed) before adopting:
+  # checklist() call, instead of one rgbif::name_backbone() call per taxon.
+  # Verified against real GBIF (not assumed) before adopting:
   # a batched checklist call and a loop of individual calls returned
   # IDENTICAL usageKey/rank for every one of 11 real test names, including
   # the pathological "Ictalurus" case (a bare genus resolving to Chordata
@@ -294,8 +290,7 @@ generate_regional_proximity_evidence <- function(
   # 1.17s (a real API-level batching win, unlike Stage 2's occurrence
   # fetch, where rgbif's own multi-key `occ_data()` convenience is just a
   # client-side loop of one request per key -- confirmed separately and
-  # deliberately NOT changed, see this function's own git history/session
-  # notes for that comparison).
+  # deliberately NOT changed).
   # ---------------------------------------------------------------------
   if (verbose) message(sprintf("Resolving %d taxon name(s) to GBIF keys (1 batched call)...", length(taxa)))
   key_lookup <- .resolve_gbif_taxon_keys_batch(taxa)
@@ -382,9 +377,9 @@ generate_regional_proximity_evidence <- function(
     # original query string `nm` -- GBIF occurrence records fetched under a
     # resolved usageKey always report the CURRENTLY ACCEPTED name in their
     # own `species` field, regardless of what spelling/synonym the query
-    # itself used to reach that key. See this function's own git history/
-    # session notes: a real production run against a full, NCBI-native
-    # taxon list found several real GreatLakes fish names resolve to a GBIF
+    # itself used to reach that key. A real production run against a full,
+    # NCBI-native
+    # taxon list found several real Great Lakes fish names resolve to a GBIF
     # SYNONYM's usageKey (e.g. "Erimonax monachus" -> key 2367386, status
     # SYNONYM, accepted species "Cyprinella monacha") -- fetching by that
     # key correctly returns real, quality-filterable occurrence records
@@ -409,7 +404,7 @@ generate_regional_proximity_evidence <- function(
     # test to the nearest-point check above -- requires a real CLUSTER of
     # filtered records near the study site's latitude, not just one nearest
     # point. Guards against exactly the failure mode a real GLANSIS benchmark
-    # comparison found in the sibling build_invasive_candidates() tool: a
+    # comparison found: a
     # single isolated/outlier record (a stray point, or a real but
     # climatically-artificial thermal-discharge refugium) passing the
     # nearest-point test alone while the bulk of that species' real range
@@ -506,8 +501,8 @@ generate_regional_proximity_evidence <- function(
 #' at the wrong taxonomic level.
 #'
 #' Kept as a single-name helper alongside `.resolve_gbif_taxon_keys_batch()`
-#' (below, what `generate_regional_proximity_evidence()` actually calls as of
-#' 2026-08-22) -- not currently called by this file, but left in place as a
+#' (below, what `generate_regional_proximity_evidence()` actually calls)
+#' -- not currently called by this file, but left in place as a
 #' documented, tested single-name primitive in case a future caller needs to
 #' resolve just one name without paying for a whole-batch call.
 #' @noRd
@@ -530,7 +525,7 @@ generate_regional_proximity_evidence <- function(
 #'
 #' The batched equivalent of \code{.resolve_gbif_taxon_key()} -- same
 #' hint-not-constraint rank validation, applied per row instead of per call.
-#' Live-verified (2026-08-22) against 11 real taxon names (9 real species, 1
+#' Live-verified against 11 real taxon names (9 real species, 1
 #' bare genus, 1 fictional name) that this returns IDENTICAL usageKey/rank
 #' results to a loop of individual \code{name_backbone()} calls, including
 #' the pathological bare-genus case -- so no correctness is traded for the
@@ -570,24 +565,22 @@ generate_regional_proximity_evidence <- function(
     gbif_species = NA_character_
   )
 
-  # A real, previously-silent failure mode (found 2026-08-24 on a real
-  # 333-name production GreatLakes2023 batch): rgbif::name_backbone_checklist()
+  # A real failure mode (found on a real
+  # 333-name production Great Lakes batch): rgbif::name_backbone_checklist()
   # can fail entirely for a large `taxon_names` batch with
   # "Status: 0 - try lower bucket_size or larger sleep" -- a transient
   # GBIF-side rate-limit/batch-size rejection, not reproducible at the small
   # batch sizes (4-11 names) this function's own tests use, and not
   # deterministic (an earlier, smaller real batch from the same study
-  # succeeded fine at defaults). The original single-attempt
-  # tryCatch(error = function(e) NULL) swallowed this identically to "no
+  # succeeded fine at defaults). A single-attempt
+  # tryCatch(error = function(e) NULL) would swallow this identically to "no
   # taxon in this batch resolved," silently zeroing EVERY name with no
   # warning at all -- invisible until someone checks the resolved-key count
-  # against a known-good spot check, which is exactly what this function's
-  # own live-verified small-scale behavior masked. Retried here with
+  # against a known-good spot check. Retried here with
   # progressively smaller bucket_size/larger sleep -- exactly rgbif's own
   # suggested mitigation in that error message -- and a loud warning() (not
   # silent) if every attempt still fails, so a real recurrence is visible
-  # immediately in the console rather than requiring a multi-session
-  # diagnostic to trace a real fix's apparent "no effect" back to this.
+  # immediately in the console.
   attempts <- list(
     list(bucket_size = 300L, sleep = 1),
     list(bucket_size = 100L, sleep = 2),

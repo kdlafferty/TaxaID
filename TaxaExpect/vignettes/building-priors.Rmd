@@ -25,9 +25,7 @@ knitr::opts_chunk$set(
   chunk still lands in the tangled .R file and is sourced. This vignette is
   documentation-only (its code makes live GBIF/NCBI calls and references
   objects its prose never defines, e.g. `occurrences`), so a tangled chunk is a
-  guaranteed check ERROR. This exact bug hit this vignette once already
-  (fixed 2026-09-03, on a since-removed quickstart chunk) -- see
-  `TaxaExpect/CLAUDE.md`'s 2026-09-03 session note for the full record.
+  guaranteed check ERROR.
 -->
 
 ## What TaxaExpect Computes, and Why
@@ -85,7 +83,7 @@ calib <- calibrate_kernel_bandwidth(
 )
 lambda_km <- calib$best$lambda_km
 
-# 2. Estimate kernel priors at your site (resident_observed rows)
+# 2. Estimate kernel priors at your site (kernel_estimated rows)
 kernel_fit <- estimate_kernel_priors(
   occurrence_data = occurrences,
   site_lat        = 34.45,
@@ -323,8 +321,8 @@ as the analyst, not something the function (or an LLM asked to guess)
 can do for you: whether two taxa were detected by a comparable process
 is a fact about how the data were collected, not something visible in
 the taxonomy or the occurrence records themselves. An automatic,
-taxonomy-based classifier for this was tried and retired after testing
-against a real, expert-classified dataset: it answered a different
+taxonomy-based classifier for this does not work reliably: tested
+against a real, expert-classified dataset, it answered a different
 question than `sampling_group` is meant to answer (whether a group has
 enough records at each site, not whether it shares a detection
 process), splitting one real detection process into dozens of separate
@@ -399,7 +397,7 @@ diversity, and (if used) named unobserved evidence:
 
 ```{r assemble, eval = FALSE, purl = FALSE}
 priors <- dplyr::bind_rows(
-  kernel_fit$priors,   # resident_observed: species with local evidence
+  kernel_fit$priors,   # kernel_estimated: species with local evidence
   undetected           # resident_undetected: singleton mirrors + global floor
   # , priors_with_evidence   # if Step 4's named-evidence step was used
 )
@@ -407,7 +405,7 @@ priors <- dplyr::bind_rows(
 table(priors$prior_branch)
 ```
 
-Every row carries a `prior_branch` column (`"resident_observed"`,
+Every row carries a `prior_branch` column (`"kernel_estimated"`,
 `"resident_undetected"`, or -- if you add domestic/food priors, next --
 `"transport"`) that `TaxaAssign::join_priors()` reads to decide how a row
 should be treated, plus the composite key

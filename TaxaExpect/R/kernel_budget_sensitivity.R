@@ -1,9 +1,8 @@
 # kernel_budget_sensitivity.R
 # TaxaExpect package
 #
-# Open decision #4 of ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_
-# scope.md: "Report f1, f2 and the radius sensitivity next to any budget figure
-# so a reader can see when it rests on four doubletons. No downside."
+# Report f1, f2, and the radius sensitivity next to any budget figure so a
+# reader can see when it rests on four doubletons.
 #
 # The motivating measurements, all on real data:
 #   Mugu        theta_present spans 4x   over the counting radius alone (f2 5-12)
@@ -38,8 +37,7 @@
 #' largest group -- one doubleton entering or leaving the neighborhood moves
 #' the estimate by tens of percent. The `f2_min` column of `$summary` is the
 #' number to look at first for that figure. `theta_present` is priced from
-#' `missing_mass / f1` (2026-09-05, open decision #1 of the kernel budget/
-#' pricing re-entry doc, resolved), so it no longer inherits `f2`'s
+#' `missing_mass / f1`, so it does not inherit `f2`'s
 #' instability -- but it still moves with the counting radius through `f1` and
 #' `missing_mass` themselves, which is what `theta_present_spread` reports.
 #'
@@ -126,8 +124,8 @@ kernel_budget_sensitivity <- function(fit,
     KEEP.OUT.ATTRS = FALSE
   )
 
-  # Column names were not recorded before 2026-09-03; fall back to the
-  # estimator's own defaults for objects fitted by an older version.
+  # Falls back to the estimator's own defaults when a fit object's params
+  # lack recorded column names (e.g. a cached fit from an older version).
   .col <- function(nm, default) if (is.null(p[[nm]])) default else p[[nm]]
 
   rows <- lapply(seq_len(nrow(settings)), function(i) {

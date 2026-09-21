@@ -1,4 +1,4 @@
-# Presence-curve evidence generators (unobserved-taxa redesign, 2026-08-31).
+# Presence-curve evidence generators.
 # One distance curve prices every unobserved claimant; these two generators
 # emit evidence frames for the shared applier (apply_undetected_evidence),
 # which under pricing = "curve" turns weight w into theta = w * theta_present.
@@ -134,7 +134,7 @@ generate_presence_curve_evidence <- function(taxon_names,
 #' User-specified presence evidence for species of special concern
 #'
 #' @description
-#' The explicit policy knob from the unobserved-taxa redesign: a user may
+#' The explicit policy knob for unobserved taxa: a user may
 #' assert a presence probability \code{w} for particular species (raising a
 #' watch species' chance of \emph{resolving} in consensus -- detection itself
 #' is already guaranteed prior-free by
@@ -147,8 +147,8 @@ generate_presence_curve_evidence <- function(taxon_names,
 #' \code{~0.11} starts materially diluting a singleton-level observed
 #' native's posterior share at likelihood parity. The outright veto bound is
 #' unreachable for any \code{w <= 1} under curve pricing -- which is why
-#' [apply_undetected_evidence()] stopped printing one for that mode
-#' (2026-09-05); it still prints a real, dataset-specific bound under
+#' [apply_undetected_evidence()] does not print one for that mode;
+#' it still prints a real, dataset-specific bound under
 #' \code{pricing = "blend"}.
 #'
 #' @param taxon_weights Named numeric vector: names are species, values are

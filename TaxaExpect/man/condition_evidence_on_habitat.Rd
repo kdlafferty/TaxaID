@@ -51,8 +51,8 @@ only enters the site's pool when its point (classified by the community
 observed there, \code{TaxaHabitat::assign_habitat_biological()}) carries the
 site habitat. Evidence rows skipped that stratification, so a distant
 record of a species that never occupies the site habitat was priced more
-generously than a local population of the same species. Real case
-(2026-09-12): a red deer record 54 km from Point Conception earned a prior
+generously than a local population of the same species. A real case:
+a red deer record 54 km from Point Conception earned a prior
 480 times the zero-record floor at a marine site, while the deer living on
 the site itself sat at that floor; a mountain whitefish record 355 km from
 Pt. Mugu out-competed four unrecorded congeners at an estuary.

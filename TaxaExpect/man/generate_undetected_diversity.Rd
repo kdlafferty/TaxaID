@@ -14,7 +14,7 @@ generate_undetected_diversity(
 \arguments{
 \item{model_obj}{A biofreq_model object (output of
 \code{train_biodiversity_model()}) or a taxaexpect_kernel_priors object
-(output of \code{estimate_kernel_priors()} -- kernel-priors redesign): the
+(output of \code{estimate_kernel_priors()}): the
 same rules then run on kernel ingredients (N = Kish effective sample size,
 singletons = neighborhood singletons stamped with the site id).}
 
@@ -53,11 +53,10 @@ trained with \code{habitat_col = NULL}.}
 \item{theta_sd}{Derived: SD of Beta(alpha, beta).}
 \item{n_obs}{Total community count N at the source cell, or N_total
 for the global floor.}
-\item{model_tier}{Always "tier3_undetected". Deprecated
-vocabulary (kernel-priors redesign, 2026-08-31): kernel-path
-output replaces \code{model_tier} with \code{prior_branch} +
-\code{effective_records}; this column is retained only while
-the GLMM path remains in use.}
+\item{model_tier}{Always "tier3_undetected". Kernel-path
+output uses \code{prior_branch} + \code{effective_records} instead;
+this column is retained for compatibility with \code{biofreq_model}
+inputs.}
 \item{undetected_type}{Character: "singleton_mirror" or
 "global_floor".}
 \item{source_taxon_name}{Taxon name of the singleton source, or NA for
@@ -126,14 +125,7 @@ PtConception 18S data: pooling \code{macroinvertebrates} +
 \code{zooplankton} a floor ~34x too low relative to its own group's true
 effort.
 
-\strong{Fix, GLMM path (whole chain archived 2026-09-09):} this used to be
-fixable by calling \code{train_biodiversity_model_by_group()} instead of
-\code{train_biodiversity_model()}, then calling this function once per
-returned \code{biofreq_model}. Both functions, and the rest of the GLMM
-prior-fitting chain, are archived at \code{archive_glmm_prior_pipeline/}
-(see \code{TaxaExpect/CLAUDE.md}'s 2026-09-09 session note) and no longer
-available at all.
-\strong{Fix, kernel path (current recommendation):}
+\strong{Fix:}
 \code{\link{estimate_kernel_priors}(sampling_group_col = ...)} solves this
 same problem natively -- its Good-Turing budget (\code{f1}/\code{f2}/
 \code{chao_missing}/\code{theta_present}) is computed \emph{within} each
@@ -177,5 +169,5 @@ head(dark_priors)
 
 }
 \seealso{
-\code{train_biodiversity_model()}, \code{generate_full_priors()}
+\code{\link{estimate_kernel_priors}}
 }

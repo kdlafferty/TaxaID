@@ -4,8 +4,6 @@
 #
 # Exported functions:
 #   report_priors()   -- generate report_section from priors output
-#
-# Session 65: initial implementation
 # ==============================================================================
 
 
@@ -18,14 +16,10 @@
 #' @param priors_output Either:
 #'   \itemize{
 #'     \item A list with a \code{$priors} element (contains \code{$priors},
-#'       \code{$model}, \code{$occurrences}, \code{$grid_result}) -- the
-#'       shape produced by the archived \code{build_priors()} (GLMM chain,
-#'       archived 2026-09-09, see \code{archive_glmm_prior_pipeline/}). Still
-#'       accepted here so an OLD, already-computed \code{build_priors()}
-#'       result cached on disk keeps working with this function.
+#'       \code{$model}, \code{$occurrences}, \code{$grid_result}) -- accepted
+#'       for a caller holding a cached, list-shaped priors result on disk.
 #'     \item A data frame of priors directly -- the shape produced by
-#'       \code{\link{estimate_kernel_priors}} (current recommended path) or,
-#'       historically, the archived \code{generate_full_priors()}.
+#'       \code{\link{estimate_kernel_priors}}.
 #'   }
 #' @param verbose Logical. Print summary messages. Default \code{FALSE}.
 #'
@@ -53,7 +47,7 @@
 #' @export
 report_priors <- function(priors_output,
                           verbose = FALSE) {
-  # --- Accept list (build_priors output) or data frame ------------------------
+  # --- Accept list (a cached, list-shaped priors result) or data frame --------
   if (is.list(priors_output) && !is.data.frame(priors_output) &&
     "priors" %in% names(priors_output)) {
     priors_df <- priors_output$priors
@@ -72,7 +66,7 @@ report_priors <- function(priors_output,
     habitat_scheme <- attr(priors_output, "habitat_scheme")
     n_occurrence_records <- NULL
   } else {
-    stop("report_priors: 'priors_output' must be a non-empty data frame or build_priors() list.",
+    stop("report_priors: 'priors_output' must be a non-empty data frame or a list with a $priors element.",
       call. = FALSE
     )
   }
@@ -95,10 +89,10 @@ report_priors <- function(priors_output,
   }
 
   # Tier/branch breakdown. prior_branch takes PRECEDENCE when present:
-  # kernel tables still carry model_tier as a legacy column on their
-  # undetected/domestic rows only (NA on every resident row), so counting by
-  # model_tier there silently omits the resident majority -- found on the
-  # first real kernel-path GL report (2026-09-01: 86 resident rows missing
+  # kernel tables carry model_tier only on their
+  # undetected/domestic rows (NA on every resident row), so counting by
+  # model_tier there silently omits the resident majority -- found on a
+  # real kernel-path Great Lakes report (86 resident rows missing
   # from a 467-taxon breakdown).
   tier_breakdown <- NULL
   kernel_schema <- "prior_branch" %in% names(priors_df) &&
