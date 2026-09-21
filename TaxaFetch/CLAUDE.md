@@ -1707,7 +1707,7 @@ only renaming.
   family -> order) was only validated empirically in ad hoc session scripts last session,
   not yet built as a reusable function anywhere in the ecosystem.
 
-Sessions 26–80 archived in ecosystem_docs/session_notes/TaxaFetch_sessions.md.
+Sessions 26–80 archived in TaxaID_dev/ecosystem_docs/session_notes/TaxaFetch_sessions.md.
 
 **Session 82 (2026-05-21)**
 - License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.

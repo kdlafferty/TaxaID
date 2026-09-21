@@ -169,7 +169,8 @@ they are only needed for this one function.
 
 \section{Per-genus alignment (\code{by_genus = TRUE}, 2026-09-05, revised same day)}{
 
-Implements \verb{fable_ecosystem_review_2026-09-05.md} finding E1: whole-set
+Implements \verb{TaxaID_dev/ecosystem_docs/fable_ecosystem_review_2026-09-05.md}
+(sibling development repository) finding E1: whole-set
 alignment cost grows worse than linearly in sequence count, but
 \code{train_likelihood_model()} only ever consumes within-species pairs (H1),
 same-genus cross-species pairs (H2), and a pooled cross-genus sample (H3,

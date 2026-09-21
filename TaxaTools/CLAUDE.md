@@ -863,7 +863,7 @@ gadget wrapping `leaflet` should default away from `dialogViewer()` until this i
 independently reproduced/reported upstream; use `paneViewer()` for consistency with the
 mapping gadgets that already exist in this ecosystem).
 
-Sessions 27–84 archived in ecosystem_docs/session_notes/TaxaTools_sessions.md.
+Sessions 27–84 archived in TaxaID_dev/ecosystem_docs/session_notes/TaxaTools_sessions.md.
 
 **Session 85 (2026-05-23)**
 - `call_api()` added to `R/call_api.R`: generic LLM dispatcher. Three handler families:

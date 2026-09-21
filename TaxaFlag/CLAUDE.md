@@ -1618,7 +1618,7 @@ effect on non-domestic taxa, the `"augmented"` opt-out, and input validation.
 `devtools::test()`: 159/159 passing, 0 failures. `devtools::check()`: 0 errors, 0
 warnings, 1 pre-existing NOTE (clock-check artifact, unrelated).
 
-Sessions 60–74 archived in ecosystem_docs/session_notes/TaxaFlag_sessions.md.
+Sessions 60–74 archived in TaxaID_dev/ecosystem_docs/session_notes/TaxaFlag_sessions.md.
 
 **Session 79 (2026-05-20)**
 - `sample_col` param → `event_col` in `flag_contaminant()` (this param identifies L1 collection

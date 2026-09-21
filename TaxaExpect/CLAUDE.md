@@ -2732,4 +2732,4 @@ Implementation: `no_habitat <- is.null(habitat_col)`; errors clearly if `protect
 
 Final end-to-end re-verification with all three fixes chained together, no workarounds: `optimize_grid_size(habitat_col = NULL)` -> `create_sites_from_grid()` -> `prepare_model_dataframe(habitat_col = NULL)` -> `train_biodiversity_model(habitat_col = NULL)` -> `generate_undetected_diversity()` -> `generate_full_priors()`, against the real bobcat-photo data. Confirmed Tier 2 fits and priors are genuinely differentiated in the correct rank order.
 
-Sessions 28, 29, 62, 73 archived in ecosystem_docs/session_notes/TaxaExpect_sessions.md.
+Sessions 28, 29, 62, 73 archived in TaxaID_dev/ecosystem_docs/session_notes/TaxaExpect_sessions.md.

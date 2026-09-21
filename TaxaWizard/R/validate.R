@@ -21,7 +21,7 @@
 # Rscript run over production workflow files to an in-package function run
 # over the snippet templates themselves, reading formals from the
 # introspected registry (R/registry.R) instead of re-loading every package
-# by hand. See ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md,
+# by hand. See TaxaID_dev/ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md (sibling development repository),
 # section "P2 Snippet validator + Tier-B fallback".
 # ==============================================================================
 

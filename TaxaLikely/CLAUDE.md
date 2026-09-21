@@ -4375,7 +4375,7 @@ diagnostic NOTE (checking for species in both the match object and
 `coverage$unreferenced`) kept as a post-fix sanity check rather than removed.
 `devtools::check()`: 0 errors, 0 warnings.
 
-Sessions 30–94 archived in `ecosystem_docs/session_notes/TaxaLikely_sessions.md`.
+Sessions 30–94 archived in `TaxaID_dev/ecosystem_docs/session_notes/TaxaLikely_sessions.md`.
 
 **Session 100 (2026-06-03/04): Trivariate revert; coverage sigma-inflation (score_likelihood_cov)**
 

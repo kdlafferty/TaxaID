@@ -89,7 +89,8 @@
 #'
 #' \code{pricing = "curve"} has no analogous veto bound (removed 2026-09-05,
 #' open decision #1 of
-#' \code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved): now
+#' \code{TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}
+#' (sibling development repository), resolved): now
 #' that \code{theta_present} is priced from \code{mass/f1} (see
 #' \code{\link{estimate_kernel_priors}}'s own roxygen), it is pinned to
 #' exactly the neighborhood's own singleton mean, which makes the curve
@@ -1021,7 +1022,8 @@ apply_undetected_evidence <- function(
 
 # ==============================================================================
 # Per-group curve pricing (2026-09-04). Open decision #2 of
-# ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md, unblocked by
+# TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md
+# (sibling development repository), unblocked by
 # the PtConception 18S diagnostic: per-group Good-Turing budgets span 1859x
 # (441x among groups the assay can actually amplify), and the single pooled
 # price sits BELOW all seven priced groups -- it is not even a compromise

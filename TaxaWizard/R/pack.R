@@ -9,7 +9,7 @@
 # workflow_registry() / .load_graph() / .load_requirements() / workflow_check(),
 # the SAME sources the live chat engine (engine.R/graph.R) reads, so the pack
 # and the chat engine cannot disagree (see
-# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, section P4,
+# TaxaID_dev/ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md (sibling development repository), section P4,
 # decision 4: the pack is generated on demand AND committed as a rendered
 # copy, refreshed by the README render pipeline, with a test that the two
 # agree).

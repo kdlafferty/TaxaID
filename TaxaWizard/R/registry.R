@@ -7,7 +7,7 @@
 # description, and return-value note is derived at runtime from the INSTALLED
 # TaxaID packages via getNamespaceExports()/formals()/tools::Rd_db() -- never
 # hand-typed here. DERIVE, DON'T DECLARE (see
-# ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md, section P1).
+# TaxaID_dev/ecosystem_docs/SPEC_taxawizard_derived_context_2026_09_18.md (sibling development repository), section P1).
 # ==============================================================================
 
 #' TaxaID Packages (Dependency Order)

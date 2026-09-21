@@ -179,7 +179,8 @@
 #'       detect here" -- used by \code{\link{apply_undetected_evidence}}'s
 #'       curve pricing. Deliberately NOT \code{missing_mass / chao_missing}
 #'       (2026-09-05, open decision #1 of
-#'       \code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved):
+#'       \code{TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}
+#'       (sibling development repository), resolved):
 #'       \code{f1} is observed directly, while \code{chao_missing} divides by
 #'       the doubleton count \code{f2}, which sits in the single digits and
 #'       is radius-unstable (measured 4x-21x across a plausible counting-radius
@@ -406,7 +407,8 @@ estimate_kernel_priors <- function(occurrence_data,
     # -- an estimate of how many unseen species there are, never enforced).
     #
     # theta_present is priced from mass/f1, NOT mass/chao_missing (2026-09-05,
-    # open decision #1 of REENTRY_PROMPT_kernel_budget_pricing_and_scope.md,
+    # open decision #1 of TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md
+    # (sibling development repository),
     # resolved). mass/Chao answers "what does the average ANONYMOUS unseen
     # species share" -- correct for that question, but Chao is radius-unstable
     # (measured: 4x at Mugu, 21x at GreatLakes, moving only the f1/f2 counting

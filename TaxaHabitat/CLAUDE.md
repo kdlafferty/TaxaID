@@ -76,7 +76,7 @@
 # reviewed habitat; points the reviewer had excluded are NOT recoverable from that file and will
 # be re-asked once). 4 tests, check clean, reinstalled. — TaxaHabitat
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Full chronological session history: ecosystem_docs/session_notes/TaxaHabitat_sessions.md
+# Full chronological session history: TaxaID_dev/ecosystem_docs/session_notes/TaxaHabitat_sessions.md
 # This file holds durable reference material only (purpose, functions, design
 # notes, footguns, settled decisions) plus a short recent-activity summary —
 # not a growing session-by-session log. See "Recent Activity" at the bottom
@@ -313,7 +313,7 @@ but it means a wrong verdict persists until someone clears it
   Debug `message()` logging is still installed in `map_draw_new_feature`
   (`review_spatial_flags.R`) specifically to catch a recurrence. If the
   symptom comes back on real data, start there rather than re-diagnosing
-  from scratch — see `ecosystem_docs/session_notes/TaxaHabitat_sessions.md`'s
+  from scratch — see `TaxaID_dev/ecosystem_docs/session_notes/TaxaHabitat_sessions.md`'s
   2026-08-02 entry (and the linked `[[project_review_spatial_flags_habitat_reassign_gap]]`
   memory) for the six earlier rounds of this thread.
 
@@ -375,4 +375,4 @@ Live-verified via Chrome browser automation against a real running gadget.
 Not yet confirmed against the real large-scale GreatLakes dataset — see Open
 Questions above.
 
-Full history: `ecosystem_docs/session_notes/TaxaHabitat_sessions.md`
+Full history: `TaxaID_dev/ecosystem_docs/session_notes/TaxaHabitat_sessions.md`

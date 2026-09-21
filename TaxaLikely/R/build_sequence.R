@@ -126,7 +126,8 @@ utils::globalVariables(c(
 #'   `gap_logit`).
 #'
 #' @section Per-genus alignment (`by_genus = TRUE`, 2026-09-05, revised same day):
-#' Implements `fable_ecosystem_review_2026-09-05.md` finding E1: whole-set
+#' Implements `TaxaID_dev/ecosystem_docs/fable_ecosystem_review_2026-09-05.md`
+#' (sibling development repository) finding E1: whole-set
 #' alignment cost grows worse than linearly in sequence count, but
 #' `train_likelihood_model()` only ever consumes within-species pairs (H1),
 #' same-genus cross-species pairs (H2), and a pooled cross-genus sample (H3,
@@ -527,7 +528,8 @@ build_sequence_matrix <- function(reference_df,
 #' sequence (not just one representative), at a fraction of the whole-set
 #' cost. See `build_sequence_matrix()`'s own `@param by_genus` for the full
 #' rationale and the real numbers this was built against
-#' (fable_ecosystem_review_2026-09-05.md, finding E1).
+#' (TaxaID_dev/ecosystem_docs/fable_ecosystem_review_2026-09-05.md, sibling
+#' development repository, finding E1).
 #'
 #' @section Why every sequence, not just the representative (2026-09-05, revised):
 #' The first version of this function aligned exactly one representative

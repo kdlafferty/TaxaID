@@ -1,6 +1,6 @@
 # plot_theta_surface() -- the KDE prior-field map for the kernel-priors path
 # (2026-09-01, branch theta-surface). Design record:
-# ecosystem_docs/SPEC_plot_theta_surface.md, whose origin is the "Display
+# TaxaID_dev/ecosystem_docs/SPEC_plot_theta_surface.md (sibling development repository), whose origin is the "Display
 # companion" clause of the Phase 1 spec in
 # ecosystem_docs/REENTRY_PROMPT_evidence_ceiling_and_habitat_bleed.md.
 #

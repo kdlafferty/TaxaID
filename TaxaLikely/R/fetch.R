@@ -890,7 +890,7 @@ utils::globalVariables(c(
 #' exists -- the old name didn't say NCBI anywhere, which stopped being safe
 #' once a second source existed. The deprecated `fetch_reference_sequences()`
 #' forwarding alias was removed entirely in a later session (no real callers
-#' remained; see NAME_CHANGE_HISTORY.md).
+#' remained; see TaxaID_dev/ecosystem_docs/NAME_CHANGE_HISTORY.md in the sibling development repository).
 #'
 #' Searches NCBI nucleotide by taxon name and barcode marker, retrieves full
 #' taxonomy via the NCBI taxonomy database, filters by sequence length and

@@ -148,7 +148,8 @@ neighborhood's own observed singletons -- "a species we barely
 detect here" -- used by \code{\link{apply_undetected_evidence}}'s
 curve pricing. Deliberately NOT \code{missing_mass / chao_missing}
 (2026-09-05, open decision #1 of
-\code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved):
+\code{TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}
+(sibling development repository), resolved):
 \code{f1} is observed directly, while \code{chao_missing} divides by
 the doubleton count \code{f2}, which sits in the single digits and
 is radius-unstable (measured 4x-21x across a plausible counting-radius

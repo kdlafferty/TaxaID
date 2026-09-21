@@ -1293,7 +1293,7 @@ contain quotes, backslashes, etc.
 
 ## Session Notes
 
-Sessions 68–80 archived in ecosystem_docs/session_notes/TaxaWizard_sessions.md.
+Sessions 68–80 archived in TaxaID_dev/ecosystem_docs/session_notes/TaxaWizard_sessions.md.
 
 **Session 82 (2026-05-21)**
 - License changed MIT → CC0 per USGS policy. DESCRIPTION updated; per-package LICENSE stub removed.

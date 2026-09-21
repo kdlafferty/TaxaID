@@ -217,7 +217,7 @@ live-API reference source (\code{fetch_bold_reference_sequences()}, BOLD Systems
 exists -- the old name didn't say NCBI anywhere, which stopped being safe
 once a second source existed. The deprecated \code{fetch_reference_sequences()}
 forwarding alias was removed entirely in a later session (no real callers
-remained; see NAME_CHANGE_HISTORY.md).
+remained; see TaxaID_dev/ecosystem_docs/NAME_CHANGE_HISTORY.md in the sibling development repository).
 }
 \details{
 Searches NCBI nucleotide by taxon name and barcode marker, retrieves full

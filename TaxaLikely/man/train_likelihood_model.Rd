@@ -424,7 +424,7 @@ this removes nothing and drops no species.  Measured on the same data
 (foreign side only): global expected gap -0.010 -> +0.122, near-ties
 728 -> 295, and the top H1 candidate agrees with a unique >= 99.5\% best
 BLAST hit in 244/326 cases vs 178/326.  Full record:
-\code{ecosystem_docs/RECORD_h1_foreign_coverage_floor.md}.
+\code{TaxaID_dev/ecosystem_docs/RECORD_h1_foreign_coverage_floor.md} (sibling development repository).
 }
 
 \section{No built-in reference-quality screening (2026-09-08)}{

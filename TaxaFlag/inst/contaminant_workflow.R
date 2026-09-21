@@ -73,7 +73,7 @@ pcr_flags |> filter(validity_flag != "valid")
 # instead only ever appear in `exclude_samples` (as the other two calls
 # above already do for Palmyra32/64/70), with recovery confirmed separately
 # by checking its own read count in the control. See
-# ecosystem_docs/POSITIVE_CONTROLS_design_options.md (2026-09-07) for the
+# TaxaID_dev/ecosystem_docs/POSITIVE_CONTROLS_design_options.md (sibling development repository) (2026-09-07) for the
 # full native/non-native design discussion and the recommended paired-spike
 # (non-native + native together) pattern for measuring per-sample leakage.
 

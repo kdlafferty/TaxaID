@@ -1,5 +1,5 @@
 # Q2 (evidence gate + direction) and Q3 (site breadth as a discriminant) from
-# ecosystem_docs/BLANK_VALIDATION_AND_CONTAMINANT_DESIGN.md.
+# TaxaID_dev/ecosystem_docs/BLANK_VALIDATION_AND_CONTAMINANT_DESIGN.md (sibling development repository).
 
 # 3 sites, 2 samples each; site1 has TWO controls, sites 2-3 one each. Taxa:
 #   SYSTEMIC   in a control at EVERY site, absent from samples -> contaminant

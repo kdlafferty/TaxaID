@@ -189,7 +189,7 @@ step rather than faked to make the arm report PASS.
 The ESV_054140 case directly above is exactly the gap that motivated adding three new
 checkpoints to the posterior stage of every production workflow (`expanded_likelihoods`,
 `likelihoods_ready`, `posteriors_updated` -- see each workflow's own inline comment at the
-save points, and `ecosystem_docs/REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md`'s
+save points, and `TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_post_reference_screen_full_workflow_runs.md` (sibling development repository)'s
 new "Posterior-stage checkpoints" subsection for the full list). Once a workflow has been
 RE-RUN under this change, `<PREFIX>_posteriors_updated.rds` -- the exact input to the final
 `posterior_consensus()` call -- is a real, fully-computed `compute_posterior()`-shaped

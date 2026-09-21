@@ -2875,7 +2875,7 @@ remove from the local filesystem.
   containing spaces (`"camera trap photos"`) — renamed to `camera_trap_photos`
   (underscore) to fix; 0 warnings after.
 
-Sessions 27–82 archived in ecosystem_docs/session_notes/TaxaMatch_sessions.md.
+Sessions 27–82 archived in TaxaID_dev/ecosystem_docs/session_notes/TaxaMatch_sessions.md.
 
 **Sessions 83–85 (2026-05-21 to 2026-05-23)**
 - No TaxaMatch-specific changes. Ecosystem: `call_api()` generic dispatcher (TaxaTools), WERC

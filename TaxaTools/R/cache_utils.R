@@ -192,7 +192,7 @@ report_and_clear_cache <- function(inv, label, cache_dir,
 #' whose upstream is a remote service (an NCBI or GBIF query has no local
 #' mtime to compare against); that staleness axis is time, and the policy
 #' for it is to report the cache's age at load rather than expire it
-#' silently. See \code{ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md}.
+#' silently. See \code{TaxaID_dev/ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md} (sibling development repository).
 #'
 #' @param path Character. Path to the candidate cache file.
 #' @param inputs Character vector or \code{NULL}. Paths this cache was
