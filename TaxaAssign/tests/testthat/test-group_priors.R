@@ -133,7 +133,7 @@ test_that("named-evidence rows are excluded but anonymous dark-diversity mirrors
   pri <- data.frame(
     taxon_name = c("Sebastes miniatus", "Sebastes mystinus", "Cervus elaphus", "Bos taurus", NA),
     theta_mean = c(0.02, 0.01, 1e-6, 5e-4, 3e-6),
-    prior_branch = c("resident_observed", "resident_observed", "resident_undetected",
+    prior_branch = c("kernel_estimated", "kernel_estimated", "resident_undetected",
                      "transport", "resident_undetected"),
     evidence_sources = c(NA, NA, "regional_proximity", NA, NA),
     undetected_type = c(NA, NA, "evidence_blend", NA, "singleton_mirror"),

@@ -33,8 +33,6 @@
 #' \code{\link{assign_taxa_llm}}'s own \code{unreferenced_taxa} parameter
 #' directly.
 #' \itemize{
-#'   \item \code{\link{suggest_unreferenced_species}} -- deprecated forwarding
-#'     wrapper; call \code{TaxaLikely::suggest_unreferenced_species()} directly
 #'   \item \code{TaxaLikely::expand_unreferenced_hypotheses()} -- models
 #'     likelihoods for named unreferenced taxa (lives in TaxaLikely, next to
 #'     \code{TaxaLikely::unreferenced_candidates()})

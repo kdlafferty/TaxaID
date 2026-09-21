@@ -123,7 +123,7 @@
 #'   also survive `downrank_requires_candidate`. Callers
 #'   building `species_reference` from a mix of observed and evidence-only
 #'   rows should still exclude the evidence-only ones
-#'   (`prior_branch != "resident_observed"`) before passing it in, so a
+#'   (`prior_branch != "kernel_estimated"`) before passing it in, so a
 #'   downrank reflects a species this observation could plausibly have
 #'   produced, not merely one that is locally plausible in the abstract.
 #' @param downrank_requires_candidate Logical. When `TRUE` (default), a
@@ -351,10 +351,10 @@
 #'       relatives were never in the candidate pool at all, so no threshold
 #'       applied to the existing candidates could have caught it.
 #'       "Plausible" means the candidate carries a real occurrence record,
-#'       read off `model_tier` (supplied by [join_priors()] from TaxaExpect
+#'       read off `prior_branch` (supplied by [join_priors()] from TaxaExpect
 #'       priors) rather than off `prior_mean`'s value: a taxon never reported
-#'       locally has `model_tier = NA`, while a genuine singleton has a real
-#'       tier, even though both can share the same numeric floor prior.
+#'       locally has `prior_branch = NA`, while a genuine singleton has a real
+#'       branch, even though both can share the same numeric floor prior.
 #'       Counted over every named hypothesis for the observation, before
 #'       `min_posterior`/`cumulative_threshold` filtering (a candidate that
 #'       competed and lost still competed), and EXCLUDING the row's own taxon
@@ -365,11 +365,13 @@
 #'       counts distinct plausible groups at `consensus_rank` (rival genera
 #'       when the LCA landed at genus, rival families at family), reducing to
 #'       the `primary_` count at species rank. "Plausible" means "joined to
-#'       a NAMED prior row": non-`NA` `prior_branch` when that column is
-#'       present (kernel-priors schema -- any branch counts, resident,
-#'       undetected-evidence, or transport), else non-`NA`
-#'       `model_tier` (legacy GLMM tables). Both are `NA` when
-#'       `posterior_df` carries neither column.}
+#'       a NAMED prior row": non-`NA` `prior_branch` (any branch counts,
+#'       resident, undetected-evidence, or transport). `NA` when
+#'       `posterior_df` carries no `prior_branch` column at all -- i.e. no
+#'       prior table was ever joined. A `model_tier` column with no
+#'       `prior_branch` column is an error: it identifies a prior table
+#'       predating the kernel-priors schema, which this function no longer
+#'       reads.}
 #'     \item{`winner_has_occurrence_record`, `consensus_prior`,
 #'       `consensus_has_occurrence_record`}{Support for the
 #'       prior/occurrence-plausibility axis, answering what `winner_prior`'s
@@ -379,18 +381,15 @@
 #'       opposite things, so presence is read off the prior row's provenance
 #'       rather than inferred from a low prior.
 #'       `winner_has_occurrence_record` is `TRUE` when the winning
-#'       hypothesis carries a real occurrence record. When `posterior_df`
-#'       has a `prior_branch` column (kernel-priors schema) this
-#'       means `prior_branch` is `"kernel_estimated"` (or the also-accepted
-#'       name `"resident_observed"`) -- a kernel estimate
-#'       from real in-habitat local evidence; `resident_undetected`
-#'       (evidence-elevated species with zero local records) and
-#'       `transport` (domestic/food) winners read `FALSE`, with a transport
-#'       winner's interpretation carried separately by
+#'       hypothesis carries a real occurrence record: `prior_branch` is
+#'       `"kernel_estimated"` -- a kernel estimate from real in-habitat local
+#'       evidence; `resident_undetected` (evidence-elevated species with zero
+#'       local records) and `transport` (domestic/food) winners read `FALSE`,
+#'       with a transport winner's interpretation carried separately by
 #'       `TaxaFlag::add_posthoc_assessment()`'s `domestic_prior_caveat`.
-#'       Legacy GLMM tables (no `prior_branch`) use the non-`NA`-`model_tier`
-#'       reading described above instead; `NA` when `posterior_df` has
-#'       neither column.
+#'       `NA` when `posterior_df` carries no `prior_branch` column. A
+#'       `model_tier` column with no `prior_branch` column is an error (see
+#'       above).
 #'       `consensus_prior` is a \code{theta_mean}-based group share, not
 #'       \code{prior_mean}, because \code{prior_mean} can be inflated by the
 #'       confirmation boost above, which would let one confirmed-elsewhere
@@ -471,6 +470,26 @@ posterior_consensus <- function(posterior_df,
   missing_cols <- setdiff(required, names(posterior_df))
   if (length(missing_cols) > 0) {
     cli::cli_abort("posterior_df missing required column(s): {.field {missing_cols}}")
+  }
+  # A model_tier column with no prior_branch column identifies a prior table
+  # from before the kernel-priors schema. posterior_consensus() no longer
+  # reads model_tier as a fallback for a missing prior_branch: kernel tables
+  # carry model_tier only as a legacy column on their undetected/domestic
+  # rows (NA on every resident row), so reading model_tier in prior_branch's
+  # place is exactly inverted (confirmed on real GreatLakes kernel output: 86
+  # locally-evidenced resident rows all NA-tier).
+  if ("model_tier" %in% names(posterior_df) && !"prior_branch" %in% names(posterior_df)) {
+    cli::cli_abort(c(
+      "posterior_df has a {.field model_tier} column but no \\
+      {.field prior_branch} column.",
+      "i" = "This is a prior table from before the kernel-priors schema, \\
+      which {.fn posterior_consensus} no longer reads.",
+      "i" = "Regenerate the priors with \\
+      {.fn TaxaExpect::estimate_kernel_priors} (and, if used, \\
+      {.code apply_undetected_evidence()} / \\
+      {.code generate_domestic_food_priors()}), which write prior_branch \\
+      alongside model_tier."
+    ))
   }
   if (!is.null(group_priors)) {
     if (!is.data.frame(group_priors)) {
@@ -769,14 +788,14 @@ posterior_consensus <- function(posterior_df,
   # match, and not something any threshold on the existing candidates can
   # detect.
   #
-  # "Plausible" is read off `model_tier` (supplied upstream by join_priors()
-  # from TaxaExpect priors), NOT off prior_mean's value: a taxon with no local
-  # occurrence record at all has `model_tier = NA`, while a genuine singleton
-  # has a real tier -- even though both can share the same numeric floor
-  # prior. That is exactly the "never reported here" vs "reported once"
-  # distinction, and prior_mean alone cannot express it. Absent column ->
-  # NA, matching the optional-upstream-output contract used by the
-  # confusion-risk pass-throughs.
+  # "Plausible" is read off `prior_branch` (supplied upstream by
+  # join_priors() from TaxaExpect priors), NOT off prior_mean's value: a
+  # taxon with no local occurrence record at all has `prior_branch = NA`,
+  # while a genuine singleton has a real branch -- even though both can
+  # share the same numeric floor prior. That is exactly the "never reported
+  # here" vs "reported once" distinction, and prior_mean alone cannot
+  # express it. Absent column -> NA, matching the optional-upstream-output
+  # contract used by the confusion-risk pass-throughs.
   #
   # Counted over `named_all` (every named hypothesis for this observation),
   # not the post-filter `plausible` set -- a candidate that competed and lost
@@ -790,24 +809,15 @@ posterior_consensus <- function(posterior_df,
   # beat" is deliberate, so the two read as independent signals. A count of 0
   # therefore means "nothing plausible to lose to", never "the winner is
   # implausible".
-  has_tier <- "model_tier" %in% names(named_all)
-  # Kernel-priors schema: `prior_branch` supersedes `model_tier`
-  # when present. "Plausible" here means "joined to a NAMED prior row" (any
-  # branch -- resident, undetected-evidence, or transport); a row that fell
-  # through to the anonymous dark-diversity floor has NA in both columns.
-  # Kernel tables carry model_tier only as a legacy column on their
-  # undetected/domestic rows (NA on every resident row), so reading
-  # model_tier there is exactly inverted -- confirmed on real GreatLakes
-  # kernel output (86 locally-evidenced resident rows all NA-tier).
+  #
+  # "Plausible" here means "joined to a NAMED prior row" (any branch --
+  # resident, undetected-evidence, or transport); a row that fell through to
+  # the anonymous dark-diversity floor has NA prior_branch. (A model_tier
+  # column with no prior_branch column is rejected up front, in
+  # posterior_consensus()'s own input validation -- see there.)
   has_branch <- "prior_branch" %in% names(named_all)
-  has_plaus <- has_branch || has_tier
-  plaus_mask <- if (has_branch) {
-    !is.na(named_all$prior_branch)
-  } else if (has_tier) {
-    !is.na(named_all$model_tier)
-  } else {
-    NULL
-  }
+  has_plaus <- has_branch
+  plaus_mask <- if (has_branch) !is.na(named_all$prior_branch) else NULL
 
   # taxon_name is a required column (checked at input validation), unlike the
   # winner_* pass-throughs above, so no presence check is needed here.
@@ -848,47 +858,38 @@ posterior_consensus <- function(posterior_df,
   # A taxon that has never been reported and a genuine singleton can carry the
   # SAME numeric prior -- both land on the dark-diversity floor -- but they
   # mean opposite things ("no evidence it occurs here" vs "recorded once").
-  # `model_tier` separates them: it is populated only for taxa with a real
-  # occurrence record, and is NA for a candidate that fell through to the
-  # floor or to a hierarchical dark-diversity group prior. Verified on real
-  # Mugu data: 0 of 1014 floor-prior rows carry a tier, while 547 rows have no
-  # tier yet a prior ABOVE the floor (one reaching 0.975, because its
-  # dark-diversity group had only 3 members) -- so thresholding the prior
-  # value alone would call a never-reported taxon "expected". Hence a separate
-  # presence signal rather than a lower cutoff.
-  # Under the kernel-priors schema, "has occurrence record" narrows to the
-  # resident_observed branch: a kernel estimate from real, in-habitat local
-  # evidence. resident_undetected (floor/evidence-blend rows -- species with
-  # ZERO local records, elevated by regional/watch/iNat evidence) and
-  # transport (domestic/food) winners correctly read FALSE: under the legacy
-  # model_tier logic those legacy-columned rows read TRUE while every
-  # genuinely evidenced resident row read FALSE -- fully inverted (real
-  # GreatLakes B8 run: 873/885 "unprecedented"). A transport winner's
-  # interpretation is carried separately by add_posthoc_assessment()'s
-  # domestic_prior_caveat, which is the designed pairing.
-  # The branch test reads .KERNEL_BRANCH (so both accepted prior_branch
-  # spellings qualify -- see kernel_branch.R), and is optionally ALSO gated
-  # on how much evidence stands behind the row. The branch alone cannot
-  # carry that claim -- TaxaExpect writes it as a constant, and within it
-  # effective_records spans ~10 orders of magnitude. min_effective_records
-  # defaults to 0, i.e. branch-only; raise it to require real local evidence
-  # before a winner counts as having an occurrence record.
+  # `prior_branch` separates them: `resident_undetected` (floor/evidence-blend
+  # rows -- species with ZERO local records, elevated by regional/watch/iNat
+  # evidence) and `transport` (domestic/food) winners read FALSE; only
+  # `kernel_estimated` (a real, in-habitat local estimate) reads TRUE. A
+  # transport winner's interpretation is carried separately by
+  # add_posthoc_assessment()'s domestic_prior_caveat, which is the designed
+  # pairing.
+  # The branch test reads .is_kernel_branch() (see kernel_branch.R), which
+  # stops if `prior_branch` carries a value outside the full accepted set,
+  # and is optionally ALSO gated on how much evidence stands behind the row.
+  # The branch alone cannot carry that claim -- TaxaExpect writes it as a
+  # constant, and within it effective_records spans ~10 orders of magnitude.
+  # min_effective_records defaults to 0, i.e. branch-only; raise it to
+  # require real local evidence before a winner counts as having an
+  # occurrence record.
   winner_has_occurrence_record <- if (has_branch) {
     ok <- .is_kernel_branch(winner_row$prior_branch[[1L]])
     if (isTRUE(ok) && min_effective_records > 0) {
-      er <- if ("effective_records" %in% names(winner_row)) {
-        winner_row$effective_records[[1L]]
-      } else {
-        NA_real_
+      if (!"effective_records" %in% names(winner_row)) {
+        cli::cli_abort(c(
+          "{.arg min_effective_records} > 0 requires an \\
+          {.field effective_records} column in {.arg posterior_df}, which \\
+          is missing.",
+          "i" = "This is a prior table from before the kernel-priors \\
+          schema; regenerate it with \\
+          {.fn TaxaExpect::estimate_kernel_priors}."
+        ))
       }
-      # No effective_records column means the table predates the kernel
-      # schema and cannot answer the question. Leave the branch verdict
-      # standing rather than silently demoting every row of a legacy table.
+      er <- winner_row$effective_records[[1L]]
       ok <- if (is.na(er)) ok else er >= min_effective_records
     }
     isTRUE(ok)
-  } else if (has_tier) {
-    !is.na(winner_row$model_tier[[1L]])
   } else {
     NA
   }
@@ -932,8 +933,8 @@ posterior_consensus <- function(posterior_df,
   # inference would read every row as confirmed-absent ("unprecedented") --
   # `consensus_plausibility` would read `"unprecedented"` for all 616 real rows.
   # `NA` here means "not checked" (matches `winner_has_occurrence_record`'s
-  # own `NA`-when-`model_tier`-absent convention); `TRUE`/`FALSE` mean a real
-  # lookup was performed and found/didn't find a matching group.
+  # own `NA`-when-`prior_branch`-absent convention); `TRUE`/`FALSE` mean a
+  # real lookup was performed and found/didn't find a matching group.
   consensus_prior <- NA_real_
   consensus_has_occurrence_record <- NA
   if (!is.null(group_priors) && !is.na(lca$rank) && !is.na(lca$taxon)) {

@@ -1235,8 +1235,10 @@ join_priors <- function(likelihoods,
   # not a habitat-extrapolation artifact. Subsumes the model_tier value
   # checks above once that column is retired.
   #
-  # Reads .KERNEL_BRANCH rather than a bare string, so both accepted
-  # prior_branch spellings qualify (see kernel_branch.R). Deliberately NOT
+  # Reads .is_kernel_branch() rather than a bare string comparison (see
+  # kernel_branch.R), so an unrecognised prior_branch value (e.g. a pre-1.0
+  # label on a cached prior table) stops loudly instead of silently failing
+  # this membership test. Deliberately NOT
   # gated on effective_records as well: promotion only ever lifts a row to singleton
   # parity, and a low-evidence row's theta is already ~13,000x below a
   # well-evidenced one's (real PtCon 12S medians, 1.5e-08 vs 1.9e-04), so
