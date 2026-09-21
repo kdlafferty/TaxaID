@@ -19,13 +19,15 @@
         mu_score = 4.5,
         mu_gap = 2.0,
         sigma_score = 2.0,
+        n_obs_species = 5L,
         stringsAsFactors = FALSE
       ),
       H1_Global_Mu = c(score_logit = 3.5, gap_logit = 1.5),
       H1_Sigma = sigma,
       H2 = list(delta = 3.0, sigma = h2s),
       H3 = list(delta = 5.0, sigma = h3s),
-      Stats = list(n_species = 1L, n_singletons = 0L)
+      Stats = list(n_species = 1L, n_singletons = 0L),
+      Score_Transform = "logit"
     ),
     class = "taxa_model_params"
   )
@@ -152,13 +154,15 @@ test_that(".evaluate_one_query: n_sims sd reflects reference sample size (n_obs_
   expect_true(sd_low_n > sd_high_n)
 })
 
-test_that(".evaluate_one_query: n_sims sd falls back to legacy (score-resampling) behavior when n_obs_species is absent", {
-  # model_params trained before this session has no n_obs_species column at
-  # all -- must reproduce the pre-existing behavior exactly (non-zero sd from
-  # resampling the observed score), not silently produce sd = 0.
+test_that(".evaluate_one_query: n_sims sd falls back to score-resampling when H1_Lookup has no species-level data", {
+  # An empty H1_Lookup (no species observed at training time) is a
+  # genuinely current case, distinct from a non-empty H1_Lookup missing
+  # n_obs_species (which is now a hard error -- see the schema tests above).
+  # Must reproduce the score-resampling fallback (non-zero sd), not silently
+  # produce sd = 0.
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
-  expect_false("n_obs_species" %in% names(params$H1_Lookup))
+  params$H1_Lookup <- params$H1_Lookup[0L, ]
   set.seed(42)
   out <- TaxaLikely:::.evaluate_one_query(
     .make_match_df(), params, c("family", "genus", "species"),
@@ -317,7 +321,7 @@ test_that("evaluate_likelihoods: non-taxa_model_params errors", {
   )
 })
 
-test_that("evaluate_likelihoods: evidence_col works (no error) on a sqrt_mismatch model too (Session 158, corrected)", {
+test_that("evaluate_likelihoods: evidence_col works (no error) on a sqrt_mismatch model too", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
   params$Score_Transform <- "sqrt_mismatch"
@@ -328,7 +332,7 @@ test_that("evaluate_likelihoods: evidence_col works (no error) on a sqrt_mismatc
   )
 })
 
-test_that("evaluate_likelihoods: min_coverage works (no error) on a sqrt_mismatch model too (Session 158, corrected)", {
+test_that("evaluate_likelihoods: min_coverage works (no error) on a sqrt_mismatch model too", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
   params$Score_Transform <- "sqrt_mismatch"
@@ -339,21 +343,47 @@ test_that("evaluate_likelihoods: min_coverage works (no error) on a sqrt_mismatc
   )
 })
 
-test_that("evaluate_likelihoods: warns (not silent) when Score_Transform is absent from model_params", {
-  # Statistical-critique fix: silently defaulting an absent Score_Transform to
-  # "logit" is exactly the mechanism that let a stale/orphaned model object
-  # (no Score_Transform field at all, from before Session 158) stay dangerous
-  # with no signal to the caller. Now warns instead.
+test_that("evaluate_likelihoods: errors loudly when Score_Transform is absent from model_params", {
+  # A model_params object with no Score_Transform field predates
+  # train_likelihood_model() recording it and cannot be evaluated safely --
+  # guessing "logit" would silently pick the more fragile transform with no
+  # signal to the caller. Must fail loudly, not warn or default.
   skip_if_not_installed("TaxaTools")
-  params <- .make_model_params() # Score_Transform absent
+  params <- .make_model_params()
+  params$Score_Transform <- NULL
   df <- .make_match_df()
-  expect_warning(
+  expect_error(
     evaluate_likelihoods(df, params, c("family", "genus", "species")),
     "Score_Transform"
   )
 })
 
-test_that("evaluate_likelihoods: no Score_Transform warning when it is explicitly set", {
+test_that("evaluate_likelihoods: errors loudly when H1_Lookup lacks n_obs_species", {
+  # A non-empty H1_Lookup with no n_obs_species column predates
+  # train_likelihood_model() recording it. An EMPTY H1_Lookup is a
+  # different, still-current case and must NOT trip this check (see the
+  # next test).
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  params$H1_Lookup$n_obs_species <- NULL
+  df <- .make_match_df()
+  expect_error(
+    evaluate_likelihoods(df, params, c("family", "genus", "species")),
+    "n_obs_species"
+  )
+})
+
+test_that("evaluate_likelihoods: an empty H1_Lookup is not treated as missing n_obs_species", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  params$H1_Lookup <- params$H1_Lookup[0L, ]
+  df <- .make_match_df()
+  expect_no_error(
+    evaluate_likelihoods(df, params, c("family", "genus", "species"))
+  )
+})
+
+test_that("evaluate_likelihoods: no warning/error when Score_Transform is explicitly set", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()
   params$Score_Transform <- "logit"
@@ -369,7 +399,7 @@ test_that("evaluate_likelihoods: no Score_Transform warning when it is explicitl
 
 test_that("evaluate_likelihoods: evidence_col/min_coverage guards do not fire for a logit model", {
   skip_if_not_installed("TaxaTools")
-  params <- .make_model_params() # Score_Transform absent -> defaults to logit
+  params <- .make_model_params() # Score_Transform = "logit" by default
   df <- .make_match_df()
   df$depth <- 10
   expect_no_error(

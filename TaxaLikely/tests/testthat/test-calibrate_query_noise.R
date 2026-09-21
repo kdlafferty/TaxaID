@@ -233,18 +233,14 @@ test_that("calibrate_query_noise: offset_form='linear' falls back to constant (w
   expect_equal(out$Query_Calibration$slope, 1)
 })
 
-test_that("calibrate_query_noise: model_params without Score_Transform (pre-Session-158) defaults to logit", {
+test_that("calibrate_query_noise: model_params without Score_Transform errors loudly", {
   params <- .make_calib_model_params("logit")
   params$Score_Transform <- NULL
-  out <- calibrate_query_noise(params, .make_calib_match_df(), .make_calib_priors(),
-    offset_form = "constant",
-    min_confident_obs = 30L, verbose = FALSE
+  expect_error(
+    calibrate_query_noise(params, .make_calib_match_df(), .make_calib_priors(),
+      offset_form = "constant",
+      min_confident_obs = 30L, verbose = FALSE
+    ),
+    "Score_Transform"
   )
-  # Should behave identically to an explicit "logit" model.
-  ref <- calibrate_query_noise(.make_calib_model_params("logit"), .make_calib_match_df(),
-    .make_calib_priors(),
-    offset_form = "constant",
-    min_confident_obs = 30L, verbose = FALSE
-  )
-  expect_equal(out$Query_Calibration$offset_logit, ref$Query_Calibration$offset_logit)
 })

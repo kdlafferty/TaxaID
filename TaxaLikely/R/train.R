@@ -40,8 +40,8 @@ utils::globalVariables(c(
 #' `rank_system`).
 #'
 #' @param raw_df Data frame of pairwise match scores from
-#'   `build_sequence_matrix()`.  Must contain `id_x`, `id_y`, and either
-#'   `p_match` or `raw_score`, plus taxonomy columns for each rank in
+#'   `build_sequence_matrix()`.  Must contain `id_x`, `id_y`, and `p_match`,
+#'   plus taxonomy columns for each rank in
 #'   `rank_system` with `.x` and `.y` suffixes (e.g., `species.x`, `genus.x`).
 #' @param rank_system Character vector of rank names ordered **coarse to fine**
 #'   (e.g., `c("family", "genus", "species")`).  The finest rank (last element)
@@ -119,8 +119,17 @@ utils::globalVariables(c(
     ))
   }
 
-  score_col <- if ("p_match" %in% names(raw_df)) "p_match" else "raw_score"
-  raw_df$p_norm <- .normalize_scores(raw_df[[score_col]], bounds = score_bounds)
+  # "raw_score" was the standalone Universal_Biological_Classifier scripts'
+  # column name, never produced by build_sequence_matrix() -- p_match is the
+  # only current name, and a raw_df built by anything else is out of scope.
+  if (!"p_match" %in% names(raw_df)) {
+    stop(
+      "raw_df has no 'p_match' column. Expected the output of ",
+      "build_sequence_matrix(), which always produces 'p_match'.",
+      call. = FALSE
+    )
+  }
+  raw_df$p_norm <- .normalize_scores(raw_df[["p_match"]], bounds = score_bounds)
 
   # ---- ALIGNMENT-COVERAGE FLOOR ON PAIR SELECTION --------------------------
   # pair_ok marks a pair as eligible to DEFINE a reference's best foreign /

@@ -66,10 +66,20 @@ interpret_model <- function(model_params, print_report = TRUE) {
   # hardcoded inverse logit silently mis-reports every "expected match %" for
   # a "sqrt_mismatch"-trained model (whose mu_score lives in [-1, 0], so a
   # genuine 99% match printed as ~47%). evaluate_likelihoods() already reads
-  # this field; interpret_model() never did. Identical output to the old
-  # hardcoded inverse logit for a "logit" model, which is every model trained
-  # before score_transform existed (%||% covers those).
-  score_transform <- model_params$Score_Transform %||% "logit"
+  # this field; interpret_model() never did. train_likelihood_model() always
+  # records this field now, so a model_params object without it cannot be
+  # interpreted safely -- guessing "logit" would silently pick the wrong
+  # transform for a "sqrt_mismatch"-trained model with no signal to the
+  # caller.
+  if (is.null(model_params$Score_Transform)) {
+    stop(paste0(
+      "interpret_model: model_params has no Score_Transform field. ",
+      "train_likelihood_model() always records which transform (\"logit\" ",
+      "or \"sqrt_mismatch\") the model was fit under, so this model_params ",
+      "object cannot be interpreted. Retrain with train_likelihood_model()."
+    ), call. = FALSE)
+  }
+  score_transform <- model_params$Score_Transform
   # Clamped: "sqrt_mismatch"'s inverse (1 - x^2) is unbounded below zero, and
   # mu_score - H3$delta can push far enough into the negative tail to produce
   # a negative "proportion" -- and hence a negative percentage.

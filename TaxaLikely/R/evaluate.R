@@ -136,27 +136,38 @@ utils::globalVariables(c(
   # score_transform = "sqrt_mismatch" must be evaluated with the identical
   # transform, since H1/H2/H3 are compared via density ratios at one shared
   # point (see train_likelihood_model()'s own score_transform documentation).
-  # Absent for any model trained without this parameter set -> "logit".
-  # A SILENT fallback here would let a stale, undocumented-transform model
-  # object stay dangerous: a cached model with no Score_Transform field
-  # would silently be read as "logit", the more fragile of the two
-  # transforms (see train_likelihood_model()'s "Non-monotonic
-  # score->likelihood shape" section), with no signal to the caller that
-  # this had happened. Warns instead of defaulting silently, so a caller
-  # inspecting an old/orphaned model_params object gets a visible prompt to
-  # check whether it should be retrained.
+  # Every model_params object built by the current train_likelihood_model()
+  # carries this field; one without it cannot be evaluated safely -- reading
+  # it as "logit" would silently pick the more fragile of the two transforms
+  # (see train_likelihood_model()'s "Non-monotonic score->likelihood shape"
+  # section) with no signal to the caller that a guess was made.
   if (is.null(model_params$Score_Transform)) {
-    warning(paste0(
-      "model_params has no Score_Transform field -- the model is evaluated as ",
-      "\"logit\". logit's near-100%-identity region is ",
-      "the fragile one (unbounded scale, position set by logit_epsilon rather than real ",
-      "data -- see train_likelihood_model()'s \"Non-monotonic score->likelihood shape\" ",
-      "section); if this model is stale, consider retraining with ",
-      "train_likelihood_model(score_transform = \"sqrt_mismatch\") instead."
+    stop(paste0(
+      "model_params has no Score_Transform field. train_likelihood_model() ",
+      "always records which transform (\"logit\" or \"sqrt_mismatch\") H1/H2/H3 ",
+      "were fit under, so this model_params object cannot be evaluated. ",
+      "Retrain with train_likelihood_model(), e.g. ",
+      "train_likelihood_model(score_transform = \"sqrt_mismatch\")."
     ), call. = FALSE)
   }
-  score_transform <- model_params$Score_Transform %||% "logit"
+  score_transform <- model_params$Score_Transform
   max_gap_ceiling <- .resolve_gap_ceiling(max_gap_ceiling, score_transform)
+
+  # H1_Lookup's n_obs_species column is likewise unconditional in every
+  # model train_likelihood_model() builds (see its H1_Lookup construction) --
+  # a non-empty H1_Lookup missing it can only be a model_params object from
+  # before that field existed, and the Monte Carlo mean-uncertainty estimate
+  # below (see .calc_likelihoods()'s used_tau_sq1) depends on it being real.
+  # An EMPTY or absent H1_Lookup is a different, genuinely current case (no
+  # species-level training data at all) and is not an error here.
+  if (!is.null(model_params$H1_Lookup) && nrow(model_params$H1_Lookup) > 0L &&
+    !("n_obs_species" %in% names(model_params$H1_Lookup))) {
+    stop(paste0(
+      "model_params$H1_Lookup has no n_obs_species column. ",
+      "train_likelihood_model() always records this, so this model_params ",
+      "object cannot be evaluated. Retrain with train_likelihood_model()."
+    ), call. = FALSE)
+  }
 
   global_mu <- as.numeric(model_params$H1_Global_Mu)
   global_sigma <- as.matrix(model_params$H1_Sigma)
@@ -293,7 +304,10 @@ utils::globalVariables(c(
     used_tau_sq1 <- rep(NA_real_, length(s_vec))
     has_lookup <- !is.null(model_params$H1_Lookup) &&
       nrow(model_params$H1_Lookup) > 0L
-    has_n_info <- has_lookup && "n_obs_species" %in% names(model_params$H1_Lookup)
+    # n_obs_species is validated present whenever H1_Lookup is non-empty (see
+    # the schema check near the top of .evaluate_one_query()), so a non-empty
+    # H1_Lookup always carries it.
+    has_n_info <- has_lookup
     prior_weight_val <- if (has_n_info) {
       (model_params$Stats$prior_weight %||% 10)
     } else {
@@ -823,11 +837,13 @@ utils::globalVariables(c(
   # candidate's already-widened sigma also widens its mean uncertainty here at
   # no extra cost.
   #
-  # Backward compatible: falls back to the previous behavior (resampling the
-  # observed score by the global population sigma) when model_params was
-  # trained before n_obs_species was retained in H1_Lookup.
+  # Falls back to resampling the observed score by the global population
+  # sigma when H1_Lookup carries no species-level data at all (a model with
+  # no species observed at training time). n_obs_species itself is validated
+  # present whenever H1_Lookup is non-empty (see the schema check near the
+  # top of .evaluate_one_query()), so that is not a separate case here.
   has_n_info <- !is.null(model_params$H1_Lookup) &&
-    "n_obs_species" %in% names(model_params$H1_Lookup)
+    nrow(model_params$H1_Lookup) > 0L
 
   if (n_sims > 0L && nrow(res_agg) > 0L) {
     sim_mat <- matrix(NA_real_, nrow = nrow(res_agg), ncol = n_sims)
@@ -882,8 +898,8 @@ utils::globalVariables(c(
         sim_mat[, sim_i] <- iter_liks / iter_max
       }
     } else {
-      # Without per-candidate n_obs_species information, resample the
-      # observed score by the global population sigma.
+      # No species-level H1_Lookup data at all: resample the observed score
+      # by the global population sigma instead.
       for (sim_i in seq_len(n_sims)) {
         sim_scores <- stats::rnorm(nc, mean = cand$score_logit, sd = model_sd_score)
 
@@ -1279,7 +1295,8 @@ utils::globalVariables(c(
 #' evidence gate, when applicable), so a low-depth candidate's evidence-widened
 #' sigma also widens its mean uncertainty here at no additional cost.
 #' Falls back to a score-resampling approach
-#' when `model_params$H1_Lookup` has no `n_obs_species` column.
+#' when `model_params$H1_Lookup` is empty or absent (no species-level
+#' training data).
 #'
 #' @section Confusion risk:
 #' `species_confusion_risk`/`genus_confusion_risk`/`family_confusion_risk` are
@@ -1401,6 +1418,33 @@ evaluate_likelihoods <- function(match_df,
   }
   if (!inherits(model_params, "taxa_model_params")) {
     stop("model_params must be a 'taxa_model_params' object from train_likelihood_model()")
+  }
+
+  # These two schema checks are repeated (rather than left solely to
+  # .evaluate_one_query()) because the per-query loop below wraps each
+  # query's call in tryCatch() to isolate one bad OBSERVATION from the rest
+  # of the batch -- but model_params is fixed for the whole batch, so a
+  # missing Score_Transform/n_obs_species would otherwise be caught there
+  # and reported as N identical per-query warnings while the call "succeeds"
+  # with zero real results, exactly the silent-drop-at-the-batch-level this
+  # is meant to prevent. Checked here so the whole call stops once, before
+  # a single query is attempted.
+  if (is.null(model_params$Score_Transform)) {
+    stop(paste0(
+      "model_params has no Score_Transform field. train_likelihood_model() ",
+      "always records which transform (\"logit\" or \"sqrt_mismatch\") H1/H2/H3 ",
+      "were fit under, so this model_params object cannot be evaluated. ",
+      "Retrain with train_likelihood_model(), e.g. ",
+      "train_likelihood_model(score_transform = \"sqrt_mismatch\")."
+    ), call. = FALSE)
+  }
+  if (!is.null(model_params$H1_Lookup) && nrow(model_params$H1_Lookup) > 0L &&
+    !("n_obs_species" %in% names(model_params$H1_Lookup))) {
+    stop(paste0(
+      "model_params$H1_Lookup has no n_obs_species column. ",
+      "train_likelihood_model() always records this, so this model_params ",
+      "object cannot be evaluated. Retrain with train_likelihood_model()."
+    ), call. = FALSE)
   }
 
   # Train/inference coverage check: the model's pair-coverage

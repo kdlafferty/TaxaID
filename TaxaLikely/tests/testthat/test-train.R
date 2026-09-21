@@ -51,6 +51,19 @@ test_that(".prep_training_data: bad rank_system errors", {
   )
 })
 
+test_that(".prep_training_data: errors loudly when raw_df has no p_match column", {
+  # "raw_score" was the standalone Universal_Biological_Classifier scripts'
+  # column name, never produced by build_sequence_matrix(); a raw_df without
+  # p_match is out of scope, not a name to fall back to.
+  df <- .make_raw_df()
+  df$p_match <- NULL
+  df$raw_score <- c(1.00, 0.95, 0.70, 0.95, 1.00, 0.68, 0.70, 0.68, 1.00)
+  expect_error(
+    TaxaLikely:::.prep_training_data(df, c("genus", "species")),
+    "p_match"
+  )
+})
+
 # ---- train_likelihood_model --------------------------------------------------
 
 test_that("train_likelihood_model: returns taxa_model_params", {

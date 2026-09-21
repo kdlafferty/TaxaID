@@ -703,7 +703,21 @@ restore_suppressed_candidates <- function(match_obj,
   # PtConception performance case this caching fixes.
   align_cache <- new.env(parent = emptyenv())
 
-  score_transform <- (model_params$Score_Transform %||% "logit")
+  # model_params itself is optional (NULL is a supported call with no model-
+  # based scoring at all, see the H1_Sigma guard below) -- but a SUPPLIED
+  # model_params always carries Score_Transform under the current
+  # train_likelihood_model(), so one without it is a pre-1.0 artifact that
+  # cannot be trusted to mean "logit" rather than mis-scoring silently.
+  if (!is.null(model_params) && is.null(model_params$Score_Transform)) {
+    stop(paste0(
+      "restore_suppressed_candidates: model_params has no Score_Transform ",
+      "field. train_likelihood_model() always records which transform ",
+      "(\"logit\" or \"sqrt_mismatch\") the model was fit under, so this ",
+      "model_params object cannot be used. Retrain with ",
+      "train_likelihood_model()."
+    ), call. = FALSE)
+  }
+  score_transform <- if (is.null(model_params)) "logit" else model_params$Score_Transform
 
   # ---- build restored rows ----------------------------------------------------
   restored_list <- vector("list", length(target_obs))

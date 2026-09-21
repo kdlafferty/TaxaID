@@ -44,7 +44,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #' Computes true-positive (TPR) and false-positive (FPR) rate-at-threshold
 #' curves for each taxonomic rank (species/genus/family), directly from a
 #' `build_sequence_matrix()`-style pairwise distance matrix (`.x`/`.y`-suffixed
-#' taxonomy columns + `p_match` or `raw_score`). Requires at least a
+#' taxonomy columns + `p_match`). Requires at least a
 #' genus-level rank pair to compute anything (the species tier's FP
 #' population, congeneric pairs, needs genus); the genus and family tiers
 #' additionally require a family-level rank pair. Returns `NULL` (not an
@@ -60,7 +60,7 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
 #'
 #' @param raw_df Data frame of pairwise match scores (as returned by
 #'   `build_sequence_matrix()`), with `.x`/`.y`-suffixed taxonomy columns and
-#'   a `p_match` or `raw_score` column.
+#'   a `p_match` column.
 #' @param rank_system Character vector of rank names, coarse to fine, e.g.
 #'   `c("family", "genus", "species")`.
 #' @param prior_weight Numeric. Empirical Bayes shrinkage weight, same
@@ -120,13 +120,14 @@ utils::globalVariables(c("group", "threshold", "rate", "pooled_rate"))
     return(NULL)
   }
 
-  score_col <- if ("p_match" %in% names(raw_df)) {
-    "p_match"
-  } else if ("raw_score" %in% names(raw_df)) {
-    "raw_score"
-  } else {
+  # "raw_score" was the standalone Universal_Biological_Classifier scripts'
+  # column name, never produced by build_sequence_matrix() -- p_match is the
+  # only current name. Absent, same as any other missing required column:
+  # this optional curve degrades to NULL rather than erroring (see @return).
+  if (!"p_match" %in% names(raw_df)) {
     return(NULL)
   }
+  score_col <- "p_match"
 
   sp_x <- as.character(raw_df[[paste0(species_col, ".x")]])
   sp_y <- as.character(raw_df[[paste0(species_col, ".y")]])
