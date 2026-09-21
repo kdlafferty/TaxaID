@@ -242,7 +242,7 @@ common_to_scientific <- function(common_names,
         backbone_id = as.integer(backbone_id)
       )
       # verify_taxon_names returns a data frame; verified names in
-      # $name_verified (or similar column — use first non-input column)
+      # $name_verified (or similar column -- use first non-input column)
       verified_col <- if ("name_verified" %in% names(vdf)) {
         "name_verified"
       } else {

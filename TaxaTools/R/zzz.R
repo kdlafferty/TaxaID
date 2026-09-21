@@ -1,6 +1,6 @@
 # ==============================================================================
 # zzz.R
-# TaxaTools — package load hooks
+# TaxaTools -- package load hooks
 #
 # .onAttach():  Detect available LLM API keys and set:
 #   options(TaxaID.provider)  -- provider name string, read by call_api()

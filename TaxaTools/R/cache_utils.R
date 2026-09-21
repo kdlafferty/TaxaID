@@ -50,7 +50,11 @@
   }
   if (!is.na(reason)) {
     stop(sprintf(
-      "%s: refusing to treat '%s' (resolves to '%s') as a cache directory -- it is %s, not a dedicated cache location. Point cache_dir at a real, dedicated cache directory.",
+      paste0(
+        "%s: refusing to treat '%s' (resolves to '%s') as a cache directory -- ",
+        "it is %s, not a dedicated cache location. Point cache_dir at a real, ",
+        "dedicated cache directory."
+      ),
       label, cache_dir, norm, reason
     ), call. = FALSE)
   }
@@ -153,7 +157,13 @@ list_cache_files <- function(cache_dir, patterns, recursive = FALSE, force = FAL
   non_matching <- files[!keep]
   if (length(non_matching) > 0L && !isTRUE(force)) {
     stop(sprintf(
-      "list_cache_files: '%s' holds file(s) that match none of the given cache patterns -- a real cache directory holds only cache files, so this looks like a project directory rather than a dedicated cache. Non-matching file(s): %s. Pass force = TRUE if this really is the intended cache_dir.",
+      paste0(
+        "list_cache_files: '%s' holds file(s) that match none of the given ",
+        "cache patterns -- a real cache directory holds only cache files, so ",
+        "this looks like a project directory rather than a dedicated cache. ",
+        "Non-matching file(s): %s. Pass force = TRUE if this really is the ",
+        "intended cache_dir."
+      ),
       cache_dir, paste(basename(non_matching), collapse = ", ")
     ), call. = FALSE)
   }

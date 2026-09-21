@@ -1,7 +1,7 @@
 # tests/testthat/test-clean_taxon_names.R
 #
 # Tests for clean_taxon_names()
-# All tests are offline — no API calls.
+# All tests are offline -- no API calls.
 #
 # Design: clean_taxon_names() preserves input length. Invalid names become NA.
 # Callers add unique() or na.omit() as needed.
@@ -103,7 +103,7 @@ test_that("trims 'unknown' epithet to genus-only", {
 })
 
 test_that("bare abbreviation-only name retains genus", {
-  # Starts with capital so passes case filter; no epithet — genus retained.
+  # Starts with capital so passes case filter; no epithet -- genus retained.
   out <- clean_taxon_names(c("Sp."))
   expect_equal(out, "Sp.", ignore_attr = "collapsed_to_genus")
 })
@@ -143,7 +143,7 @@ test_that("duplicates are preserved in output", {
 # ==============================================================================
 
 test_that("drops author string (third+ token)", {
-  # "Linnaeus" is the third token — should be discarded
+  # "Linnaeus" is the third token -- should be discarded
   out <- clean_taxon_names(c("Homo sapiens Linnaeus"))
   expect_equal(out, "Homo sapiens", ignore_attr = "collapsed_to_genus")
 })
@@ -153,24 +153,24 @@ test_that("drops author string (third+ token)", {
 # ==============================================================================
 
 test_that("custom remove_abbr replaces defaults", {
-  # "mycustom" is not in the default list — would be kept normally
+  # "mycustom" is not in the default list -- would be kept normally
   # but passing it explicitly should cause it to be stripped
   out <- clean_taxon_names(c("Canis mycustom"), remove_abbr = c("mycustom"))
   expect_equal(out, "Canis", ignore_attr = "collapsed_to_genus")
 })
 
 # ==============================================================================
-# Mixed input — integration
+# Mixed input -- integration
 # ==============================================================================
 
 test_that("handles a realistic mixed vector correctly", {
   input <- c(
     "Homo sapiens",
-    "mus musculus", # lowercase — NA
-    NA, # NA — NA
-    "sp.", # no capital — NA
+    "mus musculus", # lowercase -- NA
+    NA, # NA -- NA
+    "sp.", # no capital -- NA
     "Canis lupus sp.", # "sp." is third token (author position) -> "Canis lupus"
-    "Homo sapiens", # duplicate — preserved
+    "Homo sapiens", # duplicate -- preserved
     "[Bacillus] subtilis" # bracket artefact removed
   )
   out <- clean_taxon_names(input)
@@ -204,19 +204,19 @@ test_that("does not alter names that already have a space", {
 })
 
 test_that("does not alter OTU codes with uppercase+digit pattern", {
-  # OTU_001: epithet starts with a digit, not [a-z] — regex does not match
+  # OTU_001: epithet starts with a digit, not [a-z] -- regex does not match
   out <- clean_taxon_names("OTU_001")
   expect_equal(out, "OTU_001", ignore_attr = "collapsed_to_genus") # returned unchanged (genus-only, no epithet)
 })
 
 test_that("does not alter clade codes like MAST-4", {
-  # MAST-4 has no underscore at all — regex does not match
+  # MAST-4 has no underscore at all -- regex does not match
   out <- clean_taxon_names("MAST-4")
   expect_equal(out, "MAST-4", ignore_attr = "collapsed_to_genus") # returned unchanged
 })
 
 test_that("does not alter multi-underscore strings", {
-  # Genus_epithet_extra has two underscores — second underscore fails [A-Za-z.-]* anchor
+  # Genus_epithet_extra has two underscores -- second underscore fails [A-Za-z.-]* anchor
   out <- clean_taxon_names("Genus_epithet_extra")
   expect_equal(out, "Genus_epithet_extra", ignore_attr = "collapsed_to_genus") # returned unchanged (no conversion)
 })
@@ -233,7 +233,7 @@ test_that("mixed vector with underscore names", {
   out <- clean_taxon_names(input)
   expect_equal(out[1], "Corallina officinalis")
   expect_equal(out[2], "Homo sapiens")
-  expect_true(is.na(out[3])) # starts lowercase — NA
+  expect_true(is.na(out[3])) # starts lowercase -- NA
   expect_true(is.na(out[4]))
 })
 

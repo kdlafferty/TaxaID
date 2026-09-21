@@ -53,11 +53,11 @@ Given a character vector of taxon names (typically species binomials), derives
 \code{genus} (first word of the binomial) and looks up \code{family} using a
 priority-ordered fallback chain:
 \enumerate{
-\item \strong{Local sources} — data frames already in scope (e.g. \code{reference_df},
+\item \strong{Local sources} -- data frames already in scope (e.g. \code{reference_df},
 \code{match_obj}, \code{gbif_std}).  Fast, offline, covers most cases.
-\item \strong{Primary backbone} — \code{verify_taxon_names()} queried at genus level
+\item \strong{Primary backbone} -- \code{verify_taxon_names()} queried at genus level
 (\code{backbone_id}; default NCBI = 4).
-\item \strong{Fallback backbone} — repeated with \code{fallback_backbone_id} (default
+\item \strong{Fallback backbone} -- repeated with \code{fallback_backbone_id} (default
 GBIF = 11) for any genera still unresolved.
 }
 
@@ -69,7 +69,7 @@ provided their genus is present.
 \strong{Backbone queries are at genus level.}  \code{verify_taxon_names()} is called
 with the unique unresolved genera (not the full species names).  This means
 a species absent from NCBI is still resolved provided its genus is present
-— which covers the vast majority of cross-backbone synonym situations.
+-- which covers the vast majority of cross-backbone synonym situations.
 
 \strong{Column name conflicts in local sources} (e.g. a source has both \code{genus}
 and \code{Genus}) are handled by \code{tolower(names(...))} before joining.

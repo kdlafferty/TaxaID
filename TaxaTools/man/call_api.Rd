@@ -67,7 +67,7 @@ OpenAI \code{image_url} blocks. Requires a vision-capable model
 
 \item{show_tokens}{Logical. When \code{TRUE}, prints a message after each
 call reporting the provider, model, and token counts (e.g.
-\code{"Tokens used [anthropic / claude-sonnet-4-6] — input: 312, output: 87"}).
+\code{"Tokens used [anthropic / claude-sonnet-4-6] -- input: 312, output: 87"}).
 Default \code{FALSE} to avoid output in non-interactive workflows.
 Token counts are retrieved from the provider's response body; \code{NA}
 is reported when a provider does not return usage information.}
@@ -140,7 +140,7 @@ Prompts sent to cloud LLM providers (Anthropic, Google, OpenAI, Azure) are
 transmitted over the internet and processed on third-party servers. Do not
 include sensitive, confidential, personally identifiable, or embargoed
 information in prompts. TaxaID functions pass taxon names, ecological
-summaries, and methods text — review prompts before calling when working
+summaries, and methods text -- review prompts before calling when working
 with pre-publication data. Use \code{provider = "ollama"} for fully
 local inference when data sensitivity is a concern.
 }

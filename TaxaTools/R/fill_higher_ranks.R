@@ -10,11 +10,11 @@ utils::globalVariables(c(
 #' `genus` (first word of the binomial) and looks up `family` using a
 #' priority-ordered fallback chain:
 #'
-#' 1. **Local sources** — data frames already in scope (e.g. `reference_df`,
+#' 1. **Local sources** -- data frames already in scope (e.g. `reference_df`,
 #'    `match_obj`, `gbif_std`).  Fast, offline, covers most cases.
-#' 2. **Primary backbone** — `verify_taxon_names()` queried at genus level
+#' 2. **Primary backbone** -- `verify_taxon_names()` queried at genus level
 #'    (`backbone_id`; default NCBI = 4).
-#' 3. **Fallback backbone** — repeated with `fallback_backbone_id` (default
+#' 3. **Fallback backbone** -- repeated with `fallback_backbone_id` (default
 #'    GBIF = 11) for any genera still unresolved.
 #'
 #' Queries are made at the **genus level**, so species absent from a backbone
@@ -75,7 +75,7 @@ utils::globalVariables(c(
 #' **Backbone queries are at genus level.**  `verify_taxon_names()` is called
 #' with the unique unresolved genera (not the full species names).  This means
 #' a species absent from NCBI is still resolved provided its genus is present
-#' — which covers the vast majority of cross-backbone synonym situations.
+#' -- which covers the vast majority of cross-backbone synonym situations.
 #'
 #' **Column name conflicts in local sources** (e.g. a source has both `genus`
 #' and `Genus`) are handled by `tolower(names(...))` before joining.
@@ -294,7 +294,7 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # Internal helpers
 # ==============================================================================
 
-# Build a genus→family lookup from a list of data frames.
+# Build a genus->family lookup from a list of data frames.
 # Each source must have genus + family columns (case-insensitive check).
 # Returns a tibble(genus, family) with no NAs and first-source-wins dedup.
 #' @noRd

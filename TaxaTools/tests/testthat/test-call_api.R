@@ -1,16 +1,16 @@
 # ==============================================================================
 # test-call_api.R
 # Tests for call_api() and internal response parsers.
-# All tests are fully offline — no live API calls.
+# All tests are fully offline -- no live API calls.
 #
 # Coverage:
 #   - call_api() input validation
 #   - max_input_tokens pre-flight token guard
 #   - .resolve_provider() error paths
 #   - Unknown provider error
-#   - .parse_anthropic_response() — success, HTTP error, no text blocks
-#   - .parse_gemini_response()    — success, HTTP error, safety block
-#   - .parse_openai_compat_response() — success, HTTP error, empty content
+#   - .parse_anthropic_response() -- success, HTTP error, no text blocks
+#   - .parse_gemini_response()    -- success, HTTP error, safety block
+#   - .parse_openai_compat_response() -- success, HTTP error, empty content
 # ==============================================================================
 
 # Helper: reset session registry state between tests.
@@ -123,7 +123,7 @@ test_that("call_api errors on unknown provider", {
 })
 
 # ==============================================================================
-# .parse_anthropic_response() — internal parser
+# .parse_anthropic_response() -- internal parser
 # ==============================================================================
 
 test_that(".parse_anthropic_response extracts text and token counts from 200 response", {
@@ -190,7 +190,7 @@ test_that(".parse_anthropic_response errors when response has no text blocks", {
 })
 
 # ==============================================================================
-# .parse_gemini_response() — internal parser
+# .parse_gemini_response() -- internal parser
 # ==============================================================================
 
 test_that(".parse_gemini_response extracts text and token counts from 200 response", {
@@ -276,7 +276,7 @@ test_that(".parse_gemini_response errors when no candidates returned without saf
 })
 
 # ==============================================================================
-# .parse_openai_compat_response() — internal parser
+# .parse_openai_compat_response() -- internal parser
 # ==============================================================================
 
 test_that(".parse_openai_compat_response extracts text and token counts", {
@@ -347,7 +347,7 @@ test_that(".parse_openai_compat_response errors when choices is empty", {
 })
 
 # ==============================================================================
-# .build_endpoint_url() — session-registered providers
+# .build_endpoint_url() -- session-registered providers
 # ==============================================================================
 
 test_that(".build_endpoint_url resolves a register_provider() provider from its stored base_url", {

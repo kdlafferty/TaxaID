@@ -47,7 +47,7 @@ utils::globalVariables(c("taxonomicStatus", "rank", "canonicalName"))
 #' @details
 #' For `rank = "genus"`, the function makes one GBIF API call per genus
 #' (`rgbif::name_usage(key, data = "children")`). For higher ranks (family,
-#' order), it first retrieves child genera, then recurses into each genus —
+#' order), it first retrieves child genera, then recurses into each genus --
 #' this can be slow for large families (e.g., Gobiidae with 300+ genera).
 #'
 #' The `status` column classifies each genus by reference completeness:

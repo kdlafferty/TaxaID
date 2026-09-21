@@ -120,7 +120,7 @@ resolve_barcode_lengths <- function(barcode_term, min_len = NULL,
 #' since their amplicon lengths overlap), this registry requires the *exact*
 #' primer variant because different variants of the same marker can have
 #' genuinely different primer sequences. There is deliberately no generic
-#' `"mifish"` entry here — see [resolve_barcode_primers()].
+#' `"mifish"` entry here -- see [resolve_barcode_primers()].
 #'
 #' Populated incrementally and only for primer sets that have been directly
 #' verified against their primary publication. A marker or primer set not yet

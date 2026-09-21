@@ -63,7 +63,9 @@
   out
 }
 
-test_that("every Pkg::fn() call in this package's vignettes is a real, current export called with valid argument names", {
+test_that(
+  "every Pkg::fn() call in this package's vignettes is a real, current export called with valid argument names",
+  {
   vign_dir <- testthat::test_path("..", "..", "vignettes")
   if (!dir.exists(vign_dir)) {
     testthat::skip("vignettes/ directory not found next to this package (source layout unavailable here)")
@@ -130,4 +132,5 @@ test_that("every Pkg::fn() call in this package's vignettes is a real, current e
   expect_true(length(offenders) == 0L,
     info = paste(c("Offending vignette calls:", offenders), collapse = "\n")
   )
-})
+  }
+)

@@ -27,12 +27,29 @@ exclusions: list(
     "tests/testthat/test-verify_taxon_names.R" = list(commented_code_linter = c(1L, 228L)),
     # "# =====" divider + "# function_name()" section-header comments --
     # this ecosystem's established documentation convention, not dead code.
-    "tests/testthat/test-cache_utils.R" = list(commented_code_linter = c(7L, 55L)),
+    "tests/testthat/test-cache_utils.R" = list(commented_code_linter = c(7L, 55L, 58L)),
+    "tests/testthat/test-sampling_group.R" = list(commented_code_linter = c(93L)),
+    "tests/testthat/test-worms_attributes.R" = list(commented_code_linter = c(2L)),
+    "R/sampling_group.R" = list(
+      # "# =====" divider + "# function_name()" section-header comments (same
+      # convention as above), plus a plain-English "# Birds & mammals" comment
+      # that happens to parse as a valid R "&" expression once "#" is stripped.
+      commented_code_linter = c(16L, 187L, 257L),
+      # .warn_possible_backbone_mismatch / .harmonise_taxonomy_to_backbone are
+      # >30 chars; the pre-review checklist would normally rename them, but
+      # this review pass is under an explicit no-renames decision -- excluded
+      # rather than renamed.
+      object_length_linter = c(560L, 611L)
+    ),
     # Prose comments containing "->"/"="/";" that happen to parse as valid R
     # (arrow-assign, statement chains) once the leading "#" is stripped.
     "tests/testthat/test-call_api.R" = list(commented_code_linter = c(46L)),
     "tests/testthat/test-census_genus_species.R" = list(commented_code_linter = c(302L)),
     # Inline "expected output" comments in a vignette code chunk (a common,
     # legitimate documentation convention) that parse as valid R literals.
-    "vignettes/name-cleaning.Rmd" = list(commented_code_linter = c(115L, 130L))
+    "vignettes/name-cleaning.Rmd" = list(commented_code_linter = c(115L, 130L)),
+    # .WORMS_REST is a top-level constant (API base URL), following this
+    # ecosystem's own established ALLCAPS convention for such constants (see
+    # TEST_PROMPT above) -- not a naming bug.
+    "R/worms_attributes.R" = list(object_name_linter = c(24L))
   )

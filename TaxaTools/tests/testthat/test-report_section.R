@@ -89,7 +89,7 @@ test_that("assemble_report orders sections by pipeline position", {
   fetch_sec <- new_report_section(package = "F", section = "fetch", methods = "Fetch.")
   match_sec <- new_report_section(package = "M", section = "match", methods = "Match.")
 
-  # Pass in wrong order — should reorder
+  # Pass in wrong order -- should reorder
   report <- assemble_report(assign_sec, fetch_sec, match_sec)
 
   # fetch should appear before match, match before assign

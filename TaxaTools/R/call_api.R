@@ -51,7 +51,7 @@
     return(opt)
   }
 
-  # Check if an API key is present but options haven't been set —
+  # Check if an API key is present but options haven't been set --
   # this means .onAttach() hasn't run (package loaded via :: not library()).
   key_map <- c(
     anthropic    = "ANTHROPIC_API_KEY",
@@ -533,7 +533,7 @@
 #'   (e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o).
 #' @param show_tokens Logical. When \code{TRUE}, prints a message after each
 #'   call reporting the provider, model, and token counts (e.g.
-#'   \code{"Tokens used [anthropic / claude-sonnet-4-6] — input: 312, output: 87"}).
+#'   \code{"Tokens used [anthropic / claude-sonnet-4-6] -- input: 312, output: 87"}).
 #'   Default \code{FALSE} to avoid output in non-interactive workflows.
 #'   Token counts are retrieved from the provider's response body; \code{NA}
 #'   is reported when a provider does not return usage information.
@@ -592,7 +592,7 @@
 #' transmitted over the internet and processed on third-party servers. Do not
 #' include sensitive, confidential, personally identifiable, or embargoed
 #' information in prompts. TaxaID functions pass taxon names, ecological
-#' summaries, and methods text — review prompts before calling when working
+#' summaries, and methods text -- review prompts before calling when working
 #' with pre-publication data. Use \code{provider = "ollama"} for fully
 #' local inference when data sensitivity is a concern.
 #'
@@ -712,6 +712,12 @@ call_api <- function(prompt_str,
     httr2::req_perform(req),
     error = function(e) {
       msg <- conditionMessage(e)
+      # Gemini sends api_key as a URL query param (req_url_query(key = ...)),
+      # so a curl/httr2 connection error can echo the full request URL back
+      # into this message. Strip the raw key before it reaches stop().
+      if (nzchar(api_key)) {
+        msg <- gsub(api_key, "***REDACTED***", msg, fixed = TRUE)
+      }
       if (grepl("Could not connect|Connection refused|Could not resolve",
         msg,
         ignore.case = TRUE
@@ -760,7 +766,7 @@ call_api <- function(prompt_str,
 
   if (isTRUE(show_tokens)) {
     message(sprintf(
-      "Tokens used [%s / %s] \u2014 input: %s, output: %s",
+      "Tokens used [%s / %s] -- input: %s, output: %s",
       provider,
       model %||% "unknown",
       if (is.na(tokens$input)) "NA" else as.character(tokens$input),

@@ -3,12 +3,12 @@
 # Tests for verify_taxon_names()
 #
 # Tests are split into two groups:
-#   1. Offline — test input validation without hitting the internet
-#   2. Online  — test real API behavior (skipped on CRAN and CI if no internet)
+#   1. Offline -- test input validation without hitting the internet
+#   2. Online  -- test real API behavior (skipped on CRAN and CI if no internet)
 #
 # To run manually: devtools::test()
 
-# ── Offline tests: input validation ─────────────────────────────────────────
+# -- Offline tests: input validation -----------------------------------------
 
 test_that("rejects non-character input", {
   expect_error(
@@ -35,7 +35,7 @@ test_that("rejects missing or non-scalar backbone_id", {
   )
 })
 
-# ── Online tests: real API behavior ─────────────────────────────────────────
+# -- Online tests: real API behavior -----------------------------------------
 # These tests require internet access and are skipped otherwise.
 
 test_that("returns correct structure for valid names", {
@@ -80,7 +80,7 @@ test_that("returns correct structure for valid names", {
   expect_false(any(result$fuzzy_corrected))
 })
 
-# ── Online tests: fuzzy cross-backbone fallback (Step 1c) ──────────────────
+# -- Online tests: fuzzy cross-backbone fallback (Step 1c) ------------------
 # Real motivating case: "Acanthogobius flavimannus" (double n, a real
 # hand-transcription typo found in a Mugu literature-reported-species table)
 # has zero hits in NCBI's own database under either spelling variant (confirmed
@@ -166,7 +166,7 @@ test_that("whitespace in names is trimmed", {
   expect_equal(result$user_supplied_name, "Homo sapiens")
 })
 
-# ── Online tests: matched_rank / is_synonym (Global Names Verifier path) ────
+# -- Online tests: matched_rank / is_synonym (Global Names Verifier path) ----
 # Real motivating case: an NCBI reference sequence for accession LC765844 is
 # labelled "Inu sp. 1 sensu Shibukawa et al., 2020." -- an informally-named
 # goby (Gobiidae) species. GBIF's backbone resolves "Inu" (Snyder, 1909) as a
@@ -245,7 +245,7 @@ test_that("a no-match result has NA matched_rank and NA is_synonym", {
   expect_true(is.na(result$is_synonym))
 })
 
-# ── Offline regression: malformed API response (no 'names' field) ────────────
+# -- Offline regression: malformed API response (no 'names' field) ------------
 
 test_that("a response with no 'names' field is reported as malformed, not as a request failure", {
   # Regression guard: the malformed-response branch used to assign to an

@@ -1,7 +1,7 @@
 # test-fill_higher_ranks.R
 # Tests for fill_higher_ranks(), .build_genus_family_lookup(),
 # .lookup_family_from_backbone(), and .extract_classified_rank().
-# Fully offline — backbone API calls are mocked.
+# Fully offline -- backbone API calls are mocked.
 
 library(testthat)
 
@@ -440,7 +440,7 @@ test_that(".build_genus_family_lookup returns empty tibble for empty list", {
 })
 
 # =============================================================================
-# parse_classification_path() — exported wrapper
+# parse_classification_path() -- exported wrapper
 # =============================================================================
 
 test_that("parse_classification_path extracts family correctly", {
