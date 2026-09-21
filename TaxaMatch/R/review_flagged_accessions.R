@@ -39,7 +39,7 @@
   "frac_independent_below_min_congruent_rank"
 )
 
-#' Local-corroboration columns (2026-09-03) that also shape the prompt
+#' Local-corroboration columns that also shape the prompt
 #'
 #' Kept OUT of `.ACCESSION_REVIEW_RELEVANT_COLS` and folded into the
 #' fingerprint only where NON-NA, so an existing review cache built before
@@ -156,11 +156,11 @@
 #' (`accession_likely_explanation`, `accession_review_confidence`) -- never a
 #' re-decided `hierarchy_flag`, and this function never calls
 #' [remove_incongruent_references()] or otherwise mutates the evaluation
-#' itself. This mirrors this ecosystem's own `trusted_rank` cautionary
-#' history (`TaxaLikely::evaluate_likelihoods()`, built 2026-07-19, removed
-#' 2026-07-20 after a real ~30% mismatch between the hypothesis it was
-#' computed for and the one that actually won downstream -- see
-#' `[[project_rank_trust_mechanism_removed]]` in the project memory system):
+#' itself. This follows this ecosystem's own caution around a `trusted_rank`-
+#' style mechanism (`TaxaLikely::evaluate_likelihoods()`) that once
+#' recomputed/overrode an existing categorical verdict and was removed after
+#' a real ~30% mismatch between the hypothesis it was
+#' computed for and the one that actually won downstream:
 #' a mechanism that recomputes/overrides an existing categorical verdict is
 #' exactly the shape that broke there. A human reads
 #' `accession_review_comment` before acting on it.
@@ -223,8 +223,7 @@
 #'   Persistent, accession-keyed cache of LLM reviews -- an accession already
 #'   reviewed with UNCHANGED inputs (see `@section Caching` below) is served
 #'   from cache instead of making a real LLM call. Set `NULL` to disable
-#'   caching entirely (every call re-reviews every in-scope accession, the
-#'   pre-2026-08-14 behavior).
+#'   caching entirely (every call re-reviews every in-scope accession).
 #' @param llm_fn Function. LLM provider function with signature
 #'   `function(prompt_str, ...)`. Default `TaxaTools::call_api`.
 #'   \strong{Known footgun:} `call_api()`'s provider auto-detection is set up
