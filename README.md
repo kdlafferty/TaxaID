@@ -1017,10 +1017,12 @@ caching comments if a fix genuinely doesn't seem to be taking effect.
 **GBIF or NCBI calls are slow, throttled, or fail partway through a
 large fetch.** See the NCBI rate-limit note under [Data and Hardware
 Requirements](#data-and-hardware-requirements) -- functions that make
-many requests (`evaluate_reference_accessions()`, `blast_sequences()`,
-`download_gbif_occurrences()`) support `cache_dir`, so an interrupted
-run can resume from where it left off instead of restarting from
-scratch.
+many requests (`evaluate_reference_accessions()`,
+`download_gbif_occurrences()`, `fetch_ncbi_reference_sequences()`) support
+`cache_dir`, so an interrupted run can resume from where it left off
+instead of restarting from scratch. `blast_sequences()` itself has no
+cache; call it through `evaluate_reference_accessions()` when you need one
+(see [Caching and resources](#caching-and-resources)).
 
 **Getting help.** If none of the above resolves it, please open an issue
 at <https://github.com/DOI-USGS/TaxaID/issues> with your R version, the
