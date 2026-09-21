@@ -2,9 +2,9 @@
 # investigate_flagged_accession() -- deep-dive verification for a single
 # flagged reference accession
 #
-# Prompted directly by the user after manually reviewing evaluate_reference_
-# accessions()'s real 2026-08-07 GreatLakes/PtConception results by hand (see
-# TaxaMatch/CLAUDE.md's own top session note): PV382872's raw top BLAST hits
+# Motivated by a real case found reviewing evaluate_reference_
+# accessions()'s GreatLakes/PtConception results by hand:
+# PV382872's raw top BLAST hits
 # looked alarming (an eel, a catfish, a parasitic isopod, all at ~99.5%
 # identity) until direct verification showed they were all from the SAME
 # real submission batch as the query itself -- evaluate_reference_
@@ -15,7 +15,7 @@
 # worth a closer look -- deliberately NOT meant to run at evaluate_reference_
 # accessions()'s own broad, unrestricted scale.
 #
-# Two comparisons, per the user's own suggestion ("blast Cephalopholis argus
+# Two comparisons (e.g. "blast Cephalopholis argus
 # to see how its other reference sequences look"):
 #   1. Self-consistency: how well does the flagged accession match OTHER
 #      real GenBank accessions of its own listed species? High identity
@@ -38,7 +38,7 @@
 #' `.resolve_taxonomy_by_acc()` already uses for the reverse direction
 #' (accession -> taxid).
 #'
-#' @section Length-ratio pre-filter (2026-08-08, Option B, now REQUIRED not optional):
+#' @section Length-ratio pre-filter (Option B, required, not optional):
 #' A plain `[Organism]` search has no gene/marker constraint at all. Live
 #' testing against the real `MZ605481` case (the motivating regression this
 #' whole file exists to fix -- see `.blast_against_comparison_set()`'s own
