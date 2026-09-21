@@ -1100,7 +1100,7 @@ The TaxaID ecosystem produces outputs at each stage of the pipeline:
 | TaxaHabitat | 18                 | 12         | Yes      |
 | TaxaMatch   | 31                 | 22         | Yes      |
 | TaxaLikely  | 31                 | 30         | Yes      |
-| TaxaExpect  | 16                 | 16         | Yes      |
+| TaxaExpect  | 16                 | 17         | Yes      |
 | TaxaAssign  | 15                 | 17         | Yes      |
 | TaxaFlag    | 11                 | 13         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |

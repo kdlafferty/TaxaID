@@ -702,6 +702,24 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   methods and the manuscript traced to a run that still produces it. The
   recurring failure here is a number true when written and silently stale
   after; the 2.01M-vs-8.11M GBIF row count is the canonical case.
+  **Enumeration DONE 2026-09-21** (`scratchpad/B2_numbers.md`, preserved in
+  `TaxaID_dev/screen_records/`): ~51 measured numbers -- 6 class A
+  (fixture-reproducible), ~30 class B (warm production run), ~8 class C
+  (cold network), 7 class D (no locatable producer). Structural finding:
+  most GreatLakes/PtCon validation figures exist ONLY as console output typed
+  into a document -- no file on disk holds 564, 0.868, 3.659 or their kin.
+  **Standing rule from here: a validation claim is written to a file by the
+  run that produced it, or it is not published.** Three "Lamar precision"
+  figures are three pipeline stages (0.868 kernel-only, 0.818 coverage
+  floor + EB, 0.872 full pipeline) cited in three documents without saying
+  so -- label each by stage. Shortest covering set of runs: GreatLakes
+  consensus workflow (kernel branch, warm, outputs SAVED), the Lamar
+  comparison rebuild, PtCon 12S warm, Mugu warm (user decision: all three
+  sites), one deliberate cold NCBI reference fetch first, and the external
+  API round trips (BOLD/DataONE/PR2/WoRMS). Decisions 2026-09-21: freeze
+  NOW (tag after the user's README pass); runs launched by the coordinator
+  as background Rscript with the user on call for interactive stops;
+  version 1.0.0, tag `v1.0.0`.
 - **B3. The structural guards fire.** Break each deliberately and confirm it is
   caught: vignette-call checking, snippet/graph-edge export checking, the
   sampling-group kingdom guard, `cache_ok()` staleness inputs, `on_unreviewed
