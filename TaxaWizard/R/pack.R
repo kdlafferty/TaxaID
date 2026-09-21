@@ -212,7 +212,9 @@
       if (length(fns) > 0L) {
         shown <- if (length(fns) > 8L) {
           c(fns[1:8], sprintf("... and %d more", length(fns) - 8L))
-        } else fns
+        } else {
+          fns
+        }
         lines <- c(lines, sprintf(
           "  functions: %s (see CONTEXT_%s.md)",
           paste(shown, collapse = ", "),

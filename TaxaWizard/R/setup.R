@@ -686,7 +686,10 @@ readRDS <- NULL
   if (all(birdnet_cols %in% header_lower) || all(birdnet_mangled %in% header_lower)) {
     return(list(
       node_id = "birdnet_detections", confidence = "high",
-      evidence = "header matches BirdNET-Analyzer CSV columns (Start (s), End (s), Scientific name, Common name, Confidence) -- read_birdnet_output()"
+      evidence = paste0(
+        "header matches BirdNET-Analyzer CSV columns (Start (s), End (s), ",
+        "Scientific name, Common name, Confidence) -- read_birdnet_output()"
+      )
     ))
   }
 
@@ -695,7 +698,10 @@ readRDS <- NULL
     any(c("confidence", "score1") %in% header_lower)) {
     return(list(
       node_id = "image_classifier_output", confidence = "high",
-      evidence = "header has FileName + prediction/confidence (or pred1/score1) columns -- Animl CSV (read_animl_output())"
+      evidence = paste0(
+        "header has FileName + prediction/confidence (or pred1/score1) ",
+        "columns -- Animl CSV (read_animl_output())"
+      )
     ))
   }
 
@@ -741,7 +747,10 @@ readRDS <- NULL
     if ("observation_id" %in% header_lower || length(header) > n_rank + 3L) {
       return(list(
         node_id = "consensus_df", confidence = "medium",
-        evidence = "header has taxon/rank columns, no score column, and observation-level columns -- looks like a pre-existing consensus table"
+        evidence = paste0(
+          "header has taxon/rank columns, no score column, and ",
+          "observation-level columns -- looks like a pre-existing consensus table"
+        )
       ))
     }
     return(list(
@@ -835,7 +844,10 @@ readRDS <- NULL
         return(list(
           node_id = "local_fasta", confidence = "high",
           evidence = sprintf(
-            "FASTA with a sibling taxonomy file '%s' (composite_id header) -- read_reference_fasta() taxonomy_file format",
+            paste0(
+              "FASTA with a sibling taxonomy file '%s' (composite_id header) -- ",
+              "read_reference_fasta() taxonomy_file format"
+            ),
             basename(sib[[1]])
           )
         ))
@@ -852,7 +864,10 @@ readRDS <- NULL
   if (length(fields) == 11L && .looks_like_dna(fields[11])) {
     return(list(
       node_id = "local_fasta", confidence = "high",
-      evidence = "headerless 11-column tab-delimited file ending in a DNA sequence -- CRABS internal format (read_crabs_output())"
+      evidence = paste0(
+        "headerless 11-column tab-delimited file ending in a DNA sequence -- ",
+        "CRABS internal format (read_crabs_output())"
+      )
     ))
   }
 
@@ -876,7 +891,10 @@ readRDS <- NULL
         if (!is.null(first_res) && !is.null(first_res$taxon)) {
           return(list(
             node_id = "image_classifier_output", confidence = "high",
-            evidence = "JSON with top-level 'results' array of {taxon: ...} objects -- iNaturalist CV API response (read_inaturalist_cv_output())"
+            evidence = paste0(
+              "JSON with top-level 'results' array of {taxon: ...} objects -- ",
+              "iNaturalist CV API response (read_inaturalist_cv_output())"
+            )
           ))
         }
       }
@@ -885,13 +903,19 @@ readRDS <- NULL
     if (grepl('"predictions"\\s*:', text)) {
       return(list(
         node_id = "image_classifier_output", confidence = "medium",
-        evidence = "raw text contains a top-level 'predictions' key -- looks like SpeciesNet JSON but could not be fully parsed"
+        evidence = paste0(
+          "raw text contains a top-level 'predictions' key -- looks like ",
+          "SpeciesNet JSON but could not be fully parsed"
+        )
       ))
     }
     if (grepl('"results"\\s*:', text) && grepl('"taxon"\\s*:', text)) {
       return(list(
         node_id = "image_classifier_output", confidence = "medium",
-        evidence = "raw text contains 'results'/'taxon' keys -- looks like iNaturalist CV JSON but could not be fully parsed"
+        evidence = paste0(
+          "raw text contains 'results'/'taxon' keys -- looks like ",
+          "iNaturalist CV JSON but could not be fully parsed"
+        )
       ))
     }
     return(list(
