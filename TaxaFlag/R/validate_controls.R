@@ -41,12 +41,15 @@ utils::globalVariables(c(
 #' @param input_df Long-format data frame: one row per taxon x column
 #'   observation, carrying at least \code{event_col}, \code{taxon_col} and
 #'   \code{count_col}.
-#' @param event_col Character. Column identifying the sequenced column
-#'   (filter, bottle, replicate). Default \code{"event_id"}.
+#' @param event_col Character. Column identifying the sampled/observed unit
+#'   (filter, bottle, replicate, recording, or image batch). Default
+#'   \code{"event_id"}.
 #' @param taxon_col Character. Column identifying the feature to compare
-#'   compositions on -- an ESV/ASV id is preferable to a taxon name, because it
-#'   does not depend on assignment succeeding. Default \code{"taxon_name"}.
-#' @param count_col Character. Read-count column. Default \code{"n_reads"}.
+#'   compositions on -- a fine-grained candidate/detection ID (e.g. ESV/ASV
+#'   for sequence data, a call/image ID for acoustic/image data) is
+#'   preferable to a taxon name, because it does not depend on assignment
+#'   succeeding. Default \code{"taxon_name"}.
+#' @param count_col Character. Count column. Default \code{"count"}.
 #' @param control_samples Character vector of \code{event_col} values that are
 #'   labelled controls.
 #' @param site_col Character or NULL. Column grouping columns into sites. When
@@ -124,6 +127,29 @@ utils::globalVariables(c(
 #'
 #' @seealso \code{\link{flag_contaminant}}, which should only be trusted once
 #'   the control set has passed this.
+#'
+#' @examples
+#' reads_long <- data.frame(
+#'   event_id   = c(rep(c("S1", "S2", "S3"), each = 3), "Blank1"),
+#'   taxon_name = c(rep(c("TaxonA", "TaxonB", "TaxonC"), times = 3), "TaxonD"),
+#'   count      = c(500, 300, 50, 480, 310, 40, 520, 290, 60, 5)
+#' )
+#' validate_controls(
+#'   input_df        = reads_long,
+#'   control_samples = "Blank1"
+#' )
+#'
+#' # Non-sequencing example: acoustic call-detection counts, with a
+#' # silent-recorder deployment standing in for a negative control
+#' call_counts <- data.frame(
+#'   event_id   = c(rep(c("Site1", "Site2", "Site3"), each = 2), "SilentControl"),
+#'   taxon_name = c(rep(c("SpeciesA", "SpeciesB"), times = 3), "NoiseArtifact"),
+#'   count      = c(40, 15, 38, 18, 44, 12, 1)
+#' )
+#' validate_controls(
+#'   input_df        = call_counts,
+#'   control_samples = "SilentControl"
+#' )
 #' @export
 validate_controls <- function(input_df,
                               event_col = "event_id",
