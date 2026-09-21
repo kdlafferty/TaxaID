@@ -230,8 +230,8 @@ per batch. Default \code{2L}.}
 Default \code{1}.}
 
 \item{cache_dir}{Character or \code{NULL} (default). Directory for the
-per-taxon review cache. \code{NULL} disables caching entirely, which is
-the historical behaviour. Supplying a directory makes a re-run
+per-taxon review cache. \code{NULL} disables caching entirely.
+Supplying a directory makes a re-run
 REPRODUCIBLE and stops it re-paying for verdicts already obtained: the
 review is a judgement, and two GreatLakes runs 50 minutes apart on
 identical input disagreed about \emph{Pimephales vigilax}
