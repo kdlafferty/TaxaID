@@ -102,42 +102,18 @@ print(assessed[, c("consensus_taxon", "primary_plausibility", "domestic_prior_ca
 stopifnot("primary_plausibility" %in% names(assessed))
 
 # ------------------------------------------------------------------------
-# 4. build_review_covariates() -- per-observation covariates for modelling
+# 4. report_flags() -- Methods/Results section from flagged data
 # ------------------------------------------------------------------------
-cat("\n--- 4. build_review_covariates() ---\n")
-
-reads_for_covariates <- data.frame(
-  taxon_id = c("obs1", "obs1", "obs2", "obs2", "obs3"),
-  sequence = c("ACGTACGT", "ACGTACGT", "ACGT", "ACGT", "ACGTACGTAC"),
-  event_id = c("s1", "s2", "s1", "s2", "s3"),
-  count = c(50000, 42000, 20, 15, 200),
-  stringsAsFactors = FALSE
-)
-cls_for_covariates <- data.frame(
-  observation_id = assessed$observation_id,
-  primary_plausibility = assessed$primary_plausibility,
-  stringsAsFactors = FALSE
-)
-
-covariates <- build_review_covariates(
-  reads_for_covariates, cls_for_covariates
-)
-print(covariates)
-stopifnot(nrow(covariates) == nrow(assessed))
-
-# ------------------------------------------------------------------------
-# 5. report_flags() -- Methods/Results section from flagged data
-# ------------------------------------------------------------------------
-cat("\n--- 5. report_flags() ---\n")
+cat("\n--- 4. report_flags() ---\n")
 
 flag_section <- report_flags(contaminant_flags, verbose = FALSE)
 print(flag_section)
 stopifnot(inherits(flag_section, "report_section"))
 
 # ------------------------------------------------------------------------
-# 6. compute_local_occurrence_distance() -- free, local, exact spatial context
+# 5. compute_local_occurrence_distance() -- free, local, exact spatial context
 # ------------------------------------------------------------------------
-cat("\n--- 6. compute_local_occurrence_distance() ---\n")
+cat("\n--- 5. compute_local_occurrence_distance() ---\n")
 
 occurrences_clean <- data.frame(
   taxon_name       = c("Oncorhynchus mykiss", "Oncorhynchus mykiss", "Felis catus"),
@@ -155,9 +131,9 @@ print(local_dist)
 stopifnot(nrow(local_dist) == 2L)
 
 # ------------------------------------------------------------------------
-# 7. check_gbif_tile_range() -- cheap, global spatial context (real network call)
+# 6. check_gbif_tile_range() -- cheap, global spatial context (real network call)
 # ------------------------------------------------------------------------
-cat("\n--- 7. check_gbif_tile_range() ---\n")
+cat("\n--- 6. check_gbif_tile_range() ---\n")
 
 gbif_tile_result <- tryCatch(
   check_gbif_tile_range(
@@ -172,9 +148,9 @@ gbif_tile_result <- tryCatch(
 if (!is.null(gbif_tile_result)) print(gbif_tile_result)
 
 # ------------------------------------------------------------------------
-# 8. review_assignments() -- LLM expert review (stubbed llm_fn by default)
+# 7. review_assignments() -- LLM expert review (stubbed llm_fn by default)
 # ------------------------------------------------------------------------
-cat("\n--- 8. review_assignments() ---\n")
+cat("\n--- 7. review_assignments() ---\n")
 
 # A minimal canned llm_fn so this script runs end to end with no API key.
 # To exercise a REAL LLM call instead, replace this with:
@@ -210,9 +186,9 @@ print(reviewed[, c("consensus_taxon", "llm_habitat_plausibility", "review_confid
 stopifnot("llm_habitat_plausibility" %in% names(reviewed))
 
 # ------------------------------------------------------------------------
-# 9. review_spatial_context() -- interactive Shiny/leaflet gadget
+# 8. review_spatial_context() -- interactive Shiny/leaflet gadget
 # ------------------------------------------------------------------------
-cat("\n--- 9. review_spatial_context() ---\n")
+cat("\n--- 8. review_spatial_context() ---\n")
 
 if (interactive()) {
   cat("  Launching interactive gadget (close its window to continue)...\n")
@@ -254,4 +230,4 @@ if (interactive()) {
   })
 }
 
-cat("\n== All 9 TaxaFlag functions ran successfully. ==\n")
+cat("\n== All 8 TaxaFlag functions ran successfully. ==\n")
