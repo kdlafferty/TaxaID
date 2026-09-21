@@ -765,8 +765,7 @@
 #'
 #' Constructs Beta(alpha, beta) prior rows for named domestic/commensal
 #' animal species, human food/crop species, and (optionally) candidate
-#' cultivated/ornamental plants -- the three-channel design from
-#' \code{ecosystem_docs/REENTRY_PROMPT_domestic_food_species_priors.md}.
+#' cultivated/ornamental plants, using a three-channel design.
 #' Unlike \code{\link{generate_undetected_diversity}}'s anonymous Tier 3
 #' proxies, every row here carries a real \code{taxon_name} and a
 #' \code{prior_source_type} category for downstream systematic handling
@@ -844,10 +843,10 @@
 #' \code{warning()} rather than passed through as-is.
 #'
 #' @section Match-list gating:
-#' \code{match_list_taxa = NULL} (the default) preserves this function's
-#' original behavior exactly: every fixed-list channel is checked in full,
+#' \code{match_list_taxa = NULL} (the default): every fixed-list channel is
+#' checked in full,
 #' regardless of whether those taxa have any bearing on your actual data.
-#' This is simple and fully backward compatible, but wasteful in a real
+#' This is simple, but wasteful in a real
 #' workflow -- most fixed-list taxa were never even detected this run, so
 #' checking them (each a real iNaturalist API call) buys nothing.
 #'
@@ -961,18 +960,18 @@
 #'     \item{taxon_name_rank}{Always \code{"species"} -- every candidate
 #'       channel here resolves to a real species-level name. Required for
 #'       \code{TaxaAssign::join_priors()}'s composite-key join to ever match
-#'       these rows at all (a previously-real gap: this column was unset
-#'       before, silently defeating every row's elevated prior).}
+#'       these rows at all: an unset value here silently defeats every row's
+#'       elevated prior.}
 #'     \item{grid_id}{As supplied.}
 #'     \item{alpha, beta}{Beta(alpha, beta) prior parameters.}
 #'     \item{theta_mean, theta_sd}{Derived from alpha/beta.}
 #'     \item{model_tier}{Always \code{"tier_domestic_food"} -- deliberately
 #'       distinct from \code{"tier3_undetected"} so downstream code can
 #'       tell a named domestic/food prior apart from an anonymous dark-
-#'       diversity proxy. Deprecated vocabulary (kernel-priors redesign,
-#'       2026-08-31): kernel-path output replaces \code{model_tier} with
-#'       \code{prior_branch} + \code{effective_records}; this column is
-#'       retained only while the GLMM path remains in use.}
+#'       diversity proxy. Kernel-path
+#'       output uses \code{prior_branch} + \code{effective_records} instead;
+#'       this column is retained for compatibility with \code{biofreq_model}
+#'       inputs.}
 #'     \item{prior_source_type}{One of \code{"domestic_animal"},
 #'       \code{"food_species"}, \code{"domestic_plant"} -- the categorical
 #'       column this function exists to add. \code{"domestic_plant"} is
@@ -1065,7 +1064,7 @@ generate_domestic_food_priors <- function(
   verbose = FALSE
 ) {
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
-    # Kernel-priors adapter (Phase 2, 2026-08-31): N = Kish effective sample
+    # Kernel-priors adapter: N = Kish effective sample
     # size; habitat concept always present on kernel estimates.
     model_obj <- list(
       N_total = as.integer(model_obj$params$n_records_stratum),
@@ -1311,10 +1310,10 @@ generate_domestic_food_priors <- function(
       }
       # Normalize backbone kingdom vocabularies before comparing: NCBI says
       # "Metazoa"/"Viridiplantae" where iNat (and GBIF) say "Animalia"/
-      # "Plantae" -- a vocabulary difference, not a homonym. (Real bug found
-      # 2026-08-31: every NCBI-taxonomy candidate, e.g. Gadus morhua, was
+      # "Plantae" -- a vocabulary difference, not a homonym. (Real bug found:
+      # every NCBI-taxonomy candidate, e.g. Gadus morhua, was
       # wrongly flagged as a cross-kingdom homonym and lost its boost.)
-      # Same class of bug again 2026-09-12: NCBI reports kingdom "Eukaryota"
+      # Same class of bug again: NCBI reports kingdom "Eukaryota"
       # (a superkingdom) for lineages with no formal Kingdom node, so every
       # domestic animal at PtCon lost its boost against iNat's "Animalia".
       # A superkingdom is too coarse to compare: it normalises to NA and the
