@@ -848,6 +848,17 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
 - **B5. USGS release checklist** in `usgs_release_review/` with its response.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
+  **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
+  DESCRIPTIONs; one `LICENSE.md` and one `DISCLAIMER.md` at the root, none
+  inside packages; `Depends: R (>= 4.1.0)` in all nine. **At the tag,
+  four fields change together and need the user**: `code.json` `version`
+  0.1.0 -> 1.0.0 and `date.lastModified` (2026-06-27 today); `code.json`
+  `status` "Preliminary" and `DISCLAIMER.md`'s "preliminary or provisional"
+  text -> the USGS approved-release wording IF the WERC review is signed off
+  by then, else both stay provisional (they must agree with each other);
+  `code.json` `laborHours` is 0 (USGS asks for an estimate); `code.json`
+  `repositoryURL` must match the repository the release is published from
+  (see the remote check). All nine `DESCRIPTION` `Version:` -> 1.0.0.
 
 ## 8. Findings to carry into the manuscript (not to fix)
 
