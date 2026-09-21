@@ -4,8 +4,6 @@
 #
 # Exported functions:
 #   report_habitat()   -- generate report_section from habitat data
-#
-# Session 65: initial implementation
 # ==============================================================================
 
 
@@ -59,32 +57,30 @@ report_habitat <- function(habitat_data,
   # adds only main_habitat/habitat_best_guess (both character) to whatever
   # occurrence_data it was given, so it carries NO numeric habitat-weight
   # columns at all. Treating "any numeric column not on a small exclude
-  # list" as a habitat weight column (the pre-2026-09-08 logic) therefore
-  # picked up the occurrence data's own incidental numeric columns instead
-  # (decimalLatitude/decimalLongitude in every real production caller) --
-  # confirmed live on both a real 18S and a real GreatLakes report, which
-  # rendered "under the decimalLatitude/decimalLongitude scheme" and
-  # "Dominant habitat: decimalLatitude (mean weight 3519%)" (mean latitude
-  # times 100).
+  # list" as a habitat weight column would pick up the occurrence data's own
+  # incidental numeric columns instead (decimalLatitude/decimalLongitude in
+  # every real production caller): on a real 18S and a real GreatLakes
+  # report, that renders "under the decimalLatitude/decimalLongitude scheme"
+  # and "Dominant habitat: decimalLatitude (mean weight 3519%)" (mean
+  # latitude times 100).
   #
   # main_habitat's mere presence isn't a safe dispatch signal on its own --
   # a data frame can legitimately carry both a real main_habitat column AND
   # real per-category weight columns together (this file's own "excludes
   # known non-habitat columns" test does exactly that). Positively identify
   # real weight columns instead -- see .looks_like_habitat_weights() for the
-  # exact signals and why a bare [0, 1] range check on ANY one column (the
-  # 2026-09-08 form of this dispatch) was not enough. Only fall back to
-  # tallying the categorical main_habitat column when the numeric columns
-  # do not positively look like a weight table.
+  # exact signals and why a bare [0, 1] range check on ANY one column is not
+  # enough. Only fall back to tallying the categorical main_habitat column
+  # when the numeric columns do not positively look like a weight table.
   # Resolve the taxon column ONCE, here, and hand the resolved name to both
-  # branches. Previously only .summarise_main_habitat() consulted
-  # .resolve_taxon_col(); .summarise_habitat_weights() tested the raw
-  # taxon_col, so the documented Shape A call -- report_habitat() on
+  # branches: if only .summarise_main_habitat() consulted
+  # .resolve_taxon_col() while .summarise_habitat_weights() tested the raw
+  # taxon_col, the documented Shape A call -- report_habitat() on
   # parse_hierarchical_habitat_response()'s output, which always names its
-  # taxon column taxon_name, against this function's historical
-  # "scientificName" default -- silently fell through to nrow() and reported
-  # ROWS as n_taxa. Same class as the "1419840 taxa" bug .resolve_taxon_col()
-  # was written for, just on the other branch (found 2026-09-10).
+  # taxon column taxon_name, against this function's default of
+  # "scientificName" -- would silently fall through to nrow() and report
+  # ROWS as n_taxa. Same class of bug .resolve_taxon_col() exists to
+  # prevent, just on the other branch.
   taxon_col <- .resolve_taxon_col(habitat_data, taxon_col)
 
   candidate_cols <- .candidate_habitat_cols(habitat_data, taxon_col)
@@ -152,9 +148,8 @@ report_habitat <- function(habitat_data,
 #' (decimalLatitude/decimalLongitude in every real production caller, often also
 #' elevation_m/dist_to_coast_km/depth_m).
 #'
-#' The 2026-09-08 dispatch asked only whether ANY single candidate column
-#' satisfied all(is.na(x) | (x >= 0 & x <= 1)). That has two holes, both
-#' confirmed by evaluation on the real Pt Conception 12S object (2026-09-10):
+#' A dispatch that asks only whether ANY single candidate column satisfies
+#' \code{all(is.na(x) | (x >= 0 & x <= 1))} has two holes:
 #'
 #' 1. It passes VACUOUSLY for an all-NA numeric column -- is.na(x) is then TRUE
 #'    everywhere and the range half of the `|` is never reached. GBIF exports
@@ -163,12 +158,11 @@ report_habitat <- function(habitat_data,
 #'    coordinatePrecision of 0.001, or a dist_to_coast_km that is 0 for every
 #'    retained record in a coastal-only survey.
 #'
-#' Either flips Shape B into the weight branch and reproduces the exact pre-fix
-#' symptom the 2026-09-07/08 fix was written to prevent -- verified live: adding
-#' one all-NA `depth` column to the real PtConMifishSchulte occurrence object
-#' turned a correct "356 taxa ... Dominant habitat: Marine (89% of assigned
-#' records)" into "20000 taxa ... Dominant habitat: decimalLatitude (mean weight
-#' 3506%)".
+#' Either flips Shape B into the weight branch. On the real
+#' PtConMifishSchulte occurrence object, adding one all-NA `depth` column
+#' turns a correct "356 taxa ... Dominant habitat: Marine (89% of assigned
+#' records)" into "20000 taxa ... Dominant habitat: decimalLatitude (mean
+#' weight 3506%)".
 #'
 #' So ask for POSITIVE evidence of a weight table instead of mere absence of a
 #' range violation. All of:
@@ -389,8 +383,7 @@ report_habitat <- function(habitat_data,
     # Read the pct off the SELECTED column, not max(col_means): which.max()
     # skips NA means (an all-NA habitat column) but a bare max() returns NA
     # whenever any column's mean is NA -- yielding a valid dominant_habitat
-    # paired with an NA pct, which is what actually crashed the %d sprintf
-    # below on the first real kernel-path GL report run (2026-09-01).
+    # paired with an NA pct, which would crash the %d sprintf below.
     #
     # Guarded on dominant_habitat itself, not just habitat_cols: when EVERY
     # habitat column is entirely NA (a degraded-LLM-output case, not yet hit
@@ -399,7 +392,7 @@ report_habitat <- function(habitat_data,
     # col_means[[NULL]] then errors ("attempt to select less than one
     # element") instead of falling through to the no-dominant-habitat path
     # the `if (!is.null(dominant_habitat))` check below already exists to
-    # handle. Found in this session's code-review pass, 2026-09-07.
+    # handle.
     if (!is.null(dominant_habitat)) {
       dominant_pct <- round(col_means[[dominant_habitat]] * 100, 0)
     }
@@ -412,8 +405,7 @@ report_habitat <- function(habitat_data,
   if (!is.null(dominant_habitat)) {
     results_parts <- c(results_parts, sprintf(
       # %.0f, not %d: round() returns a double, and sprintf's %d errors on
-      # non-integer doubles (found by the first real kernel-path GL report
-      # run, 2026-09-01 -- this ecosystem's documented sprintf footgun class).
+      # non-integer doubles.
       "Dominant habitat: %s (mean weight %.0f%%).",
       dominant_habitat, dominant_pct
     ))
