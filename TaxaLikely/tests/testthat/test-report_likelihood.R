@@ -77,4 +77,3 @@ test_that("report_likelihood handles model without AIC", {
   expect_s3_class(sec, "report_section")
   expect_null(sec$statistics$aic_score)
 })
-

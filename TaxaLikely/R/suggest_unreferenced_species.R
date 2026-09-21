@@ -21,7 +21,8 @@
 # the named-species analogue of TaxaLikely's H3 (unreferenced genus) hypothesis.
 #
 # Exported functions:
-#   suggest_unreferenced_species()  LLM-first unreferenced species detection -> character vector (unreferenced_species_result)
+#   suggest_unreferenced_species()  LLM-first unreferenced species detection ->
+#                                    unreferenced_species_result
 #   print.unreferenced_species_result            S3 print method for unreferenced_species_result
 #
 # Internal helpers:
@@ -298,10 +299,22 @@
   ctx_block <- .build_context_block(ctx, habitat_field = "habitat")
 
   ref_filter_note <- switch(data_type,
-    eDNA     = "A separate NCBI sequence check will filter species lacking barcode sequences.\nDo not pre-filter based on sequence availability.\n\n",
-    acoustic = "A reference species list check will filter species absent from the acoustic reference model.\nDo not pre-filter based on detection ability.\n\n",
-    image    = "A reference species list check will filter species absent from the image classifier training set.\nDo not pre-filter based on visual detectability.\n\n",
-    "A reference species list check will filter species absent from the reference model.\nDo not pre-filter in advance.\n\n"
+    eDNA = paste0(
+      "A separate NCBI sequence check will filter species lacking barcode sequences.\n",
+      "Do not pre-filter based on sequence availability.\n\n"
+    ),
+    acoustic = paste0(
+      "A reference species list check will filter species absent from the acoustic reference model.\n",
+      "Do not pre-filter based on detection ability.\n\n"
+    ),
+    image = paste0(
+      "A reference species list check will filter species absent from the image classifier training set.\n",
+      "Do not pre-filter based on visual detectability.\n\n"
+    ),
+    paste0(
+      "A reference species list check will filter species absent from the reference model.\n",
+      "Do not pre-filter in advance.\n\n"
+    )
   )
 
   paste0(
