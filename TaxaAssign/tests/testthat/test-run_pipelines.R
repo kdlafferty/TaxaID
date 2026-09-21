@@ -1,5 +1,5 @@
 # Tests for run_bayesian_pipeline() and run_llm_pipeline() input validation.
-# All tests are offline — they hit validation errors before any computation.
+# All tests are offline -- they hit validation errors before any computation.
 
 # --- Shared test data --------------------------------------------------------
 
@@ -15,7 +15,7 @@ mock_match_df <- data.frame(
 )
 
 # =============================================================================
-# A. run_bayesian_pipeline() — input validation
+# A. run_bayesian_pipeline() -- input validation
 # =============================================================================
 
 test_that("run_bayesian_pipeline: rejects invalid constraint_behavior", {
@@ -35,7 +35,7 @@ test_that("run_bayesian_pipeline: rejects invalid constraint_behavior", {
 
 test_that("run_bayesian_pipeline: rejects match_df with too few rank columns", {
   skip_if_not_installed("TaxaLikely")
-  # Only one rank column (species) — needs at least 2
+  # Only one rank column (species) -- needs at least 2
   narrow_df <- data.frame(
     observation_id = "s1",
     score_original = 99,
@@ -95,7 +95,7 @@ test_that("run_bayesian_pipeline: rejects non-data-frame taxaexpect_priors", {
 })
 
 # =============================================================================
-# B. run_llm_pipeline() — input validation
+# B. run_llm_pipeline() -- input validation
 # =============================================================================
 
 test_that("run_llm_pipeline: rejects non-data-frame match_df", {
@@ -164,7 +164,7 @@ test_that("run_llm_pipeline: NULL llm_fn without TaxaTools gives clear error", {
 })
 
 # =============================================================================
-# C. .resolve_llm_fn() — internal helper
+# C. .resolve_llm_fn() -- internal helper
 # =============================================================================
 
 test_that(".resolve_llm_fn: returns user-supplied function unchanged", {
@@ -180,7 +180,7 @@ test_that(".resolve_llm_fn: NULL resolves to TaxaTools provider when available",
 })
 
 # =============================================================================
-# D. run_llm_pipeline() — auto-context regression
+# D. run_llm_pipeline() -- auto-context regression
 # =============================================================================
 
 test_that("run_llm_pipeline: auto_context filters on score_original, not the removed `score` column", {

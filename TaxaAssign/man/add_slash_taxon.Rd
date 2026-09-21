@@ -31,16 +31,16 @@ candidates are ordered alphabetically. Default \code{"plausible_posteriors"}.}
 When \code{consensus_df} has a \code{consensus_taxon} column, two more columns are
 added:
 \describe{
-\item{\code{consensus_OTU}}{Single reporting label per observation —
+\item{\code{consensus_OTU}}{Single reporting label per observation --
 \code{slash_taxon_name} when non-\code{NA}, otherwise \code{consensus_taxon}. Use
 this as the one column with a non-\code{NA} label for every resolved
 observation.}
 \item{\code{primary_taxon}}{\code{consensus_OTU} reduced to a single taxon name
-by dropping everything from the first \code{/} or \code{+} onward — the
+by dropping everything from the first \code{/} or \code{+} onward -- the
 single most-reportable name when a slash/plus label is not wanted
 (e.g. simple species tallies). For a slash set, this is whichever
 candidate \code{.make_slash_name()} placed first (highest posterior when
-\code{posteriors_col} is available, else alphabetical) — a convenience
+\code{posteriors_col} is available, else alphabetical) -- a convenience
 label, not a statistically preferred pick.}
 }
 }
@@ -49,20 +49,20 @@ Appends two columns to the output of \code{\link[=posterior_consensus]{posterior
 }
 \details{
 \itemize{
-\item \strong{\code{slash_taxon_name}} — a compact human-readable label for the plausible
+\item \strong{\code{slash_taxon_name}} -- a compact human-readable label for the plausible
 candidate set, following ornithological slash-species convention.
 Same-genus candidates are abbreviated (\verb{Homo sapiens/heidelbergensis});
 mixed-genus candidates are grouped by genus and joined with \code{+}
 (\verb{Bos javanicus/primigenius + Bison bonasus}). \code{NA} for singletons and
 unresolved observations.
-\item \strong{\code{irreducible_consensus}} — logical. \code{TRUE} when the candidate set for
+\item \strong{\code{irreducible_consensus}} -- logical. \code{TRUE} when the candidate set for
 this observation cannot be further decomposed by reference to any other
 observation in the dataframe. A set is irreducible when no other
 (distinct) set in the data is the same size or smaller \emph{and} shares at
 least one taxon. Singletons are always \code{TRUE} (a single species is
 trivially irreducible). Unresolved observations (empty candidate set) are
 always \code{FALSE}. Multi-taxon sets are \code{TRUE} when the marker/model cannot
-distinguish the candidates anywhere else in the dataset — i.e., the slash
+distinguish the candidates anywhere else in the dataset -- i.e., the slash
 taxon is a genuine reporting unit, not a locally ambiguous observation that
 is resolved elsewhere.
 }

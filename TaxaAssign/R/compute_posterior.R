@@ -13,12 +13,12 @@
 #' - **Monte Carlo path** (robust): samples from prior and likelihood distributions,
 #'   propagating uncertainty into the posterior. Likelihoods are sampled from
 #'   Normal(mean, sd) truncated at 0 (via exact inverse-CDF sampling, not a
-#'   post-hoc clamp — a clamp would manufacture a spurious point mass at exactly 0
+#'   post-hoc clamp -- a clamp would manufacture a spurious point mass at exactly 0
 #'   that is not part of the modelled distribution). Priors are sampled from
 #'   Beta(alpha, beta) when `prior_alpha` and `prior_beta` columns are present,
 #'   correctly bounded on \[0, 1\].
 #'   **Exception:** when `prior_alpha <= 1` the Beta distribution has its mode at
-#'   (or density strictly decreasing from) 0 and simulation draws are unreliable —
+#'   (or density strictly decreasing from) 0 and simulation draws are unreliable --
 #'   species with tiny but non-zero prior_mean would almost always lose to species
 #'   with a well-concentrated prior at a lower mean. For these rows, the prior is
 #'   treated as fixed at `prior_mean` in simulation rather than sampled, making the
@@ -27,7 +27,7 @@
 #'   `TaxaExpect::generate_undetected_diversity()`'s global floor
 #'   `Beta(1, N_total - 1)`. Whether the boundary should extend further, e.g.
 #'   to `prior_alpha` moderately above 1 with high relative uncertainty, is
-#'   still open — it needs a larger real `prior_alpha` distribution than the
+#'   still open -- it needs a larger real `prior_alpha` distribution than the
 #'   small bundled fixtures to characterize.)
 #'   Only runs when `n_sims > 0` AND at least one source of uncertainty exists
 #'   (non-zero `score_likelihood_sd`, or `prior_alpha`/`prior_beta` columns present).
@@ -302,7 +302,7 @@ compute_posterior <- function(likelihood_w_prior, n_sims = 1000) {
           nrow = n_rows
         )
 
-        # Sample priors: Beta(alpha, beta) — bounded [0, 1] by construction.
+        # Sample priors: Beta(alpha, beta) -- bounded [0, 1] by construction.
         # When prior_alpha <= 1 the Beta's density is at its maximum at (or
         # strictly decreasing from) 0, making simulation draws unreliable: a
         # species with prior_mean = 3e-4 almost never beats one with

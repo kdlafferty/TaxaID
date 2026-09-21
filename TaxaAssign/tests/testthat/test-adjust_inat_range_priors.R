@@ -118,7 +118,7 @@ test_that("returns same number of rows as input", {
 # =============================================================================
 
 test_that("no elevation when all rows are modelled (alpha not NA)", {
-  lr <- .make_lr(alpha = 2.0) # modelled — has TaxaExpect prior
+  lr <- .make_lr(alpha = 2.0) # modelled -- has TaxaExpect prior
   out <- adjust_inat_range_priors(lr, .make_ir())
   expect_false(any(out$inat_range_elevated))
   expect_equal(out$prior_alpha, lr$prior_alpha)
@@ -150,7 +150,7 @@ test_that("no elevation when taxon not in likelihoods_ready", {
 })
 
 test_that("no elevation when singleton floor does not exceed current prior", {
-  # prior_mean = 0.9; singleton floor = 0.02 — floor is lower, should not touch
+  # prior_mean = 0.9; singleton floor = 0.02 -- floor is lower, should not touch
   lr <- .make_lr(
     prior_alpha = 9.0, prior_beta = 1.0, # prior_mean = 0.9
     singleton_alpha = 2.0, singleton_beta = 98.0

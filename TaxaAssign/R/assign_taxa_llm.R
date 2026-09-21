@@ -140,16 +140,16 @@ utils::globalVariables(c(
 #' @param known_absent Optional species list of taxa surveyed for but not detected
 #'   at the site, supplied as either:
 #'   \itemize{
-#'     \item A character vector — all species assigned `absent_detection_prob`.
+#'     \item A character vector -- all species assigned `absent_detection_prob`.
 #'     \item A data frame with columns `taxon_name` (character) and optionally
-#'           `detection_prob` (numeric 0–1). Missing `detection_prob` values
+#'           `detection_prob` (numeric 0-1). Missing `detection_prob` values
 #'           fall back to `absent_detection_prob`.
 #'   }
 #'   The LLM sees the list as context. In addition, each absent species' prior
 #'   is multiplied by `(1 - detection_prob)` after the LLM call, then the full
 #'   prior vector is renormalized. This is a principled Bayesian update:
-#'   `P(present | not detected) ∝ P(not detected | present) × P(present) =
-#'   (1 - p_det) × prior_LLM`. Only applies to species that appear as
+#'   `P(present | not detected)` is proportional to `P(not detected | present) x P(present) =
+#'   (1 - p_det) x prior_LLM`. Only applies to species that appear as
 #'   hypotheses (scored candidates or inserted unreferenced taxa); species not in the
 #'   candidate set already have near-zero prior by construction.
 #' @param absent_detection_prob Numeric in (0, 1). Probability of detecting a
@@ -839,7 +839,7 @@ assign_taxa_llm <- function(match_df,
       }
     }
 
-    # Mathematical absence suppression: P(present | not detected) ∝ (1 - p_det) × prior
+    # Mathematical absence suppression: P(present | not detected) is proportional to (1 - p_det) x prior
     # Applied after NA-fill so unreferenced taxon fallback priors are also suppressed where appropriate.
     # Skips unreferenced_family row (prior is set as a fixed weight, not LLM-assigned).
     if (nrow(known_absent_df) > 0) {

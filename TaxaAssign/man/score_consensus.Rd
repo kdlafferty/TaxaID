@@ -60,7 +60,7 @@ standard columns present in \code{match_df} are detected automatically.}
 minimum scores, e.g. \code{c(species = 97, genus = 95, family = 90)}.  After
 the LCA is computed, the consensus is capped at the finest rank whose
 threshold the top score meets.  If the top score fails all thresholds, the
-sample is unresolvable.  Applied independently of the LCA — so even if all
+sample is unresolvable.  Applied independently of the LCA -- so even if all
 hits agree on species, the consensus is demoted to genus if the top score
 is below the species threshold.
 \strong{No default -- errors if omitted.} This function has no

@@ -5,7 +5,7 @@
 library(dplyr)
 
 # ---------------------------------------------------------------------------
-# Shared test data — Beta-distributed priors
+# Shared test data -- Beta-distributed priors
 # ---------------------------------------------------------------------------
 
 make_test_df <- function() {
@@ -116,7 +116,7 @@ test_that("Beta priors propagate uncertainty into posterior_sd", {
 })
 
 # ---------------------------------------------------------------------------
-# Test 3: No alpha/beta — priors treated as fixed, no prior uncertainty
+# Test 3: No alpha/beta -- priors treated as fixed, no prior uncertainty
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior with no alpha/beta treats priors as fixed", {
@@ -131,7 +131,7 @@ test_that("compute_posterior with no alpha/beta treats priors as fixed", {
 })
 
 # ---------------------------------------------------------------------------
-# Test 4: No alpha/beta but nonzero score_likelihood_sd — MC still runs for likelihoods
+# Test 4: No alpha/beta but nonzero score_likelihood_sd -- MC still runs for likelihoods
 # ---------------------------------------------------------------------------
 
 test_that("MC runs for likelihood uncertainty even without Beta priors", {
@@ -143,7 +143,7 @@ test_that("MC runs for likelihood uncertainty even without Beta priors", {
 })
 
 # ---------------------------------------------------------------------------
-# Test 5: n_sims = 0 — point estimate path only; posterior_sd = 0
+# Test 5: n_sims = 0 -- point estimate path only; posterior_sd = 0
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior with n_sims = 0 uses point estimate path only", {
@@ -163,7 +163,7 @@ test_that("compute_posterior with n_sims = 0 uses point estimate path only", {
 })
 
 # ---------------------------------------------------------------------------
-# Test 6: Missing required columns — informative error
+# Test 6: Missing required columns -- informative error
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior errors informatively on missing required columns", {
@@ -173,7 +173,7 @@ test_that("compute_posterior errors informatively on missing required columns", 
 })
 
 # ---------------------------------------------------------------------------
-# Test 7: NA values in score_likelihood_sd — replaced with 0, warning emitted
+# Test 7: NA values in score_likelihood_sd -- replaced with 0, warning emitted
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior replaces NA score_likelihood_sd with 0 and warns", {
@@ -188,7 +188,7 @@ test_that("compute_posterior replaces NA score_likelihood_sd with 0 and warns", 
 })
 
 # ---------------------------------------------------------------------------
-# Test 8: Single-hypothesis sample — posterior = 1
+# Test 8: Single-hypothesis sample -- posterior = 1
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior assigns posterior = 1 when only one hypothesis", {
@@ -208,7 +208,7 @@ test_that("compute_posterior assigns posterior = 1 when only one hypothesis", {
 })
 
 # ---------------------------------------------------------------------------
-# Test 9: Output sorted — observation_id ascending, posterior_mean descending
+# Test 9: Output sorted -- observation_id ascending, posterior_mean descending
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior output is sorted by observation_id asc then posterior_mean desc", {
@@ -225,7 +225,7 @@ test_that("compute_posterior output is sorted by observation_id asc then posteri
 })
 
 # ---------------------------------------------------------------------------
-# Test 10: Only one of prior_alpha/prior_beta — error
+# Test 10: Only one of prior_alpha/prior_beta -- error
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior errors when only one of alpha/beta is present", {
@@ -237,7 +237,7 @@ test_that("compute_posterior errors when only one of alpha/beta is present", {
 })
 
 # ---------------------------------------------------------------------------
-# Test 11: Invalid alpha/beta values — error
+# Test 11: Invalid alpha/beta values -- error
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior errors on non-positive alpha/beta", {
@@ -269,7 +269,7 @@ test_that("higher phi produces lower posterior_sd than lower phi", {
     prior_beta            = c(30, 70)
   )
 
-  # Diffuse priors: phi = 5 (alpha >= 1 for both — avoids J-shaped case)
+  # Diffuse priors: phi = 5 (alpha >= 1 for both -- avoids J-shaped case)
   df_diffuse <- dplyr::tibble(
     observation_id        = rep("S1", 2),
     taxon_name            = c("Sp_A", "Sp_B"),
@@ -294,7 +294,7 @@ test_that("higher phi produces lower posterior_sd than lower phi", {
 })
 
 # ---------------------------------------------------------------------------
-# Test 13: J-shaped prior fix — simulation consistent with point estimate
+# Test 13: J-shaped prior fix -- simulation consistent with point estimate
 # Simulates the Haliotis cracherodii situation: a modelled species with
 # prior_alpha << 1 (tiny theta, high model uncertainty) vs many unmodelled
 # species with well-concentrated priors at a lower prior_mean.
@@ -327,7 +327,7 @@ test_that("J-shaped prior (alpha < 1) simulation is consistent with point estima
   # Point estimate: Local_sp should win (3e-4 >> 6e-6)
   expect_gt(local_row$posterior_point_est, unmod_row$posterior_point_est)
 
-  # With fix: simulation should agree — Local_sp wins more often
+  # With fix: simulation should agree -- Local_sp wins more often
   expect_gt(local_row$confidence_score, unmod_row$confidence_score)
 
   # posterior_mean should also rank Local_sp above Unmod_sp

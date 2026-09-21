@@ -96,15 +96,15 @@ reasoning. Not used in the mathematical update step.}
 \item{known_absent}{Optional species list of taxa surveyed for but not detected
 at the site, supplied as either:
 \itemize{
-\item A character vector — all species assigned \code{absent_detection_prob}.
+\item A character vector -- all species assigned \code{absent_detection_prob}.
 \item A data frame with columns \code{taxon_name} (character) and optionally
-\code{detection_prob} (numeric 0–1). Missing \code{detection_prob} values
+\code{detection_prob} (numeric 0-1). Missing \code{detection_prob} values
 fall back to \code{absent_detection_prob}.
 }
 The LLM sees the list as context. In addition, each absent species' prior
 is multiplied by \code{(1 - detection_prob)} after the LLM call, then the full
 prior vector is renormalized. This is a principled Bayesian update:
-\verb{P(present | not detected) ∝ P(not detected | present) × P(present) = (1 - p_det) × prior_LLM}. Only applies to species that appear as
+\verb{P(present | not detected)} is proportional to \verb{P(not detected | present) x P(present) = (1 - p_det) x prior_LLM}. Only applies to species that appear as
 hypotheses (scored candidates or inserted unreferenced taxa); species not in the
 candidate set already have near-zero prior by construction.}
 

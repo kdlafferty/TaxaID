@@ -43,7 +43,7 @@ any kind). See the
 
 \item{n_sims}{Integer. Passed to \code{\link[=compute_posterior]{compute_posterior()}} for the re-run.
 Default 0 (point estimates only, fast). Set to 1000 to propagate
-uncertainty — match the value used in the original run.}
+uncertainty -- match the value used in the original run.}
 
 \item{spatial_group_map}{Dataframe with \code{observation_id} and
 \code{spatial_group_id} columns (e.g. from
@@ -53,7 +53,7 @@ observation can contribute confirmed species or receive a prior update;
 observations in a single-observation spatial group (a singleton
 \code{spatial_group_id} -- there is no separate naming convention for these,
 see \code{group_observations_by_bbox()}) are always returned unchanged.
-Default \code{NULL} (no group-based restriction — all observations
+Default \code{NULL} (no group-based restriction -- all observations
 participate, matching this function's original behaviour). Membership is
 binary (same group or not), with no distance decay within a group --
 two sites 100 km apart placed in different spatial groups donate nothing

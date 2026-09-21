@@ -90,7 +90,7 @@ Use in the LLM workflow by passing the same object supplied to
 }
 For each unresolved row where \code{consensus_rank} is not the finest rank,
 the function looks up how many taxa at the next finer rank belong to the
-consensus taxon. If exactly one, it downranks (recursively — e.g. family
+consensus taxon. If exactly one, it downranks (recursively -- e.g. family
 to unique genus to unique species in one pass). Stops at any rank with
 more than one option. Default \code{NULL} (no downranking). A narrowing must
 also survive \code{downrank_requires_candidate}. Callers
@@ -362,7 +362,7 @@ lowest common ancestor (LCA) as the consensus taxonomic assignment.
 }
 \details{
 \strong{Which hypotheses are included:} All named hypotheses contribute to the
-LCA — \code{"specific_candidate"}, \code{"unreferenced_species"} (congener without reference
+LCA -- \code{"specific_candidate"}, \code{"unreferenced_species"} (congener without reference
 sequence), \code{"unreferenced_genus"} (family-level unreferenced taxon: named species
 from a genus absent in the reference), and \code{"unresolved_species"} (a species from a
 census-complete genus whose identity is ambiguous among the known reference members;

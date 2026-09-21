@@ -23,7 +23,7 @@
 #
 # Names are split on the first space; everything after the first space is
 # treated as the specific epithet (handles hybrids like
-# "Bos grunniens x Bos taurus" — epithet becomes "grunniens x Bos taurus").
+# "Bos grunniens x Bos taurus" -- epithet becomes "grunniens x Bos taurus").
 #
 # @noRd
 .make_slash_name <- function(taxa_vec) {
@@ -58,21 +58,21 @@
 #'
 #' Appends two columns to the output of [posterior_consensus()]:
 #'
-#' * **`slash_taxon_name`** — a compact human-readable label for the plausible
+#' * **`slash_taxon_name`** -- a compact human-readable label for the plausible
 #'   candidate set, following ornithological slash-species convention.
 #'   Same-genus candidates are abbreviated (`Homo sapiens/heidelbergensis`);
 #'   mixed-genus candidates are grouped by genus and joined with ` + `
 #'   (`Bos javanicus/primigenius + Bison bonasus`). `NA` for singletons and
 #'   unresolved observations.
 #'
-#' * **`irreducible_consensus`** — logical. `TRUE` when the candidate set for
+#' * **`irreducible_consensus`** -- logical. `TRUE` when the candidate set for
 #'   this observation cannot be further decomposed by reference to any other
 #'   observation in the dataframe. A set is irreducible when no other
 #'   (distinct) set in the data is the same size or smaller *and* shares at
 #'   least one taxon. Singletons are always `TRUE` (a single species is
 #'   trivially irreducible). Unresolved observations (empty candidate set) are
 #'   always `FALSE`. Multi-taxon sets are `TRUE` when the marker/model cannot
-#'   distinguish the candidates anywhere else in the dataset — i.e., the slash
+#'   distinguish the candidates anywhere else in the dataset -- i.e., the slash
 #'   taxon is a genuine reporting unit, not a locally ambiguous observation that
 #'   is resolved elsewhere.
 #'
@@ -101,16 +101,16 @@
 #'   When `consensus_df` has a `consensus_taxon` column, two more columns are
 #'   added:
 #'   \describe{
-#'     \item{`consensus_OTU`}{Single reporting label per observation —
+#'     \item{`consensus_OTU`}{Single reporting label per observation --
 #'       `slash_taxon_name` when non-`NA`, otherwise `consensus_taxon`. Use
 #'       this as the one column with a non-`NA` label for every resolved
 #'       observation.}
 #'     \item{`primary_taxon`}{`consensus_OTU` reduced to a single taxon name
-#'       by dropping everything from the first `/` or ` + ` onward — the
+#'       by dropping everything from the first `/` or ` + ` onward -- the
 #'       single most-reportable name when a slash/plus label is not wanted
 #'       (e.g. simple species tallies). For a slash set, this is whichever
 #'       candidate `.make_slash_name()` placed first (highest posterior when
-#'       `posteriors_col` is available, else alphabetical) — a convenience
+#'       `posteriors_col` is available, else alphabetical) -- a convenience
 #'       label, not a statistically preferred pick.}
 #'   }
 #'
@@ -250,11 +250,11 @@ add_slash_taxon <- function(consensus_df,
   }
 
   # --- irreducible_consensus (dataset-level) --------------------------------
-  # Unresolved rows (empty candidate set) are always FALSE — handle up front.
+  # Unresolved rows (empty candidate set) are always FALSE -- handle up front.
   is_empty <- n_taxa == 0L
 
   # Collapse non-empty sets to a signature string for fast dedup + lookup.
-  # Separator is ASCII SOH (char 1) — never present in taxon names.
+  # Separator is ASCII SOH (char 1) -- never present in taxon names.
   SEP <- rawToChar(as.raw(1L))
 
   nonempty_sets <- taxa_sets[!is_empty]
@@ -297,7 +297,7 @@ add_slash_taxon <- function(consensus_df,
 
   names(irreducible_unique) <- unique_sigs
 
-  # Map back to all rows: empty sets → FALSE, others via lookup
+  # Map back to all rows: empty sets -> FALSE, others via lookup
   irreducible_vec <- rep(FALSE, nrow(consensus_df))
   irreducible_vec[!is_empty] <- unname(irreducible_unique[nonempty_sigs])
 

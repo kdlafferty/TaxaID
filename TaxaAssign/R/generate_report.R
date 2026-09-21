@@ -1107,7 +1107,7 @@ generate_report <- function(result,
   )
 
   response <- llm_fn(prompt)
-  # Extract text — handle both raw string and list responses
+  # Extract text -- handle both raw string and list responses
   if (is.list(response) && !is.null(response$text)) {
     response$text
   } else if (is.character(response)) {

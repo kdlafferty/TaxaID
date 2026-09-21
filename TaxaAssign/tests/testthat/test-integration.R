@@ -6,7 +6,7 @@
 library(dplyr)
 
 # ==============================================================================
-# Shared synthetic data — realistic enough to flow through the full pipeline
+# Shared synthetic data -- realistic enough to flow through the full pipeline
 # ==============================================================================
 
 # Simulates the output of TaxaMatch::standardize_match_data()
@@ -199,7 +199,7 @@ test_that("Full posterior pipeline: compute -> consensus -> empirical Bayes -> f
 
 test_that("expand_unreferenced output feeds into compute_posterior and score_consensus", {
   skip_if_not_installed("TaxaLikely")
-  # H1 is Atherinops affinis (Atherinopsidae) — different genus from H2 (Fundulus),
+  # H1 is Atherinops affinis (Atherinopsidae) -- different genus from H2 (Fundulus),
   # so H2 expansion fires and produces Fundulus parvipinnis.
   lik <- data.frame(
     observation_id = "ESV_001",

@@ -30,7 +30,7 @@
 #' lowest common ancestor (LCA) as the consensus taxonomic assignment.
 #'
 #' **Which hypotheses are included:** All named hypotheses contribute to the
-#' LCA — `"specific_candidate"`, `"unreferenced_species"` (congener without reference
+#' LCA -- `"specific_candidate"`, `"unreferenced_species"` (congener without reference
 #' sequence), `"unreferenced_genus"` (family-level unreferenced taxon: named species
 #' from a genus absent in the reference), and `"unresolved_species"` (a species from a
 #' census-complete genus whose identity is ambiguous among the known reference members;
@@ -117,7 +117,7 @@
 #'   }
 #'   For each unresolved row where `consensus_rank` is not the finest rank,
 #'   the function looks up how many taxa at the next finer rank belong to the
-#'   consensus taxon. If exactly one, it downranks (recursively — e.g. family
+#'   consensus taxon. If exactly one, it downranks (recursively -- e.g. family
 #'   to unique genus to unique species in one pass). Stops at any rank with
 #'   more than one option. Default `NULL` (no downranking). A narrowing must
 #'   also survive `downrank_requires_candidate`. Callers
@@ -1057,7 +1057,7 @@ posterior_consensus <- function(posterior_df,
 
   # Propagate pass-through columns added by update_prior_from_consensus().
   # prior_updated: any row TRUE means the observation was updated.
-  # consensus_taxon_v1 / consensus_rank_v1: constant within observation — take first value.
+  # consensus_taxon_v1 / consensus_rank_v1: constant within observation -- take first value.
   if ("prior_updated" %in% names(chunk)) {
     out$prior_updated <- any(chunk$prior_updated, na.rm = TRUE)
   }
@@ -1364,7 +1364,7 @@ posterior_consensus <- function(posterior_df,
       finer_vals <- unique(candidates[[finer_col]])
       finer_vals <- finer_vals[!is.na(finer_vals)]
 
-      if (length(finer_vals) != 1L) break # 0 or >1 options — stop
+      if (length(finer_vals) != 1L) break # 0 or >1 options -- stop
 
       # Candidate-set gate. The reference knowing exactly one
       # finer taxon is not enough: that taxon must also be at or above a
@@ -1399,9 +1399,11 @@ posterior_consensus <- function(posterior_df,
   }
 
   if (n_blocked > 0L) {
-    cli::cli_inform(
-      "posterior_consensus: {n_blocked} downranking step(s) blocked because the reference's only finer taxon was not among the observation's own candidates (see {.arg downrank_requires_candidate})."
-    )
+    cli::cli_inform(paste0(
+      "posterior_consensus: {n_blocked} downranking step(s) blocked because the ",
+      "reference's only finer taxon was not among the observation's own ",
+      "candidates (see {.arg downrank_requires_candidate})."
+    ))
   }
 
   consensus_df

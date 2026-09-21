@@ -48,7 +48,7 @@ or a full list with a \code{$priors} element (the shape
 \code{$priors} element is extracted automatically either way).}
 
 \item{site}{Site context for prior joining, including habitat.
-\code{main_habitat} is always required — the function does not guess
+\code{main_habitat} is always required -- the function does not guess
 which habitat your observations came from. Accepted formats:
 \describe{
 \item{Named list with lat/lon}{\code{list(lat = 34.1, lon = -119.1,
