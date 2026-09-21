@@ -1792,7 +1792,7 @@ utils::globalVariables(c(
 #'   what happened this call -- see `@section Chunked evaluation and NCBI
 #'   rate-limiting resilience` below.
 #'
-#' @section Chunked evaluation and NCBI rate-limiting resilience (2026-08-14):
+#' @section Chunked evaluation and NCBI rate-limiting resilience:
 #' A large accession list is evaluated `chunk_size` accessions at a time,
 #' with the persistent cache written after EACH chunk rather than once at
 #' the very end. Combined with `blast_sequences()`'s own circuit breaker
@@ -1810,14 +1810,13 @@ utils::globalVariables(c(
 #' pause before calling `evaluate_reference_accessions()` again with the
 #' *same* accessions and `cache_dir` -- already-cached accessions are read
 #' straight from the cache (no re-BLAST), so a resumed call only pays for
-#' what's still genuinely outstanding. Before this existed, the documented
-#' workaround for a large real run (e.g.
-#' `AuditNCBI_Goal2_MatchCandidateScreen.R`, a real external GreatLakes
-#' workflow) was to manually pre-split the accession list into chunks of
-#' ~200 and call this function once per chunk -- `chunk_size` automates
-#' exactly that.
+#' what's still genuinely outstanding. `chunk_size` automates what would
+#' otherwise require manually pre-splitting the accession list into chunks
+#' of ~200 and calling this function once per chunk, as a large real run
+#' (e.g. `AuditNCBI_Goal2_MatchCandidateScreen.R`, a real external
+#' GreatLakes workflow) needs.
 #'
-#' @section Hybrid-labeled accessions (2026-08-10):
+#' @section Hybrid-labeled accessions:
 #' NCBI's own taxonomy entry for a hybrid-cross-labeled organism (e.g.
 #' `"Ctenopharyngodon idella x Megalobrama amblycephala"`) is genuinely
 #' incomplete -- confirmed live against several real GreatLakes candidates:
@@ -1855,7 +1854,7 @@ utils::globalVariables(c(
 #' this maternal-parent substitution, which would have no biological
 #' justification for a non-hybrid. A leading lowercase breeding/ploidy-
 #' manipulation modifier (e.g. `"androgenetic"`, `"autodiploid"`,
-#' `"autotetraploid"` -- all found on real GreatLakes records, 2026-08-11)
+#' `"autotetraploid"` -- all found on real GreatLakes records)
 #' is stripped before `clean_taxon_names()` runs, since the maternal-
 #' inheritance argument still holds (these manipulate the nuclear genome,
 #' not which egg's cytoplasm/mitochondria the offspring develops in). A
@@ -1864,14 +1863,14 @@ utils::globalVariables(c(
 #' own unresolved lineage, `taxonomy_resolution_source =
 #' "hybrid_unresolved"` -- an honest admission, not a guess.
 #'
-#' @section Species-resolved comparison partners (2026-08-13):
+#' @section Species-resolved comparison partners:
 #' A comparison partner (an independent BLAST hit) whose OWN listed species
 #' isn't resolved to species level (e.g. `"Serranidae sp. JL-2015"` -- a
 #' family name used in place of a genus, with an informal specimen code) is
 #' excluded from `n_independent_top_matches`/
 #' `frac_independent_below_min_congruent_rank` entirely, via
 #' `require_species_resolved_partner = TRUE` (default, not currently a
-#' caller-facing parameter). Found live, 2026-08-11/13, on the real
+#' caller-facing parameter). Found live on the real
 #' GreatLakes *Stereolepis doederleini* case: both real accessions of this
 #' genuinely isolated species (Polyprionidae has only 2 genera) read
 #' `"incongruent"` purely because the one real independent hit available in
@@ -1889,7 +1888,7 @@ utils::globalVariables(c(
 #' `listed_taxon_is_species` already applies to the QUERY side) applied to
 #' the HIT side's own resolved species name.
 #'
-#' @section Identity diagnostics (2026-08-07):
+#' @section Identity diagnostics:
 #' `hierarchy_flag`/`finest_common_rank` alone cannot distinguish a genuine
 #' mislabel from "the listed rank has no well-covered independent relative
 #' in GenBank at this marker" -- both produce identical rank-agreement
@@ -1900,14 +1899,14 @@ utils::globalVariables(c(
 #' family); a disagreeing hit at ~85-90% is unremarkable for a conserved
 #' marker (e.g. 18S) with poor resolving power at that rank. This does NOT
 #' resolve the ambiguity on its own -- it is a design-consult finding
-#' (2026-08-07, grounded in a real case: `Abylopsis eschscholtzii`,
+#' (grounded in a real case: `Abylopsis eschscholtzii`,
 #' `KY594854`/`KX384617`, both flagged `"incongruent"` with disagreeing
 #' hits at family that are consistently a SISTER family within the same
 #' order) that these columns give a caller genuinely new information to
 #' judge that question with, not a verdict. No classification threshold in
 #' this function reads these columns; they are informational only.
 #'
-#' @section Long-sequence robustness (2026-09-01):
+#' @section Long-sequence robustness:
 #' Implements `ecosystem_docs/REENTRY_PROMPT_
 #' eval_ref_accessions_long_sequence_robustness.md`. `barcode_term`
 #' trimming already shortens an over-length query when the primer sites can
