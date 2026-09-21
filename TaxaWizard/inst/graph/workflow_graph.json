@@ -145,7 +145,7 @@
       ],
       "to": "match_df",
       "label": "BLAST sequences against reference database",
-      "description": "Read sequences, filter by length/abundance, run BLAST, standardize output, remove redundant higher-rank hits. Optionally screens reference accessions for taxonomic incongruence with independent GenBank evidence (evaluate_reference_accessions()/flag_incongruent_references(), 2026-08-08 audit's recommended pre-training screen).",
+      "description": "Use this when the user has raw DNA sequences from eDNA/metabarcoding (a DADA2 sequence table or FASTA) and wants taxonomic assignment starting from BLAST/sequence-match results, not yet standardized. Read sequences, filter by length/abundance, run BLAST, standardize output, remove redundant higher-rank hits. Optionally screens reference accessions for taxonomic incongruence with independent GenBank evidence (evaluate_reference_accessions()/flag_incongruent_references(), 2026-08-08 audit's recommended pre-training screen).",
       "packages": [
         "TaxaMatch"
       ],
@@ -218,7 +218,7 @@
       ],
       "to": "occurrences",
       "label": "Fetch occurrence records from GBIF",
-      "description": "Resolve taxon names to GBIF keys, query occurrences within a bounding box, filter for quality, deduplicate",
+      "description": "Use this as the default path from a taxon list to occurrence data, when the input is trusted (a curated species list, not citizen-science-heavy or unfamiliar taxa) -- see taxa_to_occ_checked for the slower, outlier-screened alternative. Resolve taxon names to GBIF keys, query occurrences within a bounding box, filter for quality, deduplicate",
       "packages": [
         "TaxaFetch",
         "TaxaTools"
@@ -335,7 +335,7 @@
         "std_occurrences"
       ],
       "to": "priors",
-      "label": "Build priors via site-centered kernel estimation (2026-08-30/31 redesign)",
+      "label": "Build priors via site-centered kernel estimation (recommended default)",
       "description": "A genuinely different estimator from the GLMM/grid-cell paths above, not an add-on step: site-centered distance-kernel weighting (geo x optional-covariate product kernel) directly on standardized occurrence data, with NO gridding/create_sites_from_grid() step at all -- each record is weighted by its own distance from the focal site instead of being binned into a grid cell first. Bandwidth is chosen automatically via leave-one-block-out composition prediction (replaces the GLMM path's AIC formula screening). Recommended over the GLMM/grid paths for a single-site study, or where the grid-cell approach has previously produced boundary-sensitive/alphabetical-tie artifacts. Optionally adds named domestic/commensal-animal and food-species priors, same as the other priors-building edges. Optionally also runs the curve-pricing evidence block (2026-08-31/09-12 redesign): elevates the dark-diversity floor for zero-record candidates with a regional GBIF record just outside the site, a named invasive/watch-listed species, or a verified iNaturalist range, all habitat-conditioned against the same habitat lookup the residents use.",
       "packages": [
         "TaxaExpect",
@@ -569,8 +569,8 @@
         "match_df"
       ],
       "to": "consensus",
-      "label": "Score-based consensus (simplest, no model/priors)",
-      "description": "Rule-based consensus: minimum score + maximum gap + optional rank thresholds. No training or API calls needed. Auto-creates taxon_name column if missing.",
+      "label": "Score-based consensus only -- fixed score/gap rule (e.g. 100%-match-is-species), no Bayesian priors or LLM",
+      "description": "Use this when the user wants taxonomic assignment based on sequence-match scores/consensus alone -- a fixed percent-identity or score-gap rule, e.g. 'call species only at 100% match, otherwise report a coarser rank' -- without Bayesian priors or LLM-based interpretation. Rule-based consensus: minimum score + maximum gap + optional rank thresholds. No training or API calls needed. Auto-creates taxon_name column if missing.",
       "packages": [
         "TaxaAssign",
         "TaxaTools"
@@ -590,8 +590,8 @@
         "match_df"
       ],
       "to": "consensus",
-      "label": "LLM-shortcut pipeline (wrapper, recommended for quick results)",
-      "description": "Single call: builds context, assigns via LLM, computes posteriors, runs consensus. Requires API key. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing.",
+      "label": "LLM-shortcut consensus -- ecological reasoning from context, no trained model or priors needed",
+      "description": "Use this when the user wants a fast, ecologically-informed consensus call without first training a likelihood model or building occurrence-based priors -- an LLM reasons directly from geographic/habitat context. Single call: builds context, assigns via LLM, computes posteriors, runs consensus. Requires API key. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing.",
       "packages": [
         "TaxaAssign",
         "TaxaTools"
@@ -617,8 +617,8 @@
         "priors"
       ],
       "to": "consensus",
-      "label": "Full Bayesian pipeline (wrapper)",
-      "description": "Single call: evaluates likelihoods, joins priors, computes posteriors, runs consensus. Requires pre-trained model and priors. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing. IMPORTANT: this wrapper does NOT call combine_multisite_priors() -- if observations span multiple distinct sites, use the manual lik_prior_to_post_multisite path instead (via post_to_consensus), or duplicate per-site candidate rows will reach compute_posterior() uncombined.",
+      "label": "Full Bayesian consensus -- trained likelihood model combined with occurrence-based priors",
+      "description": "Use this when the user wants the full Bayesian pipeline -- a trained likelihood model combined with spatially explicit occurrence priors -- rather than a simple score rule or an LLM shortcut. Needs model_params and priors already built. Single call: evaluates likelihoods, joins priors, computes posteriors, runs consensus. Requires pre-trained model and priors. Use when standard defaults are acceptable. Auto-creates taxon_name column if missing. IMPORTANT: this wrapper does NOT call combine_multisite_priors() -- if observations span multiple distinct sites, use the manual lik_prior_to_post_multisite path instead (via post_to_consensus), or duplicate per-site candidate rows will reach compute_posterior() uncombined.",
       "packages": [
         "TaxaAssign",
         "TaxaTools"

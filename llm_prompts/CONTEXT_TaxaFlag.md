@@ -4,7 +4,7 @@
 
 Identifies and flags anomalous detections in taxonomic assignment results from biological surveys. Detects laboratory and field contamination by comparing read proportions against control samples, flags handler-related artifacts near equipment setup or collection events, and provides LLM-based expert review of habitat fit, geographic plausibility, contaminant risk, and taxonomic scope. Operates on consensus data frames and appends categorical flag columns for user-driven filtering. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-20 21:09:36 UTC; unix). 12 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 01:42:16 UTC; unix). 12 exported function(s).
 
 ## Functions
 
@@ -35,7 +35,7 @@ Appends two independent, orthogonal diagnostic axes to a 'TaxaAssign::posterior_
 
 **Value:** 'consensus_df' with five columns appended: 'primary_plausibility', 'consensus_plausibility' Character. Occurrence plausibility (Axis 1) of 'primary_taxon' and of 'consensus_taxon': '"expected"', '"unexpected"', '"unprecedented"', or '"not_modeled"' when nothing is computable - including when 'consensus_rank' has no matching entry in 'expected_theta_threshold'. 'NA' when the required source columns
 
-### build_review_covariates(reads_df, classification_df, taxon_col = "ESVId", classification_taxon_col = "observation_id", classification_col = "primary_plausibility", event_col = "event_id", site_col = NULL, reads_col = "n_reads", sequence_col = "sequence", control_samples = NULL, contaminant_df = NULL, contaminant_taxon_col = taxon_col, contaminant_cols = "control_rate", extra_covariate_cols = NULL, read_quantile = 0.9)
+### build_review_covariates(reads_df, classification_df, taxon_col = "taxon_id", classification_taxon_col = "observation_id", classification_col = "primary_plausibility", event_col = "event_id", site_col = NULL, count_col = "count", sequence_col = "sequence", control_samples = NULL, contaminant_df = NULL, contaminant_taxon_col = taxon_col, contaminant_cols = "control_rate", extra_covariate_cols = NULL, read_quantile = 0.9)
 
 Build per-observation covariates for modelling a review classification
 
@@ -45,12 +45,12 @@ Collapses a long-format reads table (one row per taxon x sample) to one row per 
 |---|---|---|---|
 | reads_df | yes |  | Long-format data frame: one row per taxon x sample, with a taxon identifier, a sample/event identifier, a read-count column, and (optionally) a sequence column. Matches the input shape of flag_contaminant. |
 | classification_df | yes |  | Data frame with a taxon identifier and a classification column to be modelled -- typically add_posthoc_assessment's output or a review_assignments output column. |
-| taxon_col | no | "ESVId" | Character. Taxon/observation identifier column in reads_df (default "ESVId"). |
+| taxon_col | no | "taxon_id" | Character. Taxon/observation identifier column in reads_df (default "ESVId"). |
 | classification_taxon_col | no | "observation_id" | Character. Taxon/observation identifier column in classification_df (default "observation_id" -- this ecosystem's consensus/review tables use a different id-column name than its read-count tables by convention). |
 | classification_col | no | "primary_plausibility" | Character. Column in classification_df holding the categorical label to model (default "primary_plausibility" -- add_posthoc_assessment()'s retired posthoc_assessment column is no longer produced; any axis column, or a review_assignments() output column, works equally well here). |
 | event_col | no | "event_id" | Character. Sample/event identifier column in reads_df (default "event_id"). |
 | site_col | no | NULL | Character or NULL (default). Site identifier column in reads_df grouping events into sites, where the events sharing a site are that site's replicates (e.g. the site_id carried by TaxaMatch::build_site_table()). NULL omits the four site-level columns entirely and leaves every other column unchanged. Each site's replicate roster -- the denominator -- is every distinct field event appearing at that site anywhere in reads_df, across all taxa, matching the effort-relative convention prop_samples_detected already uses. Rows with a missing site_col value are excluded from the site-level columns only (with a warning); they still contribute to every other covariate. |
-| reads_col | no | "n_reads" | Character. Read-count column in reads_df (default "n_reads"). |
+| count_col | no | "count" | Character. Read-count column in reads_df (default "n_reads"). |
 | sequence_col | no | "sequence" | Character or NULL. Sequence column in reads_df, used to derive seq_length. Set NULL to skip (default "sequence"). |
 | control_samples | no | NULL | Character vector of event_col values that are blanks/controls -- same convention as flag_contaminant's own control_samples parameter. Used ONLY to exclude blank samples from the field-side read-depth/ detection-breadth covariates (min_reads, max_reads, quantile_reads, total_reads, n_samples_detected, prop_samples_detected); blank-frequency itself comes from contaminant_df, not from this argument. Default NULL (no samples excluded -- appropriate if reads_df is already field-only). |
 | contaminant_df | no | NULL | Data frame or NULL (default). Output of flag_contaminant, joined in to supply blank-frequency covariates. NULL omits these columns entirely. |
@@ -100,7 +100,7 @@ For each taxon in 'taxon_names', finds the nearest record of that taxon already 
 
 **Value:** A data frame, one row per unique entry in 'taxon_names': taxon_name As supplied. n_local_records Count of 'occurrence_data' rows for this taxon with non-missing coordinates. '0' for a taxon with no local record at all - for a genuinely unprecedented taxon this IS the answer, not a failure to find one. dist_nearest_km Geodesic (great-circle) distance in km from the query point to the nearest such r
 
-### flag_contaminant(input_df, event_col = "event_id", taxon_col = "taxon_name", reads_col = "n_reads", control_samples = NULL, sample_type_col = NULL, control_types = NULL, exclude_samples = NULL, contaminant_type = "lab_contaminant", score_thresholds = c(0.5, 0.9), prior_weight = 20, require_control_evidence = FALSE, site_col = NULL, min_sites_systemic = 2L, verbose = TRUE)
+### flag_contaminant(input_df, event_col = "event_id", taxon_col = "taxon_name", count_col = "count", control_samples = NULL, sample_type_col = NULL, control_types = NULL, exclude_samples = NULL, contaminant_type = "lab_contaminant", score_thresholds = c(0.5, 0.9), prior_weight = 20, require_control_evidence = FALSE, site_col = NULL, min_sites_systemic = 2L, min_control_obs = 2L, verbose = TRUE)
 
 Flag Potential Contaminants by Comparison to Control Samples
 
@@ -111,7 +111,7 @@ Compares read proportions between field samples and control samples (negative co
 | input_df | yes |  | Data frame in long format with at minimum columns for sample identification, taxon identification, and read counts. |
 | event_col | no | "event_id" | Character. Column name identifying collection events (e.g., individual filters, bottles, or deployments). Default "event_id". |
 | taxon_col | no | "taxon_name" | Character. Column name identifying taxa (species, ESV, ASV, etc.). Default "taxon_name". |
-| reads_col | no | "n_reads" | Character. Column name with integer read counts. Default "n_reads". |
+| count_col | no | "count" | Character. Column name with integer read counts. Default "n_reads". |
 | control_samples | no | NULL | Character vector of sample IDs that are controls (negative controls or positive controls). Mutually exclusive with sample_type_col; at least one must be supplied. |
 | sample_type_col | no | NULL | Character. Column name containing sample type labels. When supplied, control_types identifies which values are controls. Mutually exclusive with control_samples. |
 | control_types | no | NULL | Character vector of values in sample_type_col that identify control samples. Required when sample_type_col is used. Default NULL. |
@@ -120,8 +120,9 @@ Compares read proportions between field samples and control samples (negative co
 | score_thresholds | no | c(0.5, 0.9) | Numeric vector of length 2. Thresholds for converting observation_validity to validity_flag. Values at or below the first are "invalid_{contaminant_type}" (probable contaminant); at or below the second, "questionable_{contaminant_type}"; higher values are "valid" (likely a genuine detection). Default c(0.5, 0.9). |
 | prior_weight | no | 20 | Numeric (default 20). Empirical Bayes shrinkage strength, in units of "equivalent reads" (Session 152 -- see .compute_contaminant_scores()'s own documentation for why this changed from "equivalent samples" in Session 151). Controls how strongly the final field-vs-control ratio is pulled toward 0.5 (maximally uncertain) when a taxon has little total read support overall. Higher values shrink harder (more conservative, less willing to call a thinly-supported taxon confidently clean or contaminated); 0 disables shrinkage entirely, restoring the raw depth-weighted ratio. |
 | require_control_evidence | no | FALSE | Logical. When TRUE, an ESV that was never detected in ANY control is labelled "no_control_evidence" instead of being scored, and ESVs that ARE seen in a control are split by DIRECTION. Default FALSE for backward compatibility, but TRUE is the defensible setting for new work and FALSE now warns. Why: the shrunken score is driven by READ DEPTH when control detections are rare, so it assigns a contamination verdict to ESVs with no contamination evidence at all. Measured on a real 12S run: of 13,597 ESVs only 43 were ever detected in a single control, yet 10,300 were labelled questionable_lab_contaminant -- the whole middle tier had ZERO blank evidence, and the rate was 75-81% in every marker and workflow checked because it reflects the read-depth distribution rather than contamination. DIRECTION IS THE POINT. Contamination flows control -> sample; CARRYOVER flows sample -> control, which is what happens when a blank picks up a little of an abundant local taxon. The first must be filtered and the second must not, and a symmetric score cannot tell them apart. |
-| site_col | no | NULL | Character or NULL. Column giving each event's site. When supplied, site breadth is computed per taxon and used as a DISCRIMINANT, not merely as extra power: a systemic contaminant (reagent, water supply) appears in controls at MANY sites regardless of which sites' samples carry it, whereas a carryover appears in controls at the ONE site whose samples are full of it. This is what dissolves the pooling-versus-pairing dilemma -- pooling controls buys power but lets one trip's contamination speak for another's, while pairing by event buys specificity at the cost of power (on real data, event-paired controls emptied the invalid tier completely: 0 ESVs, against 43 and 323 in pooled runs). Using the cross-site PATTERN keeps both. |
+| site_col | no | NULL | Character or NULL. Column giving each event's site. When supplied, site breadth is computed per taxon and used as a DISCRIMINANT, not merely as extra power: a systemic contaminant (reagent, water supply) appears in controls at MANY sites regardless of which sites' samples carry it, whereas a local source appears in controls at the ONE site whose samples are full of it. This is what dissolves the pooling-versus-pairing dilemma -- pooling controls buys power but lets one trip's contamination speak for another's, while pairing by event buys specificity at the cost of power (on real data, event-paired controls emptied the invalid tier completely: 0 ESVs, against 43 and 323 in pooled runs). Using the cross-site PATTERN keeps both. |
 | min_sites_systemic | no | 2L | Integer. How many distinct sites must show a control detection before it counts as systemic rather than local. Default 2. Only used when site_col is supplied. |
+| min_control_obs | no | 2L | Integer. Minimum number of distinct controls a taxon must appear in before the rate comparison is allowed to condemn it. Default 2. Only used when require_control_evidence = TRUE. This exists because the direction test is a BARE RATE INEQUALITY, and rates built on one observation are not comparable to rates built on hundreds: with 91 controls against 1,052 samples, one stray read in one blank scores 1/91 = 0.011 and outvotes two genuine detections at 2/1052 = 0.0019. On real data 55-63 per cent of everything the gate condemned rested on a single control observation, and the tail contained genuine organisms. Setting this to 1 restores the unfloored behaviour; a proper one-sided significance test with a multiple-testing correction would be the principled replacement and is NOT implemented. |
 | verbose | no | TRUE | Logical. Print summary messages. Default TRUE. |
 
 **Value:** A data frame with one row per taxon, sorted by 'observation_validity' (most likely contaminants first). Columns: '{taxon_col}' Taxon identifier (from input). 'observation_validity' Numeric 0-1. Empirical Bayes-shrunk ratio of the depth-weighted field rate to the total (field + control) rate. Higher = more likely a real, genuine detection; lower = more likely a contaminant. Approaches, but does not
@@ -179,7 +180,7 @@ Summarizes the quality flags applied by TaxaFlag into a structured 'report_secti
 
 **Value:** A 'report_section' object with: methods Template text describing which flags were applied. results Template text summarizing flag counts. params Named list of flagging parameters. statistics Named list of flag counts.
 
-### review_assignments(input_df, taxon_col = "consensus_taxon", taxon_rank_col = NULL, plausible_taxa_col = NULL, irreducible_only = TRUE, consensus_posterior_col = "consensus_posterior", winner_prior_col = "winner_prior", winner_rank_expanded_col = "winner_rank_expanded", plausible_posteriors_col = "plausible_posteriors", consensus_plausibility_col = "consensus_plausibility", consensus_discrimination_col = "consensus_discrimination", dist_nearest_occupied_km_col = "dist_nearest_occupied_km", patch_diameter_km_col = "patch_diameter_km", beyond_buffer_col = "beyond_buffer", inat_in_range_col = "in_range", inat_n_observations_col = "n_observations", inat_matched_name_col = "matched_name", context, target_group = NULL, marker = NULL, data_type = "eDNA", llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), taxa_per_call = 15L, max_tokens = NULL, max_retries = 2L, pause_seconds = 1, cache_dir = NULL, on_unreviewed = c("warn", "error", "ignore"), verbose = TRUE)
+### review_assignments(input_df, taxon_col = "consensus_taxon", taxon_rank_col = NULL, plausible_taxa_col = NULL, irreducible_only = TRUE, consensus_posterior_col = "consensus_posterior", winner_prior_col = "winner_prior", winner_rank_expanded_col = "winner_rank_expanded", plausible_posteriors_col = "plausible_posteriors", consensus_plausibility_col = "consensus_plausibility", consensus_discrimination_col = "consensus_discrimination", dist_nearest_occupied_km_col = "dist_nearest_occupied_km", patch_diameter_km_col = "patch_diameter_km", beyond_buffer_col = "beyond_buffer", inat_in_range_col = "in_range", inat_n_observations_col = "n_observations", inat_matched_name_col = "matched_name", context, target_group = NULL, marker = NULL, data_type, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), taxa_per_call = 15L, max_tokens = NULL, max_retries = 2L, pause_seconds = 1, cache_dir = NULL, on_unreviewed = c("warn", "error", "ignore"), verbose = TRUE)
 
 LLM Expert Review of Taxonomic Assignments
 
@@ -207,7 +208,7 @@ Sends unique taxa from a consensus table to an LLM for structured expert review.
 | context | yes |  | Named list or data frame describing the study context. Recognised fields: geography (or ecoregion), habitat (or main_habitat), date. A build_context() output works directly. At minimum, supply geography and habitat. |
 | target_group | no | NULL | Character or NULL. Taxonomic target group (e.g., "fish", "birds"). When supplied, the LLM populates llm_scope_plausibility. Default NULL. |
 | marker | no | NULL | Character or NULL. Molecular marker or detection method (e.g., "12S", "COI", "camera trap"). Provides contaminant context. Default NULL. |
-| data_type | no | "eDNA" | Character. Detection method. One of "eDNA" (default), "acoustic", or "image". Controls the contaminant assessment guidance in the LLM prompt. |
+| data_type | yes |  | Character. Detection method: one of "eDNA", "acoustic" or "image". REQUIRED -- there is no default, because the value changes the contaminant-assessment guidance the LLM is given, and a wrong assumption there is silent. State the method explicitly. |
 | llm_fn | no | getOption("TaxaID.llm_fn", TaxaTools::call_api) | Function. LLM provider function with signature function(prompt_str, ...). Default TaxaTools::call_api. Known footgun: call_api()'s provider auto-detection is set up by TaxaTools's own .onAttach(), which only runs via library(TaxaTools) -- calling this function from a fully-namespaced script (no library() calls at all) never triggers it, and call_api() silently falls back to degraded/uniform output rather than erroring. If every plausibility column comes back suspiciously uniform, pass llm_fn explicitly, e.g. function(p) TaxaTools::call_api(p, provider = "anthropic"). See TaxaID/CLAUDE.md's "Known R Footguns" for the full record. |
 | taxa_per_call | no | 15L | Integer. Maximum taxa (or candidate sets) per LLM call. Default 15L. Candidate-set entries are longer than single taxon names; consider reducing to 8--10 when using plausible_taxa_col. |
 | max_tokens | no | NULL | Integer or NULL. Maximum response tokens requested from llm_fn (forwarded as llm_fn(prompt, max_tokens = max_tokens) whenever supplied). Default NULL -- does not pass max_tokens at all, so llm_fn's own default applies (3000L for TaxaTools::call_api()). Raise this if max_retries alone isn't resolving truncation warnings for your data -- e.g. a long, multi-marker marker string can inflate per-taxon response length enough that even the smallest retry sub-batch still truncates. |
@@ -219,7 +220,7 @@ Sends unique taxa from a consensus table to an LLM for structured expert review.
 
 **Value:** The input data frame with 8 or 9 columns appended: 'llm_habitat_plausibility' likely / possible / unlikely. Renamed from 'habitat_plausibility' 2026-09-06 - see '@section Column naming' below. 'llm_geographic_plausibility' likely / possible / unlikely. Renamed from 'geographic_plausibility'. 'llm_scope_plausibility' likely / possible / unlikely, or 'NA' if 'target_group' not supplied. Renamed from
 
-### review_spatial_context(input_df, query_lat, query_lon, taxon_col = "primary_taxon", plausibility_col = "primary_plausibility", occurrence_data = NULL, excluded_occurrence_data = NULL, occurrence_taxon_col = "taxon_name", occurrence_lat_col = "decimalLatitude", occurrence_lon_col = "decimalLongitude", inat_range = NULL, inat_taxon_col = "taxon_name", live_inat_check = TRUE, inat_cache_dir = NULL, inat_radius_km = 500, context = NULL, target_group = NULL, marker = NULL, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), tile = "CartoDB.Positron", gbif_style = "classic.point", gbif_bin_size = 256L, gbif_year_range = NULL)
+### review_spatial_context(input_df, query_lat, query_lon, taxon_col = "primary_taxon", plausibility_col = "primary_plausibility", occurrence_data = NULL, excluded_occurrence_data = NULL, occurrence_taxon_col = "taxon_name", occurrence_lat_col = "decimalLatitude", occurrence_lon_col = "decimalLongitude", inat_range = NULL, inat_taxon_col = "taxon_name", live_inat_check = TRUE, inat_cache_dir = NULL, inat_radius_km = 500, context = NULL, target_group = NULL, marker = NULL, data_type, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), tile = "CartoDB.Positron", gbif_style = "classic.point", gbif_bin_size = 256L, gbif_year_range = NULL)
 
 Interactive Spatial Review of Consensus Taxa
 
@@ -245,6 +246,7 @@ Opens a Shiny gadget for scrolling through consensus taxa - grouped by plausibil
 | context | no | NULL | Passed straight to review_assignments() when "Run AI Review" is clicked. context defaulting to NULL (rather than being required, unlike review_assignments() itself) is what hides the button entirely -- supply it to enable on-demand AI review. |
 | target_group | no | NULL | Passed straight to review_assignments() when "Run AI Review" is clicked. context defaulting to NULL (rather than being required, unlike review_assignments() itself) is what hides the button entirely -- supply it to enable on-demand AI review. |
 | marker | no | NULL | Passed straight to review_assignments() when "Run AI Review" is clicked. context defaulting to NULL (rather than being required, unlike review_assignments() itself) is what hides the button entirely -- supply it to enable on-demand AI review. |
+| data_type | yes |  | Character. Detection method, passed straight to review_assignments(): one of "eDNA", "acoustic" or "image". REQUIRED, and required even when the "Run AI Review" button is never clicked, because the value changes the guidance the LLM receives and defaulting it would make that choice silently. |
 | llm_fn | no | getOption("TaxaID.llm_fn", TaxaTools::call_api) | Passed straight to review_assignments() when "Run AI Review" is clicked. context defaulting to NULL (rather than being required, unlike review_assignments() itself) is what hides the button entirely -- supply it to enable on-demand AI review. |
 | tile | no | "CartoDB.Positron" | Character. Leaflet base-map tile provider (the reference map underneath the GBIF density overlay). Default "CartoDB.Positron" -- a muted, mostly-grayscale basemap chosen specifically so GBIF's own density colours stand out (a busier basemap like "OpenStreetMap"'s default styling visually competes with them, especially at low zoom where GBIF's own density pixels are small). Try "CartoDB.PositronNoLabels" for an even plainer background (drops place-name labels too). |
 | gbif_style | no | "classic.point" | Character. GBIF map API style query parameter, controlling how GBIF itself renders density (colour ramp, point vs. area aggregation). Default "classic.point" -- GBIF's own default rendering, matching what GBIF's own map viewer shows. A bare ".point" style is automatically upgraded to its ".poly" counterpart and combined with gbif_bin_size (below) unless it's a Heat-family style, which has no .poly counterpart. Other .point styles (e.g. "purpleHeat.point") are valid and can look bolder against a light basemap; pass one to compare. |
@@ -267,7 +269,7 @@ Lists, and optionally deletes, the per-key files written by 'review_assignments(
 
 **Value:** Invisibly, the inventory data frame ('TaxaTools::list_cache_files()' output) of the files considered.
 
-### validate_controls(input_df, event_col = "event_id", taxon_col = "taxon_name", reads_col = "n_reads", control_samples, site_col = NULL, min_samples_per_site = 3L, headroom_fraction = 0.5, headroom_limit = 0.98, max_null_pairs = 500L, verbose = TRUE)
+### validate_controls(input_df, event_col = "event_id", taxon_col = "taxon_name", count_col = "count", control_samples, site_col = NULL, min_samples_per_site = 3L, headroom_fraction = 0.5, headroom_limit = 0.98, max_null_pairs = 500L, verbose = TRUE)
 
 Validate That Control Samples Actually Look Like Controls
 
@@ -275,10 +277,10 @@ Tests whether each column labelled a control is compositionally consistent with 
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| input_df | yes |  | Long-format data frame: one row per taxon x column observation, carrying at least event_col, taxon_col and reads_col. |
+| input_df | yes |  | Long-format data frame: one row per taxon x column observation, carrying at least event_col, taxon_col and count_col. |
 | event_col | no | "event_id" | Character. Column identifying the sequenced column (filter, bottle, replicate). Default "event_id". |
 | taxon_col | no | "taxon_name" | Character. Column identifying the feature to compare compositions on -- an ESV/ASV id is preferable to a taxon name, because it does not depend on assignment succeeding. Default "taxon_name". |
-| reads_col | no | "n_reads" | Character. Read-count column. Default "n_reads". |
+| count_col | no | "count" | Character. Read-count column. Default "n_reads". |
 | control_samples | yes |  | Character vector of event_col values that are labelled controls. |
 | site_col | no | NULL | Character or NULL. Column grouping columns into sites. When NULL every column is treated as one site, which makes the null a whole-study one and weakens the test; a warning says so. |
 | min_samples_per_site | no | 3L | Integer. Below this many field samples a site cannot form its own null. Default 3. |
@@ -339,13 +341,14 @@ gated <- flag_contaminant(
   event_col                = "event_id",
   control_samples          = blank_ids,
   require_control_evidence = TRUE,   # no verdict without a control detection
-  site_col                 = "Site"  # systemic vs local carryover
+  site_col                 = "Site", # systemic vs local
+  min_control_obs          = 2L     # don't condemn on ONE blank observation
 )
 
 # what to actually remove
 gated[gated$validity_flag == "invalid_lab_contaminant", ]
 # what NOT to remove, though the ungated path would have
-gated[gated$validity_flag == "carryover", ]
+gated[gated$validity_flag == "not_control_enriched", ]
 # and what simply cannot be assessed
 table(gated$validity_flag)
 ```

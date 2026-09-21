@@ -42,6 +42,16 @@ The ecosystem was designed with eDNA metabarcoding in mind, but image
 and acoustic analyses are possible when starting from a table of
 candidate matches.
 
+**If an AI assistant is reading this repository** (an agentic coding
+tool, or a person asking an AI assistant something like "how do I do
+taxonomic assignment for eDNA?" or "assign species from these BLAST
+results"), start at `llm_prompts/START_HERE.md`. It routes a stated
+biological goal to the right TaxaID workflow via the package's own
+workflow graph, rather than guessing at individual functions -- see
+[Interactive Workflow Designer](#interactive-workflow-designer), below,
+for how that graph is generated and kept in sync with the installed
+packages.
+
 The ecosystem supports three types of workflows, ranging from simple to
 comprehensive:
 
@@ -726,6 +736,20 @@ If you're not sure where to start, the fastest path is often the least
 code: `TaxaWizard::workflow_create()` interviews you about your data and
 goals and generates a complete, runnable R script for you (see
 [Interactive Workflow Designer](#interactive-workflow-designer), below).
+An AI assistant working from a stated goal should do the same thing
+programmatically -- identify the workflow graph node/edge before
+guessing at individual functions, rather than writing ad-hoc R against
+remembered function names. For example: *"I have BLAST results from an
+eDNA metabarcoding study. I want to assign species only when the
+sequence matches at 100%, and otherwise retain a higher-level
+assignment"* is a match-scores-in, consensus-out request -- the
+`match_to_consensus_score` edge (score-based consensus, no Bayesian
+priors or LLM), with the 100% rule translated to that edge's
+`min_score`/rank-threshold parameters rather than a hand-written filter.
+See [Using TaxaID with any LLM](TaxaWizard/README.md#using-taxaid-with-any-llm)
+in the TaxaWizard README for the full mechanism and how to point a
+non-Claude-Code AI assistant at it.
+
 If you'd rather find the right starting point yourself, match your data
 to a row below:
 

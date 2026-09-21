@@ -189,6 +189,28 @@ placeholder setup report, since it isn't any one machine) ships at the
 repository root in
 [`llm_prompts/`](https://github.com/DOI-USGS/TaxaID/tree/main/llm_prompts).
 
+**Example interaction**, once an assistant has read `START_HERE.md`:
+
+> **User:** I have BLAST results from an eDNA metabarcoding study. I want
+> to assign species only when the sequence matches at 100%, and
+> otherwise retain a higher-level assignment.
+>
+> **Assistant:** That's a match-scores-in, consensus-out request:
+> `input_type = match_df`, `output_type = consensus`. Of the paths
+> connecting them, `match_to_consensus_score` fits -- a rule-based
+> consensus from match scores alone, no Bayesian priors or LLM call.
+> Your rule ("species only at 100%, else coarser") maps to that edge's
+> score threshold and rank fallback, not a hand-written filter. Can you
+> point me at your match table, or tell me its column names, so I can
+> confirm the score column and set the parameters?
+
+The assistant recognized the domain (eDNA/metabarcoding taxonomic
+assignment from sequence matches), picked the workflow graph edge that
+matches the stated rule rather than guessing at a function, and asked
+only for what it couldn't infer -- the input file. It would inspect that
+file (`sniff_input()` in agent mode) before asking anything the data
+itself can answer.
+
 ## Part of TaxaID
 
 TaxaWizard sits outside the TaxaID dependency chain. It introspects the

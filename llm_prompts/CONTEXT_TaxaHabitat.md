@@ -4,7 +4,7 @@
 
 Assigns habitat classifications to taxonomic occurrence records using LLM prompts and performs spatial quality control. Receives occurrence data from TaxaFetch and produces habitat-annotated, spatially screened records for input to TaxaExpect. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-20 21:06:03 UTC; unix). 18 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-20 22:00:00 UTC; unix). 18 exported function(s).
 
 ## Functions
 
