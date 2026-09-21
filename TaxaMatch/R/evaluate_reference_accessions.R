@@ -1058,7 +1058,7 @@ utils::globalVariables(c(
     query_meta$species.x <- query_meta$organism
 
     # ---- Hybrid-labeled accessions: NCBI's own taxonomy for a hybrid-cross
-    # organism is genuinely incomplete (confirmed live, 2026-08-10, against
+    # organism is genuinely incomplete (confirmed live against
     # real GreatLakes candidates -- lineage stops at "unclassified
     # Cyprinoidei", no family/genus/species) -- see this function's own
     # @section Hybrid-labeled accessions for the full mechanism and why
@@ -1076,7 +1076,7 @@ utils::globalVariables(c(
       needs_proxy <- is_hybrid_labeled & is.na(query_meta[["family.x"]])
 
       if (any(needs_proxy)) {
-        # TaxaTools::clean_taxon_names() (2026-08-11 onward) already strips
+        # TaxaTools::clean_taxon_names() already strips
         # a single leading breeding/ploidy-manipulation modifier word (e.g.
         # "androgenetic", "autodiploid", "autotetraploid" -- all found on
         # real GreatLakes Carassius/Megalobrama hybrid records) before its
@@ -1277,13 +1277,13 @@ utils::globalVariables(c(
     # rejection wave affecting an entire batch): query_meta itself was
     # already filtered to 0 rows above (via blast_failed_acc), so the
     # merge() just above also produces 0 rows. Building computed_rows in
-    # that case previously crashed the ENTIRE call (losing every accession
+    # that case would crash the ENTIRE call (losing every accession
     # successfully evaluated earlier in the SAME call, since the persistent
     # cache only writes once, at the very end) -- data.frame() does not
     # recycle a length-1 scalar column (evaluated_at/cache_hit/params_key)
     # down to 0 rows the way it recycles into a longer common length; it
-    # errors instead ("arguments imply differing number of rows"). Found
-    # live, 2026-08-10, on a real GreatLakes run where NCBI rejected every
+    # errors instead ("arguments imply differing number of rows"). Confirmed
+    # live on a real GreatLakes run where NCBI rejected every
     # single one of 414 remaining accessions.
     if (nrow(congruence) > 0L) {
       computed_rows <- data.frame(
@@ -1306,7 +1306,7 @@ utils::globalVariables(c(
         params_key = params_key,
         taxonomy_resolution_source =
           query_meta$taxonomy_resolution_source[match(congruence$id_x, query_meta$accession)],
-        # Audit trail (2026-09-04): what was actually submitted, and which
+        # Audit trail: what was actually submitted, and which
         # rescue produced it. Both are additive diagnostics -- see
         # .ADDITIVE_CACHE_COLUMNS.
         query_len_submitted =
