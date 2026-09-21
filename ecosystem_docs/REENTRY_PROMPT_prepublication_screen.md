@@ -416,6 +416,17 @@ DATAFLOW; `validate_controls()` gives all-zero columns an explicit
 TaxaTools 1,174, TaxaExpect 701, TaxaFlag 580, all zero failures. One known
 gap until the next reinstall: TaxaWizard's committed-template diff test
 compares against the installed library, which predates today's inst/ edits.
+TaxaFetch done -- 2 DEFECTS, reproduced (branch `screen-a5-fixes-fetch`):
+`check_geographic_outliers()` names its verdict cache by `sum(keys) %% 1e9`
+-- not a hash; equal-sum key sets collide and the second call silently
+marks every record "insufficient_global_data" (fix: `rlang::hash()` of the
+sorted keys + verdict parameters, the package's existing convention, and a
+guard treating a file with none of the requested ids as a miss);
+`dedupe_occurrences()` crashes when a key column is absent while its docs
+promise a no-op (fix: loud `stop()` naming the missing columns). 1 RISK:
+iNaturalist calls have no retry/backoff on 429/5xx (fix: reuse the GBIF
+retry engine). Open question for someone with API access: whether omitting
+iNat's `captive`/`quality_grade` params really means "no filter".
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
