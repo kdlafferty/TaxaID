@@ -36,16 +36,16 @@
 #'   the built-in Anthropic HTTP logic are bypassed entirely. The function
 #'   must accept four named arguments and return a single character string:
 #'   \itemize{
-#'     \item \code{messages} — list of \code{list(role, content)} objects
+#'     \item \code{messages} -- list of \code{list(role, content)} objects
 #'       (the conversation history + current user turn).
-#'     \item \code{system_prompt} — character string (the phase prompt).
-#'     \item \code{model} — character string (passed from the \code{model}
+#'     \item \code{system_prompt} -- character string (the phase prompt).
+#'     \item \code{model} -- character string (passed from the \code{model}
 #'       argument; ignore if your provider uses a fixed model).
-#'     \item \code{max_tokens} — integer (default 16384).
+#'     \item \code{max_tokens} -- integer (default 16384).
 #'   }
 #'   The return value should be the raw LLM response text (plain or JSON).
 #'   For Azure OpenAI the caller must assemble the chat-completion request
-#'   using \code{messages} + \code{system_prompt} — see the example below.
+#'   using \code{messages} + \code{system_prompt} -- see the example below.
 #' @param trial Logical. When \code{TRUE}, generated scripts include
 #'   trial-mode subsetting for performance estimation. Default \code{FALSE}.
 #'
@@ -238,7 +238,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
     # path_select -> parameterize). The next phase will immediately ask
     # the user a concrete question, so the transitional text is noise.
     # Detect based on: status complete + selected_path exists + no DAG.
-    # Don't rely on the 'phase' field — the LLM sometimes mislabels it.
+    # Don't rely on the 'phase' field -- the LLM sometimes mislabels it.
     has_path_no_dag <- !is.null(result$selected_path) &&
       length(result$selected_path) > 0L &&
       (is.null(result$dag) || length(result$dag$steps) == 0L)
@@ -262,7 +262,7 @@ workflow_create <- function(mode = c("auto", "viewer", "browser", "console"),
         }
 
         # Classify phase completion: input_type + output_type set, no path, no dag.
-        # This is expected — the user just confirmed their input/output types.
+        # This is expected -- the user just confirmed their input/output types.
         # Wait for their confirmation reply; .detect_phase() will then move to path_select.
         has_classify_complete <- !is.null(result$input_type) &&
           nzchar(result$input_type %||% "") &&

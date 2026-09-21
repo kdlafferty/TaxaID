@@ -255,7 +255,10 @@
         add_row(
           edge_id, sprintf("%s::%s", pkg_hint, nm), "package_unavailable",
           sprintf(
-            "%s is a TaxaID package but is not available in the registry (not installed, or failed to load) -- %s::%s could not be checked",
+            paste0(
+              "%s is a TaxaID package but is not available in the registry ",
+              "(not installed, or failed to load) -- %s::%s could not be checked"
+            ),
             pkg_hint, pkg_hint, nm
           )
         )

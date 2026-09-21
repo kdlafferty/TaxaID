@@ -1,4 +1,4 @@
-# Tests for workflow engine — offline only (no API calls)
+# Tests for workflow engine -- offline only (no API calls)
 
 test_that(".parse_engine_response: parses clean JSON", {
   raw <- '{"status": "incomplete", "message": "What marker?", "dag": null}'

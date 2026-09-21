@@ -1,17 +1,17 @@
 # ==============================================================================
 # zzz.R
-# TaxaWizard — package load hook
+# TaxaWizard -- package load hook
 #
 # .onAttach(): Detect available LLM API keys and set TaxaID.provider /
 #   TaxaID.llm_fn options if TaxaTools has not already done so.
 #   Mirrors TaxaTools' detection priority so that loading TaxaWizard
-#   alone is sufficient — users do not need library(TaxaTools) separately.
+#   alone is sufficient -- users do not need library(TaxaTools) separately.
 # ==============================================================================
 
 
 #' @noRd
 .onAttach <- function(libname, pkgname) {
-  # TaxaTools already configured — nothing to do
+  # TaxaTools already configured -- nothing to do
   if (!is.null(getOption("TaxaID.provider"))) {
     return(invisible())
   }

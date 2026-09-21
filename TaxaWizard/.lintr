@@ -22,5 +22,38 @@ exclusions: list(
     "inst/graph/snippets/match_to_consensus_score.R" = list(line_length_linter = Inf),
     "inst/graph/snippets/match_to_taxa.R" = list(line_length_linter = Inf),
     "inst/graph/snippets/occ_to_std.R" = list(line_length_linter = Inf),
-    "inst/graph/snippets/seq_to_match.R" = list(line_length_linter = Inf)
+    "inst/graph/snippets/seq_to_match.R" = list(line_length_linter = Inf),
+    # R/pack.R: line_length hits are the prompt-pack's own markdown/
+    # instruction content (SETUP_REPORT.md prose, {{placeholder}} -> LLM
+    # instruction text in .pack_task_bracket_map()) -- literal text shipped
+    # to the user, not code; wrapping would either break the string or add
+    # paste0() noise for no correctness gain. The assignment_linter hit at
+    # 644 is a bog-standard closure accumulator (a private `w()` helper
+    # appending to a vector in its immediately enclosing, fully local
+    # function scope), not the module-level mutable state this linter
+    # exists to catch. Session B4 pre-review pass.
+    "R/pack.R" = list(
+      line_length_linter = c(285L, 397L, 406L, 434L, 435L, 442L, 447L, 448L, 449L, 451L, 456L, 537L),
+      assignment_linter = 644L
+    ),
+    # R/output.R:231 is one literal line of a GENERATED script (the
+    # .taxaid_clear_steps_after() message text written into taxaid_workflow.R
+    # by build_generated_script()) -- splitting the R-level string would add
+    # a line the generated script never has; the printed message itself is
+    # user-facing content. Session B4 pre-review pass.
+    "R/output.R" = list(line_length_linter = 231L),
+    # R/validate.R:77: same closure-accumulator pattern as R/pack.R above
+    # (a private `add_row()` helper appending to a fully local list).
+    # Session B4 pre-review pass.
+    "R/validate.R" = list(assignment_linter = 77L),
+    # R/registry.R and R/setup.R: these are deliberate SCREAMING_SNAKE_CASE
+    # module constants (TAXAID_PACKAGES, REGISTRY_SCHEMA, .SNIFF_DATA_EXTS,
+    # .SNIFF_SIZE_CAP, .SNIFF_SYSTEM_ROOTS), plus one deliberately
+    # base-function-named placeholder (`readRDS <- NULL`, documented at its
+    # definition) that testthat::local_mocked_bindings() needs to exist
+    # before it can be mocked -- renaming any of these is out of scope for
+    # a pre-review pass (no export/behavior change) and would defeat the
+    # mocking placeholder's whole purpose. Session B4 pre-review pass.
+    "R/registry.R" = list(object_name_linter = c(19L, 40L)),
+    "R/setup.R" = list(object_name_linter = c(605L, 620L, 632L, 1189L))
   )

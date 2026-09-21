@@ -40,16 +40,16 @@ providers (Azure, OpenAI, Gemini, ...). When non-NULL, \code{api_key} and
 the built-in Anthropic HTTP logic are bypassed entirely. The function
 must accept four named arguments and return a single character string:
 \itemize{
-\item \code{messages} — list of \code{list(role, content)} objects
+\item \code{messages} -- list of \code{list(role, content)} objects
 (the conversation history + current user turn).
-\item \code{system_prompt} — character string (the phase prompt).
-\item \code{model} — character string (passed from the \code{model}
+\item \code{system_prompt} -- character string (the phase prompt).
+\item \code{model} -- character string (passed from the \code{model}
 argument; ignore if your provider uses a fixed model).
-\item \code{max_tokens} — integer (default 16384).
+\item \code{max_tokens} -- integer (default 16384).
 }
 The return value should be the raw LLM response text (plain or JSON).
 For Azure OpenAI the caller must assemble the chat-completion request
-using \code{messages} + \code{system_prompt} — see the example below.}
+using \code{messages} + \code{system_prompt} -- see the example below.}
 
 \item{trial}{Logical. When \code{TRUE}, generated scripts include
 trial-mode subsetting for performance estimation. Default \code{FALSE}.}

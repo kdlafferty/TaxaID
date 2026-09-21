@@ -618,7 +618,7 @@
   )
 
   # Old-style scripts hardcode the count in sprintf; update that too
-  # Pattern: step_id, <number>, description  →  step_id, <new_total>, description
+  # Pattern: step_id, <number>, description  ->  step_id, <new_total>, description
   combined <- sub(
     "(step_id, )\\d+(, description)",
     sprintf("\\1%d\\2", total_steps),

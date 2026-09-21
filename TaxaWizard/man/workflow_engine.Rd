@@ -67,7 +67,7 @@ and let the user choose.
 code snippets.
 }
 
-Phase detection is stateless — determined entirely from conversation history.
+Phase detection is stateless -- determined entirely from conversation history.
 }
 \examples{
 \dontrun{
