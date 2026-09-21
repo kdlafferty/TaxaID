@@ -40,6 +40,15 @@
 #' response regardless of \code{per_page}, so a single lightweight request
 #' (\code{per_page = 1}) is sufficient per taxon.
 #'
+#' \strong{Retry/backoff:} a 429 (rate limit) or 5xx (server error) response
+#' from the observation-count request is retried up to 4 attempts total,
+#' honouring a server-sent \code{Retry-After} header when present and
+#' falling back to a 15/30/60 s backoff otherwise. Once every attempt is
+#' exhausted, that taxon's row still gets \code{query_status =
+#' "request_failed"} -- retrying only reduces how often a transient
+#' rate-limit/outage produces that outcome, it does not change what a
+#' persistent failure looks like to the caller.
+#'
 #' @param taxon_names Character vector of species names to check.
 #' @param lat Numeric. Latitude of the query point in decimal degrees.
 #' @param lng Numeric. Longitude of the query point in decimal degrees.
@@ -57,6 +66,17 @@
 #'   \code{quality_grade}, to isolate captive/cultivated status specifically.
 #' @param api_token Character. iNaturalist API token for taxon name
 #'   resolution. Defaults to the \code{INAT_API_TOKEN} environment variable.
+#' @param retry_attempts Integer (default \code{4L}). How many times the
+#'   observation-count request is attempted in total before giving up when
+#'   iNaturalist answers with a 429 (rate limit) or 5xx (server error).
+#'   Matches \code{\link{download_gbif_occurrences}}'s
+#'   \code{submit_attempts} convention. Any other status (including a
+#'   success or a 401) is never retried.
+#' @param retry_wait Numeric vector of seconds (default \code{c(15, 30,
+#'   60)}) slept between retry attempts when iNaturalist does not send a
+#'   \code{Retry-After} header; the last value repeats if
+#'   \code{retry_attempts} exceeds its length. A server-sent
+#'   \code{Retry-After} value, when present, is honoured instead.
 #' @param verbose Logical. If TRUE, prints progress for each taxon. Default FALSE.
 #' @return A tibble with columns \code{taxon_name}, \code{taxon_id},
 #'   \code{matched_name}, \code{inat_kingdom} (derived from iNaturalist's own
@@ -90,6 +110,8 @@ fetch_inat_occurrences <- function(
   captive = c("any", "true", "false"),
   quality_grade = c("any", "casual", "needs_id", "research"),
   api_token = Sys.getenv("INAT_API_TOKEN"),
+  retry_attempts = 4L,
+  retry_wait = c(15, 30, 60),
   verbose = FALSE
 ) {
   captive <- match.arg(captive)
@@ -136,13 +158,15 @@ fetch_inat_occurrences <- function(
     }
 
     n_local <- .inat_observation_count(
-      taxon_id      = info$taxon_id,
-      lat           = lat,
-      lng           = lng,
-      radius_km     = radius_km,
-      captive       = captive,
-      quality_grade = quality_grade,
-      api_token     = api_token
+      taxon_id       = info$taxon_id,
+      lat            = lat,
+      lng            = lng,
+      radius_km      = radius_km,
+      captive        = captive,
+      quality_grade  = quality_grade,
+      api_token      = api_token,
+      max_attempts   = retry_attempts,
+      waits          = retry_wait
     )
 
     results[[i]] <- tibble::tibble(
@@ -165,8 +189,21 @@ fetch_inat_occurrences <- function(
 # --- Internal helpers ---------------------------------------------------------
 
 #' Count local iNaturalist observations for one resolved taxon ID
+#'
+#' Retries a 429 (rate limit) or 5xx (server error) response with backoff
+#' via `.http_with_retry()` -- see that function for why this is a small,
+#' iNaturalist-only helper rather than a reuse of
+#' `download_gbif_occurrences.R`'s `.gbif_submit_with_retry()`/
+#' `.gbif_wait_with_retry()` engine. A 401 is never retried (raised
+#' immediately, same message as before); any other non-200 status, or a
+#' network-level failure that survives every retry attempt, returns
+#' `NA_integer_` exactly as before -- this only adds retry/backoff ahead of
+#' that existing failure path, it does not change what a final failure looks
+#' like to the caller (`fetch_inat_occurrences()`'s `query_status` still
+#' becomes `"request_failed"`).
 #' @noRd
-.inat_observation_count <- function(taxon_id, lat, lng, radius_km, captive, quality_grade, api_token) {
+.inat_observation_count <- function(taxon_id, lat, lng, radius_km, captive, quality_grade, api_token,
+                                     max_attempts = 4L, waits = c(15, 30, 60)) {
   query <- list(
     taxon_id = taxon_id,
     lat      = lat,
@@ -177,13 +214,16 @@ fetch_inat_occurrences <- function(
   if (captive != "any") query$captive <- captive
   if (quality_grade != "any") query$quality_grade <- quality_grade
 
-  resp <- tryCatch(
-    httr::GET(
-      "https://api.inaturalist.org/v1/observations",
-      query = query,
-      httr::add_headers(Authorization = paste("Bearer", api_token))
-    ),
-    error = function(e) NULL
+  resp <- .http_with_retry(
+    function() {
+      httr::GET(
+        "https://api.inaturalist.org/v1/observations",
+        query = query,
+        httr::add_headers(Authorization = paste("Bearer", api_token))
+      )
+    },
+    max_attempts = max_attempts,
+    waits = waits
   )
   Sys.sleep(0.3)
 
@@ -211,4 +251,64 @@ fetch_inat_occurrences <- function(
   }
 
   as.integer(parsed$total_results)
+}
+
+#' Perform an HTTP request with retry/backoff on 429 and 5xx responses
+#'
+#' A small, self-contained retry engine for a plain `httr::GET()` call,
+#' deliberately NOT built on top of `download_gbif_occurrences.R`'s
+#' `.gbif_submit_with_retry()`/`.gbif_wait_with_retry()`: those wrap
+#' `rgbif::occ_download()`/`occ_download_wait()` and decide whether to retry
+#' by pattern-matching GBIF's own error TEXT (`.gbif_transient_error()`,
+#' e.g. "Backend fetch failed"), not an httr status code -- there is no
+#' contained way to route a status-code-based retry through that engine, and
+#' this function does not touch the GBIF download path at all.
+#'
+#' `request_fn` is called with no arguments and must return an httr response
+#' object (a network-level failure, e.g. a curl timeout, is caught and
+#' treated as retryable, same as a 429/5xx response). Status 429 or `>= 500`
+#' is retried up to `max_attempts` times total, honouring a server-sent
+#' `Retry-After` header (seconds) when present, falling back to `waits`
+#' (recycling its last value if `max_attempts` exceeds its length)
+#' otherwise. Any other status -- including 200 (success) and 401
+#' (authentication failure, which callers handle specially and must not
+#' have retried) -- is returned immediately without retrying. Once
+#' `max_attempts` is exhausted, the last response (or `NULL`, if every
+#' attempt failed at the network level) is returned; the caller's existing
+#' failure handling takes it from there.
+#' @noRd
+.http_with_retry <- function(request_fn, max_attempts = 4L, waits = c(15, 30, 60)) {
+  last <- NULL
+  for (i in seq_len(max_attempts)) {
+    resp <- tryCatch(request_fn(), error = function(e) NULL)
+    if (!is.null(resp)) {
+      status <- httr::status_code(resp)
+      if (!(status == 429L || status >= 500L)) {
+        return(resp)
+      }
+    }
+    last <- resp
+    if (i < max_attempts) {
+      Sys.sleep(.http_retry_wait(last, i, waits))
+    }
+  }
+  last
+}
+
+#' Seconds to wait before the next retry attempt, honouring Retry-After
+#' @noRd
+.http_retry_wait <- function(resp, attempt, waits) {
+  fallback <- waits[min(attempt, length(waits))]
+  if (is.null(resp)) {
+    return(fallback)
+  }
+  retry_after <- tryCatch(httr::headers(resp)[["retry-after"]], error = function(e) NULL)
+  if (is.null(retry_after)) {
+    return(fallback)
+  }
+  secs <- suppressWarnings(as.numeric(retry_after))
+  if (is.na(secs) || secs < 0) {
+    return(fallback)
+  }
+  secs
 }

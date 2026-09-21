@@ -201,11 +201,15 @@ test_that(".inat_observation_count: returns NA on non-200 status", {
   local_mocked_bindings(
     GET = function(...) .resp(500L),
     status_code = function(x) x$status_code,
+    headers = function(x) list(),
     .package = "httr"
   )
+  # max_attempts = 1L: this test targets the non-200 -> NA outcome itself,
+  # not the retry behaviour (covered separately below).
   n <- TaxaFetch:::.inat_observation_count(
     taxon_id = 3855L, lat = 34.1, lng = -119.1, radius_km = 50,
-    captive = "any", quality_grade = "any", api_token = "tok"
+    captive = "any", quality_grade = "any", api_token = "tok",
+    max_attempts = 1L
   )
   expect_true(is.na(n))
 })
@@ -237,4 +241,177 @@ test_that(".inat_observation_count: returns NA when total_results missing", {
     captive = "any", quality_grade = "any", api_token = "tok"
   )
   expect_true(is.na(n))
+})
+
+# =============================================================================
+# Retry/backoff on 429 and 5xx (RISK-1 fix)
+# =============================================================================
+
+test_that(".inat_observation_count: retries a 429 twice then succeeds on the third attempt", {
+  call_count <- 0L
+  local_mocked_bindings(
+    GET = function(...) {
+      call_count <<- call_count + 1L
+      if (call_count <= 2L) .resp(429L) else .resp(200L)
+    },
+    status_code = function(x) x$status_code,
+    content = function(...) list(total_results = 77L),
+    headers = function(x) list(),
+    .package = "httr"
+  )
+  n <- TaxaFetch:::.inat_observation_count(
+    taxon_id = 3855L, lat = 34.1, lng = -119.1, radius_km = 50,
+    captive = "any", quality_grade = "any", api_token = "tok",
+    waits = c(0, 0, 0) # keep the test fast; behaviour under test is attempt count, not timing
+  )
+  expect_equal(call_count, 3L)
+  expect_equal(n, 77L)
+})
+
+test_that(".inat_observation_count: retries a 503 twice then succeeds (5xx is retried like 429)", {
+  call_count <- 0L
+  local_mocked_bindings(
+    GET = function(...) {
+      call_count <<- call_count + 1L
+      if (call_count <= 2L) .resp(503L) else .resp(200L)
+    },
+    status_code = function(x) x$status_code,
+    content = function(...) list(total_results = 9L),
+    headers = function(x) list(),
+    .package = "httr"
+  )
+  n <- TaxaFetch:::.inat_observation_count(
+    taxon_id = 3855L, lat = 34.1, lng = -119.1, radius_km = 50,
+    captive = "any", quality_grade = "any", api_token = "tok",
+    waits = c(0, 0, 0)
+  )
+  expect_equal(call_count, 3L)
+  expect_equal(n, 9L)
+})
+
+test_that(".inat_observation_count: a persistent 429/5xx exhausts bounded attempts and returns NA (request_failed)", {
+  call_count <- 0L
+  local_mocked_bindings(
+    GET = function(...) {
+      call_count <<- call_count + 1L
+      .resp(429L)
+    },
+    status_code = function(x) x$status_code,
+    headers = function(x) list(),
+    .package = "httr"
+  )
+  n <- TaxaFetch:::.inat_observation_count(
+    taxon_id = 3855L, lat = 34.1, lng = -119.1, radius_km = 50,
+    captive = "any", quality_grade = "any", api_token = "tok",
+    max_attempts = 3L, waits = c(0, 0, 0)
+  )
+  expect_equal(call_count, 3L) # bounded, not infinite
+  expect_true(is.na(n)) # same documented failure value as any other failure
+})
+
+test_that(".inat_observation_count: a 401 is never retried", {
+  call_count <- 0L
+  local_mocked_bindings(
+    GET = function(...) {
+      call_count <<- call_count + 1L
+      .resp(401L)
+    },
+    status_code = function(x) x$status_code,
+    headers = function(x) list(),
+    .package = "httr"
+  )
+  expect_error(
+    TaxaFetch:::.inat_observation_count(
+      taxon_id = 3855L, lat = 34.1, lng = -119.1, radius_km = 50,
+      captive = "any", quality_grade = "any", api_token = "stale",
+      waits = c(0, 0, 0)
+    ),
+    regexp = "401"
+  )
+  expect_equal(call_count, 1L)
+})
+
+test_that("fetch_inat_occurrences: retry_attempts/retry_wait are forwarded to .inat_observation_count", {
+  captured <- new.env()
+  local_mocked_bindings(
+    .inat_taxon_id = function(...) .found_taxon,
+    .inat_observation_count = function(..., max_attempts, waits) {
+      captured$max_attempts <- max_attempts
+      captured$waits <- waits
+      5L
+    },
+    .package = "TaxaFetch"
+  )
+  fetch_inat_occurrences(
+    "Calidris mauri",
+    lat = 34.1, lng = -119.1, api_token = "tok",
+    retry_attempts = 2L, retry_wait = c(1, 2)
+  )
+  expect_equal(captured$max_attempts, 2L)
+  expect_equal(captured$waits, c(1, 2))
+})
+
+# =============================================================================
+# .http_with_retry / .http_retry_wait
+# =============================================================================
+
+test_that(".http_with_retry: returns immediately on a non-retryable status (e.g. 404)", {
+  call_count <- 0L
+  local_mocked_bindings(
+    status_code = function(x) x$status_code,
+    .package = "httr"
+  )
+  resp <- TaxaFetch:::.http_with_retry(function() {
+    call_count <<- call_count + 1L
+    .resp(404L)
+  })
+  expect_equal(call_count, 1L)
+  expect_equal(httr::status_code(resp), 404L)
+})
+
+test_that(".http_with_retry: a network-level failure (request_fn throws) is retried up to max_attempts", {
+  call_count <- 0L
+  resp <- TaxaFetch:::.http_with_retry(
+    function() {
+      call_count <<- call_count + 1L
+      stop("simulated curl timeout")
+    },
+    max_attempts = 3L, waits = c(0, 0, 0)
+  )
+  expect_equal(call_count, 3L)
+  expect_null(resp)
+})
+
+test_that(".http_retry_wait: honours a numeric Retry-After header over the default backoff", {
+  local_mocked_bindings(
+    headers = function(x) list(`retry-after` = "5"),
+    .package = "httr"
+  )
+  w <- TaxaFetch:::.http_retry_wait(
+    structure(list(), class = "response"),
+    attempt = 1L, waits = c(15, 30, 60)
+  )
+  expect_equal(w, 5)
+})
+
+test_that(".http_retry_wait: falls back to waits when no Retry-After header is present", {
+  local_mocked_bindings(
+    headers = function(x) list(),
+    .package = "httr"
+  )
+  w <- TaxaFetch:::.http_retry_wait(
+    structure(list(), class = "response"),
+    attempt = 2L, waits = c(15, 30, 60)
+  )
+  expect_equal(w, 30)
+})
+
+test_that(".http_retry_wait: falls back to waits when resp is NULL (network-level failure)", {
+  w <- TaxaFetch:::.http_retry_wait(NULL, attempt = 3L, waits = c(15, 30, 60))
+  expect_equal(w, 60)
+})
+
+test_that(".http_retry_wait: recycles the last wait value once attempts exceed the vector length", {
+  w <- TaxaFetch:::.http_retry_wait(NULL, attempt = 10L, waits = c(15, 30, 60))
+  expect_equal(w, 60)
 })
