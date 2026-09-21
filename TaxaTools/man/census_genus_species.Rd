@@ -64,7 +64,7 @@ each queried taxon. Optionally compares against a reference species list
 \details{
 For \code{rank = "genus"}, the function makes one GBIF API call per genus
 (\code{rgbif::name_usage(key, data = "children")}). For higher ranks (family,
-order), it first retrieves child genera, then recurses into each genus —
+order), it first retrieves child genera, then recurses into each genus --
 this can be slow for large families (e.g., Gobiidae with 300+ genera).
 
 The \code{status} column classifies each genus by reference completeness:

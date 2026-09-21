@@ -19,7 +19,7 @@ col_map = c("Latitude"   = "decimalLatitude",
             "SurveyDate" = "eventDate")
 }
 When \code{col_map} is supplied it \strong{replaces} the default pattern
-matching entirely — only the mappings you specify are applied. When
+matching entirely -- only the mappings you specify are applied. When
 \code{NULL} (default), the built-in regex patterns are used instead
 (see Details).}
 
@@ -82,11 +82,11 @@ column content.
 The \code{col_map} concept is used consistently across the TaxaID ecosystem
 wherever column names need to be reconciled:
 \itemize{
-\item \strong{TaxaTools}: \code{rename_cols()} — general-purpose column
+\item \strong{TaxaTools}: \code{rename_cols()} -- general-purpose column
 rename with DarwinCore defaults.
-\item \strong{TaxaMatch}: \code{standardize_match_data()} — map BLAST/DADA2
+\item \strong{TaxaMatch}: \code{standardize_match_data()} -- map BLAST/DADA2
 output column names to the canonical match object format.
-\item \strong{TaxaFetch}: \code{stack_occurrences()} — align column names
+\item \strong{TaxaFetch}: \code{stack_occurrences()} -- align column names
 across occurrence data sources before row-binding.
 }
 In all cases, \code{col_map} is a named character vector where names are
@@ -104,7 +104,7 @@ df <- data.frame(
 # Default pattern matching
 rename_cols(df)
 
-# Explicit col_map — replaces default patterns entirely
+# Explicit col_map -- replaces default patterns entirely
 rename_cols(df,
   col_map = c(
     "Latitude" = "decimalLatitude",

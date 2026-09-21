@@ -21,7 +21,7 @@ generic marker key (e.g. \code{"mifish"} covers both MiFish-U and MiFish-E,
 since their amplicon lengths overlap), this registry requires the \emph{exact}
 primer variant because different variants of the same marker can have
 genuinely different primer sequences. There is deliberately no generic
-\code{"mifish"} entry here — see \code{\link[=resolve_barcode_primers]{resolve_barcode_primers()}}.
+\code{"mifish"} entry here -- see \code{\link[=resolve_barcode_primers]{resolve_barcode_primers()}}.
 }
 \details{
 Populated incrementally and only for primer sets that have been directly
