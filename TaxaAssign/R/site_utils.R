@@ -53,7 +53,7 @@
 #' TaxaAssign does not depend on TaxaExpect, and the formula is a one-liner
 #' used in only two places in this package (`adjust_inat_range_priors()`), so
 #' a cross-package exported utility was not judged worth the coordination
-#' cost. See TaxaAssign's code review response for the full reasoning.
+#' cost.
 #' @param a,b Numeric vectors. Beta shape parameters.
 #' @return Numeric vector.
 #' @noRd
@@ -62,7 +62,7 @@
 
 #' Resolve llm_fn default: NULL → TaxaTools::call_api with clear error
 #'
-#' Known footgun (see TaxaID/CLAUDE.md's "Known R Footguns"): TaxaTools'
+#' Known footgun: TaxaTools'
 #' provider auto-detection (`options(TaxaID.llm_fn = ...)`) is set by
 #' `TaxaTools::.onAttach()`, which only fires via `library(TaxaTools)` --
 #' never via a bare `TaxaTools::` namespace reference. A caller that never

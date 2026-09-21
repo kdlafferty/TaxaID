@@ -306,9 +306,8 @@ add_slash_taxon <- function(consensus_df,
 
   # --- consensus_OTU / primary_taxon (require consensus_taxon) --------------
   # Every real workflow that calls add_slash_taxon() re-derives these two
-  # columns by hand (identical logic independently written 3x across
-  # PtConceptionWorkflow_12S.R, PtConceptionWorkflow_18S_2.R, and
-  # MuguFishWorkflow.R) -- promoted here so it is computed once, consistently.
+  # columns by hand (identical logic independently written 3x across real
+  # production workflows) -- promoted here so it is computed once, consistently.
   if ("consensus_taxon" %in% names(consensus_df)) {
     otu <- ifelse(
       is.na(consensus_df[["slash_taxon_name"]]),
