@@ -9,8 +9,8 @@ utils::globalVariables(c(
 # screening at all.
 #
 # Implements items 2 and 3 of
-# ecosystem_docs/REENTRY_PROMPT_local_corroboration_and_primer_stripped_screen.md
-# (2026-09-03). Both functions consume plain data frames -- no new
+# ecosystem_docs/REENTRY_PROMPT_local_corroboration_and_primer_stripped_screen.md.
+# Both functions consume plain data frames -- no new
 # cross-package dependency.
 # ==============================================================================
 
