@@ -2170,18 +2170,18 @@ evaluate_reference_accessions <- function(accessions,
   #
   #   "incongruent" asserts that corroborating evidence was NOT found -- a
   #     statement about ABSENCE, and absence is exactly what later evidence
-  #     overturns. Expires after incongruent_ttl_days (2026-09-02).
+  #     overturns. Expires after incongruent_ttl_days.
   #
-  #   "insufficient_independent_evidence" (original) and
-  #     "not_evaluated_oversized" (2026-09-01, never actually submitted to
+  #   "insufficient_independent_evidence" and
+  #     "not_evaluated_oversized" (never actually submitted to
   #     BLAST, so a later annotation/primer fix or a raised max_query_len
   #     could change the answer) are both explicitly "we do not know yet".
   #
-  # The incongruent TTL was added after a measured case, not on principle:
-  # OP056918 (Cryptacanthodes maculatus) read "incongruent" with no
-  # corroboration anywhere on 2026-09-01 and "congruent" with four
-  # conspecific hits at 100% on 2026-09-02, under an IDENTICAL params_key.
-  # Under the previous policy that first, wrong verdict would have been
+  # The incongruent TTL reflects a measured case, not just principle:
+  # OP056918 (Cryptacanthodes maculatus) can read "incongruent" with no
+  # corroboration anywhere on one fetch and "congruent" with four
+  # conspecific hits at 100% on a later fetch, under an IDENTICAL params_key.
+  # Without a TTL that first, wrong verdict would be
   # cached forever -- and "incongruent" is the only verdict that causes a
   # reference to be REMOVED (see remove_incongruent_references()), so a
   # permanently stale one is the most costly kind. The recheck is cheap:
@@ -2194,7 +2194,7 @@ evaluate_reference_accessions <- function(accessions,
   # purpose (see the note just below).
   #
   # WHAT GOES STALE IS NCBI'S `nt` SNAPSHOT, not the accession and not this
-  # package's math. Established 2026-09-02 by
+  # package's math. Established by
   # diagnostics/blast_verdict_repeatability_probe.R: three back-to-back
   # replicates of all 12 PtConception "incongruent" accessions returned
   # identical verdicts AND identical hit sets (Jaccard 1.000), so BLAST is
@@ -2206,11 +2206,11 @@ evaluate_reference_accessions <- function(accessions,
   # was computed against -- which is precisely the situation a TTL exists
   # for.
   #
-  # "locally_corroborated" (2026-09-03) is Inf like "congruent" and for the
+  # "locally_corroborated" is Inf like "congruent" and for the
   # same reason: it asserts corroborating evidence WAS found (in the
   # caller's own reference set rather than in nt). Enumerated explicitly so
   # the next new flag value has to be placed here deliberately.
-  # "not_evaluated_wrong_marker" (2026-09-04) sits with the "we don't know
+  # "not_evaluated_wrong_marker" sits with the "we don't know
   # yet" flags at 180 days rather than with the permanent ones, and that is a
   # deliberate reading of what it claims: the accession's own annotation says
   # it carries a different marker, which is stable, but the CLAIM is relative
