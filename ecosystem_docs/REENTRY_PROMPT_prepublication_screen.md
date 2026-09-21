@@ -333,6 +333,22 @@ placeholder_setup_report = TRUE)` rather than merging it by hand.
    deleting tests, confirmed with the reviewer.
 **Done when** every response has the section, none narrates self-review, and
 the release-review response exists in that folder.
+**FIRST HALF DONE 2026-09-21** (branch `screen-a5-reviews`): catalogue
+regenerated at `inst/extra_functions_for_review.md` -- 64 exported / 294
+internal functions postdate the human review (TaxaMatch 15, TaxaTools 15,
+TaxaExpect 13, TaxaFlag 6, TaxaHabitat 5, TaxaFetch 4, TaxaWizard 4,
+TaxaLikely 2, TaxaAssign 0); 29 exports retired since review. All nine
+response files carry one "Added after the review" table; self-review
+narration removed (-660 lines net). **Template reviews (read-only, one per
+package, `scratchpad/A5_review_<Pkg>.md`)**: TaxaMatch done -- 2 DEFECTS,
+both reproduced by the coordinator: `flag_incongruent_references()`
+multiplies `match_df` rows when `evaluation` holds two version-suffixed
+copies of one accession (dedup keys the raw accession before the stripped
+join key); `verify_local_corroborations()` can return `status = "clean"`
+from a STALE params_key generation because `match()` takes the first
+(oldest) cache row. 1 RISK (`.summarise_corroborators()` reads the pair
+cache without a params_key filter). Findings are FIXED in code (branch
+`screen-a5-fixes`), never narrated in the response files (rule c).
 
 ### A6. Caching and resources, for users
 
