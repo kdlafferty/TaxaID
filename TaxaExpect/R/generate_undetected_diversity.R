@@ -32,17 +32,16 @@
 #' source." **If your study system includes domestic/synanthropic species
 #' that are plausible detections (e.g. camera-trap surveys near human
 #' habitation), augment your occurrence data with their known local presence
-#' before calling \code{train_biodiversity_model()}, rather than relying on
+#' before calling \code{estimate_kernel_priors()}, rather than relying on
 #' the automatic floor to represent them.** \code{TaxaFlag::
 #' add_posthoc_assessment(domestic_taxa = ...)} can flag the resulting
 #' low-prior-vs-strong-likelihood contrast for review if augmentation isn't
 #' practical for your workflow.
 #'
-#' @param model_obj A biofreq_model object (output of
-#'   \code{train_biodiversity_model()}) or a taxaexpect_kernel_priors object
-#'   (output of \code{estimate_kernel_priors()}): the
-#'   same rules then run on kernel ingredients (N = Kish effective sample size,
-#'   singletons = neighborhood singletons stamped with the site id).
+#' @param model_obj A \code{taxaexpect_kernel_priors} object (output of
+#'   \code{\link{estimate_kernel_priors}}). N is its Kish effective sample
+#'   size; singletons are its neighborhood singletons, stamped with the
+#'   site id.
 #' @param jeffreys_threshold Integer. If N_total is below this value, use a
 #'   Jeffreys prior Beta(0.5, 0.5) for the global floor instead of
 #'   Beta(1, N_total - 1). Default 2.
@@ -67,8 +66,7 @@
 #'     \item{grid_id}{Grid cell identifier inherited from singleton source, or
 #'       NA for the global floor.}
 #'     \item{habitat}{Habitat inherited from singleton source, or NA for
-#'       global floor. Column absent entirely when \code{model_obj} was
-#'       trained with \code{habitat_col = NULL}.}
+#'       global floor.}
 #'     \item{alpha}{Alpha parameter of Beta(alpha, beta) prior.}
 #'     \item{beta}{Beta parameter of Beta(alpha, beta) prior.}
 #'     \item{theta_mean}{Derived: alpha / (alpha + beta).}
@@ -77,8 +75,8 @@
 #'       for the global floor.}
 #'     \item{model_tier}{Always "tier3_undetected". Kernel-path
 #'       output uses \code{prior_branch} + \code{effective_records} instead;
-#'       this column is retained for compatibility with \code{biofreq_model}
-#'       inputs.}
+#'       this column is kept for schema parity with every other
+#'       prior-generating function in this package.}
 #'     \item{undetected_type}{Character: "singleton_mirror" or
 #'       "global_floor".}
 #'     \item{source_taxon_name}{Taxon name of the singleton source, or NA for
@@ -104,10 +102,6 @@
 #' the theta expected if an undetected species appeared exactly once across
 #' all sampling effort. This is always smaller than any singleton-derived
 #' theta in a well-sampled dataset.
-#'
-#' **No habitat:** when \code{model_obj} was trained with
-#' \code{habitat_col = NULL} (see \code{train_biodiversity_model()}), no
-#' habitat column is added to the returned proxy rows.
 #'
 #' **No singletons:**
 #' If the dataset contains no singletons (as is common when rare species
@@ -158,6 +152,13 @@ generate_undetected_diversity <- function(model_obj,
                                           singleton_ess = 2L,
                                           taxonomy = NULL) {
   # --- Input checks -----------------------------------------------------------
+  if (!inherits(model_obj, "taxaexpect_kernel_priors")) {
+    stop(
+      "generate_undetected_diversity: `model_obj` must be a ",
+      "taxaexpect_kernel_priors object from estimate_kernel_priors(); got ",
+      if (is.object(model_obj)) paste(class(model_obj), collapse = "/") else typeof(model_obj), "."
+    )
+  }
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
     # Kernel-priors adapter: re-plumb the same
     # frozen rules onto kernel-estimated ingredients. N_total becomes the Kish
@@ -217,12 +218,6 @@ generate_undetected_diversity <- function(model_obj,
         habitat_col = habitat_col
       )
     )
-  } else if (!inherits(model_obj, "biofreq_model")) {
-    stop(
-      "generate_undetected_diversity: model_obj must be a biofreq_model ",
-      "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
-      "object from estimate_kernel_priors()."
-    )
   }
 
   N_total <- model_obj$N_total
@@ -232,7 +227,7 @@ generate_undetected_diversity <- function(model_obj,
   if (N_total <= 0) {
     stop(
       "generate_undetected_diversity: N_total is zero or negative. ",
-      "Check that train_biodiversity_model() ran successfully."
+      "Check that estimate_kernel_priors() ran successfully."
     )
   }
 
@@ -256,8 +251,9 @@ generate_undetected_diversity <- function(model_obj,
     message(
       "generate_undetected_diversity: no singletons found in model_obj$singletons.\n",
       "Only the global floor prior will be generated.\n",
-      "If this is unexpected, check that full_data was passed to ",
-      "train_biodiversity_model() and that it contains pre-filter observations."
+      "If this is unexpected, check that estimate_kernel_priors() found any ",
+      "neighborhood singletons (species with exactly one supporting record) ",
+      "in its occurrence_data."
     )
   } else {
     message(sprintf(

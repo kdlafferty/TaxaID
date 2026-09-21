@@ -889,10 +889,10 @@
 #' -- this function's value is the categorical flag plus help for weaker/
 #' degraded matches, not sequence resolution itself.
 #'
-#' @param model_obj A biofreq_model object (output of
-#'   \code{train_biodiversity_model()}), used only for its \code{N_total}
-#'   and \code{meta$habitat_col} so these rows sit on the same theta scale
-#'   as \code{generate_undetected_diversity()}'s output.
+#' @param model_obj A \code{taxaexpect_kernel_priors} object (output of
+#'   \code{\link{estimate_kernel_priors}}), used only for its Kish
+#'   effective sample size (as \code{N_total}) so these rows sit on the
+#'   same theta scale as \code{generate_undetected_diversity()}'s output.
 #' @param lat,lng Numeric. Query site coordinates for the iNaturalist search.
 #' @param grid_id Character. Grid cell identifier to attach to every row
 #'   (for joining into \code{taxaexpect_priors}). Default \code{NA_character_}.
@@ -970,8 +970,8 @@
 #'       tell a named domestic/food prior apart from an anonymous dark-
 #'       diversity proxy. Kernel-path
 #'       output uses \code{prior_branch} + \code{effective_records} instead;
-#'       this column is retained for compatibility with \code{biofreq_model}
-#'       inputs.}
+#'       this column is kept for schema parity with every other
+#'       prior-generating function in this package.}
 #'     \item{prior_source_type}{One of \code{"domestic_animal"},
 #'       \code{"food_species"}, \code{"domestic_plant"} -- the categorical
 #'       column this function exists to add. \code{"domestic_plant"} is
@@ -1005,7 +1005,7 @@
 #'       is detected (including when it can't be checked at all, e.g. no
 #'       \code{taxonomy} kingdom column supplied).}
 #'   }
-#'   plus \code{<habitat_col>} (\code{NA}) when \code{model_obj} has one, and
+#'   plus \code{main_habitat} (always \code{NA} -- see below) and
 #'   taxonomy rank columns when \code{taxonomy} is supplied.
 #'
 #' @section Why habitat is always NA here, deliberately:
@@ -1063,21 +1063,19 @@ generate_domestic_food_priors <- function(
   api_token = Sys.getenv("INAT_API_TOKEN"),
   verbose = FALSE
 ) {
-  if (inherits(model_obj, "taxaexpect_kernel_priors")) {
-    # Kernel-priors adapter: N = Kish effective sample
-    # size; habitat concept always present on kernel estimates.
-    model_obj <- list(
-      N_total = as.integer(model_obj$params$n_records_stratum),
-      meta = list(habitat_col = "main_habitat")
-    )
-    class(model_obj) <- "biofreq_model_shim"
-  } else if (!inherits(model_obj, "biofreq_model")) {
+  if (!inherits(model_obj, "taxaexpect_kernel_priors")) {
     stop(
-      "generate_domestic_food_priors: model_obj must be a biofreq_model ",
-      "object from train_biodiversity_model() or a taxaexpect_kernel_priors ",
-      "object from estimate_kernel_priors()."
+      "generate_domestic_food_priors: `model_obj` must be a ",
+      "taxaexpect_kernel_priors object from estimate_kernel_priors(); got ",
+      if (is.object(model_obj)) paste(class(model_obj), collapse = "/") else typeof(model_obj), "."
     )
   }
+  # Kernel-priors adapter: N = Kish effective sample
+  # size; habitat concept always present on kernel estimates.
+  model_obj <- list(
+    N_total = as.integer(model_obj$params$n_records_stratum),
+    meta = list(habitat_col = "main_habitat")
+  )
   if (!is.numeric(lat) || length(lat) != 1L || is.na(lat)) {
     stop("generate_domestic_food_priors: `lat` must be a single non-NA numeric value.")
   }
@@ -1098,7 +1096,7 @@ generate_domestic_food_priors <- function(
   if (N_total <= 0) {
     stop(
       "generate_domestic_food_priors: N_total is zero or negative. ",
-      "Check that train_biodiversity_model() ran successfully."
+      "Check that estimate_kernel_priors() ran successfully."
     )
   }
 
