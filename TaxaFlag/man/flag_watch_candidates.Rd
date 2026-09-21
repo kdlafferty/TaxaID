@@ -57,9 +57,11 @@ observation (NA when no watch candidate exists).}
 }
 }
 \description{
-The likelihood-side surveillance guarantee for watch-list species
-(2026-08-26 mixture redesign, D4 -- see
-\code{ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md}).
+This function implements the likelihood-side half of the watch-list
+surveillance guarantee: since a watch-list species' occurrence prior stays
+low by design, the posterior alone cannot guarantee it surfaces, so raw
+match scores are compared directly instead (see \strong{Why this exists},
+below).
 }
 \section{Why this exists}{
 
@@ -68,8 +70,8 @@ probability of local presence (the GreatLakes2023 calibration adopted
 w = 0.05) -- which correctly stops such species from vetoing the species-
 level resolution of genuinely observed natives, but also means a watch
 species will rarely surface in the posterior-driven consensus at all. The
-surveillance requirement ("if a watch species matches this sequence well,
-a reviewer must see that, every time") cannot be honored through the
+surveillance requirement ("if a watch species matches this observation
+well, a reviewer must see that, every time") cannot be honored through the
 posterior without breaking the prior's honesty -- Bayes correctly
 down-weights an unobserved species against an abundant native at any
 likelihood ratio short of overwhelming. So the guarantee is honored on the

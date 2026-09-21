@@ -195,8 +195,7 @@ calling this function from a fully-namespaced script (no
 silently falls back to degraded/uniform output rather than erroring. If
 every plausibility column comes back suspiciously uniform, pass
 \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
-provider = "anthropic")}. See \code{TaxaID/CLAUDE.md}'s "Known R
-Footguns" for the full record.}
+provider = "anthropic")}.}
 
 \item{taxa_per_call}{Integer. Maximum taxa (or candidate sets) per LLM call.
 Default \code{15L}. Candidate-set entries are longer than single taxon
@@ -218,15 +217,14 @@ smaller batch requests a proportionally shorter response, directly
 relieving token-budget pressure. (2) When a response parses cleanly and is
 the right shape but simply OMITS specific taxa, those taxa (and only
 those) are re-asked in a follow-up call. The second case is not
-truncation, so the halving retry never fires for it; before 2026-09-14
-there was no retry at all and the run gave up on those taxa permanently
--- see \code{@section Unreviewed rows}. Both stop after
-\code{max_retries} attempts and fall back to \code{NA} defaults for
-whatever is still missing. Neither applies to a hard \code{llm_fn} error
-(e.g. network/auth failure): a smaller or narrower batch can't fix that,
-so it is reported immediately without retrying. \code{0L} means exactly
-one call per batch, as before either mechanism existed. Default
-\code{2L}.}
+truncation, so the halving retry never fires for it -- see
+\code{@section Unreviewed rows} for how omitted taxa are recovered
+instead. Both stop after \code{max_retries} attempts and fall back to
+\code{NA} defaults for whatever is still missing. Neither applies to a
+hard \code{llm_fn} error (e.g. network/auth failure): a smaller or
+narrower batch can't fix that, so it is reported immediately without
+retrying. \code{0L} disables both mechanisms, meaning exactly one call
+per batch. Default \code{2L}.}
 
 \item{pause_seconds}{Numeric. Seconds to pause between LLM calls.
 Default \code{1}.}
@@ -260,16 +258,13 @@ list that is silently short.}
 \value{
 The input data frame with 8 or 9 columns appended:
 \describe{
-\item{\code{llm_habitat_plausibility}}{likely / possible / unlikely.
-Renamed from \code{habitat_plausibility} 2026-09-06 -- see
-\code{@section Column naming} below.}
-\item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.
-Renamed from \code{geographic_plausibility}.}
+\item{\code{llm_habitat_plausibility}}{likely / possible / unlikely. See
+\code{@section Column naming} below for why this and the next three
+columns carry an \code{llm_} prefix.}
+\item{\code{llm_geographic_plausibility}}{likely / possible / unlikely.}
 \item{\code{llm_scope_plausibility}}{likely / possible / unlikely, or
-\code{NA} if \code{target_group} not supplied. Renamed from
-\code{scope_plausibility}.}
-\item{\code{llm_contamination_risk}}{high / moderate / low. Renamed from
-\code{contamination_risk}.}
+\code{NA} if \code{target_group} not supplied.}
+\item{\code{llm_contamination_risk}}{high / moderate / low.}
 \item{\code{review_alternatives}}{Comma-separated plausible alternatives,
 or \code{NA}}
 \item{\code{review_lower_hypotheses}}{Comma-separated finer-rank taxa, or
@@ -327,31 +322,29 @@ On the candidate-aware path, review results are joined back to input rows by
 the SORTED candidate set, not by the display label. The label
 (\code{consensus_OTU}) is ordered by posterior so the most-supported taxon
 reads first, which means one biological unit can carry "A/B" on one
-observation and "B/A" on another; joining on the label left one of them
-unmatched and therefore unscored. Sets are also deduplicated canonically, so
-a unit that previously appeared under two orderings is now reviewed once
-rather than twice. Display labels are unchanged. (2026-09-04.)
+observation and "B/A" on another; joining on the label would leave one of
+them unmatched and therefore unscored. Sets are also deduplicated
+canonically, so each unit is reviewed exactly once regardless of which
+ordering appears in the data. Display labels are unchanged.
 }
 
-\section{Unreviewed rows (2026-09-14)}{
+\section{Unreviewed rows}{
 
 An LLM response can parse cleanly, be the right length, and still leave
 specific taxa out -- consistently the long compound slash labels, i.e. the
 hardest rows, not random ones. That is not truncation, so the halving retry
-never fired for it, and before this date the run gave up on those taxa
-permanently: \code{NA} was filled in for all four \code{llm_} columns and
-the omission was warned about and then forgotten. Because every production
+alone would not catch it, and without a dedicated safeguard those taxa
+would be filled with \code{NA} in all four \code{llm_} columns and the
+omission warned about and then forgotten. Because every production
 workflow's export chain filters with \code{!= "unlikely"}, which
-\strong{discards \code{NA}}, the observation was removed from the final
-species list without a word -- the same class of loss as the 2026-09-04
-grass-carp incident. Found on the PtConception 12S production run, by a
-diagnostic that had itself been failing silently since it was written.
+\strong{discards \code{NA}}, an unreviewed observation would be silently
+removed from the final species list.
 
-Three changes close it. (1) Omitted taxa are \strong{re-asked}, alone, up
+Three mechanisms close this. (1) Omitted taxa are \strong{re-asked}, alone, up
 to \code{max_retries} times; the cost is bounded and pay-per-failure,
 since it only fires when the model omits, and it stops early when a re-ask
-recovers nothing. (2) An unreviewed taxon is \strong{never cached} -- and a
-cached entry from before this date holding no verdict is treated as a MISS,
+recovers nothing. (2) An unreviewed taxon is \strong{never cached} -- a
+cached entry holding no verdict is treated as a MISS,
 so an existing cache heals itself rather than serving the omission forever.
 (3) Whatever residue survives is \strong{loud}: named in
 \code{attr(result, "unreviewed_taxa")}, counted in
@@ -366,29 +359,25 @@ only by its \code{NA}s; stopping the run instead makes the decision
 per-run and explicit.
 }
 
-\section{Column naming (2026-09-06)}{
+\section{Column naming}{
 
-\code{habitat_plausibility}/\code{geographic_plausibility}/
-\code{scope_plausibility}/\code{contamination_risk} were renamed to
-\code{llm_habitat_plausibility}/\code{llm_geographic_plausibility}/
-\code{llm_scope_plausibility}/\code{llm_contamination_risk}. All four are
-independent LLM judgments -- by design, NOT derived from or gated by any
-pipeline-computed value (see \code{@section Pipeline context} below) -- and
-the old, unprefixed names read as if they might be pipeline output, which
-is exactly what confused a real user tracing a surprising
-\code{geographic_plausibility = "likely"} back through the pipeline before
-realising the number it appeared to contradict was never actually
-consulted to produce it. The LLM's own JSON response schema (what
+The four independent LLM judgments (\code{llm_habitat_plausibility}/
+\code{llm_geographic_plausibility}/\code{llm_scope_plausibility}/
+\code{llm_contamination_risk}) all carry the \code{llm_} prefix precisely
+because they are independent LLM judgments -- by design, NOT derived from
+or gated by any pipeline-computed value (see \code{@section Pipeline
+context} below). An unprefixed name would read as if it might be pipeline
+output, which is exactly the trap a real user fell into: tracing a
+surprising \code{geographic_plausibility = "likely"} back through the
+pipeline before realising the number it appeared to contradict was never
+actually consulted to produce it. The prefix makes the provenance explicit
+at the column-name level. The LLM's own JSON response schema (what
 \code{.build_review_prompt()} asks for and \code{.parse_review_response()}
-parses) is UNCHANGED -- only the final output column names carry the
-prefix. Real callers (\code{report_flags()}, five external eDNA workflow
-scripts) were all updated the same session; \code{report_flags()}'s own
-contamination-column detection also still recognises the old bare
-\code{contamination_risk} name, for a data frame produced by a
-pre-2026-09-06 install.
+parses) uses the bare names internally -- only the final output column
+names carry the prefix.
 }
 
-\section{Skepticism gate (2026-09-06)}{
+\section{Skepticism gate}{
 
 A real case motivated this: an LLM rated a taxon
 \code{llm_geographic_plausibility = "likely"} despite the pipeline
@@ -396,11 +385,8 @@ recording ZERO local occurrence records for it AND a near-total inability
 to discriminate it from a confusable relative on score alone -- explaining
 itself only with a general species-level range description, no evidence
 specific to the actual study site. Two independent responses, both real,
-both needed (a stronger prompt instruction is not sufficient on its own --
-see the reasoning in
-\code{[[project_rank_trust_mechanism_removed]]}/\code{[[project_verify_purpose_before_flagging]]}-adjacent
-precedent throughout this ecosystem: never trust an LLM alone to reliably
-self-flag its own uncertainty):
+both needed: a stronger prompt instruction alone is not sufficient, since
+an LLM cannot be trusted to reliably self-flag its own uncertainty:
 \enumerate{
 \item{A GUIDELINES bullet (only added when at least one taxon in a
 batch actually carries the flag -- see
@@ -462,9 +448,7 @@ different real explanations, indistinguishable without this evidence.
 
 Deliberately facts-only in the per-taxon bracket -- no plausibility
 judgment is pre-computed or baked in server-side (the same design choice
-already made for \code{winner_rank_expanded}'s note above, and the reason
-the \code{trusted_rank} mechanism was removed from this ecosystem
-elsewhere -- see \code{TaxaLikely::evaluate_likelihoods()}'s history). Two
+already made for \code{winner_rank_expanded}'s note above). Two
 real caveats about how to weigh these facts are added as a GUIDELINES
 bullet instead (only when a batch has at least one such note), for the LLM
 to apply per case: (1) GBIF's density map is raw, unfiltered global data --

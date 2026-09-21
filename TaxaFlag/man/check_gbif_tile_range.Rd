@@ -48,8 +48,7 @@ when \code{escalate = FALSE}.}
 
 \item{cache_dir}{Character or \code{NULL} (default). Directory for a
 persistent, per-key on-disk cache -- see \verb{Caching} below. \code{NULL}
-disables caching entirely (identical to every prior release of this
-function).}
+disables caching entirely.}
 }
 \value{
 A one-row data frame:
