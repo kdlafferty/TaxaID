@@ -869,9 +869,32 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   TaxaID package instead of silently skipping. Diagnosis-and-fix in
   progress: the honest outcome is a `skip()` only when `requireNamespace()`
   provably fails, and a run (not a skip) whenever the siblings are present.
-  **B1 launched**: clean clone of `main`, fresh library first on `R_LIBS`,
-  install in dependency order, all nine suites, machine-path grep, the
-  README's smoke tests.
+  **B1 DONE 2026-09-21** (clone of `main` at `c9d42f2`, fresh library first
+  on `R_LIBS`, all R steps confirmed resolving under it): all nine packages
+  install in dependency order with zero warnings and no undeclared
+  dependency; eight suites pass at baseline (TaxaTools 1174, TaxaFetch 844,
+  TaxaMatch 1368, TaxaLikely 1335, TaxaExpect 701, TaxaHabitat 580,
+  TaxaAssign 811, TaxaFlag 580; 0 failures); no hard-coded machine paths,
+  every `system.file()` target present in the installed copies; both README
+  smoke tests run to `OK` from the fresh install with only the documented
+  warnings. **One real defect**: TaxaWizard 1098/9 -- `test-pack.R`'s
+  "generated pack equals the committed copy, date stamp aside" fails on
+  every clean install because the pack embeds `packageDescription()$Built`
+  (second-precision) in the packages table and every `CONTEXT_<pkg>.md`
+  header, and `.undate()` excuses only the calendar date. The committed
+  pack only ever matched because it was regenerated seconds after the
+  install that produced it. Decision: the Built stamp leaves the pack (a
+  user-facing document carries the version, not an install wall-clock);
+  fix goes on `stageb-wizard-check` with the `check()` fix below. Report:
+  `TaxaID_dev/screen_records/.../B1_clean_clone.md`.
+  **TaxaWizard `check()` fix (branch `stageb-wizard-check`, `c430a83`)**:
+  cause confirmed -- `R CMD check` builds an isolated library from
+  DESCRIPTION alone, and seven siblings were undeclared, so the drift test
+  ran against a TaxaTools-only registry; and the test's skip fired only at
+  ZERO installed siblings. Fix: the seven added to `Suggests`; the skip is
+  now per-package and names what is missing. Verified: with siblings
+  present the drift test RUNS (1107/0, SKIP 0); with only TaxaTools
+  resolvable it skips provably (not fails); `check()` 0/0/0.
   **Pre-tag fix MERGED (`e9efe23`)**: `.pasta_eml_url()` holds each id
   segment to `[A-Za-z0-9_.-]` with no `..` (34 DataONE tests pass).
   **B3 launched** (scratch worktree, nothing committed): eleven guards each
