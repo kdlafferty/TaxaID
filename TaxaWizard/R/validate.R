@@ -31,7 +31,12 @@
 #' Walks the R AST of every code snippet referenced by the workflow graph's
 #' edges (or a subset of them, via \code{edge_ids}) and reports drift between
 #' what a snippet calls and what the installed TaxaID packages actually
-#' export/accept.
+#' export/accept. This is the snippet-code validator; it does not check
+#' anything about the local machine's setup (installed packages as a
+#' category, keys, network, binaries) -- that is \code{workflow_check()}'s
+#' job (\code{R/setup.R}), a separate, unrelated check. Called from
+#' \code{.describe_paths()} and \code{.get_path_context()} in
+#' \code{R/graph.R}.
 #'
 #' @param graph Optional graph object from \code{\link{.load_graph}}.
 #' @param registry Optional registry from \code{\link{workflow_registry}}.
