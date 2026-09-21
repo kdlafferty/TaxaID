@@ -4,8 +4,6 @@
 #
 # Exported functions:
 #   report_flags()   -- generate report_section from flagged data
-#
-# Session 65: initial implementation
 # ==============================================================================
 
 
@@ -52,13 +50,14 @@ report_flags <- function(flagged_data,
   # --- Auto-detect flag columns -----------------------------------------------
   all_cols <- names(flagged_data)
 
-  # Contaminant flags — three naming conventions supported:
-  #   Pre-Session 101:   flag_lab_contaminant, flag_field_contaminant, etc.
-  #   Post-Session 101:  lab_contaminant_risk, field_contaminant_risk,
-  #                      contamination_risk (from review_assignments())
-  #   Post-2026-09-06:   llm_contamination_risk (review_assignments()'s
-  #                      llm_ column rename -- see that function's own
-  #                      "Column naming" roxygen section)
+  # Contaminant flags -- flagged_data may carry contamination-risk information
+  # under any of three column-naming conventions, depending on which function
+  # produced it:
+  #   flag_lab_contaminant, flag_field_contaminant, etc. (flag_contaminant())
+  #   lab_contaminant_risk, field_contaminant_risk, contamination_risk
+  #     (review_assignments())
+  #   llm_contamination_risk (review_assignments()'s llm_-prefixed columns --
+  #     see that function's own "Column naming" roxygen section)
   contaminant_cols_old <- grep("^flag_(lab|field|positive|control)", all_cols, value = TRUE)
   contaminant_cols_new <- grep(
     "^(lab|field|positive|control)_contaminant_risk$|^contamination_risk$|^llm_contamination_risk$",
@@ -70,23 +69,22 @@ report_flags <- function(flagged_data,
   # Handler flags: flag_handler (naming unchanged)
   handler_cols <- grep("^flag_handler", all_cols, value = TRUE)
 
-  # Plausibility columns from review_assignments() (post-Session 101; post-
-  # 2026-09-06 these are llm_habitat_plausibility/llm_geographic_plausibility/
-  # llm_scope_plausibility -- suffix-matched, so the llm_ prefix needs no
-  # change here):
+  # Plausibility columns from review_assignments() -- these are
+  # llm_habitat_plausibility/llm_geographic_plausibility/llm_scope_plausibility;
+  # suffix-matched, so the llm_ prefix needs no change here:
   plausibility_cols <- grep("_plausibility$", all_cols, value = TRUE)
 
   # Review metadata columns: review_confidence, review_comment, etc.
   review_cols <- grep("^review_", all_cols, value = TRUE)
 
-  # Unified validity schema (2026-07-24, flag_contaminant()/flag_handler()):
-  # every TaxaFlag flag_*() mechanism now shares one literal column name
-  # (validity_flag), so -- unlike every earlier naming era above, where the
-  # COLUMN NAME itself identified which check produced it -- the check type
-  # here has to be read out of the VALUES ("valid" / "questionable_{type}" /
-  # "invalid_{type}"). This is additive to, not a replacement for, the two
-  # naming eras above (a data frame built from an older flag_contaminant()/
-  # flag_handler() call still detects correctly via the branches above).
+  # Unified validity schema (flag_contaminant()/flag_handler()): every
+  # TaxaFlag flag_*() mechanism shares one literal column name
+  # (validity_flag), so -- unlike the column-naming conventions detected
+  # above, where the COLUMN NAME itself identifies which check produced it --
+  # the check type here has to be read out of the VALUES ("valid" /
+  # "questionable_{type}" / "invalid_{type}"). This detection is independent
+  # of, not a replacement for, the column-naming detection above: a data
+  # frame using either convention is still detected correctly.
   validity_flag_present <- "validity_flag" %in% all_cols
   validity_bad_values <- if (validity_flag_present) {
     vals <- flagged_data$validity_flag
@@ -118,9 +116,9 @@ report_flags <- function(flagged_data,
   n_total <- nrow(flagged_data)
 
   # Count flags for each column, accounting for both value conventions:
-  #   Pre-Session 101 risk:       "unlikely" / "possible" = flagged
-  #   Post-Session 101 risk:      "moderate" / "high"     = flagged
-  #   Post-Session 101 plausibility: "possible" / "unlikely" = flagged
+  #   risk columns using "unlikely"/"possible" as the flagged values
+  #   risk columns using "moderate"/"high" as the flagged values
+  #   plausibility columns using "possible"/"unlikely" as the flagged values
   .is_flagged <- function(col) {
     vals <- flagged_data[[col]]
     (vals %in% c("unlikely", "possible")) | # pre-101 risk + post-101 plausibility
@@ -136,11 +134,11 @@ report_flags <- function(flagged_data,
     }
   }
 
-  # Unified validity schema (2026-07-24): one breakdown entry per distinct
-  # non-"valid" value actually present (e.g. "invalid_lab_contaminant: 12,
-  # questionable_lab_contaminant: 5") -- finer-grained than the old
-  # one-count-per-column convention above, since severity is now carried in
-  # the value rather than being a separate per-column concept.
+  # Unified validity schema: one breakdown entry per distinct non-"valid"
+  # value actually present (e.g. "invalid_lab_contaminant: 12,
+  # questionable_lab_contaminant: 5") -- finer-grained than the
+  # one-count-per-column convention above, since severity is carried in the
+  # value rather than being a separate per-column concept.
   for (val in validity_bad_values) {
     n_flagged <- sum(flagged_data$validity_flag == val, na.rm = TRUE)
     if (n_flagged > 0L) flag_counts[[val]] <- n_flagged
