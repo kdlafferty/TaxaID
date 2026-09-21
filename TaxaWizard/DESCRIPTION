@@ -19,7 +19,6 @@ Imports:
     httr2,
     jsonlite
 Suggests:
-    lifecycle,
     shiny,
     TaxaTools,
     testthat (>= 3.0.0)

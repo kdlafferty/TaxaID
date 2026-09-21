@@ -30,7 +30,6 @@
 #'   for the required function signature.
 #' @param system_prompt Character or NULL. Custom system prompt override.
 #'   When \code{NULL} (default), builds phase-specific prompt automatically.
-#' @param metadata Deprecated. Use \code{registry} instead.
 #'
 #' @return A list with components:
 #' \describe{
@@ -64,26 +63,7 @@ workflow_engine <- function(history,
                             model = "claude-sonnet-4-6",
                             api_key = NULL,
                             llm_fn = NULL,
-                            system_prompt = NULL,
-                            metadata = NULL) {
-  # `metadata` is a deprecated alias for `registry`. Anything passed there
-  # (named, or as the second positional argument, which is structurally
-  # identical) is honored as `registry` after a warning.
-  if (!is.null(metadata)) {
-    if (requireNamespace("lifecycle", quietly = TRUE)) {
-      lifecycle::deprecate_warn(
-        "0.1.0", "workflow_engine(metadata = )", "workflow_engine(registry = )"
-      )
-    } else {
-      warning(
-        "`metadata` is deprecated and will be removed ",
-        "in a future release; use `registry` instead.",
-        call. = FALSE
-      )
-    }
-    if (is.null(registry)) registry <- metadata
-  }
-
+                            system_prompt = NULL) {
   # Wrap the engine body in a tryCatch so that any unexpected
 
   # NULL/NA-in-if errors produce a recoverable response instead of crashing.
@@ -451,46 +431,4 @@ workflow_engine <- function(history,
   # No same-length match; return the shortest path
   lengths <- vapply(paths, function(p) length(p$edges), 0L)
   paths[[which.min(lengths)]]$edges
-}
-
-
-#' Load and Assemble the Legacy System Prompt
-#'
-#' Reads the system prompt template from \code{inst/prompts/system_prompt.md}
-#' and injects the compressed function registry. Kept for backward
-#' compatibility; the phase-based engine uses \code{.build_phase_prompt()}.
-#'
-#' @param registry Named list from \code{workflow_registry()}.
-#' @return Character string: the full system prompt.
-#' @noRd
-.load_system_prompt <- function(registry, output_dir = ".") {
-  prompt_path <- system.file("prompts", "system_prompt.md",
-    package = "TaxaWizard"
-  )
-  if (!nzchar(prompt_path)) {
-    stop("System prompt file not found. Is TaxaWizard installed?",
-      call. = FALSE
-    )
-  }
-
-  template <- paste(readLines(prompt_path, warn = FALSE), collapse = "\n")
-  registry_text <- .compress_registry(registry)
-
-  # Replace placeholder with compressed registry
-  prompt <- sub("{{FUNCTION_REGISTRY}}", registry_text, template, fixed = TRUE)
-
-  # Inject per-user corrections (learned from previous errors)
-  corrections_text <- .format_corrections_for_prompt()
-  if (nzchar(corrections_text)) {
-    prompt <- paste0(prompt, "\n\n", corrections_text)
-  }
-
-  # Inject saved context from previous session
-  ctx <- .load_context(output_dir)
-  ctx_text <- .format_context_for_prompt(ctx)
-  if (nzchar(ctx_text)) {
-    prompt <- paste0(prompt, "\n\n", ctx_text)
-  }
-
-  prompt
 }

@@ -10,8 +10,7 @@ workflow_engine(
   model = "claude-sonnet-4-6",
   api_key = NULL,
   llm_fn = NULL,
-  system_prompt = NULL,
-  metadata = NULL
+  system_prompt = NULL
 )
 }
 \arguments{
@@ -35,8 +34,6 @@ for the required function signature.}
 
 \item{system_prompt}{Character or NULL. Custom system prompt override.
 When \code{NULL} (default), builds phase-specific prompt automatically.}
-
-\item{metadata}{Deprecated. Use \code{registry} instead.}
 }
 \value{
 A list with components:

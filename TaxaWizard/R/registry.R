@@ -531,35 +531,7 @@ workflow_registry <- function(packages = NULL, refresh = FALSE) {
 }
 
 
-#' Compress the Registry for Prompt Injection
-#'
-#' Converts the full introspected registry into a token-efficient text
-#' block suitable for the \code{{{FUNCTION_REGISTRY}}} placeholder in the
-#' system prompt: one line per function, showing its real call signature
-#' (parameter names and defaults, in \code{formals()} order -- no type
-#' column, since the registry does not carry per-parameter types) and its
-#' Rd title.
-#'
-#' @param registry Named list from \code{workflow_registry()}.
-#' @return Character string.
-#' @noRd
-.compress_registry <- function(registry) {
-  lines <- character(0)
-  for (pkg_name in names(registry)) {
-    pkg <- registry[[pkg_name]]
-    lines <- c(lines, sprintf("## %s", pkg_name))
-    for (fn in pkg$functions) {
-      sig <- .format_registry_signature(fn)
-      title <- fn$title %||% ""
-      lines <- c(lines, sprintf("- %s::%s(%s) | %s", pkg_name, fn$name, sig, title))
-    }
-    lines <- c(lines, "")
-  }
-  paste(lines, collapse = "\n")
-}
-
-
-#' Format One Function's Call Signature for the Compressed Registry
+#' Format One Function's Call Signature
 #' @noRd
 .format_registry_signature <- function(fn) {
   if (length(fn$params) == 0L) {
