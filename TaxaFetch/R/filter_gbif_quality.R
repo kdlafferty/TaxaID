@@ -503,9 +503,8 @@ filter_gbif_quality <- function(
   # Field stations and marine labs are often sited exactly where good habitat
   # is, so "near an institution" can't be auto-removed the way the other five
   # (unambiguous data-entry-error signatures) can; it needs a flag a human
-  # reviews, not a silent drop. See filter_gbif_quality.R's own 2026-07-23
-  # session note (TaxaFetch/CLAUDE.md) for the real false-positive case (live
-  # fish records near a university botanical garden pond) that motivated this.
+  # reviews, not a silent drop -- live fish records near a university
+  # botanical garden pond are a real case of exactly that false positive.
   cc_remove_requested <- exclude_equal_coords || exclude_near_zero ||
     exclude_near_gbif_hq || exclude_country_centroid || exclude_capital
   cc_pkg_available <- TRUE
