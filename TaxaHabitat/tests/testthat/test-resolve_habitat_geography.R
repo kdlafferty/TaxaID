@@ -73,6 +73,24 @@ test_that("resolve_habitat_by_geography validates its inputs", {
 test_that("a resolved point is marked as geography, not consensus", {
   skip_if_not_installed("rnaturalearth")
   skip_if_not_installed("rnaturalearthhires")
+  skip_if_not_installed("curl")
+  # resolve_habitat_by_geography() needs a real NOAA bathymetry fetch
+  # (marmap::getNOAA.bathy(), which hits gis.ngdc.noaa.gov) to classify the
+  # offshore point's zone. Checked BEFORE the real assertions run, with an
+  # explicit skip() reason, rather than wrapping the assertions themselves
+  # in `if (!is.na(...))` -- that pattern let this test report PASS having
+  # executed zero assertions on its own claim whenever resolution failed for
+  # ANY reason (service down, vendored data missing, a future regression),
+  # with no visible signal that nothing was actually checked (D5).
+  noaa_reachable <- tryCatch({
+    h <- curl::new_handle(timeout_ms = 5000L, connecttimeout_ms = 5000L, nobody = TRUE)
+    resp <- curl::curl_fetch_memory("https://gis.ngdc.noaa.gov", handle = h)
+    resp$status_code < 500
+  }, error = function(e) FALSE)
+  if (!noaa_reachable) {
+    skip("NOAA bathymetry service (gis.ngdc.noaa.gov) is not reachable from this machine -- resolve_habitat_by_geography() cannot classify elevation without it.")
+  }
+
   # Two points: one far offshore (ocean), one already settled by consensus.
   occ <- data.frame(
     point_id = c("sea", "known"),
@@ -91,11 +109,12 @@ test_that("a resolved point is marked as geography, not consensus", {
   )
   r <- suppressMessages(resolve_habitat_by_geography(occ))
   expect_equal(r$habitat_source[r$point_id == "known"], "consensus")
-  # the offshore point resolves to Marine and is labelled geography
-  if (!is.na(r$main_habitat[r$point_id == "sea"])) {
-    expect_equal(r$main_habitat[r$point_id == "sea"], "Marine")
-    expect_equal(r$habitat_source[r$point_id == "sea"], "geography")
-  }
+  # The offshore point resolves to Marine and is labelled geography. NOAA
+  # reachability was already confirmed above, so a resolution failure here
+  # is a real regression, not a flaky network -- these assertions always run.
+  expect_false(is.na(r$main_habitat[r$point_id == "sea"]))
+  expect_equal(r$main_habitat[r$point_id == "sea"], "Marine")
+  expect_equal(r$habitat_source[r$point_id == "sea"], "geography")
   # the proportions are NOT rewritten -- the taxon really does use all three
   expect_equal(attr(r, "habitat_proportions")$Estuarine[1], 0.33)
 })
