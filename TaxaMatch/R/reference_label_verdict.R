@@ -242,13 +242,13 @@ utils::globalVariables(c(
 #' `"incongruent"`. `"insufficient_independent_evidence"` is retryable, not
 #' removable (it may simply mean a sparsely-referenced region of the
 #' database), `"not_evaluated_oversized"` and
-#' `"not_evaluated_wrong_marker"` (2026-09-04) were never submitted to BLAST
-#' at all, and `"locally_corroborated"` (2026-09-03) was deliberately not
+#' `"not_evaluated_wrong_marker"` were never submitted to BLAST
+#' at all, and `"locally_corroborated"` was deliberately not
 #' submitted because the caller's own reference set already corroborates it
 #' -- it reads `"keep"` with `label_confidence = NA` (there is no BLAST
 #' evidence to grade).
 #'
-#' @section Local corroboration: provenance and the veto (2026-09-03):
+#' @section Local corroboration: provenance and the veto:
 #' When `local_corroboration` ([corroborate_references_locally()] output) is
 #' supplied, three things happen, and one deliberately does not.
 #' `corroboration_source` records where the corroboration for each label
@@ -296,7 +296,7 @@ utils::globalVariables(c(
 #'     \item{`label_confidence`}{Numeric in (0, 1). `NA` for a row with no
 #'       computed congruence at all (`"not_evaluated_oversized"`,
 #'       `"not_evaluated_wrong_marker"`, or a fetch failure). **Named
-#'       contract (2026-09-05 critical-fix-review finding C): this value
+#'       contract: this value
 #'       CANNOT REACH 1**, by construction -- the Jeffreys smoothing floors
 #'       the disagreement fraction at `0.5/(n+1)`, so even a perfectly
 #'       corroborated multi-partner accession tops out just under 1 (e.g.
@@ -304,11 +304,10 @@ utils::globalVariables(c(
 #'       this as a RATIO where 1 means "no adjustment needed" (e.g. a
 #'       likelihood-covariate-style rescale) must normalize by the per-row
 #'       achievable ceiling first, or it will silently adjust every
-#'       candidate in the dataset -- this is exactly the bug the one prior
+#'       candidate in the dataset -- this is exactly the bug a prior
 #'       attempt to use this column as a likelihood covariate hit before
-#'       being removed entirely (see `[[project_reference_quality_verdicts_
-#'       threads123]]` in the project memory system). Previously this
-#'       constraint was recorded only in a reentry doc, not here.}
+#'       being removed entirely (see
+#'       `ecosystem_docs/REENTRY_PROMPT_reference_quality_verdicts_and_downstream_use.md`).}
 #'     \item{`label_identity_margin`}{Numeric, the capped `d` in
 #'       percent-identity points. `NA` when the row carries no identity
 #'       information of any kind.}
@@ -318,8 +317,8 @@ utils::globalVariables(c(
 #'       never submitted to BLAST (`"not_evaluated_oversized"`,
 #'       `"not_evaluated_wrong_marker"`), or it was submitted and came back
 #'       with zero valid comparison partners
-#'       (`n_independent_top_matches == 0`; widened to include this case
-#'       2026-09-04 -- see `@section No partners is not a coin flip`).}
+#'       (`n_independent_top_matches == 0`; included in this case
+#'       -- see `@section No partners is not a coin flip`).}
 #'     \item{`action_reason`}{`"vetoed_by_local_corroboration"` where a
 #'       `"remove"` was downgraded to `"inspect"` by the local set,
 #'       `"locally_corroborated_not_blasted"` for a skipped row, `NA`
