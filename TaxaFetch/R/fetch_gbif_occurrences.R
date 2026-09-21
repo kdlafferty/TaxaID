@@ -343,9 +343,10 @@ fetch_gbif_occurrences <- function(keys,
 
 #' Build the checkpoint file path for a given call signature
 #'
-#' The filename encodes key count, key sum, geometry length, year range, and
-#' limit. Changing any parameter produces a different filename, so mismatched
-#' checkpoints from previous runs are automatically ignored.
+#' The filename encodes key count, a content hash of the sorted key set,
+#' geometry length, year range, and limit. Changing any parameter produces a
+#' different filename, so mismatched checkpoints from previous runs are
+#' automatically ignored.
 #'
 #' @param cache_dir Character or NULL.
 #' @param keys Integer vector (already deduped and NA-free).
@@ -371,10 +372,20 @@ fetch_gbif_occurrences <- function(keys,
   # TaxaExpect::build_priors()'s own year_range = NULL default forwards
   # straight through to here).
   year_tag <- if (is.null(year_range)) "all" else gsub("[^0-9]", "", year_range)
+  # The key-SET component used to be `as.integer(sum(as.numeric(keys)) %%
+  # 1e9)` -- a count-plus-checksum, not a hash, and the same collision-prone
+  # shape already removed from check_geographic_outliers() and
+  # .gbif_dl_meta_path() for the same reason: two disjoint taxon-key sets can
+  # sum to the same value mod 1e9, producing the SAME checkpoint filename for
+  # DIFFERENT taxa, so the second call could silently resume from the first
+  # call's checkpoint. Replaced with `rlang::hash()` of the sorted key set,
+  # matching .gbif_dl_meta_path()'s treatment. This changes every existing
+  # checkpoint filename, so any on-disk checkpoint from before this change is
+  # a miss after it; the checkpoint cache is disposable by design.
   sig <- sprintf(
-    "%dk_s%d_g%d_%s_l%d",
+    "%dk_s%s_g%d_%s_l%d",
     length(keys),
-    as.integer(sum(as.numeric(keys)) %% 1e9),
+    rlang::hash(sort(keys)),
     geometry_len,
     year_tag,
     as.integer(limit)
