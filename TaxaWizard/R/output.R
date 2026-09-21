@@ -4,8 +4,7 @@
 #' scripts, \code{.build_app_code()} for Shiny apps) embed free-form text --
 #' file paths, step descriptions, parameter defaults, whole step code blocks
 #' -- inside R string literals in the file they emit. Escaping only the double
-#' quotes (the hand-rolled \code{gsub('"', '\\\\"', x)} idiom previously used)
-#' leaves any backslash in that text as a lone backslash in the emitted
+#' quotes leaves any backslash in that text as a lone backslash in the emitted
 #' literal, which is an invalid R escape: the generated file then fails to
 #' parse in its entirety. \code{encodeString()} escapes backslashes, quotes
 #' and control characters together, so the emitted literal always parses back
@@ -159,7 +158,7 @@
     "# cli's progress bars redraw with a carriage return, which a logged or",
     "# non-interactive run records as thousands of separate lines rather than",
     "# one bar redrawing in place: 45,991 carriage returns and 223 progress",
-    "# lines per audit in one real 2026-09-14 log. A progress bar is worthless",
+    "# lines per audit in one log. A progress bar is worthless",
     "# in a batch run anyway. Set to 2 (cli's default) to get them back.",
     "options(cli.progress_show_after = Inf)",
     ""
@@ -310,12 +309,11 @@
   )
 
   # --- Step 0: setup check ---
-  # Only when the dag's steps carry edge_id (the graph-engine DAG shape
-  # documented in create.R's "status: complete" prompt: step_id, edge_id,
-  # package, function_name, description, code, inputs, output_var). The
-  # legacy free-form DAG may not set edge_id on every step, in which case
-  # this falls back to edges = NULL (checks the whole ecosystem) rather
-  # than silently omitting the check.
+  # Only when the dag's steps carry edge_id (the shape documented in
+  # create.R's "status: complete" prompt: step_id, edge_id, package,
+  # function_name, description, code, inputs, output_var). A dag whose steps
+  # don't all set edge_id falls back to edges = NULL (checks the whole
+  # ecosystem) rather than silently omitting the check.
   step_edge_ids <- unique(vapply(dag$steps, function(s) as.character(s$edge_id %||% ""), ""))
   step_edge_ids <- step_edge_ids[nzchar(step_edge_ids)]
   step_edge_ids <- .keep_known_edges(step_edge_ids, context = "generated script Step 0")
@@ -722,8 +720,8 @@
 #' one or narrow it to only the new steps' requirements.
 #'
 #' Leaves the script untouched when there is nothing to do: no Step 0 line (a
-#' hand-written or legacy script -- inserting a check into someone else's
-#' script is not this function's business), an \code{edges = NULL} check
+#' hand-written script -- inserting a check into someone else's script is
+#' not this function's business), an \code{edges = NULL} check
 #' (already the widest possible), or no new edge ids.
 #'
 #' @param lines Character vector. The existing script's lines.
