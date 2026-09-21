@@ -2270,7 +2270,7 @@ evaluate_reference_accessions <- function(accessions,
     needs_eval <- c(never_evaluated, intersect(needs_eval, retried_expired))
   }
 
-  # ---- Local corroboration skip (2026-09-03) --------------------------------
+  # ---- Local corroboration skip ---------------------------------------------
   # An accession that still needs a verdict but is independently corroborated
   # by a conspecific in the caller's OWN reference set (corroborate_
   # references_locally(): a different submission batch, identity >=
@@ -2315,7 +2315,7 @@ evaluate_reference_accessions <- function(accessions,
         query_trim_path = NA_character_, # never fetched, so never trimmed
         n_excluded_same_batch = NA_integer_,
         n_excluded_not_species_resolved = NA_integer_,
-        # Provenance (2026-09-05 critical-fix-review finding B5): WHICH
+        # Provenance: WHICH
         # accession is vouching for this one. A locally_corroborated verdict
         # is cached with TTL Inf and exempt from refine_reference_verdicts()'s
         # trust-weighted refinement -- reasonable for the MATCH itself (a
@@ -2368,19 +2368,19 @@ evaluate_reference_accessions <- function(accessions,
     "local_corroborator_accession"
   )
 
-  # No early return for a purely cache-served call (removed 2026-09-03): the
+  # There is no early return for a purely cache-served call: the
   # general path below handles an empty needs_eval (the chunk loop simply
   # does not run), and it is the only path that appends the post-hoc
   # listed_taxon_is_species / label_confidence / reference_action columns
-  # and the run_summary attribute -- the old early return silently omitted
+  # and the run_summary attribute -- an early return would silently omit
   # all of them from a fully-cached result, and could not carry the
   # locally-corroborated rows either.
 
   # ---- Chunked evaluation with incremental cache writes --------------------
   # needs_eval is processed chunk_size accessions at a time (default 200L,
-  # matching this ecosystem's own previously-manual chunking convention --
-  # see AuditNCBI_Goal2_MatchCandidateScreen.R's header comment, written
-  # before this was automated). The persistent cache is written after EACH
+  # matching this ecosystem's own manual chunking convention --
+  # see AuditNCBI_Goal2_MatchCandidateScreen.R's header comment -- that this
+  # automates). The persistent cache is written after EACH
   # chunk, not once at the very end -- an interruption (crash, Ctrl+C, lost
   # connection) after that point only loses whatever chunk was still in
   # flight, not every accession successfully evaluated earlier in the same
