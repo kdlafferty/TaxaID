@@ -40,15 +40,16 @@
 #' observations in a single-observation spatial group are always returned
 #' unchanged, exactly like already-resolved observations.
 #'
-#' @section Soft confirmation (2026-08-28 redesign, replaces the hard gate):
-#' The previous design counted an observation as a "donor" only when it
-#' resolved a species with `consensus_posterior >=` a threshold (0.8) -- hard
-#' assignment in the sense of classification EM (Celeux & Govaert 1992,
-#' \emph{Computational Statistics & Data Analysis} 14:315-332). That made the
+#' @section Soft confirmation:
+#' A hard-gate donor definition -- counting an observation as a "donor" only
+#' when it resolves a species with `consensus_posterior >=` a threshold
+#' (e.g. 0.8) -- is hard assignment in the sense of classification EM
+#' (Celeux & Govaert 1992, \emph{Computational Statistics & Data Analysis}
+#' 14:315-332). That would make the
 #' dataset-level output discontinuous in per-observation inputs: one marginal
-#' competitor holding every observation of a species just below the bar meant
+#' competitor holding every observation of a species just below the bar means
 #' zero donors anywhere (a real case: 78 yellow-perch observations at ~0.69
-#' each -- no confirmation, dataset-wide). Now every observation's best
+#' each -- no confirmation, dataset-wide). Instead, every observation's best
 #' posterior for a species contributes fractionally (soft assignment, the
 #' one-iteration analog of a multi-scale occupancy update -- Dorazio &
 #' Erickson 2018, \emph{Molecular Ecology Resources} 18:368-380):
@@ -75,51 +76,16 @@
 #'     Beta summary re-moment-matched. Never demoted.
 #' }
 #'
-#' @section Historical: confirmation-quantile design (Session 149, superseded):
-#' The previous design (a fixed `presence_multiplier`, e.g. x5) applied the
-#' same boost regardless of how many observations confirmed a species or how
-#' confident those confirmations were -- flagged as High priority in
-#' `ecosystem_docs/STATISTICAL_COMPONENT_SOUNDNESS_REVIEW.md`. This design
-#' instead ties the boost directly to the strength of the confirming
-#' evidence:
-#' \enumerate{
-#'   \item For each confirmed species, take the `confirmation_quantile`-th
-#'     quantile (default 0.9) of `consensus_posterior` across all resolved
-#'     "donor" observations naming it. A high quantile behaves like a
-#'     near-maximum for a small donor pool (rewarding one strong,
-#'     high-quality confirmation the way a single excellent frame in an
-#'     otherwise-poor camera-trap burst should), but -- unlike a plain
-#'     maximum -- it converges to a *stable* population value as the donor
-#'     pool grows, rather than drifting toward the degenerate ceiling of 1.0
-#'     regardless of whether the evidence is real. This matters specifically
-#'     for a pair of species a classifier cannot reliably separate: many
-#'     weak, correlated (not independent) confirmations split between them
-#'     would otherwise let a plain maximum -- or a probabilistic-OR
-#'     combination across all of them -- manufacture unwarranted confidence
-#'     for one or both, an effect that does not simply cancel out under
-#'     renormalization once a third, unrelated candidate is also present.
-#'   \item That quantile value is only used at all if it clears
-#'     `min_confirmation_confidence` (default 0.8) -- a barely-resolved
-#'     confirmation (e.g. just above whatever `posterior_consensus()`
-#'     threshold marked it "resolved") should not be trusted to inject a
-#'     large jump into an unrelated observation's prior.
-#'   \item Even then, it only *replaces* `prior_mean` where it exceeds the
-#'     existing value (never-demote) -- a species already well-supported by
-#'     occurrence data is left alone.
-#' }
-#' This is still a threshold-based design (the quantile level and the
-#' confidence floor are both free parameters), and it does not by itself
-#' distinguish "confidence earned by genuinely strong evidence" from
-#' "confidence attained despite thin/low-quality input" (e.g. a short,
-#' low-coverage sequence read producing a spurious high-identity match) --
-#' that would need a quality covariate on the underlying scores, a separate,
-#' larger design question flagged for later rather than solved here.
-#' A formally correct alternative would still be a Beta-Binomial
-#' hierarchical model over species x observation within a site; this
-#' quantile-based design is a more evidence-sensitive interim step than the
-#' old fixed multiplier, not a replacement for that.
+#' A formally correct alternative to this quantile-based design would be a
+#' Beta-Binomial hierarchical model over species x observation within a
+#' site; the current design does not by itself distinguish "confidence
+#' earned by genuinely strong evidence" from "confidence attained despite
+#' thin/low-quality input" (e.g. a short, low-coverage sequence read
+#' producing a spurious high-identity match) -- that would need a quality
+#' covariate on the underlying scores, a separate, larger design question
+#' flagged for later rather than solved here.
 #'
-#' @section Rescaling onto the occurrence scale (2026-07-30):
+#' @section Rescaling onto the occurrence scale:
 #' `consensus_posterior` is P(hypothesis | evidence) *within one
 #' observation* -- a probability over competing hypotheses. `prior_mean`,
 #' when sourced from `TaxaExpect`, is a **compositional share of the local
@@ -143,17 +109,16 @@
 #' observed maximum share rather than substituting a foreign-scale
 #' constant. When `result` has no `theta_mean` column (e.g. LLM-pathway
 #' priors from [assign_taxa_llm()], which are not occurrence-share-based to
-#' begin with), the previous direct-substitution behavior is used
-#' unchanged -- the units mismatch this section fixes is specific to
+#' begin with), direct substitution (without rescaling) is used
+#' instead -- the units mismatch this section fixes is specific to
 #' occurrence-model-sourced priors.
 #'
-#' @section Confirmed without an occurrence record (2026-07-30):
+#' @section Confirmed without an occurrence record:
 #' A taxon can be confidently identified elsewhere in the dataset while
 #' having no occurrence record at all (`theta_mean` `NA` for every row
 #' naming it) -- e.g. a real Mugu case, *Oncorhynchus mykiss*, which has no
-#' row in `taxaexpect_priors` at all (see
-#' `[[project_urolophus_synonym_join_bug]]` in the project memory system --
-#' this is a known, separate upstream join gap, not a sign the species is
+#' row in `taxaexpect_priors` at all (a known, separate upstream join gap,
+#' not a sign the species is
 #' actually rare). Such a row still gets boosted (the confirmation is real
 #' identification evidence, worth keeping) but is flagged via a new
 #' `confirmed_without_occurrence_record` column rather than silently
@@ -170,9 +135,9 @@
 #'   `prior_alpha`/`prior_beta` (Beta shape parameters) are present, they are
 #'   recomputed alongside `prior_mean` for boosted rows, preserving the
 #'   original concentration (`alpha + beta`) so [compute_posterior()]'s Monte
-#'   Carlo path stays consistent with the boosted point estimate -- fixes a
-#'   latent inconsistency in the previous design, where only `prior_mean` was
-#'   rescaled and a stale Beta shape could be sampled from if `n_sims > 0`.
+#'   Carlo path stays consistent with the boosted point estimate -- rescaling
+#'   only `prior_mean` would leave a stale Beta shape that could be sampled
+#'   from if `n_sims > 0`.
 #' @param consensus Dataframe. Output of [posterior_consensus()] run on `result`.
 #'   Must contain: `observation_id`, `consensus_taxon`, `is_resolved`,
 #'   `consensus_posterior`.
@@ -294,15 +259,15 @@ update_prior_from_consensus <- function(result,
     )
   }
 
-  # --- Soft confirmation evidence (2026-08-28 redesign, D7) -------------------
-  # Replaces the hard donor gate (a species counted as confirmed only when some
-  # observation resolved it with consensus_posterior >= a threshold). Hard
-  # assignment is classification EM (Celeux & Govaert 1992, Computational
-  # Statistics & Data Analysis 14:315-332) and produced real cliffs: one
-  # marginal competitor holding every observation just under the bar meant
+  # --- Soft confirmation evidence ---------------------------------------------
+  # A hard donor gate (a species counted as confirmed only when some
+  # observation resolved it with consensus_posterior >= a threshold) is
+  # classification EM (Celeux & Govaert 1992, Computational
+  # Statistics & Data Analysis 14:315-332) and would produce real cliffs: one
+  # marginal competitor holding every observation just under the bar means
   # ZERO donors dataset-wide (the GreatLakes2023 yellow-perch case -- 78
   # observations at ~0.69 each, no confirmation anywhere). The soft version
-  # aggregates EVERY observation's posterior support for a species as
+  # instead aggregates EVERY observation's posterior support for a species as
   # fractional evidence of site-level presence -- the one-iteration analog of
   # a multi-scale occupancy update (Dorazio & Erickson 2018, Molecular Ecology
   # Resources 18:368-380) -- discounted by `confirmation_discount` (a0):
@@ -468,8 +433,8 @@ update_prior_from_consensus <- function(result,
   # For a presence mixture, confirmation IS evidence about presence: the
   # discounted support mass enters w's own pseudo-observation update
   # (successes at the support mass itself), p_conc grows by the same mass, and
-  # the Beta summary is re-moment-matched to the updated two-point mixture.
-  # This replaces the interim hard rule that cleared the mixture outright on a
+  # the Beta summary is re-moment-matched to the updated two-point mixture,
+  # rather than a hard rule that would clear the mixture outright on a
   # thresholded confirmation.
   mixable <- boost_mask & is_mix_row & m_disc > 0
   if (any(mixable)) {
@@ -478,18 +443,18 @@ update_prior_from_consensus <- function(result,
     w0 <- unresolved_rows$prior_mix_w[mixable]
     md <- m_disc[mixable]
     w1 <- (pc * w0 + md) / (pc + md)
-    # Cap at the construction-time veto bound (2026-09-05 critical-fix-review
-    # finding B2): the update above is level-blind and can be pushed past the
+    # Cap at the construction-time veto bound: the update above is
+    # level-blind and can be pushed past the
     # bound by a wide, low-grade blocker's correlated cross-observation
-    # support alone (worked example in the review: w 0.05 -> 0.33 against a
+    # support alone (worked example: w 0.05 -> 0.33 against a
     # ~0.05 bound, purely from volume, with the genuinely-observed native
-    # gaining nothing from the same pass). This is the "at minimum" floor the
-    # review names -- NOT the deeper level-aware redesign it also describes
+    # gaining nothing from the same pass). This is an "at minimum" floor --
+    # NOT a deeper level-aware redesign
     # (weighting the update by the species' own support-weighted quantile, or
     # scaling trial count by n_observations), which is a real statistical
     # design choice left for a deliberate decision, not made here. NA bound
     # (a prior_mix_* table built before this column existed, or a row with no
-    # computable bound) leaves w1 uncapped, unchanged from before this fix.
+    # computable bound) leaves w1 uncapped.
     n_capped <- 0L
     if ("prior_mix_veto_bound" %in% names(unresolved_rows)) {
       bound <- unresolved_rows$prior_mix_veto_bound[mixable]
@@ -505,8 +470,8 @@ update_prior_from_consensus <- function(result,
     unresolved_rows$prior_mean[mixable] <- th1
     if (all(c("prior_alpha", "prior_beta") %in% names(unresolved_rows))) {
       # Reproduce TaxaExpect::apply_undetected_evidence()'s own v_mix formula,
-      # not just its (thp-tha) term -- 2026-09-05 critical-fix-review finding
-      # A4. Blend-mode rows carry real within-state variance at the present/
+      # not just its (thp-tha) term. Blend-mode rows carry real
+      # within-state variance at the present/
       # absent anchors (prior_mix_var_present/_absent); omitting them here
       # silently over-concentrated the refreshed Beta for those rows (curve
       # rows are unaffected -- their states are points, so both are exactly
@@ -541,14 +506,16 @@ update_prior_from_consensus <- function(result,
       "i" = "sum(prior_mix_w) over these rows: {signif(sum(w0), 3)} -> \\
       {signif(sum(w1), 3)}. apply_undetected_evidence()'s own budget audit \\
       (sum(w) vs. chao_missing) describes the priors AS BUILT, not as the \\
-      posterior actually used -- this is the post-refinement counterpart \\
-      (2026-09-05 critical-fix-review finding A3), purely informational.",
+      posterior actually used -- this is the post-refinement counterpart, \\
+      purely informational.",
       if (n_capped > 0L) {
         c("!" = "{n_capped} row(s) would have updated PAST their own veto bound \\
-        (finding B2) -- capped there instead. This is a floor against runaway \\
+        -- capped there instead. This is a floor against runaway \\
         correlated-confirmation accumulation, not a fix to the update rule \\
-        itself; see that finding for the deeper level-aware redesign this \\
-        stands in for.")
+        itself; a deeper level-aware redesign (weighting the update by the \\
+        species' own support-weighted quantile, or scaling trial count by \\
+        n_observations) is a real statistical design choice left for a \\
+        deliberate decision, not made here.")
       }
     ))
   }
