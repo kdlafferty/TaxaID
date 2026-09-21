@@ -48,7 +48,7 @@ utils::globalVariables(c(
 #' identify_confident_observations(match_df, priors)
 #'
 #' @importFrom dplyr filter mutate group_by summarise pull slice_max ungroup n
-#' @export
+#' @keywords internal
 identify_confident_observations <- function(match_df,
                                             priors,
                                             plausibility_threshold = 1e-3) {

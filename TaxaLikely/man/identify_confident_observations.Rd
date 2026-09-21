@@ -54,3 +54,4 @@ identify_confident_observations(match_df, priors)
 \seealso{
 \code{\link[=calibrate_query_noise]{calibrate_query_noise()}}
 }
+\keyword{internal}
