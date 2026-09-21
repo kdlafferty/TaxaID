@@ -1,6 +1,6 @@
 # ==============================================================================
 # rename_cols.R
-# TaxaTools — Rename data frame columns to a target naming convention
+# TaxaTools -- Rename data frame columns to a target naming convention
 # ==============================================================================
 
 #' Rename Data Frame Columns to a Target Convention
@@ -22,7 +22,7 @@
 #'               "SurveyDate" = "eventDate")
 #'   }
 #'   When \code{col_map} is supplied it \strong{replaces} the default pattern
-#'   matching entirely — only the mappings you specify are applied. When
+#'   matching entirely -- only the mappings you specify are applied. When
 #'   \code{NULL} (default), the built-in regex patterns are used instead
 #'   (see Details).
 #' @param strict Logical. Controls behaviour when a \code{col_map} key is not
@@ -75,11 +75,11 @@
 #' The \code{col_map} concept is used consistently across the TaxaID ecosystem
 #' wherever column names need to be reconciled:
 #' \itemize{
-#'   \item \strong{TaxaTools}: \code{rename_cols()} — general-purpose column
+#'   \item \strong{TaxaTools}: \code{rename_cols()} -- general-purpose column
 #'     rename with DarwinCore defaults.
-#'   \item \strong{TaxaMatch}: \code{standardize_match_data()} — map BLAST/DADA2
+#'   \item \strong{TaxaMatch}: \code{standardize_match_data()} -- map BLAST/DADA2
 #'     output column names to the canonical match object format.
-#'   \item \strong{TaxaFetch}: \code{stack_occurrences()} — align column names
+#'   \item \strong{TaxaFetch}: \code{stack_occurrences()} -- align column names
 #'     across occurrence data sources before row-binding.
 #' }
 #' In all cases, \code{col_map} is a named character vector where names are
@@ -100,7 +100,7 @@
 #' # Default pattern matching
 #' rename_cols(df)
 #'
-#' # Explicit col_map — replaces default patterns entirely
+#' # Explicit col_map -- replaces default patterns entirely
 #' rename_cols(df,
 #'   col_map = c(
 #'     "Latitude" = "decimalLatitude",
@@ -135,7 +135,7 @@ rename_cols <- function(input_df,
 
   # --- Branch: user col_map vs default pattern matching ----------------------
   if (!is.null(col_map)) {
-    # Validate col_map type — catches unquoted bare-name mistakes
+    # Validate col_map type -- catches unquoted bare-name mistakes
     if (!is.character(col_map) || is.null(names(col_map)) ||
       any(!nzchar(names(col_map)))) {
       stop(
@@ -164,7 +164,7 @@ rename_cols <- function(input_df,
     idx <- match(to_rename, names(input_df))
     names(input_df)[idx] <- col_map[to_rename]
   } else {
-    # Default regex pattern → DarwinCore target map.
+    # Default regex pattern -> DarwinCore target map.
     # Applied case-insensitively against column names when col_map = NULL.
     # Each pattern must match at most one column; ambiguous matches are skipped.
     dwc_patterns <- c(
@@ -181,7 +181,7 @@ rename_cols <- function(input_df,
       target <- dwc_patterns[[pattern]]
       matches <- which(grepl(pattern, names(input_df), ignore.case = TRUE))
 
-      if (length(matches) == 0L) next # no match — skip silently
+      if (length(matches) == 0L) next # no match -- skip silently
       if (target %in% names(input_df)) next # already correctly named
       if (target %in% renamed_targets) next # already claimed this session
 

@@ -1,7 +1,7 @@
 # tests/testthat/test-create_taxon_names.R
 #
 # Tests for create_taxon_names()
-# All tests are offline — no API calls.
+# All tests are offline -- no API calls.
 
 # ==============================================================================
 # Input validation
@@ -43,7 +43,7 @@ test_that("stops when a rank column is missing from df", {
 })
 
 # ==============================================================================
-# Basic resolution — most specific wins
+# Basic resolution -- most specific wins
 # ==============================================================================
 
 test_that("returns species when all ranks present", {
@@ -91,7 +91,7 @@ test_that("treats empty string as NA and falls back", {
 
 test_that("matches rank columns case-insensitively", {
   df <- data.frame(Kingdom = "Animalia", Genus = "Homo", Species = "Homo sapiens")
-  # rank_system supplied in lowercase — should still match
+  # rank_system supplied in lowercase -- should still match
   out <- create_taxon_names(df, c("kingdom", "genus", "species"))
   expect_equal(out$taxon_name, "Homo sapiens")
   expect_equal(out$taxon_name_rank, "species")

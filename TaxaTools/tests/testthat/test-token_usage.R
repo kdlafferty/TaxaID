@@ -1,5 +1,5 @@
 # Tests for token_usage() and reset_token_usage()
-# All tests are fully offline — no LLM calls.
+# All tests are fully offline -- no LLM calls.
 
 # Helper: inject fake records into the ledger
 .inject_records <- function(...) {
@@ -38,7 +38,7 @@ test_that("reset_token_usage emits a message", {
 })
 
 
-# ---- token_usage() — empty ledger --------------------------------------------
+# ---- token_usage() -- empty ledger --------------------------------------------
 
 test_that("token_usage with empty ledger emits message and returns invisibly", {
   suppressMessages(reset_token_usage())

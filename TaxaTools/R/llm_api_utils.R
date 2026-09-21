@@ -1,13 +1,13 @@
 # ==============================================================================
 # llm_api_utils.R
-# TaxaTools — LLM provider utilities
+# TaxaTools -- LLM provider utilities
 #
 # Exported functions:
-#   call_anthropic_api()    Provider: Anthropic — thin wrapper around call_api()
-#   call_gemini_api()       Provider: Google Gemini — thin wrapper around call_api()
-#   call_openai_api()       Provider: OpenAI/compat — thin wrapper around call_api()
-#   call_azure_openai_api()        Provider: Azure OpenAI (DOI) — thin wrapper around call_api()
-#   call_ollama_api()       Provider: Ollama (local) — thin wrapper around call_api()
+#   call_anthropic_api()    Provider: Anthropic -- thin wrapper around call_api()
+#   call_gemini_api()       Provider: Google Gemini -- thin wrapper around call_api()
+#   call_openai_api()       Provider: OpenAI/compat -- thin wrapper around call_api()
+#   call_azure_openai_api()        Provider: Azure OpenAI (DOI) -- thin wrapper around call_api()
+#   call_ollama_api()       Provider: Ollama (local) -- thin wrapper around call_api()
 #   prompt_api()            Multi-chunk llm_prompt dispatcher; llm_fn param selects provider
 #   prompt_manual()         Manual file handoff (any provider)
 #   read_llm_response()     Read saved response file(s)
@@ -28,17 +28,17 @@
 #   access and as llm_fn arguments (e.g. llm_fn = call_anthropic_api).
 #
 # Provider API keys (set in ~/.Renviron):
-#   ANTHROPIC_API_KEY       — required for call_anthropic_api() (no free tier)
-#   GEMINI_API_KEY          — required for call_gemini_api() (free tier available)
-#   OPENAI_API_KEY          — required for call_openai_api() (no ongoing free tier)
-#   (none)                  — call_ollama_api() needs no key; runs models locally
-#   AZURE_OPENAI_API_KEY    — required for call_azure_openai_api() (DOI employees only;
+#   ANTHROPIC_API_KEY       -- required for call_anthropic_api() (no free tier)
+#   GEMINI_API_KEY          -- required for call_gemini_api() (free tier available)
+#   OPENAI_API_KEY          -- required for call_openai_api() (no ongoing free tier)
+#   (none)                  -- call_ollama_api() needs no key; runs models locally
+#   AZURE_OPENAI_API_KEY    -- required for call_azure_openai_api() (DOI employees only;
 #                             requires connection to a DOI computer system or DOI VPN)
 # ==============================================================================
 
 
 # ==============================================================================
-# Anthropic — thin wrapper around call_api()
+# Anthropic -- thin wrapper around call_api()
 # ==============================================================================
 
 #' Call the Anthropic API with a Single Prompt String
@@ -531,7 +531,7 @@ read_llm_response <- function(files) {
 
 
 # ==============================================================================
-# Google Gemini API — thin wrapper around call_api()
+# Google Gemini API -- thin wrapper around call_api()
 # ==============================================================================
 
 #' Call the Google Gemini API with a Single Prompt String
@@ -608,7 +608,7 @@ call_gemini_api <- function(prompt_str,
 
 
 # ==============================================================================
-# OpenAI API (ChatGPT) — thin wrapper around call_api()
+# OpenAI API (ChatGPT) -- thin wrapper around call_api()
 # ==============================================================================
 
 #' Call the OpenAI Chat Completions API with a Single Prompt String
@@ -750,7 +750,7 @@ call_openai_api <- function(prompt_str,
 
 # ==============================================================================
 # Azure OpenAI API (U.S. Department of the Interior employees only)
-# — thin wrapper around call_api()
+# -- thin wrapper around call_api()
 # ==============================================================================
 
 #' Call the Azure OpenAI API with a Single Prompt String
@@ -847,7 +847,7 @@ call_azure_openai_api <- function(
 
 
 # ==============================================================================
-# Ollama (local models — no API key required) — thin wrapper around call_api()
+# Ollama (local models -- no API key required) -- thin wrapper around call_api()
 # ==============================================================================
 
 #' Call a Local Ollama Model with a Single Prompt String

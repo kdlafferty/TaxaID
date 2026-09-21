@@ -29,14 +29,14 @@ test_that("rename_cols rejects non-character col_map", {
 
 test_that("rename_cols rejects col_map with empty names", {
   df <- data.frame(Latitude = 1)
-  # Build the bad vector programmatically — the parser rejects "" as a literal name in c()
+  # Build the bad vector programmatically -- the parser rejects "" as a literal name in c()
   bad <- c("decimalLatitude", "decimalLongitude")
   names(bad) <- c("Latitude", "")
   expect_error(rename_cols(df, col_map = bad), "`col_map` must be a named character vector")
 })
 
 # ==============================================================================
-# User col_map — exact matching
+# User col_map -- exact matching
 # ==============================================================================
 
 test_that("rename_cols applies a single col_map entry correctly", {
@@ -211,13 +211,13 @@ test_that("rename_cols default: renames multiple pattern columns in one call", {
   expect_true("decimalLongitude" %in% names(out))
   expect_true("eventDate" %in% names(out))
   expect_true("verbatimLocality" %in% names(out))
-  expect_true("species" %in% names(out)) # not matched — left unchanged
+  expect_true("species" %in% names(out)) # not matched -- left unchanged
 })
 
 test_that("rename_cols default: skips column already named decimalLatitude", {
   df <- data.frame(decimalLatitude = 34.1, lat = 35.0)
   out <- rename_cols(df)
-  # decimalLatitude already present — lat should NOT overwrite it
+  # decimalLatitude already present -- lat should NOT overwrite it
   expect_true("decimalLatitude" %in% names(out))
   expect_true("lat" %in% names(out)) # lat left unchanged because target already exists
   expect_equal(ncol(out), 2L)

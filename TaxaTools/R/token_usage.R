@@ -1,6 +1,6 @@
 # ==============================================================================
 # token_usage.R
-# TaxaTools — session-level LLM token ledger
+# TaxaTools -- session-level LLM token ledger
 #
 # Exported:
 #   token_usage()        return accumulated token records as a data frame
@@ -11,7 +11,7 @@
 #   .get_llm_caller()    walks sys.calls() to find the nearest named caller
 # ==============================================================================
 
-# Internal environment — persists for the R session
+# Internal environment -- persists for the R session
 .token_ledger <- new.env(parent = emptyenv())
 .token_ledger$records <- list()
 

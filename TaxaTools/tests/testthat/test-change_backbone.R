@@ -1,7 +1,7 @@
 # tests/testthat/test-change_backbone.R
 #
 # Tests for change_backbone()
-# All tests are offline — uses mocked verify_taxon_names() output.
+# All tests are offline -- uses mocked verify_taxon_names() output.
 
 # Helper: build a minimal verify_taxon_names()-style tibble
 mock_verified <- function(
@@ -161,7 +161,7 @@ test_that("score and verified are retained in output", {
 })
 
 # ==============================================================================
-# NA handling — unverified rows
+# NA handling -- unverified rows
 # ==============================================================================
 
 test_that("NA classification_path produces NA rank columns for that row", {
