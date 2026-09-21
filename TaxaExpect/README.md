@@ -53,14 +53,14 @@ TaxaExpect generates theta priors for taxonomic assignment from
 occurrence data. Theta is compositional: the expected relative share of
 a species at a site, P(a random legitimate detection = species X). It is
 not an occurrence probability, and not occupancy -- see *Shared
-detection effort* below for the formal definition. The current (kernel)
+detection effort* below for the formal definition. The kernel
 pathway estimates expected species composition directly at a site via
 distance-weighted occurrence sharing, incorporating habitat
 stratification and, optionally, a covariate such as depth.
 
 Priors are organized into three branches (`prior_branch`):
 
--   **`resident_observed`** -- species with kernel-weighted local
+-   **`kernel_estimated`** -- species with kernel-weighted local
     occurrence evidence (direct estimate)
 -   **`resident_undetected`** -- species plausibly present but not
     locally recorded (singleton mirrors, a Good-Turing floor, and named
@@ -171,7 +171,7 @@ calib <- calibrate_kernel_bandwidth(
 )
 lambda_km <- calib$best$lambda_km
 
-# 2. Estimate kernel priors at your site (resident_observed rows)
+# 2. Estimate kernel priors at your site (kernel_estimated rows)
 kernel_fit <- estimate_kernel_priors(
   occurrence_data = occurrences,
   site_lat        = 34.45,
@@ -193,17 +193,17 @@ plot_theta_surface(kernel_fit, occurrence_data = occurrences,
 
 ## Key Functions
 
-### Kernel pathway (current, recommended) {#kernel-pathway-current-recommended}
+### Kernel pathway {#kernel-pathway}
 
 **Calibration:** - `calibrate_kernel_bandwidth()` -- choose the
 geographic bandwidth (and optional covariate bandwidth, and the regional
 back-off mass `m`) by leave-one-block-out composition prediction
 
 **Prior estimation:** - `estimate_kernel_priors()` -- site-centered
-kernel estimation of `resident_observed` priors (no grid, no model
+kernel estimation of `kernel_estimated` priors (no grid, no model
 fit) - `generate_undetected_diversity()` -- singleton-mirror and
-global-floor `resident_undetected` priors (accepts kernel or GLMM
-input) - `generate_presence_curve_evidence()` /
+global-floor `resident_undetected` priors (accepts a kernel or
+`biofreq_model` fit) - `generate_presence_curve_evidence()` /
 `generate_user_specified_evidence()` +
 `apply_undetected_evidence(pricing = "curve")` -- price named unobserved
 claimants (regional, watch-listed, or distance-clamped) on a shared
@@ -224,7 +224,7 @@ section for `assemble_report()`
 
 ## Statistical Methods
 
-TaxaExpect's current pathway prices each species' prior as its
+TaxaExpect's kernel pathway prices each species' prior as its
 kernel-weighted share of occurrence records in the focal-habitat
 stratum, shrunk toward the regional composition by `m` pseudo-records (a
 Dirichlet back-off):
@@ -261,9 +261,9 @@ of occurrence records and scoring composition predictions against them
 by multinomial log-loss -- found that single-cell GLMM prediction
 scored *worse* than ignoring space entirely, while the kernel estimator
 beat both regional pooling and the single-cell predictor at every
-bandwidth tested. On real Great Lakes data, switching from the GLMM
-baseline to the kernel estimator raised species co-detections from 237
-to 564 and precision from 0.748 to 0.868 (independently validated
+bandwidth tested. On real Great Lakes data, the kernel estimator
+achieves 564 species co-detections and 0.868 precision, compared to 237
+and 0.748 for the single-cell GLMM baseline (independently validated
 against a held-out checklist).
 
 For the full statistical derivation, assumptions, and references, see
