@@ -82,8 +82,7 @@
 #' @param base_url Character. GBIF map tile base URL. Exposed for testing.
 #' @param cache_dir Character or `NULL` (default). Directory for a
 #'   persistent, per-key on-disk cache -- see \verb{Caching} below. `NULL`
-#'   disables caching entirely (identical to every prior release of this
-#'   function).
+#'   disables caching entirely.
 #'
 #' @section Caching:
 #' `check_gbif_tile_range()` is called once per zero-record taxon by
