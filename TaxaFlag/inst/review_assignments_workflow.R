@@ -51,6 +51,7 @@ context <- list(
 # It returns the input data frame with 8 review columns appended.
 
 reviewed <- review_assignments(
+  data_type = "eDNA",
   input_df = consensus_df,
   taxon_col = "consensus_taxon",
   taxon_rank_col = "consensus_rank", # enables review_lower_hypotheses

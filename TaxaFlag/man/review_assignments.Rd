@@ -25,7 +25,7 @@ review_assignments(
   context,
   target_group = NULL,
   marker = NULL,
-  data_type = "eDNA",
+  data_type,
   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
   taxa_per_call = 15L,
   max_tokens = NULL,
@@ -180,9 +180,10 @@ populates \code{llm_scope_plausibility}. Default \code{NULL}.}
 method (e.g., \code{"12S"}, \code{"COI"}, \code{"camera trap"}).
 Provides contaminant context. Default \code{NULL}.}
 
-\item{data_type}{Character. Detection method. One of \code{"eDNA"} (default),
-\code{"acoustic"}, or \code{"image"}. Controls the contaminant assessment
-guidance in the LLM prompt.}
+\item{data_type}{Character. Detection method: one of \code{"eDNA"},
+\code{"acoustic"} or \code{"image"}. REQUIRED -- there is no default,
+because the value changes the contaminant-assessment guidance the LLM is
+given, and a wrong assumption there is silent. State the method explicitly.}
 
 \item{llm_fn}{Function. LLM provider function with signature
 \code{function(prompt_str, ...)}. Default

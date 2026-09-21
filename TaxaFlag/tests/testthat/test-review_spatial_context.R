@@ -52,6 +52,7 @@ skip_if_not_installed("shiny")
     live_inat_check = live_inat_check, inat_cache_dir = inat_cache_dir,
     inat_radius_km = inat_radius_km,
     context = context, target_group = "fish", marker = "12S eDNA",
+    data_type = "eDNA",
     llm_fn = if (is.null(context)) NULL else function(prompt, ...) "[]",
     tile = "CartoDB.Positron", gbif_style = "classic.point",
     gbif_bin_size = gbif_bin_size, gbif_year_range = NULL
@@ -412,7 +413,7 @@ test_that("Run AI Review calls review_assignments() and populates ai_panel", {
     occurrence_taxon_col = "taxon_name", occurrence_lat_col = "decimalLatitude",
     occurrence_lon_col = "decimalLongitude", inat_range = NULL, inat_taxon_col = "taxon_name",
     live_inat_check = FALSE, inat_cache_dir = NULL, inat_radius_km = 500,
-    context = ctx, target_group = "fish", marker = "12S eDNA", llm_fn = stub_llm,
+    context = ctx, target_group = "fish", marker = "12S eDNA", data_type = "eDNA", llm_fn = stub_llm,
     tile = "CartoDB.Positron", gbif_style = "classic.point",
     gbif_bin_size = 64L, gbif_year_range = NULL
   )
@@ -456,7 +457,7 @@ test_that("Run AI Review degrades gracefully (NA fields, no crash) when llm_fn i
     occurrence_taxon_col = "taxon_name", occurrence_lat_col = "decimalLatitude",
     occurrence_lon_col = "decimalLongitude", inat_range = NULL, inat_taxon_col = "taxon_name",
     live_inat_check = FALSE, inat_cache_dir = NULL, inat_radius_km = 500,
-    context = ctx, target_group = "fish", marker = "12S eDNA", llm_fn = failing_llm,
+    context = ctx, target_group = "fish", marker = "12S eDNA", data_type = "eDNA", llm_fn = failing_llm,
     tile = "CartoDB.Positron", gbif_style = "classic.point",
     gbif_bin_size = 64L, gbif_year_range = NULL
   )

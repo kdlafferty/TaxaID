@@ -12,6 +12,7 @@
 # appeared in one exported species list and not the other. Force fresh
 # verdicts with TaxaFlag::taxaflag_clear_cache(<that directory>).
 reviewed <- TaxaFlag::review_assignments(
+  data_type = {{data_type}},
   input_df       = {{consensus_var}},
   taxon_col      = {{taxon_col}},
   taxon_rank_col = {{taxon_rank_col}},

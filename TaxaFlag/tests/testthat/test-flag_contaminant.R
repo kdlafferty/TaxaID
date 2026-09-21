@@ -25,7 +25,7 @@ mock_long <- data.frame(
     # blank_2
     "TaxonB", "TaxonE"
   ),
-  n_reads = c(
+  count = c(
     # field_1: 1000 total
     500, 10, 200, 290,
     # field_2: 800 total
@@ -123,13 +123,13 @@ test_that("Session 152: shrinkage is read-count-based, not sample-count-based", 
   df_thin <- data.frame(
     event_id = c("field_1", "blank_1"),
     taxon_name = c("TaxonThin", "Other"),
-    n_reads = c(5, 10),
+    count = c(5, 10),
     stringsAsFactors = FALSE
   )
   df_rich <- data.frame(
     event_id = c("field_1", "blank_1"),
     taxon_name = c("TaxonRich", "Other"),
-    n_reads = c(50000, 10),
+    count = c(50000, 10),
     stringsAsFactors = FALSE
   )
   thin <- flag_contaminant(df_thin, control_samples = "blank_1", verbose = FALSE)
@@ -363,7 +363,7 @@ test_that("taxa with zero reads are excluded from output", {
     mock_long,
     data.frame(
       event_id = "field_1", taxon_name = "TaxonF",
-      n_reads = 0, stringsAsFactors = FALSE
+      count = 0, stringsAsFactors = FALSE
     )
   )
 
@@ -387,7 +387,7 @@ test_that("taxa with zero reads are excluded from output", {
 test_that("error when required columns missing", {
   expect_error(
     flag_contaminant(mock_long,
-      reads_col = "nonexistent",
+      count_col = "nonexistent",
       control_samples = "blank_1", verbose = FALSE
     ),
     "not found"
@@ -436,9 +436,9 @@ test_that("error when no field samples remain", {
   )
 })
 
-test_that("error when reads_col is not numeric", {
+test_that("error when count_col is not numeric", {
   bad_df <- mock_long
-  bad_df$n_reads <- as.character(bad_df$n_reads)
+  bad_df$count <- as.character(bad_df$count)
   expect_error(
     flag_contaminant(bad_df, control_samples = "blank_1", verbose = FALSE),
     "must be numeric"

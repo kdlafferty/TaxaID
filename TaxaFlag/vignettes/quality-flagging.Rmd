@@ -47,7 +47,7 @@ flagged <- flag_contaminant(
   input_df = reads_long,
   control_samples = controls,
   taxon_col = "taxon_name",
-  reads_col = "n_reads",
+  count_col = "n_reads",
   event_col = "event_id",
   contaminant_type = "lab_contaminant"
 )

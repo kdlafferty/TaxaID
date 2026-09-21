@@ -58,7 +58,7 @@ utils::globalVariables(c(
 #'   \code{"event_id"}.
 #' @param taxon_col Character. Column name identifying taxa (species, ESV,
 #'   ASV, etc.). Default \code{"taxon_name"}.
-#' @param reads_col Character. Column name with integer read counts. Default
+#' @param count_col Character. Column name with integer read counts. Default
 #'   \code{"n_reads"}.
 #' @param control_samples Character vector of sample IDs that are controls
 #'   (negative controls or positive controls). Mutually exclusive with
@@ -254,7 +254,7 @@ utils::globalVariables(c(
 #'     "Kyphosus vaigiensis", "Homo sapiens",
 #'     "Kyphosus vaigiensis", "Homo sapiens"
 #'   ),
-#'   n_reads = c(48000, 12, 51000, 8, 5, 4200)
+#'   count = c(48000, 12, 51000, 8, 5, 4200)
 #' )
 #'
 #' # Identify extraction control columns, flag contaminants
@@ -286,7 +286,7 @@ utils::globalVariables(c(
 flag_contaminant <- function(input_df,
                              event_col = "event_id",
                              taxon_col = "taxon_name",
-                             reads_col = "n_reads",
+                             count_col = "count",
                              control_samples = NULL,
                              sample_type_col = NULL,
                              control_types = NULL,
@@ -302,14 +302,14 @@ flag_contaminant <- function(input_df,
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
 
-  for (col in c(event_col, taxon_col, reads_col)) {
+  for (col in c(event_col, taxon_col, count_col)) {
     if (!col %in% names(input_df)) {
       stop(sprintf("Column '%s' not found in input_df.", col), call. = FALSE)
     }
   }
 
-  if (!is.numeric(input_df[[reads_col]])) {
-    stop(sprintf("Column '%s' must be numeric.", reads_col), call. = FALSE)
+  if (!is.numeric(input_df[[count_col]])) {
+    stop(sprintf("Column '%s' must be numeric.", count_col), call. = FALSE)
   }
 
   if (!is.numeric(prior_weight) || length(prior_weight) != 1L ||
@@ -402,7 +402,7 @@ flag_contaminant <- function(input_df,
     input_df = input_df,
     event_col = event_col,
     taxon_col = taxon_col,
-    reads_col = reads_col,
+    count_col = count_col,
     control_ids = control_ids,
     field_ids = field_ids,
     prior_weight = prior_weight
@@ -633,7 +633,7 @@ flag_contaminant <- function(input_df,
 #' should).
 #'
 #' @param input_df Data frame in long format.
-#' @param event_col,taxon_col,reads_col Column name strings.
+#' @param event_col,taxon_col,count_col Column name strings.
 #' @param control_ids,field_ids Character vectors of sample IDs.
 #' @param prior_weight Numeric. Equivalent read count for shrinking the final
 #'   ratio toward 0.5 (Session 152 -- previously an equivalent sample count).
@@ -646,14 +646,14 @@ flag_contaminant <- function(input_df,
 #'   \code{n_controls_total}, \code{n_reads_total}, \code{contaminant_score}.
 #'
 #' @noRd
-.compute_contaminant_scores <- function(input_df, event_col, taxon_col, reads_col,
+.compute_contaminant_scores <- function(input_df, event_col, taxon_col, count_col,
                                         control_ids, field_ids,
                                         prior_weight = 20) {
   # Standardise column names for internal use
   work <- data.frame(
     sample = input_df[[event_col]],
     taxon = input_df[[taxon_col]],
-    n_reads = input_df[[reads_col]],
+    n_reads = input_df[[count_col]],
     stringsAsFactors = FALSE
   )
 

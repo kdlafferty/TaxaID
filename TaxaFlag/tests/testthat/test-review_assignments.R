@@ -36,6 +36,7 @@ mock_context <- list(
 
 test_that("review_assignments adds 8 columns", {
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -57,6 +58,7 @@ test_that("review_assignments adds 8 columns", {
 
 test_that("review values are correct for known taxa", {
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -79,6 +81,7 @@ test_that("review values are correct for known taxa", {
 
 test_that("alternatives populated for implausible taxa", {
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -99,6 +102,7 @@ test_that("alternatives populated for implausible taxa", {
 
 test_that("review_lower_hypotheses populated when taxon_rank_col supplied", {
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     taxon_rank_col = "consensus_rank",
@@ -114,6 +118,7 @@ test_that("review_lower_hypotheses populated when taxon_rank_col supplied", {
 
 test_that("review_lower_hypotheses is NA when taxon_rank_col not supplied", {
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -133,6 +138,7 @@ test_that("review_lower_hypotheses is NA when taxon_rank_col not supplied", {
 
 test_that("scope_plausibility is NA when target_group not supplied", {
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -157,6 +163,7 @@ test_that("build_context() style data frame works as context", {
   )
 
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = ctx_df,
@@ -177,6 +184,7 @@ test_that("graceful handling of LLM failure", {
 
   expect_warning(
     result <- review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus,
       taxon_col = "consensus_taxon",
       context = mock_context,
@@ -196,6 +204,7 @@ test_that("graceful handling of invalid JSON response", {
 
   expect_warning(
     result <- review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus,
       taxon_col = "consensus_taxon",
       context = mock_context,
@@ -220,6 +229,7 @@ test_that("graceful handling of partial LLM response", {
 
   expect_warning(
     result <- review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus,
       taxon_col = "consensus_taxon",
       context = mock_context,
@@ -276,6 +286,7 @@ test_that("truncated batch is recovered via automatic retry with smaller sub-bat
 
   expect_silent(
     result <- review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus,
       taxon_col = "consensus_taxon",
       context = mock_context,
@@ -302,6 +313,7 @@ test_that("hard llm_fn errors are not retried -- a smaller batch can't fix a bro
 
   expect_warning(
     result <- review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus,
       taxon_col = "consensus_taxon",
       context = mock_context,
@@ -328,6 +340,7 @@ test_that("max_retries = 0 disables retry, matching pre-retry behavior", {
 
   expect_warning(
     result <- review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus,
       taxon_col = "consensus_taxon",
       context = mock_context,
@@ -352,6 +365,7 @@ test_that("max_tokens is forwarded to llm_fn when supplied", {
   }
 
   review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -371,6 +385,7 @@ test_that("max_tokens defaults to NULL and is not forwarded to llm_fn", {
   }
 
   review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -388,7 +403,7 @@ test_that("max_tokens defaults to NULL and is not forwarded to llm_fn", {
 
 test_that("error when taxon column missing", {
   expect_error(
-    review_assignments(mock_consensus,
+    review_assignments(data_type = "eDNA", mock_consensus,
       taxon_col = "nonexistent",
       context = mock_context, llm_fn = mock_llm_fn,
       verbose = FALSE
@@ -399,7 +414,7 @@ test_that("error when taxon column missing", {
 
 test_that("error when context missing", {
   expect_error(
-    review_assignments(mock_consensus,
+    review_assignments(data_type = "eDNA", mock_consensus,
       taxon_col = "consensus_taxon",
       llm_fn = mock_llm_fn, verbose = FALSE
     ),
@@ -409,7 +424,7 @@ test_that("error when context missing", {
 
 test_that("error when taxon_rank_col not in input_df", {
   expect_error(
-    review_assignments(mock_consensus,
+    review_assignments(data_type = "eDNA", mock_consensus,
       taxon_col = "consensus_taxon",
       taxon_rank_col = "nonexistent",
       context = mock_context, llm_fn = mock_llm_fn,
@@ -426,6 +441,7 @@ test_that("error when taxon_rank_col not in input_df", {
 
 test_that("output row order matches input", {
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -482,7 +498,7 @@ test_that("a model that echoes the annotated label still joins back to its rows"
       labs
     ), collapse = ","), "]")
   }
-  out <- review_assignments(df,
+  out <- review_assignments(data_type = "eDNA", df,
     taxon_col = "consensus_taxon",
     taxon_rank_col = "consensus_rank",
     context = list(
@@ -548,7 +564,7 @@ test_that("a cached review is reproducible and makes no second LLM call", {
     taxon_rank_col = "consensus_rank",
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
-    taxa_per_call = 10L, llm_fn = .counting_llm(ctr),
+    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA",
     cache_dir = cd, verbose = FALSE
   )
   a <- do.call(review_assignments, args)
@@ -570,7 +586,7 @@ test_that("changing the review context is a cache MISS, not a stale hit", {
     taxon_rank_col = "consensus_rank",
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
-    taxa_per_call = 10L, llm_fn = .counting_llm(ctr),
+    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA",
     cache_dir = cd, verbose = FALSE
   )
   invisible(do.call(review_assignments, base))
@@ -591,7 +607,7 @@ test_that("cache files are the file-per-key shape taxaflag_clear_cache() manages
     taxon_rank_col = "consensus_rank",
     context = list(geography = "Lake Michigan", habitat = "harbor"),
     plausible_taxa_col = "plausible_taxa", irreducible_only = FALSE,
-    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), cache_dir = cd, verbose = FALSE
+    taxa_per_call = 10L, llm_fn = .counting_llm(ctr), data_type = "eDNA", cache_dir = cd, verbose = FALSE
   ))
   inv <- taxaflag_clear_cache(cache_dir = cd, dry_run = TRUE)
   expect_gt(nrow(inv), 0L)
@@ -641,6 +657,7 @@ test_that("two candidate sets sharing one display label are reviewed once, and n
        "review_comment":null}]'
   }
   out <- review_assignments(
+    data_type = "eDNA",
     df,
     plausible_taxa_col = "plausible_taxa",
     context = list(geography = "Lake Michigan", habitat = "harbor"),
@@ -721,6 +738,7 @@ test_that("an omitted taxon is re-asked and recovered, not left NA", {
   m <- .omitting_llm(answer_from_call = 2L)
 
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus,
     taxon_col = "consensus_taxon",
     context = mock_context,
@@ -740,6 +758,7 @@ test_that("an omitted taxon is re-asked and recovered, not left NA", {
 test_that("the re-ask asks for the omitted taxon ONLY", {
   m <- .omitting_llm(answer_from_call = 2L)
   review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = m$fn, pause_seconds = 0, verbose = FALSE
   )
@@ -759,6 +778,7 @@ test_that("a persistently omitted taxon is reported, not silently dropped", {
   # matters here.
   warns <- testthat::capture_warnings(
     result <- review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus, taxon_col = "consensus_taxon",
       context = mock_context, llm_fn = m$fn, pause_seconds = 0, verbose = FALSE
     )
@@ -785,6 +805,7 @@ test_that("a single-taxon batch is re-asked too -- halving cannot help there", {
   df <- mock_consensus[mock_consensus$consensus_taxon == "Bos taurus", ]
 
   result <- suppressWarnings(review_assignments(
+    data_type = "eDNA",
     input_df = df, taxon_col = "consensus_taxon", context = mock_context,
     llm_fn = fn, pause_seconds = 0, verbose = FALSE
   ))
@@ -798,6 +819,7 @@ test_that("on_unreviewed = 'error' stops the run rather than exporting short", {
   m <- .omitting_llm()
   expect_error(
     suppressWarnings(review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus, taxon_col = "consensus_taxon",
       context = mock_context, llm_fn = m$fn, pause_seconds = 0,
       on_unreviewed = "error", verbose = FALSE
@@ -809,6 +831,7 @@ test_that("on_unreviewed = 'error' stops the run rather than exporting short", {
 test_that("on_unreviewed = 'ignore' is silent but still records the residue", {
   m <- .omitting_llm()
   result <- suppressWarnings(review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = m$fn, pause_seconds = 0,
     on_unreviewed = "ignore", verbose = FALSE
@@ -819,6 +842,7 @@ test_that("on_unreviewed = 'ignore' is silent but still records the residue", {
 
 test_that("the residue attributes are always present, even with nothing missing", {
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = mock_llm_fn, verbose = FALSE
   )
@@ -830,6 +854,7 @@ test_that("max_retries = 0 still means exactly one call per batch", {
   m <- .omitting_llm()
   warns <- testthat::capture_warnings(
     result <- review_assignments(
+      data_type = "eDNA",
       input_df = mock_consensus, taxon_col = "consensus_taxon",
       context = mock_context, llm_fn = m$fn, max_retries = 0L,
       pause_seconds = 0, verbose = FALSE
@@ -845,6 +870,7 @@ test_that("an unreviewed taxon is never written to the cache", {
   m <- .omitting_llm()
 
   suppressWarnings(review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = m$fn, pause_seconds = 0,
     cache_dir = cache_dir, verbose = FALSE
@@ -864,6 +890,7 @@ test_that("a cached non-answer from an older run is re-asked, not served", {
   # Seed the cache the way a pre-2026-09-14 run would have: every taxon
   # cached, one of them holding NA in every field.
   review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = mock_llm_fn, pause_seconds = 0,
     cache_dir = cache_dir, verbose = FALSE
@@ -879,6 +906,7 @@ test_that("a cached non-answer from an older run is re-asked, not served", {
 
   m <- .omitting_llm(answer_from_call = 1L)
   result <- review_assignments(
+    data_type = "eDNA",
     input_df = mock_consensus, taxon_col = "consensus_taxon",
     context = mock_context, llm_fn = m$fn, pause_seconds = 0,
     cache_dir = cache_dir, verbose = FALSE
@@ -941,6 +969,7 @@ test_that("a candidate set arriving in two posterior orders is reviewed once", {
   }
 
   out <- review_assignments(
+    data_type = "eDNA",
     df,
     plausible_taxa_col = "plausible_taxa",
     context = list(geography = "Point Conception", habitat = "rocky reef"),

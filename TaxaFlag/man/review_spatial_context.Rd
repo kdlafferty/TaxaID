@@ -23,6 +23,7 @@ review_spatial_context(
   context = NULL,
   target_group = NULL,
   marker = NULL,
+  data_type,
   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
   tile = "CartoDB.Positron",
   gbif_style = "classic.point",
@@ -128,6 +129,12 @@ exists" when it may just mean "none within this radius."}
 defaulting to \code{NULL} (rather than being required, unlike
 \code{review_assignments()} itself) is what hides the button entirely --
 supply it to enable on-demand AI review.}
+
+\item{data_type}{Character. Detection method, passed straight to
+\code{\link[=review_assignments]{review_assignments()}}: one of \code{"eDNA"}, \code{"acoustic"} or
+\code{"image"}. REQUIRED, and required even when the "Run AI Review"
+button is never clicked, because the value changes the guidance the LLM
+receives and defaulting it would make that choice silently.}
 
 \item{tile}{Character. Leaflet base-map tile provider (the reference map
 underneath the GBIF density overlay). Default \code{"CartoDB.Positron"}

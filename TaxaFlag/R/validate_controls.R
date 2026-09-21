@@ -40,13 +40,13 @@ utils::globalVariables(c(
 #'
 #' @param input_df Long-format data frame: one row per taxon x column
 #'   observation, carrying at least \code{event_col}, \code{taxon_col} and
-#'   \code{reads_col}.
+#'   \code{count_col}.
 #' @param event_col Character. Column identifying the sequenced column
 #'   (filter, bottle, replicate). Default \code{"event_id"}.
 #' @param taxon_col Character. Column identifying the feature to compare
 #'   compositions on -- an ESV/ASV id is preferable to a taxon name, because it
 #'   does not depend on assignment succeeding. Default \code{"taxon_name"}.
-#' @param reads_col Character. Read-count column. Default \code{"n_reads"}.
+#' @param count_col Character. Read-count column. Default \code{"n_reads"}.
 #' @param control_samples Character vector of \code{event_col} values that are
 #'   labelled controls.
 #' @param site_col Character or NULL. Column grouping columns into sites. When
@@ -128,7 +128,7 @@ utils::globalVariables(c(
 validate_controls <- function(input_df,
                               event_col = "event_id",
                               taxon_col = "taxon_name",
-                              reads_col = "n_reads",
+                              count_col = "count",
                               control_samples,
                               site_col = NULL,
                               min_samples_per_site = 3L,
@@ -138,7 +138,7 @@ validate_controls <- function(input_df,
                               verbose = TRUE) {
 
   stopifnot(is.data.frame(input_df))
-  need <- c(event_col, taxon_col, reads_col)
+  need <- c(event_col, taxon_col, count_col)
   miss <- setdiff(need, names(input_df))
   if (length(miss))
     stop("validate_controls: input_df is missing column(s): ",
@@ -156,7 +156,7 @@ validate_controls <- function(input_df,
   d <- data.frame(
     ..column_id = as.character(input_df[[event_col]]),
     ..taxon     = as.character(input_df[[taxon_col]]),
-    ..reads     = as.numeric(input_df[[reads_col]]),
+    ..reads     = as.numeric(input_df[[count_col]]),
     stringsAsFactors = FALSE)
   d$..site <- if (is.null(site_col)) "__all__" else as.character(input_df[[site_col]])
   d <- d[!is.na(d$..reads) & d$..reads > 0, , drop = FALSE]

@@ -109,6 +109,11 @@
 #'   the iNat points layer, so toggling one toggles both) specifically so a
 #'   taxon with no visible points nearby doesn't read as "no iNat data
 #'   exists" when it may just mean "none within this radius."
+#' @param data_type Character. Detection method, passed straight to
+#'   [review_assignments()]: one of \code{"eDNA"}, \code{"acoustic"} or
+#'   \code{"image"}. REQUIRED, and required even when the "Run AI Review"
+#'   button is never clicked, because the value changes the guidance the LLM
+#'   receives and defaulting it would make that choice silently.
 #' @param context,target_group,marker,llm_fn Passed straight to
 #'   [review_assignments()] when "Run AI Review" is clicked. \code{context}
 #'   defaulting to \code{NULL} (rather than being required, unlike
@@ -226,6 +231,7 @@ review_spatial_context <- function(input_df,
                                    context = NULL,
                                    target_group = NULL,
                                    marker = NULL,
+                                   data_type,
                                    llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
                                    tile = "CartoDB.Positron",
                                    gbif_style = "classic.point",
@@ -265,7 +271,8 @@ review_spatial_context <- function(input_df,
     occurrence_lon_col = occurrence_lon_col, inat_range = inat_range,
     inat_taxon_col = inat_taxon_col, live_inat_check = live_inat_check,
     inat_cache_dir = inat_cache_dir, inat_radius_km = inat_radius_km, context = context,
-    target_group = target_group, marker = marker, llm_fn = llm_fn, tile = tile,
+    target_group = target_group, marker = marker, data_type = data_type,
+    llm_fn = llm_fn, tile = tile,
     gbif_style = gbif_style, gbif_bin_size = gbif_bin_size, gbif_year_range = gbif_year_range
   )
 }
@@ -283,7 +290,7 @@ review_spatial_context <- function(input_df,
                                          occurrence_taxon_col, occurrence_lat_col,
                                          occurrence_lon_col, inat_range, inat_taxon_col,
                                          live_inat_check, inat_cache_dir, inat_radius_km,
-                                         context, target_group, marker, llm_fn, tile,
+                                         context, target_group, marker, data_type, llm_fn, tile,
                                          gbif_style, gbif_bin_size, gbif_year_range) {
   all_taxa <- sort(unique(input_df[[taxon_col]][!is.na(input_df[[taxon_col]])]))
   if (length(all_taxa) == 0L) {
@@ -359,7 +366,7 @@ review_spatial_context <- function(input_df,
     inat_range = inat_range, inat_taxon_col = inat_taxon_col,
     live_inat_check = live_inat_check, inat_cache_dir = inat_cache_dir,
     inat_radius_km = inat_radius_km, context = context, target_group = target_group,
-    marker = marker, llm_fn = llm_fn, tile = tile, gbif_style = gbif_style,
+    marker = marker, data_type = data_type, llm_fn = llm_fn, tile = tile, gbif_style = gbif_style,
     gbif_bin_size = gbif_bin_size, gbif_year_range = gbif_year_range
   )
 
@@ -386,7 +393,8 @@ review_spatial_context <- function(input_df,
                                           occurrence_lat_col, occurrence_lon_col,
                                           inat_range, inat_taxon_col,
                                           live_inat_check, inat_cache_dir, inat_radius_km,
-                                          context, target_group, marker, llm_fn, tile,
+                                          context, target_group, marker, data_type,
+                                          llm_fn, tile,
                                           gbif_style, gbif_bin_size, gbif_year_range) {
   function(input, output, session) {
     shiny::observeEvent(input$plaus,
@@ -868,7 +876,7 @@ review_spatial_context <- function(input_df,
       res <- tryCatch(
         review_assignments(
           input_df = row, taxon_col = ".taxon", context = context,
-          target_group = target_group, marker = marker,
+          target_group = target_group, marker = marker, data_type = data_type,
           llm_fn = llm_fn, verbose = FALSE
         ),
         error = function(e) {

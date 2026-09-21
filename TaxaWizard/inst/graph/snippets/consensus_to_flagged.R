@@ -53,7 +53,7 @@ flagged <- TaxaFlag::flag_contaminant(
   control_samples = {{control_samples}},
   event_col       = {{event_col}},
   taxon_col       = {{taxon_col}},
-  reads_col       = {{reads_col}},
+  count_col       = {{count_col}},
   contaminant_type = {{contaminant_type}},
   # Direction matters: contamination flows control -> sample, and leakage the
   # other way is a different thing that must not be filtered. site_col lets a
