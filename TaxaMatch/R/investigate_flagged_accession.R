@@ -95,7 +95,7 @@
 
   # Length restriction happens SERVER-SIDE via NCBI's own `[SLEN]` Entrez
   # query field, not by fetching a wide net and filtering client-side.
-  # Found necessary live (2026-08-08): client-side widening (fetch up to
+  # Found necessary live: client-side widening (fetch up to
   # 500 `[Organism]`-search results, then filter by ESummary's `slen`)
   # returned ZERO usable candidates for `Cyprinus carpio` -- a species with
   # 67,744 total nuccore records, whose first 500 by NCBI's default sort
@@ -392,7 +392,7 @@
 #' `max_related` truncation both happen after the (possibly cached) fetch,
 #' cheaply, on the already-in-memory result.
 #'
-#' @section Cache key includes `reference_length` (2026-08-08):
+#' @section Cache key includes `reference_length`:
 #' Live testing (see `.search_species_accessions()`'s own `@section
 #' Length-ratio pre-filter`) found the length-ratio pre-filter is required
 #' for correctness, not optional -- but that filter depends on the CALLING
@@ -521,9 +521,9 @@
 
 #' Core investigation logic, shared by the single- and batch-accession entry points
 #'
-#' Identical to what `investigate_flagged_accession()`'s body used to do
-#' directly, extracted so `investigate_flagged_accessions()` (the batch
-#' wrapper) can drive it with a shared `shared_cache` environment for
+#' Shared by `investigate_flagged_accession()`'s own body and
+#' `investigate_flagged_accessions()` (the batch
+#' wrapper), so the latter can drive it with a shared `shared_cache` environment for
 #' cross-accession NCBI-search reuse, and so both entry points can wrap it
 #' with the identical persistent-cache read/write logic.
 #' @noRd
@@ -552,7 +552,7 @@
 
   # Length-ratio pre-filter reference point -- see .search_species_
   # accessions()'s own @section Length-ratio pre-filter for why this is
-  # required, not optional (found live 2026-08-08 against the real
+  # required, not optional (found live against the real
   # MZ605481 case: a plain [Organism] search can be dominated by whole-
   # genome-assembly records tens of millions of bp long for a species with
   # a published reference genome).
