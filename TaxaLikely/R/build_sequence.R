@@ -63,8 +63,7 @@ utils::globalVariables(c(
 #'   guarantees "roughly the right marker," not amplicon-window
 #'   comparability, and does not by itself close this gap. See
 #'   `diagnostics/sebastes_chromis_confirmation.R` for the case this was
-#'   found in and the (now-superseded, use this parameter instead) manual
-#'   pre-filter pattern it used.
+#'   found in.
 #' @param filter_unnamed Logical (default `TRUE`).  If `TRUE`, sequences whose
 #'   finest-rank taxonomy column (the last element of `rank_system`, typically
 #'   `species`) is blank (`""`) or `NA` are removed before alignment.  Blank
@@ -85,17 +84,16 @@ utils::globalVariables(c(
 #'   the cap (current behaviour).
 #' @param verbose Logical (default `TRUE`).  Passed straight through to
 #'   `DECIPHER::AlignSeqs()`/`DECIPHER::DistanceMatrix()`'s own native
-#'   progress reporting (percent-complete, ETA) -- this function used to
-#'   hardcode both to `FALSE`, silencing DECIPHER's own display for the two
+#'   progress reporting (percent-complete, ETA) for the two
 #'   steps that dominate wall time on a large reference set (alignment cost
 #'   grows worse than linearly in sequence count, so a large reference
-#'   database can run for hours with no visible signal of progress). This
-#'   function's OWN `message()` calls
+#'   database can run for hours with no visible signal of progress without
+#'   it). This function's OWN `message()` calls
 #'   (length-filter counts, rank-system auto-detection, timing summaries) are
 #'   unaffected either way -- only DECIPHER's own in-progress display is
-#'   controlled by this parameter. `FALSE` restores the old fully-silent
-#'   behavior (e.g. for a non-interactive/logged batch run where a live
-#'   progress bar is meaningless).
+#'   controlled by this parameter. `FALSE` gives a fully-silent run (e.g. for
+#'   a non-interactive/logged batch run where a live progress bar is
+#'   meaningless).
 #' @param by_genus Logical (default `FALSE`; see `@section Per-genus
 #'   alignment` below). `TRUE` replaces the single whole-set
 #'   `DECIPHER::AlignSeqs()` call with many small per-genus alignments (each
@@ -121,13 +119,11 @@ utils::globalVariables(c(
 #'   one subset shared across every genus, which would starve whichever
 #'   genera never happen to fall inside it), so coverage stays roughly even
 #'   across genera even though it is no longer exhaustive. `0L` disables the
-#'   augmentation entirely (equivalent to the original representative-only
-#'   design this fixes -- see the `@section` below for why that understates
-#'   `gap_logit`).
+#'   augmentation entirely (representative-only alignment -- see the
+#'   `@section` below for why that understates `gap_logit`).
 #'
-#' @section Per-genus alignment (`by_genus = TRUE`, 2026-09-05, revised same day):
-#' Implements `fable_ecosystem_review_2026-09-05.md` finding E1: whole-set
-#' alignment cost grows worse than linearly in sequence count, but
+#' @section Per-genus alignment (`by_genus = TRUE`):
+#' Whole-set alignment cost grows worse than linearly in sequence count, but
 #' `train_likelihood_model()` only ever consumes within-species pairs (H1),
 #' same-genus cross-species pairs (H2), and a pooled cross-genus sample (H3,
 #' already coarse/pooled, never species-specific) -- none of which strictly
@@ -182,10 +178,8 @@ utils::globalVariables(c(
 #'       partial alignments that produce unreliable match scores.  A minimum
 #'       coverage threshold can be applied directly (e.g.
 #'       `ref_matrix[ref_matrix$coverage >= threshold, ]`) before calling
-#'       [train_likelihood_model()]; a dedicated threshold-calibration helper
-#'       (`calibrate_coverage_filter()`/`coverage_threshold()`) existed
-#'       through 2026-09-09 and was archived -- see `TaxaLikely/CLAUDE.md`
-#'       for the full reasoning.}
+#'       [train_likelihood_model()]; this package does not provide a
+#'       dedicated threshold-calibration helper for it.}
 #'     \item{`{rank}.x`, `{rank}.y`}{Taxonomy columns for each pair member.}
 #'   }
 #'
@@ -467,8 +461,8 @@ build_sequence_matrix <- function(reference_df,
 #' Align one DNAStringSet and extract its sparse pair table
 #'
 #' Shared by the whole-set path and each per-genus/cross-genus call in the
-#' `by_genus = TRUE` path (2026-09-05) -- the exact same alignment,
-#' distance-matrix, and coverage-extraction logic this file always used, just
+#' `by_genus = TRUE` path -- the exact same alignment,
+#' distance-matrix, and coverage-extraction logic, just
 #' callable on a subset instead of hardcoded to the whole input.
 #' @noRd
 .decipher_align_pairs <- function(dna, max_dist, verbose) {
@@ -518,7 +512,7 @@ build_sequence_matrix <- function(reference_df,
   )
 }
 
-#' Per-genus + cross-genus-representative alignment (2026-09-05, `by_genus = TRUE`)
+#' Per-genus + cross-genus-representative alignment (`by_genus = TRUE`)
 #'
 #' Replaces one whole-set `DECIPHER::AlignSeqs()` call (cost grows worse than
 #' linearly in sequence count) with many small per-genus alignments -- giving
@@ -526,13 +520,12 @@ build_sequence_matrix <- function(reference_df,
 #' uses for H1/H2 unchanged -- plus real cross-genus comparisons for EVERY
 #' sequence (not just one representative), at a fraction of the whole-set
 #' cost. See `build_sequence_matrix()`'s own `@param by_genus` for the full
-#' rationale and the real numbers this was built against
-#' (fable_ecosystem_review_2026-09-05.md, finding E1).
+#' rationale and the real numbers this was built against.
 #'
-#' @section Why every sequence, not just the representative (2026-09-05, revised):
-#' The first version of this function aligned exactly one representative
+#' @section Why every sequence, not just the representative:
+#' Aligning exactly one representative
 #' sequence per genus against every other genus's representative, in a single
-#' small pass -- cheap, but real-data validation on two independent datasets
+#' small pass, is cheap, but real-data validation on two independent datasets
 #' (GreatLakes-adjacent Mugu and PtConception 12S) found this understates
 #' `gap_logit` (score minus best FOREIGN score) for every sequence that ISN'T
 #' its genus's chosen representative: `train_likelihood_model()`'s
@@ -574,11 +567,11 @@ build_sequence_matrix <- function(reference_df,
 #' representative-sampling approximation itself (still governed by
 #' [check_cross_genus_sampling_noise()]).
 #'
-#' @section Capping the foreign-representative count (2026-09-05, same day):
-#' The fix above was first shipped UNCAPPED (every genus's alignment got a
-#' copy of literally every other genus's representative) and validated to
-#' work statistically -- but real-data timing on two independent datasets
-#' found it costs MORE than whole-set alignment, and the gap WIDENS (not
+#' @section Capping the foreign-representative count:
+#' The fix above works statistically when UNCAPPED (every genus's alignment
+#' gets a copy of literally every other genus's representative) -- but
+#' real-data timing on two independent datasets found it costs MORE than
+#' whole-set alignment, and the gap WIDENS (not
 #' narrows) as genus count grows: a real 88-genus reference set went from
 #' 14.1s (uncapped) to 82.1s (whole-set) -- already a real regression -- and
 #' a real 221-genus reference set went from 2370.1s (uncapped) to 602.9s
@@ -651,9 +644,9 @@ build_sequence_matrix <- function(reference_df,
   # incompletely-resolved lineages), not a data error, so it is dropped with a
   # message rather than aborting the whole run -- the same "drop and report,
   # don't hard-fail" convention `filter_unnamed` already uses for a blank
-  # finest-rank value. (2026-09-06: this used to be a hard stop() -- found via
-  # a real production run against a real 1,412-genus/21,896-sequence 18S
-  # fetch, which legitimately has some genus-unresolved accessions.)
+  # finest-rank value. (Confirmed against a real production run: a real
+  # 1,412-genus/21,896-sequence 18S fetch legitimately has some
+  # genus-unresolved accessions.)
   genus_vals <- ref_seqs[["genus"]]
   has_genus <- !is.na(genus_vals) & nzchar(trimws(genus_vals))
   n_no_genus <- sum(!has_genus)
