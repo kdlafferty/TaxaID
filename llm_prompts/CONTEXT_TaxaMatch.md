@@ -4,7 +4,7 @@
 
 Stores and standardizes raw match data produced by external tools that compare biological observations (eDNA sequences, images, acoustic recordings) against reference databases. Outputs a canonical match object (one row per sample x reference match, with standard column names) for input to TaxaLikely. Match data sources include DNA barcode programs (e.g. MiFish), image classifiers, and acoustic recognizers. Also screens reference accessions for taxonomic mislabeling via independent BLAST-based congruence checking before the reference set is used for likelihood model training. Score-to-likelihood conversion itself lives in TaxaLikely. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 14:57:41 UTC; unix). 31 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:41 UTC; unix). 31 exported function(s).
 
 ## Functions
 

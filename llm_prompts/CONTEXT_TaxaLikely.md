@@ -4,7 +4,7 @@
 
 Trains a hierarchical Bayesian model on reference-vs-reference match scores (DNA percent identity, image similarity, acoustic scores) and uses it to convert per-observation match scores into likelihoods. For each observation (observation_id), produces score_likelihood, score_likelihood_mean, and score_likelihood_sd across candidate taxa - the columns required by TaxaAssign. Also provides reference database quality tools: detecting mislabeled references and auditing taxonomic completeness. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 14:57:44 UTC; unix). 31 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:44 UTC; unix). 31 exported function(s).
 
 ## Functions
 
@@ -168,7 +168,7 @@ How Much Does the Random Cross-Genus Draw Move the Estimate?
 | max_foreign_reps_per_genus | no | 20L | Forwarded to build_sequence_matrix(by_genus = TRUE, ...), identically for every replicate. |
 | n_replicates | no | 5L | Integer (default 5L). How many independent random representative draws to compare. Each draw consumes the caller's RNG state (sample(), same convention as max_seqs_per_taxon) -- do NOT call set.seed() between replicates, or every "replicate" would be identical. |
 
-**Value:** A list: 'replicates' Data frame, one row per replicate: 'replicate', 'n_cross_genus_pairs', 'mean_p_match', 'median_p_match', 'sd_p_match'. 'summary' Named list: the range (min, max) and coefficient of variation (sd/mean) of 'mean_p_match' across replicates - the single number worth looking at first.
+**Value:** A list: 'replicates' Data frame, one row per replicate: 'replicate', 'n_cross_genus_pairs' (the count of DISTINCT unordered cross-genus sequence pairs - '.decipher_align_pairs()''s underlying pair table carries both (i, j) and (j, i) for every pair, and this count de-duplicates that before reporting), 'mean_p_match', 'median_p_match', 'sd_p_match'. 'summary' Named list: the range (min, max) ...
 
 ### compute_rank_thresholds(seq_matrix, rank_system = NULL, prior_weight = 10, threshold_grid = seq(0, 100, by = 1))
 
@@ -463,7 +463,7 @@ A fast, LLM-first alternative to 'audit_barcode_coverage()' for unreferenced spe
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| match_df | yes |  | Data frame. Canonical match object from TaxaMatch (or equivalent). Required column: taxon_name. Optional but strongly recommended: genus (if absent, derived from taxon_name). Required for expand_to_family = TRUE: family. |
+| match_df | yes |  | Data frame. Canonical match object from TaxaMatch (or equivalent). Required column: taxon_name. Optional but strongly recommended: genus (if absent, derived from taxon_name). A genus value that does not look like a plausible genus name (a single capitalised word) is dropped with a message() rather than reaching the LLM prompt verbatim. Required for expand_to_family = TRUE: family. |
 | context | no | NULL | Optional named list or single-row data frame with location / habitat context for the LLM. Recognised fields: ecoregion, lat, lon, date, habitat. NULL (default) sends no context. |
 | barcode_term | no | "COI" | Character scalar or vector. One or more marker search terms (e.g. "12S", c("12S", "MiFish")). Multiple terms are OR-ed. Default "COI". |
 | llm_fn | no | NULL | Function or NULL. Provider function following the TaxaTools llm_fn pattern: accepts a single character string prompt and returns a single character string response. Default NULL resolves to getOption("TaxaID.llm_fn") when set, otherwise TaxaTools::call_api (requires TaxaTools). |

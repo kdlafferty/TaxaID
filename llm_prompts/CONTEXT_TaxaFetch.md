@@ -4,7 +4,7 @@
 
 Provides tools for acquiring, combining, and preparing taxonomic occurrence data from multiple sources including GBIF and DataONE. The user specifies a spatial area and taxonomic group; TaxaFetch retrieves occurrence records and aligns column naming to DarwinCore conventions. Habitat assignment and spatial quality control are handled by TaxaHabitat. Output is a data frame of taxonomic occurrences at various locations and times. These data feed into TaxaHabitat and then TaxaExpect, which generates spatially explicit predictions of relative occurrence across taxa. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 14:57:39 UTC; unix). 30 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:39 UTC; unix). 30 exported function(s).
 
 ## Functions
 
@@ -98,7 +98,7 @@ A bbox-scoped GBIF search (see 'get_gbif_occurrences') can return a single occur
 | cache_dir | no | tools::R_user_dir("TaxaFetch", "cache") | Character or NULL. Forwarded to fetch_gbif_occurrences for checkpointing the global fetch. Default tools::R_user_dir("TaxaFetch", "cache"). |
 | candidate_taxa | no | NULL | Optional character vector of taxa that can actually be ASSIGNED -- typically the species-level match candidates (e.g. unique(match_obj$taxon_name)). NULL (default) checks every locally-rare species in the pool. Supplying it is strongly recommended for a family-derived occurrence pool: at real PtConception 18S only 387 of 7,392 pool species (5.2%) were match candidates, so 95% of the per-species GBIF requests protected against a harm those species cannot cause. A species with 1-4 local records has a theta far below TaxaAssign::join_priors()'s expansion_min_prior, so it can never be expanded into a hypothesis; its only residual effect is +1 to the Good-Turing f1. A locally-rare MATCH CANDIDATE is the opposite: its prior multiplies its likelihood directly, which is the misidentified-record failure this check exists for. |
 | candidate_scope | no | c("genus", "species", "all") | How candidate_taxa restricts the check. "genus" (default) keeps any locally-rare species sharing a genus with a candidate -- congeners matter because TaxaLikely::restore_suppressed_candidates() and expand_unreferenced_hypotheses() can promote one into a named hypothesis. "species" keeps only exact candidates (tightest). "all" ignores candidate_taxa entirely. Family scoping is deliberately not offered: an occurrence pool fetched from family keys already contains only candidate families, so it would restrict nothing. |
-| verdict_cache | no | TRUE | Logical, default TRUE. Cache the per-record VERDICTS rather than the global occurrence cloud. The cloud is reduced to one integer per species and one logical per local record and then discarded, so caching it stores millions of records to preserve a few thousand numbers. The verdict file is keyed on the species set and the cc_outl() parameters, so changing either recomputes. |
+| verdict_cache | no | TRUE | Logical, default TRUE. Cache the per-record VERDICTS rather than the global occurrence cloud. The cloud is reduced to one integer per species and one logical per local record and then discarded, so caching it stores millions of records to preserve a few thousand numbers. The verdict file is keyed on a content hash (rlang::hash()) of the sorted species-key set plus every parameter that changes the verdict (year_range, method, min_occs, tdi, mltpl), so changing any of them recomputes. A loaded cache file that shares none of the current call's requested gbifIDs (a stale or foreign file) is treated as a miss and recomputed, with a message() naming the skipped file. |
 | verbose | no | FALSE | Logical. Forwarded to cc_outl(). Default FALSE. |
 
 **Value:** 'local_occurrences' with three columns added: 'local_n' Number of records for this species in 'local_occurrences'. 'global_n_unique' Number of geographically unique global records found for this species. 'NA' for species never checked ('local_n >= min_local_n'). 'outlier_status' One of '"not_tested_sufficient_local_data"' (local_n >= min_local_n, never checked), '"insufficient_global_data"' ...
@@ -245,7 +245,7 @@ Downloads occurrence records from GBIF for a vector of taxon usage keys, process
 
 **Value:** A tibble of occurrence records with GBIF's standard columns. Only records where the query key appears somewhere in the returned record's taxonomic hierarchy are retained (see Details). Returns an empty tibble with a warning if no records pass.
 
-### fetch_inat_occurrences(taxon_names, lat, lng, radius_km = 50, captive = c("any", "true", "false"), quality_grade = c("any", "casual", "needs_id", "research"), api_token = Sys.getenv("INAT_API_TOKEN"), verbose = FALSE)
+### fetch_inat_occurrences(taxon_names, lat, lng, radius_km = 50, captive = c("any", "true", "false"), quality_grade = c("any", "casual", "needs_id", "research"), api_token = Sys.getenv("INAT_API_TOKEN"), retry_attempts = 4L, retry_wait = c(15, 30, 60), verbose = FALSE)
 
 Fetch local iNaturalist observation counts, including casual-grade records
 
@@ -260,6 +260,8 @@ For each taxon name, resolves the iNaturalist taxon ID and counts observations w
 | captive | no | c("any", "true", "false") | Character, one of "any" (default), "true", "false". Filters on iNaturalist's own captive/cultivated flag -- "true" isolates exactly the captive/cultivated records GBIF-style filtering excludes; "any" includes both. |
 | quality_grade | no | c("any", "casual", "needs_id", "research") | Character, one of "any" (default), "casual", "needs_id", "research". "casual" is where iNaturalist routes most captive/cultivated observations, but is not identical to captive = "true" -- a wild organism with poor evidence is also casual grade. Use captive, not quality_grade, to isolate captive/cultivated status specifically. |
 | api_token | no | Sys.getenv("INAT_API_TOKEN") | Character. iNaturalist API token for taxon name resolution. Defaults to the INAT_API_TOKEN environment variable. |
+| retry_attempts | no | 4L | Integer (default 4L). How many times the observation-count request is attempted in total before giving up when iNaturalist answers with a 429 (rate limit) or 5xx (server error). Matches download_gbif_occurrences's submit_attempts convention. Any other status (including a success or a 401) is never retried. |
+| retry_wait | no | c(15, 30, 60) | Numeric vector of seconds (default c(15, 30, 60)) slept between retry attempts when iNaturalist does not send a Retry-After header; the last value repeats if retry_attempts exceeds its length. A server-sent Retry-After value, when present, is honoured instead. |
 | verbose | no | FALSE | Logical. If TRUE, prints progress for each taxon. Default FALSE. |
 
 **Value:** A tibble with columns 'taxon_name', 'taxon_id', 'matched_name', 'inat_kingdom' (derived from iNaturalist's own 'iconic_taxon_name' via the same fixed lookup 'check_inat_range' uses - compare against your own candidate's kingdom before trusting a result: iNaturalist resolves names against its own curated taxonomy, not NCBI's or GBIF's, so a name that matches an unrelated homonym in a different ...

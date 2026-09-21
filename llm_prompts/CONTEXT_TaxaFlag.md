@@ -4,7 +4,7 @@
 
 Identifies and flags anomalous detections in taxonomic assignment results from biological surveys. Detects laboratory and field contamination by comparing read proportions against control samples, flags handler-related artifacts near equipment setup or collection events, and provides LLM-based expert review of habitat fit, geographic plausibility, contaminant risk, and taxonomic scope. Operates on consensus data frames and appends categorical flag columns for user-driven filtering. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 14:57:58 UTC; unix). 11 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:58 UTC; unix). 11 exported function(s).
 
 ## Functions
 

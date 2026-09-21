@@ -4,7 +4,7 @@
 
 Provides helper functions for cleaning, verifying, and standardizing taxonomic names across multiple backbones. Capabilities include spell-checking and correcting species names, translating names between taxonomic backbones (e.g., GBIF, NCBI, WoRMS), retrieving classification hierarchies via API, and creating standardized taxon labels at any rank. Also provides LLM provider functions for calling Anthropic, OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for drafting methods and results sections. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 14:57:37 UTC; unix). 52 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:37 UTC; unix). 52 exported function(s).
 
 ## Functions
 
@@ -284,7 +284,7 @@ Takes a dataframe with separate taxonomic rank columns and adds two new columns:
 
 Default Sampling-Group Classification Scheme
 
-Returns the package's default sampling-group scheme: an ORDERED list of rules (first-match-wins, exactly like the 'dplyr::case_when()' it replaces) that classifies a taxon's kingdom/phylum/class/order into one of eleven detection-process groups, or a catch-all. See Details for clause-specific rationale.
+Returns the package's default sampling-group scheme: an ORDERED list of rules (first-match-wins, exactly like the 'dplyr::case_when()' it replaces) that classifies a taxon's kingdom/phylum/class/order into one of ten detection-process groups (encoded as eleven ordered rules - '"parasites"' has two, by design, since it is reached via two unrelated clauses), or a catch-all. See Details for clause-specific rationale.
 
 (no parameters)
 
@@ -440,7 +440,7 @@ Returns TRUE for strings that are structurally plausible species binomials match
 
 **Value:** Logical vector, same length as 'x'.
 
-### list_cache_files(cache_dir, patterns, recursive = FALSE)
+### list_cache_files(cache_dir, patterns, recursive = FALSE, force = FALSE)
 
 List files in a directory matching cache-file patterns
 
@@ -451,6 +451,7 @@ Generic building block for a package's own '<pkg>_clear_cache()' helper: scans '
 | cache_dir | yes |  | Character. Directory to scan. |
 | patterns | yes |  | Character vector of regular expressions matched against each file's basename (via grepl()); a file matching ANY pattern is included. |
 | recursive | no | FALSE | Logical. Descend into subdirectories? Default FALSE. Pass TRUE for a store that keeps part of itself in a subdirectory -- TaxaLikely's per-accession fasta/ cache is one example; without it, files inside that subdirectory are invisible to taxalikely_clear_cache(). Patterns are still matched against the BASENAME, so a recursive scan needs a pattern that identifies the file, not its directory. |
+| force | no | FALSE | Logical (default FALSE). Pass TRUE to scan a directory that holds files matching none of patterns anyway -- see containment check (2) above. Never needed for a directory that holds only recognized cache files. |
 
 **Value:** A data frame with columns 'path', 'size_mb', 'mtime' (zero rows if 'cache_dir' has no matching files or does not exist).
 
@@ -713,7 +714,7 @@ Each package has its own '<pkg>_clear_cache()' function, but none of them shows 
 
 **Value:** Invisibly, a data frame with one row per directory: 'cache', 'path', 'exists', 'n_files', 'size_mb', 'oldest', 'newest'. 'size_mb' is APPARENT size (sum of file bytes). A cache of many tiny files occupies substantially more than that on disk, because each file takes at least one filesystem block - TaxaLikely's per-taxon and per-accession stores are thousands of ~1 KB files, so their real ...
 
-### taxatools_clear_cache(cache_dir, older_than_days = NULL, dry_run = FALSE)
+### taxatools_clear_cache(cache_dir, older_than_days = NULL, dry_run = FALSE, force = FALSE)
 
 Report and clear the TaxaTools on-disk caches
 
@@ -724,6 +725,7 @@ Covers both of the package's file-per-key caches: 'scientific_to_common(cache_di
 | cache_dir | yes |  | Character. The directory passed to scientific_to_common(cache_dir = ) or fetch_worms_attributes(cache_dir = ). |
 | older_than_days | no | NULL | Numeric or NULL. Only files older than this many days are targeted; NULL (default) targets every file. |
 | dry_run | no | FALSE | Logical. If TRUE, reports without deleting. |
+| force | no | FALSE | Logical (default FALSE). cache_dir is refused if it holds any file matching neither cache pattern (a real cache directory holds only cache files) or if it resolves to the working directory, the user's home directory, or a filesystem root (that last refusal is never overridable by force) -- see list_cache_files's own @section on this. Pass TRUE only for the first kind of refusal, and only once you have confirmed the non-matching file(s) named in the error are not real data. |
 
 **Value:** Invisibly, the data frame of targeted files (see 'list_cache_files').
 

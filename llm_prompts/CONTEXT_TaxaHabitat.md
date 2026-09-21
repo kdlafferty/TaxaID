@@ -4,26 +4,27 @@
 
 Assigns habitat classifications to taxonomic occurrence records using LLM prompts and performs spatial quality control. Receives occurrence data from TaxaFetch and produces habitat-annotated, spatially screened records for input to TaxaExpect. Part of the TaxaID ecosystem.
 
-Version 0.1.0 (built R 4.5.2; ; 2026-09-21 14:57:47 UTC; unix). 17 exported function(s).
+Version 0.1.0 (built R 4.5.2; ; 2026-09-21 19:33:47 UTC; unix). 17 exported function(s).
 
 ## Functions
 
-### apply_spatial_review_decisions(occurrence_data, path, point_id_col = "point_id", flag_col = "spatial_flag", reason_col = "spatial_flag_reason", habitat_col = "main_habitat")
+### apply_spatial_review_decisions(occurrence_data, path, point_id_col = "point_id", flag_col = "spatial_flag", reason_col = "spatial_flag_reason", habitat_col = "main_habitat", taxon_col = "taxon_name")
 
 Apply saved spatial-flag decisions before (or instead of) the gadget
 
-Overwrites 'spatial_flag' on every row whose 'point_id' has a saved decision (and 'main_habitat' where the decision was a reviewer reassignment), marks the reason, and reports how many flagged points still need a reviewer. Call it on 'flag_habitat_inconsistencies''s output; open 'review_spatial_flags' only when 'attr(result, "n_pending_review") > 0' (or when you deliberately want to re-review). A missing decisions file is not an error: nothing is applied and every flagged point is pending.
+Overwrites 'spatial_flag' on every row whose '(point_id, taxon_name)' has a saved decision (and 'main_habitat' where the decision was a reviewer reassignment), marks the reason, and reports how many flagged points still need a reviewer. Call it on 'flag_habitat_inconsistencies''s output; open 'review_spatial_flags' only when 'attr(result, "n_pending_review") > 0' (or when you deliberately want to re-review). A missing decisions file is not an error: nothing is applied and every flagged point is pending.
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| occurrence_data | yes |  | Data frame from flag_habitat_inconsistencies (carries point_id, spatial_flag, spatial_flag_reason, main_habitat). |
+| occurrence_data | yes |  | Data frame from flag_habitat_inconsistencies (carries point_id, spatial_flag, spatial_flag_reason, main_habitat, and ideally taxon_col -- see Details). |
 | path | yes |  | Character. The decisions file written by save_spatial_review_decisions. |
 | point_id_col | no | "point_id" | Column names. |
 | flag_col | no | "spatial_flag" | Column names. |
 | reason_col | no | "spatial_flag_reason" | Column names. |
 | habitat_col | no | "main_habitat" | Column names. |
+| taxon_col | no | "taxon_name" | Character. Name of the taxon column in occurrence_data. Default "taxon_name". Used to match a decision's saved taxon_name against the correct rows, and to detect an ambiguous point for an old-format decision (see Details). |
 
-**Value:** 'occurrence_data' with decisions applied and attributes 'n_applied' (rows changed), 'n_pending_review' (distinct points whose flag is not '"likely"' and that carry no decision) and 'pending_point_ids'.
+**Value:** 'occurrence_data' with decisions applied and attributes 'n_applied' (rows changed), 'n_pending_review' (distinct points with at least one row whose flag is not '"likely"' and that was not resolved by a decision this call - including a point left ambiguous, see Details) and 'pending_point_ids'.
 
 ### assign_habitat_biological(occurrence_data, habitats_df, habitat_cols = NULL, point_id_col = "point_id", taxon_col = "taxon_name", weight_by_abundance = FALSE, threshold = 0.3, min_species_weight = 0)
 
@@ -261,22 +262,23 @@ Opens a Shiny gadget for reviewing the 'spatial_flag' column added by 'flag_habi
 
 **Value:** The input 'occurrence_data' dataframe with 'spatial_flag', 'spatial_flag_reason', and 'main_habitat' updated where changed. Returns 'NULL' if the user clicks Cancel. Filter to keep confirmed records: reviewed <- review_spatial_flags(occurrences_flagged) occurrences_clean <- dplyr::filter(reviewed, spatial_flag == "likely")
 
-### save_spatial_review_decisions(reviewed, path, before = NULL, point_id_col = "point_id", flag_col = "spatial_flag", habitat_col = "main_habitat")
+### save_spatial_review_decisions(reviewed, path, before = NULL, point_id_col = "point_id", flag_col = "spatial_flag", habitat_col = "main_habitat", taxon_col = "taxon_name")
 
 Save a reviewer's spatial-flag decisions
 
-Extracts one row per 'point_id' from 'review_spatial_flags()''s output - the reviewed 'spatial_flag' and 'main_habitat' - and merges it into the decisions file at 'path' (a newer decision for the same point replaces the older one).
+Extracts one row per '(point_id, taxon_name)' from 'review_spatial_flags()''s output - the reviewed 'spatial_flag' and 'main_habitat' - and merges it into the decisions file at 'path' (a newer decision for the same point/taxon replaces the older one).
 
 | Param | Required | Default | Doc |
 |---|---|---|---|
-| reviewed | yes |  | Data frame returned by review_spatial_flags (must carry point_id, spatial_flag, main_habitat). |
+| reviewed | yes |  | Data frame returned by review_spatial_flags (must carry point_id, spatial_flag, main_habitat; taxon_name is used when present, see Details). |
 | path | yes |  | Character. The .rds decisions file, one per site. |
-| before | no | NULL | Optional data frame: the table the gadget was opened on (flag_habitat_inconsistencies()'s output). When supplied, a point's habitat is recorded as a reviewer REASSIGNMENT only where it differs from before; otherwise the habitat is treated as the automatic assignment of the day and is NOT frozen for later runs. Without before, this function cannot tell an automatic habitat from a reviewer reassignment at all: every non-NA main_habitat in reviewed is recorded as a reassignment (the conservative reading) and will be re-applied VERBATIM by apply_spatial_review_decisions on every later run -- freezing that point's habitat at whatever the automatic classifier happened to say the day it was reviewed, even if the classifier's own logic later changes for the better. Pass before whenever the pre-review table is available to avoid this. |
+| before | no | NULL | Optional data frame: the table the gadget was opened on (flag_habitat_inconsistencies()'s output). When supplied, a point's habitat is recorded as a reviewer REASSIGNMENT only where it differs from before; otherwise the habitat is treated as the automatic assignment of the day and is NOT frozen for later runs. Without before, this function cannot tell an automatic habitat from a reviewer reassignment at all: every non-NA main_habitat in reviewed is recorded as a reassignment (the conservative reading) and will be re-applied VERBATIM by apply_spatial_review_decisions on every later run -- freezing that point's habitat at whatever the automatic classifier happened to say the day it was reviewed, even if the classifier's own logic later changes for the better. Pass before whenever the pre-review table is available to avoid this. Matched on (point_id, taxon_name) when before carries taxon_col too, otherwise on point_id alone. |
 | point_id_col | no | "point_id" | Column names. Defaults match review_spatial_flags()'s output. |
 | flag_col | no | "spatial_flag" | Column names. Defaults match review_spatial_flags()'s output. |
 | habitat_col | no | "main_habitat" | Column names. Defaults match review_spatial_flags()'s output. |
+| taxon_col | no | "taxon_name" | Character. Name of the taxon column in reviewed (and, if present, before). Default "taxon_name". Absent from reviewed, every saved decision's taxon_name is NA -- see Details. |
 
-**Value:** Invisibly, the merged decisions table ('point_id', 'spatial_flag', 'main_habitat', 'habitat_reassigned', 'decided_at').
+**Value:** Invisibly, the merged decisions table ('point_id', 'taxon_name', 'spatial_flag', 'main_habitat', 'habitat_reassigned', 'decided_at').
 
 ### taxahabitat_clear_cache(cache_dir = tools::R_user_dir("TaxaHabitat", "cache"), older_than_days = NULL, dry_run = FALSE)
 
