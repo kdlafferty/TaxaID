@@ -230,24 +230,24 @@
 #' spuriously-perfect local-alignment fragment) is exactly what BLAST's
 #' own `query_coverage` already guards against by construction.
 #'
-#' @section A real, live-found correction to the original design (2026-08-08):
-#' The FIRST version of this function was a post-hoc filter -- BLAST the
+#' @section Why the comparison-set search is scoped, not post-hoc filtered:
+#' A post-hoc filter -- BLAST the
 #' flagged sequence against the SAME unrestricted database
 #' `investigate_flagged_accession()` itself searches, take the top
 #' `max_hits` ranked hits, then keep only whichever happen to also be in
-#' `comparison_meta$accession`. A live test against the real `MZ605481`
+#' `comparison_meta$accession` -- fails on a real case. A live test against the real `MZ605481`
 #' case found this returns ZERO matches on both sides even though 30 real
 #' conspecific accessions were independently confirmed to exist -- the
 #' comparison-set accessions (found via `.search_species_accessions()`'s
 #' own, separate NCBI organism-name search) simply never appeared among
 #' BLAST's own top-ranked hits for this query, an independent sample from
-#' GenBank's full catalog with no guaranteed overlap. This is now fixed
-#' via NCBI's `ENTREZ_QUERY` mechanism (`method = "remote"` only): the
-#' BLAST search SPACE itself is restricted to exactly the comparison-set
+#' GenBank's full catalog with no guaranteed overlap. Instead, NCBI's
+#' `ENTREZ_QUERY` mechanism (`method = "remote"` only) restricts the
+#' BLAST search SPACE itself to exactly the comparison-set
 #' accessions, so BLAST computes a real alignment against every one of
 #' them directly, rather than hoping they surface unprompted in an
 #' unrestricted top-N. `method = "local"` has no `ENTREZ_QUERY`-equivalent
-#' restriction available via `rBLAST`, so it falls back to the original,
+#' restriction available via `rBLAST`, so it falls back to the
 #' weaker post-hoc-filter approach -- flagged in its own roxygen as a real,
 #' known limitation, not silently downgraded.
 #'
