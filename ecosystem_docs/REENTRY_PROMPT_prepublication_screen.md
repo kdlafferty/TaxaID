@@ -736,6 +736,15 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   caught: vignette-call checking, snippet/graph-edge export checking, the
   sampling-group kingdom guard, `cache_ok()` staleness inputs, `on_unreviewed
   = "error"`, `on_count_failure`.
+  **DONE 2026-09-21** (`TaxaID_dev/screen_records/.../B3_guards.md`): eleven
+  guards broken one at a time in a scratch worktree; **9 of 11 fired** with
+  a real failure. Two gaps, both TaxaWizard tests, fixed in its B4 pass:
+  the word-boundary invariant test asserted only the " ..." marker (a hard
+  mid-word cut with the marker appended passed); the committed-template
+  diff test carried `skip_on_cran()` and silently skipped under a bare
+  `test_file()` -- the file's strongest guard as a no-op, the exact shape
+  this project forbids. Rule: a guard test never `skip()`s for a reason
+  that is not provable at run time; it `fail()`s with the reason.
 - **B4. Per-package checklist passes 1-7** (memory `pre-code-review-package-
   checklist`) on every package, including `/security-review`.
   **Before B4 started (2026-09-21)**: the three post-screen follow-ups landed
