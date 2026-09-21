@@ -160,15 +160,16 @@ when a taxon's count query still fails after \code{count_attempts} tries.
 sequence budget, which sets that taxon's fetch cap to zero, so the taxon
 contributes NO reference sequences at all and any species-level call
 within it later rests on no reference data of its own. Observed for real
-on the 2026-09-14 PtConception 12S run: 7 taxa failed (the first 7
+on a PtConception 12S run: 7 taxa failed (the first 7
 queried, after which every remaining query succeeded), silently costing
 352 species-level consensus rows their own reference data, including
 \emph{Medialuna californiensis}, \emph{Zalophus californianus} and \emph{Tursiops
 truncatus}. Re-issuing the identical queries afterwards succeeded for all
 7, confirming the failures were transient. \code{"warn"} keeps the run alive
 but reports the affected taxa by name in one consolidated warning and
-message, because the original per-taxon warnings went unnoticed in a
-17,000-line log. Use \code{"error"} for an unattended production run where a
+message, because per-taxon warnings are easy to miss in a large log (a
+real 17,000-line log missed all 7). Use \code{"error"} for an unattended
+production run where a
 silently degraded reference database is worse than a failed run.}
 
 \item{evict_unreachable_cache}{Logical (default \code{TRUE}). When a taxon's
@@ -212,19 +213,12 @@ independent length filter -- out-of-range rows kept here are excluded
 from training there exactly as before this parameter existed).
 }
 \description{
-Renamed from \code{fetch_reference_sequences()} (Session 136) now that a second
-live-API reference source (\code{fetch_bold_reference_sequences()}, BOLD Systems)
-exists -- the old name didn't say NCBI anywhere, which stopped being safe
-once a second source existed. The deprecated \code{fetch_reference_sequences()}
-forwarding alias was removed entirely in a later session (no real callers
-remained; see NAME_CHANGE_HISTORY.md).
-}
-\details{
 Searches NCBI nucleotide by taxon name and barcode marker, retrieves full
 taxonomy via the NCBI taxonomy database, filters by sequence length and
 quality, optionally downsamples, and returns a \code{reference_df} ready for
 \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}.
-
+}
+\details{
 The function performs a \strong{count-first estimation} before downloading.
 If the total exceeds \code{max_sequences}, sequences are subsampled
 proportionally across taxa (each taxon gets at least \code{min_per_taxon}

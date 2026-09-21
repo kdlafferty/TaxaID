@@ -69,8 +69,8 @@ hypotheses, since they are compared via density ratios at the same
 observed point (a valid likelihood ratio requires one consistent scale;
 mixing transforms across hypotheses would need an explicit
 change-of-variables correction that this package does not implement).
-\code{"logit"} (\code{log(p/(1-p))}) is the package's original scale. \code{"sqrt_mismatch"}
-(\code{-sqrt(1-p)}) was added in Session 158 after real 12S congener data
+\code{"logit"} (\code{log(p/(1-p))}) is a standard scale. \code{"sqrt_mismatch"}
+(\code{-sqrt(1-p)}) exists because real 12S congener data
 showed \code{"logit"} gives a genuinely backwards answer for one of the
 package's more novel claims: whether a genus's species are hard to tell
 apart (small, consistent divergence) or easy to tell apart (larger,
@@ -83,8 +83,7 @@ count (few mismatches out of many aligned bases -- the regime real data
 is actually in), for which square-root is the classical
 variance-stabilizing transform; it recovers the correct qualitative
 ordering where \code{"logit"} does not. See \code{evaluate_likelihoods()}'s own
-documentation and \verb{[[project_job2_unreferenced_relatives]]} in the
-TaxaID memory system for the full empirical derivation, including why
+documentation for the full empirical derivation, including why
 several other standard transforms (probit, complementary log-log) were
 checked and rejected. \code{"sqrt_mismatch"} is bounded to \verb{[-1, 0]} rather
 than unbounded like \code{"logit"} -- a Gaussian fit to it is technically an
@@ -143,8 +142,8 @@ hypothesis (pooled across all genera).}
 \item{\code{H3}}{List with \code{delta} and \code{sigma} for the missing-genus
 hypothesis.}
 \item{\code{H2_Lookup}}{Data frame (or \code{NULL}) with per-genus \code{H2} delta and
-variance estimates: \code{genus}, \code{n_pairs}, \code{delta_shrunk}, \code{var_shrunk}
-(Session 158). See "Per-genus delta shrinkage" section below.}
+variance estimates: \code{genus}, \code{n_pairs}, \code{delta_shrunk}, \code{var_shrunk}.
+See "Per-genus delta shrinkage" section below.}
 \item{\code{Confusion_Risk_Curves}}{List (or \code{NULL}) of genus-/family-equal-
 weighted, Empirical-Bayes-shrunk per-rank score curves, read by
 \code{evaluate_likelihoods()} to compute its \code{species_confusion_risk}/
@@ -218,12 +217,12 @@ floored-sigma distance, across every trained species, between a
 perfect match and that species' own fitted score mean, and which
 species it belongs to.}
 \item{\code{h1_bimodality}}{The result of running \code{.bimodality_check()}
-(2026-09-13) on this model's own real H1 training scores (raw
+on this model's own real H1 training scores (raw
 percent identity, real within-species pairs only -- computed
 BEFORE any \code{anchor_perfect} pseudo-observations are appended, so
 a synthetic anchor spike can never manufacture a false second
 mode). A list with \code{n}, \code{bic_1}, \code{bic_2}, \code{delta_bic}, \code{weights},
-\code{means}, \code{sds}, \code{quantum} (2026-09-14: the estimated
+\code{means}, \code{sds}, \code{quantum} (the estimated
 identity-per-mismatch spacing, or \code{NA} when the scores don't
 look discretely comb-shaped), \code{flag}, and \code{explanation} -- see
 that function's own docs and \code{calibrate_query_noise()}'s
@@ -401,7 +400,7 @@ range, with no free parameter) and is the more robust choice for any new
 training run near this boundary.
 }
 
-\section{Alignment-coverage floor on pair selection (2026-09-10)}{
+\section{Alignment-coverage floor on pair selection}{
 
 The H1 gap feature is \code{score - max_foreign_score}, and \code{max_foreign_score}
 is taken over every cross-species pair a reference has.  A pairwise
@@ -418,33 +417,29 @@ grass carp detection lost to bighead carp at equal priors.
 \code{min_pair_coverage} restricts which pair may define the foreign, congener
 and conspecific maxima to pairs at or above the inference-side floor.
 It is train/inference distribution matching for one feature, not a data
-quality filter: the archived \code{calibrate_coverage_filter()} removed
-low-coverage pairs from everything and dropped species from training;
-this removes nothing and drops no species.  Measured on the same data
-(foreign side only): global expected gap -0.010 -> +0.122, near-ties
-728 -> 295, and the top H1 candidate agrees with a unique >= 99.5\% best
-BLAST hit in 244/326 cases vs 178/326.  Full record:
-\code{ecosystem_docs/RECORD_h1_foreign_coverage_floor.md}.
+quality filter: it removes no pair and drops no species.  Measured on the
+same data (foreign side only): global expected gap -0.010 -> +0.122,
+near-ties 728 -> 295, and the top H1 candidate agrees with a unique best
+BLAST hit (>= 99.5\% identity) in 244/326 cases vs 178/326.
 }
 
-\section{No built-in reference-quality screening (2026-09-08)}{
+\section{No built-in reference-quality screening}{
 
 This function does NOT screen \code{raw_df} for mislabeled/contaminated
 reference accessions before fitting -- it trains on exactly what it's
-given. Earlier versions called an internal, free, within-reference-set
-heuristic (\code{flag_reference_errors()}, retired this date) unconditionally
-on every run; a 2026-08-08 audit found it roughly 6.7\% precise against
+given. An internal, free, within-reference-set heuristic for this purpose
+measured only roughly 6.7\% precise against
 \code{TaxaMatch::evaluate_reference_accessions()}'s BLAST-based screen (0 of 40
-randomly-sampled real flags confirmed as genuine mislabels on one real
-dataset), and a newer TaxaMatch mechanism
+randomly-sampled flags confirmed as genuine mislabels on one real
+dataset), and a TaxaMatch mechanism
 (\code{TaxaMatch::corroborate_references_locally()} +
 \code{TaxaMatch::evaluate_reference_accessions()}) already does the same job
 more precisely, for the same zero/low NCBI cost, directly on \code{reference_df}
 before it ever reaches \code{build_sequence_matrix()}. Screen there, exclude
 any accession \code{evaluate_reference_accessions()}/\code{score_reference_labels()}
 resolves to \code{reference_action == "remove"} from \code{reference_df} (or from
-\code{raw_df} by \code{id_x}/\code{id_y}) before calling this function -- there is no
-longer a parameter here to pass a bad-accession list through.
+\code{raw_df} by \code{id_x}/\code{id_y}) before calling this function -- there is
+no parameter here to pass a bad-accession list through.
 }
 
 \section{H1 bimodality (recorded, not warned)}{
@@ -457,20 +452,20 @@ test was rejected instead) against this model's OWN real H1 training
 scores, so a saved \code{lik_model} carries the evidence regardless of
 whether/when \code{calibrate_query_noise()} is ever called on it. \strong{Percent
 identity is discrete, not continuous} -- confirmed as a real false
-positive on the 2026-09-14 PtConception 12S production run:
+positive on a PtConception 12S production run:
 \code{Stats$h1_bimodality} reported weights 0.323/0.677, means 98.3/100, sds
 3.26/0.0202 -- the "second component" was just the perfect-match spike,
 a STRUCTURAL feature of every reference-based dataset (every reference
 matching itself, or an identical duplicate deposit, scores at or near
 100\% identity), not evidence of a second population on its own.
-\code{.bimodality_check()} now estimates a quantum directly from the data and
+\code{.bimodality_check()} estimates a quantum directly from the data and
 smooths over it before fitting, requires the minority component to hold
 real mass, and requires the two fitted means to be separated by more
 than a few quanta -- see that function's own docs for the exact
 thresholds and mechanism. \strong{This model's OWN H1 training scores are a
 structurally different dataset from \code{calibrate_query_noise()}'s
-confident-observation query scores}, and the fix's benefit differs
-correspondingly: query scores share one fixed query length, so they land
+confident-observation query scores}, and the comb-smoothing's benefit
+differs correspondingly: query scores share one fixed query length, so they land
 on one clean, consistent quantum grid (\code{0.6} on the real motivating run)
 that the smoothing closes cleanly; H1 training pairs come from
 \code{build_sequence_matrix()}'s reference-vs-reference alignment, whose

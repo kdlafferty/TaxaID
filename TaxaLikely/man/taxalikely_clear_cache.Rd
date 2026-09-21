@@ -41,7 +41,7 @@ This function reports how much space the cache is using and, unless
 It is the blunt instrument: it targets EVERY recognized cache file,
 whether or not a later call could still hit it. To remove only the files
 that are provably dead -- generations superseded by a cache-key widening,
-45\% of the meta store as measured on 2026-09-14 -- use
+45\% of the meta store on a real cache directory -- use
 \code{\link{taxalikely_evict_unreachable_cache}()} instead, which leaves
 every reachable file in place and reports rather than deletes by default.
 }

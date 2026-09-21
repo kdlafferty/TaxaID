@@ -84,8 +84,8 @@ the standard reference for microbial amplicon eDNA.}
 18S rRNA with a protist/eukaryote focus.  Its taxonomy strings use a
 fixed 9-level positional format (\code{domain;supergroup;division;
     subdivision;class;order;family;genus;species}, no prefix codes) --
-auto-detected by field count (confirmed against a real v5.1.1 release,
-Session 136; see \code{.pr2_hierarchy}'s roxygen for detail). Two real
+auto-detected by field count (confirmed against a real v5.1.1 release;
+see \code{.pr2_hierarchy}'s roxygen for detail). Two real
 quirks worth knowing before filtering: plastid-derived sequences suffix
 every level with \code{:plas} (preserved as-is, not stripped, since it's
 a real ancestry signal); and \code{species}-level values are

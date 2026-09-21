@@ -25,7 +25,7 @@ column. \code{NULL} (default) keeps every marker returned.}
 (default \code{c("family", "genus", "species")}). Resolved from BOLD's
 own taxonomy columns (\code{kingdom}, \code{phylum}, \code{class},
 \code{order}, \code{family}, \code{subfamily}, \code{genus},
-\code{species}, \code{subspecies} -- confirmed live, Session 136).}
+\code{species}, \code{subspecies} -- confirmed against a live query).}
 
 \item{max_per_species}{Integer or \code{NULL} (default \code{NULL}).
 Maximum sequences per species (stratified downsampling), matching
@@ -60,8 +60,8 @@ Talks directly to BOLD's live v5 Data Portal API
 triplet, \code{query} submits it and returns a \code{query_id}, and
 \code{documents/{query_id}/download} returns the matching records. No API
 key required. Confirmed live and documented directly against BOLD's own
-OpenAPI spec (\url{https://portal.boldsystems.org/openapi.json}), Session
-136 -- this does NOT wrap the \code{bold} R package, whose
+OpenAPI spec (\url{https://portal.boldsystems.org/openapi.json}) --
+this does NOT wrap the \code{bold} R package, whose
 \code{bold_seqspec()}/\code{bold_identify()} target BOLD's now-retired
 v3/v4 API and no longer work.
 

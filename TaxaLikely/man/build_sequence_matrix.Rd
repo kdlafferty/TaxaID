@@ -89,22 +89,20 @@ a broader per-gene range; a bare marker name (e.g. \code{"12S"}) only
 guarantees "roughly the right marker," not amplicon-window
 comparability, and does not by itself close this gap. See
 \code{diagnostics/sebastes_chromis_confirmation.R} for the case this was
-found in and the (now-superseded, use this parameter instead) manual
-pre-filter pattern it used.}
+found in.}
 
 \item{verbose}{Logical (default \code{TRUE}).  Passed straight through to
 \code{DECIPHER::AlignSeqs()}/\code{DECIPHER::DistanceMatrix()}'s own native
-progress reporting (percent-complete, ETA) -- this function used to
-hardcode both to \code{FALSE}, silencing DECIPHER's own display for the two
+progress reporting (percent-complete, ETA) for the two
 steps that dominate wall time on a large reference set (alignment cost
 grows worse than linearly in sequence count, so a large reference
-database can run for hours with no visible signal of progress). This
-function's OWN \code{message()} calls
+database can run for hours with no visible signal of progress without
+it). This function's OWN \code{message()} calls
 (length-filter counts, rank-system auto-detection, timing summaries) are
 unaffected either way -- only DECIPHER's own in-progress display is
-controlled by this parameter. \code{FALSE} restores the old fully-silent
-behavior (e.g. for a non-interactive/logged batch run where a live
-progress bar is meaningless).}
+controlled by this parameter. \code{FALSE} gives a fully-silent run (e.g. for
+a non-interactive/logged batch run where a live progress bar is
+meaningless).}
 
 \item{by_genus}{Logical (default \code{FALSE}; see \verb{@section Per-genus alignment} below). \code{TRUE} replaces the single whole-set
 \code{DECIPHER::AlignSeqs()} call with many small per-genus alignments (each
@@ -131,9 +129,8 @@ INDEPENDENT random subset of \code{cap} other genera's representatives (not
 one subset shared across every genus, which would starve whichever
 genera never happen to fall inside it), so coverage stays roughly even
 across genera even though it is no longer exhaustive. \code{0L} disables the
-augmentation entirely (equivalent to the original representative-only
-design this fixes -- see the \verb{@section} below for why that understates
-\code{gap_logit}).}
+augmentation entirely (representative-only alignment -- see the
+\verb{@section} below for why that understates \code{gap_logit}).}
 }
 \value{
 A data frame with one row per sequence pair within \code{max_dist}:
@@ -147,10 +144,8 @@ nearly complete overlap; values near 0.0 indicate highly gappy or
 partial alignments that produce unreliable match scores.  A minimum
 coverage threshold can be applied directly (e.g.
 \code{ref_matrix[ref_matrix$coverage >= threshold, ]}) before calling
-\code{\link[=train_likelihood_model]{train_likelihood_model()}}; a dedicated threshold-calibration helper
-(\code{calibrate_coverage_filter()}/\code{coverage_threshold()}) existed
-through 2026-09-09 and was archived -- see \code{TaxaLikely/CLAUDE.md}
-for the full reasoning.}
+\code{\link[=train_likelihood_model]{train_likelihood_model()}}; this package does not provide a
+dedicated threshold-calibration helper for it.}
 \item{\verb{\{rank\}.x}, \verb{\{rank\}.y}}{Taxonomy columns for each pair member.}
 }
 }
@@ -167,10 +162,9 @@ Packages \code{DECIPHER} and \code{Biostrings} must be installed
 they are only needed for this one function.
 }
 
-\section{Per-genus alignment (\code{by_genus = TRUE}, 2026-09-05, revised same day)}{
+\section{Per-genus alignment (\code{by_genus = TRUE})}{
 
-Implements \verb{fable_ecosystem_review_2026-09-05.md} finding E1: whole-set
-alignment cost grows worse than linearly in sequence count, but
+Whole-set alignment cost grows worse than linearly in sequence count, but
 \code{train_likelihood_model()} only ever consumes within-species pairs (H1),
 same-genus cross-species pairs (H2), and a pooled cross-genus sample (H3,
 already coarse/pooled, never species-specific) -- none of which strictly

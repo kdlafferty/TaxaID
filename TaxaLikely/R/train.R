@@ -613,8 +613,8 @@ utils::globalVariables(c(
 #' It is train/inference distribution matching for one feature, not a data
 #' quality filter: it removes no pair and drops no species.  Measured on the
 #' same data (foreign side only): global expected gap -0.010 -> +0.122,
-#' near-ties 728 -> 295, and the top H1 candidate agrees with a unique
-#' >= 99.5% best BLAST hit in 244/326 cases vs 178/326.
+#' near-ties 728 -> 295, and the top H1 candidate agrees with a unique best
+#' BLAST hit (>= 99.5% identity) in 244/326 cases vs 178/326.
 #'
 #' @section No built-in reference-quality screening:
 #' This function does NOT screen `raw_df` for mislabeled/contaminated

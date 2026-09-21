@@ -122,12 +122,12 @@ alignment coordinates at all. \code{NULL} means only Tier 1/2a run.}
 \code{NULL}). Two roles, both cost- or plausibility-related, never a
 correctness gate on the free hierarchy levels: (1) defines Purpose B's
 plausible-candidate set; (2) \strong{is Level 4's own default cost gate}
-(\code{@section Level 4 cost control}, revised 2026-07-18) -- a
+(\code{@section Level 4 cost control}) -- a
 candidate not on this list only reaches the expensive live-alignment
 step if \code{taxaexpect_priors}' ratio test says it's specifically
 worth it. Never gates Levels 1-3 -- Purpose A's free-tier genus-wide
-sweep sees every congener regardless of this filter (the design spec's
-red flag 1 stays closed: a plausibility filter can no longer make an
+sweep sees every congener regardless of this filter (a plausibility
+filter cannot make an
 observation get zero signal, it can only skip the expensive step for an
 implausible congener). Intended to hold whatever locally-plausible-
 species list a caller would apply downstream anyway (e.g. TaxaExpect
@@ -135,8 +135,8 @@ occurrence priors' \code{taxon_name} column). Species names must match
 \code{reference_df}'s own \code{species_col} values exactly (full
 binomial, e.g. \code{"Fundulus parvipinnis"}). \code{NULL} (default)
 means every same-genus congener is both Purpose-B-eligible AND
-Level-4-eligible -- no narrowing at all, matching the original
-pre-redesign behavior at some real cost (see \code{@section Level 4 cost
+Level-4-eligible -- no narrowing at all, at some real cost (see
+\code{@section Level 4 cost
 control} for two real, measured cases).}
 
 \item{taxaexpect_priors}{Data frame or \code{NULL} (default \code{NULL}).
@@ -184,7 +184,7 @@ an unbounded number of expensive alignments for one anchor. See
 appended (or unchanged if nothing qualified), plus new \code{is_restored},
 \code{restoration_basis}, \code{restoration_level}, and
 \code{restoration_source_accession} columns. \code{restoration_level}
-(added 2026-08-08) is the \code{.resolve_hierarchy_score()} level (1-4)
+is the \code{.resolve_hierarchy_score()} level (1-4)
 that produced a restored row's score, \code{NA} for original (non-
 restored) rows and for the no-score pathway. \code{restoration_source_
   accession} is a real, single NCBI accession ONLY when
@@ -214,10 +214,7 @@ scoped rows accept this shape directly (an extra \code{basis} column is
 additive and does not disturb that consumer).
 }
 \description{
-Reframed design (see the TaxaID monorepo's own
-\code{ecosystem_docs/SPEC_restore_suppressed_candidates_redesign.md} design
-document for the full history -- development-repository context, not
-shipped with the installed package): the function's job is not "restore
+This function's job is not "restore
 candidates so more of them can individually
 win" but to detect whether the anchor's apparent win is real or an
 artifact of upstream suppression, so that downstream consensus logic can
@@ -225,7 +222,7 @@ back off from a false-precision specific-species call when it isn't. Every
 same-genus congener in \code{reference_df} not already present for an
 observation is checked, for \emph{every} observation, regardless of
 whether \code{\link[=detect_suppressed_candidates]{detect_suppressed_candidates()}} finds a global pipeline pattern
--- unlike the pre-redesign version, admission no longer depends on a
+-- admission does not depend on a
 globally detected rule.  A congener is admitted as an ordinary
 \code{hypothesis_type = "suppressed_candidate"} row (so it flows through
 \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}} -> prior join -> \code{compute_posterior()}
@@ -268,7 +265,7 @@ instead.
 \code{match_obj} carries no usable \code{score_col} at all, there is no
 real evidence to source Purpose A/B from -- every same-genus congener
 (filtered by \code{candidate_species_filter} if supplied) is restored with
-a synthetic score exactly as before this redesign: original rows get
+a synthetic score: original rows get
 \code{1.0}, restored rows get \code{1.0 - delta / 100}. Pass the result to
 \code{assign_scores(score_type = "direct")} rather than the bivariate-
 normal pipeline. \code{restoration_basis} is \code{NA} for rows added this
@@ -280,7 +277,8 @@ For a fully runnable, non-\verb{\dontrun{}} demonstration, see
 }
 \section{Score-sourcing hierarchy}{
 
-Replaces the pre-redesign flat \code{anchor_score - delta} imputation.
+Provides a real, evidence-grounded score for a restored candidate, rather
+than a flat \code{anchor_score - delta} imputation.
 Cheapest/most-certain first, stopping at the first level that resolves a
 candidate; aggregated by \strong{median}, never max or a random pick, when
 more than one qualifying value exists at a level (max is an upward-biased
@@ -334,29 +332,28 @@ recorded there too, distinguishable via its \code{basis} column
 }
 }
 
-\section{Level 4 cost control (revised 2026-07-18)}{
+\section{Level 4 cost control}{
 
-Live-testing the original ratio-only compute-budget design against two
+A ratio-only compute-budget design, tested against two
 real motivating cases -- Mugu \code{Fundulus lima}/\code{parvipinnis},
-PtConception \code{Girella simplicidens}/\code{nigricans} -- found a real
+PtConception \code{Girella simplicidens}/\code{nigricans} -- has a real
 hole: BOTH real anchors are themselves occurrence-implausible (absent
 from \code{taxaexpect_priors} entirely), which is exactly the case this
-whole function exists to handle, but made the floor-vs-documented ratio
-uncomputable and the original design skip Level 4 for every candidate --
+whole function exists to handle, but that makes the floor-vs-documented
+ratio uncomputable, which would skip Level 4 for every candidate --
 including the one that actually matters. Measured real cost of leaving
 Level 4 fully unrestricted (the \code{candidate_species_filter = NULL}
-default): restoring one marker's real 12S Mugu data went from a
-documented ~38s (pre-redesign, filter-gated) to ~276s, because Purpose
-A's genus-wide sweep sent every one of \code{Fundulus}'s 20 species to a
+default): restoring one marker's real 12S Mugu data goes from
+~38s (filter-gated) to ~276s (unrestricted), because Purpose
+A's genus-wide sweep sends every one of \code{Fundulus}'s 20 species to a
 live alignment against \code{F. lima}'s 16kb mitogenome.
 
-Two independent controls now gate Level 4, cheapest-decision first (see
+Two independent controls gate Level 4, cheapest-decision first (see
 \code{.worth_level4_check()}/\code{.level4_attempt_allowed()}'s own
 headers for the full derivation):
 \enumerate{
-\item \strong{\code{candidate_species_filter} (default gate, restored
-from the pre-redesign design specifically for this one expensive
-step):} a candidate on the filter -- or any candidate, when no filter
+\item \strong{\code{candidate_species_filter} (default gate):} a
+candidate on the filter -- or any candidate, when no filter
 was supplied at all -- is always worth checking. Levels 1-3 remain
 completely unaffected by this filter; only Level 4 is gated.
 \item \strong{Floor-vs-documented ratio (fallback, only consulted for a

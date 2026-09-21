@@ -39,12 +39,10 @@ plausibility check on a matched amplicon span instead uses a bound
 derived from the registered primer pair's own \code{amplicon_range} (the
 literature-reported variable-region length) plus each primer's length,
 since \code{min_len}/\code{max_len} alone describe a general marker-length window,
-not a primer-inclusive matched span (a real, fixed 2026-08-10 bug: the
-old behavior rejected every genuine MiFish-U hit as "implausible" by
-~11bp -- see this package's own Known Footguns entry). If you supply
+not a primer-inclusive matched span (reusing them directly would reject
+every genuine MiFish-U hit as "implausible" by ~11bp). If you supply
 \code{min_len}/\code{max_len} explicitly, that choice is used as-is for BOTH the
-over-length decision and the final plausibility check, unchanged from
-prior behavior.}
+over-length decision and the final plausibility check.}
 
 \item{max_mismatch_rate}{Numeric in \verb{[0, 1)} (default \code{0.15}). Maximum
 fraction of primer positions allowed to mismatch the sequence at the

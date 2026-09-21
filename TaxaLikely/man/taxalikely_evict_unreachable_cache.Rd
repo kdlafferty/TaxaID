@@ -19,9 +19,9 @@ by \code{fetch_ncbi_reference_sequences()}.}
 clear functions), reports what would be removed without removing it.}
 
 \item{max_file_mb}{Numeric. Files larger than this are reported and left
-in place even when \code{dry_run = FALSE}, per the 2026-09-14 policy
-decision to auto-evict small metadata \code{.rds} files but to
-report-and-confirm before deleting anything large. A meta file is about
+in place even when \code{dry_run = FALSE}: small metadata \code{.rds}
+files auto-evict, but anything large is report-and-confirm before
+deleting. A meta file is about
 1 KB, so this is a structural guard rather than an active filter.
 \code{NULL} disables it.}
 }
