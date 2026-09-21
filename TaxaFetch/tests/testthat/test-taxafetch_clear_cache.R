@@ -15,7 +15,7 @@ test_that("taxafetch_clear_cache reports and no-ops on an empty/nonexistent cach
   expect_equal(nrow(out), 0L)
 })
 
-test_that("taxafetch_clear_cache dry_run reports the matching files without deleting", {
+test_that("taxafetch_clear_cache refuses a cache_dir holding a non-cache file unless force = TRUE", {
   d <- tempfile("cache_")
   dir.create(d)
   on.exit(unlink(d, recursive = TRUE), add = TRUE)
@@ -26,11 +26,24 @@ test_that("taxafetch_clear_cache dry_run reports the matching files without dele
   f3 <- file.path(d, "not_a_cache_file.txt")
   writeLines("y", f3)
 
-  out <- taxafetch_clear_cache(cache_dir = d, dry_run = TRUE)
-  expect_setequal(basename(out$path), c(basename(f1), basename(f2)))
+  expect_error(
+    taxafetch_clear_cache(cache_dir = d, dry_run = TRUE),
+    "not_a_cache_file\\.txt"
+  )
   expect_true(file.exists(f1))
   expect_true(file.exists(f2))
   expect_true(file.exists(f3))
+
+  out <- taxafetch_clear_cache(cache_dir = d, dry_run = TRUE, force = TRUE)
+  expect_setequal(basename(out$path), c(basename(f1), basename(f2)))
+  expect_true(file.exists(f1))
+  expect_true(file.exists(f2))
+  expect_true(file.exists(f3)) # dry_run = TRUE: nothing is deleted either way
+
+  taxafetch_clear_cache(cache_dir = d, dry_run = FALSE, force = TRUE)
+  expect_false(file.exists(f1))
+  expect_false(file.exists(f2))
+  expect_true(file.exists(f3)) # non-cache file survives even a real clear
 })
 
 test_that("taxafetch_clear_cache(dry_run = FALSE) actually deletes matching files", {
@@ -92,7 +105,12 @@ test_that(".taxafetch_cache_patterns recognizes every real TaxaFetch cache file 
   writeLines("x", file.path(d, "not_cache.txt"))
   writeLines("x", file.path(d, "random_other.rds"))
 
-  inv <- TaxaTools::list_cache_files(d, TaxaFetch:::.taxafetch_cache_patterns)
+  expect_error(
+    TaxaTools::list_cache_files(d, TaxaFetch:::.taxafetch_cache_patterns),
+    "not_cache\\.txt.*random_other\\.rds|random_other\\.rds.*not_cache\\.txt"
+  )
+
+  inv <- TaxaTools::list_cache_files(d, TaxaFetch:::.taxafetch_cache_patterns, force = TRUE)
   expect_setequal(
     basename(inv$path),
     c(
@@ -100,6 +118,8 @@ test_that(".taxafetch_cache_patterns recognizes every real TaxaFetch cache file 
       "gbif_fetch_1k_s1_g1_2000_l10.rds", "12345.geojson", "openalex_cache_abc123.rds"
     )
   )
+  expect_true(file.exists(file.path(d, "not_cache.txt")))
+  expect_true(file.exists(file.path(d, "random_other.rds")))
 })
 
 # =============================================================================

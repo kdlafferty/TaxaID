@@ -1137,10 +1137,13 @@ download_gbif_occurrences <- function(
   # session can make a lazy-load read of .taxafetch_cache_patterns fail
   # ("lazy-load database ... is corrupt"), which would throw away every
   # successfully imported row (1,717,250 in one real case) at the last step.
-  # A reporting convenience must never be able to lose the data.
+  # A reporting convenience must never be able to lose the data. force = TRUE
+  # for the same reason: this call only counts and reports, never deletes, so
+  # an unrelated file sitting in cache_dir (a stray non-cache leftover) must
+  # not turn a cosmetic report into a warning.
   .cache_report <- function() {
     if (!is.null(cache_dir)) {
-      inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns)
+      inv <- TaxaTools::list_cache_files(cache_dir, .taxafetch_cache_patterns, force = TRUE)
       if (nrow(inv) > 0L) {
         total_mb <- sum(inv$size_mb)
         # GB once past a gigabyte: "17123.7 MB" is a number people have to stop
