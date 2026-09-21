@@ -38,19 +38,17 @@ utils::globalVariables(c(
 #' change that alters what is submitted to BLAST, and therefore what the hit
 #' list can contain, does warrant a bump (see [evaluate_reference_accessions()]'s
 #' `@section Why the query is the primer-stripped amplicon`); when it does,
-#' [migrate_reference_cache()] lets already-cached rows whose verdict cannot
-#' become newly falsified by the change (e.g. `"congruent"` rows, when the
-#' change can only ADD hits, never withdraw one already observed) carry
-#' forward instead of being re-BLASTed, while everything else re-evaluates.
+#' every cached row's `params_key` stops matching the new key and re-BLASTs
+#' on the next call.
 #' @noRd
 .EVAL_REF_ACC_VERSION <- "v5_amplicon_query"
 
 #' Build the one global params_key every cached row is stamped with
 #'
-#' Factored out of [evaluate_reference_accessions()] so
-#' [migrate_reference_cache()] can compute the key the current defaults
-#' would produce with the SAME code, rather than a second hand-maintained
-#' `paste()`. Every argument that affects the verdict itself is in the key;
+#' Factored out of [evaluate_reference_accessions()] so the key the current
+#' defaults would produce can be recomputed anywhere with the SAME code,
+#' rather than a second hand-maintained `paste()`. Every argument that
+#' affects the verdict itself is in the key;
 #' call mechanics (`chunk_size`, TTLs, `max_query_len`, `max_batch_bp`,
 #' `prioritize_uncached`, `retry_insufficient`, `skip_locally_corroborated`)
 #' are deliberately NOT -- changing one must never invalidate a cache. See
@@ -139,8 +137,9 @@ utils::globalVariables(c(
 
 #' Add any column the persistent cache carries that new rows lack
 #'
-#' [migrate_reference_cache()] stamps a `migrated_from` column onto the cache
-#' file; rows computed afterwards do not have it, and
+#' A cache file may carry a column (e.g. `migrated_from`, stamped on a row
+#' carried forward under an earlier internal cache version) that rows
+#' computed now do not have, and
 #' `rbind(cache, new_rows[, names(cache)])` would error on the absent column.
 #' `NA`-fills (typed, via `.na_like()`, so the subsequent `rbind()` cannot
 #' coerce an existing column's storage mode), then orders to the cache's own
@@ -1510,9 +1509,10 @@ utils::globalVariables(c(
 #' `max_batch_bp`, `prioritize_uncached`, `retry_insufficient`,
 #' `local_corroboration` and `skip_locally_corroborated` are deliberately
 #' NOT in this list (see `@section Long-sequence robustness` below for
-#' why). If an existing cache directory was built under an earlier internal
-#' cache version, run [migrate_reference_cache()] on it
-#' first so its `"congruent"` rows are carried forward instead of re-BLASTed.
+#' why). A cached row whose `params_key` does not match the current one --
+#' because it was written under an earlier internal cache version, or under
+#' different verdict-affecting arguments -- is simply recomputed on the next
+#' call; there is no separate step to carry it forward.
 #'
 #' @param accessions Character vector of NCBI accessions to evaluate.
 #'   Deduplicated internally.
@@ -1975,12 +1975,9 @@ utils::globalVariables(c(
 #' GreatLakes', so the whole class was invisible as corroborators. With the
 #' stripped query both barriers vanish and `min_query_coverage` needs no
 #' change. Because this changes what is submitted, it is verdict-affecting:
-#' `query_span` is in `params_key`; an existing cache built under an earlier
-#' internal cache version should be run through
-#' [migrate_reference_cache()] first, which carries its
-#' `"congruent"` rows forward (stripping primers only ADDS hits, it
-#' cannot withdraw a match already observed) and leaves everything else to
-#' re-BLAST under the new query.
+#' `query_span` is in `params_key`, so a cached row written under an earlier
+#' `query_span` (or any other verdict-affecting argument) simply re-BLASTs
+#' under the new query on the next call.
 #'
 #' @section Local corroboration:
 #' If an ASV matches several references of the same species that agree with
@@ -2002,7 +1999,7 @@ utils::globalVariables(c(
 #'
 #' @seealso [remove_incongruent_references()], [flag_incongruent_references()],
 #'   [corroborate_references_locally()], [match_driving_accessions()],
-#'   [migrate_reference_cache()], [blast_sequences()]
+#'   [blast_sequences()]
 #'
 #' @export
 evaluate_reference_accessions <- function(accessions,
@@ -2132,8 +2129,8 @@ evaluate_reference_accessions <- function(accessions,
   # (.EVAL_REF_ACC_VERSION, file scope -- see its own roxygen for the bump
   # history and the discipline around bumping it) and every verdict-
   # affecting argument go in; call mechanics stay out. Built by
-  # .build_params_key() so migrate_reference_cache() computes the identical
-  # key from the identical code.
+  # .build_params_key() so any caller wanting the current defaults' key
+  # computes the identical key from the identical code.
   params_key <- .build_params_key(
     top_n = top_n, min_congruent_rank = min_congruent_rank,
     submission_window = submission_window,

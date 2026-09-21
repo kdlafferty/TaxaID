@@ -32,7 +32,11 @@ utils::globalVariables(c(
 #'   \code{samplingProtocol}, \code{occurrenceRemarks}, or
 #'   \code{preparations} columns contain eDNA or metabarcoding keywords are
 #'   removed. Set to \code{FALSE} if your workflow specifically targets
-#'   eDNA data.
+#'   eDNA data. This option is sequence-specific by design: it removes GBIF
+#'   records that are themselves eDNA detections so an eDNA study's priors
+#'   are not built from other eDNA detections, and it has no image/acoustic
+#'   counterpart because none is needed -- GBIF does not carry a comparably
+#'   reliable self-labeling signal for those modalities.
 #' @param bad_issues Character vector. GBIF issue codes that indicate likely
 #'   geospatial errors. Records whose \code{issues} field contains any of
 #'   these codes are removed. Default covers the most consequential spatial

@@ -147,6 +147,7 @@ test_that("suggest_unreferenced_species() excludes skip-list species from NCBI q
   }
 
   result <- suggest_unreferenced_species(
+    data_type = "eDNA",
     match_df,
     llm_fn        = mock_llm,
     barcode_term  = "12S",
@@ -176,6 +177,7 @@ test_that("suggest_unreferenced_species() returns character vector of unreferenc
   }
 
   result <- suggest_unreferenced_species(
+    data_type = "eDNA",
     match_df,
     llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
@@ -206,6 +208,7 @@ test_that("suggest_unreferenced_species() excludes species with NCBI barcode seq
   }
 
   result <- suggest_unreferenced_species(
+    data_type = "eDNA",
     match_df,
     llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
@@ -228,6 +231,7 @@ test_that("suggest_unreferenced_species() treats NA NCBI count as unreferenced (
 
   expect_warning(
     result <- suggest_unreferenced_species(
+      data_type = "eDNA",
       match_df,
       llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
     ),
@@ -249,6 +253,7 @@ test_that("suggest_unreferenced_species() attaches census attribute", {
   }
 
   result <- suggest_unreferenced_species(
+    data_type = "eDNA",
     match_df,
     llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
@@ -277,6 +282,7 @@ test_that("suggest_unreferenced_species() attaches plausible attribute", {
   }
 
   result <- suggest_unreferenced_species(
+    data_type = "eDNA",
     match_df,
     llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
@@ -301,6 +307,7 @@ test_that("suggest_unreferenced_species() returns empty result when LLM suggests
   }
 
   result <- suggest_unreferenced_species(
+    data_type = "eDNA",
     match_df,
     llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
@@ -323,6 +330,7 @@ test_that("suggest_unreferenced_species() batches genera per taxa_per_call", {
 
   # 2 genera, taxa_per_call = 1 -> 2 LLM calls
   suggest_unreferenced_species(
+    data_type = "eDNA",
     match_df,
     llm_fn = counting_llm, barcode_term = "12S",
     taxa_per_call = 1L, pause_seconds = 0
@@ -336,6 +344,7 @@ test_that("suggest_unreferenced_species() handles erroring llm_fn with warning",
   # LLM errors -> falls back to empty species lists -> no unreferenced species
   expect_warning(
     result <- suggest_unreferenced_species(
+      data_type = "eDNA",
       match_df,
       llm_fn = error_plausible_llm,
       barcode_term = "12S", pause_seconds = 0
@@ -364,6 +373,7 @@ test_that("suggest_unreferenced_species() derives genus from taxon_name when gen
   }
 
   result <- suggest_unreferenced_species(
+    data_type = "eDNA",
     match_df,
     llm_fn = mock_llm, barcode_term = "12S", pause_seconds = 0
   )
@@ -374,14 +384,14 @@ test_that("suggest_unreferenced_species() derives genus from taxon_name when gen
 
 test_that("suggest_unreferenced_species() errors on non-data-frame match_df", {
   expect_error(
-    suggest_unreferenced_species(list(taxon_name = "x"), llm_fn = stub_plausible_llm),
+    suggest_unreferenced_species(list(taxon_name = "x"), data_type = "eDNA", llm_fn = stub_plausible_llm),
     regexp = "data frame"
   )
 })
 
 test_that("suggest_unreferenced_species() errors when taxon_name column is absent", {
   expect_error(
-    suggest_unreferenced_species(data.frame(x = 1), llm_fn = stub_plausible_llm),
+    suggest_unreferenced_species(data.frame(x = 1), data_type = "eDNA", llm_fn = stub_plausible_llm),
     regexp = "taxon_name"
   )
 })
@@ -389,6 +399,7 @@ test_that("suggest_unreferenced_species() errors when taxon_name column is absen
 test_that("suggest_unreferenced_species() errors on invalid max_date format", {
   expect_error(
     suggest_unreferenced_species(make_spg_match_df(),
+      data_type = "eDNA",
       llm_fn = stub_plausible_llm,
       max_date = "24/12/31"
     ),

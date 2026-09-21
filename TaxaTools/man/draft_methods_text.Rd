@@ -24,7 +24,8 @@ draft_methods_text(
 
 \item{description}{Character. Brief study context to guide the LLM
 (e.g., \code{"eDNA metabarcoding of coral reef fish at Palmyra Atoll
-using MiFish 12S primers"}). Default \code{NULL}. Ignored when
+using MiFish 12S primers"}, or \code{"acoustic point-count survey of
+frog calls in a coastal wetland"}). Default \code{NULL}. Ignored when
 \code{context} is provided (uses \code{context$study_description}).}
 
 \item{context}{A \code{report_context} object from
@@ -98,6 +99,13 @@ methods <- draft_methods_text(
   description = "eDNA metabarcoding of tidewater goby habitat"
 )
 cat(methods)
+
+# A non-DNA study works the same way
+methods_acoustic <- draft_methods_text(
+  code = readLines("inst/workflows/my_acoustic_workflow.R"),
+  description = "acoustic point-count survey of frog calls in a coastal wetland"
+)
+cat(methods_acoustic)
 }
 
 }

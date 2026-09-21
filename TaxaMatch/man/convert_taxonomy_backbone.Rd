@@ -113,9 +113,9 @@ species (e.g. NCBI places \emph{Girella nigricans} in Girellidae; GBIF places
 it in Kyphosidae). Call \code{convert_taxonomy_backbone()} on your match object
 before passing it to \code{\link[=filter_redundant_hypotheses]{filter_redundant_hypotheses()}} or to
 \code{\link[TaxaAssign:join_priors]{TaxaAssign::join_priors()}} when the prior expansion taxonomy was built
-from a different backbone. For eDNA metabarcoding specifically, WoRMS
-(backbone 9) is the authoritative backbone for marine species; GBIF (11)
-is the more general default for terrestrial/mixed studies.
+from a different backbone. For marine taxa specifically (regardless of
+detection method), WoRMS (backbone 9) is the authoritative backbone;
+GBIF (11) is the more general default for terrestrial/mixed studies.
 
 Lookup is by taxon \emph{name}, not ID (the correct approach for cross-backbone
 conversion, since IDs are backbone-specific), which means homonyms --

@@ -501,9 +501,10 @@ it -- \code{chunk_size}, \code{max_consecutive_batch_failures}, \code{max_query_
 \code{max_batch_bp}, \code{prioritize_uncached}, \code{retry_insufficient},
 \code{local_corroboration} and \code{skip_locally_corroborated} are deliberately
 NOT in this list (see \verb{@section Long-sequence robustness} below for
-why). If an existing cache directory was built under an earlier internal
-cache version, run \code{\link[=migrate_reference_cache]{migrate_reference_cache()}} on it
-first so its \code{"congruent"} rows are carried forward instead of re-BLASTed.
+why). A cached row whose \code{params_key} does not match the current one --
+because it was written under an earlier internal cache version, or under
+different verdict-affecting arguments -- is simply recomputed on the next
+call; there is no separate step to carry it forward.
 }
 
 \section{Chunked evaluation and NCBI rate-limiting resilience}{
@@ -707,12 +708,9 @@ Amplicon-only deposits are 33\% of PtConception's references and 25\% of
 GreatLakes', so the whole class was invisible as corroborators. With the
 stripped query both barriers vanish and \code{min_query_coverage} needs no
 change. Because this changes what is submitted, it is verdict-affecting:
-\code{query_span} is in \code{params_key}; an existing cache built under an earlier
-internal cache version should be run through
-\code{\link[=migrate_reference_cache]{migrate_reference_cache()}} first, which carries its
-\code{"congruent"} rows forward (stripping primers only ADDS hits, it
-cannot withdraw a match already observed) and leaves everything else to
-re-BLAST under the new query.
+\code{query_span} is in \code{params_key}, so a cached row written under an earlier
+\code{query_span} (or any other verdict-affecting argument) simply re-BLASTs
+under the new query on the next call.
 }
 
 \section{Local corroboration}{
@@ -738,5 +736,5 @@ stands.
 \seealso{
 \code{\link[=remove_incongruent_references]{remove_incongruent_references()}}, \code{\link[=flag_incongruent_references]{flag_incongruent_references()}},
 \code{\link[=corroborate_references_locally]{corroborate_references_locally()}}, \code{\link[=match_driving_accessions]{match_driving_accessions()}},
-\code{\link[=migrate_reference_cache]{migrate_reference_cache()}}, \code{\link[=blast_sequences]{blast_sequences()}}
+\code{\link[=blast_sequences]{blast_sequences()}}
 }

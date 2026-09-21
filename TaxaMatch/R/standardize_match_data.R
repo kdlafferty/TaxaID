@@ -121,6 +121,13 @@
 #'   observation_id_col = "qseqid",
 #'   score_col = "pident"
 #' )
+#'
+#' # A non-DNA classifier output standardizes the same way
+#' match_obj_acoustic <- standardize_match_data(
+#'   data = birdnet_results,
+#'   observation_id_col = "recording_id",
+#'   score_col = "confidence"
+#' )
 #' }
 #'
 #' @importFrom utils read.csv
@@ -266,10 +273,12 @@ standardize_match_data <- function(data = NULL,
 #' @return A data frame with the same columns as `match_df` but with redundant
 #'   higher-rank rows removed. Row order and all other attributes are preserved.
 #'
-#' @note This is particularly valuable for eDNA workflows where BLAST may
-#'   return both a species-level hit (e.g. *Oncorhynchus mykiss*) and a
-#'   genus-level hit (*Oncorhynchus*, from a different accession) for the
-#'   same query. Without this filtering step, TaxaLikely would treat the
+#' @note This is particularly valuable whenever a matching step returns
+#'   multiple candidate ranks per observation (BLAST hits, or a multi-class
+#'   image/acoustic classifier's top-N output) -- for example a species-level
+#'   hit (e.g. *Oncorhynchus mykiss*) and a genus-level hit (*Oncorhynchus*,
+#'   from a different accession) for the same query. Without this filtering
+#'   step, TaxaLikely would treat the
 #'   genus and species rows as independent competing hypotheses, inflating
 #'   uncertainty that the data doesn't actually support.
 #'

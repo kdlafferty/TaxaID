@@ -209,7 +209,8 @@ print.report_context <- function(x, ...) {
 #'   }
 #' @param description Character. Brief study context to guide the LLM
 #'   (e.g., \code{"eDNA metabarcoding of coral reef fish at Palmyra Atoll
-#'   using MiFish 12S primers"}). Default \code{NULL}. Ignored when
+#'   using MiFish 12S primers"}, or \code{"acoustic point-count survey of
+#'   frog calls in a coastal wetland"}). Default \code{NULL}. Ignored when
 #'   \code{context} is provided (uses \code{context$study_description}).
 #' @param context A \code{report_context} object from
 #'   \code{\link{build_report_context}}. Provides structured facts (study
@@ -272,6 +273,13 @@ print.report_context <- function(x, ...) {
 #'   description = "eDNA metabarcoding of tidewater goby habitat"
 #' )
 #' cat(methods)
+#'
+#' # A non-DNA study works the same way
+#' methods_acoustic <- draft_methods_text(
+#'   code = readLines("inst/workflows/my_acoustic_workflow.R"),
+#'   description = "acoustic point-count survey of frog calls in a coastal wetland"
+#' )
+#' cat(methods_acoustic)
 #' }
 #'
 #' @export
@@ -402,6 +410,13 @@ draft_methods_text <- function(code,
 #'   description = "Taxonomic assignments for tidewater goby eDNA samples"
 #' )
 #' cat(results)
+#'
+#' # A non-DNA study works the same way
+#' results_acoustic <- draft_results_text(
+#'   consensus = consensus_final,
+#'   description = "Species identifications from BirdNET acoustic detections"
+#' )
+#' cat(results_acoustic)
 #' }
 #'
 #' @export

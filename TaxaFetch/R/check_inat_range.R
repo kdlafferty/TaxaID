@@ -20,8 +20,8 @@
 #' the continuous probability surface is not publicly available.
 #'
 #' @details
-#' Intended for use on the dark diversity set: taxa detected in eDNA but absent
-#' from the regional occurrence database (i.e. lacking a TaxaExpect prior).
+#' Intended for use on the dark diversity set: taxa detected by any method but
+#' absent from the regional occurrence database (i.e. lacking a TaxaExpect prior).
 #' Evidence is asymmetric: \code{in_range = TRUE} warrants a prior boost;
 #' \code{in_range = FALSE} should not suppress priors (false negatives are common
 #' for aquatic taxa due to low iNaturalist observer effort in marine systems).

@@ -89,6 +89,13 @@ results <- draft_results_text(
   description = "Taxonomic assignments for tidewater goby eDNA samples"
 )
 cat(results)
+
+# A non-DNA study works the same way
+results_acoustic <- draft_results_text(
+  consensus = consensus_final,
+  description = "Species identifications from BirdNET acoustic detections"
+)
+cat(results_acoustic)
 }
 
 }

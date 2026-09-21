@@ -37,7 +37,8 @@ taking the maximum.}
 applied to the cross-observation support mass (0.25 default: ~4
 correlated observations carry the weight of 1 independent one; 0
 disables the update entirely; 1 treats every observation as fully
-independent -- almost certainly too strong for same-site eDNA). See the
+independent -- almost certainly too strong for same-site detections of
+any kind). See the
 \emph{Soft confirmation} section.}
 
 \item{n_sims}{Integer. Passed to \code{\link[=compute_posterior]{compute_posterior()}} for the re-run.
@@ -126,7 +127,8 @@ observation's best posterior for it; per target row, the target
 observation's own support is subtracted (leave-one-out -- no
 self-confirmation).
 \item The mass is discounted by \code{confirmation_discount} (a0): same-site
-observations share water, DNA pool, and reference biases, so they are
+observations share the same sampling event (water body, sound field,
+or image set) and reference biases, so they are
 not independent confirmations. Raising auxiliary evidence to a power
 a0 in [0, 1] is the standard power-prior discount (Ibrahim & Chen
 2000, \emph{Statistical Science} 15:46-60); multiplying the

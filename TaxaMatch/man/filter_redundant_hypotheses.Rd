@@ -49,10 +49,12 @@ populates \code{taxon_name_rank}) so that rank labels are already in the canonic
 lowercase form used by \code{rank_system}.
 }
 \note{
-This is particularly valuable for eDNA workflows where BLAST may
-return both a species-level hit (e.g. \emph{Oncorhynchus mykiss}) and a
-genus-level hit (\emph{Oncorhynchus}, from a different accession) for the
-same query. Without this filtering step, TaxaLikely would treat the
+This is particularly valuable whenever a matching step returns
+multiple candidate ranks per observation (BLAST hits, or a multi-class
+image/acoustic classifier's top-N output) -- for example a species-level
+hit (e.g. \emph{Oncorhynchus mykiss}) and a genus-level hit (\emph{Oncorhynchus},
+from a different accession) for the same query. Without this filtering
+step, TaxaLikely would treat the
 genus and species rows as independent competing hypotheses, inflating
 uncertainty that the data doesn't actually support.
 }

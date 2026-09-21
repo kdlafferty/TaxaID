@@ -77,7 +77,7 @@ record (the first \code{accepted} match, else the first match).}
 not the same claim as \code{FALSE}.}
 \item{\code{marine_scope}}{Logical, \strong{never \code{NA}}. \code{TRUE}
 when any retained match is marine or brackish. This is the column to hand
-to an ESV-level scope filter.}
+to a detection-level scope filter.}
 \item{\code{habitat_unassessed}}{In WoRMS but all four flags \code{NA} --
 dropped for lack of evidence rather than on evidence. Counted separately
 and reported.}
@@ -128,7 +128,9 @@ mykiss} and \emph{Alosa sapidissima} are both marine = TRUE, brackish = TRUE,
 freshwater = TRUE, terrestrial = FALSE. The \code{marine_scope} column
 applies this rule and is never \code{NA}.
 
-\strong{Apply the verdict at ESV level, not taxon level.} Filtering
+\strong{Apply the verdict at detection level (an ESV/ASV for sequence
+data, a per-image or per-recording candidate ID otherwise), not taxon
+level.} Filtering
 candidates \emph{within} an observation strips hypotheses out of a candidate
 set and forces the read onto whichever ones survive. Drop an observation only
 when NO candidate is in scope; an observation with any marine candidate keeps
@@ -188,7 +190,7 @@ fetch_worms_attributes(
 # steelhead      marine/brackish/freshwater TRUE -> kept, no diadromy special case
 # garden snail   marine FALSE -> cut, and no taxonomic filter would have cut it
 
-# --- ESV-level application, which is the only safe one --------------------
+# --- detection-level application, which is the only safe one --------------
 att <- fetch_worms_attributes(unique(match_obj$taxon_name), extras = character(0))
 keep <- att$marine_scope[match(match_obj$taxon_name, att$taxon_name)]
 keep[is.na(keep)] <- FALSE # a name never sent, or absent from the register

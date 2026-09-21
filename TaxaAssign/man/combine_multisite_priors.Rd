@@ -36,8 +36,9 @@ Bridges \code{\link[=join_priors]{join_priors()}} (site-preserving: one row per 
 \code{taxon_name} x \code{taxon_name_rank} x \code{grid_id} x \code{main_habitat}) to
 \code{\link[=compute_posterior]{compute_posterior()}}, which expects exactly one row per candidate
 hypothesis per observation. When the same \code{observation_id} was detected at
-more than one site (e.g. the same eDNA ASV recovered from reads at two
-different sample sites), each candidate taxon otherwise arrives with one
+more than one site (e.g. the same observation -- an eDNA ASV, an image, or
+an acoustic detection -- recorded at two different sample sites), each
+candidate taxon otherwise arrives with one
 prior row per site. This function combines those rows into one.
 }
 \details{

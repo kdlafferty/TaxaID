@@ -35,7 +35,7 @@ unref <- structure(
 print(unref)
 
 \dontrun{
-unref <- suggest_unreferenced_species(match_df, llm_fn = TaxaTools::call_api)
+unref <- suggest_unreferenced_species(match_df, data_type = "eDNA", llm_fn = TaxaTools::call_api)
 print(unref)
 }
 }

@@ -162,7 +162,8 @@ utils::globalVariables("taxonKey")
 #'   \code{"LIVING_SPECIMEN"}, \code{"PRESERVED_SPECIMEN"},
 #'   \code{"MATERIAL_SAMPLE"}. \code{NULL} (default) requests all basis types.
 #'   Changing this parameter changes the cache key and triggers a fresh
-#'   download. For eDNA projects where you want only field observations, use
+#'   download. For projects (eDNA, camera-trap, acoustic, etc.) where you
+#'   want only field observations, use
 #'   \code{c("HUMAN_OBSERVATION", "MACHINE_OBSERVATION")}.
 #' @param select_cols Character vector or \code{NULL}. Columns to retain after
 #'   import. Uses \code{data.table::fread}'s \code{select} argument so only
@@ -170,8 +171,8 @@ utils::globalVariables("taxonKey")
 #'   files. Does not reduce the downloaded zip size; use \code{basis_keep} for
 #'   that. \code{NULL} loads all columns. The default is a set of ~35 columns
 #'   covering the full TaxaID pipeline (taxonomy, spatial, temporal, quality,
-#'   eDNA filter, and backbone keys). Unrecognised column names are silently
-#'   ignored.
+#'   the eDNA-detection exclusion filter, and backbone keys). Unrecognised
+#'   column names are silently ignored.
 #' @param beep Logical. If \code{TRUE} and the \code{beepr} package is
 #'   available, plays a sound on completion. Falls back to a system bell
 #'   character if \code{beepr} is absent. Default \code{FALSE}.

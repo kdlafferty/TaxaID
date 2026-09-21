@@ -252,6 +252,7 @@ run_llm_pipeline <- function(
       match_df         = match_df,
       context          = context,
       barcode_term     = barcode_term,
+      data_type        = "eDNA",
       llm_fn           = llm_fn,
       expand_to_family = expand_to_family,
       max_date         = max_date,

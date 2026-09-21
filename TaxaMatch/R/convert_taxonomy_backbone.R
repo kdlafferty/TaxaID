@@ -170,9 +170,9 @@
 #' it in Kyphosidae). Call `convert_taxonomy_backbone()` on your match object
 #' before passing it to [TaxaMatch::filter_redundant_hypotheses()] or to
 #' [TaxaAssign::join_priors()] when the prior expansion taxonomy was built
-#' from a different backbone. For eDNA metabarcoding specifically, WoRMS
-#' (backbone 9) is the authoritative backbone for marine species; GBIF (11)
-#' is the more general default for terrestrial/mixed studies.
+#' from a different backbone. For marine taxa specifically (regardless of
+#' detection method), WoRMS (backbone 9) is the authoritative backbone;
+#' GBIF (11) is the more general default for terrestrial/mixed studies.
 #'
 #' Lookup is by taxon *name*, not ID (the correct approach for cross-backbone
 #' conversion, since IDs are backbone-specific), which means homonyms --

@@ -37,7 +37,11 @@ unknown sources.}
 \code{samplingProtocol}, \code{occurrenceRemarks}, or
 \code{preparations} columns contain eDNA or metabarcoding keywords are
 removed. Set to \code{FALSE} if your workflow specifically targets
-eDNA data.}
+eDNA data. This option is sequence-specific by design: it removes GBIF
+records that are themselves eDNA detections so an eDNA study's priors
+are not built from other eDNA detections, and it has no image/acoustic
+counterpart because none is needed -- GBIF does not carry a comparably
+reliable self-labeling signal for those modalities.}
 
 \item{exclude_absent}{Logical. If \code{TRUE} (default), records where
 \code{occurrenceStatus} is \code{"ABSENT"} (case-insensitive) are
