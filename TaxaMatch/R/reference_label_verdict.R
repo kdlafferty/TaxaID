@@ -666,14 +666,15 @@ score_reference_labels <- function(evaluation,
 #' as parallel `*_trust` columns beside the originals.
 #'
 #' @section What this needs, and what happens without it:
-#' The individual votes are not in the per-accession cache -- they never were,
-#' they were summarised and discarded. `evaluate_reference_accessions()`
-#' began persisting them to a sidecar `reference_pair_cache.rds` on
-#' 2026-09-02. An accession evaluated before that date, or with
-#' `cache_dir = NULL`, has no pair rows, so it CANNOT be refined: it keeps
+#' The individual votes are not in the per-accession cache -- they are
+#' summarised and discarded from it. `evaluate_reference_accessions()`
+#' persists them separately, to a sidecar `reference_pair_cache.rds`, whenever
+#' `cache_dir` is not `NULL`. An accession evaluated with
+#' `cache_dir = NULL` has no pair rows, so it CANNOT be refined: it keeps
 #' its original verdict, `trust_refined` reads `FALSE`, and a message says how
 #' many accessions that applied to. Re-running
-#' `evaluate_reference_accessions()` on those accessions is what builds their
+#' `evaluate_reference_accessions()` on those accessions with a `cache_dir`
+#' set is what builds their
 #' pair rows; there is no way to reconstruct them without a fresh BLAST.
 #'
 #' @section Determinism:
@@ -683,7 +684,7 @@ score_reference_labels <- function(evaluation,
 #' breaks percent-identity ties by `id_y` rather than by input order, for the
 #' same reason.
 #'
-#' @section What it did on real data (2026-09-02):
+#' @section What it does on real data:
 #' On the PtConception 12S screen the motivating case was `Askoldia
 #' variegata` (`MT627596`), the disagreeing partner in 4 of the 12
 #' `"incongruent"` verdicts. Its own row reads
