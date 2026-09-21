@@ -12,14 +12,14 @@
 #' duplicate, ambiguously-joinable rows for the same taxon.
 #'
 #' @section Why one shared function, not one per evidence source:
-#' An earlier design had each evidence source (e.g. an invasive-species
-#' watch list, a regional-proximity check) independently construct and
-#' append its own finished \code{Beta(alpha, beta)} row to
-#' \code{taxaexpect_priors}. That breaks the moment a species qualifies
+#' If each evidence source (e.g. an invasive-species
+#' watch list, a regional-proximity check) independently constructed and
+#' appended its own finished \code{Beta(alpha, beta)} row to
+#' \code{taxaexpect_priors}, that would break the moment a species qualifies
 #' under more than one source at once: \code{TaxaAssign::join_priors()}
 #' joins on the composite key \code{(taxon_name, taxon_name_rank, grid_id,
 #' main_habitat)}, so two independently-appended rows sharing that key
-#' produce an ambiguous join -- silently picking one, fanning out into
+#' would produce an ambiguous join -- silently picking one, fanning out into
 #' duplicate hypotheses, or erroring, depending on row order. This function
 #' is the single place a new evidence-elevated row is ever created, so that
 #' collision is structurally impossible: every source's opinion about a

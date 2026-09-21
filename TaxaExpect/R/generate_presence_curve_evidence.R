@@ -134,7 +134,7 @@ generate_presence_curve_evidence <- function(taxon_names,
 #' User-specified presence evidence for species of special concern
 #'
 #' @description
-#' The explicit policy knob from the unobserved-taxa redesign: a user may
+#' The explicit policy knob for unobserved taxa: a user may
 #' assert a presence probability \code{w} for particular species (raising a
 #' watch species' chance of \emph{resolving} in consensus -- detection itself
 #' is already guaranteed prior-free by
