@@ -466,10 +466,11 @@ density, and is not naturally comparable on the same distance scale.
 
 **A safety check on the clamp.** Of 221 non-regional candidates priced
 at the distance clamp in the Great Lakes validation run, zero were
-later confirmed present; a Jeffreys-interval upper bound on the true
-miss rate from that 0-of-221 count is about 2.3e-3. Any future confirmed
-clamp-priced detection is a documented tripwire for revisiting the
-clamp value, not something the current design assumes cannot happen.
+later confirmed present; the Jeffreys posterior for that 0-of-221 count
+(Beta(0.5, 221.5)) has mean about 2.3e-3 and a 95% upper bound on the
+true miss rate of about 0.9%. Any future confirmed clamp-priced
+detection is a documented tripwire for revisiting the clamp value, not
+something the current design assumes cannot happen.
 
 **User-specified overrides.** `generate_user_specified_evidence()` lets
 a caller assert a presence probability directly for a named species
