@@ -41,8 +41,8 @@
 #' \code{(alpha, beta)} is read directly out of \code{taxaexpect_priors}
 #' (not recomputed), and the site's own singleton-mirror mean is used as an
 #' upper anchor -- the two values \code{\link{generate_undetected_diversity}}
-#' already produces. The elevated prior is a PRESENCE MIXTURE (2026-08-26
-#' mixture redesign): with probability \code{w_combined} the species is
+#' already produces. The elevated prior is a PRESENCE MIXTURE: with
+#' probability \code{w_combined} the species is
 #' locally present (theta ~ the ceiling-anchor state), with probability
 #' \code{1 - w_combined} absent (theta ~ the floor state). The blended mean
 #' is that mixture's exact expectation, and the Beta summary's concentration
@@ -77,7 +77,7 @@
 #' preferred; a mild, safe-direction overestimate, since a no-singleton
 #' dataset detected every species at least twice); (2) one detection per
 #' site effort, \code{1 / (median(n_obs) + 1)}; (3) only if neither is
-#' computable, the previous floor-equals-ceiling no-op with a warning.
+#' computable, a floor-equals-ceiling fallback with a warning.
 #'
 #' @section The printed veto bound (\code{pricing = "blend"} only):
 #' Each blend-mode call prints the dataset-specific weight above which an
@@ -87,26 +87,23 @@
 #' BELOW this bound unless you deliberately intend elevated species to
 #' compete with observed ones.
 #'
-#' \code{pricing = "curve"} has no analogous veto bound (removed 2026-09-05,
-#' open decision #1 of
-#' \code{REENTRY_PROMPT_kernel_budget_pricing_and_scope.md}, resolved): now
-#' that \code{theta_present} is priced from \code{mass/f1} (see
-#' \code{\link{estimate_kernel_priors}}'s own roxygen), it is pinned to
-#' exactly the neighborhood's own singleton mean, which makes the curve
-#' veto bound a fixed \code{((1-m)/m) = 19} at the default
-#' \code{min_posterior = 0.05} for every group, always -- unreachable for
-#' any admissible weight \code{<= 1} and therefore never informative. Under
-#' the retired \code{mass/chao_missing} pricing this bound could occasionally
-#' bind (Chao dividing by a thin doubleton count could push the price above
-#' the singleton mean), which is what the removed guard machinery existed
-#' to catch; that failure mode no longer exists once the price is pinned.
-#' Prints \code{f1} (and, for a multi-group fit, the whole per-group budget)
-#' next to the price for transparency, but names no bound.
+#' \code{pricing = "curve"} has no analogous veto bound: \code{theta_present}
+#' is priced from \code{mass/f1} (see \code{\link{estimate_kernel_priors}}'s
+#' own roxygen), pinned to exactly the neighborhood's own singleton mean,
+#' which makes the curve veto bound a fixed \code{((1-m)/m) = 19} at the
+#' default \code{min_posterior = 0.05} for every group, always -- unreachable
+#' for any admissible weight \code{<= 1} and therefore never informative.
+#' Pricing off \code{f1} rather than Chao (which can divide by a thin
+#' doubleton count and push the price above the singleton mean) is what keeps
+#' this bound unreachable. Prints \code{f1} (and, for a multi-group fit, the
+#' whole per-group budget) next to the price for transparency, but names no
+#' bound.
 #'
 #' @section Per-group curve pricing:
 #' A \code{model_obj} fitted with \code{sampling_group_col} carries one
 #' Good-Turing budget PER GROUP, and those budgets are not interchangeable. On
-#' real PtConception 18S data (\code{diagnostics/kernel_budget_18S_sampling_groups.R})
+#' real PtConception 18S data (the \code{kernel_budget_18S_sampling_groups.R}
+#' diagnostic, TaxaID_dev repository)
 #' they span \strong{1859x} across the ten groups present -- 441x restricting
 #' to groups the assay can actually amplify, or to groups with at least 100
 #' effective records -- and the single pooled price sits BELOW all seven priced
@@ -123,12 +120,9 @@
 #'     single unseen species at \code{0.755} -- 75% of its own community.
 #'     \code{min_group_n_eff}/\code{min_group_f1} exclude these.
 #' }
-#' (A third guard, capping a group's price at its own singleton mean, existed
-#' under the retired \code{mass/chao_missing} pricing -- \code{mass/Chao}
-#' could exceed the singleton mean \code{mass/f1} whenever \code{f1 < 2*f2},
-#' real 18S zooplankton being one case. Removed 2026-09-05 alongside the price
-#' switch: \code{theta_present} now IS the singleton mean by construction, so
-#' there is nothing left for a cap to bound.)
+#' A third possible guard, capping a group's price at its own singleton mean,
+#' is unnecessary: \code{theta_present} IS the singleton mean by construction
+#' (\code{mass/f1}), so there is nothing left for a cap to bound.
 #'
 #' A group failing the guards is priced by \code{group_fallback}. The
 #' \code{"pooled_qualifying"} price combines the qualifying groups GROUP-WISE
@@ -214,8 +208,8 @@
 #'   source's probability of local presence), \code{source} (character, for
 #'   audit only). Optional: \code{p_conc} (numeric, > 0; default 1) -- how
 #'   much weight the presence claim carries against future evidence, in
-#'   pseudo-observations. \code{n_eff} is retired (errors with migration
-#'   guidance): the Beta concentration is now moment-matched, not supplied.
+#'   pseudo-observations. \code{n_eff} is not accepted (errors with
+#'   guidance): the Beta concentration is moment-matched, not supplied.
 #'   Additional source-specific columns are ignored by this function.
 #' @param grid_id Character. Single grid cell identifier this call applies
 #'   to -- required, no default (mirrors
@@ -240,26 +234,24 @@
 #'   \code{phylum}, joined onto the result the same way
 #'   \code{generate_undetected_diversity(taxonomy = ...)} does. Default
 #'   \code{NULL}.
-#' @param pricing \code{"blend"} (default, the original floor-additive
+#' @param pricing \code{"blend"} (default, a floor-additive
 #'   presence mixture: \code{theta = floor + w*(ceiling - floor)}) or
-#'   \code{"curve"} (unobserved-taxa redesign, 2026-08-31: \code{theta = w *
+#'   \code{"curve"} (\code{theta = w *
 #'   theta_present} with \code{theta_present = missing_mass / f1} from the
 #'   kernel fit -- the mean theta of the neighborhood's own observed
-#'   singletons -- and \code{theta_absent = 0}). \code{theta_present} was
-#'   priced from \code{missing_mass / chao_missing} before 2026-09-05 (open
-#'   decision #1, resolved): that made the branch's evidence total close
-#'   exactly against \code{chao_missing} (\code{sum(w) = chao_missing}), but
-#'   inherited \code{chao_missing}'s own radius-instability (4x-21x on real
-#'   data, driven by dividing by a doubleton count that sits in the single
-#'   digits). \code{chao_missing} remains available on the kernel fit as a
+#'   singletons -- and \code{theta_absent = 0}). Pricing off \code{f1} rather
+#'   than \code{chao_missing} avoids \code{chao_missing}'s own
+#'   radius-instability (4x-21x on real data, driven by dividing by a
+#'   doubleton count that sits in the single digits). \code{chao_missing}
+#'   remains available on the kernel fit as a
 #'   separate, reported-not-enforced budget AUDIT figure (\code{sum(w)} vs
 #'   \code{chao_missing} -- an estimate of the total unseen-species count,
-#'   not the price); it no longer feeds the price itself, and \code{sum(w)}
-#'   is no longer expected to equal it exactly. Curve pricing removes the
-#'   floor term that dominated every blended row. Requires a
+#'   not the price); it does not feed the price itself, and \code{sum(w)}
+#'   is not expected to equal it exactly. Curve pricing removes the
+#'   floor term that dominates every blended row. Requires a
 #'   \code{taxaexpect_kernel_priors} \code{model_obj} with a finite
-#'   \code{theta_present} (at least one neighborhood singleton), or -- since
-#'   2026-09-04 -- a multi-group fit, in which case each taxon is priced by its
+#'   \code{theta_present} (at least one neighborhood singleton), or a
+#'   multi-group fit, in which case each taxon is priced by its
 #'   OWN sampling group's budget (see \verb{Per-group curve pricing}).
 #' @param sampling_group Which sampling group each evidence taxon belongs to.
 #'   Required (and only meaningful) when \code{model_obj} was fitted with
@@ -291,11 +283,10 @@
 #'       entirely when \code{model_obj} has no habitat concept).}
 #'     \item{alpha, beta}{Beta(alpha, beta) prior parameters.}
 #'     \item{theta_mean, theta_sd}{Derived from alpha/beta.}
-#'     \item{model_tier}{Always \code{"tier_undetected_evidence"}. Deprecated
-#'       vocabulary (kernel-priors redesign, 2026-08-31): kernel-path
-#'       output replaces \code{model_tier} with \code{prior_branch} +
-#'       \code{effective_records}; this column is retained only while
-#'       the GLMM path remains in use.}
+#'     \item{model_tier}{Always \code{"tier_undetected_evidence"}. Kernel-path
+#'       output uses \code{prior_branch} + \code{effective_records} instead;
+#'       this column is retained for compatibility with \code{biofreq_model}
+#'       inputs (see \code{model_obj}).}
 #'     \item{undetected_type}{Always \code{"evidence_blend"} -- a new value
 #'       alongside \code{"singleton_mirror"}/\code{"global_floor"}.}
 #'     \item{evidence_weight}{The combined \code{w_combined} for this taxon
@@ -307,7 +298,7 @@
 #'       (pseudo-observations) -- reserved for the confirmation update; does
 #'       not affect the static prior's marginal moments.}
 #'     \item{prior_mix_var_present, prior_mix_var_absent}{Within-state
-#'       variance at the present/absent anchor (2026-09-05). Both exactly 0
+#'       variance at the present/absent anchor. Both exactly 0
 #'       under \code{pricing = "curve"} (point-mass states); under
 #'       \code{"blend"}, the singleton-mirror/floor Beta variances that
 #'       already enter this row's own \code{v_mix} above. Carried so a later
@@ -320,9 +311,9 @@
 #'       native (the same bound printed above, at construction time). Only
 #'       ever non-\code{NA} for \code{pricing = "blend"} rows -- under
 #'       \code{"curve"} the bound is a fixed, always-unreachable constant
-#'       (2026-09-05, removed; see \verb{The printed veto bound}), so there is
+#'       (see \verb{The printed veto bound}), so there is
 #'       nothing meaningful to cap against and this column is always
-#'       \code{NA} there. Persisted (2026-09-05) so
+#'       \code{NA} there. Persisted so
 #'       \code{TaxaAssign::update_prior_from_consensus()}'s confirmation
 #'       update -- which can independently push \code{prior_mix_w} past this
 #'       bound via correlated cross-observation support -- can cap its own
@@ -380,16 +371,16 @@ apply_undetected_evidence <- function(
       stop("apply_undetected_evidence: `", .nm, "` must be a single non-negative number.")
     }
   }
-  # Curve pricing (unobserved-taxa redesign, 2026-08-31): theta = w *
+  # Curve pricing: theta = w *
   # theta_present, with theta_present = missing_mass / f1 from the kernel fit
-  # (the mean theta of the neighborhood's own observed singletons, 2026-09-05
+  # (the mean theta of the neighborhood's own observed singletons
   # -- see estimate_kernel_priors()'s own roxygen for why) and theta_absent = 0
   # (an absent species contributes nothing -- the honest mixture reading,
-  # replacing the floor-additive blend whose floor term dominated every row).
+  # avoiding a floor term that would dominate every row).
   # Requires a kernel model_obj carrying a finite theta_present.
   kernel_theta_present <- NA_real_
   # Captured HERE, not at the printout: `model_obj` is replaced by a stub
-  # further down (the GLMM-compat branch), so anything read off the kernel fit
+  # further down (the biofreq_model-compat branch), so anything read off the kernel fit
   # has to be taken before that point.
   kernel_f1 <- NA_integer_
   kernel_f2 <- NA_integer_
@@ -398,8 +389,7 @@ apply_undetected_evidence <- function(
   # stub's NULL (so every grouped fit printed the literal default
   # "sampling_group", whatever its own column was actually called).
   kernel_group_col <- NA_character_
-  # Per-group curve pricing state. NULL = single-group (or blend) pricing, i.e.
-  # the pre-2026-09-04 path, byte-for-byte. The guards below police BORROWING
+  # Per-group curve pricing state. NULL = single-group (or blend) pricing. The guards below police BORROWING
   # BETWEEN GROUPS, which only exists once there is more than one group -- a
   # single-group fit is the caller asserting the whole stratum is one detection
   # process, and nothing about that assertion is second-guessed here (its f1/f2
@@ -444,7 +434,7 @@ apply_undetected_evidence <- function(
     )
   }
   if (inherits(model_obj, "taxaexpect_kernel_priors")) {
-    # Kernel-priors adapter (Phase 2, 2026-08-31): only the habitat concept is
+    # Kernel-priors adapter: only the habitat concept is
     # read from model_obj here; kernel estimates are always habitat-stratified.
     model_obj <- list(meta = list(habitat_col = "main_habitat"))
     class(model_obj) <- "biofreq_model_shim"
@@ -489,13 +479,12 @@ apply_undetected_evidence <- function(
   }
   if ("n_eff" %in% names(evidence) && !"p_conc" %in% names(evidence)) {
     stop(
-      "apply_undetected_evidence: `evidence$n_eff` is retired (2026-08-26 ",
-      "mixture redesign). The elevated prior's Beta concentration is now ",
+      "apply_undetected_evidence: `evidence$n_eff` is not accepted. The ",
+      "elevated prior's Beta concentration is ",
       "moment-matched from the presence mixture, not caller-chosen; supply ",
       "`p_conc` (confidence in the presence probability itself, in ",
       "pseudo-observations -- used by the confirmation update, not by the ",
-      "static prior) or omit both. See ",
-      "ecosystem_docs/REENTRY_PROMPT_undetected_evidence_mixture_redesign.md."
+      "static prior) or omit both."
     )
   }
   if (nrow(evidence) == 0L) {
@@ -512,11 +501,11 @@ apply_undetected_evidence <- function(
 
   # ---- Anchors --------------------------------------------------------------
   # Curve mode needs NO floor/ceiling anchors (theta = w * theta_present,
-  # theta_absent = 0), and no singleton anchor either (2026-09-05: since
-  # theta_present is now priced from mass/f1, it IS the singleton mean; a
+  # theta_absent = 0), and no singleton anchor either: since
+  # theta_present is priced from mass/f1, it IS the singleton mean; a
   # separate curve-mode veto bound built from it would be a fixed, always-
   # unreachable constant -- see "The printed veto bound" above). The blend
-  # path keeps its original anchor requirements.
+  # path keeps its own anchor requirements.
   theta_floor <- var_floor <- theta_singleton <- var_singleton <- NA_real_
   if (pricing == "blend") {
     # ---- Floor anchor: read directly from taxaexpect_priors, don't recompute ---
@@ -547,20 +536,20 @@ apply_undetected_evidence <- function(
       drop = FALSE
     ]
     if (nrow(singleton_rows) == 0L) {
-      # ---- Ceiling anchor ladder (2026-08-26 mixture redesign, D2) -----------
+      # ---- Ceiling anchor ladder -----------
       # No singletons does NOT mean no ceiling: the anchor's meaning is "the
       # detection rate of a species present but rare enough to have plausibly
       # escaped local detection." Descend a ladder of estimates rather than
-      # silently collapsing the ceiling onto the floor (the previous behavior,
-      # which made every elevation a weight-independent no-op):
+      # silently collapsing the ceiling onto the floor, which would make every
+      # elevation a weight-independent no-op:
       #   (2) minimum theta among genuinely modelled rows -- in a dataset with
       #       no singletons every detected species was seen >= 2 times, so the
       #       rarest detected rate mildly OVERestimates the present-but-
       #       undetected rate: conservative in the safe direction.
       #   (3) ~1 detection per site effort (n_obs), i.e. what a singleton's
       #       rate would have been.
-      #   (4) only if neither is computable: the old floor-equals-ceiling
-      #       no-op, with the original warning.
+      #   (4) only if neither is computable: a floor-equals-ceiling
+      #       fallback, with a warning.
       theta_singleton <- NA_real_
       var_singleton <- NA_real_
       modelled <- taxaexpect_priors[
@@ -571,13 +560,12 @@ apply_undetected_evidence <- function(
       ]
       # Excludes evidence/domestic rows from ever serving as the ceiling anchor
       # (an evidence-elevated row anchoring the NEXT evidence row is exactly the
-      # circularity this ladder exists to avoid). `model_tier` is doc-deprecated
-      # in favor of `prior_branch` (kernel schema) -- 2026-09-05 critical-fix-
-      # review finding D2: guarding this clause on `"model_tier" %in%
-      # names(modelled)` means the filter silently VANISHES once that column is
-      # actually retired from kernel output, rather than erroring or falling
-      # back. Both clauses are applied (independently, whichever columns are
-      # present) so retiring `model_tier` cannot silently reopen this gap.
+      # circularity this ladder exists to avoid). Guarding this clause only on
+      # `"model_tier" %in% names(modelled)` would let the filter silently
+      # VANISH for data that has no `model_tier` column -- kernel-path output
+      # uses `prior_branch` instead. Both clauses are applied (independently,
+      # whichever columns are present) so the absence of either column cannot
+      # silently reopen this gap.
       if ("model_tier" %in% names(modelled) && nrow(modelled) > 0L) {
         modelled <- modelled[
           is.na(modelled$model_tier) |
@@ -658,7 +646,7 @@ apply_undetected_evidence <- function(
     }
   } # end blend-mode anchor block
 
-  # ---- Dataset-specific veto bound (2026-08-26 mixture redesign, D4) --------
+  # ---- Dataset-specific veto bound --------
   # At likelihood parity, an elevated species stays in the consensus plausible
   # set against an observed competitor at theta_obs whenever
   #   theta_e >= (m/(1-m)) * theta_obs,   m = the retention floor
@@ -667,20 +655,17 @@ apply_undetected_evidence <- function(
   # gives a weight bound specific to THIS dataset's anchors. Printed so a
   # caller choosing `weight` for a watch list can see where "surfaces for
   # review" ends and "vetoes the resolution of genuinely observed natives"
-  # begins. (The GreatLakes2023 case: the bound ~0.05; the pre-calibration
+  # begins. (The Great Lakes case: the bound ~0.05; an uncalibrated
   # w = 0.6 sat far above it and suppressed yellow perch in 78 observations.)
   #
-  # BLEND-MODE ONLY as of 2026-09-05 (open decision #1, resolved): under
-  # `pricing = "curve"`, theta_present is now priced from mass/f1 -- exactly
+  # BLEND-MODE ONLY: under
+  # `pricing = "curve"`, theta_present is priced from mass/f1 -- exactly
   # the neighborhood's own singleton mean -- so this same bound would be a
   # fixed ((1-m)/m) = 19 at the default m = 0.05, for every group, always:
   # unreachable for any admissible weight <= 1, and therefore never
-  # informative. The guard machinery that existed because the OLD
-  # mass/chao_missing price could occasionally exceed the singleton mean
-  # (real 18S zooplankton: f1=3, f2=7, Chao=0.64, price 4.7x the singleton
-  # mean) is removed along with it -- there is nothing left for a cap or a
+  # informative -- there is nothing for a cap or a
   # bound to catch. veto_bound_scalar is captured (not just printed) so the
-  # check below (2026-09-05 critical-fix-review finding A2) can warn
+  # check below can warn
   # generically for ANY blend-mode evidence source.
   veto_bound_scalar <- NULL
   if (pricing == "curve" && !is.null(curve_groups)) {
@@ -831,15 +816,15 @@ apply_undetected_evidence <- function(
     price_vec <- rep(kernel_theta_present, length(taxa))
   }
 
-  # ---- Veto-bound guard (2026-09-05 critical-fix-review, finding A2) --------
-  # Blend-mode only (2026-09-05, open decision #1, resolved): curve pricing no
-  # longer has a bound to check against (see "The printed veto bound" above),
+  # ---- Veto-bound guard --------
+  # Blend-mode only: curve pricing has no
+  # bound to check against (see "The printed veto bound" above),
   # so veto_bound_scalar is NULL and every curve row's own w_veto_applicable
   # is honestly NA below -- not a re-derivation gap, there is nothing to catch.
   # For blend mode: a generic safety net, warning whenever a supplied evidence
   # taxon's own combined weight exceeds the bound just computed and printed
   # above. Catches the exact class of miscalibration this ecosystem has
-  # already hit once (the pre-calibration invasive weight 0.6 vs. a ~0.05
+  # already hit once (an uncalibrated invasive weight 0.6 vs. a ~0.05
   # bound, which suppressed yellow perch in 78 real observations) regardless
   # of which evidence generator or future one supplies the offending weight.
   w_veto_applicable <- if (!is.null(veto_bound_scalar)) {
@@ -857,7 +842,7 @@ apply_undetected_evidence <- function(
         "At likelihood parity, a weight this high can block species-level",
         "resolution of a genuinely observed singleton-level native -- exactly",
         "the failure mode a miscalibrated evidence weight caused once already",
-        "(the pre-D4/D5-calibration invasive weight of 0.6 vs. GreatLakes' own",
+        "(an uncalibrated invasive weight of 0.6 vs. a Great Lakes dataset's own",
         "~0.05 bound, which suppressed yellow perch in 78 real observations).",
         "Check whether this weight was calibrated for a DIFFERENT pricing mode",
         "(e.g. a blend-mode bound is often far below a curve-mode one)."
@@ -866,12 +851,12 @@ apply_undetected_evidence <- function(
     ), call. = FALSE)
   }
 
-  # ---- Presence-mixture prior (2026-08-26 mixture redesign, D3/D8) ----------
+  # ---- Presence-mixture prior ----------
   # The elevated prior IS a presence mixture: with probability w the species is
   # locally present (theta ~ the ceiling-anchor state), with probability 1 - w
   # absent (theta ~ the floor state). The blended mean is that mixture's exact
-  # expectation; the Beta summary's concentration is now MOMENT-MATCHED to the
-  # mixture's variance instead of caller-chosen (the retired free n_eff):
+  # expectation; the Beta summary's concentration is MOMENT-MATCHED to the
+  # mixture's variance rather than a caller-chosen n_eff:
   #   v = w*Var_ceiling + (1-w)*Var_floor + w*(1-w)*(theta_c - theta_f)^2
   #   n_eff_mm = m(1-m)/v - 1
   # Note the marginal moments are independent of p_conc: for a two-point
@@ -903,7 +888,7 @@ apply_undetected_evidence <- function(
     v_mix <- w_combined_vec * var_singleton +
       (1 - w_combined_vec) * var_floor +
       w_combined_vec * (1 - w_combined_vec) * delta_sq
-    # Carried forward (2026-09-05 critical-fix-review finding A4) so a later
+    # Carried forward so a later
     # re-moment-match (TaxaAssign::update_prior_from_consensus(), after a
     # confirmation update) can reproduce this SAME v_mix formula instead of
     # dropping these two positive terms -- which would otherwise silently
@@ -938,13 +923,13 @@ apply_undetected_evidence <- function(
     prior_mix_p_conc = p_conc_new,
     prior_mix_var_present = var_present_vec,
     prior_mix_var_absent = var_absent_vec,
-    # Persisted (2026-09-05 critical-fix-review finding B2) so a later
+    # Persisted so a later
     # confirmation update (TaxaAssign::update_prior_from_consensus()) can cap
     # ITS OWN post-update w at this SAME bound, rather than only this
-    # construction-time w being checked against it (finding A2) -- the
-    # confirmation update can independently push w past the bound via
-    # correlated cross-observation support, which the A2 check alone cannot
-    # see. NA for every curve-priced row (no bound applies there, 2026-09-05)
+    # construction-time w being checked against it (the veto-bound guard
+    # above) -- the confirmation update can independently push w past the
+    # bound via correlated cross-observation support, which that check alone
+    # cannot see. NA for every curve-priced row (no bound applies there)
     # and for a blend row where no bound was computable.
     prior_mix_veto_bound = w_veto_applicable
   )
@@ -1020,14 +1005,13 @@ apply_undetected_evidence <- function(
 }
 
 # ==============================================================================
-# Per-group curve pricing (2026-09-04). Open decision #2 of
-# ecosystem_docs/REENTRY_PROMPT_kernel_budget_pricing_and_scope.md, unblocked by
-# the PtConception 18S diagnostic: per-group Good-Turing budgets span 1859x
+# Per-group curve pricing. On real
+# PtConception 18S data, per-group Good-Turing budgets span 1859x
 # (441x among groups the assay can actually amplify), and the single pooled
 # price sits BELOW all seven priced groups -- it is not even a compromise
 # between them. The guards below are not hypothetical caution; every one of them
-# fires on that real data (diagnostics/kernel_budget_18S_sampling_groups.R
-# section 5).
+# fires on that real data (the kernel_budget_18S_sampling_groups.R diagnostic,
+# TaxaID_dev repository, section 5).
 # ==============================================================================
 
 #' Resolve a per-group price from a multi-group kernel fit's budget
@@ -1038,11 +1022,9 @@ apply_undetected_evidence <- function(
 .resolve_group_prices <- function(kp, min_group_n_eff, min_group_f1,
                                   group_fallback) {
   b <- kp$budget
-  # theta_present is already the group's own mass/f1 (2026-09-05, open
-  # decision #1, resolved -- see estimate_kernel_priors()'s roxygen); no
-  # separate singleton-mean CAP is needed here any more (the retired
-  # mass/chao_missing price could exceed mass/f1 when f1 < 2*f2, which is
-  # exactly what a cap existed to bound -- removed alongside the switch).
+  # theta_present is already the group's own mass/f1 (see
+  # estimate_kernel_priors()'s roxygen); no separate singleton-mean CAP is
+  # needed here.
   b$has_price <- is.finite(b$theta_present) & b$theta_present > 0
   b$qualifies <- b$has_price & b$n_eff >= min_group_n_eff & b$f1 >= min_group_f1
 
@@ -1062,7 +1044,7 @@ apply_undetected_evidence <- function(
   # the missing mass of the UNION, expressed as a share of the union's own
   # singleton count. The same mass/f1 formula as any single qualifying group,
   # applied to the union (not mass/chao_missing: kept consistent with the
-  # per-group price switch above, 2026-09-05, open decision #1).
+  # per-group pricing above).
   q <- which(b$qualifies)
   fallback_price <- NA_real_
   if (length(q) > 0L) {
