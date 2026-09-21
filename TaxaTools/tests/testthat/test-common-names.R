@@ -383,7 +383,8 @@ test_that("mixed batch: backbone hit for first, LLM fallback for second", {
 
 # An LLM mock that answers every name in the prompt and counts its calls.
 .make_counting_llm <- function(known, null_for = character(0), garbage = FALSE) {
-  calls <- new.env(parent = emptyenv()); calls$n <- 0L
+  calls <- new.env(parent = emptyenv())
+  calls$n <- 0L
   fn <- function(prompt, ...) {
     calls$n <- calls$n + 1L
     if (garbage) return("not json at all")
@@ -493,7 +494,10 @@ test_that("verbose = TRUE reports the summary and one line per LLM batch", {
   msgs <- character(0)
   withCallingHandlers(
     scientific_to_common(taxa, backbone_id = NULL, llm_fn = llm$fn, verbose = TRUE),
-    message = function(m) { msgs <<- c(msgs, conditionMessage(m)); invokeRestart("muffleMessage") }
+    message = function(m) {
+      msgs <<- c(msgs, conditionMessage(m))
+      invokeRestart("muffleMessage")
+    }
   )
   expect_true(any(grepl("25 name\\(s\\) -- 0 from cache, 0 resolved by backbone, 25 to the LLM in 2 batch", msgs)))
   expect_true(any(grepl("LLM batch 1/2 \\(20 name", msgs)))
@@ -516,6 +520,13 @@ test_that("taxatools_clear_cache() reports and removes the common-name cache fil
 })
 
 test_that("scientific_to_common() validates cache_dir and verbose", {
-  expect_error(scientific_to_common("Salmo salar", backbone_id = NULL, llm_fn = function(p, ...) "[]", cache_dir = c("a", "b")), "cache_dir")
-  expect_error(scientific_to_common("Salmo salar", backbone_id = NULL, llm_fn = function(p, ...) "[]", verbose = NA), "verbose")
+  bad_fn <- function(p, ...) "[]"
+  expect_error(
+    scientific_to_common("Salmo salar", backbone_id = NULL, llm_fn = bad_fn, cache_dir = c("a", "b")),
+    "cache_dir"
+  )
+  expect_error(
+    scientific_to_common("Salmo salar", backbone_id = NULL, llm_fn = bad_fn, verbose = NA),
+    "verbose"
+  )
 })

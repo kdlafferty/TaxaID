@@ -337,20 +337,23 @@ test_that("list_cache_files refusing the working directory is not overridable by
   expect_error(list_cache_files(".", "\\.zip$", force = TRUE), "current working directory")
 })
 
-test_that("report_and_clear_cache refuses a cache_dir that resolves to the working directory, even under dry_run = FALSE", {
-  d <- withr::local_tempdir()
-  writeLines("x", file.path(d, "a.zip"))
-  withr::local_dir(d)
-  inv <- data.frame(
-    path = file.path(d, "a.zip"), size_mb = 0.001,
-    mtime = Sys.time(), stringsAsFactors = FALSE
-  )
-  expect_error(
-    report_and_clear_cache(inv, "lbl", ".", dry_run = FALSE),
-    "current working directory"
-  )
-  expect_true(file.exists(file.path(d, "a.zip"))) # never reached file.remove()
-})
+test_that(
+  "report_and_clear_cache refuses a cache_dir that resolves to the working directory, even under dry_run = FALSE",
+  {
+    d <- withr::local_tempdir()
+    writeLines("x", file.path(d, "a.zip"))
+    withr::local_dir(d)
+    inv <- data.frame(
+      path = file.path(d, "a.zip"), size_mb = 0.001,
+      mtime = Sys.time(), stringsAsFactors = FALSE
+    )
+    expect_error(
+      report_and_clear_cache(inv, "lbl", ".", dry_run = FALSE),
+      "current working directory"
+    )
+    expect_true(file.exists(file.path(d, "a.zip"))) # never reached file.remove()
+  }
+)
 
 test_that("report_and_clear_cache refuses a filesystem root", {
   empty_inv <- data.frame(
@@ -386,16 +389,19 @@ test_that("list_cache_files(force = TRUE) scans a mixed directory anyway", {
   expect_identical(basename(out$path), "a.zip")
 })
 
-test_that("list_cache_files does not trip the mixed-directory guard on a directory holding only recognized cache files", {
-  d <- tempfile("cache_")
-  dir.create(d)
-  on.exit(unlink(d, recursive = TRUE), add = TRUE)
-  writeLines("x", file.path(d, "a.zip"))
-  writeLines("x", file.path(d, "b_meta.rds"))
+test_that(
+  "list_cache_files does not trip the mixed-directory guard on a directory holding only recognized cache files",
+  {
+    d <- tempfile("cache_")
+    dir.create(d)
+    on.exit(unlink(d, recursive = TRUE), add = TRUE)
+    writeLines("x", file.path(d, "a.zip"))
+    writeLines("x", file.path(d, "b_meta.rds"))
 
-  out <- list_cache_files(d, c("\\.zip$", "_meta\\.rds$"))
-  expect_setequal(basename(out$path), c("a.zip", "b_meta.rds"))
-})
+    out <- list_cache_files(d, c("\\.zip$", "_meta\\.rds$"))
+    expect_setequal(basename(out$path), c("a.zip", "b_meta.rds"))
+  }
+)
 
 test_that("taxatools_clear_cache(force=) threads through to list_cache_files()", {
   d <- withr::local_tempdir()

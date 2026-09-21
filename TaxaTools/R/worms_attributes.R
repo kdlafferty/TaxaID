@@ -124,8 +124,6 @@
   flags <- function(field) vapply(recs, function(r) .worms_flag(r[[field]]), logical(1))
   f_mar <- flags("isMarine")
   f_bra <- flags("isBrackish")
-  f_fre <- flags("isFreshwater")
-  f_ter <- flags("isTerrestrial")
 
   # `%in% TRUE` rather than `|`: NA | FALSE is NA, and an NA keep-vector handed
   # to an ESV filter neither keeps nor drops -- it errors or silently subsets.
@@ -778,7 +776,10 @@ fetch_worms_attributes <- function(taxon_names,
     }
     if (length(fuzzy)) {
       message(sprintf(
-        "  %d name(s) had only non-exact matches and were NOT used (accept_fuzzy = FALSE) -- attr(, \"fuzzy_rejected_taxa\").",
+        paste0(
+          "  %d name(s) had only non-exact matches and were NOT used ",
+          "(accept_fuzzy = FALSE) -- attr(, \"fuzzy_rejected_taxa\")."
+        ),
         length(fuzzy)
       ))
     }
@@ -790,7 +791,10 @@ fetch_worms_attributes <- function(taxon_names,
     }
     if (length(conflict)) {
       message(sprintf(
-        "  %d name(s) matched homonyms that DISAGREE on marine status; marine_scope is the OR -- attr(, \"habitat_conflict_taxa\").",
+        paste0(
+          "  %d name(s) matched homonyms that DISAGREE on marine status; ",
+          "marine_scope is the OR -- attr(, \"habitat_conflict_taxa\")."
+        ),
         length(conflict)
       ))
     }
