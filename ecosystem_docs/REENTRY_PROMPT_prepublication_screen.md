@@ -490,6 +490,15 @@ emits `package_unavailable` (a failure) instead of skipping an unloadable
 package; `workflow_check()`'s roxygen states exactly what it checks and
 where snippet validation actually lives. 1,084 pass; the one failing test
 is the committed-template diff against the stale installed library.
+**TaxaLikely fixes MERGED (`06c6d02`)**: `suggest_unreferenced_species()`
+stops when `reference_species` is missing for acoustic/image (first tests of
+those branches); LLM responses keep only species whose genus matches the
+genus asked about, and family-level responses echo a `family` field that
+must match; the genus column is validated before it reaches the prompt;
+`n_cross_genus_pairs` counts unordered pairs; the single-genus case warns.
+1,325 tests, 0 failures. **Every A5 fix branch is now in `main`**; the
+16-defect tally is closed in code. Remaining on `main` before the final
+reinstall: the `ECOSYSTEM_WORKFLOW.md` rewrite (docs only).
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
