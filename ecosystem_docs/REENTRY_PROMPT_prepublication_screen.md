@@ -383,6 +383,20 @@ design); LLM prompt text is unescaped user data (bounded: nothing executes
 on the reply); returned categories not validated against the enum. API
 keys never enter TaxaFlag code; cache paths are hashes; the Shiny gadget
 has no `eval`/`parse`/`HTML()` sink.
+TaxaHabitat done -- 5 DEFECTS, reproduced (branch `screen-a5-fixes-habitat`):
+(1) `save_/apply_spatial_review_decisions()` key on `point_id` alone, so two
+taxa sharing a point get one taxon's flag applied to both and the other
+never resurfaces -- the user's three real decision files (GreatLakes 5,044
+rows, PtCon, Mugu) carry NO taxon column; fix keys on `(point_id,
+taxon_name)`, applies old-format files only to single-taxon points, and
+reports ambiguous points loudly for re-review; (2) re-applying compounds
+the reason prefix while `n_applied` says 0; (3) `.utm_crs_for()` picks the
+Greenwich UTM zone for points straddling 180 degrees; (4) decision files
+are `readRDS()`'d with no schema check; (5) the end-to-end geography test
+passes vacuously when resolution returns NA. Confirmed as documented:
+coastline/minor-islands/EPSG rule, UPS above 84 degrees, NA coordinates,
+on-coastline points, the occurrence-side vs taxon-side Uncertain routing,
+the LLM cache key.
 **WERC release-review response WRITTEN 2026-09-21**
 (`usgs_release_review/RESPONSE_to_release_review.md`), answering every
 request in the review's table with the three user decisions applied and the
