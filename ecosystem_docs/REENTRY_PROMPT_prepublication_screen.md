@@ -972,6 +972,31 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   inventory. All merged to main (`6b2e758`); TaxaAssign 815/0, TaxaWizard
   1107/0. The installed library is now behind main in TaxaAssign and
   TaxaWizard: reinstall before submission.
+  **README pass COMPLETE and MERGED (`287a219`)**: all ten READMEs read
+  by a second pass under the maintainer's rules (no em dashes or ` -- `,
+  no bold/italics outside headings except scientific names and journal
+  titles, plain prose, no chronology), every function, argument, default,
+  path and link verified against NAMESPACE/`formals()`/the tree, and the
+  whole-tree grep is 0/0/0 on every file. Factual errors caught and
+  fixed: root (a `wi_output` reader that does not exist, a glmmTMB licence
+  claim for a dependency TaxaExpect no longer has, Biostrings needed by
+  `trim_to_amplicon()` too); TaxaLikely (examples calling
+  `fetch_ncbi_reference_sequences(rank=)` and `compute_posterior(priors_df=)`,
+  neither exists); TaxaFlag (score described as a mean of proportions; the
+  code computes a depth-weighted rate ratio shrunk toward 0.5 by
+  `prior_weight`); TaxaFetch (cache prompt threshold is 5 GB not 1 GB;
+  overwrite prompt only with `allow_prompts = TRUE`); TaxaHabitat
+  (`flag_habitat_inconsistencies()` flags, not `review_spatial_flags()`;
+  `build_habitat_prompt()` needs no key); TaxaTools (Azure OpenAI provider
+  omitted; `.onAttach()` auto-detect is interactive-only); TaxaWizard (the
+  three routes stated as the code has them); TaxaExpect (pooling claim
+  made exact; *Pisaster ochraceus*). Reports in
+  `TaxaID_dev/screen_records/.../readme_pass/`. Flagged, not changed:
+  `assign_scores()` bullet omits `score_type = "direct"`; `cache_ok()`,
+  `assign_sampling_group()`, `fetch_worms_attributes()` unmentioned in the
+  TaxaTools README; AZURE_OPENAI_API_KEY absent from the root API-key
+  table; `resolve_review_overrides()`/`verify_local_corroborations()`
+  unmentioned in TaxaMatch's README.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
