@@ -19,8 +19,10 @@ the reasoning recorded for a future dedicated session).
 | `check_cross_genus_sampling_noise()` | `R/build_sequence.R` | How Much Does the Random Cross-Genus Draw Move the Estimate? | test-build.R |
 | `taxalikely_clear_cache()` | `R/taxalikely_clear_cache.R` | Report and clear TaxaLikely's on-disk cache | test-fetch-cache-eviction.R, test-taxalikely_clear_cache.R |
 
-23 new internal helper functions have also been added since the review (mostly in
-`fetch.R`'s reference-cache internals and `bimodality.R`).
+25 new internal helper functions have also been added since the review (mostly in
+`fetch.R`'s reference-cache internals and `bimodality.R`; 2 of the 25 are
+`.resolve_taxa_taxids()`/`.compute_lineage_disagreements()`, see "Behavior changes to
+already-reviewed functions" below).
 
 Not counted as new: `suggest_unreferenced_species()` (`R/suggest_unreferenced_species.R`)
 and its internal helpers were moved here from TaxaAssign, where the same code was already
@@ -911,3 +913,24 @@ on functions this document already covers above.
   certain genera had no species-specific H1 entries had read a column that
   does not exist, so it returned zero for every genus. The conclusion happened
   to be right; the evidence was not.
+- `fetch_ncbi_reference_sequences()` gains an opt-in `taxa_lineage`
+  parameter, addressing a real, separate defect: `.build_search_term()`
+  queries NCBI by bare name, and a taxon name is not a key -- NCBI can hold
+  several nodes with the same name in unrelated lineages (a genus of red
+  algae named "Vertebrata" beside the vertebrate clade of the same name), and
+  a name-based `[Organism]` search silently resolves to whichever node the
+  service prefers, drowning the wanted sequences in results from the wrong
+  organism entirely. `taxa_lineage` (a data frame: `taxon`, optional `rank`,
+  and any of `kingdom`/`phylum`/`class`/`order`/`family` -- the caller's own
+  declared lineage) resolves each taxon to a disambiguated NCBI taxid first
+  via the new `TaxaTools::resolve_ncbi_taxid()` and queries by
+  `txid<id>[ORGN]` instead of by name; it also enables a post-fetch
+  lineage-agreement guard needing no extra API call, surfacing any
+  disagreement via `attr(reference_df, "lineage_disagreements")`. `NULL`
+  (the default) reproduces this function's exact original behaviour --
+  every existing caller is unaffected. `.build_search_term()` gains a
+  matching `taxid` parameter; `.ref_cache_file()`'s cache key gains a
+  `taxid` component, since a name-scoped and a taxid-scoped query for the
+  same taxon can return genuinely different sequences. Two new internal
+  helpers, `.resolve_taxa_taxids()` and `.compute_lineage_disagreements()`,
+  extracted from the function body for unit-testability.

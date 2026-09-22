@@ -12,6 +12,7 @@ This document responds to each comment in the TaxaTools code review. Changes wer
 |---|---|---|---|
 | `assign_sampling_group()` | `R/sampling_group.R` | Assign Sampling Groups from Taxonomic Rank Columns | test-sampling_group.R |
 | `cache_ok()` | `R/cache_utils.R` | Is a cache file usable, given the inputs it derives from? | test-cache_utils.R |
+| `check_lineage_agreement()` | `R/ncbi_homonyms.R` | Check Whether a Returned Lineage Agrees With a Declared One | test-ncbi_homonyms.R |
 | `check_taxaid_manifest()` | `R/build_manifest.R` | Check the Installed TaxaID Code Against a Recorded Manifest | test-build_manifest.R |
 | `default_sampling_scheme()` | `R/sampling_group.R` | Default Sampling-Group Classification Scheme | test-sampling_group.R |
 | `define_search_polygon()` | `R/define_search_polygon.R` | Define a Search Polygon Interactively | test-define_search_polygon.R |
@@ -21,13 +22,19 @@ This document responds to each comment in the TaxaTools code review. Changes wer
 | `report_and_clear_cache()` | `R/cache_utils.R` | Report and optionally delete a set of cache files | test-cache_utils.R |
 | `resolve_barcode_marker()` | `R/barcode_utils.R` | Resolve a Primer-Variant Barcode Term to the Marker It Amplifies | test-barcode_utils.R |
 | `resolve_barcode_primers()` | `R/barcode_utils.R` | Resolve Primer Sequences from a Barcode/Primer-Set Term | test-barcode_utils.R |
+| `resolve_ncbi_taxid()` | `R/ncbi_homonyms.R` | Resolve a Taxon Name to One Disambiguated NCBI Taxonomy Id | test-ncbi_homonyms.R |
 | `taxaid_build_manifest()` | `R/build_manifest.R` | Record Which TaxaID Code a Run Is Using | test-build_manifest.R |
 | `taxaid_cache_report()` | `R/cache_utils.R` | Report every TaxaID cache on this machine | test-cache_utils.R |
 | `taxatools_clear_cache()` | `R/common_names.R` | Report and clear the TaxaTools on-disk caches | test-common-names.R, test-worms_attributes.R |
 | `write_taxaid_manifest()` | `R/build_manifest.R` | Write a TaxaID Build Manifest | test-build_manifest.R |
 
-25 new internal helper functions have also been added since the review (mostly in
-`worms_attributes.R`'s WoRMS-API internals and `common_names.R`'s cache internals).
+28 new internal helper functions have also been added since the review (mostly in
+`worms_attributes.R`'s WoRMS-API internals and `common_names.R`'s cache internals; 3 in
+`ncbi_homonyms.R`). `ncbi_homonyms.R` also carries one internal, unexported data object,
+`.known_ncbi_homonyms` -- a confirmed-case fixture for `test-ncbi_homonyms.R` and the
+worked examples in `resolve_ncbi_taxid()`'s own roxygen, deliberately not exported (see
+that object's own roxygen for why a hand-curated list should not stand in for the
+resolver itself).
 
 ------------------------------------------------------------------------
 

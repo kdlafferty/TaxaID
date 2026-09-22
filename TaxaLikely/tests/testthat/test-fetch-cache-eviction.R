@@ -29,6 +29,7 @@ test_that("the grammar accepts every name .ref_cache_file() can produce", {
     oor = c(FALSE, TRUE),
     ranks = c("short", "long"),
     prefix = c("", "priority_"),
+    taxid = c("none", "1261581"),
     stringsAsFactors = FALSE
   )
   g <- TaxaLikely:::.ref_cache_grammar()
@@ -50,7 +51,8 @@ test_that("the grammar accepts every name .ref_cache_file() can produce", {
       } else {
         c("kingdom", "phylum", "class", "order", "family", "genus", "species")
       },
-      prefix = r$prefix
+      prefix = r$prefix,
+      taxid = if (r$taxid == "none") NULL else r$taxid
     ))
   }, character(1L))
 
@@ -109,6 +111,33 @@ test_that("a different length window or rank system is NOT unreachable", {
     "Abudefduf_12S_l100_5000_d_rk-genus-species_meta.rds"
   )))
   expect_identical(TaxaLikely:::.ref_cache_unreachable(d), character(0L))
+})
+
+test_that("a taxid-scoped and a name-scoped cache for the same taxon are both reachable", {
+  # A name-based query and a txid-based query for the same taxon can return
+  # genuinely different sequences (the whole point of the homonym fix) --
+  # neither one orphans the other.
+  d <- .cache_tmpdir()
+  file.create(file.path(d, c(
+    "Vertebrata_12S_l100_5000_d_rk-family-genus-species_meta.rds",
+    "Vertebrata_12S_l100_5000_d_rk-family-genus-species_txid1261581_meta.rds"
+  )))
+  expect_identical(TaxaLikely:::.ref_cache_unreachable(d), character(0L))
+})
+
+test_that(".ref_cache_stem_of() strips the taxid suffix, keeping the two files one stem", {
+  f_name <- basename(TaxaLikely:::.ref_cache_file(
+    "/tmp/c", "Vertebrata", "12S", 100L, 5000L, NULL, NULL, FALSE, 2L, 200000L,
+    c("family", "genus", "species")
+  ))
+  f_taxid <- basename(TaxaLikely:::.ref_cache_file(
+    "/tmp/c", "Vertebrata", "12S", 100L, 5000L, NULL, NULL, FALSE, 2L, 200000L,
+    c("family", "genus", "species"), taxid = "1261581"
+  ))
+  expect_identical(
+    TaxaLikely:::.ref_cache_stem_of(f_name),
+    TaxaLikely:::.ref_cache_stem_of(f_taxid)
+  )
 })
 
 test_that(".ref_cache_unreachable() finds orphans and scopes them by stem", {

@@ -1,4 +1,36 @@
 # CLAUDE.md -- TaxaTools
+# 2026-09-22 (Sonnet 5, branch homonym-detection, NOT merged/reinstalled): NEW
+# R/ncbi_homonyms.R -- ecosystem_docs/REENTRY_PROMPT_homonym_detection.md's mechanism.
+# A taxon NAME is not an NCBI key: several unrelated nodes can share one name (a
+# genus of red algae named "Vertebrata" beside the vertebrate clade of the same
+# name), and a name-based [ORGN] search silently resolves to whichever node NCBI
+# prefers -- measured live: a red-algal genus query returned 306,181 vertebrate
+# sequences alongside 68 real ones.
+#
+# resolve_ncbi_taxid(name, rank=, lineage_terms=) tries TWO discriminators in order
+# when a name resolves to more than one taxonomy node: rank (when supplied -- resolves
+# Vertebrata alone, genus vs clade), then lineage containment (fetches each surviving
+# candidate's own full NCBI lineage and tests for ANY overlap with lineage_terms --
+# resolves Lobophora, where both real candidates are genus-rank and rank alone
+# cannot discriminate; one is a moth genus, one a brown alga). Returns
+# status unique/resolved_by_rank/resolved_by_lineage/ambiguous/not_found, never
+# guesses. check_lineage_agreement(declared, returned) is the separate, permanent,
+# no-API-call guard (agrees on any shared lineage term -- covers both an exact match
+# and a benign taxonomic revision that stays within a shared higher clade; disagrees
+# only when both sides have real, non-overlapping terms; unknown when either side has
+# nothing to compare). known_ncbi_homonyms is the confirmed-case registry (12 rows,
+# 8 of them red algae) -- documentation/record-keeping only, not auto-consulted.
+#
+# LIVE-VERIFIED against real NCBI, not just offline mocks: resolve_ncbi_taxid()
+# correctly resolves Vertebrata -> taxid 1261581 (division "red algae") via rank
+# alone, and Lobophora -> taxid 157000 (division "brown algae") via lineage
+# containment. A live count check reproduced the harm directly:
+# Vertebrata[ORGN] AND COI AND 300:900[SLEN] -> 351,647 records;
+# txid1261581[ORGN] AND COI AND 300:900[SLEN] -> 94.
+#
+# devtools::test() 1209/0 (35 new), devtools::check() 0/0/0. Installed locally for
+# TaxaLikely's own fix (see that package's CLAUDE.md) but NOT reinstalled
+# ecosystem-wide, NOT merged to main -- freeze protocol, design/measurement session.
 # 2026-09-15 (Opus 5): NEW fetch_worms_attributes() -- deliverable 1 of
 # ecosystem_docs/REENTRY_PROMPT_worms_marine_filter.md. A by-NAME WoRMS taxon-attribute
 # lookup; the ecosystem had none. It is in TaxaTools, not TaxaFetch as the prompt said,
