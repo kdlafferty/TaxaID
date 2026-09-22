@@ -177,11 +177,13 @@ test_that("resolve_ncbi_taxid validates input", {
   expect_error(resolve_ncbi_taxid("Foo", lineage_terms = 1L), "character vector")
 })
 
-test_that("known_ncbi_homonyms is a well-formed registry containing the Vertebrata case", {
-  expect_s3_class(known_ncbi_homonyms, "data.frame")
-  expect_true(all(c("name", "lineage_a", "lineage_b") %in% names(known_ncbi_homonyms)))
-  expect_true("Vertebrata" %in% known_ncbi_homonyms$name)
-  expect_true(nrow(known_ncbi_homonyms) >= 10L)
+test_that(".known_ncbi_homonyms is a well-formed registry containing the Vertebrata case", {
+  # Not exported (see its own roxygen for why) -- fully internal to the
+  # package, so referenced here by its dotted name only.
+  expect_s3_class(.known_ncbi_homonyms, "data.frame")
+  expect_true(all(c("name", "lineage_a", "lineage_b") %in% names(.known_ncbi_homonyms)))
+  expect_true("Vertebrata" %in% .known_ncbi_homonyms$name)
+  expect_true(nrow(.known_ncbi_homonyms) >= 10L)
 })
 
 test_that("check_lineage_agreement: shared term anywhere in the lineage agrees", {

@@ -172,7 +172,14 @@ not reinstalled ecosystem-wide** -- this is design/measurement work per the free
 note above; a new export needs the maintainer's yes before it ships.
 
 **1 and 4, TaxaTools (`R/ncbi_homonyms.R`):**
-- `known_ncbi_homonyms` -- the registry, the 12-row table above, as real package data.
+- `.known_ncbi_homonyms` -- the registry, the 12-row table above, as internal package
+  data. **Screen decision, applied:** NOT exported. It is a snapshot of what one COI
+  fetch over 5,551 genera happened to surface, not a property of NCBI, so it is
+  incomplete on day one and goes stale as NCBI's taxonomy changes; exporting it would
+  invite a caller to guard against these twelve names instead of running the actual
+  resolver, which catches a name not on any list. It earns its keep as the fixture in
+  `test-ncbi_homonyms.R` (real, verified cases) and as the source for
+  `resolve_ncbi_taxid()`'s own worked examples (Vertebrata, Lobophora) in its roxygen.
 - `resolve_ncbi_taxid(name, rank = NULL, lineage_terms = NULL)` -- the actual fix
   (proposal 3, with rank folded in as the first discriminator per proposal 2). Two
   discriminators tried in order: rank (when supplied), then lineage containment

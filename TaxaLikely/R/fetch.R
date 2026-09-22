@@ -26,9 +26,10 @@ utils::globalVariables(c(
 #'   (\code{<taxon>[Organism]}). A NAME is not a key -- NCBI can hold
 #'   several nodes with the same name in unrelated lineages (a genus of red
 #'   algae named "Vertebrata" beside the vertebrate clade of the same name;
-#'   see \code{TaxaTools::known_ncbi_homonyms}), and \code{[Organism]}
-#'   silently resolves to whichever node the service prefers. Resolve
-#'   \code{taxid} first via \code{TaxaTools::resolve_ncbi_taxid()}, using
+#'   see [TaxaTools::resolve_ncbi_taxid()]'s own examples for confirmed real
+#'   cases), and \code{[Organism]} silently resolves to whichever node the
+#'   service prefers. Resolve \code{taxid} first via
+#'   \code{TaxaTools::resolve_ncbi_taxid()}, using
 #'   the caller's OWN declared rank/lineage as the discriminator -- this
 #'   function has no lineage of its own to check against, so it trusts
 #'   whatever taxid it is given. See
@@ -1196,7 +1197,8 @@ utils::globalVariables(c(
 #'   key -- NCBI can hold several nodes with the same name in unrelated
 #'   lineages (e.g. a genus of red algae named "Vertebrata" beside the
 #'   vertebrate clade of the same name; see
-#'   [TaxaTools::known_ncbi_homonyms]), and the default `[Organism]`
+#'   [TaxaTools::resolve_ncbi_taxid()]'s own examples for confirmed real
+#'   cases), and the default `[Organism]`
 #'   name-based query silently resolves to whichever node NCBI prefers,
 #'   which for an `[ORGN]` search is any node in the lineage -- a
 #'   higher-rank or larger-volume homonym wins on volume, drowning the
@@ -1356,9 +1358,10 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   # --- Homonym-safe taxid resolution (opt-in via taxa_lineage) ---------------
   # A taxon NAME is not a key -- NCBI can hold several nodes with the same
-  # name in unrelated lineages (see TaxaTools::known_ncbi_homonyms), and a
-  # name-based [Organism] search silently resolves to whichever node the
-  # service prefers, which for a real case measured 2026-09-22 meant a
+  # name in unrelated lineages (see TaxaTools::resolve_ncbi_taxid()'s own
+  # examples for confirmed real cases), and a name-based [Organism] search
+  # silently resolves to whichever node the service prefers, which for a
+  # real case measured 2026-09-22 meant a
   # red-algal genus query for "Vertebrata" returning 306,181 vertebrate
   # sequences alongside 68 real ones -- the wanted sequences were not lost,
   # they were drowned, and every downstream model trained on them treated

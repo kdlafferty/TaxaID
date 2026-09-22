@@ -68,6 +68,8 @@ downstream package needs solved consistently:
 | `is_plausible_binomial()` | Filter out `"sp."`, `"cf."`, `"aff."`, uncultured/environmental labels, and other non-binomial names. |
 | `to_faire()` | Export a TaxaID match/likelihood/posterior table to FAIRe checklist column conventions. |
 | `fetch_worms_attributes()` | Look up taxa in the World Register of Marine Species (WoRMS) by name and return curated attributes: the multi-label marine/brackish/freshwater/terrestrial habitat flags, AphiaID, accepted name, taxonomic status, WoRMS classification, and optionally NCBI taxon id and an introduced-species flag. |
+| `resolve_ncbi_taxid()` | Resolve a taxon name to one disambiguated NCBI taxonomy id: a name is not a key, since NCBI can hold several nodes with the same name in unrelated lineages, and a plain name-based search silently resolves to whichever node the service prefers. Disambiguates using the caller's own declared rank first, then containment in the caller's own known higher-rank lineage. |
+| `check_lineage_agreement()` | A cheap, no-API-call guard: given what a caller declared about a taxon's own higher-rank lineage and what a name-based fetch actually returned for it, decides whether the two share a clade (the same organism reclassified, or an exact match) or share nothing (a likely homonym). |
 
 ### LLM provider interface
 

@@ -192,7 +192,8 @@ OWN declared lineage for each queried taxon. A taxon NAME is not a
 key -- NCBI can hold several nodes with the same name in unrelated
 lineages (e.g. a genus of red algae named "Vertebrata" beside the
 vertebrate clade of the same name; see
-\link[TaxaTools:known_ncbi_homonyms]{TaxaTools::known_ncbi_homonyms}), and the default \verb{[Organism]}
+\code{\link[TaxaTools:resolve_ncbi_taxid]{TaxaTools::resolve_ncbi_taxid()}}'s own examples for confirmed real
+cases), and the default \verb{[Organism]}
 name-based query silently resolves to whichever node NCBI prefers,
 which for an \verb{[ORGN]} search is any node in the lineage -- a
 higher-rank or larger-volume homonym wins on volume, drowning the

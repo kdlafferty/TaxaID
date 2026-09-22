@@ -15,30 +15,22 @@ utils::globalVariables(c("taxid", "rank", "division", "genbankdivision", "scient
 
 #' Confirmed NCBI name collisions across unrelated lineages
 #'
-#' A small, hand-curated registry of taxon names known to resolve to more
-#' than one NCBI taxonomy node in genuinely unrelated lineages, recorded as
-#' each case was found. Not exhaustive -- new cases surface whenever a fresh
-#' dataset is swept (see \code{ecosystem_docs/REENTRY_PROMPT_homonym_detection.md}
-#' for the sweep that found the rows below: 78 of 4,638 genera in one real
-#' COI reference fetch disagreed with the match object's own family, of
-#' which 11 were confirmed homonyms). Useful as a fast, cheap pre-check and
-#' as a place to add a confirmed case, but is deliberately NOT relied on as
-#' the sole defense -- \code{\link{resolve_ncbi_taxid}} and
-#' \code{\link{check_lineage_agreement}} are the general mechanism; this
-#' table exists because a hand-list will always lag the real universe of
-#' collisions.
-#'
-#' @format A data frame with one row per confirmed collision:
-#' \describe{
-#'   \item{name}{Character. The colliding taxon name.}
-#'   \item{lineage_a}{Character. One real lineage this name resolves to.}
-#'   \item{lineage_b}{Character. A second, unrelated real lineage this name
-#'     also resolves to.}
-#' }
-#' @examples
-#' known_ncbi_homonyms[known_ncbi_homonyms$name == "Vertebrata", ]
-#' @export
-known_ncbi_homonyms <- data.frame(
+#' Not exported. A small, hand-curated set of taxon names known to resolve
+#' to more than one NCBI taxonomy node in genuinely unrelated lineages,
+#' recorded as each case was found by a real sweep (see
+#' ecosystem_docs/REENTRY_PROMPT_homonym_detection.md: 78 of 4,638 genera in
+#' one real COI reference fetch disagreed with the match object's own
+#' family, of which 11 were confirmed homonyms). Deliberately kept
+#' unexported and undocumented as public API: it is a snapshot of what one
+#' fetch happened to surface, not a property of NCBI, so it is incomplete on
+#' day one and would go stale as NCBI's taxonomy changes -- exporting it
+#' would invite a caller to guard against these twelve names specifically
+#' instead of running \code{\link{resolve_ncbi_taxid}}, the actual
+#' mechanism, which catches a name not on this list too. It earns its keep
+#' as the fixture in \code{test-ncbi_homonyms.R} (real, verified cases) and
+#' as the source for \code{\link{resolve_ncbi_taxid}}'s own worked examples.
+#' @noRd
+.known_ncbi_homonyms <- data.frame(
   name = c(
     "Vertebrata", "Digenea", "Grania", "Contarinia", "Acrotylus",
     "Ptilophora", "Mastophora", "Galene", "Lobophora", "Bulla",
@@ -92,8 +84,10 @@ known_ncbi_homonyms <- data.frame(
 #' Resolve a taxon name to one disambiguated NCBI taxonomy id
 #'
 #' A taxon name is not a key -- NCBI can hold several nodes with the same
-#' name in unrelated lineages (see \code{\link{known_ncbi_homonyms}} for
-#' confirmed real cases), and a name-based sequence search silently resolves
+#' name in unrelated lineages (real confirmed cases include a genus of red
+#' algae named "Vertebrata" beside the vertebrate clade of the same name,
+#' and a genus of moths named "Lobophora" beside a genus of brown algae of
+#' the same name), and a name-based sequence search silently resolves
 #' to whichever node the service prefers. This function disambiguates by
 #' resolving to a taxonomy id first, using the caller's OWN declared rank
 #' and/or higher-rank lineage as discriminators, so a caller can then query
@@ -141,12 +135,21 @@ known_ncbi_homonyms <- data.frame(
 #'   }
 #' @examples
 #' \dontrun{
-#' # The Vertebrata case (ecosystem_docs/REENTRY_PROMPT_homonym_detection.md):
-#' # a name-based "Vertebrata[ORGN]" search returns 519,463 vertebrate
-#' # sequences instead of the wanted 106 red-algal ones.
+#' # The Vertebrata case: a name-based "Vertebrata[ORGN]" search pulls in
+#' # vertebrate sequences alongside the wanted red-algal ones. Rank alone
+#' # disambiguates here, since the two candidates differ in rank (genus vs.
+#' # clade) -- see ecosystem_docs/REENTRY_PROMPT_homonym_detection.md for
+#' # the full measured incident.
 #' resolve_ncbi_taxid("Vertebrata", rank = "genus",
 #'   lineage_terms = c("Rhodomelaceae", "Ceramiales", "Rhodophyta"))
 #' # -> taxid "1261581", status "resolved_by_rank"
+#'
+#' # The Lobophora case: rank alone is NOT enough here, because both real
+#' # candidates are genus-rank (one a moth genus, one a brown alga) --
+#' # lineage containment is what decides it.
+#' resolve_ncbi_taxid("Lobophora", rank = "genus",
+#'   lineage_terms = c("Dictyotaceae", "Phaeophyceae"))
+#' # -> taxid "157000", status "resolved_by_lineage"
 #' }
 #' @export
 resolve_ncbi_taxid <- function(name, rank = NULL, lineage_terms = NULL) {

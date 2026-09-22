@@ -35,8 +35,10 @@ status. Zero rows when \code{status == "not_found"}.}
 }
 \description{
 A taxon name is not a key -- NCBI can hold several nodes with the same
-name in unrelated lineages (see \code{\link{known_ncbi_homonyms}} for
-confirmed real cases), and a name-based sequence search silently resolves
+name in unrelated lineages (real confirmed cases include a genus of red
+algae named "Vertebrata" beside the vertebrate clade of the same name,
+and a genus of moths named "Lobophora" beside a genus of brown algae of
+the same name), and a name-based sequence search silently resolves
 to whichever node the service prefers. This function disambiguates by
 resolving to a taxonomy id first, using the caller's OWN declared rank
 and/or higher-rank lineage as discriminators, so a caller can then query
@@ -64,11 +66,20 @@ both discriminators is reported \code{"ambiguous"} rather than guessed.
 }
 \examples{
 \dontrun{
-# The Vertebrata case (ecosystem_docs/REENTRY_PROMPT_homonym_detection.md):
-# a name-based "Vertebrata[ORGN]" search returns 519,463 vertebrate
-# sequences instead of the wanted 106 red-algal ones.
+# The Vertebrata case: a name-based "Vertebrata[ORGN]" search pulls in
+# vertebrate sequences alongside the wanted red-algal ones. Rank alone
+# disambiguates here, since the two candidates differ in rank (genus vs.
+# clade) -- see ecosystem_docs/REENTRY_PROMPT_homonym_detection.md for
+# the full measured incident.
 resolve_ncbi_taxid("Vertebrata", rank = "genus",
   lineage_terms = c("Rhodomelaceae", "Ceramiales", "Rhodophyta"))
 # -> taxid "1261581", status "resolved_by_rank"
+
+# The Lobophora case: rank alone is NOT enough here, because both real
+# candidates are genus-rank (one a moth genus, one a brown alga) --
+# lineage containment is what decides it.
+resolve_ncbi_taxid("Lobophora", rank = "genus",
+  lineage_terms = c("Dictyotaceae", "Phaeophyceae"))
+# -> taxid "157000", status "resolved_by_lineage"
 }
 }
