@@ -997,6 +997,16 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   TaxaTools README; AZURE_OPENAI_API_KEY absent from the root API-key
   table; `resolve_review_overrides()`/`verify_local_corroborations()`
   unmentioned in TaxaMatch's README.
+  **Coordination 2026-09-21 night**: the workflow chat has a detached
+  Rscript (CalIntertidal Sections 6-7, cold NCBI fetch, ~7 h) holding the
+  library until ~02:30 on 2026-09-22; NO REINSTALL before it lands. The
+  shared checkout still carries the maintainer's README edits uncommitted
+  on the workflow branch; proven lossless against main (seven files
+  byte-identical to `f461386`, the other three differ only in the three
+  conflict hunks where main's later corrections won), so they can be
+  stashed (`git stash push -- README.md Taxa*/README.md`) before that
+  branch next merges main. The workflow chat's untracked
+  `ecosystem_docs/REENTRY_PROMPT_theta_surface_options.md` is theirs.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
