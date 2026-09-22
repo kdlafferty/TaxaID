@@ -35,7 +35,7 @@ Takes any number of 'report_section' objects (typically one per TaxaID package u
 
 **Value:** A length-1 character string containing the full assembled markdown report. Pass to 'writeLines()' to write to a file, or to 'cat()' to view in the console: writeLines(full_report, "methods_report.md")
 
-### assign_sampling_group(taxonomy, scheme = default_sampling_scheme(), rank_cols = c("kingdom", "phylum", "class", "order"), kingdom_guard = TRUE, harmonise = FALSE, backbone_id = 11L, cache_dir = NULL, verbose = TRUE)
+### assign_sampling_group(taxonomy, scheme = default_sampling_scheme(), rank_cols = c("kingdom", "phylum", "class", "order"), kingdom_guard = TRUE, harmonise = FALSE, backbone_id = 11L, cache_dir = NULL, verbose = TRUE, decisions = NULL)
 
 Assign Sampling Groups from Taxonomic Rank Columns
 
@@ -51,6 +51,7 @@ Classifies each row of a taxonomy table into a 'sampling_group' (the shared-effo
 | backbone_id | no | 11L | Integer backbone ID passed to verify_taxon_names when harmonise = TRUE. Default 11L (GBIF), matching default_sampling_scheme()'s own vocabulary. Ignored when harmonise = FALSE. |
 | cache_dir | no | NULL | Optional directory for a persistent, content-keyed cache of the harmonisation lookup (one .rds file, keyed on the sorted unique rank names actually resolved) -- only used, and only relevant, when harmonise = TRUE. NULL (default) does no caching, so every call re-resolves every unique name. |
 | verbose | no | TRUE | Logical, default TRUE. Print one table of the resulting sampling_group counts (including the NA count) after classification, and progress messages during harmonisation. |
+| decisions | no | NULL | Only relevant when harmonise = TRUE and backbone_id = 4 (NCBI) -- forwarded verbatim to verify_taxon_names's own decisions parameter. This function grows no prompt or resolution logic of its own for an NCBI name collision. |
 
 **Value:** 'taxonomy' (or its harmonised copy, when 'harmonise = TRUE') with a new 'sampling_group' character column added. 'NA' where no rule matched AND the kingdom guard fired; otherwise always one of the group names in 'scheme$rules' or 'scheme$catch_all'.
 
@@ -376,7 +377,7 @@ Summarizes R objects (data frames, model outputs, summaries) using an LLM to pro
 
 **Value:** A character string containing the drafted results text. Printed to the console via 'cat()' and returned invisibly.
 
-### escalate_taxonomic_rank(taxon_name, current_rank, rank_system = standard_ranks, max_levels = 2L, backbone_id = 4L, fallback_backbone_id = 11L, verbose = TRUE)
+### escalate_taxonomic_rank(taxon_name, current_rank, rank_system = standard_ranks, max_levels = 2L, backbone_id = 4L, fallback_backbone_id = 11L, verbose = TRUE, decisions = NULL)
 
 Escalate a Taxon to the Next Coarser Rank
 
@@ -391,6 +392,7 @@ Given a taxon name currently being queried at 'current_rank', looks up its full 
 | backbone_id | no | 4L | Integer. Primary backbone for the classification lookup. Default 4L (NCBI). Set NULL to skip straight to fallback_backbone_id. |
 | fallback_backbone_id | no | 11L | Integer. Secondary backbone tried if the primary backbone doesn't resolve taxon_name. Default 11L (GBIF). Set NULL or equal to backbone_id to skip. |
 | verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
+| decisions | no | NULL | Forwarded verbatim to verify_taxon_names()'s own decisions parameter (relevant only when backbone_id = 4) -- this function grows no prompt or resolution logic of its own for an NCBI name collision. |
 
 **Value:** A list with 'taxon_name' and 'rank'. Both are 'NA_character_' if 'current_rank' is already the coarsest rank in 'rank_system', if the classification cannot be resolved at all, or if no coarser rank resolves within 'max_levels' steps.
 
@@ -412,7 +414,7 @@ Looks up taxa in the World Register of Marine Species (WoRMS) *by name* and retu
 
 **Value:** A tibble, one row per unique non-'NA' input name: 'taxon_name' The name as supplied (whitespace trimmed). 'in_worms' Logical. A trusted match was found. 'aphia_id', 'accepted_name', 'accepted_aphia_id', 'taxonomic_status', 'worms_rank' From the representative record (the first 'accepted' match, else the first match). 'match_type' '"exact"', or the rejected match type(s) when 'fuzzy_rejected' ...
 
-### fill_higher_ranks(taxon_names, local_sources = list(), backbone_id = 4L, fallback_backbone_id = 11L, verbose = TRUE)
+### fill_higher_ranks(taxon_names, local_sources = list(), backbone_id = 4L, fallback_backbone_id = 11L, verbose = TRUE, decisions = NULL)
 
 Fill Higher Taxonomic Ranks from Local Data and Backbone APIs
 
@@ -425,6 +427,7 @@ Given a character vector of taxon names (typically species binomials), derives '
 | backbone_id | no | 4L | Integer. Primary backbone for API fallback. Default 4L (NCBI). Set NULL to skip the API entirely. |
 | fallback_backbone_id | no | 11L | Integer. Secondary backbone used when backbone_id returns no match. Default 11L (GBIF). Set NULL or equal to backbone_id to skip. |
 | verbose | no | TRUE | Logical. Print progress messages for API lookups. Default TRUE. |
+| decisions | no | NULL | Forwarded verbatim to verify_taxon_names()'s own decisions parameter for every genus-level lookup this function makes (primary and fallback backbone alike, whichever is 4) -- this function grows no prompt or resolution logic of its own for an NCBI name collision. |
 
 **Value:** A tibble with one row per element of 'taxon_names' (preserving duplicates and order), with columns: 'taxon_name' The original input name. 'genus' First word of 'taxon_name', EXCEPT when an API lookup resolved that genus to a backbone-flagged synonym at genus rank - in that case the backbone's own currently-accepted genus name is returned instead (see @section Genus correction below). ...
 
@@ -785,7 +788,7 @@ Returns a data frame of token usage records accumulated since the last call to '
 
 **Value:** A data frame. Columns depend on 'by': '"call"' 'timestamp', 'caller', 'provider', 'model', 'input', 'output', 'total' '"function"' 'caller', 'n_calls', 'input', 'output', 'total' '"provider"' 'provider', 'n_calls', 'input', 'output', 'total' '"session"' 'n_calls', 'input', 'output', 'total' Returns an empty data frame with a message if no calls have been recorded.
 
-### verify_taxon_names(name_list, backbone_id, batch_size = 500, timeout_sec = 30, fallback_backbone_id = 11L)
+### verify_taxon_names(name_list, backbone_id, batch_size = 500, timeout_sec = 30, fallback_backbone_id = 11L, decisions = NULL)
 
 Verify Taxon Names Against a Taxonomic Backbone
 
@@ -798,6 +801,7 @@ Checks a vector of taxon names against a target taxonomic backbone using the Glo
 | batch_size | no | 500 | Integer. Maximum number of names per API request. The Global Names Verifier API supports up to 1000 names per batch. Default is 500 to stay safely within limits. |
 | timeout_sec | no | 30 | Integer. Seconds to wait before the API request times out. Default is 30. |
 | fallback_backbone_id | no | 11L | Integer. Only used when backbone_id = 4 (NCBI). NCBI's direct lookup is an exact string search with no typo tolerance -- a single misspelled letter returns zero hits even via its own synonym fallback. When that happens, this backbone's Global Names Verifier API is queried instead purely to suggest a corrected spelling, which is then re-resolved through NCBI itself (the correction is never accepted from this backbone directly, so NCBI's own classification -- the reason the direct bypass exists at all -- is preserved). Default 11 (GBIF). Must not be 4. |
+| decisions | no | NULL | Only used when backbone_id = 4 (NCBI); a supplied value is ignored, with a warning, for any other backbone. A name is not a key -- NCBI can hold several nodes sharing one name in unrelated lineages (a genus of red algae named "Vertebrata" beside the vertebrate clade of the same name; see resolve_ncbi_taxid), and this direct bypass's own batched search used to pick whichever candidate its summary happened to process last, silently. Such a name is now reported as an unresolved AMBIGUITY, never guessed -- decisions is how a caller states which candidate is meant. NULL (default): no prior decisions. A data frame with name/taxid columns: use these decisions directly (a row with taxid = NA is an explicit skip -- that name resolves to NA, not "not yet decided"). A character scalar: the path to an .rds file holding such a data frame (read if it exists; new decisions made this call -- interactively, see below -- are merged into it, a newer decision for a name replacing an older one). A name that comes back ambiguous and has no covering decision (in decisions or, for a path, already saved in that file) is handled by session type, never by a silent default: in an interactive session, one prompt covers every such name in this call (never a dialogue per name), tabulating each candidate's rank, division, and a short lineage string; in a non-interactive session (the ordinary Rscript workflow case), the call stops, printing that same table plus a ready-to-paste decisions = data.frame(...) skeleton. No file is ever written unless decisions itself named one. |
 
 **Value:** A tibble with one row per input name and the following columns: user_supplied_name The original name as supplied. matched_name The best-matched name at whatever rank the backbone actually resolved it to (authorship strings stripped; a genus-only match returns a bare genus, a subspecies-level match returns the full trinomial), or 'NA' if no match was found. When the backbone itself flags the ...
 

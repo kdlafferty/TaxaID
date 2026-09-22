@@ -4,7 +4,7 @@
 
 Estimates theta priors -- each taxon's expected share of the detections at a site -- for taxonomic assignment, from occurrence records (see TaxaFetch). A site-centered kernel estimator weights occurrence points by distance, with optional depth and habitat conditioning, and evidence layers add undetected diversity, regional proximity, iNaturalist ranges, invasive watch lists and domestic or food species. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 16 exported function(s).
+Version 0.1.0. 17 exported function(s).
 
 ## Functions
 
@@ -289,7 +289,7 @@ Re-computes the $budget of a fitted 'estimate_kernel_priors()' object across a g
 
 **Value:** An object of class '"taxaexpect_kernel_budget_sensitivity"': a list with budget Long data frame, one row per (setting, sampling group): the $budget columns plus 'lambda_km', 'support_weight', 'radius_lambdas' ('-log(support_weight)') and 'radius_km'. summary One row per sampling group: the range of 'f1', 'f2', 'chao_missing' and 'theta_present' over the sweep, 'theta_present_spread' (max/min ...
 
-### plot_theta_surface(kernel_fit, occurrence_data, taxon, n_grid = 256L, bbox = NULL, m = NULL, covariate_at = NULL, alpha_by_n_eff = TRUE, n_eff_floor = NULL, mask = NULL, site_marker_radius = 5, hover_labels = TRUE, interactive = FALSE, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", ...)
+### plot_theta_surface(kernel_fit, occurrence_data, taxon, n_grid = 256L, bbox = NULL, m = NULL, covariate_at = NULL, n_eff_floor = NULL, mask = NULL, theta_range = "shared", palette = "YlOrRd", bg = "grey92", support_panel = TRUE, support_field = c("n_eff", "W"), site_marker_radius = 5, hover_labels = TRUE, interactive = FALSE, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", ...)
 
 Evaluate the kernel-prior estimator on a spatial lattice (KDE prior field)
 
@@ -304,9 +304,13 @@ Computes the SAME distance-kernel estimator 'estimate_kernel_priors()' applies a
 | bbox | no | NULL | Optional named numeric vector/list with lat_min, lat_max, lon_min, lon_max. Default NULL: computed from the full extent of the habitat-stratified records (unioned with the site coordinates) plus padding, which GUARANTEES every record that estimate_kernel_priors() would use is included in the lattice binning -- this is what makes the site-identity invariant hold. Supplying a smaller custom bbox excludes records outside it from the surface (a documented, deliberate window truncation), which can disagree with the exact site value if the site itself sits near or outside that window. |
 | m | no | NULL | Optional back-off mass override. Default NULL: use kernel_fit$params$m (the value the priors were actually fit with). |
 | covariate_at | no | NULL | Optional numeric scalar: the covariate value (e.g. depth) to hold fixed across the whole lattice. Default NULL: the covariate factor is omitted entirely and a message documents this (see @section Covariate and latitude factors). Only meaningful when kernel_fit was built with a covariate_col; supplying it against a fit that has none is an error (nothing to condition on). |
-| alpha_by_n_eff | no | TRUE | Logical (default TRUE). Fade the surface toward transparent where lattice-point n_eff(x) is low relative to the surface's own maximum, so a reader cannot mistake a lightly-supported extrapolation for a well-evidenced estimate. |
-| n_eff_floor | no | NULL | Optional numeric. Lattice points with n_eff(x) below this value are masked outright (drawn as background, not just faded), independent of alpha_by_n_eff. Default NULL: no outright mask. |
-| mask | no | NULL | Optional geometry restricting the surface to a region of interest (a lake outline, a bay, a survey boundary). Cells whose centres fall outside become NA -- transparent on the map, and excluded from any summary of the returned matrices. Accepts a WKT POLYGON/ MULTIPOLYGON string -- including, directly, the same search polygon a workflow already passes to its GBIF fetch, which is usually what you want, since it clips the map to the geometry the records were fetched under -- or an sf/sfc polygon (requires the sf package), or a plain two-column lon/lat matrix/data frame, or a list of such matrices (a cell is kept if it falls inside ANY of them, for islands or multi-basin masks). Deliberately a parameter with no default: the correct mask is application-specific, so the package supplies none. |
+| n_eff_floor | no | NULL | Optional numeric. Lattice points with n_eff(x) below this value are masked outright (drawn as background). Default NULL: no outright mask. |
+| mask | no | NULL | Optional geometry restricting the surface to a region of interest (a lake outline, a bay, a survey boundary). Cells whose centres fall outside become NA -- transparent on the map, and excluded from any summary of the returned matrices. Accepts a WKT POLYGON/ MULTIPOLYGON string -- including, directly, the same search polygon a workflow already passes to its GBIF fetch, which is usually what you want, since it clips the map to the geometry the records were fetched under -- or an sf/sfc polygon (requires the sf package), or a plain two-column lon/lat matrix/data frame, or a list of such matrices (a cell is kept if it falls inside ANY of them, for islands or multi-basin masks). Deliberately a parameter with no default: the correct mask is application-specific, so the package supplies none. Whenever mask is supplied, its boundary is also DRAWN (not just used to clip), on both the static and interactive renders -- there is no case where you would want the clip without seeing its edge, so this is automatic, not a separate toggle. |
+| theta_range | no | "shared" | Controls the colour scale across the requested taxon panels/layers. Default "shared": one range computed across every requested taxon, so a contrast pair (placed side by side specifically to be compared) is actually comparable -- the same colour means the same theta in every panel. For a single taxon this is identical to scaling to its own range (there is nothing else to share against), so the default changes nothing about a single-taxon call. NULL reverts to the original per-panel behaviour (each taxon scaled to its OWN range(theta), so the same colour can mean a different theta in different panels); a numeric c(lo, hi) fixes an absolute scale instead, for cross-run/cross-report comparability. Never changes a value in $surface -- only how it is coloured. |
+| palette | no | "YlOrRd" | Either a name from grDevices::hcl.pals() (matched case-insensitively; e.g. "YlOrRd", "Viridis", "Plasma") or a vector of 2+ colours to ramp via grDevices::colorRampPalette(). Resolved to ONE 256-colour vector used for both the static ramp and the interactive leaflet::colorNumeric() palette, so the two renders of the same surface can no longer disagree about what a colour means. A recognised hcl.pals() NAME is reversed so low theta is pale/light and high theta is dark/saturated (grDevices::hcl.colors()'s own default direction for these sequential palettes is the opposite -- dark at the low end -- and the reversal matches both this package's historical static ramp and leaflet::colorNumeric()'s own convention for a named sequential palette); a colour VECTOR is used exactly as given, low to high, with no reversal, since the caller has already stated the order they want. Default "YlOrRd" -- zero new package dependencies (grDevices is already Imports). This is a default recommendation, not a restriction: palette = "Viridis" or any other hcl.pals() name works identically. |
+| bg | no | "grey92" | Background colour for the STATIC render only (default "grey92", a neutral mid-grey -- never the palette's own low end, and never pure white/black). Drawn behind every panel before the raster, so a masked cell or a species absent from a habitat stratum reads as "outside the surface" rather than blending into a pale low-theta colour or a plain white page. Has no interactive-render analogue: leaflet already renders a masked/absent cell as transparent over its own basemap tiles. |
+| support_panel | no | TRUE | Logical (default TRUE). Adds ONE extra panel/layer showing the support field named by support_field on its own colour scale. Support (n_eff or W) is per-LOCATION, not per-taxon -- a single dedicated panel says what it has to say once, instead of length(taxon) times. Every taxon panel always renders at full opacity (see @section Why no opacity fade); support_panel = FALSE simply omits the support panel/layer rather than routing that information back into opacity. |
+| support_field | no | c("n_eff", "W") | Character, "n_eff" (default) or "W". Which field the support_panel shows. n_eff (Kish effective sample size) is what estimate_kernel_priors() actually puts in the Beta concentration, but it is SCALE-INVARIANT (multiplying every record's weight by a constant does not move it) -- a single record 2 km away and 200 records 400 km away can read the identical n_eff, so a high value does not mean "lots of evidence here," only "many records contributed comparably." W (the raw total kernel weight, shown log-scaled) is the more literal answer to "is there actually data near this point." n_eff_floor always thresholds the real n_eff regardless of this argument -- it is a distinct, already-documented outright mask. |
 | site_marker_radius | no | 5 | Numeric (default 5). Radius in pixels of the hollow circle marking the site on the interactive map. The marker is drawn unfilled and on top so it cannot hide the cell it marks (the default pin marker did, which is why this is small and hollow). |
 | hover_labels | no | TRUE | Logical (default TRUE). Show theta and the local effective sample size on hover over each rendered cell of the interactive map. |
 | interactive | no | FALSE | Logical (default FALSE). FALSE returns a static base-graphics plot. TRUE returns a Leaflet overlay (guarded by requireNamespace("leaflet")); leaflet is already in TaxaExpect's Suggests, so this adds no new dependency. |
@@ -330,6 +334,21 @@ Summarizes the prior estimation produced by TaxaExpect into a structured 'report
 | verbose | no | FALSE | Logical. Print summary messages. Default FALSE. |
 
 **Value:** A 'report_section' object with: methods Template text describing prior estimation approach. results Template text summarizing prior coverage. citations Propagated from occurrence data if available. params Named list of prior parameters. statistics Named list of summary counts.
+
+### theta_surface_at(x, lon, lat, taxon = NULL)
+
+Theta (and support) at specific points of interest, from an already-built surface
+
+Looks up the NEAREST lattice cell to each query point - exact for a point that falls inside a cell, approximate elsewhere, honestly so: 'dist_km' reports how far the query point actually was from the matched cell centre, so a caller can tell whether that distance is small relative to 'n_grid''s own resolution or large enough that the lookup is a poor stand-in for a fresh evaluation there. This is deliberately NOT interpolated (bilinear or otherwise) - a lattice this fine (the default 'n_grid = 256') is already far finer than the kernel bandwidth that produced it, so nearest-cell error is ...
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| x | yes |  | A taxaexpect_theta_surface object from plot_theta_surface(). |
+| lon | yes |  | Numeric vectors of query-point coordinates (recycled to a common length). |
+| lat | yes |  | Numeric vectors of query-point coordinates (recycled to a common length). |
+| taxon | no | NULL | Optional character vector restricting the output to specific taxa (must be a subset of the taxa x was built with). Default NULL: every taxon in x. |
+
+**Value:** A data frame with one row per query point x taxon: 'lon'/'lat' (the query), 'taxon', 'theta', 'n_eff', 'W' (at the matched cell), 'lon_cell'/'lat_cell' (the matched cell's own centre), and 'dist_km' (how far the query point was from that centre).
 
 ## Quick Start
 
@@ -363,5 +382,21 @@ priors <- dplyr::bind_rows(kernel_fit$priors, undetected)
 # 5. Explore the prior field
 plot_theta_surface(kernel_fit, occurrence_data = occurrences,
                     taxon = "Girella nigricans")
+```
+
+### Reading values off a surface
+
+A rendered surface is also data. `as.data.frame()` returns the whole
+lattice as a long table (lon, lat, taxon, theta, n_eff, W), with masked
+cells dropped, so "inside the polygon" comes for free.
+`theta_surface_at()` returns theta and support at points of interest,
+matched to the nearest cell, with the distance to that cell reported so a
+query outside the lattice is visible as such.
+
+``` r
+r <- plot_theta_surface(kernel_fit, occurrence_data = occurrences,
+                        taxon = c("Girella nigricans", "Pisaster ochraceus"))
+grid <- as.data.frame(r)                  # one row per cell x taxon
+theta_surface_at(r, lon = -120.47, lat = 34.45)   # both taxa at one point
 ```
 
