@@ -73,6 +73,24 @@
 #' none of which are within a bandwidth of the equator); see `@section
 #' Limitations` for the general case.
 #'
+#' @section Why no opacity fade:
+#' An earlier version of this function offered `alpha_by_n_eff`, fading each
+#' taxon's own panel toward transparent where support was low -- removed
+#' entirely, not just defaulted off, after the `support_panel` mechanism made
+#' it clearly the wrong default and, on reflection, not worth keeping as an
+#' option either. Three reasons, not one: (1) `n_eff` is SCALE-INVARIANT (see
+#' `support_field` above) -- a confidently opaque cell can be pure
+#' far-field extrapolation, so opacity-as-confidence is actively misleading,
+#' not just imprecise; (2) support is per-LOCATION, not per-taxon, so in any
+#' facet of more than one taxon the identical fade was multiplied into every
+#' panel -- it could never discriminate between taxa, only cost legibility of
+#' the comparison the facet exists to support; (3) fading toward `bg` reads
+#' differently depending on `palette`'s own direction (a pale-low palette like
+#' the default `"YlOrRd"` fades a low-support cell toward something that can
+#' look like a genuinely low-theta cell -- two different claims collapsing
+#' into similar colours). `support_panel` says the same thing once, as its
+#' own labelled quantity, and never confounds it with theta's own colour.
+#'
 #' @section Limitations:
 #' If the lattice or the stratified records span BOTH hemispheres (some
 #' latitudes positive, some negative) and `lambda_latitude` is not `NULL`,
@@ -122,13 +140,9 @@
 #'   `@section Covariate and latitude factors`). Only meaningful when
 #'   `kernel_fit` was built with a `covariate_col`; supplying it against a
 #'   fit that has none is an error (nothing to condition on).
-#' @param alpha_by_n_eff Logical (default `TRUE`). Fade the surface toward
-#'   transparent where lattice-point `n_eff(x)` is low relative to the
-#'   surface's own maximum, so a reader cannot mistake a lightly-supported
-#'   extrapolation for a well-evidenced estimate.
 #' @param n_eff_floor Optional numeric. Lattice points with `n_eff(x)` below
-#'   this value are masked outright (drawn as background, not just faded),
-#'   independent of `alpha_by_n_eff`. Default `NULL`: no outright mask.
+#'   this value are masked outright (drawn as background). Default `NULL`: no
+#'   outright mask.
 #' @param mask Optional geometry restricting the surface to a region of
 #'   interest (a lake outline, a bay, a survey boundary). Cells whose centres
 #'   fall outside become `NA` -- transparent on the map, and excluded from
@@ -147,15 +161,17 @@
 #'   the clip without seeing its edge, so this is automatic, not a separate
 #'   toggle.
 #' @param theta_range Controls the colour scale across the requested `taxon`
-#'   panels/layers. `NULL` (default): each taxon is scaled to its OWN
-#'   `range(theta)` -- the original, per-panel behaviour, unchanged. In a
-#'   facet of more than one taxon this means the same colour can mean a
-#'   different theta in each panel; `"shared"` computes one range across every
-#'   requested taxon instead, so a contrast pair (placed side by side
-#'   specifically to be compared) is actually comparable. A numeric
-#'   `c(lo, hi)` fixes an absolute scale instead, for cross-run/cross-report
-#'   comparability. Never changes a value in `$surface` -- only how it is
-#'   coloured.
+#'   panels/layers. Default `"shared"`: one range computed across every
+#'   requested taxon, so a contrast pair (placed side by side specifically to
+#'   be compared) is actually comparable -- the same colour means the same
+#'   theta in every panel. For a single taxon this is identical to scaling to
+#'   its own range (there is nothing else to share against), so the default
+#'   changes nothing about a single-taxon call. `NULL` reverts to the
+#'   original per-panel behaviour (each taxon scaled to its OWN
+#'   `range(theta)`, so the same colour can mean a different theta in
+#'   different panels); a numeric `c(lo, hi)` fixes an absolute scale instead,
+#'   for cross-run/cross-report comparability. Never changes a value in
+#'   `$surface` -- only how it is coloured.
 #' @param palette Either a name from `grDevices::hcl.pals()` (matched
 #'   case-insensitively; e.g. `"YlOrRd"`, `"Viridis"`, `"Plasma"`) or a vector
 #'   of 2+ colours to ramp via `grDevices::colorRampPalette()`. Resolved to
@@ -179,28 +195,25 @@
 #'   the surface" rather than blending into a pale low-theta colour or a plain
 #'   white page. Has no interactive-render analogue: leaflet already renders a
 #'   masked/absent cell as transparent over its own basemap tiles.
-#' @param support_panel Logical (default `FALSE`). `TRUE` adds ONE extra
-#'   panel/layer showing the support field named by `fade_by` on its own
-#'   colour scale, and stops multiplying that same field into every taxon
-#'   panel's opacity (every taxon panel renders at full opacity instead).
-#'   Support (`n_eff` or `W`) is per-LOCATION, not per-taxon -- the identical
-#'   field is faded into every requested taxon's panel today, carrying no
-#'   species-specific information once there is more than one taxon; a single
-#'   dedicated panel says the same thing once instead of `length(taxon)`
-#'   times. `FALSE` preserves the original per-panel alpha-fade behaviour
-#'   exactly.
-#' @param fade_by Character, `"n_eff"` (default) or `"W"`. Which field drives
-#'   `alpha_by_n_eff`'s opacity fade and, when `support_panel = TRUE`, the
-#'   dedicated support panel/layer. `n_eff` (Kish effective sample size) is
-#'   what `estimate_kernel_priors()` actually puts in the Beta concentration,
-#'   but it is SCALE-INVARIANT (multiplying every record's weight by a
-#'   constant does not move it) -- a single record 2 km away and 200 records
-#'   400 km away can read the identical `n_eff`, so opaque does not mean "lots
+#' @param support_panel Logical (default `TRUE`). Adds ONE extra panel/layer
+#'   showing the support field named by `support_field` on its own colour
+#'   scale. Support (`n_eff` or `W`) is per-LOCATION, not per-taxon -- a
+#'   single dedicated panel says what it has to say once, instead of
+#'   `length(taxon)` times. Every taxon panel always renders at full opacity
+#'   (see `@section Why no opacity fade`); `support_panel = FALSE` simply
+#'   omits the support panel/layer rather than routing that information back
+#'   into opacity.
+#' @param support_field Character, `"n_eff"` (default) or `"W"`. Which field
+#'   the `support_panel` shows. `n_eff` (Kish effective sample size) is what
+#'   `estimate_kernel_priors()` actually puts in the Beta concentration, but
+#'   it is SCALE-INVARIANT (multiplying every record's weight by a constant
+#'   does not move it) -- a single record 2 km away and 200 records 400 km
+#'   away can read the identical `n_eff`, so a high value does not mean "lots
 #'   of evidence here," only "many records contributed comparably." `W` (the
 #'   raw total kernel weight, shown log-scaled) is the more literal answer to
 #'   "is there actually data near this point." `n_eff_floor` always
 #'   thresholds the real `n_eff` regardless of this argument -- it is a
-#'   distinct, already-documented outright mask, not a smooth fade.
+#'   distinct, already-documented outright mask.
 #' @param site_marker_radius Numeric (default `5`). Radius in pixels of the
 #'   hollow circle marking the site on the interactive map. The marker is
 #'   drawn unfilled and on top so it cannot hide the cell it marks (the
@@ -260,14 +273,13 @@ plot_theta_surface <- function(kernel_fit,
                                bbox = NULL,
                                m = NULL,
                                covariate_at = NULL,
-                               alpha_by_n_eff = TRUE,
                                n_eff_floor = NULL,
                                mask = NULL,
-                               theta_range = NULL,
+                               theta_range = "shared",
                                palette = "YlOrRd",
                                bg = "grey92",
-                               support_panel = FALSE,
-                               fade_by = c("n_eff", "W"),
+                               support_panel = TRUE,
+                               support_field = c("n_eff", "W"),
                                site_marker_radius = 5,
                                hover_labels = TRUE,
                                interactive = FALSE,
@@ -276,7 +288,7 @@ plot_theta_surface <- function(kernel_fit,
                                lon_col = "decimalLongitude",
                                habitat_col = "main_habitat",
                                ...) {
-  fade_by <- match.arg(fade_by)
+  support_field <- match.arg(support_field)
   if (!inherits(kernel_fit, "taxaexpect_kernel_priors")) {
     stop("plot_theta_surface: 'kernel_fit' must be a taxaexpect_kernel_priors object (from estimate_kernel_priors()).")
   }
@@ -370,18 +382,18 @@ plot_theta_surface <- function(kernel_fit,
   plt <- if (isTRUE(interactive)) {
     .theta_surface_plot_leaflet(surf,
       site_lat = p$site_lat, site_lon = p$site_lon,
-      site_id = p$site_id, alpha_by_n_eff = alpha_by_n_eff,
+      site_id = p$site_id,
       n_eff_floor = n_eff_floor, palette = palette_resolved, rng_use = rng_use,
-      support_panel = support_panel, fade_by = fade_by, mask_polys = mask_polys,
+      support_panel = support_panel, support_field = support_field, mask_polys = mask_polys,
       site_marker_radius = site_marker_radius,
       hover_labels = hover_labels, ...
     )
   } else {
     .theta_surface_plot_static(surf,
       site_lat = p$site_lat, site_lon = p$site_lon,
-      alpha_by_n_eff = alpha_by_n_eff, n_eff_floor = n_eff_floor,
+      n_eff_floor = n_eff_floor,
       palette = palette_resolved, bg = bg, rng_use = rng_use,
-      support_panel = support_panel, fade_by = fade_by, mask_polys = mask_polys, ...
+      support_panel = support_panel, support_field = support_field, mask_polys = mask_polys, ...
     )
   }
 
@@ -565,9 +577,11 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   # negative clamps above cannot catch -- and W and S2 carry INDEPENDENT noise,
   # so n_eff = W^2/S2 there is an arbitrary ratio rather than a small number.
   # Real consequence, measured on a two-cluster lattice: 2,817 of 16,384 points
-  # returned n_eff = Inf (and theta = NaN), and because that Inf becomes
-  # max(n_eff), alpha_by_n_eff faded the ENTIRE surface to fully transparent --
-  # a blank map. Points below a relative tolerance (1e-12 of the peak weight,
+  # returned n_eff = Inf (and theta = NaN) -- which, at the time this was
+  # found, fed a since-removed opacity fade keyed on max(n_eff) and blanked
+  # the ENTIRE surface to fully transparent. The n_eff = Inf itself would
+  # still corrupt the support panel's own display today. Points below a
+  # relative tolerance (1e-12 of the peak weight,
   # i.e. ~28 bandwidths out, where a record carries no meaningful weight
   # anyway) are therefore treated as genuinely unsupported: n_eff = 0, and
   # theta falls back to the regional composition p_i, the correct limit for a
@@ -794,25 +808,25 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' "outside the surface" rather than blending into a pale low-theta colour or
 #' the device's own default white.
 #' @noRd
-.theta_surface_plot_static <- function(surf, site_lat, site_lon, alpha_by_n_eff, n_eff_floor,
-                                       palette, bg, rng_use, support_panel, fade_by,
+.theta_surface_plot_static <- function(surf, site_lat, site_lon, n_eff_floor,
+                                       palette, bg, rng_use, support_panel, support_field,
                                        mask_polys, ...) {
   theta <- if (is.list(surf$theta)) surf$theta else stats::setNames(list(surf$theta), "1")
   taxa_multi <- is.list(surf$theta)
 
   # Support is per-LOCATION, not per-taxon (n_eff/W are single matrices, theta
-  # is a per-taxon list) -- computed ONCE, shared by every panel's fade and by
-  # the dedicated support panel alike, exactly as it always has been for
-  # alpha_by_n_eff. W spans orders of magnitude (weights are exp(-d/lambda)),
-  # so it is log10-scaled before any linear stretch, matching the same choice
-  # already validated in eDNA/CaliforniaIntertidal/theta_surface_render.R.
-  support_raw <- if (identical(fade_by, "W")) {
+  # is a per-taxon list) -- computed once, for the dedicated support panel
+  # only (see roxygen @section Why no opacity fade for why it is never
+  # multiplied into a taxon panel's colour). W spans orders of magnitude
+  # (weights are exp(-d/lambda)), so it is log10-scaled, matching the same
+  # choice already validated in
+  # eDNA/CaliforniaIntertidal/theta_surface_render.R.
+  support_raw <- if (identical(support_field, "W")) {
     log10(pmax(as.numeric(surf$W), .Machine$double.xmin))
   } else {
     as.numeric(surf$n_eff)
   }
   support_raw <- matrix(support_raw, nrow(surf$n_eff), ncol(surf$n_eff))
-  alpha_norm <- .theta_surface_normalize_support(support_raw, fade_by)
 
   n_taxa <- length(theta)
   n_panel <- n_taxa + if (isTRUE(support_panel)) 1L else 0L
@@ -873,10 +887,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     m <- theta[[nm]]
     rng_panel <- if (!is.null(rng_use)) rng_use else range(m, na.rm = TRUE)
     if (diff(rng_panel) == 0) rng_panel <- c(rng_panel[1], rng_panel[1] + 1e-9)
-    # When support_panel = TRUE, the identical field is no longer multiplied
-    # into every taxon's opacity -- it is shown once, in its own panel, below.
-    fade_here <- isTRUE(alpha_by_n_eff) && !isTRUE(support_panel)
-    ras <- .theta_surface_raster(m, alpha_norm, surf$n_eff, fade_here, n_eff_floor, palette, rng_panel)
+    ras <- .theta_surface_raster(m, surf$n_eff, n_eff_floor, palette, rng_panel)
     draw_panel_frame(ras)
     graphics::points(site_lon, site_lat, pch = 4, lwd = 2, col = "black")
     graphics::axis(1)
@@ -892,13 +903,13 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   if (isTRUE(support_panel)) {
     rng_panel <- range(support_raw[is.finite(support_raw)], na.rm = TRUE)
     if (!length(rng_panel) || !all(is.finite(rng_panel)) || diff(rng_panel) == 0) rng_panel <- c(0, 1)
-    ras <- .theta_surface_raster(support_raw, alpha_norm, surf$n_eff, FALSE, n_eff_floor, palette, rng_panel)
+    ras <- .theta_surface_raster(support_raw, surf$n_eff, n_eff_floor, palette, rng_panel)
     draw_panel_frame(ras)
     graphics::points(site_lon, site_lat, pch = 4, lwd = 2, col = "grey20")
     graphics::axis(1)
     graphics::axis(2)
     graphics::box()
-    graphics::title(main = sprintf("[support] %s", fade_by), xlab = "lon", ylab = "lat", cex.main = 0.95)
+    graphics::title(main = sprintf("[support] %s", support_field), xlab = "lon", ylab = "lat", cex.main = 0.95)
     # Deliberately never says which END of `palette` is dark -- that depends
     # on the palette's own direction (viridis goes dark->light as the value
     # rises; the default YlOrRd, reversed for the theta panels' own low->high
@@ -924,42 +935,11 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   invisible(NULL)
 }
 
-#' Map a raw support field (n_eff, or log10 W) to a `[0, 1]` opacity multiplier.
-#'
-#' `n_eff` is non-negative with a natural zero, so it is stretched against its
-#' own maximum (`sqrt(x / max(x))`, the package's original fade curve,
-#' preserved exactly). `log10(W)` has no natural zero -- it can be very
-#' negative far from every record -- so it needs a real min-max stretch
-#' instead, the same choice
-#' `eDNA/CaliforniaIntertidal/theta_surface_render.R` already validated.
+#' Build an RGBA raster (grDevices::as.raster) from a value matrix, masking
+#' outright below `n_eff_floor` (opacity is otherwise always full -- see the
+#' roxygen @section Why no opacity fade), on a caller-supplied `palette`/`rng`.
 #' @noRd
-.theta_surface_normalize_support <- function(x, fade_by) {
-  x <- as.numeric(x)
-  if (identical(fade_by, "W")) {
-    finite_x <- x[is.finite(x)]
-    if (!length(finite_x)) {
-      return(rep(0, length(x)))
-    }
-    rng <- range(finite_x)
-    if (diff(rng) <= 0) {
-      return(rep(1, length(x)))
-    }
-    pmin(1, pmax(0, (x - rng[1]) / diff(rng)))
-  } else {
-    ref <- suppressWarnings(max(x, na.rm = TRUE))
-    if (!is.finite(ref) || ref <= 0) {
-      return(rep(0, length(x)))
-    }
-    pmin(1, sqrt(pmax(x, 0) / ref))
-  }
-}
-
-#' Build an RGBA raster (grDevices::as.raster) from a value matrix, fading by
-#' a pre-normalised `[0,1]` support field and masking outright below
-#' `n_eff_floor`, on a caller-supplied `palette`/`rng`.
-#' @noRd
-.theta_surface_raster <- function(value_mat, alpha_norm_mat, real_n_eff_mat,
-                                  alpha_by_n_eff, n_eff_floor, palette, rng) {
+.theta_surface_raster <- function(value_mat, real_n_eff_mat, n_eff_floor, palette, rng) {
   pal <- palette
   np <- length(pal)
   pal_rgb <- grDevices::col2rgb(pal)
@@ -970,7 +950,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   # grDevices::rgb(), which errors on an NA colour index.
   na_cell <- is.na(as.numeric(value_mat))
   idx[na_cell] <- 1L
-  alpha <- if (isTRUE(alpha_by_n_eff)) as.numeric(alpha_norm_mat) else rep(1, length(value_mat))
+  alpha <- rep(1, length(value_mat))
   if (!is.null(n_eff_floor)) alpha[as.numeric(real_n_eff_mat) < n_eff_floor] <- 0
   alpha[na_cell] <- 0
   alpha[is.na(alpha)] <- 0
@@ -1000,8 +980,8 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' checkboxes, which stack unreadably.
 #' @noRd
 .theta_surface_plot_leaflet <- function(surf, site_lat, site_lon, site_id,
-                                        alpha_by_n_eff, n_eff_floor,
-                                        palette, rng_use, support_panel, fade_by, mask_polys,
+                                        n_eff_floor,
+                                        palette, rng_use, support_panel, support_field, mask_polys,
                                         site_marker_radius = 5,
                                         hover_labels = TRUE, ...) {
   if (!requireNamespace("leaflet", quietly = TRUE)) {
@@ -1015,20 +995,16 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   lat_v <- rep(ds$lat_grid, times = length(ds$lon_grid))
   lon_v <- rep(ds$lon_grid, each = length(ds$lat_grid))
 
-  # Support is per-LOCATION, not per-taxon -- computed once, shared by every
-  # layer's opacity fade and by the dedicated support layer alike, exactly
-  # mirroring the static branch above.
-  support_full <- if (identical(fade_by, "W")) {
+  # Support is per-LOCATION, not per-taxon -- computed once, for the
+  # dedicated support layer only (opacity is always full otherwise; see the
+  # roxygen @section Why no opacity fade).
+  support_full <- if (identical(support_field, "W")) {
     log10(pmax(as.numeric(surf$W), .Machine$double.xmin))
   } else {
     as.numeric(surf$n_eff)
   }
   support_full <- matrix(support_full, nrow(surf$n_eff), ncol(surf$n_eff))
-  alpha_norm_full <- matrix(.theta_surface_normalize_support(support_full, fade_by),
-    nrow(surf$n_eff), ncol(surf$n_eff)
-  )
   supp_ds <- .theta_surface_downsample_matrix(support_full, surf, ds)
-  alpha_ds <- .theta_surface_downsample_matrix(alpha_norm_full, surf, ds)
   ne_full_ds <- .theta_surface_downsample_matrix(surf$n_eff, surf, ds)
 
   map <- leaflet::leaflet() |> leaflet::addProviderTiles("Esri.OceanBasemap")
@@ -1054,11 +1030,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     } else {
       leaflet::colorNumeric(palette, domain = range(th_v, na.rm = TRUE), na.color = "transparent")
     }
-    # When support_panel = TRUE, the support field is shown once as its own
-    # layer below instead of being multiplied into every species' opacity.
-    fade_here <- isTRUE(alpha_by_n_eff) && !isTRUE(support_panel)
     opac <- rep(0.7, length(th_v))
-    if (fade_here) opac <- 0.7 * as.vector(alpha_ds)
     if (!is.null(n_eff_floor)) opac[ne_v < n_eff_floor] <- 0
     labs <- NULL
     if (isTRUE(hover_labels)) {
@@ -1089,10 +1061,10 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     supp_rng <- if (length(supp_finite)) range(supp_finite) else c(0, 1)
     if (diff(supp_rng) == 0) supp_rng <- c(supp_rng[1], supp_rng[1] + 1e-9)
     supp_pal <- leaflet::colorNumeric(palette, domain = supp_rng, na.color = "transparent")
-    supp_nm <- sprintf("[support] %s", fade_by)
+    supp_nm <- sprintf("[support] %s", support_field)
     labs <- NULL
     if (isTRUE(hover_labels)) {
-      labs <- sprintf("%s = %.3g", fade_by, supp_v)
+      labs <- sprintf("%s = %.3g", support_field, supp_v)
       labs[is.na(supp_v)] <- NA_character_
       labs <- lapply(labs, function(x) if (is.na(x)) NULL else htmltools::HTML(x))
     }
@@ -1111,7 +1083,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
       position = "bottomright", pal = supp_pal, values = supp_rng,
       title = sprintf(
         "%s (support)<br/><span class='taxa-legend-tag' data-group=\"%s\" style='font-weight:normal'>own scale</span>",
-        fade_by, supp_nm
+        support_field, supp_nm
       ),
       opacity = 0.7, group = supp_nm
     )

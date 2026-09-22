@@ -256,9 +256,10 @@ test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-0
   # far outside every record's support, where the true kernel weight underflows
   # to zero and the FFT returns independent round-off noise for W and S2.
   # Before the guard, W^2/S2 there returned Inf (theta NaN) at 2,817 of 16,384
-  # points -- and because that Inf became max(n_eff), alpha_by_n_eff faded the
-  # WHOLE map to transparent. Also asserts Kish's own upper bound: n_eff can
-  # never exceed the number of records.
+  # points -- which would still corrupt the support panel's own colour mapping
+  # today even though the since-removed alpha_by_n_eff fade it used to blank
+  # out is gone. Also asserts Kish's own upper bound: n_eff can never exceed
+  # the number of records.
   set.seed(2)
   n <- 400
   occ <- .mk_occ(rep(c("A", "B"), each = n),
@@ -274,11 +275,13 @@ test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-0
   expect_equal(surf$theta[1L, 1L], unname(surf$regional_composition["A"]),
     tolerance = 1e-9
   )
-  # ... and the raster is not uniformly transparent (the visible symptom).
-  alpha_norm <- TaxaExpect:::.theta_surface_normalize_support(surf$n_eff, "n_eff")
+  # ... and the raster renders without error, still finite input throughout
+  # (the FFT-noise guard above is what makes that true; opacity itself is
+  # always full now, so a transparency check no longer says anything about
+  # this guard specifically).
   pal <- TaxaExpect:::.theta_surface_resolve_palette("YlOrRd")
   ras <- TaxaExpect:::.theta_surface_raster(
-    surf$theta, alpha_norm, surf$n_eff, TRUE, NULL, pal, range(surf$theta, na.rm = TRUE)
+    surf$theta, surf$n_eff, NULL, pal, range(surf$theta, na.rm = TRUE)
   )
   expect_true(any(substr(as.character(ras), 8L, 9L) != "00"))
 
@@ -389,7 +392,11 @@ test_that("interactive map carries legend, hover labels, small site marker and a
     main_habitat = "Marine", stringsAsFactors = FALSE
   )
   kp <- estimate_kernel_priors(occ, 34.15, -119.95, "Marine", lambda_km = 50)
-  m <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 16L, interactive = TRUE)$plot
+  # support_panel = FALSE isolates the species selector this test is actually
+  # about -- with the default TRUE, a legitimate 3rd "[support] n_eff"
+  # baseGroup joins "A"/"B", covered by its own dedicated test instead.
+  m <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 16L, interactive = TRUE,
+                           support_panel = FALSE)$plot
   calls <- vapply(m$x$calls, function(cl) cl$method, character(1))
   expect_true("addLegend" %in% calls) # legend present
   expect_true("addCircleMarkers" %in% calls) # small hollow site marker, not addMarkers
