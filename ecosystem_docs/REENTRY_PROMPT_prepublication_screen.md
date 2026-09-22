@@ -946,6 +946,32 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   invariance when every candidate of an observation is rescaled alike).
   The maintainer also asked for a SECOND LOOK at the six `*_clear_cache()`
   functions, which read as redundant in the READMEs.
+  **Wrapper and workflow verification DONE 2026-09-21**: every
+  `Taxa*/inst/*.R` script and the template parse, reference only existing
+  files and exported functions, and call none of the removed functions;
+  the six production workflows (PtCon 12S single/multi, 18S, Mugu,
+  GreatLakes, California Intertidal) parse with no dead reference into the
+  repository tree (two stale prose comments outside the repo recommend the
+  removed `migrate_reference_cache()`; Mugu's unreachable GLMM branch calls
+  a long-removed `add_pca_covariates()`). `run_llm_pipeline()` intact.
+  `run_bayesian_pipeline(generate_report = TRUE)` was BROKEN: it spliced
+  `score_transform` into the `generate_report()` call, which has no such
+  formal. FIXED (`7172151`): the value travels as the `report_params`
+  attribute, both wrappers validate `report_params` names up front, and a
+  real run's Methods text now names the square-root-mismatch transform.
+  Also found: the shipped fast fixtures still carried the retired
+  `resident_observed` label (18S priors 1,522 rows, 12S r2 479, Mugu
+  posterior 116), so the 18S and Mugu smoke tests failed under the closed
+  `prior_branch` set introduced by this screen; relabelled and re-run
+  (18S 813 rows, Mugu 0.3 s). Three graph snippets and the template still
+  listed the label; removed. The template guard test regenerated in a
+  subprocess from the INSTALLED snippets, so it could not see source
+  edits; the generator now reads the repository's graph and snippets and
+  a stale template provably fails the guard. The fixture README was a
+  205-line dated development log shipped in `inst/`; rewritten as an
+  inventory. All merged to main (`6b2e758`); TaxaAssign 815/0, TaxaWizard
+  1107/0. The installed library is now behind main in TaxaAssign and
+  TaxaWizard: reinstall before submission.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
