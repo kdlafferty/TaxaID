@@ -1222,6 +1222,21 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   1371/0, check 0/0/0 both; merged to main. Installed TaxaTools and
   TaxaLikely are behind main by this change; reinstall after the
   workflow chat's COI run lands, then regenerate the pack.
+  **CI (GitHub Actions R-CMD-check) had been RED on every push since
+  `b2a27d4` (2026-09-21), TaxaWizard only; the maintainer noticed via the
+  failure emails.** Cause: the checkpoint-invalidation tests added in the
+  screen run a generated script whose Step 0 refused to run because
+  `workflow_check(edges = )` reported Biostrings/DECIPHER as "missing"
+  regardless of what the selected edges needed, and the runner has no
+  Bioconductor packages (the local machine does, so `check()` passed
+  here: an environment proxy). FIXED `14b2233`: an absent optional or
+  Bioconductor package is "warn" unless a selected edge requires it
+  (`refs_to_matrix` still reports it missing; the whole-ecosystem check
+  is unchanged); test covers both directions with `requireNamespace`
+  mocked. TaxaWizard 1113/0, check 0/0/0. Lesson: a green local check is
+  not a green CI; read the CI result after every push. Installed
+  TaxaWizard is behind main by this change (internal), same reinstall
+  window as TaxaTools/TaxaLikely.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
