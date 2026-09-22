@@ -389,3 +389,97 @@ test_that(".reverse_barcode_check: an NCBI record with no title does not poison 
   expect_setequal(out$sp_with_seqs, c("Cottus asper", "Cottus bairdii"))
   expect_length(out$sp_unreferenced, 0L)
 })
+
+# Homonym-detection wiring (ecosystem_docs/REENTRY_PROMPT_homonym_detection.md
+# follow-up): .genus_taxid() used to pick NCBI's first-listed id with no
+# disambiguation. It now delegates to TaxaTools::resolve_ncbi_taxid().
+
+test_that(".lineage_terms_for_group: pulls the caller's own declared lineage for a group", {
+  df <- data.frame(
+    genus = c("Vertebrata", "Vertebrata", "Sebastes"),
+    family = c("Rhodomelaceae", "Rhodomelaceae", "Sebastidae"),
+    phylum = c("Rhodophyta", "Rhodophyta", "Chordata"),
+    stringsAsFactors = FALSE
+  )
+  out <- .lineage_terms_for_group(df, "genus", "Vertebrata")
+  expect_setequal(out, c("Rhodomelaceae", "Rhodophyta"))
+})
+
+test_that(".lineage_terms_for_group: empty when no group rows or no extra rank columns", {
+  df <- data.frame(genus = c("Sebastes"), stringsAsFactors = FALSE)
+  expect_length(.lineage_terms_for_group(df, "genus", "Sebastes"), 0L)
+  expect_length(.lineage_terms_for_group(df, "genus", "Vertebrata"), 0L)
+
+  df2 <- data.frame(genus = "Sebastes", family = "Sebastidae", stringsAsFactors = FALSE)
+  expect_length(.lineage_terms_for_group(df2, "genus", "NotPresent"), 0L)
+})
+
+test_that(".genus_taxid: resolves via rank alone (the Vertebrata case)", {
+  testthat::local_mocked_bindings(
+    resolve_ncbi_taxid = function(name, rank = NULL, lineage_terms = NULL) {
+      expect_identical(name, "Vertebrata")
+      expect_identical(rank, "genus")
+      list(taxid = "1261581", status = "resolved_by_rank", candidates = data.frame())
+    },
+    .package = "TaxaTools"
+  )
+  expect_identical(.genus_taxid("Vertebrata", rank = "genus"), "1261581")
+})
+
+test_that(".genus_taxid: passes lineage_terms through and returns NA on ambiguous", {
+  captured <- NULL
+  testthat::local_mocked_bindings(
+    resolve_ncbi_taxid = function(name, rank = NULL, lineage_terms = NULL) {
+      captured <<- lineage_terms
+      list(taxid = NA_character_, status = "ambiguous", candidates = data.frame())
+    },
+    .package = "TaxaTools"
+  )
+  out <- .genus_taxid("Lobophora", rank = "genus", lineage_terms = c("Dictyotaceae"))
+  expect_true(is.na(out))
+  expect_identical(captured, "Dictyotaceae")
+})
+
+test_that(".genus_taxid: still normalises hyphens before resolving", {
+  seen_name <- NULL
+  testthat::local_mocked_bindings(
+    resolve_ncbi_taxid = function(name, rank = NULL, lineage_terms = NULL) {
+      seen_name <<- name
+      list(taxid = "42", status = "unique", candidates = data.frame())
+    },
+    .package = "TaxaTools"
+  )
+  .genus_taxid("Pseudo-nitzschia")
+  expect_identical(seen_name, "Pseudo nitzschia")
+})
+
+test_that(".genus_taxid: NA on a resolver error, matching the old failure contract", {
+  testthat::local_mocked_bindings(
+    resolve_ncbi_taxid = function(name, rank = NULL, lineage_terms = NULL) stop("network down"),
+    .package = "TaxaTools"
+  )
+  expect_true(is.na(.genus_taxid("Fundulus")))
+})
+
+test_that("audit_reference_coverage: passes each group's own lineage_terms to genus resolution", {
+  # Real-shape regression: reference_df here carries a phylum column beyond
+  # target_rank/species, which .lineage_terms_for_group() should surface.
+  reference_df <- data.frame(
+    genus = c("Vertebrata", "Vertebrata"),
+    species = c("Vertebrata alpha", "Vertebrata beta"),
+    phylum = c("Rhodophyta", "Rhodophyta"),
+    stringsAsFactors = FALSE
+  )
+  captured <- NULL
+  testthat::local_mocked_bindings(
+    resolve_ncbi_taxid = function(name, rank = NULL, lineage_terms = NULL) {
+      captured <<- lineage_terms
+      list(taxid = NA_character_, status = "ambiguous", candidates = data.frame())
+    },
+    .package = "TaxaTools"
+  )
+  out <- suppressWarnings(audit_reference_coverage(reference_df, target_rank = "genus"))
+  expect_identical(captured, "Rhodophyta")
+  # Unresolved taxid -> that group's rec stays at its NA-filled default.
+  expect_true(is.na(out$census$total[out$census$group == "Vertebrata"]))
+})

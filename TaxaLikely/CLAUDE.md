@@ -1,5 +1,37 @@
 # CLAUDE.md -- TaxaLikely
-# Last updated: 2026-09-22 (Sonnet 5, branch homonym-detection, NOT merged/reinstalled):
+# Last updated: 2026-09-22, follow-up (Sonnet 5, branch ncbi-homonym-followup, worktree,
+# NOT merged/installed): `.genus_taxid()` (`R/coverage.R`, consumed by
+# `audit_barcode_coverage()` and `audit_reference_coverage()`) had the SAME defect as
+# `fetch_ncbi_reference_sequences()`'s `.build_search_term()` did before the homonym fix
+# below -- `entrez_search(db="taxonomy", term='"Vertebrata"[Genus]')` genuinely returns
+# BOTH the red-algal genus and the vertebrate clade (live-confirmed, not assumed), and
+# the old code took `res$ids[1L]` with no disambiguation at all. Fixed the same way:
+# `.genus_taxid(grp, rank=, lineage_terms=)` now delegates to
+# `TaxaTools::resolve_ncbi_taxid()`; new `.lineage_terms_for_group()` builds
+# `lineage_terms` for free from whatever kingdom/phylum/class/order/family columns the
+# caller's own `match_df`/`reference_df` already carries for that group -- no new
+# caller-facing parameter needed, since both functions' first argument already IS the
+# caller's declared taxonomy. `audit_reference_coverage()`'s own inline duplicate of the
+# same `entrez_search(...)[1L]` pattern was consolidated onto `.genus_taxid()` too,
+# closing the second copy of the same bug in the same pass rather than fixing one and
+# leaving the other (this ecosystem's own repeated "broadcast fix reaches some files and
+# not others" lesson). 13 new tests (offline, `TaxaTools::resolve_ncbi_taxid()` mocked),
+# `devtools::test()` 1371/0 (was 1358), `devtools::check()` 0 errors/0 warnings/1
+# pre-existing environmental note.
+#
+# NOT wired, deliberately, and recorded rather than silently skipped:
+# `suggest_unreferenced_species()`'s per-species `.count_barcode_seqs()` and the
+# `priority_taxa` path in `fetch_ncbi_reference_sequences()` -- both operate on SPECIES
+# binomials, not bare genus/higher-rank names, where a real collision is far rarer (every
+# confirmed case in `TaxaTools::known_ncbi_homonyms`'s source data is genus-level or
+# higher) and routing every candidate through `resolve_ncbi_taxid()` would roughly
+# DOUBLE the NCBI query volume for this function (it currently does one `entrez_search`
+# per species against `nuccore`; disambiguation needs a second one against `taxonomy`
+# first). `priority_taxa` additionally has this file's own comment that no production
+# workflow supplies it. A real decision, not an oversight -- worth its own cost/benefit
+# pass if a species-level collision is ever actually found in production data.
+#
+# Previous update, 2026-09-22 (Sonnet 5, branch homonym-detection, NOT merged/reinstalled):
 # fetch_ncbi_reference_sequences() gains an opt-in `taxa_lineage` parameter -- the
 # TaxaLikely-side half of ecosystem_docs/REENTRY_PROMPT_homonym_detection.md, whose
 # resolver (TaxaTools::resolve_ncbi_taxid()/check_lineage_agreement()) is documented in
