@@ -1040,6 +1040,15 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   reads downstream as "no barcode", not "malformed query". Write-up:
   `ecosystem_docs/REENTRY_PROMPT_homonym_detection.md` (untracked, in the
   shared checkout). Same shape as the Polychaeta homonym found 2026-09-15.
+  **Shared checkout refreshed 2026-09-22** (`f016809`, main merged into
+  `workflow-ptcon-multisite` after the workflow chat's verified all-clear;
+  tree identical to main; the maintainer's next README round happens
+  there). Two stashes sit in that checkout, NEITHER the workflow chat's:
+  stash@{0} = the maintainer's first-round README copies (proven lossless
+  vs main); stash@{1} = this screen's own 2026-09-20 draft (510-line
+  screen doc, since committed and grown to 1,129 lines on main) plus a
+  one-line CLAUDE.md path that main already has in its moved form. Both
+  superseded; drop with the maintainer's okay. Reinstall hold still on.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
