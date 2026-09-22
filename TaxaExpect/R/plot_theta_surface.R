@@ -475,6 +475,165 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   invisible(x)
 }
 
+#' Long-format data frame of a theta surface, for analysis
+#'
+#' The rendered map is not the only thing a `taxaexpect_theta_surface` is
+#' useful for -- `$surface` already carries every value, but as one matrix per
+#' taxon keyed by two separate lattice-axis vectors, which is awkward to
+#' analyse directly (a caller has to know the row/column orientation, and
+#' whether `$surface$theta` is a bare matrix or a named list depends on
+#' whether `plot_theta_surface()` was called with one taxon or several). This
+#' unpacks it into one row per lattice cell x taxon: `lon`, `lat`, `taxon`,
+#' `theta`, `n_eff`, `W`.
+#'
+#' A `mask` (or a lattice-edge cell too far from every record to be
+#' evaluated at all) already leaves `theta` as `NA` there -- so
+#' `drop_na = TRUE` (the default) is what makes this "theta within the
+#' search polygon," with no separate spatial filter needed: the masking
+#' already happened when the surface was built.
+#'
+#' @param x A `taxaexpect_theta_surface` object from [plot_theta_surface()].
+#' @param row.names,optional Ignored; present for S3 consistency with
+#'   [as.data.frame()].
+#' @param taxon Optional character vector restricting the output to specific
+#'   taxa (must be a subset of the taxa `x` was built with -- this does not
+#'   recompute the surface for a new taxon). Default `NULL`: every taxon in
+#'   `x`.
+#' @param drop_na Logical (default `TRUE`). Drop rows where `theta` is `NA`
+#'   (outside a `mask`, or beyond where the fetch could support an estimate
+#'   at all). `FALSE` keeps every lattice cell, `NA`s included.
+#' @param ... Ignored.
+#' @return A data frame with columns `lon`, `lat`, `taxon`, `theta`, `n_eff`,
+#'   `W` -- one row per requested lattice cell x taxon combination.
+#' @examples
+#' \dontrun{
+#' r <- plot_theta_surface(kp, occ, taxon = c("Species_A", "Species_B"))
+#' df <- as.data.frame(r, taxon = "Species_A")
+#' # e.g. the highest-theta cells inside the search polygon:
+#' head(df[order(-df$theta), ], 10)
+#' }
+#' @export
+as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional = FALSE,
+                                                    taxon = NULL, drop_na = TRUE, ...) {
+  s <- x$surface
+  taxa_all <- s$params$taxon
+  theta_list <- if (is.list(s$theta)) s$theta else stats::setNames(list(s$theta), taxa_all)
+  if (!is.null(taxon)) {
+    missing_taxon <- setdiff(taxon, names(theta_list))
+    if (length(missing_taxon) > 0L) {
+      stop(
+        "as.data.frame.taxaexpect_theta_surface: 'taxon' not present in this ",
+        "surface: ", paste(sprintf("'%s'", missing_taxon), collapse = ", "),
+        ". This surface holds: ", paste(sprintf("'%s'", names(theta_list)), collapse = ", "), "."
+      )
+    }
+    theta_list <- theta_list[taxon]
+  }
+  # theta is stored [lat_index, lon_index]; as.vector() on a matrix goes
+  # column-major (down every row of one column before moving to the next),
+  # which is exactly what rep(lat_grid, times=) / rep(lon_grid, each=) below
+  # produce -- confirmed against the same construction .theta_surface_engine()
+  # itself uses (.theta_surface_accumulate()'s ny x nx matrices).
+  lat_v <- rep(s$lat_grid, times = length(s$lon_grid))
+  lon_v <- rep(s$lon_grid, each = length(s$lat_grid))
+  n_eff_v <- as.vector(s$n_eff)
+  w_v <- as.vector(s$W)
+  out <- do.call(rbind, lapply(names(theta_list), function(nm) {
+    data.frame(
+      lon = lon_v, lat = lat_v, taxon = nm,
+      theta = as.vector(theta_list[[nm]]),
+      n_eff = n_eff_v, W = w_v,
+      stringsAsFactors = FALSE
+    )
+  }))
+  if (isTRUE(drop_na)) out <- out[!is.na(out$theta), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+#' Theta (and support) at specific points of interest, from an already-built surface
+#'
+#' Looks up the NEAREST lattice cell to each query point -- exact for a point
+#' that falls inside a cell, approximate elsewhere, honestly so: `dist_km`
+#' reports how far the query point actually was from the matched cell centre,
+#' so a caller can tell whether that distance is small relative to `n_grid`'s
+#' own resolution or large enough that the lookup is a poor stand-in for a
+#' fresh evaluation there. This is deliberately NOT interpolated (bilinear or
+#' otherwise) -- a lattice this fine (the default `n_grid = 256`) is already
+#' far finer than the kernel bandwidth that produced it, so nearest-cell error
+#' is normally negligible, and interpolation would blur across a `mask`
+#' boundary or an `n_eff_floor` cutoff in a way a caller might not expect.
+#'
+#' @param x A `taxaexpect_theta_surface` object from [plot_theta_surface()].
+#' @param lon,lat Numeric vectors of query-point coordinates (recycled to a
+#'   common length).
+#' @param taxon Optional character vector restricting the output to specific
+#'   taxa (must be a subset of the taxa `x` was built with). Default `NULL`:
+#'   every taxon in `x`.
+#' @return A data frame with one row per query point x taxon:
+#'   `lon`/`lat` (the query), `taxon`, `theta`, `n_eff`, `W` (at the matched
+#'   cell), `lon_cell`/`lat_cell` (the matched cell's own centre), and
+#'   `dist_km` (how far the query point was from that centre).
+#' @examples
+#' \dontrun{
+#' r <- plot_theta_surface(kp, occ, taxon = c("Species_A", "Species_B"))
+#' theta_surface_at(r, lon = -120.1, lat = 34.3)
+#' theta_surface_at(r, lon = c(-120.1, -119.5), lat = c(34.3, 34.6), taxon = "Species_A")
+#' }
+#' @export
+theta_surface_at <- function(x, lon, lat, taxon = NULL) {
+  if (!inherits(x, "taxaexpect_theta_surface")) {
+    stop("theta_surface_at: 'x' must be a taxaexpect_theta_surface object (from plot_theta_surface()).")
+  }
+  if (!is.numeric(lon) || !is.numeric(lat) || length(lon) < 1L || length(lat) < 1L) {
+    stop("theta_surface_at: 'lon' and 'lat' must be non-empty numeric vectors.")
+  }
+  n_pt <- max(length(lon), length(lat))
+  lon <- rep_len(lon, n_pt)
+  lat <- rep_len(lat, n_pt)
+  if (anyNA(lon) || anyNA(lat)) {
+    stop("theta_surface_at: 'lon'/'lat' must not contain NA.")
+  }
+
+  s <- x$surface
+  taxa_all <- s$params$taxon
+  theta_list <- if (is.list(s$theta)) s$theta else stats::setNames(list(s$theta), taxa_all)
+  if (!is.null(taxon)) {
+    missing_taxon <- setdiff(taxon, names(theta_list))
+    if (length(missing_taxon) > 0L) {
+      stop(
+        "theta_surface_at: 'taxon' not present in this surface: ",
+        paste(sprintf("'%s'", missing_taxon), collapse = ", "),
+        ". This surface holds: ", paste(sprintf("'%s'", names(theta_list)), collapse = ", "), "."
+      )
+    }
+    theta_list <- theta_list[taxon]
+  }
+
+  # The lattice is a REGULAR axis-aligned grid, so the nearest lat index and
+  # nearest lon index can be found independently (one 1-D search per axis)
+  # rather than a 2-D nearest-neighbour search over n_grid^2 cells.
+  i_idx <- vapply(lat, function(v) which.min(abs(s$lat_grid - v)), integer(1L))
+  j_idx <- vapply(lon, function(v) which.min(abs(s$lon_grid - v)), integer(1L))
+  lat_cell <- s$lat_grid[i_idx]
+  lon_cell <- s$lon_grid[j_idx]
+  dist_km <- .approx_distance_km(lat, lon, lat_cell, lon_cell, lat)
+
+  out <- do.call(rbind, lapply(names(theta_list), function(nm) {
+    m <- theta_list[[nm]]
+    data.frame(
+      lon = lon, lat = lat, taxon = nm,
+      theta = m[cbind(i_idx, j_idx)],
+      n_eff = s$n_eff[cbind(i_idx, j_idx)],
+      W = s$W[cbind(i_idx, j_idx)],
+      lon_cell = lon_cell, lat_cell = lat_cell, dist_km = dist_km,
+      stringsAsFactors = FALSE
+    )
+  }))
+  rownames(out) <- NULL
+  out
+}
+
 # ==============================================================================
 # Internal engine
 # ==============================================================================
