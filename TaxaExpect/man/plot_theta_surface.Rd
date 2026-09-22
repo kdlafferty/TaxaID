@@ -15,6 +15,11 @@ plot_theta_surface(
   alpha_by_n_eff = TRUE,
   n_eff_floor = NULL,
   mask = NULL,
+  theta_range = NULL,
+  palette = "YlOrRd",
+  bg = "grey92",
+  support_panel = FALSE,
+  fade_by = c("n_eff", "W"),
   site_marker_radius = 5,
   hover_labels = TRUE,
   interactive = FALSE,
@@ -85,7 +90,71 @@ plain two-column lon/lat matrix/data frame, or a list of such matrices
 (a cell is kept if it falls inside ANY of them, for islands or
 multi-basin masks).
 Deliberately a parameter with no default: the correct mask is
-application-specific, so the package supplies none.}
+application-specific, so the package supplies none. Whenever \code{mask} is
+supplied, its boundary is also DRAWN (not just used to clip), on both the
+static and interactive renders -- there is no case where you would want
+the clip without seeing its edge, so this is automatic, not a separate
+toggle.}
+
+\item{theta_range}{Controls the colour scale across the requested \code{taxon}
+panels/layers. \code{NULL} (default): each taxon is scaled to its OWN
+\code{range(theta)} -- the original, per-panel behaviour, unchanged. In a
+facet of more than one taxon this means the same colour can mean a
+different theta in each panel; \code{"shared"} computes one range across every
+requested taxon instead, so a contrast pair (placed side by side
+specifically to be compared) is actually comparable. A numeric
+\code{c(lo, hi)} fixes an absolute scale instead, for cross-run/cross-report
+comparability. Never changes a value in \verb{$surface} -- only how it is
+coloured.}
+
+\item{palette}{Either a name from \code{grDevices::hcl.pals()} (matched
+case-insensitively; e.g. \code{"YlOrRd"}, \code{"Viridis"}, \code{"Plasma"}) or a vector
+of 2+ colours to ramp via \code{grDevices::colorRampPalette()}. Resolved to
+ONE 256-colour vector used for both the static ramp and the interactive
+\code{leaflet::colorNumeric()} palette, so the two renders of the same surface
+can no longer disagree about what a colour means. A recognised
+\code{hcl.pals()} NAME is reversed so low theta is pale/light and high theta
+is dark/saturated (\code{grDevices::hcl.colors()}'s own default direction for
+these sequential palettes is the opposite -- dark at the low end -- and
+the reversal matches both this package's historical static ramp and
+\code{leaflet::colorNumeric()}'s own convention for a named sequential
+palette); a colour VECTOR is used exactly as given, low to high, with no
+reversal, since the caller has already stated the order they want.
+Default \code{"YlOrRd"} -- zero new package dependencies (\code{grDevices} is
+already Imports). This is a default recommendation, not a restriction:
+\code{palette = "Viridis"} or any other \code{hcl.pals()} name works identically.}
+
+\item{bg}{Background colour for the STATIC render only (default
+\code{"grey92"}, a neutral mid-grey -- never the palette's own low end, and
+never pure white/black). Drawn behind every panel before the raster, so a
+masked cell or a species absent from a habitat stratum reads as "outside
+the surface" rather than blending into a pale low-theta colour or a plain
+white page. Has no interactive-render analogue: leaflet already renders a
+masked/absent cell as transparent over its own basemap tiles.}
+
+\item{support_panel}{Logical (default \code{FALSE}). \code{TRUE} adds ONE extra
+panel/layer showing the support field named by \code{fade_by} on its own
+colour scale, and stops multiplying that same field into every taxon
+panel's opacity (every taxon panel renders at full opacity instead).
+Support (\code{n_eff} or \code{W}) is per-LOCATION, not per-taxon -- the identical
+field is faded into every requested taxon's panel today, carrying no
+species-specific information once there is more than one taxon; a single
+dedicated panel says the same thing once instead of \code{length(taxon)}
+times. \code{FALSE} preserves the original per-panel alpha-fade behaviour
+exactly.}
+
+\item{fade_by}{Character, \code{"n_eff"} (default) or \code{"W"}. Which field drives
+\code{alpha_by_n_eff}'s opacity fade and, when \code{support_panel = TRUE}, the
+dedicated support panel/layer. \code{n_eff} (Kish effective sample size) is
+what \code{estimate_kernel_priors()} actually puts in the Beta concentration,
+but it is SCALE-INVARIANT (multiplying every record's weight by a
+constant does not move it) -- a single record 2 km away and 200 records
+400 km away can read the identical \code{n_eff}, so opaque does not mean "lots
+of evidence here," only "many records contributed comparably." \code{W} (the
+raw total kernel weight, shown log-scaled) is the more literal answer to
+"is there actually data near this point." \code{n_eff_floor} always
+thresholds the real \code{n_eff} regardless of this argument -- it is a
+distinct, already-documented outright mask, not a smooth fade.}
 
 \item{site_marker_radius}{Numeric (default \code{5}). Radius in pixels of the
 hollow circle marking the site on the interactive map. The marker is

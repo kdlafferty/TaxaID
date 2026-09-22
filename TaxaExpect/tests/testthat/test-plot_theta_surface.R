@@ -275,7 +275,11 @@ test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-0
     tolerance = 1e-9
   )
   # ... and the raster is not uniformly transparent (the visible symptom).
-  ras <- TaxaExpect:::.theta_surface_raster(surf$theta, surf$n_eff, TRUE, NULL)
+  alpha_norm <- TaxaExpect:::.theta_surface_normalize_support(surf$n_eff, "n_eff")
+  pal <- TaxaExpect:::.theta_surface_resolve_palette("YlOrRd")
+  ras <- TaxaExpect:::.theta_surface_raster(
+    surf$theta, alpha_norm, surf$n_eff, TRUE, NULL, pal, range(surf$theta, na.rm = TRUE)
+  )
   expect_true(any(substr(as.character(ras), 8L, 9L) != "00"))
 
   # The site itself is untouched by the guard.
