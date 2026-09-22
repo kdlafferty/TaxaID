@@ -7,7 +7,7 @@ editor_options:
 # TaxaFlag
 
 Post-assignment quality flagging for the
-[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem. Identifies
+[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Identifies
 anomalous detections in taxonomic assignment results using data-driven
 and expert-review approaches.
 
@@ -269,7 +269,7 @@ interpretation.
 
 **Ecosystem:** TaxaAssign -\> **TaxaFlag**
 
-See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
+See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation

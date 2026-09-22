@@ -7,7 +7,7 @@ editor_options:
 # TaxaAssign
 
 Bayesian taxonomic assignment from match scores and priors. Part of the
-[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
+[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem.
 
 ## Overview
 
@@ -185,7 +185,7 @@ assignments to TaxaFlag for quality screening.
 
 **Ecosystem:** TaxaLikely + TaxaExpect -\> **TaxaAssign** -\> TaxaFlag
 
-See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
+See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation

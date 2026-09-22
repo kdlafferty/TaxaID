@@ -651,7 +651,7 @@ packages <- c("TaxaTools", "TaxaFetch", "TaxaHabitat", "TaxaMatch",
                "TaxaWizard")
 
 for (pkg in packages) {
-  remotes::install_github("DOI-USGS/TaxaID", subdir = pkg)
+  remotes::install_github("kdlafferty/TaxaID", subdir = pkg)
 }
 
 # Bioconductor dependency (needed for TaxaLikely reference matrix building)
@@ -1020,7 +1020,7 @@ no cache; call it through `evaluate_reference_accessions()` when you
 need one (see [Caching and resources](#caching-and-resources)).
 
 **Getting help.** If none of the above resolves it, please open an issue
-at <https://github.com/DOI-USGS/TaxaID/issues> with your R version, the
+at <https://github.com/kdlafferty/TaxaID/issues> with your R version, the
 exact error message, and a minimal reproducible example if possible.
 This helps other users hitting the same issue find the answer too, and
 keeps a public record other than a private email thread.

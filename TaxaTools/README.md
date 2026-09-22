@@ -7,7 +7,7 @@ editor_options:
 # TaxaTools
 
 Shared taxonomic-name and LLM-provider utilities for the
-[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem. Every other
+[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Every other
 TaxaID package imports TaxaTools; it has no dependency on any of them,
 which makes it the ecosystem's foundation package. It can also be used
 standalone for cleaning and verifying taxon name lists, resolving
@@ -292,7 +292,7 @@ TaxaTools -> TaxaFetch -> TaxaHabitat -> TaxaExpect -> TaxaAssign -> TaxaFlag
 TaxaTools -> TaxaMatch -> TaxaLikely -> TaxaAssign -> TaxaFlag
 ```
 
-See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
+See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation

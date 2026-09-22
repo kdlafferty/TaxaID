@@ -131,7 +131,7 @@ estimation).
 **Ecosystem:** TaxaTools -\> **TaxaFetch** -\> TaxaHabitat -\>
 TaxaExpect -\> TaxaAssign
 
-See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
+See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation

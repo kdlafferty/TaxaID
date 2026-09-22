@@ -7,7 +7,7 @@ editor_options:
 # TaxaExpect
 
 Estimate spatially-explicit Bayesian priors for expected species
-composition. Part of the [TaxaID](https://github.com/DOI-USGS/TaxaID)
+composition. Part of the [TaxaID](https://github.com/kdlafferty/TaxaID)
 ecosystem.
 
 An observation can easily match a similar, but implausible species.
@@ -263,7 +263,7 @@ computation).
 **Ecosystem:** TaxaFetch -\> TaxaHabitat -\> **TaxaExpect** -\>
 TaxaAssign
 
-See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
+See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation

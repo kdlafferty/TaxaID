@@ -23,7 +23,7 @@ continuous likelihoods, TaxaLikely avoids both overconfident assignments
 and unnecessary loss of taxonomic resolution. Calibrated likelihoods can
 then be multiplied by priors (see TaxaExpect) to generate Bayesian
 posterior probabilities for each hypothesized assignment. Part of the
-[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
+[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem.
 
 ## Overview
 
@@ -338,7 +338,7 @@ section for `assemble_report()`
 `train_likelihood_model()` trains on whatever `raw_df`/`ref_matrix` it's
 given. To avoid entering mislabeled references into the training set,
 screen it first, upstream, via **TaxaMatch's [Reference Accession
-Quality](https://github.com/DOI-USGS/TaxaID/blob/main/TaxaMatch/README.md#reference-accession-quality)**
+Quality](https://github.com/kdlafferty/TaxaID/blob/main/TaxaMatch/README.md#reference-accession-quality)**
 section.
 
 ### Data types other than DNA sequences
@@ -786,7 +786,7 @@ likelihoods for TaxaAssign (posterior computation).
 
 **Ecosystem:** TaxaMatch -\> **TaxaLikely** -\> TaxaAssign
 
-See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
+See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation

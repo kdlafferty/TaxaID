@@ -7,7 +7,7 @@ editor_options:
 # TaxaHabitat
 
 Habitat assignment and spatial quality control for the
-[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem. Classifies
+[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem. Classifies
 species into habitat categories using LLM-based biological consensus,
 assigns habitats to sampling sites, and flags spatial outliers. It
 accepts that species can occur in multiple habitats, but assumes that a
@@ -292,7 +292,7 @@ habitat-annotated records for TaxaExpect (prior estimation).
 **Ecosystem:** TaxaTools -\> TaxaFetch -\> **TaxaHabitat** -\>
 TaxaExpect -\> TaxaAssign
 
-See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
+See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
