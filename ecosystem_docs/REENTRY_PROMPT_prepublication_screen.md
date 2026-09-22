@@ -1149,6 +1149,17 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   discriminator (signature change, three callers). Screen's view: 1
   now, 2 later, and the NA must be accompanied by a warning that lists
   the name and its taxids so a user can pass the right one downstream.
+  **Maintainer's DECISION 2026-09-22**: neither option as proposed. An NA
+  plus a warning invites a large silent failure in big batches; the user
+  must CHOOSE, in one batch. Spec sent to the homonym thread: collect all
+  ambiguous names with candidate taxids and lineages; interactive = one
+  prompt for the whole batch with numbered candidates and an explicit
+  "skip"; non-interactive = stop with the same table and instructions;
+  choices are a decisions input (data frame or file, the spatial-review
+  decisions convention) that `verify_taxon_names()` accepts and the
+  prompt saves; "skip" is the only route to NA and is recorded; the
+  three callers pass decisions through. One-argument signature addition
+  accepted; any save/apply helper names to be proposed before export.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
