@@ -169,7 +169,7 @@ cat("     the filter is correctly a NO-OP (documented behaviour, not a failure):
 
 # taxaexpect_priors doubles as its own taxonomy_map here (it carries genus/
 # family/order/class for the ~232 rows that have them -- the undetected-
-# evidence + domestic/transport rows; the 1,522 resident_observed rows carry
+# evidence + domestic/transport rows; the 1,522 kernel_estimated rows carry
 # no separate hierarchy columns, only their own species-level taxon_name,
 # which compute_group_priors() auto-derives a "species" rank_cols entry for).
 group_priors_old <- TaxaAssign::compute_group_priors(
@@ -251,14 +251,14 @@ species_ref_old <- unique(
 )
 species_ref_new <- unique(
   taxaexpect_priors[
-    taxaexpect_priors$prior_branch %in% c("kernel_estimated", "resident_observed", "transport") &
+    taxaexpect_priors$prior_branch %in% c("kernel_estimated", "transport") &
       !is.na(taxaexpect_priors$taxon_name),
     hier_cols,
     drop = FALSE
   ]
 )
 cat(sprintf(
-  "species_reference rows -- OLD (every row): %d; NEW (resident_observed/transport only): %d\n",
+  "species_reference rows -- OLD (every row): %d; NEW (kernel_estimated/transport only): %d\n",
   nrow(species_ref_old), nrow(species_ref_new)
 ))
 cat(sprintf(
@@ -309,7 +309,7 @@ count_outside <- function(consensus_df, finest_rank = "species") {
 }
 
 arm_b_grid <- expand.grid(
-  species_ref_label = c("OLD (every row)", "NEW (resident_observed/transport)"),
+  species_ref_label = c("OLD (every row)", "NEW (kernel_estimated/transport)"),
   downrank_requires_candidate = c(FALSE, TRUE),
   stringsAsFactors = FALSE
 )
@@ -332,7 +332,7 @@ cat("\nFour-arm table (species_reference x downrank_requires_candidate):\n")
 print(arm_b_grid, row.names = FALSE)
 
 new_default_row <- arm_b_grid[
-  arm_b_grid$species_ref_label == "NEW (resident_observed/transport)" &
+  arm_b_grid$species_ref_label == "NEW (kernel_estimated/transport)" &
     arm_b_grid$downrank_requires_candidate == TRUE,
 ]
 cat("\nExpectation: the new default (NEW species_reference + downrank_requires_candidate=TRUE) should\n")
@@ -440,7 +440,7 @@ cat(sprintf("compute_posterior(): %d row(s)\n", nrow(p12r2_posterior_df)))
 # "resident_undetected", and the other 37 resident_undetected rows are
 # already anonymous (taxon_name = NA) -- so filtering on evidence_sources here
 # is equivalent, on this real data, to production's own prior_branch %in%
-# c("resident_observed","transport") filter.
+# c("kernel_estimated","transport") filter.
 p12r2_hier_cols <- intersect(c("taxon_name", "genus", "family", "order", "class"), names(p12r2_priors))
 p12r2_species_ref_old <- unique(p12r2_priors[!is.na(p12r2_priors$taxon_name), p12r2_hier_cols, drop = FALSE])
 .p12r2_has_evidence <- !is.na(p12r2_priors$evidence_sources) & nzchar(as.character(p12r2_priors$evidence_sources))
