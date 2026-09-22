@@ -1007,6 +1007,15 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   stashed (`git stash push -- README.md Taxa*/README.md`) before that
   branch next merges main. The workflow chat's untracked
   `ecosystem_docs/REENTRY_PROMPT_theta_surface_options.md` is theirs.
+  **2026-09-22 decisions**: main PUSHED at `1b7f314`; cache functions =
+  OPTION B (API unchanged; each package README states its
+  `<pkg>_clear_cache()` in one sentence pointing at the root README's
+  Caching and resources section, which is the single full description);
+  every package README must list EVERY export (a grep against NAMESPACE
+  found 61 unmentioned across eight packages; being added with one-line
+  purposes from roxygen); merge, push and reinstall decisions sit with the
+  screen session, not the workflow chat; TaxaAssign + TaxaWizard reinstall
+  after the CalIntertidal run lands.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
