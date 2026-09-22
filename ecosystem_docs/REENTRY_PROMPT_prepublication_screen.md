@@ -1016,6 +1016,14 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   purposes from roxygen); merge, push and reinstall decisions sit with the
   screen session, not the workflow chat; TaxaAssign + TaxaWizard reinstall
   after the CalIntertidal run lands.
+  **DONE 2026-09-22**: all nine package READMEs list every export (61
+  added; the NAMESPACE-vs-README grep prints nothing for all nine);
+  option B applied (one cache sentence per package, root README's Caching
+  and resources holds the five-function shared signature, the engine's
+  containment rule and `taxaid_cache_report()`); `assign_scores()` lists
+  `score_type = "direct"`; `AZURE_OPENAI_API_KEY` in the key table;
+  whole-tree style grep 0/0/0 on all ten. Reports in
+  `TaxaID_dev/screen_records/.../readme_pass/complete_{A,B}.md`.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
