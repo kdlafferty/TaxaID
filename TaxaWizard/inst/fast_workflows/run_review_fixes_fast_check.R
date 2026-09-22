@@ -251,7 +251,7 @@ species_ref_old <- unique(
 )
 species_ref_new <- unique(
   taxaexpect_priors[
-    taxaexpect_priors$prior_branch %in% c("kernel_estimated", "resident_observed", "transport") &
+    taxaexpect_priors$prior_branch %in% c("kernel_estimated", "transport") &
       !is.na(taxaexpect_priors$taxon_name),
     hier_cols,
     drop = FALSE

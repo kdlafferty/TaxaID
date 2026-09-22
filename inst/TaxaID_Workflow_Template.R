@@ -627,7 +627,7 @@ priors <- dplyr::bind_rows(kernel_priors_fit$priors, priors_undetected) |>
 
 message(sprintf(
   "Generated priors for %d resident taxa + %d undetected/dark-diversity row(s) across %d sampling group(s)",
-  sum(priors$prior_branch %in% c("kernel_estimated", "resident_observed"), na.rm = TRUE),
+  sum(priors$prior_branch %in% c("kernel_estimated"), na.rm = TRUE),
   sum(priors$prior_branch == "resident_undetected", na.rm = TRUE),
   dplyr::n_distinct(std_occurrences[[SAMPLING_GROUP_COL]])
 ))
@@ -760,7 +760,7 @@ group_priors_obj <- if (isTRUE(INCLUDE_GROUP_PRIORS)) {
 # TaxaAssign::compute_group_priors(allowed_branches=) now applies at group scope.
 # Set INCLUDE_DOWNRANKING to FALSE to skip entirely.
 species_reference_df <- if (isTRUE(INCLUDE_DOWNRANKING)) {
-  .not_clamp <- if ("prior_branch" %in% names(priors)) priors$prior_branch %in% c("kernel_estimated", "resident_observed", "transport") else if ("evidence_sources" %in% names(priors)) !(priors$evidence_sources %in% "distance_clamp") else rep(TRUE, nrow(priors))
+  .not_clamp <- if ("prior_branch" %in% names(priors)) priors$prior_branch %in% c("kernel_estimated", "transport") else if ("evidence_sources" %in% names(priors)) !(priors$evidence_sources %in% "distance_clamp") else rep(TRUE, nrow(priors))
   priors[.not_clamp, , drop = FALSE] |>
     dplyr::filter(!is.na(taxon_name)) |>
     dplyr::distinct(taxon_name) |>

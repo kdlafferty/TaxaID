@@ -97,7 +97,20 @@ DATAFLOW <- c(
   habitat_lookup_var = "habitat_lookup", site_table_var = "site_table"
 )
 
-graph <- TaxaWizard:::.load_graph()
+# The graph and its snippets come from the repository under ROOT when it holds
+# them (the generator is run from the repository root, and the guard test sets
+# TAXAID_ROOT to it), and from the installed TaxaWizard otherwise. Reading them
+# from the installed copy while the repository's own snippets had changed made
+# the guard test compare the committed template with a stale generation.
+SRC_GRAPH_DIR <- file.path(ROOT, "TaxaWizard", "inst", "graph")
+if (dir.exists(file.path(SRC_GRAPH_DIR, "snippets"))) {
+  GRAPH_DIR <- SRC_GRAPH_DIR
+  graph <- jsonlite::fromJSON(file.path(GRAPH_DIR, "workflow_graph.json"), simplifyVector = FALSE)
+} else {
+  GRAPH_DIR <- system.file("graph", package = "TaxaWizard")
+  graph <- TaxaWizard:::.load_graph()
+}
+SNIPPET_DIR <- file.path(GRAPH_DIR, "snippets")
 edge_by_id <- stats::setNames(graph$edges, vapply(graph$edges, function(e) e$id, ""))
 
 used_config <- character(0)
@@ -107,8 +120,8 @@ body_lines  <- character(0)
 for (i in seq_along(CANONICAL_PATH)) {
   eid <- CANONICAL_PATH[i]
   edge <- edge_by_id[[eid]]
-  f <- system.file("graph", "snippets", paste0(eid, ".R"), package = "TaxaWizard")
-  if (!nzchar(f)) stop("no snippet for edge: ", eid, call. = FALSE)
+  f <- file.path(SNIPPET_DIR, paste0(eid, ".R"))
+  if (!file.exists(f)) stop("no snippet for edge: ", eid, call. = FALSE)
   txt <- paste(readLines(f, warn = FALSE), collapse = "\n")
 
   input_node <- unlist(edge$from)[1]
