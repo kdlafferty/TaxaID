@@ -929,6 +929,23 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   GitLab, so the local step is "branch `1.0.0` from main" rather than
   "tag `v1.0.0`" unless the user wants both. The official DISCLAIMER and
   `code.json` `status` change only when that path completes.
+  **User decisions 2026-09-21 evening**: this version is the
+  PRE-SECURITY-REVIEW submission, not a release -- no tag, no version bump,
+  no `1.0.0` branch from this chat; the USGS path does those later.
+  `repositoryURL` = `kdlafferty/TaxaID` (README, CITATIONs and two
+  TaxaWizard strings aligned, `bae1d99`). The maintainer's own README pass
+  (all ten READMEs, TaxaExpect figure replaced by `PisasterTheta.png`) was
+  applied from the shared checkout onto branch `readme-user-pass`
+  (`f461386`); style rules for the review: no em dashes, no ` -- `, no
+  bold or italics outside headings, no LLM-style prose, shorter where
+  possible, typos and factual errors fixed. Verification asked for: the
+  TaxaAssign wrappers `run_bayesian_pipeline()`/`run_llm_pipeline()` and
+  every inst/ and production workflow after the data removals; the
+  TaxaWizard README's "three ways" claims; the TaxaFlag README's focused
+  controls text; the TaxaExpect pooling claim (sharpened, `c3b83bc`: exact
+  invariance when every candidate of an observation is rescaled alike).
+  The maintainer also asked for a SECOND LOOK at the six `*_clear_cache()`
+  functions, which read as redundant in the READMEs.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
