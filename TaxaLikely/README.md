@@ -29,13 +29,13 @@ posterior probabilities for each hypothesized assignment. Part of the
 
 TaxaLikely trains a hierarchical model on reference-vs-reference match
 scores (DNA percent identity, image similarity, acoustic scores) and
-applies it to convert per-observation scores into likelihoods. Supports
-three hypothesis types:
+applies it to convert per-observation scores into likelihoods. It
+supports three hypothesis types:
 
--   **H1 (Known species)** -- target taxon is in the reference database
--   **H2 (Unreferenced species)** -- a congener absent from the
+-   H1 (Known species): target taxon is in the reference database
+-   H2 (Unreferenced species): a congener absent from the
     reference
--   **H3 (Unreferenced genus)** -- a taxon from a different genus
+-   H3 (Unreferenced genus): a taxon from a different genus
     entirely
 
 ## Installation
@@ -60,8 +60,7 @@ library(TaxaLikely)
 # National Institutes of Health, Bethesda, Maryland)
 reference_df <- fetch_ncbi_reference_sequences(
   taxa = c("Fundulidae", "Gobiidae"),
-  barcode_term = "12S",
-  rank = "family"
+  barcode_term = "12S"
 )
 
 # 2. Build pairwise distance matrix
@@ -101,11 +100,11 @@ ref <- read_crabs_output(
 )
 ```
 
-**CRABS + TaxaLikely are complementary.** CRABS excels at bulk
+CRABS + TaxaLikely are complementary. CRABS excels at bulk
 retrieval, length filtering, primer trimming, and exact-sequence
 dereplication at database-build time. Neither CRABS nor TaxaLikely
 catches mislabeled sequences where the species annotation is wrong but
-the sequence itself is valid -- these produce within-species distances
+the sequence itself is valid: these produce within-species distances
 that look like between-species distances and inflate false-positive
 rates. Screening for this lives in TaxaMatch, not TaxaLikely:
 
@@ -115,7 +114,7 @@ model      <- train_likelihood_model(ref_matrix)
 ```
 
 See [Detecting Mislabeled References](#detecting-mislabeled-references)
-below for the recommended screening step -- run it on `ref` before
+below for the recommended screening step: run it on `ref` before
 `build_sequence_matrix()`, not after.
 
 ### FASTA + separate taxonomy table
@@ -123,7 +122,7 @@ below for the recommended screening step -- run it on `ref` before
 `read_reference_fasta()` accepts a FASTA file and a separate taxonomy
 source. Two input formats are supported:
 
-**Data frame** (custom databases, CRUX, GenBank dumps):
+Data frame (custom databases, CRUX, GenBank dumps):
 
 ``` r
 tax <- data.frame(
@@ -136,7 +135,7 @@ ref <- read_reference_fasta("sequences.fasta", taxonomy = tax,
                              rank_system = c("family", "genus", "species"))
 ```
 
-**Taxonomy TSV file** (QIIME2 / RESCRIPt / SILVA / MIDORI2): supply
+Taxonomy TSV file (QIIME2 / RESCRIPt / SILVA / MIDORI2): supply
 `taxonomy_file` instead of `taxonomy`. Both prefix-style
 (`k__Kingdom;p__Phylum;...`) and positional (`Kingdom;Phylum;...`)
 formats are auto-detected. Header rows are skipped automatically.
@@ -157,13 +156,13 @@ the data types they cover, and the recommended loading path.
 
 | Database | Focus | Typical size | Loading path | Notes |
 |---------------|---------------|---------------|---------------|---------------|
-| **NCBI GenBank** | Universal | API (no local file) | `fetch_ncbi_reference_sequences()` | Per-taxon API query; best for targeted eDNA marker retrieval |
-| **CRABS output** | eDNA amplicons | Varies | `read_crabs_output()` | CRABS handles bulk QC; TaxaLikely adds mislabel detection |
-| **SILVA SSU** | 16S / 18S / 23S rRNA | \~1.3 GB | `subset_local_database()` | Primary database for microbial amplicon eDNA; \~510 k sequences |
-| **MIDORI2** | COI + nuclear markers | \~4.4 GB (COI) | `subset_local_database()` | Best for metazoan COI and nuclear eDNA markers |
-| **GTDB** | Bacterial / archaeal 16S | \~500 MB (16S subset) | `subset_local_database()` | Phylogenomic taxonomy; differs from NCBI; export via QIIME 2 |
-| **Greengenes2** | 16S rRNA | \~1.2 GB | `subset_local_database()` | 2022 release; GTDB-derived taxonomy; export from QIIME 2 |
-| **RDP** | 16S / 28S rRNA | \~200 MB | `read_reference_fasta()` | Smaller than SILVA; reformat lineage file to 2-col TSV first |
+| NCBI GenBank | Universal | API (no local file) | `fetch_ncbi_reference_sequences()` | Per-taxon API query; best for targeted eDNA marker retrieval |
+| CRABS output | eDNA amplicons | Varies | `read_crabs_output()` | CRABS handles bulk QC; TaxaLikely adds mislabel detection |
+| SILVA SSU | 16S / 18S / 23S rRNA | \~1.3 GB | `subset_local_database()` | Primary database for microbial amplicon eDNA; \~510 k sequences |
+| MIDORI2 | COI + nuclear markers | \~4.4 GB (COI) | `subset_local_database()` | Best for metazoan COI and nuclear eDNA markers |
+| GTDB | Bacterial / archaeal 16S | \~500 MB (16S subset) | `subset_local_database()` | Phylogenomic taxonomy; differs from NCBI; export via QIIME 2 |
+| Greengenes2 | 16S rRNA | \~1.2 GB | `subset_local_database()` | 2022 release; GTDB-derived taxonomy; export from QIIME 2 |
+| RDP | 16S / 28S rRNA | \~200 MB | `read_reference_fasta()` | Smaller than SILVA; reformat lineage file to 2-col TSV first |
 
 SILVA, MIDORI2, GTDB, and Greengenes2 are distributed as bulk downloads
 (multi-gigabyte FASTA + taxonomy files). `subset_local_database()`
@@ -263,92 +262,92 @@ model <- train_likelihood_model(
 
 ## Key Functions
 
-**Reference acquisition and export (DNA):** - `subset_local_database()`
--- stream a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB,
+Reference acquisition and export (DNA): - `subset_local_database()`:
+stream a large local FASTA + taxonomy file (SILVA, MIDORI2, GTDB,
 Greengenes2) and extract sequences for a user-supplied taxon list;
 memory scales with matches, not database size -
-`write_reference_fasta()` -- export any `reference_df` to FASTA +
+`write_reference_fasta()`: export any `reference_df` to FASTA +
 optional taxonomy TSV (round-trippable with `read_reference_fasta()`) -
-`read_crabs_output()` -- load a CRABS internal-format database (taxonomy
-embedded; no separate file needed) - `fetch_ncbi_reference_sequences()`
--- download from NCBI by taxon + barcode marker -
-`read_reference_fasta()` -- load local FASTA + data-frame taxonomy (or
-`taxonomy_file` TSV for QIIME2/RESCRIPt/MIDORI2) - `trim_to_amplicon()`
--- in-silico PCR: extract just the amplicon region from an over-length
+`read_crabs_output()`: load a CRABS internal-format database (taxonomy
+embedded; no separate file needed) - `fetch_ncbi_reference_sequences()`:
+download from NCBI by taxon + barcode marker -
+`read_reference_fasta()`: load local FASTA + data-frame taxonomy (or
+`taxonomy_file` TSV for QIIME2/RESCRIPt/MIDORI2) - `trim_to_amplicon()`:
+in-silico PCR, extract just the amplicon region from an over-length
 sequence (e.g. a full mitogenome swept up by an NCBI fetch) via primer
 matching, instead of discarding it outright; run between
 `fetch_ncbi_reference_sequences()`/ `read_reference_fasta()` and
 `build_sequence_matrix()`. Primer pairs come from
-`TaxaTools::barcode_primer_defaults` -- see `?barcode_primer_defaults`
+`TaxaTools::barcode_primer_defaults`: see `?barcode_primer_defaults`
 (in TaxaTools) for the full list of verified primer sets and their known
 limitations (e.g. `coi-folmer`'s documented vertebrate mismatches,
 `coi-leray`'s reduced discriminatory power relative to full-length COI)
 before trusting a result on real data.
 
-**Model training (DNA):** - `build_sequence_matrix()` -- pairwise
+Model training (DNA): - `build_sequence_matrix()`: pairwise
 distance matrix via DECIPHER; required for `train_likelihood_model()`
-(screen for mislabeled references via TaxaMatch first -- see "Detecting
-Mislabeled References" below) - `train_likelihood_model()` -- fit
+(screen for mislabeled references via TaxaMatch first: see "Detecting
+Mislabeled References" below) - `train_likelihood_model()`: fit
 hierarchical Bayesian model (pair-coverage floor and empirical Bayes
 shrinkage on by default; see "Reference Coverage Quality Filtering" and
 "Statistical Design" below)
 
-**Inference:** - `calibrate_query_noise()` -- correct H1's mean for
+Inference: - `calibrate_query_noise()`: correct H1's mean for
 query-vs-reference technical noise invisible to reference-vs-reference
 training pairs; optional `evidence_col` also establishes a baseline for
 `evaluate_likelihoods(evidence_col=)`'s gated sigma rescale -
-`evaluate_likelihoods()` -- convert match scores to likelihoods using a
-trained model - `filter_top_hypotheses()` -- keep finest-rank candidates
-per query - `unreferenced_candidates()` -- expand a consensus assignment
+`evaluate_likelihoods()`: convert match scores to likelihoods using a
+trained model - `filter_top_hypotheses()`: keep finest-rank candidates
+per query - `unreferenced_candidates()`: expand a consensus assignment
 with H2/H3 placeholder rows (no model required; used in no-score and
-acoustic/image pathways) - `assign_scores()` -- set `score_likelihood`
-values: uniform (`"none"`), ratio-normalised (`"probability"`), softmax
+acoustic/image pathways) - `assign_scores()`: set `score_likelihood`
+values, uniform (`"none"`), ratio-normalised (`"probability"`), softmax
 (`"similarity_softmax"`), or prepare for the bivariate-normal model
-(`"similarity"`) -- for the DNA scored pathway, real callers train a
+(`"similarity"`). For the DNA scored pathway, real callers train a
 model (`train_likelihood_model()`) and call `evaluate_likelihoods()`
 directly on the match object rather than continuing from
 `assign_scores()`'s `"similarity"` output -
-`expand_unreferenced_hypotheses()` -- models likelihoods for named
+`expand_unreferenced_hypotheses()`: models likelihoods for named
 unreferenced species (borrowed from the generic H2/H3 values) and
 expands them so they can join TaxaExpect priors directly; requires a
-TaxaExpect- derived unreferenced-species list, so it runs after both
+TaxaExpect-derived unreferenced-species list, so it runs after both
 TaxaLikely and TaxaExpect and before `TaxaAssign::compute_posterior()`
 
-**Reference QC:** - `audit_barcode_coverage()` -- find unreferenced
+Reference QC: - `audit_barcode_coverage()`: find unreferenced
 species (no barcode sequence; eDNA/DNA only) -
-`suggest_unreferenced_species()` -- fast, LLM-first alternative to
+`suggest_unreferenced_species()`: fast, LLM-first alternative to
 `audit_barcode_coverage()` (also supports acoustic/image via
 `data_type`); feeds
 `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`, the LLM-shortcut
-pathway -- moved here from TaxaAssign in September 2026 -
-`audit_acoustic_coverage()` -- find plausible species absent from
-classifier's known list (acoustic/image) - `audit_reference_coverage()`
--- taxonomic completeness check - `apply_coverage_constraints()` --
+pathway -
+`audit_acoustic_coverage()`: find plausible species absent from
+classifier's known list (acoustic/image) - `audit_reference_coverage()`:
+taxonomic completeness check - `apply_coverage_constraints()`:
 suppress H2 for fully-sampled genera. Mislabel screening and
-match-object cleaning for flagged accessions live in TaxaMatch, not here
--- see "Detecting Mislabeled References" below.
+match-object cleaning for flagged accessions live in TaxaMatch, not here.
+See "Detecting Mislabeled References" below.
 
-**Diagnostics and reporting:** - `interpret_model()` -- summarize
-trained model parameters - `report_likelihood()` -- generate report
+Diagnostics and reporting: - `interpret_model()`: summarize
+trained model parameters - `report_likelihood()`: generate report
 section for `assemble_report()`
 
 ## Detecting Mislabeled References {#detecting-mislabeled-references}
 
-**TaxaLikely has no built-in reference-quality screening.**
+TaxaLikely has no built-in reference-quality screening.
 `train_likelihood_model()` trains on whatever `raw_df`/`ref_matrix` it's
 given. To avoid entering mislabeled references into the training set,
-screen it first, upstream, via **TaxaMatch's [Reference Accession
-Quality](https://github.com/kdlafferty/TaxaID/blob/main/TaxaMatch/README.md#reference-accession-quality)**
+screen it first, upstream, via TaxaMatch's [Reference Accession
+Quality](https://github.com/kdlafferty/TaxaID/blob/main/TaxaMatch/README.md#reference-accession-quality)
 section.
 
 ### Data types other than DNA sequences
 
 | Reference source | Screen for mislabeling? | Notes |
 |------------------------|------------------------|------------------------|
-| **NCBI nucleotide** (via `fetch_ncbi_reference_sequences()`) | Yes, using the pattern above | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. |
-| **Curated libraries** (CRUX, custom expert-built FASTA) | Optional | Lower mislabeling rate than NCBI. If your library has a quality column, use that filter instead. |
-| **Xeno-canto**\* bird sounds (acoustic) | No | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Filter on the recording's own quality grade (A-E) instead -- the acoustic `seq_matrix`'s `coverage` column encodes quality grade categorically; a dedicated threshold-calibration helper for this existed here and was archived after a real A/B test found the accuracy gain came with a real coverage cost -- apply a threshold directly (e.g. `seq_matrix[seq_matrix$coverage >= threshold, ]`) if you need one. |
-| **Camera trap images** (Animl/SpeciesNet) | Not applicable | This screen is DNA-specific (BLAST + sequence alignment). Camera trap ground-truth labeling has different error modes (occlusion, blur, multiple animals, handler setup) needing a different mechanism, not built. |
+| NCBI nucleotide (via `fetch_ncbi_reference_sequences()`) | Yes, using the pattern above | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. |
+| Curated libraries (CRUX, custom expert-built FASTA) | Optional | Lower mislabeling rate than NCBI. If your library has a quality column, use that filter instead. |
+| Xeno-canto\* bird sounds (acoustic) | No | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Filter on the recording's own quality grade (A-E) instead: the acoustic `seq_matrix`'s `coverage` column encodes quality grade categorically. A dedicated threshold-calibration helper is not provided, since a real A/B test found the accuracy gain came with a real coverage cost. Apply a threshold directly (e.g. `seq_matrix[seq_matrix$coverage >= threshold, ]`) if you need one. |
+| Camera trap images (Animl/SpeciesNet) | Not applicable | This screen is DNA-specific (BLAST + sequence alignment). Camera trap ground-truth labeling has different error modes (occlusion, blur, multiple animals, handler setup) needing a different mechanism, not built. |
 
 \* Xeno-canto (Xeno-canto Foundation, Netherlands, with support from
 Naturalis Biodiversity Center, Leiden; <https://xeno-canto.org/>).
@@ -356,21 +355,21 @@ Naturalis Biodiversity Center, Leiden; <https://xeno-canto.org/>).
 ## Reference Coverage Quality Filtering
 
 Match scores (`p_match`) measure how similar two sequences or audio
-clips are, but they do not capture *how much* of each observation
+clips are, but they do not capture how much of each observation
 contributed to that score. A 99% DNA identity computed from a 50 bp
 fragment of a 600 bp barcode is far less reliable than the same identity
-computed from a 580 bp overlap — yet both produce the same score.
+computed from a 580 bp overlap, yet both produce the same score.
 
 `build_sequence_matrix()` attaches a `coverage` column to its output:
-*alignment coverage* is the number of positions where both sequences
+alignment coverage is the number of positions where both sequences
 contribute a non-gap character, divided by the shorter unaligned
 sequence length. Values near 1.0 indicate nearly complete overlap;
 values near 0.0 indicate highly gappy or partial alignments.
 
 `train_likelihood_model()` uses that column itself: its
 `min_pair_coverage` floor (default `0.8`) decides which pairs may
-*define* a reference's best foreign, best congener and best conspecific
-match. It removes no pair from the data and drops no species -- a
+define a reference's best foreign, best congener and best conspecific
+match. It removes no pair from the data and drops no species: a
 reference with no conspecific pair above the floor falls back to its
 best one. The floor exists because a pairwise alignment between a short
 deposit and an unrelated sequence can be 100% identical over a few
@@ -392,7 +391,7 @@ or quality floor produces a genuine likelihood-quality improvement on
 the pairs it keeps, but can leave some taxa without references and bias
 the reference database so that it no longer resembles real observations
 (which are often poor quality). See `apply_coverage_constraints()` and
-`TaxaFetch::filter_gbif_quality()`, both of which flag rather than
+`TaxaFetch::filter_gbif_quality()` (both of which flag rather than
 exclude for the same reason). If you filter by coverage, check whether
 the excluded pairs are a random cross-section or systematically
 concentrated in particular species before trusting the result.
@@ -404,14 +403,14 @@ transformed match score (absolute fit) and the gap to the best
 alternative (relative uniqueness), as a bivariate normal for each
 hypothesis type:
 
--   **Score + gap features:** Raw scores are transformed to an unbounded
+-   Score + gap features: Raw scores are transformed to an unbounded
     (or near-unbounded) domain; the gap is computed on the same scale so
     that differences near 100% are amplified appropriately
 
--   **Transform choice (`score_transform`):** `"logit"` (default,
+-   Transform choice (`score_transform`): `"logit"` (default,
     `ln(p/(1-p))`) or `"sqrt_mismatch"` (`-sqrt(1-p)`, Anscombe's (1948)
     classical rare-event-count variance stabilizer, applied to the match
-    *mismatch*). Logit's derivative diverges fastest exactly where real
+    mismatch). Logit's derivative diverges fastest exactly where real
     barcode matches concentrate (near 100% identity), which was found to
     reverse the sign of genus-tightness comparisons for the H2/H3
     unreferenced-relative hypotheses below. This was confirmed on real
@@ -423,16 +422,16 @@ hypothesis type:
     [`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md)
     Section 3A-i for the full derivation and validation.
 
--   **Bivariate normal likelihood:** The joint (score, gap) density
+-   Bivariate normal likelihood: The joint (score, gap) density
     captures interactions; small gap is more tolerable when the score is
     very high
 
--   **Empirical Bayes shrinkage:** Per-species parameters are shrunk
+-   Empirical Bayes shrinkage: Per-species parameters are shrunk
     toward the global mean (Efron and Morris 1973), with weight
     inversely proportional to sample size, preventing poorly sampled
     species from having unreliable estimates
 
--   **Per-species sigma floor:** At inference, the per-species
+-   Per-species sigma floor: At inference, the per-species
     `sigma_score` from `H1_Lookup` is floored at the global
     `H1_Sigma[1,1]`. Reference-vs-reference training pairs for
     well-sampled species can be artificially tight (many near-identical
@@ -442,7 +441,7 @@ hypothesis type:
     floor ensures those species still receive non-zero H1 likelihoods at
     realistic eDNA query scores
 
--   **Score-only outlier filter (`alpha = 0.001`):** Before computing H1
+-   Score-only outlier filter (`alpha = 0.001`): Before computing H1
     density, `.evaluate_one_query()` tests whether the query score is
     consistent with the H1 species distribution using a univariate
     chi-squared test (df = 1, score only). If the p-value is below
@@ -457,10 +456,10 @@ hypothesis type:
     artefacts (e.g. freshwater Cyprinidae at 91-93% identity in a marine
     sample, \>4 sigma from H1 mean) while retaining legitimate
     borderline H1s (e.g. a coastal species at 99% identity, \~2.7 sigma
-    from H1 mean, p ≈ 0.006). This test is **H1-intrinsic** -- no
+    from H1 mean, p ≈ 0.006). This test is H1-intrinsic: no
     comparison to H2/H3 densities
 
--   **H2/H3 offset distributions:** Unreferenced species and genus
+-   H2/H3 offset distributions: Unreferenced species and genus
     hypotheses use the H1 distribution shifted left by learned delta
     offsets, estimated from cross-species match scores in training data.
     The mean anchors on the specific best-matching referenced species'
@@ -473,12 +472,12 @@ hypothesis type:
     (`"genus_specific"` or `"global_fallback"`) so a row using the
     cruder pooled approximation can be identified.
 
--   **Perfect-match anchoring:** Synthetic 100% match pseudo-data
+-   Perfect-match anchoring: Synthetic 100% match pseudo-data
     prevent the "perfection penalty" where the Gaussian density peaks
     below 100%
 
--   **Query-vs-reference noise calibration
-    (`calibrate_query_noise()`):** `train_likelihood_model()` estimates
+-   Query-vs-reference noise calibration
+    (`calibrate_query_noise()`): `train_likelihood_model()` estimates
     H1 entirely from reference-vs-reference pairs (two clean, curated
     database accessions compared to each other), which carries none of
     the technical noise (PCR/sequencing/degradation/ ASV-inference) a
@@ -490,7 +489,7 @@ hypothesis type:
     since it never touches the match scores or likelihood model being
     calibrated) and shifts `H1_Global_Mu`/`H1_Lookup$mu_score`
     uniformly; H2/H3 move automatically since their means are defined
-    relative to H1's. This offset does **not** transfer between markers
+    relative to H1's. This offset does not transfer between markers
     or datasets and must be re-estimated for each. An optional
     `evidence_col` (e.g. real per-observation DNA read depth)
     additionally establishes a baseline that
@@ -499,19 +498,19 @@ hypothesis type:
     gate (only applied when doing so is provably non-decreasing for that
     candidate's density) rather than an unconditional rescale.
 
--   **Monte Carlo uncertainty:** Each candidate's *trained mean* (not
+-   Monte Carlo uncertainty: Each candidate's trained mean (not
     the query's own fixed, already-known observed score) is perturbed
     across simulations by its shrinkage-consistent estimation
     uncertainty (`Var(mu) ~= w^2 * sigma^2 / N`, using the same
     Empirical Bayes weight `w` as the point estimate), and the query's
     real observed point is re-evaluated against each draw. This yields
     `score_likelihood_mean` and `score_likelihood_sd`, measuring how
-    confidently the candidate's own parameters are known, H2/H3, which
+    confidently the candidate's own parameters are known. H2/H3, which
     borrow a shifted mean rather than observing their own species
     directly, correctly come out wider than a well-referenced H1
     candidate.
 
--   **Pair-coverage floor (`min_pair_coverage`, default 0.8):** only a
+-   Pair-coverage floor (`min_pair_coverage`, default 0.8): only a
     reference pair at or above the match object's own coverage floor may
     define a reference's best foreign/congener/conspecific match when
     the gap feature is trained. Train/inference distribution matching
@@ -520,7 +519,7 @@ hypothesis type:
     the independent Lamar species list: species co-detections 593 to
     798, precision 0.805 to 0.818, 29 to 41 of 61 species, none lost.
 
--   **Shrinkage weights (`shrinkage`, default `"empirical_bayes"`):**
+-   Shrinkage weights (`shrinkage`, default `"empirical_bayes"`):
     each species' H1 mean score and mean gap are shrunk toward the
     global mean with weight `tau^2 / (tau^2 + sigma^2/N)`, where `tau^2`
     (the real between-species variance of the means) is estimated by
@@ -532,35 +531,35 @@ hypothesis type:
     `N / (N + prior_weight)` weight exactly. Variance shrinkage always
     uses the fixed weight.
 
--   **Alignment coverage filter (optional):** A `min_coverage` threshold
+-   Alignment coverage filter (optional): A `min_coverage` threshold
     can be passed to `evaluate_likelihoods()` to drop low-coverage
     candidates before scoring. Acoustic and image data can supply a
     categorical quality column (e.g. Xeno-canto grade) encoded as an
     integer for the same pre-filter. See "Reference Coverage Quality
     Filtering" above.
 
--   **Coverage-adjusted likelihood (`score_likelihood_cov`):** When the
+-   Coverage-adjusted likelihood (`score_likelihood_cov`): When the
     match object contains a `coverage` column, `evaluate_likelihoods()`
     produces a second point-estimate column `score_likelihood_cov`
     alongside the standard `score_likelihood`. For each H1 candidate the
     model sigma is widened by `1 / sqrt(coverage)` before the likelihood
-    is evaluated — grounded in binomial sampling theory: the standard
+    is evaluated (grounded in binomial sampling theory): the standard
     error of a proportion estimated from `N` aligned positions scales as
     `1 / sqrt(N)`, and `N_aligned = coverage × N_total`. H2 and H3
     sigmas are global fixed parameters and are not inflated.
 
-    Widening sigma changes the **point estimate** of the likelihood (not
+    Widening sigma changes the point estimate of the likelihood (not
     its SD), because it changes the density value returned by the
     bivariate normal at the observed score. The direction of the change
     depends on where the observed score falls relative to the H1 mean:
 
-    -   **Score near the H1 mean (good match):** the density at the peak
+    -   Score near the H1 mean (good match): the density at the peak
         decreases as the distribution flattens → `score_likelihood_cov`
         \< `score_likelihood`. This is the primary intended effect: a
         98% match at 60% coverage is penalised relative to the same
         score at full coverage, reducing overconfidence in partial
         alignments.
-    -   **Score far below the H1 mean (poor cross-species match):** the
+    -   Score far below the H1 mean (poor cross-species match): the
         distribution flattens into a wider tail, increasing the density
         at that low score → `score_likelihood_cov` \>
         `score_likelihood`. This is a secondary effect: the model is
@@ -568,20 +567,20 @@ hypothesis type:
         These candidates are already ranked low and the effect rarely
         changes downstream assignments.
 
-    The crossover is at exactly ±1 sigma from the mean, a useful check
+    The crossover is at exactly ±1 sigma from the mean; a useful check
     is whether the best H1 candidate is a good match (expect negative
     delta) or a poor match (expect positive delta).
 
-    **Why this is not a model parameter:** Reference-vs-reference
+    Why this is not a model parameter: Reference-vs-reference
     training pairs (from `build_sequence_matrix()`) are nearly always
-    full-length alignments — same-species sequences share the same
+    full-length alignments: same-species sequences share the same
     amplicon and align completely. There is therefore no within-H1
     coverage variation in the training data from which to estimate a
     coverage-score relationship. The `1 / sqrt(coverage)` inflation is
     applied as a principled prior at inference time rather than a fitted
     parameter.
 
-    **How to use it:** Pass `score_likelihood_cov` to
+    How to use it: Pass `score_likelihood_cov` to
     `TaxaAssign::compute_posterior()` instead of `score_likelihood` to
     apply the adjustment. Compare the two columns to find queries where
     coverage meaningfully shifts the likelihood ratios:
@@ -607,9 +606,9 @@ quality control, see
 ## Acoustic and Image Workflows
 
 For acoustic (BirdNET) and image (SpeciesNet, Animl, iNaturalist CV)
-data, TaxaLikely works as a **post-classifier** layer. Users bring
+data, TaxaLikely works as a post-classifier layer. Users bring
 classifier output files that already contain candidates and confidence
-scores — TaxaLikely converts those scores to likelihoods and expands the
+scores. TaxaLikely converts those scores to likelihoods and expands the
 candidate set using TaxaExpect priors.
 
 There are two entry points depending on how many candidates the
@@ -646,13 +645,13 @@ likelihoods <- result$likelihoods
 
 ### Single best candidate with a score (e.g., BirdNET top-1)
 
-`assign_scores()` anchors H2/H3 likelihoods at the **median H1
-likelihood across all candidates for that observation**. With only one
+`assign_scores()` anchors H2/H3 likelihoods at the median H1
+likelihood across all candidates for that observation. With only one
 H1 row per observation (top-1 output), that median is always 1.0, so the
 confidence score has no effect and all three rows receive
 `score_likelihood = 1.0`.
 
-**Recommendation: keep BirdNET's full ranked output** (multiple
+Recommendation: keep BirdNET's full ranked output (multiple
 candidates per segment) and use `score_type = "probability"`. BirdNET's
 default output already includes ranked species with confidence scores:
 
@@ -679,11 +678,12 @@ hyp_df <- unreferenced_candidates(birdnet_df,
 likelihoods <- assign_scores(hyp_df, score_type = "probability")
 
 # Feed directly to TaxaAssign:
-posteriors <- TaxaAssign::compute_posterior(likelihoods, priors_df = my_priors)
+joined     <- TaxaAssign::join_priors(likelihoods, my_priors)
+posteriors <- TaxaAssign::compute_posterior(joined)
 ```
 
 If you only have top-1 BirdNET output and cannot recover the full ranked
-list, use `score_type = "none"` — posteriors will be proportional to
+list, use `score_type = "none"`: posteriors will be proportional to
 TaxaExpect priors alone (the confidence score is ignored).
 
 ### Common names in classifier output
@@ -711,15 +711,16 @@ source that yields a taxon name but no similarity score,
 builds a degenerate likelihood object that bypasses `TaxaMatch` and
 `evaluate_likelihoods()` entirely.
 
-Two placeholder rows are added per observation: - **H2
-(unreferenced_species)**, a placeholder for any species in the same
-genus not in the reference database - **H3 (unreferenced_genus)**, a
+Two placeholder rows are added per observation: - H2
+(unreferenced_species), a placeholder for any species in the same
+genus not in the reference database - H3 (unreferenced_genus), a
 placeholder for any genus in the same family not in the reference
 database
 
 All `score_likelihood` values are set to 1.0 (uniform), so posteriors
-are proportional to TaxaExpect priors. No `priors_df` is needed at this
-stage. Priors are joined later by `TaxaAssign::join_priors()`.
+are proportional to TaxaExpect priors once joined by
+`TaxaAssign::join_priors()` and passed to
+`TaxaAssign::compute_posterior()`.
 
 ``` r
 library(TaxaLikely)
@@ -745,7 +746,8 @@ likelihoods <- assign_scores(hyp_df, score_type = "none")
 
 # Three rows per observation (H1 + H2 + H3); all score_likelihood = 1.0.
 # Feed directly to TaxaAssign; posteriors will be proportional to priors:
-posteriors <- TaxaAssign::compute_posterior(likelihoods, priors_df = my_priors)
+joined     <- TaxaAssign::join_priors(likelihoods, my_priors)
+posteriors <- TaxaAssign::compute_posterior(joined)
 ```
 
 ### When to use this pathway
@@ -776,7 +778,7 @@ clear it directly.
 
 ## Vignettes
 
--   [Score to Likelihood](vignettes/score-to-likelihood.Rmd) -- full
+-   [Score to Likelihood](vignettes/score-to-likelihood.Rmd): full
     workflow
 
 ## Part of TaxaID
@@ -784,15 +786,15 @@ clear it directly.
 TaxaLikely receives match data from TaxaMatch and produces calibrated
 likelihoods for TaxaAssign (posterior computation).
 
-**Ecosystem:** TaxaMatch -\> **TaxaLikely** -\> TaxaAssign
+Ecosystem: TaxaMatch -\> TaxaLikely -\> TaxaAssign
 
 See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
 
-Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
-taxonomic assignment: U.S. Geological Survey software release,
+Lafferty, K.D., 2026, TaxaID: A modular R ecosystem for Bayesian
+taxonomic assignment, U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
 
 ## Software Requirements
@@ -815,7 +817,7 @@ Anscombe, F.J. (1948). The transformation of Poisson, binomial and
 negative-binomial data. *Biometrika*, 35(3/4), 246--254.
 
 Efron, B. and Morris, C. (1973). Stein's estimation rule and its
-competitors -- an empirical Bayes approach. *Journal of the American
+competitors: an empirical Bayes approach. *Journal of the American
 Statistical Association*, 68(341), 117--130.
 
 Gentleman, R.C., Carey, V.J., Bates, D.M., Bolstad, B., Dettling, M.,
