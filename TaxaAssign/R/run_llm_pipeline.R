@@ -176,6 +176,7 @@ run_llm_pipeline <- function(
   report_params = list(),
   verbose = TRUE
 ) {
+  .check_report_params(report_params, "run_llm_pipeline")
   if (missing(backbone_id)) {
     cli::cli_abort(c(
       "{.arg backbone_id} must be specified explicitly.",

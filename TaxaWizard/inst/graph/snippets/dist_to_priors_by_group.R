@@ -125,7 +125,7 @@ priors <- dplyr::bind_rows(kernel_priors_fit$priors, priors_undetected) |>
 
 message(sprintf(
   "Generated priors for %d resident taxa + %d undetected/dark-diversity row(s) across %d sampling group(s)",
-  sum(priors$prior_branch %in% c("kernel_estimated", "resident_observed"), na.rm = TRUE),
+  sum(priors$prior_branch %in% c("kernel_estimated"), na.rm = TRUE),
   sum(priors$prior_branch == "resident_undetected", na.rm = TRUE),
   dplyr::n_distinct(std_occurrences[[{{sampling_group_col}}]])
 ))
