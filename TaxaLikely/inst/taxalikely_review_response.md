@@ -19,10 +19,10 @@ the reasoning recorded for a future dedicated session).
 | `check_cross_genus_sampling_noise()` | `R/build_sequence.R` | How Much Does the Random Cross-Genus Draw Move the Estimate? | test-build.R |
 | `taxalikely_clear_cache()` | `R/taxalikely_clear_cache.R` | Report and clear TaxaLikely's on-disk cache | test-fetch-cache-eviction.R, test-taxalikely_clear_cache.R |
 
-25 new internal helper functions have also been added since the review (mostly in
-`fetch.R`'s reference-cache internals and `bimodality.R`; 2 of the 25 are
-`.resolve_taxa_taxids()`/`.compute_lineage_disagreements()`, see "Behavior changes to
-already-reviewed functions" below).
+26 new internal helper functions have also been added since the review (mostly in
+`fetch.R`'s reference-cache internals and `bimodality.R`; 3 of the 26 are
+`.resolve_taxa_taxids()`/`.compute_lineage_disagreements()`/`.lineage_terms_for_group()`,
+see "Behavior changes to already-reviewed functions" below).
 
 Not counted as new: `suggest_unreferenced_species()` (`R/suggest_unreferenced_species.R`)
 and its internal helpers were moved here from TaxaAssign, where the same code was already
@@ -934,3 +934,20 @@ on functions this document already covers above.
   same taxon can return genuinely different sequences. Two new internal
   helpers, `.resolve_taxa_taxids()` and `.compute_lineage_disagreements()`,
   extracted from the function body for unit-testability.
+- `.genus_taxid()` (`R/coverage.R`, consumed by `audit_barcode_coverage()`
+  and `audit_reference_coverage()`) had the same defect as the entry above:
+  `entrez_search(db="taxonomy", term='"Vertebrata"[Genus]')` genuinely
+  returns two ids (a red-algal genus and the vertebrate clade), and the old
+  code took `res$ids[1L]` with no disambiguation. Now delegates to
+  `TaxaTools::resolve_ncbi_taxid(rank=, lineage_terms=)`; new
+  `.lineage_terms_for_group()` builds `lineage_terms` for free from whatever
+  kingdom/phylum/class/order/family columns the caller's own `match_df`/
+  `reference_df` already carries for that group -- no new parameter needed
+  on either public function. `audit_reference_coverage()`'s own inline
+  duplicate of the identical bug was consolidated onto `.genus_taxid()` too.
+  Deliberately NOT wired: `suggest_unreferenced_species()`'s per-species
+  `.count_barcode_seqs()` and the `priority_taxa` path in
+  `fetch_ncbi_reference_sequences()` -- both operate on species binomials
+  (a far rarer collision risk than bare genus names) and would roughly
+  double NCBI query volume per candidate; recorded as a deliberate scope
+  decision, not an oversight.

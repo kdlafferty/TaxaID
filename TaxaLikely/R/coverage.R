@@ -173,16 +173,16 @@ audit_reference_coverage <- function(reference_df,
 
     tryCatch(
       {
-        # Step 1: resolve genus name to NCBI taxonomy UID
-        # Normalise hyphens: "Pseudo-nitzschia"[Genus] returns 0 hits; space-separated works.
-        uid_res <- rentrez::entrez_search(
-          db   = "taxonomy",
-          term = sprintf('"%s"[Genus]', gsub("-", " ", grp))
-        )
+        # Step 1: resolve genus name to a disambiguated NCBI taxonomy UID.
+        # .genus_taxid() (not a raw entrez_search()) so a name colliding
+        # with an unrelated NCBI lineage doesn't silently resolve to
+        # whichever node NCBI happens to list first -- see that function's
+        # own header comment. lineage_terms comes from whatever higher-rank
+        # columns reference_df already carries beyond target_rank/species.
+        lineage_terms <- .lineage_terms_for_group(reference_df, target_rank, grp)
+        genus_uid <- .genus_taxid(grp, rank = target_rank, lineage_terms = lineage_terms)
 
-        if (length(uid_res$ids) > 0L) {
-          genus_uid <- uid_res$ids[1L]
-
+        if (!is.na(genus_uid)) {
           # Step 2: find all species-rank taxa in this genus's NCBI subtree
           sp_res <- rentrez::entrez_search(
             db     = "taxonomy",
@@ -455,20 +455,53 @@ audit_barcode_coverage <- function(match_df,
 # INTERNAL HELPERS -- reverse-search audit implementation
 # ==============================================================================
 
-# Resolve NCBI taxonomy UID for a genus name. Returns NA_character_ on failure.
+# Resolve NCBI taxonomy UID for a genus name. Returns NA_character_ on
+# failure OR on an unresolved homonym -- a genus name is not a key, NCBI can
+# hold several nodes sharing one name in unrelated lineages (confirmed live:
+# `"Vertebrata"[Genus]` returns 2 ids, a red-algal genus AND the vertebrate
+# clade; `"Lobophora"[Genus]` also returns 2, a moth genus and a brown
+# alga), and the old `res$ids[1L]` here picked whichever NCBI listed first
+# with no disambiguation. Delegates to TaxaTools::resolve_ncbi_taxid(),
+# which tries `rank` first (when supplied) and then containment in
+# `lineage_terms` (the caller's own known higher-rank names for `grp`, e.g.
+# its family/class/phylum) -- an ambiguous or not-found result becomes
+# NA_character_ either way, matching every existing caller's contract.
 #' @noRd
-.genus_taxid <- function(grp) {
+.genus_taxid <- function(grp, rank = NULL, lineage_terms = NULL) {
   search_grp <- gsub("-", " ", grp) # handle hyphenated genera (e.g. Pseudo-nitzschia)
-  tryCatch(
-    {
-      res <- rentrez::entrez_search(
-        db = "taxonomy",
-        term = sprintf('"%s"[Genus]', search_grp)
-      )
-      if (length(res$ids) == 0L) NA_character_ else res$ids[1L]
-    },
-    error = function(e) NA_character_
+  res <- tryCatch(
+    TaxaTools::resolve_ncbi_taxid(search_grp, rank = rank, lineage_terms = lineage_terms),
+    error = function(e) list(taxid = NA_character_)
   )
+  res$taxid
+}
+
+# Extract the caller's own known higher-rank lineage terms for one group --
+# whatever standard rank columns (other than `target_rank` itself) the
+# caller's own data already carries, e.g. family/order/class/phylum/kingdom.
+# This is exactly the lineage a real homonym would disagree with, and it
+# costs no extra API call: the caller already has it. Returns character(0)
+# when no such column is present or the group has no matching rows -- a
+# genus-taxid lookup with no lineage to check against still tries `rank`
+# alone, per resolve_ncbi_taxid()'s own documented behaviour.
+#' @noRd
+.lineage_terms_for_group <- function(df, target_rank, grp) {
+  if (!target_rank %in% names(df)) {
+    return(character(0L))
+  }
+  rank_cols <- setdiff(
+    intersect(c("kingdom", "phylum", "class", "order", "family", "genus"), names(df)),
+    target_rank
+  )
+  if (length(rank_cols) == 0L) {
+    return(character(0L))
+  }
+  rows <- df[!is.na(df[[target_rank]]) & df[[target_rank]] == grp, rank_cols, drop = FALSE]
+  if (nrow(rows) == 0L) {
+    return(character(0L))
+  }
+  terms <- unique(unlist(rows, use.names = FALSE))
+  terms[!is.na(terms) & nzchar(trimws(terms))]
 }
 
 # "Reverse" barcode check: reverse in the sense of which direction the
@@ -678,8 +711,13 @@ audit_barcode_coverage <- function(match_df,
     error = function(e) character(0L)
   )
 
-  # Get NCBI genus UID (needed for reverse barcode check in all paths)
-  genus_uid <- .genus_taxid(grp)
+  # Get NCBI genus UID (needed for reverse barcode check in all paths).
+  # lineage_terms comes from match_df's own declared taxonomy for this
+  # group -- whatever the caller already knows about it -- so a name
+  # colliding with an unrelated NCBI lineage doesn't get silently resolved
+  # to the wrong one (see .genus_taxid()'s own header comment).
+  lineage_terms <- .lineage_terms_for_group(match_df, target_rank, grp)
+  genus_uid <- .genus_taxid(grp, rank = target_rank, lineage_terms = lineage_terms)
   Sys.sleep(.ncbi_delay())
 
   # Species enumeration
