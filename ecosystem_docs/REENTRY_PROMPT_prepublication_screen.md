@@ -1202,6 +1202,26 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   `decisions` and `theta_surface_at` present); TaxaWizard 1107/0
   against the installed siblings; three smoke tests OK. Installed
   library == main for every package.
+  **Four findings from the workflow chat's wiring of the new APIs
+  (2026-09-22 evening), acted on**: (1) `check_lineage_agreement()` was
+  DEFEATED by a shared root: "agrees" on any shared term, so full
+  NCBI-style lineages agreed on "Eukaryota" for a red alga and a bat.
+  FIXED: an `ignore` argument (roots and kingdom-level groups by
+  default; `character(0)` restores the old rule) and a section stating
+  that a disagreement is a review candidate, not a filter. (2)
+  Family-level disagreement cannot separate a homonym from a benign
+  revision (~12 of 78 on the real COI set): documented in the same
+  section. (3) A homonym can present as ZERO results, invisible to any
+  lineage check: `fetch_ncbi_reference_sequences()` now names the
+  requested taxa that returned nothing (message + attribute
+  `taxa_without_sequences`, also on the all-empty early return). (4)
+  `max_per_genus` drops whole species and biases the between-species
+  terms; documented, `max_per_species` preferred. The chat's own first
+  wiring passed data frames and the error was swallowed by its tryCatch;
+  the type error now says what to pass. TaxaTools 1260/0, TaxaLikely
+  1371/0, check 0/0/0 both; merged to main. Installed TaxaTools and
+  TaxaLikely are behind main by this change; reinstall after the
+  workflow chat's COI run lands, then regenerate the pack.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
