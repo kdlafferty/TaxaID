@@ -1119,6 +1119,16 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   `suggest_unreferenced_species()` not wired to the resolver. After the
   rebuild: regenerate `llm_prompts/` (CONTEXT_TaxaTools and
   CONTEXT_TaxaLikely embed the changed signatures).
+  **LIBRARY REBUILT 2026-09-22 10:38 local from main `7a1467b`**: pre-flight
+  clean (no R process, no open handle, worktree clean); all nine installed
+  in dependency order, Built stamps 17:38:03-17:38:26 UTC, export counts
+  58/30/31/31/16/18/15/11/9; prompt pack regenerated from it and
+  committed; TaxaWizard 1107/0 against the installed siblings; the three
+  offline smoke tests OK from the installed copies. Both chats cleared:
+  the workflow chat re-runs 12S clean (~40 min) and diffs it against the
+  quarantined branch-build baseline; the homonym thread may install
+  again. The void run finished NORMALLY with zero errors: the hazard is
+  that a reinstall under a run does not crash it.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
