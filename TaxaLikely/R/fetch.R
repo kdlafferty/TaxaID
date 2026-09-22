@@ -1082,7 +1082,12 @@ utils::globalVariables(c(
 #'   NULL disables species-level capping.
 #' @param max_per_genus Integer or NULL (default NULL).
 #'   Maximum sequences per genus after species-level capping.
-#'   NULL disables genus-level capping.
+#'   NULL disables genus-level capping. The cap samples across the genus, so
+#'   a capped genus can lose whole species rather than thinning each one,
+#'   and the likelihood model's between-species terms are fitted on what
+#'   remains. Prefer `max_per_species`, which never drops a species and
+#'   matches [build_sequence_matrix()]'s own per-taxon cap; use
+#'   `max_per_genus` only where losing whole species is acceptable.
 #' @param priority_taxa Character vector or NULL (default NULL).
 #'   Species names that should be fully represented in the reference.
 #'   Typically the species from the user's match data. When total NCBI hits
@@ -1249,6 +1254,10 @@ utils::globalVariables(c(
 #'       to whatever `rank_system` itself requests) so the lineage-agreement
 #'       guard has data to check without a second taxonomy fetch.}
 #'   }
+#'   Carries a `taxa_without_sequences` attribute: the requested taxa for
+#'   which nothing came back. Check it after every fetch: a name that
+#'   resolves to the wrong NCBI node can return nothing, and an empty result
+#'   is otherwise indistinguishable from a taxon with no barcode.
 #'   Also carries a `lineage_disagreements` attribute (always present when
 #'   `taxa_lineage` was supplied; absent otherwise) -- a data frame of every
 #'   row whose returned lineage shared nothing with its queried taxon's
@@ -1605,9 +1614,11 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # very class of silent loss this policy work exists to stop.
   if (total == 0L && !any(is_cached)) {
     message("No sequences found. Check taxon names and barcode_term.")
-    return(.with_count_failures(
+    empty <- .with_count_failures(
       .empty_reference_df(rank_system, include_location), failed_taxa
-    ))
+    )
+    attr(empty, "taxa_without_sequences") <- taxa
+    return(empty)
   }
 
   # --- Priority species + proportional subsampling when over budget --------
@@ -2200,6 +2211,29 @@ fetch_ncbi_reference_sequences <- function(taxa,
       reference_df$lat <- NA_real_
       reference_df$lon <- NA_real_
       reference_df$country <- NA_character_
+    }
+  }
+
+  # --- Requested taxa that returned nothing ----------------------------------
+  # A name that resolves to the wrong NCBI node can legitimately return no
+  # records, and an empty result reads downstream as "this taxon has no
+  # barcode" rather than "this query went to the wrong organism". No lineage
+  # check can see it, because there is nothing to compare. So the absent
+  # taxa are named here, once, and carried on the result.
+  if ("queried_taxon" %in% names(reference_df)) {
+    taxa_without <- setdiff(taxa, unique(reference_df$queried_taxon))
+    attr(reference_df, "taxa_without_sequences") <- taxa_without
+    if (length(taxa_without) > 0L) {
+      shown <- utils::head(taxa_without, 8L)
+      message(sprintf(
+        paste0(
+          "  %d of %d requested taxa returned no sequences: %s%s. A name that ",
+          "resolves to the wrong NCBI node can return nothing; see ",
+          "attr(reference_df, \"taxa_without_sequences\") and `taxa_lineage`."
+        ),
+        length(taxa_without), length(taxa), paste(shown, collapse = ", "),
+        if (length(taxa_without) > 8L) sprintf(" (+%d more)", length(taxa_without) - 8L) else ""
+      ))
     }
   }
 
