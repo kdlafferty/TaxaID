@@ -1195,6 +1195,13 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   behind main too: the next reinstall window covers TaxaTools,
   TaxaLikely, TaxaExpect and the pack (CONTEXT_TaxaExpect embeds the
   old signature).
+  **LIBRARY REBUILT AGAIN 2026-09-22 14:05 local from main `f5a01c0`**
+  (maintainer quit both RStudio sessions; pre-flight clean): all nine,
+  Built 21:05:33-21:05:55 UTC, TaxaExpect now 17 exports; pack
+  regenerated (`c7d5846`, pushed; `alpha_by_n_eff` gone from it,
+  `decisions` and `theta_surface_at` present); TaxaWizard 1107/0
+  against the installed siblings; three smoke tests OK. Installed
+  library == main for every package.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
