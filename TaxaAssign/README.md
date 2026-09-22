@@ -15,31 +15,32 @@ TaxaAssign makes a consensus taxonomic assignment for the several
 hypothesized matches to each observation. It uses Bayes' theorem to
 multiply the likelihood that a match score corresponds to a particular
 species (from TaxaLikely) by the prior probability that the species
-would be selected at random from a sample of similar species at that
-site and habitat (from TaxaExpect). After normalization and Monte Carlo
-simulation, each candidate receives a posterior probability. If a single
-candidate has strong support, it is assigned as the consensus taxon;
-otherwise, a coarser rank (genus, family, etc.) is assigned via lowest
-common ancestor. All competing hypotheses and their probabilities are
-retained in the output. The user can also update priors iteratively: if
-one observation strongly supports species A, that evidence can sharpen
-the prior for species A in other observations from the same sample.
+would be selected at random from a sample (reports) of similar species
+at that site and habitat (from TaxaExpect). After normalization and
+Monte Carlo simulation, each candidate receives a posterior probability.
+If a single candidate has strong support, it is assigned as the
+consensus taxon; otherwise, a coarser rank (genus, family, etc.) is
+assigned via lowest common ancestor. All competing hypotheses and their
+probabilities are retained in the output. The user can also update
+priors iteratively: if one observation strongly supports species A, that
+evidence can sharpen the prior for species A in other observations from
+the same sample.
 
 Two workflows:
 
-\- **Full Bayesian** -- TaxaLikely's trained likelihood model +
-TaxaExpect's occurrence-modelled priors. The recommended pathway for any
-real analysis: publication-quality, and every one of this ecosystem's
-real production workflows uses it exclusively.
+**Full Bayesian** TaxaLikely's trained likelihood model + TaxaExpect's
+occurrence-modelled priors. The recommended pathway for any real
+analysis: publication-quality, and every one of this ecosystem's real
+production workflows uses it exclusively.
 
-\- **LLM-shortcut** -- an approximate *stand-in* for the pathway above,
+**LLM-shortcut** an approximate *stand-in* for the pathway above,
 substituting an exponential score-weighting proxy for TaxaLikely's
 modeled likelihood and an LLM's biogeographic judgment for TaxaExpect's
-modeled occurrence prior. It exists for exploratory analysis when a
-trained TaxaLikely model or TaxaExpect priors aren't available yet (or
-as a quick comparison against the Full Bayesian result on data you
-already have both for). This fast path is better than relying on scores,
-but **not** the statistically defendable outcome that most users want.
+modeled occurrence prior. It exists for rapid analysis when a trained
+TaxaLikely model or TaxaExpect priors aren't available yet (or as a
+quick comparison against the Full Bayesian result on data you already
+have both for). This fast path is better than relying on scores, but
+**not** the statistically defendable outcome that most users want.
 
 ## Installation
 
@@ -157,13 +158,14 @@ LLM-estimated biogeographic prior).
     species pool and could plausibly occur at a site given its
     environmental conditions, but have not actually been observed there.
     TaxaExpect computes per-species Tier 3 ("undetected species")
-    estimates using this concept -- see TaxaExpect's README for the full
+    estimates using this concept. See TaxaExpect's README for the full
     occurrence-modeling mechanism. For species with no prior row from
     TaxaExpect at all, `join_priors()` builds its own fallback from
-    those Tier 3 estimates -- site-level or global averaging, or (with
-    `singleton_taxonomy`) mass-conserving hierarchical group priors --
-    preventing false negatives from incomplete occurrence data. See
-    `join_priors()`'s own documentation for the full mechanism.
+    those Tier 3 estimates, site-level or global averaging, or (with
+    `singleton_taxonomy`) mass-conserving hierarchical group priors,
+    preventing false negatives from incomplete occurrence data (and
+    allowing novel species discovery). See `join_priors()`'s own
+    documentation for the full mechanism.
 
 For the full statistical derivation, assumptions, and references, see
 [`inst/TaxaAssign_supplemental_methods.md`](inst/TaxaAssign_supplemental_methods.md).

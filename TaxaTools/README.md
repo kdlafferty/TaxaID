@@ -22,29 +22,29 @@ downstream package needs solved consistently:
     species differently, encode binomials as `Genus_epithet`, attach
     author citations, or use a synonym one backbone has since retired.
     For these reasons, `verify_taxon_names()`, `clean_taxon_names()`,
-    and `change_backbone()`'s companion functions reconcile
-    names against a chosen taxonomic backbone (GBIF; NCBI, the National
-    Center for Biotechnology Information, U.S. National Library of
-    Medicine, National Institutes of Health, Bethesda, Maryland; WoRMS,
-    the World Register of Marine Species, Flanders Marine Institute
-    (VLIZ), Ostend, Belgium; Catalogue of Life, hosted by Naturalis
-    Biodiversity Center, Leiden, Netherlands; or ITIS, the Integrated
-    Taxonomic Information System). This makes it possible to join
-    species lists from different source (such as when combing priors and
-    likelihoods to generate posteriors). Original names can be kept to
-    maintain connections with the source data.
--   **Every LLM-calling function in the ecosystem needs one interface,
-    not four.** TaxaHabitat's habitat assignment, TaxaAssign's
-    LLM-shortcut pipeline, and TaxaFlag's expert review all submit
-    custom prompts to a language model and none of them should have to
-    know which provider is configured. `call_api()` dispatches to
-    Anthropic Claude, Google Gemini, OpenAI, Azure OpenAI, or a local
-    Ollama model behind one signature, auto-detected from whichever API key is
-    present in `~/.Renviron`. Because these LLMs are constantly
-    evolving, this aspect of the package is designed to be neutral with
-    respect to model names as much as possible, but with the advent of
-    new LLM models, the user may need to tailor these functions to meet
-    new opportunities.
+    and `change_backbone()`'s companion functions reconcile names
+    against a chosen taxonomic backbone (GBIF; NCBI, the National Center
+    for Biotechnology Information, U.S. National Library of Medicine,
+    National Institutes of Health, Bethesda, Maryland; WoRMS, the World
+    Register of Marine Species, Flanders Marine Institute (VLIZ),
+    Ostend, Belgium; Catalogue of Life, hosted by Naturalis Biodiversity
+    Center, Leiden, Netherlands; or ITIS, the Integrated Taxonomic
+    Information System). This makes it possible to join species lists
+    from different source (such as when combing priors and likelihoods
+    to generate posteriors). Original names can be kept to maintain
+    connections with the source data.
+-   **Every LLM-calling function in the ecosystem uses one interface.**
+    TaxaHabitat's habitat assignment, TaxaAssign's LLM-shortcut
+    pipeline, and TaxaFlag's expert review all submit custom prompts to
+    a language model and none of them should have to know which provider
+    is configured. `call_api()` dispatches to Anthropic Claude, Google
+    Gemini, OpenAI, Azure OpenAI, or a local Ollama model behind one
+    signature, auto-detected from whichever API key is present in
+    `~/.Renviron`. Because these LLMs are constantly evolving, this
+    aspect of the package is designed to be neutral with respect to
+    model names as much as possible, but with the advent of new LLM
+    models, the user may need to tailor these functions to meet new
+    opportunities.
 -   **Several functions are reused and repackaged in different
     downstream packages.** Barcode/primer registries, common-name
     lookup, on-disk cache management, report-text drafting, and a shared
@@ -57,7 +57,7 @@ downstream package needs solved consistently:
 ### Taxonomy verification and cleaning
 
 | Function | Purpose |
-|---------------------------|------------------------------------------------------------|
+|-----------------------|-------------------------------------------------|
 | `verify_taxon_names()` | Verify names against a taxonomic backbone via the Global Names Verifier API (batched). Returns `matched_name`, `matched_rank`, `is_synonym`, `classification_path`, `score`. Prefers a backbone's currently-accepted name over a retired synonym. |
 | `clean_taxon_names()` | Normalise, deduplicate, and filter a character vector of names -- drops NA, non-capitalized, abbreviated, and bracket-artefact entries; converts underscore-encoded binomials (`Genus_epithet`, common in Jonah Ventures/SILVA output) to space-separated form. |
 | `create_taxon_names()` | Add `taxon_name`/`taxon_name_rank` columns to a data frame from separate rank columns (most-specific non-NA rank wins). |
@@ -72,7 +72,7 @@ downstream package needs solved consistently:
 ### LLM provider interface
 
 | Function | Purpose |
-|---------------------------|------------------------------------------------------------|
+|-----------------------|-------------------------------------------------|
 | `call_api()` | Generic dispatcher: one prompt string (plus optional images) to whichever provider is configured. Handles Anthropic, Gemini, and any OpenAI-compatible endpoint (OpenAI, Ollama). Attaches token-usage and provider/model attributes to the response. |
 | `call_anthropic_api()`, `call_gemini_api()`, `call_openai_api()`, `call_azure_openai_api()`, `call_ollama_api()` | Thin provider-specific wrappers around `call_api()`, kept for direct use. |
 | `prompt_api()` | Multi-chunk prompt dispatcher; default `llm_fn` read from `getOption("TaxaID.llm_fn")`. |
@@ -88,7 +88,7 @@ downstream function needs its own provider-detection logic.
 ### Rank and barcode utilities
 
 | Function | Purpose |
-|---------------------------|------------------------------------------------------------|
+|-----------------------|-------------------------------------------------|
 | `standard_ranks` / `extended_ranks` | Canonical rank vectors (kingdom through species; extended adds subspecies/variety/form). |
 | `detect_ranks()` | Auto-detect which rank columns exist in a data frame. |
 | `barcode_length_defaults` | Named list of barcode markers (12S/16S/COI/cytb/ITS/rbcL/matK/trnL/...) to expected amplicon-length ranges. |
@@ -100,7 +100,7 @@ downstream function needs its own provider-detection logic.
 ### Common names and LLM text generation
 
 | Function | Purpose |
-|---------------------------|------------------------------------------------------------|
+|-----------------------|-------------------------------------------------|
 | `common_to_scientific()` | Convert common names to scientific names via LLM, with optional backbone verification. |
 | `scientific_to_common()` | Convert scientific names to English common names via a taxonomic backbone (GBIF or ITIS) with LLM fallback; `location` biases toward regionally appropriate names. `cache_dir` keeps one small `.rds` per name so a re-run asks nothing twice; `verbose` prints a summary and one line per LLM batch. |
 | `taxatools_clear_cache()` | Report and prune a `scientific_to_common(cache_dir = )` directory (built on `list_cache_files()`/`report_and_clear_cache()`). |
@@ -111,14 +111,14 @@ downstream function needs its own provider-detection logic.
 ### Cache management and interactive gadget
 
 | Function | Purpose |
-|---------------------------|------------------------------------------------------------|
+|-----------------------|-------------------------------------------------|
 | `list_cache_files()` / `report_and_clear_cache()` | Shared engine behind a downstream package's own `<pkg>_clear_cache()` helper (e.g. `TaxaFetch::taxafetch_clear_cache()`, `TaxaLikely::taxalikely_clear_cache()`) -- scans a cache directory, reports age/size, and deletes or dry-run-reports what's stale. |
 | `define_search_polygon()` | Interactive Shiny/leaflet gadget: drag corner markers to define a custom search polygon, returned as a WKT string. Shared by `TaxaFetch`'s search-area fetches and `TaxaMatch::group_observations_by_bbox()`'s spatial grouping. |
 
 ### Build provenance
 
 | Function | Purpose |
-|---------------------------|------------------------------------------------------------|
+|-----------------------|-------------------------------------------------|
 | `taxaid_build_manifest()` | Version, `Built` timestamp and a hash of the installed code for each TaxaID package. |
 | `write_taxaid_manifest()` | Record that manifest beside a run's outputs. |
 | `check_taxaid_manifest()` | Compare the current library against a recorded manifest; errors by default. |
@@ -132,9 +132,9 @@ different code.
 The signal is a **hash of the installed code**, not the `Built`
 timestamp. Rebuilding identical source moves `Built` and changes nothing
 that matters, so a `Built`-based check would fire on every harmless
-reinstall -- and a guard that cries wolf is a guard someone switches off.
-Internals are hashed as well as exports, because a behaviour change need
-not touch an exported signature.
+reinstall -- and a guard that cries wolf is a guard someone switches
+off. Internals are hashed as well as exports, because a behaviour change
+need not touch an exported signature.
 
 A package named in the manifest but **missing** from the library is
 reported first, and packages that are not installed are kept as rows
@@ -159,8 +159,9 @@ devtools::install("path/to/TaxaTools")
 ## API Setup
 
 Most of TaxaTools works with no key at all (`clean_taxon_names()`,
-`create_taxon_names()`, backbone verification via the public Global Names
-Verifier API, barcode/rank utilities). Two categories of function need one:
+`create_taxon_names()`, backbone verification via the public Global
+Names Verifier API, barcode/rank utilities). Two categories of function
+need one:
 
 -   **LLM functions** (`call_api()` and anything built on it --
     `common_to_scientific()`, `draft_methods_text()`, and every
@@ -169,8 +170,8 @@ Verifier API, barcode/rank utilities). Two categories of function need one:
     Google Gemini (`GEMINI_API_KEY`, has a free tier), OpenAI
     (`OPENAI_API_KEY`), Azure OpenAI (`AZURE_OPENAI_API_KEY`, DOI
     employees only), or none at all if you run a local Ollama model.
--   **NCBI-backed functions** (`verify_taxon_names(backbone_id = 4)`, and
-    downstream in TaxaLikely/TaxaMatch) work without a key but raise
+-   **NCBI-backed functions** (`verify_taxon_names(backbone_id = 4)`,
+    and downstream in TaxaLikely/TaxaMatch) work without a key but raise
     NCBI's rate limit from 3 to 10 requests/second with one
     (`ENTREZ_KEY`).
 
@@ -190,9 +191,9 @@ startup. On `library(TaxaTools)`, `.onAttach()` scans for whichever LLM
 key(s) it finds and prints which provider was auto-detected; verify with
 `getOption("TaxaID.llm_fn")`. See the [API Setup
 vignette](vignettes/api-setup.Rmd) for the complete key list used across
-the whole TaxaID ecosystem (GBIF, OpenAlex, etc.), where to get each one,
-and troubleshooting for common errors (401/429, truncated responses, key
-not detected).
+the whole TaxaID ecosystem (GBIF, OpenAlex, etc.), where to get each
+one, and troubleshooting for common errors (401/429, truncated
+responses, key not detected).
 
 ## Quick Start
 
@@ -213,17 +214,18 @@ verified <- verify_taxon_names(cleaned, backbone_id = 11)  # GBIF
 ### Verify the same name against different taxonomic backbones
 
 `backbone_id` selects which authority resolves a name. Backbones don't
-always agree -- a name can be a live species in one and a retired synonym
-in another (`is_synonym`/`matched_rank` will differ), which is exactly why
-downstream packages let the caller choose rather than hardcoding one:
+always agree -- a name can be a live species in one and a retired
+synonym in another (`is_synonym`/`matched_rank` will differ), which is
+exactly why downstream packages let the caller choose rather than
+hardcoding one:
 
-| `backbone_id` | Backbone |
-|----|-----------------------------------|
-| 1 | Catalogue of Life |
-| 3 | ITIS (Integrated Taxonomic Information System) |
-| 4 | NCBI |
-| 9 | WoRMS (World Register of Marine Species) |
-| 11 | GBIF |
+| `backbone_id` | Backbone                                       |
+|---------------|------------------------------------------------|
+| 1             | Catalogue of Life                              |
+| 3             | ITIS (Integrated Taxonomic Information System) |
+| 4             | NCBI                                           |
+| 9             | WoRMS (World Register of Marine Species)       |
+| 11            | GBIF                                           |
 
 ``` r
 # Same query, five backbones -- compare matched_name/is_synonym across them
@@ -236,7 +238,7 @@ lapply(backbones, function(id) {
 })
 ```
 
-A mismatch here isn't a bug in `verify_taxon_names()` -- it's telling you
+A mismatch here isn't a bug in `verify_taxon_names()`, it's telling you
 the backbones themselves disagree, which matters when joining data that
 was verified against different ones (e.g. sequence references verified
 against NCBI, occurrence records verified against GBIF).

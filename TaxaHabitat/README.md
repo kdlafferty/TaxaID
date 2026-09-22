@@ -26,7 +26,7 @@ knowledgeable user assigns each taxon to its habitat. When the species
 list is long, LLMs can do a reasonable job of classifying species into
 basic habitat categories. As with any LLM output, users should review
 the results. `flag_habitat_inconsistencies()` provides an interactive
-map that makes errant classifications easy to spot and correct.
+map that makes errant classifications easier to spot and correct.
 
 The interactive map makes it easier to review and proof occupancy data.
 Even well-curated data like GBIF (Global Biodiversity Information
@@ -38,9 +38,10 @@ points for removal before model building begins. For instance, a point
 on the map in the middle of the ocean labeled "Terrestrial", is likely
 an error in habitat assignment that would weaken a species distribution
 model. This tool makes it possible to delete that point or reassign it
-to "Marine". TaxaHabitat thus can be a standalone database QAQC for
-biodiversity databases and helpful for creating species distribution
-models from occupancy data.
+to "Marine". And the selection tool means this can be done in bulk.
+TaxaHabitat thus can be a standalone database QAQC for biodiversity
+databases and helpful for creating species distribution models from
+occupancy data.
 
 ## Habitat Schemes
 
@@ -123,8 +124,8 @@ classified under the same scheme is never re-asked) -
 `taxahabitat_clear_cache()` -- report or prune that cache -
 `build_habitat_prompt()` -- create LLM prompt for species habitat
 weights - `parse_hierarchical_habitat_response()` -- parse LLM output to
-numeric weights - `assign_habitat_biological()` -- assign site habitat from
-species composition - `consensus_habitat()` -- assemblage-level
+numeric weights - `assign_habitat_biological()` -- assign site habitat
+from species composition - `consensus_habitat()` -- assemblage-level
 consensus with ecoregion extraction
 
 **Custom schemes:** - `build_iucn_scheme()` -- generate IUCN Level 1
@@ -146,15 +147,16 @@ Leaflet map for manual review
 Rather than assign each species to a single habitat, TaxaHabitat asks
 the LLM to distribute habitat affinity as continuous weights across all
 habitat categories (e.g., Marine 0.85, Freshwater 0.15, Terrestrial
-0.0), summing to 1.0 per species. This captures habitat generalism -- an
-estuarine fish contributes partial signal to both Marine and Freshwater
--- and avoids the information loss of a categorical assignment.
+0.0), summing to 1.0 per species. This captures habitat generalism, an
+estuarine fish contributes partial signal to both Marine and Freshwater,
+and avoids the information loss of a categorical assignment.
 
-Prompts are constructed by `build_habitat_prompt()` and sent to an LLM
-provider via TaxaTools. For large species lists, taxa are chunked
-(default 60 per call) into self-contained prompts. The LLM returns CSV
-with numeric weights per habitat plus an `Other_weight` column and
-free-text `habitat_best_guess` for species that do not fit the scheme.
+Prompts are constructed by `build_habitat_prompt()` (which inputs
+habitat types) and sent to an LLM provider via TaxaTools. For large
+species lists, taxa are chunked (default 60 per call) into
+self-contained prompts. The LLM returns a CSV with numeric weights per
+habitat plus an `Other_weight` column and free-text `habitat_best_guess`
+for species that do not fit the scheme.
 `parse_hierarchical_habitat_response()` validates that row sums are
 within tolerance (warns if deviation \> 0.05 from 1.0) and folds
 unrecognized habitat columns into `Other_weight`.
@@ -162,18 +164,17 @@ unrecognized habitat columns into `Other_weight`.
 ### Site Habitat Assignment
 
 `assign_habitat_biological()` assigns a habitat to each sampling
-location based on the species observed there. For each point, the
-function joins occurrence records to species-level habitat weights, sums
-weight vectors across species, normalizes to proportions, and assigns
-the habitat with the highest proportion if it exceeds a threshold
-(default 0.3). The threshold is lower than a simple majority (0.5)
-because generalist species spread weight across multiple habitats,
+[location]{.underline} based on the species observed there. For each
+point, the function joins occurrence records to species-level habitat
+weights, sums weight vectors across species, normalizes to proportions,
+and assigns the habitat with the highest proportion if it exceeds a
+threshold (default 0.3). The threshold is lower than a simple majority
+(0.5) because generalist species spread weight across multiple habitats,
 diluting any single category.
 
 By default, each species counts equally regardless of how many times it
-was recorded at a point (`weight_by_abundance = FALSE`). This is because
-I assume occurrence record counts reflect sampling effort more than
-habitat.
+was recorded at a point (`weight_by_abundance = FALSE`). This assumes
+occurrence record counts reflect sampling effort more than habitat.
 
 ### Assemblage-Level Consensus
 
@@ -231,51 +232,24 @@ misclassified point without leaving the map.
 ### Reviewing at scale
 
 Real selection boundaries follow coastlines, lake shores and basins, so
-the draw toolbar offers a **polygon** as well as a rectangle. Both select
-every visible point of the current view inside the shape; in Flag mode
-the shape applies immediately, in Reassign Habitat mode it selects and
-**Confirm** applies. Each bulk action is one entry in the undo history,
-so **Undo Last** reverses a whole selection in a single click.
+the draw toolbar offers a **polygon** as well as a rectangle. Both
+select every visible point of the current view inside the shape; in Flag
+mode the shape applies immediately, in Reassign Habitat mode it selects
+and **Confirm** applies. Each bulk action is one entry in the undo
+history, so **Undo Last** reverses a whole selection in a single click.
 
-Selection size is **gated, never truncated**. At or below
-`bulk_confirm_threshold` (default 10,000) an action applies straight
-away; above it a dialog reports the exact count and requires an explicit
-Apply; above `bulk_max` (default 100,000) it is refused. A partially
-applied selection would leave the un-applied points scattered through the
-drawn shape and drawn identically to points that were never selected --
-invisible to the reviewer and indistinguishable in the output.
+At or below `bulk_confirm_threshold` (default 10,000) an action applies
+straight away; above it a dialog reports the exact count and requires an
+explicit Apply; above `bulk_max` (default 100,000) it is refused to help
+avoid crashing.
 
 Markers render to a canvas rather than one SVG node each, which is what
 makes a large flagged set openable at all.
 
-### Unassigned points are grouped by what is in contention
-
-When the input carries a `"habitat_proportions"` attribute -- which
-`assign_habitat_biological()` attaches and `flag_habitat_inconsistencies()`
-preserves -- a point whose consensus reached no verdict is not left as a
-single undifferentiated **Unknown**. It is labelled with the habitats
-actually in contention, `"Estuarine | Freshwater | Marine"`, and that
-label is a real category: its own colour, its own entry in the Habitats
-filter, and therefore selectable as a **group**.
-
-That turns the review loop from one click per point into: filter to one
-signature, draw a polygon over a region, reassign the group to whichever
-habitat the location implies. Location disambiguates what the assemblage
-cannot. On a 6,523-point PtConception extract this turns 646 "Unknown"
-points into 12 named groups, the largest holding 248.
-
-The label is a **display category only** -- `main_habitat` stays `NA` in
-the returned data until the point is actually reassigned.
-
-Each Habitats filter entry also shows how many points it currently holds
-in the view on screen, so a category's size is visible before it is
-ticked; one emptied by reassignment is greyed and struck through rather
-than removed, so the list does not jump and the evidence that the group
-existed is preserved.
-
-The Reassign dropdown offers only the habitats that point actually
-hypothesises, ordered by proportion and labelled with it, with a **Show
-all habitats** escape.
+Uncertain points are displayed (and counted) according to their
+competing habitats, e.g., `"Estuarine | Freshwater"`, and therefore
+selectable as a group, which makes habitat assignment to one of those
+habitats more efficient.
 
 ## LLM Integration
 

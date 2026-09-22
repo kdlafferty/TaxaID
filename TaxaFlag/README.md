@@ -12,8 +12,9 @@ anomalous detections in taxonomic assignment results using data-driven
 and expert-review approaches.
 
 Taxonomic assignment matches observations to identifications, but
-samples often contain artifacts and uncertainties. TaxaFlag provides
-three independent post-hoc checks:
+samples often contain artifacts and uncertainties. Evaluating thousands
+of lines by eye is tedious, so TaxaFlag provides three independent
+"expert-level" post-hoc checks:
 
 -   **Contamination screening** compares taxon detection counts against
     control samples (lab blanks, field blanks, positive controls). For
@@ -23,10 +24,11 @@ three independent post-hoc checks:
 -   **Handler artifact detection** flags observations that fall within a
     time buffer around camera setup and retrieval, when human activity
     is expected.
--   **LLM expert review** uses a language model to assess whether each
-    assignment is plausible given the habitat and geographic location,
-    flagging unusual detections for closer inspection. This includes
-    contaminants that were not found screening blanks.
+-   **LLM expert review** uses a language model to act as an "expert" to
+    assess whether each assignment is plausible given the habitat and
+    geographic location, flagging unusual detections for closer
+    inspection. This includes contaminants that were not found screening
+    blanks.
 
 ## Flagging Methods
 
@@ -48,88 +50,46 @@ sampling area), and other ecologically implausible detections.
 
 ### Control Validation
 
-**Do this before contamination screening, not after.** A field sample
-mislabelled as a blank makes the real community look like contamination, so
-`flag_contaminant()` then filters genuine signal. Nothing conventional checks
-this: `decontam` assumes the labels are correct, and its frequency method needs
-DNA concentration that many eDNA workflows do not record.
-
-`validate_controls()` tests the labels on the principle that **a control is
-defined by what it LACKS, not by what it contains.** Whatever the medium --
-tapwater, sterilised seawater, molecular-grade water -- a control's defining
-property is that its composition is not drawn from the sampled habitat. So the
-test uses **no taxonomy at all**: it compares each control's median Bray-Curtis
-distance to the field samples it sits with, against the null distribution of
-sample-to-sample distance *at that same site*.
-
-The reference must come from the data. On one real COI study the within-site
-sample-vs-sample median ranged from **0.145 to 0.890 across sites in that single
-dataset**, so any fixed cutoff would be simultaneously too strict and too loose
-within one run. Drawing the null from each site's own samples self-calibrates to
-sampling method, habitat and sampling design.
-
-It is **two-sided**, because mislabelling runs both ways:
-
-| verdict | meaning |
-|-----------------------------|----------------------------------------------|
-| `consistent_with_control` | outside the sample null, as a blank should be |
-| `RESEMBLES_SAMPLE` | a control inside the sample null -- possibly a mislabelled sample |
-| `consistent_with_sample` | an ordinary field sample |
-| `RESEMBLES_CONTROL` | a sample that is an outlier *and* closer to the controls |
-| `untestable` | the site cannot form a null |
-| `untestable_no_headroom` | the null reaches the metric's ceiling, so nothing can exceed it |
-
-**Power is reported, not assumed.** A site with many samples and a tight null
-gives a real negative result; a site with two samples, or a null spanning most of
-the range, has no power at all -- and both would otherwise print as "nothing
-flagged". Every site carries its null, its pair count, its spread and a `power`
-verdict, and each row carries a `confidence` derived from it. If *every* testable
-control resembles a sample, the function warns that the control set is
-compromised rather than returning a verdict list.
+Distinguishing controls from samples is essential for screening out
+contaminants. But labeling errors can makes the real community look like
+contamination (and visa versa). Existing tools like `decontam` assume
+the labels are correct. But `validate_controls()` tests the labels
+first. If controls resemble samples (Bray-Curtis distance), the function
+gives a warning.
 
 ### Contamination Scoring
 
-TaxaID can screen out contaminant signal found disproportionately in blanks
-before it enters a workflow. Specifically,
-`flag_contaminant()` compares the relative abundance of each taxon in
-field samples versus control samples. Within each sample, read counts
-are first converted to proportions (reads for taxon / total reads),
-normalizing for sequencing depth. Proportions are then averaged across
-field and control replicates, and a score is computed:
+Contamination occurs in many different forms. This can occur in eDNA
+when handling or lab supplies introduce DNA from species not present at
+the sampling site. Some of these are predictable (humans and our food
+species). Field and lab blanks are often used to identify these
+sequences.
+
+TaxaID can screen out contaminant signal found disproportionately in
+blanks before it enters a workflow. Specifically, `flag_contaminant()`
+compares the relative abundance of each taxon in field samples versus
+control samples. Within each sample, read counts are first converted to
+proportions (reads for taxon / total reads), normalizing for sequencing
+depth. Proportions are then averaged across field and control
+replicates, and a score is computed:
 
 ```         
 score = mean_prop_field / (mean_prop_field + mean_prop_control)
 ```
 
 Scores range from 0 (taxon found only in controls) to 1 (taxon found
-only in field samples). Default thresholds classify scores as `"high"` risk
-(score \<= 0.5, probable contaminant), `"moderate"` risk (0.5 \< score \<= 0.9,
-ambiguous), or `"low"` risk (score \> 0.9, likely genuine detection). For
-positive controls, the interpretation inverts: taxa from positive controls
-appearing in field samples indicate cross-contamination.
+only in field samples). Default thresholds classify scores as `"high"`
+risk (score ≤ 0.5, probable contaminant), `"moderate"` risk (0.5 \<
+score ≤ 0.9, ambiguous), or `"low"` risk (score \> 0.9, likely genuine
+detection). For positive controls, the interpretation inverts: taxa from
+positive controls appearing in field samples indicate
+cross-contamination. And a low-read taxon that never appeared in any
+control is pulled down out of the `"low"` risk band.
 
-**The score is SHRUNK, so a taxon absent from controls does NOT receive 1.0**, and
-this matters more than it sounds. Because the shrinkage is measured in reads, a
-low-read taxon that never appeared in any control is still pulled down out of the
-`"low"` risk band. Measured on a real 12S run: of 13,597 ESVs **only 43 were ever
-detected in a single control**, yet 10,300 were labelled
-`questionable_lab_contaminant` -- the entire middle tier had *no control evidence
-whatsoever*, and the same 75-81% rate appeared in every marker and workflow
-checked, because it reflects the read-depth distribution rather than
-contamination. The taxa it surfaced were the study's own target community
-(*Sardinops sagax*, *Engraulis mordax*, *Clinocottus recalvus* -- a tidepool
-sculpin), while the genuine contaminants were a rounding error beside them.
-
-#### Never filter on `validity_flag != "valid"`
-
-A fragile idiom before, and **catastrophic** under
-`require_control_evidence = TRUE`. The honest-unknown state
-`no_control_evidence` is not `"valid"`, and it is normally the overwhelming
-majority -- on a real 12S run 16,695 of 16,826 ESVs (99.2%), on COI 32,162 of
-34,899 (92.2%). A `!= "valid"` filter would delete nearly the entire dataset.
-`not_control_enriched` and `single_site_enriched` are also not `"valid"`, and they
-exist precisely to mean *do not remove this*. Nor is
-`insufficient_control_evidence`, which means the question was not answerable.
+Users should be conservative when removing signals, especially given
+that control samples are usually rare (or entirely missing). So, remove
+observations that are flagged as invalid. But don't only accept
+observations confirmed as valid.
 
 ``` r
 # correct
@@ -138,13 +98,13 @@ to_remove <- startsWith(flagged$validity_flag, "invalid_")
 to_remove <- flagged$validity_flag != "valid"
 ```
 
-#### Evidence-gated states, and site breadth
+#### Detailed categorization
 
-`require_control_evidence = TRUE` replaces the score bands with states that say
-what the evidence actually supports:
+`require_control_evidence = TRUE` states what the evidence actually
+supports:
 
 | state | meaning |
-|-----------------------------|----------------------------------------------|
+|----------------------------|--------------------------------------------|
 | `no_control_evidence` | never detected in a control -- an honest unknown, and normally the large majority |
 | `invalid_{type}` | control rate **above** sample rate, on at least `min_control_obs` controls, at `min_sites_systemic` or more sites. Name retained so existing `invalid_*` filters keep working |
 | `insufficient_control_evidence` | in fewer than `min_control_obs` controls (default 2). Not assessable. **Do not filter** |
@@ -152,57 +112,15 @@ what the evidence actually supports:
 | `single_site_enriched` | control-enriched, but at one site whose samples also carry it: local, not systemic. **Do not filter** |
 | `questionable_{type}` | in a control, rates do not separate |
 
-**Direction is the point.** Contamination flows control -> sample; the reverse flow
-is what happens when a blank picks up a little of an abundant local taxon. A
-symmetric score cannot tell them apart, and `not_control_enriched` is the state the
-score-band design could not express.
-
-**Two states rather than one, deliberately.** `not_control_enriched` and
-`single_site_enriched` make *opposite* claims about enrichment -- one is not
-enriched in controls, the other is enriched but only at one site -- so a single
-name covering both would be false for whichever case it was not written for.
-Neither asserts a direction of travel, because a rate comparison cannot establish
-one.
-
-**The evidence floor, and the limitation behind it.** The direction test is a bare
-rate inequality, so rates built on one observation are not comparable to rates
-built on hundreds: with 91 controls against 1,052 samples, one stray read in one
-blank scores 1/91 = 0.011 and outvotes two genuine detections at 2/1052 = 0.0019.
-On a real archive 55-63 per cent of everything the gate condemned rested on a
-single control observation, and that tail contained genuine organisms -- a tidepool
-sculpin, two red macroalgae, a sand dollar. `min_control_obs` (default 2) refuses
-to condemn on one observation. A one-sided significance test with a
-multiple-testing correction is the principled replacement and is **not
-implemented**; `min_control_obs = 1L` restores the unfloored behaviour.
-
-**Useful check before trusting the tier:** a genuine contaminant usually appears in
-**no field sample at all**. On real data 85-97 per cent of removals had
-`n_field_present == 0`. Inspect the names, and check at family level rather than
-the finest candidate level (ESV/ASV for sequence data) if a downstream step
-consumes families.
-
-Supplying `site_col` adds `site_breadth_control`, `site_breadth_sample` and
-`control_sites_shared`, and uses site multiplicity as a **discriminant rather
-than merely as extra power**: a systemic contaminant (reagent, water supply)
-appears in controls at many sites regardless of which sites' samples carry it,
-whereas a local source appears in controls at the one site whose samples are full
-of it. A control-enriched taxon confined to a single site that also has it in
-samples is downgraded to `single_site_enriched`.
-
-This dissolves a real dilemma rather than picking a side. Pooling controls buys
-power but lets one trip's contamination speak for another's; pairing controls by
-event buys specificity at the cost of power -- on real data, event-paired controls
-emptied the `invalid` tier completely (0 ESVs, against 43 and 323 in pooled runs),
-so the only tier resting on evidence vanished. Using the cross-site *pattern*
-keeps both.
-
 ### Handler Artifact Detection
 
-`flag_handler()` identifies observations that fall within a time buffer
-of camera setup or retrieval, when human activity is expected. For each
-group (e.g., camera station), the function identifies the earliest and
-latest timestamps as the sampling-period edges. Each observation
-receives a linear score based on its proximity to the nearest edge:
+Camera traps have a particular type of contamination when cameras are
+deployed and retrieved. `flag_handler()` identifies observations that
+fall within a time buffer of camera setup or retrieval, when human
+activity is expected. For each group (e.g., camera station), the
+function identifies the earliest and latest timestamps as the
+sampling-period edges. Each observation receives a linear score based on
+its proximity to the nearest edge:
 
 ```         
 handler_score = minutes_to_nearest_edge / interval_minutes
@@ -211,7 +129,7 @@ handler_score = minutes_to_nearest_edge / interval_minutes
 clamped to [0, 1]. The default interval is 30 minutes. Observations
 outside the interval score 1.0 (valid); those at the exact edge score
 0.0 (probable artifact). When `handler_taxa` is specified (e.g., "Homo
-sapiens"), only those taxa are scored for temporal proximity -- other
+sapiens"), only those taxa are scored for temporal proximity, other
 species detected near edges are assumed legitimate.
 
 ### LLM Expert Review
@@ -228,8 +146,8 @@ includes truncation recovery: if an LLM response is cut off mid-JSON, it
 walks backward to find the last complete object and parses what is
 available. Taxa omitted by the LLM are filled with NA. Supports eDNA,
 acoustic, and image data via the `data_type` param. This review is
-intended as a structured second opinion, not an automated filter --
-users should treat the flags as candidates for closer inspection.
+intended as a structured second opinion, not an automated filter. Users
+should treat the flags as candidates for closer inspection.
 
 ## Installation
 

@@ -156,7 +156,7 @@ The table below summarises the databases commonly used with TaxaLikely,
 the data types they cover, and the recommended loading path.
 
 | Database | Focus | Typical size | Loading path | Notes |
-|----|----|----|----|----|
+|---------------|---------------|---------------|---------------|---------------|
 | **NCBI GenBank** | Universal | API (no local file) | `fetch_ncbi_reference_sequences()` | Per-taxon API query; best for targeted eDNA marker retrieval |
 | **CRABS output** | eDNA amplicons | Varies | `read_crabs_output()` | CRABS handles bulk QC; TaxaLikely adds mislabel detection |
 | **SILVA SSU** | 16S / 18S / 23S rRNA | \~1.3 GB | `subset_local_database()` | Primary database for microbial amplicon eDNA; \~510 k sequences |
@@ -344,7 +344,7 @@ section.
 ### Data types other than DNA sequences
 
 | Reference source | Screen for mislabeling? | Notes |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | **NCBI nucleotide** (via `fetch_ncbi_reference_sequences()`) | Yes, using the pattern above | NCBI has well-known curation issues: automated submissions, misidentified vouchers, contamination. |
 | **Curated libraries** (CRUX, custom expert-built FASTA) | Optional | Lower mislabeling rate than NCBI. If your library has a quality column, use that filter instead. |
 | **Xeno-canto**\* bird sounds (acoustic) | No | Xeno-canto is expert-curated; species identity mislabeling is rare. The dominant noise source is recording conditions (distance, background), not wrong species. Filter on the recording's own quality grade (A-E) instead -- the acoustic `seq_matrix`'s `coverage` column encodes quality grade categorically; a dedicated threshold-calibration helper for this existed here and was archived after a real A/B test found the accuracy gain came with a real coverage cost -- apply a threshold directly (e.g. `seq_matrix[seq_matrix$coverage >= threshold, ]`) if you need one. |
@@ -387,18 +387,15 @@ ref_matrix <- build_sequence_matrix(reference_df)
 model      <- train_likelihood_model(ref_matrix, min_pair_coverage = 0.8)
 ```
 
-Do not confuse this with excluding low-coverage pairs from training
-altogether. Be cautious about that, even manually: a real test on full-scale production data found that a
-coverage floor produces a genuine likelihood-quality improvement on the
-pairs it keeps, but also a real, quantified cost — roughly 19% of
-species can lose every training pair, and roughly 25% of real
-evaluation queries end up unresolved. Hard exclusion on an imperfect
-quality proxy carries this risk generally, not just for coverage (see
-`apply_coverage_constraints()` and `TaxaFetch::filter_gbif_quality()`,
-both of which flag rather than exclude for the same reason). If you
-filter by coverage, check whether the excluded pairs are a random
-cross-section or systematically concentrated in particular species
-before trusting the result.
+Be cautious about excluding low-coverage pairs from training. A coverage
+or quality floor produces a genuine likelihood-quality improvement on
+the pairs it keeps, but can leave some taxa without references and bias
+the reference database so that it no longer resembles real observations
+(which are often poor quality). See `apply_coverage_constraints()` and
+`TaxaFetch::filter_gbif_quality()`, both of which flag rather than
+exclude for the same reason). If you filter by coverage, check whether
+the excluded pairs are a random cross-section or systematically
+concentrated in particular species before trusting the result.
 
 ## Statistical Design
 
@@ -485,7 +482,7 @@ hypothesis type:
     H1 entirely from reference-vs-reference pairs (two clean, curated
     database accessions compared to each other), which carries none of
     the technical noise (PCR/sequencing/degradation/ ASV-inference) a
-    real query picks up -- so a genuinely correct match routinely scores
+    real query picks up, so a genuinely correct match routinely scores
     below the trained H1 mean and loses to the unreferenced hypotheses.
     `calibrate_query_noise()` estimates one marker-wide additive offset
     from observations whose species can be identified with high
@@ -509,7 +506,7 @@ hypothesis type:
     Empirical Bayes weight `w` as the point estimate), and the query's
     real observed point is re-evaluated against each draw. This yields
     `score_likelihood_mean` and `score_likelihood_sd`, measuring how
-    confidently the candidate's own parameters are known -- H2/H3, which
+    confidently the candidate's own parameters are known, H2/H3, which
     borrow a shifted mean rather than observing their own species
     directly, correctly come out wider than a well-referenced H1
     candidate.
@@ -518,7 +515,7 @@ hypothesis type:
     reference pair at or above the match object's own coverage floor may
     define a reference's best foreign/congener/conspecific match when
     the gap feature is trained. Train/inference distribution matching
-    for one feature, not a data filter -- no pair removed, no species
+    for one feature, not a data filter, no pair removed, no species
     dropped. Validated on the real GreatLakes workflow code path against
     the independent Lamar species list: species co-detections 593 to
     798, precision 0.805 to 0.818, 29 to 41 of 61 species, none lost.
@@ -571,7 +568,7 @@ hypothesis type:
         These candidates are already ranked low and the effect rarely
         changes downstream assignments.
 
-    The crossover is at exactly ±1 sigma from the mean — a useful check
+    The crossover is at exactly ±1 sigma from the mean, a useful check
     is whether the best H1 candidate is a good match (expect negative
     delta) or a poor match (expect positive delta).
 

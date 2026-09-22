@@ -6,22 +6,24 @@ editor_options:
 
 # TaxaFetch
 
-Taxonomic assignments are more accurate when they consider which
-species are plausible at the sampling location. Without this context,
+Taxonomic assignments are more accurate when they consider which species
+are plausible at the sampling location. Without this context,
 classifiers frequently assign detections to ecologically implausible
 taxa. TaxaFetch compiles species occurrence records from multiple
-sources -- GBIF (Global Biodiversity Information Facility; GBIF
-Secretariat, Copenhagen, Denmark), DataONE (Data Observation Network
-for Earth; University of New Mexico, Albuquerque, New Mexico), BioTIME
+sources: GBIF (Global Biodiversity Information Facility; GBIF
+Secretariat, Copenhagen, Denmark), DataONE (Data Observation Network for
+Earth; University of New Mexico, Albuquerque, New Mexico), BioTIME
 (database maintained by the University of St Andrews, St Andrews,
-Scotland, United Kingdom), and published literature -- and combines
-them into a standardized format for downstream habitat assignment
-(TaxaHabitat) and prior estimation (TaxaExpect).
+Scotland, United Kingdom). It will search the published literature for
+species records. And it will also extract records from uploaded PDFs. It
+then combines occurrence records into a standardized format for
+downstream habitat assignment (TaxaHabitat) and prior estimation
+(TaxaExpect).
 
 ## Data Sources
 
 | Source | Function | What it provides |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | **GBIF** | `fetch_gbif_occurrences()` | Global occurrence records via download API |
 | **DataONE** | `fetch_dataone_occurrences()` | Ecological datasets from DataONE repositories |
 | **BioTIME** | `read_biotime_study()` | Time-series biodiversity data |
@@ -94,24 +96,26 @@ vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 
 ## Cache
 
-`download_gbif_occurrences()`, `fetch_gbif_occurrences()`, and
-`check_geographic_outliers()` all cache to a persistent, per-user
-directory (`tools::R_user_dir("TaxaFetch", "cache")`) so re-running the
-same query skips the GBIF wait. GBIF download zips in particular can be
+Large downloads take time, so if they fail, repeating them wastes time.
+For this reason, `download_gbif_occurrences()`,
+`fetch_gbif_occurrences()`, and `check_geographic_outliers()` all cache
+to a persistent, per-user directory
+(`tools::R_user_dir("TaxaFetch", "cache")`) so re-running the same query
+skips the GBIF wait. GBIF download zips in particular can be
 multi-gigabyte and are cached **permanently, with no automatic
-expiration** -- re-running a query with `overwrite = TRUE` replaces the
-cached zip (asking for confirmation first in an interactive session) but
-otherwise nothing is ever cleared for you. If GBIF itself refuses the
-download request (a transient 5xx), the request is retried with backoff,
-and with `overwrite = TRUE` a verified cached zip for the identical query
-is used instead -- with a warning, never silently -- so a long run does
-not die at the fetch step (`on_submit_failure = "error"` fails instead).
+expiration**. But to avoid filling up your hard drive, re-running a
+query with `overwrite = TRUE` replaces the cached zip (asking for
+confirmation first in an interactive session) but otherwise nothing is
+automatically ever cleared. If GBIF itself refuses the download request
+(a transient 5xx), the request is retried with backoff, and with
+`overwrite = TRUE` a verified cached zip for the identical query is used
+instead, with a warning, never silently. So a long run does not die at
+the fetch step (`on_submit_failure = "error"` fails instead).
 
 Run `taxafetch_clear_cache(dry_run = TRUE)` to see how much space the
-cache is using before clearing it, or `taxafetch_clear_cache()` to
-clear it directly. `download_gbif_occurrences()` also reports the
-cache's total size after every run and offers to clear it once it
-passes 1 GB.
+cache is using before clearing it, or `taxafetch_clear_cache()` to clear
+it directly. `download_gbif_occurrences()` also reports the cache's
+total size after every run and offers to clear it once it passes 1 GB.
 
 ## Vignettes
 
@@ -148,8 +152,8 @@ taxonomic assignment: U.S. Geological Survey software release,
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
 
-Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC,
-San Francisco, California).
+Developed with [Claude Code](https://claude.ai/code) (Anthropic PBC, San
+Francisco, California).
 
 ## References
 

@@ -30,7 +30,7 @@ users will start from an existing bioinformatics pipeline.
 ## Supported Data Types
 
 | Data type | Input format | Function |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | **DNA sequences** | DADA2 seqtab, FASTA, DNAStringSet | `read_sequence_table()` |
 | **BLAST results** | Remote NCBI or local rBLAST | `blast_sequences()` |
 | **Images** | Animl CSV export | `read_animl_output()` |
@@ -174,8 +174,8 @@ to keep only the best candidate per window.
 **Reference training workflow:** Download ground-truth recordings from
 Xeno-canto (Xeno-canto Foundation, Netherlands, with support from
 Naturalis Biodiversity Center, Leiden; <https://xeno-canto.org/>) with
-`TaxaLikely::fetch_xc_recording_locations()`, run BirdNET-Analyzer on the
-downloaded audio, then join detections back to the known species via
+`TaxaLikely::fetch_xc_recording_locations()`, run BirdNET-Analyzer on
+the downloaded audio, then join detections back to the known species via
 `source_file` to label H1/H2/H3 training examples.
 
 ## Camera Trap Image Workflow
@@ -319,10 +319,10 @@ sn_df <- read_speciesnet_output(
 ) |> subset(!is.na(taxon_rank))
 ```
 
-**InsectNet** (Chiranjeevi et al. 2025; Iowa State University, Ames, Iowa;
-<https://insectapp.las.iastate.edu>) targets insects (2,526 species, 17
-orders) with 96.4% top-1 accuracy. Unlike the classifiers above, it
-returns *conformal prediction sets* rather than a single
+**InsectNet** (Chiranjeevi et al. 2025; Iowa State University, Ames,
+Iowa; <https://insectapp.las.iastate.edu>) targets insects (2,526
+species, 17 orders) with 96.4% top-1 accuracy. Unlike the classifiers
+above, it returns *conformal prediction sets* rather than a single
 ranked-confidence list — a set of species guaranteed to contain the true
 species with ≥97.5% probability. It also flags out-of-distribution
 images with an energy-based OOD score. The conformal output format is
@@ -332,7 +332,7 @@ interface is available; programmatic access to model weights is
 described in the paper but no public API exists at time of writing.
 
 | Classifier | Reader function | Score type | R package |
-|----|----|----|----|
+|------------------|------------------|------------------|------------------|
 | Animl / SpeciesNet | `read_animl_output()` | Confidence 0--1 | `animl` (CRAN) |
 | iNaturalist CV (direct) | `score_image_inat()` | Softmax 0--100 | Free API (token required) |
 | iNaturalist CV (saved JSON) | `read_inaturalist_cv_output()` | Softmax 0--1 | `rinat` (indirect) |
@@ -506,8 +506,8 @@ flagged/borderline subset
 plus non-species-resolved accessions) to an LLM for a free-text second
 look, the same "narrative judgment layer on top of statistical flags,
 never replacing them" pattern `TaxaFlag::review_assignments()` uses for
-posterior assignments. It adds what the statistical check can't —
-recognizing a known hybrid-cross name or an informal specimen code — but
+posterior assignments. It adds what the statistical check can't,
+recognizing a known hybrid-cross name or an informal specimen code, but
 never re-decides `hierarchy_flag` itself. LLM calls are real, billed API
 cost, so this also caches: an accession already reviewed with
 *unchanged* inputs is served from `cache_dir` instead of a fresh call,
@@ -557,10 +557,11 @@ match:
 
 `blast_sequences()` also attaches `attr(match_obj, "report_params")`
 (`method`, `database`, `min_score`, `min_query_coverage`, `n_samples`).
-`min_query_coverage` is the alignment-coverage floor the match object was
-built under; `TaxaLikely::train_likelihood_model(min_pair_coverage =)` must
-equal it as a fraction, and `TaxaLikely::evaluate_likelihoods()` reads it
-from here to warn on a mismatch.
+`min_query_coverage` is the alignment-coverage floor the match object
+was built under;
+`TaxaLikely::train_likelihood_model(min_pair_coverage =)` must equal it
+as a fraction, and `TaxaLikely::evaluate_likelihoods()` reads it from
+here to warn on a mismatch.
 
 ## Vignettes
 

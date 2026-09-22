@@ -6,19 +6,37 @@ editor_options:
 
 # TaxaWizard
 
-Conversational workflow designer for the
-[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem. An LLM-powered
-interview identifies your inputs, parameters, and pipeline steps, then
-generates a self-contained R script, methods text, or Shiny application.
-Although one could use other LLMs to do the same, TaxaWizard comes
-pre-informed with context about the TaxaID package.
+TaxaID is a complex ecosystem and workflows may use dozens of functions
+and hundreds of lines of code. LLMs help users navigate such packages.
+And TaxaWizard is specially designed to take full advantage of LLM
+advice.
 
-The TaxaID ecosystem has many possible workflows, and choosing the right
-combination of packages and parameters can be daunting. TaxaWizard makes
-this easier through a guided conversation: describe your data and goals,
-and it generates the appropriate script. `workflow_app()` can also
-convert any R script (not just TaxaID scripts) into a Shiny application
-with point-and-click inputs.
+An LLM can read any R package and make a list of functions as well as
+their inputs and outputs to help a user write code. TaxaWizard makes
+this more efficient by being away of workflow maps: which functions flow
+from one to the other and how they should be confined, and the order in
+which they should be linked to address the one of many possible goals
+and inputs a user might have. TaxaWizard creates an LLM-powered
+interview that identifies inputs, parameters, and pipeline steps, then
+generates a self-contained R script. TaxaWizard does this in three ways.
+
+1) The most basic is with its integrated prompt developer. Any LLM that
+finds TaxaID will be directed to TaxaWizard context file and function
+map so the LLM can easily learn how to most effectively guide a user
+through the package.
+
+2) A user can also paste in the starting prompt from TaxaWizard, which
+will then interview the through the users chat window of choice
+
+3) For users with an API, TaxaWizard can use the `workflow_app()` to
+have a guided conversation through an html interface where the user is
+asked to describe the data and goals, leading TaxaWizard generate the
+appropriate script.
+
+Finally, TaxaWizard can convert any R script (not just TaxaID scripts)
+into a Shiny application with point-and-click inputs. This makes it
+possible to create interfaces for clients to analyze data without them
+having to know R.
 
 ## Installation
 
@@ -114,12 +132,13 @@ workflow_check()
 workflow_check(edges = "seq_to_match")
 ```
 
-Every generated script starts with the same check as its "Step 0" and stops
-before running anything if a required key/package/binary is missing --
-`workflow_check()`'s `fix` column says exactly what to do. Key checks report
-set/unset only; a key's value is never printed, logged, or returned. Set
-`options(TaxaWizard.offline = TRUE)` to skip the live network checks (e.g. in
-a script that must not depend on connectivity at generation time).
+Every generated script starts with the same check as its "Step 0" and
+stops before running anything if a required key/package/binary is
+missing -- `workflow_check()`'s `fix` column says exactly what to do.
+Key checks report set/unset only; a key's value is never printed,
+logged, or returned. Set `options(TaxaWizard.offline = TRUE)` to skip
+the live network checks (e.g. in a script that must not depend on
+connectivity at generation time).
 
 ``` r
 # What input-graph node does this file look like? (FASTA, a DADA2 seqtab
@@ -131,68 +150,72 @@ sniff_input("my_data.csv")
 
 ## Key Functions
 
-| Function                    | Purpose                                                        |
-|------------------------------|----------------------------------------------------------------|
-| `workflow_create()`          | Launch interactive interview (main entry point)                |
-| `workflow_fix()`              | Resume after script error with diagnostic context              |
-| `workflow_app()`              | Convert generated script to Shiny app                          |
-| `annotate_script()`           | Annotate generic R scripts for Shiny conversion                |
-| `workflow_check()`            | Report setup readiness: R, packages, keys, network, cache, binaries |
-| `sniff_input()`               | Guess which workflow-graph input node a file looks like        |
-| `workflow_export_prompts()`   | Export a portable prompt pack for use with any LLM (no TaxaWizard install needed) |
-| `workflow_engine()`           | Stateless LLM engine (advanced / programmatic use)             |
-| `workflow_registry()`         | Introspect the installed TaxaID packages' functions (advanced) |
+| Function | Purpose |
+|-----------------------|------------------------------------------------|
+| `workflow_create()` | Launch interactive interview (main entry point) |
+| `workflow_fix()` | Resume after script error with diagnostic context |
+| `workflow_app()` | Convert generated script to Shiny app |
+| `annotate_script()` | Annotate generic R scripts for Shiny conversion |
+| `workflow_check()` | Report setup readiness: R, packages, keys, network, cache, binaries |
+| `sniff_input()` | Guess which workflow-graph input node a file looks like |
+| `workflow_export_prompts()` | Export a portable prompt pack for use with any LLM (no TaxaWizard install needed) |
+| `workflow_engine()` | Stateless LLM engine (advanced / programmatic use) |
+| `workflow_registry()` | Introspect the installed TaxaID packages' functions (advanced) |
 
 ## What the interview knows about your machine
 
-`workflow_create()` runs `workflow_check()` before the conversation starts, and
-the assistant is given the result. That means it can tell you that a path needs
-a BLAST binary or an NCBI key *while you are choosing the path*, rather than
-leaving you to discover it when the generated script stops at its own Step 0.
+`workflow_create()` runs `workflow_check()` before the conversation
+starts, and the assistant is given the result. That means it can tell
+you that a path needs a BLAST binary or an NCBI key *while you are
+choosing the path*, rather than leaving you to discover it when the
+generated script stops at its own Step 0.
 
 Three things follow from this:
 
-- **Statuses only.** The report says whether a key is set, never what it is. No
-  key value is ever placed in a prompt, and the assistant is told not to ask you
-  to paste one.
-- **Requirements are scoped to the path you pick.** Once a route through the
-  graph is chosen, the assistant sees `workflow_check(edges = <that path>)` --
-  the requirements of the steps it is about to write, not the whole ecosystem's.
-- **If you name a file that exists, it gets looked at.** `sniff_input()` runs on
-  paths in your message that are really on disk, and the result is given to the
-  assistant as evidence. If it disagrees with what you said, the assistant is
-  told to ask rather than to quietly overrule you. A path that does not exist is
-  not sniffed and is not described as though it had been.
+-   **Statuses only.** The report says whether a key is set, never what
+    it is. No key value is ever placed in a prompt, and the assistant is
+    told not to ask you to paste one.
+-   **Requirements are scoped to the path you pick.** Once a route
+    through the graph is chosen, the assistant sees
+    `workflow_check(edges = <that path>)` -- the requirements of the
+    steps it is about to write, not the whole ecosystem's.
+-   **If you name a file that exists, it gets looked at.**
+    `sniff_input()` runs on paths in your message that are really on
+    disk, and the result is given to the assistant as evidence. If it
+    disagrees with what you said, the assistant is told to ask rather
+    than to quietly overrule you. A path that does not exist is not
+    sniffed and is not described as though it had been.
 
-When you extend an existing script, the Step 0 check already at the top is
-widened to cover the new steps' requirements too, instead of a second check
-block being added below it.
+When you extend an existing script, the Step 0 check already at the top
+is widened to cover the new steps' requirements too, instead of a second
+check block being added below it.
 
 ## Using TaxaID with any LLM
 
-TaxaWizard's own interview (`workflow_create()`) needs an API key and this
-package installed. If you want to design a workflow with a different LLM --
-a plain chat window, someone else's agentic coding tool, a colleague with no
-R environment set up -- export a portable prompt pack instead:
+TaxaWizard's own interview (`workflow_create()`) needs an API key and
+this package installed. If you want to design a workflow with a
+different LLM -- a plain chat window, someone else's agentic coding
+tool, a colleague with no R environment set up -- export a portable
+prompt pack instead:
 
 ``` r
 workflow_export_prompts("taxaid_prompts")
 ```
 
 This writes a self-contained folder (packages, function signatures, the
-workflow graph, setup requirements -- all generated from the TaxaID packages
-installed on your machine, never hand-typed) that any LLM can be pointed at.
-Give the folder to an agentic tool (Claude Code, Cursor, a Copilot agent) and
-tell it to start with `START_HERE.md`; for a plain chat window, paste
-`START_HERE.md` and `CONTEXT_TaxaID.md` in first. A ready-to-use copy (with a
-placeholder setup report, since it isn't any one machine) ships at the
-repository root in
+workflow graph, setup requirements -- all generated from the TaxaID
+packages installed on your machine, never hand-typed) that any LLM can
+be pointed at. Give the folder to an agentic tool (Claude Code, Cursor,
+a Copilot agent) and tell it to start with `START_HERE.md`; for a plain
+chat window, paste `START_HERE.md` and `CONTEXT_TaxaID.md` in first. A
+ready-to-use copy (with a placeholder setup report, since it isn't any
+one machine) ships at the repository root in
 [`llm_prompts/`](https://github.com/DOI-USGS/TaxaID/tree/main/llm_prompts).
 
 **Example interaction**, once an assistant has read `START_HERE.md`:
 
-> **User:** I have BLAST results from an eDNA metabarcoding study. I want
-> to assign species only when the sequence matches at 100%, and
+> **User:** I have BLAST results from an eDNA metabarcoding study. I
+> want to assign species only when the sequence matches at 100%, and
 > otherwise retain a higher-level assignment.
 >
 > **Assistant:** That's a match-scores-in, consensus-out request:
@@ -215,7 +238,8 @@ itself can answer.
 
 TaxaWizard sits outside the TaxaID dependency chain. It introspects the
 other TaxaID packages' installed functions (see `workflow_registry()`)
-and generates scripts that call them -- it does not import them directly.
+and generates scripts that call them -- it does not import them
+directly.
 
 See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
 ecosystem overview and installation instructions.
