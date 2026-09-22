@@ -1,5 +1,68 @@
 # CLAUDE.md -- TaxaLikely
-# Last updated: 2026-09-14, later still (Opus 5): cache policy P1/P2/P5 + the fasta-key
+# Last updated: 2026-09-22 (Sonnet 5, branch homonym-detection, NOT merged/reinstalled):
+# fetch_ncbi_reference_sequences() gains an opt-in `taxa_lineage` parameter -- the
+# TaxaLikely-side half of ecosystem_docs/REENTRY_PROMPT_homonym_detection.md, whose
+# resolver (TaxaTools::resolve_ncbi_taxid()/check_lineage_agreement()) is documented in
+# TaxaTools/CLAUDE.md's own top note.
+#
+# THE DEFECT: .build_search_term() queries NCBI by bare name (`<taxon>[Organism]`), and
+# a taxon NAME is not a key -- NCBI can hold several nodes with the same name in
+# unrelated lineages, and [Organism] silently resolves to any node sharing that name.
+# Measured live: a red-algal genus query for "Vertebrata" returned 306,181 vertebrate
+# sequences alongside 68 real red-algal ones -- not lost, DROWNED, and every downstream
+# model trained on the result would treat vertebrate mitochondria as congeners of a red
+# alga (a statistical defect, not merely a cost one).
+#
+# THE FIX, opt-in, `NULL` default reproduces this function's exact original behaviour:
+# `taxa_lineage` (a data frame: `taxon`, optional `rank`, any of kingdom/phylum/class/
+# order/family -- the caller's own declared lineage) drives two things. (1) Each taxon
+# is resolved to a disambiguated NCBI taxid via TaxaTools::resolve_ncbi_taxid() BEFORE
+# the count query, and queried by `txid<id>[ORGN]` instead of `<name>[Organism]` --
+# REPLACING the name-based search for that taxon, not adding to it. An ambiguous taxon
+# falls back to the name-based query with no protection, exactly as if taxa_lineage had
+# not named it. (2) A post-fetch lineage-agreement guard runs with NO extra API call --
+# the taxonomy bridge already fetches each accession's full NCBI lineage XML, widened
+# (only when taxa_lineage supplied) to keep kingdom/phylum alongside rank_system's own
+# ranks; every fetched row's returned lineage is checked against its queried taxon's
+# declared lineage via TaxaTools::check_lineage_agreement(), and any row sharing
+# nothing with it lands in `attr(reference_df, "lineage_disagreements")` -- reported by
+# count, never silently acted on (this guard drops nothing; it's diagnostic, matching
+# the existing `attr(x, "count_failures")` convention).
+#
+# CACHE KEY: `.ref_cache_file()` gains a `taxid` component -- a name-scoped and a
+# taxid-scoped query for the same taxon can return genuinely different sequences, so
+# neither may serve as a cache hit for the other. `.ref_cache_grammar()`'s eviction
+# proof and its generated-argument test (`test-fetch-cache-eviction.R`) were both
+# updated in the same change, plus new tests confirming the two forms share one
+# `.ref_cache_stem()` (so neither orphans the other -- a caller may legitimately want
+# both).
+#
+# LIVE-VERIFIED end to end against this document's own reproduction case: fetching
+# Vertebrata + COI with `taxa_lineage` declaring phylum="Rhodophyta",
+# family="Rhodomelaceae" returned **68 sequences, all family Rhodomelaceae, 0 lineage
+# disagreements** -- exactly the 68 real red-algal rows the reentry doc reports as
+# recoverable, none of the 306,181 vertebrate sequences.
+#
+# Two internal helpers extracted for testability: `.resolve_taxa_taxids()` (the
+# per-taxon resolution loop, mockable against TaxaTools::resolve_ncbi_taxid() alone)
+# and `.compute_lineage_disagreements()` (the guard's own comparison, no rentrez
+# mocking needed at all). devtools::test() 1358/0 (34 new, across two new test files:
+# test-fetch-homonym-detection.R plus additions to test-fetch.R/test-fetch-cache-
+# eviction.R), devtools::check() 0 errors/0 warnings/1 pre-existing environmental note.
+# Reinstalled LOCALLY for the live verification above, NOT ecosystem-wide, NOT merged
+# to main -- freeze protocol, design/measurement session.
+#
+# DELIBERATELY NOT DONE, scope boundaries recorded rather than papered over: the
+# priority_taxa code path (a separate per-species path this file's own comments say
+# "no production workflow does") is unwired -- its own .build_search_term() calls still
+# pass no taxid. audit_barcode_coverage() and suggest_unreferenced_species() -- the
+# reentry doc's other two named consumers -- are NOT wired to resolve_ncbi_taxid()
+# either; both query by name via their own independent code paths. See
+# TaxaTools/CLAUDE.md's own top note for a THIRD, separate, more-central instance of
+# this exact defect class found while reading this code (verify_taxon_names(backbone_id
+# = 4)'s own internal .verify_via_ncbi() silently overwrites on a homonym) -- NOT fixed,
+# recorded for a future decision given its much wider blast radius.
+# Previous update, 2026-09-14, later still (Opus 5): cache policy P1/P2/P5 + the fasta-key
 # fix (ecosystem_docs/CACHE_POLICY_REVIEW_2026_09_14.md, Parts 8-11).
 #
 # P1 -- AN UNCACHED QUERY MUST NEVER GATE A CACHED PAYLOAD. fetch_ncbi_reference_

@@ -27,7 +27,8 @@ fetch_ncbi_reference_sequences(
   max_out_of_range_len = 200000L,
   count_attempts = 3L,
   on_count_failure = c("warn", "error"),
-  evict_unreachable_cache = TRUE
+  evict_unreachable_cache = TRUE,
+  taxa_lineage = NULL
 )
 }
 \arguments{
@@ -183,6 +184,38 @@ it never touches a file over 5 MB, and it says what it removed. Two
 files that differ only in a key VALUE -- different length bounds, a
 different \code{rank_system} -- are different queries, not generations, and
 are never touched. Set \code{FALSE} to keep every historical generation.}
+
+\item{taxa_lineage}{Data frame or \code{NULL} (default). Opt-in homonym
+protection: a \code{taxon} column matching entries of \code{taxa}, plus any of
+\code{rank}, \code{kingdom}, \code{phylum}, \code{class}, \code{order}, \code{family} -- the caller's
+OWN declared lineage for each queried taxon. A taxon NAME is not a
+key -- NCBI can hold several nodes with the same name in unrelated
+lineages (e.g. a genus of red algae named "Vertebrata" beside the
+vertebrate clade of the same name; see
+\link[TaxaTools:known_ncbi_homonyms]{TaxaTools::known_ncbi_homonyms}), and the default \verb{[Organism]}
+name-based query silently resolves to whichever node NCBI prefers,
+which for an \verb{[ORGN]} search is any node in the lineage -- a
+higher-rank or larger-volume homonym wins on volume, drowning the
+wanted sequences in results from the wrong organism entirely (a
+red-algal genus query for "Vertebrata" measured returning 306,181
+vertebrate sequences alongside 68 real red-algal ones -- see
+\code{ecosystem_docs/REENTRY_PROMPT_homonym_detection.md} for the full
+incident). When supplied, each taxon is resolved to a disambiguated
+NCBI taxid first, via \code{\link[TaxaTools:resolve_ncbi_taxid]{TaxaTools::resolve_ncbi_taxid()}} using \code{rank}
+and the declared lineage as discriminators, and queried by
+\verb{txid<id>[ORGN]} instead of \verb{<name>[Organism]}; a taxon that remains
+ambiguous after both discriminators falls back to the name-based query
+with no protection, exactly as if \code{taxa_lineage} had not named it. Also
+enables a post-fetch lineage-agreement guard needing no extra API
+call: every fetched sequence's own returned kingdom/phylum/family is
+compared against the taxon's declared lineage, and any row sharing
+nothing with it (a likely homonym slipping past taxid resolution, or a
+taxon this parameter didn't cover at all) is recorded in
+\code{attr(reference_df, "lineage_disagreements")} -- checked, not
+silently trusted, since agreement doesn't require an exact match (a
+benign taxonomic revision that stays within a shared higher clade also
+agrees). \code{NULL} (the default) reproduces this function's original
+behaviour exactly: every taxon queried by bare name, no guard.}
 }
 \value{
 A data frame (\code{reference_df}), carrying a \code{count_failures}
@@ -205,7 +238,16 @@ reference alongside \code{in_barcode_range}.}
 \item{\code{lat}, \code{lon}, \code{country}}{Only when \code{include_location = TRUE}.
 Collection location parsed from GenBank's \code{lat_lon}/\code{country}
 qualifiers; \code{NA} when absent or unparseable.}
+\item{\code{queried_taxon}, \code{kingdom}, \code{phylum}}{Only when \code{taxa_lineage}
+was supplied. \code{queried_taxon} records which \code{taxa} entry a row was
+fetched under; \code{kingdom}/\code{phylum} are always resolved (in addition
+to whatever \code{rank_system} itself requests) so the lineage-agreement
+guard has data to check without a second taxonomy fetch.}
 }
+Also carries a \code{lineage_disagreements} attribute (always present when
+\code{taxa_lineage} was supplied; absent otherwise) -- a data frame of every
+row whose returned lineage shared nothing with its queried taxon's
+declared lineage, via \code{attr(reference_df, "lineage_disagreements")}.
 Ready for input to \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} (which applies its own,
 independent length filter -- out-of-range rows kept here are excluded
 from training there exactly as before this parameter existed).

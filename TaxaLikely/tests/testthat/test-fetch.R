@@ -232,6 +232,21 @@ test_that(".build_search_term builds correct NCBI query with GENE tags", {
   expect_true(grepl("COI\\[GENE\\]", out))
 })
 
+test_that(".build_search_term uses txid<N>[ORGN] instead of the name when taxid supplied", {
+  bst <- TaxaLikely:::.build_search_term
+  out <- bst("Vertebrata", "COI", taxid = "1261581")
+  expect_true(grepl("txid1261581\\[ORGN\\]", out, fixed = FALSE))
+  expect_false(grepl("Vertebrata\\[Organism\\]", out))
+})
+
+test_that(".build_search_term ignores an NA or empty taxid", {
+  bst <- TaxaLikely:::.build_search_term
+  out_na <- bst("Gadidae", "COI", taxid = NA_character_)
+  out_empty <- bst("Gadidae", "COI", taxid = "")
+  expect_true(grepl("Gadidae\\[Organism\\]", out_na))
+  expect_true(grepl("Gadidae\\[Organism\\]", out_empty))
+})
+
 test_that(".build_search_term uses All Fields for primer names", {
   bst <- TaxaLikely:::.build_search_term
   out <- bst("Gadidae", "MiFish")

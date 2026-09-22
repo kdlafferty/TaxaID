@@ -18,9 +18,26 @@ utils::globalVariables(c(
 }
 
 #' Build an NCBI nucleotide search term
+#'
+#' @param taxon Character scalar taxon name.
+#' @param taxid Character scalar or \code{NULL} (default). When supplied,
+#'   the query is scoped to this specific NCBI taxonomy id
+#'   (\code{txid<taxid>[ORGN]}) instead of the bare name
+#'   (\code{<taxon>[Organism]}). A NAME is not a key -- NCBI can hold
+#'   several nodes with the same name in unrelated lineages (a genus of red
+#'   algae named "Vertebrata" beside the vertebrate clade of the same name;
+#'   see \code{TaxaTools::known_ncbi_homonyms}), and \code{[Organism]}
+#'   silently resolves to whichever node the service prefers. Resolve
+#'   \code{taxid} first via \code{TaxaTools::resolve_ncbi_taxid()}, using
+#'   the caller's OWN declared rank/lineage as the discriminator -- this
+#'   function has no lineage of its own to check against, so it trusts
+#'   whatever taxid it is given. See
+#'   \code{ecosystem_docs/REENTRY_PROMPT_homonym_detection.md} for the
+#'   measured real-world cost of the bare-name form (a red-algal genus
+#'   query pulled 306,181 vertebrate sequences alongside 68 real ones).
 #' @noRd
 .build_search_term <- function(taxon, barcode_term, min_date = NULL,
-                               max_date = NULL) {
+                               max_date = NULL, taxid = NULL) {
   # Barcode clause: OR multiple synonyms
 
   # Map common barcode terms to NCBI [GENE] field tags for precision.
@@ -130,8 +147,16 @@ utils::globalVariables(c(
     paste0("(", paste(bc_parts, collapse = " OR "), ")")
   }
 
-  # Normalise hyphens in taxon name before building the query term.
-  term <- paste0(gsub("-", " ", taxon), "[Organism] AND ", bc_clause)
+  # Normalise hyphens in taxon name before building the query term. A
+  # resolved taxid REPLACES the name-based organism clause rather than
+  # narrowing it -- txid<N>[ORGN] already scopes to exactly one lineage, so
+  # OR'ing the name back in would just reopen the homonym it exists to close.
+  organism_clause <- if (!is.null(taxid) && !is.na(taxid) && nzchar(taxid)) {
+    sprintf("txid%s[ORGN]", taxid)
+  } else {
+    paste0(gsub("-", " ", taxon), "[Organism]")
+  }
+  term <- paste0(organism_clause, " AND ", bc_clause)
 
   # Date clause (PDAT = publication date)
 
@@ -182,6 +207,108 @@ utils::globalVariables(c(
     )
   }
   list(value = value, success = success)
+}
+
+
+#' Resolve each of `taxa` to a disambiguated NCBI taxid, given `taxa_lineage`
+#'
+#' Extracted from `fetch_ncbi_reference_sequences()` so the resolution loop
+#' can be unit-tested against a mocked `TaxaTools::resolve_ncbi_taxid()`
+#' without mocking the whole fetch pipeline. `NULL` `taxa_lineage` is a
+#' cheap no-op (every element `NA_character_`) -- unprotected, name-based
+#' behaviour throughout.
+#' @param taxa Character vector of taxon names.
+#' @param taxa_lineage Data frame or `NULL` -- see
+#'   `fetch_ncbi_reference_sequences()`'s own `@param taxa_lineage`.
+#' @param delay Numeric, seconds to sleep between per-taxon NCBI calls.
+#' @return Character vector, same length as `taxa`: the resolved taxid, or
+#'   `NA_character_` for a taxon `taxa_lineage` didn't cover or couldn't
+#'   disambiguate.
+#' @noRd
+.resolve_taxa_taxids <- function(taxa, taxa_lineage, delay) {
+  resolved_taxids <- stats::setNames(rep(NA_character_, length(taxa)), taxa)
+  if (is.null(taxa_lineage)) {
+    return(resolved_taxids)
+  }
+  lineage_rank_cols <- intersect(
+    c("kingdom", "phylum", "class", "order", "family"), names(taxa_lineage)
+  )
+  message(sprintf(
+    "Resolving %d taxon/taxa to a disambiguated NCBI taxid (taxa_lineage supplied)...",
+    length(taxa)
+  ))
+  n_resolved <- 0L
+  n_ambiguous <- 0L
+  for (i in seq_along(taxa)) {
+    row <- taxa_lineage[!is.na(taxa_lineage$taxon) & taxa_lineage$taxon == taxa[i], , drop = FALSE]
+    if (nrow(row) == 0L) next
+    lineage_terms <- if (length(lineage_rank_cols) > 0L) {
+      as.character(unlist(row[1L, lineage_rank_cols], use.names = FALSE))
+    } else {
+      character(0)
+    }
+    declared_rank <- if ("rank" %in% names(row) && !is.na(row$rank[1L])) {
+      as.character(row$rank[1L])
+    } else {
+      NULL
+    }
+    res <- tryCatch(
+      TaxaTools::resolve_ncbi_taxid(taxa[i], rank = declared_rank, lineage_terms = lineage_terms),
+      error = function(e) {
+        warning(sprintf(
+          "fetch_ncbi_reference_sequences: taxid resolution failed for '%s': %s",
+          taxa[i], conditionMessage(e)
+        ), call. = FALSE)
+        list(taxid = NA_character_, status = "error")
+      }
+    )
+    resolved_taxids[i] <- res$taxid
+    if (!is.na(res$taxid)) n_resolved <- n_resolved + 1L
+    if (identical(res$status, "ambiguous")) n_ambiguous <- n_ambiguous + 1L
+    Sys.sleep(delay)
+  }
+  message(sprintf(
+    paste0(
+      "  %d of %d resolved to a disambiguated taxid and will be queried by ",
+      "txid; %d remained ambiguous after rank/lineage discrimination and ",
+      "will still be queried by name (no protection for those)."
+    ),
+    n_resolved, length(taxa), n_ambiguous
+  ))
+  resolved_taxids
+}
+
+
+#' Post-fetch lineage-agreement guard: flag rows disagreeing with their
+#' queried taxon's declared lineage
+#'
+#' Extracted from `fetch_ncbi_reference_sequences()` for unit-testability.
+#' Needs no API call -- `reference_df` already carries its own returned
+#' kingdom/phylum/family (via the widened taxonomy-bridge fetch), and
+#' `taxa_lineage` is exactly what the caller already supplied for taxid
+#' resolution. See `TaxaTools::check_lineage_agreement()` for the
+#' homonym-vs-benign-revision test itself.
+#' @param reference_df Data frame with (at least) `queried_taxon` and any of
+#'   `kingdom`/`phylum`/`family`.
+#' @param taxa_lineage Data frame with `taxon` plus any of `kingdom`,
+#'   `phylum`, `class`, `order`, `family`.
+#' @return A data frame: the subset of `reference_df` rows whose returned
+#'   lineage shares nothing with their queried taxon's declared lineage
+#'   (`composite_id`, `queried_taxon`, and whichever returned rank columns
+#'   were present). Zero rows if none disagree.
+#' @noRd
+.compute_lineage_disagreements <- function(reference_df, taxa_lineage) {
+  declared_lin <- taxa_lineage[
+    match(reference_df$queried_taxon, taxa_lineage$taxon),
+    intersect(c("kingdom", "phylum", "class", "order", "family"), names(taxa_lineage)),
+    drop = FALSE
+  ]
+  declared_str <- apply(declared_lin, 1L, function(r) paste(stats::na.omit(r), collapse = "|"))
+  returned_cols <- intersect(c("kingdom", "phylum", "family"), names(reference_df))
+  returned_lin <- reference_df[, returned_cols, drop = FALSE]
+  returned_str <- apply(returned_lin, 1L, function(r) paste(stats::na.omit(r), collapse = "|"))
+  verdict <- TaxaTools::check_lineage_agreement(declared_str, returned_str)
+  reference_df[verdict == "disagrees", c("composite_id", "queried_taxon", returned_cols), drop = FALSE]
 }
 
 
@@ -384,12 +511,17 @@ utils::globalVariables(c(
 #' narrower rank_system's cache hard-crashes a wider call at the
 #' \code{keep_cols} subset), \code{keep_out_of_range} (the cached object is
 #' fully post-filter, so a cache built with FALSE genuinely lacks
-#' out-of-range rows), and the length and date bounds.
+#' out-of-range rows), the length and date bounds, and \code{taxid} (a
+#' taxid-scoped query and a name-scoped query for the same taxon can return
+#' genuinely different sequences -- see the homonym-detection note on
+#' \code{.build_search_term()} -- so a cache built under one must never be
+#' served to the other).
 #' @noRd
 .ref_cache_file <- function(cache_dir, name, barcode_term, min_len, max_len,
                             min_date, max_date, keep_out_of_range,
                             max_out_of_range_per_species,
-                            max_out_of_range_len, rank_system, prefix = "") {
+                            max_out_of_range_len, rank_system, prefix = "",
+                            taxid = NULL) {
   if (is.null(cache_dir)) {
     return(NULL)
   }
@@ -404,12 +536,17 @@ utils::globalVariables(c(
     ""
   }
   rank_sfx <- paste0("_rk-", paste(tolower(rank_system), collapse = "-"))
+  txid_sfx <- if (!is.null(taxid) && !is.na(taxid) && nzchar(taxid)) {
+    sprintf("_txid%s", taxid)
+  } else {
+    ""
+  }
   file.path(
     cache_dir,
     paste0(
       stem,
       "_l", min_len, "_", max_len,
-      "_d", date_sfx, oor_sfx, rank_sfx, "_meta.rds"
+      "_d", date_sfx, oor_sfx, rank_sfx, txid_sfx, "_meta.rds"
     )
   )
 }
@@ -452,6 +589,7 @@ utils::globalVariables(c(
     "_d[0-9]*", # date bounds; digits only, empty when both are NULL
     "(_oor[0-9]+_l[0-9]+)?", # out-of-range settings, only when kept
     "_rk-[a-z0-9-]*", # rank_system -- UNCONDITIONAL, hence the proof
+    "(_txid[0-9]+)?", # taxid-scoped query, only when resolved
     "_meta\\.rds$"
   )
 }
@@ -494,6 +632,7 @@ utils::globalVariables(c(
 #' @noRd
 .ref_cache_stem_of <- function(basenames) {
   x <- sub("_meta\\.rds$", "", basenames)
+  x <- sub("_txid[0-9]+$", "", x)
   x <- sub("_rk-[a-z0-9-]*$", "", x)
   x <- sub("_oor[0-9]+_l[0-9]+$", "", x)
   x <- sub("_d[0-9]*$", "", x)
@@ -1050,6 +1189,37 @@ utils::globalVariables(c(
 #'   files that differ only in a key VALUE -- different length bounds, a
 #'   different `rank_system` -- are different queries, not generations, and
 #'   are never touched. Set `FALSE` to keep every historical generation.
+#' @param taxa_lineage Data frame or `NULL` (default). Opt-in homonym
+#'   protection: a `taxon` column matching entries of `taxa`, plus any of
+#'   `rank`, `kingdom`, `phylum`, `class`, `order`, `family` -- the caller's
+#'   OWN declared lineage for each queried taxon. A taxon NAME is not a
+#'   key -- NCBI can hold several nodes with the same name in unrelated
+#'   lineages (e.g. a genus of red algae named "Vertebrata" beside the
+#'   vertebrate clade of the same name; see
+#'   [TaxaTools::known_ncbi_homonyms]), and the default `[Organism]`
+#'   name-based query silently resolves to whichever node NCBI prefers,
+#'   which for an `[ORGN]` search is any node in the lineage -- a
+#'   higher-rank or larger-volume homonym wins on volume, drowning the
+#'   wanted sequences in results from the wrong organism entirely (a
+#'   red-algal genus query for "Vertebrata" measured returning 306,181
+#'   vertebrate sequences alongside 68 real red-algal ones -- see
+#'   `ecosystem_docs/REENTRY_PROMPT_homonym_detection.md` for the full
+#'   incident). When supplied, each taxon is resolved to a disambiguated
+#'   NCBI taxid first, via [TaxaTools::resolve_ncbi_taxid()] using `rank`
+#'   and the declared lineage as discriminators, and queried by
+#'   `txid<id>[ORGN]` instead of `<name>[Organism]`; a taxon that remains
+#'   ambiguous after both discriminators falls back to the name-based query
+#'   with no protection, exactly as if `taxa_lineage` had not named it. Also
+#'   enables a post-fetch lineage-agreement guard needing no extra API
+#'   call: every fetched sequence's own returned kingdom/phylum/family is
+#'   compared against the taxon's declared lineage, and any row sharing
+#'   nothing with it (a likely homonym slipping past taxid resolution, or a
+#'   taxon this parameter didn't cover at all) is recorded in
+#'   `attr(reference_df, "lineage_disagreements")` -- checked, not
+#'   silently trusted, since agreement doesn't require an exact match (a
+#'   benign taxonomic revision that stays within a shared higher clade also
+#'   agrees). `NULL` (the default) reproduces this function's original
+#'   behaviour exactly: every taxon queried by bare name, no guard.
 #'
 #' @return A data frame (`reference_df`), carrying a `count_failures`
 #'   attribute (always present, possibly zero-length) naming any taxa dropped
@@ -1071,7 +1241,16 @@ utils::globalVariables(c(
 #'     \item{`lat`, `lon`, `country`}{Only when `include_location = TRUE`.
 #'       Collection location parsed from GenBank's `lat_lon`/`country`
 #'       qualifiers; `NA` when absent or unparseable.}
+#'     \item{`queried_taxon`, `kingdom`, `phylum`}{Only when `taxa_lineage`
+#'       was supplied. `queried_taxon` records which `taxa` entry a row was
+#'       fetched under; `kingdom`/`phylum` are always resolved (in addition
+#'       to whatever `rank_system` itself requests) so the lineage-agreement
+#'       guard has data to check without a second taxonomy fetch.}
 #'   }
+#'   Also carries a `lineage_disagreements` attribute (always present when
+#'   `taxa_lineage` was supplied; absent otherwise) -- a data frame of every
+#'   row whose returned lineage shared nothing with its queried taxon's
+#'   declared lineage, via `attr(reference_df, "lineage_disagreements")`.
 #'   Ready for input to [build_sequence_matrix()] (which applies its own,
 #'   independent length filter -- out-of-range rows kept here are excluded
 #'   from training there exactly as before this parameter existed).
@@ -1115,7 +1294,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
                                            max_out_of_range_len = 200000L,
                                            count_attempts = 3L,
                                            on_count_failure = c("warn", "error"),
-                                           evict_unreachable_cache = TRUE) {
+                                           evict_unreachable_cache = TRUE,
+                                           taxa_lineage = NULL) {
   on_count_failure <- match.arg(on_count_failure)
   if (!is.logical(evict_unreachable_cache) ||
     length(evict_unreachable_cache) != 1L || is.na(evict_unreachable_cache)) {
@@ -1150,6 +1330,17 @@ fetch_ncbi_reference_sequences <- function(taxa,
     max_per_genus < 1L)) {
     stop("max_per_genus must be a positive integer or NULL")
   }
+  if (!is.null(taxa_lineage)) {
+    if (!is.data.frame(taxa_lineage) || !"taxon" %in% names(taxa_lineage)) {
+      stop(
+        "taxa_lineage must be a data frame with a `taxon` column (matching ",
+        "entries of `taxa`), plus any of `rank`, `kingdom`, `phylum`, ",
+        "`class`, `order`, `family` -- the caller's own declared lineage, ",
+        "used to disambiguate a name that collides with an unrelated ",
+        "taxon elsewhere in NCBI's taxonomy. See ?resolve_ncbi_taxid."
+      )
+    }
+  }
 
   # Set NCBI API key if provided
   if (!is.null(ncbi_api_key)) {
@@ -1162,6 +1353,24 @@ fetch_ncbi_reference_sequences <- function(taxa,
   len_bounds <- TaxaTools::resolve_barcode_lengths(barcode_term, min_len, max_len)
   eff_min_len <- len_bounds[1L]
   eff_max_len <- len_bounds[2L]
+
+  # --- Homonym-safe taxid resolution (opt-in via taxa_lineage) ---------------
+  # A taxon NAME is not a key -- NCBI can hold several nodes with the same
+  # name in unrelated lineages (see TaxaTools::known_ncbi_homonyms), and a
+  # name-based [Organism] search silently resolves to whichever node the
+  # service prefers, which for a real case measured 2026-09-22 meant a
+  # red-algal genus query for "Vertebrata" returning 306,181 vertebrate
+  # sequences alongside 68 real ones -- the wanted sequences were not lost,
+  # they were drowned, and every downstream model trained on them treated
+  # vertebrate mitochondria as congeners of a red alga. See
+  # ecosystem_docs/REENTRY_PROMPT_homonym_detection.md for the full record.
+  #
+  # Resolved BEFORE the cache pass, not lazily inside the fetch loop, so the
+  # resolved taxid can be folded into the cache key up front -- a taxid-
+  # scoped query and a name-scoped query for the same taxon can return
+  # genuinely different sequences, so neither may serve as a cache hit for
+  # the other (see .ref_cache_file()'s taxid parameter).
+  resolved_taxids <- .resolve_taxa_taxids(taxa, taxa_lineage, delay)
 
   # Set up cache directory
   if (!is.null(cache_dir)) {
@@ -1197,7 +1406,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
       cache_files[i] <- .ref_cache_file(
         cache_dir, taxa[i], barcode_term, eff_min_len, eff_max_len,
         min_date, max_date, keep_out_of_range,
-        max_out_of_range_per_species, max_out_of_range_len, rank_system
+        max_out_of_range_per_species, max_out_of_range_len, rank_system,
+        taxid = resolved_taxids[i]
       )
       if (file.exists(cache_files[i])) {
         loaded <- tryCatch(readRDS(cache_files[i]), error = function(e) NULL)
@@ -1269,7 +1479,9 @@ fetch_ncbi_reference_sequences <- function(taxa,
     # Served from cache in Step 0 -- no count query, so no way to lose it to
     # a transient NCBI failure.
     if (is_cached[i]) next
-    term <- .build_search_term(taxa[i], barcode_term, min_date, max_date)
+    term <- .build_search_term(taxa[i], barcode_term, min_date, max_date,
+      taxid = resolved_taxids[i]
+    )
     for (attempt in seq_len(count_attempts)) {
       ok <- tryCatch(
         {
@@ -1584,7 +1796,8 @@ fetch_ncbi_reference_sequences <- function(taxa,
       .ref_cache_file(
         cache_dir, taxa[i], barcode_term, eff_min_len, eff_max_len,
         min_date, max_date, keep_out_of_range,
-        max_out_of_range_per_species, max_out_of_range_len, rank_system
+        max_out_of_range_per_species, max_out_of_range_len, rank_system,
+        taxid = resolved_taxids[i]
       )
     }
     if (!is.null(cache_file)) {
@@ -1615,7 +1828,9 @@ fetch_ncbi_reference_sequences <- function(taxa,
           taxa[i], format(fetch_n, big.mark = ","), capped_msg
         ))
 
-        term <- .build_search_term(taxa[i], barcode_term, min_date, max_date)
+        term <- .build_search_term(taxa[i], barcode_term, min_date, max_date,
+          taxid = resolved_taxids[i]
+        )
         search_obj <- rentrez::entrez_search(
           db = "nucleotide", term = term,
           retmax = min(fetch_n, 9999L), use_history = TRUE
@@ -1673,7 +1888,18 @@ fetch_ncbi_reference_sequences <- function(taxa,
           next
         }
 
-        # Taxonomy bridge: taxid -> full lineage
+        # Records which taxon this row was QUERIED under, for the post-fetch
+        # lineage-agreement guard below -- only meaningful (and only kept)
+        # when taxa_lineage was supplied to check it against.
+        if (!is.null(taxa_lineage)) meta$queried_taxon <- taxa[i]
+
+        # Taxonomy bridge: taxid -> full lineage. Widened to also request
+        # kingdom/phylum (beyond rank_system's own ranks) when taxa_lineage
+        # was supplied -- these ranks are already present in the XML this
+        # call fetches, so requesting them costs no extra API round trip and
+        # is what lets the post-fetch lineage-agreement guard run with none
+        # either (see ecosystem_docs/REENTRY_PROMPT_homonym_detection.md,
+        # proposal 4).
         unique_taxids <- unique(meta$taxid)
         unique_taxids <- unique_taxids[!is.na(unique_taxids) &
           nchar(unique_taxids) > 0L]
@@ -1682,7 +1908,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
           "  %s: resolving taxonomy for %d unique taxids...",
           taxa[i], length(unique_taxids)
         ))
-        tax_map <- .fetch_taxonomy_map(unique_taxids, tolower(rank_system))
+        desired_ranks <- if (!is.null(taxa_lineage)) {
+          union(tolower(rank_system), c("kingdom", "phylum"))
+        } else {
+          tolower(rank_system)
+        }
+        tax_map <- .fetch_taxonomy_map(unique_taxids, desired_ranks)
 
         if (is.null(tax_map) || nrow(tax_map) == 0L) {
           warning(sprintf("Taxonomy resolution failed for '%s'", taxa[i]),
@@ -1939,6 +2170,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # unchanged) would lack it, and this keeps that stale-cache case a graceful
   # NA-column omission rather than a hard "undefined columns selected" crash.
   if ("create_date" %in% names(combined_meta)) keep_cols <- c(keep_cols, "create_date")
+  # queried_taxon/kingdom/phylum only exist when taxa_lineage was supplied
+  # (see the taxonomy-bridge widening above) -- carried through the same
+  # way, for the post-fetch lineage-agreement guard below.
+  keep_cols <- c(keep_cols, intersect(
+    c("queried_taxon", "kingdom", "phylum"), names(combined_meta)
+  ))
   lookup <- combined_meta[!duplicated(combined_meta$composite_id), keep_cols,
     drop = FALSE
   ]
@@ -1960,6 +2197,33 @@ fetch_ncbi_reference_sequences <- function(taxa,
       reference_df$lat <- NA_real_
       reference_df$lon <- NA_real_
       reference_df$country <- NA_character_
+    }
+  }
+
+  # --- Post-fetch lineage-agreement guard (opt-in via taxa_lineage) ----------
+  # Needs no further API call -- every returned record already carries its
+  # own resolved kingdom/phylum/family from the taxonomy bridge above. Fails
+  # LOUDLY where a bare name-based fetch fails silently: a disagreement here
+  # means this row's returned lineage shares nothing with what the caller
+  # declared for the taxon it was queried under -- a likely homonym, not a
+  # benign taxonomic revision (which stays inside a shared higher clade and
+  # so still agrees). See ecosystem_docs/REENTRY_PROMPT_homonym_detection.md,
+  # proposal 4 -- this is exactly the sweep that found the defect in the
+  # first place, now run automatically on every taxa_lineage-aware fetch.
+  if (!is.null(taxa_lineage) && "queried_taxon" %in% names(reference_df)) {
+    disagreements <- .compute_lineage_disagreements(reference_df, taxa_lineage)
+    attr(reference_df, "lineage_disagreements") <- disagreements
+    n_dis <- nrow(disagreements)
+    if (n_dis > 0L) {
+      message(sprintf(
+        paste0(
+          "  Lineage-agreement guard: %d of %d fetched sequence(s), across ",
+          "%d queried taxon/taxa, returned a lineage sharing nothing with ",
+          "the caller's declared lineage -- a likely homonym, not a benign ",
+          "revision. See attr(reference_df, \"lineage_disagreements\")."
+        ),
+        n_dis, nrow(reference_df), dplyr::n_distinct(disagreements$queried_taxon)
+      ))
     }
   }
 
