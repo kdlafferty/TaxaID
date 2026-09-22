@@ -4,7 +4,12 @@
 \alias{check_lineage_agreement}
 \title{Check whether a returned lineage agrees with a declared one}
 \usage{
-check_lineage_agreement(declared, returned)
+check_lineage_agreement(
+  declared,
+  returned,
+  ignore = c("cellular organisms", "Eukaryota", "Bacteria", "Archaea", "Viruses",
+    "Metazoa", "Viridiplantae", "Fungi")
+)
 }
 \arguments{
 \item{declared}{Character vector. One element per row: the caller's own
@@ -14,13 +19,25 @@ semicolon-delimited (e.g. \code{"Rhodophyta|Florideophyceae|Ceramiales"}).}
 \item{returned}{Character vector, same length as \code{declared}. The
 corresponding lineage actually returned by the fetch being checked, in
 the same delimited form.}
+
+\item{ignore}{Character vector of lineage terms that never count as
+agreement, case-insensitive. The default holds the roots that every
+lineage shares (\code{"cellular organisms"}, \code{"Eukaryota"},
+\code{"Bacteria"}, \code{"Archaea"}, \code{"Viruses"}) and the
+kingdom-level groups a cross-phylum homonym still shares
+(\code{"Metazoa"}, \code{"Viridiplantae"}, \code{"Fungi"}). Without
+this, a full NCBI-style lineage on both sides would return
+\code{"agrees"} for a red alga and a bat on \code{"Eukaryota"} alone.
+Compare lineages scoped below the shared root; pass
+\code{character(0)} to count every term.}
 }
 \value{
 Character vector, same length as \code{declared}, one of
-\code{"agrees"} (at least one shared term -- same clade, whether an
-exact match or a benign revision), \code{"disagrees"} (both sides have
-real terms and share none -- a likely homonym), or \code{"unknown"}
-(one or both sides had nothing to compare).
+\code{"agrees"} (at least one shared term outside \code{ignore} --
+same clade, whether an exact match or a benign revision),
+\code{"disagrees"} (both sides have real terms and share none -- a
+likely homonym), or \code{"unknown"} (one or both sides had nothing to
+compare after \code{ignore}).
 }
 \description{
 A cheap, no-API-call post-fetch guard: given what a caller DECLARED about
@@ -36,10 +53,36 @@ BENIGN REVISION" section for the full reasoning and real worked examples
 (e.g. \code{Modiolus} Mytilidae -> Modiolidae is a revision, both molluscs;
 \code{Polychaeta} class -> a tachinid fly genus is a homonym).
 }
+\section{What a disagreement means}{
+
+Treat \code{"disagrees"} as a review candidate, not a filter. A
+disagreement at family level alone cannot separate a homonym from a
+benign reclassification (\code{Modiolus} Mytilidae -> Modiolidae is
+the same mussel), and on a real COI reference set of 4,638 genera only
+about 12 of 78 family-level disagreements were homonyms. The test that
+separates them is whether the disagreement is contained within a shared
+higher clade, which needs ranks above family on both sides. Inspect the
+candidates, or supply lineages that reach phylum and class.
+
+A homonym can also present as zero results: a name that resolves to the
+wrong NCBI node may legitimately return nothing, and an empty result
+gives this function nothing to compare. After a fetch, check which
+requested taxa returned no sequences at all, not only which returned
+something odd.
+}
+
 \examples{
 check_lineage_agreement(
   declared = c("Rhodophyta|Rhodomelaceae", "Mollusca|Mytilidae"),
   returned = c("Chordata|Mammalia", "Mollusca|Modiolidae")
 )
 # -> c("disagrees", "agrees")
+
+# Full NCBI-style lineages: the shared root is ignored, so this is still
+# a disagreement (a red alga versus a bat).
+check_lineage_agreement(
+  declared = "cellular organisms|Eukaryota|Rhodophyta|Florideophyceae|Ceramiales",
+  returned = "cellular organisms|Eukaryota|Metazoa|Chordata|Mammalia|Chiroptera"
+)
+# -> "disagrees"
 }

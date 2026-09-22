@@ -61,7 +61,12 @@ NULL disables species-level capping.}
 
 \item{max_per_genus}{Integer or NULL (default NULL).
 Maximum sequences per genus after species-level capping.
-NULL disables genus-level capping.}
+NULL disables genus-level capping. The cap samples across the genus, so
+a capped genus can lose whole species rather than thinning each one,
+and the likelihood model's between-species terms are fitted on what
+remains. Prefer \code{max_per_species}, which never drops a species and
+matches \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}'s own per-taxon cap; use
+\code{max_per_genus} only where losing whole species is acceptable.}
 
 \item{priority_taxa}{Character vector or NULL (default NULL).
 Species names that should be fully represented in the reference.
@@ -245,6 +250,10 @@ fetched under; \code{kingdom}/\code{phylum} are always resolved (in addition
 to whatever \code{rank_system} itself requests) so the lineage-agreement
 guard has data to check without a second taxonomy fetch.}
 }
+Carries a \code{taxa_without_sequences} attribute: the requested taxa for
+which nothing came back. Check it after every fetch: a name that
+resolves to the wrong NCBI node can return nothing, and an empty result
+is otherwise indistinguishable from a taxon with no barcode.
 Also carries a \code{lineage_disagreements} attribute (always present when
 \code{taxa_lineage} was supplied; absent otherwise) -- a data frame of every
 row whose returned lineage shared nothing with its queried taxon's

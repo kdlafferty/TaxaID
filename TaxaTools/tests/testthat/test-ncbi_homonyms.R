@@ -218,3 +218,22 @@ test_that("check_lineage_agreement validates input", {
   expect_error(check_lineage_agreement(1L, "a"), "character vectors")
   expect_error(check_lineage_agreement(c("a", "b"), "a"), "same length")
 })
+
+test_that("check_lineage_agreement() is not defeated by a shared root or kingdom", {
+  alga <- "cellular organisms|Eukaryota|Rhodophyta|Florideophyceae|Ceramiales|Rhodomelaceae"
+  bat  <- "cellular organisms|Eukaryota|Metazoa|Chordata|Mammalia|Chiroptera|Phyllostomidae"
+  worm <- "cellular organisms|Eukaryota|Metazoa|Annelida|Polychaeta"
+  fly  <- "cellular organisms|Eukaryota|Metazoa|Arthropoda|Insecta|Diptera|Tachinidae"
+  expect_identical(check_lineage_agreement(alga, bat), "disagrees")
+  expect_identical(check_lineage_agreement(worm, fly), "disagrees")
+  # a benign revision inside a shared phylum still agrees
+  expect_identical(
+    check_lineage_agreement("Eukaryota|Metazoa|Mollusca|Mytilidae", "Eukaryota|Metazoa|Mollusca|Modiolidae"),
+    "agrees"
+  )
+  # only the root shared, and nothing else on one side: unknown, not agrees
+  expect_identical(check_lineage_agreement("Eukaryota", bat), "unknown")
+  # the old behaviour is available explicitly
+  expect_identical(check_lineage_agreement(alga, bat, ignore = character(0)), "agrees")
+  expect_error(check_lineage_agreement(data.frame(a = 1), "x"), "character vectors")
+})
