@@ -929,6 +929,49 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   GitLab, so the local step is "branch `1.0.0` from main" rather than
   "tag `v1.0.0`" unless the user wants both. The official DISCLAIMER and
   `code.json` `status` change only when that path completes.
+  **User decisions 2026-09-21 evening**: this version is the
+  PRE-SECURITY-REVIEW submission, not a release -- no tag, no version bump,
+  no `1.0.0` branch from this chat; the USGS path does those later.
+  `repositoryURL` = `kdlafferty/TaxaID` (README, CITATIONs and two
+  TaxaWizard strings aligned, `bae1d99`). The maintainer's own README pass
+  (all ten READMEs, TaxaExpect figure replaced by `PisasterTheta.png`) was
+  applied from the shared checkout onto branch `readme-user-pass`
+  (`f461386`); style rules for the review: no em dashes, no ` -- `, no
+  bold or italics outside headings, no LLM-style prose, shorter where
+  possible, typos and factual errors fixed. Verification asked for: the
+  TaxaAssign wrappers `run_bayesian_pipeline()`/`run_llm_pipeline()` and
+  every inst/ and production workflow after the data removals; the
+  TaxaWizard README's "three ways" claims; the TaxaFlag README's focused
+  controls text; the TaxaExpect pooling claim (sharpened, `c3b83bc`: exact
+  invariance when every candidate of an observation is rescaled alike).
+  The maintainer also asked for a SECOND LOOK at the six `*_clear_cache()`
+  functions, which read as redundant in the READMEs.
+  **Wrapper and workflow verification DONE 2026-09-21**: every
+  `Taxa*/inst/*.R` script and the template parse, reference only existing
+  files and exported functions, and call none of the removed functions;
+  the six production workflows (PtCon 12S single/multi, 18S, Mugu,
+  GreatLakes, California Intertidal) parse with no dead reference into the
+  repository tree (two stale prose comments outside the repo recommend the
+  removed `migrate_reference_cache()`; Mugu's unreachable GLMM branch calls
+  a long-removed `add_pca_covariates()`). `run_llm_pipeline()` intact.
+  `run_bayesian_pipeline(generate_report = TRUE)` was BROKEN: it spliced
+  `score_transform` into the `generate_report()` call, which has no such
+  formal. FIXED (`7172151`): the value travels as the `report_params`
+  attribute, both wrappers validate `report_params` names up front, and a
+  real run's Methods text now names the square-root-mismatch transform.
+  Also found: the shipped fast fixtures still carried the retired
+  `resident_observed` label (18S priors 1,522 rows, 12S r2 479, Mugu
+  posterior 116), so the 18S and Mugu smoke tests failed under the closed
+  `prior_branch` set introduced by this screen; relabelled and re-run
+  (18S 813 rows, Mugu 0.3 s). Three graph snippets and the template still
+  listed the label; removed. The template guard test regenerated in a
+  subprocess from the INSTALLED snippets, so it could not see source
+  edits; the generator now reads the repository's graph and snippets and
+  a stale template provably fails the guard. The fixture README was a
+  205-line dated development log shipped in `inst/`; rewritten as an
+  inventory. All merged to main (`6b2e758`); TaxaAssign 815/0, TaxaWizard
+  1107/0. The installed library is now behind main in TaxaAssign and
+  TaxaWizard: reinstall before submission.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine

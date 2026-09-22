@@ -179,7 +179,7 @@
       p,
       level = "missing",
       install_fix = sprintf(
-        'remotes::install_github("DOI-USGS/TaxaID", subdir = "%s")', p
+        'remotes::install_github("kdlafferty/TaxaID", subdir = "%s")', p
       )
     )
   })

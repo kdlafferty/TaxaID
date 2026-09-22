@@ -7,7 +7,7 @@ editor_options:
 # TaxaAssign
 
 Bayesian taxonomic assignment from match scores and priors. Part of the
-[TaxaID](https://github.com/DOI-USGS/TaxaID) ecosystem.
+[TaxaID](https://github.com/kdlafferty/TaxaID) ecosystem.
 
 ## Overview
 
@@ -15,31 +15,32 @@ TaxaAssign makes a consensus taxonomic assignment for the several
 hypothesized matches to each observation. It uses Bayes' theorem to
 multiply the likelihood that a match score corresponds to a particular
 species (from TaxaLikely) by the prior probability that the species
-would be selected at random from a sample of similar species at that
-site and habitat (from TaxaExpect). After normalization and Monte Carlo
-simulation, each candidate receives a posterior probability. If a single
-candidate has strong support, it is assigned as the consensus taxon;
-otherwise, a coarser rank (genus, family, etc.) is assigned via lowest
-common ancestor. All competing hypotheses and their probabilities are
-retained in the output. The user can also update priors iteratively: if
-one observation strongly supports species A, that evidence can sharpen
-the prior for species A in other observations from the same sample.
+would be selected at random from a sample (reports) of similar species
+at that site and habitat (from TaxaExpect). After normalization and
+Monte Carlo simulation, each candidate receives a posterior probability.
+If a single candidate has strong support, it is assigned as the
+consensus taxon; otherwise, a coarser rank (genus, family, etc.) is
+assigned via lowest common ancestor. All competing hypotheses and their
+probabilities are retained in the output. The user can also update
+priors iteratively: if one observation strongly supports species A, that
+evidence can sharpen the prior for species A in other observations from
+the same sample.
 
 Two workflows:
 
-\- **Full Bayesian** -- TaxaLikely's trained likelihood model +
-TaxaExpect's occurrence-modelled priors. The recommended pathway for any
-real analysis: publication-quality, and every one of this ecosystem's
-real production workflows uses it exclusively.
+Full Bayesian: TaxaLikely's trained likelihood model + TaxaExpect's
+occurrence-modelled priors. The recommended pathway for any real
+analysis: publication-quality, and every one of this ecosystem's real
+production workflows uses it exclusively.
 
-\- **LLM-shortcut** -- an approximate *stand-in* for the pathway above,
+LLM-shortcut: an approximate stand-in for the pathway above,
 substituting an exponential score-weighting proxy for TaxaLikely's
 modeled likelihood and an LLM's biogeographic judgment for TaxaExpect's
-modeled occurrence prior. It exists for exploratory analysis when a
-trained TaxaLikely model or TaxaExpect priors aren't available yet (or
-as a quick comparison against the Full Bayesian result on data you
-already have both for). This fast path is better than relying on scores,
-but **not** the statistically defendable outcome that most users want.
+modeled occurrence prior. It exists for rapid analysis when a trained
+TaxaLikely model or TaxaExpect priors aren't available yet (or as a
+quick comparison against the Full Bayesian result on data you already
+have both for). This fast path is better than relying on scores, but
+not the statistically defensible outcome that most users want.
 
 ## Installation
 
@@ -63,7 +64,7 @@ out <- run_bayesian_pipeline(
 head(out$consensus)
 ```
 
-### LLM-shortcut workflow (fast approximation -- no trained model/priors needed)
+### LLM-shortcut workflow (fast approximation: no trained model/priors needed)
 
 ``` r
 library(TaxaAssign)
@@ -95,28 +96,35 @@ report <- generate_report(posteriors, consensus)
 
 ## Key Functions
 
-**Core assignment:** - `compute_posterior()` -- Bayes' theorem with MC
-uncertainty - `assign_taxa_llm()` -- LLM-shortcut (priors + likelihoods
-in one call; accepts named unreferenced species from
-`TaxaLikely::suggest_unreferenced_species()` via `unreferenced_taxa` --
-see TaxaLikely's README for the full unreferenced-species mechanism) -
-`join_priors()` -- merge TaxaExpect priors with likelihood output
+Core assignment:
 
-**Consensus:** - `posterior_consensus()` -- LCA from posterior
-probabilities - `score_consensus()` -- conventional score-based
-consensus - `update_prior_from_consensus()` -- empirical Bayes
-refinement
+-   `compute_posterior()`: Bayes' theorem with MC uncertainty
+-   `assign_taxa_llm()`: LLM-shortcut (priors + likelihoods in one
+    call; accepts named unreferenced species from
+    `TaxaLikely::suggest_unreferenced_species()` via
+    `unreferenced_taxa`; see TaxaLikely's README for the full
+    unreferenced-species mechanism)
+-   `join_priors()`: merge TaxaExpect priors with likelihood output
 
-**High-level wrappers:** - `run_bayesian_pipeline()` -- Full Bayesian
-(TaxaLikely + TaxaExpect -\> posteriors) -- recommended -
-`run_llm_pipeline()` -- LLM-shortcut approximation (match_df -\>
-posteriors in one call, no trained TaxaLikely model or TaxaExpect priors
-needed)
+Consensus:
 
-**Context and reporting:** - `build_context()` -- auto-populate site
-context from taxon names - `generate_report()` -- publication-ready
-Methods + Results text - `report_assign()` -- lightweight section for
-`assemble_report()`
+-   `posterior_consensus()`: LCA from posterior probabilities
+-   `score_consensus()`: conventional score-based consensus
+-   `update_prior_from_consensus()`: empirical Bayes refinement
+
+High-level wrappers:
+
+-   `run_bayesian_pipeline()`: Full Bayesian (TaxaLikely + TaxaExpect
+    -\> posteriors), recommended
+-   `run_llm_pipeline()`: LLM-shortcut approximation (match_df -\>
+    posteriors in one call, no trained TaxaLikely model or TaxaExpect
+    priors needed)
+
+Context and reporting:
+
+-   `build_context()`: auto-populate site context from taxon names
+-   `generate_report()`: publication-ready Methods + Results text
+-   `report_assign()`: lightweight section for `assemble_report()`
 
 ## Statistical Methods
 
@@ -130,49 +138,50 @@ LLM-shortcut pathway's exponential score-weighting proxy) and $\pi$ is
 the prior (TaxaExpect's occurrence model, or the LLM-shortcut pathway's
 LLM-estimated biogeographic prior).
 
--   **Monte Carlo uncertainty propagation**: priors are modelled as
+-   Monte Carlo uncertainty propagation: priors are modelled as
     Beta($\alpha$, $\beta$) distributions and likelihoods as
     Normal(mean, sd); 1000 simulations (default) propagate both sources
     of uncertainty into posterior means, SDs, and confidence scores
     (fraction of simulations won)
--   **Two workflows**: the full Bayesian workflow uses calibrated
+-   Two workflows: the full Bayesian workflow uses calibrated
     likelihoods from TaxaLikely's hierarchical model and
     spatially-explicit priors from TaxaExpect's kernel-based composition
     estimator; the LLM-shortcut workflow uses exponential score
     weighting ($L_i = e^{\lambda s_i}$) and LLM-estimated priors with
     information-quality-driven Beta concentration
--   **Posterior consensus**: hypotheses below `min_posterior` (default
+-   Posterior consensus: hypotheses below `min_posterior` (default
     0.05) are dropped, then the remainder are accumulated in decreasing
     order until they reach `cumulative_threshold` (default 0.90) of the
     named-taxon posterior mass; if multiple taxa remain, the lowest
     common ancestor (LCA) determines the consensus rank; optional
     downranking (`species_reference`, off by default) refines coarse
     assignments when only one finer-rank taxon exists at the study site
--   **Empirical Bayes refinement**: species confidently identified in
+-   Empirical Bayes refinement: species confidently identified in
     one observation receive boosted priors in unresolved observations
     from the same study, analogous to shrinkage estimators (Efron and
     Morris 1973)
--   **Dark diversity fallback**: "dark diversity" is an ecological
+-   Dark diversity fallback: "dark diversity" is an ecological
     concept (Pärtel et al. 2011) for species that belong to the regional
     species pool and could plausibly occur at a site given its
     environmental conditions, but have not actually been observed there.
     TaxaExpect computes per-species Tier 3 ("undetected species")
-    estimates using this concept -- see TaxaExpect's README for the full
+    estimates using this concept. See TaxaExpect's README for the full
     occurrence-modeling mechanism. For species with no prior row from
     TaxaExpect at all, `join_priors()` builds its own fallback from
-    those Tier 3 estimates -- site-level or global averaging, or (with
-    `singleton_taxonomy`) mass-conserving hierarchical group priors --
-    preventing false negatives from incomplete occurrence data. See
-    `join_priors()`'s own documentation for the full mechanism.
+    those Tier 3 estimates, site-level or global averaging, or (with
+    `singleton_taxonomy`) mass-conserving hierarchical group priors,
+    preventing false negatives from incomplete occurrence data (and
+    allowing novel species discovery). See `join_priors()`'s own
+    documentation for the full mechanism.
 
 For the full statistical derivation, assumptions, and references, see
 [`inst/TaxaAssign_supplemental_methods.md`](inst/TaxaAssign_supplemental_methods.md).
 
 ## Vignettes
 
--   [Taxonomic Assignment](vignettes/taxonomic-assignment.Rmd) -- full
+-   [Taxonomic Assignment](vignettes/taxonomic-assignment.Rmd): full
     workflow
--   [TaxaID Ecosystem Overview](vignettes/taxaid-ecosystem.Rmd) --
+-   [TaxaID Ecosystem Overview](vignettes/taxaid-ecosystem.Rmd):
     cross-package guide
 
 ## Part of TaxaID
@@ -181,14 +190,14 @@ TaxaAssign is the convergence point of the TaxaID ecosystem. It receives
 likelihoods from TaxaLikely and priors from TaxaExpect, then passes
 assignments to TaxaFlag for quality screening.
 
-**Ecosystem:** TaxaLikely + TaxaExpect -\> **TaxaAssign** -\> TaxaFlag
+Ecosystem: TaxaLikely + TaxaExpect -\> TaxaAssign -\> TaxaFlag
 
-See the [TaxaID README](https://github.com/DOI-USGS/TaxaID) for
+See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
 
-Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
+Lafferty, K.D., 2026, TaxaID, A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
 
@@ -198,7 +207,7 @@ taxonomic assignment: U.S. Geological Survey software release,
 -   TaxaTools (foundation package)
 -   TaxaLikely and TaxaExpect (for the Bayesian workflow; in Suggests)
 -   An Application Programming Interface (API) key for an LLM provider
-    (Anthropic Claude, Google Gemini, OpenAI, or local Ollama -- see
+    (Anthropic Claude, Google Gemini, OpenAI, or local Ollama; see
     TaxaTools) is needed for the LLM-shortcut workflow
 
 All dependencies are declared in the DESCRIPTION file and installed
@@ -210,7 +219,7 @@ Francisco, California).
 ## References
 
 Efron, B. and Morris, C. (1973). Stein's estimation rule and its
-competitors -- an empirical Bayes approach. *Journal of the American
+competitors, an empirical Bayes approach. *Journal of the American
 Statistical Association*, 68(341), 117--130.
 
 Pärtel, M., Szava-Kovats, R. and Zobel, M. (2011). Dark diversity:
