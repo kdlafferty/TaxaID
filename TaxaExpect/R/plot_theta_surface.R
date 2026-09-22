@@ -818,6 +818,19 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   n_panel <- n_taxa + if (isTRUE(support_panel)) 1L else 0L
 
   old_par <- graphics::par(no.readonly = TRUE)
+  # graphics::layout() sets multi-figure state that graphics::par(no.readonly
+  # = TRUE)/par(old_par) does NOT capture or restore -- ?layout is explicit
+  # that "layout(1) undoes any previous layout". Without this, a device left
+  # open across separate top-level calls (RStudio's Plots pane, not a fresh
+  # png()/pdf() device opened per call -- the shape every render in this
+  # file's own test suite used, which is why this was never caught there)
+  # inherits the PRIOR call's layout matrix, and a second graphics::layout()
+  # call on top of it is the documented trigger for R's
+  # "Error ... invalid graphics state" from a real user's RStudio session on
+  # the third real plot_theta_surface() call of a session (the first two,
+  # without a `mask`, happened to work). Registered BEFORE the par() restore
+  # so the device is back to one panel before old_par's mar/mgp are reapplied.
+  on.exit(graphics::layout(1), add = TRUE)
   on.exit(graphics::par(old_par), add = TRUE)
 
   ncol_p <- ceiling(sqrt(n_panel))
