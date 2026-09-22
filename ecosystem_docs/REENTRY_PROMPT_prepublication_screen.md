@@ -1129,6 +1129,26 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   quarantined branch-build baseline; the homonym thread may install
   again. The void run finished NORMALLY with zero errors: the hazard is
   that a reinstall under a run does not crash it.
+  **Follow-up MERGED**: `audit_barcode_coverage()`/`audit_reference_coverage()`
+  had the same unguarded `res$ids[1L]` genus-taxid pick; now resolved
+  through `TaxaTools::resolve_ncbi_taxid()` with lineage terms built from
+  the caller's own rank columns, no new parameter, no export change;
+  TaxaLikely 1371/0, check 0/0/0; reviewed from a detached worktree.
+  Deliberately unwired (query volume, species-level names collide far
+  less): `suggest_unreferenced_species()` per-species counts and the
+  priority_taxa path. Installed TaxaLikely is now behind main by this
+  internal change; reinstall at the next safe window, not urgent.
+  **PROPOSAL awaiting the maintainer**: `verify_taxon_names(backbone_id = 4)`'s
+  backend `.verify_via_ncbi()` overwrites `name_to_taxid[[name]]` per
+  returned summary, so a name with two NCBI nodes gets whichever came
+  last, silently; it sits under `escalate_taxonomic_rank()`,
+  `fill_higher_ranks()` and `assign_sampling_group(harmonise = TRUE)`.
+  Option 1: ambiguous name -> NA with a warning naming the candidates
+  (honest gap, existing not-found paths fire). Option 2: an
+  `expected_rank` hint on `verify_taxon_names()` used as the rank
+  discriminator (signature change, three callers). Screen's view: 1
+  now, 2 later, and the NA must be accompanied by a warning that lists
+  the name and its taxids so a user can pass the right one downstream.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
