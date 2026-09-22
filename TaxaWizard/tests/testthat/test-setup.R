@@ -630,3 +630,24 @@ test_that("sniff_input() never echoes raw file content for an unclassifiable/sin
   expect_false(grepl("AKIAFAKE", out$evidence, fixed = TRUE))
   expect_false(grepl("supersecretvalue", out$evidence, fixed = TRUE))
 })
+
+test_that("an absent Bioconductor package stops Step 0 only when the selected edges require it", {
+  local_mocked_bindings(
+    requireNamespace = function(package, ...) !(package %in% c("Biostrings", "DECIPHER")),
+    .package = "base"
+  )
+  options(TaxaWizard.offline = TRUE)
+  # an edge that never touches sequence alignment
+  scoped <- workflow_check(edges = "match_to_consensus_score", verbose = FALSE)
+  bio <- scoped[scoped$component %in% c("Biostrings", "DECIPHER"), ]
+  expect_equal(nrow(bio), 2L)
+  expect_true(all(bio$status == "warn"))
+  expect_true(all(grepl("not needed by the selected steps", bio$detail, fixed = TRUE)))
+  expect_false(any(scoped$status == "missing" & scoped$category == "package"))
+  # an edge that aligns sequences still calls them missing
+  needs <- workflow_check(edges = "refs_to_matrix", verbose = FALSE)
+  expect_true(all(needs$status[needs$component %in% c("Biostrings", "DECIPHER")] == "missing"))
+  # and so does the whole-ecosystem check
+  whole <- workflow_check(verbose = FALSE)
+  expect_true(all(whole$status[whole$component %in% c("Biostrings", "DECIPHER")] == "missing"))
+})

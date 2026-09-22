@@ -13,8 +13,11 @@ every edge in the graph. Narrows the \code{"key"}/\code{"network"}/
 \code{"binary"} rows to the union of those edges' \code{requires}
 tokens (plus one implied network check per key GROUP used); the
 \code{"r"}, \code{"package"}, and \code{"cache"} rows are always
-reported in full regardless of \code{edges}. Unknown edge ids are
-dropped with a warning.}
+reported in full regardless of \code{edges}, but an absent optional or
+Bioconductor package that none of the selected edges requires is
+reported as \code{"warn"} rather than \code{"missing"}, so only what
+the selected steps need can stop a generated script. Unknown edge ids
+are dropped with a warning.}
 
 \item{verbose}{Logical (default \code{TRUE}). Print the report via
 \code{\link{print.taxaid_check}} before returning it.}

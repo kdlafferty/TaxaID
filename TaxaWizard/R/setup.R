@@ -173,7 +173,15 @@
 }
 
 #' @noRd
-.check_packages <- function(requirements) {
+#' @param tokens Character vector of the selected edges' requirement tokens,
+#'   or \code{NULL} when the check covers the whole ecosystem. An optional
+#'   or Bioconductor package that is absent keeps its own level
+#'   (\code{"missing"} for Biostrings/DECIPHER) only when the selected steps
+#'   require it; otherwise the row is reported as \code{"warn"}, so a
+#'   generated script's Step 0 does not refuse to run over a package none
+#'   of its steps calls.
+#' @noRd
+.check_packages <- function(requirements, tokens = NULL) {
   rows <- lapply(TAXAID_PACKAGES, function(p) {
     .pkg_row(
       p,
@@ -184,11 +192,17 @@
     )
   })
   for (entry in requirements$packages) {
-    rows[[length(rows) + 1L]] <- .pkg_row(
+    level <- entry$level %||% "missing"
+    required_here <- is.null(tokens) || (entry$id %in% tokens)
+    row <- .pkg_row(
       entry$package,
-      level = entry$level %||% "missing",
+      level = if (required_here) level else "warn",
       install_fix = entry$install
     )
+    if (!required_here && identical(row$status, "warn") && level == "missing") {
+      row$detail <- "not installed; not needed by the selected steps"
+    }
+    rows[[length(rows) + 1L]] <- row
   }
   rows
 }
@@ -475,8 +489,11 @@
 #'   \code{"binary"} rows to the union of those edges' \code{requires}
 #'   tokens (plus one implied network check per key GROUP used); the
 #'   \code{"r"}, \code{"package"}, and \code{"cache"} rows are always
-#'   reported in full regardless of \code{edges}. Unknown edge ids are
-#'   dropped with a warning.
+#'   reported in full regardless of \code{edges}, but an absent optional or
+#'   Bioconductor package that none of the selected edges requires is
+#'   reported as \code{"warn"} rather than \code{"missing"}, so only what
+#'   the selected steps need can stop a generated script. Unknown edge ids
+#'   are dropped with a warning.
 #' @param verbose Logical (default \code{TRUE}). Print the report via
 #'   \code{\link{print.taxaid_check}} before returning it.
 #'
@@ -504,13 +521,14 @@ workflow_check <- function(edges = NULL, verbose = TRUE) {
   graph <- .load_graph()
   offline <- isTRUE(getOption("TaxaWizard.offline"))
 
+  tokens <- .selected_requires_tokens(graph, edges)
+
   rows <- c(
     .check_r(),
-    .check_packages(requirements),
+    .check_packages(requirements, tokens = if (is.null(edges)) NULL else tokens),
     .check_cache()
   )
 
-  tokens <- .selected_requires_tokens(graph, edges)
   for (tok in tokens) {
     row <- if (startsWith(tok, "key:")) {
       .resolve_key_token(tok, requirements)
