@@ -50,8 +50,8 @@ devtools::install("path/to/TaxaWizard")
 ```
 
 Requires an Application Programming Interface (API) key for an LLM
-provider (Anthropic Claude -- Anthropic PBC, San Francisco, California
--- by default; Google Gemini, OpenAI, or local Ollama are also supported
+provider (Anthropic Claude, Anthropic PBC, San Francisco, California, by
+default; Google Gemini, OpenAI, or local Ollama are also supported
 via TaxaTools). See the TaxaTools [API Setup
 vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 
@@ -73,35 +73,35 @@ The assistant asks about your data type, available inputs, and analysis
 goals, then generates a script tailored to your path through the TaxaID
 pipeline. Supported workflow paths include:
 
--   **eDNA / metabarcoding** — DADA2 seqtab or FASTA → BLAST (Basic
-    Local Alignment Search Tool; Altschul et al. 1990, hosted by NCBI,
-    the National Center for Biotechnology Information, U.S. National
+-   eDNA / metabarcoding: DADA2 seqtab or FASTA → BLAST (Basic Local
+    Alignment Search Tool; Altschul et al. 1990, hosted by NCBI, the
+    National Center for Biotechnology Information, U.S. National
     Library of Medicine, National Institutes of Health, Bethesda,
     Maryland) → likelihood model → Bayesian or LLM assignment
--   **Acoustic** — BirdNET-Analyzer (Cornell Lab of Ornithology, Cornell
+-   Acoustic: BirdNET-Analyzer (Cornell Lab of Ornithology, Cornell
     University, Ithaca, New York) CSV output → match data; or Xeno-canto
     (Xeno-canto Foundation, Netherlands) reference recordings + BirdNET
     → acoustic likelihood model
--   **Camera trap / image** — `animl` (Conservation Technology Lab, San
+-   Camera trap / image: `animl` (Conservation Technology Lab, San
     Diego Zoo Wildlife Alliance, San Diego, California), iNaturalist CV
     (a joint initiative of the California Academy of Sciences and the
     National Geographic Society, San Francisco, California), or
     SpeciesNet (Google LLC, Mountain View, California) output → match
     data; or labeled reference images → image likelihood model
--   **Reference library building** — taxa names (from TaxaExpect or
+-   Reference library building: taxa names (from TaxaExpect or
     user-supplied) → site-specific NCBI reference library; or load a
     local CRABS or FASTA database
--   **Occurrence-based priors** — taxa + location → GBIF (Global
+-   Occurrence-based priors: taxa + location → GBIF (Global
     Biodiversity Information Facility; GBIF Secretariat, Copenhagen,
     Denmark) occurrences → habitat → spatially explicit priors
--   **Assignment convergence** — any combination of the above →
+-   Assignment convergence: any combination of the above →
     likelihoods + priors → posteriors → consensus → report
 
 When the interview is complete, TaxaWizard generates:
 
--   **R script** with checkpoint/resume, error recovery, and debug mode
--   **Methods text** summarizing the workflow for manuscripts
--   **Shiny app** (via `workflow_app()`) for point-and-click execution
+-   R script with checkpoint/resume, error recovery, and debug mode
+-   Methods text summarizing the workflow for manuscripts
+-   Shiny app (via `workflow_app()`) for point-and-click execution
 
 ## Fixing Errors in Generated Scripts
 
@@ -113,7 +113,7 @@ workflow_fix()
 ## Converting Scripts to Shiny Apps
 
 ``` r
-# Convert any TaxaID-generated (or annotated) script to a Shiny app that your clients could use to do run their own taxonomic consensus without having to run R.
+# Convert any TaxaID-generated (or annotated) script to a Shiny app that your clients could use to run their own taxonomic consensus without having to run R.
 workflow_app("my_workflow.R")
 
 # Annotate a generic R script first, then convert
@@ -137,7 +137,7 @@ workflow_check(edges = "seq_to_match")
 
 Every generated script starts with the same check as its "Step 0" and
 stops before running anything if a required key/package/binary is
-missing -- `workflow_check()`'s `fix` column says exactly what to do.
+missing: `workflow_check()`'s `fix` column says exactly what to do.
 Key checks report set/unset only; a key's value is never printed,
 logged, or returned. Set `options(TaxaWizard.offline = TRUE)` to skip
 the live network checks (e.g. in a script that must not depend on
@@ -169,25 +169,25 @@ sniff_input("my_data.csv")
 
 `workflow_create()` runs `workflow_check()` before the conversation
 starts, and the assistant is given the result. That means it can tell
-you that a path needs a BLAST binary or an NCBI key *while you are
-choosing the path*, rather than leaving you to discover it when the
+you that a path needs a BLAST binary or an NCBI key while you are
+choosing the path, rather than leaving you to discover it when the
 generated script stops at its own Step 0.
 
 Three things follow from this:
 
--   **Statuses only.** The report says whether a key is set, never what
-    it is. No key value is ever placed in a prompt, and the assistant is
+-   Statuses only. The report says whether a key is set, never what it
+    is. No key value is ever placed in a prompt, and the assistant is
     told not to ask you to paste one.
--   **Requirements are scoped to the path you pick.** Once a route
-    through the graph is chosen, the assistant sees
-    `workflow_check(edges = <that path>)` -- the requirements of the
+-   Requirements are scoped to the path you pick. Once a route through
+    the graph is chosen, the assistant sees
+    `workflow_check(edges = <that path>)`: the requirements of the
     steps it is about to write, not the whole ecosystem's.
--   **If you name a file that exists, it gets looked at.**
-    `sniff_input()` runs on paths in your message that are really on
-    disk, and the result is given to the assistant as evidence. If it
-    disagrees with what you said, the assistant is told to ask rather
-    than to quietly overrule you. A path that does not exist is not
-    sniffed and is not described as though it had been.
+-   If you name a file that exists, it gets looked at. `sniff_input()`
+    runs on paths in your message that are really on disk, and the
+    result is given to the assistant as evidence. If it disagrees with
+    what you said, the assistant is told to ask rather than to quietly
+    overrule you. A path that does not exist is not sniffed and is not
+    described as though it had been.
 
 When you extend an existing script, the Step 0 check already at the top
 is widened to cover the new steps' requirements too, instead of a second
@@ -197,16 +197,16 @@ check block being added below it.
 
 TaxaWizard's own interview (`workflow_create()`) needs an API key and
 this package installed. If you want to design a workflow with a
-different LLM -- a plain chat window, someone else's agentic coding
-tool, a colleague with no R environment set up -- export a portable
-prompt pack instead:
+different LLM (a plain chat window, someone else's agentic coding tool,
+a colleague with no R environment set up), export a portable prompt
+pack instead:
 
 ``` r
 workflow_export_prompts("taxaid_prompts")
 ```
 
 This writes a self-contained folder (packages, function signatures, the
-workflow graph, setup requirements -- all generated from the TaxaID
+workflow graph, setup requirements, all generated from the TaxaID
 packages installed on your machine, never hand-typed) that any LLM can
 be pointed at. Give the folder to an agentic tool (Claude Code, Cursor,
 a Copilot agent) and tell it to start with `START_HERE.md`; for a plain
@@ -215,15 +215,15 @@ ready-to-use copy (with a placeholder setup report, since it isn't any
 one machine) ships at the repository root in
 [`llm_prompts/`](https://github.com/kdlafferty/TaxaID/tree/main/llm_prompts).
 
-**Example interaction**, once an assistant has read `START_HERE.md`:
+Example interaction, once an assistant has read `START_HERE.md`:
 
-> **User:** I have BLAST results from an eDNA metabarcoding study. I
-> want to assign species only when the sequence matches at 100%, and
+> User: I have BLAST results from an eDNA metabarcoding study. I want
+> to assign species only when the sequence matches at 100%, and
 > otherwise retain a higher-level assignment.
 >
-> **Assistant:** That's a match-scores-in, consensus-out request:
+> Assistant: That's a match-scores-in, consensus-out request:
 > `input_type = match_df`, `output_type = consensus`. Of the paths
-> connecting them, `match_to_consensus_score` fits -- a rule-based
+> connecting them, `match_to_consensus_score` fits: a rule-based
 > consensus from match scores alone, no Bayesian priors or LLM call.
 > Your rule ("species only at 100%, else coarser") maps to that edge's
 > score threshold and rank fallback, not a hand-written filter. Can you
@@ -233,7 +233,7 @@ one machine) ships at the repository root in
 The assistant recognized the domain (eDNA/metabarcoding taxonomic
 assignment from sequence matches), picked the workflow graph edge that
 matches the stated rule rather than guessing at a function, and asked
-only for what it couldn't infer -- the input file. It would inspect that
+only for what it couldn't infer: the input file. It would inspect that
 file (`sniff_input()` in agent mode) before asking anything the data
 itself can answer.
 
@@ -241,7 +241,7 @@ itself can answer.
 
 TaxaWizard sits outside the TaxaID dependency chain. It introspects the
 other TaxaID packages' installed functions (see `workflow_registry()`)
-and generates scripts that call them -- it does not import them
+and generates scripts that call them. It does not import them
 directly.
 
 See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
@@ -249,7 +249,7 @@ ecosystem overview and installation instructions.
 
 ## Citation
 
-Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
+Lafferty, K.D., 2026, TaxaID: A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
 
