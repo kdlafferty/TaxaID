@@ -1048,7 +1048,25 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   vs main); stash@{1} = this screen's own 2026-09-20 draft (510-line
   screen doc, since committed and grown to 1,129 lines on main) plus a
   one-line CLAUDE.md path that main already has in its moved form. Both
-  superseded; drop with the maintainer's okay. Reinstall hold still on.
+  superseded; DROPPED 2026-09-22 on the maintainer's word. Reinstall hold still on.
+  **Freeze exception granted by the maintainer 2026-09-22**: the
+  theta-surface thread may edit `TaxaExpect::plot_theta_surface()`
+  (rendering only: `theta_range`, `palette`, `bg`, `support_panel`/`fade`,
+  mask outline, and the static branch's missing colour key). Conditions
+  from this screen: no new export and no change to any prior or number;
+  branch off main, commit as you go, merge only through this session;
+  roxygen and README free of chronology; `devtools::document()`,
+  `test()` and `check()` 0/0/0 before merge; the `alpha_by_n_eff` logical
+  stays accepted if `fade` supersedes it; `llm_prompts/CONTEXT_TaxaExpect.md`
+  embeds the signature, so after the TaxaExpect reinstall the pack must be
+  regenerated and its drift test re-run; the TaxaWizard snippet
+  `std_to_priors_kernel.R` calls it with `taxon` only, so additive params
+  need no snippet or template change; the README figure
+  `PisasterTheta.png` was rendered with the old palette and background
+  and should be re-rendered under the new defaults or its caption kept
+  palette-neutral. No conflict with this screen's plans: no version bump,
+  NAMESPACE or NEWS change is scheduled here (pre-security-review
+  submission). Reinstall of TaxaExpect goes through the same hold.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
