@@ -1179,6 +1179,22 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   coverage-audit fix); reinstall both, then regenerate the pack
   (CONTEXT_TaxaTools embeds the four changed signatures), at the next
   window with no R process alive.
+  **theta-surface-render MERGED** (maintainer approved both deviations
+  2026-09-22): `plot_theta_surface()` gains `theta_range` (default
+  "shared"), `palette` ("YlOrRd"), `bg` ("grey92"), `support_panel`
+  (TRUE), `fade_by`, mask outline and a colour key on both renders, a
+  `layout(1)` reset; `alpha_by_n_eff` REMOVED (no caller anywhere;
+  n_eff is scale-invariant so opacity misread extrapolation as
+  confidence). TWO NEW EXPORTS approved: `as.data.frame()` method for
+  the surface and `theta_surface_at()`. Landed with the screen's edits:
+  one roxygen chronology line removed, review-response entries for both
+  functions and the behaviour change, README section "Reading values
+  off a surface" plus both in the function list (completeness grep
+  clean, style 0/0/0). TaxaExpect 724/0, check 0/0/0. README figure
+  kept as is by the maintainer's decision. Installed TaxaExpect now
+  behind main too: the next reinstall window covers TaxaTools,
+  TaxaLikely, TaxaExpect and the pack (CONTEXT_TaxaExpect embeds the
+  old signature).
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
