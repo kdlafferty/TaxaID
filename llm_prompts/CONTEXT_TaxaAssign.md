@@ -340,7 +340,7 @@ out <- run_bayesian_pipeline(
 head(out$consensus)
 ```
 
-### LLM-shortcut workflow (fast approximation -- no trained model/priors needed)
+### LLM-shortcut workflow (fast approximation: no trained model/priors needed)
 
 ``` r
 library(TaxaAssign)

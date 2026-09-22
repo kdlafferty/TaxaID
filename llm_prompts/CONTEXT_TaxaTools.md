@@ -4,7 +4,7 @@
 
 Provides helper functions for cleaning, verifying, and standardizing taxonomic names across multiple backbones. Capabilities include spell-checking and correcting species names, translating names between taxonomic backbones (e.g., GBIF, NCBI, WoRMS), retrieving classification hierarchies via API, and creating standardized taxon labels at any rank. Also provides LLM provider functions for calling Anthropic, OpenAI, Gemini, and Ollama APIs, and LLM-assisted text generation for drafting methods and results sections. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 52 exported function(s).
+Version 0.1.0. 54 exported function(s).
 
 ## Functions
 
@@ -220,6 +220,19 @@ Post-processes the output of 'verify_taxon_names' to (1) rename the source and t
 | keep_unmatched | no | TRUE | Logical. When TRUE (the default), names for which the target backbone returns no match are retained by copying the original source name into the translated-name column rather than leaving it NA. Set to FALSE to keep NA for unmatched names instead. |
 
 **Value:** A dataframe with: '<old_backbone_label>' Original names (renamed from 'input_col'). '<new_backbone_label>' Translated names (renamed from 'matched_name'). 'backbone_matched' Logical. 'TRUE' when the target backbone returned a genuine match; 'FALSE' when no match was found (the source name was retained due to 'keep_unmatched = TRUE', or left 'NA' when 'keep_unmatched = FALSE'). Always 'TRUE' ...
+
+### check_lineage_agreement(declared, returned)
+
+Check whether a returned lineage agrees with a declared one
+
+A cheap, no-API-call post-fetch guard: given what a caller DECLARED about a taxon's own higher-rank lineage (e.g. from their own match object) and what a name-based fetch ACTUALLY RETURNED for it, decides whether the two are the same organism reclassified (a benign revision - accept) or two different organisms sharing a name (a homonym - reject). Both present identically as "the returned lineage disagrees with mine"; the operative test is not whether any one rank matches exactly, but whether the disagreement is CONTAINED within some shared higher clade at all. See ...
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| declared | yes |  | Character vector. One element per row: the caller's own known higher-rank lineage terms for that row, pipe- or semicolon-delimited (e.g. "Rhodophyta\|Florideophyceae\|Ceramiales"). |
+| returned | yes |  | Character vector, same length as declared. The corresponding lineage actually returned by the fetch being checked, in the same delimited form. |
+
+**Value:** Character vector, same length as 'declared', one of '"agrees"' (at least one shared term - same clade, whether an exact match or a benign revision), '"disagrees"' (both sides have real terms and share none - a likely homonym), or '"unknown"' (one or both sides had nothing to compare).
 
 ### check_taxaid_manifest(path, packages = NULL, on_mismatch = c("error", "warning", "message", "silent"))
 
@@ -656,6 +669,20 @@ Looks up 'barcode_term' in barcode_primer_defaults. Unlike 'resolve_barcode_leng
 
 **Value:** A list with 'fwd', 'rev' (character, 5'-3') and 'amplicon_range' (integer 'c(min_bp, max_bp)').
 
+### resolve_ncbi_taxid(name, rank = NULL, lineage_terms = NULL)
+
+Resolve a taxon name to one disambiguated NCBI taxonomy id
+
+A taxon name is not a key - NCBI can hold several nodes with the same name in unrelated lineages (real confirmed cases include a genus of red algae named "Vertebrata" beside the vertebrate clade of the same name, and a genus of moths named "Lobophora" beside a genus of brown algae of the same name), and a name-based sequence search silently resolves to whichever node the service prefers. This function disambiguates by resolving to a taxonomy id first, using the caller's OWN declared rank and/or higher-rank lineage as discriminators, so a caller can then query by 'txid<id>[ORGN]' instead ...
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| name | yes |  | Character scalar. The taxon name to resolve. |
+| rank | no | NULL | Character scalar or NULL (default). The caller's own declared rank for name (e.g. "genus"), used as the first discriminator. Case-insensitive. |
+| lineage_terms | no | NULL | Character vector or NULL (default). The caller's own known higher-rank names for name (e.g. c("Rhodomelaceae", "Ceramiales", "Florideophyceae", "Rhodophyta")), used as the second discriminator when rank alone cannot decide. |
+
+**Value:** A list: taxid Character scalar, the resolved NCBI taxonomy id, or 'NA_character_' if not found or ambiguous. status One of '"unique"' (only one node has this name), '"resolved_by_rank"', '"resolved_by_lineage"', '"ambiguous"' (more than one candidate survived both discriminators), or '"not_found"'. candidates A data frame of every NCBI node sharing this name ('taxid', 'rank', 'division', ...
+
 ### scientific_to_common(scientific_names, backbone_id = 11L, location = NULL, use_llm = FALSE, llm_fn = getOption("TaxaID.llm_fn"), cache_dir = NULL, verbose = TRUE, ...)
 
 Convert Scientific Names to Common Names
@@ -806,17 +833,18 @@ verified <- verify_taxon_names(cleaned, backbone_id = 11)  # GBIF
 ### Verify the same name against different taxonomic backbones
 
 `backbone_id` selects which authority resolves a name. Backbones don't
-always agree -- a name can be a live species in one and a retired synonym
-in another (`is_synonym`/`matched_rank` will differ), which is exactly why
-downstream packages let the caller choose rather than hardcoding one:
+always agree: a name can be a live species in one and a retired
+synonym in another (`is_synonym`/`matched_rank` will differ), which is
+exactly why downstream packages let the caller choose rather than
+hardcoding one:
 
-| `backbone_id` | Backbone |
-|----|-----------------------------------|
-| 1 | Catalogue of Life |
-| 3 | ITIS (Integrated Taxonomic Information System) |
-| 4 | NCBI |
-| 9 | WoRMS (World Register of Marine Species) |
-| 11 | GBIF |
+| `backbone_id` | Backbone                                       |
+|---------------|------------------------------------------------|
+| 1             | Catalogue of Life                              |
+| 3             | ITIS (Integrated Taxonomic Information System) |
+| 4             | NCBI                                           |
+| 9             | WoRMS (World Register of Marine Species)       |
+| 11            | GBIF                                           |
 
 ``` r
 # Same query, five backbones -- compare matched_name/is_synonym across them
@@ -829,7 +857,7 @@ lapply(backbones, function(id) {
 })
 ```
 
-A mismatch here isn't a bug in `verify_taxon_names()` -- it's telling you
+A mismatch here isn't a bug in `verify_taxon_names()`, it's telling you
 the backbones themselves disagree, which matters when joining data that
 was verified against different ones (e.g. sequence references verified
 against NCBI, occurrence records verified against GBIF).
