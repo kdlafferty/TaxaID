@@ -110,6 +110,49 @@ match_df <- filter_redundant_hypotheses(match_df)
 -   `review_flagged_accessions()`: LLM second-look review of
     flagged/borderline reference accessions
 
+Site and spatial grouping:
+
+-   `build_site_table()`: produce one standardized site table
+    (`observation_id`, `lat`, `lon`, `observed_on`) regardless of which
+    data-type pathway produced the match object
+-   `join_event_site_metadata()`: join an event-level detections table
+    to a separately maintained site metadata table to build a `site_df`
+-   `group_observations_by_bbox()`: let the user draw bounding boxes to
+    group observations into spatial groups for a pooled occurrence and
+    reference fetch; observations outside any drawn box keep their own
+    grid-snapped group rather than being dropped
+-   `assign_spatial_group()`: manually set `spatial_group_id` for a
+    named set of observations, guarding against silently expanding an
+    existing group's membership
+
+Taxonomy backbone:
+
+-   `add_lowest_consistent_rank()`: find the finest taxonomic rank that
+    is unambiguous across all of an observation's candidate rows
+-   `convert_taxonomy_backbone()`: replace a match object's rank
+    columns with a target taxonomic backbone's hierarchy, column by
+    column, wherever the target backbone provides a value
+
+Reference accession quality, additional tools:
+
+-   `match_driving_accessions()`: find accessions that are the
+    max-scoring match for their species for at least one observation,
+    the only ones whose reference-quality verdict can change an
+    assignment
+-   `refine_reference_verdicts()`: re-run
+    `evaluate_reference_accessions()`'s verdicts weighting each
+    corroborating neighbour by its own trustworthiness, iterated to a
+    fixpoint
+-   `resolve_review_overrides()`: turn `review_flagged_accessions()`'s
+    LLM second-look verdicts into `remove_incongruent_references()`'s
+    `override_accessions` argument
+-   `verify_local_corroborations()`: audit locally-corroborated
+    accessions against whether their own corroborator's label later
+    turned out wrong
+-   `verify_removal_candidates()`: re-evaluate only the accessions a
+    screen would remove, at a wider evidence window, and report which
+    stop being removable, without writing anything back
+
 ## Acoustic Workflow
 
 BirdNET-Analyzer is a free tool, written in Python (Python Software

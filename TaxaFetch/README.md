@@ -72,6 +72,10 @@ GBIF pipeline:
 -   `make_bbox_wkt()`: create a WKT bounding box for spatial queries
 -   `get_keys_from_context()`: resolve taxon names to GBIF usage keys
 -   `fetch_gbif_occurrences()`: download occurrence records
+-   `get_gbif_occurrences()`: unified entry point that picks between
+    `fetch_gbif_occurrences()` (small queries) and
+    `download_gbif_occurrences()` (large queries) based on the number of
+    keys, and standardizes both paths to one column contract
 -   `filter_gbif_quality()`: remove low-quality records
 
 DataONE pipeline:
@@ -79,6 +83,17 @@ DataONE pipeline:
 -   `search_dataone()`: find datasets by taxon and location
 -   `harvest_dataone_catalog()`: build a dataset catalog with LLM
     screening
+-   `build_geo_prompt()` / `parse_geo_screening_response()`: build and
+    parse an LLM prompt asking whether each dataset's location falls
+    within a bounding box
+-   `build_taxon_screen_prompt()` / `parse_taxon_screening_response()`:
+    build and parse an LLM prompt asking whether each dataset plausibly
+    contains records for a target taxonomic group
+-   `screen_eml_columns()`: pre-screen candidates by checking their EML
+    metadata for bounding-box overlap and latitude, longitude, and
+    species columns
+-   `preview_dataone_occurrences()`: check dataset size, a sample taxon
+    name, and bounding-box coverage before a full download
 -   `fetch_dataone_occurrences()`: download and standardize occurrence
     tables
 
@@ -90,11 +105,15 @@ Literature + PDF pipeline:
 -   `screen_pdf_structure()`: LLM-based relevance screening
 -   `build_pdf_extract_prompt()` / `parse_pdf_extract_response()`: LLM
     data extraction
+-   `call_api_pdf()`: send selected PDF pages as images to a
+    vision-capable LLM and return its raw response
 
 Combining sources:
 
 -   `stack_occurrences()`: row-bind sources into a single standardized
     table
+-   `dedupe_occurrences()`: remove duplicate occurrence records, by an
+    exact `gbifID` match and by a species x date x location match
 -   `report_fetch()`: summarize data acquisition for reports
 
 ## API Keys
@@ -122,10 +141,11 @@ If GBIF itself refuses the download request
 instead, with a warning, never silently. So a long run does not die at
 the fetch step (`on_submit_failure = "error"` fails instead).
 
-Run `taxafetch_clear_cache(dry_run = TRUE)` to see how much space the
-cache is using before clearing it, or `taxafetch_clear_cache()` to clear
-it directly. `download_gbif_occurrences()` also reports the cache's
-total size after every run and offers to clear it once it passes 5 GB.
+`taxafetch_clear_cache()`: report or prune this package's cache; the
+shared signature and the cross-package `TaxaTools::taxaid_cache_report()`
+are described in the TaxaID README's Caching and resources section.
+`download_gbif_occurrences()` also reports the cache's total size after
+every run and offers to clear it once it passes 5 GB.
 
 ## Vignettes
 

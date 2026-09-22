@@ -67,6 +67,7 @@ downstream package needs solved consistently:
 | `find_taxonomy_conflicts()` | Detect higher-rank inconsistencies in a taxonomy table (e.g. one genus mapped to two different families). |
 | `is_plausible_binomial()` | Filter out `"sp."`, `"cf."`, `"aff."`, uncultured/environmental labels, and other non-binomial names. |
 | `to_faire()` | Export a TaxaID match/likelihood/posterior table to FAIRe checklist column conventions. |
+| `fetch_worms_attributes()` | Look up taxa in the World Register of Marine Species (WoRMS) by name and return curated attributes: the multi-label marine/brackish/freshwater/terrestrial habitat flags, AphiaID, accepted name, taxonomic status, WoRMS classification, and optionally NCBI taxon id and an introduced-species flag. |
 
 ### LLM provider interface
 
@@ -78,6 +79,11 @@ downstream package needs solved consistently:
 | `prompt_manual()` / `read_llm_response()` | Write a prompt to a file for manual submission via a web interface, then read the saved response back in: for workflows without a paid API key. |
 | `token_usage()` / `reset_token_usage()` | Per-call, per-function, per-provider, or per-session token accounting; optional cost estimate. |
 | `%||%` | Null-coalescing operator, exported for every downstream package to import. |
+| `list_models()` | Show the model name each tier (`fast`, `mid`, `top`) resolves to for each provider with an API key set, and whether the assignment came from a session pin, live discovery, or the bundled fallback. |
+| `refresh_models()` | Query each provider's models endpoint for its latest available models, assign `fast`/`mid`/`top` tiers, and save the result to the local persistent cache; only providers with an API key set are queried. |
+| `set_model()` | Pin a specific model version for the current session, overriding dynamic tier resolution, so a result can be reproduced regardless of what a provider currently returns as latest. |
+| `register_provider()` | Register a custom OpenAI-compatible provider so `list_models()`, `refresh_models()`, and `set_model()` work with it alongside the built-in providers; picked up automatically by `call_openai_api()` when its `base_url` matches. |
+| `model_cache_info()` | Report the location and age of the local persistent model cache, and whether the current session is using it or the bundled fallback. |
 
 In an interactive session, `library(TaxaTools)`'s `.onAttach()` scans
 `~/.Renviron` for API keys (priority: Anthropic \> Gemini \> OpenAI \>
@@ -104,7 +110,7 @@ skip this: pass `provider =` explicitly or set the option yourself.
 |-----------------------|-------------------------------------------------|
 | `common_to_scientific()` | Convert common names to scientific names via LLM, with optional backbone verification. |
 | `scientific_to_common()` | Convert scientific names to English common names via a taxonomic backbone (GBIF or ITIS) with LLM fallback; `location` biases toward regionally appropriate names. `cache_dir` keeps one small `.rds` per name so a re-run asks nothing twice; `verbose` prints a summary and one line per LLM batch. |
-| `taxatools_clear_cache()` | Report and prune a `scientific_to_common(cache_dir = )` directory (built on `list_cache_files()`/`report_and_clear_cache()`). |
+| `taxatools_clear_cache()` | Report and prune a `scientific_to_common(cache_dir = )` directory. Uses the shared caching engine described in the TaxaID README's Caching and resources section. |
 | `build_report_context()` | Domain-agnostic context object carrying verified facts for grounding LLM-drafted text. |
 | `draft_methods_text()` / `draft_results_text()` | Read R code or R objects and draft a Methods or Results section via LLM. |
 | `census_genus_species()` | Enumerate described species per genus (or higher rank) via the GBIF backbone; flags whether a reference set is complete, missing only its rarest member, or genuinely incomplete. |
@@ -113,8 +119,24 @@ skip this: pass `provider =` explicitly or set the option yourself.
 
 | Function | Purpose |
 |-----------------------|-------------------------------------------------|
-| `list_cache_files()` / `report_and_clear_cache()` | Shared engine behind a downstream package's own `<pkg>_clear_cache()` helper (e.g. `TaxaFetch::taxafetch_clear_cache()`, `TaxaLikely::taxalikely_clear_cache()`): scans a cache directory, reports age/size, and deletes or dry-run-reports what's stale. |
+| `list_cache_files()` / `report_and_clear_cache()` | The shared engine behind a downstream package's own `<pkg>_clear_cache()` helper (e.g. `TaxaFetch::taxafetch_clear_cache()`, `TaxaLikely::taxalikely_clear_cache()`): scans a cache directory, reports age/size, and deletes or dry-run-reports what's stale. See the TaxaID README's Caching and resources section for the shared signature and containment rule. |
+| `cache_ok()` | Test whether a cache file exists and is not older than any of the artifacts it was derived from, the staleness check every `cache_dir`-taking function shares. |
+| `taxaid_cache_report()` | Report every TaxaID cache on the machine in one view, since no single package's `<pkg>_clear_cache()` shows the whole picture; reports only, never deletes. |
 | `define_search_polygon()` | Interactive Shiny/leaflet gadget: drag corner markers to define a custom search polygon, returned as a WKT string. Shared by `TaxaFetch`'s search-area fetches and `TaxaMatch::group_observations_by_bbox()`'s spatial grouping. |
+
+### Sampling group classification
+
+| Function | Purpose |
+|-----------------------|-------------------------------------------------|
+| `assign_sampling_group()` | Classify each row of a taxonomy table into a `sampling_group`, the shared-effort denominator, kernel-fit group, and dark-diversity-floor group used throughout the TaxaID ecosystem, using an ordered, first-match-wins rule scheme. |
+| `default_sampling_scheme()` | Return the package's default sampling-group scheme: an ordered, first-match-wins list of rules that classifies a taxon's kingdom/phylum/class/order into one of ten detection-process groups. |
+
+### Report assembly
+
+| Function | Purpose |
+|-----------------------|-------------------------------------------------|
+| `new_report_section()` | Constructor for the `report_section` S3 class each package's `report_*()` function returns; printable standalone or assembled into a unified report. |
+| `assemble_report()` | Assemble any number of `report_section` objects, typically one per package used in a pipeline, into a single markdown document ordered by pipeline position, with citations deduplicated into one Data Sources section. |
 
 ### Build provenance
 

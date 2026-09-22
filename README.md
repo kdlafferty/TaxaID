@@ -631,6 +631,7 @@ could use a different LLM by modifying one of the existing LLM calls.
 | `ANTHROPIC_API_KEY` | TaxaTools (LLM calls) | <https://console.anthropic.com/> |
 | `GEMINI_API_KEY` | TaxaTools (LLM calls) | <https://aistudio.google.com/apikey> (free tier) |
 | `OPENAI_API_KEY` | TaxaTools (LLM calls) | <https://platform.openai.com/> (paid) |
+| `AZURE_OPENAI_API_KEY` | TaxaTools (LLM calls; DOI employees only, requires DOI network or VPN) | Obtained through DOI IT channels |
 | `OPENALEX_API_KEY` | TaxaFetch (literature search) | <https://openalex.org/settings/api> (free) |
 
 No API key is needed for GBIF or NCBI queries. At least one LLM provider
@@ -916,35 +917,36 @@ defaults to `cache_dir = NULL`, nothing is written to disk until you
 pass a directory; the production workflows pass one explicitly for
 exactly the functions listed above as "No."
 
-See what's using space. Some files can get big, and caching
-intermediate steps can hold a lot of space.
-`TaxaTools::taxaid_cache_report(extra_dirs = NULL, warn_gb = 1)` prints
-every package cache's size, file count, and age, and flags anything at
-or above `warn_gb` gigabytes. It only reports. Nothing is deleted. Pass
-`extra_dirs` for any project-local cache directory a workflow used
-instead of the default.
-
-Clear a cache. Every package with an on-disk, file-per-key cache has
-its own `<pkg>_clear_cache(cache_dir = <that package's default>,
-older_than_days = NULL, dry_run = FALSE)`: `taxafetch_clear_cache()`,
+The five `<pkg>_clear_cache()` functions (`taxafetch_clear_cache()`,
 `taxalikely_clear_cache()`, `taxahabitat_clear_cache()`,
-`taxaflag_clear_cache()`, `taxatools_clear_cache()` (this one has no
-default, pass the same directory you gave the caching function).
+`taxaflag_clear_cache()`, `taxatools_clear_cache()`) share one
+signature: `cache_dir`, `older_than_days`, `dry_run`, `force`
+(TaxaFetch adds `orphans_only`/`zips_only`; TaxaTools' `cache_dir` has
+no default, so pass the same directory you gave the caching function).
 TaxaMatch has none: its cache is a few files holding many TTL'd rows
 each, not one file per key, so deleting by file would discard live
-verdicts. `fetch_ncbi_reference_sequences(evict_unreachable_cache =
-TRUE)` (the default) is narrower and safer than a full clear: on every
-write it deletes that taxon's own cache files that no current cache key
-could ever produce again (generations superseded by an earlier key
+verdicts. All five run on one shared engine,
+`TaxaTools::list_cache_files()`/`report_and_clear_cache()`, which
+refuses to clear a directory holding anything other than that
+package's own cache files unless `force = TRUE`.
+`TaxaTools::taxaid_cache_report(extra_dirs = NULL, warn_gb = 1)`
+reports every cache on the machine (size, file count, and age per
+package, flagging anything at or above `warn_gb` gigabytes) without
+deleting anything; pass `extra_dirs` for any project-local cache
+directory a workflow used instead of the default.
+
+`fetch_ncbi_reference_sequences(evict_unreachable_cache = TRUE)` (the
+default) is narrower and safer than a full clear: on every write it
+deletes that taxon's own cache files that no current cache key could
+ever produce again (generations superseded by an earlier key
 widening), leaves anything over 5 MB in place for you to remove by
-hand, and reports what it removed. It runs automatically on every fetch
-rather than as a function you call yourself; `taxalikely_clear_cache()`
-above is the blunt, whole-directory alternative when you want a full
-clear instead. `TaxaTools::cache_ok(path, inputs)` checks a single
-cached file against the files it was derived from and reports it stale
-if any input is newer. Use it in your own scripts around a checkpoint
-`.rds`, not around a remote query (that has no local file to compare
-against).
+hand, and reports what it removed. It runs automatically on every
+fetch rather than as a function you call yourself; `taxalikely_clear_cache()`
+is the blunt, whole-directory alternative when you want a full clear
+instead. `TaxaTools::cache_ok(path, inputs)` checks a single cached
+file against the files it was derived from and reports it stale if any
+input is newer. Use it in your own scripts around a checkpoint `.rds`,
+not around a remote query (that has no local file to compare against).
 
 Memory. `TaxaFetch::filter_gbif_quality()` costs roughly 4 GB of RAM
 per million input rows and does not chunk internally. It takes the whole

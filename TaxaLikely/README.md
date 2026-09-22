@@ -271,6 +271,8 @@ optional taxonomy TSV (round-trippable with `read_reference_fasta()`) -
 `read_crabs_output()`: load a CRABS internal-format database (taxonomy
 embedded; no separate file needed) - `fetch_ncbi_reference_sequences()`:
 download from NCBI by taxon + barcode marker -
+`fetch_bold_reference_sequences()`: download from BOLD Systems by taxon
+name, the BOLD analog of `fetch_ncbi_reference_sequences()` -
 `read_reference_fasta()`: load local FASTA + data-frame taxonomy (or
 `taxonomy_file` TSV for QIIME2/RESCRIPt/MIDORI2) - `trim_to_amplicon()`:
 in-silico PCR, extract just the amplicon region from an over-length
@@ -290,7 +292,9 @@ distance matrix via DECIPHER; required for `train_likelihood_model()`
 Mislabeled References" below) - `train_likelihood_model()`: fit
 hierarchical Bayesian model (pair-coverage floor and empirical Bayes
 shrinkage on by default; see "Reference Coverage Quality Filtering" and
-"Statistical Design" below)
+"Statistical Design" below) - `compute_rank_thresholds()`: derive
+marker-specific percent-identity thresholds at each taxonomic rank from a
+pairwise distance matrix, using per-rank Youden's J
 
 Inference: - `calibrate_query_noise()`: correct H1's mean for
 query-vs-reference technical noise invisible to reference-vs-reference
@@ -300,8 +304,20 @@ training pairs; optional `evidence_col` also establishes a baseline for
 trained model - `filter_top_hypotheses()`: keep finest-rank candidates
 per query - `unreferenced_candidates()`: expand a consensus assignment
 with H2/H3 placeholder rows (no model required; used in no-score and
-acoustic/image pathways) - `assign_scores()`: set `score_likelihood`
-values, uniform (`"none"`), ratio-normalised (`"probability"`), softmax
+acoustic/image pathways) - `correct_training_bias()`: divide out an
+estimate of classifier training-count bias (discriminative classifiers
+like iNaturalist CV and BirdNET favor well-represented taxa over rare
+ones with equal true evidential support) so scores are more comparable
+before `assign_scores()` normalizes them - `detect_suppressed_candidates()`:
+detect whether an upstream tool suppressed lower-scoring candidate rows
+in a match object - `restore_suppressed_candidates()`: check whether a
+top candidate's apparent win is real or an artifact of upstream
+suppression, and add back same-genus congeners as
+`suppressed_candidate` rows so downstream consensus can back off from a
+false-precision call - `assign_scores()`: set `score_likelihood`
+values, uniform (`"none"`), passed through unchanged (`"direct"`, for
+use after `restore_suppressed_candidates()`, which pre-imputes scores
+for restored rows), ratio-normalised (`"probability"`), softmax
 (`"similarity_softmax"`), or prepare for the bivariate-normal model
 (`"similarity"`). For the DNA scored pathway, real callers train a
 model (`train_likelihood_model()`) and call `evaluate_likelihoods()`
@@ -315,21 +331,42 @@ TaxaLikely and TaxaExpect and before `TaxaAssign::compute_posterior()`
 
 Reference QC: - `audit_barcode_coverage()`: find unreferenced
 species (no barcode sequence; eDNA/DNA only) -
+`infer_exclude_predicted()`: infer from accession numbers whether a
+BLAST reference database excluded computationally predicted NCBI
+sequences, the value `audit_barcode_coverage()`'s `exclude_predicted`
+argument should take -
 `suggest_unreferenced_species()`: fast, LLM-first alternative to
 `audit_barcode_coverage()` (also supports acoustic/image via
 `data_type`); feeds
 `TaxaAssign::assign_taxa_llm(unreferenced_taxa = ...)`, the LLM-shortcut
 pathway -
 `audit_acoustic_coverage()`: find plausible species absent from
-classifier's known list (acoustic/image) - `audit_reference_coverage()`:
+classifier's known list (acoustic/image) -
+`fetch_xc_recording_locations()`: fetch per-recording latitude/longitude
+from Xeno-canto for one or more species -
+`audit_inat_coverage()`: check whether each species in a list has
+enough iNaturalist observations to be represented in its computer
+vision training data - `audit_reference_coverage()`:
 taxonomic completeness check - `apply_coverage_constraints()`:
 suppress H2 for fully-sampled genera. Mislabel screening and
 match-object cleaning for flagged accessions live in TaxaMatch, not here.
 See "Detecting Mislabeled References" below.
 
 Diagnostics and reporting: - `interpret_model()`: summarize
-trained model parameters - `report_likelihood()`: generate report
+trained model parameters -
+`check_cross_genus_sampling_noise()`: report how much a random
+cross-genus draw (the one `build_sequence_matrix(by_genus = TRUE)`
+uses to build the H3 sample) moves the resulting pair distribution
+across repeated draws - `report_likelihood()`: generate report
 section for `assemble_report()`
+
+Cache: `fetch_ncbi_reference_sequences()` and `audit_barcode_coverage()`
+cache to a persistent, per-user directory so re-running the same
+taxon/marker/params combination skips the NCBI fetch; neither expires
+automatically. `taxalikely_clear_cache()`: report or prune this
+package's cache; the shared signature and the cross-package
+`TaxaTools::taxaid_cache_report()` are described in the TaxaID README's
+Caching and resources section.
 
 ## Detecting Mislabeled References {#detecting-mislabeled-references}
 
@@ -763,18 +800,6 @@ posteriors <- TaxaAssign::compute_posterior(joined)
     `compute_posterior()`.
 
 See `inst/workflows/6_no_score_pathway_workflow.R` for a full example.
-
-## Cache
-
-`fetch_ncbi_reference_sequences()` and `audit_barcode_coverage()` cache
-to a persistent, per-user directory
-(`tools::R_user_dir("TaxaLikely", "cache")`) so re-running the same
-taxon/marker/params combination skips the NCBI fetch. Neither expires
-automatically.
-
-Run `taxalikely_clear_cache(dry_run = TRUE)` to see how much space the
-cache is using before clearing it, or `taxalikely_clear_cache()` to
-clear it directly.
 
 ## Vignettes
 
