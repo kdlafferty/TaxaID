@@ -1,4 +1,83 @@
 # CLAUDE.md -- TaxaTools
+# 2026-09-22, later (Sonnet 5, branch verify-taxon-names-decisions, worktree, NOT merged/
+# installed): verify_taxon_names(backbone_id = 4)'s own internal NCBI bypass
+# (.verify_via_ncbi()) had the SAME shape of homonym defect as
+# TaxaLikely::fetch_ncbi_reference_sequences()'s .build_search_term() (below), but more
+# central -- this is the shared backend under escalate_taxonomic_rank(),
+# fill_higher_ranks(), and assign_sampling_group(harmonise = TRUE). It batches OR'd
+# `"Name"[Scientific Name]` queries and did `name_to_taxid[[sci_name]] <- taxid`
+# unconditionally per ESummary record -- confirmed live that
+# `"Vertebrata"[Scientific Name]` genuinely returns both the red-algal genus and the
+# vertebrate clade, so whichever record a batch processed last won, silently. This is a
+# real, wider-blast-radius case than the fetch-side fix: a wrong pick here can overwrite a
+# row's entire lineage with an unrelated clade's, the exact shape of bug the
+# assign_sampling_group()/CaliforniaIntertidal rank-agreement gates exist to catch on the
+# GBIF side -- this NCBI-side path never had an equivalent.
+#
+# Sent to the maintainer as a proposal before writing any code (per the freeze protocol
+# and the screen session's explicit condition, given this function's blast radius); the
+# maintainer's decision, verbatim: NOT a silent NA-plus-warning (too easy to miss in a
+# large batch) -- the user must be made to choose, once, in ONE batch operation, never a
+# per-name dialogue, and NO hidden default persistence location (a decisions file the
+# workflow script doesn't name is exactly the stale-cache-defect shape this screen has
+# been removing).
+#
+# BUILT: Step 1's batched ESummary loop now GROUPS records by scientific name instead of
+# overwriting; a name with more than one candidate is never written into the resolved
+# map at all -- it is collected (every candidate's own taxid/rank/division, already on
+# hand from the same ESummary call, plus a short kingdom/phylum/class lineage string,
+# needing exactly one more batched `entrez_fetch()` for the whole ambiguous set,
+# regardless of how many names are ambiguous). New `decisions` parameter on
+# verify_taxon_names() (only meaningful for backbone_id = 4; warns "unused" if supplied
+# otherwise, per the maintainer's explicit "a supplied argument that does nothing is a
+# user mistake worth hearing about") accepts a `data.frame(name, taxid)` or a path to an
+# `.rds` holding one (`taxid = NA` is an explicit, recorded SKIP -- the only way an
+# ambiguous name becomes `NA`, never a fallthrough default). Session-type behaviour:
+# interactive -> ONE prompt (`.prompt_ncbi_homonym_decisions()`, the seam tests mock) for
+# every still-pending name in this call, never a dialogue per name; afterwards, if
+# `decisions` was a path, the new choices are merge-saved there
+# (`.save_ncbi_homonym_decisions()`, a newer decision for a name replaces an older one,
+# matching TaxaHabitat's `save_spatial_review_decisions()` convention) and it says so; if
+# `decisions` was `NULL` or an in-memory data frame, the resolved choices are printed as
+# pasteable `decisions <- data.frame(...)` code instead -- no file is ever written unless
+# the caller named one. Non-interactive (the ordinary `Rscript` workflow case) -> `stop()`,
+# printing the same candidate table plus a ready-to-paste `decisions =` skeleton (`taxid =
+# NA_integer_` placeholders, a comment per name listing its real candidate taxids) and one
+# sentence on how to supply it so the re-run does not re-ask. A name a supplied
+# `decisions` does not cover is treated exactly like a fresh ambiguity -- never a silent
+# fallthrough. An explicit skip is also excluded from Step 1b/1c's own missing-name
+# fallback search (`[All Names]`), which would otherwise silently re-attempt resolution
+# through a completely different, equally-guessable mechanism and override the user's own
+# choice -- confirmed by a dedicated regression test that fails loudly if that fallback is
+# ever reached for a skipped name.
+#
+# NO NEW EXPORTS -- per the maintainer's explicit ruling (matching the freeze's no-surface-
+# growth guide): both new helpers (`.save_ncbi_homonym_decisions()`,
+# `.apply_ncbi_homonym_decisions()`) stay internal in `R/ncbi_homonyms.R`, next to
+# `resolve_ncbi_taxid()`/`check_lineage_agreement()`. A programmatic caller builds a plain
+# two-column data frame directly; a persisted file is just `saveRDS()` of that frame.
+# escalate_taxonomic_rank(), fill_higher_ranks(), and assign_sampling_group(harmonise =
+# TRUE) each gain an identical `decisions = NULL` parameter, forwarded verbatim to every
+# internal verify_taxon_names() call that targets backbone_id = 4 specifically (each
+# function's fallback-backbone call is guarded so `decisions` is never passed to a
+# non-NCBI backbone, avoiding a spurious "unused" warning on the common case where the
+# fallback isn't NCBI) -- none of the three grows a prompt or resolution mechanism of its
+# own.
+#
+# 45 new offline tests (test-ncbi-homonym-decisions.R): every new internal helper
+# directly, PLUS a full `.verify_via_ncbi()` integration suite via a shared mocked-rentrez
+# fixture reproducing the real Vertebrata case end to end -- the non-interactive stop(),
+# a covering `decisions` data frame resolving cleanly, an explicit skip NOT falling
+# through to `[All Names]`, an interactive session saving to a supplied path, an
+# interactive session with no path printing a pasteable skeleton and writing nothing, the
+# "unused" warning for a non-NCBI backbone, and confirming an ordinary unambiguous name is
+# completely unaffected by any of this. `.is_interactive_session()` (a one-line wrapper
+# around `interactive()`) is the mocked seam for session type, since `local_mocked_
+# bindings()` cannot mock a locked base-R binding directly.
+#
+# devtools::test() 1254/0 (was 1209, 45 new), devtools::check() see this session's own
+# report for the exact numbers. Branch built in its own worktree, never the shared
+# checkout -- see the sibling homonym-detection fix's own CLAUDE.md note for why.
 # 2026-09-22 (Sonnet 5, branch homonym-detection, NOT merged/reinstalled): NEW
 # R/ncbi_homonyms.R -- ecosystem_docs/REENTRY_PROMPT_homonym_detection.md's mechanism.
 # A taxon NAME is not an NCBI key: several unrelated nodes can share one name (a

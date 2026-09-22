@@ -35,6 +35,11 @@ utils::globalVariables(c(
 #'   equal to `backbone_id` to skip.
 #' @param verbose Logical.  Print progress messages for API lookups.
 #'   Default `TRUE`.
+#' @param decisions Forwarded verbatim to [verify_taxon_names()]'s own
+#'   `decisions` parameter for every genus-level lookup this function makes
+#'   (primary and fallback backbone alike, whichever is `4`) -- this
+#'   function grows no prompt or resolution logic of its own for an NCBI
+#'   name collision.
 #'
 #' @return A tibble with one row per element of `taxon_names` (preserving
 #'   duplicates and order), with columns:
@@ -99,7 +104,8 @@ fill_higher_ranks <- function(taxon_names,
                               local_sources = list(),
                               backbone_id = 4L,
                               fallback_backbone_id = 11L,
-                              verbose = TRUE) {
+                              verbose = TRUE,
+                              decisions = NULL) {
   # ---- Input validation ------------------------------------------------------
   if (!is.character(taxon_names) || length(taxon_names) == 0L) {
     stop("taxon_names must be a non-empty character vector")
@@ -156,7 +162,8 @@ fill_higher_ranks <- function(taxon_names,
     }
     api_lookup <- .lookup_family_from_backbone(
       missing_genera,
-      as.integer(backbone_id)
+      as.integer(backbone_id),
+      decisions = decisions
     )
     if (nrow(api_lookup) > 0L) {
       na_idx <- is.na(work$family)
@@ -191,7 +198,8 @@ fill_higher_ranks <- function(taxon_names,
     }
     fb_lookup <- .lookup_family_from_backbone(
       still_missing,
-      as.integer(fallback_backbone_id)
+      as.integer(fallback_backbone_id),
+      decisions = decisions
     )
     if (nrow(fb_lookup) > 0L) {
       na_idx <- is.na(work$family)
@@ -331,14 +339,20 @@ parse_classification_path <- function(path, ranks, target_rank) {
 # genus rank, NA otherwise -- kept separate from `genus` so the caller can
 # still join on the original spelling while writing the corrected value back.
 #' @noRd
-.lookup_family_from_backbone <- function(genera, backbone_id) {
+.lookup_family_from_backbone <- function(genera, backbone_id, decisions = NULL) {
   empty <- tibble::tibble(
     genus = character(), resolved_genus = character(),
     family = character()
   )
 
   verified <- tryCatch(
-    verify_taxon_names(genera, backbone_id = backbone_id),
+    verify_taxon_names(
+      genera, backbone_id = backbone_id,
+      # decisions only means anything for backbone_id = 4 -- forwarding it
+      # unconditionally would trip verify_taxon_names()'s own "unused"
+      # warning when this call targets a non-NCBI backbone.
+      decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL
+    ),
     error = function(e) {
       warning(sprintf(
         "fill_higher_ranks: backbone %d query failed: %s",

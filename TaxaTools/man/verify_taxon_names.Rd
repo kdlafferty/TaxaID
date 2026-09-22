@@ -9,7 +9,8 @@ verify_taxon_names(
   backbone_id,
   batch_size = 500,
   timeout_sec = 30,
-  fallback_backbone_id = 11L
+  fallback_backbone_id = 11L,
+  decisions = NULL
 )
 }
 \arguments{
@@ -36,6 +37,31 @@ suggest a corrected spelling, which is then re-resolved through NCBI
 itself (the correction is never accepted from this backbone directly, so
 NCBI's own classification -- the reason the direct bypass exists at all --
 is preserved). Default \code{11} (GBIF). Must not be \code{4}.}
+
+\item{decisions}{Only used when \code{backbone_id = 4} (NCBI); a supplied
+value is ignored, with a warning, for any other backbone. A name is not
+a key -- NCBI can hold several nodes sharing one name in unrelated
+lineages (a genus of red algae named "Vertebrata" beside the vertebrate
+clade of the same name; see \code{\link{resolve_ncbi_taxid}}), and this
+direct bypass's own batched search used to pick whichever candidate its
+summary happened to process last, silently. Such a name is now reported
+as an unresolved AMBIGUITY, never guessed -- \code{decisions} is how a
+caller states which candidate is meant. \code{NULL} (default): no prior
+decisions. A data frame with \code{name}/\code{taxid} columns: use these
+decisions directly (a row with \code{taxid = NA} is an explicit
+\emph{skip} -- that name resolves to \code{NA}, not "not yet decided").
+A character scalar: the path to an \code{.rds} file holding such a data
+frame (read if it exists; new decisions made this call -- interactively,
+see below -- are merged into it, a newer decision for a name replacing
+an older one). A name that comes back ambiguous and has no covering
+decision (in \code{decisions} or, for a path, already saved in that
+file) is handled by session type, never by a silent default: in an
+interactive session, one prompt covers every such name in this call
+(never a dialogue per name), tabulating each candidate's rank, division,
+and a short lineage string; in a non-interactive session (the ordinary
+\code{Rscript} workflow case), the call stops, printing that same table
+plus a ready-to-paste \code{decisions = data.frame(...)} skeleton. No
+file is ever written unless \code{decisions} itself named one.}
 }
 \value{
 A tibble with one row per input name and the following columns:

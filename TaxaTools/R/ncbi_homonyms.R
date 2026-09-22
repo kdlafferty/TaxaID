@@ -290,3 +290,214 @@ check_lineage_agreement <- function(declared, returned) {
     if (any(d %in% r)) "agrees" else "disagrees"
   }, character(1L))
 }
+
+# ==============================================================================
+# verify_taxon_names(backbone_id = 4)'s decisions workflow
+# ==============================================================================
+# .verify_via_ncbi() used to pick whichever NCBI node its batched summary
+# happened to process last for an ambiguous name -- silently. It now reports
+# such a name as an unresolved AMBIGUITY instead of guessing, and this is the
+# machinery that lets a caller state which candidate is meant, once, so a
+# later run does not re-ask. No exported surface: a programmatic caller
+# builds a two-column data.frame(name, taxid) directly, or saveRDS()s one and
+# passes its path -- see verify_taxon_names()'s own `@param decisions`.
+
+#' Thin wrapper around `interactive()`, so a test can mock the session type
+#' without mocking a base-R function.
+#' @noRd
+.is_interactive_session <- function() {
+  interactive()
+}
+
+#' Short " > "-joined kingdom/phylum/class string for one candidate's lineage
+#'
+#' Falls back to the coarsest available ranks when none of the three are
+#' present (e.g. some protist/fungal lineages don't carry a "kingdom" node).
+#' Deliberately short -- this is for a printed table and a prompt, not a
+#' full classification.
+#' @noRd
+.short_ncbi_lineage <- function(classification_path, classification_ranks) {
+  path <- strsplit(classification_path %||% "", "|", fixed = TRUE)[[1L]]
+  ranks <- strsplit(classification_ranks %||% "", "|", fixed = TRUE)[[1L]]
+  picked <- path[ranks %in% c("kingdom", "phylum", "class")]
+  if (length(picked) == 0L) {
+    picked <- utils::head(path, 3L)
+  }
+  paste(picked, collapse = " > ")
+}
+
+#' Build the ambiguous-candidate collect table
+#'
+#' One row per (name, candidate). `candidate_rank`/`candidate_division` come
+#' from the ESummary records Step 1 already fetched -- no extra API call.
+#' `candidate_lineage` needs one more batched \code{entrez_fetch()} across
+#' every candidate taxid, once, regardless of how many ambiguous names there
+#' are.
+#' @param ambiguous_summaries Named list: name -> list of ESummary records
+#'   (each with at least `uid`/`TaxId`, `rank`, `division`).
+#' @param delay Numeric, seconds between NCBI calls.
+#' @return data.frame(name, candidate_taxid, candidate_rank,
+#'   candidate_division, candidate_lineage).
+#' @noRd
+.build_ncbi_ambiguous_table <- function(ambiguous_summaries, delay) {
+  rows <- lapply(names(ambiguous_summaries), function(nm) {
+    hits <- ambiguous_summaries[[nm]]
+    data.frame(
+      name = nm,
+      candidate_taxid = vapply(hits, function(s) as.character(s$uid %||% s$TaxId), character(1L)),
+      candidate_rank = vapply(hits, function(s) as.character(s$rank %||% NA_character_), character(1L)),
+      candidate_division = vapply(hits, function(s) as.character(s$division %||% NA_character_), character(1L)),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- dplyr::bind_rows(rows)
+  all_taxids <- unique(out$candidate_taxid)
+  lineage_map <- stats::setNames(rep(NA_character_, length(all_taxids)), all_taxids)
+  if (length(all_taxids) > 0L) {
+    fetch_batches <- split(all_taxids, ceiling(seq_along(all_taxids) / 100L))
+    for (b in fetch_batches) {
+      xml_raw <- tryCatch(
+        rentrez::entrez_fetch(db = "taxonomy", id = b, rettype = "xml"),
+        error = function(e) NA_character_
+      )
+      if (!identical(xml_raw, NA_character_)) {
+        parsed <- tryCatch(.parse_ncbi_lineage_xml(xml_raw), error = function(e) NULL)
+        for (tid in names(parsed)) {
+          lin <- parsed[[tid]]
+          lineage_map[[tid]] <- .short_ncbi_lineage(lin$classification_path, lin$classification_ranks)
+        }
+      }
+      Sys.sleep(delay)
+    }
+  }
+  out$candidate_lineage <- unname(lineage_map[out$candidate_taxid])
+  out
+}
+
+#' Format the ambiguous-candidate table as text, plus a ready-to-paste
+#' `decisions = data.frame(...)` skeleton
+#'
+#' Used verbatim in the non-interactive stop() and, after an interactive
+#' session resolves the ambiguity with nowhere to save it, to show the
+#' caller what was decided so they can paste it into their own script.
+#' @noRd
+.format_ncbi_ambiguous_report <- function(ambiguous_df) {
+  names_order <- unique(ambiguous_df$name)
+  table_lines <- vapply(names_order, function(nm) {
+    rows <- ambiguous_df[ambiguous_df$name == nm, , drop = FALSE]
+    cand_lines <- sprintf(
+      "    taxid %s: rank=%s, division=%s, lineage=%s",
+      rows$candidate_taxid, rows$candidate_rank, rows$candidate_division, rows$candidate_lineage
+    )
+    paste(c(sprintf("  \"%s\":", nm), cand_lines), collapse = "\n")
+  }, character(1L))
+  skeleton_comments <- vapply(names_order, function(nm) {
+    ids <- ambiguous_df$candidate_taxid[ambiguous_df$name == nm]
+    sprintf("  # %s: candidate taxids %s", nm, paste(ids, collapse = ", "))
+  }, character(1L))
+  skeleton <- paste0(
+    "decisions <- data.frame(\n",
+    "  name = c(", paste(sprintf('"%s"', names_order), collapse = ", "), "),\n",
+    "  taxid = c(", paste(rep("NA_integer_", length(names_order)), collapse = ", "), ")\n",
+    ")\n",
+    paste(skeleton_comments, collapse = "\n")
+  )
+  paste0(paste(table_lines, collapse = "\n"), "\n\n", skeleton)
+}
+
+#' One interactive prompt covering every pending ambiguous name in this call
+#'
+#' Never a dialogue per name -- the whole table is shown once, then one
+#' choice is asked per name within the same continuous session. This is the
+#' seam tests mock (never \code{readline()} directly).
+#' @return data.frame(name, taxid) -- one row per name in `ambiguous_df`; an
+#'   explicit "skip" is `taxid = NA_character_`.
+#' @noRd
+.prompt_ncbi_homonym_decisions <- function(ambiguous_df) {
+  names_order <- unique(ambiguous_df$name)
+  message(
+    "verify_taxon_names: ", length(names_order), " name(s) resolved to more ",
+    "than one NCBI taxonomy node. Pick a candidate for each (or 'skip'):\n\n",
+    .format_ncbi_ambiguous_report(ambiguous_df)
+  )
+  chosen_taxid <- vapply(names_order, function(nm) {
+    rows <- ambiguous_df[ambiguous_df$name == nm, , drop = FALSE]
+    cand_lines <- sprintf(
+      "  %d) taxid %s (rank=%s, division=%s, lineage=%s)",
+      seq_len(nrow(rows)), rows$candidate_taxid, rows$candidate_rank,
+      rows$candidate_division, rows$candidate_lineage
+    )
+    message(sprintf("\"%s\":", nm))
+    message(paste(cand_lines, collapse = "\n"))
+    repeat {
+      ans <- trimws(readline(sprintf(
+        "  Choice for \"%s\" (1-%d, or 'skip'): ", nm, nrow(rows)
+      )))
+      if (identical(tolower(ans), "skip")) {
+        return(NA_character_)
+      }
+      ans_n <- suppressWarnings(as.integer(ans))
+      if (!is.na(ans_n) && ans_n >= 1L && ans_n <= nrow(rows)) {
+        return(rows$candidate_taxid[ans_n])
+      }
+      message("  Not a valid choice; enter a number 1-", nrow(rows), " or 'skip'.")
+    }
+  }, character(1L))
+  data.frame(name = names_order, taxid = chosen_taxid, stringsAsFactors = FALSE)
+}
+
+#' Merge new decisions into a decisions file
+#'
+#' A newer decision for a name replaces an older one, matching
+#' TaxaHabitat's \code{save_spatial_review_decisions()} merge-not-overwrite
+#' convention. Never called unless \code{path} is one the caller named.
+#' @noRd
+.save_ncbi_homonym_decisions <- function(new_decisions, path) {
+  old <- if (file.exists(path)) {
+    tryCatch(readRDS(path), error = function(e) NULL)
+  } else {
+    NULL
+  }
+  if (!is.data.frame(old) || !all(c("name", "taxid") %in% names(old))) {
+    old <- new_decisions[0L, c("name", "taxid"), drop = FALSE]
+  }
+  old <- old[!old$name %in% new_decisions$name, c("name", "taxid"), drop = FALSE]
+  out <- rbind(old, new_decisions[, c("name", "taxid"), drop = FALSE])
+  rownames(out) <- NULL
+  dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
+  saveRDS(out, path)
+  invisible(out)
+}
+
+#' Resolve pending ambiguous names against saved/supplied decisions
+#'
+#' `decisions` (an in-memory data frame) is preferred when supplied; `path`
+#' is only read when `decisions` is NULL. Neither is required -- with both
+#' absent, every name in `ambiguous` comes back not-decided.
+#' @param ambiguous Character vector of names awaiting a decision.
+#' @param path Character or NULL: an .rds decisions file.
+#' @param decisions data.frame(name, taxid) or NULL.
+#' @return Named character vector, one taxid (or `NA_character_`) per
+#'   `ambiguous` name, with `attr(, "decided")`: logical, TRUE where
+#'   `ambiguous` had a covering decision (including an explicit skip). A
+#'   caller must check `decided`, not NA-ness alone -- an explicit skip is
+#'   `NA_character_` AND decided; a still-pending name is `NA_character_`
+#'   and NOT decided.
+#' @noRd
+.apply_ncbi_homonym_decisions <- function(ambiguous, path = NULL, decisions = NULL) {
+  dec_df <- decisions
+  if (is.null(dec_df) && !is.null(path) && file.exists(path)) {
+    dec_df <- tryCatch(readRDS(path), error = function(e) NULL)
+  }
+  out <- stats::setNames(rep(NA_character_, length(ambiguous)), ambiguous)
+  decided <- stats::setNames(rep(FALSE, length(ambiguous)), ambiguous)
+  if (is.data.frame(dec_df) && all(c("name", "taxid") %in% names(dec_df)) && nrow(dec_df) > 0L) {
+    idx <- match(ambiguous, dec_df$name)
+    found <- !is.na(idx)
+    taxid_vals <- dec_df$taxid[idx[found]]
+    out[found] <- ifelse(is.na(taxid_vals), NA_character_, as.character(taxid_vals))
+    decided[found] <- TRUE
+  }
+  attr(out, "decided") <- decided
+  out
+}

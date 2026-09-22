@@ -32,6 +32,10 @@
 #'   primary backbone doesn't resolve `taxon_name`. Default `11L` (GBIF). Set
 #'   `NULL` or equal to `backbone_id` to skip.
 #' @param verbose Logical. Print progress messages. Default `TRUE`.
+#' @param decisions Forwarded verbatim to [verify_taxon_names()]'s own
+#'   `decisions` parameter (relevant only when `backbone_id = 4`) -- this
+#'   function grows no prompt or resolution logic of its own for an NCBI
+#'   name collision.
 #'
 #' @return A list with `taxon_name` and `rank`. Both are `NA_character_` if
 #'   `current_rank` is already the coarsest rank in `rank_system`, if the
@@ -54,7 +58,8 @@ escalate_taxonomic_rank <- function(taxon_name,
                                     max_levels = 2L,
                                     backbone_id = 4L,
                                     fallback_backbone_id = 11L,
-                                    verbose = TRUE) {
+                                    verbose = TRUE,
+                                    decisions = NULL) {
   # ---- Input validation ------------------------------------------------------
   if (!is.character(taxon_name) || length(taxon_name) != 1L ||
     is.na(taxon_name) || !nzchar(trimws(taxon_name))) {
@@ -99,7 +104,13 @@ escalate_taxonomic_rank <- function(taxon_name,
   verified <- NULL
   if (!is.null(backbone_id)) {
     verified <- tryCatch(
-      verify_taxon_names(taxon_name, backbone_id = backbone_id),
+      verify_taxon_names(
+        taxon_name, backbone_id = backbone_id,
+        # decisions only means anything for backbone_id = 4 -- forwarding it
+        # unconditionally would trip verify_taxon_names()'s own "unused"
+        # warning whenever this is a non-NCBI primary backbone.
+        decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL
+      ),
       error = function(e) {
         warning(sprintf(
           "escalate_taxonomic_rank: backbone %d query failed: %s",
@@ -122,7 +133,10 @@ escalate_taxonomic_rank <- function(taxon_name,
       ))
     }
     verified <- tryCatch(
-      verify_taxon_names(taxon_name, backbone_id = fallback_backbone_id),
+      verify_taxon_names(
+        taxon_name, backbone_id = fallback_backbone_id,
+        decisions = if (identical(as.integer(fallback_backbone_id), 4L)) decisions else NULL
+      ),
       error = function(e) {
         warning(sprintf(
           "escalate_taxonomic_rank: fallback backbone %d query failed: %s",
