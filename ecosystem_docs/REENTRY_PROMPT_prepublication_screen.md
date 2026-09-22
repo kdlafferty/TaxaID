@@ -1067,6 +1067,31 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   palette-neutral. No conflict with this screen's plans: no version bump,
   NAMESPACE or NEWS change is scheduled here (pre-security-review
   submission). Reinstall of TaxaExpect goes through the same hold.
+  **Homonym fix BUILT by a separate thread 2026-09-22, branch
+  `homonym-detection` (off `e01032d`, tip `24775ad`), NOT merged, NOT
+  pushed.** TaxaTools gains `R/ncbi_homonyms.R` with THREE NEW EXPORTS
+  (`resolve_ncbi_taxid()`, `check_lineage_agreement()`, and a 12-row data
+  frame `known_ncbi_homonyms`); `fetch_ncbi_reference_sequences()` gains
+  an opt-in `taxa_lineage` (NULL reproduces the old behaviour). Live
+  verified: 68/68 Rhodomelaceae for *Vertebrata* with the guard. Tests
+  TaxaTools 1209/0, TaxaLikely 1358/0, check 0/0. Rule 1 of the freeze
+  applies: the maintainer decides the exports. Screen's recommendation:
+  export the two functions (a generic mechanism the `verify_taxon_names()`
+  bypass will need too), do NOT export the 12-name list (it is what one
+  fetch found, will go stale, and the resolver is the mechanism; keep it
+  as test fixture or vignette example). Merge conditions: Micah-template
+  review + "Added after the review" entries in both review responses;
+  TaxaTools README lists the new exports (completeness rule); pack
+  regenerated after reinstall; merged through this session. Left
+  unfixed by design: priority_taxa path unwired; `verify_taxon_names(
+  backbone_id = 4)`'s own NCBI bypass has the same collision (separate
+  decision). **REINSTALL DISCLOSURE**: that thread ran devtools::install()
+  for TaxaTools (09:45:53 local) and TaxaLikely (10:01:27) UNDER the
+  workflow chat's live 12S run (pid 73144, started 09:12:47), before it
+  knew of the hold; the workflow chat has been alerted to check the run.
+  The installed TaxaTools and TaxaLikely are therefore an UNMERGED branch
+  build, not main; the pre-submission reinstall must rebuild all nine
+  from final main regardless.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
