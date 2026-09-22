@@ -163,6 +163,7 @@ run_bayesian_pipeline <- function(
   verbose = TRUE
 ) {
   constraint_behavior <- match.arg(constraint_behavior)
+  .check_report_params(report_params, "run_bayesian_pipeline")
 
   if (missing(backbone_id)) {
     cli::cli_abort(c(
@@ -577,15 +578,19 @@ run_bayesian_pipeline <- function(
       dplyr::filter(!is.na(taxon_name))
   }
 
-  # Fold in the trained model's own score_transform ("logit"/"sqrt_mismatch")
+  # Record the trained model's own score_transform ("logit"/"sqrt_mismatch")
   # so generate_report()'s Methods text describes what was actually used
-  # instead of unconditionally assuming "logit" -- confirmed stale on a
-  # real report generated from a score_transform = "sqrt_mismatch" model.
-  # modifyList(), not a plain overwrite, so any report_params the caller
-  # already supplied survive (same precedent as update_prior_from_consensus()'s
-  # own report_params merge fix).
-  report_params <- utils::modifyList(
-    report_params, list(score_transform = model_params$Score_Transform)
+  # instead of assuming "logit". It travels as the "report_params"
+  # ATTRIBUTE on `result`, which generate_report() reads via
+  # .gather_report_params() and update_prior_from_consensus() merges onto
+  # rather than overwriting. It must NOT go into the `report_params`
+  # argument list: that list is spliced into the generate_report() call as
+  # named arguments, and generate_report() has no `score_transform` formal,
+  # so generate_report = TRUE failed with "unused argument".
+  prior_rp <- attr(result, "report_params")
+  attr(result, "report_params") <- utils::modifyList(
+    if (is.null(prior_rp)) list() else prior_rp,
+    list(score_transform = model_params$Score_Transform)
   )
 
   refined <- .run_consensus_and_report(

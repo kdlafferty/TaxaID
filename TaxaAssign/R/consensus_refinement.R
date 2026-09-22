@@ -18,6 +18,28 @@
 # passed straight through to generate_report()'s own `workflow` argument --
 # each pipeline wrapper knows definitively which one it is, so there is no
 # reason to let generate_report() guess from column presence here.
+# `report_params` is spliced into the generate_report() call as named
+# arguments, so every name in it must be a generate_report() formal. Checked
+# up front by both pipeline wrappers, so a bad name fails before any stage
+# runs instead of as "unused argument" after the whole pipeline has.
+#' @noRd
+.check_report_params <- function(report_params, label) {
+  if (!is.list(report_params) || (length(report_params) > 0L &&
+    (is.null(names(report_params)) || any(!nzchar(names(report_params)))))) {
+    stop(sprintf("%s: 'report_params' must be a named list.", label), call. = FALSE)
+  }
+  bad <- setdiff(names(report_params), names(formals(generate_report)))
+  if (length(bad)) {
+    stop(sprintf(
+      "%s: 'report_params' has name(s) generate_report() does not accept: %s. Accepted: %s.",
+      label, paste(bad, collapse = ", "),
+      paste(setdiff(names(formals(generate_report)), c("result", "consensus", "unreferenced_result",
+        "workflow", "llm_fn", "verbose")), collapse = ", ")
+    ), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' @noRd
 .run_consensus_and_report <- function(result,
                                       species_reference,

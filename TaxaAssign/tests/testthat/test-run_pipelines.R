@@ -211,3 +211,23 @@ test_that("run_llm_pipeline: auto_context filters on score_original, not the rem
   # Rows at/above score_original 90: s1/"Sp A" (99) and s2/"Sp A" (92).
   expect_equal(captured, "Sp A")
 })
+
+test_that("both wrappers reject report_params names generate_report() does not accept, before any stage runs", {
+  expect_error(
+    run_bayesian_pipeline(
+      match_df = data.frame(), model_params = list(), taxaexpect_priors = data.frame(),
+      site = list(), backbone_id = 4L,
+      report_params = list(score_transform = "sqrt_mismatch")
+    ),
+    "report_params.*score_transform"
+  )
+  expect_error(
+    run_llm_pipeline(match_df = data.frame(), report_params = list(bogus = 1)),
+    "report_params.*bogus"
+  )
+  # every legitimate generate_report() argument passes the check
+  ok <- setdiff(names(formals(generate_report)),
+                c("result", "consensus", "unreferenced_result", "workflow", "llm_fn", "verbose"))
+  expect_true(.check_report_params(setNames(as.list(ok), ok), "test"))
+  expect_true(.check_report_params(list(), "test"))
+})
