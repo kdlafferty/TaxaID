@@ -125,7 +125,10 @@ Habitat classification:
 -   `build_habitat_lookup()`: cached one-call classification (prompt,
     LLM call, parse; a taxon already classified under the same scheme
     is never re-asked)
--   `taxahabitat_clear_cache()`: report or prune that cache
+-   `taxahabitat_clear_cache()`: report or prune this package's cache;
+    the shared signature and the cross-package
+    `TaxaTools::taxaid_cache_report()` are described in the TaxaID
+    README's Caching and resources section
 -   `build_habitat_prompt()`: create LLM prompt for species habitat
     weights
 -   `parse_hierarchical_habitat_response()`: parse LLM output to
@@ -134,6 +137,10 @@ Habitat classification:
     composition
 -   `consensus_habitat()`: assemblage-level consensus with ecoregion
     extraction
+-   `resolve_habitat_by_geography()`: fill in `main_habitat` for
+    points the assemblage consensus left unresolved, from the point's
+    own location, resolving only where exactly one candidate habitat
+    is admissible there
 
 Custom schemes:
 
@@ -148,6 +155,23 @@ Spatial QC:
     site habitat
 -   `review_spatial_flags()`: interactive Leaflet map for manual
     review
+-   `save_spatial_review_decisions()`: save a reviewer's spatial-flag
+    decisions from `review_spatial_flags()`'s output to a decisions
+    file, keyed by point and taxon
+-   `apply_spatial_review_decisions()`: apply saved decisions to
+    `flag_habitat_inconsistencies()`'s output before, or instead of,
+    opening the review gadget, and report how many flagged points
+    still need a reviewer
+
+Institution-proximity flags:
+
+-   `flag_institution_candidates()`: tier records
+    `TaxaFetch::filter_gbif_quality()` flagged as near a biodiversity
+    institution by how suspicious the match actually is, using the
+    matched institution's type and the record's kingdom
+-   `review_institution_flags()`: interactive Shiny gadget for
+    reviewing institution-proximity flags on a map alongside the
+    matched institution's own location
 
 Reporting:
 

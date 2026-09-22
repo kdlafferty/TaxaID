@@ -201,6 +201,22 @@ Prior estimation:
     `apply_undetected_evidence(pricing = "curve")`: price named
     unobserved claimants (regional, watch-listed, or distance-clamped)
     on a shared presence-distance curve
+-   `fit_regional_presence_curve()`: fit that presence-distance
+    curve's `w_scale`/`d_half` from a study's own data, as a
+    self-calibrating alternative to `generate_regional_proximity_evidence()`'s
+    defaults
+-   `generate_regional_proximity_evidence()`: evidence rows for taxa
+    with no in-bbox occurrence record but a real GBIF record just
+    outside the study area, priced by distance to that record
+-   `generate_inat_range_evidence()`: evidence rows for taxa inside
+    their iNaturalist range polygon, sharing the same evidence-mixture
+    framework as the other generators
+-   `generate_invasive_watch_evidence()`: evidence rows for a
+    user-supplied invasive/nonindigenous watch list, at a flat
+    caller-chosen weight and confidence
+-   `generate_uncertain_habitat_evidence()`: presence evidence for
+    taxa whose nearby records all have unresolved habitat, so they are
+    priced instead of dropped by the kernel estimator's habitat filter
 -   `condition_evidence_on_habitat()`: multiply any evidence table's
     presence weights by each taxon's weight for the site habitat (from
     the cached LLM habitat lookup), floored at the zero-evidence

@@ -149,6 +149,59 @@ acoustic, and image data via the `data_type` param. This review is
 intended as a structured second opinion, not an automated filter. Users
 should treat the flags as candidates for closer inspection.
 
+## Key Functions
+
+Control validation and contamination:
+
+-   `validate_controls()`: test whether samples labelled as controls
+    are compositionally consistent with being controls, and whether
+    any field sample looks like a control instead
+-   `flag_contaminant()`: compare detection rates between field
+    samples and controls and score each taxon as a probable
+    contaminant, ambiguous, or likely genuine detection
+
+Handler artifacts:
+
+-   `flag_handler()`: flag detections that fall within a time buffer
+    of camera setup or retrieval, when human handler activity is
+    expected
+
+LLM review:
+
+-   `review_assignments()`: send each unique taxon from a consensus
+    table to an LLM for structured expert review of habitat fit,
+    geographic plausibility, taxonomic scope, and contamination risk,
+    with suggested plausible alternatives
+
+Spatial and watch-list checks:
+
+-   `check_gbif_tile_range()`: download GBIF's occurrence-density map
+    tiles around a query point and report how isolated that point is
+    from the taxon's known range
+-   `compute_local_occurrence_distance()`: for each taxon, find the
+    nearest already-fetched occurrence record and report its distance
+    from the query point, at no cost of a new GBIF call
+-   `flag_watch_candidates()`: flag observations where a watch-list
+    species outscores the consensus winner on raw match score, since a
+    watch-list species' occurrence prior stays low by design and would
+    not otherwise surface it
+-   `review_spatial_context()`: open an interactive Shiny gadget for
+    scrolling through consensus taxa by plausibility and viewing each
+    flagged taxon's live GBIF occurrence-density map and spatial
+    context
+
+Reporting and cache:
+
+-   `add_posthoc_assessment()`: append occurrence-plausibility and
+    discrimination diagnostic assessments to a consensus data frame,
+    reported separately for the primary and consensus taxon
+-   `report_flags()`: summarize the quality flags applied by TaxaFlag
+    into a report section for `assemble_report()`
+-   `taxaflag_clear_cache()`: report or prune this package's cache;
+    the shared signature and the cross-package
+    `TaxaTools::taxaid_cache_report()` are described in the TaxaID
+    README's Caching and resources section
+
 ## Installation
 
 ``` r

@@ -105,12 +105,25 @@ Core assignment:
     `unreferenced_taxa`; see TaxaLikely's README for the full
     unreferenced-species mechanism)
 -   `join_priors()`: merge TaxaExpect priors with likelihood output
+-   `combine_multisite_priors()`: combine an observation's per-site
+    prior rows into one precision-weighted row (needed before
+    `compute_posterior()` when the same observation was detected at
+    more than one site)
+-   `adjust_inat_range_priors()`: elevate priors for candidates that
+    fall within their iNaturalist range polygon and have reliable
+    observation coverage, for workflows outside TaxaExpect's evidence-mixture
+    pathway
 
 Consensus:
 
 -   `posterior_consensus()`: LCA from posterior probabilities
 -   `score_consensus()`: conventional score-based consensus
 -   `update_prior_from_consensus()`: empirical Bayes refinement
+-   `add_slash_taxon()`: label ambiguous candidate sets with
+    slash-taxon notation and flag which of them are irreducible
+-   `compute_group_priors()`: aggregate occurrence-model shares to
+    genus/family level for use as `posterior_consensus()`'s
+    `group_priors`
 
 High-level wrappers:
 
