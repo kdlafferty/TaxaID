@@ -960,9 +960,8 @@ theta_surface_at <- function(x, lon, lat, taxon = NULL) {
 
 #' Static base-graphics rendering
 #'
-#' Always allocates a colour-key column (this branch previously drew NO
-#' legend at all -- a facet PNG carried no scale whatsoever, unreadable
-#' regardless of which `theta_range` mode was chosen) and always draws `bg`
+#' Always allocates a colour-key column (a facet without a scale is
+#' unreadable whichever `theta_range` mode is chosen) and always draws `bg`
 #' behind every panel before the raster, so a masked/absent cell reads as
 #' "outside the surface" rather than blending into a pale low-theta colour or
 #' the device's own default white.
