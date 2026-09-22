@@ -658,6 +658,12 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 BiocManager::install("DECIPHER")
 ```
 
+Do not reinstall a TaxaID package while an R session that has it loaded
+is still running a workflow. R loads package code lazily by byte offset,
+so a session that started on the old build reads the new build at the
+old offsets: no error is raised and the results after the swap cannot
+be trusted. Let the run finish, or quit that session, before installing.
+
 After installation, load the packages:
 
 ``` r
