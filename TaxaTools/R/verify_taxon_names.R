@@ -29,6 +29,30 @@
 #'   itself (the correction is never accepted from this backbone directly, so
 #'   NCBI's own classification -- the reason the direct bypass exists at all --
 #'   is preserved). Default \code{11} (GBIF). Must not be \code{4}.
+#' @param decisions Only used when \code{backbone_id = 4} (NCBI); a supplied
+#'   value is ignored, with a warning, for any other backbone. A name is not
+#'   a key -- NCBI can hold several nodes sharing one name in unrelated
+#'   lineages (a genus of red algae named "Vertebrata" beside the vertebrate
+#'   clade of the same name; see \code{\link{resolve_ncbi_taxid}}), and this
+#'   direct bypass's own batched search used to pick whichever candidate its
+#'   summary happened to process last, silently. Such a name is now reported
+#'   as an unresolved AMBIGUITY, never guessed -- \code{decisions} is how a
+#'   caller states which candidate is meant. \code{NULL} (default): no prior
+#'   decisions. A data frame with \code{name}/\code{taxid} columns: use these
+#'   decisions directly (a row with \code{taxid = NA} is an explicit
+#'   \emph{skip} -- that name resolves to \code{NA}, not "not yet decided").
+#'   A character scalar: the path to an \code{.rds} file holding such a data
+#'   frame (read if it exists; new decisions made this call -- interactively,
+#'   see below -- are merged into it, a newer decision for a name replacing
+#'   an older one). A name that comes back ambiguous and has no covering
+#'   decision (in \code{decisions} or, for a path, already saved in that
+#'   file) is handled by session type, never by a silent default: in an
+#'   interactive session, one prompt covers every such name in this call
+#'   (never a dialogue per name), tabulating each candidate's rank, division,
+#'   and a short lineage string; in a non-interactive session (the ordinary
+#'   \code{Rscript} workflow case), the call stops, printing that same table
+#'   plus a ready-to-paste \code{decisions = data.frame(...)} skeleton. No
+#'   file is ever written unless \code{decisions} itself named one.
 #'
 #' @return A tibble with one row per input name and the following columns:
 #' \describe{
@@ -140,7 +164,8 @@ verify_taxon_names <- function(name_list,
                                backbone_id,
                                batch_size = 500,
                                timeout_sec = 30,
-                               fallback_backbone_id = 11L) {
+                               fallback_backbone_id = 11L,
+                               decisions = NULL) {
   # --- Input validation ---
   if (!is.character(name_list) || length(name_list) == 0) {
     stop("`name_list` must be a non-empty character vector.")
@@ -150,6 +175,13 @@ verify_taxon_names <- function(name_list,
     stop("`backbone_id` must be a single integer (e.g., 4 for NCBI).")
   }
   backbone_id <- as.integer(backbone_id)
+  if (!is.null(decisions) && !identical(backbone_id, 4L)) {
+    warning(
+      "verify_taxon_names: `decisions` is only used for backbone_id = 4 ",
+      "(NCBI) and is unused for backbone_id = ", backbone_id, ".",
+      call. = FALSE
+    )
+  }
 
   # --- Clean and deduplicate ---
   trimmed_names <- trimws(name_list)
@@ -167,7 +199,10 @@ verify_taxon_names <- function(name_list,
 
   # to genus (~30% loss). Query NCBI taxonomy directly instead.
   if (identical(as.integer(backbone_id), 4L)) {
-    unique_df <- .verify_via_ncbi(clean_names, fallback_backbone_id = fallback_backbone_id)
+    unique_df <- .verify_via_ncbi(
+      clean_names, fallback_backbone_id = fallback_backbone_id,
+      decisions = decisions
+    )
     idx <- match(trimmed_names, unique_df$user_supplied_name)
     final_df <- unique_df[idx, , drop = FALSE]
     # NA/empty input names get a placeholder row with verified = FALSE
@@ -401,6 +436,9 @@ verify_taxon_names <- function(name_list,
 #'   NCBI's own exact search cannot find, purely to suggest a corrected
 #'   spelling (see that function's own docs for the full rationale). Must not
 #'   be \code{4}.
+#' @param decisions See \code{\link{verify_taxon_names}}'s own \code{@param
+#'   decisions} -- NULL, a \code{data.frame(name, taxid)}, or a path to an
+#'   \code{.rds} file holding one.
 #' @return A tibble with columns: user_supplied_name, matched_name,
 #'   classification_path, classification_ranks, score, verified,
 #'   fuzzy_corrected.
@@ -408,7 +446,8 @@ verify_taxon_names <- function(name_list,
 .verify_via_ncbi <- function(clean_names,
                              search_batch_size = 40L,
                              fetch_batch_size = 100L,
-                             fallback_backbone_id = 11L) {
+                             fallback_backbone_id = 11L,
+                             decisions = NULL) {
   if (!requireNamespace("rentrez", quietly = TRUE) ||
     !requireNamespace("xml2", quietly = TRUE)) {
     stop(
@@ -444,6 +483,16 @@ verify_taxon_names <- function(name_list,
   name_to_taxid <- stats::setNames(rep(NA_character_, n_total), clean_names)
   fuzzy_corrected <- stats::setNames(rep(FALSE, n_total), clean_names)
 
+  # A name is not a key -- NCBI can hold several nodes sharing one scientific
+  # name in unrelated lineages (see resolve_ncbi_taxid()'s own header for
+  # confirmed real cases: a genus of red algae named "Vertebrata" beside the
+  # vertebrate clade of the same name). This used to pick whichever ESummary
+  # happened to be processed last for such a name -- silently. Every ESummary
+  # record for a name sharing a batch's query is grouped here instead; a name
+  # with more than one is AMBIGUOUS and is resolved below (never guessed),
+  # not written into name_to_taxid directly.
+  ambiguous_summaries <- list()
+
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
     or_terms <- paste0('"', batch, '"[Scientific Name]')
@@ -460,10 +509,19 @@ verify_taxon_names <- function(name_list,
         if (as.integer(res$count) > 0L && length(res$ids) > 0L) {
           # Resolve taxids back to names via esummary
           summaries <- .ncbi_batch_summary(res$ids, delay)
+          by_name <- list()
           for (s in summaries) {
             sci_name <- s$scientificname %||% s$ScientificName
             if (!is.null(sci_name) && sci_name %in% clean_names) {
-              name_to_taxid[[sci_name]] <- as.character(s$uid %||% s$TaxId)
+              by_name[[sci_name]] <- c(by_name[[sci_name]], list(s))
+            }
+          }
+          for (sci_name in names(by_name)) {
+            hits <- by_name[[sci_name]]
+            if (length(hits) == 1L) {
+              name_to_taxid[[sci_name]] <- as.character(hits[[1L]]$uid %||% hits[[1L]]$TaxId)
+            } else {
+              ambiguous_summaries[[sci_name]] <- hits
             }
           }
         }
@@ -480,11 +538,82 @@ verify_taxon_names <- function(name_list,
     if (i < length(batches)) Sys.sleep(delay)
   }
 
+  # --- Ambiguity resolution ---------------------------------------------------
+  # Never guessed: an ambiguous name is resolved against `decisions` (a
+  # supplied data frame, or one saved at a supplied path); anything still
+  # pending after that is handled by session type -- one batch prompt
+  # (interactive) or a stop() naming exactly how to supply the missing
+  # decisions (non-interactive). `skipped_names` (an explicit decision of
+  # NA, "this name means nothing to me") must NOT re-enter Step 1b/1c's
+  # missing-name fallback below -- that would silently override the user's
+  # own choice with a different, independent resolution mechanism.
+  skipped_names <- character(0L)
+  if (length(ambiguous_summaries) > 0L) {
+    dec_df <- if (is.data.frame(decisions)) decisions else NULL
+    dec_path <- if (is.character(decisions) && length(decisions) == 1L && !is.na(decisions)) decisions else NULL
+
+    pending_names <- names(ambiguous_summaries)
+    applied <- .apply_ncbi_homonym_decisions(pending_names, path = dec_path, decisions = dec_df)
+    for (nm in pending_names[attr(applied, "decided")]) {
+      if (!is.na(applied[[nm]])) {
+        name_to_taxid[[nm]] <- applied[[nm]]
+      } else {
+        skipped_names <- c(skipped_names, nm)
+      }
+    }
+    still_pending <- pending_names[!attr(applied, "decided")]
+
+    if (length(still_pending) > 0L) {
+      ambiguous_df <- .build_ncbi_ambiguous_table(ambiguous_summaries[still_pending], delay)
+
+      if (.is_interactive_session()) {
+        new_decisions <- .prompt_ncbi_homonym_decisions(ambiguous_df)
+        for (j in seq_len(nrow(new_decisions))) {
+          nm <- new_decisions$name[j]
+          tid <- new_decisions$taxid[j]
+          if (!is.na(tid)) {
+            name_to_taxid[[nm]] <- tid
+          } else {
+            skipped_names <- c(skipped_names, nm)
+          }
+        }
+        if (!is.null(dec_path)) {
+          .save_ncbi_homonym_decisions(new_decisions, dec_path)
+          message(sprintf(
+            "verify_taxon_names: %d decision(s) saved to %s.",
+            nrow(new_decisions), dec_path
+          ))
+        } else {
+          message(
+            "verify_taxon_names: no `decisions` path was supplied, so nothing was written to ",
+            "disk. Paste this into your script to skip the prompt next time:\n\n",
+            "decisions <- data.frame(\n",
+            "  name = c(", paste(sprintf('"%s"', new_decisions$name), collapse = ", "), "),\n",
+            "  taxid = c(",
+            paste(ifelse(is.na(new_decisions$taxid), "NA_integer_", new_decisions$taxid), collapse = ", "),
+            ")\n)"
+          )
+        }
+      } else {
+        stop(
+          "verify_taxon_names: ", length(still_pending), " name(s) resolved to more than one ",
+          "NCBI taxonomy node, and `decisions` does not cover them. A name is not a key -- ",
+          "decide which candidate each one means, then re-run with `decisions =` set to a ",
+          "data frame like the one below (taxid = NA_integer_ means skip), or saveRDS() it ",
+          "and pass the path so this only needs deciding once:\n\n",
+          .format_ncbi_ambiguous_report(ambiguous_df),
+          call. = FALSE
+        )
+      }
+    }
+  }
+
   # --- Step 1b: Synonym fallback for unmatched names ---
   # [Scientific Name] misses reclassified taxa (e.g., Hypsurus caryi -> Embiotoca
   # caryi). Try [All Names] for names that weren't found, one at a time to
-  # correctly associate input name -> taxid.
-  missing_names <- clean_names[is.na(name_to_taxid)]
+  # correctly associate input name -> taxid. Excludes skipped_names: an
+  # explicit skip decision must not be silently re-attempted here.
+  missing_names <- clean_names[is.na(name_to_taxid) & !clean_names %in% skipped_names]
   if (length(missing_names) > 0L) {
     for (nm in missing_names) {
       tryCatch(
@@ -514,7 +643,8 @@ verify_taxon_names <- function(name_list,
   # fallback backbone's own classification), so this bypass's whole reason for
   # existing -- avoiding GlobalNames' incomplete/demoting NCBI snapshot --
   # still holds for the corrected name.
-  still_missing <- clean_names[is.na(name_to_taxid)]
+  # Also excludes skipped_names -- see Step 1b's own comment above.
+  still_missing <- clean_names[is.na(name_to_taxid) & !clean_names %in% skipped_names]
 
   if (length(still_missing) > 0L) {
     fuzzy_hits <- tryCatch(

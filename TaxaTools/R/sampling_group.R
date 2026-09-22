@@ -333,6 +333,11 @@ default_sampling_scheme <- function() {
 #' @param verbose Logical, default \code{TRUE}. Print one table of the
 #'   resulting \code{sampling_group} counts (including the \code{NA} count)
 #'   after classification, and progress messages during harmonisation.
+#' @param decisions Only relevant when \code{harmonise = TRUE} and
+#'   \code{backbone_id = 4} (NCBI) -- forwarded verbatim to
+#'   \code{\link{verify_taxon_names}}'s own \code{decisions} parameter. This
+#'   function grows no prompt or resolution logic of its own for an NCBI
+#'   name collision.
 #'
 #' @return \code{taxonomy} (or its harmonised copy, when \code{harmonise =
 #'   TRUE}) with a new \code{sampling_group} character column added.
@@ -458,7 +463,8 @@ assign_sampling_group <- function(taxonomy,
                                    harmonise = FALSE,
                                    backbone_id = 11L,
                                    cache_dir = NULL,
-                                   verbose = TRUE) {
+                                   verbose = TRUE,
+                                   decisions = NULL) {
   # --- Input validation -------------------------------------------------
   if (!is.data.frame(taxonomy)) {
     stop("assign_sampling_group: `taxonomy` must be a data frame.")
@@ -487,7 +493,7 @@ assign_sampling_group <- function(taxonomy,
   if (harmonise) {
     taxonomy <- .harmonise_taxonomy_to_backbone(
       taxonomy, rank_cols = rank_cols, backbone_id = backbone_id,
-      cache_dir = cache_dir, verbose = verbose
+      cache_dir = cache_dir, verbose = verbose, decisions = decisions
     )
   } else {
     .warn_possible_backbone_mismatch(taxonomy, rank_cols)
@@ -609,7 +615,7 @@ assign_sampling_group <- function(taxonomy,
 #' the "Rank agreement" roxygen section on assign_sampling_group()).
 #' @noRd
 .harmonise_taxonomy_to_backbone <- function(taxonomy, rank_cols, backbone_id,
-                                             cache_dir, verbose) {
+                                             cache_dir, verbose, decisions = NULL) {
   present <- intersect(rank_cols, names(taxonomy))
   if (length(present) == 0L) {
     stop("assign_sampling_group: harmonise = TRUE requires at least one of ",
@@ -685,7 +691,13 @@ assign_sampling_group <- function(taxonomy,
         length(need), backbone_id
       ))
     }
-    verified <- verify_taxon_names(need, backbone_id = backbone_id)
+    verified <- verify_taxon_names(
+      need, backbone_id = backbone_id,
+      # decisions only means anything for backbone_id = 4 -- forwarding it
+      # unconditionally would trip verify_taxon_names()'s own "unused"
+      # warning under this function's own default (GBIF, 11).
+      decisions = if (identical(as.integer(backbone_id), 4L)) decisions else NULL
+    )
     fresh <- change_backbone(
       verified,
       input_col = "user_supplied_name",

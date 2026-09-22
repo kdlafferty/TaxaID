@@ -11,7 +11,8 @@ escalate_taxonomic_rank(
   max_levels = 2L,
   backbone_id = 4L,
   fallback_backbone_id = 11L,
-  verbose = TRUE
+  verbose = TRUE,
+  decisions = NULL
 )
 }
 \arguments{
@@ -36,6 +37,11 @@ primary backbone doesn't resolve \code{taxon_name}. Default \code{11L} (GBIF). S
 \code{NULL} or equal to \code{backbone_id} to skip.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
+
+\item{decisions}{Forwarded verbatim to \code{\link[=verify_taxon_names]{verify_taxon_names()}}'s own
+\code{decisions} parameter (relevant only when \code{backbone_id = 4}) -- this
+function grows no prompt or resolution logic of its own for an NCBI
+name collision.}
 }
 \value{
 A list with \code{taxon_name} and \code{rank}. Both are \code{NA_character_} if

@@ -12,7 +12,8 @@ assign_sampling_group(
   harmonise = FALSE,
   backbone_id = 11L,
   cache_dir = NULL,
-  verbose = TRUE
+  verbose = TRUE,
+  decisions = NULL
 )
 }
 \arguments{
@@ -90,6 +91,12 @@ every call re-resolves every unique name.}
 \item{verbose}{Logical, default \code{TRUE}. Print one table of the
 resulting \code{sampling_group} counts (including the \code{NA} count)
 after classification, and progress messages during harmonisation.}
+
+\item{decisions}{Only relevant when \code{harmonise = TRUE} and
+\code{backbone_id = 4} (NCBI) -- forwarded verbatim to
+\code{\link{verify_taxon_names}}'s own \code{decisions} parameter. This
+function grows no prompt or resolution logic of its own for an NCBI
+name collision.}
 }
 \value{
 \code{taxonomy} (or its harmonised copy, when \code{harmonise =

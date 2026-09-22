@@ -238,3 +238,20 @@ on functions this document already covers above.
   handed to `file.remove()`.
 - `scientific_to_common()` caches `llm_parsed` per row, so a name the model
   omits is no longer cached as "no common name" for every subsequent run.
+- `verify_taxon_names()` gains an optional `decisions` parameter (only meaningful for
+  `backbone_id = 4`, the NCBI direct bypass; warns "unused" if supplied for any other
+  backbone). `.verify_via_ncbi()`'s batched name search used to silently pick whichever
+  NCBI node its own ESummary record happened to process last for a name shared by more
+  than one taxonomy node (confirmed live: `"Vertebrata"[Scientific Name]` genuinely
+  returns both a red-algal genus and the vertebrate clade) -- such a name is now
+  reported as an unresolved ambiguity, never guessed, resolved only via `decisions` (a
+  `data.frame(name, taxid)` or a path to an `.rds` holding one; `taxid = NA` is an
+  explicit, recorded skip), one interactive prompt covering every ambiguous name in the
+  call, or a non-interactive `stop()` naming exactly how to supply the missing
+  decisions. `escalate_taxonomic_rank()`, `fill_higher_ranks()`, and
+  `assign_sampling_group(harmonise = TRUE)` each gain the identical parameter,
+  forwarded verbatim to whichever of their own internal `verify_taxon_names()` calls
+  targets backbone_id 4 -- none grows a prompt or resolution mechanism of its own. No
+  new exports: the two new helpers this needed
+  (`.save_ncbi_homonym_decisions()`/`.apply_ncbi_homonym_decisions()`) stay internal in
+  `R/ncbi_homonyms.R`, next to `resolve_ncbi_taxid()`/`check_lineage_agreement()`.

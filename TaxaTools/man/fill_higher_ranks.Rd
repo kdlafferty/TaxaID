@@ -9,7 +9,8 @@ fill_higher_ranks(
   local_sources = list(),
   backbone_id = 4L,
   fallback_backbone_id = 11L,
-  verbose = TRUE
+  verbose = TRUE,
+  decisions = NULL
 )
 }
 \arguments{
@@ -31,6 +32,12 @@ equal to \code{backbone_id} to skip.}
 
 \item{verbose}{Logical.  Print progress messages for API lookups.
 Default \code{TRUE}.}
+
+\item{decisions}{Forwarded verbatim to \code{\link[=verify_taxon_names]{verify_taxon_names()}}'s own
+\code{decisions} parameter for every genus-level lookup this function makes
+(primary and fallback backbone alike, whichever is \code{4}) -- this
+function grows no prompt or resolution logic of its own for an NCBI
+name collision.}
 }
 \value{
 A tibble with one row per element of \code{taxon_names} (preserving
