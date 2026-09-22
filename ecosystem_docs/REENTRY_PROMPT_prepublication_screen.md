@@ -1182,7 +1182,7 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   **theta-surface-render MERGED** (maintainer approved both deviations
   2026-09-22): `plot_theta_surface()` gains `theta_range` (default
   "shared"), `palette` ("YlOrRd"), `bg` ("grey92"), `support_panel`
-  (TRUE), `fade_by`, mask outline and a colour key on both renders, a
+  (TRUE), `support_field`, mask outline and a colour key on both renders, a
   `layout(1)` reset; `alpha_by_n_eff` REMOVED (no caller anywhere;
   n_eff is scale-invariant so opacity misread extrapolation as
   confidence). TWO NEW EXPORTS approved: `as.data.frame()` method for

@@ -49,7 +49,7 @@ isolated unit tests.
 `plot_theta_surface.R`'s rendering internals).
 
 Behaviour of an already-listed function: `plot_theta_surface()` gained
-`theta_range`, `palette`, `bg`, `support_panel` and `fade_by`, draws the
+`theta_range`, `palette`, `bg`, `support_panel` and `support_field`, draws the
 mask outline and a colour key on both renders, and no longer fades cells by
 n_eff (support has its own panel; n_eff is scale-invariant, so opacity
 misread far-field extrapolation as confidence).

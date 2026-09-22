@@ -270,7 +270,12 @@ memory scales with matches, not database size -
 optional taxonomy TSV (round-trippable with `read_reference_fasta()`) -
 `read_crabs_output()`: load a CRABS internal-format database (taxonomy
 embedded; no separate file needed) - `fetch_ncbi_reference_sequences()`:
-download from NCBI by taxon + barcode marker -
+download from NCBI by taxon + barcode marker; `taxa_lineage` resolves
+each name to one NCBI taxid before searching, so a homonym cannot pull
+another lineage's sequences. The cache key encodes the taxid, so
+adopting `taxa_lineage` on an existing project refetches that project's
+references once (the same holds for a change to `max_per_species` or
+`max_per_genus`) -
 `fetch_bold_reference_sequences()`: download from BOLD Systems by taxon
 name, the BOLD analog of `fetch_ncbi_reference_sequences()` -
 `read_reference_fasta()`: load local FASTA + data-frame taxonomy (or
