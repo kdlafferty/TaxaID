@@ -42,9 +42,17 @@ isolated unit tests.
 | `generate_user_specified_evidence()` | `R/generate_presence_curve_evidence.R` | User-specified presence evidence for species of special concern | test-generate_presence_curve_evidence.R |
 | `kernel_budget_sensitivity()` | `R/kernel_budget_sensitivity.R` | Sensitivity of a kernel Good-Turing budget to its counting radius | test-kernel_budget_sensitivity.R |
 | `plot_theta_surface()` | `R/plot_theta_surface.R` | Evaluate the kernel-prior estimator on a spatial lattice (KDE prior field) | test-plot_theta_surface.R |
+| `as.data.frame.taxaexpect_theta_surface()` | `R/plot_theta_surface.R` | Long-format data frame (lon, lat, taxon, theta, n_eff, W) of a rendered surface, masked cells dropped by default | test-plot_theta_surface.R |
+| `theta_surface_at()` | `R/plot_theta_surface.R` | Theta and support at query points from an already-built surface, with the distance to the matched cell | test-plot_theta_surface.R |
 
 27 new internal helper functions have also been added since the review (most in
 `plot_theta_surface.R`'s rendering internals).
+
+Behaviour of an already-listed function: `plot_theta_surface()` gained
+`theta_range`, `palette`, `bg`, `support_panel` and `fade_by`, draws the
+mask outline and a colour key on both renders, and no longer fades cells by
+n_eff (support has its own panel; n_eff is scale-invariant, so opacity
+misread far-field extrapolation as confidence).
 
 ------------------------------------------------------------------------
 

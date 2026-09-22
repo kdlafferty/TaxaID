@@ -180,6 +180,22 @@ plot_theta_surface(kernel_fit, occurrence_data = occurrences,
                     taxon = "Girella nigricans")
 ```
 
+### Reading values off a surface
+
+A rendered surface is also data. `as.data.frame()` returns the whole
+lattice as a long table (lon, lat, taxon, theta, n_eff, W), with masked
+cells dropped, so "inside the polygon" comes for free.
+`theta_surface_at()` returns theta and support at points of interest,
+matched to the nearest cell, with the distance to that cell reported so a
+query outside the lattice is visible as such.
+
+``` r
+r <- plot_theta_surface(kernel_fit, occurrence_data = occurrences,
+                        taxon = c("Girella nigricans", "Pisaster ochraceus"))
+grid <- as.data.frame(r)                  # one row per cell x taxon
+theta_surface_at(r, lon = -120.47, lat = 34.45)   # both taxa at one point
+```
+
 ## Key Functions
 
 ### Kernel pathway {#kernel-pathway}
@@ -229,6 +245,10 @@ Diagnostics and reporting:
 
 -   `plot_theta_surface()`: continuous prior-field map, evaluating the
     estimator on a lattice via FFT
+-   `as.data.frame()` on a surface: the lattice as a long data frame
+    (lon, lat, taxon, theta, n_eff, W)
+-   `theta_surface_at()`: theta and support at query points, from an
+    already-built surface
 -   `kernel_budget_sensitivity()`: reports how the Good-Turing budget
     behind `theta_present` moves across counting radius/bandwidth
     choices

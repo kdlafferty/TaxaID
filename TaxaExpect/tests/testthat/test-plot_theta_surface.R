@@ -256,9 +256,10 @@ test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-0
   # far outside every record's support, where the true kernel weight underflows
   # to zero and the FFT returns independent round-off noise for W and S2.
   # Before the guard, W^2/S2 there returned Inf (theta NaN) at 2,817 of 16,384
-  # points -- and because that Inf became max(n_eff), alpha_by_n_eff faded the
-  # WHOLE map to transparent. Also asserts Kish's own upper bound: n_eff can
-  # never exceed the number of records.
+  # points -- which would still corrupt the support panel's own colour mapping
+  # today even though the since-removed alpha_by_n_eff fade it used to blank
+  # out is gone. Also asserts Kish's own upper bound: n_eff can never exceed
+  # the number of records.
   set.seed(2)
   n <- 400
   occ <- .mk_occ(rep(c("A", "B"), each = n),
@@ -274,8 +275,14 @@ test_that("far-field FFT round-off never yields Inf n_eff / NaN theta (2026-09-0
   expect_equal(surf$theta[1L, 1L], unname(surf$regional_composition["A"]),
     tolerance = 1e-9
   )
-  # ... and the raster is not uniformly transparent (the visible symptom).
-  ras <- TaxaExpect:::.theta_surface_raster(surf$theta, surf$n_eff, TRUE, NULL)
+  # ... and the raster renders without error, still finite input throughout
+  # (the FFT-noise guard above is what makes that true; opacity itself is
+  # always full now, so a transparency check no longer says anything about
+  # this guard specifically).
+  pal <- TaxaExpect:::.theta_surface_resolve_palette("YlOrRd")
+  ras <- TaxaExpect:::.theta_surface_raster(
+    surf$theta, surf$n_eff, NULL, pal, range(surf$theta, na.rm = TRUE)
+  )
   expect_true(any(substr(as.character(ras), 8L, 9L) != "00"))
 
   # The site itself is untouched by the guard.
@@ -385,7 +392,11 @@ test_that("interactive map carries legend, hover labels, small site marker and a
     main_habitat = "Marine", stringsAsFactors = FALSE
   )
   kp <- estimate_kernel_priors(occ, 34.15, -119.95, "Marine", lambda_km = 50)
-  m <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 16L, interactive = TRUE)$plot
+  # support_panel = FALSE isolates the species selector this test is actually
+  # about -- with the default TRUE, a legitimate 3rd "[support] n_eff"
+  # baseGroup joins "A"/"B", covered by its own dedicated test instead.
+  m <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 16L, interactive = TRUE,
+                           support_panel = FALSE)$plot
   calls <- vapply(m$x$calls, function(cl) cl$method, character(1))
   expect_true("addLegend" %in% calls) # legend present
   expect_true("addCircleMarkers" %in% calls) # small hollow site marker, not addMarkers
@@ -584,4 +595,88 @@ test_that("a fit built with sampling_group_col is refused, not silently pooled",
     plot_theta_surface(kp, occ, taxon = "A", n_grid = 12L),
     "sampling_group_col"
   )
+})
+
+# ------------------------------------------------------------------------------
+# Data extraction: as.data.frame() and theta_surface_at()
+# ------------------------------------------------------------------------------
+
+test_that("as.data.frame() unpacks the surface into a long data frame, NA-dropped by default", {
+  occ <- .mk_occ(rep(c("A", "B"), each = 4),
+    lat = rep(c(34.0, 34.1, 34.2, 34.3), 2),
+    lon = rep(c(-120.0, -119.9), 4)
+  )
+  kp <- estimate_kernel_priors(occ, 34.15, -119.95, "Marine", lambda_km = 50)
+  r <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 12L,
+                           mask = cbind(lon = c(-120.2, -119.8, -119.8, -120.2),
+                                        lat = c(34.0, 34.0, 34.3, 34.3)))
+
+  df <- as.data.frame(r)
+  expect_setequal(names(df), c("lon", "lat", "taxon", "theta", "n_eff", "W"))
+  expect_setequal(unique(df$taxon), c("A", "B"))
+  expect_false(anyNA(df$theta)) # dropped by default -- "within the mask"
+
+  df_all <- as.data.frame(r, drop_na = FALSE)
+  expect_gt(nrow(df_all), nrow(df)) # masked cells present when asked for
+  expect_true(anyNA(df_all$theta))
+
+  df1 <- as.data.frame(r, taxon = "A")
+  expect_true(all(df1$taxon == "A"))
+  expect_lt(nrow(df1), nrow(df)) # exactly the "A" subset of the two-taxon frame
+
+  expect_error(as.data.frame(r, taxon = "nonexistent"), "not present in this surface")
+})
+
+test_that("as.data.frame() also works for a single-taxon surface (theta is a bare matrix, not a list)", {
+  occ <- .mk_occ("A", lat = c(34.0, 34.1, 34.2), lon = c(-120.0, -119.9, -119.8))
+  kp <- estimate_kernel_priors(occ, 34.1, -119.95, "Marine", lambda_km = 50)
+  r <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 10L)
+  df <- as.data.frame(r)
+  expect_true(all(df$taxon == "A"))
+  expect_equal(nrow(df), sum(!is.na(as.vector(r$surface$theta))))
+})
+
+test_that("theta_surface_at() finds the nearest cell and reports its distance honestly", {
+  occ <- .mk_occ(rep(c("A", "B"), each = 4),
+    lat = rep(c(34.0, 34.1, 34.2, 34.3), 2),
+    lon = rep(c(-120.0, -119.9), 4)
+  )
+  kp <- estimate_kernel_priors(occ, 34.15, -119.95, "Marine", lambda_km = 50)
+  r <- plot_theta_surface(kp, occ, taxon = c("A", "B"), n_grid = 16L)
+
+  # At the site's own lattice-anchored coordinates: exact match, dist_km == 0,
+  # and the theta value reproduces estimate_kernel_priors()'s own site answer
+  # (the same site-identity invariant the engine tests already establish).
+  at_site <- theta_surface_at(r, lon = -119.95, lat = 34.15)
+  expect_true(all(at_site$dist_km < 1e-6))
+  expect_setequal(at_site$taxon, c("A", "B"))
+  expect_false(anyNA(at_site$theta))
+
+  # An arbitrary off-grid point: nearest cell found, distance is small but
+  # nonzero, and restricting to one taxon returns exactly one row.
+  one_taxon <- theta_surface_at(r, lon = -119.93, lat = 34.17, taxon = "A")
+  expect_equal(nrow(one_taxon), 1L)
+  expect_equal(one_taxon$taxon, "A")
+  expect_gt(one_taxon$dist_km, 0)
+  expect_true(is.finite(one_taxon$lon_cell) && is.finite(one_taxon$lat_cell))
+
+  # Multiple points, vector-recycled lon/lat, both taxa.
+  multi <- theta_surface_at(r, lon = c(-120.0, -119.9), lat = c(34.0, 34.3))
+  expect_equal(nrow(multi), 4L) # 2 points x 2 taxa
+
+  expect_error(theta_surface_at(r, lon = -120, lat = 34, taxon = "nonexistent"),
+               "not present in this surface")
+  expect_error(theta_surface_at(r, lon = NA_real_, lat = 34), "must not contain NA")
+})
+
+test_that("theta_surface_at() reports NA theta (with a real matched cell + distance) outside a mask", {
+  occ <- .mk_occ(rep("A", 4), lat = c(34.0, 34.1, 34.2, 34.3), lon = rep(-120.0, 4))
+  kp <- estimate_kernel_priors(occ, 34.15, -120.0, "Marine", lambda_km = 50)
+  r <- plot_theta_surface(kp, occ, taxon = "A", n_grid = 20L,
+                           mask = cbind(lon = c(-120.2, -119.9, -119.9, -120.2),
+                                        lat = c(34.0, 34.0, 34.2, 34.2)))
+  outside <- theta_surface_at(r, lon = -120.0, lat = 38.0) # far north, outside the mask box
+  expect_true(is.na(outside$theta))
+  expect_true(is.finite(outside$lon_cell) && is.finite(outside$lat_cell))
+  expect_gt(outside$dist_km, 0)
 })

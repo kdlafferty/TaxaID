@@ -73,6 +73,24 @@
 #' none of which are within a bandwidth of the equator); see `@section
 #' Limitations` for the general case.
 #'
+#' @section Why no opacity fade:
+#' An earlier version of this function offered `alpha_by_n_eff`, fading each
+#' taxon's own panel toward transparent where support was low -- removed
+#' entirely, not just defaulted off, after the `support_panel` mechanism made
+#' it clearly the wrong default and, on reflection, not worth keeping as an
+#' option either. Three reasons, not one: (1) `n_eff` is SCALE-INVARIANT (see
+#' `support_field` above) -- a confidently opaque cell can be pure
+#' far-field extrapolation, so opacity-as-confidence is actively misleading,
+#' not just imprecise; (2) support is per-LOCATION, not per-taxon, so in any
+#' facet of more than one taxon the identical fade was multiplied into every
+#' panel -- it could never discriminate between taxa, only cost legibility of
+#' the comparison the facet exists to support; (3) fading toward `bg` reads
+#' differently depending on `palette`'s own direction (a pale-low palette like
+#' the default `"YlOrRd"` fades a low-support cell toward something that can
+#' look like a genuinely low-theta cell -- two different claims collapsing
+#' into similar colours). `support_panel` says the same thing once, as its
+#' own labelled quantity, and never confounds it with theta's own colour.
+#'
 #' @section Limitations:
 #' If the lattice or the stratified records span BOTH hemispheres (some
 #' latitudes positive, some negative) and `lambda_latitude` is not `NULL`,
@@ -122,13 +140,9 @@
 #'   `@section Covariate and latitude factors`). Only meaningful when
 #'   `kernel_fit` was built with a `covariate_col`; supplying it against a
 #'   fit that has none is an error (nothing to condition on).
-#' @param alpha_by_n_eff Logical (default `TRUE`). Fade the surface toward
-#'   transparent where lattice-point `n_eff(x)` is low relative to the
-#'   surface's own maximum, so a reader cannot mistake a lightly-supported
-#'   extrapolation for a well-evidenced estimate.
 #' @param n_eff_floor Optional numeric. Lattice points with `n_eff(x)` below
-#'   this value are masked outright (drawn as background, not just faded),
-#'   independent of `alpha_by_n_eff`. Default `NULL`: no outright mask.
+#'   this value are masked outright (drawn as background). Default `NULL`: no
+#'   outright mask.
 #' @param mask Optional geometry restricting the surface to a region of
 #'   interest (a lake outline, a bay, a survey boundary). Cells whose centres
 #'   fall outside become `NA` -- transparent on the map, and excluded from
@@ -141,7 +155,65 @@
 #'   (a cell is kept if it falls inside ANY of them, for islands or
 #'   multi-basin masks).
 #'   Deliberately a parameter with no default: the correct mask is
-#'   application-specific, so the package supplies none.
+#'   application-specific, so the package supplies none. Whenever `mask` is
+#'   supplied, its boundary is also DRAWN (not just used to clip), on both the
+#'   static and interactive renders -- there is no case where you would want
+#'   the clip without seeing its edge, so this is automatic, not a separate
+#'   toggle.
+#' @param theta_range Controls the colour scale across the requested `taxon`
+#'   panels/layers. Default `"shared"`: one range computed across every
+#'   requested taxon, so a contrast pair (placed side by side specifically to
+#'   be compared) is actually comparable -- the same colour means the same
+#'   theta in every panel. For a single taxon this is identical to scaling to
+#'   its own range (there is nothing else to share against), so the default
+#'   changes nothing about a single-taxon call. `NULL` reverts to the
+#'   original per-panel behaviour (each taxon scaled to its OWN
+#'   `range(theta)`, so the same colour can mean a different theta in
+#'   different panels); a numeric `c(lo, hi)` fixes an absolute scale instead,
+#'   for cross-run/cross-report comparability. Never changes a value in
+#'   `$surface` -- only how it is coloured.
+#' @param palette Either a name from `grDevices::hcl.pals()` (matched
+#'   case-insensitively; e.g. `"YlOrRd"`, `"Viridis"`, `"Plasma"`) or a vector
+#'   of 2+ colours to ramp via `grDevices::colorRampPalette()`. Resolved to
+#'   ONE 256-colour vector used for both the static ramp and the interactive
+#'   `leaflet::colorNumeric()` palette, so the two renders of the same surface
+#'   can no longer disagree about what a colour means. A recognised
+#'   `hcl.pals()` NAME is reversed so low theta is pale/light and high theta
+#'   is dark/saturated (`grDevices::hcl.colors()`'s own default direction for
+#'   these sequential palettes is the opposite -- dark at the low end -- and
+#'   the reversal matches both this package's historical static ramp and
+#'   `leaflet::colorNumeric()`'s own convention for a named sequential
+#'   palette); a colour VECTOR is used exactly as given, low to high, with no
+#'   reversal, since the caller has already stated the order they want.
+#'   Default `"YlOrRd"` -- zero new package dependencies (`grDevices` is
+#'   already Imports). This is a default recommendation, not a restriction:
+#'   `palette = "Viridis"` or any other `hcl.pals()` name works identically.
+#' @param bg Background colour for the STATIC render only (default
+#'   `"grey92"`, a neutral mid-grey -- never the palette's own low end, and
+#'   never pure white/black). Drawn behind every panel before the raster, so a
+#'   masked cell or a species absent from a habitat stratum reads as "outside
+#'   the surface" rather than blending into a pale low-theta colour or a plain
+#'   white page. Has no interactive-render analogue: leaflet already renders a
+#'   masked/absent cell as transparent over its own basemap tiles.
+#' @param support_panel Logical (default `TRUE`). Adds ONE extra panel/layer
+#'   showing the support field named by `support_field` on its own colour
+#'   scale. Support (`n_eff` or `W`) is per-LOCATION, not per-taxon -- a
+#'   single dedicated panel says what it has to say once, instead of
+#'   `length(taxon)` times. Every taxon panel always renders at full opacity
+#'   (see `@section Why no opacity fade`); `support_panel = FALSE` simply
+#'   omits the support panel/layer rather than routing that information back
+#'   into opacity.
+#' @param support_field Character, `"n_eff"` (default) or `"W"`. Which field
+#'   the `support_panel` shows. `n_eff` (Kish effective sample size) is what
+#'   `estimate_kernel_priors()` actually puts in the Beta concentration, but
+#'   it is SCALE-INVARIANT (multiplying every record's weight by a constant
+#'   does not move it) -- a single record 2 km away and 200 records 400 km
+#'   away can read the identical `n_eff`, so a high value does not mean "lots
+#'   of evidence here," only "many records contributed comparably." `W` (the
+#'   raw total kernel weight, shown log-scaled) is the more literal answer to
+#'   "is there actually data near this point." `n_eff_floor` always
+#'   thresholds the real `n_eff` regardless of this argument -- it is a
+#'   distinct, already-documented outright mask.
 #' @param site_marker_radius Numeric (default `5`). Radius in pixels of the
 #'   hollow circle marking the site on the interactive map. The marker is
 #'   drawn unfilled and on top so it cannot hide the cell it marks (the
@@ -201,9 +273,13 @@ plot_theta_surface <- function(kernel_fit,
                                bbox = NULL,
                                m = NULL,
                                covariate_at = NULL,
-                               alpha_by_n_eff = TRUE,
                                n_eff_floor = NULL,
                                mask = NULL,
+                               theta_range = "shared",
+                               palette = "YlOrRd",
+                               bg = "grey92",
+                               support_panel = TRUE,
+                               support_field = c("n_eff", "W"),
                                site_marker_radius = 5,
                                hover_labels = TRUE,
                                interactive = FALSE,
@@ -212,6 +288,7 @@ plot_theta_surface <- function(kernel_fit,
                                lon_col = "decimalLongitude",
                                habitat_col = "main_habitat",
                                ...) {
+  support_field <- match.arg(support_field)
   if (!inherits(kernel_fit, "taxaexpect_kernel_priors")) {
     stop("plot_theta_surface: 'kernel_fit' must be a taxaexpect_kernel_priors object (from estimate_kernel_priors()).")
   }
@@ -260,6 +337,11 @@ plot_theta_surface <- function(kernel_fit,
     ))
   }
 
+  if (!(is.character(bg) && length(bg) == 1L && !is.na(bg))) {
+    stop("plot_theta_surface: 'bg' must be a single, non-NA colour string.")
+  }
+  palette_resolved <- .theta_surface_resolve_palette(palette)
+
   surf <- .theta_surface_engine(
     occurrence_data = occurrence_data,
     site_lat = p$site_lat, site_lon = p$site_lon, site_habitat = p$site_habitat,
@@ -271,24 +353,104 @@ plot_theta_surface <- function(kernel_fit,
     taxon_col = taxon_col, lat_col = lat_col, lon_col = lon_col, habitat_col = habitat_col
   )
 
+  # Computed from the SAME `mask` argument that clips `surf` below, so a drawn
+  # outline can never disagree with what was actually clipped -- see
+  # @param mask above.
+  mask_polys <- if (!is.null(mask)) .theta_surface_mask_rings(mask) else NULL
   if (!is.null(mask)) surf <- .theta_surface_apply_mask(surf, mask)
+
+  # theta_range is resolved AFTER masking, from the surface actually being
+  # drawn -- a "shared" scale should reflect the visible cells, not cells a
+  # mask has already excluded.
+  theta_all <- if (is.list(surf$theta)) surf$theta else list(surf$theta)
+  rng_use <- if (is.null(theta_range)) {
+    NULL # per-taxon behaviour, computed per panel/layer as before
+  } else if (identical(theta_range, "shared")) {
+    rng <- range(unlist(theta_all), na.rm = TRUE)
+    if (!all(is.finite(rng))) {
+      stop("plot_theta_surface: theta_range = \"shared\" found no finite theta values to scale by.")
+    }
+    if (diff(rng) == 0) rng <- c(rng[1], rng[1] + 1e-9)
+    rng
+  } else if (is.numeric(theta_range) && length(theta_range) == 2L &&
+    !anyNA(theta_range) && theta_range[1] < theta_range[2]) {
+    theta_range
+  } else {
+    stop("plot_theta_surface: 'theta_range' must be NULL, \"shared\", or a numeric c(lo, hi) with lo < hi.")
+  }
 
   plt <- if (isTRUE(interactive)) {
     .theta_surface_plot_leaflet(surf,
       site_lat = p$site_lat, site_lon = p$site_lon,
-      site_id = p$site_id, alpha_by_n_eff = alpha_by_n_eff,
-      n_eff_floor = n_eff_floor,
+      site_id = p$site_id,
+      n_eff_floor = n_eff_floor, palette = palette_resolved, rng_use = rng_use,
+      support_panel = support_panel, support_field = support_field, mask_polys = mask_polys,
       site_marker_radius = site_marker_radius,
       hover_labels = hover_labels, ...
     )
   } else {
     .theta_surface_plot_static(surf,
       site_lat = p$site_lat, site_lon = p$site_lon,
-      alpha_by_n_eff = alpha_by_n_eff, n_eff_floor = n_eff_floor, ...
+      n_eff_floor = n_eff_floor,
+      palette = palette_resolved, bg = bg, rng_use = rng_use,
+      support_panel = support_panel, support_field = support_field, mask_polys = mask_polys, ...
     )
   }
 
   structure(list(surface = surf, plot = plt), class = "taxaexpect_theta_surface")
+}
+
+#' Resolve `palette` to one 256-colour vector shared by both render branches
+#'
+#' A recognised `grDevices::hcl.pals()` NAME is reversed to put pale/light at
+#' the low end and dark/saturated at the high end -- `hcl.colors()`'s own
+#' default direction for these sequential palettes is the opposite (dark at
+#' the low index), confirmed live before relying on it; the reversal matches
+#' both this package's historical static ramp and `leaflet::colorNumeric()`'s
+#' own convention for a named sequential palette. A colour VECTOR (2+ colours)
+#' is used exactly as given, low to high, with no reversal -- the caller has
+#' already stated the order they want.
+#' @noRd
+.theta_surface_resolve_palette <- function(palette, n = 256L) {
+  if (is.character(palette) && length(palette) == 1L && !is.na(palette)) {
+    hp <- grDevices::hcl.pals()
+    m <- match(tolower(palette), tolower(hp))
+    if (!is.na(m)) {
+      return(rev(grDevices::hcl.colors(n, hp[m])))
+    }
+  }
+  if (!is.character(palette) || length(palette) < 2L || anyNA(palette)) {
+    stop(
+      "plot_theta_surface: 'palette' must be a single grDevices::hcl.pals() ",
+      "name (see grDevices::hcl.pals() for the list) or a vector of 2+ ",
+      "non-NA colours."
+    )
+  }
+  grDevices::colorRampPalette(palette)(n)
+}
+
+#' Normalise any accepted `mask` form into a list of two-column lon/lat ring
+#' matrices, purely for DRAWING the boundary -- independent of, but built from
+#' the same conversion `.theta_surface_apply_mask()` uses for clipping, so the
+#' drawn outline can never disagree with what was actually clipped.
+#' @noRd
+.theta_surface_mask_rings <- function(mask) {
+  if (is.character(mask)) mask <- .theta_surface_wkt_to_polys(mask)
+  if (inherits(mask, c("sf", "sfc"))) {
+    if (!requireNamespace("sf", quietly = TRUE)) {
+      stop("plot_theta_surface: 'mask' is an sf object but the 'sf' package is not installed.")
+    }
+    cc <- sf::st_coordinates(sf::st_boundary(sf::st_union(mask)))
+    # LINESTRING boundary -> columns X,Y,L1; MULTILINESTRING (a polygon with
+    # holes, or several disjoint parts) -> X,Y,L1,L2, L1 = part, L2 = ring
+    # within that part. Either way, group into one matrix per ring.
+    ring_id <- if ("L2" %in% colnames(cc)) paste(cc[, "L1"], cc[, "L2"]) else cc[, "L1"]
+    return(unname(lapply(split(seq_len(nrow(cc)), ring_id), function(idx) {
+      cc[idx, c("X", "Y"), drop = FALSE]
+    })))
+  }
+  if (is.list(mask) && !is.data.frame(mask)) return(lapply(mask, as.matrix))
+  list(as.matrix(mask))
 }
 
 #' @export
@@ -311,6 +473,165 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   # prints the map too, so what you see is always the object you just built.
   if (!is.null(x$plot)) print(x$plot)
   invisible(x)
+}
+
+#' Long-format data frame of a theta surface, for analysis
+#'
+#' The rendered map is not the only thing a `taxaexpect_theta_surface` is
+#' useful for -- `$surface` already carries every value, but as one matrix per
+#' taxon keyed by two separate lattice-axis vectors, which is awkward to
+#' analyse directly (a caller has to know the row/column orientation, and
+#' whether `$surface$theta` is a bare matrix or a named list depends on
+#' whether `plot_theta_surface()` was called with one taxon or several). This
+#' unpacks it into one row per lattice cell x taxon: `lon`, `lat`, `taxon`,
+#' `theta`, `n_eff`, `W`.
+#'
+#' A `mask` (or a lattice-edge cell too far from every record to be
+#' evaluated at all) already leaves `theta` as `NA` there -- so
+#' `drop_na = TRUE` (the default) is what makes this "theta within the
+#' search polygon," with no separate spatial filter needed: the masking
+#' already happened when the surface was built.
+#'
+#' @param x A `taxaexpect_theta_surface` object from [plot_theta_surface()].
+#' @param row.names,optional Ignored; present for S3 consistency with
+#'   [as.data.frame()].
+#' @param taxon Optional character vector restricting the output to specific
+#'   taxa (must be a subset of the taxa `x` was built with -- this does not
+#'   recompute the surface for a new taxon). Default `NULL`: every taxon in
+#'   `x`.
+#' @param drop_na Logical (default `TRUE`). Drop rows where `theta` is `NA`
+#'   (outside a `mask`, or beyond where the fetch could support an estimate
+#'   at all). `FALSE` keeps every lattice cell, `NA`s included.
+#' @param ... Ignored.
+#' @return A data frame with columns `lon`, `lat`, `taxon`, `theta`, `n_eff`,
+#'   `W` -- one row per requested lattice cell x taxon combination.
+#' @examples
+#' \dontrun{
+#' r <- plot_theta_surface(kp, occ, taxon = c("Species_A", "Species_B"))
+#' df <- as.data.frame(r, taxon = "Species_A")
+#' # e.g. the highest-theta cells inside the search polygon:
+#' head(df[order(-df$theta), ], 10)
+#' }
+#' @export
+as.data.frame.taxaexpect_theta_surface <- function(x, row.names = NULL, optional = FALSE,
+                                                    taxon = NULL, drop_na = TRUE, ...) {
+  s <- x$surface
+  taxa_all <- s$params$taxon
+  theta_list <- if (is.list(s$theta)) s$theta else stats::setNames(list(s$theta), taxa_all)
+  if (!is.null(taxon)) {
+    missing_taxon <- setdiff(taxon, names(theta_list))
+    if (length(missing_taxon) > 0L) {
+      stop(
+        "as.data.frame.taxaexpect_theta_surface: 'taxon' not present in this ",
+        "surface: ", paste(sprintf("'%s'", missing_taxon), collapse = ", "),
+        ". This surface holds: ", paste(sprintf("'%s'", names(theta_list)), collapse = ", "), "."
+      )
+    }
+    theta_list <- theta_list[taxon]
+  }
+  # theta is stored [lat_index, lon_index]; as.vector() on a matrix goes
+  # column-major (down every row of one column before moving to the next),
+  # which is exactly what rep(lat_grid, times=) / rep(lon_grid, each=) below
+  # produce -- confirmed against the same construction .theta_surface_engine()
+  # itself uses (.theta_surface_accumulate()'s ny x nx matrices).
+  lat_v <- rep(s$lat_grid, times = length(s$lon_grid))
+  lon_v <- rep(s$lon_grid, each = length(s$lat_grid))
+  n_eff_v <- as.vector(s$n_eff)
+  w_v <- as.vector(s$W)
+  out <- do.call(rbind, lapply(names(theta_list), function(nm) {
+    data.frame(
+      lon = lon_v, lat = lat_v, taxon = nm,
+      theta = as.vector(theta_list[[nm]]),
+      n_eff = n_eff_v, W = w_v,
+      stringsAsFactors = FALSE
+    )
+  }))
+  if (isTRUE(drop_na)) out <- out[!is.na(out$theta), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+#' Theta (and support) at specific points of interest, from an already-built surface
+#'
+#' Looks up the NEAREST lattice cell to each query point -- exact for a point
+#' that falls inside a cell, approximate elsewhere, honestly so: `dist_km`
+#' reports how far the query point actually was from the matched cell centre,
+#' so a caller can tell whether that distance is small relative to `n_grid`'s
+#' own resolution or large enough that the lookup is a poor stand-in for a
+#' fresh evaluation there. This is deliberately NOT interpolated (bilinear or
+#' otherwise) -- a lattice this fine (the default `n_grid = 256`) is already
+#' far finer than the kernel bandwidth that produced it, so nearest-cell error
+#' is normally negligible, and interpolation would blur across a `mask`
+#' boundary or an `n_eff_floor` cutoff in a way a caller might not expect.
+#'
+#' @param x A `taxaexpect_theta_surface` object from [plot_theta_surface()].
+#' @param lon,lat Numeric vectors of query-point coordinates (recycled to a
+#'   common length).
+#' @param taxon Optional character vector restricting the output to specific
+#'   taxa (must be a subset of the taxa `x` was built with). Default `NULL`:
+#'   every taxon in `x`.
+#' @return A data frame with one row per query point x taxon:
+#'   `lon`/`lat` (the query), `taxon`, `theta`, `n_eff`, `W` (at the matched
+#'   cell), `lon_cell`/`lat_cell` (the matched cell's own centre), and
+#'   `dist_km` (how far the query point was from that centre).
+#' @examples
+#' \dontrun{
+#' r <- plot_theta_surface(kp, occ, taxon = c("Species_A", "Species_B"))
+#' theta_surface_at(r, lon = -120.1, lat = 34.3)
+#' theta_surface_at(r, lon = c(-120.1, -119.5), lat = c(34.3, 34.6), taxon = "Species_A")
+#' }
+#' @export
+theta_surface_at <- function(x, lon, lat, taxon = NULL) {
+  if (!inherits(x, "taxaexpect_theta_surface")) {
+    stop("theta_surface_at: 'x' must be a taxaexpect_theta_surface object (from plot_theta_surface()).")
+  }
+  if (!is.numeric(lon) || !is.numeric(lat) || length(lon) < 1L || length(lat) < 1L) {
+    stop("theta_surface_at: 'lon' and 'lat' must be non-empty numeric vectors.")
+  }
+  n_pt <- max(length(lon), length(lat))
+  lon <- rep_len(lon, n_pt)
+  lat <- rep_len(lat, n_pt)
+  if (anyNA(lon) || anyNA(lat)) {
+    stop("theta_surface_at: 'lon'/'lat' must not contain NA.")
+  }
+
+  s <- x$surface
+  taxa_all <- s$params$taxon
+  theta_list <- if (is.list(s$theta)) s$theta else stats::setNames(list(s$theta), taxa_all)
+  if (!is.null(taxon)) {
+    missing_taxon <- setdiff(taxon, names(theta_list))
+    if (length(missing_taxon) > 0L) {
+      stop(
+        "theta_surface_at: 'taxon' not present in this surface: ",
+        paste(sprintf("'%s'", missing_taxon), collapse = ", "),
+        ". This surface holds: ", paste(sprintf("'%s'", names(theta_list)), collapse = ", "), "."
+      )
+    }
+    theta_list <- theta_list[taxon]
+  }
+
+  # The lattice is a REGULAR axis-aligned grid, so the nearest lat index and
+  # nearest lon index can be found independently (one 1-D search per axis)
+  # rather than a 2-D nearest-neighbour search over n_grid^2 cells.
+  i_idx <- vapply(lat, function(v) which.min(abs(s$lat_grid - v)), integer(1L))
+  j_idx <- vapply(lon, function(v) which.min(abs(s$lon_grid - v)), integer(1L))
+  lat_cell <- s$lat_grid[i_idx]
+  lon_cell <- s$lon_grid[j_idx]
+  dist_km <- .approx_distance_km(lat, lon, lat_cell, lon_cell, lat)
+
+  out <- do.call(rbind, lapply(names(theta_list), function(nm) {
+    m <- theta_list[[nm]]
+    data.frame(
+      lon = lon, lat = lat, taxon = nm,
+      theta = m[cbind(i_idx, j_idx)],
+      n_eff = s$n_eff[cbind(i_idx, j_idx)],
+      W = s$W[cbind(i_idx, j_idx)],
+      lon_cell = lon_cell, lat_cell = lat_cell, dist_km = dist_km,
+      stringsAsFactors = FALSE
+    )
+  }))
+  rownames(out) <- NULL
+  out
 }
 
 # ==============================================================================
@@ -415,9 +736,11 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   # negative clamps above cannot catch -- and W and S2 carry INDEPENDENT noise,
   # so n_eff = W^2/S2 there is an arbitrary ratio rather than a small number.
   # Real consequence, measured on a two-cluster lattice: 2,817 of 16,384 points
-  # returned n_eff = Inf (and theta = NaN), and because that Inf becomes
-  # max(n_eff), alpha_by_n_eff faded the ENTIRE surface to fully transparent --
-  # a blank map. Points below a relative tolerance (1e-12 of the peak weight,
+  # returned n_eff = Inf (and theta = NaN) -- which, at the time this was
+  # found, fed a since-removed opacity fade keyed on max(n_eff) and blanked
+  # the ENTIRE surface to fully transparent. The n_eff = Inf itself would
+  # still corrupt the support panel's own display today. Points below a
+  # relative tolerance (1e-12 of the peak weight,
   # i.e. ~28 bandwidths out, where a record carries no meaningful weight
   # anyway) are therefore treated as genuinely unsupported: n_eff = 0, and
   # theta falls back to the regional composition p_i, the correct limit for a
@@ -636,65 +959,164 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 }
 
 #' Static base-graphics rendering
+#'
+#' Always allocates a colour-key column (a facet without a scale is
+#' unreadable whichever `theta_range` mode is chosen) and always draws `bg`
+#' behind every panel before the raster, so a masked/absent cell reads as
+#' "outside the surface" rather than blending into a pale low-theta colour or
+#' the device's own default white.
 #' @noRd
-.theta_surface_plot_static <- function(surf, site_lat, site_lon, alpha_by_n_eff, n_eff_floor, ...) {
+.theta_surface_plot_static <- function(surf, site_lat, site_lon, n_eff_floor,
+                                       palette, bg, rng_use, support_panel, support_field,
+                                       mask_polys, ...) {
   theta <- if (is.list(surf$theta)) surf$theta else stats::setNames(list(surf$theta), "1")
-  n_panel <- length(theta)
-  old_par <- graphics::par(no.readonly = TRUE)
-  on.exit(graphics::par(old_par), add = TRUE)
-  if (n_panel > 1L) {
-    ncol_p <- ceiling(sqrt(n_panel))
-    nrow_p <- ceiling(n_panel / ncol_p)
-    graphics::par(mfrow = c(nrow_p, ncol_p))
+  taxa_multi <- is.list(surf$theta)
+
+  # Support is per-LOCATION, not per-taxon (n_eff/W are single matrices, theta
+  # is a per-taxon list) -- computed once, for the dedicated support panel
+  # only (see roxygen @section Why no opacity fade for why it is never
+  # multiplied into a taxon panel's colour). W spans orders of magnitude
+  # (weights are exp(-d/lambda)), so it is log10-scaled, matching the same
+  # choice already validated in
+  # eDNA/CaliforniaIntertidal/theta_surface_render.R.
+  support_raw <- if (identical(support_field, "W")) {
+    log10(pmax(as.numeric(surf$W), .Machine$double.xmin))
+  } else {
+    as.numeric(surf$n_eff)
   }
-  for (nm in names(theta)) {
-    ras <- .theta_surface_raster(theta[[nm]], surf$n_eff, alpha_by_n_eff, n_eff_floor)
+  support_raw <- matrix(support_raw, nrow(surf$n_eff), ncol(surf$n_eff))
+
+  n_taxa <- length(theta)
+  n_panel <- n_taxa + if (isTRUE(support_panel)) 1L else 0L
+
+  old_par <- graphics::par(no.readonly = TRUE)
+  # graphics::layout() sets multi-figure state that graphics::par(no.readonly
+  # = TRUE)/par(old_par) does NOT capture or restore -- ?layout is explicit
+  # that "layout(1) undoes any previous layout". Without this, a device left
+  # open across separate top-level calls (RStudio's Plots pane, not a fresh
+  # png()/pdf() device opened per call -- the shape every render in this
+  # file's own test suite used, which is why this was never caught there)
+  # inherits the PRIOR call's layout matrix, and a second graphics::layout()
+  # call on top of it is the documented trigger for R's
+  # "Error ... invalid graphics state" from a real user's RStudio session on
+  # the third real plot_theta_surface() call of a session (the first two,
+  # without a `mask`, happened to work). Registered BEFORE the par() restore
+  # so the device is back to one panel before old_par's mar/mgp are reapplied.
+  on.exit(graphics::layout(1), add = TRUE)
+  on.exit(graphics::par(old_par), add = TRUE)
+
+  ncol_p <- ceiling(sqrt(n_panel))
+  nrow_p <- ceiling(n_panel / ncol_p)
+  lay <- matrix(seq_len(nrow_p * ncol_p), nrow_p, ncol_p, byrow = TRUE)
+  lay[lay > n_panel] <- 0L
+  lay <- cbind(lay, rep(n_panel + 1L, nrow_p)) # the key's own column, every row
+  graphics::layout(lay, widths = c(rep(1, ncol_p), graphics::lcm(2.2)))
+  graphics::par(mar = c(3, 3, 2.5, 0.5), mgp = c(1.8, 0.6, 0))
+
+  glob <- if (!is.null(rng_use)) {
+    rng_use
+  } else {
+    r <- range(unlist(theta), na.rm = TRUE)
+    if (diff(r) == 0) r <- c(r[1], r[1] + 1e-9)
+    r
+  }
+
+  draw_mask_outline <- function() {
+    if (is.null(mask_polys)) {
+      return(invisible(NULL))
+    }
+    for (ring in mask_polys) {
+      graphics::polygon(ring[, 1], ring[, 2], border = "grey20", lwd = 1, col = NA)
+    }
+  }
+  draw_panel_frame <- function(ras) {
     graphics::plot.new()
     graphics::plot.window(xlim = range(surf$lon_grid), ylim = range(surf$lat_grid), asp = 1)
+    u <- graphics::par("usr")
+    graphics::rect(u[1], u[3], u[2], u[4], col = bg, border = NA)
     graphics::rasterImage(
       ras, min(surf$lon_grid), min(surf$lat_grid),
       max(surf$lon_grid), max(surf$lat_grid)
     )
+    draw_mask_outline()
+  }
+
+  for (nm in names(theta)) {
+    m <- theta[[nm]]
+    rng_panel <- if (!is.null(rng_use)) rng_use else range(m, na.rm = TRUE)
+    if (diff(rng_panel) == 0) rng_panel <- c(rng_panel[1], rng_panel[1] + 1e-9)
+    ras <- .theta_surface_raster(m, surf$n_eff, n_eff_floor, palette, rng_panel)
+    draw_panel_frame(ras)
     graphics::points(site_lon, site_lat, pch = 4, lwd = 2, col = "black")
     graphics::axis(1)
     graphics::axis(2)
     graphics::box()
-    graphics::title(main = if (is.list(surf$theta)) nm else "theta", xlab = "lon", ylab = "lat", ...)
+    graphics::title(main = if (taxa_multi) nm else "theta", xlab = "lon", ylab = "lat", ...)
     graphics::mtext(.theta_surface_condition_label(surf$params),
       side = 3,
       line = 0.25, cex = 0.7, col = "grey25"
     )
   }
+
+  if (isTRUE(support_panel)) {
+    rng_panel <- range(support_raw[is.finite(support_raw)], na.rm = TRUE)
+    if (!length(rng_panel) || !all(is.finite(rng_panel)) || diff(rng_panel) == 0) rng_panel <- c(0, 1)
+    ras <- .theta_surface_raster(support_raw, surf$n_eff, n_eff_floor, palette, rng_panel)
+    draw_panel_frame(ras)
+    graphics::points(site_lon, site_lat, pch = 4, lwd = 2, col = "grey20")
+    graphics::axis(1)
+    graphics::axis(2)
+    graphics::box()
+    graphics::title(main = sprintf("[support] %s", support_field), xlab = "lon", ylab = "lat", cex.main = 0.95)
+    # Deliberately never says which END of `palette` is dark -- that depends
+    # on the palette's own direction (viridis goes dark->light as the value
+    # rises; the default YlOrRd, reversed for the theta panels' own low->high
+    # convention, goes light->dark) -- found by rendering a YlOrRd support
+    # panel against a caption that used to hardcode "dark = less support" and
+    # was wrong for exactly this palette. rng_panel[1]/[2] are always low/high
+    # in the DATA, regardless of colour.
+    graphics::mtext(sprintf(
+      "own scale: %.3g (low, less support) to %.3g (high, more support)",
+      rng_panel[1], rng_panel[2]
+    ), side = 3, line = 0.25, cex = 0.6, col = "grey25")
+  }
+
+  # Colour-key column, always drawn (see the roxygen @details above).
+  graphics::par(mar = c(3, 0.5, 2.5, 2.5))
+  graphics::plot.new()
+  graphics::plot.window(xlim = c(0, 1), ylim = glob)
+  graphics::rasterImage(grDevices::as.raster(matrix(rev(palette), ncol = 1)), 0, glob[1], 1, glob[2])
+  graphics::axis(4, las = 1, cex.axis = 0.7)
+  graphics::mtext("theta", side = 3, line = 0.3, cex = 0.75)
+  graphics::box()
+
   invisible(NULL)
 }
 
-#' Build an RGBA raster (grDevices::as.raster) from a theta matrix, fading/
-#' masking by n_eff exactly as alpha_by_n_eff / n_eff_floor specify.
+#' Build an RGBA raster (grDevices::as.raster) from a value matrix, masking
+#' outright below `n_eff_floor` (opacity is otherwise always full -- see the
+#' roxygen @section Why no opacity fade), on a caller-supplied `palette`/`rng`.
 #' @noRd
-.theta_surface_raster <- function(theta_mat, n_eff_mat, alpha_by_n_eff, n_eff_floor) {
-  pal <- grDevices::colorRampPalette(c("#fffde7", "#fee090", "#fc8d59", "#d73027", "#7f0000"))(256)
+.theta_surface_raster <- function(value_mat, real_n_eff_mat, n_eff_floor, palette, rng) {
+  pal <- palette
+  np <- length(pal)
   pal_rgb <- grDevices::col2rgb(pal)
-  rng <- range(theta_mat, na.rm = TRUE)
-  if (diff(rng) == 0) rng <- c(0, max(rng, 1e-9))
-  idx <- pmin(256L, pmax(1L, round((theta_mat - rng[1]) / diff(rng) * 255) + 1L))
+  if (diff(rng) == 0) rng <- c(rng[1], rng[1] + 1e-9)
+  idx <- pmin(np, pmax(1L, round((value_mat - rng[1]) / diff(rng) * (np - 1L)) + 1L))
   # NA cells (outside a `mask`, or a species absent from a masked region)
   # must render as fully transparent background rather than reaching
   # grDevices::rgb(), which errors on an NA colour index.
-  na_cell <- is.na(as.numeric(theta_mat))
+  na_cell <- is.na(as.numeric(value_mat))
   idx[na_cell] <- 1L
-  alpha <- rep(1, length(theta_mat))
-  if (isTRUE(alpha_by_n_eff)) {
-    ref <- max(n_eff_mat, na.rm = TRUE)
-    if (ref > 0) alpha <- pmin(1, sqrt(as.numeric(n_eff_mat) / ref))
-  }
-  if (!is.null(n_eff_floor)) alpha[as.numeric(n_eff_mat) < n_eff_floor] <- 0
+  alpha <- rep(1, length(value_mat))
+  if (!is.null(n_eff_floor)) alpha[as.numeric(real_n_eff_mat) < n_eff_floor] <- 0
   alpha[na_cell] <- 0
   alpha[is.na(alpha)] <- 0
   rgba_vec <- grDevices::rgb(pal_rgb[1, idx], pal_rgb[2, idx], pal_rgb[3, idx],
     alpha * 255,
     maxColorValue = 255
   )
-  rgba <- matrix(rgba_vec, nrow(theta_mat), ncol(theta_mat))
+  rgba <- matrix(rgba_vec, nrow(value_mat), ncol(value_mat))
   # rasterImage expects row 1 = top of image (north); lat_grid is ascending
   # south-to-north, so flip rows.
   grDevices::as.raster(rgba[rev(seq_len(nrow(rgba))), , drop = FALSE])
@@ -716,7 +1138,8 @@ print.taxaexpect_theta_surface <- function(x, ...) {
 #' checkboxes, which stack unreadably.
 #' @noRd
 .theta_surface_plot_leaflet <- function(surf, site_lat, site_lon, site_id,
-                                        alpha_by_n_eff, n_eff_floor,
+                                        n_eff_floor,
+                                        palette, rng_use, support_panel, support_field, mask_polys,
                                         site_marker_radius = 5,
                                         hover_labels = TRUE, ...) {
   if (!requireNamespace("leaflet", quietly = TRUE)) {
@@ -730,23 +1153,42 @@ print.taxaexpect_theta_surface <- function(x, ...) {
   lat_v <- rep(ds$lat_grid, times = length(ds$lon_grid))
   lon_v <- rep(ds$lon_grid, each = length(ds$lat_grid))
 
+  # Support is per-LOCATION, not per-taxon -- computed once, for the
+  # dedicated support layer only (opacity is always full otherwise; see the
+  # roxygen @section Why no opacity fade).
+  support_full <- if (identical(support_field, "W")) {
+    log10(pmax(as.numeric(surf$W), .Machine$double.xmin))
+  } else {
+    as.numeric(surf$n_eff)
+  }
+  support_full <- matrix(support_full, nrow(surf$n_eff), ncol(surf$n_eff))
+  supp_ds <- .theta_surface_downsample_matrix(support_full, surf, ds)
+  ne_full_ds <- .theta_surface_downsample_matrix(surf$n_eff, surf, ds)
+
   map <- leaflet::leaflet() |> leaflet::addProviderTiles("Esri.OceanBasemap")
+
+  # A single shared colour domain across every layer when theta_range asked
+  # for one -- otherwise each species keeps its own domain, exactly as
+  # before. `palette` is the SAME resolved vector the static branch uses, so
+  # the two renders of one surface can no longer disagree about what a
+  # colour means.
+  shared_pal <- if (!is.null(rng_use)) {
+    leaflet::colorNumeric(palette, domain = rng_use, na.color = "transparent")
+  } else {
+    NULL
+  }
 
   nms <- names(theta)
   for (nm in nms) {
     th_ds <- .theta_surface_downsample_matrix(theta[[nm]], surf, ds)
-    n_eff_ds <- .theta_surface_downsample_matrix(surf$n_eff, surf, ds)
     th_v <- as.vector(th_ds)
-    ne_v <- as.vector(n_eff_ds)
-    pal <- leaflet::colorNumeric("YlOrRd",
-      domain = range(th_v, na.rm = TRUE),
-      na.color = "transparent"
-    )
-    opac <- rep(0.7, length(th_v))
-    if (isTRUE(alpha_by_n_eff)) {
-      ref <- max(ne_v, na.rm = TRUE)
-      opac <- if (ref > 0) 0.7 * pmin(1, sqrt(ne_v / ref)) else opac
+    ne_v <- as.vector(ne_full_ds)
+    pal <- if (!is.null(shared_pal)) {
+      shared_pal
+    } else {
+      leaflet::colorNumeric(palette, domain = range(th_v, na.rm = TRUE), na.color = "transparent")
     }
+    opac <- rep(0.7, length(th_v))
     if (!is.null(n_eff_floor)) opac[ne_v < n_eff_floor] <- 0
     labs <- NULL
     if (isTRUE(hover_labels)) {
@@ -765,10 +1207,58 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     # swaps the legend along with the surface.
     map <- leaflet::addLegend(
       map,
-      position = "bottomright", pal = pal, values = th_v,
+      position = "bottomright", pal = pal, values = if (!is.null(rng_use)) rng_use else th_v,
       title = sprintf("theta<br/><span class='taxa-legend-tag' data-group=\"%s\" style='font-weight:normal'>%s</span>", nm, nm),
       opacity = 0.7, group = nm, na.label = "masked/absent"
     )
+  }
+
+  if (isTRUE(support_panel)) {
+    supp_v <- as.vector(supp_ds)
+    supp_finite <- supp_v[is.finite(supp_v)]
+    supp_rng <- if (length(supp_finite)) range(supp_finite) else c(0, 1)
+    if (diff(supp_rng) == 0) supp_rng <- c(supp_rng[1], supp_rng[1] + 1e-9)
+    supp_pal <- leaflet::colorNumeric(palette, domain = supp_rng, na.color = "transparent")
+    supp_nm <- sprintf("[support] %s", support_field)
+    labs <- NULL
+    if (isTRUE(hover_labels)) {
+      labs <- sprintf("%s = %.3g", support_field, supp_v)
+      labs[is.na(supp_v)] <- NA_character_
+      labs <- lapply(labs, function(x) if (is.na(x)) NULL else htmltools::HTML(x))
+    }
+    map <- leaflet::addRectangles(
+      map,
+      lng1 = lon_v - cell_hw_lon, lat1 = lat_v - cell_hw_lat,
+      lng2 = lon_v + cell_hw_lon, lat2 = lat_v + cell_hw_lat,
+      fillColor = supp_pal(supp_v), fillOpacity = 0.7, stroke = FALSE,
+      label = labs, group = supp_nm
+    )
+    # Deliberately labelled "own scale" rather than committing to which end
+    # is visually dark -- that depends on `palette`'s own direction. See the
+    # matching static-branch fix (and the real bug it fixes) above.
+    map <- leaflet::addLegend(
+      map,
+      position = "bottomright", pal = supp_pal, values = supp_rng,
+      title = sprintf(
+        "%s (support)<br/><span class='taxa-legend-tag' data-group=\"%s\" style='font-weight:normal'>own scale</span>",
+        support_field, supp_nm
+      ),
+      opacity = 0.7, group = supp_nm
+    )
+    nms <- c(nms, supp_nm)
+  }
+
+  # Mask boundary, drawn once (not per-species/layer) -- above every surface
+  # layer, below the site marker, and with no `group` so it stays visible
+  # regardless of which base layer is selected.
+  if (!is.null(mask_polys)) {
+    for (ring in mask_polys) {
+      map <- leaflet::addPolylines(
+        map,
+        lng = ring[, 1], lat = ring[, 2],
+        color = "#1a1a1a", weight = 1.5, opacity = 0.8, fill = FALSE
+      )
+    }
   }
 
   # Site marker LAST so it draws above the surface, and small + hollow so it
@@ -781,7 +1271,7 @@ print.taxaexpect_theta_surface <- function(x, ...) {
     label = htmltools::HTML(sprintf("site: %s", site_id))
   )
 
-  if (length(theta) > 1L) {
+  if (length(nms) > 1L) {
     map <- leaflet::addLayersControl(
       map,
       baseGroups = nms,
