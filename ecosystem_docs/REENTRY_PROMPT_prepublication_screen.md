@@ -1160,6 +1160,17 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   prompt saves; "skip" is the only route to NA and is recorded; the
   three callers pass decisions through. One-argument signature addition
   accepted; any save/apply helper names to be proposed before export.
+  Rulings on the thread's proposal: `decisions = NULL` (data frame or
+  .rds path) approved, warned-as-unused for other backbones; the
+  save/apply helpers stay INTERNAL (no new exports: a two-column data
+  frame and `saveRDS()` are the API); NO default persistence location
+  (a hidden decisions file is state that changes results without
+  appearing in the script, the stale-cache shape again); the
+  non-interactive stop prints a ready-to-paste `decisions =
+  data.frame(...)` skeleton with candidates as comments; interactive
+  saves only to a path the user named, else prints pasteable code; a
+  new ambiguity not covered by supplied decisions is treated as
+  unresolved, never guessed.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
