@@ -1171,6 +1171,14 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   saves only to a path the user named, else prints pasteable code; a
   new ambiguity not covered by supplied decisions is treated as
   unresolved, never guessed.
+  **BUILT AND MERGED** (`verify-taxon-names-decisions`, tip `c7af511`):
+  no new exports; `decisions` on the four functions; internal
+  save/apply helpers; no default file; 45 offline tests; TaxaTools
+  1250/0 (+1 network skip) from a detached worktree, check() 0/0/0.
+  Installed TaxaTools and TaxaLikely are now behind main (this and the
+  coverage-audit fix); reinstall both, then regenerate the pack
+  (CONTEXT_TaxaTools embeds the four changed signatures), at the next
+  window with no R process alive.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
