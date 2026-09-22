@@ -33,10 +33,12 @@ Even well-curated data like GBIF (Global Biodiversity Information
 Facility; GBIF Secretariat, Copenhagen, Denmark) have a high frequency
 of location errors. By mapping points by habitat type, users can easily
 view which observations have incorrect coordinates. The function
-review_spatial_flags(occurrences_flagged) is designed to flag errant
-points for removal before model building begins. For instance, a point
-on the map in the middle of the ocean labeled "Terrestrial", is likely
-an error in habitat assignment that would weaken a species distribution
+`review_spatial_flags(occurrences_flagged)` is designed to help you
+review and correct errant points, flagged upstream by
+`flag_habitat_inconsistencies()`, before model building begins. For
+instance, a point on the map in the middle of the ocean labeled
+"Terrestrial" is likely an error in habitat assignment that would
+weaken a species distribution
 model. This tool makes it possible to delete that point or reassign it
 to "Marine". And the selection tool means this can be done in bulk.
 TaxaHabitat thus can be a standalone database QAQC for biodiversity
@@ -47,12 +49,12 @@ occupancy data.
 
 | Scheme | Categories | Use case |
 |----|----|----|
-| **3-category** (default) | Marine / Freshwater / Terrestrial | Most biodiversity surveys (eDNA, camera-trap, acoustic) |
-| **IUCN Level 1** | 18 IUCN habitat categories | Fine-grained habitat mapping |
-| **Custom** | User-defined | Specialized study designs |
+| 3-category (default) | Marine / Freshwater / Terrestrial | Most biodiversity surveys (eDNA, camera-trap, acoustic) |
+| IUCN Level 1 | 18 IUCN habitat categories | Fine-grained habitat mapping |
+| Custom | User-defined | Specialized study designs |
 
 A custom scheme is a plain data frame (`l1_name` required; `l2_name`,
-`l2_code`, `realm` optional -- see `example_habitat_scheme` for the
+`l2_code`, `realm` optional: see `example_habitat_scheme` for the
 exact shape):
 
 ``` r
@@ -118,27 +120,39 @@ flagged <- flag_habitat_inconsistencies(occurrences_with_habitat)
 
 ## Key Functions
 
-**Habitat classification:** - `build_habitat_lookup()` -- cached
-one-call classification (prompt, LLM call, parse; a taxon already
-classified under the same scheme is never re-asked) -
-`taxahabitat_clear_cache()` -- report or prune that cache -
-`build_habitat_prompt()` -- create LLM prompt for species habitat
-weights - `parse_hierarchical_habitat_response()` -- parse LLM output to
-numeric weights - `assign_habitat_biological()` -- assign site habitat
-from species composition - `consensus_habitat()` -- assemblage-level
-consensus with ecoregion extraction
+Habitat classification:
 
-**Custom schemes:** - `build_iucn_scheme()` -- generate IUCN Level 1
-habitat scheme - `example_habitat_scheme()` -- example custom scheme for
-reference - `build_scheme_prompt()` / `parse_scheme_response()` --
-custom scheme workflow
+-   `build_habitat_lookup()`: cached one-call classification (prompt,
+    LLM call, parse; a taxon already classified under the same scheme
+    is never re-asked)
+-   `taxahabitat_clear_cache()`: report or prune that cache
+-   `build_habitat_prompt()`: create LLM prompt for species habitat
+    weights
+-   `parse_hierarchical_habitat_response()`: parse LLM output to
+    numeric weights
+-   `assign_habitat_biological()`: assign site habitat from species
+    composition
+-   `consensus_habitat()`: assemblage-level consensus with ecoregion
+    extraction
 
-**Spatial QC:** - `flag_habitat_inconsistencies()` -- flag records
-inconsistent with site habitat - `review_spatial_flags()` -- interactive
-Leaflet map for manual review
+Custom schemes:
 
-**Reporting:** - `report_habitat()` -- summarize habitat assignment for
-`assemble_report()`
+-   `build_iucn_scheme()`: generate IUCN Level 1 habitat scheme
+-   `example_habitat_scheme()`: example custom scheme for reference
+-   `build_scheme_prompt()` / `parse_scheme_response()`: custom scheme
+    workflow
+
+Spatial QC:
+
+-   `flag_habitat_inconsistencies()`: flag records inconsistent with
+    site habitat
+-   `review_spatial_flags()`: interactive Leaflet map for manual
+    review
+
+Reporting:
+
+-   `report_habitat()`: summarize habitat assignment for
+    `assemble_report()`
 
 ## Methods
 
@@ -147,9 +161,10 @@ Leaflet map for manual review
 Rather than assign each species to a single habitat, TaxaHabitat asks
 the LLM to distribute habitat affinity as continuous weights across all
 habitat categories (e.g., Marine 0.85, Freshwater 0.15, Terrestrial
-0.0), summing to 1.0 per species. This captures habitat generalism, an
-estuarine fish contributes partial signal to both Marine and Freshwater,
-and avoids the information loss of a categorical assignment.
+0.0), summing to 1.0 per species. This captures habitat generalism (an
+estuarine fish contributes partial signal to both Marine and
+Freshwater) and avoids the information loss of a categorical
+assignment.
 
 Prompts are constructed by `build_habitat_prompt()` (which inputs
 habitat types) and sent to an LLM provider via TaxaTools. For large
@@ -214,7 +229,7 @@ ocean). The 1 km coastal buffer accounts for GPS uncertainty and tidal
 gradients. `review_spatial_flags()` provides an interactive Leaflet map
 for manual inspection and correction.
 
-The Natural Earth and GEBCO reference layers themselves are fixed --
+The Natural Earth and GEBCO reference layers themselves are fixed:
 `flag_habitat_inconsistencies()` does not currently accept a
 user-supplied coastline, bathymetry, or other custom spatial reference
 layer. Only the numeric thresholds above (`coast_buffer_m`,
@@ -232,11 +247,11 @@ misclassified point without leaving the map.
 ### Reviewing at scale
 
 Real selection boundaries follow coastlines, lake shores and basins, so
-the draw toolbar offers a **polygon** as well as a rectangle. Both
+the draw toolbar offers a polygon as well as a rectangle. Both
 select every visible point of the current view inside the shape; in Flag
 mode the shape applies immediately, in Reassign Habitat mode it selects
-and **Confirm** applies. Each bulk action is one entry in the undo
-history, so **Undo Last** reverses a whole selection in a single click.
+and Confirm applies. Each bulk action is one entry in the undo
+history, so Undo Last reverses a whole selection in a single click.
 
 At or below `bulk_confirm_threshold` (default 10,000) an action applies
 straight away; above it a dialog reports the exact count and requires an
@@ -271,7 +286,7 @@ habitat_weights <- build_habitat_lookup(taxa, llm_fn = TaxaTools::call_gemini_ap
 `call_gemini_api()` calls Google Gemini (Google LLC, Mountain View,
 California); other supported providers include OpenAI (OpenAI OpCo, LLC,
 San Francisco, California) and local Ollama (Ollama, Palo Alto,
-California) -- see TaxaTools.
+California), see TaxaTools.
 
 ## API Keys
 
@@ -281,7 +296,7 @@ vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 
 ## Vignettes
 
--   [Habitat Assignment](vignettes/habitat-assignment.Rmd) -- full
+-   [Habitat Assignment](vignettes/habitat-assignment.Rmd): full
     workflow guide
 
 ## Part of TaxaID
@@ -289,7 +304,7 @@ vignette](../TaxaTools/vignettes/api-setup.Rmd) for configuration.
 TaxaHabitat receives occurrence data from TaxaFetch and produces
 habitat-annotated records for TaxaExpect (prior estimation).
 
-**Ecosystem:** TaxaTools -\> TaxaFetch -\> **TaxaHabitat** -\>
+Ecosystem: TaxaTools -\> TaxaFetch -\> TaxaHabitat -\>
 TaxaExpect -\> TaxaAssign
 
 See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
@@ -297,7 +312,7 @@ ecosystem overview and installation instructions.
 
 ## Citation
 
-Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
+Lafferty, K.D., 2026, TaxaID: A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
 
@@ -306,7 +321,7 @@ taxonomic assignment: U.S. Geological Survey software release,
 -   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (for LLM provider functions)
 -   An LLM API key is required for habitat assignment via
-    `build_habitat_prompt()`
+    `build_habitat_lookup()`
 
 All dependencies are declared in the DESCRIPTION file and installed
 automatically.
