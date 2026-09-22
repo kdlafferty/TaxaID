@@ -1105,6 +1105,20 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   the homonym thread. Second independent instance of the shared-library
   hazard in this screen; the structural fix (per-session R_LIBS_USER)
   is recorded in memory, not built.
+  **Homonym fix MERGED `5ef58e6` and pushed**: the maintainer took the
+  screen's recommendation; the thread un-exported the list
+  (`.known_ncbi_homonyms`, test fixture and help-page example), added the
+  two exports to TaxaTools' inventory and "Added after the review"
+  entries to both review responses. Reviewed from a detached worktree:
+  TaxaTools 1209/0, TaxaLikely 1358/0, check() 0/0 on both. TaxaTools
+  now has 58 exports. The shared checkout, which that thread had switched
+  to its branch, is back on `workflow-ptcon-multisite` with main merged
+  (`3ae739f`), tree identical to main. Remaining from this thread, own
+  decisions later: `verify_taxon_names(backbone_id = 4)` bypass; the
+  priority_taxa fetch path; `audit_barcode_coverage()` and
+  `suggest_unreferenced_species()` not wired to the resolver. After the
+  rebuild: regenerate `llm_prompts/` (CONTEXT_TaxaTools and
+  CONTEXT_TaxaLikely embed the changed signatures).
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
