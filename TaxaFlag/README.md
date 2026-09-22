@@ -16,15 +16,15 @@ samples often contain artifacts and uncertainties. Evaluating thousands
 of lines by eye is tedious, so TaxaFlag provides three independent
 "expert-level" post-hoc checks:
 
--   **Contamination screening** compares taxon detection counts against
+-   Contamination screening compares taxon detection counts against
     control samples (lab blanks, field blanks, positive controls). For
     example, in metabarcoding, human and food-related sequences commonly
     appear, and their relative frequency in controls can justify
     removal.
--   **Handler artifact detection** flags observations that fall within a
+-   Handler artifact detection flags observations that fall within a
     time buffer around camera setup and retrieval, when human activity
     is expected.
--   **LLM expert review** uses a language model to act as an "expert" to
+-   LLM expert review uses a language model to act as an "expert" to
     assess whether each assignment is plausible given the habitat and
     geographic location, flagging unusual detections for closer
     inspection. This includes contaminants that were not found screening
@@ -34,10 +34,10 @@ of lines by eye is tedious, so TaxaFlag provides three independent
 
 | Method | Function | Data needed |
 |------------------------|------------------------|------------------------|
-| **Control validation** | `validate_controls()` | Detection counts + control labels (+ site, ideally) |
-| **Contamination** | `flag_contaminant()` | Detection counts + control samples |
-| **Handler artifacts** | `flag_handler()` | Timestamps + setup/retrieval times |
-| **Expert review** | `review_assignments()` | Assignments + LLM API key |
+| Control validation | `validate_controls()` | Detection counts + control labels (+ site, ideally) |
+| Contamination | `flag_contaminant()` | Detection counts + control samples |
+| Handler artifacts | `flag_handler()` | Timestamps + setup/retrieval times |
+| Expert review | `review_assignments()` | Assignments + LLM API key |
 
 Each method is independent; use one, two, or all three depending on your
 data type and available metadata. Flags are additive columns, not
@@ -51,8 +51,8 @@ sampling area), and other ecologically implausible detections.
 ### Control Validation
 
 Distinguishing controls from samples is essential for screening out
-contaminants. But labeling errors can makes the real community look like
-contamination (and visa versa). Existing tools like `decontam` assume
+contaminants. But labeling errors can make the real community look like
+contamination (and vice versa). Existing tools like `decontam` assume
 the labels are correct. But `validate_controls()` tests the labels
 first. If controls resemble samples (Bray-Curtis distance), the function
 gives a warning.
@@ -66,19 +66,19 @@ species). Field and lab blanks are often used to identify these
 sequences.
 
 TaxaID can screen out contaminant signal found disproportionately in
-blanks before it enters a workflow. Specifically, `flag_contaminant()`
-compares the relative abundance of each taxon in field samples versus
-control samples. Within each sample, read counts are first converted to
-proportions (reads for taxon / total reads), normalizing for sequencing
-depth. Proportions are then averaged across field and control
-replicates, and a score is computed:
+blanks before it enters a workflow. `flag_contaminant()` computes a
+depth-weighted detection rate per taxon in each group (taxon reads /
+total reads for that group, field or control), then a score:
 
 ```         
-score = mean_prop_field / (mean_prop_field + mean_prop_control)
+score = field_rate / (field_rate + control_rate)
 ```
 
-Scores range from 0 (taxon found only in controls) to 1 (taxon found
-only in field samples). Default thresholds classify scores as `"high"`
+shrunk toward 0.5 by `prior_weight` (default 20, in read-equivalent
+units) so taxa with little total read support aren't scored
+confidently. Scores range from 0 (taxon found only in controls) to 1
+(taxon found only in field samples). Default thresholds classify scores
+as `"high"`
 risk (score ≤ 0.5, probable contaminant), `"moderate"` risk (0.5 \<
 score ≤ 0.9, ambiguous), or `"low"` risk (score \> 0.9, likely genuine
 detection). For positive controls, the interpretation inverts: taxa from
@@ -87,9 +87,9 @@ cross-contamination. And a low-read taxon that never appeared in any
 control is pulled down out of the `"low"` risk band.
 
 Users should be conservative when removing signals, especially given
-that control samples are usually rare (or entirely missing). So, remove
-observations that are flagged as invalid. But don't only accept
-observations confirmed as valid.
+that control samples are usually rare (or entirely missing). Remove
+observations flagged as invalid, but don't require confirmed valid to
+keep the rest.
 
 ``` r
 # correct
@@ -105,11 +105,11 @@ supports:
 
 | state | meaning |
 |----------------------------|--------------------------------------------|
-| `no_control_evidence` | never detected in a control -- an honest unknown, and normally the large majority |
-| `invalid_{type}` | control rate **above** sample rate, on at least `min_control_obs` controls, at `min_sites_systemic` or more sites. Name retained so existing `invalid_*` filters keep working |
-| `insufficient_control_evidence` | in fewer than `min_control_obs` controls (default 2). Not assessable. **Do not filter** |
-| `not_control_enriched` | in a control at or **below** its sample rate: signal leaking sample -> control. **Do not filter** |
-| `single_site_enriched` | control-enriched, but at one site whose samples also carry it: local, not systemic. **Do not filter** |
+| `no_control_evidence` | never detected in a control: an honest unknown, and normally the large majority |
+| `invalid_{type}` | control rate above sample rate, on at least `min_control_obs` controls, at `min_sites_systemic` or more sites. Name retained so existing `invalid_*` filters keep working |
+| `insufficient_control_evidence` | in fewer than `min_control_obs` controls (default 2). Not assessable. Do not filter |
+| `not_control_enriched` | in a control at or below its sample rate: signal leaking sample -> control. Do not filter |
+| `single_site_enriched` | control-enriched, but at one site whose samples also carry it: local, not systemic. Do not filter |
 | `questionable_{type}` | in a control, rates do not separate |
 
 ### Handler Artifact Detection
@@ -258,7 +258,7 @@ section <- report_flags(flagged)
 
 ## Vignettes
 
--   [Quality Flagging](vignettes/quality-flagging.Rmd) -- full workflow
+-   [Quality Flagging](vignettes/quality-flagging.Rmd): full workflow
     guide
 
 ## Part of TaxaID
@@ -267,14 +267,14 @@ TaxaFlag is the final step in the TaxaID pipeline. It receives
 assignments from TaxaAssign and produces quality-annotated output for
 interpretation.
 
-**Ecosystem:** TaxaAssign -\> **TaxaFlag**
+Ecosystem: TaxaAssign -\> TaxaFlag
 
 See the [TaxaID README](https://github.com/kdlafferty/TaxaID) for
 ecosystem overview and installation instructions.
 
 ## Citation
 
-Lafferty, K.D., 2026, TaxaID -- A modular R ecosystem for Bayesian
+Lafferty, K.D., 2026, TaxaID, A modular R ecosystem for Bayesian
 taxonomic assignment: U.S. Geological Survey software release,
 <https://doi.org/10.5066/xxxxxx>.
 
@@ -283,7 +283,7 @@ taxonomic assignment: U.S. Geological Survey software release,
 -   R (\>= 4.1.0; R Core Team 2025)
 -   TaxaTools (for LLM provider functions and report assembly)
 -   An Application Programming Interface (API) key for an LLM provider
-    (Anthropic Claude, Google Gemini, OpenAI, or local Ollama -- see
+    (Anthropic Claude, Google Gemini, OpenAI, or local Ollama; see
     TaxaTools) is needed for `review_assignments()`
 
 All dependencies are declared in the DESCRIPTION file and installed
