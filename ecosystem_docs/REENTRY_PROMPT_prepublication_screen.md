@@ -1024,6 +1024,22 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   `score_type = "direct"`; `AZURE_OPENAI_API_KEY` in the key table;
   whole-tree style grep 0/0/0 on all ten. Reports in
   `TaxaID_dev/screen_records/.../readme_pass/complete_{A,B}.md`.
+  **KNOWN DEFECT reported by the workflow chat 2026-09-22, NOT fixed in
+  this screen (the maintainer assigned it its own chat)**:
+  `TaxaLikely::fetch_ncbi_reference_sequences()` queries NCBI by name with
+  no lineage constraint, so a homonym resolves to whichever node the
+  `[ORGN]` search prefers. Live: the red alga *Vertebrata* (taxid 1261581)
+  pulled 306,181 vertebrate sequences (taxid 7742, a clade), 28% of a
+  1.1M-sequence COI reference set, and returned no Rhodophyta at all; 78
+  genera with lineage disagreement, ~11 true homonyms (Vertebrata,
+  Digenea, Grania, Contarinia, Acrotylus, Ptilophora, Mastophora, Galene,
+  Lobophora, Bulla, Ctenophora, Armadillo), the rest genuine
+  reclassifications that must be accepted. Rank alone is not enough
+  (*Lobophora* has two genus-rank nodes); the fix needs rank AND lineage
+  and probably a signature change: a 1.0 API decision. The empty result
+  reads downstream as "no barcode", not "malformed query". Write-up:
+  `ecosystem_docs/REENTRY_PROMPT_homonym_detection.md` (untracked, in the
+  shared checkout). Same shape as the Polychaeta homonym found 2026-09-15.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
