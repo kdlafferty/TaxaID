@@ -1092,6 +1092,19 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   The installed TaxaTools and TaxaLikely are therefore an UNMERGED branch
   build, not main; the pre-submission reinstall must rebuild all nine
   from final main regardless.
+  **Consequence confirmed by the workflow chat**: its 12S run (pid 73144)
+  is VOID; the packages were swapped under it at 09:45:55 and 10:01:29,
+  no open handle kept the old .rdb, and evaluate_likelihoods ran through
+  the swap. No error surfaced, which is the documented failure mode.
+  Its output is being kept renamed `*_SUSPECT_branchbuild.rds` as a
+  comparison baseline only. Plan agreed: on that chat's "run ended"
+  message this session verifies no R process holds the library (ps/lsof,
+  including the homonym thread's R and any rsession) and rebuilds ALL
+  NINE packages from main in dependency order, verifies Built stamps and
+  suites, then clears both the 12S re-run (~40 min, cache on disk) and
+  the homonym thread. Second independent instance of the shared-library
+  hazard in this screen; the structural fix (per-session R_LIBS_USER)
+  is recorded in memory, not built.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
