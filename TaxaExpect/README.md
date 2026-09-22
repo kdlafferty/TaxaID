@@ -80,7 +80,7 @@ Priors are organized into three branches (`prior_branch`):
 surface is the estimator evaluated continuously across a lattice, not
 one value per grid cell, so it shows how a species' expected share
 changes across the region rather than only at the sampling site. Here
-theta for the ochre star (*Pisaster ochraceous*) declines with latitude,
+theta for the ochre star (*Pisaster ochraceus*) declines with latitude,
 the hollow circle marks the focal site. Passing several taxa to `taxon`
 adds the layer toggle at top right, so priors can be compared species by
 species. The surface is clipped to a supplied search polygon via `mask`,
@@ -128,12 +128,16 @@ type and pass the appropriate priors to TaxaAssign for the relevant
 taxonomic hypotheses. Note that fine grouping will reduce the effective
 sample size, and lead to wider standard deviations in the estimate.
 
-In practice, users will find a trade off between the convenience of
-pooling and accurate estimates of relative abundance. However, because
-abundance is re-normalized when computing the posterior, the comparisons
-made in TaxaAssign are fairly robust to pooling decisions. Users should
-aim to avoid pooling highly dissimilar taxa sampled by highly dissimilar
-methods.
+In practice there is a trade off between the convenience of pooling and
+the accuracy of the shares. The consensus in TaxaAssign is less sensitive
+than the shares themselves: the posterior is renormalized within each
+observation, so a pooling choice that rescales every candidate for an
+observation by the same factor leaves the consensus unchanged. Pooling
+matters when an observation's candidates come from different detection
+processes (a marine and a terrestrial candidate for the same read), and
+wherever theta is read as an absolute share rather than compared within
+an observation. Avoid pooling highly dissimilar taxa sampled by highly
+dissimilar methods.
 
 ## Installation
 
