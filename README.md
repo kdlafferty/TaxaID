@@ -32,7 +32,7 @@ advances are to:
 -   detect and patch missing references
 -   convert match scores to statistical likelihoods
 -   identify plausibility at the sampling location (the prior)
--   apply Bayes' Theorem to generate posterior assignments probabilities
+-   apply Bayes' Theorem to generate posterior assignment probabilities
     from likelihoods and priors
 -   make assignments transparent
 -   use LLMs to improve assignments, assist with workflows, and review
