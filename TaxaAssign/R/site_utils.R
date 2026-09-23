@@ -198,6 +198,36 @@
   list(grid_id = grid_coords$grid_id[idx], dist_deg = sqrt(dist_sq[idx]))
 }
 
+#' Stop early, and say why, when a site names a grid/habitat with no prior rows
+#'
+#' Without this, a `site` that matches nothing in `taxaexpect_priors` (a
+#' placeholder grid_id, a habitat spelled differently) surfaces much later as
+#' a bare `vapply` length error. The message lists what the priors do hold.
+#' @noRd
+.assert_site_has_priors <- function(grid_id, main_habitat, taxaexpect_priors) {
+  if (!is.data.frame(taxaexpect_priors) ||
+    !all(c("grid_id", "main_habitat") %in% names(taxaexpect_priors))) {
+    return(invisible(TRUE))
+  }
+  grid_hit <- taxaexpect_priors$grid_id %in% grid_id
+  if (!any(grid_hit)) {
+    known <- unique(taxaexpect_priors$grid_id[!is.na(taxaexpect_priors$grid_id)])
+    cli::cli_abort(c(
+      "{.arg site} grid_id {.val {grid_id}} has no rows in {.arg taxaexpect_priors}.",
+      "i" = "grid_id values present ({length(known)}): {.val {utils::head(known, 5)}}{if (length(known) > 5) ', ...' else ''}",
+      "i" = "Use one of those, or site = list(lat = ..., lon = ..., main_habitat = ...) to resolve the nearest grid."
+    ))
+  }
+  if (!any(grid_hit & taxaexpect_priors$main_habitat %in% main_habitat)) {
+    habs <- unique(taxaexpect_priors$main_habitat[grid_hit & !is.na(taxaexpect_priors$main_habitat)])
+    cli::cli_abort(c(
+      "{.arg site} main_habitat {.val {main_habitat}} has no rows at grid_id {.val {grid_id}} in {.arg taxaexpect_priors}.",
+      "i" = "Habitats present at that grid: {.val {habs}}."
+    ))
+  }
+  invisible(TRUE)
+}
+
 #' Resolve `site` parameter to a standardized event_meta data frame
 #'
 #' Accepts multiple formats:
@@ -217,6 +247,7 @@
   if (is.list(site) && !is.data.frame(site)) {
     # Existing format: grid_id + main_habitat
     if (all(c("grid_id", "main_habitat") %in% names(site))) {
+      .assert_site_has_priors(site$grid_id, site$main_habitat, taxaexpect_priors)
       return(data.frame(
         observation_id = observation_ids,
         grid_id = site$grid_id,

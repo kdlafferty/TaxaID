@@ -690,3 +690,20 @@ test_that("an unrecognised prior_branch value stops the promotion gate loudly", 
   expect_match(conditionMessage(err), "resident_observed", fixed = TRUE)
   expect_match(conditionMessage(err), "kernel_estimated", fixed = TRUE)
 })
+
+test_that("join_priors() names the problem when the site has no prior rows", {
+  expect_error(
+    join_priors(.make_likelihoods(), .make_priors(),
+      site = list(grid_id = "Grid_00p0_m000p0", main_habitat = "Estuarine Bay"),
+      backbone_id = 11L
+    ),
+    "has no rows in"
+  )
+  expect_error(
+    join_priors(.make_likelihoods(), .make_priors(),
+      site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Freshwater"),
+      backbone_id = 11L
+    ),
+    "Habitats present at that grid"
+  )
+})

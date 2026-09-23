@@ -171,11 +171,10 @@ message(sprintf(
 message(sprintf("Total records:   %d", nrow(occurrence_data)))
 message(sprintf("Unique taxa:     %d", n_distinct(occurrence_data$taxon_name)))
 
-saveRDS(
-  occurrence_data,
-  file.path(system.file("", package = "TaxaFetch"), "occurrence_data.rds")
-)
-message("Saved occurrence_data.")
+# Save beside your own project files, never inside an installed package.
+OUT_DIR <- getwd() # set to your project directory
+saveRDS(occurrence_data, file.path(OUT_DIR, "occurrence_data.rds"))
+message("Saved ", file.path(OUT_DIR, "occurrence_data.rds"))
 
 # occurrence_data is ready for:
 #   build_habitat_prompt(unique(occurrence_data$taxon_name))
