@@ -242,7 +242,7 @@ message("\nSection 1 (IMAGE) complete.")
 #
 # Consumer: would be TaxaAssign::join_priors() / compute_posterior(), if this
 #   mini-chain continued there (it does not -- see header comment). A real
-#   continuation would additionally need TaxaTools::convert_taxonomy_backbone()
+#   continuation would additionally need TaxaMatch::convert_taxonomy_backbone()
 #   (NCBI backbone from fill_higher_ranks() vs. whatever backbone the priors
 #   use) per score_image_inat()'s own documented downstream note.
 # ==============================================================================

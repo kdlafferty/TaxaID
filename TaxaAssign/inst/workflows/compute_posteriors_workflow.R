@@ -221,7 +221,7 @@ if (DEBUG_MODE) {
       taxon_name_rank        = "species",
       # CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: posterior_consensus()
       # requires hypothesis_type -- normally added by TaxaLikely::
-      # evaluate_likelihoods() / TaxaAssign::expand_unreferenced_hypotheses(),
+      # evaluate_likelihoods() / TaxaLikely::expand_unreferenced_hypotheses(),
       # neither of which runs in this synthetic-data tutorial. Every synthetic
       # candidate here is a real, named species (not a placeholder for a
       # missing reference), so "specific_candidate" is the correct value for
@@ -292,7 +292,7 @@ if (DEBUG_MODE) {
   #     TaxaLikely's placeholder rows), score_likelihood, score_likelihood_mean,
   #     score_likelihood_sd; plus taxonomy columns e.g. genus/family for
   #     rank_system detection. TaxaLikely::evaluate_likelihoods() /
-  #     TaxaAssign::expand_unreferenced_hypotheses() normally add
+  #     TaxaLikely::expand_unreferenced_hypotheses() normally add
   #     hypothesis_type for you -- add it manually only if building a
   #     likelihoods object by hand, as this tutorial does.)
   #
