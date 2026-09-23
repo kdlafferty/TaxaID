@@ -1328,6 +1328,19 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   workflow_scripts_run.md` (f6273a9). The reentry prompt's own
   predecessor claim for image_acoustic_likelihood_workflow.R was wrong
   (real predecessors are score_image/score_acoustic).
+  **Large-reference-set crash FIXED (`62dcd97`)**, reported by the
+  workflow chat from a real COI run (915,832 sequences, 153M-pair
+  matrix): `.has_seq_matrix_presence()` used every accession of a taxon
+  as an R variable name in the align_cache, and `.check_regional_overlap()`
+  used the whole query sequence; R caps names at 10,000 bytes, so ~900
+  accessions per taxon halted `restore_suppressed_candidates()` after
+  minutes of alignment. Keys are now `rlang::hash()` of the material
+  (rlang added to TaxaLikely Imports; TaxaTools already uses it), same
+  semantics, bounded; test with 2,000 accessions and a 20 kb sequence.
+  Latent on small projects, fatal on large ones. The "expanded path
+  length 1024" warning in the same run is not from TaxaLikely (its only
+  `file.exists()` calls take real paths); source unidentified. Installed
+  TaxaLikely behind main by this fix; reinstall at the next window.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
