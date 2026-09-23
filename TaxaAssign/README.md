@@ -11,36 +11,41 @@ Bayesian taxonomic assignment from match scores and priors. Part of the
 
 ## Overview
 
-TaxaAssign makes a consensus taxonomic assignment for the several
-hypothesized matches to each observation. It uses Bayes' theorem to
-multiply the likelihood that a match score corresponds to a particular
-species (from TaxaLikely) by the prior probability that the species
-would be selected at random from a sample (reports) of similar species
-at that site and habitat (from TaxaExpect). After normalization and
-Monte Carlo simulation, each candidate receives a posterior probability.
-If a single candidate has strong support, it is assigned as the
-consensus taxon; otherwise, a coarser rank (genus, family, etc.) is
-assigned via lowest common ancestor. All competing hypotheses and their
-probabilities are retained in the output. The user can also update
-priors iteratively: if one observation strongly supports species A, that
-evidence can sharpen the prior for species A in other observations from
-the same sample.
+TaxaAssign makes a consensus taxonomic assignment to an observation
+based on similar labeled accessions found in a reference library. It
+uses Bayes' theorem to multiply the likelihood that a match score
+corresponds to a particular species (from TaxaLikely) by the prior
+probability that the species would be selected at random from a sample
+of similar species expected from that site and habitat (estimated by
+TaxaExpect). After normalization and Monte Carlo simulation, each
+candidate receives a posterior probability. If a single candidate has
+strong posterior support, it is assigned as the consensus taxon;
+otherwise, a coarser rank (genus, family, etc.) is assigned via lowest
+common ancestor. All competing hypotheses and their probabilities are
+retained in the output. The user can also update priors iteratively: if
+one observation strongly supports species A, that evidence can sharpen
+the prior for species A in other observations from the same sample.
 
-Two workflows:
+Three workflows:
 
-Full Bayesian: TaxaLikely's trained likelihood model + TaxaExpect's
-occurrence-modelled priors. The recommended pathway for any real
-analysis: publication-quality, and every one of this ecosystem's real
-production workflows uses it exclusively.
-
-LLM-shortcut: an approximate stand-in for the pathway above,
-substituting an exponential score-weighting proxy for TaxaLikely's
-modeled likelihood and an LLM's biogeographic judgment for TaxaExpect's
-modeled occurrence prior. It exists for rapid analysis when a trained
-TaxaLikely model or TaxaExpect priors aren't available yet (or as a
-quick comparison against the Full Bayesian result on data you already
-have both for). This fast path is better than relying on scores, but
-not the statistically defensible outcome that most users want.
+1.  Conventional: uses match-score thresholds and a lowest common
+    ancestor to pick the best candidate. Examples include 100% match,
+    maximum match, rank thresholded (e.g., 98% to species, 95% to
+    genus..) and can be filtered in advance by a regional list to reduce
+    false positives.
+2.  LLM Bayesian: an approximate Bayesian assignment, substituting an
+    exponential score-weighting proxy for TaxaLikely's modeled
+    likelihood and an LLM's biogeographic judgment for TaxaExpect's
+    modeled occurrence prior. It exists for rapid analysis when a
+    trained TaxaLikely model or TaxaExpect priors aren't available yet
+    (or as a quick comparison against the Full Bayesian result on data
+    you already have both for). This should be better than conventional
+    workflows, but not the statistically defensible outcome that most
+    users want, and may be model-dependent (and difficult to reproduce).
+3.  Full Bayesian: TaxaLikely's trained likelihood model + TaxaExpect's
+    occurrence-modelled priors. The recommended pathway for any real
+    analysis: publication-quality, and every one of this ecosystem's
+    real production workflows uses it exclusively.
 
 ## Installation
 
@@ -99,28 +104,28 @@ report <- generate_report(posteriors, consensus)
 Core assignment:
 
 -   `compute_posterior()`: Bayes' theorem with MC uncertainty
--   `assign_taxa_llm()`: LLM-shortcut (priors + likelihoods in one
-    call; accepts named unreferenced species from
+-   `assign_taxa_llm()`: LLM-shortcut (priors + likelihoods in one call;
+    accepts named unreferenced species from
     `TaxaLikely::suggest_unreferenced_species()` via
     `unreferenced_taxa`; see TaxaLikely's README for the full
     unreferenced-species mechanism)
 -   `join_priors()`: merge TaxaExpect priors with likelihood output
 -   `combine_multisite_priors()`: combine an observation's per-site
     prior rows into one precision-weighted row (needed before
-    `compute_posterior()` when the same observation was detected at
-    more than one site)
+    `compute_posterior()` when the same observation was detected at more
+    than one site)
 -   `adjust_inat_range_priors()`: elevate priors for candidates that
     fall within their iNaturalist range polygon and have reliable
-    observation coverage, for workflows outside TaxaExpect's evidence-mixture
-    pathway
+    observation coverage, for workflows outside TaxaExpect's
+    evidence-mixture pathway
 
 Consensus:
 
 -   `posterior_consensus()`: LCA from posterior probabilities
 -   `score_consensus()`: conventional score-based consensus
 -   `update_prior_from_consensus()`: empirical Bayes refinement
--   `add_slash_taxon()`: label ambiguous candidate sets with
-    slash-taxon notation and flag which of them are irreducible
+-   `add_slash_taxon()`: label ambiguous candidate sets with slash-taxon
+    notation and flag which of them are irreducible
 -   `compute_group_priors()`: aggregate occurrence-model shares to
     genus/family level for use as `posterior_consensus()`'s
     `group_priors`
@@ -155,30 +160,30 @@ LLM-estimated biogeographic prior).
     Beta($\alpha$, $\beta$) distributions and likelihoods as
     Normal(mean, sd); 1000 simulations (default) propagate both sources
     of uncertainty into posterior means, SDs, and confidence scores
-    (fraction of simulations won)
+    (fraction of simulations won).
 -   Two workflows: the full Bayesian workflow uses calibrated
     likelihoods from TaxaLikely's hierarchical model and
     spatially-explicit priors from TaxaExpect's kernel-based composition
-    estimator; the LLM-shortcut workflow uses exponential score
+    estimator; the LLM-Bayesian workflow uses exponential score
     weighting ($L_i = e^{\lambda s_i}$) and LLM-estimated priors with
-    information-quality-driven Beta concentration
--   Posterior consensus: hypotheses below `min_posterior` (default
-    0.05) are dropped, then the remainder are accumulated in decreasing
-    order until they reach `cumulative_threshold` (default 0.90) of the
+    information-quality-driven Beta concentration.
+-   Posterior consensus: hypotheses below `min_posterior` (default 0.05)
+    are dropped, then the remainder are accumulated in decreasing order
+    until they reach `cumulative_threshold` (default 0.90) of the
     named-taxon posterior mass; if multiple taxa remain, the lowest
     common ancestor (LCA) determines the consensus rank; optional
     downranking (`species_reference`, off by default) refines coarse
-    assignments when only one finer-rank taxon exists at the study site
--   Empirical Bayes refinement: species confidently identified in
-    one observation receive boosted priors in unresolved observations
-    from the same study, analogous to shrinkage estimators (Efron and
-    Morris 1973)
--   Dark diversity fallback: "dark diversity" is an ecological
-    concept (Pärtel et al. 2011) for species that belong to the regional
-    species pool and could plausibly occur at a site given its
-    environmental conditions, but have not actually been observed there.
-    TaxaExpect computes per-species Tier 3 ("undetected species")
-    estimates using this concept. See TaxaExpect's README for the full
+    assignments when only one finer-rank taxon exists at the study site.
+-   Empirical Bayes refinement: species confidently identified in one
+    observation receive boosted priors in unresolved observations from
+    the same study, analogous to shrinkage estimators (Efron and Morris
+    1973).
+-   Dark diversity fallback: "dark diversity" is an ecological concept
+    (Pärtel et al. 2011) for species that belong to the regional species
+    pool and could plausibly occur at a site given its environmental
+    conditions, but have not actually been observed there. TaxaExpect
+    computes per-species Tier 3 ("undetected species") estimates using
+    this concept. See TaxaExpect's README for the full
     occurrence-modeling mechanism. For species with no prior row from
     TaxaExpect at all, `join_priors()` builds its own fallback from
     those Tier 3 estimates, site-level or global averaging, or (with
