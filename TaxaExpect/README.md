@@ -6,64 +6,47 @@ editor_options:
 
 # TaxaExpect
 
-Estimate spatially-explicit Bayesian priors for expected species
-composition. Part of the [TaxaID](https://github.com/kdlafferty/TaxaID)
+Estimate spatially explicit Bayesian priors for expected species
+composition: a multi-species distribution model in service of taxonomic
+assignment. Part of the [TaxaID](https://github.com/kdlafferty/TaxaID)
 ecosystem.
-
-An observation can easily match a similar, but implausible species.
-These errors are often screened afterwards by an expert, or prevented
-from occurring by reducing the reference list to known local species.
-Both fixes are time consuming and problematic for several reasons.
-
-Bayes' Theorem improves taxonomic assignment by quantifying the "prior"
-plausibility of each candidate match. TaxaExpect estimates these priors
-from occurrence records (e.g., positive records). A common source will
-be GBIF (Global Biodiversity Information Facility; GBIF Secretariat,
-Copenhagen, Denmark) records downloaded via TaxaFetch. But other data
-types can be obtained through TaxaFetch, including user-supplied data.
-Although occurrence data are often sparse and biased, they are usually
-sufficient to distinguish among taxa with similar match scores but very
-different geographic ranges. TaxaExpect's priors are compositional
-shares, the expected relative share of a species at a site among similar
-species (e.g., (Fish A records)/(all fish records)). Thus, priors sum to
-1, which differs from an occurrence probability estimated from an
-occurrence/occupancy model.
-
-TaxaExpect predictions are spatial. They use a site-centered distance
-kernel: each species' prior is its kernel-weighted share of related,
-nearby occurrence records, computed directly at the query site. Weight
-decays smoothly with distance (and, optionally, with a covariate such as
-depth), so spatial borrowing degrades continuously rather than switching
-on or off at an arbitrary distance, and even lightly-sampled sites get
-informative priors by shrinking toward the surrounding region's
-composition. The kernel bandwidth is chosen from data via
-leave-one-block-out composition prediction
-(`calibrate_kernel_bandwidth()`), not guessed, and the resulting prior
-field can be mapped continuously over the study area with
-`plot_theta_surface()` to generate species distribution surfaces. For
-taxa never reported in the study area, TaxaExpect prices a "dark
-diversity" prior from a Good-Turing/Chao- anchored presence-distance
-curve.
-
-The resulting spatial priors will often be coarse when derived from GBIF
-and other similar unstandardized data sources, but are nonetheless
-helpful in reducing false positives from ecologically implausible
-assignments. In practice, a species with several nearby records will
-have priors orders of magnitude higher than a similar species from
-another continent. And that will be enough to rescue species-level
-resolution that would otherwise be lost to defensive upranking.
 
 ## Overview
 
-TaxaExpect generates theta priors for taxonomic assignment from
-occurrence data. Theta is compositional: the expected relative share of
-a species at a site, P(a random legitimate detection = species X). It is
-not an occurrence probability, and not occupancy (see Shared detection
-effort below for the formal definition). The kernel pathway
-estimates expected species composition directly at a site via
-distance-weighted occurrence sharing, incorporating habitat
-stratification and, optionally, covariates such as depth, altitude, or
-temperature.
+An observation can easily match a similar but implausible species. Such
+errors are usually caught afterwards by an expert, or prevented by
+cutting the reference list down to known local species; both are slow,
+and the second discards real candidates. Bayes' Theorem offers a third
+way: quantify the prior plausibility of each candidate at the sampling
+site and let the posterior weigh it against the match score. TaxaExpect
+estimates those priors from occurrence records.
+
+The prior is theta, a compositional share: the expected relative share
+of a species at a site, P(a random legitimate detection = species X),
+for example (fish A records) / (all fish records). Shares sum to 1
+across the taxa in a model, which makes theta different from the
+occurrence probability an occupancy model estimates (see Shared
+detection effort, below, for the formal definition). In practice a
+species with several nearby records has a theta orders of magnitude
+higher than a similar species from another continent, and that
+difference is enough to rescue species-level resolution that defensive
+upranking would otherwise discard.
+
+The records usually come from GBIF (Global Biodiversity Information
+Facility; GBIF Secretariat, Copenhagen, Denmark) through TaxaFetch,
+which also handles other providers and user-supplied tables. The
+estimate is spatial: each species' theta is its kernel-weighted share of
+the related records around the query site, with weight decaying
+smoothly with distance and, optionally, with a covariate such as depth,
+altitude or temperature, and stratified by habitat. Lightly sampled
+sites shrink toward the surrounding region's composition instead of
+returning nothing. The kernel bandwidth and the regional back-off are
+chosen from the data by leave-one-block-out composition prediction
+(`calibrate_kernel_bandwidth()`), not hand-set. Taxa never reported in
+the study area are not treated as impossible: TaxaExpect prices a dark
+diversity prior for them from a Good-Turing/Chao-anchored
+presence-distance curve, so unrecorded diversity is expected to be
+higher where sampling has been light.
 
 Priors are organized into three branches (`prior_branch`):
 
@@ -74,6 +57,10 @@ Priors are organized into three branches (`prior_branch`):
     claimants priced on a shared presence-distance curve)
 -   `transport`: domestic/food/cultivar species and other non-resident
     presence hypotheses
+
+The prior field can be mapped continuously over the study area with
+`plot_theta_surface()`, which doubles as a species distribution surface
+for each candidate taxon.
 
 ![Interactive prior-field map produced by `plot_theta_surface()`. The
 surface is the estimator evaluated continuously across a lattice, not
@@ -87,6 +74,19 @@ which is why it stops at the coast instead of painting
 inland.](man/figures/PisasterTheta.png)
 
 ## Assumptions
+
+### Occurrence records are informative but biased
+
+Occurrence data are sparse, uneven in effort, and skewed toward
+accessible places and charismatic taxa, so priors derived from GBIF and
+similar unstandardized sources are coarse. They remain useful because
+the question they answer is comparative: which of several candidates
+with similar match scores is plausible here. Distinguishing a locally
+common species from one with no record within a thousand kilometres
+does not need standardized effort. What the bias does affect is the
+absolute share, which is why theta is best read within an observation
+rather than as an estimate of abundance (see the pooling discussion
+below).
 
 ### Shared detection effort
 
@@ -128,15 +128,15 @@ relevant taxonomic hypotheses. Fine grouping reduces the effective
 sample size and widens the standard deviations of the estimate.
 
 In practice there is a trade-off between the convenience of pooling and
-the accuracy of the shares. The consensus in TaxaAssign is less sensitive
-than the shares themselves: the posterior is renormalized within each
-observation, so a pooling choice that rescales every candidate for an
-observation by the same factor leaves the consensus unchanged. Pooling
-matters when an observation's candidates come from different detection
-processes (a marine and a terrestrial candidate for the same read), and
-wherever theta is read as an absolute share rather than compared within
-an observation. Avoid pooling highly dissimilar taxa sampled by highly
-dissimilar methods.
+the accuracy of the shares. The consensus in TaxaAssign is less
+sensitive than the shares themselves: the posterior is renormalized
+within each observation, so a pooling choice that rescales every
+candidate for an observation by the same factor leaves the consensus
+unchanged. Pooling matters when an observation's candidates come from
+different detection processes (a marine and a terrestrial candidate for
+the same read), and wherever theta is read as an absolute share rather
+than compared within an observation. Avoid pooling highly dissimilar
+taxa sampled by highly dissimilar methods.
 
 ## Installation
 
@@ -202,25 +202,24 @@ theta_surface_at(r, lon = -120.47, lat = 34.45)   # both taxa at one point
 
 Calibration:
 
--   `calibrate_kernel_bandwidth()`: choose the geographic bandwidth
-    (and optional covariate bandwidth, and the regional back-off mass
-    `m`) by leave-one-block-out composition prediction
+-   `calibrate_kernel_bandwidth()`: choose the geographic bandwidth (and
+    optional covariate bandwidth, and the regional back-off mass `m`) by
+    leave-one-block-out composition prediction
 
 Prior estimation:
 
 -   `estimate_kernel_priors()`: site-centered kernel estimation of
     `kernel_estimated` priors (no grid, no model fit)
--   `generate_undetected_diversity()`: singleton-mirror and
-    global-floor `resident_undetected` priors from a kernel fit
+-   `generate_undetected_diversity()`: singleton-mirror and global-floor
+    `resident_undetected` priors from a kernel fit
 -   `generate_presence_curve_evidence()` /
     `generate_user_specified_evidence()` +
     `apply_undetected_evidence(pricing = "curve")`: price named
     unobserved claimants (regional, watch-listed, or distance-clamped)
     on a shared presence-distance curve
--   `fit_regional_presence_curve()`: fit that presence-distance
-    curve's `w_scale`/`d_half` from a study's own data, as a
-    self-calibrating alternative to `generate_regional_proximity_evidence()`'s
-    defaults
+-   `fit_regional_presence_curve()`: fit that presence-distance curve's
+    `w_scale`/`d_half` from a study's own data, as a self-calibrating
+    alternative to `generate_regional_proximity_evidence()`'s defaults
 -   `generate_regional_proximity_evidence()`: evidence rows for taxa
     with no in-bbox occurrence record but a real GBIF record just
     outside the study area, priced by distance to that record
@@ -230,14 +229,14 @@ Prior estimation:
 -   `generate_invasive_watch_evidence()`: evidence rows for a
     user-supplied invasive/nonindigenous watch list, at a flat
     caller-chosen weight and confidence
--   `generate_uncertain_habitat_evidence()`: presence evidence for
-    taxa whose nearby records all have unresolved habitat, so they are
-    priced instead of dropped by the kernel estimator's habitat filter
+-   `generate_uncertain_habitat_evidence()`: presence evidence for taxa
+    whose nearby records all have unresolved habitat, so they are priced
+    instead of dropped by the kernel estimator's habitat filter
 -   `condition_evidence_on_habitat()`: multiply any evidence table's
     presence weights by each taxon's weight for the site habitat (from
-    the cached LLM habitat lookup), floored at the zero-evidence
-    clamp, so evidence obeys the same habitat stratification as the
-    resident priors while habitat bleed survives in proportion
+    the cached LLM habitat lookup), floored at the zero-evidence clamp,
+    so evidence obeys the same habitat stratification as the resident
+    priors while habitat bleed survives in proportion
 -   `generate_domestic_food_priors()`: `transport`-branch priors for
     domestic, food, and cultivar species
 
@@ -271,10 +270,10 @@ factor such as depth), `s = n_eff / W` is an effective-scale factor,
 `p_i` is the unweighted regional (habitat-stratified) record share, and
 `n_eff = W^2 / sum(w_r^2)` is the Kish (1965) effective sample size of
 the weighted neighborhood. `alpha = c_i*s + m*p_i` and
-`beta = (n_eff + m) - alpha` are the row's Beta parameters directly:
-no delta-method back-transformation, no phi cap/floor, no Jeffreys
-fallback are needed, since `alpha`/`beta` are built from non-negative
-counts and pseudo-counts by construction and cannot produce the boundary
+`beta = (n_eff + m) - alpha` are the row's Beta parameters directly: no
+delta-method back-transformation, no phi cap/floor, no Jeffreys fallback
+are needed, since `alpha`/`beta` are built from non-negative counts and
+pseudo-counts by construction and cannot produce the boundary
 pathologies a link-scale model can. `lambda_km` (and, if used, a
 covariate bandwidth and `m`) is chosen from data by
 `calibrate_kernel_bandwidth()`'s leave-one-block-out composition
@@ -290,13 +289,13 @@ verification).
 
 Real validation. Why not model on a grid? Leave-one-block-out testing,
 holding out blocks of occurrence records and scoring composition
-predictions against them by multinomial log-loss, found that
-single-cell GLMM prediction scored worse than ignoring space entirely,
-while the kernel estimator beat both regional pooling and the
-single-cell predictor at every bandwidth tested. On real Great Lakes
-data, the kernel estimator achieved 564 species co-detections and 0.868
-precision, compared to 237 and 0.748 for a single-cell GLMM baseline
-(independently validated against a held-out checklist).
+predictions against them by multinomial log-loss, found that single-cell
+GLMM prediction scored worse than ignoring space entirely, while the
+kernel estimator beat both regional pooling and the single-cell
+predictor at every bandwidth tested. On real Great Lakes data, the
+kernel estimator achieved 564 species co-detections and 0.868 precision,
+compared to 237 and 0.748 for a single-cell GLMM baseline (independently
+validated against a held-out checklist).
 
 For the full statistical derivation, assumptions, and references, see
 [`inst/TaxaExpect_supplemental_methods.md`](inst/TaxaExpect_supplemental_methods.md).
