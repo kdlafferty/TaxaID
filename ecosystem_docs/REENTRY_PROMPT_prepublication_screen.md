@@ -1281,6 +1281,29 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   learned: refresh the shared checkout to main BEFORE the maintainer
   starts a round, not after; an editing base behind main turns every
   later round into a three-way merge.
+  **Workflow-scripts verification chat, first report (2026-09-22 night)**:
+  three script bugs fixed on its branch and merged (`c4e8601`: an
+  undefined `.best_thresh`, an undefined `match_df`, `read_birdnet_output()`
+  given a table instead of a path). Six package-level findings, acted on
+  here (`1c03f4d`, then `site-priors-guard`): (1) a single-taxon habitat
+  request comes back headerless from the model 3/3 times and parsed as
+  zero rows; the parser now supplies the header from the prompt's layout
+  when the field count matches. (2) `infer_exclude_predicted()` did not
+  recognise `composite_id`, the accession column its own upstream
+  writes; added. (3) `join_priors()` with a site that matches no prior
+  rows: `run_bayesian_pipeline()` died in a bare vapply, and
+  `join_priors()` itself completed SILENTLY with every candidate at the
+  floor prior; both paths now stop with the grid ids / habitats the
+  priors hold. (4) `generate_priors_workflow.R` is named by the tutorial
+  chain but was never built: asked the chat to build it. (5) the FASTQ
+  tutorial ran live DADA2 and an unconditional Bioconductor install on
+  source; Step 0 is now opt-in (`RUN_DADA2`) with a guarded install.
+  (6) the merge workflow saved its output INSIDE the installed TaxaFetch
+  library; now beside the project. Lesson from this session's own slip:
+  a commit chain must GATE on the test result; one merge went to main
+  with two failing tests and was repaired within minutes, but CI is the
+  backstop, not the check. Installed TaxaHabitat, TaxaAssign, TaxaLikely
+  behind main by these fixes; reinstall at the next window.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
