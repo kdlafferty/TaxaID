@@ -77,13 +77,19 @@ N_SYNTH_OBS <- 3L
 RANK_SYSTEM <- c("family", "genus", "species")
 
 if (DEBUG_MODE) {
-  # ---- Tutorial example: continue from TaxaExpect's Gadus checkpoint --------
+  # ---- Tutorial example: continue from TaxaExpect's Gadus/Pollachius checkpoint
   # This is the exact readRDS() line documented in generate_priors_workflow.R's
-  # Output block (its Step 9 saves taxaexpect_priors to
+  # Output block (its Step 4 saves taxaexpect_priors to
   # "<OUT_PREFIX>_taxaexpect_priors.rds" with OUT_PREFIX = "tutorial_gadus").
   # Unlike TaxaExpect's own DEBUG_MODE fallback, there is no sensible "fetch
   # fresh data" fallback here -- the entire point of this script is to consume
   # the prior pipeline's output, so a missing checkpoint is a hard stop.
+  #
+  # The upstream tutorial fetch (TaxaFetch's fetch_occurrences_workflow.R)
+  # covers two genera (Gadus, Pollachius), not one -- a single-species
+  # checkpoint has no species-level competition for this script's synthetic
+  # likelihood object below to demonstrate against, and N_SYNTH_TAXA/join_priors()
+  # both need at least 2 species-level taxa in taxaexpect_priors.
   .priors_checkpoint <- file.path(tempdir(), "tutorial_gadus_taxaexpect_priors.rds")
 
   if (!file.exists(.priors_checkpoint)) {

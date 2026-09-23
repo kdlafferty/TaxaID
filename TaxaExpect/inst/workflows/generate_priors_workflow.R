@@ -11,8 +11,9 @@
 # Audience: someone learning TaxaExpect's kernel pathway step by step,
 #   continuing directly from TaxaHabitat's assign_habitat_workflow.R. With
 #   DEBUG_MODE = TRUE (the default) this script loads that script's
-#   occurrences_clean checkpoint (genus Gadus, North Atlantic tutorial run,
-#   same site TaxaFetch's own tutorial used) -- no separate example dataset.
+#   occurrences_clean checkpoint (Gadus + Pollachius, North Atlantic tutorial
+#   run, same site TaxaFetch's own tutorial used) -- no separate example
+#   dataset.
 #
 # NOTE ON INPUT: estimate_kernel_priors()/calibrate_kernel_bandwidth() both
 #   require a habitat column (habitat_col = "main_habitat" by default,
@@ -36,8 +37,9 @@
 # function's implementation with minimal changes -- each CONFIG value maps to
 # a future function argument.
 
-# DEBUG_MODE = TRUE  -> load TaxaHabitat's tutorial checkpoint (Gadus, North
-#                       Atlantic) if present, else stop -- there is no
+# DEBUG_MODE = TRUE  -> load TaxaHabitat's tutorial checkpoint (Gadus +
+#                       Pollachius, North Atlantic) if present, else stop --
+#                       there is no
 #                       sensible fallback for a spatial prior model, unlike
 #                       TaxaHabitat's own tiny 3-row inline fallback.
 # DEBUG_MODE = FALSE -> plug in your own habitat-labelled occurrence table
@@ -51,10 +53,11 @@ SITE_LON <- 2.0
 
 # Leave-one-block-out calibration grid. block_size_deg/min_block_records are
 # lowered from calibrate_kernel_bandwidth()'s own defaults (0.5 deg / 20
-# records) -- this tutorial's ~40-record Gadus fetch, spread across a 4-deg
-# search box, cannot form 3 default-sized blocks with 20 records apiece;
-# fewer, larger blocks with a lower per-block floor is the same tradeoff a
-# small real dataset would need, not a tutorial-only shortcut.
+# records) -- this tutorial's ~85-record Gadus/Pollachius fetch, spread
+# across a 4-deg search box, cannot form 3 default-sized blocks with 20
+# records apiece; fewer, larger blocks with a lower per-block floor is the
+# same tradeoff a small real dataset would need, not a tutorial-only
+# shortcut.
 LAMBDA_GRID <- c(25, 50, 100, 200, 400) # km
 BLOCK_SIZE_DEG <- 2.0
 MIN_BLOCK_RECORDS <- 5L
@@ -86,8 +89,8 @@ if (DEBUG_MODE) {
   SITE_HABITAT <- unique(stats::na.omit(occurrences$main_habitat))
   if (length(SITE_HABITAT) != 1L) {
     stop(
-      "Expected exactly one main_habitat in occurrences_clean (single-taxon ",
-      "tutorial fetch, single habitat category), but found ",
+      "Expected exactly one main_habitat in occurrences_clean (this ",
+      "tutorial fetch's taxa are all Marine), but found ",
       length(SITE_HABITAT), ": ", paste(SITE_HABITAT, collapse = ", "),
       ". Check the upstream TaxaHabitat checkpoint."
     )
@@ -127,13 +130,14 @@ OUT_PREFIX <- "tutorial_gadus"
 # regional back-off m) empirically -- never hand-set. See calib$results for
 # every candidate scored, alongside the regional/nearest_block references.
 #
-# CONFIRMED BY ACTUALLY RUNNING THIS SCRIPT: this tutorial's single genus
-# (Gadus) means every block has 100% single-species composition regardless
+# A single-species occurrence table has no compositional variation for this
+# calibration to predict -- every block is 100% that one species regardless
 # of lambda, so mean_logloss is 0 for every candidate and the function warns
-# that the smallest lambda_grid value won. That is a real, honest property
-# of a single-species tutorial fetch, not a bandwidth genuinely near the
-# grid's edge -- a real multi-species dataset will show real separation
-# between candidates instead.
+# that the smallest lambda_grid value won. That is a real, honest property of
+# a single-species input, not a bandwidth genuinely near the grid's edge; a
+# real multi-species dataset (like this tutorial's own Gadus/Pollachius
+# fetch) shows real separation between candidates instead -- confirmed by
+# actually running this script both ways, single-genus and two-genus.
 # ==============================================================================
 
 message("\n--- Step 1: Calibrating the kernel bandwidth ---")
@@ -261,7 +265,7 @@ message(
 # Output
 # ==============================================================================
 # taxaexpect_priors -- one row per taxon x prior_branch, REAL kernel-fit
-#   output for the real Gadus/North Atlantic tutorial occurrences:
+#   output for the real Gadus/Pollachius, North Atlantic tutorial occurrences:
 #
 #   taxon_name          -- character; NA for the anonymous global-floor row
 #   grid_id             -- character; site identifier (auto-generated from
