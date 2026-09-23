@@ -781,7 +781,7 @@ test_that(".check_regional_overlap memoizes Tier 2b's query-vs-anchor alignment 
     align_cache = cache
   )
   expect_true(isTRUE(result1))
-  query_key <- paste0("query::ANCHOR_ACC::", region_A)
+  query_key <- TaxaLikely:::.align_cache_key("query", "ANCHOR_ACC", region_A)
   expect_true(exists(query_key, envir = cache, inherits = FALSE))
 
   # Second call: SAME anchor_accession + SAME query_sequence (so a real
@@ -1751,4 +1751,22 @@ test_that(".build_restored_row: accession provenance falls back to composite_id"
     restoration_basis = "plausible_prior"
   )
   expect_identical(out$accession, "RESTORED_ACC_nigricans")
+})
+
+test_that("align_cache keys stay bounded however large the material", {
+  cache <- new.env()
+  many <- sprintf("ACC%09d.1", seq_len(2000L)) # ~26 KB if inlined; R caps names at 10,000 bytes
+  sm <- data.frame(id_x = many[1:10], id_y = many[11:20], p_match = 0.9, stringsAsFactors = FALSE)
+  expect_no_error(first <- TaxaLikely:::.has_seq_matrix_presence(many, sm, cache))
+  expect_true(is.logical(first) && length(first) == 1L)
+  keys <- ls(cache)
+  expect_true(all(nchar(keys) < 100L))
+  # same material, same key: the cached answer is returned and nothing new is stored
+  expect_identical(TaxaLikely:::.has_seq_matrix_presence(many, sm, cache), first)
+  expect_identical(length(ls(cache)), length(keys))
+  # different material, different key; a whole sequence in the key is fine
+  k1 <- TaxaLikely:::.align_cache_key("query", "ACC1", strrep("ACGT", 5000L))
+  k2 <- TaxaLikely:::.align_cache_key("query", "ACC1", strrep("ACGA", 5000L))
+  expect_false(identical(k1, k2))
+  expect_lt(nchar(k1), 100L)
 })
