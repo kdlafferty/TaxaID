@@ -1315,6 +1315,19 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   "Build priors" row points at the script. All run from source via
   `load_all()` because the library rebuild waits on the CalIntertidal
   chat's COI run.
+  **Workflow-scripts verification FINAL (2026-09-23)**: all sixteen
+  README-listed scripts, two predecessor tutorials and the new
+  generate_priors script were RUN with real data and keys; 19 of 20 ran
+  to completion (three after script fixes: `.best_thresh`, `match_df`
+  and `real_model` undefined in the TaxaAssign Bayesian tutorial and the
+  sequence-likelihood tutorial, and BirdNET ingestion given a table not a
+  path). The one not run to completion: `2_flag_errors_workflow.R`,
+  stopped deliberately after 2 of 7 NCBI chunks with no errors (real
+  NCBI volume); acceptable, its code path was exercised. Report with
+  per-row evidence: `TaxaID_dev/screen_records/prepublication_screen_2026-09-20/
+  workflow_scripts_run.md` (f6273a9). The reentry prompt's own
+  predecessor claim for image_acoustic_likelihood_workflow.R was wrong
+  (real predecessors are score_image/score_acoustic).
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
