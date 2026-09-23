@@ -48,7 +48,7 @@ library(dplyr)
 # Three pre-computed objects:
 #   match_obj         — from TaxaMatch (raw match data)
 #   lik_result        — from TaxaLikely::evaluate_likelihoods()
-#   taxaexpect_priors — from TaxaExpect::generate_full_priors()
+#   taxaexpect_priors: from TaxaExpect::estimate_kernel_priors()
 
 
 match_obj <- readRDS(file.choose()) # select match_obj.rds from TaxaMatch/inst/

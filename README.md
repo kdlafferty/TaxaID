@@ -14,7 +14,7 @@ Biologists increasingly measure biodiversity from sequence, sound, and
 image data. Automated classifiers can already assign a detection to a
 taxon. Yet current pipelines can have high false-positive and
 false-negative rates, leaving users to choose between precision and
-accuracy. Some adopt defensive upranking (assigning detections to higher
+recall. Some adopt defensive upranking (assigning detections to higher
 taxonomic ranks like genus or family). Others use white lists to prevent
 implausible assignments, or post-hoc expert review to override obvious
 errors. But Bayes' Theorem is the natural statistical framework for
@@ -31,7 +31,7 @@ advances are to:
 -   detect and patch missing references
 -   convert match scores to statistical likelihoods
 -   identify plausibility at the sampling location (the prior)
--   apply Bayes' Theorem to generate "posterior" assignment
+-   apply Bayes' Theorem to generate posterior assignments
     probabilities from likelihoods and priors
 -   make assignments transparent
 -   use AI to improve assignments, assist with workflows, and review
@@ -43,7 +43,7 @@ The ecosystem was designed with eDNA metabarcoding in mind, but image
 and acoustic analyses are possible when starting from a table of
 candidate matches.
 
-Because the 9 TaxaID packages contain dozens of functions each, and
+Because the nine TaxaID packages contain dozens of functions each, and
 their combinations can result in hundreds of possible workflows, AI
 guidance is recommended (see TaxaWizard). In addition, many TaxaID
 functions call an LLM directly, though most have non-LLM alternatives.
@@ -83,7 +83,7 @@ mark seven common sources of error that TaxaID can reduce.
 
 #### Field and lab artifacts
 
-1.  [Contamination or artifact (FP)]{.underline}. Lab or field
+1.  Contamination or artifact (FP). Lab or field
     contamination, handler artifacts (camera traps), or equipment
     carryover introduces real detections of taxa not present in the
     environment. TaxaFlag can use information from blanks to remove
@@ -95,7 +95,7 @@ mark seven common sources of error that TaxaID can reduce.
 
 #### Reference database errors/gaps
 
-2.  [Reference mislabeling (FP)]{.underline}. The occasional mislabeled
+2.  Reference mislabeling (FP). The occasional mislabeled
     sequence or image in a reference database can lead to false
     positives. TaxaMatch can check if accessions might be mislabeled so
     they can be removed before training models and generating consensus
@@ -111,7 +111,7 @@ mark seven common sources of error that TaxaID can reduce.
     `resolve_review_overrides()` double checks if flagged accessions
     should be kept or removed. I find less than 1% of references to be
     mislabled, but worth removing.
-3.  [Missing reference redirect (FP + FN)]{.underline}. The reference
+3.  Missing reference redirect (FP + FN). The reference
     database itself is usually incomplete: when the true species has no
     entry in the reference library, its detections are incorrectly
     assigned to the closest referenced relative. Furthermore, reference
@@ -122,14 +122,14 @@ mark seven common sources of error that TaxaID can reduce.
 
 #### Score misinterpretation
 
-4.  [Overconfident species assignment (FP + FN)]{.underline}. Even when
+4.  Overconfident species assignment (FP + FN). Even when
     the correct species is present in the reference database, its raw
     match score is uncalibrated and should not be taken at face value; a
     100% match may still be ambiguous at species rank if competing
     candidates also score well. TaxaLikely models likelihoods from
     scores by using the reference database to discover how scores, and
     gaps between scores, help predict self vs non-self matches.
-5.  [Overly strict thresholds (FN)]{.underline}. Conservative score
+5.  Overly strict thresholds (FN). Conservative score
     cutoffs aimed to reduce false positives discard correct assignments
     that fall just below arbitrary thresholds. TaxaID's probabilistic
     framework replaces binary thresholds with continuous likelihoods and
@@ -137,12 +137,12 @@ mark seven common sources of error that TaxaID can reduce.
 
 #### Ecological implausibility
 
-6.  [Ecologically implausible assignment (FP)]{.underline}. A classifier
+6.  Ecologically implausible assignment (FP). A classifier
     usually does not know where the sample was taken, and thus has no
     shame assigning to a species that doesn't plausibly occur at the
     sampling location, season, or habitat. Spatially explicit priors
     from TaxaExpect down-weight implausible taxa.
-7.  [Defensive upranking (FN)]{.underline}. When multiple similar
+7.  Defensive upranking (FN). When multiple similar
     species produce near-identical scores, conventional systems uprank
     to genus (or higher) to avoid a false positive, sacrificing
     species-level resolution. Spatial priors from TaxaExpect can break
@@ -329,12 +329,11 @@ with LLMs to help write code and generate products.
 # Related Software
 
 Several R packages and standalone tools address taxonomic assignment
-from DNA barcoding data. TaxaID differs from these in its explicit
-separation of likelihood and prior, spatially explicit priors built from
-occurrence data, and multi-data-type support (DNA, image, acoustic).
+from DNA barcoding data. TaxaID differs in its explicit separation of
+likelihood and prior, its spatially explicit priors built from
+occurrence data, and its support for sequence, image and acoustic data.
 
-Table 1. Comparison of TaxaID with related taxonomic assignment tools
-(Orsholm et al. 2026).
+Table 1. Comparison of TaxaID with related taxonomic assignment tools.
 
 | Tool | Approach | Posterior probabilities | Spatial priors | Unreferenced taxa | Multi-data-type |
 |---------------------------|----------------|--------------------|--------------|---------------------|--------------|
@@ -348,103 +347,52 @@ Table 1. Comparison of TaxaID with related taxonomic assignment tools
 | DADA2 `assignTaxonomy` (Callahan et al. 2016) | Naive Bayes (kmer) | Bootstrap confidence | No | No | No (DNA only) |
 | galaxy-tool-lca (Beentjes et al. 2019) | Score-threshold + LCA (deterministic) | No | No | No (upranked) | No (BLAST/DNA only) |
 
-TaxaID is complementary to several of these tools (and may load them for
-some purposes). DADA2 or OBITools handle upstream sequence processing;
-TaxaMatch ingests their output. DECIPHER is used internally by
-TaxaLikely for reference sequence alignment.
+TaxaID is complementary to several of these tools. DADA2 or OBITools
+handle upstream sequence processing and TaxaMatch ingests their output;
+DECIPHER aligns reference sequences inside TaxaLikely. A large benchmark
+(Orsholm et al. 2026) spanning PROTAX, BayesANT and similarity-,
+composition- and placement-based classifiers found that no single
+algorithm works across taxa and markers, which is why TaxaID treats
+reference-database completeness as a modelled problem rather than
+assuming one classification strategy generalizes.
 
-A large benchmark (Orsholm et al. 2026), spanning several tools listed
-in Table 1 (PROTAX, BayesANT) alongside similarity-, composition-, and
-phylogenetic-placement-based classifiers, confirms that no single
-algorithm works across taxa/markers: phylogenetic placement (EPA-ng)
-performed best for arthropod COI barcodes, while composition-based
-classifiers (SINTAX, RDP-NBC, IDTAXA) performed best for fungal ITS,
-reflecting real differences in how alignable each marker is. This
-supports TaxaID's own approach of treating reference-database
-completeness as a first-class, explicitly modeled problem rather than
-assuming one classification strategy generalizes across markers.
+galaxy-tool-lca (Beentjes et al. 2019;
+<https://github.com/naturalis/galaxy-tool-lca>) filters BLAST hits by
+identity, bitscore and query coverage, then takes the lowest common
+ancestor, much like TaxaID's non-Bayesian `score_consensus()`. Its
+mandatory coverage filter is a strength: a 98% identity match spanning
+half the amplicon is weaker evidence than one spanning all of it.
+TaxaID's likelihood model uses identity and the gap to the second-best
+candidate but not coverage; filter on the BLAST `qcovs` column in
+TaxaMatch first if coverage matters for your marker. The analogous
+signal for acoustic references, the Xeno-canto quality grade, is not
+filtered by default because the accuracy gain came with a real coverage
+cost; apply a threshold to the recorded grade before training if you
+want it.
 
-The galaxy-tool-lca code (Beentjes et al. 2019;
-<https://github.com/naturalis/galaxy-tool-lca>) is a widely used tool,
-written in Python (Python Software Foundation, Wilmington, Delaware),
-for LCA-based taxonomic assignment from BLAST results, particularly for
-freshwater macroinvertebrate eDNA and fungal Internal Transcribed Spacer
-(ITS) metabarcoding. Its core algorithm, which filters BLAST hits by
-identity, bitscore, and query coverage, then finds the lowest common
-ancestor among passing hits, is conceptually similar to TaxaID's
-non-Bayesian `score_consensus()`. A notable strength of galaxy-tool-lca
-is its explicit use of query coverage (the fraction of the query
-sequence that aligns to each reference hit) as a mandatory quality
-filter, alongside percent identity and bitscore. A 98% identity match
-that covers only half the amplicon is weaker evidence than one spanning
-the full amplicon, and coverage is already available as a BLAST output
-column (`qcovs`). TaxaID's likelihood model currently uses score
-(percent identity) and the gap to the second-best candidate as its
-primary signals but does not incorporate alignment coverage. Users can
-partially address this upstream by filtering on coverage in TaxaMatch
-before passing match data to TaxaLikely; incorporating coverage as a
-third dimension in the likelihood model is a potential future
-enhancement. The analogous quality signal for acoustic reference data is
-the Xeno-canto (Xeno-canto Foundation, Netherlands, with support from
-Naturalis Biodiversity Center, Leiden; <https://xeno-canto.org/>)
-quality grade (A–E per recording); TaxaID does not filter on it by
-default, because an A/B test found the accuracy gain came with a real
-coverage cost. A threshold can be applied directly against the recorded
-quality-grade column before model training.
-
-A parallel line of work addresses a different need: making metabarcoding
-output interpretable for managers and other non-specialist stakeholders
-through graphical interfaces. TaxonTableTools (Macher et al. 2021)
-provides platform-independent exploration and visualization of
-metabarcoding tables. The Pest Alert Tool (Zaiko et al. 2023) and
-BIOWATCH (Pearman et al. 2026) are targeted screening applications: both
-compare query sequences against a curated database of species of
-interest: non-indigenous, pathogenic, endangered, or commercially
-important taxa. They then report which of those species appear in a
-dataset. BIOWATCH generalizes the Pest Alert Tool's fixed Aotearoa-New
-Zealand marine list to user-defined species lists, markers, and regions,
-assembling custom BLAST databases with CRABS (Jeunen et al. 2023) and
-adding control- and replicate-based checks alongside spatio-temporal
-display of accumulated detections.
-
-Several BIOWATCH steps have direct TaxaID counterparts: region-scoped
-species lists drawn from a map polygon
+Screening tools such as the Pest Alert Tool (Zaiko et al. 2023) and
+BIOWATCH (Pearman et al. 2026) compare query sequences against a
+curated list of species of interest and report which appear; BIOWATCH
+builds custom BLAST databases with CRABS (Jeunen et al. 2023) and adds
+control- and replicate-based checks. Several of its steps have TaxaID
+counterparts: region-scoped species lists from a map polygon
 (`TaxaTools::define_search_polygon()` with TaxaFetch), reference
-retrieval and in-silico amplicon trimming
-(`TaxaLikely::fetch_ncbi_reference_sequences()`,
-`fetch_bold_reference_sequences()`, `trim_to_amplicon()`; CRABS output
-itself is read by `TaxaLikely::read_crabs_output()`), database
-completeness auditing (`TaxaLikely::audit_barcode_coverage()`),
-control-based contaminant screening (`TaxaFlag::flag_contaminant()`),
-and watch-list surveillance (`TaxaFlag::flag_watch_candidates()`,
-`TaxaExpect::generate_invasive_watch_evidence()`). The substantive
-difference lies in how detection confidence is expressed. These tools
-resolve a detection into ordinal tiers. BIOWATCH labels a detection
-"Likely" when a single species uniquely holds the top percent identity
-within a bit-score window, and "Putative" when several species tie,
-which is a uniqueness heuristic applied to raw scores rather than a
-probability, and Pearman et al. (2026) consider the probabilistic
-confidence used by TaxaID as future work.
-
-Designs also differ in their exposure to reference-database gaps. A
-screening database restricted to target species plus their congeners
-guarantees that every query returns a best hit from within that
-restricted set, so a sequence from a taxon with no representation at all
-can still be reported against a target, the missing-reference redirect
-described above, and the reason TaxaID treats the absent-species
-response (H3) as an explicitly modeled hypothesis rather than a
-filtering threshold. Conversely, TaxaID has no counterpart to BIOWATCH's
-long-term detection ledger, which accumulates detections with sampling
-metadata across years for spatio-temporal display. TaxaID's scope ends
-at the assignment (the boring part); analysis of the resulting
-detections is left to the user.
+retrieval and amplicon trimming (`TaxaLikely::fetch_ncbi_reference_sequences()`,
+`trim_to_amplicon()`, and `read_crabs_output()` for CRABS output),
+coverage auditing (`audit_barcode_coverage()`), control-based screening
+(`TaxaFlag::flag_contaminant()`) and watch-list surveillance
+(`flag_watch_candidates()`, `TaxaExpect::generate_invasive_watch_evidence()`).
+The difference is in how confidence is expressed: these tools sort a
+detection into ordinal tiers from raw scores, whereas TaxaID reports a
+posterior probability, and a screening database restricted to target
+species guarantees a best hit from that set even for a taxon with no
+reference at all, the missing-reference redirect TaxaID models as its
+own hypothesis (H3). TaxaID has no counterpart to BIOWATCH's multi-year
+detection ledger; its scope ends at the assignment.
 
 Table 1b. Comparison of TaxaID (image path) with standalone image
-classifiers. TaxaID converts raw classifier confidence scores into
-calibrated likelihoods via a reference training set with known species
-identity, then multiplies those likelihoods by spatially explicit
-priors; the tools below produce the raw scores that TaxaMatch and
-TaxaLikely process.
+classifiers, which produce the raw scores TaxaMatch and TaxaLikely
+process.
 
 | Tool | Taxa scope | Score output | Spatial priors | Unreferenced taxa | R access |
 |--------------------|-------------------|-----------------------|-------------------|---------------------|------------|
@@ -456,87 +404,36 @@ TaxaLikely process.
 | Wildlife Insights\* | Camera trap wildlife | Confidence (0--1), rollup ensemble | No | No | None (web platform) |
 
 \* Wildlife Insights is a collaboration led by Conservation
-International (Arlington, Virginia) with Google LLC (Mountain View,
-California), the Wildlife Conservation Society (Bronx Zoo, Bronx, New
-York), WWF, the Smithsonian Institution, and others.
+International with Google, the Wildlife Conservation Society, WWF, the
+Smithsonian Institution and others.
 
-TaxaID is downstream of, not competing with, these classifiers. The key
-point is that raw confidence scores from neural networks are
-uncalibrated softmax outputs; a 90% confidence score does not mean a 90%
-chance the identification is correct. TaxaLikely addresses this by
-fitting a generative model to a labeled reference set with known species
-identity, capturing the full score distribution for correct matches
-(H1), wrong-species matches (H2), and absent-species responses (H3).
-`animl` (Conservation Technology Lab, San Diego Zoo Wildlife Alliance,
-San Diego, California) results are read directly by
-`TaxaMatch::read_animl_output()`; iNaturalist (a joint initiative of the
-California Academy of Sciences and the National Geographic Society, San
-Francisco, California) CV JSON output is read by
-`TaxaMatch::read_inaturalist_cv_output()`; SpeciesNet CLI
-(`google/cameratrapai`; Google LLC, Mountain View, California) batch
-predictions are read by `TaxaMatch::read_speciesnet_output()`. For
-acoustic and image data, TaxaLikely acts as a post-classifier
-calibration layer: classifier output is standardized to `match_df` by
-TaxaMatch, then `unreferenced_candidates()` + `assign_scores()` convert
-classifier confidence scores to likelihoods (no separate
-reference-building step required).
+TaxaID sits downstream of these classifiers. Their confidence scores are
+uncalibrated softmax outputs, so a 90% score does not mean a 90% chance
+the identification is correct; TaxaLikely fits a generative model to a
+labelled reference set to learn the score distributions for correct
+matches, wrong-species matches and absent species. `animl` output is
+read by `TaxaMatch::read_animl_output()`, iNaturalist computer-vision
+JSON by `read_inaturalist_cv_output()`, and SpeciesNet batch predictions
+by `read_speciesnet_output()`; TaxaMatch standardizes each to
+`match_df`, then `unreferenced_candidates()` and `assign_scores()`
+convert the scores to likelihoods with no reference-building step.
+InsectNet (Chiranjeevi et al. 2025) returns conformal prediction sets
+with an out-of-distribution score instead of a point score, a framing
+close to TaxaID's H1/H2/H3, but its softmax scores are not exposed, so
+its output cannot feed `train_likelihood_model()`.
 
-InsectNet (Chiranjeevi et al. 2025) is a notable advance for
-invertebrate specialists, achieving 96.4% top-1 accuracy across 2,526
-species in 17 insect orders. Its standout methodological innovation is
-replacing point confidence scores with conformal prediction sets: rather
-than a single species estimate, the model returns a set of candidate
-species guaranteed to contain the true species with ≥97.5% probability,
-backed by an energy-based out-of-distribution score that flags images
-outside the training distribution. The conformal guarantee is
-conceptually related to TaxaID's H1/H2/H3 framework; the true species is
-either in the candidate set (H1/H2) or flagged as OOD (H3 analog). The
-outputs are not directly compatible with `train_likelihood_model()`,
-however, given the lack of access to InsectNet's underlying softmax
-scores.
-
-For contamination detection, the R package decontam (Davis et al. 2018)
-uses DNA concentration and prevalence to identify contaminants at the
-ASV level before taxonomic assignment. TaxaFlag's proportion-based
-control comparison (`flag_contaminant()`) is typically applied the same
-way, before assignment, to remove likely contaminants when field or lab
-blanks are defined. However, TaxaFlag also runs a second, post-hoc pass
-after assignment: temporal proximity analysis, LLM expert review, and a
-combined view that rejoins the earlier contaminant flags against the
-final assignments. This makes it possible to screen contaminants in
-cases where blanks are not available.
-
-Two further differences are worth stating, because both address gaps
-that are not specific to this software.
-
-First, decontam assumes the control labels are correct, and nothing in
-the conventional toolkit checks them. A field sample mislabelled as a
-blank makes the real community look like contamination, so any
-control-comparison method then filters genuine signal. Its frequency
-method also requires DNA concentration, which many eDNA workflows do not
-record, leaving only the prevalence method. `validate_controls()` tests
-the labels themselves, in both directions, on the principle that a
-control is defined by what it lacks rather than by what it contains: it
-compares each control's compositional distance to the field samples it
-sits with against the null of sample-to-sample distance at that same
-site. It therefore uses no taxonomy, no habitat model and no assumption
-about the blank medium, and it reports its own statistical power so that
-"nothing flagged" can be distinguished from "nothing testable".
-
-Second, a prevalence or proportion score answers how associated a
-sequence is with the controls, which is symmetric, whereas the question
-is directional: contamination flows control → sample, while carryover
-flows sample → control when a blank picks up a little of an abundant
-local taxon. The first should be removed and the second must not be.
-`flag_contaminant(require_control_evidence = TRUE)` separates them, and
-declines to assign any contamination verdict to a sequence that was
-never detected in a control. With `site_col`, site multiplicity becomes
-a discriminant rather than merely extra power: a systemic contaminant
-appears in controls across many sites irrespective of which sites'
-samples carry it, whereas carryover concentrates at the one site whose
-samples are full of it. That distinction resolves the usual trade-off
-between pooling controls for power and pairing them per collection event
-for specificity.
+For contamination, decontam (Davis et al. 2018) uses DNA concentration
+and prevalence to identify contaminants before assignment.
+TaxaFlag's `flag_contaminant()` is applied the same way when blanks
+exist, and adds a post-hoc pass after assignment (handler proximity, LLM
+review) for studies without them. Two gaps in the conventional toolkit
+are addressed in TaxaFlag: `validate_controls()` tests whether the
+samples labelled as controls behave like controls, since a mislabelled
+blank makes the real community look like contamination; and
+`flag_contaminant(require_control_evidence = TRUE)` treats
+contamination as directional, separating control-to-sample
+contamination from sample-to-control carryover, which a symmetric
+prevalence score cannot do. The TaxaFlag README describes both.
 
 # Data and Hardware Requirements {#data-and-hardware-requirements}
 
@@ -703,22 +600,20 @@ via a guided interview: `workflow_create()`.
 ## Which Entry Point Do I Need?
 
 If you're not sure where to start, don't just start typing into an AI
-chat. Far better is to upload `START_HERE.md` into an LLM chat window.
-If you already have an API set up, a more efficient way to interface
-with an LLM is by using `TaxaWizard::workflow_create()`. Both interview
-you about your data and goals and can generate a complete, runnable R
-script for you (see [Interactive Workflow
-Designer](#interactive-workflow-designer), below). An AI assistant
-working from a stated goal should do the same thing programmatically:
-identify the workflow graph node/edge before guessing at individual
-functions, rather than writing ad-hoc R against remembered function
-names. For example: "I have BLAST results from an eDNA metabarcoding
-study. I want to assign species only when the sequence matches at 100%,
-and otherwise retain a higher-level assignment" is a match-scores-in,
-consensus-out request, the `match_to_consensus_score` edge (score-based
-consensus, no Bayesian priors or LLM), with the 100% rule translated to
-that edge's `min_score`/rank-threshold parameters rather than a
-hand-written filter. See [Using TaxaID with any
+chat. Upload `llm_prompts/START_HERE.md` and `llm_prompts/CONTEXT_TaxaID.md`
+into an LLM chat window instead: they carry the package's own workflow
+graph, so the assistant identifies the workflow node and edge for your
+goal before guessing at individual functions. If you have an API key
+set up, `TaxaWizard::workflow_create()` runs the same interview from R,
+in the console or a browser window, and writes a complete, runnable
+script that `workflow_app()` can turn into a Shiny app. For example: "I
+have BLAST results from an eDNA metabarcoding study. I want to assign
+species only when the sequence matches at 100%, and otherwise retain a
+higher-level assignment" is a match-scores-in, consensus-out request,
+the `match_to_consensus_score` edge (score-based consensus, no Bayesian
+priors or LLM), with the 100% rule translated to that edge's
+`min_score`/rank-threshold parameters rather than a hand-written filter.
+See [Using TaxaID with any
 LLM](TaxaWizard/README.md#using-taxaid-with-any-llm) in the TaxaWizard
 README.
 
@@ -847,18 +742,6 @@ result <- run_bayesian_pipeline(match_df, model_params, taxaexpect_priors = taxa
 # LLM-shortcut pipeline (~1 call)
 result <- run_llm_pipeline(match_df, geographic_hint = "34.4 N, -119.8 W", habitat_scheme = "Marine",
                             backbone_id = 11)  # 11 = GBIF backbone; 4 = NCBI
-```
-
-## Interactive Workflow Designer {#interactive-workflow-designer}
-
-TaxaWizard provides a guided, conversational interface:
-
-``` r
-library(TaxaWizard)
-
-# Opens a chat interface that interviews you about your data and goals,
-# then generates a complete, runnable R script convertible to a shiny app.
-workflow_create()
 ```
 
 # Caching and resources {#caching-and-resources}
@@ -995,75 +878,16 @@ keeps a public record other than a private email thread.
 
 # Data Outputs and Results
 
-The TaxaID ecosystem produces outputs at each stage of the pipeline:
+Each stage writes a data frame the next stage reads; the package READMEs
+describe each in full.
 
-### Occurrence Data and Habitat
-
--   Compiled occurrence records from GBIF, DataONE, BioTIME, and
-    literature extraction, standardized to Darwin Core columns
-    (`stack_occurrences()`).
--   Habitat assignments per taxon via weighted biological consensus
-    across multiple habitat classification schemes
-    (`assign_habitat_biological()`).
--   Spatial quality flags identifying occurrences whose coordinates
-    conflict with species habitat expectations
-    (`flag_habitat_inconsistencies()`). These may be used to flag errant
-    GBIF records.
-
-### Reference Library Assessment
-
--   Mislabel detection identifying swapped or incorrectly labeled
-    sequences in reference databases, via a free local-corroboration
-    check followed by a BLAST-based screen
-    (`TaxaMatch::corroborate_references_locally()`,
-    `TaxaMatch::evaluate_reference_accessions()`).
--   Coverage audits enumerating described species per genus and flagging
-    taxa absent from the reference library (`audit_barcode_coverage()`,
-    `audit_reference_coverage()`).
--   Model diagnostics summarizing expected match percentages, score
-    gaps, and per-species profiles (`interpret_model()`).
-
-### Expected Composition and Priors
-
--   Site-centered kernel estimation (current recommended path)
-    predicting each taxon's expected share of the detections at a focal
-    site from a distance-weighted (geo x optional-covariate) kernel over
-    nearby occurrence records, with bandwidth chosen by
-    leave-one-block-out composition prediction
-    (`estimate_kernel_priors()`, `calibrate_kernel_bandwidth()`).
--   Beta priors (alpha, beta) for every taxon at the focal site,
-    including undetected diversity estimates (Good-Turing/Chao-anchored)
-    for plausible but unobserved species
-    (`generate_undetected_diversity()`).
--   KDE prior-field maps: static or interactive Leaflet views of the
-    estimator evaluated continuously across a lattice, not just at one
-    site (`plot_theta_surface()`), a species distribution map for each
-    candidate taxon, and dataframes for polygons or points showing
-    species distributions (`theta_surface_at()`).
-
-### Taxonomic Assignment
-
--   Calibrated likelihoods from a hierarchical Bayesian model trained on
-    reference-vs-reference match scores, supporting three hypothesis
-    types: known species (H1), unreferenced species (H2), and
-    unreferenced genus (H3) (`evaluate_likelihoods()`).
--   Posterior probabilities of taxonomic identity for each observation,
-    with Monte Carlo uncertainty estimates (`compute_posterior()`).
--   Consensus taxonomy: one row per detection with "assignments" at the
-    finest rank supported by the data, with confidence scores and
-    consensus method labels (`posterior_consensus()`,
-    `score_consensus()`). This also tracks all competing candidates and
-    the evidence for each.
-
-### Quality Control and Reporting
-
--   Quality flags for anomalous detections: contamination scores from
-    lab/field blanks, temporal handler proximity, LLM expert review
-    (`flag_contaminant()`, `flag_handler()`, `review_assignments()`).
--   Publication-ready text (Methods and Results sections) via
-    template-based and LLM-assisted report generation, with per-package
-    report sections that assemble into a unified document
-    (`generate_report()`, `assemble_report()`).
+| Output | Package and function |
+|---|---|
+| Occurrence records standardized to Darwin Core columns, with habitat assignments and spatial quality flags | TaxaFetch `stack_occurrences()`; TaxaHabitat `assign_habitat_biological()`, `flag_habitat_inconsistencies()` |
+| Reference-library assessment: mislabel verdicts, coverage audits, model diagnostics | TaxaMatch `corroborate_references_locally()`, `evaluate_reference_accessions()`; TaxaLikely `audit_barcode_coverage()`, `interpret_model()` |
+| Priors: a Beta prior per taxon at the focal site, including undetected diversity, and the prior field as a map or data frame | TaxaExpect `estimate_kernel_priors()`, `generate_undetected_diversity()`, `plot_theta_surface()`, `theta_surface_at()` |
+| Assignment: calibrated likelihoods, posterior probabilities with uncertainty, and a consensus taxon per detection with every competing candidate retained | TaxaLikely `evaluate_likelihoods()`; TaxaAssign `compute_posterior()`, `posterior_consensus()`, `score_consensus()` |
+| Quality flags and a Methods and Results report | TaxaFlag `flag_contaminant()`, `flag_handler()`, `review_assignments()`; TaxaAssign `generate_report()`; TaxaTools `assemble_report()` |
 
 # Software Inventory
 
