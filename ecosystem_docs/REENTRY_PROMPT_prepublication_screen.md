@@ -1254,6 +1254,20 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   examples use real arguments and both wrappers ran end to end this
   screen; template guarded by its test. NOT executed: the sixteen
   per-stage workflow scripts (they need real data and keys).
+  **Staleness audit of the sixteen scripts + two wrappers + template
+  (2026-09-22)**: an AST walk checked every named argument of every
+  TaxaID call against current `formals()`. One real stale script:
+  `TaxaFetch/inst/Merge_sources_workflow.R` passed
+  `create_taxon_names(taxonomy_ranks =)` and `rename_cols(df =)`, both
+  renamed long ago (now `rank_system =`, `input_df =`); FIXED. All
+  others: arguments valid. Last-commit dates are not evidence (most were
+  touched by this screen's sweeps). Software Inventory counts were stale
+  (TaxaTools 56 -> 58 exports, 27 -> 29 tests; TaxaLikely 30 -> 31 tests;
+  TaxaExpect 16 -> 17 exports); corrected, and a TaxaWizard test now
+  compares the table with NAMESPACE and tests/ so drift fails CI (proved:
+  a wrong count fails). "white lists" -> "regional species lists". The
+  execution of the sixteen scripts with real data and keys is a separate
+  chat: `TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_workflow_scripts_verification.md`.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
