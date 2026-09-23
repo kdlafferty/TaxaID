@@ -264,7 +264,7 @@ taxalikely_sequence_lik_result <- TaxaLikely::evaluate_likelihoods(
   model_params = taxalikely_sequence_model,
   rank_system  = RANK_SYSTEM,
   n_sims       = 200L,
-  min_coverage = .best_thresh
+  min_coverage = NULL
 )
 
 taxalikely_sequence_likelihoods <- taxalikely_sequence_lik_result$likelihoods

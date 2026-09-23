@@ -111,9 +111,10 @@ if (length(folder_cols) > 0) {
 # ---- B1. CLI format — one CSV per recording (standard) ----------------------
 # Each file is named  <recording>.BirdNET.results.csv
 
-birdnet_table <- read.csv(file.choose())
+birdnet_path <- file.choose()
+birdnet_table <- read.csv(birdnet_path)
 head(birdnet_table)
-birdnet_cli <- read_birdnet_output(birdnet_table, min_confidence = 0.1)
+birdnet_cli <- read_birdnet_output(birdnet_path, min_confidence = 0.1)
 cat("\nCLI format — rows:", nrow(birdnet_cli), "\n")
 print(birdnet_cli[, c("observation_id", "score", "species", "source_file")])
 

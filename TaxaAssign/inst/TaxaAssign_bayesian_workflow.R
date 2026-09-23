@@ -45,18 +45,25 @@ library(dplyr)
 # =============================================================================
 # SECTION 1: LOAD INPUTS
 # =============================================================================
-# Three pre-computed objects:
+# Four pre-computed objects:
 #   match_obj         — from TaxaMatch (raw match data)
 #   lik_result        — from TaxaLikely::evaluate_likelihoods()
 #   taxaexpect_priors: from TaxaExpect::estimate_kernel_priors()
+#   real_model        — the trained taxa_model_params object (from
+#                        TaxaLikely::train_likelihood_model()) that produced
+#                        lik_result, needed by report_likelihood() in the
+#                        assembled-report section below
 
 
 match_obj <- readRDS(file.choose()) # select match_obj.rds from TaxaMatch/inst/
 lik_result <- readRDS(file.choose()) # select real_likelihoods.rds from TaxaLikely/inst/
 taxaexpect_priors <- readRDS(file.choose()) # select taxaexpect_priors.rds from TaxaExpect/inst/
+real_model <- readRDS(file.choose()) # select the trained model .rds used to produce lik_result
 
-# if TaxaAssign_llm_workflow.R has been run, AND this matches lik_result and taxaexpect_priors.
-match_obj <- match_df[1:20, ]
+# Optional: if TaxaAssign_llm_workflow.R has been run in the SAME session (it
+# defines its own match_df) AND that match_df matches this lik_result and
+# taxaexpect_priors, you can substitute it in place of match_obj above:
+#   match_obj <- match_df[1:20, ]
 
 cat("Likelihood rows:", nrow(lik_result$likelihoods), "\n")
 if (nrow(lik_result$unresolved) > 0L) {
