@@ -20,7 +20,7 @@
 #   TaxaLikely:  train_likelihood_model()  -> model_params  (see TaxaLikely_workflow.R)
 #   TaxaFetch:   fetch occurrence data
 #   TaxaHabitat: assign_habitat_*()
-#   TaxaExpect:  generate_full_priors()    -> taxaexpect_priors
+#   TaxaExpect:  estimate_kernel_priors()  -> taxaexpect_priors
 #
 # Requires: TaxaLikely, TaxaAssign (this package), TaxaMatch, dplyr
 # ============================================================================
