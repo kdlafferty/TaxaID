@@ -960,6 +960,14 @@ join_priors <- function(likelihoods,
   }
 
   # ---- Validate site combos exist in taxaexpect_priors -----------------------
+  # Every (grid_id, main_habitat) the observations map to must exist in the
+  # priors. Without this, a site that matches nothing (a placeholder grid_id,
+  # a habitat spelled differently) gives every candidate the floor prior and
+  # the run completes with nothing to show that it went wrong.
+  for (k in seq_len(nrow(dplyr::distinct(event_meta, grid_id, main_habitat)))) {
+    combo_k <- dplyr::distinct(event_meta, grid_id, main_habitat)[k, ]
+    .assert_site_has_priors(combo_k$grid_id, combo_k$main_habitat, taxaexpect_priors)
+  }
   site_combos <- dplyr::distinct(event_meta, grid_id, main_habitat)
   missing_combos <- dplyr::anti_join(
     site_combos, taxaexpect_priors,
