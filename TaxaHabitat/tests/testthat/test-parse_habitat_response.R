@@ -228,3 +228,22 @@ test_that("ecoregion_best_guess is retained and protected from numeric detection
   out <- parse_hierarchical_habitat_response(raw_text, taxon_list = "Gadus morhua")
   expect_equal(out$ecoregion_best_guess, "Gulf of Maine")
 })
+
+test_that("a headerless single-taxon response is parsed when the prompt's layout is known", {
+  prompt <- structure(list(habitat_cols = c("Marine", "Terrestrial"), scheme = NULL),
+                      class = "habitat_prompt")
+  raw <- "Gadus morhua,0.95,0.05,0,Marine"
+  expect_message(
+    parsed <- parse_hierarchical_habitat_response(raw, taxon_list = "Gadus morhua",
+                                                  habitat_scheme = prompt),
+    "no header row"
+  )
+  expect_equal(nrow(parsed), 1L)
+  expect_equal(parsed$taxon_name, "Gadus morhua")
+  expect_true(all(c("Marine", "Terrestrial") %in% names(parsed)))
+  # a field count that matches no layout is left alone (and still errors clearly)
+  expect_error(
+    suppressMessages(parse_hierarchical_habitat_response("Gadus morhua,0.95", taxon_list = "Gadus morhua",
+                                                         habitat_scheme = prompt))
+  )
+})

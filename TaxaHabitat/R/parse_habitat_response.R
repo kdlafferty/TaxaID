@@ -192,6 +192,13 @@ parse_hierarchical_habitat_response <- function(raw_text,
   # ---------------------------------------------------------------------------
   cleaned <- .strip_and_extract_csv(raw_text)
 
+  # A single-taxon request often comes back as one bare data row with no
+  # header (the model treats the header as redundant for one line).
+  # utils::read.csv() would then read that data row AS the header and report
+  # zero rows. When the expected column layout is known from the prompt
+  # object, and the row's field count matches it, the header is supplied.
+  cleaned <- .supply_missing_header(cleaned, expected_hab_cols, extra_covariates)
+
   # Strip duplicate header rows that appear when multi-chunk responses are
   # concatenated directly (e.g. via paste() in Path 2, or in tests).
   # .combine_chunk_responses handles this for the API path, but parse() should
@@ -599,6 +606,43 @@ parse_hierarchical_habitat_response <- function(raw_text,
 
 #' Remove markdown fences; find header row; trim preamble and postamble.
 #' Returns a single character string suitable for utils::read.csv(text = ...).
+#' Supply the CSV header when the response carries data rows only
+#'
+#' Returns `cleaned` unchanged when it already starts with a header naming
+#' `taxon_name`, when the expected habitat columns are unknown, or when the
+#' first row's field count matches neither expected layout (with or without
+#' `ecoregion_best_guess`). Otherwise prepends the header the prompt asked
+#' for, so `utils::read.csv()` sees the data row as data.
+#' @noRd
+.supply_missing_header <- function(cleaned, expected_hab_cols, extra_covariates) {
+  lines <- strsplit(cleaned, "\n", fixed = TRUE)[[1]]
+  lines <- lines[nzchar(trimws(lines))]
+  if (length(lines) == 0L || grepl("taxon_name", lines[1L], ignore.case = TRUE)) {
+    return(cleaned)
+  }
+  if (is.null(expected_hab_cols) || length(expected_hab_cols) == 0L) {
+    return(cleaned)
+  }
+  n_fields <- tryCatch(
+    ncol(utils::read.csv(text = lines[1L], header = FALSE, stringsAsFactors = FALSE)),
+    error = function(e) NA_integer_
+  )
+  base <- c("taxon_name", expected_hab_cols, "Other_weight", "habitat_best_guess")
+  layouts <- list(
+    c(base, extra_covariates),
+    c(base, "ecoregion_best_guess", extra_covariates)
+  )
+  hit <- Filter(function(h) length(h) == n_fields, layouts)
+  if (length(hit) == 0L) {
+    return(cleaned)
+  }
+  message(
+    "parse_hierarchical_habitat_response: the response had no header row; ",
+    "supplied the ", n_fields, "-column header from the prompt."
+  )
+  paste(c(paste(hit[[1L]], collapse = ","), lines), collapse = "\n")
+}
+
 #' @noRd
 .strip_and_extract_csv <- function(raw_text) {
   txt <- gsub("```[a-zA-Z]*\n?", "", raw_text)

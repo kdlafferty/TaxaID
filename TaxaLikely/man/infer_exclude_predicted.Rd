@@ -13,7 +13,9 @@ table.  Must contain an accession column.}
 
 \item{accession_col}{Character scalar or \code{NULL}.  Name of the accession
 column.  If \code{NULL} (default) the function auto-detects a column named
-\code{"accession"}, \code{"Accession"}, \code{"acc"}, or \code{"accno"}.}
+\code{"accession"}, \code{"Accession"}, \code{"acc"}, \code{"accno"},
+\code{"AccessionNumber"}, or \code{"composite_id"} (the accession column
+\code{fetch_ncbi_reference_sequences()} writes).}
 
 \item{verbose}{Logical.  If \code{TRUE} (default), emits a message
 explaining the inference and its basis.}

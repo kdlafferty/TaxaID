@@ -4,7 +4,7 @@
 # Complete pipeline from raw sequences to a standardized match object ready
 # for TaxaLikely (likelihood conversion) or TaxaAssign (posterior computation).
 #
-# Prerequisite: DADA2 denoising (shown below but not executed by TaxaMatch).
+# Prerequisite: DADA2 denoising (Step 0 below; runs only when RUN_DADA2 is TRUE).
 #
 # Steps:
 #   0. DADA2 denoising (prerequisite — produces sequence table)
@@ -18,64 +18,73 @@
 
 library(TaxaMatch)
 library(TaxaLikely) # for infer_exclude_predicted() in Step 3b
-BiocManager::install("dada2")
-library(dada2) # only needed for Step 0 (DADA2 denoising)
+
+# Step 0 denoises raw FASTQ with DADA2, which runs OUTSIDE TaxaMatch and can
+# take hours. Set RUN_DADA2 <- TRUE to run it; leave FALSE if you already
+# have a sequence table (seqtab_nochim.rds) and start at Step 1.
+RUN_DADA2 <- FALSE
+if (RUN_DADA2) {
+  if (!requireNamespace("dada2", quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE)) install.packages("BiocManager")
+    BiocManager::install("dada2")
+  }
+  library(dada2)
+}
 # ==============================================================================
 # STEP 0 — DADA2 DENOISING (prerequisite)
 # ==============================================================================
 # This step runs OUTSIDE TaxaMatch. The output is a sequence table (matrix)
-# that TaxaMatch ingests. Shown here for completeness.
-#
-# library(dada2)
-#
-# # 0a. Set paths to your FASTQ files
-fastq_path <- file.choose() # select any file in your FASTQ directory, then extract the directory
-fastq_path <- dirname(fastq_path)
-fwd_files <- sort(list.files(fastq_path, pattern = "_R1_001.fastq", full.names = TRUE))
-rev_files <- sort(list.files(fastq_path, pattern = "_R2_001.fastq", full.names = TRUE))
+# that TaxaMatch ingests.
+if (RUN_DADA2) {
+  # # 0a. Set paths to your FASTQ files
+  fastq_path <- file.choose() # select any file in your FASTQ directory, then extract the directory
+  fastq_path <- dirname(fastq_path)
+  fwd_files <- sort(list.files(fastq_path, pattern = "_R1_001.fastq", full.names = TRUE))
+  rev_files <- sort(list.files(fastq_path, pattern = "_R2_001.fastq", full.names = TRUE))
 
-fwd_files <- fwd_files[1:1]
-rev_files <- rev_files[1:1]
-#
-#
-#
-# # 0b. Inspect quality profiles (set truncation lengths from these plots)
-plotQualityProfile(fwd_files[1:1])
-plotQualityProfile(rev_files[1:1])
-#
-# # 0c. Filter and trim
-filt_path <- file.path(fastq_path, "filtered")
-filt_out <- filterAndTrim(
-  fwd_files, file.path(filt_path, basename(fwd_files)),
-  rev_files, file.path(filt_path, basename(rev_files)),
-  truncLen = c(200, 180), # adjust based on quality profiles
-  maxN = 0, maxEE = c(2, 2), truncQ = 2, rm.phix = TRUE,
-  compress = TRUE, multithread = TRUE
-)
-filt_out
-#
-# # 0d. Learn error rates
-err_fwd <- learnErrors(file.path(filt_path, basename(fwd_files)), multithread = TRUE)
-err_rev <- learnErrors(file.path(filt_path, basename(rev_files)), multithread = TRUE)
-#
-# # 0e. Denoise
-dada_fwd <- dada(file.path(filt_path, basename(fwd_files)), err = err_fwd, multithread = TRUE)
-dada_rev <- dada(file.path(filt_path, basename(rev_files)), err = err_rev, multithread = TRUE)
-#
-# # 0f. Merge paired reads
-merged <- mergePairs(
-  dada_fwd, file.path(filt_path, basename(fwd_files)),
-  dada_rev, file.path(filt_path, basename(rev_files))
-)
-#
-# # 0g. Build sequence table
-seqtab <- makeSequenceTable(merged)
-#
-# # 0h. Remove chimeras
-seqtab_nochim <- removeBimeraDenovo(seqtab, method = "consensus", multithread = TRUE)
-#
-# # Save for TaxaMatch
-saveRDS(seqtab_nochim, "seqtab_nochim.rds")
+  fwd_files <- fwd_files[1:1]
+  rev_files <- rev_files[1:1]
+  #
+  #
+  #
+  # # 0b. Inspect quality profiles (set truncation lengths from these plots)
+  plotQualityProfile(fwd_files[1:1])
+  plotQualityProfile(rev_files[1:1])
+  #
+  # # 0c. Filter and trim
+  filt_path <- file.path(fastq_path, "filtered")
+  filt_out <- filterAndTrim(
+    fwd_files, file.path(filt_path, basename(fwd_files)),
+    rev_files, file.path(filt_path, basename(rev_files)),
+    truncLen = c(200, 180), # adjust based on quality profiles
+    maxN = 0, maxEE = c(2, 2), truncQ = 2, rm.phix = TRUE,
+    compress = TRUE, multithread = TRUE
+  )
+  filt_out
+  #
+  # # 0d. Learn error rates
+  err_fwd <- learnErrors(file.path(filt_path, basename(fwd_files)), multithread = TRUE)
+  err_rev <- learnErrors(file.path(filt_path, basename(rev_files)), multithread = TRUE)
+  #
+  # # 0e. Denoise
+  dada_fwd <- dada(file.path(filt_path, basename(fwd_files)), err = err_fwd, multithread = TRUE)
+  dada_rev <- dada(file.path(filt_path, basename(rev_files)), err = err_rev, multithread = TRUE)
+  #
+  # # 0f. Merge paired reads
+  merged <- mergePairs(
+    dada_fwd, file.path(filt_path, basename(fwd_files)),
+    dada_rev, file.path(filt_path, basename(rev_files))
+  )
+  #
+  # # 0g. Build sequence table
+  seqtab <- makeSequenceTable(merged)
+  #
+  # # 0h. Remove chimeras
+  seqtab_nochim <- removeBimeraDenovo(seqtab, method = "consensus", multithread = TRUE)
+  #
+  # # Save for TaxaMatch
+  saveRDS(seqtab_nochim, "seqtab_nochim.rds")
+}
 
 
 # ==============================================================================
