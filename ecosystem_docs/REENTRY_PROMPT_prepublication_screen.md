@@ -1237,6 +1237,23 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   not a green CI; read the CI result after every push. Installed
   TaxaWizard is behind main by this change (internal), same reinstall
   window as TaxaTools/TaxaLikely.
+  **Root README round 2 (maintainer's edits, carried onto main and
+  proofed)**: 1,253 -> 1,077 lines. Related Software 212 -> 109 (Table 1,
+  Table 1b and every named function kept); Interactive Workflow Designer
+  section removed and its content folded into "Which Entry Point"
+  (START_HERE + CONTEXT_TaxaID paste, workflow_create(), workflow_app());
+  Data Outputs compressed to one table (details live in package READMEs);
+  seven Pandoc `{.underline}` spans replaced with plain text (GitHub
+  renders them as literal brackets); "precision and accuracy" ->
+  "precision and recall"; Table 1 caption no longer attributed to
+  Orsholm et al. (it is TaxaID's own comparison; the benchmark cite stays
+  in the prose); START_HERE path completed. Verified: every script in the
+  Workflow Scripts table exists, parses, and calls only exported
+  functions (comments in three shipped scripts named a removed function
+  or the wrong package; fixed); all nine vignettes exist; both wrapper
+  examples use real arguments and both wrappers ran end to end this
+  screen; template guarded by its test. NOT executed: the sixteen
+  per-stage workflow scripts (they need real data and keys).
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
