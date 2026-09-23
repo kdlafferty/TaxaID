@@ -306,6 +306,12 @@ test_that("the root README's Software Inventory table matches the tree", {
   # drifts (a new export, a new test file) fails here instead of going stale.
   root <- TaxaWizard:::.pack_find_repo_root()
   skip_if(is.null(root), "repo root not found")
+  # Under R CMD check the package is copied out of the repository, so a root
+  # can be found that holds no README.md or sibling packages; that is not a
+  # repository checkout, and the check is meaningless there.
+  in_repo <- file.exists(file.path(root, "README.md")) &&
+    all(dir.exists(file.path(root, TaxaWizard:::TAXAID_PACKAGES)))
+  skip_if(!in_repo, "not a repository checkout (README.md and the nine packages not all present)")
   readme <- readLines(file.path(root, "README.md"), warn = FALSE)
   rows <- grep("^\\| Taxa[A-Za-z]+ +\\| +[0-9]+ +\\| +[0-9]+ +\\|", readme, value = TRUE)
   expect_true(length(rows) >= 9L, info = "Software Inventory rows not found in README.md")
