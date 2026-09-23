@@ -658,6 +658,14 @@ genus-level names in `plausible_taxa`. Those are expected: the fixtures
 use a flat placeholder prior, which is labelled in each script. See
 `TaxaWizard/inst/fast_workflows/README.md`.
 
+For a run with real data and keys, four tutorial scripts chain through
+checkpoints in `tempdir()`: `TaxaFetch/inst/workflows/fetch_occurrences_workflow.R`
+(two genera of gadids in a North Atlantic box, a few hundred records),
+`TaxaHabitat/inst/workflows/assign_habitat_workflow.R` (one LLM call),
+`TaxaExpect/inst/workflows/generate_priors_workflow.R` and
+`TaxaAssign/inst/workflows/compute_posteriors_workflow.R`. Run them in
+that order in one R session; each script says what it reads and writes.
+
 ### The workflow template
 
 `inst/TaxaID_Workflow_Template.R` is a single-site template covering the
