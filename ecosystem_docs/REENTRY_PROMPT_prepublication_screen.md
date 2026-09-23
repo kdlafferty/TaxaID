@@ -1268,6 +1268,19 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   a wrong count fails). "white lists" -> "regional species lists". The
   execution of the sixteen scripts with real data and keys is a separate
   chat: `TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_workflow_scripts_verification.md`.
+  **README rounds carried 2026-09-22 evening**: TaxaExpect README
+  (maintainer's edits + the introduction folded into Overview and a new
+  Assumptions subsection "Occurrence records are informative but
+  biased"; `bb35355`); TaxaAssign README second round (`3e8f3ab`); the
+  root README working copy in the shared checkout proved to contain ZERO
+  edits beyond round 2 (diff against `8814f23` empty), so its fifteen
+  three-way conflicts were all round-2 processing versus the old base
+  and resolved to main. All three of the maintainer's patch sets are
+  saved in `TaxaID_dev/screen_records/.../readme_pass/maintainer_*.patch`.
+  Shared checkout refreshed: `6a26c36`, tree identical to main. Rule
+  learned: refresh the shared checkout to main BEFORE the maintainer
+  starts a round, not after; an editing base behind main turns every
+  later round into a three-way merge.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
