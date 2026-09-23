@@ -1304,6 +1304,17 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   with two failing tests and was repaired within minutes, but CI is the
   backstop, not the check. Installed TaxaHabitat, TaxaAssign, TaxaLikely
   behind main by these fixes; reinstall at the next window.
+  **Tutorial chain COMPLETE 2026-09-23**: `TaxaExpect/inst/workflows/
+  generate_priors_workflow.R` built and merged (`42514b2`); the TaxaFetch
+  tutorial fetch widened from genus *Gadus* to *Gadus* + *Pollachius*
+  (totalRecords checked first; family Gadidae rejected at ~92k) so the
+  chain fetch -> assign_habitat -> generate_priors -> compute_posteriors
+  runs end to end on real data (85 records, 85/85 Marine, 3 kernel + 1
+  undetected prior rows, bandwidth calibration with real separation,
+  7 Bayesian + 12 LLM posterior rows); merged `75c3b8d`. Root README's
+  "Build priors" row points at the script. All run from source via
+  `load_all()` because the library rebuild waits on the CalIntertidal
+  chat's COI run.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
