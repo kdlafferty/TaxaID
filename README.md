@@ -15,7 +15,7 @@ image data. Automated classifiers can already assign a detection to a
 taxon. Yet current pipelines can have high false-positive and
 false-negative rates, leaving users to choose between precision and
 recall. Some adopt defensive upranking (assigning detections to higher
-taxonomic ranks like genus or family). Others use white lists to prevent
+taxonomic ranks like genus or family). Others use regional species lists to prevent
 implausible assignments, or post-hoc expert review to override obvious
 errors. But Bayes' Theorem is the natural statistical framework for
 classification under prior knowledge and uncertain evidence.
@@ -893,12 +893,12 @@ describe each in full.
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 56                 | 27         | Yes      |
+| TaxaTools   | 58                 | 29         | Yes      |
 | TaxaFetch   | 30                 | 26         | Yes      |
 | TaxaHabitat | 18                 | 12         | Yes      |
 | TaxaMatch   | 31                 | 22         | Yes      |
-| TaxaLikely  | 31                 | 30         | Yes      |
-| TaxaExpect  | 16                 | 17         | Yes      |
+| TaxaLikely  | 31                 | 31         | Yes      |
+| TaxaExpect  | 17                 | 17         | Yes      |
 | TaxaAssign  | 15                 | 17         | Yes      |
 | TaxaFlag    | 11                 | 13         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |

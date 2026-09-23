@@ -74,7 +74,7 @@ gbif_rank_cols <- intersect(
 )
 
 gbif_std <- occurrences_clean |>
-  create_taxon_names(taxonomy_ranks = gbif_rank_cols) |>
+  create_taxon_names(rank_system = gbif_rank_cols) |>
   filter(taxon_name_rank == "species") # keep species-rank records only
 
 gbif_std$datasource <- "GBIF" # tag provenance — do not skip
@@ -101,7 +101,7 @@ additional_data <- data.frame(
   datasource = "govreport",
   stringsAsFactors = FALSE
 ) |>
-  create_taxon_names(taxonomy_ranks = supp_rank_cols)
+  create_taxon_names(rank_system = supp_rank_cols)
 
 # --- Create taxon_name -------------------------------------------------------
 
@@ -125,7 +125,7 @@ additional_data_std <- verified |>
 # Map supplemental column names → DarwinCore (or GBIF) equivalents.
 # Only list columns whose names differ from the target convention.
 additional_data_std <- rename_cols(
-  df = additional_data_std,
+  input_df = additional_data_std,
   col_map = c(
     "Latitude"   = "decimalLatitude",
     "Longitude"  = "decimalLongitude",

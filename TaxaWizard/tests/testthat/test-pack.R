@@ -300,3 +300,22 @@ test_that("no rendered task file leaks an unfilled placeholder", {
     )
   }
 })
+
+test_that("the root README's Software Inventory table matches the tree", {
+  # The table is hand-written; this is what keeps it current. A count that
+  # drifts (a new export, a new test file) fails here instead of going stale.
+  root <- TaxaWizard:::.pack_find_repo_root()
+  skip_if(is.null(root), "repo root not found")
+  readme <- readLines(file.path(root, "README.md"), warn = FALSE)
+  rows <- grep("^\\| Taxa[A-Za-z]+ +\\| +[0-9]+ +\\| +[0-9]+ +\\|", readme, value = TRUE)
+  expect_true(length(rows) >= 9L, info = "Software Inventory rows not found in README.md")
+  for (row in rows) {
+    cells <- trimws(strsplit(row, "|", fixed = TRUE)[[1]])[-1]
+    pkg <- cells[[1]]; stated_exports <- as.integer(cells[[2]]); stated_tests <- as.integer(cells[[3]])
+    ns <- readLines(file.path(root, pkg, "NAMESPACE"), warn = FALSE)
+    n_exports <- sum(grepl("^export\\(", ns))
+    n_tests <- length(list.files(file.path(root, pkg, "tests", "testthat"), pattern = "^test-.*\\.R$"))
+    expect_equal(stated_exports, n_exports, info = sprintf("%s exported functions in README.md vs NAMESPACE", pkg))
+    expect_equal(stated_tests, n_tests, info = sprintf("%s test files in README.md vs tests/testthat", pkg))
+  }
+})
