@@ -720,7 +720,7 @@ Detailed, runnable workflow scripts are provided in each package's
 | No-score pathway (morphology/expert IDs) | TaxaLikely | `inst/workflows/6_no_score_pathway_workflow.R` |
 | Fetch occurrences | TaxaFetch | `inst/Merge_sources_workflow.R` |
 | Assign habitats | TaxaHabitat | `inst/workflows/assign_habitat_workflow.R` |
-| Build priors | TaxaExpect | See TaxaExpect's [Quick Start](TaxaExpect/README.md#quick-start) (kernel-priors path) |
+| Build priors | TaxaExpect | `inst/workflows/generate_priors_workflow.R` |
 | LLM assignment | TaxaAssign | `inst/TaxaAssign_llm_workflow.R` |
 | Bayesian assignment | TaxaAssign | `inst/TaxaAssign_bayesian_workflow.R` |
 
