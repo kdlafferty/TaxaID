@@ -48,8 +48,16 @@ DEBUG_MODE <- TRUE
 GBIF_SMALL_QUERY_THRESHOLD <- 50L
 
 if (DEBUG_MODE) {
-  # ---- Tutorial example: genus Gadus (cod), North Atlantic -------------------
-  STUDY_TAXA <- tibble::tibble(genus = "Gadus")
+  # ---- Tutorial example: Gadus + Pollachius (cod/pollack), North Atlantic ----
+  # Two genera, not one: a single-species tutorial fetch has no species-level
+  # competition for downstream scripts (TaxaExpect's priors, TaxaAssign's
+  # posteriors) to demonstrate against. Checked against GBIF's own totalRecords
+  # first (both genera: ~8.6k / ~12.1k records in this bbox for 2015-2024,
+  # comfortably enough for GBIF_LIMIT's per-key cap below to matter, not so
+  # many that either genus alone would look unrepresentative); the wider
+  # option (family Gadidae, ~91.6k records) was rejected as too broad for a
+  # tutorial-scale fetch.
+  STUDY_TAXA <- tibble::tibble(genus = c("Gadus", "Pollachius"))
   STUDY_LAT <- 60.0 # North Sea / Norwegian Sea
   STUDY_LON <- 2.0
   STUDY_RADIUS <- 2.0 # degrees -- modest box, keeps the example fast
