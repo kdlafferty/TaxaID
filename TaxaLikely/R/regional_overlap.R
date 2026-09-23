@@ -230,7 +230,7 @@
   # theoretical, cost on real PtConception data.
   if (!has_range && !is.null(query_sequence) && !is.na(query_sequence) &&
     nzchar(query_sequence)) {
-    query_key <- if (use_cache) paste0("query::", anchor_accession, "::", query_sequence) else NULL
+    query_key <- if (use_cache) .align_cache_key("query", anchor_accession, query_sequence) else NULL
     if (use_cache && exists(query_key, envir = align_cache, inherits = FALSE)) {
       derived_range <- get(query_key, envir = align_cache, inherits = FALSE)
     } else {

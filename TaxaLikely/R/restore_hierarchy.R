@@ -58,6 +58,19 @@
 #' pair contributes to two groups, one per side), so a subsequent lookup for
 #' any one accession is a single list/hash access, not a linear scan. Cached
 #' the same way every other align_cache-keyed structure here is.
+#' A bounded align_cache key
+#'
+#' Keys are R variable names, and R caps those at 10,000 bytes. Building a
+#' key from the material itself (every accession of a taxon, a whole query
+#' sequence) therefore stops a run as soon as a taxon carries about 900
+#' accessions or a sequence is long, which happens exactly on the large
+#' reference sets where the cache matters. The material is hashed instead:
+#' same semantics, 32-character key, whatever the input size.
+#' @noRd
+.align_cache_key <- function(prefix, ...) {
+  paste0(prefix, "::", rlang::hash(list(...)))
+}
+
 #' @noRd
 .seq_matrix_partner_index <- function(seq_matrix, align_cache) {
   use_cache <- !is.null(align_cache) && is.environment(align_cache)
@@ -119,7 +132,7 @@
   }
 
   use_cache <- !is.null(align_cache) && is.environment(align_cache)
-  key <- paste0("l0_presence::", paste(sort(accessions), collapse = ","))
+  key <- .align_cache_key("l0_presence", sort(accessions))
   if (use_cache && exists(key, envir = align_cache, inherits = FALSE)) {
     return(get(key, envir = align_cache, inherits = FALSE))
   }
