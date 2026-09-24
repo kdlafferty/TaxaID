@@ -1069,12 +1069,12 @@ utils::globalVariables(c(
 #' @section Choosing max_per_species and max_per_genus:
 #' The memory [build_sequence_matrix()] and [train_likelihood_model()] need
 #' grows with the square of the number of sequences in each genus, so a few
-#' heavily sequenced genera decide whether a run fits. One real COI genus
-#' held 14,421 sequences in 33 species, 13,116 of them in one species.
+#' heavily sequenced genera decide whether a run fits. One real COI genus,
+#' *Delia*, held 14,470 sequences in 31 species, 13,114 of them in one.
 #'
 #' Cap species first. `max_per_species` never removes a species; it thins
-#' the over-sequenced ones, which is where that bloat is (the same genus fell
-#' to a few hundred sequences at 20 per species, all 33 species kept).
+#' the over-sequenced ones, which is where that bloat is (*Delia* fell to 321
+#' sequences at 20 per species, all 31 species kept).
 #' `max_per_genus` is the second lever and the safety net: it samples across
 #' the whole genus, so a genus with more species than the cap allows loses
 #' whole species, and the likelihood model's between-species terms are

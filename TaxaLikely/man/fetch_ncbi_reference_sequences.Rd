@@ -28,7 +28,8 @@ fetch_ncbi_reference_sequences(
   count_attempts = 3L,
   on_count_failure = c("warn", "error"),
   evict_unreachable_cache = TRUE,
-  taxa_lineage = NULL
+  taxa_lineage = NULL,
+  dry_run = FALSE
 )
 }
 \arguments{
@@ -56,28 +57,12 @@ Set both to NULL and supply wide manual values to cast a broader net
 (useful for exploring how sequence length relates to errors).}
 
 \item{max_per_species}{Integer or NULL (default NULL).
-Maximum sequences to retain per species (stratified downsampling).
-NULL disables species-level capping.}
+Maximum sequences to retain per species. NULL disables species-level
+capping. See \verb{@section Choosing max_per_species and max_per_genus}.}
 
 \item{max_per_genus}{Integer or NULL (default 500).
-Maximum sequences per genus after species-level capping. The default
-bounds the reference set that \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} must align:
-without a cap, a genus with tens of thousands of sequences turns the
-pairwise matrix into hundreds of millions of pairs and can exhaust
-memory (a 5,551-genus COI reference held at 500; uncapped it did not).
-NULL disables the cap. Three consequences of changing it: the cap
-samples across the genus, so a genus holding more species than the
-cap allows at \code{max_per_species} loses whole species rather than
-thinning each one, and the likelihood model's between-species terms
-are fitted on what remains; a value different from the one a cached
-reference was built under is a cache miss, so the references are
-fetched again once (a cache built with \code{max_per_genus = NULL} stays
-valid only while the call passes \code{NULL} explicitly; an explicit
-\code{NULL} in an existing script is load-bearing, not redundant); and
-\code{max_per_species} is the gentler lever, since
-it never drops a species and matches \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}'s own
-per-taxon cap. Raise \code{max_per_genus} for very speciose genera, lower
-it on a small machine.}
+Maximum sequences per genus after species-level capping. NULL disables
+the cap. See \verb{@section Choosing max_per_species and max_per_genus}.}
 
 \item{priority_taxa}{Character vector or NULL (default NULL).
 Species names that should be fully represented in the reference.
@@ -233,6 +218,14 @@ silently trusted, since agreement doesn't require an exact match (a
 benign taxonomic revision that stays within a shared higher clade also
 agrees). \code{NULL} (the default) reproduces this function's original
 behaviour exactly: every taxon queried by bare name, no guard.}
+
+\item{dry_run}{Logical (default \code{FALSE}). \code{TRUE} stops after the metadata
+step, before any sequence is downloaded, and returns the memory the
+sequence matrix would need under a grid of caps instead of a
+\code{reference_df}. The metadata it fetches is the metadata the real run
+needs, and it is cached, so a dry run followed by the real run makes no
+more NCBI requests than the real run alone; on a warm cache a dry run
+makes none beyond the count queries of uncached taxa. See \verb{@return}.}
 }
 \value{
 A data frame (\code{reference_df}), carrying a \code{count_failures}
@@ -272,6 +265,16 @@ declared lineage, via \code{attr(reference_df, "lineage_disagreements")}.
 Ready for input to \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} (which applies its own,
 independent length filter -- out-of-range rows kept here are excluded
 from training there exactly as before this parameter existed).
+
+With \code{dry_run = TRUE}, instead a list: \code{taxa} (one row per requested
+taxon: \code{ncbi_count}, \code{NA} for a taxon served from cache; \code{cached};
+\code{sequences}, the in-range sequences found for it), \code{sequences} (one row
+per in-range sequence, uncapped: accession and rank columns), and the
+elements of \code{\link[=estimate_sequence_matrix_size]{estimate_sequence_matrix_size()}} for this call's caps plus
+\code{max_per_species} in \{none, 20, 10\} and \code{max_per_genus} in
+\{none, 1000, 500, 250\}: \code{grid}, \code{species_dropped}, \code{available_gb},
+\code{budget_gb} and \code{rates}. The grid is also printed. Pass \code{sequences} to
+\code{\link[=estimate_sequence_matrix_size]{estimate_sequence_matrix_size()}} to try other caps or build settings.
 }
 \description{
 Searches NCBI nucleotide by taxon name and barcode marker, retrieves full
@@ -302,6 +305,40 @@ a directory path.
 Completed per-taxon results are saved as \code{.rds} files.
 If the function is interrupted, re-running with the same \code{cache_dir}
 skips already-downloaded taxa.
+
+The per-taxon files hold every sequence's metadata, uncapped; sequences
+are kept in a separate per-accession store under \code{cache_dir/fasta}.
+\code{max_per_species} and \code{max_per_genus} are applied when the reference is
+assembled, so changing either re-uses the cached metadata and downloads
+only sequences not already in the store. A per-taxon file written under a
+cap holds only a sample, cannot serve a larger cap, and is re-fetched once.
+}
+
+\section{Choosing max_per_species and max_per_genus}{
+
+The memory \code{\link[=build_sequence_matrix]{build_sequence_matrix()}} and \code{\link[=train_likelihood_model]{train_likelihood_model()}} need
+grows with the square of the number of sequences in each genus, so a few
+heavily sequenced genera decide whether a run fits. One real COI genus,
+\emph{Delia}, held 14,470 sequences in 31 species, 13,114 of them in one.
+
+Cap species first. \code{max_per_species} never removes a species; it thins
+the over-sequenced ones, which is where that bloat is (\emph{Delia} fell to 321
+sequences at 20 per species, all 31 species kept).
+\code{max_per_genus} is the second lever and the safety net: it samples across
+the whole genus, so a genus with more species than the cap allows loses
+whole species, and the likelihood model's between-species terms are
+fitted on the species that remain. Neither cap reduces the part of the
+cost that grows with the square of the number of genera; only a narrower
+taxon list does (see \code{\link[=estimate_sequence_matrix_size]{estimate_sequence_matrix_size()}}).
+
+Both caps keep the same sequences on every call: each accession has a
+fixed pseudo-random rank, and a cap keeps the lowest-ranked. A smaller cap
+keeps a subset of what a larger one kept.
+
+To choose values from numbers rather than by trial, run once with
+\code{dry_run = TRUE}: it reports, for each combination of caps, the sequences
+and species kept, the species removed by name, and the predicted memory
+against the memory this machine has available.
 }
 
 \examples{

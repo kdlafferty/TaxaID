@@ -218,6 +218,47 @@ auto-detected. For GTDB or Greengenes2 sources, export the FASTA +
 taxonomy TSV from QIIME 2 with `qiime tools export` before calling the
 function.
 
+## Sizing the Reference Set to Memory
+
+`build_sequence_matrix()` returns one row per pair of reference
+sequences, and `train_likelihood_model()` works on several copies of
+that table, so on a broad reference set the table is what runs out of
+memory. Its size is fixed by how the sequences are spread over genera:
+it grows with the square of the sequences in each genus, and with the
+square of the number of genera. A few heavily sequenced genera usually
+decide whether a run fits: one COI genus held 14,470 sequences, 13,114
+of them in a single species.
+
+Two caps in `fetch_ncbi_reference_sequences()` control the first part.
+Use `max_per_species` first: it thins over-sequenced species and never
+removes one. `max_per_genus` is the second lever and the safety net: it
+samples across the whole genus, so a genus with more species than the
+cap allows loses whole species. No cap reduces the part that grows with
+the number of genera; only a narrower taxon list does.
+
+Choose the caps from numbers rather than by trial:
+
+``` r
+dry <- fetch_ncbi_reference_sequences(
+  taxa = genera, barcode_term = "COI-Leray",
+  cache_dir = "cache_reference", dry_run = TRUE
+)
+dry$grid             # sequences kept, species lost, predicted GB, fits?
+dry$species_dropped  # which species each choice removes, by name
+
+# Try other settings without touching NCBI, e.g. the cap the build will apply:
+estimate_sequence_matrix_size(dry$sequences, max_seqs_per_taxon = 20L)
+```
+
+The dry run downloads the metadata the real run needs and caches it,
+so running it first costs no extra NCBI requests; the real run then
+downloads sequences only for what the caps keep. The prediction is
+exact about how many pairs the alignment can produce and estimates how
+many survive the distance filter; each `build_sequence_matrix()` result
+records what it measured (`attr(x, "size_calibration")`), and passing
+that to `estimate_sequence_matrix_size(calibration = )` sizes a similar
+reference set from measured rather than default rates.
+
 ## Building a Site-Specific Reference Library
 
 Build a curated local reference matched to your site's expected taxa by
@@ -274,9 +315,11 @@ download from NCBI by taxon + barcode marker; `taxa_lineage` resolves
 each name to one NCBI taxid before searching, so a homonym cannot pull
 another lineage's sequences. The cache key encodes the taxid, so
 adopting `taxa_lineage` on an existing project refetches that project's
-references once (the same holds for a change to `max_per_species` or
-`max_per_genus`, whose default of 500 per genus keeps the alignment
-matrix within memory on large reference sets) -
+references once. `max_per_species` and `max_per_genus` (default 500 per
+genus) are applied to cached metadata, so changing them refetches
+nothing already downloaded; `dry_run = TRUE` reports what each choice
+of caps would cost before any sequence is downloaded (see "Sizing the
+Reference Set to Memory" below) -
 `fetch_bold_reference_sequences()`: download from BOLD Systems by taxon
 name, the BOLD analog of `fetch_ncbi_reference_sequences()` -
 `read_reference_fasta()`: load local FASTA + data-frame taxonomy (or
@@ -295,7 +338,11 @@ before trusting a result on real data.
 Model training (DNA): - `build_sequence_matrix()`: pairwise
 distance matrix via DECIPHER; required for `train_likelihood_model()`
 (screen for mislabeled references via TaxaMatch first: see "Detecting
-Mislabeled References" below) - `train_likelihood_model()`: fit
+Mislabeled References" below); checks its predicted memory before
+aligning and stops, naming caps that fit, when it would not fit -
+`estimate_sequence_matrix_size()`: predict that memory for a grid of
+`max_per_species` and `max_per_genus` values, and name the species each
+choice removes - `train_likelihood_model()`: fit
 hierarchical Bayesian model (pair-coverage floor and empirical Bayes
 shrinkage on by default; see "Reference Coverage Quality Filtering" and
 "Statistical Design" below) - `compute_rank_thresholds()`: derive

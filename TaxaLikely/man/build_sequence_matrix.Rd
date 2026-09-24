@@ -15,7 +15,8 @@ build_sequence_matrix(
   barcode_term = NULL,
   verbose = TRUE,
   by_genus = FALSE,
-  max_foreign_reps_per_genus = 20L
+  max_foreign_reps_per_genus = 20L,
+  memory_budget_fraction = 0.7
 )
 }
 \arguments{
@@ -131,6 +132,12 @@ genera never happen to fall inside it), so coverage stays roughly even
 across genera even though it is no longer exhaustive. \code{0L} disables the
 augmentation entirely (representative-only alignment -- see the
 \verb{@section} below for why that understates \code{gap_logit}).}
+
+\item{memory_budget_fraction}{Numeric in (0, 1] or \code{NULL} (default
+\code{0.7}). Before aligning, the size of the pair table is predicted and
+compared with this fraction of the memory currently available; when it
+will not fit, the function stops and names settings that would. \code{NULL}
+skips the check. See \verb{@section Memory}.}
 }
 \value{
 A data frame with one row per sequence pair within \code{max_dist}:
@@ -206,6 +213,34 @@ itself. Validate against a marker with an existing, already-trusted
 whole-set-trained model before relying on this for a new one; do not
 assume the two approaches give numerically identical H1/H2/H3 parameters
 just because they consume conceptually the same pairs.
+}
+
+\section{Memory}{
+
+The result has one row per ordered pair of sequences within \code{max_dist},
+and \code{\link[=train_likelihood_model]{train_likelihood_model()}} holds several working copies of it, so on a
+broad reference set this table, not the alignment, is what runs out of
+memory. Its size follows from the reference set's genus composition: it
+grows with the square of the sequences in each genus and, with
+\code{by_genus = TRUE}, with the square of the number of genera
+(see \code{\link[=estimate_sequence_matrix_size]{estimate_sequence_matrix_size()}} for the formula).
+
+Before aligning, the peak through training is predicted and compared with
+\code{memory_budget_fraction} of the memory available now (read from the
+operating system on macOS, Linux and Windows; elsewhere the check is
+skipped with a message). The check is free when even the largest possible
+table fits. Otherwise one small alignment of up to 200 genus
+representatives measures how many cross-genus pairs this reference set
+keeps, chosen without using random numbers so the build itself is
+unchanged, and the function stops if the prediction still does not fit,
+listing values of \code{max_per_genus} (for \code{\link[=fetch_ncbi_reference_sequences]{fetch_ncbi_reference_sequences()}},
+which applies it to cached metadata without re-fetching) and
+\code{max_seqs_per_taxon} that would.
+
+The result carries a \code{size_calibration} attribute recording the pairs the
+build could have produced and the pairs it kept. Pass the result to
+\code{\link[=estimate_sequence_matrix_size]{estimate_sequence_matrix_size()}}'s \code{calibration} to predict a similar
+reference set from measured rates rather than defaults.
 }
 
 \examples{

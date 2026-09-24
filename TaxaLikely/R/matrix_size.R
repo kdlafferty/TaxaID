@@ -44,15 +44,29 @@
 #' prediction come out right.
 #'
 #' \describe{
-#'   \item{r_w}{Within-genus retention at `max_dist = 0.25`. COI (Leray,
-#'     broad metazoan reference, 300 genera sampled at random): 0.944.}
-#'   \item{r_x_floor}{Lowest cross-genus retention measured: the same COI
-#'     sample, 0.308. A reference set drawn from one class retains more.}
-#'   \item{bytes_overhead}{Bytes per pair above the 8-byte columns, from
-#'     `object.size()` on three real matrices (80.6, 81.0 and 82.8 bytes per
-#'     pair against 80 for ten columns).}
-#'   \item{peak}{Peak memory during `train_likelihood_model()` as a multiple
-#'     of the matrix's own size.}
+#'   \item{r_w}{Within-genus retention at `max_dist = 0.25`, pooled over four
+#'     independent random samples of 300, 300, 900 and 3,000 genera from a
+#'     broad metazoan COI (Leray) reference (0.944, 0.894, 0.950 and 0.945
+#'     separately). A 378-genus 12S set fetched under the bare "12S" window
+#'     kept only 0.551, plausibly because congeners' sequences there cover
+#'     different stretches of the gene; the COI value is the high,
+#'     conservative one.}
+#'   \item{r_x_broad}{Cross-genus retention from the same COI samples (0.308,
+#'     0.269, 0.305 and 0.317); the 12S set kept 0.348. A reference set
+#'     spanning the animal kingdom is about as broad as they come; one drawn
+#'     from a single class or family should keep more.}
+#'   \item{bytes_overhead}{Bytes per pair above the 8-byte columns: 80.6 to
+#'     82.8 measured on seven matrices against 80 for ten columns.}
+#'   \item{peak, peak_fixed_gb}{The R heap at its peak through
+#'     `train_likelihood_model()`, matrix included, measured with `gc()` on
+#'     COI matrices of 138 MB, 476 MB and 1.6 GB: 4.0 times the matrix plus
+#'     0.3 GB (least squares; the working copies on top of the matrix were
+#'     3.1x, 2.8x and 3.0x the matrix beyond the fixed part). A 35 MB 12S
+#'     matrix, not used in the fit, peaked at 0.42 GB against 0.44 GB
+#'     predicted. Process memory as the operating system reports it can be
+#'     lower, since macOS compresses idle pages: a full-scale 8.3 GB COI
+#'     matrix peaked at 20.7 GB resident where this predicts a 33.5 GB heap.
+#'     The heap is what R's own vector limit counts.}
 #'   \item{align_bytes_per_cell}{Transient bytes per cell of one dense
 #'     distance matrix during alignment: the double matrix plus the integer
 #'     `row()`/`col()` indices and the logical masks built to extract the
@@ -61,10 +75,11 @@
 #' @noRd
 .matrix_size_constants <- function() {
   list(
-    r_w = 0.944,
-    r_x_floor = 0.308,
+    r_w = 0.942,
+    r_x_broad = 0.313,
     bytes_overhead = 1.5,
-    peak = 3.0,
+    peak = 4.0,
+    peak_fixed_gb = 0.3,
     align_bytes_per_cell = 28
   )
 }
@@ -109,7 +124,7 @@
   list(
     pairs = pairs,
     gb_matrix = gb_matrix,
-    gb_peak = max(gb_matrix * peak, gb_align)
+    gb_peak = max(gb_matrix * peak + k$peak_fixed_gb, gb_align)
   )
 }
 
@@ -343,19 +358,30 @@
 #'
 #' @section How accurate the prediction is:
 #' The pair structure above is exact. What is estimated is the fraction of
-#' those pairs the distance filter keeps. Within a genus nearly all are kept
-#' (0.944 measured on COI). Across genera it depends on how broad the
-#' reference set is: 0.308 on a COI set spanning the animal kingdom, far higher
-#' on a set drawn from one class. Without `calibration`, `pairs_predicted` uses
-#' that lowest measured cross-genus rate, and `pairs_ceiling` assumes every
-#' pair is kept, which cannot be exceeded. The truth lies between them. Pass an
+#' those pairs the distance filter keeps. Within a genus it was 0.942 on COI
+#' and 0.551 on a 12S set fetched under the bare "12S" window (plausibly
+#' because congeners' sequences there cover different stretches of the gene).
+#' Across genera it depends on how broad the reference set is: 0.313 on a COI
+#' set spanning the animal kingdom and 0.348 on the 12S set; a set drawn from
+#' one family should keep more.
+#' Without `calibration`, `pairs_predicted` uses the COI rates, which fit a
+#' broad reference set; `pairs_ceiling` assumes every pair is kept and cannot
+#' be exceeded. For a narrow reference set read the ceiling, or calibrate.
+#' [build_sequence_matrix()] does not rely on these defaults: before
+#' aligning, it measures the cross-genus rate on the actual sequences. Pass an
 #' earlier build of a similar reference set as `calibration` to use its
 #' measured rates instead; each [build_sequence_matrix()] result carries them.
-#' Against a real 11,322-genus COI build of 110.3 million pairs, rates measured
-#' on an independent 300-genus sample predicted 112.3 million.
+#' Against a real 11,322-genus COI build of 110.3 million pairs, rates
+#' measured on 4,500 genera sampled independently of it predicted 112.9
+#' million (2% high); single samples of 300 genera were within 7%.
 #'
-#' The peak during training (about `peak_multiple` times the table) was
-#' measured on real COI builds. Treat `gb_peak` as a guide to the right order
+#' The peak through training (the table plus the working copies
+#' [train_likelihood_model()] makes, together about `peak_multiple` times the
+#' table plus 0.3 GB) is R's own memory, measured with `gc()` on real COI
+#' builds. The operating system can report less, because macOS compresses
+#' idle memory; a run can therefore survive a `gb_peak` above the memory
+#' available, slowly and on compressed memory, but not above R's own vector
+#' limit. Treat `gb_peak` as a guide to the right order
 #' of magnitude with a margin, not as a guarantee: other objects in the session
 #' also need memory, which is why only `memory_budget_fraction` of the
 #' available memory is counted as usable.
@@ -467,7 +493,7 @@ estimate_sequence_matrix_size <- function(x,
   k <- .matrix_size_constants()
   cal <- .pool_calibration(calibration)
   r_w <- if (is.null(cal)) k$r_w else cal$r_w
-  r_x <- if (is.null(cal)) k$r_x_floor else cal$r_x
+  r_x <- if (is.null(cal)) k$r_x_broad else cal$r_x
 
   if (is.null(available_gb)) available_gb <- .available_memory_gb()
   budget_gb <- available_gb * memory_budget_fraction
@@ -513,7 +539,7 @@ estimate_sequence_matrix_size <- function(x,
     rates = list(
       r_w = r_w, r_x = r_x, peak_multiple = k$peak,
       source = if (is.null(cal)) {
-        "package defaults (lowest measured cross-genus rate)"
+        "package defaults (broad COI reference set)"
       } else {
         sprintf("calibration from %d earlier build(s)", cal$n_builds)
       }
@@ -630,7 +656,7 @@ estimate_sequence_matrix_size <- function(x,
 
   # The ceiling does not fit, so measure this reference set's own
   # cross-genus retention rather than assume one. Within-genus retention is
-  # taken as 1 (0.89-0.94 measured), and the pilot's rate gets a 0.05 margin:
+  # taken as 1 (0.55-0.95 measured), and the pilot's rate gets a 0.05 margin:
   # repeat samples of 300 genera differed by 0.04.
   r_pilot <- .pilot_cross_genus_retention(dna, ref_seqs, max_dist)
   r_x <- if (is.na(r_pilot)) 1 else min(1, r_pilot + 0.05)
@@ -720,7 +746,9 @@ estimate_sequence_matrix_size <- function(x,
   }
   list(
     n_sequences = st$N, n_genera = st$G,
-    by_genus = by_genus, max_foreign_reps_per_genus = max_foreign_reps_per_genus,
+    # The foreign representatives each genus actually received, not the cap
+    # requested: two builds that aligned the same pairs record the same value.
+    by_genus = by_genus, foreign_reps = st$f,
     max_dist = max_dist,
     S_w = st$S_w, S_x = st$S_x,
     within_pairs = within, cross_pairs = nrow(out) - within,
