@@ -1080,14 +1080,22 @@ utils::globalVariables(c(
 #' @param max_per_species Integer or NULL (default NULL).
 #'   Maximum sequences to retain per species (stratified downsampling).
 #'   NULL disables species-level capping.
-#' @param max_per_genus Integer or NULL (default NULL).
-#'   Maximum sequences per genus after species-level capping.
-#'   NULL disables genus-level capping. The cap samples across the genus, so
-#'   a capped genus can lose whole species rather than thinning each one,
-#'   and the likelihood model's between-species terms are fitted on what
-#'   remains. Prefer `max_per_species`, which never drops a species and
-#'   matches [build_sequence_matrix()]'s own per-taxon cap; use
-#'   `max_per_genus` only where losing whole species is acceptable.
+#' @param max_per_genus Integer or NULL (default 500).
+#'   Maximum sequences per genus after species-level capping. The default
+#'   bounds the reference set that [build_sequence_matrix()] must align:
+#'   without a cap, a genus with tens of thousands of sequences turns the
+#'   pairwise matrix into hundreds of millions of pairs and can exhaust
+#'   memory (a 5,551-genus COI reference held at 500; uncapped it did not).
+#'   NULL disables the cap. Three consequences of changing it: the cap
+#'   samples across the genus, so a genus holding more species than the
+#'   cap allows at `max_per_species` loses whole species rather than
+#'   thinning each one, and the likelihood model's between-species terms
+#'   are fitted on what remains; a value different from the one a cached
+#'   reference was built under is a cache miss, so the references are
+#'   fetched again once; and `max_per_species` is the gentler lever, since
+#'   it never drops a species and matches [build_sequence_matrix()]'s own
+#'   per-taxon cap. Raise `max_per_genus` for very speciose genera, lower
+#'   it on a small machine.
 #' @param priority_taxa Character vector or NULL (default NULL).
 #'   Species names that should be fully represented in the reference.
 #'   Typically the species from the user's match data. When total NCBI hits
@@ -1287,7 +1295,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
                                            min_len = NULL,
                                            max_len = NULL,
                                            max_per_species = NULL,
-                                           max_per_genus = NULL,
+                                           max_per_genus = 500L,
                                            priority_taxa = NULL,
                                            max_sequences = 10000L,
                                            min_per_taxon = 50L,

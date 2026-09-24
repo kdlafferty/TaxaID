@@ -78,7 +78,7 @@ reference_df <- fetch_ncbi_reference_sequences(
   # min_len = 100,        # override auto-detected length filter
   # max_len = 600,        # (NULL = use barcode_term defaults)
   # max_per_species = 5,  # stratified downsampling (default 5)
-  # max_per_genus = NULL,  # genus-level cap (NULL = no cap)
+  # max_per_genus = 500L, # genus-level cap (default 500; NULL = no cap; see ?fetch_ncbi_reference_sequences)
   # max_sequences = 10000, # safety valve before downloading
   # blacklist_regex = "uncultured|environmental|predicted",
   # min_date = "2010/01/01",  # earliest publication date

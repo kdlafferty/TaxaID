@@ -24,7 +24,8 @@
 # (pre-1.0-shaped) file.
 write_cached_taxon <- function(cache_dir, taxon, accs,
                                sel_params = TaxaLikely:::.sel_params(
-                                 NULL, NULL,
+                                 eval(formals(TaxaLikely::fetch_ncbi_reference_sequences)$max_per_species),
+                                 eval(formals(TaxaLikely::fetch_ncbi_reference_sequences)$max_per_genus),
                                  paste0(
                                    "uncultured|environmental|predicted|",
                                    "vector|synthetic|unverified"
@@ -299,7 +300,7 @@ test_that("a cache built under the SAME selection settings is reused", {
   suppressMessages(fetch_ncbi_reference_sequences(
     taxa = "Sebastes", barcode_term = "12S",
     min_len = 100L, max_len = 5000L, cache_dir = cache_dir,
-    max_per_species = 10L, blacklist_regex = "uncultured"
+    max_per_species = 10L, max_per_genus = NULL, blacklist_regex = "uncultured"
   ))
 
   expect_length(searched, 0L)
