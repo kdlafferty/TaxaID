@@ -1092,7 +1092,10 @@ utils::globalVariables(c(
 #'   thinning each one, and the likelihood model's between-species terms
 #'   are fitted on what remains; a value different from the one a cached
 #'   reference was built under is a cache miss, so the references are
-#'   fetched again once; and `max_per_species` is the gentler lever, since
+#'   fetched again once (a cache built with `max_per_genus = NULL` stays
+#'   valid only while the call passes `NULL` explicitly; an explicit
+#'   `NULL` in an existing script is load-bearing, not redundant); and
+#'   `max_per_species` is the gentler lever, since
 #'   it never drops a species and matches [build_sequence_matrix()]'s own
 #'   per-taxon cap. Raise `max_per_genus` for very speciose genera, lower
 #'   it on a small machine.

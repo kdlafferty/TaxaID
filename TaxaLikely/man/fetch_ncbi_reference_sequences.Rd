@@ -71,7 +71,10 @@ cap allows at \code{max_per_species} loses whole species rather than
 thinning each one, and the likelihood model's between-species terms
 are fitted on what remains; a value different from the one a cached
 reference was built under is a cache miss, so the references are
-fetched again once; and \code{max_per_species} is the gentler lever, since
+fetched again once (a cache built with \code{max_per_genus = NULL} stays
+valid only while the call passes \code{NULL} explicitly; an explicit
+\code{NULL} in an existing script is load-bearing, not redundant); and
+\code{max_per_species} is the gentler lever, since
 it never drops a species and matches \code{\link[=build_sequence_matrix]{build_sequence_matrix()}}'s own
 per-taxon cap. Raise \code{max_per_genus} for very speciose genera, lower
 it on a small machine.}

@@ -1366,6 +1366,12 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   `max_per_species` is the gentler lever. The cache tests' seeded entries
   had hard-coded the old default as "the function's defaults"; they now
   read `formals()`.
+  Correction from the workflow chat: CalIntertidal passes
+  `max_per_genus = NULL` explicitly (it caps post-fetch on purpose, so a
+  cap can never invalidate a cached fetch), so its cache survives by
+  matching NULL, not 500. TRAP recorded: every explicit `NULL` written
+  for clarity is now load-bearing; deleting one flips the call to 500
+  and refetches (~21 h of COI there). Roxygen now says so.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
