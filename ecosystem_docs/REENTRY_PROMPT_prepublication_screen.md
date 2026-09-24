@@ -1383,6 +1383,11 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   point, documented tradeoff, and a numbers-backed default decision).
   Production workflows and the B2 driver now pass max_per_genus = NULL
   explicitly (eDNA d95761d, GreatLakes 5457ebc, TaxaID_dev 6f3adea).
+  **LIBRARY REBUILT 2026-09-24 14:56 local from main `61688b4`** after the
+  COI run landed (23 h 31 m, 0 errors) and the maintainer quit RStudio;
+  pre-flight clean; all nine, Built 21:56:06-21:56:30 UTC; pack
+  regenerated; TaxaWizard suite and the four offline smoke tests pass
+  from the installed copies. Installed library == main code.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
