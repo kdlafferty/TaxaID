@@ -121,6 +121,11 @@ utils::globalVariables(c(
 #'   across genera even though it is no longer exhaustive. `0L` disables the
 #'   augmentation entirely (representative-only alignment -- see the
 #'   `@section` below for why that understates `gap_logit`).
+#' @param memory_budget_fraction Numeric in (0, 1] or `NULL` (default
+#'   `0.7`). Before aligning, the size of the pair table is predicted and
+#'   compared with this fraction of the memory currently available; when it
+#'   will not fit, the function stops and names settings that would. `NULL`
+#'   skips the check. See `@section Memory`.
 #'
 #' @section Per-genus alignment (`by_genus = TRUE`):
 #' Whole-set alignment cost grows worse than linearly in sequence count, but
@@ -167,6 +172,32 @@ utils::globalVariables(c(
 #' assume the two approaches give numerically identical H1/H2/H3 parameters
 #' just because they consume conceptually the same pairs.
 #'
+#' @section Memory:
+#' The result has one row per ordered pair of sequences within `max_dist`,
+#' and [train_likelihood_model()] holds several working copies of it, so on a
+#' broad reference set this table, not the alignment, is what runs out of
+#' memory. Its size follows from the reference set's genus composition: it
+#' grows with the square of the sequences in each genus and, with
+#' `by_genus = TRUE`, with the square of the number of genera
+#' (see [estimate_sequence_matrix_size()] for the formula).
+#'
+#' Before aligning, the peak through training is predicted and compared with
+#' `memory_budget_fraction` of the memory available now (read from the
+#' operating system on macOS, Linux and Windows; elsewhere the check is
+#' skipped with a message). The check is free when even the largest possible
+#' table fits. Otherwise one small alignment of up to 200 genus
+#' representatives measures how many cross-genus pairs this reference set
+#' keeps, chosen without using random numbers so the build itself is
+#' unchanged, and the function stops if the prediction still does not fit,
+#' listing values of `max_per_genus` (for [fetch_ncbi_reference_sequences()],
+#' which applies it to cached metadata without re-fetching) and
+#' `max_seqs_per_taxon` that would.
+#'
+#' The result carries a `size_calibration` attribute recording the pairs the
+#' build could have produced and the pairs it kept. Pass the result to
+#' [estimate_sequence_matrix_size()]'s `calibration` to predict a similar
+#' reference set from measured rates rather than defaults.
+#'
 #' @return A data frame with one row per sequence pair within `max_dist`:
 #'   \describe{
 #'     \item{`id_x`, `id_y`}{`composite_id` values for each pair member.}
@@ -209,7 +240,14 @@ build_sequence_matrix <- function(reference_df,
                                   barcode_term = NULL,
                                   verbose = TRUE,
                                   by_genus = FALSE,
-                                  max_foreign_reps_per_genus = 20L) {
+                                  max_foreign_reps_per_genus = 20L,
+                                  memory_budget_fraction = 0.7) {
+  if (!is.null(memory_budget_fraction) &&
+    (!is.numeric(memory_budget_fraction) || length(memory_budget_fraction) != 1L ||
+      is.na(memory_budget_fraction) || memory_budget_fraction <= 0 ||
+      memory_budget_fraction > 1)) {
+    stop("memory_budget_fraction must be NULL or a single number in (0, 1]")
+  }
   if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("verbose must be TRUE or FALSE")
   }
@@ -429,6 +467,19 @@ build_sequence_matrix <- function(reference_df,
     ))
   }
 
+  # ---- 2b. MEMORY CHECK --------------------------------------------------------
+  # Predict the pair table before building it; stop, naming settings that fit,
+  # rather than let train_likelihood_model() exhaust memory hours later.
+  size_st <- .matrix_memory_guard(
+    ref_seqs, dna,
+    n_ranks = length(intersect(rank_cols, names(ref_seqs))),
+    by_genus = by_genus,
+    max_foreign_reps_per_genus = max_foreign_reps_per_genus,
+    max_dist = max_dist,
+    memory_budget_fraction = memory_budget_fraction,
+    max_seqs_per_taxon = max_seqs_per_taxon
+  )
+
   # ---- 3. ALIGNMENT & DISTANCE MATRIX ----------------------------------------
   if (isTRUE(by_genus)) {
     dist_tbl <- .align_pairs_by_genus(
@@ -455,6 +506,11 @@ build_sequence_matrix <- function(reference_df,
     "Matrix built: %d pairs within distance < %.2f",
     nrow(out), max_dist
   ))
+  # What this build measured, so a later estimate for a similar reference set
+  # can use it (estimate_sequence_matrix_size(calibration = )).
+  attr(out, "size_calibration") <- .size_calibration(
+    out, size_st, by_genus, max_foreign_reps_per_genus, max_dist
+  )
   out
 }
 

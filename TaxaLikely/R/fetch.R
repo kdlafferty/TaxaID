@@ -1059,6 +1059,38 @@ utils::globalVariables(c(
 #' If the function is interrupted, re-running with the same `cache_dir`
 #' skips already-downloaded taxa.
 #'
+#' The per-taxon files hold every sequence's metadata, uncapped; sequences
+#' are kept in a separate per-accession store under `cache_dir/fasta`.
+#' `max_per_species` and `max_per_genus` are applied when the reference is
+#' assembled, so changing either re-uses the cached metadata and downloads
+#' only sequences not already in the store. A per-taxon file written under a
+#' cap holds only a sample, cannot serve a larger cap, and is re-fetched once.
+#'
+#' @section Choosing max_per_species and max_per_genus:
+#' The memory [build_sequence_matrix()] and [train_likelihood_model()] need
+#' grows with the square of the number of sequences in each genus, so a few
+#' heavily sequenced genera decide whether a run fits. One real COI genus
+#' held 14,421 sequences in 33 species, 13,116 of them in one species.
+#'
+#' Cap species first. `max_per_species` never removes a species; it thins
+#' the over-sequenced ones, which is where that bloat is (the same genus fell
+#' to a few hundred sequences at 20 per species, all 33 species kept).
+#' `max_per_genus` is the second lever and the safety net: it samples across
+#' the whole genus, so a genus with more species than the cap allows loses
+#' whole species, and the likelihood model's between-species terms are
+#' fitted on the species that remain. Neither cap reduces the part of the
+#' cost that grows with the square of the number of genera; only a narrower
+#' taxon list does (see [estimate_sequence_matrix_size()]).
+#'
+#' Both caps keep the same sequences on every call: each accession has a
+#' fixed pseudo-random rank, and a cap keeps the lowest-ranked. A smaller cap
+#' keeps a subset of what a larger one kept.
+#'
+#' To choose values from numbers rather than by trial, run once with
+#' `dry_run = TRUE`: it reports, for each combination of caps, the sequences
+#' and species kept, the species removed by name, and the predicted memory
+#' against the memory this machine has available.
+#'
 #' @param taxa Character vector of taxon names to search.
 #'   Can be any rank: species, genus, family, order, or class
 #'   (e.g., `"Fundulus"`, `"Gobiidae"`, `"Actinopterygii"`).
@@ -1078,27 +1110,18 @@ utils::globalVariables(c(
 #'   Set both to NULL and supply wide manual values to cast a broader net
 #'   (useful for exploring how sequence length relates to errors).
 #' @param max_per_species Integer or NULL (default NULL).
-#'   Maximum sequences to retain per species (stratified downsampling).
-#'   NULL disables species-level capping.
+#'   Maximum sequences to retain per species. NULL disables species-level
+#'   capping. See `@section Choosing max_per_species and max_per_genus`.
 #' @param max_per_genus Integer or NULL (default 500).
-#'   Maximum sequences per genus after species-level capping. The default
-#'   bounds the reference set that [build_sequence_matrix()] must align:
-#'   without a cap, a genus with tens of thousands of sequences turns the
-#'   pairwise matrix into hundreds of millions of pairs and can exhaust
-#'   memory (a 5,551-genus COI reference held at 500; uncapped it did not).
-#'   NULL disables the cap. Three consequences of changing it: the cap
-#'   samples across the genus, so a genus holding more species than the
-#'   cap allows at `max_per_species` loses whole species rather than
-#'   thinning each one, and the likelihood model's between-species terms
-#'   are fitted on what remains; a value different from the one a cached
-#'   reference was built under is a cache miss, so the references are
-#'   fetched again once (a cache built with `max_per_genus = NULL` stays
-#'   valid only while the call passes `NULL` explicitly; an explicit
-#'   `NULL` in an existing script is load-bearing, not redundant); and
-#'   `max_per_species` is the gentler lever, since
-#'   it never drops a species and matches [build_sequence_matrix()]'s own
-#'   per-taxon cap. Raise `max_per_genus` for very speciose genera, lower
-#'   it on a small machine.
+#'   Maximum sequences per genus after species-level capping. NULL disables
+#'   the cap. See `@section Choosing max_per_species and max_per_genus`.
+#' @param dry_run Logical (default `FALSE`). `TRUE` stops after the metadata
+#'   step, before any sequence is downloaded, and returns the memory the
+#'   sequence matrix would need under a grid of caps instead of a
+#'   `reference_df`. The metadata it fetches is the metadata the real run
+#'   needs, and it is cached, so a dry run followed by the real run makes no
+#'   more NCBI requests than the real run alone; on a warm cache a dry run
+#'   makes none beyond the count queries of uncached taxa. See `@return`.
 #' @param priority_taxa Character vector or NULL (default NULL).
 #'   Species names that should be fully represented in the reference.
 #'   Typically the species from the user's match data. When total NCBI hits
@@ -1277,6 +1300,16 @@ utils::globalVariables(c(
 #'   independent length filter -- out-of-range rows kept here are excluded
 #'   from training there exactly as before this parameter existed).
 #'
+#'   With `dry_run = TRUE`, instead a list: `taxa` (one row per requested
+#'   taxon: `ncbi_count`, `NA` for a taxon served from cache; `cached`;
+#'   `sequences`, the in-range sequences found for it), `sequences` (one row
+#'   per in-range sequence, uncapped: accession and rank columns), and the
+#'   elements of [estimate_sequence_matrix_size()] for this call's caps plus
+#'   `max_per_species` in \{none, 20, 10\} and `max_per_genus` in
+#'   \{none, 1000, 500, 250\}: `grid`, `species_dropped`, `available_gb`,
+#'   `budget_gb` and `rates`. The grid is also printed. Pass `sequences` to
+#'   [estimate_sequence_matrix_size()] to try other caps or build settings.
+#'
 #' @seealso [read_reference_fasta()] for loading a local FASTA file,
 #'   [build_sequence_matrix()] for the next step
 #'
@@ -1317,8 +1350,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
                                            count_attempts = 3L,
                                            on_count_failure = c("warn", "error"),
                                            evict_unreachable_cache = TRUE,
-                                           taxa_lineage = NULL) {
+                                           taxa_lineage = NULL,
+                                           dry_run = FALSE) {
   on_count_failure <- match.arg(on_count_failure)
+  if (!is.logical(dry_run) || length(dry_run) != 1L || is.na(dry_run)) {
+    stop("dry_run must be TRUE or FALSE")
+  }
   if (!is.logical(evict_unreachable_cache) ||
     length(evict_unreachable_cache) != 1L || is.na(evict_unreachable_cache)) {
     stop("evict_unreachable_cache must be TRUE or FALSE")
@@ -1421,7 +1458,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
   cached_meta <- vector("list", length(taxa))
   is_cached <- rep(FALSE, length(taxa))
   cache_files <- rep(NA_character_, length(taxa))
-  sel_now <- .sel_params(max_per_species, max_per_genus, blacklist_regex)
+  # The cache holds UNCAPPED metadata, whatever caps this call asks for: the
+  # caps are applied after assembly, so one cached file serves every
+  # max_per_species / max_per_genus value. A file recorded under a cap holds
+  # only a sample and cannot serve a larger one, so it is a mismatch and is
+  # re-fetched once, uncapped.
+  sel_now <- .sel_params(NULL, NULL, blacklist_regex)
   n_mismatch <- 0L
 
   if (!is.null(cache_dir)) {
@@ -1454,11 +1496,11 @@ fetch_ncbi_reference_sequences <- function(taxa,
   if (n_mismatch > 0L) {
     message(sprintf(
       paste0(
-        "  %d cached taxon/taxa skipped (cache miss): not verified against ",
-        "this call's selection settings (max_per_species / max_per_genus / ",
-        "blacklist_regex) -- either recorded under different ones, or ",
-        "recorded before this was tracked at all. Re-fetching those; a ",
-        "successful re-fetch overwrites the file with a verified one."
+        "  %d cached taxon/taxa skipped (cache miss): recorded under a ",
+        "max_per_species / max_per_genus cap (so holding only a sample), under ",
+        "a different blacklist_regex, or before selection settings were ",
+        "recorded at all. Re-fetching those uncapped; a successful re-fetch ",
+        "overwrites the file, and after that every cap is served from it."
       ), n_mismatch
     ))
   }
@@ -1625,6 +1667,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # very class of silent loss this policy work exists to stop.
   if (total == 0L && !any(is_cached)) {
     message("No sequences found. Check taxon names and barcode_term.")
+    if (isTRUE(dry_run)) {
+      return(.reference_dry_run(
+        NULL, taxa, counts, is_cached, cached_meta, failed_taxa,
+        rank_system, max_per_species, max_per_genus
+      ))
+    }
     empty <- .with_count_failures(
       .empty_reference_df(rank_system, include_location), failed_taxa
     )
@@ -1965,25 +2013,19 @@ fetch_ncbi_reference_sequences <- function(taxa,
           next
         }
 
-        # Stratified downsampling. in-range and out-of-range rows are sampled
-        # SEPARATELY so out-of-range sequences (capped by
-        # max_out_of_range_per_species below) never displace in-range
-        # training-set candidates within the max_per_species/max_per_genus
-        # budgets -- those budgets keep their existing pre-keep_out_of_range
-        # meaning entirely.
+        # in-range and out-of-range rows are capped SEPARATELY so out-of-range
+        # sequences (capped by max_out_of_range_per_species below) never
+        # displace in-range training-set candidates within the
+        # max_per_species/max_per_genus budgets, which apply to in-range rows
+        # only.
         in_range_meta <- meta[meta$in_barcode_range, , drop = FALSE]
         out_range_meta <- meta[!meta$in_barcode_range, , drop = FALSE]
 
-        if (!is.null(max_per_species) && finest_rank == "species") {
-          in_range_meta <- dplyr::group_by(in_range_meta, species)
-          in_range_meta <- dplyr::slice_sample(in_range_meta, n = max_per_species)
-          in_range_meta <- dplyr::ungroup(in_range_meta)
-        }
-        if (!is.null(max_per_genus) && "genus" %in% tolower(rank_system)) {
-          in_range_meta <- dplyr::group_by(in_range_meta, genus)
-          in_range_meta <- dplyr::slice_sample(in_range_meta, n = max_per_genus)
-          in_range_meta <- dplyr::ungroup(in_range_meta)
-        }
+        # max_per_species / max_per_genus are NOT applied here: the cache
+        # holds this taxon's full in-range metadata, and the caps are applied
+        # once, to the combined reference, after every taxon is assembled
+        # (see .apply_reference_caps() below). A different cap is then a
+        # different selection from the same cached metadata, not a re-fetch.
         if (nrow(out_range_meta) > 0L && finest_rank == "species") {
           out_range_meta <- dplyr::group_by(out_range_meta, species)
           out_range_meta <- dplyr::slice_sample(out_range_meta, n = max_out_of_range_per_species)
@@ -1993,7 +2035,7 @@ fetch_ncbi_reference_sequences <- function(taxa,
         meta <- dplyr::bind_rows(in_range_meta, out_range_meta)
 
         message(sprintf(
-          "  %s: %d sequences after filtering/downsampling%s",
+          "  %s: %d sequences after filtering%s",
           taxa[i], nrow(meta),
           if (keep_out_of_range) {
             sprintf(
@@ -2130,6 +2172,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
   # WHOLE fetch, discarding every other genus's already-completed work.
   family_meta <- dplyr::bind_rows(all_meta)
 
+  # Priority species get their full allocation by design: exempt from the
+  # max_per_species / max_per_genus caps, and not counted against a genus's.
+  if (!is.null(priority_combined) && nrow(priority_combined) > 0L) {
+    priority_combined$cap_exempt <- TRUE
+  }
+
   # Merge: priority first, then family (deduplicate by accession). Same
   # dplyr::bind_rows() fix -- priority_combined and family_meta are built by
   # separately-written code paths that aren't guaranteed to produce
@@ -2143,6 +2191,12 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   if (is.null(combined_meta) || nrow(combined_meta) == 0L) {
     message("No sequences passed all filters across all taxa.")
+    if (isTRUE(dry_run)) {
+      return(.reference_dry_run(
+        NULL, taxa, counts, is_cached, all_meta, failed_taxa,
+        rank_system, max_per_species, max_per_genus
+      ))
+    }
     return(.with_count_failures(
       .empty_reference_df(rank_system, include_location), failed_taxa
     ))
@@ -2150,6 +2204,49 @@ fetch_ncbi_reference_sequences <- function(taxa,
 
   # Deduplicate by accession (priority sequences take precedence)
   combined_meta <- combined_meta[!duplicated(combined_meta$acc), , drop = FALSE]
+  if (!"cap_exempt" %in% names(combined_meta)) combined_meta$cap_exempt <- FALSE
+  combined_meta$cap_exempt <- combined_meta$cap_exempt %in% TRUE
+
+  # --- Dry run: stop before any sequence is downloaded ------------------------
+  # Everything above is metadata the real run needs anyway, and it is now
+  # cached uncapped, so a dry run followed by the real run issues no more NCBI
+  # requests than the real run alone.
+  if (isTRUE(dry_run)) {
+    return(.reference_dry_run(
+      combined_meta, taxa, counts, is_cached, all_meta, failed_taxa,
+      rank_system, max_per_species, max_per_genus
+    ))
+  }
+
+  # --- Caps, applied once to the assembled reference --------------------------
+  # Deterministic (keyed on the accession, not the RNG), so the same call keeps
+  # the same sequences every time, a smaller cap keeps a subset of what a
+  # larger one kept, and a dry run names exactly the species a cap removes.
+  n_before_caps <- nrow(combined_meta)
+  sp_before_caps <- unique(combined_meta[[tolower(rank_system[length(rank_system)])]])
+  combined_meta <- .apply_reference_caps(
+    combined_meta, max_per_species, max_per_genus,
+    finest_rank = tolower(rank_system[length(rank_system)]),
+    exempt = combined_meta$cap_exempt
+  )
+  if (nrow(combined_meta) < n_before_caps) {
+    n_sp_lost <- length(setdiff(
+      sp_before_caps, combined_meta[[tolower(rank_system[length(rank_system)])]]
+    ))
+    message(sprintf(
+      paste0(
+        "Caps (max_per_species = %s, max_per_genus = %s): %s of %s sequences ",
+        "kept (%.0f%%), %s whole %s removed."
+      ),
+      if (is.null(max_per_species)) "none" else format(max_per_species),
+      if (is.null(max_per_genus)) "none" else format(max_per_genus),
+      format(nrow(combined_meta), big.mark = ","),
+      format(n_before_caps, big.mark = ","),
+      100 * nrow(combined_meta) / n_before_caps,
+      format(n_sp_lost, big.mark = ","),
+      tolower(rank_system[length(rank_system)])
+    ))
+  }
   message(sprintf("\nFetching FASTA for %d sequences...", nrow(combined_meta)))
 
   # --- Step 3: Fetch FASTA sequences ------------------------------------------
@@ -2283,6 +2380,72 @@ fetch_ncbi_reference_sequences <- function(taxa,
     finest_rank
   ))
   .with_count_failures(reference_df, failed_taxa)
+}
+
+
+#' Assemble the result of a fetch_ncbi_reference_sequences() dry run
+#'
+#' @param meta Combined, deduplicated, UNCAPPED metadata (may have zero rows).
+#' @param all_meta Per-taxon metadata list, parallel to `taxa`.
+#' @return See the `dry_run` parameter of fetch_ncbi_reference_sequences().
+#' @noRd
+.reference_dry_run <- function(meta, taxa, counts, is_cached, all_meta,
+                               failed_taxa, rank_system, max_per_species,
+                               max_per_genus) {
+  n_in_range <- vapply(all_meta, function(m) {
+    if (is.null(m) || nrow(m) == 0L) {
+      0L
+    } else if ("in_barcode_range" %in% names(m)) {
+      sum(m$in_barcode_range %in% TRUE)
+    } else {
+      nrow(m)
+    }
+  }, integer(1L))
+  taxa_tbl <- data.frame(
+    taxon = taxa,
+    ncbi_count = unname(counts),
+    cached = is_cached,
+    sequences = n_in_range,
+    stringsAsFactors = FALSE
+  )
+
+  cols <- intersect(c("acc", "acc_version", tolower(rank_system), "cap_exempt"), names(meta))
+  seqs <- if (is.null(meta) || nrow(meta) == 0L) {
+    data.frame(acc = character(0L), genus = character(0L), species = character(0L))
+  } else {
+    in_range <- if ("in_barcode_range" %in% names(meta)) meta$in_barcode_range %in% TRUE else TRUE
+    meta[in_range, cols, drop = FALSE]
+  }
+  rownames(seqs) <- NULL
+
+  out <- list(taxa = taxa_tbl, sequences = seqs)
+  if (all(c("genus", "species") %in% names(seqs))) {
+    est <- estimate_sequence_matrix_size(
+      seqs,
+      max_per_species = unique(c(if (is.null(max_per_species)) NA else max_per_species, NA, 20, 10)),
+      max_per_genus = unique(c(if (is.null(max_per_genus)) NA else max_per_genus, NA, 1000, 500, 250)),
+      n_ranks = length(rank_system)
+    )
+    message(sprintf(
+      paste0(
+        "\nDry run: %s sequences in %s genera and %s species, before caps. ",
+        "No FASTA downloaded; the metadata is cached, so the real run reuses it. ",
+        "First row = this call's caps."
+      ),
+      format(nrow(seqs), big.mark = ","),
+      format(dplyr::n_distinct(seqs$genus), big.mark = ","),
+      format(dplyr::n_distinct(seqs$species), big.mark = ",")
+    ))
+    .message_size_grid(est)
+    out <- c(out, est)
+  } else {
+    message(
+      "\nDry run: rank_system has no genus and species ranks, so the matrix ",
+      "size cannot be predicted; returning the taxon and sequence tables only."
+    )
+  }
+  attr(out, "count_failures") <- failed_taxa
+  out
 }
 
 
