@@ -1341,6 +1341,21 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   length 1024" warning in the same run is not from TaxaLikely (its only
   `file.exists()` calls take real paths); source unidentified. Installed
   TaxaLikely behind main by this fix; reinstall at the next window.
+  **Tracked, NOT built (1.1 candidate, the maintainer's scope call)**:
+  an adaptive `max_per_genus` for `fetch_ncbi_reference_sequences()` /
+  `build_sequence_matrix()`. Today the cap is manual with no sizing
+  help; guessing it cost two failed COI runs (one kernel-panicked a
+  36 GB Mac). A workflow-only prototype lives in
+  `eDNA/CaliforniaIntertidal/CaliforniaIntertidalWorkflow_multi_marker.R`
+  (~1886-1950): available-memory probe (free+inactive+speculative+
+  purgeable via vm_stat, macOS only), a pair-count memory predictor
+  (`sum(n(n-1)/2 + FOREIGN*n) * K * BYTES_PER_PAIR`), binary search on the
+  genus cap against a budget fraction. Weaknesses to carry with any
+  port: K = 2.2545 fitted from ONE build; PEAK = 2.5 is a lower bound
+  inferred from a crash; the memory probe is macOS-only; predictions are
+  an order-of-magnitude guide. A third calibration point
+  (`attr(seq_matrix, "size_calibration")`) is being captured by the COI
+  run; port after it lands, as a new export, so not in this submission.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
