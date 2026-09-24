@@ -275,7 +275,8 @@ each name to one NCBI taxid before searching, so a homonym cannot pull
 another lineage's sequences. The cache key encodes the taxid, so
 adopting `taxa_lineage` on an existing project refetches that project's
 references once (the same holds for a change to `max_per_species` or
-`max_per_genus`) -
+`max_per_genus`, whose default of 500 per genus keeps the alignment
+matrix within memory on large reference sets) -
 `fetch_bold_reference_sequences()`: download from BOLD Systems by taxon
 name, the BOLD analog of `fetch_ncbi_reference_sequences()` -
 `read_reference_fasta()`: load local FASTA + data-frame taxonomy (or
