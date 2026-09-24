@@ -1372,6 +1372,17 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   matching NULL, not 500. TRAP recorded: every explicit `NULL` written
   for clarity is now load-bearing; deleting one flips the call to 500
   and refetches (~21 h of COI there). Roxygen now says so.
+  **Maintainer 2026-09-24**: users must be warned about the memory vs
+  missed-species tradeoff and given the numbers to decide; the pre-run
+  estimate is NOT a dead end (the fetch already holds per-taxon NCBI
+  counts before downloading, and memory scales with the square of
+  sequences per genus). Spun off to its own chat:
+  `TaxaID_dev/ecosystem_docs/REENTRY_PROMPT_reference_memory_estimate.md`
+  (dry-run report from the fetch, a stop in build_sequence_matrix() when
+  the prediction exceeds available memory, calibration with the third
+  point, documented tradeoff, and a numbers-backed default decision).
+  Production workflows and the B2 driver now pass max_per_genus = NULL
+  explicitly (eDNA d95761d, GreatLakes 5457ebc, TaxaID_dev 6f3adea).
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
