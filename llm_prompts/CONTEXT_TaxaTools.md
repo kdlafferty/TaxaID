@@ -222,7 +222,7 @@ Post-processes the output of 'verify_taxon_names' to (1) rename the source and t
 
 **Value:** A dataframe with: '<old_backbone_label>' Original names (renamed from 'input_col'). '<new_backbone_label>' Translated names (renamed from 'matched_name'). 'backbone_matched' Logical. 'TRUE' when the target backbone returned a genuine match; 'FALSE' when no match was found (the source name was retained due to 'keep_unmatched = TRUE', or left 'NA' when 'keep_unmatched = FALSE'). Always 'TRUE' ...
 
-### check_lineage_agreement(declared, returned)
+### check_lineage_agreement(declared, returned, ignore = c("cellular organisms", "Eukaryota", "Bacteria", "Archaea", "Viruses",      "Metazoa", "Viridiplantae", "Fungi"))
 
 Check whether a returned lineage agrees with a declared one
 
@@ -232,8 +232,9 @@ A cheap, no-API-call post-fetch guard: given what a caller DECLARED about a taxo
 |---|---|---|---|
 | declared | yes |  | Character vector. One element per row: the caller's own known higher-rank lineage terms for that row, pipe- or semicolon-delimited (e.g. "Rhodophyta\|Florideophyceae\|Ceramiales"). |
 | returned | yes |  | Character vector, same length as declared. The corresponding lineage actually returned by the fetch being checked, in the same delimited form. |
+| ignore | no | c("cellular organisms", "Eukaryota", "Bacteria", "Archaea", "Viruses",      "Metazoa", "Viridiplantae", "Fungi") | Character vector of lineage terms that never count as agreement, case-insensitive. The default holds the roots that every lineage shares ("cellular organisms", "Eukaryota", "Bacteria", "Archaea", "Viruses") and the kingdom-level groups a cross-phylum homonym still shares ("Metazoa", "Viridiplantae", "Fungi"). Without this, a full NCBI-style lineage on both sides would return "agrees" for a red alga and a bat on "Eukaryota" alone. Compare lineages scoped below the shared root; pass character(0) to count every term. |
 
-**Value:** Character vector, same length as 'declared', one of '"agrees"' (at least one shared term - same clade, whether an exact match or a benign revision), '"disagrees"' (both sides have real terms and share none - a likely homonym), or '"unknown"' (one or both sides had nothing to compare).
+**Value:** Character vector, same length as 'declared', one of '"agrees"' (at least one shared term outside 'ignore' - same clade, whether an exact match or a benign revision), '"disagrees"' (both sides have real terms and share none - a likely homonym), or '"unknown"' (one or both sides had nothing to compare after 'ignore').
 
 ### check_taxaid_manifest(path, packages = NULL, on_mismatch = c("error", "warning", "message", "silent"))
 
