@@ -1356,6 +1356,16 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   an order-of-magnitude guide. A third calibration point
   (`attr(seq_matrix, "size_calibration")`) is being captured by the COI
   run; port after it lands, as a new export, so not in this submission.
+  **Maintainer's decision 2026-09-24: `max_per_genus` defaults to 500**
+  (`976639d`); NULL disables. Consequences documented in the roxygen:
+  a capped genus can lose whole species; a value different from the one
+  a cache was built under is a cache miss, so EVERY existing reference
+  cache built under the old NULL default is refetched once on its next
+  call unless the caller passes `max_per_genus = NULL` (PtCon, GreatLakes
+  and Mugu production workflows included: check whether they pass it);
+  `max_per_species` is the gentler lever. The cache tests' seeded entries
+  had hard-coded the old default as "the function's defaults"; they now
+  read `formals()`.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
