@@ -614,3 +614,37 @@ test_that("the single-taxon-group warning only fires when sampling_group_col is 
     estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1)
   )
 })
+
+test_that("count_col: aggregated rows reproduce the expanded one-row-per-record fit exactly", {
+  set.seed(11)
+  agg <- data.frame(
+    taxon_name = rep(c("A", "B", "C", "D"), each = 3),
+    decimalLatitude = 34 + runif(12, -0.3, 0.3),
+    decimalLongitude = -120 + runif(12, -0.3, 0.3),
+    main_habitat = "Marine",
+    sampling_group = rep(c("g1", "g1", "g2", "g2"), each = 3),
+    n = c(5, 1, 0, 2, 1, 1, 1, 0, 0, 7, 3, 1),
+    stringsAsFactors = FALSE
+  )
+  expanded <- agg[rep(seq_len(nrow(agg)), agg$n), setdiff(names(agg), "n")]
+  a <- suppressWarnings(estimate_kernel_priors(agg, 34, -120, "Marine",
+    lambda_km = 20, count_col = "n", sampling_group_col = "sampling_group"
+  ))
+  e <- suppressWarnings(estimate_kernel_priors(expanded, 34, -120, "Marine",
+    lambda_km = 20, sampling_group_col = "sampling_group"
+  ))
+  expect_equal(a$priors, e$priors)
+  expect_equal(a$budget, e$budget)
+  expect_equal(a$regional_composition, e$regional_composition)
+  expect_equal(a$singletons[, c("taxon_name", "weight", "effective_records")],
+    e$singletons[, c("taxon_name", "weight", "effective_records")])
+  expect_equal(a$params$n_records_stratum, nrow(expanded))
+})
+
+test_that("count_col rejects negative or missing counts", {
+  occ <- .mk_occ(c("A", "B"), lat = c(34, 34.01), lon = -120)
+  occ$n <- c(1, -1)
+  expect_error(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1, count_col = "n"), "non-negative")
+  occ$n <- c(1, NA)
+  expect_error(estimate_kernel_priors(occ, 34, -120, "Marine", lambda_km = 1, count_col = "n"), "non-NA")
+})
