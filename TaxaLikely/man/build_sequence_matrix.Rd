@@ -15,7 +15,9 @@ build_sequence_matrix(
   barcode_term = NULL,
   verbose = TRUE,
   by_genus = FALSE,
-  max_foreign_reps_per_genus = 20L
+  max_foreign_reps_per_genus = 20L,
+  pair_retention = c("all", "best_per_partner", "best_per_class"),
+  min_pair_coverage = 0.8
 )
 }
 \arguments{
@@ -131,6 +133,28 @@ genera never happen to fall inside it), so coverage stays roughly even
 across genera even though it is no longer exhaustive. \code{0L} disables the
 augmentation entirely (representative-only alignment -- see the
 \verb{@section} below for why that understates \code{gap_logit}).}
+
+\item{pair_retention}{\code{"all"} (default), \code{"best_per_partner"} or
+\code{"best_per_class"}. Which pairs within \code{max_dist} are returned. \code{"all"}
+returns every pair. The other two return every within-species pair
+plus, for each sequence and each stratum of its cross-species partners,
+at most two pairs: the best-scoring one whose \code{coverage} clears
+\code{min_pair_coverage}, and the best-scoring one regardless of coverage.
+Under \code{"best_per_partner"} the stratum is the partner species inside the
+sequence's own genus and the partner family (or genus when no family
+rank is given) outside it; under \code{"best_per_class"} it is the pair type
+itself -- congeneric, confamilial or cross-family -- so a sequence keeps
+at most six cross-species pairs in total. See \verb{@section Pair retention}
+for why both are exact for \code{\link[=train_likelihood_model]{train_likelihood_model()}} and what each
+changes elsewhere.}
+
+\item{min_pair_coverage}{Numeric in (0, 1] or \code{NULL} (default \code{0.8}). Only
+used when \code{pair_retention} is not \code{"all"}: the coverage floor the
+retained best-clearing pair is chosen under. Must equal the
+\code{min_pair_coverage} later passed to \code{\link[=train_likelihood_model]{train_likelihood_model()}} (whose
+default is also \code{0.8}), or be \code{NULL} if training will use \code{NULL}; the
+value is recorded in the result's \code{"pair_retention"} attribute and
+\code{\link[=train_likelihood_model]{train_likelihood_model()}} warns on a mismatch it can still see.}
 }
 \value{
 A data frame with one row per sequence pair within \code{max_dist}:
@@ -160,6 +184,52 @@ resulting data frame is the input to \code{\link[=train_likelihood_model]{train_
 Packages \code{DECIPHER} and \code{Biostrings} must be installed
 (\code{BiocManager::install("DECIPHER")}).  They are listed in \code{Suggests} because
 they are only needed for this one function.
+}
+
+\section{Pair retention (\code{pair_retention} other than \code{"all"})}{
+
+The pair table's size is dominated by same-genus cross-species pairs,
+which grow with the square of a genus's sequence count, so a species-rich
+genus with many sequences per species sets the memory ceiling for the
+whole build. Yet nothing downstream consumes those pairs as a
+distribution. \code{\link[=train_likelihood_model]{train_likelihood_model()}} reads, per reference sequence,
+its best within-species match, its best same-genus cross-species match and
+its best cross-species match of any kind (each as the best pair clearing
+its coverage floor, with the unfloored best as fallback); the
+confusion-risk curves read the best match per pair type (within-species,
+congeneric, confamilial, cross-family); a singleton takes its single best
+partner. Every one of those is a maximum, and the maximum over a union of
+strata is the maximum of the per-stratum maxima -- so keeping the two
+best pairs per (sequence, partner stratum) reproduces each of them exactly
+and the trained model is identical to the one trained on \code{"all"}.
+Within-species pairs are always kept in full: they are a few percent of
+the table, and \code{TaxaMatch::corroborate_references_locally()} counts
+distinct conspecific partners and their submission independence, which
+needs every one of them.
+
+What changes: under \code{"best_per_partner"} the table is smaller by roughly
+the mean number of sequences per partner species inside a genus (bounded
+above by \code{max_seqs_per_taxon}), so same-genus rows grow as sequences
+times species per genus instead of sequences squared; under
+\code{"best_per_class"} they grow as sequences alone, and within-species pairs
+(quadratic per species, bounded by \code{max_seqs_per_taxon}) become the
+largest term. Alignment cost is unchanged either way. The row count
+\code{N_Obs} in the training data is unchanged (within-species pairs are
+complete). \code{restore_suppressed_candidates()} looks pairs up by accession:
+a query's direct pair with a specific candidate accession is present only
+when that accession is the query's best for its species, so restoration
+resolves more often at its species-pair and genus-model levels than at
+the direct-accession level, and its species-pair median is a median of
+per-query bests rather than of all pairs. Removing accessions from the
+table after the build (an accession screen) removes some queries' best
+partner for a stratum with no runner-up to fall back on (under
+\code{"best_per_class"} the direct-accession and species-pair levels of
+restoration are reached only when a candidate happens to hold a query's
+best congeneric pair, so restoration mostly resolves from the genus
+model); screen
+\code{reference_df} before building, which is also what
+\code{\link[=train_likelihood_model]{train_likelihood_model()}} recommends. \code{\link[=check_cross_genus_sampling_noise]{check_cross_genus_sampling_noise()}}
+always builds with \code{"all"}.
 }
 
 \section{Per-genus alignment (\code{by_genus = TRUE})}{
