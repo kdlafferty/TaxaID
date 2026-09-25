@@ -664,7 +664,8 @@ build_sequence_matrix <- function(reference_df,
 #' is formed -- so a thinned build never holds one alignment's full pair
 #' table in data-frame form, let alone the accumulated one.
 #' @noRd
-.decipher_align_pairs <- function(dna, max_dist, verbose, retain = NULL) {
+.decipher_align_pairs <- function(dna, max_dist, verbose, retain = NULL,
+                                  pair_filter = NULL) {
   aligned <- DECIPHER::AlignSeqs(dna, processors = NULL, verbose = verbose)
   dist_m <- DECIPHER::DistanceMatrix(
     aligned,
@@ -721,6 +722,21 @@ build_sequence_matrix <- function(reference_df,
   rm(gap_mat, ord_i, i_sorted)
   min_len <- pmin(orig_widths[i], orig_widths[j])
   coverage <- ifelse(min_len == 0L, NA_real_, overlap / min_len)
+
+  # A caller-supplied eligibility rule (the per-genus path drops pairs that
+  # another alignment is responsible for) must run BEFORE retention, so that
+  # retention never spends a stratum's two slots on rows that are about to be
+  # discarded.
+  if (!is.null(pair_filter)) {
+    elig <- pair_filter(seq_names[i], seq_names[j])
+    if (!any(elig)) {
+      return(empty)
+    }
+    i <- i[elig]
+    j <- j[elig]
+    p_match <- p_match[elig]
+    coverage <- coverage[elig]
+  }
 
   if (!is.null(retain)) {
     .lab <- function(v, k) if (is.null(v)) NULL else unname(v[seq_names[k]])
@@ -960,7 +976,10 @@ build_sequence_matrix <- function(reference_df,
     # treatment in the original, pre-augmentation design).
     if (length(combo_rows) >= 2L) {
       combo_pairs <- .decipher_align_pairs(dna[combo_rows], max_dist,
-        verbose = FALSE, retain = retain
+        verbose = FALSE, retain = retain,
+        pair_filter = function(x, y) {
+          (x %in% own_ids | y %in% own_ids) & !(x %in% rep_ids & y %in% rep_ids)
+        }
       )
       if (nrow(combo_pairs) > 0L) {
         # Keep: within-genus pairs (both sides in own_ids), and cross-genus
