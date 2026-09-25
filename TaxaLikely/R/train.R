@@ -869,6 +869,23 @@ train_likelihood_model <- function(raw_df,
   if (!is.data.frame(raw_df)) {
     stop("raw_df must be a data frame")
   }
+  # A table thinned by build_sequence_matrix(pair_retention = "best_per_partner")
+  # reproduces this function's per-sequence maxima exactly only under the
+  # coverage floor it was thinned with (or NULL). The attribute survives
+  # dplyr operations but not base-R row subsetting, so this can only warn
+  # when it is still there.
+  pr <- attr(raw_df, "pair_retention")
+  if (is.list(pr) && identical(pr$policy, "best_per_partner") &&
+    !is.null(min_pair_coverage) &&
+    !isTRUE(all.equal(pr$min_pair_coverage, min_pair_coverage))) {
+    warning(sprintf(paste0(
+      "raw_df was thinned with pair_retention = \"best_per_partner\" under ",
+      "min_pair_coverage = %s, but this call uses min_pair_coverage = %.2f: the ",
+      "best foreign/congener pair per reference is only exact at the build-time ",
+      "floor (or NULL). Rebuild the matrix with the same floor."
+    ), if (is.null(pr$min_pair_coverage)) "NULL" else sprintf("%.2f", pr$min_pair_coverage),
+    min_pair_coverage), call. = FALSE)
+  }
 
   # Auto-detect rank_system from .x-suffixed columns in raw_df
   if (is.null(rank_system)) {

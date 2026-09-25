@@ -121,6 +121,59 @@ utils::globalVariables(c(
 #'   across genera even though it is no longer exhaustive. `0L` disables the
 #'   augmentation entirely (representative-only alignment -- see the
 #'   `@section` below for why that understates `gap_logit`).
+#' @param pair_retention `"all"` (default) or `"best_per_partner"`. Which
+#'   pairs within `max_dist` are returned. `"all"` returns every pair.
+#'   `"best_per_partner"` returns every within-species pair plus, for each
+#'   sequence and each partner stratum (partner species inside the
+#'   sequence's own genus; partner family, or genus when no family rank is
+#'   given, outside it), at most two cross-species pairs: the best-scoring
+#'   one whose `coverage` clears `min_pair_coverage`, and the best-scoring one
+#'   regardless of coverage. See `@section Pair retention` for why this is
+#'   exact for [train_likelihood_model()] and what it changes elsewhere.
+#' @param min_pair_coverage Numeric in (0, 1] or `NULL` (default `0.8`). Only
+#'   used when `pair_retention = "best_per_partner"`: the coverage floor the
+#'   retained best-clearing pair is chosen under. Must equal the
+#'   `min_pair_coverage` later passed to [train_likelihood_model()] (whose
+#'   default is also `0.8`), or be `NULL` if training will use `NULL`; the
+#'   value is recorded in the result's `"pair_retention"` attribute and
+#'   [train_likelihood_model()] warns on a mismatch it can still see.
+#'
+#' @section Pair retention (`pair_retention = "best_per_partner"`):
+#' The pair table's size is dominated by same-genus cross-species pairs,
+#' which grow with the square of a genus's sequence count, so a species-rich
+#' genus with many sequences per species sets the memory ceiling for the
+#' whole build. Yet nothing downstream consumes those pairs as a
+#' distribution. [train_likelihood_model()] reads, per reference sequence,
+#' its best within-species match, its best same-genus cross-species match and
+#' its best cross-species match of any kind (each as the best pair clearing
+#' its coverage floor, with the unfloored best as fallback); the
+#' confusion-risk curves read the best match per pair type (within-species,
+#' congeneric, confamilial, cross-family); a singleton takes its single best
+#' partner. Every one of those is a maximum, and the maximum over a union of
+#' strata is the maximum of the per-stratum maxima -- so keeping the two
+#' best pairs per (sequence, partner stratum) reproduces each of them exactly
+#' and the trained model is identical to the one trained on `"all"`.
+#' Within-species pairs are always kept in full: they are a few percent of
+#' the table, and `TaxaMatch::corroborate_references_locally()` counts
+#' distinct conspecific partners and their submission independence, which
+#' needs every one of them.
+#'
+#' What changes: the table is smaller by roughly the mean number of
+#' sequences per partner species inside a genus (bounded above by
+#' `max_seqs_per_taxon`), so memory grows about linearly, not quadratically,
+#' in sequences per genus; alignment cost is unchanged. The row count
+#' `N_Obs` in the training data is unchanged (within-species pairs are
+#' complete). `restore_suppressed_candidates()` looks pairs up by accession:
+#' a query's direct pair with a specific candidate accession is present only
+#' when that accession is the query's best for its species, so restoration
+#' resolves more often at its species-pair and genus-model levels than at
+#' the direct-accession level, and its species-pair median is a median of
+#' per-query bests rather than of all pairs. Removing accessions from the
+#' table after the build (an accession screen) removes some queries' best
+#' partner for a stratum with no runner-up to fall back on; screen
+#' `reference_df` before building, which is also what
+#' [train_likelihood_model()] recommends. [check_cross_genus_sampling_noise()]
+#' always builds with `"all"`.
 #'
 #' @section Per-genus alignment (`by_genus = TRUE`):
 #' Whole-set alignment cost grows worse than linearly in sequence count, but
@@ -209,9 +262,17 @@ build_sequence_matrix <- function(reference_df,
                                   barcode_term = NULL,
                                   verbose = TRUE,
                                   by_genus = FALSE,
-                                  max_foreign_reps_per_genus = 20L) {
+                                  max_foreign_reps_per_genus = 20L,
+                                  pair_retention = c("all", "best_per_partner"),
+                                  min_pair_coverage = 0.8) {
   if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("verbose must be TRUE or FALSE")
+  }
+  pair_retention <- match.arg(pair_retention)
+  if (!is.null(min_pair_coverage) &&
+    (!is.numeric(min_pair_coverage) || length(min_pair_coverage) != 1L ||
+      is.na(min_pair_coverage) || min_pair_coverage <= 0 || min_pair_coverage > 1)) {
+    stop("min_pair_coverage must be NULL or a single number in (0, 1]")
   }
   if (!is.logical(by_genus) || length(by_genus) != 1L || is.na(by_genus)) {
     stop("by_genus must be TRUE or FALSE")
@@ -430,15 +491,43 @@ build_sequence_matrix <- function(reference_df,
   }
 
   # ---- 3. ALIGNMENT & DISTANCE MATRIX ----------------------------------------
+  # The retention context carries each sequence's taxonomy into every
+  # alignment so that pairs can be thinned as each alignment is extracted --
+  # the full pair table is never accumulated (see @section Pair retention).
+  retain <- if (pair_retention == "best_per_partner") {
+    .retention_context(ref_seqs, rank_cols, min_pair_coverage)
+  } else {
+    NULL
+  }
   if (isTRUE(by_genus)) {
     dist_tbl <- .align_pairs_by_genus(
-      dna, ref_seqs, rank_cols, max_dist, verbose, max_foreign_reps_per_genus
+      dna, ref_seqs, rank_cols, max_dist, verbose, max_foreign_reps_per_genus,
+      retain = retain
     )
   } else {
     t0 <- proc.time()[["elapsed"]]
     message("Aligning sequences with DECIPHER...")
-    dist_tbl <- .decipher_align_pairs(dna, max_dist, verbose)
+    dist_tbl <- .decipher_align_pairs(dna, max_dist, verbose, retain = retain)
     message(sprintf("Alignment complete (%.1fs)", proc.time()[["elapsed"]] - t0))
+  }
+
+  # A (sequence, stratum) group can be fed by more than one alignment under
+  # by_genus = TRUE (a foreign representative meets a family's members in
+  # each of that family's genus alignments, and its representatives in the
+  # representative alignment). Each alignment kept its own two best, so the
+  # union is exact but can exceed two per group; one final pass over the
+  # already-thinned table restores the documented "at most two" shape.
+  if (!is.null(retain) && nrow(dist_tbl) > 0L) {
+    .lab <- function(v, k) if (is.null(v)) NULL else unname(v[k])
+    keep <- .best_per_partner_keep(
+      x = dist_tbl$id_x,
+      sp_x = .lab(retain$species, dist_tbl$id_x), sp_y = .lab(retain$species, dist_tbl$id_y),
+      gn_x = .lab(retain$genus, dist_tbl$id_x), gn_y = .lab(retain$genus, dist_tbl$id_y),
+      fam_x = .lab(retain$family, dist_tbl$id_x), fam_y = .lab(retain$family, dist_tbl$id_y),
+      p_match = dist_tbl$p_match, coverage = dist_tbl$coverage, tie = dist_tbl$id_y,
+      min_pair_coverage = retain$min_pair_coverage
+    )
+    dist_tbl <- dist_tbl[keep, , drop = FALSE]
   }
 
   # ---- 4. MERGE TAXONOMY METADATA --------------------------------------------
@@ -451,11 +540,115 @@ build_sequence_matrix <- function(reference_df,
     dplyr::left_join(lookup, by = c("id_y" = "composite_id")) |>
     dplyr::rename_with(~ paste0(., ".y"), dplyr::all_of(present_rank_cols))
 
+  # Recorded so train_likelihood_model() can tell that a thinned table was
+  # built under a different coverage floor than the one it is about to apply
+  # (see @section Pair retention). Base-R row subsetting drops this attribute,
+  # so it is a courtesy check, not a guarantee.
+  attr(out, "pair_retention") <- list(
+    policy = pair_retention,
+    min_pair_coverage = if (pair_retention == "best_per_partner") min_pair_coverage else NULL
+  )
+
   message(sprintf(
-    "Matrix built: %d pairs within distance < %.2f",
-    nrow(out), max_dist
+    "Matrix built: %d pairs within distance < %.2f%s",
+    nrow(out), max_dist,
+    if (pair_retention == "best_per_partner") " (pair_retention = \"best_per_partner\")" else ""
   ))
   out
+}
+
+#' Build the per-sequence taxonomy lookup that pair retention needs
+#'
+#' Named character vectors (by `composite_id`) for the finest rank, the genus
+#' (when present) and the family (when present), plus the coverage floor.
+#' `NULL` entries mean that rank is absent from `rank_cols`; the retention
+#' rule adapts (see `.best_per_partner_keep()`).
+#' @noRd
+.retention_context <- function(ref_seqs, rank_cols, min_pair_coverage) {
+  ids <- ref_seqs$composite_id
+  finest <- rank_cols[length(rank_cols)]
+  .col <- function(nm) {
+    if (nm %in% names(ref_seqs)) stats::setNames(as.character(ref_seqs[[nm]]), ids) else NULL
+  }
+  list(
+    species = .col(finest),
+    genus = if (!identical(finest, "genus")) .col("genus") else NULL,
+    family = if (!identical(finest, "family")) .col("family") else NULL,
+    min_pair_coverage = min_pair_coverage
+  )
+}
+
+#' Which directed pairs survive `pair_retention = "best_per_partner"`
+#'
+#' Works on parallel vectors describing directed pairs (`x` is the query side).
+#' A pair whose two sides share the finest-rank label is always kept. Every
+#' other pair is assigned to a stratum -- the partner's species when the two
+#' sides share a genus, otherwise the partner's family (or genus, or species,
+#' whichever coarsest of those ranks is available) -- and within each
+#' `(x, stratum)` group at most two rows survive: the highest-scoring pair
+#' whose `coverage` clears `min_pair_coverage`, and the highest-scoring pair
+#' regardless of coverage (the same row when they coincide). Ties break on
+#' higher coverage, then on `tie` (any orderable vector, e.g. the partner's
+#' index or id) so the result is deterministic.
+#'
+#' Why this is lossless for the consumers of the pair table: every quantity
+#' `train_likelihood_model()` reads from a cross-species pair is a per-query
+#' maximum (best foreign match, best congener match, best match per
+#' pair-type for the confusion-risk curves, a singleton's best partner), each
+#' taken either over pairs clearing the coverage floor or over all pairs.
+#' Both maxima of a union are maxima of the per-stratum maxima, so keeping the
+#' two per stratum reproduces them exactly. Within-species pairs are kept in
+#' full because `TaxaMatch::corroborate_references_locally()` counts distinct
+#' conspecific partners and needs submission-batch metadata this function
+#' never sees.
+#'
+#' @param x Query-side identifiers (any atomic vector; equal values = same
+#'   query).
+#' @param sp_x,sp_y,gn_x,gn_y,fam_x,fam_y Finest-rank, genus and family labels
+#'   for each side; `gn_*`/`fam_*` may be `NULL` when that rank is absent.
+#' @param p_match,coverage Numeric, per pair.
+#' @param tie Orderable vector, per pair, for deterministic tie-breaking.
+#' @param min_pair_coverage Coverage floor, or `NULL` (then only the
+#'   highest-scoring pair per stratum is kept).
+#' @return Logical vector, `TRUE` for rows to keep.
+#' @noRd
+.best_per_partner_keep <- function(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+                                   p_match, coverage, tie, min_pair_coverage) {
+  n <- length(x)
+  if (n == 0L) {
+    return(logical(0L))
+  }
+  same_sp <- !is.na(sp_x) & !is.na(sp_y) & sp_x == sp_y
+  has_gn <- !is.null(gn_x) && !is.null(gn_y)
+  same_gn <- if (has_gn) !is.na(gn_x) & !is.na(gn_y) & gn_x == gn_y else rep(FALSE, n)
+  # Stratum for a cross-species pair: partner species inside the genus,
+  # partner family (coarsest available) outside it. The prefix keeps a
+  # species-stratum key from ever colliding with a family/genus-stratum key.
+  cross_stratum <- if (!is.null(fam_y)) {
+    paste0("f:", fam_y)
+  } else if (has_gn) {
+    paste0("g:", gn_y)
+  } else {
+    paste0("s:", sp_y)
+  }
+  stratum <- ifelse(same_gn & !same_sp, paste0("s:", sp_y), cross_stratum)
+  key <- paste(as.character(x), stratum, sep = "\r")
+  cand <- which(!same_sp)
+  if (length(cand) == 0L) {
+    return(rep(TRUE, n))
+  }
+  cov_ord <- coverage
+  cov_ord[is.na(cov_ord)] <- -Inf
+  ord <- cand[order(key[cand], -p_match[cand], -cov_ord[cand], tie[cand])]
+  keep <- same_sp
+  # Best overall per stratum: first row of each key in score order.
+  keep[ord[!duplicated(key[ord])]] <- TRUE
+  # Best per stratum among pairs clearing the floor.
+  if (!is.null(min_pair_coverage)) {
+    ok <- ord[cov_ord[ord] >= min_pair_coverage]
+    keep[ok[!duplicated(key[ok])]] <- TRUE
+  }
+  keep
 }
 
 #' Align one DNAStringSet and extract its sparse pair table
@@ -464,8 +657,14 @@ build_sequence_matrix <- function(reference_df,
 #' `by_genus = TRUE` path -- the exact same alignment,
 #' distance-matrix, and coverage-extraction logic, just
 #' callable on a subset instead of hardcoded to the whole input.
+#'
+#' `retain` is `NULL` (keep every pair within `max_dist`) or the list from
+#' `.retention_context()`, in which case `pair_retention = "best_per_partner"`
+#' is applied here, to this alignment's pairs, before any character id column
+#' is formed -- so a thinned build never holds one alignment's full pair
+#' table in data-frame form, let alone the accumulated one.
 #' @noRd
-.decipher_align_pairs <- function(dna, max_dist, verbose) {
+.decipher_align_pairs <- function(dna, max_dist, verbose, retain = NULL) {
   aligned <- DECIPHER::AlignSeqs(dna, processors = NULL, verbose = verbose)
   dist_m <- DECIPHER::DistanceMatrix(
     aligned,
@@ -475,39 +674,78 @@ build_sequence_matrix <- function(reference_df,
     verbose              = verbose
   )
 
+  empty <- data.frame(
+    id_x = character(0L), id_y = character(0L),
+    p_match = numeric(0L), coverage = numeric(0L),
+    stringsAsFactors = FALSE
+  )
+
   # Sparse extraction: only materialise pairs within max_dist (avoids an N^2 intermediate)
   idx <- which(dist_m < max_dist & row(dist_m) != col(dist_m), arr.ind = TRUE)
   if (nrow(idx) == 0L) {
-    return(data.frame(
-      id_x = character(0L), id_y = character(0L),
-      p_match = numeric(0L), coverage = numeric(0L),
-      stringsAsFactors = FALSE
-    ))
+    return(empty)
   }
+  i <- idx[, 1L]
+  j <- idx[, 2L]
+  p_match <- 1 - dist_m[idx]
+  rm(idx)
 
   # Coverage = number of positions where both sequences contribute a non-gap
-  # character, divided by the shorter unaligned sequence length. Pre-computing
-  # per-sequence gap masks (O(n * aln_width)) and looking up per sparse pair
-  # (O(pairs * aln_width)) is cheaper than re-parsing the alignment string for
-  # every pair individually.
+  # character, divided by the shorter unaligned sequence length. The overlap
+  # count for every pair is one 0/1 matrix product (rows = sequences, columns
+  # = alignment positions), taken in row blocks so the transient block never
+  # exceeds a few hundred MB regardless of alignment size; the count is an
+  # exact integer, so this is the same number a per-pair mask intersection
+  # gives, at a small fraction of the cost.
   aln_str <- as.character(aligned)
-  gap_masks <- lapply(aln_str, function(s) strsplit(s, "", fixed = TRUE)[[1L]] != "-")
-  orig_widths <- vapply(aln_str, function(s) nchar(gsub("-", "", s, fixed = TRUE)), integer(1L))
   seq_names <- names(aligned)
+  n_seq <- length(aln_str)
+  gap_mat <- matrix(
+    as.double(unlist(strsplit(aln_str, "", fixed = TRUE), use.names = FALSE) != "-"),
+    nrow = n_seq, byrow = TRUE
+  )
+  orig_widths <- as.integer(rowSums(gap_mat))
 
-  coverage_vals <- vapply(seq_len(nrow(idx)), function(k) {
-    nm_i <- seq_names[idx[k, 1L]]
-    nm_j <- seq_names[idx[k, 2L]]
-    overlap <- sum(gap_masks[[nm_i]] & gap_masks[[nm_j]])
-    min_len <- min(orig_widths[[nm_i]], orig_widths[[nm_j]])
-    if (min_len == 0L) NA_real_ else as.double(overlap) / min_len
-  }, numeric(1L))
+  overlap <- numeric(length(i))
+  block <- max(1L, as.integer(floor(3.2e7 / n_seq))) # ~256 MB of doubles per block
+  ord_i <- order(i)
+  i_sorted <- i[ord_i]
+  starts <- seq.int(1L, n_seq, by = block)
+  for (s in starts) {
+    e <- min(s + block - 1L, n_seq)
+    sel <- ord_i[i_sorted >= s & i_sorted <= e]
+    if (length(sel) == 0L) next
+    ov_block <- tcrossprod(gap_mat[s:e, , drop = FALSE], gap_mat)
+    overlap[sel] <- ov_block[cbind(i[sel] - s + 1L, j[sel])]
+  }
+  rm(gap_mat, ord_i, i_sorted)
+  min_len <- pmin(orig_widths[i], orig_widths[j])
+  coverage <- ifelse(min_len == 0L, NA_real_, overlap / min_len)
+
+  if (!is.null(retain)) {
+    .lab <- function(v, k) if (is.null(v)) NULL else unname(v[seq_names[k]])
+    keep <- .best_per_partner_keep(
+      x = i,
+      sp_x = .lab(retain$species, i), sp_y = .lab(retain$species, j),
+      gn_x = .lab(retain$genus, i), gn_y = .lab(retain$genus, j),
+      fam_x = .lab(retain$family, i), fam_y = .lab(retain$family, j),
+      p_match = p_match, coverage = coverage, tie = j,
+      min_pair_coverage = retain$min_pair_coverage
+    )
+    if (!any(keep)) {
+      return(empty)
+    }
+    i <- i[keep]
+    j <- j[keep]
+    p_match <- p_match[keep]
+    coverage <- coverage[keep]
+  }
 
   data.frame(
-    id_x = rownames(dist_m)[idx[, 1L]],
-    id_y = colnames(dist_m)[idx[, 2L]],
-    p_match = 1 - dist_m[idx],
-    coverage = coverage_vals,
+    id_x = seq_names[i],
+    id_y = seq_names[j],
+    p_match = p_match,
+    coverage = coverage,
     stringsAsFactors = FALSE
   )
 }
@@ -630,7 +868,8 @@ build_sequence_matrix <- function(reference_df,
 #' since that call's cost is not negligible on a marker with many genera.
 #' @noRd
 .align_pairs_by_genus <- function(dna, ref_seqs, rank_cols, max_dist, verbose,
-                                  max_foreign_reps_per_genus = NULL) {
+                                  max_foreign_reps_per_genus = NULL,
+                                  retain = NULL) {
   if (!"genus" %in% rank_cols) {
     stop("by_genus = TRUE requires 'genus' in rank_system (found: ",
       paste(rank_cols, collapse = ", "), ").",
@@ -720,7 +959,9 @@ build_sequence_matrix <- function(reference_df,
     # needs no augmented-step contribution at all (same as this genus's
     # treatment in the original, pre-augmentation design).
     if (length(combo_rows) >= 2L) {
-      combo_pairs <- .decipher_align_pairs(dna[combo_rows], max_dist, verbose = FALSE)
+      combo_pairs <- .decipher_align_pairs(dna[combo_rows], max_dist,
+        verbose = FALSE, retain = retain
+      )
       if (nrow(combo_pairs) > 0L) {
         # Keep: within-genus pairs (both sides in own_ids), and cross-genus
         # pairs touching this genus's sequences -- EXCEPT rep-vs-rep pairs
@@ -758,7 +999,7 @@ build_sequence_matrix <- function(reference_df,
         n_genera
       ))
     }
-    .decipher_align_pairs(dna[rep_idx], max_dist, verbose)
+    .decipher_align_pairs(dna[rep_idx], max_dist, verbose, retain = retain)
   } else {
     message(paste0(
       "build_sequence_matrix: only 1 genus present -- no cross-genus ",

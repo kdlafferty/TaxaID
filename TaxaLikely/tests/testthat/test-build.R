@@ -845,3 +845,185 @@ test_that("check_cross_genus_sampling_noise: barcode_term actually resolves the 
     "after length filtering"
   )
 })
+
+# ---------------------------------------------------------------------------
+# pair_retention = "best_per_partner"
+# ---------------------------------------------------------------------------
+
+# Four families x two genera x three species x three sequences (72 sequences),
+# each species a fixed mutation of a family/genus-specific base so that
+# within-species, congeneric, confamilial and cross-family pairs all exist
+# and all fall within max_dist = 1.0. Coverage varies because a few
+# sequences are truncated, which exercises the coverage-floor branch of the
+# retention rule.
+.make_retention_df <- function() {
+  set.seed(7L)
+  base <- paste(rep("ATGCCGTAGCTAGGATCCGATTACGGCATCGATCGGATCCAGTC", 4), collapse = "") # 176 bp
+  .mutate <- function(s, n_sub) {
+    ch <- strsplit(s, "")[[1L]]
+    pos <- sample(seq_along(ch), n_sub)
+    ch[pos] <- vapply(ch[pos], function(b) sample(setdiff(c("A", "C", "G", "T"), b), 1L), "")
+    paste(ch, collapse = "")
+  }
+  rows <- list()
+  k <- 0L
+  for (f in 1:4) {
+    fam_base <- .mutate(base, 24L)
+    for (g in 1:2) {
+      gen_base <- .mutate(fam_base, 10L)
+      for (s in 1:3) {
+        sp_base <- .mutate(gen_base, 4L)
+        for (r in 1:3) {
+          k <- k + 1L
+          seq <- .mutate(sp_base, 1L)
+          if (r == 3L) seq <- substr(seq, 1L, 120L) # truncated -> lower coverage
+          rows[[k]] <- data.frame(
+            composite_id = sprintf("F%dG%dS%dR%d", f, g, s, r),
+            sequence = seq,
+            family = sprintf("Fam%d", f),
+            genus = sprintf("Fam%d Gen%d", f, g),
+            species = sprintf("Fam%d Gen%d sp%d", f, g, s),
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+    }
+  }
+  do.call(rbind, rows)
+}
+
+test_that("build_sequence_matrix: pair_retention / min_pair_coverage validation", {
+  df <- .make_two_genus_df()
+  expect_error(
+    build_sequence_matrix(df, c("genus", "species"), pair_retention = "some"),
+    "'arg' should be one of"
+  )
+  expect_error(
+    build_sequence_matrix(df, c("genus", "species"), min_pair_coverage = 1.5),
+    "min_pair_coverage must be NULL or a single number in \\(0, 1\\]"
+  )
+  expect_error(
+    build_sequence_matrix(df, c("genus", "species"), min_pair_coverage = "a"),
+    "min_pair_coverage must be NULL or a single number in \\(0, 1\\]"
+  )
+})
+
+test_that(".best_per_partner_keep: keeps every conspecific pair and at most two per stratum", {
+  # One query x, partner species P (three pairs) and partner family Q outside
+  # the genus (two pairs), plus one conspecific pair.
+  x <- rep("x", 6L)
+  sp_x <- rep("A a", 6L)
+  sp_y <- c("A a", "A b", "A b", "A b", "B c", "B d")
+  gn_x <- rep("A", 6L)
+  gn_y <- c("A", "A", "A", "A", "B", "B")
+  fam_x <- rep("FA", 6L)
+  fam_y <- c("FA", "FA", "FA", "FA", "FB", "FB")
+  p <- c(0.99, 0.97, 0.95, 0.90, 0.80, 0.85)
+  cov <- c(0.9, 0.5, 0.9, 0.95, 0.9, 0.3)
+  keep <- .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+    p, cov, tie = seq_along(x), min_pair_coverage = 0.8
+  )
+  # conspecific kept; A b: best overall (0.97, cov 0.5) + best clearing floor
+  # (0.95); family FB: best overall (0.85, cov 0.3) + best clearing (0.80).
+  expect_equal(keep, c(TRUE, TRUE, TRUE, FALSE, TRUE, TRUE))
+  keep_null <- .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+    p, cov, tie = seq_along(x), min_pair_coverage = NULL
+  )
+  expect_equal(keep_null, c(TRUE, TRUE, FALSE, FALSE, FALSE, TRUE))
+  # NA coverage never clears the floor but can still be the best overall.
+  cov_na <- c(0.9, NA, 0.9, 0.95, 0.9, NA)
+  keep_na <- .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+    p, cov_na, tie = seq_along(x), min_pair_coverage = 0.8
+  )
+  expect_equal(keep_na, c(TRUE, TRUE, TRUE, FALSE, TRUE, TRUE))
+})
+
+test_that("build_sequence_matrix: best_per_partner is a subset of all, keeps every conspecific pair, and trains identically", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  skip_if_not_installed("lme4")
+  df <- .make_retention_df()
+  rs <- c("family", "genus", "species")
+  set.seed(11L)
+  full <- build_sequence_matrix(df, rs, max_dist = 1.0, by_genus = TRUE, verbose = FALSE)
+  set.seed(11L)
+  thin <- build_sequence_matrix(df, rs,
+    max_dist = 1.0, by_genus = TRUE, verbose = FALSE,
+    pair_retention = "best_per_partner", min_pair_coverage = 0.8
+  )
+  expect_identical(attr(thin, "pair_retention"), list(policy = "best_per_partner", min_pair_coverage = 0.8))
+  expect_identical(attr(full, "pair_retention"), list(policy = "all", min_pair_coverage = NULL))
+  expect_lt(nrow(thin), nrow(full))
+
+  key <- function(m) paste(m$id_x, m$id_y)
+  expect_true(all(key(thin) %in% key(full)))
+  m <- match(key(thin), key(full))
+  expect_equal(thin$p_match, full$p_match[m])
+  expect_equal(thin$coverage, full$coverage[m])
+
+  consp_full <- full[full$species.x == full$species.y, ]
+  consp_thin <- thin[thin$species.x == thin$species.y, ]
+  expect_setequal(key(consp_thin), key(consp_full))
+
+  cross <- thin[thin$species.x != thin$species.y, ]
+  stratum <- ifelse(cross$genus.x == cross$genus.y, cross$species.y, cross$family.y)
+  expect_true(all(table(paste(cross$id_x, stratum)) <= 2L))
+
+  # Every per-sequence maximum train_likelihood_model() reads is preserved,
+  # so the fitted model is the same object.
+  ff <- function(m) {
+    suppressMessages(suppressWarnings(train_likelihood_model(m,
+      rank_system = rs, min_pair_coverage = 0.8, score_transform = "sqrt_mismatch"
+    )))
+  }
+  mod_full <- ff(full)
+  mod_thin <- ff(thin)
+  expect_equal(mod_thin$H1_Lookup, mod_full$H1_Lookup)
+  expect_equal(mod_thin$H1_Global_Mu, mod_full$H1_Global_Mu)
+  expect_equal(mod_thin$H1_Sigma, mod_full$H1_Sigma)
+  expect_equal(mod_thin$H2, mod_full$H2)
+  expect_equal(mod_thin$H2_Lookup, mod_full$H2_Lookup)
+  expect_equal(mod_thin$Confusion_Risk_Curves, mod_full$Confusion_Risk_Curves)
+  expect_equal(mod_thin$Stats$n_h2_pooled, mod_full$Stats$n_h2_pooled)
+  expect_equal(
+    suppressMessages(compute_rank_thresholds(thin, rs)),
+    suppressMessages(compute_rank_thresholds(full, rs))
+  )
+})
+
+test_that("train_likelihood_model: warns when a best_per_partner table meets a different coverage floor", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  df <- .make_retention_df()
+  rs <- c("family", "genus", "species")
+  set.seed(3L)
+  thin <- build_sequence_matrix(df, rs,
+    max_dist = 1.0, by_genus = TRUE, verbose = FALSE,
+    pair_retention = "best_per_partner", min_pair_coverage = 0.8
+  )
+  expect_warning(
+    suppressMessages(train_likelihood_model(thin, rank_system = rs, min_pair_coverage = 0.5)),
+    "thinned with pair_retention"
+  )
+  expect_no_warning(
+    suppressMessages(train_likelihood_model(thin, rank_system = rs, min_pair_coverage = NULL)),
+    message = "thinned with pair_retention"
+  )
+})
+
+test_that("build_sequence_matrix: coverage from the matrix product equals the per-pair mask count", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  df <- .make_retention_df()[1:12, ]
+  out <- build_sequence_matrix(df, c("genus", "species"), max_dist = 1.0, verbose = FALSE)
+  dna <- Biostrings::DNAStringSet(df$sequence)
+  names(dna) <- df$composite_id
+  aligned <- DECIPHER::AlignSeqs(dna, verbose = FALSE)
+  aln <- as.character(aligned)
+  masks <- lapply(aln, function(s) strsplit(s, "")[[1L]] != "-")
+  widths <- vapply(aln, function(s) nchar(gsub("-", "", s)), integer(1L))
+  expected <- vapply(seq_len(nrow(out)), function(k) {
+    sum(masks[[out$id_x[k]]] & masks[[out$id_y[k]]]) / min(widths[[out$id_x[k]]], widths[[out$id_y[k]]])
+  }, numeric(1L))
+  expect_equal(out$coverage, expected)
+})
