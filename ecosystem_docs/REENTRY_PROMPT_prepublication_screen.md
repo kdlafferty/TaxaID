@@ -8,7 +8,26 @@ pkgdown contradiction are gone; git has them. Everything below was measured on
 
 ---
 
-## 1. Purpose and governing principle
+## 0. Open items board (kept current; last edit 2026-09-25)
+
+| Item | State | Waiting on |
+|---|---|---|
+| main | `328e0d6`, pushed, CI green on every push | -- |
+| Installed library | main `61688b4` build (2026-09-24 14:56); behind main in TaxaLikely (pair_retention) | a window with NO R process: two other chats' runs alive (CalIntertidal `run_s7b`, ~19 h in; optimize-matrix benchmark, minutes) |
+| Branch `reference-memory-estimate` (`69e5b3f`) | reviewed clean, review-response entry in; conflicts with main in `build_sequence.R` since the pair-retention fast-forward; author session ended, screen session resolves | maintainer: confirm the export `estimate_sequence_matrix_size()`; choose the guard default (0.7 stop / stop above available + warn at 0.7 / NULL) |
+| PtCon 12S B2 run | staged (`TaxaID_dev/.../b2_runs/`), driver passes `max_per_genus = NULL` | maintainer's go |
+| Cache refetch notice | PtCon, GreatLakes, Mugu caches written under `max_per_species = 10` refetch ONCE under the new uncapped-cache semantics once the memory branch lands | maintainer's acceptance, or a plan per project |
+| README rounds | all carried to main; shared checkout == main | maintainer's next round (tell the screen first; it refreshes the checkout) |
+| Adaptive genus cap | tracked 1.1 candidate; grid owns the fit; workflow deletes its constants when the package function lands | the memory branch |
+| Unidentified | "expanded path length 1024" file.exists warning in long CalIntertidal runs; not from TaxaLikely | a caught call site |
+| Pre-security-review submission | no tag, no bump; WERC official path later needs a `1.0.0` branch | maintainer |
+
+Other chats and what they own: California intertidal multi-marker workflow
+(its runs and the eDNA repo); optimize likelihood matrix (pair retention,
+landed; its benchmark run); memory estimate (ended; branch above);
+workflow scripts verification (ended; all landed); homonym (ended; all
+landed); theta-surface rendering (ended; landed).
+
 
 Every pre-publication pass so far has *added*: a fix, a function, a doc, a
 re-entry prompt. Each addition widened the surface the next pass had to check,
