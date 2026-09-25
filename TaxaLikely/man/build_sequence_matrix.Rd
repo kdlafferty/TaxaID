@@ -220,15 +220,16 @@ a query's direct pair with a specific candidate accession is present only
 when that accession is the query's best for its species, so restoration
 resolves more often at its species-pair and genus-model levels than at
 the direct-accession level, and its species-pair median is a median of
-per-query bests rather than of all pairs. Removing accessions from the
-table after the build (an accession screen) removes some queries' best
-partner for a stratum with no runner-up to fall back on (under
-\code{"best_per_class"} the direct-accession and species-pair levels of
-restoration are reached only when a candidate happens to hold a query's
-best congeneric pair, so restoration mostly resolves from the genus
-model); screen
-\code{reference_df} before building, which is also what
-\code{\link[=train_likelihood_model]{train_likelihood_model()}} recommends. \code{\link[=check_cross_genus_sampling_noise]{check_cross_genus_sampling_noise()}}
+per-query bests rather than of all pairs (under \code{"best_per_class"} the
+direct-accession and species-pair levels of restoration are reached only
+when a candidate happens to hold a query's best congeneric pair, so
+restoration mostly resolves from the genus model). An accession screen
+run on the thinned table works unchanged, because it reads within-species
+pairs, which are complete; removing its "remove" accessions from the
+table afterwards costs only the sequences whose best partner for a
+stratum was a removed accession, which then have no runner-up for that
+stratum. At the removal rates seen in practice, a few accessions per
+thousand, this touches a handful of sequences. \code{\link[=check_cross_genus_sampling_noise]{check_cross_genus_sampling_noise()}}
 always builds with \code{"all"}.
 }
 
