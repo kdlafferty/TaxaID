@@ -881,6 +881,19 @@ longer accurate; kept as a record of the review response, not amended in place.
 Not new functions (see "Added after the review" near the top for those) -- new behavior
 on functions this document already covers above.
 
+- `build_sequence_matrix()` gains `pair_retention` (`"all"`, the default and the
+  previous behaviour; `"best_per_partner"`; `"best_per_class"`) and `min_pair_coverage`.
+  The pair table is dominated by same-genus cross-species pairs, which grow with the
+  square of a genus's sequence count, yet every consumer reads only per-sequence
+  maxima (best foreign, congener and conspecific match, best match per pair type for
+  the confusion-risk curves). The two non-default policies keep every within-species
+  pair and, per sequence and partner stratum, the best pair clearing the coverage
+  floor plus the best pair overall, so `train_likelihood_model()` output is identical
+  (a test asserts it on a fixture; verified on real 12S and 18S matrices under both
+  score transforms). `train_likelihood_model()` warns when a thinned table meets a
+  different floor. Coverage is now one blocked 0/1 matrix product instead of a
+  per-pair loop; the values are unchanged (test) and it is about 35x faster. Tests:
+  test-build.R.
 - **Bimodal-H1 diagnostic added, then corrected the same day.** The first
   version fired on real production data and was a false positive: percent
   identity on a short fixed-length amplicon is discrete, so the distribution
