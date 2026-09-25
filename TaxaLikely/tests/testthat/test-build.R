@@ -938,7 +938,7 @@ test_that(".best_per_partner_keep: keeps every conspecific pair and at most two 
   expect_equal(keep_na, c(TRUE, TRUE, TRUE, FALSE, TRUE, TRUE))
 })
 
-test_that("build_sequence_matrix: best_per_partner is a subset of all, keeps every conspecific pair, and trains identically", {
+for (policy in c("best_per_partner", "best_per_class")) test_that(sprintf("build_sequence_matrix: %s is a subset of all, keeps every conspecific pair, and trains identically", policy), {
   skip_if_not_installed("DECIPHER")
   skip_if_not_installed("Biostrings")
   skip_if_not_installed("lme4")
@@ -949,9 +949,9 @@ test_that("build_sequence_matrix: best_per_partner is a subset of all, keeps eve
   set.seed(11L)
   thin <- build_sequence_matrix(df, rs,
     max_dist = 1.0, by_genus = TRUE, verbose = FALSE,
-    pair_retention = "best_per_partner", min_pair_coverage = 0.8
+    pair_retention = policy, min_pair_coverage = 0.8
   )
-  expect_identical(attr(thin, "pair_retention"), list(policy = "best_per_partner", min_pair_coverage = 0.8))
+  expect_identical(attr(thin, "pair_retention"), list(policy = policy, min_pair_coverage = 0.8))
   expect_identical(attr(full, "pair_retention"), list(policy = "all", min_pair_coverage = NULL))
   expect_lt(nrow(thin), nrow(full))
 
@@ -966,8 +966,15 @@ test_that("build_sequence_matrix: best_per_partner is a subset of all, keeps eve
   expect_setequal(key(consp_thin), key(consp_full))
 
   cross <- thin[thin$species.x != thin$species.y, ]
-  stratum <- ifelse(cross$genus.x == cross$genus.y, cross$species.y, cross$family.y)
+  stratum <- if (policy == "best_per_partner") {
+    ifelse(cross$genus.x == cross$genus.y, cross$species.y, cross$family.y)
+  } else {
+    ifelse(cross$genus.x == cross$genus.y, "congeneric",
+      ifelse(cross$family.x == cross$family.y, "confamilial", "crossfamily")
+    )
+  }
   expect_true(all(table(paste(cross$id_x, stratum)) <= 2L))
+  if (policy == "best_per_class") expect_lte(max(table(cross$id_x)), 6L)
 
   # Every per-sequence maximum train_likelihood_model() reads is preserved,
   # so the fitted model is the same object.
@@ -1026,4 +1033,22 @@ test_that("build_sequence_matrix: coverage from the matrix product equals the pe
     sum(masks[[out$id_x[k]]] & masks[[out$id_y[k]]]) / min(widths[[out$id_x[k]]], widths[[out$id_y[k]]])
   }, numeric(1L))
   expect_equal(out$coverage, expected)
+})
+
+test_that(".best_per_partner_keep: by = \"class\" strata are the pair types", {
+  x <- rep("x", 7L)
+  sp_x <- rep("A a", 7L)
+  sp_y <- c("A a", "A b", "A c", "B d", "B e", "C f", "C g")
+  gn_x <- rep("A", 7L)
+  gn_y <- c("A", "A", "A", "B", "B", "C", "C")
+  fam_x <- rep("FA", 7L)
+  fam_y <- c("FA", "FA", "FA", "FA", "FA", "FC", "FC")
+  p <- c(0.99, 0.97, 0.96, 0.90, 0.91, 0.80, 0.85)
+  cov <- c(0.9, 0.9, 0.9, 0.9, 0.5, 0.9, 0.9)
+  keep <- .best_per_partner_keep(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
+    p, cov, tie = seq_along(x), min_pair_coverage = 0.8, by = "class"
+  )
+  # congeneric: 0.97 (best, clears); confamilial: 0.91 (best overall, low
+  # coverage) + 0.90 (best clearing); cross-family: 0.85 (best, clears).
+  expect_equal(keep, c(TRUE, TRUE, FALSE, TRUE, TRUE, FALSE, TRUE))
 })

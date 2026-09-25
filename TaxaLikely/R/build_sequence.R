@@ -121,24 +121,28 @@ utils::globalVariables(c(
 #'   across genera even though it is no longer exhaustive. `0L` disables the
 #'   augmentation entirely (representative-only alignment -- see the
 #'   `@section` below for why that understates `gap_logit`).
-#' @param pair_retention `"all"` (default) or `"best_per_partner"`. Which
-#'   pairs within `max_dist` are returned. `"all"` returns every pair.
-#'   `"best_per_partner"` returns every within-species pair plus, for each
-#'   sequence and each partner stratum (partner species inside the
-#'   sequence's own genus; partner family, or genus when no family rank is
-#'   given, outside it), at most two cross-species pairs: the best-scoring
-#'   one whose `coverage` clears `min_pair_coverage`, and the best-scoring one
-#'   regardless of coverage. See `@section Pair retention` for why this is
-#'   exact for [train_likelihood_model()] and what it changes elsewhere.
+#' @param pair_retention `"all"` (default), `"best_per_partner"` or
+#'   `"best_per_class"`. Which pairs within `max_dist` are returned. `"all"`
+#'   returns every pair. The other two return every within-species pair
+#'   plus, for each sequence and each stratum of its cross-species partners,
+#'   at most two pairs: the best-scoring one whose `coverage` clears
+#'   `min_pair_coverage`, and the best-scoring one regardless of coverage.
+#'   Under `"best_per_partner"` the stratum is the partner species inside the
+#'   sequence's own genus and the partner family (or genus when no family
+#'   rank is given) outside it; under `"best_per_class"` it is the pair type
+#'   itself -- congeneric, confamilial or cross-family -- so a sequence keeps
+#'   at most six cross-species pairs in total. See `@section Pair retention`
+#'   for why both are exact for [train_likelihood_model()] and what each
+#'   changes elsewhere.
 #' @param min_pair_coverage Numeric in (0, 1] or `NULL` (default `0.8`). Only
-#'   used when `pair_retention = "best_per_partner"`: the coverage floor the
+#'   used when `pair_retention` is not `"all"`: the coverage floor the
 #'   retained best-clearing pair is chosen under. Must equal the
 #'   `min_pair_coverage` later passed to [train_likelihood_model()] (whose
 #'   default is also `0.8`), or be `NULL` if training will use `NULL`; the
 #'   value is recorded in the result's `"pair_retention"` attribute and
 #'   [train_likelihood_model()] warns on a mismatch it can still see.
 #'
-#' @section Pair retention (`pair_retention = "best_per_partner"`):
+#' @section Pair retention (`pair_retention` other than `"all"`):
 #' The pair table's size is dominated by same-genus cross-species pairs,
 #' which grow with the square of a genus's sequence count, so a species-rich
 #' genus with many sequences per species sets the memory ceiling for the
@@ -158,10 +162,13 @@ utils::globalVariables(c(
 #' distinct conspecific partners and their submission independence, which
 #' needs every one of them.
 #'
-#' What changes: the table is smaller by roughly the mean number of
-#' sequences per partner species inside a genus (bounded above by
-#' `max_seqs_per_taxon`), so memory grows about linearly, not quadratically,
-#' in sequences per genus; alignment cost is unchanged. The row count
+#' What changes: under `"best_per_partner"` the table is smaller by roughly
+#' the mean number of sequences per partner species inside a genus (bounded
+#' above by `max_seqs_per_taxon`), so same-genus rows grow as sequences
+#' times species per genus instead of sequences squared; under
+#' `"best_per_class"` they grow as sequences alone, and within-species pairs
+#' (quadratic per species, bounded by `max_seqs_per_taxon`) become the
+#' largest term. Alignment cost is unchanged either way. The row count
 #' `N_Obs` in the training data is unchanged (within-species pairs are
 #' complete). `restore_suppressed_candidates()` looks pairs up by accession:
 #' a query's direct pair with a specific candidate accession is present only
@@ -170,7 +177,11 @@ utils::globalVariables(c(
 #' the direct-accession level, and its species-pair median is a median of
 #' per-query bests rather than of all pairs. Removing accessions from the
 #' table after the build (an accession screen) removes some queries' best
-#' partner for a stratum with no runner-up to fall back on; screen
+#' partner for a stratum with no runner-up to fall back on (under
+#' `"best_per_class"` the direct-accession and species-pair levels of
+#' restoration are reached only when a candidate happens to hold a query's
+#' best congeneric pair, so restoration mostly resolves from the genus
+#' model); screen
 #' `reference_df` before building, which is also what
 #' [train_likelihood_model()] recommends. [check_cross_genus_sampling_noise()]
 #' always builds with `"all"`.
@@ -263,7 +274,7 @@ build_sequence_matrix <- function(reference_df,
                                   verbose = TRUE,
                                   by_genus = FALSE,
                                   max_foreign_reps_per_genus = 20L,
-                                  pair_retention = c("all", "best_per_partner"),
+                                  pair_retention = c("all", "best_per_partner", "best_per_class"),
                                   min_pair_coverage = 0.8) {
   if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
     stop("verbose must be TRUE or FALSE")
@@ -494,8 +505,8 @@ build_sequence_matrix <- function(reference_df,
   # The retention context carries each sequence's taxonomy into every
   # alignment so that pairs can be thinned as each alignment is extracted --
   # the full pair table is never accumulated (see @section Pair retention).
-  retain <- if (pair_retention == "best_per_partner") {
-    .retention_context(ref_seqs, rank_cols, min_pair_coverage)
+  retain <- if (pair_retention != "all") {
+    .retention_context(ref_seqs, rank_cols, min_pair_coverage, pair_retention)
   } else {
     NULL
   }
@@ -525,7 +536,7 @@ build_sequence_matrix <- function(reference_df,
       gn_x = .lab(retain$genus, dist_tbl$id_x), gn_y = .lab(retain$genus, dist_tbl$id_y),
       fam_x = .lab(retain$family, dist_tbl$id_x), fam_y = .lab(retain$family, dist_tbl$id_y),
       p_match = dist_tbl$p_match, coverage = dist_tbl$coverage, tie = dist_tbl$id_y,
-      min_pair_coverage = retain$min_pair_coverage
+      min_pair_coverage = retain$min_pair_coverage, by = retain$by
     )
     dist_tbl <- dist_tbl[keep, , drop = FALSE]
   }
@@ -546,13 +557,13 @@ build_sequence_matrix <- function(reference_df,
   # so it is a courtesy check, not a guarantee.
   attr(out, "pair_retention") <- list(
     policy = pair_retention,
-    min_pair_coverage = if (pair_retention == "best_per_partner") min_pair_coverage else NULL
+    min_pair_coverage = if (pair_retention != "all") min_pair_coverage else NULL
   )
 
   message(sprintf(
     "Matrix built: %d pairs within distance < %.2f%s",
     nrow(out), max_dist,
-    if (pair_retention == "best_per_partner") " (pair_retention = \"best_per_partner\")" else ""
+    if (pair_retention != "all") sprintf(" (pair_retention = \"%s\")", pair_retention) else ""
   ))
   out
 }
@@ -564,7 +575,7 @@ build_sequence_matrix <- function(reference_df,
 #' `NULL` entries mean that rank is absent from `rank_cols`; the retention
 #' rule adapts (see `.best_per_partner_keep()`).
 #' @noRd
-.retention_context <- function(ref_seqs, rank_cols, min_pair_coverage) {
+.retention_context <- function(ref_seqs, rank_cols, min_pair_coverage, policy) {
   ids <- ref_seqs$composite_id
   finest <- rank_cols[length(rank_cols)]
   .col <- function(nm) {
@@ -574,7 +585,8 @@ build_sequence_matrix <- function(reference_df,
     species = .col(finest),
     genus = if (!identical(finest, "genus")) .col("genus") else NULL,
     family = if (!identical(finest, "family")) .col("family") else NULL,
-    min_pair_coverage = min_pair_coverage
+    min_pair_coverage = min_pair_coverage,
+    by = if (identical(policy, "best_per_class")) "class" else "partner"
   )
 }
 
@@ -613,7 +625,9 @@ build_sequence_matrix <- function(reference_df,
 #' @return Logical vector, `TRUE` for rows to keep.
 #' @noRd
 .best_per_partner_keep <- function(x, sp_x, sp_y, gn_x, gn_y, fam_x, fam_y,
-                                   p_match, coverage, tie, min_pair_coverage) {
+                                   p_match, coverage, tie, min_pair_coverage,
+                                   by = c("partner", "class")) {
+  by <- match.arg(by)
   n <- length(x)
   if (n == 0L) {
     return(logical(0L))
@@ -624,14 +638,25 @@ build_sequence_matrix <- function(reference_df,
   # Stratum for a cross-species pair: partner species inside the genus,
   # partner family (coarsest available) outside it. The prefix keeps a
   # species-stratum key from ever colliding with a family/genus-stratum key.
-  cross_stratum <- if (!is.null(fam_y)) {
-    paste0("f:", fam_y)
-  } else if (has_gn) {
-    paste0("g:", gn_y)
+  stratum <- if (by == "partner") {
+    cross_stratum <- if (!is.null(fam_y)) {
+      paste0("f:", fam_y)
+    } else if (has_gn) {
+      paste0("g:", gn_y)
+    } else {
+      paste0("s:", sp_y)
+    }
+    ifelse(same_gn & !same_sp, paste0("s:", sp_y), cross_stratum)
   } else {
-    paste0("s:", sp_y)
+    # Pair-type classes, exactly the ones the confusion-risk curves collapse
+    # on: congeneric, confamilial (same family, different genus), cross-family.
+    same_fam <- if (!is.null(fam_x) && !is.null(fam_y)) {
+      !is.na(fam_x) & !is.na(fam_y) & fam_x == fam_y
+    } else {
+      rep(FALSE, n)
+    }
+    ifelse(same_gn, "congeneric", ifelse(same_fam, "confamilial", "crossfamily"))
   }
-  stratum <- ifelse(same_gn & !same_sp, paste0("s:", sp_y), cross_stratum)
   key <- paste(as.character(x), stratum, sep = "\r")
   cand <- which(!same_sp)
   if (length(cand) == 0L) {
@@ -746,7 +771,7 @@ build_sequence_matrix <- function(reference_df,
       gn_x = .lab(retain$genus, i), gn_y = .lab(retain$genus, j),
       fam_x = .lab(retain$family, i), fam_y = .lab(retain$family, j),
       p_match = p_match, coverage = coverage, tie = j,
-      min_pair_coverage = retain$min_pair_coverage
+      min_pair_coverage = retain$min_pair_coverage, by = retain$by
     )
     if (!any(keep)) {
       return(empty)
