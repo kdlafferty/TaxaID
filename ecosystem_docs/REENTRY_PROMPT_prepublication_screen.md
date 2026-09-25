@@ -1388,6 +1388,15 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   pre-flight clean; all nine, Built 21:56:06-21:56:30 UTC; pack
   regenerated; TaxaWizard suite and the four offline smoke tests pass
   from the installed copies. Installed library == main code.
+  **Pair-retention MERGED (fast-forward to `f019972`, 2026-09-25)** from
+  the "optimize likelihood matrix" chat: `build_sequence_matrix(
+  pair_retention = c("all", "best_per_partner", "best_per_class"),
+  min_pair_coverage = 0.8)`, old behaviour the default; coverage via a
+  blocked matrix product (identical values, 36x faster); a train-side
+  floor-mismatch warning; no new export; review-response entry present;
+  reviewed detached: TaxaLikely 1421/0, check 0/0/0; training output
+  verified identical under every policy on real 12S and 18S matrices by
+  that chat. Installed TaxaLikely behind main again; next window.
 - **B6. Licensing and provenance:** CC0 throughout, `code.json` status matching
   the release type, DISCLAIMER matching provisional vs official.
   **Checked 2026-09-21 (read-only):** `License: CC0` in all nine
