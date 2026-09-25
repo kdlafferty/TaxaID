@@ -24,6 +24,8 @@ from 565/565 before this session). `devtools::check()`: **0 errors, 0 warnings, 
 |---|---|---|---|
 | `check_geographic_outliers()` | `R/check_geographic_outliers.R` | Flag Geographically Isolated Occurrence Records Against a Species' Global Range | test-check_geographic_outliers.R, test-download_gbif_occurrences.R |
 | `dedupe_occurrences()` | `R/dedupe_occurrences.R` | Remove Duplicate Occurrence Records | test-dedupe_occurrences.R, test-stack_occurrences.R |
+| `estimate_gbif_fetch_cost()` | `R/estimate_gbif_fetch_cost.R` | Size a GBIF pull with count-only requests and price the record path vs the facet path | test-fetch_gbif_facet_counts.R |
+| `fetch_gbif_facet_counts()` | `R/fetch_gbif_facet_counts.R` | Species-level GBIF record counts in distance bands around a site, without downloading records | test-fetch_gbif_facet_counts.R |
 | `fetch_inat_occurrences()` | `R/fetch_inat_occurrences.R` | Fetch local iNaturalist observation counts, including casual-grade records | test-fetch_inat_occurrences.R |
 | `taxafetch_clear_cache()` | `R/taxafetch_clear_cache.R` | Report and clear TaxaFetch's on-disk cache | test-gbif-geometry-key-collision.R, test-taxafetch_clear_cache.R |
 

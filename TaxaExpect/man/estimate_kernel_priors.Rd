@@ -21,6 +21,7 @@ estimate_kernel_priors(
   lon_col = "decimalLongitude",
   habitat_col = "main_habitat",
   sampling_group_col = NULL,
+  count_col = NULL,
   support_weight = exp(-3)
 )
 }
@@ -113,6 +114,16 @@ like GreatLakes; it matters for broad markers (18S) spanning groups with
 very different detection probabilities. With more than one group the
 pooled scalars are \code{NA} by design and \verb{$budget} is authoritative -- a
 single number would be silently wrong.}
+
+\item{count_col}{Optional character. Name of a non-negative numeric
+column giving how many records each row stands for. \code{NULL} (default):
+every row is one record. With a count column, a row of count \code{n} is
+exactly equivalent to \code{n} identical one-record rows -- every sum
+(\code{W}, the Kish denominator, the kernel-weighted and regional
+compositions, the neighborhood-support counts behind \code{f1}/\code{f2}) is
+count-weighted -- so aggregated inputs such as gridded occurrence cubes
+or \code{\link[=estimate_facet_priors]{estimate_facet_priors()}}'s distance bands reuse this estimator
+unchanged. Rows with a count of zero are dropped.}
 
 \item{support_weight}{Numeric in (0, 1]. A record counts toward the
 discrete neighborhood-support statistics (singleton detection, record
