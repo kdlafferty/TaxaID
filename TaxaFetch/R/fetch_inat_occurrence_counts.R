@@ -1,9 +1,9 @@
 # ==============================================================================
-# fetch_inat_occurrences.R
+# fetch_inat_occurrence_counts.R
 # TaxaFetch -- iNaturalist observation-count fetch (captive/casual-grade aware)
 #
 # Exported functions:
-#   fetch_inat_occurrences()   -- local iNaturalist observation count for a
+#   fetch_inat_occurrence_counts()   -- local iNaturalist observation count for a
 #                                  vector of taxa, with control over quality
 #                                  grade and captive/cultivated status
 #
@@ -108,7 +108,7 @@
 #' @examples
 #' \dontrun{
 #' # Requires INAT_API_TOKEN in ~/.Renviron
-#' fetch_inat_occurrences(
+#' fetch_inat_occurrence_counts(
 #'   taxon_names = c("Felis catus", "Solanum lycopersicum"),
 #'   lat = 34.41,
 #'   lng = -119.86,
@@ -116,7 +116,7 @@
 #'   quality_grade = "any"
 #' )
 #' }
-fetch_inat_occurrences <- function(
+fetch_inat_occurrence_counts <- function(
   taxon_names,
   lat,
   lng,
@@ -213,7 +213,7 @@ fetch_inat_occurrences <- function(
 #' network-level failure that survives every retry attempt, returns
 #' `NA_integer_` exactly as before -- this only adds retry/backoff ahead of
 #' that existing failure path, it does not change what a final failure looks
-#' like to the caller (`fetch_inat_occurrences()`'s `query_status` still
+#' like to the caller (`fetch_inat_occurrence_counts()`'s `query_status` still
 #' becomes `"request_failed"`).
 #' @noRd
 .inat_observation_count <- function(taxon_id, lat, lng, radius_km, captive, quality_grade, api_token,

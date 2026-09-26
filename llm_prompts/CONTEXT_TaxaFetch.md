@@ -245,7 +245,7 @@ Downloads occurrence records from GBIF for a vector of taxon usage keys, process
 
 **Value:** A tibble of occurrence records with GBIF's standard columns. Only records where the query key appears somewhere in the returned record's taxonomic hierarchy are retained (see Details). Returns an empty tibble with a warning if no records pass.
 
-### fetch_inat_occurrences(taxon_names, lat, lng, radius_km = 50, captive = c("any", "true", "false"), quality_grade = c("any", "casual", "needs_id", "research"), api_token = Sys.getenv("INAT_API_TOKEN"), retry_attempts = 4L, retry_wait = c(15, 30, 60), verbose = FALSE)
+### fetch_inat_occurrence_counts(taxon_names, lat, lng, radius_km = 50, captive = c("any", "true", "false"), quality_grade = c("any", "casual", "needs_id", "research"), api_token = Sys.getenv("INAT_API_TOKEN"), retry_attempts = 4L, retry_wait = c(15, 30, 60), verbose = FALSE)
 
 Fetch local iNaturalist observation counts, including casual-grade records
 

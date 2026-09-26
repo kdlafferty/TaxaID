@@ -760,7 +760,7 @@ review_spatial_context <- function(input_df,
       # request -- so "iNat markers too large" could not be fixed through
       # that API. Fetched instead as real point data
       # (api.inaturalist.org/v1/observations, the same endpoint
-      # TaxaFetch::fetch_inat_occurrences() counts against; confirmed live
+      # TaxaFetch::fetch_inat_occurrence_counts() counts against; confirmed live
       # this public read query needs no auth token) and drawn with
       # leaflet::addCircleMarkers(), sized to match this gadget's own
       # occurrence-point convention exactly (radius=2) instead of a fixed
@@ -1002,7 +1002,7 @@ review_spatial_context <- function(input_df,
 #' (see the observeEvent(input$taxon) call site's own comment for why:
 #' that endpoint's marker size has no working query parameter, confirmed
 #' live). Same underlying /v1/observations search endpoint
-#' TaxaFetch::fetch_inat_occurrences() queries -- but NOT a duplicate of it:
+#' TaxaFetch::fetch_inat_occurrence_counts() queries -- but NOT a duplicate of it:
 #' that function returns one COUNT per taxon (n_observations_local, via
 #' per_page=1, reading only total_results), never the individual records
 #' themselves, so it structurally cannot supply what map plotting needs
@@ -1016,7 +1016,7 @@ review_spatial_context <- function(input_df,
 #' maximum (confirmed live: requesting 201 silently returns 200) -- no
 #' pagination beyond one page, matching this gadget's "cheap map context,
 #' not a full census" scope. radius_km default 500 (not
-#' fetch_inat_occurrences()'s own 50km default) -- confirmed live this is
+#' fetch_inat_occurrence_counts()'s own 50km default) -- confirmed live this is
 #' needed, not just a bigger-for-its-own-sake choice: this point layer only
 #' shows observations within radius_km, unlike a full-coverage density tile
 #' (GBIF-style world density, not a fixed local search), so a real

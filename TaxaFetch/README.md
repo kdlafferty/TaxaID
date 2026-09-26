@@ -29,7 +29,7 @@ downstream habitat assignment (TaxaHabitat) and prior estimation
 | BioTIME | `read_biotime_study()` | Time-series biodiversity data |
 | Literature | `search_literature()` | OpenAlex (operated by OurResearch, a nonprofit organization) scholarly search + PDF download |
 | PDFs | `extract_pdf_text()` | Extract occurrence data from published PDFs |
-| iNaturalist | `fetch_inat_occurrences()`, `check_inat_range()` | Local observation counts and known-range checks via the iNaturalist API |
+| iNaturalist | `fetch_inat_occurrence_counts()`, `check_inat_range()` | Local observation counts and known-range checks via the iNaturalist API |
 
 ## Installation
 

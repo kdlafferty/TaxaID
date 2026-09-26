@@ -360,7 +360,7 @@ kept alive for was never actually load-bearing.
 
 **Considered and declined (with reasoning):**
 - **Example not runnable**: left `\dontrun{}` -- requires a real `biofreq_model` and live
-  `TaxaFetch::fetch_inat_occurrences()` calls (a real external API), which cannot be made
+  `TaxaFetch::fetch_inat_occurrence_counts()` calls (a real external API), which cannot be made
   both deterministic and meaningful in a package example.
 
 ### `generate_full_priors.R`

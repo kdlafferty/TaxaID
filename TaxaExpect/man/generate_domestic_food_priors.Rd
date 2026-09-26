@@ -97,7 +97,7 @@ open-discovery residual step (see \code{@section Match-list gating}) --
 without it, that step is skipped with a message.}
 
 \item{api_token}{Character. iNaturalist API token, forwarded to
-\code{TaxaFetch::fetch_inat_occurrences()}. Defaults to the
+\code{TaxaFetch::fetch_inat_occurrence_counts()}. Defaults to the
 \code{INAT_API_TOKEN} environment variable.}
 
 \item{verbose}{Logical. Print progress. Default FALSE.}
@@ -141,7 +141,7 @@ count backing this row (audit column, mirrors
 pattern). \code{NA} for a request failure OR when a kingdom mismatch
 (see \code{inat_kingdom_mismatch}) discarded the evidence.}
 \item{inat_kingdom}{iNaturalist's own resolved kingdom for the matched
-taxon (via \code{TaxaFetch::fetch_inat_occurrences()}'s
+taxon (via \code{TaxaFetch::fetch_inat_occurrence_counts()}'s
 \code{inat_kingdom}). \code{NA} when the taxon wasn't found on iNaturalist.}
 \item{inat_kingdom_mismatch}{Logical. \code{TRUE} when \code{taxonomy}
 supplied a kingdom for this taxon that disagrees with
@@ -175,7 +175,7 @@ these species get the same tiny \code{generate_undetected_diversity()}
 global-floor prior as a genuinely implausible candidate -- not because
 they are rare, but because the occurrence database under-counts them.
 This function is a non-GBIF prior source for exactly that gap, using
-\code{TaxaFetch::fetch_inat_occurrences()} (which can include
+\code{TaxaFetch::fetch_inat_occurrence_counts()} (which can include
 \code{quality_grade = "casual"}/\code{captive = "any"} records that
 standard occurrence indexing excludes) as evidence.
 }
@@ -206,7 +206,7 @@ mechanism actually produced a given row).}
 \item{\code{candidate_plant_taxa}}{User-supplied candidates that
 genuinely require live confirmation -- unlike the three fixed lists
 above, membership here is NOT itself sufficient evidence.
-Each is checked against \code{TaxaFetch::fetch_inat_occurrences(
+Each is checked against \code{TaxaFetch::fetch_inat_occurrence_counts(
     captive = "any", quality_grade = "casual")} and only receives a
 prior row if that check finds real local casual-grade
 (cultivated/garden) evidence. Default \code{NULL}.}
@@ -326,7 +326,7 @@ taxaexpect_priors <- dplyr::bind_rows(taxaexpect_priors, domestic_food)
 }
 \seealso{
 \code{\link{generate_undetected_diversity}},
-\code{TaxaFetch::fetch_inat_occurrences()},
+\code{TaxaFetch::fetch_inat_occurrence_counts()},
 \code{TaxaAssign::join_priors()} (its habitat-agnostic named-prior
 fallback tier is what makes this function's \code{NA main_habitat} rows
 actually apply),

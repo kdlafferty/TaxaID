@@ -139,7 +139,7 @@ Review pulled: 2026-07-09
 - .gbif_transient_error (file: TaxaFetch/R/download_gbif_occurrences.R, introduced: 2026-09-10)
 - .gbif_wait_with_retry (file: TaxaFetch/R/download_gbif_occurrences.R, introduced: 2026-09-11)
 - .gbif_zip_intact (file: TaxaFetch/R/download_gbif_occurrences.R, introduced: 2026-09-05)
-- .inat_observation_count (file: TaxaFetch/R/fetch_inat_occurrences.R, introduced: 2026-07-28)
+- .inat_observation_count (file: TaxaFetch/R/fetch_inat_occurrence_counts.R, introduced: 2026-07-28)
 - .nearest_institution (file: TaxaFetch/R/filter_gbif_quality.R, introduced: 2026-07-28)
 - .render_one_page_b64 (file: TaxaFetch/R/pdf_api.R, introduced: 2026-08-09)
 - .taxafetch_is_zip_like (file: TaxaFetch/R/taxafetch_clear_cache.R, introduced: 2026-09-14)
@@ -147,7 +147,7 @@ Review pulled: 2026-07-09
 - .track_removed (file: TaxaFetch/R/filter_gbif_quality.R, introduced: 2026-07-28)
 - check_geographic_outliers (file: TaxaFetch/R/check_geographic_outliers.R, introduced: 2026-07-20)
 - dedupe_occurrences (file: TaxaFetch/R/dedupe_occurrences.R, introduced: 2026-07-28)
-- fetch_inat_occurrences (file: TaxaFetch/R/fetch_inat_occurrences.R, introduced: 2026-07-28)
+- fetch_inat_occurrence_counts (file: TaxaFetch/R/fetch_inat_occurrence_counts.R, introduced: 2026-07-28)
 - taxafetch_clear_cache (file: TaxaFetch/R/taxafetch_clear_cache.R, introduced: 2026-09-03)
 
 Removed since review:
