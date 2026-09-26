@@ -25,7 +25,7 @@
 
 test_that("band counts difference cumulative rings and add the polygon remainder", {
   local_mocked_bindings(.gbif_get_json_parallel = .fake_gbif)
-  out <- suppressMessages(fetch_gbif_facet_counts(1, 34, -120,
+  out <- suppressMessages(fetch_gbif_occurrence_counts(1, 34, -120,
     geometry = "POLYGON ((0 0, 1 0, 1 1, 0 0))",
     breaks_km = c(10, 100), cache_dir = NULL
   ))
@@ -40,7 +40,7 @@ test_that("band counts difference cumulative rings and add the polygon remainder
 
 test_that("without geometry there is no remainder band", {
   local_mocked_bindings(.gbif_get_json_parallel = .fake_gbif)
-  out <- suppressMessages(fetch_gbif_facet_counts(1, 34, -120, breaks_km = c(10, 100), cache_dir = NULL))
+  out <- suppressMessages(fetch_gbif_occurrence_counts(1, 34, -120, breaks_km = c(10, 100), cache_dir = NULL))
   expect_false(any(is.infinite(out$band_hi_km)))
   expect_equal(sum(out$n), 4) # the 300 km record lies beyond the last ring
 })
@@ -51,7 +51,7 @@ test_that("default breaks come from lambda_km and include 3 and 6 bandwidths", {
     seen <<- c(seen, urls)
     .fake_gbif(urls, max_active)
   })
-  suppressMessages(fetch_gbif_facet_counts(1, 34, -120, lambda_km = 20, cache_dir = NULL))
+  suppressMessages(fetch_gbif_occurrence_counts(1, 34, -120, lambda_km = 20, cache_dir = NULL))
   edges <- as.numeric(sub("km.*", "", sub(".*geoDistance=[^,]+,[^,]+,", "", grep("geoDistance", seen, value = TRUE))))
   expect_true(all(c(60, 120) %in% edges))
 })
@@ -64,11 +64,11 @@ test_that("the cache key encodes the query: a changed argument misses, an identi
   })
   cd <- tempfile("facet_cache_")
   on.exit(unlink(cd, recursive = TRUE), add = TRUE)
-  suppressMessages(fetch_gbif_facet_counts(1, 34, -120, breaks_km = c(10, 100), cache_dir = cd))
+  suppressMessages(fetch_gbif_occurrence_counts(1, 34, -120, breaks_km = c(10, 100), cache_dir = cd))
   after_first <- n_calls
-  suppressMessages(fetch_gbif_facet_counts(1, 34, -120, breaks_km = c(10, 100), cache_dir = cd))
+  suppressMessages(fetch_gbif_occurrence_counts(1, 34, -120, breaks_km = c(10, 100), cache_dir = cd))
   expect_equal(n_calls, after_first) # hit: no requests
-  suppressMessages(fetch_gbif_facet_counts(1, 34, -120, breaks_km = c(10, 100), year_range = "2010,2020", cache_dir = cd))
+  suppressMessages(fetch_gbif_occurrence_counts(1, 34, -120, breaks_km = c(10, 100), year_range = "2010,2020", cache_dir = cd))
   expect_gt(n_calls, after_first) # different question: refetched
   # species names were cached by the first call, so the third made no lookups
   expect_true(file.exists(file.path(cd, "gbif_species_classification.rds")))
@@ -81,28 +81,28 @@ test_that("a facet page at the limit stops instead of silently truncating", {
     },
     .facet_limit = 3L
   )
-  expect_error(suppressMessages(fetch_gbif_facet_counts(1, 34, -120, breaks_km = 10, cache_dir = NULL)), "facet limit")
+  expect_error(suppressMessages(fetch_gbif_occurrence_counts(1, 34, -120, breaks_km = 10, cache_dir = NULL)), "facet limit")
 })
 
 test_that("input validation", {
-  expect_error(fetch_gbif_facet_counts(numeric(0), 34, -120, lambda_km = 10), "empty")
-  expect_error(fetch_gbif_facet_counts(1, 34, -120, cache_dir = NULL), "lambda_km")
-  expect_error(fetch_gbif_facet_counts(1, 34, -120, breaks_km = c(10, 5), cache_dir = NULL), "increasing")
+  expect_error(fetch_gbif_occurrence_counts(numeric(0), 34, -120, lambda_km = 10), "empty")
+  expect_error(fetch_gbif_occurrence_counts(1, 34, -120, cache_dir = NULL), "lambda_km")
+  expect_error(fetch_gbif_occurrence_counts(1, 34, -120, breaks_km = c(10, 5), cache_dir = NULL), "increasing")
 })
 
-test_that("estimate_gbif_fetch_cost prices both paths from one count pass", {
+test_that("plan_gbif_fetch prices both paths from one count pass", {
   local_mocked_bindings(.gbif_get_json_parallel = function(urls, max_active = 4L) {
     lapply(urls, function(u) list(count = 2e6, facets = list(list(counts = list(
       list(name = "11", count = 1.5e6), list(name = "22", count = 1e5)
     )))))
   })
-  x <- suppressMessages(estimate_gbif_fetch_cost(1, lambda_km = 25, cache_dir = NULL, ram_gb = 16))
+  x <- suppressMessages(plan_gbif_fetch(1, lambda_km = 25, cache_dir = NULL, ram_gb = 16))
   expect_equal(x$n_records, 2e6)
   expect_equal(x$n_species, 2L)
-  expect_equal(x$record_peak_gb, 8)
-  expect_equal(x$recommended, "record") # 8 GB is not over half of 16
-  y <- suppressMessages(estimate_gbif_fetch_cost(1, lambda_km = 25, cache_dir = NULL, ram_gb = 8))
-  expect_equal(y$recommended, "facet")
-  z <- suppressMessages(estimate_gbif_fetch_cost(1, lambda_km = 25, cache_dir = NULL, ram_gb = 1e3, max_records = 1e6))
-  expect_equal(z$recommended, "facet")
+  expect_equal(x$records_peak_gb, 8)
+  expect_equal(x$recommended, "records") # 8 GB is not over half of 16
+  y <- suppressMessages(plan_gbif_fetch(1, lambda_km = 25, cache_dir = NULL, ram_gb = 8))
+  expect_equal(y$recommended, "counts")
+  z <- suppressMessages(plan_gbif_fetch(1, lambda_km = 25, cache_dir = NULL, ram_gb = 1e3, max_records = 1e6))
+  expect_equal(z$recommended, "counts")
 })

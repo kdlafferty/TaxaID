@@ -1,37 +1,37 @@
 # ==============================================================================
-# estimate_gbif_fetch_cost.R
-# TaxaFetch -- Size a GBIF occurrence pull before choosing the record or facet path
+# plan_gbif_fetch.R
+# TaxaFetch -- Size a GBIF pull and price the records path vs the counts path
 # ==============================================================================
 
-#' Estimate the cost of the record path vs the facet path before fetching
+#' Plan a GBIF fetch: price the records path against the counts path
 #'
 #' Asks GBIF, with a handful of count-only requests, how big the occurrence
 #' pull for these keys, polygon and years would be, then prices both prior
 #' paths:
 #' \describe{
-#'   \item{record path}{[download_gbif_occurrences()] ->
+#'   \item{records path}{[download_gbif_occurrences()] ->
 #'     [filter_gbif_quality()] -> habitat assignment -> spatial review ->
 #'     `TaxaExpect::estimate_kernel_priors()`. Cost grows with the number of
 #'     RECORDS.}
-#'   \item{facet path}{[fetch_gbif_facet_counts()] ->
-#'     `TaxaExpect::estimate_facet_priors()`. Cost grows with the number of
+#'   \item{counts path}{[fetch_gbif_occurrence_counts()] ->
+#'     `TaxaExpect::estimate_kernel_priors_from_counts()`. Cost grows with the number of
 #'     distinct SPECIES not yet in the name cache, and is independent of the
 #'     number of records.}
 #' }
 #'
 #' @section Which path:
-#' Choose by what the prior needs first and by size second. The record path
+#' Choose by what the prior needs first and by size second. The records path
 #' is the only one that supports record-level habitat assignment, a
 #' covariate kernel (e.g. depth), bandwidth calibration
 #' (`TaxaExpect::calibrate_kernel_bandwidth()`), spatial review of individual
 #' records, and merging non-GBIF records (local surveys) into the same pool;
 #' if the analysis needs any of them, use it whenever it fits in memory.
-#' Otherwise the facet path gives the same kernel prior to within an order of
+#' Otherwise the counts path gives the same kernel prior to within an order of
 #' magnitude for the species that matter, in seconds to minutes, and it is the
 #' only feasible path once the pool runs to many millions of records. The
-#' recommendation returned here applies that rule: facet when the record
+#' recommendation returned here applies that rule: counts when the records
 #' path's estimated peak memory exceeds `ram_fraction` of `ram_gb` or the
-#' pool exceeds `max_records`, record path otherwise.
+#' pool exceeds `max_records`, records path otherwise.
 #'
 #' @section Rates behind the estimates:
 #' Measured on the PtConception 18S pool (1.72 million records, Apple
@@ -40,38 +40,38 @@
 #' ([filter_gbif_quality()], the dominant automated per-record step; habitat
 #' assignment and resolution together took under 10 s per 300,000 records),
 #' `filter_gb_per_million` 4 (peak R memory of [filter_gbif_quality()]),
-#' `facet_sec_per_request` 0.25 and `name_lookups_per_sec` 28 (the facet
+#' `counts_sec_per_request` 0.25 and `name_lookups_per_sec` 28 (the counts
 #' path's band requests and uncached species-name lookups), and
 #' `download_queue_min` 10 (GBIF's server-side preparation time; it varies with
 #' GBIF load and is the least predictable term). Not priced for either path:
 #' LLM habitat lookups per taxon (the same per-taxon cost on both paths, and
-#' cached) and, on the record path, interactive spatial review, which is paid
+#' cached) and, on the records path, interactive spatial review, which is paid
 #' in reviewer time per flagged point.
 #'
-#' @inheritParams fetch_gbif_facet_counts
+#' @inheritParams fetch_gbif_occurrence_counts
 #' @param ram_gb Numeric or `NULL`. Physical memory to compare the record
 #'   path's peak against. `NULL`: detected on macOS and Linux, otherwise `NA`
 #'   (no memory-based recommendation).
-#' @param ram_fraction Numeric. Share of `ram_gb` the record path may use
-#'   before the facet path is recommended. Default 0.5.
-#' @param max_records Numeric. Pool size above which the facet path is
+#' @param ram_fraction Numeric. Share of `ram_gb` the records path may use
+#'   before the counts path is recommended. Default 0.5.
+#' @param max_records Numeric. Pool size above which the counts path is
 #'   recommended regardless of memory. Default 5 million.
 #' @param rates Named list overriding any of the rates above.
 #'
-#' @return A one-row tibble: `n_records` (rows the record path would
+#' @return A one-row tibble: `n_records` (rows the records path would
 #'   download), `n_species_records` (of those, resolved to species),
-#'   `n_species`, `n_species_uncached`, `record_download_mb`,
-#'   `record_queue_min`, `record_process_min`, `record_peak_gb`,
-#'   `facet_requests`, `facet_min`, `ram_gb`, `recommended`
-#'   (`"record"` or `"facet"`) and `reason`.
-#' @seealso [fetch_gbif_facet_counts()], [download_gbif_occurrences()]
+#'   `n_species`, `n_species_uncached`, `records_download_mb`,
+#'   `records_queue_min`, `records_process_min`, `records_peak_gb`,
+#'   `counts_requests`, `counts_min`, `ram_gb`, `recommended`
+#'   (`"records"` or `"counts"`) and `reason`.
+#' @seealso [fetch_gbif_occurrence_counts()], [download_gbif_occurrences()]
 #' @export
 #' @examples
 #' \dontrun{
-#' estimate_gbif_fetch_cost(valid_keys, geometry = bbox, lambda_km = 25,
+#' plan_gbif_fetch(valid_keys, geometry = bbox, lambda_km = 25,
 #'   year_range = "1995,2026")
 #' }
-estimate_gbif_fetch_cost <- function(keys,
+plan_gbif_fetch <- function(keys,
                                      geometry = NULL,
                                      lambda_km = NULL,
                                      breaks_km = NULL,
@@ -87,13 +87,13 @@ estimate_gbif_fetch_cost <- function(keys,
                                      base_url = "https://api.gbif.org/v1") {
   r <- utils::modifyList(list(
     download_bytes_per_record = 410, filter_sec_per_million = 240,
-    filter_gb_per_million = 4, facet_sec_per_request = 0.25,
+    filter_gb_per_million = 4, counts_sec_per_request = 0.25,
     name_lookups_per_sec = 28, download_queue_min = 10
   ), rates)
   keys <- sort(unique(stats::na.omit(as.numeric(keys))))
-  if (!length(keys)) stop("estimate_gbif_fetch_cost: `keys` is empty.")
+  if (!length(keys)) stop("plan_gbif_fetch: `keys` is empty.")
   n_bands <- if (!is.null(breaks_km)) length(breaks_km) else if (!is.null(lambda_km)) 9L else {
-    stop("estimate_gbif_fetch_cost: supply `lambda_km` or `breaks_km`, as for fetch_gbif_facet_counts().")
+    stop("plan_gbif_fetch: supply `lambda_km` or `breaks_km`, as for fetch_gbif_occurrence_counts().")
   }
   n_bands <- n_bands + as.integer(!is.null(geometry))
 
@@ -127,41 +127,41 @@ estimate_gbif_fetch_cost <- function(keys,
   if (is.null(ram_gb)) ram_gb <- .physical_ram_gb()
   M <- n_records / 1e6
   peak_gb <- M * r$filter_gb_per_million
-  facet_requests <- n_bands * length(batches) + n_uncached
-  facet_min <- (n_bands * length(batches) * r$facet_sec_per_request / max_active +
+  counts_requests <- n_bands * length(batches) + n_uncached
+  counts_min <- (n_bands * length(batches) * r$counts_sec_per_request / max_active +
     n_uncached / r$name_lookups_per_sec) / 60
 
   mem_bad <- is.finite(ram_gb) && peak_gb > ram_fraction * ram_gb
   big <- n_records > max_records
-  recommended <- if (mem_bad || big) "facet" else "record"
+  recommended <- if (mem_bad || big) "counts" else "records"
   reason <- if (mem_bad) {
-    sprintf("record path needs ~%.0f GB at peak, over %.0f%% of %.0f GB RAM", peak_gb, 100 * ram_fraction, ram_gb)
+    sprintf("records path needs ~%.0f GB at peak, over %.0f%% of %.0f GB RAM", peak_gb, 100 * ram_fraction, ram_gb)
   } else if (big) {
     sprintf("%s records exceeds max_records (%s)", format(n_records, big.mark = ","), format(max_records, big.mark = ","))
   } else {
-    "record path fits in memory; it keeps record-level habitat, covariates, calibration and spatial review"
+    "records path fits in memory; it keeps record-level habitat, covariates, calibration and spatial review"
   }
   out <- tibble::tibble(
     n_records = n_records, n_species_records = sum(sp), n_species = n_species,
     n_species_uncached = n_uncached,
-    record_download_mb = n_records * r$download_bytes_per_record / 1e6,
-    record_queue_min = r$download_queue_min,
-    record_process_min = M * r$filter_sec_per_million / 60,
-    record_peak_gb = peak_gb,
-    facet_requests = facet_requests, facet_min = facet_min,
+    records_download_mb = n_records * r$download_bytes_per_record / 1e6,
+    records_queue_min = r$download_queue_min,
+    records_process_min = M * r$filter_sec_per_million / 60,
+    records_peak_gb = peak_gb,
+    counts_requests = counts_requests, counts_min = counts_min,
     ram_gb = ram_gb, recommended = recommended, reason = reason
   )
   message(sprintf(
     paste0(
       "GBIF pool: %s records (%s at species level), %s species (%s not in the name cache).\n",
-      "  record path: ~%.0f MB download + GBIF queue (~%g min, variable) + ~%.1f min cleaning, peak ~%.1f GB\n",
-      "  facet path : %s requests, ~%.1f min\n",
+      "  records path: ~%.0f MB download + GBIF queue (~%g min, variable) + ~%.1f min cleaning, peak ~%.1f GB\n",
+      "  counts path : %s requests, ~%.1f min\n",
       "  recommended: %s -- %s"
     ),
     format(n_records, big.mark = ","), format(sum(sp), big.mark = ","),
     format(n_species, big.mark = ","), format(n_uncached, big.mark = ","),
-    out$record_download_mb, r$download_queue_min, out$record_process_min, peak_gb,
-    format(facet_requests, big.mark = ","), facet_min, recommended, reason
+    out$records_download_mb, r$download_queue_min, out$records_process_min, peak_gb,
+    format(counts_requests, big.mark = ","), counts_min, recommended, reason
   ))
   out
 }

@@ -148,7 +148,7 @@
 #'   (`W`, the Kish denominator, the kernel-weighted and regional
 #'   compositions, the neighborhood-support counts behind `f1`/`f2`) is
 #'   count-weighted -- so aggregated inputs such as gridded occurrence cubes
-#'   or [estimate_facet_priors()]'s distance bands reuse this estimator
+#'   or [estimate_kernel_priors_from_counts()]'s distance bands reuse this estimator
 #'   unchanged. Rows with a count of zero are dropped.
 #' @param support_weight Numeric in (0, 1]. A record counts toward the
 #'   discrete neighborhood-support statistics (singleton detection, record

@@ -122,7 +122,7 @@ exactly equivalent to \code{n} identical one-record rows -- every sum
 (\code{W}, the Kish denominator, the kernel-weighted and regional
 compositions, the neighborhood-support counts behind \code{f1}/\code{f2}) is
 count-weighted -- so aggregated inputs such as gridded occurrence cubes
-or \code{\link[=estimate_facet_priors]{estimate_facet_priors()}}'s distance bands reuse this estimator
+or \code{\link[=estimate_kernel_priors_from_counts]{estimate_kernel_priors_from_counts()}}'s distance bands reuse this estimator
 unchanged. Rows with a count of zero are dropped.}
 
 \item{support_weight}{Numeric in (0, 1]. A record counts toward the

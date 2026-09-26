@@ -1,5 +1,5 @@
 # ==============================================================================
-# fetch_gbif_facet_counts.R
+# fetch_gbif_occurrence_counts.R
 # TaxaFetch -- Species-level GBIF record COUNTS in distance bands around a site
 # ==============================================================================
 
@@ -10,7 +10,7 @@
 #' every record it asks GBIF's occurrence-search API for per-species record
 #' COUNTS (`limit = 0`, `facet = speciesKey`) inside a set of concentric
 #' distance bands around one site. The result feeds
-#' `TaxaExpect::estimate_facet_priors()`, which returns the same prior object
+#' `TaxaExpect::estimate_kernel_priors_from_counts()`, which returns the same prior object
 #' [TaxaExpect::estimate_kernel_priors()] does.
 #'
 #' Cost is set by the number of bands and key batches, not by the number of
@@ -80,16 +80,16 @@
 #'   `n_species_lookups` (uncached classification lookups made by this
 #'   call), `total_records` (all species-level records counted), `timing`
 #'   (seconds), `fetched_at`.
-#' @seealso `TaxaExpect::estimate_facet_priors()`, [estimate_gbif_fetch_cost()]
+#' @seealso `TaxaExpect::estimate_kernel_priors_from_counts()`, [plan_gbif_fetch()]
 #'   to choose between this and [download_gbif_occurrences()].
 #' @export
 #' @examples
 #' \dontrun{
-#' counts <- fetch_gbif_facet_counts(valid_keys, 34.4, -120.4,
+#' counts <- fetch_gbif_occurrence_counts(valid_keys, 34.4, -120.4,
 #'   geometry = bbox, lambda_km = 25, year_range = "1995,2026"
 #' )
 #' }
-fetch_gbif_facet_counts <- function(keys,
+fetch_gbif_occurrence_counts <- function(keys,
                                     site_lat,
                                     site_lon,
                                     geometry = NULL,
@@ -103,22 +103,22 @@ fetch_gbif_facet_counts <- function(keys,
                                     max_active = 4L,
                                     base_url = "https://api.gbif.org/v1") {
   keys <- sort(unique(stats::na.omit(as.numeric(keys))))
-  if (!length(keys)) stop("fetch_gbif_facet_counts: `keys` is empty.")
+  if (!length(keys)) stop("fetch_gbif_occurrence_counts: `keys` is empty.")
   for (nm in c("site_lat", "site_lon")) {
     v <- get(nm)
     if (!is.numeric(v) || length(v) != 1L || is.na(v)) {
-      stop(sprintf("fetch_gbif_facet_counts: `%s` must be a single number.", nm))
+      stop(sprintf("fetch_gbif_occurrence_counts: `%s` must be a single number.", nm))
     }
   }
   if (is.null(breaks_km)) {
     if (is.null(lambda_km)) {
-      stop("fetch_gbif_facet_counts: supply `lambda_km` (sets default bands) or `breaks_km`.")
+      stop("fetch_gbif_occurrence_counts: supply `lambda_km` (sets default bands) or `breaks_km`.")
     }
     breaks_km <- lambda_km * c(0.25, 0.5, 1, 1.5, 2, 3, 4, 6, 9)
   }
   if (!is.numeric(breaks_km) || any(!is.finite(breaks_km)) || any(breaks_km <= 0) ||
     is.unsorted(breaks_km, strictly = TRUE)) {
-    stop("fetch_gbif_facet_counts: `breaks_km` must be positive, finite and strictly increasing.")
+    stop("fetch_gbif_occurrence_counts: `breaks_km` must be positive, finite and strictly increasing.")
   }
 
   query <- list(
@@ -129,12 +129,12 @@ fetch_gbif_facet_counts <- function(keys,
   cache_path <- NULL
   if (!is.null(cache_dir)) {
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-    cache_path <- file.path(cache_dir, paste0("gbif_facet_", rlang::hash(query), ".rds"))
+    cache_path <- file.path(cache_dir, paste0("gbif_counts_", rlang::hash(query), ".rds"))
     if (file.exists(cache_path)) {
       hit <- tryCatch(readRDS(cache_path), error = function(e) NULL)
       if (!is.null(hit) && identical(attr(hit, "query"), query)) {
         message(sprintf(
-          "fetch_gbif_facet_counts: cached band counts from %s (clear %s to refetch).",
+          "fetch_gbif_occurrence_counts: cached band counts from %s (clear %s to refetch).",
           format(attr(hit, "fetched_at")), basename(cache_path)
         ))
         return(hit)
@@ -170,7 +170,7 @@ fetch_gbif_facet_counts <- function(keys,
     cnt <- if (length(fc)) fc[[1L]]$counts else list()
     if (length(cnt) >= .facet_limit) {
       stop(sprintf(
-        "fetch_gbif_facet_counts: a request returned %d species, the facet limit -- the list may be truncated. Lower key_batch_size.",
+        "fetch_gbif_occurrence_counts: a request returned %d species, the facet limit -- the list may be truncated. Lower key_batch_size.",
         length(cnt)
       ))
     }
@@ -182,7 +182,7 @@ fetch_gbif_facet_counts <- function(keys,
     )
   }))
   if (is.null(cum)) {
-    stop("fetch_gbif_facet_counts: GBIF returned no species-level records for these keys and area.")
+    stop("fetch_gbif_occurrence_counts: GBIF returned no species-level records for these keys and area.")
   }
   # Batches are disjoint key sets, so a species' cumulative count is the sum.
   cum <- stats::aggregate(cum_n ~ speciesKey + edge, data = cum, FUN = sum)
@@ -222,7 +222,7 @@ fetch_gbif_facet_counts <- function(keys,
   attr(out, "fetched_at") <- Sys.time()
   if (!is.null(cache_path)) saveRDS(out, cache_path)
   message(sprintf(
-    "fetch_gbif_facet_counts: %d species, %s species-level records, %d bands, %d requests (%d name lookups) in %.1f s.",
+    "fetch_gbif_occurrence_counts: %d species, %s species-level records, %d bands, %d requests (%d name lookups) in %.1f s.",
     length(unique(out$speciesKey)), format(sum(out$n), big.mark = ","), length(edges),
     attr(out, "n_requests"), n_lookups, attr(out, "timing")
   ))
@@ -230,7 +230,7 @@ fetch_gbif_facet_counts <- function(keys,
 }
 
 # Facet page size. A request returning this many species may be truncated, so
-# fetch_gbif_facet_counts() stops rather than silently under-counting.
+# fetch_gbif_occurrence_counts() stops rather than silently under-counting.
 .facet_limit <- 200000L
 
 #' Parallel GET of GBIF JSON with retry (429/5xx back off inside httr2)
