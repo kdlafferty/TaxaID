@@ -661,3 +661,15 @@ behavior on functions this document already covers above.
   it built the context itself, unless `report_params` sets it.
 - `build_context()` returns a `geographic_hint` column, which `assign_taxa_llm()`
   shows the model as "Location".
+- `assign_taxa_llm()` accepts `range_status = "transported"` for taxa with no wild
+  population that are present because people bring or keep them, with its own
+  `prior_weight_guide$transported` band (default `c(0.03, 0.15)`). A guide supplied
+  without the band gets the default.
+- `assign_taxa_llm(cache_dir = NULL)` caches LLM prior responses, one file per call,
+  keyed on the full prompt and what can be known about the model before the call.
+  Incomplete answers are never cached. `run_llm_pipeline()` forwards it.
+- `run_llm_pipeline(data_type)` has no default and must be stated when the function
+  detects unreferenced species itself. It used to pass `"eDNA"` unconditionally.
+  Detection inside the wrapper runs only for `"eDNA"`; image and acoustic data need
+  `suggest_unreferenced_species()` with its `reference_species` list. The value also
+  reaches `generate_report()` unless `report_params` sets it.

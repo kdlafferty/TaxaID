@@ -750,7 +750,7 @@ result <- run_bayesian_pipeline(match_df, model_params, taxaexpect_priors = taxa
 
 # LLM-shortcut pipeline (~1 call)
 result <- run_llm_pipeline(match_df, geographic_hint = "Santa Barbara Channel, California (34.4 N, 119.8 W)",
-                            backbone_id = 11)  # 11 = GBIF backbone; 4 = NCBI
+                            data_type = "eDNA", backbone_id = 11)  # 11 = GBIF backbone; 4 = NCBI
 ```
 
 # Caching and resources {#caching-and-resources}

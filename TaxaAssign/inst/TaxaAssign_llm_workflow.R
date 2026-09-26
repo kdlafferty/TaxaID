@@ -568,6 +568,7 @@ cat(assembled)
 #   date                 = "2025",
 #   habitat_scheme       = "IUCN_L1",
 #   llm_fn               = TaxaTools::call_anthropic_api,
+#   data_type            = "eDNA",
 #   detect_unreferenced  = TRUE,
 #   barcode_term         = "12S",
 #   expand_to_family     = TRUE,

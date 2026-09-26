@@ -104,6 +104,7 @@ test_that("run_llm_pipeline: rejects non-data-frame match_df", {
     run_llm_pipeline(
       match_df     = "not a df",
       llm_fn       = function(x) "mock",
+      data_type    = "eDNA",
       auto_context = FALSE,
       backbone_id  = 11L
     ),
@@ -201,6 +202,7 @@ test_that("run_llm_pipeline: auto_context filters on score_original, not the rem
     run_llm_pipeline(
       match_df        = mock_match_df,
       llm_fn          = function(prompt) "[]",
+      data_type       = "eDNA",
       score_threshold = 90,
       backbone_id     = 11L,
       verbose         = FALSE
@@ -230,4 +232,49 @@ test_that("both wrappers reject report_params names generate_report() does not a
                 c("result", "consensus", "unreferenced_result", "workflow", "llm_fn", "verbose"))
   expect_true(.check_report_params(setNames(as.list(ok), ok), "test"))
   expect_true(.check_report_params(list(), "test"))
+})
+
+test_that("run_llm_pipeline: data_type must be stated when it detects unreferenced species", {
+  expect_error(
+    run_llm_pipeline(
+      match_df = mock_match_df, llm_fn = function(x) "mock",
+      auto_context = FALSE, backbone_id = 11L
+    ),
+    "data_type"
+  )
+  expect_error(
+    run_llm_pipeline(
+      match_df = mock_match_df, llm_fn = function(x) "mock",
+      data_type = "image", auto_context = FALSE, backbone_id = 11L
+    ),
+    "reference_species"
+  )
+  expect_error(
+    run_llm_pipeline(
+      match_df = mock_match_df, llm_fn = function(x) "mock",
+      data_type = "DNA", auto_context = FALSE, backbone_id = 11L
+    ),
+    "must be one of"
+  )
+})
+
+test_that("run_llm_pipeline: data_type reaches suggest_unreferenced_species()", {
+  skip_if_not_installed("TaxaLikely")
+  seen <- NULL
+  local_mocked_bindings(
+    suggest_unreferenced_species = function(..., data_type) {
+      seen <<- data_type
+      stop("stop_after_unreferenced")
+    },
+    .package = "TaxaLikely"
+  )
+  expect_error(
+    run_llm_pipeline(
+      match_df = mock_match_df, llm_fn = function(x) "mock",
+      data_type = "eDNA", auto_context = FALSE, backbone_id = 11L,
+      verbose = FALSE
+    ),
+    "stop_after_unreferenced"
+  )
+  expect_equal(seen, "eDNA")
 })

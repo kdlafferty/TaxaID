@@ -60,6 +60,7 @@ head(out$consensus)
 out <- run_llm_pipeline(
   match_df        = match_obj,
   geographic_hint = "Southern California",
+  data_type       = "eDNA",
   barcode_term    = "12S",
   backbone_id     = 11L # GBIF; match whichever backbone your input taxonomy used
 )
