@@ -937,12 +937,39 @@ assign_taxa_llm <- function(match_df,
 
 
 #' Collect unique taxa data frame from a named list of lik_dfs
+#'
+#' Also builds a `lineage` string from the ranks above genus (e.g.
+#' "Chordata > Actinopteri > Atheriniformes > Atherinopsidae") so the prompt
+#' can tell homonyms apart: a bare name such as Vertebrata is both a red alga
+#' and the vertebrate clade. Unreferenced species have no taxonomy of their
+#' own and borrow the lineage of a referenced congener. `lineage` is NA when
+#' `match_df` carries no ranks above genus.
 #' @noRd
 .collect_unique_taxa <- function(lik_list) {
   all_rows <- dplyr::bind_rows(lik_list)
   all_rows <- all_rows[!is.na(all_rows$taxon_name), ]
+  lineage_cols <- intersect(
+    c("kingdom", "phylum", "class", "order", "family"), names(all_rows)
+  )
+  all_rows$lineage <- if (length(lineage_cols) > 0L) {
+    apply(all_rows[, lineage_cols, drop = FALSE], 1, function(v) {
+      v <- as.character(v)
+      v <- v[!is.na(v) & nzchar(trimws(v))]
+      if (length(v) == 0L) NA_character_ else paste(v, collapse = " > ")
+    })
+  } else {
+    NA_character_
+  }
+  genus_of <- sub(" .*", "", all_rows$taxon_name)
+  known <- !is.na(all_rows$lineage)
+  borrow <- !known & all_rows$hypothesis_type == "unreferenced_species"
+  if (any(borrow) && any(known)) {
+    all_rows$lineage[borrow] <- all_rows$lineage[known][
+      match(genus_of[borrow], genus_of[known])
+    ]
+  }
   dedup <- !duplicated(all_rows$taxon_name)
-  out <- all_rows[dedup, c("taxon_name", "taxon_name_rank", "hypothesis_type"),
+  out <- all_rows[dedup, c("taxon_name", "taxon_name_rank", "hypothesis_type", "lineage"),
     drop = FALSE
   ]
   out[order(out$taxon_name), ]
@@ -993,7 +1020,7 @@ assign_taxa_llm <- function(match_df,
   }
   survey_block <- if (length(survey_parts) > 0) {
     paste0(
-      "Survey context (independent of DNA):\n",
+      "Survey context (independent of this detection method):\n",
       paste(survey_parts, collapse = "\n"), "\n\n"
     )
   } else {
@@ -1026,10 +1053,13 @@ assign_taxa_llm <- function(match_df,
   }
 
   # Taxa list
+  # Lineage after the rank lets the model tell homonyms apart.
+  lineage <- if ("lineage" %in% names(taxa_df)) taxa_df$lineage else NA_character_
   taxa_lines <- sprintf(
-    "- %s (%s)%s",
+    "- %s (%s%s)%s",
     taxa_df$taxon_name,
     taxa_df$taxon_name_rank,
+    ifelse(is.na(lineage), "", paste0("; ", lineage)),
     ifelse(taxa_df$hypothesis_type != "specific_candidate", " [no reference sequence]", "")
   )
 
@@ -1086,7 +1116,9 @@ assign_taxa_llm <- function(match_df,
       prior_weight_guide$taxonomically_impossible[1], prior_weight_guide$taxonomically_impossible[2]
     ),
     "5. If no habitat is given in context, base prior_weight on range only.\n",
-    "6. If uncertain, reason from genus or family.\n",
+    "6. If uncertain, reason from genus or family. Each taxon's higher lineage is\n",
+    "   given after its rank; assess the taxon in that lineage, since the same\n",
+    "   name can belong to unrelated organisms.\n",
     "7. Commit to information_quality -- how much published data exists about\n",
     "   this taxon's distribution in THIS region:\n",
     "   \"high\"     -- well-studied taxon; range, habitat, and occurrence are\n",

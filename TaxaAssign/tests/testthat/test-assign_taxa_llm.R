@@ -739,3 +739,37 @@ test_that("a failed batch takes the median weight of the batches that answered",
   expect_equal(p[["Ccc three"]] / p[["Aaa one"]], 0.5 / 0.8)
   expect_equal(r$prior_source[r$taxon_name == "Ccc three"], "uniform_fallback")
 })
+
+test_that("prompt lines carry each taxon's higher lineage", {
+  md <- data.frame(
+    observation_id = "A", score_original = c(99, 95),
+    taxon_name = c("Vertebrata lanosa", "Polysiphonia stricta"),
+    taxon_name_rank = "species",
+    phylum = "Rhodophyta", class = "Florideophyceae",
+    order = "Ceramiales", family = "Rhodomelaceae",
+    genus = c("Vertebrata", "Polysiphonia"),
+    species = c("Vertebrata lanosa", "Polysiphonia stricta"),
+    stringsAsFactors = FALSE
+  )
+  prompts <- character(0)
+  capture <- function(prompt_str) {
+    prompts <<- c(prompts, prompt_str)
+    weighted_llm(c("Vertebrata lanosa" = 0.5, "Polysiphonia stricta" = 0.5))(prompt_str)
+  }
+  suppressWarnings(suppressMessages(assign_taxa_llm(md,
+    llm_fn = capture, pause_seconds = 0, n_sims = 0L,
+    unreferenced_taxa = "Vertebrata fucoides"
+  )))
+  expect_match(
+    prompts[[1]],
+    "- Vertebrata lanosa (species; Rhodophyta > Florideophyceae > Ceramiales > Rhodomelaceae)",
+    fixed = TRUE
+  )
+  # The unreferenced congener borrows its lineage.
+  expect_match(
+    prompts[[1]],
+    "- Vertebrata fucoides (species; Rhodophyta > Florideophyceae > Ceramiales > Rhodomelaceae) [no reference sequence]",
+    fixed = TRUE
+  )
+  expect_false(grepl("independent of DNA", prompts[[1]], fixed = TRUE))
+})
