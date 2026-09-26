@@ -70,6 +70,10 @@
 #' @param prior_phi Named numeric vector mapping \code{information_quality}
 #'   to Beta concentration. Default \code{c(high = 50, moderate = 10, low = 3)}.
 #' @param n_sims Integer. Monte Carlo simulations. Default \code{1000L}.
+#' @param cache_dir Character or \code{NULL}. Passed to
+#'   \code{\link{assign_taxa_llm}}, which caches its prior calls there. It does
+#'   not cover the \code{build_context()} or unreferenced-species calls.
+#'   Default \code{NULL} (no cache).
 #' @param context_group Optional character vector of column names in
 #'   \code{context} for grouping observations. Default \code{NULL}.
 #' @param rank_system Character vector of taxonomy ranks, coarse to fine.
@@ -165,6 +169,7 @@ run_llm_pipeline <- function(
   pause_seconds = 1,
   prior_phi = c(high = 50, moderate = 10, low = 3),
   n_sims = 1000L,
+  cache_dir = NULL,
   context_group = NULL,
   rank_system = c("family", "genus", "species"),
   cumulative_threshold = 0.90,
@@ -292,6 +297,7 @@ run_llm_pipeline <- function(
     pause_seconds         = pause_seconds,
     prior_phi             = prior_phi,
     n_sims                = n_sims,
+    cache_dir             = cache_dir,
     verbose               = verbose
   )
 

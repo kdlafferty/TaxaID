@@ -812,3 +812,52 @@ test_that("a prior_weight_guide without transported gets the default band", {
   )
   expect_equal(attr(r, "report_params")$prior_weight_guide$transported, c(0.03, 0.15))
 })
+
+test_that("cache_dir serves a repeated prompt without calling the LLM", {
+  dir <- tempfile("llmcache") # R removes its session temp dir on exit
+  md <- data.frame(
+    observation_id = "A", score_original = c(99, 95),
+    taxon_name = c("Aaa one", "Bbb two"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  n_calls <- 0L
+  counting <- function(prompt_str) {
+    n_calls <<- n_calls + 1L
+    weighted_llm(c("Aaa one" = 0.8, "Bbb two" = 0.2))(prompt_str)
+  }
+  run <- function(ctx) {
+    suppressWarnings(suppressMessages(assign_taxa_llm(md,
+      context = ctx, llm_fn = counting, pause_seconds = 0,
+      n_sims = 0L, cache_dir = dir
+    )))
+  }
+  ctx <- data.frame(ecoregion = "Southern California Bight")
+  r1 <- run(ctx)
+  r2 <- run(ctx)
+  expect_equal(n_calls, 1L)
+  expect_equal(r2$prior_mean, r1$prior_mean)
+  # A different context is a different prompt: a miss.
+  run(data.frame(ecoregion = "Oregon Coast"))
+  expect_equal(n_calls, 2L)
+})
+
+test_that("cache_dir never stores an incomplete answer", {
+  dir <- tempfile("llmcache") # R removes its session temp dir on exit
+  md <- data.frame(
+    observation_id = "A", score_original = c(99, 95),
+    taxon_name = c("Aaa one", "Bbb two"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  n_calls <- 0L
+  omits <- function(prompt_str) {
+    n_calls <<- n_calls + 1L
+    '[{"taxon_name":"Aaa one","prior_weight":0.8}]'
+  }
+  for (i in 1:2) {
+    suppressWarnings(suppressMessages(assign_taxa_llm(md,
+      llm_fn = omits, pause_seconds = 0, n_sims = 0L, cache_dir = dir
+    )))
+  }
+  expect_equal(n_calls, 2L)
+  expect_length(list.files(dir), 0L)
+})

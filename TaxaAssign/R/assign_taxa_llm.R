@@ -216,6 +216,20 @@ utils::globalVariables(c(
 #'   influence posterior probabilities.
 #' @param n_sims Integer. Monte Carlo simulations for `compute_posterior()`.
 #'   Default 1000. Set to 0 to skip simulation and return point estimates only.
+#' @param cache_dir Character or `NULL` (default). Directory for a cache of LLM
+#'   responses, one file per call, so a re-run returns the same priors without
+#'   paying for them again. An LLM can answer the same prompt differently on two
+#'   runs, so a cache is what makes a re-run reproducible. `NULL` disables it.
+#'   The key is the full prompt text plus what can be known about the model
+#'   before the call: the code of `llm_fn` (which captures a `model =` set in a
+#'   wrapper), its `model` default, and `getOption("TaxaID.provider")`. Any
+#'   change to the taxa, context, survey lists or guide bands changes the prompt
+#'   and so misses. `TaxaTools::call_api()` chooses its model at call time, so
+#'   after changing the model through `TaxaTools::set_model()` or a registry
+#'   refresh, use a new `cache_dir` or empty the old one. Each entry also stores
+#'   the model the response reports, when the provider function attaches it. A
+#'   response that failed to parse or left out a taxon is never cached, so it is
+#'   asked again on the next run.
 #' @param verbose Logical. If `TRUE`, prints the prompt and raw LLM response for
 #'   each group call. Default `FALSE`.
 #'
@@ -360,6 +374,7 @@ assign_taxa_llm <- function(match_df,
                               transported = c(0.03, 0.15)
                             ),
                             n_sims = 1000L,
+                            cache_dir = NULL,
                             verbose = FALSE) {
   # --- Resolve llm_fn default --------------------------------------------------
   llm_fn <- .resolve_llm_fn(llm_fn, "assign_taxa_llm")
@@ -395,6 +410,14 @@ assign_taxa_llm <- function(match_df,
     absent_detection_prob <= 0 || absent_detection_prob >= 1) {
     cli::cli_abort("{.arg absent_detection_prob} must be a single number strictly between 0 and 1.")
   }
+  if (!is.null(cache_dir)) {
+    if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir)) {
+      cli::cli_abort("{.arg cache_dir} must be a single character string or NULL.")
+    }
+    if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    cache_model_key <- .llm_cache_model_key(llm_fn)
+  }
+  n_cache_hits <- 0L
   if (is.null(context)) {
     cli::cli_warn(c(
       "{.arg context} is NULL -- the LLM will assign {.field range_status} \\
@@ -590,26 +613,48 @@ assign_taxa_llm <- function(match_df,
         cat(prompt, "\n")
       }
 
-      raw <- tryCatch(
-        llm_fn(prompt),
-        error = function(e) {
-          cli::cli_warn(
-            "LLM call failed for {.val {batch_label}}: {conditionMessage(e)}. \\
-            Using uniform priors for {nrow(taxa_batch)} taxa."
-          )
-          NULL
-        }
-      )
+      cache_key <- cache_path <- NULL
+      raw <- NULL
+      if (!is.null(cache_dir)) {
+        cache_key <- paste(cache_model_key, prompt, sep = "\u0001")
+        cache_path <- file.path(cache_dir, paste0(.llm_cache_hash(cache_key), "_llmprior.rds"))
+        raw <- .llm_cache_read(cache_path, cache_key)
+      }
+      from_cache <- !is.null(raw)
+
+      if (!from_cache) {
+        raw <- tryCatch(
+          llm_fn(prompt),
+          error = function(e) {
+            cli::cli_warn(
+              "LLM call failed for {.val {batch_label}}: {conditionMessage(e)}. \\
+              Using uniform priors for {nrow(taxa_batch)} taxa."
+            )
+            NULL
+          }
+        )
+      } else {
+        n_cache_hits <- n_cache_hits + 1L
+      }
 
       if (verbose && !is.null(raw)) {
-        cli::cli_inform("--- Response ---")
+        cli::cli_inform(if (from_cache) "--- Response (cached) ---" else "--- Response ---")
         cat(raw, "\n")
       }
 
-      batch_results[[b]] <- .parse_taxa_response(raw, taxa_batch, batch_label)
+      parsed <- .parse_taxa_response(raw, taxa_batch, batch_label)
+      batch_results[[b]] <- parsed
+
+      # Cache only a complete answer: a fallback or an omitted taxon cached
+      # would be served on every later run instead of being asked again.
+      if (!is.null(cache_dir) && !from_cache && !is.null(raw) &&
+        all(parsed$prior_source == "llm") &&
+        all(taxa_batch$taxon_name %in% parsed$taxon_name)) {
+        .llm_cache_write(cache_path, cache_key, raw, attr(raw, "model"))
+      }
 
       cli::cli_progress_update(id = pb)
-      if (call_idx < n_calls_total) Sys.sleep(pause_seconds)
+      if (!from_cache && call_idx < n_calls_total) Sys.sleep(pause_seconds)
     }
 
     # Combine taxon batches for this group. Taxa from a batch that failed
@@ -628,6 +673,9 @@ assign_taxa_llm <- function(match_df,
   }
 
   cli::cli_progress_done(id = pb)
+  if (!is.null(cache_dir)) {
+    cli::cli_inform("LLM prior cache: {n_cache_hits} of {n_calls_total} call(s) served from {.path {cache_dir}}.")
+  }
 
   # --- Merge likelihoods + priors for each observation -------------------------
   merged_list <- .merge_llm_priors(
@@ -663,6 +711,65 @@ assign_taxa_llm <- function(match_df,
 # ==============================================================================
 # Internal helpers
 # ==============================================================================
+
+#' Model part of the assign_taxa_llm() cache key: what is knowable about the
+#' model before the call. deparse(llm_fn) captures a model set inside a
+#' wrapper; formals()$model the provider function's own default.
+#' @noRd
+.llm_cache_model_key <- function(llm_fn) {
+  model_default <- tryCatch(
+    {
+      m <- formals(llm_fn)$model
+      if (is.null(m)) "" else paste(as.character(eval(m)), collapse = "~")
+    },
+    error = function(e) ""
+  )
+  paste(c(
+    "v1", getOption("TaxaID.provider", ""), model_default,
+    paste(deparse(llm_fn), collapse = "\n")
+  ), collapse = "\u0001")
+}
+
+#' File-name hash for a cache key. Two position-weighted sums, so no
+#' digest dependency; the full key is stored in the file and checked on read,
+#' so a collision is a miss, never a wrong answer.
+#' @noRd
+.llm_cache_hash <- function(x) {
+  v <- as.numeric(utf8ToInt(x))
+  n <- length(v)
+  if (n == 0L) {
+    return("empty-0-0")
+  }
+  a <- sum(v * seq_len(n)) %% 2147483647
+  b <- sum(v * rev(seq_len(n))) %% 1000000007
+  sprintf("%010.0f-%010.0f-%06d", a, b, n)
+}
+
+#' @noRd
+.llm_cache_read <- function(path, key) {
+  if (!file.exists(path)) {
+    return(NULL)
+  }
+  ent <- tryCatch(readRDS(path), error = function(e) NULL)
+  if (!is.list(ent) || !identical(ent$key, key) ||
+    !is.character(ent$response) || length(ent$response) != 1L) {
+    return(NULL)
+  }
+  ent$response
+}
+
+#' @noRd
+.llm_cache_write <- function(path, key, response, model = NULL) {
+  tryCatch(
+    saveRDS(list(
+      key = key, response = as.character(response),
+      model = model, created = Sys.time()
+    ), path),
+    error = function(e) invisible(NULL)
+  )
+  invisible(NULL)
+}
+
 
 #' Exponential-weight scores to likelihood proxy, with optional unreferenced species insertion
 #' @noRd

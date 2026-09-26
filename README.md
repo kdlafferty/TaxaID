@@ -768,6 +768,7 @@ projects:
 | TaxaMatch | Yes (`evaluate_reference_accessions()`, `investigate_flagged_accession()`, `review_flagged_accessions()`) | Reference-accession mislabel-screen verdicts (BLAST + LLM review) | Yes (expensive to rebuild, and it's row-level with its own TTLs, not a flat file store) |
 | TaxaHabitat | No, off unless you pass `cache_dir` (`build_habitat_lookup()`) | Per-taxon LLM habitat assignments | Yes (an unstable verdict shifts which occurrence records count toward a site, so keeping it is what makes a re-run reproducible) |
 | TaxaFlag | No, off unless you pass `cache_dir` (`review_assignments()`, `check_gbif_tile_range()`) | LLM review verdicts / GBIF density-tile verdicts | Yes, for the same reproducibility reason as TaxaHabitat |
+| TaxaAssign | No, off unless you pass `cache_dir` (`assign_taxa_llm()`, `run_llm_pipeline()`) | LLM-shortcut prior responses, one per prompt | Yes, for the same reproducibility reason as TaxaHabitat |
 | TaxaTools | Mixed | `refresh_models()`'s LLM model registry caches to a fixed, non-configurable path; `scientific_to_common()` and `fetch_worms_attributes()` default to no persistent cache (`cache_dir = NULL`) unless you supply one | Model registry: yes, tiny. Common-name/WoRMS lookups: worth turning on if you re-run over the same taxon list |
 | TaxaWizard | Yes, fixed path, not configurable | The introspected function/workflow registry (`workflow_registry()`) | Yes, but it's tiny and rebuilds itself when a package version changes |
 
