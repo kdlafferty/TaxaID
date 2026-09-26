@@ -100,7 +100,9 @@
 #'   Default \code{FALSE}.
 #' @param report_params Named list of additional arguments passed to
 #'   \code{\link{generate_report}} (e.g. \code{data_type}, \code{marker},
-#'   \code{study_description}).
+#'   \code{study_description}). When this function builds the context itself,
+#'   \code{context_source = "llm"} is added unless you set it here, so the
+#'   Methods text says the LLM chose the site context.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
 #' @return A named list with components:
@@ -200,7 +202,8 @@ run_llm_pipeline <- function(
   # =========================================================================
   # Stage 1: Build context (if needed)
   # =========================================================================
-  if (is.null(context) && auto_context) {
+  context_built <- is.null(context) && auto_context
+  if (context_built) {
     .msg("run_llm_pipeline [1/4]: Auto-building context via build_context()...")
 
     # score_original, NOT score: assign_taxa_llm() below requires
@@ -300,6 +303,12 @@ run_llm_pipeline <- function(
   # =========================================================================
   # Stages 4-6: Consensus + Empirical Bayes + Report (shared helper)
   # =========================================================================
+
+  # The Methods text says who chose the site context. When this function
+  # built it, that was the LLM; an explicit report_params entry still wins.
+  if (context_built && is.null(report_params$context_source)) {
+    report_params$context_source <- "llm"
+  }
 
   # Build species_reference for downranking
   species_reference <- if (inherits(unreferenced_result, "unreferenced_species_result")) {

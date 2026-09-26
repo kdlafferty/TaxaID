@@ -634,6 +634,7 @@ assign_taxa_llm <- function(match_df,
     top_n                 = top_n,
     n_sims                = n_sims,
     absent_detection_prob = absent_detection_prob,
+    n_known_absent        = nrow(known_absent_df),
     prior_weight_guide    = prior_weight_guide
   )
   out
