@@ -88,6 +88,22 @@ The worktrees lived in that session's scratchpad. Recreate with `git worktree ad
 - `inst/prompts/phase_parameterize.md` needs the path choice as a user decision, with `plan_gbif_fetch()`'s recommendation rule. Records path when the analysis needs record-level habitat, a covariate, calibration, spatial review or merged local data and it fits in memory; otherwise counts. Also the habitat default ("none") and that `COUNTS_LAMBDA_KM` must come from an earlier calibration.
 - `inst/setup/requirements.json` needs a note that the counts path needs no GBIF credentials.
 - The rename touches `fetch_inat_occurrences` wherever the graph/snippets mention it. There were none at the time of writing; re-grep.
+
+## Who calls the renamed iNat function
+
+A full search found NO direct caller of `fetch_inat_occurrences()` outside the packages. It covered `.R`, `.Rmd`, `.qmd`, `.md` and `.json` under My Drive, Google Drive, Dropbox, Documents and Desktop, every branch of both repos, and other sessions' worktrees.
+
+Seven workflow files and one vignette call it INDIRECTLY, through `TaxaExpect::generate_domestic_food_priors()`:
+
+- `inst/TaxaID_Workflow_Template.R`
+- `eDNA/PtConception/TaxaID_eDNA_Workflow_Template.R`
+- the PtCon 12S and 18S single-site workflows
+- `MuguFishWorkflow.R`
+- `CaliforniaIntertidalWorkflow_multi_marker.R`
+- TaxaID_dev's `PtCon12S_b2_workflow.R`
+- `TaxaExpect/vignettes/building-priors.Rmd`
+
+`generate_domestic_food_priors()`'s arguments did not change (one internal call line did), so none of these need editing. They break only if TaxaExpect is installed without the matching TaxaFetch. Historical records under TaxaID_dev/screen_records keep the old name on purpose.
 - After install, regenerate `llm_prompts/CONTEXT_*.md` (built from installed packages by `TaxaWizard/R/pack.R`).
 
 ## Open
