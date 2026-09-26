@@ -13,7 +13,7 @@ pkgdown contradiction are gone; git has them. Everything below was measured on
 | Item | State | Waiting on |
 |---|---|---|
 | main | `328e0d6`, pushed, CI green on every push | -- |
-| Installed library | main `61688b4` build (2026-09-24 14:56); behind main in TaxaLikely (pair_retention) | a window with NO R process: two other chats' runs alive (CalIntertidal `run_s7b`, ~19 h in; optimize-matrix benchmark, minutes) |
+| Installed library | main `0bfbcf9` build (2026-09-26 05:34 local); equals main's code for every package | -- |
 | Branch `reference-memory-estimate` (`69e5b3f`) | reviewed clean, review-response entry in; conflicts with main in `build_sequence.R` since the pair-retention fast-forward; author session ended, screen session resolves | maintainer: confirm the export `estimate_sequence_matrix_size()`; choose the guard default (0.7 stop / stop above available + warn at 0.7 / NULL) |
 | PtCon 12S B2 run | staged (`TaxaID_dev/.../b2_runs/`), driver passes `max_per_genus = NULL` | maintainer's go |
 | Cache refetch notice | PtCon, GreatLakes, Mugu caches written under `max_per_species = 10` refetch ONCE under the new uncapped-cache semantics once the memory branch lands | maintainer's acceptance, or a plan per project |
@@ -1417,6 +1417,16 @@ acoustic/image examples added to `score_consensus()`, `join_priors()`,
   pre-flight clean; all nine, Built 21:56:06-21:56:30 UTC; pack
   regenerated; TaxaWizard suite and the four offline smoke tests pass
   from the installed copies. Installed library == main code.
+  **LIBRARY REBUILT 2026-09-26 05:34 local from main `0bfbcf9`** once the
+  CalIntertidal run_s7b (23 h 56 m, 0 errors), the optimize-matrix runs and
+  the counts benchmark had all exited; pre-flight clean; all nine, Built
+  12:34:13-12:34:34 UTC; pack regenerated; TaxaWizard suite and the four
+  smoke tests pass from the installed copies. Incident: this session's
+  main worktree in the scratchpad lost its `.git` link and 796 tracked
+  files overnight (cause unknown; nothing uncommitted, main == origin);
+  restored from the index. Lesson: the scratchpad worktree is
+  recoverable only because everything is pushed; never leave unpushed
+  work in it overnight.
   **Pair-retention MERGED (fast-forward to `f019972`, 2026-09-25)** from
   the "optimize likelihood matrix" chat: `build_sequence_matrix(
   pair_retention = c("all", "best_per_partner", "best_per_class"),
