@@ -8,6 +8,8 @@ The kernel prior (`TaxaExpect::estimate_kernel_priors()`) needs every GBIF recor
 
 The **counts path** asks GBIF's search API for per-species record COUNTS (`limit=0&facet=speciesKey`) in concentric distance bands around the site, clipped to the same polygon, and fits the **same estimator**, producing the **same object**. Its cost grows with the number of species not yet in the name cache, not with records. It needs no GBIF account.
 
+**One site per call** (maintainer's requirement, commit `be9e62f`). The bands are centred on a single site, so each site needs its own count fetch and fit. The records path downloads a polygon once and serves every site inside it (`estimate_kernel_priors()` per site, `TaxaAssign::combine_multisite_priors()` across them). `plan_gbif_fetch()` prices one site; a multi-site study compares one records download against one count fetch per site. The READMEs and the three functions' roxygen say so.
+
 Vocabulary for users and docs is **records path** vs **counts path**. "facet" is only the GBIF API parameter; keep it out of user-facing text.
 
 ## User decisions
