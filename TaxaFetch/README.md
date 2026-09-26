@@ -82,7 +82,9 @@ GBIF pipeline:
     and price the records path (download every record) against the
     counts path (`fetch_gbif_occurrence_counts()`, feeding
     `TaxaExpect::estimate_kernel_priors_from_counts()`); cost grows with
-    records on the first and with species on the second
+    records on the first and with species on the second. The counts
+    path is priced for one site; a multi-site study should compare one
+    records download against as many count fetches as it has sites
 
 DataONE pipeline:
 

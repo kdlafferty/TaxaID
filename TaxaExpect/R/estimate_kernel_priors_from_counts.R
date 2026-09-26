@@ -13,7 +13,12 @@
 #' parameters, `effective_records`, the regional back-off, the per-group
 #' Good-Turing budget and every warning are computed by exactly the same
 #' code, and the result slots into [apply_undetected_evidence()],
-#' [generate_undetected_diversity()] and the rest unchanged.
+#' [generate_undetected_diversity()] and the rest unchanged. One site per
+#' call: the fit is centred on the single site the counts were fetched
+#' around, so each site needs its own count fetch and fit, whereas the
+#' records path downloads a polygon once and serves every site inside it
+#' ([estimate_kernel_priors()] per site, `TaxaAssign::combine_multisite_priors()`
+#' across them).
 #'
 #' @section Representative distance:
 #' A band from `a` to `b` km is given the kernel weight a record would have

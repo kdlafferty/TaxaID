@@ -76,7 +76,11 @@ every record it asks GBIF's occurrence-search API for per-species record
 COUNTS (\code{limit = 0}, \code{facet = speciesKey}) inside a set of concentric
 distance bands around one site. The result feeds
 \code{TaxaExpect::estimate_kernel_priors_from_counts()}, which returns the same prior object
-\code{\link[TaxaExpect:estimate_kernel_priors]{TaxaExpect::estimate_kernel_priors()}} does.
+\code{\link[TaxaExpect:estimate_kernel_priors]{TaxaExpect::estimate_kernel_priors()}} does. The bands are centred on one
+site: \code{site_lat} and \code{site_lon} must be single numbers (a vector is
+rejected with an error), so a multi-site study makes one call per site,
+where \code{\link[=download_gbif_occurrences]{download_gbif_occurrences()}} fetches the polygon once for all of
+them.
 }
 \details{
 Cost is set by the number of bands and key batches, not by the number of

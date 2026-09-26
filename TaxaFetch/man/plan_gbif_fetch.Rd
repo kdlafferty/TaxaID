@@ -90,6 +90,11 @@ RECORDS.}
 distinct SPECIES not yet in the name cache, and is independent of the
 number of records.}
 }
+The counts-path figures price one site; this function takes no site
+coordinates. A multi-site study should compare one records download
+against as many count fetches as it has sites (multiply \code{counts_requests}
+and \code{counts_min} by the number of sites; the species-name lookups are
+shared through the cache, so later sites cost only the band requests).
 }
 \section{Which path}{
 

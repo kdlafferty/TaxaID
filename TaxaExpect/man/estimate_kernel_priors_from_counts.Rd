@@ -86,7 +86,12 @@ representative distance, and the fit is delegated to
 parameters, \code{effective_records}, the regional back-off, the per-group
 Good-Turing budget and every warning are computed by exactly the same
 code, and the result slots into \code{\link[=apply_undetected_evidence]{apply_undetected_evidence()}},
-\code{\link[=generate_undetected_diversity]{generate_undetected_diversity()}} and the rest unchanged.
+\code{\link[=generate_undetected_diversity]{generate_undetected_diversity()}} and the rest unchanged. One site per
+call: the fit is centred on the single site the counts were fetched
+around, so each site needs its own count fetch and fit, whereas the
+records path downloads a polygon once and serves every site inside it
+(\code{\link[=estimate_kernel_priors]{estimate_kernel_priors()}} per site, \code{TaxaAssign::combine_multisite_priors()}
+across them).
 }
 \section{Representative distance}{
 

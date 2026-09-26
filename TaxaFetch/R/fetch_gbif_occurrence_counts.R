@@ -11,7 +11,11 @@
 #' COUNTS (`limit = 0`, `facet = speciesKey`) inside a set of concentric
 #' distance bands around one site. The result feeds
 #' `TaxaExpect::estimate_kernel_priors_from_counts()`, which returns the same prior object
-#' [TaxaExpect::estimate_kernel_priors()] does.
+#' [TaxaExpect::estimate_kernel_priors()] does. The bands are centred on one
+#' site: `site_lat` and `site_lon` must be single numbers (a vector is
+#' rejected with an error), so a multi-site study makes one call per site,
+#' where [download_gbif_occurrences()] fetches the polygon once for all of
+#' them.
 #'
 #' Cost is set by the number of bands and key batches, not by the number of
 #' records: every band is one request per batch of `key_batch_size` taxon
