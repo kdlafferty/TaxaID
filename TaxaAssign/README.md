@@ -76,8 +76,9 @@ library(TaxaAssign)
 
 out <- run_llm_pipeline(
   match_df        = match_obj,      # from TaxaMatch
-  geographic_hint = "Southern California",
-  barcode_term    = "12S"
+  geographic_hint = "Point Conception, California (34.45 N, 120.47 W)",
+  barcode_term    = "12S",
+  backbone_id     = 11              # 11 = GBIF backbone; 4 = NCBI
 )
 head(out$consensus)
 ```
