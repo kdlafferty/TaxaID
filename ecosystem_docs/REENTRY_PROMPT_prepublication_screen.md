@@ -21,6 +21,11 @@ pkgdown contradiction are gone; git has them. Everything below was measured on
 | Adaptive genus cap | tracked 1.1 candidate; grid owns the fit; workflow deletes its constants when the package function lands | the memory branch |
 | Unidentified | "expanded path length 1024" file.exists warning in long CalIntertidal runs; not from TaxaLikely | a caught call site |
 | Pre-security-review submission | no tag, no bump; WERC official path later needs a `1.0.0` branch | maintainer |
+| Likelihood model rationale | Section 17 of TaxaLikely's supplemental methods (benchmarked model-form decisions) fast-forwarded to main `3fbe3bd` | -- |
+| Production workflows edited for pair retention | eDNA `e621fd6` (PtCon 12S, 18S, Mugu, retired template) and GreatLakes `0c6309b` pass `pair_retention = "best_per_partner"` + `min_pair_coverage`; NOT runnable until the reinstall; then run `TaxaID_dev/diagnostics/workflow_checks/check_stale_arguments.R` on the five files and one cheap real re-run (PtCon 12S) | the reinstall |
+| TaxaWizard snippet `refs_to_matrix.R` | calls `build_sequence_matrix()` with defaults only (whole-set alignment, full table); should it carry the production choices (`by_genus = TRUE`, `max_foreign_reps_per_genus = 20L`, `pair_retention = "best_per_partner"`, `min_pair_coverage` matching the training floor)? | maintainer |
+| Supplemental methods style | TaxaLikely's carries 96 em dashes (TaxaAssign's and TaxaExpect's carry 0); the README rules were never applied to these files | maintainer: sweep or leave |
+| Memory branch resolution note | its `.matrix_structure()` should use the retention-aware pair formula (TaxaID_dev/ecosystem_docs/DESIGN_seq_matrix_pair_retention.md, Section 6) | the screen session, at resolution |
 
 Other chats and what they own: California intertidal multi-marker workflow
 (its runs and the eDNA repo); optimize likelihood matrix (pair retention,
