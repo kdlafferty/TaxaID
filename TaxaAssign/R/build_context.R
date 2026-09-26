@@ -20,6 +20,9 @@
 #'   geographic region (e.g. \code{"Southern California"}, \code{"Chesapeake Bay
 #'   watershed"}). Passed to \code{build_habitat_prompt(geographic_context = ...)}.
 #'   When non-NULL, the LLM also returns an \code{ecoregion_best_guess} column.
+#'   A named place works better than bare coordinates, since the model reasons
+#'   from what it knows about named regions; coordinates can follow the name
+#'   (e.g. \code{"Point Conception, California (34.45 N, 120.47 W)"}).
 #' @param date Optional character string for the sampling date or year
 #'   (e.g. \code{"2025"}). Passed through to the returned \code{ctx} data frame.
 #' @param habitat_scheme Passed to
@@ -37,6 +40,9 @@
 #'     \code{geographic_hint} was \code{NULL}.}
 #'   \item{main_habitat}{Character. Consensus habitat across the assemblage.}
 #'   \item{date}{Character. Passed through from the \code{date} argument.}
+#'   \item{geographic_hint}{Character. Passed through from the
+#'     \code{geographic_hint} argument, or \code{NA}. \code{assign_taxa_llm()}
+#'     shows it to the LLM alongside the ecoregion.}
 #' }
 #' The per-species habitat weight table is attached as
 #' \code{attr(result, "habitats_df")} for inspection.
@@ -164,10 +170,13 @@ build_context <- function(taxon_names,
   if (is.na(ecoregion)) ecoregion <- consensus$ecoregion
 
   # --- Step 6: assemble ctx data frame ---
+  # geographic_hint is kept in the analyst's own words so assign_taxa_llm()
+  # sees it; otherwise only the synthesised ecoregion reaches that prompt.
   ctx <- data.frame(
     ecoregion = ecoregion,
     main_habitat = main_habitat,
     date = if (is.null(date)) NA_character_ else date,
+    geographic_hint = if (is.null(geographic_hint)) NA_character_ else geographic_hint,
     stringsAsFactors = FALSE
   )
   attr(ctx, "habitats_df") <- habitats_df

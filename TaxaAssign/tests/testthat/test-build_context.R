@@ -105,3 +105,19 @@ test_that("build_context falls back to consensus when synthesis fails", {
   expect_equal(ctx$main_habitat, "Marine")
   expect_equal(ctx$ecoregion, "Southern California Bight")
 })
+
+test_that("geographic_hint reaches the assign_taxa_llm() prompt", {
+  ctx <- build_context(
+    taxon_names     = c("Sebastes mystinus", "Gadus morhua"),
+    geographic_hint = "Point Conception, California (34.45 N, 120.47 W)",
+    llm_fn          = stub_habitat_llm
+  )
+  expect_equal(ctx$geographic_hint, "Point Conception, California (34.45 N, 120.47 W)")
+  block <- .build_context_block(as.list(ctx))
+  expect_match(block, "Location: Point Conception, California (34.45 N, 120.47 W)", fixed = TRUE)
+  expect_match(block, "Ecoregion: Southern California Bight", fixed = TRUE)
+
+  no_hint <- build_context(taxon_names = "Sebastes mystinus", llm_fn = stub_habitat_llm)
+  expect_true(is.na(no_hint$geographic_hint))
+  expect_false(grepl("Location:", .build_context_block(as.list(no_hint)), fixed = TRUE))
+})

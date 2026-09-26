@@ -89,7 +89,8 @@ utils::globalVariables(c(
 #'   Optional but recommended: `testid` (marker type).
 #' @param context Optional data frame with location/habitat context. Either a
 #'   single row (broadcast to all observations) or one row per `observation_id`. Recognised
-#'   columns: `observation_id`, `ecoregion`, `lat`, `lon`, `date`, `main_habitat`.
+#'   columns: `observation_id`, `geographic_hint`, `ecoregion`, `lat`, `lon`,
+#'   `date`, `main_habitat`.
 #'   In the full pipeline, populate `main_habitat` from the `main_habitat` column
 #'   produced by TaxaHabitat and passed through TaxaExpect.
 #' @param context_group Optional character vector of column names in `context` to
