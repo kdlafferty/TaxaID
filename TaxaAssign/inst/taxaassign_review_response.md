@@ -643,3 +643,21 @@ behavior on functions this document already covers above.
 - `combine_multisite_priors()` guards against differing presence-mixture parameters
   across a group's site rows, blanking them with a warning that names the affected
   candidates rather than silently picking one.
+- `assign_taxa_llm()` normalises the LLM's prior weights once per observation. It
+  used to normalise each batch of `taxa_per_call` taxa by its own sum, so an
+  observation whose candidates fell in different batches compared them on different
+  scales, and a lone implausible taxon in a small final batch could win. A batch
+  whose call fails takes the median weight of the group's other batches.
+- `assign_taxa_llm()` gives each taxon in the prompt its higher lineage (the ranks
+  above genus in `match_df`), so the model can tell homonyms apart. Unreferenced
+  species borrow a referenced congener's lineage. The survey block reads
+  "independent of this detection method" rather than "independent of DNA".
+- `assign_taxa_llm()` records `n_known_absent` in its `report_params`.
+- `generate_report()`'s Methods text for the LLM workflow says the LLM elicited the
+  priors and that likelihoods came from an uncalibrated weighting of match scores;
+  it used to say the LLM approximated both. The range categories match the prompt,
+  and the known-absent sentence appears only when `known_absent` was supplied.
+- `run_llm_pipeline()` passes `context_source = "llm"` to `generate_report()` when
+  it built the context itself, unless `report_params` sets it.
+- `build_context()` returns a `geographic_hint` column, which `assign_taxa_llm()`
+  shows the model as "Location".

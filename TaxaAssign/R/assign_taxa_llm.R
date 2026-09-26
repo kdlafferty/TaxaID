@@ -77,9 +77,15 @@ utils::globalVariables(c(
 #'         sum(exp(sharpness * score_j))
 #' ```
 #'
+#' Each taxon in the prompt carries its higher lineage (the ranks above genus
+#' in `match_df`), so a name shared by unrelated organisms is not conflated.
+#' The LLM's weights are kept on the prompt's absolute scale and normalised
+#' once per observation, so how the taxon list is split into batches does not
+#' change the priors.
+#'
 #' ## Unreferenced taxa
 #' Species absent from the reference database (from
-#' `TaxaLikely::audit_reference_coverage()$unreferenced`) that share a genus with any
+#' `TaxaLikely::suggest_unreferenced_species()`) that share a genus with any
 #' scored candidate are inserted as additional hypotheses. Their likelihood equals
 #' the median of their referenced congeners so unreferenced taxa start on equal
 #' footing. They appear in the prompt labelled `[no reference sequence]`.
