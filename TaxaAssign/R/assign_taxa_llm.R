@@ -205,7 +205,12 @@ utils::globalVariables(c(
 #'   range status and habitat fit. Names indicate the ecological scenario:
 #'   `native_expected`, `native_occasional`, `native_unlikely`,
 #'   `nearby_expected`, `nearby_occasional_unlikely`, `not_documented`,
-#'   `taxonomically_impossible`. Default ranges are derived from expert
+#'   `taxonomically_impossible`, `transported`. `transported` covers taxa with
+#'   no wild population in the region that are present because people bring
+#'   or keep them (domestic or farmed animals, food, bait, aquaculture,
+#'   cultivated plants, pets); without it such taxa fall to `not_documented`.
+#'   Its default, `c(0.03, 0.15)`, matches `native_occasional`. A guide
+#'   without `transported` gets that default. Default ranges are derived from expert
 #'   ecological judgment (see package documentation). Modifying these ranges
 #'   directly affects how strongly geographic and habitat information
 #'   influence posterior probabilities.
@@ -351,7 +356,8 @@ assign_taxa_llm <- function(match_df,
                               nearby_expected = c(0.05, 0.3),
                               nearby_occasional_unlikely = c(0.002, 0.05),
                               not_documented = c(0.001, 0.02),
-                              taxonomically_impossible = c(0.0001, 0.002)
+                              taxonomically_impossible = c(0.0001, 0.002),
+                              transported = c(0.03, 0.15)
                             ),
                             n_sims = 1000L,
                             verbose = FALSE) {
@@ -403,10 +409,16 @@ assign_taxa_llm <- function(match_df,
   if (!is.list(prior_weight_guide) || length(prior_weight_guide) == 0L) {
     cli::cli_abort("{.arg prior_weight_guide} must be a non-empty named list.")
   }
+  # transported was added after the other bands; a guide written before it
+  # gets the default band rather than an error.
+  if (is.list(prior_weight_guide) && is.null(prior_weight_guide$transported)) {
+    prior_weight_guide$transported <- c(0.03, 0.15)
+    cli::cli_inform("{.arg prior_weight_guide} has no {.field transported} band; using c(0.03, 0.15).")
+  }
   expected_pwg <- c(
     "native_expected", "native_occasional", "native_unlikely",
     "nearby_expected", "nearby_occasional_unlikely",
-    "not_documented", "taxonomically_impossible"
+    "not_documented", "taxonomically_impossible", "transported"
   )
   missing_pwg <- setdiff(expected_pwg, names(prior_weight_guide))
   if (length(missing_pwg) > 0) {
@@ -1089,6 +1101,10 @@ assign_taxa_llm <- function(match_df,
     "   \"documented_nearby\"      -- recorded in broader region; occasional here\n",
     "   \"not_documented\"         -- no records from this region\n",
     "   \"taxonomically_impossible\" -- wrong continent/realm/major environment\n",
+    "   \"transported\"            -- neither native nor established here, but present\n",
+    "                              because people bring or keep it: domestic or farmed\n",
+    "                              animals, food, bait, aquaculture, cultivated plants,\n",
+    "                              pets. Use only when no wild population exists here.\n",
     "   \"uncertain\"              -- insufficient data\n",
     "3. Commit to habitat_fit for the habitat stated in the context:\n",
     "   \"expected\"   -- this IS the taxon's primary or strongly preferred habitat\n",
@@ -1122,6 +1138,10 @@ assign_taxa_llm <- function(match_df,
     sprintf(
       "   taxonomically_impossible:                %g - %g\n",
       prior_weight_guide$taxonomically_impossible[1], prior_weight_guide$taxonomically_impossible[2]
+    ),
+    sprintf(
+      "   transported (any habitat):               %g - %g\n",
+      prior_weight_guide$transported[1], prior_weight_guide$transported[2]
     ),
     "5. If no habitat is given in context, base prior_weight on range only.\n",
     "6. If uncertain, reason from genus or family. Each taxon's higher lineage is\n",

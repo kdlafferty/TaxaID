@@ -773,3 +773,42 @@ test_that("prompt lines carry each taxon's higher lineage", {
   )
   expect_false(grepl("independent of DNA", prompts[[1]], fixed = TRUE))
 })
+
+test_that("the prompt offers a transported range status with its own band", {
+  md <- data.frame(
+    observation_id = "A", score_original = 99,
+    taxon_name = c("Salmo salar", "Oncorhynchus mykiss"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  prompts <- character(0)
+  capture <- function(prompt_str) {
+    prompts <<- c(prompts, prompt_str)
+    weighted_llm(c("Salmo salar" = 0.1, "Oncorhynchus mykiss" = 0.9))(prompt_str)
+  }
+  suppressWarnings(suppressMessages(assign_taxa_llm(md,
+    llm_fn = capture, pause_seconds = 0, n_sims = 0L
+  )))
+  expect_match(prompts[[1]], "\"transported\"", fixed = TRUE)
+  expect_match(prompts[[1]], "transported (any habitat):               0.03 - 0.15", fixed = TRUE)
+})
+
+test_that("a prior_weight_guide without transported gets the default band", {
+  old_guide <- list(
+    native_expected = c(0.5, 1.0), native_occasional = c(0.03, 0.15),
+    native_unlikely = c(0.003, 0.03), nearby_expected = c(0.05, 0.3),
+    nearby_occasional_unlikely = c(0.002, 0.05), not_documented = c(0.001, 0.02),
+    taxonomically_impossible = c(0.0001, 0.002)
+  )
+  md <- data.frame(
+    observation_id = "A", score_original = 99, taxon_name = "Salmo salar",
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  expect_message(
+    r <- suppressWarnings(assign_taxa_llm(md,
+      llm_fn = weighted_llm(c("Salmo salar" = 0.1)), pause_seconds = 0,
+      n_sims = 0L, prior_weight_guide = old_guide
+    )),
+    "transported"
+  )
+  expect_equal(attr(r, "report_params")$prior_weight_guide$transported, c(0.03, 0.15))
+})
