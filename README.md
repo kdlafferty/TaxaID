@@ -777,7 +777,10 @@ All of the "Yes" and "Mixed" defaults above use
 your project, invisible unless you go looking for it. Where a function
 defaults to `cache_dir = NULL`, nothing is written to disk until you
 pass a directory; the production workflows pass one explicitly for
-exactly the functions listed above as "No."
+exactly the functions listed above as "No," except TaxaAssign's, since no
+production workflow runs the LLM shortcut. TaxaAssign has no clear
+function; to start its cache over, delete the directory or pass a new
+one.
 
 The five `<pkg>_clear_cache()` functions (`taxafetch_clear_cache()`,
 `taxalikely_clear_cache()`, `taxahabitat_clear_cache()`,
