@@ -140,7 +140,9 @@ test_that(".bimodality_check: a two-platform sample built to the real measured s
 
   expect_true(res$flag)
   expect_gt(res$delta_bic, 10)
-  expect_true(is.na(res$explanation))
+  # The spike is a point mass exactly at the ceiling: flagged, and named as such.
+  expect_true(res$point_mass_at_ceiling)
+  expect_true(grepl("point mass at the ceiling", res$explanation))
 
   # Component order is ascending by mean: [rest ~97, spike ~100].
   expect_equal(res$means, c(true_mean_rest, 100), tolerance = 0.5)
@@ -391,7 +393,10 @@ test_that("calibrate_query_noise: emits exactly one warning naming the fitted st
   expect_length(bimodal_warnings, 1L)
   expect_match(bimodal_warnings, "H1 scores look bimodal")
   expect_match(bimodal_warnings, "delta BIC")
-  expect_match(bimodal_warnings, "calibrate them separately")
+  # The fixture is a ceiling spike over one continuum, so the warning must give
+  # the point-mass reading, not the platform advice.
+  expect_match(bimodal_warnings, "point mass at the ceiling")
+  expect_false(any(grepl("calibrate them separately", bimodal_warnings)))
   # Plain numbers for both components' weight/mean/sd are present.
   expect_match(bimodal_warnings, "[0-9]+% near [0-9.]+ \\(sd [0-9.]+\\)")
 
@@ -537,3 +542,29 @@ test_that("train_likelihood_model(): records Stats$h1_bimodality and never warns
   # calibrate_query_noise()).
   expect_length(grep("bimodal", warnings_seen, value = TRUE, ignore.case = TRUE), 0L)
 })
+
+test_that(".bimodality_check: two spread-out populations flag WITHOUT the point-mass reading", {
+  set.seed(31)
+  x <- c(rnorm(400, 90, 1.5), rnorm(600, 97, 1.0))
+  res <- .bimodality_check(x)
+  expect_true(res$flag)
+  expect_false(res$point_mass_at_ceiling)
+  expect_true(is.na(res$explanation))
+})
+
+test_that(".bimodality_check: a real-shaped reference set (59% duplicates at 100, continuum at 98.9) is read as a ceiling point mass", {
+  set.seed(32)
+  x <- c(rep(100, 590), pmin(rnorm(410, 98.9, 2.7), 100))
+  res <- .bimodality_check(x)
+  expect_true(res$flag)
+  expect_true(res$point_mass_at_ceiling)
+  expect_true(grepl("duplicate conspecific", res$explanation))
+})
+
+test_that(".bimodality_check: an unflagged sample never carries point_mass_at_ceiling", {
+  set.seed(33)
+  res <- .bimodality_check(rnorm(300, 97, 1))
+  expect_false(res$flag)
+  expect_false(res$point_mass_at_ceiling)
+})
+

@@ -881,6 +881,18 @@ longer accurate; kept as a record of the review response, not amended in place.
 Not new functions (see "Added after the review" near the top for those) -- new behavior
 on functions this document already covers above.
 
+- `.bimodality_check()` (recorded by `train_likelihood_model()` in `Stats$h1_bimodality`
+  and consulted by `calibrate_query_noise()`) now recognises a flagged split whose
+  higher component is a point mass, many identical values with near-zero spread over
+  one continuous component, and reports it as such: a new `point_mass_at_ceiling`
+  field and an `explanation` naming the shape (duplicate conspecific reference
+  submissions on the training side, queries identical to a reference on the query
+  side). The flag itself is unchanged. On a real COI reference set 59% of
+  within-species pairs sit at exactly 100% identity over a continuum at 98.9,
+  which every reference-based score set has; `calibrate_query_noise()`'s warning
+  used to advise calibrating platforms separately in that case, advice that
+  cannot change the shape, and now states the point-mass reading instead.
+  Tests: test-bimodality.R.
 - `build_sequence_matrix()` gains `pair_retention` (`"all"`, the default and the
   previous behaviour; `"best_per_partner"`; `"best_per_class"`) and `min_pair_coverage`.
   The pair table is dominated by same-genus cross-species pairs, which grow with the

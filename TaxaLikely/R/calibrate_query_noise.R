@@ -525,16 +525,29 @@ calibrate_query_noise <- function(model_params,
   # fitted value -- see that section for the full reasoning.
   h1_bimodal <- .bimodality_check(p_norm * 100)
   if (isTRUE(h1_bimodal$flag)) {
+    # A ceiling point mass (queries identical to a reference) over one continuum
+    # is the shape every reference-based score set has; the platform advice
+    # applies only when both components are spread out.
+    advice <- if (isTRUE(h1_bimodal$point_mass_at_ceiling)) {
+      paste0(
+        "The narrower component is a point mass at the ceiling (queries identical to a ",
+        "reference), not a second population; one offset is fitted to the whole set and no ",
+        "platform or marker split can change this shape."
+      )
+    } else {
+      paste0(
+        "A single linear offset fits neither component; if this run mixes sequencing ",
+        "platforms or markers, calibrate them separately."
+      )
+    }
     warning(sprintf(
       paste0(
         "calibrate_query_noise: H1 scores look bimodal: %.0f%% near %.1f (sd %.1f) and ",
-        "%.0f%% near %.1f (sd %.1f), delta BIC %.0f. A single linear offset fits neither ",
-        "component; if this run mixes sequencing platforms or markers, calibrate them ",
-        "separately."
+        "%.0f%% near %.1f (sd %.1f), delta BIC %.0f. %s"
       ),
       100 * h1_bimodal$weights[1], h1_bimodal$means[1], h1_bimodal$sds[1],
       100 * h1_bimodal$weights[2], h1_bimodal$means[2], h1_bimodal$sds[2],
-      h1_bimodal$delta_bic
+      h1_bimodal$delta_bic, advice
     ), call. = FALSE)
   }
 

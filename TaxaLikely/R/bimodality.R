@@ -532,10 +532,13 @@
 #'   `sds` (each length 2 from the 2-component fit, or `NA` when no fit was
 #'   attempted/possible), `quantum` (the estimated identity-per-mismatch
 #'   spacing from `.estimate_score_quantum()`, or `NA_real_` when the data
-#'   don't look comb-shaped), `flag` (logical, never `NA`), and
-#'   `explanation` (character, `NA` when `flag = TRUE` or the two-component
-#'   structure is otherwise fully described by the numeric fields;
-#'   otherwise a short reason `flag` is `FALSE`). Never errors.
+#'   don't look comb-shaped), `flag` (logical, never `NA`),
+#'   `point_mass_at_ceiling` (logical: `TRUE` when `flag` is `TRUE` and the
+#'   narrower component sits at the ceiling with near-zero spread, the
+#'   signature of identical matches rather than a second population), and
+#'   `explanation` (character: a short reason when `flag` is `FALSE`, the
+#'   point-mass reading when `point_mass_at_ceiling` is `TRUE`, `NA` when a
+#'   flagged split is fully described by the numeric fields). Never errors.
 #' @noRd
 .bimodality_check <- function(x, min_n = 50L, min_separation = NULL,
                               min_minority_weight = 0.15,
@@ -560,6 +563,7 @@
     sds = c(NA_real_, NA_real_),
     quantum = NA_real_,
     flag = FALSE,
+    point_mass_at_ceiling = FALSE,
     explanation = NA_character_
   )
 
@@ -644,6 +648,38 @@
       if (!is.na(quantum)) sprintf(" (%.1f quanta)", quanta_separation_multiplier) else "",
       min_minority_weight
     )
+  }
+  # A flagged split whose narrower component sits at the ceiling with near-zero
+  # spread is a point mass of identical matches -- duplicate conspecific
+  # reference submissions on the training side, queries identical to a
+  # reference on the query side -- on top of one continuous component. Every
+  # reference-based score set has it, so it is recorded as what it is rather
+  # than left to read as a second population. The flag itself is unchanged.
+  if (out$flag) {
+    hi <- which.max(fit2$means)
+    lo <- 3L - hi
+    # A point mass is many IDENTICAL values, not merely a narrow component:
+    # the higher component must be narrow and at least half of its weight
+    # must sit on one exactly repeated value (the raw x, before comb
+    # smoothing). The ceiling is not assumed to be 100 or max(x), so a
+    # fixture whose continuum runs past 100 is judged the same way.
+    narrow <- fit2$sds[hi] <= max(0.1, if (is.na(quantum)) 0 else quantum)
+    tie_frac <- mean(abs(x - fit2$means[hi]) <= max(0.05, if (is.na(quantum)) 0 else quantum))
+    if (isTRUE(narrow) && isTRUE(tie_frac >= 0.5 * fit2$weights[hi])) {
+      out$point_mass_at_ceiling <- TRUE
+      out$explanation <- sprintf(
+        paste0(
+          "flagged, but the higher component is a point mass at the ceiling (%.0f%% of ",
+          "observations at %.2f, sd %.3f) over one continuous component (%.0f%% near %.1f, ",
+          "sd %.1f): identical matches -- duplicate conspecific reference submissions, or ",
+          "queries identical to a reference -- not a second population. This shape is ",
+          "structural to reference-based scores; splitting platforms or markers cannot ",
+          "remove it."
+        ),
+        100 * fit2$weights[hi], fit2$means[hi], fit2$sds[hi],
+        100 * fit2$weights[lo], fit2$means[lo], fit2$sds[lo]
+      )
+    }
   }
 
   out
