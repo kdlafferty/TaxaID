@@ -106,8 +106,24 @@ Seven workflow files and one vignette call it INDIRECTLY, through `TaxaExpect::g
 `generate_domestic_food_priors()`'s arguments did not change (one internal call line did), so none of these need editing. They break only if TaxaExpect is installed without the matching TaxaFetch. Historical records under TaxaID_dev/screen_records keep the old name on purpose.
 - After install, regenerate `llm_prompts/CONTEXT_*.md` (built from installed packages by `TaxaWizard/R/pack.R`).
 
+## GreatLakes end-to-end benchmark (Lamar, species-level)
+
+Script: `TaxaID_dev/diagnostics/counts_prior_ab_greatlakes.R`. It runs GreatLakes_kernel_fastpath.R with only the prior block swapped, reads production checkpoints only, and writes outputs to `GreatLakes data/counts_prior_ab_2026_09_25/`.
+
+| Arm | Prior | Precision | Recall | Species calls | Calls changed (of 885) |
+|---|---|---|---|---|---|
+| A | records + depth (production) | 0.8723 | 0.777 | 686 | 0 (harness reproduces production) |
+| B | records, no depth | 0.821 | 0.778 | 706 | 86 |
+| C | counts, habitat "none" | 0.887 | 0.711 | 587 | 194 |
+| D | counts, taxon_threshold | stopped early to clear the reinstall gate; rerun needed | | | |
+
+Reading:
+- The depth kernel is worth about 5 precision points at GreatLakes (A vs B).
+- The counts path is MORE conservative: higher precision (and 44/61 Lamar species vs 42) but fewer species-level calls (recall -0.07).
+- A counts run's first-time cost is dominated by the regional-proximity evidence step: one GBIF fetch per zero-bbox candidate (341 for arm C, 2 h 18 min), which production had cached. The prior itself takes seconds.
+
 ## Open
 
-1. GreatLakes Lamar end-to-end precision benchmark in counts mode (the freshwater habitat test). Next step; waiting for heavy R sessions to finish.
+1. Rerun GreatLakes arm D (taxon_threshold; the Lentic/Lotic habitat test) in a clear R window; message package review before and after.
 2. CalIntertidal session offered its COI kernel prior for a kernel-vs-counts comparison (the user's call).
 3. Not built: clipping the polygon to a habitat area (would need a better coastline than Natural Earth, which omits Anacapa and Santa Barbara Island); per-sampling-group count queries.
