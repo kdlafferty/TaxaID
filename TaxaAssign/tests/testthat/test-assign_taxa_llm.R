@@ -673,3 +673,69 @@ test_that("a repeated taxon_name in the LLM response does not duplicate hypothes
   counts <- table(named$observation_id, named$taxon_name)
   expect_true(all(counts <= 1L))
 })
+
+# Stub that answers each prompt with a fixed weight per taxon.
+weighted_llm <- function(weights) {
+  function(prompt_str) {
+    taxa <- trimws(regmatches(
+      prompt_str,
+      gregexpr("(?m)(?<=^- )[^\n(]+(?= \\()", prompt_str, perl = TRUE)
+    )[[1]])
+    paste0("[", paste(sprintf(
+      '{"taxon_name":"%s","range_status":"native","habitat_fit":"expected","information_quality":"high","prior_weight":%g}',
+      taxa, weights[taxa]
+    ), collapse = ","), "]")
+  }
+}
+
+test_that("priors do not depend on how the taxon list is split into batches", {
+  # Regression: each batch was normalised by its own sum, so a lone
+  # implausible taxon in a small final batch got prior 1/1 and won.
+  md <- data.frame(
+    observation_id = "A", score_original = 99,
+    taxon_name = c(
+      "Atherinops affinis", "Atherinopsis californiensis",
+      "Leuresthes tenuis", "Zzz implausibilis"
+    ),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  w <- c(
+    "Atherinops affinis" = 0.9, "Atherinopsis californiensis" = 0.9,
+    "Leuresthes tenuis" = 0.9, "Zzz implausibilis" = 0.001
+  )
+  run <- function(tpc) {
+    r <- suppressWarnings(suppressMessages(assign_taxa_llm(md,
+      context = data.frame(ecoregion = "Southern California Bight"),
+      llm_fn = weighted_llm(w), taxa_per_call = tpc,
+      pause_seconds = 0, n_sims = 0L, prior_phi = NULL
+    )))
+    r <- r[!is.na(r$taxon_name), ]
+    stats::setNames(r$prior_mean, r$taxon_name)[names(w)]
+  }
+  one_batch <- run(15L)
+  split <- run(3L)
+  expect_equal(split, one_batch, tolerance = 1e-12)
+  expect_lt(split[["Zzz implausibilis"]], 0.001)
+})
+
+test_that("a failed batch takes the median weight of the batches that answered", {
+  md <- data.frame(
+    observation_id = "A", score_original = 99,
+    taxon_name = c("Aaa one", "Bbb two", "Ccc three"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  ok <- weighted_llm(c("Aaa one" = 0.8, "Bbb two" = 0.2, "Ccc three" = 0.5))
+  flaky <- function(prompt_str) {
+    if (grepl("Ccc three", prompt_str, fixed = TRUE)) stop("timeout")
+    ok(prompt_str)
+  }
+  r <- suppressWarnings(suppressMessages(assign_taxa_llm(md,
+    llm_fn = flaky, taxa_per_call = 2L, pause_seconds = 0,
+    n_sims = 0L, prior_phi = NULL
+  )))
+  r <- r[!is.na(r$taxon_name), ]
+  p <- stats::setNames(r$prior_mean, r$taxon_name)
+  # Raw weights 0.8, 0.2 and the fill median(0.8, 0.2) = 0.5, normalised.
+  expect_equal(p[["Ccc three"]] / p[["Aaa one"]], 0.5 / 0.8)
+  expect_equal(r$prior_source[r$taxon_name == "Ccc three"], "uniform_fallback")
+})

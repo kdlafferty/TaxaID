@@ -593,8 +593,19 @@ assign_taxa_llm <- function(match_df,
       if (call_idx < n_calls_total) Sys.sleep(pause_seconds)
     }
 
-    # Combine taxon batches for this group
-    prior_tables[[grp]] <- dplyr::bind_rows(batch_results)
+    # Combine taxon batches for this group. Taxa from a batch that failed
+    # carry NA weights; give them the median weight the group's other batches
+    # returned (1 when every batch failed, which normalises to uniform).
+    grp_priors <- dplyr::bind_rows(batch_results)
+    failed <- is.na(grp_priors$prior_mean)
+    if (any(failed)) {
+      grp_priors$prior_mean[failed] <- if (all(failed)) {
+        1
+      } else {
+        stats::median(grp_priors$prior_mean[!failed])
+      }
+    }
+    prior_tables[[grp]] <- grp_priors
   }
 
   cli::cli_progress_done(id = pb)
@@ -1031,7 +1042,9 @@ assign_taxa_llm <- function(match_df,
     survey_block,
     "PRIOR WEIGHT RULES:\n",
     "1. Assign a weight proportional to the probability that a random observation\n",
-    "   from this site belongs to this species.\n",
+    "   from this site belongs to this species. Use the absolute ranges in rule 4\n",
+    "   and do not rescale the weights to sum to one; this list may be one of\n",
+    "   several batches that are compared on the same scale.\n",
     "2. Commit to range_status (geographic presence in this region):\n",
     "   \"native\"                 -- breeds/resides in this region\n",
     "   \"introduced_established\" -- non-native but established here\n",
@@ -1096,13 +1109,16 @@ assign_taxa_llm <- function(match_df,
   expected <- taxa_df$taxon_name
   n <- length(expected)
 
+  # A failed batch returns NA weights. The caller fills them once every batch
+  # of the group is in, from the weights the other batches did return, since
+  # no single batch knows the group's scale.
   make_uniform <- function() {
     data.frame(
       taxon_name = expected,
       range_status = NA_character_,
       habitat_fit = NA_character_,
       information_quality = NA_character_,
-      prior_mean = rep(1 / n, n),
+      prior_mean = rep(NA_real_, n),
       prior_source = rep("uniform_fallback", n),
       stringsAsFactors = FALSE
     )
@@ -1176,15 +1192,18 @@ assign_taxa_llm <- function(match_df,
     rep(NA_character_, nrow(parsed))
   }
 
-  total <- sum(parsed$prior_weight)
-  if (total == 0) total <- 1
-
+  # Weights are kept on the scale the prompt asks for, not divided by this
+  # batch's sum. A group larger than taxa_per_call is split into batches, and
+  # an observation's candidates can fall in different batches; normalising
+  # each batch separately put them on different scales, so a lone implausible
+  # taxon in a small batch could outweigh plausible taxa in a full one.
+  # .merge_llm_priors() normalises once, per observation.
   result <- data.frame(
     taxon_name          = parsed$taxon_name,
     range_status        = rs,
     habitat_fit         = hf,
     information_quality = iq,
-    prior_mean          = parsed$prior_weight / total,
+    prior_mean          = parsed$prior_weight,
     prior_source        = rep("llm", nrow(parsed)),
     stringsAsFactors    = FALSE
   )
