@@ -1022,6 +1022,118 @@ reference incompleteness firmly in the prior where it belongs.
 
 ---
 
+## 17. Model-form decisions and the benchmarks behind them
+
+The structural choices in this model — a bivariate normal on (score, gap) rather than a
+simpler monotone kernel, per-species parameters rather than pooled ones, alignment-derived
+training pairs rather than BLAST-derived ones, a constant calibration offset — were each
+tested against a held-out benchmark rather than adopted by argument. This section records
+the comparisons so that a reader can weigh the decisions, and so that a rejected
+alternative is not re-proposed without new evidence.
+
+**The benchmark.** The GreatLakes 2023 12S pipeline scored against the Lamar survey species
+list for the same samples: species-level precision (Lamar-confirmed species calls divided
+by all species calls) and the number of the 61 Lamar species recovered. Every comparison
+below reproduced the production result — precision 0.872, 42 of 61 species — bit for bit
+from cached objects before anything was changed, then changed only the likelihood model,
+leaving priors, Monte Carlo seeds, consensus rules and review verdicts identical. The
+benchmark is one dataset and one marker; decisions resting on it should be re-checked when
+a second held-out truth exists. The scripts are in the `TaxaID_dev` repository under
+`diagnostics/` (`softmax_ab_greatlakes.R`, `blast_model_ab_greatlakes*.R`,
+`thin_training_ab_greatlakes.R`, `pooled_model_ab_greatlakes.R`,
+`train_statistic_max_vs_median.R`).
+
+### 17A. Why not a softmax over scores
+
+A likelihood proportional to $\exp(s_i / T)$ over the returned candidates is the simplest
+score-only model and costs nothing to fit. With unreferenced hypotheses scored at the
+anchor's score minus the genus delta (Section 4), and five temperatures spanning two orders
+of magnitude:
+
+| likelihood | precision | Lamar species |
+|---|---|---|
+| bivariate normal (production) | 0.872 | 42 |
+| softmax, best precision ($T = 2$, no unreferenced hypotheses) | 0.841 | 37 |
+| softmax, best recall ($T = 0.25$) | 0.829 | 59 |
+
+No temperature matches both benchmark numbers, and including or excluding the
+unreferenced pseudo-candidates moves the result by one to three points. The failure is
+structural: an exponential kernel with H2 as a shifted copy of H1 gives an H1-to-H2 ratio
+that is constant in the score, so it cannot prefer an unreferenced relative when the best
+hit is a poor match. The Gaussian's curvature is what makes the ratio increase with the
+score (Section 6), and that is what the benchmark rewards.
+
+### 17B. Why training pairs come from the reference alignment, not from BLAST
+
+Training on distances from a multiple alignment while predicting on BLAST identities is an
+instrument mismatch, and a model trained on the references BLASTed against themselves
+removes it. The two training tables give the same pooled parameters — global H1 mean
+within 0.01, H2 delta 0.092 against 0.089, per-genus deltas with a rank correlation of
+0.92 to 0.94 across genera — yet the BLAST-trained model scores 0.836 calibrated and
+0.844 uncalibrated on the benchmark, with the training population held identical. The
+per-row likelihoods differ by a median of 0.02 to 0.04. The cause is in the gap dimension:
+BLAST's local-alignment coverage, at the same 0.8 floor, disqualifies more conspecific
+pairs (more species fall to the singleton path, 434 against 363) and halves the gap
+variance. The residual offset between training and query scores is the same under both
+instruments (Section 11A), so it is query-side noise rather than an instrument artefact,
+and the constant calibration is the right correction for it. A local BLAST database still
+has a role at inference (Section 17F), not in training.
+
+### 17C. What the per-species parameters carry
+
+The Empirical Bayes estimate of the between-species variance of the H1 score mean is zero
+on every reference set tested, at every reference depth, under both training instruments:
+every species' shrunk score mean equals the global mean exactly. The gap mean is
+different. Per-species gap means differ from the global by a median of 0.03 and up to
+0.14 on the model scale, and a handful of common species carry a score variance up to
+1.6 times the global. Replacing all per-species parameters by the global values costs
+five precision points (0.824, with 46 species recovered and false species calls rising
+from 123 to 185), and the model's own no-lookup fallback path gives exactly the same
+result as an explicitly pooled entry. So the species-specific information in this model
+lives in the gap — how close each species' nearest referenced relative sits — not in the
+score. That is also why 17A and 17B lose: both flatten the gap structure. The model is
+best described as score pooled across species, gap species-specific, one shift per genus,
+one calibration constant.
+
+### 17D. What the calibration is worth
+
+Removing `calibrate_query_noise()` from the production model drops precision from 0.872
+to 0.823, the largest single effect measured. Its linear form falls back to a constant
+whenever trained means do not vary across the confident species, which, given 17C, is
+always, so the constant offset is the operative form. The offset is the same whichever
+instrument trained the model.
+
+### 17E. Reference depth as a cost dial
+
+Training on at most $k$ references per species (`max_seqs_per_taxon`) trades accuracy
+for a cheaper alignment:
+
+| references per species | precision | Lamar species |
+|---|---|---|
+| all | 0.872 | 42 |
+| 5 | 0.857 | 40 |
+| 3 | 0.866 | 40 |
+| 2 | 0.849 | 35 |
+
+The loss is not monotone in $k$ and the fitting step itself takes seconds at any depth;
+the cost thinning removes is the alignment, which grows faster than linearly in sequence
+count and dominates on a taxonomically broad marker. The pair table's memory, by
+contrast, is controlled without loss by `build_sequence_matrix(pair_retention =)`, which
+keeps every within-species pair and the best cross-species pair per partner stratum:
+every quantity this model reads from the table is a per-reference maximum, so the fitted
+model is identical.
+
+### 17F. The training statistic and the reference count
+
+At training each reference's H1 feature is its best conspecific match, its H2 feature its
+best congener; at inference a candidate's score is the median of its returned hits. Both
+statistics rise with the number of references a species has, so the asymmetry to control
+is not max against median but a capped training set against an uncapped search database:
+a query's best hit to a species with hundreds of GenBank references is a best-of-hundreds,
+while training saw a best-of-$k$. The levers are `TaxaMatch::blast_sequences(max_hits_per_taxon =)`
+and, where a local BLAST database is built from the same reference set the model was
+trained on, equality of the two by construction.
+
 ## Glossary
 
 | Term | Definition |

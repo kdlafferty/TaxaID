@@ -465,6 +465,14 @@ hypothesis type:
     [`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md)
     Section 3A-i for the full derivation and validation.
 
+-   Benchmarked, not argued: a score-only softmax, BLAST-derived training
+    pairs, pooled per-species parameters, thinned reference depth and an
+    uncalibrated model were each scored against a held-out survey benchmark
+    and each lost to the model as shipped. The comparisons, and what they
+    show the per-species parameters actually carry, are in
+    [`inst/TaxaLikely_supplemental_methods.md`](inst/TaxaLikely_supplemental_methods.md)
+    Section 17.
+
 -   Bivariate normal likelihood: The joint (score, gap) density
     captures interactions; small gap is more tolerable when the score is
     very high
