@@ -614,7 +614,17 @@ utils::globalVariables(c(
 #'   [TaxaTools::verify_taxon_names()]/`TaxaTools::change_backbone()`'s
 #'   `dataSources` ID (see <https://verifier.globalnames.org/> for the full
 #'   list). Common values: `1` Catalogue of Life, `3` ITIS, `4` NCBI, `9`
-#'   WoRMS, `11` GBIF.
+#'   WoRMS, `11` GBIF. Both sides of the join must be on one backbone, and
+#'   the direction matters: harmonise the sequence-derived side (the
+#'   likelihoods) onto the occurrence backbone (usually GBIF, `11`), not the
+#'   reverse. The occurrence backbone holds taxa that have never been
+#'   sequenced and so have no node in a sequence taxonomy; moving the priors
+#'   onto NCBI drops those taxa silently (a measured 29 percent of a marine
+#'   prior table, with a further 19 percent coarsened to genus or family).
+#'   A prior taxon that fails to map does not raise; it falls to the dark
+#'   diversity floor, which is indistinguishable in the output from genuine
+#'   dark diversity. The join rate per rank is reported at the end of every
+#'   call so a wrong direction is visible immediately.
 #' @param singleton_taxonomy Optional data frame mapping `taxon_name` to
 #'   taxonomy columns (`genus`, `family`, `order`, `class`, `phylum`). When
 #'   supplied, unmodelled candidates (those with no TaxaExpect prior) receive
@@ -1613,6 +1623,31 @@ join_priors <- function(likelihoods,
       result,
       rank_system = rank_system
     )
+  }
+
+  # Join rate per rank: how many distinct candidate taxa found a modelled
+  # prior (alpha set by the join) against how many were offered. A wrong
+  # harmonisation direction, or priors on a different backbone, shows here
+  # as a low species-level rate, instead of surfacing later as a table with
+  # too much apparent dark diversity.
+  if (all(c("taxon_name", "taxon_name_rank", "alpha") %in% names(result))) {
+    offered <- dplyr::distinct(result, taxon_name_rank, taxon_name, matched = !is.na(alpha))
+    offered <- offered[!is.na(offered$taxon_name) & !is.na(offered$taxon_name_rank), , drop = FALSE]
+    if (nrow(offered) > 0L) {
+      by_rank <- dplyr::summarise(
+        dplyr::group_by(offered, taxon_name_rank),
+        n = dplyr::n(), n_matched = sum(matched), .groups = "drop"
+      )
+      by_rank <- by_rank[order(match(by_rank$taxon_name_rank, rank_system)), , drop = FALSE]
+      rate_lines <- sprintf(
+        "%s: %d of %d candidate taxa matched a prior", by_rank$taxon_name_rank,
+        by_rank$n_matched, by_rank$n
+      )
+      cli::cli_inform(c(
+        "join_priors: join rate by rank (the rest receive the dark diversity floor):",
+        stats::setNames(rate_lines, rep(" ", length(rate_lines)))
+      ))
+    }
   }
 
   cli::cli_inform(

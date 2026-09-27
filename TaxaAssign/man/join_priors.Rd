@@ -102,7 +102,17 @@ project. Passed straight through to
 \code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}}/\code{TaxaTools::change_backbone()}'s
 \code{dataSources} ID (see \url{https://verifier.globalnames.org/} for the full
 list). Common values: \code{1} Catalogue of Life, \code{3} ITIS, \code{4} NCBI, \code{9}
-WoRMS, \code{11} GBIF.}
+WoRMS, \code{11} GBIF. Both sides of the join must be on one backbone, and
+the direction matters: harmonise the sequence-derived side (the
+likelihoods) onto the occurrence backbone (usually GBIF, \code{11}), not the
+reverse. The occurrence backbone holds taxa that have never been
+sequenced and so have no node in a sequence taxonomy; moving the priors
+onto NCBI drops those taxa silently (a measured 29 percent of a marine
+prior table, with a further 19 percent coarsened to genus or family).
+A prior taxon that fails to map does not raise; it falls to the dark
+diversity floor, which is indistinguishable in the output from genuine
+dark diversity. The join rate per rank is reported at the end of every
+call so a wrong direction is visible immediately.}
 }
 \value{
 A data frame ready for \code{\link[=compute_posterior]{compute_posterior()}}, with columns
