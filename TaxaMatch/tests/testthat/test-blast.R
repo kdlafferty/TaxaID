@@ -1010,3 +1010,11 @@ test_that(".resolve_locations_by_acc() pairs a valueless source GBQualifier with
   expect_equal(out$lon, -70.6392)
   expect_equal(out$country, "USA: Massachusetts")
 })
+
+test_that("local BLAST arguments never carry a second -outfmt (rBLAST adds its own)", {
+  args <- TaxaMatch:::.blast_local_args(5L, "-task megablast")
+  expect_false(grepl("-outfmt", args, fixed = TRUE))
+  expect_match(args, "-max_target_seqs 5", fixed = TRUE)
+  expect_match(args, "-task megablast", fixed = TRUE)
+  expect_identical(TaxaMatch:::.blast_local_args(50L, ""), "-max_target_seqs 50")
+})

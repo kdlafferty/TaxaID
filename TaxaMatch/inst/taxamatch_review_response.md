@@ -534,6 +534,13 @@ calls (iNaturalist CV API, `exiftool`) rather than assumed from documentation al
 
 ## Behavior changes to already-reviewed functions
 
+- `blast_sequences(method = "local")` runs. The local path passed its own
+  `-outfmt` in `BLAST_args` while `rBLAST::predict.BLAST()` always adds one
+  from `custom_format`, so blastn rejected every command ("Argument with
+  this name is defined already: outfmt") and local BLAST had never worked;
+  the duplicate is gone and a test asserts the arguments carry no
+  `-outfmt`.
+
 Not new functions (see "Added after the review" near the top for those) -- new behavior
 on functions this document already covers above.
 

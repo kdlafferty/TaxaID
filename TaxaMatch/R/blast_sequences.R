@@ -1321,6 +1321,14 @@ blast_sequences <- function(seq_df,
 # Internal: Local BLAST via rBLAST
 # ==============================================================================
 
+# The extra blastn arguments handed to rBLAST for a local search. Never
+# includes -outfmt: rBLAST::predict.BLAST() always adds its own from
+# custom_format, and blastn rejects a command that names an argument twice.
+# A function so a test can assert that without a database.
+.blast_local_args <- function(max_target_seqs, task_flag) {
+  trimws(sprintf("-max_target_seqs %d %s", max_target_seqs, task_flag))
+}
+
 .blast_local <- function(seq_df, database, program, megablast, max_target_seqs, verbose) {
   .check_pkg("rBLAST", "BiocManager::install('rBLAST')")
   .check_pkg("Biostrings", "BiocManager::install('Biostrings')")
@@ -1364,10 +1372,7 @@ blast_sequences <- function(seq_df,
   # The two output formats carry the same fields in the same order; only
   # the on-disk delimiter differs, which rBLAST parses itself.
   hits <- stats::predict(bl, dna,
-    BLAST_args = sprintf(
-      "-max_target_seqs %d %s",
-      max_target_seqs, task_flag
-    ),
+    BLAST_args = .blast_local_args(max_target_seqs, task_flag),
     custom_format = custom_format
   )
 
