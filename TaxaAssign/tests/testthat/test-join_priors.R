@@ -707,3 +707,17 @@ test_that("join_priors() names the problem when the site has no prior rows", {
     "Habitats present at that grid"
   )
 })
+
+test_that("join_priors() reports the join rate per rank", {
+  msgs <- character(0)
+  withCallingHandlers(
+    join_priors(.make_likelihoods(), .make_priors(),
+      site = list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay"),
+      backbone_id = 11L
+    ),
+    message = function(m) { msgs <<- c(msgs, conditionMessage(m)); invokeRestart("muffleMessage") }
+  )
+  rate <- grep("join rate by rank", msgs, value = TRUE)
+  expect_length(rate, 1L)
+  expect_match(rate, "species: 2 of 2 candidate taxa matched a prior", fixed = TRUE)
+})

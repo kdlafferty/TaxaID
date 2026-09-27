@@ -109,7 +109,11 @@ Core assignment:
     `TaxaLikely::suggest_unreferenced_species()` via
     `unreferenced_taxa`; see TaxaLikely's README for the full
     unreferenced-species mechanism)
--   `join_priors()`: merge TaxaExpect priors with likelihood output
+-   `join_priors()`: merge TaxaExpect priors with likelihood output.
+    Both sides must be on one backbone; harmonise the likelihood side
+    onto the occurrence backbone, never the priors onto NCBI, which
+    silently drops every prior taxon that has never been sequenced. The
+    join rate per rank is reported on every call
 -   `combine_multisite_priors()`: combine an observation's per-site
     prior rows into one precision-weighted row (needed before
     `compute_posterior()` when the same observation was detected at more
