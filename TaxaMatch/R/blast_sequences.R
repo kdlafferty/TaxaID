@@ -1357,11 +1357,18 @@ blast_sequences <- function(seq_df,
     ""
   }
 
+  # rBLAST::predict.BLAST() builds its own "-outfmt" from `custom_format`
+  # (format 10, "@"-delimited) and always includes it -- passing a second
+  # "-outfmt" via BLAST_args, as this used to do, makes blastn reject the
+  # command outright ("Argument with this name is defined already: outfmt").
+  # The two output formats carry the same fields in the same order; only
+  # the on-disk delimiter differs, which rBLAST parses itself.
   hits <- stats::predict(bl, dna,
     BLAST_args = sprintf(
-      "-max_target_seqs %d %s -outfmt '6 %s'",
-      max_target_seqs, task_flag, custom_format
-    )
+      "-max_target_seqs %d %s",
+      max_target_seqs, task_flag
+    ),
+    custom_format = custom_format
   )
 
   if (is.null(hits) || nrow(hits) == 0L) {
