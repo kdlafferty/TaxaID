@@ -1631,14 +1631,23 @@ join_priors <- function(likelihoods,
   # as a low species-level rate, instead of surfacing later as a table with
   # too much apparent dark diversity.
   if (all(c("taxon_name", "taxon_name_rank", "alpha") %in% names(result))) {
-    offered <- dplyr::distinct(result, taxon_name_rank, taxon_name, matched = !is.na(alpha))
+    offered <- unique(data.frame(
+      taxon_name_rank = result$taxon_name_rank,
+      taxon_name = result$taxon_name,
+      matched = !is.na(result$alpha),
+      stringsAsFactors = FALSE
+    ))
     offered <- offered[!is.na(offered$taxon_name) & !is.na(offered$taxon_name_rank), , drop = FALSE]
     if (nrow(offered) > 0L) {
-      by_rank <- dplyr::summarise(
-        dplyr::group_by(offered, taxon_name_rank),
-        n = dplyr::n(), n_matched = sum(matched), .groups = "drop"
+      n_all <- table(offered$taxon_name_rank)
+      n_hit <- tapply(offered$matched, offered$taxon_name_rank, sum)
+      ranks <- names(n_all)[order(match(names(n_all), rank_system))]
+      by_rank <- data.frame(
+        taxon_name_rank = ranks,
+        n = as.integer(n_all[ranks]),
+        n_matched = as.integer(n_hit[ranks]),
+        stringsAsFactors = FALSE
       )
-      by_rank <- by_rank[order(match(by_rank$taxon_name_rank, rank_system)), , drop = FALSE]
       rate_lines <- sprintf(
         "%s: %d of %d candidate taxa matched a prior", by_rank$taxon_name_rank,
         by_rank$n_matched, by_rank$n
