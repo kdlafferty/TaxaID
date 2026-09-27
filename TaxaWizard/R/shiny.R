@@ -388,10 +388,14 @@ workflow_app <- function(script_path,
 #' Pure R parsing -- no LLM, no user interaction. Identifies:
 #' \itemize{
 #'   \item Libraries: \code{library()} calls
-#'   \item Parameter candidates: top-level \code{name <- literal} assignments
-#'     before the first non-assignment expression
-#'   \item Step candidates: remaining code, grouped by comment headers or
-#'     blank-line-separated blocks
+#'   \item Parameter candidates: every top-level \code{name <- literal}
+#'     assignment anywhere in the script (not just a leading block -- a
+#'     script's setup code, such as an early \code{library()} call or a
+#'     \code{set.seed()}/\code{source()} call, does not stop later constants
+#'     from being picked up)
+#'   \item Step candidates: remaining code (everything that is not a
+#'     library/source call or a parameter candidate), grouped by comment
+#'     headers or blank-line-separated blocks
 #' }
 #'
 #' @param lines Character vector of script lines.
@@ -423,12 +427,17 @@ workflow_app <- function(script_path,
   srcref <- utils::getSrcref(src)
   n_expr <- length(src)
 
-  # --- Phase 1: identify parameter candidates ---
-  # Top-level `name <- literal` before the first non-assignment, non-library,
-
-  # non-source expression.
+  # --- Single pass: classify every top-level expression ---
+  # Parameter candidates are `name <- literal` assignments wherever they
+  # occur in the script -- NOT only a contiguous block at the very top.
+  # Earlier code scanned forward and stopped collecting params at the first
+  # non-assignment expression, so any script with setup code (a non-library
+  # function call, e.g. `set.seed(1)`) before its constants lost every
+  # constant that followed to the step text instead of being detected as a
+  # parameter. Library/source calls are skipped entirely (neither a param
+  # nor part of any step's code); everything else becomes step material.
   param_candidates <- list()
-  first_step_expr <- n_expr + 1L # index of first non-param expression
+  expr_ranges <- list()
 
   for (k in seq_len(n_expr)) {
     expr_k <- src[[k]]
@@ -451,34 +460,22 @@ workflow_app <- function(script_path,
       p$line <- line_start
       param_candidates[[length(param_candidates) + 1L]] <- p
     } else {
-      # First non-assignment expression -- everything from here on is steps
-      first_step_expr <- k
-      break
+      expr_ranges[[length(expr_ranges) + 1L]] <- list(
+        start = ref_k[1L],
+        end   = ref_k[3L],
+        expr  = expr_k
+      )
     }
   }
 
-  # --- Phase 2: identify step candidates ---
-  # Collect remaining expressions and group by comment headers or proximity
-  if (first_step_expr > n_expr) {
+  # --- Identify step candidates ---
+  if (length(expr_ranges) == 0L) {
     # No step expressions found
     return(list(
       libraries = libraries,
       param_candidates = param_candidates,
       step_candidates = list()
     ))
-  }
-
-  # Get source line ranges for remaining expressions
-  expr_ranges <- list()
-  for (k in first_step_expr:n_expr) {
-    ref_k <- srcref[[k]]
-    if (.is_library_call(src[[k]])) next
-    if (.is_source_call(src[[k]])) next
-    expr_ranges[[length(expr_ranges) + 1L]] <- list(
-      start = ref_k[1L],
-      end   = ref_k[3L],
-      expr  = src[[k]]
-    )
   }
 
   # Group expressions into steps using comment headers as boundaries
@@ -772,12 +769,32 @@ workflow_app <- function(script_path,
 #' @param mode Character. \code{"self"} for console readline or \code{"llm"}
 #'   for LLM-assisted annotation.
 #' @param llm_fn Function. LLM provider function (required when
-#'   \code{mode = "llm"}). Should accept \code{prompt} and return a string.
-#'   Default \code{NULL}.
+#'   \code{mode = "llm"}). Called positionally as \code{llm_fn(prompt, ...)},
+#'   matching the ecosystem convention documented for
+#'   \code{TaxaTools::call_api()} and \code{options(TaxaID.llm_fn = )} (a
+#'   provider function of the form \code{function(p, ...)}), not
+#'   \code{llm_fn(prompt = prompt)}. Default \code{NULL}.
+#' @param ... For \code{mode = "llm"}, forwarded to \code{llm_fn} on every
+#'   call (for example \code{max_tokens} to override the size computed
+#'   automatically from the script). Ignored for \code{mode = "self"}.
 #'
 #' @return A list with \code{$libraries} (character vector),
 #'   \code{$params} (list of param specs), and \code{$steps} (list of step
 #'   specs) -- the same structure as \code{.parse_workflow_script()}.
+#'
+#' @section Two heuristics worth knowing before annotating a real script:
+#' \itemize{
+#'   \item \strong{Step naming.} The step namer uses the LAST comment line
+#'     immediately before a step's code, not the nearest
+#'     \code{# --- N. title ---}-style header. If you want an explanatory
+#'     comment to sit above a numbered header without becoming the step's
+#'     name, put the explanatory comment ABOVE the header line, not between
+#'     the header and the code.
+#'   \item \strong{No non-interactive mode.} Both \code{mode = "self"} and
+#'     \code{mode = "llm"} call \code{readline()} for confirmation and have
+#'     no flag to suppress it; \code{annotate_script()} cannot be driven from
+#'     a non-interactive script or a batch/Rscript job.
+#' }
 #'
 #' @export
 #'
@@ -794,7 +811,8 @@ workflow_app <- function(script_path,
 #' }
 annotate_script <- function(script_path,
                             mode = c("self", "llm"),
-                            llm_fn = NULL) {
+                            llm_fn = NULL,
+                            ...) {
   mode <- match.arg(mode)
 
   if (!file.exists(script_path)) {
@@ -814,7 +832,7 @@ annotate_script <- function(script_path,
         call. = FALSE
       )
     }
-    .annotate_llm(segmented, lines, script_path, llm_fn)
+    .annotate_llm(segmented, lines, script_path, llm_fn, ...)
   }
 }
 
@@ -973,8 +991,22 @@ annotate_script <- function(script_path,
 
 
 #' LLM-guided annotation
+#'
+#' Calls \code{llm_fn} POSITIONALLY, as \code{llm_fn(prompt, ...)} -- the
+#' ecosystem convention for a provider function (see
+#' \code{TaxaTools::call_api()} and \code{options(TaxaID.llm_fn = )}, both
+#' documented as \code{function(p, ...)}). Calling it by the name
+#' \code{prompt = } instead only ever worked by accident, via partial
+#' argument matching against \code{call_anthropic_api()}'s first parameter
+#' \code{prompt_str}; a conventional \code{function(p, ...)} wrapper fails
+#' with \code{argument "p" is missing}.
+#'
+#' \code{max_tokens} is sized to the prompt (the whole script, not just a
+#' short question) so a reasoning model does not spend its entire response
+#' budget thinking and return no text. \code{...} lets a caller override it
+#' (or any other \code{llm_fn} argument).
 #' @noRd
-.annotate_llm <- function(segmented, lines, script_path, llm_fn) {
+.annotate_llm <- function(segmented, lines, script_path, llm_fn, ...) {
   # Load prompt template
   prompt_path <- system.file("prompts", "annotate_script.md",
     package = "TaxaWizard"
@@ -990,8 +1022,19 @@ annotate_script <- function(script_path,
   prompt <- gsub("{{SCRIPT_TEXT}}", script_text, prompt_template, fixed = TRUE)
   prompt <- gsub("{{SCRIPT_PATH}}", basename(script_path), prompt, fixed = TRUE)
 
+  # Size max_tokens to the prompt: a whole script is the prompt, and the
+  # default response budget (e.g. call_api()'s 3000) is easily consumed by
+  # a reasoning model's thinking alone, leaving no text in the response.
+  # Proportional to a rough token estimate (~4 chars/token), floored so a
+  # short script still gets a workable budget; a caller can override via ...
+  dots <- list(...)
+  if (is.null(dots$max_tokens)) {
+    token_estimate <- nchar(prompt) / 4
+    dots$max_tokens <- max(4000L, as.integer(ceiling(2L * token_estimate)))
+  }
+
   message("Sending script to LLM for analysis...")
-  response <- llm_fn(prompt = prompt)
+  response <- do.call(llm_fn, c(list(prompt), dots))
 
   # Parse the JSON response
   parsed <- .parse_annotation_response(response)

@@ -4,7 +4,7 @@
 \alias{annotate_script}
 \title{Annotate a Generic R Script for Shiny Conversion}
 \usage{
-annotate_script(script_path, mode = c("self", "llm"), llm_fn = NULL)
+annotate_script(script_path, mode = c("self", "llm"), llm_fn = NULL, ...)
 }
 \arguments{
 \item{script_path}{Character. Path to the R script to annotate.}
@@ -13,8 +13,15 @@ annotate_script(script_path, mode = c("self", "llm"), llm_fn = NULL)
 for LLM-assisted annotation.}
 
 \item{llm_fn}{Function. LLM provider function (required when
-\code{mode = "llm"}). Should accept \code{prompt} and return a string.
-Default \code{NULL}.}
+\code{mode = "llm"}). Called positionally as \code{llm_fn(prompt, ...)},
+matching the ecosystem convention documented for
+\code{TaxaTools::call_api()} and \code{options(TaxaID.llm_fn = )} (a
+provider function of the form \code{function(p, ...)}), not
+\code{llm_fn(prompt = prompt)}. Default \code{NULL}.}
+
+\item{...}{For \code{mode = "llm"}, forwarded to \code{llm_fn} on every
+call (for example \code{max_tokens} to override the size computed
+automatically from the script). Ignored for \code{mode = "self"}.}
 }
 \value{
 A list with \code{$libraries} (character vector),
@@ -32,6 +39,22 @@ select parameters, confirm steps, confirm build.}
 and steps; user confirms with one question.}
 }
 }
+\section{Two heuristics worth knowing before annotating a real script}{
+
+\itemize{
+\item \strong{Step naming.} The step namer uses the LAST comment line
+immediately before a step's code, not the nearest
+\code{# --- N. title ---}-style header. If you want an explanatory
+comment to sit above a numbered header without becoming the step's
+name, put the explanatory comment ABOVE the header line, not between
+the header and the code.
+\item \strong{No non-interactive mode.} Both \code{mode = "self"} and
+\code{mode = "llm"} call \code{readline()} for confirmation and have
+no flag to suppress it; \code{annotate_script()} cannot be driven from
+a non-interactive script or a batch/Rscript job.
+}
+}
+
 \examples{
 \dontrun{
 # Self-guided annotation

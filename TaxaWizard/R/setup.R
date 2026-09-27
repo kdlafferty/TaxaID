@@ -421,6 +421,18 @@
 }
 
 #' Resolve one "bin:" token
+#'
+#' Presence on \code{PATH} is not the same as capability: Homebrew's
+#' \code{blastn} 2.17.0 is found on \code{PATH} but cannot open NCBI's
+#' currently published \code{core_nt} LMDB index (2.16 can). This function
+#' has no configured database path to test against (neither
+#' \code{requirements.json} nor any \code{workflow_check()} argument carries
+#' one), so it does not invent one. When the requirements entry declares a
+#' \code{version_flag}, the binary's version is captured and reported in
+#' \code{detail} so the version is at least visible; when it declares a
+#' \code{capability_note}, that note is surfaced in \code{fix} even on an
+#' \code{"ok"} row, naming \code{blastdbcmd -db <db> -info} as the real test
+#' of whether a given binary can read a given database.
 #' @noRd
 .resolve_bin_token <- function(token, requirements) {
   entry <- Find(function(b) identical(b$id, token), requirements$binaries)
@@ -430,11 +442,31 @@
   found <- nzchar(Sys.which(entry$binary))
   level <- entry$level %||% "missing"
   status <- if (found) "ok" else level
-  .check_row(
-    token, "binary", status,
-    if (found) sprintf("%s found on PATH", entry$binary) else sprintf("%s not found on PATH", entry$binary),
-    if (found) "" else (entry$install %||% "")
-  )
+
+  version_suffix <- ""
+  if (found && !is.null(entry$version_flag) && nzchar(entry$version_flag)) {
+    version_out <- tryCatch(
+      suppressWarnings(system2(entry$binary, entry$version_flag, stdout = TRUE, stderr = TRUE)),
+      error = function(e) character()
+    )
+    if (length(version_out) > 0L && nzchar(version_out[1L])) {
+      version_suffix <- sprintf(" (%s)", version_out[1L])
+    }
+  }
+
+  detail <- if (found) {
+    sprintf("%s found on PATH%s", entry$binary, version_suffix)
+  } else {
+    sprintf("%s not found on PATH", entry$binary)
+  }
+
+  fix <- if (found) {
+    entry$capability_note %||% ""
+  } else {
+    entry$install %||% ""
+  }
+
+  .check_row(token, "binary", status, detail, fix)
 }
 
 #' Resolve one "pkg:" token from requires (redundant with the unconditional
@@ -688,8 +720,16 @@ readRDS <- NULL
 }
 
 #' Sniff a header-row CSV/TSV against known TaxaWizard input signatures
+#'
+#' @param first_line The header line.
+#' @param data_lines Character vector of data rows following the header
+#'   (from the same peek), or \code{NULL} when unavailable (e.g. when
+#'   called on an \code{.rds} object's column names, which have no rows at
+#'   all). Used only to check for an id-like column whose values repeat
+#'   across rows -- evidence AGAINST a one-row-per-observation consensus
+#'   table, regardless of whether a score column was recognized.
 #' @noRd
-.sniff_header_row <- function(first_line) {
+.sniff_header_row <- function(first_line, data_lines = NULL) {
   delim <- if (lengths(regmatches(first_line, gregexpr("\t", first_line))) >=
     lengths(regmatches(first_line, gregexpr(",", first_line)))) {
     "\t"
@@ -698,6 +738,30 @@ readRDS <- NULL
   }
   header <- trimws(strsplit(first_line, delim, fixed = TRUE)[[1]])
   header_lower <- tolower(header)
+
+  # --- Many rows per observation id: evidence AGAINST consensus_df ---------
+  # A consensus table has exactly one row per observation. If some id-like
+  # column's value repeats across the peeked rows, this is a match/candidate
+  # table (many candidate rows per observation), never a consensus table --
+  # independent of whether a score column happens to be recognized.
+  repeated_obs_id <- FALSE
+  if (!is.null(data_lines) && length(data_lines) >= 2L) {
+    id_idx <- which(grepl("id$", header_lower))
+    for (idx in id_idx) {
+      vals <- vapply(data_lines, function(ln) {
+        parts <- strsplit(ln, delim, fixed = TRUE)[[1]]
+        if (length(parts) >= idx) trimws(parts[idx]) else NA_character_
+      }, character(1))
+      vals <- vals[!is.na(vals) & nzchar(vals)]
+      # >=2 distinct values (not a single constant run-id column) AND at
+      # least one value repeats.
+      if (length(vals) >= 2L && length(unique(vals)) >= 2L &&
+        length(unique(vals)) < length(vals)) {
+        repeated_obs_id <- TRUE
+        break
+      }
+    }
+  }
 
   birdnet_cols <- c("start (s)", "end (s)", "scientific name", "common name", "confidence")
   birdnet_mangled <- c("start..s.", "end..s.", "scientific.name", "common.name", "confidence")
@@ -738,7 +802,13 @@ readRDS <- NULL
   }
 
   rank_cols <- c("kingdom", "phylum", "class", "order", "family", "genus", "species", "taxon_name")
-  score_cols <- c("score", "pident", "confidence", "score_original", "match_score")
+  score_cols <- c(
+    "score", "pident", "confidence", "score_original", "match_score",
+    # Jonah Ventures ESV-table synonyms (PercMatch) and common percent-
+    # identity spellings from other pipelines -- all compared against
+    # header_lower, so case is already normalized.
+    "percmatch", "percentmatch", "perc_identity", "percent_identity"
+  )
   has_rank <- any(rank_cols %in% header_lower)
   has_score <- any(score_cols %in% header_lower)
 
@@ -762,6 +832,17 @@ readRDS <- NULL
 
   if (has_rank && !has_score) {
     n_rank <- length(intersect(header_lower, rank_cols))
+    if (repeated_obs_id) {
+      return(list(
+        node_id = "match_df", confidence = "medium",
+        evidence = paste0(
+          "header has taxon/rank columns and an id-like column whose value ",
+          "repeats across rows (many rows per observation) -- looks like a ",
+          "match/candidate table, not a one-row-per-observation consensus ",
+          "table, even though no recognized score column was found"
+        )
+      ))
+    }
     if ("observation_id" %in% header_lower || length(header) > n_rank + 3L) {
       return(list(
         node_id = "consensus_df", confidence = "medium",
@@ -956,7 +1037,7 @@ readRDS <- NULL
       )
     ))
   }
-  .sniff_header_row(first_line)
+  .sniff_header_row(first_line, data_lines = peek[-1L])
 }
 
 #' Sniff a directory: infer from the first (or first BirdNET-looking) file inside
