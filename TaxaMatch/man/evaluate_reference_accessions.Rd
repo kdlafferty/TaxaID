@@ -78,7 +78,10 @@ proximity) within which two accessions are treated as the same
 submission batch, and therefore non-independent evidence of each other.}
 
 \item{method, database, score_range, min_score, max_hits}{Passed through to
-\code{blast_sequences()} -- see that function's own documentation.}
+\code{blast_sequences()} -- see that function's own documentation. Note that
+\code{method = "local"} moves only the BLAST search to the local database;
+the query records are still fetched from NCBI, so the screen is not
+offline in either mode.}
 
 \item{ncbi_api_key}{Character or \code{NULL}. Optional NCBI API key for higher
 rate limits (also forwarded to \code{blast_sequences()}).}

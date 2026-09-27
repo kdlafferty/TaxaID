@@ -1557,7 +1557,10 @@ utils::globalVariables(c(
 #'   proximity) within which two accessions are treated as the same
 #'   submission batch, and therefore non-independent evidence of each other.
 #' @param method,database,score_range,min_score,max_hits Passed through to
-#'   `blast_sequences()` -- see that function's own documentation.
+#'   `blast_sequences()` -- see that function's own documentation. Note that
+#'   `method = "local"` moves only the BLAST search to the local database;
+#'   the query records are still fetched from NCBI, so the screen is not
+#'   offline in either mode.
 #' @param ncbi_api_key Character or `NULL`. Optional NCBI API key for higher
 #'   rate limits (also forwarded to `blast_sequences()`).
 #' @param poll_max_wait Numeric (default `1800`, i.e. 30 minutes). Forwarded
