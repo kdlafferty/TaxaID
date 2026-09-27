@@ -139,6 +139,8 @@
       "binary": "blastn",
       "install": "https://blast.ncbi.nlm.nih.gov/doc/blast-help/downloadblastdata.html, or skip entirely by using TaxaMatch::blast_sequences(method = \"remote\") (the default -- no binary needed)",
       "level": "warn",
+      "version_flag": "-version",
+      "capability_note": "Found on PATH is not the same as able to open your database: Homebrew's blastn 2.17.0 cannot read NCBI's currently published core_nt LMDB index (2.16 can). The real test is `blastdbcmd -db <db> -info` against the database you actually configured.",
       "purpose": "Local BLAST+ binary on PATH. Only needed for method = \"local\" in blast_sequences()/evaluate_reference_accessions(); the default remote method needs no binary."
     }
   ],

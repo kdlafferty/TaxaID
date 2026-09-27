@@ -421,6 +421,18 @@
 }
 
 #' Resolve one "bin:" token
+#'
+#' Presence on \code{PATH} is not the same as capability: Homebrew's
+#' \code{blastn} 2.17.0 is found on \code{PATH} but cannot open NCBI's
+#' currently published \code{core_nt} LMDB index (2.16 can). This function
+#' has no configured database path to test against (neither
+#' \code{requirements.json} nor any \code{workflow_check()} argument carries
+#' one), so it does not invent one. When the requirements entry declares a
+#' \code{version_flag}, the binary's version is captured and reported in
+#' \code{detail} so the version is at least visible; when it declares a
+#' \code{capability_note}, that note is surfaced in \code{fix} even on an
+#' \code{"ok"} row, naming \code{blastdbcmd -db <db> -info} as the real test
+#' of whether a given binary can read a given database.
 #' @noRd
 .resolve_bin_token <- function(token, requirements) {
   entry <- Find(function(b) identical(b$id, token), requirements$binaries)
@@ -430,11 +442,31 @@
   found <- nzchar(Sys.which(entry$binary))
   level <- entry$level %||% "missing"
   status <- if (found) "ok" else level
-  .check_row(
-    token, "binary", status,
-    if (found) sprintf("%s found on PATH", entry$binary) else sprintf("%s not found on PATH", entry$binary),
-    if (found) "" else (entry$install %||% "")
-  )
+
+  version_suffix <- ""
+  if (found && !is.null(entry$version_flag) && nzchar(entry$version_flag)) {
+    version_out <- tryCatch(
+      suppressWarnings(system2(entry$binary, entry$version_flag, stdout = TRUE, stderr = TRUE)),
+      error = function(e) character()
+    )
+    if (length(version_out) > 0L && nzchar(version_out[1L])) {
+      version_suffix <- sprintf(" (%s)", version_out[1L])
+    }
+  }
+
+  detail <- if (found) {
+    sprintf("%s found on PATH%s", entry$binary, version_suffix)
+  } else {
+    sprintf("%s not found on PATH", entry$binary)
+  }
+
+  fix <- if (found) {
+    entry$capability_note %||% ""
+  } else {
+    entry$install %||% ""
+  }
+
+  .check_row(token, "binary", status, detail, fix)
 }
 
 #' Resolve one "pkg:" token from requires (redundant with the unconditional

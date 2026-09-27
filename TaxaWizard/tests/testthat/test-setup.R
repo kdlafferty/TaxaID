@@ -141,6 +141,48 @@ test_that("network rows are status 'skip' under TaxaWizard.offline", {
   expect_true(all(net_rows$status == "skip"))
 })
 
+# --- bin:blastn: presence is not capability (production defect) ------------
+# Homebrew's blastn 2.17.0 is found on PATH but cannot open NCBI's currently
+# published core_nt LMDB index (2.16 can); workflow_check() reported a plain
+# "OK bin:blastn" with no way to tell the two versions apart. The honest fix
+# is not to invent a database check (no configured database path is ever
+# available here -- checked requirements.json and setup.R) but to surface
+# the version actually found and name blastdbcmd -db <db> -info as the real
+# test, so the row stops implying "capable" from "present" alone.
+
+test_that(".resolve_bin_token() reports the blastn version in detail when found", {
+  skip_if_not(nzchar(Sys.which("blastn")), "blastn not on PATH in this environment")
+  req <- TaxaWizard:::.load_requirements()
+  row <- TaxaWizard:::.resolve_bin_token("bin:blastn", req)
+  expect_equal(row$status, "ok")
+  # Before the fix this was exactly "blastn found on PATH" -- no version.
+  expect_match(row$detail, "blastn found on PATH \\(blastn: ", perl = TRUE)
+})
+
+test_that(".resolve_bin_token() names blastdbcmd -db <db> -info as the real capability test", {
+  skip_if_not(nzchar(Sys.which("blastn")), "blastn not on PATH in this environment")
+  req <- TaxaWizard:::.load_requirements()
+  row <- TaxaWizard:::.resolve_bin_token("bin:blastn", req)
+  # Before the fix, `fix` was "" whenever the binary was found -- no caveat
+  # at all on an "ok" row.
+  expect_match(row$fix, "blastdbcmd", fixed = TRUE)
+  expect_match(row$fix, "LMDB", fixed = TRUE)
+})
+
+test_that(".resolve_bin_token() still reports 'not found' honestly when the binary is absent", {
+  req <- TaxaWizard:::.load_requirements()
+  fake_req <- req
+  fake_req$binaries <- list(list(
+    id = "bin:does_not_exist_xyz", binary = "does_not_exist_xyz",
+    install = "install it", level = "warn", version_flag = "-version",
+    capability_note = "should never appear when not found"
+  ))
+  row <- TaxaWizard:::.resolve_bin_token("bin:does_not_exist_xyz", fake_req)
+  expect_equal(row$status, "warn")
+  expect_match(row$detail, "not found on PATH", fixed = TRUE)
+  expect_equal(row$fix, "install it")
+})
+
 test_that("print.taxaid_check() runs without error and returns its input invisibly", {
   out <- .tw_offline(TaxaWizard::workflow_check(verbose = FALSE))
   expect_output(ret <- print(out), "TaxaWizard setup check")
