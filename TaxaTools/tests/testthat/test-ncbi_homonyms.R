@@ -237,3 +237,25 @@ test_that("check_lineage_agreement() is not defeated by a shared root or kingdom
   expect_identical(check_lineage_agreement(alga, bat, ignore = character(0)), "agrees")
   expect_error(check_lineage_agreement(data.frame(a = 1), "x"), "character vectors")
 })
+
+test_that("the NCBI search retries a transient failure before reporting a batch as unmatched", {
+  calls <- 0L
+  testthat::local_mocked_bindings(
+    entrez_search = function(db, term, retmax, ...) {
+      calls <<- calls + 1L
+      if (calls == 1L) stop("HTTP failure: (429) Too Many Requests")
+      list(count = "1", ids = "9606")
+    },
+    entrez_summary = function(db, id, ...) {
+      list(`9606` = list(uid = "9606", scientificname = "Homo sapiens", rank = "species"))
+    },
+    entrez_fetch = function(db, id, rettype, ...) {
+      "<TaxaSet><Taxon><TaxId>9606</TaxId><ScientificName>Homo sapiens</ScientificName><Rank>species</Rank><LineageEx></LineageEx></Taxon></TaxaSet>"
+    },
+    .package = "rentrez"
+  )
+  local_mocked_bindings(Sys.sleep = function(time) invisible(NULL), .package = "base")
+  res <- suppressMessages(verify_taxon_names("Homo sapiens", backbone_id = 4))
+  expect_gte(calls, 2L)
+  expect_identical(res$matched_name, "Homo sapiens")
+})

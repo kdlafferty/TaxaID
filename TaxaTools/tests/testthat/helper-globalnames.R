@@ -7,6 +7,9 @@
 # backbone_id = 4's fuzzy-fallback path) should call this in addition to
 # skip_if_offline().
 skip_if_verifier_down <- function() {
+  if (nzchar(Sys.getenv("TAXAID_SKIP_LIVE"))) {
+    testthat::skip("live-service tests are off (TAXAID_SKIP_LIVE is set)")
+  }
   testthat::skip_if_offline()
   reachable <- tryCatch(
     {

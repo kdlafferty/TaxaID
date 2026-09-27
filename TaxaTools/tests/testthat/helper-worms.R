@@ -3,6 +3,9 @@
 # marinespecies.org specifically is down, throttling, or too slow. Any test
 # that reaches the real WoRMS REST API should call this.
 skip_if_worms_down <- function() {
+  if (nzchar(Sys.getenv("TAXAID_SKIP_LIVE"))) {
+    testthat::skip("live-service tests are off (TAXAID_SKIP_LIVE is set)")
+  }
   testthat::skip_on_cran()
   testthat::skip_if_offline()
   reachable <- tryCatch(

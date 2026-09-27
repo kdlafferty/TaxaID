@@ -498,13 +498,30 @@ verify_taxon_names <- function(name_list,
     or_terms <- paste0('"', batch, '"[Scientific Name]')
     query <- paste(or_terms, collapse = " OR ")
 
-    tryCatch(
-      {
-        res <- rentrez::entrez_search(
+    # NCBI throttles and drops requests under load; a failed search must
+    # not read as "these names do not exist". Three attempts with a growing
+    # pause, like the lineage fetch below, then a warning naming the batch.
+    res <- NULL
+    search_error <- NULL
+    for (attempt in 1:3) {
+      res <- tryCatch(
+        rentrez::entrez_search(
           db     = "taxonomy",
           term   = query,
           retmax = length(batch) * 2L # allow some overhead
-        )
+        ),
+        error = function(e) {
+          search_error <<- e
+          NULL
+        }
+      )
+      if (!is.null(res)) break
+      if (attempt < 3L) Sys.sleep(attempt * max(delay, 1))
+    }
+
+    tryCatch(
+      {
+        if (is.null(res)) stop(conditionMessage(search_error))
 
         if (as.integer(res$count) > 0L && length(res$ids) > 0L) {
           # Resolve taxids back to names via esummary
@@ -528,8 +545,9 @@ verify_taxon_names <- function(name_list,
       },
       error = function(e) {
         warning(
-          "verify_taxon_names: NCBI search batch ", i, " failed: ",
+          "verify_taxon_names: NCBI search batch ", i, " failed after 3 attempts: ",
           conditionMessage(e),
+          "; its ", length(batch), " name(s) are reported as unmatched, not absent.",
           call. = FALSE
         )
       }

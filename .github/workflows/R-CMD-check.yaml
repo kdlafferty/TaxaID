@@ -32,6 +32,7 @@ jobs:
       RENV_CONFIG_AUTOLOADER_ENABLED: "false"
       NOT_CRAN: "true"
       _R_CHECK_FORCE_SUGGESTS_: "false"
+      TAXAID_SKIP_LIVE: "1"
 
     steps:
       - uses: actions/checkout@v4
