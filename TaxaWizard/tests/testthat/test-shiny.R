@@ -341,17 +341,42 @@ test_that(".segment_script classifies param types correctly", {
   expect_equal(types[["label"]], "character")
 })
 
-test_that(".segment_script stops collecting params at first non-assignment", {
+test_that(".segment_script collects params on both sides of a non-assignment", {
   lines <- c(
     "x <- 10",
     'print("hello")',
     "y <- 20"
   )
   seg <- TaxaWizard:::.segment_script(lines)
-  # Only x should be a param; y comes after a non-assignment
+  # A non-assignment expression is step material, but it must not stop later
+  # top-level literal assignments from being detected as params too.
   nms <- vapply(seg$param_candidates, `[[`, character(1), "name")
   expect_true("x" %in% nms)
-  expect_false("y" %in% nms)
+  expect_true("y" %in% nms)
+})
+
+test_that(".segment_script finds scalar constants after setup code (production defect)", {
+  # Reproduces a real production script: uppercase constants declared after
+  # a comment header AND after a leading function call were previously
+  # missed entirely (folded into step code) because the old detector only
+  # scanned a contiguous prefix and stopped at the first non-assignment
+  # expression. None of nchar-typed literal suffix (500L), uppercase names,
+  # or c() calls were themselves the problem -- position relative to the
+  # first non-assignment expression was.
+  lines <- c(
+    "# --- Parameters ---",
+    "do_something()",
+    "N_SIMS_LIK <- 500L",
+    "MIN_PAIR_COVERAGE <- 0.8",
+    "PRIOR_WEIGHT <- 10.0",
+    'SCORE_TRANSFORM <- c("logit", "sqrt_mismatch")'
+  )
+  seg <- TaxaWizard:::.segment_script(lines)
+  nms <- vapply(seg$param_candidates, `[[`, character(1), "name")
+  expect_setequal(
+    nms,
+    c("N_SIMS_LIK", "MIN_PAIR_COVERAGE", "PRIOR_WEIGHT", "SCORE_TRANSFORM")
+  )
 })
 
 test_that(".segment_script identifies steps from remaining code", {
@@ -539,6 +564,83 @@ test_that("annotate_script errors when llm mode without llm_fn", {
     annotate_script(tmp, mode = "llm"),
     "llm_fn is required"
   )
+  unlink(tmp)
+})
+
+# --- annotate_script(mode = "llm") calls llm_fn correctly (production defect) -
+# .annotate_llm() used to call `llm_fn(prompt = prompt)` by name. That only
+# ever worked for TaxaTools::call_anthropic_api() via partial matching of
+# `prompt` against its first argument `prompt_str`; a conventional ecosystem
+# provider written as `function(p, ...)` (the documented llm_fn shape for
+# TaxaTools::call_api() and options(TaxaID.llm_fn = )) failed with
+# 'argument "p" is missing'. It also never set max_tokens, so a reasoning
+# model could spend its whole default budget thinking and return no text.
+
+test_that("annotate_script(mode = 'llm') calls llm_fn positionally, not by name", {
+  tmp <- tempfile(fileext = ".R")
+  writeLines(c("x <- 1", "print(x)"), tmp)
+
+  # A conventional ecosystem provider wrapper: function(p, ...). This fails
+  # with 'argument "p" is missing' if called as llm_fn(prompt = prompt),
+  # because "prompt" is not a prefix of the formal "p" so it is captured by
+  # `...` instead of matched to `p` -- `p` is only forced (and only then
+  # errors) once the function body actually reads it, so the mock must
+  # reference `p` to catch the regression.
+  conventional_llm_fn <- function(p, ...) {
+    stopifnot(is.character(p), nchar(p) > 0L)
+    jsonlite::toJSON(list(
+      libraries = list(),
+      parameters = list(),
+      steps = list(list(description = "Run", code_text = "print(x)"))
+    ), auto_unbox = TRUE)
+  }
+
+  result <- suppressWarnings(suppressMessages(
+    annotate_script(tmp, mode = "llm", llm_fn = conventional_llm_fn)
+  ))
+  expect_type(result, "list")
+  expect_true("steps" %in% names(result))
+  unlink(tmp)
+})
+
+test_that("annotate_script(mode = 'llm') sizes and forwards max_tokens", {
+  tmp <- tempfile(fileext = ".R")
+  # A longer script so the size-to-prompt rule produces something above the
+  # 4000L floor, proving the value is actually proportional, not constant.
+  writeLines(c("x <- 1", paste0("# ", strrep("a", 20000)), "print(x)"), tmp)
+
+  captured <- NULL
+  capturing_llm_fn <- function(p, ...) {
+    dots <- list(...)
+    captured <<- dots$max_tokens
+    jsonlite::toJSON(list(
+      libraries = list(), parameters = list(),
+      steps = list(list(description = "Run", code_text = "print(x)"))
+    ), auto_unbox = TRUE)
+  }
+
+  suppressWarnings(suppressMessages(
+    annotate_script(tmp, mode = "llm", llm_fn = capturing_llm_fn)
+  ))
+  expect_false(is.null(captured))
+  expect_gt(captured, 4000L)
+
+  # A caller-supplied max_tokens (forwarded via ...) must win over the
+  # automatically computed size.
+  captured2 <- NULL
+  capturing_llm_fn2 <- function(p, ...) {
+    dots <- list(...)
+    captured2 <<- dots$max_tokens
+    jsonlite::toJSON(list(
+      libraries = list(), parameters = list(),
+      steps = list(list(description = "Run", code_text = "print(x)"))
+    ), auto_unbox = TRUE)
+  }
+  suppressWarnings(suppressMessages(
+    annotate_script(tmp, mode = "llm", llm_fn = capturing_llm_fn2, max_tokens = 999L)
+  ))
+  expect_equal(captured2, 999L)
+
   unlink(tmp)
 })
 
