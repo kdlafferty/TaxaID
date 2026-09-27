@@ -40,6 +40,7 @@ test_that("rejects missing or non-scalar backbone_id", {
 
 test_that("returns correct structure for valid names", {
   skip_if_offline()
+  skip_if_ncbi_down()
 
   result <- verify_taxon_names(
     name_list   = c("Homo sapiens", "Mus musculus"),
@@ -89,6 +90,7 @@ test_that("returns correct structure for valid names", {
 
 test_that("NCBI path fuzzy-corrects a real misspelling via the fallback backbone", {
   skip_if_offline()
+  skip_if_ncbi_down()
   skip_if_verifier_down()
 
   expect_warning(
@@ -106,6 +108,7 @@ test_that("NCBI path fuzzy-corrects a real misspelling via the fallback backbone
 
 test_that("NCBI path does not flag a correctly-spelled name as fuzzy-corrected", {
   skip_if_offline()
+  skip_if_ncbi_down()
 
   result <- verify_taxon_names("Acanthogobius flavimanus", backbone_id = 4)
 
@@ -122,6 +125,7 @@ test_that("fallback_backbone_id = 4 errors immediately", {
 
 test_that("a genuinely nonexistent name is left unmatched even after the fuzzy fallback", {
   skip_if_offline()
+  skip_if_ncbi_down()
   skip_if_verifier_down()
 
   result <- verify_taxon_names("Zzznotarealtaxonxyz123", backbone_id = 4)
@@ -132,6 +136,7 @@ test_that("a genuinely nonexistent name is left unmatched even after the fuzzy f
 
 test_that("exact matches return score of 1", {
   skip_if_offline()
+  skip_if_ncbi_down()
 
   result <- verify_taxon_names("Homo sapiens", backbone_id = 4)
   expect_equal(result$score, 1)
@@ -139,6 +144,7 @@ test_that("exact matches return score of 1", {
 
 test_that("unrecognized name returns NA matched_name with verified = TRUE", {
   skip_if_offline()
+  skip_if_ncbi_down()
   skip_if_verifier_down()
 
   result <- verify_taxon_names("Xyzzy fakeii", backbone_id = 4)
@@ -148,6 +154,7 @@ test_that("unrecognized name returns NA matched_name with verified = TRUE", {
 
 test_that("duplicates are deduplicated for API but output preserves input length", {
   skip_if_offline()
+  skip_if_ncbi_down()
 
   result <- verify_taxon_names(
     c("Homo sapiens", "Homo sapiens", "Homo sapiens"),
@@ -161,6 +168,7 @@ test_that("duplicates are deduplicated for API but output preserves input length
 
 test_that("whitespace in names is trimmed", {
   skip_if_offline()
+  skip_if_ncbi_down()
 
   result <- verify_taxon_names("  Homo sapiens  ", backbone_id = 4)
   expect_equal(result$user_supplied_name, "Homo sapiens")
@@ -184,6 +192,7 @@ test_that("whitespace in names is trimmed", {
 
 test_that("a genus-only synonym match resolves to the current accepted genus, not the synonym", {
   skip_if_offline()
+  skip_if_ncbi_down()
   skip_if_verifier_down()
 
   result <- verify_taxon_names(
@@ -198,6 +207,7 @@ test_that("a genus-only synonym match resolves to the current accepted genus, no
 
 test_that("matched_rank correctly reports genus when only genus-level data exists (GBIF)", {
   skip_if_offline()
+  skip_if_ncbi_down()
   skip_if_verifier_down()
 
   result <- verify_taxon_names(
@@ -209,6 +219,7 @@ test_that("matched_rank correctly reports genus when only genus-level data exist
 
 test_that("a non-synonym match is left unchanged and is_synonym is FALSE", {
   skip_if_offline()
+  skip_if_ncbi_down()
   skip_if_verifier_down()
 
   result <- verify_taxon_names("Homo sapiens", backbone_id = 11L)
@@ -220,6 +231,7 @@ test_that("a non-synonym match is left unchanged and is_synonym is FALSE", {
 
 test_that("a subspecies-rank match preserves the full trinomial, not just genus+epithet", {
   skip_if_offline()
+  skip_if_ncbi_down()
   skip_if_verifier_down()
 
   # Real regression case: the previous strip_authority() regex only captured
@@ -236,6 +248,7 @@ test_that("a subspecies-rank match preserves the full trinomial, not just genus+
 
 test_that("a no-match result has NA matched_rank and NA is_synonym", {
   skip_if_offline()
+  skip_if_ncbi_down()
   skip_if_verifier_down()
 
   result <- verify_taxon_names("Zzznotarealtaxonxyz123", backbone_id = 11L)
