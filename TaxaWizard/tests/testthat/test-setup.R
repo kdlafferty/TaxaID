@@ -374,6 +374,79 @@ test_that("sniff_input() classifies a rank-only, no-score, observation-level CSV
   expect_equal(out$node_id, "consensus_df")
 })
 
+# --- Real Jonah Ventures ESV table (production defect) ---------------------
+# A real 16,923-row JV ESV table (TestId, ESVId, Kingdom, Phylum, Class,
+# Order, Family, Genus, Species, Accession, PercMatch; many candidate rows
+# per ESVId) was classified as consensus_df at confidence "medium" because
+# PercMatch was not recognized as a score column. Fixed two ways: PercMatch
+# (and PercentMatch/pident/perc_identity/percent_identity) are now score
+# synonyms, AND many-rows-per-observation-id is now evidence AGAINST
+# consensus_df even when no score column is recognized at all.
+
+test_that("sniff_input() classifies a real-shaped JV ESV table (PercMatch) as match_df", {
+  dir <- .tw_sniff_dir()
+  f <- file.path(dir, "esv_table.csv")
+  writeLines(c(
+    "TestId,ESVId,Kingdom,Phylum,Class,Order,Family,Genus,Species,Accession,PercMatch",
+    "T1,ESV1,Animalia,Chordata,Actinopteri,Perciformes,Embiotocidae,Embiotoca,Embiotoca jacksoni,ACC1,98.5",
+    "T1,ESV1,Animalia,Chordata,Actinopteri,Perciformes,Embiotocidae,Embiotoca,Embiotoca lateralis,ACC2,96.1",
+    "T1,ESV2,Animalia,Chordata,Actinopteri,Perciformes,Sebastidae,Sebastes,Sebastes atrovirens,ACC3,99.0",
+    "T1,ESV2,Animalia,Chordata,Actinopteri,Perciformes,Sebastidae,Sebastes,Sebastes chrysomelas,ACC4,97.2",
+    "T1,ESV3,Animalia,Chordata,Actinopteri,Perciformes,Gobiidae,Rhinogobiops,Rhinogobiops nicholsii,ACC5,100.0"
+  ), f)
+
+  out <- sniff_input(f)
+  expect_equal(out$node_id, "match_df")
+  expect_equal(out$confidence, "high")
+  expect_match(out$evidence, "percmatch", fixed = TRUE)
+})
+
+test_that("sniff_input() classifies each of PercentMatch/pident/perc_identity/percent_identity as a score column", {
+  dir <- .tw_sniff_dir()
+  synonyms <- c("PercentMatch", "pident", "perc_identity", "percent_identity")
+  for (syn in synonyms) {
+    f <- file.path(dir, sprintf("match_%s.csv", syn))
+    writeLines(c(
+      sprintf("observation_id,family,genus,species,%s", syn),
+      sprintf("O1,Gobiidae,Eucyclogobius,newberryi,97.4")
+    ), f)
+    out <- sniff_input(f)
+    expect_equal(out$node_id, "match_df", info = syn)
+  }
+})
+
+test_that("sniff_input() treats many rows per observation id as evidence against consensus_df even with no score column", {
+  dir <- .tw_sniff_dir()
+  f <- file.path(dir, "no_score_repeated.csv")
+  writeLines(c(
+    "observation_id,Kingdom,Phylum,Class,Order,Family,Genus,Species",
+    "O1,Animalia,Chordata,Actinopteri,Perciformes,Embiotocidae,Embiotoca,Embiotoca jacksoni",
+    "O1,Animalia,Chordata,Actinopteri,Perciformes,Embiotocidae,Embiotoca,Embiotoca lateralis",
+    "O2,Animalia,Chordata,Actinopteri,Perciformes,Sebastidae,Sebastes,Sebastes atrovirens",
+    "O2,Animalia,Chordata,Actinopteri,Perciformes,Sebastidae,Sebastes,Sebastes chrysomelas"
+  ), f)
+
+  out <- sniff_input(f)
+  expect_equal(out$node_id, "match_df")
+  expect_false(identical(out$node_id, "consensus_df"))
+})
+
+test_that("sniff_input() still classifies a genuine one-row-per-observation table with no score as consensus_df", {
+  # Positive control for the fix above: repetition detection must not
+  # over-fire and swallow a real consensus table.
+  dir <- .tw_sniff_dir()
+  f <- file.path(dir, "consensus_one_row.csv")
+  writeLines(c(
+    "observation_id,Kingdom,Phylum,Class,Order,Family,Genus,Species",
+    "O1,Animalia,Chordata,Actinopteri,Perciformes,Embiotocidae,Embiotoca,Embiotoca jacksoni",
+    "O2,Animalia,Chordata,Actinopteri,Perciformes,Sebastidae,Sebastes,Sebastes atrovirens",
+    "O3,Animalia,Chordata,Actinopteri,Perciformes,Gobiidae,Rhinogobiops,Rhinogobiops nicholsii"
+  ), f)
+
+  out <- sniff_input(f)
+  expect_equal(out$node_id, "consensus_df")
+})
+
 test_that("sniff_input() returns NA with evidence for a nonexistent file", {
   out <- sniff_input(file.path(tempdir(), "does_not_exist_at_all.csv"))
   expect_true(is.na(out$node_id))
