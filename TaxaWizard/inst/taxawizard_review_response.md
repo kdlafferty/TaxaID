@@ -376,6 +376,53 @@ a reviewer may want to probe elsewhere:
 - Two graph snippets calibrated a kernel bandwidth on pooled data and then
   estimated per group.
 
+**Four further defects, found by a production run, fixed:**
+
+- `annotate_script(mode = "llm")` was unusable. `.annotate_llm()` (`R/shiny.R`)
+  called `llm_fn(prompt = prompt)` by name; the ecosystem convention (see
+  `TaxaTools::call_api()` and `options(TaxaID.llm_fn = )`) is a provider
+  function of the form `function(p, ...)` called positionally. Calling it by
+  name only ever worked for `TaxaTools::call_anthropic_api()` via partial
+  matching of `prompt` against its first parameter `prompt_str`; a
+  conventional wrapper failed with `argument "p" is missing`. It also never
+  set `max_tokens`, so a reasoning model could spend the default response
+  budget thinking and return no text at all. Fixed: `llm_fn(prompt, ...)` is
+  now called positionally, `max_tokens` is sized proportionally to the
+  script (floored at 4000L), and `annotate_script()`'s `...` is forwarded
+  through so a caller can override it.
+- `.segment_script()`'s parameter detector only scanned a contiguous prefix
+  and stopped collecting parameter candidates at the first non-assignment
+  top-level expression. Any real script with setup code (a non-library
+  function call) before its constants -- e.g. `N_SIMS_LIK <- 500L`,
+  `MIN_PAIR_COVERAGE <- 0.8`, `PRIOR_WEIGHT <- 10.0`,
+  `SCORE_TRANSFORM <- c("logit", "sqrt_mismatch")` -- lost every constant
+  after that point to step text, reporting "No parameter candidates found".
+  Fixed to classify every top-level expression in one pass regardless of
+  position. `annotate_script()`'s roxygen now also documents (without
+  changing) two related quirks: the step namer uses the last comment line
+  before a step, not the nearest numbered header; and neither mode has a
+  non-interactive option.
+- `workflow_check()`'s `bin:blastn` row reported a plain "ok" whenever the
+  binary was found on PATH, conflating presence with capability -- a
+  Homebrew `blastn` 2.17.0 is found on PATH but cannot open NCBI's currently
+  published `core_nt` LMDB index (2.16 can). `.resolve_bin_token()` has no
+  configured database path to test against, so no `blastdbcmd` check was
+  invented. Instead, a requirements-table entry can now declare a
+  `version_flag` (captured into `detail`) and a `capability_note` (surfaced
+  in `fix` even on an "ok" row, naming `blastdbcmd -db <db> -info` as the
+  real capability test); `bin:blastn`'s entry in `requirements.json` carries
+  both.
+- `sniff_input()` classified a real Jonah Ventures ESV table (`TestId`,
+  `ESVId`, rank columns, `Accession`, `PercMatch`; many rows per `ESVId`) as
+  `consensus_df` at confidence "medium" because `PercMatch` was not a
+  recognized score-column synonym. `PercMatch`, `PercentMatch`, `pident`,
+  `perc_identity`, and `percent_identity` are now score synonyms (so this
+  table now correctly resolves to `match_df` at "high" confidence), and,
+  independently, an id-like column whose value repeats across the peeked
+  rows is now evidence AGAINST `consensus_df` even when no score column is
+  recognized at all -- a consensus table has exactly one row per
+  observation.
+
 **Verification.** 1044 tests pass; `devtools::check()` reports 0 errors, 0
 warnings, 0 notes. Two dry runs exercise the package end to end and are kept
 in `diagnostics/taxawizard_dry_runs/`: a cold chat given only the exported
