@@ -704,6 +704,10 @@ test_that(".detect_paths_in_text() does not auto-sniff a mentioned dotfile, even
 })
 
 test_that(".detect_paths_in_text() DOES auto-sniff a data file under the working directory, and the block never carries a cell value", {
+  # The dot-segment rule refuses any path with a hidden component, by design,
+  # so this test cannot run from a working directory such as ~/.something/.
+  skip_if(.sniff_has_dot_segment(normalizePath(getwd(), winslash = "/")),
+          "working directory has a hidden path segment; the sniffer refuses it by design")
   fname <- "tw_test_species_list.csv"
   full <- file.path(getwd(), fname)
   writeLines(c("species,family", "Eucyclogobius newberryi,Gobiidae"), full)
