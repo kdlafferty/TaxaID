@@ -159,6 +159,9 @@ Control validation and contamination:
 -   `flag_contaminant()`: compare detection rates between field
     samples and controls and score each taxon as a probable
     contaminant, ambiguous, or likely genuine detection
+-   `flag_hopped_detections()`: flag detections a sequencing run's own
+    read spillover explains, from the run's control samples or its spike
+    taxa, and report the spillover rate it fitted for each run
 
 Handler artifacts:
 

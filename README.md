@@ -903,13 +903,13 @@ describe each in full.
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
 | TaxaTools   | 58                 | 29         | Yes      |
-| TaxaFetch   | 30                 | 26         | Yes      |
+| TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 18                 | 12         | Yes      |
 | TaxaMatch   | 31                 | 22         | Yes      |
 | TaxaLikely  | 31                 | 31         | Yes      |
-| TaxaExpect  | 17                 | 17         | Yes      |
+| TaxaExpect  | 18                 | 18         | Yes      |
 | TaxaAssign  | 15                 | 17         | Yes      |
-| TaxaFlag    | 11                 | 13         | Yes      |
+| TaxaFlag    | 12                 | 14         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
 # U.S. Geological Survey Disclaimer
