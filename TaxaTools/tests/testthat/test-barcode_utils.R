@@ -197,6 +197,18 @@ test_that("resolve_barcode_marker maps every registered primer variant to its ma
   expect_identical(resolve_barcode_marker("rbcLa"), "rbcL")
   expect_identical(resolve_barcode_marker("matK-Kim"), "matK")
   expect_identical(resolve_barcode_marker("trnL-Taberlet"), "trnL")
+  expect_identical(resolve_barcode_marker("18S-V9"), "18S")
+})
+
+test_that("18S-V9 resolves primers and a V9 length window, while bare 18S stays unregistered", {
+  p <- resolve_barcode_primers("18S-V9")
+  expect_identical(p$fwd, "TTGTACACACCGCCCGTC")
+  expect_identical(p$rev, "CCTTCYGCAGGTTCACCTAC")
+  expect_equal(unname(resolve_barcode_lengths("18S-V9")), c(85L, 200L))
+  expect_equal(unname(resolve_barcode_lengths("18S")), c(100L, 2000L))
+  # bare 18S must not resolve by prefix to the one registered region
+  expect_error(resolve_barcode_primers("18S"), "several primer regions.*18s-v9")
+  expect_error(resolve_barcode_primers("ITS"), "no primer defaults found")
 })
 
 test_that("resolve_barcode_marker is case- and whitespace-insensitive", {

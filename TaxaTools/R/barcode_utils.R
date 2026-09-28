@@ -30,6 +30,7 @@ barcode_length_defaults <- list(
   "its"    = c(100L, 900L), # ITS full ~500-750 bp
   "rbcl"   = c(400L, 800L), # rbcL ~550-650 bp
   "matk"   = c(600L, 1100L), # matK ~800-900 bp
+  "18s-v9" = c(85L, 200L), # 18S V9 (1389F/1510R), primers stripped ~90-180 bp; must precede "18s"
   "18s"    = c(100L, 2000L), # 18S varies by primer set
   "trnl"   = c(10L, 300L) # trnL P6 loop ~10-150 bp
 )
@@ -192,13 +193,14 @@ resolve_barcode_lengths <- function(barcode_term, min_len = NULL,
 #'     uses Meyer (2003)'s inosine-free `dgHCO2198` instead, which binds the
 #'     same site and is a real published alternative to `jgHCO2198`, not an
 #'     approximation of it -- see that entry's own reference note.}
-#'   \item{No entries for 18S, ITS, or ITS2}{Deliberately unpopulated, not an
-#'     oversight: unlike every marker actually implemented here, none of
-#'     these three has one single canonical primer pair to verify -- real
-#'     studies use substantially different primer sets depending on the
-#'     targeted variable region (e.g. 18S V4 vs V9) or organism group.
-#'     Supply `primer_fwd`/`primer_rev` directly (from your own protocol) to
-#'     any function using this registry, or pre-trim with CRABS.}
+#'   \item{18S: V9 only; no entries for ITS or ITS2}{None of these has one
+#'     canonical primer pair -- studies target different variable regions
+#'     (18S V4 vs V9) or organism groups -- so a bare `"18S"` stays
+#'     unregistered and must be qualified. `18s-v9` is registered because it
+#'     is a widely used universal eukaryote pair and was verified against real
+#'     data (see its reference note). For any other region, supply
+#'     `primer_fwd`/`primer_rev` directly (from your own protocol) to any
+#'     function using this registry, or pre-trim with CRABS.}
 #' }
 #'
 #' @references
@@ -315,6 +317,19 @@ resolve_barcode_lengths <- function(barcode_term, min_len = NULL,
 #' land plants (highly length-variable by design; this is the marker's
 #' intended discriminatory signal, not primer-matching noise).
 #'
+#' Amaral-Zettler LA, McCliment EA, Ducklow HW, Huse SM (2009). A method for
+#' studying protistan diversity using massively parallel sequencing of V9
+#' hypervariable regions of small-subunit ribosomal RNA genes. PLoS ONE 4(7):
+#' e6372 (1389F / 1510R, the 18S V9 pair). Empirically confirmed with
+#' `Biostrings::matchPattern()` (up to 1 mismatch) against three real 18S
+#' genes: *Homo sapiens* NR_003286.4 (primer-stripped amplicon 134 bp),
+#' *Saccharomyces cerevisiae* NR_132222.1 (129 bp) and *Mytilus
+#' californianus* L33449.1 (134 bp). Every stripped product ends in
+#' `...AAAGTCGTAACAAGGTTTCC`, the same 3' end carried by real Jonah Ventures
+#' 18S eDNA ESVs from the California Intertidal study (87-182 bp, median
+#' 133), which is how the pair was identified there. V9 length varies across
+#' eukaryotes, hence the wide `amplicon_range`.
+#'
 #' @examples
 #' barcode_primer_defaults[["mifish-u"]]
 #'
@@ -364,6 +379,11 @@ barcode_primer_defaults <- list(
     fwd = "GGGCAATCCTGAGCCAA",
     rev = "CCATTGAGTCTCTGCACCTATC",
     amplicon_range = c(49L, 182L)
+  ),
+  "18s-v9" = list(
+    fwd = "TTGTACACACCGCCCGTC",
+    rev = "CCTTCYGCAGGTTCACCTAC",
+    amplicon_range = c(85L, 200L)
   )
 )
 
@@ -404,6 +424,22 @@ resolve_barcode_primers <- function(barcode_term) {
   exact <- which(reg_norm == key)
   if (length(exact) == 1L) {
     return(barcode_primer_defaults[[reg_keys[exact]]])
+  }
+
+  # A bare marker whose studies use several primer regions (18S V4 vs V9,
+  # ITS1 vs ITS2) must never resolve by prefix to whichever one region happens
+  # to be registered: trimming a V4 study's references with V9 primers is a
+  # silent wrong assumption, not a default.
+  region_ambiguous <- c("18s", "its", "its2")
+  if (key %in% region_ambiguous && any(startsWith(reg_norm, key))) {
+    stop(sprintf(
+      paste0(
+        "resolve_barcode_primers: '%s' names a marker with several primer regions. ",
+        "Specify the region (registered: %s), or supply primer_fwd/primer_rev directly."
+      ),
+      barcode_term,
+      paste0("'", reg_keys[startsWith(reg_norm, key)], "'", collapse = ", ")
+    ), call. = FALSE)
   }
 
   prefix <- which(startsWith(reg_norm, key))
@@ -477,7 +513,8 @@ resolve_barcode_marker <- function(barcode_term) {
     "cytb-kocher"   = "cytb",
     "rbcla"         = "rbcL",
     "matk-kim"      = "matK",
-    "trnl-taberlet" = "trnL"
+    "trnl-taberlet" = "trnL",
+    "18s-v9"        = "18S"
   )
 
   vapply(barcode_term, function(bt) {

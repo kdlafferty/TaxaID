@@ -1144,3 +1144,18 @@ test_that("blast_sequences() reports queries whose hit taxonomy failed in failed
   expect_identical(attr(out, "failed_query_ids"), "Q1")
   expect_false(".taxonomy_failed" %in% names(out))
 })
+
+test_that(".resolve_taxonomy_by_acc() retries a failed accession lookup five times, then reports it", {
+  n_calls <- 0L
+  testthat::local_mocked_bindings(.blast_rate_limit_sleep = function(seconds) invisible(NULL), .package = "TaxaMatch")
+  testthat::local_mocked_bindings(
+    entrez_search = function(...) { n_calls <<- n_calls + 1L; stop("HTTP failure: 500") },
+    .package = "rentrez"
+  )
+  expect_warning(
+    out <- TaxaMatch:::.resolve_taxonomy_by_acc(c("ACC1", "ACC2"), verbose = TRUE),
+    "Accession lookup failed"
+  )
+  expect_identical(n_calls, 5L)
+  expect_setequal(attr(out, "failed_accessions"), c("ACC1", "ACC2"))
+})

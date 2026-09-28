@@ -91,13 +91,14 @@ representation in \code{Biostrings::DNAString}'s IUPAC alphabet. \code{coi-leray
 uses Meyer (2003)'s inosine-free \code{dgHCO2198} instead, which binds the
 same site and is a real published alternative to \code{jgHCO2198}, not an
 approximation of it -- see that entry's own reference note.}
-\item{No entries for 18S, ITS, or ITS2}{Deliberately unpopulated, not an
-oversight: unlike every marker actually implemented here, none of
-these three has one single canonical primer pair to verify -- real
-studies use substantially different primer sets depending on the
-targeted variable region (e.g. 18S V4 vs V9) or organism group.
-Supply \code{primer_fwd}/\code{primer_rev} directly (from your own protocol) to
-any function using this registry, or pre-trim with CRABS.}
+\item{18S: V9 only; no entries for ITS or ITS2}{None of these has one
+canonical primer pair -- studies target different variable regions
+(18S V4 vs V9) or organism groups -- so a bare \code{"18S"} stays
+unregistered and must be qualified. \verb{18s-v9} is registered because it
+is a widely used universal eukaryote pair and was verified against real
+data (see its reference note). For any other region, supply
+\code{primer_fwd}/\code{primer_rev} directly (from your own protocol) to any
+function using this registry, or pre-trim with CRABS.}
 }
 }
 
@@ -218,4 +219,17 @@ against the real \emph{Arabidopsis thaliana} chloroplast genome (NC_000932.1)
 -- within the paper's own documented P6-loop range of 10-143bp across
 land plants (highly length-variable by design; this is the marker's
 intended discriminatory signal, not primer-matching noise).
+
+Amaral-Zettler LA, McCliment EA, Ducklow HW, Huse SM (2009). A method for
+studying protistan diversity using massively parallel sequencing of V9
+hypervariable regions of small-subunit ribosomal RNA genes. PLoS ONE 4(7):
+e6372 (1389F / 1510R, the 18S V9 pair). Empirically confirmed with
+\code{Biostrings::matchPattern()} (up to 1 mismatch) against three real 18S
+genes: \emph{Homo sapiens} NR_003286.4 (primer-stripped amplicon 134 bp),
+\emph{Saccharomyces cerevisiae} NR_132222.1 (129 bp) and \emph{Mytilus
+californianus} L33449.1 (134 bp). Every stripped product ends in
+\code{...AAAGTCGTAACAAGGTTTCC}, the same 3' end carried by real Jonah Ventures
+18S eDNA ESVs from the California Intertidal study (87-182 bp, median
+133), which is how the pair was identified there. V9 length varies across
+eukaryotes, hence the wide \code{amplicon_range}.
 }
