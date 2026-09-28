@@ -125,3 +125,22 @@ e.g. "18S JVB6164/JVB6334 excluded: library failure".
   edge would be `reads_to_flagged` (the same edge proposed for hopping).
 - Tests: `test-flag_failed_libraries.R` has 59 assertions. The full suite is 639/0 and
   `check()` is 0/0/0.
+
+## Update 2026-09-28: single-marker studies (agreed with lafferty-09, sample-identity-gate)
+
+- **New failure route.** A run can now fail on single-marker evidence, reported as
+  `attr(, "runs")$failure_basis = "single_marker"`. It fails when at least 50% of its field
+  libraries are at least 10x below the marker's reference, and they outnumber the
+  libraries whose other markers are comparably low.
+  - This needs at least 3 runs of the marker, or a `reference_depth`.
+  - Fewer runs gives `not_testable`, which now outranks `low_yield`.
+- **Individual libraries are unchanged.** A single-marker library alone still reads
+  `low_yield_undetermined` and is not excluded.
+- **The blank-vs-sample judgement stays in `classify_sample_identity()`,** not here.
+- **Status vocabulary is unchanged.** The only addition is the `failure_basis` column.
+- **Real-data check, each marker alone:**
+  - 18S JVB6164 and JVB6334 still fail.
+  - 12S JVB2844 becomes `failed`. With all three markers it is `low_yield`, because COI
+    on that run is also low; that evidence cannot be seen with one marker.
+  - Every other run keeps its verdict.
+- **Checks:** test 672/0, check 0/0/0.

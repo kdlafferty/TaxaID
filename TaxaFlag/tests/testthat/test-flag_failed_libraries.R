@@ -103,13 +103,50 @@ test_that("other markers sequenced unusually deep do not fail a normal library",
   expect_true(all(lib$cross_resid[lib$run == "M1_run1"] < -1))
 })
 
-test_that("a run that is low with no cross-marker support is low_yield", {
+test_that("a run low in every marker is low_yield, not failed", {
   libs <- .ffl_study()
-  libs <- libs[!(libs$run_i == 3 & libs$marker != "M2"), ]
-  libs$depth[libs$run == "M2_run3"] <- 300
+  libs$depth[libs$run_i == 3] <- 300
   res <- .ffl_run(.ffl_long(libs))
   runs <- attr(res, "runs")
   expect_equal(runs$run_status[runs$run == "M2_run3"], "low_yield")
+  expect_true(is.na(runs$failure_basis[runs$run == "M2_run3"]))
+  expect_false(any(res$exclude_library))
+})
+
+test_that("single-marker study: a whole run far below the others fails", {
+  libs <- .ffl_study()
+  libs <- libs[libs$marker == "M1", ]
+  libs$depth[libs$run == "M1_run2"] <- 300
+  expect_warning(res <- .ffl_run(.ffl_long(libs)), "DO NOT ANALYSE")
+  runs <- attr(res, "runs")
+  expect_equal(runs$run_status[runs$run == "M1_run2"], "failed")
+  expect_equal(runs$failure_basis[runs$run == "M1_run2"], "single_marker")
+  expect_match(runs$reason[runs$run == "M1_run2"], "Single-marker evidence")
+  expect_true(all(runs$run_status[runs$run != "M1_run2"] == "pass"))
+  expect_true(all(res$exclude_library[res$run == "M1_run2"]))
+  expect_false(any(res$exclude_library[res$run != "M1_run2"]))
+  lib <- attr(res, "libraries")
+  expect_true(all(lib$library_status[lib$run == "M1_run2"] == "low_yield_undetermined"))
+  expect_true(all(lib$failure_scope[lib$run == "M1_run2"] == "run"))
+})
+
+test_that("single-marker study with too few runs stays not_testable", {
+  libs <- .ffl_study()
+  libs <- libs[libs$marker == "M1" & libs$run_i <= 2, ]
+  libs$depth[libs$run == "M1_run2"] <- 300
+  res <- .ffl_run(.ffl_long(libs))
+  expect_true(all(attr(res, "runs")$run_status == "not_testable"))
+  expect_false(any(res$exclude_library))
+})
+
+test_that("single-marker scattered low library is undetermined, not excluded", {
+  libs <- .ffl_study()
+  libs <- libs[libs$marker == "M1", ]
+  libs$depth[libs$sample_id == "R2S3"] <- 200
+  res <- .ffl_run(.ffl_long(libs))
+  lib <- attr(res, "libraries")
+  expect_equal(lib$library_status[lib$sample == "R2S3"], "low_yield_undetermined")
+  expect_true(all(attr(res, "runs")$run_status == "pass"))
   expect_false(any(res$exclude_library))
 })
 

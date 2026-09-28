@@ -105,7 +105,9 @@ Attribute \code{"libraries"}: one row per library with \code{depth},
 with library counts by status, \code{median_depth},
 \code{reference_depth}, \code{fold_below_reference},
 \code{median_cross_resid}, \code{reference_basis} (\code{"runs"},
-\code{"supplied"} or \code{"too_few_runs"}), \code{n_runs_marker}, the
+\code{"supplied"} or \code{"too_few_runs"}), \code{n_runs_marker},
+\code{failure_basis} (\code{"cross_marker"}, \code{"single_marker"} or
+\code{NA} when the run did not fail), the
 control contrast columns,
 \code{n_absent}, \code{run_status}, \code{cleared} and \code{reason}.
 Attribute \code{"libraries_absent"}: sample x marker x run combinations
@@ -187,11 +189,19 @@ as dozens of individual failures would hide the single cause, so each run
 (run x marker) also gets a verdict, in \code{attr(, "runs")}:
 \itemize{
 \item \code{"failed"}: at least \code{run_fail_fraction} of its field
-libraries failed. Every library on the run, controls included, is
-excluded, and \code{failure_scope} is \code{"run"}.
+libraries failed (\code{failure_basis = "cross_marker"}), OR, in a
+single-marker study or for samples with no other marker, at least
+\code{run_fail_fraction} are low for the marker with no cross-marker
+evidence against it (\code{failure_basis = "single_marker"}): those
+libraries outnumber any whose other markers are comparably low. A whole
+run this far below the marker's other runs is taken as a run fault. Needs
+\code{min_reference_runs} runs of the marker or a \code{reference_depth}.
+Every library on the run, controls included, is excluded, and
+\code{failure_scope} is \code{"run"}.
 \item \code{"low_yield"}: at least \code{run_fail_fraction} of its field
-libraries are low for the marker, but without cross-marker support. The
-whole run is weak and the data cannot say why. Not excluded; read it.
+libraries are low for the marker, but the samples' other markers are
+comparably low. The whole run is weak and the data cannot say whether the
+libraries or the samples are the cause. Not excluded; read it.
 \item \code{"pass"}: neither. Individual failed libraries may still be
 present (\code{n_failed}); they are excluded one by one.
 \item \code{"not_testable"}: the marker has fewer than

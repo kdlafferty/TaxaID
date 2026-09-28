@@ -68,11 +68,19 @@
 #' (run x marker) also gets a verdict, in \code{attr(, "runs")}:
 #' \itemize{
 #'   \item \code{"failed"}: at least \code{run_fail_fraction} of its field
-#'     libraries failed. Every library on the run, controls included, is
-#'     excluded, and \code{failure_scope} is \code{"run"}.
+#'     libraries failed (\code{failure_basis = "cross_marker"}), OR, in a
+#'     single-marker study or for samples with no other marker, at least
+#'     \code{run_fail_fraction} are low for the marker with no cross-marker
+#'     evidence against it (\code{failure_basis = "single_marker"}): those
+#'     libraries outnumber any whose other markers are comparably low. A whole
+#'     run this far below the marker's other runs is taken as a run fault. Needs
+#'     \code{min_reference_runs} runs of the marker or a \code{reference_depth}.
+#'     Every library on the run, controls included, is excluded, and
+#'     \code{failure_scope} is \code{"run"}.
 #'   \item \code{"low_yield"}: at least \code{run_fail_fraction} of its field
-#'     libraries are low for the marker, but without cross-marker support. The
-#'     whole run is weak and the data cannot say why. Not excluded; read it.
+#'     libraries are low for the marker, but the samples' other markers are
+#'     comparably low. The whole run is weak and the data cannot say whether the
+#'     libraries or the samples are the cause. Not excluded; read it.
 #'   \item \code{"pass"}: neither. Individual failed libraries may still be
 #'     present (\code{n_failed}); they are excluded one by one.
 #'   \item \code{"not_testable"}: the marker has fewer than
@@ -176,7 +184,9 @@
 #' with library counts by status, \code{median_depth},
 #' \code{reference_depth}, \code{fold_below_reference},
 #' \code{median_cross_resid}, \code{reference_basis} (\code{"runs"},
-#' \code{"supplied"} or \code{"too_few_runs"}), \code{n_runs_marker}, the
+#' \code{"supplied"} or \code{"too_few_runs"}), \code{n_runs_marker},
+#' \code{failure_basis} (\code{"cross_marker"}, \code{"single_marker"} or
+#' \code{NA} when the run did not fail), the
 #' control contrast columns,
 #' \code{n_absent}, \code{run_status}, \code{cleared} and \code{reason}.
 #' Attribute \code{"libraries_absent"}: sample x marker x run combinations
@@ -416,12 +426,24 @@ flag_failed_libraries <- function(input_df,
 
   frac_fail <- runs$n_failed / pmax(runs$n_field, 1)
   frac_low <- (runs$n_failed + runs$n_low_yield + runs$n_low_yield_undetermined) / pmax(runs$n_field, 1)
+  # Single-marker path: libraries with no other marker cannot fail individually,
+  # but a whole run far below the marker's other runs is a run-level fault unless
+  # cross-marker evidence (low_yield) says the samples themselves are sparse.
+  n_uncontradicted <- runs$n_failed + runs$n_low_yield_undetermined
+  single_fail <- runs$reference_basis != "too_few_runs" &
+    n_uncontradicted / pmax(runs$n_field, 1) >= run_fail_fraction &
+    n_uncontradicted > runs$n_low_yield
+  # With too few runs the reference is partly this run, so only cross-marker
+  # evidence can fail it; anything weaker is not_testable.
   runs$run_status <- ifelse(runs$n_field == 0, "no_field_libraries",
-    ifelse(frac_fail >= run_fail_fraction, "failed",
-      ifelse(frac_low >= run_fail_fraction, "low_yield",
-        ifelse(runs$reference_basis == "too_few_runs", "not_testable", "pass")
+    ifelse(frac_fail >= run_fail_fraction | single_fail, "failed",
+      ifelse(runs$reference_basis == "too_few_runs", "not_testable",
+        ifelse(frac_low >= run_fail_fraction, "low_yield", "pass")
       )
     )
+  )
+  runs$failure_basis <- ifelse(runs$run_status != "failed", NA_character_,
+    ifelse(frac_fail >= run_fail_fraction, "cross_marker", "single_marker")
   )
   bad_clear <- setdiff(cleared_runs, runs$run_key)
   if (length(bad_clear)) {
@@ -563,11 +585,19 @@ flag_failed_libraries <- function(input_df,
     r <- runs[i, ]
     base <- switch(r$run_status,
       no_field_libraries = "No field libraries on this run.",
-      failed = sprintf(
-        "%s field libraries are >= %gx below both the %s reference and their own samples' other markers; median depth %s vs reference %s.",
-        pct(r$n_failed, r$n_field), fold_threshold, r$marker,
-        .ffl_fmt(r$median_depth), .ffl_fmt(r$reference_depth)
-      ),
+      failed = if (identical(r$failure_basis, "single_marker")) {
+        sprintf(
+          "%s field libraries are >= %gx below the %s reference (median depth %s vs %s) and no other marker contradicts it. Single-marker evidence: a whole run this far below the marker's other runs is taken as a run fault, not uniformly sparse samples.",
+          pct(r$n_failed + r$n_low_yield_undetermined, r$n_field), fold_threshold, r$marker,
+          .ffl_fmt(r$median_depth), .ffl_fmt(r$reference_depth)
+        )
+      } else {
+        sprintf(
+          "%s field libraries are >= %gx below both the %s reference and their own samples' other markers; median depth %s vs reference %s.",
+          pct(r$n_failed, r$n_field), fold_threshold, r$marker,
+          .ffl_fmt(r$median_depth), .ffl_fmt(r$reference_depth)
+        )
+      },
       low_yield = sprintf(
         "%s field libraries are >= %gx below the %s reference, but the samples' other markers do not show the extracts were fine (low too, or absent). Cannot tell a failed run from uniformly sparse samples.",
         pct(r$n_failed + r$n_low_yield + r$n_low_yield_undetermined, r$n_field),
