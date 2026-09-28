@@ -72,26 +72,28 @@ the California Current System (Shea and Boehm 2024). Auto-classified
 camera trap images carry error rates near 10% even at well-studied sites
 (Henrich et al. 2026), and acoustic classifier precision is highly
 sensitive to confidence threshold settings (Thompson et al. 2025;
-Fairbairn et al. 2025). Raw classifier scores mimic probabilities but
-are uncalibrated; a 95% score does not mean 95% confidence in an
-assignment (Dussert et al. 2025), and the same match percentage can be
-diagnostic for one taxon group but ambiguous for another (Pappalardo et
-al. 2025). These errors fall into three categories: false positives (FP;
-wrong taxon assigned, or overly confident in), false negatives (FN;
-correct taxon missed or underestimated), and combined errors where one
-taxon's false positive is another's false negative. FP/FN labels below
-mark seven common sources of error that TaxaID can reduce.
+Fairbairn et al. 2025). Errors can arise from mistaking raw classifier
+scores for probabilities. But a 95% score does not mean 95% confidence
+in an assignment (Dussert et al. 2025), and the same match percentage
+can be diagnostic for one taxon group but ambiguous for another
+(Pappalardo et al. 2025). Classification errors fall into three broad
+categories: false positives (FP; wrong taxon assigned, or overly
+confident in), false negatives (FN; correct taxon missed or
+underestimated), and combined errors where one taxon's false positive is
+another's false negative. FP/FN labels below mark seven common sources
+of error that TaxaID can reduce.
 
 #### Field and lab artifacts
 
 1.  Contamination or artifact (FP). Lab or field contamination, handler
     artifacts (camera traps), or equipment carryover introduces real
-    detections of taxa not present in the environment. TaxaFlag can use
-    information from blanks to remove contaminants from the source.
-    Downstream, TaxaFlag uses LLM review to alert the user to candidates
-    that look like contaminants or allochthonous transport from outside
-    the sampling area: eDNA carried by runoff or currents, sounds from
-    playback devices or captive animals.
+    detections of taxa not present in the environment. Like conventional
+    approaches, TaxaFlag can use information from blanks to remove
+    contaminants from the source. Downstream, however, TaxaFlag uses LLM
+    review to alert the user to candidates that look like contaminants
+    or allochthonous transport from outside the sampling area: eDNA
+    carried by runoff or currents, sounds from playback devices or
+    captive animals.
 
 #### Reference database errors/gaps
 
@@ -109,7 +111,8 @@ mark seven common sources of error that TaxaID can reduce.
     `review_flagged_accessions()` gives flagged/borderline accessions a
     third look from an LLM; after which `resolve_review_overrides()`
     double checks if flagged accessions should be kept or removed. I
-    find less than 1% of references to be mislabled, but worth removing.
+    find less than 1% of NCBI references to be mislabeled, but worth
+    removing.
 3.  Missing reference redirect (FP + FN). The reference database itself
     is usually incomplete: when the true species has no entry in the
     reference library, its detections are incorrectly assigned to the
@@ -131,16 +134,17 @@ mark seven common sources of error that TaxaID can reduce.
 5.  Overly strict thresholds (FN). Conservative score cutoffs aimed to
     reduce false positives discard correct assignments that fall just
     below arbitrary thresholds. TaxaID's probabilistic framework
-    replaces binary thresholds with continuous likelihoods and
-    posteriors.
+    replaces binary thresholds with continuous posteriors.
 
 #### Ecological implausibility
 
 6.  Ecologically implausible assignment (FP). A classifier usually does
     not know where the sample was taken, and thus has no shame assigning
     to a species that doesn't plausibly occur at the sampling location,
-    season, or habitat. Spatially explicit priors from TaxaExpect
-    down-weight implausible taxa.
+    season, or habitat. Filtering on a regional list is a coarse way to
+    reduce such errors. Spatially explicit priors from TaxaExpect
+    down-weight implausible taxa across a continuous gradient, and allow
+    for the discovery of novel or introduced species.
 7.  Defensive upranking (FN). When multiple similar species produce
     near-identical scores, conventional systems uprank to genus (or
     higher) to avoid a false positive, sacrificing species-level
@@ -155,10 +159,11 @@ mark seven common sources of error that TaxaID can reduce.
     provides a unified interface for calling LLMs from within the
     package.
 2.  TaxaMatch standardizes match tables from external classifiers into a
-    common format. It also checks for mislabled references.
+    common format. It also checks for mislabeled references.
 3.  TaxaLikely converts match scores into calibrated likelihoods using a
     hierarchical Bayesian model trained on the reference library. It
-    also audits references for coverage gaps.
+    also audits references for coverage gaps so users can adjust
+    expectations.
 4.  TaxaFetch acquires species occurrence records from data providers,
     and published literature (including reading data directly from
     PDFs).
@@ -581,7 +586,7 @@ read_reference_fasta"| RD
     TL["taxa + location"] -->|"TaxaFetch + TaxaHabitat
 + TaxaExpect"| PR(["prior_df"])
 
-    %% Likelihoods — three entry points
+    %% Likelihoods: three entry points
     MD & MP -->|"evaluate_likelihoods\n(DNA: uses model_params)"| LK
     MD -->|"assign_scores\n(acoustic / image: no model)"| LK
     CON["consensus_df\n(morphology / expert IDs)"] -->|"unreferenced_candidates\n+ assign_scores"| LK
@@ -647,7 +652,7 @@ fixture extracted from a completed production run, in a few seconds,
 with no network calls and no API key:
 
 ``` r
-# from the repository root -- fixture paths are resolved via system.file()
+# from the repository root; fixture paths are resolved via system.file()
 # against the installed (or devtools::load_all()'d) TaxaWizard package
 library(TaxaWizard)
 source(system.file("fast_workflows", "run_fast_smoketest.R", package = "TaxaWizard"))            # ~7 s
@@ -660,8 +665,9 @@ use a flat placeholder prior, which is labelled in each script. See
 `TaxaWizard/inst/fast_workflows/README.md`.
 
 For a run with real data and keys, four tutorial scripts chain through
-checkpoints in `tempdir()`: `TaxaFetch/inst/workflows/fetch_occurrences_workflow.R`
-(two genera of gadids in a North Atlantic box, a few hundred records),
+checkpoints in `tempdir()`:
+`TaxaFetch/inst/workflows/fetch_occurrences_workflow.R` (two genera of
+gadids in a North Atlantic box, a few hundred records),
 `TaxaHabitat/inst/workflows/assign_habitat_workflow.R` (one LLM call),
 `TaxaExpect/inst/workflows/generate_priors_workflow.R` and
 `TaxaAssign/inst/workflows/compute_posteriors_workflow.R`. Run them in
