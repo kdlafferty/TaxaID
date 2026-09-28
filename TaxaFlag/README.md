@@ -163,6 +163,17 @@ Control validation and contamination:
     read spillover explains, from the run's control samples or its spike
     taxa, and report the spillover rate it fitted for each run
 
+Sequencing-run and sample checks:
+
+-   `flag_failed_libraries()`: flag libraries and whole runs that failed to
+    sequence, reading the same extract's other markers as the control
+-   `classify_sample_identity()`: gate each sample on whether its
+    composition looks like the label it carries, so a mislabelled blank or
+    a swapped tube is caught before it is used as a control
+-   `review_sample_identity()`: send the samples that do not look like their
+    label to an LLM for a second opinion, with the run's spike-in taxa in
+    the prompt
+
 Handler artifacts:
 
 -   `flag_handler()`: flag detections that fall within a time buffer

@@ -65,9 +65,7 @@ cat("Marker(s):", paste(unique(match_df$testid), collapse = ", "), "\n\n")
 # Default: call_anthropic_api (requires ANTHROPIC_API_KEY in .Renviron).
 # Alternatives — uncomment to use:
 t0 <- Sys.time()
-# Current Claude models think before answering, and the thinking counts
-# against max_tokens; at the default of 3000 a call can end with no answer.
-llm_fn <- function(p) TaxaTools::call_anthropic_api(p, max_tokens = 16000L)
+llm_fn <- TaxaTools::call_anthropic_api
 
 # Gemini (free tier; requires GEMINI_API_KEY):
 # llm_fn <- function(p) TaxaTools::call_gemini_api(p, model = "gemini-2.0-flash")
@@ -569,7 +567,7 @@ cat(assembled)
 #   geographic_hint      = "Point Conception, California (34.4 N, 120.4 W), nearshore marine",
 #   date                 = "2025",
 #   habitat_scheme       = "IUCN_L1",
-#   llm_fn               = llm_fn,                 # see 2a: room for thinking
+#   llm_fn               = llm_fn,
 #   data_type            = "eDNA",
 #   detect_unreferenced  = TRUE,
 #   barcode_term         = "12S",
