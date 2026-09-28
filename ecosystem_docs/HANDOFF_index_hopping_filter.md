@@ -44,6 +44,11 @@ deletes, using the unified validity schema (`invalid_index_hop` /
   which is the shape of well-to-well contamination rather than diffuse hopping.
   Should the 1.1% of 12S detections flagged there be applied, or treated as
   questionable at most?
+  The CalIntertidal session found that JVB3735 12S blank reads TOTAL about 0.15%,
+  inside the hopping band. But `hop_validation/hop_top_probe.rds` shows each of the
+  ten biggest ESVs in a median of 6% of the 24 blanks (max 12%), where diffuse
+  hopping would reach nearly all of them. The two checks agree on which run has
+  excess reads, not on the mechanism.
 - The 18S/COI detections on the `implausible_rate` runs are unassessed for spillover.
   `flag_contaminant()` / `validate_controls()` are the tools for those blanks, and
   their verdicts still do not reach `make_esv_*_detections.R` (the prompt's structural
