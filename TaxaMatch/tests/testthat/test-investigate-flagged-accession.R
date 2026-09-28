@@ -223,21 +223,26 @@ test_that(".blast_against_comparison_set() (remote) restricts the BLAST search s
   expect_true(grepl(" OR ", captured_query))
 })
 
-test_that(".blast_against_comparison_set() (local) restricts the search with -seqidlist", {
+test_that(".blast_against_comparison_set() (local) searches a database of only the comparison accessions", {
   # The local equivalent of the remote ENTREZ_QUERY restriction: the
-  # comparison accessions go to blastn as a -seqidlist file, so each is
-  # scored whether or not it would rank in an unrestricted search.
+  # comparison accessions are extracted into a throwaway database and the
+  # query is searched against that alone.
   captured_ids <- NULL
-  mock_local <- function(seq_df, database, program, megablast, max_target_seqs,
-                         verbose, num_threads = NULL, word_size = NULL,
-                         seqidlist = NULL) {
-    captured_ids <<- readLines(seqidlist)
-    data.frame(
-      qseqid = "flagged_query", sacc = c("KEEP_A.1", "KEEP_B"),
-      pident = c(99, 97), qcovs = c(90, 40), stringsAsFactors = FALSE
-    )
-  }
-  local_mocked_bindings(.blast_local = mock_local, .package = "TaxaMatch")
+  searched_db <- NULL
+  local_mocked_bindings(
+    .local_subset_db = function(database, accessions, ...) {
+      captured_ids <<- accessions
+      file.path(tempfile("cmpdb"), "subset")
+    },
+    .blast_local = function(seq_df, database, ...) {
+      searched_db <<- database
+      data.frame(
+        qseqid = "flagged_query", sacc = c("KEEP_A.1", "KEEP_B"),
+        pident = c(99, 97), qcovs = c(90, 40), stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
 
   comparison_meta <- data.frame(
     accession = c("KEEP_A", "KEEP_B.2"), sequence = c("X", "Y"),
@@ -245,18 +250,19 @@ test_that(".blast_against_comparison_set() (local) restricts the search with -se
   )
   out <- .blast_against_comparison_set_int(
     "QUERYSEQ", comparison_meta,
-    method = "local", verbose = FALSE
+    method = "local", database = "/some/big/db", verbose = FALSE
   )
   expect_setequal(captured_ids, c("KEEP_A", "KEEP_B"))
+  expect_match(searched_db, "subset$")
   expect_equal(nrow(out), 2L)
   expect_equal(out$accession[out$pident == 99], "KEEP_A")
   # 40% coverage is below the default 0.5 floor
   expect_false(out$meets_min_coverage[out$accession == "KEEP_B.2"])
 })
 
-test_that(".blast_against_comparison_set() (local) falls back to post-hoc filtering when -seqidlist fails", {
+test_that(".blast_against_comparison_set() (local) falls back to post-hoc filtering when the subset database fails", {
   local_mocked_bindings(
-    .blast_local = function(...) stop("No sequences in the list were found"),
+    .local_subset_db = function(...) stop("none of the comparison accessions were found"),
     blast_sequences = function(seq_df, ...) {
       data.frame(
         observation_id = "flagged_query",
@@ -282,6 +288,31 @@ test_that(".blast_against_comparison_set() (local) falls back to post-hoc filter
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$accession, "KEEP_A")
+})
+
+test_that(".local_subset_db() builds a database from what blastdbcmd extracts, despite its exit status", {
+  skip_if(!nzchar(Sys.which("makeblastdb")), "makeblastdb not on PATH")
+  # A stand-in blastdbcmd that extracts one record and exits 1, as the real
+  # one does whenever any requested accession is missing.
+  fake <- tempfile("blastdbcmd")
+  writeLines(c(
+    "#!/bin/bash",
+    "printf '>ACC1.1 test\\nACGTACGTACGTACGTACGTACGTACGT\\n'",
+    "echo 'Error: [blastdbcmd] Skipped MISSING' >&2",
+    "exit 1"
+  ), fake)
+  Sys.chmod(fake, "0755")
+  db <- TaxaMatch:::.local_subset_db("anydb", c("ACC1", "MISSING"), blastdbcmd = fake)
+  on.exit(unlink(dirname(db), recursive = TRUE))
+  expect_true(any(file.exists(paste0(db, c(".nsq", ".nin")))))
+
+  empty <- tempfile("blastdbcmd")
+  writeLines(c("#!/bin/bash", "exit 1"), empty)
+  Sys.chmod(empty, "0755")
+  expect_error(
+    TaxaMatch:::.local_subset_db("anydb", "MISSING", blastdbcmd = empty),
+    "none of the comparison accessions"
+  )
 })
 
 # ------------------------------------------------------------------------------
@@ -369,14 +400,17 @@ test_that(".investigate_verdict() classifies inconclusive-vs-evaluated correctly
 .mock_blast_sequences_iv <- function(seq_df, method = "remote", database = "nt",
                                      score_range = 8, min_score = 70, max_hits = 20L,
                                      resolve_taxonomy = TRUE, ...) {
-  data.frame(
-    observation_id = seq_df$asv_id[1L],
-    accession = c("HIT_CARPIO1", "HIT_SAMEBATCH"),
-    score = c(99.5, 99.8),
-    query_coverage = c(97, 98),
-    species = c("Cyprinus carpio", "Cyprinus carpio"),
-    stringsAsFactors = FALSE
-  )
+  # The same two hits for every query, as one batched search returns them.
+  do.call(rbind, lapply(seq_df$asv_id, function(q) {
+    data.frame(
+      observation_id = q,
+      accession = c("HIT_CARPIO1", "HIT_SAMEBATCH"),
+      score = c(99.5, 99.8),
+      query_coverage = c(97, 98),
+      species = c("Cyprinus carpio", "Cyprinus carpio"),
+      stringsAsFactors = FALSE
+    )
+  }))
 }
 
 # .blast_against_comparison_set()'s own ENTREZ_QUERY-restricted comparison-
@@ -578,6 +612,53 @@ test_that("investigate_flagged_accessions() shares NCBI species searches across 
   # batch, not once per accession (Question 3, item 2).
   expect_equal(sum(search_calls == "Pseudorasbora parva"), 1L)
   expect_equal(sum(search_calls == "Cyprinus carpio"), 1L)
+})
+
+test_that("investigate_flagged_accessions() finds every disagreeing taxon in ONE search", {
+  # Against a local database each blastn call reads the whole database, so
+  # the batch searches all uncached accessions together rather than once each.
+  n_queries <- integer(0L)
+  counting_blast <- function(seq_df, ...) {
+    n_queries <<- c(n_queries, nrow(seq_df))
+    .mock_blast_sequences_iv(seq_df, ...)
+  }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_records_iv,
+    .search_species_accessions = .mock_search_species_accessions,
+    blast_sequences = counting_blast,
+    .blast_remote = .mock_blast_remote_iv,
+    .package = "TaxaMatch"
+  )
+  out <- investigate_flagged_accessions(
+    c("ACC_FLAG", "ACC_FLAG2"),
+    cache_dir = NULL, verbose = FALSE
+  )
+  expect_identical(n_queries, 2L)
+  expect_equal(out$ACC_FLAG$disagreeing_taxon, "Cyprinus carpio")
+  expect_equal(out$ACC_FLAG2$disagreeing_taxon, "Cyprinus carpio")
+})
+
+test_that("investigate_flagged_accessions() searches an accession alone when the batched search failed for it", {
+  n_queries <- integer(0L)
+  flaky_blast <- function(seq_df, ...) {
+    n_queries <<- c(n_queries, nrow(seq_df))
+    out <- .mock_blast_sequences_iv(seq_df, ...)
+    if (nrow(seq_df) > 1L) attr(out, "failed_query_ids") <- "ACC_FLAG2"
+    out
+  }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_records_iv,
+    .search_species_accessions = .mock_search_species_accessions,
+    blast_sequences = flaky_blast,
+    .blast_remote = .mock_blast_remote_iv,
+    .package = "TaxaMatch"
+  )
+  out <- investigate_flagged_accessions(
+    c("ACC_FLAG", "ACC_FLAG2"),
+    cache_dir = NULL, verbose = FALSE
+  )
+  expect_identical(n_queries, c(2L, 1L))
+  expect_equal(out$ACC_FLAG2$disagreeing_taxon, "Cyprinus carpio")
 })
 
 test_that("investigate_flagged_accessions() reuses investigate_flagged_accession()'s own persistent cache", {
