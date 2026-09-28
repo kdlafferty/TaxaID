@@ -1,9 +1,8 @@
 # Handoff: the sample identity gate, v2 (`classify_sample_identity()` + `review_sample_identity()`)
 
-**Status: FOR THE WORKFLOW PEER TO TRY, NOT YET FOR PACKAGE REVIEW.** The user's order is:
-1. the CalIntertidal session tests v2 on the real data and sends feedback;
-2. this session fixes what it finds;
-3. only then does package review get it.
+**Status: READY FOR PACKAGE REVIEW.** The CalIntertidal workflow peer tested v2 on the current
+archive and verified every round-1 fix at c672410. That was the user's condition for sending it to
+package review.
 
 **Where it lives.**
 
@@ -270,6 +269,50 @@ intertidal fishes"`,** 36 tubes:
 - **The judgment that decides the borderline tubes** is the "about 1%" trace threshold in the
   prompt. It is not a computed cut.
 - **Assumption:** that the study's third target group is intertidal fishes.
+
+## Round 2 (peer verification): a deterministic trace threshold was measured and NOT built
+
+**The proposal.** Compute a per-blank target-group share from
+`classify_sampling_group()`/`SCOPE_IN_GROUPS` and pass it in, replacing the prompt's "about 1%"
+prose.
+
+**The peer measured it over 267 control columns, and it does not discriminate:**
+
+| blanks | n | median target share |
+|---|---|---|
+| known clean (S067808) | 6 | 64.6% |
+| known contaminated | 18 | 50.0% |
+| other blanks | 143 | 44.8% |
+
+- The known-clean blank scores higher than the known-contaminated ones.
+- Cuts from 0.5% to 5% condemn about 79% of the "other" blanks.
+
+**The cause** is package-review finding 29. `SCOPE_DEFAULT_BUCKET = "macroinvertebrates"` is a
+member of `SCOPE_IN_GROUPS`, so every unrecognised lineage defaults INTO a target group. The
+Ascomycota in S067808's COI, for example, counted as macroinvertebrates. Blanks are full of fungi
+and unnamed sequences, so the metric is worst exactly where it would be used.
+
+**A basis that does work, if a deterministic cut is ever wanted.**
+
+- **The numerator:** explicit target PHYLA, counting only rows with a RESOLVED genus or species.
+  - macroalgae: Rhodophyta, Ochrophyta, Chlorophyta;
+  - macroinvertebrates: Mollusca, Annelida, Echinodermata, Porifera, Bryozoa, Cnidaria, Nemertea;
+  - fishes: Actinopteri.
+- **The result:**
+  - 18S JVB3735 blanks: macroalgae 3.50%, in 30 of 30 blanks; macroinvertebrates 8.12%, in 30 of
+    30 (Gigartinales, Ulva expansa, Schimmelmannia).
+  - S067808 COI: 0.0% target.
+- **The cut the peer suggests:** about 1% of reads, OR a named target species present in most of
+  a run's blanks. Prevalence across blanks is stronger evidence than any single blank's share.
+
+**Not built.** Keep the prompt's prose rule and `accept_llm_roles = FALSE`. The borderline tubes
+(ZH5KVED1 1.5%, NEMYPCAS 2.5%) are what a wrong metric would decide silently.
+
+**Confirmed:** the study's three target groups are fishes, macroalgae and macroinvertebrates.
+`taxaexpect_priors` partitions entirely into them.
+
+**18S JVB6164:** with its four contaminated blanks excluded, it keeps two admitted controls. That
+is the honest outcome, and the run-level warning says so.
 
 ## Tests
 
