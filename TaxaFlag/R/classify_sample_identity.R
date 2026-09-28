@@ -30,7 +30,7 @@
 #'
 #' @section Status: what was found, and why nothing could be:
 #' \code{identity_status} separates a finding from the absence of one, and
-#' \code{status_reason} names the evidence or the reason:
+#' \code{identity_status_reason} names the evidence or the reason:
 #' \describe{
 #'   \item{\code{concordant}, \code{discordant}, \code{suspect}}{A test ran
 #'     and answered (reason: \code{"composition"}, \code{"diversity"},
@@ -271,7 +271,7 @@
 #' \code{n_libraries_assessable}, \code{composition_power},
 #' \code{library_status}, \code{run_status}, \code{n_markers_flagged},
 #' \code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
-#' \code{status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
+#' \code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
 #' \code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
 #' \code{pending_review}, \code{excluded_library_issue},
 #' \code{admit_as} and \code{admit}. Attribute
@@ -478,7 +478,7 @@ classify_sample_identity <- function(input_df,
   ap <- .sig_appearance(u, diversity_blank_max)
   u$identity_appearance <- ap$appearance
   u$identity_status <- ap$status
-  u$status_reason <- ap$status_reason
+  u$identity_status_reason <- ap$status_reason
   u$issue_type <- ap$issue_type
   u$confidence <- ap$confidence
   u$issue_type[u$identity_status %in% c("concordant", "inconclusive", "untested")] <- NA_character_
@@ -549,7 +549,7 @@ classify_sample_identity <- function(input_df,
   out$identity_label <- u$identity_label[m]
   out$identity_appearance <- u$identity_appearance[m]
   out$identity_status <- u$identity_status[m]
-  out$identity_status_reason <- u$status_reason[m]
+  out$identity_status_reason <- u$identity_status_reason[m]
   out$admit_as <- u$admit_as[m]
   out$admit <- u$admit[m] & (!d$excluded | keep_lib)
 
@@ -573,7 +573,7 @@ classify_sample_identity <- function(input_df,
   # and why, every time -- "no evidence of a problem" is not "checked clean".
   nt <- u$admit & u$identity_status %in% c("untested", "inconclusive")
   if (any(nt)) {
-    why <- table(paste(u$identity_status[nt], u$status_reason[nt], sep = "/"))
+    why <- table(paste(u$identity_status[nt], u$identity_status_reason[nt], sep = "/"))
     message(sprintf(paste0(
       "  admitted WITHOUT a discriminating test: %d unit(s) (%s). This is no evidence ",
       "of a problem, not evidence of none; untested_policy = \"%s\"."),
@@ -608,13 +608,18 @@ classify_sample_identity <- function(input_df,
   n_pend <- sum(u$pending_review)
   if (n_pend && on_pending != "ignore") {
     pu <- u[u$pending_review, , drop = FALSE]
+    # Split by WHY a unit is held: a concordant unit held only because another
+    # marker of its tube was flagged would otherwise read as a gate error.
+    own <- pu[!pu$hold_reason %in% "tube", , drop = FALSE]
+    n_tube <- sum(pu$hold_reason %in% "tube")
     msg <- sprintf(paste0(
-      "%d unit(s) from %d sample(s) do not look like their label, or cannot be assessed, ",
-      "and have no recorded decision. They are NOT admitted. By status: %s. ",
-      "Record a disposition%s, or see attr(, \"review_queue\")."
+      "%d unit(s) from %d sample(s) await an identity decision and are NOT admitted: ",
+      "%d on their own evidence (%s)%s. Record a disposition%s, or see attr(, \"review_queue\")."
     ),
-    n_pend, length(unique(pu$sample)),
-    paste(names(table(pu$identity_status)), table(pu$identity_status), sep = " ", collapse = ", "),
+    n_pend, length(unique(pu$sample)), nrow(own),
+    if (nrow(own)) paste(names(table(own$identity_status)), table(own$identity_status), sep = " ", collapse = ", ") else "none",
+    if (n_tube) sprintf(paste0("; %d held only because another marker of the same tube was flagged ",
+      "(their own status may be concordant)"), n_tube) else "",
     if (!is.null(decisions_path)) paste0(" in ", decisions_path) else ""
     )
     if (on_pending == "error") stop(msg, call. = FALSE)
@@ -803,7 +808,7 @@ classify_sample_identity <- function(input_df,
       x$diversity_n1, x$diversity_ratio, x$marker, x$reference_n1)
     base <- sprintf("%s reads, %d features; %s; %s.",
       format(round(x$depth), big.mark = ",", trim = TRUE), as.integer(x$richness), div, comp)
-    lead <- switch(paste(x$identity_label, x$identity_status, x$status_reason),
+    lead <- switch(paste(x$identity_label, x$identity_status, x$identity_status_reason),
       "blank concordant diversity" = "Looks like a clean blank: diversity well below a typical field sample.",
       "blank concordant composition" = "Looks like a clean blank: composition unlike the run's samples.",
       "blank discordant composition" = "Blank that resembles the field samples it was sequenced with: mislabel or carry-over.",
@@ -989,7 +994,7 @@ classify_sample_identity <- function(input_df,
 .sig_queue_shape <- function(q) {
   cols <- c(
     "sample", "marker", "run", "identity_label", "identity_appearance", "identity_status",
-    "status_reason", "issue_type", "tube_flagged", "hold_reason", "confidence", "n_markers_flagged", "n_markers_assessable", "depth",
+    "identity_status_reason", "issue_type", "tube_flagged", "hold_reason", "confidence", "n_markers_flagged", "n_markers_assessable", "depth",
     "richness", "diversity_n1", "diversity_ratio", "composition_share_other",
     "composition_power", "run_status", "reason", "top_taxa"
   )

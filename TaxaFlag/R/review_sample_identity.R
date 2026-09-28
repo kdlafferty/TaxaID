@@ -62,6 +62,14 @@
 #'   "tap water". A blank is judged acceptable when its contents are
 #'   consistent with its medium or with handling, so this decides many
 #'   verdicts. NULL tells the model the medium is not stated. Default NULL.
+#' @param target_groups Character or NULL. The groups the study's samples are
+#'   meant to measure, e.g. "macroalgae, macroinvertebrates, intertidal
+#'   fishes". A blank holding these at more than a trace is judged
+#'   contaminated even when a plausible medium community is also present: a
+#'   medium explains its own community, never the target signal, and a control
+#'   carrying the target signal makes contamination checks permissive in
+#'   exactly the direction nobody checks. NULL tells the model the groups are
+#'   not stated. Default NULL.
 #' @param context Character. What a blank is in this study and where the
 #'   samples came from, e.g. "Field blanks are distilled water poured through
 #'   a filter at the site. Samples are rocky-intertidal swabs, southern
@@ -118,6 +126,7 @@
 review_sample_identity <- function(identity,
                                    context,
                                    blank_medium = NULL,
+                                   target_groups = NULL,
                                    llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
                                    model_label = NULL,
                                    tubes_per_call = 4L,
@@ -145,6 +154,11 @@ review_sample_identity <- function(identity,
     stop("'blank_medium' must be a single non-empty string, e.g. \"tap water\", or NULL.",
       call. = FALSE)
   }
+  if (!is.null(target_groups) && (!is.character(target_groups) || length(target_groups) != 1L ||
+    is.na(target_groups) || !nzchar(trimws(target_groups)))) {
+    stop("'target_groups' must be a single non-empty string, e.g. ",
+      "\"macroalgae, macroinvertebrates, intertidal fishes\", or NULL.", call. = FALSE)
+  }
   if (!is.function(llm_fn)) stop("'llm_fn' must be a function.", call. = FALSE)
   if (all(is.na(u$top_taxa))) {
     stop("classify_sample_identity() was run without 'taxon_label_col', so there are ",
@@ -167,8 +181,8 @@ review_sample_identity <- function(identity,
   # The reviewer belongs in the key: a disposition is one model's judgement,
   # and the prefix went to v2 when it was added, so entries written before the
   # fix are a miss once. See .review_reviewer_id().
-  ctx_key <- paste("sir-v3", .review_reviewer_id(llm_fn, model_label),
-    trimws(context), trimws(blank_medium %||% ""),
+  ctx_key <- paste("sir-v4", .review_reviewer_id(llm_fn, model_label),
+    trimws(context), trimws(blank_medium %||% ""), trimws(target_groups %||% ""),
     sep = "\u0001"
   )
   keys <- vapply(items, function(it) paste(ctx_key, it, sep = "\u0001"), character(1))
@@ -205,7 +219,7 @@ review_sample_identity <- function(identity,
     batches <- split(todo, ceiling(seq_along(todo) / per))
     for (b in seq_along(batches)) {
       ids <- batches[[b]]
-      prompt <- .sir_build_prompt(items[ids], context, blank_medium)
+      prompt <- .sir_build_prompt(items[ids], context, blank_medium, target_groups)
       label <- sprintf("%d.%d", attempt, b)
       prompts[[label]] <- prompt
       resp <- tryCatch(
@@ -299,15 +313,17 @@ review_sample_identity <- function(identity,
 }
 
 #' @noRd
-.sir_build_prompt <- function(items, context, blank_medium = NULL) {
+.sir_build_prompt <- function(items, context, blank_medium = NULL, target_groups = NULL) {
   medium <- if (is.null(blank_medium)) "not stated" else trimws(blank_medium)
+  targets <- if (is.null(target_groups)) "not stated" else trimws(target_groups)
   paste0(
     "You are reviewing negative controls and field samples in a DNA metabarcoding study, ",
     "before any of them are analysed. Each tube below was held back because its contents ",
     "do not look like its label. Judge, from the taxa, what the tube most plausibly is, and ",
     "how it should be used.\n\n",
     "STUDY CONTEXT: ", trimws(context), "\n",
-    "BLANK MEDIUM (what a blank is filled with): ", medium, "\n\n",
+    "BLANK MEDIUM (what a blank is filled with): ", medium, "\n",
+    "STUDY TARGET GROUPS (what the samples are meant to measure): ", targets, "\n\n",
     "GUIDELINES\n",
     "- A blank is acceptable when its contents are consistent with its MEDIUM or with ",
     "HANDLING. Handling signals: human, common fungi and moulds, reagent contaminants, a ",
@@ -316,6 +332,13 @@ review_sample_identity <- function(identity,
     "(fishes, invertebrates, algae, protists), and tap water varies in cleanliness. Many ",
     "features alone do not make a blank dirty if they are of these kinds (clean_blank, role ",
     "blank).\n",
+    "- A medium explains its OWN community, never the study's target groups. A blank holding ",
+    "taxa of the STUDY TARGET GROUPS at more than a trace (more than a few low-count reads, ",
+    "for example over about 1% of its reads or across many features) is NOT acceptable, even ",
+    "when a plausible medium or handling community is also present: a control carrying the ",
+    "target signal hides contamination of the samples. Judge the target-group share by ",
+    "itself; do not let a medium community dilute it (contaminated_blank, role exclude; or ",
+    "sample_labelled_as_blank if it matches the run's field samples).\n",
     "- A blank is NOT acceptable when it holds a community that neither its medium nor ",
     "handling explains, in particular taxa of the SAMPLED environment. If that community ",
     "matches the run's field samples, suspect a mislabel or carry-over ",

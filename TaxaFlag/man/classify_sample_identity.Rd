@@ -108,7 +108,7 @@ evidence (\code{depth}, \code{richness}, \code{diversity_n1},
 \code{n_libraries_assessable}, \code{composition_power},
 \code{library_status}, \code{run_status}, \code{n_markers_flagged},
 \code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
-\code{status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
+\code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
 \code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
 \code{pending_review}, \code{excluded_library_issue},
 \code{admit_as} and \code{admit}. Attribute
@@ -142,7 +142,7 @@ sample \tab DISCORDANT \tab concordant: admit \tab suspect
 \section{Status}{
  what was found, and why nothing could be:
 \code{identity_status} separates a finding from the absence of one, and
-\code{status_reason} names the evidence or the reason:
+\code{identity_status_reason} names the evidence or the reason:
 \describe{
 \item{\code{concordant}, \code{discordant}, \code{suspect}}{A test ran
 and answered (reason: \code{"composition"}, \code{"diversity"},

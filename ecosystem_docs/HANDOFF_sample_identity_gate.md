@@ -209,10 +209,71 @@ review_sample_identity(gate, context = CONTEXT, blank_medium = "tap water",
   - **The live LLM review on v2:** 22 clean_blank, 5 contaminated_blank, 3
     sample_labelled_as_blank (S067800 high confidence) and 2 valid_sample, of 32 tubes.
 
+## Round 1 of peer feedback (2026-09-28): what changed
+
+1. **Column renamed.** On `attr(, "units")` and the review queue, `status_reason` is now
+   `identity_status_reason`. It pairs with `identity_status` and matches the row output.
+2. **The held-units warning is split by why a unit is held.**
+   - Before, the count read "concordant 49" inside a not-admitted list, which invited the reader
+     to think the gate was wrong.
+   - It now reads: "N on their own evidence (discordant d, suspect s); M held only because
+     another marker of the same tube was flagged".
+3. **New argument: `review_sample_identity(target_groups =)`.** It names the groups the study
+   measures.
+   - **The prompt rule:** a medium explains its own community, never the target groups. A blank
+     holding target-group taxa above a trace (the prompt gives "about 1% of reads, or many
+     features") is contaminated, even when a plausible tap-water community is also present.
+   - `target_groups` is part of the cache key (`sir-v4`).
+   - **Why:** a control carrying the target signal makes `flag_contaminant()` permissive in
+     exactly the direction nobody checks, because "invalid" needs control_rate > field_rate.
+   - **Why "target groups" and not "marine":** it is the operative category, and it generalises
+     to a freshwater study.
+4. **The validation no longer names the failed runs.**
+   - **What happened:** JV repaired 18S JVB6164/JVB6334 at about 16:00 on 2026-09-28 (91x/101x
+     more reads). Those 80 units are now correctly concordant, and `flag_failed_libraries()`
+     finds no failed run.
+   - **The check now keys on the detector's own output:** every unit whose libraries were ALL
+     excluded must be suspect and held. That is 34 units, PASS.
+   - **A durable injected failure:** 18S JVB5058 is thinned to 1% of its reads. Its 20 samples
+     come out suspect/library_failed and are held (PASS). Its 2 blanks come out
+     untested/uncomparable (PASS).
+   - `rl_all.rds` was rebuilt from the current archive. The pre-repair copies are kept as
+     `*_pre_18S_repair.rds`.
+
+**Re-validation on the repaired data.**
+
+- Every check passes.
+- 102 units from 36 samples are held: 49 on their own evidence, 53 by tube.
+- 493 units were admitted without a discriminating test, all `inconclusive/no_power`.
+
+**The four repaired-run 18S blanks the peer flagged** are IJR811PZ, NEMYPCAS, QHI6WAEP and
+ZH5KVED1.
+- They are suspect on diversity (0.53-0.95x the reference) and share nothing with the samples.
+- Their 18S is freshwater tap water: Spumella, cercomonads, Characeae, Juncus.
+- The model, given target groups, found COI macroalgae in three of them (IJR811PZ ~6%, NEMYPCAS
+  ~2.5%, ZH5KVED1 ~1.5%) and called them contaminated.
+
+**Live LLM review with `target_groups = "macroalgae (seaweeds), marine macroinvertebrates,
+intertidal fishes"`,** 36 tubes:
+
+| verdict | tubes |
+|---|---|
+| contaminated_blank | 23 |
+| clean_blank | 7 |
+| sample_labelled_as_blank | 4 (S067800 high confidence) |
+| uncertain | 1 |
+| valid_sample | 1 |
+
+- **Tap water only (before target groups):** 22 clean.
+- **What swung:** 14 JVB3735 blanks moved from clean to contaminated. Each rationale names its
+  target taxa with shares (red and brown macroalgae, sponges, marine plankton).
+- **The judgment that decides the borderline tubes** is the "about 1%" trace threshold in the
+  prompt. It is not a computed cut.
+- **Assumption:** that the study's third target group is intertidal fishes.
+
 ## Tests
 
-- **TaxaFlag:** 870 expectations passed, 0 failed, 0 errors; `check()` 0/0/0 (branch tip,
-  including the transparency message). On the real data that message reads:
+- **TaxaFlag:** 881 expectations passed, 0 failed, 0 errors; `check()` 0/0/0 (branch tip). On the real data that message reads:
   `admitted WITHOUT a discriminating test: 500 unit(s) (inconclusive/no_power 492,
   untested/uncomparable 8)`.
 - **New tests:** `untested_policy`, a no-blanks study, a run without a blank, artifact vs

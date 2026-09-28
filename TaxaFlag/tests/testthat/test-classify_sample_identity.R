@@ -75,7 +75,7 @@ test_that("a blank on a failed run is untested (uncomparable), never concordant"
   res <- .sig_run(d, failed_libraries = ff)
   b <- .unit(res, "CLEAN", "M2")
   expect_equal(b$identity_status, "untested")
-  expect_equal(b$status_reason, "uncomparable")
+  expect_equal(b$identity_status_reason, "uncomparable")
   # admitted by default (no evidence of a problem), held under "hold_blanks"
   expect_true(b$admit)
   held <- .sig_run(d, failed_libraries = ff, untested_policy = "hold_blanks")
@@ -298,7 +298,7 @@ test_that("a study with no labelled blanks is analysed, every unit untested (no_
   expect_true(any(grepl("No labelled controls", w)))
   u <- attr(res, "units")
   expect_true(all(u$identity_status == "untested"))
-  expect_true(all(u$status_reason == "no_blanks"))
+  expect_true(all(u$identity_status_reason == "no_blanks"))
   expect_true(all(u$admit))
   expect_true(all(res$admit))
 })
@@ -309,7 +309,7 @@ test_that("a run with no blank leaves its samples untested, not concordant", {
   res <- .sig_run(d, blanks = c("MISLABEL", "PLANKTON"))
   s11 <- .unit(res, "S11", "M1")
   expect_equal(s11$identity_status, "untested")
-  expect_equal(s11$status_reason, "no_blanks")
+  expect_equal(s11$identity_status_reason, "no_blanks")
   expect_true(s11$admit)
 })
 
@@ -357,4 +357,22 @@ test_that("accept_llm_roles admits on llm_role where no person has decided", {
   p <- on[on$sample == "PLANKTON", ]
   expect_false(any(p$admit))
   expect_equal(unique(p$disposition_source), "user")
+})
+
+test_that("the pending warning separates tube holds from a unit's own evidence", {
+  w <- capture_warnings(res <- classify_sample_identity(.sig_fixture(),
+    control_samples = c("CLEAN", "MISLABEL", "PLANKTON"), taxon_label_col = "species",
+    verbose = FALSE))
+  u <- attr(res, "units")
+  expect_true("identity_status_reason" %in% names(u))
+  expect_false("status_reason" %in% names(u))
+  expect_true("identity_status_reason" %in% names(attr(res, "review_queue")))
+  pw <- grep("await an identity decision", w, value = TRUE)
+  expect_true(any(u$pending_review))
+  if (any(u$pending_review)) {
+    expect_length(pw, 1L)
+    expect_match(pw, sprintf("%d on their own evidence", sum(u$pending_review & !u$hold_reason %in% "tube")))
+    if (any(u$pending_review & u$hold_reason %in% "tube"))
+      expect_match(pw, "held only because another marker of the same tube was flagged")
+  }
 })

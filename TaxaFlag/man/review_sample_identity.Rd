@@ -8,6 +8,7 @@ review_sample_identity(
   identity,
   context,
   blank_medium = NULL,
+  target_groups = NULL,
   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
   model_label = NULL,
   tubes_per_call = 4L,
@@ -33,6 +34,15 @@ is silent.}
 "tap water". A blank is judged acceptable when its contents are
 consistent with its medium or with handling, so this decides many
 verdicts. NULL tells the model the medium is not stated. Default NULL.}
+
+\item{target_groups}{Character or NULL. The groups the study's samples are
+meant to measure, e.g. "macroalgae, macroinvertebrates, intertidal
+fishes". A blank holding these at more than a trace is judged
+contaminated even when a plausible medium community is also present: a
+medium explains its own community, never the target signal, and a control
+carrying the target signal makes contamination checks permissive in
+exactly the direction nobody checks. NULL tells the model the groups are
+not stated. Default NULL.}
 
 \item{llm_fn}{Function taking a prompt string (and optionally
 \code{max_tokens}) and returning the model's text. Default
