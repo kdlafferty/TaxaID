@@ -18,11 +18,14 @@ the reasoning recorded for a future dedicated session).
 |---|---|---|---|
 | `check_cross_genus_sampling_noise()` | `R/build_sequence.R` | How Much Does the Random Cross-Genus Draw Move the Estimate? | test-build.R |
 | `taxalikely_clear_cache()` | `R/taxalikely_clear_cache.R` | Report and clear TaxaLikely's on-disk cache | test-fetch-cache-eviction.R, test-taxalikely_clear_cache.R |
+| `estimate_sequence_matrix_size()` | `R/matrix_size.R` | Predict the memory a sequence matrix will need, for a grid of caps | test-matrix-size.R |
 
-26 new internal helper functions have also been added since the review (mostly in
-`fetch.R`'s reference-cache internals and `bimodality.R`; 3 of the 26 are
+43 new internal helper functions have also been added since the review (mostly in
+`fetch.R`'s reference-cache internals, `bimodality.R` and `matrix_size.R`; 3 of the 43 are
 `.resolve_taxa_taxids()`/`.compute_lineage_disagreements()`/`.lineage_terms_for_group()`,
-see "Behavior changes to already-reviewed functions" below).
+and 17 support `estimate_sequence_matrix_size()`, the fetch's dry run and the
+memory check in `build_sequence_matrix()`; see "Behavior changes to
+already-reviewed functions" below).
 
 Not counted as new: `suggest_unreferenced_species()` (`R/suggest_unreferenced_species.R`)
 and its internal helpers were moved here from TaxaAssign, where the same code was already
@@ -976,3 +979,37 @@ on functions this document already covers above.
   (a far rarer collision risk than bare genus names) and would roughly
   double NCBI query volume per candidate; recorded as a deliberate scope
   decision, not an oversight.
+- `fetch_ncbi_reference_sequences()` gains `dry_run` (default `FALSE`).
+  `TRUE` stops after the metadata step, before any sequence is downloaded,
+  and returns the per-taxon counts, the uncapped sequence table, and the
+  memory the sequence matrix would need for a grid of `max_per_species` x
+  `max_per_genus` values (sequences kept, species removed by name, predicted
+  GB, available memory), from `estimate_sequence_matrix_size()`.
+- The per-taxon reference cache now holds uncapped metadata, and
+  `max_per_species`/`max_per_genus` are applied once, after the reference is
+  assembled and deduplicated, instead of per queried taxon before caching.
+  Changing a cap therefore re-uses the cached metadata and downloads only
+  sequences not already in the FASTA store; a dry run followed by the real run
+  makes no more NCBI requests than the real run alone. A cache file written
+  under a cap holds only a sample and is re-fetched once; files recorded with
+  both caps `NULL` are served as they are, so an explicit
+  `max_per_genus = NULL` no longer protects a cache. The caps choose rows by a
+  fixed pseudo-random key derived from each accession instead of
+  `slice_sample()`, so a call keeps the same sequences every time and a
+  smaller cap keeps a subset of what a larger one kept. Priority species stay
+  exempt from both caps.
+- `build_sequence_matrix()` gains `memory_budget_fraction` (default `0.7`;
+  `NULL` skips the check). Before aligning, it predicts the peak memory
+  through `train_likelihood_model()` from the exact pair structure of the
+  reference set and compares it with that fraction of the memory currently
+  available (macOS, Linux and Windows; elsewhere skipped with a message).
+  When even the largest possible table fits, the check costs nothing;
+  otherwise a small alignment of up to 200 genus representatives, chosen
+  without the RNG so the build itself is unchanged, measures this set's
+  cross-genus retention, and the function stops before aligning if the
+  prediction still does not fit, naming `max_per_species`/`max_per_genus`
+  values for the fetch that would.
+- `build_sequence_matrix()`'s result carries a `size_calibration` attribute:
+  the pairs the build could have produced (within and across genera) and the
+  pairs it kept. Passed to `estimate_sequence_matrix_size(calibration = )`, it
+  replaces the default retention rates with measured ones.

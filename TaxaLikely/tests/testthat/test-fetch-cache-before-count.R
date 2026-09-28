@@ -15,17 +15,16 @@
 # will compute for these arguments. If the key format ever changes, these
 # tests fail loudly rather than silently testing a cache miss.
 #
-# Records sel_params matching fetch_ncbi_reference_sequences()'s own
-# defaults by default, so a plain write_cached_taxon() call produces a
-# genuinely CURRENT cache file -- most tests below are about the
+# Records the sel_params every current cache file carries -- uncapped, under
+# the default blacklist -- so a plain write_cached_taxon() call produces a
+# genuinely CURRENT cache file: most tests below are about the
 # cache-before-count short-circuit, not about sel_params verification, and
 # must not accidentally exercise a cache-miss path. Pass
 # `sel_params = NULL` for a test that specifically wants an unversioned
 # (pre-1.0-shaped) file.
 write_cached_taxon <- function(cache_dir, taxon, accs,
                                sel_params = TaxaLikely:::.sel_params(
-                                 eval(formals(TaxaLikely::fetch_ncbi_reference_sequences)$max_per_species),
-                                 eval(formals(TaxaLikely::fetch_ncbi_reference_sequences)$max_per_genus),
+                                 NULL, NULL,
                                  paste0(
                                    "uncultured|environmental|predicted|",
                                    "vector|synthetic|unverified"
@@ -238,10 +237,12 @@ test_that("count_failures still names a taxon that was neither cached nor counte
 
 # --- Selection parameters are verified, not assumed -------------------------
 # The cache KEY captures what gets fetched; these tests cover what gets KEPT.
-# The cached object is written post-blacklist and post-slice_sample(), so a
-# cache built at max_per_species = 10 must not be served to a call asking for
-# 50. Stored inside the object rather than added to the key, because widening
-# the key would orphan every existing cache file at once.
+# A current cache file is written post-blacklist but UNCAPPED: the caps are
+# applied after assembly, so one file serves every cap. A file written under
+# a cap holds only a sample, so it must not be served to any call -- not even
+# one asking for the same cap, since the file cannot say which sample it
+# holds. Stored inside the object rather than added to the key, because
+# widening the key would orphan every existing cache file at once.
 
 test_that("a cache built under different max_per_species is rejected", {
   skip_if_not_installed("rentrez")
@@ -275,7 +276,7 @@ test_that("a cache built under different max_per_species is rejected", {
   expect_true(any(grepl("Sebastes", searched)))
 })
 
-test_that("a cache built under the SAME selection settings is reused", {
+test_that("a cache built under a cap is re-fetched even for the same cap", {
   skip_if_not_installed("rentrez")
 
   cache_dir <- tempfile("tl_sel_")
@@ -303,6 +304,36 @@ test_that("a cache built under the SAME selection settings is reused", {
     max_per_species = 10L, max_per_genus = NULL, blacklist_regex = "uncultured"
   ))
 
+  expect_true(any(grepl("Sebastes", searched)))
+})
+
+test_that("an uncapped cache serves every cap without a query", {
+  skip_if_not_installed("rentrez")
+
+  cache_dir <- tempfile("tl_sel_")
+  f <- write_cached_taxon(cache_dir, "Sebastes", c("AB000001.1"))
+  meta <- readRDS(f)
+  attr(meta, "sel_params") <- TaxaLikely:::.sel_params(NULL, NULL, "uncultured")
+  saveRDS(meta, f)
+
+  searched <- character(0)
+  testthat::local_mocked_bindings(
+    entrez_search = function(db, term, retmax, ...) {
+      searched <<- c(searched, term)
+      list(count = "0")
+    },
+    entrez_fetch = function(db, id, rettype, retmode, ...) fake_fasta(id),
+    .package = "rentrez"
+  )
+
+  for (caps in list(list(NULL, NULL), list(10L, NULL), list(2L, 500L))) {
+    suppressMessages(fetch_ncbi_reference_sequences(
+      taxa = "Sebastes", barcode_term = "12S",
+      min_len = 100L, max_len = 5000L, cache_dir = cache_dir,
+      max_per_species = caps[[1]], max_per_genus = caps[[2]],
+      blacklist_regex = "uncultured"
+    ))
+  }
   expect_length(searched, 0L)
 })
 
