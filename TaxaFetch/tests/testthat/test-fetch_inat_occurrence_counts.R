@@ -1,9 +1,9 @@
-# test-fetch_inat_occurrences.R
-# Tests for fetch_inat_occurrences() and its internal helper.
+# test-fetch_inat_occurrence_counts.R
+# Tests for fetch_inat_occurrence_counts() and its internal helper.
 #
 # Strategy (mirrors test-check_inat_range.R):
 #   - Input validation: no HTTP calls needed.
-#   - fetch_inat_occurrences() outcomes: mock .inat_taxon_id() (already
+#   - fetch_inat_occurrence_counts() outcomes: mock .inat_taxon_id() (already
 #     covered directly by test-check_inat_range.R) and .inat_observation_count().
 #   - .inat_observation_count(): mock httr::GET / httr::status_code / httr::content.
 
@@ -29,35 +29,35 @@ library(testthat)
 
 test_that("stops when api_token is empty string", {
   expect_error(
-    fetch_inat_occurrences("Felis catus", lat = 34.1, lng = -119.1, api_token = ""),
+    fetch_inat_occurrence_counts("Felis catus", lat = 34.1, lng = -119.1, api_token = ""),
     regexp = "INAT_API_TOKEN"
   )
 })
 
 test_that("stops when lat is non-numeric", {
   expect_error(
-    fetch_inat_occurrences("Felis catus", lat = "34.1", lng = -119.1, api_token = "tok"),
+    fetch_inat_occurrence_counts("Felis catus", lat = "34.1", lng = -119.1, api_token = "tok"),
     regexp = "lat"
   )
 })
 
 test_that("stops when lng is NA", {
   expect_error(
-    fetch_inat_occurrences("Felis catus", lat = 34.1, lng = NA_real_, api_token = "tok"),
+    fetch_inat_occurrence_counts("Felis catus", lat = 34.1, lng = NA_real_, api_token = "tok"),
     regexp = "lng"
   )
 })
 
 test_that("stops when radius_km is not positive", {
   expect_error(
-    fetch_inat_occurrences("Felis catus", lat = 34.1, lng = -119.1, radius_km = 0, api_token = "tok"),
+    fetch_inat_occurrence_counts("Felis catus", lat = 34.1, lng = -119.1, radius_km = 0, api_token = "tok"),
     regexp = "radius_km"
   )
 })
 
 test_that("match.arg errors on an invalid captive value", {
   expect_error(
-    fetch_inat_occurrences("Felis catus", lat = 34.1, lng = -119.1, captive = "bogus", api_token = "tok")
+    fetch_inat_occurrence_counts("Felis catus", lat = 34.1, lng = -119.1, captive = "bogus", api_token = "tok")
   )
 })
 
@@ -70,7 +70,7 @@ test_that("returns a tibble with the correct nine columns", {
     .inat_taxon_id = function(...) .not_found_taxon,
     .package = "TaxaFetch"
   )
-  out <- fetch_inat_occurrences("Unknown taxon", lat = 34.1, lng = -119.1, api_token = "tok")
+  out <- fetch_inat_occurrence_counts("Unknown taxon", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_s3_class(out, "tbl_df")
   expect_named(out, c(
     "taxon_name", "taxon_id", "matched_name", "inat_kingdom",
@@ -85,7 +85,7 @@ test_that("inat_kingdom reflects iconic_taxon_name for a found taxon", {
     .inat_observation_count = function(...) 5L,
     .package = "TaxaFetch"
   )
-  out <- fetch_inat_occurrences("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
+  out <- fetch_inat_occurrence_counts("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_equal(out$inat_kingdom, "Animalia")
 })
 
@@ -94,7 +94,7 @@ test_that("inat_kingdom is NA for taxon_not_found rows", {
     .inat_taxon_id = function(...) .not_found_taxon,
     .package = "TaxaFetch"
   )
-  out <- fetch_inat_occurrences("Unknown taxon", lat = 34.1, lng = -119.1, api_token = "tok")
+  out <- fetch_inat_occurrence_counts("Unknown taxon", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_true(is.na(out$inat_kingdom))
 })
 
@@ -103,7 +103,7 @@ test_that("taxon_not_found: correct status and NA count", {
     .inat_taxon_id = function(...) .not_found_taxon,
     .package = "TaxaFetch"
   )
-  out <- fetch_inat_occurrences("Definitely notaspecies", lat = 34.1, lng = -119.1, api_token = "tok")
+  out <- fetch_inat_occurrence_counts("Definitely notaspecies", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_equal(out$query_status, "taxon_not_found")
   expect_true(is.na(out$n_observations_local))
   expect_true(is.na(out$taxon_id))
@@ -115,7 +115,7 @@ test_that("ok: real count is returned and query_status is ok", {
     .inat_observation_count = function(...) 42L,
     .package = "TaxaFetch"
   )
-  out <- fetch_inat_occurrences("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
+  out <- fetch_inat_occurrence_counts("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_equal(out$n_observations_local, 42L)
   expect_equal(out$query_status, "ok")
   expect_equal(out$taxon_id, 3855L)
@@ -127,7 +127,7 @@ test_that("request_failed: NA count maps to request_failed status", {
     .inat_observation_count = function(...) NA_integer_,
     .package = "TaxaFetch"
   )
-  out <- fetch_inat_occurrences("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
+  out <- fetch_inat_occurrence_counts("Calidris mauri", lat = 34.1, lng = -119.1, api_token = "tok")
   expect_true(is.na(out$n_observations_local))
   expect_equal(out$query_status, "request_failed")
 })
@@ -138,7 +138,7 @@ test_that("captive and quality_grade filters are recorded on output", {
     .inat_observation_count = function(...) 5L,
     .package = "TaxaFetch"
   )
-  out <- fetch_inat_occurrences("Calidris mauri",
+  out <- fetch_inat_occurrence_counts("Calidris mauri",
     lat = 34.1, lng = -119.1,
     captive = "true", quality_grade = "casual",
     api_token = "tok"
@@ -158,7 +158,7 @@ test_that("returns one row per input taxon name, mixed outcomes", {
     .inat_observation_count = function(...) 7L,
     .package = "TaxaFetch"
   )
-  out <- fetch_inat_occurrences(c("Taxon a", "Unknown", "Taxon c"),
+  out <- fetch_inat_occurrence_counts(c("Taxon a", "Unknown", "Taxon c"),
     lat = 0, lng = 0, api_token = "tok"
   )
   expect_equal(nrow(out), 3L)
@@ -171,7 +171,7 @@ test_that("verbose emits progress messages", {
     .package = "TaxaFetch"
   )
   expect_message(
-    fetch_inat_occurrences(c("Foo bar", "Baz qux"),
+    fetch_inat_occurrence_counts(c("Foo bar", "Baz qux"),
       lat = 0, lng = 0,
       api_token = "tok", verbose = TRUE
     ),
@@ -331,7 +331,7 @@ test_that(".inat_observation_count: a 401 is never retried", {
   expect_equal(call_count, 1L)
 })
 
-test_that("fetch_inat_occurrences: retry_attempts/retry_wait are forwarded to .inat_observation_count", {
+test_that("fetch_inat_occurrence_counts: retry_attempts/retry_wait are forwarded to .inat_observation_count", {
   captured <- new.env()
   local_mocked_bindings(
     .inat_taxon_id = function(...) .found_taxon,
@@ -342,7 +342,7 @@ test_that("fetch_inat_occurrences: retry_attempts/retry_wait are forwarded to .i
     },
     .package = "TaxaFetch"
   )
-  fetch_inat_occurrences(
+  fetch_inat_occurrence_counts(
     "Calidris mauri",
     lat = 34.1, lng = -119.1, api_token = "tok",
     retry_attempts = 2L, retry_wait = c(1, 2)

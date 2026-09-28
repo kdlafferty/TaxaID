@@ -370,7 +370,7 @@ pipeline. No code change.
 
 **Fixed:**
 - Strengthened `.fetch_inat_points()`'s own internal documentation to state directly,
-  not just imply, why it isn't reusing `TaxaFetch::fetch_inat_occurrences()` (see
+  not just imply, why it isn't reusing `TaxaFetch::fetch_inat_occurrence_counts()` (see
   "Considered and declined" below for the substance) -- verified against that function's
   real source before writing the explanation, not assumed.
 - Added a documentation note explaining the real "Felis catus tile shown several km out
@@ -412,14 +412,14 @@ pipeline. No code change.
   only practical way to unit-test the gadget's reactive logic at all.
 - "Not sure I understand why `.fetch_inat_points` reproduces functionality from
   `TaxaFetch`, defining functionality one time is the whole reason to have packages to
-  begin with.": checked directly against `TaxaFetch::fetch_inat_occurrences()`'s real
+  begin with.": checked directly against `TaxaFetch::fetch_inat_occurrence_counts()`'s real
   source before responding, not assumed. The two are NOT interchangeable:
-  `fetch_inat_occurrences()` returns exactly one COUNT per taxon (`n_observations_local`,
+  `fetch_inat_occurrence_counts()` returns exactly one COUNT per taxon (`n_observations_local`,
   fetched via `per_page = 1`, reading only iNaturalist's `total_results` field) -- it
   never returns the individual observation records themselves, so it structurally cannot
   supply what this gadget's map layer needs (each observation's own lat/lon for
   plotting). Building that would mean adding a new, different-purpose (count vs. points)
-  code path to `TaxaFetch::fetch_inat_occurrences()` for a single caller, or maintaining
+  code path to `TaxaFetch::fetch_inat_occurrence_counts()` for a single caller, or maintaining
   a hard `TaxaFetch` dependency for what amounts to one HTTP GET this file already knows
   needs no authentication. Kept as a small, self-contained internal helper; strengthened
   the documentation (see Fixed above) so the distinction is explicit rather than left to
@@ -473,7 +473,7 @@ pipeline. No code change.
 | Real duplication removed | 3 (`flag_contaminant.R`'s manual `data.frame()` rebuild; `review_assignments.R`'s `make_default()`-vs-`missing_rows` duplication; `.safe_col()`'s implicit-scope dependency) |
 | Documentation-only additions closing a real gap | 4 (`handler_taxa` domestic-animal example; `llm_fn` provider-auto-detection footgun pointer; GBIF-tile binning-offset explanation; GBIF-tile opacity decision history) |
 | Items verified already correct via live re-testing (not just re-reading source) | 2 (`flag_handler()`'s `interval_minutes`/reason-string interaction; `.dilate8()`'s corner-replacement behaviour) |
-| Items considered and declined, with reasoning recorded above | ~15 (repeated "require specific column names" across 7 files, treated once as a package-wide design note; `.compute_contaminant_scores`/`.build_candidate_label` separation; `.review_spatial_context_impl` split; `.fetch_inat_points` vs. `TaxaFetch::fetch_inat_occurrences()`; dev-history-in-roxygen convention; several already-self-documenting design questions) |
+| Items considered and declined, with reasoning recorded above | ~15 (repeated "require specific column names" across 7 files, treated once as a package-wide design note; `.compute_contaminant_scores`/`.build_candidate_label` separation; `.review_spatial_context_impl` split; `.fetch_inat_points` vs. `TaxaFetch::fetch_inat_occurrence_counts()`; dev-history-in-roxygen convention; several already-self-documenting design questions) |
 
 All fixes verified against the full test suite and `R CMD check` (which also executes
 every roxygen `@examples` block, including the four newly-runnable ones) after the full

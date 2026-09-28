@@ -210,6 +210,17 @@ Prior estimation:
 
 -   `estimate_kernel_priors()`: site-centered kernel estimation of
     `kernel_estimated` priors (no grid, no model fit)
+-   `estimate_kernel_priors_from_counts()`: the same estimator and the
+    same prior object from GBIF record counts in distance bands
+    (`TaxaFetch::fetch_gbif_occurrence_counts()`) instead of records --
+    the counts path, for pools too large to download; point records
+    from other sources join the fit via `extra_occurrences`. No
+    record-level habitat, covariate kernel or bandwidth calibration.
+    One site per call: the bands are centred on a single site, so each
+    site needs its own count fetch and fit; the records path downloads a
+    polygon once and serves every site inside it
+    (`estimate_kernel_priors()` per site,
+    `TaxaAssign::combine_multisite_priors()` across them)
 -   `generate_undetected_diversity()`: singleton-mirror and global-floor
     `resident_undetected` priors from a kernel fit
 -   `generate_presence_curve_evidence()` /

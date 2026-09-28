@@ -163,19 +163,19 @@ gbif_year_range_default
 
 # ==============================================================================
 # SECTION 4 -- iNaturalist local-observation-count pipeline
-# R/fetch_inat_occurrences.R
+# R/fetch_inat_occurrence_counts.R
 # ==============================================================================
 
 ## ---- .inat_observation_count() ---- NETWORK+AUTH ----------------------------
 # Requires INAT_API_TOKEN in ~/.Renviron (also required by fetch_inat_
 # occurrences() itself, below). This is the single-taxon count query against
 # iNaturalist's real /v1/observations search endpoint -- exercised directly
-# here rather than only indirectly through fetch_inat_occurrences(), so a
+# here rather than only indirectly through fetch_inat_occurrence_counts(), so a
 # reviewer can see its own NA-handling (non-200 status, missing
 # total_results, 401) is reachable, not just its happy path.
 #
 # taxon_id resolved live via .inat_taxon_id() (check_inat_range.R, same
-# package -- fetch_inat_occurrences() reuses it too, see its own roxygen)
+# package -- fetch_inat_occurrence_counts() reuses it too, see its own roxygen)
 # for the same real species used in review_function_inputs.R's
 # check_inat_range() section (western sandpiper).
 inat_token_for_count <- Sys.getenv("INAT_API_TOKEN")
@@ -193,13 +193,13 @@ n_local_sandpiper <- TaxaFetch:::.inat_observation_count(
 )
 n_local_sandpiper
 
-## ---- fetch_inat_occurrences() ---- NETWORK+AUTH, EXPORTED -------------------
+## ---- fetch_inat_occurrence_counts() ---- NETWORK+AUTH, EXPORTED -------------------
 # Requires INAT_API_TOKEN in ~/.Renviron. Real species/point from this
 # function's own roxygen @examples (a domestic/commensal species, the
 # motivating use case: standard GBIF-style indexing under-counts exactly
 # these captive/cultivated organisms, which quality_grade = "any"/
 # captive = "any" here deliberately surfaces).
-inat_occ_result <- fetch_inat_occurrences(
+inat_occ_result <- fetch_inat_occurrence_counts(
   taxon_names   = c("Felis catus", "Calidris mauri"),
   lat           = 34.41,
   lng           = -119.86,

@@ -24,7 +24,9 @@ from 565/565 before this session). `devtools::check()`: **0 errors, 0 warnings, 
 |---|---|---|---|
 | `check_geographic_outliers()` | `R/check_geographic_outliers.R` | Flag Geographically Isolated Occurrence Records Against a Species' Global Range | test-check_geographic_outliers.R, test-download_gbif_occurrences.R |
 | `dedupe_occurrences()` | `R/dedupe_occurrences.R` | Remove Duplicate Occurrence Records | test-dedupe_occurrences.R, test-stack_occurrences.R |
-| `fetch_inat_occurrences()` | `R/fetch_inat_occurrences.R` | Fetch local iNaturalist observation counts, including casual-grade records | test-fetch_inat_occurrences.R |
+| `plan_gbif_fetch()` | `R/plan_gbif_fetch.R` | Size a GBIF pull with count-only requests and price the records path vs the counts path | test-fetch_gbif_occurrence_counts.R |
+| `fetch_gbif_occurrence_counts()` | `R/fetch_gbif_occurrence_counts.R` | Species-level GBIF record counts in distance bands around a site, without downloading records | test-fetch_gbif_occurrence_counts.R |
+| `fetch_inat_occurrence_counts()` | `R/fetch_inat_occurrence_counts.R` | Fetch local iNaturalist observation counts, including casual-grade records | test-fetch_inat_occurrence_counts.R |
 | `taxafetch_clear_cache()` | `R/taxafetch_clear_cache.R` | Report and clear TaxaFetch's on-disk cache | test-gbif-geometry-key-collision.R, test-taxafetch_clear_cache.R |
 
 17 new internal helper functions have also been added since the review (mostly in
@@ -175,7 +177,7 @@ gap that made this question urgent is fixed regardless.
 - **`Sys.sleep(0.3)` always fires -- answered, not changed.** This is a deliberate,
   unconditional per-API-call rate limiter inside `.inat_taxon_id()`, which is called once per
   taxon inside `check_inat_range()`'s loop -- exactly where a rate limiter belongs. It's also
-  shared by `fetch_inat_occurrences()` (a newer file, added after this review was written;
+  shared by `fetch_inat_occurrence_counts()` (a newer file, added after this review was written;
   see the note on files not covered by this review below), so the sleep protects both
   callers, not just this one. Minor, accepted inefficiency: the very last taxon in a loop
   still sleeps needlessly after its own final call (no more calls follow) -- not worth adding
@@ -200,7 +202,7 @@ gap that made this question urgent is fixed regardless.
   data, per the reviewer's explicit suggestion.
 - **`httr2` here vs. `httr` in `check_inat_range.R` -- design question, flagged, not
   changed.** Real inconsistency, confirmed: DataONE-pipeline files use `httr2`;
-  `check_inat_range.R`/`fetch_inat_occurrences.R` use `httr`. Migrating the iNaturalist
+  `check_inat_range.R`/`fetch_inat_occurrence_counts.R` use `httr`. Migrating the iNaturalist
   functions to `httr2` is a real, bounded refactor (two files, both already have real test
   coverage to verify against) but touches working, well-tested request/response/error-handling
   code for a style-consistency win only -- flagged as a good candidate for a dedicated small
@@ -781,7 +783,7 @@ gap that made this question urgent is fixed regardless.
 
 ### Files not covered by this review
 
-`check_geographic_outliers.R`, `dedupe_occurrences.R`, and `fetch_inat_occurrences.R` are
+`check_geographic_outliers.R`, `dedupe_occurrences.R`, and `fetch_inat_occurrence_counts.R` are
 not in `taxafetch_review.Rmd`'s file list at all -- all three postdate the review (added
 2026-07-20 through 2026-07-24). `check_geographic_outliers.R` did receive one incidental fix
 this session (its `year_range` default, part of the five-function dynamic-default fix
@@ -865,6 +867,8 @@ New test files (previously zero coverage): `test-dataone_occurrence_search.R`,
 
 Not new functions (see "Added after the review" near the top for those) -- new behavior
 on functions this document already covers above.
+
+- `fetch_inat_occurrences()` is now `fetch_inat_occurrence_counts()`: it returns one observation COUNT per taxon within a radius, never records, and the name now says so and pairs with `fetch_gbif_occurrence_counts()`. Arguments and output are unchanged.
 
 - `download_gbif_occurrences()` records the full search geometry in its cached
   metadata and verifies it on read. Previously only the geometry's character

@@ -32,6 +32,7 @@ isolated unit tests.
 | `apply_undetected_evidence()` | `R/apply_undetected_evidence.R` | Elevate the dark-diversity floor prior for species with external occurrence-plausibility evidence | test-apply_undetected_evidence.R, test-condition_evidence_on_habitat.R, test-estimate_kernel_priors.R, test-generate_inat_range_evidence.R, test-generate_presence_curve_evidence.R, test-generate_uncertain_habitat_evidence.R |
 | `calibrate_kernel_bandwidth()` | `R/calibrate_kernel_bandwidth.R` | Calibrate kernel bandwidths by leave-one-block-out composition prediction | test-calibrate_kernel_bandwidth_groups.R, test-estimate_kernel_priors.R |
 | `condition_evidence_on_habitat()` | `R/condition_evidence_on_habitat.R` | Condition Presence Evidence on the Site Habitat | test-condition_evidence_on_habitat.R |
+| `estimate_kernel_priors_from_counts()` | `R/estimate_kernel_priors_from_counts.R` | Kernel priors from GBIF band counts, returning the same object as `estimate_kernel_priors()` | test-estimate_kernel_priors_from_counts.R |
 | `estimate_kernel_priors()` | `R/estimate_kernel_priors.R` | Estimate site priors by distance-kernel weighting of occurrence records | test-apply_undetected_evidence.R, test-estimate_kernel_priors.R, test-generate_presence_curve_evidence.R, test-generate_uncertain_habitat_evidence.R, test-generate_undetected_diversity.R, test-kernel_budget_sensitivity.R, test-plot_theta_surface.R |
 | `fit_regional_presence_curve()` | `R/fit_regional_presence_curve.R` | Fit a distance-to-presence curve for regional-proximity weights | test-fit_regional_presence_curve.R |
 | `generate_inat_range_evidence()` | `R/generate_inat_range_evidence.R` | Evidence rows for species inside their iNaturalist range polygon | test-generate_inat_range_evidence.R |
@@ -359,7 +360,7 @@ kept alive for was never actually load-bearing.
 
 **Considered and declined (with reasoning):**
 - **Example not runnable**: left `\dontrun{}` -- requires a real `biofreq_model` and live
-  `TaxaFetch::fetch_inat_occurrences()` calls (a real external API), which cannot be made
+  `TaxaFetch::fetch_inat_occurrence_counts()` calls (a real external API), which cannot be made
   both deterministic and meaningful in a package example.
 
 ### `generate_full_priors.R`
@@ -716,6 +717,8 @@ errors, 0 warnings, 0 notes. Reinstalled to `~/Library/R/4.0/library`.
 
 Not new functions (see "Added after the review" near the top for those) -- new behavior
 on functions this document already covers above.
+
+- `estimate_kernel_priors()` gains `count_col`: a row of count n is exactly n identical one-record rows (every sum is count-weighted), so aggregated inputs reuse the estimator. `NULL` (default) is unchanged. Tested by expanded-vs-aggregated equality in test-estimate_kernel_priors.R.
 
 - `generate_domestic_food_priors()`'s internal `.norm_kingdom()` returns `NA`
   for superkingdom-level values, so `Eukaryota`, `Bacteria` and `Archaea` no

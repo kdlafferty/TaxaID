@@ -25,11 +25,12 @@ downstream habitat assignment (TaxaHabitat) and prior estimation
 | Source | Function | What it provides |
 |------------------------|------------------------|------------------------|
 | GBIF | `fetch_gbif_occurrences()` | Global occurrence records via download API |
+| GBIF | `fetch_gbif_occurrence_counts()` | Per-species record counts in distance bands around a site, without downloading records |
 | DataONE | `fetch_dataone_occurrences()` | Ecological datasets from DataONE repositories |
 | BioTIME | `read_biotime_study()` | Time-series biodiversity data |
 | Literature | `search_literature()` | OpenAlex (operated by OurResearch, a nonprofit organization) scholarly search + PDF download |
 | PDFs | `extract_pdf_text()` | Extract occurrence data from published PDFs |
-| iNaturalist | `fetch_inat_occurrences()`, `check_inat_range()` | Local observation counts and known-range checks via the iNaturalist API |
+| iNaturalist | `fetch_inat_occurrence_counts()`, `check_inat_range()` | Local observation counts and known-range checks via the iNaturalist API |
 
 ## Installation
 
@@ -77,6 +78,13 @@ GBIF pipeline:
     `download_gbif_occurrences()` (large queries) based on the number of
     keys, and standardizes both paths to one column contract
 -   `filter_gbif_quality()`: remove low-quality records
+-   `plan_gbif_fetch()`: size the pull with a few count-only requests
+    and price the records path (download every record) against the
+    counts path (`fetch_gbif_occurrence_counts()`, feeding
+    `TaxaExpect::estimate_kernel_priors_from_counts()`); cost grows with
+    records on the first and with species on the second. The counts
+    path is priced for one site; a multi-site study should compare one
+    records download against as many count fetches as it has sites
 
 DataONE pipeline:
 

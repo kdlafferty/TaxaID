@@ -141,6 +141,15 @@
 #'   very different detection probabilities. With more than one group the
 #'   pooled scalars are `NA` by design and `$budget` is authoritative -- a
 #'   single number would be silently wrong.
+#' @param count_col Optional character. Name of a non-negative numeric
+#'   column giving how many records each row stands for. `NULL` (default):
+#'   every row is one record. With a count column, a row of count `n` is
+#'   exactly equivalent to `n` identical one-record rows -- every sum
+#'   (`W`, the Kish denominator, the kernel-weighted and regional
+#'   compositions, the neighborhood-support counts behind `f1`/`f2`) is
+#'   count-weighted -- so aggregated inputs such as gridded occurrence cubes
+#'   or [estimate_kernel_priors_from_counts()]'s distance bands reuse this estimator
+#'   unchanged. Rows with a count of zero are dropped.
 #' @param support_weight Numeric in (0, 1]. A record counts toward the
 #'   discrete neighborhood-support statistics (singleton detection, record
 #'   counts) when its total kernel weight is at least
@@ -214,6 +223,7 @@ estimate_kernel_priors <- function(occurrence_data,
                                    lon_col = "decimalLongitude",
                                    habitat_col = "main_habitat",
                                    sampling_group_col = NULL,
+                                   count_col = NULL,
                                    support_weight = exp(-3)) {
   # ---- validation -----------------------------------------------------------
   if (!is.data.frame(occurrence_data) || nrow(occurrence_data) == 0L) {
@@ -275,6 +285,16 @@ estimate_kernel_priors <- function(occurrence_data,
       ))
     }
   }
+  if (!is.null(count_col)) {
+    if (!is.character(count_col) || length(count_col) != 1L ||
+      !count_col %in% names(occurrence_data)) {
+      stop("count_col must be NULL or the name of a column in occurrence_data.")
+    }
+    cc <- occurrence_data[[count_col]]
+    if (!is.numeric(cc) || anyNA(cc) || any(cc < 0)) {
+      stop(sprintf("count_col '%s' must be numeric, non-negative and non-NA.", count_col))
+    }
+  }
   if (is.null(site_id)) {
     site_id <- sprintf("Site_%.4f_%.4f", site_lat, site_lon)
   }
@@ -286,8 +306,11 @@ estimate_kernel_priors <- function(occurrence_data,
   if (!any(keep)) {
     stop(sprintf("No usable records with %s == '%s'.", habitat_col, site_habitat))
   }
+  if (!is.null(count_col)) keep <- keep & occurrence_data[[count_col]] > 0
   rec <- occurrence_data[keep, , drop = FALSE]
   taxa <- as.character(rec[[taxon_col]])
+  # Record multiplicity: 1 per row unless count_col says otherwise.
+  n_rec <- if (is.null(count_col)) rep(1, nrow(rec)) else as.numeric(rec[[count_col]])
 
   # ---- kernel weights -------------------------------------------------------
   d_km <- .approx_distance_km(rec[[lat_col]], rec[[lon_col]], site_lat, site_lon, site_lat)
@@ -313,7 +336,13 @@ estimate_kernel_priors <- function(occurrence_data,
   # BOUNDARY rather than by distance -- the prior then reflects how far the
   # occurrence search went, not the species' distribution. Checked post hoc
   # because lambda is chosen from the data (see calibrate_kernel_bandwidth()).
-  .reach <- if (length(d_km)) stats::quantile(d_km, 0.999, na.rm = TRUE) else NA_real_
+  .reach <- if (length(d_km)) {
+    # Count-weighted 99.9th percentile (the plain quantile when every n is 1).
+    o <- order(d_km)
+    d_km[o][which(cumsum(n_rec[o]) >= 0.999 * sum(n_rec))[1L]]
+  } else {
+    NA_real_
+  }
   if (is.finite(.reach) && .reach < 6 * lambda_km) {
     warning(sprintf(
       "estimate_kernel_priors: the record pool reaches only ~%.0f km from the site but lambda_km = %g (6 lambda = %.0f km). The kernel is truncated by the fetch boundary; widen the occurrence search or treat these priors as radius-limited.",
@@ -347,17 +376,18 @@ estimate_kernel_priors <- function(occurrence_data,
 
   .kernel_block <- function(idx) {
     w_g <- w[idx]
+    n_g <- n_rec[idx]
     taxa_g <- taxa[idx]
-    W_g <- sum(w_g)
+    W_g <- sum(n_g * w_g)
     if (W_g <= 0) {
       stop("All kernel weights are zero -- check coordinates and lambda_km.")
     }
-    n_eff_g <- W_g^2 / sum(w_g^2)
+    n_eff_g <- W_g^2 / sum(n_g * w_g^2)
     s_g <- n_eff_g / W_g # effective-scale factor
 
     # ---- compositions -------------------------------------------------------
-    c_raw <- tapply(w_g, taxa_g, sum) # kernel-weighted counts
-    p_reg <- table(taxa_g)
+    c_raw <- tapply(n_g * w_g, taxa_g, sum) # kernel-weighted counts
+    p_reg <- tapply(n_g, taxa_g, sum)
     p_reg <- p_reg / sum(p_reg) # regional back-off target
     sp <- sort(unique(taxa_g))
     c_eff <- as.numeric(c_raw[sp]) * s_g # effective-record counts
@@ -369,7 +399,7 @@ estimate_kernel_priors <- function(occurrence_data,
 
     # ---- neighborhood support + singletons ----------------------------------
     supported <- w_g >= support_weight
-    n_support <- tapply(supported, taxa_g, sum)[sp]
+    n_support <- tapply(n_g * supported, taxa_g, sum)[sp]
     n_support[is.na(n_support)] <- 0L
     is_singleton <- n_support == 1L
     singles <- character(0)
@@ -589,7 +619,8 @@ estimate_kernel_priors <- function(occurrence_data,
       # reconstructing its statistics, and needs them.
       taxon_col = taxon_col, lat_col = lat_col,
       lon_col = lon_col, habitat_col = habitat_col,
-      n_records_stratum = nrow(rec)
+      count_col = count_col,
+      n_records_stratum = sum(n_rec)
     )
   ), class = "taxaexpect_kernel_priors")
 }
