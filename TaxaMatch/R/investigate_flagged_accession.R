@@ -424,10 +424,17 @@
       },
       error = function(e) {
         if (verbose) {
-          warning(sprintf(
-            "Restricted local BLAST (comparison-set database) failed, falling back to an unrestricted search: %s",
+          # BOTH channels on purpose. The warning is the capturable signal, but
+          # Rscript defers warnings to exit, so in a long batch run the only
+          # notice that this call had silently swapped a sub-second extraction
+          # for a full-database pass arrived hours later, after the decision to
+          # keep waiting had already been made. A message prints immediately.
+          txt <- sprintf(
+            "Restricted local BLAST (comparison-set database) failed, falling back to an unrestricted search (a full pass over the database): %s",
             conditionMessage(e)
-          ), call. = FALSE)
+          )
+          message(txt)
+          warning(txt, call. = FALSE)
         }
         .unrestricted_local_comparison(seq_df, comparison_meta, database, ncbi_api_key, verbose)
       }

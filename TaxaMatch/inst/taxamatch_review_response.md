@@ -569,7 +569,14 @@ on functions this document already covers above.
   database, about 20 minutes measured, where the extraction takes under three
   seconds. Success is judged by the records extracted, not by the exit status,
   because `blastdbcmd` exits non-zero whenever any requested accession is
-  absent. Tests: test-investigate-flagged-accession.R.
+  absent. The extraction passes `-target_only`, because identical sequences are
+  stored as ONE record carrying every accession's defline, so without it two
+  such accessions come back as the same record twice under the first
+  accession's id and the database build rejects the duplicate. The fallback
+  announces itself through a message as well as a warning: `Rscript` defers
+  warnings to exit, so in a long run the notice that a sub-second extraction
+  had been swapped for a full pass over the database arrived hours late.
+  Tests: test-investigate-flagged-accession.R.
 - `investigate_flagged_accessions()` does ONE record fetch and ONE
   disagreeing-taxon search covering every accession the cache cannot serve,
   rather than one full search per accession. Against a local database each
