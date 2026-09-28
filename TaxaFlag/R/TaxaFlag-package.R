@@ -10,6 +10,8 @@
 #' @section Contamination:
 #' \itemize{
 #'   \item \code{\link{flag_contaminant}} -- compare against control samples
+#'   \item \code{\link{flag_hopped_detections}} -- per-detection read spillover
+#'     (index hopping, tag jumps) on a sequencing run
 #' }
 #'
 #' @section Handler artifacts:

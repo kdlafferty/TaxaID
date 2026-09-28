@@ -233,6 +233,23 @@ test_that("a listed control with no rows is reported, not silently ignored", {
   expect_equal(attr(res, "controls_absent"), "GhostBlank")
 })
 
+test_that("a rate no demultiplexing error could produce is refused, not extrapolated", {
+  df <- .sim_run(r = 0.2, seed = 25)
+  expect_warning(
+    res <- flag_hopped_detections(df, run_col = "run", control_samples = attr(df, "controls"),
+                                  verbose = FALSE),
+    "above max_rate"
+  )
+  expect_equal(attr(res, "run_rates")$evidence, "implausible_rate")
+  field <- res[!res$event_id %in% attr(df, "controls") & res$count > 0, ]
+  expect_true(all(is.na(field$validity_flag)))
+  expect_true(all(grepl("max_rate", field$validity_reason)))
+  # the same run is assessed when the ceiling is raised on purpose
+  res2 <- flag_hopped_detections(df, run_col = "run", control_samples = attr(df, "controls"),
+                                 max_rate = 0.5, verbose = FALSE)
+  expect_equal(attr(res2, "run_rates")$evidence, "estimated")
+})
+
 test_that("input validation", {
   df <- .sim_run(seed = 19)
   ctl <- attr(df, "controls")
@@ -242,6 +259,7 @@ test_that("input validation", {
   expect_error(flag_hopped_detections(df, run_col = "run", spike_taxa = "f01"), "spike_samples")
   expect_error(flag_hopped_detections(df, run_col = "run", control_samples = "zzz"), "control_samples")
   expect_error(flag_hopped_detections(df, run_col = "run", control_samples = ctl, alpha = 1), "alpha")
+  expect_error(flag_hopped_detections(df, run_col = "run", control_samples = ctl, max_rate = 0), "max_rate")
   expect_error(flag_hopped_detections(df, run_col = "run", control_samples = ctl[1],
                                       spike_taxa = "f01", spike_samples = ctl[1]), "both")
   bad <- df

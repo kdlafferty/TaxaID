@@ -16,7 +16,7 @@
 #' feature carrying millions of reads on the run (it can spill hundreds into
 #' every sample) and too strict for a genuinely rare feature (which spills
 #' essentially nothing, so its 30-read detection is real). On one real
-#' three-marker study a flat 100-read floor removed 57-85\% of all detections.
+#' three-marker study a flat 100-read floor removed 57-85% of all detections.
 #' This function therefore compares each detection with its OWN expected
 #' spillover.
 #'
@@ -134,6 +134,17 @@
 #'   control feature more improbable than this is excluded as contamination;
 #'   and \code{1 - alpha} is the confidence level of the rate's upper bound.
 #'   Default 0.01.
+#' @param max_rate Numeric. The largest spillover rate treated as physically
+#'   possible. A run whose evidence implies more is reported as
+#'   \code{"implausible_rate"} and NOT assessed: its detections carry \code{NA}.
+#'   Default 0.05. Published figures: Illumina index hopping on patterned flow
+#'   cells is typically 0.1-2%, up to ~6% in a PCR-free workflow (Costello et
+#'   al. 2018, BMC Genomics 19:332); metabarcoding tag jumps ~2.1-2.6% of
+#'   sequences (Schnell et al. 2015, Mol. Ecol. Resour. 15:1289). On one real
+#'   three-marker study, blanks on three large runs implied 7-57%: that is
+#'   abundance-correlated contamination OF THE BLANKS, which blanks overstate (an
+#'   empty library is amplified until a few molecules fill it), and projecting
+#'   it onto field samples would have flagged 16% of all 18S detections.
 #' @param verbose Logical. Print a per-run summary. Default TRUE.
 #'
 #' @return \code{input_df} in its original row order with these columns added:
@@ -164,7 +175,11 @@
 #' control reads and source reads after exclusion: positive is the spillover
 #' signature, near zero means the control reads look like something else) and
 #' \code{evidence}: \code{"estimated"}, \code{"bound_only"} (no spilled reads
-#' observed) or \code{"none"} (nothing to estimate from). Attribute
+#' observed), \code{"implausible_rate"} (above \code{max_rate}; not assessed)
+#' or \code{"none"} (nothing to estimate from). Also \code{dispersion} (the
+#' negative-binomial size of the spillover counts; \code{Inf} = Poisson) and
+#' \code{rate_untrimmed} (the naive control-read rate before contamination was
+#' excluded, for comparison). Attribute
 #' \code{"control_excess"}: the run x feature pairs excluded as contamination,
 #' with their control reads, source reads and implied rate. Attribute
 #' \code{"controls_absent"}: \code{control_samples} with no rows in
@@ -219,6 +234,7 @@ flag_hopped_detections <- function(input_df,
                                    spike_samples = NULL,
                                    receiver_share = c("equal", "depth"),
                                    alpha = 0.01,
+                                   max_rate = 0.05,
                                    verbose = TRUE) {
   # --- Input validation ---
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
@@ -232,6 +248,9 @@ flag_hopped_detections <- function(input_df,
   }
   if (!is.numeric(alpha) || length(alpha) != 1L || is.na(alpha) || alpha <= 0 || alpha >= 1) {
     stop("'alpha' must be a single number in (0, 1).", call. = FALSE)
+  }
+  if (!is.numeric(max_rate) || length(max_rate) != 1L || is.na(max_rate) || max_rate <= 0) {
+    stop("'max_rate' must be a single positive number.", call. = FALSE)
   }
   receiver_share <- match.arg(receiver_share)
   if (is.null(control_samples) && is.null(spike_taxa)) {
@@ -267,7 +286,10 @@ flag_hopped_detections <- function(input_df,
   controls_absent <- setdiff(control_samples, all_events)
   if (length(controls_absent)) {
     warning(sprintf(
-      "%d control sample(s) have no rows in input_df and count for nothing: %s. A control that sequenced nothing needs one zero-count row carrying its run.",
+      paste0(
+        "%d control sample(s) have no rows in input_df and count for nothing: %s. ",
+        "A control that sequenced nothing needs one zero-count row carrying its run."
+      ),
       length(controls_absent), paste(utils::head(controls_absent, 8), collapse = ", ")
     ), call. = FALSE)
   }
@@ -317,6 +339,8 @@ flag_hopped_detections <- function(input_df,
   # --- Per-run rate ---
   fit <- .hop_run_rates(d, alpha = alpha, receiver_share = receiver_share)
   rates <- fit$rates
+  implausible <- !is.na(rates$rate) & rates$rate > max_rate
+  rates$evidence[implausible] <- "implausible_rate"
 
   # --- Per-detection test ---
   ri <- match(d$run, rates$run)
@@ -329,11 +353,12 @@ flag_hopped_detections <- function(input_df,
   p_spill_up <- .hop_upper_tail(x, mu_up, theta)
 
   is_det <- d$role == "field" & d$reads > 0
-  testable <- is_det & !is.na(mu_up)
+  run_implausible <- rates$evidence[ri] %in% "implausible_rate"
+  testable <- is_det & !is.na(mu_up) & !run_implausible
   inv <- testable & k > 0 & p_spill > alpha
   que <- testable & !inv & p_spill_up > alpha
   spike_leak <- is_det & d$spike
-  no_ev <- is_det & is.na(mu_up)
+  no_ev <- is_det & (is.na(mu_up) | run_implausible)
 
   flag <- rep(NA_character_, nrow(d))
   flag[testable] <- "valid"
@@ -361,6 +386,14 @@ flag_hopped_detections <- function(input_df,
   reason[d$role == "field" & d$reads == 0] <- "zero reads: not a detection"
   reason[no_ev & !spike_leak] <- sprintf(
     "run %s has no usable control or spike evidence: not assessed", d$run[no_ev & !spike_leak]
+  )
+  imp_rows <- no_ev & !spike_leak & run_implausible
+  reason[imp_rows] <- sprintf(
+    paste0(
+      "run %s: its controls imply a spillover rate above max_rate, which no demultiplexing ",
+      "error produces -- not assessed (see attr(, \"run_rates\"))"
+    ),
+    d$run[imp_rows]
   )
 
   assessed <- !is.na(flag)
@@ -396,10 +429,26 @@ flag_hopped_detections <- function(input_df,
     }
     if (nrow(fit$control_excess)) {
       message(
-        sprintf("  %d run x feature pair(s) carry more control reads than spillover explains: ", nrow(fit$control_excess)),
+        sprintf(
+          "  %d run x feature pair(s) carry more control reads than spillover explains: ",
+          nrow(fit$control_excess)
+        ),
         "contamination, excluded from the rate. See attr(, \"control_excess\") and flag_contaminant()."
       )
     }
+  }
+  if (any(implausible)) {
+    warning(sprintf(
+      paste0(
+        "%d run(s) have controls implying a spillover rate above max_rate = %s (%s) and were NOT assessed. ",
+        "Demultiplexing errors move a few percent of reads at most; control reads at this level are ",
+        "abundance-correlated CONTAMINATION of the controls, which controls overstate (an empty library ",
+        "is amplified until a few molecules fill it) and which cannot be transferred to field samples. ",
+        "Investigate with validate_controls() and flag_contaminant()."
+      ),
+      sum(implausible), format(max_rate),
+      paste(sprintf("%s: %s", rates$run[implausible], signif(rates$rate[implausible], 2)), collapse = ", ")
+    ), call. = FALSE)
   }
   if (any(rates$evidence == "none")) {
     warning(sprintf(
