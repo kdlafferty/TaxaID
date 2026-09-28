@@ -2,7 +2,7 @@
 
 Built 2026-09-27 from `CaliforniaIntertidal/REENTRY_PROMPT_index_hopping_TaxaFlag.md`.
 Branch `flag-hopped-detections` (worktree `~/taxaid-worktrees/flag-hopped-detections`),
-3 commits on top of `main` 6d28861. **Not merged, not installed.**
+Merged to `main` 2026-09-28 at the user's direction. **Not installed**; the package-review session holds the reinstall gate.
 
 ## What it does
 
@@ -92,11 +92,10 @@ result. The function should matter on runs where hopping actually operates
   functions. The CalIntertidal session already calls `validate_controls()` once per
   run, so its null is per-run. The low power comes from genuinely wide within-run
   sample-to-sample distances, not from grouping.
-  Option for the user (not built): gate the control set automatically with a
-  `validate_controls()` pass inside the workflow, reporting excluded blanks loudly.
-  I would keep that as a workflow step, not a hidden step inside
-  `flag_hopped_detections()`. Its verdicts are low-power here, and silently dropping
-  a control is the same class of risk it guards against.
+  USER DECISION (2026-09-28): `flag_hopped_detections()` stays focused on hops.
+  Dropping or gating blanks belongs to a separate, future function. Until it
+  exists, the workflow chooses `control_samples` explicitly (e.g. excluding
+  S067800 on JVB2844).
 
 ## Workflow wiring (CalIntertidal session owns it)
 

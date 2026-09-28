@@ -35,7 +35,13 @@
 # zero-count row carrying its run, or it counts for nothing (attr "controls_absent").
 # Open: dispersion hits its 0.01 floor on the "estimated" big runs (JVB3735) --
 # control reads clumped in few blanks, the shape of well-to-well contamination.
-# test 648/0, check 0/0/0, NOT installed (reinstall gate is the package-review peer's).
+# USER DECISION 2026-09-28: keep this function focused on hops. Dropping/gating
+# contaminated blanks (validate_controls() RESEMBLES_SAMPLE) is a SEPARATE future
+# function; do not add control-set filtering here. Real case it will need:
+# CalIntertidal blank S067800 on JVB2844 (flagged in 18S AND COI); removing it
+# clears COI (0.286 -> 0), while 18S stays implausible (0.572 -> 0.165).
+# test 648/0, check 0/0/0; merged to main 2026-09-28, NOT installed (reinstall gate is the
+# package-review peer's).
 # Previous update: 2026-09-14 (Opus 5): UNREVIEWED ROWS NO LONGER SILENTLY DROPPED --
 # ecosystem_docs/REENTRY_PROMPT_unreviewed_rows_silently_dropped.md, now RESOLVED (read
 # its Resolution section). An LLM response can parse cleanly, be the right length, and
