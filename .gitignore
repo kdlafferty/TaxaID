@@ -120,3 +120,6 @@ Claude outputs/
 
 # Retired scripts (see each archive dir's README); matches TaxaExpect/archive_glmm_prior_pipeline
 archive_retired_workflow_template_2026_09_15/
+
+# testthat failure snapshots
+**/tests/testthat/_problems/
