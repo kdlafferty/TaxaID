@@ -612,3 +612,7 @@ on functions this document already covers above.
   "poor marker" review. `NULL` restores the old behaviour, and the check is
   skipped when the input has no `finest_common_rank` column. Tests:
   test-review-flagged-accessions.R.
+- The accession lookup inside `.resolve_taxonomy_by_acc()` now uses the same five
+  attempts with a 2 to 16 second backoff as the taxonomy fetch above it. The server
+  errors that motivated that change reach both paths, so the two had no reason to
+  differ.

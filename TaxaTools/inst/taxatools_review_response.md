@@ -264,3 +264,17 @@ on functions this document already covers above.
   new exports: the two new helpers this needed
   (`.save_ncbi_homonym_decisions()`/`.apply_ncbi_homonym_decisions()`) stay internal in
   `R/ncbi_homonyms.R`, next to `resolve_ncbi_taxid()`/`check_lineage_agreement()`.
+- `barcode_primer_defaults` gains `"18s-v9"` (1389F/1510R, Amaral-Zettler et al. 2009),
+  with a matching `barcode_length_defaults` window and an `18s-v9` to `18S` entry in
+  `resolve_barcode_marker()`, so one term serves both primer trimming and the NCBI
+  search. Verified in silico against three real 18S genes, every stripped product
+  ending in the same 3' sequence carried by real 18S environmental sequences.
+- `resolve_barcode_primers()` refuses to resolve a bare `"18S"`, `"ITS"` or `"ITS2"`
+  by prefix once a region of that marker is registered, and the error names the
+  registered regions. Registering one region of a marker whose studies target
+  several would otherwise have made the bare term silently resolve to whichever
+  region happened to be registered, so an 18S V4 study's references would have been
+  trimmed with V9 primers without a word. A bare term already errored before this
+  change, and every caller in the ecosystem wraps the call, so the amplicon paths
+  that leave an unregistered marker untrimmed behave exactly as before; only the
+  message is different, and more specific.
