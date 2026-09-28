@@ -23,7 +23,13 @@ NULL
 #'   \code{\link{filter_sequences}}).
 #' @param method Character: \code{"remote"} (default) to use the NCBI BLAST URL
 #'   API, or \code{"local"} to use a local BLAST+ database via the \pkg{rBLAST}
-#'   package.
+#'   package. Local mode runs whichever \code{blastn} is first on \code{PATH},
+#'   and the client must be able to read the database's LMDB index: NCBI's
+#'   current \code{core_nt} carries a version-1 index that BLAST+ 2.16 reads
+#'   and 2.17 does not (the error names \code{MDB_INVALID}). Put the matching
+#'   client first on \code{PATH} for the session; \code{TaxaWizard::workflow_check()}
+#'   reports the version it finds, and \code{blastdbcmd -db <db> -info} is the
+#'   direct test.
 #' @param database For remote: NCBI database name (default \code{"nt"}). For
 #'   local: path to a local BLAST database.
 #' @param program BLAST program. Default \code{"blastn"}.
