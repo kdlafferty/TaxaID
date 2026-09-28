@@ -197,8 +197,17 @@ review_sample_identity(gate, context = CONTEXT, blank_medium = "tap water",
 **Still open.**
 
 - **For JV:** where the 12S run-wide feature comes from.
-- **For the user:** whether any 18S JVB3735 blank community (marine protists at 1-4x field
-  diversity) is still acceptable handling contamination, now that the medium is known.
+- **For the user:** whether the 18S JVB3735 blank communities are acceptable.
+  - **What they hold:** mixed communities at 0.6-3.2x field diversity. The freshwater and
+    terrestrial part (Spumella, Bodo, Naididae, Arachnida) fits tap water. Nearly all 29 blanks
+    also carry MARINE taxa: Schmidingerella (63k reads), Heterosigma (35k), Oxyrrhis (21k),
+    Chaetoceros, Laminariales and Beroe.
+  - **What the model said:** with `blank_medium = "tap water"` it called 16 of them
+    `clean_blank`, explaining the freshwater part.
+  - **The decision:** whether marine carry-over from shared filtering gear counts as acceptable
+    handling contamination. Leave `accept_llm_roles = FALSE` until that is decided.
+  - **The live LLM review on v2:** 22 clean_blank, 5 contaminated_blank, 3
+    sample_labelled_as_blank (S067800 high confidence) and 2 valid_sample, of 32 tubes.
 
 ## Tests
 
