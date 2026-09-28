@@ -465,7 +465,7 @@ Summarizes the match data produced by TaxaMatch into a structured 'report_sectio
 
 **Value:** A 'report_section' object with: methods Template text describing matching approach. results Template text summarizing match statistics, or 'NULL' when 'match_data' has neither 'score_original' nor a taxon-name column to summarize. Scores are formatted as a percentage only when 'data_type == "eDNA"' (percent identity is always 0-100 for BLAST); for '"image"'/'"acoustic"' (whose score scale ...
 
-### resolve_review_overrides(review_result, keep_explanations = c("poor_marker_resolution", "sister_family_thin_coverage", "hybrid_or_specimen_code_artifact"), min_confidence = c("high", "moderate"))
+### resolve_review_overrides(review_result, keep_explanations = c("poor_marker_resolution", "sister_family_thin_coverage", "hybrid_or_specimen_code_artifact"), min_confidence = c("high", "moderate"), resolution_rank = "order")
 
 Derive Removal Overrides from an LLM Second-Look Review
 
@@ -476,6 +476,7 @@ Bridges 'review_flagged_accessions()''s LLM-based second-look verdicts to 'remov
 | review_result | yes |  | Data frame. Output of review_flagged_accessions() (must have accession, accession_likely_explanation, accession_review_confidence columns). |
 | keep_explanations | no | c("poor_marker_resolution", "sister_family_thin_coverage", "hybrid_or_specimen_code_artifact") | Character vector (default c("poor_marker_resolution", "sister_family_thin_coverage", "hybrid_or_specimen_code_artifact")) -- the accession_likely_explanation values that should override an automatic removal. Deliberately excludes "uncertain" from the default: an LLM verdict that is ITSELF uncertain should not automatically override a hard BLAST-based "incongruent" flag -- pass "uncertain" explicitly if you want to trust it too. "genuine_mislabel" is never included (that verdict CONFIRMS removal, it never overrides it). |
 | min_confidence | no | c("high", "moderate") | Character vector (default c("high", "moderate")). Only a accession_review_confidence value in this set is trusted as an override -- a "low"-confidence review falls through to removal (the same conservative-default behavior as an unreviewed accession), even if its accession_likely_explanation is in keep_explanations. |
+| resolution_rank | no | "order" | Character or NULL (default "order"). A "poor_marker_resolution" or "sister_family_thin_coverage" explanation only overrides a removal when the accession still agrees with its hits at this rank or finer (finest_common_rank): a marker's resolving power can only fail between close relatives. NULL disables the check, which is also skipped when review_result has no finest_common_rank column. |
 
 **Value:** Character vector of accessions to pass directly as 'remove_incongruent_references(override_accessions = ...)'.
 
