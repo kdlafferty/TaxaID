@@ -7,6 +7,8 @@
 review_sample_identity(
   identity,
   context,
+  blank_medium = NULL,
+  target_groups = NULL,
   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
   model_label = NULL,
   tubes_per_call = 4L,
@@ -27,6 +29,20 @@ samples came from, e.g. "Field blanks are distilled water poured through
 a filter at the site. Samples are rocky-intertidal swabs, southern
 California." Required: the verdict depends on it, and a wrong assumption
 is silent.}
+
+\item{blank_medium}{Character or NULL. What a blank is filled with, e.g.
+"tap water". A blank is judged acceptable when its contents are
+consistent with its medium or with handling, so this decides many
+verdicts. NULL tells the model the medium is not stated. Default NULL.}
+
+\item{target_groups}{Character or NULL. The groups the study's samples are
+meant to measure, e.g. "macroalgae, macroinvertebrates, intertidal
+fishes". A blank holding these at more than a trace is judged
+contaminated even when a plausible medium community is also present: a
+medium explains its own community, never the target signal, and a control
+carrying the target signal makes contamination checks permissive in
+exactly the direction nobody checks. NULL tells the model the groups are
+not stated. Default NULL.}
 
 \item{llm_fn}{Function taking a prompt string (and optionally
 \code{max_tokens}) and returning the model's text. Default
@@ -65,7 +81,10 @@ The review queue (\code{attr(identity, "review_queue")}) with
 \code{"contaminated_blank"}, \code{"sample_labelled_as_blank"},
 \code{"positive_control_labelled_as_blank"},
 \code{"blank_labelled_as_sample"}, \code{"valid_sample"},
-\code{"uncertain"}), \code{llm_suggested_disposition},
+\code{"uncertain"}), \code{llm_role} (\code{"blank"}, \code{"sample"},
+\code{"positive_control"}, \code{"exclude"} or \code{"unknown"}: how the
+tube should be used; \code{classify_sample_identity(accept_llm_roles = TRUE)}
+admits on it), \code{llm_suggested_disposition},
 \code{llm_confidence} (high/moderate/low) and \code{llm_rationale} added
 per sample. Attributes \code{"unreviewed_samples"} (always present) and
 \code{"llm_prompts"}.
@@ -75,9 +94,12 @@ Sends each tube held back by \code{\link{classify_sample_identity}} for an
 identity question to an LLM, with its taxa in every marker and the
 community of the field samples it was sequenced with, and asks for a
 plausibility judgement: is this a clean blank, a contaminated blank, a field
-sample carrying a blank's label, or the reverse? The answer is ADVICE. It
-is written to \code{llm_} columns beside the decision record, and nothing
-is admitted on it: a person still records the \code{disposition}.
+sample carrying a blank's label, or the reverse? It also gives a ROLE: how the
+tube should be used (blank, sample, positive control, exclude, unknown). The
+answer is written to \code{llm_} columns beside the decision record.
+Admission is the workflow's choice: by default a person still records the
+\code{disposition}, and \code{classify_sample_identity(accept_llm_roles =
+TRUE)} admits on \code{llm_role} wherever no person has decided.
 }
 \section{Why an LLM here}{
 

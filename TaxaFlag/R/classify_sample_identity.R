@@ -15,8 +15,9 @@
 #' Classifies every sample x marker x run (a "unit": one tube amplified with
 #' one marker on one run, pooled over its replicate libraries) on two axes --
 #' what it is LABELLED (blank or sample) and what it LOOKS LIKE (a valid
-#' blank, a valid sample, neither, or unassessable) -- and admits it to
-#' analysis only when the two agree or a person has recorded a decision.
+#' blank, a valid sample, or neither) -- and suggests admitting it when the two
+#' agree or a decision has been recorded. Admission is the workflow's choice:
+#' \code{admit} is a default the workflow may follow or replace.
 #' Everything else is held back and listed for review. Nothing is dropped
 #' silently: every unit keeps its row, its evidence and its reason.
 #'
@@ -26,13 +27,29 @@
 #'   blank  \tab concordant: control \tab DISCORDANT \tab suspect \cr
 #'   sample \tab DISCORDANT \tab concordant: admit \tab suspect
 #' }
-#' plus a fourth appearance, \code{"unassessable"}, for units the evidence
-#' cannot judge. It is never merged with concordant. By default
-#' (\code{unassessable_policy = "asymmetric"}) an unassessable BLANK is kept
-#' out of the control set until reviewed and an unassessable SAMPLE is
-#' admitted with the flag carried through. The asymmetry is about leverage:
-#' a dirty blank corrupts every contaminant verdict on its run, and in the
-#' permissive direction, while a sample only represents itself.
+#'
+#' @section Status: what was found, and why nothing could be:
+#' \code{identity_status} separates a finding from the absence of one, and
+#' \code{identity_status_reason} names the evidence or the reason:
+#' \describe{
+#'   \item{\code{concordant}, \code{discordant}, \code{suspect}}{A test ran
+#'     and answered (reason: \code{"composition"}, \code{"diversity"},
+#'     \code{"library_failed"}, ...).}
+#'   \item{\code{inconclusive}}{A test ran but could not discriminate
+#'     (\code{"no_power"}: \code{validate_controls()} reported a null too wide
+#'     to separate anything, or no headroom).}
+#'   \item{\code{untested}}{No test ran: \code{"no_blanks"} (nothing to
+#'     compare a sample with), \code{"unreplicated"} (too few field units on
+#'     the run), or \code{"uncomparable"} (the run's field libraries failed, so
+#'     a blank has nothing valid to be compared with).}
+#' }
+#' An untested or inconclusive unit shows no evidence of a problem, which is
+#' not evidence of its absence. Many studies are thin, and they should still
+#' be analysed, cautiously: by default (\code{untested_policy = "admit"}) such
+#' units are admitted with their status carried through.
+#' \code{"hold_blanks"} keeps untested/inconclusive blanks out of the control
+#' set (a dirty blank corrupts contaminant verdicts in the permissive
+#' direction); \code{"block"} holds every such unit for review.
 #'
 #' @section Order of operations:
 #' Yield is assessed first, with \code{\link{flag_failed_libraries}}. A failed
@@ -41,7 +58,7 @@
 #' \itemize{
 #'   \item A labelled SAMPLE whose libraries all failed looks like
 #'     \code{"neither"} (issue type \code{"library"}).
-#'   \item A labelled BLANK on a failed run is \code{"unassessable"}. Its low
+#'   \item A labelled BLANK on a failed run is \code{"untested"} (\code{"uncomparable"}). Its low
 #'     reads and low diversity are what a failed library would show whether
 #'     or not it was clean. The one exception: a blank that still reaches
 #'     sample-level diversity on a failed run is \code{"neither"}, because
@@ -87,6 +104,12 @@
 #' had no power (\code{validate_controls()} power other than \code{"ok"}).
 #' The verdict then rests on diversity alone, and the low confidence says so.
 #'
+#' A diverse blank is flagged \code{"suspect"}, not condemned: a blank's own
+#' medium can carry a community (tap water carries its source water's
+#' freshwater organisms). Whether the community is consistent with the blank
+#' medium or with handling is a judgement about what the taxa are, which
+#' \code{\link{review_sample_identity}} makes when told the medium.
+#'
 #' @section What "looks like a valid sample" means:
 #' A labelled sample is \code{"valid_sample"} unless:
 #' \itemize{
@@ -95,9 +118,23 @@
 #'     \code{"RESEMBLES_CONTROL"} (\code{"valid_blank"}).
 #' }
 #' A sample with \code{low_yield} libraries (low in every marker, which is
-#' genuine low biomass) is a valid sample. It is
-#' \code{"unassessable"} only when neither yield nor composition could be
-#' tested.
+#' genuine low biomass) is a valid sample. The identity test for a sample is
+#' whether it resembles the run's blanks; when that test cannot run or cannot
+#' discriminate the sample is \code{"untested"} or \code{"inconclusive"}, not
+#' concordant.
+#'
+#' @section Run-wide artifacts and declared spikes:
+#' A feature in at least \code{artifact_fraction} of a run's field libraries
+#' that also holds the majority of reads in at least half of the run's blanks
+#' is in every tube whatever the tube is: a spike the user added, a provider's
+#' positive control reaching every library, or cross-contamination. It carries
+#' no identity information, so it is set aside from composition and diversity.
+#' Both conditions are needed: common environmental taxa can be in nearly
+#' every field library, but they do not dominate the blanks. Unless declared in
+#' \code{spike_taxa}, such a feature is REPORTED as a run-wide artifact with a
+#' warning, because its cause is a question for the user or the provider. It
+#' stays visible in \code{top_taxa}. Judged per run, since one archive can mix
+#' runs with and without it.
 #'
 #' @section Two kinds of decision, two scopes:
 #' \describe{
@@ -126,10 +163,11 @@
 #'     markers where it looked concordant (\code{tube_flagged}). Such a unit
 #'     keeps its own \code{identity_status} (it is not itself evidence of
 #'     anything), and \code{hold_reason} says why it is held:
-#'     \code{"own_evidence"}, \code{"tube"} or \code{"unassessable"}. A blank
-#'     contaminated at the bag is contaminated in every marker, even where one
-#'     marker happens to amplify little of it. An unassessable unit holds only
-#'     itself: a failed library says nothing about the tube's other markers.
+#'     \code{"own_evidence"}, \code{"tube"}, \code{"untested"} or
+#'     \code{"inconclusive"}. A blank contaminated at the bag is contaminated in
+#'     every marker, even where one marker happens to amplify little of it. An
+#'     untested unit holds only itself: a failed library says nothing about the
+#'     tube's other markers.
 #'   \item \strong{Identity questions block; library failures do not.} A unit
 #'     held for identity is \code{pending_review} until the tube has a
 #'     disposition. A unit whose libraries failed is excluded
@@ -152,8 +190,11 @@
 #' written. If the evidence has since changed, the disposition is still
 #' applied, and a warning names the rows so they can be looked at again.
 #' \code{\link{review_sample_identity}} adds \code{llm_} columns to the same
-#' file. They are advice only: nothing is admitted on an LLM verdict. A
-#' blank \code{disposition} keeps a unit held back.
+#' file, including \code{llm_role} (blank, sample, positive_control, exclude or
+#' unknown). By default these are advice. With \code{accept_llm_roles = TRUE},
+#' \code{llm_role} stands in for an identity disposition wherever no person
+#' has recorded one, and \code{disposition_source} says which it was
+#' (\code{"user"} or \code{"llm"}). A person's disposition always wins.
 #'
 #' @section Cross-marker agreement:
 #' The same tube assayed with independent markers is the strongest evidence
@@ -171,7 +212,8 @@
 #'   \code{taxon_col} is the fine-grained feature (ESV/ASV) used for
 #'   composition and diversity.
 #' @param control_samples Character vector of \code{sample_col} (or
-#'   \code{library_col}) values LABELLED as negative controls. Required.
+#'   \code{library_col}) values LABELLED as negative controls. NULL or empty is
+#'   allowed: every unit is then \code{"untested"} (\code{"no_blanks"}).
 #' @param failed_libraries Optional result of \code{flag_failed_libraries()}
 #'   on \code{input_df}. When NULL it is computed here with its defaults.
 #' @param taxon_label_col Character or NULL. A human-readable name column
@@ -186,20 +228,20 @@
 #'   judgement; units near it are for review, not for a verdict.
 #' @param composition_share Numeric in (0, 1]. Share of a unit's assessable
 #'   replicate libraries that must resemble the other label. Default 0.5.
-#' @param ubiquitous_fraction Numeric in (0, 1] or NULL. A feature present in at
-#'   least this fraction of a run's field units (with 5 or more units) AND
-#'   holding the majority of reads in at least half of that run's blanks is a
-#'   spike-in or internal standard added to every tube. Both are required:
-#'   common environmental taxa can be in nearly every field unit too, but do
-#'   not dominate clean blanks. It is dropped from that
-#'   run's composition and diversity, because it carries no identity
-#'   information and a template-free blank is dominated by it: left in, a clean
-#'   blank of a spiked run looks compositionally close to the samples. It stays
-#'   in \code{top_taxa} and is listed in \code{attr(, "runs")$ubiquitous_taxa}.
-#'   Judged per run, since an archive can hold spiked and unspiked runs of one
-#'   marker. NULL keeps every feature. Default 0.9.
-#' @param unassessable_policy \code{"asymmetric"} (default) or
-#'   \code{"block"}. See The matrix.
+#' @param artifact_fraction Numeric in (0, 1] or NULL. Field-library
+#'   prevalence at which a feature that also dominates the run's blanks is a
+#'   run-wide artifact (see Run-wide artifacts). NULL disables detection.
+#'   Default 0.9.
+#' @param spike_taxa Character or NULL. Features (\code{taxon_col} or
+#'   \code{taxon_label_col} values) the user deliberately added to every tube.
+#'   Set aside like an artifact, without a warning, and listed in
+#'   \code{attr(, "runs")$declared_spikes}. Default NULL.
+#' @param untested_policy \code{"admit"} (default), \code{"hold_blanks"} or
+#'   \code{"block"}: what the suggested \code{admit} does with untested and
+#'   inconclusive units. See Status.
+#' @param accept_llm_roles Logical. Let \code{llm_role} from the decision record
+#'   stand in for an identity disposition where no person has recorded one.
+#'   Default FALSE.
 #' @param decisions_path Character or NULL. The CSV decision record. Read if
 #'   it exists, then rewritten with the current review queue. Default NULL:
 #'   nothing is read or written, and the queue is only returned.
@@ -212,9 +254,10 @@
 #' \describe{
 #'   \item{\code{identity_label}}{\code{"blank"} or \code{"sample"}, as labelled.}
 #'   \item{\code{identity_appearance}}{\code{"valid_blank"}, \code{"valid_sample"},
-#'     \code{"neither"} or \code{"unassessable"}.}
+#'     \code{"neither"} or \code{"not_assessed"}.}
 #'   \item{\code{identity_status}}{\code{"concordant"}, \code{"discordant"},
-#'     \code{"suspect"} or \code{"unassessable"}.}
+#'     \code{"suspect"}, \code{"inconclusive"} or \code{"untested"}.}
+#'   \item{\code{identity_status_reason}}{See Status.}
 #'   \item{\code{admit_as}}{\code{"control"}, \code{"sample"},
 #'     \code{"positive_control"} or \code{NA}
 #'     (not admitted); reflects any reassignment.}
@@ -228,16 +271,16 @@
 #' \code{n_libraries_assessable}, \code{composition_power},
 #' \code{library_status}, \code{run_status}, \code{n_markers_flagged},
 #' \code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
-#' \code{issue_type}, \code{tube_flagged}, \code{hold_reason}, \code{confidence}, \code{reason},
-#' \code{disposition}, \code{pending_review}, \code{excluded_library_issue},
+#' \code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
+#' \code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
+#' \code{pending_review}, \code{excluded_library_issue},
 #' \code{admit_as} and \code{admit}. Attribute
 #' \code{"review_queue"}: the units that need a person, in decision-record
 #' shape. Attribute \code{"runs"}: one row per run x marker, with admitted
 #' control and sample counts, \code{control_status} (\code{"ok"},
 #' \code{"no_admitted_control"} or \code{"no_controls_labelled"}) and the
-#' field \code{top_taxa}, and \code{ubiquitous_taxa}: the features set aside as
-#' spike-ins (see \code{ubiquitous_fraction}). A blank dominated by these is a
-#' clean blank. Attribute \code{"failed_libraries"}: the
+#' field \code{top_taxa}, \code{run_wide_artifacts} and \code{declared_spikes}
+#' (see Run-wide artifacts). Attribute \code{"failed_libraries"}: the
 #' \code{flag_failed_libraries()} result used.
 #'
 #' @seealso \code{\link{flag_failed_libraries}} and
@@ -274,17 +317,19 @@ classify_sample_identity <- function(input_df,
                                      run_col = "run",
                                      count_col = "count",
                                      taxon_col = "taxon_name",
-                                     control_samples,
+                                     control_samples = NULL,
                                      failed_libraries = NULL,
                                      taxon_label_col = NULL,
                                      diversity_blank_max = 0.5,
                                      composition_share = 0.5,
-                                     ubiquitous_fraction = 0.9,
-                                     unassessable_policy = c("asymmetric", "block"),
+                                     artifact_fraction = 0.9,
+                                     spike_taxa = NULL,
+                                     untested_policy = c("admit", "hold_blanks", "block"),
+                                     accept_llm_roles = FALSE,
                                      decisions_path = NULL,
                                      on_pending = c("warn", "error", "ignore"),
                                      verbose = TRUE) {
-  unassessable_policy <- match.arg(unassessable_policy)
+  untested_policy <- match.arg(untested_policy)
   on_pending <- match.arg(on_pending)
   if (!is.data.frame(input_df)) stop("'input_df' must be a data frame.", call. = FALSE)
   for (col in c(library_col, sample_col, marker_col, run_col, count_col, taxon_col, taxon_label_col)) {
@@ -292,9 +337,11 @@ classify_sample_identity <- function(input_df,
       stop(sprintf("Column '%s' not found in input_df.", col), call. = FALSE)
     }
   }
-  if (missing(control_samples) || !length(control_samples)) {
-    stop("'control_samples' is required: with no labelled controls there is no ",
-      "blank axis to classify.", call. = FALSE)
+  if (is.null(control_samples) || !length(control_samples)) {
+    control_samples <- character(0)
+    warning("No labelled controls: nothing can be compared with a blank, so every ",
+      "unit is reported 'untested' (no_blanks). That is no evidence of a problem, ",
+      "not evidence of its absence.", call. = FALSE)
   }
   if (any(is.na(input_df[[sample_col]]))) {
     stop(sprintf("Column '%s' must not contain NA: identity decisions are made per sample.",
@@ -315,7 +362,8 @@ classify_sample_identity <- function(input_df,
     ff <- flag_failed_libraries(input_df,
       library_col = library_col, sample_col = sample_col, marker_col = marker_col,
       run_col = run_col, count_col = count_col, taxon_col = taxon_col,
-      control_samples = control_samples, verbose = verbose
+      control_samples = if (length(control_samples)) control_samples else NULL,
+      verbose = verbose
     )
   } else if (is.null(attr(ff, "libraries")) || is.null(attr(ff, "runs")) ||
     nrow(ff) != nrow(input_df)) {
@@ -339,28 +387,39 @@ classify_sample_identity <- function(input_df,
   if (!is.null(taxon_label_col)) d$label_name <- as.character(input_df[[taxon_label_col]])
   d$unit <- paste(d$sample, d$marker, d$run, sep = "|")
   d$is_ctl <- d$sample %in% control_samples | d$library %in% control_samples
-  if (!any(d$is_ctl)) {
+  if (length(control_samples) && !any(d$is_ctl)) {
     warning("None of 'control_samples' matched a sample or library in input_df.", call. = FALSE)
   }
 
-  # --- 2. Unit evidence, without run-wide (spike-in) features ---
-  d$ubiquitous <- FALSE
-  if (!is.null(ubiquitous_fraction)) {
-    if (!is.numeric(ubiquitous_fraction) || length(ubiquitous_fraction) != 1L ||
-      is.na(ubiquitous_fraction) || ubiquitous_fraction <= 0 || ubiquitous_fraction > 1) {
-      stop("'ubiquitous_fraction' must be a single number in (0, 1], or NULL.", call. = FALSE)
+  # --- 2. Unit evidence, without run-wide artifacts or declared spikes ---
+  # A feature in nearly every field library of a run that also dominates the
+  # run's blanks is in every tube whatever the tube is -- a spike the user
+  # added, a provider's positive control reaching every library, or
+  # cross-contamination. It carries no identity information, so it is set aside
+  # from composition and diversity, and it is REPORTED: unless the user
+  # declared it in spike_taxa, its cause is a question to investigate.
+  rk_d <- paste(d$marker, d$run, sep = "\r")
+  d$declared_spike <- FALSE
+  if (length(spike_taxa)) {
+    d$declared_spike <- d$feature %in% spike_taxa |
+      (!is.null(taxon_label_col) & d$label_name %in% spike_taxa)
+  }
+  d$artifact <- FALSE
+  if (!is.null(artifact_fraction)) {
+    if (!is.numeric(artifact_fraction) || length(artifact_fraction) != 1L ||
+      is.na(artifact_fraction) || artifact_fraction <= 0 || artifact_fraction > 1) {
+      stop("'artifact_fraction' must be a single number in (0, 1], or NULL.", call. = FALSE)
     }
     fk <- !d$is_ctl & !d$excluded & d$reads > 0
-    rk_d <- paste(d$marker, d$run, sep = "\r")
     n_units <- tapply(d$unit[fk], rk_d[fk], function(z) length(unique(z)))
     prev <- tapply(d$unit[fk], paste(rk_d[fk], d$feature[fk], sep = "\r"),
       function(z) length(unique(z)))
     run_of <- sub("\r[^\r]*$", "", names(prev))
     frac <- prev / as.numeric(n_units[run_of])
-    ubi <- names(frac)[frac >= ubiquitous_fraction & as.numeric(n_units[run_of]) >= 5]
-    # Common environmental taxa can also sit in nearly every field unit; what marks
-    # a spike is that it also DOMINATES the run's blanks, since a template-free
-    # blank holds little else. Require both, or real community signal is removed.
+    ubi <- names(frac)[frac >= artifact_fraction & as.numeric(n_units[run_of]) >= 5]
+    # Common environmental taxa can also sit in nearly every field unit; what
+    # marks a run-wide artifact is that it also DOMINATES the run's blanks.
+    # Require both, or real community signal is removed.
     ck <- d$is_ctl & !d$excluded & d$reads > 0
     if (length(ubi) && any(ck)) {
       c_tot <- tapply(d$reads[ck], d$unit[ck], sum)
@@ -373,8 +432,9 @@ classify_sample_identity <- function(input_df,
     } else {
       ubi <- character(0)
     }
-    d$ubiquitous <- paste(rk_d, d$feature, sep = "\r") %in% ubi
+    d$artifact <- paste(rk_d, d$feature, sep = "\r") %in% ubi & !d$declared_spike
   }
+  d$ubiquitous <- d$artifact | d$declared_spike
   u <- .sig_unit_stats(d[!d$ubiquitous, , drop = FALSE])
   missing_u <- setdiff(unique(d$unit), u$unit)
   if (length(missing_u)) {
@@ -412,22 +472,21 @@ classify_sample_identity <- function(input_df,
   u$composition_power[is.na(u$composition_power)] <- "none"
 
   # --- 4. Appearance and status ---
+  u$run_has_controls <- stats::ave(u$identity_label == "blank", u$marker, u$run, FUN = any)
+  u$n_field_units_run <- stats::ave(u$identity_label == "sample" & u$n_libraries_kept > 0,
+    u$marker, u$run, FUN = sum)
   ap <- .sig_appearance(u, diversity_blank_max)
   u$identity_appearance <- ap$appearance
+  u$identity_status <- ap$status
+  u$identity_status_reason <- ap$status_reason
   u$issue_type <- ap$issue_type
   u$confidence <- ap$confidence
-  u$identity_status <- ifelse(u$identity_appearance == "unassessable", "unassessable",
-    ifelse(u$identity_appearance == "neither", "suspect",
-      ifelse((u$identity_label == "blank" & u$identity_appearance == "valid_blank") |
-        (u$identity_label == "sample" & u$identity_appearance == "valid_sample"),
-      "concordant", "discordant")
-    )
-  )
-  u$issue_type[u$identity_status == "concordant"] <- NA_character_
+  u$issue_type[u$identity_status %in% c("concordant", "inconclusive", "untested")] <- NA_character_
 
   # cross-marker agreement, identity flags only
   id_flag <- u$identity_status %in% c("discordant", "suspect") & u$issue_type %in% "identity"
-  assessable <- u$identity_status != "unassessable" & !(u$issue_type %in% "library")
+  assessable <- u$identity_status %in% c("concordant", "discordant", "suspect") &
+    !(u$issue_type %in% "library")
   u$n_markers_flagged <- as.integer(tapply(u$marker[id_flag], u$sample[id_flag],
     function(x) length(unique(x)))[u$sample])
   u$n_markers_flagged[is.na(u$n_markers_flagged)] <- 0L
@@ -444,7 +503,7 @@ classify_sample_identity <- function(input_df,
 
   # --- 5. Decisions and admission ---
   dec <- .sig_read_decisions(decisions_path)
-  u <- .sig_apply_decisions(u, dec, unassessable_policy)
+  u <- .sig_apply_decisions(u, dec, untested_policy, accept_llm_roles)
 
   # --- 6. Runs: is there still a control? ---
   runs <- unique(u[, c("marker", "run")])
@@ -467,16 +526,16 @@ classify_sample_identity <- function(input_df,
   } else {
     NA_character_
   }
-  # taxa in nearly every field unit of a run: a spike-in or internal standard
-  # added to every tube. A blank holding little else is a CLEAN blank, and a
-  # reviewer (human or LLM) who is not told so will read it as a positive control.
-  runs$ubiquitous_taxa <- vapply(seq_len(nrow(runs)), function(i) {
-    k <- d$ubiquitous & d$marker == runs$marker[i] & d$run == runs$run[i]
+  .run_feats <- function(flag) vapply(seq_len(nrow(runs)), function(i) {
+    k <- flag & d$marker == runs$marker[i] & d$run == runs$run[i]
     if (!any(k)) return(NA_character_)
     nm <- if (!is.null(taxon_label_col)) d$label_name[k] else d$feature[k]
-    nm[is.na(nm) | !nzchar(nm)] <- d$feature[k][is.na(nm) | !nzchar(nm)]
+    bad <- is.na(nm) | !nzchar(nm)
+    nm[bad] <- d$feature[k][bad]
     paste(sort(unique(nm)), collapse = "; ")
   }, character(1))
+  runs$run_wide_artifacts <- .run_feats(d$artifact)
+  runs$declared_spikes <- .run_feats(d$declared_spike)
   rownames(runs) <- NULL
 
   queue <- u[u$needs_review, , drop = FALSE]
@@ -490,6 +549,7 @@ classify_sample_identity <- function(input_df,
   out$identity_label <- u$identity_label[m]
   out$identity_appearance <- u$identity_appearance[m]
   out$identity_status <- u$identity_status[m]
+  out$identity_status_reason <- u$identity_status_reason[m]
   out$admit_as <- u$admit_as[m]
   out$admit <- u$admit[m] & (!d$excluded | keep_lib)
 
@@ -509,6 +569,16 @@ classify_sample_identity <- function(input_df,
       sum(u$admit & u$admit_as %in% "sample"), sum(u$admit & u$admit_as %in% "control"),
       sum(!u$admit), sum(u$pending_review), sum(u$excluded_library_issue)))
   }
+  # Admitting a unit no test could judge is a policy choice, so say how many,
+  # and why, every time -- "no evidence of a problem" is not "checked clean".
+  nt <- u$admit & u$identity_status %in% c("untested", "inconclusive")
+  if (any(nt)) {
+    why <- table(paste(u$identity_status[nt], u$identity_status_reason[nt], sep = "/"))
+    message(sprintf(paste0(
+      "  admitted WITHOUT a discriminating test: %d unit(s) (%s). This is no evidence ",
+      "of a problem, not evidence of none; untested_policy = \"%s\"."),
+      sum(nt), paste(names(why), why, sep = " ", collapse = ", "), untested_policy))
+  }
   nc <- runs[runs$control_status == "no_admitted_control", , drop = FALSE]
   if (nrow(nc)) {
     warning(sprintf(
@@ -523,16 +593,33 @@ classify_sample_identity <- function(input_df,
       length(stale), paste(utils::head(stale, 8), collapse = ", ")
     ), call. = FALSE)
   }
+  art <- runs[!is.na(runs$run_wide_artifacts), , drop = FALSE]
+  if (nrow(art)) {
+    warning(sprintf(paste0(
+      "Run-wide artifact(s) on %d run(s) x marker: a feature in >= %.0f%% of field libraries that ",
+      "also dominates the blanks (%s). It is in every tube whatever the tube is -- a spike, a ",
+      "provider's positive control reaching every library, or cross-contamination. It was set ",
+      "aside from identity evidence. If you added it on purpose, declare it in spike_taxa; ",
+      "otherwise ask the provider. See attr(, \"runs\")$run_wide_artifacts."),
+      nrow(art), 100 * artifact_fraction,
+      paste(utils::head(unique(paste0(art$marker, " ", art$run, ": ", art$run_wide_artifacts)), 4), collapse = "; ")
+    ), call. = FALSE)
+  }
   n_pend <- sum(u$pending_review)
   if (n_pend && on_pending != "ignore") {
     pu <- u[u$pending_review, , drop = FALSE]
+    # Split by WHY a unit is held: a concordant unit held only because another
+    # marker of its tube was flagged would otherwise read as a gate error.
+    own <- pu[!pu$hold_reason %in% "tube", , drop = FALSE]
+    n_tube <- sum(pu$hold_reason %in% "tube")
     msg <- sprintf(paste0(
-      "%d unit(s) from %d sample(s) do not look like their label, or cannot be assessed, ",
-      "and have no recorded decision. They are NOT admitted. By status: %s. ",
-      "Record a disposition%s, or see attr(, \"review_queue\")."
+      "%d unit(s) from %d sample(s) await an identity decision and are NOT admitted: ",
+      "%d on their own evidence (%s)%s. Record a disposition%s, or see attr(, \"review_queue\")."
     ),
-    n_pend, length(unique(pu$sample)),
-    paste(names(table(pu$identity_status)), table(pu$identity_status), sep = " ", collapse = ", "),
+    n_pend, length(unique(pu$sample)), nrow(own),
+    if (nrow(own)) paste(names(table(own$identity_status)), table(own$identity_status), sep = " ", collapse = ", ") else "none",
+    if (n_tube) sprintf(paste0("; %d held only because another marker of the same tube was flagged ",
+      "(their own status may be concordant)"), n_tube) else "",
     if (!is.null(decisions_path)) paste0(" in ", decisions_path) else ""
     )
     if (on_pending == "error") stop(msg, call. = FALSE)
@@ -607,10 +694,22 @@ classify_sample_identity <- function(input_df,
   units <- unique(vc$unit)
   n_ok <- vapply(units, function(z) sum(ok[vc$unit == z]), integer(1))
   n_other <- vapply(units, function(z) sum(other[vc$unit == z]), integer(1))
+  # What the composition test could say about this unit. A run with no control
+  # library gives no identity test at all (validate_controls() then calls every
+  # sample "consistent" by default, which is not evidence), so it is kept apart.
+  run_ctl <- tapply(x$is_ctl, x$site, any)
+  vc$site_has_ctl <- as.logical(run_ctl[vc$site])
   pw <- vapply(units, function(z) {
-    p <- vc$power[vc$unit == z & ok]
-    if (!length(p)) "none" else if (all(p == "ok")) "ok" else "low"
+    k <- vc$unit == z
+    if (!any(vc$site_has_ctl[k])) return("no_controls")
+    p <- vc$power[k & ok]
+    if (length(p)) return(if (all(p == "ok")) "ok" else "low")
+    if (any(vc$verdict[k] == "untestable_no_headroom")) return("no_headroom")
+    if (any(vc$verdict[k] == "untestable")) return("too_few_samples")
+    "none"
   }, character(1))
+  n_ok[pw == "no_controls"] <- 0L
+  n_other[pw == "no_controls"] <- 0L
   sh <- ifelse(n_ok > 0, n_other / pmax(n_ok, 1), NA_real_)
   data.frame(
     unit = units, n_libraries_assessable = as.integer(n_ok),
@@ -620,50 +719,75 @@ classify_sample_identity <- function(input_df,
   )
 }
 
-#' The appearance rules; see the roxygen of classify_sample_identity()
+#' The appearance and status rules; see the roxygen of classify_sample_identity()
+#'
+#' Status separates what a test FOUND from why a test could not be made:
+#' concordant / discordant / suspect (tested, with an answer), inconclusive
+#' (tested, could not discriminate), untested (no test ran). status_reason says
+#' which evidence decided it, or why none could.
 #' @noRd
 .sig_appearance <- function(u, diversity_blank_max) {
   n <- nrow(u)
   ap <- character(n)
+  st <- character(n)
+  why <- character(n)
   it <- character(n)
   cf <- ifelse(u$composition_power == "ok", "ok", "low")
   run_failed <- u$run_status %in% "failed"
   collapsed <- u$n_libraries_kept == 0 & u$n_libraries > 0
-  rich <- !is.na(u$diversity_ratio) & u$diversity_ratio >= diversity_blank_max
+  div_known <- !is.na(u$diversity_ratio)
+  rich <- div_known & u$diversity_ratio >= diversity_blank_max
   other <- u$composition_other %in% TRUE
+  pw <- u$composition_power
   for (i in seq_len(n)) {
     if (u$identity_label[i] == "blank") {
       it[i] <- "identity"
       if (run_failed[i] || collapsed[i]) {
-        ap[i] <- if (rich[i]) "neither" else "unassessable"
+        if (rich[i]) {
+          ap[i] <- "neither"; st[i] <- "suspect"; why[i] <- "diversity_on_failed_run"
+        } else {
+          ap[i] <- "not_assessed"; st[i] <- "untested"; why[i] <- "uncomparable"
+        }
         cf[i] <- "low"
       } else if (other[i]) {
-        ap[i] <- "valid_sample"
+        ap[i] <- "valid_sample"; st[i] <- "discordant"; why[i] <- "composition"
       } else if (rich[i]) {
-        ap[i] <- "neither"
+        ap[i] <- "neither"; st[i] <- "suspect"; why[i] <- "diversity"
+      } else if (div_known[i]) {
+        # low diversity against an external reference is a real test that passed
+        ap[i] <- "valid_blank"; st[i] <- "concordant"; why[i] <- "diversity"
+      } else if (pw[i] == "ok") {
+        ap[i] <- "valid_blank"; st[i] <- "concordant"; why[i] <- "composition"
+      } else if (pw[i] %in% c("low", "no_headroom")) {
+        ap[i] <- "not_assessed"; st[i] <- "inconclusive"; why[i] <- "no_power"
       } else {
-        ap[i] <- "valid_blank"
+        ap[i] <- "not_assessed"; st[i] <- "untested"; why[i] <- "unreplicated"
       }
     } else {
       if (collapsed[i]) {
-        ap[i] <- "neither"
+        ap[i] <- "neither"; st[i] <- "suspect"; why[i] <- "library_failed"
         it[i] <- "library"
       } else if (other[i]) {
-        ap[i] <- "valid_blank"
+        ap[i] <- "valid_blank"; st[i] <- "discordant"; why[i] <- "composition"
         it[i] <- "identity"
-      } else if (u$n_libraries_assessable[i] == 0 &&
-        u$library_status[i] %in% c("low_yield_undetermined", NA) &&
-        !u$run_status[i] %in% c("pass", "low_yield")) {
-        ap[i] <- "unassessable"
-        it[i] <- "identity"
-        cf[i] <- "low"
       } else {
-        ap[i] <- "valid_sample"
+        # the identity test for a sample is whether it resembles the blanks;
+        # yield alone says it sequenced, not what it is
         it[i] <- "identity"
+        ap[i] <- "valid_sample"
+        if (pw[i] == "ok") {
+          st[i] <- "concordant"; why[i] <- "composition"
+        } else if (pw[i] %in% c("low", "no_headroom")) {
+          st[i] <- "inconclusive"; why[i] <- "no_power"
+        } else if (pw[i] == "no_controls" || !isTRUE(u$run_has_controls[i])) {
+          ap[i] <- "not_assessed"; st[i] <- "untested"; why[i] <- "no_blanks"
+        } else {
+          ap[i] <- "not_assessed"; st[i] <- "untested"; why[i] <- "unreplicated"
+        }
       }
     }
   }
-  list(appearance = ap, issue_type = it, confidence = cf)
+  list(appearance = ap, status = st, status_reason = why, issue_type = it, confidence = cf)
 }
 
 #' @noRd
@@ -684,20 +808,22 @@ classify_sample_identity <- function(input_df,
       x$diversity_n1, x$diversity_ratio, x$marker, x$reference_n1)
     base <- sprintf("%s reads, %d features; %s; %s.",
       format(round(x$depth), big.mark = ",", trim = TRUE), as.integer(x$richness), div, comp)
-    lead <- switch(paste(x$identity_label, x$identity_appearance),
-      "blank valid_blank" = "Looks like a clean blank.",
-      "blank valid_sample" = "Blank that resembles the field samples it was sequenced with: mislabel or carry-over.",
-      "blank neither" = if (x$run_status %in% "failed") {
-        "Blank at sample-level diversity on a FAILED run; failure only lowers diversity, so it carries an environmental community."
-      } else {
-        sprintf("Blank carrying an environmental community (diversity >= %.2fx reference) that does not resemble this run's samples.", diversity_blank_max)
-      },
-      "blank unassessable" = "Blank on a run whose field libraries failed: nothing to compare it with, and a failure hides contamination. Not evidence of a clean blank.",
-      "sample valid_sample" = "Looks like a valid sample.",
-      "sample valid_blank" = "Sample that resembles the run's blanks rather than the other samples: a blank labelled as a sample, or a near-empty sample.",
-      "sample neither" = sprintf("Every library of this sample failed (%s); the extract may be fine in other markers.",
+    lead <- switch(paste(x$identity_label, x$identity_status, x$identity_status_reason),
+      "blank concordant diversity" = "Looks like a clean blank: diversity well below a typical field sample.",
+      "blank concordant composition" = "Looks like a clean blank: composition unlike the run's samples.",
+      "blank discordant composition" = "Blank that resembles the field samples it was sequenced with: mislabel or carry-over.",
+      "blank suspect diversity" = sprintf("Blank carrying a community (diversity >= %.2fx reference) that does not resemble this run's samples; judge it against the blank medium.", diversity_blank_max),
+      "blank suspect diversity_on_failed_run" = "Blank at sample-level diversity on a FAILED run; failure only lowers diversity, so it carries a community of its own.",
+      "blank untested uncomparable" = "UNTESTED: the run's field libraries failed, so there is nothing valid to compare this blank with. No evidence of a problem; not evidence of a clean blank.",
+      "blank untested unreplicated" = "UNTESTED: too few field units on this run, and no diversity reference. No evidence of a problem.",
+      "blank inconclusive no_power" = "INCONCLUSIVE: the composition test ran but could not discriminate, and no diversity reference exists.",
+      "sample concordant composition" = "Looks like a valid sample.",
+      "sample discordant composition" = "Sample that resembles the run's blanks rather than the other samples: a blank labelled as a sample, or a near-empty sample.",
+      "sample suspect library_failed" = sprintf("Every library of this sample failed (%s); the extract may be fine in other markers.",
         if (x$run_status %in% "failed") "whole run failed" else "library failure"),
-      "sample unassessable" = "Neither yield nor composition could be tested.",
+      "sample inconclusive no_power" = "INCONCLUSIVE: the test for resembling a blank ran but could not discriminate on this run. No evidence of a problem.",
+      "sample untested no_blanks" = "UNTESTED: no blank on this run to compare with. No evidence of a problem.",
+      "sample untested unreplicated" = "UNTESTED: too few field units on this run to test. No evidence of a problem.",
       ""
     )
     extra <- if (x$n_markers_flagged > 0) {
@@ -753,11 +879,13 @@ classify_sample_identity <- function(input_df,
 
 #' Apply dispositions and the default admission rule
 #' @noRd
-.sig_apply_decisions <- function(u, dec, unassessable_policy) {
+.sig_apply_decisions <- function(u, dec, untested_policy, accept_llm_roles = FALSE) {
   u$identity_disposition <- NA_character_
   u$library_disposition <- NA_character_
+  u$disposition_source <- NA_character_
   stale <- character(0)
   if (!is.null(dec) && nrow(dec)) {
+    all_dec <- dec
     dec <- dec[!is.na(dec$disposition), , drop = FALSE]
     key_d <- paste(dec$sample, dec$marker, dec$run, sep = "|")
     # identity: per sample, must agree across its rows
@@ -771,10 +899,26 @@ classify_sample_identity <- function(input_df,
       }
       per <- unlist(per)
       u$identity_disposition <- as.vector(unname(per[u$sample]))
+      u$disposition_source[!is.na(u$identity_disposition)] <- "user"
     }
     lbd <- dec[dec$disposition %in% .SIG_LIBRARY_DISPOSITIONS, , drop = FALSE]
     if (nrow(lbd)) {
       u$library_disposition <- lbd$disposition[match(u$unit, paste(lbd$sample, lbd$marker, lbd$run, sep = "|"))]
+    }
+    # the LLM's role verdict stands in for a disposition only when asked, and
+    # never over a person's decision
+    if (isTRUE(accept_llm_roles) && "llm_role" %in% names(all_dec)) {
+      r <- all_dec[!is.na(all_dec$llm_role) & nzchar(all_dec$llm_role), c("sample", "llm_role"), drop = FALSE]
+      r <- r[!duplicated(r$sample), , drop = FALSE]
+      role <- r$llm_role[match(u$sample, r$sample)]
+      lab_blank <- u$identity_label == "blank"
+      llm_disp <- ifelse(role %in% "blank", ifelse(lab_blank, "confirm_blank", "reassign_to_blank"),
+        ifelse(role %in% "sample", ifelse(lab_blank, "reassign_to_sample", "confirm_sample"),
+          ifelse(role %in% "positive_control", "reassign_to_positive_control",
+            ifelse(role %in% "exclude", "exclude_tube", NA_character_))))
+      use <- is.na(u$identity_disposition) & !is.na(llm_disp)
+      u$identity_disposition[use] <- llm_disp[use]
+      u$disposition_source[use] <- "llm"
     }
     # evidence drift: recorded status/appearance vs now
     if (all(c("identity_status", "identity_appearance") %in% names(dec))) {
@@ -802,24 +946,27 @@ classify_sample_identity <- function(input_df,
   flagged <- st %in% c("discordant", "suspect")
   id_issue <- u$issue_type %in% "identity"
   lib_issue <- u$issue_type %in% "library"
-  unass <- st == "unassessable"
-  unass_blocks <- unass & (unassessable_policy == "block" | u$identity_label == "blank")
+  # untested / inconclusive: no evidence of a problem. Admitted by default so a
+  # thin study can still be analysed (cautiously, with the status carried);
+  # "hold_blanks" keeps such blanks out of the control set, "block" holds all.
+  weak <- st %in% c("untested", "inconclusive")
+  weak_holds <- weak & (untested_policy == "block" |
+    (untested_policy == "hold_blanks" & u$identity_label == "blank"))
 
   id_resolved <- !is.na(idd)
   lib_resolved <- !is.na(u$library_disposition)
   # identity is a property of the tube: an identity flag in ANY marker holds every
-  # unit of that sample until the tube is dispositioned
-  # (an unassessable unit holds only itself: a failed library says nothing about
-  # the tube's other markers)
+  # unit of that sample until the tube is dispositioned (a weak unit holds only
+  # itself: an untested library says nothing about the tube's other markers)
   tube_flag <- u$sample %in% u$sample[flagged & id_issue]
   u$tube_flagged <- tube_flag
   # why a unit is held: its OWN evidence, or only its tube's. identity_status
   # always describes the unit's own evidence, so counting flags never double-counts
   u$hold_reason <- ifelse(flagged & id_issue, "own_evidence",
-    ifelse(unass_blocks, "unassessable",
+    ifelse(weak_holds, as.character(st),
       ifelse(tube_flag, "tube", NA_character_)))
-  needs_id <- (tube_flag | unass_blocks) & !id_resolved
-  held_by_tube <- tube_flag & st == "concordant" & !id_resolved
+  needs_id <- (tube_flag | weak_holds) & !id_resolved
+  held_by_tube <- tube_flag & !(flagged & id_issue) & !id_resolved
   u$reason[held_by_tube] <- paste(u$reason[held_by_tube],
     "HELD: this tube's identity is flagged in another marker; an identity decision covers every marker.")
   needs_lib <- flagged & lib_issue & !lib_resolved
@@ -833,9 +980,9 @@ classify_sample_identity <- function(input_df,
   admit[u$library_disposition %in% "exclude_library"] <- FALSE
   u$excluded_library_issue <- needs_lib
   u$pending_review <- needs_id
-  # the queue lists every flagged unit and every unassessable unit that blocks,
-  # plus any unit already decided (so the record keeps it)
-  u$needs_review <- flagged | unass_blocks | tube_flag | id_resolved | lib_resolved
+  # the queue lists every flagged unit, every weak unit that is held, and any
+  # unit already decided (so the record keeps it)
+  u$needs_review <- flagged | weak_holds | tube_flag | id_resolved | lib_resolved
   u$admit <- admit
   u$admit_as <- ifelse(admit, role, NA_character_)
   u$disposition <- ifelse(!is.na(u$library_disposition), u$library_disposition, idd)
@@ -847,7 +994,7 @@ classify_sample_identity <- function(input_df,
 .sig_queue_shape <- function(q) {
   cols <- c(
     "sample", "marker", "run", "identity_label", "identity_appearance", "identity_status",
-    "issue_type", "tube_flagged", "hold_reason", "confidence", "n_markers_flagged", "n_markers_assessable", "depth",
+    "identity_status_reason", "issue_type", "tube_flagged", "hold_reason", "confidence", "n_markers_flagged", "n_markers_assessable", "depth",
     "richness", "diversity_n1", "diversity_ratio", "composition_share_other",
     "composition_power", "run_status", "reason", "top_taxa"
   )

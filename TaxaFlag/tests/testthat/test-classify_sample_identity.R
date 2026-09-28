@@ -67,15 +67,21 @@ test_that("an empty or near-empty blank is a valid blank, never a failure", {
   expect_equal(.unit(res, "CLEAN", "M2")$identity_status, "concordant")
 })
 
-test_that("a blank on a failed run is unassessable, never concordant", {
+test_that("a blank on a failed run is untested (uncomparable), never concordant", {
   d <- .sig_fixture(fail_run = "R1")
   ff <- suppressWarnings(flag_failed_libraries(d, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
     verbose = FALSE))
   expect_equal(attr(ff, "runs")$run_status[attr(ff, "runs")$run == "R1" & attr(ff, "runs")$marker == "M2"], "failed")
   res <- .sig_run(d, failed_libraries = ff)
   b <- .unit(res, "CLEAN", "M2")
-  expect_equal(b$identity_status, "unassessable")
-  expect_false(b$admit)
+  expect_equal(b$identity_status, "untested")
+  expect_equal(b$identity_status_reason, "uncomparable")
+  # admitted by default (no evidence of a problem), held under "hold_blanks"
+  expect_true(b$admit)
+  held <- .sig_run(d, failed_libraries = ff, untested_policy = "hold_blanks")
+  expect_false(.unit(held, "CLEAN", "M2")$admit)
+  rr <- attr(held, "runs")
+  expect_equal(rr$control_status[rr$marker == "M2" & rr$run == "R1"], "no_admitted_control")
   # the failure says nothing about the tube's other marker
   expect_true(.unit(res, "CLEAN", "M1")$admit)
   expect_false(.unit(res, "CLEAN", "M1")$tube_flagged)
@@ -86,29 +92,28 @@ test_that("a blank on a failed run is unassessable, never concordant", {
   expect_false(s$admit)
   expect_false(s$pending_review)
   expect_true(.unit(res, "S11", "M1")$admit)
-  # and the run is reported as having no admitted control
-  rr <- attr(res, "runs")
-  expect_equal(rr$control_status[rr$marker == "M2" & rr$run == "R1"], "no_admitted_control")
 })
 
 test_that("a run with no admitted control warns loudly", {
   d <- .sig_fixture(fail_run = "R1")
   w <- testthat::capture_warnings(
     classify_sample_identity(d, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
-      verbose = FALSE, on_pending = "ignore"))
+      untested_policy = "hold_blanks", verbose = FALSE, on_pending = "ignore"))
   expect_true(any(grepl("NONE admitted", w)))
 })
 
-test_that("unassessable_policy = 'block' also holds unassessable samples", {
-  u <- data.frame(unit = "a", sample = "a", marker = "M", run = "R",
-    identity_label = "sample", identity_status = "unassessable", issue_type = "identity",
-    reason = "", stringsAsFactors = FALSE)
-  asym <- .sig_apply_decisions(u, NULL, "asymmetric")
+test_that("untested_policy decides what happens to untested and inconclusive units", {
+  u <- data.frame(unit = c("a", "b"), sample = c("a", "b"), marker = "M", run = "R",
+    identity_label = c("sample", "blank"), identity_status = c("untested", "inconclusive"),
+    issue_type = NA_character_, reason = "", stringsAsFactors = FALSE)
+  adm <- .sig_apply_decisions(u, NULL, "admit")
+  hb <- .sig_apply_decisions(u, NULL, "hold_blanks")
   blk <- .sig_apply_decisions(u, NULL, "block")
-  expect_true(asym$admit)
-  expect_false(blk$admit)
-  u$identity_label <- "blank"
-  expect_false(.sig_apply_decisions(u, NULL, "asymmetric")$admit)
+  expect_equal(adm$admit, c(TRUE, TRUE))
+  expect_equal(hb$admit, c(TRUE, FALSE))
+  expect_equal(blk$admit, c(FALSE, FALSE))
+  expect_equal(blk$hold_reason, c("untested", "inconclusive"))
+  expect_false(any(adm$pending_review))
 })
 
 test_that("on_pending = 'error' stops the run", {
@@ -198,7 +203,6 @@ test_that("a decision made against different evidence is reported", {
 
 test_that("input validation", {
   d <- .sig_fixture()
-  expect_error(classify_sample_identity(d, verbose = FALSE), "control_samples")
   expect_error(classify_sample_identity(d, control_samples = "CLEAN", taxon_col = "nope",
     verbose = FALSE), "not found")
   d2 <- d
@@ -224,7 +228,7 @@ test_that("a single-marker failed run is caught although its libraries read low_
   expect_equal(s$identity_status, "suspect")
   expect_equal(s$issue_type, "library")
   expect_false(s$admit)
-  expect_equal(.unit(res, "CLEAN", "M2")$identity_status, "unassessable")
+  expect_equal(.unit(res, "CLEAN", "M2")$identity_status, "untested")
   expect_true(.unit(res, "S21", "M2")$admit)
 })
 
@@ -283,4 +287,92 @@ test_that("a spike-only blank on a spiked run is a clean blank", {
   expect_match(.unit(res, "CLEAN", "M1")$top_taxa, "SPIKE")
   # and NULL keeps every feature
   expect_error(.sig_run(d, ubiquitous_fraction = 2), "ubiquitous_fraction")
+})
+
+test_that("a study with no labelled blanks is analysed, every unit untested (no_blanks)", {
+  d <- .sig_fixture()
+  d <- d[!d$sample_id %in% c("CLEAN", "MISLABEL", "PLANKTON"), ]
+  w <- testthat::capture_warnings(
+    res <- classify_sample_identity(d, taxon_label_col = "species",
+      verbose = FALSE, on_pending = "ignore"))
+  expect_true(any(grepl("No labelled controls", w)))
+  u <- attr(res, "units")
+  expect_true(all(u$identity_status == "untested"))
+  expect_true(all(u$identity_status_reason == "no_blanks"))
+  expect_true(all(u$admit))
+  expect_true(all(res$admit))
+})
+
+test_that("a run with no blank leaves its samples untested, not concordant", {
+  d <- .sig_fixture()
+  d <- d[!(d$sample_id == "CLEAN"), ]   # run R1 now has no blank
+  res <- .sig_run(d, blanks = c("MISLABEL", "PLANKTON"))
+  s11 <- .unit(res, "S11", "M1")
+  expect_equal(s11$identity_status, "untested")
+  expect_equal(s11$identity_status_reason, "no_blanks")
+  expect_true(s11$admit)
+})
+
+test_that("a run-wide artifact warns; a declared spike does not", {
+  d <- .sig_fixture()
+  add <- unique(d[d$marker == "M1", c("sample_id", "marker", "run", "event_id")])
+  add$taxon_name <- "M1_pc"; add$species <- "PositiveControl"
+  add$count <- ifelse(add$sample_id %in% c("CLEAN", "MISLABEL", "PLANKTON"), 50000, 500)
+  d2 <- rbind(d, add)
+  w <- testthat::capture_warnings(
+    res <- classify_sample_identity(d2, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
+      taxon_label_col = "species", verbose = FALSE, on_pending = "ignore"))
+  expect_true(any(grepl("Run-wide artifact", w)))
+  expect_false(any(grepl("spike-in, so", w)))
+  rr <- attr(res, "runs")
+  expect_true(all(grepl("PositiveControl", rr$run_wide_artifacts[rr$marker == "M1"])))
+  w2 <- testthat::capture_warnings(
+    res2 <- classify_sample_identity(d2, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
+      taxon_label_col = "species", spike_taxa = "PositiveControl",
+      verbose = FALSE, on_pending = "ignore"))
+  expect_false(any(grepl("Run-wide artifact", w2)))
+  rr2 <- attr(res2, "runs")
+  expect_true(all(is.na(rr2$run_wide_artifacts)))
+  expect_true(all(grepl("PositiveControl", rr2$declared_spikes[rr2$marker == "M1"])))
+})
+
+test_that("accept_llm_roles admits on llm_role where no person has decided", {
+  path <- tempfile(fileext = ".csv")
+  on.exit(unlink(path))
+  d <- .sig_fixture()
+  .sig_run(d, decisions_path = path)
+  rec <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character")
+  rec$llm_role <- ifelse(rec$sample == "MISLABEL", "sample",
+    ifelse(rec$sample == "PLANKTON", "blank", NA))
+  # a person overrides the LLM for PLANKTON
+  rec$disposition[rec$sample == "PLANKTON" & rec$marker == "M1"] <- "exclude_tube"
+  utils::write.csv(rec, path, row.names = FALSE, na = "")
+  off <- attr(.sig_run(d, decisions_path = path), "units")
+  expect_false(any(off$admit[off$sample == "MISLABEL"]))
+  on <- attr(.sig_run(d, decisions_path = path, accept_llm_roles = TRUE), "units")
+  m <- on[on$sample == "MISLABEL", ]
+  expect_true(all(m$admit))
+  expect_equal(unique(m$admit_as), "sample")
+  expect_equal(unique(m$disposition_source), "llm")
+  p <- on[on$sample == "PLANKTON", ]
+  expect_false(any(p$admit))
+  expect_equal(unique(p$disposition_source), "user")
+})
+
+test_that("the pending warning separates tube holds from a unit's own evidence", {
+  w <- capture_warnings(res <- classify_sample_identity(.sig_fixture(),
+    control_samples = c("CLEAN", "MISLABEL", "PLANKTON"), taxon_label_col = "species",
+    verbose = FALSE))
+  u <- attr(res, "units")
+  expect_true("identity_status_reason" %in% names(u))
+  expect_false("status_reason" %in% names(u))
+  expect_true("identity_status_reason" %in% names(attr(res, "review_queue")))
+  pw <- grep("await an identity decision", w, value = TRUE)
+  expect_true(any(u$pending_review))
+  if (any(u$pending_review)) {
+    expect_length(pw, 1L)
+    expect_match(pw, sprintf("%d on their own evidence", sum(u$pending_review & !u$hold_reason %in% "tube")))
+    if (any(u$pending_review & u$hold_reason %in% "tube"))
+      expect_match(pw, "held only because another marker of the same tube was flagged")
+  }
 })

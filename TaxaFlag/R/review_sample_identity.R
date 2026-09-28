@@ -1,6 +1,13 @@
 # Exports: review_sample_identity
 # Internal helpers: .sir_tube_items, .sir_build_prompt, .sir_parse, .SIR_VERDICTS
 
+.SIR_ROLES <- c("blank", "sample", "positive_control", "exclude", "unknown")
+# the role a verdict implies, when the model gives a verdict but no role
+.SIR_VERDICT_ROLE <- c(
+  clean_blank = "blank", contaminated_blank = "exclude",
+  sample_labelled_as_blank = "sample", positive_control_labelled_as_blank = "positive_control",
+  blank_labelled_as_sample = "blank", valid_sample = "sample", uncertain = "unknown"
+)
 .SIR_VERDICTS <- c(
   "clean_blank", "contaminated_blank", "sample_labelled_as_blank",
   "positive_control_labelled_as_blank", "blank_labelled_as_sample",
@@ -13,9 +20,12 @@
 #' identity question to an LLM, with its taxa in every marker and the
 #' community of the field samples it was sequenced with, and asks for a
 #' plausibility judgement: is this a clean blank, a contaminated blank, a field
-#' sample carrying a blank's label, or the reverse? The answer is ADVICE. It
-#' is written to \code{llm_} columns beside the decision record, and nothing
-#' is admitted on it: a person still records the \code{disposition}.
+#' sample carrying a blank's label, or the reverse? It also gives a ROLE: how the
+#' tube should be used (blank, sample, positive control, exclude, unknown). The
+#' answer is written to \code{llm_} columns beside the decision record.
+#' Admission is the workflow's choice: by default a person still records the
+#' \code{disposition}, and \code{classify_sample_identity(accept_llm_roles =
+#' TRUE)} admits on \code{llm_role} wherever no person has decided.
 #'
 #' @section Why an LLM here:
 #' The judgement that settles these cases is a plausibility argument over a
@@ -48,6 +58,18 @@
 #'
 #' @param identity The result of \code{classify_sample_identity()}, with its
 #'   attributes intact (read it immediately; a dplyr verb drops them).
+#' @param blank_medium Character or NULL. What a blank is filled with, e.g.
+#'   "tap water". A blank is judged acceptable when its contents are
+#'   consistent with its medium or with handling, so this decides many
+#'   verdicts. NULL tells the model the medium is not stated. Default NULL.
+#' @param target_groups Character or NULL. The groups the study's samples are
+#'   meant to measure, e.g. "macroalgae, macroinvertebrates, intertidal
+#'   fishes". A blank holding these at more than a trace is judged
+#'   contaminated even when a plausible medium community is also present: a
+#'   medium explains its own community, never the target signal, and a control
+#'   carrying the target signal makes contamination checks permissive in
+#'   exactly the direction nobody checks. NULL tells the model the groups are
+#'   not stated. Default NULL.
 #' @param context Character. What a blank is in this study and where the
 #'   samples came from, e.g. "Field blanks are distilled water poured through
 #'   a filter at the site. Samples are rocky-intertidal swabs, southern
@@ -81,7 +103,10 @@
 #'   \code{"contaminated_blank"}, \code{"sample_labelled_as_blank"},
 #'   \code{"positive_control_labelled_as_blank"},
 #'   \code{"blank_labelled_as_sample"}, \code{"valid_sample"},
-#'   \code{"uncertain"}), \code{llm_suggested_disposition},
+#'   \code{"uncertain"}), \code{llm_role} (\code{"blank"}, \code{"sample"},
+#'   \code{"positive_control"}, \code{"exclude"} or \code{"unknown"}: how the
+#'   tube should be used; \code{classify_sample_identity(accept_llm_roles = TRUE)}
+#'   admits on it), \code{llm_suggested_disposition},
 #'   \code{llm_confidence} (high/moderate/low) and \code{llm_rationale} added
 #'   per sample. Attributes \code{"unreviewed_samples"} (always present) and
 #'   \code{"llm_prompts"}.
@@ -100,6 +125,8 @@
 #' @export
 review_sample_identity <- function(identity,
                                    context,
+                                   blank_medium = NULL,
+                                   target_groups = NULL,
                                    llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
                                    model_label = NULL,
                                    tubes_per_call = 4L,
@@ -122,6 +149,16 @@ review_sample_identity <- function(identity,
     stop("'context' is required: say what a blank is in this study and where the ",
       "samples came from. The verdict depends on it.", call. = FALSE)
   }
+  if (!is.null(blank_medium) && (!is.character(blank_medium) || length(blank_medium) != 1L ||
+    is.na(blank_medium) || !nzchar(trimws(blank_medium)))) {
+    stop("'blank_medium' must be a single non-empty string, e.g. \"tap water\", or NULL.",
+      call. = FALSE)
+  }
+  if (!is.null(target_groups) && (!is.character(target_groups) || length(target_groups) != 1L ||
+    is.na(target_groups) || !nzchar(trimws(target_groups)))) {
+    stop("'target_groups' must be a single non-empty string, e.g. ",
+      "\"macroalgae, macroinvertebrates, intertidal fishes\", or NULL.", call. = FALSE)
+  }
   if (!is.function(llm_fn)) stop("'llm_fn' must be a function.", call. = FALSE)
   if (all(is.na(u$top_taxa))) {
     stop("classify_sample_identity() was run without 'taxon_label_col', so there are ",
@@ -130,6 +167,7 @@ review_sample_identity <- function(identity,
 
   items <- .sir_tube_items(u, runs)
   q$llm_verdict <- NA_character_
+  q$llm_role <- NA_character_
   q$llm_suggested_disposition <- NA_character_
   q$llm_confidence <- NA_character_
   q$llm_rationale <- NA_character_
@@ -143,8 +181,8 @@ review_sample_identity <- function(identity,
   # The reviewer belongs in the key: a disposition is one model's judgement,
   # and the prefix went to v2 when it was added, so entries written before the
   # fix are a miss once. See .review_reviewer_id().
-  ctx_key <- paste("sir-v2", .review_reviewer_id(llm_fn, model_label),
-    trimws(context),
+  ctx_key <- paste("sir-v4", .review_reviewer_id(llm_fn, model_label),
+    trimws(context), trimws(blank_medium %||% ""), trimws(target_groups %||% ""),
     sep = "\u0001"
   )
   keys <- vapply(items, function(it) paste(ctx_key, it, sep = "\u0001"), character(1))
@@ -181,7 +219,7 @@ review_sample_identity <- function(identity,
     batches <- split(todo, ceiling(seq_along(todo) / per))
     for (b in seq_along(batches)) {
       ids <- batches[[b]]
-      prompt <- .sir_build_prompt(items[ids], context)
+      prompt <- .sir_build_prompt(items[ids], context, blank_medium, target_groups)
       label <- sprintf("%d.%d", attempt, b)
       prompts[[label]] <- prompt
       resp <- tryCatch(
@@ -208,6 +246,7 @@ review_sample_identity <- function(identity,
     k <- q$sample == s
     a <- answers[[s]]
     q$llm_verdict[k] <- a$verdict
+    q$llm_role[k] <- if (!is.null(a$role)) a$role else unname(.SIR_VERDICT_ROLE[a$verdict])
     q$llm_suggested_disposition[k] <- a$disposition
     q$llm_confidence[k] <- a$confidence
     q$llm_rationale[k] <- a$rationale
@@ -244,12 +283,14 @@ review_sample_identity <- function(identity,
     lines <- vapply(seq_len(nrow(x)), function(i) {
       r <- x[i, ]
       fr <- runs$field_top_taxa[runs$marker == r$marker & runs$run == r$run]
-      ub <- runs$ubiquitous_taxa[runs$marker == r$marker & runs$run == r$run]
-      ub <- if (length(ub) && !is.na(ub[1])) ub[1] else "(none)"
+      ub <- c(runs$run_wide_artifacts[runs$marker == r$marker & runs$run == r$run],
+        runs$declared_spikes[runs$marker == r$marker & runs$run == r$run])
+      ub <- ub[!is.na(ub)]
+      ub <- if (length(ub)) paste(ub, collapse = "; ") else "(none)"
       sprintf(paste0(
         "  [%s, run %s] gate: %s (looks like %s). %s reads, %d features, effective diversity %.2fx a typical field sample of this marker. ",
         "Composition: %s.\n    taxa in this tube: %s\n    field samples on this run: %s\n",
-        "    in >=90%% of this run's field samples (probable spike-in/internal standard): %s"
+        "    in every tube of this run whatever the tube (run-wide artifact or declared spike): %s"
       ),
       r$marker, r$run, r$identity_status, r$identity_appearance,
       format(round(r$depth), big.mark = ",", trim = TRUE), as.integer(r$richness),
@@ -272,40 +313,56 @@ review_sample_identity <- function(identity,
 }
 
 #' @noRd
-.sir_build_prompt <- function(items, context) {
+.sir_build_prompt <- function(items, context, blank_medium = NULL, target_groups = NULL) {
+  medium <- if (is.null(blank_medium)) "not stated" else trimws(blank_medium)
+  targets <- if (is.null(target_groups)) "not stated" else trimws(target_groups)
   paste0(
     "You are reviewing negative controls and field samples in a DNA metabarcoding study, ",
     "before any of them are analysed. Each tube below was held back because its contents ",
-    "do not look like its label. Judge, from the taxa, what the tube most plausibly is.\n\n",
-    "STUDY CONTEXT: ", trimws(context), "\n\n",
+    "do not look like its label. Judge, from the taxa, what the tube most plausibly is, and ",
+    "how it should be used.\n\n",
+    "STUDY CONTEXT: ", trimws(context), "\n",
+    "BLANK MEDIUM (what a blank is filled with): ", medium, "\n",
+    "STUDY TARGET GROUPS (what the samples are meant to measure): ", targets, "\n\n",
     "GUIDELINES\n",
-    "- A clean blank holds few taxa, and those are laboratory or handling signals: human, ",
-    "common fungi and moulds, reagent contaminants, or a scattering of low-count reads also ",
-    "found in the run's field samples (index hopping). Many features alone do not make a ",
-    "blank dirty if they are of this kind.\n",
-    "- A blank holding a coherent ENVIRONMENTAL community is contaminated, whatever that ",
-    "environment is. If the community matches the run's field samples, suspect a mislabel ",
-    "or carry-over (sample_labelled_as_blank). If it is a different environment (for example ",
-    "open-water plankton in a benthic study), suspect contamination from another source, such ",
-    "as a rinse with unfiltered water (contaminated_blank). Being outside the study's ",
-    "analytical scope does not make a taxon a lab contaminant.\n",
-    "- A taxon listed as present in >=90% of the run's field samples is a spike-in or internal ",
-    "standard added to every tube. A blank holding little besides it is a CLEAN blank: with no ",
-    "template, the spike dominates. Never call such a blank a positive control.\n",
-    "- A tube labelled as a blank that holds a mock community NOT added to every tube (a positive-control ",
-    "sequence, or taxa foreign to the study region such as freshwater or domestic species in a ",
-    "marine study) is a positive control carrying a blank's label ",
-    "(positive_control_labelled_as_blank; suggest reassign_to_positive_control).\n",
-    "- A tube labelled as a sample that holds only lab/handling signals, or almost nothing, ",
-    "may be a blank carrying a sample label (blank_labelled_as_sample).\n",
+    "- A blank is acceptable when its contents are consistent with its MEDIUM or with ",
+    "HANDLING. Handling signals: human, common fungi and moulds, reagent contaminants, a ",
+    "scattering of low-count reads also found in the run's field samples. The medium can ",
+    "carry a community of its own: tap water carries its source water's freshwater organisms ",
+    "(fishes, invertebrates, algae, protists), and tap water varies in cleanliness. Many ",
+    "features alone do not make a blank dirty if they are of these kinds (clean_blank, role ",
+    "blank).\n",
+    "- A medium explains its OWN community, never the study's target groups. A blank holding ",
+    "taxa of the STUDY TARGET GROUPS at more than a trace (more than a few low-count reads, ",
+    "for example over about 1% of its reads or across many features) is NOT acceptable, even ",
+    "when a plausible medium or handling community is also present: a control carrying the ",
+    "target signal hides contamination of the samples. Judge the target-group share by ",
+    "itself; do not let a medium community dilute it (contaminated_blank, role exclude; or ",
+    "sample_labelled_as_blank if it matches the run's field samples).\n",
+    "- A blank is NOT acceptable when it holds a community that neither its medium nor ",
+    "handling explains, in particular taxa of the SAMPLED environment. If that community ",
+    "matches the run's field samples, suspect a mislabel or carry-over ",
+    "(sample_labelled_as_blank, role sample). If it is from the sampled environment but not ",
+    "these samples, suspect contamination (contaminated_blank, role exclude). Being outside ",
+    "the study's analytical scope does not make a taxon a lab contaminant.\n",
+    "- A feature listed as being in every tube of the run is a run-wide artifact (a spike, a ",
+    "provider's positive control reaching every library, or cross-contamination). It says ",
+    "nothing about what the tube is; judge the tube by everything else it holds.\n",
+    "- A tube labelled as a blank that holds a mock community that is NOT in every tube of the ",
+    "run may be a positive control carrying a blank's label ",
+    "(positive_control_labelled_as_blank, role positive_control).\n",
+    "- A tube labelled as a sample that holds only medium/handling signals, or almost nothing, ",
+    "may be a blank carrying a sample label (blank_labelled_as_sample, role blank).\n",
     "- Use every marker shown: agreement across markers is strong evidence; disagreement ",
     "should lower your confidence.\n",
-    "- If the evidence does not support a judgement, say 'uncertain'. Do not guess.\n\n",
+    "- If the evidence does not support a judgement, say 'uncertain' with role 'unknown'. ",
+    "Do not guess.\n\n",
     "Allowed verdicts: ", paste(.SIR_VERDICTS, collapse = ", "), ".\n",
+    "Allowed roles (how the tube should be used): ", paste(.SIR_ROLES, collapse = ", "), ".\n",
     "Allowed suggested_disposition: ", paste(.SIG_IDENTITY_DISPOSITIONS, collapse = ", "), ".\n\n",
     "TUBES\n", paste(unlist(items), collapse = "\n\n"), "\n\n",
     "Respond with ONLY a JSON array, one object per tube, in this form:\n",
-    "[{\"sample\": \"<tube id>\", \"verdict\": \"...\", \"suggested_disposition\": \"...\", ",
+    "[{\"sample\": \"<tube id>\", \"verdict\": \"...\", \"role\": \"...\", \"suggested_disposition\": \"...\", ",
     "\"confidence\": \"high|moderate|low\", \"rationale\": \"one or two sentences naming the taxa that decided it\"}]"
   )
 }
@@ -328,9 +385,12 @@ review_sample_identity <- function(identity,
     v <- g("verdict")
     d <- g("suggested_disposition")
     cf <- g("confidence")
+    ro <- g("role")
     if (is.na(v) || !v %in% .SIR_VERDICTS) next
+    if (is.na(ro) || !ro %in% .SIR_ROLES) ro <- unname(.SIR_VERDICT_ROLE[v])
     out[[s]] <- data.frame(
       verdict = v,
+      role = ro,
       disposition = if (!is.na(d) && d %in% ok_disp) d else NA_character_,
       confidence = if (!is.na(cf) && cf %in% c("high", "moderate", "low")) cf else NA_character_,
       rationale = g("rationale"),

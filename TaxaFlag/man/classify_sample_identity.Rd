@@ -12,13 +12,15 @@ classify_sample_identity(
   run_col = "run",
   count_col = "count",
   taxon_col = "taxon_name",
-  control_samples,
+  control_samples = NULL,
   failed_libraries = NULL,
   taxon_label_col = NULL,
   diversity_blank_max = 0.5,
   composition_share = 0.5,
-  ubiquitous_fraction = 0.9,
-  unassessable_policy = c("asymmetric", "block"),
+  artifact_fraction = 0.9,
+  spike_taxa = NULL,
+  untested_policy = c("admit", "hold_blanks", "block"),
+  accept_llm_roles = FALSE,
   decisions_path = NULL,
   on_pending = c("warn", "error", "ignore"),
   verbose = TRUE
@@ -35,7 +37,8 @@ used for \code{flag_failed_libraries()}.}
 composition and diversity.}
 
 \item{control_samples}{Character vector of \code{sample_col} (or
-\code{library_col}) values LABELLED as negative controls. Required.}
+\code{library_col}) values LABELLED as negative controls. NULL or empty is
+allowed: every unit is then \code{"untested"} (\code{"no_blanks"}).}
 
 \item{failed_libraries}{Optional result of \code{flag_failed_libraries()}
 on \code{input_df}. When NULL it is computed here with its defaults.}
@@ -55,21 +58,23 @@ judgement; units near it are for review, not for a verdict.}
 \item{composition_share}{Numeric in (0, 1]. Share of a unit's assessable
 replicate libraries that must resemble the other label. Default 0.5.}
 
-\item{ubiquitous_fraction}{Numeric in (0, 1] or NULL. A feature present in at
-least this fraction of a run's field units (with 5 or more units) AND
-holding the majority of reads in at least half of that run's blanks is a
-spike-in or internal standard added to every tube. Both are required:
-common environmental taxa can be in nearly every field unit too, but do
-not dominate clean blanks. It is dropped from that
-run's composition and diversity, because it carries no identity
-information and a template-free blank is dominated by it: left in, a clean
-blank of a spiked run looks compositionally close to the samples. It stays
-in \code{top_taxa} and is listed in \code{attr(, "runs")$ubiquitous_taxa}.
-Judged per run, since an archive can hold spiked and unspiked runs of one
-marker. NULL keeps every feature. Default 0.9.}
+\item{artifact_fraction}{Numeric in (0, 1] or NULL. Field-library
+prevalence at which a feature that also dominates the run's blanks is a
+run-wide artifact (see Run-wide artifacts). NULL disables detection.
+Default 0.9.}
 
-\item{unassessable_policy}{\code{"asymmetric"} (default) or
-\code{"block"}. See The matrix.}
+\item{spike_taxa}{Character or NULL. Features (\code{taxon_col} or
+\code{taxon_label_col} values) the user deliberately added to every tube.
+Set aside like an artifact, without a warning, and listed in
+\code{attr(, "runs")$declared_spikes}. Default NULL.}
+
+\item{untested_policy}{\code{"admit"} (default), \code{"hold_blanks"} or
+\code{"block"}: what the suggested \code{admit} does with untested and
+inconclusive units. See Status.}
+
+\item{accept_llm_roles}{Logical. Let \code{llm_role} from the decision record
+stand in for an identity disposition where no person has recorded one.
+Default FALSE.}
 
 \item{decisions_path}{Character or NULL. The CSV decision record. Read if
 it exists, then rewritten with the current review queue. Default NULL:
@@ -86,9 +91,10 @@ decision. A production workflow should pass \code{"error"}.}
 \describe{
 \item{\code{identity_label}}{\code{"blank"} or \code{"sample"}, as labelled.}
 \item{\code{identity_appearance}}{\code{"valid_blank"}, \code{"valid_sample"},
-\code{"neither"} or \code{"unassessable"}.}
+\code{"neither"} or \code{"not_assessed"}.}
 \item{\code{identity_status}}{\code{"concordant"}, \code{"discordant"},
-\code{"suspect"} or \code{"unassessable"}.}
+\code{"suspect"}, \code{"inconclusive"} or \code{"untested"}.}
+\item{\code{identity_status_reason}}{See Status.}
 \item{\code{admit_as}}{\code{"control"}, \code{"sample"},
 \code{"positive_control"} or \code{NA}
 (not admitted); reflects any reassignment.}
@@ -102,24 +108,25 @@ evidence (\code{depth}, \code{richness}, \code{diversity_n1},
 \code{n_libraries_assessable}, \code{composition_power},
 \code{library_status}, \code{run_status}, \code{n_markers_flagged},
 \code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
-\code{issue_type}, \code{tube_flagged}, \code{hold_reason}, \code{confidence}, \code{reason},
-\code{disposition}, \code{pending_review}, \code{excluded_library_issue},
+\code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
+\code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
+\code{pending_review}, \code{excluded_library_issue},
 \code{admit_as} and \code{admit}. Attribute
 \code{"review_queue"}: the units that need a person, in decision-record
 shape. Attribute \code{"runs"}: one row per run x marker, with admitted
 control and sample counts, \code{control_status} (\code{"ok"},
 \code{"no_admitted_control"} or \code{"no_controls_labelled"}) and the
-field \code{top_taxa}, and \code{ubiquitous_taxa}: the features set aside as
-spike-ins (see \code{ubiquitous_fraction}). A blank dominated by these is a
-clean blank. Attribute \code{"failed_libraries"}: the
+field \code{top_taxa}, \code{run_wide_artifacts} and \code{declared_spikes}
+(see Run-wide artifacts). Attribute \code{"failed_libraries"}: the
 \code{flag_failed_libraries()} result used.
 }
 \description{
 Classifies every sample x marker x run (a "unit": one tube amplified with
 one marker on one run, pooled over its replicate libraries) on two axes --
 what it is LABELLED (blank or sample) and what it LOOKS LIKE (a valid
-blank, a valid sample, neither, or unassessable) -- and admits it to
-analysis only when the two agree or a person has recorded a decision.
+blank, a valid sample, or neither) -- and suggests admitting it when the two
+agree or a decision has been recorded. Admission is the workflow's choice:
+\code{admit} is a default the workflow may follow or replace.
 Everything else is held back and listed for review. Nothing is dropped
 silently: every unit keeps its row, its evidence and its reason.
 }
@@ -130,13 +137,31 @@ silently: every unit keeps its row, its evidence and its reason.
 blank  \tab concordant: control \tab DISCORDANT \tab suspect \cr
 sample \tab DISCORDANT \tab concordant: admit \tab suspect
 }
-plus a fourth appearance, \code{"unassessable"}, for units the evidence
-cannot judge. It is never merged with concordant. By default
-(\code{unassessable_policy = "asymmetric"}) an unassessable BLANK is kept
-out of the control set until reviewed and an unassessable SAMPLE is
-admitted with the flag carried through. The asymmetry is about leverage:
-a dirty blank corrupts every contaminant verdict on its run, and in the
-permissive direction, while a sample only represents itself.
+}
+
+\section{Status}{
+ what was found, and why nothing could be:
+\code{identity_status} separates a finding from the absence of one, and
+\code{identity_status_reason} names the evidence or the reason:
+\describe{
+\item{\code{concordant}, \code{discordant}, \code{suspect}}{A test ran
+and answered (reason: \code{"composition"}, \code{"diversity"},
+\code{"library_failed"}, ...).}
+\item{\code{inconclusive}}{A test ran but could not discriminate
+(\code{"no_power"}: \code{validate_controls()} reported a null too wide
+to separate anything, or no headroom).}
+\item{\code{untested}}{No test ran: \code{"no_blanks"} (nothing to
+compare a sample with), \code{"unreplicated"} (too few field units on
+the run), or \code{"uncomparable"} (the run's field libraries failed, so
+a blank has nothing valid to be compared with).}
+}
+An untested or inconclusive unit shows no evidence of a problem, which is
+not evidence of its absence. Many studies are thin, and they should still
+be analysed, cautiously: by default (\code{untested_policy = "admit"}) such
+units are admitted with their status carried through.
+\code{"hold_blanks"} keeps untested/inconclusive blanks out of the control
+set (a dirty blank corrupts contaminant verdicts in the permissive
+direction); \code{"block"} holds every such unit for review.
 }
 
 \section{Order of operations}{
@@ -147,7 +172,7 @@ blank to be compared with, so identity is judged only where yield held.
 \itemize{
 \item A labelled SAMPLE whose libraries all failed looks like
 \code{"neither"} (issue type \code{"library"}).
-\item A labelled BLANK on a failed run is \code{"unassessable"}. Its low
+\item A labelled BLANK on a failed run is \code{"untested"} (\code{"uncomparable"}). Its low
 reads and low diversity are what a failed library would show whether
 or not it was clean. The one exception: a blank that still reaches
 sample-level diversity on a failed run is \code{"neither"}, because
@@ -194,6 +219,12 @@ for a blank, few reads is the healthy state, and low yield never counts
 against it. \code{confidence} is \code{"low"} when the composition test
 had no power (\code{validate_controls()} power other than \code{"ok"}).
 The verdict then rests on diversity alone, and the low confidence says so.
+
+A diverse blank is flagged \code{"suspect"}, not condemned: a blank's own
+medium can carry a community (tap water carries its source water's
+freshwater organisms). Whether the community is consistent with the blank
+medium or with handling is a judgement about what the taxa are, which
+\code{\link{review_sample_identity}} makes when told the medium.
 }
 
 \section{What "looks like a valid sample" means}{
@@ -205,9 +236,25 @@ A labelled sample is \code{"valid_sample"} unless:
 \code{"RESEMBLES_CONTROL"} (\code{"valid_blank"}).
 }
 A sample with \code{low_yield} libraries (low in every marker, which is
-genuine low biomass) is a valid sample. It is
-\code{"unassessable"} only when neither yield nor composition could be
-tested.
+genuine low biomass) is a valid sample. The identity test for a sample is
+whether it resembles the run's blanks; when that test cannot run or cannot
+discriminate the sample is \code{"untested"} or \code{"inconclusive"}, not
+concordant.
+}
+
+\section{Run-wide artifacts and declared spikes}{
+
+A feature in at least \code{artifact_fraction} of a run's field libraries
+that also holds the majority of reads in at least half of the run's blanks
+is in every tube whatever the tube is: a spike the user added, a provider's
+positive control reaching every library, or cross-contamination. It carries
+no identity information, so it is set aside from composition and diversity.
+Both conditions are needed: common environmental taxa can be in nearly
+every field library, but they do not dominate the blanks. Unless declared in
+\code{spike_taxa}, such a feature is REPORTED as a run-wide artifact with a
+warning, because its cause is a question for the user or the provider. It
+stays visible in \code{top_taxa}. Judged per run, since one archive can mix
+runs with and without it.
 }
 
 \section{Two kinds of decision, two scopes}{
@@ -238,10 +285,11 @@ suspect identity in ANY marker holds every unit of that sample, including
 markers where it looked concordant (\code{tube_flagged}). Such a unit
 keeps its own \code{identity_status} (it is not itself evidence of
 anything), and \code{hold_reason} says why it is held:
-\code{"own_evidence"}, \code{"tube"} or \code{"unassessable"}. A blank
-contaminated at the bag is contaminated in every marker, even where one
-marker happens to amplify little of it. An unassessable unit holds only
-itself: a failed library says nothing about the tube's other markers.
+\code{"own_evidence"}, \code{"tube"}, \code{"untested"} or
+\code{"inconclusive"}. A blank contaminated at the bag is contaminated in
+every marker, even where one marker happens to amplify little of it. An
+untested unit holds only itself: a failed library says nothing about the
+tube's other markers.
 \item \strong{Identity questions block; library failures do not.} A unit
 held for identity is \code{pending_review} until the tube has a
 disposition. A unit whose libraries failed is excluded
@@ -266,8 +314,11 @@ new rows. Rows are keyed by sample, marker and run. Each row carries the
 written. If the evidence has since changed, the disposition is still
 applied, and a warning names the rows so they can be looked at again.
 \code{\link{review_sample_identity}} adds \code{llm_} columns to the same
-file. They are advice only: nothing is admitted on an LLM verdict. A
-blank \code{disposition} keeps a unit held back.
+file, including \code{llm_role} (blank, sample, positive_control, exclude or
+unknown). By default these are advice. With \code{accept_llm_roles = TRUE},
+\code{llm_role} stands in for an identity disposition wherever no person
+has recorded one, and \code{disposition_source} says which it was
+(\code{"user"} or \code{"llm"}). A person's disposition always wins.
 }
 
 \section{Cross-marker agreement}{
