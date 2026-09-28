@@ -65,12 +65,25 @@ result. The function should matter on runs where hopping actually operates
   `flag_contaminant()` / `validate_controls()` are the tools for those blanks, and
   their verdicts still do not reach `make_esv_*_detections.R` (the prompt's structural
   finding stands).
-- The blanks on JVB3735, JVB2844 and JVB3506 are themselves contaminated. That
-  matters beyond this filter. A blank full of field-derived reads dilutes a genuine
-  reagent contaminant's share of its reads, so `flag_contaminant()` becomes MORE
-  permissive toward real contaminants. It can also make an abundant field taxon look
-  like a contaminant. Run `validate_controls()` on these runs first; it tests
-  whether a blank resembles a sample.
+- `implausible_rate` (refused) runs: 18S JVB3735, 18S JVB2844, COI JVB3506, COI
+  JVB2844. The CalIntertidal session ran `validate_controls()`. All verdicts are
+  low-power (pooled null), so treat them as indicative:
+  - 18S JVB2844: ONE physical blank, S067800 (3 replicates), resembles a sample
+    (d_to_samples 0.82-0.86 vs d_to_controls 0.988). S067808 is clean. That is one
+    bad blank next to a clean one, not a dirty run.
+  - 12S JVB3735 (the run with the 12S flags): 2 of 24 controls resemble a sample.
+  - 18S JVB3506 (estimated at 0.25%, not refused): 0 of 3; its blanks agree
+    closely with each other.
+  - NOT YET CHECKED: 18S JVB3735, COI JVB3506 and COI JVB2844, i.e. three of the four
+    refused runs.
+  Why it matters beyond this filter: a blank full of field reads dilutes a genuine
+  reagent contaminant's share, so `flag_contaminant()` becomes more permissive toward
+  real contaminants. It can also make an abundant field taxon look like a contaminant.
+  A control flagged RESEMBLES_SAMPLE should be dropped from `control_samples` for BOTH
+  functions. For more power, give `validate_controls(site_col=)` the column blanks
+  actually pair on (the event, or the run `batch`), so each blank is judged against the
+  samples it was carried or sequenced with. Do not use Location, which blanks do not
+  have.
 
 ## Workflow wiring (CalIntertidal session owns it)
 
