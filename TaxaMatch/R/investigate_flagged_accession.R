@@ -232,8 +232,14 @@
   ids <- file.path(dir, "ids.txt")
   fa <- file.path(dir, "subset.fa")
   writeLines(accessions, ids)
+  # -target_only: identical sequences are stored as ONE record carrying every
+  # accession's defline, so without it asking for two such accessions returns
+  # that record twice under the same first id and makeblastdb rejects the
+  # duplicate ("Duplicate seq_ids are found"). With it, each copy is labelled
+  # with the accession actually requested. Real case: Ronquilus jordani
+  # FJ264437 / FJ264280.
   suppressWarnings(system2(blastdbcmd,
-    c("-db", shQuote(database), "-entry_batch", shQuote(ids)),
+    c("-db", shQuote(database), "-entry_batch", shQuote(ids), "-target_only"),
     stdout = fa, stderr = FALSE
   ))
   if (!file.exists(fa) || !any(startsWith(readLines(fa, warn = FALSE), ">"))) {
@@ -418,10 +424,17 @@
       },
       error = function(e) {
         if (verbose) {
-          warning(sprintf(
-            "Restricted local BLAST (comparison-set database) failed, falling back to an unrestricted search: %s",
+          # BOTH channels on purpose. The warning is the capturable signal, but
+          # Rscript defers warnings to exit, so in a long batch run the only
+          # notice that this call had silently swapped a sub-second extraction
+          # for a full-database pass arrived hours later, after the decision to
+          # keep waiting had already been made. A message prints immediately.
+          txt <- sprintf(
+            "Restricted local BLAST (comparison-set database) failed, falling back to an unrestricted search (a full pass over the database): %s",
             conditionMessage(e)
-          ), call. = FALSE)
+          )
+          message(txt)
+          warning(txt, call. = FALSE)
         }
         .unrestricted_local_comparison(seq_df, comparison_meta, database, ncbi_api_key, verbose)
       }

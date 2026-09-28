@@ -306,6 +306,22 @@ test_that(".local_subset_db() builds a database from what blastdbcmd extracts, d
   on.exit(unlink(dirname(db), recursive = TRUE))
   expect_true(any(file.exists(paste0(db, c(".nsq", ".nin")))))
 
+  # Two accessions sharing one merged record: without -target_only blastdbcmd
+  # labels both copies with the first id and makeblastdb rejects them.
+  merged <- tempfile("blastdbcmd")
+  writeLines(c(
+    "#!/bin/bash",
+    "if [[ \" $* \" == *\" -target_only \"* ]]; then",
+    "  printf '>ACC1.1 a\\nACGTACGTACGTACGTACGTACGTACGT\\n>ACC2.1 a\\nACGTACGTACGTACGTACGTACGTACGT\\n'",
+    "else",
+    "  printf '>ACC1.1 a\\nACGTACGTACGTACGTACGTACGTACGT\\n>ACC1.1 a\\nACGTACGTACGTACGTACGTACGTACGT\\n'",
+    "fi"
+  ), merged)
+  Sys.chmod(merged, "0755")
+  db2 <- TaxaMatch:::.local_subset_db("anydb", c("ACC1", "ACC2"), blastdbcmd = merged)
+  on.exit(unlink(dirname(db2), recursive = TRUE), add = TRUE)
+  expect_true(any(file.exists(paste0(db2, c(".nsq", ".nin")))))
+
   empty <- tempfile("blastdbcmd")
   writeLines(c("#!/bin/bash", "exit 1"), empty)
   Sys.chmod(empty, "0755")
