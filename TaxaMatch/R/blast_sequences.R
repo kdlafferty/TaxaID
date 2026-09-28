@@ -656,6 +656,24 @@ blast_sequences <- function(seq_df,
     filtered <- .attach_taxonomy(filtered, ncbi_api_key, verbose)
   }
 
+  # A hit whose lineage could not be FETCHED (an NCBI error, not an unknown
+  # taxon) carries no ranks, which a caller comparing ranks would read as
+  # disagreement. Its query is reported as not completed, alongside BLAST
+  # failures, so no verdict is built on the gap. Found on a live screen run:
+  # two taxonomy batches failed with HTTP 500 and ~400 queries would have
+  # been cached as "incongruent"/"insufficient".
+  if (".taxonomy_failed" %in% names(filtered)) {
+    tax_failed_q <- unique(filtered$qseqid[filtered$.taxonomy_failed %in% TRUE])
+    filtered$.taxonomy_failed <- NULL
+    if (length(tax_failed_q) > 0L) {
+      warning(sprintf(
+        "blast_sequences(): taxonomy could not be fetched for hits of %d query(ies); reported in failed_query_ids, not as results.",
+        length(tax_failed_q)
+      ), call. = FALSE)
+      failed_query_ids <- union(failed_query_ids, tax_failed_q)
+    }
+  }
+
   # --- Rename to TaxaMatch convention -----------------------------------------
   out <- data.frame(
     observation_id = filtered$qseqid,
@@ -1570,6 +1588,7 @@ blast_sequences <- function(seq_df,
     # Direct taxid resolution
     if (verbose) message(sprintf("Resolving taxonomy for %d unique taxids...", length(taxids)))
     tax_map <- .resolve_taxonomy(taxids, ncbi_api_key, verbose)
+    failed_taxids <- attr(tax_map, "failed_taxids") %||% character(0L)
     filtered$taxid_join <- vapply(
       strsplit(as.character(filtered$staxids), ";"),
       `[`, character(1L), 1L
@@ -1578,6 +1597,7 @@ blast_sequences <- function(seq_df,
       by.x = "taxid_join", by.y = "taxid",
       all.x = TRUE, sort = FALSE
     )
+    filtered$.taxonomy_failed <- filtered$taxid_join %in% failed_taxids
     filtered$taxid_join <- NULL
   } else {
     # No taxids available (e.g., from XML output) -- look up from accessions
@@ -1588,12 +1608,14 @@ blast_sequences <- function(seq_df,
     }
     if (length(accessions) > 0L) {
       tax_map <- .resolve_taxonomy_by_acc(accessions, ncbi_api_key, verbose)
+      failed_acc <- attr(tax_map, "failed_accessions") %||% character(0L)
       if (is.data.frame(tax_map) && nrow(tax_map) > 0L) {
         filtered <- merge(filtered, tax_map,
           by.x = "sacc", by.y = "accession",
           all.x = TRUE, sort = FALSE
         )
       }
+      filtered$.taxonomy_failed <- filtered$sacc %in% failed_acc
     }
   }
 
@@ -1718,12 +1740,14 @@ blast_sequences <- function(seq_df,
   batches <- split(taxids, ceiling(seq_along(taxids) / batch_size))
 
   all_records <- vector("list", length(batches))
+  failed_taxids <- character(0L)
+  n_attempts <- 5L
 
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
 
-    for (attempt in 1:3) {
-      tryCatch(
+    for (attempt in seq_len(n_attempts)) {
+      ok <- tryCatch(
         {
           xml_text <- rentrez::entrez_fetch(
             db = "taxonomy",
@@ -1731,18 +1755,24 @@ blast_sequences <- function(seq_df,
             rettype = "xml"
           )
           all_records[[i]] <- .parse_taxonomy_xml(xml_text)
-          break
+          TRUE
         },
         error = function(e) {
-          if (attempt < 3L) {
-            Sys.sleep(attempt * 2)
+          if (attempt < n_attempts) {
+            # 2, 4, 8, 16 s: rides out an NCBI server hiccup (HTTP 5xx
+            # returned as 400) rather than giving up after 6 s.
+            .blast_rate_limit_sleep(2^attempt)
           } else {
             warning(sprintf("Taxonomy fetch failed for batch %d: %s", i, e$message))
-            all_records[[i]] <<- NULL
           }
+          FALSE
         }
       )
+      if (ok) break
     }
+    # A batch that never resolved is reported, not silently dropped: a
+    # missing lineage must not be read as taxonomic disagreement.
+    if (is.null(all_records[[i]])) failed_taxids <- c(failed_taxids, as.character(batch))
 
     if (i < length(batches)) Sys.sleep(0.4)
   }
@@ -1750,18 +1780,19 @@ blast_sequences <- function(seq_df,
   all_records <- Filter(Negate(is.null), all_records)
   if (length(all_records) == 0L) {
     # Build empty data frame dynamically from standard ranks
-    empty <- data.frame(taxid = character(), stringsAsFactors = FALSE)
-    for (r in TaxaTools::standard_ranks) empty[[r]] <- character()
-    return(empty)
+    out <- data.frame(taxid = character(), stringsAsFactors = FALSE)
+    for (r in TaxaTools::standard_ranks) out[[r]] <- character()
+  } else {
+    out <- do.call(rbind, all_records)
   }
-
-  do.call(rbind, all_records)
+  attr(out, "failed_taxids") <- failed_taxids
+  out
 }
 
 
 #' @noRd
 .parse_taxonomy_xml <- function(xml_text) {
-  doc <- xml2::read_xml(xml_text)
+  doc <- xml2::read_xml(xml_text, options = c("NOBLANKS", "HUGE"))
   taxa <- xml2::xml_find_all(doc, "/TaxaSet/Taxon")
 
   records <- lapply(taxa, function(taxon) {
@@ -1833,9 +1864,11 @@ blast_sequences <- function(seq_df,
   batch_size <- 100L
   batches <- split(accessions, ceiling(seq_along(accessions) / batch_size))
   acc_taxid_map <- list()
+  failed_accessions <- character(0L)
 
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
+    batch_ok <- FALSE
     for (attempt in 1:3) {
       tryCatch(
         {
@@ -1857,31 +1890,43 @@ blast_sequences <- function(seq_df,
               }
             }
           }
-          break
+          batch_ok <- TRUE
         },
         error = function(e) {
           if (attempt < 3L) {
-            Sys.sleep(attempt * 2)
+            .blast_rate_limit_sleep(attempt * 2)
           } else if (verbose) {
             warning(sprintf("Accession lookup failed for batch %d: %s", i, e$message))
           }
         }
       )
+      if (batch_ok) break
     }
+    if (!batch_ok) failed_accessions <- c(failed_accessions, batch)
     if (i < length(batches)) Sys.sleep(0.4)
   }
 
   if (length(acc_taxid_map) == 0L) {
-    return(.empty_acc_taxonomy_result())
+    out <- .empty_acc_taxonomy_result()
+    attr(out, "failed_accessions") <- failed_accessions
+    return(out)
   }
 
   # Step 2: Resolve taxids to full taxonomy
   taxids <- unique(unlist(acc_taxid_map, use.names = FALSE))
   if (verbose) message(sprintf("Resolving taxonomy for %d unique taxids...", length(taxids)))
   tax_map <- .resolve_taxonomy(taxids, ncbi_api_key, verbose)
+  # Accessions whose taxid's lineage could not be fetched are failures too.
+  failed_taxids <- attr(tax_map, "failed_taxids") %||% character(0L)
+  failed_accessions <- c(
+    failed_accessions,
+    names(acc_taxid_map)[unlist(acc_taxid_map, use.names = FALSE) %in% failed_taxids]
+  )
 
   if (is.null(tax_map) || nrow(tax_map) == 0L) {
-    return(.empty_acc_taxonomy_result())
+    out <- .empty_acc_taxonomy_result()
+    attr(out, "failed_accessions") <- unique(failed_accessions)
+    return(out)
   }
 
   # Step 3: Build accession -> taxonomy mapping
@@ -1892,6 +1937,7 @@ blast_sequences <- function(seq_df,
   )
   result <- merge(acc_df, tax_map, by = "taxid", all.x = TRUE, sort = FALSE)
   result$taxid <- NULL
+  attr(result, "failed_accessions") <- unique(failed_accessions)
   result
 }
 
@@ -1977,7 +2023,7 @@ blast_sequences <- function(seq_df,
           xml_raw <- rentrez::entrez_fetch(
             db = "nucleotide", id = batch, rettype = "gb", retmode = "xml"
           )
-          xml_doc <- xml2::read_xml(xml_raw)
+          xml_doc <- xml2::read_xml(xml_raw, options = c("NOBLANKS", "HUGE"))
           nodes <- xml2::xml_find_all(xml_doc, "//GBSeq")
 
           res[[i]] <- do.call(rbind, lapply(nodes, function(node) {
