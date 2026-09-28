@@ -13,6 +13,18 @@ from a non-native spike (preferred) or from negative controls. It flags, never
 deletes, using the unified validity schema (`invalid_index_hop` /
 `questionable_index_hop` / `valid` / `NA` = not assessed).
 
+## Headline
+
+Every candidate hopping signal failed on shape or magnitude once examined. JVB3105
+has zero blank reads where hopping predicts thousands. JVB2844 has 26x too many
+reads to be hopping. JVB3735 has the right total but the wrong distribution: three
+of the ten largest ESVs appear in no blank, and one blank holds 24% of the run's
+blank reads. The CalIntertidal session reproduced this independently.
+
+So the filter finds almost nothing to remove in this dataset, which is a real
+result. The function should matter on runs where hopping actually operates
+(patterned-flow-cell ExAmp chemistry without unique dual indexes).
+
 ## Corrections to the re-entry prompt
 
 1. **Event != run.** JVB6097 spans Event10 and Event11. `hop_rate.R` split it by
@@ -53,6 +65,12 @@ deletes, using the unified validity schema (`invalid_index_hop` /
   `flag_contaminant()` / `validate_controls()` are the tools for those blanks, and
   their verdicts still do not reach `make_esv_*_detections.R` (the prompt's structural
   finding stands).
+- The blanks on JVB3735, JVB2844 and JVB3506 are themselves contaminated. That
+  matters beyond this filter. A blank full of field-derived reads dilutes a genuine
+  reagent contaminant's share of its reads, so `flag_contaminant()` becomes MORE
+  permissive toward real contaminants. It can also make an abundant field taxon look
+  like a contaminant. Run `validate_controls()` on these runs first; it tests
+  whether a blank resembles a sample.
 
 ## Workflow wiring (CalIntertidal session owns it)
 
