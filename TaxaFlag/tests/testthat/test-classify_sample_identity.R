@@ -254,3 +254,23 @@ test_that("a spike-in present in every field unit is reported per run", {
   expect_true(all(grepl("SPIKE", rr$ubiquitous_taxa[rr$marker == "M1"])))
   expect_false(any(grepl("SPIKE", rr$ubiquitous_taxa[rr$marker == "M2"]), na.rm = TRUE))
 })
+
+test_that("a spike-only blank on a spiked run is a clean blank", {
+  d <- .sig_fixture()
+  add <- unique(d[, c("sample_id", "marker", "run", "event_id")])
+  add$taxon_name <- paste0(add$marker, "_spike"); add$species <- "SPIKE"
+  add$count <- ifelse(add$sample_id %in% c("CLEAN", "MISLABEL", "PLANKTON"), 20000, 6000)
+  d <- rbind(d, add)
+  # CLEAN now holds almost nothing but the spike
+  d <- d[!(d$sample_id == "CLEAN" & d$species != "SPIKE"), ]
+  res <- .sig_run(d)
+  expect_equal(.unit(res, "CLEAN", "M1")$identity_status, "concordant")
+  expect_true(.unit(res, "CLEAN", "M1")$admit)
+  # the other verdicts do not move
+  expect_equal(.unit(res, "MISLABEL", "M1")$identity_status, "discordant")
+  expect_equal(.unit(res, "PLANKTON", "M1")$identity_status, "suspect")
+  # the spike stays visible
+  expect_match(.unit(res, "CLEAN", "M1")$top_taxa, "SPIKE")
+  # and NULL keeps every feature
+  expect_error(.sig_run(d, ubiquitous_fraction = 2), "ubiquitous_fraction")
+})

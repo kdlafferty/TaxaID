@@ -186,6 +186,15 @@
 #'   judgement; units near it are for review, not for a verdict.
 #' @param composition_share Numeric in (0, 1]. Share of a unit's assessable
 #'   replicate libraries that must resemble the other label. Default 0.5.
+#' @param ubiquitous_fraction Numeric in (0, 1] or NULL. A feature present in at
+#'   least this fraction of a run's field units (with 5 or more units) is a
+#'   spike-in or internal standard added to every tube. It is dropped from that
+#'   run's composition and diversity, because it carries no identity
+#'   information and a template-free blank is dominated by it: left in, a clean
+#'   blank of a spiked run looks compositionally close to the samples. It stays
+#'   in \code{top_taxa} and is listed in \code{attr(, "runs")$ubiquitous_taxa}.
+#'   Judged per run, since an archive can hold spiked and unspiked runs of one
+#'   marker. NULL keeps every feature. Default 0.9.
 #' @param unassessable_policy \code{"asymmetric"} (default) or
 #'   \code{"block"}. See The matrix.
 #' @param decisions_path Character or NULL. The CSV decision record. Read if
@@ -267,6 +276,7 @@ classify_sample_identity <- function(input_df,
                                      taxon_label_col = NULL,
                                      diversity_blank_max = 0.5,
                                      composition_share = 0.5,
+                                     ubiquitous_fraction = 0.9,
                                      unassessable_policy = c("asymmetric", "block"),
                                      decisions_path = NULL,
                                      on_pending = c("warn", "error", "ignore"),
@@ -330,8 +340,31 @@ classify_sample_identity <- function(input_df,
     warning("None of 'control_samples' matched a sample or library in input_df.", call. = FALSE)
   }
 
-  # --- 2. Unit evidence ---
-  u <- .sig_unit_stats(d)
+  # --- 2. Unit evidence, without run-wide (spike-in) features ---
+  d$ubiquitous <- FALSE
+  if (!is.null(ubiquitous_fraction)) {
+    if (!is.numeric(ubiquitous_fraction) || length(ubiquitous_fraction) != 1L ||
+      is.na(ubiquitous_fraction) || ubiquitous_fraction <= 0 || ubiquitous_fraction > 1) {
+      stop("'ubiquitous_fraction' must be a single number in (0, 1], or NULL.", call. = FALSE)
+    }
+    fk <- !d$is_ctl & !d$excluded & d$reads > 0
+    rk_d <- paste(d$marker, d$run, sep = "\r")
+    n_units <- tapply(d$unit[fk], rk_d[fk], function(z) length(unique(z)))
+    prev <- tapply(d$unit[fk], paste(rk_d[fk], d$feature[fk], sep = "\r"),
+      function(z) length(unique(z)))
+    run_of <- sub("\r[^\r]*$", "", names(prev))
+    frac <- prev / as.numeric(n_units[run_of])
+    ubi <- names(frac)[frac >= ubiquitous_fraction & as.numeric(n_units[run_of]) >= 5]
+    d$ubiquitous <- paste(rk_d, d$feature, sep = "\r") %in% ubi
+  }
+  u <- .sig_unit_stats(d[!d$ubiquitous, , drop = FALSE])
+  missing_u <- setdiff(unique(d$unit), u$unit)
+  if (length(missing_u)) {
+    # a unit holding ONLY ubiquitous features: an empty (clean) library once the spike is set aside
+    z <- .sig_unit_stats(d[d$unit %in% missing_u, , drop = FALSE])
+    z$depth <- 0; z$richness <- 0L; z$diversity_n1 <- 0
+    u <- rbind(u, z[, names(u)])
+  }
   ffl_libs$unit <- paste(ffl_libs$sample, ffl_libs$marker, ffl_libs$run, sep = "|")
   u$library_status <- vapply(u$unit, function(k) {
     s <- ffl_libs$library_status[ffl_libs$unit == k]
@@ -355,7 +388,7 @@ classify_sample_identity <- function(input_df,
   u$diversity_ratio <- round(u$diversity_n1 / u$reference_n1, 3)
 
   # --- 3. Composition, per run, on the libraries that yielded ---
-  comp <- .sig_composition(d, composition_share)
+  comp <- .sig_composition(d[!d$ubiquitous, , drop = FALSE], composition_share)
   u <- merge(u, comp, by = "unit", all.x = TRUE, sort = FALSE)
   u$n_libraries_assessable[is.na(u$n_libraries_assessable)] <- 0L
   u$composition_power[is.na(u$composition_power)] <- "none"
@@ -419,19 +452,13 @@ classify_sample_identity <- function(input_df,
   # taxa in nearly every field unit of a run: a spike-in or internal standard
   # added to every tube. A blank holding little else is a CLEAN blank, and a
   # reviewer (human or LLM) who is not told so will read it as a positive control.
-  runs$ubiquitous_taxa <- if (!is.null(taxon_label_col)) {
-    vapply(seq_len(nrow(runs)), function(i) {
-      k <- d$marker == runs$marker[i] & d$run == runs$run[i] & !d$is_ctl & !d$excluded & d$reads > 0
-      if (!any(k)) return(NA_character_)
-      nm <- d$label_name[k]
-      nm[is.na(nm) | !nzchar(nm)] <- "(unassigned)"
-      prev <- tapply(d$unit[k], nm, function(z) length(unique(z))) / length(unique(d$unit[k]))
-      hit <- setdiff(names(prev)[prev >= 0.9], "(unassigned)")
-      if (length(hit) && length(unique(d$unit[k])) >= 5L) paste(sort(hit), collapse = "; ") else NA_character_
-    }, character(1))
-  } else {
-    NA_character_
-  }
+  runs$ubiquitous_taxa <- vapply(seq_len(nrow(runs)), function(i) {
+    k <- d$ubiquitous & d$marker == runs$marker[i] & d$run == runs$run[i]
+    if (!any(k)) return(NA_character_)
+    nm <- if (!is.null(taxon_label_col)) d$label_name[k] else d$feature[k]
+    nm[is.na(nm) | !nzchar(nm)] <- d$feature[k][is.na(nm) | !nzchar(nm)]
+    paste(sort(unique(nm)), collapse = "; ")
+  }, character(1))
   rownames(runs) <- NULL
 
   queue <- u[u$needs_review, , drop = FALSE]

@@ -17,6 +17,7 @@ classify_sample_identity(
   taxon_label_col = NULL,
   diversity_blank_max = 0.5,
   composition_share = 0.5,
+  ubiquitous_fraction = 0.9,
   unassessable_policy = c("asymmetric", "block"),
   decisions_path = NULL,
   on_pending = c("warn", "error", "ignore"),
@@ -53,6 +54,16 @@ judgement; units near it are for review, not for a verdict.}
 
 \item{composition_share}{Numeric in (0, 1]. Share of a unit's assessable
 replicate libraries that must resemble the other label. Default 0.5.}
+
+\item{ubiquitous_fraction}{Numeric in (0, 1] or NULL. A feature present in at
+least this fraction of a run's field units (with 5 or more units) is a
+spike-in or internal standard added to every tube. It is dropped from that
+run's composition and diversity, because it carries no identity
+information and a template-free blank is dominated by it: left in, a clean
+blank of a spiked run looks compositionally close to the samples. It stays
+in \code{top_taxa} and is listed in \code{attr(, "runs")$ubiquitous_taxa}.
+Judged per run, since an archive can hold spiked and unspiked runs of one
+marker. NULL keeps every feature. Default 0.9.}
 
 \item{unassessable_policy}{\code{"asymmetric"} (default) or
 \code{"block"}. See The matrix.}
