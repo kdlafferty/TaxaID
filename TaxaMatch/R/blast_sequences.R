@@ -1873,7 +1873,7 @@ blast_sequences <- function(seq_df,
   for (i in seq_along(batches)) {
     batch <- batches[[i]]
     batch_ok <- FALSE
-    for (attempt in 1:3) {
+    for (attempt in 1:5) {
       tryCatch(
         {
           # Search nucleotide for these accessions
@@ -1897,8 +1897,10 @@ blast_sequences <- function(seq_df,
           batch_ok <- TRUE
         },
         error = function(e) {
-          if (attempt < 3L) {
-            .blast_rate_limit_sleep(attempt * 2)
+          # Same 2-16 s backoff as .resolve_taxonomy(): the NCBI server errors
+          # that motivated it can hit this lookup just as well.
+          if (attempt < 5L) {
+            .blast_rate_limit_sleep(2^attempt)
           } else if (verbose) {
             warning(sprintf("Accession lookup failed for batch %d: %s", i, e$message))
           }
