@@ -56,8 +56,11 @@ judgement; units near it are for review, not for a verdict.}
 replicate libraries that must resemble the other label. Default 0.5.}
 
 \item{ubiquitous_fraction}{Numeric in (0, 1] or NULL. A feature present in at
-least this fraction of a run's field units (with 5 or more units) is a
-spike-in or internal standard added to every tube. It is dropped from that
+least this fraction of a run's field units (with 5 or more units) AND
+holding the majority of reads in at least half of that run's blanks is a
+spike-in or internal standard added to every tube. Both are required:
+common environmental taxa can be in nearly every field unit too, but do
+not dominate clean blanks. It is dropped from that
 run's composition and diversity, because it carries no identity
 information and a template-free blank is dominated by it: left in, a clean
 blank of a spiked run looks compositionally close to the samples. It stays
@@ -106,9 +109,9 @@ evidence (\code{depth}, \code{richness}, \code{diversity_n1},
 shape. Attribute \code{"runs"}: one row per run x marker, with admitted
 control and sample counts, \code{control_status} (\code{"ok"},
 \code{"no_admitted_control"} or \code{"no_controls_labelled"}) and the
-field \code{top_taxa}, and \code{ubiquitous_taxa}: taxa in at least 90\\% of
-the run's field units (with 5 or more units), the signature of a spike-in or
-internal standard. A blank dominated by these is a clean blank. Attribute \code{"failed_libraries"}: the
+field \code{top_taxa}, and \code{ubiquitous_taxa}: the features set aside as
+spike-ins (see \code{ubiquitous_fraction}). A blank dominated by these is a
+clean blank. Attribute \code{"failed_libraries"}: the
 \code{flag_failed_libraries()} result used.
 }
 \description{

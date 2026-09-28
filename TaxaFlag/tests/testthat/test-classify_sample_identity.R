@@ -245,10 +245,20 @@ test_that("a positive control recorded as a blank can be re-roled", {
   expect_equal(rr$n_admitted_controls[rr$run == "R3"], c(0L, 0L))
 })
 
+test_that("a common field taxon that does not dominate the blanks is NOT set aside", {
+  d <- .sig_fixture()
+  add <- unique(d[d$marker == "M1" & grepl("^S", d$sample_id), c("sample_id", "marker", "run", "event_id")])
+  add$taxon_name <- "M1_common"; add$species <- "COMMON"; add$count <- 3000
+  res <- .sig_run(rbind(d, add))
+  rr <- attr(res, "runs")
+  expect_false(any(grepl("COMMON", rr$ubiquitous_taxa), na.rm = TRUE))
+})
+
 test_that("a spike-in present in every field unit is reported per run", {
   d <- .sig_fixture()
   add <- unique(d[d$marker == "M1", c("sample_id", "marker", "run", "event_id")])
-  add$taxon_name <- "M1_spike"; add$species <- "SPIKE"; add$count <- 500
+  add$taxon_name <- "M1_spike"; add$species <- "SPIKE"
+  add$count <- ifelse(add$sample_id %in% c("CLEAN", "MISLABEL", "PLANKTON"), 50000, 500)
   res <- .sig_run(rbind(d, add))
   rr <- attr(res, "runs")
   expect_true(all(grepl("SPIKE", rr$ubiquitous_taxa[rr$marker == "M1"])))

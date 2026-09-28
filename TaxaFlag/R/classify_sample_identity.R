@@ -187,8 +187,11 @@
 #' @param composition_share Numeric in (0, 1]. Share of a unit's assessable
 #'   replicate libraries that must resemble the other label. Default 0.5.
 #' @param ubiquitous_fraction Numeric in (0, 1] or NULL. A feature present in at
-#'   least this fraction of a run's field units (with 5 or more units) is a
-#'   spike-in or internal standard added to every tube. It is dropped from that
+#'   least this fraction of a run's field units (with 5 or more units) AND
+#'   holding the majority of reads in at least half of that run's blanks is a
+#'   spike-in or internal standard added to every tube. Both are required:
+#'   common environmental taxa can be in nearly every field unit too, but do
+#'   not dominate clean blanks. It is dropped from that
 #'   run's composition and diversity, because it carries no identity
 #'   information and a template-free blank is dominated by it: left in, a clean
 #'   blank of a spiked run looks compositionally close to the samples. It stays
@@ -232,9 +235,9 @@
 #' shape. Attribute \code{"runs"}: one row per run x marker, with admitted
 #' control and sample counts, \code{control_status} (\code{"ok"},
 #' \code{"no_admitted_control"} or \code{"no_controls_labelled"}) and the
-#' field \code{top_taxa}, and \code{ubiquitous_taxa}: taxa in at least 90\% of
-#' the run's field units (with 5 or more units), the signature of a spike-in or
-#' internal standard. A blank dominated by these is a clean blank. Attribute \code{"failed_libraries"}: the
+#' field \code{top_taxa}, and \code{ubiquitous_taxa}: the features set aside as
+#' spike-ins (see \code{ubiquitous_fraction}). A blank dominated by these is a
+#' clean blank. Attribute \code{"failed_libraries"}: the
 #' \code{flag_failed_libraries()} result used.
 #'
 #' @seealso \code{\link{flag_failed_libraries}} and
@@ -355,6 +358,21 @@ classify_sample_identity <- function(input_df,
     run_of <- sub("\r[^\r]*$", "", names(prev))
     frac <- prev / as.numeric(n_units[run_of])
     ubi <- names(frac)[frac >= ubiquitous_fraction & as.numeric(n_units[run_of]) >= 5]
+    # Common environmental taxa can also sit in nearly every field unit; what marks
+    # a spike is that it also DOMINATES the run's blanks, since a template-free
+    # blank holds little else. Require both, or real community signal is removed.
+    ck <- d$is_ctl & !d$excluded & d$reads > 0
+    if (length(ubi) && any(ck)) {
+      c_tot <- tapply(d$reads[ck], d$unit[ck], sum)
+      c_key <- paste(rk_d[ck], d$feature[ck], sep = "\r")
+      share <- d$reads[ck] / as.numeric(c_tot[d$unit[ck]])
+      dom <- tapply(share >= 0.5, c_key, sum)
+      n_ctl <- tapply(d$unit[ck], rk_d[ck], function(z) length(unique(z)))
+      dom_frac <- as.numeric(dom[ubi]) / as.numeric(n_ctl[sub("\r[^\r]*$", "", ubi)])
+      ubi <- ubi[!is.na(dom_frac) & dom_frac >= 0.5]
+    } else {
+      ubi <- character(0)
+    }
     d$ubiquitous <- paste(rk_d, d$feature, sep = "\r") %in% ubi
   }
   u <- .sig_unit_stats(d[!d$ubiquitous, , drop = FALSE])
