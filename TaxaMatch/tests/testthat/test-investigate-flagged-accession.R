@@ -223,21 +223,26 @@ test_that(".blast_against_comparison_set() (remote) restricts the BLAST search s
   expect_true(grepl(" OR ", captured_query))
 })
 
-test_that(".blast_against_comparison_set() (local) restricts the search with -seqidlist", {
+test_that(".blast_against_comparison_set() (local) searches a database of only the comparison accessions", {
   # The local equivalent of the remote ENTREZ_QUERY restriction: the
-  # comparison accessions go to blastn as a -seqidlist file, so each is
-  # scored whether or not it would rank in an unrestricted search.
+  # comparison accessions are extracted into a throwaway database and the
+  # query is searched against that alone.
   captured_ids <- NULL
-  mock_local <- function(seq_df, database, program, megablast, max_target_seqs,
-                         verbose, num_threads = NULL, word_size = NULL,
-                         seqidlist = NULL) {
-    captured_ids <<- readLines(seqidlist)
-    data.frame(
-      qseqid = "flagged_query", sacc = c("KEEP_A.1", "KEEP_B"),
-      pident = c(99, 97), qcovs = c(90, 40), stringsAsFactors = FALSE
-    )
-  }
-  local_mocked_bindings(.blast_local = mock_local, .package = "TaxaMatch")
+  searched_db <- NULL
+  local_mocked_bindings(
+    .local_subset_db = function(database, accessions, ...) {
+      captured_ids <<- accessions
+      file.path(tempfile("cmpdb"), "subset")
+    },
+    .blast_local = function(seq_df, database, ...) {
+      searched_db <<- database
+      data.frame(
+        qseqid = "flagged_query", sacc = c("KEEP_A.1", "KEEP_B"),
+        pident = c(99, 97), qcovs = c(90, 40), stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
 
   comparison_meta <- data.frame(
     accession = c("KEEP_A", "KEEP_B.2"), sequence = c("X", "Y"),
@@ -245,18 +250,19 @@ test_that(".blast_against_comparison_set() (local) restricts the search with -se
   )
   out <- .blast_against_comparison_set_int(
     "QUERYSEQ", comparison_meta,
-    method = "local", verbose = FALSE
+    method = "local", database = "/some/big/db", verbose = FALSE
   )
   expect_setequal(captured_ids, c("KEEP_A", "KEEP_B"))
+  expect_match(searched_db, "subset$")
   expect_equal(nrow(out), 2L)
   expect_equal(out$accession[out$pident == 99], "KEEP_A")
   # 40% coverage is below the default 0.5 floor
   expect_false(out$meets_min_coverage[out$accession == "KEEP_B.2"])
 })
 
-test_that(".blast_against_comparison_set() (local) falls back to post-hoc filtering when -seqidlist fails", {
+test_that(".blast_against_comparison_set() (local) falls back to post-hoc filtering when the subset database fails", {
   local_mocked_bindings(
-    .blast_local = function(...) stop("No sequences in the list were found"),
+    .local_subset_db = function(...) stop("none of the comparison accessions were found"),
     blast_sequences = function(seq_df, ...) {
       data.frame(
         observation_id = "flagged_query",
@@ -282,6 +288,31 @@ test_that(".blast_against_comparison_set() (local) falls back to post-hoc filter
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$accession, "KEEP_A")
+})
+
+test_that(".local_subset_db() builds a database from what blastdbcmd extracts, despite its exit status", {
+  skip_if(!nzchar(Sys.which("makeblastdb")), "makeblastdb not on PATH")
+  # A stand-in blastdbcmd that extracts one record and exits 1, as the real
+  # one does whenever any requested accession is missing.
+  fake <- tempfile("blastdbcmd")
+  writeLines(c(
+    "#!/bin/bash",
+    "printf '>ACC1.1 test\\nACGTACGTACGTACGTACGTACGTACGT\\n'",
+    "echo 'Error: [blastdbcmd] Skipped MISSING' >&2",
+    "exit 1"
+  ), fake)
+  Sys.chmod(fake, "0755")
+  db <- TaxaMatch:::.local_subset_db("anydb", c("ACC1", "MISSING"), blastdbcmd = fake)
+  on.exit(unlink(dirname(db), recursive = TRUE))
+  expect_true(any(file.exists(paste0(db, c(".nsq", ".nin")))))
+
+  empty <- tempfile("blastdbcmd")
+  writeLines(c("#!/bin/bash", "exit 1"), empty)
+  Sys.chmod(empty, "0755")
+  expect_error(
+    TaxaMatch:::.local_subset_db("anydb", "MISSING", blastdbcmd = empty),
+    "none of the comparison accessions"
+  )
 })
 
 # ------------------------------------------------------------------------------

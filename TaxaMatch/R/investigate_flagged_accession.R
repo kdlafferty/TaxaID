@@ -216,8 +216,44 @@
   unique(accs)[seq_len(min(max_records, length(unique(accs))))]
 }
 
+# Build a throwaway BLAST database holding only `accessions`, extracted from
+# `database` through its accession index. Returns the new database's path
+# (inside its own temp directory; the caller removes it). blastdbcmd exits 1
+# whenever ANY requested accession is absent, so success is judged by what was
+# extracted, not by the exit status. Errors when nothing could be extracted.
+.local_subset_db <- function(database, accessions,
+                             blastdbcmd = Sys.which("blastdbcmd"),
+                             makeblastdb = Sys.which("makeblastdb")) {
+  if (!nzchar(blastdbcmd) || !nzchar(makeblastdb)) {
+    stop("blastdbcmd/makeblastdb not found on PATH", call. = FALSE)
+  }
+  dir <- tempfile("cmpdb")
+  dir.create(dir)
+  ids <- file.path(dir, "ids.txt")
+  fa <- file.path(dir, "subset.fa")
+  writeLines(accessions, ids)
+  suppressWarnings(system2(blastdbcmd,
+    c("-db", shQuote(database), "-entry_batch", shQuote(ids)),
+    stdout = fa, stderr = FALSE
+  ))
+  if (!file.exists(fa) || !any(startsWith(readLines(fa, warn = FALSE), ">"))) {
+    unlink(dir, recursive = TRUE)
+    stop("none of the comparison accessions were found in the local database", call. = FALSE)
+  }
+  out <- file.path(dir, "subset")
+  status <- suppressWarnings(system2(makeblastdb,
+    c("-in", shQuote(fa), "-dbtype", "nucl", "-parse_seqids", "-out", shQuote(out)),
+    stdout = FALSE, stderr = FALSE
+  ))
+  if (!identical(as.integer(status), 0L)) {
+    unlink(dir, recursive = TRUE)
+    stop("makeblastdb failed on the extracted comparison set", call. = FALSE)
+  }
+  out
+}
+
 # Unrestricted local search, then keep only hits in the comparison set. The
-# fallback for .blast_against_comparison_set() when -seqidlist cannot be
+# fallback for .blast_against_comparison_set() when the comparison-set database cannot be
 # used; returns the same .join_acc/pident/query_coverage frame, or NULL.
 .unrestricted_local_comparison <- function(seq_df, comparison_meta, database,
                                            ncbi_api_key, verbose) {
@@ -349,26 +385,27 @@
       query_coverage = raw$qcovs, stringsAsFactors = FALSE
     )
   } else {
-    # The local equivalent of ENTREZ_QUERY: -seqidlist restricts the search
-    # to the comparison accessions, so each one is scored against the query
-    # whether or not it would rank among an unrestricted search's top hits
-    # (and the search reads only those records, not the whole database).
-    # -seqidlist resolves accessions through the database's own index, so if
-    # that fails (an accession absent from this database, an index this
-    # client cannot read) the post-hoc filter below is the fallback: an
-    # unrestricted search whose hits are then intersected with the
-    # comparison set -- weaker, since a comparison accession outside the top
-    # hits is never seen.
+    # The local equivalent of ENTREZ_QUERY: search ONLY the comparison
+    # accessions, so each is scored whether or not it would rank among an
+    # unrestricted search's top hits. They are pulled out of the database
+    # through its accession index (blastdbcmd -entry_batch, well under a
+    # second) into a throwaway database, and the query is searched against
+    # that. -seqidlist restricts the same way but does not skip reading: on
+    # core_nt from an external SSD each such search still streamed the whole
+    # ~270 GB (~20 min, measured), so a 53-accession investigation would have
+    # taken ~40 h. If extraction fails (no blastdbcmd/makeblastdb on PATH,
+    # none of the accessions present) the unrestricted search below is the
+    # fallback -- weaker, since a comparison accession outside the top hits is
+    # never seen, and a full database pass per call.
     hits <- tryCatch(
       {
-        idlist <- tempfile(fileext = ".txt")
-        on.exit(unlink(idlist), add = TRUE)
-        writeLines(unique(comp_join), idlist)
+        sub_db <- .local_subset_db(database, unique(comp_join))
+        on.exit(unlink(dirname(sub_db), recursive = TRUE), add = TRUE)
         raw <- .blast_local(
           seq_df,
-          database = database, program = "blastn", megablast = FALSE,
+          database = sub_db, program = "blastn", megablast = FALSE,
           max_target_seqs = max(200L, nrow(comparison_meta) * 3L),
-          verbose = FALSE, seqidlist = idlist
+          verbose = FALSE
         )
         if (is.null(raw) || nrow(raw) == 0L) {
           NULL
@@ -382,7 +419,7 @@
       error = function(e) {
         if (verbose) {
           warning(sprintf(
-            "Restricted local BLAST (-seqidlist) failed, falling back to an unrestricted search: %s",
+            "Restricted local BLAST (comparison-set database) failed, falling back to an unrestricted search: %s",
             conditionMessage(e)
           ), call. = FALSE)
         }
