@@ -106,43 +106,95 @@ What it returns and how it behaves:
   35 runs.
 - **Review queue:** 225 units are held.
   - 120 are library failures, which are excluded but not pending.
-  - 44 tubes await an identity decision (every marker of a flagged tube is held).
+  - 43 tubes await an identity decision (every marker of a flagged tube is held).
   - `"block"` and `"asymmetric"` give the same count here, because no sample is unassessable.
 - **Runs with no admitted control:**
   - 18S JVB6164 and 18S JVB6334 (failed runs).
   - 12S JVB2844, whose only blank is S067800.
 
-## Live LLM review of the 44 held tubes (`identity_gate_validation/llm_review.R`)
+## Why diversity is needed: a structural limit of `validate_controls()`
 
-- **Model:** Anthropic through `TaxaTools::call_api`, run with `max_tokens` 4000. The
-  `CONTEXT` string is **this session's assumption** about the blank protocol, and the
-  CalIntertidal session should correct it.
-- **Coverage:** 42 of 44 tubes answered. Advice is cached in
-  `identity_gate_validation/identity_review_cache/` and merged into
-  `identity_decisions_TEST.csv`.
+`validate_controls()` asks whether a control resembles a FIELD SAMPLE. So it can only ever
+detect contamination that came from the samples. A blank contaminated from any other source is
+maximally unlike the samples, and so maximally "consistent_with_control". The Hill N1 axis is
+orthogonal to that test and catches this case. (Framing from the CalIntertidal session.)
+
+## Spike-ins (found during validation)
+
+**12S spike-in, from Event 5 onward.** Starting with Event 5 (November 2024), JV adds a
+`PositiveControl` spike-in to every 12S tube.
+
+- **Spiked runs:** JVB5058, JVB5059, JVB5060, JVB5061, JVB6097, JVB6164 and JVB6334. Every field
+  library carries the spike, and every blank is 97-100% spike.
+- **Unspiked runs, Events 1-4:** JVB2844, JVB3105, JVB3506 and JVB3735. They carry no spike at all.
+
+**What a spike does to a blank.** A template-free blank in a spiked run is almost entirely spike.
+That is what a CLEAN blank looks like, not a positive control. Before this was understood, the
+LLM called 14 such blanks positive controls, and the CalIntertidal session briefly read
+4ES2CWOF and IJR811PZ as mislabelled. That was retracted.
+
+**How the gate handles it.** `ubiquitous_fraction = 0.9` sets a feature aside before composition
+and diversity when BOTH hold, judged per run x marker:
+
+- it is in at least 90% of the run's field units, and
+- it is the majority of reads in at least half of that run's blanks.
+
+Both conditions are needed. Field prevalence alone also removed 22 genuinely common plankton
+taxa on COI JVB3506 and flipped a `low_yield` sample to `discordant`. With both conditions the
+rule selects exactly the seven spiked 12S runs. On JVB6097 it found the spike as `ESV_075708`
+without using any name: that sequence is byte-identical to `PositiveControl`. The set-aside
+features are listed in `runs$ubiquitous_taxa` and the LLM prompt.
+
+**Beyond this gate.** The same trap applies to `flag_hopped_detections()` on spiked runs. The
+CalIntertidal session has recorded it in `build_reads_long_hopflagged.R`.
+
+## Other changes after first validation
+
+- **`hold_reason`** is `own_evidence`, `tube` or `unassessable`. `identity_status` always
+  describes the unit's own evidence, and `n_markers_flagged` never counts tube-held units.
+- **`reassign_to_positive_control`** gives `admit_as = "positive_control"`. Such a tube is not
+  counted as a negative control. The LLM verdict `positive_control_labelled_as_blank` goes with
+  it.
+- **Rebased** onto `flag-failed-libraries` ab41741, where a run can now fail on single-marker
+  evidence. A test pins it: a single-marker failed run whose libraries read
+  `low_yield_undetermined` is still caught, because the gate keys on `exclude_library` and
+  `run_status`, never on `library_status == "failed"`.
+- **Known limit, deferred on purpose:** a marker with fewer than 3 runs. There, the diversity
+  reference comes from those same runs, so a sample-side low-diversity rule would be circular.
+  What remains is the same-run blank-vs-field comparison, which `validate_controls()`'s
+  `RESEMBLES_CONTROL` already covers.
+
+## Validation-script bugs fixed (display names only; no gate verdict depended on them)
+
+1. **Wrong source of names.** The scripts named ESVs from the first `esv_data` row. `esv_data`
+   is a BLAST hit list, about 5.6 hits per ESV and up to 100; `read-data.csv` holds JV's single
+   consensus row. This put a spurious *Trichoplax* in the 18S JVB3735 names and LLM rationales.
+   `build_consensus_names.R` now reads the consensus.
+2. **Missing names for JVB6097.** The batch key was cut from the file name, which broke on
+   `JVB6097_filtered_Event10_*` files and left every JVB6097 ESV unnamed. The script now reports
+   the true lookup gap, which is 0 for every run x marker. ESVs JV left unassigned are 27% of
+   18S read rows and 18% of COI read rows; that is data, not a gap.
+
+## Final live LLM review (`identity_gate_validation/llm_review.R`)
+
+- **Setup:** Anthropic, `tubes_per_call` 2, `max_tokens` 8000. The CONTEXT string remains
+  PROVISIONAL until Kevin describes the blank protocol.
+- **Coverage:** 43 of 43 tubes answered.
 - **Verdicts:**
 
   | verdict | tubes |
   |---|---|
-  | `contaminated_blank` | 29 |
-  | `sample_labelled_as_blank` | 4 (includes S067800 and DWETWXWF) |
-  | `clean_blank` | 4 |
-  | `valid_sample` | 4 |
+  | `contaminated_blank` | 23 |
+  | `clean_blank` | 8 (the spiked 18S JVB6164/JVB6334 blanks, including 4ES2CWOF and IJR811PZ) |
+  | `sample_labelled_as_blank` | 5 (S067800 high confidence, DWETWXWF, WCOFVUX2) |
+  | `uncertain` | 3 |
+  | `valid_sample` | 2 |
   | `blank_labelled_as_sample` | 1 (NXD77NCP) |
+  | `positive_control_labelled_as_blank` | 1 (BJL8UXKN, low confidence: 12S 100% *Rhinichthys*) |
 
-- **§8 rationales.**
-  - S067800: "coherent, diverse plankton communities that closely mirror the run's field
-    samples" in both markers, read as a mislabel.
-  - JAC2V5IK: freshwater/anadromous fishes in 12S plus a coherent protist assemblage.
-  - The JVB3735 blanks: freshwater/terrestrial and plankton communities, read as contaminated.
-- **Worth checking.**
-  - The 18S JVB6164 blanks (unassessable) were mostly called `contaminated_blank`, on their
-    12S/COI evidence.
-  - 4ES2CWOF and IJR811PZ carry a 12S **PositiveControl** as 100% of reads.
-- **Failure mode found and fixed.** At 4 tubes per call, a reasoning model can spend all of
-  `max_tokens` thinking and return no text (13 of 44 went unanswered). Re-asks now go one tube
-  per call. One reply was also invalid JSON: it contained a JavaScript `.replace()` call. It
-  was rejected and re-asked, not trusted.
+- **Pattern for Kevin's protocol question:** JVB3735 blanks repeatedly carry FRESHWATER taxa,
+  including *Rhinichthys*, *Etheostoma*, *Cottus*, *Oncorhynchus kisutch*, *Physella* and
+  *Gonium*. That fits blanks filled from a freshwater source.
 
 ## New finding, not in the re-entry prompt
 
@@ -203,4 +255,4 @@ Notes on the wiring:
   and `R/TaxaFlag-package.R`. The helper count on this branch is 42 (30 + 12). Add hopping's 4.
 - **TaxaWizard:** two new exports, learned from their formals after reinstall. The graph edge
   would be `reads_to_flagged` (the same edge as the other two).
-- **Tests:** TaxaFlag 743 passed, 0 failed. `check()` 0/0/0.
+- **Tests:** TaxaFlag 781 passed, 0 failed. `check()` 0/0/0.
