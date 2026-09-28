@@ -24,8 +24,9 @@ assign_taxa_llm(
   prior_weight_guide = list(native_expected = c(0.5, 1), native_occasional = c(0.03,
     0.15), native_unlikely = c(0.003, 0.03), nearby_expected = c(0.05, 0.3),
     nearby_occasional_unlikely = c(0.002, 0.05), not_documented = c(0.001, 0.02),
-    taxonomically_impossible = c(1e-04, 0.002)),
+    taxonomically_impossible = c(1e-04, 0.002), transported = c(0.03, 0.15)),
   n_sims = 1000L,
+  cache_dir = NULL,
   verbose = FALSE
 )
 }
@@ -36,7 +37,8 @@ Optional but recommended: \code{testid} (marker type).}
 
 \item{context}{Optional data frame with location/habitat context. Either a
 single row (broadcast to all observations) or one row per \code{observation_id}. Recognised
-columns: \code{observation_id}, \code{ecoregion}, \code{lat}, \code{lon}, \code{date}, \code{main_habitat}.
+columns: \code{observation_id}, \code{geographic_hint}, \code{ecoregion}, \code{lat}, \code{lon},
+\code{date}, \code{main_habitat}.
 In the full pipeline, populate \code{main_habitat} from the \code{main_habitat} column
 produced by TaxaHabitat and passed through TaxaExpect.}
 
@@ -158,13 +160,33 @@ The LLM uses these ranges when assigning prior probabilities based on
 range status and habitat fit. Names indicate the ecological scenario:
 \code{native_expected}, \code{native_occasional}, \code{native_unlikely},
 \code{nearby_expected}, \code{nearby_occasional_unlikely}, \code{not_documented},
-\code{taxonomically_impossible}. Default ranges are derived from expert
+\code{taxonomically_impossible}, \code{transported}. \code{transported} covers taxa with
+no wild population in the region that are present because people bring
+or keep them (domestic or farmed animals, food, bait, aquaculture,
+cultivated plants, pets); without it such taxa fall to \code{not_documented}.
+Its default, \code{c(0.03, 0.15)}, matches \code{native_occasional}. A guide
+without \code{transported} gets that default. Default ranges are derived from expert
 ecological judgment (see package documentation). Modifying these ranges
 directly affects how strongly geographic and habitat information
 influence posterior probabilities.}
 
 \item{n_sims}{Integer. Monte Carlo simulations for \code{compute_posterior()}.
 Default 1000. Set to 0 to skip simulation and return point estimates only.}
+
+\item{cache_dir}{Character or \code{NULL} (default). Directory for a cache of LLM
+responses, one file per call, so a re-run returns the same priors without
+paying for them again. An LLM can answer the same prompt differently on two
+runs, so a cache is what makes a re-run reproducible. \code{NULL} disables it.
+The key is the full prompt text plus what can be known about the model
+before the call: the code of \code{llm_fn} (which captures a \verb{model =} set in a
+wrapper), its \code{model} default, and \code{getOption("TaxaID.provider")}. Any
+change to the taxa, context, survey lists or guide bands changes the prompt
+and so misses. \code{TaxaTools::call_api()} chooses its model at call time, so
+after changing the model through \code{TaxaTools::set_model()} or a registry
+refresh, use a new \code{cache_dir} or empty the old one. Each entry also stores
+the model the response reports, when the provider function attaches it. A
+response that failed to parse or left out a taxon is never cached, so it is
+asked again on the next run.}
 
 \item{verbose}{Logical. If \code{TRUE}, prints the prompt and raw LLM response for
 each group call. Default \code{FALSE}.}
@@ -264,12 +286,18 @@ normalized so named candidates share \code{(1 - unknown_lik_weight)} of the tota
 \if{html}{\out{<div class="sourceCode">}}\preformatted{lik_i = (1 - unknown_lik_weight) * exp(sharpness * score_i) /
         sum(exp(sharpness * score_j))
 }\if{html}{\out{</div>}}
+
+Each taxon in the prompt carries its higher lineage (the ranks above genus
+in \code{match_df}), so a name shared by unrelated organisms is not conflated.
+The LLM's weights are kept on the prompt's absolute scale and normalised
+once per observation, so how the taxon list is split into batches does not
+change the priors.
 }
 
 \subsection{Unreferenced taxa}{
 
 Species absent from the reference database (from
-\code{TaxaLikely::audit_reference_coverage()$unreferenced}) that share a genus with any
+\code{TaxaLikely::suggest_unreferenced_species()}) that share a genus with any
 scored candidate are inserted as additional hypotheses. Their likelihood equals
 the median of their referenced congeners so unreferenced taxa start on equal
 footing. They appear in the prompt labelled \verb{[no reference sequence]}.

@@ -861,3 +861,23 @@ test_that("cache_dir never stores an incomplete answer", {
   expect_equal(n_calls, 2L)
   expect_length(list.files(dir), 0L)
 })
+
+test_that("a taxon the LLM omits keeps a non-zero prior", {
+  # Regression: the unknown row's placeholder 0 was counted in the fill
+  # minimum, so an omitted taxon got prior 0 (posterior 0) with
+  # prior_phi = NULL, and aborted compute_posterior() otherwise.
+  md <- data.frame(
+    observation_id = "A", score_original = c(99, 95),
+    taxon_name = c("Aaa one", "Bbb two"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  omits <- function(prompt_str) '[{"taxon_name":"Aaa one","prior_weight":0.8}]'
+  for (phi in list(NULL, c(high = 50, moderate = 10, low = 3))) {
+    r <- suppressWarnings(suppressMessages(assign_taxa_llm(md,
+      llm_fn = omits, pause_seconds = 0, n_sims = 0L, prior_phi = phi
+    )))
+    b <- r[!is.na(r$taxon_name) & r$taxon_name == "Bbb two", ]
+    expect_gt(b$prior_mean, 0)
+    expect_equal(b$prior_source, "na_fill_fallback")
+  }
+})

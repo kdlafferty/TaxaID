@@ -950,7 +950,10 @@ assign_taxa_llm <- function(match_df,
     # - unreferenced taxa: median prior of their referenced congeners in this response
     # - other taxa: global minimum non-NA prior
     if (any(is.na(merged$prior_mean))) {
-      non_na_priors <- merged$prior_mean[!is.na(merged$prior_mean)]
+      # The unknown row holds a placeholder 0 at this point; counting it made
+      # the "minimum" 0, so an omitted taxon got prior 0 and was eliminated
+      # (or, with prior_phi set, aborted compute_posterior()).
+      non_na_priors <- merged$prior_mean[!is.na(merged$prior_mean) & !unk_idx]
       global_min <- if (length(non_na_priors) > 0L) min(non_na_priors) else 0.01
       if (!is.finite(global_min)) global_min <- 0.01
       for (i in which(is.na(merged$prior_mean))) {

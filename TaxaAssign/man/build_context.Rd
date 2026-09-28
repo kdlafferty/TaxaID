@@ -20,7 +20,10 @@ build_context(
 \item{geographic_hint}{Optional character string describing the approximate
 geographic region (e.g. \code{"Southern California"}, \code{"Chesapeake Bay
 watershed"}). Passed to \code{build_habitat_prompt(geographic_context = ...)}.
-When non-NULL, the LLM also returns an \code{ecoregion_best_guess} column.}
+When non-NULL, the LLM also returns an \code{ecoregion_best_guess} column.
+A named place works better than bare coordinates, since the model reasons
+from what it knows about named regions; coordinates can follow the name
+(e.g. \code{"Point Conception, California (34.45 N, 120.47 W)"}).}
 
 \item{date}{Optional character string for the sampling date or year
 (e.g. \code{"2025"}). Passed through to the returned \code{ctx} data frame.}
@@ -43,6 +46,9 @@ A one-row data frame with columns:
 \code{geographic_hint} was \code{NULL}.}
 \item{main_habitat}{Character. Consensus habitat across the assemblage.}
 \item{date}{Character. Passed through from the \code{date} argument.}
+\item{geographic_hint}{Character. Passed through from the
+\code{geographic_hint} argument, or \code{NA}. \code{assign_taxa_llm()}
+shows it to the LLM alongside the ecoregion.}
 }
 The per-species habitat weight table is attached as
 \code{attr(result, "habitats_df")} for inspection.

@@ -673,3 +673,7 @@ behavior on functions this document already covers above.
   Detection inside the wrapper runs only for `"eDNA"`; image and acoustic data need
   `suggest_unreferenced_species()` with its `reference_species` list. The value also
   reaches `generate_report()` unless `report_params` sets it.
+- `assign_taxa_llm()` gives a taxon the LLM left out of its answer the smallest prior
+  among the taxa it did answer for. The unknown hypothesis's placeholder 0 used to be
+  counted in that minimum, so an omitted taxon got prior 0 and was eliminated, or,
+  with `prior_phi` set, `compute_posterior()` aborted the run.

@@ -216,7 +216,8 @@ run_llm_pipeline <- function(
   if (detect_unreferenced && is.null(unreferenced_taxa)) {
     if (missing(data_type)) {
       cli::cli_abort(c(
-        "{.arg data_type} must be stated when {.arg detect_unreferenced} = TRUE.",
+        "{.arg data_type} must be stated when {.arg detect_unreferenced} = TRUE: \\
+        one of {.val {valid_types}}.",
         "i" = "What counts as unreferenced depends on the signal: {.val eDNA} \\
         means no reference sequence for the marker. Pass {.code data_type = \"eDNA\"}, \\
         or {.code detect_unreferenced = FALSE}."

@@ -240,7 +240,7 @@ test_that("run_llm_pipeline: data_type must be stated when it detects unreferenc
       match_df = mock_match_df, llm_fn = function(x) "mock",
       auto_context = FALSE, backbone_id = 11L
     ),
-    "data_type"
+    "data_type.*eDNA.*image.*acoustic"
   )
   expect_error(
     run_llm_pipeline(
