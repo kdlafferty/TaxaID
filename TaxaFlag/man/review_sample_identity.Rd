@@ -56,6 +56,7 @@ entered. Default NULL.}
 The review queue (\code{attr(identity, "review_queue")}) with
 \code{llm_verdict} (one of \code{"clean_blank"},
 \code{"contaminated_blank"}, \code{"sample_labelled_as_blank"},
+\code{"positive_control_labelled_as_blank"},
 \code{"blank_labelled_as_sample"}, \code{"valid_sample"},
 \code{"uncertain"}), \code{llm_suggested_disposition},
 \code{llm_confidence} (high/moderate/low) and \code{llm_rationale} added

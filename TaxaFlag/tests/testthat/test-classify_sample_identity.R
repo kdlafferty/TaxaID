@@ -54,6 +54,10 @@ test_that("an identity flag in one marker holds the tube's other markers", {
   expect_true(m1$pending_review)
   expect_false(m1$admit)
   expect_match(m1$reason, "HELD")
+  expect_equal(m1$hold_reason, "tube")
+  expect_equal(.unit(res, "PLANKTON", "M2")$hold_reason, "own_evidence")
+  # a tube-held unit is not counted as a flag of its own
+  expect_equal(m1$n_markers_flagged, 1L)
 })
 
 test_that("an empty or near-empty blank is a valid blank, never a failure", {
@@ -204,4 +208,39 @@ test_that("input validation", {
     verbose = FALSE), "diversity_blank_max")
   expect_error(classify_sample_identity(d, control_samples = "CLEAN",
     failed_libraries = d, verbose = FALSE), "unmodified result")
+})
+
+test_that("a single-marker failed run is caught although its libraries read low_yield_undetermined", {
+  d <- .sig_fixture(fail_run = "R1")
+  d <- d[d$marker == "M2", ]
+  ff <- suppressWarnings(flag_failed_libraries(d, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
+    verbose = FALSE))
+  rr <- attr(ff, "runs")
+  expect_equal(rr$run_status[rr$run == "R1"], "failed")
+  lib <- attr(ff, "libraries")
+  expect_true(all(lib$library_status[lib$run == "R1" & lib$role == "field"] == "low_yield_undetermined"))
+  res <- .sig_run(d, failed_libraries = ff)
+  s <- .unit(res, "S11", "M2")
+  expect_equal(s$identity_status, "suspect")
+  expect_equal(s$issue_type, "library")
+  expect_false(s$admit)
+  expect_equal(.unit(res, "CLEAN", "M2")$identity_status, "unassessable")
+  expect_true(.unit(res, "S21", "M2")$admit)
+})
+
+test_that("a positive control recorded as a blank can be re-roled", {
+  path <- tempfile(fileext = ".csv")
+  on.exit(unlink(path))
+  d <- .sig_fixture()
+  .sig_run(d, decisions_path = path)
+  rec <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character")
+  rec$disposition[rec$sample == "PLANKTON" & rec$marker == "M1"] <- "reassign_to_positive_control"
+  utils::write.csv(rec, path, row.names = FALSE, na = "")
+  res <- .sig_run(d, decisions_path = path)
+  u <- attr(res, "units")
+  expect_equal(unique(u$admit_as[u$sample == "PLANKTON"]), "positive_control")
+  expect_true(all(u$admit[u$sample == "PLANKTON"]))
+  # it does not count as an admitted negative control
+  rr <- attr(res, "runs")
+  expect_equal(rr$n_admitted_controls[rr$run == "R3"], c(0L, 0L))
 })

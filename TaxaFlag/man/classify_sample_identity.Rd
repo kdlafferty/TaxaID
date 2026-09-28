@@ -75,7 +75,8 @@ decision. A production workflow should pass \code{"error"}.}
 \code{"neither"} or \code{"unassessable"}.}
 \item{\code{identity_status}}{\code{"concordant"}, \code{"discordant"},
 \code{"suspect"} or \code{"unassessable"}.}
-\item{\code{admit_as}}{\code{"control"}, \code{"sample"} or \code{NA}
+\item{\code{admit_as}}{\code{"control"}, \code{"sample"},
+\code{"positive_control"} or \code{NA}
 (not admitted); reflects any reassignment.}
 \item{\code{admit}}{Logical. The gate. Filter on this and read
 \code{admit_as} for the role; the original \code{control_samples} vector
@@ -87,7 +88,7 @@ evidence (\code{depth}, \code{richness}, \code{diversity_n1},
 \code{n_libraries_assessable}, \code{composition_power},
 \code{library_status}, \code{run_status}, \code{n_markers_flagged},
 \code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
-\code{issue_type}, \code{tube_flagged}, \code{confidence}, \code{reason},
+\code{issue_type}, \code{tube_flagged}, \code{hold_reason}, \code{confidence}, \code{reason},
 \code{disposition}, \code{pending_review}, \code{excluded_library_issue},
 \code{admit_as} and \code{admit}. Attribute
 \code{"review_queue"}: the units that need a person, in decision-record
@@ -200,8 +201,12 @@ tested.
 across every marker: a tube cannot be a blank in one marker and a
 sample in another. Dispositions \code{"confirm_blank"},
 \code{"confirm_sample"}, \code{"reassign_to_blank"},
-\code{"reassign_to_sample"} and \code{"exclude_tube"} apply to all of
-the sample's units.}
+\code{"reassign_to_sample"}, \code{"reassign_to_positive_control"} and
+\code{"exclude_tube"} apply to all of the sample's units. A positive
+control recorded as a field blank must not stay in the negative control
+set: it inflates the control rate of every spiked taxon, which makes
+\code{flag_contaminant()} more permissive. Re-roled, it is admitted with
+\code{admit_as = "positive_control"}.}
 \item{Library validity -- did this assay work?}{A property of the
 UNIT. Dispositions \code{"exclude_library"} and \code{"keep_library"}
 apply to that unit only, so a library that failed in one marker does
@@ -214,7 +219,10 @@ Each flagged unit has an \code{issue_type} (\code{"identity"} or
 \itemize{
 \item \strong{An identity flag holds the whole tube.} A discordant or
 suspect identity in ANY marker holds every unit of that sample, including
-markers where it looked concordant (\code{tube_flagged}). A blank
+markers where it looked concordant (\code{tube_flagged}). Such a unit
+keeps its own \code{identity_status} (it is not itself evidence of
+anything), and \code{hold_reason} says why it is held:
+\code{"own_evidence"}, \code{"tube"} or \code{"unassessable"}. A blank
 contaminated at the bag is contaminated in every marker, even where one
 marker happens to amplify little of it. An unassessable unit holds only
 itself: a failed library says nothing about the tube's other markers.

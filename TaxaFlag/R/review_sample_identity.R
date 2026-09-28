@@ -3,7 +3,8 @@
 
 .SIR_VERDICTS <- c(
   "clean_blank", "contaminated_blank", "sample_labelled_as_blank",
-  "blank_labelled_as_sample", "valid_sample", "uncertain"
+  "positive_control_labelled_as_blank", "blank_labelled_as_sample",
+  "valid_sample", "uncertain"
 )
 
 #' LLM Advice on Samples That Do Not Look Like Their Label
@@ -73,6 +74,7 @@
 #' @return The review queue (\code{attr(identity, "review_queue")}) with
 #'   \code{llm_verdict} (one of \code{"clean_blank"},
 #'   \code{"contaminated_blank"}, \code{"sample_labelled_as_blank"},
+#'   \code{"positive_control_labelled_as_blank"},
 #'   \code{"blank_labelled_as_sample"}, \code{"valid_sample"},
 #'   \code{"uncertain"}), \code{llm_suggested_disposition},
 #'   \code{llm_confidence} (high/moderate/low) and \code{llm_rationale} added
@@ -264,14 +266,17 @@ review_sample_identity <- function(identity,
     "open-water plankton in a benthic study), suspect contamination from another source, such ",
     "as a rinse with unfiltered water (contaminated_blank). Being outside the study's ",
     "analytical scope does not make a taxon a lab contaminant.\n",
+    "- A tube labelled as a blank that holds a mock community or a spike-in (a positive-control ",
+    "sequence, or taxa foreign to the study region such as freshwater or domestic species in a ",
+    "marine study) is a positive control carrying a blank's label ",
+    "(positive_control_labelled_as_blank; suggest reassign_to_positive_control).\n",
     "- A tube labelled as a sample that holds only lab/handling signals, or almost nothing, ",
     "may be a blank carrying a sample label (blank_labelled_as_sample).\n",
     "- Use every marker shown: agreement across markers is strong evidence; disagreement ",
     "should lower your confidence.\n",
     "- If the evidence does not support a judgement, say 'uncertain'. Do not guess.\n\n",
     "Allowed verdicts: ", paste(.SIR_VERDICTS, collapse = ", "), ".\n",
-    "Allowed suggested_disposition: confirm_blank, confirm_sample, reassign_to_sample, ",
-    "reassign_to_blank, exclude_tube.\n\n",
+    "Allowed suggested_disposition: ", paste(.SIG_IDENTITY_DISPOSITIONS, collapse = ", "), ".\n\n",
     "TUBES\n", paste(unlist(items), collapse = "\n\n"), "\n\n",
     "Respond with ONLY a JSON array, one object per tube, in this form:\n",
     "[{\"sample\": \"<tube id>\", \"verdict\": \"...\", \"suggested_disposition\": \"...\", ",
