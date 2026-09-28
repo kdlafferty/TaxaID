@@ -202,7 +202,8 @@ CalIntertidal session has recorded it in `build_reads_long_hopflagged.R`.
 blanks are held:
 
 - Diversity is 1.0-4.3x the 18S reference, 50-218 effective species. The taxa include
-  ciliates, *Gambierdiscus*, *Pseudo-nitzschia*, *Oxyrrhis marina* and *Trichoplax*.
+  ciliates, *Gambierdiscus* (2,162 reads in blanks against 269 in the whole field set),
+  *Pseudo-nitzschia* and *Oxyrrhis marina*.
 - Only 10-30% of their ESVs occur in that run's field samples, so this is **not index hopping**.
 - `validate_controls()` calls every one of them `consistent_with_control` at full power. They
   are disjoint from the benthic samples, and the test reads disjoint as clean. This is the same
