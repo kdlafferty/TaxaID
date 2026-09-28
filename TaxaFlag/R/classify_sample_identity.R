@@ -569,6 +569,16 @@ classify_sample_identity <- function(input_df,
       sum(u$admit & u$admit_as %in% "sample"), sum(u$admit & u$admit_as %in% "control"),
       sum(!u$admit), sum(u$pending_review), sum(u$excluded_library_issue)))
   }
+  # Admitting a unit no test could judge is a policy choice, so say how many,
+  # and why, every time -- "no evidence of a problem" is not "checked clean".
+  nt <- u$admit & u$identity_status %in% c("untested", "inconclusive")
+  if (any(nt)) {
+    why <- table(paste(u$identity_status[nt], u$status_reason[nt], sep = "/"))
+    message(sprintf(paste0(
+      "  admitted WITHOUT a discriminating test: %d unit(s) (%s). This is no evidence ",
+      "of a problem, not evidence of none; untested_policy = \"%s\"."),
+      sum(nt), paste(names(why), why, sep = " ", collapse = ", "), untested_policy))
+  }
   nc <- runs[runs$control_status == "no_admitted_control", , drop = FALSE]
   if (nrow(nc)) {
     warning(sprintf(
