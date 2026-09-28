@@ -74,16 +74,29 @@ result. The function should matter on runs where hopping actually operates
   - 12S JVB3735 (the run with the 12S flags): 2 of 24 controls resemble a sample.
   - 18S JVB3506 (estimated at 0.25%, not refused): 0 of 3; its blanks agree
     closely with each other.
-  - NOT YET CHECKED: 18S JVB3735, COI JVB3506 and COI JVB2844, i.e. three of the four
-    refused runs.
+  - 18S JVB3735: 0 of 30. COI JVB3506: 0 of 33. COI JVB2844: 3 of 7, the SAME
+    S067800 replicates. Two independent assays of one tube agree, which does most of
+    the evidential work given the low power.
+  - So contaminated blanks explain JVB2844 only. On 18S JVB3735 and COI JVB3506 the
+    blanks look like controls yet carry field-correlated reads well above the
+    hopping band. The cause is unexplained; do not attribute it to dirty blanks.
+  - Filter re-run on JVB2844 without S067800 (`hop_validation/jvb2844_drop.R`):
+    COI rate 0.286 -> 0 (bound_only, upper 3e-4; that blank WAS the whole signal).
+    18S 0.572 -> 0.165 (still implausible_rate; the remaining blanks still carry
+    field-correlated 18S reads). Without the max_rate ceiling, this run alone would
+    have had 56-83% of its field detections flagged.
   Why it matters beyond this filter: a blank full of field reads dilutes a genuine
   reagent contaminant's share, so `flag_contaminant()` becomes more permissive toward
   real contaminants. It can also make an abundant field taxon look like a contaminant.
   A control flagged RESEMBLES_SAMPLE should be dropped from `control_samples` for BOTH
-  functions. For more power, give `validate_controls(site_col=)` the column blanks
-  actually pair on (the event, or the run `batch`), so each blank is judged against the
-  samples it was carried or sequenced with. Do not use Location, which blanks do not
-  have.
+  functions. The CalIntertidal session already calls `validate_controls()` once per
+  run, so its null is per-run. The low power comes from genuinely wide within-run
+  sample-to-sample distances, not from grouping.
+  Option for the user (not built): gate the control set automatically with a
+  `validate_controls()` pass inside the workflow, reporting excluded blanks loudly.
+  I would keep that as a workflow step, not a hidden step inside
+  `flag_hopped_detections()`. Its verdicts are low-power here, and silently dropping
+  a control is the same class of risk it guards against.
 
 ## Workflow wiring (CalIntertidal session owns it)
 
