@@ -1,6 +1,48 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-14 (Opus 5): UNREVIEWED ROWS NO LONGER SILENTLY DROPPED --
+# Last updated: 2026-09-27 (Opus 5.5, branch flag-hopped-detections): NEW EXPORT
+# flag_hopped_detections() -- per-DETECTION read-spillover flag (index hopping, tag
+# jumps, ONT barcode misassignment). Requested by the user from the CalIntertidal
+# session's REENTRY_PROMPT_index_hopping_TaxaFlag.md. flag_contaminant() cannot see
+# this by construction (a spilling feature is abundant in the field, so it scores
+# valid, and it only ever removes whole taxa). Model: E_ij = r * S_ij * w_j (source =
+# the feature's reads elsewhere on the run; w = 1/(n-1) by default). r estimated PER
+# RUN from a non-native spike (preferred) or negative controls; flags, never deletes;
+# unified validity schema ("invalid_index_hop"/"questionable_index_hop"/"valid"/NA).
+# THREE DESIGNS FAILED BEFORE THIS ONE, each on data, not review:
+# (1) receiver_share = "depth" from blanks is CIRCULAR -- a blank of pure spillover has
+#     a depth made of that spillover, rate ~1 whatever the truth. Default is "equal";
+#     "depth" is spike-only.
+# (2) one-sided POISSON trimming of contaminants ate the genuine tail of over-dispersed
+#     spillover: rate AND its "upper bound" 0.2-0.6x the truth (simulated, known r).
+# (3) an NB dispersion fitted on EVERY feature stretched to absorb contaminants: rate
+#     75-800x the truth, genuine detections flagged. SHIPPED: NB fit on a CORE (top half
+#     of exposure), multiplicity-corrected trimming against it, final joint fit with a
+#     profile-likelihood bound. 24 simulated scenarios: rate 0.92-1.09x, bound covers
+#     the truth 79/80, 0 genuine detections flagged, planted contaminants excluded.
+# max_rate = 0.05 CEILING, from real data: CalIntertidal's three large runs' blanks
+# implied 7-57%, which no demultiplexing error produces (Illumina hopping 0.1-2%, up to
+# ~6% PCR-free, Costello 2018; tag jumps 2.1-2.6%, Schnell 2015). That is
+# abundance-correlated contamination OF THE BLANKS (an empty library amplifies a few
+# molecules to thousands of reads) and projecting it would have flagged 16% of 18S
+# detections. Such runs are reported "implausible_rate" and NOT assessed.
+# REAL RESULT (CalIntertidal, in-scope detections): 12S 1.1% flagged (all run
+# JVB3735), 18S 0.03%, COI 0.46%; most runs "bound_only" with r_upper ~1e-5. An
+# independent check agrees: 12S run JVB3105's ten biggest ESVs (median 1.9M reads)
+# appear in 0 of 9 blanks, where 0.1% hopping predicts ~4 reads in each. Acanthurus
+# xanthopterus (18S) is NOT spillover (<=2,400 source reads spread over dozens of
+# samples) -- a misassignment problem, not this one. A clean control needs a
+# zero-count row carrying its run, or it counts for nothing (attr "controls_absent").
+# Open: dispersion hits its 0.01 floor on the "estimated" big runs (JVB3735) --
+# control reads clumped in few blanks, the shape of well-to-well contamination.
+# USER DECISION 2026-09-28: keep this function focused on hops. Dropping/gating
+# contaminated blanks (validate_controls() RESEMBLES_SAMPLE) is a SEPARATE future
+# function; do not add control-set filtering here. Real case it will need:
+# CalIntertidal blank S067800 on JVB2844 (flagged in 18S AND COI); removing it
+# clears COI (0.286 -> 0), while 18S stays implausible (0.572 -> 0.165).
+# test 648/0, check 0/0/0; merged to main 2026-09-28, NOT installed (reinstall gate is the
+# package-review peer's).
+# Previous update: 2026-09-14 (Opus 5): UNREVIEWED ROWS NO LONGER SILENTLY DROPPED --
 # ecosystem_docs/REENTRY_PROMPT_unreviewed_rows_silently_dropped.md, now RESOLVED (read
 # its Resolution section). An LLM response can parse cleanly, be the right length, and
 # still leave specific taxa out -- consistently the long compound slash labels, the
@@ -1399,6 +1441,7 @@ Note: `{type}_score` (numeric) is NOT the same direction as `{type}_risk` (chara
 
 | `add_posthoc_assessment()` | `R/add_posthoc_assessment.R` | Written | **Redesigned 2026-07-30, superseding everything below this row from Session 149 onward.** The old single-column `posthoc_assessment` (9 categories, `tiers`/`taxon_col`/`tier_col`/`finest_rank` params, including `"vague_rank"` and `"unsupported_rank"`) is entirely retired -- see this file's top session note. Now appends FIVE columns implementing two independent, orthogonal axes, reported for `primary_taxon` and `consensus_taxon` separately, neither gating the other: **Axis 1** (`primary_plausibility`/`consensus_plausibility`, "how expected is this taxon here?") -- `"expected"`/`"unexpected"`/`"unprecedented"`/`"not_modeled"`, driven by `winner_theta_col` (default `"winner_theta_mean"`) + `winner_record_col` (default `"winner_has_occurrence_record"`) at primary scope, `consensus_prior_col` (default `"consensus_prior"`) + `consensus_record_col` (default `"consensus_has_occurrence_record"`, 2026-07-30 new) at consensus scope, compared against `expected_theta_threshold` -- a REQUIRED named vector keyed by rank (`"species"` mandatory, `genus`/`family` optional; a rank absent from the vector gets `"not_modeled"`). `"unprecedented"` is driven by record presence (the `*_record_col`), never by a low threshold value -- a never-reported taxon and a genuine singleton can share the same numeric floor while meaning opposite things. **Axis 2** (`primary_discrimination`/`consensus_discrimination`, "could the evidence tell this taxon apart from a plausible relative?") -- `"discriminating"`/`"weak"`/`"indistinguishable"`/`"not_modeled"`, driven by `primary_confusion_risk_col`/`consensus_confusion_risk_col` against `discriminating_threshold`/`indistinguishable_threshold` (default 0.05/0.5) -- this is the direct successor to the old `confusion_risk_flag` column (now two rank-scoped columns instead of one). `domestic_prior_caveat` (logical) is unchanged in purpose (Session 149) but now reads `primary_plausibility` instead of the retired tier lookup. See this file's top session note for the full real-data verification record. |
 
+| `flag_hopped_detections()` | `R/flag_hopped_detections.R` | Written (2026-09-27) | Per-DETECTION read-spillover flag (index hopping, tag jumps, barcode misassignment). Expected spillover `r * source * share` per (run, feature, sample); `r` per run from a non-native spike (`spike_taxa`/`spike_samples`) or negative controls (NB core fit, contaminants trimmed and returned in `attr(, "control_excess")`). `max_rate` ceiling refuses runs whose controls imply more than demultiplexing can produce. Returns `input_df` with the unified validity schema + `hop_*` evidence columns; `attr(, "run_rates")` carries per-run rate/bound/dispersion/evidence. See this file's top session note. |
 | `flag_watch_candidates()` | `R/flag_watch_candidates.R` | Written (2026-08-26) | **2026-09-09 doc gap (added during the ecosystem-wide accuracy pass; exported but missing from this table since it shipped).** The likelihood-side surveillance guarantee for watch-list species (D4 of the undetected-evidence mixture redesign): compares raw match scores only (no priors, no likelihood model) and flags every observation where a watch-list species scored at least as well as (within `score_margin`) the consensus winner's own best match -- honors "a reviewer must see this" without breaking the prior's honesty (an honest small prior like w=0.05 correctly lets Bayes down-weight a watch species in the posterior, which this function's raw-score check bypasses on purpose). Wired into GreatLakes 8i.5. |
 | `build_review_covariates()` | `R/build_review_covariates.R` | Written | **2026-09-09 doc gap (added during the ecosystem-wide accuracy pass; exported but missing from this table).** Collapses a long-format reads table (one row per taxon x sample) to one row per observation, joined to a categorical classification column (e.g. `add_posthoc_assessment()`'s `primary_plausibility`/`primary_discrimination`, or any `review_assignments()` output column) -- the training-data step for modelling how observation-level attributes (sequence length, read depth, detection breadth, blank frequency) relate to how an observation was classified. `prop_samples_detected` is computed against the total distinct field-sample count, not just samples where the observation occurs. When `contaminant_df` is supplied, blank frequency is sourced from `flag_contaminant()`'s own depth-weighted, Empirical-Bayes-shrunk `control_rate` rather than a raw recomputation. No dedicated `model_review_classification()` wrapper exists in this package -- fit directly on this function's output. Has 1 pre-existing, unrelated `devtools::check()` warning+note (a `\link{model_review_classification}` Rd cross-reference to a function that was never built -- fixed 2026-08-07, see this file's top session note). |
 | `report_flags()` | `R/report_flags.R` | Written | **2026-09-09 doc gap (added during the ecosystem-wide accuracy pass; exported but missing from this table).** Generate a `report_section` object (TaxaTools) summarizing quality-flagging results for Methods/Results reporting; feeds `TaxaTools::assemble_report()`. Auto-detects contaminant-column naming across three schema generations (pre-2024-07-24 type-qualified names, the unified `validity_flag` schema, and the 2026-09-06 `llm_`-prefixed LLM columns), so it works against output from any era of `flag_contaminant()`/`flag_handler()`/`review_assignments()` without the caller specifying which. |
