@@ -137,7 +137,7 @@
           xml_raw <- rentrez::entrez_fetch(
             db = "nuccore", id = batch, rettype = "gb", retmode = "xml"
           )
-          xml_doc <- xml2::read_xml(xml_raw)
+          xml_doc <- xml2::read_xml(xml_raw, options = c("NOBLANKS", "HUGE"))
           seqs <- xml2::xml_find_all(xml_doc, "//GBSeq")
 
           do.call(rbind, lapply(seqs, function(node) {

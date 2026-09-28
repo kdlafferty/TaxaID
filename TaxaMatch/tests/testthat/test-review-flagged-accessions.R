@@ -517,3 +517,27 @@ test_that("resolve_review_overrides() validates inputs", {
     "min_confidence must be"
   )
 })
+
+test_that("resolve_review_overrides() refuses a resolution-limit explanation between distant taxa", {
+  rv <- data.frame(
+    accession = c("LJ", "STEREO", "HYB", "NOCOL"),
+    accession_likely_explanation = c(
+      "poor_marker_resolution", "poor_marker_resolution",
+      "hybrid_or_specimen_code_artifact", "sister_family_thin_coverage"
+    ),
+    accession_review_confidence = "moderate",
+    finest_common_rank = c("class", "order", "class", NA),
+    stringsAsFactors = FALSE
+  )
+  # class-level disagreement cannot be a marker limit; order can; the hybrid
+  # explanation is not a resolution claim so the rank is not consulted; an
+  # unknown shared rank cannot show relatedness.
+  expect_setequal(resolve_review_overrides(rv), c("STEREO", "HYB"))
+  expect_setequal(resolve_review_overrides(rv, resolution_rank = "class"), c("LJ", "STEREO", "HYB"))
+  expect_setequal(resolve_review_overrides(rv, resolution_rank = NULL), c("LJ", "STEREO", "HYB", "NOCOL"))
+  expect_setequal(
+    resolve_review_overrides(rv[, setdiff(names(rv), "finest_common_rank")]),
+    c("LJ", "STEREO", "HYB", "NOCOL")
+  )
+  expect_error(resolve_review_overrides(rv, resolution_rank = "clade"), "resolution_rank")
+})

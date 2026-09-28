@@ -2311,3 +2311,51 @@ test_that("a zero-partner accession records WHICH filter took its hits", {
   expect_equal(out$n_excluded_same_batch, 2L)
   expect_equal(out$n_excluded_not_species_resolved, 0L)
 })
+
+test_that("an accession whose own taxonomy could not be fetched is set aside, not judged or cached", {
+  # A missing lineage compares as disagreement with every hit, so a failed
+  # NCBI taxonomy fetch must not become an "incongruent" verdict.
+  mock_tax_with_failure <- function(accessions, ncbi_api_key = NULL, verbose = TRUE) {
+    out <- .mock_resolve_taxonomy_by_acc(setdiff(accessions, "ACC002"))
+    attr(out, "failed_accessions") <- intersect(accessions, "ACC002")
+    out
+  }
+  blasted <- character(0L)
+  cache_dir <- withr::local_tempdir()
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_records,
+    .resolve_taxonomy_by_acc = mock_tax_with_failure,
+    blast_sequences = function(seq_df, ...) {
+      blasted <<- c(blasted, seq_df$asv_id)
+      .mock_blast_sequences(seq_df, ...)
+    },
+    .package = "TaxaMatch"
+  )
+  expect_warning(
+    out <- evaluate_reference_accessions(c("ACC001", "ACC002"), cache_dir = cache_dir, verbose = FALSE),
+    "taxonomy could not be fetched"
+  )
+  expect_false("ACC002" %in% blasted)
+  expect_true(is.na(out$hierarchy_flag[out$accession == "ACC002"]))
+  expect_false(is.na(out$hierarchy_flag[out$accession == "ACC001"]))
+  cached <- readRDS(file.path(cache_dir, "reference_accession_cache.rds"))
+  expect_false("ACC002" %in% cached$accession)
+})
+
+test_that("a chunk whose every query lost its taxonomy does not call BLAST with nothing", {
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_records,
+    .resolve_taxonomy_by_acc = function(accessions, ...) {
+      out <- .mock_resolve_taxonomy_by_acc(character(0L))
+      attr(out, "failed_accessions") <- accessions
+      out
+    },
+    blast_sequences = function(...) stop("BLAST must not be called"),
+    .package = "TaxaMatch"
+  )
+  expect_warning(
+    out <- evaluate_reference_accessions("ACC001", cache_dir = NULL, verbose = FALSE),
+    "taxonomy could not be fetched"
+  )
+  expect_true(is.na(out$hierarchy_flag))
+})

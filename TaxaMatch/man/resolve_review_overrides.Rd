@@ -8,7 +8,8 @@ resolve_review_overrides(
   review_result,
   keep_explanations = c("poor_marker_resolution", "sister_family_thin_coverage",
     "hybrid_or_specimen_code_artifact"),
-  min_confidence = c("high", "moderate")
+  min_confidence = c("high", "moderate"),
+  resolution_rank = "order"
 )
 }
 \arguments{
@@ -30,6 +31,13 @@ Only a \code{accession_review_confidence} value in this set is trusted as an
 override -- a \code{"low"}-confidence review falls through to removal
 (the same conservative-default behavior as an unreviewed accession),
 even if its \code{accession_likely_explanation} is in \code{keep_explanations}.}
+
+\item{resolution_rank}{Character or \code{NULL} (default \code{"order"}). A
+\code{"poor_marker_resolution"} or \code{"sister_family_thin_coverage"} explanation
+only overrides a removal when the accession still agrees with its hits
+at this rank or finer (\code{finest_common_rank}): a marker's resolving power
+can only fail between close relatives. \code{NULL} disables the check, which
+is also skipped when \code{review_result} has no \code{finest_common_rank} column.}
 }
 \value{
 Character vector of accessions to pass directly as
