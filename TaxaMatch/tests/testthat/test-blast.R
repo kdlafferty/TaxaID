@@ -1105,3 +1105,42 @@ test_that(".check_blastdb_consistency() skips, without error, when it cannot che
   withr::local_options(TaxaMatch.check_blastdb = FALSE)
   expect_null(TaxaMatch:::.check_blastdb_consistency("anydb", blastdbcmd = "/nonexistent"))
 })
+
+test_that(".resolve_taxonomy() reports batches it could not fetch instead of dropping them silently", {
+  testthat::local_mocked_bindings(.blast_rate_limit_sleep = function(seconds) invisible(NULL), .package = "TaxaMatch")
+  testthat::local_mocked_bindings(
+    entrez_fetch = function(...) stop("HTTP failure: 400"),
+    .package = "rentrez"
+  )
+  expect_warning(
+    out <- TaxaMatch:::.resolve_taxonomy(c("123", "456"), verbose = FALSE),
+    "Taxonomy fetch failed"
+  )
+  expect_equal(nrow(out), 0L)
+  expect_setequal(attr(out, "failed_taxids"), c("123", "456"))
+})
+
+test_that("blast_sequences() reports queries whose hit taxonomy failed in failed_query_ids", {
+  raw <- data.frame(
+    qseqid = c("Q1", "Q1", "Q2"), sseqid = c("A", "B", "C"), sacc = c("A", "B", "C"),
+    staxids = c("111", "111", "222"), pident = c(99, 98, 97), length = 170L,
+    qlen = 170L, slen = 170L, qcovs = 95, mismatch = 1L, gapopen = 0L,
+    evalue = 1e-50, bitscore = 200, sstart = 1L, send = 170L, stringsAsFactors = FALSE
+  )
+  testthat::local_mocked_bindings(
+    .blast_local = function(...) raw,
+    .resolve_taxonomy = function(taxids, ...) {
+      out <- data.frame(taxid = "222", genus = "G", species = "G s", stringsAsFactors = FALSE)
+      attr(out, "failed_taxids") <- "111"
+      out
+    },
+    .package = "TaxaMatch"
+  )
+  sdf <- data.frame(asv_id = c("Q1", "Q2"), sequence = c("ACGT", "ACGT"), stringsAsFactors = FALSE)
+  expect_warning(
+    out <- blast_sequences(sdf, method = "local", database = "x", verbose = FALSE),
+    "taxonomy could not be fetched"
+  )
+  expect_identical(attr(out, "failed_query_ids"), "Q1")
+  expect_false(".taxonomy_failed" %in% names(out))
+})

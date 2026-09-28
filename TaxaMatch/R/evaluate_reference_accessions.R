@@ -598,7 +598,7 @@ utils::globalVariables(c(
           xml_raw <- rentrez::entrez_fetch(
             db = "nuccore", id = batch, rettype = "gb", retmode = "xml"
           )
-          xml_doc <- xml2::read_xml(xml_raw)
+          xml_doc <- xml2::read_xml(xml_raw, options = c("NOBLANKS", "HUGE"))
           nodes <- xml2::xml_find_all(xml_doc, "//GBSeq")
 
           parsed <- do.call(rbind, lapply(nodes, function(node) {
@@ -1055,6 +1055,20 @@ utils::globalVariables(c(
     # approach, which also only ever resolved genus+family, never the
     # coarser ranks this section exists to add).
     query_tax <- .resolve_taxonomy_by_acc(query_meta$accession, ncbi_api_key, verbose)
+    # A query whose own lineage could not be FETCHED would compare as
+    # disagreeing with every hit. Set it aside -- not BLASTed, not cached,
+    # retried next call -- exactly like a record NCBI failed to return.
+    tax_failed <- intersect(
+      attr(query_tax, "failed_accessions") %||% character(0L), query_meta$accession
+    )
+    if (length(tax_failed) > 0L) {
+      warning(sprintf(
+        "evaluate_reference_accessions(): taxonomy could not be fetched for %d accession(s) -- will retry next call, not cached:\n  %s",
+        length(tax_failed), paste(tax_failed, collapse = ", ")
+      ), call. = FALSE)
+      query_meta <- query_meta[!query_meta$accession %in% tax_failed, , drop = FALSE]
+      missing_acc <- union(missing_acc, tax_failed)
+    }
     for (r in rank_system) {
       col <- paste0(r, ".x")
       query_meta[[col]] <- if (r %in% names(query_tax)) {
@@ -1082,7 +1096,7 @@ utils::globalVariables(c(
     # with a genuinely incomplete NCBI lineage is never routed through this
     # maternal-parent substitution, which has no biological justification
     # without a real hybrid cross.
-    query_meta$taxonomy_resolution_source <- "direct"
+    query_meta$taxonomy_resolution_source <- rep("direct", nrow(query_meta))
     if ("family" %in% rank_system) {
       is_hybrid_labeled <- grepl("(?<=\\s)x(?=\\s)", query_meta$organism, perl = TRUE)
       needs_proxy <- is_hybrid_labeled & is.na(query_meta[["family.x"]])
@@ -1142,7 +1156,8 @@ utils::globalVariables(c(
       asv_id = query_meta$accession, sequence = query_meta$sequence,
       stringsAsFactors = FALSE
     )
-    hits <- blast_sequences(
+    # Every query may have been set aside above (taxonomy fetch failures).
+    hits <- if (nrow(seq_df) == 0L) NULL else blast_sequences(
       seq_df,
       method = method, database = database, score_range = score_range,
       min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,

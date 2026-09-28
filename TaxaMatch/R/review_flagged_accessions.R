@@ -940,6 +940,12 @@ review_flagged_accessions <- function(evaluated_df,
 #'   hard BLAST-based `"incongruent"` flag -- pass `"uncertain"` explicitly
 #'   if you want to trust it too. `"genuine_mislabel"` is never included
 #'   (that verdict CONFIRMS removal, it never overrides it).
+#' @param resolution_rank Character or `NULL` (default `"order"`). A
+#'   `"poor_marker_resolution"` or `"sister_family_thin_coverage"` explanation
+#'   only overrides a removal when the accession still agrees with its hits
+#'   at this rank or finer (`finest_common_rank`): a marker's resolving power
+#'   can only fail between close relatives. `NULL` disables the check, which
+#'   is also skipped when `review_result` has no `finest_common_rank` column.
 #' @param min_confidence Character vector (default `c("high", "moderate")`).
 #'   Only a `accession_review_confidence` value in this set is trusted as an
 #'   override -- a `"low"`-confidence review falls through to removal
@@ -968,7 +974,8 @@ resolve_review_overrides <- function(review_result,
                                        "sister_family_thin_coverage",
                                        "hybrid_or_specimen_code_artifact"
                                      ),
-                                     min_confidence = c("high", "moderate")) {
+                                     min_confidence = c("high", "moderate"),
+                                     resolution_rank = "order") {
   if (!is.data.frame(review_result)) {
     stop("review_result must be a data frame.", call. = FALSE)
   }
@@ -994,10 +1001,35 @@ resolve_review_overrides <- function(review_result,
     )
   }
 
+  if (!is.null(resolution_rank) &&
+    (!is.character(resolution_rank) || length(resolution_rank) != 1L ||
+      !resolution_rank %in% TaxaTools::standard_ranks)) {
+    stop(sprintf(
+      "resolution_rank must be NULL or one of: %s",
+      paste(TaxaTools::standard_ranks, collapse = ", ")
+    ), call. = FALSE)
+  }
+
   keep_mask <- !is.na(review_result$accession_likely_explanation) &
     review_result$accession_likely_explanation %in% keep_explanations &
     !is.na(review_result$accession_review_confidence) &
     review_result$accession_review_confidence %in% min_confidence
+
+  # A resolution-limit explanation ("the marker cannot separate these") is
+  # only possible between close relatives. If the accession shares nothing
+  # finer than class with its disagreeing hits, no marker limit explains it,
+  # whatever the reviewer said. Real case: nine Lutjanus johnii 12S records
+  # (KF578442-50) reviewed as "poor_marker_resolution" at moderate confidence
+  # while sharing only class with their hits, and 80-85% identical to both
+  # L. johnii mitogenomes. Applied only when finest_common_rank is present.
+  resolution_limited <- review_result$accession_likely_explanation %in%
+    c("poor_marker_resolution", "sister_family_thin_coverage")
+  if (!is.null(resolution_rank) && "finest_common_rank" %in% names(review_result)) {
+    ranks <- TaxaTools::standard_ranks
+    shared_idx <- match(review_result$finest_common_rank, ranks)
+    close_enough <- !is.na(shared_idx) & shared_idx >= match(resolution_rank, ranks)
+    keep_mask <- keep_mask & (!resolution_limited | close_enough)
+  }
 
   unique(review_result$accession[keep_mask])
 }
