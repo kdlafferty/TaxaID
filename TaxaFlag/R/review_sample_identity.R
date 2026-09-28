@@ -225,9 +225,12 @@ review_sample_identity <- function(identity,
     lines <- vapply(seq_len(nrow(x)), function(i) {
       r <- x[i, ]
       fr <- runs$field_top_taxa[runs$marker == r$marker & runs$run == r$run]
+      ub <- runs$ubiquitous_taxa[runs$marker == r$marker & runs$run == r$run]
+      ub <- if (length(ub) && !is.na(ub[1])) ub[1] else "(none)"
       sprintf(paste0(
         "  [%s, run %s] gate: %s (looks like %s). %s reads, %d features, effective diversity %.2fx a typical field sample of this marker. ",
-        "Composition: %s.\n    taxa in this tube: %s\n    field samples on this run: %s"
+        "Composition: %s.\n    taxa in this tube: %s\n    field samples on this run: %s\n",
+        "    in >=90%% of this run's field samples (probable spike-in/internal standard): %s"
       ),
       r$marker, r$run, r$identity_status, r$identity_appearance,
       format(round(r$depth), big.mark = ",", trim = TRUE), as.integer(r$richness),
@@ -239,7 +242,8 @@ review_sample_identity <- function(identity,
         "not testable"
       },
       ifelse(is.na(r$top_taxa), "(none)", r$top_taxa),
-      ifelse(length(fr) && !is.na(fr[1]), fr[1], "(none)")
+      ifelse(length(fr) && !is.na(fr[1]), fr[1], "(none)"),
+      ub
       )
     }, character(1))
     sprintf("TUBE %s -- labelled %s\n%s", s, toupper(x$identity_label[1]), paste(lines, collapse = "\n"))
@@ -266,7 +270,10 @@ review_sample_identity <- function(identity,
     "open-water plankton in a benthic study), suspect contamination from another source, such ",
     "as a rinse with unfiltered water (contaminated_blank). Being outside the study's ",
     "analytical scope does not make a taxon a lab contaminant.\n",
-    "- A tube labelled as a blank that holds a mock community or a spike-in (a positive-control ",
+    "- A taxon listed as present in >=90% of the run's field samples is a spike-in or internal ",
+    "standard added to every tube. A blank holding little besides it is a CLEAN blank: with no ",
+    "template, the spike dominates. Never call such a blank a positive control.\n",
+    "- A tube labelled as a blank that holds a mock community NOT added to every tube (a positive-control ",
     "sequence, or taxa foreign to the study region such as freshwater or domestic species in a ",
     "marine study) is a positive control carrying a blank's label ",
     "(positive_control_labelled_as_blank; suggest reassign_to_positive_control).\n",

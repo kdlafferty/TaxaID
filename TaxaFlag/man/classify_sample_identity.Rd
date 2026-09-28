@@ -95,7 +95,9 @@ evidence (\code{depth}, \code{richness}, \code{diversity_n1},
 shape. Attribute \code{"runs"}: one row per run x marker, with admitted
 control and sample counts, \code{control_status} (\code{"ok"},
 \code{"no_admitted_control"} or \code{"no_controls_labelled"}) and the
-field \code{top_taxa}. Attribute \code{"failed_libraries"}: the
+field \code{top_taxa}, and \code{ubiquitous_taxa}: taxa in at least 90\\% of
+the run's field units (with 5 or more units), the signature of a spike-in or
+internal standard. A blank dominated by these is a clean blank. Attribute \code{"failed_libraries"}: the
 \code{flag_failed_libraries()} result used.
 }
 \description{

@@ -34,6 +34,7 @@ test_that("advice is attached per tube and never admits anything", {
   expect_match(p, "TUBE MISLABEL")
   expect_match(p, "field samples on this run")
   expect_match(p, "Field blanks are distilled water")
+  expect_match(p, "probable spike-in")
 })
 
 test_that("omitted tubes are re-asked and reported if still missing", {

@@ -223,7 +223,9 @@
 #' shape. Attribute \code{"runs"}: one row per run x marker, with admitted
 #' control and sample counts, \code{control_status} (\code{"ok"},
 #' \code{"no_admitted_control"} or \code{"no_controls_labelled"}) and the
-#' field \code{top_taxa}. Attribute \code{"failed_libraries"}: the
+#' field \code{top_taxa}, and \code{ubiquitous_taxa}: taxa in at least 90\% of
+#' the run's field units (with 5 or more units), the signature of a spike-in or
+#' internal standard. A blank dominated by these is a clean blank. Attribute \code{"failed_libraries"}: the
 #' \code{flag_failed_libraries()} result used.
 #'
 #' @seealso \code{\link{flag_failed_libraries}} and
@@ -410,6 +412,22 @@ classify_sample_identity <- function(input_df,
       k <- d$marker == runs$marker[i] & d$run == runs$run[i] & !d$is_ctl & !d$excluded
       if (!any(k)) return(NA_character_)
       .sig_top_taxa(d[k, ], per_unit = FALSE)
+    }, character(1))
+  } else {
+    NA_character_
+  }
+  # taxa in nearly every field unit of a run: a spike-in or internal standard
+  # added to every tube. A blank holding little else is a CLEAN blank, and a
+  # reviewer (human or LLM) who is not told so will read it as a positive control.
+  runs$ubiquitous_taxa <- if (!is.null(taxon_label_col)) {
+    vapply(seq_len(nrow(runs)), function(i) {
+      k <- d$marker == runs$marker[i] & d$run == runs$run[i] & !d$is_ctl & !d$excluded & d$reads > 0
+      if (!any(k)) return(NA_character_)
+      nm <- d$label_name[k]
+      nm[is.na(nm) | !nzchar(nm)] <- "(unassigned)"
+      prev <- tapply(d$unit[k], nm, function(z) length(unique(z))) / length(unique(d$unit[k]))
+      hit <- setdiff(names(prev)[prev >= 0.9], "(unassigned)")
+      if (length(hit) && length(unique(d$unit[k])) >= 5L) paste(sort(hit), collapse = "; ") else NA_character_
     }, character(1))
   } else {
     NA_character_
