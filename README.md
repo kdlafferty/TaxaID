@@ -749,8 +749,8 @@ result <- run_bayesian_pipeline(match_df, model_params, taxaexpect_priors = taxa
                                  backbone_id = 11)  # 11 = GBIF backbone; 4 = NCBI
 
 # LLM-shortcut pipeline (~1 call)
-result <- run_llm_pipeline(match_df, geographic_hint = "34.4 N, -119.8 W", habitat_scheme = "Marine",
-                            backbone_id = 11)  # 11 = GBIF backbone; 4 = NCBI
+result <- run_llm_pipeline(match_df, geographic_hint = "Santa Barbara Channel, California (34.4 N, 119.8 W)",
+                            data_type = "eDNA", backbone_id = 11)  # 11 = GBIF backbone; 4 = NCBI
 ```
 
 # Caching and resources {#caching-and-resources}
@@ -768,6 +768,7 @@ projects:
 | TaxaMatch | Yes (`evaluate_reference_accessions()`, `investigate_flagged_accession()`, `review_flagged_accessions()`) | Reference-accession mislabel-screen verdicts (BLAST + LLM review) | Yes (expensive to rebuild, and it's row-level with its own TTLs, not a flat file store) |
 | TaxaHabitat | No, off unless you pass `cache_dir` (`build_habitat_lookup()`) | Per-taxon LLM habitat assignments | Yes (an unstable verdict shifts which occurrence records count toward a site, so keeping it is what makes a re-run reproducible) |
 | TaxaFlag | No, off unless you pass `cache_dir` (`review_assignments()`, `check_gbif_tile_range()`) | LLM review verdicts / GBIF density-tile verdicts | Yes, for the same reproducibility reason as TaxaHabitat |
+| TaxaAssign | No, off unless you pass `cache_dir` (`assign_taxa_llm()`, `run_llm_pipeline()`) | LLM-shortcut prior responses, one per prompt | Yes, for the same reproducibility reason as TaxaHabitat |
 | TaxaTools | Mixed | `refresh_models()`'s LLM model registry caches to a fixed, non-configurable path; `scientific_to_common()` and `fetch_worms_attributes()` default to no persistent cache (`cache_dir = NULL`) unless you supply one | Model registry: yes, tiny. Common-name/WoRMS lookups: worth turning on if you re-run over the same taxon list |
 | TaxaWizard | Yes, fixed path, not configurable | The introspected function/workflow registry (`workflow_registry()`) | Yes, but it's tiny and rebuilds itself when a package version changes |
 
@@ -776,7 +777,10 @@ All of the "Yes" and "Mixed" defaults above use
 your project, invisible unless you go looking for it. Where a function
 defaults to `cache_dir = NULL`, nothing is written to disk until you
 pass a directory; the production workflows pass one explicitly for
-exactly the functions listed above as "No."
+exactly the functions listed above as "No," except TaxaAssign's, since no
+production workflow runs the LLM shortcut. TaxaAssign has no clear
+function; to start its cache over, delete the directory or pass a new
+one.
 
 The five `<pkg>_clear_cache()` functions (`taxafetch_clear_cache()`,
 `taxalikely_clear_cache()`, `taxahabitat_clear_cache()`,

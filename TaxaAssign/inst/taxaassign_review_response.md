@@ -643,3 +643,37 @@ behavior on functions this document already covers above.
 - `combine_multisite_priors()` guards against differing presence-mixture parameters
   across a group's site rows, blanking them with a warning that names the affected
   candidates rather than silently picking one.
+- `assign_taxa_llm()` normalises the LLM's prior weights once per observation. It
+  used to normalise each batch of `taxa_per_call` taxa by its own sum, so an
+  observation whose candidates fell in different batches compared them on different
+  scales, and a lone implausible taxon in a small final batch could win. A batch
+  whose call fails takes the median weight of the group's other batches.
+- `assign_taxa_llm()` gives each taxon in the prompt its higher lineage (the ranks
+  above genus in `match_df`), so the model can tell homonyms apart. Unreferenced
+  species borrow a referenced congener's lineage. The survey block reads
+  "independent of this detection method" rather than "independent of DNA".
+- `assign_taxa_llm()` records `n_known_absent` in its `report_params`.
+- `generate_report()`'s Methods text for the LLM workflow says the LLM elicited the
+  priors and that likelihoods came from an uncalibrated weighting of match scores;
+  it used to say the LLM approximated both. The range categories match the prompt,
+  and the known-absent sentence appears only when `known_absent` was supplied.
+- `run_llm_pipeline()` passes `context_source = "llm"` to `generate_report()` when
+  it built the context itself, unless `report_params` sets it.
+- `build_context()` returns a `geographic_hint` column, which `assign_taxa_llm()`
+  shows the model as "Location".
+- `assign_taxa_llm()` accepts `range_status = "transported"` for taxa with no wild
+  population that are present because people bring or keep them, with its own
+  `prior_weight_guide$transported` band (default `c(0.03, 0.15)`). A guide supplied
+  without the band gets the default.
+- `assign_taxa_llm(cache_dir = NULL)` caches LLM prior responses, one file per call,
+  keyed on the full prompt and what can be known about the model before the call.
+  Incomplete answers are never cached. `run_llm_pipeline()` forwards it.
+- `run_llm_pipeline(data_type)` has no default and must be stated when the function
+  detects unreferenced species itself. It used to pass `"eDNA"` unconditionally.
+  Detection inside the wrapper runs only for `"eDNA"`; image and acoustic data need
+  `suggest_unreferenced_species()` with its `reference_species` list. The value also
+  reaches `generate_report()` unless `report_params` sets it.
+- `assign_taxa_llm()` gives a taxon the LLM left out of its answer the smallest prior
+  among the taxa it did answer for. The unknown hypothesis's placeholder 0 used to be
+  counted in that minimum, so an omitted taxon got prior 0 and was eliminated, or,
+  with `prior_phi` set, `compute_posterior()` aborted the run.

@@ -77,9 +77,15 @@ utils::globalVariables(c(
 #'         sum(exp(sharpness * score_j))
 #' ```
 #'
+#' Each taxon in the prompt carries its higher lineage (the ranks above genus
+#' in `match_df`), so a name shared by unrelated organisms is not conflated.
+#' The LLM's weights are kept on the prompt's absolute scale and normalised
+#' once per observation, so how the taxon list is split into batches does not
+#' change the priors.
+#'
 #' ## Unreferenced taxa
 #' Species absent from the reference database (from
-#' `TaxaLikely::audit_reference_coverage()$unreferenced`) that share a genus with any
+#' `TaxaLikely::suggest_unreferenced_species()`) that share a genus with any
 #' scored candidate are inserted as additional hypotheses. Their likelihood equals
 #' the median of their referenced congeners so unreferenced taxa start on equal
 #' footing. They appear in the prompt labelled `[no reference sequence]`.
@@ -89,7 +95,8 @@ utils::globalVariables(c(
 #'   Optional but recommended: `testid` (marker type).
 #' @param context Optional data frame with location/habitat context. Either a
 #'   single row (broadcast to all observations) or one row per `observation_id`. Recognised
-#'   columns: `observation_id`, `ecoregion`, `lat`, `lon`, `date`, `main_habitat`.
+#'   columns: `observation_id`, `geographic_hint`, `ecoregion`, `lat`, `lon`,
+#'   `date`, `main_habitat`.
 #'   In the full pipeline, populate `main_habitat` from the `main_habitat` column
 #'   produced by TaxaHabitat and passed through TaxaExpect.
 #' @param context_group Optional character vector of column names in `context` to
@@ -197,12 +204,31 @@ utils::globalVariables(c(
 #'   range status and habitat fit. Names indicate the ecological scenario:
 #'   `native_expected`, `native_occasional`, `native_unlikely`,
 #'   `nearby_expected`, `nearby_occasional_unlikely`, `not_documented`,
-#'   `taxonomically_impossible`. Default ranges are derived from expert
+#'   `taxonomically_impossible`, `transported`. `transported` covers taxa with
+#'   no wild population in the region that are present because people bring
+#'   or keep them (domestic or farmed animals, food, bait, aquaculture,
+#'   cultivated plants, pets); without it such taxa fall to `not_documented`.
+#'   Its default, `c(0.03, 0.15)`, matches `native_occasional`. A guide
+#'   without `transported` gets that default. Default ranges are derived from expert
 #'   ecological judgment (see package documentation). Modifying these ranges
 #'   directly affects how strongly geographic and habitat information
 #'   influence posterior probabilities.
 #' @param n_sims Integer. Monte Carlo simulations for `compute_posterior()`.
 #'   Default 1000. Set to 0 to skip simulation and return point estimates only.
+#' @param cache_dir Character or `NULL` (default). Directory for a cache of LLM
+#'   responses, one file per call, so a re-run returns the same priors without
+#'   paying for them again. An LLM can answer the same prompt differently on two
+#'   runs, so a cache is what makes a re-run reproducible. `NULL` disables it.
+#'   The key is the full prompt text plus what can be known about the model
+#'   before the call: the code of `llm_fn` (which captures a `model =` set in a
+#'   wrapper), its `model` default, and `getOption("TaxaID.provider")`. Any
+#'   change to the taxa, context, survey lists or guide bands changes the prompt
+#'   and so misses. `TaxaTools::call_api()` chooses its model at call time, so
+#'   after changing the model through `TaxaTools::set_model()` or a registry
+#'   refresh, use a new `cache_dir` or empty the old one. Each entry also stores
+#'   the model the response reports, when the provider function attaches it. A
+#'   response that failed to parse or left out a taxon is never cached, so it is
+#'   asked again on the next run.
 #' @param verbose Logical. If `TRUE`, prints the prompt and raw LLM response for
 #'   each group call. Default `FALSE`.
 #'
@@ -343,9 +369,11 @@ assign_taxa_llm <- function(match_df,
                               nearby_expected = c(0.05, 0.3),
                               nearby_occasional_unlikely = c(0.002, 0.05),
                               not_documented = c(0.001, 0.02),
-                              taxonomically_impossible = c(0.0001, 0.002)
+                              taxonomically_impossible = c(0.0001, 0.002),
+                              transported = c(0.03, 0.15)
                             ),
                             n_sims = 1000L,
+                            cache_dir = NULL,
                             verbose = FALSE) {
   # --- Resolve llm_fn default --------------------------------------------------
   llm_fn <- .resolve_llm_fn(llm_fn, "assign_taxa_llm")
@@ -381,6 +409,14 @@ assign_taxa_llm <- function(match_df,
     absent_detection_prob <= 0 || absent_detection_prob >= 1) {
     cli::cli_abort("{.arg absent_detection_prob} must be a single number strictly between 0 and 1.")
   }
+  if (!is.null(cache_dir)) {
+    if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir)) {
+      cli::cli_abort("{.arg cache_dir} must be a single character string or NULL.")
+    }
+    if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+    cache_model_key <- .llm_cache_model_key(llm_fn)
+  }
+  n_cache_hits <- 0L
   if (is.null(context)) {
     cli::cli_warn(c(
       "{.arg context} is NULL -- the LLM will assign {.field range_status} \\
@@ -395,10 +431,16 @@ assign_taxa_llm <- function(match_df,
   if (!is.list(prior_weight_guide) || length(prior_weight_guide) == 0L) {
     cli::cli_abort("{.arg prior_weight_guide} must be a non-empty named list.")
   }
+  # transported was added after the other bands; a guide written before it
+  # gets the default band rather than an error.
+  if (is.list(prior_weight_guide) && is.null(prior_weight_guide$transported)) {
+    prior_weight_guide$transported <- c(0.03, 0.15)
+    cli::cli_inform("{.arg prior_weight_guide} has no {.field transported} band; using c(0.03, 0.15).")
+  }
   expected_pwg <- c(
     "native_expected", "native_occasional", "native_unlikely",
     "nearby_expected", "nearby_occasional_unlikely",
-    "not_documented", "taxonomically_impossible"
+    "not_documented", "taxonomically_impossible", "transported"
   )
   missing_pwg <- setdiff(expected_pwg, names(prior_weight_guide))
   if (length(missing_pwg) > 0) {
@@ -570,33 +612,69 @@ assign_taxa_llm <- function(match_df,
         cat(prompt, "\n")
       }
 
-      raw <- tryCatch(
-        llm_fn(prompt),
-        error = function(e) {
-          cli::cli_warn(
-            "LLM call failed for {.val {batch_label}}: {conditionMessage(e)}. \\
-            Using uniform priors for {nrow(taxa_batch)} taxa."
-          )
-          NULL
-        }
-      )
+      cache_key <- cache_path <- NULL
+      raw <- NULL
+      if (!is.null(cache_dir)) {
+        cache_key <- paste(cache_model_key, prompt, sep = "\u0001")
+        cache_path <- file.path(cache_dir, paste0(.llm_cache_hash(cache_key), "_llmprior.rds"))
+        raw <- .llm_cache_read(cache_path, cache_key)
+      }
+      from_cache <- !is.null(raw)
+
+      if (!from_cache) {
+        raw <- tryCatch(
+          llm_fn(prompt),
+          error = function(e) {
+            cli::cli_warn(
+              "LLM call failed for {.val {batch_label}}: {conditionMessage(e)}. \\
+              Using uniform priors for {nrow(taxa_batch)} taxa."
+            )
+            NULL
+          }
+        )
+      } else {
+        n_cache_hits <- n_cache_hits + 1L
+      }
 
       if (verbose && !is.null(raw)) {
-        cli::cli_inform("--- Response ---")
+        cli::cli_inform(if (from_cache) "--- Response (cached) ---" else "--- Response ---")
         cat(raw, "\n")
       }
 
-      batch_results[[b]] <- .parse_taxa_response(raw, taxa_batch, batch_label)
+      parsed <- .parse_taxa_response(raw, taxa_batch, batch_label)
+      batch_results[[b]] <- parsed
+
+      # Cache only a complete answer: a fallback or an omitted taxon cached
+      # would be served on every later run instead of being asked again.
+      if (!is.null(cache_dir) && !from_cache && !is.null(raw) &&
+        all(parsed$prior_source == "llm") &&
+        all(taxa_batch$taxon_name %in% parsed$taxon_name)) {
+        .llm_cache_write(cache_path, cache_key, raw, attr(raw, "model"))
+      }
 
       cli::cli_progress_update(id = pb)
-      if (call_idx < n_calls_total) Sys.sleep(pause_seconds)
+      if (!from_cache && call_idx < n_calls_total) Sys.sleep(pause_seconds)
     }
 
-    # Combine taxon batches for this group
-    prior_tables[[grp]] <- dplyr::bind_rows(batch_results)
+    # Combine taxon batches for this group. Taxa from a batch that failed
+    # carry NA weights; give them the median weight the group's other batches
+    # returned (1 when every batch failed, which normalises to uniform).
+    grp_priors <- dplyr::bind_rows(batch_results)
+    failed <- is.na(grp_priors$prior_mean)
+    if (any(failed)) {
+      grp_priors$prior_mean[failed] <- if (all(failed)) {
+        1
+      } else {
+        stats::median(grp_priors$prior_mean[!failed])
+      }
+    }
+    prior_tables[[grp]] <- grp_priors
   }
 
   cli::cli_progress_done(id = pb)
+  if (!is.null(cache_dir)) {
+    cli::cli_inform("LLM prior cache: {n_cache_hits} of {n_calls_total} call(s) served from {.path {cache_dir}}.")
+  }
 
   # --- Merge likelihoods + priors for each observation -------------------------
   merged_list <- .merge_llm_priors(
@@ -622,6 +700,7 @@ assign_taxa_llm <- function(match_df,
     top_n                 = top_n,
     n_sims                = n_sims,
     absent_detection_prob = absent_detection_prob,
+    n_known_absent        = nrow(known_absent_df),
     prior_weight_guide    = prior_weight_guide
   )
   out
@@ -631,6 +710,65 @@ assign_taxa_llm <- function(match_df,
 # ==============================================================================
 # Internal helpers
 # ==============================================================================
+
+#' Model part of the assign_taxa_llm() cache key: what is knowable about the
+#' model before the call. deparse(llm_fn) captures a model set inside a
+#' wrapper; formals()$model the provider function's own default.
+#' @noRd
+.llm_cache_model_key <- function(llm_fn) {
+  model_default <- tryCatch(
+    {
+      m <- formals(llm_fn)$model
+      if (is.null(m)) "" else paste(as.character(eval(m)), collapse = "~")
+    },
+    error = function(e) ""
+  )
+  paste(c(
+    "v1", getOption("TaxaID.provider", ""), model_default,
+    paste(deparse(llm_fn), collapse = "\n")
+  ), collapse = "\u0001")
+}
+
+#' File-name hash for a cache key. Two position-weighted sums, so no
+#' digest dependency; the full key is stored in the file and checked on read,
+#' so a collision is a miss, never a wrong answer.
+#' @noRd
+.llm_cache_hash <- function(x) {
+  v <- as.numeric(utf8ToInt(x))
+  n <- length(v)
+  if (n == 0L) {
+    return("empty-0-0")
+  }
+  a <- sum(v * seq_len(n)) %% 2147483647
+  b <- sum(v * rev(seq_len(n))) %% 1000000007
+  sprintf("%010.0f-%010.0f-%06d", a, b, n)
+}
+
+#' @noRd
+.llm_cache_read <- function(path, key) {
+  if (!file.exists(path)) {
+    return(NULL)
+  }
+  ent <- tryCatch(readRDS(path), error = function(e) NULL)
+  if (!is.list(ent) || !identical(ent$key, key) ||
+    !is.character(ent$response) || length(ent$response) != 1L) {
+    return(NULL)
+  }
+  ent$response
+}
+
+#' @noRd
+.llm_cache_write <- function(path, key, response, model = NULL) {
+  tryCatch(
+    saveRDS(list(
+      key = key, response = as.character(response),
+      model = model, created = Sys.time()
+    ), path),
+    error = function(e) invisible(NULL)
+  )
+  invisible(NULL)
+}
+
 
 #' Exponential-weight scores to likelihood proxy, with optional unreferenced species insertion
 #' @noRd
@@ -811,7 +949,10 @@ assign_taxa_llm <- function(match_df,
     # - unreferenced taxa: median prior of their referenced congeners in this response
     # - other taxa: global minimum non-NA prior
     if (any(is.na(merged$prior_mean))) {
-      non_na_priors <- merged$prior_mean[!is.na(merged$prior_mean)]
+      # The unknown row holds a placeholder 0 at this point; counting it made
+      # the "minimum" 0, so an omitted taxon got prior 0 and was eliminated
+      # (or, with prior_phi set, aborted compute_posterior()).
+      non_na_priors <- merged$prior_mean[!is.na(merged$prior_mean) & !unk_idx]
       global_min <- if (length(non_na_priors) > 0L) min(non_na_priors) else 0.01
       if (!is.finite(global_min)) global_min <- 0.01
       for (i in which(is.na(merged$prior_mean))) {
@@ -925,12 +1066,39 @@ assign_taxa_llm <- function(match_df,
 
 
 #' Collect unique taxa data frame from a named list of lik_dfs
+#'
+#' Also builds a `lineage` string from the ranks above genus (e.g.
+#' "Chordata > Actinopteri > Atheriniformes > Atherinopsidae") so the prompt
+#' can tell homonyms apart: a bare name such as Vertebrata is both a red alga
+#' and the vertebrate clade. Unreferenced species have no taxonomy of their
+#' own and borrow the lineage of a referenced congener. `lineage` is NA when
+#' `match_df` carries no ranks above genus.
 #' @noRd
 .collect_unique_taxa <- function(lik_list) {
   all_rows <- dplyr::bind_rows(lik_list)
   all_rows <- all_rows[!is.na(all_rows$taxon_name), ]
+  lineage_cols <- intersect(
+    c("kingdom", "phylum", "class", "order", "family"), names(all_rows)
+  )
+  all_rows$lineage <- if (length(lineage_cols) > 0L) {
+    apply(all_rows[, lineage_cols, drop = FALSE], 1, function(v) {
+      v <- as.character(v)
+      v <- v[!is.na(v) & nzchar(trimws(v))]
+      if (length(v) == 0L) NA_character_ else paste(v, collapse = " > ")
+    })
+  } else {
+    NA_character_
+  }
+  genus_of <- sub(" .*", "", all_rows$taxon_name)
+  known <- !is.na(all_rows$lineage)
+  borrow <- !known & all_rows$hypothesis_type == "unreferenced_species"
+  if (any(borrow) && any(known)) {
+    all_rows$lineage[borrow] <- all_rows$lineage[known][
+      match(genus_of[borrow], genus_of[known])
+    ]
+  }
   dedup <- !duplicated(all_rows$taxon_name)
-  out <- all_rows[dedup, c("taxon_name", "taxon_name_rank", "hypothesis_type"),
+  out <- all_rows[dedup, c("taxon_name", "taxon_name_rank", "hypothesis_type", "lineage"),
     drop = FALSE
   ]
   out[order(out$taxon_name), ]
@@ -981,7 +1149,7 @@ assign_taxa_llm <- function(match_df,
   }
   survey_block <- if (length(survey_parts) > 0) {
     paste0(
-      "Survey context (independent of DNA):\n",
+      "Survey context (independent of this detection method):\n",
       paste(survey_parts, collapse = "\n"), "\n\n"
     )
   } else {
@@ -1014,10 +1182,13 @@ assign_taxa_llm <- function(match_df,
   }
 
   # Taxa list
+  # Lineage after the rank lets the model tell homonyms apart.
+  lineage <- if ("lineage" %in% names(taxa_df)) taxa_df$lineage else NA_character_
   taxa_lines <- sprintf(
-    "- %s (%s)%s",
+    "- %s (%s%s)%s",
     taxa_df$taxon_name,
     taxa_df$taxon_name_rank,
+    ifelse(is.na(lineage), "", paste0("; ", lineage)),
     ifelse(taxa_df$hypothesis_type != "specific_candidate", " [no reference sequence]", "")
   )
 
@@ -1030,13 +1201,19 @@ assign_taxa_llm <- function(match_df,
     survey_block,
     "PRIOR WEIGHT RULES:\n",
     "1. Assign a weight proportional to the probability that a random observation\n",
-    "   from this site belongs to this species.\n",
+    "   from this site belongs to this species. Use the absolute ranges in rule 4\n",
+    "   and do not rescale the weights to sum to one; this list may be one of\n",
+    "   several batches that are compared on the same scale.\n",
     "2. Commit to range_status (geographic presence in this region):\n",
     "   \"native\"                 -- breeds/resides in this region\n",
     "   \"introduced_established\" -- non-native but established here\n",
     "   \"documented_nearby\"      -- recorded in broader region; occasional here\n",
     "   \"not_documented\"         -- no records from this region\n",
     "   \"taxonomically_impossible\" -- wrong continent/realm/major environment\n",
+    "   \"transported\"            -- neither native nor established here, but present\n",
+    "                              because people bring or keep it: domestic or farmed\n",
+    "                              animals, food, bait, aquaculture, cultivated plants,\n",
+    "                              pets. Use only when no wild population exists here.\n",
     "   \"uncertain\"              -- insufficient data\n",
     "3. Commit to habitat_fit for the habitat stated in the context:\n",
     "   \"expected\"   -- this IS the taxon's primary or strongly preferred habitat\n",
@@ -1071,8 +1248,14 @@ assign_taxa_llm <- function(match_df,
       "   taxonomically_impossible:                %g - %g\n",
       prior_weight_guide$taxonomically_impossible[1], prior_weight_guide$taxonomically_impossible[2]
     ),
+    sprintf(
+      "   transported (any habitat):               %g - %g\n",
+      prior_weight_guide$transported[1], prior_weight_guide$transported[2]
+    ),
     "5. If no habitat is given in context, base prior_weight on range only.\n",
-    "6. If uncertain, reason from genus or family.\n",
+    "6. If uncertain, reason from genus or family. Each taxon's higher lineage is\n",
+    "   given after its rank; assess the taxon in that lineage, since the same\n",
+    "   name can belong to unrelated organisms.\n",
     "7. Commit to information_quality -- how much published data exists about\n",
     "   this taxon's distribution in THIS region:\n",
     "   \"high\"     -- well-studied taxon; range, habitat, and occurrence are\n",
@@ -1095,13 +1278,16 @@ assign_taxa_llm <- function(match_df,
   expected <- taxa_df$taxon_name
   n <- length(expected)
 
+  # A failed batch returns NA weights. The caller fills them once every batch
+  # of the group is in, from the weights the other batches did return, since
+  # no single batch knows the group's scale.
   make_uniform <- function() {
     data.frame(
       taxon_name = expected,
       range_status = NA_character_,
       habitat_fit = NA_character_,
       information_quality = NA_character_,
-      prior_mean = rep(1 / n, n),
+      prior_mean = rep(NA_real_, n),
       prior_source = rep("uniform_fallback", n),
       stringsAsFactors = FALSE
     )
@@ -1175,15 +1361,18 @@ assign_taxa_llm <- function(match_df,
     rep(NA_character_, nrow(parsed))
   }
 
-  total <- sum(parsed$prior_weight)
-  if (total == 0) total <- 1
-
+  # Weights are kept on the scale the prompt asks for, not divided by this
+  # batch's sum. A group larger than taxa_per_call is split into batches, and
+  # an observation's candidates can fall in different batches; normalising
+  # each batch separately put them on different scales, so a lone implausible
+  # taxon in a small batch could outweigh plausible taxa in a full one.
+  # .merge_llm_priors() normalises once, per observation.
   result <- data.frame(
     taxon_name          = parsed$taxon_name,
     range_status        = rs,
     habitat_fit         = hf,
     information_quality = iq,
-    prior_mean          = parsed$prior_weight / total,
+    prior_mean          = parsed$prior_weight,
     prior_source        = rep("llm", nrow(parsed)),
     stringsAsFactors    = FALSE
   )

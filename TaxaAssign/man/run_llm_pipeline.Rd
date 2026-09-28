@@ -12,6 +12,7 @@ run_llm_pipeline(
   date = NULL,
   habitat_scheme = NULL,
   llm_fn = NULL,
+  data_type,
   detect_unreferenced = TRUE,
   barcode_term = "12S",
   expand_to_family = TRUE,
@@ -28,6 +29,7 @@ run_llm_pipeline(
   pause_seconds = 1,
   prior_phi = c(high = 50, moderate = 10, low = 3),
   n_sims = 1000L,
+  cache_dir = NULL,
   context_group = NULL,
   rank_system = c("family", "genus", "species"),
   cumulative_threshold = 0.9,
@@ -71,6 +73,18 @@ assignment. Default \code{NULL} (3-category).}
 \code{llm_fn} pattern. Default NULL resolves to
 \code{getOption("TaxaID.llm_fn")} when set, otherwise
 \code{TaxaTools::call_api} (requires TaxaTools).}
+
+\item{data_type}{Character, one of \code{"eDNA"}, \code{"image"} or
+\code{"acoustic"}: the kind of signal behind the matches. No default,
+since what counts as unreferenced depends on it; required when
+\code{detect_unreferenced = TRUE} and \code{unreferenced_taxa} is not
+supplied, and otherwise optional. Passed to
+\code{\link[TaxaLikely]{suggest_unreferenced_species}} and, unless
+\code{report_params} sets it, to \code{\link{generate_report}}. Detection
+here runs only for \code{"eDNA"}; for image or acoustic data, call
+\code{suggest_unreferenced_species()} yourself with its
+\code{reference_species} list and pass the result as
+\code{unreferenced_taxa}.}
 
 \item{detect_unreferenced}{Logical. When \code{TRUE} (default), run
 \code{\link[TaxaLikely]{suggest_unreferenced_species}} to detect taxa
@@ -121,6 +135,11 @@ to Beta concentration. Default \code{c(high = 50, moderate = 10, low = 3)}.}
 
 \item{n_sims}{Integer. Monte Carlo simulations. Default \code{1000L}.}
 
+\item{cache_dir}{Character or \code{NULL}. Passed to
+\code{\link{assign_taxa_llm}}, which caches its prior calls there. It does
+not cover the \code{build_context()} or unreferenced-species calls.
+Default \code{NULL} (no cache).}
+
 \item{context_group}{Optional character vector of column names in
 \code{context} for grouping observations. Default \code{NULL}.}
 
@@ -161,7 +180,9 @@ Default \code{FALSE}.}
 
 \item{report_params}{Named list of additional arguments passed to
 \code{\link{generate_report}} (e.g. \code{data_type}, \code{marker},
-\code{study_description}).}
+\code{study_description}). When this function builds the context itself,
+\code{context_source = "llm"} is added unless you set it here, so the
+Methods text says the LLM chose the site context.}
 
 \item{verbose}{Logical. Print progress messages. Default \code{TRUE}.}
 }
@@ -208,7 +229,8 @@ instead.
 # of the underlying LLM-prior mechanism this pipeline wraps.
 out <- run_llm_pipeline(
   match_df        = match_obj,
-  geographic_hint = "Southern California",
+  geographic_hint = "Point Conception, California (34.4 N, 120.4 W)",
+  data_type       = "eDNA",
   barcode_term    = "12S",
   backbone_id     = 11L
 )

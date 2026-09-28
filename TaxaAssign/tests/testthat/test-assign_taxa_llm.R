@@ -673,3 +673,211 @@ test_that("a repeated taxon_name in the LLM response does not duplicate hypothes
   counts <- table(named$observation_id, named$taxon_name)
   expect_true(all(counts <= 1L))
 })
+
+# Stub that answers each prompt with a fixed weight per taxon.
+weighted_llm <- function(weights) {
+  function(prompt_str) {
+    taxa <- trimws(regmatches(
+      prompt_str,
+      gregexpr("(?m)(?<=^- )[^\n(]+(?= \\()", prompt_str, perl = TRUE)
+    )[[1]])
+    paste0("[", paste(sprintf(
+      '{"taxon_name":"%s","range_status":"native","habitat_fit":"expected","information_quality":"high","prior_weight":%g}',
+      taxa, weights[taxa]
+    ), collapse = ","), "]")
+  }
+}
+
+test_that("priors do not depend on how the taxon list is split into batches", {
+  # Regression: each batch was normalised by its own sum, so a lone
+  # implausible taxon in a small final batch got prior 1/1 and won.
+  md <- data.frame(
+    observation_id = "A", score_original = 99,
+    taxon_name = c(
+      "Atherinops affinis", "Atherinopsis californiensis",
+      "Leuresthes tenuis", "Zzz implausibilis"
+    ),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  w <- c(
+    "Atherinops affinis" = 0.9, "Atherinopsis californiensis" = 0.9,
+    "Leuresthes tenuis" = 0.9, "Zzz implausibilis" = 0.001
+  )
+  run <- function(tpc) {
+    r <- suppressWarnings(suppressMessages(assign_taxa_llm(md,
+      context = data.frame(ecoregion = "Southern California Bight"),
+      llm_fn = weighted_llm(w), taxa_per_call = tpc,
+      pause_seconds = 0, n_sims = 0L, prior_phi = NULL
+    )))
+    r <- r[!is.na(r$taxon_name), ]
+    stats::setNames(r$prior_mean, r$taxon_name)[names(w)]
+  }
+  one_batch <- run(15L)
+  split <- run(3L)
+  expect_equal(split, one_batch, tolerance = 1e-12)
+  expect_lt(split[["Zzz implausibilis"]], 0.001)
+})
+
+test_that("a failed batch takes the median weight of the batches that answered", {
+  md <- data.frame(
+    observation_id = "A", score_original = 99,
+    taxon_name = c("Aaa one", "Bbb two", "Ccc three"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  ok <- weighted_llm(c("Aaa one" = 0.8, "Bbb two" = 0.2, "Ccc three" = 0.5))
+  flaky <- function(prompt_str) {
+    if (grepl("Ccc three", prompt_str, fixed = TRUE)) stop("timeout")
+    ok(prompt_str)
+  }
+  r <- suppressWarnings(suppressMessages(assign_taxa_llm(md,
+    llm_fn = flaky, taxa_per_call = 2L, pause_seconds = 0,
+    n_sims = 0L, prior_phi = NULL
+  )))
+  r <- r[!is.na(r$taxon_name), ]
+  p <- stats::setNames(r$prior_mean, r$taxon_name)
+  # Raw weights 0.8, 0.2 and the fill median(0.8, 0.2) = 0.5, normalised.
+  expect_equal(p[["Ccc three"]] / p[["Aaa one"]], 0.5 / 0.8)
+  expect_equal(r$prior_source[r$taxon_name == "Ccc three"], "uniform_fallback")
+})
+
+test_that("prompt lines carry each taxon's higher lineage", {
+  md <- data.frame(
+    observation_id = "A", score_original = c(99, 95),
+    taxon_name = c("Vertebrata lanosa", "Polysiphonia stricta"),
+    taxon_name_rank = "species",
+    phylum = "Rhodophyta", class = "Florideophyceae",
+    order = "Ceramiales", family = "Rhodomelaceae",
+    genus = c("Vertebrata", "Polysiphonia"),
+    species = c("Vertebrata lanosa", "Polysiphonia stricta"),
+    stringsAsFactors = FALSE
+  )
+  prompts <- character(0)
+  capture <- function(prompt_str) {
+    prompts <<- c(prompts, prompt_str)
+    weighted_llm(c("Vertebrata lanosa" = 0.5, "Polysiphonia stricta" = 0.5))(prompt_str)
+  }
+  suppressWarnings(suppressMessages(assign_taxa_llm(md,
+    llm_fn = capture, pause_seconds = 0, n_sims = 0L,
+    unreferenced_taxa = "Vertebrata fucoides"
+  )))
+  expect_match(
+    prompts[[1]],
+    "- Vertebrata lanosa (species; Rhodophyta > Florideophyceae > Ceramiales > Rhodomelaceae)",
+    fixed = TRUE
+  )
+  # The unreferenced congener borrows its lineage.
+  expect_match(
+    prompts[[1]],
+    "- Vertebrata fucoides (species; Rhodophyta > Florideophyceae > Ceramiales > Rhodomelaceae) [no reference sequence]",
+    fixed = TRUE
+  )
+  expect_false(grepl("independent of DNA", prompts[[1]], fixed = TRUE))
+})
+
+test_that("the prompt offers a transported range status with its own band", {
+  md <- data.frame(
+    observation_id = "A", score_original = 99,
+    taxon_name = c("Salmo salar", "Oncorhynchus mykiss"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  prompts <- character(0)
+  capture <- function(prompt_str) {
+    prompts <<- c(prompts, prompt_str)
+    weighted_llm(c("Salmo salar" = 0.1, "Oncorhynchus mykiss" = 0.9))(prompt_str)
+  }
+  suppressWarnings(suppressMessages(assign_taxa_llm(md,
+    llm_fn = capture, pause_seconds = 0, n_sims = 0L
+  )))
+  expect_match(prompts[[1]], "\"transported\"", fixed = TRUE)
+  expect_match(prompts[[1]], "transported (any habitat):               0.03 - 0.15", fixed = TRUE)
+})
+
+test_that("a prior_weight_guide without transported gets the default band", {
+  old_guide <- list(
+    native_expected = c(0.5, 1.0), native_occasional = c(0.03, 0.15),
+    native_unlikely = c(0.003, 0.03), nearby_expected = c(0.05, 0.3),
+    nearby_occasional_unlikely = c(0.002, 0.05), not_documented = c(0.001, 0.02),
+    taxonomically_impossible = c(0.0001, 0.002)
+  )
+  md <- data.frame(
+    observation_id = "A", score_original = 99, taxon_name = "Salmo salar",
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  expect_message(
+    r <- suppressWarnings(assign_taxa_llm(md,
+      llm_fn = weighted_llm(c("Salmo salar" = 0.1)), pause_seconds = 0,
+      n_sims = 0L, prior_weight_guide = old_guide
+    )),
+    "transported"
+  )
+  expect_equal(attr(r, "report_params")$prior_weight_guide$transported, c(0.03, 0.15))
+})
+
+test_that("cache_dir serves a repeated prompt without calling the LLM", {
+  dir <- tempfile("llmcache") # R removes its session temp dir on exit
+  md <- data.frame(
+    observation_id = "A", score_original = c(99, 95),
+    taxon_name = c("Aaa one", "Bbb two"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  n_calls <- 0L
+  counting <- function(prompt_str) {
+    n_calls <<- n_calls + 1L
+    weighted_llm(c("Aaa one" = 0.8, "Bbb two" = 0.2))(prompt_str)
+  }
+  run <- function(ctx) {
+    suppressWarnings(suppressMessages(assign_taxa_llm(md,
+      context = ctx, llm_fn = counting, pause_seconds = 0,
+      n_sims = 0L, cache_dir = dir
+    )))
+  }
+  ctx <- data.frame(ecoregion = "Southern California Bight")
+  r1 <- run(ctx)
+  r2 <- run(ctx)
+  expect_equal(n_calls, 1L)
+  expect_equal(r2$prior_mean, r1$prior_mean)
+  # A different context is a different prompt: a miss.
+  run(data.frame(ecoregion = "Oregon Coast"))
+  expect_equal(n_calls, 2L)
+})
+
+test_that("cache_dir never stores an incomplete answer", {
+  dir <- tempfile("llmcache") # R removes its session temp dir on exit
+  md <- data.frame(
+    observation_id = "A", score_original = c(99, 95),
+    taxon_name = c("Aaa one", "Bbb two"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  n_calls <- 0L
+  omits <- function(prompt_str) {
+    n_calls <<- n_calls + 1L
+    '[{"taxon_name":"Aaa one","prior_weight":0.8}]'
+  }
+  for (i in 1:2) {
+    suppressWarnings(suppressMessages(assign_taxa_llm(md,
+      llm_fn = omits, pause_seconds = 0, n_sims = 0L, cache_dir = dir
+    )))
+  }
+  expect_equal(n_calls, 2L)
+  expect_length(list.files(dir), 0L)
+})
+
+test_that("a taxon the LLM omits keeps a non-zero prior", {
+  # Regression: the unknown row's placeholder 0 was counted in the fill
+  # minimum, so an omitted taxon got prior 0 (posterior 0) with
+  # prior_phi = NULL, and aborted compute_posterior() otherwise.
+  md <- data.frame(
+    observation_id = "A", score_original = c(99, 95),
+    taxon_name = c("Aaa one", "Bbb two"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  omits <- function(prompt_str) '[{"taxon_name":"Aaa one","prior_weight":0.8}]'
+  for (phi in list(NULL, c(high = 50, moderate = 10, low = 3))) {
+    r <- suppressWarnings(suppressMessages(assign_taxa_llm(md,
+      llm_fn = omits, pause_seconds = 0, n_sims = 0L, prior_phi = phi
+    )))
+    b <- r[!is.na(r$taxon_name) & r$taxon_name == "Bbb two", ]
+    expect_gt(b$prior_mean, 0)
+    expect_equal(b$prior_source, "na_fill_fallback")
+  }
+})

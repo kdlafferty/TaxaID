@@ -48,6 +48,7 @@ llm_result <- TaxaAssign::run_llm_pipeline(
   date            = {{date}},
   habitat_scheme  = {{habitat_scheme}},
   llm_fn          = {{llm_fn}},
+  data_type       = "eDNA", # sequence matches; image/acoustic need unreferenced_taxa instead
   score_threshold = {{score_threshold}},
   backbone_id     = {{backbone_id}},
   verbose         = TRUE

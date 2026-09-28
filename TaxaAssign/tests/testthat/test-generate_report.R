@@ -362,3 +362,44 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
   )
   expect_true(grepl("logit-transformed", no_transform_text))
 })
+
+test_that("LLM Methods text describes what ran", {
+  params <- list(
+    score_sharpness = 0.1, unknown_lik_weight = 0.05, score_threshold = 80,
+    top_n = 10L, prior_phi = c(high = 50, moderate = 10, low = 3),
+    absent_detection_prob = 0.80, n_sims = 1000L,
+    cumulative_threshold = 0.9, min_posterior = 0.05
+  )
+  build <- function(p) {
+    .build_methods_text("llm", p, "eDNA", "12S MiFish",
+      context_source = "user", has_unreferenced = FALSE,
+      has_family_expansion = FALSE, has_empirical_bayes = FALSE
+    )
+  }
+  text <- build(params)
+  # The LLM elicits priors only; likelihoods come from match scores.
+  expect_false(grepl("both match likelihoods and occurrence priors", text))
+  expect_true(grepl("priors were elicited from", text))
+  expect_true(grepl("uncalibrated approximation", text))
+  expect_true(grepl("documented nearby", text))
+  # No known_absent supplied: no absence sentence.
+  expect_false(grepl("non-detection", text))
+  text_abs <- build(c(params, n_known_absent = 2L))
+  expect_true(grepl("2 taxa not detected", text_abs))
+})
+
+test_that("assign_taxa_llm() records how many known-absent taxa it used", {
+  md <- data.frame(
+    observation_id = "S1", score_original = c(99, 95),
+    taxon_name = c("Gobius niger", "Pomatoschistus minutus"),
+    taxon_name_rank = "species", stringsAsFactors = FALSE
+  )
+  stub <- function(prompt_str) {
+    '[{"taxon_name":"Gobius niger","prior_weight":1},{"taxon_name":"Pomatoschistus minutus","prior_weight":1}]'
+  }
+  r <- suppressWarnings(suppressMessages(assign_taxa_llm(md,
+    llm_fn = stub, pause_seconds = 0, n_sims = 0L,
+    known_absent = "Pomatoschistus minutus"
+  )))
+  expect_equal(attr(r, "report_params")$n_known_absent, 1L)
+})

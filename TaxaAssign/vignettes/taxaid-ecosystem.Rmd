@@ -301,6 +301,7 @@ pipeline <- run_llm_pipeline(
   match_df = match_df,
   llm_fn = call_anthropic_api,
   geographic_hint = "Southern California estuaries",
+  data_type = "eDNA",
   detect_unreferenced = TRUE,
   barcode_term = "MiFish",
   backbone_id = 11L, # GBIF; match whichever backbone your input taxonomy used

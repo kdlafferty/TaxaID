@@ -37,6 +37,17 @@
 #'   \code{llm_fn} pattern. Default NULL resolves to
 #'   \code{getOption("TaxaID.llm_fn")} when set, otherwise
 #'   \code{TaxaTools::call_api} (requires TaxaTools).
+#' @param data_type Character, one of \code{"eDNA"}, \code{"image"} or
+#'   \code{"acoustic"}: the kind of signal behind the matches. No default,
+#'   since what counts as unreferenced depends on it; required when
+#'   \code{detect_unreferenced = TRUE} and \code{unreferenced_taxa} is not
+#'   supplied, and otherwise optional. Passed to
+#'   \code{\link[TaxaLikely]{suggest_unreferenced_species}} and, unless
+#'   \code{report_params} sets it, to \code{\link{generate_report}}. Detection
+#'   here runs only for \code{"eDNA"}; for image or acoustic data, call
+#'   \code{suggest_unreferenced_species()} yourself with its
+#'   \code{reference_species} list and pass the result as
+#'   \code{unreferenced_taxa}.
 #' @param detect_unreferenced Logical. When \code{TRUE} (default), run
 #'   \code{\link[TaxaLikely]{suggest_unreferenced_species}} to detect taxa
 #'   absent from the reference database (requires TaxaLikely). Set to
@@ -70,6 +81,10 @@
 #' @param prior_phi Named numeric vector mapping \code{information_quality}
 #'   to Beta concentration. Default \code{c(high = 50, moderate = 10, low = 3)}.
 #' @param n_sims Integer. Monte Carlo simulations. Default \code{1000L}.
+#' @param cache_dir Character or \code{NULL}. Passed to
+#'   \code{\link{assign_taxa_llm}}, which caches its prior calls there. It does
+#'   not cover the \code{build_context()} or unreferenced-species calls.
+#'   Default \code{NULL} (no cache).
 #' @param context_group Optional character vector of column names in
 #'   \code{context} for grouping observations. Default \code{NULL}.
 #' @param rank_system Character vector of taxonomy ranks, coarse to fine.
@@ -100,7 +115,9 @@
 #'   Default \code{FALSE}.
 #' @param report_params Named list of additional arguments passed to
 #'   \code{\link{generate_report}} (e.g. \code{data_type}, \code{marker},
-#'   \code{study_description}).
+#'   \code{study_description}). When this function builds the context itself,
+#'   \code{context_source = "llm"} is added unless you set it here, so the
+#'   Methods text says the LLM chose the site context.
 #' @param verbose Logical. Print progress messages. Default \code{TRUE}.
 #'
 #' @return A named list with components:
@@ -131,7 +148,8 @@
 #' # of the underlying LLM-prior mechanism this pipeline wraps.
 #' out <- run_llm_pipeline(
 #'   match_df        = match_obj,
-#'   geographic_hint = "Southern California",
+#'   geographic_hint = "Point Conception, California (34.4 N, 120.4 W)",
+#'   data_type       = "eDNA",
 #'   barcode_term    = "12S",
 #'   backbone_id     = 11L
 #' )
@@ -147,6 +165,7 @@ run_llm_pipeline <- function(
   date = NULL,
   habitat_scheme = NULL,
   llm_fn = NULL,
+  data_type,
   detect_unreferenced = TRUE,
   barcode_term = "12S",
   expand_to_family = TRUE,
@@ -163,6 +182,7 @@ run_llm_pipeline <- function(
   pause_seconds = 1,
   prior_phi = c(high = 50, moderate = 10, low = 3),
   n_sims = 1000L,
+  cache_dir = NULL,
   context_group = NULL,
   rank_system = c("family", "genus", "species"),
   cumulative_threshold = 0.90,
@@ -188,6 +208,35 @@ run_llm_pipeline <- function(
     ))
   }
 
+  valid_types <- c("eDNA", "image", "acoustic")
+  if (!missing(data_type) &&
+    (!is.character(data_type) || length(data_type) != 1L || !data_type %in% valid_types)) {
+    cli::cli_abort("{.arg data_type} must be one of {.val {valid_types}}.")
+  }
+  if (detect_unreferenced && is.null(unreferenced_taxa)) {
+    if (missing(data_type)) {
+      cli::cli_abort(c(
+        "{.arg data_type} must be stated when {.arg detect_unreferenced} = TRUE: \\
+        one of {.val {valid_types}}.",
+        "i" = "What counts as unreferenced depends on the signal: {.val eDNA} \\
+        means no reference sequence for the marker. Pass {.code data_type = \"eDNA\"}, \\
+        or {.code detect_unreferenced = FALSE}."
+      ))
+    }
+    if (data_type != "eDNA") {
+      cli::cli_abort(c(
+        "Unreferenced detection inside {.fn run_llm_pipeline} runs only for {.val eDNA}.",
+        "i" = "For {.val {data_type}} data, call \\
+        {.fn TaxaLikely::suggest_unreferenced_species} with its \\
+        {.arg reference_species} list and pass the result as \\
+        {.arg unreferenced_taxa}, or set {.code detect_unreferenced = FALSE}."
+      ))
+    }
+  }
+  if (!missing(data_type) && is.null(report_params$data_type)) {
+    report_params$data_type <- data_type
+  }
+
   .msg <- function(...) if (verbose) message(...)
   llm_fn <- .resolve_llm_fn(llm_fn, "run_llm_pipeline")
 
@@ -200,7 +249,8 @@ run_llm_pipeline <- function(
   # =========================================================================
   # Stage 1: Build context (if needed)
   # =========================================================================
-  if (is.null(context) && auto_context) {
+  context_built <- is.null(context) && auto_context
+  if (context_built) {
     .msg("run_llm_pipeline [1/4]: Auto-building context via build_context()...")
 
     # score_original, NOT score: assign_taxa_llm() below requires
@@ -253,7 +303,7 @@ run_llm_pipeline <- function(
       match_df         = match_df,
       context          = context,
       barcode_term     = barcode_term,
-      data_type        = "eDNA",
+      data_type        = data_type,
       llm_fn           = llm_fn,
       expand_to_family = expand_to_family,
       max_date         = max_date,
@@ -289,6 +339,7 @@ run_llm_pipeline <- function(
     pause_seconds         = pause_seconds,
     prior_phi             = prior_phi,
     n_sims                = n_sims,
+    cache_dir             = cache_dir,
     verbose               = verbose
   )
 
@@ -300,6 +351,12 @@ run_llm_pipeline <- function(
   # =========================================================================
   # Stages 4-6: Consensus + Empirical Bayes + Report (shared helper)
   # =========================================================================
+
+  # The Methods text says who chose the site context. When this function
+  # built it, that was the LLM; an explicit report_params entry still wins.
+  if (context_built && is.null(report_params$context_source)) {
+    report_params$context_source <- "llm"
+  }
 
   # Build species_reference for downranking
   species_reference <- if (inherits(unreferenced_result, "unreferenced_species_result")) {

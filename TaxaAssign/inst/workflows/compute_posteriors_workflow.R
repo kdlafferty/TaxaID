@@ -603,6 +603,7 @@ message(sprintf(
 #   taxaassign_consensus_llm <- TaxaAssign::run_llm_pipeline(
 #     match_df    = match_df,
 #     context     = context,
+#     data_type   = "eDNA",
 #     rank_system = RANK_SYSTEM
 #   )
 

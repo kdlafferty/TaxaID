@@ -7,15 +7,17 @@
 #   - Replaces occurrence-based priors with LLM biogeographic knowledge
 #   - Posteriors computed via compute_posterior() as normal
 #
-# Dataset example: MiFish eDNA, tidewater goby sites, Southern California
-# Input:   TaxaMatch/inst/match_obj.rds
+# Dataset example: MiFish 12S eDNA, Point Conception, California. The default
+# input is the fast fixture shipped with TaxaWizard (374 observations); swap in
+# your own match object in Section 1a.
 # Output:  posteriors data frame (one row per sample x taxon hypothesis)
 #
 # Appropriate for: exploratory analysis, well-known taxa, known ecoregion
 # Full pipeline needed for: publication, rare/novel taxa, poorly-known regions
 #
 # Parallel structure to the Bayesian workflow:
-#   LLM workflow     -- assign_taxa_llm() generates both likelihoods and priors
+#   LLM workflow      -- assign_taxa_llm() weights match scores into likelihoods
+#                        and asks the LLM for the priors
 #   Bayesian workflow -- TaxaLikely and TaxaExpect supply them independently
 # ============================================================================
 
@@ -30,25 +32,24 @@ library(TaxaTools) # call_anthropic_api() and other llm_fn providers
 library(dplyr)
 
 # ---- 1a. Load match object --------------------------------------------------
-# match_df <- readRDS(file.choose())  # select your match data file (.rds)
+# Default: the Point Conception 12S fast fixture, a real match object cut
+# down to 374 observations so the workflow runs in minutes.
+match_df <- readRDS(system.file("fast_workflows", "ptcon12s_fast_match_obj.rds",
+  package = "TaxaWizard"
+))
+
+# Your own data: build a match object from a provider's hit table instead.
 # Assumes match_df has been cleaned and is not redundant (see TaxaMatch workflow)
-
-
-# from TaxaMatch
-# estuarine fishes 12S: JVB1846-MiFishU-esv-data.csv (173 seconds)
-# California intertidal fishes 12S: JVB2844-MiFishU-esv-data (381.12 seconds)
-# Palmyra fishes (big) 12S: JVB1950-MiFishU-esv-data
-# Palmyra COI: Palmyra2019-UniCOI-esv-data
-library(TaxaMatch)
-match_df <- standardize_match_data(
-  data = NULL, # opens file.choose()
-  observation_id_col = "ESVId",
-  score_col = "PercMatch",
-  # taxonomy_ranks = NULL        # auto-detected from Kingdom...Species columns
-  lowercase_names = TRUE # default: all col names → lowercase
-) |>
-  dplyr::mutate(taxon_name = TaxaTools::clean_taxon_names(taxon_name)) |> # get rid of subspecies, authors, etc.
-  filter_redundant_hypotheses()
+# library(TaxaMatch)
+# match_df <- standardize_match_data(
+#   data = NULL, # opens file.choose()
+#   observation_id_col = "ESVId",
+#   score_col = "PercMatch",
+#   # taxonomy_ranks = NULL        # auto-detected from Kingdom...Species columns
+#   lowercase_names = TRUE # default: all col names → lowercase
+# ) |>
+#   dplyr::mutate(taxon_name = TaxaTools::clean_taxon_names(taxon_name)) |> # get rid of subspecies, authors, etc.
+#   filter_redundant_hypotheses()
 
 cat("Match object:", nrow(match_df), "rows x", ncol(match_df), "cols\n")
 cat("Samples:", n_distinct(match_df$observation_id), "\n")
@@ -64,7 +65,9 @@ cat("Marker(s):", paste(unique(match_df$testid), collapse = ", "), "\n\n")
 # Default: call_anthropic_api (requires ANTHROPIC_API_KEY in .Renviron).
 # Alternatives — uncomment to use:
 t0 <- Sys.time()
-llm_fn <- TaxaTools::call_anthropic_api
+# Current Claude models think before answering, and the thinking counts
+# against max_tokens; at the default of 3000 a call can end with no answer.
+llm_fn <- function(p) TaxaTools::call_anthropic_api(p, max_tokens = 16000L)
 
 # Gemini (free tier; requires GEMINI_API_KEY):
 # llm_fn <- function(p) TaxaTools::call_gemini_api(p, model = "gemini-2.0-flash")
@@ -85,8 +88,10 @@ llm_fn <- TaxaTools::call_anthropic_api
 
 # Option A: Auto-populate context from taxon names (requires TaxaHabitat)
 ctx <- build_context(
-  taxon_names     = unique(match_df$taxon_name[match_df$score_original == 100]), # short list of the best matches
-  geographic_hint = "Southern California NOT Gulf of California Estuary and Coastal Lagoon",
+  taxon_names     = unique(match_df$taxon_name[match_df$score_original >= 99]), # short list of the best matches
+  # A named place reads better to the model than bare coordinates; put the
+  # coordinates after the name. The hint also reaches assign_taxa_llm().
+  geographic_hint = "Point Conception, California (34.4 N, 120.4 W), nearshore marine",
   date            = "2025",
   habitat_scheme  = "IUCN_L1", # better to enter a custom list.
   llm_fn          = llm_fn
@@ -120,8 +125,9 @@ known_absent <- c()
 # geographic plausibility for species that are taxonomically plausible but
 # unrepresented in any reference library.
 #
-# Example: Fundulus parvipinnis (native SCB, no 12S reference) is unreferenced;
-# the LLM ranks it above Fundulus lima (Mexican, has reference).
+# Example: Fundulus parvipinnis (native to southern California, no 12S
+# reference) is unreferenced; the LLM ranks it above Fundulus lima (Mexican,
+# has reference).
 #
 # TaxaLikely::suggest_unreferenced_species() strategy (LLM-first, preferred):
 #   1. LLM generates biogeographically plausible species per genus (one call
@@ -300,8 +306,7 @@ cat("Elapsed:", round(difftime(Sys.time(), t0, units = "secs"), 2), "sec\n")
 # posterior_consensus() above.  Works directly from raw match scores — no
 # trained model, no priors, no LLM.
 #
-# Thresholds below follow the common eDNA convention (e.g., GITA functions,
-# Jonah Ventures pipeline):
+# Thresholds below follow the common fixed-threshold eDNA convention:
 #   species >= 98%, genus >= 95%, family >= 90%, phylum >= 85%
 # (the 85% tier is phylum-level in the literature it's corroborated by, not
 # order-level -- see score_consensus()'s own roxygen)
@@ -315,8 +320,8 @@ cat("Elapsed:", round(difftime(Sys.time(), t0, units = "secs"), 2), "sec\n")
 
 score_con_wilder <- score_consensus(
   match_df,
-  min_score       = 100, # drop hits below 80% (same as score_threshold above)
-  max_gap         = 0, # include all hits within 1% of best score for LCA
+  min_score       = 100, # exact matches only
+  max_gap         = 0, # only hits tied with the best score enter the LCA
   rank_thresholds = NULL,
   whitelist       = NULL, # set to a plausible taxon list if available
   score_col       = "score_original",
@@ -325,22 +330,27 @@ score_con_wilder <- score_consensus(
 
 score_con_thresholds <- score_consensus(
   match_df,
-  min_score       = 100, # drop hits below 80% (same as score_threshold above)
-  max_gap         = 0, # include all hits within 1% of best score for LCA
+  min_score       = 80, # drop hits below 80% (same as score_threshold above)
+  max_gap         = 1, # include all hits within 1% of best score for LCA
   rank_thresholds = c(species = 98, genus = 95, family = 90, phylum = 85),
   whitelist       = NULL, # set to a plausible taxon list if available
   score_col       = "score_original",
   rank_system     = c("family", "genus", "species")
 )
 
+# Jonah Ventures' published rule is the bracket mode, not a gap window: a
+# 1% bracket below the top score, a taxon reported at a rank only when it
+# holds 90% of the bracketed hits, widened to 2% when a match of 97% or
+# better still yields no family.
 score_con_JV <- score_consensus(
   match_df,
-  min_score       = 90, # drop hits below 80% (same as score_threshold above)
-  max_gap         = 1, # include all hits within 1% of best score for LCA
-  rank_thresholds = NULL,
-  whitelist       = NULL, # set to a plausible taxon list if available
-  score_col       = "score_original",
-  rank_system     = c("order", "family", "genus", "species")
+  consensus_mode     = "bracket",
+  agreement_fraction = 0.9,
+  bracket_width      = 1,
+  bracket_fallback   = list(min_score = 97, rank = "family", width = 2),
+  rank_thresholds    = NULL,
+  score_col          = "score_original",
+  rank_system        = c("order", "family", "genus", "species")
 )
 
 cat("\nScore-based consensus summary:\n")
@@ -479,8 +489,8 @@ report_posterior <- generate_report(
   consensus = consensus_final,
   unreferenced_result = unreferenced_species,
   data_type = "eDNA", marker = "12S MiFish",
-  study_description = "eDNA survey of a southern California estuary",
-  llm_fn = TaxaTools::call_anthropic_api
+  study_description = "eDNA survey of nearshore marine fishes at Point Conception, California",
+  llm_fn = llm_fn
 )
 
 # Option B: Report for score-based consensus (result = NULL, no posteriors)
@@ -488,8 +498,8 @@ report_score <- generate_report(
   result = NULL,
   consensus = score_con_JV,
   data_type = "eDNA", marker = "12S MiFish",
-  study_description = "eDNA survey of a southern California estuary",
-  llm_fn = TaxaTools::call_anthropic_api
+  study_description = "eDNA survey of nearshore marine fishes at Point Conception, California",
+  llm_fn = llm_fn
 )
 
 
@@ -556,10 +566,11 @@ cat(assembled)
 #   match_df             = match_df,
 #   context              = NULL,                   # NULL = auto-generate via build_context()
 #   auto_context         = TRUE,
-#   geographic_hint      = "Southern California estuary",
+#   geographic_hint      = "Point Conception, California (34.4 N, 120.4 W), nearshore marine",
 #   date                 = "2025",
 #   habitat_scheme       = "IUCN_L1",
-#   llm_fn               = TaxaTools::call_anthropic_api,
+#   llm_fn               = llm_fn,                 # see 2a: room for thinking
+#   data_type            = "eDNA",
 #   detect_unreferenced  = TRUE,
 #   barcode_term         = "12S",
 #   expand_to_family     = TRUE,
@@ -574,9 +585,10 @@ cat(assembled)
 #   confirmation_quantile       = 0.9,
 #   confirmation_discount = 0.25,
 #   rank_system          = c("family", "genus", "species"),
+#   backbone_id          = 4,                      # required: 4 = NCBI, 11 = GBIF
 #   generate_report      = TRUE,
 #   report_params        = list(data_type = "eDNA", marker = "12S MiFish",
-#                               study_description = "eDNA survey of a southern California estuary"),
+#                               study_description = "eDNA survey of nearshore marine fishes at Point Conception, California"),
 #   verbose              = TRUE
 # )
 #

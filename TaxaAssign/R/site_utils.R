@@ -119,10 +119,11 @@
 #' equivalent logic (`.build_plausible_prompt()`/`.build_family_prompt()`,
 #' differing only in which field name in `ctx` holds the habitat value --
 #' `"main_habitat"` vs `"habitat"`) rather than calling this one, since
-#' cross-package internal (`:::`) calls aren't used in this codebase.
+#' cross-package internal (`:::`) calls aren't used in this codebase. That
+#' copy does not render `geographic_hint`, which only build_context() writes.
 #' @noRd
 .build_context_block <- function(ctx, habitat_field = "main_habitat") {
-  ctx_fields <- c("ecoregion", "lat", "lon", "date", habitat_field)
+  ctx_fields <- c("geographic_hint", "ecoregion", "lat", "lon", "date", habitat_field)
   header_parts <- character(0L)
   for (fld in ctx_fields) {
     v <- ctx[[fld]]
@@ -134,6 +135,7 @@
       "Habitat"
     } else {
       switch(fld,
+        geographic_hint = "Location",
         ecoregion = "Ecoregion",
         lat = "Latitude",
         lon = "Longitude",

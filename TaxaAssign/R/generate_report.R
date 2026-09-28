@@ -551,10 +551,10 @@ generate_report <- function(result,
       paste0(
         "Rather than the conventional method of basing taxonomic assignments on ",
         "likelihood scores alone, assignments were estimated using a Bayesian ",
-        "framework in which both match likelihoods and occurrence priors were ",
-        "approximated by %s, rather than derived from ",
-        "statistical training on the reference database and species occurrence ",
-        "records, respectively."
+        "framework in which occurrence priors were elicited from %s and match ",
+        "likelihoods were approximated by weighting match scores, rather than ",
+        "derived from species occurrence records and statistical training on the ",
+        "reference database, respectively."
       ),
       llm_label
     )
@@ -636,7 +636,10 @@ generate_report <- function(result,
         "function (sharpness parameter = %s) and normalized to sum to one, producing ",
         "a likelihood estimate for each candidate taxon. A residual likelihood of %s ",
         "was reserved for the possibility that the true taxon was not among the named ",
-        "candidates."
+        "candidates. This weighting is an uncalibrated approximation: it does not model ",
+        "each species' score distribution, the gap between the best and second-best ",
+        "match, or the chance that the true species or genus is missing from the ",
+        "reference, so candidates with similar scores were separated mainly by their priors."
       ),
       threshold, top_n, sharpness, unk_wt
     )
@@ -685,6 +688,10 @@ generate_report <- function(result,
     }
 
     absent_prob <- if (!is.null(params$absent_detection_prob)) params$absent_detection_prob else 0.80
+    # The absence sentence describes a step that only ran when known_absent
+    # was supplied. A result without n_known_absent predates the field, and
+    # nothing says the step ran, so it is left out.
+    n_absent <- if (!is.null(params$n_known_absent)) params$n_known_absent else 0L
 
     context_desc <- if (context_source == "llm") {
       paste0(
@@ -703,19 +710,20 @@ generate_report <- function(result,
       "(LLM) based on geographic context and habitat information. ",
       context_desc,
       "For each unique ",
-      "taxon, the LLM assessed geographic range status (native, introduced, or ",
-      "unknown) and habitat fit (expected, occasional, or unlikely), returning a ",
+      "taxon, the LLM assessed geographic range status (native, introduced and ",
+      "established, documented nearby, not documented, taxonomically impossible, ",
+      "transported by people, or uncertain) and habitat fit (expected, occasional, or unlikely), returning a ",
       "relative weight reflecting the plausibility of encountering that taxon at ",
       "the study site. Weights were normalized to produce prior probabilities. ",
       phi_text,
-      if (absent_prob < 1) {
+      if (n_absent > 0L && absent_prob < 1) {
         sprintf(
           paste0(
-            " Taxa presumed to be absent from the study area had their ",
+            " %d taxa not detected by an independent survey of the study area had their ",
             "priors reduced by a factor of %s (the estimated probability of non-detection), ",
             "accounting for the possibility of rare or transient occurrences."
           ),
-          1 - absent_prob
+          as.integer(n_absent), 1 - absent_prob
         )
       } else {
         ""
