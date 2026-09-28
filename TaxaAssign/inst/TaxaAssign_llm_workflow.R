@@ -65,7 +65,9 @@ cat("Marker(s):", paste(unique(match_df$testid), collapse = ", "), "\n\n")
 # Default: call_anthropic_api (requires ANTHROPIC_API_KEY in .Renviron).
 # Alternatives — uncomment to use:
 t0 <- Sys.time()
-llm_fn <- TaxaTools::call_anthropic_api
+# Current Claude models think before answering, and the thinking counts
+# against max_tokens; at the default of 3000 a call can end with no answer.
+llm_fn <- function(p) TaxaTools::call_anthropic_api(p, max_tokens = 16000L)
 
 # Gemini (free tier; requires GEMINI_API_KEY):
 # llm_fn <- function(p) TaxaTools::call_gemini_api(p, model = "gemini-2.0-flash")
@@ -488,7 +490,7 @@ report_posterior <- generate_report(
   unreferenced_result = unreferenced_species,
   data_type = "eDNA", marker = "12S MiFish",
   study_description = "eDNA survey of nearshore marine fishes at Point Conception, California",
-  llm_fn = TaxaTools::call_anthropic_api
+  llm_fn = llm_fn
 )
 
 # Option B: Report for score-based consensus (result = NULL, no posteriors)
@@ -497,7 +499,7 @@ report_score <- generate_report(
   consensus = score_con_JV,
   data_type = "eDNA", marker = "12S MiFish",
   study_description = "eDNA survey of nearshore marine fishes at Point Conception, California",
-  llm_fn = TaxaTools::call_anthropic_api
+  llm_fn = llm_fn
 )
 
 
@@ -567,7 +569,7 @@ cat(assembled)
 #   geographic_hint      = "Point Conception, California (34.4 N, 120.4 W), nearshore marine",
 #   date                 = "2025",
 #   habitat_scheme       = "IUCN_L1",
-#   llm_fn               = TaxaTools::call_anthropic_api,
+#   llm_fn               = llm_fn,                 # see 2a: room for thinking
 #   data_type            = "eDNA",
 #   detect_unreferenced  = TRUE,
 #   barcode_term         = "12S",
