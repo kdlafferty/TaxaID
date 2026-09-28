@@ -559,8 +559,22 @@ on functions this document already covers above.
   when set, so remote keys and existing caches are unchanged. Measurements
   are in the new `@section Local search speed`. Tests:
   test-local-corroboration.R.
-- `investigate_flagged_accession()`'s local path restricts its comparison
-  search with `-seqidlist`, the local equivalent of the remote
-  `ENTREZ_QUERY` restriction, falling back to the unrestricted search with a
-  warning if the restriction fails. Tests:
+- `investigate_flagged_accession()`'s local path restricts its comparison search
+  to the comparison accessions, the local equivalent of the remote `ENTREZ_QUERY`
+  restriction, falling back to an unrestricted search with a warning if the
+  restriction fails. It does that by extracting those accessions through the
+  database's own index into a throwaway database and searching that.
+  `-seqidlist` restricts the same way but does not skip reading: against
+  `core_nt` on an external SSD each such search still streamed the whole
+  database, about 20 minutes measured, where the extraction takes under three
+  seconds. Success is judged by the records extracted, not by the exit status,
+  because `blastdbcmd` exits non-zero whenever any requested accession is
+  absent. Tests: test-investigate-flagged-accession.R.
+- `investigate_flagged_accessions()` does ONE record fetch and ONE
+  disagreeing-taxon search covering every accession the cache cannot serve,
+  rather than one full search per accession. Against a local database each
+  search reads the whole database, so the old shape cost that per accession.
+  An accession the batched search reports as failed, through
+  `blast_sequences()`'s own `failed_query_ids`, is searched on its own, so a
+  failed query is never read as an absence of disagreement. Tests:
   test-investigate-flagged-accession.R.
