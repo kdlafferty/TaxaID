@@ -39,12 +39,13 @@ once here rather than repeated per file below.
 | `check_gbif_tile_range()` | `R/check_gbif_tile_range.R` | Spatial-isolation signal for a taxon from GBIF's occurrence-density map tiles | test-check_gbif_tile_range.R, test-check_gbif_tile_range_cache.R, test-review_spatial_context.R |
 | `compute_local_occurrence_distance()` | `R/compute_local_occurrence_distance.R` | Distance from a query point to the nearest already-fetched GBIF occurrence | test-compute_local_occurrence_distance.R, test-review_spatial_context.R |
 | `flag_hopped_detections()` | `R/flag_hopped_detections.R` | Flag individual detections explained by read spillover (index hopping, tag jumps) from the same feature elsewhere on the run | test-flag_hopped_detections.R |
+| `flag_failed_libraries()` | `R/flag_failed_libraries.R` | Flag libraries and runs that failed to sequence, using the same extract's other markers to tell failure from low biomass | test-flag_failed_libraries.R |
 | `flag_watch_candidates()` | `R/flag_watch_candidates.R` | Flag observations where a watch-list species outscores the consensus winner | test-flag_watch_candidates.R |
 | `review_spatial_context()` | `R/review_spatial_context.R` | Interactive Spatial Review of Consensus Taxa | test-review_spatial_context.R |
 | `taxaflag_clear_cache()` | `R/taxaflag_clear_cache.R` | Report and clear TaxaFlag's on-disk caches | test-check_gbif_tile_range_cache.R, test-review_assignments.R |
 | `validate_controls()` | `R/validate_controls.R` | Validate That Control Samples Actually Look Like Controls | test-validate_controls.R |
 
-28 new internal helper functions have also been added since the review.
+34 new internal helper functions have also been added since the review.
 
 Also since the review, `flag_contaminant()` (pre-existing, reviewed above) gained four
 arguments:

@@ -12,6 +12,14 @@ Identifies and flags anomalous detections in taxonomic assignment results.
 Detects laboratory and field contamination, flags handler-related artifacts,
 and provides LLM-based expert review of assignment plausibility.
 }
+\section{Library and run failure}{
+
+\itemize{
+\item \code{\link{flag_failed_libraries}} -- did each library and run
+actually sequence? Run first, before anything aggregates reads
+}
+}
+
 \section{Contamination}{
 
 \itemize{

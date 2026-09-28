@@ -1,6 +1,18 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-27 (Opus 5.5, branch flag-hopped-detections): NEW EXPORT
+# Last updated: 2026-09-28 (Opus 5.5, branch flag-failed-libraries, UNMERGED): NEW
+# flag_failed_libraries() -- per-library and per-run sequencing-failure verdicts from the
+# combined multi-marker reads table. A library fails only when >= fold_threshold below
+# BOTH its marker's reference (median of run medians) AND its own sample's other markers;
+# low in every marker = low_yield (sample-level, NOT excluded); no other marker =
+# low_yield_undetermined. Runs: failed / low_yield / pass / not_testable (too few runs to
+# expose a whole-run failure -- distinct from pass). exclude_library + loud warning;
+# cleared_runs lifts the gate, keeps the verdict. Validated on CalIntertidal: 18S
+# JVB6164/JVB6334 failed (60/60, 20/20), JVB5058 pass, 12S JVB2844 low_yield (new
+# finding). Narrow-marker caveat: "failed" on 12S also covers "target absent".
+# Record: ecosystem_docs/HANDOFF_library_failure_detector.md. test 639/0, check 0/0/0.
+# Previous update, 2026-09-14 (Opus 5): UNREVIEWED ROWS NO LONGER SILENTLY DROPPED --
+# Previous update: 2026-09-27 (Opus 5.5, branch flag-hopped-detections): NEW EXPORT
 # flag_hopped_detections() -- per-DETECTION read-spillover flag (index hopping, tag
 # jumps, ONT barcode misassignment). Requested by the user from the CalIntertidal
 # session's REENTRY_PROMPT_index_hopping_TaxaFlag.md. flag_contaminant() cannot see
