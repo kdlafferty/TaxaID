@@ -46,6 +46,10 @@ test_that("omitted tubes are re-asked and reported if still missing", {
   )
   expect_equal(attr(q, "unreviewed_samples"), "PLANKTON")
   expect_equal(llm$calls(), 3L)
+  # the re-asks carry the omitted tube alone
+  pr <- attr(q, "llm_prompts")
+  expect_false(grepl("TUBE MISLABEL", pr[[length(pr)]]))
+  expect_match(pr[[length(pr)]], "TUBE PLANKTON")
   expect_true(all(is.na(q$llm_verdict[q$sample == "PLANKTON"])))
 })
 

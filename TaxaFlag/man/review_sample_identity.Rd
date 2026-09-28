@@ -94,8 +94,13 @@ and \code{\link{flag_failed_libraries}} has already answered it.
 
 \section{Unreviewed tubes}{
 
-A tube the model does not answer is re-asked, up to \code{max_retries}
-times. It is never cached, and it is listed in
+A tube the model does not answer is re-asked, alone, up to
+\code{max_retries} times. Omissions come mostly from a batch that ran out of
+output tokens: a reasoning model can spend a whole \code{max_tokens} budget
+thinking about four tubes and return no text. On one real study, 13 of 44
+tubes went unanswered at 4 tubes per call and 4000 tokens; asked singly,
+all but two were answered. Raise \code{max_tokens} before raising
+\code{tubes_per_call}. It is never cached, and it is listed in
 \code{attr(, "unreviewed_samples")}. Because an LLM verdict never admits
 anything, an unreviewed tube is not lost: it simply has no advice. The
 \code{on_unreviewed} argument controls how loudly that is reported.

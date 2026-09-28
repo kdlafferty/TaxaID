@@ -106,11 +106,43 @@ What it returns and how it behaves:
   35 runs.
 - **Review queue:** 225 units are held.
   - 120 are library failures, which are excluded but not pending.
-  - About 105 units, from 38 tubes, await an identity decision.
+  - 44 tubes await an identity decision (every marker of a flagged tube is held).
   - `"block"` and `"asymmetric"` give the same count here, because no sample is unassessable.
 - **Runs with no admitted control:**
   - 18S JVB6164 and 18S JVB6334 (failed runs).
   - 12S JVB2844, whose only blank is S067800.
+
+## Live LLM review of the 44 held tubes (`identity_gate_validation/llm_review.R`)
+
+- **Model:** Anthropic through `TaxaTools::call_api`, run with `max_tokens` 4000. The
+  `CONTEXT` string is **this session's assumption** about the blank protocol, and the
+  CalIntertidal session should correct it.
+- **Coverage:** 42 of 44 tubes answered. Advice is cached in
+  `identity_gate_validation/identity_review_cache/` and merged into
+  `identity_decisions_TEST.csv`.
+- **Verdicts:**
+
+  | verdict | tubes |
+  |---|---|
+  | `contaminated_blank` | 29 |
+  | `sample_labelled_as_blank` | 4 (includes S067800 and DWETWXWF) |
+  | `clean_blank` | 4 |
+  | `valid_sample` | 4 |
+  | `blank_labelled_as_sample` | 1 (NXD77NCP) |
+
+- **§8 rationales.**
+  - S067800: "coherent, diverse plankton communities that closely mirror the run's field
+    samples" in both markers, read as a mislabel.
+  - JAC2V5IK: freshwater/anadromous fishes in 12S plus a coherent protist assemblage.
+  - The JVB3735 blanks: freshwater/terrestrial and plankton communities, read as contaminated.
+- **Worth checking.**
+  - The 18S JVB6164 blanks (unassessable) were mostly called `contaminated_blank`, on their
+    12S/COI evidence.
+  - 4ES2CWOF and IJR811PZ carry a 12S **PositiveControl** as 100% of reads.
+- **Failure mode found and fixed.** At 4 tubes per call, a reasoning model can spend all of
+  `max_tokens` thinking and return no text (13 of 44 went unanswered). Re-asks now go one tube
+  per call. One reply was also invalid JSON: it contained a JavaScript `.replace()` call. It
+  was rejected and re-asked, not trusted.
 
 ## New finding, not in the re-entry prompt
 
@@ -171,4 +203,4 @@ Notes on the wiring:
   and `R/TaxaFlag-package.R`. The helper count on this branch is 42 (30 + 12). Add hopping's 4.
 - **TaxaWizard:** two new exports, learned from their formals after reinstall. The graph edge
   would be `reads_to_flagged` (the same edge as the other two).
-- **Tests:** TaxaFlag 741 passed, 0 failed. `check()` 0/0/0.
+- **Tests:** TaxaFlag 743 passed, 0 failed. `check()` 0/0/0.
