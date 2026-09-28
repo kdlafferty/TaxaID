@@ -1,6 +1,17 @@
 # CLAUDE.md -- TaxaFlag
 # Package-specific context. Ecosystem context is in TaxaID/CLAUDE.md (auto-loaded).
-# Last updated: 2026-09-14 (Opus 5): UNREVIEWED ROWS NO LONGER SILENTLY DROPPED --
+# Last updated: 2026-09-28 (Opus 5.5, branch flag-failed-libraries, UNMERGED): NEW
+# flag_failed_libraries() -- per-library and per-run sequencing-failure verdicts from the
+# combined multi-marker reads table. A library fails only when >= fold_threshold below
+# BOTH its marker's reference (median of run medians) AND its own sample's other markers;
+# low in every marker = low_yield (sample-level, NOT excluded); no other marker =
+# low_yield_undetermined. Runs: failed / low_yield / pass / not_testable (too few runs to
+# expose a whole-run failure -- distinct from pass). exclude_library + loud warning;
+# cleared_runs lifts the gate, keeps the verdict. Validated on CalIntertidal: 18S
+# JVB6164/JVB6334 failed (60/60, 20/20), JVB5058 pass, 12S JVB2844 low_yield (new
+# finding). Narrow-marker caveat: "failed" on 12S also covers "target absent".
+# Record: ecosystem_docs/HANDOFF_library_failure_detector.md. test 639/0, check 0/0/0.
+# Previous update, 2026-09-14 (Opus 5): UNREVIEWED ROWS NO LONGER SILENTLY DROPPED --
 # ecosystem_docs/REENTRY_PROMPT_unreviewed_rows_silently_dropped.md, now RESOLVED (read
 # its Resolution section). An LLM response can parse cleanly, be the right length, and
 # still leave specific taxa out -- consistently the long compound slash labels, the
