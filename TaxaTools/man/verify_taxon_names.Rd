@@ -111,9 +111,14 @@ currently-accepted lineage even when the query matched a synonym.}
 better. This measures name-matching quality against the backbone and is
 unrelated to the sequence match scores used elsewhere in the TaxaID
 ecosystem (e.g., percent identity from BLAST).}
-\item{verified}{Logical. \code{TRUE} if the API returned a result,
-\code{FALSE} if the API failed and fallback values were used. Always
-check rows where \code{verified = FALSE}.}
+\item{verified}{Logical. \code{TRUE} if the lookup ran and the API
+answered, \code{FALSE} if the API failed and fallback values were used.
+It does not say whether the name was found: a name the backbone does
+not hold returns \code{verified = TRUE} with \code{matched_name = NA}.
+Always check rows where \code{verified = FALSE}.}
+\item{matched}{Logical. \code{TRUE} only when the lookup ran and
+returned a name (\code{verified & !is.na(matched_name)}). Filter on
+this, not on \code{verified}, to keep resolved names.}
 \item{fuzzy_corrected}{Logical. Only present when \code{backbone_id = 4}.
 \code{TRUE} if this name was not found by NCBI's own exact search and
 was instead matched after a fuzzy-spelling correction suggested by

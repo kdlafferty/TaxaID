@@ -59,7 +59,7 @@ test_that("returns correct structure for valid names", {
     c(
       "user_supplied_name", "matched_name", "matched_rank",
       "is_synonym", "classification_path", "classification_ranks",
-      "score", "verified", "fuzzy_corrected"
+      "score", "verified", "matched", "fuzzy_corrected"
     ),
     ignore.order = TRUE
   )

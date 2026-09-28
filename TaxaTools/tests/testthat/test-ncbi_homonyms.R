@@ -259,3 +259,24 @@ test_that("the NCBI search retries a transient failure before reporting a batch 
   expect_gte(calls, 2L)
   expect_identical(res$matched_name, "Homo sapiens")
 })
+
+test_that("verified says the lookup ran; matched says the name was found", {
+  testthat::local_mocked_bindings(
+    entrez_search = function(db, term, retmax, ...) {
+      if (grepl("Homo sapiens", term, fixed = TRUE)) list(count = "1", ids = "9606") else list(count = "0", ids = character(0))
+    },
+    entrez_summary = function(db, id, ...) {
+      list(`9606` = list(uid = "9606", scientificname = "Homo sapiens", rank = "species"))
+    },
+    entrez_fetch = function(db, id, rettype, ...) {
+      "<TaxaSet><Taxon><TaxId>9606</TaxId><ScientificName>Homo sapiens</ScientificName><Rank>species</Rank><LineageEx></LineageEx></Taxon></TaxaSet>"
+    },
+    .package = "rentrez"
+  )
+  res <- suppressMessages(suppressWarnings(
+    verify_taxon_names(c("Homo sapiens", "Zzznotarealtaxonxyz"), backbone_id = 4, fallback_backbone_id = NA)
+  ))
+  expect_true(all(res$verified))
+  expect_identical(res$matched, c(TRUE, FALSE))
+  expect_true(is.na(res$matched_name[2]))
+})
