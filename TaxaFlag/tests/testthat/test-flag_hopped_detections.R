@@ -4,7 +4,7 @@
 # model. Genuine and spilled reads are tracked separately so each verdict can be
 # checked against the truth.
 .sim_run <- function(r = 0.002, n_field = 20, n_ctl = 4, n_feat = 60,
-                     run = "R1", seed = 1, contaminant = FALSE) {
+                     run = "R1", seed = 1, contaminant = FALSE, size = Inf) {
   set.seed(seed)
   samples <- c(sprintf("%s_S%02d", run, seq_len(n_field)), sprintf("%s_B%d", run, seq_len(n_ctl)))
   feats <- sprintf("f%02d", seq_len(n_feat))
@@ -19,7 +19,8 @@
   n <- length(samples)
   spill <- matrix(0, n_feat, n, dimnames = dimnames(genuine))
   for (j in seq_len(n)) {
-    spill[, j] <- stats::rpois(n_feat, r * (src_tot - genuine[, j]) / (n - 1))
+    mu <- r * (src_tot - genuine[, j]) / (n - 1)
+    spill[, j] <- if (is.infinite(size)) stats::rpois(n_feat, mu) else stats::rnbinom(n_feat, mu = mu, size = size)
   }
   obs <- genuine + spill
   df <- data.frame(
@@ -52,6 +53,34 @@ test_that("a known rate is recovered and spilled detections are flagged, genuine
   expect_gt(mean(flagged[pure_spill]), 0.8)
   # ...and the direction that must stay silent on real detections
   expect_lt(mean(flagged[!pure_spill]), 0.02)
+})
+
+test_that("over-dispersed spillover is neither trimmed away nor under-bounded", {
+  # Regression: trimming against a Poisson ate the genuine tail of NB spillover
+  # and put the rate AND its upper bound at 0.2-0.6x the truth.
+  est <- vapply(1:4, function(k) {
+    df <- .sim_run(r = 0.001, n_field = 40, n_ctl = 6, n_feat = 80, seed = k, size = 0.3)
+    rr <- attr(flag_hopped_detections(df, run_col = "run", control_samples = attr(df, "controls"),
+                                      verbose = FALSE), "run_rates")
+    c(rr$rate, rr$rate_upper, rr$dispersion)
+  }, numeric(3))
+  expect_true(all(est[1, ] > 0.0005 & est[1, ] < 0.002))
+  expect_true(all(est[2, ] > 0.001))
+  expect_true(all(est[3, ] < 5))            # the over-dispersion was detected
+})
+
+test_that("contamination cannot stretch the dispersion to hide itself", {
+  # Regression: fitting the dispersion on every feature absorbed contaminants
+  # into a huge variance, inflated the rate 75-800x and flagged genuine reads.
+  df <- .sim_run(r = 0.001, n_field = 40, n_ctl = 6, n_feat = 80, seed = 2, size = 1,
+                 contaminant = TRUE)
+  res <- flag_hopped_detections(df, run_col = "run", control_samples = attr(df, "controls"),
+                                verbose = FALSE)
+  rr <- attr(res, "run_rates")
+  expect_true("f01" %in% attr(res, "control_excess")$feature)
+  expect_lt(rr$rate, 0.002)
+  f <- res[!is.na(res$validity_flag), ]
+  expect_lt(mean(f$validity_flag[f$genuine > 0] != "valid"), 0.01)
 })
 
 test_that("a detection with no source elsewhere on the run is never flagged", {

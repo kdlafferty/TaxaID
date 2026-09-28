@@ -1,5 +1,5 @@
 # Exports: flag_hopped_detections
-# Internal helpers: .hop_poisson_upper, .hop_fit_control_rate, .hop_run_rates
+# Internal helpers: .hop_upper_tail, .hop_fit_nb, .hop_fit_control_rate, .hop_run_rates
 
 #' Flag Detections Explained by Read Spillover Between Samples on a Run
 #'
@@ -323,9 +323,10 @@ flag_hopped_detections <- function(input_df,
   k <- rates$spill_reads[ri]
   mu <- rates$rate[ri] * d$source * d$share
   mu_up <- rates$rate_upper[ri] * d$source * d$share
+  theta <- rates$dispersion[ri]
   x <- d$own
-  p_spill <- stats::ppois(x - 1, mu, lower.tail = FALSE)
-  p_spill_up <- stats::ppois(x - 1, mu_up, lower.tail = FALSE)
+  p_spill <- .hop_upper_tail(x, mu, theta)
+  p_spill_up <- .hop_upper_tail(x, mu_up, theta)
 
   is_det <- d$role == "field" & d$reads > 0
   testable <- is_det & !is.na(mu_up)
@@ -414,34 +415,128 @@ flag_hopped_detections <- function(input_df,
   out
 }
 
-#' Exact one-sided Poisson upper confidence limit on a count
+#' Upper tail P(X >= x) of the spillover count
 #'
-#' The mean at which observing \code{k} or fewer events has probability
-#' \code{alpha}: \code{qgamma(1 - alpha, k + 1)}. For \code{k = 0} this is
-#' \code{-log(alpha)} (about 4.6 at alpha = 0.01).
+#' Negative binomial with mean \code{mu} and size \code{theta}; Poisson when
+#' \code{theta} is infinite. \code{mu = 0} gives 0 for any positive count.
 #' @noRd
-.hop_poisson_upper <- function(k, alpha) stats::qgamma(1 - alpha, shape = k + 1)
+.hop_upper_tail <- function(x, mu, theta) {
+  theta[is.na(theta)] <- Inf
+  pois <- is.infinite(theta)
+  out <- numeric(length(x))
+  out[pois] <- stats::ppois(x[pois] - 1, mu[pois], lower.tail = FALSE)
+  out[!pois] <- stats::pnbinom(x[!pois] - 1, size = theta[!pois], mu = mu[!pois], lower.tail = FALSE)
+  out[is.na(mu)] <- NA_real_
+  out
+}
+
+#' Maximum-likelihood spillover rate (and dispersion) with a profile upper bound
+#'
+#' \code{x_c ~ NB(mean = r * m_c, size = theta * w_c)} over units \code{c}. A unit
+#' may aggregate \code{w_c} iid cells that share one exposure (the sum of
+#' \code{w} iid NB(mu, theta) is NB(w * mu, w * theta)), which is how the
+#' control fit works per feature. With \code{theta = NULL} rate and dispersion
+#' are fitted jointly (\code{Inf} = Poisson, chosen when the NB does not improve
+#' the fit or fewer than 5 units are non-zero); with a supplied \code{theta} only
+#' the rate is fitted. Returns \code{r}, \code{theta}, and a one-sided
+#' profile-likelihood upper bound on \code{r} at \code{1 - alpha}. With no
+#' spilled reads the MLE is 0 and the bound is the exact Poisson one.
+#' @noRd
+.hop_fit_nb <- function(x, m, alpha, w = rep(1, length(x)), theta = NULL) {
+  keep <- m > 0
+  x <- x[keep]
+  m <- m[keep]
+  w <- w[keep]
+  k <- sum(x)
+  M <- sum(m)
+  if (M <= 0) return(list(r = NA_real_, theta = NA_real_, r_up = NA_real_, k = 0, M = 0))
+  if (k == 0) {
+    return(list(r = 0, theta = if (is.null(theta)) Inf else theta,
+                r_up = stats::qgamma(1 - alpha, shape = 1) / M, k = 0, M = M))
+  }
+  nll <- function(r, th) {
+    if (is.infinite(th)) -sum(stats::dpois(x, r * m, log = TRUE))
+    else -sum(stats::dnbinom(x, size = th * w, mu = r * m, log = TRUE))
+  }
+  r_p <- k / M                          # Poisson MLE
+  if (is.null(theta)) {
+    theta <- Inf
+    r_hat <- r_p
+    nll_min <- nll(r_p, Inf)
+    if (sum(x > 0) >= 5L) {
+      o <- stats::optim(c(log(r_p), 0), function(p) nll(exp(p[1]), exp(p[2])),
+                        method = "L-BFGS-B", lower = c(log(r_p) - 10, log(0.01)),
+                        upper = c(log(r_p) + 10, log(1e4)))
+      if (o$convergence == 0 && o$value < nll_min - 1e-6) {
+        r_hat <- exp(o$par[1])
+        theta <- exp(o$par[2])
+        nll_min <- o$value
+      }
+    }
+    prof <- function(r) {
+      o <- stats::optimize(function(lt) nll(r, exp(lt)), c(log(0.01), log(1e4)))
+      min(o$objective, nll(r, Inf))
+    }
+  } else {
+    o <- stats::optimize(function(lr) nll(exp(lr), theta), c(log(r_p) - 10, log(r_p) + 10))
+    r_hat <- exp(o$minimum)
+    nll_min <- o$objective
+    prof <- function(r) nll(r, theta)
+  }
+  crit <- stats::qchisq(1 - 2 * alpha, df = 1) / 2
+  f <- function(r) prof(r) - nll_min - crit
+  hi <- r_hat * 2
+  while (f(hi) < 0 && hi < 1e6 * r_hat) hi <- hi * 4
+  r_up <- if (f(hi) < 0) Inf else stats::uniroot(f, c(r_hat, hi), tol = r_hat * 1e-4)$root
+  list(r = r_hat, theta = theta, r_up = max(r_up, r_hat), k = k, M = M)
+}
 
 #' Fit the spillover rate from negative-control cells, excluding contaminants
 #'
-#' \code{x} = control reads, \code{m} = exposure (source x share) per control
-#' cell, \code{taxon} = feature. Fits r = sum(x)/sum(m), drops every feature
-#' with a cell improbably high under it (one-sided Poisson at alpha), refits,
-#' and repeats until nothing more is dropped. Exclusion only ever removes the
-#' high side, so r is non-increasing and the loop terminates.
+#' \code{x} = control reads, \code{m} = exposure per control cell, \code{taxon} =
+#' feature. Cells are aggregated per feature (under equal shares a feature's
+#' cells share one exposure). The separation from contamination rests on SHAPE:
+#' spillover scales with a feature's source, contamination does not. So:
+#' \enumerate{
+#'   \item fit rate and dispersion on a CORE of the highest-exposure features
+#'     (the top half of total exposure), where source-proportional spillover
+#'     dominates;
+#'   \item drop every feature whose control reads are improbable under the core
+#'     fit at a multiplicity-corrected level (\code{alpha / features}); repeat
+#'     1-2 until nothing more is dropped;
+#'   \item refit rate and dispersion on every kept feature; the profile bound
+#'     then carries the dispersion's uncertainty.
+#' }
+#' Both simpler designs failed on simulated data with a known rate: trimming
+#' against a Poisson eats the genuine tail of over-dispersed spillover (rate and
+#' "upper bound" 0.2-0.6x the truth); fitting the dispersion on everything lets
+#' it stretch to absorb contaminants (rate 75-800x the truth, genuine
+#' detections flagged).
 #' @noRd
 .hop_fit_control_rate <- function(x, m, taxon, alpha) {
-  keep <- m > 0
-  repeat {
-    k <- sum(x[keep])
-    mm <- sum(m[keep])
-    if (mm <= 0) break
-    r <- k / mm
-    high <- keep & stats::ppois(x - 1, r * m, lower.tail = FALSE) < alpha
+  X <- tapply(x, taxon, sum)
+  Mi <- tapply(m, taxon, sum)
+  W <- tapply(x, taxon, length)
+  feats <- names(Mi)
+  kept <- Mi > 0
+  core_fit <- NULL
+  for (iter in seq_len(50L)) {
+    ord <- order(Mi[kept], decreasing = TRUE)
+    kf <- feats[kept][ord]
+    core <- kf[cumsum(Mi[kf]) <= 0.5 * sum(Mi[kf]) | seq_along(kf) == 1L]
+    core_fit <- .hop_fit_nb(X[core], Mi[core], alpha, w = W[core])
+    if (is.na(core_fit$r)) break
+    level <- alpha / max(sum(X[kept] > 0), 1)
+    tail_p <- .hop_upper_tail(X, core_fit$r * Mi, core_fit$theta * W)
+    high <- kept & X > 0 & tail_p < level
     if (!any(high)) break
-    keep <- keep & !taxon %in% taxon[high]
+    kept <- kept & !high
   }
-  list(k = sum(x[keep]), m = sum(m[keep]), keep = keep)
+  # Contaminants are gone by now, so the final fit may re-estimate the
+  # dispersion, and its profile bound then carries the dispersion's uncertainty
+  # (holding it at the core value made the "upper" bound fall below the truth).
+  f <- .hop_fit_nb(X[kept], Mi[kept], alpha, w = W[kept])
+  c(f, list(keep = taxon %in% feats[kept]))
 }
 
 #' Per-run spillover rate from spike or control evidence
@@ -461,6 +556,9 @@ flag_hopped_detections <- function(input_df,
     k_c <- 0
     m_c <- 0
     sig <- NA_real_
+    fit_c <- NULL
+    fit_s <- NULL
+    untrimmed <- NA_real_
 
     # Negative controls. "depth" shares are circular for a blank (see roxygen),
     # so controls only contribute under "equal".
@@ -482,8 +580,10 @@ flag_hopped_detections <- function(input_df,
       # features present ONLY in controls have no source: pure contamination
       only_ctl <- setdiff(unique(ctl$taxon), names(fld_tot))
       f <- .hop_fit_control_rate(gx, gsrc * share, grid$taxon, alpha)
+      fit_c <- f
       k_c <- f$k
-      m_c <- f$m
+      m_c <- f$M
+      untrimmed <- if (sum(gsrc * share) > 0) sum(gx[gsrc > 0]) / sum(gsrc * share) else NA_real_
       dropped <- unique(grid$taxon[!f$keep & gx > 0])
       ex_taxa <- c(dropped, only_ctl)
       if (length(ex_taxa)) {
@@ -509,13 +609,17 @@ flag_hopped_detections <- function(input_df,
     if (n_spk > 0 && sum(spk_src) > 0) {
       recv <- cr[cr$role != "spike_sample", ]
       recv <- recv[!duplicated(recv$event), c("event", "share")]
-      k_s <- sum(cr$own[cr$spike & cr$role != "spike_sample"])
-      m_s <- sum(spk_src) * sum(recv$share)
+      # one cell per receiving sample: all of them are spillover by definition
+      xs <- vapply(recv$event, function(e) sum(cr$own[cr$spike & cr$event == e]), numeric(1))
+      fit_s <- .hop_fit_nb(xs, sum(spk_src) * recv$share, alpha)
+      k_s <- fit_s$k
+      m_s <- fit_s$M
     }
 
     basis <- if (m_s > 0) "spike" else if (m_c > 0) "controls" else NA_character_
-    k <- if (is.na(basis)) NA_real_ else if (basis == "spike") k_s else k_c
-    m <- if (is.na(basis)) NA_real_ else if (basis == "spike") m_s else m_c
+    fb <- if (is.na(basis)) NULL else if (basis == "spike") fit_s else fit_c
+    k <- if (is.null(fb)) NA_real_ else fb$k
+    m <- if (is.null(fb)) NA_real_ else fb$M
     list(
       rates = data.frame(
         run = rn,
@@ -526,8 +630,10 @@ flag_hopped_detections <- function(input_df,
         basis = basis,
         spill_reads = k,
         exposure = m,
-        rate = k / m,
-        rate_upper = .hop_poisson_upper(k, alpha) / m,
+        rate = if (is.null(fb)) NA_real_ else fb$r,
+        rate_upper = if (is.null(fb)) NA_real_ else fb$r_up,
+        dispersion = if (is.null(fb)) NA_real_ else fb$theta,
+        rate_untrimmed = untrimmed,
         rate_controls = if (m_c > 0) k_c / m_c else NA_real_,
         rate_spike = if (m_s > 0) k_s / m_s else NA_real_,
         n_control_excess = if (is.null(excess)) 0L else nrow(excess),
