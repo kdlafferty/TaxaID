@@ -115,10 +115,26 @@
 #'     exclusion for that unit.}
 #' }
 #' Each flagged unit has an \code{issue_type} (\code{"identity"} or
-#' \code{"library"}) saying which kind of disposition resolves it. An
-#' identity disposition resolves the identity issue on every unit of the
-#' sample. Library exclusions from \code{flag_failed_libraries()} still apply
-#' unless a unit is kept explicitly.
+#' \code{"library"}) saying which kind of disposition resolves it.
+#' \itemize{
+#'   \item \strong{An identity flag holds the whole tube.} A discordant or
+#'     suspect identity in ANY marker holds every unit of that sample, including
+#'     markers where it looked concordant (\code{tube_flagged}). A blank
+#'     contaminated at the bag is contaminated in every marker, even where one
+#'     marker happens to amplify little of it. An unassessable unit holds only
+#'     itself: a failed library says nothing about the tube's other markers.
+#'   \item \strong{Identity questions block; library failures do not.} A unit
+#'     held for identity is \code{pending_review} until the tube has a
+#'     disposition. A unit whose libraries failed is excluded
+#'     (\code{excluded_library_issue}) but not pending: excluding it is already
+#'     the conservative outcome, \code{flag_failed_libraries()} reports it
+#'     loudly, and a queue that makes a person sign off every failed library
+#'     invites rubber-stamping. It stays in the decision record, so
+#'     \code{"keep_library"} can reverse it.
+#'   \item Individually failed replicate libraries inside an admitted unit stay
+#'     excluded at row level (\code{admit} is \code{FALSE} for their rows) unless
+#'     the unit is kept explicitly.
+#' }
 #'
 #' @section The decision record:
 #' \code{decisions_path} names a CSV the user edits. Each call reads it and
@@ -169,7 +185,8 @@
 #'   it exists, then rewritten with the current review queue. Default NULL:
 #'   nothing is read or written, and the queue is only returned.
 #' @param on_pending \code{"warn"} (default), \code{"error"} or
-#'   \code{"ignore"}: what to do when units are held back awaiting review.
+#'   \code{"ignore"}: what to do when units are held back awaiting an identity
+#'   decision. A production workflow should pass \code{"error"}.
 #' @param verbose Logical. Print a summary. Default TRUE.
 #'
 #' @return \code{input_df} in its original order with these columns added:
@@ -191,8 +208,9 @@
 #' \code{n_libraries_assessable}, \code{composition_power},
 #' \code{library_status}, \code{run_status}, \code{n_markers_flagged},
 #' \code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
-#' \code{issue_type}, \code{confidence}, \code{reason}, \code{disposition},
-#' \code{pending_review}, \code{admit_as} and \code{admit}. Attribute
+#' \code{issue_type}, \code{tube_flagged}, \code{confidence}, \code{reason},
+#' \code{disposition}, \code{pending_review}, \code{excluded_library_issue},
+#' \code{admit_as} and \code{admit}. Attribute
 #' \code{"review_queue"}: the units that need a person, in decision-record
 #' shape. Attribute \code{"runs"}: one row per run x marker, with admitted
 #' control and sample counts, \code{control_status} (\code{"ok"},
@@ -460,7 +478,7 @@ classify_sample_identity <- function(input_df,
     unit = d$unit[first], sample = d$sample[first], marker = d$marker[first],
     run = d$run[first], stringsAsFactors = FALSE
   )
-  u$identity_label <- ifelse(tapply(d$is_ctl, d$unit, any)[u$unit], "blank", "sample")
+  u$identity_label <- ifelse(as.vector(tapply(d$is_ctl, d$unit, any)[u$unit]), "blank", "sample")
   u$n_libraries <- as.integer(tapply(d$library, d$unit, function(x) length(unique(x)))[u$unit])
   kept <- !d$excluded
   nk <- tapply(d$library[kept], d$unit[kept], function(x) length(unique(x)))
@@ -681,7 +699,7 @@ classify_sample_identity <- function(input_df,
           paste(conflict, collapse = ", ")), call. = FALSE)
       }
       per <- unlist(per)
-      u$identity_disposition <- unname(per[u$sample])
+      u$identity_disposition <- as.vector(unname(per[u$sample]))
     }
     lbd <- dec[dec$disposition %in% .SIG_LIBRARY_DISPOSITIONS, , drop = FALSE]
     if (nrow(lbd)) {
@@ -689,9 +707,11 @@ classify_sample_identity <- function(input_df,
     }
     # evidence drift: recorded status/appearance vs now
     if (all(c("identity_status", "identity_appearance") %in% names(dec))) {
+      ds <- if ("status_at_decision" %in% names(dec)) dplyr::coalesce(dec$status_at_decision, dec$identity_status) else dec$identity_status
+      da <- if ("appearance_at_decision" %in% names(dec)) dplyr::coalesce(dec$appearance_at_decision, dec$identity_appearance) else dec$identity_appearance
       m <- match(key_d, u$unit)
-      ch <- !is.na(m) & ((!is.na(dec$identity_status) & dec$identity_status != u$identity_status[m]) |
-        (!is.na(dec$identity_appearance) & dec$identity_appearance != u$identity_appearance[m]))
+      ch <- !is.na(m) & ((!is.na(ds) & ds != u$identity_status[m]) |
+        (!is.na(da) & da != u$identity_appearance[m]))
       stale <- key_d[ch]
     }
     unknown <- setdiff(key_d, u$unit)
@@ -765,23 +785,41 @@ classify_sample_identity <- function(input_df,
 }
 
 #' Merge the current queue into the CSV, never overwriting user-entered fields
+#'
+#' Evidence columns come from the current run. Every other column in the old
+#' record (the user's decision columns, any column they added, llm_ advice)
+#' is carried forward; fresh llm_ advice replaces old advice only where it
+#' exists. The evidence a person decided against is pinned in
+#' status_at_decision / appearance_at_decision the first time a disposition
+#' is seen, so a later change in evidence can be reported rather than
+#' silently overwritten.
 #' @noRd
 .sig_write_decisions <- function(queue, dec, path) {
   new <- queue
-  for (col in .SIG_DECISION_COLS) new[[col]] <- NA_character_
+  for (col in c(.SIG_DECISION_COLS, "status_at_decision", "appearance_at_decision")) {
+    if (!col %in% names(new)) new[[col]] <- NA_character_
+  }
   if (!is.null(dec) && nrow(dec)) {
+    for (col in c("status_at_decision", "appearance_at_decision")) {
+      if (!col %in% names(dec)) dec[[col]] <- NA_character_
+    }
+    pin <- !is.na(dec$disposition) & is.na(dec$status_at_decision)
+    if ("identity_status" %in% names(dec)) dec$status_at_decision[pin] <- dec$identity_status[pin]
+    if ("identity_appearance" %in% names(dec)) dec$appearance_at_decision[pin] <- dec$identity_appearance[pin]
     key_new <- paste(new$sample, new$marker, new$run, sep = "|")
     key_old <- paste(dec$sample, dec$marker, dec$run, sep = "|")
     m <- match(key_new, key_old)
-    keep_cols <- setdiff(names(dec), setdiff(names(queue), c(grep("^llm_", names(dec), value = TRUE))))
-    for (col in keep_cols) {
+    evidence <- setdiff(names(queue), grep("^llm_", names(queue), value = TRUE))
+    for (col in setdiff(names(dec), evidence)) {
       if (!col %in% names(new)) new[[col]] <- NA_character_
-      new[[col]][!is.na(m)] <- dec[[col]][m[!is.na(m)]]
+      take <- !is.na(m)
+      if (grepl("^llm_", col)) take <- take & is.na(new[[col]])
+      new[[col]][take] <- dec[[col]][m[take]]
     }
     # decided rows no longer in the queue stay in the record
     gone <- dec[!key_old %in% key_new & !is.na(dec$disposition), , drop = FALSE]
     if (nrow(gone)) {
-      for (col in setdiff(names(new), names(gone))) gone[[col]] <- NA_character_
+      for (col in setdiff(names(new), names(gone))) gone[[col]] <- NA
       new <- rbind(new, gone[, names(new), drop = FALSE])
     }
   }

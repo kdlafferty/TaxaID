@@ -13,6 +13,16 @@
 #'     actually sequence? Run first, before anything aggregates reads
 #' }
 #'
+#' @section Sample identity gate:
+#' \itemize{
+#'   \item \code{\link{classify_sample_identity}} -- does each blank look like a
+#'     blank and each sample like a sample? Admits only concordant units or
+#'     units with a recorded decision. Run after library failure, before
+#'     contaminant checks
+#'   \item \code{\link{review_sample_identity}} -- LLM advice on the tubes the
+#'     gate holds back (advice only; never admits anything)
+#' }
+#'
 #' @section Contamination:
 #' \itemize{
 #'   \item \code{\link{flag_contaminant}} -- compare against control samples
