@@ -232,8 +232,14 @@
   ids <- file.path(dir, "ids.txt")
   fa <- file.path(dir, "subset.fa")
   writeLines(accessions, ids)
+  # -target_only: identical sequences are stored as ONE record carrying every
+  # accession's defline, so without it asking for two such accessions returns
+  # that record twice under the same first id and makeblastdb rejects the
+  # duplicate ("Duplicate seq_ids are found"). With it, each copy is labelled
+  # with the accession actually requested. Real case: Ronquilus jordani
+  # FJ264437 / FJ264280.
   suppressWarnings(system2(blastdbcmd,
-    c("-db", shQuote(database), "-entry_batch", shQuote(ids)),
+    c("-db", shQuote(database), "-entry_batch", shQuote(ids), "-target_only"),
     stdout = fa, stderr = FALSE
   ))
   if (!file.exists(fa) || !any(startsWith(readLines(fa, warn = FALSE), ">"))) {
