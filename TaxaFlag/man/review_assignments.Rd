@@ -27,6 +27,7 @@ review_assignments(
   marker = NULL,
   data_type,
   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+  model_label = NULL,
   taxa_per_call = 15L,
   max_tokens = NULL,
   max_retries = 2L,
@@ -197,6 +198,16 @@ every plausibility column comes back suspiciously uniform, pass
 \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
 provider = "anthropic")}.}
 
+\item{model_label}{Character or \code{NULL}. A name for the model behind
+\code{llm_fn}, recorded in the cache key so a verdict obtained from one
+model is never served to a call asking another. Default \code{NULL}
+derives an identity from \code{options("TaxaID.provider")} and from
+\code{llm_fn} itself, which separates the providers and any wrapper that
+pins a model. What it cannot separate is two models from ONE provider,
+switched through \code{TaxaTools::set_model()} or a pinned tier: name
+them here when you compare them, or the second run is served the first
+model's verdicts from cache.}
+
 \item{taxa_per_call}{Integer. Maximum taxa (or candidate sets) per LLM call.
 Default \code{15L}. Candidate-set entries are longer than single taxon
 names; consider reducing to 8--10 when using \code{plausible_taxa_col}.}
@@ -204,7 +215,7 @@ names; consider reducing to 8--10 when using \code{plausible_taxa_col}.}
 \item{max_tokens}{Integer or \code{NULL}. Maximum response tokens requested
 from \code{llm_fn} (forwarded as \code{llm_fn(prompt, max_tokens = max_tokens)}
 whenever supplied). Default \code{NULL} -- does not pass \code{max_tokens}
-at all, so \code{llm_fn}'s own default applies (\code{3000L} for
+at all, so \code{llm_fn}'s own default applies (\code{16000L} for
 \code{TaxaTools::call_api()}). Raise this if \code{max_retries} alone
 isn't resolving truncation warnings for your data -- e.g. a long,
 multi-marker \code{marker} string can inflate per-taxon response length
