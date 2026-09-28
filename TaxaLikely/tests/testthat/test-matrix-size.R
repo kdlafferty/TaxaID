@@ -408,10 +408,31 @@ test_that("dry_run is validated", {
 })
 
 test_that("a retained build reports the unretained ceiling and does not refuse to run", {
-  # A reference set whose ceiling cannot fit a tiny budget: with
-  # pair_retention = "all" the guard stops; with a retention policy the table
-  # is thinned inside the alignment loop, so the ceiling is an upper bound
-  # the build will not reach and the guard reports instead of stopping.
+  # A reference set whose ceiling cannot fit a tiny budget. With a retention
+  # policy the table is thinned inside the alignment loop, so the ceiling is
+  # an upper bound the build will not reach: the guard reports it and returns
+  # before it needs the sequences at all, which is why `dna` can be NULL here.
+  ref <- data.frame(
+    composite_id = sprintf("ACC%04d", 1:400),
+    genus = rep(sprintf("Genus%02d", 1:4), each = 100),
+    species = rep(sprintf("Genus%02d sp%d", rep(1:4, each = 5), 1:5), each = 20),
+    stringsAsFactors = FALSE
+  )
+  local_mocked_bindings(.available_memory_gb = function() 0.001)
+
+  expect_message(
+    st <- TaxaLikely:::.matrix_memory_guard(
+      ref, NULL, n_ranks = 2L, by_genus = TRUE, max_foreign_reps_per_genus = 20L,
+      max_dist = 0.25, memory_budget_fraction = 0.7, max_seqs_per_taxon = 20L,
+      pair_retention = "best_per_partner"
+    ),
+    "upper bound"
+  )
+  expect_true(is.list(st))
+})
+
+test_that("an unretained build over budget is refused", {
+  skip_if_not_installed("Biostrings")
   ref <- data.frame(
     composite_id = sprintf("ACC%04d", 1:400),
     genus = rep(sprintf("Genus%02d", 1:4), each = 100),
@@ -428,13 +449,4 @@ test_that("a retained build reports the unretained ceiling and does not refuse t
       pair_retention = "all"
     )
   )
-  expect_message(
-    st <- TaxaLikely:::.matrix_memory_guard(
-      ref, dna, n_ranks = 2L, by_genus = TRUE, max_foreign_reps_per_genus = 20L,
-      max_dist = 0.25, memory_budget_fraction = 0.7, max_seqs_per_taxon = 20L,
-      pair_retention = "best_per_partner"
-    ),
-    "upper bound"
-  )
-  expect_true(is.list(st))
 })
