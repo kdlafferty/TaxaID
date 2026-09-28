@@ -43,7 +43,12 @@ current \code{core_nt} carries a version-1 index that BLAST+ 2.16 reads
 and 2.17 does not (the error names \code{MDB_INVALID}). Put the matching
 client first on \code{PATH} for the session; \code{TaxaWizard::workflow_check()}
 reports the version it finds, and \code{blastdbcmd -db <db> -info} is the
-direct test.}
+direct test. A database assembled from volumes fetched on different
+dates passes every per-volume checksum and still returns wrong records
+for accession and taxid lookups, silently; before trusting a local
+database, confirm that \code{blastdbcmd -info} reports one build date
+across its volumes and that the alias sequence count matches NCBI's
+current build.}
 
 \item{database}{For remote: NCBI database name (default \code{"nt"}). For
 local: path to a local BLAST database.}
