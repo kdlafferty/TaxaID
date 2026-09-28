@@ -107,8 +107,9 @@ the direction matters: harmonise the sequence-derived side (the
 likelihoods) onto the occurrence backbone (usually GBIF, \code{11}), not the
 reverse. The occurrence backbone holds taxa that have never been
 sequenced and so have no node in a sequence taxonomy; moving the priors
-onto NCBI drops those taxa silently (a measured 29 percent of a marine
-prior table, with a further 19 percent coarsened to genus or family).
+onto NCBI drops those taxa silently (roughly 20 to 30 percent of a
+marine prior table on two independent 120-taxon draws, with a further
+fifth coarsened to genus or family).
 A prior taxon that fails to map does not raise; it falls to the dark
 diversity floor, which is indistinguishable in the output from genuine
 dark diversity. The join rate per rank is reported at the end of every

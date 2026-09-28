@@ -230,6 +230,15 @@ The warning in `test-llm_utils.R` is a pre-existing, known issue unrelated to th
 
 ## Behavior changes to already-reviewed functions
 
+- The response ceiling (`max_tokens`) on `call_api()` and the provider
+  wrappers rises from 3000 to 16000. A reasoning model spends part of its
+  budget thinking before it writes, so a ceiling sized for the visible answer
+  returned a response carrying no text at all, which took out every LLM path
+  in the ecosystem (habitat assignment, assignment review, the LLM prior, the
+  unreferenced-species suggester, report drafting and script annotation). The
+  ceiling is a cap and not an allocation, so the larger default costs nothing
+  for a short answer.
+
 Not new functions (see "Added after the review" near the top for those) -- new behavior
 on functions this document already covers above.
 

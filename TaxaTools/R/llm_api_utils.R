@@ -63,7 +63,11 @@
 #' @param tier Character. Capability tier used when \code{model = NULL}:
 #'   \code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
 #'   \code{"top"} (most capable). Ignored when \code{model} is specified.
-#' @param max_tokens Integer. Maximum tokens in the response (default 3000).
+#' @param max_tokens Integer. Ceiling on the tokens the model may produce
+#'   (default 16000). A cap, not an allocation, so a generous value costs
+#'   nothing extra; it is generous because a reasoning model spends part of
+#'   the budget thinking before it writes, and a cap sized for the visible
+#'   answer alone returns a response with no text in it.
 #'   Sufficient for most taxonomy and habitat prompts. Increase for longer
 #'   outputs (e.g., large species lists). Higher values increase API cost.
 #' @param api_key Character. Anthropic API key. Defaults to the
@@ -89,7 +93,7 @@
 call_anthropic_api <- function(prompt_str,
                                model = NULL,
                                tier = c("mid", "fast", "top"),
-                               max_tokens = 3000L,
+                               max_tokens = 16000L,
                                api_key = Sys.getenv("ANTHROPIC_API_KEY")) {
   tier <- match.arg(tier)
   call_api(prompt_str,
@@ -551,7 +555,11 @@ read_llm_response <- function(files) {
 #' @param tier Character. Capability tier used when \code{model = NULL}:
 #'   \code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
 #'   \code{"top"} (most capable). Ignored when \code{model} is specified.
-#' @param max_tokens Integer. Maximum tokens in the response (default 3000).
+#' @param max_tokens Integer. Ceiling on the tokens the model may produce
+#'   (default 16000). A cap, not an allocation, so a generous value costs
+#'   nothing extra; it is generous because a reasoning model spends part of
+#'   the budget thinking before it writes, and a cap sized for the visible
+#'   answer alone returns a response with no text in it.
 #'   Sufficient for most taxonomy and habitat prompts. Increase for longer
 #'   outputs (e.g., large species lists). Higher values increase API cost.
 #' @param api_key Character. Google AI Studio API key. Defaults to the
@@ -594,7 +602,7 @@ read_llm_response <- function(files) {
 call_gemini_api <- function(prompt_str,
                             model = NULL,
                             tier = c("mid", "fast", "top"),
-                            max_tokens = 3000L,
+                            max_tokens = 16000L,
                             api_key = Sys.getenv("GEMINI_API_KEY")) {
   tier <- match.arg(tier)
   call_api(prompt_str,
@@ -628,7 +636,11 @@ call_gemini_api <- function(prompt_str,
 #' @param tier Character. Capability tier used when \code{model = NULL}:
 #'   \code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
 #'   \code{"top"} (most capable). Ignored when \code{model} is specified.
-#' @param max_tokens Integer. Maximum tokens in the response (default 3000).
+#' @param max_tokens Integer. Ceiling on the tokens the model may produce
+#'   (default 16000). A cap, not an allocation, so a generous value costs
+#'   nothing extra; it is generous because a reasoning model spends part of
+#'   the budget thinking before it writes, and a cap sized for the visible
+#'   answer alone returns a response with no text in it.
 #'   Sufficient for most taxonomy and habitat prompts. Increase for longer
 #'   outputs (e.g., large species lists). Higher values increase API cost.
 #' @param base_url Character. Base URL of the API endpoint. Default
@@ -695,7 +707,7 @@ call_gemini_api <- function(prompt_str,
 call_openai_api <- function(prompt_str,
                             model = NULL,
                             tier = c("mid", "fast", "top"),
-                            max_tokens = 3000L,
+                            max_tokens = 16000L,
                             base_url = "https://api.openai.com",
                             api_key = Sys.getenv("OPENAI_API_KEY")) {
   tier <- match.arg(tier)
@@ -784,7 +796,7 @@ call_openai_api <- function(prompt_str,
 #'   Default \code{NULL} builds the URL from the registry template and the
 #'   resolved \code{model} name.
 #' @param max_completion_tokens Integer. Maximum tokens in the response
-#'   (default 3000). Azure o-series models use this field name instead of
+#'   (default 16000). Azure o-series models use this field name instead of
 #'   \code{max_tokens}; handled automatically via the registry.
 #' @param api_key Character. Azure OpenAI API key. Defaults to the
 #'   \code{AZURE_OPENAI_API_KEY} environment variable.
@@ -822,7 +834,7 @@ call_azure_openai_api <- function(
   model = NULL,
   tier = c("mid", "fast", "top"),
   endpoint = NULL,
-  max_completion_tokens = 3000L,
+  max_completion_tokens = 16000L,
   api_key = Sys.getenv("AZURE_OPENAI_API_KEY")
 ) {
   tier <- match.arg(tier)
@@ -867,7 +879,11 @@ call_azure_openai_api <- function(
 #'   Browse available models at \url{https://ollama.com/library}.
 #'   Capable options for Apple Silicon: \code{"llama3.1:8b"},
 #'   \code{"mistral"}, \code{"gemma3:12b"}, \code{"qwen2.5:14b"}.
-#' @param max_tokens Integer. Maximum tokens in the response (default 3000).
+#' @param max_tokens Integer. Ceiling on the tokens the model may produce
+#'   (default 16000). A cap, not an allocation, so a generous value costs
+#'   nothing extra; it is generous because a reasoning model spends part of
+#'   the budget thinking before it writes, and a cap sized for the visible
+#'   answer alone returns a response with no text in it.
 #'   Behaviour is model-dependent; some models may ignore this setting.
 #' @param base_url Character. Base URL of the Ollama server.
 #'   Default \code{"http://localhost:11434"}. Change only if running Ollama
@@ -923,7 +939,7 @@ call_azure_openai_api <- function(
 #' }
 call_ollama_api <- function(prompt_str,
                             model = "llama3.2",
-                            max_tokens = 3000L,
+                            max_tokens = 16000L,
                             base_url = "http://localhost:11434") {
   call_api(prompt_str,
     provider   = "ollama",

@@ -507,10 +507,15 @@
 #'   \code{/models} endpoint (see \code{\link{list_models}}).
 #' @param model Character. Exact model identifier. Overrides \code{tier}
 #'   resolution. Use to pin a specific version for reproducibility.
-#' @param max_tokens Integer. Maximum tokens in the response (default 3000).
-#'   The correct request body field for the provider
-#'   (\code{max_tokens} vs \code{max_completion_tokens}) is read from the
-#'   registry automatically.
+#' @param max_tokens Integer. Ceiling on the tokens the model may produce
+#'   for this call (default 16000). It is a cap, not an allocation: a short
+#'   answer costs a short answer, so raising it does not raise the bill. The
+#'   default is generous because a reasoning model spends part of the budget
+#'   thinking before it writes anything, and a cap sized for the visible
+#'   answer alone returns a response carrying no text at all. Raise it
+#'   further for a long structured answer over a long prompt. The correct
+#'   request body field for the provider (\code{max_tokens} vs
+#'   \code{max_completion_tokens}) is read from the registry automatically.
 #' @param api_key Character. API key override. Default \code{NULL} reads the
 #'   key from the environment variable named in the provider's registry entry
 #'   (e.g. \code{ANTHROPIC_API_KEY}). Keyless providers (Ollama) ignore this.
@@ -633,7 +638,7 @@ call_api <- function(prompt_str,
                      provider = NULL,
                      tier = c("mid", "fast", "top"),
                      model = NULL,
-                     max_tokens = 3000L,
+                     max_tokens = 16000L,
                      api_key = NULL,
                      base_url = NULL,
                      images = NULL,

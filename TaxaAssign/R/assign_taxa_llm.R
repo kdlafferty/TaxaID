@@ -162,18 +162,17 @@ utils::globalVariables(c(
 #' @param taxa_per_call Integer >= 1. Maximum number of unique taxa sent to the
 #'   LLM in a single call. When the unique taxon list for a group exceeds this
 #'   limit it is split into sequential batches; results are combined before
-#'   joining to observations. Default 15: a real batch of 30 taxa truncated 4
-#'   times out of 5 at `call_api()`'s default `max_tokens` of 3000 (a
-#'   23-taxon batch succeeded in the same run) -- see
-#'   `.parse_taxa_response()`'s truncation-specific warning. 15 also matches
-#'   `TaxaFlag::review_assignments()`'s own default, which hit the identical
-#'   failure mode independently -- two independent real-data findings
-#'   agreeing on the same number. Still based on real trials rather than an
-#'   exhaustive sweep across response verbosity; if you still see truncation
-#'   warnings, reduce further or pass an `llm_fn` wrapper with a higher
-#'   `max_tokens` (e.g.
-#'   `function(prompt) TaxaTools::call_api(prompt, max_tokens = 8000L)`).
-#'   Increase if taxa are few and you prefer fewer API calls.
+#'   joining to observations. Default 15, which was measured against a
+#'   3000-token response ceiling: a real batch of 30 taxa truncated 4 times
+#'   out of 5 there, a 23-taxon batch succeeded, and
+#'   `TaxaFlag::review_assignments()` reached the same number independently.
+#'   That ceiling is now 16000 by default, so the batch size no longer has to
+#'   carry the whole burden of avoiding truncation, and a larger value is
+#'   safer than it was; it is left at 15 because no sweep has been run at the
+#'   new ceiling, and because a smaller batch also keeps each taxon's share of
+#'   the model's attention high. If you raise it, watch for
+#'   `.parse_taxa_response()`'s truncation warning. Increase if taxa are few
+#'   and you prefer fewer API calls.
 #' @param pause_seconds Numeric. Seconds to pause between LLM calls (both
 #'   between groups and between taxon batches within a group). Default 1.
 #' @param prior_phi Named numeric vector mapping `information_quality` levels

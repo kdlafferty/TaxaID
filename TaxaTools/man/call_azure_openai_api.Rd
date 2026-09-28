@@ -9,7 +9,7 @@ call_azure_openai_api(
   model = NULL,
   tier = c("mid", "fast", "top"),
   endpoint = NULL,
-  max_completion_tokens = 3000L,
+  max_completion_tokens = 16000L,
   api_key = Sys.getenv("AZURE_OPENAI_API_KEY")
 )
 }
@@ -34,7 +34,7 @@ Default \code{NULL} builds the URL from the registry template and the
 resolved \code{model} name.}
 
 \item{max_completion_tokens}{Integer. Maximum tokens in the response
-(default 3000). Azure o-series models use this field name instead of
+(default 16000). Azure o-series models use this field name instead of
 \code{max_tokens}; handled automatically via the registry.}
 
 \item{api_key}{Character. Azure OpenAI API key. Defaults to the

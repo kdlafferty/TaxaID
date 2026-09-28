@@ -9,7 +9,7 @@ call_api(
   provider = NULL,
   tier = c("mid", "fast", "top"),
   model = NULL,
-  max_tokens = 3000L,
+  max_tokens = 16000L,
   api_key = NULL,
   base_url = NULL,
   images = NULL,
@@ -37,10 +37,15 @@ Tier-to-model mapping is discovered live from the provider's
 \item{model}{Character. Exact model identifier. Overrides \code{tier}
 resolution. Use to pin a specific version for reproducibility.}
 
-\item{max_tokens}{Integer. Maximum tokens in the response (default 3000).
-The correct request body field for the provider
-(\code{max_tokens} vs \code{max_completion_tokens}) is read from the
-registry automatically.}
+\item{max_tokens}{Integer. Ceiling on the tokens the model may produce
+for this call (default 16000). It is a cap, not an allocation: a short
+answer costs a short answer, so raising it does not raise the bill. The
+default is generous because a reasoning model spends part of the budget
+thinking before it writes anything, and a cap sized for the visible
+answer alone returns a response carrying no text at all. Raise it
+further for a long structured answer over a long prompt. The correct
+request body field for the provider (\code{max_tokens} vs
+\code{max_completion_tokens}) is read from the registry automatically.}
 
 \item{api_key}{Character. API key override. Default \code{NULL} reads the
 key from the environment variable named in the provider's registry entry

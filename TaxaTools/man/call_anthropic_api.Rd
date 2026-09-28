@@ -8,7 +8,7 @@ call_anthropic_api(
   prompt_str,
   model = NULL,
   tier = c("mid", "fast", "top"),
-  max_tokens = 3000L,
+  max_tokens = 16000L,
   api_key = Sys.getenv("ANTHROPIC_API_KEY")
 )
 }
@@ -25,7 +25,11 @@ model to pin a version for reproducibility.}
 \code{"fast"} (cheapest), \code{"mid"} (balanced, default), or
 \code{"top"} (most capable). Ignored when \code{model} is specified.}
 
-\item{max_tokens}{Integer. Maximum tokens in the response (default 3000).
+\item{max_tokens}{Integer. Ceiling on the tokens the model may produce
+(default 16000). A cap, not an allocation, so a generous value costs
+nothing extra; it is generous because a reasoning model spends part of
+the budget thinking before it writes, and a cap sized for the visible
+answer alone returns a response with no text in it.
 Sufficient for most taxonomy and habitat prompts. Increase for longer
 outputs (e.g., large species lists). Higher values increase API cost.}
 

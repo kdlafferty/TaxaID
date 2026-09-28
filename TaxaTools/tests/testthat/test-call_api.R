@@ -404,3 +404,13 @@ test_that(".build_endpoint_url is unchanged for built-in providers", {
     "http://localhost:11434/v1/chat/completions"
   )
 })
+
+test_that("the response ceiling leaves room for a reasoning model to think", {
+  # A cap sized for the visible answer alone returns a response with no text
+  # when the model spends its budget thinking first, which took out every LLM
+  # path in the ecosystem. The default is a ceiling, not an allocation, so a
+  # generous value costs nothing; this pins it against a quiet reduction.
+  for (f in list(call_api, call_anthropic_api, call_openai_api, call_gemini_api)) {
+    expect_gte(eval(formals(f)$max_tokens), 16000L)
+  }
+})

@@ -7,7 +7,7 @@
 call_ollama_api(
   prompt_str,
   model = "llama3.2",
-  max_tokens = 3000L,
+  max_tokens = 16000L,
   base_url = "http://localhost:11434"
 )
 }
@@ -22,7 +22,11 @@ Browse available models at \url{https://ollama.com/library}.
 Capable options for Apple Silicon: \code{"llama3.1:8b"},
 \code{"mistral"}, \code{"gemma3:12b"}, \code{"qwen2.5:14b"}.}
 
-\item{max_tokens}{Integer. Maximum tokens in the response (default 3000).
+\item{max_tokens}{Integer. Ceiling on the tokens the model may produce
+(default 16000). A cap, not an allocation, so a generous value costs
+nothing extra; it is generous because a reasoning model spends part of
+the budget thinking before it writes, and a cap sized for the visible
+answer alone returns a response with no text in it.
 Behaviour is model-dependent; some models may ignore this setting.}
 
 \item{base_url}{Character. Base URL of the Ollama server.
