@@ -4,7 +4,7 @@
 
 Estimates theta priors -- each taxon's expected share of the detections at a site -- for taxonomic assignment, from occurrence records (see TaxaFetch). A site-centered kernel estimator weights occurrence points by distance, with optional depth and habitat conditioning, and evidence layers add undetected diversity, regional proximity, iNaturalist ranges, invasive watch lists and domestic or food species. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 17 exported function(s).
+Version 0.1.0. 18 exported function(s).
 
 ## Functions
 
@@ -73,7 +73,7 @@ Multiplies each evidence row's presence weight by the taxon's own weight for the
 
 **Value:** 'evidence' with 'weight' replaced by the conditioned weight and three added columns: 'habitat_weight' (H_{site}, 'NA' when unknown), 'weight_unconditioned' (the generator's original weight) and 'habitat_floored' ('TRUE' where the product fell below 'w_floor').
 
-### estimate_kernel_priors(occurrence_data, site_lat, site_lon, site_habitat, lambda_km, m = 1, covariate_col = NULL, site_covariate = NULL, lambda_covariate = NULL, lambda_latitude = NULL, site_id = NULL, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", sampling_group_col = NULL, support_weight = exp(-3))
+### estimate_kernel_priors(occurrence_data, site_lat, site_lon, site_habitat, lambda_km, m = 1, covariate_col = NULL, site_covariate = NULL, lambda_covariate = NULL, lambda_latitude = NULL, site_id = NULL, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", habitat_col = "main_habitat", sampling_group_col = NULL, count_col = NULL, support_weight = exp(-3))
 
 Estimate site priors by distance-kernel weighting of occurrence records
 
@@ -97,9 +97,32 @@ Computes each species' expected share of legitimate detections at a sampling sit
 | lon_col | no | "decimalLongitude" | Column names in occurrence_data (defaults "taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat"). |
 | habitat_col | no | "main_habitat" | Column names in occurrence_data (defaults "taxon_name", "decimalLatitude", "decimalLongitude", "main_habitat"). |
 | sampling_group_col | no | NULL | Optional column naming a detection-process grouping (e.g. "sampling_group"). Default NULL: all taxa share one composition and one Good-Turing budget. This default is not a safe "do nothing" choice: with no sampling_group_col, every record is pooled regardless of detection process, with no warning or error, even when that means silently mixing genuinely incompatible processes (e.g. phytoplankton cell counts with bird point counts). Grouping is never inferred automatically from taxonomy or data -- this function has no way to know which taxa were sampled by a comparable process, so it never guesses. Supplying a correct sampling_group_col is the caller's responsibility, built BY HAND from real knowledge of detection methodology -- there is no automated way to detect "comparable method" from taxonomy or data alone (an LLM guess is not a substitute for real methodological knowledge either). This is not a burdensome ask: this function does NOT require pre-merged, sample-size-adequate groups for statistical adequacy -- it degrades gracefully, producing honestly wide uncertainty for a sparse group on its own (empirically confirmed on a real 9-group expert classification down to a single-taxon group, see README.md's "Shared detection effort" section) -- so classify at whatever granularity genuinely reflects distinct detection methods, without worrying whether each resulting group individually "has enough data." When supplied, theta AND the budget (f1, f2, missing_mass, chao_missing, theta_present) are computed WITHIN each group, because both are shared-denominator quantities that assume a common detection process. Pooling across processes dilutes a detectable taxon's share with records the assay could never amplify, and lets barely-sampled groups contribute singletons that inflate f1 -- and so chao_missing, quadratically -- while adding almost nothing to missing_mass, deflating theta_present (theta_present is priced from missing_mass / f1, so a diluted missing_mass still deflates it even though chao_missing no longer sits in that formula). Note this is a no-op for a taxonomically homogeneous pool (a fish assay whose occurrence pool is all fish), which is why it changes nothing at sites like GreatLakes; it matters for broad markers (18S) spanning groups with very different detection probabilities. With more than one group the pooled scalars are NA by design and $budget is authoritative -- a single number would be silently wrong. |
+| count_col | no | NULL | Optional character. Name of a non-negative numeric column giving how many records each row stands for. NULL (default): every row is one record. With a count column, a row of count n is exactly equivalent to n identical one-record rows -- every sum (W, the Kish denominator, the kernel-weighted and regional compositions, the neighborhood-support counts behind f1/f2) is count-weighted -- so aggregated inputs such as gridded occurrence cubes or estimate_kernel_priors_from_counts()'s distance bands reuse this estimator unchanged. Rows with a count of zero are dropped. |
 | support_weight | no | exp(-3) | Numeric in (0, 1]. A record counts toward the discrete neighborhood-support statistics (singleton detection, record counts) when its total kernel weight is at least support_weight (default exp(-3), i.e. within ~3 bandwidths). Continuous quantities (theta, n_eff) always use all records. |
 
 **Value:** An object of class '"taxaexpect_kernel_priors"': a list with priors Data frame: 'taxon_name', 'grid_id', 'main_habitat', 'alpha', 'beta', 'theta_mean', 'theta_sd', 'prior_branch', 'effective_records'. n_eff Kish effective sample size at the site. W Total kernel weight. singletons Data frame of neighborhood singletons (species with exactly one supporting record): 'taxon_name', record ...
+
+### estimate_kernel_priors_from_counts(occurrence_counts, site_habitat, lambda_km, m = 1, habitat_filter = c("none", "taxon_threshold"), habitat_lookup = NULL, habitat_threshold = 0.5, extra_occurrences = NULL, sampling_group_col = NULL, site_id = NULL, support_weight = exp(-3))
+
+Estimate site priors from GBIF band counts (no record download)
+
+The fast path to the same prior object 'estimate_kernel_priors()' returns. Input is 'TaxaFetch::fetch_gbif_occurrence_counts()': per-species GBIF record counts in concentric distance bands around the site. Each band becomes one pseudo-record carrying its count, placed at the band's representative distance, and the fit is delegated to 'estimate_kernel_priors()' with 'count_col' - so 'theta', the Beta parameters, 'effective_records', the regional back-off, the per-group Good-Turing budget and every warning are computed by exactly the same code, and the result slots into ...
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| occurrence_counts | yes |  | Tibble from TaxaFetch::fetch_gbif_occurrence_counts() (columns taxon_name, band_lo_km, band_hi_km, n), optionally with a sampling-group column added by TaxaTools::assign_sampling_group(). |
+| site_habitat | yes |  | Character scalar. Focal habitat. |
+| lambda_km | yes |  | Numeric scalar. Kernel bandwidth, km. Required. |
+| m | no | 1 | Numeric >= 0. Regional pseudo-records (as in estimate_kernel_priors()). |
+| habitat_filter | no | c("none", "taxon_threshold") | How the band counts are restricted to site_habitat. "none" (default): every counted taxon enters the composition. "taxon_threshold": only taxa whose habitat_lookup weight for site_habitat is at least habitat_threshold. See "What differs from the records path" for the trade-off. Applies to the band counts only; extra_occurrences carry their own record-level habitat. |
+| habitat_lookup | no | NULL | Data frame or NULL. Required for habitat_filter = "taxon_threshold". Per-taxon habitat weights with a taxon_name column and one numeric column per habitat, named as in site_habitat (the shape TaxaHabitat::build_habitat_lookup() returns). Taxa absent from it are treated like records with no habitat in the records path: dropped, and counted in a message. |
+| habitat_threshold | no | 0.5 | Numeric in (0, 1]. Minimum site_habitat weight for a taxon to enter the composition. Default 0.5, the threshold the production workflows pass to assign_habitat_biological(). |
+| extra_occurrences | no | NULL | Data frame or NULL. Point records from sources other than GBIF (a local survey, a museum table), one row per record, prepared exactly as for the records path: columns taxon_name, decimalLatitude, decimalLongitude and a record-level main_habitat (e.g. from TaxaHabitat::assign_habitat_biological()), plus the sampling_group_col column when grouping. They are fitted at their true distances in the same composition as the band counts; only rows whose main_habitat is site_habitat count, as in the records path. Make sure they are not ALSO in GBIF (a dataset published to GBIF would be counted twice); exclude it from the count query if it is. |
+| sampling_group_col | no | NULL | Optional column in occurrence_counts (and extra_occurrences) naming the detection-process group; passed through to estimate_kernel_priors(). |
+| site_id | no | NULL | Character or NULL, as in estimate_kernel_priors(). |
+| support_weight | no | exp(-3) | Numeric in (0, 1], as in estimate_kernel_priors(). The support radius -lambda_km * log(support_weight) should be one of the band edges (the default edges include 3 * lambda_km); otherwise the singleton/doubleton counts are only approximate and a warning says so. |
+
+**Value:** An object of class '"taxaexpect_kernel_priors"', as from 'estimate_kernel_priors()', with 'params$source = "gbif_counts"', 'params$breaks_km', 'params$habitat_mode', 'params$habitat_threshold' and 'params$n_extra_records' added.
 
 ### fit_regional_presence_curve(presence_df, bins = c(0, 100, 200, 400, 700, 1100))
 

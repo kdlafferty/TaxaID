@@ -4,7 +4,7 @@
 
 Identifies and flags anomalous detections in taxonomic assignment results from biological surveys. Detects laboratory and field contamination by comparing read proportions against control samples, flags handler-related artifacts near equipment setup or collection events, and provides LLM-based expert review of habitat fit, geographic plausibility, contaminant risk, and taxonomic scope. Operates on consensus data frames and appends categorical flag columns for user-driven filtering. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 11 exported function(s).
+Version 0.1.0. 15 exported function(s).
 
 ## Functions
 
@@ -55,6 +55,34 @@ Downloads the GBIF occurrence-density PNG tile(s) covering a query point and a s
 
 **Value:** A one-row data frame: taxon_key, query_lat, query_lon As supplied. zoom_requested The 'zoom' argument, as supplied. zoom_used The zoom level the reported values were actually computed at - 'zoom_requested' unless escalation stepped down to find something. 'NA' when 'escalate = TRUE' (the default) and nothing was found anywhere from 'zoom' down to 'min_zoom' (nothing was ever "used"). When ...
 
+### classify_sample_identity(input_df, library_col = "event_id", sample_col = "sample_id", marker_col = "marker", run_col = "run", count_col = "count", taxon_col = "taxon_name", control_samples, failed_libraries = NULL, taxon_label_col = NULL, diversity_blank_max = 0.5, composition_share = 0.5, ubiquitous_fraction = 0.9, unassessable_policy = c("asymmetric", "block"), decisions_path = NULL, on_pending = c("warn", "error", "ignore"), verbose = TRUE)
+
+Gate Samples on Whether They Look Like Their Label
+
+Classifies every sample x marker x run (a "unit": one tube amplified with one marker on one run, pooled over its replicate libraries) on two axes - what it is LABELLED (blank or sample) and what it LOOKS LIKE (a valid blank, a valid sample, neither, or unassessable) - and admits it to analysis only when the two agree or a person has recorded a decision. Everything else is held back and listed for review. Nothing is dropped silently: every unit keeps its row, its evidence and its reason.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| input_df | yes |  | Long-format data frame, one row per feature x library, with every marker of the study and every control. Pass the same table used for flag_failed_libraries(). |
+| library_col | no | "event_id" | Character. Column names, as in flag_failed_libraries. sample_col must identify the physical tube shared across markers; taxon_col is the fine-grained feature (ESV/ASV) used for composition and diversity. |
+| sample_col | no | "sample_id" | Character. Column names, as in flag_failed_libraries. sample_col must identify the physical tube shared across markers; taxon_col is the fine-grained feature (ESV/ASV) used for composition and diversity. |
+| marker_col | no | "marker" | Character. Column names, as in flag_failed_libraries. sample_col must identify the physical tube shared across markers; taxon_col is the fine-grained feature (ESV/ASV) used for composition and diversity. |
+| run_col | no | "run" | Character. Column names, as in flag_failed_libraries. sample_col must identify the physical tube shared across markers; taxon_col is the fine-grained feature (ESV/ASV) used for composition and diversity. |
+| count_col | no | "count" | Character. Column names, as in flag_failed_libraries. sample_col must identify the physical tube shared across markers; taxon_col is the fine-grained feature (ESV/ASV) used for composition and diversity. |
+| taxon_col | no | "taxon_name" | Character. Column names, as in flag_failed_libraries. sample_col must identify the physical tube shared across markers; taxon_col is the fine-grained feature (ESV/ASV) used for composition and diversity. |
+| control_samples | yes |  | Character vector of sample_col (or library_col) values LABELLED as negative controls. Required. |
+| failed_libraries | no | NULL | Optional result of flag_failed_libraries() on input_df. When NULL it is computed here with its defaults. |
+| taxon_label_col | no | NULL | Character or NULL. A human-readable name column (species, or the finest rank known). When given, each unit gets a top_taxa summary, and each run gets one for its field units. Needed by review_sample_identity(). Default NULL. |
+| diversity_blank_max | no | 0.5 | Numeric. Blank effective diversity, as a fraction of the marker's reference field diversity, at or above which a blank carries an environmental community. Default 0.5. On one real study, clean blanks sat at a median of 0.18 and the worst contaminated blank at 1.43. The distribution is continuous, so the value is a judgement; units near it are for review, not for a verdict. |
+| composition_share | no | 0.5 | Numeric in (0, 1]. Share of a unit's assessable replicate libraries that must resemble the other label. Default 0.5. |
+| ubiquitous_fraction | no | 0.9 | Numeric in (0, 1] or NULL. A feature present in at least this fraction of a run's field units (with 5 or more units) AND holding the majority of reads in at least half of that run's blanks is a spike-in or internal standard added to every tube. Both are required: common environmental taxa can be in nearly every field unit too, but do not dominate clean blanks. It is dropped from that run's composition and diversity, because it carries no identity information and a template-free blank is dominated by it: left in, a clean blank of a spiked run looks compositionally close to the samples. It stays in top_taxa and is listed in attr(, "runs")$ubiquitous_taxa. Judged per run, since an archive can hold spiked and unspiked runs of one marker. NULL keeps every feature. Default 0.9. |
+| unassessable_policy | no | c("asymmetric", "block") | "asymmetric" (default) or "block". See The matrix. |
+| decisions_path | no | NULL | Character or NULL. The CSV decision record. Read if it exists, then rewritten with the current review queue. Default NULL: nothing is read or written, and the queue is only returned. |
+| on_pending | no | c("warn", "error", "ignore") | "warn" (default), "error" or "ignore": what to do when units are held back awaiting an identity decision. A production workflow should pass "error". |
+| verbose | no | TRUE | Logical. Print a summary. Default TRUE. |
+
+**Value:** 'input_df' in its original order with these columns added: 'identity_label' '"blank"' or '"sample"', as labelled. 'identity_appearance' '"valid_blank"', '"valid_sample"', '"neither"' or '"unassessable"'. 'identity_status' '"concordant"', '"discordant"', '"suspect"' or '"unassessable"'. 'admit_as' '"control"', '"sample"', '"positive_control"' or 'NA' (not admitted); reflects any reassignment. ...
+
 ### compute_local_occurrence_distance(taxon_names, query_lat, query_lon, occurrence_data, taxon_col = "taxon_name", lat_col = "decimalLatitude", lon_col = "decimalLongitude", date_col = NULL)
 
 Distance from a query point to the nearest already-fetched GBIF occurrence
@@ -101,6 +129,33 @@ Compares detection proportions between field samples and control samples (negati
 
 **Value:** A data frame with one row per taxon, sorted by 'observation_validity' (most likely contaminants first). Columns: '{taxon_col}' Taxon identifier (from input). 'observation_validity' Numeric 0-1. Empirical Bayes-shrunk ratio of the depth-weighted field rate to the total (field + control) rate. Higher = more likely a real, genuine detection; lower = more likely a contaminant. Approaches, but ...
 
+### flag_failed_libraries(input_df, library_col = "event_id", sample_col = "sample_id", marker_col = "marker", run_col = "run", count_col = "count", taxon_col = "taxon_name", control_samples = NULL, expected_libraries = NULL, fold_threshold = 10, run_fail_fraction = 0.5, min_reference_runs = 3L, reference_depth = NULL, control_contrast_max = 0.5, cleared_runs = NULL, verbose = TRUE)
+
+Flag Sequencing Libraries and Runs That Failed
+
+Asks, before anything else is computed from a run, whether each library actually sequenced. A library is one sample amplified with one marker; a run is the set of libraries of one marker sequenced together. A failed library looks like a sample with few species, and nothing downstream can tell the difference: richness, occupancy and read shares all shrink, and control checks such as 'validate_controls' lose the power to fail anything, which they report as a pass.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| input_df | yes |  | Long-format data frame, one row per feature x library. |
+| library_col | no | "event_id" | Character. Column identifying the sequenced library (a sample-replicate column). Default "event_id". |
+| sample_col | no | "sample_id" | Character. Column identifying the physical sample or extract shared across markers. Default "sample_id". |
+| marker_col | no | "marker" | Character. Column identifying the marker or assay. Default "marker". |
+| run_col | no | "run" | Character. Column identifying the sequencing run (the pool sequenced together); runs are always taken within a marker. Default "run". |
+| count_col | no | "count" | Character. Numeric count column. Default "count". |
+| taxon_col | no | "taxon_name" | Character or NULL. Feature column, used for richness (features with a positive count). NULL skips richness and the control contrast. Default "taxon_name". |
+| control_samples | no | NULL | Character vector of library_col or sample_col values that are negative controls. Controls are not given a library verdict; they feed the control contrast. Default NULL. |
+| expected_libraries | no | NULL | Optional data frame with the columns named by library_col, sample_col, marker_col and run_col: libraries known to have been sequenced. Any with no rows in input_df enter at depth 0. Default NULL. |
+| fold_threshold | no | 10 | Numeric > 1. How many times below expectation a library must be on BOTH deviations to fail. Default 10. On one real three-marker study the within-sample, cross-marker scatter of healthy libraries had a median absolute deviation of about 2.1-fold, so 10-fold sits about three of those out; two whole-run failures there sat 100-fold low. |
+| run_fail_fraction | no | 0.5 | Numeric in (0, 1]. Share of a run's assessed field libraries that must fail (or be low, for "low_yield") for the run verdict. Default 0.5. |
+| min_reference_runs | no | 3L | Integer. Runs a marker needs before its reference can expose a whole-run failure. Default 3. |
+| reference_depth | no | NULL | Optional named numeric vector, one typical field-library depth per marker (names = marker values). Overrides the data-derived reference for those markers; use it for a marker sequenced in fewer than min_reference_runs runs. |
+| control_contrast_max | no | 0.5 | Numeric. Control-over-field richness ratio at or above which the control contrast is reported "collapsed". Default 0.5. |
+| cleared_runs | no | NULL | Character vector of "<run>\|<marker>" keys a person has reviewed and chosen to analyse despite a "failed" verdict. The verdict is kept; only exclude_library changes, and the clearance is recorded in attr(, "runs"). Default NULL. |
+| verbose | no | TRUE | Logical. Print a per-run summary. Default TRUE. |
+
+**Value:** 'input_df' in its original row order with these columns added: 'library_status' '"failed"', '"low_yield"', '"low_yield_undetermined"', '"pass"' or 'NA' (control, not assessed); see The test. 'library_reason' Plain-English explanation with the numbers. 'run_status' The run verdict; see Two granularities. 'exclude_library' Logical. TRUE for a failed library and for every library of a failed, ...
+
 ### flag_handler(input_df, datetime_col = "datetime", taxon_col = "taxon_name", group_col = NULL, interval_minutes = 30, handler_taxa = NULL, station_metadata = NULL, deploy_col = "deploy_time", retrieve_col = "retrieve_time", verbose = TRUE)
 
 Flag Detections Near Start or End of a Sampling Period
@@ -121,6 +176,29 @@ Identifies detections that occur within a user-specified time interval of the ea
 | verbose | no | TRUE | Logical. Print summary messages. Default TRUE. |
 
 **Value:** The input data frame with four columns appended: 'validity_flag' Character. '"valid"' (genuine detection), '"questionable_handling"', or '"invalid_handling"' (probable handler artifact). Fixed column name across every TaxaFlag flag_*() mechanism - see '@section Unified validity schema' above. 'observation_validity' Numeric 0-1. 1.0 for detections outside the interval; decreasing toward 0 as ...
+
+### flag_hopped_detections(input_df, event_col = "event_id", taxon_col = "taxon_name", count_col = "count", run_col = NULL, control_samples = NULL, spike_taxa = NULL, spike_samples = NULL, receiver_share = c("equal", "depth"), alpha = 0.01, max_rate = 0.05, verbose = TRUE)
+
+Flag Detections Explained by Read Spillover Between Samples on a Run
+
+Flags individual detections (one feature in one sample) whose read count is no larger than what spillover from the SAME feature elsewhere on the same sequencing run would be expected to deposit there. Spillover covers Illumina index hopping, tag jumps and Nanopore barcode misassignment: every mechanism in which a small fraction of a feature's reads are credited to other samples in the same pool.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| input_df | yes |  | Long-format data frame, one row per feature x sample. |
+| event_col | no | "event_id" | Character. Column identifying the sequenced sample (library, replicate or recording unit). Default "event_id". |
+| taxon_col | no | "taxon_name" | Character. Column identifying the feature. A fine-grained feature id (ESV/ASV, or a call/image id for non-sequence data) is preferable to a taxon name, because spillover acts on the feature and does not depend on assignment succeeding. Default "taxon_name". |
+| count_col | no | "count" | Character. Numeric count column. Default "count". |
+| run_col | no | NULL | Character or NULL. Column identifying the run (the pool in which spillover can occur). When NULL the whole table is treated as one run and a warning says so. |
+| control_samples | no | NULL | Character vector of event_col values that are negative controls (field, extraction or PCR blanks). May be NULL when spike_taxa is supplied. |
+| spike_taxa | no | NULL | Character vector of taxon_col values that are a NON-NATIVE positive-control spike: a feature that cannot genuinely occur in any field sample. Do not list a native spike here; its field detections would all be flagged. Default NULL. |
+| spike_samples | no | NULL | Character vector of event_col values holding the spike (positive controls). Required with spike_taxa. |
+| receiver_share | no | c("equal", "depth") | Character. "equal" (default) or "depth"; see The model. "depth" requires a spike on every assessed run. |
+| alpha | no | 0.01 | Numeric in (0, 1). Tail probability used three ways: a detection more improbable than this under spillover is "valid"; a control feature more improbable than this is excluded as contamination; and 1 - alpha is the confidence level of the rate's upper bound. Default 0.01. |
+| max_rate | no | 0.05 | Numeric. The largest spillover rate treated as physically possible. A run whose evidence implies more is reported as "implausible_rate" and NOT assessed: its detections carry NA. Default 0.05. Published figures: Illumina index hopping on patterned flow cells is typically 0.1-2%, up to ~6% in a PCR-free workflow (Costello et al. 2018, BMC Genomics 19:332); metabarcoding tag jumps ~2.1-2.6% of sequences (Schnell et al. 2015, Mol. Ecol. Resour. 15:1289). On one real three-marker study, blanks on three large runs implied 7-57%: that is abundance-correlated contamination OF THE BLANKS, which blanks overstate (an empty library is amplified until a few molecules fill it), and projecting it onto field samples would have flagged 16% of all 18S detections. |
+| verbose | no | TRUE | Logical. Print a per-run summary. Default TRUE. |
+
+**Value:** 'input_df' in its original row order with these columns added: 'observation_validity' Numeric 0-1, x / (x + E): the share of the detection's reads that expected spillover does not account for. Higher = more likely genuine. A ranked screening statistic, not a probability. 'NA' where not assessed. 'validity_flag' '"invalid_index_hop"', '"questionable_index_hop"', '"valid"' or 'NA' - see ...
 
 ### flag_watch_candidates(consensus_df, match_df, watch_taxa, observation_col = "observation_id", taxon_col = "taxon_name", score_col = "score_original", winner_col = "primary_taxon", score_margin = 0)
 
@@ -154,7 +232,7 @@ Summarizes the quality flags applied by TaxaFlag into a structured 'report_secti
 
 **Value:** A 'report_section' object with: methods Template text describing which flags were applied. results Template text summarizing flag counts. params Named list of flagging parameters. statistics Named list of flag counts.
 
-### review_assignments(input_df, taxon_col = "consensus_taxon", taxon_rank_col = NULL, plausible_taxa_col = NULL, irreducible_only = TRUE, consensus_posterior_col = "consensus_posterior", winner_prior_col = "winner_prior", winner_rank_expanded_col = "winner_rank_expanded", plausible_posteriors_col = "plausible_posteriors", consensus_plausibility_col = "consensus_plausibility", consensus_discrimination_col = "consensus_discrimination", dist_nearest_occupied_km_col = "dist_nearest_occupied_km", patch_diameter_km_col = "patch_diameter_km", beyond_buffer_col = "beyond_buffer", inat_in_range_col = "in_range", inat_n_observations_col = "n_observations", inat_matched_name_col = "matched_name", context, target_group = NULL, marker = NULL, data_type, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), taxa_per_call = 15L, max_tokens = NULL, max_retries = 2L, pause_seconds = 1, cache_dir = NULL, on_unreviewed = c("warn", "error", "ignore"), verbose = TRUE)
+### review_assignments(input_df, taxon_col = "consensus_taxon", taxon_rank_col = NULL, plausible_taxa_col = NULL, irreducible_only = TRUE, consensus_posterior_col = "consensus_posterior", winner_prior_col = "winner_prior", winner_rank_expanded_col = "winner_rank_expanded", plausible_posteriors_col = "plausible_posteriors", consensus_plausibility_col = "consensus_plausibility", consensus_discrimination_col = "consensus_discrimination", dist_nearest_occupied_km_col = "dist_nearest_occupied_km", patch_diameter_km_col = "patch_diameter_km", beyond_buffer_col = "beyond_buffer", inat_in_range_col = "in_range", inat_n_observations_col = "n_observations", inat_matched_name_col = "matched_name", context, target_group = NULL, marker = NULL, data_type, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), model_label = NULL, taxa_per_call = 15L, max_tokens = NULL, max_retries = 2L, pause_seconds = 1, cache_dir = NULL, on_unreviewed = c("warn", "error", "ignore"), verbose = TRUE)
 
 LLM Expert Review of Taxonomic Assignments
 
@@ -184,8 +262,9 @@ Sends unique taxa from a consensus table to an LLM for structured expert review.
 | marker | no | NULL | Character or NULL. Molecular marker or detection method (e.g., "12S", "COI", "camera trap"). Provides contaminant context. Default NULL. |
 | data_type | yes |  | Character. Detection method: one of "eDNA", "acoustic" or "image". REQUIRED -- there is no default, because the value changes the contaminant-assessment guidance the LLM is given, and a wrong assumption there is silent. State the method explicitly. |
 | llm_fn | no | getOption("TaxaID.llm_fn", TaxaTools::call_api) | Function. LLM provider function with signature function(prompt_str, ...). Default TaxaTools::call_api. Known footgun: call_api()'s provider auto-detection is set up by TaxaTools's own .onAttach(), which only runs via library(TaxaTools) -- calling this function from a fully-namespaced script (no library() calls at all) never triggers it, and call_api() silently falls back to degraded/uniform output rather than erroring. If every plausibility column comes back suspiciously uniform, pass llm_fn explicitly, e.g. function(p) TaxaTools::call_api(p, provider = "anthropic"). |
+| model_label | no | NULL | Character or NULL. A name for the model behind llm_fn, recorded in the cache key so a verdict obtained from one model is never served to a call asking another. Default NULL derives an identity from options("TaxaID.provider") and from llm_fn itself, which separates the providers and any wrapper that pins a model. What it cannot separate is two models from ONE provider, switched through TaxaTools::set_model() or a pinned tier: name them here when you compare them, or the second run is served the first model's verdicts from cache. |
 | taxa_per_call | no | 15L | Integer. Maximum taxa (or candidate sets) per LLM call. Default 15L. Candidate-set entries are longer than single taxon names; consider reducing to 8--10 when using plausible_taxa_col. |
-| max_tokens | no | NULL | Integer or NULL. Maximum response tokens requested from llm_fn (forwarded as llm_fn(prompt, max_tokens = max_tokens) whenever supplied). Default NULL -- does not pass max_tokens at all, so llm_fn's own default applies (3000L for TaxaTools::call_api()). Raise this if max_retries alone isn't resolving truncation warnings for your data -- e.g. a long, multi-marker marker string can inflate per-taxon response length enough that even the smallest retry sub-batch still truncates. |
+| max_tokens | no | NULL | Integer or NULL. Maximum response tokens requested from llm_fn (forwarded as llm_fn(prompt, max_tokens = max_tokens) whenever supplied). Default NULL -- does not pass max_tokens at all, so llm_fn's own default applies (16000L for TaxaTools::call_api()). Raise this if max_retries alone isn't resolving truncation warnings for your data -- e.g. a long, multi-marker marker string can inflate per-taxon response length enough that even the smallest retry sub-batch still truncates. |
 | max_retries | no | 2L | Integer. The per-batch retry budget, shared by two mechanisms. (1) When a batch's LLM response is truncated, empty, or unparseable, the batch is automatically split in half and retried -- a smaller batch requests a proportionally shorter response, directly relieving token-budget pressure. (2) When a response parses cleanly and is the right shape but simply OMITS specific taxa, those taxa (and only those) are re-asked in a follow-up call. The second case is not truncation, so the halving retry never fires for it -- see @section Unreviewed rows for how omitted taxa are recovered instead. Both stop after max_retries attempts and fall back to NA defaults for whatever is still missing. Neither applies to a hard llm_fn error (e.g. network/auth failure): a smaller or narrower batch can't fix that, so it is reported immediately without retrying. 0L disables both mechanisms, meaning exactly one call per batch. Default 2L. |
 | pause_seconds | no | 1 | Numeric. Seconds to pause between LLM calls. Default 1. |
 | cache_dir | no | NULL | Character or NULL (default). Directory for the per-taxon review cache. NULL disables caching entirely. Supplying a directory makes a re-run REPRODUCIBLE and stops it re-paying for verdicts already obtained: the review is a judgement, and two GreatLakes runs 50 minutes apart on identical input disagreed about Pimephales vigilax ("possible" then "unlikely"), putting it in one species list and not the other. One small .rds per reviewed taxon, keyed on everything that can move a verdict -- the taxon label and rank, its attached pipeline/weight/spatial notes, context, target_group, marker, data_type and the candidate-set path -- so changing any of them is correctly a miss. Manage it with taxaflag_clear_cache(), which uses the same TaxaTools::list_cache_files() engine as the other packages' cache helpers, so it does not accumulate unmanaged. |
@@ -193,6 +272,28 @@ Sends unique taxa from a consensus table to an LLM for structured expert review.
 | verbose | no | TRUE | Logical. Print progress messages. Default TRUE. |
 
 **Value:** The input data frame with 8 or 9 columns appended: 'llm_habitat_plausibility' likely / possible / unlikely. See '@section Column naming' below for why this and the next three columns carry an 'llm_' prefix. 'llm_geographic_plausibility' likely / possible / unlikely. 'llm_scope_plausibility' likely / possible / unlikely, or 'NA' if 'target_group' not supplied. 'llm_contamination_risk' high / ...
+
+### review_sample_identity(identity, context, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), model_label = NULL, tubes_per_call = 4L, max_tokens = NULL, max_retries = 2L, cache_dir = NULL, decisions_path = NULL, on_unreviewed = c("warn", "error", "ignore"), verbose = TRUE)
+
+LLM Advice on Samples That Do Not Look Like Their Label
+
+Sends each tube held back by 'classify_sample_identity' for an identity question to an LLM, with its taxa in every marker and the community of the field samples it was sequenced with, and asks for a plausibility judgement: is this a clean blank, a contaminated blank, a field sample carrying a blank's label, or the reverse? The answer is ADVICE. It is written to 'llm_' columns beside the decision record, and nothing is admitted on it: a person still records the 'disposition'.
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| identity | yes |  | The result of classify_sample_identity(), with its attributes intact (read it immediately; a dplyr verb drops them). |
+| context | yes |  | Character. What a blank is in this study and where the samples came from, e.g. "Field blanks are distilled water poured through a filter at the site. Samples are rocky-intertidal swabs, southern California." Required: the verdict depends on it, and a wrong assumption is silent. |
+| llm_fn | no | getOption("TaxaID.llm_fn", TaxaTools::call_api) | Function taking a prompt string (and optionally max_tokens) and returning the model's text. Default getOption("TaxaID.llm_fn", TaxaTools::call_api). Under fully namespaced calls pass it explicitly; see review_assignments for why. |
+| model_label | no | NULL | Character or NULL. A name for the model behind llm_fn, recorded in the cache key so one model's disposition is never served to a call asking another. Default NULL derives an identity from options("TaxaID.provider") and from llm_fn. See review_assignments for what that cannot separate. |
+| tubes_per_call | no | 4L | Integer. Tubes per LLM call. Default 4. |
+| max_tokens | no | NULL | Integer or NULL. Forwarded to llm_fn. Default NULL. |
+| max_retries | no | 2L | Integer. Re-asks for tubes the model omitted. Default 2. |
+| cache_dir | no | NULL | Character or NULL. One file per tube, keyed on the full prompt item and context, so changed evidence is a miss. Pruned by taxaflag_clear_cache. Default NULL (no cache). |
+| decisions_path | no | NULL | Character or NULL. If given, the llm_ columns are merged into this decision record without touching anything the user entered. Default NULL. |
+| on_unreviewed | no | c("warn", "error", "ignore") | "warn" (default), "error" or "ignore". |
+| verbose | no | TRUE | Logical. Default TRUE. |
+
+**Value:** The review queue ('attr(identity, "review_queue")') with 'llm_verdict' (one of '"clean_blank"', '"contaminated_blank"', '"sample_labelled_as_blank"', '"positive_control_labelled_as_blank"', '"blank_labelled_as_sample"', '"valid_sample"', '"uncertain"'), 'llm_suggested_disposition', 'llm_confidence' (high/moderate/low) and 'llm_rationale' added per sample. Attributes '"unreviewed_samples"' ...
 
 ### review_spatial_context(input_df, query_lat, query_lon, taxon_col = "primary_taxon", plausibility_col = "primary_plausibility", occurrence_data = NULL, excluded_occurrence_data = NULL, occurrence_taxon_col = "taxon_name", occurrence_lat_col = "decimalLatitude", occurrence_lon_col = "decimalLongitude", inat_range = NULL, inat_taxon_col = "taxon_name", live_inat_check = TRUE, inat_cache_dir = NULL, inat_radius_km = 500, context = NULL, target_group = NULL, marker = NULL, data_type, llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api), tile = "CartoDB.Positron", gbif_style = "classic.point", gbif_bin_size = 256L, gbif_year_range = NULL)
 

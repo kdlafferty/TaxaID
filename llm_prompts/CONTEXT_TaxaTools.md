@@ -87,7 +87,7 @@ A cache gate that tests only 'file.exists()' silently serves stale results. This
 
 **Value:** 'TRUE' if 'path' exists and no declared input is newer; 'FALSE' otherwise. Rejection emits a message naming the culprit.
 
-### call_anthropic_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 3000L, api_key = Sys.getenv("ANTHROPIC_API_KEY"))
+### call_anthropic_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 16000L, api_key = Sys.getenv("ANTHROPIC_API_KEY"))
 
 Call the Anthropic API with a Single Prompt String
 
@@ -98,12 +98,12 @@ Low-level generic function: submits one plain character string to the Anthropic 
 | prompt_str | yes |  | Character. A length-1 string containing the complete prompt to submit. |
 | model | no | NULL | Character. Exact Anthropic model identifier, e.g. "claude-sonnet-4-6". Default NULL resolves to the latest model for tier via list_models. Specify an exact model to pin a version for reproducibility. |
 | tier | no | c("mid", "fast", "top") | Character. Capability tier used when model = NULL: "fast" (cheapest), "mid" (balanced, default), or "top" (most capable). Ignored when model is specified. |
-| max_tokens | no | 3000L | Integer. Maximum tokens in the response (default 3000). Sufficient for most taxonomy and habitat prompts. Increase for longer outputs (e.g., large species lists). Higher values increase API cost. |
+| max_tokens | no | 16000L | Integer. Ceiling on the tokens the model may produce (default 16000). A cap, not an allocation, so a generous value costs nothing extra; it is generous because a reasoning model spends part of the budget thinking before it writes, and a cap sized for the visible answer alone returns a response with no text in it. Sufficient for most taxonomy and habitat prompts. Increase for longer outputs (e.g., large species lists). Higher values increase API cost. |
 | api_key | no | Sys.getenv("ANTHROPIC_API_KEY") | Character. Anthropic API key. Defaults to the ANTHROPIC_API_KEY environment variable. |
 
 **Value:** A length-1 character string containing the model's response text. Stops on any non-200 HTTP status.
 
-### call_api(prompt_str, provider = NULL, tier = c("mid", "fast", "top"), model = NULL, max_tokens = 3000L, api_key = NULL, base_url = NULL, images = NULL, show_tokens = FALSE, max_input_tokens = NULL, timeout = 120)
+### call_api(prompt_str, provider = NULL, tier = c("mid", "fast", "top"), model = NULL, max_tokens = 16000L, api_key = NULL, base_url = NULL, images = NULL, show_tokens = FALSE, max_input_tokens = NULL, timeout = 120)
 
 Call Any Configured LLM with a Single Prompt String
 
@@ -115,7 +115,7 @@ Generic provider-neutral function. Resolves the provider, model, API key, and en
 | provider | no | NULL | Character. Provider name: "anthropic", "gemini", "openai", "azure_openai", "ollama", or any name registered with register_provider. Default NULL uses options("TaxaID.provider"), which is set automatically by library(TaxaTools) based on detected API keys. |
 | tier | no | c("mid", "fast", "top") | Character. Capability tier when model = NULL: "fast" (cheapest/smallest), "mid" (balanced, default), or "top" (most capable). Ignored when model is specified. Tier-to-model mapping is discovered live from the provider's /models endpoint (see list_models). |
 | model | no | NULL | Character. Exact model identifier. Overrides tier resolution. Use to pin a specific version for reproducibility. |
-| max_tokens | no | 3000L | Integer. Maximum tokens in the response (default 3000). The correct request body field for the provider (max_tokens vs max_completion_tokens) is read from the registry automatically. |
+| max_tokens | no | 16000L | Integer. Ceiling on the tokens the model may produce for this call (default 16000). It is a cap, not an allocation: a short answer costs a short answer, so raising it does not raise the bill. The default is generous because a reasoning model spends part of the budget thinking before it writes anything, and a cap sized for the visible answer alone returns a response carrying no text at all. Raise it further for a long structured answer over a long prompt. The correct request body field for the provider (max_tokens vs max_completion_tokens) is read from the registry automatically. |
 | api_key | no | NULL | Character. API key override. Default NULL reads the key from the environment variable named in the provider's registry entry (e.g. ANTHROPIC_API_KEY). Keyless providers (Ollama) ignore this. |
 | base_url | no | NULL | Character. Base URL override for OpenAI-compatible providers (OpenAI, Azure, Ollama, custom registered providers). Default NULL uses the provider's registered endpoint. For Ollama: change the host/port, e.g. base_url = "http://remote-server:11434". For OpenAI-compatible proxies: supply the proxy base URL. For Azure: replaces the host in the endpoint template while preserving the deployment path and API version. |
 | images | no | NULL | Named list of base64-encoded PNG strings, as returned by .render_pdf_pages() in the TaxaFetch PDF pipeline. Default NULL (text-only call). When supplied, the prompt and images are sent as a multi-modal message using the provider's vision format: Anthropic image content blocks, Gemini inlineData parts, or OpenAI image_url blocks. Requires a vision-capable model (e.g. Claude Sonnet, Gemini 2.5 Flash, GPT-4o). |
@@ -125,7 +125,7 @@ Generic provider-neutral function. Resolves the provider, model, API key, and en
 
 **Value:** A length-1 character string containing the model's response text. The following attributes are attached: '"model"' The resolved model identifier. '"provider"' The provider name used. '"tokens"' A named list with elements 'input' and 'output' (integers) giving the token counts reported by the provider. Both are 'NA_integer_' when the provider does not return usage information. Stops on any ...
 
-### call_azure_openai_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), endpoint = NULL, max_completion_tokens = 3000L, api_key = Sys.getenv("AZURE_OPENAI_API_KEY"))
+### call_azure_openai_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), endpoint = NULL, max_completion_tokens = 16000L, api_key = Sys.getenv("AZURE_OPENAI_API_KEY"))
 
 Call the Azure OpenAI API with a Single Prompt String
 
@@ -137,12 +137,12 @@ Low-level provider function: submits one plain character string to an Azure Open
 | model | no | NULL | Character. Azure deployment name, e.g. "gpt-5.1". Default NULL resolves to the latest available deployment for tier via list_models. Specify an exact name to pin for reproducibility. |
 | tier | no | c("mid", "fast", "top") | Character. Capability tier used when model = NULL: "fast", "mid" (default), or "top". For Azure, all tiers currently map to the same DOI deployment; the param is accepted for interface consistency. |
 | endpoint | no | NULL | Character. Full deployment URL override, for callers that already have one. When provided, the deployment name is extracted from the URL path and the host is used to override the default DOI endpoint. Default NULL builds the URL from the registry template and the resolved model name. |
-| max_completion_tokens | no | 3000L | Integer. Maximum tokens in the response (default 3000). Azure o-series models use this field name instead of max_tokens; handled automatically via the registry. |
+| max_completion_tokens | no | 16000L | Integer. Maximum tokens in the response (default 16000). Azure o-series models use this field name instead of max_tokens; handled automatically via the registry. |
 | api_key | no | Sys.getenv("AZURE_OPENAI_API_KEY") | Character. Azure OpenAI API key. Defaults to the AZURE_OPENAI_API_KEY environment variable. |
 
 **Value:** A length-1 character string containing the model's response text. Stops on any non-200 HTTP status.
 
-### call_gemini_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 3000L, api_key = Sys.getenv("GEMINI_API_KEY"))
+### call_gemini_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 16000L, api_key = Sys.getenv("GEMINI_API_KEY"))
 
 Call the Google Gemini API with a Single Prompt String
 
@@ -153,12 +153,12 @@ Low-level provider function: submits one plain character string to the Google Ge
 | prompt_str | yes |  | Character. A length-1 string containing the complete prompt to submit. |
 | model | no | NULL | Character. Exact Gemini model identifier, e.g. "gemini-2.5-flash". Default NULL resolves to the latest model for tier via list_models. Specify an exact model to pin a version for reproducibility. |
 | tier | no | c("mid", "fast", "top") | Character. Capability tier used when model = NULL: "fast" (cheapest), "mid" (balanced, default), or "top" (most capable). Ignored when model is specified. |
-| max_tokens | no | 3000L | Integer. Maximum tokens in the response (default 3000). Sufficient for most taxonomy and habitat prompts. Increase for longer outputs (e.g., large species lists). Higher values increase API cost. |
+| max_tokens | no | 16000L | Integer. Ceiling on the tokens the model may produce (default 16000). A cap, not an allocation, so a generous value costs nothing extra; it is generous because a reasoning model spends part of the budget thinking before it writes, and a cap sized for the visible answer alone returns a response with no text in it. Sufficient for most taxonomy and habitat prompts. Increase for longer outputs (e.g., large species lists). Higher values increase API cost. |
 | api_key | no | Sys.getenv("GEMINI_API_KEY") | Character. Google AI Studio API key. Defaults to the GEMINI_API_KEY environment variable. Get a free key at https://aistudio.google.com/apikey and add GEMINI_API_KEY=AIza... to ~/.Renviron. |
 
 **Value:** A length-1 character string containing the model's response text. Stops on any non-200 HTTP status or safety block.
 
-### call_ollama_api(prompt_str, model = "llama3.2", max_tokens = 3000L, base_url = "http://localhost:11434")
+### call_ollama_api(prompt_str, model = "llama3.2", max_tokens = 16000L, base_url = "http://localhost:11434")
 
 Call a Local Ollama Model with a Single Prompt String
 
@@ -168,12 +168,12 @@ Low-level provider function: submits one plain character string to a locally run
 |---|---|---|---|
 | prompt_str | yes |  | Character. A length-1 string containing the complete prompt to submit. |
 | model | no | "llama3.2" | Character. Ollama model name as listed by ollama list in Terminal. Default "llama3.2". Pull a model before first use: ollama pull llama3.2. Browse available models at https://ollama.com/library. Capable options for Apple Silicon: "llama3.1:8b", "mistral", "gemma3:12b", "qwen2.5:14b". |
-| max_tokens | no | 3000L | Integer. Maximum tokens in the response (default 3000). Behaviour is model-dependent; some models may ignore this setting. |
+| max_tokens | no | 16000L | Integer. Ceiling on the tokens the model may produce (default 16000). A cap, not an allocation, so a generous value costs nothing extra; it is generous because a reasoning model spends part of the budget thinking before it writes, and a cap sized for the visible answer alone returns a response with no text in it. Behaviour is model-dependent; some models may ignore this setting. |
 | base_url | no | "http://localhost:11434" | Character. Base URL of the Ollama server. Default "http://localhost:11434". Change only if running Ollama on a different host or port. |
 
 **Value:** A length-1 character string containing the model's response text. Stops with a clear message if Ollama is not running or the model has not been pulled.
 
-### call_openai_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 3000L, base_url = "https://api.openai.com", api_key = Sys.getenv("OPENAI_API_KEY"))
+### call_openai_api(prompt_str, model = NULL, tier = c("mid", "fast", "top"), max_tokens = 16000L, base_url = "https://api.openai.com", api_key = Sys.getenv("OPENAI_API_KEY"))
 
 Call the OpenAI Chat Completions API with a Single Prompt String
 
@@ -184,7 +184,7 @@ Low-level provider function: submits one plain character string to the OpenAI Ch
 | prompt_str | yes |  | Character. A length-1 string containing the complete prompt to submit. |
 | model | no | NULL | Character. Exact OpenAI model identifier, e.g. "gpt-4o-mini". Default NULL resolves to the latest model for tier via list_models. Specify an exact model to pin a version for reproducibility. |
 | tier | no | c("mid", "fast", "top") | Character. Capability tier used when model = NULL: "fast" (cheapest), "mid" (balanced, default), or "top" (most capable). Ignored when model is specified. |
-| max_tokens | no | 3000L | Integer. Maximum tokens in the response (default 3000). Sufficient for most taxonomy and habitat prompts. Increase for longer outputs (e.g., large species lists). Higher values increase API cost. |
+| max_tokens | no | 16000L | Integer. Ceiling on the tokens the model may produce (default 16000). A cap, not an allocation, so a generous value costs nothing extra; it is generous because a reasoning model spends part of the budget thinking before it writes, and a cap sized for the visible answer alone returns a response with no text in it. Sufficient for most taxonomy and habitat prompts. Increase for longer outputs (e.g., large species lists). Higher values increase API cost. |
 | base_url | no | "https://api.openai.com" | Character. Base URL of the API endpoint. Default "https://api.openai.com" (OpenAI). Any OpenAI-compatible API can be used by changing this URL -- see Details. When using a non-default URL, register the provider with register_provider to enable automatic tier resolution, or specify model explicitly. |
 | api_key | no | Sys.getenv("OPENAI_API_KEY") | Character. API key for the provider. Defaults to the OPENAI_API_KEY environment variable for the standard OpenAI endpoint. For alternative providers, pass the key directly or via Sys.getenv("MY_KEY_VAR") in a closure. |
 

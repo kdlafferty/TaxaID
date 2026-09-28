@@ -4,7 +4,7 @@
 
 Provides tools for acquiring, combining, and preparing taxonomic occurrence data from multiple sources including GBIF and DataONE. The user specifies a spatial area and taxonomic group; TaxaFetch retrieves occurrence records and aligns column naming to DarwinCore conventions. Habitat assignment and spatial quality control are handled by TaxaHabitat. Output is a data frame of taxonomic occurrences at various locations and times. These data feed into TaxaHabitat and then TaxaExpect, which generates spatially explicit predictions of relative occurrence across taxa. Part of the TaxaID ecosystem.
 
-Version 0.1.0. 30 exported function(s).
+Version 0.1.0. 32 exported function(s).
 
 ## Functions
 
@@ -224,6 +224,30 @@ Given a vector of EDI PASTA dataset identifiers (from 'search_dataone'), fetches
 
 **Value:** A tibble with standardized Darwin Core columns, or 'NULL' invisibly if no records survive all filters. Column order: 'occurrenceID', 'datasetID', 'datasetName', 'institutionCode', 'basisOfRecord', 'eventDate', 'year', 'month', 'day', 'decimalLatitude', 'decimalLongitude', 'coordinateUncertaintyInMeters', 'scientificName', 'genus', 'family', 'specificEpithet', 'vernacularName', ...
 
+### fetch_gbif_occurrence_counts(keys, site_lat, site_lon, geometry = NULL, lambda_km = NULL, breaks_km = NULL, year_range = .gbif_default_year_range(), basis_of_record = NULL, key_batch_size = 150L, resolve_names = TRUE, cache_dir = tools::R_user_dir("TaxaFetch", "cache"), max_active = 4L, base_url = "https://api.gbif.org/v1")
+
+Fetch species-level GBIF record counts in distance bands around a site
+
+The count-only counterpart of 'download_gbif_occurrences()': same taxon keys, same search polygon, same year filter - but instead of downloading every record it asks GBIF's occurrence-search API for per-species record COUNTS ('limit = 0', 'facet = speciesKey') inside a set of concentric distance bands around one site. The result feeds 'TaxaExpect::estimate_kernel_priors_from_counts()', which returns the same prior object 'TaxaExpect::estimate_kernel_priors()' does. The bands are centred on one site: 'site_lat' and 'site_lon' must be single numbers (a vector is rejected with an error), so ...
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| keys | yes |  | Numeric vector of GBIF backbone taxon keys defining the taxonomic scope -- the same keys you would pass to download_gbif_occurrences() (typically from get_keys_from_context()). Any rank; a record counts when any of its lineage keys matches. |
+| site_lat | yes |  | Numeric scalars. Band centre. |
+| site_lon | yes |  | Numeric scalars. Band centre. |
+| geometry | no | NULL | Character WKT polygon or NULL. The search polygon (the same one the occurrence fetch uses); anticlockwise ring, as GBIF requires. NULL: bands only, no regional remainder band. |
+| lambda_km | no | NULL | Numeric or NULL. Kernel bandwidth the counts will be used with; sets the default breaks_km. One of lambda_km / breaks_km is required. |
+| breaks_km | no | NULL | Numeric vector or NULL. Increasing band outer edges, in km. Overrides the lambda_km default. |
+| year_range | no | .gbif_default_year_range() | Character "YYYY,YYYY" or NULL (no year filter). Default: 2000 through the current year, as in fetch_gbif_occurrences(). |
+| basis_of_record | no | NULL | Character vector or NULL (no filter), e.g. c("HUMAN_OBSERVATION", "PRESERVED_SPECIMEN"). |
+| key_batch_size | no | 150L | Integer. Taxon keys per request (keys are OR-ed within a request; batches are disjoint and summed). Default 150 keeps URLs well under GBIF's limit. |
+| resolve_names | no | TRUE | Logical. Look up each species key's name and classification (default TRUE). FALSE returns keys only. |
+| cache_dir | no | tools::R_user_dir("TaxaFetch", "cache") | Character or NULL. Persistent cache for both the band counts (keyed by a hash of every argument that changes the answer) and the per-species-key classification. NULL disables caching. |
+| max_active | no | 4L | Integer. Concurrent requests. Default 4. |
+| base_url | no | "https://api.gbif.org/v1" | Character. GBIF API root. Exposed for testing. |
+
+**Value:** A tibble with one row per species x band holding records: 'taxon_name' (GBIF canonical species name), 'speciesKey', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'band', 'band_lo_km', 'band_hi_km', 'n'. Attributes: 'query' (the arguments), 'n_requests', 'n_species_lookups' (uncached classification lookups made by this call), 'total_records' (all species-level records counted), ...
+
 ### fetch_gbif_occurrences(keys, geometry, year_range = .gbif_default_year_range(), limit = 10000L, chunk_size = 20L, pause_seconds = 2, pause_between_keys = 0.5, max_retries = 4L, cache_dir = tools::R_user_dir("TaxaFetch", "cache"), beep = FALSE)
 
 Fetch GBIF Occurrence Records for a Set of Taxon Keys
@@ -406,6 +430,31 @@ Parses the raw text returned by an LLM in response to a 'build_taxon_screen_prom
 | taxon_prompt | yes |  | A taxon_prompt object from build_taxon_screen_prompt. |
 
 **Value:** A tibble with all columns from the input catalog plus: taxon_match Logical. 'TRUE' = LLM said YES for taxon; 'FALSE' = LLM said NO or no response received. taxon_source Character. One of '"llm_yes"', '"llm_no"', '"skipped"' (no metadata available), '"llm_no_response"' (index missing from LLM output). geo_match Logical. Only present when 'taxon_prompt' was built with a 'geo_scope' argument. ...
+
+### plan_gbif_fetch(keys, geometry = NULL, lambda_km = NULL, breaks_km = NULL, year_range = .gbif_default_year_range(), basis_of_record = NULL, key_batch_size = 150L, cache_dir = tools::R_user_dir("TaxaFetch", "cache"), ram_gb = NULL, ram_fraction = 0.5, max_records = 5e+06, rates = list(), max_active = 4L, base_url = "https://api.gbif.org/v1")
+
+Plan a GBIF fetch: price the records path against the counts path
+
+Asks GBIF, with a handful of count-only requests, how big the occurrence pull for these keys, polygon and years would be, then prices both prior paths:
+
+| Param | Required | Default | Doc |
+|---|---|---|---|
+| keys | yes |  | Numeric vector of GBIF backbone taxon keys defining the taxonomic scope -- the same keys you would pass to download_gbif_occurrences() (typically from get_keys_from_context()). Any rank; a record counts when any of its lineage keys matches. |
+| geometry | no | NULL | Character WKT polygon or NULL. The search polygon (the same one the occurrence fetch uses); anticlockwise ring, as GBIF requires. NULL: bands only, no regional remainder band. |
+| lambda_km | no | NULL | Numeric or NULL. Kernel bandwidth the counts will be used with; sets the default breaks_km. One of lambda_km / breaks_km is required. |
+| breaks_km | no | NULL | Numeric vector or NULL. Increasing band outer edges, in km. Overrides the lambda_km default. |
+| year_range | no | .gbif_default_year_range() | Character "YYYY,YYYY" or NULL (no year filter). Default: 2000 through the current year, as in fetch_gbif_occurrences(). |
+| basis_of_record | no | NULL | Character vector or NULL (no filter), e.g. c("HUMAN_OBSERVATION", "PRESERVED_SPECIMEN"). |
+| key_batch_size | no | 150L | Integer. Taxon keys per request (keys are OR-ed within a request; batches are disjoint and summed). Default 150 keeps URLs well under GBIF's limit. |
+| cache_dir | no | tools::R_user_dir("TaxaFetch", "cache") | Character or NULL. Persistent cache for both the band counts (keyed by a hash of every argument that changes the answer) and the per-species-key classification. NULL disables caching. |
+| ram_gb | no | NULL | Numeric or NULL. Physical memory to compare the record path's peak against. NULL: detected on macOS and Linux, otherwise NA (no memory-based recommendation). |
+| ram_fraction | no | 0.5 | Numeric. Share of ram_gb the records path may use before the counts path is recommended. Default 0.5. |
+| max_records | no | 5e+06 | Numeric. Pool size above which the counts path is recommended regardless of memory. Default 5 million. |
+| rates | no | list() | Named list overriding any of the rates above. |
+| max_active | no | 4L | Integer. Concurrent requests. Default 4. |
+| base_url | no | "https://api.gbif.org/v1" | Character. GBIF API root. Exposed for testing. |
+
+**Value:** A one-row tibble: 'n_records' (rows the records path would download), 'n_species_records' (of those, resolved to species), 'n_species', 'n_species_uncached', 'records_download_mb', 'records_queue_min', 'records_process_min', 'records_peak_gb', 'counts_requests', 'counts_min', 'ram_gb', 'recommended' ('"records"' or '"counts"') and 'reason'.
 
 ### preview_dataone_occurrences(dataset_ids, bbox, n_rows = 20L, large_mb = 50, assume_mbps = 5, extra_dwc_map = NULL, verbose = TRUE)
 
