@@ -546,3 +546,21 @@ on functions this document already covers above.
 
 - `verify_removal_candidates()` roxygen corrected so the documented behaviour
   matches the code. No behavioural change.
+- `blast_sequences()` gains `num_threads` and `word_size` (local only). Local
+  searches ran on one core; `NULL` now uses every core but one (identical
+  output). `word_size` is passed to `blastn -word_size`. A local search now
+  also refuses a multi-volume database whose volumes report different build
+  dates (`blastdbcmd -info`), since such a database returns wrong records for
+  accession/taxid lookups; `options(TaxaMatch.check_blastdb = FALSE)` skips
+  the check. Tests: test-blast.R.
+- `evaluate_reference_accessions()` gains `num_threads`/`word_size`, and
+  `chunk_size` now defaults by method (200 remote, 1000 local). For local
+  searches `word_size` defaults to 16, which is added to `params_key` only
+  when set, so remote keys and existing caches are unchanged. Measurements
+  are in the new `@section Local search speed`. Tests:
+  test-local-corroboration.R.
+- `investigate_flagged_accession()`'s local path restricts its comparison
+  search with `-seqidlist`, the local equivalent of the remote
+  `ENTREZ_QUERY` restriction, falling back to the unrestricted search with a
+  warning if the restriction fails. Tests:
+  test-investigate-flagged-accession.R.

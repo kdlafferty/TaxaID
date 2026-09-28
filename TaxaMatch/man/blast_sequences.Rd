@@ -21,6 +21,8 @@ blast_sequences(
   max_target_seqs = 100L,
   batch_size = 20L,
   max_batch_bp = 100000L,
+  num_threads = NULL,
+  word_size = NULL,
   email = Sys.getenv("NCBI_EMAIL", unset = ""),
   ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
   resolve_taxonomy = TRUE,
@@ -163,6 +165,22 @@ batches close on \code{batch_size} count alone. See
 the default \code{batch_size}/typical amplicon lengths never approach
 \code{100000L} bp per batch, so this is a no-op for ordinary data --
 it only ever triggers for real long-sequence batches.}
+
+\item{num_threads}{Integer or \code{NULL} (default). Local BLAST only:
+passed to \code{blastn -num_threads}. \code{NULL} uses every core but
+one. Output is identical at any thread count; only wall time changes
+(about 10x on 14 cores against \code{core_nt}). Ignored for remote.}
+
+\item{word_size}{Integer or \code{NULL} (default). Local BLAST only:
+passed to \code{blastn -word_size}, the length of the exact match that
+seeds an alignment. \code{NULL} leaves the program's own default (11 for
+\code{megablast = FALSE}). A local search against a database the size of
+\code{core_nt} spends most of its time extending short random seeds;
+16 cut that time about 6x on real 12S queries while returning the same
+best-hit identity for every query, with differences confined to queries
+whose best hit was below about 83\% identity, where an exact 16 bp seed
+can be absent. Scoring and the classic-blastn tie behaviour described
+under \code{megablast} are unchanged. Ignored for remote.}
 
 \item{email}{Character. Email address sent to NCBI (required by their usage
 policy for remote BLAST). Defaults to the \code{NCBI_EMAIL} environment

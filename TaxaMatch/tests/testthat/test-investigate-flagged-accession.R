@@ -223,28 +223,62 @@ test_that(".blast_against_comparison_set() (remote) restricts the BLAST search s
   expect_true(grepl(" OR ", captured_query))
 })
 
-test_that(".blast_against_comparison_set() (local) falls back to post-hoc filtering via blast_sequences()", {
-  # method = "local" has no ENTREZ_QUERY-equivalent restriction via rBLAST
-  # -- this is the deliberately weaker fallback path, still exercised via
-  # the public blast_sequences() (unlike the remote path above).
-  mock_blast <- function(seq_df, ...) {
+test_that(".blast_against_comparison_set() (local) restricts the search with -seqidlist", {
+  # The local equivalent of the remote ENTREZ_QUERY restriction: the
+  # comparison accessions go to blastn as a -seqidlist file, so each is
+  # scored whether or not it would rank in an unrestricted search.
+  captured_ids <- NULL
+  mock_local <- function(seq_df, database, program, megablast, max_target_seqs,
+                         verbose, num_threads = NULL, word_size = NULL,
+                         seqidlist = NULL) {
+    captured_ids <<- readLines(seqidlist)
     data.frame(
-      observation_id = "flagged_query",
-      accession = c("KEEP_A", "NOT_IN_SET"),
-      score = c(99, 50),
-      query_coverage = c(90, 5),
-      stringsAsFactors = FALSE
+      qseqid = "flagged_query", sacc = c("KEEP_A.1", "KEEP_B"),
+      pident = c(99, 97), qcovs = c(90, 40), stringsAsFactors = FALSE
     )
   }
-  local_mocked_bindings(blast_sequences = mock_blast, .package = "TaxaMatch")
+  local_mocked_bindings(.blast_local = mock_local, .package = "TaxaMatch")
+
+  comparison_meta <- data.frame(
+    accession = c("KEEP_A", "KEEP_B.2"), sequence = c("X", "Y"),
+    create_date = c("2020/01/01", "2020/02/01"), stringsAsFactors = FALSE
+  )
+  out <- .blast_against_comparison_set_int(
+    "QUERYSEQ", comparison_meta,
+    method = "local", verbose = FALSE
+  )
+  expect_setequal(captured_ids, c("KEEP_A", "KEEP_B"))
+  expect_equal(nrow(out), 2L)
+  expect_equal(out$accession[out$pident == 99], "KEEP_A")
+  # 40% coverage is below the default 0.5 floor
+  expect_false(out$meets_min_coverage[out$accession == "KEEP_B.2"])
+})
+
+test_that(".blast_against_comparison_set() (local) falls back to post-hoc filtering when -seqidlist fails", {
+  local_mocked_bindings(
+    .blast_local = function(...) stop("No sequences in the list were found"),
+    blast_sequences = function(seq_df, ...) {
+      data.frame(
+        observation_id = "flagged_query",
+        accession = c("KEEP_A", "NOT_IN_SET"),
+        score = c(99, 50),
+        query_coverage = c(90, 5),
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaMatch"
+  )
 
   comparison_meta <- data.frame(
     accession = "KEEP_A", sequence = "X", create_date = "2020/01/01",
     stringsAsFactors = FALSE
   )
-  out <- .blast_against_comparison_set_int(
-    "QUERYSEQ", comparison_meta,
-    method = "local", verbose = FALSE
+  expect_warning(
+    out <- .blast_against_comparison_set_int(
+      "QUERYSEQ", comparison_meta,
+      method = "local", verbose = TRUE
+    ),
+    "falling back to an unrestricted search"
   )
   expect_equal(nrow(out), 1L)
   expect_equal(out$accession, "KEEP_A")

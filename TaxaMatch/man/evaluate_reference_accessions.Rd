@@ -23,7 +23,7 @@ evaluate_reference_accessions(
   poll_max_wait = 1800,
   barcode_term = NULL,
   query_span = c("amplicon", "primer_inclusive"),
-  chunk_size = 200L,
+  chunk_size = NULL,
   max_consecutive_batch_failures = 3L,
   max_query_len = NULL,
   max_batch_bp = 100000L,
@@ -31,6 +31,8 @@ evaluate_reference_accessions(
   retry_insufficient = TRUE,
   local_corroboration = NULL,
   skip_locally_corroborated = TRUE,
+  num_threads = NULL,
+  word_size = NULL,
   verbose = TRUE
 )
 }
@@ -140,11 +142,14 @@ queries are submitted AS DEPOSITED with a one-line message, never
 trimmed and never an error. Over-length records still go to
 the feature-table fallback.}
 
-\item{chunk_size}{Integer (default \code{200L}). Accessions needing real
+\item{chunk_size}{Integer or \code{NULL} (default). Accessions needing real
 evaluation are processed this many at a time, with the persistent
-cache written after EACH chunk -- see \verb{@section Chunked evaluation and NCBI rate-limiting resilience} below. \code{Inf} gives
-single-shot behavior (one chunk covering every accession, cache written
-only once at the very end).}
+cache written after EACH chunk -- see \verb{@section Chunked evaluation and NCBI rate-limiting resilience} below. \code{NULL} means \code{200L} for
+\code{method = "remote"} (sized for NCBI's queue) and \code{1000L} for
+\code{method = "local"}, where each chunk is one \code{blastn} run that reads the
+whole database, so fewer, larger chunks spend less time reading it.
+\code{Inf} gives single-shot behavior (one chunk covering every accession,
+cache written only once at the very end).}
 
 \item{max_consecutive_batch_failures}{Numeric (default \code{3L}). Forwarded
 to \code{blast_sequences()} -- see that function's own documentation for the
@@ -212,6 +217,16 @@ locally-corroborated accessions to BLAST like any other, and also
 re-evaluates any row previously cached as \code{"locally_corroborated"}
 (that flag records a decision not to evaluate, not an evaluation).
 Not part of \code{params_key}.}
+
+\item{num_threads}{Integer or \code{NULL} (default). Local only: forwarded to
+\code{\link[=blast_sequences]{blast_sequences()}}. \code{NULL} uses every core but one. Does not change any
+verdict, so it is not part of \code{params_key}.}
+
+\item{word_size}{Integer or \code{NULL} (default). Local only: forwarded to
+\code{\link[=blast_sequences]{blast_sequences()}}. \code{NULL} means \code{16} for \code{method = "local"} and the
+program's own default for remote. It can change which hits BLAST
+returns, so it is part of \code{params_key} whenever it is set -- see
+\verb{@section Local search speed}.}
 
 \item{verbose}{Logical (default \code{TRUE}). Print progress messages.}
 }
@@ -508,6 +523,26 @@ why). A cached row whose \code{params_key} does not match the current one --
 because it was written under an earlier internal cache version, or under
 different verdict-affecting arguments -- is simply recomputed on the next
 call; there is no separate step to carry it forward.
+}
+
+\section{Local search speed}{
+
+Against a database the size of \code{core_nt}, a local search spends its time
+per query, not per database scan, and almost all of it extending short
+random seed matches. Measured on real 12S reference queries against two
+\code{core_nt} volumes: one thread took 184 s for 200 queries and 14 threads
+18 s with identical output; \code{word_size = 16} then cut 90 s to 14 s for
+1,000 queries. Against the default word size, 16 returned the same
+best-hit identity for every query and the same best-hit taxon for 99.9\%,
+with differences confined to queries whose best hit was below about 83\%
+identity -- a region where the verdict already rests on distant relatives.
+Changing \code{max_target_seqs} alone moved about 2.5\% of top-5 taxa in the
+same test, so this is inside the noise BLAST's own settings already carry.
+Two faster options were measured and rejected: megablast lost real
+conspecific hits (a 98.7\% match fell to 94.0\%), and a marker-only
+database built by bait search was 290x smaller but only 6x faster and lost
+1.1\% of queries, because the time goes into aligning to real relatives,
+which any correct database must contain.
 }
 
 \section{Chunked evaluation and NCBI rate-limiting resilience}{

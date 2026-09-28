@@ -743,3 +743,22 @@ test_that("changing query_span invalidates a cached row (it is verdict-affecting
   ))
   expect_equal(fetch_calls, after_second)
 })
+
+test_that("word_size enters params_key only when set, so remote keys are unchanged", {
+  args <- list(
+    top_n = 5L, min_congruent_rank = "family", submission_window = 5L,
+    hierarchy_incongruent_threshold = 0.5, min_independent_partners = 3L,
+    score_range = 8, min_score = 70, max_hits = 20L, method = "remote",
+    database = "nt", query_span = "amplicon"
+  )
+  base <- do.call(.build_params_key, args)
+  expect_identical(do.call(.build_params_key, c(args, list(word_size = NULL))), base)
+  expect_identical(.default_params_key(), base)
+  ws <- do.call(.build_params_key, c(args, list(word_size = 16L)))
+  expect_identical(ws, paste0(base, "|ws16"))
+  # the positional fields verify_removal_candidates() compares are untouched
+  expect_identical(
+    strsplit(ws, "|", fixed = TRUE)[[1L]][1:12],
+    strsplit(base, "|", fixed = TRUE)[[1L]]
+  )
+})

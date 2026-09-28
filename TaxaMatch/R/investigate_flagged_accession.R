@@ -216,6 +216,40 @@
   unique(accs)[seq_len(min(max_records, length(unique(accs))))]
 }
 
+# Unrestricted local search, then keep only hits in the comparison set. The
+# fallback for .blast_against_comparison_set() when -seqidlist cannot be
+# used; returns the same .join_acc/pident/query_coverage frame, or NULL.
+.unrestricted_local_comparison <- function(seq_df, comparison_meta, database,
+                                           ncbi_api_key, verbose) {
+  strip_v <- function(x) sub("\\.[0-9]+$", "", x)
+  raw <- tryCatch(
+    blast_sequences(
+      seq_df,
+      method = "local", database = database,
+      score_range = 100, min_score = 0, min_query_coverage = 0,
+      max_hits = max(100L, nrow(comparison_meta) * 3L),
+      max_target_seqs = max(200L, nrow(comparison_meta) * 5L),
+      resolve_taxonomy = FALSE,
+      ncbi_api_key = ncbi_api_key, verbose = FALSE
+    ),
+    error = function(e) {
+      if (verbose) {
+        warning(sprintf(
+          "BLAST comparison-set search failed: %s", conditionMessage(e)
+        ), call. = FALSE)
+      }
+      NULL
+    }
+  )
+  if (is.null(raw) || !is.data.frame(raw) || nrow(raw) == 0L) {
+    return(NULL)
+  }
+  data.frame(
+    .join_acc = strip_v(raw$accession), pident = raw$score,
+    query_coverage = raw$query_coverage, stringsAsFactors = FALSE
+  )
+}
+
 #' BLAST a flagged sequence against a specific comparison set of accessions
 #'
 #' Replaces a `pwalign::pairwiseAlignment(type = "local")`-based
@@ -315,38 +349,49 @@
       query_coverage = raw$qcovs, stringsAsFactors = FALSE
     )
   } else {
-    # No ENTREZ_QUERY-equivalent search-space restriction exists for a
-    # local BLAST+ database via rBLAST -- fall back to the original
-    # post-hoc filter (unrestricted search, then keep only hits whose
-    # accession is in the comparison set). Weaker than the remote path
-    # above: only finds a comparison accession if it also ranks among
-    # BLAST's own top max_hits hits for this query.
-    raw <- tryCatch(
-      blast_sequences(
-        seq_df,
-        method = method, database = database,
-        score_range = 100, min_score = 0, min_query_coverage = 0,
-        max_hits = max(100L, nrow(comparison_meta) * 3L),
-        max_target_seqs = max(200L, nrow(comparison_meta) * 5L),
-        resolve_taxonomy = FALSE,
-        ncbi_api_key = ncbi_api_key, verbose = FALSE
-      ),
+    # The local equivalent of ENTREZ_QUERY: -seqidlist restricts the search
+    # to the comparison accessions, so each one is scored against the query
+    # whether or not it would rank among an unrestricted search's top hits
+    # (and the search reads only those records, not the whole database).
+    # -seqidlist resolves accessions through the database's own index, so if
+    # that fails (an accession absent from this database, an index this
+    # client cannot read) the post-hoc filter below is the fallback: an
+    # unrestricted search whose hits are then intersected with the
+    # comparison set -- weaker, since a comparison accession outside the top
+    # hits is never seen.
+    hits <- tryCatch(
+      {
+        idlist <- tempfile(fileext = ".txt")
+        on.exit(unlink(idlist), add = TRUE)
+        writeLines(unique(comp_join), idlist)
+        raw <- .blast_local(
+          seq_df,
+          database = database, program = "blastn", megablast = FALSE,
+          max_target_seqs = max(200L, nrow(comparison_meta) * 3L),
+          verbose = FALSE, seqidlist = idlist
+        )
+        if (is.null(raw) || nrow(raw) == 0L) {
+          NULL
+        } else {
+          data.frame(
+            .join_acc = strip_v(raw$sacc), pident = as.numeric(raw$pident),
+            query_coverage = as.numeric(raw$qcovs), stringsAsFactors = FALSE
+          )
+        }
+      },
       error = function(e) {
         if (verbose) {
           warning(sprintf(
-            "BLAST comparison-set search failed: %s", conditionMessage(e)
+            "Restricted local BLAST (-seqidlist) failed, falling back to an unrestricted search: %s",
+            conditionMessage(e)
           ), call. = FALSE)
         }
-        NULL
+        .unrestricted_local_comparison(seq_df, comparison_meta, database, ncbi_api_key, verbose)
       }
     )
-    if (is.null(raw) || !is.data.frame(raw) || nrow(raw) == 0L) {
+    if (is.null(hits) || nrow(hits) == 0L) {
       return(empty)
     }
-    hits <- data.frame(
-      .join_acc = strip_v(raw$accession), pident = raw$score,
-      query_coverage = raw$query_coverage, stringsAsFactors = FALSE
-    )
   }
 
   hits <- hits[hits$.join_acc %in% comp_join, , drop = FALSE]

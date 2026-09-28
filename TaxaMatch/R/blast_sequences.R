@@ -135,6 +135,20 @@ NULL
 #'   the default \code{batch_size}/typical amplicon lengths never approach
 #'   \code{100000L} bp per batch, so this is a no-op for ordinary data --
 #'   it only ever triggers for real long-sequence batches.
+#' @param num_threads Integer or \code{NULL} (default). Local BLAST only:
+#'   passed to \code{blastn -num_threads}. \code{NULL} uses every core but
+#'   one. Output is identical at any thread count; only wall time changes
+#'   (about 10x on 14 cores against \code{core_nt}). Ignored for remote.
+#' @param word_size Integer or \code{NULL} (default). Local BLAST only:
+#'   passed to \code{blastn -word_size}, the length of the exact match that
+#'   seeds an alignment. \code{NULL} leaves the program's own default (11 for
+#'   \code{megablast = FALSE}). A local search against a database the size of
+#'   \code{core_nt} spends most of its time extending short random seeds;
+#'   16 cut that time about 6x on real 12S queries while returning the same
+#'   best-hit identity for every query, with differences confined to queries
+#'   whose best hit was below about 83% identity, where an exact 16 bp seed
+#'   can be absent. Scoring and the classic-blastn tie behaviour described
+#'   under \code{megablast} are unchanged. Ignored for remote.
 #' @param email Character. Email address sent to NCBI (required by their usage
 #'   policy for remote BLAST). Defaults to the \code{NCBI_EMAIL} environment
 #'   variable (unset by default); a \code{warning()} is issued for remote
@@ -391,6 +405,8 @@ blast_sequences <- function(seq_df,
                             max_target_seqs = 100L,
                             batch_size = 20L,
                             max_batch_bp = 100000L,
+                            num_threads = NULL,
+                            word_size = NULL,
                             email = Sys.getenv("NCBI_EMAIL", unset = ""),
                             ncbi_api_key = Sys.getenv("NCBI_API_KEY", unset = ""),
                             resolve_taxonomy = TRUE,
@@ -478,6 +494,17 @@ blast_sequences <- function(seq_df,
     stop("max_consecutive_batch_failures must be a positive number (Inf to disable)")
   }
 
+  if (!is.null(num_threads) &&
+    (!is.numeric(num_threads) || length(num_threads) != 1L ||
+      is.na(num_threads) || num_threads < 1L)) {
+    stop("num_threads must be NULL or a positive integer")
+  }
+  if (!is.null(word_size) &&
+    (!is.numeric(word_size) || length(word_size) != 1L ||
+      is.na(word_size) || word_size < 4L)) {
+    stop("word_size must be NULL or an integer >= 4")
+  }
+
   # Empty-string env-var defaults (email/ncbi_api_key) mean "not supplied".
   if (identical(email, "")) email <- NULL
   if (identical(ncbi_api_key, "")) ncbi_api_key <- NULL
@@ -530,7 +557,8 @@ blast_sequences <- function(seq_df,
     )
   } else {
     raw_hits <- .blast_local(
-      seq_df, database, program, megablast, max_target_seqs, verbose
+      seq_df, database, program, megablast, max_target_seqs, verbose,
+      num_threads = num_threads, word_size = word_size
     )
   }
 
@@ -1336,13 +1364,108 @@ blast_sequences <- function(seq_df,
 # includes -outfmt: rBLAST::predict.BLAST() always adds its own from
 # custom_format, and blastn rejects a command that names an argument twice.
 # A function so a test can assert that without a database.
-.blast_local_args <- function(max_target_seqs, task_flag) {
-  trimws(sprintf("-max_target_seqs %d %s", max_target_seqs, task_flag))
+.blast_local_args <- function(max_target_seqs, task_flag, num_threads = NULL,
+                              word_size = NULL, seqidlist = NULL) {
+  args <- c(
+    sprintf("-max_target_seqs %d", as.integer(max_target_seqs)),
+    task_flag,
+    if (!is.null(num_threads)) sprintf("-num_threads %d", as.integer(num_threads)),
+    if (!is.null(word_size)) sprintf("-word_size %d", as.integer(word_size)),
+    if (!is.null(seqidlist)) sprintf("-seqidlist %s", shQuote(seqidlist))
+  )
+  paste(args[nzchar(args)], collapse = " ")
 }
 
-.blast_local <- function(seq_df, database, program, megablast, max_target_seqs, verbose) {
+# Every core but one: blastn's output does not depend on the thread count.
+.default_blast_threads <- function() {
+  n <- suppressWarnings(parallel::detectCores())
+  if (is.na(n)) 1L else max(1L, as.integer(n) - 1L)
+}
+
+# Databases already checked this session, so the per-volume scan runs once.
+.blastdb_checked <- new.env(parent = emptyenv())
+
+#' Refuse a local BLAST database whose volumes come from different builds
+#'
+#' A multi-volume database (NCBI's core_nt, nt, ...) is only coherent when
+#' every volume and the shared accession/taxid index come from ONE build.
+#' Volumes fetched on different dates each pass their own checksum, yet the
+#' set is wrong: lookups through the shared index return other sequences'
+#' records (a real core_nt returned an Achromobacter integrase for AB013836)
+#' and sequences are duplicated or missing, so a screen silently loses
+#' conspecific evidence. `blastdbcmd -info` reports each volume's build date,
+#' which is the thing to check; a checksum is not.
+#'
+#' Runs once per database per session. Skips (with a message) when
+#' `blastdbcmd` is not on PATH or the output cannot be parsed, since the
+#' search itself will then report its own error. Set
+#' `options(TaxaMatch.check_blastdb = FALSE)` to skip it deliberately.
+#' @return Invisibly, the distinct build dates found (length 1 when coherent).
+#' @noRd
+.check_blastdb_consistency <- function(database, verbose = TRUE,
+                                       blastdbcmd = Sys.which("blastdbcmd")) {
+  if (isFALSE(getOption("TaxaMatch.check_blastdb", TRUE))) {
+    return(invisible(NULL))
+  }
+  if (!is.null(.blastdb_checked[[database]])) {
+    return(invisible(.blastdb_checked[[database]]))
+  }
+  if (!nzchar(blastdbcmd)) {
+    if (verbose) message("blastdbcmd not found on PATH; skipping the database build-date check.")
+    return(invisible(NULL))
+  }
+  info <- function(db) {
+    tryCatch(
+      suppressWarnings(system2(blastdbcmd, c("-db", shQuote(db), "-info"),
+        stdout = TRUE, stderr = TRUE
+      )),
+      error = function(e) character(0L)
+    )
+  }
+  build_date <- function(lines) {
+    d <- regmatches(lines, regexpr("Date: [A-Za-z]+ [0-9]+, [0-9]{4}", lines))
+    if (length(d) == 0L) NA_character_ else sub("^Date: ", "", d[[1L]])
+  }
+  top <- info(database)
+  vol_start <- grep("^Volumes:", top)
+  if (length(vol_start) == 0L || is.na(build_date(top))) {
+    if (verbose) message("Could not read `blastdbcmd -info` for ", database, "; skipping the build-date check.")
+    return(invisible(NULL))
+  }
+  vols <- trimws(top[seq.int(vol_start[[1L]] + 1L, length(top))])
+  vols <- vols[nzchar(vols)]
+  if (length(vols) <= 1L) {
+    .blastdb_checked[[database]] <- build_date(top)
+    return(invisible(build_date(top)))
+  }
+  vol_dates <- vapply(vols, function(v) build_date(info(v)), character(1L))
+  all_dates <- c(alias = build_date(top), vol_dates)
+  distinct <- unique(stats::na.omit(all_dates))
+  if (length(distinct) > 1L) {
+    tab <- table(all_dates)
+    stop(sprintf(
+      paste0(
+        "Local BLAST database '%s' mixes builds: its volumes and index report %d different ",
+        "build dates (%s). Accession and taxid lookups return wrong records and sequences are ",
+        "duplicated or missing, so results would be silently wrong. Refetch the stale volumes from ",
+        "ONE build and confirm `blastdbcmd -db <volume> -info` reports the same date for every ",
+        "volume. Stale volumes: %s"
+      ),
+      database, length(distinct),
+      paste(sprintf("%s: %d", names(tab), as.integer(tab)), collapse = "; "),
+      paste(basename(vols[!(vol_dates %in% build_date(top))]), collapse = ", ")
+    ), call. = FALSE)
+  }
+  .blastdb_checked[[database]] <- distinct
+  invisible(distinct)
+}
+
+.blast_local <- function(seq_df, database, program, megablast, max_target_seqs, verbose,
+                         num_threads = NULL, word_size = NULL, seqidlist = NULL) {
   .check_pkg("rBLAST", "BiocManager::install('rBLAST')")
   .check_pkg("Biostrings", "BiocManager::install('Biostrings')")
+  .check_blastdb_consistency(database, verbose = verbose)
+  if (is.null(num_threads)) num_threads <- .default_blast_threads()
 
   # Create DNAStringSet from sequences
   dna <- Biostrings::DNAStringSet(seq_df$sequence)
@@ -1383,7 +1506,9 @@ blast_sequences <- function(seq_df,
   # The two output formats carry the same fields in the same order; only
   # the on-disk delimiter differs, which rBLAST parses itself.
   hits <- stats::predict(bl, dna,
-    BLAST_args = .blast_local_args(max_target_seqs, task_flag),
+    BLAST_args = .blast_local_args(max_target_seqs, task_flag,
+      num_threads = num_threads, word_size = word_size, seqidlist = seqidlist
+    ),
     custom_format = custom_format
   )
 

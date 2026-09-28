@@ -1018,3 +1018,90 @@ test_that("local BLAST arguments never carry a second -outfmt (rBLAST adds its o
   expect_match(args, "-task megablast", fixed = TRUE)
   expect_identical(TaxaMatch:::.blast_local_args(50L, ""), "-max_target_seqs 50")
 })
+
+test_that("local BLAST arguments carry threads, word size and a quoted seqidlist when given", {
+  args <- TaxaMatch:::.blast_local_args(20L, "-task blastn",
+    num_threads = 6, word_size = 16, seqidlist = "/tmp/a b.txt"
+  )
+  expect_match(args, "-num_threads 6", fixed = TRUE)
+  expect_match(args, "-word_size 16", fixed = TRUE)
+  expect_match(args, "-seqidlist '/tmp/a b.txt'", fixed = TRUE)
+  expect_false(grepl("-outfmt", args, fixed = TRUE))
+})
+
+test_that("blast_sequences() validates num_threads and word_size", {
+  sdf <- data.frame(asv_id = "a", sequence = "ACGT", stringsAsFactors = FALSE)
+  expect_error(blast_sequences(sdf, num_threads = 0), "num_threads")
+  expect_error(blast_sequences(sdf, word_size = 2), "word_size")
+  expect_error(blast_sequences(sdf, word_size = c(11, 16)), "word_size")
+})
+
+# A stand-in blastdbcmd: prints an -info block whose Date depends on which
+# database or volume is asked about, so the consistency check can be tested
+# without a real multi-volume database.
+.fake_blastdbcmd <- function(dates, alias_date, volumes) {
+  path <- tempfile("blastdbcmd")
+  vol_lines <- paste0("printf '\\t%s\\n' ", shQuote(volumes), collapse = "; ")
+  cases <- paste0(
+    "  *", basename(volumes), ") d=", shQuote(dates), " ;;",
+    collapse = "\n"
+  )
+  writeLines(c(
+    "#!/bin/bash",
+    "db=\"$2\"",
+    "case \"$db\" in",
+    cases,
+    paste0("  *) d=", shQuote(alias_date), " ;;"),
+    "esac",
+    "echo 'Database: test'",
+    "echo \"Date: $d  1:19 AM\tLongest sequence: 10 bases\"",
+    "echo 'BLASTDB Version: 5'",
+    "if [[ \"$db\" != *.[0-9][0-9] ]]; then echo 'Volumes:'; ",
+    paste0(vol_lines, "; fi")
+  ), path)
+  Sys.chmod(path, "0755")
+  path
+}
+
+test_that(".check_blastdb_consistency() refuses a database whose volumes mix builds", {
+  env <- TaxaMatch:::.blastdb_checked
+  rm(list = ls(env), envir = env)
+  vols <- file.path(tempdir(), c("db.00", "db.01", "db.02"))
+  fake <- .fake_blastdbcmd(
+    dates = c("Sep 12, 2026", "Jul 18, 2026", "Sep 12, 2026"),
+    alias_date = "Sep 12, 2026", volumes = vols
+  )
+  expect_error(
+    TaxaMatch:::.check_blastdb_consistency("mixdb", verbose = FALSE, blastdbcmd = fake),
+    "mixes builds.*Stale volumes: db.01"
+  )
+})
+
+test_that(".check_blastdb_consistency() passes a single-build database and remembers it", {
+  env <- TaxaMatch:::.blastdb_checked
+  rm(list = ls(env), envir = env)
+  vols <- file.path(tempdir(), c("ok.00", "ok.01"))
+  fake <- .fake_blastdbcmd(
+    dates = c("Sep 12, 2026", "Sep 12, 2026"),
+    alias_date = "Sep 12, 2026", volumes = vols
+  )
+  out <- TaxaMatch:::.check_blastdb_consistency("okdb", verbose = FALSE, blastdbcmd = fake)
+  expect_identical(out, "Sep 12, 2026")
+  # Second call is served from the session memo: a blastdbcmd that would
+  # fail is never run.
+  expect_identical(
+    TaxaMatch:::.check_blastdb_consistency("okdb", verbose = FALSE, blastdbcmd = "/nonexistent"),
+    "Sep 12, 2026"
+  )
+})
+
+test_that(".check_blastdb_consistency() skips, without error, when it cannot check", {
+  env <- TaxaMatch:::.blastdb_checked
+  rm(list = ls(env), envir = env)
+  expect_message(
+    TaxaMatch:::.check_blastdb_consistency("anydb", verbose = TRUE, blastdbcmd = ""),
+    "blastdbcmd not found"
+  )
+  withr::local_options(TaxaMatch.check_blastdb = FALSE)
+  expect_null(TaxaMatch:::.check_blastdb_consistency("anydb", blastdbcmd = "/nonexistent"))
+})

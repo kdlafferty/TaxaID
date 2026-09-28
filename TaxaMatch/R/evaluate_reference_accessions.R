@@ -55,18 +55,25 @@ utils::globalVariables(c(
 #' `@section Caching` in [evaluate_reference_accessions()].
 #'
 #' `query_span` IS in the key: it changes what is submitted to
-#' BLAST and therefore what the hit list can contain.
+#' BLAST and therefore what the hit list can contain. So is `word_size`, as a
+#' trailing field present only when it is set (see the function body).
 #' @noRd
 .build_params_key <- function(top_n, min_congruent_rank, submission_window,
                               hierarchy_incongruent_threshold, min_independent_partners,
                               score_range, min_score, max_hits, method, database,
-                              query_span) {
-  paste(top_n, min_congruent_rank, submission_window,
+                              query_span, word_size = NULL) {
+  key <- paste(top_n, min_congruent_rank, submission_window,
     hierarchy_incongruent_threshold, min_independent_partners,
     score_range, min_score, max_hits, method, database,
     query_span, .EVAL_REF_ACC_VERSION,
     sep = "|"
   )
+  # word_size changes which alignments BLAST can seed, so it is verdict-
+  # affecting -- but it is appended only when set, so every key built without
+  # one (every remote run, every cache written before the argument existed)
+  # is unchanged and no cached row is invalidated by its introduction.
+  if (!is.null(word_size)) key <- paste0(key, "|ws", as.integer(word_size))
+  key
 }
 
 #' The params_key evaluate_reference_accessions()'s own defaults produce
@@ -850,6 +857,7 @@ utils::globalVariables(c(
 #'   `blast_sequences(max_consecutive_batch_failures=)`).
 #' @noRd
 .evaluate_reference_accessions_chunk <- function(chunk_acc, rank_system, method, database,
+                                                 num_threads = NULL, word_size = NULL,
                                                  score_range, min_score, max_hits,
                                                  ncbi_api_key, poll_max_wait, barcode_term,
                                                  max_consecutive_batch_failures,
@@ -1140,7 +1148,8 @@ utils::globalVariables(c(
       min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,
       ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait,
       max_consecutive_batch_failures = max_consecutive_batch_failures,
-      max_batch_bp = max_batch_bp, verbose = verbose
+      max_batch_bp = max_batch_bp, num_threads = num_threads,
+      word_size = word_size, verbose = verbose
     )
     circuit_breaker_tripped <- isTRUE(attr(hits, "circuit_breaker_tripped"))
 
@@ -1614,12 +1623,15 @@ utils::globalVariables(c(
 #'   queries are submitted AS DEPOSITED with a one-line message, never
 #'   trimmed and never an error. Over-length records still go to
 #'   the feature-table fallback.
-#' @param chunk_size Integer (default `200L`). Accessions needing real
+#' @param chunk_size Integer or `NULL` (default). Accessions needing real
 #'   evaluation are processed this many at a time, with the persistent
 #'   cache written after EACH chunk -- see `@section Chunked evaluation and
-#'   NCBI rate-limiting resilience` below. `Inf` gives
-#'   single-shot behavior (one chunk covering every accession, cache written
-#'   only once at the very end).
+#'   NCBI rate-limiting resilience` below. `NULL` means `200L` for
+#'   `method = "remote"` (sized for NCBI's queue) and `1000L` for
+#'   `method = "local"`, where each chunk is one `blastn` run that reads the
+#'   whole database, so fewer, larger chunks spend less time reading it.
+#'   `Inf` gives single-shot behavior (one chunk covering every accession,
+#'   cache written only once at the very end).
 #' @param max_consecutive_batch_failures Numeric (default `3L`). Forwarded
 #'   to `blast_sequences()` -- see that function's own documentation for the
 #'   full circuit-breaker mechanism (a `.blast_server_rejected()` rejection
@@ -1681,7 +1693,33 @@ utils::globalVariables(c(
 #'   re-evaluates any row previously cached as `"locally_corroborated"`
 #'   (that flag records a decision not to evaluate, not an evaluation).
 #'   Not part of `params_key`.
+#' @param num_threads Integer or `NULL` (default). Local only: forwarded to
+#'   [blast_sequences()]. `NULL` uses every core but one. Does not change any
+#'   verdict, so it is not part of `params_key`.
+#' @param word_size Integer or `NULL` (default). Local only: forwarded to
+#'   [blast_sequences()]. `NULL` means `16` for `method = "local"` and the
+#'   program's own default for remote. It can change which hits BLAST
+#'   returns, so it is part of `params_key` whenever it is set -- see
+#'   `@section Local search speed`.
 #' @param verbose Logical (default `TRUE`). Print progress messages.
+#'
+#' @section Local search speed:
+#' Against a database the size of `core_nt`, a local search spends its time
+#' per query, not per database scan, and almost all of it extending short
+#' random seed matches. Measured on real 12S reference queries against two
+#' `core_nt` volumes: one thread took 184 s for 200 queries and 14 threads
+#' 18 s with identical output; `word_size = 16` then cut 90 s to 14 s for
+#' 1,000 queries. Against the default word size, 16 returned the same
+#' best-hit identity for every query and the same best-hit taxon for 99.9%,
+#' with differences confined to queries whose best hit was below about 83%
+#' identity -- a region where the verdict already rests on distant relatives.
+#' Changing `max_target_seqs` alone moved about 2.5% of top-5 taxa in the
+#' same test, so this is inside the noise BLAST's own settings already carry.
+#' Two faster options were measured and rejected: megablast lost real
+#' conspecific hits (a 98.7% match fell to 94.0%), and a marker-only
+#' database built by bait search was 290x smaller but only 6x faster and lost
+#' 1.1% of queries, because the time goes into aligning to real relatives,
+#' which any correct database must contain.
 #'
 #' @return A data frame, one row per unique input accession:
 #'   \describe{
@@ -2041,7 +2079,7 @@ evaluate_reference_accessions <- function(accessions,
                                           poll_max_wait = 1800,
                                           barcode_term = NULL,
                                           query_span = c("amplicon", "primer_inclusive"),
-                                          chunk_size = 200L,
+                                          chunk_size = NULL,
                                           max_consecutive_batch_failures = 3L,
                                           max_query_len = NULL,
                                           max_batch_bp = 100000L,
@@ -2049,6 +2087,8 @@ evaluate_reference_accessions <- function(accessions,
                                           retry_insufficient = TRUE,
                                           local_corroboration = NULL,
                                           skip_locally_corroborated = TRUE,
+                                          num_threads = NULL,
+                                          word_size = NULL,
                                           verbose = TRUE) {
   if (!is.character(accessions) || length(accessions) == 0L) {
     stop("accessions must be a non-empty character vector.", call. = FALSE)
@@ -2077,6 +2117,13 @@ evaluate_reference_accessions <- function(accessions,
       ), call. = FALSE)
     }
   }
+  # A local search reads the whole database once per blastn invocation, so
+  # larger chunks amortise that read; a remote chunk is sized for NCBI's
+  # queue and rate limits instead.
+  if (is.null(chunk_size)) chunk_size <- if (identical(method, "local")) 1000L else 200L
+  # 16 for local only: see @param word_size. NULL keeps the remote search at
+  # NCBI's own default and its params_key unchanged.
+  if (is.null(word_size) && identical(method, "local")) word_size <- 16L
   if (!is.numeric(chunk_size) || length(chunk_size) != 1L || is.na(chunk_size) ||
     chunk_size < 1L) {
     stop("chunk_size must be a positive integer (Inf for a single unchunked call).",
@@ -2158,7 +2205,8 @@ evaluate_reference_accessions <- function(accessions,
     hierarchy_incongruent_threshold = hierarchy_incongruent_threshold,
     min_independent_partners = min_independent_partners,
     score_range = score_range, min_score = min_score, max_hits = max_hits,
-    method = method, database = database, query_span = query_span
+    method = method, database = database, query_span = query_span,
+    word_size = word_size
   )
 
   cache <- .load_reference_accession_cache(cache_dir)
@@ -2424,6 +2472,7 @@ evaluate_reference_accessions <- function(accessions,
     chunk_result <- .evaluate_reference_accessions_chunk(
       chunk_acc,
       rank_system = rank_system, method = method, database = database,
+      num_threads = num_threads, word_size = word_size,
       score_range = score_range, min_score = min_score, max_hits = max_hits,
       ncbi_api_key = ncbi_api_key, poll_max_wait = poll_max_wait,
       barcode_term = barcode_term,
