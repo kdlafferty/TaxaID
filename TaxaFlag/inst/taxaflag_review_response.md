@@ -503,6 +503,6 @@ on functions this document already covers above.
   to a call asking another. The default identity comes from `options("TaxaID.provider")`
   and from `llm_fn` itself, which separates the providers and any wrapper that pins a
   model. It cannot separate two models from one provider, so `model_label` names them.
-  The key version moves from `v1` to `v2` (and `sir-v1` to `sir-v2`), so verdicts cached
+  The key version is raised whenever a component of it changes, so verdicts cached
   before this change are a miss once and are re-asked; both functions say so when the
   cache directory already holds entries.
