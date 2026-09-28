@@ -400,14 +400,17 @@ test_that(".investigate_verdict() classifies inconclusive-vs-evaluated correctly
 .mock_blast_sequences_iv <- function(seq_df, method = "remote", database = "nt",
                                      score_range = 8, min_score = 70, max_hits = 20L,
                                      resolve_taxonomy = TRUE, ...) {
-  data.frame(
-    observation_id = seq_df$asv_id[1L],
-    accession = c("HIT_CARPIO1", "HIT_SAMEBATCH"),
-    score = c(99.5, 99.8),
-    query_coverage = c(97, 98),
-    species = c("Cyprinus carpio", "Cyprinus carpio"),
-    stringsAsFactors = FALSE
-  )
+  # The same two hits for every query, as one batched search returns them.
+  do.call(rbind, lapply(seq_df$asv_id, function(q) {
+    data.frame(
+      observation_id = q,
+      accession = c("HIT_CARPIO1", "HIT_SAMEBATCH"),
+      score = c(99.5, 99.8),
+      query_coverage = c(97, 98),
+      species = c("Cyprinus carpio", "Cyprinus carpio"),
+      stringsAsFactors = FALSE
+    )
+  }))
 }
 
 # .blast_against_comparison_set()'s own ENTREZ_QUERY-restricted comparison-
@@ -609,6 +612,53 @@ test_that("investigate_flagged_accessions() shares NCBI species searches across 
   # batch, not once per accession (Question 3, item 2).
   expect_equal(sum(search_calls == "Pseudorasbora parva"), 1L)
   expect_equal(sum(search_calls == "Cyprinus carpio"), 1L)
+})
+
+test_that("investigate_flagged_accessions() finds every disagreeing taxon in ONE search", {
+  # Against a local database each blastn call reads the whole database, so
+  # the batch searches all uncached accessions together rather than once each.
+  n_queries <- integer(0L)
+  counting_blast <- function(seq_df, ...) {
+    n_queries <<- c(n_queries, nrow(seq_df))
+    .mock_blast_sequences_iv(seq_df, ...)
+  }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_records_iv,
+    .search_species_accessions = .mock_search_species_accessions,
+    blast_sequences = counting_blast,
+    .blast_remote = .mock_blast_remote_iv,
+    .package = "TaxaMatch"
+  )
+  out <- investigate_flagged_accessions(
+    c("ACC_FLAG", "ACC_FLAG2"),
+    cache_dir = NULL, verbose = FALSE
+  )
+  expect_identical(n_queries, 2L)
+  expect_equal(out$ACC_FLAG$disagreeing_taxon, "Cyprinus carpio")
+  expect_equal(out$ACC_FLAG2$disagreeing_taxon, "Cyprinus carpio")
+})
+
+test_that("investigate_flagged_accessions() searches an accession alone when the batched search failed for it", {
+  n_queries <- integer(0L)
+  flaky_blast <- function(seq_df, ...) {
+    n_queries <<- c(n_queries, nrow(seq_df))
+    out <- .mock_blast_sequences_iv(seq_df, ...)
+    if (nrow(seq_df) > 1L) attr(out, "failed_query_ids") <- "ACC_FLAG2"
+    out
+  }
+  local_mocked_bindings(
+    .fetch_reference_accession_records = .mock_fetch_records_iv,
+    .search_species_accessions = .mock_search_species_accessions,
+    blast_sequences = flaky_blast,
+    .blast_remote = .mock_blast_remote_iv,
+    .package = "TaxaMatch"
+  )
+  out <- investigate_flagged_accessions(
+    c("ACC_FLAG", "ACC_FLAG2"),
+    cache_dir = NULL, verbose = FALSE
+  )
+  expect_identical(n_queries, c(2L, 1L))
+  expect_equal(out$ACC_FLAG2$disagreeing_taxon, "Cyprinus carpio")
 })
 
 test_that("investigate_flagged_accessions() reuses investigate_flagged_accession()'s own persistent cache", {

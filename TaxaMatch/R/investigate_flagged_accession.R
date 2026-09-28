@@ -606,17 +606,25 @@
 #' wrapper), so the latter can drive it with a shared `shared_cache` environment for
 #' cross-accession NCBI-search reuse, and so both entry points can wrap it
 #' with the identical persistent-cache read/write logic.
+#'
+#' `own` and `hits` let the batch wrapper supply this accession's record and
+#' its disagreeing-taxon BLAST hits from ONE batched fetch and ONE batched
+#' search across every flagged accession. `hits = NULL` means "search now";
+#' a data frame (possibly zero rows) is used as-is.
 #' @noRd
 .investigate_flagged_accession_core <- function(accession, species, max_related, method,
                                                 database, score_range, min_score, max_hits,
                                                 submission_window, min_coverage, ncbi_api_key,
                                                 verbose, shared_cache = NULL,
-                                                max_length_ratio = 3) {
+                                                max_length_ratio = 3,
+                                                own = NULL, hits = NULL) {
   # ---- 1. The flagged accession's own record ---------------------------------
-  own <- .fetch_reference_accession_records(accession,
-    want_sequence = TRUE,
-    ncbi_api_key = ncbi_api_key, verbose = verbose
-  )
+  if (is.null(own)) {
+    own <- .fetch_reference_accession_records(accession,
+      want_sequence = TRUE,
+      ncbi_api_key = ncbi_api_key, verbose = verbose
+    )
+  }
   if (nrow(own) == 0L || is.na(own$sequence) || !nzchar(own$sequence)) {
     stop(sprintf("Could not fetch a usable sequence for '%s' from NCBI.", accession),
       call. = FALSE
@@ -663,14 +671,16 @@
   # taxon, independence-filtered the same way evaluate_reference_
   # accessions() itself is -- the real lesson from PV382872: never trust
   # raw top hits without checking whether they're same-batch artifacts. ----
-  if (verbose) message("Re-BLASTing to discover the top independent disagreeing taxon...")
-  seq_df <- data.frame(asv_id = accession, sequence = own$sequence, stringsAsFactors = FALSE)
-  hits <- blast_sequences(
-    seq_df,
-    method = method, database = database, score_range = score_range,
-    min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,
-    ncbi_api_key = ncbi_api_key, verbose = verbose
-  )
+  if (is.null(hits)) {
+    if (verbose) message("Re-BLASTing to discover the top independent disagreeing taxon...")
+    seq_df <- data.frame(asv_id = accession, sequence = own$sequence, stringsAsFactors = FALSE)
+    hits <- blast_sequences(
+      seq_df,
+      method = method, database = database, score_range = score_range,
+      min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,
+      ncbi_api_key = ncbi_api_key, verbose = verbose
+    )
+  }
 
   disagreeing_taxon <- NA_character_
   disagreeing_taxon_comparison <- data.frame(
@@ -1196,6 +1206,60 @@ investigate_flagged_accessions <- function(accessions,
 
   results <- vector("list", length(accessions))
 
+  # ---- One batched record fetch and ONE disagreeing-taxon search for every
+  # accession the cache cannot serve. Against a local database each blastn
+  # call reads the whole database (~20 min for core_nt from an external SSD,
+  # measured), so searching the flagged accessions one call each cost that
+  # per accession; one call covers them all. An accession whose search did
+  # not complete gets NULL and is searched on its own inside the core. ----
+  species_keys <- if (is.null(species)) rep("", length(accessions)) else ifelse(is.na(species), "", species)
+  uncached <- accessions[vapply(seq_along(accessions), function(i) {
+    is.null(.lookup_investigate_cache(cache, accessions[i], species_keys[i], params_key, inconclusive_ttl_days))
+  }, logical(1L))]
+  own_tbl <- NULL
+  batch_hits <- list()
+  if (length(uncached) > 0L) {
+    own_tbl <- tryCatch(
+      .fetch_reference_accession_records(unique(uncached),
+        want_sequence = TRUE, ncbi_api_key = ncbi_api_key, verbose = verbose
+      ),
+      error = function(e) NULL
+    )
+    usable <- if (is.null(own_tbl)) own_tbl else
+      own_tbl[!is.na(own_tbl$sequence) & nzchar(own_tbl$sequence), , drop = FALSE]
+    if (!is.null(usable) && nrow(usable) > 0L) {
+      if (verbose) {
+        message(sprintf(
+          "investigate_flagged_accessions(): one BLAST search for the disagreeing taxa of %d accession(s)...",
+          nrow(usable)
+        ))
+      }
+      all_hits <- tryCatch(
+        blast_sequences(
+          data.frame(asv_id = usable$accession, sequence = usable$sequence, stringsAsFactors = FALSE),
+          method = method, database = database, score_range = score_range,
+          min_score = min_score, max_hits = max_hits, resolve_taxonomy = TRUE,
+          ncbi_api_key = ncbi_api_key, verbose = verbose
+        ),
+        error = function(e) {
+          if (verbose) {
+            warning(sprintf(
+              "Batched disagreeing-taxon search failed (%s); searching each accession on its own.",
+              conditionMessage(e)
+            ), call. = FALSE)
+          }
+          NULL
+        }
+      )
+      if (is.data.frame(all_hits)) {
+        failed <- attr(all_hits, "failed_query_ids") %||% character(0L)
+        for (a in setdiff(usable$accession, failed)) {
+          batch_hits[[a]] <- all_hits[all_hits$observation_id == a, , drop = FALSE]
+        }
+      }
+    }
+  }
+
   for (i in seq_along(accessions)) {
     acc <- accessions[i]
     sp <- if (is.null(species)) NULL else (if (is.na(species[i])) NULL else species[i])
@@ -1221,11 +1285,14 @@ investigate_flagged_accessions <- function(accessions,
       message(sprintf("investigate_flagged_accessions(): [%d/%d] %s", i, length(accessions), acc))
     }
 
+    own_i <- if (!is.null(own_tbl)) own_tbl[own_tbl$accession == acc, , drop = FALSE] else NULL
+    if (!is.null(own_i) && nrow(own_i) == 0L) own_i <- NULL
     res <- .investigate_flagged_accession_core(
       acc, sp, max_related, method, database, score_range, min_score, max_hits,
       submission_window, min_coverage, ncbi_api_key, verbose,
       shared_cache = shared_cache,
-      max_length_ratio = max_length_ratio
+      max_length_ratio = max_length_ratio,
+      own = own_i, hits = batch_hits[[acc]]
     )
     if (verbose) .print_investigation_summary(res, min_coverage)
 
