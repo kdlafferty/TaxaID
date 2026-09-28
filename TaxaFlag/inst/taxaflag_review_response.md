@@ -497,3 +497,12 @@ on functions this document already covers above.
   reported instead via an attribute.
 - `taxaflag_clear_cache()` now covers both of this package's caches rather than only
   the review-assignment cache.
+- `review_assignments(model_label = )` and `review_sample_identity(model_label = )` put the
+  reviewer into the cache key. An LLM review is a judgement, so two models can answer the
+  same question differently; a key built only from the question served one model's verdict
+  to a call asking another. The default identity comes from `options("TaxaID.provider")`
+  and from `llm_fn` itself, which separates the providers and any wrapper that pins a
+  model. It cannot separate two models from one provider, so `model_label` names them.
+  The key version moves from `v1` to `v2` (and `sir-v1` to `sir-v2`), so verdicts cached
+  before this change are a miss once and are re-asked; both functions say so when the
+  cache directory already holds entries.

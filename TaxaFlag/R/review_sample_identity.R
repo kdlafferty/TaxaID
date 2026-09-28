@@ -58,6 +58,11 @@
 #'   \code{getOption("TaxaID.llm_fn", TaxaTools::call_api)}. Under fully
 #'   namespaced calls pass it explicitly; see \code{\link{review_assignments}}
 #'   for why.
+#' @param model_label Character or \code{NULL}. A name for the model behind
+#'   \code{llm_fn}, recorded in the cache key so one model's disposition is
+#'   never served to a call asking another. Default \code{NULL} derives an
+#'   identity from \code{options("TaxaID.provider")} and from \code{llm_fn}.
+#'   See \code{\link{review_assignments}} for what that cannot separate.
 #' @param tubes_per_call Integer. Tubes per LLM call. Default 4.
 #' @param max_tokens Integer or NULL. Forwarded to \code{llm_fn}. Default NULL.
 #' @param max_retries Integer. Re-asks for tubes the model omitted. Default 2.
@@ -96,6 +101,7 @@
 review_sample_identity <- function(identity,
                                    context,
                                    llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+                                   model_label = NULL,
                                    tubes_per_call = 4L,
                                    max_tokens = NULL,
                                    max_retries = 2L,
@@ -134,10 +140,23 @@ review_sample_identity <- function(identity,
     return(q)
   }
 
-  ctx_key <- paste("sir-v1", trimws(context), sep = "\u0001")
+  # The reviewer belongs in the key: a disposition is one model's judgement,
+  # and the prefix went to v2 when it was added, so entries written before the
+  # fix are a miss once. See .review_reviewer_id().
+  ctx_key <- paste("sir-v2", .review_reviewer_id(llm_fn, model_label),
+    trimws(context),
+    sep = "\u0001"
+  )
   keys <- vapply(items, function(it) paste(ctx_key, it, sep = "\u0001"), character(1))
   answers <- list()
   if (!is.null(cache_dir)) {
+    if (verbose && length(list.files(cache_dir, pattern = "_identity_review\\.rds$"))) {
+      message(
+        "review_sample_identity: the cache key now records which model ",
+        "answered, so dispositions cached before this change are a miss once ",
+        "and will be re-asked."
+      )
+    }
     dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     paths <- file.path(cache_dir, paste0(vapply(keys, .review_cache_hash, character(1)),
       "_identity_review.rds"))

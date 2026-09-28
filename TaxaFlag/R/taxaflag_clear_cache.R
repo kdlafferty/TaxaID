@@ -115,3 +115,62 @@ taxaflag_clear_cache <- function(cache_dir = tools::R_user_dir("TaxaFlag", "cach
   )
   invisible(NULL)
 }
+
+# ------------------------------------------------------------------------------
+# .review_reviewer_id(): who answered, as a component of an LLM cache key
+#
+# An LLM review is a JUDGEMENT, so two models can answer the same question
+# differently. A key built only from the question serves one model's verdict to
+# a call asking another, silently: the same defect class as a cache keyed on a
+# name that does not encode the question, which this project has now hit
+# several times. The reviewer belongs in the key.
+#
+# What is knowable without a network call and without reaching into another
+# package's internals:
+#   - options("TaxaID.provider"), which is the option call_api() itself reads
+#     to choose a provider;
+#   - the identity of llm_fn. For a function that lives in a package, its
+#     signature (argument names AND defaults) is the stable identity: the four
+#     TaxaTools entry points differ from each other in their defaults, and a
+#     refactor of a function's body does not change it, so an unrelated edit
+#     does not orphan a large verdict cache. For a caller's own wrapper, any
+#     model it pins lives in the body, so the body is the identity.
+#
+# Neither catches two models from ONE provider, switched through set_model() or
+# a pinned tier. That case is what model_label is for, and it is documented on
+# both callers.
+#
+# Deparsing a signature is safe to store: an api_key default deparses to the
+# Sys.getenv() CALL, never to a key value.
+#
+# The failure direction is deliberate. A component that changes when it did not
+# need to costs one re-ask; a component that fails to change when it should
+# returns the wrong model's verdict as if it were this one's.
+.review_reviewer_id <- function(llm_fn, model_label = NULL) {
+  if (!is.null(model_label)) {
+    if (!is.character(model_label) || length(model_label) != 1L ||
+      is.na(model_label)) {
+      stop("'model_label' must be a single non-NA character string, or NULL.",
+        call. = FALSE
+      )
+    }
+    return(model_label)
+  }
+  provider <- getOption("TaxaID.provider")
+  if (!is.character(provider) || length(provider) != 1L || is.na(provider)) {
+    provider <- ""
+  }
+  env_name <- tryCatch(environmentName(environment(llm_fn)),
+    error = function(e) ""
+  )
+  fn_id <- if (is.function(llm_fn) && nzchar(env_name) &&
+    env_name %in% loadedNamespaces()) {
+    paste(env_name, paste(deparse(args(llm_fn)), collapse = " "), sep = ":")
+  } else {
+    .review_cache_hash(paste(
+      tryCatch(deparse(llm_fn), error = function(e) ""),
+      collapse = "\n"
+    ))
+  }
+  paste(provider, fn_id, sep = "/")
+}

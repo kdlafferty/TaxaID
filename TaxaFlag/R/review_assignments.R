@@ -180,13 +180,22 @@
 #'   every plausibility column comes back suspiciously uniform, pass
 #'   \code{llm_fn} explicitly, e.g. \code{function(p) TaxaTools::call_api(p,
 #'   provider = "anthropic")}.
+#' @param model_label Character or \code{NULL}. A name for the model behind
+#'   \code{llm_fn}, recorded in the cache key so a verdict obtained from one
+#'   model is never served to a call asking another. Default \code{NULL}
+#'   derives an identity from \code{options("TaxaID.provider")} and from
+#'   \code{llm_fn} itself, which separates the providers and any wrapper that
+#'   pins a model. What it cannot separate is two models from ONE provider,
+#'   switched through \code{TaxaTools::set_model()} or a pinned tier: name
+#'   them here when you compare them, or the second run is served the first
+#'   model's verdicts from cache.
 #' @param taxa_per_call Integer. Maximum taxa (or candidate sets) per LLM call.
 #'   Default \code{15L}. Candidate-set entries are longer than single taxon
 #'   names; consider reducing to 8--10 when using \code{plausible_taxa_col}.
 #' @param max_tokens Integer or \code{NULL}. Maximum response tokens requested
 #'   from \code{llm_fn} (forwarded as \code{llm_fn(prompt, max_tokens = max_tokens)}
 #'   whenever supplied). Default \code{NULL} -- does not pass \code{max_tokens}
-#'   at all, so \code{llm_fn}'s own default applies (\code{3000L} for
+#'   at all, so \code{llm_fn}'s own default applies (\code{16000L} for
 #'   \code{TaxaTools::call_api()}). Raise this if \code{max_retries} alone
 #'   isn't resolving truncation warnings for your data -- e.g. a long,
 #'   multi-marker \code{marker} string can inflate per-taxon response length
@@ -445,6 +454,7 @@ review_assignments <- function(input_df,
                                marker = NULL,
                                data_type,
                                llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+                               model_label = NULL,
                                taxa_per_call = 15L,
                                max_tokens = NULL,
                                max_retries = 2L,
@@ -750,8 +760,16 @@ review_assignments <- function(input_df,
   # The key covers everything that can move a verdict: the taxon label and
   # rank, every per-taxon note already attached to taxa_info (pipeline
   # posterior, candidate weights, spatial context), the shared review context,
-  # target_group, marker, data_type, and whether this is the candidate-set
-  # path. Change any of them and the entry is correctly a miss.
+  # target_group, marker, data_type, whether this is the candidate-set path,
+  # and WHO ANSWERED (see .review_reviewer_id()). Change any of them and the
+  # entry is correctly a miss.
+  #
+  # The reviewer was missing from the key until the version prefix below went
+  # to v2, so a verdict obtained from one model was served to a call asking
+  # another. Raising the prefix orphans every entry written before the fix:
+  # they are a miss once, re-asked, and re-written under a key that says who
+  # answered. The message below says so when the directory already holds
+  # entries.
   cache_hits <- NULL
   cache_paths <- NULL
   cache_keys <- NULL
@@ -766,9 +784,19 @@ review_assignments <- function(input_df,
       dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
     }
 
+    reviewer_id <- .review_reviewer_id(llm_fn, model_label)
+    if (verbose && length(list.files(cache_dir, pattern = "_review\\.rds$"))) {
+      message(
+        "review_assignments: the cache key now records which model answered, ",
+        "so verdicts cached before this change are a miss once and will be ",
+        "re-asked. Set model_label= to distinguish two models from one ",
+        "provider."
+      )
+    }
+
     .shared <- paste(c(
-      "v1", target_group %||% "", marker %||% "", data_type,
-      as.character(use_candidates),
+      "v2", target_group %||% "", marker %||% "", data_type,
+      as.character(use_candidates), reviewer_id,
       paste(names(ctx), vapply(
         ctx, function(z) paste(as.character(z), collapse = "~"),
         character(1)

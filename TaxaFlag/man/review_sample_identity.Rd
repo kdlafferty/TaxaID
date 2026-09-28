@@ -8,6 +8,7 @@ review_sample_identity(
   identity,
   context,
   llm_fn = getOption("TaxaID.llm_fn", TaxaTools::call_api),
+  model_label = NULL,
   tubes_per_call = 4L,
   max_tokens = NULL,
   max_retries = 2L,
@@ -32,6 +33,12 @@ is silent.}
 \code{getOption("TaxaID.llm_fn", TaxaTools::call_api)}. Under fully
 namespaced calls pass it explicitly; see \code{\link{review_assignments}}
 for why.}
+
+\item{model_label}{Character or \code{NULL}. A name for the model behind
+\code{llm_fn}, recorded in the cache key so one model's disposition is
+never served to a call asking another. Default \code{NULL} derives an
+identity from \code{options("TaxaID.provider")} and from \code{llm_fn}.
+See \code{\link{review_assignments}} for what that cannot separate.}
 
 \item{tubes_per_call}{Integer. Tubes per LLM call. Default 4.}
 

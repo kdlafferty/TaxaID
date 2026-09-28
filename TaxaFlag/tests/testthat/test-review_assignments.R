@@ -983,3 +983,48 @@ test_that("a candidate set arriving in two posterior orders is reviewed once", {
   expect_equal(out$llm_habitat_plausibility, c("likely", "likely"))
   expect_length(attr(out, "unreviewed_taxa"), 0L)
 })
+
+test_that("the review cache key records which model answered", {
+  # A verdict is a judgement, so a key that omits the reviewer serves one
+  # model's answer to a call asking another. These are the separations the
+  # default path must make on its own.
+  a <- TaxaFlag:::.review_reviewer_id(TaxaTools::call_anthropic_api)
+  g <- TaxaFlag:::.review_reviewer_id(TaxaTools::call_gemini_api)
+  o <- TaxaFlag:::.review_reviewer_id(TaxaTools::call_openai_api)
+  expect_false(a == g)
+  expect_false(a == o)
+  expect_false(g == o)
+
+  # A caller's own wrapper is identified by what it pins, not by its package.
+  w1 <- TaxaFlag:::.review_reviewer_id(function(p) TaxaTools::call_api(p, model = "one"))
+  w2 <- TaxaFlag:::.review_reviewer_id(function(p) TaxaTools::call_api(p, model = "two"))
+  expect_false(w1 == w2)
+
+  # The provider option is part of the identity, because call_api() reads it.
+  old_opt <- options(TaxaID.provider = "anthropic")
+  p1 <- TaxaFlag:::.review_reviewer_id(TaxaTools::call_api)
+  options(TaxaID.provider = "openai")
+  p2 <- TaxaFlag:::.review_reviewer_id(TaxaTools::call_api)
+  options(old_opt)
+  expect_false(p1 == p2)
+
+  # model_label wins outright, which is the only way to separate two models
+  # from one provider.
+  expect_identical(
+    TaxaFlag:::.review_reviewer_id(TaxaTools::call_api, model_label = "a-model"),
+    "a-model"
+  )
+  expect_error(
+    TaxaFlag:::.review_reviewer_id(TaxaTools::call_api, model_label = c("a", "b")),
+    "single non-NA character"
+  )
+
+  # An api_key default must never reach the key as a VALUE. The signature
+  # deparses to the Sys.getenv() call itself.
+  had <- Sys.getenv("ANTHROPIC_API_KEY", unset = NA_character_)
+  Sys.setenv(ANTHROPIC_API_KEY = "sk-not-a-real-key")
+  id <- TaxaFlag:::.review_reviewer_id(TaxaTools::call_anthropic_api)
+  if (is.na(had)) Sys.unsetenv("ANTHROPIC_API_KEY") else Sys.setenv(ANTHROPIC_API_KEY = had)
+  expect_false(grepl("sk-not-a-real-key", id, fixed = TRUE))
+  expect_true(grepl("Sys.getenv", id, fixed = TRUE))
+})
