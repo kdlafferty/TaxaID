@@ -34,7 +34,10 @@ test_that("advice is attached per tube and never admits anything", {
   expect_match(p, "TUBE MISLABEL")
   expect_match(p, "field samples on this run")
   expect_match(p, "Field blanks are distilled water")
-  expect_match(p, "probable spike-in")
+  expect_match(p, "run-wide artifact")
+  expect_match(p, "BLANK MEDIUM \\(what a blank is filled with\\): not stated")
+  expect_equal(unique(q$llm_role[q$sample == "MISLABEL"]), "sample")
+  expect_equal(unique(q$llm_role[q$sample == "PLANKTON"]), "exclude")
 })
 
 test_that("omitted tubes are re-asked and reported if still missing", {
@@ -109,4 +112,25 @@ test_that("input validation", {
   nolab <- suppressWarnings(classify_sample_identity(.sig_fixture(),
     control_samples = c("CLEAN", "MISLABEL", "PLANKTON"), verbose = FALSE, on_pending = "ignore"))
   expect_error(review_sample_identity(nolab, context = "x", llm_fn = identity), "taxon_label_col")
+})
+
+test_that("blank_medium reaches the prompt and the cache key; an explicit role wins", {
+  dir <- tempfile()
+  on.exit(unlink(dir, recursive = TRUE))
+  gate <- .sir_gate()
+  f <- function(prompt, ...) {
+    ids <- sub("TUBE ", "", regmatches(prompt, gregexpr("TUBE [A-Za-z0-9_]+", prompt))[[1]])
+    paste0("[", paste(sprintf('{"sample": "%s", "verdict": "clean_blank", "role": "blank", "confidence": "moderate", "rationale": "tap-water taxa"}', ids), collapse = ","), "]")
+  }
+  q <- review_sample_identity(gate, context = "x", blank_medium = "tap water", llm_fn = f,
+    cache_dir = dir, verbose = FALSE)
+  expect_match(attr(q, "llm_prompts")[[1]], "BLANK MEDIUM \\(what a blank is filled with\\): tap water")
+  expect_true(all(q$llm_role[!is.na(q$llm_verdict)] == "blank"))
+  # a different medium is a cache miss
+  n <- 0L
+  g <- function(prompt, ...) { n <<- n + 1L; f(prompt) }
+  review_sample_identity(gate, context = "x", blank_medium = "distilled water", llm_fn = g,
+    cache_dir = dir, verbose = FALSE)
+  expect_gt(n, 0L)
+  expect_error(review_sample_identity(gate, context = "x", blank_medium = "", llm_fn = f), "blank_medium")
 })
