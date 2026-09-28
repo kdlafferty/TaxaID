@@ -37,12 +37,12 @@ once here rather than repeated per file below.
 | Function | File | Purpose | Tests |
 |---|---|---|---|
 | `check_gbif_tile_range()` | `R/check_gbif_tile_range.R` | Spatial-isolation signal for a taxon from GBIF's occurrence-density map tiles | test-check_gbif_tile_range.R, test-check_gbif_tile_range_cache.R, test-review_spatial_context.R |
-| `classify_sample_identity()` | `R/classify_sample_identity.R` | Gate each sample x marker x run on whether it looks like its label (blank / sample); admit only concordant units or those with a recorded decision | test-classify_sample_identity.R |
+| `classify_sample_identity()` | `R/classify_sample_identity.R` | Gate each sample x marker x run on whether it looks like its label (blank / sample); hold discordant/suspect units until a recorded decision; units no test could judge (untested/inconclusive, with a reason) are admitted by default and reported as such (`untested_policy`) | test-classify_sample_identity.R |
 | `compute_local_occurrence_distance()` | `R/compute_local_occurrence_distance.R` | Distance from a query point to the nearest already-fetched GBIF occurrence | test-compute_local_occurrence_distance.R, test-review_spatial_context.R |
 | `flag_hopped_detections()` | `R/flag_hopped_detections.R` | Flag individual detections explained by read spillover (index hopping, tag jumps) from the same feature elsewhere on the run | test-flag_hopped_detections.R |
 | `flag_failed_libraries()` | `R/flag_failed_libraries.R` | Flag libraries and runs that failed to sequence, using the same extract's other markers to tell failure from low biomass | test-flag_failed_libraries.R |
 | `flag_watch_candidates()` | `R/flag_watch_candidates.R` | Flag observations where a watch-list species outscores the consensus winner | test-flag_watch_candidates.R |
-| `review_sample_identity()` | `R/review_sample_identity.R` | LLM advice, per tube, on samples the identity gate holds back; advice only | test-review_sample_identity.R |
+| `review_sample_identity()` | `R/review_sample_identity.R` | LLM advice, per tube, on samples the identity gate holds back, judged against the blank medium (`blank_medium`); returns a role verdict (`llm_role`) the workflow may admit on (`accept_llm_roles`) | test-review_sample_identity.R |
 | `review_spatial_context()` | `R/review_spatial_context.R` | Interactive Spatial Review of Consensus Taxa | test-review_spatial_context.R |
 | `taxaflag_clear_cache()` | `R/taxaflag_clear_cache.R` | Report and clear TaxaFlag's on-disk caches | test-check_gbif_tile_range_cache.R, test-review_assignments.R |
 | `validate_controls()` | `R/validate_controls.R` | Validate That Control Samples Actually Look Like Controls | test-validate_controls.R |
