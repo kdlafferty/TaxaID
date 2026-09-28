@@ -666,10 +666,14 @@ blast_sequences <- function(seq_df,
     tax_failed_q <- unique(filtered$qseqid[filtered$.taxonomy_failed %in% TRUE])
     filtered$.taxonomy_failed <- NULL
     if (length(tax_failed_q) > 0L) {
-      warning(sprintf(
+      txt <- sprintf(
         "blast_sequences(): taxonomy could not be fetched for hits of %d query(ies); reported in failed_query_ids, not as results.",
         length(tax_failed_q)
-      ), call. = FALSE)
+      )
+      # Both channels: Rscript defers warnings to exit, so in a long run this
+      # would otherwise surface hours after the operator could act on it.
+      if (verbose) message(txt)
+      warning(txt, call. = FALSE)
       failed_query_ids <- union(failed_query_ids, tax_failed_q)
     }
   }

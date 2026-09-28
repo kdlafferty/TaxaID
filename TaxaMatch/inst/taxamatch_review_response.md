@@ -585,3 +585,30 @@ on functions this document already covers above.
   `blast_sequences()`'s own `failed_query_ids`, is searched on its own, so a
   failed query is never read as an absence of disagreement. Tests:
   test-investigate-flagged-accession.R.
+- A failed NCBI taxonomy fetch is no longer a verdict. A lineage that could not be
+  FETCHED is empty, and an empty query lineage compares as disagreeing with every
+  hit, so a server error was being recorded as taxonomic incongruence. The
+  taxonomy fetch now retries five times with a 2 to 16 second backoff instead of
+  three times over six seconds; `.resolve_taxonomy()` and
+  `.resolve_taxonomy_by_acc()` report which taxids and accessions never
+  resolved; `blast_sequences()` adds a query whose HIT taxonomy failed to
+  `failed_query_ids`; and `evaluate_reference_accessions()` sets aside a query
+  whose OWN lineage failed, so it is not BLASTed, not cached, and retried on the
+  next call. Both notices print as well as warn, because `Rscript` defers
+  warnings to exit. Found on a live screening run where two taxonomy batches
+  returned HTTP 500 and about 400 accessions would have been cached as
+  incongruent or insufficient. Tests: test-blast.R,
+  test-evaluate-reference-accessions.R.
+- GenBank XML is parsed with the `HUGE` option at every site, so a large record
+  set does not hit libxml2's default node limit.
+- `resolve_review_overrides(resolution_rank = )` requires a resolution-limit
+  explanation to be plausible. A marker's resolving power can only fail between
+  close relatives, so `poor_marker_resolution` and `sister_family_thin_coverage`
+  now override a removal only when the accession still agrees with its hits at
+  order or finer. THIS CHANGES RESULTS: an accession kept under the old rule on a
+  coarse agreement is now removed. The motivating case is nine *Lutjanus johnii*
+  12S records that shared only class with their hits and were 80 to 85 percent
+  identical to both *L. johnii* mitogenomes, yet were kept on a moderate-confidence
+  "poor marker" review. `NULL` restores the old behaviour, and the check is
+  skipped when the input has no `finest_common_rank` column. Tests:
+  test-review-flagged-accessions.R.

@@ -1062,10 +1062,14 @@ utils::globalVariables(c(
       attr(query_tax, "failed_accessions") %||% character(0L), query_meta$accession
     )
     if (length(tax_failed) > 0L) {
-      warning(sprintf(
+      txt <- sprintf(
         "evaluate_reference_accessions(): taxonomy could not be fetched for %d accession(s) -- will retry next call, not cached:\n  %s",
         length(tax_failed), paste(tax_failed, collapse = ", ")
-      ), call. = FALSE)
+      )
+      # Both channels: Rscript defers warnings to exit, so in a long run this
+      # would otherwise surface hours after the operator could act on it.
+      if (verbose) message(txt)
+      warning(txt, call. = FALSE)
       query_meta <- query_meta[!query_meta$accession %in% tax_failed, , drop = FALSE]
       missing_acc <- union(missing_acc, tax_failed)
     }
