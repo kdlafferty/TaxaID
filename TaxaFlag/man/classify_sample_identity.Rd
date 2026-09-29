@@ -73,7 +73,9 @@ Set aside like an artifact, without a warning, and listed in
 inconclusive units. See Status.}
 
 \item{accept_llm_roles}{Logical. Let \code{llm_role} from the decision record
-stand in for an identity disposition where no person has recorded one.
+stand in for an identity disposition where no person has recorded one,
+and \code{llm_marker_unusable} exclude that marker where no person has
+recorded a library disposition (it can only exclude, never keep).
 Default FALSE.}
 
 \item{decisions_path}{Character or NULL. The CSV decision record. Read if
@@ -98,6 +100,8 @@ decision. A production workflow should pass \code{"error"}.}
 \item{\code{admit_as}}{\code{"control"}, \code{"sample"},
 \code{"positive_control"} or \code{NA}
 (not admitted); reflects any reassignment.}
+\item{\code{control_usability}, \code{sample_viability}}{Per marker; see
+Decision scopes.}
 \item{\code{admit}}{Logical. The gate. Filter on this and read
 \code{admit_as} for the role; the original \code{control_samples} vector
 is no longer the control set.}
@@ -107,10 +111,19 @@ evidence (\code{depth}, \code{richness}, \code{diversity_n1},
 \code{diversity_ratio}, \code{composition_share_other},
 \code{n_libraries_assessable}, \code{composition_power},
 \code{library_status}, \code{run_status}, \code{n_markers_flagged},
-\code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
+\code{n_markers_assessable}, \code{top_taxa}, and \code{top_taxon} with
+\code{top_taxon_share}: the single most abundant feature and its share of
+the unit's reads, with run-wide artifacts and declared spikes set aside.
+Dominance is reported as evidence for a reviewer and never acted on: a
+blank that is 96\\% one field fish is worth a look in any marker, and the
+number needs no taxonomy, habitat or scope), the verdict columns,
 \code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
 \code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
 \code{pending_review}, \code{excluded_library_issue},
+\code{control_usability} (for units whose role is control: \code{"usable"},
+\code{"contaminated_in_marker"}, \code{"kept_by_decision"} or
+\code{"excluded_by_decision"}), \code{sample_viability} (for units whose
+role is sample: \code{"viable"}, \code{"thin"} or \code{"non_viable"}),
 \code{admit_as} and \code{admit}. Attribute
 \code{"review_queue"}: the units that need a person, in decision-record
 shape. Attribute \code{"runs"}: one row per run x marker, with admitted
@@ -286,10 +299,28 @@ markers where it looked concordant (\code{tube_flagged}). Such a unit
 keeps its own \code{identity_status} (it is not itself evidence of
 anything), and \code{hold_reason} says why it is held:
 \code{"own_evidence"}, \code{"tube"}, \code{"untested"} or
-\code{"inconclusive"}. A blank contaminated at the bag is contaminated in
-every marker, even where one marker happens to amplify little of it. An
-untested unit holds only itself: a failed library says nothing about the
-tube's other markers.
+\code{"inconclusive"}. An untested unit holds only itself: a failed
+library says nothing about the tube's other markers.
+\item \strong{Identity is per tube; usability is per marker.} Whether a
+tube IS a blank is one question for all its markers. Whether a marker's
+result is USABLE is asked per marker, because different markers can
+return usable and unusable results for the same tube. A blank whose own
+evidence in one marker looks contaminated (discordant or suspect in that
+marker) is not admitted as a control IN THAT MARKER, even after the tube
+is confirmed as a blank: \code{control_usability} reads
+\code{"contaminated_in_marker"}, and \code{"keep_library"} on that unit
+overrides it. Its other markers are judged on their own evidence:
+contamination a marker cannot amplify cannot bias that marker. The
+inference runs one way only. A clean result in an insensitive marker
+(12S cannot amplify protists or algae) never clears a sensitive one,
+because each marker is judged only on its own evidence.
+\item \strong{Sample viability is per marker.} \code{sample_viability}
+combines yield with appearance: \code{"viable"} (libraries passed),
+\code{"thin"} (low yield but a normal-looking composition: a genuinely
+small sample, not a broken one) or \code{"non_viable"} (no library
+yielded). Depth alone cannot tell thin from broken. Below some depth
+the composition test has nothing to compare, so only depth speaks; that
+is the \code{inconclusive}/\code{no_power} state.
 \item \strong{Identity questions block; library failures do not.} A unit
 held for identity is \code{pending_review} until the tube has a
 disposition. A unit whose libraries failed is excluded

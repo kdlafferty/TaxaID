@@ -24,8 +24,9 @@ for every replicate.}
 \item{n_replicates}{Integer (default \code{5L}). How many independent random
 representative draws to compare. Each draw consumes the caller's RNG
 state (\code{sample()}, same convention as \code{max_seqs_per_taxon}) -- do NOT
-call \code{set.seed()} between replicates, or every "replicate" would be
-identical.}
+call \code{set.seed()} between replicates, and do NOT pass
+\code{build_sequence_matrix(seed =)} through, or every "replicate" would be
+identical and this function would report zero noise.}
 }
 \value{
 A list:

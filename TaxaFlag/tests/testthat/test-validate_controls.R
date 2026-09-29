@@ -271,3 +271,28 @@ test_that(".bray_m() is unchanged (still the direct pairwise Bray-Curtis formula
              dimnames = list(c("t1", "t2", "t3"), c("a", "b")))
   expect_equal(TaxaFlag:::.bray_m(m, "a", "b"), 1 - sum(pmin(m[, "a"], m[, "b"])))
 })
+
+test_that("the null-pair subsample is reproducible and leaves the caller's RNG alone", {
+  set.seed(3)
+  n <- 40
+  d <- do.call(rbind, lapply(seq_len(n), function(i) data.frame(
+    sample_id = sprintf("S%02d", i), site = "A",
+    taxon_name = sample(paste0("t", 1:60), 20), count = rpois(20, 50) + 1,
+    stringsAsFactors = FALSE)))
+  d <- rbind(d, data.frame(sample_id = "BLANK", site = "A", taxon_name = c("t1", "t2"),
+    count = c(5, 3), stringsAsFactors = FALSE))
+  run <- function() suppressWarnings(validate_controls(d, control_samples = "BLANK",
+    event_col = "sample_id", site_col = "site", taxon_col = "taxon_name", count_col = "count",
+    max_null_pairs = 50L, verbose = FALSE))
+  set.seed(99); before <- runif(1); set.seed(99)
+  r1 <- run()
+  expect_equal(runif(1), before)   # the caller's stream is untouched
+  r2 <- run()
+  expect_identical(r1, r2)
+})
+
+test_that("the null uses every pair up to 100 samples by default", {
+  expect_equal(formals(validate_controls)$max_null_pairs, 5000L)
+  expect_gte(choose(100, 2), 4950)
+  expect_lte(choose(100, 2), formals(validate_controls)$max_null_pairs)
+})

@@ -1183,7 +1183,18 @@ assign_taxa_llm <- function(match_df,
 
   # Taxa list
   # Lineage after the rank lets the model tell homonyms apart.
-  lineage <- if ("lineage" %in% names(taxa_df)) taxa_df$lineage else NA_character_
+  # rep(), not a bare NA_character_: ifelse() returns the length of its TEST,
+  # so a length-1 lineage makes the ifelse() below length 1 regardless of how
+  # many taxa there are. Here that happens to be harmless, because sprintf()
+  # recycles a length-1 argument and every row correctly gets "". It is fixed
+  # anyway because the length then depends on whether the column exists, which
+  # is the shape that DID bite in TaxaFlag:::.sig_dominance(), where the
+  # collapsed vector was indexed per unit and every unit read NA.
+  lineage <- if ("lineage" %in% names(taxa_df)) {
+    taxa_df$lineage
+  } else {
+    rep(NA_character_, nrow(taxa_df))
+  }
   taxa_lines <- sprintf(
     "- %s (%s%s)%s",
     taxa_df$taxon_name,

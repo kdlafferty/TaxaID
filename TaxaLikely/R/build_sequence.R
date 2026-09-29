@@ -72,10 +72,25 @@ utils::globalVariables(c(
 #'   represent entirely different taxa.  In a broad 18S reference database this
 #'   can account for the majority of apparent within-species pairs.  Set to
 #'   `FALSE` only if blank finest-rank values are intentional.
+#' @param seed Integer or `NULL` (default `NULL`). When supplied, the random
+#'   draws below are made from this seed and the caller's own RNG stream is
+#'   handed back untouched, so the same `reference_df` and settings give the
+#'   same matrix on every run. Three draws can occur: the
+#'   `max_seqs_per_taxon` thinning, the choice of one representative per genus
+#'   under `by_genus`, and the `max_foreign_reps_per_genus` cap. They decide
+#'   which sequences train the calibration, so an unseeded build makes the
+#'   calibration, and every likelihood resting on it, unreproducible whenever
+#'   a cap is reached. `NULL` keeps the draws on the caller's RNG state, which
+#'   is what [check_cross_genus_sampling_noise()] needs in order to measure
+#'   how much the representative draw moves the estimate; a fixed default
+#'   would make its replicates identical and report zero noise. For a
+#'   production build, pass a seed here rather than calling `set.seed()`
+#'   beforehand: measured across five production call sites, none honoured
+#'   that older convention, and one appeared to while not doing so.
 #' @param max_seqs_per_taxon Integer or `NULL` (default `NULL`).  If supplied,
 #'   at most this many sequences are retained per finest-rank taxon before
-#'   alignment, chosen by random sampling using the current RNG state (set
-#'   `set.seed()` before calling for reproducibility).  This prevents
+#'   alignment, chosen by random sampling. Pass `seed` to make that draw
+#'   reproducible; without it the draw uses the caller's RNG state.  This prevents
 #'   heavily-sequenced model organisms or domestic species from dominating
 #'   the within-species distribution and thereby distorting model training.
 #'   For typical vertebrate barcode databases a value of `10L`-`20L` is
@@ -314,7 +329,54 @@ build_sequence_matrix <- function(reference_df,
                                   max_foreign_reps_per_genus = 20L,
                                   pair_retention = c("all", "best_per_partner", "best_per_class"),
                                   min_pair_coverage = 0.8,
-                                  memory_budget_fraction = 0.7) {
+                                  memory_budget_fraction = 0.7,
+                                  seed = NULL) {
+  # A matrix built with a cap in play is drawn, not determined, and the draws
+  # decide which sequences train the calibration and therefore every
+  # likelihood. The contract used to be the caller's: "call set.seed()
+  # beforehand". Measured across five production call sites, NONE honoured it.
+  # One had no seed at all; three had one belonging to a subsetting helper
+  # that deliberately restores the caller's .Random.seed so it cannot carry;
+  # and the fifth held two seeds, of which the one written for this call is
+  # dead code inside a block gated on a constant set to NULL, so the build was
+  # seeded only incidentally by a seed written for something else. A contract
+  # satisfied by coincidence is not satisfied, so the guarantee moved in here.
+  #
+  # The default stays NULL, and not for compatibility:
+  # check_cross_genus_sampling_noise() exists to MEASURE how much the random
+  # representative draw moves the estimate, and calls this function
+  # n_replicates times expecting a different draw each time. A fixed default
+  # seed would make every replicate identical and that diagnostic would report
+  # zero noise, which is a plausible-looking wrong number rather than an error.
+  if (!is.null(seed)) {
+    if (!is.numeric(seed) || length(seed) != 1L || is.na(seed)) {
+      stop("seed must be NULL or a single non-NA number", call. = FALSE)
+    }
+    # Seed locally and hand the caller's RNG stream back untouched, so a
+    # seeded build cannot silently change what any later draw in the caller's
+    # session produces.
+    if (exists(".Random.seed", envir = globalenv())) {
+      .old_seed <- get(".Random.seed", envir = globalenv())
+      on.exit(assign(".Random.seed", .old_seed, envir = globalenv()), add = TRUE)
+    } else {
+      on.exit(
+        suppressWarnings(rm(".Random.seed", envir = globalenv())),
+        add = TRUE
+      )
+    }
+    set.seed(seed)
+  }
+  if (is.null(seed) && isTRUE(verbose) &&
+    (!is.null(max_seqs_per_taxon) || isTRUE(by_genus))) {
+    # Stated, not guessed. R cannot tell a deliberate set.seed() from an
+    # initialised stream, so a "you look unseeded" warning would be a heuristic;
+    # this says only what is certainly true, at the moment it matters.
+    message(
+      "build_sequence_matrix: random draws in this build use the caller's RNG ",
+      "state, so the matrix is reproducible only if the caller seeded it. ",
+      "Pass seed= to fix the draws inside this call."
+    )
+  }
   if (!is.null(memory_budget_fraction) &&
     (!is.numeric(memory_budget_fraction) || length(memory_budget_fraction) != 1L ||
       is.na(memory_budget_fraction) || memory_budget_fraction <= 0 ||
@@ -484,8 +546,8 @@ build_sequence_matrix <- function(reference_df,
   # ---- 1d. THIN TO max_seqs_per_taxon -----------------------------------------
   # Randomly subsample sequences per finest-rank taxon before alignment to
   # prevent heavily-sequenced species from dominating the within-species
-  # distribution.  Uses the caller's RNG state; call set.seed() beforehand for
-  # reproducibility.
+  # distribution. Uses the caller's RNG state unless `seed` was supplied, in
+  # which case the draw was seeded locally at the top of this function.
   if (!is.null(max_seqs_per_taxon) && finest_rank %in% names(ref_seqs)) {
     finest_vals <- ref_seqs[[finest_rank]]
     # NA finest-rank values are reachable whenever filter_unnamed = FALSE, and
@@ -950,8 +1012,8 @@ build_sequence_matrix <- function(reference_df,
 #'
 #' Representative selection is RANDOM, one per genus, via `sample()` on the
 #' caller's current RNG state -- matching this same file's existing
-#' `max_seqs_per_taxon` convention exactly (`set.seed()` beforehand for
-#' reproducibility), chosen over a deterministic "first row" rule because nothing
+#' `max_seqs_per_taxon` convention exactly (pass `seed` for reproducibility),
+#' chosen over a deterministic "first row" rule because nothing
 #' guarantees `reference_df`'s row order is itself unbiased (e.g. NCBI's own
 #' return order, or a submission-date sort), and a systematic same-position
 #' pick could quietly bias which sequence represents every genus in the
@@ -961,8 +1023,8 @@ build_sequence_matrix <- function(reference_df,
 #' runs, so every genus's augmented alignment knows every other genus's
 #' chosen representative in advance -- the RNG draw sequence (one `sample()`
 #' call per multi-sequence genus, in genus order) is unchanged from the
-#' original single-pass design, so `set.seed()`-driven reproducibility is
-#' identical to before this revision.
+#' original single-pass design, so seeded reproducibility is identical to
+#' before this revision.
 #'
 #' Per-genus DECIPHER `verbose` output is always suppressed regardless of the
 #' caller's own `verbose` (thousands of individual progress bars would be
@@ -1157,8 +1219,9 @@ build_sequence_matrix <- function(reference_df,
 #' @param n_replicates Integer (default `5L`). How many independent random
 #'   representative draws to compare. Each draw consumes the caller's RNG
 #'   state (`sample()`, same convention as `max_seqs_per_taxon`) -- do NOT
-#'   call `set.seed()` between replicates, or every "replicate" would be
-#'   identical.
+#'   call `set.seed()` between replicates, and do NOT pass
+#'   `build_sequence_matrix(seed =)` through, or every "replicate" would be
+#'   identical and this function would report zero noise.
 #'
 #' @return A list:
 #'   \describe{

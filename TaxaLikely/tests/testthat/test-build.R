@@ -1052,3 +1052,71 @@ test_that(".best_per_partner_keep: by = \"class\" strata are the pair types", {
   # coverage) + 0.90 (best clearing); cross-family: 0.85 (best, clears).
   expect_equal(keep, c(TRUE, TRUE, FALSE, TRUE, TRUE, FALSE, TRUE))
 })
+
+# ---------------------------------------------------------------------------
+# seed: the capped draws are the caller's to fix, inside this call
+# ---------------------------------------------------------------------------
+
+.seed_ref_df <- function() {
+  data.frame(
+    composite_id = c("S1", "S2", "S3", "S4", "S5", "S6"),
+    sequence = c(.seq_a, .seq_b, .seq_c, .seq_a, .seq_b, .seq_c),
+    genus = c("Aa", "Aa", "Aa", "Bb", "Bb", "Bb"),
+    species = c("Aa bb", "Aa bb", "Aa bb", "Bb cc", "Bb cc", "Bb cc"),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("seed makes the capped draw reproducible and leaves the caller's RNG alone", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  ref <- .seed_ref_df()
+  args <- list(ref, c("genus", "species"), max_dist = 1.0, max_seqs_per_taxon = 2L)
+
+  a <- suppressMessages(do.call(build_sequence_matrix, c(args, list(seed = 7L))))
+  b <- suppressMessages(do.call(build_sequence_matrix, c(args, list(seed = 7L))))
+  expect_identical(a$id_x, b$id_x)
+  expect_identical(a$id_y, b$id_y)
+
+  # The caller's stream comes back untouched, so a seeded build cannot change
+  # what the caller draws next.
+  set.seed(1234L)
+  before <- get(".Random.seed", envir = globalenv())
+  invisible(suppressMessages(do.call(build_sequence_matrix, c(args, list(seed = 7L)))))
+  expect_identical(get(".Random.seed", envir = globalenv()), before)
+})
+
+
+test_that("an unseeded capped build says the draw is the caller's, a seeded one does not", {
+  skip_if_not_installed("DECIPHER")
+  skip_if_not_installed("Biostrings")
+  ref <- .seed_ref_df()
+  expect_message(
+    invisible(build_sequence_matrix(ref, c("genus", "species"),
+      max_dist = 1.0, max_seqs_per_taxon = 2L
+    )),
+    "use the caller's RNG state"
+  )
+  msgs <- testthat::capture_messages(
+    invisible(build_sequence_matrix(ref, c("genus", "species"),
+      max_dist = 1.0, max_seqs_per_taxon = 2L, seed = 7L
+    ))
+  )
+  expect_false(any(grepl("use the caller's RNG state", msgs)))
+})
+
+
+test_that("seed rejects a value that cannot seed", {
+  df <- data.frame(
+    composite_id = "A1", sequence = .seq_a, genus = "Aa", species = "Aa bb",
+    stringsAsFactors = FALSE
+  )
+  expect_error(
+    build_sequence_matrix(df, c("genus", "species"), seed = c(1, 2)),
+    "seed must be NULL or a single non-NA number"
+  )
+  expect_error(
+    build_sequence_matrix(df, c("genus", "species"), seed = NA),
+    "seed must be NULL or a single non-NA number"
+  )
+})
