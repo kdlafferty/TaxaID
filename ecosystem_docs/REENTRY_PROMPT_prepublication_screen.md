@@ -94,11 +94,20 @@ the user's OWN workflow script, which they are about to run themselves, so it
 is not an escalation; a whitelist parser would still be tidier if that code is
 ever revisited.
 
-**Pass 6, check and test: NOT RUN TONIGHT.** Available memory sat at 3.3 GB
-with the 18S accession screen live and a `blastn` against `core_nt` holding
-about 14 GB. Nine checks into that is how a healthy multi-hour run gets killed,
-which this project has already done once. The one suite that had to run,
-TaxaFlag after the edits, ran alone and passed.
+**Pass 6, check and test: QUEUED, gated on machine headroom.** A runner works
+through all nine in risk order (TaxaFlag, TaxaFetch, TaxaTools, TaxaExpect,
+TaxaLikely, TaxaAssign, TaxaMatch, TaxaWizard, TaxaHabitat) and refuses to
+start a package until available memory is above 6 GB and swap below 2 GB,
+waiting up to three hours per package and recording a skip rather than forcing
+it. Results land in
+`TaxaID_dev/screen_records/prepublication_screen_2026-09-20/stageb_pass6_checks.md`.
+It uses CI's own invocation, so one CRAN-incoming-feasibility warning per
+package is expected and anything else is a finding. It was queued rather than
+run immediately because available memory sat at 3.3 GB with the 18S
+accession screen live and a `blastn` against `core_nt` holding about 14 GB.
+Nine checks into that is how a healthy multi-hour run gets killed, which this
+project has already done once. The one suite that had to run, TaxaFlag after
+the edits, ran alone and passed.
 
 ## 0. Open items board (live rows only; last edit 2026-09-28)
 
