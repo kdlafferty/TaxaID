@@ -292,7 +292,12 @@
 #' \code{diversity_ratio}, \code{composition_share_other},
 #' \code{n_libraries_assessable}, \code{composition_power},
 #' \code{library_status}, \code{run_status}, \code{n_markers_flagged},
-#' \code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
+#' \code{n_markers_assessable}, \code{top_taxa}, and \code{top_taxon} with
+#' \code{top_taxon_share}: the single most abundant feature and its share of
+#' the unit's reads, with run-wide artifacts and declared spikes set aside.
+#' Dominance is reported as evidence for a reviewer and never acted on: a
+#' blank that is 96\% one field fish is worth a look in any marker, and the
+#' number needs no taxonomy, habitat or scope), the verdict columns,
 #' \code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
 #' \code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
 #' \code{pending_review}, \code{excluded_library_issue},
@@ -525,6 +530,12 @@ classify_sample_identity <- function(input_df,
   } else {
     u$top_taxa <- NA_character_
   }
+  # Dominance: evidence only, never acted on. Computed with run-wide artifacts
+  # and declared spikes set aside, since a clean blank on a spiked run is
+  # dominated by the spike.
+  dom <- .sig_dominance(d[!d$ubiquitous, , drop = FALSE], u$unit)
+  u$top_taxon <- dom$top_taxon
+  u$top_taxon_share <- dom$top_taxon_share
   u$reason <- .sig_reason(u, diversity_blank_max)
 
   # --- 5. Decisions and admission ---
@@ -872,6 +883,35 @@ classify_sample_identity <- function(input_df,
 
 #' Top taxa by read share, as "Name 34%; Name 12%; ..."
 #' @noRd
+#' The single most abundant feature in each unit and its share of the unit's
+#' reads, on kept libraries (all libraries when none were kept)
+#' @noRd
+.sig_dominance <- function(d, units) {
+  out <- data.frame(unit = units, top_taxon = NA_character_, top_taxon_share = NA_real_,
+    stringsAsFactors = FALSE)
+  if (!nrow(d)) return(out)
+  has_kept <- tapply(!d$excluded, d$unit, any)
+  use <- !d$excluded | !has_kept[d$unit]
+  x <- d[use & d$reads > 0, , drop = FALSE]
+  if (!nrow(x)) return(out)
+  f <- tapply(x$reads, paste(x$unit, x$feature, sep = "\r"), sum)
+  key <- names(f)
+  fu <- sub("\r.*$", "", key)
+  ff <- sub("^[^\r]*\r", "", key)
+  tot <- tapply(as.numeric(f), fu, sum)
+  o <- order(fu, -as.numeric(f))
+  top <- !duplicated(fu[o])
+  tu <- fu[o][top]
+  tf <- ff[o][top]
+  sh <- as.numeric(f)[o][top] / as.numeric(tot[tu])
+  lab <- if ("label_name" %in% names(x)) x$label_name[match(paste(tu, tf), paste(x$unit, x$feature))] else NA
+  lab <- ifelse(is.na(lab) | !nzchar(lab), tf, lab)
+  m <- match(out$unit, tu)
+  out$top_taxon <- lab[m]
+  out$top_taxon_share <- round(sh[m], 4)
+  out
+}
+
 .sig_top_taxa <- function(d, units = NULL, n = 12L, per_unit = TRUE) {
   nm <- d$label_name
   nm[is.na(nm) | !nzchar(nm)] <- "(unassigned)"
@@ -1067,7 +1107,7 @@ classify_sample_identity <- function(input_df,
     "sample", "marker", "run", "identity_label", "identity_appearance", "identity_status",
     "identity_status_reason", "issue_type", "tube_flagged", "hold_reason", "control_usability", "sample_viability", "confidence", "n_markers_flagged", "n_markers_assessable", "depth",
     "richness", "diversity_n1", "diversity_ratio", "composition_share_other",
-    "composition_power", "run_status", "reason", "top_taxa"
+    "composition_power", "run_status", "reason", "top_taxon", "top_taxon_share", "top_taxa"
   )
   q <- q[, cols, drop = FALSE]
   q$suggested_disposition <- ifelse(q$issue_type %in% "library", "exclude_library",

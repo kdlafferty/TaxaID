@@ -111,7 +111,12 @@ evidence (\code{depth}, \code{richness}, \code{diversity_n1},
 \code{diversity_ratio}, \code{composition_share_other},
 \code{n_libraries_assessable}, \code{composition_power},
 \code{library_status}, \code{run_status}, \code{n_markers_flagged},
-\code{n_markers_assessable}, \code{top_taxa}), the verdict columns,
+\code{n_markers_assessable}, \code{top_taxa}, and \code{top_taxon} with
+\code{top_taxon_share}: the single most abundant feature and its share of
+the unit's reads, with run-wide artifacts and declared spikes set aside.
+Dominance is reported as evidence for a reviewer and never acted on: a
+blank that is 96\\% one field fish is worth a look in any marker, and the
+number needs no taxonomy, habitat or scope), the verdict columns,
 \code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
 \code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
 \code{pending_review}, \code{excluded_library_issue},

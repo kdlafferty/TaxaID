@@ -430,3 +430,23 @@ test_that("sample_viability separates viable, thin-or-failed, and leaves control
   expect_true(all(u$sample_viability[ly] == "thin"))
   expect_true(all(c("control_usability", "sample_viability") %in% names(res)))
 })
+
+test_that("dominance is reported per unit with run-wide artifacts set aside", {
+  res <- .sig_run(.sig_fixture())
+  u <- attr(res, "units")
+  expect_true(all(c("top_taxon", "top_taxon_share") %in% names(u)))
+  expect_true(all(u$top_taxon_share > 0 & u$top_taxon_share <= 1, na.rm = TRUE))
+  # CLEAN carries two lab taxa: the top one holds at least half its reads
+  cl <- .unit(res, "CLEAN", "M1")
+  expect_true(cl$top_taxon %in% c("lab_human", "lab_fungus"))
+  expect_gte(cl$top_taxon_share, 0.5)
+  # a feature in every tube of a run is an artifact, so it never counts as dominant
+  d <- .sig_fixture()
+  art <- unique(d[d$run == "R2", c("sample_id", "marker", "run", "event_id")])
+  art$taxon_name <- paste(art$marker, "SPIKE", sep = "_"); art$species <- "SPIKE"
+  art$count <- ifelse(art$sample_id == "MISLABEL", 200000, 5000)
+  d2 <- rbind(d, art[, names(d)])
+  res2 <- suppressWarnings(classify_sample_identity(d2, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
+    taxon_label_col = "species", verbose = FALSE, on_pending = "ignore", spike_taxa = "SPIKE"))
+  expect_false(any(attr(res2, "units")$top_taxon %in% "SPIKE"))
+})

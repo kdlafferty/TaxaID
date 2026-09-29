@@ -310,7 +310,7 @@ review_sample_identity <- function(identity,
       ub <- if (length(ub)) paste(ub, collapse = "; ") else "(none)"
       sprintf(paste0(
         "  [%s, run %s] gate: %s (looks like %s). %s reads, %d features, effective diversity %.2fx a typical field sample of this marker. ",
-        "Composition: %s.\n    taxa in this tube: %s\n    field samples on this run: %s\n",
+        "Composition: %s. Dominant taxon (run-wide artifacts set aside): %s.\n    taxa in this tube: %s\n    field samples on this run: %s\n",
         "    in every tube of this run whatever the tube (run-wide artifact or declared spike): %s"
       ),
       r$marker, r$run, r$identity_status, r$identity_appearance,
@@ -322,6 +322,9 @@ review_sample_identity <- function(identity,
       } else {
         "not testable"
       },
+      if (!is.null(r$top_taxon_share) && !is.na(r$top_taxon_share)) {
+        sprintf("%s %.0f%%", r$top_taxon, 100 * r$top_taxon_share)
+      } else "(none)",
       ifelse(is.na(r$top_taxa), "(none)", r$top_taxa),
       ifelse(length(fr) && !is.na(fr[1]), fr[1], "(none)"),
       ub

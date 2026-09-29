@@ -290,3 +290,9 @@ test_that("the null-pair subsample is reproducible and leaves the caller's RNG a
   r2 <- run()
   expect_identical(r1, r2)
 })
+
+test_that("the null uses every pair up to 100 samples by default", {
+  expect_equal(formals(validate_controls)$max_null_pairs, 5000L)
+  expect_gte(choose(100, 2), 4950)
+  expect_lte(choose(100, 2), formals(validate_controls)$max_null_pairs)
+})
