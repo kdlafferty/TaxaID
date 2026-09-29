@@ -26,9 +26,16 @@ reasoning from the code) -- see "Real bugs found" below.
 
 ## Added after the review
 
-No new exported functions since the review. 7 new internal helper functions have been
-added since (all in `site_utils.R`, `score_consensus.R`, `kernel_branch.R`, and
-`posterior_consensus.R`).
+One new exported function since the review, `add_unreferenced_prior_mass()`
+(`unreferenced_prior_mass.R`, tests in `test-unreferenced_prior_mass.R`). It gives the
+generic unreferenced hypotheses (an unsequenced relative in the best candidate's genus
+or family) the prior mass of the local species they stand for. That means species
+recorded locally but lacking a reference sequence, added to the dark-diversity floor
+`join_priors()` already assigns them. Without that mass, a posterior normalised over the
+candidates cannot say that none of them is plausible at the site: an out-of-range
+species with a prior of 1e-5 beats hypotheses carrying floors of 3e-6. 7 new internal
+helper functions have also been added since (all in `site_utils.R`, `score_consensus.R`,
+`kernel_branch.R`, and `posterior_consensus.R`).
 
 ------------------------------------------------------------------------
 
