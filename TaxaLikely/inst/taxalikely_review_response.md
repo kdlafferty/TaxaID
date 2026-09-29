@@ -1034,3 +1034,14 @@ on functions this document already covers above.
   different draw per replicate, so a fixed default seed would make it report zero
   noise, which is a plausible wrong number rather than an error. An unseeded build
   that will draw now says so. Tests: test-build.R.
+- `evaluate_likelihoods()` keeps the generic `unreferenced_species` and
+  `unreferenced_genus` rows whatever their likelihood ratio. The point-estimate
+  filter already exempted them, but the final filter on the simulated mean
+  applied `ratio_threshold` to every row. That dropped the generic rows exactly
+  where they matter: a poorly matching unsequenced relative can still win on the
+  posterior once its prior is applied. The documentation said only specific
+  candidates are dropped, and now the code agrees. Likelihood checkpoints built
+  before this change carry no generic row below the threshold, so they should not
+  be compared in one table with checkpoints built after it. Measured on the
+  CalIntertidal Round 1 posteriors: 86% of 32,380 observations carried no generic
+  row. Tests: test-evaluate.R (the new test fails on the previous code).
