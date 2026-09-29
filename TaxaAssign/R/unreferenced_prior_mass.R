@@ -82,7 +82,10 @@
 #'   `unreferenced_mass` and `unreferenced_n_species` (`NA` on rows that are
 #'   not generic unreferenced hypotheses). Attribute `unreferenced_mass_check`
 #'   holds `n_candidates`, `n_candidates_not_referenced` and
-#'   `n_referenced_not_in_priors`.
+#'   `n_referenced_not_in_priors`; attribute `unreferenced_scope_members` lists
+#'   the species behind each added mass (`row`, `observation_id`, `scope`,
+#'   `scope_rank`, `taxon_name`, `theta_mean`), so every mass can be traced to
+#'   the local species that make it up.
 #'
 #' @seealso [join_priors()], [compute_posterior()]
 #'
@@ -151,6 +154,8 @@ add_unreferenced_prior_mass <- function(joined,
     grid_id <- g
   }
 
+  joined <- .blank_ranks_to_na(joined)
+  taxonomy <- .blank_ranks_to_na(taxonomy)
   out <- joined
   out$prior_mean_floor <- out$prior_mean
   out$unreferenced_scope <- NA_character_
@@ -307,5 +312,17 @@ add_unreferenced_prior_mass <- function(joined,
     absent from the prior table."
   ))
   attr(out, "unreferenced_mass_check") <- check
+  attr(out, "unreferenced_scope_members") <- if (!is.null(mem) && nrow(mem) > 0L) {
+    data.frame(
+      row = mem$row, observation_id = mem$observation_id, scope = mem$scope,
+      scope_rank = mem$rank, taxon_name = mem$taxon_name, theta_mean = mem$theta_mean,
+      stringsAsFactors = FALSE, row.names = NULL
+    )
+  } else {
+    data.frame(
+      row = integer(0), observation_id = character(0), scope = character(0),
+      scope_rank = character(0), taxon_name = character(0), theta_mean = numeric(0)
+    )
+  }
   out
 }

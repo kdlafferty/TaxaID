@@ -59,6 +59,15 @@ test_that("genus scope adds only unreferenced, un-named congeners", {
   expect_equal(g$prior_mean_floor, 3e-6)
 })
 
+test_that("the species behind each added mass are listed", {
+  out <- .upm_run()
+  mem <- attr(out, "unreferenced_scope_members")
+  expect_equal(sort(mem$taxon_name[mem$scope == "Littorina"]), "Littorina keenae")
+  expect_equal(sort(mem$taxon_name[mem$scope == "Littorinidae"]), c("Lacuna unifasciata", "Lacuna vincta"))
+  g <- out[out$taxon_name == "Littorinidae", ]
+  expect_equal(sum(mem$theta_mean[mem$scope == "Littorinidae"]), g$unreferenced_mass)
+})
+
 test_that("family scope excludes the genus already covered by the finer scope", {
   out <- .upm_run()
   f <- out[out$taxon_name == "Littorinidae", ]

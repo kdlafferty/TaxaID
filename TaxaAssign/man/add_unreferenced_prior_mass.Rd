@@ -50,7 +50,10 @@ function), \code{unreferenced_scope}, \code{unreferenced_scope_rank},
 \code{unreferenced_mass} and \code{unreferenced_n_species} (\code{NA} on rows that are
 not generic unreferenced hypotheses). Attribute \code{unreferenced_mass_check}
 holds \code{n_candidates}, \code{n_candidates_not_referenced} and
-\code{n_referenced_not_in_priors}.
+\code{n_referenced_not_in_priors}; attribute \code{unreferenced_scope_members} lists
+the species behind each added mass (\code{row}, \code{observation_id}, \code{scope},
+\code{scope_rank}, \code{taxon_name}, \code{theta_mean}), so every mass can be traced to
+the local species that make it up.
 }
 \description{
 A posterior is normalised over the hypotheses an observation carries, so it
