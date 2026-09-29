@@ -1243,7 +1243,9 @@ test_that("restore_suppressed_candidates: regional_unreferenced feeds expand_unr
   h2_300 <- expanded[expanded$observation_id == "ASV_300", ]
   h2_099 <- expanded[expanded$observation_id == "ASV_099", ]
   expect_true("candidatus" %in% h2_300$taxon_name)
-  expect_equal(nrow(h2_099), 0L) # no match in reg for ASV_099 -- generic row dropped
+  # no match in reg for ASV_099: no named row, only its own generic row
+  expect_false("candidatus" %in% h2_099$taxon_name)
+  expect_equal(h2_099$taxon_name, "Testgenus")
 })
 
 # ---- Purpose A / Purpose B admission (design spec Section 2) -----------------
