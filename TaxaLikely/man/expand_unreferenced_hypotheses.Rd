@@ -83,7 +83,7 @@ whenever no named species exists would read "no occurrence record" as
 "absent". The one exception is a genus already represented by a
 genus-rank \code{specific_candidate}: that candidate covers the whole genus,
 so neither the generic H2 row nor named congeners are added.
-\code{\link[TaxaAssign:add_unreferenced_prior_mass]{TaxaAssign::add_unreferenced_prior_mass()}} excludes the named rows
+\code{TaxaAssign::add_unreferenced_prior_mass()} excludes the named rows
 from the generic row's added mass, so nothing is counted twice.
 }
 }

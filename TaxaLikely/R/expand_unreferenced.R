@@ -47,7 +47,7 @@ utils::globalVariables(c("hypothesis_type"))
 #'     "absent". The one exception is a genus already represented by a
 #'     genus-rank `specific_candidate`: that candidate covers the whole genus,
 #'     so neither the generic H2 row nor named congeners are added.
-#'     [TaxaAssign::add_unreferenced_prior_mass()] excludes the named rows
+#'     `TaxaAssign::add_unreferenced_prior_mass()` excludes the named rows
 #'     from the generic row's added mass, so nothing is counted twice.
 #' }
 #'

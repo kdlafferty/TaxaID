@@ -59,6 +59,23 @@ test_that("genus scope adds only unreferenced, un-named congeners", {
   expect_equal(g$prior_mean_floor, 3e-6)
 })
 
+test_that("coarse prior rows labelled as species are not summed", {
+  p <- rbind(.upm_priors(), data.frame(
+    taxon_name = c("Littorinidae", "Lacuna"), taxon_name_rank = "species",
+    grid_id = "site1", main_habitat = "Marine", theta_mean = c(0.05, 0.01),
+    alpha = c(50, 10), beta = c(950, 990), stringsAsFactors = FALSE
+  ))
+  tx <- rbind(.upm_tax(), data.frame(
+    taxon_name = c("Littorinidae", "Lacuna"), genus = c(NA, "Lacuna"),
+    family = "Littorinidae", stringsAsFactors = FALSE
+  ))
+  out <- suppressMessages(add_unreferenced_prior_mass(.upm_joined(), p, tx,
+    referenced_names = c("Littorina littorea", "Littorina scutulata")
+  ))
+  expect_equal(out$unreferenced_mass[out$taxon_name == "Littorinidae"], 1e-3 + 5e-4)
+  expect_equal(attr(out, "unreferenced_mass_check")$n_coarse_prior_rows_excluded, 2L)
+})
+
 test_that("the species behind each added mass are listed", {
   out <- .upm_run()
   mem <- attr(out, "unreferenced_scope_members")

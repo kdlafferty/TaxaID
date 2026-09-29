@@ -25,7 +25,9 @@
 #' added mass is the sum of `theta_mean` over the site's locally modelled
 #' species that
 #' \itemize{
-#'   \item fall inside that scope (by `taxonomy`),
+#'   \item fall inside that scope (by `taxonomy`) and are binomials: a prior
+#'     row for a record identified only to genus or family is a coarse sighting
+#'     of species already in the pool, not a further species,
 #'   \item are not referenced for this marker (`referenced_names`): a
 #'     referenced local species would have matched well had it been the
 #'     source, so its likelihood is near zero and it cannot be part of this
@@ -81,8 +83,10 @@
 #'   function), `unreferenced_scope`, `unreferenced_scope_rank`,
 #'   `unreferenced_mass` and `unreferenced_n_species` (`NA` on rows that are
 #'   not generic unreferenced hypotheses). Attribute `unreferenced_mass_check`
-#'   holds `n_candidates`, `n_candidates_not_referenced` and
-#'   `n_referenced_not_in_priors`; attribute `unreferenced_scope_members` lists
+#'   holds `n_candidates`, `n_candidates_not_referenced`,
+#'   `n_referenced_not_in_priors` and `n_coarse_prior_rows_excluded` (site prior
+#'   rows that are not binomials, such as a family-level record, and so are not
+#'   summed); attribute `unreferenced_scope_members` lists
 #'   the species behind each added mass (`row`, `observation_id`, `scope`,
 #'   `scope_rank`, `taxon_name`, `theta_mean`), so every mass can be traced to
 #'   the local species that make it up.
@@ -173,7 +177,8 @@ add_unreferenced_prior_mass <- function(joined,
   check <- list(
     n_candidates = length(cand),
     n_candidates_not_referenced = n_cand_unref,
-    n_referenced_not_in_priors = sum(!ref %in% sp_all)
+    n_referenced_not_in_priors = sum(!ref %in% sp_all),
+    n_coarse_prior_rows_excluded = NA_integer_
   )
   if (length(cand) > 0L && n_cand_unref / length(cand) > mismatch_message_fraction) {
     cli::cli_inform(c(
@@ -204,6 +209,13 @@ add_unreferenced_prior_mass <- function(joined,
   pr <- pr[!is.na(pr$grid_id) & pr$grid_id == grid_id & pr$taxon_name_rank == "species" &
     !is.na(pr$taxon_name) & is.finite(pr$theta_mean), , drop = FALSE]
   pr <- pr[!pr$taxon_name %in% ref, , drop = FALSE]
+  # Prior tables can carry rows for records identified only to genus or
+  # family ("Cottidae", "Icelinus") under taxon_name_rank "species". They are
+  # coarse sightings of species already in the pool, not further unsampled
+  # species, so only binomials are summed. The excluded rows are counted.
+  is_sp <- TaxaTools::is_plausible_binomial(pr$taxon_name)
+  n_coarse_excluded <- length(unique(pr$taxon_name[!is_sp]))
+  pr <- pr[is_sp, , drop = FALSE]
   has_hab <- "main_habitat" %in% names(pr) && "main_habitat" %in% names(out)
   pr$hab <- if (has_hab) pr$main_habitat else NA_character_
   pr$var <- if (all(c("alpha", "beta") %in% names(pr))) {
@@ -221,6 +233,8 @@ add_unreferenced_prior_mass <- function(joined,
   tax <- as.data.frame(taxonomy)
   tax <- tax[!duplicated(tax$taxon_name), , drop = FALSE]
   pr <- merge(pr[, c("taxon_name", "hab", "theta_mean", "var")], tax, by = "taxon_name")
+
+  check$n_coarse_prior_rows_excluded <- n_coarse_excluded
 
   gdf <- data.frame(
     row = gen,

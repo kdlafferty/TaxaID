@@ -745,7 +745,13 @@ behavior on functions this document already covers above.
   154x), 177 of them consensus winners. Tests: test-combine_multisite_priors.R (both fail
   on the previous code).
 - `add_unreferenced_prior_mass()` returns `attr(, "unreferenced_scope_members")`, the
-  species behind each added mass, so each mass can be traced to its members.
+  species behind each added mass, so each mass can be traced to its members. That list
+  found the next defect: prior tables carry rows for records identified only to genus or
+  family ("Cottidae", "Icelinus") under `taxon_name_rank` "species", and they were summed
+  as if they were unreferenced species. At CalIntertidal Government Point the Cottidae
+  scope held 1.46e-3, 74% of it from the family row itself, against 3.8e-4 from the six
+  real unreferenced cottids. Only binomials are now summed; the excluded rows are counted
+  in `n_coarse_prior_rows_excluded`. Tests: test-unreferenced_prior_mass.R.
 
 - `posterior_consensus()` no longer renormalises away the hypotheses below `min_posterior`.
   They form one tail block; the hypotheses above the floor are added until they hold

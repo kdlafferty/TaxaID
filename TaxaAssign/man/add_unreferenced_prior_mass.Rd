@@ -49,8 +49,10 @@ on rows that gained mass, plus \code{prior_mean_floor} (the prior before this
 function), \code{unreferenced_scope}, \code{unreferenced_scope_rank},
 \code{unreferenced_mass} and \code{unreferenced_n_species} (\code{NA} on rows that are
 not generic unreferenced hypotheses). Attribute \code{unreferenced_mass_check}
-holds \code{n_candidates}, \code{n_candidates_not_referenced} and
-\code{n_referenced_not_in_priors}; attribute \code{unreferenced_scope_members} lists
+holds \code{n_candidates}, \code{n_candidates_not_referenced},
+\code{n_referenced_not_in_priors} and \code{n_coarse_prior_rows_excluded} (site prior
+rows that are not binomials, such as a family-level record, and so are not
+summed); attribute \code{unreferenced_scope_members} lists
 the species behind each added mass (\code{row}, \code{observation_id}, \code{scope},
 \code{scope_rank}, \code{taxon_name}, \code{theta_mean}), so every mass can be traced to
 the local species that make it up.
@@ -74,7 +76,9 @@ species (its scope, e.g. genus \emph{Littorina} or family Littorinidae), the
 added mass is the sum of \code{theta_mean} over the site's locally modelled
 species that
 \itemize{
-\item fall inside that scope (by \code{taxonomy}),
+\item fall inside that scope (by \code{taxonomy}) and are binomials: a prior
+row for a record identified only to genus or family is a coarse sighting
+of species already in the pool, not a further species,
 \item are not referenced for this marker (\code{referenced_names}): a
 referenced local species would have matched well had it been the
 source, so its likelihood is near zero and it cannot be part of this
