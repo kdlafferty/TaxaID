@@ -201,7 +201,10 @@ combine each candidate's per-site rows into one. Genus-rank rows with
 missing taxonomy are filled from \code{taxon_name} and propagated from other
 rows sharing the same genus. Finally,
 \code{\link[TaxaMatch:filter_redundant_hypotheses]{TaxaMatch::filter_redundant_hypotheses()}} removes coarser-rank rows
-superseded by finer-rank rows in the same lineage.
+superseded by finer-rank rows in the same lineage. Unreferenced hypotheses
+(\code{hypothesis_type} \verb{unreferenced_*} or \code{unresolved_species}) are never
+removed by that step: an unsequenced species of a candidate's genus
+competes with the candidate rather than being a coarser label for it.
 }
 }
 \section{Modelled-species floor (scoped by cause)}{

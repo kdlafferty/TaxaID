@@ -550,7 +550,10 @@ utils::globalVariables(c(
 #' missing taxonomy are filled from `taxon_name` and propagated from other
 #' rows sharing the same genus. Finally,
 #' [TaxaMatch::filter_redundant_hypotheses()] removes coarser-rank rows
-#' superseded by finer-rank rows in the same lineage.
+#' superseded by finer-rank rows in the same lineage. Unreferenced hypotheses
+#' (`hypothesis_type` `unreferenced_*` or `unresolved_species`) are never
+#' removed by that step: an unsequenced species of a candidate's genus
+#' competes with the candidate rather than being a coarser label for it.
 #'
 #' @param likelihoods Data frame of likelihoods, typically from
 #'   [TaxaLikely::apply_coverage_constraints()] or
@@ -1620,10 +1623,31 @@ join_priors <- function(likelihoods,
       "{.pkg TaxaMatch} is not installed. Skipping redundant hypothesis filtering."
     )
   } else {
-    result <- TaxaMatch::filter_redundant_hypotheses(
+    # The generic unreferenced hypotheses (an unsequenced species of the
+    # candidate's genus, an unsequenced genus of its family) sit at a coarser
+    # rank than the candidates in the same lineage, but they are not coarser
+    # labels for those candidates: they are their competitors. The redundancy
+    # filter cannot tell the two apart, so it would delete them. Run it as
+    # before, then restore any unreferenced row it removed.
+    .unref_types <- c(
+      "unreferenced_species", "unreferenced_genus",
+      "unreferenced_family", "unresolved_species"
+    )
+    result$.jp_row <- seq_len(nrow(result))
+    kept <- TaxaMatch::filter_redundant_hypotheses(
       result,
       rank_system = rank_system
     )
+    if ("hypothesis_type" %in% names(result)) {
+      lost <- result[result$hypothesis_type %in% .unref_types &
+        !result$.jp_row %in% kept$.jp_row, , drop = FALSE]
+      if (nrow(lost) > 0L) {
+        kept <- dplyr::bind_rows(kept, lost)
+        kept <- kept[order(kept$.jp_row), , drop = FALSE]
+      }
+    }
+    kept$.jp_row <- NULL
+    result <- kept
   }
 
   # Join rate per rank: how many distinct candidate taxa found a modelled
