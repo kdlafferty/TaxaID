@@ -725,6 +725,28 @@ behavior on functions this document already covers above.
   so no likelihood checkpoint is invalidated. Tests: test-join_priors.R (the new test
   fails on the previous code).
 
+- Blank rank values are treated as missing when a table enters `join_priors()`,
+  `posterior_consensus()`, `score_consensus()`, `compute_group_priors()`,
+  `combine_multisite_priors()` and `add_unreferenced_prior_mass()` (internal
+  `.blank_ranks_to_na()`). Reference taxonomies store an absent genus or species as `""` as
+  well as `NA`; every rank reader tested `is.na()`, so `""` passed as a taxon. In
+  `join_priors()` the genus-to-family fill joined every `genus == ""` row to every family
+  with a `""` genus at the site, multiplying generic rows. Measured in the CalIntertidal
+  three-arm run: 12S 72, 18S 45 and COI 474 groups of identical rows, 100% with a blank
+  genus. `posterior_consensus()` then reported a plausible set of such rows as "unanimous"
+  at species with an empty taxon name (18 COI calls). Tests: test-join_priors.R,
+  test-posterior_consensus.R (both fail on the previous code).
+- `combine_multisite_priors()` counts each site once. Identical repeats of one
+  (observation, candidate, site) row are dropped before combining, with a message
+  giving the count; repeats that disagree stop the call. Combining k copies of one site
+  had divided the logit variance by k and multiplied `n_sites_combined` by k. Measured
+  on the saved CalIntertidal Round 1: 527 rows in 518 observations had
+  `n_sites_combined` above their true site count (18S up to 22x, COI median 90x, up to
+  154x), 177 of them consensus winners. Tests: test-combine_multisite_priors.R (both fail
+  on the previous code).
+- `add_unreferenced_prior_mass()` returns `attr(, "unreferenced_scope_members")`, the
+  species behind each added mass, so each mass can be traced to its members.
+
 - `assign_taxa_llm()`'s prompt builder no longer lets a missing `lineage` column
   collapse a vector. `ifelse()` returns the length of its TEST, so a length-1
   `lineage` made the `ifelse()` below it length 1 regardless of how many taxa

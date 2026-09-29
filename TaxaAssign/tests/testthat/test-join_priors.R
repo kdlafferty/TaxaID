@@ -750,3 +750,28 @@ test_that("the redundancy filter never removes unreferenced hypotheses", {
   expect_false("Fundulus specific_candidate" %in% types)
   expect_true(all(c("Fundulus parvipinnis", "Fundulus lima") %in% out$taxon_name))
 })
+
+test_that("a blank genus in the taxonomy lookup does not multiply generic rows", {
+  lik <- tibble(
+    observation_id = "ESV_001",
+    taxon_name = c("Fundulus parvipinnis", "Fundulidae"),
+    taxon_name_rank = c("species", "family"),
+    hypothesis_type = c("specific_candidate", "unreferenced_genus"),
+    score_likelihood = c(0.8, 0.1), score_likelihood_mean = c(0.8, 0.1),
+    score_likelihood_sd = 0.02,
+    genus = c("Fundulus", ""), family = "Fundulidae", species = c("Fundulus parvipinnis", "")
+  )
+  # a lookup in which several families have family-level references (genus "")
+  lookup <- tibble(
+    taxon_name = c("Fundulidae", "Salmonidae", "Cottidae", "Fundulus parvipinnis"),
+    genus = c("", "", "", "Fundulus"),
+    family = c("Fundulidae", "Salmonidae", "Cottidae", "Fundulidae"),
+    species = c("", "", "", "Fundulus parvipinnis")
+  )
+  site <- list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+  out <- suppressMessages(suppressWarnings(
+    join_priors(lik, .make_priors(), site = site, taxonomy_lookup = lookup, backbone_id = 11L)
+  ))
+  expect_equal(sum(out$taxon_name == "Fundulidae"), 1L)
+  expect_true(all(is.na(out$genus[out$taxon_name == "Fundulidae"])))
+})

@@ -1306,3 +1306,30 @@ test_that("a verify_taxon_names() error marks every looked-up observation lookup
     rank_system = c("genus", "species"), lookup_missing_taxonomy = TRUE, backbone_id = 11L)))
   expect_identical(out$unreferenced_taxonomy_lookup, c("lookup_failed", "lookup_failed"))
 })
+
+test_that("a blank species value is missing, not a unanimous species named ''", {
+  # A family-level generic row whose species/genus are "" (reference
+  # taxonomies store an absent rank either way), next to two congeners.
+  # The plausible set is two family-level rows (as when a generic row was
+  # repeated upstream) whose blank species values "agree" with each other.
+  df <- data.frame(
+    observation_id = "O1",
+    taxon_name = c("Rhodomelaceae", "Rhodomelaceae", "Neosiphonia yendoi"),
+    taxon_name_rank = c("family", "family", "species"),
+    hypothesis_type = c("unreferenced_genus", "unreferenced_genus", "specific_candidate"),
+    family = "Rhodomelaceae",
+    genus = c("", "", "Neosiphonia"),
+    species = c("", "", "Neosiphonia yendoi"),
+    prior_mean = 0.1, score_likelihood = 1,
+    posterior_point_est = c(0.48, 0.48, 0.04),
+    posterior_mean = c(0.48, 0.48, 0.04),
+    stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    lookup_missing_taxonomy = FALSE
+  ))
+  expect_false(identical(out$consensus_taxon, ""))
+  expect_false(identical(out$consensus_rank, "species"))
+  expect_equal(out$consensus_taxon, "Rhodomelaceae")
+})

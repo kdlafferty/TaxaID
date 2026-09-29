@@ -292,3 +292,31 @@ test_that("presence-mixture columns that differ across sites are blanked with a 
   expect_false(".mix_dropped" %in% names(out))
   expect_no_warning(combine_multisite_priors(joined[joined$taxon_name == "Gadus morhua", ]))
 })
+
+test_that("identical repeats of one site are combined once, not as extra sites", {
+  one_site <- data.frame(
+    observation_id = "O1", taxon_name = "Aa one", taxon_name_rank = "species",
+    grid_id = "g1", main_habitat = "Marine",
+    prior_alpha = 2, prior_beta = 8, prior_mean = 0.2,
+    stringsAsFactors = FALSE
+  )
+  other_site <- transform(one_site, grid_id = "g2", prior_alpha = 5, prior_beta = 5, prior_mean = 0.5)
+  clean <- suppressMessages(combine_multisite_priors(rbind(one_site, other_site)))
+  # the same two sites, with site g1 repeated three times
+  dirty <- rbind(one_site, one_site, one_site, other_site)
+  expect_message(out <- combine_multisite_priors(dirty), "identical repeat row")
+  expect_equal(out$n_sites_combined, 2L)
+  expect_equal(out$prior_alpha, clean$prior_alpha)
+  expect_equal(out$prior_beta, clean$prior_beta)
+})
+
+test_that("repeats of one site that disagree stop the call", {
+  a <- data.frame(
+    observation_id = "O1", taxon_name = "Aa one", taxon_name_rank = "species",
+    grid_id = "g1", main_habitat = "Marine",
+    prior_alpha = 2, prior_beta = 8, prior_mean = 0.2,
+    stringsAsFactors = FALSE
+  )
+  b <- transform(a, prior_alpha = 3, prior_mean = 3 / 11, prior_beta = 8)
+  expect_error(combine_multisite_priors(rbind(a, b)), "DIFFERENT priors")
+})

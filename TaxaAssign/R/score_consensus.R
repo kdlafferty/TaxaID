@@ -413,6 +413,7 @@ score_consensus <- function(match_df,
     ))
   }
   required <- c("observation_id", "taxon_name", "taxon_name_rank", score_col)
+  match_df <- .blank_ranks_to_na(match_df)
   missing_cols <- setdiff(required, names(match_df))
   if (length(missing_cols) > 0) {
     cli::cli_abort("match_df missing required column(s): {.field {missing_cols}}")

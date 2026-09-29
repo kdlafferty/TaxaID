@@ -420,3 +420,33 @@
 
   list(grid_id = nearest_grid, main_habitat = resolved_habitat)
 }
+
+#' Treat blank rank values as missing
+#'
+#' Reference taxonomies store an absent rank as either `NA` or `""` (a
+#' family-level reference with `genus = ""`). Every rank-value reader in this
+#' package tests `is.na()`, so a blank passes as a real taxon: it joins to
+#' every other blank (a genus "" row matched every family that also had a ""
+#' genus, multiplying generic rows) and it is reported as a unanimous
+#' species named "". Called on each table as it enters the package.
+#' @noRd
+.blank_ranks_to_na <- function(df,
+                               cols = c(
+                                 "kingdom", "phylum", "class", "order",
+                                 "family", "genus", "species", "taxon_name"
+                               )) {
+  if (!is.data.frame(df)) {
+    return(df)
+  }
+  for (cc in intersect(cols, names(df))) {
+    x <- df[[cc]]
+    if (is.character(x)) {
+      blank <- !is.na(x) & !nzchar(trimws(x))
+      if (any(blank)) {
+        x[blank] <- NA_character_
+        df[[cc]] <- x
+      }
+    }
+  }
+  df
+}

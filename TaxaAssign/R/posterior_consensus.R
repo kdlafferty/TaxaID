@@ -504,6 +504,7 @@ posterior_consensus <- function(posterior_df,
   if (length(missing_cols) > 0) {
     cli::cli_abort("posterior_df missing required column(s): {.field {missing_cols}}")
   }
+  posterior_df <- .blank_ranks_to_na(posterior_df)
   # A model_tier column with no prior_branch column identifies a prior table
   # from before the kernel-priors schema. posterior_consensus() no longer
   # reads model_tier as a fallback for a missing prior_branch: kernel tables

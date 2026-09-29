@@ -807,6 +807,13 @@ join_priors <- function(likelihoods,
     )
   }
 
+  # Blank rank values ("" for an absent genus/species in a reference
+  # taxonomy) are missing values, not taxa; see .blank_ranks_to_na().
+  likelihoods <- .blank_ranks_to_na(likelihoods)
+  taxonomy_lookup <- .blank_ranks_to_na(taxonomy_lookup)
+  expansion_taxonomy <- .blank_ranks_to_na(expansion_taxonomy)
+  singleton_taxonomy <- .blank_ranks_to_na(singleton_taxonomy)
+
   # Auto-detect rank_system from likelihoods columns
   if (is.null(rank_system)) {
     rank_system <- TaxaTools::detect_ranks(likelihoods, warn = FALSE)
