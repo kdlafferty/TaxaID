@@ -76,6 +76,31 @@ test_that(".evaluate_one_query: includes all three hypothesis types when ratio_t
   expect_true("unreferenced_genus" %in% out$hypothesis_type)
 })
 
+test_that(".evaluate_one_query: generic rows survive the default ratio_threshold", {
+  skip_if_not_installed("TaxaTools")
+  params <- .make_model_params()
+  # In this fixture the unreferenced_genus row's ratio is ~0.002, below the
+  # default 0.01. Only specific candidates may be dropped by ratio_threshold,
+  # at the point estimate AND after simulation.
+  all_rows <- TaxaLikely:::.evaluate_one_query(
+    .make_match_df(), params, c("family", "genus", "species"),
+    ratio_threshold = 0
+  )
+  h3_ratio <- all_rows$score_likelihood[all_rows$hypothesis_type == "unreferenced_genus"]
+  expect_lt(h3_ratio, 0.01) # guard: the fixture really exercises the filter
+  for (ns in c(0L, 200L)) {
+    set.seed(1)
+    out <- TaxaLikely:::.evaluate_one_query(
+      .make_match_df(), params, c("family", "genus", "species"),
+      n_sims = ns
+    )
+    expect_true("unreferenced_species" %in% out$hypothesis_type)
+    expect_true("unreferenced_genus" %in% out$hypothesis_type)
+    # specific candidates below the threshold are still dropped
+    expect_false("Campostoma anomalum" %in% out$taxon_name)
+  }
+})
+
 test_that(".evaluate_one_query: score_likelihood in [0, 1]", {
   skip_if_not_installed("TaxaTools")
   params <- .make_model_params()

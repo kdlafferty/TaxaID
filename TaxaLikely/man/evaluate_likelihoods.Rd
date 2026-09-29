@@ -41,9 +41,12 @@ constant) for either scale, confirmed via the delta method.}
 (e.g., \code{c("family", "genus", "species")}). Default \code{NULL} auto-detects
 from columns in \code{match_df}.}
 
-\item{ratio_threshold}{Minimum likelihood ratio to retain a hypothesis
-(default \code{0.01}).  Hypotheses with likelihood ratio less than 1\% of the
-best hypothesis are dropped.  This removes noise hypotheses that would
+\item{ratio_threshold}{Minimum likelihood ratio to retain a specific
+candidate (default \code{0.01}).  Specific candidates with likelihood ratio
+less than 1\% of the best hypothesis are dropped; the generic
+\code{unreferenced_species}/\code{unreferenced_genus} rows are always retained,
+because their prior can make them competitive on the posterior even when
+their likelihood is small.  This removes noise hypotheses that would
 not meaningfully affect posterior probabilities.  Note: the per-species
 sigma floor (see Details) ensures that well-sampled species with
 artificially tight training distributions still clear this threshold at
