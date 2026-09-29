@@ -8,6 +8,48 @@ pkgdown contradiction are gone; git has them. Everything below was measured on
 
 ---
 
+## 0a. FREEZE TAGGED, and the Stage B catch-up plan (2026-09-28 night)
+
+`pre-1.0-freeze` = `bd84325`, pushed. The maintainer declared the freeze and
+went to bed; this section is the plan being executed, written before execution
+so an interruption does not lose it.
+
+**The correction that shapes everything below.** B4 (the per-package checklist)
+was run on 2026-09-21 against `b861dd7` and is recorded DONE for eight
+packages. The tag is 428 commits later. EVERY package's `R/`, `NAMESPACE` or
+`tests/` changed in between, by 13 to 76 files each, and twelve new exports
+landed. So every B4 result describes a tree that no longer exists. Protocol
+item 5 asks for a Stage B re-run per package after a post-tag change; the whole
+delta here is post-B4 and pre-tag, which is the same situation and wants the
+same treatment.
+
+**Running tonight, per package**, the decisive and cheap subset of the
+checklist: pass 1 debris, pass 2 non-ASCII, pass 4 documentation completeness
+(every export with examples and complete parameter docs, the twelve new ones
+above all), pass 5 lintr, pass 6 check and test. Order is by risk, newest
+surface first: TaxaFlag, TaxaFetch, TaxaTools, TaxaExpect, TaxaLikely, then
+TaxaAssign (76 files changed), TaxaMatch, TaxaWizard, TaxaHabitat.
+
+**NOT attempted tonight, each for a stated reason, so nobody records this as a
+completed Stage B:**
+
+- **B1 clean-checkout reproducibility.** Needs installs. The 18S accession
+  screen holds the shared library, and a fresh `R_LIBS_USER` would not see the
+  CRAN dependencies, so a true clean checkout needs a quiet machine and a
+  dependency install. The single most valuable outstanding pass.
+- **Entry condition 3, reinstall from the tag.** Same blocker.
+- **Entry condition 2, all three repositories clean.** The analysis repository
+  has 23 uncommitted or untracked paths, several written by sessions other than
+  its owner.
+- **B2, every number reproduces.** Needs the production runs already enumerated.
+- **B5 USGS checklist and B6 licensing.** Document passes needing the
+  maintainer.
+
+**So the honest status after tonight will be: Stage B partially re-run against
+the tag, with B1, B2, B5 and B6 outstanding and the entry conditions not all
+met.** Section 11 says anything less than the full statement is a status
+report, not a pass. This is a status report.
+
 ## 0. Open items board (kept current; last edit 2026-09-28)
 
 | Item | State | Waiting on |
