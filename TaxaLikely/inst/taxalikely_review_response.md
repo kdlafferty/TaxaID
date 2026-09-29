@@ -1034,3 +1034,20 @@ on functions this document already covers above.
   different draw per replicate, so a fixed default seed would make it report zero
   noise, which is a plausible wrong number rather than an error. An unseeded build
   that will draw now says so. Tests: test-build.R.
+- `expand_unreferenced_hypotheses()` keeps the generic `unreferenced_species` (genus) and
+  `unreferenced_genus` (family) rows alongside the named rows it adds, instead of
+  replacing them, and keeps them when no named species exists. The named rows cover
+  unreferenced species recorded locally; the generic row covers species that are neither
+  referenced nor recorded, which is the unrecorded share `TaxaAssign::join_priors()`
+  prices with its dark-diversity floor. Dropping the generic row whenever no named species
+  existed read "no occurrence record" as "absent". Measured on the PtConception runs, the
+  generic congener and confamilial rows were both removed for 42.6% of 13,440 12S
+  observations and 89.8% of 10,968 18S observations, leaving no hypothesis for an
+  unsampled relative. The one exception is unchanged: a genus-rank `specific_candidate`
+  still suppresses its genus's H2 rows. A side effect restores a check:
+  `apply_coverage_constraints()` matches its genus census against genus-rank
+  `unreferenced_species` rows, so after expansion it had nothing to act on; it now acts on
+  the kept generic row. `TaxaAssign::add_unreferenced_prior_mass()` excludes the named rows
+  from a generic row's added mass, so nothing is counted twice. Tests:
+  test-expand_unreferenced.R (seven assertions on the previous dropping behaviour
+  rewritten, one new test).
