@@ -686,3 +686,11 @@ behavior on functions this document already covers above.
   failure now also prints a message as it happens. Requires the TaxaTools
   build carrying `verify_taxon_names(cache_dir =)`. Tests:
   test-posterior_consensus.R.
+- `posterior_consensus()` passes `taxonomy_cache_dir` to
+  `TaxaTools::verify_taxon_names()` only when a cache directory was actually
+  supplied. Passing it unconditionally would make the call fail against a
+  TaxaTools that predates the argument, and the failure would arrive as
+  `lookup_failed` on every row, which reads as a service outage rather than as
+  a version mismatch. A test asserts the argument is absent on the default
+  path.
+

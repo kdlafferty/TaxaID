@@ -1264,6 +1264,40 @@ test_that("unreferenced_taxonomy_lookup is NA when no lookup was requested", {
   expect_true(is.na(out$unreferenced_taxonomy_lookup))
 })
 
+test_that("the lookup omits cache_dir entirely when no cache was asked for", {
+  # A TaxaTools predating cache_dir must still serve the default path. If the
+  # argument were passed unconditionally, that call would error and every row
+  # would read lookup_failed, which looks like a service outage rather than a
+  # version mismatch.
+  df <- make_posterior(
+    observation_id = "s1",
+    taxon_name = "Aa bb",
+    taxon_name_rank = "species",
+    hypothesis_type = "unreferenced_species",
+    posterior_mean = 1,
+    genus = NA, species = "Aa bb"
+  )
+  seen <- NULL
+  local_mocked_bindings(
+    verify_taxon_names = function(name_list, backbone_id, ...) {
+      seen <<- names(list(...))
+      data.frame(
+        user_supplied_name = name_list, matched_name = name_list,
+        classification_path = "Aa|Aa bb", classification_ranks = "genus|species",
+        verified = TRUE, matched = TRUE, stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaTools"
+  )
+  out <- suppressMessages(suppressWarnings(posterior_consensus(df,
+    rank_system = c("genus", "species"), lookup_missing_taxonomy = TRUE,
+    backbone_id = 11L
+  )))
+  expect_false("cache_dir" %in% seen)
+  expect_true(all(out$unreferenced_taxonomy_lookup %in% c("matched", NA)))
+})
+
+
 test_that("a verify_taxon_names() error marks every looked-up observation lookup_failed", {
   df <- make_posterior(c("s1", "s2"), c("Aa bb", "Cc dd"), "species",
     "unreferenced_species", 1, genus = NA, species = c("Aa bb", "Cc dd"))

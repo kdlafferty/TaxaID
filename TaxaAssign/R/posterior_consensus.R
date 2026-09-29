@@ -615,10 +615,17 @@ posterior_consensus <- function(posterior_df,
           )
           lookup_needed <- needs_tax
           verified <- tryCatch(
-            TaxaTools::verify_taxon_names(unref_names,
-              backbone_id = backbone_id,
-              cache_dir = taxonomy_cache_dir
-            ),
+            {
+              # cache_dir is passed ONLY when one was asked for. Passing it
+              # unconditionally makes this call fail against a TaxaTools that
+              # predates the argument, and the failure arrives as
+              # "lookup_failed" on every row, which reads as a service outage
+              # rather than as a version mismatch. The default path must not
+              # require a matching TaxaTools.
+              args <- list(unref_names, backbone_id = backbone_id)
+              if (!is.null(taxonomy_cache_dir)) args$cache_dir <- taxonomy_cache_dir
+              do.call(TaxaTools::verify_taxon_names, args)
+            },
             error = function(e) {
               cli::cli_warn(
                 "TaxaTools::verify_taxon_names() failed: {conditionMessage(e)}. \\
