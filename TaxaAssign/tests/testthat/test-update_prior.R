@@ -688,3 +688,257 @@ test_that("mixture w-update is NOT capped when prior_mix_veto_bound is NA or the
   w1 <- (1 * 0.5 + 0.2) / 1.2
   expect_equal(boosted$prior_mix_w, w1, tolerance = 1e-8)
 })
+
+# ---- Group-local evidence (detections + group_cols) ---------------------------
+# Fixture builder: one observation's hypothesis rows. `post` is the observation's
+# posterior support for each taxon; every prior starts at `prior`.
+.obs_rows <- function(id, taxa, post, prior = 0.1) {
+  tibble(
+    observation_id = id,
+    taxon_name = taxa,
+    taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate",
+    score_likelihood = post,
+    score_likelihood_mean = post,
+    score_likelihood_sd = 0.05,
+    prior_mean = prior,
+    prior_alpha = prior * 10,
+    prior_beta = (1 - prior) * 10,
+    posterior_point_est = post,
+    posterior_mean = post,
+    posterior_sd = 0.05,
+    confidence_score = post
+  )
+}
+.cons <- function(ids, resolved) {
+  tibble(
+    observation_id = ids,
+    consensus_taxon = ifelse(resolved, "resolved_taxon", NA_character_),
+    consensus_rank = ifelse(resolved, "species", NA_character_),
+    is_resolved = resolved,
+    consensus_posterior = ifelse(resolved, 0.9, NA_real_)
+  )
+}
+.prior_of <- function(out, id, taxon) {
+  out$prior_mean[out$observation_id == id & out$taxon_name == taxon]
+}
+
+# Two groups. Sp_X is strongly supported only in group A (S1); S2 is the
+# unresolved observation that carries an Sp_X hypothesis. S3/S4 make both
+# groups multi-member, so nothing is skipped as a singleton.
+.two_group_fixture <- function() {
+  list(
+    result = bind_rows(
+      .obs_rows("S1", c("Sp_X", "Sp_Y"), c(0.9, 0.1)),
+      .obs_rows("S2", c("Sp_X", "Sp_W"), c(0.5, 0.5)),
+      .obs_rows("S3", c("Sp_Z", "Sp_Y"), c(0.9, 0.1)),
+      .obs_rows("S4", c("Sp_Q", "Sp_Y"), c(0.9, 0.1))
+    ),
+    consensus = .cons(c("S1", "S2", "S3", "S4"), c(TRUE, FALSE, TRUE, TRUE))
+  )
+}
+
+test_that("isolation: support in group A never raises a hypothesis in group B (spatial_group_map)", {
+  fx <- .two_group_fixture()
+  map <- tibble(
+    observation_id   = c("S1", "S3", "S2", "S4"),
+    spatial_group_id = c("A", "A", "B", "B")
+  )
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus,
+    n_sims = 0, spatial_group_map = map
+  ))
+  expect_equal(.prior_of(out, "S2", "Sp_X"), 0.1)
+})
+
+test_that("isolation: support in group A never raises a hypothesis in group B (detections)", {
+  fx <- .two_group_fixture()
+  det <- tibble(observation_id = c("S1", "S3", "S2", "S4"), site = c("A", "A", "B", "B"))
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus,
+    n_sims = 0, detections = det, group_cols = "site"
+  ))
+  expect_equal(.prior_of(out, "S2", "Sp_X"), 0.1)
+})
+
+test_that("within-group donation: the same observation placed in group A is raised", {
+  fx <- .two_group_fixture()
+  det <- tibble(observation_id = c("S1", "S3", "S2", "S4"), site = c("A", "A", "A", "B"))
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus,
+    n_sims = 0, detections = det, group_cols = "site"
+  ))
+  expect_gt(.prior_of(out, "S2", "Sp_X"), 0.1)
+})
+
+test_that("cross-marker: observations from two markers sharing a sample id donate", {
+  result <- bind_rows(
+    .obs_rows("COI_ESV9", c("Sp_X", "Sp_Y"), c(0.9, 0.1)),
+    .obs_rows("12S_ESV1", c("Sp_X", "Sp_W"), c(0.5, 0.5))
+  )
+  consensus <- .cons(c("COI_ESV9", "12S_ESV1"), c(TRUE, FALSE))
+  det <- tibble(
+    observation_id = c("COI_ESV9", "12S_ESV1"),
+    sample_id = c("tube_1", "tube_1"),
+    marker = c("COI", "12S")
+  )
+  out <- suppressMessages(update_prior_from_consensus(result, consensus,
+    n_sims = 0, detections = det
+  ))
+  expect_gt(.prior_of(out, "12S_ESV1", "Sp_X"), 0.1)
+
+  # Same tube written differently per marker: nothing is shared, and the
+  # function says so rather than silently pooling nothing.
+  det_bad <- det
+  det_bad$sample_id <- c("tube_1", "TUBE_1")
+  expect_message(
+    out_bad <- update_prior_from_consensus(result, consensus,
+      n_sims = 0, detections = det_bad
+    ),
+    "every group holds a single marker"
+  )
+  expect_equal(.prior_of(out_bad, "12S_ESV1", "Sp_X"), 0.1)
+})
+
+test_that("multi-group observation: per-group gains are averaged (hand-computed)", {
+  # U sits in groups A and B. No theta_mean column, so the target is the
+  # support-weighted quantile itself.
+  #   A = {O1, U}: Sp_X support 0.8 + 0.5 = 1.3; leave-one-out 0.8;
+  #       m = 0.25 * 0.8 = 0.2, s = 0.2 / 1.2 = 1/6;
+  #       target = weighted 0.9-quantile of {0.5, 0.8} = 0.8;
+  #       gain_A = (0.8 - 0.1) / 6 = 0.1166667
+  #   B = {O2, U}: Sp_X support 0.4 + 0.5 = 0.9; leave-one-out 0.4;
+  #       m = 0.1, s = 0.1 / 1.1 = 1/11;
+  #       target = weighted 0.9-quantile of {0.4, 0.5} = 0.5;
+  #       gain_B = (0.5 - 0.1) / 11 = 0.0363636
+  #   prior = 0.1 + (gain_A + gain_B) / 2 = 0.1765152
+  result <- bind_rows(
+    .obs_rows("O1", c("Sp_X", "Sp_C"), c(0.8, 0.2)),
+    .obs_rows("O2", c("Sp_X", "Sp_D"), c(0.4, 0.6)),
+    .obs_rows("U", c("Sp_X", "Sp_B"), c(0.5, 0.5))
+  )
+  consensus <- .cons(c("O1", "O2", "U"), c(TRUE, TRUE, FALSE))
+  det <- tibble(observation_id = c("O1", "U", "O2", "U"), sample_id = c("A", "A", "B", "B"))
+  out <- suppressMessages(update_prior_from_consensus(result, consensus,
+    n_sims = 0, detections = det
+  ))
+  expected <- 0.1 + ((0.8 - 0.1) / 6 + (0.5 - 0.1) / 11) / 2
+  expect_equal(.prior_of(out, "U", "Sp_X"), expected, tolerance = 1e-12)
+  expect_equal(.prior_of(out, "U", "Sp_B"), 0.1) # no support anywhere else
+  # Never more than the single best group could give on its own
+  expect_lt(.prior_of(out, "U", "Sp_X"), 0.1 + (0.8 - 0.1) / 6)
+})
+
+test_that("leave-one-out per group: an observation never confirms itself", {
+  # U is the ONLY supporter of Sp_X in group B (O3 has no Sp_X), so group B
+  # contributes zero gain; only group A's O1 counts.
+  #   A = {O1, U}: support 0.8 + 0.9; LOO 0.8; s = 1/6;
+  #       target = weighted 0.9-quantile of {0.8, 0.9} = 0.9;
+  #       gain_A = 0.8 / 6
+  result <- bind_rows(
+    .obs_rows("O1", c("Sp_X", "Sp_C"), c(0.8, 0.2)),
+    .obs_rows("O3", c("Sp_Q", "Sp_C"), c(0.9, 0.1)),
+    .obs_rows("U", c("Sp_X", "Sp_B"), c(0.9, 0.1))
+  )
+  consensus <- .cons(c("O1", "O3", "U"), c(TRUE, TRUE, FALSE))
+  det <- tibble(observation_id = c("O1", "U", "O3", "U"), sample_id = c("A", "A", "B", "B"))
+  out <- suppressMessages(update_prior_from_consensus(result, consensus,
+    n_sims = 0, detections = det
+  ))
+  expect_equal(.prior_of(out, "U", "Sp_X"), 0.1 + (0.8 / 6) / 2, tolerance = 1e-12)
+
+  # U only in group B, where it is the sole Sp_X supporter: unchanged.
+  det_b <- tibble(observation_id = c("O1", "U", "O3"), sample_id = c("A", "B", "B"))
+  out_b <- suppressMessages(update_prior_from_consensus(result, consensus,
+    n_sims = 0, detections = det_b
+  ))
+  expect_equal(.prior_of(out_b, "U", "Sp_X"), 0.1)
+})
+
+test_that("composite key: group_cols = c('site', 'season') separates seasons", {
+  result <- bind_rows(
+    .obs_rows("O1", c("Sp_X", "Sp_Y"), c(0.9, 0.1)),
+    .obs_rows("O2", c("Sp_Z", "Sp_Y"), c(0.9, 0.1)),
+    .obs_rows("U", c("Sp_X", "Sp_W"), c(0.5, 0.5))
+  )
+  consensus <- .cons(c("O1", "O2", "U"), c(TRUE, TRUE, FALSE))
+  det <- tibble(
+    observation_id = c("O1", "O2", "U"),
+    site = "Reef",
+    season = c("spring", "fall", "fall")
+  )
+  out_both <- suppressMessages(update_prior_from_consensus(result, consensus,
+    n_sims = 0, detections = det, group_cols = c("site", "season")
+  ))
+  expect_equal(.prior_of(out_both, "U", "Sp_X"), 0.1)
+
+  out_site <- suppressMessages(update_prior_from_consensus(result, consensus,
+    n_sims = 0, detections = det, group_cols = "site"
+  ))
+  expect_gt(.prior_of(out_site, "U", "Sp_X"), 0.1)
+})
+
+test_that("per-group report is attached with eligible/updated/raised counts", {
+  fx <- .two_group_fixture()
+  det <- tibble(observation_id = c("S1", "S3", "S2", "S4"), site = c("A", "A", "A", "B"))
+  out <- suppressMessages(update_prior_from_consensus(fx$result, fx$consensus,
+    n_sims = 0, detections = det, group_cols = "site"
+  ))
+  rep <- attr(out, "prior_update_groups")
+  expect_s3_class(rep, "data.frame")
+  a <- rep[rep$group == "A", ]
+  expect_equal(a$n_observations, 3L)
+  expect_equal(a$n_eligible_unresolved, 1L)
+  expect_equal(a$n_observations_updated, 1L)
+  expect_equal(a$n_rows_raised, 1L)
+  expect_equal(rep$n_rows_raised[rep$group == "B"], 0L)
+})
+
+test_that("all-singleton grouping says so and updates nothing", {
+  fx <- .two_group_fixture()
+  det <- tibble(observation_id = c("S1", "S2", "S3", "S4"), sample_id = c("t1", "t2", "t3", "t4"))
+  expect_message(
+    out <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0, detections = det),
+    "Every group is a singleton"
+  )
+  expect_equal(.prior_of(out, "S2", "Sp_X"), 0.1)
+})
+
+test_that("NULL detections on multi-site combined priors is refused", {
+  fx <- .two_group_fixture()
+  fx$result$n_sites_combined <- c(1L, 1L, 3L, 3L, 1L, 1L, 1L, 1L)
+  expect_error(
+    suppressMessages(update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0)),
+    "combined across"
+  )
+})
+
+test_that("NULL detections pools the whole result and says so", {
+  fx <- .two_group_fixture()
+  expect_message(
+    out <- update_prior_from_consensus(fx$result, fx$consensus, n_sims = 0),
+    "pooled across ALL"
+  )
+  expect_gt(.prior_of(out, "S2", "Sp_X"), 0.1)
+})
+
+test_that("detections and spatial_group_map together is an error; bad inputs are caught", {
+  fx <- .two_group_fixture()
+  det <- tibble(observation_id = c("S1", "S2"), sample_id = c("t1", "t1"))
+  map <- tibble(observation_id = c("S1", "S2"), spatial_group_id = c("g", "g"))
+  expect_error(
+    update_prior_from_consensus(fx$result, fx$consensus,
+      detections = det, spatial_group_map = map
+    ),
+    "not both"
+  )
+  expect_error(
+    update_prior_from_consensus(fx$result, fx$consensus,
+      detections = det, group_cols = "site"
+    ),
+    "detections missing required column"
+  )
+  expect_error(
+    update_prior_from_consensus(fx$result, fx$consensus,
+      detections = tibble(observation_id = "nope", sample_id = "t1")
+    ),
+    "None of"
+  )
+})

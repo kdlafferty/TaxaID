@@ -205,6 +205,9 @@ update_prior_from_consensus <- function(result,
                                         confirmation_quantile = 0.9,
                                         confirmation_discount = 0.25,
                                         n_sims = 0,
+                                        detections = NULL,
+                                        group_cols = "sample_id",
+                                        marker_col = "marker",
                                         spatial_group_map = NULL) {
   # --- Input validation -------------------------------------------------------
   required_result <- c(
@@ -236,30 +239,18 @@ update_prior_from_consensus <- function(result,
     cli::cli_abort("{.arg confirmation_discount} must be a single number in [0, 1].")
   }
 
-  # --- Resolve multi-member spatial groups from spatial_group_map, if supplied ----
-  # Only observations that share a spatial_group_id with >=1 other observation
-  # may act as evidence sources or receive an update -- an observation in a
-  # single-observation spatial group's own posterior never says anything
-  # about an unrelated one.
-  grouped_ids <- NULL
-  if (!is.null(spatial_group_map)) {
-    required_group <- c("observation_id", "spatial_group_id")
-    missing_group <- setdiff(required_group, names(spatial_group_map))
-    if (length(missing_group) > 0) {
-      cli::cli_abort("spatial_group_map missing required column(s): {.field {missing_group}}")
-    }
-
-    group_sizes <- table(spatial_group_map$spatial_group_id)
-    shared_groups <- names(group_sizes)[group_sizes >= 2L]
-    grouped_ids <- unique(spatial_group_map$observation_id[spatial_group_map$spatial_group_id %in% shared_groups])
-
-    n_singleton <- dplyr::n_distinct(spatial_group_map$observation_id) - length(grouped_ids)
-    cli::cli_inform(
-      "spatial_group_map supplied: {length(grouped_ids)} observation(s) in a multi-member \\
-      spatial group are eligible for the consensus prior update; {n_singleton} observation(s) \\
-      in a single-observation spatial group will be skipped (returned unchanged)."
-    )
-  }
+  # --- Resolve the evidence groups ----------------------------------------------
+  # One row per (observation_id, group_key). An observation may sit in several
+  # groups (an ESV detected in many tubes, or at several sites); evidence is
+  # pooled WITHIN a group only, and a row's per-group gains are averaged over
+  # every group its observation belongs to (see @section Group-local evidence).
+  membership <- .resolve_update_groups(
+    result, detections, group_cols, marker_col, spatial_group_map
+  )
+  group_size <- table(membership$group_key)
+  multi_groups <- names(group_size)[group_size >= 2L]
+  eligible_ids <- unique(membership$observation_id[membership$group_key %in% multi_groups])
+  .report_group_structure(membership, group_size, attr(membership, "study_wide"))
 
   # --- Soft confirmation evidence ---------------------------------------------
   # A hard donor gate (a species counted as confirmed only when some
@@ -281,9 +272,6 @@ update_prior_from_consensus <- function(result,
   # a0 = 0.25 treats ~4 correlated observations as worth 1 independent one.
   post_col <- if ("posterior_point_est" %in% names(result)) "posterior_point_est" else "posterior_mean"
   support_pool <- result[!is.na(result$taxon_name) & !is.na(result[[post_col]]), , drop = FALSE]
-  if (!is.null(grouped_ids)) {
-    support_pool <- support_pool[support_pool$observation_id %in% grouped_ids, , drop = FALSE]
-  }
   if (nrow(support_pool) == 0L) {
     cli::cli_inform("No named posterior support anywhere; returning result unchanged.")
     return(result)
@@ -294,49 +282,50 @@ update_prior_from_consensus <- function(result,
   sup_key <- paste(support_pool$observation_id, support_pool$taxon_name, sep = "\r")
   obs_support <- tapply(support_pool[[post_col]], sup_key, max)
   key_split <- strsplit(names(obs_support), "\r", fixed = TRUE)
+  sup_obs <- vapply(key_split, function(k) k[[1L]], character(1))
   sup_taxon <- vapply(key_split, function(k) k[[2L]], character(1))
   sup_p <- as.numeric(obs_support)
 
-  species_mass <- tapply(sup_p, sup_taxon, sum)
-
-  # Support-weighted confirmation-quantile of per-observation support: the
-  # target level the substitution moves toward. Weighting by the support
-  # itself keeps a handful of genuine detections from being drowned by a sea
-  # of near-zero candidacies of the same species.
-  .weighted_quantile <- function(x, w, prob) {
-    o <- order(x)
-    x <- x[o]
-    w <- w[o]
-    cw <- cumsum(w) / sum(w)
-    x[which(cw >= prob)[1L]]
-  }
-  species_target <- vapply(split(seq_along(sup_p), sup_taxon), function(idx) {
-    .weighted_quantile(sup_p[idx], sup_p[idx], confirmation_quantile)
-  }, numeric(1))
+  # Per (group, species) evidence, from the members of that group only.
+  # Singleton groups carry no cross-observation evidence by construction, so
+  # only multi-member groups are expanded here.
+  mem_multi <- membership[membership$group_key %in% multi_groups, , drop = FALSE]
+  ev <- merge(
+    data.frame(observation_id = sup_obs, taxon = sup_taxon, p = sup_p, stringsAsFactors = FALSE),
+    mem_multi,
+    by = "observation_id"
+  )
+  gs_key <- paste(ev$group_key, ev$taxon, sep = "\n")
+  gs_mass <- tapply(ev$p, gs_key, sum)
+  # Support-weighted confirmation-quantile of per-observation support within
+  # each group: the target level the substitution moves toward. Weighting by
+  # the support itself keeps a handful of genuine detections from being
+  # drowned by a sea of near-zero candidacies of the same species.
+  gs_target <- .grouped_weighted_quantile(ev$p, gs_key, confirmation_quantile)
 
   # --- Identify unresolved observations ----------------------------------------
   unresolved_ids <- consensus$observation_id[
     is.na(consensus$consensus_taxon) | !consensus$is_resolved
   ]
-  if (!is.null(grouped_ids)) {
-    unresolved_ids <- intersect(unresolved_ids, grouped_ids)
+  if (length(unresolved_ids) == 0L) {
+    cli::cli_inform("All observations already resolved; returning result unchanged.")
+    return(result)
   }
+  unresolved_ids <- unresolved_ids[as.character(unresolved_ids) %in% eligible_ids]
   if (length(unresolved_ids) == 0L) {
     cli::cli_inform(
-      if (!is.null(grouped_ids)) {
-        "No unresolved observations in a multi-member spatial group; returning result unchanged."
-      } else {
-        "All observations already resolved; returning result unchanged."
-      }
+      "No unresolved observation shares a group with any other observation; \\
+      returning result unchanged."
     )
     return(result)
   }
 
   cli::cli_inform(c(
-    "Soft confirmation: {length(species_mass)} species carry posterior support \\
-    across the dataset (power-prior discount a0 = {confirmation_discount}).",
+    "Soft confirmation: {length(unique(ev$taxon))} species carry posterior support \\
+    inside {length(multi_groups)} multi-member group(s) (power-prior discount \\
+    a0 = {confirmation_discount}).",
     "Unresolved observations to update: {length(unresolved_ids)}",
-    "Confirmation quantile (support-weighted): {confirmation_quantile}"
+    "Confirmation quantile (support-weighted, per group): {confirmation_quantile}"
   ))
 
   # --- Split result -----------------------------------------------------------
@@ -354,32 +343,77 @@ update_prior_from_consensus <- function(result,
   resolved_rows$confirmed_without_occurrence_record <- rep(FALSE, nrow(resolved_rows))
   unresolved_rows$confirmed_without_occurrence_record <- rep(FALSE, nrow(unresolved_rows))
 
-  # --- Leave-one-out, discounted, saturating evidence per row ------------------
-  boost_mask <- unresolved_rows$taxon_name %in% names(species_mass)
+  # --- Expand every unresolved row over its observation's groups ---------------
+  # rg: one row per (unresolved hypothesis row, group of its observation),
+  # singleton groups included -- they contribute zero gain but still count in
+  # the denominator of the per-row mean, so evidence from one group of k is
+  # diluted to 1/k (see @section Group-local evidence).
+  n_ur <- nrow(unresolved_rows)
+  rg <- merge(
+    data.frame(
+      row = seq_len(n_ur),
+      observation_id = as.character(unresolved_rows$observation_id),
+      stringsAsFactors = FALSE
+    ),
+    membership,
+    by = "observation_id"
+  )
+  rg <- rg[order(rg$row), , drop = FALSE]
+  k_row <- tabulate(rg$row, nbins = n_ur)
+  .row_mean <- function(v) {
+    s <- numeric(n_ur)
+    agg <- rowsum(v, rg$row, reorder = TRUE)
+    s[as.integer(rownames(agg))] <- agg[, 1L]
+    ifelse(k_row > 0L, s / pmax(k_row, 1L), 0)
+  }
+
+  rg_taxon <- unresolved_rows$taxon_name[rg$row]
+  rg_gs <- paste(rg$group_key, rg_taxon, sep = "\n")
   row_key <- paste(unresolved_rows$observation_id, unresolved_rows$taxon_name, sep = "\r")
   own_p <- as.numeric(obs_support[row_key])
   own_p[is.na(own_p)] <- 0
-  mass_row <- unname(species_mass[unresolved_rows$taxon_name]) - own_p
-  mass_row[is.na(mass_row) | mass_row < 0] <- 0
-  m_disc <- confirmation_discount * mass_row
-  s_sat <- m_disc / (1 + m_disc) # smooth saturation in [0, 1): no cliffs
 
-  if (!any(boost_mask & m_disc > 0)) {
+  # Leave-one-out, discounted, saturating evidence per (row, group): the row's
+  # own support is removed from each of its groups separately, so an
+  # observation can never confirm itself, even as the sole supporter of a group.
+  mass_rg <- as.numeric(gs_mass[rg_gs])
+  mass_rg[is.na(mass_rg)] <- 0
+  mass_rg <- pmax(mass_rg - own_p[rg$row], 0)
+  md_rg <- confirmation_discount * mass_rg
+  s_rg <- md_rg / (1 + md_rg) # smooth saturation in [0, 1): no cliffs
+  md_row <- .row_mean(md_rg)
+  boost_mask <- !is.na(unresolved_rows$taxon_name) & md_row > 0
+
+  if (!any(boost_mask)) {
     cli::cli_inform(
-      "No unresolved hypothesis has any cross-observation support after the \\
-      leave-one-out discount; returning result unchanged."
+      "No unresolved hypothesis has any cross-observation support within its own \\
+      group(s) after the leave-one-out discount; returning result unchanged."
     )
     return(result)
   }
 
-  # Occurrence-scale rescale (see @section Rescaling onto the occurrence scale)
+  # Occurrence-scale rescale (see @section Rescaling onto the occurrence scale),
+  # with the ceiling taken PER GROUP: the largest theta_mean among the rows of
+  # that group's own observations. A group with no finite positive theta falls
+  # back to the study-wide ceiling (a scale bound, not evidence).
   has_theta <- "theta_mean" %in% names(result)
-  theta_ceiling <- if (has_theta) max(result$theta_mean, na.rm = TRUE) else NA_real_
+  theta_ceiling <- if (has_theta) suppressWarnings(max(result$theta_mean, na.rm = TRUE)) else NA_real_
   if (has_theta && (!is.finite(theta_ceiling) || theta_ceiling <= 0)) {
     has_theta <- FALSE
   }
-  q_target <- unname(species_target[unresolved_rows$taxon_name])
-  candidate_prior <- if (has_theta) q_target * theta_ceiling else q_target
+  n_ceiling_fallback <- 0L
+  if (has_theta) {
+    th_obs <- tapply(result$theta_mean, as.character(result$observation_id), function(v) {
+      suppressWarnings(max(v, na.rm = TRUE))
+    })
+    g_ceiling <- tapply(as.numeric(th_obs[membership$observation_id]), membership$group_key, max)
+    bad <- !is.finite(g_ceiling) | g_ceiling <= 0
+    n_ceiling_fallback <- sum(bad & names(g_ceiling) %in% multi_groups)
+    g_ceiling[bad] <- theta_ceiling
+    ceil_rg <- as.numeric(g_ceiling[rg$group_key])
+  }
+  q_rg <- as.numeric(gs_target[rg_gs])
+  cand_rg <- if (has_theta) q_rg * ceil_rg else q_rg
 
   mix_cols_all <- c("prior_mix_w", "prior_mix_theta_present", "prior_mix_theta_absent")
   is_mix_row <- if (all(mix_cols_all %in% names(unresolved_rows))) {
@@ -387,22 +421,25 @@ update_prior_from_consensus <- function(result,
       !is.na(unresolved_rows$prior_mix_theta_present) &
       !is.na(unresolved_rows$prior_mix_theta_absent)
   } else {
-    rep(FALSE, nrow(unresolved_rows))
+    rep(FALSE, n_ur)
   }
 
   # --- Non-mixture rows: soft, never-demote substitution -----------------------
   old_prior <- unresolved_rows$prior_mean
-  soft_gain <- pmax(candidate_prior - old_prior, 0) * s_sat
-  soft_gain[!boost_mask | is_mix_row | is.na(soft_gain)] <- 0
+  gain_rg <- pmax(cand_rg - old_prior[rg$row], 0) * s_rg
+  gain_rg[is.na(gain_rg) | is_mix_row[rg$row] | is.na(rg_taxon)] <- 0
+  soft_gain <- .row_mean(gain_rg)
   raise_mask <- soft_gain > 0
   new_prior <- old_prior + soft_gain
 
   cli::cli_inform(c(
-    "{sum(boost_mask)} hypothesis row(s) carry cross-observation support; \\
-    {sum(raise_mask)} raised above their existing prior (smoothly, by the \\
-    saturating discounted mass -- others already met their support-weighted target).",
+    "{sum(boost_mask)} hypothesis row(s) carry cross-observation support within \\
+    their own group(s); {sum(raise_mask)} raised above their existing prior \\
+    (smoothly, by the saturating discounted mass, averaged over each row's groups \\
+    -- others already met their support-weighted target).",
     if (has_theta) {
-      "Substitution rescaled onto the occurrence scale (ceiling = {signif(theta_ceiling, 3)})."
+      "Substitution rescaled onto each group's occurrence ceiling (study-wide \\
+      fallback used for {n_ceiling_fallback} multi-member group(s) with no theta_mean)."
     } else {
       "No theta_mean column on result -- using the support-weighted quantile directly."
     }
@@ -432,19 +469,34 @@ update_prior_from_consensus <- function(result,
   }
 
   # --- Mixture rows: cross-observation support updates prior_mix_w -------------
-  # For a presence mixture, confirmation IS evidence about presence: the
-  # discounted support mass enters w's own pseudo-observation update
-  # (successes at the support mass itself), p_conc grows by the same mass, and
-  # the Beta summary is re-moment-matched to the updated two-point mixture,
-  # rather than a hard rule that would clear the mixture outright on a
-  # thresholded confirmation.
-  mixable <- boost_mask & is_mix_row & m_disc > 0
+  # For a presence mixture, confirmation IS evidence about presence: each
+  # group's discounted support mass enters w's own pseudo-observation update
+  # (successes at the support mass itself), the per-group updates are averaged
+  # over the row's groups exactly like the non-mixture gains, p_conc grows by
+  # the averaged mass, and the Beta summary is re-moment-matched to the updated
+  # two-point mixture, rather than a hard rule that would clear the mixture
+  # outright on a thresholded confirmation.
+  mixable <- boost_mask & is_mix_row
+  w_raised_rg <- rep(FALSE, nrow(rg))
   if (any(mixable)) {
-    pc <- unresolved_rows$prior_mix_p_conc[mixable]
-    pc[is.na(pc)] <- 1
-    w0 <- unresolved_rows$prior_mix_w[mixable]
-    md <- m_disc[mixable]
-    w1 <- (pc * w0 + md) / (pc + md)
+    pc_all <- if ("prior_mix_p_conc" %in% names(unresolved_rows)) {
+      unresolved_rows$prior_mix_p_conc
+    } else {
+      rep(NA_real_, n_ur)
+    }
+    pc_all[is.na(pc_all)] <- 1
+    w0_all <- unresolved_rows$prior_mix_w
+    pc_rg <- pc_all[rg$row]
+    w0_rg <- w0_all[rg$row]
+    w1_rg <- (pc_rg * w0_rg + md_rg) / (pc_rg + md_rg)
+    w1_rg[!is_mix_row[rg$row] | is.na(w1_rg)] <- 0
+    w_raised_rg <- is_mix_row[rg$row] & md_rg > 0
+    w1_all <- .row_mean(w1_rg)
+
+    pc <- pc_all[mixable]
+    w0 <- w0_all[mixable]
+    md <- md_row[mixable]
+    w1 <- w1_all[mixable]
     # Cap at the construction-time veto bound: the update above is
     # level-blind and can be pushed past the
     # bound by a wide, low-grade blocker's correlated cross-observation
@@ -504,7 +556,8 @@ update_prior_from_consensus <- function(result,
     }
     cli::cli_inform(c(
       "{sum(mixable)} presence-mixture row(s) had prior_mix_w updated by the \\
-      discounted cross-observation support (presence evidence, never demoted).",
+      discounted cross-observation support within their own group(s) (presence \\
+      evidence, never demoted).",
       "i" = "sum(prior_mix_w) over these rows: {signif(sum(w0), 3)} -> \\
       {signif(sum(w1), 3)}. apply_undetected_evidence()'s own budget audit \\
       (sum(w) vs. chao_missing) describes the priors AS BUILT, not as the \\
@@ -522,6 +575,12 @@ update_prior_from_consensus <- function(result,
     ))
   }
 
+  # --- Per-group report ----------------------------------------------------------
+  raised_rg <- (gain_rg > 0) | w_raised_rg
+  group_report <- .summarise_group_update(
+    membership, group_size, unresolved_ids, rg, raised_rg
+  )
+  .report_group_update(group_report)
 
   # --- Recompute posteriors for unresolved observations ------------------------
   # Drop existing posterior columns so compute_posterior() produces fresh values
@@ -556,8 +615,246 @@ update_prior_from_consensus <- function(result,
     list(
       confirmation_quantile       = confirmation_quantile,
       confirmation_discount       = confirmation_discount,
-      n_sims                      = n_sims
+      n_sims                      = n_sims,
+      group_cols                  = attr(membership, "group_cols")
     )
   )
+  attr(out, "prior_update_groups") <- group_report
   out
+}
+
+
+# --- Internal helpers ---------------------------------------------------------
+
+#' Resolve observation -> evidence-group membership
+#'
+#' Returns one row per distinct (observation_id, group_key) pair, restricted to
+#' observations present in `result`. `group_key` is the combination of the
+#' caller's `group_cols` (joined with "\r"); attribute `study_wide` is TRUE when
+#' no grouping was supplied and every observation shares one group.
+#' @noRd
+.resolve_update_groups <- function(result, detections, group_cols, marker_col,
+                                   spatial_group_map) {
+  if (!is.null(spatial_group_map)) {
+    if (!is.null(detections)) {
+      cli::cli_abort(
+        "Supply {.arg detections} or the superseded {.arg spatial_group_map}, not both."
+      )
+    }
+    missing_group <- setdiff(c("observation_id", "spatial_group_id"), names(spatial_group_map))
+    if (length(missing_group) > 0) {
+      cli::cli_abort("spatial_group_map missing required column(s): {.field {missing_group}}")
+    }
+    cli::cli_inform(c(
+      "i" = "{.arg spatial_group_map} is superseded by {.arg detections} + \\
+      {.arg group_cols}; treating it as {.code detections = spatial_group_map, \\
+      group_cols = \"spatial_group_id\"}. Evidence is pooled within each spatial \\
+      group only."
+    ))
+    detections <- spatial_group_map
+    group_cols <- "spatial_group_id"
+    marker_col <- NULL
+  }
+
+  res_ids <- unique(as.character(result$observation_id))
+
+  if (is.null(detections)) {
+    if ("n_sites_combined" %in% names(result) &&
+      any(result$n_sites_combined > 1L, na.rm = TRUE)) {
+      cli::cli_abort(c(
+        "{.arg detections} is NULL, but {.arg result} carries priors combined across \\
+        several sites ({.field n_sites_combined} > 1).",
+        "i" = "Without a grouping the update would pool evidence across every site in \\
+        the study, so a detection at one site would raise priors at all the others.",
+        "i" = "Pass {.arg detections} (a table with {.field observation_id} plus the \\
+        grouping column(s)) and {.arg group_cols}, e.g. {.code group_cols = \"site\"}."
+      ))
+    }
+    cli::cli_inform(c(
+      "!" = "No {.arg detections} supplied: evidence is pooled across ALL of \\
+      {.arg result} as a single group. That is correct only when every observation \\
+      shares one local species pool (one site / sampling event). For several sites \\
+      or samples, pass {.arg detections} and {.arg group_cols}."
+    ))
+    out <- data.frame(
+      observation_id = res_ids,
+      group_key = rep("(all observations)", length(res_ids)),
+      stringsAsFactors = FALSE
+    )
+    attr(out, "study_wide") <- TRUE
+    attr(out, "group_cols") <- NA_character_
+    return(out)
+  }
+
+  if (!is.data.frame(detections)) {
+    cli::cli_abort("{.arg detections} must be a data frame.")
+  }
+  if (!is.character(group_cols) || length(group_cols) < 1L || anyNA(group_cols) ||
+    any(!nzchar(group_cols))) {
+    cli::cli_abort("{.arg group_cols} must be a non-empty character vector of column names.")
+  }
+  missing_cols <- setdiff(c("observation_id", group_cols), names(detections))
+  if (length(missing_cols) > 0) {
+    cli::cli_abort(c(
+      "detections missing required column(s): {.field {missing_cols}}",
+      "i" = "{.arg group_cols} = {.val {group_cols}}; the default is the sample (tube) \\
+      column {.val sample_id}."
+    ))
+  }
+
+  det <- as.data.frame(detections)
+  key_df <- det[, group_cols, drop = FALSE]
+  bad <- is.na(det$observation_id) | !stats::complete.cases(key_df)
+  if (any(bad)) {
+    cli::cli_inform(c(
+      "!" = "{sum(bad)} detections row(s) have NA {.field observation_id} or NA in \\
+      {.field {group_cols}}; dropped from the grouping."
+    ))
+  }
+  det <- det[!bad, , drop = FALSE]
+  key <- do.call(paste, c(lapply(det[, group_cols, drop = FALSE], as.character), sep = "\r"))
+  det_ids <- as.character(det$observation_id)
+
+  in_map <- res_ids %in% det_ids
+  if (!any(in_map)) {
+    cli::cli_abort(c(
+      "None of {.arg result}'s observation_ids appear in {.arg detections}.",
+      "i" = "Check that both tables use the same observation_id strings (e.g. the \\
+      same per-marker namespacing)."
+    ))
+  }
+  if (!all(in_map)) {
+    cli::cli_inform(c(
+      "!" = "{sum(!in_map)} of {length(res_ids)} observation(s) in {.arg result} have \\
+      no row in {.arg detections}: they belong to no group, so they neither donate \\
+      nor receive, and are returned unchanged."
+    ))
+  }
+
+  if (!is.null(marker_col) && marker_col %in% names(det)) {
+    keep <- det_ids %in% res_ids
+    mk <- as.character(det[[marker_col]][keep])
+    gk <- key[keep]
+    ok <- !is.na(mk)
+    if (length(unique(mk[ok])) > 1L) {
+      n_mk <- tapply(mk[ok], gk[ok], function(x) length(unique(x)))
+      if (all(n_mk <= 1L)) {
+        cli::cli_inform(c(
+          "!" = "{.arg detections} spans {length(unique(mk[ok]))} markers \\
+          ({.field {marker_col}}), but every group holds a single marker, so no \\
+          cross-marker confirmation can happen.",
+          "i" = "Grouping values must be the SAME strings across markers (a tube's \\
+          12S, COI and 18S libraries must share its sample id), even though \\
+          observation_ids are namespaced per marker."
+        ))
+      }
+    }
+  }
+
+  out <- unique(data.frame(observation_id = det_ids, group_key = key, stringsAsFactors = FALSE))
+  out <- out[out$observation_id %in% res_ids, , drop = FALSE]
+  rownames(out) <- NULL
+  attr(out, "study_wide") <- FALSE
+  attr(out, "group_cols") <- group_cols
+  out
+}
+
+#' Report how observations are spread over evidence groups
+#' @noRd
+.report_group_structure <- function(membership, group_size, study_wide) {
+  n_obs <- length(unique(membership$observation_id))
+  n_groups <- length(group_size)
+  n_multi <- sum(group_size >= 2L)
+  n_per_obs <- table(membership$observation_id)
+  largest <- if (n_groups > 0L) max(group_size) else 0L
+  cli::cli_inform(c(
+    "Evidence groups: {n_groups} group(s) ({n_multi} multi-member, \\
+    {n_groups - n_multi} singleton) over {n_obs} observation(s); groups per \\
+    observation {min(n_per_obs)}-{max(n_per_obs)}; largest group \\
+    {largest} observation(s)."
+  ))
+  if (n_groups > 0L && n_multi == 0L) {
+    cli::cli_inform(c(
+      "!" = "Every group is a singleton: no observation shares a group with another, \\
+      so no prior can be updated."
+    ))
+  }
+  if (!isTRUE(study_wide) && n_groups == 1L && n_obs > 1L) {
+    cli::cli_inform(c(
+      "!" = "One group holds every observation: this is study-wide pooling. Check \\
+      {.arg group_cols} if the study has more than one site or sample."
+    ))
+  }
+  invisible(NULL)
+}
+
+#' Support-weighted quantile of `x` within each level of `key`
+#'
+#' Returns a vector named by key. The weights are `x` itself, matching the
+#' support-weighted confirmation target.
+#' @noRd
+.grouped_weighted_quantile <- function(x, key, prob) {
+  if (length(x) == 0L) {
+    return(stats::setNames(numeric(0), character(0)))
+  }
+  o <- order(key, x)
+  k <- key[o]
+  xs <- x[o]
+  tot <- tapply(xs, k, sum)
+  cw <- stats::ave(xs, k, FUN = cumsum) / as.numeric(tot[k])
+  cw[!duplicated(k, fromLast = TRUE)] <- 1
+  hit <- !is.na(cw) & cw >= prob
+  hk <- k[hit]
+  hx <- xs[hit]
+  first <- !duplicated(hk)
+  stats::setNames(hx[first], hk[first])
+}
+
+#' Per-group counts of eligible, updated and raised
+#' @noRd
+.summarise_group_update <- function(membership, group_size, unresolved_ids, rg, raised_rg) {
+  keys <- names(group_size)
+  unres <- membership$observation_id %in% as.character(unresolved_ids) &
+    membership$group_key %in% keys[group_size >= 2L]
+  n_elig <- table(factor(membership$group_key[unres], levels = keys))
+  n_rows <- table(factor(rg$group_key[raised_rg], levels = keys))
+  upd <- unique(rg[raised_rg, c("observation_id", "group_key"), drop = FALSE])
+  n_upd <- table(factor(upd$group_key, levels = keys))
+  data.frame(
+    group = gsub("\r", " / ", keys, fixed = TRUE),
+    n_observations = as.integer(group_size),
+    n_eligible_unresolved = as.integer(n_elig),
+    n_observations_updated = as.integer(n_upd),
+    n_rows_raised = as.integer(n_rows),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Print the per-group update table (all groups when few, a summary otherwise)
+#' @noRd
+.report_group_update <- function(tab, max_lines = 30L) {
+  if (nrow(tab) == 0L) {
+    return(invisible(NULL))
+  }
+  fmt <- function(t) {
+    sprintf(
+      "  %s: %d obs, %d eligible unresolved, %d updated, %d row(s) raised",
+      t$group, t$n_observations, t$n_eligible_unresolved,
+      t$n_observations_updated, t$n_rows_raised
+    )
+  }
+  if (nrow(tab) <= max_lines) {
+    message(paste(c("Per-group prior update:", fmt(tab)), collapse = "\n"))
+  } else {
+    top <- tab[order(-tab$n_rows_raised), , drop = FALSE][seq_len(10L), , drop = FALSE]
+    message(paste(c(
+      sprintf(
+        "Per-group prior update: %d group(s); %d with at least one raised row. Top 10 by rows raised:",
+        nrow(tab), sum(tab$n_rows_raised > 0L)
+      ),
+      fmt(top),
+      "  (full table: attr(<result>, \"prior_update_groups\"))"
+    ), collapse = "\n"))
+  }
+  invisible(NULL)
 }
