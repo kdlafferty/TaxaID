@@ -26,19 +26,54 @@
 #' from *other* observations. An observation's own posterior never feeds back into its own
 #' prior.
 #'
-#' **Multi-member vs. single-observation spatial groups:** this refinement is
-#' only valid when other observations genuinely share a local species pool
-#' with the one being updated -- i.e. they share a spatial group (a drawn
-#' bounding box; see `TaxaMatch::group_observations_by_bbox()`). For a
-#' single-observation spatial group (whether because it was submitted alone,
-#' or because it fell outside every user-drawn box and was placed in its own
-#' group rather than dropped), no other observation shares its local species
-#' pool, so another observation's confirmed presence says nothing about it and
-#' must not be used. Supply `spatial_group_map` to enforce this: only
-#' observations whose `spatial_group_id` is shared with at least one other
-#' observation are used as evidence sources or receive a prior update;
-#' observations in a single-observation spatial group are always returned
-#' unchanged, exactly like already-resolved observations.
+#' **Evidence is group-local.** Priors are spatially local, so the update is
+#' too: a hypothesis is confirmed only by observations that share one of its
+#' observation's evidence groups. The grouping is the caller's choice, given as
+#' a `detections` table and the `group_cols` that define a group. The default
+#' is the sample (tube), the most conservative choice: only the same tube's
+#' other detections, including its other markers' libraries, count as
+#' confirmation. A study that treats every tube at a site as one species pool
+#' passes `group_cols = "site"`; one that also separates seasons passes
+#' `group_cols = c("site", "season")`. The function attaches no meaning to the
+#' column names; it groups by whatever it is given. An observation whose every
+#' group is a singleton has nobody to borrow from and is returned unchanged,
+#' exactly like an already-resolved observation. See the \emph{Group-local
+#' evidence} section for how an observation in several groups is handled.
+#'
+#' @section Group-local evidence:
+#' The posterior grain is observation x taxon, and one observation (for
+#' example an ESV) is usually detected in several groups: many tubes, or
+#' several sites. For each hypothesis row the update is computed separately in
+#' every group its observation belongs to, using only that group's members:
+#' the support mass, the leave-one-out subtraction of the row's own support,
+#' the saturating discounted mass, the support-weighted confirmation target and
+#' the occurrence-scale ceiling are all per group. The row then receives the
+#' MEAN of its per-group gains over all k of its groups, singleton groups
+#' included (they contribute zero). Averaging, rather than summing, means no
+#' row is raised by more than its single best-supported group could raise it,
+#' and evidence from one group of k is diluted to 1/k: an ESV found at 23
+#' sites whose species is supported at only one of them receives 1/23 of that
+#' site's gain. This matches the combined prior, which already averages the
+#' sites' priors. It is an equal-weight average: the per-site prior precisions
+#' that [combine_multisite_priors()] weights by are not carried on the combined
+#' row. Presence-mixture rows average their per-group `prior_mix_w` updates in
+#' the same way.
+#'
+#' Cross-marker confirmation needs the grouping values to be the SAME strings
+#' across markers: a tube's 12S, COI and 18S libraries must share its sample
+#' id, even though `observation_id` is namespaced per marker. When `detections`
+#' has a `marker_col` column spanning several markers and no group contains
+#' more than one marker, the function says so.
+#'
+#' With `detections = NULL` every observation in `result` forms one group
+#' (study-wide pooling), announced with a message. That is correct for a single
+#' site or sampling event. It is refused when `result` carries priors that
+#' [combine_multisite_priors()] combined across sites (`n_sites_combined` > 1),
+#' because that data is multi-site by construction.
+#'
+#' Per-group counts of observations, eligible unresolved observations,
+#' observations updated and rows raised are printed and returned as
+#' `attr(<result>, "prior_update_groups")`.
 #'
 #' @section Soft confirmation:
 #' A hard-gate donor definition -- counting an observation as a "donor" only
@@ -102,8 +137,10 @@
 #'
 #' When a `theta_mean` column is present on `result`, the substitution is
 #' rescaled onto that ceiling instead of being used directly:
-#' `prior_new <- max(prior_old, q * max(result$theta_mean, na.rm = TRUE))`,
-#' where `q` is the confirmation-quantile value described above. This keeps
+#' `prior_new <- max(prior_old, q * max(theta_mean, na.rm = TRUE))`,
+#' where `q` is the confirmation-quantile value described above and the
+#' maximum is taken over the rows of the group's own observations (the
+#' study-wide maximum when the group has none). This keeps
 #' the confirmation-quantile logic and the never-demote guard unchanged --
 #' only the target scale moves -- so a stronger/more numerous confirmation
 #' (higher `q`) still produces a stronger boost, bounded by the model's own
@@ -156,41 +193,55 @@
 #' @param n_sims Integer. Passed to [compute_posterior()] for the re-run.
 #'   Default 0 (point estimates only, fast). Set to 1000 to propagate
 #'   uncertainty -- match the value used in the original run.
-#' @param spatial_group_map Dataframe with `observation_id` and
+#' @param detections Data frame, optional. One row per observation x group
+#'   membership: an `observation_id` column plus the `group_cols` column(s), and
+#'   optionally `marker_col`. An observation may appear in many rows (an ESV
+#'   detected in several tubes or at several sites). Observations of `result`
+#'   missing from it belong to no group and are returned unchanged. Default
+#'   `NULL`: every observation shares one group (study-wide pooling; refused
+#'   for multi-site combined priors).
+#' @param group_cols Character vector. Column(s) of `detections` whose
+#'   combination defines an evidence group. Default `"sample_id"`, the sample
+#'   (tube). Pass e.g. `"site"` to pool every tube at a site, or
+#'   `c("site", "season")` to pool within site and season.
+#' @param marker_col Character. Optional column of `detections` naming the
+#'   marker or assay, used only to warn when no group spans more than one
+#'   marker. Ignored when absent. Default `"marker"`.
+#' @param spatial_group_map Data frame with `observation_id` and
 #'   `spatial_group_id` columns (e.g. from
-#'   `TaxaMatch::group_observations_by_bbox()`), optional. When supplied, only
-#'   observations whose `spatial_group_id` is shared with at least one other
-#'   observation can contribute confirmed species or receive a prior update;
-#'   observations in a single-observation spatial group (a singleton
-#'   `spatial_group_id` -- there is no separate naming convention for these,
-#'   see `group_observations_by_bbox()`) are always returned unchanged.
-#'   Default `NULL` (no group-based restriction -- all observations
-#'   participate, matching this function's original behaviour). Membership is
-#'   binary (same group or not), with no distance decay within a group --
-#'   two sites 100 km apart placed in different spatial groups donate nothing
-#'   to each other by design, exactly as if they were in the same group but
-#'   1 km apart they would donate at full weight.
+#'   `TaxaMatch::group_observations_by_bbox()`), optional. Equivalent to
+#'   `detections = spatial_group_map, group_cols = "spatial_group_id"`:
+#'   evidence is pooled within each spatial group only, so two sites in
+#'   different spatial groups donate nothing to each other. Membership is
+#'   binary (same group or not), with no distance decay within a group. Supply
+#'   this or `detections`, not both.
 #'
 #' @return The full posterior dataframe with the same structure as `result`,
 #'   plus one new column, `confirmed_without_occurrence_record` (logical,
 #'   `FALSE` unless set `TRUE` -- see @section Confirmed without an
 #'   occurrence record). Resolved observations are returned unchanged.
-#'   Unresolved observations in a multi-member spatial group (see
-#'   `spatial_group_map`) have updated `prior_mean` and freshly computed
-#'   posterior columns (`posterior_point_est`, `posterior_mean`,
-#'   `posterior_sd`, `confidence_score`). Unresolved observations in a
-#'   single-observation spatial group are returned unchanged, same as
-#'   resolved ones. Sorted by `observation_id` then descending
-#'   `posterior_point_est`.
+#'   Unresolved observations that share at least one group with another
+#'   observation have updated `prior_mean` and freshly computed posterior
+#'   columns (`posterior_point_est`, `posterior_mean`, `posterior_sd`,
+#'   `confidence_score`). Unresolved observations whose every group is a
+#'   singleton are returned unchanged, same as resolved ones. Sorted by
+#'   `observation_id` then descending `posterior_point_est`. Attribute
+#'   `prior_update_groups` holds the per-group counts (`group`,
+#'   `n_observations`, `n_eligible_unresolved`, `n_observations_updated`,
+#'   `n_rows_raised`).
 #'
-#' @seealso [posterior_consensus()], [compute_posterior()], [assign_taxa_llm()]
+#' @seealso [posterior_consensus()], [compute_posterior()], [assign_taxa_llm()],
+#'   [combine_multisite_priors()]
 #'
 #' @examples
 #' \dontrun{
+#' # detections: one row per observation x sample, plus a site column
 #' result_updated <- update_prior_from_consensus(
 #'   result, consensus,
 #'   confirmation_quantile = 0.9,
-#'   confirmation_discount = 0.25
+#'   confirmation_discount = 0.25,
+#'   detections = detections,
+#'   group_cols = "site"
 #' )
 #' }
 #'
@@ -646,8 +697,7 @@ update_prior_from_consensus <- function(result,
       cli::cli_abort("spatial_group_map missing required column(s): {.field {missing_group}}")
     }
     cli::cli_inform(c(
-      "i" = "{.arg spatial_group_map} is superseded by {.arg detections} + \\
-      {.arg group_cols}; treating it as {.code detections = spatial_group_map, \\
+      "i" = "{.arg spatial_group_map} supplied; treating it as {.code detections = spatial_group_map, \\
       group_cols = \"spatial_group_id\"}. Evidence is pooled within each spatial \\
       group only."
     ))

@@ -693,6 +693,17 @@ behavior on functions this document already covers above.
   `lookup_failed` on every row, which reads as a service outage rather than as
   a version mismatch. A test asserts the argument is absent on the default
   path.
+- `update_prior_from_consensus(detections, group_cols = "sample_id", marker_col)`
+  pools confirmation evidence within groups. Species mass, the leave-one-out
+  subtraction, the confirmation target and the occurrence ceiling are computed per
+  group, and an observation in k groups receives the mean of its k per-group gains.
+  `spatial_group_map` is read as `detections` with `group_cols = "spatial_group_id"`.
+  Before this, the map only decided which observations were eligible; every
+  quantity after that was study-wide, so a detection at one site raised priors at
+  every other site. With `detections = NULL` the whole result is one group, and
+  the call is refused when `result` carries multi-site combined priors. Tests
+  cover isolation, within-group donation, cross-marker grouping, a hand-computed
+  multi-group value, per-group leave-one-out and a composite key.
 
 - `assign_taxa_llm()`'s prompt builder no longer lets a missing `lineage` column
   collapse a vector. `ifelse()` returns the length of its TEST, so a length-1
