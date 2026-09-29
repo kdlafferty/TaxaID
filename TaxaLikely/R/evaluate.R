@@ -38,6 +38,8 @@ utils::globalVariables(c(
 #'   (e.g., `c("family", "genus", "species")`).
 #' @param ratio_threshold Numeric (default `0.01`).  Minimum likelihood ratio
 #'   relative to the best hypothesis; specific candidates below this are dropped.
+#'   The generic `unreferenced_species`/`unreferenced_genus` rows are always
+#'   retained.
 #' @param min_match_threshold Numeric (default `0.50`).  Raw score below which
 #'   a candidate receives likelihood 0 regardless of the model prediction.
 #' @param alpha Numeric (default `0.001`).  Score-outlier p-value cutoff, ONE-SIDED
@@ -944,8 +946,16 @@ utils::globalVariables(c(
     res_agg$score_likelihood_sd <- 0
   }
 
-  # Final filter on mean (after simulation)
-  res_agg <- dplyr::filter(res_agg, score_likelihood_mean >= ratio_threshold)
+  # Final filter on mean (after simulation). Same exemption as the point-
+  # estimate filter above: only specific candidates are dropped. The generic
+  # unreferenced rows are the channel that lets a poorly-referenced source
+  # compete once the prior is applied; dropping them here, on the likelihood
+  # alone, would remove hypotheses that can win on the posterior.
+  res_agg <- dplyr::filter(
+    res_agg,
+    score_likelihood_mean >= ratio_threshold |
+      hypothesis_type != "specific_candidate"
+  )
 
   res_agg |>
     dplyr::select(
@@ -1012,9 +1022,12 @@ utils::globalVariables(c(
 #' @param rank_system Character vector of rank names **coarse to fine**
 #'   (e.g., `c("family", "genus", "species")`). Default `NULL` auto-detects
 #'   from columns in `match_df`.
-#' @param ratio_threshold Minimum likelihood ratio to retain a hypothesis
-#'   (default `0.01`).  Hypotheses with likelihood ratio less than 1% of the
-#'   best hypothesis are dropped.  This removes noise hypotheses that would
+#' @param ratio_threshold Minimum likelihood ratio to retain a specific
+#'   candidate (default `0.01`).  Specific candidates with likelihood ratio
+#'   less than 1% of the best hypothesis are dropped; the generic
+#'   `unreferenced_species`/`unreferenced_genus` rows are always retained,
+#'   because their prior can make them competitive on the posterior even when
+#'   their likelihood is small.  This removes noise hypotheses that would
 #'   not meaningfully affect posterior probabilities.  Note: the per-species
 #'   sigma floor (see Details) ensures that well-sampled species with
 #'   artificially tight training distributions still clear this threshold at
