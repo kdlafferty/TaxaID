@@ -516,6 +516,12 @@ utils::globalVariables(c(
 #' recognises both forms).
 #' @noRd
 .ref_cache_syn_suffix <- function(barcode_term) {
+  # The phrase this greps for is not a loose guess: .build_search_term()'s own
+  # tests assert that a MiFish term's query contains "small subunit ribosomal
+  # RNA" and a 16S term's contains "large subunit ribosomal RNA". Reword the
+  # synonym lists and those tests fail before this suffix can quietly stop
+  # applying, which is what keeps a query change from being served from a key
+  # that did not move.
   gains <- vapply(barcode_term, function(bt) {
     !tolower(trimws(bt)) %in% c("12s", "16s") &&
       grepl("subunit ribosomal RNA", .build_search_term("x", bt), fixed = TRUE)
