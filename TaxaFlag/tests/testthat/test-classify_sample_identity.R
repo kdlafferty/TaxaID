@@ -376,3 +376,57 @@ test_that("the pending warning separates tube holds from a unit's own evidence",
       expect_match(pw, "held only because another marker of the same tube was flagged")
   }
 })
+
+.one_marker_dirty <- function() {
+  d <- .sig_fixture()
+  d <- d[!(d$sample_id == "CLEAN" & d$marker == "M2"), ]
+  set.seed(7)
+  f <- paste0("p", 1:60)
+  w <- stats::rlnorm(60)
+  rbind(d, data.frame(sample_id = "CLEAN", marker = "M2", run = "R1", event_id = "CLEAN.1",
+    taxon_name = paste("M2", f, sep = "_"), species = f, count = pmax(1, round(20000 * w / sum(w))),
+    stringsAsFactors = FALSE))
+}
+
+test_that("identity is per tube but control usability is per marker", {
+  path <- tempfile(fileext = ".csv")
+  on.exit(unlink(path))
+  d <- .one_marker_dirty()
+  res <- .sig_run(d, decisions_path = path)
+  expect_true(.unit(res, "CLEAN", "M2")$identity_status %in% c("suspect", "discordant"))
+  expect_equal(.unit(res, "CLEAN", "M1")$identity_status, "concordant")
+  # the tube is held until its identity is decided
+  expect_true(all(.unit(res, "CLEAN", "M1")$pending_review, .unit(res, "CLEAN", "M2")$pending_review))
+  rec <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character")
+  rec$disposition[rec$sample == "CLEAN" & rec$marker == "M1"] <- "confirm_blank"
+  utils::write.csv(rec, path, row.names = FALSE, na = "")
+  res <- .sig_run(d, decisions_path = path)
+  m1 <- .unit(res, "CLEAN", "M1"); m2 <- .unit(res, "CLEAN", "M2")
+  # confirmed a blank: the clean marker is a control, the contaminated one is not
+  expect_true(m1$admit); expect_equal(m1$admit_as, "control"); expect_equal(m1$control_usability, "usable")
+  expect_false(m2$admit); expect_equal(m2$control_usability, "contaminated_in_marker")
+  expect_false(m2$pending_review)
+  expect_match(m2$reason, "NOT A CONTROL IN THIS MARKER")
+  expect_false(any(res$admit[res$sample_id == "CLEAN" & res$marker == "M2"]))
+  # a person can keep it
+  rec <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character")
+  rec$disposition[rec$sample == "CLEAN" & rec$marker == "M2"] <- "keep_library"
+  utils::write.csv(rec, path, row.names = FALSE, na = "")
+  res <- .sig_run(d, decisions_path = path)
+  expect_true(.unit(res, "CLEAN", "M2")$admit)
+  expect_equal(.unit(res, "CLEAN", "M2")$control_usability, "kept_by_decision")
+})
+
+test_that("sample_viability separates viable, thin-or-failed, and leaves controls NA", {
+  res <- .sig_run(.sig_fixture(fail_run = "R1"))
+  u <- attr(res, "units")
+  expect_equal(.unit(res, "S21", "M1")$sample_viability, "viable")
+  expect_equal(.unit(res, "S11", "M2")$sample_viability, "non_viable")
+  expect_true(all(is.na(u$sample_viability[u$identity_label == "blank"])))
+  expect_true(all(u$sample_viability[!is.na(u$sample_viability)] %in% c("viable", "thin", "non_viable")))
+  # thin = low yield with normal composition, when the detector says low_yield
+  ly <- u$library_status %in% c("low_yield", "low_yield_undetermined") & u$identity_label == "sample" &
+    !(u$n_libraries_kept == 0)
+  expect_true(all(u$sample_viability[ly] == "thin"))
+  expect_true(all(c("control_usability", "sample_viability") %in% names(res)))
+})

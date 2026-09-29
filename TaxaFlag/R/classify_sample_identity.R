@@ -164,10 +164,28 @@
 #'     keeps its own \code{identity_status} (it is not itself evidence of
 #'     anything), and \code{hold_reason} says why it is held:
 #'     \code{"own_evidence"}, \code{"tube"}, \code{"untested"} or
-#'     \code{"inconclusive"}. A blank contaminated at the bag is contaminated in
-#'     every marker, even where one marker happens to amplify little of it. An
-#'     untested unit holds only itself: a failed library says nothing about the
-#'     tube's other markers.
+#'     \code{"inconclusive"}. An untested unit holds only itself: a failed
+#'     library says nothing about the tube's other markers.
+#'   \item \strong{Identity is per tube; usability is per marker.} Whether a
+#'     tube IS a blank is one question for all its markers. Whether a marker's
+#'     result is USABLE is asked per marker, because different markers can
+#'     return usable and unusable results for the same tube. A blank whose own
+#'     evidence in one marker looks contaminated (discordant or suspect in that
+#'     marker) is not admitted as a control IN THAT MARKER, even after the tube
+#'     is confirmed as a blank: \code{control_usability} reads
+#'     \code{"contaminated_in_marker"}, and \code{"keep_library"} on that unit
+#'     overrides it. Its other markers are judged on their own evidence:
+#'     contamination a marker cannot amplify cannot bias that marker. The
+#'     inference runs one way only. A clean result in an insensitive marker
+#'     (12S cannot amplify protists or algae) never clears a sensitive one,
+#'     because each marker is judged only on its own evidence.
+#'   \item \strong{Sample viability is per marker.} \code{sample_viability}
+#'     combines yield with appearance: \code{"viable"} (libraries passed),
+#'     \code{"thin"} (low yield but a normal-looking composition: a genuinely
+#'     small sample, not a broken one) or \code{"non_viable"} (no library
+#'     yielded). Depth alone cannot tell thin from broken. Below some depth
+#'     the composition test has nothing to compare, so only depth speaks; that
+#'     is the \code{inconclusive}/\code{no_power} state.
 #'   \item \strong{Identity questions block; library failures do not.} A unit
 #'     held for identity is \code{pending_review} until the tube has a
 #'     disposition. A unit whose libraries failed is excluded
@@ -240,7 +258,9 @@
 #'   \code{"block"}: what the suggested \code{admit} does with untested and
 #'   inconclusive units. See Status.
 #' @param accept_llm_roles Logical. Let \code{llm_role} from the decision record
-#'   stand in for an identity disposition where no person has recorded one.
+#'   stand in for an identity disposition where no person has recorded one,
+#'   and \code{llm_marker_unusable} exclude that marker where no person has
+#'   recorded a library disposition (it can only exclude, never keep).
 #'   Default FALSE.
 #' @param decisions_path Character or NULL. The CSV decision record. Read if
 #'   it exists, then rewritten with the current review queue. Default NULL:
@@ -261,6 +281,8 @@
 #'   \item{\code{admit_as}}{\code{"control"}, \code{"sample"},
 #'     \code{"positive_control"} or \code{NA}
 #'     (not admitted); reflects any reassignment.}
+#'   \item{\code{control_usability}, \code{sample_viability}}{Per marker; see
+#'     Decision scopes.}
 #'   \item{\code{admit}}{Logical. The gate. Filter on this and read
 #'     \code{admit_as} for the role; the original \code{control_samples} vector
 #'     is no longer the control set.}
@@ -274,6 +296,10 @@
 #' \code{identity_status_reason}, \code{issue_type}, \code{tube_flagged}, \code{hold_reason},
 #' \code{confidence}, \code{reason}, \code{disposition}, \code{disposition_source},
 #' \code{pending_review}, \code{excluded_library_issue},
+#' \code{control_usability} (for units whose role is control: \code{"usable"},
+#' \code{"contaminated_in_marker"}, \code{"kept_by_decision"} or
+#' \code{"excluded_by_decision"}), \code{sample_viability} (for units whose
+#' role is sample: \code{"viable"}, \code{"thin"} or \code{"non_viable"}),
 #' \code{admit_as} and \code{admit}. Attribute
 #' \code{"review_queue"}: the units that need a person, in decision-record
 #' shape. Attribute \code{"runs"}: one row per run x marker, with admitted
@@ -550,6 +576,8 @@ classify_sample_identity <- function(input_df,
   out$identity_appearance <- u$identity_appearance[m]
   out$identity_status <- u$identity_status[m]
   out$identity_status_reason <- u$identity_status_reason[m]
+  out$control_usability <- u$control_usability[m]
+  out$sample_viability <- u$sample_viability[m]
   out$admit_as <- u$admit_as[m]
   out$admit <- u$admit[m] & (!d$excluded | keep_lib)
 
@@ -568,6 +596,12 @@ classify_sample_identity <- function(input_df,
       "(%d pending identity review, %d excluded as failed libraries)."),
       sum(u$admit & u$admit_as %in% "sample"), sum(u$admit & u$admit_as %in% "control"),
       sum(!u$admit), sum(u$pending_review), sum(u$excluded_library_issue)))
+  }
+  nx <- sum(u$control_usability %in% "contaminated_in_marker" & !u$pending_review)
+  if (verbose && nx) {
+    message(sprintf(paste0("  not a control in %d marker(s) of confirmed blanks: their own evidence ",
+      "in that marker looks contaminated (control_usability = \"contaminated_in_marker\"); ",
+      "the same tubes' other markers were judged on their own evidence."), nx))
   }
   # Admitting a unit no test could judge is a policy choice, so say how many,
   # and why, every time -- "no evidence of a problem" is not "checked clean".
@@ -904,6 +938,7 @@ classify_sample_identity <- function(input_df,
     lbd <- dec[dec$disposition %in% .SIG_LIBRARY_DISPOSITIONS, , drop = FALSE]
     if (nrow(lbd)) {
       u$library_disposition <- lbd$disposition[match(u$unit, paste(lbd$sample, lbd$marker, lbd$run, sep = "|"))]
+      u$disposition_source[!is.na(u$library_disposition) & is.na(u$disposition_source)] <- "user"
     }
     # the LLM's role verdict stands in for a disposition only when asked, and
     # never over a person's decision
@@ -919,6 +954,15 @@ classify_sample_identity <- function(input_df,
       use <- is.na(u$identity_disposition) & !is.na(llm_disp)
       u$identity_disposition[use] <- llm_disp[use]
       u$disposition_source[use] <- "llm"
+    }
+    # the LLM's per-marker judgement can only EXCLUDE a marker, never keep one
+    # the gate excluded: keeping is a person's call
+    if (isTRUE(accept_llm_roles) && "llm_marker_unusable" %in% names(all_dec)) {
+      k <- paste(all_dec$sample, all_dec$marker, all_dec$run, sep = "|")
+      bad <- k[as.character(all_dec$llm_marker_unusable) %in% "TRUE"]
+      use <- is.na(u$library_disposition) & u$unit %in% bad
+      u$library_disposition[use] <- "exclude_library"
+      u$disposition_source[use & is.na(u$disposition_source)] <- "llm"
     }
     # evidence drift: recorded status/appearance vs now
     if (all(c("identity_status", "identity_appearance") %in% names(dec))) {
@@ -978,6 +1022,33 @@ classify_sample_identity <- function(input_df,
   admit <- !needs_id & !needs_lib
   admit[idd %in% "exclude_tube"] <- FALSE
   admit[u$library_disposition %in% "exclude_library"] <- FALSE
+
+  # Identity is per tube, usability per marker: a blank whose OWN evidence in
+  # this marker looks contaminated is not a control in this marker, whatever the
+  # tube's identity decision. Excluded by default (like a failed library, not
+  # pending: excluding is the conservative outcome); keep_library overrides.
+  is_ctl <- role == "control"
+  own_bad <- is_ctl & u$identity_label == "blank" & flagged & id_issue
+  kept <- u$library_disposition %in% "keep_library"
+  admit[own_bad & !kept] <- FALSE
+  cu <- rep(NA_character_, nrow(u))
+  cu[is_ctl] <- "usable"
+  cu[own_bad] <- "contaminated_in_marker"
+  cu[own_bad & kept] <- "kept_by_decision"
+  cu[is_ctl & u$library_disposition %in% "exclude_library"] <- "excluded_by_decision"
+  u$control_usability <- cu
+  ex_ctl <- own_bad & !kept & id_resolved
+  u$reason[ex_ctl] <- paste(u$reason[ex_ctl],
+    "NOT A CONTROL IN THIS MARKER: its own evidence here looks contaminated; the tube's other markers are judged on their own evidence. Record keep_library on this unit to override.")
+
+  # Viability is per marker: yield and appearance together. Low yield with a
+  # normal composition is a thin sample, not a broken one.
+  collapsed <- u$n_libraries_kept == 0 & u$n_libraries > 0
+  sv <- ifelse(collapsed | u$library_status %in% "failed", "non_viable",
+    ifelse(u$library_status %in% c("low_yield", "low_yield_undetermined"), "thin",
+      ifelse(u$library_status %in% "pass", "viable", NA_character_)))
+  sv[role != "sample"] <- NA_character_
+  u$sample_viability <- sv
   u$excluded_library_issue <- needs_lib
   u$pending_review <- needs_id
   # the queue lists every flagged unit, every weak unit that is held, and any
@@ -994,7 +1065,7 @@ classify_sample_identity <- function(input_df,
 .sig_queue_shape <- function(q) {
   cols <- c(
     "sample", "marker", "run", "identity_label", "identity_appearance", "identity_status",
-    "identity_status_reason", "issue_type", "tube_flagged", "hold_reason", "confidence", "n_markers_flagged", "n_markers_assessable", "depth",
+    "identity_status_reason", "issue_type", "tube_flagged", "hold_reason", "control_usability", "sample_viability", "confidence", "n_markers_flagged", "n_markers_assessable", "depth",
     "richness", "diversity_n1", "diversity_ratio", "composition_share_other",
     "composition_power", "run_status", "reason", "top_taxa"
   )
