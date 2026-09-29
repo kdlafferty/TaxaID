@@ -506,3 +506,28 @@ on functions this document already covers above.
   The key version is raised whenever a component of it changes, so verdicts cached
   before this change are a miss once and are re-asked; both functions say so when the
   cache directory already holds entries.
+- `validate_controls()` gave different answers to identical calls. Above
+  `max_null_pairs` it drew the sample-pair null with an unseeded `sample.int()`, so where a
+  site's null spread sits near its cut-off, the power verdict depended on the run, not on the
+  data. On a real multi-marker study, 32 units of one run moved between concordant and
+  inconclusive, and one blank between discordant and concordant, between identical calls. The
+  resulting counts were quoted in good faith three times (461, 493, 793). The subsample now
+  comes from a fixed local seed, with the caller's `.Random.seed` restored. The default cap
+  rises from 500 to 5000, so every pair is used for sites of up to 100 samples: the seed makes
+  a borderline verdict reproducible, and only using every pair makes it exact. Measured cost
+  on that study: about 13 seconds, with no verdict changed.
+- `classify_sample_identity()`: identity is decided per tube, and usability per marker.
+  `confirm_blank` no longer admits every marker of the tube as a control. A blank whose own
+  evidence in a marker is discordant or suspect is excluded as a control in that marker
+  (`control_usability = "contaminated_in_marker"`), excluded but not pending, and
+  `keep_library` on that unit overrides. Each marker is judged only on its own evidence, so a
+  clean result in a marker that cannot amplify the contaminant never clears one that can.
+  Additions: `sample_viability` (viable / thin / non_viable, from yield together with
+  appearance), and `top_taxon` / `top_taxon_share` (dominance with run-wide artifacts set
+  aside; evidence only, never acted on).
+- `review_sample_identity()`: a `contaminated_blank` verdict now implies role `"blank"`, not
+  `"exclude"`. Per-marker unusability comes back as `llm_marker_unusable`, and through
+  `accept_llm_roles` it can only exclude a marker, never keep one. `blank_medium` also
+  accepts a named vector, one medium per tube, and the prompt says a purified medium (RO,
+  distilled) should be near-empty. The cache key version was raised, so every tube is
+  re-asked once.
