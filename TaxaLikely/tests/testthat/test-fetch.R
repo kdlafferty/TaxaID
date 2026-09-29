@@ -311,8 +311,28 @@ test_that(".build_search_term leaves GENE-tagged and primer-name terms unaffecte
   expect_identical(bst("Gadidae", "COI"), "Gadidae[Organism] AND COI[GENE]")
   expect_identical(
     bst("Gadidae", "MiFishU"),
-    "Gadidae[Organism] AND (MiFishU[All Fields] OR 12S[All Fields])"
+    paste0(
+      "Gadidae[Organism] AND (MiFishU[All Fields] OR 12S[All Fields] OR ",
+      "\"12S ribosomal RNA\"[All Fields] OR \"12S rRNA\"[All Fields] OR ",
+      "\"small subunit ribosomal RNA\"[All Fields])"
+    )
   )
+})
+
+test_that(".build_search_term gives a MiFish primer term its marker's 12S synonyms", {
+  # "MiFish-U" drives primer trimming in the screen; searched as-is it missed
+  # records annotated only by a 12S synonym. One term should serve both jobs.
+  bst <- TaxaLikely:::.build_search_term
+  for (bt in c("MiFish-U", "MiFishU", "MiFish-E", "MiFish")) {
+    out <- bst("Gadidae", bt)
+    expect_true(grepl('"12S ribosomal RNA"\\[All Fields\\]', out), info = bt)
+    expect_true(grepl('"small subunit ribosomal RNA"\\[All Fields\\]', out), info = bt)
+    expect_true(grepl("12S\\[All Fields\\]", out), info = bt)
+  }
+  # a 16S primer term gets the 16S synonyms, not the 12S ones
+  out16 <- bst("Gadidae", "vert02")
+  expect_true(grepl('"large subunit ribosomal RNA"', out16))
+  expect_false(grepl('"small subunit ribosomal RNA"', out16))
 })
 
 # ---- .parse_lat_lon (internal) ------------------------------------------------
@@ -483,4 +503,16 @@ test_that("fetch_bold_reference_sequences: the no-records early return carries t
     "composite_id", "sequence", "family", "genus", "species",
     "lat", "lon", "country"
   ) %in% names(out)))
+})
+
+test_that("a MiFish term's cache key changes with its broader query; 12S keys do not", {
+  stem <- TaxaLikely:::.ref_cache_stem
+  expect_identical(stem("Girella", "12S"), "Girella_12S")
+  expect_identical(stem("Girella", "COI"), "Girella_COI")
+  expect_identical(stem("Girella", "MiFishU"), "Girella_MiFishU_syn")
+  expect_identical(stem("Girella", c("MiFish", "U")), "Girella_MiFish_U_syn")
+  # new names still satisfy the eviction grammar, so eviction never deletes them
+  f <- basename(TaxaLikely:::.ref_cache_file(tempdir(), "Girella", "MiFishU", 130, 210,
+    NULL, NULL, FALSE, 0, 0, c("family", "genus", "species")))
+  expect_match(f, TaxaLikely:::.ref_cache_grammar())
 })
