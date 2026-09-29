@@ -471,7 +471,9 @@ classify_sample_identity <- function(input_df,
   if (length(missing_u)) {
     # a unit holding ONLY ubiquitous features: an empty (clean) library once the spike is set aside
     z <- .sig_unit_stats(d[d$unit %in% missing_u, , drop = FALSE])
-    z$depth <- 0; z$richness <- 0L; z$diversity_n1 <- 0
+    z$depth <- 0
+    z$richness <- 0L
+    z$diversity_n1 <- 0
     u <- rbind(u, z[, names(u)])
   }
   ffl_libs$unit <- paste(ffl_libs$sample, ffl_libs$marker, ffl_libs$run, sep = "|")
@@ -789,31 +791,51 @@ classify_sample_identity <- function(input_df,
       it[i] <- "identity"
       if (run_failed[i] || collapsed[i]) {
         if (rich[i]) {
-          ap[i] <- "neither"; st[i] <- "suspect"; why[i] <- "diversity_on_failed_run"
+          ap[i] <- "neither"
+          st[i] <- "suspect"
+          why[i] <- "diversity_on_failed_run"
         } else {
-          ap[i] <- "not_assessed"; st[i] <- "untested"; why[i] <- "uncomparable"
+          ap[i] <- "not_assessed"
+          st[i] <- "untested"
+          why[i] <- "uncomparable"
         }
         cf[i] <- "low"
       } else if (other[i]) {
-        ap[i] <- "valid_sample"; st[i] <- "discordant"; why[i] <- "composition"
+        ap[i] <- "valid_sample"
+        st[i] <- "discordant"
+        why[i] <- "composition"
       } else if (rich[i]) {
-        ap[i] <- "neither"; st[i] <- "suspect"; why[i] <- "diversity"
+        ap[i] <- "neither"
+        st[i] <- "suspect"
+        why[i] <- "diversity"
       } else if (div_known[i]) {
         # low diversity against an external reference is a real test that passed
-        ap[i] <- "valid_blank"; st[i] <- "concordant"; why[i] <- "diversity"
+        ap[i] <- "valid_blank"
+        st[i] <- "concordant"
+        why[i] <- "diversity"
       } else if (pw[i] == "ok") {
-        ap[i] <- "valid_blank"; st[i] <- "concordant"; why[i] <- "composition"
+        ap[i] <- "valid_blank"
+        st[i] <- "concordant"
+        why[i] <- "composition"
       } else if (pw[i] %in% c("low", "no_headroom")) {
-        ap[i] <- "not_assessed"; st[i] <- "inconclusive"; why[i] <- "no_power"
+        ap[i] <- "not_assessed"
+        st[i] <- "inconclusive"
+        why[i] <- "no_power"
       } else {
-        ap[i] <- "not_assessed"; st[i] <- "untested"; why[i] <- "unreplicated"
+        ap[i] <- "not_assessed"
+        st[i] <- "untested"
+        why[i] <- "unreplicated"
       }
     } else {
       if (collapsed[i]) {
-        ap[i] <- "neither"; st[i] <- "suspect"; why[i] <- "library_failed"
+        ap[i] <- "neither"
+        st[i] <- "suspect"
+        why[i] <- "library_failed"
         it[i] <- "library"
       } else if (other[i]) {
-        ap[i] <- "valid_blank"; st[i] <- "discordant"; why[i] <- "composition"
+        ap[i] <- "valid_blank"
+        st[i] <- "discordant"
+        why[i] <- "composition"
         it[i] <- "identity"
       } else {
         # the identity test for a sample is whether it resembles the blanks;
@@ -821,13 +843,19 @@ classify_sample_identity <- function(input_df,
         it[i] <- "identity"
         ap[i] <- "valid_sample"
         if (pw[i] == "ok") {
-          st[i] <- "concordant"; why[i] <- "composition"
+          st[i] <- "concordant"
+          why[i] <- "composition"
         } else if (pw[i] %in% c("low", "no_headroom")) {
-          st[i] <- "inconclusive"; why[i] <- "no_power"
+          st[i] <- "inconclusive"
+          why[i] <- "no_power"
         } else if (pw[i] == "no_controls" || !isTRUE(u$run_has_controls[i])) {
-          ap[i] <- "not_assessed"; st[i] <- "untested"; why[i] <- "no_blanks"
+          ap[i] <- "not_assessed"
+          st[i] <- "untested"
+          why[i] <- "no_blanks"
         } else {
-          ap[i] <- "not_assessed"; st[i] <- "untested"; why[i] <- "unreplicated"
+          ap[i] <- "not_assessed"
+          st[i] <- "untested"
+          why[i] <- "unreplicated"
         }
       }
     }
@@ -911,7 +939,9 @@ classify_sample_identity <- function(input_df,
   # is 100% one local fish" depending entirely on the name.
   lab <- if ("label_name" %in% names(x)) {
     x$label_name[match(paste(tu, tf), paste(x$unit, x$feature))]
-  } else rep(NA_character_, length(tf))
+  } else {
+    rep(NA_character_, length(tf))
+  }
   lab <- ifelse(is.na(lab) | !nzchar(lab), tf, lab)
   m <- match(out$unit, tu)
   out$top_taxon <- lab[m]
