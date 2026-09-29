@@ -918,7 +918,7 @@ describe each in full.
 | TaxaMatch   | 31                 | 22         | Yes      |
 | TaxaLikely  | 32                 | 32         | Yes      |
 | TaxaExpect  | 18                 | 18         | Yes      |
-| TaxaAssign  | 15                 | 17         | Yes      |
+| TaxaAssign  | 16                 | 18         | Yes      |
 | TaxaFlag    | 15                 | 17         | Yes      |
 | TaxaWizard  | 9                  | 10         | No       |
 
