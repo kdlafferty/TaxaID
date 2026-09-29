@@ -904,7 +904,14 @@ classify_sample_identity <- function(input_df,
   tu <- fu[o][top]
   tf <- ff[o][top]
   sh <- as.numeric(f)[o][top] / as.numeric(tot[tu])
-  lab <- if ("label_name" %in% names(x)) x$label_name[match(paste(tu, tf), paste(x$unit, x$feature))] else NA
+  # The fallback to the feature id below must be able to fire per unit. `else NA` made `lab` a
+  # length-1 vector, and ifelse() returns the length of its TEST, so `lab` collapsed to length 1
+  # and top_taxon came back NA for every unit while top_taxon_share stayed populated. A share
+  # without a name is worse than neither: 1.0 means "clean spike-dominated blank" or "blank that
+  # is 100% one local fish" depending entirely on the name.
+  lab <- if ("label_name" %in% names(x)) {
+    x$label_name[match(paste(tu, tf), paste(x$unit, x$feature))]
+  } else rep(NA_character_, length(tf))
   lab <- ifelse(is.na(lab) | !nzchar(lab), tf, lab)
   m <- match(out$unit, tu)
   out$top_taxon <- lab[m]
