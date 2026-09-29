@@ -712,6 +712,19 @@ behavior on functions this document already covers above.
   cover isolation, within-group donation, cross-marker grouping, a hand-computed
   multi-group value, per-group leave-one-out and a composite key.
 
+- `join_priors()` no longer lets `TaxaMatch::filter_redundant_hypotheses()` delete
+  unreferenced hypotheses. That filter removes a coarser row when a finer row of the same
+  lineage exists, so it deleted the generic unsequenced-congener row ("Sardinops",
+  genus) and unsequenced-genus row ("Clupeidae", family) whenever a species candidate of
+  that genus was present. Those rows compete with the candidate; they are not coarser
+  labels for it. The filter still runs, with the unreferenced rows still able to
+  supersede coarser specific candidates, and any unreferenced row it removed is then
+  restored. Measured on the CalIntertidal 12S Government Point join: 9,132 H2 and
+  9,278 H3 rows went in, and 106 and 103 came out. Round-1 posteriors carried a generic
+  row for 2.0% (12S), 39.4% (18S) and 16.3% (COI) of observations. This is post-Step-7,
+  so no likelihood checkpoint is invalidated. Tests: test-join_priors.R (the new test
+  fails on the previous code).
+
 - `assign_taxa_llm()`'s prompt builder no longer lets a missing `lineage` column
   collapse a vector. `ifelse()` returns the length of its TEST, so a length-1
   `lineage` made the `ifelse()` below it length 1 regardless of how many taxa
