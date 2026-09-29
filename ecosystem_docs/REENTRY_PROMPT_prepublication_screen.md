@@ -12,7 +12,7 @@ pkgdown contradiction are gone; git has them. Everything below was measured on
 
 | Item | State | Waiting on |
 |---|---|---|
-| main | `5b439bb`, pushed. Installed library matches it. | -- |
+| main | `4203c95`, pushed. TaxaTools, TaxaLikely, TaxaAssign and TaxaFlag are ahead of the installed library; the rebuild is held for the live 18S accession screen, and the order is TaxaTools before TaxaAssign. | -- |
 | Installed library | CURRENT with `main`. All nine from `7e0ef06`, then TaxaTools, TaxaMatch and TaxaFlag rebuilt from `5b439bb`, which a source diff shows are the only three that changed since. Verified by reading the INSTALLED builds, not the repository: the 18S V9 pair resolves, a bare `18S` refuses, the taxonomy fetch has five attempts, the resolution-override default is `"order"`, the identity gate has `untested_policy` and `blank_medium`, and `model_label` survived the identity-gate rebase. `llm_prompts/` regenerated | -- |
 | Branch `reference-memory-estimate` (`69e5b3f`) | LANDED (see the counts-path row). Its worktree is still held by the author session, so the branch ref cannot be deleted yet; that is bookkeeping, not work |
 | PtCon 12S B2 run | staged (`TaxaID_dev/.../b2_runs/`), driver passes `max_per_genus = NULL` | maintainer's go |
