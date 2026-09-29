@@ -50,6 +50,56 @@ the tag, with B1, B2, B5 and B6 outstanding and the entry conditions not all
 met.** Section 11 says anything less than the full statement is a status
 report, not a pass. This is a status report.
 
+## 0b. Stage B re-run against the tag: results so far (2026-09-28 night)
+
+Scope: the 103 package R files that changed between B4's run (`b861dd7`) and
+the tag (`bd84325`).
+
+**Passes 1, 2 and 4, all nine packages: CLEAN.** No debris at any package root,
+zero non-ASCII characters in any `R/`, and every one of the 228 exports has
+examples. The merge standard enforced through the screen has kept these current.
+
+**Pass 5, lintr: 106 lints on the changed surface**, measured with each
+package's OWN `.lintr`. My first run overrode those configs with the defaults
+and reported about 2,900, most of them line length against a house style that
+deliberately allows it. That number was an artefact of the instrument and is
+withdrawn; the same mistake would make any future comparison meaningless, so
+lint a package with its own config or not at all.
+
+What the 106 contained, and what was done:
+
+- **Six `object_usage_linter` "assigned but may not be used" in TaxaAssign: all
+  FALSE POSITIVES**, verified one by one. Every variable is used inside a `cli`
+  glue string, which the linter cannot see through. No action, and recorded so
+  the next pass does not re-investigate them.
+- **One `assignment_linter` on `<<-` in TaxaWizard's pack builder: NOT a
+  defect.** It is a closure accumulator assigning to its own enclosing
+  function's variable, not a global write. Report-only.
+- **28 compound semicolons and 3 brace-style breaks in the new TaxaFlag
+  identity-gate code: FIXED** on branch `stageb-lint-catchup`. The compound
+  statements were split with a quote-balance rule after a first attempt with an
+  inverted guard split only two of them. Both files re-parse, and TaxaFlag is
+  925 passing, 0 failures, so the edits are style-only.
+- **Remaining and deliberately not touched:** about 50 line-length lints, the
+  object-name and object-length lints (B4's convention is report-only, no
+  renames), and two brace lints whose fix would restructure a function body
+  rather than reformat it.
+
+**Pass 7a, security read of the changed surface: nothing to fix.** Twelve
+`system`/`eval`/`parse` sites. The shell calls are fixed literals or pass
+quoted arguments through `system2`, which uses no shell. The `eval` sites
+evaluate a function's own formals default. One site, TaxaWizard's Shiny
+parameter reader, evaluates text matching a `c(...)` literal shape taken from
+the user's OWN workflow script, which they are about to run themselves, so it
+is not an escalation; a whitelist parser would still be tidier if that code is
+ever revisited.
+
+**Pass 6, check and test: NOT RUN TONIGHT.** Available memory sat at 3.3 GB
+with the 18S accession screen live and a `blastn` against `core_nt` holding
+about 14 GB. Nine checks into that is how a healthy multi-hour run gets killed,
+which this project has already done once. The one suite that had to run,
+TaxaFlag after the edits, ran alone and passed.
+
 ## 0. Open items board (kept current; last edit 2026-09-28)
 
 | Item | State | Waiting on |

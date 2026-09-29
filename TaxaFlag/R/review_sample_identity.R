@@ -324,7 +324,9 @@ review_sample_identity <- function(identity,
       },
       if (!is.null(r$top_taxon_share) && !is.na(r$top_taxon_share)) {
         sprintf("%s %.0f%%", r$top_taxon, 100 * r$top_taxon_share)
-      } else "(none)",
+      } else {
+        "(none)"
+      },
       ifelse(is.na(r$top_taxa), "(none)", r$top_taxa),
       ifelse(length(fr) && !is.na(fr[1]), fr[1], "(none)"),
       ub
@@ -332,7 +334,11 @@ review_sample_identity <- function(identity,
     }, character(1))
     med <- if (is.null(blank_medium)) "not stated" else if (is.null(names(blank_medium))) {
       trimws(blank_medium)
-    } else if (s %in% names(blank_medium)) trimws(blank_medium[[s]]) else "not stated"
+    } else if (s %in% names(blank_medium)) {
+      trimws(blank_medium[[s]])
+    } else {
+      "not stated"
+    }
     sprintf("TUBE %s -- labelled %s; blank medium for this tube: %s\n%s", s,
       toupper(x$identity_label[1]), med, paste(lines, collapse = "\n"))
   })
@@ -344,7 +350,7 @@ review_sample_identity <- function(identity,
 .sir_build_prompt <- function(items, context, blank_medium = NULL, target_groups = NULL) {
   medium <- if (is.null(blank_medium)) "not stated" else if (is.null(names(blank_medium))) {
     trimws(blank_medium)
-  } else "stated per tube below; media differ between tubes, so judge each tube against its own" 
+  } else "stated per tube below; media differ between tubes, so judge each tube against its own"
   targets <- if (is.null(target_groups)) "not stated" else trimws(target_groups)
   paste0(
     "You are reviewing negative controls and field samples in a DNA metabarcoding study, ",
