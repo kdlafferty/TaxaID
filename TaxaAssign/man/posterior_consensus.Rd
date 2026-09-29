@@ -15,7 +15,8 @@ posterior_consensus(
   species_reference = NULL,
   downrank_requires_candidate = TRUE,
   group_priors = NULL,
-  min_effective_records = 0
+  min_effective_records = 0,
+  taxonomy_cache_dir = NULL
 )
 }
 \arguments{
@@ -146,6 +147,12 @@ defensible starting point if you want one. Changing it from \code{0} WILL
 move \code{winner_has_occurrence_record}, and therefore the plausibility
 counts -- re-run the held-out GreatLakes/Lamar check (current benchmark:
 precision 0.872) before relying on the result.}
+
+\item{taxonomy_cache_dir}{Character or \code{NULL} (default). Passed to
+\code{\link[TaxaTools:verify_taxon_names]{TaxaTools::verify_taxon_names()}} as \code{cache_dir} when
+\code{lookup_missing_taxonomy = TRUE}: answered lookups are cached so a re-run
+reproduces the same labels instead of depending on whether the service
+answered this time. Failed lookups are never cached.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -153,6 +160,13 @@ A dataframe with one row per \code{observation_id}:
 \item{\code{observation_id}}{Sample identifier (same type as input).}
 \item{\code{consensus_taxon}}{Name of the LCA taxon, or \code{NA} if unresolvable
 (all hypotheses excluded or no rank agrees).}
+\item{\code{unreferenced_taxonomy_lookup}}{Character. Outcome of the
+taxonomy lookup for this observation's unreferenced hypotheses when
+\code{lookup_missing_taxonomy = TRUE}: \code{"matched"}, \code{"not_found"} (the
+service answered and had no match) or \code{"lookup_failed"} (it could
+not be asked -- the label may differ on a re-run); the worst outcome
+when there are several. \code{NA} when nothing needed looking up. A filter
+for \verb{== "matched"} never keeps a failure.}
 \item{\code{consensus_rank}}{Rank of the LCA (e.g. \code{"genus"}, \code{"family"}),
 or \code{NA}.}
 \item{\code{consensus_reason}}{How the consensus was reached:

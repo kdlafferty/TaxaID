@@ -54,6 +54,22 @@
 #'   plus a ready-to-paste \code{decisions = data.frame(...)} skeleton. No
 #'   file is ever written unless \code{decisions} itself named one.
 #'
+#' @param cache_dir Character or \code{NULL} (default). A directory for a
+#'   per-name on-disk cache, so a re-run on the same names reproduces instead
+#'   of depending on whether the service answered this time. Only names the
+#'   service actually answered are cached -- matched or genuinely unmatched
+#'   (\code{verified = TRUE}); a name whose lookup FAILED (\code{verified =
+#'   FALSE}) is never written and is asked again next call, because a cached
+#'   non-answer would be served as an answer indefinitely. The key is the
+#'   name plus everything that can change what it resolves to:
+#'   \code{backbone_id}, \code{fallback_backbone_id}, and \code{decisions}
+#'   (by content, including a decisions file's contents). \code{batch_size}
+#'   and \code{timeout_sec} are not in the key; they cannot change a correct
+#'   answer. Managed by \code{\link{taxatools_clear_cache}}. \code{NULL} keeps
+#'   the uncached behaviour exactly.
+#' @param cache_ttl_days Numeric (default \code{365}). A cached answer older
+#'   than this is asked again, so backbone updates (renames, new synonymy)
+#'   eventually reach a long-lived cache. \code{Inf} never expires.
 #' @return A tibble with one row per input name and the following columns:
 #' \describe{
 #'   \item{user_supplied_name}{The original name as supplied.}
@@ -170,7 +186,15 @@ verify_taxon_names <- function(name_list,
                                batch_size = 500,
                                timeout_sec = 30,
                                fallback_backbone_id = 11L,
-                               decisions = NULL) {
+                               decisions = NULL,
+                               cache_dir = NULL,
+                               cache_ttl_days = 365) {
+  if (!is.null(cache_dir)) {
+    return(.verify_taxon_names_cached(
+      name_list, backbone_id, batch_size, timeout_sec, fallback_backbone_id,
+      decisions, cache_dir, cache_ttl_days
+    ))
+  }
   # --- Input validation ---
   if (!is.character(name_list) || length(name_list) == 0) {
     stop("`name_list` must be a non-empty character vector.")
@@ -402,6 +426,108 @@ verify_taxon_names <- function(name_list,
   message(msg)
 
   final_df
+}
+
+
+# ---- per-name on-disk cache --------------------------------------------------
+# One .rds per (name, backbone_id, fallback_backbone_id, decisions), the same
+# file-per-key shape as scientific_to_common(cache_dir =), so
+# taxatools_clear_cache() manages it. The full key is stored in the file and
+# verified on read: a hash collision costs one re-asked name, never another
+# name's answer. Bump .VERIFY_CACHE_VERSION if the returned columns change.
+.VERIFY_CACHE_VERSION <- "v1"
+
+#' @noRd
+.verify_decisions_fingerprint <- function(decisions) {
+  if (is.null(decisions)) return(NA_character_)
+  if (is.character(decisions) && length(decisions) == 1L) {
+    return(if (file.exists(decisions)) unname(tools::md5sum(decisions)) else "absent-file")
+  }
+  rlang::hash(decisions)
+}
+
+#' @noRd
+.verify_cache_key <- function(name, backbone_id, fallback_backbone_id, decisions_fp) {
+  list(
+    name = name, backbone_id = as.integer(backbone_id),
+    fallback_backbone_id = if (is.null(fallback_backbone_id)) NA_integer_ else as.integer(fallback_backbone_id),
+    decisions = decisions_fp, version = .VERIFY_CACHE_VERSION
+  )
+}
+
+#' @noRd
+.verify_cache_path <- function(cache_dir, key) {
+  file.path(cache_dir, paste0(rlang::hash(key), "_verified_name.rds"))
+}
+
+# The service call, as a seam tests can mock.
+#' @noRd
+.verify_taxon_names_uncached <- function(...) verify_taxon_names(..., cache_dir = NULL)
+
+#' @noRd
+.verify_taxon_names_cached <- function(name_list, backbone_id, batch_size, timeout_sec,
+                                       fallback_backbone_id, decisions, cache_dir,
+                                       cache_ttl_days) {
+  if (!is.character(cache_dir) || length(cache_dir) != 1L || is.na(cache_dir)) {
+    stop("`cache_dir` must be NULL or a single directory path.")
+  }
+  if (!is.numeric(cache_ttl_days) || length(cache_ttl_days) != 1L ||
+    is.na(cache_ttl_days) || cache_ttl_days <= 0) {
+    stop("`cache_ttl_days` must be a single positive number (Inf never expires).")
+  }
+  if (!is.character(name_list) || length(name_list) == 0) {
+    stop("`name_list` must be a non-empty character vector.")
+  }
+  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  trimmed <- trimws(name_list)
+  uniq <- unique(trimmed[!is.na(trimmed) & nzchar(trimmed)])
+  if (length(uniq) == 0L) {
+    stop("verify_taxon_names: no valid (non-NA, non-empty) names in `name_list`.")
+  }
+  fp <- .verify_decisions_fingerprint(decisions)
+  keys <- lapply(uniq, .verify_cache_key, backbone_id, fallback_backbone_id, fp)
+  now <- Sys.time()
+  cached <- lapply(keys, function(k) {
+    path <- .verify_cache_path(cache_dir, k)
+    if (!file.exists(path)) return(NULL)
+    hit <- tryCatch(readRDS(path), error = function(e) NULL)
+    if (is.null(hit) || !identical(hit$key, k) || !is.data.frame(hit$row)) return(NULL)
+    age <- as.numeric(difftime(now, hit$written_at, units = "days"))
+    if (!is.finite(cache_ttl_days) || age <= cache_ttl_days) hit$row else NULL
+  })
+  is_hit <- !vapply(cached, is.null, logical(1L))
+  miss <- uniq[!is_hit]
+  fresh <- NULL
+  if (length(miss) > 0L) {
+    fresh <- .verify_taxon_names_uncached(miss, backbone_id,
+      batch_size = batch_size, timeout_sec = timeout_sec,
+      fallback_backbone_id = fallback_backbone_id, decisions = decisions
+    )
+    fresh <- fresh[!duplicated(fresh$user_supplied_name), , drop = FALSE]
+    # Write only names the service answered. A failed lookup (verified FALSE)
+    # is a non-answer and must be asked again, not served as one.
+    for (i in seq_len(nrow(fresh))) {
+      if (!isTRUE(fresh$verified[i])) next
+      k <- keys[[match(fresh$user_supplied_name[i], uniq)]]
+      saveRDS(list(key = k, row = fresh[i, , drop = FALSE], written_at = now),
+        .verify_cache_path(cache_dir, k))
+    }
+  }
+  if (any(is_hit)) {
+    message(sprintf("verify_taxon_names: %d of %d name(s) served from cache.",
+      sum(is_hit), length(uniq)))
+  }
+  all_rows <- dplyr::bind_rows(c(cached[is_hit], list(fresh)))
+  idx <- match(trimmed, all_rows$user_supplied_name)
+  out <- all_rows[idx, , drop = FALSE]
+  na_rows <- which(is.na(idx))
+  if (length(na_rows) > 0L) {
+    out$user_supplied_name[na_rows] <- trimmed[na_rows]
+    out$verified[na_rows] <- FALSE
+    if ("matched" %in% names(out)) out$matched[na_rows] <- FALSE
+  }
+  rownames(out) <- NULL
+  out
 }
 
 

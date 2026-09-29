@@ -508,10 +508,12 @@ common_to_scientific <- function(common_names,
 
 #' Report and clear the TaxaTools on-disk caches
 #'
-#' Covers both of the package's file-per-key caches:
+#' Covers the package's three file-per-key caches:
 #' \code{scientific_to_common(cache_dir = )} (one \code{.rds} per looked-up
-#' name) and \code{\link{fetch_worms_attributes}(cache_dir = )} (one
-#' \code{.rds} per looked-up taxon). This helper reports what the directory
+#' name), \code{\link{fetch_worms_attributes}(cache_dir = )} (one
+#' \code{.rds} per looked-up taxon) and
+#' \code{\link{verify_taxon_names}(cache_dir = )} (one \code{.rds} per
+#' answered name). This helper reports what the directory
 #' holds and deletes it (optionally only files older than
 #' \code{older_than_days}), via the shared
 #' \code{\link{report_and_clear_cache}} engine -- the same shape as
@@ -544,7 +546,7 @@ common_to_scientific <- function(common_names,
 #' }
 taxatools_clear_cache <- function(cache_dir, older_than_days = NULL, dry_run = FALSE,
                                   force = FALSE) {
-  inv <- list_cache_files(cache_dir, c("_common_name\\.rds$", "_worms_attr\\.rds$"),
+  inv <- list_cache_files(cache_dir, c("_common_name\\.rds$", "_worms_attr\\.rds$", "_verified_name\\.rds$"),
     force = force
   )
   report_and_clear_cache(inv, "taxatools_clear_cache", cache_dir,
