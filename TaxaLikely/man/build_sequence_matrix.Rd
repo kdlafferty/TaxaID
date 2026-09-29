@@ -18,7 +18,8 @@ build_sequence_matrix(
   max_foreign_reps_per_genus = 20L,
   pair_retention = c("all", "best_per_partner", "best_per_class"),
   min_pair_coverage = 0.8,
-  memory_budget_fraction = 0.7
+  memory_budget_fraction = 0.7,
+  seed = NULL
 )
 }
 \arguments{
@@ -59,8 +60,8 @@ can account for the majority of apparent within-species pairs.  Set to
 
 \item{max_seqs_per_taxon}{Integer or \code{NULL} (default \code{NULL}).  If supplied,
 at most this many sequences are retained per finest-rank taxon before
-alignment, chosen by random sampling using the current RNG state (set
-\code{set.seed()} before calling for reproducibility).  This prevents
+alignment, chosen by random sampling. Pass \code{seed} to make that draw
+reproducible; without it the draw uses the caller's RNG state.  This prevents
 heavily-sequenced model organisms or domestic species from dominating
 the within-species distribution and thereby distorting model training.
 For typical vertebrate barcode databases a value of \code{10L}-\code{20L} is
@@ -167,6 +168,22 @@ reference sequences themselves or the aligner's own structures. When
 \code{pair_retention} is not \code{"all"} the prediction is an upper bound the
 build will not reach, so it is reported and not enforced. See
 \verb{@section Memory}.}
+
+\item{seed}{Integer or \code{NULL} (default \code{NULL}). When supplied, the random
+draws below are made from this seed and the caller's own RNG stream is
+handed back untouched, so the same \code{reference_df} and settings give the
+same matrix on every run. Three draws can occur: the
+\code{max_seqs_per_taxon} thinning, the choice of one representative per genus
+under \code{by_genus}, and the \code{max_foreign_reps_per_genus} cap. They decide
+which sequences train the calibration, so an unseeded build makes the
+calibration, and every likelihood resting on it, unreproducible whenever
+a cap is reached. \code{NULL} keeps the draws on the caller's RNG state, which
+is what \code{\link[=check_cross_genus_sampling_noise]{check_cross_genus_sampling_noise()}} needs in order to measure
+how much the representative draw moves the estimate; a fixed default
+would make its replicates identical and report zero noise. For a
+production build, pass a seed here rather than calling \code{set.seed()}
+beforehand: measured across five production call sites, none honoured
+that older convention, and one appeared to while not doing so.}
 }
 \value{
 A data frame with one row per sequence pair within \code{max_dist}:

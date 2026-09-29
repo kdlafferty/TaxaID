@@ -1020,3 +1020,17 @@ on functions this document already covers above.
   both primer trimming in TaxaMatch's screen and a complete NCBI search. Such
   a term's cache key gains `_syn` so a cache from the narrower query is never
   served; bare `"12S"`/`"16S"` keys are unchanged. Tests: test-fetch.R.
+- `build_sequence_matrix(seed = )` fixes the random draws inside the call and hands
+  the caller's RNG stream back untouched. Three draws can occur: the
+  `max_seqs_per_taxon` thinning, the one-representative-per-genus choice under
+  `by_genus`, and the `max_foreign_reps_per_genus` cap. They decide which
+  sequences train the calibration, so an unseeded build makes the calibration,
+  and every likelihood resting on it, unreproducible whenever a cap is reached.
+  The previous convention asked the caller to call `set.seed()` beforehand;
+  measured across five production call sites, none honoured it, and one appeared
+  to while not doing so, so the guarantee moved inside the function. The default
+  stays `NULL`, deliberately: `check_cross_genus_sampling_noise()` exists to
+  measure how much the representative draw moves the estimate and needs a
+  different draw per replicate, so a fixed default seed would make it report zero
+  noise, which is a plausible wrong number rather than an error. An unseeded build
+  that will draw now says so. Tests: test-build.R.
