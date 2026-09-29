@@ -94,20 +94,32 @@ the user's OWN workflow script, which they are about to run themselves, so it
 is not an escalation; a whitelist parser would still be tidier if that code is
 ever revisited.
 
-**Pass 6, check and test: QUEUED, gated on machine headroom.** A runner works
-through all nine in risk order (TaxaFlag, TaxaFetch, TaxaTools, TaxaExpect,
-TaxaLikely, TaxaAssign, TaxaMatch, TaxaWizard, TaxaHabitat) and refuses to
-start a package until available memory is above 6 GB and swap below 2 GB,
-waiting up to three hours per package and recording a skip rather than forcing
-it. Results land in
+**Pass 6, check and test: DONE, all nine, 2026-09-29 morning.** Every package
+0 errors; the single warning each is the CRAN incoming feasibility one; notes 0
+to 2. Tests: TaxaFlag 925, TaxaFetch 866, TaxaTools 1237, TaxaExpect 763,
+TaxaLikely 1531, TaxaAssign 864, TaxaMatch 1423, TaxaWizard 1154, TaxaHabitat
+585, zero failures once the one finding below was fixed. Full record in
 `TaxaID_dev/screen_records/prepublication_screen_2026-09-20/stageb_pass6_checks.md`.
-It uses CI's own invocation, so one CRAN-incoming-feasibility warning per
-package is expected and anything else is a finding. It was queued rather than
-run immediately because available memory sat at 3.3 GB with the 18S
-accession screen live and a `blastn` against `core_nt` holding about 14 GB.
-Nine checks into that is how a healthy multi-hour run gets killed, which this
-project has already done once. The one suite that had to run, TaxaFlag after
-the edits, ran alone and passed.
+
+**THE ONE FINDING, and it was a review miss of mine.** TaxaWizard failed the
+guard that checks the root README's Software Inventory against the tree:
+TaxaTools' row said 29 test files and the tree held 30. The extra file arrived
+with the taxonomy-lookup cache the night before; I verified tests and check on
+that merge and did not re-check the inventory. The guard caught what the
+reviewer did not, which is the guard working, and the row is corrected. Worth
+keeping because it is the second time a test-file count has drifted in two days:
+the first was mine too, when an append created a new test file and I caught it
+before committing.
+
+**The gate that wasted a night, recorded so it is not repeated.** The first
+runner gated each check on 6 GB of AVAILABLE memory. This 36 GB machine sat at
+3.4 to 3.6 GB available all night with a large `blastn` resident and swap FLAT
+at 0.22 GB, which is a big working set under no pressure. Four packages were
+skipped for nothing. Swap is the pressure signal; available memory is not a
+budget. Corrected to available above 2.5 GB and swap below 0.6 GB, and the whole
+run then finished in 25 minutes alongside the live screen. A guard that is wrong
+toward "no" is silent, so confirm a new one LETS WORK THROUGH before trusting it
+overnight.
 
 ## 0. Open items board (live rows only; last edit 2026-09-28)
 

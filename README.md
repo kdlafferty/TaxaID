@@ -912,7 +912,7 @@ describe each in full.
 
 | Package     | Exported Functions | Test Files | Vignette |
 |-------------|--------------------|------------|----------|
-| TaxaTools   | 58                 | 29         | Yes      |
+| TaxaTools   | 58                 | 30         | Yes      |
 | TaxaFetch   | 32                 | 27         | Yes      |
 | TaxaHabitat | 18                 | 12         | Yes      |
 | TaxaMatch   | 31                 | 22         | Yes      |
