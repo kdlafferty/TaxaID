@@ -1013,3 +1013,10 @@ on functions this document already covers above.
   the pairs the build could have produced (within and across genera) and the
   pairs it kept. Passed to `estimate_sequence_matrix_size(calibration = )`, it
   replaces the default retention rates with measured ones.
+- `fetch_ncbi_reference_sequences()` (via `.build_search_term()`): a primer-set
+  term such as `"MiFish-U"` now also searches its marker's synonyms
+  (`"12S ribosomal RNA"`, `"12S rRNA"`, `"small subunit ribosomal RNA"`),
+  which were keyed only on a literal `"12S"`. The same term therefore drives
+  both primer trimming in TaxaMatch's screen and a complete NCBI search. Such
+  a term's cache key gains `_syn` so a cache from the narrower query is never
+  served; bare `"12S"`/`"16S"` keys are unchanged. Tests: test-fetch.R.

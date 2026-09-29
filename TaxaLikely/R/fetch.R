@@ -130,7 +130,12 @@ utils::globalVariables(c(
       primer_clause <- paste0(bt, "[All Fields]")
       # Also OR in the underlying locus if known
       locus <- primer_to_locus[key]
+      # A primer-set name (MiFish-U) searches its marker's synonyms too: they
+      # were keyed only on the literal "12s", so "MiFish-U" searched
+      # MiFish-U OR 12S and missed records annotated only as "12S ribosomal
+      # RNA" / "small subunit ribosomal RNA" (e.g. Fundulus OQ846298 above).
       synonyms <- marker_synonyms[[key]]
+      if (is.null(synonyms) && !is.na(locus)) synonyms <- marker_synonyms[[tolower(locus)]]
       clauses <- primer_clause
       if (!is.na(locus)) clauses <- c(clauses, paste0(locus, "[All Fields]"))
       if (!is.null(synonyms)) clauses <- c(clauses, paste0(synonyms, "[All Fields]"))
@@ -493,8 +498,35 @@ utils::globalVariables(c(
   paste0(
     prefix,
     gsub("[^A-Za-z0-9]", "_", name), "_",
-    gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_"))
+    gsub("[^A-Za-z0-9]", "_", paste(barcode_term, collapse = "_")),
+    .ref_cache_syn_suffix(barcode_term)
   )
+}
+
+#' Key suffix for a barcode term whose search gained its marker's synonyms
+#'
+#' A primer-set term (MiFish-U) used to search only "<primer> OR 12S"; it now
+#' also searches the 12S synonyms. The cache is keyed on the term STRING, so a
+#' cache written under the old, narrower query would otherwise be served under
+#' the new one. Such a term's key gains "_syn", read off the query the term now
+#' builds, so the key follows the question actually asked. Bare "12S"/"16S"
+#' always had the synonyms and keep their key; every production workflow
+#' fetches with "12S", so none re-fetches. Stale pre-change "<term>" files are
+#' merely unreferenced (the grammar's stem is free text, so eviction still
+#' recognises both forms).
+#' @noRd
+.ref_cache_syn_suffix <- function(barcode_term) {
+  # The phrase this greps for is not a loose guess: .build_search_term()'s own
+  # tests assert that a MiFish term's query contains "small subunit ribosomal
+  # RNA" and a 16S term's contains "large subunit ribosomal RNA". Reword the
+  # synonym lists and those tests fail before this suffix can quietly stop
+  # applying, which is what keeps a query change from being served from a key
+  # that did not move.
+  gains <- vapply(barcode_term, function(bt) {
+    !tolower(trimws(bt)) %in% c("12s", "16s") &&
+      grepl("subunit ribosomal RNA", .build_search_term("x", bt), fixed = TRUE)
+  }, logical(1L))
+  if (any(gains)) "_syn" else ""
 }
 
 
