@@ -736,6 +736,13 @@ behavior on functions this document already covers above.
   genus. `posterior_consensus()` then reported a plausible set of such rows as "unanimous"
   at species with an empty taxon name (18 COI calls). Tests: test-join_priors.R,
   test-posterior_consensus.R (both fail on the previous code).
+- `join_priors()` fills family from genus only for genus names that map to a single
+  family. A genus name is not a key: homonyms and reassigned genera (Porella, Eisenia,
+  Mastophora, Dilophus, Halopteris, Prosorhochmus) carry two families, and the join on the
+  bare name gave every row of such a genus one copy per family. After the blank-rank fix,
+  80 over-counted rows at CalIntertidal were all of this kind; 27 genera in the match
+  objects have more than one family. Ambiguous genera are named in a message. Tests:
+  test-join_priors.R (fails on the previous code).
 - `combine_multisite_priors()` counts each site once. Identical repeats of one
   (observation, candidate, site) row are dropped before combining, with a message
   giving the count; repeats that disagree stop the call. Combining k copies of one site

@@ -775,3 +775,23 @@ test_that("a blank genus in the taxonomy lookup does not multiply generic rows",
   expect_equal(sum(out$taxon_name == "Fundulidae"), 1L)
   expect_true(all(is.na(out$genus[out$taxon_name == "Fundulidae"])))
 })
+
+test_that("a genus name shared by two families does not multiply rows", {
+  lik <- tibble(
+    observation_id = "ESV_001",
+    taxon_name = c("Eisenia arborea", "Eisenia fetida", "Eisenia"),
+    taxon_name_rank = c("species", "species", "genus"),
+    hypothesis_type = c("specific_candidate", "specific_candidate", "unreferenced_species"),
+    score_likelihood = c(0.8, 0.3, 0.1), score_likelihood_mean = c(0.8, 0.3, 0.1),
+    score_likelihood_sd = 0.02,
+    genus = "Eisenia",
+    family = c("Lessoniaceae", "Lumbricidae", NA), # a kelp and an earthworm
+    species = c("Eisenia arborea", "Eisenia fetida", NA)
+  )
+  site <- list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+  out <- suppressMessages(suppressWarnings(
+    join_priors(lik, .make_priors(), site = site, backbone_id = 11L)
+  ))
+  expect_equal(nrow(out[out$observation_id == "ESV_001" & out$taxon_name == "Eisenia", ]), 1L)
+  expect_equal(sum(out$taxon_name == "Eisenia arborea"), 1L)
+})

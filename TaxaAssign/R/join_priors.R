@@ -1521,10 +1521,22 @@ join_priors <- function(likelihoods,
     }
   }
 
-  # Propagate family from rows that share a genus
+  # Propagate family from rows that share a genus. A genus name is not a
+  # key: homonyms (Porella, Eisenia, ...) and reassigned genera carry more
+  # than one family, and joining on the bare name gave every row of such a
+  # genus one copy per family. Only genera with a single family fill.
   fam_lookup <- result |>
     dplyr::filter(!is.na(genus), !is.na(family)) |>
     dplyr::distinct(genus, family)
+  ambiguous_genera <- unique(fam_lookup$genus[duplicated(fam_lookup$genus)])
+  if (length(ambiguous_genera) > 0L) {
+    fam_lookup <- fam_lookup[!fam_lookup$genus %in% ambiguous_genera, , drop = FALSE]
+    cli::cli_inform(c(
+      "i" = "join_priors: {length(ambiguous_genera)} genus name(s) map to more than one \\
+      family ({.val {utils::head(ambiguous_genera, 5)}}{if (length(ambiguous_genera) > 5) ', ...' else ''}); \\
+      family is not filled from genus for them."
+    ))
+  }
 
   result <- result |>
     dplyr::left_join(fam_lookup, by = "genus", suffix = c("", ".fill")) |>
