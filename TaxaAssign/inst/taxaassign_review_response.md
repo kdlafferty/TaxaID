@@ -694,3 +694,11 @@ behavior on functions this document already covers above.
   a version mismatch. A test asserts the argument is absent on the default
   path.
 
+- `assign_taxa_llm()`'s prompt builder no longer lets a missing `lineage` column
+  collapse a vector. `ifelse()` returns the length of its TEST, so a length-1
+  `lineage` made the `ifelse()` below it length 1 regardless of how many taxa
+  there were. Here that was harmless, because `sprintf()` recycles a length-1
+  argument and every row correctly received `""`. It is fixed because the LENGTH
+  depended on whether the column existed, which is the shape that did bite
+  elsewhere in the ecosystem, where the collapsed vector was indexed per row and
+  every row read `NA`.
