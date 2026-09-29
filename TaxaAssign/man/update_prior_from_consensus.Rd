@@ -10,6 +10,9 @@ update_prior_from_consensus(
   confirmation_quantile = 0.9,
   confirmation_discount = 0.25,
   n_sims = 0,
+  detections = NULL,
+  group_cols = "sample_id",
+  marker_col = "marker",
   spatial_group_map = NULL
 )
 }
@@ -45,33 +48,46 @@ any kind). See the
 Default 0 (point estimates only, fast). Set to 1000 to propagate
 uncertainty -- match the value used in the original run.}
 
-\item{spatial_group_map}{Dataframe with \code{observation_id} and
+\item{detections}{Data frame, optional. One row per observation x group
+membership: an \code{observation_id} column plus the \code{group_cols} column(s), and
+optionally \code{marker_col}. An observation may appear in many rows (an ESV
+detected in several tubes or at several sites). Observations of \code{result}
+missing from it belong to no group and are returned unchanged. Default
+\code{NULL}: every observation shares one group (study-wide pooling; refused
+for multi-site combined priors).}
+
+\item{group_cols}{Character vector. Column(s) of \code{detections} whose
+combination defines an evidence group. Default \code{"sample_id"}, the sample
+(tube). Pass e.g. \code{"site"} to pool every tube at a site, or
+\code{c("site", "season")} to pool within site and season.}
+
+\item{marker_col}{Character. Optional column of \code{detections} naming the
+marker or assay, used only to warn when no group spans more than one
+marker. Ignored when absent. Default \code{"marker"}.}
+
+\item{spatial_group_map}{Data frame with \code{observation_id} and
 \code{spatial_group_id} columns (e.g. from
-\code{TaxaMatch::group_observations_by_bbox()}), optional. When supplied, only
-observations whose \code{spatial_group_id} is shared with at least one other
-observation can contribute confirmed species or receive a prior update;
-observations in a single-observation spatial group (a singleton
-\code{spatial_group_id} -- there is no separate naming convention for these,
-see \code{group_observations_by_bbox()}) are always returned unchanged.
-Default \code{NULL} (no group-based restriction -- all observations
-participate, matching this function's original behaviour). Membership is
-binary (same group or not), with no distance decay within a group --
-two sites 100 km apart placed in different spatial groups donate nothing
-to each other by design, exactly as if they were in the same group but
-1 km apart they would donate at full weight.}
+\code{TaxaMatch::group_observations_by_bbox()}), optional. Equivalent to
+\verb{detections = spatial_group_map, group_cols = "spatial_group_id"}:
+evidence is pooled within each spatial group only, so two sites in
+different spatial groups donate nothing to each other. Membership is
+binary (same group or not), with no distance decay within a group. Supply
+this or \code{detections}, not both.}
 }
 \value{
 The full posterior dataframe with the same structure as \code{result},
 plus one new column, \code{confirmed_without_occurrence_record} (logical,
 \code{FALSE} unless set \code{TRUE} -- see @section Confirmed without an
 occurrence record). Resolved observations are returned unchanged.
-Unresolved observations in a multi-member spatial group (see
-\code{spatial_group_map}) have updated \code{prior_mean} and freshly computed
-posterior columns (\code{posterior_point_est}, \code{posterior_mean},
-\code{posterior_sd}, \code{confidence_score}). Unresolved observations in a
-single-observation spatial group are returned unchanged, same as
-resolved ones. Sorted by \code{observation_id} then descending
-\code{posterior_point_est}.
+Unresolved observations that share at least one group with another
+observation have updated \code{prior_mean} and freshly computed posterior
+columns (\code{posterior_point_est}, \code{posterior_mean}, \code{posterior_sd},
+\code{confidence_score}). Unresolved observations whose every group is a
+singleton are returned unchanged, same as resolved ones. Sorted by
+\code{observation_id} then descending \code{posterior_point_est}. Attribute
+\code{prior_update_groups} holds the per-group counts (\code{group},
+\code{n_observations}, \code{n_eligible_unresolved}, \code{n_observations_updated},
+\code{n_rows_raised}).
 }
 \description{
 A one-pass empirical Bayes refinement step. Every observation's posterior
@@ -93,20 +109,57 @@ from the additional site-level presence information.
 from \emph{other} observations. An observation's own posterior never feeds back into its own
 prior.
 
-\strong{Multi-member vs. single-observation spatial groups:} this refinement is
-only valid when other observations genuinely share a local species pool
-with the one being updated -- i.e. they share a spatial group (a drawn
-bounding box; see \code{TaxaMatch::group_observations_by_bbox()}). For a
-single-observation spatial group (whether because it was submitted alone,
-or because it fell outside every user-drawn box and was placed in its own
-group rather than dropped), no other observation shares its local species
-pool, so another observation's confirmed presence says nothing about it and
-must not be used. Supply \code{spatial_group_map} to enforce this: only
-observations whose \code{spatial_group_id} is shared with at least one other
-observation are used as evidence sources or receive a prior update;
-observations in a single-observation spatial group are always returned
-unchanged, exactly like already-resolved observations.
+\strong{Evidence is group-local.} Priors are spatially local, so the update is
+too: a hypothesis is confirmed only by observations that share one of its
+observation's evidence groups. The grouping is the caller's choice, given as
+a \code{detections} table and the \code{group_cols} that define a group. The default
+is the sample (tube), the most conservative choice: only the same tube's
+other detections, including its other markers' libraries, count as
+confirmation. A study that treats every tube at a site as one species pool
+passes \code{group_cols = "site"}; one that also separates seasons passes
+\code{group_cols = c("site", "season")}. The function attaches no meaning to the
+column names; it groups by whatever it is given. An observation whose every
+group is a singleton has nobody to borrow from and is returned unchanged,
+exactly like an already-resolved observation. See the \emph{Group-local
+evidence} section for how an observation in several groups is handled.
 }
+\section{Group-local evidence}{
+
+The posterior grain is observation x taxon, and one observation (for
+example an ESV) is usually detected in several groups: many tubes, or
+several sites. For each hypothesis row the update is computed separately in
+every group its observation belongs to, using only that group's members:
+the support mass, the leave-one-out subtraction of the row's own support,
+the saturating discounted mass, the support-weighted confirmation target and
+the occurrence-scale ceiling are all per group. The row then receives the
+MEAN of its per-group gains over all k of its groups, singleton groups
+included (they contribute zero). Averaging, rather than summing, means no
+row is raised by more than its single best-supported group could raise it,
+and evidence from one group of k is diluted to 1/k: an ESV found at 23
+sites whose species is supported at only one of them receives 1/23 of that
+site's gain. This matches the combined prior, which already averages the
+sites' priors. It is an equal-weight average: the per-site prior precisions
+that \code{\link[=combine_multisite_priors]{combine_multisite_priors()}} weights by are not carried on the combined
+row. Presence-mixture rows average their per-group \code{prior_mix_w} updates in
+the same way.
+
+Cross-marker confirmation needs the grouping values to be the SAME strings
+across markers: a tube's 12S, COI and 18S libraries must share its sample
+id, even though \code{observation_id} is namespaced per marker. When \code{detections}
+has a \code{marker_col} column spanning several markers and no group contains
+more than one marker, the function says so.
+
+With \code{detections = NULL} every observation in \code{result} forms one group
+(study-wide pooling), announced with a message. That is correct for a single
+site or sampling event. It is refused when \code{result} carries priors that
+\code{\link[=combine_multisite_priors]{combine_multisite_priors()}} combined across sites (\code{n_sites_combined} > 1),
+because that data is multi-site by construction.
+
+Per-group counts of observations, eligible unresolved observations,
+observations updated and rows raised are printed and returned as
+\verb{attr(<result>, "prior_update_groups")}.
+}
+
 \section{Soft confirmation}{
 
 A hard-gate donor definition -- counting an observation as a "donor" only
@@ -172,8 +225,10 @@ ceiling (\code{max(theta_mean)} across every locally modelled taxon,
 
 When a \code{theta_mean} column is present on \code{result}, the substitution is
 rescaled onto that ceiling instead of being used directly:
-\code{prior_new <- max(prior_old, q * max(result$theta_mean, na.rm = TRUE))},
-where \code{q} is the confirmation-quantile value described above. This keeps
+\code{prior_new <- max(prior_old, q * max(theta_mean, na.rm = TRUE))},
+where \code{q} is the confirmation-quantile value described above and the
+maximum is taken over the rows of the group's own observations (the
+study-wide maximum when the group has none). This keeps
 the confirmation-quantile logic and the never-demote guard unchanged --
 only the target scale moves -- so a stronger/more numerous confirmation
 (higher \code{q}) still produces a stronger boost, bounded by the model's own
@@ -205,14 +260,18 @@ is fixed.
 
 \examples{
 \dontrun{
+# detections: one row per observation x sample, plus a site column
 result_updated <- update_prior_from_consensus(
   result, consensus,
   confirmation_quantile = 0.9,
-  confirmation_discount = 0.25
+  confirmation_discount = 0.25,
+  detections = detections,
+  group_cols = "site"
 )
 }
 
 }
 \seealso{
-\code{\link[=posterior_consensus]{posterior_consensus()}}, \code{\link[=compute_posterior]{compute_posterior()}}, \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}
+\code{\link[=posterior_consensus]{posterior_consensus()}}, \code{\link[=compute_posterior]{compute_posterior()}}, \code{\link[=assign_taxa_llm]{assign_taxa_llm()}},
+\code{\link[=combine_multisite_priors]{combine_multisite_priors()}}
 }

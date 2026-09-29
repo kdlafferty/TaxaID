@@ -109,8 +109,10 @@
 #' occurrence/reference fetch. Single-observation spatial groups are intended
 #' to be fetched per-observation, scoped to that observation's own candidate
 #' taxa, broadened taxonomically rather than spatially.
-#' \code{TaxaAssign::update_prior_from_consensus()} must be skipped for
-#' single-observation groups -- see its \code{spatial_group_map} argument.
+#' \code{TaxaAssign::update_prior_from_consensus()} pools confirmation
+#' evidence within each spatial group only, so a single-observation group
+#' neither donates nor receives -- see its \code{spatial_group_map} and
+#' \code{detections} arguments.
 #'
 #' @seealso \code{\link{build_site_table}}, \code{\link{assign_spatial_group}},
 #'   \code{\link[TaxaTools]{define_search_polygon}}
