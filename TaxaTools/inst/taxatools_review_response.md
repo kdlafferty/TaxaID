@@ -278,3 +278,11 @@ on functions this document already covers above.
   change, and every caller in the ecosystem wraps the call, so the amplicon paths
   that leave an unregistered marker untrimmed behave exactly as before; only the
   message is different, and more specific.
+- `verify_taxon_names()` gains `cache_dir` (default `NULL`, unchanged behaviour)
+  and `cache_ttl_days` (default 365). A per-name cache so a re-run reproduces
+  instead of depending on whether the service answered. Only answered names
+  (`verified = TRUE`, matched or not) are written; a failed lookup is never
+  cached and is asked again. The key is the name plus `backbone_id`,
+  `fallback_backbone_id` and `decisions` by content (a decisions file by its
+  contents); `batch_size`/`timeout_sec` are excluded. `taxatools_clear_cache()`
+  now also covers `_verified_name.rds`. Tests: test-verify_taxon_names_cache.R.

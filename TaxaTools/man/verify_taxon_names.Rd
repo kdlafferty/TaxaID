@@ -10,7 +10,9 @@ verify_taxon_names(
   batch_size = 500,
   timeout_sec = 30,
   fallback_backbone_id = 11L,
-  decisions = NULL
+  decisions = NULL,
+  cache_dir = NULL,
+  cache_ttl_days = 365
 )
 }
 \arguments{
@@ -62,6 +64,24 @@ and a short lineage string; in a non-interactive session (the ordinary
 \code{Rscript} workflow case), the call stops, printing that same table
 plus a ready-to-paste \code{decisions = data.frame(...)} skeleton. No
 file is ever written unless \code{decisions} itself named one.}
+
+\item{cache_dir}{Character or \code{NULL} (default). A directory for a
+per-name on-disk cache, so a re-run on the same names reproduces instead
+of depending on whether the service answered this time. Only names the
+service actually answered are cached -- matched or genuinely unmatched
+(\code{verified = TRUE}); a name whose lookup FAILED (\code{verified =
+FALSE}) is never written and is asked again next call, because a cached
+non-answer would be served as an answer indefinitely. The key is the
+name plus everything that can change what it resolves to:
+\code{backbone_id}, \code{fallback_backbone_id}, and \code{decisions}
+(by content, including a decisions file's contents). \code{batch_size}
+and \code{timeout_sec} are not in the key; they cannot change a correct
+answer. Managed by \code{\link{taxatools_clear_cache}}. \code{NULL} keeps
+the uncached behaviour exactly.}
+
+\item{cache_ttl_days}{Numeric (default \code{365}). A cached answer older
+than this is asked again, so backbone updates (renames, new synonymy)
+eventually reach a long-lived cache. \code{Inf} never expires.}
 }
 \value{
 A tibble with one row per input name and the following columns:

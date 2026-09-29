@@ -1212,3 +1212,63 @@ test_that("min_effective_records is validated", {
   expect_error(posterior_consensus(p, min_effective_records = NA), "non-negative")
   expect_error(posterior_consensus(p, min_effective_records = c(1, 2)), "non-negative")
 })
+
+# ==============================================================================
+# unreferenced_taxonomy_lookup: a failed lookup never passes for "not found"
+# ==============================================================================
+
+test_that("unreferenced_taxonomy_lookup separates matched, not_found and lookup_failed", {
+  df <- make_posterior(
+    observation_id = c("s1", "s2", "s3", "s4"),
+    taxon_name = c("Aa bb", "Cc dd", "Gg hh", "Ee ff"),
+    taxon_name_rank = "species",
+    hypothesis_type = c("unreferenced_species", "unreferenced_species",
+                        "specific_candidate", "unreferenced_species"),
+    posterior_mean = 1,
+    genus = c(NA, NA, "Gg", NA), species = c("Aa bb", "Cc dd", "Gg hh", "Ee ff")
+  )
+  seen_cache <- "unset"
+  local_mocked_bindings(
+    verify_taxon_names = function(name_list, backbone_id, cache_dir = NULL, ...) {
+      seen_cache <<- cache_dir
+      data.frame(
+        user_supplied_name = name_list,
+        matched_name = ifelse(name_list == "Aa bb", "Aa bb", NA),
+        classification_path = ifelse(name_list == "Aa bb", "Aa|Aa bb", NA),
+        classification_ranks = ifelse(name_list == "Aa bb", "genus|species", NA),
+        verified = name_list != "Cc dd",
+        matched = name_list == "Aa bb",
+        stringsAsFactors = FALSE
+      )
+    },
+    .package = "TaxaTools"
+  )
+  expect_message(
+    out <- suppressWarnings(posterior_consensus(df,
+      rank_system = c("genus", "species"), lookup_missing_taxonomy = TRUE,
+      backbone_id = 11L, taxonomy_cache_dir = "somewhere"
+    )),
+    "lookup FAILED for 1 of 3"
+  )
+  st <- stats::setNames(out$unreferenced_taxonomy_lookup, out$observation_id)
+  expect_identical(unname(st[c("s1", "s2", "s3", "s4")]),
+    c("matched", "lookup_failed", NA, "not_found"))
+  expect_identical(seen_cache, "somewhere")
+})
+
+test_that("unreferenced_taxonomy_lookup is NA when no lookup was requested", {
+  df <- make_posterior("s1", "Aa bb", "species", "unreferenced_species", 1,
+    genus = NA, species = "Aa bb")
+  out <- posterior_consensus(df, rank_system = c("genus", "species"))
+  expect_true("unreferenced_taxonomy_lookup" %in% names(out))
+  expect_true(is.na(out$unreferenced_taxonomy_lookup))
+})
+
+test_that("a verify_taxon_names() error marks every looked-up observation lookup_failed", {
+  df <- make_posterior(c("s1", "s2"), c("Aa bb", "Cc dd"), "species",
+    "unreferenced_species", 1, genus = NA, species = c("Aa bb", "Cc dd"))
+  local_mocked_bindings(verify_taxon_names = function(...) stop("HTTP 500"), .package = "TaxaTools")
+  out <- suppressMessages(suppressWarnings(posterior_consensus(df,
+    rank_system = c("genus", "species"), lookup_missing_taxonomy = TRUE, backbone_id = 11L)))
+  expect_identical(out$unreferenced_taxonomy_lookup, c("lookup_failed", "lookup_failed"))
+})
