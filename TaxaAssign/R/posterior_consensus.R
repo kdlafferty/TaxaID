@@ -86,6 +86,11 @@
 #'   likelihood products. Pass `"posterior_mean"` to rank by the
 #'   Monte Carlo mean instead -- with presence-mixture priors that column
 #'   integrates over presence states (see `compute_posterior()`).
+#' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
+#'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
+#'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
+#'   reproduces the same labels instead of depending on whether the service
+#'   answered this time. Failed lookups are never cached.
 #' @param lookup_missing_taxonomy Logical. If `TRUE`, calls
 #'   `TaxaTools::verify_taxon_names()` to fill in taxonomy columns for
 #'   `"unreferenced_species"` rows that have `NA` in those columns. Requires
@@ -217,6 +222,13 @@
 #'     \item{`observation_id`}{Sample identifier (same type as input).}
 #'     \item{`consensus_taxon`}{Name of the LCA taxon, or `NA` if unresolvable
 #'       (all hypotheses excluded or no rank agrees).}
+#'     \item{`unreferenced_taxonomy_lookup`}{Character. Outcome of the
+#'       taxonomy lookup for this observation's unreferenced hypotheses when
+#'       `lookup_missing_taxonomy = TRUE`: `"matched"`, `"not_found"` (the
+#'       service answered and had no match) or `"lookup_failed"` (it could
+#'       not be asked -- the label may differ on a re-run); the worst outcome
+#'       when there are several. `NA` when nothing needed looking up. A filter
+#'       for `== "matched"` never keeps a failure.}
 #'     \item{`consensus_rank`}{Rank of the LCA (e.g. `"genus"`, `"family"`),
 #'       or `NA`.}
 #'     \item{`consensus_reason`}{How the consensus was reached:
@@ -474,7 +486,8 @@ posterior_consensus <- function(posterior_df,
                                 species_reference = NULL,
                                 downrank_requires_candidate = TRUE,
                                 group_priors = NULL,
-                                min_effective_records = 0) {
+                                min_effective_records = 0,
+                                taxonomy_cache_dir = NULL) {
   if (!is.numeric(min_effective_records) ||
     length(min_effective_records) != 1L ||
     is.na(min_effective_records) || min_effective_records < 0) {
@@ -565,6 +578,12 @@ posterior_consensus <- function(posterior_df,
   }
 
   # --- Optional taxonomy lookup for unreferenced rows -------------------------
+  # Per looked-up name: "matched", "not_found" (the service answered, no
+  # match) or "lookup_failed" (it could not be asked). Reported per
+  # observation below so a failed lookup can never pass for a genuine
+  # absence of taxonomy.
+  lookup_status <- character(0L)
+  lookup_needed <- NULL
   if (lookup_missing_taxonomy) {
     if (is.null(backbone_id)) {
       cli::cli_abort(c(
@@ -594,8 +613,12 @@ posterior_consensus <- function(posterior_df,
             "Looking up taxonomy for {length(unref_names)} unreferenced taxon/taxa \\
             via TaxaTools::verify_taxon_names()..."
           )
+          lookup_needed <- needs_tax
           verified <- tryCatch(
-            TaxaTools::verify_taxon_names(unref_names, backbone_id = backbone_id),
+            TaxaTools::verify_taxon_names(unref_names,
+              backbone_id = backbone_id,
+              cache_dir = taxonomy_cache_dir
+            ),
             error = function(e) {
               cli::cli_warn(
                 "TaxaTools::verify_taxon_names() failed: {conditionMessage(e)}. \\
@@ -604,6 +627,24 @@ posterior_consensus <- function(posterior_df,
               NULL
             }
           )
+          lookup_status <- stats::setNames(rep("lookup_failed", length(unref_names)), unref_names)
+          if (!is.null(verified)) {
+            v <- verified[match(unref_names, verified$user_supplied_name), , drop = FALSE]
+            ok <- !is.na(v$verified) & v$verified
+            matched <- if ("matched" %in% names(v)) v$matched %in% TRUE else ok & !is.na(v$matched_name)
+            lookup_status[ok] <- ifelse(matched[ok], "matched", "not_found")
+          }
+          n_failed <- sum(lookup_status == "lookup_failed")
+          if (n_failed > 0L) {
+            # message() as well as a warning: Rscript defers warnings to exit,
+            # and this is what someone watching a long run needs to see now.
+            msg <- sprintf(
+              "posterior_consensus: taxonomy lookup FAILED for %d of %d unreferenced taxon/taxa; their observations carry unreferenced_taxonomy_lookup = \"lookup_failed\" (not \"not_found\") and may label differently on a re-run.",
+              n_failed, length(unref_names)
+            )
+            message(msg)
+            cli::cli_warn(msg)
+          }
           if (!is.null(verified)) {
             # change_backbone() parses the pipe-delimited classification_path /
             # classification_ranks into flat family/genus/species columns and
@@ -642,6 +683,20 @@ posterior_consensus <- function(posterior_df,
   })
 
   result <- dplyr::bind_rows(results)
+
+  # Worst lookup outcome among each observation's looked-up hypotheses:
+  # lookup_failed > not_found > matched; NA when nothing needed looking up.
+  result$unreferenced_taxonomy_lookup <- NA_character_
+  if (length(lookup_status) > 0L && !is.null(lookup_needed)) {
+    st <- unname(lookup_status[posterior_df$taxon_name])
+    st[!lookup_needed] <- NA_character_
+    rank_of <- c(matched = 1L, not_found = 2L, lookup_failed = 3L)
+    worst <- tapply(rank_of[st], posterior_df$observation_id, function(x) {
+      x <- x[!is.na(x)]
+      if (length(x)) names(rank_of)[max(x)] else NA_character_
+    })
+    result$unreferenced_taxonomy_lookup <- as.character(unname(worst[as.character(result$observation_id)]))
+  }
 
   # --- Optional downranking via species_reference -----------------------------
   if (!is.null(species_reference)) {

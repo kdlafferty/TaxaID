@@ -677,3 +677,12 @@ behavior on functions this document already covers above.
   among the taxa it did answer for. The unknown hypothesis's placeholder 0 used to be
   counted in that minimum, so an omitted taxon got prior 0 and was eliminated, or,
   with `prior_phi` set, `compute_posterior()` aborted the run.
+- `posterior_consensus()` gains an output column `unreferenced_taxonomy_lookup`
+  (`"matched"`, `"not_found"`, `"lookup_failed"`, or `NA` when nothing needed
+  looking up) and an argument `taxonomy_cache_dir` passed to
+  `TaxaTools::verify_taxon_names(cache_dir =)`. A failed lookup previously left
+  the label blank exactly like a genuine non-match, and a re-run could label
+  the same observation differently (seen on CalIntertidal 12S_ESV_178200). A
+  failure now also prints a message as it happens. Requires the TaxaTools
+  build carrying `verify_taxon_names(cache_dir =)`. Tests:
+  test-posterior_consensus.R.
