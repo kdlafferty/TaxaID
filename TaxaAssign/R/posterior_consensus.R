@@ -27,9 +27,9 @@
 #' For each `observation_id`, identifies the minimal set of top-ranked hypotheses
 #' that together account for `cumulative_threshold` of the named-taxon posterior
 #' mass, then returns their lowest common ancestor (LCA) as the consensus
-#' taxonomic assignment. Hypotheses below `min_posterior` are pooled into one
-#' tail block that joins the set only when the hypotheses above it fall short
-#' (see \emph{Details}).
+#' taxonomic assignment. Hypotheses below `min_posterior` are excluded, or,
+#' with `pool_tail = TRUE`, pooled into one tail block that joins the set when
+#' the hypotheses above it fall short (see \emph{Details}).
 #'
 #' **Which hypotheses are included:** All named hypotheses contribute to the
 #' LCA -- `"specific_candidate"`, `"unreferenced_species"` (congener without reference
@@ -75,11 +75,8 @@
 #'   0.6 + 0.25 + 0.10 = 0.95 >= 0.9). The LCA of these three hypotheses
 #'   becomes the consensus.
 #' @param min_posterior Numeric in \[0, 1). Individual posterior below which a
-#'   hypothesis cannot enter the plausible set on its own. Such hypotheses are
-#'   pooled into one tail block, which joins the plausible set as a whole when
-#'   the hypotheses at or above `min_posterior` hold less than
-#'   `cumulative_threshold` of the total named posterior mass. Default 0.05.
-#'   Set to 0 to disable pooling.
+#'   hypothesis cannot enter the plausible set on its own. Default 0.05. Set to
+#'   0 to disable. What happens to those hypotheses depends on `pool_tail`.
 #' @param posterior_col Character. Name of the posterior column to rank
 #'   hypotheses by. Default `"posterior_point_est"`, matching
 #'   `run_bayesian_pipeline()` and every production workflow. An
@@ -89,6 +86,12 @@
 #'   likelihood products. Pass `"posterior_mean"` to rank by the
 #'   Monte Carlo mean instead -- with presence-mixture priors that column
 #'   integrates over presence states (see `compute_posterior()`).
+#' @param pool_tail Logical. `FALSE` (default): hypotheses below
+#'   `min_posterior` are excluded and `cumulative_threshold` is measured against
+#'   the remaining mass. `TRUE`: they form one tail block, the threshold is
+#'   measured against the TOTAL named posterior mass, and the whole block joins
+#'   the plausible set when the hypotheses above the floor fall short. See
+#'   \emph{Details}. `tail_mass` is reported either way.
 #' @param taxonomy_cache_dir Character or `NULL` (default). Passed to
 #'   [TaxaTools::verify_taxon_names()] as `cache_dir` when
 #'   `lookup_missing_taxonomy = TRUE`: answered lookups are cached so a re-run
@@ -180,19 +183,25 @@
 #'   precision 0.872) before relying on the result.
 #' @details
 #' \strong{Threshold interaction:}
-#' \code{min_posterior} and \code{cumulative_threshold} work together.
-#' Hypotheses at or above \code{min_posterior} are added in order of posterior
-#' until they hold \code{cumulative_threshold} of the TOTAL named posterior
-#' mass. The hypotheses below \code{min_posterior} are not discarded: they form
-#' one tail block (reported as \code{tail_mass}), and when the hypotheses above
-#' it fall short, the whole block joins the plausible set and the consensus is
-#' the LCA of everything in it (\code{tail_pooled = TRUE}). A single
-#' noise-level hypothesis therefore cannot coarsen a call on its own, while a
-#' flat tail that holds most of the mass is not renormalised away: a lone
-#' hypothesis at 0.13 beside twenty at 0.02--0.03 is reported at the rank the
-#' twenty-one share, not as a species. Setting \code{min_posterior = 0}
-#' disables pooling; setting it high (e.g. 0.3) moves more competitors into the
-#' tail block. \code{cumulative_threshold = 0.9} is analogous to a
+#' \code{min_posterior} and \code{cumulative_threshold} work together. By
+#' default the hypotheses below \code{min_posterior} are excluded and the
+#' plausible set is the smallest top-ranked set holding
+#' \code{cumulative_threshold} of the REMAINING mass. The excluded mass is
+#' reported as \code{tail_mass}: a call can rest on a small share of the total
+#' (a lone hypothesis at 0.13 beside twenty at 0.02--0.03 is reported as a
+#' species, with \code{tail_mass} 0.87).
+#'
+#' With \code{pool_tail = TRUE} the excluded hypotheses are pooled instead:
+#' the hypotheses above the floor are added until they hold
+#' \code{cumulative_threshold} of the TOTAL named mass, and when they fall
+#' short the whole tail block joins the plausible set, so the consensus is the
+#' LCA of everything in it (\code{tail_pooled = TRUE}). A single noise-level
+#' hypothesis still cannot coarsen a call on its own, but a flat tail holding
+#' most of the mass is no longer renormalised away. This changes the meaning of
+#' the threshold (a call at 0.6 with 0.4 below the floor no longer resolves
+#' alone), so re-check a validation set before adopting it. Measured on
+#' CalIntertidal: species calls 544 to 475 on one subset, including 52 calls
+#' with posterior 0.5--0.9. \code{cumulative_threshold = 0.9} is analogous to a
 #' 90% credible interval; increase toward 0.95--0.99 for more conservative
 #' assignments (more upranking to genus/family); decrease to 0.8 for more
 #' aggressive species-level calls.
@@ -503,7 +512,11 @@ posterior_consensus <- function(posterior_df,
                                 downrank_requires_candidate = TRUE,
                                 group_priors = NULL,
                                 min_effective_records = 0,
-                                taxonomy_cache_dir = NULL) {
+                                taxonomy_cache_dir = NULL,
+                                pool_tail = FALSE) {
+  if (!is.logical(pool_tail) || length(pool_tail) != 1L || is.na(pool_tail)) {
+    cli::cli_abort("{.arg pool_tail} must be TRUE or FALSE.")
+  }
   if (!is.numeric(min_effective_records) ||
     length(min_effective_records) != 1L ||
     is.na(min_effective_records) || min_effective_records < 0) {
@@ -702,7 +715,7 @@ posterior_consensus <- function(posterior_df,
     .consensus_one_observation(
       chunk, sid, rank_system_eff,
       cumulative_threshold, min_posterior, posterior_col,
-      group_priors, min_effective_records
+      group_priors, min_effective_records, pool_tail
     )
   })
 
@@ -761,7 +774,8 @@ posterior_consensus <- function(posterior_df,
 .consensus_one_observation <- function(chunk, sid, rank_system,
                                        cumulative_threshold, min_posterior,
                                        posterior_col, group_priors = NULL,
-                                       min_effective_records = 0) {
+                                       min_effective_records = 0,
+                                       pool_tail = FALSE) {
   # All named hypotheses contribute to LCA; only the unreferenced_family catch-all
   # is excluded (taxon_name = NA; represents uncharacterised diversity with no name).
   # named_all is kept before any filtering for consensus_posterior computation.
@@ -816,9 +830,28 @@ posterior_consensus <- function(posterior_df,
   tail_rows <- named_all[!is_survivor, , drop = FALSE]
   tail_mass <- sum(tail_rows[[posterior_col]], na.rm = TRUE)
 
-  cum_prop <- if (nrow(named) > 0L) cumsum(named[[posterior_col]]) / named_total else numeric(0)
+  if (!pool_tail) {
+    # Discarding rule: the sub-floor hypotheses are dropped and the threshold
+    # is measured against the survivors' own mass. tail_mass is still
+    # reported, so a call resting on a small share of the total is visible.
+    if (nrow(named) == 0L) {
+      cli::cli_warn(
+        "observation_id {.val {sid}} has no hypotheses above min_posterior = \\
+        {min_posterior}. All {nrow(named_all)} named hypothesis(es) are below \\
+        threshold. Consider lowering min_posterior, or pool_tail = TRUE."
+      )
+      out_empty <- .empty_flagged()
+      out_empty$tail_mass <- tail_mass
+      out_empty$tail_pooled <- FALSE
+      return(out_empty)
+    }
+    surv_total <- sum(named[[posterior_col]], na.rm = TRUE)
+    cum_prop <- cumsum(named[[posterior_col]]) / surv_total
+  } else {
+    cum_prop <- if (nrow(named) > 0L) cumsum(named[[posterior_col]]) / named_total else numeric(0)
+  }
   n_include <- which(cum_prop >= cumulative_threshold)[1L]
-  tail_pooled <- is.na(n_include) && nrow(tail_rows) > 0L
+  tail_pooled <- pool_tail && is.na(n_include) && nrow(tail_rows) > 0L
   if (is.na(n_include)) n_include <- nrow(named)
 
   plausible <- if (tail_pooled) {

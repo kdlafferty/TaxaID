@@ -760,18 +760,18 @@ behavior on functions this document already covers above.
   real unreferenced cottids. Only binomials are now summed; the excluded rows are counted
   in `n_coarse_prior_rows_excluded`. Tests: test-unreferenced_prior_mass.R.
 
-- `posterior_consensus()` no longer renormalises away the hypotheses below `min_posterior`.
-  They form one tail block; the hypotheses above the floor are added until they hold
-  `cumulative_threshold` of the TOTAL named posterior mass, and when they fall short the
-  whole block joins the plausible set and the consensus is the LCA of everything in it.
-  Before, the threshold was measured against the survivors' mass alone, so a hypothesis at
-  0.13 beside twenty at 0.02-0.03 was the entire plausible set and was reported as a
-  species. Measured on the saved CalIntertidal Round 1: 41 of 16,849 species calls had
-  `consensus_posterior` below 0.2. Calls whose survivors reach the threshold are unchanged.
-  An observation with no hypothesis above the floor is now resolved from its tail instead
-  of returning an empty row. New output columns `tail_mass` and `tail_pooled`. Tests:
-  test-posterior_consensus.R (four new; three assertions on the previous empty-row
-  behaviour rewritten, one fixture's threshold adjusted to keep testing what it tested).
+- `posterior_consensus(pool_tail = FALSE)` is a new argument; the default keeps the
+  existing rule. With `pool_tail = TRUE`, the hypotheses below `min_posterior` form one
+  tail block: the hypotheses above the floor are added until they hold
+  `cumulative_threshold` of the TOTAL named mass, and when they fall short the whole
+  block joins the plausible set and the consensus is the LCA of everything in it. Under
+  the default rule a hypothesis at 0.13 beside twenty at 0.02-0.03 is the whole
+  plausible set and is reported as a species. Measured on the saved CalIntertidal Round
+  1: 41 of 16,849 species calls had `consensus_posterior` below 0.2. On one CalIntertidal
+  subset, pooling moved species calls from 544 to 475, clearing all 17 low-posterior 18S
+  calls but also 52 calls at 0.5-0.9. That is why it is opt-in. New output columns
+  `tail_mass` (always reported) and `tail_pooled`. Tests: test-posterior_consensus.R
+  (the tail tests use `pool_tail = TRUE`; one asserts the default is unchanged).
 
 - `assign_taxa_llm()`'s prompt builder no longer lets a missing `lineage` column
   collapse a vector. `ifelse()` returns the length of its TEST, so a length-1
