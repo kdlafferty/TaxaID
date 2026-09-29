@@ -240,7 +240,7 @@ test_that("hypotheses below min_posterior are excluded before LCA", {
   expect_equal(out$consensus_taxon, "Fundulus parvipinnis")
 })
 
-test_that("all hypotheses below min_posterior -> empty row", {
+test_that("all hypotheses below min_posterior -> the pooled tail is the plausible set", {
   df <- make_posterior(
     observation_id = c("s1", "s1"),
     taxon_name = c("Fundulus parvipinnis", "Fundulus catus"),
@@ -252,9 +252,9 @@ test_that("all hypotheses below min_posterior -> empty row", {
     rank_system = c("genus", "species"),
     min_posterior = 0.05
   )
-  expect_equal(out$n_plausible, 0L)
-  expect_true(is.na(out$consensus_taxon))
-  expect_false(out$is_resolved)
+  expect_equal(out$n_plausible, 2L)
+  expect_equal(out$consensus_taxon, "Fundulus")
+  expect_true(out$tail_pooled)
 })
 
 
@@ -460,8 +460,9 @@ test_that("winner columns reflect actual winner, not highest likelihood", {
 
 test_that("winner columns are NA_real_ in empty consensus rows", {
   # All hypotheses below min_posterior -> empty row
+  # An observation with no named hypothesis gives the empty row
   df <- make_posterior(
-    "s1", "Fundulus parvipinnis", "species",
+    "s1", NA_character_, "species",
     "specific_candidate", 0.01
   )
   df$prior_mean <- 0.10
@@ -472,7 +473,7 @@ test_that("winner columns are NA_real_ in empty consensus rows", {
       rank_system = c("genus", "species"),
       min_posterior = 0.05
     ),
-    "no hypotheses above min_posterior"
+    "no named hypotheses"
   )
   expect_true(is.na(out$winner_prior))
   expect_true(is.na(out$winner_likelihood))
@@ -547,8 +548,9 @@ test_that("winner_rank_expanded is TRUE when the winner came from coarse-rank ex
 })
 
 test_that("winner_hypothesis_type/winner_rank_expanded are NA in empty consensus rows", {
+  # An observation with no named hypothesis gives the empty row
   df <- make_posterior(
-    "s1", "Fundulus parvipinnis", "species",
+    "s1", NA_character_, "species",
     "specific_candidate", 0.01
   )
   expect_warning(
@@ -556,7 +558,7 @@ test_that("winner_hypothesis_type/winner_rank_expanded are NA in empty consensus
       rank_system = c("genus", "species"),
       min_posterior = 0.05
     ),
-    "no hypotheses above min_posterior"
+    "no named hypotheses"
   )
   expect_true(is.na(out$winner_hypothesis_type))
   expect_true(is.na(out$winner_rank_expanded))
@@ -667,11 +669,12 @@ test_that("an implausible winner still reports its plausible rivals (axes stay i
 })
 
 test_that("counts use every named hypothesis, not just the post-filter plausible set", {
-  # min_posterior = 0.5 keeps only the winner in `plausible`, but the rival
-  # still competed and must still be counted.
+  # min_posterior = 0.5 and a threshold the winner (0.55) meets on its own
+  # keep only the winner in `plausible`, but the rival still competed and
+  # must still be counted.
   out <- posterior_consensus(make_competitor_df(),
     rank_system = c("family", "genus", "species"),
-    min_posterior = 0.5, cumulative_threshold = 0.9
+    min_posterior = 0.5, cumulative_threshold = 0.5
   )
   expect_equal(out$n_plausible, 1L)
   expect_equal(out$primary_n_plausible_competitors, 1L)
@@ -1332,4 +1335,60 @@ test_that("a blank species value is missing, not a unanimous species named ''", 
   expect_false(identical(out$consensus_taxon, ""))
   expect_false(identical(out$consensus_rank, "species"))
   expect_equal(out$consensus_taxon, "Rhodomelaceae")
+})
+
+# ---- Tail pooling below min_posterior ----------------------------------------
+
+.tail_df <- function(win_post, tail_posts, tail_genus = "Littorina", tail_family = "Littorinidae") {
+  n <- length(tail_posts)
+  sp <- paste(tail_genus, paste0("sp", seq_len(n)))
+  data.frame(
+    observation_id = "O1",
+    taxon_name = c("Littorina littorea", sp),
+    taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate",
+    family = c("Littorinidae", rep(tail_family, n)),
+    genus = c("Littorina", rep(tail_genus, n)),
+    species = c("Littorina littorea", sp),
+    prior_mean = 0.1, score_likelihood = 1,
+    posterior_point_est = c(win_post, tail_posts),
+    posterior_mean = c(win_post, tail_posts),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("a lone survivor beside a flat tail is not a species call", {
+  # 0.13 survivor; twenty hypotheses at 0.0435 each (all below 0.05)
+  df <- .tail_df(0.13, rep(0.87 / 20, 20), tail_genus = "Lacuna")
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species")))
+  expect_equal(out$consensus_rank, "family")
+  expect_equal(out$consensus_taxon, "Littorinidae")
+  expect_true(out$tail_pooled)
+  expect_equal(out$tail_mass, 0.87, tolerance = 1e-9)
+  expect_equal(out$consensus_posterior, 1, tolerance = 1e-9)
+})
+
+test_that("a tail within the survivor's genus coarsens only to genus", {
+  df <- .tail_df(0.13, rep(0.87 / 20, 20), tail_genus = "Littorina")
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species")))
+  expect_equal(out$consensus_rank, "genus")
+  expect_equal(out$consensus_taxon, "Littorina")
+})
+
+test_that("a confident call is unchanged and does not pool the tail", {
+  df <- .tail_df(0.95, c(0.03, 0.02), tail_genus = "Lacuna")
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species")))
+  expect_equal(out$consensus_rank, "species")
+  expect_equal(out$consensus_taxon, "Littorina littorea")
+  expect_false(out$tail_pooled)
+  expect_equal(out$tail_mass, 0.05, tolerance = 1e-9)
+})
+
+test_that("with no hypothesis above min_posterior the tail is the plausible set", {
+  df <- .tail_df(0.04, rep(0.96 / 24, 24), tail_genus = "Lacuna")
+  out <- suppressMessages(suppressWarnings(
+    posterior_consensus(df, rank_system = c("family", "genus", "species"))
+  ))
+  expect_equal(out$consensus_taxon, "Littorinidae")
+  expect_true(out$tail_pooled)
 })

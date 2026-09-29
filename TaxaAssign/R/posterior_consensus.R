@@ -26,8 +26,10 @@
 #'
 #' For each `observation_id`, identifies the minimal set of top-ranked hypotheses
 #' that together account for `cumulative_threshold` of the named-taxon posterior
-#' mass (after excluding hypotheses below `min_posterior`), then returns their
-#' lowest common ancestor (LCA) as the consensus taxonomic assignment.
+#' mass, then returns their lowest common ancestor (LCA) as the consensus
+#' taxonomic assignment. Hypotheses below `min_posterior` are pooled into one
+#' tail block that joins the set only when the hypotheses above it fall short
+#' (see \emph{Details}).
 #'
 #' **Which hypotheses are included:** All named hypotheses contribute to the
 #' LCA -- `"specific_candidate"`, `"unreferenced_species"` (congener without reference
@@ -72,11 +74,12 @@
 #'   hypotheses (0.6 + 0.25 = 0.85 < 0.9, so the third is also included:
 #'   0.6 + 0.25 + 0.10 = 0.95 >= 0.9). The LCA of these three hypotheses
 #'   becomes the consensus.
-#' @param min_posterior Numeric in \[0, 1). Minimum individual posterior
-#'   probability to retain a hypothesis. Hypotheses below this threshold are
-#'   excluded before computing the LCA consensus. At 0.05, a hypothesis must
-#'   hold at least 5% posterior probability to influence the consensus taxon.
-#'   Default 0.05. Set to 0 to disable.
+#' @param min_posterior Numeric in \[0, 1). Individual posterior below which a
+#'   hypothesis cannot enter the plausible set on its own. Such hypotheses are
+#'   pooled into one tail block, which joins the plausible set as a whole when
+#'   the hypotheses at or above `min_posterior` hold less than
+#'   `cumulative_threshold` of the total named posterior mass. Default 0.05.
+#'   Set to 0 to disable pooling.
 #' @param posterior_col Character. Name of the posterior column to rank
 #'   hypotheses by. Default `"posterior_point_est"`, matching
 #'   `run_bayesian_pipeline()` and every production workflow. An
@@ -177,12 +180,19 @@
 #'   precision 0.872) before relying on the result.
 #' @details
 #' \strong{Threshold interaction:}
-#' \code{min_posterior} and \code{cumulative_threshold} work together:
-#' \code{min_posterior} removes obvious noise hypotheses first (those with
-#' negligible posterior mass), then \code{cumulative_threshold} selects the
-#' plausible set from the remainder. Setting \code{min_posterior = 0} disables
-#' noise filtering; setting it too high (e.g. 0.3) may exclude genuine
-#' competing hypotheses. \code{cumulative_threshold = 0.9} is analogous to a
+#' \code{min_posterior} and \code{cumulative_threshold} work together.
+#' Hypotheses at or above \code{min_posterior} are added in order of posterior
+#' until they hold \code{cumulative_threshold} of the TOTAL named posterior
+#' mass. The hypotheses below \code{min_posterior} are not discarded: they form
+#' one tail block (reported as \code{tail_mass}), and when the hypotheses above
+#' it fall short, the whole block joins the plausible set and the consensus is
+#' the LCA of everything in it (\code{tail_pooled = TRUE}). A single
+#' noise-level hypothesis therefore cannot coarsen a call on its own, while a
+#' flat tail that holds most of the mass is not renormalised away: a lone
+#' hypothesis at 0.13 beside twenty at 0.02--0.03 is reported at the rank the
+#' twenty-one share, not as a species. Setting \code{min_posterior = 0}
+#' disables pooling; setting it high (e.g. 0.3) moves more competitors into the
+#' tail block. \code{cumulative_threshold = 0.9} is analogous to a
 #' 90% credible interval; increase toward 0.95--0.99 for more conservative
 #' assignments (more upranking to genus/family); decrease to 0.8 for more
 #' aggressive species-level calls.
@@ -262,8 +272,14 @@
 #'       consistently that taxon dominated across simulations.  `NA` when
 #'       `confidence_score` is absent from `posterior_df` (e.g. input from
 #'       [assign_taxa_llm()]) or when `consensus_taxon` is `NA`.}
-#'     \item{`n_plausible`}{Number of hypotheses in the plausible set (0 if
-#'       all hypotheses were excluded).}
+#'     \item{`n_plausible`}{Number of hypotheses in the plausible set,
+#'       including the members of a pooled tail block (0 when there is no
+#'       named hypothesis).}
+#'     \item{`tail_mass`}{Summed posterior of the hypotheses below
+#'       `min_posterior`: how much mass sat in the tail block.}
+#'     \item{`tail_pooled`}{`TRUE` when the tail block joined the plausible
+#'       set because the hypotheses above `min_posterior` held less than
+#'       `cumulative_threshold` of the total mass.}
 #'     \item{`plausible_taxa`}{List column: character vector of plausible taxon
 #'       names, sorted by descending posterior. Computed BEFORE downranking, so
 #'       for a downranked row it reflects the original coarser-rank plausible
@@ -781,31 +797,36 @@ posterior_consensus <- function(posterior_df,
     return(.empty_flagged())
   }
 
-  # Apply minimum posterior filter (named_all preserved above for consensus_posterior)
-  named <- named_all[named_all[[posterior_col]] >= min_posterior, ]
-  if (nrow(named) == 0L) {
-    cli::cli_warn(
-      "observation_id {.val {sid}} has no hypotheses above min_posterior = \\
-      {min_posterior}. All {nrow(named_all)} named hypothesis(es) are below \\
-      threshold. Consider lowering min_posterior."
-    )
-    return(.empty_flagged())
-  }
-
-  # Sort descending by posterior
-  named <- named[order(named[[posterior_col]], decreasing = TRUE), ]
-
-  # Cumulative threshold within named-taxon posterior mass (post-filter)
-  named_total <- sum(named[[posterior_col]], na.rm = TRUE)
-  if (named_total == 0) {
+  # Plausible set. Hypotheses at or above min_posterior ("survivors") are
+  # added in order until they hold cumulative_threshold of the TOTAL named
+  # posterior mass. The ones below min_posterior are not discarded: they are
+  # pooled into one tail block, which joins the plausible set as a whole when
+  # the survivors fall short. A single noise-level hypothesis therefore
+  # cannot coarsen a call on its own, but a flat tail holding most of the
+  # mass is not renormalised away (a lone survivor at 0.13 beside twenty
+  # hypotheses at 0.02-0.03 used to be reported as a species on its own).
+  # The consensus of a pooled tail is its members' LCA, via .find_lca().
+  named_all <- named_all[order(named_all[[posterior_col]], decreasing = TRUE), ]
+  named_total <- sum(named_all[[posterior_col]], na.rm = TRUE)
+  if (!is.finite(named_total) || named_total == 0) {
     return(.empty_consensus_row(sid))
   }
+  is_survivor <- !is.na(named_all[[posterior_col]]) & named_all[[posterior_col]] >= min_posterior
+  named <- named_all[is_survivor, , drop = FALSE]
+  tail_rows <- named_all[!is_survivor, , drop = FALSE]
+  tail_mass <- sum(tail_rows[[posterior_col]], na.rm = TRUE)
 
-  cum_prop <- cumsum(named[[posterior_col]]) / named_total
+  cum_prop <- if (nrow(named) > 0L) cumsum(named[[posterior_col]]) / named_total else numeric(0)
   n_include <- which(cum_prop >= cumulative_threshold)[1L]
+  tail_pooled <- is.na(n_include) && nrow(tail_rows) > 0L
   if (is.na(n_include)) n_include <- nrow(named)
 
-  plausible <- named[seq_len(n_include), ]
+  plausible <- if (tail_pooled) {
+    rbind(named[seq_len(n_include), , drop = FALSE], tail_rows)
+  } else {
+    named[seq_len(n_include), , drop = FALSE]
+  }
+  n_include <- nrow(plausible)
 
   # Winner diagnostics: first row of plausible = highest-posterior hypothesis.
   # Extract prior and likelihood values; NA when the source column is absent
@@ -1095,6 +1116,8 @@ posterior_consensus <- function(posterior_df,
     consensus_posterior = consensus_posterior,
     consensus_confidence_score = consensus_confidence_score,
     n_plausible = n_include,
+    tail_mass = tail_mass,
+    tail_pooled = tail_pooled,
     winner_prior = winner_prior,
     winner_theta_mean = winner_theta_mean,
     winner_likelihood = winner_likelihood,
@@ -1260,6 +1283,8 @@ posterior_consensus <- function(posterior_df,
     consensus_posterior = NA_real_,
     consensus_confidence_score = NA_real_,
     n_plausible = 0L,
+    tail_mass = NA_real_,
+    tail_pooled = NA,
     winner_prior = NA_real_,
     winner_theta_mean = NA_real_,
     winner_likelihood = NA_real_,

@@ -747,6 +747,19 @@ behavior on functions this document already covers above.
 - `add_unreferenced_prior_mass()` returns `attr(, "unreferenced_scope_members")`, the
   species behind each added mass, so each mass can be traced to its members.
 
+- `posterior_consensus()` no longer renormalises away the hypotheses below `min_posterior`.
+  They form one tail block; the hypotheses above the floor are added until they hold
+  `cumulative_threshold` of the TOTAL named posterior mass, and when they fall short the
+  whole block joins the plausible set and the consensus is the LCA of everything in it.
+  Before, the threshold was measured against the survivors' mass alone, so a hypothesis at
+  0.13 beside twenty at 0.02-0.03 was the entire plausible set and was reported as a
+  species. Measured on the saved CalIntertidal Round 1: 41 of 16,849 species calls had
+  `consensus_posterior` below 0.2. Calls whose survivors reach the threshold are unchanged.
+  An observation with no hypothesis above the floor is now resolved from its tail instead
+  of returning an empty row. New output columns `tail_mass` and `tail_pooled`. Tests:
+  test-posterior_consensus.R (four new; three assertions on the previous empty-row
+  behaviour rewritten, one fixture's threshold adjusted to keep testing what it tested).
+
 - `assign_taxa_llm()`'s prompt builder no longer lets a missing `lineage` column
   collapse a vector. `ifelse()` returns the length of its TEST, so a length-1
   `lineage` made the `ifelse()` below it length 1 regardless of how many taxa
