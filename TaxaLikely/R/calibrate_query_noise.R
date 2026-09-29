@@ -31,6 +31,10 @@ utils::globalVariables(c(
 #' @return Data frame: one row per confident `observation_id`, with all
 #'   `match_df` columns plus `confident_genus` (the genus that qualified) and
 #'   `confident_species` (its single plausible species, from `priors`).
+#'   Only binomial prior names count as species, and each distinct species
+#'   counts once however many sites list it. Attributes `n_qualifying_genera`
+#'   and `n_prior_names_not_binomial` (species-rank prior names such as
+#'   "Ulva sp." or a family name that were not counted) qualify that result.
 #'
 #' @seealso [calibrate_query_noise()]
 #'
@@ -90,15 +94,22 @@ identify_confident_observations <- function(match_df,
     )
   }
 
-  sp_priors <- priors |>
-    dplyr::filter(taxon_name_rank == "species") |>
+  # Count DISTINCT plausible species per genus. A prior table stacked across
+  # sites repeats each species once per site, so counting rows made a genus
+  # with one plausible species look like it had several. Only binomials
+  # count: a coarse record labelled species ("Cottidae") is not a species,
+  # and would otherwise pose as a genus with exactly one member.
+  sp_rank <- priors[priors$taxon_name_rank %in% "species" & !is.na(priors$taxon_name), , drop = FALSE]
+  is_binom <- TaxaTools::is_plausible_binomial(sp_rank$taxon_name)
+  n_names_not_binomial <- length(unique(sp_rank$taxon_name[!is_binom]))
+  sp_priors <- sp_rank[is_binom, , drop = FALSE] |>
     dplyr::mutate(genus = sub(" .*$", "", taxon_name))
 
   genus_summary <- sp_priors |>
     dplyr::group_by(genus) |>
     dplyr::summarise(
-      n_plausible = sum(theta_mean > plausibility_threshold),
-      confident_species = taxon_name[theta_mean > plausibility_threshold][1L],
+      n_plausible = dplyr::n_distinct(taxon_name[theta_mean > plausibility_threshold]),
+      confident_species = unique(taxon_name[theta_mean > plausibility_threshold])[1L],
       .groups = "drop"
     ) |>
     dplyr::filter(n_plausible == 1L)
@@ -120,6 +131,21 @@ identify_confident_observations <- function(match_df,
   confident$confident_species <- genus_summary$confident_species[
     match(confident$genus, genus_summary$genus)
   ]
+
+  # The qualifying-genus count is conditional on which names count as
+  # species: open-nomenclature and coarse names ("Ulva sp.", "Mazzaella cf.
+  # splendens", "Cottidae") are left out, so say how many there were.
+  n_species_names <- length(unique(sp_rank$taxon_name))
+  message(sprintf(
+    paste0(
+      "identify_confident_observations: %d genus/genera with exactly one plausible ",
+      "species; %d of %d species-rank prior name(s) are not binomials ",
+      "(e.g. 'sp.', 'cf.', genus- or family-only) and were not counted."
+    ),
+    nrow(genus_summary), n_names_not_binomial, n_species_names
+  ))
+  attr(confident, "n_qualifying_genera") <- nrow(genus_summary)
+  attr(confident, "n_prior_names_not_binomial") <- n_names_not_binomial
 
   confident
 }

@@ -27,6 +27,10 @@ default is a conservative gap above that floor.}
 Data frame: one row per confident \code{observation_id}, with all
 \code{match_df} columns plus \code{confident_genus} (the genus that qualified) and
 \code{confident_species} (its single plausible species, from \code{priors}).
+Only binomial prior names count as species, and each distinct species
+counts once however many sites list it. Attributes \code{n_qualifying_genera}
+and \code{n_prior_names_not_binomial} (species-rank prior names such as
+"Ulva sp." or a family name that were not counted) qualify that result.
 }
 \description{
 Finds genera where exactly one species clears a local occurrence-plausibility

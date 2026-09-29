@@ -1062,3 +1062,17 @@ on functions this document already covers above.
   from a generic row's added mass, so nothing is counted twice. Tests:
   test-expand_unreferenced.R (seven assertions on the previous dropping behaviour
   rewritten, one new test).
+- `identify_confident_observations()` (used by `calibrate_query_noise()`) counts distinct
+  plausible species per genus, and only binomials. It counted prior ROWS, so a prior
+  table stacked across sites, where each species appears once per site, made a genus
+  with one plausible species look as if it had several and disqualified it. A coarse
+  record labelled species ("Cottidae") could also pose as a genus with exactly one
+  member. Measured on the CalIntertidal prior table: 112 genera qualified, against 476
+  with distinct species counted and coarse rows excluded, so the query-noise
+  calibration used about a quarter of the genera it was meant to. This changes the
+  calibration and therefore the likelihoods: likelihood checkpoints built before it
+  should not be compared with ones built after. The count is conditional on which names
+  are species, so the function now reports how many species-rank prior names are not
+  binomials ("Ulva sp.", "Mazzaella cf. splendens", family-only rows) and were not counted,
+  in a message and as attributes. Tests: test-identify-confident-observations.R (the two
+  behaviour tests fail on the previous code).

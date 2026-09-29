@@ -105,7 +105,11 @@ test_that("calibrate_query_noise: logit and sqrt_mismatch produce different-scal
 .make_multi_species_fixture <- function(n_species = 10L, n_obs_each = 4L,
                                         mu_range = c(3.0, 5.0), score_fn) {
   mu <- seq(mu_range[1L], mu_range[2L], length.out = n_species)
-  keys <- sprintf("Genus%02d species%02d", seq_len(n_species), seq_len(n_species))
+  # Letter codes, not digits: species names must be plausible binomials to
+  # count as locally plausible (identify_confident_observations()).
+  code <- paste0(letters[(seq_len(n_species) - 1L) %/% 26L + 1L], letters[(seq_len(n_species) - 1L) %% 26L + 1L])
+  gen <- paste0("Genus", code)
+  keys <- paste(gen, paste0("species", code))
   h1 <- data.frame(
     lookup_key = keys, rank = "species",
     mu_score = mu, mu_gap = 2.0, sigma_score = 2.0,
@@ -132,7 +136,7 @@ test_that("calibrate_query_noise: logit and sqrt_mismatch produce different-scal
   rows <- do.call(rbind, lapply(seq_len(n_species), function(i) {
     data.frame(
       observation_id = sprintf("Q%02d_%d", i, seq_len(n_obs_each)),
-      genus = sprintf("Genus%02d", i),
+      genus = gen[i],
       score_original = score_fn(mu[i]),
       stringsAsFactors = FALSE
     )
