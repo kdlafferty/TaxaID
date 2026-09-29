@@ -33,7 +33,13 @@ is silent.}
 \item{blank_medium}{Character or NULL. What a blank is filled with, e.g.
 "tap water". A blank is judged acceptable when its contents are
 consistent with its medium or with handling, so this decides many
-verdicts. NULL tells the model the medium is not stated. Default NULL.}
+verdicts. Either one string for every tube, or a NAMED character vector
+giving each tube its own medium (names are sample ids; tubes not named
+read "not stated"). Use the per-tube form whenever media differ: a
+reverse-osmosis blank should be near-empty, so a tap-water community in
+it is anomalous, and judging it against "tap water" would explain away
+exactly what should be flagged. NULL tells the model the medium is not
+stated. Default NULL.}
 
 \item{target_groups}{Character or NULL. The groups the study's samples are
 meant to measure, e.g. "macroalgae, macroinvertebrates, intertidal
@@ -84,9 +90,13 @@ The review queue (\code{attr(identity, "review_queue")}) with
 \code{"uncertain"}), \code{llm_role} (\code{"blank"}, \code{"sample"},
 \code{"positive_control"}, \code{"exclude"} or \code{"unknown"}: how the
 tube should be used; \code{classify_sample_identity(accept_llm_roles = TRUE)}
-admits on it), \code{llm_suggested_disposition},
-\code{llm_confidence} (high/moderate/low) and \code{llm_rationale} added
-per sample. Attributes \code{"unreviewed_samples"} (always present) and
+admits on it; a contaminated blank is still role \code{"blank"}),
+\code{llm_suggested_disposition}, \code{llm_confidence}
+(high/moderate/low) and \code{llm_rationale} added per sample, and
+\code{llm_marker_unusable} per unit: \code{TRUE} where the model judged
+this marker's result contaminated. Identity is per tube, usability per
+marker. With \code{accept_llm_roles = TRUE} it can only EXCLUDE a marker,
+never keep one the gate excluded. Attributes \code{"unreviewed_samples"} (always present) and
 \code{"llm_prompts"}.
 }
 \description{

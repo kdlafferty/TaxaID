@@ -143,9 +143,16 @@ utils::globalVariables(c(
 #'   to estimate a site's null. The null is O(n^2) in samples, and a real site
 #'   here had 213 samples = 22,578 pairs, which made the first version of this
 #'   function unusable (still running after 19 minutes). A few hundred pairs
-#'   estimate a median and a 0.90 quantile perfectly well, so pairs are sampled
-#'   at random above this cap and \code{null_n_pairs} records how many were
-#'   actually used. Default 500.
+#'   estimate a median and a 0.90 quantile, but a subsample makes a site whose
+#'   null sits near its cut-off land on either side of it, so the default uses
+#'   every pair for sites up to 100 samples (4,950 pairs) and subsamples only
+#'   above that. Pairs are sampled above this cap and \code{null_n_pairs} records how many were
+#'   actually used. The sample is drawn from a fixed local seed and the
+#'   caller's random-number state is restored afterwards, so the same data
+#'   always give the same verdicts: an unseeded draw made a real run's power
+#'   flip between "ok" and "low_wide_null" from one call to the next, moving
+#'   32 units between concordant and inconclusive. A fixed seed makes such a
+#'   verdict reproducible; only using every pair makes it exact. Default 5000.
 #' @param verbose Logical. Print a summary. Default TRUE.
 #'
 #' @return A data frame, one row per sequenced column, with the column id, its
@@ -219,7 +226,7 @@ validate_controls <- function(input_df,
                               min_samples_per_site = 3L,
                               headroom_fraction = 0.5,
                               headroom_limit = 0.98,
-                              max_null_pairs = 500L,
+                              max_null_pairs = 5000L,
                               verbose = TRUE) {
 
   stopifnot(is.data.frame(input_df))
@@ -323,7 +330,7 @@ validate_controls <- function(input_df,
     if (length(sam) >= min_samples_per_site && length(sam) >= 2L) {
       pr <- utils::combn(length(sam), 2L)
       if (ncol(pr) > max_null_pairs)
-        pr <- pr[, sample.int(ncol(pr), max_null_pairs), drop = FALSE]
+        pr <- pr[, .vc_seeded_sample(ncol(pr), max_null_pairs), drop = FALSE]
       nullv <- vapply(seq_len(ncol(pr)),
                       function(k) .bray_m(M, sam[pr[1, k]], sam[pr[2, k]]),
                       numeric(1))
@@ -450,4 +457,21 @@ validate_controls <- function(input_df,
             "Treat the control set as compromised and do not build a contaminant ",
             "list from it until the labels are resolved.", call. = FALSE)
   res
+}
+
+#' Reproducible subsample: a fixed local seed, the caller's RNG state restored
+#'
+#' An unseeded draw made validate_controls() non-deterministic: where a null's
+#' spread sits near its cut-off, the power verdict (and so the gate built on it)
+#' changed between identical calls. A bare set.seed() would reseed the caller's
+#' session, so the previous state is put back on exit.
+#' @noRd
+.vc_seeded_sample <- function(n, size, seed = 20260928L) {
+  had <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  old <- if (had) get(".Random.seed", envir = globalenv(), inherits = FALSE)
+  on.exit(if (had) assign(".Random.seed", old, envir = globalenv()) else
+    if (exists(".Random.seed", envir = globalenv(), inherits = FALSE))
+      rm(".Random.seed", envir = globalenv()))
+  set.seed(seed)
+  sample.int(n, size)
 }

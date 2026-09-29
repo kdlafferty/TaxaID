@@ -37,7 +37,8 @@ test_that("advice is attached per tube and never admits anything", {
   expect_match(p, "run-wide artifact")
   expect_match(p, "BLANK MEDIUM \\(what a blank is filled with\\): not stated")
   expect_equal(unique(q$llm_role[q$sample == "MISLABEL"]), "sample")
-  expect_equal(unique(q$llm_role[q$sample == "PLANKTON"]), "exclude")
+  # a contaminated blank is still a blank; usability is per marker
+  expect_equal(unique(q$llm_role[q$sample == "PLANKTON"]), "blank")
 })
 
 test_that("omitted tubes are re-asked and reported if still missing", {
@@ -159,4 +160,64 @@ test_that("target_groups reaches the prompt and the cache key, and a medium neve
   expect_gt(n, 0L)
   expect_error(review_sample_identity(gate, context = "x", target_groups = c("a", "b"), llm_fn = f),
     "target_groups")
+})
+
+test_that("blank_medium can differ per tube, and a purified medium is not an excuse", {
+  gate <- .sir_gate()
+  llm <- .fake_llm()
+  q <- review_sample_identity(gate, context = "x", llm_fn = llm$fn, verbose = FALSE,
+    blank_medium = c(PLANKTON = "reverse-osmosis water", MISLABEL = "tap water"))
+  p <- paste(unlist(attr(q, "llm_prompts")), collapse = "\n")
+  expect_match(p, "TUBE PLANKTON -- labelled BLANK; blank medium for this tube: reverse-osmosis water")
+  expect_match(p, "TUBE MISLABEL -- labelled BLANK; blank medium for this tube: tap water")
+  expect_match(p, "stated per tube below")
+  expect_match(p, "PURIFIED medium")
+  expect_match(p, "out-of-scope taxa")
+  expect_error(review_sample_identity(gate, context = "x", llm_fn = llm$fn,
+    blank_medium = c("tap water", "RO")), "named character vector")
+  # a tube's own medium is in its cache key
+  dir <- tempfile(); on.exit(unlink(dir, recursive = TRUE))
+  n <- 0L
+  g <- function(prompt, ...) { n <<- n + 1L; llm$fn(prompt) }
+  review_sample_identity(gate, context = "x", llm_fn = g, verbose = FALSE, cache_dir = dir,
+    blank_medium = c(PLANKTON = "tap water", MISLABEL = "tap water"))
+  n <- 0L
+  q2 <- review_sample_identity(gate, context = "x", llm_fn = g, verbose = FALSE, cache_dir = dir,
+    blank_medium = c(PLANKTON = "reverse-osmosis water", MISLABEL = "tap water"))
+  expect_equal(n, 1L)
+  expect_match(attr(q2, "llm_prompts")[[1]], "TUBE PLANKTON")
+  expect_false(grepl("TUBE MISLABEL", attr(q2, "llm_prompts")[[1]]))
+})
+
+test_that("unusable_markers is per unit and can only exclude, via accept_llm_roles", {
+  path <- tempfile(fileext = ".csv")
+  on.exit(unlink(path))
+  d <- .sig_fixture()
+  suppressWarnings(classify_sample_identity(d, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
+    taxon_label_col = "species", verbose = FALSE, on_pending = "ignore", decisions_path = path))
+  gate <- .sir_gate()
+  f <- function(prompt, ...) {
+    ids <- sub("TUBE ", "", regmatches(prompt, gregexpr("TUBE [A-Za-z0-9_]+", prompt))[[1]])
+    paste0("[", paste(sprintf('{"sample": "%s", "verdict": "contaminated_blank", "role": "blank", "unusable_markers": ["M2"], "confidence": "moderate", "rationale": "x"}', ids), collapse = ","), "]")
+  }
+  q <- review_sample_identity(gate, context = "x", llm_fn = f, verbose = FALSE, decisions_path = path)
+  expect_true(all(q$llm_marker_unusable[q$sample == "PLANKTON" & q$marker == "M2"]))
+  expect_false(any(q$llm_marker_unusable[q$sample == "PLANKTON" & q$marker == "M1"]))
+  res <- suppressWarnings(classify_sample_identity(d, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
+    taxon_label_col = "species", verbose = FALSE, on_pending = "ignore", decisions_path = path,
+    accept_llm_roles = TRUE))
+  u <- attr(res, "units")
+  p2 <- u[u$sample == "PLANKTON" & u$marker == "M2", ]
+  expect_equal(p2$control_usability, "excluded_by_decision")
+  expect_equal(p2$disposition_source, "llm")
+  expect_false(p2$admit)
+  # a person's library decision is never overridden by the model
+  rec <- utils::read.csv(path, stringsAsFactors = FALSE, colClasses = "character")
+  rec$disposition[rec$sample == "PLANKTON" & rec$marker == "M2"] <- "keep_library"
+  utils::write.csv(rec, path, row.names = FALSE, na = "")
+  res <- suppressWarnings(classify_sample_identity(d, control_samples = c("CLEAN", "MISLABEL", "PLANKTON"),
+    taxon_label_col = "species", verbose = FALSE, on_pending = "ignore", decisions_path = path,
+    accept_llm_roles = TRUE))
+  u <- attr(res, "units")
+  expect_equal(u$control_usability[u$sample == "PLANKTON" & u$marker == "M2"], "kept_by_decision")
 })

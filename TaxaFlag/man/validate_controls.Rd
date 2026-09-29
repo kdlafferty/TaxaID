@@ -14,7 +14,7 @@ validate_controls(
   min_samples_per_site = 3L,
   headroom_fraction = 0.5,
   headroom_limit = 0.98,
-  max_null_pairs = 500L,
+  max_null_pairs = 5000L,
   verbose = TRUE
 )
 }
@@ -83,9 +83,16 @@ samples had a null 0.90-quantile of exactly 1.000, which flagged genuine
 to estimate a site's null. The null is O(n^2) in samples, and a real site
 here had 213 samples = 22,578 pairs, which made the first version of this
 function unusable (still running after 19 minutes). A few hundred pairs
-estimate a median and a 0.90 quantile perfectly well, so pairs are sampled
-at random above this cap and \code{null_n_pairs} records how many were
-actually used. Default 500.}
+estimate a median and a 0.90 quantile, but a subsample makes a site whose
+null sits near its cut-off land on either side of it, so the default uses
+every pair for sites up to 100 samples (4,950 pairs) and subsamples only
+above that. Pairs are sampled above this cap and \code{null_n_pairs} records how many were
+actually used. The sample is drawn from a fixed local seed and the
+caller's random-number state is restored afterwards, so the same data
+always give the same verdicts: an unseeded draw made a real run's power
+flip between "ok" and "low_wide_null" from one call to the next, moving
+32 units between concordant and inconclusive. A fixed seed makes such a
+verdict reproducible; only using every pair makes it exact. Default 5000.}
 
 \item{verbose}{Logical. Print a summary. Default TRUE.}
 }
