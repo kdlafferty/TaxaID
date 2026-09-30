@@ -277,6 +277,36 @@ combine_multisite_priors <- function(joined) {
     )
   }
 
+  joined <- .blank_ranks_to_na(joined)
+
+  # One site counts once. Identical repeats of an (observation, candidate,
+  # site) row are the same site's prior, not independent sites: combining k
+  # copies divides the logit variance by k and multiplies n_sites_combined by
+  # k. Repeats that disagree cannot be resolved here and stop the call.
+  site_key <- c("observation_id", "taxon_name", "taxon_name_rank", "grid_id", "main_habitat")
+  dup <- duplicated(joined[, site_key])
+  if (any(dup)) {
+    key <- do.call(paste, c(joined[, site_key], sep = "\r"))
+    dkeys <- unique(key[dup])
+    conflict <- vapply(dkeys, function(k) {
+      rows <- joined[key == k, c("prior_alpha", "prior_beta"), drop = FALSE]
+      nrow(unique(rows)) > 1L
+    }, logical(1L))
+    if (any(conflict)) {
+      cli::cli_abort(c(
+        "{sum(conflict)} (observation, candidate, site) key(s) appear more than once with DIFFERENT priors.",
+        "i" = "One site must carry one prior per candidate; check the join that produced {.arg joined}."
+      ))
+    }
+    cli::cli_inform(c(
+      "!" = "combine_multisite_priors: {sum(dup)} identical repeat row(s) of the same site \\
+      ({length(unique(joined$observation_id[dup]))} observation(s)) dropped before combining, \\
+      so each site is counted once.",
+      "i" = "Repeats usually come from blank or duplicated taxonomy upstream of {.fn join_priors}."
+    ))
+    joined <- joined[!dup, , drop = FALSE]
+  }
+
   groups <- dplyr::group_split(joined, observation_id, taxon_name, taxon_name_rank)
   group_sizes <- vapply(groups, nrow, integer(1L))
 

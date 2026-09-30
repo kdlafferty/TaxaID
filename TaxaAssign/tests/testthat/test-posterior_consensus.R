@@ -1306,3 +1306,99 @@ test_that("a verify_taxon_names() error marks every looked-up observation lookup
     rank_system = c("genus", "species"), lookup_missing_taxonomy = TRUE, backbone_id = 11L)))
   expect_identical(out$unreferenced_taxonomy_lookup, c("lookup_failed", "lookup_failed"))
 })
+
+test_that("a blank species value is missing, not a unanimous species named ''", {
+  # A family-level generic row whose species/genus are "" (reference
+  # taxonomies store an absent rank either way), next to two congeners.
+  # The plausible set is two family-level rows (as when a generic row was
+  # repeated upstream) whose blank species values "agree" with each other.
+  df <- data.frame(
+    observation_id = "O1",
+    taxon_name = c("Rhodomelaceae", "Rhodomelaceae", "Neosiphonia yendoi"),
+    taxon_name_rank = c("family", "family", "species"),
+    hypothesis_type = c("unreferenced_genus", "unreferenced_genus", "specific_candidate"),
+    family = "Rhodomelaceae",
+    genus = c("", "", "Neosiphonia"),
+    species = c("", "", "Neosiphonia yendoi"),
+    prior_mean = 0.1, score_likelihood = 1,
+    posterior_point_est = c(0.48, 0.48, 0.04),
+    posterior_mean = c(0.48, 0.48, 0.04),
+    stringsAsFactors = FALSE
+  )
+  out <- suppressMessages(posterior_consensus(df,
+    rank_system = c("family", "genus", "species"),
+    lookup_missing_taxonomy = FALSE
+  ))
+  expect_false(identical(out$consensus_taxon, ""))
+  expect_false(identical(out$consensus_rank, "species"))
+  expect_equal(out$consensus_taxon, "Rhodomelaceae")
+})
+
+# ---- Tail pooling below min_posterior ----------------------------------------
+
+.tail_df <- function(win_post, tail_posts, tail_genus = "Littorina", tail_family = "Littorinidae") {
+  n <- length(tail_posts)
+  sp <- paste(tail_genus, paste0("sp", seq_len(n)))
+  data.frame(
+    observation_id = "O1",
+    taxon_name = c("Littorina littorea", sp),
+    taxon_name_rank = "species",
+    hypothesis_type = "specific_candidate",
+    family = c("Littorinidae", rep(tail_family, n)),
+    genus = c("Littorina", rep(tail_genus, n)),
+    species = c("Littorina littorea", sp),
+    prior_mean = 0.1, score_likelihood = 1,
+    posterior_point_est = c(win_post, tail_posts),
+    posterior_mean = c(win_post, tail_posts),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("a lone survivor beside a flat tail is not a species call", {
+  # 0.13 survivor; twenty hypotheses at 0.0435 each (all below 0.05)
+  df <- .tail_df(0.13, rep(0.87 / 20, 20), tail_genus = "Lacuna")
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species"), pool_tail = TRUE))
+  expect_equal(out$consensus_rank, "family")
+  expect_equal(out$consensus_taxon, "Littorinidae")
+  expect_true(out$tail_pooled)
+  expect_equal(out$tail_mass, 0.87, tolerance = 1e-9)
+  expect_equal(out$consensus_posterior, 1, tolerance = 1e-9)
+})
+
+test_that("a tail within the survivor's genus coarsens only to genus", {
+  df <- .tail_df(0.13, rep(0.87 / 20, 20), tail_genus = "Littorina")
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species"), pool_tail = TRUE))
+  expect_equal(out$consensus_rank, "genus")
+  expect_equal(out$consensus_taxon, "Littorina")
+})
+
+test_that("a confident call is unchanged and does not pool the tail", {
+  df <- .tail_df(0.95, c(0.03, 0.02), tail_genus = "Lacuna")
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species"), pool_tail = TRUE))
+  expect_equal(out$consensus_rank, "species")
+  expect_equal(out$consensus_taxon, "Littorina littorea")
+  expect_false(out$tail_pooled)
+  expect_equal(out$tail_mass, 0.05, tolerance = 1e-9)
+})
+
+test_that("with no hypothesis above min_posterior the tail is the plausible set", {
+  df <- .tail_df(0.04, rep(0.96 / 24, 24), tail_genus = "Lacuna")
+  out <- suppressMessages(suppressWarnings(
+    posterior_consensus(df, rank_system = c("family", "genus", "species"), pool_tail = TRUE)
+  ))
+  expect_equal(out$consensus_taxon, "Littorinidae")
+  expect_true(out$tail_pooled)
+})
+
+test_that("by default the tail is discarded as before, but its mass is reported", {
+  df <- .tail_df(0.13, rep(0.87 / 20, 20), tail_genus = "Lacuna")
+  out <- suppressMessages(posterior_consensus(df, rank_system = c("family", "genus", "species")))
+  expect_equal(out$consensus_taxon, "Littorina littorea")
+  expect_false(out$tail_pooled)
+  expect_equal(out$tail_mass, 0.87, tolerance = 1e-9)
+})
+
+test_that("pool_tail must be TRUE or FALSE", {
+  df <- .tail_df(0.95, c(0.03, 0.02))
+  expect_error(posterior_consensus(df, pool_tail = NA), "pool_tail")
+})

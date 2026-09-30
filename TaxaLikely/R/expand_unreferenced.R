@@ -17,8 +17,8 @@ utils::globalVariables(c("hypothesis_type"))
 #' After [evaluate_likelihoods()], the `"unreferenced_species"`
 #' hypothesis is labelled at genus level (e.g. `taxon_name = "Fundulus"`,
 #' `taxon_name_rank = "genus"`) and the `"unreferenced_genus"` hypothesis at
-#' family level.  This function replaces those generic rows with one named
-#' row per plausible unreferenced species, enabling
+#' family level.  This function adds one named row per plausible
+#' unreferenced species next to those generic rows, enabling
 #' [TaxaAssign::compute_posterior()] to join them directly to species-level
 #' priors from TaxaExpect.
 #'
@@ -38,8 +38,17 @@ utils::globalVariables(c("hypothesis_type"))
 #'     differs from the H2 genus, \emph{and} that are not already a
 #'     species-level H1 `specific_candidate` (or whose genus is covered by a
 #'     genus-rank H1), receive the H3 likelihood values.
-#'   \item If no named species are found for the H2 genus (none are locally
-#'     plausible), the generic H2 row is dropped.  Likewise for H3.
+#'   \item The generic H2 and H3 rows are kept alongside the named rows.
+#'     The named rows cover unreferenced species recorded locally; the generic
+#'     row stands for species of that genus or family that are neither
+#'     referenced nor recorded, which is the unrecorded share the
+#'     dark-diversity floor prices in [TaxaAssign::join_priors()]. Dropping it
+#'     whenever no named species exists would read "no occurrence record" as
+#'     "absent". The one exception is a genus already represented by a
+#'     genus-rank `specific_candidate`: that candidate covers the whole genus,
+#'     so neither the generic H2 row nor named congeners are added.
+#'     `TaxaAssign::add_unreferenced_prior_mass()` excludes the named rows
+#'     from the generic row's added mass, so nothing is counted twice.
 #' }
 #'
 #' ## H2 and H3 likelihoods
@@ -66,8 +75,10 @@ utils::globalVariables(c("hypothesis_type"))
 #' }
 #'
 #' ## Pipeline order
-#' Run \emph{before} [apply_coverage_constraints()]: coverage
-#' constraints must see the named rows, not the generic genus/family rows.
+#' Run \emph{before} [apply_coverage_constraints()]. That function matches
+#' its genus census against genus-rank `unreferenced_species` rows, so it
+#' acts on the kept generic H2 row: a genus whose census is complete has no
+#' unsequenced species, and its generic row is relabelled (or zeroed).
 #'
 #' @param likelihood_df Data frame -- the `$likelihoods` component returned by
 #'   [evaluate_likelihoods()].  Must contain `observation_id`,
@@ -156,13 +167,10 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
 
   if (nrow(unreferenced_df) == 0L) {
     message(paste0(
-      "unreferenced_df is empty -- dropping all generic unreferenced_species ",
-      "and unreferenced_genus rows (no plausible species to expand into)."
+      "unreferenced_df is empty -- no named species to add; the generic ",
+      "unreferenced_species and unreferenced_genus rows are kept."
     ))
-    return(dplyr::filter(
-      likelihood_df,
-      !hypothesis_type %in% c("unreferenced_species", "unreferenced_genus")
-    ))
+    return(likelihood_df)
   }
 
   # ---- normalise case for matching --------------------------------------------
@@ -194,13 +202,15 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
   n_h2_covered <- 0L # individual species suppressed at H2 (already H1 or genus-rank H1)
   n_h2_obs_covered <- 0L # H2 observations suppressed entirely (genus-rank H1, or all species already H1)
   n_h3_covered <- 0L # individual species suppressed at H3
+  n_h2_generic_kept <- 0L
+  n_h3_generic_kept <- 0L
 
   for (i in seq_along(observation_ids)) {
     sid <- observation_ids[i]
     h2 <- h2_rows[h2_rows$observation_id == sid, , drop = FALSE]
     h3 <- h3_rows[h3_rows$observation_id == sid, , drop = FALSE]
 
-    new_rows <- vector("list", 2L)
+    new_rows <- vector("list", 4L)
 
     # Per-observation H1 coverage sets.
     # Species-level suppression: an unreferenced species is suppressed only if
@@ -230,6 +240,8 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         n_h2_covered <- n_h2_covered + max(nrow(genus_sp_all), 1L)
         n_h2_obs_covered <- n_h2_obs_covered + 1L
       } else {
+        new_rows[[3L]] <- h2[1L, , drop = FALSE] # generic H2 kept
+        n_h2_generic_kept <- n_h2_generic_kept + 1L
         genus_sp <- unref[
           unref$genus_lc == h2_genus_lc &
             (is.na(unref$observation_id) | unref$observation_id == sid), ,
@@ -264,7 +276,6 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
             n_h2_obs_covered <- n_h2_obs_covered + 1L
           }
         }
-        # else: no locally-plausible unreferenced species -- drop the generic H2 row
       }
     }
 
@@ -293,6 +304,8 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         na.rm = TRUE
       )
 
+      new_rows[[4L]] <- h3[1L, , drop = FALSE] # generic H3 kept
+      n_h3_generic_kept <- n_h3_generic_kept + 1L
       if (nrow(family_sp) > 0L) {
         new_rows[[2L]] <- data.frame(
           observation_id        = sid,
@@ -311,30 +324,22 @@ expand_unreferenced_hypotheses <- function(likelihood_df, unreferenced_df) {
         }
         n_h3_species <- n_h3_species + nrow(family_sp)
       }
-      # else: no locally-plausible unreferenced species -- drop the generic H3 row
     }
 
     result_list[[i]] <- dplyr::bind_rows(new_rows)
   }
 
   expanded <- dplyr::bind_rows(result_list)
-  .any_hyp_type <- function(x, hyp_type) {
-    nrow(x) > 0L && any(x$hypothesis_type == hyp_type)
-  }
-  n_h2_generic_dropped <- nrow(h2_rows) -
-    sum(vapply(result_list, .any_hyp_type, logical(1L), hyp_type = "unreferenced_species")) -
-    n_h2_obs_covered
-  n_h3_generic_dropped <- nrow(h3_rows) -
-    sum(vapply(result_list, .any_hyp_type, logical(1L), hyp_type = "unreferenced_genus"))
 
   message(sprintf(
     paste0(
-      "expand_unreferenced_hypotheses: H2 -> %d named species rows ",
-      "(%d generic dropped; %d suppressed -- already H1 or genus-rank H1 covered); ",
-      "H3 -> %d named species rows (%d generic dropped; %d suppressed -- already H1 or genus-rank H1 covered)."
+      "expand_unreferenced_hypotheses: H2 -> %d named species rows plus %d generic ",
+      "row(s) kept (%d observation(s) covered by a genus-rank H1; %d species suppressed ",
+      "as already H1); H3 -> %d named species rows plus %d generic row(s) kept ",
+      "(%d species suppressed as already H1 or genus-rank H1 covered)."
     ),
-    n_h2_species, n_h2_generic_dropped, n_h2_covered,
-    n_h3_species, n_h3_generic_dropped, n_h3_covered
+    n_h2_species, n_h2_generic_kept, n_h2_obs_covered, n_h2_covered,
+    n_h3_species, n_h3_generic_kept, n_h3_covered
   ))
 
   dplyr::bind_rows(h1_rows, expanded)

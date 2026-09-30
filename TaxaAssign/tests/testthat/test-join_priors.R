@@ -721,3 +721,77 @@ test_that("join_priors() reports the join rate per rank", {
   expect_length(rate, 1L)
   expect_match(rate, "species: 2 of 2 candidate taxa matched a prior", fixed = TRUE)
 })
+
+test_that("the redundancy filter never removes unreferenced hypotheses", {
+  # An unsequenced species of Fundulus (genus rank) and an unsequenced genus of
+  # Fundulidae (family rank) compete with the species candidates; they are not
+  # coarser labels for them. A genus-rank SPECIFIC candidate in the same
+  # lineage is still a redundant coarser label and is still removed.
+  lik <- bind_rows(
+    .make_likelihoods(),
+    tibble(
+      observation_id = "ESV_001",
+      taxon_name = c("Fundulus", "Fundulus"),
+      taxon_name_rank = "genus",
+      hypothesis_type = c("unreferenced_species", "specific_candidate"),
+      score_likelihood = c(0.2, 0.15),
+      score_likelihood_mean = c(0.2, 0.15),
+      score_likelihood_sd = 0.02,
+      genus = "Fundulus", family = "Fundulidae", species = NA_character_
+    )
+  )
+  site <- list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+  out <- suppressMessages(suppressWarnings(
+    join_priors(lik, .make_priors(), site = site, backbone_id = 11L)
+  ))
+  types <- paste(out$taxon_name, out$hypothesis_type)
+  expect_true("Fundulus unreferenced_species" %in% types)
+  expect_true("Fundulidae unreferenced_genus" %in% types)
+  expect_false("Fundulus specific_candidate" %in% types)
+  expect_true(all(c("Fundulus parvipinnis", "Fundulus lima") %in% out$taxon_name))
+})
+
+test_that("a blank genus in the taxonomy lookup does not multiply generic rows", {
+  lik <- tibble(
+    observation_id = "ESV_001",
+    taxon_name = c("Fundulus parvipinnis", "Fundulidae"),
+    taxon_name_rank = c("species", "family"),
+    hypothesis_type = c("specific_candidate", "unreferenced_genus"),
+    score_likelihood = c(0.8, 0.1), score_likelihood_mean = c(0.8, 0.1),
+    score_likelihood_sd = 0.02,
+    genus = c("Fundulus", ""), family = "Fundulidae", species = c("Fundulus parvipinnis", "")
+  )
+  # a lookup in which several families have family-level references (genus "")
+  lookup <- tibble(
+    taxon_name = c("Fundulidae", "Salmonidae", "Cottidae", "Fundulus parvipinnis"),
+    genus = c("", "", "", "Fundulus"),
+    family = c("Fundulidae", "Salmonidae", "Cottidae", "Fundulidae"),
+    species = c("", "", "", "Fundulus parvipinnis")
+  )
+  site <- list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+  out <- suppressMessages(suppressWarnings(
+    join_priors(lik, .make_priors(), site = site, taxonomy_lookup = lookup, backbone_id = 11L)
+  ))
+  expect_equal(sum(out$taxon_name == "Fundulidae"), 1L)
+  expect_true(all(is.na(out$genus[out$taxon_name == "Fundulidae"])))
+})
+
+test_that("a genus name shared by two families does not multiply rows", {
+  lik <- tibble(
+    observation_id = "ESV_001",
+    taxon_name = c("Eisenia arborea", "Eisenia fetida", "Eisenia"),
+    taxon_name_rank = c("species", "species", "genus"),
+    hypothesis_type = c("specific_candidate", "specific_candidate", "unreferenced_species"),
+    score_likelihood = c(0.8, 0.3, 0.1), score_likelihood_mean = c(0.8, 0.3, 0.1),
+    score_likelihood_sd = 0.02,
+    genus = "Eisenia",
+    family = c("Lessoniaceae", "Lumbricidae", NA), # a kelp and an earthworm
+    species = c("Eisenia arborea", "Eisenia fetida", NA)
+  )
+  site <- list(grid_id = "Grid_34p1_m119p1", main_habitat = "Estuarine Bay")
+  out <- suppressMessages(suppressWarnings(
+    join_priors(lik, .make_priors(), site = site, backbone_id = 11L)
+  ))
+  expect_equal(nrow(out[out$observation_id == "ESV_001" & out$taxon_name == "Eisenia", ]), 1L)
+  expect_equal(sum(out$taxon_name == "Eisenia arborea"), 1L)
+})

@@ -16,7 +16,8 @@ posterior_consensus(
   downrank_requires_candidate = TRUE,
   group_priors = NULL,
   min_effective_records = 0,
-  taxonomy_cache_dir = NULL
+  taxonomy_cache_dir = NULL,
+  pool_tail = FALSE
 )
 }
 \arguments{
@@ -42,11 +43,9 @@ hypotheses (0.6 + 0.25 = 0.85 < 0.9, so the third is also included:
 0.6 + 0.25 + 0.10 = 0.95 >= 0.9). The LCA of these three hypotheses
 becomes the consensus.}
 
-\item{min_posterior}{Numeric in [0, 1). Minimum individual posterior
-probability to retain a hypothesis. Hypotheses below this threshold are
-excluded before computing the LCA consensus. At 0.05, a hypothesis must
-hold at least 5\% posterior probability to influence the consensus taxon.
-Default 0.05. Set to 0 to disable.}
+\item{min_posterior}{Numeric in [0, 1). Individual posterior below which a
+hypothesis cannot enter the plausible set on its own. Default 0.05. Set to
+0 to disable. What happens to those hypotheses depends on \code{pool_tail}.}
 
 \item{posterior_col}{Character. Name of the posterior column to rank
 hypotheses by. Default \code{"posterior_point_est"}, matching
@@ -153,6 +152,13 @@ precision 0.872) before relying on the result.}
 \code{lookup_missing_taxonomy = TRUE}: answered lookups are cached so a re-run
 reproduces the same labels instead of depending on whether the service
 answered this time. Failed lookups are never cached.}
+
+\item{pool_tail}{Logical. \code{FALSE} (default): hypotheses below
+\code{min_posterior} are excluded and \code{cumulative_threshold} is measured against
+the remaining mass. \code{TRUE}: they form one tail block, the threshold is
+measured against the TOTAL named posterior mass, and the whole block joins
+the plausible set when the hypotheses above the floor fall short. See
+\emph{Details}. \code{tail_mass} is reported either way.}
 }
 \value{
 A dataframe with one row per \code{observation_id}:
@@ -200,8 +206,14 @@ reflects mean posterior mass, \code{consensus_confidence_score} reflects how
 consistently that taxon dominated across simulations.  \code{NA} when
 \code{confidence_score} is absent from \code{posterior_df} (e.g. input from
 \code{\link[=assign_taxa_llm]{assign_taxa_llm()}}) or when \code{consensus_taxon} is \code{NA}.}
-\item{\code{n_plausible}}{Number of hypotheses in the plausible set (0 if
-all hypotheses were excluded).}
+\item{\code{n_plausible}}{Number of hypotheses in the plausible set,
+including the members of a pooled tail block (0 when there is no
+named hypothesis).}
+\item{\code{tail_mass}}{Summed posterior of the hypotheses below
+\code{min_posterior}: how much mass sat in the tail block.}
+\item{\code{tail_pooled}}{\code{TRUE} when the tail block joined the plausible
+set because the hypotheses above \code{min_posterior} held less than
+\code{cumulative_threshold} of the total mass.}
 \item{\code{plausible_taxa}}{List column: character vector of plausible taxon
 names, sorted by descending posterior. Computed BEFORE downranking, so
 for a downranked row it reflects the original coarser-rank plausible
@@ -371,8 +383,10 @@ was performed and found/didn't find a matching group; \code{NA} means
 \description{
 For each \code{observation_id}, identifies the minimal set of top-ranked hypotheses
 that together account for \code{cumulative_threshold} of the named-taxon posterior
-mass (after excluding hypotheses below \code{min_posterior}), then returns their
-lowest common ancestor (LCA) as the consensus taxonomic assignment.
+mass, then returns their lowest common ancestor (LCA) as the consensus
+taxonomic assignment. Hypotheses below \code{min_posterior} are excluded, or,
+with \code{pool_tail = TRUE}, pooled into one tail block that joins the set when
+the hypotheses above it fall short (see \emph{Details}).
 }
 \details{
 \strong{Which hypotheses are included:} All named hypotheses contribute to the
@@ -399,12 +413,25 @@ set \code{lookup_missing_taxonomy = TRUE} to attempt lookup via
 \code{TaxaTools::verify_taxon_names()}.
 
 \strong{Threshold interaction:}
-\code{min_posterior} and \code{cumulative_threshold} work together:
-\code{min_posterior} removes obvious noise hypotheses first (those with
-negligible posterior mass), then \code{cumulative_threshold} selects the
-plausible set from the remainder. Setting \code{min_posterior = 0} disables
-noise filtering; setting it too high (e.g. 0.3) may exclude genuine
-competing hypotheses. \code{cumulative_threshold = 0.9} is analogous to a
+\code{min_posterior} and \code{cumulative_threshold} work together. By
+default the hypotheses below \code{min_posterior} are excluded and the
+plausible set is the smallest top-ranked set holding
+\code{cumulative_threshold} of the REMAINING mass. The excluded mass is
+reported as \code{tail_mass}: a call can rest on a small share of the total
+(a lone hypothesis at 0.13 beside twenty at 0.02--0.03 is reported as a
+species, with \code{tail_mass} 0.87).
+
+With \code{pool_tail = TRUE} the excluded hypotheses are pooled instead:
+the hypotheses above the floor are added until they hold
+\code{cumulative_threshold} of the TOTAL named mass, and when they fall
+short the whole tail block joins the plausible set, so the consensus is the
+LCA of everything in it (\code{tail_pooled = TRUE}). A single noise-level
+hypothesis still cannot coarsen a call on its own, but a flat tail holding
+most of the mass is no longer renormalised away. This changes the meaning of
+the threshold (a call at 0.6 with 0.4 below the floor no longer resolves
+alone), so re-check a validation set before adopting it. Measured on
+CalIntertidal: species calls 544 to 475 on one subset, including 52 calls
+with posterior 0.5--0.9. \code{cumulative_threshold = 0.9} is analogous to a
 90\% credible interval; increase toward 0.95--0.99 for more conservative
 assignments (more upranking to genus/family); decrease to 0.8 for more
 aggressive species-level calls.

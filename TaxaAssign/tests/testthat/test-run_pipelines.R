@@ -19,6 +19,7 @@ mock_match_df <- data.frame(
 # =============================================================================
 
 test_that("run_bayesian_pipeline: rejects invalid constraint_behavior", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   skip_if_not_installed("TaxaLikely")
   expect_error(
     run_bayesian_pipeline(
@@ -34,6 +35,7 @@ test_that("run_bayesian_pipeline: rejects invalid constraint_behavior", {
 })
 
 test_that("run_bayesian_pipeline: rejects match_df with too few rank columns", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   skip_if_not_installed("TaxaLikely")
   # Only one rank column (species) -- needs at least 2
   narrow_df <- data.frame(
@@ -57,6 +59,7 @@ test_that("run_bayesian_pipeline: rejects match_df with too few rank columns", {
 })
 
 test_that("run_bayesian_pipeline: accepts build_priors list and extracts $priors", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   skip_if_not_installed("TaxaLikely")
   # Wrapping a data frame in a list with $priors should be accepted
   priors_df <- data.frame(
@@ -79,6 +82,7 @@ test_that("run_bayesian_pipeline: accepts build_priors list and extracts $priors
 })
 
 test_that("run_bayesian_pipeline: rejects non-data-frame taxaexpect_priors", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   skip_if_not_installed("TaxaLikely")
   # A string gets past the list-extraction check but fails when the pipeline
 
@@ -99,6 +103,7 @@ test_that("run_bayesian_pipeline: rejects non-data-frame taxaexpect_priors", {
 # =============================================================================
 
 test_that("run_llm_pipeline: rejects non-data-frame match_df", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # auto_context = FALSE to avoid triggering LLM calls
   expect_error(
     run_llm_pipeline(
@@ -113,6 +118,7 @@ test_that("run_llm_pipeline: rejects non-data-frame match_df", {
 })
 
 test_that("run_llm_pipeline: rejects match_df missing required columns", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   bad_df <- data.frame(observation_id = "s1", wrong_col = 99)
   expect_error(
     run_llm_pipeline(
@@ -127,6 +133,7 @@ test_that("run_llm_pipeline: rejects match_df missing required columns", {
 })
 
 test_that("run_llm_pipeline: rejects invalid score_threshold", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_error(
     run_llm_pipeline(
       match_df             = mock_match_df,
@@ -141,6 +148,7 @@ test_that("run_llm_pipeline: rejects invalid score_threshold", {
 })
 
 test_that("run_llm_pipeline: rejects non-function non-NULL llm_fn", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_error(
     run_llm_pipeline(
       match_df            = mock_match_df,
@@ -154,6 +162,7 @@ test_that("run_llm_pipeline: rejects non-function non-NULL llm_fn", {
 })
 
 test_that("run_llm_pipeline: NULL llm_fn without TaxaTools gives clear error", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   skip_if(
     requireNamespace("TaxaTools", quietly = TRUE),
     "TaxaTools is installed -- cannot test missing-package path"
@@ -175,6 +184,7 @@ test_that(".resolve_llm_fn: returns user-supplied function unchanged", {
 })
 
 test_that(".resolve_llm_fn: NULL resolves to TaxaTools provider when available", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   skip_if_not_installed("TaxaTools")
   result <- TaxaAssign:::.resolve_llm_fn(NULL, "test")
   expect_true(is.function(result))
@@ -185,6 +195,7 @@ test_that(".resolve_llm_fn: NULL resolves to TaxaTools provider when available",
 # =============================================================================
 
 test_that("run_llm_pipeline: auto_context filters on score_original, not the removed `score` column", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Regression: this call read match_df$score, a column renamed to
   # score_original ecosystem-wide in Session 99. `NULL >= score_threshold` is
   # logical(0), so build_context() always received character(0) and aborted --
@@ -215,6 +226,7 @@ test_that("run_llm_pipeline: auto_context filters on score_original, not the rem
 })
 
 test_that("both wrappers reject report_params names generate_report() does not accept, before any stage runs", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_error(
     run_bayesian_pipeline(
       match_df = data.frame(), model_params = list(), taxaexpect_priors = data.frame(),
@@ -235,6 +247,7 @@ test_that("both wrappers reject report_params names generate_report() does not a
 })
 
 test_that("run_llm_pipeline: data_type must be stated when it detects unreferenced species", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_error(
     run_llm_pipeline(
       match_df = mock_match_df, llm_fn = function(x) "mock",
@@ -259,6 +272,7 @@ test_that("run_llm_pipeline: data_type must be stated when it detects unreferenc
 })
 
 test_that("run_llm_pipeline: data_type reaches suggest_unreferenced_species()", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   skip_if_not_installed("TaxaLikely")
   seen <- NULL
   local_mocked_bindings(

@@ -26,9 +26,16 @@ reasoning from the code) -- see "Real bugs found" below.
 
 ## Added after the review
 
-No new exported functions since the review. 7 new internal helper functions have been
-added since (all in `site_utils.R`, `score_consensus.R`, `kernel_branch.R`, and
-`posterior_consensus.R`).
+One new exported function since the review, `add_unreferenced_prior_mass()`
+(`unreferenced_prior_mass.R`, tests in `test-unreferenced_prior_mass.R`). It gives the
+generic unreferenced hypotheses (an unsequenced relative in the best candidate's genus
+or family) the prior mass of the local species they stand for. That means species
+recorded locally but lacking a reference sequence, added to the dark-diversity floor
+`join_priors()` already assigns them. Without that mass, a posterior normalised over the
+candidates cannot say that none of them is plausible at the site: an out-of-range
+species with a prior of 1e-5 beats hypotheses carrying floors of 3e-6. 7 new internal
+helper functions have also been added since (all in `site_utils.R`, `score_consensus.R`,
+`kernel_branch.R`, and `posterior_consensus.R`).
 
 ------------------------------------------------------------------------
 
@@ -704,6 +711,79 @@ behavior on functions this document already covers above.
   the call is refused when `result` carries multi-site combined priors. Tests
   cover isolation, within-group donation, cross-marker grouping, a hand-computed
   multi-group value, per-group leave-one-out and a composite key.
+
+- `join_priors()` no longer lets `TaxaMatch::filter_redundant_hypotheses()` delete
+  unreferenced hypotheses. That filter removes a coarser row when a finer row of the same
+  lineage exists, so it deleted the generic unsequenced-congener row ("Sardinops",
+  genus) and unsequenced-genus row ("Clupeidae", family) whenever a species candidate of
+  that genus was present. Those rows compete with the candidate; they are not coarser
+  labels for it. The filter still runs, with the unreferenced rows still able to
+  supersede coarser specific candidates, and any unreferenced row it removed is then
+  restored. Measured on the CalIntertidal 12S Government Point join: 9,132 H2 and
+  9,278 H3 rows went in, and 106 and 103 came out. Round-1 posteriors carried a generic
+  row for 2.0% (12S), 39.4% (18S) and 16.3% (COI) of observations. This is post-Step-7,
+  so no likelihood checkpoint is invalidated. Tests: test-join_priors.R (the new test
+  fails on the previous code).
+
+- Blank rank values are treated as missing when a table enters `join_priors()`,
+  `posterior_consensus()`, `score_consensus()`, `compute_group_priors()`,
+  `combine_multisite_priors()` and `add_unreferenced_prior_mass()` (internal
+  `.blank_ranks_to_na()`). Reference taxonomies store an absent genus or species as `""` as
+  well as `NA`; every rank reader tested `is.na()`, so `""` passed as a taxon. In
+  `join_priors()` the genus-to-family fill joined every `genus == ""` row to every family
+  with a `""` genus at the site, multiplying generic rows. Measured in the CalIntertidal
+  three-arm run: 12S 72, 18S 45 and COI 474 groups of identical rows, 100% with a blank
+  genus. `posterior_consensus()` then reported a plausible set of such rows as "unanimous"
+  at species with an empty taxon name (18 COI calls). Tests: test-join_priors.R,
+  test-posterior_consensus.R (both fail on the previous code).
+- `join_priors()` fills family from genus only for genus names that map to a single
+  family. A genus name is not a key: homonyms and reassigned genera (Porella, Eisenia,
+  Mastophora, Dilophus, Halopteris, Prosorhochmus) carry two families, and the join on the
+  bare name gave every row of such a genus one copy per family. After the blank-rank fix,
+  80 over-counted rows at CalIntertidal were all of this kind; 27 genera in the match
+  objects have more than one family. Ambiguous genera are named in a message. Tests:
+  test-join_priors.R (fails on the previous code).
+- `combine_multisite_priors()` counts each site once. Identical repeats of one
+  (observation, candidate, site) row are dropped before combining, with a message
+  giving the count; repeats that disagree stop the call. Combining k copies of one site
+  had divided the logit variance by k and multiplied `n_sites_combined` by k. Measured
+  on the saved CalIntertidal Round 1: 527 rows in 518 observations had
+  `n_sites_combined` above their true site count (18S up to 22x, COI median 90x, up to
+  154x), 177 of them consensus winners. Tests: test-combine_multisite_priors.R (both fail
+  on the previous code).
+- `add_unreferenced_prior_mass()` returns `attr(, "unreferenced_scope_members")`, the
+  species behind each added mass, so each mass can be traced to its members. That list
+  found the next defect: prior tables carry rows for records identified only to genus or
+  family ("Cottidae", "Icelinus") under `taxon_name_rank` "species", and they were summed
+  as if they were unreferenced species. At CalIntertidal Government Point the Cottidae
+  scope held 1.46e-3, 74% of it from the family row itself, against 3.8e-4 from the six
+  real unreferenced cottids. Only binomials are now summed; the excluded rows are counted
+  in `n_coarse_prior_rows_excluded`. Tests: test-unreferenced_prior_mass.R.
+
+- `posterior_consensus(pool_tail = FALSE)` is a new argument; the default keeps the
+  existing rule. With `pool_tail = TRUE`, the hypotheses below `min_posterior` form one
+  tail block: the hypotheses above the floor are added until they hold
+  `cumulative_threshold` of the TOTAL named mass, and when they fall short the whole
+  block joins the plausible set and the consensus is the LCA of everything in it. Under
+  the default rule a hypothesis at 0.13 beside twenty at 0.02-0.03 is the whole
+  plausible set and is reported as a species. Measured on the saved CalIntertidal Round
+  1: 41 of 16,849 species calls had `consensus_posterior` below 0.2. On one CalIntertidal
+  subset, pooling moved species calls from 544 to 475, clearing all 17 low-posterior 18S
+  calls but also 52 calls at 0.5-0.9. That is why it is opt-in. New output columns
+  `tail_mass` (always reported) and `tail_pooled`. Tests: test-posterior_consensus.R
+  (the tail tests use `pool_tail = TRUE`; one asserts the default is unchanged).
+
+- A cross-package `::` call inside a test resolves to whatever build of the sibling
+  package is loaded at that moment, so a test can pass against the INSTALLED sibling while
+  appearing to check the source. `test-integration.R` asserted TaxaLikely's expansion rule
+  through `TaxaLikely::expand_unreferenced_hypotheses()`: it passed alone (installed main
+  build) and failed after TaxaLikely's own tests had loaded the source, as it would have in
+  CI, which installs siblings from the checkout. The fix is structural: each rule is
+  asserted only in the package that owns it, and the integration test checks the hand-off
+  between the packages, which holds whichever build is loaded. Separately, every test that
+  exercises a Monte Carlo path now sets its own seed (19 tests), and each package's test
+  run is also seeded in `setup-seed.R`, so neither prior session state nor a new test
+  added later can shift another test's random stream.
 
 - `assign_taxa_llm()`'s prompt builder no longer lets a missing `lineage` column
   collapse a vector. `ifelse()` returns the length of its TEST, so a length-1

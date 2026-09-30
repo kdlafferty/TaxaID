@@ -158,6 +158,7 @@ test_that(".extract_unreferenced_stats extracts from S3 object", {
 # --- .build_methods_text ------------------------------------------------------
 
 test_that(".build_methods_text produces LLM workflow methods", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   params <- list(
     score_sharpness = 0.1,
     unknown_lik_weight = 0.05,
@@ -188,6 +189,7 @@ test_that(".build_methods_text produces LLM workflow methods", {
 })
 
 test_that(".build_methods_text produces Bayesian workflow methods", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   params <- list(
     n_sims = 1000L,
     cumulative_threshold = 0.9,
@@ -297,6 +299,7 @@ test_that("generate_report validates inputs", {
 })
 
 test_that(".build_methods_text describes kernel + curve priors when flagged (2026-09-01)", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   params <- list(
     n_sims = 1000L, cumulative_threshold = 0.9, min_posterior = 0.05,
     confirmation_quantile = 0.9, confirmation_discount = 0.25
@@ -330,6 +333,7 @@ test_that(".build_methods_text describes kernel + curve priors when flagged (202
 })
 
 test_that(".build_methods_text describes the actual score_transform used (2026-09-06)", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   # Found stale on a real report: the bayesian-workflow likelihood paragraph
   # unconditionally said "logit-transformed" regardless of what
   # train_likelihood_model(score_transform=) was actually set to. Now reads
@@ -364,6 +368,7 @@ test_that(".build_methods_text describes the actual score_transform used (2026-0
 })
 
 test_that("LLM Methods text describes what ran", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   params <- list(
     score_sharpness = 0.1, unknown_lik_weight = 0.05, score_threshold = 80,
     top_n = 10L, prior_phi = c(high = 50, moderate = 10, low = 3),
@@ -389,6 +394,7 @@ test_that("LLM Methods text describes what ran", {
 })
 
 test_that("assign_taxa_llm() records how many known-absent taxa it used", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   md <- data.frame(
     observation_id = "S1", score_original = c(99, 95),
     taxon_name = c("Gobius niger", "Pomatoschistus minutus"),

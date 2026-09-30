@@ -128,3 +128,39 @@ test_that("identify_confident_observations: validates inputs", {
     "missing column"
   )
 })
+
+test_that("identify_confident_observations: a species repeated across sites counts once", {
+  # A prior table stacked across sites lists each species once per site.
+  priors <- data.frame(
+    taxon_name = rep("Genusone speciesa", 3),
+    taxon_name_rank = "species",
+    theta_mean = c(0.5, 0.3, 0.2),
+    grid_id = c("s1", "s2", "s3"),
+    stringsAsFactors = FALSE
+  )
+  match_df <- data.frame(observation_id = "Q1", genus = "Genusone", score_original = 95)
+  out <- identify_confident_observations(match_df, priors)
+  expect_equal(out$confident_genus, "Genusone")
+  expect_equal(out$confident_species, "Genusone speciesa")
+})
+
+test_that("identify_confident_observations: a coarse record labelled species is not a species", {
+  priors <- data.frame(
+    taxon_name = "Cottidae", taxon_name_rank = "species", theta_mean = 0.5,
+    stringsAsFactors = FALSE
+  )
+  match_df <- data.frame(observation_id = "Q1", genus = "Cottidae", score_original = 95)
+  expect_warning(out <- identify_confident_observations(match_df, priors), "no genus")
+  expect_equal(nrow(out), 0L)
+})
+
+test_that("identify_confident_observations: reports how many prior names were not binomials", {
+  priors <- data.frame(
+    taxon_name = c("Genusone speciesa", "Ulva sp.", "Mazzaella cf. splendens", "Cottidae"),
+    taxon_name_rank = "species", theta_mean = 0.5, stringsAsFactors = FALSE
+  )
+  match_df <- data.frame(observation_id = "Q1", genus = "Genusone", score_original = 95)
+  expect_message(out <- identify_confident_observations(match_df, priors), "3 of 4")
+  expect_equal(attr(out, "n_prior_names_not_binomial"), 3L)
+  expect_equal(attr(out, "n_qualifying_genera"), 1L)
+})

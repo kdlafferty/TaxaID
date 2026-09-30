@@ -158,6 +158,7 @@ test_that("a mixed batch (some multi-site, some single-site) handles both correc
 })
 
 test_that("prior_mean is required, not silently NA-filled", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Regression: prior_mean was used (arrange + recomputed on combined rows)
   # but not validated. With mixed multi-/single-site input and no prior_mean
   # column, combined rows got a real value while single-site rows were
@@ -179,6 +180,7 @@ test_that("prior_mean is required, not silently NA-filled", {
 # ---- J-shaped priors (2026-09-12) --------------------------------------------
 
 test_that("all-sites J-shaped priors (dark-diversity floor) combine to finite, positive parameters", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   # The exact real numbers from the first PtConception multi-site run: an
   # unreferenced species at two sites, each at the dark-diversity floor.
   df <- tibble(
@@ -291,4 +293,32 @@ test_that("presence-mixture columns that differ across sites are blanked with a 
   expect_equal(gm$prior_mix_w, 0.2)
   expect_false(".mix_dropped" %in% names(out))
   expect_no_warning(combine_multisite_priors(joined[joined$taxon_name == "Gadus morhua", ]))
+})
+
+test_that("identical repeats of one site are combined once, not as extra sites", {
+  one_site <- data.frame(
+    observation_id = "O1", taxon_name = "Aa one", taxon_name_rank = "species",
+    grid_id = "g1", main_habitat = "Marine",
+    prior_alpha = 2, prior_beta = 8, prior_mean = 0.2,
+    stringsAsFactors = FALSE
+  )
+  other_site <- transform(one_site, grid_id = "g2", prior_alpha = 5, prior_beta = 5, prior_mean = 0.5)
+  clean <- suppressMessages(combine_multisite_priors(rbind(one_site, other_site)))
+  # the same two sites, with site g1 repeated three times
+  dirty <- rbind(one_site, one_site, one_site, other_site)
+  expect_message(out <- combine_multisite_priors(dirty), "identical repeat row")
+  expect_equal(out$n_sites_combined, 2L)
+  expect_equal(out$prior_alpha, clean$prior_alpha)
+  expect_equal(out$prior_beta, clean$prior_beta)
+})
+
+test_that("repeats of one site that disagree stop the call", {
+  a <- data.frame(
+    observation_id = "O1", taxon_name = "Aa one", taxon_name_rank = "species",
+    grid_id = "g1", main_habitat = "Marine",
+    prior_alpha = 2, prior_beta = 8, prior_mean = 0.2,
+    stringsAsFactors = FALSE
+  )
+  b <- transform(a, prior_alpha = 3, prior_mean = 3 / 11, prior_beta = 8)
+  expect_error(combine_multisite_priors(rbind(a, b)), "DIFFERENT priors")
 })

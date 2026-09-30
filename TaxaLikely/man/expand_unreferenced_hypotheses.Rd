@@ -53,8 +53,8 @@ TaxaExpect or TaxaAssign itself.
 After \code{\link[=evaluate_likelihoods]{evaluate_likelihoods()}}, the \code{"unreferenced_species"}
 hypothesis is labelled at genus level (e.g. \code{taxon_name = "Fundulus"},
 \code{taxon_name_rank = "genus"}) and the \code{"unreferenced_genus"} hypothesis at
-family level.  This function replaces those generic rows with one named
-row per plausible unreferenced species, enabling
+family level.  This function adds one named row per plausible
+unreferenced species next to those generic rows, enabling
 \code{\link[TaxaAssign:compute_posterior]{TaxaAssign::compute_posterior()}} to join them directly to species-level
 priors from TaxaExpect.
 \subsection{Expansion rules (applied per \code{observation_id})}{
@@ -74,8 +74,17 @@ Unreferenced species whose family matches that label, whose genus
 differs from the H2 genus, \emph{and} that are not already a
 species-level H1 \code{specific_candidate} (or whose genus is covered by a
 genus-rank H1), receive the H3 likelihood values.
-\item If no named species are found for the H2 genus (none are locally
-plausible), the generic H2 row is dropped.  Likewise for H3.
+\item The generic H2 and H3 rows are kept alongside the named rows.
+The named rows cover unreferenced species recorded locally; the generic
+row stands for species of that genus or family that are neither
+referenced nor recorded, which is the unrecorded share the
+dark-diversity floor prices in \code{\link[TaxaAssign:join_priors]{TaxaAssign::join_priors()}}. Dropping it
+whenever no named species exists would read "no occurrence record" as
+"absent". The one exception is a genus already represented by a
+genus-rank \code{specific_candidate}: that candidate covers the whole genus,
+so neither the generic H2 row nor named congeners are added.
+\code{TaxaAssign::add_unreferenced_prior_mass()} excludes the named rows
+from the generic row's added mass, so nothing is counted twice.
 }
 }
 
@@ -108,8 +117,10 @@ select \code{species}, \code{genus}, \code{family}.
 
 \subsection{Pipeline order}{
 
-Run \emph{before} \code{\link[=apply_coverage_constraints]{apply_coverage_constraints()}}: coverage
-constraints must see the named rows, not the generic genus/family rows.
+Run \emph{before} \code{\link[=apply_coverage_constraints]{apply_coverage_constraints()}}. That function matches
+its genus census against genus-rank \code{unreferenced_species} rows, so it
+acts on the kept generic H2 row: a genus whose census is complete has no
+unsequenced species, and its generic row is relabelled (or zeroed).
 }
 }
 \note{

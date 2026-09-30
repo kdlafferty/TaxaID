@@ -151,6 +151,8 @@ compute_group_priors <- function(taxaexpect_priors,
       cli::cli_abort("Column {.field {col}} not found in {.arg taxaexpect_priors}.")
     }
   }
+  taxonomy_map <- .blank_ranks_to_na(taxonomy_map, unique(c(rank_cols, taxon_col,
+    "kingdom", "phylum", "class", "order", "family", "genus", "species")))
   if (!taxon_col %in% names(taxonomy_map)) {
     cli::cli_abort("Column {.field {taxon_col}} not found in {.arg taxonomy_map}.")
   }
