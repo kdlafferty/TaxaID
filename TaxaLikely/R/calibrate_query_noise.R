@@ -223,7 +223,18 @@ identify_confident_observations <- function(match_df,
 #' constant form exactly, so it degrades to "constant offset" when the
 #' per-species structure *does* transfer (`slope -> 1`) and to "one pooled
 #' inference location for all species" when it does not (`slope -> 0`, the real
-#' 12S case). Only the H1 mean *location* is remapped; the H2/H3
+#' 12S case). The slope is NOT constrained to \[0, 1\]. A negative slope means
+#' the observed query score falls as the trained mean rises, so the remap
+#' reverses the order of the species' expected scores; a slope above 1 stretches
+#' it. On real COI data (California intertidal, two sequencing platforms fitted
+#' separately) the fitted slope was negative on both platforms (-11 to -67,
+#' depending on the confident set). Held-out tests supported it: holding out
+#' whole families, the unconstrained line predicted the observed scores of unseen
+#' species better than a single pooled location (weighted RMSE 0.18 vs 0.20 and
+#' 0.13 vs 0.16), and controlling for each species' number of reference
+#' sequences left the slope almost unchanged. The cause is not established. On
+#' 18S the fitted slope was positive and did no better than the pooled location.
+#' Inspect `$Query_Calibration$slope` rather than assuming it lies in \[0, 1\]. Only the H1 mean *location* is remapped; the H2/H3
 #' congener-divergence deltas (defined relative to the H1 mean) and the gap
 #' feature -- the structure that actually discriminates between candidate
 #' species -- are untouched.
