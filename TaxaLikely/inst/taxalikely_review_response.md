@@ -1076,3 +1076,10 @@ on functions this document already covers above.
   binomials ("Ulva sp.", "Mazzaella cf. splendens", family-only rows) and were not counted,
   in a message and as attributes. Tests: test-identify-confident-observations.R (the two
   behaviour tests fail on the previous code).
+- `calibrate_query_noise()` documentation: the `offset_form = "linear"` slope is not
+  constrained to [0, 1], though the text implied it. On real COI data it fits negative on
+  both platforms. Held-out tests support the negative fit: family-block cross-validation
+  favours it over a single pooled location, and controlling for reference-sequence count
+  leaves it almost unchanged. The documentation now says so, and says the cause is not
+  established. No change to the model; a bound to [0, 1] was tried and withdrawn because
+  it predicted held-out COI species worse.
