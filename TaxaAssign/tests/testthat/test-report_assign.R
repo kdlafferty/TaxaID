@@ -2,6 +2,7 @@
 # Tests for report_assign()
 
 test_that("report_assign works with posterior consensus", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   result <- data.frame(
     observation_id = rep(paste0("S", 1:5), each = 2),
     taxon_name = rep(c("Sp A", "Sp B"), 5),

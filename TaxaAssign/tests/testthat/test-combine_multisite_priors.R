@@ -179,6 +179,7 @@ test_that("prior_mean is required, not silently NA-filled", {
 # ---- J-shaped priors (2026-09-12) --------------------------------------------
 
 test_that("all-sites J-shaped priors (dark-diversity floor) combine to finite, positive parameters", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   # The exact real numbers from the first PtConception multi-site run: an
   # unreferenced species at two sites, each at the dark-diversity floor.
   df <- tibble(

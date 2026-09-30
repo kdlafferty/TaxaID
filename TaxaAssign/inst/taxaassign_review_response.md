@@ -773,6 +773,18 @@ behavior on functions this document already covers above.
   `tail_mass` (always reported) and `tail_pooled`. Tests: test-posterior_consensus.R
   (the tail tests use `pool_tail = TRUE`; one asserts the default is unchanged).
 
+- A cross-package `::` call inside a test resolves to whatever build of the sibling
+  package is loaded at that moment, so a test can pass against the INSTALLED sibling while
+  appearing to check the source. `test-integration.R` asserted TaxaLikely's expansion rule
+  through `TaxaLikely::expand_unreferenced_hypotheses()`: it passed alone (installed main
+  build) and failed after TaxaLikely's own tests had loaded the source, as it would have in
+  CI, which installs siblings from the checkout. The fix is structural: each rule is
+  asserted only in the package that owns it, and the integration test checks the hand-off
+  between the packages, which holds whichever build is loaded. Separately, every test that
+  exercises a Monte Carlo path now sets its own seed (19 tests), and each package's test
+  run is also seeded in `setup-seed.R`, so neither prior session state nor a new test
+  added later can shift another test's random stream.
+
 - `assign_taxa_llm()`'s prompt builder no longer lets a missing `lineage` column
   collapse a vector. `ifelse()` returns the length of its TEST, so a length-1
   `lineage` made the `ifelse()` below it length 1 regardless of how many taxa

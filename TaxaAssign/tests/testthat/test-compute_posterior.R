@@ -68,6 +68,7 @@ make_test_df <- function() {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior returns correct structure with Beta priors", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   df <- make_test_df()
   result <- compute_posterior(df, n_sims = 500L)
 
@@ -108,6 +109,7 @@ test_that("compute_posterior returns correct structure with Beta priors", {
 # ---------------------------------------------------------------------------
 
 test_that("Beta priors propagate uncertainty into posterior_sd", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   df <- make_test_df()
   result <- compute_posterior(df, n_sims = 1000L)
 
@@ -120,6 +122,7 @@ test_that("Beta priors propagate uncertainty into posterior_sd", {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior with no alpha/beta treats priors as fixed", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   df <- make_test_df() |> dplyr::select(-prior_alpha, -prior_beta)
 
   # Also set score_likelihood_sd to 0 so there's no uncertainty at all
@@ -135,6 +138,7 @@ test_that("compute_posterior with no alpha/beta treats priors as fixed", {
 # ---------------------------------------------------------------------------
 
 test_that("MC runs for likelihood uncertainty even without Beta priors", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   df <- make_test_df() |> dplyr::select(-prior_alpha, -prior_beta)
   result <- suppressMessages(compute_posterior(df, n_sims = 500L))
 
@@ -481,6 +485,7 @@ test_that("non-mixture rows are unaffected by the presence of mixture columns", 
 })
 
 test_that("prior_mix_w outside [0,1] errors", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   df <- .make_mix_df(w = 0.5)
   df$prior_mix_w[2] <- 1.5
   expect_error(suppressMessages(compute_posterior(df, n_sims = 10)), "prior_mix_w")

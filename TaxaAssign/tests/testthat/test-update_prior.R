@@ -264,6 +264,7 @@ test_that("prior_alpha/prior_beta are recomputed consistently with a boosted pri
 })
 
 test_that("even maximal support keeps the prior strictly inside (0, 1) with a valid Beta", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   # Under the hard design, a donor at consensus_posterior = 1.0 could
   # substitute exactly 1.0 and (pre-clamp) produce prior_beta = 0, which
   # compute_posterior() rejects (Session 152 bug). The soft saturation can
@@ -569,6 +570,7 @@ test_that("never-demote still holds under rescaling", {
 })
 
 test_that("a presence-mixture row has prior_mix_w updated (not cleared) by soft support", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   res <- .make_result()
   mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
   res$prior_mean[mixify] <- 1e-4 + (0.02 - 1e-4) * 0.5 # blend at w = 0.5
@@ -602,6 +604,7 @@ test_that("a presence-mixture row has prior_mix_w updated (not cleared) by soft 
 })
 
 test_that("mixture re-moment-match includes prior_mix_var_present/_absent when supplied (2026-09-05, finding A4)", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   # Same fixture as above, but with real (non-zero) within-state variance at
   # the present/absent anchors -- as a real blend-mode
   # apply_undetected_evidence() row now carries. Reproducing v_mix WITHOUT
@@ -640,6 +643,7 @@ test_that("mixture re-moment-match includes prior_mix_var_present/_absent when s
 })
 
 test_that("mixture w-update is capped at prior_mix_veto_bound, never exceeds it (2026-09-05, finding B2)", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   res <- .make_result()
   mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
   res$prior_mean[mixify] <- 1e-4 + (0.02 - 1e-4) * 0.5
@@ -670,6 +674,7 @@ test_that("mixture w-update is capped at prior_mix_veto_bound, never exceeds it 
 })
 
 test_that("mixture w-update is NOT capped when prior_mix_veto_bound is NA or the column is absent", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   res <- .make_result()
   mixify <- res$observation_id == "S2" & res$taxon_name == "Sp_A"
   res$prior_mean[mixify] <- 1e-4 + (0.02 - 1e-4) * 0.5

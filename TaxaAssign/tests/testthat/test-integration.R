@@ -79,6 +79,7 @@ test_that("TaxaTools::detect_ranks on match_df yields valid rank_system", {
 # ==============================================================================
 
 test_that("TaxaLikely likelihood columns feed into compute_posterior", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   # Simulate evaluate_likelihoods output
   lik <- tibble(
     observation_id = rep("ESV_001", 3),
@@ -119,6 +120,7 @@ test_that("TaxaLikely likelihood columns feed into compute_posterior", {
 # ==============================================================================
 
 test_that("Full posterior pipeline: compute -> consensus -> empirical Bayes -> final consensus", {
+  set.seed(1) # simulation path: seeded here so other tests cannot shift its stream
   # Two samples, clear winner in S1, ambiguous in S2
   input <- bind_rows(
     tibble(
