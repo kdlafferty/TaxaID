@@ -51,6 +51,7 @@ error_llm <- function(prompt_str) stop("API unavailable")
 # ---- Core correctness -------------------------------------------------------
 
 test_that("returns a data frame with required columns", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm, pause_seconds = 0)
   expect_s3_class(result, "data.frame")
   expected_cols <- c(
@@ -64,18 +65,21 @@ test_that("returns a data frame with required columns", {
 })
 
 test_that("posteriors per observation_id sum to 1", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm, pause_seconds = 0)
   totals <- tapply(result$posterior_point_est, result$observation_id, sum)
   expect_equal(as.vector(totals), c(1, 1), tolerance = 1e-9)
 })
 
 test_that("unreferenced_family row is present for each observation_id", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm, pause_seconds = 0)
   unk <- result[result$hypothesis_type == "unreferenced_family", ]
   expect_equal(nrow(unk), 2)
 })
 
 test_that("score_threshold filters candidates", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Threshold 95 keeps only S1 score-99 and S2 score-100 -> 1 named candidate + unknown
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
@@ -86,6 +90,7 @@ test_that("score_threshold filters candidates", {
 })
 
 test_that("score_sharpness = 0 gives uniform likelihoods for named candidates", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     score_sharpness = 0, score_threshold = 0,
@@ -98,6 +103,7 @@ test_that("score_sharpness = 0 gives uniform likelihoods for named candidates", 
 # ---- LLM call count ---------------------------------------------------------
 
 test_that("one LLM call is made when taxa fit in one batch", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   calls <- 0L
   counting_llm <- function(p) {
     calls <<- calls + 1L
@@ -109,6 +115,7 @@ test_that("one LLM call is made when taxa fit in one batch", {
 })
 
 test_that("taxa_per_call splits taxon list into multiple calls", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   calls <- 0L
   counting_llm <- function(p) {
     calls <<- calls + 1L
@@ -123,6 +130,7 @@ test_that("taxa_per_call splits taxon list into multiple calls", {
 })
 
 test_that("posteriors sum to 1 with taxa_per_call batching", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     taxa_per_call = 2, pause_seconds = 0
@@ -132,6 +140,7 @@ test_that("posteriors sum to 1 with taxa_per_call batching", {
 })
 
 test_that("context_group creates one LLM call per unique group", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   calls <- 0L
   counting_llm <- function(p) {
     calls <<- calls + 1L
@@ -150,6 +159,7 @@ test_that("context_group creates one LLM call per unique group", {
 })
 
 test_that("shared context_group makes one LLM call", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   calls <- 0L
   counting_llm <- function(p) {
     calls <<- calls + 1L
@@ -168,6 +178,7 @@ test_that("shared context_group makes one LLM call", {
 })
 
 test_that("posteriors sum to 1 for each sample when context_group creates two groups", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   ctx <- data.frame(
     observation_id = c("S1", "S2"),
     ecoregion = c("Region A", "Region B"),
@@ -185,6 +196,7 @@ test_that("posteriors sum to 1 for each sample when context_group creates two gr
 # ---- Prompt content ---------------------------------------------------------
 
 test_that("prompt contains all unique taxa across samples", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   captured <- character(0)
   capture_llm <- function(p) {
     captured <<- p
@@ -199,6 +211,7 @@ test_that("prompt contains all unique taxa across samples", {
 })
 
 test_that("prompt contains PRIOR WEIGHT RULES section", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   captured <- character(0)
   capture_llm <- function(p) {
     captured <<- p
@@ -211,6 +224,7 @@ test_that("prompt contains PRIOR WEIGHT RULES section", {
 })
 
 test_that("broadcast context appears in prompt", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   captured <- character(0)
   capture_llm <- function(p) {
     captured <<- p
@@ -227,6 +241,7 @@ test_that("broadcast context appears in prompt", {
 # ---- Fallback behaviour -----------------------------------------------------
 
 test_that("broken JSON falls back to uniform prior with warning", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_warning(
     result <- assign_taxa_llm(make_match_df(),
       llm_fn = broken_llm,
@@ -240,6 +255,7 @@ test_that("broken JSON falls back to uniform prior with warning", {
 })
 
 test_that("erroring llm_fn falls back to uniform prior with warning", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_warning(
     result <- assign_taxa_llm(make_match_df(),
       llm_fn = error_llm,
@@ -255,6 +271,7 @@ test_that("erroring llm_fn falls back to uniform prior with warning", {
 # ---- Context handling -------------------------------------------------------
 
 test_that("broadcast context (no observation_id col) works", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   ctx <- data.frame(ecoregion = "California Coast", habitat = "estuarine")
   result <- assign_taxa_llm(make_match_df(),
     context = ctx, llm_fn = stub_llm,
@@ -264,6 +281,7 @@ test_that("broadcast context (no observation_id col) works", {
 })
 
 test_that("per-sample context (with observation_id col) works", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   ctx <- data.frame(
     observation_id = c("S1", "S2"),
     ecoregion = c("California Coast", "California Coast"),
@@ -279,11 +297,13 @@ test_that("per-sample context (with observation_id col) works", {
 # ---- Geographic reasoning ---------------------------------------------------
 
 test_that("range_status column is present in output", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm, pause_seconds = 0)
   expect_true("range_status" %in% names(result))
 })
 
 test_that("range_status is populated for taxa the LLM returned", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(), llm_fn = stub_llm, pause_seconds = 0)
   named_filled <- result[!is.na(result$taxon_name) &
     !is.na(result$range_status), ]
@@ -293,6 +313,7 @@ test_that("range_status is populated for taxa the LLM returned", {
 })
 
 test_that("range_status is NA for named taxa when LLM falls back to uniform prior", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- suppressWarnings(
     assign_taxa_llm(make_match_df(), llm_fn = broken_llm, pause_seconds = 0)
   )
@@ -303,12 +324,14 @@ test_that("range_status is NA for named taxa when LLM falls back to uniform prio
 # ---- Input validation -------------------------------------------------------
 
 test_that("invalid match_df raises informative error", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_error(assign_taxa_llm(data.frame(x = 1), llm_fn = stub_llm),
     regexp = "missing required"
   )
 })
 
 test_that("all-equal scores do not trigger NaN from exp overflow", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   df <- make_match_df()
   df$score_original <- 100
   expect_no_error(assign_taxa_llm(df, llm_fn = stub_llm, pause_seconds = 0))
@@ -317,6 +340,7 @@ test_that("all-equal scores do not trigger NaN from exp overflow", {
 # ---- Unreferenced taxa -------------------------------------------------------------
 
 test_that("unreferenced congener appears in output and is marked unreferenced_species", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     unreferenced_taxa = "Eucyclogobius pattersoni",
@@ -329,6 +353,7 @@ test_that("unreferenced congener appears in output and is marked unreferenced_sp
 })
 
 test_that("unreferenced species from unrelated genus is excluded", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     unreferenced_taxa = "Salmo salar",
@@ -338,6 +363,7 @@ test_that("unreferenced species from unrelated genus is excluded", {
 })
 
 test_that("posteriors sum to 1 with unreferenced taxa", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     unreferenced_taxa = "Eucyclogobius pattersoni",
@@ -348,6 +374,7 @@ test_that("posteriors sum to 1 with unreferenced taxa", {
 })
 
 test_that("unreferenced species likelihood equals median of referenced congener likelihoods", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     unreferenced_taxa = "Eucyclogobius pattersoni",
@@ -362,6 +389,7 @@ test_that("unreferenced species likelihood equals median of referenced congener 
 })
 
 test_that("unreferenced species already in candidates is not duplicated", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     unreferenced_taxa = "Eucyclogobius newberryi",
@@ -374,6 +402,7 @@ test_that("unreferenced species already in candidates is not duplicated", {
 })
 
 test_that("prompt contains [no reference sequence] label for unreferenced species", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   captured <- character(0)
   capture_llm <- function(p) {
     captured <<- p
@@ -420,6 +449,7 @@ make_fam_unref <- function(species, family_name) {
 }
 
 test_that("family-level unreferenced taxon (genus absent, family present) appears in output as unreferenced_genus", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Gobioides genus not in candidates; Gobiidae IS represented
   unreferenced_taxa <- make_fam_unref("Gobioides broussonnetii", "Gobiidae")
   result <- assign_taxa_llm(make_match_df_taxon(),
@@ -433,6 +463,7 @@ test_that("family-level unreferenced taxon (genus absent, family present) appear
 })
 
 test_that("family-level unreferenced taxon from family absent in candidates is excluded", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Centrarchidae not in candidates (Gobiidae only)
   unreferenced_taxa <- make_fam_unref("Lepomis macrochirus", "Centrarchidae")
   result <- assign_taxa_llm(make_match_df_taxon(),
@@ -443,6 +474,7 @@ test_that("family-level unreferenced taxon from family absent in candidates is e
 })
 
 test_that("posteriors sum to 1 with family-level unreferenced taxa", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   unreferenced_taxa <- make_fam_unref("Gobioides broussonnetii", "Gobiidae")
   result <- assign_taxa_llm(make_match_df_taxon(),
     llm_fn = stub_llm,
@@ -453,6 +485,7 @@ test_that("posteriors sum to 1 with family-level unreferenced taxa", {
 })
 
 test_that("unreferenced species with genus in ref_genera is congener (unreferenced_species) even if in unreferenced_family_map", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Eucyclogobius IS a ref genus -> goes through congener path, not family path
   unreferenced_taxa <- make_fam_unref("Eucyclogobius pattersoni", "Gobiidae")
   result <- assign_taxa_llm(make_match_df_taxon(),
@@ -466,6 +499,7 @@ test_that("unreferenced species with genus in ref_genera is congener (unreferenc
 })
 
 test_that("match_df without family column ignores unreferenced_family_map", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # make_match_df() has no family/genus columns -- should not error, family-level
   # unreferenced taxa are silently skipped, congener unreferenced taxa still work
   unreferenced_taxa <- make_fam_unref("Gobioides broussonnetii", "Gobiidae")
@@ -478,6 +512,7 @@ test_that("match_df without family column ignores unreferenced_family_map", {
 })
 
 test_that("family-level unreferenced taxon prompt label [no reference sequence] present", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   captured <- character(0)
   capture_llm <- function(p) {
     captured <<- p
@@ -495,6 +530,7 @@ test_that("family-level unreferenced taxon prompt label [no reference sequence] 
 # ---- known_present / known_absent -------------------------------------------
 
 test_that("known_present appears in prompt under Survey context", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   captured <- character(0)
   capture_llm <- function(p) {
     captured <<- p
@@ -510,6 +546,7 @@ test_that("known_present appears in prompt under Survey context", {
 })
 
 test_that("known_absent appears in prompt under Survey context", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   captured <- character(0)
   capture_llm <- function(p) {
     captured <<- p
@@ -525,6 +562,7 @@ test_that("known_absent appears in prompt under Survey context", {
 })
 
 test_that("absent species prior is suppressed by (1 - detection_prob)", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Gillichthys mirabilis is a candidate in make_match_df(); mark absent p=0.9
   result_plain <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
@@ -548,6 +586,7 @@ test_that("absent species prior is suppressed by (1 - detection_prob)", {
 })
 
 test_that("absent species prior suppression scales with detection_prob", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   make_result <- function(pd) {
     assign_taxa_llm(make_match_df(),
       llm_fn = stub_llm,
@@ -569,6 +608,7 @@ test_that("absent species prior suppression scales with detection_prob", {
 })
 
 test_that("posteriors still sum to 1 after absence suppression", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     known_absent = "Gillichthys mirabilis",
@@ -579,6 +619,7 @@ test_that("posteriors still sum to 1 after absence suppression", {
 })
 
 test_that("absent species not in candidates is silently ignored in suppression", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Salmo salar is not in make_match_df(); should not error
   expect_no_error(
     assign_taxa_llm(make_match_df(),
@@ -590,6 +631,7 @@ test_that("absent species not in candidates is silently ignored in suppression",
 })
 
 test_that("known_absent as plain character vector uses absent_detection_prob default", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   r_default <- assign_taxa_llm(make_match_df(),
     llm_fn = stub_llm,
     known_absent = "Gillichthys mirabilis",
@@ -612,6 +654,7 @@ test_that("known_absent as plain character vector uses absent_detection_prob def
 })
 
 test_that("invalid known_present raises error", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_error(
     assign_taxa_llm(make_match_df(),
       llm_fn = stub_llm,
@@ -622,6 +665,7 @@ test_that("invalid known_present raises error", {
 })
 
 test_that("known_absent data frame without taxon_name column raises error", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   expect_error(
     assign_taxa_llm(make_match_df(),
       llm_fn = stub_llm,
@@ -635,6 +679,7 @@ test_that("known_absent data frame without taxon_name column raises error", {
 # ---- LLM response robustness ------------------------------------------------
 
 test_that("a repeated taxon_name in the LLM response does not duplicate hypothesis rows", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Regression: .parse_taxa_response() passed duplicates straight through, so
   # .merge_llm_priors()'s left_join(by = "taxon_name") fanned out and that
   # taxon competed as two identical rows, taking roughly double its share of
@@ -689,6 +734,7 @@ weighted_llm <- function(weights) {
 }
 
 test_that("priors do not depend on how the taxon list is split into batches", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Regression: each batch was normalised by its own sum, so a lone
   # implausible taxon in a small final batch got prior 1/1 and won.
   md <- data.frame(
@@ -719,6 +765,7 @@ test_that("priors do not depend on how the taxon list is split into batches", {
 })
 
 test_that("a failed batch takes the median weight of the batches that answered", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   md <- data.frame(
     observation_id = "A", score_original = 99,
     taxon_name = c("Aaa one", "Bbb two", "Ccc three"),
@@ -741,6 +788,7 @@ test_that("a failed batch takes the median weight of the batches that answered",
 })
 
 test_that("prompt lines carry each taxon's higher lineage", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   md <- data.frame(
     observation_id = "A", score_original = c(99, 95),
     taxon_name = c("Vertebrata lanosa", "Polysiphonia stricta"),
@@ -775,6 +823,7 @@ test_that("prompt lines carry each taxon's higher lineage", {
 })
 
 test_that("the prompt offers a transported range status with its own band", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   md <- data.frame(
     observation_id = "A", score_original = 99,
     taxon_name = c("Salmo salar", "Oncorhynchus mykiss"),
@@ -793,6 +842,7 @@ test_that("the prompt offers a transported range status with its own band", {
 })
 
 test_that("a prior_weight_guide without transported gets the default band", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   old_guide <- list(
     native_expected = c(0.5, 1.0), native_occasional = c(0.03, 0.15),
     native_unlikely = c(0.003, 0.03), nearby_expected = c(0.05, 0.3),
@@ -814,6 +864,7 @@ test_that("a prior_weight_guide without transported gets the default band", {
 })
 
 test_that("cache_dir serves a repeated prompt without calling the LLM", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   dir <- tempfile("llmcache") # R removes its session temp dir on exit
   md <- data.frame(
     observation_id = "A", score_original = c(99, 95),
@@ -842,6 +893,7 @@ test_that("cache_dir serves a repeated prompt without calling the LLM", {
 })
 
 test_that("cache_dir never stores an incomplete answer", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   dir <- tempfile("llmcache") # R removes its session temp dir on exit
   md <- data.frame(
     observation_id = "A", score_original = c(99, 95),
@@ -863,6 +915,7 @@ test_that("cache_dir never stores an incomplete answer", {
 })
 
 test_that("a taxon the LLM omits keeps a non-zero prior", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Regression: the unknown row's placeholder 0 was counted in the fill
   # minimum, so an omitted taxon got prior 0 (posterior 0) with
   # prior_phi = NULL, and aborted compute_posterior() otherwise.

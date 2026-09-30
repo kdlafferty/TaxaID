@@ -107,6 +107,7 @@ test_that("build_context falls back to consensus when synthesis fails", {
 })
 
 test_that("geographic_hint reaches the assign_taxa_llm() prompt", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   ctx <- build_context(
     taxon_names     = c("Sebastes mystinus", "Gadus morhua"),
     geographic_hint = "Point Conception, California (34.45 N, 120.47 W)",

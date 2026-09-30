@@ -394,6 +394,7 @@ test_that("LLM Methods text describes what ran", {
 })
 
 test_that("assign_taxa_llm() records how many known-absent taxa it used", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   md <- data.frame(
     observation_id = "S1", score_original = c(99, 95),
     taxon_name = c("Gobius niger", "Pomatoschistus minutus"),

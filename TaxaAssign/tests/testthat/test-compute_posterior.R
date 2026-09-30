@@ -151,6 +151,7 @@ test_that("MC runs for likelihood uncertainty even without Beta priors", {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior with n_sims = 0 uses point estimate path only", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   df <- make_test_df()
   result <- compute_posterior(df, n_sims = 0L)
 
@@ -171,6 +172,7 @@ test_that("compute_posterior with n_sims = 0 uses point estimate path only", {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior errors informatively on missing required columns", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   df_bad <- make_test_df() |> dplyr::select(-score_likelihood_sd, -prior_mean)
 
   expect_error(compute_posterior(df_bad), regexp = "score_likelihood_sd|prior_mean")
@@ -181,6 +183,7 @@ test_that("compute_posterior errors informatively on missing required columns", 
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior replaces NA score_likelihood_sd with 0 and warns", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   df <- make_test_df()
   df$score_likelihood_sd[c(1L, 4L)] <- NA
 
@@ -196,6 +199,7 @@ test_that("compute_posterior replaces NA score_likelihood_sd with 0 and warns", 
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior assigns posterior = 1 when only one hypothesis", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   df <- dplyr::tibble(
     observation_id = "Solo",
     taxon_name = "Gadus morhua",
@@ -216,6 +220,7 @@ test_that("compute_posterior assigns posterior = 1 when only one hypothesis", {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior output is sorted by observation_id asc then posterior_mean desc", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   result <- compute_posterior(make_test_df(), n_sims = 0L)
 
   sorted_check <- result |>
@@ -233,6 +238,7 @@ test_that("compute_posterior output is sorted by observation_id asc then posteri
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior errors when only one of alpha/beta is present", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   df_alpha_only <- make_test_df() |> dplyr::select(-prior_beta)
   expect_error(compute_posterior(df_alpha_only), regexp = "prior_alpha.*prior_beta")
 
@@ -245,6 +251,7 @@ test_that("compute_posterior errors when only one of alpha/beta is present", {
 # ---------------------------------------------------------------------------
 
 test_that("compute_posterior errors on non-positive alpha/beta", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   df <- make_test_df()
   df$prior_alpha[1] <- 0
   expect_error(compute_posterior(df), regexp = "non-positive")

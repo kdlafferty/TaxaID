@@ -158,6 +158,7 @@ test_that("a mixed batch (some multi-site, some single-site) handles both correc
 })
 
 test_that("prior_mean is required, not silently NA-filled", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   # Regression: prior_mean was used (arrange + recomputed on combined rows)
   # but not validated. With mixed multi-/single-site input and no prior_mean
   # column, combined rows got a real value while single-site rows were

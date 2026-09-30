@@ -200,6 +200,7 @@ test_that("Full posterior pipeline: compute -> consensus -> empirical Bayes -> f
 # ==============================================================================
 
 test_that("expand_unreferenced output feeds into compute_posterior and score_consensus", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   skip_if_not_installed("TaxaLikely")
   # H1 is Atherinops affinis (Atherinopsidae) -- different genus from H2 (Fundulus),
   # so H2 expansion fires and produces Fundulus parvipinnis.

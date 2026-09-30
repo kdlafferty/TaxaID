@@ -176,6 +176,7 @@ test_that("presence-mixture columns are cleared on rows that gain mass", {
 })
 
 test_that("smoke: an implausible candidate no longer wins once relatives carry their mass", {
+  set.seed(1) # may simulate (n_sims defaults to 1000): seeded so other tests cannot shift its stream
   j <- .upm_joined()
   before <- suppressMessages(compute_posterior(j, n_sims = 0))
   after <- suppressMessages(compute_posterior(
