@@ -546,6 +546,11 @@ on functions this document already covers above.
 
 - `verify_removal_candidates()` roxygen corrected so the documented behaviour
   matches the code. No behavioural change.
+- `refine_reference_verdicts()` now refines only accessions the evaluation actually
+  evaluated (non-NA `hierarchy_flag`), and only with pair-cache rows cast under the same
+  `params_key`. It previously matched pair rows on accession alone, so stale rows left by
+  an earlier run gave never-evaluated accessions trust verdicts with no evidence behind
+  them -- 159 "remove" verdicts on a CaliforniaIntertidal 18S screen.
 - `blast_sequences()` gains `num_threads` and `word_size` (local only). Local
   searches ran on one core; `NULL` now uses every core but one (identical
   output). `word_size` is passed to `blastn -word_size`. A local search now

@@ -802,10 +802,20 @@ refine_reference_verdicts <- function(evaluation,
   }
 
   acc <- evaluation$accession
-  pairs <- pair_table[pair_table$id_x %in% acc & pair_table$id_x != pair_table$id_y,
-    needed,
-    drop = FALSE
-  ]
+  # Only an accession this evaluation actually evaluated is refined. A row
+  # whose hierarchy_flag is NA (set aside, fetch failed, not yet screened)
+  # has no verdict to refine, and pair rows left in the cache by some other
+  # run must not manufacture one: absence of evaluation is not evidence.
+  evaluated <- acc[!is.na(evaluation$hierarchy_flag)]
+  keep <- pair_table$id_x %in% evaluated & pair_table$id_x != pair_table$id_y
+  # And only votes cast under the same screen settings as this accession's
+  # own verdict, when both carry a params_key.
+  if ("params_key" %in% names(pair_table) && "params_key" %in% names(evaluation)) {
+    ev_key <- evaluation$params_key[match(pair_table$id_x, acc)]
+    keep <- keep & (is.na(ev_key) | is.na(pair_table$params_key) |
+      pair_table$params_key == ev_key)
+  }
+  pairs <- pair_table[keep, needed, drop = FALSE]
 
   # Unrefined values are the fallback for every accession with no pair rows,
   # and the starting point of the iteration for those that have them.
