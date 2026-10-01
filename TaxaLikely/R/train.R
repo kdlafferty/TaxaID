@@ -488,11 +488,15 @@ utils::globalVariables(c(
 #' confamilial pairs are never computed (79 to 95 percent of eligible
 #' references had none on the same data) and the stored best is the best
 #' against one sampled genus rather than against every referenced genus of
-#' the family. That pushes the estimate down. The measured `H3` is therefore,
-#' if anything, a conservative (too distant) estimate of how closely an
-#' unsequenced genus matches. On real data it sits far closer than the
-#' earlier fixed rule: an implied mean identity of 91.8 against 83.3 percent
-#' (12S), 95.5 against 85.8 (18S) and 86.8 against 74.6 (COI).
+#' the family. That pushes the estimate down. The measured similarity is
+#' therefore a lower bound: an unsequenced genus probably matches more
+#' closely than `H3` assumes, so `H3` still loses somewhat too easily to a
+#' referenced candidate and calls keep some residual overconfidence. The
+#' correction runs the right way but is smaller than the true one. On real
+#' data it sits far closer than the earlier fixed rule: an implied mean
+#' identity of 91.8 against 83.3 percent (12S; 858 references in 47
+#' families supplied confamilial pairs), 95.5 against 85.8 (18S; 702 in 197)
+#' and 86.8 against 74.6 (COI; 25,513 in 1,143).
 #'
 #' @section Pseudo-data anchoring:
 #' When `anchor_perfect = TRUE`, synthetic "perfect match" observations are

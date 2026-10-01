@@ -1092,9 +1092,12 @@ reference's best match to another genus of the same family, family-equal-weighte
 kept at least as distant as the pooled H2 shift. With fewer than 3 families supplying
 such matches the old rule is used, and `Stats$h3_source` says which applied. On real
 CalIntertidal data the fixed rule was far too pessimistic: implied mean identity
-83.3 vs 91.8 percent measured (12S), 85.8 vs 95.5 (18S), 74.6 vs 86.8 (COI). The
-measured value is conservative: under `by_genus = TRUE` most confamilial pairs are
-never computed (each genus sees a random sample of other genera), which biases it
-toward a more distant match; the identity floor biases it the other way, but only
-3 to 8 percent of the pool sits near the floor (`Stats$h3_share_near_floor`). Two
+83.3 vs 91.8 percent measured (12S; 858 references in 47 families supplied pairs),
+85.8 vs 95.5 (18S; 702 in 197), 74.6 vs 86.8 (COI; 25,513 in 1,143). The measured
+similarity is a LOWER BOUND: under `by_genus = TRUE` most confamilial pairs are never
+computed (each genus sees a random sample of other genera), which biases it toward a
+more distant match. So H3 still loses somewhat too easily and calls keep residual
+overconfidence -- the change under-corrects, it does not err toward caution. The
+identity floor biases the other way, but only 3 to 8 percent of the pool sits near
+the floor (`Stats$h3_share_near_floor`). Two
 tests: measured on a 4-family fixture, heuristic fallback on a 2-family one.
