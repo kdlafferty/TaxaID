@@ -475,7 +475,9 @@ utils::globalVariables(c(
 #' the pooled `H2` shift so an unsequenced genus is never assumed to match
 #' better than an unsequenced congener. The variance uses the same
 #' family-equal weights (mean within-family variance plus the variance of
-#' family means). With fewer than 3 families supplying
+#' family means). That choice is not direction-free: on real data it
+#' sharpened 18S `H3` (sd 0.149 to 0.114 transform units), making 18S species
+#' calls somewhat more confident, and widened COI's (0.066 to 0.078). With fewer than 3 families supplying
 #' such matches, the shift falls back to the `H2` shift plus 2.0 transform
 #' units; `Stats$h3_source` records which was used.
 #'
